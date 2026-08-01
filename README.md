@@ -2,7 +2,9 @@
 
 **Offline · CPU-only · Local-first**
 
-Tự động dịch manga / manhwa / webtoon: tải chapter từ URL (hoặc upload ảnh/ZIP), cắt lát webtoon dài, detect bong bóng thoại + vùng chữ, xóa chữ thông minh (LaMa + smart fill), OCR đa ngôn ngữ, và chèn bản dịch qua giao diện web local.
+Công cụ hỗ trợ dịch manga / manhwa / webtoon: tải chapter từ URL (hoặc upload ảnh/ZIP), cắt lát webtoon dài, detect bong bóng thoại + vùng chữ, xóa chữ gốc (LaMa + smart fill), OCR nhận diện chữ, và **chèn bản dịch thủ công** qua giao diện web local.
+
+> **Lưu ý:** Dự án **chưa có dịch tự động**. Bạn tự nhập bản dịch vào từng khung thoại. OCR chỉ giúp đọc chữ gốc, không dịch sang ngôn ngữ khác.
 
 > Designed for **local / single-user** use.  
 > Có thể self-host cho nhóm nhỏ (xem phần Docker & Security).
@@ -15,9 +17,9 @@ Tự động dịch manga / manhwa / webtoon: tải chapter từ URL (hoặc upl
 - Upload hàng loạt ảnh hoặc file ZIP / CBZ
 - Tự động cắt lát webtoon dài thành trang vừa vặn
 - Detect bong bóng thoại + vùng chữ (YOLO ONNX)
-- Smart inpaint (LaMa + ring-sampling fallback)
-- OCR: Nhật (MangaOCR), Trung / Hàn / Anh (PaddleOCR)
-- Giao diện web: preview → review (tô lỗi) → editor (màu chữ, font) → xuất
+- Smart inpaint — xóa chữ gốc (LaMa + ring-sampling fallback)
+- OCR nhận diện chữ gốc: Nhật (MangaOCR), Trung / Hàn / Anh (PaddleOCR)
+- Giao diện web: preview → review (tô lỗi) → editor (nhập bản dịch thủ công, chọn màu/font) → xuất
 - Chạy hoàn toàn trên CPU, không cần GPU
 
 ---
@@ -114,12 +116,14 @@ Muốn thêm font tiếng Việt đẹp → thả file `.ttf` vào thư mục đ
 ## 🖥️ Hướng dẫn sử dụng
 
 1. Dán URL chapter **hoặc** kéo thả ảnh / ZIP vào trang.
-2. Chọn ngôn ngữ nguồn (ja / ch / korean / en).
+2. Chọn ngôn ngữ nguồn (ja / ch / korean / en) — dùng cho **OCR đọc chữ gốc**.
 3. Preview → bỏ qua trang không có chữ (nếu muốn).
-4. **Xử lý các trang đã chọn** → detect + inpaint + OCR.
+4. **Xử lý các trang đã chọn** → detect + xóa chữ gốc + OCR.
 5. Review: tô vùng còn sót chữ → xử lý lại.
-6. Editor: nhập bản dịch, chọn màu / font → **Chèn chữ**.
+6. Editor: **tự nhập bản dịch** vào từng khung thoại, chọn màu / font → **Chèn chữ**.
 7. Kết quả nằm trong `data/output/<chapter_id>/` (đúng thứ tự trang).
+
+> Bước 6 là dịch **thủ công**. Hiện chưa có API / model dịch tự động.
 
 ---
 
@@ -193,5 +197,6 @@ MIT (hoặc giấy phép bạn chọn khi public repo).
 ## Ghi chú
 
 - Tool này **local-first**. Không được thiết kế sẵn cho multi-tenant SaaS.
+- **Chưa có dịch tự động** — bạn tự dịch và nhập bản dịch vào editor.
 - Model ONNX không được phân phối kèm repo (dung lượng lớn + license riêng) → bạn tự tải.
 - CPU-only: xử lý chapter dài sẽ mất thời gian, hãy kiên nhẫn hoặc chỉ process vài trang mỗi lần.
