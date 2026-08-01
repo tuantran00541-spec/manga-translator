@@ -1,41 +1,117 @@
 import json
-import numpy as np
+import os
 import uuid
 from pathlib import Path
+
 import cv2
-from fastapi import FastAPI, UploadFile, File, Form
+import numpy as np
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
-from pydantic import BaseModel
 from PIL import Image
+from pydantic import BaseModel, field_validator
+from starlette.middleware.base import BaseHTTPMiddleware
 
-from app.pipeline import ChapterPipeline
+from contextlib import asynccontextmanager
+
+from app.config import (
+    PROCESSED_DIR,
+    OUTPUT_DIR,
+    BASE_DIR,
+    ensure_directories,
+    check_models,
+)
+from app.logging_config import logger
 from app.ocr.multi_lang_ocr import MultiLangOCR
-from app.render.text_renderer import render_text_in_box
-from app.config import PROCESSED_DIR, OUTPUT_DIR, BASE_DIR
+from app.pipeline import ChapterPipeline
+from app.render.text_renderer import list_available_fonts, render_text_in_box
+from app.security import (
+    MAX_RENDER_TEXT_LEN,
+    MAX_RENDER_TRANSLATIONS,
+    MAX_REQUEST_BYTES,
+    MAX_UPLOAD_FILES,
+    MAX_UPLOAD_TOTAL_BYTES,
+    validate_chapter_id,
+    validate_image_size,
+    validate_upload_image,
+    validate_url,
+)
 
-app = FastAPI()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    ensure_directories()
+    missing = check_models()
+    if missing:
+        logger.warning(
+            "Models missing: %s — /api/process_pages will fail until models are placed in models/",
+            ", ".join(missing),
+        )
+    else:
+        logger.info("ONNX models OK")
+    yield
+
+
+app = FastAPI(lifespan=lifespan, title="Manga Translator", version="1.0.0")
 pipeline = ChapterPipeline()
 ocr = MultiLangOCR()
 
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "app" / "static")), name="static")
-app.mount("/data", StaticFiles(directory=str(BASE_DIR / "data")), name="data")
 
 
-def to_url(path_str: str) -> str:
-    if not path_str:
-        return path_str
-    p = Path(path_str)
-    if not p.is_absolute():
-        p = (BASE_DIR / p).resolve()
-    return "/" + p.relative_to(BASE_DIR).as_posix()
+class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        limit = MAX_UPLOAD_TOTAL_BYTES if request.url.path == "/api/chapter/upload" else MAX_REQUEST_BYTES
+        cl = request.headers.get("content-length")
+        if cl:
+            try:
+                size = int(cl)
+            except (TypeError, ValueError):
+                return JSONResponse(400, {"detail": "Invalid Content-Length"})
+            if size > limit:
+                return JSONResponse(413, {"detail": "Request too large"})
+        return await call_next(request)
+
+
+app.add_middleware(RequestSizeLimitMiddleware)
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    if isinstance(exc, HTTPException):
+        return JSONResponse(exc.status_code, {"detail": exc.detail})
+    logger.exception(f"Unhandled exception on {request.method} {request.url.path}")
+    return JSONResponse(500, {"detail": "Internal server error"})
+
+
+def _load_manifest_raw(chapter_id: str) -> dict:
+    validate_chapter_id(chapter_id)
+    manifest_path = PROCESSED_DIR / chapter_id / "manifest.json"
+    if not manifest_path.exists():
+        raise HTTPException(404, f"Chapter {chapter_id} not found")
+    return json.loads(manifest_path.read_text(encoding="utf-8"))
+
+
+def _save_manifest_raw(chapter_id: str, manifest: dict) -> None:
+    processed_dir = PROCESSED_DIR / chapter_id
+    processed_dir.mkdir(parents=True, exist_ok=True)
+    tmp_path = processed_dir / "manifest.json.tmp"
+    final_path = processed_dir / "manifest.json"
+    tmp_path.write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    os.replace(tmp_path, final_path)
 
 
 def urlify_manifest(manifest: dict) -> dict:
     result = json.loads(json.dumps(manifest))
-    for page in result["pages"]:
-        page["original"] = to_url(page["original"])
-        page["clean"] = to_url(page["clean"]) if page["clean"] else page["clean"]
+    chapter_id = result["chapter_id"]
+    for i, page in enumerate(result["pages"]):
+        page["original"] = f"/api/image/{chapter_id}/{i}/original"
+        if page.get("clean"):
+            page["clean"] = f"/api/image/{chapter_id}/{i}/clean"
+        for box in page.get("boxes", []):
+            box.pop("mask", None)
     return result
 
 
@@ -55,6 +131,28 @@ class RenderRequest(BaseModel):
     page_index: int
     translations: dict[int, str]
     colors: dict[str, str] = {}
+    fonts: dict[str, str] = {}
+    font_sizes: dict[str, int | str] = {}
+    bolds: dict[str, bool] = {}
+    stroke_widths: dict[str, int | str] = {}
+    stroke_colors: dict[str, str] = {}
+    bg_colors: dict[str, str] = {}
+    corner_radii: dict[str, int] = {}
+
+    @field_validator("translations")
+    @classmethod
+    def _check_translations(cls, v: dict[int, str]) -> dict[int, str]:
+        if len(v) > MAX_RENDER_TRANSLATIONS:
+            raise ValueError(f"Too many translations: {len(v)} > {MAX_RENDER_TRANSLATIONS}")
+        for k, val in v.items():
+            if len(val) > MAX_RENDER_TEXT_LEN:
+                raise ValueError(f"Translation {k} too long: {len(val)} chars")
+        return v
+
+
+class SaveDraftRequest(BaseModel):
+    chapter_id: str
+    drafts: dict[str, dict] = {}
 
 
 class ProcessPagesRequest(BaseModel):
@@ -83,27 +181,84 @@ class RemoveBoxRequest(BaseModel):
     box_index: int
 
 
+@app.get("/api/fonts")
+def get_available_fonts() -> list[dict[str, str]]:
+    return list_available_fonts()
+
+
+@app.get("/api/chapters")
+def list_chapters() -> list[dict]:
+    chapters = []
+    if not PROCESSED_DIR.exists():
+        return chapters
+    for d in sorted(PROCESSED_DIR.iterdir(), key=lambda x: x.stat().st_mtime, reverse=True):
+        manifest_path = d / "manifest.json"
+        if not manifest_path.exists():
+            continue
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue
+        if not any(p.get("clean") for p in manifest["pages"]):
+            continue
+        chapters.append({
+            "chapter_id": manifest["chapter_id"],
+            "source_url": manifest.get("source_url", ""),
+            "total_pages": len(manifest["pages"]),
+            "updated_at": manifest_path.stat().st_mtime,
+        })
+    return chapters
+
+
 @app.post("/api/chapter")
-def create_chapter(req: ChapterRequest):
+def create_chapter(req: ChapterRequest) -> dict:
+    validate_url(req.url)
     chapter_id = uuid.uuid4().hex[:8]
+    logger.info(f"Creating chapter {chapter_id} from {req.url}")
     manifest = pipeline.download_chapter(req.url, chapter_id)
     return urlify_manifest(manifest)
 
 
+@app.post("/api/chapter/upload")
+async def create_chapter_from_upload(files: list[UploadFile] = File(...)) -> dict:
+    if not files:
+        raise HTTPException(400, "No files uploaded")
+    if len(files) > MAX_UPLOAD_FILES:
+        raise HTTPException(400, f"Too many files: max {MAX_UPLOAD_FILES} per upload")
+
+    uploads = []
+    total_bytes = 0
+    for f in files:
+        data = await f.read()
+        total_bytes += len(data)
+        if total_bytes > MAX_UPLOAD_TOTAL_BYTES:
+            raise HTTPException(413, f"Total upload size exceeds {MAX_UPLOAD_TOTAL_BYTES // (1024*1024)}MB")
+        uploads.append((f.filename or "unnamed", data))
+
+    chapter_id = uuid.uuid4().hex[:8]
+    logger.info(f"Creating chapter {chapter_id} from {len(uploads)} uploaded files")
+    manifest = pipeline.create_chapter_from_uploads(chapter_id, uploads)
+    return urlify_manifest(manifest)
+
+
 @app.post("/api/process_pages")
-def process_pages(req: ProcessPagesRequest):
+def process_pages(req: ProcessPagesRequest) -> dict:
+    validate_chapter_id(req.chapter_id)
+    logger.info(f"Chapter {req.chapter_id}: processing pages {req.page_indices}")
     manifest = pipeline.process_pages(req.chapter_id, req.page_indices)
     return urlify_manifest(manifest)
 
 
 @app.post("/api/skip_pages")
-def skip_pages(req: SkipPagesRequest):
+def skip_pages(req: SkipPagesRequest) -> dict:
+    validate_chapter_id(req.chapter_id)
     manifest = pipeline.mark_skipped(req.chapter_id, req.page_indices, req.skipped)
     return urlify_manifest(manifest)
 
 
 @app.post("/api/add_box")
-def add_box(req: AddBoxRequest):
+def add_box(req: AddBoxRequest) -> dict:
+    validate_chapter_id(req.chapter_id)
     manifest = pipeline.add_manual_box(
         req.chapter_id, req.page_index, req.x1, req.y1, req.x2, req.y2
     )
@@ -111,7 +266,8 @@ def add_box(req: AddBoxRequest):
 
 
 @app.post("/api/remove_box")
-def remove_box(req: RemoveBoxRequest):
+def remove_box(req: RemoveBoxRequest) -> dict:
+    validate_chapter_id(req.chapter_id)
     manifest = pipeline.remove_box(req.chapter_id, req.page_index, req.box_index)
     return urlify_manifest(manifest)
 
@@ -121,24 +277,47 @@ async def repaint_mask(
     chapter_id: str = Form(...),
     page_index: int = Form(...),
     mask: UploadFile = File(...),
-):
+) -> dict:
+    validate_chapter_id(chapter_id)
     mask_bytes = await mask.read()
+    if len(mask_bytes) > MAX_REQUEST_BYTES:
+        raise HTTPException(413, "Mask too large")
     manifest = pipeline.repaint_mask(chapter_id, page_index, mask_bytes)
     return urlify_manifest(manifest)
 
 
-def _load_manifest_raw(chapter_id: str) -> dict:
-    manifest_path = PROCESSED_DIR / chapter_id / "manifest.json"
-    return json.loads(manifest_path.read_text(encoding="utf-8"))
-
-
 @app.get("/api/chapter/{chapter_id}")
-def get_chapter(chapter_id: str):
+def get_chapter(chapter_id: str) -> dict:
     return urlify_manifest(_load_manifest_raw(chapter_id))
 
 
+@app.get("/api/image/{chapter_id}/{page_index}/{kind}")
+def get_image(chapter_id: str, page_index: int, kind: str):
+    validate_chapter_id(chapter_id)
+    if page_index < 0:
+        raise HTTPException(400, "page_index must be >= 0")
+    if kind not in ("original", "clean"):
+        raise HTTPException(400, "kind must be original or clean")
+    manifest = _load_manifest_raw(chapter_id)
+    if page_index >= len(manifest["pages"]):
+        raise HTTPException(404, "Page not found")
+    page = manifest["pages"][page_index]
+    path_key = kind
+    path_str = page.get(path_key)
+    if not path_str:
+        raise HTTPException(404, f"No {kind} image for this page")
+    path = Path(path_str)
+    if not path.is_absolute():
+        path = BASE_DIR / path
+    if not path.exists():
+        raise HTTPException(404, "Image file not found")
+    validate_image_size(path)
+    return FileResponse(path)
+
+
 @app.post("/api/ocr_box")
-def ocr_box(req: OcrBoxRequest):
+def ocr_box(req: OcrBoxRequest) -> dict:
+    validate_chapter_id(req.chapter_id)
     manifest = _load_manifest_raw(req.chapter_id)
     page = manifest["pages"][req.page_index]
     box = page["boxes"][req.box_index]
@@ -152,8 +331,24 @@ def ocr_box(req: OcrBoxRequest):
     return {"text": text}
 
 
+@app.post("/api/save_draft")
+def save_draft(req: SaveDraftRequest) -> dict:
+    validate_chapter_id(req.chapter_id)
+    manifest = _load_manifest_raw(req.chapter_id)
+    for page_key, draft in req.drafts.items():
+        try:
+            idx = int(page_key)
+        except ValueError:
+            continue
+        if 0 <= idx < len(manifest["pages"]):
+            manifest["pages"][idx]["draft"] = draft
+    _save_manifest_raw(req.chapter_id, manifest)
+    return {"ok": True}
+
+
 @app.post("/api/render")
-def render_page(req: RenderRequest):
+def render_page(req: RenderRequest) -> dict:
+    validate_chapter_id(req.chapter_id)
     manifest = _load_manifest_raw(req.chapter_id)
     page = manifest["pages"][req.page_index]
 
@@ -167,8 +362,20 @@ def render_page(req: RenderRequest):
             continue
         box = page["boxes"][box_idx]
         coords = (box["x1"], box["y1"], box["x2"], box["y2"])
-        box_color = colors_dict.get(box_idx_str) or colors_dict.get(box_idx) or "auto"
-        image = render_text_in_box(image, translation, coords, fill=box_color)
+        box_color = colors_dict.get(box_idx_str) or colors_dict.get(str(box_idx)) or "auto"
+        font_name = (req.fonts or {}).get(box_idx_str)
+        font_size = (req.font_sizes or {}).get(box_idx_str)
+        bold = (req.bolds or {}).get(box_idx_str, False)
+        stroke_w = (req.stroke_widths or {}).get(box_idx_str)
+        stroke_c = (req.stroke_colors or {}).get(box_idx_str)
+        bg_c = (req.bg_colors or {}).get(box_idx_str)
+        radius = (req.corner_radii or {}).get(box_idx_str)
+        image = render_text_in_box(
+            image, translation, coords, fill=box_color,
+            font_name=font_name, font_size=font_size, bold=bold,
+            stroke_width=stroke_w, stroke_color=stroke_c,
+            bg_color=bg_c, corner_radius=radius,
+        )
 
     out_dir = OUTPUT_DIR / req.chapter_id
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -176,16 +383,30 @@ def render_page(req: RenderRequest):
     image.save(out_path)
 
     page["rendered"] = True
-    manifest_path = PROCESSED_DIR / req.chapter_id / "manifest.json"
-    manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+    _save_manifest_raw(req.chapter_id, manifest)
 
-    return {"output": to_url(out_path.as_posix())}
+    return {"output": f"/api/download/{req.chapter_id}/{req.page_index}"}
 
 
 @app.get("/api/download/{chapter_id}/{page_index}")
 def download_page(chapter_id: str, page_index: int):
+    validate_chapter_id(chapter_id)
+    if page_index < 0:
+        raise HTTPException(400, "page_index must be >= 0")
     path = OUTPUT_DIR / chapter_id / f"page_{page_index:03d}.png"
+    if not path.exists():
+        raise HTTPException(404, "Output image not found")
     return FileResponse(path)
+
+
+@app.get("/health")
+def health():
+    from app.config import check_models
+    missing = check_models()
+    return {
+        "status": "ok" if not missing else "degraded",
+        "models_missing": missing,
+    }
 
 
 @app.get("/")
