@@ -132,187 +132,199 @@ class ChapterPipeline:
                                 if clean_name and len(img_bytes) > 0:
                                     extracted_files.append((clean_name, img_bytes))
                 except Exception as e:
-                    logger.warning(f"Failed to extract zip {filename}: {e}")
+                    logger.warning(f"Failed to extract zip file {filename}: {e}")
             else:
                 extracted_files.append((filename, data))
 
-        extracted_files.sort(key=lambda x: natural_sort_key(x[0]))
+        if not extracted_files:
+            raise ValueError("Không tìm thấy file ảnh hợp lệ nào trong dữ liệu tải lên")
 
         raw_paths = []
+        ext_map = {"PNG": ".png", "JPEG": ".jpg", "WEBP": ".webp", "BMP": ".bmp"}
         for idx, (filename, data) in enumerate(extracted_files):
-            try:
-                fmt = validate_upload_image(data, filename)
-            except Exception as e:
-                logger.warning(f"Skip invalid upload {filename}: {e}")
-                continue
-            ext_map = {"PNG": ".png", "JPEG": ".jpg", "WEBP": ".webp", "BMP": ".bmp"}
+            fmt = validate_upload_image(data, filename)
             ext = ext_map.get(fmt, ".png")
-            out_path = raw_dir / f"page_{idx:03d}{ext}"
+            out_path = raw_dir / f"{idx:03d}{ext}"
             out_path.write_bytes(data)
             raw_paths.append(out_path)
 
-        if not raw_paths:
-            raise ValueError("No valid images in upload")
-
-        logger.info(f"Chapter {chapter_id}: created from {len(raw_paths)} uploaded images")
+        logger.info(f"Chapter {chapter_id}: saved {len(raw_paths)} uploaded images")
         return self._build_chapter_from_raw_paths(chapter_id, raw_paths, source_url=None)
 
     def _build_chapter_from_raw_paths(self, chapter_id: str, raw_paths: list[Path], source_url: str | None) -> dict:
+        sliced_dir = RAW_DIR / chapter_id / "sliced"
         processed_dir = PROCESSED_DIR / chapter_id
+        sliced_dir.mkdir(parents=True, exist_ok=True)
         processed_dir.mkdir(parents=True, exist_ok=True)
 
-        slice_results: list[list[Path]] = [[] for _ in raw_paths]
-
+        slice_results: dict[int, list] = {}
         if raw_paths:
             max_workers = min(2, len(raw_paths))
 
             def _slice_one(item):
-                i, p = item
-                return i, slice_image(p, processed_dir)
+                idx, raw_path = item
+                return idx, slice_image(raw_path, sliced_dir, f"{idx:03d}")
 
             with ThreadPoolExecutor(max_workers=max_workers) as pool:
                 futures = [pool.submit(_slice_one, (i, p)) for i, p in enumerate(raw_paths)]
-                for fut in as_completed(futures):
-                    i, paths = fut.result()
-                    slice_results[i] = paths
+                for future in as_completed(futures):
+                    idx, slice_paths = future.result()
+                    slice_results[idx] = slice_paths
 
         pages = []
-        for source_index, paths in enumerate(slice_results):
-            for slice_index, slice_path in enumerate(paths):
+        for source_index in range(len(raw_paths)):
+            for slice_index, slice_path in enumerate(slice_results[source_index]):
                 pages.append({
                     "original": slice_path.as_posix(),
                     "clean": None,
                     "boxes": [],
                     "skipped": False,
-                    "rendered": False,
-                    "source_index": source_index,
+                    "source_page": source_index,
                     "slice_index": slice_index,
                 })
 
-        if not pages:
-            for p in raw_paths:
-                pages.append({
-                    "original": p.as_posix(),
-                    "clean": None,
-                    "boxes": [],
-                    "skipped": False,
-                    "rendered": False,
-                })
-
-        manifest = {
-            "chapter_id": chapter_id,
-            "source_url": source_url or "",
-            "pages": pages,
-        }
+        manifest = {"chapter_id": chapter_id, "source_url": source_url, "pages": pages}
         with self._manifest_lock(chapter_id):
             self._save_manifest(processed_dir, manifest)
         return manifest
 
     def process_pages(self, chapter_id: str, page_indices: list[int]) -> dict:
+        processed_dir = PROCESSED_DIR / chapter_id
+
         with self._manifest_lock(chapter_id):
-            processed_dir = PROCESSED_DIR / chapter_id
             manifest = self._load_manifest(processed_dir)
-            work_items = []
-            for idx in page_indices:
-                if idx < 0 or idx >= len(manifest["pages"]):
-                    continue
-                page = manifest["pages"][idx]
-                if page.get("skipped"):
-                    continue
-                work_items.append((idx, Path(page["original"])))
+
+            work_items = [
+                (idx, Path(manifest["pages"][idx]["original"]))
+                for idx in page_indices
+                if not manifest["pages"][idx]["skipped"]
+            ]
 
             if work_items:
                 max_workers = min(2, len(work_items))
+                results: dict[int, dict] = {}
 
                 def _process_one(item: tuple[int, Path]) -> tuple[int, dict]:
-                    i, p = item
-                    return i, self._process_page(p, processed_dir)
+                    idx, img_path = item
+                    return idx, self._process_page(img_path, processed_dir)
 
                 with ThreadPoolExecutor(max_workers=max_workers) as pool:
-                    futures = [pool.submit(_process_one, item) for item in work_items]
-                    for fut in as_completed(futures):
-                        i, result = fut.result()
-                        manifest["pages"][i].update(result)
-                        manifest["pages"][i]["skipped"] = False
+                    futures = {pool.submit(_process_one, item): item for item in work_items}
+                    for future in as_completed(futures):
+                        idx, page_data = future.result()
+                        results[idx] = page_data
+
+                for idx, page_data in results.items():
+                    manifest["pages"][idx].update(page_data)
 
             self._save_manifest(processed_dir, manifest)
             self._sync_output_dir(chapter_id, manifest, page_indices)
-            return manifest
+        return manifest
 
     def mark_skipped(self, chapter_id: str, page_indices: list[int], skipped: bool) -> dict:
+        processed_dir = PROCESSED_DIR / chapter_id
         with self._manifest_lock(chapter_id):
-            processed_dir = PROCESSED_DIR / chapter_id
             manifest = self._load_manifest(processed_dir)
             for idx in page_indices:
-                if 0 <= idx < len(manifest["pages"]):
-                    manifest["pages"][idx]["skipped"] = skipped
+                manifest["pages"][idx]["skipped"] = skipped
+                if skipped:
+                    manifest["pages"][idx]["clean"] = manifest["pages"][idx]["original"]
+                    manifest["pages"][idx]["boxes"] = []
             self._save_manifest(processed_dir, manifest)
             self._sync_output_dir(chapter_id, manifest, page_indices)
-            return manifest
+        return manifest
 
     @staticmethod
     def _sync_output_dir(chapter_id: str, manifest: dict, page_indices: list[int] | None = None) -> None:
         from app.config import OUTPUT_DIR
         out_dir = OUTPUT_DIR / chapter_id
         out_dir.mkdir(parents=True, exist_ok=True)
+
         indices = page_indices if page_indices is not None else range(len(manifest["pages"]))
-        for idx in indices:
-            if idx < 0 or idx >= len(manifest["pages"]):
+
+        for i in indices:
+            page = manifest["pages"][i]
+            if page.get("rendered"):
                 continue
-            page = manifest["pages"][idx]
-            dest = out_dir / f"page_{idx:03d}.png"
-            if page.get("skipped"):
-                src = Path(page["original"])
-            elif page.get("clean"):
-                src = Path(page["clean"])
-            else:
-                src = Path(page["original"])
-            if src.exists():
-                shutil.copyfile(src, dest)
+
+            target_path = out_dir / f"page_{i:03d}.png"
+            clean_p = Path(page["clean"]) if page.get("clean") else None
+            src_p = clean_p if (clean_p and clean_p.exists()) else Path(page["original"])
+
+            if src_p and src_p.exists():
+                shutil.copyfile(src_p, target_path)
+
 
     def add_manual_box(self, chapter_id: str, page_index: int, x1: int, y1: int, x2: int, y2: int) -> dict:
+        processed_dir = PROCESSED_DIR / chapter_id
         with self._manifest_lock(chapter_id):
-            processed_dir = PROCESSED_DIR / chapter_id
             manifest = self._load_manifest(processed_dir)
             page = manifest["pages"][page_index]
-            page.setdefault("boxes", []).append({
-                "x1": x1, "y1": y1, "x2": x2, "y2": y2,
-                "confidence": 1.0, "mask": None, "manual": True,
-            })
-            img = read_image(Path(page["original"]))
-            self._reinpaint_page(page, img, processed_dir, Path(page["original"]))
+
+            img_path = Path(page["original"])
+            image = read_image(img_path)
+            h, w = image.shape[:2]
+
+            x1, x2 = sorted((max(0, min(x1, w)), max(0, min(x2, w))))
+            y1, y2 = sorted((max(0, min(y1, h)), max(0, min(y2, h))))
+            if x2 - x1 < 4 or y2 - y1 < 4:
+                return manifest
+
+            page["boxes"].append({"x1": x1, "y1": y1, "x2": x2, "y2": y2, "confidence": 1.0, "removed": False})
+            self._reinpaint_page(page, image, processed_dir, img_path)
+
             self._save_manifest(processed_dir, manifest)
             self._sync_output_dir(chapter_id, manifest, [page_index])
-            return manifest
+        return manifest
 
     def remove_box(self, chapter_id: str, page_index: int, box_index: int) -> dict:
+        processed_dir = PROCESSED_DIR / chapter_id
         with self._manifest_lock(chapter_id):
-            processed_dir = PROCESSED_DIR / chapter_id
             manifest = self._load_manifest(processed_dir)
             page = manifest["pages"][page_index]
-            if 0 <= box_index < len(page.get("boxes", [])):
-                page["boxes"][box_index]["removed"] = True
-                img = read_image(Path(page["original"]))
-                self._reinpaint_page(page, img, processed_dir, Path(page["original"]))
+
+            page["boxes"][box_index]["removed"] = True
+
+            img_path = Path(page["original"])
+            image = read_image(img_path)
+            self._reinpaint_page(page, image, processed_dir, img_path)
+
             self._save_manifest(processed_dir, manifest)
             self._sync_output_dir(chapter_id, manifest, [page_index])
-            return manifest
+        return manifest
 
     def repaint_mask(self, chapter_id: str, page_index: int, mask_png: bytes) -> dict:
+        processed_dir = PROCESSED_DIR / chapter_id
         with self._manifest_lock(chapter_id):
-            processed_dir = PROCESSED_DIR / chapter_id
             manifest = self._load_manifest(processed_dir)
             page = manifest["pages"][page_index]
-            arr = np.frombuffer(mask_png, dtype=np.uint8)
-            mask = cv2.imdecode(arr, cv2.IMREAD_GRAYSCALE)
-            if mask is None:
-                raise ValueError("Invalid mask image")
-            image = read_image(Path(page["original"]))
-            if mask.shape[:2] != image.shape[:2]:
-                mask = cv2.resize(mask, (image.shape[1], image.shape[0]), interpolation=cv2.INTER_NEAREST)
 
+            base_path = Path(page["clean"]) if page.get("clean") else Path(page["original"])
+            if not base_path.exists():
+                base_path = Path(page["original"])
+            image = read_image(base_path)
+            h, w = image.shape[:2]
+
+            mask_arr = np.frombuffer(mask_png, dtype=np.uint8)
+            mask_decoded = cv2.imdecode(mask_arr, cv2.IMREAD_UNCHANGED)
+            if mask_decoded is None:
+                return manifest
+
+            if mask_decoded.ndim == 3 and mask_decoded.shape[2] == 4:
+                mask = mask_decoded[:, :, 3]
+            elif mask_decoded.ndim == 3:
+                mask = cv2.cvtColor(mask_decoded, cv2.COLOR_BGR2GRAY)
+            else:
+                mask = mask_decoded
+
+            mask = cv2.resize(mask, (w, h), interpolation=cv2.INTER_NEAREST)
+            mask = (mask > 127).astype(np.uint8) * 255
+
+            if not mask.any():
+                return manifest
+
+            num_labels, labels = cv2.connectedComponents(mask)
             result = image.copy()
-            num_labels, labels = cv2.connectedComponents((mask > 127).astype(np.uint8))
             for label in range(1, num_labels):
                 component_mask = ((labels == label).astype(np.uint8) * 255)
                 if component_mask.sum() // 255 < 100:
