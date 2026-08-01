@@ -280,8 +280,7 @@ async def repaint_mask(
 ) -> dict:
     validate_chapter_id(chapter_id)
     mask_bytes = await mask.read()
-    if len(mask_bytes) > MAX_REQUEST_BYTES:
-        raise HTTPException(413, "Mask too large")
+    logger.info(f"Chapter {chapter_id} page {page_index}: repaint mask ({len(mask_bytes)} bytes)")
     manifest = pipeline.repaint_mask(chapter_id, page_index, mask_bytes)
     return urlify_manifest(manifest)
 
@@ -296,19 +295,21 @@ def get_image(chapter_id: str, page_index: int, kind: str):
     validate_chapter_id(chapter_id)
     if page_index < 0:
         raise HTTPException(400, "page_index must be >= 0")
-    if kind not in ("original", "clean"):
-        raise HTTPException(400, "kind must be original or clean")
-    manifest = _load_manifest_raw(chapter_id)
-    if page_index >= len(manifest["pages"]):
-        raise HTTPException(404, "Page not found")
-    page = manifest["pages"][page_index]
-    path_key = kind
-    path_str = page.get(path_key)
-    if not path_str:
-        raise HTTPException(404, f"No {kind} image for this page")
-    path = Path(path_str)
-    if not path.is_absolute():
-        path = BASE_DIR / path
+    if kind not in ("original", "clean", "rendered"):
+        raise HTTPException(400, f"Invalid kind: {kind}")
+
+    if kind == "rendered":
+        path = OUTPUT_DIR / chapter_id / f"page_{page_index:03d}.png"
+    else:
+        manifest = _load_manifest_raw(chapter_id)
+        if page_index >= len(manifest["pages"]):
+            raise HTTPException(404, "Page not found")
+        page = manifest["pages"][page_index]
+        field = page.get(kind) if kind != "original" else page.get("original")
+        if not field:
+            raise HTTPException(404, f"{kind} not available for this page")
+        path = Path(field)
+
     if not path.exists():
         raise HTTPException(404, "Image file not found")
     validate_image_size(path)
@@ -324,10 +325,22 @@ def ocr_box(req: OcrBoxRequest) -> dict:
 
     data = np.fromfile(page["original"], dtype=np.uint8)
     image = cv2.imdecode(data, cv2.IMREAD_COLOR)
-    crop = image[box["y1"]:box["y2"], box["x1"]:box["x2"]]
+    h, w = image.shape[:2]
+
+    pad = 12
+    y1 = max(0, box["y1"] - pad)
+    y2 = min(h, box["y2"] + pad)
+    x1 = max(0, box["x1"] - pad)
+    x2 = min(w, box["x2"] + pad)
+
+    crop = image[y1:y2, x1:x2]
     crop_rgb = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
 
     text = ocr.read(crop_rgb, req.lang)
+
+    box["ocr_text"] = text
+    _save_manifest_raw(req.chapter_id, manifest)
+
     return {"text": text}
 
 
@@ -335,13 +348,9 @@ def ocr_box(req: OcrBoxRequest) -> dict:
 def save_draft(req: SaveDraftRequest) -> dict:
     validate_chapter_id(req.chapter_id)
     manifest = _load_manifest_raw(req.chapter_id)
-    for page_key, draft in req.drafts.items():
-        try:
-            idx = int(page_key)
-        except ValueError:
-            continue
-        if 0 <= idx < len(manifest["pages"]):
-            manifest["pages"][idx]["draft"] = draft
+    if "drafts" not in manifest:
+        manifest["drafts"] = {}
+    manifest["drafts"].update(req.drafts)
     _save_manifest_raw(req.chapter_id, manifest)
     return {"ok": True}
 
@@ -351,10 +360,18 @@ def render_page(req: RenderRequest) -> dict:
     validate_chapter_id(req.chapter_id)
     manifest = _load_manifest_raw(req.chapter_id)
     page = manifest["pages"][req.page_index]
+    logger.info(f"Chapter {req.chapter_id} page {req.page_index}: rendering {len(req.translations)} translations")
 
     base_image_path = page.get("clean") or page.get("original")
     image = Image.open(base_image_path).convert("RGB")
     colors_dict = req.colors or {}
+    fonts_dict = req.fonts or {}
+    font_sizes_dict = req.font_sizes or {}
+    bolds_dict = req.bolds or {}
+    stroke_w_dict = req.stroke_widths or {}
+    stroke_c_dict = req.stroke_colors or {}
+    bg_colors_dict = req.bg_colors or {}
+    radii_dict = req.corner_radii or {}
 
     for box_idx_str, translation in req.translations.items():
         box_idx = int(box_idx_str)
@@ -362,19 +379,20 @@ def render_page(req: RenderRequest) -> dict:
             continue
         box = page["boxes"][box_idx]
         coords = (box["x1"], box["y1"], box["x2"], box["y2"])
-        box_color = colors_dict.get(box_idx_str) or colors_dict.get(str(box_idx)) or "auto"
-        font_name = (req.fonts or {}).get(box_idx_str)
-        font_size = (req.font_sizes or {}).get(box_idx_str)
-        bold = (req.bolds or {}).get(box_idx_str, False)
-        stroke_w = (req.stroke_widths or {}).get(box_idx_str)
-        stroke_c = (req.stroke_colors or {}).get(box_idx_str)
-        bg_c = (req.bg_colors or {}).get(box_idx_str)
-        radius = (req.corner_radii or {}).get(box_idx_str)
+        box_color = colors_dict.get(box_idx_str) or colors_dict.get(box_idx) or "auto"
+        box_font = fonts_dict.get(box_idx_str) or fonts_dict.get(box_idx) or "default"
+        box_size = font_sizes_dict.get(box_idx_str) or font_sizes_dict.get(box_idx) or "auto"
+        box_bold = bool(bolds_dict.get(box_idx_str) or bolds_dict.get(box_idx) or False)
+        stroke_w = stroke_w_dict.get(box_idx_str) or stroke_w_dict.get(box_idx) or "auto"
+        stroke_c = stroke_c_dict.get(box_idx_str) or stroke_c_dict.get(box_idx) or "auto"
+        bg_c = bg_colors_dict.get(box_idx_str) or bg_colors_dict.get(box_idx) or "transparent"
+        r_val = int(radii_dict.get(box_idx_str) or radii_dict.get(box_idx) or 0)
+
         image = render_text_in_box(
-            image, translation, coords, fill=box_color,
-            font_name=font_name, font_size=font_size, bold=bold,
-            stroke_width=stroke_w, stroke_color=stroke_c,
-            bg_color=bg_c, corner_radius=radius,
+            image, translation, coords,
+            fill=box_color, font_size=box_size, is_bold=box_bold,
+            font_name=box_font, stroke_width=stroke_w, stroke_color=stroke_c,
+            bg_color=bg_c, corner_radius=r_val,
         )
 
     out_dir = OUTPUT_DIR / req.chapter_id
@@ -385,7 +403,7 @@ def render_page(req: RenderRequest) -> dict:
     page["rendered"] = True
     _save_manifest_raw(req.chapter_id, manifest)
 
-    return {"output": f"/api/download/{req.chapter_id}/{req.page_index}"}
+    return {"output": f"/api/image/{req.chapter_id}/{req.page_index}/rendered"}
 
 
 @app.get("/api/download/{chapter_id}/{page_index}")
