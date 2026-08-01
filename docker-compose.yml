@@ -1,0 +1,27 @@
+# Manga Translator — local / self-hosted
+#
+# 1. Place the 3 ONNX models into ./models/  (see README)
+# 2. docker compose up --build
+# 3. Open http://127.0.0.1:8000
+
+services:
+  manga-translator:
+    build: .
+    image: manga-translator:local
+    container_name: manga-translator
+    ports:
+      - "8000:8000"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8000
+      - RELOAD=0
+    volumes:
+      # Persist chapters & outputs
+      - ./data:/app/data
+      # Mount your downloaded ONNX models
+      - ./models:/app/models
+      # Optional: persist logs
+      - ./logs:/app/logs
+    restart: unless-stopped
+    # Uncomment if you need more shared memory for large images / Playwright
+    # shm_size: "1gb"

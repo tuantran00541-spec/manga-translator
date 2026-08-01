@@ -1,0 +1,37 @@
+# Git / IDE
+.git
+.gitignore
+.vscode
+.idea
+*.md
+!README.md
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+env/
+*.egg-info/
+dist/
+build/
+
+# Runtime data (mounted as volumes)
+data/
+logs/
+models/*.onnx
+models/*.pt
+
+# Temp / OS
+*.log
+.DS_Store
+Thumbs.db
+*.tmp
+*.swp
+
+# Tests / scripts not needed in image
+debug_*.py
+inspect_*.py

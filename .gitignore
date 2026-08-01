@@ -1,39 +1,35 @@
-# Python Environment
-venv/
-.venv/
-env/
-ENV/
+# Runtime
+data/
+logs/
+models/*.onnx
+models/*.pt
+models/*.pth
 
-# Byte-compiled / optimized / DLL files
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
+*.so
+.Python
+venv/
+.venv/
+env/
+*.egg-info/
+dist/
+build/
 
-# AI Model Files (Heavy binaries - download manually per README instructions)
-models/*.onnx
-models/*.pt
-models/*.safetensors
-models/*.pth
-models/*.bin
+# Env / secrets
+.env
+.env.*
+!.env.example
 
-# Local Chapter Data & Downloads
-data/raw/
-data/processed/
-data/output/
-data/
-
-# Chrome User Data & Debug Dumps
-_chrome_user_data/
-_debug/
-*.png
-*.jpg
-*.jpeg
-*.webp
-
-# IDE & OS Files
+# IDE / OS
 .vscode/
 .idea/
-*.swp
-*.swo
 .DS_Store
 Thumbs.db
+*.swp
+*.tmp
+
+# Docker
+*.log
