@@ -30,8 +30,26 @@
     <button id="load-btn">Tải chapter</button>
   </div>
 
+  <div id="upload-divider">hoặc</div>
+
+  <div id="upload-dropzone">
+    <p>Kéo thả ảnh hoặc file ZIP vào đây, hoặc <label for="upload-input" id="upload-browse-label">chọn file</label></p>
+    <span id="upload-hint">Chấp nhận PNG, JPG, WEBP, BMP, ZIP, CBZ — kéo thả tập ảnh hoặc file ZIP</span>
+    <input type="file" id="upload-input" accept="image/png,image/jpeg,image/webp,image/bmp,.zip,.cbz" multiple hidden>
+  </div>
+
+  <div id="recent-chapters"></div>
+
   <div id="page-view"></div>
 </div>
-<script src="/static/app.js"></script>
+<div id="toast-container"></div>
+<script src="/static/js/toast.js"></script>
+<script src="/static/js/api.js"></script>
+<script src="/static/js/upload.js"></script>
+<script src="/static/js/preview.js"></script>
+<script src="/static/js/review.js"></script>
+<script src="/static/js/box-item.js"></script>
+<script src="/static/js/editor.js"></script>
+<script src="/static/js/main.js"></script>
 </body>
 </html>
