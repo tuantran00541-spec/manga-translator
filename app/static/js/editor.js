@@ -77,53 +77,41 @@ function renderEditor() {
 }
 
 function enableManualDraw(imgWrap, img, pageIndex, addBoxBtn) {
-  let drawing = false;
-  let startX = 0, startY = 0;
+  let dragging = false;
+  let start = null;
   let drawBox = null;
 
   imgWrap.addEventListener("mousedown", (e) => {
     if (!imgWrap.classList.contains("draw-mode")) return;
-    if (e.target !== img && e.target !== imgWrap) return;
-    drawing = true;
-    const rect = img.getBoundingClientRect();
-    startX = e.clientX - rect.left;
-    startY = e.clientY - rect.top;
-
+    const rect = imgWrap.getBoundingClientRect();
+    dragging = true;
+    start = { x: e.clientX - rect.left, y: e.clientY - rect.top };
     drawBox = document.createElement("div");
-    drawBox.className = "draw-box";
-    drawBox.style.left = startX + "px";
-    drawBox.style.top = startY + "px";
-    drawBox.style.width = "0px";
-    drawBox.style.height = "0px";
+    drawBox.className = "box-overlay drawing";
     imgWrap.appendChild(drawBox);
-    e.preventDefault();
   });
 
   imgWrap.addEventListener("mousemove", (e) => {
-    if (!drawing || !drawBox) return;
-    const rect = img.getBoundingClientRect();
-    const curX = e.clientX - rect.left;
-    const curY = e.clientY - rect.top;
-    const left = Math.min(startX, curX);
-    const top = Math.min(startY, curY);
-    const w = Math.abs(curX - startX);
-    const h = Math.abs(curY - startY);
-    drawBox.style.left = left + "px";
-    drawBox.style.top = top + "px";
-    drawBox.style.width = w + "px";
-    drawBox.style.height = h + "px";
+    if (!dragging) return;
+    const rect = imgWrap.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    drawBox.style.left = Math.min(start.x, x) + "px";
+    drawBox.style.top = Math.min(start.y, y) + "px";
+    drawBox.style.width = Math.abs(x - start.x) + "px";
+    drawBox.style.height = Math.abs(y - start.y) + "px";
   });
 
-  imgWrap.addEventListener("mouseup", async (e) => {
-    if (!drawing || !drawBox) return;
-    drawing = false;
+  imgWrap.addEventListener("mouseup", async () => {
+    if (!dragging) return;
+    dragging = false;
     imgWrap.classList.remove("draw-mode");
     addBoxBtn.textContent = "Thêm vùng thoại bị bỏ sót";
 
-    const left = parseFloat(drawBox.style.left);
-    const top = parseFloat(drawBox.style.top);
-    const w = parseFloat(drawBox.style.width);
-    const h = parseFloat(drawBox.style.height);
+    const left = parseFloat(drawBox.style.left) || 0;
+    const top = parseFloat(drawBox.style.top) || 0;
+    const w = parseFloat(drawBox.style.width) || 0;
+    const h = parseFloat(drawBox.style.height) || 0;
     drawBox.remove();
     if (w < 6 || h < 6) return;
 
