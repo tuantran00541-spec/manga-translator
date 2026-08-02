@@ -14,8 +14,20 @@ def build_mask(image_shape: tuple[int, int], boxes: list[BubbleBox]) -> np.ndarr
         box_h = box.y2 - box.y1
         if box_w <= 0 or box_h <= 0:
             continue
-        aspect = box_w / box_h
 
+        if box.mask is not None and box.mask.shape == (box_h, box_w):
+            x1 = max(0, box.x1)
+            y1 = max(0, box.y1)
+            x2 = min(w, box.x2)
+            y2 = min(h, box.y2)
+            if x2 <= x1 or y2 <= y1:
+                continue
+            src = box.mask[y1 - box.y1:y2 - box.y1, x1 - box.x1:x2 - box.x1]
+            dest = mask[y1:y2, x1:x2]
+            mask[y1:y2, x1:x2] = np.maximum(dest, src)
+            continue
+
+        aspect = box_w / box_h
         if 1 / ELLIPSE_ASPECT_LIMIT <= aspect <= ELLIPSE_ASPECT_LIMIT:
             cx = (box.x1 + box.x2) / 2
             cy = (box.y1 + box.y2) / 2
