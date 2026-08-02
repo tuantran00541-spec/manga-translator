@@ -1,8 +1,8 @@
 import numpy as np
 import cv2
-import onnxruntime as ort
 from dataclasses import dataclass
 from app.config import BUBBLE_IOU_THRESHOLD
+from app.ort_utils import make_session
 
 INPUT_SIZE = 1024
 SLICE_OVERLAP = 200
@@ -23,9 +23,7 @@ class BubbleBox:
 
 class YoloDetector:
     def __init__(self, model_path, conf_threshold: float):
-        self.session = ort.InferenceSession(
-            str(model_path), providers=["CPUExecutionProvider"]
-        )
+        self.session = make_session(model_path)
         self.input_name = self.session.get_inputs()[0].name
         self.conf_threshold = conf_threshold
 

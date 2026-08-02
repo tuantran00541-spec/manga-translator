@@ -1,19 +1,17 @@
 import numpy as np
 import cv2
-import onnxruntime as ort
 from app.config import LAMA_MODEL, INPAINT_SIZE
 from app.detector.bubble_detector import BubbleBox
 from app.detector.mask_builder import build_mask
+from app.ort_utils import make_session
 
-CLUSTER_PADDING = 12
+CLUSTER_PADDING = 30
 CROP_PADDING = 25
 
 
 class Inpainter:
     def __init__(self):
-        self.session = ort.InferenceSession(
-            str(LAMA_MODEL), providers=["CPUExecutionProvider"]
-        )
+        self.session = make_session(LAMA_MODEL)
         self.image_input = self.session.get_inputs()[0].name
         self.mask_input = self.session.get_inputs()[1].name
 
