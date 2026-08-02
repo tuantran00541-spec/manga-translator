@@ -21,12 +21,23 @@
 
   <div id="chapter-input">
     <input type="text" id="chapter-url" placeholder="Dán link chapter">
-    <select id="lang-select">
+    <select id="lang-select" title="Ngôn ngữ OCR">
       <option value="ja">Nhật</option>
       <option value="ch">Trung</option>
       <option value="korean">Hàn</option>
       <option value="en">Anh</option>
     </select>
+    <label id="workers-label" for="workers-select" title="Số luồng xử lý song song. Máy mạnh tăng lên, máy yếu giảm xuống.">
+      Luồng
+      <select id="workers-select">
+        <option value="1">1</option>
+        <option value="2" selected>2</option>
+        <option value="3">3</option>
+        <option value="4">4</option>
+        <option value="6">6</option>
+        <option value="8">8</option>
+      </select>
+    </label>
     <button id="load-btn">Tải chapter</button>
   </div>
 

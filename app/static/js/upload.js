@@ -57,6 +57,8 @@ async function uploadChapter(files) {
   try {
     const formData = new FormData();
     files.forEach((f) => formData.append("files", f));
+    const workers = typeof getWorkersSetting === "function" ? getWorkersSetting() : 2;
+    formData.append("workers", String(workers));
 
     const resp = await fetch("/api/chapter/upload", {
       method: "POST",
