@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
 import requests
+from app.security import validate_url
 
 
 class BaseAdapter(ABC):
@@ -29,6 +30,7 @@ class BaseAdapter(ABC):
         return saved_paths
 
     def _download_file(self, url: str, out_path: Path, referer: str) -> None:
+        validate_url(url)
         headers = dict(self.headers)
         headers["Referer"] = referer
         resp = requests.get(url, headers=headers, timeout=30)
