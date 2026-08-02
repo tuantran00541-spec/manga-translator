@@ -1,1 +1,190 @@
-PLACEHOLDER
+import numpy as np
+import cv2
+import onnxruntime as ort
+from dataclasses import dataclass
+from app.config import BUBBLE_IOU_THRESHOLD
+
+INPUT_SIZE = 1024
+SLICE_OVERLAP = 200
+MAX_BOX_WIDTH_RATIO = 0.97
+MAX_BOX_AREA_RATIO = 0.35
+MAX_ASPECT_RATIO = 25
+
+
+@dataclass
+class BubbleBox:
+    x1: int
+    y1: int
+    x2: int
+    y2: int
+    confidence: float
+    mask: np.ndarray | None = None
+
+
+class YoloDetector:
+    def __init__(self, model_path, conf_threshold: float):
+        self.session = ort.InferenceSession(
+            str(model_path), providers=["CPUExecutionProvider"]
+        )
+        self.input_name = self.session.get_inputs()[0].name
+        self.conf_threshold = conf_threshold
+
+    def detect(self, image: np.ndarray) -> list[BubbleBox]:
+        h, w = image.shape[:2]
+        if h <= INPUT_SIZE * 1.5:
+            boxes = self._detect_single(image, 0, 0)
+        else:
+            all_boxes = []
+            step = INPUT_SIZE - SLICE_OVERLAP
+            y = 0
+            while y < h:
+                slice_h = min(INPUT_SIZE, h - y)
+                slice_img = image[y:y + slice_h, :]
+                boxes = self._detect_single(slice_img, 0, y)
+                all_boxes.extend(boxes)
+                if y + slice_h >= h:
+                    break
+                y += step
+            boxes = self._nms_boxes(all_boxes)
+
+        return self._filter_invalid(boxes, w, h)
+
+    @staticmethod
+    def _filter_invalid(boxes: list[BubbleBox], img_w: int, img_h: int) -> list[BubbleBox]:
+        result = []
+        page_area = img_w * img_h
+        for b in boxes:
+            box_w = b.x2 - b.x1
+            box_h = b.y2 - b.y1
+            if box_w <= 0 or box_h <= 0:
+                continue
+            if box_w > img_w * MAX_BOX_WIDTH_RATIO:
+                continue
+            if (box_w * box_h) > page_area * MAX_BOX_AREA_RATIO:
+                continue
+            aspect = box_w / box_h
+            if aspect > MAX_ASPECT_RATIO or aspect < 1 / MAX_ASPECT_RATIO:
+                continue
+            result.append(b)
+        return result
+
+    def _detect_single(self, image: np.ndarray, offset_x: int, offset_y: int) -> list[BubbleBox]:
+        h, w = image.shape[:2]
+        blob, scale, pad = self._preprocess(image)
+        outputs = self.session.run(None, {self.input_name: blob})
+        boxes = self._postprocess(outputs, scale, pad, w, h)
+        if offset_x or offset_y:
+            boxes = [
+                BubbleBox(b.x1 + offset_x, b.y1 + offset_y, b.x2 + offset_x, b.y2 + offset_y, b.confidence, b.mask)
+                for b in boxes
+            ]
+        return boxes
+
+    def _preprocess(self, image: np.ndarray):
+        h, w = image.shape[:2]
+        scale = INPUT_SIZE / max(h, w)
+        nh, nw = int(h * scale), int(w * scale)
+        resized = cv2.resize(image, (nw, nh))
+        canvas = np.full((INPUT_SIZE, INPUT_SIZE, 3), 114, dtype=np.uint8)
+        pad_x, pad_y = (INPUT_SIZE - nw) // 2, (INPUT_SIZE - nh) // 2
+        canvas[pad_y:pad_y + nh, pad_x:pad_x + nw] = resized
+        blob = canvas.astype(np.float32) / 255.0
+        blob = blob.transpose(2, 0, 1)[None]
+        return blob, scale, (pad_x, pad_y)
+
+    def _postprocess(self, outputs, scale, pad, orig_w, orig_h) -> list[BubbleBox]:
+        pad_x, pad_y = pad
+        out_arr = np.squeeze(outputs[0])
+        if out_arr.ndim == 2 and out_arr.shape[0] < out_arr.shape[1]:
+            out_arr = out_arr.T
+
+        has_proto = len(outputs) > 1 and outputs[1].ndim == 4
+        if has_proto:
+            num_mask_coeffs = outputs[1].shape[1]
+            num_classes = max(1, out_arr.shape[1] - 4 - num_mask_coeffs)
+            prototypes = outputs[1][0]
+        else:
+            num_mask_coeffs = 0
+            num_classes = max(1, out_arr.shape[1] - 4)
+            prototypes = None
+
+        candidates = []
+        for pred in out_arr:
+            if num_classes == 1:
+                conf = float(pred[4])
+            else:
+                class_scores = pred[4 : 4 + num_classes]
+                class_id = int(np.argmax(class_scores))
+                conf = float(class_scores[class_id])
+
+            if conf < self.conf_threshold:
+                continue
+
+            cx, cy, bw, bh = pred[:4]
+            x1 = (cx - bw / 2 - pad_x) / scale
+            y1 = (cy - bh / 2 - pad_y) / scale
+            x2 = (cx + bw / 2 - pad_x) / scale
+            y2 = (cy + bh / 2 - pad_y) / scale
+            x1, y1 = max(0, x1), max(0, y1)
+            x2, y2 = min(orig_w, x2), min(orig_h, y2)
+
+            if (x2 - x1) >= 4 and (y2 - y1) >= 4:
+                mask_coeffs = None
+                canvas_box = None
+                if has_proto and num_mask_coeffs > 0:
+                    mask_coeffs = pred[4 + num_classes : 4 + num_classes + num_mask_coeffs].copy()
+                    canvas_box = (cx - bw / 2, cy - bh / 2, cx + bw / 2, cy + bh / 2)
+                candidates.append((float(x1), float(y1), float(x2), float(y2), float(conf), canvas_box, mask_coeffs))
+
+        return self._nms(candidates, prototypes)
+
+    def _decode_mask(self, mask_coeffs, prototypes, canvas_box, box_w: int, box_h: int) -> np.ndarray | None:
+        if mask_coeffs is None or prototypes is None or box_w < 1 or box_h < 1:
+            return None
+
+        num_proto, mh, mw = prototypes.shape
+        proto_flat = prototypes.reshape(num_proto, -1)
+        logits = mask_coeffs @ proto_flat
+        mask_full = 1 / (1 + np.exp(-logits.reshape(mh, mw)))
+
+        canvas_to_proto = mw / INPUT_SIZE
+        ccx1, ccy1, ccx2, ccy2 = canvas_box
+        px1 = int(max(0, min(mw - 1, round(ccx1 * canvas_to_proto))))
+        py1 = int(max(0, min(mh - 1, round(ccy1 * canvas_to_proto))))
+        px2 = int(max(px1 + 1, min(mw, round(ccx2 * canvas_to_proto))))
+        py2 = int(max(py1 + 1, min(mh, round(ccy2 * canvas_to_proto))))
+
+        crop = mask_full[py1:py2, px1:px2]
+        if crop.size == 0:
+            return None
+
+        resized = cv2.resize(crop, (box_w, box_h), interpolation=cv2.INTER_LINEAR)
+        return (resized > 0.5).astype(np.uint8) * 255
+
+    def _nms(self, candidates: list[tuple], prototypes=None) -> list[BubbleBox]:
+        if not candidates:
+            return []
+        boxes = np.array([[c[0], c[1], c[2] - c[0], c[3] - c[1]] for c in candidates])
+        corners = np.array([[c[0], c[1], c[2], c[3]] for c in candidates])
+        scores = np.array([c[4] for c in candidates])
+        indices = cv2.dnn.NMSBoxes(
+            boxes.tolist(), scores.tolist(), self.conf_threshold, BUBBLE_IOU_THRESHOLD
+        )
+        result = []
+        for i in np.array(indices).flatten():
+            x1, y1, x2, y2 = corners[i]
+            x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
+            _, _, _, _, _, canvas_box, mask_coeffs = candidates[i]
+            mask = self._decode_mask(mask_coeffs, prototypes, canvas_box, x2 - x1, y2 - y1)
+            result.append(BubbleBox(x1, y1, x2, y2, float(scores[i]), mask))
+        return result
+
+    def _nms_boxes(self, boxes: list[BubbleBox]) -> list[BubbleBox]:
+        if not boxes:
+            return []
+        rects = np.array([[b.x1, b.y1, b.x2 - b.x1, b.y2 - b.y1] for b in boxes])
+        scores = np.array([b.confidence for b in boxes])
+        indices = cv2.dnn.NMSBoxes(
+            rects.tolist(), scores.tolist(), self.conf_threshold, BUBBLE_IOU_THRESHOLD
+        )
+        return [boxes[i] for i in np.array(indices).flatten()]
