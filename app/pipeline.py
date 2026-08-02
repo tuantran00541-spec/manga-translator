@@ -15,7 +15,7 @@ from app.detector.bubble_detector import BubbleBox
 from app.inpaint.lama_inpainter import Inpainter
 from app.config import RAW_DIR, PROCESSED_DIR
 from app.logging_config import logger
-from app.security import MAX_IMAGE_PIXELS, validate_upload_image
+from app.security import MAX_IMAGE_PIXELS, MAX_UPLOAD_FILE_BYTES, validate_upload_image
 
 
 def read_image(path: Path) -> np.ndarray:
@@ -130,11 +130,21 @@ class ChapterPipeline:
                         for name in namelist:
                             if name.startswith("__MACOSX/") or name.startswith("."):
                                 continue
-                            if name.lower().endswith((".png", ".jpg", ".jpeg", ".webp", ".bmp")):
-                                img_bytes = z.read(name)
-                                clean_name = Path(name).name
-                                if clean_name and len(img_bytes) > 0:
-                                    extracted_files.append((clean_name, img_bytes))
+                            if not name.lower().endswith((".png", ".jpg", ".jpeg", ".webp", ".bmp")):
+                                continue
+                            info = z.getinfo(name)
+                            if info.file_size > MAX_UPLOAD_FILE_BYTES:
+                                logger.warning(
+                                    f"Skip {name}: giải nén vượt {MAX_UPLOAD_FILE_BYTES // (1024*1024)}MB"
+                                )
+                                continue
+                            safe_name = name.replace("\\", "/")
+                            clean_name = Path(safe_name).name
+                            if not clean_name:
+                                continue
+                            img_bytes = z.read(name)
+                            if len(img_bytes) > 0:
+                                extracted_files.append((clean_name, img_bytes))
                 except Exception as e:
                     logger.warning(f"Failed to extract zip file {filename}: {e}")
             else:
