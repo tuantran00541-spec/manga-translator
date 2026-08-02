@@ -15,7 +15,7 @@ from app.detector.bubble_detector import BubbleBox
 from app.inpaint.lama_inpainter import Inpainter
 from app.config import RAW_DIR, PROCESSED_DIR
 from app.logging_config import logger
-from app.security import MAX_IMAGE_PIXELS, MAX_UPLOAD_FILE_BYTES, validate_upload_image
+from app.security import MAX_IMAGE_PIXELS, validate_upload_image
 
 
 def read_image(path: Path) -> np.ndarray:
@@ -92,13 +92,17 @@ class ChapterPipeline:
                 f"Manifest lock timeout for chapter {chapter_id}"
             )
 
-    def download_chapter(self, chapter_url: str, chapter_id: str) -> dict:
+    def download_chapter(self, chapter_url: str, chapter_id: str, workers: int = 2) -> dict:
         raw_dir = RAW_DIR / chapter_id
         raw_paths = fetch_chapter_images(chapter_url, raw_dir)
         logger.info(f"Chapter {chapter_id}: downloaded {len(raw_paths)} raw images")
-        return self._build_chapter_from_raw_paths(chapter_id, raw_paths, source_url=chapter_url)
+        return self._build_chapter_from_raw_paths(
+            chapter_id, raw_paths, source_url=chapter_url, workers=workers
+        )
 
-    def create_chapter_from_uploads(self, chapter_id: str, uploads: list[tuple[str, bytes]]) -> dict:
+    def create_chapter_from_uploads(
+        self, chapter_id: str, uploads: list[tuple[str, bytes]], workers: int = 2
+    ) -> dict:
         import io
         import re
         import zipfile
@@ -126,19 +130,11 @@ class ChapterPipeline:
                         for name in namelist:
                             if name.startswith("__MACOSX/") or name.startswith("."):
                                 continue
-                            if not name.lower().endswith((".png", ".jpg", ".jpeg", ".webp", ".bmp")):
-                                continue
-                            info = z.getinfo(name)
-                            if info.file_size > MAX_UPLOAD_FILE_BYTES:
-                                logger.warning(f"Skip {name}: giải nén vượt {MAX_UPLOAD_FILE_BYTES // (1024*1024)}MB")
-                                continue
-                            safe_name = name.replace("\\", "/")
-                            clean_name = Path(safe_name).name
-                            if not clean_name:
-                                continue
-                            img_bytes = z.read(name)
-                            if len(img_bytes) > 0:
-                                extracted_files.append((clean_name, img_bytes))
+                            if name.lower().endswith((".png", ".jpg", ".jpeg", ".webp", ".bmp")):
+                                img_bytes = z.read(name)
+                                clean_name = Path(name).name
+                                if clean_name and len(img_bytes) > 0:
+                                    extracted_files.append((clean_name, img_bytes))
                 except Exception as e:
                     logger.warning(f"Failed to extract zip file {filename}: {e}")
             else:
@@ -157,9 +153,17 @@ class ChapterPipeline:
             raw_paths.append(out_path)
 
         logger.info(f"Chapter {chapter_id}: saved {len(raw_paths)} uploaded images")
-        return self._build_chapter_from_raw_paths(chapter_id, raw_paths, source_url=None)
+        return self._build_chapter_from_raw_paths(
+            chapter_id, raw_paths, source_url=None, workers=workers
+        )
 
-    def _build_chapter_from_raw_paths(self, chapter_id: str, raw_paths: list[Path], source_url: str | None) -> dict:
+    def _build_chapter_from_raw_paths(
+        self,
+        chapter_id: str,
+        raw_paths: list[Path],
+        source_url: str | None,
+        workers: int = 2,
+    ) -> dict:
         sliced_dir = RAW_DIR / chapter_id / "sliced"
         processed_dir = PROCESSED_DIR / chapter_id
         sliced_dir.mkdir(parents=True, exist_ok=True)
@@ -167,17 +171,25 @@ class ChapterPipeline:
 
         slice_results: dict[int, list] = {}
         if raw_paths:
-            max_workers = min(2, len(raw_paths))
+            max_workers = max(1, min(int(workers or 2), 8, len(raw_paths)))
 
             def _slice_one(item):
                 idx, raw_path = item
                 return idx, slice_image(raw_path, sliced_dir, f"{idx:03d}")
 
-            with ThreadPoolExecutor(max_workers=max_workers) as pool:
-                futures = [pool.submit(_slice_one, (i, p)) for i, p in enumerate(raw_paths)]
-                for future in as_completed(futures):
-                    idx, slice_paths = future.result()
-                    slice_results[idx] = slice_paths
+            prev_cv_threads = cv2.getNumThreads()
+            try:
+                if max_workers > 1:
+                    cv2.setNumThreads(1)
+                with ThreadPoolExecutor(max_workers=max_workers) as pool:
+                    futures = {
+                        pool.submit(_slice_one, (i, p)): i for i, p in enumerate(raw_paths)
+                    }
+                    for future in as_completed(futures):
+                        idx, slice_paths = future.result()
+                        slice_results[idx] = slice_paths
+            finally:
+                cv2.setNumThreads(prev_cv_threads)
 
         pages = []
         for source_index in range(len(raw_paths)):
@@ -196,37 +208,73 @@ class ChapterPipeline:
             self._save_manifest(processed_dir, manifest)
         return manifest
 
-    def process_pages(self, chapter_id: str, page_indices: list[int]) -> dict:
+    def process_pages(self, chapter_id: str, page_indices: list[int], workers: int = 2) -> dict:
         processed_dir = PROCESSED_DIR / chapter_id
 
+        # 1) Read work list under lock, then release — do NOT hold lock during inference.
         with self._manifest_lock(chapter_id):
             manifest = self._load_manifest(processed_dir)
-
             work_items = [
                 (idx, Path(manifest["pages"][idx]["original"]))
                 for idx in page_indices
-                if not manifest["pages"][idx]["skipped"]
+                if 0 <= idx < len(manifest["pages"]) and not manifest["pages"][idx]["skipped"]
             ]
 
-            if work_items:
-                max_workers = min(2, len(work_items))
-                results: dict[int, dict] = {}
+        if not work_items:
+            return manifest
 
-                def _process_one(item: tuple[int, Path]) -> tuple[int, dict]:
-                    idx, img_path = item
-                    return idx, self._process_page(img_path, processed_dir)
+        # Warm models once so workers don't race on first lazy load.
+        _ = self.detector
+        _ = self.inpainter
 
-                with ThreadPoolExecutor(max_workers=max_workers) as pool:
-                    futures = {pool.submit(_process_one, item): item for item in work_items}
-                    for future in as_completed(futures):
-                        idx, page_data = future.result()
-                        results[idx] = page_data
+        max_workers = max(1, min(int(workers or 2), 8, len(work_items)))
+        results: dict[int, dict] = {}
+        errors: list[tuple[int, BaseException]] = []
 
-                for idx, page_data in results.items():
+        def _process_one(item: tuple[int, Path]) -> tuple[int, dict]:
+            idx, img_path = item
+            return idx, self._process_page(img_path, processed_dir)
+
+        prev_cv_threads = cv2.getNumThreads()
+        try:
+            # Nested OpenCV threads + page workers oversubscribe CPU.
+            if max_workers > 1:
+                cv2.setNumThreads(1)
+
+            with ThreadPoolExecutor(max_workers=max_workers) as pool:
+                futures = {
+                    pool.submit(_process_one, item): item[0] for item in work_items
+                }
+                for future in as_completed(futures):
+                    idx = futures[future]
+                    try:
+                        page_idx, page_data = future.result()
+                        results[page_idx] = page_data
+                    except BaseException as exc:
+                        logger.exception("Page %s failed: %s", idx, exc)
+                        errors.append((idx, exc))
+        finally:
+            cv2.setNumThreads(prev_cv_threads)
+
+        if not results and errors:
+            raise RuntimeError(f"Xử lý trang thất bại: {errors[0][1]}") from errors[0][1]
+
+        # 2) Merge results under lock (reload in case another request edited boxes).
+        with self._manifest_lock(chapter_id):
+            manifest = self._load_manifest(processed_dir)
+            for idx, page_data in results.items():
+                if 0 <= idx < len(manifest["pages"]):
                     manifest["pages"][idx].update(page_data)
-
             self._save_manifest(processed_dir, manifest)
-            self._sync_output_dir(chapter_id, manifest, page_indices)
+            self._sync_output_dir(chapter_id, manifest, list(results.keys()))
+
+        if errors:
+            logger.warning(
+                "Chapter %s: %d/%d pages failed",
+                chapter_id,
+                len(errors),
+                len(work_items),
+            )
         return manifest
 
     def mark_skipped(self, chapter_id: str, page_indices: list[int], skipped: bool) -> dict:
