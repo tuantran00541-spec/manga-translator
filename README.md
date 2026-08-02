@@ -1,6 +1,6 @@
 # Manga & Webtoon Translator
 
-**Offline · CPU-only · Local-first**
+**Offline · CPU-only · Local-first(thuật toán và a.i không thay thế được con người tools này cũng vậy vẫn có thể sảy ra lỗi.)**
 
 Công cụ hỗ trợ dịch manga / manhwa / webtoon: tải chapter từ URL (hoặc upload ảnh/ZIP), cắt lát webtoon dài, detect bong bóng thoại + vùng chữ, xóa chữ gốc (LaMa + smart fill), OCR nhận diện chữ, và **chèn bản dịch thủ công** qua giao diện web local.
 
