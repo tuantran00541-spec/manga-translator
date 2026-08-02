@@ -26,22 +26,23 @@ class CombinedTextDetector:
                 if self._is_inside(t, b)
             ]
             if inside_text:
-                # Merge all text lines inside this bubble with safe padding
                 raw_min_x = min(t.x1 for t in inside_text) - 4
                 raw_min_y = min(t.y1 for t in inside_text) - 4
                 raw_max_x = max(t.x2 for t in inside_text) + 4
                 raw_max_y = max(t.y2 for t in inside_text) + 4
 
-                # Guarantee that box + 5px mask dilation stays at least 6px inside the bubble border
                 min_x = max(b.x1 + 11, raw_min_x)
                 min_y = max(b.y1 + 11, raw_min_y)
                 max_x = min(b.x2 - 11, raw_max_x)
                 max_y = min(b.y2 - 11, raw_max_y)
 
                 if max_x > min_x and max_y > min_y:
+                    min_x, min_y, max_x, max_y = int(min_x), int(min_y), int(max_x), int(max_y)
+                    merged_mask = self._merge_masks(inside_text, min_x, min_y, max_x, max_y)
                     merged_box = BubbleBox(
-                        int(min_x), int(min_y), int(max_x), int(max_y),
-                        max(t.confidence for t in inside_text)
+                        min_x, min_y, max_x, max_y,
+                        max(t.confidence for t in inside_text),
+                        merged_mask,
                     )
                     result_boxes.append(merged_box)
 
@@ -49,7 +50,6 @@ class CombinedTextDetector:
                     if self._is_inside(t, b):
                         used_text_boxes.add(i)
             else:
-                # Fallback for bubbles with no detected text boxes inside
                 w = b.x2 - b.x1
                 h = b.y2 - b.y1
                 margin_x = max(10, int(w * 0.12))
@@ -63,12 +63,34 @@ class CombinedTextDetector:
                 )
                 result_boxes.append(inner_box)
 
-        # Include standalone text boxes outside any speech bubble (e.g. SFX)
         for i, t in enumerate(text_boxes):
             if i not in used_text_boxes:
                 result_boxes.append(t)
 
         return result_boxes
+
+    @staticmethod
+    def _merge_masks(inside_text: list[BubbleBox], min_x: int, min_y: int, max_x: int, max_y: int) -> np.ndarray | None:
+        if any(t.mask is None for t in inside_text):
+            return None
+
+        merged = np.zeros((max_y - min_y, max_x - min_x), dtype=np.uint8)
+        for t in inside_text:
+            tx1 = max(min_x, t.x1)
+            ty1 = max(min_y, t.y1)
+            tx2 = min(max_x, t.x2)
+            ty2 = min(max_y, t.y2)
+            if tx2 <= tx1 or ty2 <= ty1:
+                continue
+            mask_x1 = tx1 - t.x1
+            mask_y1 = ty1 - t.y1
+            mask_x2 = mask_x1 + (tx2 - tx1)
+            mask_y2 = mask_y1 + (ty2 - ty1)
+            sub_mask = t.mask[mask_y1:mask_y2, mask_x1:mask_x2]
+            dest = merged[ty1 - min_y:ty2 - min_y, tx1 - min_x:tx2 - min_x]
+            merged[ty1 - min_y:ty2 - min_y, tx1 - min_x:tx2 - min_x] = np.maximum(dest, sub_mask)
+
+        return merged
 
     @staticmethod
     def _is_inside(text_box: BubbleBox, bubble_box: BubbleBox) -> bool:
