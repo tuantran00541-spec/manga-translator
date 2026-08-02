@@ -117,6 +117,7 @@ def urlify_manifest(manifest: dict) -> dict:
 
 class ChapterRequest(BaseModel):
     url: str
+    workers: int = 2
 
 
 class OcrBoxRequest(BaseModel):
@@ -158,6 +159,7 @@ class SaveDraftRequest(BaseModel):
 class ProcessPagesRequest(BaseModel):
     chapter_id: str
     page_indices: list[int]
+    workers: int = 2
 
 
 class SkipPagesRequest(BaseModel):
@@ -210,17 +212,29 @@ def list_chapters() -> list[dict]:
     return chapters
 
 
+def _clamp_workers(n: int | None) -> int:
+    try:
+        v = int(n) if n is not None else 2
+    except (TypeError, ValueError):
+        v = 2
+    return max(1, min(v, 8))
+
+
 @app.post("/api/chapter")
 def create_chapter(req: ChapterRequest) -> dict:
     validate_url(req.url)
     chapter_id = uuid.uuid4().hex[:8]
-    logger.info(f"Creating chapter {chapter_id} from {req.url}")
-    manifest = pipeline.download_chapter(req.url, chapter_id)
+    workers = _clamp_workers(req.workers)
+    logger.info(f"Creating chapter {chapter_id} from {req.url} (workers={workers})")
+    manifest = pipeline.download_chapter(req.url, chapter_id, workers=workers)
     return urlify_manifest(manifest)
 
 
 @app.post("/api/chapter/upload")
-async def create_chapter_from_upload(files: list[UploadFile] = File(...)) -> dict:
+async def create_chapter_from_upload(
+    files: list[UploadFile] = File(...),
+    workers: int = Form(2),
+) -> dict:
     if not files:
         raise HTTPException(400, "No files uploaded")
     if len(files) > MAX_UPLOAD_FILES:
@@ -236,16 +250,20 @@ async def create_chapter_from_upload(files: list[UploadFile] = File(...)) -> dic
         uploads.append((f.filename or "unnamed", data))
 
     chapter_id = uuid.uuid4().hex[:8]
-    logger.info(f"Creating chapter {chapter_id} from {len(uploads)} uploaded files")
-    manifest = pipeline.create_chapter_from_uploads(chapter_id, uploads)
+    workers_n = _clamp_workers(workers)
+    logger.info(f"Creating chapter {chapter_id} from {len(uploads)} uploaded files (workers={workers_n})")
+    manifest = pipeline.create_chapter_from_uploads(chapter_id, uploads, workers=workers_n)
     return urlify_manifest(manifest)
 
 
 @app.post("/api/process_pages")
 def process_pages(req: ProcessPagesRequest) -> dict:
     validate_chapter_id(req.chapter_id)
-    logger.info(f"Chapter {req.chapter_id}: processing pages {req.page_indices}")
-    manifest = pipeline.process_pages(req.chapter_id, req.page_indices)
+    workers = _clamp_workers(req.workers)
+    logger.info(
+        f"Chapter {req.chapter_id}: processing pages {req.page_indices} (workers={workers})"
+    )
+    manifest = pipeline.process_pages(req.chapter_id, req.page_indices, workers=workers)
     return urlify_manifest(manifest)
 
 
