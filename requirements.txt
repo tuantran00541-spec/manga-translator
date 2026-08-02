@@ -10,10 +10,12 @@ opencv-python-headless==4.10.0.84
 onnxruntime==1.19.2
 paddleocr==2.8.1
 paddlepaddle==2.6.2
-manga-ocr==0.1.11
+manga-ocr>=0.1.11
 pyclipper==1.3.0.post5
 shapely==2.0.6
 python-multipart==0.0.12
 pydantic==2.9.2
 filelock==3.16.1
 loguru==0.7.2
+transformers>=4.36,<4.46
+torch
