@@ -41,7 +41,11 @@ def slice_image(image_path: Path, out_dir: Path, prefix: str) -> list[Path]:
 
 
 def _find_cut_rows(gray: np.ndarray, h: int) -> list[int]:
-    row_score = gray.std(axis=1)
+    row_score = gray.std(axis=1).astype(np.float32)
+    in_bubble_mask = _get_bubble_row_mask(gray)
+
+    row_score[in_bubble_mask] += 10000.0
+
     cuts = []
     y = 0
 
@@ -54,10 +58,36 @@ def _find_cut_rows(gray: np.ndarray, h: int) -> list[int]:
             cut = target
         else:
             window = row_score[lo:hi]
-            cut = lo + int(np.argmin(window))
+            min_idx = int(np.argmin(window))
+
+            if window[min_idx] >= 5000.0:
+                expanded_lo = max(y + SLICE_MIN_HEIGHT, target - SLICE_SEARCH_WINDOW - 150)
+                expanded_hi = min(h - SLICE_MIN_HEIGHT, target + SLICE_SEARCH_WINDOW + 150)
+                exp_window = row_score[expanded_lo:expanded_hi]
+                exp_min_idx = int(np.argmin(exp_window))
+                cut = expanded_lo + exp_min_idx
+            else:
+                cut = lo + min_idx
 
         cuts.append(cut)
         y = cut
 
     return cuts
 
+
+def _get_bubble_row_mask(gray: np.ndarray) -> np.ndarray:
+    h, w = gray.shape
+    mask = np.zeros(h, dtype=bool)
+
+    edges = cv2.Canny(gray, 40, 140)
+    contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    for c in contours:
+        x_box, y_box, w_box, h_box = cv2.boundingRect(c)
+        if w_box > 25 and h_box > 18 and w_box < int(w * 0.98):
+            pad_y = 6
+            y_start = max(0, y_box - pad_y)
+            y_end = min(h, y_box + h_box + pad_y)
+            mask[y_start:y_end] = True
+
+    return mask
