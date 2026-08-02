@@ -1,4 +1,3 @@
-from pathlib import Path
 from playwright.sync_api import sync_playwright
 from app.downloader.base import BaseAdapter
 
@@ -13,7 +12,15 @@ class GenericJsAdapter(BaseAdapter):
     def extract_image_urls(self, chapter_url: str) -> list[str]:
         urls = []
         with sync_playwright() as p:
-            browser = p.chromium.launch()
+            browser = p.chromium.launch(
+                args=[
+                    "--disable-dev-shm-usage",
+                    "--disable-gpu",
+                    "--no-zygote",
+                    "--disable-extensions",
+                    "--disable-background-networking",
+                ]
+            )
             page = browser.new_page()
             page.goto(chapter_url, wait_until="networkidle", timeout=60000)
             page.mouse.wheel(0, 20000)
