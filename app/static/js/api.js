@@ -66,7 +66,7 @@ async function loadChapter() {
     const resp = await fetch("/api/chapter", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url }),
+      body: JSON.stringify({ url, workers: getWorkersSetting() }),
     });
     if (!resp.ok) {
       const data = await resp.json().catch(() => ({}));
@@ -111,6 +111,13 @@ async function toggleSkip(pageIndex, card, btn) {
   }
 }
 
+function getWorkersSetting() {
+  const el = document.getElementById("workers-select");
+  const n = el ? parseInt(el.value, 10) : 2;
+  if (!Number.isFinite(n) || n < 1) return 2;
+  return Math.min(8, n);
+}
+
 async function processSelectedPages() {
   const indices = currentManifest.pages
     .map((p, i) => (p.skipped ? null : i))
@@ -134,6 +141,7 @@ async function processSelectedPages() {
       body: JSON.stringify({
         chapter_id: currentChapterId,
         page_indices: indices,
+        workers: getWorkersSetting(),
       }),
     });
     if (!resp.ok) {
@@ -395,6 +403,7 @@ async function uploadChapterFiles(fileList) {
 
   const formData = new FormData();
   filesToUpload.forEach((f) => formData.append("files", f));
+  formData.append("workers", String(getWorkersSetting()));
 
   try {
     const resp = await fetch("/api/chapter/upload", {
