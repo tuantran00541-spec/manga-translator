@@ -1,8 +1,16 @@
 from pathlib import Path
+from urllib.parse import urlparse
 from bs4 import BeautifulSoup
 import requests
 from app.downloader.base import BaseAdapter
 from app.downloader.generic_js import GenericJsAdapter
+
+
+def _is_safe_image_url(url: str) -> bool:
+    if not url or not isinstance(url, str):
+        return False
+    parsed = urlparse(url)
+    return parsed.scheme in ("http", "https")
 
 
 class GenericStaticAdapter(BaseAdapter):
@@ -18,7 +26,7 @@ class GenericStaticAdapter(BaseAdapter):
         urls = []
         for img in soup.select(self.img_selector):
             src = img.get("data-src") or img.get("src")
-            if src and src.startswith("http"):
+            if src and _is_safe_image_url(src):
                 urls.append(src)
         return urls
 
@@ -28,6 +36,9 @@ JS_ADAPTER = GenericJsAdapter()
 
 
 def download_chapter(chapter_url: str, output_dir: Path) -> list[Path]:
+    from app.security import validate_url
+    validate_url(chapter_url)
+
     paths = STATIC_ADAPTER.download(chapter_url, output_dir)
     if paths:
         return paths
