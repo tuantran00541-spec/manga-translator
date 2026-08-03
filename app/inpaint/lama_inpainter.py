@@ -66,46 +66,54 @@ class Inpainter:
         if crop_h < 4 or crop_w < 4:
             return image
 
-        fill_color, ring_std, ring_range = self._sample_ring_bg(crop, local_mask, ring_px=12)
+        is_flat, fill_color = self._analyze_bg(crop, local_mask)
 
-        if ring_std < 15.0 and ring_range < 45.0:
+        if is_flat:
             return self._flat_fill(image, local_mask, crop_box, fill_color)
 
         return self._lama_fill(image, crop, local_mask, crop_box)
 
     @staticmethod
-    def _sample_ring_bg(crop: np.ndarray, local_mask: np.ndarray, ring_px: int = 12):
-        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (ring_px * 2 + 1, ring_px * 2 + 1))
-        dilated = cv2.dilate(local_mask, kernel)
-        ring_mask = (dilated > 127) & (local_mask <= 127)
+    def _analyze_bg(crop: np.ndarray, local_mask: np.ndarray) -> tuple[bool, np.ndarray]:
+        bg_mask = local_mask <= 127
+        if not np.any(bg_mask):
+            return True, np.array([255, 255, 255], dtype=np.uint8)
 
-        gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
-        valid_ring = ring_mask & (gray >= 40)
+        bg_pixels = crop[bg_mask]
+        gray_crop = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+        gray_bg = gray_crop[bg_mask]
 
-        if valid_ring.sum() > 15:
-            pixels = crop[valid_ring]
-            valid_gray = gray[valid_ring]
-            std_val = float(valid_gray.std())
-            range_val = float(valid_gray.max() - valid_gray.min())
-            median_color = np.median(pixels, axis=0)
-            return median_color, std_val, range_val
+        # Ignore extreme dark ink borders when computing median
+        non_ink = gray_bg >= 35
+        if np.count_nonzero(non_ink) > 10:
+            target_pixels = bg_pixels[non_ink]
+            target_gray = gray_bg[non_ink]
+        else:
+            target_pixels = bg_pixels
+            target_gray = gray_bg
 
-        bg_mask = (local_mask <= 127) & (gray >= 40)
-        if bg_mask.sum() > 0:
-            pixels = crop[bg_mask]
-            valid_gray = gray[bg_mask]
-            std_val = float(valid_gray.std())
-            range_val = float(valid_gray.max() - valid_gray.min())
-            median_color = np.median(pixels, axis=0)
-            return median_color, std_val, range_val
+        median_color = np.median(target_pixels, axis=0).astype(np.uint8)
+        median_gray = float(np.median(target_gray))
 
-        return np.array([255, 255, 255], dtype=np.float32), 0.0, 0.0
+        # Check proportion of background pixels close to median background intensity
+        diffs = np.abs(target_gray.astype(np.float32) - median_gray)
+        flat_ratio = float((diffs <= 22.0).mean())
+
+        # Check 10th-90th percentile range of background gray values
+        p10, p90 = np.percentile(target_gray, [10, 90])
+        trimmed_range = float(p90 - p10)
+
+        # Speech bubble / solid background criteria
+        if flat_ratio >= 0.68 or trimmed_range <= 28.0:
+            return True, median_color
+
+        return False, median_color
 
     @staticmethod
     def _flat_fill(image: np.ndarray, local_mask: np.ndarray, crop_box: tuple, fill_color: np.ndarray) -> np.ndarray:
         cx1, cy1, cx2, cy2 = crop_box
         mask_bool = local_mask > 127
-        image[cy1:cy2, cx1:cx2][mask_bool] = fill_color.astype(np.uint8)
+        image[cy1:cy2, cx1:cx2][mask_bool] = fill_color
         return image
 
     def _lama_fill(self, image: np.ndarray, crop: np.ndarray, local_mask: np.ndarray, crop_box: tuple) -> np.ndarray:

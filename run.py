@@ -5,10 +5,12 @@ import uvicorn
 
 from app.config import HOST, PORT, RELOAD, WORKERS, ensure_directories, check_models
 from app.logging_config import logger
+import cv2
 
 
 def main() -> None:
     ensure_directories()
+    cv2.setNumThreads(1)
 
     missing = check_models()
     if missing:

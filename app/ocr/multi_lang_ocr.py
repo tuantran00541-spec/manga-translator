@@ -2,13 +2,14 @@ import threading
 import numpy as np
 import cv2
 from PIL import Image
-from app.logging_config import logger
+
+MIN_OCR_DIM = 48
+TARGET_OCR_HEIGHT = 64
 
 
 class MultiLangOCR:
     def __init__(self):
         self._manga_ocr = None
-        self._manga_failed = False
         self._paddle_engines = {}
         self._manga_lock = threading.Lock()
         self._paddle_lock = threading.Lock()
@@ -17,29 +18,44 @@ class MultiLangOCR:
         if image is None or image.size == 0:
             return ""
 
-        padded_raw = self._add_white_padding(image, pad=20)
+        image = self._ensure_min_size(image)
+        padded = self._add_white_padding(image, pad=24)
 
-        text = self._read_engine(padded_raw, lang)
-        if text and len(text.strip()) > 0:
-            return text
+        raw_text = self._read_engine(padded, lang)
+        if raw_text and len(raw_text.strip()) >= 2:
+            return raw_text
 
-        prep = self._preprocess_for_ocr(padded_raw)
-        return self._read_engine(prep, lang)
+        enhanced = self._enhance_for_ocr(padded)
+        enhanced_text = self._read_engine(enhanced, lang)
+
+        if not raw_text and not enhanced_text:
+            return ""
+        if not enhanced_text:
+            return raw_text or ""
+        if not raw_text:
+            return enhanced_text
+        return enhanced_text if len(enhanced_text) >= len(raw_text) else raw_text
 
     def _read_engine(self, image: np.ndarray, lang: str) -> str:
-        lang_l = (lang or "").lower()
-        if lang_l in ("ja", "japan", "japanese"):
-            try:
-                return self._read_manga_ocr(image)
-            except Exception as e:
-                logger.warning(
-                    "manga-ocr failed (%s); falling back to PaddleOCR japan", e
-                )
-                return self._read_paddle(image, "ja")
+        if lang == "ja":
+            return self._read_manga_ocr(image)
         return self._read_paddle(image, lang)
 
     @staticmethod
-    def _add_white_padding(image: np.ndarray, pad: int = 20) -> np.ndarray:
+    def _ensure_min_size(image: np.ndarray) -> np.ndarray:
+        h, w = image.shape[:2]
+        if h >= MIN_OCR_DIM and w >= MIN_OCR_DIM:
+            return image
+        scale = max(MIN_OCR_DIM / max(h, 1), MIN_OCR_DIM / max(w, 1), 1.0)
+        if h < TARGET_OCR_HEIGHT:
+            scale = max(scale, TARGET_OCR_HEIGHT / max(h, 1))
+        scale = min(scale, 4.0)
+        new_w = max(MIN_OCR_DIM, int(w * scale))
+        new_h = max(MIN_OCR_DIM, int(h * scale))
+        return cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_CUBIC)
+
+    @staticmethod
+    def _add_white_padding(image: np.ndarray, pad: int = 24) -> np.ndarray:
         h, w = image.shape[:2]
         if image.ndim == 2:
             padded = np.full((h + pad * 2, w + pad * 2), 255, dtype=np.uint8)
@@ -50,7 +66,7 @@ class MultiLangOCR:
         return padded
 
     @staticmethod
-    def _preprocess_for_ocr(image: np.ndarray) -> np.ndarray:
+    def _enhance_for_ocr(image: np.ndarray) -> np.ndarray:
         if image is None or image.size == 0:
             return image
 
@@ -59,85 +75,22 @@ class MultiLangOCR:
         else:
             gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
 
-        # Invert if text is light on a dark background
         if float(gray.mean()) < 135:
             gray = cv2.bitwise_not(gray)
 
-        # Apply mild CLAHE to boost contrast
-        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-        enhanced = clahe.apply(gray)
-        return cv2.cvtColor(enhanced, cv2.COLOR_GRAY2RGB)
+        gray = cv2.GaussianBlur(gray, (3, 3), 0)
+        _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
+        return cv2.cvtColor(binary, cv2.COLOR_GRAY2RGB)
 
     def _read_manga_ocr(self, image: np.ndarray) -> str:
-        if self._manga_failed:
-            raise RuntimeError("manga-ocr previously failed to load")
-
         if self._manga_ocr is None:
             with self._manga_lock:
-                if self._manga_ocr is None and not self._manga_failed:
-                    self._manga_ocr = self._load_manga_ocr()
-
+                if self._manga_ocr is None:
+                    from manga_ocr import MangaOcr
+                    self._manga_ocr = MangaOcr()
         pil_img = Image.fromarray(image)
         return self._manga_ocr(pil_img).strip()
-
-    def _load_manga_ocr(self):
-        """Load MangaOcr; try package first, then manual ViTImageProcessor path."""
-        try:
-            from manga_ocr import MangaOcr
-            return MangaOcr()
-        except Exception as e1:
-            logger.warning("MangaOcr() failed: %s — trying manual load", e1)
-
-        try:
-            return self._load_manga_ocr_manual()
-        except Exception as e2:
-            self._manga_failed = True
-            logger.error("manga-ocr manual load also failed: %s", e2)
-            raise RuntimeError(
-                "manga-ocr không tương thích với transformers hiện tại. "
-                "Cài: pip install -U 'manga-ocr>=0.1.14' "
-                "hoặc pin transformers==4.36.2"
-            ) from e2
-
-    @staticmethod
-    def _load_manga_ocr_manual():
-        """Bypass AutoFeatureExtractor; use ViTImageProcessor (transformers >= 4.x)."""
-        import torch
-        from transformers import (
-            ViTImageProcessor,
-            AutoTokenizer,
-            VisionEncoderDecoderModel,
-        )
-
-        model_id = "kha-white/manga-ocr-base"
-        logger.info("Loading manga-ocr manually from %s", model_id)
-
-        processor = ViTImageProcessor.from_pretrained(model_id)
-        tokenizer = AutoTokenizer.from_pretrained(model_id)
-        model = VisionEncoderDecoderModel.from_pretrained(model_id)
-        model.eval()
-
-        if torch.cuda.is_available():
-            model = model.cuda()
-            device = "cuda"
-        else:
-            device = "cpu"
-
-        class _ManualMangaOcr:
-            def __call__(self, img):
-                if isinstance(img, str):
-                    img = Image.open(img)
-                img = img.convert("L").convert("RGB")
-                pixel_values = processor(img, return_tensors="pt").pixel_values
-                pixel_values = pixel_values.to(device)
-                with torch.no_grad():
-                    generated = model.generate(pixel_values, max_length=300)
-                text = tokenizer.decode(generated[0], skip_special_tokens=True)
-                # manga-ocr post-process: strip special spacing artifacts
-                text = text.replace("‥", "…").strip()
-                return text
-
-        return _ManualMangaOcr()
 
     def _read_paddle(self, image: np.ndarray, lang: str) -> str:
         engine = self._get_paddle_engine(lang)
@@ -150,7 +103,7 @@ class MultiLangOCR:
             if line and len(line) >= 2 and line[1] and line[1][0]:
                 text_content = line[1][0].strip()
                 confidence = line[1][1] if len(line[1]) > 1 else 1.0
-                if text_content and confidence > 0.3:
+                if text_content and confidence > 0.4:
                     lines.append(text_content)
         return "\n".join(lines).strip()
 
@@ -163,7 +116,6 @@ class MultiLangOCR:
             "en": "en",
             "ja": "japan",
             "japan": "japan",
-            "japanese": "japan",
         }
         target_lang = lang_map.get(lang.lower(), lang)
         if target_lang not in self._paddle_engines:
@@ -171,6 +123,10 @@ class MultiLangOCR:
                 if target_lang not in self._paddle_engines:
                     from paddleocr import PaddleOCR
                     self._paddle_engines[target_lang] = PaddleOCR(
-                        lang=target_lang, use_angle_cls=True, show_log=False
+                        lang=target_lang,
+                        use_angle_cls=True,
+                        show_log=False,
+                        det_db_thresh=0.25,
+                        det_db_box_thresh=0.45,
                     )
         return self._paddle_engines[target_lang]

@@ -26,7 +26,7 @@ def slice_image(image_path: Path, out_dir: Path, prefix: str) -> list[Path]:
         return [out_path]
 
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    cut_rows = _find_cut_rows(gray, h)
+    cut_rows = _find_cut_rows(gray, h, w)
 
     paths = []
     y_start = 0
@@ -40,11 +40,18 @@ def slice_image(image_path: Path, out_dir: Path, prefix: str) -> list[Path]:
     return paths
 
 
-def _find_cut_rows(gray: np.ndarray, h: int) -> list[int]:
-    row_score = gray.std(axis=1).astype(np.float32)
-    in_bubble_mask = _get_bubble_row_mask(gray)
+def _find_cut_rows(gray: np.ndarray, h: int, w: int) -> list[int]:
+    unsafe_rows = _get_content_row_mask(gray, h, w)
 
-    row_score[in_bubble_mask] += 10000.0
+    row_std = gray.std(axis=1).astype(np.float32)
+
+    white_diff = cv2.absdiff(gray, 255)
+    black_diff = cv2.absdiff(gray, 0)
+    non_bg_pixels = (white_diff > 18) & (black_diff > 18)
+    content_count_per_row = non_bg_pixels.sum(axis=1).astype(np.float32)
+
+    scores = row_std + content_count_per_row * 2.0
+    scores[unsafe_rows] += 100000.0
 
     cuts = []
     y = 0
@@ -57,15 +64,15 @@ def _find_cut_rows(gray: np.ndarray, h: int) -> list[int]:
         if lo >= hi:
             cut = target
         else:
-            window = row_score[lo:hi]
+            window = scores[lo:hi]
             min_idx = int(np.argmin(window))
 
-            if window[min_idx] >= 5000.0:
-                expanded_lo = max(y + SLICE_MIN_HEIGHT, target - SLICE_SEARCH_WINDOW - 150)
-                expanded_hi = min(h - SLICE_MIN_HEIGHT, target + SLICE_SEARCH_WINDOW + 150)
-                exp_window = row_score[expanded_lo:expanded_hi]
+            if window[min_idx] >= 50000.0:
+                exp_lo = max(y + SLICE_MIN_HEIGHT, target - SLICE_SEARCH_WINDOW - 350)
+                exp_hi = min(h - SLICE_MIN_HEIGHT, target + SLICE_SEARCH_WINDOW + 350)
+                exp_window = scores[exp_lo:exp_hi]
                 exp_min_idx = int(np.argmin(exp_window))
-                cut = expanded_lo + exp_min_idx
+                cut = exp_lo + exp_min_idx
             else:
                 cut = lo + min_idx
 
@@ -75,17 +82,23 @@ def _find_cut_rows(gray: np.ndarray, h: int) -> list[int]:
     return cuts
 
 
-def _get_bubble_row_mask(gray: np.ndarray) -> np.ndarray:
-    h, w = gray.shape
+def _get_content_row_mask(gray: np.ndarray, h: int, w: int) -> np.ndarray:
     mask = np.zeros(h, dtype=bool)
 
-    edges = cv2.Canny(gray, 40, 140)
-    contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    edges = cv2.Canny(gray, 30, 120)
 
+    white_diff = cv2.absdiff(gray, 255)
+    black_diff = cv2.absdiff(gray, 0)
+    content_binary = ((white_diff > 18) & (black_diff > 18)).astype(np.uint8) * 255
+
+    combined = cv2.bitwise_or(edges, content_binary)
+
+    contours, _ = cv2.findContours(combined, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    pad_y = 35
     for c in contours:
         x_box, y_box, w_box, h_box = cv2.boundingRect(c)
-        if w_box > 25 and h_box > 18 and w_box < int(w * 0.98):
-            pad_y = 6
+        if w_box >= 10 and h_box >= 10:
             y_start = max(0, y_box - pad_y)
             y_end = min(h, y_box + h_box + pad_y)
             mask[y_start:y_end] = True

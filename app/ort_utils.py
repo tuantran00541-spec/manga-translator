@@ -14,10 +14,6 @@ def _cpu_count() -> int:
 def make_session(model_path, *, intra_op_threads: int | None = None) -> ort.InferenceSession:
     """
     Create an InferenceSession optimized for concurrent page workers.
-
-    Strategy: keep each session mostly sequential (low intra-op threads) so
-    parallelism comes from ThreadPoolExecutor across pages instead of nested
-    CPU oversubscription inside every Run().
     """
     opts = ort.SessionOptions()
     opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
@@ -25,11 +21,9 @@ def make_session(model_path, *, intra_op_threads: int | None = None) -> ort.Infe
     opts.enable_mem_pattern = True
     opts.enable_cpu_mem_arena = True
 
-    # Cap intra-op threads so N workers × threads_per_session does not explode.
-    # Default: 1–2 threads per session depending on core count.
     if intra_op_threads is None:
         cpu = _cpu_count()
-        intra_op_threads = 2 if cpu >= 4 else 1
+        intra_op_threads = 4 if cpu >= 8 else (2 if cpu >= 4 else 1)
     opts.intra_op_num_threads = max(1, int(intra_op_threads))
     opts.inter_op_num_threads = 1
 

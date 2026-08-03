@@ -66,11 +66,17 @@ function renderReview() {
     card.appendChild(controls);
     container.appendChild(card);
 
-    img.onload = () => setupBrush(pageIndex, img, canvas, wrap, brushBtn, clearBtn, submitBtn);
+    const initBrush = () => setupBrush(pageIndex, img, canvas, wrap, brushBtn, clearBtn, submitBtn);
+    if (img.complete && img.naturalWidth > 0) {
+      initBrush();
+    } else {
+      img.onload = initBrush;
+    }
   });
 }
 
 function setupBrush(pageIndex, img, canvas, wrap, brushBtn, clearBtn, submitBtn) {
+  if (canvas._brushAbort) canvas._brushAbort.abort();
   canvas.width = img.naturalWidth;
   canvas.height = img.naturalHeight;
   canvas.style.width = img.clientWidth + "px";
@@ -140,9 +146,12 @@ function setupBrush(pageIndex, img, canvas, wrap, brushBtn, clearBtn, submitBtn)
     paintDot(x, y);
   });
 
+  const abortCtrl = new AbortController();
   window.addEventListener("mouseup", () => {
     painting = false;
-  });
+  }, { signal: abortCtrl.signal });
+
+  canvas._brushAbort = abortCtrl;
 
   submitBtn.addEventListener("click", () => submitRepaint(pageIndex, canvas, img, ctx, submitBtn));
 }

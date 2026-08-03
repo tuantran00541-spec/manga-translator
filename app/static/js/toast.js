@@ -12,5 +12,6 @@ function showToast(message, type = "info") {
   setTimeout(() => {
     toast.classList.remove("toast-visible");
     toast.addEventListener("transitionend", () => toast.remove(), { once: true });
+    setTimeout(() => { if (toast.parentNode) toast.remove(); }, 1000);
   }, 3500);
 }

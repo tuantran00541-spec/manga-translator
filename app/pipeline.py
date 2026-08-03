@@ -187,19 +187,13 @@ class ChapterPipeline:
                 idx, raw_path = item
                 return idx, slice_image(raw_path, sliced_dir, f"{idx:03d}")
 
-            prev_cv_threads = cv2.getNumThreads()
-            try:
-                if max_workers > 1:
-                    cv2.setNumThreads(1)
-                with ThreadPoolExecutor(max_workers=max_workers) as pool:
-                    futures = {
-                        pool.submit(_slice_one, (i, p)): i for i, p in enumerate(raw_paths)
-                    }
-                    for future in as_completed(futures):
-                        idx, slice_paths = future.result()
-                        slice_results[idx] = slice_paths
-            finally:
-                cv2.setNumThreads(prev_cv_threads)
+            with ThreadPoolExecutor(max_workers=max_workers) as pool:
+                futures = {
+                    pool.submit(_slice_one, (i, p)): i for i, p in enumerate(raw_paths)
+                }
+                for future in as_completed(futures):
+                    idx, slice_paths = future.result()
+                    slice_results[idx] = slice_paths
 
         pages = []
         for source_index in range(len(raw_paths)):
@@ -245,26 +239,18 @@ class ChapterPipeline:
             idx, img_path = item
             return idx, self._process_page(img_path, processed_dir)
 
-        prev_cv_threads = cv2.getNumThreads()
-        try:
-            # Nested OpenCV threads + page workers oversubscribe CPU.
-            if max_workers > 1:
-                cv2.setNumThreads(1)
-
-            with ThreadPoolExecutor(max_workers=max_workers) as pool:
-                futures = {
-                    pool.submit(_process_one, item): item[0] for item in work_items
-                }
-                for future in as_completed(futures):
-                    idx = futures[future]
-                    try:
-                        page_idx, page_data = future.result()
-                        results[page_idx] = page_data
-                    except BaseException as exc:
-                        logger.exception("Page %s failed: %s", idx, exc)
-                        errors.append((idx, exc))
-        finally:
-            cv2.setNumThreads(prev_cv_threads)
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            futures = {
+                pool.submit(_process_one, item): item[0] for item in work_items
+            }
+            for future in as_completed(futures):
+                idx = futures[future]
+                try:
+                    page_idx, page_data = future.result()
+                    results[page_idx] = page_data
+                except BaseException as exc:
+                    logger.exception("Page %s failed: %s", idx, exc)
+                    errors.append((idx, exc))
 
         if not results and errors:
             raise RuntimeError(f"Xử lý trang thất bại: {errors[0][1]}") from errors[0][1]

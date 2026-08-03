@@ -29,7 +29,7 @@ function renderEditor() {
     const panel = document.createElement("div");
     panel.className = "box-panel";
 
-    img.onload = () => {
+    const initOverlays = () => {
       const scaleX = img.clientWidth / img.naturalWidth;
       const scaleY = img.clientHeight / img.naturalHeight;
 
@@ -50,6 +50,11 @@ function renderEditor() {
         panel.appendChild(item);
       });
     };
+    if (img.complete && img.naturalWidth > 0) {
+      initOverlays();
+    } else {
+      img.onload = initOverlays;
+    }
 
     const addBoxBtn = document.createElement("button");
     addBoxBtn.className = "add-box-btn";
@@ -102,7 +107,7 @@ function enableManualDraw(imgWrap, img, pageIndex, addBoxBtn) {
     drawBox.style.height = Math.abs(y - start.y) + "px";
   });
 
-  imgWrap.addEventListener("mouseup", async () => {
+  document.addEventListener("mouseup", async () => {
     if (!dragging) return;
     dragging = false;
     imgWrap.classList.remove("draw-mode");
@@ -141,7 +146,7 @@ function refreshPageAfterAddBox(pageIndex, newPage) {
   const boxIndex = newPage.boxes.length - 1;
   const box = newPage.boxes[boxIndex];
 
-  img.onload = () => {
+  const initNewBox = () => {
     const scaleX = img.clientWidth / img.naturalWidth;
     const scaleY = img.clientHeight / img.naturalHeight;
     const overlay = document.createElement("div");
@@ -154,6 +159,11 @@ function refreshPageAfterAddBox(pageIndex, newPage) {
     overlay.style.height = (box.y2 - box.y1) * scaleY + "px";
     imgWrap.appendChild(overlay);
   };
+  if (img.complete && img.naturalWidth > 0) {
+    initNewBox();
+  } else {
+    img.onload = initNewBox;
+  }
 
   const item = createBoxItem(pageIndex, boxIndex);
   panel.insertBefore(item, renderBtn);
@@ -188,6 +198,6 @@ function showRenderResult(pageIndex, outputPath) {
   link.href = outputPath + cacheBust;
   link.download = outputPath.split("/").pop();
   link.className = "download-link";
-  link.textContent = "Tải ảnh này về";
+  link.textContent = "Tải ảnh ảnh này về";
   resultBox.appendChild(link);
 }

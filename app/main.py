@@ -12,7 +12,8 @@ from PIL import Image
 from pydantic import BaseModel, field_validator
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
+from filelock import FileLock, Timeout
 
 from app.config import (
     PROCESSED_DIR,
@@ -67,21 +68,42 @@ class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
             try:
                 size = int(cl)
             except (TypeError, ValueError):
-                return JSONResponse(400, {"detail": "Invalid Content-Length"})
+                return JSONResponse({"detail": "Invalid Content-Length"}, status_code=400)
             if size > limit:
-                return JSONResponse(413, {"detail": "Request too large"})
+                return JSONResponse({"detail": "Request too large"}, status_code=413)
         return await call_next(request)
 
 
 app.add_middleware(RequestSizeLimitMiddleware)
 
+# Per-chapter locks: prevent concurrent requests (e.g. many /api/ocr_box calls
+# firing at once for the same chapter) from racing on manifest.json — both the
+# Windows "Access is denied" file-replace race and the silent lost-update race
+# where one request's saved changes overwrite another's.
+
+
+
+_MANIFEST_LOCK_TIMEOUT = 30
+
+
+@contextmanager
+def _get_manifest_lock(chapter_id: str):
+    lock_path = PROCESSED_DIR / chapter_id / "manifest.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    lock = FileLock(lock_path)
+    try:
+        with lock.acquire(timeout=_MANIFEST_LOCK_TIMEOUT):
+            yield
+    except Timeout:
+        raise RuntimeError(f"Manifest lock timeout for chapter {chapter_id}")
+
 
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
     if isinstance(exc, HTTPException):
-        return JSONResponse(exc.status_code, {"detail": exc.detail})
+        return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
     logger.exception(f"Unhandled exception on {request.method} {request.url.path}")
-    return JSONResponse(500, {"detail": "Internal server error"})
+    return JSONResponse({"detail": "Internal server error"}, status_code=500)
 
 
 def _load_manifest_raw(chapter_id: str) -> dict:
@@ -95,7 +117,7 @@ def _load_manifest_raw(chapter_id: str) -> dict:
 def _save_manifest_raw(chapter_id: str, manifest: dict) -> None:
     processed_dir = PROCESSED_DIR / chapter_id
     processed_dir.mkdir(parents=True, exist_ok=True)
-    tmp_path = processed_dir / "manifest.json.tmp"
+    tmp_path = processed_dir / f"manifest.json.{uuid.uuid4().hex}.tmp"
     final_path = processed_dir / "manifest.json"
     tmp_path.write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
@@ -345,7 +367,7 @@ def ocr_box(req: OcrBoxRequest) -> dict:
     image = cv2.imdecode(data, cv2.IMREAD_COLOR)
     h, w = image.shape[:2]
 
-    pad = 12
+    pad = 20
     y1 = max(0, box["y1"] - pad)
     y2 = min(h, box["y2"] + pad)
     x1 = max(0, box["x1"] - pad)
@@ -356,8 +378,10 @@ def ocr_box(req: OcrBoxRequest) -> dict:
 
     text = ocr.read(crop_rgb, req.lang)
 
-    box["ocr_text"] = text
-    _save_manifest_raw(req.chapter_id, manifest)
+    with _get_manifest_lock(req.chapter_id):
+        manifest = _load_manifest_raw(req.chapter_id)
+        manifest["pages"][req.page_index]["boxes"][req.box_index]["ocr_text"] = text
+        _save_manifest_raw(req.chapter_id, manifest)
 
     return {"text": text}
 
@@ -365,11 +389,12 @@ def ocr_box(req: OcrBoxRequest) -> dict:
 @app.post("/api/save_draft")
 def save_draft(req: SaveDraftRequest) -> dict:
     validate_chapter_id(req.chapter_id)
-    manifest = _load_manifest_raw(req.chapter_id)
-    if "drafts" not in manifest:
-        manifest["drafts"] = {}
-    manifest["drafts"].update(req.drafts)
-    _save_manifest_raw(req.chapter_id, manifest)
+    with _get_manifest_lock(req.chapter_id):
+        manifest = _load_manifest_raw(req.chapter_id)
+        if "drafts" not in manifest:
+            manifest["drafts"] = {}
+        manifest["drafts"].update(req.drafts)
+        _save_manifest_raw(req.chapter_id, manifest)
     return {"ok": True}
 
 

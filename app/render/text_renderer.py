@@ -5,7 +5,7 @@ from PIL import Image, ImageDraw, ImageFont
 from app.config import DEFAULT_FONT, MIN_FONT_SIZE, MAX_FONT_SIZE
 
 
-@lru_cache(maxsize=128)
+@lru_cache(maxsize=256)
 def get_font_object(font_path_str: str, size: int) -> ImageFont.FreeTypeFont:
     size = max(1, int(size))
     try:
@@ -135,8 +135,6 @@ def render_text_in_box(
     if raw_w <= 0 or raw_h <= 0 or not text or not str(text).strip():
         return image
     text = str(text).strip()
-    # Draw on a copy so caller keeps original if something fails mid-way
-    image = image.copy()
 
     pad = max(2, min(padding, int(min(raw_w, raw_h) * 0.08)))
     box_w = raw_w - pad * 2
@@ -212,20 +210,37 @@ def render_text_in_box(
     return image
 
 
-def _fit_text(draw, text: str, box_w: int, box_h: int, font_path_str: str, stroke_w: int = 2) -> tuple[int, list[str]]:
-    for size in range(MAX_FONT_SIZE, MIN_FONT_SIZE - 1, -1):
-        font = get_font_object(font_path_str, size)
-        lines = _wrap_text(draw, text, font, box_w)
-        if not lines:
-            continue
-        line_height = _calc_line_height(draw, font, stroke_w=stroke_w)
-        total_h = line_height * len(lines)
-        max_line_w = max(draw.textbbox((0, 0), line, font=font)[2] for line in lines)
-        if total_h <= box_h and max_line_w <= box_w:
-            return size, lines
+def _fits(draw, text: str, box_w: int, box_h: int, font_path_str: str, size: int, stroke_w: int) -> tuple[bool, list[str]]:
+    font = get_font_object(font_path_str, size)
+    lines = _wrap_text(draw, text, font, box_w)
+    if not lines:
+        return False, []
+    line_height = _calc_line_height(draw, font, stroke_w=stroke_w)
+    total_h = line_height * len(lines)
+    max_line_w = max(draw.textbbox((0, 0), line, font=font)[2] for line in lines)
+    return total_h <= box_h and max_line_w <= box_w, lines
 
-    min_font = get_font_object(font_path_str, MIN_FONT_SIZE)
-    return MIN_FONT_SIZE, _wrap_text(draw, text, min_font, box_w)
+
+def _fit_text(draw, text: str, box_w: int, box_h: int, font_path_str: str, stroke_w: int = 2) -> tuple[int, list[str]]:
+    lo, hi = MIN_FONT_SIZE, MAX_FONT_SIZE
+    best_size = MIN_FONT_SIZE
+    best_lines: list[str] = []
+
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        ok, lines = _fits(draw, text, box_w, box_h, font_path_str, mid, stroke_w)
+        if ok:
+            best_size = mid
+            best_lines = lines
+            lo = mid + 1
+        else:
+            hi = mid - 1
+
+    if not best_lines:
+        min_font = get_font_object(font_path_str, MIN_FONT_SIZE)
+        best_lines = _wrap_text(draw, text, min_font, box_w)
+
+    return best_size, best_lines
 
 
 def _wrap_text(draw, text: str, font, box_w: int) -> list[str]:

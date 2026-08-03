@@ -1,4 +1,4 @@
-const UPLOAD_ALLOWED_TYPES = ["image/png", "image/jpeg", "image/webp"];
+const UPLOAD_ALLOWED_EXTS = [".png", ".jpg", ".jpeg", ".webp", ".bmp", ".zip", ".cbz"];
 
 function initUpload() {
   const dropzone = document.getElementById("upload-dropzone");
@@ -30,12 +30,17 @@ function initUpload() {
 }
 
 function handleUploadFiles(files) {
-  const rejected = files.filter((f) => !UPLOAD_ALLOWED_TYPES.includes(f.type));
-  const accepted = files.filter((f) => UPLOAD_ALLOWED_TYPES.includes(f.type));
+  function isAllowed(f) {
+    const name = f.name.toLowerCase();
+    return UPLOAD_ALLOWED_EXTS.some((ext) => name.endsWith(ext));
+  }
+
+  const rejected = files.filter((f) => !isAllowed(f));
+  const accepted = files.filter((f) => isAllowed(f));
 
   if (rejected.length > 0) {
     showToast(
-      `Bỏ qua ${rejected.length} file không đúng định dạng (chỉ nhận PNG, JPG, WEBP).`,
+      `Bỏ qua ${rejected.length} file không đúng định dạng (chỉ nhận PNG, JPG, WEBP, BMP, ZIP, CBZ).`,
       "error"
     );
   }
@@ -52,7 +57,7 @@ async function uploadChapter(files) {
   const originalHint = hint ? hint.textContent : "";
 
   if (dropzone) dropzone.classList.add("uploading");
-  if (hint) hint.textContent = `Đang tải lên ${files.length} ảnh...`;
+  if (hint) hint.textContent = `Đang tải lên ${files.length} file...`;
 
   try {
     const formData = new FormData();
@@ -72,7 +77,7 @@ async function uploadChapter(files) {
     currentChapterId = currentManifest.chapter_id;
     renderPreview();
   } catch (err) {
-    showToast("Tải ảnh lên thất bại: " + err.message, "error");
+    showToast("Tải file lên thất bại: " + err.message, "error");
   } finally {
     if (dropzone) dropzone.classList.remove("uploading");
     if (hint) hint.textContent = originalHint;
