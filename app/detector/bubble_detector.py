@@ -93,6 +93,8 @@ class YoloDetector:
     def _postprocess(self, outputs, scale, pad, orig_w, orig_h) -> list[BubbleBox]:
         pad_x, pad_y = pad
         out_arr = np.squeeze(outputs[0])
+        if out_arr.ndim == 1:
+            out_arr = out_arr[np.newaxis, :]
         if out_arr.ndim == 2 and out_arr.shape[0] < out_arr.shape[1]:
             out_arr = out_arr.T
 
@@ -142,7 +144,7 @@ class YoloDetector:
 
         num_proto, mh, mw = prototypes.shape
         proto_flat = prototypes.reshape(num_proto, -1)
-        logits = mask_coeffs @ proto_flat
+        logits = np.clip(mask_coeffs @ proto_flat, -88.0, 88.0)
         mask_full = 1 / (1 + np.exp(-logits.reshape(mh, mw)))
 
         canvas_to_proto = mw / INPUT_SIZE

@@ -18,17 +18,25 @@ def parse_color(color_input, default=(0, 0, 0)) -> tuple[int, int, int]:
     if not color_input:
         return default
     if isinstance(color_input, (tuple, list)) and len(color_input) >= 3:
-        return (int(color_input[0]), int(color_input[1]), int(color_input[2]))
+        try:
+            return (int(color_input[0]), int(color_input[1]), int(color_input[2]))
+        except (ValueError, TypeError):
+            return default
     if isinstance(color_input, str):
         color_str = color_input.strip().lstrip("#")
         if color_str == "auto":
             return default
+        if len(color_str) == 3:
+            color_str = "".join([c * 2 for c in color_str])
         if len(color_str) == 6:
-            return (
-                int(color_str[0:2], 16),
-                int(color_str[2:4], 16),
-                int(color_str[4:6], 16),
-            )
+            try:
+                return (
+                    int(color_str[0:2], 16),
+                    int(color_str[2:4], 16),
+                    int(color_str[4:6], 16),
+                )
+            except ValueError:
+                return default
     return default
 
 

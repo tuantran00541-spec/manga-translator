@@ -19,14 +19,16 @@ class MultiLangOCR:
             return ""
 
         image = self._ensure_min_size(image)
-        padded = self._add_white_padding(image, pad=24)
+        enhanced = self._enhance_for_ocr(image)
 
-        raw_text = self._read_engine(padded, lang)
+        padded_raw = self._add_white_padding(image, pad=24)
+        padded_enhanced = self._add_white_padding(enhanced, pad=24)
+
+        raw_text = self._read_engine(padded_raw, lang)
         if raw_text and len(raw_text.strip()) >= 2:
             return raw_text
 
-        enhanced = self._enhance_for_ocr(padded)
-        enhanced_text = self._read_engine(enhanced, lang)
+        enhanced_text = self._read_engine(padded_enhanced, lang)
 
         if not raw_text and not enhanced_text:
             return ""
@@ -44,7 +46,7 @@ class MultiLangOCR:
     @staticmethod
     def _ensure_min_size(image: np.ndarray) -> np.ndarray:
         h, w = image.shape[:2]
-        if h >= MIN_OCR_DIM and w >= MIN_OCR_DIM:
+        if h >= TARGET_OCR_HEIGHT and w >= MIN_OCR_DIM:
             return image
         scale = max(MIN_OCR_DIM / max(h, 1), MIN_OCR_DIM / max(w, 1), 1.0)
         if h < TARGET_OCR_HEIGHT:

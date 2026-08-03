@@ -39,7 +39,11 @@ def download_chapter(chapter_url: str, output_dir: Path) -> list[Path]:
     from app.security import validate_url
     validate_url(chapter_url)
 
-    paths = STATIC_ADAPTER.download(chapter_url, output_dir)
-    if paths:
-        return paths
+    try:
+        paths = STATIC_ADAPTER.download(chapter_url, output_dir)
+        if paths:
+            return paths
+    except Exception:
+        pass
+
     return JS_ADAPTER.download(chapter_url, output_dir)

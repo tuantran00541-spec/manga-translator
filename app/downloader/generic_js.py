@@ -21,19 +21,21 @@ class GenericJsAdapter(BaseAdapter):
                     "--disable-background-networking",
                 ]
             )
-            page = browser.new_page()
-            page.goto(chapter_url, wait_until="networkidle", timeout=60000)
-            page.mouse.wheel(0, 20000)
-            page.wait_for_timeout(1500)
-            elements = page.query_selector_all(self.img_selector)
-            for el in elements:
-                box = el.bounding_box()
-                if box and box["width"] < self.min_width:
-                    continue
-                src = el.get_attribute("src") or el.get_attribute("data-src")
-                if src:
-                    urls.append(src)
-            browser.close()
+            try:
+                page = browser.new_page()
+                page.goto(chapter_url, wait_until="networkidle", timeout=60000)
+                page.mouse.wheel(0, 20000)
+                page.wait_for_timeout(1500)
+                elements = page.query_selector_all(self.img_selector)
+                for el in elements:
+                    box = el.bounding_box()
+                    if box and box["width"] < self.min_width:
+                        continue
+                    src = el.get_attribute("src") or el.get_attribute("data-src")
+                    if src and src.startswith("http"):
+                        urls.append(src)
+            finally:
+                browser.close()
         return self._dedupe(urls)
 
     @staticmethod

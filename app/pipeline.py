@@ -15,7 +15,7 @@ from app.detector.bubble_detector import BubbleBox
 from app.inpaint.lama_inpainter import Inpainter
 from app.config import RAW_DIR, PROCESSED_DIR
 from app.logging_config import logger
-from app.security import MAX_IMAGE_PIXELS, MAX_UPLOAD_FILE_BYTES, validate_upload_image
+from app.security import MAX_IMAGE_PIXELS, MAX_UPLOAD_FILE_BYTES, MAX_UPLOAD_FILES, validate_upload_image
 
 
 def read_image(path: Path) -> np.ndarray:
@@ -115,6 +115,9 @@ class ChapterPipeline:
 
         extracted_files = []
         for filename, data in uploads:
+            if len(extracted_files) >= MAX_UPLOAD_FILES:
+                logger.warning(f"Vượt quá giới hạn {MAX_UPLOAD_FILES} files")
+                break
             is_zip = filename.lower().endswith((".zip", ".cbz"))
             if not is_zip:
                 try:
@@ -128,6 +131,9 @@ class ChapterPipeline:
                     with zipfile.ZipFile(io.BytesIO(data)) as z:
                         namelist = sorted(z.namelist(), key=natural_sort_key)
                         for name in namelist:
+                            if len(extracted_files) >= MAX_UPLOAD_FILES:
+                                logger.warning(f"Đã đạt giới hạn {MAX_UPLOAD_FILES} ảnh từ ZIP")
+                                break
                             if name.startswith("__MACOSX/") or name.startswith("."):
                                 continue
                             if not name.lower().endswith((".png", ".jpg", ".jpeg", ".webp", ".bmp")):
@@ -135,7 +141,7 @@ class ChapterPipeline:
                             info = z.getinfo(name)
                             if info.file_size > MAX_UPLOAD_FILE_BYTES:
                                 logger.warning(
-                                    f"Skip {name}: size exceeds {MAX_UPLOAD_FILE_BYTES // (1024*1024)}MB"
+                                    f"Skip {name}: giải nén vượt {MAX_UPLOAD_FILE_BYTES // (1024*1024)}MB"
                                 )
                                 continue
                             safe_name = name.replace("\\", "/")
@@ -151,11 +157,11 @@ class ChapterPipeline:
                 extracted_files.append((filename, data))
 
         if not extracted_files:
-            raise ValueError("No valid image files found in uploads")
+            raise ValueError("Không tìm thấy file ảnh hợp lệ nào trong dữ liệu tải lên")
 
         raw_paths = []
         ext_map = {"PNG": ".png", "JPEG": ".jpg", "WEBP": ".webp", "BMP": ".bmp"}
-        for idx, (filename, data) in enumerate(extracted_files):
+        for idx, (filename, data) in enumerate(extracted_files[:MAX_UPLOAD_FILES]):
             fmt = validate_upload_image(data, filename)
             ext = ext_map.get(fmt, ".png")
             out_path = raw_dir / f"{idx:03d}{ext}"
@@ -215,6 +221,7 @@ class ChapterPipeline:
     def process_pages(self, chapter_id: str, page_indices: list[int], workers: int = 2) -> dict:
         processed_dir = PROCESSED_DIR / chapter_id
 
+        # 1) Read work list under lock, then release — do NOT hold lock during inference.
         with self._manifest_lock(chapter_id):
             manifest = self._load_manifest(processed_dir)
             work_items = [
@@ -226,12 +233,13 @@ class ChapterPipeline:
         if not work_items:
             return manifest
 
+        # Warm models once so workers don't race on first lazy load.
         _ = self.detector
         _ = self.inpainter
 
         max_workers = max(1, min(int(workers or 2), 8, len(work_items)))
         results: dict[int, dict] = {}
-        errors: list[tuple[int, BaseException]] = []
+        errors: list[tuple[int, Exception]] = []
 
         def _process_one(item: tuple[int, Path]) -> tuple[int, dict]:
             idx, img_path = item
@@ -246,13 +254,14 @@ class ChapterPipeline:
                 try:
                     page_idx, page_data = future.result()
                     results[page_idx] = page_data
-                except BaseException as exc:
+                except Exception as exc:
                     logger.exception("Page %s failed: %s", idx, exc)
                     errors.append((idx, exc))
 
         if not results and errors:
-            raise RuntimeError(f"Page processing failed: {errors[0][1]}") from errors[0][1]
+            raise RuntimeError(f"Xử lý trang thất bại: {errors[0][1]}") from errors[0][1]
 
+        # 2) Merge results under lock (reload in case another request edited boxes).
         with self._manifest_lock(chapter_id):
             manifest = self._load_manifest(processed_dir)
             for idx, page_data in results.items():
@@ -275,10 +284,11 @@ class ChapterPipeline:
         with self._manifest_lock(chapter_id):
             manifest = self._load_manifest(processed_dir)
             for idx in page_indices:
-                manifest["pages"][idx]["skipped"] = skipped
-                if skipped:
-                    manifest["pages"][idx]["clean"] = manifest["pages"][idx]["original"]
-                    manifest["pages"][idx]["boxes"] = []
+                if 0 <= idx < len(manifest["pages"]):
+                    manifest["pages"][idx]["skipped"] = skipped
+                    if skipped:
+                        manifest["pages"][idx]["clean"] = manifest["pages"][idx]["original"]
+                        manifest["pages"][idx]["boxes"] = []
             self._save_manifest(processed_dir, manifest)
             self._sync_output_dir(chapter_id, manifest, page_indices)
         return manifest
@@ -292,6 +302,8 @@ class ChapterPipeline:
         indices = page_indices if page_indices is not None else range(len(manifest["pages"]))
 
         for i in indices:
+            if i < 0 or i >= len(manifest["pages"]):
+                continue
             page = manifest["pages"][i]
             if page.get("rendered"):
                 continue
@@ -303,10 +315,13 @@ class ChapterPipeline:
             if src_p and src_p.exists():
                 shutil.copyfile(src_p, target_path)
 
+
     def add_manual_box(self, chapter_id: str, page_index: int, x1: int, y1: int, x2: int, y2: int) -> dict:
         processed_dir = PROCESSED_DIR / chapter_id
         with self._manifest_lock(chapter_id):
             manifest = self._load_manifest(processed_dir)
+            if page_index < 0 or page_index >= len(manifest["pages"]):
+                return manifest
             page = manifest["pages"][page_index]
 
             img_path = Path(page["original"])
@@ -329,7 +344,11 @@ class ChapterPipeline:
         processed_dir = PROCESSED_DIR / chapter_id
         with self._manifest_lock(chapter_id):
             manifest = self._load_manifest(processed_dir)
+            if page_index < 0 or page_index >= len(manifest["pages"]):
+                return manifest
             page = manifest["pages"][page_index]
+            if box_index < 0 or box_index >= len(page["boxes"]):
+                return manifest
 
             page["boxes"][box_index]["removed"] = True
 
@@ -345,12 +364,12 @@ class ChapterPipeline:
         processed_dir = PROCESSED_DIR / chapter_id
         with self._manifest_lock(chapter_id):
             manifest = self._load_manifest(processed_dir)
+            if page_index < 0 or page_index >= len(manifest["pages"]):
+                return manifest
             page = manifest["pages"][page_index]
 
-            base_path = Path(page["clean"]) if page.get("clean") else Path(page["original"])
-            if not base_path.exists():
-                base_path = Path(page["original"])
-            image = read_image(base_path)
+            img_path = Path(page["original"])
+            image = read_image(img_path)
             h, w = image.shape[:2]
 
             mask_arr = np.frombuffer(mask_png, dtype=np.uint8)
@@ -371,7 +390,6 @@ class ChapterPipeline:
             if not mask.any():
                 return manifest
 
-            img_path = Path(page["original"])
             manual_mask_path = processed_dir / f"manual_mask_{img_path.name}"
             if manual_mask_path.exists():
                 raw = np.fromfile(str(manual_mask_path), dtype=np.uint8)
@@ -382,22 +400,13 @@ class ChapterPipeline:
             write_image(manual_mask_path, mask)
             page["manual_mask"] = manual_mask_path.as_posix()
 
-            num_labels, labels = cv2.connectedComponents(mask)
-            result = image.copy()
-            for label in range(1, num_labels):
-                component_mask = ((labels == label).astype(np.uint8) * 255)
-                if component_mask.sum() // 255 < 100:
-                    continue
-                result = self.inpainter.inpaint_mask(result, component_mask)
-
-            out_path = processed_dir / f"clean_{img_path.name}"
-            write_image(out_path, result)
-            page["clean"] = out_path.as_posix()
-            page["rendered"] = False
+            # Re-inpaint cleanly from original image
+            self._reinpaint_page(page, image, processed_dir, img_path)
 
             self._save_manifest(processed_dir, manifest)
             self._sync_output_dir(chapter_id, manifest, [page_index])
         return manifest
+
 
     def _reinpaint_page(self, page: dict, image, processed_dir: Path, img_path: Path) -> None:
         boxes = [

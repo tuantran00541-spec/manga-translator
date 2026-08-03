@@ -1,8 +1,8 @@
 """API Router for interactive box editing, OCR, repainting, and draft saving."""
 
-import cv2
-import numpy as np
-from fastapi import APIRouter, File, Form, UploadFile
+from pathlib import Path
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from app.dependencies import ocr, pipeline
 from app.logging_config import logger
 from app.manifest_utils import (
@@ -11,6 +11,7 @@ from app.manifest_utils import (
     save_manifest_raw,
     urlify_manifest,
 )
+from app.pipeline import read_image
 from app.schemas import (
     AddBoxRequest,
     OcrBoxRequest,
@@ -47,7 +48,7 @@ async def repaint_mask(
     validate_chapter_id(chapter_id)
     mask_bytes = await mask.read()
     logger.info(f"Chapter {chapter_id} page {page_index}: repaint mask ({len(mask_bytes)} bytes)")
-    manifest = pipeline.repaint_mask(chapter_id, page_index, mask_bytes)
+    manifest = await run_in_threadpool(pipeline.repaint_mask, chapter_id, page_index, mask_bytes)
     return urlify_manifest(manifest)
 
 
@@ -55,11 +56,20 @@ async def repaint_mask(
 def ocr_box(req: OcrBoxRequest) -> dict:
     validate_chapter_id(req.chapter_id)
     manifest = load_manifest_raw(req.chapter_id)
-    page = manifest["pages"][req.page_index]
-    box = page["boxes"][req.box_index]
+    pages = manifest.get("pages", [])
+    if req.page_index < 0 or req.page_index >= len(pages):
+        raise HTTPException(400, f"Invalid page_index: {req.page_index}")
+    page = pages[req.page_index]
+    boxes = page.get("boxes", [])
+    if req.box_index < 0 or req.box_index >= len(boxes):
+        raise HTTPException(400, f"Invalid box_index: {req.box_index}")
+    box = boxes[req.box_index]
 
-    data = np.fromfile(page["original"], dtype=np.uint8)
-    image = cv2.imdecode(data, cv2.IMREAD_COLOR)
+    try:
+        image = read_image(Path(page["original"]))
+    except Exception as e:
+        raise HTTPException(400, f"Cannot read image: {e}") from e
+
     h, w = image.shape[:2]
 
     pad = 20
@@ -75,8 +85,10 @@ def ocr_box(req: OcrBoxRequest) -> dict:
 
     with get_manifest_lock(req.chapter_id):
         manifest = load_manifest_raw(req.chapter_id)
-        manifest["pages"][req.page_index]["boxes"][req.box_index]["ocr_text"] = text
-        save_manifest_raw(req.chapter_id, manifest)
+        if 0 <= req.page_index < len(manifest["pages"]):
+            if 0 <= req.box_index < len(manifest["pages"][req.page_index]["boxes"]):
+                manifest["pages"][req.page_index]["boxes"][req.box_index]["ocr_text"] = text
+                save_manifest_raw(req.chapter_id, manifest)
 
     return {"text": text}
 

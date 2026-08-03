@@ -3,6 +3,7 @@
 import os
 import json
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from app.config import PROCESSED_DIR
 from app.dependencies import pipeline
 from app.logging_config import logger
@@ -35,22 +36,27 @@ def list_chapters() -> list[dict]:
     chapters = []
     if not PROCESSED_DIR.exists():
         return chapters
-    for d in sorted(PROCESSED_DIR.iterdir(), key=lambda x: x.stat().st_mtime, reverse=True):
+    for d in list(PROCESSED_DIR.iterdir()):
+        if not d.is_dir():
+            continue
         manifest_path = d / "manifest.json"
         if not manifest_path.exists():
             continue
         try:
+            mtime = manifest_path.stat().st_mtime
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
+            pages = manifest.get("pages", [])
+            if not any(p.get("clean") for p in pages):
+                continue
+            chapters.append({
+                "chapter_id": manifest.get("chapter_id", d.name),
+                "source_url": manifest.get("source_url", ""),
+                "total_pages": len(pages),
+                "updated_at": mtime,
+            })
+        except (json.JSONDecodeError, OSError, KeyError):
             continue
-        if not any(p.get("clean") for p in manifest["pages"]):
-            continue
-        chapters.append({
-            "chapter_id": manifest["chapter_id"],
-            "source_url": manifest.get("source_url", ""),
-            "total_pages": len(manifest["pages"]),
-            "updated_at": manifest_path.stat().st_mtime,
-        })
+    chapters.sort(key=lambda x: x["updated_at"], reverse=True)
     return chapters
 
 
@@ -86,7 +92,7 @@ async def create_chapter_from_upload(
     chapter_id = os.urandom(4).hex()
     workers_n = _clamp_workers(workers)
     logger.info(f"Creating chapter {chapter_id} from {len(uploads)} uploaded files (workers={workers_n})")
-    manifest = pipeline.create_chapter_from_uploads(chapter_id, uploads, workers=workers_n)
+    manifest = await run_in_threadpool(pipeline.create_chapter_from_uploads, chapter_id, uploads, workers=workers_n)
     return urlify_manifest(manifest)
 
 

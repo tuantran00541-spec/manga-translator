@@ -14,6 +14,7 @@ class CombinedTextDetector:
         self.text_detector = YoloDetector(TEXT_SEGMENTER_MODEL, TEXT_CONF_THRESHOLD)
 
     def detect(self, image: np.ndarray) -> list[BubbleBox]:
+        h, w = image.shape[:2]
         bubble_boxes = self.bubble_detector.detect(image)
         text_boxes = self.text_detector.detect(image)
 
@@ -52,16 +53,16 @@ class CombinedTextDetector:
                         used_text_boxes.add(i)
             else:
                 # Bubble without detected text inside: only keep if valid segmentation mask exists
-                w = b.x2 - b.x1
-                h = b.y2 - b.y1
-                if b.mask is not None and b.mask.shape == (h, w) and b.mask.any():
-                    margin_x = max(2, int(w * 0.03))
-                    margin_y = max(2, int(h * 0.03))
+                bw = b.x2 - b.x1
+                bh = b.y2 - b.y1
+                if b.mask is not None and b.mask.shape == (bh, bw) and b.mask.any():
+                    margin_x = max(2, int(bw * 0.03))
+                    margin_y = max(2, int(bh * 0.03))
                     x1 = b.x1 + margin_x
                     y1 = b.y1 + margin_y
                     x2 = max(x1 + 1, b.x2 - margin_x)
                     y2 = max(y1 + 1, b.y2 - margin_y)
-                    cropped_mask = b.mask[margin_y : h - margin_y, margin_x : w - margin_x]
+                    cropped_mask = b.mask[margin_y : bh - margin_y, margin_x : bw - margin_x]
                     if cropped_mask.shape == (y2 - y1, x2 - x1):
                         result_boxes.append(BubbleBox(x1, y1, x2, y2, b.confidence, cropped_mask))
 
@@ -71,12 +72,12 @@ class CombinedTextDetector:
             if i not in used_text_boxes
         ]
 
-        clustered_free_text = self._cluster_free_text_boxes(standalone_text)
+        clustered_free_text = self._cluster_free_text_boxes(standalone_text, w, h)
         result_boxes.extend(clustered_free_text)
 
         return result_boxes
 
-    def _cluster_free_text_boxes(self, boxes: list[BubbleBox]) -> list[BubbleBox]:
+    def _cluster_free_text_boxes(self, boxes: list[BubbleBox], img_w: int, img_h: int) -> list[BubbleBox]:
         if not boxes:
             return []
 
@@ -99,18 +100,17 @@ class CombinedTextDetector:
 
             if len(cluster) == 1:
                 b = cluster[0]
-                # Expand single free text box horizontally (-20 / +20) to ensure full text line is covered
                 min_x = max(0, b.x1 - 20)
                 min_y = max(0, b.y1 - 6)
-                max_x = b.x2 + 20
-                max_y = b.y2 + 6
+                max_x = min(img_w, b.x2 + 20)
+                max_y = min(img_h, b.y2 + 6)
                 merged_mask = self._merge_masks([b], min_x, min_y, max_x, max_y)
                 clustered_results.append(BubbleBox(min_x, min_y, max_x, max_y, b.confidence, merged_mask))
             else:
                 min_x = max(0, min(t.x1 for t in cluster) - 20)
                 min_y = max(0, min(t.y1 for t in cluster) - 8)
-                max_x = max(t.x2 for t in cluster) + 20
-                max_y = max(t.y2 for t in cluster) + 8
+                max_x = min(img_w, max(t.x2 for t in cluster) + 20)
+                max_y = min(img_h, max(t.y2 for t in cluster) + 8)
                 merged_mask = self._merge_masks(cluster, min_x, min_y, max_x, max_y)
                 clustered_results.append(
                     BubbleBox(

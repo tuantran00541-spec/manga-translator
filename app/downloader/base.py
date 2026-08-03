@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
 import requests
+import shutil
 from app.security import validate_url
 
 
@@ -33,9 +34,11 @@ class BaseAdapter(ABC):
         validate_url(url)
         headers = dict(self.headers)
         headers["Referer"] = referer
-        resp = requests.get(url, headers=headers, timeout=30)
+        resp = requests.get(url, headers=headers, timeout=30, stream=True)
         resp.raise_for_status()
-        out_path.write_bytes(resp.content)
+        resp.raw.decode_content = True
+        with open(out_path, "wb") as f:
+            shutil.copyfileobj(resp.raw, f)
 
     @staticmethod
     def _guess_ext(url: str) -> str:

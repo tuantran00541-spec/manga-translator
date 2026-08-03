@@ -139,8 +139,12 @@ def render_page(req: RenderRequest) -> dict:
         logger.exception("Failed to save rendered page %s", out_path)
         raise HTTPException(500, f"Cannot save rendered image: {e}") from e
 
-    page["rendered"] = True
-    save_manifest_raw(req.chapter_id, manifest)
+    from app.manifest_utils import get_manifest_lock
+    with get_manifest_lock(req.chapter_id):
+        m = load_manifest_raw(req.chapter_id)
+        if 0 <= req.page_index < len(m.get("pages", [])):
+            m["pages"][req.page_index]["rendered"] = True
+            save_manifest_raw(req.chapter_id, m)
 
     logger.info(
         "Chapter %s page %s: rendered %s box(es) -> %s",

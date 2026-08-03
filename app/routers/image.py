@@ -45,4 +45,5 @@ def download_page(chapter_id: str, page_index: int):
     path = OUTPUT_DIR / chapter_id / f"page_{page_index:03d}.png"
     if not path.exists():
         raise HTTPException(404, "Output image not found")
+    validate_image_size(path)
     return FileResponse(path)
