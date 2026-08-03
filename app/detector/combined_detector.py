@@ -54,12 +54,21 @@ class CombinedTextDetector:
                 h = b.y2 - b.y1
                 margin_x = max(4, int(w * 0.04))
                 margin_y = max(4, int(h * 0.04))
+                x1 = b.x1 + margin_x
+                y1 = b.y1 + margin_y
+                x2 = max(x1 + 1, b.x2 - margin_x)
+                y2 = max(y1 + 1, b.y2 - margin_y)
+
+                cropped_mask = None
+                if b.mask is not None and b.mask.shape == (h, w):
+                    cropped_mask = b.mask[margin_y : h - margin_y, margin_x : w - margin_x]
+                    if cropped_mask.shape != (y2 - y1, x2 - x1):
+                        cropped_mask = None
+
                 inner_box = BubbleBox(
-                    b.x1 + margin_x,
-                    b.y1 + margin_y,
-                    max(b.x1 + margin_x + 1, b.x2 - margin_x),
-                    max(b.y1 + margin_y + 1, b.y2 - margin_y),
+                    x1, y1, x2, y2,
                     b.confidence,
+                    cropped_mask,
                 )
                 result_boxes.append(inner_box)
 

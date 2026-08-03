@@ -2,7 +2,7 @@ import numpy as np
 import cv2
 from app.detector.bubble_detector import BubbleBox
 
-MASK_EXPAND = 10
+MASK_EXPAND = 6
 
 
 def build_mask(image_shape: tuple[int, int], boxes: list[BubbleBox]) -> np.ndarray:
@@ -31,6 +31,6 @@ def build_mask(image_shape: tuple[int, int], boxes: list[BubbleBox]) -> np.ndarr
             y2 = min(h, box.y2 + MASK_EXPAND)
             cv2.rectangle(mask, (x1, y1), (x2, y2), 255, -1)
 
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (11, 11))
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
     mask = cv2.dilate(mask, kernel, iterations=1)
     return mask
