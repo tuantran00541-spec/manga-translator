@@ -26,15 +26,16 @@ class CombinedTextDetector:
                 if self._is_inside(t, b)
             ]
             if inside_text:
-                raw_min_x = min(t.x1 for t in inside_text) - 8
-                raw_min_y = min(t.y1 for t in inside_text) - 8
-                raw_max_x = max(t.x2 for t in inside_text) + 8
-                raw_max_y = max(t.y2 for t in inside_text) + 8
+                # Generously expand horizontal bounds (-24 to +24) so first/last letters are never cut off
+                raw_min_x = min(t.x1 for t in inside_text) - 24
+                raw_min_y = min(t.y1 for t in inside_text) - 10
+                raw_max_x = max(t.x2 for t in inside_text) + 24
+                raw_max_y = max(t.y2 for t in inside_text) + 10
 
-                min_x = max(b.x1 + 3, raw_min_x)
-                min_y = max(b.y1 + 3, raw_min_y)
-                max_x = min(b.x2 - 3, raw_max_x)
-                max_y = min(b.y2 - 3, raw_max_y)
+                min_x = max(b.x1 + 2, raw_min_x)
+                min_y = max(b.y1 + 2, raw_min_y)
+                max_x = min(b.x2 - 2, raw_max_x)
+                max_y = min(b.y2 - 2, raw_max_y)
 
                 if max_x > min_x and max_y > min_y:
                     min_x, min_y, max_x, max_y = int(min_x), int(min_y), int(max_x), int(max_y)
@@ -50,27 +51,19 @@ class CombinedTextDetector:
                     if self._is_inside(t, b):
                         used_text_boxes.add(i)
             else:
+                # Bubble without detected text inside: only keep if valid segmentation mask exists
                 w = b.x2 - b.x1
                 h = b.y2 - b.y1
-                margin_x = max(4, int(w * 0.04))
-                margin_y = max(4, int(h * 0.04))
-                x1 = b.x1 + margin_x
-                y1 = b.y1 + margin_y
-                x2 = max(x1 + 1, b.x2 - margin_x)
-                y2 = max(y1 + 1, b.y2 - margin_y)
-
-                cropped_mask = None
-                if b.mask is not None and b.mask.shape == (h, w):
+                if b.mask is not None and b.mask.shape == (h, w) and b.mask.any():
+                    margin_x = max(2, int(w * 0.03))
+                    margin_y = max(2, int(h * 0.03))
+                    x1 = b.x1 + margin_x
+                    y1 = b.y1 + margin_y
+                    x2 = max(x1 + 1, b.x2 - margin_x)
+                    y2 = max(y1 + 1, b.y2 - margin_y)
                     cropped_mask = b.mask[margin_y : h - margin_y, margin_x : w - margin_x]
-                    if cropped_mask.shape != (y2 - y1, x2 - x1):
-                        cropped_mask = None
-
-                inner_box = BubbleBox(
-                    x1, y1, x2, y2,
-                    b.confidence,
-                    cropped_mask,
-                )
-                result_boxes.append(inner_box)
+                    if cropped_mask.shape == (y2 - y1, x2 - x1):
+                        result_boxes.append(BubbleBox(x1, y1, x2, y2, b.confidence, cropped_mask))
 
         # Process free text boxes (outside bubbles, e.g. captions, SFX, standalone monologues)
         standalone_text = [
@@ -105,12 +98,19 @@ class CombinedTextDetector:
                 remaining = still_remaining
 
             if len(cluster) == 1:
-                clustered_results.append(cluster[0])
+                b = cluster[0]
+                # Expand single free text box horizontally (-20 / +20) to ensure full text line is covered
+                min_x = max(0, b.x1 - 20)
+                min_y = max(0, b.y1 - 6)
+                max_x = b.x2 + 20
+                max_y = b.y2 + 6
+                merged_mask = self._merge_masks([b], min_x, min_y, max_x, max_y)
+                clustered_results.append(BubbleBox(min_x, min_y, max_x, max_y, b.confidence, merged_mask))
             else:
-                min_x = max(0, min(t.x1 for t in cluster) - 6)
-                min_y = max(0, min(t.y1 for t in cluster) - 6)
-                max_x = max(t.x2 for t in cluster) + 6
-                max_y = max(t.y2 for t in cluster) + 6
+                min_x = max(0, min(t.x1 for t in cluster) - 20)
+                min_y = max(0, min(t.y1 for t in cluster) - 8)
+                max_x = max(t.x2 for t in cluster) + 20
+                max_y = max(t.y2 for t in cluster) + 8
                 merged_mask = self._merge_masks(cluster, min_x, min_y, max_x, max_y)
                 clustered_results.append(
                     BubbleBox(
@@ -124,9 +124,8 @@ class CombinedTextDetector:
 
     @staticmethod
     def _is_free_text_close(a: BubbleBox, b: BubbleBox) -> bool:
-        # Check if two free text boxes belong to the same caption block or multi-line paragraph
-        x_overlap = not (a.x2 < b.x1 - 30 or b.x2 < a.x1 - 30)
-        y_close = abs(a.y1 - b.y1) < 40 or abs(a.y2 - b.y2) < 40 or not (a.y2 < b.y1 - 35 or b.y2 < a.y1 - 35)
+        x_overlap = not (a.x2 < b.x1 - 35 or b.x2 < a.x1 - 35)
+        y_close = abs(a.y1 - b.y1) < 45 or abs(a.y2 - b.y2) < 45 or not (a.y2 < b.y1 - 40 or b.y2 < a.y1 - 40)
         return x_overlap and y_close
 
     @staticmethod
