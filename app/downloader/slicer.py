@@ -93,12 +93,16 @@ def _get_content_row_mask(gray: np.ndarray, h: int, w: int) -> np.ndarray:
 
     combined = cv2.bitwise_or(edges, content_binary)
 
+    # Morphological close to bridge empty white/black interiors of speech bubbles & panels
+    close_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (31, 31))
+    combined = cv2.morphologyEx(combined, cv2.MORPH_CLOSE, close_kernel)
+
     contours, _ = cv2.findContours(combined, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-    pad_y = 35
+    pad_y = 40
     for c in contours:
         x_box, y_box, w_box, h_box = cv2.boundingRect(c)
-        if w_box >= 10 and h_box >= 10:
+        if w_box >= 15 and h_box >= 15:
             y_start = max(0, y_box - pad_y)
             y_end = min(h, y_box + h_box + pad_y)
             mask[y_start:y_end] = True
