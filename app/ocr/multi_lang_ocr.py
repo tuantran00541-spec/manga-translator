@@ -75,7 +75,10 @@ class MultiLangOCR:
         else:
             gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
 
-        if float(gray.mean()) < 135:
+        # Measure inner region mean to detect dark background text correctly despite white padding
+        h, w = gray.shape[:2]
+        inner = gray[h // 4 : 3 * h // 4, w // 4 : 3 * w // 4] if (h >= 8 and w >= 8) else gray
+        if float(inner.mean()) < 130:
             gray = cv2.bitwise_not(gray)
 
         gray = cv2.GaussianBlur(gray, (3, 3), 0)
