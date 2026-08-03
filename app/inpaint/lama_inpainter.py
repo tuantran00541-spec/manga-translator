@@ -37,7 +37,7 @@ class Inpainter:
             ]
             local_mask = build_mask((cy2 - cy1, cx2 - cx1), local_boxes)
 
-            result = self._lama_fill(result, result[cy1:cy2, cx1:cx2].copy(), local_mask, crop_box)
+            result = self._smart_paint_region(result, local_mask, crop_box)
 
         return result
 
@@ -58,13 +58,57 @@ class Inpainter:
         local_mask = mask[cy1:cy2, cx1:cx2]
 
         result = image.copy()
-        return self._lama_fill(result, result[cy1:cy2, cx1:cx2].copy(), local_mask, crop_box)
+        return self._smart_paint_region(result, local_mask, crop_box)
+
+    def _smart_paint_region(self, image: np.ndarray, local_mask: np.ndarray, crop_box: tuple) -> np.ndarray:
+        cx1, cy1, cx2, cy2 = crop_box
+        crop = image[cy1:cy2, cx1:cx2]
+        crop_h, crop_w = crop.shape[:2]
+        if crop_h < 4 or crop_w < 4:
+            return image
+
+        mask_bool = local_mask > 127
+        if not np.any(mask_bool):
+            return image
+
+        # Extract ring of context pixels around mask (15px ring)
+        ring_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15))
+        dilated_mask = cv2.dilate(local_mask, ring_kernel, iterations=1)
+        ring_bool = (dilated_mask > 127) & (~mask_bool)
+
+        if np.any(ring_bool):
+            ring_pixels = crop[ring_bool]
+            gray_ring = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)[ring_bool]
+
+            # Case A: White Speech Bubble / Flat White Background (e.g. >85% pixels > 225)
+            white_ratio = float((gray_ring > 225).mean())
+            if white_ratio >= 0.85:
+                fill_color = np.median(ring_pixels[gray_ring > 225], axis=0).astype(np.uint8) if np.any(gray_ring > 225) else np.array([255, 255, 255], dtype=np.uint8)
+                crop[mask_bool] = fill_color
+                image[cy1:cy2, cx1:cx2] = crop
+                return image
+
+            # Case B: Solid Black Background / Monologue Caption (e.g. >85% pixels < 30)
+            black_ratio = float((gray_ring < 30).mean())
+            if black_ratio >= 0.85:
+                fill_color = np.median(ring_pixels[gray_ring < 30], axis=0).astype(np.uint8) if np.any(gray_ring < 30) else np.array([0, 0, 0], dtype=np.uint8)
+                crop[mask_bool] = fill_color
+                image[cy1:cy2, cx1:cx2] = crop
+                return image
+
+            # Case C: Solid Flat Background (std < 10)
+            if float(gray_ring.std()) < 10.0:
+                fill_color = np.median(ring_pixels, axis=0).astype(np.uint8)
+                crop[mask_bool] = fill_color
+                image[cy1:cy2, cx1:cx2] = crop
+                return image
+
+        # Case D: Complex Artwork -> Use LaMa Model
+        return self._lama_fill(image, crop, local_mask, crop_box)
 
     def _lama_fill(self, image: np.ndarray, crop: np.ndarray, local_mask: np.ndarray, crop_box: tuple) -> np.ndarray:
         cx1, cy1, cx2, cy2 = crop_box
         crop_h, crop_w = crop.shape[:2]
-        if crop_h < 4 or crop_w < 4:
-            return image
 
         crop_resized = cv2.resize(crop, (INPAINT_SIZE, INPAINT_SIZE))
         crop_rgb = cv2.cvtColor(crop_resized, cv2.COLOR_BGR2RGB)
@@ -128,10 +172,8 @@ class Inpainter:
         box_w = x2 - x1
         box_h = y2 - y1
 
-        # Aspect-aware padding: avoid forcing giant square crops on long text blocks
         aspect = max(box_w / max(1, box_h), box_h / max(1, box_w))
         if aspect > 1.8:
-            # Maintain aspect ratio with balanced padding
             x1 = max(0, x1)
             y1 = max(0, y1)
             x2 = min(img_w, x2)
