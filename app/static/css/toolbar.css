@@ -1,0 +1,192 @@
+/* --- Color picker toolbar --- */
+
+.color-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 0 8px;
+}
+
+.color-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-faint);
+  margin-right: 2px;
+}
+
+.color-btn {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1.5px solid var(--line);
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.1s ease, border-color 0.15s ease;
+}
+
+.color-btn:hover {
+  transform: scale(1.2);
+  border-color: var(--text);
+}
+
+.color-btn.selected {
+  outline: 2px solid var(--blue);
+  outline-offset: 1.5px;
+}
+
+.box-color-picker {
+  width: 24px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: transparent;
+  cursor: pointer;
+}
+
+/* --- Font style toolbar --- */
+
+.font-style-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 6px;
+  flex-wrap: wrap;
+}
+
+.font-family-select {
+  background: var(--ink-raised);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 3px 6px;
+  font-family: var(--font-body);
+  font-size: 12px;
+  outline: none;
+  cursor: pointer;
+}
+
+.font-family-select:focus {
+  border-color: var(--blue);
+}
+
+.bold-toggle-btn {
+  font-weight: 800;
+  font-family: var(--font-body);
+  font-size: 13px;
+  background: var(--ink-raised);
+  color: var(--text-dim);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  width: 26px;
+  height: 26px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.bold-toggle-btn:hover {
+  border-color: var(--text);
+  color: var(--text);
+}
+
+.bold-toggle-btn.active {
+  background: var(--blue);
+  color: #0b1329;
+  border-color: var(--blue);
+}
+
+.font-size-group {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+}
+
+.size-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+.size-auto-btn {
+  background: var(--ink-raised);
+  color: var(--text-dim);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 2px 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.size-auto-btn:hover {
+  border-color: var(--text);
+  color: var(--text);
+}
+
+.size-auto-btn.selected {
+  background: var(--blue-dim);
+  color: var(--blue);
+  border-color: var(--blue);
+}
+
+.font-size-slider {
+  width: 65px;
+  height: 4px;
+  accent-color: var(--blue);
+  cursor: pointer;
+}
+
+.font-size-val {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  min-width: 32px;
+}
+
+.stroke-toolbar,
+.bg-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 0;
+  flex-wrap: wrap;
+}
+
+.style-group-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-faint);
+  min-width: 70px;
+}
+
+.style-val-span {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  min-width: 28px;
+}
+
+.stroke-width-slider,
+.corner-radius-slider {
+  width: 60px;
+  height: 4px;
+  accent-color: var(--blue);
+  cursor: pointer;
+}
+
+.bg-color-select {
+  background: var(--ink-raised);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 2px 5px;
+  font-family: var(--font-body);
+  font-size: 11.5px;
+  outline: none;
+  cursor: pointer;
+}
