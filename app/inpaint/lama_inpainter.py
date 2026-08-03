@@ -5,8 +5,8 @@ from app.detector.bubble_detector import BubbleBox
 from app.detector.mask_builder import build_mask
 from app.ort_utils import make_session
 
-CLUSTER_PADDING = 30
-CROP_PADDING = 25
+CLUSTER_PADDING = 35
+CROP_PADDING = 35
 
 
 class Inpainter:
@@ -46,7 +46,7 @@ class Inpainter:
         if len(ys) == 0:
             return image.copy()
 
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9))
         mask = cv2.dilate(mask, kernel, iterations=1)
 
         h, w = image.shape[:2]
@@ -127,8 +127,18 @@ class Inpainter:
 
         box_w = x2 - x1
         box_h = y2 - y1
-        side = max(box_w, box_h)
 
+        # Aspect-aware padding: avoid forcing giant square crops on long text blocks
+        aspect = max(box_w / max(1, box_h), box_h / max(1, box_w))
+        if aspect > 1.8:
+            # Maintain aspect ratio with balanced padding
+            x1 = max(0, x1)
+            y1 = max(0, y1)
+            x2 = min(img_w, x2)
+            y2 = min(img_h, y2)
+            return int(x1), int(y1), int(x2), int(y2)
+
+        side = max(box_w, box_h)
         cx = (x1 + x2) / 2
         cy = (y1 + y2) / 2
 
