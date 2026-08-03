@@ -37,11 +37,7 @@ class Inpainter:
             ]
             local_mask = build_mask((cy2 - cy1, cx2 - cx1), local_boxes)
 
-            # Extra dilation to eliminate all text edge outlines & furigana residue
-            dil_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
-            local_mask = cv2.dilate(local_mask, dil_kernel, iterations=1)
-
-            result = self._paint_region(result, local_mask, crop_box)
+            result = self._lama_fill(result, result[cy1:cy2, cx1:cx2].copy(), local_mask, crop_box)
 
         return result
 
@@ -50,7 +46,7 @@ class Inpainter:
         if len(ys) == 0:
             return image.copy()
 
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9))
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
         mask = cv2.dilate(mask, kernel, iterations=1)
 
         h, w = image.shape[:2]
@@ -62,76 +58,19 @@ class Inpainter:
         local_mask = mask[cy1:cy2, cx1:cx2]
 
         result = image.copy()
-        return self._paint_region(result, local_mask, crop_box)
-
-    def _paint_region(self, image: np.ndarray, local_mask: np.ndarray, crop_box: tuple) -> np.ndarray:
-        cx1, cy1, cx2, cy2 = crop_box
-        crop = image[cy1:cy2, cx1:cx2]
-        crop_h, crop_w = crop.shape[:2]
-        if crop_h < 4 or crop_w < 4:
-            return image
-
-        is_flat, fill_color = self._analyze_bg(crop, local_mask)
-
-        if is_flat:
-            return self._flat_fill(image, local_mask, crop_box, fill_color)
-
-        return self._lama_fill(image, crop, local_mask, crop_box)
-
-    @staticmethod
-    def _analyze_bg(crop: np.ndarray, local_mask: np.ndarray) -> tuple[bool, np.ndarray]:
-        bg_mask = local_mask <= 127
-        if not np.any(bg_mask):
-            return True, np.array([255, 255, 255], dtype=np.uint8)
-
-        bg_pixels = crop[bg_mask]
-        gray_crop = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
-        gray_bg = gray_crop[bg_mask]
-
-        # Ignore extreme dark ink borders when computing median
-        non_ink = gray_bg >= 35
-        if np.count_nonzero(non_ink) > 10:
-            target_pixels = bg_pixels[non_ink]
-            target_gray = gray_bg[non_ink]
-        else:
-            target_pixels = bg_pixels
-            target_gray = gray_bg
-
-        median_color = np.median(target_pixels, axis=0).astype(np.uint8)
-        median_gray = float(np.median(target_gray))
-
-        # Check proportion of background pixels close to median background intensity
-        diffs = np.abs(target_gray.astype(np.float32) - median_gray)
-        flat_ratio = float((diffs <= 22.0).mean())
-
-        # Check 10th-90th percentile range of background gray values
-        p10, p90 = np.percentile(target_gray, [10, 90])
-        trimmed_range = float(p90 - p10)
-
-        # Speech bubble / solid background criteria
-        if flat_ratio >= 0.68 or trimmed_range <= 28.0:
-            return True, median_color
-
-        return False, median_color
-
-    @staticmethod
-    def _flat_fill(image: np.ndarray, local_mask: np.ndarray, crop_box: tuple, fill_color: np.ndarray) -> np.ndarray:
-        cx1, cy1, cx2, cy2 = crop_box
-        mask_bool = local_mask > 127
-        image[cy1:cy2, cx1:cx2][mask_bool] = fill_color
-        return image
+        return self._lama_fill(result, result[cy1:cy2, cx1:cx2].copy(), local_mask, crop_box)
 
     def _lama_fill(self, image: np.ndarray, crop: np.ndarray, local_mask: np.ndarray, crop_box: tuple) -> np.ndarray:
         cx1, cy1, cx2, cy2 = crop_box
         crop_h, crop_w = crop.shape[:2]
+        if crop_h < 4 or crop_w < 4:
+            return image
 
         crop_resized = cv2.resize(crop, (INPAINT_SIZE, INPAINT_SIZE))
         crop_rgb = cv2.cvtColor(crop_resized, cv2.COLOR_BGR2RGB)
         mask_resized = cv2.resize(local_mask, (INPAINT_SIZE, INPAINT_SIZE))
 
-        img_blob = crop_rgb.astype(np.float32)
-        if img_blob.max() > 1.0:
-            img_blob = img_blob / 255.0
+        img_blob = crop_rgb.astype(np.float32) / 255.0
         img_blob = img_blob.transpose(2, 0, 1)[None]
 
         mask_blob = (mask_resized > 127).astype(np.float32)[None, None]
