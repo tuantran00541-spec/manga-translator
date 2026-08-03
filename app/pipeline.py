@@ -1,60 +1,64 @@
 import json
 import os
 import shutil
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import base64
 from pathlib import Path
-
+from contextlib import contextmanager
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import cv2
 import numpy as np
 from filelock import FileLock, Timeout
-
-from app.config import (
-    PROCESSED_DIR,
-    RAW_DIR,
-)
-from app.detector.bubble_detector import BubbleBox
-from app.detector.combined_detector import CombinedTextDetector
+from app.downloader.registry import download_chapter as fetch_chapter_images
 from app.downloader.slicer import slice_image
+from app.detector.combined_detector import CombinedTextDetector
+from app.detector.bubble_detector import BubbleBox
 from app.inpaint.lama_inpainter import Inpainter
+from app.config import RAW_DIR, PROCESSED_DIR
 from app.logging_config import logger
-from app.security import (
-    validate_chapter_id,
-    validate_upload_image,
-)
+from app.security import MAX_IMAGE_PIXELS, MAX_UPLOAD_FILE_BYTES, validate_upload_image
 
 
 def read_image(path: Path) -> np.ndarray:
     data = np.fromfile(str(path), dtype=np.uint8)
-    image = cv2.imdecode(data, cv2.IMREAD_COLOR)
-    if image is None:
-        raise ValueError(f"Không thể đọc file ảnh: {path}")
-    return image
+    img = cv2.imdecode(data, cv2.IMREAD_COLOR)
+    if img is None:
+        raise ValueError(f"Could not read image at {path}")
+    h, w = img.shape[:2]
+    if w * h > MAX_IMAGE_PIXELS:
+        raise ValueError(f"Image too large at {path}: {w}x{h}")
+    return img
 
 
 def write_image(path: Path, image: np.ndarray) -> None:
-    ext = path.suffix.lower()
-    if not ext:
-        ext = ".png"
-    success, buffer = cv2.imencode(ext, image)
-    if not success:
-        raise ValueError(f"Không thể nén ảnh: {path}")
-    path.write_bytes(buffer.tobytes())
+    ext = path.suffix or ".png"
+    success, buf = cv2.imencode(ext, image)
+    if success:
+        buf.tofile(str(path))
+    else:
+        cv2.imwrite(str(path), image)
 
 
-def _encode_mask(mask: np.ndarray | None) -> list[int] | None:
+def _encode_mask(mask: np.ndarray | None) -> str | None:
     if mask is None:
         return None
-    success, buffer = cv2.imencode(".png", mask)
+    success, buf = cv2.imencode(".png", mask)
     if not success:
         return None
-    return buffer.tolist()
+    return base64.b64encode(buf.tobytes()).decode("ascii")
 
 
-def _decode_mask(mask_data: list[int] | None) -> np.ndarray | None:
-    if not mask_data:
+def _decode_mask(mask_b64: str | None) -> np.ndarray | None:
+    if not mask_b64:
         return None
-    arr = np.array(mask_data, dtype=np.uint8)
+    try:
+        raw = base64.b64decode(mask_b64)
+    except (ValueError, TypeError):
+        return None
+    arr = np.frombuffer(raw, dtype=np.uint8)
     return cv2.imdecode(arr, cv2.IMREAD_GRAYSCALE)
+
+
+_MANIFEST_LOCK_TIMEOUT = 30
 
 
 class ChapterPipeline:
@@ -63,64 +67,91 @@ class ChapterPipeline:
         self._inpainter = None
 
     @property
-    def detector(self) -> CombinedTextDetector:
+    def detector(self):
         if self._detector is None:
             self._detector = CombinedTextDetector()
         return self._detector
 
     @property
-    def inpainter(self) -> Inpainter:
+    def inpainter(self):
         if self._inpainter is None:
             self._inpainter = Inpainter()
         return self._inpainter
 
     @staticmethod
+    @contextmanager
     def _manifest_lock(chapter_id: str):
-        validate_chapter_id(chapter_id)
-        lock_path = PROCESSED_DIR / chapter_id / "manifest.lock"
-        lock_path.parent.mkdir(parents=True, exist_ok=True)
-        return FileLock(lock_path)
+        processed_dir = PROCESSED_DIR / chapter_id
+        processed_dir.mkdir(parents=True, exist_ok=True)
+        lock = FileLock(processed_dir / "manifest.lock")
+        try:
+            with lock.acquire(timeout=_MANIFEST_LOCK_TIMEOUT):
+                yield
+        except Timeout:
+            raise RuntimeError(
+                f"Manifest lock timeout for chapter {chapter_id}"
+            )
 
-    def download_chapter(self, url: str, chapter_id: str, workers: int = 2) -> dict:
-        from app.downloader.registry import get_downloader
-        raw_dir = RAW_DIR / chapter_id / "raw"
-        raw_dir.mkdir(parents=True, exist_ok=True)
-        downloader = get_downloader(url)
-        logger.info(f"Chapter {chapter_id}: downloading with {downloader.__class__.__name__}")
-        raw_paths = downloader.download(url, raw_dir)
-        logger.info(f"Chapter {chapter_id}: downloaded {len(raw_paths)} images")
+    def download_chapter(self, chapter_url: str, chapter_id: str, workers: int = 2) -> dict:
+        raw_dir = RAW_DIR / chapter_id
+        raw_paths = fetch_chapter_images(chapter_url, raw_dir)
+        logger.info(f"Chapter {chapter_id}: downloaded {len(raw_paths)} raw images")
         return self._build_chapter_from_raw_paths(
-            chapter_id, raw_paths, source_url=url, workers=workers
+            chapter_id, raw_paths, source_url=chapter_url, workers=workers
         )
 
     def create_chapter_from_uploads(
-        self,
-        chapter_id: str,
-        files: list[tuple[str, bytes]],
-        workers: int = 2,
+        self, chapter_id: str, uploads: list[tuple[str, bytes]], workers: int = 2
     ) -> dict:
-        raw_dir = RAW_DIR / chapter_id / "raw"
+        import io
+        import re
+        import zipfile
+
+        def natural_sort_key(s: str):
+            return [int(text) if text.isdigit() else text.lower() for text in re.split(r"(\d+)", s)]
+
+        raw_dir = RAW_DIR / chapter_id
         raw_dir.mkdir(parents=True, exist_ok=True)
 
         extracted_files = []
-        for filename, data in files:
-            lower = filename.lower()
-            if lower.endswith((".zip", ".cbz")):
-                import zipfile
+        for filename, data in uploads:
+            is_zip = filename.lower().endswith((".zip", ".cbz"))
+            if not is_zip:
                 try:
                     with zipfile.ZipFile(io.BytesIO(data)) as z:
-                        for member in sorted(z.namelist()):
-                            if member.startswith("__MACOSX") or member.endswith("/"):
+                        is_zip = True
+                except Exception:
+                    is_zip = False
+
+            if is_zip:
+                try:
+                    with zipfile.ZipFile(io.BytesIO(data)) as z:
+                        namelist = sorted(z.namelist(), key=natural_sort_key)
+                        for name in namelist:
+                            if name.startswith("__MACOSX/") or name.startswith("."):
                                 continue
-                            if member.lower().endswith((".png", ".jpg", ".jpeg", ".webp", ".bmp")):
-                                extracted_files.append((member, z.read(member)))
+                            if not name.lower().endswith((".png", ".jpg", ".jpeg", ".webp", ".bmp")):
+                                continue
+                            info = z.getinfo(name)
+                            if info.file_size > MAX_UPLOAD_FILE_BYTES:
+                                logger.warning(
+                                    f"Skip {name}: size exceeds {MAX_UPLOAD_FILE_BYTES // (1024*1024)}MB"
+                                )
+                                continue
+                            safe_name = name.replace("\\", "/")
+                            clean_name = Path(safe_name).name
+                            if not clean_name:
+                                continue
+                            img_bytes = z.read(name)
+                            if len(img_bytes) > 0:
+                                extracted_files.append((clean_name, img_bytes))
                 except Exception as e:
-                    raise ValueError(f"File ZIP/CBZ không hợp lệ: {filename} ({e})")
+                    logger.warning(f"Failed to extract zip file {filename}: {e}")
             else:
                 extracted_files.append((filename, data))
 
         if not extracted_files:
-            raise ValueError("Không tìm thấy file ảnh hợp lệ nào trong dữ liệu tải lên")
+            raise ValueError("No valid image files found in uploads")
 
         raw_paths = []
         ext_map = {"PNG": ".png", "JPEG": ".jpg", "WEBP": ".webp", "BMP": ".bmp"}
@@ -220,7 +251,7 @@ class ChapterPipeline:
                     errors.append((idx, exc))
 
         if not results and errors:
-            raise RuntimeError(f"Xử lý trang thất bại: {errors[0][1]}") from errors[0][1]
+            raise RuntimeError(f"Page processing failed: {errors[0][1]}") from errors[0][1]
 
         with self._manifest_lock(chapter_id):
             manifest = self._load_manifest(processed_dir)
@@ -238,33 +269,6 @@ class ChapterPipeline:
                 len(work_items),
             )
         return manifest
-
-    def _process_page(self, img_path: Path, processed_dir: Path) -> dict:
-        image = read_image(img_path)
-
-        boxes = self.detector.detect(image)
-        clean_image = self.inpainter.inpaint(image, boxes)
-
-        out_path = processed_dir / f"clean_{img_path.name}"
-        write_image(out_path, clean_image)
-
-        serialized_boxes = [
-            {
-                "x1": b.x1,
-                "y1": b.y1,
-                "x2": b.x2,
-                "y2": b.y2,
-                "confidence": b.confidence,
-                "mask": _encode_mask(b.mask),
-                "removed": False,
-            }
-            for b in boxes
-        ]
-
-        return {
-            "clean": out_path.as_posix(),
-            "boxes": serialized_boxes,
-        }
 
     def mark_skipped(self, chapter_id: str, page_indices: list[int], skipped: bool) -> dict:
         processed_dir = PROCESSED_DIR / chapter_id
@@ -370,7 +374,8 @@ class ChapterPipeline:
             img_path = Path(page["original"])
             manual_mask_path = processed_dir / f"manual_mask_{img_path.name}"
             if manual_mask_path.exists():
-                existing_mask = read_image(manual_mask_path, flags=cv2.IMREAD_GRAYSCALE)
+                raw = np.fromfile(str(manual_mask_path), dtype=np.uint8)
+                existing_mask = cv2.imdecode(raw, cv2.IMREAD_GRAYSCALE)
                 if existing_mask is not None and existing_mask.shape == (h, w):
                     mask = np.maximum(existing_mask, mask)
 
@@ -407,7 +412,8 @@ class ChapterPipeline:
 
         manual_mask_path = processed_dir / f"manual_mask_{img_path.name}"
         if manual_mask_path.exists():
-            manual_mask = read_image(manual_mask_path, flags=cv2.IMREAD_GRAYSCALE)
+            raw = np.fromfile(str(manual_mask_path), dtype=np.uint8)
+            manual_mask = cv2.imdecode(raw, cv2.IMREAD_GRAYSCALE)
             if manual_mask is not None and manual_mask.any():
                 num_labels, labels = cv2.connectedComponents(manual_mask)
                 for label in range(1, num_labels):
@@ -433,3 +439,24 @@ class ChapterPipeline:
             json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
         )
         os.replace(tmp_path, final_path)
+
+    def _process_page(self, img_path: Path, processed_dir: Path) -> dict:
+        image = read_image(img_path)
+        boxes = self.detector.detect(image)
+        clean_image = self.inpainter.inpaint(image, boxes)
+
+        clean_path = processed_dir / f"clean_{img_path.name}"
+        write_image(clean_path, clean_image)
+
+        logger.debug(f"Processed {img_path.name}: {len(boxes)} boxes detected")
+        return {
+            "clean": clean_path.as_posix(),
+            "boxes": [
+                {
+                    "x1": b.x1, "y1": b.y1, "x2": b.x2, "y2": b.y2,
+                    "confidence": b.confidence,
+                    "mask": _encode_mask(b.mask),
+                }
+                for b in boxes
+            ],
+        }
