@@ -1,6 +1,5 @@
 import json
 import os
-import uuid
 from pathlib import Path
 
 import cv2
@@ -9,11 +8,8 @@ from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
-from pydantic import BaseModel, field_validator
 from starlette.middleware.base import BaseHTTPMiddleware
-
-from contextlib import asynccontextmanager, contextmanager
-from filelock import FileLock, Timeout
+from contextlib import asynccontextmanager
 
 from app.config import (
     PROCESSED_DIR,
@@ -23,18 +19,31 @@ from app.config import (
     check_models,
 )
 from app.logging_config import logger
+from app.manifest_utils import (
+    get_manifest_lock,
+    load_manifest_raw,
+    save_manifest_raw,
+    urlify_manifest,
+)
 from app.ocr.multi_lang_ocr import MultiLangOCR
 from app.pipeline import ChapterPipeline
 from app.render.text_renderer import list_available_fonts, render_text_in_box
+from app.schemas import (
+    AddBoxRequest,
+    ChapterRequest,
+    OcrBoxRequest,
+    ProcessPagesRequest,
+    RemoveBoxRequest,
+    RenderRequest,
+    SaveDraftRequest,
+    SkipPagesRequest,
+)
 from app.security import (
-    MAX_RENDER_TEXT_LEN,
-    MAX_RENDER_TRANSLATIONS,
     MAX_REQUEST_BYTES,
     MAX_UPLOAD_FILES,
     MAX_UPLOAD_TOTAL_BYTES,
     validate_chapter_id,
     validate_image_size,
-    validate_upload_image,
     validate_url,
 )
 
@@ -76,27 +85,6 @@ class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(RequestSizeLimitMiddleware)
 
-# Per-chapter locks: prevent concurrent requests (e.g. many /api/ocr_box calls
-# firing at once for the same chapter) from racing on manifest.json — both the
-# Windows "Access is denied" file-replace race and the silent lost-update race
-# where one request's saved changes overwrite another's.
-
-
-
-_MANIFEST_LOCK_TIMEOUT = 30
-
-
-@contextmanager
-def _get_manifest_lock(chapter_id: str):
-    lock_path = PROCESSED_DIR / chapter_id / "manifest.lock"
-    lock_path.parent.mkdir(parents=True, exist_ok=True)
-    lock = FileLock(lock_path)
-    try:
-        with lock.acquire(timeout=_MANIFEST_LOCK_TIMEOUT):
-            yield
-    except Timeout:
-        raise RuntimeError(f"Manifest lock timeout for chapter {chapter_id}")
-
 
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
@@ -104,105 +92,6 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
         return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
     logger.exception(f"Unhandled exception on {request.method} {request.url.path}")
     return JSONResponse({"detail": "Internal server error"}, status_code=500)
-
-
-def _load_manifest_raw(chapter_id: str) -> dict:
-    validate_chapter_id(chapter_id)
-    manifest_path = PROCESSED_DIR / chapter_id / "manifest.json"
-    if not manifest_path.exists():
-        raise HTTPException(404, f"Chapter {chapter_id} not found")
-    return json.loads(manifest_path.read_text(encoding="utf-8"))
-
-
-def _save_manifest_raw(chapter_id: str, manifest: dict) -> None:
-    processed_dir = PROCESSED_DIR / chapter_id
-    processed_dir.mkdir(parents=True, exist_ok=True)
-    tmp_path = processed_dir / f"manifest.json.{uuid.uuid4().hex}.tmp"
-    final_path = processed_dir / "manifest.json"
-    tmp_path.write_text(
-        json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
-    os.replace(tmp_path, final_path)
-
-
-def urlify_manifest(manifest: dict) -> dict:
-    result = json.loads(json.dumps(manifest))
-    chapter_id = result["chapter_id"]
-    for i, page in enumerate(result["pages"]):
-        page["original"] = f"/api/image/{chapter_id}/{i}/original"
-        if page.get("clean"):
-            page["clean"] = f"/api/image/{chapter_id}/{i}/clean"
-        for box in page.get("boxes", []):
-            box.pop("mask", None)
-    return result
-
-
-class ChapterRequest(BaseModel):
-    url: str
-    workers: int = 2
-
-
-class OcrBoxRequest(BaseModel):
-    chapter_id: str
-    page_index: int
-    box_index: int
-    lang: str
-
-
-class RenderRequest(BaseModel):
-    chapter_id: str
-    page_index: int
-    translations: dict[int, str]
-    colors: dict[str, str] = {}
-    fonts: dict[str, str] = {}
-    font_sizes: dict[str, int | str] = {}
-    bolds: dict[str, bool] = {}
-    stroke_widths: dict[str, int | str] = {}
-    stroke_colors: dict[str, str] = {}
-    bg_colors: dict[str, str] = {}
-    corner_radii: dict[str, int] = {}
-
-    @field_validator("translations")
-    @classmethod
-    def _check_translations(cls, v: dict[int, str]) -> dict[int, str]:
-        if len(v) > MAX_RENDER_TRANSLATIONS:
-            raise ValueError(f"Too many translations: {len(v)} > {MAX_RENDER_TRANSLATIONS}")
-        for k, val in v.items():
-            if len(val) > MAX_RENDER_TEXT_LEN:
-                raise ValueError(f"Translation {k} too long: {len(val)} chars")
-        return v
-
-
-class SaveDraftRequest(BaseModel):
-    chapter_id: str
-    drafts: dict[str, dict] = {}
-
-
-class ProcessPagesRequest(BaseModel):
-    chapter_id: str
-    page_indices: list[int]
-    workers: int = 2
-
-
-class SkipPagesRequest(BaseModel):
-    chapter_id: str
-    page_indices: list[int]
-    skipped: bool
-
-
-class AddBoxRequest(BaseModel):
-    chapter_id: str
-    page_index: int
-    x1: int
-    y1: int
-    x2: int
-    y2: int
-
-
-class RemoveBoxRequest(BaseModel):
-    chapter_id: str
-    page_index: int
-    box_index: int
 
 
 @app.get("/api/fonts")
@@ -245,7 +134,7 @@ def _clamp_workers(n: int | None) -> int:
 @app.post("/api/chapter")
 def create_chapter(req: ChapterRequest) -> dict:
     validate_url(req.url)
-    chapter_id = uuid.uuid4().hex[:8]
+    chapter_id = os.urandom(4).hex()
     workers = _clamp_workers(req.workers)
     logger.info(f"Creating chapter {chapter_id} from {req.url} (workers={workers})")
     manifest = pipeline.download_chapter(req.url, chapter_id, workers=workers)
@@ -271,7 +160,7 @@ async def create_chapter_from_upload(
             raise HTTPException(413, f"Total upload size exceeds {MAX_UPLOAD_TOTAL_BYTES // (1024*1024)}MB")
         uploads.append((f.filename or "unnamed", data))
 
-    chapter_id = uuid.uuid4().hex[:8]
+    chapter_id = os.urandom(4).hex()
     workers_n = _clamp_workers(workers)
     logger.info(f"Creating chapter {chapter_id} from {len(uploads)} uploaded files (workers={workers_n})")
     manifest = pipeline.create_chapter_from_uploads(chapter_id, uploads, workers=workers_n)
@@ -327,7 +216,7 @@ async def repaint_mask(
 
 @app.get("/api/chapter/{chapter_id}")
 def get_chapter(chapter_id: str) -> dict:
-    return urlify_manifest(_load_manifest_raw(chapter_id))
+    return urlify_manifest(load_manifest_raw(chapter_id))
 
 
 @app.get("/api/image/{chapter_id}/{page_index}/{kind}")
@@ -341,7 +230,7 @@ def get_image(chapter_id: str, page_index: int, kind: str):
     if kind == "rendered":
         path = OUTPUT_DIR / chapter_id / f"page_{page_index:03d}.png"
     else:
-        manifest = _load_manifest_raw(chapter_id)
+        manifest = load_manifest_raw(chapter_id)
         if page_index >= len(manifest["pages"]):
             raise HTTPException(404, "Page not found")
         page = manifest["pages"][page_index]
@@ -359,7 +248,7 @@ def get_image(chapter_id: str, page_index: int, kind: str):
 @app.post("/api/ocr_box")
 def ocr_box(req: OcrBoxRequest) -> dict:
     validate_chapter_id(req.chapter_id)
-    manifest = _load_manifest_raw(req.chapter_id)
+    manifest = load_manifest_raw(req.chapter_id)
     page = manifest["pages"][req.page_index]
     box = page["boxes"][req.box_index]
 
@@ -378,10 +267,10 @@ def ocr_box(req: OcrBoxRequest) -> dict:
 
     text = ocr.read(crop_rgb, req.lang)
 
-    with _get_manifest_lock(req.chapter_id):
-        manifest = _load_manifest_raw(req.chapter_id)
+    with get_manifest_lock(req.chapter_id):
+        manifest = load_manifest_raw(req.chapter_id)
         manifest["pages"][req.page_index]["boxes"][req.box_index]["ocr_text"] = text
-        _save_manifest_raw(req.chapter_id, manifest)
+        save_manifest_raw(req.chapter_id, manifest)
 
     return {"text": text}
 
@@ -389,12 +278,12 @@ def ocr_box(req: OcrBoxRequest) -> dict:
 @app.post("/api/save_draft")
 def save_draft(req: SaveDraftRequest) -> dict:
     validate_chapter_id(req.chapter_id)
-    with _get_manifest_lock(req.chapter_id):
-        manifest = _load_manifest_raw(req.chapter_id)
+    with get_manifest_lock(req.chapter_id):
+        manifest = load_manifest_raw(req.chapter_id)
         if "drafts" not in manifest:
             manifest["drafts"] = {}
         manifest["drafts"].update(req.drafts)
-        _save_manifest_raw(req.chapter_id, manifest)
+        save_manifest_raw(req.chapter_id, manifest)
     return {"ok": True}
 
 
@@ -413,7 +302,7 @@ def _style_get(d: dict, idx: int, default=None):
 @app.post("/api/render")
 def render_page(req: RenderRequest) -> dict:
     validate_chapter_id(req.chapter_id)
-    manifest = _load_manifest_raw(req.chapter_id)
+    manifest = load_manifest_raw(req.chapter_id)
     if req.page_index < 0 or req.page_index >= len(manifest["pages"]):
         raise HTTPException(400, f"Invalid page_index: {req.page_index}")
     page = manifest["pages"][req.page_index]
@@ -519,7 +408,7 @@ def render_page(req: RenderRequest) -> dict:
         raise HTTPException(500, f"Cannot save rendered image: {e}") from e
 
     page["rendered"] = True
-    _save_manifest_raw(req.chapter_id, manifest)
+    save_manifest_raw(req.chapter_id, manifest)
 
     logger.info(
         "Chapter %s page %s: rendered %s box(es) -> %s",
