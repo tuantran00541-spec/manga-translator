@@ -36,6 +36,11 @@ class Inpainter:
                 for b in cluster
             ]
             local_mask = build_mask((cy2 - cy1, cx2 - cx1), local_boxes)
+
+            # Extra dilation to eliminate all text edge outlines & furigana residue
+            dil_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
+            local_mask = cv2.dilate(local_mask, dil_kernel, iterations=1)
+
             result = self._paint_region(result, local_mask, crop_box)
 
         return result
@@ -45,7 +50,7 @@ class Inpainter:
         if len(ys) == 0:
             return image.copy()
 
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9))
         mask = cv2.dilate(mask, kernel, iterations=1)
 
         h, w = image.shape[:2]

@@ -26,15 +26,15 @@ class CombinedTextDetector:
                 if self._is_inside(t, b)
             ]
             if inside_text:
-                raw_min_x = min(t.x1 for t in inside_text) - 6
-                raw_min_y = min(t.y1 for t in inside_text) - 6
-                raw_max_x = max(t.x2 for t in inside_text) + 6
-                raw_max_y = max(t.y2 for t in inside_text) + 6
+                raw_min_x = min(t.x1 for t in inside_text) - 8
+                raw_min_y = min(t.y1 for t in inside_text) - 8
+                raw_max_x = max(t.x2 for t in inside_text) + 8
+                raw_max_y = max(t.y2 for t in inside_text) + 8
 
-                min_x = max(b.x1 + 4, raw_min_x)
-                min_y = max(b.y1 + 4, raw_min_y)
-                max_x = min(b.x2 - 4, raw_max_x)
-                max_y = min(b.y2 - 4, raw_max_y)
+                min_x = max(b.x1 + 3, raw_min_x)
+                min_y = max(b.y1 + 3, raw_min_y)
+                max_x = min(b.x2 - 3, raw_max_x)
+                max_y = min(b.y2 - 3, raw_max_y)
 
                 if max_x > min_x and max_y > min_y:
                     min_x, min_y, max_x, max_y = int(min_x), int(min_y), int(max_x), int(max_y)
@@ -52,8 +52,8 @@ class CombinedTextDetector:
             else:
                 w = b.x2 - b.x1
                 h = b.y2 - b.y1
-                margin_x = max(6, int(w * 0.08))
-                margin_y = max(6, int(h * 0.08))
+                margin_x = max(4, int(w * 0.04))
+                margin_y = max(4, int(h * 0.04))
                 inner_box = BubbleBox(
                     b.x1 + margin_x,
                     b.y1 + margin_y,
