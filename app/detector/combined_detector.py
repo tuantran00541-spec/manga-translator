@@ -72,11 +72,62 @@ class CombinedTextDetector:
                 )
                 result_boxes.append(inner_box)
 
-        for i, t in enumerate(text_boxes):
-            if i not in used_text_boxes:
-                result_boxes.append(t)
+        # Process free text boxes (outside bubbles, e.g. captions, SFX, standalone monologues)
+        standalone_text = [
+            t for i, t in enumerate(text_boxes)
+            if i not in used_text_boxes
+        ]
+
+        clustered_free_text = self._cluster_free_text_boxes(standalone_text)
+        result_boxes.extend(clustered_free_text)
 
         return result_boxes
+
+    def _cluster_free_text_boxes(self, boxes: list[BubbleBox]) -> list[BubbleBox]:
+        if not boxes:
+            return []
+
+        remaining = list(boxes)
+        clustered_results = []
+
+        while remaining:
+            cluster = [remaining.pop(0)]
+            changed = True
+            while changed:
+                changed = False
+                still_remaining = []
+                for b in remaining:
+                    if any(self._is_free_text_close(b, c) for c in cluster):
+                        cluster.append(b)
+                        changed = True
+                    else:
+                        still_remaining.append(b)
+                remaining = still_remaining
+
+            if len(cluster) == 1:
+                clustered_results.append(cluster[0])
+            else:
+                min_x = max(0, min(t.x1 for t in cluster) - 6)
+                min_y = max(0, min(t.y1 for t in cluster) - 6)
+                max_x = max(t.x2 for t in cluster) + 6
+                max_y = max(t.y2 for t in cluster) + 6
+                merged_mask = self._merge_masks(cluster, min_x, min_y, max_x, max_y)
+                clustered_results.append(
+                    BubbleBox(
+                        min_x, min_y, max_x, max_y,
+                        max(t.confidence for t in cluster),
+                        merged_mask,
+                    )
+                )
+
+        return clustered_results
+
+    @staticmethod
+    def _is_free_text_close(a: BubbleBox, b: BubbleBox) -> bool:
+        # Check if two free text boxes belong to the same caption block or multi-line paragraph
+        x_overlap = not (a.x2 < b.x1 - 30 or b.x2 < a.x1 - 30)
+        y_close = abs(a.y1 - b.y1) < 40 or abs(a.y2 - b.y2) < 40 or not (a.y2 < b.y1 - 35 or b.y2 < a.y1 - 35)
+        return x_overlap and y_close
 
     @staticmethod
     def _merge_masks(inside_text: list[BubbleBox], min_x: int, min_y: int, max_x: int, max_y: int) -> np.ndarray | None:
