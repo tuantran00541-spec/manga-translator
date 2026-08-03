@@ -2,12 +2,14 @@ import numpy as np
 import cv2
 from app.detector.bubble_detector import BubbleBox
 
-MASK_EXPAND = 6
+MASK_EXPAND = 8
 
 
 def build_mask(image_shape: tuple[int, int], boxes: list[BubbleBox]) -> np.ndarray:
     h, w = image_shape
     mask = np.zeros((h, w), dtype=np.uint8)
+    has_stroke_masks = False
+
     for box in boxes:
         box_w = box.x2 - box.x1
         box_h = box.y2 - box.y1
@@ -15,6 +17,7 @@ def build_mask(image_shape: tuple[int, int], boxes: list[BubbleBox]) -> np.ndarr
             continue
 
         if box.mask is not None and box.mask.shape == (box_h, box_w):
+            has_stroke_masks = True
             x1 = max(0, box.x1)
             y1 = max(0, box.y1)
             x2 = min(w, box.x2)
@@ -31,6 +34,9 @@ def build_mask(image_shape: tuple[int, int], boxes: list[BubbleBox]) -> np.ndarr
             y2 = min(h, box.y2 + MASK_EXPAND)
             cv2.rectangle(mask, (x1, y1), (x2, y2), 255, -1)
 
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+    # Dilate text stroke masks sufficiently to cover antialiased edges, outlines, and shadows.
+    # A 13x13 ellipse kernel ensures all text borders are 100% covered so LaMa won't duplicate text.
+    dilation_kernel_size = (13, 13) if has_stroke_masks else (7, 7)
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, dilation_kernel_size)
     mask = cv2.dilate(mask, kernel, iterations=1)
     return mask
