@@ -148,7 +148,7 @@ class Inpainter:
     @staticmethod
     def _cluster_boxes(boxes: list[BubbleBox]) -> list[list[BubbleBox]]:
         remaining = list(boxes)
-        clusters = []
+        raw_clusters = []
 
         while remaining:
             current = [remaining.pop(0)]
@@ -163,9 +163,41 @@ class Inpainter:
                     else:
                         still_remaining.append(b)
                 remaining = still_remaining
-            clusters.append(current)
+            raw_clusters.append(current)
 
-        return clusters
+        final_clusters = []
+        for cluster in raw_clusters:
+            if len(cluster) > 1:
+                avg_h = sum(b.y2 - b.y1 for b in cluster) / len(cluster)
+                cluster_h = max(b.y2 for b in cluster) - min(b.y1 for b in cluster)
+                if len(cluster) > 3 or cluster_h > 4.0 * avg_h:
+                    sub_clusters = Inpainter._split_cluster_lines(cluster, avg_h)
+                    final_clusters.extend(sub_clusters)
+                else:
+                    final_clusters.append(cluster)
+            else:
+                final_clusters.append(cluster)
+
+        return final_clusters
+
+    @staticmethod
+    def _split_cluster_lines(cluster: list[BubbleBox], avg_h: float) -> list[list[BubbleBox]]:
+        sorted_boxes = sorted(cluster, key=lambda b: (b.y1, b.x1))
+        sub_clusters = []
+        current_sub = []
+        for b in sorted_boxes:
+            if not current_sub:
+                current_sub = [b]
+            else:
+                new_h = max(x.y2 for x in current_sub + [b]) - min(x.y1 for x in current_sub + [b])
+                if len(current_sub) >= 3 or new_h > 3.0 * avg_h:
+                    sub_clusters.append(current_sub)
+                    current_sub = [b]
+                else:
+                    current_sub.append(b)
+        if current_sub:
+            sub_clusters.append(current_sub)
+        return sub_clusters
 
     @staticmethod
     def _boxes_close(a: BubbleBox, b: BubbleBox) -> bool:
