@@ -24,6 +24,19 @@
   background: rgba(110, 168, 255, 0.06);
 }
 
+.empty-boxes-notice {
+  background: var(--panel);
+  border: 1px dashed var(--line);
+  padding: 12px;
+  margin-bottom: 14px;
+  border-radius: 4px;
+  color: var(--text-dim);
+  font-family: var(--font-body);
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: center;
+}
+
 .box-item {
   background: var(--panel);
   border: 1px solid var(--line);

@@ -33,6 +33,15 @@ function renderEditor() {
       const scaleX = img.clientWidth / img.naturalWidth;
       const scaleY = img.clientHeight / img.naturalHeight;
 
+      const activeBoxes = page.boxes.filter((b) => !b.removed);
+      if (activeBoxes.length === 0) {
+        const emptyNotice = document.createElement("div");
+        emptyNotice.className = "empty-boxes-notice";
+        emptyNotice.textContent =
+          "Không phát hiện text nào trên trang này. Dùng công cụ thêm vùng thủ công nếu cần dịch.";
+        panel.appendChild(emptyNotice);
+      }
+
       page.boxes.forEach((box, boxIndex) => {
         if (box.removed) return;
 

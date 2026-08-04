@@ -1,5 +1,5 @@
 import numpy as np
-from app.detector.bubble_detector import YoloDetector, BubbleBox
+from app.detector.bubble_detector import YoloDetector, BubbleBox, MAX_BOX_AREA_RATIO
 from app.config import (
     BUBBLE_DETECTOR_MODEL,
     TEXT_SEGMENTER_MODEL,
@@ -82,7 +82,7 @@ class CombinedTextDetector:
             return []
 
         remaining = list(boxes)
-        clustered_results = []
+        raw_clusters = []
 
         while remaining:
             cluster = [remaining.pop(0)]
@@ -97,30 +97,80 @@ class CombinedTextDetector:
                     else:
                         still_remaining.append(b)
                 remaining = still_remaining
+            raw_clusters.append(cluster)
 
-            if len(cluster) == 1:
-                b = cluster[0]
-                min_x = max(0, b.x1 - 20)
-                min_y = max(0, b.y1 - 6)
-                max_x = min(img_w, b.x2 + 20)
-                max_y = min(img_h, b.y2 + 6)
-                merged_mask = self._merge_masks([b], min_x, min_y, max_x, max_y)
-                clustered_results.append(BubbleBox(min_x, min_y, max_x, max_y, b.confidence, merged_mask))
+        final_clusters = []
+        for cluster in raw_clusters:
+            if len(cluster) > 1:
+                avg_box_h = sum(b.y2 - b.y1 for b in cluster) / len(cluster)
+                cluster_h = max(b.y2 for b in cluster) - min(b.y1 for b in cluster)
+                if len(cluster) > 3 or cluster_h > 4.0 * avg_box_h:
+                    sub_clusters = self._split_cluster_by_lines(cluster, avg_box_h)
+                else:
+                    sub_clusters = [cluster]
             else:
-                min_x = max(0, min(t.x1 for t in cluster) - 20)
-                min_y = max(0, min(t.y1 for t in cluster) - 8)
-                max_x = min(img_w, max(t.x2 for t in cluster) + 20)
-                max_y = min(img_h, max(t.y2 for t in cluster) + 8)
-                merged_mask = self._merge_masks(cluster, min_x, min_y, max_x, max_y)
-                clustered_results.append(
-                    BubbleBox(
-                        min_x, min_y, max_x, max_y,
-                        max(t.confidence for t in cluster),
-                        merged_mask,
-                    )
-                )
+                sub_clusters = [cluster]
 
-        return clustered_results
+            for sub in sub_clusters:
+                if len(sub) == 1:
+                    b = sub[0]
+                    min_x = max(0, b.x1 - 20)
+                    min_y = max(0, b.y1 - 6)
+                    max_x = min(img_w, b.x2 + 20)
+                    max_y = min(img_h, b.y2 + 6)
+                    cluster_area = (max_x - min_x) * (max_y - min_y)
+                    if cluster_area > img_w * img_h * MAX_BOX_AREA_RATIO:
+                        continue
+                    merged_mask = self._merge_masks([b], min_x, min_y, max_x, max_y)
+                    final_clusters.append(BubbleBox(min_x, min_y, max_x, max_y, b.confidence, merged_mask))
+                else:
+                    min_x = max(0, min(t.x1 for t in sub) - 20)
+                    min_y = max(0, min(t.y1 for t in sub) - 8)
+                    max_x = min(img_w, max(t.x2 for t in sub) + 20)
+                    max_y = min(img_h, max(t.y2 for t in sub) + 8)
+                    cluster_area = (max_x - min_x) * (max_y - min_y)
+                    if cluster_area > img_w * img_h * MAX_BOX_AREA_RATIO:
+                        continue
+                    merged_mask = self._merge_masks(sub, min_x, min_y, max_x, max_y)
+                    final_clusters.append(
+                        BubbleBox(
+                            min_x, min_y, max_x, max_y,
+                            max(t.confidence for t in sub),
+                            merged_mask,
+                        )
+                    )
+
+        return final_clusters
+
+    @staticmethod
+    def _split_cluster_by_lines(cluster: list[BubbleBox], avg_box_h: float) -> list[list[BubbleBox]]:
+        sorted_boxes = sorted(cluster, key=lambda b: (b.y1, b.x1))
+        sub_clusters = []
+        current_sub = []
+        current_min_y = 0
+
+        for b in sorted_boxes:
+            if not current_sub:
+                current_sub = [b]
+                current_min_y = b.y1
+            else:
+                prev_b = current_sub[-1]
+                new_h = max(box.y2 for box in current_sub + [b]) - min(box.y1 for box in current_sub + [b])
+                if (
+                    len(current_sub) >= 3
+                    or new_h > 3.0 * avg_box_h
+                    or (b.y1 - prev_b.y2 > 0.8 * avg_box_h and b.y1 - current_min_y > 1.5 * avg_box_h)
+                ):
+                    sub_clusters.append(current_sub)
+                    current_sub = [b]
+                    current_min_y = b.y1
+                else:
+                    current_sub.append(b)
+
+        if current_sub:
+            sub_clusters.append(current_sub)
+
+        return sub_clusters
 
     @staticmethod
     def _is_free_text_close(a: BubbleBox, b: BubbleBox) -> bool:
@@ -129,10 +179,7 @@ class CombinedTextDetector:
         return x_overlap and y_close
 
     @staticmethod
-    def _merge_masks(inside_text: list[BubbleBox], min_x: int, min_y: int, max_x: int, max_y: int) -> np.ndarray | None:
-        if any(t.mask is None for t in inside_text):
-            return None
-
+    def _merge_masks(inside_text: list[BubbleBox], min_x: int, min_y: int, max_x: int, max_y: int) -> np.ndarray:
         merged = np.zeros((max_y - min_y, max_x - min_x), dtype=np.uint8)
         for t in inside_text:
             tx1 = max(min_x, t.x1)
@@ -141,13 +188,16 @@ class CombinedTextDetector:
             ty2 = min(max_y, t.y2)
             if tx2 <= tx1 or ty2 <= ty1:
                 continue
-            mask_x1 = tx1 - t.x1
-            mask_y1 = ty1 - t.y1
-            mask_x2 = mask_x1 + (tx2 - tx1)
-            mask_y2 = mask_y1 + (ty2 - ty1)
-            sub_mask = t.mask[mask_y1:mask_y2, mask_x1:mask_x2]
-            dest = merged[ty1 - min_y:ty2 - min_y, tx1 - min_x:tx2 - min_x]
-            merged[ty1 - min_y:ty2 - min_y, tx1 - min_x:tx2 - min_x] = np.maximum(dest, sub_mask)
+            if t.mask is not None:
+                mask_x1 = tx1 - t.x1
+                mask_y1 = ty1 - t.y1
+                mask_x2 = mask_x1 + (tx2 - tx1)
+                mask_y2 = mask_y1 + (ty2 - ty1)
+                sub_mask = t.mask[mask_y1:mask_y2, mask_x1:mask_x2]
+                dest = merged[ty1 - min_y:ty2 - min_y, tx1 - min_x:tx2 - min_x]
+                merged[ty1 - min_y:ty2 - min_y, tx1 - min_x:tx2 - min_x] = np.maximum(dest, sub_mask)
+            else:
+                merged[ty1 - min_y:ty2 - min_y, tx1 - min_x:tx2 - min_x] = 255
 
         return merged
 
