@@ -12,7 +12,8 @@ class MultiLangOCR:
         self._manga_ocr = None
         self._paddle_engines = {}
         self._manga_lock = threading.Lock()
-        self._paddle_lock = threading.Lock()
+        self._paddle_locks_guard = threading.Lock()
+        self._paddle_locks = {}
 
     def read(self, image: np.ndarray, lang: str) -> str:
         if image is None or image.size == 0:
@@ -126,8 +127,12 @@ class MultiLangOCR:
             "japan": "japan",
         }
         target_lang = lang_map.get(lang.lower(), lang)
+        with self._paddle_locks_guard:
+            if target_lang not in self._paddle_locks:
+                self._paddle_locks[target_lang] = threading.Lock()
+            lang_lock = self._paddle_locks[target_lang]
         if target_lang not in self._paddle_engines:
-            with self._paddle_lock:
+            with lang_lock:
                 if target_lang not in self._paddle_engines:
                     from paddleocr import PaddleOCR
                     self._paddle_engines[target_lang] = PaddleOCR(
@@ -139,3 +144,4 @@ class MultiLangOCR:
                         det_db_unclip_ratio=2.0,
                     )
         return self._paddle_engines[target_lang]
+

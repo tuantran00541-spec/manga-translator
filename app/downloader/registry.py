@@ -44,6 +44,9 @@ def download_chapter(chapter_url: str, output_dir: Path) -> list[Path]:
         if paths:
             return paths
     except Exception:
-        pass
+        for f in output_dir.glob("*"):
+            if f.is_file():
+                f.unlink()
 
     return JS_ADAPTER.download(chapter_url, output_dir)
+

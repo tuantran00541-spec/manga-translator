@@ -40,6 +40,7 @@ def parse_color(color_input, default=(0, 0, 0)) -> tuple[int, int, int]:
     return default
 
 
+
 def auto_detect_text_color(image: Image.Image, box: tuple[int, int, int, int]) -> tuple[int, int, int]:
     x1, y1, x2, y2 = box
     crop = image.crop((x1, y1, x2, y2)).convert("L")
@@ -56,19 +57,29 @@ def get_font_path(font_name: str = "default") -> Path:
     if not font_name or font_name == "default":
         return DEFAULT_FONT
     font_dir = DEFAULT_FONT.parent
+    font_dir_resolved = font_dir.resolve()
     candidate = font_dir / font_name
     if candidate.exists() and candidate.is_file():
+        if not candidate.resolve().is_relative_to(font_dir_resolved):
+            return DEFAULT_FONT
         return candidate
     candidate_ttf = font_dir / f"{font_name}.ttf"
     if candidate_ttf.exists() and candidate_ttf.is_file():
+        if not candidate_ttf.resolve().is_relative_to(font_dir_resolved):
+            return DEFAULT_FONT
         return candidate_ttf
     for f in font_dir.glob("*.[tT][tT][fF]"):
         if f.stem.lower() == font_name.lower() or f.name.lower() == font_name.lower():
+            if not f.resolve().is_relative_to(font_dir_resolved):
+                return DEFAULT_FONT
             return f
     win_fonts = Path("C:/Windows/Fonts")
     if win_fonts.exists():
+        win_fonts_resolved = win_fonts.resolve()
         sys_candidate = win_fonts / f"{font_name}.ttf"
         if sys_candidate.exists():
+            if not sys_candidate.resolve().is_relative_to(win_fonts_resolved):
+                return DEFAULT_FONT
             return sys_candidate
     return DEFAULT_FONT
 

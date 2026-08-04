@@ -1,13 +1,9 @@
-import json
-import os
 import shutil
 import base64
 from pathlib import Path
-from contextlib import contextmanager
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import cv2
 import numpy as np
-from filelock import FileLock, Timeout
 from app.downloader.registry import download_chapter as fetch_chapter_images
 from app.downloader.slicer import slice_image
 from app.detector.combined_detector import CombinedTextDetector
@@ -15,6 +11,7 @@ from app.detector.bubble_detector import BubbleBox
 from app.inpaint.lama_inpainter import Inpainter
 from app.config import RAW_DIR, PROCESSED_DIR
 from app.logging_config import logger
+from app.manifest_utils import load_manifest_raw, save_manifest_raw, get_manifest_lock
 from app.security import MAX_IMAGE_PIXELS, MAX_UPLOAD_FILE_BYTES, MAX_UPLOAD_FILES, validate_upload_image
 
 
@@ -58,7 +55,6 @@ def _decode_mask(mask_b64: str | None) -> np.ndarray | None:
     return cv2.imdecode(arr, cv2.IMREAD_GRAYSCALE)
 
 
-_MANIFEST_LOCK_TIMEOUT = 30
 
 
 class ChapterPipeline:
@@ -78,19 +74,6 @@ class ChapterPipeline:
             self._inpainter = Inpainter()
         return self._inpainter
 
-    @staticmethod
-    @contextmanager
-    def _manifest_lock(chapter_id: str):
-        processed_dir = PROCESSED_DIR / chapter_id
-        processed_dir.mkdir(parents=True, exist_ok=True)
-        lock = FileLock(processed_dir / "manifest.lock")
-        try:
-            with lock.acquire(timeout=_MANIFEST_LOCK_TIMEOUT):
-                yield
-        except Timeout:
-            raise RuntimeError(
-                f"Manifest lock timeout for chapter {chapter_id}"
-            )
 
     def download_chapter(self, chapter_url: str, chapter_id: str, workers: int = 2) -> dict:
         raw_dir = RAW_DIR / chapter_id
@@ -214,16 +197,16 @@ class ChapterPipeline:
                 })
 
         manifest = {"chapter_id": chapter_id, "source_url": source_url, "pages": pages}
-        with self._manifest_lock(chapter_id):
-            self._save_manifest(processed_dir, manifest)
+        with get_manifest_lock(chapter_id):
+            save_manifest_raw(chapter_id, manifest)
         return manifest
 
     def process_pages(self, chapter_id: str, page_indices: list[int], workers: int = 2) -> dict:
         processed_dir = PROCESSED_DIR / chapter_id
 
         # 1) Read work list under lock, then release — do NOT hold lock during inference.
-        with self._manifest_lock(chapter_id):
-            manifest = self._load_manifest(processed_dir)
+        with get_manifest_lock(chapter_id):
+            manifest = load_manifest_raw(chapter_id)
             work_items = [
                 (idx, Path(manifest["pages"][idx]["original"]))
                 for idx in page_indices
@@ -262,12 +245,12 @@ class ChapterPipeline:
             raise RuntimeError(f"Xử lý trang thất bại: {errors[0][1]}") from errors[0][1]
 
         # 2) Merge results under lock (reload in case another request edited boxes).
-        with self._manifest_lock(chapter_id):
-            manifest = self._load_manifest(processed_dir)
+        with get_manifest_lock(chapter_id):
+            manifest = load_manifest_raw(chapter_id)
             for idx, page_data in results.items():
                 if 0 <= idx < len(manifest["pages"]):
                     manifest["pages"][idx].update(page_data)
-            self._save_manifest(processed_dir, manifest)
+            save_manifest_raw(chapter_id, manifest)
             self._sync_output_dir(chapter_id, manifest, list(results.keys()))
 
         if errors:
@@ -281,15 +264,15 @@ class ChapterPipeline:
 
     def mark_skipped(self, chapter_id: str, page_indices: list[int], skipped: bool) -> dict:
         processed_dir = PROCESSED_DIR / chapter_id
-        with self._manifest_lock(chapter_id):
-            manifest = self._load_manifest(processed_dir)
+        with get_manifest_lock(chapter_id):
+            manifest = load_manifest_raw(chapter_id)
             for idx in page_indices:
                 if 0 <= idx < len(manifest["pages"]):
                     manifest["pages"][idx]["skipped"] = skipped
                     if skipped:
                         manifest["pages"][idx]["clean"] = manifest["pages"][idx]["original"]
                         manifest["pages"][idx]["boxes"] = []
-            self._save_manifest(processed_dir, manifest)
+            save_manifest_raw(chapter_id, manifest)
             self._sync_output_dir(chapter_id, manifest, page_indices)
         return manifest
 
@@ -318,8 +301,8 @@ class ChapterPipeline:
 
     def add_manual_box(self, chapter_id: str, page_index: int, x1: int, y1: int, x2: int, y2: int) -> dict:
         processed_dir = PROCESSED_DIR / chapter_id
-        with self._manifest_lock(chapter_id):
-            manifest = self._load_manifest(processed_dir)
+        with get_manifest_lock(chapter_id):
+            manifest = load_manifest_raw(chapter_id)
             if page_index < 0 or page_index >= len(manifest["pages"]):
                 return manifest
             page = manifest["pages"][page_index]
@@ -336,14 +319,14 @@ class ChapterPipeline:
             page["boxes"].append({"x1": x1, "y1": y1, "x2": x2, "y2": y2, "confidence": 1.0, "removed": False})
             self._reinpaint_page(page, image, processed_dir, img_path)
 
-            self._save_manifest(processed_dir, manifest)
+            save_manifest_raw(chapter_id, manifest)
             self._sync_output_dir(chapter_id, manifest, [page_index])
         return manifest
 
     def remove_box(self, chapter_id: str, page_index: int, box_index: int) -> dict:
         processed_dir = PROCESSED_DIR / chapter_id
-        with self._manifest_lock(chapter_id):
-            manifest = self._load_manifest(processed_dir)
+        with get_manifest_lock(chapter_id):
+            manifest = load_manifest_raw(chapter_id)
             if page_index < 0 or page_index >= len(manifest["pages"]):
                 return manifest
             page = manifest["pages"][page_index]
@@ -356,14 +339,14 @@ class ChapterPipeline:
             image = read_image(img_path)
             self._reinpaint_page(page, image, processed_dir, img_path)
 
-            self._save_manifest(processed_dir, manifest)
+            save_manifest_raw(chapter_id, manifest)
             self._sync_output_dir(chapter_id, manifest, [page_index])
         return manifest
 
     def repaint_mask(self, chapter_id: str, page_index: int, mask_png: bytes) -> dict:
         processed_dir = PROCESSED_DIR / chapter_id
-        with self._manifest_lock(chapter_id):
-            manifest = self._load_manifest(processed_dir)
+        with get_manifest_lock(chapter_id):
+            manifest = load_manifest_raw(chapter_id)
             if page_index < 0 or page_index >= len(manifest["pages"]):
                 return manifest
             page = manifest["pages"][page_index]
@@ -372,9 +355,13 @@ class ChapterPipeline:
             image = read_image(img_path)
             h, w = image.shape[:2]
 
+            if len(mask_png) > MAX_UPLOAD_FILE_BYTES:
+                return manifest
             mask_arr = np.frombuffer(mask_png, dtype=np.uint8)
             mask_decoded = cv2.imdecode(mask_arr, cv2.IMREAD_UNCHANGED)
             if mask_decoded is None:
+                return manifest
+            if mask_decoded.shape[0] * mask_decoded.shape[1] > MAX_IMAGE_PIXELS:
                 return manifest
 
             if mask_decoded.ndim == 3 and mask_decoded.shape[2] == 4:
@@ -403,7 +390,7 @@ class ChapterPipeline:
             # Re-inpaint cleanly from original image
             self._reinpaint_page(page, image, processed_dir, img_path)
 
-            self._save_manifest(processed_dir, manifest)
+            save_manifest_raw(chapter_id, manifest)
             self._sync_output_dir(chapter_id, manifest, [page_index])
         return manifest
 
@@ -435,19 +422,7 @@ class ChapterPipeline:
         page["clean"] = clean_path.as_posix()
         page["rendered"] = False
 
-    @staticmethod
-    def _load_manifest(processed_dir: Path) -> dict:
-        manifest_path = processed_dir / "manifest.json"
-        return json.loads(manifest_path.read_text(encoding="utf-8"))
 
-    @staticmethod
-    def _save_manifest(processed_dir: Path, manifest: dict) -> None:
-        tmp_path = processed_dir / "manifest.json.tmp"
-        final_path = processed_dir / "manifest.json"
-        tmp_path.write_text(
-            json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
-        os.replace(tmp_path, final_path)
 
     def _process_page(self, img_path: Path, processed_dir: Path) -> dict:
         image = read_image(img_path)

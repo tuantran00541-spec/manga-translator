@@ -71,7 +71,7 @@ class Inpainter:
         if not np.any(mask_bool):
             return image
 
-        # Extract ring of context pixels around mask (15px ring)
+        # Extract ring of context pixels around mask (10px ring)
         ring_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15))
         dilated_mask = cv2.dilate(local_mask, ring_kernel, iterations=1)
         ring_bool = (dilated_mask > 127) & (~mask_bool)
@@ -80,7 +80,7 @@ class Inpainter:
             ring_pixels = crop[ring_bool]
             gray_ring = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)[ring_bool]
 
-            # Case A: White Speech Bubble / Flat White Background (e.g. >85% pixels > 225)
+            # Case A: White Speech Bubble / Flat White Background (e.g. >88% pixels > 225)
             white_ratio = float((gray_ring > 225).mean())
             if white_ratio >= 0.85:
                 fill_color = np.median(ring_pixels[gray_ring > 225], axis=0).astype(np.uint8) if np.any(gray_ring > 225) else np.array([255, 255, 255], dtype=np.uint8)
@@ -88,7 +88,7 @@ class Inpainter:
                 image[cy1:cy2, cx1:cx2] = crop
                 return image
 
-            # Case B: Solid Black Background / Monologue Caption (e.g. >85% pixels < 30)
+            # Case B: Solid Black Background / Monologue Caption (e.g. >88% pixels < 30)
             black_ratio = float((gray_ring < 30).mean())
             if black_ratio >= 0.85:
                 fill_color = np.median(ring_pixels[gray_ring < 30], axis=0).astype(np.uint8) if np.any(gray_ring < 30) else np.array([0, 0, 0], dtype=np.uint8)
@@ -110,14 +110,24 @@ class Inpainter:
         cx1, cy1, cx2, cy2 = crop_box
         crop_h, crop_w = crop.shape[:2]
 
-        crop_resized = cv2.resize(crop, (INPAINT_SIZE, INPAINT_SIZE))
-        crop_rgb = cv2.cvtColor(crop_resized, cv2.COLOR_BGR2RGB)
-        mask_resized = cv2.resize(local_mask, (INPAINT_SIZE, INPAINT_SIZE))
+        scale = INPAINT_SIZE / max(crop_h, crop_w)
+        new_h, new_w = int(crop_h * scale), int(crop_w * scale)
+        pad_y = (INPAINT_SIZE - new_h) // 2
+        pad_x = (INPAINT_SIZE - new_w) // 2
+
+        crop_resized = cv2.resize(crop, (new_w, new_h))
+        canvas = np.zeros((INPAINT_SIZE, INPAINT_SIZE, 3), dtype=np.uint8)
+        canvas[pad_y:pad_y + new_h, pad_x:pad_x + new_w] = crop_resized
+        crop_rgb = cv2.cvtColor(canvas, cv2.COLOR_BGR2RGB)
+
+        mask_resized = cv2.resize(local_mask, (new_w, new_h), interpolation=cv2.INTER_NEAREST)
+        mask_canvas = np.zeros((INPAINT_SIZE, INPAINT_SIZE), dtype=np.uint8)
+        mask_canvas[pad_y:pad_y + new_h, pad_x:pad_x + new_w] = mask_resized
 
         img_blob = crop_rgb.astype(np.float32) / 255.0
         img_blob = img_blob.transpose(2, 0, 1)[None]
 
-        mask_blob = (mask_resized > 127).astype(np.float32)[None, None]
+        mask_blob = (mask_canvas > 127).astype(np.float32)[None, None]
 
         output = self.session.run(
             None, {self.image_input: img_blob, self.mask_input: mask_blob}
@@ -127,8 +137,9 @@ class Inpainter:
         if painted_rgb.max() <= 1.0:
             painted_rgb = painted_rgb * 255.0
         painted_rgb = np.clip(painted_rgb, 0, 255).astype(np.uint8)
-        painted = cv2.cvtColor(painted_rgb, cv2.COLOR_RGB2BGR)
-        painted = cv2.resize(painted, (crop_w, crop_h))
+        painted_full = cv2.cvtColor(painted_rgb, cv2.COLOR_RGB2BGR)
+        painted_crop = painted_full[pad_y:pad_y + new_h, pad_x:pad_x + new_w]
+        painted = cv2.resize(painted_crop, (crop_w, crop_h))
 
         mask_3d = (local_mask > 127)[:, :, None]
         image[cy1:cy2, cx1:cx2] = np.where(mask_3d, painted, image[cy1:cy2, cx1:cx2])

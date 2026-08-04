@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException
 
 from app.config import OUTPUT_DIR
 from app.logging_config import logger
-from app.manifest_utils import load_manifest_raw, save_manifest_raw
+from app.manifest_utils import get_manifest_lock, load_manifest_raw, save_manifest_raw
 from app.render.text_renderer import list_available_fonts, render_text_in_box
 from app.schemas import RenderRequest
 from app.security import validate_chapter_id
@@ -34,10 +34,11 @@ def get_available_fonts() -> list[dict[str, str]]:
 @router.post("/render")
 def render_page(req: RenderRequest) -> dict:
     validate_chapter_id(req.chapter_id)
-    manifest = load_manifest_raw(req.chapter_id)
-    if req.page_index < 0 or req.page_index >= len(manifest["pages"]):
-        raise HTTPException(400, f"Invalid page_index: {req.page_index}")
-    page = manifest["pages"][req.page_index]
+    with get_manifest_lock(req.chapter_id):
+        manifest = load_manifest_raw(req.chapter_id)
+        if req.page_index < 0 or req.page_index >= len(manifest["pages"]):
+            raise HTTPException(400, f"Invalid page_index: {req.page_index}")
+        page = manifest["pages"][req.page_index]
     logger.info(
         f"Chapter {req.chapter_id} page {req.page_index}: "
         f"rendering {len(req.translations)} translations"
@@ -139,7 +140,6 @@ def render_page(req: RenderRequest) -> dict:
         logger.exception("Failed to save rendered page %s", out_path)
         raise HTTPException(500, f"Cannot save rendered image: {e}") from e
 
-    from app.manifest_utils import get_manifest_lock
     with get_manifest_lock(req.chapter_id):
         m = load_manifest_raw(req.chapter_id)
         if 0 <= req.page_index < len(m.get("pages", [])):
@@ -154,3 +154,4 @@ def render_page(req: RenderRequest) -> dict:
         out_path.name,
     )
     return {"output": f"/api/image/{req.chapter_id}/{req.page_index}/rendered"}
+
