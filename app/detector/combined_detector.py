@@ -85,21 +85,6 @@ class CombinedTextDetector:
 
         result_boxes = self._refine_and_split_tall_boxes(result_boxes, image)
 
-        import json
-        debug_info = []
-        for box in result_boxes:
-            debug_info.append({
-                "bbox": [box.x1, box.y1, box.x2, box.y2],
-                "has_mask": box.mask is not None,
-                "mask_shape": list(box.mask.shape) if box.mask is not None else None,
-                "mask_nonzero_ratio": float((box.mask > 0).mean()) if box.mask is not None else None,
-            })
-        try:
-            with open(r"c:\Users\tin11\Downloads\manga-translator\manga-translator\debug_boxes.json", "w") as f:
-                json.dump(debug_info, f, indent=2)
-        except Exception:
-            pass
-
         return result_boxes
 
     @staticmethod
