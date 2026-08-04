@@ -348,3 +348,27 @@ async function removeBoxAndRepaint(pageIndex, boxIndex, item) {
     showToast("Xóa vùng thoại thất bại: " + err.message + " — vui lòng tải lại trang để đồng bộ.", "error");
   }
 }
+
+async function saveExcludedRegions(pageIndex, excludedRegions) {
+  try {
+    const resp = await fetch("/api/save_excluded_regions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chapter_id: currentChapterId,
+        page_index: pageIndex,
+        excluded_regions: excludedRegions,
+      }),
+    });
+    if (!resp.ok) {
+      const data = await resp.json().catch(() => ({}));
+      throw new Error(data.detail || `lỗi ${resp.status}`);
+    }
+    const manifest = await resp.json();
+    currentManifest.pages[pageIndex] = manifest.pages[pageIndex];
+    return manifest;
+  } catch (err) {
+    showToast("Không lưu được vùng cấm dịch: " + err.message, "error");
+    throw err;
+  }
+}

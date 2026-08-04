@@ -70,3 +70,16 @@ class RemoveBoxRequest(BaseModel):
     chapter_id: str
     page_index: int
     box_index: int
+
+
+class RegionModel(BaseModel):
+    x1: int
+    y1: int
+    x2: int
+    y2: int
+
+
+class SaveExcludedRegionsRequest(BaseModel):
+    chapter_id: str
+    page_index: int
+    excluded_regions: list[RegionModel]

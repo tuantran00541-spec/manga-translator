@@ -7,10 +7,11 @@ from fastapi.concurrency import run_in_threadpool
 from app.config import PROCESSED_DIR
 from app.dependencies import pipeline
 from app.logging_config import logger
-from app.manifest_utils import load_manifest_raw, urlify_manifest
+from app.manifest_utils import get_manifest_lock, load_manifest_raw, save_manifest_raw, urlify_manifest
 from app.schemas import (
     ChapterRequest,
     ProcessPagesRequest,
+    SaveExcludedRegionsRequest,
     SkipPagesRequest,
 )
 from app.security import (
@@ -117,3 +118,27 @@ def skip_pages(req: SkipPagesRequest) -> dict:
 @router.get("/chapter/{chapter_id}")
 def get_chapter(chapter_id: str) -> dict:
     return urlify_manifest(load_manifest_raw(chapter_id))
+
+
+@router.post("/save_excluded_regions")
+def save_excluded_regions(req: SaveExcludedRegionsRequest) -> dict:
+    validate_chapter_id(req.chapter_id)
+    with get_manifest_lock(req.chapter_id):
+        manifest = load_manifest_raw(req.chapter_id)
+        pages = manifest.get("pages", [])
+        if 0 <= req.page_index < len(pages):
+            pages[req.page_index]["excluded_regions"] = [r.model_dump() for r in req.excluded_regions]
+            save_manifest_raw(req.chapter_id, manifest)
+    return urlify_manifest(manifest)
+
+
+@router.post("/chapters/{chapter_id}/pages/{page_index}/excluded-regions")
+def set_page_excluded_regions(chapter_id: str, page_index: int, regions: list[dict]) -> dict:
+    validate_chapter_id(chapter_id)
+    with get_manifest_lock(chapter_id):
+        manifest = load_manifest_raw(chapter_id)
+        pages = manifest.get("pages", [])
+        if 0 <= page_index < len(pages):
+            pages[page_index]["excluded_regions"] = regions
+            save_manifest_raw(chapter_id, manifest)
+    return urlify_manifest(manifest)

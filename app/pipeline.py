@@ -192,6 +192,7 @@ class ChapterPipeline:
                     "clean": None,
                     "boxes": [],
                     "skipped": False,
+                    "excluded_regions": [],
                     "source_page": source_index,
                     "slice_index": slice_index,
                 })
@@ -208,7 +209,11 @@ class ChapterPipeline:
         with get_manifest_lock(chapter_id):
             manifest = load_manifest_raw(chapter_id)
             work_items = [
-                (idx, Path(manifest["pages"][idx]["original"]))
+                (
+                    idx,
+                    Path(manifest["pages"][idx]["original"]),
+                    manifest["pages"][idx].get("excluded_regions", []),
+                )
                 for idx in page_indices
                 if 0 <= idx < len(manifest["pages"]) and not manifest["pages"][idx]["skipped"]
             ]
@@ -224,9 +229,9 @@ class ChapterPipeline:
         results: dict[int, dict] = {}
         errors: list[tuple[int, Exception]] = []
 
-        def _process_one(item: tuple[int, Path]) -> tuple[int, dict]:
-            idx, img_path = item
-            return idx, self._process_page(img_path, processed_dir)
+        def _process_one(item: tuple[int, Path, list[dict]]) -> tuple[int, dict]:
+            idx, img_path, excluded = item
+            return idx, self._process_page(img_path, processed_dir, excluded_regions=excluded)
 
         with ThreadPoolExecutor(max_workers=max_workers) as pool:
             futures = {
@@ -424,15 +429,17 @@ class ChapterPipeline:
 
 
 
-    def _process_page(self, img_path: Path, processed_dir: Path) -> dict:
+    def _process_page(self, img_path: Path, processed_dir: Path, excluded_regions: list[dict] | None = None) -> dict:
         image = read_image(img_path)
         boxes = self.detector.detect(image)
+        if excluded_regions:
+            boxes = [b for b in boxes if not self._box_in_excluded(b, excluded_regions)]
         clean_image = self.inpainter.inpaint(image, boxes)
 
         clean_path = processed_dir / f"clean_{img_path.name}"
         write_image(clean_path, clean_image)
 
-        logger.debug(f"Processed {img_path.name}: {len(boxes)} boxes detected")
+        logger.debug(f"Processed {img_path.name}: {len(boxes)} boxes detected (after excluded filtering)")
         return {
             "clean": clean_path.as_posix(),
             "boxes": [
@@ -444,3 +451,16 @@ class ChapterPipeline:
                 for b in boxes
             ],
         }
+
+    @staticmethod
+    def _box_in_excluded(box, excluded_regions: list[dict]) -> bool:
+        box_cx = (box.x1 + box.x2) / 2
+        box_cy = (box.y1 + box.y2) / 2
+        for r in excluded_regions:
+            x1 = r.get("x1", 0)
+            y1 = r.get("y1", 0)
+            x2 = r.get("x2", 0)
+            y2 = r.get("y2", 0)
+            if min(x1, x2) <= box_cx <= max(x1, x2) and min(y1, y2) <= box_cy <= max(y1, y2):
+                return True
+        return False
