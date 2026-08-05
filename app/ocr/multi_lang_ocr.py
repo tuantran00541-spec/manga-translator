@@ -101,12 +101,61 @@ class MultiLangOCR:
         pil_img = Image.fromarray(image)
         return self._manga_ocr(pil_img).strip()
 
+    @staticmethod
+    def _split_lines(gray: np.ndarray) -> list[tuple[int, int, int, int]]:
+        _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (max(15, gray.shape[1] // 20), 1))
+        dilated = cv2.dilate(binary, kernel)
+        num_labels, _, stats, _ = cv2.connectedComponentsWithStats(dilated, connectivity=8)
+        boxes = []
+        for i in range(1, num_labels):
+            x, y, w, h, area = stats[i]
+            if area < 20 or h < 6:
+                continue
+            boxes.append((x, y, x + w, y + h))
+        boxes.sort(key=lambda b: b[1])
+        return boxes
+
     def _read_paddle(self, image: np.ndarray, lang: str) -> str:
         engine = self._get_paddle_engine(lang)
+        gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY) if image.ndim == 3 else image
+        line_boxes = self._split_lines(gray)
+        if len(line_boxes) <= 1:
+            return self._read_paddle_full(engine, image)
+
+        lines = []
+        for x1, y1, x2, y2 in line_boxes:
+            pad = 6
+            cy1 = max(0, y1 - pad)
+            cy2 = min(image.shape[0], y2 + pad)
+            cx1 = max(0, x1 - pad)
+            cx2 = min(image.shape[1], x2 + pad)
+            crop = image[cy1:cy2, cx1:cx2]
+            if crop.size == 0:
+                continue
+            text = self._read_paddle_line(engine, crop)
+            if text:
+                lines.append(text)
+
+        if not lines:
+            return self._read_paddle_full(engine, image)
+
+        return "\n".join(lines)
+
+    @staticmethod
+    def _read_paddle_line(engine, crop: np.ndarray) -> str:
+        result = engine.ocr(crop, det=False, cls=True)
+        if not result or not result[0]:
+            return ""
+        item = result[0][0] if isinstance(result[0], list) else result[0]
+        text, confidence = item[0], item[1]
+        return text.strip() if text and confidence > 0.25 else ""
+
+    @staticmethod
+    def _read_paddle_full(engine, image: np.ndarray) -> str:
         result = engine.ocr(image, cls=True)
         if not result or not result[0]:
             return ""
-
         lines = []
         for line in result[0]:
             if line and len(line) >= 2 and line[1] and line[1][0]:
