@@ -1,6 +1,7 @@
 """API Router for interactive box editing, OCR, repainting, and draft saving."""
 
 from pathlib import Path
+import cv2
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from app.dependencies import ocr, pipeline

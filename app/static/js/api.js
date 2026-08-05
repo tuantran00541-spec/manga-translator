@@ -321,12 +321,6 @@ async function submitManualBox(pageIndex, x1, y1, x2, y2) {
 }
 
 async function removeBoxAndRepaint(pageIndex, boxIndex, item) {
-  item.remove();
-  const overlay = document.querySelector(
-    `.box-overlay[data-page-index="${pageIndex}"][data-box-index="${boxIndex}"]`
-  );
-  if (overlay) overlay.remove();
-
   try {
     const resp = await fetch("/api/remove_box", {
       method: "POST",
@@ -338,12 +332,9 @@ async function removeBoxAndRepaint(pageIndex, boxIndex, item) {
       throw new Error(data.detail || `lỗi ${resp.status}`);
     }
     const manifest = await resp.json();
-    currentManifest.pages[pageIndex] = manifest.pages[pageIndex];
-
-    const block = document.querySelector(`.page-block[data-page-index="${pageIndex}"]`);
-    if (!block) return;
-    const img = block.querySelector(".page-image-wrap img");
-    img.src = manifest.pages[pageIndex].clean + "?t=" + Date.now();
+    const newPage = manifest.pages[pageIndex];
+    currentManifest.pages[pageIndex] = newPage;
+    refreshPageAfterAddBox(pageIndex, newPage);
   } catch (err) {
     showToast("Xóa vùng thoại thất bại: " + err.message + " — vui lòng tải lại trang để đồng bộ.", "error");
   }

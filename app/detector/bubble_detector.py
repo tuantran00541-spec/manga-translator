@@ -69,6 +69,8 @@ class YoloDetector:
     def _detect_single(self, image: np.ndarray, offset_x: int, offset_y: int) -> list[BubbleBox]:
         h, w = image.shape[:2]
         blob, scale, pad = self._preprocess(image)
+        if blob is None:
+            return []
         outputs = self.session.run(None, {self.input_name: blob})
         boxes = self._postprocess(outputs, scale, pad, w, h)
         if offset_x or offset_y:
@@ -80,6 +82,8 @@ class YoloDetector:
 
     def _preprocess(self, image: np.ndarray):
         h, w = image.shape[:2]
+        if h <= 0 or w <= 0:
+            return None, 1.0, (0, 0)
         scale = INPUT_SIZE / max(h, w)
         nh, nw = int(h * scale), int(w * scale)
         resized = cv2.resize(image, (nw, nh))

@@ -205,7 +205,7 @@ function showRenderResult(pageIndex, outputPath) {
 
   const link = document.createElement("a");
   link.href = outputPath + cacheBust;
-  link.download = outputPath.split("/").pop();
+  link.download = `page_${pageIndex + 1}_rendered.png`;
   link.className = "download-link";
   link.textContent = "Tải ảnh ảnh này về";
   resultBox.appendChild(link);

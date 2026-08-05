@@ -129,6 +129,11 @@ class CombinedTextDetector:
 
             # 2. Line projection inside y1_exp..y2_exp
             exp_crop = full_gray[y1_exp:y2_exp, crop_x1:crop_x2]
+            if exp_crop.size == 0:
+                rect_mask = np.full((bh, bw), 255, dtype=np.uint8) if box.mask is None else box.mask
+                refined_boxes.append(BubbleBox(box.x1, box.y1, box.x2, box.y2, box.confidence, rect_mask))
+                continue
+
             crop_bg = np.percentile(exp_crop, 90)
             text_rows = exp_crop.mean(axis=1) < (crop_bg - 2)
 
@@ -164,16 +169,20 @@ class CombinedTextDetector:
 
                 # Horizontal expansion across full width
                 line_strip = full_gray[abs_y1:abs_y2, :]
-                col_means = line_strip.mean(axis=0)
-                strip_bg = np.percentile(col_means, 90)
-                text_col_indices = np.where(col_means < (strip_bg - 2))[0]
-
-                if len(text_col_indices) > 0:
-                    abs_x1 = max(0, int(text_col_indices.min()) - 10)
-                    abs_x2 = min(img_w, int(text_col_indices.max()) + 10)
-                else:
+                if line_strip.size == 0:
                     abs_x1 = max(0, box.x1 - 20)
                     abs_x2 = min(img_w, box.x2 + 20)
+                else:
+                    col_means = line_strip.mean(axis=0)
+                    strip_bg = np.percentile(col_means, 90)
+                    text_col_indices = np.where(col_means < (strip_bg - 2))[0]
+
+                    if len(text_col_indices) > 0:
+                        abs_x1 = max(0, int(text_col_indices.min()) - 10)
+                        abs_x2 = min(img_w, int(text_col_indices.max()) + 10)
+                    else:
+                        abs_x1 = max(0, box.x1 - 20)
+                        abs_x2 = min(img_w, box.x2 + 20)
 
                 line_h = abs_y2 - abs_y1
                 line_w = abs_x2 - abs_x1
@@ -224,6 +233,8 @@ class CombinedTextDetector:
                     min_y = max(0, b.y1 - 6)
                     max_x = min(img_w, b.x2 + 20)
                     max_y = min(img_h, b.y2 + 6)
+                    if max_x <= min_x or max_y <= min_y:
+                        continue
                     cluster_area = (max_x - min_x) * (max_y - min_y)
                     if cluster_area > img_w * img_h * MAX_BOX_AREA_RATIO:
                         continue
@@ -234,6 +245,8 @@ class CombinedTextDetector:
                     min_y = max(0, min(t.y1 for t in sub) - 8)
                     max_x = min(img_w, max(t.x2 for t in sub) + 20)
                     max_y = min(img_h, max(t.y2 for t in sub) + 8)
+                    if max_x <= min_x or max_y <= min_y:
+                        continue
                     cluster_area = (max_x - min_x) * (max_y - min_y)
                     if cluster_area > img_w * img_h * MAX_BOX_AREA_RATIO:
                         continue

@@ -61,46 +61,47 @@ def main():
         page = context.new_page()
 
         try:
-            page.goto(chapter_url, wait_until="domcontentloaded", timeout=60000)
-        except Exception as e:
-            print(f"[Worker] Warning loading page: {e}", file=sys.stderr)
-
-        # Scroll down to trigger lazy-loaded images on Webtoon sites
-        for _ in range(6):
-            page.mouse.wheel(0, 2500)
-            page.wait_for_timeout(600)
-
-        # Scrape image URLs from DOM
-        elements = page.query_selector_all("img")
-        image_urls = []
-        for el in elements:
-            box = el.bounding_box()
-            if box and box["width"] < MIN_WIDTH:
-                continue
-            src = (
-                el.get_attribute("data-src")
-                or el.get_attribute("data-original")
-                or el.get_attribute("data-lazy")
-                or el.get_attribute("src")
-            )
-            if src and src.startswith("http"):
-                image_urls.append(src)
-
-        image_urls = dedupe(image_urls)
-
-        # Download each image using browser context
-        for i, img_url in enumerate(image_urls):
-            ext = guess_ext(img_url)
-            out_path = output_dir / f"{i:03d}{ext}"
             try:
-                resp = context.request.get(img_url, headers={"Referer": chapter_url})
-                if resp.ok:
-                    out_path.write_bytes(resp.body())
-                    saved.append(str(out_path))
-            except Exception:
-                pass
+                page.goto(chapter_url, wait_until="domcontentloaded", timeout=60000)
+            except Exception as e:
+                print(f"[Worker] Warning loading page: {e}", file=sys.stderr)
 
-        browser.close()
+            # Scroll down to trigger lazy-loaded images on Webtoon sites
+            for _ in range(6):
+                page.mouse.wheel(0, 2500)
+                page.wait_for_timeout(600)
+
+            # Scrape image URLs from DOM
+            elements = page.query_selector_all("img")
+            image_urls = []
+            for el in elements:
+                box = el.bounding_box()
+                if box and box["width"] < MIN_WIDTH:
+                    continue
+                src = (
+                    el.get_attribute("data-src")
+                    or el.get_attribute("data-original")
+                    or el.get_attribute("data-lazy")
+                    or el.get_attribute("src")
+                )
+                if src and src.startswith("http"):
+                    image_urls.append(src)
+
+            image_urls = dedupe(image_urls)
+
+            # Download each image using browser context
+            for i, img_url in enumerate(image_urls):
+                ext = guess_ext(img_url)
+                out_path = output_dir / f"{i:03d}{ext}"
+                try:
+                    resp = context.request.get(img_url, headers={"Referer": chapter_url})
+                    if resp.ok:
+                        out_path.write_bytes(resp.body())
+                        saved.append(str(out_path))
+                except Exception:
+                    pass
+        finally:
+            browser.close()
 
     print(json.dumps(saved))
 

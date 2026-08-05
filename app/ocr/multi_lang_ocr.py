@@ -117,30 +117,31 @@ class MultiLangOCR:
         return boxes
 
     def _read_paddle(self, image: np.ndarray, lang: str) -> str:
-        engine = self._get_paddle_engine(lang)
+        engine, lang_lock = self._get_paddle_engine(lang)
         gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY) if image.ndim == 3 else image
         line_boxes = self._split_lines(gray)
-        if len(line_boxes) <= 1:
-            return self._read_paddle_full(engine, image)
+        with lang_lock:
+            if len(line_boxes) <= 1:
+                return self._read_paddle_full(engine, image)
 
-        lines = []
-        for x1, y1, x2, y2 in line_boxes:
-            pad = 6
-            cy1 = max(0, y1 - pad)
-            cy2 = min(image.shape[0], y2 + pad)
-            cx1 = max(0, x1 - pad)
-            cx2 = min(image.shape[1], x2 + pad)
-            crop = image[cy1:cy2, cx1:cx2]
-            if crop.size == 0:
-                continue
-            text = self._read_paddle_line(engine, crop)
-            if text:
-                lines.append(text)
+            lines = []
+            for x1, y1, x2, y2 in line_boxes:
+                pad = 6
+                cy1 = max(0, y1 - pad)
+                cy2 = min(image.shape[0], y2 + pad)
+                cx1 = max(0, x1 - pad)
+                cx2 = min(image.shape[1], x2 + pad)
+                crop = image[cy1:cy2, cx1:cx2]
+                if crop.size == 0:
+                    continue
+                text = self._read_paddle_line(engine, crop)
+                if text:
+                    lines.append(text)
 
-        if not lines:
-            return self._read_paddle_full(engine, image)
+            if not lines:
+                return self._read_paddle_full(engine, image)
 
-        return "\n".join(lines)
+            return "\n".join(lines)
 
     @staticmethod
     def _read_paddle_line(engine, crop: np.ndarray) -> str:
@@ -192,5 +193,5 @@ class MultiLangOCR:
                         det_db_box_thresh=0.30,
                         det_db_unclip_ratio=2.0,
                     )
-        return self._paddle_engines[target_lang]
+        return self._paddle_engines[target_lang], lang_lock
 
