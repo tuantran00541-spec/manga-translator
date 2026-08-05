@@ -102,16 +102,31 @@ class MultiLangOCR:
 
     @staticmethod
     def _split_lines(gray: np.ndarray) -> list[tuple[int, int, int, int]]:
+        img_h, img_w = gray.shape[:2]
+        edge_margin = 4
+
         _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
         kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (max(15, gray.shape[1] // 20), 1))
         dilated = cv2.dilate(binary, kernel)
         num_labels, _, stats, _ = cv2.connectedComponentsWithStats(dilated, connectivity=8)
+
         boxes = []
         for i in range(1, num_labels):
             x, y, w, h, area = stats[i]
             if area < 20 or h < 6:
                 continue
+            touches_top = y <= edge_margin
+            touches_bottom = (y + h) >= (img_h - edge_margin)
+            touches_left = x <= edge_margin
+            touches_right = (x + w) >= (img_w - edge_margin)
+            edges_touched = sum([touches_top, touches_bottom, touches_left, touches_right])
+            if edges_touched >= 2:
+                continue
+            span_ratio = w / max(img_w, 1)
+            if (touches_top or touches_bottom) and span_ratio > 0.85 and h < 15:
+                continue
             boxes.append((x, y, x + w, y + h))
+
         boxes.sort(key=lambda b: b[1])
         return boxes
 
