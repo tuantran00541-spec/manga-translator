@@ -34,11 +34,11 @@ class BaseAdapter(ABC):
         validate_url(url)
         headers = dict(self.headers)
         headers["Referer"] = referer
-        resp = requests.get(url, headers=headers, timeout=30, stream=True)
-        resp.raise_for_status()
-        resp.raw.decode_content = True
-        with open(out_path, "wb") as f:
-            shutil.copyfileobj(resp.raw, f)
+        with requests.get(url, headers=headers, timeout=30, stream=True) as resp:
+            resp.raise_for_status()
+            resp.raw.decode_content = True
+            with open(out_path, "wb") as f:
+                shutil.copyfileobj(resp.raw, f)
 
     @staticmethod
     def _guess_ext(url: str) -> str:

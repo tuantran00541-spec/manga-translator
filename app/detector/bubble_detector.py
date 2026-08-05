@@ -86,7 +86,8 @@ class YoloDetector:
             return None, 1.0, (0, 0)
         scale = INPUT_SIZE / max(h, w)
         nh, nw = int(h * scale), int(w * scale)
-        resized = cv2.resize(image, (nw, nh))
+        img_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB) if image.ndim == 3 and image.shape[2] == 3 else image
+        resized = cv2.resize(img_rgb, (nw, nh))
         canvas = np.full((INPUT_SIZE, INPUT_SIZE, 3), 114, dtype=np.uint8)
         pad_x, pad_y = (INPUT_SIZE - nw) // 2, (INPUT_SIZE - nh) // 2
         canvas[pad_y:pad_y + nh, pad_x:pad_x + nw] = resized

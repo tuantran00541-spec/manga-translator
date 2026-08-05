@@ -121,6 +121,8 @@ class CombinedTextDetector:
             y2_exp = box.y2
             while y2_exp < img_h - 10:
                 strip = full_gray[y2_exp:y2_exp+15, crop_x1:crop_x2]
+                if strip.size == 0:
+                    break
                 strip_bg = np.percentile(strip, 90)
                 if (strip.mean(axis=1) < (strip_bg - 2)).any():
                     y2_exp += 10

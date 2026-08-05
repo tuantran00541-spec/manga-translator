@@ -93,13 +93,12 @@ class MultiLangOCR:
         return cv2.cvtColor(sharpened, cv2.COLOR_GRAY2RGB)
 
     def _read_manga_ocr(self, image: np.ndarray) -> str:
-        if self._manga_ocr is None:
-            with self._manga_lock:
-                if self._manga_ocr is None:
-                    from manga_ocr import MangaOcr
-                    self._manga_ocr = MangaOcr()
-        pil_img = Image.fromarray(image)
-        return self._manga_ocr(pil_img).strip()
+        with self._manga_lock:
+            if self._manga_ocr is None:
+                from manga_ocr import MangaOcr
+                self._manga_ocr = MangaOcr()
+            pil_img = Image.fromarray(image)
+            return self._manga_ocr(pil_img).strip()
 
     @staticmethod
     def _split_lines(gray: np.ndarray) -> list[tuple[int, int, int, int]]:

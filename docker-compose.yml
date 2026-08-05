@@ -23,5 +23,4 @@ services:
       # Optional: persist logs
       - ./logs:/app/logs
     restart: unless-stopped
-    # Uncomment if you need more shared memory for large images / Playwright
-    # shm_size: "1gb"
+    shm_size: "1gb"
