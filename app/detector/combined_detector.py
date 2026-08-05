@@ -108,7 +108,10 @@ class CombinedTextDetector:
             
             y1_exp = box.y1
             while y1_exp > 10:
-                strip = full_gray[y1_exp-15:y1_exp, crop_x1:crop_x2]
+                strip_y1 = max(0, y1_exp - 15)
+                strip = full_gray[strip_y1:y1_exp, crop_x1:crop_x2]
+                if strip.shape[0] == 0:
+                    break
                 strip_bg = np.percentile(strip, 90)
                 if (strip.mean(axis=1) < (strip_bg - 2)).any():
                     y1_exp -= 10
