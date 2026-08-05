@@ -1,7 +1,7 @@
 import numpy as np
 import cv2
 from app.config import LAMA_MODEL, INPAINT_SIZE
-from app.detector.bubble_detector import BubbleBox
+from app.detector.bubble_detector import BubbleBox, MAX_BOX_AREA_RATIO
 from app.detector.mask_builder import build_mask
 from app.ort_utils import make_session
 
@@ -28,6 +28,10 @@ class Inpainter:
             y1 = min(b.y1 for b in cluster)
             x2 = max(b.x2 for b in cluster)
             y2 = max(b.y2 for b in cluster)
+
+            if (x2 - x1) * (y2 - y1) > w * h * MAX_BOX_AREA_RATIO:
+                continue
+
             crop_box = self._compute_crop_region(x1, y1, x2, y2, w, h)
 
             cx1, cy1, cx2, cy2 = crop_box
@@ -183,20 +187,38 @@ class Inpainter:
     @staticmethod
     def _split_cluster_lines(cluster: list[BubbleBox], avg_h: float) -> list[list[BubbleBox]]:
         sorted_boxes = sorted(cluster, key=lambda b: (b.y1, b.x1))
-        sub_clusters = []
-        current_sub = []
+        lines = []
         for b in sorted_boxes:
-            if not current_sub:
-                current_sub = [b]
+            placed = False
+            for line in lines:
+                line_y1 = min(x.y1 for x in line)
+                line_y2 = max(x.y2 for x in line)
+                overlap = min(b.y2, line_y2) - max(b.y1, line_y1)
+                min_h = min(b.y2 - b.y1, line_y2 - line_y1)
+                if min_h > 0 and overlap / min_h > 0.5:
+                    line.append(b)
+                    placed = True
+                    break
+            if not placed:
+                lines.append([b])
+
+        lines.sort(key=lambda line: min(b.y1 for b in line))
+
+        sub_clusters = []
+        current_group = []
+        for line in lines:
+            if not current_group:
+                current_group = list(line)
             else:
-                new_h = max(x.y2 for x in current_sub + [b]) - min(x.y1 for x in current_sub + [b])
-                if len(current_sub) >= 3 or new_h > 3.0 * avg_h:
-                    sub_clusters.append(current_sub)
-                    current_sub = [b]
+                group_h = max(b.y2 for b in current_group + line) - min(b.y1 for b in current_group + line)
+                if group_h > 3.0 * avg_h:
+                    sub_clusters.append(current_group)
+                    current_group = list(line)
                 else:
-                    current_sub.append(b)
-        if current_sub:
-            sub_clusters.append(current_sub)
+                    current_group.extend(line)
+        if current_group:
+            sub_clusters.append(current_group)
+
         return sub_clusters
 
     @staticmethod
