@@ -1,7 +1,7 @@
 import numpy as np
 import cv2
 from dataclasses import dataclass
-from app.config import BUBBLE_IOU_THRESHOLD
+from app.config import BUBBLE_IOU_THRESHOLD, ENABLE_TTA
 from app.ort_utils import make_session
 
 INPUT_SIZE = 1024
@@ -22,10 +22,11 @@ class BubbleBox:
 
 
 class YoloDetector:
-    def __init__(self, model_path, conf_threshold: float):
+    def __init__(self, model_path, conf_threshold: float, use_tta: bool | None = None):
         self.session = make_session(model_path)
         self.input_name = self.session.get_inputs()[0].name
         self.conf_threshold = conf_threshold
+        self.use_tta = ENABLE_TTA if use_tta is None else use_tta
 
     def detect(self, image: np.ndarray) -> list[BubbleBox]:
         h, w = image.shape[:2]
@@ -67,6 +68,11 @@ class YoloDetector:
         return result
 
     def _detect_single(self, image: np.ndarray, offset_x: int, offset_y: int) -> list[BubbleBox]:
+        if self.use_tta:
+            return self._detect_single_tta(image, offset_x, offset_y)
+        return self._detect_single_plain(image, offset_x, offset_y)
+
+    def _detect_single_plain(self, image: np.ndarray, offset_x: int, offset_y: int) -> list[BubbleBox]:
         h, w = image.shape[:2]
         blob, scale, pad = self._preprocess(image)
         if blob is None:
@@ -79,6 +85,71 @@ class YoloDetector:
                 for b in boxes
             ]
         return boxes
+
+    def _detect_single_tta(self, image: np.ndarray, offset_x: int, offset_y: int) -> list[BubbleBox]:
+        h, w = image.shape[:2]
+        if h <= 0 or w <= 0:
+            return []
+
+        all_boxes = []
+
+        # Pass 1: Original image, scale 1.0
+        all_boxes.extend(self._detect_single_plain(image, offset_x, offset_y))
+
+        # Pass 2: Horizontal flip
+        flipped = cv2.flip(image, 1)
+        flipped_boxes = self._detect_single_plain(flipped, 0, 0)
+        for b in flipped_boxes:
+            nx1 = max(0, min(w, w - b.x2))
+            nx2 = max(0, min(w, w - b.x1))
+            ny1 = max(0, min(h, b.y1))
+            ny2 = max(0, min(h, b.y2))
+            nw = nx2 - nx1
+            nh = ny2 - ny1
+            if nw > 0 and nh > 0:
+                mask = cv2.flip(b.mask, 1) if b.mask is not None else None
+                all_boxes.append(
+                    BubbleBox(
+                        nx1 + offset_x,
+                        ny1 + offset_y,
+                        nx2 + offset_x,
+                        ny2 + offset_y,
+                        b.confidence,
+                        mask,
+                    )
+                )
+
+        # Pass 3: Downscale 0.85
+        small_scale = 0.85
+        sh, sw = int(round(h * small_scale)), int(round(w * small_scale))
+        if sh > 10 and sw > 10:
+            scale_x = sw / w
+            scale_y = sh / h
+            small = cv2.resize(image, (sw, sh))
+            small_boxes = self._detect_single_plain(small, 0, 0)
+            for b in small_boxes:
+                nx1 = max(0, min(w, int(round(b.x1 / scale_x))))
+                ny1 = max(0, min(h, int(round(b.y1 / scale_y))))
+                nx2 = max(0, min(w, int(round(b.x2 / scale_x))))
+                ny2 = max(0, min(h, int(round(b.y2 / scale_y))))
+                nw = nx2 - nx1
+                nh = ny2 - ny1
+                if nw > 0 and nh > 0:
+                    mask = None
+                    if b.mask is not None:
+                        mask = cv2.resize(b.mask, (nw, nh), interpolation=cv2.INTER_NEAREST)
+                    all_boxes.append(
+                        BubbleBox(
+                            nx1 + offset_x,
+                            ny1 + offset_y,
+                            nx2 + offset_x,
+                            ny2 + offset_y,
+                            b.confidence,
+                            mask,
+                        )
+                    )
+
+        return self._nms_boxes(all_boxes)
 
     def _preprocess(self, image: np.ndarray):
         h, w = image.shape[:2]

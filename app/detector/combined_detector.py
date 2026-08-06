@@ -84,8 +84,22 @@ class CombinedTextDetector:
         result_boxes.extend(clustered_free_text)
 
         result_boxes = self._refine_and_split_tall_boxes(result_boxes, image)
+        result_boxes = self._apply_final_nms(result_boxes, iou_threshold=0.35)
 
         return result_boxes
+
+    @staticmethod
+    def _apply_final_nms(boxes: list[BubbleBox], iou_threshold: float = 0.35) -> list[BubbleBox]:
+        if not boxes:
+            return []
+        rects = np.array([[b.x1, b.y1, max(1, b.x2 - b.x1), max(1, b.y2 - b.y1)] for b in boxes])
+        scores = np.array([b.confidence for b in boxes])
+        indices = cv2.dnn.NMSBoxes(
+            rects.tolist(), scores.tolist(), score_threshold=0.05, nms_threshold=iou_threshold
+        )
+        if len(indices) == 0:
+            return []
+        return [boxes[i] for i in np.array(indices).flatten()]
 
     @staticmethod
     def _refine_and_split_tall_boxes(boxes: list[BubbleBox], img: np.ndarray) -> list[BubbleBox]:
