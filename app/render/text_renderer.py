@@ -40,7 +40,6 @@ def parse_color(color_input, default=(0, 0, 0)) -> tuple[int, int, int]:
     return default
 
 
-
 def auto_detect_text_color(image: Image.Image, box: tuple[int, int, int, int]) -> tuple[int, int, int]:
     x1, y1, x2, y2 = box
     crop = image.crop((x1, y1, x2, y2)).convert("L")
@@ -263,29 +262,34 @@ def _fit_text(draw, text: str, box_w: int, box_h: int, font_path_str: str, strok
 
 
 def _wrap_text(draw, text: str, font, box_w: int) -> list[str]:
-    words = text.split()
-    lines = []
-    current = ""
-    for word in words:
-        if draw.textbbox((0, 0), word, font=font)[2] > box_w:
-            if current:
-                lines.append(current)
-                current = ""
-            for char in word:
-                candidate = f"{current}{char}"
-                if draw.textbbox((0, 0), candidate, font=font)[2] <= box_w or not current:
+    raw_lines = text.splitlines()
+    all_wrapped = []
+    for raw_line in raw_lines:
+        if not raw_line.strip():
+            all_wrapped.append("")
+            continue
+        words = raw_line.split()
+        current = ""
+        for word in words:
+            if draw.textbbox((0, 0), word, font=font)[2] > box_w:
+                if current:
+                    all_wrapped.append(current)
+                    current = ""
+                for char in word:
+                    candidate = f"{current}{char}"
+                    if draw.textbbox((0, 0), candidate, font=font)[2] <= box_w or not current:
+                        current = candidate
+                    else:
+                        all_wrapped.append(current)
+                        current = char
+            else:
+                candidate = f"{current} {word}".strip()
+                w = draw.textbbox((0, 0), candidate, font=font)[2]
+                if w <= box_w or not current:
                     current = candidate
                 else:
-                    lines.append(current)
-                    current = char
-        else:
-            candidate = f"{current} {word}".strip()
-            w = draw.textbbox((0, 0), candidate, font=font)[2]
-            if w <= box_w or not current:
-                current = candidate
-            else:
-                lines.append(current)
-                current = word
-    if current:
-        lines.append(current)
-    return lines
+                    all_wrapped.append(current)
+                    current = word
+        if current:
+            all_wrapped.append(current)
+    return all_wrapped

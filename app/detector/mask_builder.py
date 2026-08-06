@@ -34,9 +34,9 @@ def build_mask(image_shape: tuple[int, int], boxes: list[BubbleBox]) -> np.ndarr
             y2 = min(h, box.y2 + MASK_EXPAND)
             cv2.rectangle(mask, (x1, y1), (x2, y2), 255, -1)
 
-    # Dilate text stroke masks sufficiently to cover antialiased edges, outlines, and shadows.
-    # A 13x13 ellipse kernel ensures all text borders are 100% covered so LaMa won't duplicate text.
-    dilation_kernel_size = (13, 13) if has_stroke_masks else (7, 7)
+    # Dilate text stroke masks with 9x9 ellipse kernel (4px expansion) to cover antialiased edges,
+    # stroke outlines, and shadows without spilling across bubble boundaries.
+    dilation_kernel_size = (9, 9) if has_stroke_masks else (5, 5)
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, dilation_kernel_size)
     mask = cv2.dilate(mask, kernel, iterations=1)
     return mask
