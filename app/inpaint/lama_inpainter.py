@@ -75,34 +75,30 @@ class Inpainter:
         if not np.any(mask_bool):
             return image
 
-        # Extract ring of context pixels around mask (10px ring)
-        ring_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15))
-        dilated_mask = cv2.dilate(local_mask, ring_kernel, iterations=1)
-        ring_bool = (dilated_mask > 127) & (~mask_bool)
+        non_mask_bool = ~mask_bool
+        if np.any(non_mask_bool):
+            non_mask_pixels = crop[non_mask_bool]
+            gray_non_mask = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)[non_mask_bool]
 
-        if np.any(ring_bool):
-            ring_pixels = crop[ring_bool]
-            gray_ring = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)[ring_bool]
-
-            # Case A: White Speech Bubble / Flat White Background (e.g. >88% pixels > 225)
-            white_ratio = float((gray_ring > 225).mean())
-            if white_ratio >= 0.85:
-                fill_color = np.median(ring_pixels[gray_ring > 225], axis=0).astype(np.uint8) if np.any(gray_ring > 225) else np.array([255, 255, 255], dtype=np.uint8)
+            # Case A: White Speech Bubble (>= 70% of non-mask context pixels are bright > 215)
+            white_mask = gray_non_mask > 215
+            if float(white_mask.mean()) >= 0.70:
+                fill_color = np.median(non_mask_pixels[white_mask], axis=0).astype(np.uint8) if np.any(white_mask) else np.array([255, 255, 255], dtype=np.uint8)
                 crop[mask_bool] = fill_color
                 image[cy1:cy2, cx1:cx2] = crop
                 return image
 
-            # Case B: Solid Black Background / Monologue Caption (e.g. >88% pixels < 30)
-            black_ratio = float((gray_ring < 30).mean())
-            if black_ratio >= 0.85:
-                fill_color = np.median(ring_pixels[gray_ring < 30], axis=0).astype(np.uint8) if np.any(gray_ring < 30) else np.array([0, 0, 0], dtype=np.uint8)
+            # Case B: Solid Black Monologue / Dark Box (>= 70% of non-mask context pixels are dark < 35)
+            black_mask = gray_non_mask < 35
+            if float(black_mask.mean()) >= 0.70:
+                fill_color = np.median(non_mask_pixels[black_mask], axis=0).astype(np.uint8) if np.any(black_mask) else np.array([0, 0, 0], dtype=np.uint8)
                 crop[mask_bool] = fill_color
                 image[cy1:cy2, cx1:cx2] = crop
                 return image
 
-            # Case C: Solid Flat Background (std < 10)
-            if float(gray_ring.std()) < 10.0:
-                fill_color = np.median(ring_pixels, axis=0).astype(np.uint8)
+            # Case C: Uniform Flat Background (stddev < 12.0)
+            if float(gray_non_mask.std()) < 12.0:
+                fill_color = np.median(non_mask_pixels, axis=0).astype(np.uint8)
                 crop[mask_bool] = fill_color
                 image[cy1:cy2, cx1:cx2] = crop
                 return image
@@ -120,8 +116,14 @@ class Inpainter:
         pad_x = (INPAINT_SIZE - new_w) // 2
 
         crop_resized = cv2.resize(crop, (new_w, new_h))
-        canvas = np.zeros((INPAINT_SIZE, INPAINT_SIZE, 3), dtype=np.uint8)
-        canvas[pad_y:pad_y + new_h, pad_x:pad_x + new_w] = crop_resized
+        pad_top = pad_y
+        pad_bottom = INPAINT_SIZE - new_h - pad_y
+        pad_left = pad_x
+        pad_right = INPAINT_SIZE - new_w - pad_x
+
+        canvas = cv2.copyMakeBorder(
+            crop_resized, pad_top, pad_bottom, pad_left, pad_right, cv2.BORDER_REPLICATE
+        )
         crop_rgb = cv2.cvtColor(canvas, cv2.COLOR_BGR2RGB)
 
         mask_resized = cv2.resize(local_mask, (new_w, new_h), interpolation=cv2.INTER_NEAREST)
