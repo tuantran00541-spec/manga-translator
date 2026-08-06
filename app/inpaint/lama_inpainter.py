@@ -39,7 +39,8 @@ class Inpainter:
                 BubbleBox(b.x1 - cx1, b.y1 - cy1, b.x2 - cx1, b.y2 - cy1, b.confidence, b.mask)
                 for b in cluster
             ]
-            local_mask = build_mask((cy2 - cy1, cx2 - cx1), local_boxes)
+            crop_img = image[cy1:cy2, cx1:cx2]
+            local_mask = build_mask((cy2 - cy1, cx2 - cx1), local_boxes, crop_img)
 
             result = self._smart_paint_region(result, local_mask, crop_box)
 
