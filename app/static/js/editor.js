@@ -2,6 +2,7 @@ function renderEditor() {
   const container = document.getElementById("page-view");
   if (!container) return;
   container.innerHTML = "";
+  container.className = "editor-mode";
 
   currentManifest.pages.forEach((page, pageIndex) => {
     if (page.skipped) return;

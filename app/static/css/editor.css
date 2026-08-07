@@ -1,5 +1,11 @@
 /* --- Editor: page blocks --- */
 
+#page-view.editor-mode {
+  display: flex;
+  flex-direction: column;
+  gap: 36px;
+}
+
 .page-block-wrapper {
   margin-bottom: 52px;
 }

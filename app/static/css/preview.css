@@ -112,7 +112,7 @@
 
 #page-view {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(480px, 1fr));
   gap: 20px;
   align-items: start;
 }
@@ -188,19 +188,22 @@
 .preview-viewport {
   width: 100%;
   min-height: 420px;
-  max-height: 580px;
+  max-height: 85vh;
   overflow: auto;
   position: relative;
   border-radius: 4px;
   background: #020617;
   border: 1px solid var(--line);
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
 }
 
 .preview-image-wrap {
   position: relative;
   line-height: 0;
   width: 100%;
-  transform-origin: 0 0;
+  transform-origin: 50% 0;
 }
 
 .preview-image-wrap img {

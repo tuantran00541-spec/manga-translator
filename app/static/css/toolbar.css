@@ -36,12 +36,23 @@
 
 .box-color-picker {
   width: 24px;
-  height: 22px;
+  height: 24px;
   padding: 0;
-  border: 1px solid var(--line);
-  border-radius: 3px;
+  border: none;
+  border-radius: 50%;
   background: transparent;
   cursor: pointer;
+  overflow: hidden;
+}
+
+.box-color-picker::-webkit-color-swatch-wrapper {
+  padding: 0;
+  border-radius: 50%;
+}
+
+.box-color-picker::-webkit-color-swatch {
+  border: 1px solid var(--line);
+  border-radius: 50%;
 }
 
 /* --- Font style toolbar --- */

@@ -11,6 +11,7 @@ function renderPreview() {
   const container = document.getElementById("page-view");
   if (!container) return;
   container.innerHTML = "";
+  container.className = "";
 
   const toolbar = document.createElement("div");
   toolbar.id = "preview-toolbar";
@@ -99,7 +100,7 @@ function renderPreview() {
       zoomScale = Math.max(0.5, Math.min(4.0, newScale));
       zoomLevelText.textContent = Math.round(zoomScale * 100) + "%";
       imgWrap.style.transform = `scale(${zoomScale})`;
-      imgWrap.style.transformOrigin = "0 0";
+      imgWrap.style.transformOrigin = "50% 0";
       if (zoomScale > 1.0) {
         viewport.style.overflow = "auto";
       } else {
@@ -128,144 +129,190 @@ function renderPreview() {
       const scaleX = img.clientWidth / img.naturalWidth;
       const scaleY = img.clientHeight / img.naturalHeight;
 
-      (page.excluded_regions || []).forEach((region, rIdx) => {
-        const boxEl = document.createElement("div");
-        boxEl.className = "excluded-region-box";
-        boxEl.style.left = (region.x1 * scaleX) + "px";
-        boxEl.style.top = (region.y1 * scaleY) + "px";
-        boxEl.style.width = ((region.x2 - region.x1) * scaleX) + "px";
-        boxEl.style.height = ((region.y2 - region.y1) * scaleY) + "px";
+      page.excluded_regions.forEach((box, rIdx) => {
+        const rect = document.createElement("div");
+        rect.className = "excluded-region-box";
+        rect.style.left = (box.x1 * scaleX) + "px";
+        rect.style.top = (box.y1 * scaleY) + "px";
+        rect.style.width = ((box.x2 - box.x1) * scaleX) + "px";
+        rect.style.height = ((box.y2 - box.y1) * scaleY) + "px";
 
-        const delBtn = document.createElement("span");
+        const delBtn = document.createElement("div");
         delBtn.className = "excluded-region-del";
         delBtn.textContent = "×";
         delBtn.title = "Xóa vùng cấm này";
         delBtn.addEventListener("click", (e) => {
           e.stopPropagation();
-          page.excluded_regions.splice(rIdx, 1);
-          saveExcludedRegions(pageIndex, page.excluded_regions);
-          renderExcludedBoxes();
+          deleteExcludedRegion(pageIndex, rIdx);
         });
+        rect.appendChild(delBtn);
 
-        boxEl.appendChild(delBtn);
-        overlayContainer.appendChild(boxEl);
+        overlayContainer.appendChild(rect);
       });
     };
 
     if (img.complete && img.naturalWidth > 0) {
       renderExcludedBoxes();
     } else {
-      img.onload = () => renderExcludedBoxes();
+      img.onload = renderExcludedBoxes;
     }
 
-    // Excluded region drawing tool
-    const tools = document.createElement("div");
-    tools.className = "preview-tools";
+    // Interactive excluded region drawing
+    enableExcludedDraw(card, imgWrap, img, pageIndex, renderExcludedBoxes);
 
-    const drawToggleBtn = document.createElement("button");
-    drawToggleBtn.className = "excluded-toggle-btn";
-    drawToggleBtn.textContent = "Đánh dấu vùng cấm dịch";
+    // Bottom tool buttons
+    const toolsDiv = document.createElement("div");
+    toolsDiv.className = "preview-tools";
+
+    const drawBtn = document.createElement("button");
+    drawBtn.className = "excluded-toggle-btn";
+    drawBtn.textContent = "Đánh dấu vùng cấm dịch";
+    drawBtn.addEventListener("click", () => {
+      const isActive = card.classList.toggle("draw-excluded-active");
+      drawBtn.classList.toggle("active", isActive);
+      drawBtn.textContent = isActive ? "Kéo chuột để khoanh vùng cấm..." : "Đánh dấu vùng cấm dịch";
+    });
+    toolsDiv.appendChild(drawBtn);
 
     const clearBtn = document.createElement("button");
     clearBtn.className = "excluded-clear-btn";
     clearBtn.textContent = "Xóa vùng cấm";
-    clearBtn.title = "Xóa toàn bộ vùng cấm dịch của trang này";
+    clearBtn.addEventListener("click", () => clearAllExcludedRegions(pageIndex));
+    toolsDiv.appendChild(clearBtn);
 
-    drawToggleBtn.addEventListener("click", () => {
-      const active = card.classList.toggle("draw-excluded-active");
-      drawToggleBtn.textContent = active ? "Đang đánh dấu (bấm để tắt)" : "Đánh dấu vùng cấm dịch";
-      drawToggleBtn.classList.toggle("active", active);
-    });
+    card.appendChild(toolsDiv);
 
-    clearBtn.addEventListener("click", () => {
-      page.excluded_regions = [];
-      saveExcludedRegions(pageIndex, page.excluded_regions);
-      renderExcludedBoxes();
-    });
-
-    tools.appendChild(drawToggleBtn);
-    tools.appendChild(clearBtn);
-    card.appendChild(tools);
-
-    // Mouse drag drawing logic
-    let isDragging = false;
-    let startPos = null;
-    let tempDrawBox = null;
-
-    drawLayer.addEventListener("mousedown", (e) => {
-      if (!card.classList.contains("draw-excluded-active")) return;
-      e.preventDefault();
-      const rect = imgWrap.getBoundingClientRect();
-      const clientX = e.clientX;
-      const clientY = e.clientY;
-
-      const x = (clientX - rect.left) / zoomScale;
-      const y = (clientY - rect.top) / zoomScale;
-
-      isDragging = true;
-      startPos = { x, y };
-
-      tempDrawBox = document.createElement("div");
-      tempDrawBox.className = "excluded-region-box drawing";
-      tempDrawBox.style.left = x + "px";
-      tempDrawBox.style.top = y + "px";
-      tempDrawBox.style.width = "0px";
-      tempDrawBox.style.height = "0px";
-      overlayContainer.appendChild(tempDrawBox);
-    });
-
-    window.addEventListener("mousemove", (e) => {
-      if (!isDragging || !tempDrawBox) return;
-      const rect = imgWrap.getBoundingClientRect();
-      const x = (e.clientX - rect.left) / zoomScale;
-      const y = (e.clientY - rect.top) / zoomScale;
-
-      const left = Math.min(startPos.x, x);
-      const top = Math.min(startPos.y, y);
-      const width = Math.abs(x - startPos.x);
-      const height = Math.abs(y - startPos.y);
-
-      tempDrawBox.style.left = left + "px";
-      tempDrawBox.style.top = top + "px";
-      tempDrawBox.style.width = width + "px";
-      tempDrawBox.style.height = height + "px";
-    });
-
-    window.addEventListener("mouseup", (e) => {
-      if (!isDragging || !tempDrawBox) return;
-      isDragging = false;
-
-      const left = parseFloat(tempDrawBox.style.left) || 0;
-      const top = parseFloat(tempDrawBox.style.top) || 0;
-      const w = parseFloat(tempDrawBox.style.width) || 0;
-      const h = parseFloat(tempDrawBox.style.height) || 0;
-      tempDrawBox.remove();
-      tempDrawBox = null;
-
-      if (w >= 5 && h >= 5) {
-        const scaleX = img.naturalWidth / img.clientWidth;
-        const scaleY = img.naturalHeight / img.clientHeight;
-
-        const x1 = Math.round(left * scaleX);
-        const y1 = Math.round(top * scaleY);
-        const x2 = Math.round((left + w) * scaleX);
-        const y2 = Math.round((top + h) * scaleY);
-
-        if (!page.excluded_regions) page.excluded_regions = [];
-        page.excluded_regions.push({ x1, y1, x2, y2 });
-
-        saveExcludedRegions(pageIndex, page.excluded_regions);
-        renderExcludedBoxes();
-      }
-    });
-
-    // Skip button
+    // Skip page button
     const skipBtn = document.createElement("button");
     skipBtn.className = "skip-btn";
-    skipBtn.textContent = page.skipped ? "Đã bỏ qua (bấm để hủy)" : "Bỏ qua trang này";
-    skipBtn.addEventListener("click", () => toggleSkip(pageIndex, card, skipBtn));
+    skipBtn.textContent = page.skipped ? "Khôi phục trang này" : "Bỏ qua trang này";
+    skipBtn.addEventListener("click", () => toggleSkipPage(pageIndex));
     card.appendChild(skipBtn);
 
     container.appendChild(card);
   });
+}
+
+function enableExcludedDraw(card, imgWrap, img, pageIndex, renderCallback) {
+  const drawLayer = imgWrap.querySelector(".excluded-draw-layer");
+  if (!drawLayer) return;
+
+  let dragging = false;
+  let startX = 0, startY = 0;
+  let drawBox = null;
+
+  drawLayer.addEventListener("mousedown", (e) => {
+    if (!card.classList.contains("draw-excluded-active")) return;
+    e.preventDefault();
+    dragging = true;
+    const rect = imgWrap.getBoundingClientRect();
+    startX = e.clientX - rect.left;
+    startY = e.clientY - rect.top;
+
+    drawBox = document.createElement("div");
+    drawBox.className = "excluded-region-box drawing";
+    drawBox.style.left = startX + "px";
+    drawBox.style.top = startY + "px";
+    drawBox.style.width = "0px";
+    drawBox.style.height = "0px";
+    imgWrap.querySelector(".excluded-overlay-container").appendChild(drawBox);
+  });
+
+  drawLayer.addEventListener("mousemove", (e) => {
+    if (!dragging || !drawBox) return;
+    const rect = imgWrap.getBoundingClientRect();
+    const curX = e.clientX - rect.left;
+    const curY = e.clientY - rect.top;
+
+    const left = Math.min(startX, curX);
+    const top = Math.min(startY, curY);
+    const width = Math.abs(curX - startX);
+    const height = Math.abs(curY - startY);
+
+    drawBox.style.left = left + "px";
+    drawBox.style.top = top + "px";
+    drawBox.style.width = width + "px";
+    drawBox.style.height = height + "px";
+  });
+
+  document.addEventListener("mouseup", async () => {
+    if (!dragging) return;
+    dragging = false;
+    if (!drawBox) return;
+
+    const left = parseFloat(drawBox.style.left) || 0;
+    const top = parseFloat(drawBox.style.top) || 0;
+    const width = parseFloat(drawBox.style.width) || 0;
+    const height = parseFloat(drawBox.style.height) || 0;
+    drawBox.remove();
+    drawBox = null;
+
+    if (width < 8 || height < 8) return;
+
+    const scaleX = img.naturalWidth / img.clientWidth;
+    const scaleY = img.naturalHeight / img.clientHeight;
+
+    const x1 = Math.round(left * scaleX);
+    const y1 = Math.round(top * scaleY);
+    const x2 = Math.round((left + width) * scaleX);
+    const y2 = Math.round((top + height) * scaleY);
+
+    await addExcludedRegion(pageIndex, x1, y1, x2, y2);
+    renderCallback();
+  });
+}
+
+async function addExcludedRegion(pageIndex, x1, y1, x2, y2) {
+  const page = currentManifest.pages[pageIndex];
+  if (!page.excluded_regions) page.excluded_regions = [];
+  page.excluded_regions.push({ x1, y1, x2, y2 });
+  await saveExcludedRegionsApi(pageIndex, page.excluded_regions);
+}
+
+async function deleteExcludedRegion(pageIndex, regionIndex) {
+  const page = currentManifest.pages[pageIndex];
+  if (!page.excluded_regions) return;
+  page.excluded_regions.splice(regionIndex, 1);
+  await saveExcludedRegionsApi(pageIndex, page.excluded_regions);
+  renderPreview();
+}
+
+async function clearAllExcludedRegions(pageIndex) {
+  const page = currentManifest.pages[pageIndex];
+  page.excluded_regions = [];
+  await saveExcludedRegionsApi(pageIndex, []);
+  renderPreview();
+}
+
+async function toggleSkipPage(pageIndex) {
+  const page = currentManifest.pages[pageIndex];
+  const newSkipped = !page.skipped;
+  page.skipped = newSkipped;
+  await setPageSkipApi(pageIndex, newSkipped);
+  renderPreview();
+}
+
+async function processSelectedPages() {
+  const processBtn = document.querySelector("#preview-toolbar button");
+  if (processBtn) {
+    processBtn.disabled = true;
+    processBtn.textContent = "Đang xử lý...";
+  }
+  try {
+    const res = await processChapterApi();
+    if (res.ok) {
+      showToast("Xử lý thành công! Chuyển sang bước kiểm tra tẩy chữ.", "success");
+      currentManifest = res.manifest;
+      renderReview();
+    } else {
+      showToast("Lỗi xử lý: " + (res.error || "Không xác định"), "error");
+    }
+  } catch (err) {
+    showToast("Lỗi kết nối server: " + err.message, "error");
+  } finally {
+    if (processBtn) {
+      processBtn.disabled = false;
+      processBtn.textContent = "Xử lý các trang đã chọn (bỏ qua trang đã đánh dấu)";
+    }
+  }
 }
