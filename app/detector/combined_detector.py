@@ -102,6 +102,44 @@ class CombinedTextDetector:
         return [boxes[i] for i in np.array(indices).flatten()]
 
     @staticmethod
+    def _project_mask_to_box(
+        mask: np.ndarray | None,
+        src_x1: int,
+        src_y1: int,
+        src_x2: int,
+        src_y2: int,
+        dst_x1: int,
+        dst_y1: int,
+        dst_x2: int,
+        dst_y2: int,
+    ) -> np.ndarray | None:
+        """Project a source mask into a destination box without inventing filled pixels."""
+        if mask is None:
+            return None
+
+        src_w = src_x2 - src_x1
+        src_h = src_y2 - src_y1
+        dst_w = dst_x2 - dst_x1
+        dst_h = dst_y2 - dst_y1
+        if src_w <= 0 or src_h <= 0 or dst_w <= 0 or dst_h <= 0:
+            return None
+        if mask.shape != (src_h, src_w):
+            return None
+
+        projected = np.zeros((dst_h, dst_w), dtype=mask.dtype)
+        ix1 = max(src_x1, dst_x1)
+        iy1 = max(src_y1, dst_y1)
+        ix2 = min(src_x2, dst_x2)
+        iy2 = min(src_y2, dst_y2)
+        if ix2 <= ix1 or iy2 <= iy1:
+            return projected
+
+        src_slice = mask[iy1 - src_y1 : iy2 - src_y1, ix1 - src_x1 : ix2 - src_x1]
+        dst_slice = projected[iy1 - dst_y1 : iy2 - dst_y1, ix1 - dst_x1 : ix2 - dst_x1]
+        dst_slice[...] = src_slice
+        return projected
+
+    @staticmethod
     def _refine_and_split_tall_boxes(boxes: list[BubbleBox], img: np.ndarray) -> list[BubbleBox]:
         img_h, img_w = img.shape[:2]
         full_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if img.ndim == 3 else img
@@ -112,14 +150,18 @@ class CombinedTextDetector:
             bh = box.y2 - box.y1
             bw = box.x2 - box.x1
             if bh <= 45:
-                rect_mask = np.full((bh, bw), 255, dtype=np.uint8) if box.mask is None else box.mask
+                rect_mask = (
+                    np.full((bh, bw), 255, dtype=np.uint8)
+                    if box.mask is None or box.mask.shape != (bh, bw)
+                    else box.mask
+                )
                 refined_boxes.append(BubbleBox(box.x1, box.y1, box.x2, box.y2, box.confidence, rect_mask))
                 continue
 
             # 1. Expand vertical bounds upwards and downwards to capture full paragraph
             crop_x1 = max(0, box.x1 - 20)
             crop_x2 = min(img_w, box.x2 + 20)
-            
+
             y1_exp = box.y1
             while y1_exp > 10:
                 strip_y1 = max(0, y1_exp - 15)
@@ -146,7 +188,11 @@ class CombinedTextDetector:
             # 2. Line projection inside y1_exp..y2_exp
             exp_crop = full_gray[y1_exp:y2_exp, crop_x1:crop_x2]
             if exp_crop.size == 0:
-                rect_mask = np.full((bh, bw), 255, dtype=np.uint8) if box.mask is None else box.mask
+                rect_mask = (
+                    np.full((bh, bw), 255, dtype=np.uint8)
+                    if box.mask is None or box.mask.shape != (bh, bw)
+                    else box.mask
+                )
                 refined_boxes.append(BubbleBox(box.x1, box.y1, box.x2, box.y2, box.confidence, rect_mask))
                 continue
 
@@ -169,7 +215,11 @@ class CombinedTextDetector:
                 line_bounds.append((start_y, len(text_rows)))
 
             if len(line_bounds) <= 1:
-                rect_mask = np.full((bh, bw), 255, dtype=np.uint8) if box.mask is None else box.mask
+                rect_mask = (
+                    np.full((bh, bw), 255, dtype=np.uint8)
+                    if box.mask is None or box.mask.shape != (bh, bw)
+                    else box.mask
+                )
                 refined_boxes.append(BubbleBox(box.x1, box.y1, box.x2, box.y2, box.confidence, rect_mask))
                 continue
 
@@ -203,22 +253,20 @@ class CombinedTextDetector:
                 line_h = abs_y2 - abs_y1
                 line_w = abs_x2 - abs_x1
 
-                m_y1 = abs_y1 - box.y1
-                m_y2 = abs_y2 - box.y1
-                m_x1 = abs_x1 - box.x1
-                m_x2 = abs_x2 - box.x1
-
-                if (
-                    box.mask is not None
-                    and m_y1 >= 0
-                    and m_x1 >= 0
-                    and m_y2 <= box.mask.shape[0]
-                    and m_x2 <= box.mask.shape[1]
-                    and (m_y2 - m_y1) == line_h
-                    and (m_x2 - m_x1) == line_w
-                ):
-                    line_mask = box.mask[m_y1:m_y2, m_x1:m_x2].copy()
-                else:
+                # Preserve the original segmentation mask when refinement expands
+                # outside the source box. Pixels outside the source mask remain zero.
+                line_mask = CombinedTextDetector._project_mask_to_box(
+                    box.mask,
+                    box.x1,
+                    box.y1,
+                    box.x2,
+                    box.y2,
+                    abs_x1,
+                    abs_y1,
+                    abs_x2,
+                    abs_y2,
+                )
+                if line_mask is None:
                     line_mask = np.full((line_h, line_w), 255, dtype=np.uint8)
 
                 refined_boxes.append(BubbleBox(abs_x1, abs_y1, abs_x2, abs_y2, box.confidence, line_mask))
