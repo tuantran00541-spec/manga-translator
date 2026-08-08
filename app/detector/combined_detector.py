@@ -169,7 +169,7 @@ class CombinedTextDetector:
                 line_bounds.append((start_y, len(text_rows)))
 
             if len(line_bounds) <= 1:
-                rect_mask = np.full((bh, bw), 255, dtype=np.uint8)
+                rect_mask = np.full((bh, bw), 255, dtype=np.uint8) if box.mask is None else box.mask
                 refined_boxes.append(BubbleBox(box.x1, box.y1, box.x2, box.y2, box.confidence, rect_mask))
                 continue
 
