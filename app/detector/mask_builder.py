@@ -39,7 +39,20 @@ def build_mask(image_shape: tuple[int, int], boxes: list[BubbleBox], crop_img: n
         if box_w <= 0 or box_h <= 0:
             continue
 
-        if box.mask is not None and box.mask.shape == (box_h, box_w):
+        if box.mask is not None:
+            if box.mask.shape != (box_h, box_w):
+                # A non-null mask with the wrong geometry is a corrupted/invalid
+                # segmentation result. Do not turn it into a large rectangle:
+                # that can erase artwork during inpainting. A detector that has
+                # no mask at all is still allowed to use the legacy rectangle
+                # fallback below.
+                logger.error(
+                    "Skipping box with invalid mask geometry at "
+                    f"({box.x1}, {box.y1}, {box.x2}, {box.y2}): "
+                    f"mask shape {box.mask.shape} != expected ({box_h}, {box_w})"
+                )
+                continue
+
             x1 = max(0, box.x1)
             y1 = max(0, box.y1)
             x2 = min(w, box.x2)
@@ -50,8 +63,9 @@ def build_mask(image_shape: tuple[int, int], boxes: list[BubbleBox], crop_img: n
             dest = mask[y1:y2, x1:x2]
             mask[y1:y2, x1:x2] = np.maximum(dest, src)
         else:
-            reason = "mask is None" if box.mask is None else f"shape mismatch (mask shape {box.mask.shape} vs box shape ({(box_h, box_w)}))"
-            logger.warning(f"Using rectangle fallback mask for box ({box.x1}, {box.y1}, {box.x2}, {box.y2}): {reason}")
+            logger.warning(
+                f"Using rectangle fallback mask for box ({box.x1}, {box.y1}, {box.x2}, {box.y2}): mask is None"
+            )
             x1 = max(0, box.x1 - MASK_EXPAND)
             y1 = max(0, box.y1 - MASK_EXPAND)
             x2 = min(w, box.x2 + MASK_EXPAND)
