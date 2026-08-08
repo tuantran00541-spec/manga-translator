@@ -166,7 +166,7 @@ class Inpainter:
                 changed = False
                 still_remaining = []
                 for b in remaining:
-                    if any(Inpainter._boxes_close(b, c) for c in current):
+                    if any(Inpainter._boxes_close(b, c) for c in current) and Inpainter._can_add_to_cluster(current, b, 600):
                         current.append(b)
                         changed = True
                     else:
@@ -231,6 +231,14 @@ class Inpainter:
         ax1, ay1, ax2, ay2 = a.x1 - CLUSTER_PADDING, a.y1 - CLUSTER_PADDING, a.x2 + CLUSTER_PADDING, a.y2 + CLUSTER_PADDING
         bx1, by1, bx2, by2 = b.x1, b.y1, b.x2, b.y2
         return not (ax2 < bx1 or bx2 < ax1 or ay2 < by1 or by2 < ay1)
+
+    @staticmethod
+    def _can_add_to_cluster(cluster: list[BubbleBox], b: BubbleBox, max_dim: int = 600) -> bool:
+        x1 = min(min(box.x1 for box in cluster), b.x1)
+        y1 = min(min(box.y1 for box in cluster), b.y1)
+        x2 = max(max(box.x2 for box in cluster), b.x2)
+        y2 = max(max(box.y2 for box in cluster), b.y2)
+        return (x2 - x1) <= max_dim and (y2 - y1) <= max_dim
 
     @staticmethod
     def _compute_crop_region(x1: int, y1: int, x2: int, y2: int, img_w: int, img_h: int) -> tuple:
