@@ -179,6 +179,64 @@ function refreshPageAfterAddBox(pageIndex, newPage) {
   panel.insertBefore(item, renderBtn);
 }
 
+function refreshPageAfterRemoveBox(pageIndex, newPage) {
+  const block = document.querySelector(`.page-block[data-page-index="${pageIndex}"]`);
+  if (!block) return;
+  const imgWrap = block.querySelector(".page-image-wrap");
+  const img = imgWrap.querySelector("img");
+  const panel = block.querySelector(".box-panel");
+  const addBoxBtn = panel.querySelector(".add-box-btn");
+
+  img.src = newPage.clean + "?t=" + Date.now();
+
+  const oldOverlays = imgWrap.querySelectorAll(".box-overlay:not(.drawing)");
+  oldOverlays.forEach((el) => el.remove());
+
+  const oldItems = panel.querySelectorAll(".box-item, .empty-boxes-notice");
+  oldItems.forEach((el) => el.remove());
+
+  const activeBoxes = (newPage.boxes || []).filter((b) => !b.removed);
+  if (activeBoxes.length === 0 && addBoxBtn) {
+    const emptyNotice = document.createElement("div");
+    emptyNotice.className = "empty-boxes-notice";
+    emptyNotice.textContent =
+      "Không phát hiện text nào trên trang này. Dùng công cụ thêm vùng thủ công nếu cần dịch.";
+    panel.insertBefore(emptyNotice, addBoxBtn);
+  }
+
+  const rebuildOverlays = () => {
+    const scaleX = img.clientWidth / img.naturalWidth;
+    const scaleY = img.clientHeight / img.naturalHeight;
+
+    newPage.boxes.forEach((box, boxIndex) => {
+      if (box.removed) return;
+
+      const overlay = document.createElement("div");
+      overlay.className = "box-overlay";
+      overlay.dataset.pageIndex = pageIndex;
+      overlay.dataset.boxIndex = boxIndex;
+      overlay.style.left = box.x1 * scaleX + "px";
+      overlay.style.top = box.y1 * scaleY + "px";
+      overlay.style.width = (box.x2 - box.x1) * scaleX + "px";
+      overlay.style.height = (box.y2 - box.y1) * scaleY + "px";
+      imgWrap.appendChild(overlay);
+
+      const item = createBoxItem(pageIndex, boxIndex);
+      if (addBoxBtn) {
+        panel.insertBefore(item, addBoxBtn);
+      } else {
+        panel.appendChild(item);
+      }
+    });
+  };
+
+  if (img.complete && img.naturalWidth > 0) {
+    rebuildOverlays();
+  } else {
+    img.onload = rebuildOverlays;
+  }
+}
+
 function showRenderResult(pageIndex, outputPath) {
   const panel = document.querySelector(
     `.page-block[data-page-index="${pageIndex}"] .box-panel`

@@ -1,6 +1,8 @@
 import numpy as np
 import cv2
 from app.detector.bubble_detector import BubbleBox
+from app.logging_config import logger
+
 from app.config import MASK_DILATE_KERNEL_SIZE
 
 MASK_EXPAND = 8
@@ -48,6 +50,8 @@ def build_mask(image_shape: tuple[int, int], boxes: list[BubbleBox], crop_img: n
             dest = mask[y1:y2, x1:x2]
             mask[y1:y2, x1:x2] = np.maximum(dest, src)
         else:
+            reason = "mask is None" if box.mask is None else f"shape mismatch (mask shape {box.mask.shape} vs box shape ({(box_h, box_w)}))"
+            logger.warning(f"Using rectangle fallback mask for box ({box.x1}, {box.y1}, {box.x2}, {box.y2}): {reason}")
             x1 = max(0, box.x1 - MASK_EXPAND)
             y1 = max(0, box.y1 - MASK_EXPAND)
             x2 = min(w, box.x2 + MASK_EXPAND)

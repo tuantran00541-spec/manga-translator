@@ -41,10 +41,10 @@ class CombinedTextDetector:
                     raw_max_x = max(t.x2 for t in group) + 24
                     raw_max_y = max(t.y2 for t in group) + 10
 
-                    min_x = max(b.x1 + 2, raw_min_x)
-                    min_y = max(b.y1 + 2, raw_min_y)
-                    max_x = min(b.x2 - 2, raw_max_x)
-                    max_y = min(b.y2 - 2, raw_max_y)
+                    min_x = max(b.x1 - 8, raw_min_x)
+                    min_y = max(b.y1 - 8, raw_min_y)
+                    max_x = min(b.x2 + 8, raw_max_x)
+                    max_y = min(b.y2 + 8, raw_max_y)
 
                     if max_x > min_x and max_y > min_y:
                         min_x, min_y, max_x, max_y = int(min_x), int(min_y), int(max_x), int(max_y)
@@ -183,8 +183,8 @@ class CombinedTextDetector:
                 abs_y1 = max(0, y1_exp + ly1 - pad_top)
                 abs_y2 = min(img_h, y1_exp + ly2 + pad_bot)
 
-                # Horizontal expansion across full width
-                line_strip = full_gray[abs_y1:abs_y2, :]
+                # Horizontal expansion across crop width
+                line_strip = full_gray[abs_y1:abs_y2, crop_x1:crop_x2]
                 if line_strip.size == 0:
                     abs_x1 = max(0, box.x1 - 20)
                     abs_x2 = min(img_w, box.x2 + 20)
@@ -194,8 +194,8 @@ class CombinedTextDetector:
                     text_col_indices = np.where(col_means < (strip_bg - 2))[0]
 
                     if len(text_col_indices) > 0:
-                        abs_x1 = max(0, int(text_col_indices.min()) - 10)
-                        abs_x2 = min(img_w, int(text_col_indices.max()) + 10)
+                        abs_x1 = max(0, crop_x1 + int(text_col_indices.min()) - 10)
+                        abs_x2 = min(img_w, crop_x1 + int(text_col_indices.max()) + 10)
                     else:
                         abs_x1 = max(0, box.x1 - 20)
                         abs_x2 = min(img_w, box.x2 + 20)
@@ -203,7 +203,24 @@ class CombinedTextDetector:
                 line_h = abs_y2 - abs_y1
                 line_w = abs_x2 - abs_x1
 
-                line_mask = np.full((line_h, line_w), 255, dtype=np.uint8)
+                m_y1 = abs_y1 - box.y1
+                m_y2 = abs_y2 - box.y1
+                m_x1 = abs_x1 - box.x1
+                m_x2 = abs_x2 - box.x1
+
+                if (
+                    box.mask is not None
+                    and m_y1 >= 0
+                    and m_x1 >= 0
+                    and m_y2 <= box.mask.shape[0]
+                    and m_x2 <= box.mask.shape[1]
+                    and (m_y2 - m_y1) == line_h
+                    and (m_x2 - m_x1) == line_w
+                ):
+                    line_mask = box.mask[m_y1:m_y2, m_x1:m_x2].copy()
+                else:
+                    line_mask = np.full((line_h, line_w), 255, dtype=np.uint8)
+
                 refined_boxes.append(BubbleBox(abs_x1, abs_y1, abs_x2, abs_y2, box.confidence, line_mask))
 
         return refined_boxes
@@ -347,7 +364,18 @@ class CombinedTextDetector:
     def _is_inside(text_box: BubbleBox, bubble_box: BubbleBox) -> bool:
         tc_x = (text_box.x1 + text_box.x2) / 2
         tc_y = (text_box.y1 + text_box.y2) / 2
-        return (
-            bubble_box.x1 <= tc_x <= bubble_box.x2
-            and bubble_box.y1 <= tc_y <= bubble_box.y2
-        )
+        if bubble_box.x1 <= tc_x <= bubble_box.x2 and bubble_box.y1 <= tc_y <= bubble_box.y2:
+            return True
+
+        ix1 = max(text_box.x1, bubble_box.x1)
+        iy1 = max(text_box.y1, bubble_box.y1)
+        ix2 = min(text_box.x2, bubble_box.x2)
+        iy2 = min(text_box.y2, bubble_box.y2)
+
+        if ix2 > ix1 and iy2 > iy1:
+            intersection_area = (ix2 - ix1) * (iy2 - iy1)
+            text_box_area = (text_box.x2 - text_box.x1) * (text_box.y2 - text_box.y1)
+            if text_box_area > 0 and (intersection_area / text_box_area) >= 0.50:
+                return True
+
+        return False

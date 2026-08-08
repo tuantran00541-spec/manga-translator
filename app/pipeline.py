@@ -12,7 +12,7 @@ from app.inpaint.lama_inpainter import Inpainter
 from app.config import RAW_DIR, PROCESSED_DIR
 from app.logging_config import logger
 from app.manifest_utils import load_manifest_raw, save_manifest_raw, get_manifest_lock
-from app.security import MAX_IMAGE_PIXELS, MAX_UPLOAD_FILE_BYTES, MAX_UPLOAD_FILES, validate_upload_image
+from app.security import MAX_IMAGE_PIXELS, MAX_UPLOAD_FILE_BYTES, MAX_UPLOAD_FILES, MAX_UPLOAD_TOTAL_BYTES, validate_upload_image
 
 
 def read_image(path: Path) -> np.ndarray:
@@ -97,9 +97,13 @@ class ChapterPipeline:
         raw_dir.mkdir(parents=True, exist_ok=True)
 
         extracted_files = []
+        total_extracted_bytes = 0
         for filename, data in uploads:
-            if len(extracted_files) >= MAX_UPLOAD_FILES:
-                logger.warning(f"Vượt quá giới hạn {MAX_UPLOAD_FILES} files")
+            if len(extracted_files) >= MAX_UPLOAD_FILES or total_extracted_bytes >= MAX_UPLOAD_TOTAL_BYTES:
+                if total_extracted_bytes >= MAX_UPLOAD_TOTAL_BYTES:
+                    logger.warning(f"Vượt quá giới hạn tổng dung lượng {MAX_UPLOAD_TOTAL_BYTES // (1024*1024)}MB")
+                else:
+                    logger.warning(f"Vượt quá giới hạn {MAX_UPLOAD_FILES} files")
                 break
             is_zip = filename.lower().endswith((".zip", ".cbz"))
             if not is_zip:
@@ -117,6 +121,9 @@ class ChapterPipeline:
                             if len(extracted_files) >= MAX_UPLOAD_FILES:
                                 logger.warning(f"Đã đạt giới hạn {MAX_UPLOAD_FILES} ảnh từ ZIP")
                                 break
+                            if total_extracted_bytes >= MAX_UPLOAD_TOTAL_BYTES:
+                                logger.warning(f"Đã đạt giới hạn tổng dung lượng {MAX_UPLOAD_TOTAL_BYTES // (1024*1024)}MB từ ZIP")
+                                break
                             if name.startswith("__MACOSX/") or name.startswith("."):
                                 continue
                             if not name.lower().endswith((".png", ".jpg", ".jpeg", ".webp", ".bmp")):
@@ -127,6 +134,11 @@ class ChapterPipeline:
                                     f"Skip {name}: giải nén vượt {MAX_UPLOAD_FILE_BYTES // (1024*1024)}MB"
                                 )
                                 continue
+                            if total_extracted_bytes + info.file_size > MAX_UPLOAD_TOTAL_BYTES:
+                                logger.warning(
+                                    f"Skip {name}: tổng dung lượng vượt {MAX_UPLOAD_TOTAL_BYTES // (1024*1024)}MB"
+                                )
+                                break
                             safe_name = name.replace("\\", "/")
                             clean_name = Path(safe_name).name
                             if not clean_name:
@@ -134,10 +146,15 @@ class ChapterPipeline:
                             img_bytes = z.read(name)
                             if len(img_bytes) > 0:
                                 extracted_files.append((clean_name, img_bytes))
+                                total_extracted_bytes += len(img_bytes)
                 except Exception as e:
                     logger.warning(f"Failed to extract zip file {filename}: {e}")
             else:
+                if total_extracted_bytes + len(data) > MAX_UPLOAD_TOTAL_BYTES:
+                    logger.warning(f"Skip {filename}: tổng dung lượng vượt {MAX_UPLOAD_TOTAL_BYTES // (1024*1024)}MB")
+                    break
                 extracted_files.append((filename, data))
+                total_extracted_bytes += len(data)
 
         if not extracted_files:
             raise ValueError("Không tìm thấy file ảnh hợp lệ nào trong dữ liệu tải lên")
@@ -254,7 +271,9 @@ class ChapterPipeline:
             manifest = load_manifest_raw(chapter_id)
             for idx, page_data in results.items():
                 if 0 <= idx < len(manifest["pages"]):
-                    manifest["pages"][idx].update(page_data)
+                    manifest["pages"][idx]["clean"] = page_data["clean"]
+                    manifest["pages"][idx]["boxes"] = page_data["boxes"]
+                    manifest["pages"][idx]["rendered"] = False
             save_manifest_raw(chapter_id, manifest)
             self._sync_output_dir(chapter_id, manifest, list(results.keys()))
 
@@ -399,6 +418,30 @@ class ChapterPipeline:
             self._sync_output_dir(chapter_id, manifest, [page_index])
         return manifest
 
+    def reset_manual_mask(self, chapter_id: str, page_index: int) -> dict:
+        processed_dir = PROCESSED_DIR / chapter_id
+        with get_manifest_lock(chapter_id):
+            manifest = load_manifest_raw(chapter_id)
+            if page_index < 0 or page_index >= len(manifest["pages"]):
+                return manifest
+            page = manifest["pages"][page_index]
+
+            img_path = Path(page["original"])
+            manual_mask_path = processed_dir / f"manual_mask_{img_path.name}"
+            if manual_mask_path.exists():
+                try:
+                    manual_mask_path.unlink()
+                except Exception:
+                    pass
+            page.pop("manual_mask", None)
+
+            image = read_image(img_path)
+            self._reinpaint_page(page, image, processed_dir, img_path)
+
+            save_manifest_raw(chapter_id, manifest)
+            self._sync_output_dir(chapter_id, manifest, [page_index])
+        return manifest
+
 
     def _reinpaint_page(self, page: dict, image, processed_dir: Path, img_path: Path) -> None:
         boxes = [
@@ -419,8 +462,7 @@ class ChapterPipeline:
                 num_labels, labels = cv2.connectedComponents(manual_mask)
                 for label in range(1, num_labels):
                     component_mask = ((labels == label).astype(np.uint8) * 255)
-                    if component_mask.sum() // 255 >= 100:
-                        clean_image = self.inpainter.inpaint_mask(clean_image, component_mask)
+                    clean_image = self.inpainter.inpaint_mask(clean_image, component_mask)
 
         clean_path = processed_dir / f"clean_{img_path.name}"
         write_image(clean_path, clean_image)

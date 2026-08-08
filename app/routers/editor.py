@@ -17,6 +17,7 @@ from app.schemas import (
     AddBoxRequest,
     OcrBoxRequest,
     RemoveBoxRequest,
+    ResetManualMaskRequest,
     SaveDraftRequest,
 )
 from app.security import validate_chapter_id
@@ -51,6 +52,14 @@ async def repaint_mask(
     logger.info(f"Chapter {chapter_id} page {page_index}: repaint mask ({len(mask_bytes)} bytes)")
     manifest = await run_in_threadpool(pipeline.repaint_mask, chapter_id, page_index, mask_bytes)
     return urlify_manifest(manifest)
+
+
+@router.post("/reset_manual_mask")
+def reset_manual_mask(req: ResetManualMaskRequest) -> dict:
+    validate_chapter_id(req.chapter_id)
+    manifest = pipeline.reset_manual_mask(req.chapter_id, req.page_index)
+    return urlify_manifest(manifest)
+
 
 
 @router.post("/ocr_box")

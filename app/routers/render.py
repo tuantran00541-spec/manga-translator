@@ -1,5 +1,6 @@
 """API Router for text rendering and font management."""
 
+import copy
 from pathlib import Path
 from PIL import Image
 from fastapi import APIRouter, HTTPException
@@ -39,6 +40,7 @@ def render_page(req: RenderRequest) -> dict:
         if req.page_index < 0 or req.page_index >= len(manifest["pages"]):
             raise HTTPException(400, f"Invalid page_index: {req.page_index}")
         page = manifest["pages"][req.page_index]
+        boxes_snapshot = copy.deepcopy(page.get("boxes", []))
     logger.info(
         f"Chapter {req.chapter_id} page {req.page_index}: "
         f"rendering {len(req.translations)} translations"
@@ -140,11 +142,26 @@ def render_page(req: RenderRequest) -> dict:
         logger.exception("Failed to save rendered page %s", out_path)
         raise HTTPException(500, f"Cannot save rendered image: {e}") from e
 
+    boxes_changed = False
     with get_manifest_lock(req.chapter_id):
         m = load_manifest_raw(req.chapter_id)
         if 0 <= req.page_index < len(m.get("pages", [])):
-            m["pages"][req.page_index]["rendered"] = True
-            save_manifest_raw(req.chapter_id, m)
+            if m["pages"][req.page_index].get("boxes", []) == boxes_snapshot:
+                m["pages"][req.page_index]["rendered"] = True
+                save_manifest_raw(req.chapter_id, m)
+            else:
+                boxes_changed = True
+
+    if boxes_changed:
+        logger.warning(
+            "Chapter %s page %s: boxes changed during render, skipping rendered=True",
+            req.chapter_id,
+            req.page_index,
+        )
+        return {
+            "output": f"/api/image/{req.chapter_id}/{req.page_index}/rendered",
+            "warning": "Vùng thoại đã bị sửa trong quá trình chèn chữ.",
+        }
 
     logger.info(
         "Chapter %s page %s: rendered %s box(es) -> %s",
@@ -154,4 +171,3 @@ def render_page(req: RenderRequest) -> dict:
         out_path.name,
     )
     return {"output": f"/api/image/{req.chapter_id}/{req.page_index}/rendered"}
-

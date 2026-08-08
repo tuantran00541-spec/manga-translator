@@ -334,7 +334,7 @@ async function removeBoxAndRepaint(pageIndex, boxIndex, item) {
     const manifest = await resp.json();
     const newPage = manifest.pages[pageIndex];
     currentManifest.pages[pageIndex] = newPage;
-    refreshPageAfterAddBox(pageIndex, newPage);
+    refreshPageAfterRemoveBox(pageIndex, newPage);
   } catch (err) {
     showToast("Xóa vùng thoại thất bại: " + err.message + " — vui lòng tải lại trang để đồng bộ.", "error");
   }
@@ -361,5 +361,34 @@ async function saveExcludedRegions(pageIndex, excludedRegions) {
   } catch (err) {
     showToast("Không lưu được vùng cấm dịch: " + err.message, "error");
     throw err;
+  }
+}
+
+async function resetManualMask(pageIndex, img, canvas, ctx, resetBtn) {
+  if (resetBtn) {
+    resetBtn.disabled = true;
+    resetBtn.textContent = "Đang xóa...";
+  }
+  try {
+    const resp = await fetch("/api/reset_manual_mask", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chapter_id: currentChapterId, page_index: pageIndex }),
+    });
+    if (!resp.ok) {
+      const data = await resp.json().catch(() => ({}));
+      throw new Error(data.detail || `lỗi ${resp.status}`);
+    }
+    const manifest = await resp.json();
+    currentManifest.pages[pageIndex] = manifest.pages[pageIndex];
+    if (img) img.src = manifest.pages[pageIndex].clean + "?t=" + Date.now();
+    if (ctx && canvas) ctx.clearRect(0, 0, canvas.width, canvas.height);
+  } catch (err) {
+    showToast("Không xóa được vùng tô tay: " + err.message, "error");
+  } finally {
+    if (resetBtn) {
+      resetBtn.disabled = false;
+      resetBtn.textContent = "Xóa vùng tô tay";
+    }
   }
 }

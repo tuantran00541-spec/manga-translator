@@ -10,6 +10,9 @@ import sys
 import json
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from app.security import validate_url
+
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
@@ -91,6 +94,10 @@ def main():
 
             # Download each image using browser context
             for i, img_url in enumerate(image_urls):
+                try:
+                    validate_url(img_url)
+                except Exception:
+                    continue
                 ext = guess_ext(img_url)
                 out_path = output_dir / f"{i:03d}{ext}"
                 try:

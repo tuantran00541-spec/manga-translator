@@ -83,3 +83,8 @@ class SaveExcludedRegionsRequest(BaseModel):
     chapter_id: str
     page_index: int
     excluded_regions: list[RegionModel]
+
+
+class ResetManualMaskRequest(BaseModel):
+    chapter_id: str
+    page_index: int

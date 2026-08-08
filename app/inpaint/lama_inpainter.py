@@ -3,6 +3,7 @@ import cv2
 from app.config import LAMA_MODEL, INPAINT_SIZE
 from app.detector.bubble_detector import BubbleBox, MAX_BOX_AREA_RATIO
 from app.detector.mask_builder import build_mask
+from app.logging_config import logger
 from app.ort_utils import make_session
 
 CLUSTER_PADDING = 35
@@ -30,6 +31,7 @@ class Inpainter:
             y2 = max(b.y2 for b in cluster)
 
             if (x2 - x1) * (y2 - y1) > w * h * MAX_BOX_AREA_RATIO:
+                logger.warning(f"Skipping cluster at ({x1}, {y1}, {x2}, {y2}): area exceeds MAX_BOX_AREA_RATIO")
                 continue
 
             crop_box = self._compute_crop_region(x1, y1, x2, y2, w, h)

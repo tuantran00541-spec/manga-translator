@@ -10,7 +10,7 @@ services:
     image: manga-translator:local
     container_name: manga-translator
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     environment:
       - HOST=0.0.0.0
       - PORT=8000
