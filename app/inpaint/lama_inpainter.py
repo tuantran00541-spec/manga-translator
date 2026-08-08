@@ -30,8 +30,8 @@ class Inpainter:
             x2 = max(b.x2 for b in cluster)
             y2 = max(b.y2 for b in cluster)
 
-            if (x2 - x1) * (y2 - y1) > w * h * MAX_BOX_AREA_RATIO:
-                logger.warning(f"Skipping cluster at ({x1}, {y1}, {x2}, {y2}): area exceeds MAX_BOX_AREA_RATIO")
+            if len(cluster) > 1 and (x2 - x1) * (y2 - y1) > w * h * MAX_BOX_AREA_RATIO:
+                logger.warning(f"Skipping multi-box cluster ({len(cluster)} boxes) at ({x1}, {y1}, {x2}, {y2}): area exceeds MAX_BOX_AREA_RATIO")
                 continue
 
             crop_box = self._compute_crop_region(x1, y1, x2, y2, w, h)
