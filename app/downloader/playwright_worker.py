@@ -69,12 +69,10 @@ def main():
             except Exception as e:
                 print(f"[Worker] Warning loading page: {e}", file=sys.stderr)
 
-            # Scroll down to trigger lazy-loaded images on Webtoon sites
             for _ in range(6):
                 page.mouse.wheel(0, 2500)
                 page.wait_for_timeout(600)
 
-            # Scrape image URLs from DOM
             elements = page.query_selector_all("img")
             image_urls = []
             for el in elements:
@@ -92,7 +90,6 @@ def main():
 
             image_urls = dedupe(image_urls)
 
-            # Download each image using browser context
             for i, img_url in enumerate(image_urls):
                 try:
                     validate_url(img_url)

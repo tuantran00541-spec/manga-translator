@@ -8,6 +8,10 @@ from app.ort_utils import make_session
 
 CLUSTER_PADDING = 35
 CROP_PADDING = 35
+MANUAL_CROP_PADDING = 72
+MANUAL_MIN_DILATION = 9
+MANUAL_MAX_DILATION = 15
+MANUAL_FEATHER_RADIUS = 3
 
 
 class Inpainter:
@@ -53,21 +57,28 @@ class Inpainter:
         if len(ys) == 0:
             return image.copy()
 
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9))
+        ys0, xs0 = np.where(mask > 127)
+        bbox_w = int(xs0.max() - xs0.min() + 1)
+        bbox_h = int(ys0.max() - ys0.min() + 1)
+        scale = max(1, min(bbox_w, bbox_h))
+        kernel_size = int(np.clip(round(scale * 0.025) * 2 + 1, MANUAL_MIN_DILATION, MANUAL_MAX_DILATION))
+        if kernel_size % 2 == 0:
+            kernel_size += 1
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
         mask = cv2.dilate(mask, kernel, iterations=1)
 
         h, w = image.shape[:2]
         ys, xs = np.where(mask > 127)
-        crop_box = self._compute_crop_region(
+        crop_box = self._compute_manual_crop_region(
             int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max()), w, h
         )
         cx1, cy1, cx2, cy2 = crop_box
         local_mask = mask[cy1:cy2, cx1:cx2]
 
         result = image.copy()
-        return self._smart_paint_region(result, local_mask, crop_box)
+        return self._smart_paint_region(result, local_mask, crop_box, feather=True)
 
-    def _smart_paint_region(self, image: np.ndarray, local_mask: np.ndarray, crop_box: tuple) -> np.ndarray:
+    def _smart_paint_region(self, image: np.ndarray, local_mask: np.ndarray, crop_box: tuple, feather: bool = False) -> np.ndarray:
         cx1, cy1, cx2, cy2 = crop_box
         crop = image[cy1:cy2, cx1:cx2]
         crop_h, crop_w = crop.shape[:2]
@@ -83,7 +94,6 @@ class Inpainter:
             non_mask_pixels = crop[non_mask_bool]
             gray_non_mask = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)[non_mask_bool]
 
-            # Case A: White Speech Bubble (>= 70% of non-mask context pixels are bright > 215)
             white_mask = gray_non_mask > 215
             if float(white_mask.mean()) >= 0.70:
                 fill_color = np.median(non_mask_pixels[white_mask], axis=0).astype(np.uint8) if np.any(white_mask) else np.array([255, 255, 255], dtype=np.uint8)
@@ -91,7 +101,6 @@ class Inpainter:
                 image[cy1:cy2, cx1:cx2] = crop
                 return image
 
-            # Case B: Solid Black Monologue / Dark Box (>= 70% of non-mask context pixels are dark < 35)
             black_mask = gray_non_mask < 35
             if float(black_mask.mean()) >= 0.70:
                 fill_color = np.median(non_mask_pixels[black_mask], axis=0).astype(np.uint8) if np.any(black_mask) else np.array([0, 0, 0], dtype=np.uint8)
@@ -99,17 +108,15 @@ class Inpainter:
                 image[cy1:cy2, cx1:cx2] = crop
                 return image
 
-            # Case C: Uniform Flat Background (stddev < 12.0)
             if float(gray_non_mask.std()) < 12.0:
                 fill_color = np.median(non_mask_pixels, axis=0).astype(np.uint8)
                 crop[mask_bool] = fill_color
                 image[cy1:cy2, cx1:cx2] = crop
                 return image
 
-        # Case D: Complex Artwork -> Use LaMa Model
-        return self._lama_fill(image, crop, local_mask, crop_box)
+        return self._lama_fill(image, crop, local_mask, crop_box, feather=feather)
 
-    def _lama_fill(self, image: np.ndarray, crop: np.ndarray, local_mask: np.ndarray, crop_box: tuple) -> np.ndarray:
+    def _lama_fill(self, image: np.ndarray, crop: np.ndarray, local_mask: np.ndarray, crop_box: tuple, feather: bool = False) -> np.ndarray:
         cx1, cy1, cx2, cy2 = crop_box
         crop_h, crop_w = crop.shape[:2]
 
@@ -150,8 +157,17 @@ class Inpainter:
         painted_crop = painted_full[pad_y:pad_y + new_h, pad_x:pad_x + new_w]
         painted = cv2.resize(painted_crop, (crop_w, crop_h))
 
-        mask_3d = (local_mask > 127)[:, :, None]
-        image[cy1:cy2, cx1:cx2] = np.where(mask_3d, painted, image[cy1:cy2, cx1:cx2])
+        original_crop = image[cy1:cy2, cx1:cx2]
+        if feather:
+            alpha = (local_mask > 127).astype(np.float32)
+            k = MANUAL_FEATHER_RADIUS * 2 + 1
+            alpha = cv2.GaussianBlur(alpha, (k, k), 0)
+            alpha = np.clip(alpha, 0.0, 1.0)[:, :, None]
+            blended = (painted.astype(np.float32) * alpha + original_crop.astype(np.float32) * (1.0 - alpha))
+            image[cy1:cy2, cx1:cx2] = np.clip(blended, 0, 255).astype(np.uint8)
+        else:
+            mask_3d = (local_mask > 127)[:, :, None]
+            image[cy1:cy2, cx1:cx2] = np.where(mask_3d, painted, original_crop)
         return image
 
     @staticmethod
@@ -239,6 +255,16 @@ class Inpainter:
         x2 = max(max(box.x2 for box in cluster), b.x2)
         y2 = max(max(box.y2 for box in cluster), b.y2)
         return (x2 - x1) <= max_dim and (y2 - y1) <= max_dim
+
+
+    @staticmethod
+    def _compute_manual_crop_region(x1: int, y1: int, x2: int, y2: int, img_w: int, img_h: int) -> tuple:
+        """Give manual repairs more artwork context than automatic bubble repairs."""
+        x1 = max(0, x1 - MANUAL_CROP_PADDING)
+        y1 = max(0, y1 - MANUAL_CROP_PADDING)
+        x2 = min(img_w, x2 + MANUAL_CROP_PADDING)
+        y2 = min(img_h, y2 + MANUAL_CROP_PADDING)
+        return int(x1), int(y1), int(x2), int(y2)
 
     @staticmethod
     def _compute_crop_region(x1: int, y1: int, x2: int, y2: int, img_w: int, img_h: int) -> tuple:

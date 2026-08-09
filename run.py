@@ -31,7 +31,6 @@ def main() -> None:
             "Use firewall + auth if public."
         )
 
-    # Single worker recommended: heavy CPU models + Playwright are not multi-process friendly
     uvicorn.run(
         "app.main:app",
         host=HOST,

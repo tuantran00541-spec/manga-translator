@@ -93,10 +93,8 @@ class YoloDetector:
 
         all_boxes = []
 
-        # Pass 1: Original image, scale 1.0
         all_boxes.extend(self._detect_single_plain(image, offset_x, offset_y))
 
-        # Pass 2: Horizontal flip
         flipped = cv2.flip(image, 1)
         flipped_boxes = self._detect_single_plain(flipped, 0, 0)
         for b in flipped_boxes:
@@ -119,7 +117,6 @@ class YoloDetector:
                     )
                 )
 
-        # Pass 3: Downscale 0.85
         small_scale = 0.85
         sh, sw = int(round(h * small_scale)), int(round(w * small_scale))
         if sh > 10 and sw > 10:

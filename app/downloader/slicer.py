@@ -4,6 +4,10 @@ import numpy as np
 from app.config import SLICE_TARGET_HEIGHT, SLICE_SEARCH_WINDOW, SLICE_MIN_HEIGHT
 
 
+SAFE_CUT_BAND = 12
+MAX_SAFE_SEARCH_EXPANSION = 800
+
+
 def slice_image(image_path: Path, out_dir: Path, prefix: str) -> list[Path]:
     data = np.fromfile(str(image_path), dtype=np.uint8)
     image = cv2.imdecode(data, cv2.IMREAD_COLOR)
@@ -51,7 +55,6 @@ def _find_cut_rows(gray: np.ndarray, h: int, w: int) -> list[int]:
     content_count_per_row = non_bg_pixels.sum(axis=1).astype(np.float32)
 
     scores = row_std + content_count_per_row * 2.0
-    scores[unsafe_rows] += 100000.0
 
     cuts = []
     y = 0
@@ -61,25 +64,68 @@ def _find_cut_rows(gray: np.ndarray, h: int, w: int) -> list[int]:
         lo = max(y + SLICE_MIN_HEIGHT, target - SLICE_SEARCH_WINDOW)
         hi = min(h - SLICE_MIN_HEIGHT, target + SLICE_SEARCH_WINDOW)
 
-        if lo >= hi:
-            cut = target
-        else:
-            window = scores[lo:hi]
-            min_idx = int(np.argmin(window))
+        cut = _find_safe_cut(unsafe_rows, scores, lo, hi, target)
 
-            if window[min_idx] >= 50000.0:
-                exp_lo = max(y + SLICE_MIN_HEIGHT, target - SLICE_SEARCH_WINDOW - 350)
-                exp_hi = min(h - SLICE_MIN_HEIGHT, target + SLICE_SEARCH_WINDOW + 350)
-                exp_window = scores[exp_lo:exp_hi]
-                exp_min_idx = int(np.argmin(exp_window))
-                cut = exp_lo + exp_min_idx
-            else:
-                cut = lo + min_idx
+        if cut is None:
+            expanded_lo = max(
+                y + SLICE_MIN_HEIGHT,
+                target - SLICE_SEARCH_WINDOW - MAX_SAFE_SEARCH_EXPANSION,
+            )
+            expanded_hi = min(
+                h - SLICE_MIN_HEIGHT,
+                target + SLICE_SEARCH_WINDOW + MAX_SAFE_SEARCH_EXPANSION,
+            )
+            cut = _find_safe_cut(
+                unsafe_rows, scores, expanded_lo, expanded_hi, target
+            )
+
+        if cut is None:
+            break
 
         cuts.append(cut)
         y = cut
 
     return cuts
+
+
+def _find_safe_cut(
+    unsafe_rows: np.ndarray,
+    scores: np.ndarray,
+    lo: int,
+    hi: int,
+    target: int,
+) -> int | None:
+    """Return a cut inside a genuinely empty vertical band, or None.
+
+    `hi` is treated as an exclusive upper bound. A cut is safe only when
+    SAFE_CUT_BAND rows on both sides are outside all detected content masks.
+    """
+    if lo >= hi:
+        return None
+
+    start = max(0, lo + SAFE_CUT_BAND)
+    end = min(len(unsafe_rows), hi - SAFE_CUT_BAND)
+    if start >= end:
+        return None
+
+    safe = ~unsafe_rows
+    kernel = np.ones(2 * SAFE_CUT_BAND + 1, dtype=np.int32)
+    safe_band = np.convolve(safe.astype(np.int32), kernel, mode="same")
+    required = 2 * SAFE_CUT_BAND + 1
+
+    candidates = np.arange(start, end)
+    candidates = candidates[safe_band[candidates] == required]
+    if candidates.size == 0:
+        return None
+
+    distance = np.abs(candidates - target)
+    min_distance = distance.min()
+    nearest = candidates[distance == min_distance]
+
+    if nearest.size == 1:
+        return int(nearest[0])
+
+    return int(nearest[np.argmin(scores[nearest])])
 
 
 def _get_content_row_mask(gray: np.ndarray, h: int, w: int) -> np.ndarray:
@@ -93,7 +139,6 @@ def _get_content_row_mask(gray: np.ndarray, h: int, w: int) -> np.ndarray:
 
     combined = cv2.bitwise_or(edges, content_binary)
 
-    # Morphological close to bridge empty white/black interiors of speech bubbles & panels
     close_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (31, 31))
     combined = cv2.morphologyEx(combined, cv2.MORPH_CLOSE, close_kernel)
 

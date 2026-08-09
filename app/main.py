@@ -64,7 +64,6 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
     return JSONResponse({"detail": "Internal server error"}, status_code=500)
 
 
-# Register APIRouters
 app.include_router(chapters.router)
 app.include_router(editor.router)
 app.include_router(render.router)

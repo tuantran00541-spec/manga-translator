@@ -76,17 +76,14 @@ class MultiLangOCR:
         else:
             gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
 
-        # Invert dark background text so PaddleOCR always sees black text on light background
         h, w = gray.shape[:2]
         inner = gray[h // 4 : 3 * h // 4, w // 4 : 3 * w // 4] if (h >= 8 and w >= 8) else gray
         if float(inner.mean()) < 130:
             gray = cv2.bitwise_not(gray)
 
-        # Apply CLAHE (Contrast Limited Adaptive Histogram Equalization) instead of harsh Otsu thresholding
         clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
         enhanced_gray = clahe.apply(gray)
 
-        # Apply mild sharpening kernel to make anti-aliased font edges crisp
         sharpen_kernel = np.array([[0, -0.3, 0], [-0.3, 2.2, -0.3], [0, -0.3, 0]], dtype=np.float32)
         sharpened = cv2.filter2D(enhanced_gray, -1, sharpen_kernel)
 
@@ -208,4 +205,3 @@ class MultiLangOCR:
                         det_db_unclip_ratio=2.0,
                     )
         return self._paddle_engines[target_lang], lang_lock
-

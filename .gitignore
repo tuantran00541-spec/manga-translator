@@ -33,3 +33,9 @@ Thumbs.db
 
 # Docker
 *.log
+
+# Debug / Benchmark / Test scripts
+debug_detect.py
+debug_text_threshold_sweep.py
+inspect_model.py
+tools/

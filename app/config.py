@@ -40,7 +40,6 @@ MAX_FONT_SIZE = 48
 
 SUPPORTED_OCR_LANGS = ["ja", "ch", "korean", "en"]
 
-# Environment overrides (useful for Docker / LAN)
 HOST = os.getenv("HOST", "127.0.0.1")
 PORT = int(os.getenv("PORT", "8000"))
 RELOAD = os.getenv("RELOAD", "0") == "1"
