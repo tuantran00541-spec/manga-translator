@@ -61,7 +61,6 @@ def reset_manual_mask(req: ResetManualMaskRequest) -> dict:
     return urlify_manifest(manifest)
 
 
-
 @router.post("/ocr_box")
 def ocr_box(req: OcrBoxRequest) -> dict:
     validate_chapter_id(req.chapter_id)
@@ -97,10 +96,12 @@ def ocr_box(req: OcrBoxRequest) -> dict:
         manifest = load_manifest_raw(req.chapter_id)
         if 0 <= req.page_index < len(manifest["pages"]):
             if 0 <= req.box_index < len(manifest["pages"][req.page_index]["boxes"]):
-                manifest["pages"][req.page_index]["boxes"][req.box_index]["ocr_text"] = text
+                target = manifest["pages"][req.page_index]["boxes"][req.box_index]
+                target["ocr_text"] = text
+                target["ocr_lang"] = req.lang
                 save_manifest_raw(req.chapter_id, manifest)
 
-    return {"text": text}
+    return {"text": text, "lang": req.lang}
 
 
 @router.post("/save_draft")
