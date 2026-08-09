@@ -106,11 +106,11 @@ function setupBrush(pageIndex, img, canvas, wrap, brushBtn, clearBtn, submitBtn,
   let brushRadius = Math.min(30, Math.max(10, Math.round(img.naturalWidth * 0.018)));
   brushRadius = Math.max(8, Math.min(80, brushRadius));
   brushSize.value = String(brushRadius);
-  brushSizeValue.textContent = `${brushRadius}px`;
+  brushSizeValue.textContent = `${Math.round(brushRadius * 2)}px`;
 
   brushSize.addEventListener("input", () => {
     brushRadius = Number(brushSize.value);
-    brushSizeValue.textContent = `${brushRadius}px`;
+    brushSizeValue.textContent = `${Math.round(brushRadius * 2)}px`;
   });
 
   const srcCanvas = document.createElement("canvas");
@@ -189,7 +189,9 @@ function setupBrush(pageIndex, img, canvas, wrap, brushBtn, clearBtn, submitBtn,
   canvas.addEventListener("wheel", (e) => {
     if (!brushOn) return;
     e.preventDefault();
-    brushRadius = Math.round(Math.max(8, Math.min(40, brushRadius + (e.deltaY < 0 ? 2 : -2))));
+    brushRadius = Math.round(Math.max(8, Math.min(80, brushRadius + (e.deltaY < 0 ? 2 : -2))));
+    brushSize.value = String(brushRadius);
+    brushSizeValue.textContent = `${Math.round(brushRadius * 2)}px`;
     showToast(`Cỡ cọ: ${Math.round(brushRadius * 2)} px`, "info");
   }, { passive: false });
 
