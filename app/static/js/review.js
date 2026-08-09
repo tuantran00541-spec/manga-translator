@@ -1,5 +1,3 @@
-// review.js - Quản lý Giao diện Kiểm tra Tẩy chữ & Cọ tô lỗi
-
 function renderReview() {
   const container = document.getElementById("page-view");
   if (!container) return;
@@ -33,21 +31,8 @@ function renderReview() {
     label.textContent = pageLabel(currentManifest.pages, pageIndex);
     card.appendChild(label);
 
-    const wrap = document.createElement("div");
-    wrap.className = "review-image-wrap";
-
-    const img = document.createElement("img");
-    img.src = page.clean;
-    wrap.appendChild(img);
-
-    const canvas = document.createElement("canvas");
-    canvas.className = "brush-canvas";
-    wrap.appendChild(canvas);
-
-    card.appendChild(wrap);
-
     const controls = document.createElement("div");
-    controls.className = "review-controls";
+    controls.className = "review-controls review-controls-top";
 
     const brushBtn = document.createElement("button");
     brushBtn.className = "brush-toggle-btn";
@@ -69,10 +54,40 @@ function renderReview() {
     resetManualBtn.textContent = "Xóa vùng tô tay";
     controls.appendChild(resetManualBtn);
 
+    const brushSizeWrap = document.createElement("label");
+    brushSizeWrap.className = "brush-size-control";
+    brushSizeWrap.textContent = "Cỡ cọ ";
+    const brushSizeValue = document.createElement("output");
+    brushSizeValue.className = "brush-size-value";
+    brushSizeValue.textContent = "—";
+    const brushSize = document.createElement("input");
+    brushSize.type = "range";
+    brushSize.min = "8";
+    brushSize.max = "80";
+    brushSize.step = "1";
+    brushSize.className = "brush-size-slider";
+    brushSize.title = "Điều chỉnh bán kính cọ";
+    brushSizeWrap.appendChild(brushSize);
+    brushSizeWrap.appendChild(brushSizeValue);
+    controls.appendChild(brushSizeWrap);
+
     card.appendChild(controls);
+
+    const wrap = document.createElement("div");
+    wrap.className = "review-image-wrap";
+
+    const img = document.createElement("img");
+    img.src = page.clean;
+    wrap.appendChild(img);
+
+    const canvas = document.createElement("canvas");
+    canvas.className = "brush-canvas";
+    wrap.appendChild(canvas);
+
+    card.appendChild(wrap);
     container.appendChild(card);
 
-    const initBrush = () => setupBrush(pageIndex, img, canvas, wrap, brushBtn, clearBtn, submitBtn, resetManualBtn);
+    const initBrush = () => setupBrush(pageIndex, img, canvas, wrap, brushBtn, clearBtn, submitBtn, resetManualBtn, brushSize, brushSizeValue);
     if (img.complete && img.naturalWidth > 0) {
       initBrush();
     } else {
@@ -81,14 +96,22 @@ function renderReview() {
   });
 }
 
-function setupBrush(pageIndex, img, canvas, wrap, brushBtn, clearBtn, submitBtn, resetManualBtn) {
+function setupBrush(pageIndex, img, canvas, wrap, brushBtn, clearBtn, submitBtn, resetManualBtn, brushSize, brushSizeValue) {
   if (canvas._brushAbort) canvas._brushAbort.abort();
   canvas.width = img.naturalWidth;
   canvas.height = img.naturalHeight;
   canvas.style.width = img.clientWidth + "px";
   canvas.style.height = img.clientHeight + "px";
   const ctx = canvas.getContext("2d");
-  const BRUSH_RADIUS = Math.max(22, Math.round(img.naturalWidth * 0.035));
+  let brushRadius = Math.min(30, Math.max(10, Math.round(img.naturalWidth * 0.018)));
+  brushRadius = Math.max(8, Math.min(80, brushRadius));
+  brushSize.value = String(brushRadius);
+  brushSizeValue.textContent = `${brushRadius}px`;
+
+  brushSize.addEventListener("input", () => {
+    brushRadius = Number(brushSize.value);
+    brushSizeValue.textContent = `${brushRadius}px`;
+  });
 
   const srcCanvas = document.createElement("canvas");
   srcCanvas.width = img.naturalWidth;
@@ -124,8 +147,17 @@ function setupBrush(pageIndex, img, canvas, wrap, brushBtn, clearBtn, submitBtn,
   function paintDot(x, y) {
     ctx.fillStyle = "rgba(220, 38, 38, 0.7)";
     ctx.beginPath();
-    ctx.arc(x, y, BRUSH_RADIUS, 0, Math.PI * 2);
+    ctx.arc(x, y, brushRadius, 0, Math.PI * 2);
     ctx.fill();
+  }
+
+  function paintStrokeTo(x, y) {
+    ctx.strokeStyle = "rgba(220, 38, 38, 0.7)";
+    ctx.lineWidth = brushRadius * 2;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.lineTo(x, y);
+    ctx.stroke();
   }
 
   canvas.addEventListener("mousedown", (e) => {
@@ -144,17 +176,27 @@ function setupBrush(pageIndex, img, canvas, wrap, brushBtn, clearBtn, submitBtn,
 
     painting = true;
     paintDot(x, y);
+    ctx.beginPath();
+    ctx.moveTo(x, y);
   });
 
   canvas.addEventListener("mousemove", (e) => {
     if (!brushOn || !painting) return;
     const { x, y } = getCanvasCoords(e);
-    paintDot(x, y);
+    paintStrokeTo(x, y);
   });
+
+  canvas.addEventListener("wheel", (e) => {
+    if (!brushOn) return;
+    e.preventDefault();
+    brushRadius = Math.round(Math.max(8, Math.min(40, brushRadius + (e.deltaY < 0 ? 2 : -2))));
+    showToast(`Cỡ cọ: ${Math.round(brushRadius * 2)} px`, "info");
+  }, { passive: false });
 
   const abortCtrl = new AbortController();
   window.addEventListener("mouseup", () => {
     painting = false;
+    ctx.closePath();
   }, { signal: abortCtrl.signal });
 
   canvas._brushAbort = abortCtrl;
@@ -195,14 +237,14 @@ function floodFillSelect(ctx, srcData, startX, startY, width, height) {
     if (!colorMatch(pxIdx)) continue;
 
     let xl = x;
-    while (xl > 0 && !visited[y * width + xl - 1] && colorMatch(((y * width + xl - 1) * 4)) ) {
+    while (xl > 0 && !visited[y * width + xl - 1] && colorMatch((y * width + xl - 1) * 4)) {
       visited[y * width + xl - 1] = 1;
       visitedCount++;
       xl--;
     }
 
     let xr = x;
-    while (xr < width - 1 && !visited[y * width + xr + 1] && colorMatch(((y * width + xr + 1) * 4)) ) {
+    while (xr < width - 1 && !visited[y * width + xr + 1] && colorMatch((y * width + xr + 1) * 4)) {
       visited[y * width + xr + 1] = 1;
       visitedCount++;
       xr++;
@@ -259,10 +301,8 @@ function floodFillSelect(ctx, srcData, startX, startY, width, height) {
   tmpCanvas.width = width;
   tmpCanvas.height = height;
   tmpCanvas.getContext("2d").putImageData(imgData, 0, 0);
-
   ctx.drawImage(tmpCanvas, 0, 0);
 }
-
 async function submitRepaint(pageIndex, canvas, img, ctx, submitBtn) {
   const pixelCheckCtx = document.createElement("canvas").getContext("2d");
   pixelCheckCtx.canvas.width = canvas.width;
