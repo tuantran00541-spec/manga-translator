@@ -161,12 +161,14 @@ async function processSelectedPages() {
 
 async function fetchOcr(pageIndex, boxIndex, originalEl) {
   const page = currentManifest.pages[pageIndex];
-  if (page && page.boxes && page.boxes[boxIndex] && page.boxes[boxIndex].ocr_text) {
-    originalEl.textContent = page.boxes[boxIndex].ocr_text;
-    return;
-  }
   const langEl = document.getElementById("lang-select");
   const lang = langEl ? langEl.value : "ja";
+  const box = page && page.boxes ? page.boxes[boxIndex] : null;
+  // OCR text is language-specific. Never reuse a cached result produced for another language.
+  if (box && box.ocr_text && box.ocr_lang === lang) {
+    originalEl.textContent = box.ocr_text;
+    return;
+  }
   try {
     const resp = await fetch("/api/ocr_box", {
       method: "POST",
@@ -183,6 +185,10 @@ async function fetchOcr(pageIndex, boxIndex, originalEl) {
       throw new Error(data.detail || `lỗi ${resp.status}`);
     }
     const data = await resp.json();
+    if (box) {
+      box.ocr_text = data.text || "";
+      box.ocr_lang = lang;
+    }
     originalEl.textContent = data.text || "(không đọc được)";
   } catch (err) {
     originalEl.textContent = "(OCR lỗi: " + err.message + ")";
