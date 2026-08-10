@@ -12,6 +12,7 @@ MANUAL_CROP_PADDING = 72
 MANUAL_MIN_DILATION = 9
 MANUAL_MAX_DILATION = 15
 MANUAL_FEATHER_RADIUS = 3
+MANUAL_TILE_OVERLAP = 64
 
 
 class Inpainter:
@@ -120,12 +121,38 @@ class Inpainter:
         cx1, cy1, cx2, cy2 = crop_box
         crop_h, crop_w = crop.shape[:2]
 
+        # Manual repairs can become long after the safe physical slicer keeps
+        # artwork intact. Feeding the whole long crop through a single 512x512
+        # resize destroys local detail. Keep the existing single-pass behavior
+        # for automatic inpaint, but tile oversized manual crops at native
+        # resolution so LaMa does not have to reconstruct downsampled artwork.
+        if feather and max(crop_h, crop_w) > INPAINT_SIZE:
+            painted = self._lama_fill_tiled(crop, local_mask)
+        else:
+            painted = self._lama_fill_single(crop, local_mask)
+
+        original_crop = image[cy1:cy2, cx1:cx2]
+        if feather:
+            alpha = (local_mask > 127).astype(np.float32)
+            k = MANUAL_FEATHER_RADIUS * 2 + 1
+            alpha = cv2.GaussianBlur(alpha, (k, k), 0)
+            alpha = np.clip(alpha, 0.0, 1.0)[:, :, None]
+            blended = painted.astype(np.float32) * alpha + original_crop.astype(np.float32) * (1.0 - alpha)
+            image[cy1:cy2, cx1:cx2] = np.clip(blended, 0, 255).astype(np.uint8)
+        else:
+            mask_3d = (local_mask > 127)[:, :, None]
+            image[cy1:cy2, cx1:cx2] = np.where(mask_3d, painted, original_crop)
+        return image
+
+    def _lama_fill_single(self, crop: np.ndarray, local_mask: np.ndarray) -> np.ndarray:
+        crop_h, crop_w = crop.shape[:2]
         scale = INPAINT_SIZE / max(crop_h, crop_w)
-        new_h, new_w = int(crop_h * scale), int(crop_w * scale)
+        new_h = max(1, int(round(crop_h * scale)))
+        new_w = max(1, int(round(crop_w * scale)))
         pad_y = (INPAINT_SIZE - new_h) // 2
         pad_x = (INPAINT_SIZE - new_w) // 2
 
-        crop_resized = cv2.resize(crop, (new_w, new_h))
+        crop_resized = cv2.resize(crop, (new_w, new_h), interpolation=cv2.INTER_AREA if scale < 1.0 else cv2.INTER_CUBIC)
         pad_top = pad_y
         pad_bottom = INPAINT_SIZE - new_h - pad_y
         pad_left = pad_x
@@ -142,33 +169,72 @@ class Inpainter:
 
         img_blob = crop_rgb.astype(np.float32) / 255.0
         img_blob = img_blob.transpose(2, 0, 1)[None]
-
         mask_blob = (mask_canvas > 127).astype(np.float32)[None, None]
 
-        output = self.session.run(
-            None, {self.image_input: img_blob, self.mask_input: mask_blob}
-        )[0]
-
+        output = self.session.run(None, {self.image_input: img_blob, self.mask_input: mask_blob})[0]
         painted_rgb = output[0].transpose(1, 2, 0)
         if painted_rgb.max() <= 1.0:
             painted_rgb = painted_rgb * 255.0
         painted_rgb = np.clip(painted_rgb, 0, 255).astype(np.uint8)
         painted_full = cv2.cvtColor(painted_rgb, cv2.COLOR_RGB2BGR)
         painted_crop = painted_full[pad_y:pad_y + new_h, pad_x:pad_x + new_w]
-        painted = cv2.resize(painted_crop, (crop_w, crop_h))
+        return cv2.resize(painted_crop, (crop_w, crop_h), interpolation=cv2.INTER_CUBIC if scale > 1.0 else cv2.INTER_AREA)
 
-        original_crop = image[cy1:cy2, cx1:cx2]
-        if feather:
-            alpha = (local_mask > 127).astype(np.float32)
-            k = MANUAL_FEATHER_RADIUS * 2 + 1
-            alpha = cv2.GaussianBlur(alpha, (k, k), 0)
-            alpha = np.clip(alpha, 0.0, 1.0)[:, :, None]
-            blended = (painted.astype(np.float32) * alpha + original_crop.astype(np.float32) * (1.0 - alpha))
-            image[cy1:cy2, cx1:cx2] = np.clip(blended, 0, 255).astype(np.uint8)
-        else:
-            mask_3d = (local_mask > 127)[:, :, None]
-            image[cy1:cy2, cx1:cx2] = np.where(mask_3d, painted, original_crop)
-        return image
+    def _lama_fill_tiled(self, crop: np.ndarray, local_mask: np.ndarray) -> np.ndarray:
+        """Run manual LaMa on overlapping native-resolution 512px tiles."""
+        h, w = crop.shape[:2]
+        tile = INPAINT_SIZE
+        overlap = min(MANUAL_TILE_OVERLAP, tile // 4)
+        step = tile - overlap
+
+        output = crop.astype(np.float32).copy()
+        weights = np.zeros((h, w), dtype=np.float32)
+
+        y_starts = self._tile_starts(h, tile, step)
+        x_starts = self._tile_starts(w, tile, step)
+        for y0 in y_starts:
+            y1 = min(h, y0 + tile)
+            for x0 in x_starts:
+                x1 = min(w, x0 + tile)
+                tile_img = crop[y0:y1, x0:x1]
+                tile_mask = local_mask[y0:y1, x0:x1]
+                if not np.any(tile_mask > 127):
+                    output[y0:y1, x0:x1] += 0.0
+                    weights[y0:y1, x0:x1] += 1.0
+                    continue
+
+                tile_painted = self._lama_fill_single(tile_img, tile_mask)
+                tile_h, tile_w = tile_img.shape[:2]
+                wy = self._tile_weight(tile_h, overlap, y0 > 0, y1 < h)
+                wx = self._tile_weight(tile_w, overlap, x0 > 0, x1 < w)
+                weight = wy[:, None] * wx[None, :]
+                output[y0:y1, x0:x1] += tile_painted.astype(np.float32) * weight[:, :, None]
+                weights[y0:y1, x0:x1] += weight
+
+        weights = np.maximum(weights, 1e-6)
+        return np.clip(output / weights[:, :, None], 0, 255).astype(np.uint8)
+
+    @staticmethod
+    def _tile_starts(length: int, tile: int, step: int) -> list[int]:
+        if length <= tile:
+            return [0]
+        starts = list(range(0, max(1, length - tile + 1), step))
+        last = length - tile
+        if starts[-1] != last:
+            starts.append(last)
+        return starts
+
+    @staticmethod
+    def _tile_weight(length: int, overlap: int, has_before: bool, has_after: bool) -> np.ndarray:
+        weight = np.ones(length, dtype=np.float32)
+        if overlap <= 0:
+            return weight
+        ramp = np.linspace(0.0, 1.0, min(overlap, length), dtype=np.float32)
+        if has_before:
+            weight[:len(ramp)] = np.maximum(weight[:len(ramp)], ramp)
+        if has_after:
+            weight[-len(ramp):] = np.maximum(weight[-len(ramp):], ramp[::-1])
+        return weight
 
     @staticmethod
     def _cluster_boxes(boxes: list[BubbleBox]) -> list[list[BubbleBox]]:
@@ -224,7 +290,6 @@ class Inpainter:
                 lines.append([b])
 
         lines.sort(key=lambda line: min(b.y1 for b in line))
-
         sub_clusters = []
         current_group = []
         for line in lines:
@@ -255,7 +320,6 @@ class Inpainter:
         x2 = max(max(box.x2 for box in cluster), b.x2)
         y2 = max(max(box.y2 for box in cluster), b.y2)
         return (x2 - x1) <= max_dim and (y2 - y1) <= max_dim
-
 
     @staticmethod
     def _compute_manual_crop_region(x1: int, y1: int, x2: int, y2: int, img_w: int, img_h: int) -> tuple:
