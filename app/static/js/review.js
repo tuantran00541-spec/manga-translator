@@ -77,7 +77,7 @@ function renderReview() {
     wrap.className = "review-image-wrap";
 
     const img = document.createElement("img");
-    img.src = page.clean;
+    img.src = page.clean + "?t=" + Date.now();
     wrap.appendChild(img);
 
     const canvas = document.createElement("canvas");
