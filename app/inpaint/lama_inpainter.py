@@ -187,7 +187,7 @@ class Inpainter:
         overlap = min(MANUAL_TILE_OVERLAP, tile // 4)
         step = tile - overlap
 
-        output = crop.astype(np.float32).copy()
+        output = np.zeros((h, w, 3), dtype=np.float32)
         weights = np.zeros((h, w), dtype=np.float32)
 
         y_starts = self._tile_starts(h, tile, step)
@@ -198,16 +198,17 @@ class Inpainter:
                 x1 = min(w, x0 + tile)
                 tile_img = crop[y0:y1, x0:x1]
                 tile_mask = local_mask[y0:y1, x0:x1]
-                if not np.any(tile_mask > 127):
-                    output[y0:y1, x0:x1] += 0.0
-                    weights[y0:y1, x0:x1] += 1.0
-                    continue
-
-                tile_painted = self._lama_fill_single(tile_img, tile_mask)
                 tile_h, tile_w = tile_img.shape[:2]
                 wy = self._tile_weight(tile_h, overlap, y0 > 0, y1 < h)
                 wx = self._tile_weight(tile_w, overlap, x0 > 0, x1 < w)
                 weight = wy[:, None] * wx[None, :]
+
+                if not np.any(tile_mask > 127):
+                    output[y0:y1, x0:x1] += tile_img.astype(np.float32) * weight[:, :, None]
+                    weights[y0:y1, x0:x1] += weight
+                    continue
+
+                tile_painted = self._lama_fill_single(tile_img, tile_mask)
                 output[y0:y1, x0:x1] += tile_painted.astype(np.float32) * weight[:, :, None]
                 weights[y0:y1, x0:x1] += weight
 
