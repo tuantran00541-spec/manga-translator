@@ -24,7 +24,7 @@ function renderEditor() {
     imgWrap.className = "page-image-wrap";
 
     const img = document.createElement("img");
-    img.src = page.clean;
+    img.src = page.clean + "?t=" + Date.now();
     imgWrap.appendChild(img);
 
     const panel = document.createElement("div");
