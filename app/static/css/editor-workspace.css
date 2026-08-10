@@ -1,0 +1,179 @@
+/* UI-04 — focused translation workspace */
+
+#page-view.editor-mode {
+  display: block;
+}
+
+.translation-workspace {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+}
+
+.translation-sticky-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 14px;
+  background: var(--surface-raised, var(--panel));
+  border: 1px solid var(--border, var(--line));
+  border-radius: var(--radius-md, 8px);
+  box-shadow: var(--shadow-sm, none);
+  backdrop-filter: blur(10px);
+}
+
+.translation-toolbar-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.translation-toolbar-title strong {
+  color: var(--text);
+  font-size: 15px;
+}
+
+.translation-toolbar-title span {
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.translation-position {
+  flex: 0 0 auto;
+  color: var(--text-dim);
+  font: 500 12px var(--font-mono);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.translation-workspace-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
+  align-items: start;
+  gap: 16px;
+}
+
+.translation-canvas-host {
+  min-width: 0;
+  display: flex;
+  justify-content: center;
+}
+
+.translation-canvas-host .page-block-wrapper {
+  width: 100%;
+  margin: 0;
+}
+
+.translation-canvas-host .page-block-label {
+  margin-bottom: 8px;
+}
+
+.translation-canvas-host .page-block {
+  display: block;
+}
+
+.translation-canvas-host .page-image-wrap {
+  width: min(100%, 720px);
+  margin: 0 auto;
+  padding: 10px;
+  box-sizing: border-box;
+}
+
+.translation-canvas-host .page-image-wrap img {
+  display: block;
+  width: 100%;
+  max-width: none;
+  height: auto;
+}
+
+.translation-panel-host {
+  position: sticky;
+  top: 78px;
+  max-height: calc(100vh - 94px);
+  overflow: auto;
+  min-width: 0;
+  padding: 10px;
+  background: var(--surface, var(--panel));
+  border: 1px solid var(--border, var(--line));
+  border-radius: var(--radius-md, 8px);
+  box-sizing: border-box;
+}
+
+.translation-panel-host .box-panel {
+  width: 100%;
+}
+
+.translation-panel-host .box-item {
+  margin-bottom: 8px;
+}
+
+.translation-page-nav {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  width: min(100%, 1100px);
+  margin: 0 auto;
+}
+
+.translation-nav-btn {
+  min-height: 38px;
+  padding: 8px 14px;
+  border: 1px solid var(--border, var(--line));
+  border-radius: var(--radius-sm, 6px);
+  background: var(--surface, var(--panel));
+  color: var(--text);
+  font: 600 12px var(--font-body);
+  cursor: pointer;
+}
+
+.translation-nav-btn:last-child {
+  justify-self: end;
+}
+
+.translation-nav-btn:not(:disabled):hover {
+  border-color: var(--accent, var(--blue));
+}
+
+.translation-nav-btn:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
+.translation-nav-btn:focus-visible {
+  outline: 2px solid var(--focus, var(--blue));
+  outline-offset: 2px;
+}
+
+@media (max-width: 900px) {
+  .translation-workspace-body {
+    grid-template-columns: minmax(0, 1fr) minmax(250px, 310px);
+    gap: 10px;
+  }
+}
+
+@media (max-width: 760px) {
+  .translation-sticky-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .translation-position {
+    text-align: left;
+  }
+
+  .translation-workspace-body {
+    grid-template-columns: 1fr;
+  }
+
+  .translation-panel-host {
+    position: static;
+    max-height: none;
+  }
+}
