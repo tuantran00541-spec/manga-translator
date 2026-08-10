@@ -23,7 +23,7 @@ def make_session(model_path, *, intra_op_threads: int | None = None) -> ort.Infe
 
     if intra_op_threads is None:
         cpu = _cpu_count()
-        intra_op_threads = 4 if cpu >= 8 else (2 if cpu >= 4 else 1)
+        intra_op_threads = 8 if cpu >= 8 else (2 if cpu >= 4 else 1)
     opts.intra_op_num_threads = max(1, int(intra_op_threads))
     opts.inter_op_num_threads = 1
 
