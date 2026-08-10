@@ -1,0 +1,135 @@
+/* UI-05 — single-object selection + properties panel */
+
+.translation-panel-host {
+  padding: 0;
+  overflow: hidden;
+}
+
+.translation-panel-host > * {
+  box-sizing: border-box;
+}
+
+.properties-panel-heading {
+  padding: 14px 14px 10px;
+  border-bottom: 1px solid var(--border, var(--line));
+  background: var(--surface-raised, var(--panel));
+}
+
+.properties-panel-heading strong {
+  display: block;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.properties-panel-heading span {
+  display: block;
+  margin-top: 3px;
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.properties-box-list {
+  display: flex;
+  gap: 6px;
+  padding: 8px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--border, var(--line));
+  background: var(--surface, var(--panel));
+}
+
+.properties-box-list-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  max-width: 150px;
+  min-height: 30px;
+  padding: 5px 8px;
+  border: 1px solid var(--border, var(--line));
+  border-radius: var(--radius-sm, 6px);
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  text-align: left;
+}
+
+.properties-box-list-item:hover,
+.properties-box-list-item.active {
+  border-color: var(--accent, var(--blue));
+  color: var(--text);
+  background: var(--accent-soft, rgba(59, 130, 246, .12));
+}
+
+.properties-box-number {
+  flex: 0 0 auto;
+  min-width: 18px;
+  font: 600 10px var(--font-mono);
+}
+
+.properties-box-summary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+}
+
+.properties-editor-host {
+  padding: 10px;
+  max-height: calc(100vh - 250px);
+  overflow-y: auto;
+}
+
+.properties-editor-host .box-item {
+  display: block;
+  margin: 0;
+  border-left: 2px solid var(--accent, var(--blue));
+  background: var(--surface, var(--panel));
+}
+
+.properties-editor-host .box-item.property-hidden {
+  display: block;
+}
+
+.properties-empty {
+  padding: 22px 12px;
+  color: var(--text-dim);
+  text-align: center;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.properties-editor-host .add-box-btn,
+.properties-editor-host .render-btn,
+.translation-panel-host > .render-btn,
+.translation-panel-host > .add-box-btn {
+  width: calc(100% - 20px);
+  margin-left: 10px;
+  margin-right: 10px;
+}
+
+.translation-panel-host .render-result {
+  margin: 10px;
+}
+
+.translation-canvas-host .box-overlay {
+  cursor: pointer;
+  transition: box-shadow var(--transition-fast), border-color var(--transition-fast);
+}
+
+.translation-canvas-host .box-overlay:hover,
+.translation-canvas-host .box-overlay.selected {
+  border-color: var(--accent-hover, var(--blue));
+  box-shadow: 0 0 0 2px var(--accent-soft, rgba(59, 130, 246, .14));
+  z-index: 8;
+}
+
+@media (max-width: 760px) {
+  .properties-editor-host {
+    max-height: none;
+  }
+
+  .properties-box-list-item {
+    max-width: 125px;
+  }
+}
