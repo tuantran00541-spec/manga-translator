@@ -66,6 +66,23 @@ class AddBoxRequest(BaseModel):
     y2: int
 
 
+class UpdateBoxRequest(BaseModel):
+    chapter_id: str
+    page_index: int
+    box_index: int
+    x1: int
+    y1: int
+    x2: int
+    y2: int
+
+    @field_validator("x1", "y1", "x2", "y2")
+    @classmethod
+    def _non_negative(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError("Box coordinates must be non-negative")
+        return v
+
+
 class RemoveBoxRequest(BaseModel):
     chapter_id: str
     page_index: int
