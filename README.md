@@ -1,198 +1,231 @@
 # Manga & Webtoon Translator
 
-Một ứng dụng web local-first phục vụ quy trình biên tập và dịch thủ công manga / manhwa / webtoon. Công cụ cung cấp pipeline tự động hóa các bước crawl, cắt ảnh, phát hiện khung thoại/chữ, xóa chữ gốc (inpaint), OCR đọc chữ gốc và giao diện web để người dùng tự nhập bản dịch và dàn trang (typesetting).
+**Local-first manga / manhwa / webtoon editor** — tự động hóa phần nặng, để người dùng tập trung vào **dịch và typeset**.
 
-> [!IMPORTANT]
-> **Công cụ KHÔNG tích hợp dịch tự động (NO Automatic AI Translation)**  
-> Ứng dụng **không** sử dụng LLM hay API dịch máy để tự động dịch nội dung. OCR chỉ phục vụ đọc và trích xuất chữ gốc từ hình ảnh. Bản dịch (tiếng Việt hoặc ngôn ngữ mục tiêu) **bắt buộc phải do người dùng tự nhập thủ công** vào trình biên tập web.
-
-> [!NOTE]
-> **Định hướng công cụ:**  
-> Thiết kế tối ưu cho **chạy offline, local-first trên CPU** dành cho cá nhân hoặc nhóm nhỏ. Thuật toán nhận diện và inpaint dựa trên mô hình Computer Vision / AI cục bộ, có sai số nhất định và cần sự can thiệp / tinh chỉnh thủ công của con người.
+> **Không có dịch tự động.** OCR chỉ đọc chữ gốc; bản dịch do người dùng tự nhập.
+>
+> Chạy **local / offline / CPU-only**, phù hợp cho cá nhân hoặc nhóm dịch nhỏ.
 
 ---
 
-## 🛠️ Luồng hoạt động (Pipeline)
+## ✨ Làm được gì?
 
-1. **Thu thập & Tải lên (Ingestion):** Tải chapter qua URL (hỗ trợ trang render JavaScript bằng Playwright) hoặc upload trực tiếp ảnh lẻ, file ZIP / CBZ.
-2. **Cắt lát Webtoon (Webtoon Slicing):** Tự động phân tích đường cắt thông minh (tránh cắt trúng chữ/vùng nội dung) để chia nhỏ các trang webtoon dài thành nhiều trang chuẩn.
-3. **Phát hiện khung thoại & Chữ (Detection):** Sử dụng 2 mô hình YOLOv8 ONNX kết hợp **Unified NMS** để gom nhóm, lọc trùng và xác định chính xác vị trí khung thoại (speech bubbles) cùng các dòng chữ độc lập.
-4. **Xóa chữ gốc (Inpainting):** Xóa chữ gốc bằng mô hình LaMa (Large Mask Inpainting) kết hợp kỹ thuật ring-sampling fallback ở viền mask.
-5. **Nhận diện chữ gốc (Multi-lang OCR):** Tự động đọc chữ từ vùng phát hiện. Hỗ trợ tiếng Nhật (MangaOCR), tiếng Trung, Hàn, Anh (PaddleOCR).
-6. **Biên tập & Chèn chữ thủ công (Web Editor & Typesetting):** Giao diện web cho phép preview, tô sửa bù mask sót, nhập trực tiếp bản dịch tiếng Việt, tùy chỉnh font, kích thước, màu sắc, viền chữ (stroke) và canh lề.
-7. **Xuất kết quả (Export):** Xuất toàn bộ trang đã dàn trang hoàn chỉnh ra thư mục `data/output/<chapter_id>/`.
+| Bước | Chức năng |
+|---|---|
+| 📥 **Import** | Crawl chapter từ URL hoặc upload ảnh / ZIP / CBZ |
+| ✂️ **Slicing** | Chia webtoon dài thành các page an toàn, hạn chế cắt xuyên nội dung |
+| 🔎 **Detection** | Phát hiện speech bubble và text block bằng YOLO ONNX |
+| 🧹 **Inpaint** | Xóa chữ gốc bằng LaMa trên CPU |
+| 🔤 **OCR** | Đọc chữ Nhật, Trung, Hàn, Anh |
+| 🖌️ **Manual repair** | Brush / magic wand để cứu các vùng detector hoặc inpaint bỏ sót |
+| ✍️ **Translation & Typesetting** | Tự nhập bản dịch, chỉnh font, size, màu, stroke, alignment |
+| 📤 **Export** | Xuất chapter đã hoàn thiện ra ảnh |
 
----
+### Workflow
 
-## 🚀 Cài đặt & Chạy nhanh
-
-### Cách 1: Sử dụng Docker (Khuyên dùng)
-
-**Yêu cầu:** Docker Desktop & Docker Compose.
-
-```bash
-# 1. Clone repository
-git clone https://github.com/tuantran00541-spec/manga-translator.git
-cd manga-translator
-
-# 2. Tải 3 file ONNX bắt buộc vào thư mục models/ (Xem chi tiết ở mục "Mô hình AI")
-
-# 3. Khởi chạy container
-docker compose up --build
-
-# 4. Truy cập giao diện web tại:
-# http://127.0.0.1:8000
+```text
+Chapter
+   ↓
+Import / Crawl
+   ↓
+Webtoon Slicing
+   ↓
+Bubble + Text Detection
+   ↓
+LaMa Inpaint ──────┐
+   ↓               │
+OCR ───────────────┤
+   ↓               │
+Review / Manual Fix│
+   ↓               │
+Translate + Typeset│
+   ↓               │
+Export ◄───────────┘
 ```
 
-Các thư mục `data/`, `models/`, và `logs/` được bind-mount trực tiếp từ host, đảm bảo dữ liệu không bị mất khi restart container.
+Công cụ **không cố tự động làm mọi thứ**. Mục tiêu là tự xử lý phần lớn case thông thường, còn editor có thể nhanh chóng sửa các case khó bằng giao diện web.
 
-### Cách 2: Chạy trực tiếp với Python
+---
 
-**Yêu cầu:** Python 3.10 – 3.12, RAM khuyến nghị >= 8 GB.
+## 🚀 Quick Start
+
+### Docker — khuyên dùng
 
 ```bash
-# 1. Clone repository
+git clone https://github.com/tuantran00541-spec/manga-translator.git
+cd manga-translator
+```
+
+Đặt 3 model ONNX vào `models/` (xem [Models](#-models)), sau đó:
+
+```bash
+docker compose up --build
+```
+
+Mở **http://127.0.0.1:8000**.
+
+### Python
+
+**Python 3.10–3.12 · RAM khuyến nghị ≥ 8 GB**
+
+```bash
 git clone https://github.com/tuantran00541-spec/manga-translator.git
 cd manga-translator
 
-# 2. Tạo và kích hoạt môi trường ảo
 python -m venv venv
-# Linux / macOS:
+# Linux / macOS
 source venv/bin/activate
-# Windows (PowerShell):
+# Windows PowerShell
 .\venv\Scripts\Activate.ps1
 
-# 3. Cài đặt thư viện phụ thuộc
 pip install -r requirements.txt
-
-# 4. Cài đặt Chromium headless cho Playwright (dùng crawl URL)
 playwright install chromium
-
-# 5. Tải 3 file ONNX bắt buộc vào thư mục models/ (Xem chi tiết ở mục "Mô hình AI")
-
-# 6. Khởi chạy server
 python run.py
 ```
 
-Sau khi khởi chạy thành công, mở trình duyệt truy cập `http://127.0.0.1:8000`.
+Sau đó mở **http://127.0.0.1:8000**.
 
 ---
 
-## 📦 Yêu cầu Mô hình AI (ONNX Models)
+## 🤖 Models
 
-Ứng dụng yêu cầu **3 file mô hình ONNX** đặt chính xác trong thư mục `models/`:
+Đặt đúng 3 file sau trong `models/`:
 
-| Tên file ONNX | Mục đích | Nguồn tham chiếu / Chuyển đổi |
+| File | Dùng cho | Nguồn |
 |---|---|---|
-| `bubble_yolo.onnx` | Detect khung thoại (Speech Bubbles) | [ogkalu/comic-speech-bubble-detector-yolov8m](https://huggingface.co/ogkalu/comic-speech-bubble-detector-yolov8m) |
-| `text_segmenter.onnx` | Detect dòng chữ / text block | [ogkalu/comic-text-segmenter-yolov8m](https://huggingface.co/ogkalu/comic-text-segmenter-yolov8m) |
-| `lama.onnx` | Inpaint xóa chữ gốc | [Carve/LaMa-ONNX](https://huggingface.co/Carve/LaMa-ONNX) (`lama_fp32.onnx`) |
+| `bubble_yolo.onnx` | Speech bubble detection | [ogkalu/comic-speech-bubble-detector-yolov8m](https://huggingface.co/ogkalu/comic-speech-bubble-detector-yolov8m) |
+| `text_segmenter.onnx` | Text detection | [ogkalu/comic-text-segmenter-yolov8m](https://huggingface.co/ogkalu/comic-text-segmenter-yolov8m) |
+| `lama.onnx` | Background reconstruction / text removal | [Carve/LaMa-ONNX](https://huggingface.co/Carve/LaMa-ONNX) (`lama_fp32.onnx`) |
 
-#### Chuyển đổi weights YOLO (`.pt`) sang ONNX:
-Nếu tải file trọng số YOLO dạng `.pt` từ HuggingFace/Ultralytics, hãy chạy script hỗ trợ sẵn:
+Nếu đang có YOLO weights `.pt`, có thể chuyển sang ONNX bằng:
 
 ```bash
 pip install ultralytics
 python convert_model.py path/to/model.pt
-# Đổi tên file .onnx đầu ra thành bubble_yolo.onnx hoặc text_segmenter.onnx rồi copy vào thư mục models/
 ```
 
-*Ghi chú:* Khi server khởi động, ứng dụng sẽ kiểm tra thư mục `models/`. Nếu thiếu mô hình, hệ thống vẫn khởi chạy nhưng sẽ thông báo cảnh báo rõ ràng qua log và endpoint `/health` (`"models_missing": [...]`).
+Đổi tên output thành `bubble_yolo.onnx` hoặc `text_segmenter.onnx` tương ứng.
+
+> Thiếu model không làm server crash ngay khi startup; trạng thái thiếu model được báo qua log và `/health`.
 
 ---
 
-## ⚙️ Cấu hình Biến Môi Trường (Configuration)
+## 🧠 OCR & Translation Philosophy
 
-Các thông số vận hành được cấu hình qua biến môi trường (Environment Variables) hoặc file cấu hình `app/config.py`:
+Dự án **không dùng LLM để tự dịch**.
 
-| Biến môi trường | Mặc định | Mô tả |
-|---|---|---|
-| `HOST` | `127.0.0.1` | Địa chỉ IP bind server. Đặt `0.0.0.0` nếu muốn truy cập từ mạng LAN. |
-| `PORT` | `8000` | Cổng dịch vụ HTTP (TCP Port). |
-| `WORKERS` | `1` | Số lượng uvicorn worker process. **Khuyến nghị giữ 1** do các mô hình AI chạy nặng trên CPU và worker Playwright không tối ưu cho đa tiến trình. |
-| `ENABLE_TTA` | `0` | Test-Time Augmentation cho YOLO bubble detection. Đặt `1` để bật (tăng độ chính xác detect nhưng thời gian xử lý lâu hơn). |
-| `RELOAD` | `0` | Đặt `1` để tự động reload ứng dụng khi thay đổi code (dùng trong Development). |
+OCR được dùng để trích xuất chữ gốc nhằm hỗ trợ editor. Các loại text có ý nghĩa như **dialogue, narration, caption, tên chiêu thức / kỹ năng và stylized text** vẫn được xem là nội dung cần OCR; không mặc định coi chữ lớn hoặc stylized là SFX.
 
-Ví dụ khởi chạy cho phép truy cập từ LAN:
+SFX thuần túy có thể được bỏ qua tùy workflow của editor.
+
+---
+
+## ⚡ CPU Performance
+
+Pipeline được tối ưu cho môi trường **CPU-only** và xử lý nhiều page đồng thời.
+
+- LaMa dùng ONNX Runtime với CPU execution.
+- Default intra-op thread pool được điều chỉnh theo CPU.
+- Máy có ≥ 8 logical CPUs dùng **8 LaMa threads** mặc định.
+- Pipeline page workers hiện được giới hạn để tránh tạo quá nhiều CPU contention.
+- Có thể override số LaMa threads bằng:
+
+```bash
+MANGA_ORT_INTRA_OP_THREADS=4 python run.py
+```
+
+hoặc:
+
+```bash
+MANGA_ORT_INTRA_OP_THREADS=8 python run.py
+```
+
+> Benchmark nội bộ cho thấy cấu hình **LaMa 8 threads + 2 page workers** nhanh hơn đáng kể trên workload CPU đã kiểm thử. Đây là default thực dụng, không phải con số tối ưu tuyệt đối cho mọi CPU.
+
+---
+
+## ⚙️ Configuration
+
+Các biến môi trường chính:
+
+| Variable | Default | Mô tả |
+|---|---:|---|
+| `HOST` | `127.0.0.1` | Địa chỉ bind server |
+| `PORT` | `8000` | HTTP port |
+| `WORKERS` | `1` | Uvicorn worker processes; nên giữ `1` vì model AI chạy nặng trên CPU |
+| `ENABLE_TTA` | `0` | Bật TTA cho bubble detection; chính xác hơn nhưng chậm hơn |
+| `RELOAD` | `0` | Auto-reload khi development |
+| `MANGA_ORT_INTRA_OP_THREADS` | auto | Override số thread CPU của ONNX Runtime |
+
+Ví dụ:
+
 ```bash
 HOST=0.0.0.0 PORT=8000 python run.py
 ```
 
 ---
 
-## 🔒 Tính năng Bảo mật (Security & Hardening)
+## 🔒 Security & Hardening
 
-Dù được thiết kế chính cho môi trường local/cá nhân, ứng dụng đã được gia cố sẵn các cơ chế bảo mật tiêu chuẩn:
+Dù chủ yếu chạy local, ứng dụng đã có các lớp hardening cho những điểm nhạy cảm:
 
-- **SSRF Protection (`app/security.py`):** Kiểm tra và chặn toàn bộ request tải URL hướng tới IP nội bộ (Private IPs), Loopback (`127.0.0.1`, `localhost`), Link-local / Cloud Metadata (`169.254.169.254`), CGNAT, Multicast và các URL scheme không phải HTTP/HTTPS.
-- **Path Traversal Defense:** `chapter_id` được kiểm tra nghiêm ngặt bằng regex (chỉ chấp nhận chuỗi hex 8 ký tự `^[a-f0-9]{8}$`). Bỏ hoàn toàn việc mount tĩnh toàn bộ thư mục `/data`, hình ảnh được phục vụ an toàn qua endpoint kiểm soát danh tính `/api/image/...`.
-- **Atomic File Locking & Data Consistency:** Sử dụng `filelock` trên `manifest.json` cho từng chapter và ghi dữ liệu nguyên tử (atomic write qua file tạm `.tmp` rồi `os.replace`), chống race condition khi nhiều request cùng thao tác.
-- **Giới hạn Request & Chống DoS bộ nhớ:** Tích hợp `RequestSizeLimitMiddleware` (max 50 MB/request), kiểm tra kích thước danh sách Pydantic schemas, đồng thời tuân thủ giới hạn điểm ảnh `PIL.MAX_IMAGE_PIXELS` khi giải mã ảnh bằng OpenCV.
-- **An toàn Tiến trình & Sanitize lỗi:** Khởi tạo OCR thread-safe (tránh leak bộ nhớ khi gọi đồng thời) và giấu stack-trace chi tiết ở môi trường production (trả về lỗi HTTP 500 chuẩn hóa).
+- **SSRF protection** khi crawl URL, chặn private / loopback / link-local / metadata addresses và scheme không hợp lệ.
+- **Path traversal protection** với chapter IDs và endpoint phục vụ ảnh có kiểm soát.
+- **Atomic manifest writes + file locking** để tránh race condition khi cập nhật chapter state.
+- **Request / image size limits** nhằm hạn chế memory abuse.
+- **Sanitized production errors** và OCR initialization có kiểm soát.
 
 ---
 
-## 📂 Cấu trúc Thư mục (Directory Structure)
+## 📁 Project Structure
 
 ```text
 manga-translator/
 ├── app/
-│   ├── detector/             # YOLO Bubble & Text Detector, Unified NMS
-│   │   ├── bubble_detector.py
-│   │   ├── combined_detector.py
-│   │   └── mask_builder.py
-│   ├── downloader/           # Crawl URL (Playwright) & Slicer webtoon
-│   │   ├── base.py
-│   │   ├── generic_js.py
-│   │   ├── playwright_worker.py
-│   │   ├── registry.py
-│   │   └── slicer.py
-│   ├── inpaint/              # LaMa Inpainter & Ring-sampling fill
-│   │   └── lama_inpainter.py
-│   ├── ocr/                  # Multi-language OCR (MangaOCR & PaddleOCR)
-│   │   └── multi_lang_ocr.py
-│   ├── render/               # Typesetting & Render chữ lên ảnh
-│   │   └── text_renderer.py
-│   ├── routers/              # API Endpoints (chapters, editor, render, image)
-│   │   ├── chapters.py
-│   │   ├── editor.py
-│   │   ├── image.py
-│   │   └── render.py
-│   ├── static/               # CSS, JS (Canvas editor UI), Fonts (.ttf)
-│   ├── templates/            # HTML templates (index.html)
-│   ├── config.py             # File cấu hình trung tâm & biến môi trường
-│   ├── main.py               # FastAPI app & Middleware
-│   ├── pipeline.py           # Orchestration điều phối pipeline xử lý
-│   ├── security.py           # Module kiểm tra bảo mật (SSRF, Path Traversal)
-│   └── manifest_utils.py     # Quản lý đọc/ghi manifest.json
-├── data/                     # Thư mục chứa dữ liệu runtime (Git-ignored)
-│   ├── raw/                  # Ảnh gốc / trang đã slice
-│   ├── processed/            # Mask & ảnh sau khi xóa chữ (inpainted)
-│   └── output/               # Ảnh kết quả sau khi chèn bản dịch
-├── models/                   # Đặt 3 file .onnx (bubble_yolo, text_segmenter, lama)
-├── logs/                     # File log ứng dụng
-├── convert_model.py          # Script convert PyTorch (.pt) sang ONNX (.onnx)
-├── debug_detect.py           # Script debug nhận diện
-├── run.py                    # Entry point khởi chạy ứng dụng
-├── Dockerfile                # File build Docker image
-├── docker-compose.yml        # File cấu hình Docker Compose
-└── requirements.txt          # Danh sách thư viện Python
+│   ├── detector/       # Bubble / text detection + mask building
+│   ├── downloader/     # URL ingestion + webtoon slicing
+│   ├── inpaint/        # LaMa inpainting
+│   ├── ocr/            # Multi-language OCR
+│   ├── render/         # Translation typesetting / rendering
+│   ├── routers/        # API endpoints
+│   ├── static/         # Web editor UI
+│   ├── templates/      # HTML templates
+│   ├── config.py       # Application configuration
+│   ├── main.py         # FastAPI application
+│   ├── pipeline.py     # Pipeline orchestration
+│   ├── security.py     # Security controls
+│   └── manifest_utils.py
+├── data/               # Runtime data (git-ignored)
+│   ├── raw/
+│   ├── processed/
+│   └── output/
+├── models/             # Local ONNX models
+├── logs/               # Application logs
+├── convert_model.py    # YOLO .pt → .onnx helper
+├── run.py              # Application entry point
+├── Dockerfile
+├── docker-compose.yml
+└── requirements.txt
 ```
 
 ---
 
-## 💻 Hướng dẫn Phát triển (Development Instructions)
+## 🛠️ Development
 
-### Bật chế độ Auto-Reload khi Dev
+Development auto-reload:
+
 ```bash
 RELOAD=1 python run.py
 ```
 
-### Kiểm tra trạng thái hệ thống (Health Check)
+Health check:
+
 ```bash
 curl http://127.0.0.1:8000/health
 ```
-**Response mẫu:**
+
+Expected response:
+
 ```json
 {
   "status": "ok",
@@ -202,6 +235,18 @@ curl http://127.0.0.1:8000/health
 
 ---
 
-## 📜 Giấy phép (License)
+## 🎯 Project Goal
 
-Dự án phát hành theo giấy phép **MIT License**.
+Đây không phải một demo dịch manga tự động.
+
+Mục tiêu là một **editor tool thực dụng**:
+
+> **Automate the boring parts. Let the editor make the final call.**
+
+Tự động hóa ingestion, slicing, detection, inpainting và OCR; cung cấp manual repair khi automation không hoàn hảo; sau đó để editor tự dịch và typeset với output sạch, ổn định và có thể kiểm soát.
+
+---
+
+## 📜 License
+
+MIT License.
