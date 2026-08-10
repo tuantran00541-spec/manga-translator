@@ -124,13 +124,21 @@ function setupBrush(pageIndex, img, canvas, wrap, brushBtn, clearBtn, submitBtn,
   let painting = false;
   let lastDblClick = 0;
 
+  const stopPainting = () => {
+    if (!painting) return;
+    painting = false;
+    ctx.closePath();
+  };
+
   brushBtn.addEventListener("click", () => {
     brushOn = !brushOn;
+    if (!brushOn) stopPainting();
     wrap.classList.toggle("brush-mode", brushOn);
     brushBtn.textContent = brushOn ? "Đang tô (bấm để tắt)" : "Tô lỗi";
   });
 
   clearBtn.addEventListener("click", () => {
+    stopPainting();
     ctx.clearRect(0, 0, canvas.width, canvas.height);
   });
 
@@ -169,7 +177,7 @@ function setupBrush(pageIndex, img, canvas, wrap, brushBtn, clearBtn, submitBtn,
     const { x, y } = getCanvasCoords(e);
 
     if (isDbl) {
-      painting = false;
+      stopPainting();
       floodFillSelect(ctx, srcData, x, y, canvas.width, canvas.height);
       return;
     }
@@ -182,8 +190,16 @@ function setupBrush(pageIndex, img, canvas, wrap, brushBtn, clearBtn, submitBtn,
 
   canvas.addEventListener("mousemove", (e) => {
     if (!brushOn || !painting) return;
+    if (e.buttons !== 1) {
+      stopPainting();
+      return;
+    }
     const { x, y } = getCanvasCoords(e);
     paintStrokeTo(x, y);
+  });
+
+  canvas.addEventListener("mouseleave", () => {
+    stopPainting();
   });
 
   canvas.addEventListener("wheel", (e) => {
@@ -196,9 +212,10 @@ function setupBrush(pageIndex, img, canvas, wrap, brushBtn, clearBtn, submitBtn,
   }, { passive: false });
 
   const abortCtrl = new AbortController();
-  window.addEventListener("mouseup", () => {
-    painting = false;
-    ctx.closePath();
+  window.addEventListener("mouseup", stopPainting, { signal: abortCtrl.signal });
+  window.addEventListener("blur", stopPainting, { signal: abortCtrl.signal });
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) stopPainting();
   }, { signal: abortCtrl.signal });
 
   canvas._brushAbort = abortCtrl;
