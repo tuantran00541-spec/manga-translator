@@ -13,6 +13,7 @@
 <link rel="stylesheet" href="/static/css/editor.css">
 <link rel="stylesheet" href="/static/css/editor-workspace.css">
 <link rel="stylesheet" href="/static/css/editor-properties.css">
+<link rel="stylesheet" href="/static/css/editor-box-transform.css">
 <link rel="stylesheet" href="/static/css/box-panel.css">
 <link rel="stylesheet" href="/static/css/toolbar.css">
 <link rel="stylesheet" href="/static/css/recent-toast.css">
@@ -20,59 +21,12 @@
 </head>
 <body>
 <div id="app">
-  <header id="site-header">
-    <div id="wordmark">
-      <span class="wordmark-mark">✛</span>
-      <span class="wordmark-text">MANGA<span class="wordmark-accent">TRANSLATOR</span></span>
-    </div>
-    <span id="wordmark-tag">bàn biên tập &middot; local</span>
-  </header>
-
-  <div id="chapter-input">
-    <input type="text" id="chapter-url" placeholder="Dán link chapter">
-    <select id="lang-select" title="Ngôn ngữ OCR">
-      <option value="ja">Nhật</option>
-      <option value="ch">Trung</option>
-      <option value="korean">Hàn</option>
-      <option value="en">Anh</option>
-    </select>
-    <label id="workers-label" for="workers-select" title="Số luồng xử lý song song. Máy mạnh tăng lên, máy yếu giảm xuống.">
-      Luồng
-      <select id="workers-select">
-        <option value="1">1</option>
-        <option value="2" selected>2</option>
-        <option value="3">3</option>
-        <option value="4">4</option>
-        <option value="6">6</option>
-        <option value="8">8</option>
-      </select>
-    </label>
-    <button id="load-btn">Tải chapter</button>
-  </div>
-
+  <header id="site-header"><div id="wordmark"><span class="wordmark-mark">✛</span><span class="wordmark-text">MANGA<span class="wordmark-accent">TRANSLATOR</span></span></div><span id="wordmark-tag">bàn biên tập &middot; local</span></header>
+  <div id="chapter-input"><input type="text" id="chapter-url" placeholder="Dán link chapter"><select id="lang-select" title="Ngôn ngữ OCR"><option value="ja">Nhật</option><option value="ch">Trung</option><option value="korean">Hàn</option><option value="en">Anh</option></select><label id="workers-label" for="workers-select" title="Số luồng xử lý song song. Máy mạnh tăng lên, máy yếu giảm xuống.">Luồng <select id="workers-select"><option value="1">1</option><option value="2" selected>2</option><option value="3">3</option><option value="4">4</option><option value="6">6</option><option value="8">8</option></select></label><button id="load-btn">Tải chapter</button></div>
   <div id="upload-divider">hoặc</div>
-
-  <div id="upload-dropzone">
-    <p>Kéo thả ảnh hoặc file ZIP vào đây, hoặc <label for="upload-input" id="upload-browse-label">chọn file</label></p>
-    <span id="upload-hint">Chấp nhận PNG, JPG, WEBP, BMP, ZIP, CBZ — kéo thả tập ảnh hoặc file ZIP</span>
-    <input type="file" id="upload-input" accept="image/png,image/jpeg,image/webp,image/bmp,.zip,.cbz" multiple hidden>
-  </div>
-
-  <div id="recent-chapters"></div>
-
-  <div id="page-view"></div>
-</div>
-<div id="toast-container"></div>
-<script src="/static/js/toast.js"></script>
-<script src="/static/js/api.js"></script>
-<script src="/static/js/upload.js"></script>
-<script src="/static/js/preview.js"></script>
-<script src="/static/js/review.js"></script>
-<script src="/static/js/review-workspace.js"></script>
-<script src="/static/js/box-item.js"></script>
-<script src="/static/js/editor.js"></script>
-<script src="/static/js/editor-workspace.js"></script>
-<script src="/static/js/editor-properties.js"></script>
-<script src="/static/js/main.js"></script>
+  <div id="upload-dropzone"><p>Kéo thả ảnh hoặc file ZIP vào đây, hoặc <label for="upload-input" id="upload-browse-label">chọn file</label></p><span id="upload-hint">Chấp nhận PNG, JPG, WEBP, BMP, ZIP, CBZ — kéo thả tập ảnh hoặc file ZIP</span><input type="file" id="upload-input" accept="image/png,image/jpeg,image/webp,image/bmp,.zip,.cbz" multiple hidden></div>
+  <div id="recent-chapters"></div><div id="page-view"></div>
+</div><div id="toast-container"></div>
+<script src="/static/js/toast.js"></script><script src="/static/js/api.js"></script><script src="/static/js/upload.js"></script><script src="/static/js/preview.js"></script><script src="/static/js/review.js"></script><script src="/static/js/review-workspace.js"></script><script src="/static/js/box-item.js"></script><script src="/static/js/editor.js"></script><script src="/static/js/editor-workspace.js"></script><script src="/static/js/editor-properties.js"></script><script src="/static/js/editor-box-transform.js"></script><script src="/static/js/main.js"></script>
 </body>
 </html>
