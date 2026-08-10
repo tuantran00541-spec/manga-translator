@@ -1,0 +1,135 @@
+/* UI-03: focused review workspace */
+.review-workspace-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(100%, 980px);
+  margin: 0 auto;
+}
+
+.review-sticky-toolbar {
+  position: sticky;
+  top: 8px;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 12px;
+  background: color-mix(in srgb, var(--surface-raised, var(--panel)) 94%, transparent);
+  border: 1px solid var(--border, var(--line));
+  border-radius: var(--radius-md, 8px);
+  box-shadow: var(--shadow-md, 0 4px 12px rgba(0,0,0,.2));
+  backdrop-filter: blur(12px);
+}
+
+.review-toolbar-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 145px;
+  flex: 0 0 auto;
+}
+
+.review-toolbar-title strong {
+  color: var(--text);
+  font: 700 13px var(--font-heading, var(--font-body));
+}
+
+.review-toolbar-title span {
+  color: var(--text-dim);
+  font: 11px/1.35 var(--font-body);
+}
+
+.review-controls-slot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.review-controls-slot .review-controls {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 6px;
+  width: max-content;
+}
+
+.review-controls-slot .brush-size-control {
+  white-space: nowrap;
+}
+
+.review-page-nav {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 10px;
+}
+
+.review-nav-btn {
+  min-height: 36px;
+  padding: 7px 13px;
+  border: 1px solid var(--border, var(--line));
+  border-radius: var(--radius-sm, 6px);
+  background: var(--surface, var(--panel));
+  color: var(--text);
+  font: 600 12px var(--font-body);
+  cursor: pointer;
+}
+
+.review-nav-btn:last-child {
+  justify-self: end;
+}
+
+.review-nav-btn:hover:not(:disabled) {
+  border-color: var(--accent, var(--blue));
+}
+
+.review-nav-btn:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
+.review-position {
+  color: var(--text-dim);
+  font: 500 12px var(--font-mono);
+  text-align: center;
+}
+
+.review-canvas-host {
+  min-width: 0;
+}
+
+.review-canvas-host .review-card {
+  width: min(100%, 920px);
+  margin: 0 auto;
+}
+
+.review-workspace-shell + .review-card,
+#page-view > .review-card[style*="display: none"] {
+  display: none !important;
+}
+
+@media (max-width: 760px) {
+  .review-sticky-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+    top: 4px;
+  }
+
+  .review-toolbar-title {
+    min-width: 0;
+  }
+
+  .review-controls-slot {
+    width: 100%;
+  }
+}
