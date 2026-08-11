@@ -1,12 +1,54 @@
-// api.js - Quản lý tất cả các kết nối API backend
+async function parseApiResponse(resp) {
+  let data = null;
+  try {
+    data = await resp.json();
+  } catch (_) {
+    try {
+      data = { detail: await resp.text() };
+    } catch (_) {
+      data = {};
+    }
+  }
+  return data || {};
+}
+window.parseApiResponse = parseApiResponse;
+
+function getErrorMessage(status, data) {
+  if (data && data.detail) {
+    if (Array.isArray(data.detail)) {
+      return data.detail
+        .map((e) => (typeof e === "string" ? e : e.msg || JSON.stringify(e)))
+        .join("; ");
+    }
+    if (typeof data.detail === "string" && data.detail.trim()) {
+      return data.detail.trim();
+    }
+  }
+  const statusMessages = {
+    400: "Yêu cầu không hợp lệ (400)",
+    404: "Không tìm thấy dữ liệu (404)",
+    422: "Dữ liệu gửi lên không đúng định dạng (422)",
+    500: "Lỗi nội bộ máy chủ (500)",
+    502: "Máy chủ cổng không phản hồi (502)",
+    504: "Hết thời gian chờ phản hồi từ máy chủ (504)",
+  };
+  return statusMessages[status] || `Máy chủ trả về lỗi HTTP ${status}`;
+}
+window.getErrorMessage = getErrorMessage;
 
 async function loadRecentChapters() {
   const container = document.getElementById("recent-chapters");
   if (!container) return;
   try {
     const resp = await fetch("/api/chapters");
-    const chapters = await resp.json();
-    if (!chapters || chapters.length === 0) {
+    const data = await parseApiResponse(resp);
+    if (!resp.ok) {
+      showToast("Không tải được danh sách chapter: " + getErrorMessage(resp.status, data), "error");
+      container.innerHTML = "";
+      return;
+    }
+    const chapters = Array.isArray(data) ? data : [];
+    if (chapters.length === 0) {
       container.innerHTML = "";
       return;
     }
@@ -29,6 +71,7 @@ async function loadRecentChapters() {
     });
     container.appendChild(list);
   } catch (e) {
+    showToast("Không tải được danh sách chapter: " + e.message, "error");
     container.innerHTML = "";
   }
 }
@@ -37,11 +80,11 @@ async function resumeChapter(chapterId) {
   currentChapterId = chapterId;
   try {
     const resp = await fetch(`/api/chapter/${chapterId}`);
+    const data = await parseApiResponse(resp);
     if (!resp.ok) {
-      const data = await resp.json().catch(() => ({}));
-      throw new Error(data.detail || `lỗi ${resp.status}`);
+      throw new Error(getErrorMessage(resp.status, data));
     }
-    currentManifest = await resp.json();
+    currentManifest = data;
     const recentEl = document.getElementById("recent-chapters");
     if (recentEl) recentEl.innerHTML = "";
     renderEditor();
@@ -68,11 +111,11 @@ async function loadChapter() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ url, workers: getWorkersSetting() }),
     });
+    const data = await parseApiResponse(resp);
     if (!resp.ok) {
-      const data = await resp.json().catch(() => ({}));
-      throw new Error(data.detail || `Server trả về lỗi ${resp.status}`);
+      throw new Error(getErrorMessage(resp.status, data));
     }
-    currentManifest = await resp.json();
+    currentManifest = data;
     currentChapterId = currentManifest.chapter_id;
     renderPreview();
   } catch (err) {
@@ -99,9 +142,9 @@ async function toggleSkip(pageIndex, card, btn) {
         skipped: newSkipped,
       }),
     });
+    const data = await parseApiResponse(resp);
     if (!resp.ok) {
-      const data = await resp.json().catch(() => ({}));
-      throw new Error(data.detail || `lỗi ${resp.status}`);
+      throw new Error(getErrorMessage(resp.status, data));
     }
     page.skipped = newSkipped;
     card.classList.toggle("skipped", newSkipped);
@@ -144,11 +187,11 @@ async function processSelectedPages() {
         workers: getWorkersSetting(),
       }),
     });
+    const data = await parseApiResponse(resp);
     if (!resp.ok) {
-      const data = await resp.json().catch(() => ({}));
-      throw new Error(data.detail || `Server trả về lỗi ${resp.status}`);
+      throw new Error(getErrorMessage(resp.status, data));
     }
-    currentManifest = await resp.json();
+    currentManifest = data;
     renderReview();
   } catch (err) {
     showToast("Xử lý trang thất bại: " + err.message, "error");
@@ -164,7 +207,7 @@ async function fetchOcr(pageIndex, boxIndex, originalEl) {
   const langEl = document.getElementById("lang-select");
   const lang = langEl ? langEl.value : "ja";
   const box = page && page.boxes ? page.boxes[boxIndex] : null;
-  // OCR text is language-specific. Never reuse a cached result produced for another language.
+
   if (box && box.ocr_text && box.ocr_lang === lang) {
     originalEl.textContent = box.ocr_text;
     return;
@@ -180,11 +223,10 @@ async function fetchOcr(pageIndex, boxIndex, originalEl) {
         lang,
       }),
     });
+    const data = await parseApiResponse(resp);
     if (!resp.ok) {
-      const data = await resp.json().catch(() => ({}));
-      throw new Error(data.detail || `lỗi ${resp.status}`);
+      throw new Error(getErrorMessage(resp.status, data));
     }
-    const data = await resp.json();
     if (box) {
       box.ocr_text = data.text || "";
       box.ocr_lang = lang;
@@ -192,6 +234,7 @@ async function fetchOcr(pageIndex, boxIndex, originalEl) {
     originalEl.textContent = data.text || "(không đọc được)";
   } catch (err) {
     originalEl.textContent = "(OCR lỗi: " + err.message + ")";
+    showToast("Lỗi OCR: " + err.message, "error");
   }
 }
 
@@ -203,7 +246,7 @@ function scheduleSaveDraft() {
 async function saveDraftNow() {
   if (!currentChapterId) return;
   const textareas = document.querySelectorAll("textarea[data-page-index]");
-  const drafts = {};
+  const drafts = currentManifest ? (currentManifest.drafts || (currentManifest.drafts = {})) : {};
   textareas.forEach((ta) => {
     const key = `${ta.dataset.pageIndex}_${ta.dataset.boxIndex}`;
     drafts[key] = {
@@ -219,13 +262,21 @@ async function saveDraftNow() {
     };
   });
   try {
-    await fetch("/api/save_draft", {
+    const resp = await fetch("/api/save_draft", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ chapter_id: currentChapterId, drafts }),
     });
-  } catch (e) { /* silent fail */ }
+    const data = await parseApiResponse(resp);
+    if (!resp.ok) {
+      console.error("Save draft failed:", getErrorMessage(resp.status, data));
+    }
+  } catch (e) {
+    console.error("Save draft network error:", e);
+  }
 }
+window.saveDraftNow = saveDraftNow;
+window.scheduleSaveDraft = scheduleSaveDraft;
 
 async function renderTranslations(pageIndex) {
   const textareas = document.querySelectorAll(
@@ -264,61 +315,72 @@ async function renderTranslations(pageIndex) {
     btn.textContent = "Đang chèn chữ...";
   }
 
-  const resp = await fetch("/api/render", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      chapter_id: currentChapterId,
-      page_index: pageIndex,
-      translations,
-      colors,
-      fonts,
-      font_sizes,
-      bolds,
-      stroke_widths,
-      stroke_colors,
-      bg_colors,
-      corner_radii,
-    }),
-  });
+  try {
+    const resp = await fetch("/api/render", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chapter_id: currentChapterId,
+        page_index: pageIndex,
+        translations,
+        colors,
+        fonts,
+        font_sizes,
+        bolds,
+        stroke_widths,
+        stroke_colors,
+        bg_colors,
+        corner_radii,
+      }),
+    });
 
-  if (btn) {
-    btn.disabled = false;
-    btn.textContent = "Chèn chữ vào ảnh";
+    const data = await parseApiResponse(resp);
+    if (!resp.ok) {
+      showToast("Chèn chữ thất bại: " + getErrorMessage(resp.status, data), "error");
+      return;
+    }
+
+    showRenderResult(pageIndex, data.output);
+    if (data.warning) {
+      showToast(data.warning, "info");
+    }
+  } catch (err) {
+    showToast("Chèn chữ thất bại: " + err.message, "error");
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = "Chèn chữ vào ảnh";
+    }
   }
-
-  if (!resp.ok) {
-    const data = await resp.json().catch(() => ({}));
-    showToast("Chèn chữ thất bại: " + (data.detail || `lỗi ${resp.status}`), "error");
-    return;
-  }
-
-  const data = await resp.json();
-  showRenderResult(pageIndex, data.output);
 }
 
 async function loadFonts() {
   try {
     const resp = await fetch("/api/fonts");
-    availableFonts = await resp.json();
+    const data = await parseApiResponse(resp);
+    if (!resp.ok) {
+      throw new Error(getErrorMessage(resp.status, data));
+    }
+    availableFonts = Array.isArray(data) ? data : [{ id: "default", name: "Mặc định (Comic)" }];
   } catch (e) {
     availableFonts = [{ id: "default", name: "Mặc định (Comic)" }];
+    showToast("Không thể tải danh sách phông chữ, dùng phông mặc định.", "info");
   }
 }
 
 async function submitManualBox(pageIndex, x1, y1, x2, y2) {
   try {
+    if (typeof window.cancelPendingPersist === "function") window.cancelPendingPersist();
     const resp = await fetch("/api/add_box", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ chapter_id: currentChapterId, page_index: pageIndex, x1, y1, x2, y2 }),
     });
+    const data = await parseApiResponse(resp);
     if (!resp.ok) {
-      const data = await resp.json().catch(() => ({}));
-      throw new Error(data.detail || `lỗi ${resp.status}`);
+      throw new Error(getErrorMessage(resp.status, data));
     }
-    const manifest = await resp.json();
-    const newPage = manifest.pages[pageIndex];
+    const newPage = data.pages[pageIndex];
     currentManifest.pages[pageIndex] = newPage;
     refreshPageAfterAddBox(pageIndex, newPage);
   } catch (err) {
@@ -328,23 +390,24 @@ async function submitManualBox(pageIndex, x1, y1, x2, y2) {
 
 async function removeBoxAndRepaint(pageIndex, boxIndex, item) {
   try {
+    if (typeof window.cancelPendingPersist === "function") window.cancelPendingPersist();
     const resp = await fetch("/api/remove_box", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ chapter_id: currentChapterId, page_index: pageIndex, box_index: boxIndex }),
     });
+    const data = await parseApiResponse(resp);
     if (!resp.ok) {
-      const data = await resp.json().catch(() => ({}));
-      throw new Error(data.detail || `lỗi ${resp.status}`);
+      throw new Error(getErrorMessage(resp.status, data));
     }
-    const manifest = await resp.json();
-    const newPage = manifest.pages[pageIndex];
+    const newPage = data.pages[pageIndex];
     currentManifest.pages[pageIndex] = newPage;
     refreshPageAfterRemoveBox(pageIndex, newPage);
   } catch (err) {
     showToast("Xóa vùng thoại thất bại: " + err.message + " — vui lòng tải lại trang để đồng bộ.", "error");
   }
 }
+window.removeBoxAndRepaint = removeBoxAndRepaint;
 
 async function saveExcludedRegions(pageIndex, excludedRegions) {
   try {
@@ -357,13 +420,12 @@ async function saveExcludedRegions(pageIndex, excludedRegions) {
         excluded_regions: excludedRegions,
       }),
     });
+    const data = await parseApiResponse(resp);
     if (!resp.ok) {
-      const data = await resp.json().catch(() => ({}));
-      throw new Error(data.detail || `lỗi ${resp.status}`);
+      throw new Error(getErrorMessage(resp.status, data));
     }
-    const manifest = await resp.json();
-    currentManifest.pages[pageIndex] = manifest.pages[pageIndex];
-    return manifest;
+    currentManifest.pages[pageIndex] = data.pages[pageIndex];
+    return data;
   } catch (err) {
     showToast("Không lưu được vùng cấm dịch: " + err.message, "error");
     throw err;
@@ -381,13 +443,12 @@ async function resetManualMask(pageIndex, img, canvas, ctx, resetBtn) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ chapter_id: currentChapterId, page_index: pageIndex }),
     });
+    const data = await parseApiResponse(resp);
     if (!resp.ok) {
-      const data = await resp.json().catch(() => ({}));
-      throw new Error(data.detail || `lỗi ${resp.status}`);
+      throw new Error(getErrorMessage(resp.status, data));
     }
-    const manifest = await resp.json();
-    currentManifest.pages[pageIndex] = manifest.pages[pageIndex];
-    if (img) img.src = manifest.pages[pageIndex].clean + "?t=" + Date.now();
+    currentManifest.pages[pageIndex] = data.pages[pageIndex];
+    if (img) img.src = data.pages[pageIndex].clean + "?t=" + Date.now();
     if (ctx && canvas) ctx.clearRect(0, 0, canvas.width, canvas.height);
   } catch (err) {
     showToast("Không xóa được vùng tô tay: " + err.message, "error");
