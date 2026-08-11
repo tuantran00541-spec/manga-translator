@@ -57,14 +57,25 @@ async def repaint_mask(chapter_id: str = Form(...), page_index: int = Form(...),
     mask_bytes = await mask.read()
     logger.info(f"Chapter {chapter_id} page {page_index}: repaint mask ({len(mask_bytes)} bytes)")
 
-    # UploadFile.read() returns encoded image bytes. The pipeline works with
-    # an OpenCV/numpy mask, so decode the uploaded PNG/WebP before handing it
-    # to repaint_mask(). Passing raw bytes makes cv2.imencode() fail with
-    # "img is not a numpy array" and turns every brush submission into HTTP 500.
+    # The brush canvas is transparent except for painted strokes. Decode the
+    # alpha channel rather than grayscale RGB: red paint has grayscale value
+    # ~76, which is below the pipeline's >127 mask threshold and therefore
+    # turns a perfectly valid brush stroke into an empty mask.
     encoded = np.frombuffer(mask_bytes, dtype=np.uint8)
-    mask_array = cv2.imdecode(encoded, cv2.IMREAD_GRAYSCALE)
-    if mask_array is None:
+    decoded = cv2.imdecode(encoded, cv2.IMREAD_UNCHANGED)
+    if decoded is None:
         raise HTTPException(400, "Invalid repaint mask image")
+
+    if decoded.ndim == 3 and decoded.shape[2] == 4:
+        mask_array = decoded[:, :, 3]
+    elif decoded.ndim == 3:
+        # Fallback for opaque RGB images: derive a mask from non-black pixels.
+        mask_array = cv2.cvtColor(decoded, cv2.COLOR_BGR2GRAY)
+    else:
+        mask_array = decoded
+
+    if not np.any(mask_array > 0):
+        raise HTTPException(400, "Repaint mask is empty")
 
     manifest = await run_in_threadpool(pipeline.repaint_mask, chapter_id, page_index, mask_array)
     return urlify_manifest(manifest)
