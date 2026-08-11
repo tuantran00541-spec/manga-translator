@@ -28,8 +28,17 @@ def get_image(chapter_id: str, page_index: int, kind: str):
         page = pages[page_index]
 
         if kind == "rendered":
-            path = OUTPUT_DIR / chapter_id / f"page_{page_index:03d}.png"
-            if not path.exists():
+            if page.get("rendered"):
+                path = OUTPUT_DIR / chapter_id / f"page_{page_index:03d}.png"
+                if not path.exists():
+                    logger.warning(
+                        "Chapter %s page %s: rendered=True but rendered file missing, using fallback",
+                        chapter_id,
+                        page_index,
+                    )
+                    clean_p = Path(page["clean"]) if page.get("clean") else None
+                    path = clean_p if (clean_p and clean_p.exists()) else Path(page["original"])
+            else:
                 clean_p = Path(page["clean"]) if page.get("clean") else None
                 path = clean_p if (clean_p and clean_p.exists()) else Path(page["original"])
         else:
@@ -69,8 +78,17 @@ def download_page(chapter_id: str, page_index: int):
             raise HTTPException(404, f"Page index {page_index} out of range")
         page = pages[page_index]
 
-        path = OUTPUT_DIR / chapter_id / f"page_{page_index:03d}.png"
-        if not path.exists():
+        if page.get("rendered"):
+            path = OUTPUT_DIR / chapter_id / f"page_{page_index:03d}.png"
+            if not path.exists():
+                logger.warning(
+                    "Chapter %s page %s: rendered=True but rendered file missing for download, using fallback",
+                    chapter_id,
+                    page_index,
+                )
+                clean_p = Path(page["clean"]) if page.get("clean") else None
+                path = clean_p if (clean_p and clean_p.exists()) else Path(page["original"])
+        else:
             clean_p = Path(page["clean"]) if page.get("clean") else None
             path = clean_p if (clean_p and clean_p.exists()) else Path(page["original"])
 

@@ -1,6 +1,8 @@
 """API Router for text rendering and font management."""
 
 import copy
+import os
+import uuid
 from pathlib import Path
 from PIL import Image
 from fastapi import APIRouter, HTTPException
@@ -27,6 +29,15 @@ def _style_get(d: dict, idx: int, default=None):
     return default
 
 
+def _cleanup_tmp(path: Path) -> None:
+    """Remove a temporary render file if it exists, swallowing errors."""
+    try:
+        if path.exists():
+            path.unlink()
+    except OSError:
+        pass
+
+
 @router.get("/fonts")
 def get_available_fonts() -> list[dict[str, str]]:
     return list_available_fonts()
@@ -45,6 +56,11 @@ def render_page(req: RenderRequest) -> dict:
         original_snapshot = page.get("original")
         skipped_snapshot = page.get("skipped", False)
         drafts = copy.deepcopy(manifest.get("drafts", {}))
+        _page_prefix = f"{req.page_index}_"
+        page_drafts_snapshot = {
+            k: v for k, v in drafts.items()
+            if str(k).startswith(_page_prefix)
+        }
 
     logger.info(
         f"Chapter {req.chapter_id} page {req.page_index}: "
@@ -202,9 +218,11 @@ def render_page(req: RenderRequest) -> dict:
 
     out_dir = OUTPUT_DIR / req.chapter_id
     out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = out_dir / f"page_{req.page_index:03d}.png"
+    final_path = out_dir / f"page_{req.page_index:03d}.png"
+    tmp_path = out_dir / f"page_{req.page_index:03d}.rendering.{uuid.uuid4().hex[:12]}.tmp"
+
     try:
-        image.save(out_path)
+        image.save(tmp_path)
     except Exception as e:
         logger.error(
             "Chapter %s page %s operation 'render_page' save failed: %s",
@@ -213,21 +231,32 @@ def render_page(req: RenderRequest) -> dict:
             e,
             exc_info=True,
         )
+        _cleanup_tmp(tmp_path)
         raise HTTPException(500, "Cannot save rendered image") from e
 
     state_changed = False
-    with get_manifest_lock(req.chapter_id):
-        m = load_manifest_raw(req.chapter_id)
-        if 0 <= req.page_index < len(m.get("pages", [])):
-            cur_page = m["pages"][req.page_index]
-            if (
-                cur_page.get("boxes", []) != boxes_snapshot
-                or cur_page.get("clean") != clean_snapshot
-                or cur_page.get("original") != original_snapshot
-                or cur_page.get("skipped", False) != skipped_snapshot
-            ):
-                state_changed = True
+    try:
+        with get_manifest_lock(req.chapter_id):
+            m = load_manifest_raw(req.chapter_id)
+            if 0 <= req.page_index < len(m.get("pages", [])):
+                cur_page = m["pages"][req.page_index]
+                cur_page_drafts = {
+                    k: v for k, v in m.get("drafts", {}).items()
+                    if str(k).startswith(_page_prefix)
+                }
+                if (
+                    cur_page.get("boxes", []) != boxes_snapshot
+                    or cur_page.get("clean") != clean_snapshot
+                    or cur_page.get("original") != original_snapshot
+                    or cur_page.get("skipped", False) != skipped_snapshot
+                    or cur_page_drafts != page_drafts_snapshot
+                ):
+                    state_changed = True
             else:
+                state_changed = True
+
+            if not state_changed:
+                os.replace(tmp_path, final_path)
                 cur_page["rendered"] = True
                 m_drafts = m.setdefault("drafts", {})
                 for box_key, translation in req.translations.items():
@@ -252,16 +281,18 @@ def render_page(req: RenderRequest) -> dict:
                         if _style_get(radii_dict, box_key) is not None:
                             d["cornerRadius"] = _style_get(radii_dict, box_key)
                 save_manifest_raw(req.chapter_id, m)
+    finally:
+        _cleanup_tmp(tmp_path)
 
     if state_changed:
         logger.warning(
-            "Chapter %s page %s: page state changed during render, skipping rendered=True",
+            "Chapter %s page %s: page state changed during render, discarding stale output",
             req.chapter_id,
             req.page_index,
         )
         return {
             "output": f"/api/image/{req.chapter_id}/{req.page_index}/rendered",
-            "warning": "Vùng thoại đã bị sửa trong quá trình chèn chữ.",
+            "warning": "Vùng thoại đã bị sửa trong quá trình chèn chữ. Vui lòng chèn chữ lại.",
         }
 
     logger.info(
@@ -269,6 +300,6 @@ def render_page(req: RenderRequest) -> dict:
         req.chapter_id,
         req.page_index,
         rendered_count,
-        out_path.name,
+        final_path.name,
     )
     return {"output": f"/api/image/{req.chapter_id}/{req.page_index}/rendered"}
