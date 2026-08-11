@@ -3,6 +3,8 @@
   const MIN_SIZE = 12;
   let active = null;
   let saveTimer = null;
+  let persistSequence = 0;
+  let activePersistController = null;
 
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
@@ -10,11 +12,15 @@
     return window.currentManifest?.pages?.[pageIndex]?.boxes?.[boxIndex] || null;
   }
 
-  async function persist(pageIndex, boxIndex, box) {
+  async function persist(pageIndex, boxIndex, box, sequence) {
     if (!window.currentChapterId || !box) return;
+    const controller = new AbortController();
+    if (activePersistController) activePersistController.abort();
+    activePersistController = controller;
     const resp = await fetch("/api/update_box", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      signal: controller.signal,
       body: JSON.stringify({
         chapter_id: window.currentChapterId,
         page_index: pageIndex,
@@ -27,6 +33,7 @@
     });
     if (!resp.ok) throw new Error(`update_box ${resp.status}`);
     const manifest = await resp.json();
+    if (sequence !== persistSequence || controller.signal.aborted) return;
     if (window.currentManifest) {
       window.currentManifest.pages[pageIndex] = manifest.pages[pageIndex];
     }
@@ -35,9 +42,11 @@
   function schedulePersist(pageIndex, boxIndex) {
     clearTimeout(saveTimer);
     saveTimer = setTimeout(async () => {
+      const sequence = ++persistSequence;
       try {
-        await persist(pageIndex, boxIndex, pageBox(pageIndex, boxIndex));
+        await persist(pageIndex, boxIndex, pageBox(pageIndex, boxIndex), sequence);
       } catch (err) {
+        if (err.name === "AbortError") return;
         if (typeof window.showToast === "function") {
           window.showToast("Không lưu được vị trí vùng chữ: " + err.message, "error");
         }
@@ -128,7 +137,9 @@
     overlay.classList.remove("transforming");
     document.body.classList.remove("box-transforming");
     clearTimeout(saveTimer);
-    persist(pageIndex, boxIndex, pageBox(pageIndex, boxIndex)).catch((err) => {
+    const sequence = ++persistSequence;
+    persist(pageIndex, boxIndex, pageBox(pageIndex, boxIndex), sequence).catch((err) => {
+      if (err.name === "AbortError") return;
       if (typeof window.showToast === "function") window.showToast("Không lưu được vị trí vùng chữ: " + err.message, "error");
     });
     active = null;
