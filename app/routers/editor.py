@@ -56,7 +56,17 @@ async def repaint_mask(chapter_id: str = Form(...), page_index: int = Form(...),
     validate_chapter_id(chapter_id)
     mask_bytes = await mask.read()
     logger.info(f"Chapter {chapter_id} page {page_index}: repaint mask ({len(mask_bytes)} bytes)")
-    manifest = await run_in_threadpool(pipeline.repaint_mask, chapter_id, page_index, mask_bytes)
+
+    # UploadFile.read() returns encoded image bytes. The pipeline works with
+    # an OpenCV/numpy mask, so decode the uploaded PNG/WebP before handing it
+    # to repaint_mask(). Passing raw bytes makes cv2.imencode() fail with
+    # "img is not a numpy array" and turns every brush submission into HTTP 500.
+    encoded = np.frombuffer(mask_bytes, dtype=np.uint8)
+    mask_array = cv2.imdecode(encoded, cv2.IMREAD_GRAYSCALE)
+    if mask_array is None:
+        raise HTTPException(400, "Invalid repaint mask image")
+
+    manifest = await run_in_threadpool(pipeline.repaint_mask, chapter_id, page_index, mask_array)
     return urlify_manifest(manifest)
 
 @router.post("/reset_manual_mask")
