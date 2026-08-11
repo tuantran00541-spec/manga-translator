@@ -5,6 +5,47 @@
 
   let selectedBoxKey = null;
 
+  function clearBoxSelection() {
+    selectedBoxKey = null;
+    document.querySelectorAll(".box-overlay.selected").forEach((el) => el.classList.remove("selected"));
+    document.querySelectorAll(".properties-box-list-item.active").forEach((el) => el.classList.remove("active"));
+  }
+  window.clearBoxSelection = clearBoxSelection;
+
+  function selectBox(pageIndex, boxIndex) {
+    const key = `${pageIndex}_${boxIndex}`;
+    selectedBoxKey = key;
+
+    const host = document.querySelector(".translation-panel-host");
+    const wrapper = document.querySelector(".translation-canvas-host .page-block-wrapper");
+    if (!host || !wrapper) return;
+
+    const items = [...document.querySelectorAll(".box-item")];
+    const overlays = [...wrapper.querySelectorAll(".box-overlay:not(.drawing)")];
+    const listItems = [...document.querySelectorAll(".properties-box-list-item")];
+    const editorHost = host.querySelector(".properties-editor-host");
+    const titleSpan = host.querySelector(".properties-panel-heading span");
+
+    const targetItem = items.find((el) => el.dataset.propertyKey === key);
+    if (!targetItem) return;
+
+    items.forEach((el) => el.classList.toggle("property-hidden", el !== targetItem));
+    overlays.forEach((el) => el.classList.toggle("selected", `${el.dataset.pageIndex}_${el.dataset.boxIndex}` === key));
+
+    if (editorHost && targetItem.parentElement !== editorHost) {
+      editorHost.innerHTML = "";
+      editorHost.appendChild(targetItem);
+    }
+
+    if (titleSpan) {
+      const boxNum = Number(boxIndex) + 1;
+      titleSpan.textContent = `Vùng ${boxNum} · chỉnh nội dung và kiểu chữ.`;
+    }
+
+    listItems.forEach((el) => el.classList.toggle("active", el.dataset.key === key));
+  }
+  window.selectBox = selectBox;
+
   function setupProperties() {
     const host = document.querySelector(".translation-panel-host");
     const wrapper = document.querySelector(".translation-canvas-host .page-block-wrapper");
@@ -39,13 +80,8 @@
     editorHost.appendChild(empty);
 
     const select = (item, key) => {
-      selectedBoxKey = key;
-      items.forEach((el) => el.classList.toggle("property-hidden", el !== item));
-      overlays.forEach((el) => el.classList.toggle("selected", `${el.dataset.pageIndex}_${el.dataset.boxIndex}` === key));
-      editorHost.innerHTML = "";
-      editorHost.appendChild(item);
-      title.querySelector("span").textContent = `Vùng ${Number(item.querySelector("textarea")?.dataset.boxIndex || 0) + 1} · chỉnh nội dung và kiểu chữ.`;
-      list.querySelectorAll(".properties-box-list-item").forEach((el) => el.classList.toggle("active", el.dataset.key === key));
+      const parts = key.split("_");
+      selectBox(parts[0], parts[1]);
     };
 
     items.forEach((item, index) => {
@@ -78,7 +114,12 @@
       });
     });
 
-    if (items.length) select(items[0], items[0].dataset.propertyKey);
+    if (selectedBoxKey && items.some((el) => el.dataset.propertyKey === selectedBoxKey)) {
+      const parts = selectedBoxKey.split("_");
+      selectBox(parts[0], parts[1]);
+    } else if (items.length) {
+      select(items[0], items[0].dataset.propertyKey);
+    }
 
     // Keep page-level actions available without repeating them for every box.
     if (addBoxBtn) host.appendChild(addBoxBtn);
