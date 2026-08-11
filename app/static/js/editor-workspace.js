@@ -4,15 +4,30 @@
   if (typeof legacyRenderEditor !== "function") return;
 
   let activeIndex = 0;
+  let activeLastChapterId = null;
 
   function setupTranslationWorkspace() {
     const container = document.getElementById("page-view");
     if (!container) return;
 
-    const wrappers = [...container.querySelectorAll(".page-block-wrapper")];
-    if (!wrappers.length) return;
+    if (window.currentChapterId && activeLastChapterId !== window.currentChapterId) {
+      activeLastChapterId = window.currentChapterId;
+      activeIndex = 0;
+    }
 
-    activeIndex = Math.max(0, Math.min(activeIndex, wrappers.length - 1));
+    const rawWrappers = [...container.querySelectorAll(".page-block-wrapper")];
+    if (!rawWrappers.length) return;
+
+    const visibleCount = rawWrappers.length;
+    activeIndex = Math.max(0, Math.min(activeIndex, visibleCount - 1));
+
+    // Keep only active page DOM in memory, destroy inactive page wrappers
+    const activeWrapper = rawWrappers[activeIndex];
+    rawWrappers.forEach((el, idx) => {
+      if (idx !== activeIndex) {
+        el.remove();
+      }
+    });
 
     const shell = document.createElement("div");
     shell.className = "translation-workspace";
@@ -55,49 +70,40 @@
     container.innerHTML = "";
     container.appendChild(shell);
 
-    const renderActive = () => {
+    // Mount active wrapper into workspace DOM
+    activeWrapper.style.display = "block";
+    canvasHost.appendChild(activeWrapper);
+
+    const block = activeWrapper.querySelector(".page-block");
+    const panel = activeWrapper.querySelector(".box-panel");
+    if (block) block.classList.add("translation-active-page");
+    if (panel) panelHost.appendChild(panel);
+
+    const page = currentManifest?.pages?.[Number(block?.dataset.pageIndex)];
+    const label = activeWrapper.querySelector(".page-block-label");
+    position.textContent = `${activeIndex + 1} / ${visibleCount}${label ? " · " + label.textContent : ""}`;
+    prev.disabled = activeIndex === 0;
+    next.disabled = activeIndex === visibleCount - 1;
+
+    if (page && block) {
+      panelHost.dataset.pageIndex = String(Number(block.dataset.pageIndex));
+    }
+
+    const switchPage = (newIndex) => {
+      if (newIndex < 0 || newIndex >= visibleCount) return;
+      if (typeof window.saveDraftNow === "function") window.saveDraftNow();
+      if (typeof window.cancelPendingPersist === "function") window.cancelPendingPersist();
+      if (typeof window.clearBoxSelection === "function") window.clearBoxSelection();
+
       canvasHost.innerHTML = "";
       panelHost.innerHTML = "";
 
-      wrappers.forEach((wrapper) => {
-        wrapper.style.display = "none";
-      });
-
-      const wrapper = wrappers[activeIndex];
-      wrapper.style.display = "block";
-      canvasHost.appendChild(wrapper);
-
-      const block = wrapper.querySelector(".page-block");
-      const panel = wrapper.querySelector(".box-panel");
-      if (block) block.classList.add("translation-active-page");
-      if (panel) panelHost.appendChild(panel);
-
-      const page = currentManifest?.pages?.[Number(block?.dataset.pageIndex)];
-      const label = wrapper.querySelector(".page-block-label");
-      const visibleCount = wrappers.length;
-      position.textContent = `${activeIndex + 1} / ${visibleCount}${label ? " · " + label.textContent : ""}`;
-      prev.disabled = activeIndex === 0;
-      next.disabled = activeIndex === visibleCount - 1;
-
-      if (page) {
-        panelHost.dataset.pageIndex = String(Number(block.dataset.pageIndex));
-      }
+      activeIndex = newIndex;
+      window.renderEditor();
     };
 
-    prev.addEventListener("click", () => {
-      if (activeIndex > 0) {
-        activeIndex -= 1;
-        renderActive();
-      }
-    });
-    next.addEventListener("click", () => {
-      if (activeIndex < wrappers.length - 1) {
-        activeIndex += 1;
-        renderActive();
-      }
-    });
-
-    renderActive();
+    prev.addEventListener("click", () => switchPage(activeIndex - 1));
+    next.addEventListener("click", () => switchPage(activeIndex + 1));
   }
 
   window.renderEditor = function translationWorkspaceRender() {

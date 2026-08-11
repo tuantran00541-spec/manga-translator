@@ -10,6 +10,7 @@ function pageLabel(pages, pageIndex) {
 let previewActivePageIndex = 0;
 let previewZoomScale = 1.0;
 let previewDrawCleanup = null;
+let previewLastChapterId = null;
 
 function cleanupPreviewDrawListeners() {
   if (typeof previewDrawCleanup === "function") {
@@ -17,10 +18,16 @@ function cleanupPreviewDrawListeners() {
     previewDrawCleanup = null;
   }
 }
+window.cleanupPreviewDrawListeners = cleanupPreviewDrawListeners;
 
 function renderPreview() {
   const container = document.getElementById("page-view");
   if (!container || !currentManifest?.pages?.length) return;
+
+  if (window.currentChapterId && previewLastChapterId !== window.currentChapterId) {
+    previewLastChapterId = window.currentChapterId;
+    previewActivePageIndex = 0;
+  }
 
   cleanupPreviewDrawListeners();
 
@@ -266,9 +273,26 @@ function renderPreviewPage(card, page, pageIndex, pages) {
   let startPos = null;
   let tempDrawBox = null;
 
+  const removeDrawListeners = () => {
+    window.removeEventListener("mousemove", onMouseMove);
+    window.removeEventListener("mouseup", onMouseUp);
+  };
+
+  const stopDrawing = () => {
+    removeDrawListeners();
+    isDragging = false;
+    startPos = null;
+    if (tempDrawBox) {
+      tempDrawBox.remove();
+      tempDrawBox = null;
+    }
+  };
+
   drawLayer.addEventListener("mousedown", (e) => {
     if (!card.classList.contains("draw-excluded-active")) return;
     e.preventDefault();
+    stopDrawing();
+
     const rect = imgWrap.getBoundingClientRect();
     const x = (e.clientX - rect.left) / previewZoomScale;
     const y = (e.clientY - rect.top) / previewZoomScale;
@@ -278,6 +302,10 @@ function renderPreviewPage(card, page, pageIndex, pages) {
     tempDrawBox.className = "excluded-region-box drawing";
     overlayContainer.appendChild(tempDrawBox);
     updateTempDrawBox(x, y);
+
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+    previewDrawCleanup = stopDrawing;
   });
 
   const updateTempDrawBox = (x, y) => {
@@ -298,8 +326,13 @@ function renderPreviewPage(card, page, pageIndex, pages) {
       (e.clientY - rect.top) / previewZoomScale
     );
   };
+
   const onMouseUp = () => {
-    if (!isDragging || !tempDrawBox) return;
+    if (!isDragging || !tempDrawBox) {
+      stopDrawing();
+      return;
+    }
+    removeDrawListeners();
     isDragging = false;
     const left = parseFloat(tempDrawBox.style.left) || 0;
     const top = parseFloat(tempDrawBox.style.top) || 0;
@@ -308,6 +341,8 @@ function renderPreviewPage(card, page, pageIndex, pages) {
     tempDrawBox.remove();
     tempDrawBox = null;
     startPos = null;
+    previewDrawCleanup = null;
+
     if (w < 5 || h < 5) return;
 
     const scaleX = img.naturalWidth / img.clientWidth;
@@ -321,16 +356,8 @@ function renderPreviewPage(card, page, pageIndex, pages) {
     saveExcludedRegions(pageIndex, page.excluded_regions);
     renderExcludedBoxes();
   };
-  window.addEventListener("mousemove", onMouseMove);
-  window.addEventListener("mouseup", onMouseUp);
-  previewDrawCleanup = () => {
-    window.removeEventListener("mousemove", onMouseMove);
-    window.removeEventListener("mouseup", onMouseUp);
-    isDragging = false;
-    startPos = null;
-    if (tempDrawBox) tempDrawBox.remove();
-    tempDrawBox = null;
-  };
+
+  previewDrawCleanup = stopDrawing;
 
   const footer = document.createElement("div");
   footer.className = "preview-card-footer";
