@@ -9,10 +9,20 @@ function pageLabel(pages, pageIndex) {
 
 let previewActivePageIndex = 0;
 let previewZoomScale = 1.0;
+let previewDrawCleanup = null;
+
+function cleanupPreviewDrawListeners() {
+  if (typeof previewDrawCleanup === "function") {
+    previewDrawCleanup();
+    previewDrawCleanup = null;
+  }
+}
 
 function renderPreview() {
   const container = document.getElementById("page-view");
   if (!container || !currentManifest?.pages?.length) return;
+
+  cleanupPreviewDrawListeners();
 
   const pages = currentManifest.pages;
   previewActivePageIndex = Math.max(0, Math.min(previewActivePageIndex, pages.length - 1));
@@ -313,6 +323,14 @@ function renderPreviewPage(card, page, pageIndex, pages) {
   };
   window.addEventListener("mousemove", onMouseMove);
   window.addEventListener("mouseup", onMouseUp);
+  previewDrawCleanup = () => {
+    window.removeEventListener("mousemove", onMouseMove);
+    window.removeEventListener("mouseup", onMouseUp);
+    isDragging = false;
+    startPos = null;
+    if (tempDrawBox) tempDrawBox.remove();
+    tempDrawBox = null;
+  };
 
   const footer = document.createElement("div");
   footer.className = "preview-card-footer";
