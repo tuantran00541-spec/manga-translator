@@ -113,6 +113,34 @@
   margin: 0 auto;
 }
 
+/* UI-03 brush layer: the canvas must sit directly over the image. */
+.review-image-wrap {
+  position: relative;
+  line-height: 0;
+}
+
+.review-image-wrap img {
+  display: block;
+  max-width: 100%;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.brush-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 2;
+  display: block;
+  pointer-events: auto;
+  touch-action: none;
+  cursor: default;
+}
+
+.review-image-wrap.brush-mode .brush-canvas {
+  cursor: crosshair;
+}
+
 .review-workspace-shell + .review-card,
 #page-view > .review-card[style*="display: none"] {
   display: none !important;
