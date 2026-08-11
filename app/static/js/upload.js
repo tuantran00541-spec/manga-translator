@@ -69,11 +69,13 @@ async function uploadChapter(files) {
       method: "POST",
       body: formData,
     });
+    const parse = typeof window.parseApiResponse === "function" ? window.parseApiResponse : async (r) => (await r.json().catch(() => ({})));
+    const getErr = typeof window.getErrorMessage === "function" ? window.getErrorMessage : (s, d) => d.detail || `Server trả về lỗi ${s}`;
+    const data = await parse(resp);
     if (!resp.ok) {
-      const data = await resp.json().catch(() => ({}));
-      throw new Error(data.detail || `Server trả về lỗi ${resp.status}`);
+      throw new Error(getErr(resp.status, data));
     }
-    currentManifest = await resp.json();
+    currentManifest = data;
     currentChapterId = currentManifest.chapter_id;
     renderPreview();
   } catch (err) {
