@@ -128,10 +128,12 @@ function enableManualDraw(imgWrap, img, pageIndex, addBoxBtn) {
     const w = parseFloat(drawBox.style.width) || 0;
     const h = parseFloat(drawBox.style.height) || 0;
     drawBox.remove();
-    if (w < 6 || h < 6) return;
-
     const scaleX = img.naturalWidth / img.clientWidth;
     const scaleY = img.naturalHeight / img.clientHeight;
+
+    const nw = Math.round(w * scaleX);
+    const nh = Math.round(h * scaleY);
+    if (nw < 10 || nh < 10) return;
 
     await submitManualBox(
       pageIndex,
@@ -144,96 +146,19 @@ function enableManualDraw(imgWrap, img, pageIndex, addBoxBtn) {
 }
 
 function refreshPageAfterAddBox(pageIndex, newPage) {
-  const block = document.querySelector(`.page-block[data-page-index="${pageIndex}"]`);
-  if (!block) return;
-  const imgWrap = block.querySelector(".page-image-wrap");
-  const img = imgWrap.querySelector("img");
-  const panel = block.querySelector(".box-panel");
-  const renderBtn = panel.querySelector(".render-btn");
-
-  img.src = newPage.clean + "?t=" + Date.now();
-
-  const boxIndex = newPage.boxes.length - 1;
-  const box = newPage.boxes[boxIndex];
-
-  const initNewBox = () => {
-    const scaleX = img.clientWidth / img.naturalWidth;
-    const scaleY = img.clientHeight / img.naturalHeight;
-    const overlay = document.createElement("div");
-    overlay.className = "box-overlay";
-    overlay.dataset.pageIndex = pageIndex;
-    overlay.dataset.boxIndex = boxIndex;
-    overlay.style.left = box.x1 * scaleX + "px";
-    overlay.style.top = box.y1 * scaleY + "px";
-    overlay.style.width = (box.x2 - box.x1) * scaleX + "px";
-    overlay.style.height = (box.y2 - box.y1) * scaleY + "px";
-    imgWrap.appendChild(overlay);
-  };
-  if (img.complete && img.naturalWidth > 0) {
-    initNewBox();
-  } else {
-    img.onload = initNewBox;
+  if (typeof window.renderEditor === "function") {
+    window.renderEditor();
+    const boxIndex = newPage.boxes.length - 1;
+    if (typeof window.selectBox === "function") {
+      window.selectBox(pageIndex, boxIndex);
+    }
   }
-
-  const item = createBoxItem(pageIndex, boxIndex);
-  panel.insertBefore(item, renderBtn);
 }
 
 function refreshPageAfterRemoveBox(pageIndex, newPage) {
-  const block = document.querySelector(`.page-block[data-page-index="${pageIndex}"]`);
-  if (!block) return;
-  const imgWrap = block.querySelector(".page-image-wrap");
-  const img = imgWrap.querySelector("img");
-  const panel = block.querySelector(".box-panel");
-  const addBoxBtn = panel.querySelector(".add-box-btn");
-
-  img.src = newPage.clean + "?t=" + Date.now();
-
-  const oldOverlays = imgWrap.querySelectorAll(".box-overlay:not(.drawing)");
-  oldOverlays.forEach((el) => el.remove());
-
-  const oldItems = panel.querySelectorAll(".box-item, .empty-boxes-notice");
-  oldItems.forEach((el) => el.remove());
-
-  const activeBoxes = (newPage.boxes || []).filter((b) => !b.removed);
-  if (activeBoxes.length === 0 && addBoxBtn) {
-    const emptyNotice = document.createElement("div");
-    emptyNotice.className = "empty-boxes-notice";
-    emptyNotice.textContent =
-      "Không phát hiện text nào trên trang này. Dùng công cụ thêm vùng thủ công nếu cần dịch.";
-    panel.insertBefore(emptyNotice, addBoxBtn);
-  }
-
-  const rebuildOverlays = () => {
-    const scaleX = img.clientWidth / img.naturalWidth;
-    const scaleY = img.clientHeight / img.naturalHeight;
-
-    newPage.boxes.forEach((box, boxIndex) => {
-      if (box.removed) return;
-
-      const overlay = document.createElement("div");
-      overlay.className = "box-overlay";
-      overlay.dataset.pageIndex = pageIndex;
-      overlay.dataset.boxIndex = boxIndex;
-      overlay.style.left = box.x1 * scaleX + "px";
-      overlay.style.top = box.y1 * scaleY + "px";
-      overlay.style.width = (box.x2 - box.x1) * scaleX + "px";
-      overlay.style.height = (box.y2 - box.y1) * scaleY + "px";
-      imgWrap.appendChild(overlay);
-
-      const item = createBoxItem(pageIndex, boxIndex);
-      if (addBoxBtn) {
-        panel.insertBefore(item, addBoxBtn);
-      } else {
-        panel.appendChild(item);
-      }
-    });
-  };
-
-  if (img.complete && img.naturalWidth > 0) {
-    rebuildOverlays();
-  } else {
-    img.onload = rebuildOverlays;
+  if (typeof window.clearBoxSelection === "function") window.clearBoxSelection();
+  if (typeof window.renderEditor === "function") {
+    window.renderEditor();
   }
 }
 
