@@ -4,19 +4,29 @@
   if (typeof legacyRenderReview !== "function") return;
 
   let activeReviewIndex = 0;
+  let reviewLastChapterId = null;
 
   function stopActiveBrushes(cards) {
     cards.forEach((card) => {
-      const btn = card.querySelector(".brush-toggle-btn");
-      if (btn && btn.textContent.startsWith("Đang tô")) btn.click();
       const canvas = card.querySelector("canvas.brush-canvas");
-      if (canvas && canvas._brushAbort) canvas._brushAbort.abort();
+      if (canvas && typeof canvas._stopBrush === "function") {
+        canvas._stopBrush();
+      } else {
+        const btn = card.querySelector(".brush-toggle-btn");
+        if (btn && btn.textContent.startsWith("Đang tô")) btn.click();
+      }
     });
   }
 
   function setupReviewWorkspace() {
     const container = document.getElementById("page-view");
     if (!container) return;
+
+    if (window.currentChapterId && reviewLastChapterId !== window.currentChapterId) {
+      reviewLastChapterId = window.currentChapterId;
+      activeReviewIndex = 0;
+    }
+
     const cards = [...container.querySelectorAll(".review-card")];
     if (!cards.length) return;
 
@@ -73,6 +83,19 @@
       position.textContent = `${activeReviewIndex + 1} / ${cards.length}${label ? " · " + label.textContent : ""}`;
       prev.disabled = activeReviewIndex === 0;
       next.disabled = activeReviewIndex === cards.length - 1;
+
+      const canvas = card.querySelector("canvas.brush-canvas");
+      const img = card.querySelector("img");
+      if (canvas && img) {
+        const nw = img.naturalWidth || img.width;
+        const nh = img.naturalHeight || img.height;
+        if (nw && nh) {
+          canvas.width = nw;
+          canvas.height = nh;
+        }
+        canvas.style.width = "100%";
+        canvas.style.height = "100%";
+      }
     };
 
     prev.addEventListener("click", () => {
