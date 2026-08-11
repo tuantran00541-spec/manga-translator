@@ -55,8 +55,6 @@ def _decode_mask(mask_b64: str | None) -> np.ndarray | None:
     return cv2.imdecode(arr, cv2.IMREAD_GRAYSCALE)
 
 
-
-
 class ChapterPipeline:
     def __init__(self):
         self._detector = None
@@ -73,7 +71,6 @@ class ChapterPipeline:
         if self._inpainter is None:
             self._inpainter = Inpainter()
         return self._inpainter
-
 
     def download_chapter(self, chapter_url: str, chapter_id: str, workers: int = 2) -> dict:
         raw_dir = RAW_DIR / chapter_id
@@ -287,7 +284,6 @@ class ChapterPipeline:
         return manifest
 
     def mark_skipped(self, chapter_id: str, page_indices: list[int], skipped: bool) -> dict:
-        processed_dir = PROCESSED_DIR / chapter_id
         with get_manifest_lock(chapter_id):
             manifest = load_manifest_raw(chapter_id)
             for idx in page_indices:
@@ -322,9 +318,7 @@ class ChapterPipeline:
             if src_p and src_p.exists():
                 shutil.copyfile(src_p, target_path)
 
-
     def add_manual_box(self, chapter_id: str, page_index: int, x1: int, y1: int, x2: int, y2: int) -> dict:
-        processed_dir = PROCESSED_DIR / chapter_id
         with get_manifest_lock(chapter_id):
             manifest = load_manifest_raw(chapter_id)
             if page_index < 0 or page_index >= len(manifest["pages"]):
@@ -368,6 +362,26 @@ class ChapterPipeline:
             save_manifest_raw(chapter_id, manifest)
         return manifest
 
+    def remove_box(self, chapter_id: str, page_index: int, box_index: int) -> dict:
+        """Mark a box removed, repaint the page, and persist the new state."""
+        processed_dir = PROCESSED_DIR / chapter_id
+        with get_manifest_lock(chapter_id):
+            manifest = load_manifest_raw(chapter_id)
+            if page_index < 0 or page_index >= len(manifest.get("pages", [])):
+                raise ValueError("Invalid page index")
+            page = manifest["pages"][page_index]
+            boxes = page.get("boxes", [])
+            if box_index < 0 or box_index >= len(boxes):
+                raise ValueError("Invalid box index")
+
+            boxes[box_index]["removed"] = True
+            img_path = Path(page["original"])
+            image = read_image(img_path)
+            self._reinpaint_page(page, image, processed_dir, img_path)
+            save_manifest_raw(chapter_id, manifest)
+            self._sync_output_dir(chapter_id, manifest, [page_index])
+        return manifest
+
     def repaint_mask(self, chapter_id: str, page_index: int, mask: np.ndarray) -> dict:
         processed_dir = PROCESSED_DIR / chapter_id
         with get_manifest_lock(chapter_id):
@@ -379,6 +393,30 @@ class ChapterPipeline:
             image = read_image(img_path)
             manual_mask_path = processed_dir / f"manual_mask_{img_path.name}"
             write_image(manual_mask_path, mask)
+            page["manual_mask"] = manual_mask_path.as_posix()
+            self._reinpaint_page(page, image, processed_dir, img_path)
+            save_manifest_raw(chapter_id, manifest)
+            self._sync_output_dir(chapter_id, manifest, [page_index])
+        return manifest
+
+    def reset_manual_mask(self, chapter_id: str, page_index: int) -> dict:
+        """Remove the persisted manual mask and rebuild the clean page."""
+        processed_dir = PROCESSED_DIR / chapter_id
+        with get_manifest_lock(chapter_id):
+            manifest = load_manifest_raw(chapter_id)
+            if page_index < 0 or page_index >= len(manifest.get("pages", [])):
+                raise ValueError("Invalid page index")
+            page = manifest["pages"][page_index]
+            img_path = Path(page["original"])
+            manual_mask_path = processed_dir / f"manual_mask_{img_path.name}"
+            if manual_mask_path.exists():
+                try:
+                    manual_mask_path.unlink()
+                except OSError as exc:
+                    raise RuntimeError(f"Cannot remove manual mask: {exc}") from exc
+            page.pop("manual_mask", None)
+
+            image = read_image(img_path)
             self._reinpaint_page(page, image, processed_dir, img_path)
             save_manifest_raw(chapter_id, manifest)
             self._sync_output_dir(chapter_id, manifest, [page_index])
@@ -400,9 +438,6 @@ class ChapterPipeline:
             raw = np.fromfile(str(manual_mask_path), dtype=np.uint8)
             manual_mask = cv2.imdecode(raw, cv2.IMREAD_GRAYSCALE)
             if manual_mask is not None and manual_mask.any():
-                # Keep all manual brush strokes in one mask and process them
-                # in one inpaint invocation. This avoids sequential LaMa
-                # inference for every disconnected painted region.
                 manual_mask = (manual_mask > 127).astype(np.uint8) * 255
                 clean_image = self.inpainter.inpaint_mask(clean_image, manual_mask)
 
@@ -410,8 +445,6 @@ class ChapterPipeline:
         write_image(clean_path, clean_image)
         page["clean"] = clean_path.as_posix()
         page["rendered"] = False
-
-
 
     def _process_page(self, img_path: Path, processed_dir: Path, excluded_regions: list[dict] | None = None) -> dict:
         image = read_image(img_path)
