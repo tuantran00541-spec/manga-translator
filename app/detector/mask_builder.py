@@ -41,18 +41,23 @@ def build_mask(image_shape: tuple[int, int], boxes: list[BubbleBox], crop_img: n
 
         if box.mask is not None:
             if box.mask.shape != (box_h, box_w):
-                # A non-null mask with the wrong geometry is a corrupted/invalid
-                # segmentation result. Do not turn it into a large rectangle:
-                # that can erase artwork during inpainting. A detector that has
-                # no mask at all is still allowed to use the legacy rectangle
-                # fallback below.
-                logger.error(
-                    "Skipping box with invalid mask geometry at "
-                    f"({box.x1}, {box.y1}, {box.x2}, {box.y2}): "
-                    f"mask shape {box.mask.shape} != expected ({box_h}, {box_w})"
+                logger.warning(
+                    "Resizing mismatched box mask from %s to (%d, %d) at (%d, %d, %d, %d)",
+                    box.mask.shape,
+                    box_h,
+                    box_w,
+                    box.x1,
+                    box.y1,
+                    box.x2,
+                    box.y2,
                 )
-                continue
+                try:
+                    box.mask = cv2.resize(box.mask, (box_w, box_h), interpolation=cv2.INTER_NEAREST)
+                except Exception as exc:
+                    logger.error("Failed to resize box mask at (%d, %d, %d, %d): %s", box.x1, box.y1, box.x2, box.y2, exc)
+                    box.mask = None
 
+        if box.mask is not None:
             x1 = max(0, box.x1)
             y1 = max(0, box.y1)
             x2 = min(w, box.x2)

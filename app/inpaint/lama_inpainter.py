@@ -54,30 +54,42 @@ class Inpainter:
         return result
 
     def inpaint_mask(self, image: np.ndarray, mask: np.ndarray) -> np.ndarray:
-        ys, xs = np.where(mask > 127)
-        if len(ys) == 0:
+        if mask is None or not np.any(mask > 127):
             return image.copy()
 
-        ys0, xs0 = np.where(mask > 127)
-        bbox_w = int(xs0.max() - xs0.min() + 1)
-        bbox_h = int(ys0.max() - ys0.min() + 1)
-        scale = max(1, min(bbox_w, bbox_h))
-        kernel_size = int(np.clip(round(scale * 0.025) * 2 + 1, MANUAL_MIN_DILATION, MANUAL_MAX_DILATION))
-        if kernel_size % 2 == 0:
-            kernel_size += 1
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
-        mask = cv2.dilate(mask, kernel, iterations=1)
-
-        h, w = image.shape[:2]
-        ys, xs = np.where(mask > 127)
-        crop_box = self._compute_manual_crop_region(
-            int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max()), w, h
-        )
-        cx1, cy1, cx2, cy2 = crop_box
-        local_mask = mask[cy1:cy2, cx1:cx2]
+        binary_mask = (mask > 127).astype(np.uint8) * 255
+        num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(binary_mask, connectivity=8)
 
         result = image.copy()
-        return self._smart_paint_region(result, local_mask, crop_box, feather=True)
+        h, w = image.shape[:2]
+
+        for label in range(1, num_labels):
+            component_mask = (labels == label).astype(np.uint8) * 255
+            ys, xs = np.where(component_mask > 127)
+            if len(ys) == 0:
+                continue
+
+            bbox_w = int(xs.max() - xs.min() + 1)
+            bbox_h = int(ys.max() - ys.min() + 1)
+            scale = max(1, min(bbox_w, bbox_h))
+            kernel_size = int(np.clip(round(scale * 0.025) * 2 + 1, MANUAL_MIN_DILATION, MANUAL_MAX_DILATION))
+            if kernel_size % 2 == 0:
+                kernel_size += 1
+            kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
+            dilated_comp = cv2.dilate(component_mask, kernel, iterations=1)
+
+            dys, dxs = np.where(dilated_comp > 127)
+            if len(dys) == 0:
+                continue
+            crop_box = self._compute_manual_crop_region(
+                int(dxs.min()), int(dys.min()), int(dxs.max()), int(dys.max()), w, h
+            )
+            cx1, cy1, cx2, cy2 = crop_box
+            local_mask = dilated_comp[cy1:cy2, cx1:cx2]
+
+            result = self._smart_paint_region(result, local_mask, crop_box, feather=True)
+
+        return result
 
     def _smart_paint_region(self, image: np.ndarray, local_mask: np.ndarray, crop_box: tuple, feather: bool = False) -> np.ndarray:
         cx1, cy1, cx2, cy2 = crop_box
