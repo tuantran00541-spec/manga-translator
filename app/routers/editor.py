@@ -1,6 +1,7 @@
 """API Router for interactive box editing, OCR, repainting, and draft saving."""
 
 from pathlib import Path
+import copy
 import cv2
 import numpy as np
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
@@ -17,74 +18,184 @@ router = APIRouter(prefix="/api", tags=["editor"])
 @router.post("/add_box")
 def add_box(req: AddBoxRequest) -> dict:
     validate_chapter_id(req.chapter_id)
-    manifest = pipeline.add_manual_box(req.chapter_id, req.page_index, req.x1, req.y1, req.x2, req.y2)
-    return urlify_manifest(manifest)
+    manifest_raw = load_manifest_raw(req.chapter_id)
+    pages = manifest_raw.get("pages", [])
+    if req.page_index < 0 or req.page_index >= len(pages):
+        raise HTTPException(400, f"Invalid page_index: {req.page_index}")
+    if req.x2 <= req.x1 or req.y2 <= req.y1:
+        raise HTTPException(400, "Invalid box coordinates: x1 must be < x2 and y1 must be < y2")
+    if req.x2 - req.x1 < 10 or req.y2 - req.y1 < 10:
+        raise HTTPException(400, "Invalid box dimensions: width and height must be at least 10px")
+
+    img_path = Path(pages[req.page_index]["original"])
+    if not img_path.is_file():
+        raise HTTPException(404, f"Original page image not found: page_{req.page_index:03d}")
+    try:
+        image = read_image(img_path)
+        h, w = image.shape[:2]
+        if req.x1 < 0 or req.y1 < 0 or req.x2 > w or req.y2 > h:
+            raise HTTPException(400, f"Box coordinates ({req.x1},{req.y1})-({req.x2},{req.y2}) exceed image dimensions ({w}x{h})")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("Chapter %s page %s operation 'add_box' cannot read image: %s", req.chapter_id, req.page_index, exc, exc_info=True)
+        raise HTTPException(500, f"Cannot read page image: {exc}") from exc
+
+    try:
+        manifest = pipeline.add_manual_box(req.chapter_id, req.page_index, req.x1, req.y1, req.x2, req.y2)
+        return urlify_manifest(manifest)
+    except ValueError as exc:
+        logger.error("Chapter %s page %s operation 'add_box' invalid value: %s", req.chapter_id, req.page_index, exc)
+        raise HTTPException(400, str(exc)) from exc
+    except Exception as exc:
+        logger.error("Chapter %s page %s operation 'add_box' failed: %s", req.chapter_id, req.page_index, exc, exc_info=True)
+        raise HTTPException(500, f"Add box failed: {exc}") from exc
+
 
 @router.post("/update_box")
 def update_box(req: UpdateBoxRequest) -> dict:
     validate_chapter_id(req.chapter_id)
+    manifest_raw = load_manifest_raw(req.chapter_id)
+    pages = manifest_raw.get("pages", [])
+    if req.page_index < 0 or req.page_index >= len(pages):
+        raise HTTPException(400, f"Invalid page_index: {req.page_index}")
+    boxes = pages[req.page_index].get("boxes", [])
+    if req.box_index < 0 or req.box_index >= len(boxes):
+        raise HTTPException(400, f"Invalid box_index: {req.box_index}")
     if req.x2 <= req.x1 or req.y2 <= req.y1:
-        raise HTTPException(400, "Invalid box dimensions")
-    with get_manifest_lock(req.chapter_id):
-        manifest = load_manifest_raw(req.chapter_id)
-        pages = manifest.get("pages", [])
-        if req.page_index < 0 or req.page_index >= len(pages):
-            raise HTTPException(400, f"Invalid page_index: {req.page_index}")
-        page = pages[req.page_index]
-        boxes = page.get("boxes", [])
-        if req.box_index < 0 or req.box_index >= len(boxes):
-            raise HTTPException(400, f"Invalid box_index: {req.box_index}")
-        try:
-            image = read_image(Path(page["original"]))
-            height, width = image.shape[:2]
-        except Exception as exc:
-            raise HTTPException(400, f"Cannot read image: {exc}") from exc
-        if req.x1 < 0 or req.y1 < 0 or req.x2 > width or req.y2 > height:
-            raise HTTPException(400, "Box is outside image bounds")
-        boxes[req.box_index].update({"x1": req.x1, "y1": req.y1, "x2": req.x2, "y2": req.y2})
-        save_manifest_raw(req.chapter_id, manifest)
+        raise HTTPException(400, "Invalid box coordinates: x1 must be < x2 and y1 must be < y2")
+    if req.x2 - req.x1 < 10 or req.y2 - req.y1 < 10:
+        raise HTTPException(400, "Invalid box dimensions: width and height must be at least 10px")
+
+    img_path = Path(pages[req.page_index]["original"])
+    if not img_path.is_file():
+        raise HTTPException(404, f"Original page image not found: page_{req.page_index:03d}")
+    try:
+        image = read_image(img_path)
+        h, w = image.shape[:2]
+        if req.x1 < 0 or req.y1 < 0 or req.x2 > w or req.y2 > h:
+            raise HTTPException(400, f"Box coordinates ({req.x1},{req.y1})-({req.x2},{req.y2}) exceed image dimensions ({w}x{h})")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("Chapter %s page %s box %s operation 'update_box' cannot read image: %s", req.chapter_id, req.page_index, req.box_index, exc, exc_info=True)
+        raise HTTPException(500, f"Cannot read page image: {exc}") from exc
+
+    try:
+        manifest = pipeline.update_box(
+            req.chapter_id, req.page_index, req.box_index, req.x1, req.y1, req.x2, req.y2
+        )
         return urlify_manifest(manifest)
+    except ValueError as exc:
+        logger.error("Chapter %s page %s box %s operation 'update_box' invalid value: %s", req.chapter_id, req.page_index, req.box_index, exc)
+        raise HTTPException(400, str(exc)) from exc
+    except Exception as exc:
+        logger.error("Chapter %s page %s box %s operation 'update_box' failed: %s", req.chapter_id, req.page_index, req.box_index, exc, exc_info=True)
+        raise HTTPException(500, f"Update box failed: {exc}") from exc
+
 
 @router.post("/remove_box")
 def remove_box(req: RemoveBoxRequest) -> dict:
     validate_chapter_id(req.chapter_id)
-    manifest = pipeline.remove_box(req.chapter_id, req.page_index, req.box_index)
-    return urlify_manifest(manifest)
+    manifest_raw = load_manifest_raw(req.chapter_id)
+    pages = manifest_raw.get("pages", [])
+    if req.page_index < 0 or req.page_index >= len(pages):
+        raise HTTPException(400, f"Invalid page_index: {req.page_index}")
+    boxes = pages[req.page_index].get("boxes", [])
+    if req.box_index < 0 or req.box_index >= len(boxes):
+        raise HTTPException(400, f"Invalid box_index: {req.box_index}")
+
+    try:
+        manifest = pipeline.remove_box(req.chapter_id, req.page_index, req.box_index)
+        return urlify_manifest(manifest)
+    except ValueError as exc:
+        logger.error("Chapter %s page %s box %s operation 'remove_box' invalid value: %s", req.chapter_id, req.page_index, req.box_index, exc)
+        raise HTTPException(400, str(exc)) from exc
+    except Exception as exc:
+        logger.error("Chapter %s page %s box %s operation 'remove_box' failed: %s", req.chapter_id, req.page_index, req.box_index, exc, exc_info=True)
+        raise HTTPException(500, f"Remove box failed: {exc}") from exc
+
 
 @router.post("/repaint_mask")
 async def repaint_mask(chapter_id: str = Form(...), page_index: int = Form(...), mask: UploadFile = File(...)) -> dict:
     validate_chapter_id(chapter_id)
+    manifest_raw = load_manifest_raw(chapter_id)
+    pages = manifest_raw.get("pages", [])
+    if page_index < 0 or page_index >= len(pages):
+        raise HTTPException(400, f"Invalid page_index: {page_index}")
+
+    img_path = Path(pages[page_index]["original"])
+    if not img_path.is_file():
+        raise HTTPException(404, f"Original page image not found: page_{page_index:03d}")
+
+    try:
+        image = read_image(img_path)
+        img_h, img_w = image.shape[:2]
+    except Exception as exc:
+        logger.error("Chapter %s page %s operation 'repaint_mask' cannot read base image: %s", chapter_id, page_index, exc, exc_info=True)
+        raise HTTPException(500, f"Cannot read base page image: {exc}") from exc
+
     mask_bytes = await mask.read()
+    if not mask_bytes:
+        raise HTTPException(400, "Empty mask payload")
     logger.info(f"Chapter {chapter_id} page {page_index}: repaint mask ({len(mask_bytes)} bytes)")
 
-    # The brush canvas is transparent except for painted strokes. Decode the
-    # alpha channel rather than grayscale RGB: red paint has grayscale value
-    # ~76, which is below the pipeline's >127 mask threshold and therefore
-    # turns a perfectly valid brush stroke into an empty mask.
     encoded = np.frombuffer(mask_bytes, dtype=np.uint8)
     decoded = cv2.imdecode(encoded, cv2.IMREAD_UNCHANGED)
     if decoded is None:
-        raise HTTPException(400, "Invalid repaint mask image")
+        raise HTTPException(400, "Invalid repaint mask image: failed to decode")
 
     if decoded.ndim == 3 and decoded.shape[2] == 4:
         mask_array = decoded[:, :, 3]
     elif decoded.ndim == 3:
-        # Fallback for opaque RGB images: derive a mask from non-black pixels.
         mask_array = cv2.cvtColor(decoded, cv2.COLOR_BGR2GRAY)
     else:
         mask_array = decoded
 
+    if mask_array.shape[:2] != (img_h, img_w):
+        try:
+            mask_array = cv2.resize(mask_array, (img_w, img_h), interpolation=cv2.INTER_NEAREST)
+        except Exception as exc:
+            raise HTTPException(400, f"Mask dimensions {mask_array.shape[:2]} cannot be matched to page dimensions {(img_h, img_w)}") from exc
+
     if not np.any(mask_array > 0):
         raise HTTPException(400, "Repaint mask is empty")
 
-    manifest = await run_in_threadpool(pipeline.repaint_mask, chapter_id, page_index, mask_array)
-    return urlify_manifest(manifest)
+    try:
+        manifest = await run_in_threadpool(pipeline.repaint_mask, chapter_id, page_index, mask_array)
+        return urlify_manifest(manifest)
+    except Exception as exc:
+        logger.error(
+            "Chapter %s page %s operation 'repaint_mask' failed: %s",
+            chapter_id,
+            page_index,
+            exc,
+            exc_info=True,
+        )
+        raise HTTPException(500, f"Repaint mask failed: {exc}") from exc
+
 
 @router.post("/reset_manual_mask")
 def reset_manual_mask(req: ResetManualMaskRequest) -> dict:
     validate_chapter_id(req.chapter_id)
-    manifest = pipeline.reset_manual_mask(req.chapter_id, req.page_index)
-    return urlify_manifest(manifest)
+    manifest_raw = load_manifest_raw(req.chapter_id)
+    pages = manifest_raw.get("pages", [])
+    if req.page_index < 0 or req.page_index >= len(pages):
+        raise HTTPException(400, f"Invalid page_index: {req.page_index}")
+
+    try:
+        manifest = pipeline.reset_manual_mask(req.chapter_id, req.page_index)
+        return urlify_manifest(manifest)
+    except Exception as exc:
+        logger.error(
+            "Chapter %s page %s operation 'reset_manual_mask' failed: %s",
+            req.chapter_id,
+            req.page_index,
+            exc,
+            exc_info=True,
+        )
+        raise HTTPException(500, f"Reset manual mask failed: {exc}") from exc
+
 
 def _ocr_crop_from_box(image: np.ndarray, box: dict) -> np.ndarray:
     h, w = image.shape[:2]
@@ -108,32 +219,77 @@ def _ocr_crop_from_box(image: np.ndarray, box: dict) -> np.ndarray:
     pad = 20
     return image[max(0, by1 - pad):min(h, by2 + pad), max(0, bx1 - pad):min(w, bx2 + pad)]
 
+
 @router.post("/ocr_box")
 def ocr_box(req: OcrBoxRequest) -> dict:
     validate_chapter_id(req.chapter_id)
-    manifest = load_manifest_raw(req.chapter_id)
-    pages = manifest.get("pages", [])
-    if req.page_index < 0 or req.page_index >= len(pages): raise HTTPException(400, f"Invalid page_index: {req.page_index}")
-    page = pages[req.page_index]
-    boxes = page.get("boxes", [])
-    if req.box_index < 0 or req.box_index >= len(boxes): raise HTTPException(400, f"Invalid box_index: {req.box_index}")
-    box = boxes[req.box_index]
-    try: image = read_image(Path(page["original"]))
-    except Exception as e: raise HTTPException(400, f"Cannot read image: {e}") from e
-    text = ocr.read(cv2.cvtColor(_ocr_crop_from_box(image, box), cv2.COLOR_BGR2RGB), req.lang)
     with get_manifest_lock(req.chapter_id):
         manifest = load_manifest_raw(req.chapter_id)
-        if 0 <= req.page_index < len(manifest["pages"]) and 0 <= req.box_index < len(manifest["pages"][req.page_index]["boxes"]):
+        pages = manifest.get("pages", [])
+        if req.page_index < 0 or req.page_index >= len(pages):
+            raise HTTPException(400, f"Invalid page_index: {req.page_index}")
+        page = pages[req.page_index]
+        boxes = page.get("boxes", [])
+        if req.box_index < 0 or req.box_index >= len(boxes):
+            raise HTTPException(400, f"Invalid box_index: {req.box_index}")
+        box_snapshot = copy.deepcopy(boxes[req.box_index])
+        img_path = Path(page["original"])
+
+    if not img_path.is_file():
+        raise HTTPException(404, f"Original page image not found: page_{req.page_index:03d}")
+
+    try:
+        image = read_image(img_path)
+        crop = _ocr_crop_from_box(image, box_snapshot)
+        text = ocr.read(cv2.cvtColor(crop, cv2.COLOR_BGR2RGB), req.lang)
+    except Exception as e:
+        logger.error(
+            "Chapter %s page %s box %s operation 'ocr_box' failed: %s",
+            req.chapter_id,
+            req.page_index,
+            req.box_index,
+            e,
+            exc_info=True,
+        )
+        raise HTTPException(500, f"OCR failed: {e}") from e
+
+    with get_manifest_lock(req.chapter_id):
+        manifest = load_manifest_raw(req.chapter_id)
+        if (
+            0 <= req.page_index < len(manifest.get("pages", []))
+            and 0 <= req.box_index < len(manifest["pages"][req.page_index].get("boxes", []))
+        ):
             target = manifest["pages"][req.page_index]["boxes"][req.box_index]
-            target["ocr_text"], target["ocr_lang"] = text, req.lang
+            target["ocr_text"] = text
+            target["ocr_lang"] = req.lang
+            manifest["pages"][req.page_index]["rendered"] = False
             save_manifest_raw(req.chapter_id, manifest)
+            pipeline._sync_output_dir(req.chapter_id, manifest, [req.page_index])
+
     return {"text": text, "lang": req.lang}
+
 
 @router.post("/save_draft")
 def save_draft(req: SaveDraftRequest) -> dict:
     validate_chapter_id(req.chapter_id)
-    with get_manifest_lock(req.chapter_id):
-        manifest = load_manifest_raw(req.chapter_id)
-        manifest.setdefault("drafts", {}).update(req.drafts)
-        save_manifest_raw(req.chapter_id, manifest)
-    return {"ok": True}
+    try:
+        with get_manifest_lock(req.chapter_id):
+            manifest = load_manifest_raw(req.chapter_id)
+            manifest.setdefault("drafts", {}).update(req.drafts)
+            affected_pages = set()
+            for key in req.drafts.keys():
+                parts = str(key).split("_")
+                if parts and parts[0].isdigit():
+                    page_idx = int(parts[0])
+                    if 0 <= page_idx < len(manifest.get("pages", [])):
+                        manifest["pages"][page_idx]["rendered"] = False
+                        affected_pages.add(page_idx)
+            save_manifest_raw(req.chapter_id, manifest)
+            if affected_pages:
+                pipeline._sync_output_dir(req.chapter_id, manifest, list(affected_pages))
+        return {"ok": True}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("Chapter %s operation 'save_draft' failed: %s", req.chapter_id, exc, exc_info=True)
+        raise HTTPException(500, f"Save draft failed: {exc}") from exc

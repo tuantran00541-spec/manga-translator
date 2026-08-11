@@ -67,8 +67,20 @@ def create_chapter(req: ChapterRequest) -> dict:
     chapter_id = os.urandom(4).hex()
     workers = _clamp_workers(req.workers)
     logger.info(f"Creating chapter {chapter_id} from {req.url} (workers={workers})")
-    manifest = pipeline.download_chapter(req.url, chapter_id, workers=workers)
-    return urlify_manifest(manifest)
+    try:
+        manifest = pipeline.download_chapter(req.url, chapter_id, workers=workers)
+        return urlify_manifest(manifest)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(
+            "Chapter %s operation 'create_chapter' failed for URL %s: %s",
+            chapter_id,
+            req.url,
+            exc,
+            exc_info=True,
+        )
+        raise HTTPException(500, f"Download chapter failed: {exc}") from exc
 
 
 @router.post("/chapter/upload")
@@ -93,26 +105,75 @@ async def create_chapter_from_upload(
     chapter_id = os.urandom(4).hex()
     workers_n = _clamp_workers(workers)
     logger.info(f"Creating chapter {chapter_id} from {len(uploads)} uploaded files (workers={workers_n})")
-    manifest = await run_in_threadpool(pipeline.create_chapter_from_uploads, chapter_id, uploads, workers=workers_n)
-    return urlify_manifest(manifest)
+    try:
+        manifest = await run_in_threadpool(pipeline.create_chapter_from_uploads, chapter_id, uploads, workers=workers_n)
+        return urlify_manifest(manifest)
+    except ValueError as exc:
+        logger.error("Chapter %s operation 'create_chapter_from_upload' invalid payload: %s", chapter_id, exc)
+        raise HTTPException(400, str(exc)) from exc
+    except Exception as exc:
+        logger.error("Chapter %s operation 'create_chapter_from_upload' failed: %s", chapter_id, exc, exc_info=True)
+        raise HTTPException(500, f"Upload chapter failed: {exc}") from exc
 
 
 @router.post("/process_pages")
 def process_pages(req: ProcessPagesRequest) -> dict:
     validate_chapter_id(req.chapter_id)
+    manifest_raw = load_manifest_raw(req.chapter_id)
+    total_pages = len(manifest_raw.get("pages", []))
+    if not req.page_indices:
+        raise HTTPException(400, "page_indices cannot be empty")
+    for idx in req.page_indices:
+        if not isinstance(idx, int) or idx < 0 or idx >= total_pages:
+            raise HTTPException(400, f"Invalid page_index {idx} for chapter {req.chapter_id} (total pages: {total_pages})")
+
     workers = _clamp_workers(req.workers)
     logger.info(
         f"Chapter {req.chapter_id}: processing pages {req.page_indices} (workers={workers})"
     )
-    manifest = pipeline.process_pages(req.chapter_id, req.page_indices, workers=workers)
-    return urlify_manifest(manifest)
+    try:
+        manifest = pipeline.process_pages(req.chapter_id, req.page_indices, workers=workers)
+        return urlify_manifest(manifest)
+    except RuntimeError as exc:
+        logger.error(
+            "Chapter %s pages %s operation 'process_pages' failed: %s",
+            req.chapter_id,
+            req.page_indices,
+            exc,
+            exc_info=True,
+        )
+        raise HTTPException(500, str(exc)) from exc
+    except Exception as exc:
+        logger.error(
+            "Chapter %s pages %s operation 'process_pages' failed unexpectedly: %s",
+            req.chapter_id,
+            req.page_indices,
+            exc,
+            exc_info=True,
+        )
+        raise HTTPException(500, f"Process pages failed: {exc}") from exc
 
 
 @router.post("/skip_pages")
 def skip_pages(req: SkipPagesRequest) -> dict:
     validate_chapter_id(req.chapter_id)
-    manifest = pipeline.mark_skipped(req.chapter_id, req.page_indices, req.skipped)
-    return urlify_manifest(manifest)
+    manifest_raw = load_manifest_raw(req.chapter_id)
+    total_pages = len(manifest_raw.get("pages", []))
+    for idx in req.page_indices:
+        if not isinstance(idx, int) or idx < 0 or idx >= total_pages:
+            raise HTTPException(400, f"Invalid page_index {idx} for chapter {req.chapter_id} (total pages: {total_pages})")
+    try:
+        manifest = pipeline.mark_skipped(req.chapter_id, req.page_indices, req.skipped)
+        return urlify_manifest(manifest)
+    except Exception as exc:
+        logger.error(
+            "Chapter %s pages %s operation 'skip_pages' failed: %s",
+            req.chapter_id,
+            req.page_indices,
+            exc,
+            exc_info=True,
+        )
+        raise HTTPException(500, f"Skip pages failed: {exc}") from exc
 
 
 @router.get("/chapter/{chapter_id}")
@@ -123,22 +184,55 @@ def get_chapter(chapter_id: str) -> dict:
 @router.post("/save_excluded_regions")
 def save_excluded_regions(req: SaveExcludedRegionsRequest) -> dict:
     validate_chapter_id(req.chapter_id)
-    with get_manifest_lock(req.chapter_id):
-        manifest = load_manifest_raw(req.chapter_id)
-        pages = manifest.get("pages", [])
-        if 0 <= req.page_index < len(pages):
+    try:
+        with get_manifest_lock(req.chapter_id):
+            manifest = load_manifest_raw(req.chapter_id)
+            pages = manifest.get("pages", [])
+            if req.page_index < 0 or req.page_index >= len(pages):
+                raise HTTPException(400, f"Invalid page_index: {req.page_index}")
+            for r in req.excluded_regions:
+                if r.x1 > r.x2 or r.y1 > r.y2:
+                    raise HTTPException(400, f"Invalid region coordinates: ({r.x1},{r.y1})-({r.x2},{r.y2})")
             pages[req.page_index]["excluded_regions"] = [r.model_dump() for r in req.excluded_regions]
+            pages[req.page_index]["rendered"] = False
             save_manifest_raw(req.chapter_id, manifest)
-    return urlify_manifest(manifest)
+            pipeline._sync_output_dir(req.chapter_id, manifest, [req.page_index])
+        return urlify_manifest(manifest)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(
+            "Chapter %s page %s operation 'save_excluded_regions' failed: %s",
+            req.chapter_id,
+            req.page_index,
+            exc,
+            exc_info=True,
+        )
+        raise HTTPException(500, f"Save excluded regions failed: {exc}") from exc
 
 
 @router.post("/chapters/{chapter_id}/pages/{page_index}/excluded-regions")
 def set_page_excluded_regions(chapter_id: str, page_index: int, regions: list[dict]) -> dict:
     validate_chapter_id(chapter_id)
-    with get_manifest_lock(chapter_id):
-        manifest = load_manifest_raw(chapter_id)
-        pages = manifest.get("pages", [])
-        if 0 <= page_index < len(pages):
+    try:
+        with get_manifest_lock(chapter_id):
+            manifest = load_manifest_raw(chapter_id)
+            pages = manifest.get("pages", [])
+            if page_index < 0 or page_index >= len(pages):
+                raise HTTPException(400, f"Invalid page_index: {page_index}")
             pages[page_index]["excluded_regions"] = regions
+            pages[page_index]["rendered"] = False
             save_manifest_raw(chapter_id, manifest)
-    return urlify_manifest(manifest)
+            pipeline._sync_output_dir(chapter_id, manifest, [page_index])
+        return urlify_manifest(manifest)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(
+            "Chapter %s page %s operation 'set_page_excluded_regions' failed: %s",
+            chapter_id,
+            page_index,
+            exc,
+            exc_info=True,
+        )
+        raise HTTPException(500, f"Set page excluded regions failed: {exc}") from exc
