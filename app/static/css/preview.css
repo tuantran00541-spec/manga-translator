@@ -156,7 +156,9 @@
   width: 100%;
   min-height: 480px;
   max-height: 72vh;
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   position: relative;
   border-radius: var(--radius-md, 8px);
   background: var(--canvas-bg, #020617);

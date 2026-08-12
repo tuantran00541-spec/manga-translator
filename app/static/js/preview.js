@@ -197,13 +197,6 @@ function renderPreviewPage(card, page, pageIndex, pages) {
     previewZoomScale = Math.max(0.5, Math.min(4.0, newScale));
     zoomLevelText.textContent = Math.round(previewZoomScale * 100) + "%";
     imgWrap.style.transform = `scale(${previewZoomScale})`;
-    if (previewZoomScale > 1) {
-      viewport.style.overflow = "auto";
-    } else {
-      viewport.style.overflow = "hidden";
-      viewport.scrollTop = 0;
-      viewport.scrollLeft = 0;
-    }
   };
   updateZoom(1);
   zoomInBtn.addEventListener("click", () => updateZoom(previewZoomScale + 0.25));
