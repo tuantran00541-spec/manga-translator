@@ -279,9 +279,11 @@ window.saveDraftNow = saveDraftNow;
 window.scheduleSaveDraft = scheduleSaveDraft;
 
 async function renderTranslations(pageIndex) {
-  const textareas = document.querySelectorAll(
-    `textarea[data-page-index="${pageIndex}"]`
-  );
+  // Ensure the debounced text-object update reaches the server before render.
+  if (typeof window.flushTextObjectPersist === "function") window.flushTextObjectPersist();
+  const page = currentManifest && currentManifest.pages ? currentManifest.pages[pageIndex] : null;
+  if (!page) return;
+
   const translations = {};
   const colors = {};
   const fonts = {};
@@ -291,25 +293,21 @@ async function renderTranslations(pageIndex) {
   const stroke_colors = {};
   const bg_colors = {};
   const corner_radii = {};
-
-  textareas.forEach((ta) => {
-    if (ta.value.trim()) {
-      const idx = ta.dataset.boxIndex;
-      translations[idx] = ta.value.trim();
-      colors[idx] = ta.dataset.color || "auto";
-      fonts[idx] = ta.dataset.font || "default";
-      font_sizes[idx] = ta.dataset.fontSize || "auto";
-      bolds[idx] = ta.dataset.bold === "true";
-      stroke_widths[idx] = ta.dataset.strokeWidth || "auto";
-      stroke_colors[idx] = ta.dataset.strokeColor || "auto";
-      bg_colors[idx] = ta.dataset.bgColor || "transparent";
-      corner_radii[idx] = parseInt(ta.dataset.cornerRadius || "0");
-    }
+  (page.text_objects || []).forEach((obj) => {
+    if (!obj || !obj.translation || !obj.translation.trim()) return;
+    translations[obj.id] = obj.translation.trim();
+    const s = obj.style || {};
+    colors[obj.id] = s.color || "auto";
+    fonts[obj.id] = s.font || "default";
+    font_sizes[obj.id] = s.fontSize || "auto";
+    bolds[obj.id] = s.bold === true;
+    stroke_widths[obj.id] = s.strokeWidth || "auto";
+    stroke_colors[obj.id] = s.strokeColor || "auto";
+    bg_colors[obj.id] = s.bgColor || "transparent";
+    corner_radii[obj.id] = parseInt(s.cornerRadius || "0", 10);
   });
 
-  const btn = document.querySelector(
-    `.page-block[data-page-index="${pageIndex}"] .render-btn`
-  );
+  const btn = document.querySelector(".editor-render-btn");
   if (btn) {
     btn.disabled = true;
     btn.textContent = "Đang chèn chữ...";
@@ -367,47 +365,6 @@ async function loadFonts() {
     showToast("Không thể tải danh sách phông chữ, dùng phông mặc định.", "info");
   }
 }
-
-async function submitManualBox(pageIndex, x1, y1, x2, y2) {
-  try {
-    if (typeof window.cancelPendingPersist === "function") window.cancelPendingPersist();
-    const resp = await fetch("/api/add_box", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ chapter_id: currentChapterId, page_index: pageIndex, x1, y1, x2, y2 }),
-    });
-    const data = await parseApiResponse(resp);
-    if (!resp.ok) {
-      throw new Error(getErrorMessage(resp.status, data));
-    }
-    const newPage = data.pages[pageIndex];
-    currentManifest.pages[pageIndex] = newPage;
-    refreshPageAfterAddBox(pageIndex, newPage);
-  } catch (err) {
-    showToast("Thêm vùng thoại thất bại: " + err.message, "error");
-  }
-}
-
-async function removeBoxAndRepaint(pageIndex, boxIndex, item) {
-  try {
-    if (typeof window.cancelPendingPersist === "function") window.cancelPendingPersist();
-    const resp = await fetch("/api/remove_box", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ chapter_id: currentChapterId, page_index: pageIndex, box_index: boxIndex }),
-    });
-    const data = await parseApiResponse(resp);
-    if (!resp.ok) {
-      throw new Error(getErrorMessage(resp.status, data));
-    }
-    const newPage = data.pages[pageIndex];
-    currentManifest.pages[pageIndex] = newPage;
-    refreshPageAfterRemoveBox(pageIndex, newPage);
-  } catch (err) {
-    showToast("Xóa vùng thoại thất bại: " + err.message + " — vui lòng tải lại trang để đồng bộ.", "error");
-  }
-}
-window.removeBoxAndRepaint = removeBoxAndRepaint;
 
 async function saveExcludedRegions(pageIndex, excludedRegions) {
   try {

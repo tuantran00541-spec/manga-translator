@@ -17,13 +17,13 @@ from app.security import validate_chapter_id
 router = APIRouter(prefix="/api", tags=["render"])
 
 
-def _style_get(d: dict, idx: int, default=None):
-    """Lookup style value by box index — keys may be int or str after JSON/Pydantic."""
+def _style_get(d: dict, idx_or_id, default=None):
+    """Lookup style value by box index or text_object id — keys may be int or str."""
     if not d:
         return default
-    if idx in d:
-        return d[idx]
-    s = str(idx)
+    if idx_or_id in d:
+        return d[idx_or_id]
+    s = str(idx_or_id)
     if s in d:
         return d[s]
     return default
@@ -52,6 +52,7 @@ def render_page(req: RenderRequest) -> dict:
             raise HTTPException(400, f"Invalid page_index: {req.page_index}")
         page = copy.deepcopy(manifest["pages"][req.page_index])
         boxes_snapshot = copy.deepcopy(page.get("boxes", []))
+        text_objects_snapshot = copy.deepcopy(page.get("text_objects", []))
         clean_snapshot = page.get("clean")
         original_snapshot = page.get("original")
         skipped_snapshot = page.get("skipped", False)
@@ -94,127 +95,160 @@ def render_page(req: RenderRequest) -> dict:
     radii_dict = req.corner_radii or {}
 
     rendered_count = 0
-    box_indices = set()
-    for box_key in req.translations.keys():
-        try:
-            box_indices.add(int(box_key))
-        except (TypeError, ValueError):
-            continue
 
-    for draft_key, d_val in drafts.items():
-        parts = str(draft_key).split("_")
-        if len(parts) == 2 and parts[0] == str(req.page_index):
+    # UI-6.5: render from page.text_objects if present, fallback to page.boxes for legacy drafts
+    text_objects = page.get("text_objects", [])
+    if text_objects:
+        for obj_idx, obj in enumerate(text_objects):
+            if not obj or not obj.get("region"):
+                continue
+            obj_id = obj.get("id")
+            translation = _style_get(req.translations, obj_id)
+            if translation is None:
+                translation = obj.get("translation", "")
+            if not (translation or "").strip():
+                continue
+
+            r = obj["region"]
+            coords_raw = (int(r["x1"]), int(r["y1"]), int(r["x2"]), int(r["y2"]))
+            img_w, img_h = image.size
+            x1 = max(0, min(img_w, coords_raw[0]))
+            y1 = max(0, min(img_h, coords_raw[1]))
+            x2 = max(0, min(img_w, coords_raw[2]))
+            y2 = max(0, min(img_h, coords_raw[3]))
+            if x2 <= x1 or y2 <= y1:
+                logger.warning(
+                    "Chapter %s page %s text_object %s invalid coordinates (%s,%s,%s,%s), skipping",
+                    req.chapter_id, req.page_index, obj_id, x1, y1, x2, y2,
+                )
+                continue
+            coords = (x1, y1, x2, y2)
+
+            obj_style = obj.get("style", {})
+            box_color = _style_get(colors_dict, obj_id) or obj_style.get("color", "auto")
+            box_font = _style_get(fonts_dict, obj_id) or obj_style.get("font", "default")
+            box_size = _style_get(font_sizes_dict, obj_id) or obj_style.get("fontSize", "auto")
+
+            bold_val = _style_get(bolds_dict, obj_id)
+            if bold_val is None:
+                bold_val = obj_style.get("bold", False)
+            box_bold = bool(bold_val)
+
+            stroke_w = _style_get(stroke_w_dict, obj_id) or obj_style.get("strokeWidth", "auto")
+            stroke_c = _style_get(stroke_c_dict, obj_id) or obj_style.get("strokeColor", "auto")
+            bg_c = _style_get(bg_colors_dict, obj_id) or obj_style.get("bgColor", "transparent")
+            r_raw = _style_get(radii_dict, obj_id) or obj_style.get("cornerRadius", 0)
             try:
-                b_idx = int(parts[1])
-                if isinstance(d_val, dict) and d_val.get("text"):
-                    box_indices.add(b_idx)
-            except ValueError:
-                pass
+                r_val = int(r_raw or 0)
+            except (TypeError, ValueError):
+                r_val = 0
 
-    for box_idx in sorted(box_indices):
-        if box_idx < 0 or box_idx >= len(page["boxes"]):
-            continue
-        box = page["boxes"][box_idx]
-        if box.get("removed"):
-            continue
+            try:
+                image = render_text_in_box(
+                    image,
+                    translation.strip(),
+                    coords,
+                    fill=box_color,
+                    font_size=box_size,
+                    is_bold=box_bold,
+                    font_name=box_font or "default",
+                    stroke_width=stroke_w,
+                    stroke_color=stroke_c,
+                    bg_color=bg_c,
+                    corner_radius=r_val,
+                )
+                rendered_count += 1
+            except Exception as e:
+                logger.error(
+                    "Chapter %s page %s text_object %s render failed: %s",
+                    req.chapter_id, req.page_index, obj_id, e, exc_info=True,
+                )
+                raise HTTPException(500, f"Chèn chữ thất bại (vùng {obj_idx + 1})") from e
+    else:
+        # Legacy box-index render fallback
+        box_indices = set()
+        for box_key in req.translations.keys():
+            try:
+                box_indices.add(int(box_key))
+            except (TypeError, ValueError):
+                continue
 
-        draft_key = f"{req.page_index}_{box_idx}"
-        draft_item = drafts.get(draft_key, {})
+        for draft_key, d_val in drafts.items():
+            parts = str(draft_key).split("_")
+            if len(parts) == 2 and parts[0] == str(req.page_index):
+                try:
+                    b_idx = int(parts[1])
+                    if isinstance(d_val, dict) and d_val.get("text"):
+                        box_indices.add(b_idx)
+                except ValueError:
+                    pass
 
-        translation = _style_get(req.translations, box_idx)
-        if translation is None or translation == "":
-            translation = draft_item.get("text", "")
-        if not (translation or "").strip():
-            continue
+        for box_idx in sorted(box_indices):
+            if box_idx < 0 or box_idx >= len(page["boxes"]):
+                continue
+            box = page["boxes"][box_idx]
+            if box.get("removed"):
+                continue
 
-        coords_raw = (
-            int(box["x1"]),
-            int(box["y1"]),
-            int(box["x2"]),
-            int(box["y2"]),
-        )
-        img_w, img_h = image.size
-        x1 = max(0, min(img_w, coords_raw[0]))
-        y1 = max(0, min(img_h, coords_raw[1]))
-        x2 = max(0, min(img_w, coords_raw[2]))
-        y2 = max(0, min(img_h, coords_raw[3]))
-        if x2 <= x1 or y2 <= y1:
-            logger.warning(
-                "Chapter %s page %s box %s invalid coordinates (%s,%s,%s,%s) for image size (%s,%s), skipping",
-                req.chapter_id,
-                req.page_index,
-                box_idx,
-                x1, y1, x2, y2,
-                img_w, img_h,
+            draft_key = f"{req.page_index}_{box_idx}"
+            draft_item = drafts.get(draft_key, {})
+
+            translation = _style_get(req.translations, box_idx)
+            if translation is None or translation == "":
+                translation = draft_item.get("text", "")
+            if not (translation or "").strip():
+                continue
+
+            coords_raw = (
+                int(box["x1"]),
+                int(box["y1"]),
+                int(box["x2"]),
+                int(box["y2"]),
             )
-            continue
-        coords = (x1, y1, x2, y2)
+            img_w, img_h = image.size
+            x1 = max(0, min(img_w, coords_raw[0]))
+            y1 = max(0, min(img_h, coords_raw[1]))
+            x2 = max(0, min(img_w, coords_raw[2]))
+            y2 = max(0, min(img_h, coords_raw[3]))
+            if x2 <= x1 or y2 <= y1:
+                continue
+            coords = (x1, y1, x2, y2)
 
-        box_color = _style_get(colors_dict, box_idx)
-        if box_color is None:
-            box_color = draft_item.get("color", "auto")
+            box_color = _style_get(colors_dict, box_idx) or draft_item.get("color", "auto")
+            box_font = _style_get(fonts_dict, box_idx) or draft_item.get("font", "default")
+            box_size = _style_get(font_sizes_dict, box_idx) or draft_item.get("fontSize", "auto")
+            bold_val = _style_get(bolds_dict, box_idx)
+            box_bold = bool(bold_val) if bold_val is not None else draft_item.get("bold", False)
+            stroke_w = _style_get(stroke_w_dict, box_idx) or draft_item.get("strokeWidth", "auto")
+            stroke_c = _style_get(stroke_c_dict, box_idx) or draft_item.get("strokeColor", "auto")
+            bg_c = _style_get(bg_colors_dict, box_idx) or draft_item.get("bgColor", "transparent")
+            r_raw = _style_get(radii_dict, box_idx) or draft_item.get("cornerRadius", 0)
+            try:
+                r_val = int(r_raw or 0)
+            except (TypeError, ValueError):
+                r_val = 0
 
-        box_font = _style_get(fonts_dict, box_idx)
-        if box_font is None:
-            box_font = draft_item.get("font", "default")
-
-        box_size = _style_get(font_sizes_dict, box_idx)
-        if box_size is None:
-            box_size = draft_item.get("fontSize", "auto")
-
-        bold_val = _style_get(bolds_dict, box_idx)
-        if bold_val is None:
-            bold_val = draft_item.get("bold", False)
-        box_bold = bool(bold_val) if bold_val is not None else False
-
-        stroke_w = _style_get(stroke_w_dict, box_idx)
-        if stroke_w is None:
-            stroke_w = draft_item.get("strokeWidth", "auto")
-
-        stroke_c = _style_get(stroke_c_dict, box_idx)
-        if stroke_c is None:
-            stroke_c = draft_item.get("strokeColor", "auto")
-
-        bg_c = _style_get(bg_colors_dict, box_idx)
-        if bg_c is None:
-            bg_c = draft_item.get("bgColor", "transparent")
-
-        r_raw = _style_get(radii_dict, box_idx)
-        if r_raw is None:
-            r_raw = draft_item.get("cornerRadius", 0)
-        try:
-            r_val = int(r_raw or 0)
-        except (TypeError, ValueError):
-            r_val = 0
-
-        try:
-            image = render_text_in_box(
-                image,
-                translation.strip(),
-                coords,
-                fill=box_color,
-                font_size=box_size,
-                is_bold=box_bold,
-                font_name=box_font or "default",
-                stroke_width=stroke_w,
-                stroke_color=stroke_c,
-                bg_color=bg_c,
-                corner_radius=r_val,
-            )
-            rendered_count += 1
-        except Exception as e:
-            logger.error(
-                "Chapter %s page %s box %s operation 'render_text_in_box' failed: %s",
-                req.chapter_id,
-                req.page_index,
-                box_idx,
-                e,
-                exc_info=True,
-            )
-            raise HTTPException(
-                500,
-                f"Chèn chữ thất bại (ô {box_idx})",
-            ) from e
+            try:
+                image = render_text_in_box(
+                    image,
+                    translation.strip(),
+                    coords,
+                    fill=box_color,
+                    font_size=box_size,
+                    is_bold=box_bold,
+                    font_name=box_font or "default",
+                    stroke_width=stroke_w,
+                    stroke_color=stroke_c,
+                    bg_color=bg_c,
+                    corner_radius=r_val,
+                )
+                rendered_count += 1
+            except Exception as e:
+                logger.error(
+                    "Chapter %s page %s box %s render failed: %s",
+                    req.chapter_id, req.page_index, box_idx, e, exc_info=True,
+                )
+                raise HTTPException(500, f"Chèn chữ thất bại (ô {box_idx})") from e
 
     out_dir = OUTPUT_DIR / req.chapter_id
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -246,6 +280,7 @@ def render_page(req: RenderRequest) -> dict:
                 }
                 if (
                     cur_page.get("boxes", []) != boxes_snapshot
+                    or cur_page.get("text_objects", []) != text_objects_snapshot
                     or cur_page.get("clean") != clean_snapshot
                     or cur_page.get("original") != original_snapshot
                     or cur_page.get("skipped", False) != skipped_snapshot
@@ -258,28 +293,6 @@ def render_page(req: RenderRequest) -> dict:
             if not state_changed:
                 os.replace(tmp_path, final_path)
                 cur_page["rendered"] = True
-                m_drafts = m.setdefault("drafts", {})
-                for box_key, translation in req.translations.items():
-                    if (translation or "").strip():
-                        dk = f"{req.page_index}_{box_key}"
-                        d = m_drafts.setdefault(dk, {})
-                        d["text"] = translation.strip()
-                        if _style_get(colors_dict, box_key) is not None:
-                            d["color"] = _style_get(colors_dict, box_key)
-                        if _style_get(fonts_dict, box_key) is not None:
-                            d["font"] = _style_get(fonts_dict, box_key)
-                        if _style_get(font_sizes_dict, box_key) is not None:
-                            d["fontSize"] = _style_get(font_sizes_dict, box_key)
-                        if _style_get(bolds_dict, box_key) is not None:
-                            d["bold"] = bool(_style_get(bolds_dict, box_key))
-                        if _style_get(stroke_w_dict, box_key) is not None:
-                            d["strokeWidth"] = _style_get(stroke_w_dict, box_key)
-                        if _style_get(stroke_c_dict, box_key) is not None:
-                            d["strokeColor"] = _style_get(stroke_c_dict, box_key)
-                        if _style_get(bg_colors_dict, box_key) is not None:
-                            d["bgColor"] = _style_get(bg_colors_dict, box_key)
-                        if _style_get(radii_dict, box_key) is not None:
-                            d["cornerRadius"] = _style_get(radii_dict, box_key)
                 save_manifest_raw(req.chapter_id, m)
     finally:
         _cleanup_tmp(tmp_path)

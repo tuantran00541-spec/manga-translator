@@ -1,0 +1,181 @@
+/* UI-6.5 — region-centric text-object editor */
+
+/* Tool toolbar */
+.editor-tools {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.editor-tool-btn {
+  min-height: 32px;
+  padding: 6px 12px;
+  border: 1px solid var(--border, var(--line));
+  border-radius: var(--radius-sm, 6px);
+  background: var(--surface, var(--panel));
+  color: var(--text-dim);
+  font: 600 12px var(--font-body);
+  cursor: pointer;
+}
+
+.editor-tool-btn:hover {
+  border-color: var(--accent, var(--blue));
+  color: var(--text);
+}
+
+.editor-tool-btn.active {
+  border-color: var(--accent, var(--blue));
+  color: var(--text);
+  background: var(--accent-soft, rgba(59, 130, 246, .12));
+}
+
+.editor-render-btn {
+  width: auto;
+  margin: 0;
+  padding: 9px 14px;
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
+/* Text-object overlays */
+.text-object-overlay {
+  position: absolute;
+  box-sizing: border-box;
+  border: 1.5px solid var(--blue, #3b82f6);
+  background: rgba(59, 130, 246, 0.06);
+  cursor: move;
+  touch-action: none;
+  z-index: 5;
+}
+
+.text-object-overlay.ellipse {
+  border-radius: 50%;
+}
+
+.text-object-overlay.selected {
+  border-color: var(--accent-hover, var(--blue));
+  background: rgba(59, 130, 246, 0.14);
+  box-shadow: 0 0 0 2px var(--accent-soft, rgba(59, 130, 246, .16));
+  z-index: 8;
+}
+
+.text-object-overlay.selected::before,
+.text-object-overlay.selected::after {
+  content: "";
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  border: 2px solid var(--blue, #3b82f6);
+  background: var(--surface, var(--panel));
+  pointer-events: none;
+  z-index: 1;
+}
+
+.text-object-overlay.selected::before {
+  top: -5px;
+  left: -5px;
+  border-right: none;
+  border-bottom: none;
+}
+
+.text-object-overlay.selected::after {
+  bottom: -5px;
+  right: -5px;
+  border-left: none;
+  border-top: none;
+}
+
+.text-object-overlay.transforming {
+  border-color: var(--accent, var(--blue));
+  box-shadow: 0 0 0 2px var(--accent-soft, rgba(59, 130, 246, .16));
+}
+
+.text-object-overlay.drawing {
+  border: 1.5px dashed var(--red, #e8432c);
+  background: rgba(232, 67, 44, 0.12);
+  pointer-events: none;
+  z-index: 10;
+}
+
+.page-image-wrap.draw-mode img {
+  outline: 1.5px dashed var(--red, #e8432c);
+  outline-offset: -1.5px;
+}
+
+/* One reusable editor panel */
+.text-editor-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.text-editor-empty {
+  padding: 22px 12px;
+  color: var(--text-dim);
+  text-align: center;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.text-editor-label {
+  color: var(--text-dim);
+  font: 600 11px var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.text-editor-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  background: var(--ink-raised);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 8px 10px;
+  font-family: var(--font-body);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.text-editor-textarea:focus {
+  outline: none;
+  border-color: var(--blue, #3b82f6);
+}
+
+.text-object-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.text-object-action-btn {
+  flex: 1;
+  min-height: 32px;
+  padding: 6px 10px;
+  border: 1px solid var(--border, var(--line));
+  border-radius: var(--radius-sm, 6px);
+  background: var(--surface, var(--panel));
+  color: var(--text);
+  font: 600 12px var(--font-body);
+  cursor: pointer;
+}
+
+.text-object-action-btn:hover {
+  border-color: var(--accent, var(--blue));
+}
+
+.text-object-action-btn.danger {
+  color: #ff9d8c;
+  border-color: var(--red-dim, #602a22);
+}
+
+.text-object-action-btn.danger:hover {
+  background: rgba(232, 67, 44, .1);
+}
+
+/* Panel host needs to scroll its single reusable panel */
+.translation-panel-host {
+  padding: 10px;
+  overflow: auto;
+}

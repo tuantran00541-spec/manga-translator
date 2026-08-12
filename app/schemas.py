@@ -1,7 +1,18 @@
 """Pydantic schemas for request validation across API endpoints."""
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator
 from app.security import MAX_RENDER_TEXT_LEN, MAX_RENDER_TRANSLATIONS
+
+ALLOWED_TEXT_OBJECT_SHAPES = ("rectangle", "ellipse")
+TEXT_OBJECT_MIN_SIZE = 10
+
+
+def _validate_region_coords(region: "TextObjectRegion") -> "TextObjectRegion":
+    if region.x1 < 0 or region.y1 < 0:
+        raise ValueError("Region coordinates must be non-negative")
+    if region.x1 >= region.x2 or region.y1 >= region.y2:
+        raise ValueError("Region must have x1 < x2 and y1 < y2")
+    return region
 
 
 class ChapterRequest(BaseModel):
@@ -19,7 +30,7 @@ class OcrBoxRequest(BaseModel):
 class RenderRequest(BaseModel):
     chapter_id: str
     page_index: int
-    translations: dict[int, str]
+    translations: dict[str, str]
     colors: dict[str, str] = {}
     fonts: dict[str, str] = {}
     font_sizes: dict[str, int | str] = {}
@@ -112,3 +123,112 @@ class SaveExcludedRegionsRequest(BaseModel):
 class ResetManualMaskRequest(BaseModel):
     chapter_id: str
     page_index: int
+
+
+class TextObjectRegion(BaseModel):
+    x1: int
+    y1: int
+    x2: int
+    y2: int
+
+    @field_validator("x1", "y1", "x2", "y2")
+    @classmethod
+    def _finite(cls, v: int) -> int:
+        if isinstance(v, float) and not (v != v):  # NaN guard
+            raise ValueError("Region coordinates must be finite")
+        return v
+
+
+class TextObjectStyle(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    color: str = "auto"
+    font: str = "default"
+    fontSize: str = "auto"
+    bold: bool = False
+    strokeWidth: str = "auto"
+    strokeColor: str = "auto"
+    bgColor: str = "transparent"
+    cornerRadius: str = "0"
+
+
+def _validate_text_object_shape(v: str) -> str:
+    if v not in ALLOWED_TEXT_OBJECT_SHAPES:
+        raise ValueError("shape must be 'rectangle' or 'ellipse'")
+    return v
+
+
+class CreateTextObjectRequest(BaseModel):
+    chapter_id: str
+    page_index: int
+    shape: str = "rectangle"
+    region: TextObjectRegion
+
+    @field_validator("shape")
+    @classmethod
+    def _shape(cls, v: str) -> str:
+        return _validate_text_object_shape(v)
+
+    @field_validator("region")
+    @classmethod
+    def _region(cls, v: TextObjectRegion) -> TextObjectRegion:
+        return _validate_region_coords(v)
+
+
+class UpdateTextObjectRequest(BaseModel):
+    chapter_id: str
+    page_index: int
+    id: str
+    shape: str | None = None
+    region: TextObjectRegion | None = None
+    ocr_text: str | None = None
+    translation: str | None = None
+    style: TextObjectStyle | None = None
+
+    @field_validator("id")
+    @classmethod
+    def _id_not_empty(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("text_object id is required")
+        return v
+
+    @field_validator("shape")
+    @classmethod
+    def _shape(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        return _validate_text_object_shape(v)
+
+    @field_validator("region")
+    @classmethod
+    def _region(cls, v: TextObjectRegion | None) -> TextObjectRegion | None:
+        if v is None:
+            return v
+        return _validate_region_coords(v)
+
+
+class DeleteTextObjectRequest(BaseModel):
+    chapter_id: str
+    page_index: int
+    id: str
+
+    @field_validator("id")
+    @classmethod
+    def _id_not_empty(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("text_object id is required")
+        return v
+
+
+class OcrTextObjectRequest(BaseModel):
+    chapter_id: str
+    page_index: int
+    id: str
+    lang: str = "ja"
+
+    @field_validator("id")
+    @classmethod
+    def _id_not_empty(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("text_object id is required")
+        return v
