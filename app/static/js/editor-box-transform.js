@@ -1,16 +1,10 @@
-// UI-06 — native-coordinate drag/resize for text-object regions.
-//
-// Operates purely on `text_object.region` — never on detection boxes. Geometry
-// is updated locally during pointer movement and persisted (debounced) on
-// pointerup, keeping the AbortController / sequence / stale-response protection
-// from the previous box transform implementation.
-
 (() => {
   const MIN_SIZE = 10;
   let active = null;
   let geomTimer = null;
-  let geomSeq = 0;
   let geomController = null;
+  let geomBatchKeys = [];
+  const geomDirty = new Map();
 
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
@@ -20,66 +14,109 @@
       : null;
   }
 
-  // ---- geometry persistence (debounced, fire-and-forget, abort superseded) ----
-
   function cancelGeomPersist() {
     clearTimeout(geomTimer);
     geomTimer = null;
-    geomSeq++;
+    if (geomController) {
+      geomBatchKeys.forEach((k) => geomDirty.set(k, geomDirty.get(k) || true));
+      geomController.abort();
+      geomController = null;
+      geomBatchKeys = [];
+    }
+  }
+  window.cancelGeomPersist = cancelGeomPersist;
+
+  function clearPendingGeom() {
+    clearTimeout(geomTimer);
+    geomTimer = null;
+    geomDirty.clear();
+    geomBatchKeys = [];
     if (geomController) {
       geomController.abort();
       geomController = null;
     }
   }
-  window.cancelGeomPersist = cancelGeomPersist;
+  window.clearPendingGeom = clearPendingGeom;
 
-  async function geomPersist(pageIndex, id) {
-    const obj = textObject(pageIndex, id);
-    if (!obj) return;
+  async function flushGeomPersist(pageIndex) {
+    clearTimeout(geomTimer);
+    geomTimer = null;
+    if (geomDirty.size === 0) return;
+    const keys = [];
+    geomDirty.forEach((_v, k) => {
+      const [pi] = k.split(":");
+      if (pageIndex === undefined || Number(pi) === pageIndex) keys.push(k);
+    });
+    keys.forEach((k) => geomDirty.delete(k));
+    if (keys.length === 0) return;
+
     const controller = new AbortController();
     geomController = controller;
+    geomBatchKeys = keys;
     try {
-      const resp = await fetch("/api/text_object/update", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        signal: controller.signal,
-        body: JSON.stringify({
-          chapter_id: window.currentChapterId,
-          page_index: pageIndex,
-          id,
-          region: obj.region,
-        }),
-      });
-      const parse = typeof window.parseApiResponse === "function"
-        ? window.parseApiResponse
-        : async (r) => (await r.json().catch(() => ({})));
-      const getErr = typeof window.getErrorMessage === "function"
-        ? window.getErrorMessage
-        : (s, d) => (d && d.detail) || `lỗi ${s}`;
-      const data = await parse(resp);
-      if (!resp.ok) throw new Error(getErr(resp.status, data));
-      // Intentionally do not apply the response: local state is authoritative
-      // for geometry and applying a stale copy could overwrite a newer edit.
-    } catch (err) {
-      if (err.name === "AbortError") return;
-      if (typeof window.showToast === "function") {
-        window.showToast("Không lưu được vị trí vùng: " + err.message, "error");
-      }
+      await Promise.all(keys.map(async (k) => {
+        const [pi, id] = k.split(":");
+        const pIndex = Number(pi);
+        const obj = textObject(pIndex, id);
+        if (!obj || !obj.region) return;
+        try {
+          const resp = await fetch("/api/text_object/update", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            signal: controller.signal,
+            body: JSON.stringify({
+              chapter_id: window.currentChapterId,
+              page_index: pIndex,
+              id,
+              region: obj.region,
+            }),
+          });
+          const parse = typeof window.parseApiResponse === "function"
+            ? window.parseApiResponse
+            : async (r) => (await r.json().catch(() => ({})));
+          const getErr = typeof window.getErrorMessage === "function"
+            ? window.getErrorMessage
+            : (s, d) => (d && d.detail) || `lỗi ${s}`;
+          const data = await parse(resp);
+          if (!resp.ok) throw new Error(getErr(resp.status, data));
+        } catch (err) {
+          if (err.name === "AbortError") return;
+          if (typeof window.showToast === "function") {
+            window.showToast("Không lưu được vị trí vùng: " + err.message, "error");
+          }
+        }
+      }));
     } finally {
       if (geomController === controller) geomController = null;
+      if (geomBatchKeys === keys) geomBatchKeys = [];
     }
   }
+  window.flushGeomPersist = flushGeomPersist;
 
   function scheduleGeomPersist(pageIndex, id) {
+    if (geomController) {
+      geomBatchKeys.forEach((k) => geomDirty.set(k, geomDirty.get(k) || true));
+      geomController.abort();
+      geomController = null;
+      geomBatchKeys = [];
+    }
+    const obj = textObject(pageIndex, id);
+    const region = obj && obj.region
+      ? { x1: obj.region.x1, y1: obj.region.y1, x2: obj.region.x2, y2: obj.region.y2 }
+      : true;
+    geomDirty.set(`${pageIndex}:${id}`, region);
     clearTimeout(geomTimer);
-    const seq = ++geomSeq;
-    geomTimer = setTimeout(() => {
-      if (seq !== geomSeq) return;
-      geomPersist(pageIndex, id);
-    }, 300);
+    geomTimer = setTimeout(() => { flushGeomPersist(); }, 300);
   }
+  window.scheduleGeomPersist = scheduleGeomPersist;
 
-  // ---- overlay geometry (native image coordinates -> display pixels) ----------
+  function removePendingGeom(pageIndex, id) {
+    geomDirty.delete(`${pageIndex}:${id}`);
+    geomBatchKeys = geomBatchKeys.filter((k) => k !== `${pageIndex}:${id}`);
+  }
+  window.removePendingGeom = removePendingGeom;
+
+  window.syncOverlayForObject = syncOverlayForObject;
 
   function setOverlay(overlay, obj, img) {
     if (!img.naturalWidth || !img.naturalHeight) return;
@@ -236,10 +273,13 @@
     const changed =
       r.x1 !== original.x1 || r.y1 !== original.y1 ||
       r.x2 !== original.x2 || r.y2 !== original.y2;
-    if (changed) scheduleGeomPersist(pageIndex, id);
+    if (changed) {
+      scheduleGeomPersist(pageIndex, id);
+      if (typeof window.refreshGeometryControls === "function") {
+        window.refreshGeometryControls(pageIndex, id);
+      }
+    }
   }
-
-  // ---- keyboard ----------------------------------------------------------------
 
   function isEditingText() {
     const el = document.activeElement;
@@ -303,10 +343,11 @@
       };
       setOverlay(overlay, obj, img);
       scheduleGeomPersist(pageIndex, id);
+      if (typeof window.refreshGeometryControls === "function") {
+        window.refreshGeometryControls(pageIndex, id);
+      }
     }
   });
-
-  // ---- install ---------------------------------------------------------------
 
   function install() {
     document.querySelectorAll(

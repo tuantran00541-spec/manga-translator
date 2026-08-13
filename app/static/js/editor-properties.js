@@ -1,4 +1,3 @@
-// editor-properties.js - UI-05 selection + single-object properties panel
 (() => {
   const legacyRenderEditor = window.renderEditor;
   if (typeof legacyRenderEditor !== "function") return;
@@ -121,12 +120,10 @@
       select(items[0], items[0].dataset.propertyKey);
     }
 
-    // Keep page-level actions available without repeating them for every box.
     if (addBoxBtn) host.appendChild(addBoxBtn);
     if (renderBtn) host.appendChild(renderBtn);
     if (result) host.appendChild(result);
 
-    // Keep the original panel out of the visible layout; its children are moved into the properties host.
     panel.style.display = "none";
   }
 

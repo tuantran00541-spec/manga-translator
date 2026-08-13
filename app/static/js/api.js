@@ -279,8 +279,11 @@ window.saveDraftNow = saveDraftNow;
 window.scheduleSaveDraft = scheduleSaveDraft;
 
 async function renderTranslations(pageIndex) {
-  // Ensure the debounced text-object update reaches the server before render.
-  if (typeof window.flushTextObjectPersist === "function") window.flushTextObjectPersist();
+  if (typeof window.flushAllPendingPersists === "function") {
+    await window.flushAllPendingPersists(pageIndex);
+  } else if (typeof window.flushTextObjectPersist === "function") {
+    await window.flushTextObjectPersist(pageIndex);
+  }
   const page = currentManifest && currentManifest.pages ? currentManifest.pages[pageIndex] : null;
   if (!page) return;
 
@@ -293,6 +296,8 @@ async function renderTranslations(pageIndex) {
   const stroke_colors = {};
   const bg_colors = {};
   const corner_radii = {};
+  const horizontal_aligns = {};
+  const vertical_aligns = {};
   (page.text_objects || []).forEach((obj) => {
     if (!obj || !obj.translation || !obj.translation.trim()) return;
     translations[obj.id] = obj.translation.trim();
@@ -305,6 +310,12 @@ async function renderTranslations(pageIndex) {
     stroke_colors[obj.id] = s.strokeColor || "auto";
     bg_colors[obj.id] = s.bgColor || "transparent";
     corner_radii[obj.id] = parseInt(s.cornerRadius || "0", 10);
+    horizontal_aligns[obj.id] = ["left", "center", "right"].includes(s.horizontalAlign)
+      ? s.horizontalAlign
+      : "center";
+    vertical_aligns[obj.id] = ["top", "middle", "bottom"].includes(s.verticalAlign)
+      ? s.verticalAlign
+      : "middle";
   });
 
   const btn = document.querySelector(".editor-render-btn");
@@ -329,6 +340,8 @@ async function renderTranslations(pageIndex) {
         stroke_colors,
         bg_colors,
         corner_radii,
+        horizontal_aligns,
+        vertical_aligns,
       }),
     });
 

@@ -1,6 +1,5 @@
-// preview.js - Preview workspace, page navigation, zoom/pan & excluded regions
-
 function pageLabel(pages, pageIndex) {
+
   const page = pages[pageIndex];
   const total = pages.filter((p) => p.source_page === page.source_page).length;
   if (total <= 1) return "Trang " + (page.source_page + 1);

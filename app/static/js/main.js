@@ -1,6 +1,5 @@
-// main.js - Khởi tạo trạng thái toàn cục & Gắn sự kiện chính
-
 let currentChapterId = null;
+
 let currentManifest = null;
 let _saveDraftTimer = null;
 let availableFonts = [];

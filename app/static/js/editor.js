@@ -1,12 +1,7 @@
-// editor.js — Region-centric text-object editor (UI-6.5)
-//
-// Translation editing is driven by `text_objects[]`, never by detection box
-// index. Detection boxes remain the source of truth for inpaint/repaint only.
-
 const editorState = {
   activePageIndex: 0,
   selectedTextObjectId: null,
-  tool: "select", // "select" | "rectangle" | "ellipse"
+  tool: "select",
   lastChapterId: null,
 };
 window.editorState = editorState;
@@ -20,10 +15,10 @@ const DEFAULT_TEXT_OBJECT_STYLE = {
   strokeColor: "auto",
   bgColor: "transparent",
   cornerRadius: "0",
+  horizontalAlign: "center",
+  verticalAlign: "middle",
 };
 window.DEFAULT_TEXT_OBJECT_STYLE = DEFAULT_TEXT_OBJECT_STYLE;
-
-// ---- text-object lookup ---------------------------------------------------
 
 function findTextObject(pageIndex, id) {
   const page = currentManifest && currentManifest.pages ? currentManifest.pages[pageIndex] : null;
@@ -38,8 +33,6 @@ function currentTextObject() {
   return findTextObject(editorState.activePageIndex, editorState.selectedTextObjectId);
 }
 window.currentTextObject = currentTextObject;
-
-// ---- API helpers -----------------------------------------------------------
 
 async function apiTextObject(action, payload) {
   const resp = await fetch(`/api/text_object/${action}`, {
@@ -59,8 +52,6 @@ async function apiTextObject(action, payload) {
 }
 
 function collectPanelState(pageIndex, id) {
-  // Reads live in-progress editor state (text + style) from the panel DOM so an
-  // async manifest response can never clobber newer edits.
   const panelHost = document.querySelector(".translation-panel-host");
   if (!panelHost) return null;
   const state = { ocr_text: null, translation: null, style: null };
@@ -79,6 +70,8 @@ function collectPanelState(pageIndex, id) {
       strokeColor: panel.dataset.strokeColor,
       bgColor: panel.dataset.bgColor,
       cornerRadius: panel.dataset.cornerRadius,
+      horizontalAlign: panel.dataset.horizontalAlign || "center",
+      verticalAlign: panel.dataset.verticalAlign || "middle",
     };
   }
   return state;
@@ -89,9 +82,6 @@ function _styleEqual(a, b) {
 }
 
 function _applyStateDiff(obj, current, snapshot) {
-  // Only re-apply fields the user actually changed while the request was in
-  // flight (current != snapshot). Unchanged fields keep the fresh server value,
-  // so e.g. an OCR response is never wiped by a stale empty textarea.
   if (current.ocr_text !== null && (snapshot === null || current.ocr_text !== snapshot.ocr_text)) {
     obj.ocr_text = current.ocr_text;
   }
@@ -107,16 +97,25 @@ function _applyStateDiff(obj, current, snapshot) {
 }
 
 function applyManifestResponse(manifest, pageIndex, opts = {}) {
-  // opts: { skipOverlays?: bool, snapshot?: state captured before the request }
   const skipOverlays = opts.skipOverlays === true;
   const snapshot = opts.snapshot || null;
-  const id = editorState.selectedTextObjectId;
-  const currentState = id ? collectPanelState(pageIndex, id) : null;
+  const targetId = opts.id || editorState.selectedTextObjectId;
+  const currentState = targetId ? collectPanelState(pageIndex, targetId) : null;
+  if (typeof window.capturePendingGeom === "function") window.capturePendingGeom();
   currentManifest = manifest;
   if (currentState) {
-    const obj = findTextObject(pageIndex, id);
+    const obj = findTextObject(pageIndex, targetId);
     if (obj) _applyStateDiff(obj, currentState, snapshot);
   }
+  _textDirty.forEach((entry) => {
+    if (entry.pageIndex === pageIndex && entry.id === targetId) return;
+    const obj = findTextObject(entry.pageIndex, entry.id);
+    if (!obj) return;
+    if (entry.ocr_text != null) obj.ocr_text = entry.ocr_text;
+    if (entry.translation != null) obj.translation = entry.translation;
+    if (entry.style) obj.style = Object.assign({}, DEFAULT_TEXT_OBJECT_STYLE, obj.style || {}, entry.style);
+  });
+  if (typeof window.reapplyPendingGeom === "function") window.reapplyPendingGeom();
   const wrapper = document.querySelector(".translation-canvas-host .page-block-wrapper");
   const page = currentManifest ? currentManifest.pages[pageIndex] : null;
   if (!skipOverlays && wrapper && page) renderTextObjectOverlays(pageIndex, page);
@@ -124,10 +123,10 @@ function applyManifestResponse(manifest, pageIndex, opts = {}) {
 }
 
 async function createTextObject(pageIndex, shape, region) {
-  // Flush any pending text edit (from another object) before mutating, then
-  // cancel superseded geometry work.
-  if (typeof window.flushTextObjectPersist === "function") await window.flushTextObjectPersist();
-  if (typeof window.cancelGeomPersist === "function") window.cancelGeomPersist();
+  await Promise.all([
+    typeof window.flushTextObjectPersist === "function" ? window.flushTextObjectPersist() : Promise.resolve(),
+    typeof window.flushGeomPersist === "function" ? window.flushGeomPersist() : Promise.resolve(),
+  ]);
   const manifest = await apiTextObject("create", {
     chapter_id: currentChapterId,
     page_index: pageIndex,
@@ -139,31 +138,31 @@ async function createTextObject(pageIndex, shape, region) {
   const obj = objs[objs.length - 1];
   if (!obj) throw new Error("Không tạo được text object");
   editorState.selectedTextObjectId = obj.id;
-  applyManifestResponse(manifest, pageIndex);
-  // Group OCR fragments deliberately after creation — never during a drag.
+  applyManifestResponse(manifest, pageIndex, { id: obj.id });
   associateTextObjectOcr(pageIndex, obj.id).catch((err) => {
     showToast("Không nhóm được OCR tự động, bạn vẫn có thể nhập tay: " + err.message, "info");
   });
 }
 
 async function deleteTextObject(pageIndex, id) {
-  if (typeof window.flushTextObjectPersist === "function") await window.flushTextObjectPersist();
-  if (typeof window.cancelGeomPersist === "function") window.cancelGeomPersist();
+  await Promise.all([
+    typeof window.flushTextObjectPersist === "function" ? window.flushTextObjectPersist() : Promise.resolve(),
+    typeof window.flushGeomPersist === "function" ? window.flushGeomPersist() : Promise.resolve(),
+  ]);
   const manifest = await apiTextObject("delete", {
     chapter_id: currentChapterId,
     page_index: pageIndex,
     id,
   });
   if (editorState.selectedTextObjectId === id) editorState.selectedTextObjectId = null;
-  applyManifestResponse(manifest, pageIndex);
+  if (typeof window.removePendingPersist === "function") window.removePendingPersist(pageIndex, id);
+  applyManifestResponse(manifest, pageIndex, { id });
 }
 window.deleteTextObject = deleteTextObject;
 
 async function associateTextObjectOcr(pageIndex, id) {
   const langEl = document.getElementById("lang-select");
   const lang = langEl ? langEl.value : "ja";
-  // Snapshot the panel before the request so the response only preserves edits
-  // the user makes while OCR is running (never wipes a fresh OCR result).
   const snapshot = collectPanelState(pageIndex, id);
   const manifest = await apiTextObject("ocr", {
     chapter_id: currentChapterId,
@@ -171,13 +170,9 @@ async function associateTextObjectOcr(pageIndex, id) {
     id,
     lang,
   });
-  // OCR only changes ocr_text/source_boxes — skip the overlay rebuild so an
-  // in-progress drag on the selected region is never interrupted.
-  applyManifestResponse(manifest, pageIndex, { skipOverlays: true, snapshot });
+  applyManifestResponse(manifest, pageIndex, { skipOverlays: true, snapshot, id });
 }
 window.associateTextObjectOcr = associateTextObjectOcr;
-
-// ---- tool selection ---------------------------------------------------------
 
 function setEditorTool(tool) {
   editorState.tool = tool;
@@ -188,8 +183,6 @@ function setEditorTool(tool) {
   if (imgWrap) imgWrap.classList.toggle("draw-mode", tool !== "select");
 }
 window.setEditorTool = setEditorTool;
-
-// ---- selection ---------------------------------------------------------------
 
 function setSelectedTextObject(pageIndex, id) {
   editorState.selectedTextObjectId = id;
@@ -206,8 +199,6 @@ function clearSelectedTextObject() {
   renderEditorPanel(editorState.activePageIndex);
 }
 window.clearSelectedTextObject = clearSelectedTextObject;
-
-// ---- overlays ----------------------------------------------------------------
 
 function renderTextObjectOverlays(pageIndex, page) {
   const wrapper = document.querySelector(".translation-canvas-host .page-block-wrapper");
@@ -239,8 +230,6 @@ function renderTextObjectOverlays(pageIndex, page) {
   if (img.complete && img.naturalWidth > 0) render();
   else img.onload = render;
 }
-
-// ---- one reusable editor panel -----------------------------------------------
 
 function renderEditorPanel(pageIndex) {
   const panelHost = document.querySelector(".translation-panel-host");
@@ -294,6 +283,8 @@ function renderEditorPanel(pageIndex) {
 
   panel.append(ocrLabel, ocrTa, trLabel, trTa);
 
+  buildGeometryControls(panel, obj, pageIndex);
+  buildAlignmentControls(panel, obj, pageIndex);
   buildStyleControls(panel, obj, pageIndex);
 
   const actions = document.createElement("div");
@@ -328,7 +319,6 @@ function buildStyleControls(panel, obj, pageIndex) {
   const style = obj.style || (obj.style = Object.assign({}, DEFAULT_TEXT_OBJECT_STYLE));
   const schedule = () => scheduleTextObjectPersist(pageIndex, obj.id);
 
-  // ---- font / bold / size ----
   const fontToolbar = document.createElement("div");
   fontToolbar.className = "font-style-toolbar";
 
@@ -423,7 +413,6 @@ function buildStyleControls(panel, obj, pageIndex) {
   fontToolbar.appendChild(sizeGroup);
   panel.appendChild(fontToolbar);
 
-  // ---- stroke ----
   const strokeToolbar = document.createElement("div");
   strokeToolbar.className = "stroke-toolbar";
   const strokeLabel = document.createElement("span");
@@ -464,7 +453,6 @@ function buildStyleControls(panel, obj, pageIndex) {
   strokeToolbar.append(strokeLabel, strokeSlider, strokeValSpan, strokeColorPicker);
   panel.appendChild(strokeToolbar);
 
-  // ---- background + corner radius ----
   const bgToolbar = document.createElement("div");
   bgToolbar.className = "bg-toolbar";
   const bgLabel = document.createElement("span");
@@ -502,7 +490,6 @@ function buildStyleControls(panel, obj, pageIndex) {
   bgToolbar.append(bgLabel, bgSelect, radiusSlider, radiusValSpan);
   panel.appendChild(bgToolbar);
 
-  // ---- text color ----
   const colorToolbar = document.createElement("div");
   colorToolbar.className = "color-toolbar";
   const colorLabel = document.createElement("span");
@@ -550,7 +537,6 @@ function buildStyleControls(panel, obj, pageIndex) {
   colorToolbar.appendChild(customPicker);
   panel.appendChild(colorToolbar);
 
-  // Mirror the live style onto the panel so collectPanelState can reconcile it.
   panel.dataset.font = style.font || "default";
   panel.dataset.fontSize = style.fontSize || "auto";
   panel.dataset.bold = String(style.bold === true);
@@ -559,55 +545,197 @@ function buildStyleControls(panel, obj, pageIndex) {
   panel.dataset.strokeColor = style.strokeColor || "auto";
   panel.dataset.bgColor = style.bgColor || "transparent";
   panel.dataset.cornerRadius = style.cornerRadius || "0";
+  panel.dataset.horizontalAlign = style.horizontalAlign || "center";
+  panel.dataset.verticalAlign = style.verticalAlign || "middle";
 }
 
-// ---- text persistence (debounced, never one request per keystroke) ----------
+const TEXT_OBJECT_MIN_SIZE = 10;
 
-let _textPersistTimer = null;
-let _textPersist = null;
+function getPageImageSize(pageIndex) {
+  const page = currentManifest && currentManifest.pages ? currentManifest.pages[pageIndex] : null;
+  if (page && page.width && page.height) return { w: page.width, h: page.height };
+  const img = document.querySelector(".translation-canvas-host .page-image-wrap img");
+  if (img && img.naturalWidth) return { w: img.naturalWidth, h: img.naturalHeight };
+  return { w: Infinity, h: Infinity };
+}
+
+function buildGeometryControls(panel, obj, pageIndex) {
+  const { w: W, h: H } = getPageImageSize(pageIndex);
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+  const grid = document.createElement("div");
+  grid.className = "geometry-grid";
+  grid.dataset.geometryFor = obj.id;
+
+  const mkField = (label, get, commit) => {
+    const wrap = document.createElement("div");
+    wrap.className = "geometry-field";
+    const lbl = document.createElement("span");
+    lbl.className = "geometry-field-label";
+    lbl.textContent = label;
+    const inp = document.createElement("input");
+    inp.type = "number";
+    inp.className = "geometry-input";
+    inp.dataset.geometryField = label;
+    const refresh = () => { inp.value = String(get()); };
+    refresh();
+    inp.addEventListener("change", () => {
+      const raw = parseInt(inp.value, 10);
+      if (!Number.isFinite(raw)) { refresh(); return; }
+      commit(raw);
+      refresh();
+      if (typeof window.syncOverlayForObject === "function") window.syncOverlayForObject(pageIndex, obj.id);
+      if (typeof window.scheduleGeomPersist === "function") window.scheduleGeomPersist(pageIndex, obj.id);
+    });
+    wrap.append(lbl, inp);
+    return { wrap, refresh };
+  };
+
+  const fx = mkField("X", () => obj.region.x1, (v) => {
+    const w = obj.region.x2 - obj.region.x1;
+    obj.region.x1 = clamp(Math.round(v), 0, W - w);
+    obj.region.x2 = obj.region.x1 + w;
+  });
+  const fy = mkField("Y", () => obj.region.y1, (v) => {
+    const h = obj.region.y2 - obj.region.y1;
+    obj.region.y1 = clamp(Math.round(v), 0, H - h);
+    obj.region.y2 = obj.region.y1 + h;
+  });
+  const fw = mkField("W", () => obj.region.x2 - obj.region.x1, (v) => {
+    const newW = clamp(Math.round(v), TEXT_OBJECT_MIN_SIZE, W - obj.region.x1);
+    obj.region.x2 = obj.region.x1 + newW;
+  });
+  const fh = mkField("H", () => obj.region.y2 - obj.region.y1, (v) => {
+    const newH = clamp(Math.round(v), TEXT_OBJECT_MIN_SIZE, H - obj.region.y1);
+    obj.region.y2 = obj.region.y1 + newH;
+  });
+
+  grid.append(fx.wrap, fy.wrap, fw.wrap, fh.wrap);
+  panel.appendChild(grid);
+}
+
+function refreshGeometryControls(pageIndex, id) {
+  const grid = document.querySelector(`.geometry-grid[data-geometry-for="${id}"]`);
+  const obj = findTextObject(pageIndex, id);
+  if (!grid || !obj || !obj.region) return;
+  const r = obj.region;
+  const set = (field, val) => {
+    const inp = grid.querySelector(`input[data-geometry-field="${field}"]`);
+    if (inp) inp.value = String(val);
+  };
+  set("X", r.x1);
+  set("Y", r.y1);
+  set("W", r.x2 - r.x1);
+  set("H", r.y2 - r.y1);
+}
+window.refreshGeometryControls = refreshGeometryControls;
+
+function buildAlignmentControls(panel, obj, pageIndex) {
+  const style = obj.style || (obj.style = Object.assign({}, DEFAULT_TEXT_OBJECT_STYLE));
+  const schedule = () => scheduleTextObjectPersist(pageIndex, obj.id);
+
+  const mkGroup = (label, options, key) => {
+    const group = document.createElement("div");
+    group.className = "align-group";
+    const lbl = document.createElement("span");
+    lbl.className = "style-group-label";
+    lbl.textContent = label;
+    const row = document.createElement("div");
+    row.className = "align-btn-row";
+    options.forEach(([val, txt]) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "align-btn" + ((style[key] || DEFAULT_TEXT_OBJECT_STYLE[key]) === val ? " selected" : "");
+      b.textContent = txt;
+      b.addEventListener("click", () => {
+        style[key] = val;
+        panel.dataset[key] = val;
+        row.querySelectorAll(".align-btn").forEach((x) => x.classList.remove("selected"));
+        b.classList.add("selected");
+        schedule();
+      });
+      row.appendChild(b);
+    });
+    group.append(lbl, row);
+    return group;
+  };
+
+  panel.append(
+    mkGroup("Căn ngang:", [["left", "Trái"], ["center", "Giữa"], ["right", "Phải"]], "horizontalAlign"),
+    mkGroup("Căn dọc:", [["top", "Trên"], ["middle", "Giữa"], ["bottom", "Dưới"]], "verticalAlign"),
+  );
+}
+
+const _textDirty = new Map();
+let _textTimer = null;
+
+function _captureTextState(obj) {
+  return {
+    ocr_text: obj.ocr_text != null ? obj.ocr_text : "",
+    translation: obj.translation != null ? obj.translation : "",
+    style: obj.style
+      ? JSON.parse(JSON.stringify(obj.style))
+      : JSON.parse(JSON.stringify(DEFAULT_TEXT_OBJECT_STYLE)),
+  };
+}
 
 function scheduleTextObjectPersist(pageIndex, id) {
-  _textPersist = { pageIndex, id };
-  clearTimeout(_textPersistTimer);
-  _textPersistTimer = setTimeout(() => { flushTextObjectPersist(); }, 800);
+  const obj = findTextObject(pageIndex, id);
+  if (!obj) return;
+  _textDirty.set(`${pageIndex}:${id}`, Object.assign({ pageIndex, id }, _captureTextState(obj)));
+  clearTimeout(_textTimer);
+  _textTimer = setTimeout(() => { flushTextObjectPersist(); }, 800);
 }
 window.scheduleTextObjectPersist = scheduleTextObjectPersist;
 
-async function flushTextObjectPersist() {
-  clearTimeout(_textPersistTimer);
-  _textPersistTimer = null;
-  if (!_textPersist) return;
-  const p = _textPersist;
-  _textPersist = null;
-  const obj = findTextObject(p.pageIndex, p.id);
-  if (!obj) return;
-  try {
-    await apiTextObject("update", {
-      chapter_id: currentChapterId,
-      page_index: p.pageIndex,
-      id: obj.id,
-      ocr_text: obj.ocr_text || "",
-      translation: obj.translation || "",
-      style: obj.style || DEFAULT_TEXT_OBJECT_STYLE,
-    });
-  } catch (err) {
-    showToast("Không lưu được nội dung: " + err.message, "error");
-  }
+async function flushTextObjectPersist(pageIndex) {
+  clearTimeout(_textTimer);
+  _textTimer = null;
+  if (_textDirty.size === 0) return;
+  const items = [];
+  _textDirty.forEach((v) => {
+    if (pageIndex === undefined || v.pageIndex === pageIndex) items.push(v);
+  });
+  items.forEach((v) => _textDirty.delete(`${v.pageIndex}:${v.id}`));
+  await Promise.all(items.map(async (p) => {
+    if (!findTextObject(p.pageIndex, p.id)) return;
+    try {
+      await apiTextObject("update", {
+        chapter_id: currentChapterId,
+        page_index: p.pageIndex,
+        id: p.id,
+        ocr_text: p.ocr_text,
+        translation: p.translation,
+        style: p.style,
+      });
+    } catch (err) {
+      showToast("Không lưu được nội dung: " + err.message, "error");
+    }
+  }));
 }
 window.flushTextObjectPersist = flushTextObjectPersist;
 
 function cancelTextObjectPersist() {
-  clearTimeout(_textPersistTimer);
-  _textPersistTimer = null;
-  _textPersist = null;
+  clearTimeout(_textTimer);
+  _textTimer = null;
 }
+
+window.removePendingPersist = function removePendingPersist(pageIndex, id) {
+  _textDirty.delete(`${pageIndex}:${id}`);
+  if (typeof window.removePendingGeom === "function") window.removePendingGeom(pageIndex, id);
+};
+
+window.flushAllPendingPersists = async function flushAllPendingPersists(pageIndex) {
+  const jobs = [flushTextObjectPersist(pageIndex)];
+  if (typeof window.flushGeomPersist === "function") jobs.push(window.flushGeomPersist(pageIndex));
+  await Promise.all(jobs);
+};
 
 window.cancelPendingPersist = function cancelPendingPersist() {
   cancelTextObjectPersist();
+  _textDirty.clear();
   if (typeof window.cancelGeomPersist === "function") window.cancelGeomPersist();
+  if (typeof window.clearPendingGeom === "function") window.clearPendingGeom();
 };
-
-// ---- draw a region -> create text object --------------------------------------
 
 function setupEditorDraw(wrapper, pageIndex) {
   const imgWrap = wrapper.querySelector(".page-image-wrap");
@@ -679,13 +807,10 @@ function setupEditorDraw(wrapper, pageIndex) {
   window.addEventListener("mouseup", onUp);
   imgWrap.addEventListener("click", onClick);
 
-  // Called before re-render so stale window-level draw listeners never fire again.
   window._editorDrawCleanup = function cleanupEditorDraw() {
     window.removeEventListener("mouseup", onUp);
   };
 }
-
-// ---- page wrapper ---------------------------------------------------------------
 
 function buildPageWrapper(page, pageIndex, pages) {
   const wrapper = document.createElement("div");
@@ -711,11 +836,13 @@ function buildPageWrapper(page, pageIndex, pages) {
   return wrapper;
 }
 
-function switchEditorPage(newIndex) {
+async function switchEditorPage(newIndex) {
   const pages = currentManifest.pages;
   if (newIndex < 0 || newIndex >= pages.length) return;
-  if (typeof window.flushTextObjectPersist === "function") window.flushTextObjectPersist();
-  if (typeof window.cancelPendingPersist === "function") window.cancelPendingPersist();
+  await Promise.all([
+    typeof window.flushTextObjectPersist === "function" ? window.flushTextObjectPersist() : Promise.resolve(),
+    typeof window.flushGeomPersist === "function" ? window.flushGeomPersist() : Promise.resolve(),
+  ]);
   editorState.activePageIndex = newIndex;
   editorState.selectedTextObjectId = null;
   renderEditor();
@@ -749,8 +876,6 @@ function showRenderResult(pageIndex, outputPath) {
   link.textContent = "Tải ảnh này về";
   resultBox.appendChild(link);
 }
-
-// ---- renderEditor (the single editor entry point) -------------------------------
 
 function renderEditor() {
   const container = document.getElementById("page-view");
@@ -804,55 +929,54 @@ function renderEditor() {
 
   const renderBtn = document.createElement("button");
   renderBtn.type = "button";
-  renderBtn.className = "editor-primary-action editor-render-btn";
+  renderBtn.className = "render-btn editor-render-btn";
   renderBtn.textContent = "Chèn chữ vào ảnh";
   renderBtn.addEventListener("click", () => renderTranslations(pageIndex));
 
-  toolbar.append(title, tools, renderBtn);
+  const position = document.createElement("span");
+  position.className = "translation-position";
+  position.textContent = `${pageIndex + 1} / ${pages.length}`;
 
-  const workspace = document.createElement("div");
-  workspace.className = "translation-workspace-body";
+  toolbar.append(title, tools, renderBtn, position);
+
+  const body = document.createElement("div");
+  body.className = "translation-workspace-body";
 
   const canvasHost = document.createElement("main");
   canvasHost.className = "translation-canvas-host";
 
   const panelHost = document.createElement("aside");
   panelHost.className = "translation-panel-host";
-  panelHost.setAttribute("aria-label", "Bảng biên tập bản dịch");
+  panelHost.setAttribute("aria-label", "Bảng biên tập vùng chữ");
 
-  workspace.append(canvasHost, panelHost);
+  body.append(canvasHost, panelHost);
 
   const nav = document.createElement("nav");
   nav.className = "translation-page-nav";
-  const prevBtn = document.createElement("button");
-  prevBtn.type = "button";
-  prevBtn.className = "translation-nav-btn";
-  prevBtn.textContent = "← Trước";
-  prevBtn.disabled = pageIndex === 0;
-  prevBtn.addEventListener("click", () => switchEditorPage(pageIndex - 1));
+  const prev = document.createElement("button");
+  prev.className = "translation-nav-btn";
+  prev.textContent = "← Trước";
+  prev.disabled = pageIndex === 0;
+  prev.addEventListener("click", () => switchEditorPage(pageIndex - 1));
+  const next = document.createElement("button");
+  next.className = "translation-nav-btn";
+  next.textContent = "Sau →";
+  next.disabled = pageIndex === pages.length - 1;
+  next.addEventListener("click", () => switchEditorPage(pageIndex + 1));
+  nav.append(prev, next);
 
-  const position = document.createElement("span");
-  position.className = "translation-position";
-  position.textContent = `${pageIndex + 1} / ${pages.length}`;
-
-  const nextBtn = document.createElement("button");
-  nextBtn.type = "button";
-  nextBtn.className = "translation-nav-btn";
-  nextBtn.textContent = "Sau →";
-  nextBtn.disabled = pageIndex === pages.length - 1;
-  nextBtn.addEventListener("click", () => switchEditorPage(pageIndex + 1));
-
-  nav.append(prevBtn, nextBtn);
-
-  shell.append(toolbar, workspace, nav);
+  shell.append(toolbar, body, nav);
   container.appendChild(shell);
 
   const wrapper = buildPageWrapper(page, pageIndex, pages);
   canvasHost.appendChild(wrapper);
 
+  if (editorState.selectedTextObjectId && !findTextObject(pageIndex, editorState.selectedTextObjectId)) {
+    editorState.selectedTextObjectId = null;
+  }
+
+  setupEditorDraw(wrapper, pageIndex);
   renderTextObjectOverlays(pageIndex, page);
   renderEditorPanel(pageIndex);
-  setupEditorDraw(wrapper, pageIndex);
   setEditorTool(editorState.tool);
 }
-window.renderEditor = renderEditor;

@@ -1,4 +1,3 @@
-// editor-workspace.js - UI-04 focused translation workspace
 (() => {
   const legacyRenderEditor = window.renderEditor;
   if (typeof legacyRenderEditor !== "function") return;
@@ -21,7 +20,6 @@
     const visibleCount = rawWrappers.length;
     activeIndex = Math.max(0, Math.min(activeIndex, visibleCount - 1));
 
-    // Keep only active page DOM in memory, destroy inactive page wrappers
     const activeWrapper = rawWrappers[activeIndex];
     rawWrappers.forEach((el, idx) => {
       if (idx !== activeIndex) {
@@ -70,7 +68,6 @@
     container.innerHTML = "";
     container.appendChild(shell);
 
-    // Mount active wrapper into workspace DOM
     activeWrapper.style.display = "block";
     canvasHost.appendChild(activeWrapper);
 

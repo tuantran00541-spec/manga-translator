@@ -1,7 +1,3 @@
-# Manga Translator — CPU-only local / self-hosted
-# Build:  docker build -t manga-translator .
-# Run:    docker compose up  (recommended)  or  see docker-compose.yml
-
 FROM python:3.12-slim-bookworm
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -14,7 +10,6 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# System deps for OpenCV, Paddle, Playwright, fonts
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
         libgl1 \
@@ -28,19 +23,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         fonts-noto-cjk \
     && rm -rf /var/lib/apt/lists/*
 
-# Python deps first (better layer cache)
 COPY requirements.txt .
 RUN pip install --upgrade pip \
     && pip install -r requirements.txt
 
-# Playwright Chromium (needed for JS-rendered chapter sites)
 RUN playwright install --with-deps chromium
 
-# Application code
 COPY app/ ./app/
 COPY run.py convert_model.py ./
 
-# Create runtime dirs (will be overridden by volumes)
 RUN mkdir -p data/raw data/processed data/output models logs \
     && useradd --create-home --shell /bin/bash appuser \
     && chown -R appuser:appuser /app

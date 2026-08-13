@@ -1,5 +1,5 @@
-// review-workspace.js - UI-03 review navigation and brush safety layer
 (() => {
+
   const legacyRenderReview = window.renderReview;
   if (typeof legacyRenderReview !== "function") return;
 
