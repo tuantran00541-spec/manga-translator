@@ -279,10 +279,15 @@ window.saveDraftNow = saveDraftNow;
 window.scheduleSaveDraft = scheduleSaveDraft;
 
 async function renderTranslations(pageIndex) {
-  if (typeof window.flushAllPendingPersists === "function") {
-    await window.flushAllPendingPersists(pageIndex);
-  } else if (typeof window.flushTextObjectPersist === "function") {
-    await window.flushTextObjectPersist(pageIndex);
+  try {
+    if (typeof window.flushAllPendingPersists === "function") {
+      await window.flushAllPendingPersists(pageIndex);
+    } else if (typeof window.flushTextObjectPersist === "function") {
+      await window.flushTextObjectPersist(pageIndex);
+    }
+  } catch (err) {
+    showToast("Không thể chèn chữ vì lưu dữ liệu không thành công.", "error");
+    return;
   }
   const page = currentManifest && currentManifest.pages ? currentManifest.pages[pageIndex] : null;
   if (!page) return;

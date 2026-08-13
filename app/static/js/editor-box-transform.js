@@ -18,7 +18,6 @@
     clearTimeout(geomTimer);
     geomTimer = null;
     if (geomController) {
-      geomBatchKeys.forEach((k) => geomDirty.set(k, geomDirty.get(k) || true));
       geomController.abort();
       geomController = null;
       geomBatchKeys = [];
@@ -47,18 +46,21 @@
       const [pi] = k.split(":");
       if (pageIndex === undefined || Number(pi) === pageIndex) keys.push(k);
     });
-    keys.forEach((k) => geomDirty.delete(k));
     if (keys.length === 0) return;
 
     const controller = new AbortController();
     geomController = controller;
     geomBatchKeys = keys;
+    const failures = [];
     try {
       await Promise.all(keys.map(async (k) => {
         const [pi, id] = k.split(":");
         const pIndex = Number(pi);
-        const obj = textObject(pIndex, id);
-        if (!obj || !obj.region) return;
+        const region = geomDirty.get(k);
+        if (!region || typeof region !== "object") {
+          geomDirty.delete(k);
+          return;
+        }
         try {
           const resp = await fetch("/api/text_object/update", {
             method: "POST",
@@ -68,7 +70,7 @@
               chapter_id: window.currentChapterId,
               page_index: pIndex,
               id,
-              region: obj.region,
+              region,
             }),
           });
           const parse = typeof window.parseApiResponse === "function"
@@ -79,34 +81,39 @@
             : (s, d) => (d && d.detail) || `lỗi ${s}`;
           const data = await parse(resp);
           if (!resp.ok) throw new Error(getErr(resp.status, data));
+          geomDirty.delete(k);
         } catch (err) {
           if (err.name === "AbortError") return;
-          if (typeof window.showToast === "function") {
-            window.showToast("Không lưu được vị trí vùng: " + err.message, "error");
-          }
+          failures.push(err);
         }
       }));
     } finally {
       if (geomController === controller) geomController = null;
       if (geomBatchKeys === keys) geomBatchKeys = [];
     }
+    if (failures.length) {
+      if (typeof window.showToast === "function") {
+        window.showToast("Không lưu được vị trí vùng: " + failures[0].message, "error");
+      }
+      throw new Error("Không lưu được vị trí vùng");
+    }
   }
   window.flushGeomPersist = flushGeomPersist;
 
   function scheduleGeomPersist(pageIndex, id) {
     if (geomController) {
-      geomBatchKeys.forEach((k) => geomDirty.set(k, geomDirty.get(k) || true));
       geomController.abort();
       geomController = null;
       geomBatchKeys = [];
     }
     const obj = textObject(pageIndex, id);
-    const region = obj && obj.region
-      ? { x1: obj.region.x1, y1: obj.region.y1, x2: obj.region.x2, y2: obj.region.y2 }
-      : true;
-    geomDirty.set(`${pageIndex}:${id}`, region);
+    if (!obj || !obj.region) return;
+    geomDirty.set(`${pageIndex}:${id}`, {
+      x1: obj.region.x1, y1: obj.region.y1,
+      x2: obj.region.x2, y2: obj.region.y2,
+    });
     clearTimeout(geomTimer);
-    geomTimer = setTimeout(() => { flushGeomPersist(); }, 300);
+    geomTimer = setTimeout(() => { flushGeomPersist().catch(() => {}); }, 300);
   }
   window.scheduleGeomPersist = scheduleGeomPersist;
 
@@ -115,8 +122,6 @@
     geomBatchKeys = geomBatchKeys.filter((k) => k !== `${pageIndex}:${id}`);
   }
   window.removePendingGeom = removePendingGeom;
-
-  window.syncOverlayForObject = syncOverlayForObject;
 
   function setOverlay(overlay, obj, img) {
     if (!img.naturalWidth || !img.naturalHeight) return;
@@ -128,6 +133,30 @@
     overlay.style.width = `${Math.max(MIN_SIZE * sx, (r.x2 - r.x1) * sx)}px`;
     overlay.style.height = `${Math.max(MIN_SIZE * sy, (r.y2 - r.y1) * sy)}px`;
   }
+
+  function syncOverlayForObject(pageIndex, id) {
+    const overlay = document.querySelector(
+      `.text-object-overlay[data-page-index="${pageIndex}"][data-object-id="${id}"]`
+    );
+    if (!overlay) return;
+    const block = overlay.closest(".page-block");
+    const img = block ? block.querySelector(".page-image-wrap img") : null;
+    const obj = textObject(pageIndex, id);
+    if (!img || !obj || !obj.region) return;
+    setOverlay(overlay, obj, img);
+  }
+  window.syncOverlayForObject = syncOverlayForObject;
+
+  function reapplyPendingGeom() {
+    geomDirty.forEach((region, k) => {
+      const [pi, id] = k.split(":");
+      const obj = textObject(Number(pi), id);
+      if (obj && region && typeof region === "object") {
+        obj.region = { x1: region.x1, y1: region.y1, x2: region.x2, y2: region.y2 };
+      }
+    });
+  }
+  window.reapplyPendingGeom = reapplyPendingGeom;
 
   function pointInImage(e, img) {
     const r = img.getBoundingClientRect();
