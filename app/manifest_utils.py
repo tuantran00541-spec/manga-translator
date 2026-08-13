@@ -58,3 +58,4 @@ def invalidate_page_render(manifest: dict, page_index: int) -> None:
     pages = manifest.get("pages", [])
     if 0 <= page_index < len(pages):
         pages[page_index]["rendered"] = False
+
