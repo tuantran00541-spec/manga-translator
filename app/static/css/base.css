@@ -1,5 +1,4 @@
 :root {
-  /* Semantic design tokens */
   --color-bg: #090d16;
   --color-surface: #111827;
   --color-surface-raised: #161f30;
@@ -47,7 +46,6 @@
   --transition-fast: 140ms ease;
   --transition-normal: 180ms ease;
 
-  /* Backward-compatible aliases for existing screens. */
   --ink: var(--color-bg);
   --ink-raised: var(--color-surface);
   --panel: var(--color-surface-raised);
@@ -260,7 +258,6 @@ textarea:disabled {
   color: var(--color-text-subtle);
 }
 
-/* Reusable primitives for the upcoming workspace redesign. */
 .ui-surface {
   background: var(--color-surface);
   border: 1px solid var(--color-border);

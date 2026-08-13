@@ -1,6 +1,3 @@
-/* UI-6.5 — region-centric text-object editor */
-
-/* Tool toolbar */
 .editor-tools {
   display: flex;
   gap: 6px;
@@ -37,7 +34,6 @@
   flex: 0 0 auto;
 }
 
-/* Text-object overlays */
 .text-object-overlay {
   position: absolute;
   box-sizing: border-box;
@@ -102,7 +98,6 @@
   outline-offset: -1.5px;
 }
 
-/* One reusable editor panel */
 .text-editor-panel {
   display: flex;
   flex-direction: column;
@@ -174,8 +169,77 @@
   background: rgba(232, 67, 44, .1);
 }
 
-/* Panel host needs to scroll its single reusable panel */
 .translation-panel-host {
   padding: 10px;
   overflow: auto;
+}
+
+.geometry-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin: 4px 0;
+}
+
+.geometry-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.geometry-field-label {
+  color: var(--text-faint);
+  font: 600 11px var(--font-mono);
+}
+
+.geometry-input {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--ink-raised);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 4px 6px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  outline: none;
+}
+
+.geometry-input:focus {
+  border-color: var(--blue, #3b82f6);
+}
+
+.align-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 2px 0;
+}
+
+.align-btn-row {
+  display: flex;
+  gap: 3px;
+}
+
+.align-btn {
+  min-height: 24px;
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--ink-raised);
+  color: var(--text-dim);
+  font: 600 11px var(--font-mono);
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+.align-btn:hover {
+  border-color: var(--text);
+  color: var(--text);
+}
+
+.align-btn.selected {
+  border-color: var(--blue, #3b82f6);
+  background: var(--blue-dim);
+  color: var(--blue);
 }
