@@ -1,12 +1,5 @@
-"""Standalone Playwright worker script.
-
-Runs in a separate process to avoid asyncio event loop conflicts with FastAPI on Windows.
-Extracts images from rendered JS/Webtoon pages and downloads them using browser context.
-
-Usage:
-    python playwright_worker.py <chapter_url> <output_dir>
-"""
 import sys
+
 import json
 from pathlib import Path
 

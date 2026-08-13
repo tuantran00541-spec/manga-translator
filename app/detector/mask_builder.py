@@ -9,7 +9,6 @@ MASK_EXPAND = 8
 
 
 def adaptive_dilate_mask(mask: np.ndarray, crop_img: np.ndarray | None = None) -> np.ndarray:
-    """Dynamically dilates text mask from 5px to 9px based on border color variance."""
     if not np.any(mask > 127):
         return mask
 

@@ -95,11 +95,6 @@ def _find_safe_cut(
     hi: int,
     target: int,
 ) -> int | None:
-    """Return a cut inside a genuinely empty vertical band, or None.
-
-    `hi` is treated as an exclusive upper bound. A cut is safe only when
-    SAFE_CUT_BAND rows on both sides are outside all detected content masks.
-    """
     if lo >= hi:
         return None
 

@@ -1,6 +1,5 @@
-"""API Router for chapter creation, listing, upload, and page processing."""
-
 import os
+
 import json
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.concurrency import run_in_threadpool

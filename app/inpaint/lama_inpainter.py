@@ -133,11 +133,6 @@ class Inpainter:
         cx1, cy1, cx2, cy2 = crop_box
         crop_h, crop_w = crop.shape[:2]
 
-        # Manual repairs can become long after the safe physical slicer keeps
-        # artwork intact. Feeding the whole long crop through a single 512x512
-        # resize destroys local detail. Keep the existing single-pass behavior
-        # for automatic inpaint, but tile oversized manual crops at native
-        # resolution so LaMa does not have to reconstruct downsampled artwork.
         if feather and max(crop_h, crop_w) > INPAINT_SIZE:
             painted = self._lama_fill_tiled(crop, local_mask)
         else:
@@ -193,7 +188,6 @@ class Inpainter:
         return cv2.resize(painted_crop, (crop_w, crop_h), interpolation=cv2.INTER_CUBIC if scale > 1.0 else cv2.INTER_AREA)
 
     def _lama_fill_tiled(self, crop: np.ndarray, local_mask: np.ndarray) -> np.ndarray:
-        """Run manual LaMa on overlapping native-resolution 512px tiles."""
         h, w = crop.shape[:2]
         tile = INPAINT_SIZE
         overlap = min(MANUAL_TILE_OVERLAP, tile // 4)
@@ -336,7 +330,6 @@ class Inpainter:
 
     @staticmethod
     def _compute_manual_crop_region(x1: int, y1: int, x2: int, y2: int, img_w: int, img_h: int) -> tuple:
-        """Give manual repairs more artwork context than automatic bubble repairs."""
         x1 = max(0, x1 - MANUAL_CROP_PADDING)
         y1 = max(0, y1 - MANUAL_CROP_PADDING)
         x2 = min(img_w, x2 + MANUAL_CROP_PADDING)
