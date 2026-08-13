@@ -49,4 +49,3 @@ def download_chapter(chapter_url: str, output_dir: Path) -> list[Path]:
                 f.unlink()
 
     return JS_ADAPTER.download(chapter_url, output_dir)
-
