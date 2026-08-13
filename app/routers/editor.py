@@ -1,5 +1,3 @@
-"""API Router for interactive box editing, OCR, repainting, and draft saving."""
-
 from pathlib import Path
 import copy
 import cv2
@@ -25,249 +23,6 @@ from app.schemas import (
 from app.security import validate_chapter_id
 
 router = APIRouter(prefix="/api", tags=["editor"])
-
-
-@router.post("/text_object/create")
-def create_text_object(req: CreateTextObjectRequest) -> dict:
-    validate_chapter_id(req.chapter_id)
-    manifest_raw = load_manifest_raw(req.chapter_id)
-    pages = manifest_raw.get("pages", [])
-    if req.page_index < 0 or req.page_index >= len(pages):
-        raise HTTPException(400, f"Invalid page_index: {req.page_index}")
-
-    img_path = Path(pages[req.page_index]["original"])
-    if not img_path.is_file():
-        raise HTTPException(404, f"Original page image not found: page_{req.page_index:03d}")
-    try:
-        image = read_image(img_path)
-        h, w = image.shape[:2]
-        r = req.region
-        if r.x1 < 0 or r.y1 < 0 or r.x2 > w or r.y2 > h:
-            raise HTTPException(
-                400,
-                f"Region coordinates ({r.x1},{r.y1})-({r.x2},{r.y2}) exceed image dimensions ({w}x{h})",
-            )
-    except HTTPException:
-        raise
-    except Exception as exc:
-        logger.error(
-            "Chapter %s page %s operation 'create_text_object' cannot read image: %s",
-            req.chapter_id, req.page_index, exc, exc_info=True,
-        )
-        raise HTTPException(500, f"Cannot read page image: {exc}") from exc
-
-    try:
-        manifest = pipeline.create_text_object(
-            req.chapter_id,
-            req.page_index,
-            req.shape,
-            req.region.model_dump(),
-        )
-        return urlify_manifest(manifest)
-    except ValueError as exc:
-        logger.error(
-            "Chapter %s page %s operation 'create_text_object' invalid value: %s",
-            req.chapter_id, req.page_index, exc,
-        )
-        raise HTTPException(400, str(exc)) from exc
-    except Exception as exc:
-        logger.error(
-            "Chapter %s page %s operation 'create_text_object' failed: %s",
-            req.chapter_id, req.page_index, exc, exc_info=True,
-        )
-        raise HTTPException(500, f"Create text object failed: {exc}") from exc
-
-
-@router.post("/text_object/update")
-def update_text_object(req: UpdateTextObjectRequest) -> dict:
-    validate_chapter_id(req.chapter_id)
-    manifest_raw = load_manifest_raw(req.chapter_id)
-    pages = manifest_raw.get("pages", [])
-    if req.page_index < 0 or req.page_index >= len(pages):
-        raise HTTPException(400, f"Invalid page_index: {req.page_index}")
-
-    if req.region is not None:
-        img_path = Path(pages[req.page_index]["original"])
-        if not img_path.is_file():
-            raise HTTPException(404, f"Original page image not found: page_{req.page_index:03d}")
-        try:
-            image = read_image(img_path)
-            h, w = image.shape[:2]
-            r = req.region
-            if r.x1 < 0 or r.y1 < 0 or r.x2 > w or r.y2 > h:
-                raise HTTPException(
-                    400,
-                    f"Region coordinates ({r.x1},{r.y1})-({r.x2},{r.y2}) exceed image dimensions ({w}x{h})",
-                )
-        except HTTPException:
-            raise
-        except Exception as exc:
-            logger.error(
-                "Chapter %s page %s object %s operation 'update_text_object' cannot read image: %s",
-                req.chapter_id, req.page_index, req.id, exc, exc_info=True,
-            )
-            raise HTTPException(500, f"Cannot read page image: {exc}") from exc
-
-    try:
-        manifest = pipeline.update_text_object(
-            req.chapter_id,
-            req.page_index,
-            req.id,
-            shape=req.shape,
-            region=req.region.model_dump() if req.region is not None else None,
-            ocr_text=req.ocr_text,
-            translation=req.translation,
-            style=req.style.model_dump() if req.style is not None else None,
-        )
-        return urlify_manifest(manifest)
-    except ValueError as exc:
-        logger.error(
-            "Chapter %s page %s object %s operation 'update_text_object' invalid value: %s",
-            req.chapter_id, req.page_index, req.id, exc,
-        )
-        raise HTTPException(400, str(exc)) from exc
-    except Exception as exc:
-        logger.error(
-            "Chapter %s page %s object %s operation 'update_text_object' failed: %s",
-            req.chapter_id, req.page_index, req.id, exc, exc_info=True,
-        )
-        raise HTTPException(500, f"Update text object failed: {exc}") from exc
-
-
-@router.post("/text_object/delete")
-def delete_text_object(req: DeleteTextObjectRequest) -> dict:
-    validate_chapter_id(req.chapter_id)
-    try:
-        manifest = pipeline.delete_text_object(
-            req.chapter_id, req.page_index, req.id
-        )
-        return urlify_manifest(manifest)
-    except ValueError as exc:
-        logger.error(
-            "Chapter %s page %s object %s operation 'delete_text_object' invalid value: %s",
-            req.chapter_id, req.page_index, req.id, exc,
-        )
-        raise HTTPException(400, str(exc)) from exc
-    except Exception as exc:
-        logger.error(
-            "Chapter %s page %s object %s operation 'delete_text_object' failed: %s",
-            req.chapter_id, req.page_index, req.id, exc, exc_info=True,
-        )
-        raise HTTPException(500, f"Delete text object failed: {exc}") from exc
-
-
-@router.post("/text_object/ocr")
-async def text_object_ocr(req: OcrTextObjectRequest) -> dict:
-    validate_chapter_id(req.chapter_id)
-    try:
-        manifest = await run_in_threadpool(
-            _group_text_object_ocr, req.chapter_id, req.page_index, req.id, req.lang
-        )
-        return urlify_manifest(manifest)
-    except ValueError as exc:
-        logger.error(
-            "Chapter %s page %s object %s operation 'text_object_ocr' invalid value: %s",
-            req.chapter_id, req.page_index, req.id, exc,
-        )
-        raise HTTPException(400, str(exc)) from exc
-    except Exception as exc:
-        logger.error(
-            "Chapter %s page %s object %s operation 'text_object_ocr' failed: %s",
-            req.chapter_id, req.page_index, req.id, exc, exc_info=True,
-        )
-        raise HTTPException(500, f"Text object OCR failed: {exc}") from exc
-
-
-def _region_overlaps_box(region: dict, box: dict) -> bool:
-    """True when a detection box intersects a text-object region."""
-    if not box:
-        return False
-    bx = (box.get("x1", 0) + box.get("x2", 0)) / 2
-    by = (box.get("y1", 0) + box.get("y2", 0)) / 2
-    rx1, ry1 = region.get("x1", 0), region.get("y1", 0)
-    rx2, ry2 = region.get("x2", 0), region.get("y2", 0)
-    if rx1 <= bx <= rx2 and ry1 <= by <= ry2:
-        return True
-    ix1 = max(rx1, box.get("x1", 0))
-    iy1 = max(ry1, box.get("y1", 0))
-    ix2 = min(rx2, box.get("x2", 0))
-    iy2 = min(ry2, box.get("y2", 0))
-    return ix2 > ix1 and iy2 > iy1
-
-
-def _group_text_object_ocr(chapter_id: str, page_index: int, text_object_id: str, lang: str) -> dict:
-    """Group OCR fragments from detection boxes overlapping a text-object region.
-
-    Runs the heavy OCR work outside the manifest lock, then persists under the
-    lock. Reuses a box's cached ocr_text when its language matches.
-    """
-    with get_manifest_lock(chapter_id):
-        manifest = load_manifest_raw(chapter_id)
-        pages = manifest.get("pages", [])
-        if page_index < 0 or page_index >= len(pages):
-            raise ValueError(f"Invalid page index {page_index}")
-        page = pages[page_index]
-        obj = next(
-            (o for o in (page.get("text_objects") or []) if o.get("id") == text_object_id),
-            None,
-        )
-        if obj is None:
-            raise ValueError(f"Text object not found {text_object_id!r}")
-        region = obj.get("region") or {}
-        boxes = page.get("boxes", [])
-        img_path = Path(page["original"])
-
-    image = read_image(img_path)
-    overlap = [
-        (idx, b) for idx, b in enumerate(boxes)
-        if not b.get("removed") and _region_overlaps_box(region, b)
-    ]
-
-    fragments = []
-    source_boxes = []
-
-    for b_idx, box in overlap:
-        source_boxes.append(b_idx)
-        cached_text = box.get("ocr_text")
-        cached_lang = box.get("ocr_lang")
-        if cached_text and cached_lang == lang:
-            fragments.append(cached_text.strip())
-            continue
-
-        try:
-
-            from app.routers.editor import _ocr_crop_from_box
-            crop = _ocr_crop_from_box(image, box)
-            text = ocr.read(cv2.cvtColor(crop, cv2.COLOR_BGR2RGB), lang)
-            if text and text.strip():
-                fragments.append(text.strip())
-                box["ocr_text"] = text.strip()
-                box["ocr_lang"] = lang
-        except Exception as exc:
-            logger.warning(
-                "Chapter %s page %s box %s OCR during text_object group failed: %s",
-                chapter_id, page_index, b_idx, exc,
-            )
-
-    combined_ocr = "\n".join(f for f in fragments if f)
-
-    with get_manifest_lock(chapter_id):
-        manifest = load_manifest_raw(chapter_id)
-        pages = manifest.get("pages", [])
-        if 0 <= page_index < len(pages):
-            p = pages[page_index]
-            cur_obj = next(
-                (o for o in (p.get("text_objects") or []) if o.get("id") == text_object_id),
-                None,
-            )
-            if cur_obj is not None:
-                cur_obj["ocr_text"] = combined_ocr
-                cur_obj["source_boxes"] = source_boxes
-                p["rendered"] = False
-                save_manifest_raw(chapter_id, manifest)
-                pipeline._sync_output_dir(chapter_id, manifest, [page_index])
-    return manifest
-
 
 @router.post("/add_box")
 def add_box(req: AddBoxRequest) -> dict:
@@ -449,6 +204,181 @@ def reset_manual_mask(req: ResetManualMaskRequest) -> dict:
             exc_info=True,
         )
         raise HTTPException(500, f"Reset manual mask failed: {exc}") from exc
+
+
+@router.post("/text_object/create")
+def create_text_object(req: CreateTextObjectRequest) -> dict:
+    validate_chapter_id(req.chapter_id)
+    try:
+        manifest = pipeline.create_text_object(
+            req.chapter_id, req.page_index, req.shape, req.region.model_dump()
+        )
+        return urlify_manifest(manifest)
+    except ValueError as exc:
+        logger.error(
+            "Chapter %s page %s operation 'create_text_object' invalid value: %s",
+            req.chapter_id, req.page_index, exc,
+        )
+        raise HTTPException(400, str(exc)) from exc
+    except Exception as exc:
+        logger.error(
+            "Chapter %s page %s operation 'create_text_object' failed: %s",
+            req.chapter_id, req.page_index, exc, exc_info=True,
+        )
+        raise HTTPException(500, f"Create text object failed: {exc}") from exc
+
+
+@router.post("/text_object/update")
+def update_text_object(req: UpdateTextObjectRequest) -> dict:
+    validate_chapter_id(req.chapter_id)
+    changes: dict = {}
+    if req.shape is not None:
+        changes["shape"] = req.shape
+    if req.region is not None:
+        changes["region"] = req.region.model_dump()
+    if req.ocr_text is not None:
+        changes["ocr_text"] = req.ocr_text
+    if req.translation is not None:
+        changes["translation"] = req.translation
+    if req.style is not None:
+        changes["style"] = req.style.model_dump()
+    try:
+        manifest = pipeline.update_text_object(
+            req.chapter_id, req.page_index, req.id, changes
+        )
+        return urlify_manifest(manifest)
+    except ValueError as exc:
+        logger.error(
+            "Chapter %s page %s object %s operation 'update_text_object' invalid value: %s",
+            req.chapter_id, req.page_index, req.id, exc,
+        )
+        raise HTTPException(400, str(exc)) from exc
+    except Exception as exc:
+        logger.error(
+            "Chapter %s page %s object %s operation 'update_text_object' failed: %s",
+            req.chapter_id, req.page_index, req.id, exc, exc_info=True,
+        )
+        raise HTTPException(500, f"Update text object failed: {exc}") from exc
+
+
+@router.post("/text_object/delete")
+def delete_text_object(req: DeleteTextObjectRequest) -> dict:
+    validate_chapter_id(req.chapter_id)
+    try:
+        manifest = pipeline.delete_text_object(
+            req.chapter_id, req.page_index, req.id
+        )
+        return urlify_manifest(manifest)
+    except ValueError as exc:
+        logger.error(
+            "Chapter %s page %s object %s operation 'delete_text_object' invalid value: %s",
+            req.chapter_id, req.page_index, req.id, exc,
+        )
+        raise HTTPException(400, str(exc)) from exc
+    except Exception as exc:
+        logger.error(
+            "Chapter %s page %s object %s operation 'delete_text_object' failed: %s",
+            req.chapter_id, req.page_index, req.id, exc, exc_info=True,
+        )
+        raise HTTPException(500, f"Delete text object failed: {exc}") from exc
+
+
+@router.post("/text_object/ocr")
+async def text_object_ocr(req: OcrTextObjectRequest) -> dict:
+    validate_chapter_id(req.chapter_id)
+    try:
+        manifest = await run_in_threadpool(
+            _group_text_object_ocr, req.chapter_id, req.page_index, req.id, req.lang
+        )
+        return urlify_manifest(manifest)
+    except ValueError as exc:
+        logger.error(
+            "Chapter %s page %s object %s operation 'text_object_ocr' invalid value: %s",
+            req.chapter_id, req.page_index, req.id, exc,
+        )
+        raise HTTPException(400, str(exc)) from exc
+    except Exception as exc:
+        logger.error(
+            "Chapter %s page %s object %s operation 'text_object_ocr' failed: %s",
+            req.chapter_id, req.page_index, req.id, exc, exc_info=True,
+        )
+        raise HTTPException(500, f"Text object OCR failed: {exc}") from exc
+
+
+def _region_overlaps_box(region: dict, box: dict) -> bool:
+    if not box:
+        return False
+    bx = (box.get("x1", 0) + box.get("x2", 0)) / 2
+    by = (box.get("y1", 0) + box.get("y2", 0)) / 2
+    rx1, ry1 = region.get("x1", 0), region.get("y1", 0)
+    rx2, ry2 = region.get("x2", 0), region.get("y2", 0)
+    if rx1 <= bx <= rx2 and ry1 <= by <= ry2:
+        return True
+    ix1 = max(rx1, box.get("x1", 0))
+    iy1 = max(ry1, box.get("y1", 0))
+    ix2 = min(rx2, box.get("x2", 0))
+    iy2 = min(ry2, box.get("y2", 0))
+    return ix2 > ix1 and iy2 > iy1
+
+
+def _group_text_object_ocr(chapter_id: str, page_index: int, text_object_id: str, lang: str) -> dict:
+    with get_manifest_lock(chapter_id):
+        manifest = load_manifest_raw(chapter_id)
+        pages = manifest.get("pages", [])
+        if page_index < 0 or page_index >= len(pages):
+            raise ValueError(f"Invalid page index {page_index}")
+        page = pages[page_index]
+        obj = next(
+            (o for o in (page.get("text_objects") or []) if o.get("id") == text_object_id),
+            None,
+        )
+        if obj is None:
+            raise ValueError(f"Text object not found {text_object_id!r}")
+        region = obj.get("region") or {}
+        boxes = page.get("boxes", [])
+        img_path = Path(page["original"])
+
+    image = read_image(img_path)
+    overlap = [
+        i for i, b in enumerate(boxes)
+        if not b.get("removed") and _region_overlaps_box(region, b)
+    ]
+    overlap.sort(key=lambda i: (boxes[i].get("y1", 0), boxes[i].get("x1", 0)))
+
+    texts_by_idx: dict[int, str] = {}
+    combined_parts: list[str] = []
+    for i in overlap:
+        b = boxes[i]
+        cached = b.get("ocr_text")
+        if cached and b.get("ocr_lang") == lang:
+            t = cached
+        else:
+            crop = _ocr_crop_from_box(image, b)
+            t = ocr.read(cv2.cvtColor(crop, cv2.COLOR_BGR2RGB), lang) if crop.size else ""
+        texts_by_idx[i] = t
+        if t:
+            combined_parts.append(t)
+    combined = "\n".join(combined_parts)
+
+    with get_manifest_lock(chapter_id):
+        manifest = load_manifest_raw(chapter_id)
+        pages = manifest.get("pages", [])
+        if 0 <= page_index < len(pages):
+            page = pages[page_index]
+            obj = next(
+                (o for o in (page.get("text_objects") or []) if o.get("id") == text_object_id),
+                None,
+            )
+            if obj is not None:
+                obj["source_boxes"] = overlap
+                obj["ocr_text"] = combined
+                cur_boxes = page.get("boxes", [])
+                for i in overlap:
+                    if 0 <= i < len(cur_boxes):
+                        cur_boxes[i]["ocr_text"] = texts_by_idx.get(i, "")
+                        cur_boxes[i]["ocr_lang"] = lang
+                save_manifest_raw(chapter_id, manifest)
+    return manifest
 
 
 def _ocr_crop_from_box(image: np.ndarray, box: dict) -> np.ndarray:

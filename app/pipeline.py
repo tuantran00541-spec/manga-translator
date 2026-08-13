@@ -58,32 +58,42 @@ def _decode_mask(mask_b64: str | None) -> np.ndarray | None:
 
 
 _TEXT_OBJECT_STYLE_KEYS = {
-    "color", "font", "fontSize", "bold", "strokeWidth",
-    "strokeColor", "bgColor", "cornerRadius",
+    "color", "font", "fontSize", "bold",
+    "strokeWidth", "strokeColor", "bgColor", "cornerRadius",
+    "horizontalAlign", "verticalAlign",
+}
+
+DEFAULT_TEXT_OBJECT_STYLE = {
+    "color": "auto",
+    "font": "default",
+    "fontSize": "auto",
+    "bold": False,
+    "strokeWidth": "auto",
+    "strokeColor": "auto",
+    "bgColor": "transparent",
+    "cornerRadius": "0",
+    "horizontalAlign": "center",
+    "verticalAlign": "middle",
 }
 
 
-def _default_text_object_style() -> dict:
-    return {
-        "color": "auto",
-        "font": "default",
-        "fontSize": "auto",
-        "bold": False,
-        "strokeWidth": "auto",
-        "strokeColor": "auto",
-        "bgColor": "transparent",
-        "cornerRadius": "0",
-    }
-
-
-def _sanitize_style(style_in: dict | None) -> dict:
-    base = _default_text_object_style()
-    if not isinstance(style_in, dict):
-        return base
-    for k in _TEXT_OBJECT_STYLE_KEYS:
-        if k in style_in and style_in[k] is not None:
-            base[k] = style_in[k]
-    return base
+def _normalize_region(region: dict, w: int, h: int) -> tuple[int, int, int, int]:
+    try:
+        x1, y1, x2, y2 = (
+            int(region["x1"]), int(region["y1"]),
+            int(region["x2"]), int(region["y2"]),
+        )
+    except (KeyError, TypeError, ValueError):
+        raise ValueError("Invalid region payload")
+    x1 = max(0, min(x1, w))
+    x2 = max(0, min(x2, w))
+    y1 = max(0, min(y1, h))
+    y2 = max(0, min(y2, h))
+    if x1 > x2:
+        x1, x2 = x2, x1
+    if y1 > y2:
+        y1, y2 = y2, y1
+    return x1, y1, x2, y2
 
 
 class ChapterPipeline:
@@ -236,7 +246,6 @@ class ChapterPipeline:
                     "original": slice_path.as_posix(),
                     "clean": None,
                     "boxes": [],
-                    "text_objects": [],
                     "skipped": False,
                     "excluded_regions": [],
                     "source_page": source_index,
@@ -251,7 +260,6 @@ class ChapterPipeline:
     def process_pages(self, chapter_id: str, page_indices: list[int], workers: int = 2) -> dict:
         processed_dir = PROCESSED_DIR / chapter_id
 
-        # 1) Read work list under lock, then release — do NOT hold lock during inference.
         with get_manifest_lock(chapter_id):
             manifest = load_manifest_raw(chapter_id)
             work_items = [
@@ -267,7 +275,6 @@ class ChapterPipeline:
         if not work_items:
             return manifest
 
-        # Warm models once so workers don't race on first lazy load.
         _ = self.detector
         _ = self.inpainter
 
@@ -298,7 +305,6 @@ class ChapterPipeline:
                     )
                     errors.append((idx, exc))
 
-        # 2) Merge results under lock (reload in case another request edited boxes).
         with get_manifest_lock(chapter_id):
             manifest = load_manifest_raw(chapter_id)
             for idx, page_data in results.items():
@@ -363,96 +369,6 @@ class ChapterPipeline:
 
             if src_p and src_p.exists():
                 shutil.copyfile(src_p, target_path)
-
-    def create_text_object(
-        self, chapter_id: str, page_index: int, shape: str, region: dict
-    ) -> dict:
-        """Create a user text_object and persist it inside the manifest lock."""
-        with get_manifest_lock(chapter_id):
-            manifest = load_manifest_raw(chapter_id)
-            if page_index < 0 or page_index >= len(manifest.get("pages", [])):
-                raise ValueError(f"Chapter {chapter_id}: Invalid page_index {page_index}")
-            page = manifest["pages"][page_index]
-
-            obj = {
-                "id": uuid.uuid4().hex[:12],
-                "shape": shape if shape in ("rectangle", "ellipse") else "rectangle",
-                "region": {
-                    "x1": int(region["x1"]),
-                    "y1": int(region["y1"]),
-                    "x2": int(region["x2"]),
-                    "y2": int(region["y2"]),
-                },
-                "ocr_text": "",
-                "translation": "",
-                "style": _default_text_object_style(),
-                "source_boxes": [],
-            }
-            page.setdefault("text_objects", []).append(obj)
-            page["rendered"] = False
-            save_manifest_raw(chapter_id, manifest)
-            self._sync_output_dir(chapter_id, manifest, [page_index])
-        return manifest
-
-    def update_text_object(
-        self,
-        chapter_id: str,
-        page_index: int,
-        id: str,
-        shape: str | None = None,
-        region: dict | None = None,
-        ocr_text: str | None = None,
-        translation: str | None = None,
-        style: dict | None = None,
-    ) -> dict:
-        """Update any attributes of a text_object inside the manifest lock."""
-        with get_manifest_lock(chapter_id):
-            manifest = load_manifest_raw(chapter_id)
-            if page_index < 0 or page_index >= len(manifest.get("pages", [])):
-                raise ValueError(f"Chapter {chapter_id}: Invalid page_index {page_index}")
-            page = manifest["pages"][page_index]
-            objs = page.setdefault("text_objects", [])
-            target = next((o for o in objs if o.get("id") == id), None)
-            if target is None:
-                raise ValueError(f"Text object not found: {id!r}")
-
-            if shape is not None:
-                target["shape"] = shape if shape in ("rectangle", "ellipse") else "rectangle"
-            if region is not None:
-                target["region"] = {
-                    "x1": int(region["x1"]),
-                    "y1": int(region["y1"]),
-                    "x2": int(region["x2"]),
-                    "y2": int(region["y2"]),
-                }
-            if ocr_text is not None:
-                target["ocr_text"] = ocr_text
-            if translation is not None:
-                target["translation"] = translation
-            if style is not None:
-                target["style"] = _sanitize_style(style)
-
-            page["rendered"] = False
-            save_manifest_raw(chapter_id, manifest)
-            self._sync_output_dir(chapter_id, manifest, [page_index])
-        return manifest
-
-    def delete_text_object(self, chapter_id: str, page_index: int, id: str) -> dict:
-        """Delete a text_object from a page inside the manifest lock."""
-        with get_manifest_lock(chapter_id):
-            manifest = load_manifest_raw(chapter_id)
-            if page_index < 0 or page_index >= len(manifest.get("pages", [])):
-                raise ValueError(f"Chapter {chapter_id}: Invalid page_index {page_index}")
-            page = manifest["pages"][page_index]
-            objs = page.setdefault("text_objects", [])
-            idx = next((i for i, o in enumerate(objs) if o.get("id") == id), None)
-            if idx is None:
-                raise ValueError(f"Text object not found: {id!r}")
-            objs.pop(idx)
-            page["rendered"] = False
-            save_manifest_raw(chapter_id, manifest)
-            self._sync_output_dir(chapter_id, manifest, [page_index])
-        return manifest
 
     def add_manual_box(self, chapter_id: str, page_index: int, x1: int, y1: int, x2: int, y2: int) -> dict:
         processed_dir = PROCESSED_DIR / chapter_id
@@ -548,7 +464,6 @@ class ChapterPipeline:
         return manifest
 
     def remove_box(self, chapter_id: str, page_index: int, box_index: int) -> dict:
-        """Mark a box removed, repaint the page, and persist the new state."""
         processed_dir = PROCESSED_DIR / chapter_id
 
         with get_manifest_lock(chapter_id):
@@ -620,7 +535,6 @@ class ChapterPipeline:
         return manifest
 
     def reset_manual_mask(self, chapter_id: str, page_index: int) -> dict:
-        """Remove the persisted manual mask and rebuild the clean page."""
         processed_dir = PROCESSED_DIR / chapter_id
 
         with get_manifest_lock(chapter_id):
@@ -653,6 +567,134 @@ class ChapterPipeline:
             target_page["rendered"] = False
             save_manifest_raw(chapter_id, manifest)
             self._sync_output_dir(chapter_id, manifest, [page_index])
+        return manifest
+
+    def create_text_object(
+        self, chapter_id: str, page_index: int, shape: str, region: dict
+    ) -> dict:
+        with get_manifest_lock(chapter_id):
+            manifest = load_manifest_raw(chapter_id)
+            pages = manifest.get("pages", [])
+            if page_index < 0 or page_index >= len(pages):
+                raise ValueError(f"Chapter {chapter_id}: Invalid page index {page_index}")
+            img_path = Path(pages[page_index]["original"])
+
+        image = read_image(img_path)
+        h, w = image.shape[:2]
+        x1, y1, x2, y2 = _normalize_region(region, w, h)
+        if x2 - x1 < 10 or y2 - y1 < 10:
+            raise ValueError(f"Chapter {chapter_id}: Region too small (min 10px)")
+
+        obj = {
+            "id": uuid.uuid4().hex,
+            "shape": shape,
+            "region": {"x1": x1, "y1": y1, "x2": x2, "y2": y2},
+            "source_boxes": [],
+            "ocr_text": "",
+            "translation": "",
+            "style": dict(DEFAULT_TEXT_OBJECT_STYLE),
+        }
+
+        with get_manifest_lock(chapter_id):
+            manifest = load_manifest_raw(chapter_id)
+            pages = manifest.get("pages", [])
+            if page_index < 0 or page_index >= len(pages):
+                raise ValueError(f"Chapter {chapter_id}: Invalid page index {page_index}")
+            target = pages[page_index]
+            target.setdefault("text_objects", []).append(obj)
+            target.setdefault("width", w)
+            target.setdefault("height", h)
+            save_manifest_raw(chapter_id, manifest)
+        return manifest
+
+    def update_text_object(
+        self, chapter_id: str, page_index: int, text_object_id: str, changes: dict
+    ) -> dict:
+        with get_manifest_lock(chapter_id):
+            manifest = load_manifest_raw(chapter_id)
+            pages = manifest.get("pages", [])
+            if page_index < 0 or page_index >= len(pages):
+                raise ValueError(f"Chapter {chapter_id}: Invalid page index {page_index}")
+            target = pages[page_index]
+            objs = target.setdefault("text_objects", [])
+            obj = next((o for o in objs if o.get("id") == text_object_id), None)
+            if obj is None:
+                raise ValueError(f"Chapter {chapter_id}: Text object not found {text_object_id!r}")
+
+            if "shape" in changes and changes["shape"] is not None:
+                if changes["shape"] not in ("rectangle", "ellipse"):
+                    raise ValueError("Invalid shape")
+                obj["shape"] = changes["shape"]
+
+            if "region" in changes and changes["region"] is not None:
+                region = changes["region"]
+                try:
+                    x1, y1, x2, y2 = (
+                        int(region["x1"]), int(region["y1"]),
+                        int(region["x2"]), int(region["y2"]),
+                    )
+                except (KeyError, TypeError, ValueError):
+                    raise ValueError("Invalid region payload")
+                if x1 < 0 or y1 < 0:
+                    raise ValueError("Region coordinates must be non-negative")
+                if x1 >= x2 or y1 >= y2:
+                    raise ValueError("Region must have x1 < x2 and y1 < y2")
+                if target.get("width") is not None and target.get("height") is not None:
+                    pw, ph = int(target["width"]), int(target["height"])
+                    x1 = max(0, min(x1, pw))
+                    x2 = max(0, min(x2, pw))
+                    y1 = max(0, min(y1, ph))
+                    y2 = max(0, min(y2, ph))
+                if x2 - x1 < 10 or y2 - y1 < 10:
+                    raise ValueError("Region too small (min 10px)")
+                obj["region"] = {"x1": x1, "y1": y1, "x2": x2, "y2": y2}
+
+            if "ocr_text" in changes:
+                obj["ocr_text"] = changes["ocr_text"] or ""
+            if "translation" in changes:
+                obj["translation"] = changes["translation"] or ""
+            if "style" in changes and changes["style"] is not None:
+                style = changes["style"]
+                if not isinstance(style, dict):
+                    raise ValueError("Invalid style payload")
+                cleaned: dict = {}
+                for k, v in style.items():
+                    if k not in _TEXT_OBJECT_STYLE_KEYS:
+                        raise ValueError(f"Invalid style key {k!r}")
+                    if k == "bold":
+                        cleaned[k] = bool(v)
+                    elif k == "horizontalAlign":
+                        if v not in ("left", "center", "right"):
+                            raise ValueError("Invalid horizontalAlign value")
+                        cleaned[k] = v
+                    elif k == "verticalAlign":
+                        if v not in ("top", "middle", "bottom"):
+                            raise ValueError("Invalid verticalAlign value")
+                        cleaned[k] = v
+                    else:
+                        cleaned[k] = v
+                merged = dict(DEFAULT_TEXT_OBJECT_STYLE)
+                merged.update(cleaned)
+                obj["style"] = merged
+
+            save_manifest_raw(chapter_id, manifest)
+        return manifest
+
+    def delete_text_object(
+        self, chapter_id: str, page_index: int, text_object_id: str
+    ) -> dict:
+        with get_manifest_lock(chapter_id):
+            manifest = load_manifest_raw(chapter_id)
+            pages = manifest.get("pages", [])
+            if page_index < 0 or page_index >= len(pages):
+                raise ValueError(f"Chapter {chapter_id}: Invalid page index {page_index}")
+            target = pages[page_index]
+            objs = target.get("text_objects") or []
+            idx = next((i for i, o in enumerate(objs) if o.get("id") == text_object_id), None)
+            if idx is None:
+                raise ValueError(f"Chapter {chapter_id}: Text object not found {text_object_id!r}")
+            del objs[idx]
+            save_manifest_raw(chapter_id, manifest)
         return manifest
 
     def _do_reinpaint(
