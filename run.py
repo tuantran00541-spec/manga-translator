@@ -1,7 +1,5 @@
-#!/usr/bin/env python3
-"""Entry point for Manga Translator (local / Docker)."""
-
 import uvicorn
+
 
 from app.config import HOST, PORT, RELOAD, WORKERS, ensure_directories, check_models
 from app.logging_config import logger

@@ -47,13 +47,11 @@ WORKERS = int(os.getenv("WORKERS", "1"))
 
 
 def ensure_directories() -> None:
-    """Create required data / log directories if missing."""
     for d in (RAW_DIR, PROCESSED_DIR, OUTPUT_DIR, MODELS_DIR, LOGS_DIR):
         d.mkdir(parents=True, exist_ok=True)
 
 
 def check_models() -> list[str]:
-    """Return list of missing model filenames. Empty list = all present."""
     missing = []
     for path in REQUIRED_MODELS:
         if not path.is_file():

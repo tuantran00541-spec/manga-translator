@@ -1,5 +1,3 @@
-"""ONNX Runtime helpers tuned for CPU-only multi-page processing."""
-
 from __future__ import annotations
 
 import os
@@ -16,12 +14,6 @@ def _cpu_count() -> int:
 
 
 def _default_intra_op_threads() -> int:
-    """Pick a conservative default for CPU-only concurrent page workers.
-
-    The project processes pages concurrently, so deliberately avoid making
-    the ORT pool unbounded on high-core machines. Eight threads is the
-    benchmarked production target; smaller CPUs get smaller pools.
-    """
     cpu = _cpu_count()
     if cpu >= 8:
         return _DEFAULT_HIGH_CPU_THREADS
@@ -31,7 +23,6 @@ def _default_intra_op_threads() -> int:
 
 
 def _configured_intra_op_threads() -> int:
-    """Return the default, with an explicit environment override."""
     raw = os.environ.get(_THREAD_ENV, "").strip()
     if not raw:
         return _default_intra_op_threads()
@@ -45,7 +36,6 @@ def _configured_intra_op_threads() -> int:
 
 
 def make_session(model_path, *, intra_op_threads: int | None = None) -> ort.InferenceSession:
-    """Create an ONNX Runtime CPU session for concurrent page workers."""
     opts = ort.SessionOptions()
     opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
     opts.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL

@@ -1,9 +1,10 @@
-"""Pydantic schemas for request validation across API endpoints."""
-
+from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, field_validator
 from app.security import MAX_RENDER_TEXT_LEN, MAX_RENDER_TRANSLATIONS
 
 ALLOWED_TEXT_OBJECT_SHAPES = ("rectangle", "ellipse")
+ALLOWED_HORIZONTAL_ALIGNS = ("left", "center", "right")
+ALLOWED_VERTICAL_ALIGNS = ("top", "middle", "bottom")
 TEXT_OBJECT_MIN_SIZE = 10
 
 
@@ -39,6 +40,8 @@ class RenderRequest(BaseModel):
     stroke_colors: dict[str, str] = {}
     bg_colors: dict[str, str] = {}
     corner_radii: dict[str, int] = {}
+    horizontal_aligns: dict[str, str] = {}
+    vertical_aligns: dict[str, str] = {}
 
     @field_validator("translations")
     @classmethod
@@ -48,6 +51,26 @@ class RenderRequest(BaseModel):
         for k, val in v.items():
             if len(val) > MAX_RENDER_TEXT_LEN:
                 raise ValueError(f"Translation {k} too long: {len(val)} chars")
+        return v
+
+    @field_validator("horizontal_aligns")
+    @classmethod
+    def _check_horizontal_aligns(cls, v: dict[str, str]) -> dict[str, str]:
+        if len(v) > MAX_RENDER_TRANSLATIONS:
+            raise ValueError(f"Too many horizontal_aligns: {len(v)} > {MAX_RENDER_TRANSLATIONS}")
+        for k, val in v.items():
+            if val not in ALLOWED_HORIZONTAL_ALIGNS:
+                raise ValueError(f"horizontalAlign {val!r} for object {k} must be one of {ALLOWED_HORIZONTAL_ALIGNS}")
+        return v
+
+    @field_validator("vertical_aligns")
+    @classmethod
+    def _check_vertical_aligns(cls, v: dict[str, str]) -> dict[str, str]:
+        if len(v) > MAX_RENDER_TRANSLATIONS:
+            raise ValueError(f"Too many vertical_aligns: {len(v)} > {MAX_RENDER_TRANSLATIONS}")
+        for k, val in v.items():
+            if val not in ALLOWED_VERTICAL_ALIGNS:
+                raise ValueError(f"verticalAlign {val!r} for object {k} must be one of {ALLOWED_VERTICAL_ALIGNS}")
         return v
 
 
@@ -134,7 +157,7 @@ class TextObjectRegion(BaseModel):
     @field_validator("x1", "y1", "x2", "y2")
     @classmethod
     def _finite(cls, v: int) -> int:
-        if isinstance(v, float) and not (v != v):  # NaN guard
+        if isinstance(v, float) and not (v != v):
             raise ValueError("Region coordinates must be finite")
         return v
 
@@ -150,6 +173,22 @@ class TextObjectStyle(BaseModel):
     strokeColor: str = "auto"
     bgColor: str = "transparent"
     cornerRadius: str = "0"
+    horizontalAlign: str = "center"
+    verticalAlign: str = "middle"
+
+    @field_validator("horizontalAlign")
+    @classmethod
+    def _h_align(cls, v: str) -> str:
+        if v not in ALLOWED_HORIZONTAL_ALIGNS:
+            raise ValueError(f"horizontalAlign must be one of {ALLOWED_HORIZONTAL_ALIGNS}")
+        return v
+
+    @field_validator("verticalAlign")
+    @classmethod
+    def _v_align(cls, v: str) -> str:
+        if v not in ALLOWED_VERTICAL_ALIGNS:
+            raise ValueError(f"verticalAlign must be one of {ALLOWED_VERTICAL_ALIGNS}")
+        return v
 
 
 def _validate_text_object_shape(v: str) -> str:

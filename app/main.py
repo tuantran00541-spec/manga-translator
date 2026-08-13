@@ -1,6 +1,5 @@
-"""Main FastAPI Application Entry Point."""
-
 from contextlib import asynccontextmanager
+
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse

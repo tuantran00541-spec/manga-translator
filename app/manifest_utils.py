@@ -1,5 +1,3 @@
-"""Manifest IO and locking utilities."""
-
 import json
 import os
 import uuid
@@ -57,7 +55,6 @@ def urlify_manifest(manifest: dict) -> dict:
 
 
 def invalidate_page_render(manifest: dict, page_index: int) -> None:
-    """Explicitly set rendered = False for a page in manifest if valid."""
     pages = manifest.get("pages", [])
     if 0 <= page_index < len(pages):
         pages[page_index]["rendered"] = False
