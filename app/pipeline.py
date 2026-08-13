@@ -13,7 +13,7 @@ from app.detector.bubble_detector import BubbleBox
 from app.inpaint.lama_inpainter import Inpainter
 from app.config import RAW_DIR, PROCESSED_DIR
 from app.logging_config import logger
-from app.manifest_utils import load_manifest_raw, save_manifest_raw, get_manifest_lock
+from app.manifest_utils import invalidate_page_render, load_manifest_raw, save_manifest_raw, get_manifest_lock
 from app.security import MAX_IMAGE_PIXELS, MAX_UPLOAD_FILE_BYTES, MAX_UPLOAD_FILES, MAX_UPLOAD_TOTAL_BYTES, validate_upload_image
 
 
@@ -316,7 +316,7 @@ class ChapterPipeline:
                     manifest["pages"][idx]["boxes"] = merged_boxes
                     if "manual_mask" in page_data:
                         manifest["pages"][idx]["manual_mask"] = page_data["manual_mask"]
-                    manifest["pages"][idx]["rendered"] = False
+                    invalidate_page_render(manifest, idx)
             save_manifest_raw(chapter_id, manifest)
             self._sync_output_dir(chapter_id, manifest, list(results.keys()))
 
@@ -343,7 +343,7 @@ class ChapterPipeline:
                     if skipped:
                         manifest["pages"][idx]["clean"] = manifest["pages"][idx]["original"]
                         manifest["pages"][idx]["boxes"] = []
-                    manifest["pages"][idx]["rendered"] = False
+                    invalidate_page_render(manifest, idx)
             save_manifest_raw(chapter_id, manifest)
             self._sync_output_dir(chapter_id, manifest, page_indices)
         return manifest
@@ -410,7 +410,7 @@ class ChapterPipeline:
                 raise ValueError(f"Chapter {chapter_id}: Invalid page_index {page_index}")
             target_page = manifest["pages"][page_index]
             target_page["clean"] = clean_path_posix
-            target_page["rendered"] = False
+            invalidate_page_render(manifest, page_index)
             save_manifest_raw(chapter_id, manifest)
             self._sync_output_dir(chapter_id, manifest, [page_index])
         return manifest
@@ -458,7 +458,7 @@ class ChapterPipeline:
                 raise ValueError(f"Chapter {chapter_id}: Invalid page_index {page_index}")
             target_page = manifest["pages"][page_index]
             target_page["clean"] = clean_path_posix
-            target_page["rendered"] = False
+            invalidate_page_render(manifest, page_index)
             save_manifest_raw(chapter_id, manifest)
             self._sync_output_dir(chapter_id, manifest, [page_index])
         return manifest
@@ -496,7 +496,7 @@ class ChapterPipeline:
 
             target_boxes[box_index]["removed"] = True
             target_page["clean"] = clean_path_posix
-            target_page["rendered"] = False
+            invalidate_page_render(manifest, page_index)
             save_manifest_raw(chapter_id, manifest)
             self._sync_output_dir(chapter_id, manifest, [page_index])
         return manifest
@@ -529,7 +529,7 @@ class ChapterPipeline:
             target_page = manifest["pages"][page_index]
             target_page["manual_mask"] = manual_mask_posix
             target_page["clean"] = clean_path_posix
-            target_page["rendered"] = False
+            invalidate_page_render(manifest, page_index)
             save_manifest_raw(chapter_id, manifest)
             self._sync_output_dir(chapter_id, manifest, [page_index])
         return manifest
@@ -564,7 +564,7 @@ class ChapterPipeline:
             target_page = manifest["pages"][page_index]
             target_page.pop("manual_mask", None)
             target_page["clean"] = clean_path_posix
-            target_page["rendered"] = False
+            invalidate_page_render(manifest, page_index)
             save_manifest_raw(chapter_id, manifest)
             self._sync_output_dir(chapter_id, manifest, [page_index])
         return manifest
@@ -604,6 +604,7 @@ class ChapterPipeline:
             target.setdefault("text_objects", []).append(obj)
             target.setdefault("width", w)
             target.setdefault("height", h)
+            invalidate_page_render(manifest, page_index)
             save_manifest_raw(chapter_id, manifest)
         return manifest
 
@@ -677,6 +678,7 @@ class ChapterPipeline:
                 merged.update(cleaned)
                 obj["style"] = merged
 
+            invalidate_page_render(manifest, page_index)
             save_manifest_raw(chapter_id, manifest)
         return manifest
 
@@ -694,6 +696,7 @@ class ChapterPipeline:
             if idx is None:
                 raise ValueError(f"Chapter {chapter_id}: Text object not found {text_object_id!r}")
             del objs[idx]
+            invalidate_page_render(manifest, page_index)
             save_manifest_raw(chapter_id, manifest)
         return manifest
 
