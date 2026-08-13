@@ -6,7 +6,7 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from app.dependencies import ocr, pipeline
 from app.logging_config import logger
-from app.manifest_utils import get_manifest_lock, load_manifest_raw, save_manifest_raw, urlify_manifest
+from app.manifest_utils import get_manifest_lock, invalidate_page_render, load_manifest_raw, save_manifest_raw, urlify_manifest
 from app.pipeline import _decode_mask, read_image
 from app.schemas import (
     AddBoxRequest,
@@ -446,7 +446,7 @@ def ocr_box(req: OcrBoxRequest) -> dict:
             target = manifest["pages"][req.page_index]["boxes"][req.box_index]
             target["ocr_text"] = text
             target["ocr_lang"] = req.lang
-            manifest["pages"][req.page_index]["rendered"] = False
+            invalidate_page_render(manifest, req.page_index)
             save_manifest_raw(req.chapter_id, manifest)
             pipeline._sync_output_dir(req.chapter_id, manifest, [req.page_index])
 
@@ -466,7 +466,7 @@ def save_draft(req: SaveDraftRequest) -> dict:
                 if parts and parts[0].isdigit():
                     page_idx = int(parts[0])
                     if 0 <= page_idx < len(manifest.get("pages", [])):
-                        manifest["pages"][page_idx]["rendered"] = False
+                        invalidate_page_render(manifest, page_idx)
                         affected_pages.add(page_idx)
             save_manifest_raw(req.chapter_id, manifest)
             if affected_pages:

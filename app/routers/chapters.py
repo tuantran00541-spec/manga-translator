@@ -6,7 +6,7 @@ from fastapi.concurrency import run_in_threadpool
 from app.config import PROCESSED_DIR
 from app.dependencies import pipeline
 from app.logging_config import logger
-from app.manifest_utils import get_manifest_lock, load_manifest_raw, save_manifest_raw, urlify_manifest
+from app.manifest_utils import get_manifest_lock, invalidate_page_render, load_manifest_raw, save_manifest_raw, urlify_manifest
 from app.schemas import (
     ChapterRequest,
     ProcessPagesRequest,
@@ -193,7 +193,7 @@ def save_excluded_regions(req: SaveExcludedRegionsRequest) -> dict:
                 if r.x1 > r.x2 or r.y1 > r.y2:
                     raise HTTPException(400, f"Invalid region coordinates: ({r.x1},{r.y1})-({r.x2},{r.y2})")
             pages[req.page_index]["excluded_regions"] = [r.model_dump() for r in req.excluded_regions]
-            pages[req.page_index]["rendered"] = False
+            invalidate_page_render(manifest, req.page_index)
             save_manifest_raw(req.chapter_id, manifest)
             pipeline._sync_output_dir(req.chapter_id, manifest, [req.page_index])
         return urlify_manifest(manifest)
@@ -220,7 +220,7 @@ def set_page_excluded_regions(chapter_id: str, page_index: int, regions: list[di
             if page_index < 0 or page_index >= len(pages):
                 raise HTTPException(400, f"Invalid page_index: {page_index}")
             pages[page_index]["excluded_regions"] = regions
-            pages[page_index]["rendered"] = False
+            invalidate_page_render(manifest, page_index)
             save_manifest_raw(chapter_id, manifest)
             pipeline._sync_output_dir(chapter_id, manifest, [page_index])
         return urlify_manifest(manifest)
