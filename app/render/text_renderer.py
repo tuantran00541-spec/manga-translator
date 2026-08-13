@@ -142,6 +142,9 @@ def render_text_in_box(
     stroke_color: str = "auto",
     bg_color: str = "transparent",
     corner_radius: int = 0,
+    shape: str = "rectangle",
+    horizontal_align: str = "center",
+    vertical_align: str = "middle",
 ) -> Image.Image:
     x1, y1, x2, y2 = (int(box[0]), int(box[1]), int(box[2]), int(box[3]))
     if x2 < x1:
@@ -157,6 +160,13 @@ def render_text_in_box(
     pad = max(2, min(padding, int(min(raw_w, raw_h) * 0.08)))
     box_w = raw_w - pad * 2
     box_h = raw_h - pad * 2
+
+    h_align = str(horizontal_align or "").lower()
+    if h_align not in ("left", "center", "right"):
+        h_align = "center"
+    v_align = str(vertical_align or "").lower()
+    if v_align not in ("top", "middle", "bottom"):
+        v_align = "middle"
 
     if font_path is None:
         font_path = get_font_path(font_name)
@@ -184,10 +194,18 @@ def render_text_in_box(
 
     draw = ImageDraw.Draw(image)
 
+    shape = str(shape or "").lower()
+    if shape not in ("rectangle", "ellipse"):
+        shape = "rectangle"
+
     if bg_color and bg_color not in ("transparent", "none", ""):
         box_bg_c = parse_color(bg_color, default=(255, 255, 255))
-        r = max(0, min(int(corner_radius), int(min(raw_w, raw_h) // 2)))
-        draw.rounded_rectangle((x1, y1, x2, y2), radius=r, fill=box_bg_c)
+        bg_bbox = (x1, y1, x2 - 1, y2 - 1)
+        if shape == "ellipse":
+            draw.ellipse(bg_bbox, fill=box_bg_c)
+        else:
+            r = max(0, min(int(corner_radius), int((min(raw_w, raw_h) - 1) // 2)))
+            draw.rounded_rectangle(bg_bbox, radius=r, fill=box_bg_c)
 
     target_size = None
     if isinstance(font_size, (int, float)) and font_size > 0:
@@ -207,13 +225,24 @@ def render_text_in_box(
 
     line_height = _calc_line_height(draw, font, stroke_w=stroke_w)
     total_h = line_height * len(lines)
-    start_y = y1 + pad + max(0, (box_h - total_h) // 2)
+
+    if v_align == "top":
+        start_y = y1 + pad
+    elif v_align == "bottom":
+        start_y = y1 + pad + max(0, box_h - total_h)
+    else:
+        start_y = y1 + pad + max(0, (box_h - total_h) // 2)
 
     offsets = [(0, 0), (1, 0), (0, 1), (1, 1)] if is_bold else [(0, 0)]
 
     for i, line in enumerate(lines):
         line_w = draw.textbbox((0, 0), line, font=font)[2]
-        start_x = x1 + pad + max(0, (box_w - line_w) // 2)
+        if h_align == "left":
+            start_x = x1 + pad
+        elif h_align == "right":
+            start_x = x1 + pad + max(0, box_w - line_w)
+        else:
+            start_x = x1 + pad + max(0, (box_w - line_w) // 2)
         cur_y = start_y + i * line_height
         for dx, dy in offsets:
             draw.text(
