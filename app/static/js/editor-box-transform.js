@@ -67,7 +67,7 @@
             headers: { "Content-Type": "application/json" },
             signal: controller.signal,
             body: JSON.stringify({
-              chapter_id: window.currentChapterId,
+              chapter_id: currentManifest.chapter_id,
               page_index: pIndex,
               id,
               region,
