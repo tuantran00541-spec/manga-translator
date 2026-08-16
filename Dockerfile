@@ -30,7 +30,7 @@ RUN pip install --upgrade pip \
 RUN playwright install --with-deps chromium
 
 COPY app/ ./app/
-COPY run.py convert_model.py ./
+COPY run.py ./
 
 RUN mkdir -p data/raw data/processed data/output models logs \
     && useradd --create-home --shell /bin/bash appuser \
