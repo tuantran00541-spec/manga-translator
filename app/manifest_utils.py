@@ -9,6 +9,7 @@ from app.config import PROCESSED_DIR
 from app.security import validate_chapter_id
 
 _MANIFEST_LOCK_TIMEOUT = 30
+_PAGE_LOCK_TIMEOUT = 60
 
 
 @contextmanager
@@ -21,6 +22,18 @@ def get_manifest_lock(chapter_id: str):
             yield
     except Timeout:
         raise RuntimeError(f"Manifest lock timeout for chapter {chapter_id}")
+
+
+@contextmanager
+def get_page_lock(chapter_id: str, page_index: int):
+    lock_path = PROCESSED_DIR / chapter_id / f"page_{page_index:03d}.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    lock = FileLock(lock_path)
+    try:
+        with lock.acquire(timeout=_PAGE_LOCK_TIMEOUT):
+            yield
+    except Timeout:
+        raise RuntimeError(f"Page lock timeout for chapter {chapter_id} page {page_index}")
 
 
 def load_manifest_raw(chapter_id: str) -> dict:
@@ -58,4 +71,3 @@ def invalidate_page_render(manifest: dict, page_index: int) -> None:
     pages = manifest.get("pages", [])
     if 0 <= page_index < len(pages):
         pages[page_index]["rendered"] = False
-

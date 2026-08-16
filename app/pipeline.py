@@ -1,3 +1,4 @@
+import os
 import shutil
 import base64
 import copy
@@ -13,7 +14,7 @@ from app.detector.bubble_detector import BubbleBox
 from app.inpaint.lama_inpainter import Inpainter
 from app.config import RAW_DIR, PROCESSED_DIR
 from app.logging_config import logger
-from app.manifest_utils import invalidate_page_render, load_manifest_raw, save_manifest_raw, get_manifest_lock
+from app.manifest_utils import invalidate_page_render, load_manifest_raw, save_manifest_raw, get_manifest_lock, get_page_lock
 from app.security import MAX_IMAGE_PIXELS, MAX_UPLOAD_FILE_BYTES, MAX_UPLOAD_FILES, MAX_UPLOAD_TOTAL_BYTES, validate_upload_image
 
 
@@ -284,7 +285,8 @@ class ChapterPipeline:
 
         def _process_one(item: tuple[int, Path, list[dict]]) -> tuple[int, dict]:
             idx, img_path, excluded = item
-            return idx, self._process_page(img_path, processed_dir, excluded_regions=excluded)
+            with get_page_lock(chapter_id, idx):
+                return idx, self._process_page(img_path, processed_dir, excluded_regions=excluded)
 
         with ThreadPoolExecutor(max_workers=max_workers) as pool:
             futures = {
@@ -373,201 +375,254 @@ class ChapterPipeline:
     def add_manual_box(self, chapter_id: str, page_index: int, x1: int, y1: int, x2: int, y2: int) -> dict:
         processed_dir = PROCESSED_DIR / chapter_id
 
-        with get_manifest_lock(chapter_id):
-            manifest = load_manifest_raw(chapter_id)
-            if page_index < 0 or page_index >= len(manifest.get("pages", [])):
-                raise ValueError(f"Chapter {chapter_id}: Invalid page_index {page_index}")
-            page = manifest["pages"][page_index]
-            img_path = Path(page["original"])
+        with get_page_lock(chapter_id, page_index):
+            with get_manifest_lock(chapter_id):
+                manifest = load_manifest_raw(chapter_id)
+                if page_index < 0 or page_index >= len(manifest.get("pages", [])):
+                    raise ValueError(f"Chapter {chapter_id}: Invalid page_index {page_index}")
+                page = manifest["pages"][page_index]
+                img_path = Path(page["original"])
 
-        image = read_image(img_path)
-        h, w = image.shape[:2]
+            image = read_image(img_path)
+            h, w = image.shape[:2]
 
-        nx1, nx2 = sorted((max(0, min(x1, w)), max(0, min(x2, w))))
-        ny1, ny2 = sorted((max(0, min(y1, h)), max(0, min(y2, h))))
-        if nx2 <= nx1 or ny2 <= ny1:
+            nx1, nx2 = sorted((max(0, min(x1, w)), max(0, min(x2, w))))
+            ny1, ny2 = sorted((max(0, min(y1, h)), max(0, min(y2, h))))
+            if nx2 <= nx1 or ny2 <= ny1:
+                return manifest
+
+            with get_manifest_lock(chapter_id):
+                manifest = load_manifest_raw(chapter_id)
+                if page_index < 0 or page_index >= len(manifest.get("pages", [])):
+                    raise ValueError(f"Chapter {chapter_id}: Invalid page_index {page_index}")
+                target_page = manifest["pages"][page_index]
+                target_page.setdefault("boxes", []).append({
+                    "x1": nx1, "y1": ny1, "x2": nx2, "y2": ny2,
+                    "confidence": 1.0, "mask": None, "manual": True,
+                })
+                boxes_snapshot = copy.deepcopy(target_page["boxes"])
+                manual_mask_posix = target_page.get("manual_mask")
+
+            clean_path_posix = self._do_reinpaint(
+                processed_dir, img_path, image, boxes_snapshot, manual_mask_posix
+            )
+
+            with get_manifest_lock(chapter_id):
+                manifest = load_manifest_raw(chapter_id)
+                if page_index < 0 or page_index >= len(manifest.get("pages", [])):
+                    raise ValueError(f"Chapter {chapter_id}: Invalid page_index {page_index}")
+                target_page = manifest["pages"][page_index]
+                target_page["clean"] = clean_path_posix
+                invalidate_page_render(manifest, page_index)
+                save_manifest_raw(chapter_id, manifest)
+                self._sync_output_dir(chapter_id, manifest, [page_index])
             return manifest
-
-        with get_manifest_lock(chapter_id):
-            manifest = load_manifest_raw(chapter_id)
-            if page_index < 0 or page_index >= len(manifest.get("pages", [])):
-                raise ValueError(f"Chapter {chapter_id}: Invalid page_index {page_index}")
-            target_page = manifest["pages"][page_index]
-            target_page.setdefault("boxes", []).append({
-                "x1": nx1, "y1": ny1, "x2": nx2, "y2": ny2,
-                "confidence": 1.0, "mask": None, "manual": True,
-            })
-            boxes_snapshot = copy.deepcopy(target_page["boxes"])
-            manual_mask_posix = target_page.get("manual_mask")
-
-        clean_path_posix = self._do_reinpaint(
-            processed_dir, img_path, image, boxes_snapshot, manual_mask_posix
-        )
-
-        with get_manifest_lock(chapter_id):
-            manifest = load_manifest_raw(chapter_id)
-            if page_index < 0 or page_index >= len(manifest.get("pages", [])):
-                raise ValueError(f"Chapter {chapter_id}: Invalid page_index {page_index}")
-            target_page = manifest["pages"][page_index]
-            target_page["clean"] = clean_path_posix
-            invalidate_page_render(manifest, page_index)
-            save_manifest_raw(chapter_id, manifest)
-            self._sync_output_dir(chapter_id, manifest, [page_index])
-        return manifest
 
     def update_box(self, chapter_id: str, page_index: int, box_index: int, x1: int, y1: int, x2: int, y2: int) -> dict:
         processed_dir = PROCESSED_DIR / chapter_id
 
-        with get_manifest_lock(chapter_id):
-            manifest = load_manifest_raw(chapter_id)
-            if page_index < 0 or page_index >= len(manifest.get("pages", [])):
-                raise ValueError(f"Chapter {chapter_id}: Invalid page_index {page_index}")
-            page = manifest["pages"][page_index]
-            boxes = page.get("boxes", [])
-            if box_index < 0 or box_index >= len(boxes):
-                raise ValueError(f"Chapter {chapter_id} page {page_index}: Invalid box_index {box_index}")
-            img_path = Path(page["original"])
+        with get_page_lock(chapter_id, page_index):
+            with get_manifest_lock(chapter_id):
+                manifest = load_manifest_raw(chapter_id)
+                if page_index < 0 or page_index >= len(manifest.get("pages", [])):
+                    raise ValueError(f"Chapter {chapter_id}: Invalid page_index {page_index}")
+                page = manifest["pages"][page_index]
+                boxes = page.get("boxes", [])
+                if box_index < 0 or box_index >= len(boxes):
+                    raise ValueError(f"Chapter {chapter_id} page {page_index}: Invalid box_index {box_index}")
+                img_path = Path(page["original"])
 
-        image = read_image(img_path)
-        height, width = image.shape[:2]
-        nx1, nx2 = sorted((int(x1), int(x2)))
-        ny1, ny2 = sorted((int(y1), int(y2)))
-        if nx1 < 0 or ny1 < 0 or nx2 > width or ny2 > height or (nx2 - nx1) < 10 or (ny2 - ny1) < 10:
-            raise ValueError(f"Chapter {chapter_id} page {page_index}: Box coordinates out of bounds or smaller than 10px")
+            image = read_image(img_path)
+            height, width = image.shape[:2]
+            nx1, nx2 = sorted((int(x1), int(x2)))
+            ny1, ny2 = sorted((int(y1), int(y2)))
+            if nx1 < 0 or ny1 < 0 or nx2 > width or ny2 > height or (nx2 - nx1) < 10 or (ny2 - ny1) < 10:
+                raise ValueError(f"Chapter {chapter_id} page {page_index}: Box coordinates out of bounds or smaller than 10px")
 
-        with get_manifest_lock(chapter_id):
-            manifest = load_manifest_raw(chapter_id)
-            if page_index < 0 or page_index >= len(manifest.get("pages", [])):
-                raise ValueError(f"Chapter {chapter_id}: Invalid page_index {page_index}")
-            target_page = manifest["pages"][page_index]
-            target_boxes = target_page.get("boxes", [])
-            if box_index < 0 or box_index >= len(target_boxes):
-                raise ValueError(f"Chapter {chapter_id} page {page_index}: Invalid box_index {box_index}")
+            with get_manifest_lock(chapter_id):
+                manifest = load_manifest_raw(chapter_id)
+                if page_index < 0 or page_index >= len(manifest.get("pages", [])):
+                    raise ValueError(f"Chapter {chapter_id}: Invalid page_index {page_index}")
+                target_page = manifest["pages"][page_index]
+                target_boxes = target_page.get("boxes", [])
+                if box_index < 0 or box_index >= len(target_boxes):
+                    raise ValueError(f"Chapter {chapter_id} page {page_index}: Invalid box_index {box_index}")
 
-            target_boxes[box_index].update({"x1": nx1, "y1": ny1, "x2": nx2, "y2": ny2, "mask": None})
-            boxes_snapshot = copy.deepcopy(target_boxes)
-            manual_mask_posix = target_page.get("manual_mask")
+                target_boxes[box_index].update({"x1": nx1, "y1": ny1, "x2": nx2, "y2": ny2, "mask": None})
+                boxes_snapshot = copy.deepcopy(target_boxes)
+                manual_mask_posix = target_page.get("manual_mask")
 
-        clean_path_posix = self._do_reinpaint(
-            processed_dir, img_path, image, boxes_snapshot, manual_mask_posix
-        )
+            clean_path_posix = self._do_reinpaint(
+                processed_dir, img_path, image, boxes_snapshot, manual_mask_posix
+            )
 
-        with get_manifest_lock(chapter_id):
-            manifest = load_manifest_raw(chapter_id)
-            if page_index < 0 or page_index >= len(manifest.get("pages", [])):
-                raise ValueError(f"Chapter {chapter_id}: Invalid page_index {page_index}")
-            target_page = manifest["pages"][page_index]
-            target_page["clean"] = clean_path_posix
-            invalidate_page_render(manifest, page_index)
-            save_manifest_raw(chapter_id, manifest)
-            self._sync_output_dir(chapter_id, manifest, [page_index])
-        return manifest
+            with get_manifest_lock(chapter_id):
+                manifest = load_manifest_raw(chapter_id)
+                if page_index < 0 or page_index >= len(manifest.get("pages", [])):
+                    raise ValueError(f"Chapter {chapter_id}: Invalid page_index {page_index}")
+                target_page = manifest["pages"][page_index]
+                target_page["clean"] = clean_path_posix
+                invalidate_page_render(manifest, page_index)
+                save_manifest_raw(chapter_id, manifest)
+                self._sync_output_dir(chapter_id, manifest, [page_index])
+            return manifest
 
     def remove_box(self, chapter_id: str, page_index: int, box_index: int) -> dict:
         processed_dir = PROCESSED_DIR / chapter_id
 
-        with get_manifest_lock(chapter_id):
-            manifest = load_manifest_raw(chapter_id)
-            if page_index < 0 or page_index >= len(manifest.get("pages", [])):
-                raise ValueError("Invalid page index")
-            page = manifest["pages"][page_index]
-            boxes = page.get("boxes", [])
-            if box_index < 0 or box_index >= len(boxes):
-                raise ValueError("Invalid box index")
+        with get_page_lock(chapter_id, page_index):
+            with get_manifest_lock(chapter_id):
+                manifest = load_manifest_raw(chapter_id)
+                if page_index < 0 or page_index >= len(manifest.get("pages", [])):
+                    raise ValueError("Invalid page index")
+                page = manifest["pages"][page_index]
+                boxes = page.get("boxes", [])
+                if box_index < 0 or box_index >= len(boxes):
+                    raise ValueError("Invalid box index")
 
-            img_path = Path(page["original"])
-            manual_mask_posix = page.get("manual_mask")
-            boxes_snapshot = copy.deepcopy(boxes)
-            boxes_snapshot[box_index]["removed"] = True
+                img_path = Path(page["original"])
+                manual_mask_posix = page.get("manual_mask")
+                boxes_snapshot = copy.deepcopy(boxes)
+                boxes_snapshot[box_index]["removed"] = True
 
-        image = read_image(img_path)
-        clean_path_posix = self._do_reinpaint(
-            processed_dir, img_path, image, boxes_snapshot, manual_mask_posix
-        )
+            image = read_image(img_path)
+            clean_path_posix = self._do_reinpaint(
+                processed_dir, img_path, image, boxes_snapshot, manual_mask_posix
+            )
 
-        with get_manifest_lock(chapter_id):
-            manifest = load_manifest_raw(chapter_id)
-            if page_index < 0 or page_index >= len(manifest.get("pages", [])):
-                raise ValueError("Invalid page index")
-            target_page = manifest["pages"][page_index]
-            target_boxes = target_page.get("boxes", [])
-            if box_index < 0 or box_index >= len(target_boxes):
-                raise ValueError("Invalid box index")
+            with get_manifest_lock(chapter_id):
+                manifest = load_manifest_raw(chapter_id)
+                if page_index < 0 or page_index >= len(manifest.get("pages", [])):
+                    raise ValueError("Invalid page index")
+                target_page = manifest["pages"][page_index]
+                target_boxes = target_page.get("boxes", [])
+                if box_index < 0 or box_index >= len(target_boxes):
+                    raise ValueError("Invalid box index")
 
-            target_boxes[box_index]["removed"] = True
-            target_page["clean"] = clean_path_posix
-            invalidate_page_render(manifest, page_index)
-            save_manifest_raw(chapter_id, manifest)
-            self._sync_output_dir(chapter_id, manifest, [page_index])
-        return manifest
+                target_boxes[box_index]["removed"] = True
+                target_page["clean"] = clean_path_posix
+                invalidate_page_render(manifest, page_index)
+                save_manifest_raw(chapter_id, manifest)
+                self._sync_output_dir(chapter_id, manifest, [page_index])
+            return manifest
 
     def repaint_mask(self, chapter_id: str, page_index: int, mask: np.ndarray) -> dict:
         processed_dir = PROCESSED_DIR / chapter_id
 
-        with get_manifest_lock(chapter_id):
-            manifest = load_manifest_raw(chapter_id)
-            if page_index < 0 or page_index >= len(manifest.get("pages", [])):
-                raise ValueError(f"Chapter {chapter_id}: Invalid page index {page_index}")
-            page = manifest["pages"][page_index]
-            img_path = Path(page["original"])
-            boxes_snapshot = copy.deepcopy(page.get("boxes", []))
+        with get_page_lock(chapter_id, page_index):
+            with get_manifest_lock(chapter_id):
+                manifest = load_manifest_raw(chapter_id)
+                if page_index < 0 or page_index >= len(manifest.get("pages", [])):
+                    raise ValueError(f"Chapter {chapter_id}: Invalid page index {page_index}")
+                page = manifest["pages"][page_index]
+                img_path = Path(page["original"])
+                boxes_snapshot = copy.deepcopy(page.get("boxes", []))
+                manual_mask_posix = page.get("manual_mask")
 
-        image = read_image(img_path)
-        bin_mask = (mask > 10).astype(np.uint8) * 255 if mask is not None else None
-        manual_mask_path = processed_dir / f"manual_mask_{img_path.name}"
-        if bin_mask is not None:
-            write_image(manual_mask_path, bin_mask)
-        manual_mask_posix = manual_mask_path.as_posix()
-        clean_path_posix = self._do_reinpaint(
-            processed_dir, img_path, image, boxes_snapshot, manual_mask_posix
-        )
+            image = read_image(img_path)
+            img_h, img_w = image.shape[:2]
 
-        with get_manifest_lock(chapter_id):
-            manifest = load_manifest_raw(chapter_id)
-            if page_index < 0 or page_index >= len(manifest.get("pages", [])):
-                raise ValueError(f"Chapter {chapter_id}: Invalid page index {page_index}")
-            target_page = manifest["pages"][page_index]
-            target_page["manual_mask"] = manual_mask_posix
-            target_page["clean"] = clean_path_posix
-            invalidate_page_render(manifest, page_index)
-            save_manifest_raw(chapter_id, manifest)
-            self._sync_output_dir(chapter_id, manifest, [page_index])
-        return manifest
+            bin_mask = (mask > 10).astype(np.uint8) * 255 if mask is not None else None
+            if bin_mask is not None and bin_mask.shape[:2] != (img_h, img_w):
+                bin_mask = cv2.resize(bin_mask, (img_w, img_h), interpolation=cv2.INTER_NEAREST)
+                bin_mask = (bin_mask > 10).astype(np.uint8) * 255
+
+            manual_mask_path = Path(manual_mask_posix) if manual_mask_posix else processed_dir / f"manual_mask_{img_path.name}"
+            existing_mask = None
+            if manual_mask_path.exists():
+                try:
+                    raw = np.fromfile(str(manual_mask_path), dtype=np.uint8)
+                    decoded = cv2.imdecode(raw, cv2.IMREAD_GRAYSCALE)
+                    if decoded is not None and np.any(decoded > 10):
+                        if decoded.shape[:2] != (img_h, img_w):
+                            decoded = cv2.resize(decoded, (img_w, img_h), interpolation=cv2.INTER_NEAREST)
+                        existing_mask = (decoded > 10).astype(np.uint8) * 255
+                except Exception as exc:
+                    logger.warning("Could not read existing manual mask at %s: %s", manual_mask_path, exc)
+
+            if existing_mask is not None and bin_mask is not None:
+                accumulated_mask = np.maximum(existing_mask, bin_mask)
+            elif bin_mask is not None:
+                accumulated_mask = bin_mask
+            elif existing_mask is not None:
+                accumulated_mask = existing_mask
+            else:
+                accumulated_mask = None
+
+            tmp_mask_path = processed_dir / f"manual_mask_{img_path.name}.{uuid.uuid4().hex}.tmp.png"
+            if accumulated_mask is not None:
+                write_image(tmp_mask_path, accumulated_mask)
+                inpaint_mask_posix = tmp_mask_path.as_posix()
+            else:
+                inpaint_mask_posix = None
+
+            try:
+                clean_path_posix = self._do_reinpaint(
+                    processed_dir, img_path, image, boxes_snapshot, inpaint_mask_posix
+                )
+                if accumulated_mask is not None:
+                    final_mask_path = processed_dir / f"manual_mask_{img_path.name}"
+                    os.replace(tmp_mask_path, final_mask_path)
+                    manual_mask_posix = final_mask_path.as_posix()
+                else:
+                    manual_mask_posix = None
+            finally:
+                if tmp_mask_path.exists():
+                    try:
+                        tmp_mask_path.unlink()
+                    except OSError:
+                        pass
+
+            with get_manifest_lock(chapter_id):
+                manifest = load_manifest_raw(chapter_id)
+                if page_index < 0 or page_index >= len(manifest.get("pages", [])):
+                    raise ValueError(f"Chapter {chapter_id}: Invalid page index {page_index}")
+                target_page = manifest["pages"][page_index]
+                if manual_mask_posix:
+                    target_page["manual_mask"] = manual_mask_posix
+                else:
+                    target_page.pop("manual_mask", None)
+                target_page["clean"] = clean_path_posix
+                invalidate_page_render(manifest, page_index)
+                save_manifest_raw(chapter_id, manifest)
+                self._sync_output_dir(chapter_id, manifest, [page_index])
+            return manifest
 
     def reset_manual_mask(self, chapter_id: str, page_index: int) -> dict:
         processed_dir = PROCESSED_DIR / chapter_id
 
-        with get_manifest_lock(chapter_id):
-            manifest = load_manifest_raw(chapter_id)
-            if page_index < 0 or page_index >= len(manifest.get("pages", [])):
-                raise ValueError("Invalid page index")
-            page = manifest["pages"][page_index]
-            img_path = Path(page["original"])
-            boxes_snapshot = copy.deepcopy(page.get("boxes", []))
+        with get_page_lock(chapter_id, page_index):
+            with get_manifest_lock(chapter_id):
+                manifest = load_manifest_raw(chapter_id)
+                if page_index < 0 or page_index >= len(manifest.get("pages", [])):
+                    raise ValueError("Invalid page index")
+                page = manifest["pages"][page_index]
+                img_path = Path(page["original"])
+                boxes_snapshot = copy.deepcopy(page.get("boxes", []))
 
-        manual_mask_path = processed_dir / f"manual_mask_{img_path.name}"
-        if manual_mask_path.exists():
-            try:
-                manual_mask_path.unlink()
-            except OSError as exc:
-                raise RuntimeError(f"Cannot remove manual mask: {exc}") from exc
+            manual_mask_path = processed_dir / f"manual_mask_{img_path.name}"
+            if manual_mask_path.exists():
+                try:
+                    manual_mask_path.unlink()
+                except OSError as exc:
+                    raise RuntimeError(f"Cannot remove manual mask: {exc}") from exc
 
-        image = read_image(img_path)
-        clean_path_posix = self._do_reinpaint(
-            processed_dir, img_path, image, boxes_snapshot, manual_mask_posix=None
-        )
+            image = read_image(img_path)
+            clean_path_posix = self._do_reinpaint(
+                processed_dir, img_path, image, boxes_snapshot, manual_mask_posix=None
+            )
 
-        with get_manifest_lock(chapter_id):
-            manifest = load_manifest_raw(chapter_id)
-            if page_index < 0 or page_index >= len(manifest.get("pages", [])):
-                raise ValueError("Invalid page index")
-            target_page = manifest["pages"][page_index]
-            target_page.pop("manual_mask", None)
-            target_page["clean"] = clean_path_posix
-            invalidate_page_render(manifest, page_index)
-            save_manifest_raw(chapter_id, manifest)
-            self._sync_output_dir(chapter_id, manifest, [page_index])
-        return manifest
+            with get_manifest_lock(chapter_id):
+                manifest = load_manifest_raw(chapter_id)
+                if page_index < 0 or page_index >= len(manifest.get("pages", [])):
+                    raise ValueError("Invalid page index")
+                target_page = manifest["pages"][page_index]
+                target_page.pop("manual_mask", None)
+                target_page["clean"] = clean_path_posix
+                invalidate_page_render(manifest, page_index)
+                save_manifest_raw(chapter_id, manifest)
+                self._sync_output_dir(chapter_id, manifest, [page_index])
+            return manifest
 
     def create_text_object(
         self, chapter_id: str, page_index: int, shape: str, region: dict
