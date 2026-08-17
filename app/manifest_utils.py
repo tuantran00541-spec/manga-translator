@@ -1,7 +1,9 @@
+import copy
 import json
 import os
 import uuid
 from contextlib import contextmanager
+from pathlib import Path
 from fastapi import HTTPException
 from filelock import FileLock, Timeout
 
@@ -71,3 +73,45 @@ def invalidate_page_render(manifest: dict, page_index: int) -> None:
     pages = manifest.get("pages", [])
     if 0 <= page_index < len(pages):
         pages[page_index]["rendered"] = False
+
+
+def _get_manual_mask_state(processed_dir: Path, img_path: Path) -> tuple[bool, int, int]:
+    if not img_path.name:
+        return (False, 0, 0)
+    mask_path = processed_dir / f"manual_mask_{img_path.name}"
+    try:
+        st = mask_path.stat()
+        return (True, st.st_mtime_ns, st.st_size)
+    except OSError:
+        return (False, 0, 0)
+
+
+def capture_processing_state(manifest: dict, page_index: int, processed_dir: Path) -> dict | None:
+    """Capture snapshot of canonical inputs for page detection and inpainting.
+
+    Derived outputs (such as 'clean') are deliberately excluded to prevent
+    self-referential validation.
+    """
+    pages = manifest.get("pages", [])
+    if page_index < 0 or page_index >= len(pages):
+        return None
+    page = pages[page_index]
+    img_path = Path(page.get("original", ""))
+    return {
+        "original": page.get("original"),
+        "skipped": page.get("skipped", False),
+        "excluded_regions": copy.deepcopy(page.get("excluded_regions", [])),
+        "boxes": copy.deepcopy(page.get("boxes", [])),
+        "manual_mask": page.get("manual_mask"),
+        "disk_mask_state": _get_manual_mask_state(processed_dir, img_path),
+    }
+
+
+def is_processing_state_current(
+    manifest: dict, page_index: int, snapshot: dict | None, processed_dir: Path
+) -> bool:
+    """Check whether a page's canonical processing inputs still match the snapshot."""
+    if snapshot is None:
+        return False
+    current = capture_processing_state(manifest, page_index, processed_dir)
+    return current == snapshot

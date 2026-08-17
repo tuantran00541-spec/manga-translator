@@ -444,11 +444,18 @@ def ocr_box(req: OcrBoxRequest) -> dict:
             and 0 <= req.box_index < len(manifest["pages"][req.page_index].get("boxes", []))
         ):
             target = manifest["pages"][req.page_index]["boxes"][req.box_index]
-            target["ocr_text"] = text
-            target["ocr_lang"] = req.lang
-            invalidate_page_render(manifest, req.page_index)
-            save_manifest_raw(req.chapter_id, manifest)
-            pipeline._sync_output_dir(req.chapter_id, manifest, [req.page_index])
+            if (
+                target.get("x1") == box_snapshot.get("x1")
+                and target.get("y1") == box_snapshot.get("y1")
+                and target.get("x2") == box_snapshot.get("x2")
+                and target.get("y2") == box_snapshot.get("y2")
+                and not target.get("removed", False)
+            ):
+                target["ocr_text"] = text
+                target["ocr_lang"] = req.lang
+                invalidate_page_render(manifest, req.page_index)
+                save_manifest_raw(req.chapter_id, manifest)
+                pipeline._sync_output_dir(req.chapter_id, manifest, [req.page_index])
 
     return {"text": text, "lang": req.lang}
 

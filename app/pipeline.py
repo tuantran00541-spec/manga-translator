@@ -14,7 +14,15 @@ from app.detector.bubble_detector import BubbleBox
 from app.inpaint.lama_inpainter import Inpainter
 from app.config import RAW_DIR, PROCESSED_DIR
 from app.logging_config import logger
-from app.manifest_utils import invalidate_page_render, load_manifest_raw, save_manifest_raw, get_manifest_lock, get_page_lock
+from app.manifest_utils import (
+    capture_processing_state,
+    get_manifest_lock,
+    get_page_lock,
+    invalidate_page_render,
+    is_processing_state_current,
+    load_manifest_raw,
+    save_manifest_raw,
+)
 from app.security import MAX_IMAGE_PIXELS, MAX_UPLOAD_FILE_BYTES, MAX_UPLOAD_FILES, MAX_UPLOAD_TOTAL_BYTES, validate_upload_image
 
 
@@ -263,15 +271,18 @@ class ChapterPipeline:
 
         with get_manifest_lock(chapter_id):
             manifest = load_manifest_raw(chapter_id)
-            work_items = [
-                (
-                    idx,
-                    Path(manifest["pages"][idx]["original"]),
-                    manifest["pages"][idx].get("excluded_regions", []),
-                )
-                for idx in page_indices
-                if 0 <= idx < len(manifest["pages"]) and not manifest["pages"][idx]["skipped"]
-            ]
+            work_items = []
+            for idx in page_indices:
+                if 0 <= idx < len(manifest.get("pages", [])):
+                    page = manifest["pages"][idx]
+                    if not page.get("skipped", False):
+                        state_snapshot = capture_processing_state(manifest, idx, processed_dir)
+                        work_items.append((
+                            idx,
+                            Path(page["original"]),
+                            copy.deepcopy(page.get("excluded_regions", [])),
+                            state_snapshot,
+                        ))
 
         if not work_items:
             return manifest
@@ -280,13 +291,12 @@ class ChapterPipeline:
         _ = self.inpainter
 
         max_workers = max(1, min(int(workers or 2), 8, len(work_items)))
-        results: dict[int, dict] = {}
+        results: dict[int, tuple[dict, dict | None]] = {}
         errors: list[tuple[int, Exception]] = []
 
-        def _process_one(item: tuple[int, Path, list[dict]]) -> tuple[int, dict]:
-            idx, img_path, excluded = item
-            with get_page_lock(chapter_id, idx):
-                return idx, self._process_page(img_path, processed_dir, excluded_regions=excluded)
+        def _process_one(item: tuple[int, Path, list[dict], dict | None]) -> tuple[int, dict, dict | None]:
+            idx, img_path, excluded, snapshot = item
+            return idx, self._process_page(img_path, processed_dir, excluded_regions=excluded), snapshot
 
         with ThreadPoolExecutor(max_workers=max_workers) as pool:
             futures = {
@@ -295,8 +305,8 @@ class ChapterPipeline:
             for future in as_completed(futures):
                 idx = futures[future]
                 try:
-                    page_idx, page_data = future.result()
-                    results[page_idx] = page_data
+                    page_idx, page_data, snapshot = future.result()
+                    results[page_idx] = (page_data, snapshot)
                 except Exception as exc:
                     logger.error(
                         "Chapter %s page %s operation 'process_page' failed: %s",
@@ -309,18 +319,46 @@ class ChapterPipeline:
 
         with get_manifest_lock(chapter_id):
             manifest = load_manifest_raw(chapter_id)
-            for idx, page_data in results.items():
-                if 0 <= idx < len(manifest["pages"]):
-                    existing_boxes = manifest["pages"][idx].get("boxes", [])
-                    manual_boxes = [b for b in existing_boxes if b.get("manual")]
-                    merged_boxes = page_data["boxes"] + manual_boxes
-                    manifest["pages"][idx]["clean"] = page_data["clean"]
-                    manifest["pages"][idx]["boxes"] = merged_boxes
-                    if "manual_mask" in page_data:
-                        manifest["pages"][idx]["manual_mask"] = page_data["manual_mask"]
-                    invalidate_page_render(manifest, idx)
-            save_manifest_raw(chapter_id, manifest)
-            self._sync_output_dir(chapter_id, manifest, list(results.keys()))
+            committed_indices = []
+            for idx, (page_data, snapshot) in results.items():
+                tmp_clean_posix = page_data.get("tmp_clean")
+                tmp_clean_path = Path(tmp_clean_posix) if tmp_clean_posix else None
+                try:
+                    if 0 <= idx < len(manifest.get("pages", [])) and is_processing_state_current(
+                        manifest, idx, snapshot, processed_dir
+                    ):
+                        if tmp_clean_path and tmp_clean_path.exists():
+                            orig_path = Path(manifest["pages"][idx]["original"])
+                            final_clean_path = processed_dir / f"clean_{orig_path.name}"
+                            os.replace(tmp_clean_path, final_clean_path)
+                            manifest["pages"][idx]["clean"] = final_clean_path.as_posix()
+
+                        existing_boxes = manifest["pages"][idx].get("boxes", [])
+                        manual_boxes = [b for b in existing_boxes if b.get("manual")]
+                        merged_boxes = page_data["boxes"] + manual_boxes
+                        manifest["pages"][idx]["boxes"] = merged_boxes
+
+                        if "manual_mask" in page_data:
+                            manifest["pages"][idx]["manual_mask"] = page_data["manual_mask"]
+
+                        invalidate_page_render(manifest, idx)
+                        committed_indices.append(idx)
+                    else:
+                        logger.warning(
+                            "Chapter %s page %s: page state changed during processing, discarding stale output",
+                            chapter_id,
+                            idx,
+                        )
+                finally:
+                    if tmp_clean_path and tmp_clean_path.exists():
+                        try:
+                            tmp_clean_path.unlink()
+                        except OSError:
+                            pass
+
+            if committed_indices:
+                save_manifest_raw(chapter_id, manifest)
+                self._sync_output_dir(chapter_id, manifest, committed_indices)
 
         if errors:
             failed_indices = [e[0] for e in errors]
@@ -800,7 +838,9 @@ class ChapterPipeline:
                     clean_image = self.inpainter.inpaint_mask(clean_image, manual_mask)
 
         clean_path = processed_dir / f"clean_{img_path.name}"
-        write_image(clean_path, clean_image)
+        tmp_clean_path = processed_dir / f"clean_{img_path.name}.{uuid.uuid4().hex[:12]}.tmp.png"
+        write_image(tmp_clean_path, clean_image)
+        os.replace(tmp_clean_path, clean_path)
         return clean_path.as_posix()
 
     def _process_page(self, img_path: Path, processed_dir: Path, excluded_regions: list[dict] | None = None) -> dict:
@@ -827,12 +867,12 @@ class ChapterPipeline:
                     clean_image = self.inpainter.inpaint_mask(clean_image, manual_mask)
                     manual_mask_posix = manual_mask_path.as_posix()
 
-        clean_path = processed_dir / f"clean_{img_path.name}"
-        write_image(clean_path, clean_image)
+        tmp_clean_path = processed_dir / f"clean_{img_path.name}.{uuid.uuid4().hex[:12]}.tmp.png"
+        write_image(tmp_clean_path, clean_image)
 
         logger.debug(f"Processed {img_path.name}: {len(boxes)} boxes detected (after excluded filtering)")
         res = {
-            "clean": clean_path.as_posix(),
+            "tmp_clean": tmp_clean_path.as_posix(),
             "boxes": [
                 {
                     "x1": b.x1, "y1": b.y1, "x2": b.x2, "y2": b.y2,
