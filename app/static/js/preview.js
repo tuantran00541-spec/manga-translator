@@ -75,9 +75,6 @@ function renderPreview() {
   prevBtn.addEventListener("click", () => {
     if (previewActivePageIndex <= 0) return;
     previewActivePageIndex -= 1;
-    if (typeof setWorkflowCheckpoint === "function") {
-      setWorkflowCheckpoint("preview", previewActivePageIndex);
-    }
     renderPreview();
   });
 
@@ -98,28 +95,19 @@ function renderPreview() {
   jumpInput.setAttribute("aria-label", "Nhảy tới số trang");
 
   const doJump = () => {
-    const rawVal = jumpInput.value.trim();
-    if (!rawVal) {
+    const targetIndex = parsePageNumber(jumpInput.value, pages.length);
+    if (targetIndex === null) {
       jumpInput.value = String(previewActivePageIndex + 1);
       return;
     }
-    const val = parseInt(rawVal, 10);
-    if (!Number.isFinite(val) || val < 1 || val > pages.length) {
-      jumpInput.value = String(previewActivePageIndex + 1);
-      return;
-    }
-    if (val - 1 !== previewActivePageIndex) {
-      previewActivePageIndex = val - 1;
-      if (typeof setWorkflowCheckpoint === "function") {
-        setWorkflowCheckpoint("preview", previewActivePageIndex);
-      }
+    if (targetIndex !== previewActivePageIndex) {
+      previewActivePageIndex = targetIndex;
       renderPreview();
     }
   };
 
   jumpInput.addEventListener("change", doJump);
   jumpInput.addEventListener("keydown", (e) => {
-    e.stopPropagation();
     if (e.key === "Enter") {
       e.preventDefault();
       doJump();
@@ -153,9 +141,6 @@ function renderPreview() {
   nextBtn.addEventListener("click", () => {
     if (previewActivePageIndex >= pages.length - 1) return;
     previewActivePageIndex += 1;
-    if (typeof setWorkflowCheckpoint === "function") {
-      setWorkflowCheckpoint("preview", previewActivePageIndex);
-    }
     renderPreview();
   });
 
@@ -204,9 +189,6 @@ function renderPreview() {
 
     thumb.addEventListener("click", () => {
       previewActivePageIndex = index;
-      if (typeof setWorkflowCheckpoint === "function") {
-        setWorkflowCheckpoint("preview", previewActivePageIndex);
-      }
       renderPreview();
     });
     strip.appendChild(thumb);

@@ -4,6 +4,9 @@
   let geomTimer = null;
   let geomController = null;
   let geomBatchKeys = [];
+  let geomSaving = 0;
+  let geomHasError = false;
+  let geomGeneration = 0;
   const geomDirty = new Map();
 
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
@@ -30,12 +33,28 @@
     geomTimer = null;
     geomDirty.clear();
     geomBatchKeys = [];
+    geomHasError = false;
     if (geomController) {
       geomController.abort();
       geomController = null;
     }
+    if (typeof window.refreshSaveStatus === "function") {
+      window.refreshSaveStatus();
+    }
   }
   window.clearPendingGeom = clearPendingGeom;
+
+  window.hasPendingGeom = function hasPendingGeom() {
+    return geomDirty.size > 0;
+  };
+
+  window.isGeomSaving = function isGeomSaving() {
+    return geomSaving > 0;
+  };
+
+  window.hasGeomError = function hasGeomError() {
+    return geomHasError;
+  };
 
   async function flushGeomPersist(pageIndex) {
     clearTimeout(geomTimer);
@@ -48,13 +67,15 @@
     });
     if (keys.length === 0) return;
 
-    if (typeof window.updateSaveStatus === "function") {
-      window.updateSaveStatus("saving");
-    }
-
+    const currentGen = ++geomGeneration;
     const controller = new AbortController();
     geomController = controller;
     geomBatchKeys = keys;
+    geomSaving += keys.length;
+    if (typeof window.refreshSaveStatus === "function") {
+      window.refreshSaveStatus();
+    }
+
     const failures = [];
     try {
       await Promise.all(keys.map(async (k) => {
@@ -85,28 +106,28 @@
             : (s, d) => (d && d.detail) || `lỗi ${s}`;
           const data = await parse(resp);
           if (!resp.ok) throw new Error(getErr(resp.status, data));
-          geomDirty.delete(k);
+          if (currentGen === geomGeneration) {
+            geomDirty.delete(k);
+          }
         } catch (err) {
           if (err.name === "AbortError") return;
+          geomHasError = true;
           failures.push(err);
         }
       }));
     } finally {
+      geomSaving -= keys.length;
       if (geomController === controller) geomController = null;
       if (geomBatchKeys === keys) geomBatchKeys = [];
+      if (typeof window.refreshSaveStatus === "function") {
+        window.refreshSaveStatus();
+      }
     }
     if (failures.length) {
-      if (typeof window.updateSaveStatus === "function") {
-        window.updateSaveStatus("error");
-      }
       if (typeof window.showToast === "function") {
         window.showToast("Không lưu được vị trí vùng: " + failures[0].message, "error");
       }
       throw new Error("Không lưu được vị trí vùng");
-    } else {
-      if (typeof window.updateSaveStatus === "function") {
-        window.updateSaveStatus("saved");
-      }
     }
   }
   window.flushGeomPersist = flushGeomPersist;
@@ -123,8 +144,9 @@
       x1: obj.region.x1, y1: obj.region.y1,
       x2: obj.region.x2, y2: obj.region.y2,
     });
-    if (typeof window.updateSaveStatus === "function") {
-      window.updateSaveStatus("dirty");
+    geomHasError = false;
+    if (typeof window.refreshSaveStatus === "function") {
+      window.refreshSaveStatus();
     }
     clearTimeout(geomTimer);
     geomTimer = setTimeout(() => { flushGeomPersist().catch(() => {}); }, 300);
@@ -134,6 +156,9 @@
   function removePendingGeom(pageIndex, id) {
     geomDirty.delete(`${pageIndex}:${id}`);
     geomBatchKeys = geomBatchKeys.filter((k) => k !== `${pageIndex}:${id}`);
+    if (typeof window.refreshSaveStatus === "function") {
+      window.refreshSaveStatus();
+    }
   }
   window.removePendingGeom = removePendingGeom;
 
@@ -334,6 +359,19 @@
   document.addEventListener("keydown", (e) => {
     if (isEditingText()) return;
 
+    if (e.key === "PageUp" || e.key === "PageDown") {
+      if (window.editorState && window.currentManifest && window.currentManifest.pages) {
+        const total = window.currentManifest.pages.length;
+        const current = window.editorState.activePageIndex;
+        const target = e.key === "PageUp" ? current - 1 : current + 1;
+        if (target >= 0 && target < total && typeof window.switchEditorPage === "function") {
+          e.preventDefault();
+          window.switchEditorPage(target);
+        }
+      }
+      return;
+    }
+
     if (e.key === "Escape") {
       if (typeof window.clearSelectedTextObject === "function") {
         window.clearSelectedTextObject();
@@ -343,12 +381,12 @@
 
     const overlay = document.querySelector(".text-object-overlay.selected");
     if (!overlay) {
-      if ((e.key === "ArrowLeft" || e.key === "PageUp") && window.editorState && window.currentManifest) {
+      if (e.key === "ArrowLeft" && window.editorState && window.currentManifest) {
         if (window.editorState.activePageIndex > 0 && typeof window.switchEditorPage === "function") {
           e.preventDefault();
           window.switchEditorPage(window.editorState.activePageIndex - 1);
         }
-      } else if ((e.key === "ArrowRight" || e.key === "PageDown") && window.editorState && window.currentManifest) {
+      } else if (e.key === "ArrowRight" && window.editorState && window.currentManifest) {
         const total = window.currentManifest.pages ? window.currentManifest.pages.length : 0;
         if (window.editorState.activePageIndex < total - 1 && typeof window.switchEditorPage === "function") {
           e.preventDefault();

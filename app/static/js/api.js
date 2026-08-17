@@ -36,9 +36,30 @@ function getErrorMessage(status, data) {
 }
 window.getErrorMessage = getErrorMessage;
 
+function parsePageNumber(value, totalPages) {
+  if (typeof value !== "string" && typeof value !== "number") return null;
+  const str = String(value).trim();
+  if (!/^[1-9]\d*$/.test(str)) return null;
+  const num = Number(str);
+  if (!Number.isSafeInteger(num) || num < 1 || num > totalPages) return null;
+  return num - 1;
+}
+window.parsePageNumber = parsePageNumber;
+
+let _lastCheckpointStage = null;
+let _lastCheckpointPage = null;
+let _checkpointSeq = 0;
+
 async function setWorkflowCheckpoint(stage, pageIndex) {
   if (!currentChapterId) return;
   const canonicalIndex = Math.max(0, parseInt(pageIndex, 10) || 0);
+  if (_lastCheckpointStage === stage && _lastCheckpointPage === canonicalIndex) {
+    return;
+  }
+  _lastCheckpointStage = stage;
+  _lastCheckpointPage = canonicalIndex;
+  const seq = ++_checkpointSeq;
+
   try {
     const resp = await fetch("/api/workflow_checkpoint", {
       method: "POST",
@@ -49,7 +70,7 @@ async function setWorkflowCheckpoint(stage, pageIndex) {
         page_index: canonicalIndex,
       }),
     });
-    if (resp.ok && currentManifest) {
+    if (resp.ok && seq === _checkpointSeq && currentManifest) {
       currentManifest.workflow = { stage, page_index: canonicalIndex };
     }
   } catch (err) {

@@ -118,25 +118,19 @@
       jumpInput.setAttribute("aria-label", "Nhảy tới số trang");
 
       const doJump = () => {
-        const rawVal = jumpInput.value.trim();
-        if (!rawVal) {
+        const targetIndex = parsePageNumber(jumpInput.value, cards.length);
+        if (targetIndex === null) {
           jumpInput.value = String(activeReviewIndex + 1);
           return;
         }
-        const val = parseInt(rawVal, 10);
-        if (!Number.isFinite(val) || val < 1 || val > cards.length) {
-          jumpInput.value = String(activeReviewIndex + 1);
-          return;
-        }
-        if (val - 1 !== activeReviewIndex) {
-          activeReviewIndex = val - 1;
+        if (targetIndex !== activeReviewIndex) {
+          activeReviewIndex = targetIndex;
           renderActive();
         }
       };
 
       jumpInput.addEventListener("change", doJump);
       jumpInput.addEventListener("keydown", (e) => {
-        e.stopPropagation();
         if (e.key === "Enter") {
           e.preventDefault();
           doJump();

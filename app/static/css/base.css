@@ -385,11 +385,6 @@ textarea:disabled {
   color: var(--color-success);
 }
 
-.page-status-badge.clean {
-  background: var(--color-accent-soft);
-  color: var(--color-accent);
-}
-
 .editor-save-status {
   display: inline-flex;
   align-items: center;

@@ -819,6 +819,8 @@ function buildAlignmentControls(body, panel, obj, pageIndex) {
 }
 
 let _currentSaveStatus = "saved";
+let _textSaving = 0;
+let _textHasError = false;
 
 function updateSaveStatus(status) {
   _currentSaveStatus = status;
@@ -842,6 +844,26 @@ function updateSaveStatus(status) {
 }
 window.updateSaveStatus = updateSaveStatus;
 
+function refreshSaveStatus() {
+  let status = "saved";
+  const hasGeomDirty = typeof window.hasPendingGeom === "function" ? window.hasPendingGeom() : false;
+  const isGeomSaving = typeof window.isGeomSaving === "function" ? window.isGeomSaving() : false;
+  const hasGeomError = typeof window.hasGeomError === "function" ? window.hasGeomError() : false;
+
+  if (_textHasError || hasGeomError) {
+    status = "error";
+  } else if (_textSaving > 0 || isGeomSaving) {
+    status = "saving";
+  } else if (_textDirty.size > 0 || hasGeomDirty) {
+    status = "dirty";
+  } else {
+    status = "saved";
+  }
+  updateSaveStatus(status);
+  return status;
+}
+window.refreshSaveStatus = refreshSaveStatus;
+
 const _textDirty = new Map();
 let _textTimer = null;
 
@@ -859,9 +881,10 @@ function scheduleTextObjectPersist(pageIndex, id) {
   const obj = findTextObject(pageIndex, id);
   if (!obj) return;
   _textDirty.set(`${pageIndex}:${id}`, Object.assign({ pageIndex, id }, _captureTextState(obj)));
-  updateSaveStatus("dirty");
+  _textHasError = false;
+  refreshSaveStatus();
   clearTimeout(_textTimer);
-  _textTimer = setTimeout(() => { flushTextObjectPersist(); }, 800);
+  _textTimer = setTimeout(() => { flushTextObjectPersist().catch(() => {}); }, 800);
 }
 window.scheduleTextObjectPersist = scheduleTextObjectPersist;
 
@@ -873,31 +896,37 @@ async function flushTextObjectPersist(pageIndex) {
   _textDirty.forEach((v) => {
     if (pageIndex === undefined || v.pageIndex === pageIndex) items.push(v);
   });
+  if (items.length === 0) return;
   items.forEach((v) => _textDirty.delete(`${v.pageIndex}:${v.id}`));
-  updateSaveStatus("saving");
-  let hasError = false;
-  await Promise.all(items.map(async (p) => {
-    const obj = findTextObject(p.pageIndex, p.id);
-    if (!obj) return;
-    try {
-      await apiTextObject("update", {
-        chapter_id: currentChapterId,
-        page_index: p.pageIndex,
-        id: p.id,
-        ocr_text: p.ocr_text,
-        translation: p.translation,
-        style: p.style,
-      });
-    } catch (err) {
-      hasError = true;
-      _textDirty.set(`${p.pageIndex}:${p.id}`, Object.assign({ pageIndex: p.pageIndex, id: p.id }, _captureTextState(obj)));
-      showToast("Không lưu được nội dung: " + err.message, "error");
-    }
-  }));
-  if (hasError) {
-    updateSaveStatus("error");
-  } else if (_textDirty.size === 0) {
-    updateSaveStatus("saved");
+  _textSaving += items.length;
+  refreshSaveStatus();
+  const failures = [];
+  try {
+    await Promise.all(items.map(async (p) => {
+      const obj = findTextObject(p.pageIndex, p.id);
+      if (!obj) return;
+      try {
+        await apiTextObject("update", {
+          chapter_id: currentChapterId,
+          page_index: p.pageIndex,
+          id: p.id,
+          ocr_text: p.ocr_text,
+          translation: p.translation,
+          style: p.style,
+        });
+      } catch (err) {
+        failures.push(err);
+        _textHasError = true;
+        _textDirty.set(`${p.pageIndex}:${p.id}`, Object.assign({ pageIndex: p.pageIndex, id: p.id }, _captureTextState(obj)));
+      }
+    }));
+  } finally {
+    _textSaving -= items.length;
+    refreshSaveStatus();
+  }
+  if (failures.length) {
+    showToast("Không lưu được nội dung: " + failures[0].message, "error");
+    throw new Error("Không lưu được nội dung");
   }
 }
 window.flushTextObjectPersist = flushTextObjectPersist;
@@ -910,6 +939,7 @@ function cancelTextObjectPersist() {
 window.removePendingPersist = function removePendingPersist(pageIndex, id) {
   _textDirty.delete(`${pageIndex}:${id}`);
   if (typeof window.removePendingGeom === "function") window.removePendingGeom(pageIndex, id);
+  refreshSaveStatus();
 };
 
 window.flushAllPendingPersists = async function flushAllPendingPersists(pageIndex) {
@@ -921,8 +951,10 @@ window.flushAllPendingPersists = async function flushAllPendingPersists(pageInde
 window.cancelPendingPersist = function cancelPendingPersist() {
   cancelTextObjectPersist();
   _textDirty.clear();
+  _textHasError = false;
   if (typeof window.cancelGeomPersist === "function") window.cancelGeomPersist();
   if (typeof window.clearPendingGeom === "function") window.clearPendingGeom();
+  refreshSaveStatus();
 };
 
 function setupEditorDraw(wrapper, pageIndex) {
@@ -1025,17 +1057,16 @@ function buildPageWrapper(page, pageIndex, pages) {
 }
 
 async function switchEditorPage(newIndex) {
-  const pages = currentManifest.pages;
-  if (newIndex < 0 || newIndex >= pages.length) return;
-  await Promise.all([
-    typeof window.flushTextObjectPersist === "function" ? window.flushTextObjectPersist() : Promise.resolve(),
-    typeof window.flushGeomPersist === "function" ? window.flushGeomPersist() : Promise.resolve(),
-  ]);
+  const pages = currentManifest ? currentManifest.pages : null;
+  if (!pages || newIndex < 0 || newIndex >= pages.length) return;
+  try {
+    await flushAllPendingPersists();
+  } catch (err) {
+    showToast("Không thể chuyển trang vì lưu dữ liệu thất bại.", "error");
+    return;
+  }
   editorState.activePageIndex = newIndex;
   editorState.selectedTextObjectId = null;
-  if (typeof window.setWorkflowCheckpoint === "function") {
-    window.setWorkflowCheckpoint("editor", newIndex);
-  }
   renderEditor();
 }
 
@@ -1071,7 +1102,8 @@ function showRenderResult(pageIndex, outputPath) {
 function renderEditor() {
   const container = document.getElementById("page-view");
   if (!container) return;
-  if (typeof window.cancelPendingPersist === "function") window.cancelPendingPersist();
+  cancelTextObjectPersist();
+  if (typeof window.cancelGeomPersist === "function") window.cancelGeomPersist();
   if (!currentManifest || !currentManifest.pages || currentManifest.pages.length === 0) return;
 
   if (currentChapterId && editorState.lastChapterId !== currentChapterId) {
@@ -1141,14 +1173,15 @@ function renderEditor() {
   renderBtn.addEventListener("click", () => renderTranslations(pageIndex));
 
   const saveStatus = document.createElement("div");
-  saveStatus.className = `editor-save-status save-status-${_currentSaveStatus}`;
-  if (_currentSaveStatus === "saved") {
+  const initialStatus = refreshSaveStatus();
+  saveStatus.className = `editor-save-status save-status-${initialStatus}`;
+  if (initialStatus === "saved") {
     saveStatus.textContent = "✓ Đã lưu";
-  } else if (_currentSaveStatus === "dirty") {
+  } else if (initialStatus === "dirty") {
     saveStatus.textContent = "● Chưa lưu";
-  } else if (_currentSaveStatus === "saving") {
+  } else if (initialStatus === "saving") {
     saveStatus.textContent = "⏳ Đang lưu...";
-  } else if (_currentSaveStatus === "error") {
+  } else if (initialStatus === "error") {
     saveStatus.textContent = "⚠️ Lưu thất bại";
   }
 
@@ -1183,24 +1216,18 @@ function renderEditor() {
   jumpInput.setAttribute("aria-label", "Nhảy tới số trang");
 
   const doJump = () => {
-    const rawVal = jumpInput.value.trim();
-    if (!rawVal) {
+    const targetIndex = parsePageNumber(jumpInput.value, pages.length);
+    if (targetIndex === null) {
       jumpInput.value = String(pageIndex + 1);
       return;
     }
-    const val = parseInt(rawVal, 10);
-    if (!Number.isFinite(val) || val < 1 || val > pages.length) {
-      jumpInput.value = String(pageIndex + 1);
-      return;
-    }
-    if (val - 1 !== pageIndex) {
-      switchEditorPage(val - 1);
+    if (targetIndex !== pageIndex) {
+      switchEditorPage(targetIndex);
     }
   };
 
   jumpInput.addEventListener("change", doJump);
   jumpInput.addEventListener("keydown", (e) => {
-    e.stopPropagation();
     if (e.key === "Enter") {
       e.preventDefault();
       doJump();
