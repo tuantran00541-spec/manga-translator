@@ -84,7 +84,65 @@ function renderPreview() {
   const position = document.createElement("div");
   position.className = "preview-page-position workspace-nav-position";
   position.setAttribute("aria-live", "polite");
-  position.textContent = `${previewActivePageIndex + 1} / ${pages.length} · ${pageLabel(pages, previewActivePageIndex)}`;
+
+  const jumpWrap = document.createElement("label");
+  jumpWrap.className = "workspace-nav-jump-wrap";
+  jumpWrap.textContent = "Trang ";
+
+  const jumpInput = document.createElement("input");
+  jumpInput.type = "number";
+  jumpInput.min = "1";
+  jumpInput.max = String(pages.length);
+  jumpInput.value = String(previewActivePageIndex + 1);
+  jumpInput.className = "workspace-nav-jump-input";
+  jumpInput.setAttribute("aria-label", "Nhảy tới số trang");
+
+  const doJump = () => {
+    const rawVal = jumpInput.value.trim();
+    if (!rawVal) {
+      jumpInput.value = String(previewActivePageIndex + 1);
+      return;
+    }
+    const val = parseInt(rawVal, 10);
+    if (!Number.isFinite(val) || val < 1 || val > pages.length) {
+      jumpInput.value = String(previewActivePageIndex + 1);
+      return;
+    }
+    if (val - 1 !== previewActivePageIndex) {
+      previewActivePageIndex = val - 1;
+      if (typeof setWorkflowCheckpoint === "function") {
+        setWorkflowCheckpoint("preview", previewActivePageIndex);
+      }
+      renderPreview();
+    }
+  };
+
+  jumpInput.addEventListener("change", doJump);
+  jumpInput.addEventListener("keydown", (e) => {
+    e.stopPropagation();
+    if (e.key === "Enter") {
+      e.preventDefault();
+      doJump();
+    }
+  });
+
+  jumpWrap.appendChild(jumpInput);
+
+  const totalText = document.createElement("span");
+  totalText.textContent = ` / ${pages.length}`;
+
+  const labelSpan = document.createElement("span");
+  labelSpan.textContent = ` · ${pageLabel(pages, previewActivePageIndex)}`;
+
+  position.append(jumpWrap, totalText, labelSpan);
+
+  const pageItem = pages[previewActivePageIndex];
+  if (pageItem && pageItem.skipped) {
+    const badge = document.createElement("span");
+    badge.className = "page-status-badge skipped";
+    badge.textContent = "Bỏ qua";
+    position.appendChild(badge);
+  }
 
   const nextBtn = document.createElement("button");
   nextBtn.type = "button";

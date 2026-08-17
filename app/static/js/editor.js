@@ -818,6 +818,30 @@ function buildAlignmentControls(body, panel, obj, pageIndex) {
   );
 }
 
+let _currentSaveStatus = "saved";
+
+function updateSaveStatus(status) {
+  _currentSaveStatus = status;
+  const statusEls = document.querySelectorAll(".editor-save-status");
+  statusEls.forEach((el) => {
+    el.className = `editor-save-status save-status-${status}`;
+    if (status === "saved") {
+      el.textContent = "✓ Đã lưu";
+      el.setAttribute("aria-label", "Tất cả thay đổi đã được lưu");
+    } else if (status === "dirty") {
+      el.textContent = "● Chưa lưu";
+      el.setAttribute("aria-label", "Có thay đổi chưa lưu");
+    } else if (status === "saving") {
+      el.textContent = "⏳ Đang lưu...";
+      el.setAttribute("aria-label", "Đang lưu thay đổi");
+    } else if (status === "error") {
+      el.textContent = "⚠️ Lưu thất bại";
+      el.setAttribute("aria-label", "Lưu thay đổi thất bại");
+    }
+  });
+}
+window.updateSaveStatus = updateSaveStatus;
+
 const _textDirty = new Map();
 let _textTimer = null;
 
@@ -835,6 +859,7 @@ function scheduleTextObjectPersist(pageIndex, id) {
   const obj = findTextObject(pageIndex, id);
   if (!obj) return;
   _textDirty.set(`${pageIndex}:${id}`, Object.assign({ pageIndex, id }, _captureTextState(obj)));
+  updateSaveStatus("dirty");
   clearTimeout(_textTimer);
   _textTimer = setTimeout(() => { flushTextObjectPersist(); }, 800);
 }
@@ -849,6 +874,8 @@ async function flushTextObjectPersist(pageIndex) {
     if (pageIndex === undefined || v.pageIndex === pageIndex) items.push(v);
   });
   items.forEach((v) => _textDirty.delete(`${v.pageIndex}:${v.id}`));
+  updateSaveStatus("saving");
+  let hasError = false;
   await Promise.all(items.map(async (p) => {
     const obj = findTextObject(p.pageIndex, p.id);
     if (!obj) return;
@@ -862,10 +889,16 @@ async function flushTextObjectPersist(pageIndex) {
         style: p.style,
       });
     } catch (err) {
+      hasError = true;
       _textDirty.set(`${p.pageIndex}:${p.id}`, Object.assign({ pageIndex: p.pageIndex, id: p.id }, _captureTextState(obj)));
       showToast("Không lưu được nội dung: " + err.message, "error");
     }
   }));
+  if (hasError) {
+    updateSaveStatus("error");
+  } else if (_textDirty.size === 0) {
+    updateSaveStatus("saved");
+  }
 }
 window.flushTextObjectPersist = flushTextObjectPersist;
 
@@ -1107,7 +1140,19 @@ function renderEditor() {
   renderBtn.textContent = "Chèn chữ vào ảnh";
   renderBtn.addEventListener("click", () => renderTranslations(pageIndex));
 
-  toolbar.append(title, tools, renderBtn);
+  const saveStatus = document.createElement("div");
+  saveStatus.className = `editor-save-status save-status-${_currentSaveStatus}`;
+  if (_currentSaveStatus === "saved") {
+    saveStatus.textContent = "✓ Đã lưu";
+  } else if (_currentSaveStatus === "dirty") {
+    saveStatus.textContent = "● Chưa lưu";
+  } else if (_currentSaveStatus === "saving") {
+    saveStatus.textContent = "⏳ Đang lưu...";
+  } else if (_currentSaveStatus === "error") {
+    saveStatus.textContent = "⚠️ Lưu thất bại";
+  }
+
+  toolbar.append(title, tools, renderBtn, saveStatus);
 
   const nav = document.createElement("nav");
   nav.className = "translation-page-nav workspace-nav-bar";
@@ -1124,8 +1169,66 @@ function renderEditor() {
   const position = document.createElement("div");
   position.className = "translation-position workspace-nav-position";
   position.setAttribute("aria-live", "polite");
+
+  const jumpWrap = document.createElement("label");
+  jumpWrap.className = "workspace-nav-jump-wrap";
+  jumpWrap.textContent = "Trang ";
+
+  const jumpInput = document.createElement("input");
+  jumpInput.type = "number";
+  jumpInput.min = "1";
+  jumpInput.max = String(pages.length);
+  jumpInput.value = String(pageIndex + 1);
+  jumpInput.className = "workspace-nav-jump-input";
+  jumpInput.setAttribute("aria-label", "Nhảy tới số trang");
+
+  const doJump = () => {
+    const rawVal = jumpInput.value.trim();
+    if (!rawVal) {
+      jumpInput.value = String(pageIndex + 1);
+      return;
+    }
+    const val = parseInt(rawVal, 10);
+    if (!Number.isFinite(val) || val < 1 || val > pages.length) {
+      jumpInput.value = String(pageIndex + 1);
+      return;
+    }
+    if (val - 1 !== pageIndex) {
+      switchEditorPage(val - 1);
+    }
+  };
+
+  jumpInput.addEventListener("change", doJump);
+  jumpInput.addEventListener("keydown", (e) => {
+    e.stopPropagation();
+    if (e.key === "Enter") {
+      e.preventDefault();
+      doJump();
+    }
+  });
+
+  jumpWrap.appendChild(jumpInput);
+
+  const totalText = document.createElement("span");
+  totalText.textContent = ` / ${pages.length}`;
+
+  const labelSpan = document.createElement("span");
   const labelText = typeof pageLabel === "function" ? pageLabel(pages, pageIndex) : `Trang ${pageIndex + 1}`;
-  position.textContent = `${pageIndex + 1} / ${pages.length} · ${labelText}`;
+  labelSpan.textContent = ` · ${labelText}`;
+
+  position.append(jumpWrap, totalText, labelSpan);
+
+  if (page.rendered) {
+    const badge = document.createElement("span");
+    badge.className = "page-status-badge rendered";
+    badge.textContent = "Đã xuất ảnh";
+    position.appendChild(badge);
+  } else if (page.skipped) {
+    const badge = document.createElement("span");
+    badge.className = "page-status-badge skipped";
+    badge.textContent = "Bỏ qua";
+    position.appendChild(badge);
+  }
 
   const next = document.createElement("button");
   next.type = "button";

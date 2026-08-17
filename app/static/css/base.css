@@ -340,6 +340,88 @@ textarea:disabled {
   font-family: var(--font-body);
 }
 
+.workspace-nav-jump-input {
+  width: 52px;
+  height: 28px;
+  padding: 2px 4px;
+  text-align: center;
+  background: var(--color-surface-soft);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  font: 600 13px var(--font-mono);
+  outline: none;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.workspace-nav-jump-input:focus {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px var(--color-accent-soft);
+}
+
+.workspace-nav-jump-input::-webkit-inner-spin-button,
+.workspace-nav-jump-input::-webkit-outer-spin-button {
+  opacity: 0.6;
+}
+
+.page-status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
+  font-family: var(--font-body);
+  line-height: 1.2;
+}
+
+.page-status-badge.skipped {
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+}
+
+.page-status-badge.rendered {
+  background: rgba(16, 185, 129, 0.14);
+  color: var(--color-success);
+}
+
+.page-status-badge.clean {
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+}
+
+.editor-save-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  font-weight: 500;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+}
+
+.editor-save-status.save-status-saved {
+  color: var(--color-success);
+  background: rgba(16, 185, 129, 0.12);
+}
+
+.editor-save-status.save-status-dirty {
+  color: var(--color-warning);
+  background: rgba(245, 158, 11, 0.12);
+}
+
+.editor-save-status.save-status-saving {
+  color: var(--color-accent);
+  background: var(--color-accent-soft);
+}
+
+.editor-save-status.save-status-error {
+  color: var(--color-danger);
+  background: var(--color-danger-soft);
+}
+
 @media (max-width: 760px) {
   body {
     padding: 20px 16px 48px;

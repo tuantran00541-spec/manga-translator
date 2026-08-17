@@ -103,7 +103,56 @@
       if (controls) controlsSlot.appendChild(controls);
 
       const label = card.querySelector(".page-block-label");
-      position.textContent = `${activeReviewIndex + 1} / ${cards.length}${label ? " · " + label.textContent : ""}`;
+      position.innerHTML = "";
+
+      const jumpWrap = document.createElement("label");
+      jumpWrap.className = "workspace-nav-jump-wrap";
+      jumpWrap.textContent = "Trang ";
+
+      const jumpInput = document.createElement("input");
+      jumpInput.type = "number";
+      jumpInput.min = "1";
+      jumpInput.max = String(cards.length);
+      jumpInput.value = String(activeReviewIndex + 1);
+      jumpInput.className = "workspace-nav-jump-input";
+      jumpInput.setAttribute("aria-label", "Nhảy tới số trang");
+
+      const doJump = () => {
+        const rawVal = jumpInput.value.trim();
+        if (!rawVal) {
+          jumpInput.value = String(activeReviewIndex + 1);
+          return;
+        }
+        const val = parseInt(rawVal, 10);
+        if (!Number.isFinite(val) || val < 1 || val > cards.length) {
+          jumpInput.value = String(activeReviewIndex + 1);
+          return;
+        }
+        if (val - 1 !== activeReviewIndex) {
+          activeReviewIndex = val - 1;
+          renderActive();
+        }
+      };
+
+      jumpInput.addEventListener("change", doJump);
+      jumpInput.addEventListener("keydown", (e) => {
+        e.stopPropagation();
+        if (e.key === "Enter") {
+          e.preventDefault();
+          doJump();
+        }
+      });
+
+      jumpWrap.appendChild(jumpInput);
+
+      const totalText = document.createElement("span");
+      totalText.textContent = ` / ${cards.length}`;
+
+      const labelSpan = document.createElement("span");
+      labelSpan.textContent = label ? ` · ${label.textContent}` : "";
+
+      position.append(jumpWrap, totalText, labelSpan);
+
       prev.disabled = activeReviewIndex === 0;
       next.disabled = activeReviewIndex === cards.length - 1;
 

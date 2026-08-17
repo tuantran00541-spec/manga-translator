@@ -48,6 +48,10 @@
     });
     if (keys.length === 0) return;
 
+    if (typeof window.updateSaveStatus === "function") {
+      window.updateSaveStatus("saving");
+    }
+
     const controller = new AbortController();
     geomController = controller;
     geomBatchKeys = keys;
@@ -92,10 +96,17 @@
       if (geomBatchKeys === keys) geomBatchKeys = [];
     }
     if (failures.length) {
+      if (typeof window.updateSaveStatus === "function") {
+        window.updateSaveStatus("error");
+      }
       if (typeof window.showToast === "function") {
         window.showToast("Không lưu được vị trí vùng: " + failures[0].message, "error");
       }
       throw new Error("Không lưu được vị trí vùng");
+    } else {
+      if (typeof window.updateSaveStatus === "function") {
+        window.updateSaveStatus("saved");
+      }
     }
   }
   window.flushGeomPersist = flushGeomPersist;
@@ -112,6 +123,9 @@
       x1: obj.region.x1, y1: obj.region.y1,
       x2: obj.region.x2, y2: obj.region.y2,
     });
+    if (typeof window.updateSaveStatus === "function") {
+      window.updateSaveStatus("dirty");
+    }
     clearTimeout(geomTimer);
     geomTimer = setTimeout(() => { flushGeomPersist().catch(() => {}); }, 300);
   }
@@ -319,8 +333,31 @@
 
   document.addEventListener("keydown", (e) => {
     if (isEditingText()) return;
+
+    if (e.key === "Escape") {
+      if (typeof window.clearSelectedTextObject === "function") {
+        window.clearSelectedTextObject();
+      }
+      return;
+    }
+
     const overlay = document.querySelector(".text-object-overlay.selected");
-    if (!overlay) return;
+    if (!overlay) {
+      if ((e.key === "ArrowLeft" || e.key === "PageUp") && window.editorState && window.currentManifest) {
+        if (window.editorState.activePageIndex > 0 && typeof window.switchEditorPage === "function") {
+          e.preventDefault();
+          window.switchEditorPage(window.editorState.activePageIndex - 1);
+        }
+      } else if ((e.key === "ArrowRight" || e.key === "PageDown") && window.editorState && window.currentManifest) {
+        const total = window.currentManifest.pages ? window.currentManifest.pages.length : 0;
+        if (window.editorState.activePageIndex < total - 1 && typeof window.switchEditorPage === "function") {
+          e.preventDefault();
+          window.switchEditorPage(window.editorState.activePageIndex + 1);
+        }
+      }
+      return;
+    }
+
     const block = overlay.closest(".page-block");
     if (!block) return;
     const pageIndex = Number(overlay.dataset.pageIndex ?? block.dataset.pageIndex);
