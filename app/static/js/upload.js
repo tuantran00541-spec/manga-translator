@@ -77,6 +77,11 @@ async function uploadChapter(files) {
     }
     currentManifest = data;
     currentChapterId = currentManifest.chapter_id;
+    try {
+      sessionStorage.setItem("mt_active_chapter", currentChapterId);
+      window.history.replaceState(null, "", `#${currentChapterId}`);
+    } catch (_) {}
+    window.previewActivePageIndex = 0;
     renderPreview();
   } catch (err) {
     showToast("Tải file lên thất bại: " + err.message, "error");

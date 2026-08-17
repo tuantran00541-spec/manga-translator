@@ -261,7 +261,12 @@ class ChapterPipeline:
                     "slice_index": slice_index,
                 })
 
-        manifest = {"chapter_id": chapter_id, "source_url": source_url, "pages": pages}
+        manifest = {
+            "chapter_id": chapter_id,
+            "source_url": source_url,
+            "pages": pages,
+            "workflow": {"stage": "preview", "page_index": 0},
+        }
         with get_manifest_lock(chapter_id):
             save_manifest_raw(chapter_id, manifest)
         return manifest
@@ -357,6 +362,10 @@ class ChapterPipeline:
                             pass
 
             if committed_indices:
+                manifest["workflow"] = {
+                    "stage": "review",
+                    "page_index": min(committed_indices),
+                }
                 save_manifest_raw(chapter_id, manifest)
                 self._sync_output_dir(chapter_id, manifest, committed_indices)
 

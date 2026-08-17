@@ -62,6 +62,50 @@ function renderPreview() {
   toolbar.appendChild(processBtn);
   container.appendChild(toolbar);
 
+  const navigation = document.createElement("nav");
+  navigation.className = "preview-navigation workspace-nav-bar";
+  navigation.setAttribute("aria-label", "Điều hướng trang xem trước");
+
+  const prevBtn = document.createElement("button");
+  prevBtn.type = "button";
+  prevBtn.className = "preview-nav-btn workspace-nav-btn";
+  prevBtn.textContent = "← Trước";
+  prevBtn.setAttribute("aria-label", "Trang trước");
+  prevBtn.disabled = previewActivePageIndex === 0;
+  prevBtn.addEventListener("click", () => {
+    if (previewActivePageIndex <= 0) return;
+    previewActivePageIndex -= 1;
+    if (typeof setWorkflowCheckpoint === "function") {
+      setWorkflowCheckpoint("preview", previewActivePageIndex);
+    }
+    renderPreview();
+  });
+
+  const position = document.createElement("div");
+  position.className = "preview-page-position workspace-nav-position";
+  position.setAttribute("aria-live", "polite");
+  position.textContent = `${previewActivePageIndex + 1} / ${pages.length} · ${pageLabel(pages, previewActivePageIndex)}`;
+
+  const nextBtn = document.createElement("button");
+  nextBtn.type = "button";
+  nextBtn.className = "preview-nav-btn workspace-nav-btn";
+  nextBtn.textContent = "Sau →";
+  nextBtn.setAttribute("aria-label", "Trang sau");
+  nextBtn.disabled = previewActivePageIndex >= pages.length - 1;
+  nextBtn.addEventListener("click", () => {
+    if (previewActivePageIndex >= pages.length - 1) return;
+    previewActivePageIndex += 1;
+    if (typeof setWorkflowCheckpoint === "function") {
+      setWorkflowCheckpoint("preview", previewActivePageIndex);
+    }
+    renderPreview();
+  });
+
+  navigation.appendChild(prevBtn);
+  navigation.appendChild(position);
+  navigation.appendChild(nextBtn);
+  container.appendChild(navigation);
+
   const workspace = document.createElement("div");
   workspace.className = "preview-main";
 
@@ -74,37 +118,9 @@ function renderPreview() {
   const page = pages[previewActivePageIndex];
   renderPreviewPage(card, page, previewActivePageIndex, pages);
 
-  const navigation = document.createElement("nav");
-  navigation.className = "preview-navigation";
-
-  const prevBtn = document.createElement("button");
-  prevBtn.className = "preview-nav-btn";
-  prevBtn.textContent = "← Trước";
-  prevBtn.disabled = previewActivePageIndex === 0;
-  prevBtn.addEventListener("click", () => {
-    if (previewActivePageIndex <= 0) return;
-    previewActivePageIndex -= 1;
-    renderPreview();
-  });
-
-  const position = document.createElement("div");
-  position.className = "preview-page-position";
-  position.textContent = `${previewActivePageIndex + 1} / ${pages.length}`;
-
-  const nextBtn = document.createElement("button");
-  nextBtn.className = "preview-nav-btn";
-  nextBtn.textContent = "Sau →";
-  nextBtn.disabled = previewActivePageIndex >= pages.length - 1;
-  nextBtn.addEventListener("click", () => {
-    if (previewActivePageIndex >= pages.length - 1) return;
-    previewActivePageIndex += 1;
-    renderPreview();
-  });
-
-  navigation.appendChild(prevBtn);
-  navigation.appendChild(position);
-  navigation.appendChild(nextBtn);
-  container.appendChild(navigation);
+  if (typeof setWorkflowCheckpoint === "function") {
+    setWorkflowCheckpoint("preview", previewActivePageIndex);
+  }
 
   const strip = document.createElement("div");
   strip.className = "preview-thumbnail-strip";
@@ -130,6 +146,9 @@ function renderPreview() {
 
     thumb.addEventListener("click", () => {
       previewActivePageIndex = index;
+      if (typeof setWorkflowCheckpoint === "function") {
+        setWorkflowCheckpoint("preview", previewActivePageIndex);
+      }
       renderPreview();
     });
     strip.appendChild(thumb);

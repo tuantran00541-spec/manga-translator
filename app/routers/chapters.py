@@ -12,6 +12,7 @@ from app.schemas import (
     ProcessPagesRequest,
     SaveExcludedRegionsRequest,
     SkipPagesRequest,
+    WorkflowCheckpointRequest,
 )
 from app.security import (
     MAX_UPLOAD_FILES,
@@ -46,18 +47,35 @@ def list_chapters() -> list[dict]:
             mtime = manifest_path.stat().st_mtime
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
             pages = manifest.get("pages", [])
-            if not any(p.get("clean") for p in pages):
+            if not pages:
                 continue
             chapters.append({
                 "chapter_id": manifest.get("chapter_id", d.name),
                 "source_url": manifest.get("source_url", ""),
                 "total_pages": len(pages),
+                "workflow": manifest.get("workflow", {"stage": "preview", "page_index": 0}),
                 "updated_at": mtime,
             })
         except (json.JSONDecodeError, OSError, KeyError):
             continue
     chapters.sort(key=lambda x: x["updated_at"], reverse=True)
     return chapters
+
+
+@router.post("/workflow_checkpoint")
+def set_workflow_checkpoint(req: WorkflowCheckpointRequest) -> dict:
+    validate_chapter_id(req.chapter_id)
+    with get_manifest_lock(req.chapter_id):
+        manifest = load_manifest_raw(req.chapter_id)
+        pages = manifest.get("pages", [])
+        if req.page_index < 0 or (pages and req.page_index >= len(pages)):
+            raise HTTPException(400, f"Invalid page_index: {req.page_index}")
+        manifest["workflow"] = {
+            "stage": req.stage,
+            "page_index": req.page_index,
+        }
+        save_manifest_raw(req.chapter_id, manifest)
+    return {"ok": True, "workflow": manifest["workflow"]}
 
 
 @router.post("/chapter")

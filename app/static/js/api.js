@@ -36,6 +36,28 @@ function getErrorMessage(status, data) {
 }
 window.getErrorMessage = getErrorMessage;
 
+async function setWorkflowCheckpoint(stage, pageIndex) {
+  if (!currentChapterId) return;
+  const canonicalIndex = Math.max(0, parseInt(pageIndex, 10) || 0);
+  try {
+    const resp = await fetch("/api/workflow_checkpoint", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chapter_id: currentChapterId,
+        stage,
+        page_index: canonicalIndex,
+      }),
+    });
+    if (resp.ok && currentManifest) {
+      currentManifest.workflow = { stage, page_index: canonicalIndex };
+    }
+  } catch (err) {
+    console.error("Workflow checkpoint save failed:", err);
+  }
+}
+window.setWorkflowCheckpoint = setWorkflowCheckpoint;
+
 async function loadRecentChapters() {
   const container = document.getElementById("recent-chapters");
   if (!container) return;
@@ -55,12 +77,18 @@ async function loadRecentChapters() {
     container.innerHTML = '<div class="recent-title">📂 Các Chapter đang dịch dở</div>';
     const list = document.createElement("div");
     list.className = "recent-list";
+    const stageLabels = {
+      preview: "Xem trước",
+      review: "Sửa lỗi ảnh",
+      editor: "Biên tập dịch",
+    };
     chapters.forEach((ch) => {
       const card = document.createElement("div");
       card.className = "recent-card";
       const info = document.createElement("div");
       info.className = "recent-info";
-      info.innerHTML = `<strong>${ch.chapter_id}</strong><br><span class="recent-url">${ch.source_url || "(không có URL)"}</span><br><span class="recent-meta">${ch.total_pages} trang</span>`;
+      const stageText = stageLabels[ch.workflow?.stage] || (ch.workflow?.stage || "Đang dịch");
+      info.innerHTML = `<strong>${ch.chapter_id}</strong><br><span class="recent-url">${ch.source_url || "(không có URL)"}</span><br><span class="recent-meta">${ch.total_pages} trang &middot; <span class="recent-stage-badge">${stageText}</span></span>`;
       card.appendChild(info);
       const btn = document.createElement("button");
       btn.className = "recent-resume-btn";
@@ -77,6 +105,7 @@ async function loadRecentChapters() {
 }
 
 async function resumeChapter(chapterId) {
+  if (!chapterId) return;
   currentChapterId = chapterId;
   try {
     const resp = await fetch(`/api/chapter/${chapterId}`);
@@ -85,9 +114,45 @@ async function resumeChapter(chapterId) {
       throw new Error(getErrorMessage(resp.status, data));
     }
     currentManifest = data;
+    currentChapterId = currentManifest.chapter_id;
+    try {
+      sessionStorage.setItem("mt_active_chapter", currentChapterId);
+      if (window.location.hash !== `#${currentChapterId}`) {
+        window.history.replaceState(null, "", `#${currentChapterId}`);
+      }
+    } catch (_) {}
+
     const recentEl = document.getElementById("recent-chapters");
     if (recentEl) recentEl.innerHTML = "";
-    renderEditor();
+
+    const pages = currentManifest.pages || [];
+    let workflow = currentManifest.workflow;
+    if (!workflow || !workflow.stage) {
+      if (pages.some((p) => p.rendered)) {
+        workflow = { stage: "editor", page_index: 0 };
+      } else if (pages.some((p) => p.clean)) {
+        workflow = { stage: "review", page_index: 0 };
+      } else {
+        workflow = { stage: "preview", page_index: 0 };
+      }
+    }
+
+    const stage = workflow.stage;
+    const rawIndex = parseInt(workflow.page_index, 10) || 0;
+    const pageIndex = Math.max(0, Math.min(rawIndex, Math.max(0, pages.length - 1)));
+
+    if (stage === "preview") {
+      window.previewActivePageIndex = pageIndex;
+      renderPreview();
+    } else if (stage === "review") {
+      window.initialReviewCanonicalPageIndex = pageIndex;
+      renderReview();
+    } else {
+      if (window.editorState) {
+        window.editorState.activePageIndex = pageIndex;
+      }
+      renderEditor();
+    }
   } catch (err) {
     showToast("Không tiếp tục được chapter: " + err.message, "error");
   }
@@ -117,6 +182,11 @@ async function loadChapter() {
     }
     currentManifest = data;
     currentChapterId = currentManifest.chapter_id;
+    try {
+      sessionStorage.setItem("mt_active_chapter", currentChapterId);
+      window.history.replaceState(null, "", `#${currentChapterId}`);
+    } catch (_) {}
+    window.previewActivePageIndex = 0;
     renderPreview();
   } catch (err) {
     showToast("Không tải được chapter: " + err.message, "error");
@@ -356,6 +426,9 @@ async function renderTranslations(pageIndex) {
       return;
     }
 
+    if (currentManifest && currentManifest.pages && currentManifest.pages[pageIndex]) {
+      currentManifest.pages[pageIndex].rendered = true;
+    }
     showRenderResult(pageIndex, data.output);
     if (data.warning) {
       showToast(data.warning, "info");

@@ -1,5 +1,4 @@
 (() => {
-
   const legacyRenderReview = window.renderReview;
   if (typeof legacyRenderReview !== "function") return;
 
@@ -30,6 +29,20 @@
     const cards = [...container.querySelectorAll(".review-card")];
     if (!cards.length) return;
 
+    const targetCanonical = window.initialReviewCanonicalPageIndex !== undefined && window.initialReviewCanonicalPageIndex !== null
+      ? window.initialReviewCanonicalPageIndex
+      : (window.currentManifest?.workflow?.stage === "review" && window.currentManifest?.workflow?.page_index !== undefined
+          ? window.currentManifest.workflow.page_index
+          : null);
+
+    if (targetCanonical !== null) {
+      const foundIdx = cards.findIndex((c) => c.dataset.pageIndex === String(targetCanonical));
+      if (foundIdx !== -1) {
+        activeReviewIndex = foundIdx;
+      }
+      window.initialReviewCanonicalPageIndex = null;
+    }
+
     activeReviewIndex = Math.max(0, Math.min(activeReviewIndex, cards.length - 1));
 
     let workspace = container.querySelector(".review-workspace-shell");
@@ -46,16 +59,26 @@
     controlsSlot.className = "review-controls-slot";
     toolbar.appendChild(controlsSlot);
 
-    const nav = document.createElement("div");
-    nav.className = "review-page-nav";
+    const nav = document.createElement("nav");
+    nav.className = "review-page-nav workspace-nav-bar";
+    nav.setAttribute("aria-label", "Điều hướng trang sửa lỗi ảnh");
+
     const prev = document.createElement("button");
-    prev.className = "review-nav-btn";
+    prev.type = "button";
+    prev.className = "review-nav-btn workspace-nav-btn";
     prev.textContent = "← Trước";
-    const position = document.createElement("span");
-    position.className = "review-position";
+    prev.setAttribute("aria-label", "Trang trước");
+
+    const position = document.createElement("div");
+    position.className = "review-position workspace-nav-position";
+    position.setAttribute("aria-live", "polite");
+
     const next = document.createElement("button");
-    next.className = "review-nav-btn";
+    next.type = "button";
+    next.className = "review-nav-btn workspace-nav-btn";
     next.textContent = "Sau →";
+    next.setAttribute("aria-label", "Trang sau");
+
     nav.append(prev, position, next);
 
     const canvasHost = document.createElement("div");
@@ -83,6 +106,11 @@
       position.textContent = `${activeReviewIndex + 1} / ${cards.length}${label ? " · " + label.textContent : ""}`;
       prev.disabled = activeReviewIndex === 0;
       next.disabled = activeReviewIndex === cards.length - 1;
+
+      const canonicalIndex = parseInt(card.dataset.pageIndex, 10) || 0;
+      if (typeof window.setWorkflowCheckpoint === "function") {
+        window.setWorkflowCheckpoint("review", canonicalIndex);
+      }
 
       const canvas = card.querySelector("canvas.brush-canvas");
       const img = card.querySelector("img");

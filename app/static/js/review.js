@@ -27,6 +27,14 @@ function renderReview() {
     container.querySelectorAll(".brush-canvas").forEach((canvas) => {
       if (typeof canvas._cleanupBrush === "function") canvas._cleanupBrush();
     });
+    const activeCard = container.querySelector(".review-canvas-host .review-card") || container.querySelector(".review-card");
+    const canonicalIndex = activeCard ? (parseInt(activeCard.dataset.pageIndex, 10) || 0) : 0;
+    if (window.editorState) {
+      window.editorState.activePageIndex = canonicalIndex;
+    }
+    if (typeof setWorkflowCheckpoint === "function") {
+      setWorkflowCheckpoint("editor", canonicalIndex);
+    }
     renderEditor();
   });
   toolbar.appendChild(nextBtn);

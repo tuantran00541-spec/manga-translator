@@ -18,4 +18,10 @@ document.addEventListener("DOMContentLoaded", () => {
   if (typeof initUpload === "function") initUpload();
   if (typeof loadRecentChapters === "function") loadRecentChapters();
   if (typeof loadFonts === "function") loadFonts();
+
+  const urlHash = (window.location.hash || "").replace(/^#/, "").trim();
+  const savedActive = urlHash || sessionStorage.getItem("mt_active_chapter");
+  if (savedActive && typeof resumeChapter === "function") {
+    resumeChapter(savedActive);
+  }
 });

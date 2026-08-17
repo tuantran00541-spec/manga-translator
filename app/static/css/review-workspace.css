@@ -68,20 +68,25 @@
 
 .review-page-nav {
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  grid-template-columns: auto 1fr auto;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
+  width: min(100%, 980px);
+  margin: 0 auto;
 }
 
 .review-nav-btn {
-  min-height: 36px;
-  padding: 7px 13px;
+  min-height: 38px;
+  padding: 8px 16px;
   border: 1px solid var(--border, var(--line));
   border-radius: var(--radius-sm, 6px);
   background: var(--surface, var(--panel));
   color: var(--text);
-  font: 600 12px var(--font-body);
+  font: 600 13px var(--font-body);
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .review-nav-btn:last-child {
@@ -98,9 +103,16 @@
 }
 
 .review-position {
-  color: var(--text-dim);
-  font: 500 12px var(--font-mono);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   text-align: center;
+  color: var(--text-dim);
+  font: 500 13px var(--font-mono);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .review-canvas-host {

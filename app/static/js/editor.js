@@ -160,6 +160,59 @@ async function deleteTextObject(pageIndex, id) {
 }
 window.deleteTextObject = deleteTextObject;
 
+const DUPLICATE_OFFSET = 24;
+
+async function duplicateTextObject(pageIndex, id) {
+  const obj = findTextObject(pageIndex, id);
+  if (!obj) throw new Error("Không tìm thấy text object");
+  await Promise.all([
+    typeof window.flushTextObjectPersist === "function" ? window.flushTextObjectPersist() : Promise.resolve(),
+    typeof window.flushGeomPersist === "function" ? window.flushGeomPersist() : Promise.resolve(),
+  ]);
+  const { w: W, h: H } = getPageImageSize(pageIndex);
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+  const bw = obj.region.x2 - obj.region.x1;
+  const bh = obj.region.y2 - obj.region.y1;
+  const x1 = clamp(obj.region.x1 + DUPLICATE_OFFSET, 0, Math.max(0, W - bw));
+  const y1 = clamp(obj.region.y1 + DUPLICATE_OFFSET, 0, Math.max(0, H - bh));
+
+  const manifest = await apiTextObject("create", {
+    chapter_id: currentChapterId,
+    page_index: pageIndex,
+    shape: obj.shape,
+    region: { x1, y1, x2: x1 + bw, y2: y1 + bh },
+  });
+  const objs = manifest.pages[pageIndex].text_objects || [];
+  const created = objs[objs.length - 1];
+  if (!created) throw new Error("Không nhân đôi được text object");
+
+  const updated = await apiTextObject("update", {
+    chapter_id: currentChapterId,
+    page_index: pageIndex,
+    id: created.id,
+    ocr_text: obj.ocr_text || "",
+    translation: obj.translation || "",
+    style: JSON.parse(JSON.stringify(obj.style || DEFAULT_TEXT_OBJECT_STYLE)),
+  });
+  editorState.selectedTextObjectId = created.id;
+  applyManifestResponse(updated, pageIndex, { id: created.id });
+}
+window.duplicateTextObject = duplicateTextObject;
+
+async function addTextObjectBox() {
+  const pageIndex = editorState.activePageIndex;
+  const { w: W, h: H } = getPageImageSize(pageIndex);
+  if (!Number.isFinite(W) || !Number.isFinite(H)) {
+    throw new Error("Chưa xác định được kích thước trang");
+  }
+  const bw = Math.max(TEXT_OBJECT_MIN_SIZE, Math.min(200, Math.round(W * 0.3)));
+  const bh = Math.max(TEXT_OBJECT_MIN_SIZE, Math.min(64, Math.round(H * 0.12)));
+  const x1 = Math.round((W - bw) / 2);
+  const y1 = Math.round((H - bh) / 2);
+  await createTextObject(pageIndex, "rectangle", { x1, y1, x2: x1 + bw, y2: y1 + bh });
+}
+window.addTextObjectBox = addTextObjectBox;
+
 async function associateTextObjectOcr(pageIndex, id) {
   const langEl = document.getElementById("lang-select");
   const lang = langEl ? langEl.value : "ja";
@@ -170,6 +223,7 @@ async function associateTextObjectOcr(pageIndex, id) {
     id,
     lang,
   });
+  if (!findTextObject(pageIndex, id)) return;
   applyManifestResponse(manifest, pageIndex, { skipOverlays: true, snapshot, id });
 }
 window.associateTextObjectOcr = associateTextObjectOcr;
@@ -223,6 +277,12 @@ function renderTextObjectOverlays(pageIndex, page) {
       overlay.style.width = (obj.region.x2 - obj.region.x1) * sx + "px";
       overlay.style.height = (obj.region.y2 - obj.region.y1) * sy + "px";
       if (editorState.selectedTextObjectId === obj.id) overlay.classList.add("selected");
+      overlay.addEventListener("dblclick", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const editor = document.querySelector(".translation-panel-host .translation-textarea");
+        if (editor) editor.focus();
+      });
       imgWrap.appendChild(overlay);
     });
   };
@@ -284,8 +344,15 @@ function renderEditorPanel(pageIndex) {
   panel.append(ocrLabel, ocrTa, trLabel, trTa);
 
   buildGeometryControls(panel, obj, pageIndex);
-  buildAlignmentControls(panel, obj, pageIndex);
-  buildStyleControls(panel, obj, pageIndex);
+
+  const textBody = buildPanelSection(panel, "Văn bản", true);
+  buildTextSection(textBody, panel, obj, pageIndex);
+
+  const appearanceBody = buildPanelSection(panel, "Kiểu dáng", false);
+  buildAppearanceSection(appearanceBody, panel, obj, pageIndex);
+
+  const backgroundBody = buildPanelSection(panel, "Nền", false);
+  buildBackgroundSection(backgroundBody, panel, obj, pageIndex);
 
   const actions = document.createElement("div");
   actions.className = "text-object-actions";
@@ -300,22 +367,77 @@ function renderEditorPanel(pageIndex) {
     });
   });
 
+  const dupBtn = document.createElement("button");
+  dupBtn.type = "button";
+  dupBtn.className = "text-object-action-btn";
+  dupBtn.textContent = "Nhân đôi";
+  dupBtn.title = "Tạo bản sao vùng chữ này";
+  dupBtn.addEventListener("click", () => {
+    duplicateTextObject(pageIndex, obj.id).catch((err) => {
+      showToast("Nhân đôi text object thất bại: " + err.message, "error");
+    });
+  });
+
   const delBtn = document.createElement("button");
   delBtn.type = "button";
   delBtn.className = "text-object-action-btn danger";
-  delBtn.textContent = "Xóa text object";
+  delBtn.textContent = "Xóa";
+  delBtn.title = "Xóa text object";
   delBtn.addEventListener("click", () => {
+    if (delBtn.dataset.armed !== "1") {
+      delBtn.dataset.armed = "1";
+      delBtn.classList.add("confirming");
+      delBtn.textContent = "Chắc chắn xóa?";
+      return;
+    }
     deleteTextObject(pageIndex, obj.id).catch((err) => {
       showToast("Xóa text object thất bại: " + err.message, "error");
     });
   });
 
-  actions.append(ocrBtn, delBtn);
+  actions.append(ocrBtn, dupBtn, delBtn);
   panel.appendChild(actions);
+
+  syncStyleDataset(panel, obj.style);
   panelHost.appendChild(panel);
 }
 
-function buildStyleControls(panel, obj, pageIndex) {
+function buildPanelSection(panel, title, open) {
+  const section = document.createElement("div");
+  section.className = "text-editor-section" + (open ? " open" : "");
+
+  const header = document.createElement("button");
+  header.type = "button";
+  header.className = "text-editor-section-header";
+  header.setAttribute("aria-expanded", open ? "true" : "false");
+  header.innerHTML = `<span>${title}</span><span class="section-caret" aria-hidden="true">▸</span>`;
+  header.addEventListener("click", () => {
+    const isOpen = section.classList.toggle("open");
+    header.setAttribute("aria-expanded", isOpen ? "true" : "false");
+  });
+
+  const body = document.createElement("div");
+  body.className = "text-editor-section-body";
+
+  section.append(header, body);
+  panel.appendChild(section);
+  return body;
+}
+
+function syncStyleDataset(panel, style) {
+  panel.dataset.font = style.font || "default";
+  panel.dataset.fontSize = style.fontSize || "auto";
+  panel.dataset.bold = String(style.bold === true);
+  panel.dataset.color = style.color || "auto";
+  panel.dataset.strokeWidth = style.strokeWidth || "auto";
+  panel.dataset.strokeColor = style.strokeColor || "auto";
+  panel.dataset.bgColor = style.bgColor || "transparent";
+  panel.dataset.cornerRadius = style.cornerRadius || "0";
+  panel.dataset.horizontalAlign = style.horizontalAlign || "center";
+  panel.dataset.verticalAlign = style.verticalAlign || "middle";
+}
+
+function buildTextSection(body, panel, obj, pageIndex) {
   const style = obj.style || (obj.style = Object.assign({}, DEFAULT_TEXT_OBJECT_STYLE));
   const schedule = () => scheduleTextObjectPersist(pageIndex, obj.id);
 
@@ -325,10 +447,11 @@ function buildStyleControls(panel, obj, pageIndex) {
   const fontSelect = document.createElement("select");
   fontSelect.className = "font-family-select";
   fontSelect.title = "Chọn kiểu chữ";
-  if (availableFonts.length === 0) {
+  const fonts = availableFonts || [];
+  if (fonts.length === 0) {
     fontSelect.innerHTML = '<option value="default">Mặc định (Comic)</option>';
   } else {
-    availableFonts.forEach((f) => {
+    fonts.forEach((f) => {
       const opt = document.createElement("option");
       opt.value = f.id;
       opt.textContent = f.name;
@@ -411,84 +534,14 @@ function buildStyleControls(panel, obj, pageIndex) {
   });
   sizeGroup.append(sizeLabel, autoBtn, sizeSlider, sizeValSpan);
   fontToolbar.appendChild(sizeGroup);
-  panel.appendChild(fontToolbar);
 
-  const strokeToolbar = document.createElement("div");
-  strokeToolbar.className = "stroke-toolbar";
-  const strokeLabel = document.createElement("span");
-  strokeLabel.className = "style-group-label";
-  strokeLabel.textContent = "Viền chữ:";
-  const strokeSlider = document.createElement("input");
-  strokeSlider.type = "range";
-  strokeSlider.className = "stroke-width-slider";
-  strokeSlider.min = "0";
-  strokeSlider.max = "8";
-  strokeSlider.value = "2";
-  strokeSlider.title = "Độ dày viền chữ";
-  const strokeValSpan = document.createElement("span");
-  strokeValSpan.className = "style-val-span";
-  const strokeIsAuto = !style.strokeWidth || style.strokeWidth === "auto";
-  if (strokeIsAuto) {
-    strokeValSpan.textContent = "Auto";
-  } else {
-    strokeSlider.value = style.strokeWidth;
-    strokeValSpan.textContent = style.strokeWidth + "px";
-  }
-  const strokeColorPicker = document.createElement("input");
-  strokeColorPicker.type = "color";
-  strokeColorPicker.className = "box-color-picker stroke-color-picker";
-  strokeColorPicker.value = (style.strokeColor && style.strokeColor !== "auto") ? style.strokeColor : "#000000";
-  strokeColorPicker.title = "Màu viền chữ";
-  strokeSlider.addEventListener("input", () => {
-    style.strokeWidth = strokeSlider.value;
-    panel.dataset.strokeWidth = strokeSlider.value;
-    strokeValSpan.textContent = strokeSlider.value + "px";
-    schedule();
-  });
-  strokeColorPicker.addEventListener("input", () => {
-    style.strokeColor = strokeColorPicker.value;
-    panel.dataset.strokeColor = strokeColorPicker.value;
-    schedule();
-  });
-  strokeToolbar.append(strokeLabel, strokeSlider, strokeValSpan, strokeColorPicker);
-  panel.appendChild(strokeToolbar);
+  body.appendChild(fontToolbar);
+  buildAlignmentControls(body, panel, obj, pageIndex);
+}
 
-  const bgToolbar = document.createElement("div");
-  bgToolbar.className = "bg-toolbar";
-  const bgLabel = document.createElement("span");
-  bgLabel.className = "style-group-label";
-  bgLabel.textContent = "Nền & Bo góc:";
-  const bgSelect = document.createElement("select");
-  bgSelect.className = "bg-color-select";
-  bgSelect.innerHTML = `
-    <option value="transparent">Trong suốt</option>
-    <option value="#ffffff">Nền Trắng</option>
-    <option value="#000000">Nền Đen</option>
-  `;
-  bgSelect.value = style.bgColor || "transparent";
-  const radiusSlider = document.createElement("input");
-  radiusSlider.type = "range";
-  radiusSlider.className = "corner-radius-slider";
-  radiusSlider.min = "0";
-  radiusSlider.max = "20";
-  radiusSlider.value = style.cornerRadius || "0";
-  radiusSlider.title = "Độ bo góc nền";
-  const radiusValSpan = document.createElement("span");
-  radiusValSpan.className = "style-val-span";
-  radiusValSpan.textContent = (style.cornerRadius || "0") + "px";
-  bgSelect.addEventListener("change", () => {
-    style.bgColor = bgSelect.value;
-    panel.dataset.bgColor = bgSelect.value;
-    schedule();
-  });
-  radiusSlider.addEventListener("input", () => {
-    style.cornerRadius = radiusSlider.value;
-    panel.dataset.cornerRadius = radiusSlider.value;
-    radiusValSpan.textContent = radiusSlider.value + "px";
-    schedule();
-  });
-  bgToolbar.append(bgLabel, bgSelect, radiusSlider, radiusValSpan);
-  panel.appendChild(bgToolbar);
+function buildAppearanceSection(body, panel, obj, pageIndex) {
+  const style = obj.style || (obj.style = Object.assign({}, DEFAULT_TEXT_OBJECT_STYLE));
+  const schedule = () => scheduleTextObjectPersist(pageIndex, obj.id);
 
   const colorToolbar = document.createElement("div");
   colorToolbar.className = "color-toolbar";
@@ -535,18 +588,118 @@ function buildStyleControls(panel, obj, pageIndex) {
     schedule();
   });
   colorToolbar.appendChild(customPicker);
-  panel.appendChild(colorToolbar);
 
-  panel.dataset.font = style.font || "default";
-  panel.dataset.fontSize = style.fontSize || "auto";
-  panel.dataset.bold = String(style.bold === true);
-  panel.dataset.color = style.color || "auto";
-  panel.dataset.strokeWidth = style.strokeWidth || "auto";
-  panel.dataset.strokeColor = style.strokeColor || "auto";
-  panel.dataset.bgColor = style.bgColor || "transparent";
-  panel.dataset.cornerRadius = style.cornerRadius || "0";
-  panel.dataset.horizontalAlign = style.horizontalAlign || "center";
-  panel.dataset.verticalAlign = style.verticalAlign || "middle";
+  const strokeToolbar = document.createElement("div");
+  strokeToolbar.className = "stroke-toolbar";
+  const strokeLabel = document.createElement("span");
+  strokeLabel.className = "style-group-label";
+  strokeLabel.textContent = "Viền chữ:";
+  const strokeSlider = document.createElement("input");
+  strokeSlider.type = "range";
+  strokeSlider.className = "stroke-width-slider";
+  strokeSlider.min = "0";
+  strokeSlider.max = "8";
+  strokeSlider.value = "2";
+  strokeSlider.title = "Độ dày viền chữ";
+  const strokeValSpan = document.createElement("span");
+  strokeValSpan.className = "style-val-span";
+  const strokeIsAuto = !style.strokeWidth || style.strokeWidth === "auto";
+  if (strokeIsAuto) {
+    strokeValSpan.textContent = "Auto";
+  } else {
+    strokeSlider.value = style.strokeWidth;
+    strokeValSpan.textContent = style.strokeWidth + "px";
+  }
+  const strokeColorPicker = document.createElement("input");
+  strokeColorPicker.type = "color";
+  strokeColorPicker.className = "box-color-picker stroke-color-picker";
+  strokeColorPicker.value = (style.strokeColor && style.strokeColor !== "auto") ? style.strokeColor : "#000000";
+  strokeColorPicker.title = "Màu viền chữ";
+  strokeSlider.addEventListener("input", () => {
+    style.strokeWidth = strokeSlider.value;
+    panel.dataset.strokeWidth = strokeSlider.value;
+    strokeValSpan.textContent = strokeSlider.value + "px";
+    schedule();
+  });
+  strokeColorPicker.addEventListener("input", () => {
+    style.strokeColor = strokeColorPicker.value;
+    panel.dataset.strokeColor = strokeColorPicker.value;
+    schedule();
+  });
+  strokeToolbar.append(strokeLabel, strokeSlider, strokeValSpan, strokeColorPicker);
+
+  body.append(colorToolbar, strokeToolbar);
+}
+
+function buildBackgroundSection(body, panel, obj, pageIndex) {
+  const style = obj.style || (obj.style = Object.assign({}, DEFAULT_TEXT_OBJECT_STYLE));
+  const schedule = () => scheduleTextObjectPersist(pageIndex, obj.id);
+
+  const bgToolbar = document.createElement("div");
+  bgToolbar.className = "bg-toolbar";
+
+  const toggleId = "bg-toggle-" + obj.id;
+  const bgToggle = document.createElement("input");
+  bgToggle.type = "checkbox";
+  bgToggle.id = toggleId;
+  bgToggle.className = "bg-toggle-checkbox";
+  bgToggle.checked = !!(style.bgColor && style.bgColor !== "transparent");
+  const toggleLabel = document.createElement("label");
+  toggleLabel.htmlFor = toggleId;
+  toggleLabel.className = "bg-toggle-label";
+  toggleLabel.textContent = "Nền";
+
+  const bgSelect = document.createElement("select");
+  bgSelect.className = "bg-color-select";
+  const bgColors = ["#ffffff", "#000000"];
+  if (style.bgColor && style.bgColor !== "transparent" && !bgColors.includes(style.bgColor)) {
+    bgColors.unshift(style.bgColor);
+  }
+  bgColors.forEach((val) => {
+    const opt = document.createElement("option");
+    opt.value = val;
+    opt.textContent = val === "#ffffff" ? "Nền Trắng" : val === "#000000" ? "Nền Đen" : val;
+    bgSelect.appendChild(opt);
+  });
+  bgSelect.value = (style.bgColor && style.bgColor !== "transparent") ? style.bgColor : "#ffffff";
+
+  const radiusSlider = document.createElement("input");
+  radiusSlider.type = "range";
+  radiusSlider.className = "corner-radius-slider";
+  radiusSlider.min = "0";
+  radiusSlider.max = "20";
+  radiusSlider.value = style.cornerRadius || "0";
+  radiusSlider.title = "Độ bo góc nền";
+  const radiusValSpan = document.createElement("span");
+  radiusValSpan.className = "style-val-span";
+  radiusValSpan.textContent = (style.cornerRadius || "0") + "px";
+
+  const updateEnabled = () => {
+    bgSelect.disabled = !bgToggle.checked;
+    radiusSlider.disabled = !bgToggle.checked;
+  };
+
+  bgToggle.addEventListener("change", () => {
+    style.bgColor = bgToggle.checked ? bgSelect.value : "transparent";
+    panel.dataset.bgColor = style.bgColor;
+    updateEnabled();
+    schedule();
+  });
+  bgSelect.addEventListener("change", () => {
+    style.bgColor = bgSelect.value;
+    panel.dataset.bgColor = bgSelect.value;
+    schedule();
+  });
+  radiusSlider.addEventListener("input", () => {
+    style.cornerRadius = radiusSlider.value;
+    panel.dataset.cornerRadius = radiusSlider.value;
+    radiusValSpan.textContent = radiusSlider.value + "px";
+    schedule();
+  });
+
+  updateEnabled();
+  bgToolbar.append(toggleLabel, bgToggle, bgSelect, radiusSlider, radiusValSpan);
+  body.appendChild(bgToolbar);
 }
 
 const TEXT_OBJECT_MIN_SIZE = 10;
@@ -629,7 +782,7 @@ function refreshGeometryControls(pageIndex, id) {
 }
 window.refreshGeometryControls = refreshGeometryControls;
 
-function buildAlignmentControls(panel, obj, pageIndex) {
+function buildAlignmentControls(body, panel, obj, pageIndex) {
   const style = obj.style || (obj.style = Object.assign({}, DEFAULT_TEXT_OBJECT_STYLE));
   const schedule = () => scheduleTextObjectPersist(pageIndex, obj.id);
 
@@ -659,7 +812,7 @@ function buildAlignmentControls(panel, obj, pageIndex) {
     return group;
   };
 
-  panel.append(
+  body.append(
     mkGroup("Căn ngang:", [["left", "Trái"], ["center", "Giữa"], ["right", "Phải"]], "horizontalAlign"),
     mkGroup("Căn dọc:", [["top", "Trên"], ["middle", "Giữa"], ["bottom", "Dưới"]], "verticalAlign"),
   );
@@ -697,7 +850,8 @@ async function flushTextObjectPersist(pageIndex) {
   });
   items.forEach((v) => _textDirty.delete(`${v.pageIndex}:${v.id}`));
   await Promise.all(items.map(async (p) => {
-    if (!findTextObject(p.pageIndex, p.id)) return;
+    const obj = findTextObject(p.pageIndex, p.id);
+    if (!obj) return;
     try {
       await apiTextObject("update", {
         chapter_id: currentChapterId,
@@ -708,6 +862,7 @@ async function flushTextObjectPersist(pageIndex) {
         style: p.style,
       });
     } catch (err) {
+      _textDirty.set(`${p.pageIndex}:${p.id}`, Object.assign({ pageIndex: p.pageIndex, id: p.id }, _captureTextState(obj)));
       showToast("Không lưu được nội dung: " + err.message, "error");
     }
   }));
@@ -845,6 +1000,9 @@ async function switchEditorPage(newIndex) {
   ]);
   editorState.activePageIndex = newIndex;
   editorState.selectedTextObjectId = null;
+  if (typeof window.setWorkflowCheckpoint === "function") {
+    window.setWorkflowCheckpoint("editor", newIndex);
+  }
   renderEditor();
 }
 
@@ -894,6 +1052,10 @@ function renderEditor() {
   const pageIndex = editorState.activePageIndex;
   const page = pages[pageIndex];
 
+  if (typeof window.setWorkflowCheckpoint === "function") {
+    window.setWorkflowCheckpoint("editor", pageIndex);
+  }
+
   if (typeof window._editorDrawCleanup === "function") {
     window._editorDrawCleanup();
     window._editorDrawCleanup = null;
@@ -927,17 +1089,53 @@ function renderEditor() {
     tools.appendChild(btn);
   });
 
+  const addBoxBtn = document.createElement("button");
+  addBoxBtn.type = "button";
+  addBoxBtn.className = "editor-tool-btn";
+  addBoxBtn.textContent = "Thêm ô chữ";
+  addBoxBtn.title = "Tạo ô chữ mới ở giữa trang";
+  addBoxBtn.addEventListener("click", () => {
+    addTextObjectBox().catch((err) => {
+      showToast("Không thêm được ô chữ: " + err.message, "error");
+    });
+  });
+  tools.appendChild(addBoxBtn);
+
   const renderBtn = document.createElement("button");
   renderBtn.type = "button";
   renderBtn.className = "render-btn editor-render-btn";
   renderBtn.textContent = "Chèn chữ vào ảnh";
   renderBtn.addEventListener("click", () => renderTranslations(pageIndex));
 
-  const position = document.createElement("span");
-  position.className = "translation-position";
-  position.textContent = `${pageIndex + 1} / ${pages.length}`;
+  toolbar.append(title, tools, renderBtn);
 
-  toolbar.append(title, tools, renderBtn, position);
+  const nav = document.createElement("nav");
+  nav.className = "translation-page-nav workspace-nav-bar";
+  nav.setAttribute("aria-label", "Điều hướng trang biên tập");
+
+  const prev = document.createElement("button");
+  prev.type = "button";
+  prev.className = "translation-nav-btn workspace-nav-btn";
+  prev.textContent = "← Trước";
+  prev.setAttribute("aria-label", "Trang trước");
+  prev.disabled = pageIndex === 0;
+  prev.addEventListener("click", () => switchEditorPage(pageIndex - 1));
+
+  const position = document.createElement("div");
+  position.className = "translation-position workspace-nav-position";
+  position.setAttribute("aria-live", "polite");
+  const labelText = typeof pageLabel === "function" ? pageLabel(pages, pageIndex) : `Trang ${pageIndex + 1}`;
+  position.textContent = `${pageIndex + 1} / ${pages.length} · ${labelText}`;
+
+  const next = document.createElement("button");
+  next.type = "button";
+  next.className = "translation-nav-btn workspace-nav-btn";
+  next.textContent = "Sau →";
+  next.setAttribute("aria-label", "Trang sau");
+  next.disabled = pageIndex === pages.length - 1;
+  next.addEventListener("click", () => switchEditorPage(pageIndex + 1));
+
+  nav.append(prev, position, next);
 
   const body = document.createElement("div");
   body.className = "translation-workspace-body";
@@ -951,21 +1149,7 @@ function renderEditor() {
 
   body.append(canvasHost, panelHost);
 
-  const nav = document.createElement("nav");
-  nav.className = "translation-page-nav";
-  const prev = document.createElement("button");
-  prev.className = "translation-nav-btn";
-  prev.textContent = "← Trước";
-  prev.disabled = pageIndex === 0;
-  prev.addEventListener("click", () => switchEditorPage(pageIndex - 1));
-  const next = document.createElement("button");
-  next.className = "translation-nav-btn";
-  next.textContent = "Sau →";
-  next.disabled = pageIndex === pages.length - 1;
-  next.addEventListener("click", () => switchEditorPage(pageIndex + 1));
-  nav.append(prev, next);
-
-  shell.append(toolbar, body, nav);
+  shell.append(toolbar, nav, body);
   container.appendChild(shell);
 
   const wrapper = buildPageWrapper(page, pageIndex, pages);

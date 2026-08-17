@@ -28,6 +28,12 @@ class OcrBoxRequest(BaseModel):
     lang: str
 
 
+class WorkflowCheckpointRequest(BaseModel):
+    chapter_id: str
+    stage: Literal["preview", "review", "editor"]
+    page_index: int
+
+
 class RenderRequest(BaseModel):
     chapter_id: str
     page_index: int
