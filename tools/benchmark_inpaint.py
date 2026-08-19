@@ -11,7 +11,6 @@ from app.config import LAMA_MODEL
 from tools.inpaint_bench.corpus_generator import generate_corpus
 from tools.inpaint_bench.runner import BenchmarkRunner, compare_benchmarks
 from tools.inpaint_bench.reporter import BenchmarkReporter
-from tools.inpaint_bench.metrics import get_model_sha256
 
 
 def parse_args():
@@ -64,6 +63,11 @@ def parse_args():
         type=str,
         default=str(LAMA_MODEL),
         help=f"Path to LaMa ONNX model (default: {LAMA_MODEL})",
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        help="Limit number of corpus cases to process (useful for smoke tests)",
     )
     parser.add_argument(
         "--output",
@@ -137,6 +141,7 @@ def main():
         warmup=args.warmup,
         golden_dir=args.golden,
         expected_model_hash=args.verify_model_hash,
+        case_limit=args.limit,
     )
 
     try:

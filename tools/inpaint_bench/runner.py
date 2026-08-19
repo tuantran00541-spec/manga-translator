@@ -73,6 +73,7 @@ class BenchmarkRunner:
         warmup: int = 3,
         golden_dir: Path | str | None = None,
         expected_model_hash: str | None = None,
+        case_limit: int | None = None,
     ):
         self.model_path = Path(model_path)
         self.corpus_dir = Path(corpus_dir) if corpus_dir else None
@@ -82,6 +83,7 @@ class BenchmarkRunner:
         self.warmup = warmup
         self.golden_dir = Path(golden_dir) if golden_dir else None
         self.expected_model_hash = expected_model_hash
+        self.case_limit = case_limit
 
     def validate_runtime(self):
         if ort is None:
@@ -126,8 +128,12 @@ class BenchmarkRunner:
                     generate_corpus(synthetic_dir)
                 corpus_cases = load_corpus(synthetic_dir)
 
+            if self.case_limit and self.case_limit > 0:
+                corpus_cases = corpus_cases[: self.case_limit]
+
         if self.mode in ("pipeline", "all") and corpus_cases:
-            session = make_session(self.model_path, intra_op_threads=active_thread_count)
+            inpainter = Inpainter()
+            inpainter.session = make_session(self.model_path, intra_op_threads=active_thread_count)
             for c_info in corpus_cases:
                 orig_img = cv2.imread(c_info["original_path"])
                 mask_img = cv2.imread(c_info["mask_path"], cv2.IMREAD_GRAYSCALE)
@@ -135,7 +141,7 @@ class BenchmarkRunner:
                     continue
                 case_id = f"pipeline_{c_info.get('case_id', 'unknown')}"
                 case_l2 = run_pipeline_benchmark_case(
-                    session,
+                    inpainter,
                     orig_img,
                     mask_img,
                     case_id=case_id,
@@ -146,8 +152,7 @@ class BenchmarkRunner:
 
         if self.mode in ("end-to-end", "all") and corpus_cases:
             inpainter = Inpainter()
-            if hasattr(inpainter, "session"):
-                inpainter.session = make_session(self.model_path, intra_op_threads=active_thread_count)
+            inpainter.session = make_session(self.model_path, intra_op_threads=active_thread_count)
 
             e2e_reps = max(1, min(self.repetitions, 10))
             for c_info in corpus_cases:
@@ -225,6 +230,8 @@ class BenchmarkRunner:
                 cmd.extend(["--corpus", str(self.corpus_dir)])
             if self.golden_dir:
                 cmd.extend(["--golden", str(self.golden_dir)])
+            if self.case_limit:
+                cmd.extend(["--limit", str(self.case_limit)])
 
             res = subprocess.run(cmd, capture_output=True, text=True)
             if res.returncode == 0:
@@ -233,7 +240,6 @@ class BenchmarkRunner:
                     sub_cases = data.get("cases", [])
                     for sc in sub_cases:
                         sc["case_id"] = f"[{t}T] {sc.get('case_id', '')}"
-                        from dataclasses import is_dataclass
                         all_cases.append(CaseResult(**{k: v for k, v in sc.items() if k in CaseResult.__annotations__}))
                 except Exception as ex:
                     all_cases.append(
@@ -297,8 +303,8 @@ def compare_benchmarks(
         d_p95 = c_p95 - b_p95
         p95_pct = (d_p95 / max(1e-4, b_p95)) * 100.0
 
-        b_calls = int(b_case.get("model_calls", 0))
-        c_calls = int(c_case.get("model_calls", 0))
+        b_calls = int(b_case.get("model_calls_per_invocation", b_case.get("model_calls", 0)))
+        c_calls = int(c_case.get("model_calls_per_invocation", c_case.get("model_calls", 0)))
         calls_delta = c_calls - b_calls
 
         psnr, ssim, mae = 0.0, 0.0, 0.0

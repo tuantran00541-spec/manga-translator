@@ -2,7 +2,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field, asdict
 from typing import Any
 
-SCHEMA_VERSION = "1.0.0"
+SCHEMA_VERSION = "1.1.0"
 
 
 @dataclass
@@ -55,6 +55,21 @@ class MemoryStats:
 
 
 @dataclass
+class InvocationTelemetry:
+    invocation_index: int = 0
+    latency_ms: float = 0.0
+    preprocess_ms: float = 0.0
+    inference_ms: float = 0.0
+    postprocess_ms: float = 0.0
+    model_calls: int = 0
+    cluster_count: int = 0
+    tile_count: int = 0
+    active_tile_count: int = 0
+    shortcut_count: int = 0
+    crop_dimensions: list[list[int]] = field(default_factory=list)
+
+
+@dataclass
 class CaseResult:
     case_id: str = ""
     level: str = ""
@@ -63,23 +78,35 @@ class CaseResult:
     mask_type: str = ""
     mask_ratio: float = 0.0
     mask_area_pixels: int = 0
-    cold_start_ms: float = 0.0
+    session_create_ms: float = 0.0
+    first_inference_ms: float = 0.0
+    cold_total_ms: float = 0.0
     warmup_count: int = 3
     repetitions: int = 30
     timing: TimingStats = field(default_factory=TimingStats)
     preprocess_timing: TimingStats = field(default_factory=TimingStats)
     inference_timing: TimingStats = field(default_factory=TimingStats)
     postprocess_timing: TimingStats = field(default_factory=TimingStats)
-    model_calls: int = 0
+    model_calls_per_invocation: int = 0
+    model_calls_total: int = 0
     cluster_count: int = 0
     tile_count: int = 0
     active_tile_count: int = 0
     shortcut_count: int = 0
     crop_dimensions: list[list[int]] = field(default_factory=list)
+    invocations: list[InvocationTelemetry] = field(default_factory=list)
     memory: MemoryStats = field(default_factory=MemoryStats)
     golden_output_path: str = ""
     status: str = "ok"
     error_message: str = ""
+
+    @property
+    def model_calls(self) -> int:
+        return self.model_calls_per_invocation
+
+    @property
+    def cold_start_ms(self) -> float:
+        return self.first_inference_ms
 
 
 @dataclass

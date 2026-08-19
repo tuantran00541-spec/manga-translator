@@ -7,45 +7,29 @@ import cv2
 from app.inpaint.lama_inpainter import Inpainter
 from app.detector.bubble_detector import BubbleBox
 from .metrics import calculate_stats, MemoryTracker
-from .schema import CaseResult
+from .schema import CaseResult, InvocationTelemetry
+from .proxy import TelemetryCollector, TelemetrySessionProxy
 
 
-class InpaintTelemetryWrapper:
-    def __init__(self, inpainter: Inpainter):
+class InpaintTelemetryContext:
+    def __init__(self, inpainter: Inpainter, collector: TelemetryCollector):
         self.inpainter = inpainter
-        self.model_calls = 0
-        self.crop_dimensions: list[list[int]] = []
-        self.tile_count = 0
-        self.active_tile_count = 0
-        self.shortcut_count = 0
-        self.cluster_count = 0
+        self.collector = collector
+        self.real_session = inpainter.session
+        self.proxy = TelemetrySessionProxy(self.real_session, collector)
 
-        self._orig_session_run = inpainter.session.run
         self._orig_smart_paint = inpainter._smart_paint_region
         self._orig_lama_fill_tiled = inpainter._lama_fill_tiled
         self._orig_cluster_boxes = inpainter._cluster_boxes
 
-    def reset(self):
-        self.model_calls = 0
-        self.crop_dimensions = []
-        self.tile_count = 0
-        self.active_tile_count = 0
-        self.shortcut_count = 0
-        self.cluster_count = 0
-
     def __enter__(self):
-        self.reset()
-        wrapper = self
-
-        def wrapped_run(*args, **kwargs):
-            wrapper.model_calls += 1
-            return wrapper._orig_session_run(*args, **kwargs)
+        ctx = self
+        self.inpainter.session = self.proxy
 
         def wrapped_smart_paint(image, local_mask, crop_box, feather=False):
             cx1, cy1, cx2, cy2 = crop_box
-            wrapper.crop_dimensions.append([cx2 - cx1, cy2 - cy1])
-            res = wrapper._orig_smart_paint(image, local_mask, crop_box, feather=feather)
-            return res
+            ctx.collector.record_crop(cx2 - cx1, cy2 - cy1)
+            return ctx._orig_smart_paint(image, local_mask, crop_box, feather=feather)
 
         def wrapped_fill_tiled(crop, local_mask):
             h, w = crop.shape[:2]
@@ -63,23 +47,21 @@ class InpaintTelemetryWrapper:
                     tile_mask = local_mask[y0:y1, x0:x1]
                     if np.any(tile_mask > 127):
                         active += 1
-            wrapper.tile_count += total
-            wrapper.active_tile_count += active
-            return wrapper._orig_lama_fill_tiled(crop, local_mask)
+            ctx.collector.record_tiles(total, active)
+            return ctx._orig_lama_fill_tiled(crop, local_mask)
 
         def wrapped_cluster(boxes):
-            clusters = wrapper._orig_cluster_boxes(boxes)
-            wrapper.cluster_count = len(clusters)
+            clusters = ctx._orig_cluster_boxes(boxes)
+            ctx.collector.record_clusters(len(clusters))
             return clusters
 
-        self.inpainter.session.run = wrapped_run
         self.inpainter._smart_paint_region = wrapped_smart_paint
         self.inpainter._lama_fill_tiled = wrapped_fill_tiled
         self.inpainter._cluster_boxes = wrapped_cluster
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        self.inpainter.session.run = self._orig_session_run
+        self.inpainter.session = self.real_session
         self.inpainter._smart_paint_region = self._orig_smart_paint
         self.inpainter._lama_fill_tiled = self._orig_lama_fill_tiled
         self.inpainter._cluster_boxes = self._orig_cluster_boxes
@@ -96,38 +78,34 @@ def run_e2e_benchmark_case(
     save_golden_path: Path | None = None,
 ) -> tuple[CaseResult, np.ndarray]:
     h, w = image.shape[:2]
-    telemetry = InpaintTelemetryWrapper(inpainter)
+    collector = TelemetryCollector()
     mem_tracker = MemoryTracker()
     mem_tracker.start()
 
-    with telemetry:
+    with InpaintTelemetryContext(inpainter, collector):
+        collector.reset()
         t0 = time.perf_counter()
         if mask is not None:
             cold_res = inpainter.inpaint_mask(image.copy(), mask)
         else:
             cold_res = inpainter.inpaint(image.copy(), boxes or [])
-        cold_ms = (time.perf_counter() - t0) * 1000.0
+        first_inference_ms = (time.perf_counter() - t0) * 1000.0
+        mem_tracker.sample()
 
-    mem_tracker.sample()
-
-    for _ in range(warmup):
-        with telemetry:
+        for _ in range(warmup):
+            collector.reset()
             if mask is not None:
                 inpainter.inpaint_mask(image.copy(), mask)
             else:
                 inpainter.inpaint(image.copy(), boxes or [])
-        mem_tracker.sample()
+            mem_tracker.sample()
 
-    times_ms = []
-    final_output = None
-    final_model_calls = 0
-    final_crops = []
-    final_tiles = 0
-    final_active_tiles = 0
-    final_clusters = 0
+        invocations: list[InvocationTelemetry] = []
+        times_ms: list[float] = []
+        final_output = None
 
-    for _ in range(repetitions):
-        with telemetry:
+        for i in range(repetitions):
+            collector.reset()
             t_start = time.perf_counter()
             if mask is not None:
                 final_output = inpainter.inpaint_mask(image.copy(), mask)
@@ -136,11 +114,17 @@ def run_e2e_benchmark_case(
             t_elapsed = (time.perf_counter() - t_start) * 1000.0
             times_ms.append(t_elapsed)
 
-            final_model_calls = telemetry.model_calls
-            final_crops = list(telemetry.crop_dimensions)
-            final_tiles = telemetry.tile_count
-            final_active_tiles = telemetry.active_tile_count
-            final_clusters = telemetry.cluster_count
+            inv = InvocationTelemetry(
+                invocation_index=i,
+                latency_ms=round(t_elapsed, 4),
+                model_calls=collector.model_calls,
+                cluster_count=collector.cluster_count,
+                tile_count=collector.tile_count,
+                active_tile_count=collector.active_tile_count,
+                shortcut_count=collector.shortcut_count,
+                crop_dimensions=list(collector.crop_dimensions),
+            )
+            invocations.append(inv)
             mem_tracker.sample()
 
     golden_str = ""
@@ -151,6 +135,8 @@ def run_e2e_benchmark_case(
         golden_str = str(save_path.resolve())
 
     mask_pixels = int(np.count_nonzero(mask > 127)) if mask is not None else 0
+    representative_inv = invocations[0] if invocations else InvocationTelemetry()
+    total_calls = sum(inv.model_calls for inv in invocations)
 
     case_result = CaseResult(
         case_id=case_id,
@@ -159,15 +145,19 @@ def run_e2e_benchmark_case(
         image_height=h,
         mask_area_pixels=mask_pixels,
         mask_ratio=round(mask_pixels / float(max(1, w * h)), 4),
-        cold_start_ms=round(cold_ms, 4),
+        first_inference_ms=round(first_inference_ms, 4),
+        cold_total_ms=round(first_inference_ms, 4),
         warmup_count=warmup,
         repetitions=repetitions,
         timing=calculate_stats(times_ms),
-        model_calls=final_model_calls,
-        cluster_count=final_clusters,
-        tile_count=final_tiles,
-        active_tile_count=final_active_tiles,
-        crop_dimensions=final_crops,
+        model_calls_per_invocation=representative_inv.model_calls,
+        model_calls_total=total_calls,
+        cluster_count=representative_inv.cluster_count,
+        tile_count=representative_inv.tile_count,
+        active_tile_count=representative_inv.active_tile_count,
+        shortcut_count=representative_inv.shortcut_count,
+        crop_dimensions=representative_inv.crop_dimensions,
+        invocations=invocations,
         memory=mem_tracker.finish(),
         golden_output_path=golden_str,
         status="ok",
