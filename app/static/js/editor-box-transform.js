@@ -357,6 +357,8 @@
   }
 
   document.addEventListener("keydown", (e) => {
+    const pageView = document.getElementById("page-view");
+    if (!pageView || !pageView.classList.contains("editor-mode")) return;
     if (isEditingText()) return;
 
     if (e.key === "PageUp" || e.key === "PageDown") {

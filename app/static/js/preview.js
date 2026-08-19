@@ -425,3 +425,28 @@ function renderPreviewPage(card, page, pageIndex, pages) {
   footer.appendChild(skipBtn);
   card.appendChild(footer);
 }
+
+function isPreviewEditingText() {
+  const el = document.activeElement;
+  if (!el) return false;
+  const tag = el.tagName ? el.tagName.toLowerCase() : "";
+  return tag === "textarea" || tag === "input" || tag === "select" || el.isContentEditable;
+}
+
+document.addEventListener("keydown", (e) => {
+  const pageView = document.getElementById("page-view");
+  if (!pageView || !pageView.classList.contains("preview-workspace")) return;
+  if (isPreviewEditingText()) return;
+  if (e.key !== "ArrowLeft" && e.key !== "ArrowRight" && e.key !== "PageUp" && e.key !== "PageDown") return;
+  const pages = currentManifest ? currentManifest.pages : null;
+  if (!pages || pages.length === 0) return;
+  if ((e.key === "ArrowLeft" || e.key === "PageUp") && previewActivePageIndex > 0) {
+    e.preventDefault();
+    previewActivePageIndex -= 1;
+    renderPreview();
+  } else if ((e.key === "ArrowRight" || e.key === "PageDown") && previewActivePageIndex < pages.length - 1) {
+    e.preventDefault();
+    previewActivePageIndex += 1;
+    renderPreview();
+  }
+});
