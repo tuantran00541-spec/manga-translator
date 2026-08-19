@@ -1,4 +1,4 @@
-# LaMa Inpaint Benchmark Harness Reference (Phase 0)
+# LaMa Inpaint Benchmark Harness Reference (Phase 0 / Phase 0.1 Correctness Fixes)
 
 ## Overview
 
@@ -16,12 +16,14 @@ The **LaMa Inpaint Benchmark Harness** is a dedicated benchmarking suite designe
 │ LEVEL 1 — MODEL ONLY                                        │
 │   Isolates raw ONNX Runtime inference latency               │
 │   ORT session.run({image: 512x512, mask: 512x512})          │
+│   Metrics: session_create_ms, first_inference_ms, p50/p95   │
 └──────────────────────────────┬──────────────────────────────┘
                                │
                                ▼
 ┌─────────────────────────────────────────────────────────────┐
-│ LEVEL 2 — LaMa PIPELINE BREAKDOWN                           │
-│   Measures individual stages on single crops:               │
+│ LEVEL 2 — PRODUCTION LaMa PIPELINE BREAKDOWN                │
+│   Invokes production Inpainter._lama_fill_single() directly │
+│   Intercepts execution stages via TelemetrySessionProxy:    │
 │   • Preprocess: scale, border replicate, normalize, tensor  │
 │   • Inference: session.run()                                │
 │   • Postprocess: unpad, clip, RGB->BGR, resize              │
@@ -32,13 +34,27 @@ The **LaMa Inpaint Benchmark Harness** is a dedicated benchmarking suite designe
 │ LEVEL 3 — END-TO-END INPAINTING                             │
 │   Invokes production Inpainter with full pipeline:          │
 │   Clustering ──▶ Crops ──▶ Shortcuts ──▶ Tiling ──▶ Blend   │
-│   Telemetry: model_calls, cluster_count, active_tile_count  │
+│   Telemetry: model_calls per invocation (independent reset),│
+│   cluster_count, active_tile_count, crop dimensions         │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 2. Dataset & Mask Matrix
+## 2. Correctness Guarantees (Phase 0.1)
+
+1. **Zero Duplication of Production Code (Level 2)**:
+   Level 2 measures the live production method `Inpainter._lama_fill_single(crop, local_mask)`. Stage timing boundaries are measured transparently via `PipelineStageTrackerProxy` without duplicating any image resizing, normalization, or conversion logic.
+
+2. **Per-Invocation Telemetry Reset (Level 3)**:
+   Telemetry (`model_calls`, `cluster_count`, `tile_count`, `active_tile_count`, `shortcut_count`, `crop_dimensions`) is reset immediately before every single measured invocation and warmup run. Values never accumulate across repetitions.
+
+3. **Safe Session Proxying**:
+   The harness uses `TelemetrySessionProxy` wrapping `InferenceSession` instances instead of monkey-patching C-extension methods directly on the ORT class.
+
+---
+
+## 3. Dataset & Mask Matrix
 
 The benchmark corpus consists of deterministic synthetic manga artwork across 12 resolutions and 8 mask archetypes:
 
@@ -60,7 +76,7 @@ The benchmark corpus consists of deterministic synthetic manga artwork across 12
 
 ---
 
-## 3. CLI Reference
+## 4. CLI Reference
 
 ### 1. Generate Deterministic Synthetic Corpus
 ```bash
@@ -87,23 +103,17 @@ python -m tools.benchmark_inpaint --run --mode end-to-end --threads 4 --repetiti
 python -m tools.benchmark_inpaint --run --mode model --threads 1,2,4,8 --output results_sweep.json
 ```
 
-### 6. Generate Golden Baseline
+### 6. Quick Smoke Test with Subset Limit
+```bash
+python -m tools.benchmark_inpaint --run --mode all --limit 2 --repetitions 1 --warmup 1
+```
+
+### 7. Generate Golden Baseline
 ```bash
 python -m tools.benchmark_inpaint --run --mode all --golden data/golden_baseline --output data/golden_baseline/baseline.json
 ```
 
-### 7. Regression Comparison
+### 8. Regression Comparison
 ```bash
 python -m tools.benchmark_inpaint --run --mode all --compare data/golden_baseline/baseline.json --report comparison_report.md
 ```
-
----
-
-## 4. Primary Metrics Tracked
-
-- **p50 (Median Latency)**: Primary performance metric representing typical execution time.
-- **p95 Latency**: Tail latency representing 95th percentile under CPU contention.
-- **Model Calls (`model_calls`)**: P0 metric counting exact number of `session.run()` executions.
-- **Preprocess / Postprocess Latency**: Time spent on image resizing, memory formatting, and color space conversions.
-- **Active Tile Count**: Number of 512x512 sub-tiles containing active mask pixels during tiled inference.
-- **Memory RSS Profile**: Resident Set Size before session creation, during peak inference, and after execution.
