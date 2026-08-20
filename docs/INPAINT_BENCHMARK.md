@@ -1,4 +1,4 @@
-# LaMa Inpaint Benchmark Harness Reference (Phase 0.2.3 Final Gate)
+# LaMa Inpaint Benchmark Harness Reference (Phase 0.2.4 Official Baseline)
 
 ## Overview
 
@@ -45,20 +45,24 @@ The **LaMa Inpaint Benchmark Harness** is a dedicated, reproducible benchmarking
 
 ---
 
-## 2. Integrity & Comparison Hardening (Phase 0.2.3)
+## 2. Fail-Closed Guarantees (Phase 0.2.4)
 
 1. **Immutable Production Integrity Gate**:
-   `tools/inpaint_bench/integrity.py` verifies byte-for-byte SHA-256 hashes against literal baseline constants for `app/inpaint/lama_inpainter.py` and `app/ort_utils.py`. Fails on any single-byte mutation or missing file.
-2. **Strict Golden Image Regression**:
-   `compare_benchmarks()` enforces explicit quality thresholds (`min_psnr`, `min_ssim`, `max_mae`). Any image quality drop or missing golden output triggers `quality_regression=True` and `regression=True`.
-3. **Exact Archetype Comparison**:
-   Detects and rejects mismatched execution archetypes and shortcut types between baseline and candidate (e.g. `white -> black`, `shortcut -> model_required`).
-4. **Missing Case Detection**:
-   Ensures 100% case alignment. Missing baseline cases or unexpected candidate cases flag `incompatible=True` and `regression=True`.
-5. **Schema Compatibility**:
-   Rejects mismatched or missing `schema_version`.
-6. **Fail-Closed Comparison**:
-   Runs containing `status == "error"`, missing telemetry, or integrity failures cannot produce valid performance deltas.
+   `tools/inpaint_bench/integrity.py` verifies byte-for-byte SHA-256 hashes against literal baseline constants for `app/inpaint/lama_inpainter.py` and `app/ort_utils.py`. Fails on any single-byte mutation, deletion, line-ending difference (CRLF/LF), or missing file.
+2. **Raw JSON Payload Validation Before Deserialization**:
+   Raw benchmark dictionaries are strictly validated before conversion to dataclasses. Missing required fields (such as `timing.p50_ms`, `telemetry_summary.model_calls`, `invocations`) never silently fall back to zero.
+3. **Fail-Closed Status Contract**:
+   Any case with `status != "ok"` (including `"skipped"`, `"error"`, or `null`) automatically triggers `incompatible=True` and `regression=True`.
+4. **Exact Case Set & Archetype Matching**:
+   Comparisons require an exact 1-to-1 match between baseline and candidate case IDs and `(expected_execution, expected_shortcut_type)`. Mismatched, missing, or unexpected cases cause immediate comparison failure.
+5. **Golden Image Absolute Quality & Degradation Thresholds**:
+   - Floor: `min_psnr = 30.0`, `min_ssim = 0.85`, `max_mae = 5.0`
+   - Degradation: `max_psnr_drop = 2.0 dB`, `max_ssim_drop = 0.05`, `max_mae_increase = 2.0`
+   - Missing, unreadable, or dimension-mismatched golden images fail closed.
+6. **CLI Comparison File & Directory Support**:
+   `--compare` accepts a single benchmark JSON file or a directory containing benchmark JSON results and golden directories.
+7. **Strict CLI Exit Code**:
+   Returns non-zero exit code on any integrity mismatch, schema discrepancy, benchmark error case, or comparison regression.
 
 ---
 

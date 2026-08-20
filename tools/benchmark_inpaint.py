@@ -113,6 +113,51 @@ def parse_args():
     return parser.parse_args()
 
 
+def load_baseline_data(compare_path_str: str) -> tuple[dict | None, Path | None, str | None]:
+    path = Path(compare_path_str)
+    if not path.exists():
+        return None, None, f"Comparison path does not exist: {path}"
+
+    if path.is_file():
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            golden_dir = path.parent / "golden" if (path.parent / "golden").is_dir() else None
+            return data, golden_dir, None
+        except Exception as ex:
+            return None, None, f"Failed to load comparison JSON from {path}: {ex}"
+
+    if path.is_dir():
+        candidates = [
+            path / "benchmark_result.json",
+            path / "results.json",
+            path / "baseline.json",
+            path / "result.json",
+        ]
+        json_file = None
+        for c in candidates:
+            if c.is_file():
+                json_file = c
+                break
+        if json_file is None:
+            all_json = list(path.glob("*.json"))
+            if all_json:
+                json_file = all_json[0]
+
+        if json_file is None:
+            return None, None, f"No benchmark JSON found in directory: {path}"
+
+        try:
+            with open(json_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            golden_dir = path / "golden" if (path / "golden").is_dir() else (path if (path / "output.png").is_file() else None)
+            return data, golden_dir, None
+        except Exception as ex:
+            return None, None, f"Failed to load comparison JSON from {json_file}: {ex}"
+
+    return None, None, f"Invalid path type for comparison: {path}"
+
+
 def main() -> int:
     args = parse_args()
 
@@ -180,12 +225,20 @@ def main() -> int:
     comparisons = None
     has_comparison_regression = False
     if args.compare:
-        compare_path = Path(args.compare)
-        if compare_path.is_file():
-            with open(compare_path, "r", encoding="utf-8") as f:
-                baseline_data = json.load(f)
-            comparisons = compare_benchmarks(baseline_data, result)
-            has_comparison_regression = any(d.regression or d.incompatible for d in comparisons)
+        baseline_data, base_golden_dir, err_compare = load_baseline_data(args.compare)
+        if err_compare:
+            if not args.quiet:
+                print(f"❌ {err_compare}", file=sys.stderr)
+            return 1
+
+        cand_golden_dir = Path(args.golden) if args.golden else None
+        comparisons = compare_benchmarks(
+            baseline_data,
+            result,
+            image_baseline_dir=base_golden_dir,
+            image_candidate_dir=cand_golden_dir,
+        )
+        has_comparison_regression = any(d.regression or d.incompatible for d in comparisons)
 
     if not args.quiet:
         print(BenchmarkReporter.generate_console_summary(result))

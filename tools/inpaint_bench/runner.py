@@ -25,6 +25,8 @@ from .schema import (
     ComparisonDelta,
     QualityThresholds,
     validate_case_execution,
+    validate_case_payload_for_comparison,
+    validate_benchmark_payload_for_comparison,
 )
 from .metrics import (
     get_environment_metadata,
@@ -307,9 +309,19 @@ def compare_benchmarks(
     b_dict = baseline_result if isinstance(baseline_result, dict) else baseline_result.to_dict()
     c_dict = candidate_result if isinstance(candidate_result, dict) else candidate_result.to_dict()
 
-    b_schema = b_dict.get("schema_version", "")
-    c_schema = c_dict.get("schema_version", "")
-    schema_mismatch = (not b_schema or not c_schema or b_schema != c_schema)
+    valid_b, err_b = validate_benchmark_payload_for_comparison(b_dict)
+    valid_c, err_c = validate_benchmark_payload_for_comparison(c_dict)
+
+    if not valid_b or not valid_c:
+        err_msg = err_b if not valid_b else err_c
+        return [
+            ComparisonDelta(
+                case_id="<global_schema_validation>",
+                incompatible=True,
+                regression=True,
+                note=f"Benchmark payload validation failed: {err_msg}",
+            )
+        ]
 
     b_cases = {c["case_id"]: c for c in b_dict.get("cases", [])}
     c_cases = {c["case_id"]: c for c in c_dict.get("cases", [])}
@@ -325,10 +337,6 @@ def compare_benchmarks(
         incompatible = False
         quality_regression = False
         note_parts: list[str] = []
-
-        if schema_mismatch:
-            incompatible = True
-            note_parts.append(f"Schema mismatch: baseline '{b_schema}' vs candidate '{c_schema}'")
 
         if cid not in c_cases:
             deltas.append(
@@ -355,22 +363,15 @@ def compare_benchmarks(
         b_case = b_cases[cid]
         c_case = c_cases[cid]
 
-        if b_case.get("status") == "error":
-            incompatible = True
-            note_parts.append(f"Baseline error: {b_case.get('error_message', 'unknown')}")
-        if c_case.get("status") == "error":
-            incompatible = True
-            note_parts.append(f"Candidate error: {c_case.get('error_message', 'unknown')}")
+        c_case_valid_b, err_cb = validate_case_payload_for_comparison(b_case)
+        c_case_valid_c, err_cc = validate_case_payload_for_comparison(c_case)
 
-        b_level = b_case.get("level", "")
-        c_level = c_case.get("level", "")
-        if b_level in ("level2_pipeline", "level3_e2e"):
-            if not b_case.get("invocations") or not c_case.get("invocations"):
-                incompatible = True
-                note_parts.append("Missing invocations telemetry")
-            if not b_case.get("telemetry_summary") or not c_case.get("telemetry_summary"):
-                incompatible = True
-                note_parts.append("Missing telemetry_summary")
+        if not c_case_valid_b:
+            incompatible = True
+            note_parts.append(f"Baseline case payload invalid: {err_cb}")
+        if not c_case_valid_c:
+            incompatible = True
+            note_parts.append(f"Candidate case payload invalid: {err_cc}")
 
         b_exec = b_case.get("expected_execution", "")
         c_exec = c_case.get("expected_execution", "")
@@ -381,12 +382,8 @@ def compare_benchmarks(
             incompatible = True
             note_parts.append(f"Archetype mismatch: ({b_exec}, {b_sc}) vs ({c_exec}, {c_sc})")
 
-        if (b_exec == "shortcut" and not b_sc) or (c_exec == "shortcut" and not c_sc):
-            incompatible = True
-            note_parts.append("Missing expected_shortcut_type in shortcut case")
-
-        b_t = b_case.get("timing", {})
-        c_t = c_case.get("timing", {})
+        b_t = b_case.get("timing") or {}
+        c_t = c_case.get("timing") or {}
 
         b_p50 = float(b_t.get("p50_ms", 0.0))
         c_p50 = float(c_t.get("p50_ms", 0.0))
@@ -401,9 +398,15 @@ def compare_benchmarks(
         b_calls = b_case.get("model_calls_per_invocation")
         c_calls = c_case.get("model_calls_per_invocation")
 
-        b_mean = float(b_case.get("telemetry_summary", {}).get("model_calls", {}).get("mean", 0.0))
-        c_mean = float(c_case.get("telemetry_summary", {}).get("model_calls", {}).get("mean", 0.0))
-        model_calls_mean_delta = round(c_mean - b_mean, 2)
+        b_mean_raw = b_case.get("telemetry_summary", {}).get("model_calls", {}).get("mean")
+        c_mean_raw = c_case.get("telemetry_summary", {}).get("model_calls", {}).get("mean")
+
+        if b_mean_raw is not None and c_mean_raw is not None:
+            b_mean = float(b_mean_raw)
+            c_mean = float(c_mean_raw)
+            model_calls_mean_delta = round(c_mean - b_mean, 2)
+        else:
+            model_calls_mean_delta = 0.0
 
         if b_calls is not None and c_calls is not None:
             calls_delta = c_calls - b_calls
@@ -411,6 +414,7 @@ def compare_benchmarks(
             calls_delta = None
 
         psnr, ssim, mae = 0.0, 0.0, 0.0
+        psnr_delta, ssim_delta, mae_delta = 0.0, 0.0, 0.0
         if image_baseline_dir or image_candidate_dir:
             if not image_baseline_dir or not image_candidate_dir:
                 incompatible = True
@@ -435,15 +439,29 @@ def compare_benchmarks(
                         note_parts.append(f"Shape mismatch: {b_img.shape} vs {c_img.shape}")
                     else:
                         psnr, ssim, mae = compute_image_metrics(b_img, c_img)
+                        psnr_delta = round(psnr - 100.0, 2)
+                        ssim_delta = round(ssim - 1.0, 4)
+                        mae_delta = round(mae - 0.0, 4)
+
                         if psnr < thresholds.min_psnr:
                             quality_regression = True
-                            note_parts.append(f"PSNR regression: {psnr} < {thresholds.min_psnr}")
+                            note_parts.append(f"PSNR below floor: {psnr} < {thresholds.min_psnr}")
                         if ssim < thresholds.min_ssim:
                             quality_regression = True
-                            note_parts.append(f"SSIM regression: {ssim} < {thresholds.min_ssim}")
+                            note_parts.append(f"SSIM below floor: {ssim} < {thresholds.min_ssim}")
                         if mae > thresholds.max_mae:
                             quality_regression = True
-                            note_parts.append(f"MAE regression: {mae} > {thresholds.max_mae}")
+                            note_parts.append(f"MAE above ceiling: {mae} > {thresholds.max_mae}")
+
+                        if (100.0 - psnr) > thresholds.max_psnr_drop:
+                            quality_regression = True
+                            note_parts.append(f"PSNR degradation: {psnr} dB (drop > {thresholds.max_psnr_drop})")
+                        if (1.0 - ssim) > thresholds.max_ssim_drop:
+                            quality_regression = True
+                            note_parts.append(f"SSIM degradation: {ssim} (drop > {thresholds.max_ssim_drop})")
+                        if mae > thresholds.max_mae_increase:
+                            quality_regression = True
+                            note_parts.append(f"MAE increase: {mae} (increase > {thresholds.max_mae_increase})")
 
         is_regression = (
             incompatible
@@ -471,6 +489,9 @@ def compare_benchmarks(
                 psnr=psnr,
                 ssim=ssim,
                 mae=mae,
+                psnr_delta=psnr_delta,
+                ssim_delta=ssim_delta,
+                mae_delta=mae_delta,
                 quality_regression=quality_regression,
                 regression=is_regression,
                 incompatible=incompatible,

@@ -3,7 +3,7 @@ from dataclasses import dataclass, field, asdict
 from typing import Any
 import numpy as np
 
-SCHEMA_VERSION = "1.2.3"
+SCHEMA_VERSION = "1.2.4"
 
 
 @dataclass
@@ -11,6 +11,9 @@ class QualityThresholds:
     min_psnr: float = 30.0
     min_ssim: float = 0.85
     max_mae: float = 5.0
+    max_psnr_drop: float = 2.0
+    max_ssim_drop: float = 0.05
+    max_mae_increase: float = 2.0
 
 
 @dataclass
@@ -213,6 +216,97 @@ def validate_case_execution(case: CaseResult) -> tuple[bool, str]:
         return True, ""
 
     return False, f"Unknown expected_execution archetype: '{exp_exec}'"
+
+
+def validate_case_payload_for_comparison(case: dict[str, Any]) -> tuple[bool, str]:
+    if not isinstance(case, dict):
+        return False, "Case payload is not a dictionary"
+
+    case_id = case.get("case_id")
+    if not case_id or not isinstance(case_id, str) or not case_id.strip():
+        return False, f"Invalid or missing case_id: {case_id!r}"
+
+    status = case.get("status")
+    if status != "ok":
+        return False, f"Case status is not 'ok': {status!r}"
+
+    level = case.get("level")
+    if not level or not isinstance(level, str):
+        return False, "Missing or invalid 'level'"
+
+    timing = case.get("timing")
+    if not isinstance(timing, dict):
+        return False, "Missing or invalid 'timing' dictionary"
+
+    for field_name in ["p50_ms", "p95_ms", "mean_ms"]:
+        val = timing.get(field_name)
+        if val is None or not isinstance(val, (int, float)) or isinstance(val, bool):
+            return False, f"Missing or non-numeric timing field: 'timing.{field_name}'"
+
+    exp_exec = case.get("expected_execution")
+    if not exp_exec or not isinstance(exp_exec, str):
+        return False, "Missing or invalid 'expected_execution'"
+
+    if exp_exec == "shortcut":
+        sc_type = case.get("expected_shortcut_type")
+        if not sc_type or sc_type not in ("white", "black", "low_std"):
+            return False, f"Missing or invalid expected_shortcut_type: {sc_type!r}"
+
+    if level in ("level2_pipeline", "level3_e2e"):
+        invs = case.get("invocations")
+        if not isinstance(invs, list) or len(invs) == 0:
+            return False, f"Level {level} requires a non-empty 'invocations' list"
+
+        for idx, inv in enumerate(invs):
+            if not isinstance(inv, dict):
+                return False, f"Invocation {idx} is not a dictionary"
+            if inv.get("latency_ms") is None or not isinstance(inv.get("latency_ms"), (int, float)) or isinstance(inv.get("latency_ms"), bool):
+                return False, f"Invocation {idx} missing numeric 'latency_ms'"
+            if inv.get("model_calls") is None or not isinstance(inv.get("model_calls"), int) or isinstance(inv.get("model_calls"), bool):
+                return False, f"Invocation {idx} missing integer 'model_calls'"
+            if level == "level3_e2e":
+                for f_name in ["cluster_count", "tile_count", "active_tile_count", "shortcut_count"]:
+                    if inv.get(f_name) is None or not isinstance(inv.get(f_name), int) or isinstance(inv.get(f_name), bool):
+                        return False, f"Invocation {idx} missing integer '{f_name}'"
+                if not isinstance(inv.get("crop_dimensions"), list):
+                    return False, f"Invocation {idx} missing 'crop_dimensions' list"
+
+        telem_sum = case.get("telemetry_summary")
+        if not isinstance(telem_sum, dict):
+            return False, f"Level {level} requires 'telemetry_summary' dictionary"
+        mc = telem_sum.get("model_calls")
+        if not isinstance(mc, dict):
+            return False, "Missing 'telemetry_summary.model_calls' dictionary"
+        if mc.get("mean") is None or not isinstance(mc.get("mean"), (int, float)) or isinstance(mc.get("mean"), bool):
+            return False, "Missing numeric 'telemetry_summary.model_calls.mean'"
+
+    return True, ""
+
+
+def validate_benchmark_payload_for_comparison(payload: dict[str, Any]) -> tuple[bool, str]:
+    if not isinstance(payload, dict):
+        return False, "Benchmark payload is not a dictionary"
+
+    schema_v = payload.get("schema_version")
+    if not schema_v or not isinstance(schema_v, str) or schema_v != SCHEMA_VERSION:
+        return False, f"Schema mismatch or missing: expected {SCHEMA_VERSION!r}, got {schema_v!r}"
+
+    cases = payload.get("cases")
+    if not isinstance(cases, list) or len(cases) == 0:
+        return False, "Benchmark payload must have a non-empty 'cases' list"
+
+    case_ids = []
+    for idx, c in enumerate(cases):
+        if not isinstance(c, dict):
+            return False, f"Case at index {idx} is not a dictionary"
+        cid = c.get("case_id")
+        if not cid or not isinstance(cid, str) or not cid.strip():
+            return False, f"Case at index {idx} has invalid case_id: {cid!r}"
+        if cid in case_ids:
+            return False, f"Duplicate case_id found in benchmark payload: {cid!r}"
+        case_ids.append(cid)
+
+    return True, ""
 
 
 @dataclass
