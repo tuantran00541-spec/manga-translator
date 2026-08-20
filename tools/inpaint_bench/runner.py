@@ -19,6 +19,7 @@ from app.config import LAMA_MODEL
 from app.inpaint.lama_inpainter import Inpainter
 from app.ort_utils import make_session
 from .schema import (
+    SCHEMA_VERSION,
     BenchmarkRunResult,
     CaseResult,
     ComparisonDelta,
@@ -135,24 +136,29 @@ class BenchmarkRunner:
         if self.mode in ("pipeline", "all") and corpus_cases:
             inpainter = Inpainter()
             inpainter.session = make_session(self.model_path, intra_op_threads=active_thread_count)
-            for c_info in corpus_cases:
+
+            l2_cases = [c for c in corpus_cases if c.get("expected_execution") == "model_required"]
+            for c_info in l2_cases:
                 orig_img = cv2.imread(c_info["original_path"])
                 mask_img = cv2.imread(c_info["mask_path"], cv2.IMREAD_GRAYSCALE)
                 if orig_img is None or mask_img is None:
                     continue
                 case_id = f"pipeline_{c_info.get('case_id', 'unknown')}"
-                exp_exec = c_info.get("expected_execution", "model_required")
-                exp_sc_type = c_info.get("expected_shortcut_type", None)
                 case_l2 = run_pipeline_benchmark_case(
                     inpainter,
                     orig_img,
                     mask_img,
                     case_id=case_id,
-                    expected_execution=exp_exec,
-                    expected_shortcut_type=exp_sc_type,
+                    expected_execution="model_required",
+                    expected_shortcut_type=None,
                     warmup=self.warmup,
                     repetitions=self.repetitions,
                 )
+                valid, err_msg = validate_case_execution(case_l2)
+                if not valid:
+                    case_l2.status = "error"
+                    case_l2.error_message = err_msg
+
                 cases.append(case_l2)
 
         if self.mode in ("end-to-end", "all") and corpus_cases:
@@ -199,6 +205,7 @@ class BenchmarkRunner:
         }
 
         return BenchmarkRunResult(
+            schema_version=SCHEMA_VERSION,
             mode=self.mode,
             threads=active_thread_count,
             warmup_count=self.warmup,
@@ -255,7 +262,7 @@ class BenchmarkRunner:
                     sub_cases = data.get("cases", [])
                     for sc in sub_cases:
                         sc["case_id"] = f"[{t}T] {sc.get('case_id', '')}"
-                        all_cases.append(CaseResult(**{k: v for k, v in sc.items() if k in CaseResult.__annotations__}))
+                        all_cases.append(CaseResult.from_dict(sc))
                 except Exception as ex:
                     all_cases.append(
                         CaseResult(
@@ -276,6 +283,7 @@ class BenchmarkRunner:
                 )
 
         return BenchmarkRunResult(
+            schema_version=SCHEMA_VERSION,
             mode=self.mode,
             threads=self.threads[0] if self.threads else 1,
             warmup_count=self.warmup,
@@ -283,7 +291,7 @@ class BenchmarkRunner:
             environment=env_meta,
             model=model_meta,
             cases=all_cases,
-            summary={"sweep_threads": self.threads, "total_cases": len(all_cases)},
+            summary={"sweep_threads": self.threads, "total_cases": len(all_cases), "error_cases": sum(1 for c in all_cases if c.status == "error")},
         )
 
 
@@ -305,6 +313,15 @@ def compare_benchmarks(
             continue
         c_case = c_cases[cid]
 
+        incompatible = False
+        note_parts = []
+
+        b_exec = b_case.get("expected_execution", "")
+        c_exec = c_case.get("expected_execution", "")
+        if b_exec and c_exec and b_exec != c_exec:
+            incompatible = True
+            note_parts.append(f"Archetype mismatch: {b_exec} vs {c_exec}")
+
         b_t = b_case.get("timing", {})
         c_t = c_case.get("timing", {})
 
@@ -318,21 +335,47 @@ def compare_benchmarks(
         d_p95 = c_p95 - b_p95
         p95_pct = (d_p95 / max(1e-4, b_p95)) * 100.0
 
-        b_calls = int(b_case.get("model_calls_per_invocation", b_case.get("model_calls", 0)) or 0)
-        c_calls = int(c_case.get("model_calls_per_invocation", c_case.get("model_calls", 0)) or 0)
-        calls_delta = c_calls - b_calls
+        b_calls = b_case.get("model_calls_per_invocation")
+        c_calls = c_case.get("model_calls_per_invocation")
+
+        b_mean = float(b_case.get("telemetry_summary", {}).get("model_calls", {}).get("mean", 0.0))
+        c_mean = float(c_case.get("telemetry_summary", {}).get("model_calls", {}).get("mean", 0.0))
+        model_calls_mean_delta = round(c_mean - b_mean, 2)
+
+        if b_calls is not None and c_calls is not None:
+            calls_delta = c_calls - b_calls
+        else:
+            calls_delta = None
 
         psnr, ssim, mae = 0.0, 0.0, 0.0
-        if image_baseline_dir and image_candidate_dir:
-            b_img_path = image_baseline_dir / cid / "output.png"
-            c_img_path = image_candidate_dir / cid / "output.png"
-            if b_img_path.is_file() and c_img_path.is_file():
-                b_img = cv2.imread(str(b_img_path))
-                c_img = cv2.imread(str(c_img_path))
-                if b_img is not None and c_img is not None:
-                    psnr, ssim, mae = compute_image_metrics(b_img, c_img)
+        if image_baseline_dir or image_candidate_dir:
+            if not image_baseline_dir or not image_candidate_dir:
+                incompatible = True
+                note_parts.append("Missing image comparison directory")
+            else:
+                b_img_path = image_baseline_dir / cid / "output.png"
+                c_img_path = image_candidate_dir / cid / "output.png"
+                if not b_img_path.is_file() or not c_img_path.is_file():
+                    incompatible = True
+                    note_parts.append(f"Golden image file missing for {cid}")
+                else:
+                    b_img = cv2.imread(str(b_img_path))
+                    c_img = cv2.imread(str(c_img_path))
+                    if b_img is None or c_img is None:
+                        incompatible = True
+                        note_parts.append("Failed to decode golden image")
+                    elif b_img.shape != c_img.shape:
+                        incompatible = True
+                        note_parts.append(f"Shape mismatch: {b_img.shape} vs {c_img.shape}")
+                    else:
+                        psnr, ssim, mae = compute_image_metrics(b_img, c_img)
 
-        is_regression = p50_pct > 5.0 or calls_delta > 0
+        is_regression = (
+            incompatible
+            or p50_pct > 5.0
+            or (calls_delta is not None and calls_delta > 0)
+            or (calls_delta is None and model_calls_mean_delta > 0.0)
+        )
 
         deltas.append(
             ComparisonDelta(
@@ -348,10 +391,13 @@ def compare_benchmarks(
                 baseline_model_calls=b_calls,
                 candidate_model_calls=c_calls,
                 model_calls_delta=calls_delta,
+                model_calls_mean_delta=model_calls_mean_delta,
                 psnr=psnr,
                 ssim=ssim,
                 mae=mae,
                 regression=is_regression,
+                incompatible=incompatible,
+                note="; ".join(note_parts),
             )
         )
 

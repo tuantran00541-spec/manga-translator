@@ -14,6 +14,7 @@ from tools.inpaint_bench.corpus_generator import generate_synthetic_image, gener
 from tools.inpaint_bench.proxy import TelemetryCollector, TelemetrySessionProxy
 from tools.inpaint_bench.runner import BenchmarkRunner
 from tools.inpaint_bench.e2e_bench import run_e2e_benchmark_case
+from tools.inpaint_bench.schema import validate_case_execution
 
 
 class TestInpaintBenchmarkRealORT(unittest.TestCase):
@@ -26,7 +27,7 @@ class TestInpaintBenchmarkRealORT(unittest.TestCase):
 
         self.model_path = Path(LAMA_MODEL)
 
-    def test_25_real_ort_session_proxy(self):
+    def test_01_real_ort_session_proxy(self):
         if self.ort is None:
             self.skipTest("onnxruntime is not installed in this environment")
         if not self.model_path.is_file():
@@ -50,7 +51,7 @@ class TestInpaintBenchmarkRealORT(unittest.TestCase):
         self.assertEqual(output[0].shape, (1, 3, 512, 512))
         self.assertEqual(collector.model_calls, 1)
 
-    def test_26_real_ort_pipeline_lama_fill_single(self):
+    def test_02_real_ort_pipeline_lama_fill_single(self):
         if self.ort is None:
             self.skipTest("onnxruntime is not installed in this environment")
         if not self.model_path.is_file():
@@ -75,7 +76,7 @@ class TestInpaintBenchmarkRealORT(unittest.TestCase):
         self.assertEqual(result_img.dtype, np.uint8)
         self.assertEqual(collector.model_calls, 1)
 
-    def test_27_real_ort_full_e2e(self):
+    def test_03_real_ort_full_e2e_model_required(self):
         if self.ort is None:
             self.skipTest("onnxruntime is not installed in this environment")
         if not self.model_path.is_file():
@@ -99,15 +100,17 @@ class TestInpaintBenchmarkRealORT(unittest.TestCase):
             repetitions=1,
         )
 
+        valid, msg = validate_case_execution(res)
+        self.assertTrue(valid, msg)
         self.assertEqual(res.status, "ok")
-        self.assertGreaterEqual(res.model_calls_per_invocation, 1)
-        self.assertGreaterEqual(res.cluster_count, 1)
+        self.assertEqual(res.model_calls_per_invocation, 1)
+        self.assertEqual(res.cluster_count, 1)
         self.assertEqual(res.shortcut_count, 0)
         self.assertIsInstance(out_img, np.ndarray)
         self.assertEqual(out_img.shape, (300, 300, 3))
         self.assertEqual(out_img.dtype, np.uint8)
 
-    def test_28_real_ort_full_tiled_e2e(self):
+    def test_04_real_ort_full_tiled_e2e(self):
         if self.ort is None:
             self.skipTest("onnxruntime is not installed in this environment")
         if not self.model_path.is_file():
@@ -132,6 +135,8 @@ class TestInpaintBenchmarkRealORT(unittest.TestCase):
             repetitions=1,
         )
 
+        valid, msg = validate_case_execution(res)
+        self.assertTrue(valid, msg)
         self.assertEqual(res.status, "ok")
         self.assertGreater(res.tile_count, 1)
         self.assertGreater(res.active_tile_count, 1)
@@ -140,7 +145,125 @@ class TestInpaintBenchmarkRealORT(unittest.TestCase):
         self.assertEqual(out_img.shape, (1024, 1024, 3))
         self.assertEqual(out_img.dtype, np.uint8)
 
-    def test_29_cli_smoke_4_execution_archetypes(self):
+    def test_05_real_ort_e2e_white_shortcut(self):
+        if self.ort is None:
+            self.skipTest("onnxruntime is not installed in this environment")
+        if not self.model_path.is_file():
+            self.skipTest(f"LaMa ONNX model file not found at: {self.model_path}")
+
+        from app.ort_utils import make_session
+        from app.inpaint.lama_inpainter import Inpainter
+
+        inpainter = Inpainter()
+        inpainter.session = make_session(self.model_path, intra_op_threads=1)
+
+        img = np.full((250, 250, 3), 255, dtype=np.uint8)
+        boxes = [BubbleBox(30, 30, 90, 90, 0.95)]
+
+        res, _ = run_e2e_benchmark_case(
+            inpainter,
+            img,
+            boxes=boxes,
+            expected_execution="shortcut",
+            expected_shortcut_type="white",
+            warmup=1,
+            repetitions=2,
+        )
+        valid, msg = validate_case_execution(res)
+        self.assertTrue(valid, msg)
+        self.assertEqual(res.model_calls_per_invocation, 0)
+        self.assertEqual(res.shortcut_count, 1)
+        self.assertEqual(res.shortcut_types, ["white"])
+
+    def test_06_real_ort_e2e_black_shortcut(self):
+        if self.ort is None:
+            self.skipTest("onnxruntime is not installed in this environment")
+        if not self.model_path.is_file():
+            self.skipTest(f"LaMa ONNX model file not found at: {self.model_path}")
+
+        from app.ort_utils import make_session
+        from app.inpaint.lama_inpainter import Inpainter
+
+        inpainter = Inpainter()
+        inpainter.session = make_session(self.model_path, intra_op_threads=1)
+
+        img = np.full((250, 250, 3), 0, dtype=np.uint8)
+        boxes = [BubbleBox(30, 30, 90, 90, 0.95)]
+
+        res, _ = run_e2e_benchmark_case(
+            inpainter,
+            img,
+            boxes=boxes,
+            expected_execution="shortcut",
+            expected_shortcut_type="black",
+            warmup=1,
+            repetitions=2,
+        )
+        valid, msg = validate_case_execution(res)
+        self.assertTrue(valid, msg)
+        self.assertEqual(res.model_calls_per_invocation, 0)
+        self.assertEqual(res.shortcut_count, 1)
+        self.assertEqual(res.shortcut_types, ["black"])
+
+    def test_07_real_ort_e2e_low_std_shortcut(self):
+        if self.ort is None:
+            self.skipTest("onnxruntime is not installed in this environment")
+        if not self.model_path.is_file():
+            self.skipTest(f"LaMa ONNX model file not found at: {self.model_path}")
+
+        from app.ort_utils import make_session
+        from app.inpaint.lama_inpainter import Inpainter
+
+        inpainter = Inpainter()
+        inpainter.session = make_session(self.model_path, intra_op_threads=1)
+
+        img = np.full((250, 250, 3), 128, dtype=np.uint8)
+        boxes = [BubbleBox(30, 30, 90, 90, 0.95)]
+
+        res, _ = run_e2e_benchmark_case(
+            inpainter,
+            img,
+            boxes=boxes,
+            expected_execution="shortcut",
+            expected_shortcut_type="low_std",
+            warmup=1,
+            repetitions=2,
+        )
+        valid, msg = validate_case_execution(res)
+        self.assertTrue(valid, msg)
+        self.assertEqual(res.model_calls_per_invocation, 0)
+        self.assertEqual(res.shortcut_count, 1)
+        self.assertEqual(res.shortcut_types, ["low_std"])
+
+    def test_08_real_ort_e2e_repeated_telemetry_reset(self):
+        if self.ort is None:
+            self.skipTest("onnxruntime is not installed in this environment")
+        if not self.model_path.is_file():
+            self.skipTest(f"LaMa ONNX model file not found at: {self.model_path}")
+
+        from app.ort_utils import make_session
+        from app.inpaint.lama_inpainter import Inpainter
+
+        inpainter = Inpainter()
+        inpainter.session = make_session(self.model_path, intra_op_threads=1)
+
+        img = generate_synthetic_image(200, 200, execution_mode="model_required", seed=42)
+        boxes = [BubbleBox(20, 20, 80, 80, 0.95)]
+
+        res, _ = run_e2e_benchmark_case(
+            inpainter,
+            img,
+            boxes=boxes,
+            expected_execution="model_required",
+            warmup=2,
+            repetitions=3,
+        )
+        self.assertEqual(len(res.invocations), 3)
+        self.assertEqual([inv.model_calls for inv in res.invocations], [1, 1, 1])
+        self.assertEqual(res.model_calls_per_invocation, 1)
+        self.assertEqual(res.model_calls_total, 3)
+
+    def test_09_cli_exact_archetypes_matrix(self):
         if self.ort is None:
             self.skipTest("onnxruntime is not installed in this environment")
         if not self.model_path.is_file():
@@ -183,7 +306,7 @@ class TestInpaintBenchmarkRealORT(unittest.TestCase):
 
                 res = runner.run(isolated_subproc=False)
                 self.assertIsNotNone(res)
-                self.assertEqual(res.schema_version, "1.2.1")
+                self.assertEqual(res.schema_version, "1.2.2")
                 self.assertGreater(len(res.cases), 0)
                 self.assertEqual(res.summary.get("error_cases", 0), 0)
 

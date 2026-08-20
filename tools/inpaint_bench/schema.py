@@ -3,7 +3,7 @@ from dataclasses import dataclass, field, asdict
 from typing import Any
 import numpy as np
 
-SCHEMA_VERSION = "1.2.1"
+SCHEMA_VERSION = "1.2.2"
 
 
 @dataclass
@@ -20,6 +20,10 @@ class EnvironmentMetadata:
     onnxruntime_version: str = ""
     git_commit: str = ""
 
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> EnvironmentMetadata:
+        return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
+
 
 @dataclass
 class ModelMetadata:
@@ -34,6 +38,10 @@ class ModelMetadata:
     inter_op_threads: int = 1
     execution_mode: str = "ORT_SEQUENTIAL"
 
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> ModelMetadata:
+        return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
+
 
 @dataclass
 class TimingStats:
@@ -45,6 +53,10 @@ class TimingStats:
     max_ms: float = 0.0
     stddev_ms: float = 0.0
 
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> TimingStats:
+        return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
+
 
 @dataclass
 class MemoryStats:
@@ -53,6 +65,10 @@ class MemoryStats:
     rss_end_mb: float = 0.0
     measured: bool = True
     note: str = ""
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> MemoryStats:
+        return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
 
 
 @dataclass
@@ -70,6 +86,10 @@ class InvocationTelemetry:
     shortcut_types: list[str] = field(default_factory=list)
     crop_dimensions: list[list[int]] = field(default_factory=list)
 
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> InvocationTelemetry:
+        return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
+
 
 @dataclass
 class MetricSummary:
@@ -77,6 +97,10 @@ class MetricSummary:
     max: int = 0
     mean: float = 0.0
     invariant: bool = True
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> MetricSummary:
+        return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
 
 
 @dataclass
@@ -86,6 +110,16 @@ class TelemetryAggregate:
     tile_count: MetricSummary = field(default_factory=MetricSummary)
     active_tile_count: MetricSummary = field(default_factory=MetricSummary)
     shortcut_count: MetricSummary = field(default_factory=MetricSummary)
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> TelemetryAggregate:
+        kwargs = {}
+        for f in ["model_calls", "cluster_count", "tile_count", "active_tile_count", "shortcut_count"]:
+            if f in d and isinstance(d[f], dict):
+                kwargs[f] = MetricSummary.from_dict(d[f])
+            elif f in d and isinstance(d[f], MetricSummary):
+                kwargs[f] = d[f]
+        return cls(**kwargs)
 
 
 def summarize_metric(values: list[int]) -> MetricSummary:
@@ -115,36 +149,57 @@ def summarize_telemetry(invocations: list[InvocationTelemetry]) -> TelemetryAggr
 
 
 def validate_case_execution(case: CaseResult) -> tuple[bool, str]:
+    if not case.invocations:
+        return False, "No invocations recorded for case"
+
     exp_exec = case.expected_execution
     exp_sc_type = case.expected_shortcut_type
 
-    observed_sc_types = set()
-    for inv in case.invocations:
-        for st in inv.shortcut_types:
-            observed_sc_types.add(st)
-    for st in case.shortcut_types:
-        observed_sc_types.add(st)
+    if case.level == "level2_pipeline":
+        if exp_exec != "model_required":
+            return False, f"Level 2 pipeline only supports 'model_required', but got '{exp_exec}'"
+        for i, inv in enumerate(case.invocations):
+            if inv.model_calls < 1:
+                return False, f"Invocation {i}: Expected Level 2 model_calls >= 1 but got {inv.model_calls}"
+            if inv.shortcut_count > 0 or len(inv.shortcut_types) > 0:
+                return False, f"Invocation {i}: Level 2 pipeline does not support shortcuts but got {inv.shortcut_count} ({inv.shortcut_types})"
+        return True, ""
 
     if exp_exec == "model_required":
-        if case.telemetry_summary.model_calls.max == 0:
-            return False, "Expected model execution but observed 0 model calls (unwanted shortcut activation)"
-        if case.telemetry_summary.shortcut_count.max > 0:
-            return False, f"Expected model_required with 0 shortcuts but observed {case.telemetry_summary.shortcut_count.max} shortcuts ({sorted(list(observed_sc_types))})"
+        for i, inv in enumerate(case.invocations):
+            if inv.model_calls < 1:
+                return False, f"Invocation {i}: Expected model_calls >= 1 but got {inv.model_calls} (unwanted shortcut activation)"
+            if inv.shortcut_count > 0 or len(inv.shortcut_types) > 0:
+                return False, f"Invocation {i}: Expected 0 shortcuts but got {inv.shortcut_count} ({inv.shortcut_types})"
+        return True, ""
 
-    elif exp_exec in ("shortcut", "shortcut_expected") or exp_exec.startswith("shortcut_"):
-        if case.telemetry_summary.model_calls.max > 0:
-            return False, f"Expected shortcut execution with 0 model calls but observed {case.telemetry_summary.model_calls.max} model calls"
-        if case.telemetry_summary.shortcut_count.max == 0:
-            return False, "Expected shortcut execution but shortcut was not activated"
+    if exp_exec in ("shortcut", "shortcut_expected") or (exp_exec and exp_exec.startswith("shortcut_")):
+        allowed_types = {"white", "black", "low_std"}
+        target_type = exp_sc_type
+        if not target_type and exp_exec.startswith("shortcut_"):
+            target_type = exp_exec[len("shortcut_"):]
 
-        expected_type = exp_sc_type
-        if not expected_type and exp_exec.startswith("shortcut_"):
-            expected_type = exp_exec[len("shortcut_"):]
+        if target_type not in allowed_types:
+            return False, f"Unsupported expected shortcut type: '{target_type}'. Allowed: {sorted(list(allowed_types))}"
 
-        if expected_type and expected_type not in observed_sc_types:
-            return False, f"Expected shortcut type '{expected_type}' but observed {sorted(list(observed_sc_types))}"
+        for i, inv in enumerate(case.invocations):
+            if inv.model_calls != 0:
+                return False, f"Invocation {i}: Expected model_calls == 0 for shortcut case but got {inv.model_calls}"
+            if inv.shortcut_count != 1:
+                return False, f"Invocation {i}: Expected shortcut_count == 1 but got {inv.shortcut_count}"
+            if inv.shortcut_types != [target_type]:
+                return False, f"Invocation {i}: Expected shortcut_types == ['{target_type}'] but got {inv.shortcut_types}"
+        return True, ""
 
-    return True, ""
+    if exp_exec == "mixed":
+        for i, inv in enumerate(case.invocations):
+            if inv.model_calls < 1:
+                return False, f"Invocation {i}: Mixed case expected model_calls >= 1 but got {inv.model_calls}"
+            if inv.shortcut_count < 1:
+                return False, f"Invocation {i}: Mixed case expected shortcut_count >= 1 but got {inv.shortcut_count}"
+        return True, ""
+
+    return False, f"Unknown expected_execution archetype: '{exp_exec}'"
 
 
 @dataclass
@@ -167,13 +222,13 @@ class CaseResult:
     preprocess_timing: TimingStats = field(default_factory=TimingStats)
     inference_timing: TimingStats = field(default_factory=TimingStats)
     postprocess_timing: TimingStats = field(default_factory=TimingStats)
-    model_calls_per_invocation: int | None = 0
+    model_calls_per_invocation: int | None = None
     model_calls_total: int = 0
     telemetry_summary: TelemetryAggregate = field(default_factory=TelemetryAggregate)
-    cluster_count: int = 0
-    tile_count: int = 0
-    active_tile_count: int = 0
-    shortcut_count: int = 0
+    cluster_count: int | None = None
+    tile_count: int | None = None
+    active_tile_count: int | None = None
+    shortcut_count: int | None = None
     shortcut_types: list[str] = field(default_factory=list)
     crop_dimensions: list[list[int]] = field(default_factory=list)
     invocations: list[InvocationTelemetry] = field(default_factory=list)
@@ -183,14 +238,34 @@ class CaseResult:
     error_message: str = ""
 
     @property
-    def model_calls(self) -> int:
-        if self.model_calls_per_invocation is not None:
-            return self.model_calls_per_invocation
-        return int(round(self.telemetry_summary.model_calls.mean))
+    def model_calls(self) -> int | None:
+        return self.model_calls_per_invocation
 
     @property
     def cold_start_ms(self) -> float:
         return self.first_inference_ms
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> CaseResult:
+        kwargs = dict(d)
+        for timing_f in ["timing", "preprocess_timing", "inference_timing", "postprocess_timing"]:
+            if timing_f in kwargs and isinstance(kwargs[timing_f], dict):
+                kwargs[timing_f] = TimingStats.from_dict(kwargs[timing_f])
+
+        if "memory" in kwargs and isinstance(kwargs["memory"], dict):
+            kwargs["memory"] = MemoryStats.from_dict(kwargs["memory"])
+
+        if "telemetry_summary" in kwargs and isinstance(kwargs["telemetry_summary"], dict):
+            kwargs["telemetry_summary"] = TelemetryAggregate.from_dict(kwargs["telemetry_summary"])
+
+        if "invocations" in kwargs and isinstance(kwargs["invocations"], list):
+            kwargs["invocations"] = [
+                InvocationTelemetry.from_dict(inv) if isinstance(inv, dict) else inv
+                for inv in kwargs["invocations"]
+            ]
+
+        valid_fields = cls.__dataclass_fields__.keys()
+        return cls(**{k: v for k, v in kwargs.items() if k in valid_fields})
 
 
 @dataclass
@@ -208,6 +283,21 @@ class BenchmarkRunResult:
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> BenchmarkRunResult:
+        kwargs = dict(d)
+        if "environment" in kwargs and isinstance(kwargs["environment"], dict):
+            kwargs["environment"] = EnvironmentMetadata.from_dict(kwargs["environment"])
+        if "model" in kwargs and isinstance(kwargs["model"], dict):
+            kwargs["model"] = ModelMetadata.from_dict(kwargs["model"])
+        if "cases" in kwargs and isinstance(kwargs["cases"], list):
+            kwargs["cases"] = [
+                CaseResult.from_dict(c) if isinstance(c, dict) else c
+                for c in kwargs["cases"]
+            ]
+        valid_fields = cls.__dataclass_fields__.keys()
+        return cls(**{k: v for k, v in kwargs.items() if k in valid_fields})
+
 
 @dataclass
 class ComparisonDelta:
@@ -220,10 +310,13 @@ class ComparisonDelta:
     candidate_p95_ms: float
     delta_p95_ms: float
     p95_diff_pct: float
-    baseline_model_calls: int
-    candidate_model_calls: int
-    model_calls_delta: int
+    baseline_model_calls: int | None
+    candidate_model_calls: int | None
+    model_calls_delta: int | None
+    model_calls_mean_delta: float = 0.0
     psnr: float = 0.0
     ssim: float = 0.0
     mae: float = 0.0
     regression: bool = False
+    incompatible: bool = False
+    note: str = ""

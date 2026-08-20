@@ -107,7 +107,7 @@ def parse_args():
     return parser.parse_args()
 
 
-def main():
+def main() -> int:
     args = parse_args()
 
     if args.generate_corpus:
@@ -155,7 +155,7 @@ def main():
 
     if args.subproc:
         print(json.dumps(result.to_dict()))
-        return 0
+        return 0 if result.summary.get("error_cases", 0) == 0 else 1
 
     comparisons = None
     if args.compare:
@@ -181,7 +181,7 @@ def main():
         if not args.quiet:
             print(f"✓ Saved Markdown report to: {args.report}")
 
-    return 0
+    return 0 if result.summary.get("error_cases", 0) == 0 else 1
 
 
 if __name__ == "__main__":

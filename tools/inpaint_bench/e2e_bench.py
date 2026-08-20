@@ -87,11 +87,19 @@ class InpaintTelemetryContext:
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        self.inpainter.session = self.real_session
-        self.inpainter._cluster_boxes = self._orig_cluster_boxes
-        self.inpainter._smart_paint_region = self._orig_smart_paint
-        self.inpainter._lama_fill = self._orig_lama_fill
-        self.inpainter._lama_fill_tiled = self._orig_lama_fill_tiled
+        try:
+            self.inpainter.session = self.real_session
+        finally:
+            try:
+                self.inpainter._cluster_boxes = self._orig_cluster_boxes
+            finally:
+                try:
+                    self.inpainter._smart_paint_region = self._orig_smart_paint
+                finally:
+                    try:
+                        self.inpainter._lama_fill = self._orig_lama_fill
+                    finally:
+                        self.inpainter._lama_fill_tiled = self._orig_lama_fill_tiled
 
 
 def run_e2e_benchmark_case(
@@ -167,7 +175,12 @@ def run_e2e_benchmark_case(
     mask_pixels = int(np.count_nonzero(mask > 127)) if mask is not None else 0
     telemetry_agg = summarize_telemetry(invocations)
     total_calls = sum(inv.model_calls for inv in invocations)
+
     model_calls_per_inv = invocations[0].model_calls if telemetry_agg.model_calls.invariant and invocations else None
+    cluster_count_val = invocations[0].cluster_count if telemetry_agg.cluster_count.invariant and invocations else None
+    tile_count_val = invocations[0].tile_count if telemetry_agg.tile_count.invariant and invocations else None
+    active_tile_val = invocations[0].active_tile_count if telemetry_agg.active_tile_count.invariant and invocations else None
+    shortcut_count_val = invocations[0].shortcut_count if telemetry_agg.shortcut_count.invariant and invocations else None
 
     rep_types = []
     for inv in invocations:
@@ -175,7 +188,11 @@ def run_e2e_benchmark_case(
             if st not in rep_types:
                 rep_types.append(st)
 
-    rep_crops = invocations[0].crop_dimensions if invocations else []
+    rep_crops = (
+        invocations[0].crop_dimensions
+        if (invocations and all(inv.crop_dimensions == invocations[0].crop_dimensions for inv in invocations))
+        else []
+    )
 
     case_result = CaseResult(
         case_id=case_id,
@@ -194,10 +211,10 @@ def run_e2e_benchmark_case(
         model_calls_per_invocation=model_calls_per_inv,
         model_calls_total=total_calls,
         telemetry_summary=telemetry_agg,
-        cluster_count=int(round(telemetry_agg.cluster_count.mean)),
-        tile_count=int(round(telemetry_agg.tile_count.mean)),
-        active_tile_count=int(round(telemetry_agg.active_tile_count.mean)),
-        shortcut_count=int(round(telemetry_agg.shortcut_count.mean)),
+        cluster_count=cluster_count_val,
+        tile_count=tile_count_val,
+        active_tile_count=active_tile_val,
+        shortcut_count=shortcut_count_val,
         shortcut_types=rep_types,
         crop_dimensions=rep_crops,
         invocations=invocations,
