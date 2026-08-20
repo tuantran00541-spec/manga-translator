@@ -140,11 +140,13 @@ class BenchmarkRunner:
                 if orig_img is None or mask_img is None:
                     continue
                 case_id = f"pipeline_{c_info.get('case_id', 'unknown')}"
+                exp_exec = c_info.get("expected_execution", "model_required")
                 case_l2 = run_pipeline_benchmark_case(
                     inpainter,
                     orig_img,
                     mask_img,
                     case_id=case_id,
+                    expected_execution=exp_exec,
                     warmup=self.warmup,
                     repetitions=self.repetitions,
                 )
@@ -162,6 +164,7 @@ class BenchmarkRunner:
                     continue
 
                 case_id = f"e2e_{c_info.get('case_id', 'unknown')}"
+                exp_exec = c_info.get("expected_execution", "model_required")
                 golden_path = None
                 if self.golden_dir:
                     golden_path = self.golden_dir / case_id / "output.png"
@@ -171,10 +174,19 @@ class BenchmarkRunner:
                     orig_img,
                     mask=mask_img,
                     case_id=case_id,
+                    expected_execution=exp_exec,
                     warmup=min(self.warmup, 2),
                     repetitions=e2e_reps,
                     save_golden_path=golden_path,
                 )
+
+                if exp_exec == "model_required" and case_l3.telemetry_summary.model_calls.max == 0:
+                    case_l3.status = "error"
+                    case_l3.error_message = "Expected model execution but observed 0 model calls (unwanted shortcut activation)"
+                elif exp_exec.startswith("shortcut") and case_l3.telemetry_summary.shortcut_count.max == 0:
+                    case_l3.status = "error"
+                    case_l3.error_message = f"Expected shortcut execution ({exp_exec}) but shortcut was not activated"
+
                 cases.append(case_l3)
 
         summary: dict[str, Any] = {

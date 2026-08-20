@@ -4,7 +4,7 @@ import numpy as np
 
 from app.inpaint.lama_inpainter import Inpainter
 from .metrics import calculate_stats, MemoryTracker
-from .schema import CaseResult, InvocationTelemetry
+from .schema import CaseResult, InvocationTelemetry, summarize_telemetry
 from .proxy import TelemetryCollector, TelemetrySessionProxy
 
 
@@ -35,6 +35,7 @@ def run_pipeline_benchmark_case(
     crop_img: np.ndarray,
     local_mask: np.ndarray,
     case_id: str,
+    expected_execution: str = "model_required",
     warmup: int = 3,
     repetitions: int = 30,
 ) -> CaseResult:
@@ -98,8 +99,9 @@ def run_pipeline_benchmark_case(
 
     h, w = crop_img.shape[:2]
     mask_pixels = int(np.count_nonzero(local_mask > 127))
-    model_calls_per_inv = invocations[0].model_calls if invocations else 0
+    telemetry_agg = summarize_telemetry(invocations)
     total_calls = sum(inv.model_calls for inv in invocations)
+    model_calls_per_inv = int(round(telemetry_agg.model_calls.mean))
 
     return CaseResult(
         case_id=case_id,
@@ -108,6 +110,7 @@ def run_pipeline_benchmark_case(
         image_height=h,
         mask_area_pixels=mask_pixels,
         mask_ratio=round(mask_pixels / float(max(1, w * h)), 4),
+        expected_execution=expected_execution,
         first_inference_ms=round(first_inference_ms, 4),
         cold_total_ms=round(first_inference_ms, 4),
         warmup_count=warmup,
@@ -118,6 +121,7 @@ def run_pipeline_benchmark_case(
         postprocess_timing=calculate_stats(post_times),
         model_calls_per_invocation=model_calls_per_inv,
         model_calls_total=total_calls,
+        telemetry_summary=telemetry_agg,
         invocations=invocations,
         memory=mem_tracker.finish(),
         status="ok",

@@ -10,7 +10,7 @@ except ImportError:
 
 from app.ort_utils import make_session
 from .metrics import calculate_stats, MemoryTracker
-from .schema import CaseResult, InvocationTelemetry
+from .schema import CaseResult, InvocationTelemetry, summarize_telemetry
 from .proxy import TelemetryCollector, TelemetrySessionProxy
 
 
@@ -88,8 +88,9 @@ def run_model_benchmark(
 
     stats = calculate_stats(times_ms)
     mem_stats = mem_tracker.finish()
-    model_calls_per_inv = invocations[0].model_calls if invocations else 0
+    telemetry_agg = summarize_telemetry(invocations)
     total_calls = sum(inv.model_calls for inv in invocations)
+    model_calls_per_inv = int(round(telemetry_agg.model_calls.mean))
 
     return CaseResult(
         case_id="lama_model_512x512",
@@ -97,6 +98,7 @@ def run_model_benchmark(
         image_width=512,
         image_height=512,
         mask_type="standard_512x512",
+        expected_execution="model_required",
         session_create_ms=round(session_create_ms, 4),
         first_inference_ms=round(first_inference_ms, 4),
         cold_total_ms=round(cold_total_ms, 4),
@@ -105,6 +107,7 @@ def run_model_benchmark(
         timing=stats,
         model_calls_per_invocation=model_calls_per_inv,
         model_calls_total=total_calls,
+        telemetry_summary=telemetry_agg,
         invocations=invocations,
         memory=mem_stats,
         status="ok",

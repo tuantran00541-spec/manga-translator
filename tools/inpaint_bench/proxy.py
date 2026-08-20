@@ -12,6 +12,7 @@ class TelemetryCollector:
         self.tile_count = 0
         self.active_tile_count = 0
         self.shortcut_count = 0
+        self.shortcut_types: list[str] = []
         self.cluster_count = 0
         self.stage_timings: dict[str, list[float]] = {
             "preprocess_ms": [],
@@ -26,6 +27,7 @@ class TelemetryCollector:
         self.tile_count = 0
         self.active_tile_count = 0
         self.shortcut_count = 0
+        self.shortcut_types.clear()
         self.cluster_count = 0
         self.stage_timings["preprocess_ms"].clear()
         self.stage_timings["inference_ms"].clear()
@@ -42,8 +44,9 @@ class TelemetryCollector:
         self.tile_count += total
         self.active_tile_count += active
 
-    def record_shortcut(self):
+    def record_shortcut(self, shortcut_type: str = "generic"):
         self.shortcut_count += 1
+        self.shortcut_types.append(shortcut_type)
 
     def record_clusters(self, count: int):
         self.cluster_count = count

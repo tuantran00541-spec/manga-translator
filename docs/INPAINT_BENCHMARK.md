@@ -1,4 +1,4 @@
-# LaMa Inpaint Benchmark Harness Reference (Phase 0 / Phase 0.1 Correctness Fixes)
+# LaMa Inpaint Benchmark Harness Reference (Phase 0.2 Hardened)
 
 ## Overview
 
@@ -35,48 +35,27 @@ The **LaMa Inpaint Benchmark Harness** is a dedicated benchmarking suite designe
 │   Invokes production Inpainter with full pipeline:          │
 │   Clustering ──▶ Crops ──▶ Shortcuts ──▶ Tiling ──▶ Blend   │
 │   Telemetry: model_calls per invocation (independent reset),│
-│   cluster_count, active_tile_count, crop dimensions         │
+│   cluster_count, active_tile_count, crop dimensions,        │
+│   shortcut detection (white / black / low-std)              │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 2. Correctness Guarantees (Phase 0.1)
+## 2. Hardening & Correctness Guarantees (Phase 0.2)
 
-1. **Zero Duplication of Production Code (Level 2)**:
-   Level 2 measures the live production method `Inpainter._lama_fill_single(crop, local_mask)`. Stage timing boundaries are measured transparently via `PipelineStageTrackerProxy` without duplicating any image resizing, normalization, or conversion logic.
-
-2. **Per-Invocation Telemetry Reset (Level 3)**:
-   Telemetry (`model_calls`, `cluster_count`, `tile_count`, `active_tile_count`, `shortcut_count`, `crop_dimensions`) is reset immediately before every single measured invocation and warmup run. Values never accumulate across repetitions.
-
-3. **Safe Session Proxying**:
-   The harness uses `TelemetrySessionProxy` wrapping `InferenceSession` instances instead of monkey-patching C-extension methods directly on the ORT class.
-
----
-
-## 3. Dataset & Mask Matrix
-
-The benchmark corpus consists of deterministic synthetic manga artwork across 12 resolutions and 8 mask archetypes:
-
-### Supported Image Sizes
-- `128x128`, `256x256`, `384x384`, `512x512`, `640x640`, `768x768`, `1024x1024`, `1536x1024`
-- Wide / Tall Webtoon strips: `1000x300`, `300x1000`, `1600x300`, `300x1600`
-
-### Supported Mask Archetypes (M1 to M8)
-| Mask ID | Type | Description |
-| :--- | :--- | :--- |
-| `M1_bubble_10pct` | 10% Bubble | Standard centered oval dialogue bubble |
-| `M2_bubble_25pct` | 25% Bubble | Large dialogue bubble |
-| `M3_bubble_50pct` | 50% Bubble | Half-panel dialogue / splash box |
-| `M4_thin_horizontal` | Narration Strip | Thin wide horizontal banner (aspect ~5:1) |
-| `M5_thin_vertical` | Vertical Text | Thin tall vertical Japanese dialogue column (aspect ~1:5) |
-| `M6_irregular_blob` | SFX Polygon | Jagged starburst sound effect shape |
-| `M7_disconnected_multi` | Disconnected Multi-box | 3 separate speech bubbles scattered across quadrants |
-| `M8_clustered_multi` | Clustered Multi-box | 3 adjacent speech boxes within 20px clustering threshold |
+1. **Real Inpainter Execution**:
+   All benchmark levels and tests exercise the 100% real `Inpainter` class (`Inpainter.inpaint`, `Inpainter.inpaint_mask`, `Inpainter._lama_fill_single`, `Inpainter._lama_fill_tiled`, `Inpainter._cluster_boxes`).
+2. **Accurate Shortcut Detection**:
+   `InpaintTelemetryContext` inspects the non-mask region when `_smart_paint_region` exits without entering `_lama_fill`, correctly distinguishing `white`, `black`, and `low_std` shortcuts with `model_calls == 0`.
+3. **Deterministic Execution Modes**:
+   Corpus cases carry explicit `expected_execution` metadata (`model_required`, `shortcut_white`, `shortcut_black`, `shortcut_low_std`, `mixed`) ensuring that `model_required` cases have rich manga texture and do not accidentally trigger shortcuts.
+4. **Aggregate Telemetry Statistics**:
+   Telemetry is summarized across all repetitions into `TelemetryAggregate` with `min`, `max`, `mean`, and `invariant` flags instead of assuming `invocations[0]`.
 
 ---
 
-## 4. CLI Reference
+## 3. CLI Reference
 
 ### 1. Generate Deterministic Synthetic Corpus
 ```bash
@@ -98,22 +77,7 @@ python -m tools.benchmark_inpaint --run --mode pipeline --threads 4 --repetition
 python -m tools.benchmark_inpaint --run --mode end-to-end --threads 4 --repetitions 5 --output results_l3.json
 ```
 
-### 5. Multi-Thread Sweeping (Isolated Subprocesses)
+### 5. Quick Smoke Test with Subset Limit
 ```bash
-python -m tools.benchmark_inpaint --run --mode model --threads 1,2,4,8 --output results_sweep.json
-```
-
-### 6. Quick Smoke Test with Subset Limit
-```bash
-python -m tools.benchmark_inpaint --run --mode all --limit 2 --repetitions 1 --warmup 1
-```
-
-### 7. Generate Golden Baseline
-```bash
-python -m tools.benchmark_inpaint --run --mode all --golden data/golden_baseline --output data/golden_baseline/baseline.json
-```
-
-### 8. Regression Comparison
-```bash
-python -m tools.benchmark_inpaint --run --mode all --compare data/golden_baseline/baseline.json --report comparison_report.md
+python -m tools.benchmark_inpaint --run --mode all --limit 1 --repetitions 1 --warmup 1
 ```

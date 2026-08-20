@@ -7,7 +7,7 @@ import cv2
 from app.inpaint.lama_inpainter import Inpainter
 from app.detector.bubble_detector import BubbleBox
 from .metrics import calculate_stats, MemoryTracker
-from .schema import CaseResult, InvocationTelemetry
+from .schema import CaseResult, InvocationTelemetry, summarize_telemetry
 from .proxy import TelemetryCollector, TelemetrySessionProxy
 
 
@@ -17,8 +17,10 @@ class InpaintTelemetryContext:
         self.collector = collector
         self.real_session = inpainter.session
         self.proxy = TelemetrySessionProxy(self.real_session, collector)
+        self._lama_fill_entered = False
 
         self._orig_smart_paint = inpainter._smart_paint_region
+        self._orig_lama_fill = inpainter._lama_fill
         self._orig_lama_fill_tiled = inpainter._lama_fill_tiled
         self._orig_cluster_boxes = inpainter._cluster_boxes
 
@@ -26,10 +28,38 @@ class InpaintTelemetryContext:
         ctx = self
         self.inpainter.session = self.proxy
 
+        def wrapped_cluster(boxes):
+            clusters = ctx._orig_cluster_boxes(boxes)
+            ctx.collector.record_clusters(len(clusters))
+            return clusters
+
+        def wrapped_lama_fill(image, crop, local_mask, crop_box, feather=False):
+            ctx._lama_fill_entered = True
+            return ctx._orig_lama_fill(image, crop, local_mask, crop_box, feather=feather)
+
         def wrapped_smart_paint(image, local_mask, crop_box, feather=False):
             cx1, cy1, cx2, cy2 = crop_box
             ctx.collector.record_crop(cx2 - cx1, cy2 - cy1)
-            return ctx._orig_smart_paint(image, local_mask, crop_box, feather=feather)
+            crop_before = image[cy1:cy2, cx1:cx2].copy()
+            ctx._lama_fill_entered = False
+
+            out = ctx._orig_smart_paint(image, local_mask, crop_box, feather=feather)
+
+            if not ctx._lama_fill_entered:
+                crop_h, crop_w = crop_before.shape[:2]
+                mask_bool = local_mask > 127
+                if crop_h >= 4 and crop_w >= 4 and np.any(mask_bool) and np.any(~mask_bool):
+                    gray_non_mask = cv2.cvtColor(crop_before, cv2.COLOR_BGR2GRAY)[~mask_bool]
+                    if float((gray_non_mask > 215).mean()) >= 0.70:
+                        ctx.collector.record_shortcut("white")
+                    elif float((gray_non_mask < 35).mean()) >= 0.70:
+                        ctx.collector.record_shortcut("black")
+                    elif float(gray_non_mask.std()) < 12.0:
+                        ctx.collector.record_shortcut("low_std")
+                    else:
+                        ctx.collector.record_shortcut("unknown")
+
+            return out
 
         def wrapped_fill_tiled(crop, local_mask):
             h, w = crop.shape[:2]
@@ -50,21 +80,18 @@ class InpaintTelemetryContext:
             ctx.collector.record_tiles(total, active)
             return ctx._orig_lama_fill_tiled(crop, local_mask)
 
-        def wrapped_cluster(boxes):
-            clusters = ctx._orig_cluster_boxes(boxes)
-            ctx.collector.record_clusters(len(clusters))
-            return clusters
-
-        self.inpainter._smart_paint_region = wrapped_smart_paint
-        self.inpainter._lama_fill_tiled = wrapped_fill_tiled
         self.inpainter._cluster_boxes = wrapped_cluster
+        self.inpainter._smart_paint_region = wrapped_smart_paint
+        self.inpainter._lama_fill = wrapped_lama_fill
+        self.inpainter._lama_fill_tiled = wrapped_fill_tiled
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.inpainter.session = self.real_session
-        self.inpainter._smart_paint_region = self._orig_smart_paint
-        self.inpainter._lama_fill_tiled = self._orig_lama_fill_tiled
         self.inpainter._cluster_boxes = self._orig_cluster_boxes
+        self.inpainter._smart_paint_region = self._orig_smart_paint
+        self.inpainter._lama_fill = self._orig_lama_fill
+        self.inpainter._lama_fill_tiled = self._orig_lama_fill_tiled
 
 
 def run_e2e_benchmark_case(
@@ -73,6 +100,7 @@ def run_e2e_benchmark_case(
     boxes: list[BubbleBox] | None = None,
     mask: np.ndarray | None = None,
     case_id: str = "e2e_case",
+    expected_execution: str = "model_required",
     warmup: int = 3,
     repetitions: int = 5,
     save_golden_path: Path | None = None,
@@ -122,6 +150,7 @@ def run_e2e_benchmark_case(
                 tile_count=collector.tile_count,
                 active_tile_count=collector.active_tile_count,
                 shortcut_count=collector.shortcut_count,
+                shortcut_types=list(collector.shortcut_types),
                 crop_dimensions=list(collector.crop_dimensions),
             )
             invocations.append(inv)
@@ -135,8 +164,17 @@ def run_e2e_benchmark_case(
         golden_str = str(save_path.resolve())
 
     mask_pixels = int(np.count_nonzero(mask > 127)) if mask is not None else 0
-    representative_inv = invocations[0] if invocations else InvocationTelemetry()
+    telemetry_agg = summarize_telemetry(invocations)
     total_calls = sum(inv.model_calls for inv in invocations)
+    model_calls_per_inv = int(round(telemetry_agg.model_calls.mean))
+
+    rep_types = []
+    for inv in invocations:
+        for st in inv.shortcut_types:
+            if st not in rep_types:
+                rep_types.append(st)
+
+    rep_crops = invocations[0].crop_dimensions if invocations else []
 
     case_result = CaseResult(
         case_id=case_id,
@@ -145,18 +183,21 @@ def run_e2e_benchmark_case(
         image_height=h,
         mask_area_pixels=mask_pixels,
         mask_ratio=round(mask_pixels / float(max(1, w * h)), 4),
+        expected_execution=expected_execution,
         first_inference_ms=round(first_inference_ms, 4),
         cold_total_ms=round(first_inference_ms, 4),
         warmup_count=warmup,
         repetitions=repetitions,
         timing=calculate_stats(times_ms),
-        model_calls_per_invocation=representative_inv.model_calls,
+        model_calls_per_invocation=model_calls_per_inv,
         model_calls_total=total_calls,
-        cluster_count=representative_inv.cluster_count,
-        tile_count=representative_inv.tile_count,
-        active_tile_count=representative_inv.active_tile_count,
-        shortcut_count=representative_inv.shortcut_count,
-        crop_dimensions=representative_inv.crop_dimensions,
+        telemetry_summary=telemetry_agg,
+        cluster_count=int(round(telemetry_agg.cluster_count.mean)),
+        tile_count=int(round(telemetry_agg.tile_count.mean)),
+        active_tile_count=int(round(telemetry_agg.active_tile_count.mean)),
+        shortcut_count=int(round(telemetry_agg.shortcut_count.mean)),
+        shortcut_types=rep_types,
+        crop_dimensions=rep_crops,
         invocations=invocations,
         memory=mem_tracker.finish(),
         golden_output_path=golden_str,

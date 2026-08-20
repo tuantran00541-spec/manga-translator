@@ -1,8 +1,9 @@
 from __future__ import annotations
 from dataclasses import dataclass, field, asdict
 from typing import Any
+import numpy as np
 
-SCHEMA_VERSION = "1.1.0"
+SCHEMA_VERSION = "1.2.0"
 
 
 @dataclass
@@ -66,7 +67,51 @@ class InvocationTelemetry:
     tile_count: int = 0
     active_tile_count: int = 0
     shortcut_count: int = 0
+    shortcut_types: list[str] = field(default_factory=list)
     crop_dimensions: list[list[int]] = field(default_factory=list)
+
+
+@dataclass
+class MetricSummary:
+    min: int = 0
+    max: int = 0
+    mean: float = 0.0
+    invariant: bool = True
+
+
+@dataclass
+class TelemetryAggregate:
+    model_calls: MetricSummary = field(default_factory=MetricSummary)
+    cluster_count: MetricSummary = field(default_factory=MetricSummary)
+    tile_count: MetricSummary = field(default_factory=MetricSummary)
+    active_tile_count: MetricSummary = field(default_factory=MetricSummary)
+    shortcut_count: MetricSummary = field(default_factory=MetricSummary)
+
+
+def summarize_metric(values: list[int]) -> MetricSummary:
+    if not values:
+        return MetricSummary()
+    min_v = int(min(values))
+    max_v = int(max(values))
+    mean_v = float(np.mean(values))
+    return MetricSummary(
+        min=min_v,
+        max=max_v,
+        mean=round(mean_v, 2),
+        invariant=(min_v == max_v),
+    )
+
+
+def summarize_telemetry(invocations: list[InvocationTelemetry]) -> TelemetryAggregate:
+    if not invocations:
+        return TelemetryAggregate()
+    return TelemetryAggregate(
+        model_calls=summarize_metric([inv.model_calls for inv in invocations]),
+        cluster_count=summarize_metric([inv.cluster_count for inv in invocations]),
+        tile_count=summarize_metric([inv.tile_count for inv in invocations]),
+        active_tile_count=summarize_metric([inv.active_tile_count for inv in invocations]),
+        shortcut_count=summarize_metric([inv.shortcut_count for inv in invocations]),
+    )
 
 
 @dataclass
@@ -78,6 +123,7 @@ class CaseResult:
     mask_type: str = ""
     mask_ratio: float = 0.0
     mask_area_pixels: int = 0
+    expected_execution: str = "model_required"
     session_create_ms: float = 0.0
     first_inference_ms: float = 0.0
     cold_total_ms: float = 0.0
@@ -89,10 +135,12 @@ class CaseResult:
     postprocess_timing: TimingStats = field(default_factory=TimingStats)
     model_calls_per_invocation: int = 0
     model_calls_total: int = 0
+    telemetry_summary: TelemetryAggregate = field(default_factory=TelemetryAggregate)
     cluster_count: int = 0
     tile_count: int = 0
     active_tile_count: int = 0
     shortcut_count: int = 0
+    shortcut_types: list[str] = field(default_factory=list)
     crop_dimensions: list[list[int]] = field(default_factory=list)
     invocations: list[InvocationTelemetry] = field(default_factory=list)
     memory: MemoryStats = field(default_factory=MemoryStats)

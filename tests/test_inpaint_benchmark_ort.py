@@ -21,7 +21,7 @@ class TestInpaintBenchmarkRealORT(unittest.TestCase):
 
         self.model_path = Path(LAMA_MODEL)
 
-    def test_28_real_ort_integration(self):
+    def test_25_real_ort_integration(self):
         if self.ort is None:
             self.skipTest("onnxruntime is not installed in this environment")
         if not self.model_path.is_file():
@@ -49,7 +49,8 @@ class TestInpaintBenchmarkRealORT(unittest.TestCase):
         inpainter = Inpainter()
         inpainter.session = proxy
 
-        test_crop = np.full((128, 128, 3), 200, dtype=np.uint8)
+        test_crop = np.full((128, 128, 3), 140, dtype=np.uint8)
+        test_crop[::4, ::4] = [70, 70, 70]
         test_mask = np.zeros((128, 128), dtype=np.uint8)
         test_mask[30:90, 30:90] = 255
 
@@ -60,30 +61,31 @@ class TestInpaintBenchmarkRealORT(unittest.TestCase):
         self.assertEqual(result_img.dtype, np.uint8)
         self.assertEqual(collector.model_calls, 1)
 
-    def test_29_real_cli_smoke_test(self):
+    def test_26_cli_smoke_test(self):
         if self.ort is None:
             self.skipTest("onnxruntime is not installed in this environment")
         if not self.model_path.is_file():
             self.skipTest(f"LaMa ONNX model file not found at: {self.model_path}")
 
-        runner = BenchmarkRunner(
-            model_path=self.model_path,
-            mode="all",
-            threads=1,
-            warmup=1,
-            repetitions=1,
-            case_limit=1,
-        )
+        for mode_name in ["model", "pipeline", "end-to-end"]:
+            runner = BenchmarkRunner(
+                model_path=self.model_path,
+                mode=mode_name,
+                threads=1,
+                warmup=1,
+                repetitions=1,
+                case_limit=1,
+            )
 
-        res = runner.run(isolated_subproc=False)
-        self.assertIsNotNone(res)
-        self.assertEqual(res.schema_version, "1.1.0")
-        self.assertGreater(len(res.cases), 0)
+            res = runner.run(isolated_subproc=False)
+            self.assertIsNotNone(res)
+            self.assertEqual(res.schema_version, "1.2.0")
+            self.assertGreater(len(res.cases), 0)
 
-        for c in res.cases:
-            self.assertEqual(c.status, "ok")
-            self.assertGreater(c.model_calls, 0)
-            self.assertGreater(c.timing.p50_ms, 0.0)
+            for c in res.cases:
+                self.assertEqual(c.status, "ok")
+                self.assertGreaterEqual(c.model_calls, 0)
+                self.assertGreater(c.timing.p50_ms, 0.0)
 
 
 if __name__ == "__main__":

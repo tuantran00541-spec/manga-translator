@@ -34,28 +34,54 @@ MASK_TYPES = [
 ]
 
 
-def generate_synthetic_image(width: int, height: int, seed: int = 42) -> np.ndarray:
+def generate_synthetic_image(
+    width: int,
+    height: int,
+    execution_mode: str = "model_required",
+    seed: int = 42,
+) -> np.ndarray:
     rng = np.random.RandomState(seed)
-    img = np.full((height, width, 3), 245, dtype=np.uint8)
 
-    grid_step = 8
-    dot_y, dot_x = np.mgrid[0:height:grid_step, 0:width:grid_step]
-    img[dot_y, dot_x] = [210, 210, 210]
+    if execution_mode == "shortcut_white":
+        return np.full((height, width, 3), 255, dtype=np.uint8)
 
-    num_lines = max(5, int((width + height) / 80))
+    if execution_mode == "shortcut_black":
+        return np.full((height, width, 3), 0, dtype=np.uint8)
+
+    if execution_mode == "shortcut_low_std":
+        return np.full((height, width, 3), 128, dtype=np.uint8)
+
+    if execution_mode == "mixed":
+        img = np.full((height, width, 3), 255, dtype=np.uint8)
+        mid_x = width // 2
+        noise = rng.randint(60, 190, (height, width - mid_x, 3), dtype=np.uint8)
+        img[:, mid_x:] = noise
+        return img
+
+    base = np.full((height, width, 3), 128, dtype=np.uint8)
+
+    step = 4
+    dot_y, dot_x = np.mgrid[0:height:step, 0:width:step]
+    base[dot_y, dot_x] = [70, 70, 70]
+
+    step2 = 8
+    diag_y, diag_x = np.mgrid[0:height:step2, 0:width:step2]
+    base[diag_y, diag_x] = [185, 185, 185]
+
+    num_lines = max(10, int((width + height) / 40))
     for _ in range(num_lines):
         x1 = rng.randint(0, width)
         y1 = rng.randint(0, height)
         x2 = rng.randint(0, width)
         y2 = rng.randint(0, height)
-        color = int(rng.randint(40, 180))
+        color = int(rng.randint(65, 180))
         thickness = rng.randint(1, 3)
-        cv2.line(img, (x1, y1), (x2, y2), (color, color, color), thickness)
+        cv2.line(base, (x1, y1), (x2, y2), (color, color, color), thickness)
 
     margin = max(4, int(min(width, height) * 0.05))
-    cv2.rectangle(img, (margin, margin), (width - margin, height - margin), (30, 30, 30), 2)
+    cv2.rectangle(base, (margin, margin), (width - margin, height - margin), (55, 55, 55), 2)
 
-    return img
+    return base
 
 
 def generate_mask_and_boxes(
@@ -193,12 +219,21 @@ def generate_mask_and_boxes(
     return mask, boxes, metadata
 
 
-def generate_case(width: int, height: int, mask_type: str, seed: int = 42) -> tuple[np.ndarray, np.ndarray, list[BubbleBox], dict]:
-    img = generate_synthetic_image(width, height, seed=seed)
+def generate_case(
+    width: int,
+    height: int,
+    mask_type: str,
+    execution_mode: str = "model_required",
+    seed: int = 42,
+) -> tuple[np.ndarray, np.ndarray, list[BubbleBox], dict]:
+    img = generate_synthetic_image(width, height, execution_mode=execution_mode, seed=seed)
     mask, boxes, meta = generate_mask_and_boxes(mask_type, width, height, seed=seed)
 
     mask_bool = mask > 127
-    img[mask_bool] = [255, 255, 255]
+    if execution_mode != "shortcut_black":
+        img[mask_bool] = [255, 255, 255]
+    else:
+        img[mask_bool] = [0, 0, 0]
 
     for b in boxes:
         bw = b.x2 - b.x1
@@ -214,6 +249,7 @@ def generate_case(width: int, height: int, mask_type: str, seed: int = 42) -> tu
 
     case_id = f"syn_{width}x{height}_{mask_type}"
     meta["case_id"] = case_id
+    meta["expected_execution"] = execution_mode
     meta["boxes"] = [{"x1": b.x1, "y1": b.y1, "x2": b.x2, "y2": b.y2, "confidence": b.confidence} for b in boxes]
 
     return img, mask, boxes, meta
@@ -236,7 +272,7 @@ def generate_corpus(
     for w, h in sizes:
         for m_type in mask_types:
             case_seed = seed + w * 1000 + h * 10 + len(m_type)
-            img, mask, boxes, meta = generate_case(w, h, m_type, seed=case_seed)
+            img, mask, boxes, meta = generate_case(w, h, m_type, execution_mode="model_required", seed=case_seed)
             case_id = meta["case_id"]
             case_dir = out_path / case_id
             case_dir.mkdir(parents=True, exist_ok=True)
@@ -251,6 +287,17 @@ def generate_corpus(
                 json.dump(meta, f, indent=2)
 
             manifest_cases.append(meta)
+
+    for s_mode in ["shortcut_white", "shortcut_black", "shortcut_low_std"]:
+        img, mask, boxes, meta = generate_case(512, 512, "M1_bubble_10pct", execution_mode=s_mode, seed=seed)
+        meta["case_id"] = f"syn_512x512_{s_mode}"
+        case_dir = out_path / meta["case_id"]
+        case_dir.mkdir(parents=True, exist_ok=True)
+        cv2.imwrite(str(case_dir / "original.png"), img)
+        cv2.imwrite(str(case_dir / "mask.png"), mask)
+        with open(case_dir / "metadata.json", "w", encoding="utf-8") as f:
+            json.dump(meta, f, indent=2)
+        manifest_cases.append(meta)
 
     index_file = out_path / "corpus_index.json"
     with open(index_file, "w", encoding="utf-8") as f:
@@ -285,6 +332,9 @@ def load_corpus(corpus_dir: Path | str) -> list[dict]:
 
         if "case_id" not in meta:
             meta["case_id"] = item.name
+
+        if "expected_execution" not in meta:
+            meta["expected_execution"] = "model_required"
 
         meta["original_path"] = str(orig_file.resolve())
         meta["mask_path"] = str(mask_file.resolve())
