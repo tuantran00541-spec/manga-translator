@@ -1,4 +1,4 @@
-# LaMa Inpaint Benchmark Harness Reference (Phase 0.2.2 Final Gate)
+# LaMa Inpaint Benchmark Harness Reference (Phase 0.2.3 Final Gate)
 
 ## Overview
 
@@ -45,37 +45,37 @@ The **LaMa Inpaint Benchmark Harness** is a dedicated, reproducible benchmarking
 
 ---
 
-## 2. Telemetry Semantics & Guarantees (Phase 0.2.2)
+## 2. Integrity & Comparison Hardening (Phase 0.2.3)
 
-1. **Per-Invocation Exact Validation**:
-   `validate_case_execution()` verifies every single measured invocation independently, rejecting any run where an invocation deviates from the expected archetype.
-2. **Non-Invasive Shortcut Classification**:
-   When `_smart_paint_region` exits without entering `_lama_fill`, the non-mask pixel statistics are evaluated to classify `white`, `black`, or `low_std` shortcuts. Any unclassified shortcut (`unknown`) is treated as a validation failure.
-3. **Strict Telemetry Semantics**:
-   - `model_calls_per_invocation`: Holds the exact scalar integer count **only** when invariant across all repetitions; otherwise `None`.
-   - `telemetry_summary.model_calls.mean`: Holds the exact arithmetic mean across repetitions.
-4. **Exception-Safe Restoration**:
-   `InpaintTelemetryContext` guarantees that all original production methods and sessions on `Inpainter` are restored even if an exception occurs.
-5. **Production Code Immutability**:
-   `app/inpaint/lama_inpainter.py` and `app/ort_utils.py` remain strictly untouched.
+1. **Immutable Production Integrity Gate**:
+   `tools/inpaint_bench/integrity.py` verifies byte-for-byte SHA-256 hashes against literal baseline constants for `app/inpaint/lama_inpainter.py` and `app/ort_utils.py`. Fails on any single-byte mutation or missing file.
+2. **Strict Golden Image Regression**:
+   `compare_benchmarks()` enforces explicit quality thresholds (`min_psnr`, `min_ssim`, `max_mae`). Any image quality drop or missing golden output triggers `quality_regression=True` and `regression=True`.
+3. **Exact Archetype Comparison**:
+   Detects and rejects mismatched execution archetypes and shortcut types between baseline and candidate (e.g. `white -> black`, `shortcut -> model_required`).
+4. **Missing Case Detection**:
+   Ensures 100% case alignment. Missing baseline cases or unexpected candidate cases flag `incompatible=True` and `regression=True`.
+5. **Schema Compatibility**:
+   Rejects mismatched or missing `schema_version`.
+6. **Fail-Closed Comparison**:
+   Runs containing `status == "error"`, missing telemetry, or integrity failures cannot produce valid performance deltas.
 
 ---
 
 ## 3. CLI Usage
+
+### Verify Production Integrity
+```bash
+python -m tools.benchmark_inpaint --verify-integrity
+```
 
 ### Generate Synthetic Benchmark Corpus
 ```bash
 python -m tools.benchmark_inpaint --generate-corpus data/benchmark_corpus
 ```
 
-### Run Benchmark Modes
+### Run Benchmark Suite & Compare
 ```bash
-python -m tools.benchmark_inpaint --run --mode model --threads 1 --repetitions 30
-python -m tools.benchmark_inpaint --run --mode pipeline --threads 1 --repetitions 30
-python -m tools.benchmark_inpaint --run --mode end-to-end --threads 1 --repetitions 5
-```
-
-### Strict Archetype Smoke Test
-```bash
-python -m tools.benchmark_inpaint --run --mode all --limit 4 --repetitions 1 --warmup 1
+python -m tools.benchmark_inpaint --run --mode all --output results.json --report report.md
+python -m tools.benchmark_inpaint --run --compare baseline.json
 ```

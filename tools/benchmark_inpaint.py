@@ -11,6 +11,7 @@ from app.config import LAMA_MODEL
 from tools.inpaint_bench.corpus_generator import generate_corpus
 from tools.inpaint_bench.runner import BenchmarkRunner, compare_benchmarks
 from tools.inpaint_bench.reporter import BenchmarkReporter
+from tools.inpaint_bench.integrity import verify_production_integrity
 
 
 def parse_args():
@@ -95,6 +96,11 @@ def parse_args():
         help="Assert that model SHA-256 matches this expected hash",
     )
     parser.add_argument(
+        "--verify-integrity",
+        action="store_true",
+        help="Verify byte-for-byte SHA-256 integrity of production files before execution",
+    )
+    parser.add_argument(
         "--subproc",
         action="store_true",
         help=argparse.SUPPRESS,
@@ -110,6 +116,18 @@ def parse_args():
 def main() -> int:
     args = parse_args()
 
+    if args.verify_integrity:
+        valid, report = verify_production_integrity()
+        if not valid:
+            if not args.quiet:
+                print("❌ Production integrity verification failed!", file=sys.stderr)
+                for f, info in report.items():
+                    if not info["valid"]:
+                        print(f"   {f}: {info['error']}", file=sys.stderr)
+            return 1
+        if not args.quiet:
+            print("✓ Production file SHA-256 integrity verified.")
+
     if args.generate_corpus:
         out_dir = Path(args.generate_corpus)
         if not args.quiet:
@@ -121,6 +139,8 @@ def main() -> int:
             return 0
 
     if not args.run and not args.compare:
+        if args.verify_integrity:
+            return 0
         print("No action specified. Use --help to view available options, --generate-corpus, or --run to execute.")
         return 0
 
@@ -158,12 +178,14 @@ def main() -> int:
         return 0 if result.summary.get("error_cases", 0) == 0 else 1
 
     comparisons = None
+    has_comparison_regression = False
     if args.compare:
         compare_path = Path(args.compare)
         if compare_path.is_file():
             with open(compare_path, "r", encoding="utf-8") as f:
                 baseline_data = json.load(f)
             comparisons = compare_benchmarks(baseline_data, result)
+            has_comparison_regression = any(d.regression or d.incompatible for d in comparisons)
 
     if not args.quiet:
         print(BenchmarkReporter.generate_console_summary(result))
@@ -181,7 +203,9 @@ def main() -> int:
         if not args.quiet:
             print(f"✓ Saved Markdown report to: {args.report}")
 
-    return 0 if result.summary.get("error_cases", 0) == 0 else 1
+    if result.summary.get("error_cases", 0) > 0 or has_comparison_regression:
+        return 1
+    return 0
 
 
 if __name__ == "__main__":

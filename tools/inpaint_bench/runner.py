@@ -23,6 +23,7 @@ from .schema import (
     BenchmarkRunResult,
     CaseResult,
     ComparisonDelta,
+    QualityThresholds,
     validate_case_execution,
 )
 from .metrics import (
@@ -300,27 +301,89 @@ def compare_benchmarks(
     candidate_result: BenchmarkRunResult | dict,
     image_baseline_dir: Path | None = None,
     image_candidate_dir: Path | None = None,
+    quality_thresholds: QualityThresholds | None = None,
 ) -> list[ComparisonDelta]:
+    thresholds = quality_thresholds or QualityThresholds()
     b_dict = baseline_result if isinstance(baseline_result, dict) else baseline_result.to_dict()
     c_dict = candidate_result if isinstance(candidate_result, dict) else candidate_result.to_dict()
+
+    b_schema = b_dict.get("schema_version", "")
+    c_schema = c_dict.get("schema_version", "")
+    schema_mismatch = (not b_schema or not c_schema or b_schema != c_schema)
 
     b_cases = {c["case_id"]: c for c in b_dict.get("cases", [])}
     c_cases = {c["case_id"]: c for c in c_dict.get("cases", [])}
 
-    deltas = []
-    for cid, b_case in b_cases.items():
+    all_case_ids = list(b_cases.keys())
+    for cid in c_cases.keys():
+        if cid not in all_case_ids:
+            all_case_ids.append(cid)
+
+    deltas: list[ComparisonDelta] = []
+
+    for cid in all_case_ids:
+        incompatible = False
+        quality_regression = False
+        note_parts: list[str] = []
+
+        if schema_mismatch:
+            incompatible = True
+            note_parts.append(f"Schema mismatch: baseline '{b_schema}' vs candidate '{c_schema}'")
+
         if cid not in c_cases:
+            deltas.append(
+                ComparisonDelta(
+                    case_id=cid,
+                    incompatible=True,
+                    regression=True,
+                    note=f"Baseline case '{cid}' missing in candidate run",
+                )
+            )
             continue
+
+        if cid not in b_cases:
+            deltas.append(
+                ComparisonDelta(
+                    case_id=cid,
+                    incompatible=True,
+                    regression=True,
+                    note=f"Candidate case '{cid}' unexpected (absent from baseline)",
+                )
+            )
+            continue
+
+        b_case = b_cases[cid]
         c_case = c_cases[cid]
 
-        incompatible = False
-        note_parts = []
+        if b_case.get("status") == "error":
+            incompatible = True
+            note_parts.append(f"Baseline error: {b_case.get('error_message', 'unknown')}")
+        if c_case.get("status") == "error":
+            incompatible = True
+            note_parts.append(f"Candidate error: {c_case.get('error_message', 'unknown')}")
+
+        b_level = b_case.get("level", "")
+        c_level = c_case.get("level", "")
+        if b_level in ("level2_pipeline", "level3_e2e"):
+            if not b_case.get("invocations") or not c_case.get("invocations"):
+                incompatible = True
+                note_parts.append("Missing invocations telemetry")
+            if not b_case.get("telemetry_summary") or not c_case.get("telemetry_summary"):
+                incompatible = True
+                note_parts.append("Missing telemetry_summary")
 
         b_exec = b_case.get("expected_execution", "")
         c_exec = c_case.get("expected_execution", "")
-        if b_exec and c_exec and b_exec != c_exec:
+        b_sc = b_case.get("expected_shortcut_type", None)
+        c_sc = c_case.get("expected_shortcut_type", None)
+
+        if b_exec != c_exec or b_sc != c_sc:
             incompatible = True
-            note_parts.append(f"Archetype mismatch: {b_exec} vs {c_exec}")
+            note_parts.append(f"Archetype mismatch: ({b_exec}, {b_sc}) vs ({c_exec}, {c_sc})")
+
+        if (b_exec == "shortcut" and not b_sc) or (c_exec == "shortcut" and not c_sc):
+            incompatible = True
+            note_parts.append("Missing expected_shortcut_type in shortcut case")
 
         b_t = b_case.get("timing", {})
         c_t = c_case.get("timing", {})
@@ -355,9 +418,12 @@ def compare_benchmarks(
             else:
                 b_img_path = image_baseline_dir / cid / "output.png"
                 c_img_path = image_candidate_dir / cid / "output.png"
-                if not b_img_path.is_file() or not c_img_path.is_file():
+                if not b_img_path.is_file():
                     incompatible = True
-                    note_parts.append(f"Golden image file missing for {cid}")
+                    note_parts.append(f"Missing baseline golden image for {cid}")
+                elif not c_img_path.is_file():
+                    incompatible = True
+                    note_parts.append(f"Missing candidate golden image for {cid}")
                 else:
                     b_img = cv2.imread(str(b_img_path))
                     c_img = cv2.imread(str(c_img_path))
@@ -369,9 +435,19 @@ def compare_benchmarks(
                         note_parts.append(f"Shape mismatch: {b_img.shape} vs {c_img.shape}")
                     else:
                         psnr, ssim, mae = compute_image_metrics(b_img, c_img)
+                        if psnr < thresholds.min_psnr:
+                            quality_regression = True
+                            note_parts.append(f"PSNR regression: {psnr} < {thresholds.min_psnr}")
+                        if ssim < thresholds.min_ssim:
+                            quality_regression = True
+                            note_parts.append(f"SSIM regression: {ssim} < {thresholds.min_ssim}")
+                        if mae > thresholds.max_mae:
+                            quality_regression = True
+                            note_parts.append(f"MAE regression: {mae} > {thresholds.max_mae}")
 
         is_regression = (
             incompatible
+            or quality_regression
             or p50_pct > 5.0
             or (calls_delta is not None and calls_delta > 0)
             or (calls_delta is None and model_calls_mean_delta > 0.0)
@@ -395,6 +471,7 @@ def compare_benchmarks(
                 psnr=psnr,
                 ssim=ssim,
                 mae=mae,
+                quality_regression=quality_regression,
                 regression=is_regression,
                 incompatible=incompatible,
                 note="; ".join(note_parts),

@@ -3,7 +3,14 @@ from dataclasses import dataclass, field, asdict
 from typing import Any
 import numpy as np
 
-SCHEMA_VERSION = "1.2.2"
+SCHEMA_VERSION = "1.2.3"
+
+
+@dataclass
+class QualityThresholds:
+    min_psnr: float = 30.0
+    min_ssim: float = 0.85
+    max_mae: float = 5.0
 
 
 @dataclass
@@ -179,8 +186,8 @@ def validate_case_execution(case: CaseResult) -> tuple[bool, str]:
         if not target_type and exp_exec.startswith("shortcut_"):
             target_type = exp_exec[len("shortcut_"):]
 
-        if target_type not in allowed_types:
-            return False, f"Unsupported expected shortcut type: '{target_type}'. Allowed: {sorted(list(allowed_types))}"
+        if not target_type or target_type not in allowed_types:
+            return False, f"Unsupported or missing expected shortcut type: '{target_type}'. Allowed: {sorted(list(allowed_types))}"
 
         for i, inv in enumerate(case.invocations):
             if inv.model_calls != 0:
@@ -192,11 +199,17 @@ def validate_case_execution(case: CaseResult) -> tuple[bool, str]:
         return True, ""
 
     if exp_exec == "mixed":
+        allowed_types = {"white", "black", "low_std"}
         for i, inv in enumerate(case.invocations):
             if inv.model_calls < 1:
                 return False, f"Invocation {i}: Mixed case expected model_calls >= 1 but got {inv.model_calls}"
             if inv.shortcut_count < 1:
                 return False, f"Invocation {i}: Mixed case expected shortcut_count >= 1 but got {inv.shortcut_count}"
+            if inv.shortcut_count != len(inv.shortcut_types):
+                return False, f"Invocation {i}: Mixed case shortcut_count ({inv.shortcut_count}) != len(shortcut_types) ({len(inv.shortcut_types)})"
+            for st in inv.shortcut_types:
+                if st not in allowed_types:
+                    return False, f"Invocation {i}: Invalid mixed shortcut type '{st}'. Allowed: {sorted(list(allowed_types))}"
         return True, ""
 
     return False, f"Unknown expected_execution archetype: '{exp_exec}'"
@@ -302,21 +315,25 @@ class BenchmarkRunResult:
 @dataclass
 class ComparisonDelta:
     case_id: str
-    baseline_p50_ms: float
-    candidate_p50_ms: float
-    delta_p50_ms: float
-    p50_diff_pct: float
-    baseline_p95_ms: float
-    candidate_p95_ms: float
-    delta_p95_ms: float
-    p95_diff_pct: float
-    baseline_model_calls: int | None
-    candidate_model_calls: int | None
-    model_calls_delta: int | None
+    baseline_p50_ms: float = 0.0
+    candidate_p50_ms: float = 0.0
+    delta_p50_ms: float = 0.0
+    p50_diff_pct: float = 0.0
+    baseline_p95_ms: float = 0.0
+    candidate_p95_ms: float = 0.0
+    delta_p95_ms: float = 0.0
+    p95_diff_pct: float = 0.0
+    baseline_model_calls: int | None = None
+    candidate_model_calls: int | None = None
+    model_calls_delta: int | None = None
     model_calls_mean_delta: float = 0.0
     psnr: float = 0.0
     ssim: float = 0.0
     mae: float = 0.0
+    psnr_delta: float = 0.0
+    ssim_delta: float = 0.0
+    mae_delta: float = 0.0
+    quality_regression: bool = False
     regression: bool = False
     incompatible: bool = False
     note: str = ""

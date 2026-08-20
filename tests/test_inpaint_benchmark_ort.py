@@ -14,7 +14,7 @@ from tools.inpaint_bench.corpus_generator import generate_synthetic_image, gener
 from tools.inpaint_bench.proxy import TelemetryCollector, TelemetrySessionProxy
 from tools.inpaint_bench.runner import BenchmarkRunner
 from tools.inpaint_bench.e2e_bench import run_e2e_benchmark_case
-from tools.inpaint_bench.schema import validate_case_execution
+from tools.inpaint_bench.schema import SCHEMA_VERSION, validate_case_execution
 
 
 class TestInpaintBenchmarkRealORT(unittest.TestCase):
@@ -306,7 +306,7 @@ class TestInpaintBenchmarkRealORT(unittest.TestCase):
 
                 res = runner.run(isolated_subproc=False)
                 self.assertIsNotNone(res)
-                self.assertEqual(res.schema_version, "1.2.2")
+                self.assertEqual(res.schema_version, SCHEMA_VERSION)
                 self.assertGreater(len(res.cases), 0)
                 self.assertEqual(res.summary.get("error_cases", 0), 0)
 
