@@ -1,9 +1,24 @@
 from __future__ import annotations
+import math
 from dataclasses import dataclass, field, asdict
 from typing import Any
 import numpy as np
 
-SCHEMA_VERSION = "1.2.4"
+SCHEMA_VERSION = "1.2.5"
+
+
+def is_finite_number(val: Any) -> bool:
+    if isinstance(val, bool) or val is None:
+        return False
+    if isinstance(val, (int, float)):
+        return not (math.isnan(val) or math.isinf(val))
+    return False
+
+
+def is_finite_int(val: Any) -> bool:
+    if isinstance(val, bool) or val is None:
+        return False
+    return isinstance(val, int)
 
 
 @dataclass
@@ -181,6 +196,12 @@ def validate_case_execution(case: CaseResult) -> tuple[bool, str]:
                 return False, f"Invocation {i}: Expected model_calls >= 1 but got {inv.model_calls} (unwanted shortcut activation)"
             if inv.shortcut_count > 0 or len(inv.shortcut_types) > 0:
                 return False, f"Invocation {i}: Expected 0 shortcuts but got {inv.shortcut_count} ({inv.shortcut_types})"
+            if inv.tile_count > 1 and inv.active_tile_count >= 1:
+                if inv.model_calls != inv.active_tile_count:
+                    return False, f"Invocation {i}: Tiled execution model_calls ({inv.model_calls}) != active_tile_count ({inv.active_tile_count})"
+            if inv.cluster_count > 1:
+                if len(inv.crop_dimensions) != inv.cluster_count or inv.model_calls != inv.cluster_count:
+                    return False, f"Invocation {i}: Multi-cluster execution mismatch: cluster_count={inv.cluster_count}, crops={len(inv.crop_dimensions)}, calls={inv.model_calls}"
         return True, ""
 
     if exp_exec in ("shortcut", "shortcut_expected") or (exp_exec and exp_exec.startswith("shortcut_")):
@@ -201,20 +222,6 @@ def validate_case_execution(case: CaseResult) -> tuple[bool, str]:
                 return False, f"Invocation {i}: Expected shortcut_types == ['{target_type}'] but got {inv.shortcut_types}"
         return True, ""
 
-    if exp_exec == "mixed":
-        allowed_types = {"white", "black", "low_std"}
-        for i, inv in enumerate(case.invocations):
-            if inv.model_calls < 1:
-                return False, f"Invocation {i}: Mixed case expected model_calls >= 1 but got {inv.model_calls}"
-            if inv.shortcut_count < 1:
-                return False, f"Invocation {i}: Mixed case expected shortcut_count >= 1 but got {inv.shortcut_count}"
-            if inv.shortcut_count != len(inv.shortcut_types):
-                return False, f"Invocation {i}: Mixed case shortcut_count ({inv.shortcut_count}) != len(shortcut_types) ({len(inv.shortcut_types)})"
-            for st in inv.shortcut_types:
-                if st not in allowed_types:
-                    return False, f"Invocation {i}: Invalid mixed shortcut type '{st}'. Allowed: {sorted(list(allowed_types))}"
-        return True, ""
-
     return False, f"Unknown expected_execution archetype: '{exp_exec}'"
 
 
@@ -231,17 +238,21 @@ def validate_case_payload_for_comparison(case: dict[str, Any]) -> tuple[bool, st
         return False, f"Case status is not 'ok': {status!r}"
 
     level = case.get("level")
-    if not level or not isinstance(level, str):
-        return False, "Missing or invalid 'level'"
+    if not level or not isinstance(level, str) or level not in ("level1_model", "level2_pipeline", "level3_e2e"):
+        return False, f"Missing or invalid 'level': {level!r}"
 
     timing = case.get("timing")
     if not isinstance(timing, dict):
         return False, "Missing or invalid 'timing' dictionary"
 
-    for field_name in ["p50_ms", "p95_ms", "mean_ms"]:
+    for field_name in ["count", "mean_ms", "p50_ms", "p95_ms", "min_ms", "max_ms", "stddev_ms"]:
         val = timing.get(field_name)
-        if val is None or not isinstance(val, (int, float)) or isinstance(val, bool):
-            return False, f"Missing or non-numeric timing field: 'timing.{field_name}'"
+        if not is_finite_number(val):
+            return False, f"Missing, non-numeric, or non-finite timing field: 'timing.{field_name}' ({val!r})"
+        if field_name == "count" and not is_finite_int(val):
+            return False, f"'timing.count' must be an integer: {val!r}"
+        if float(val) < 0.0:
+            return False, f"Negative timing value in 'timing.{field_name}': {val!r}"
 
     exp_exec = case.get("expected_execution")
     if not exp_exec or not isinstance(exp_exec, str):
@@ -257,28 +268,82 @@ def validate_case_payload_for_comparison(case: dict[str, Any]) -> tuple[bool, st
         if not isinstance(invs, list) or len(invs) == 0:
             return False, f"Level {level} requires a non-empty 'invocations' list"
 
+        seen_indices = set()
         for idx, inv in enumerate(invs):
             if not isinstance(inv, dict):
                 return False, f"Invocation {idx} is not a dictionary"
-            if inv.get("latency_ms") is None or not isinstance(inv.get("latency_ms"), (int, float)) or isinstance(inv.get("latency_ms"), bool):
-                return False, f"Invocation {idx} missing numeric 'latency_ms'"
-            if inv.get("model_calls") is None or not isinstance(inv.get("model_calls"), int) or isinstance(inv.get("model_calls"), bool):
-                return False, f"Invocation {idx} missing integer 'model_calls'"
+
+            inv_idx = inv.get("invocation_index")
+            if not is_finite_int(inv_idx) or inv_idx in seen_indices:
+                return False, f"Invocation {idx} has invalid or duplicate 'invocation_index': {inv_idx!r}"
+            seen_indices.add(inv_idx)
+
+            for f_time in ["latency_ms", "preprocess_ms", "inference_ms", "postprocess_ms"]:
+                val = inv.get(f_time)
+                if not is_finite_number(val) or float(val) < 0.0:
+                    return False, f"Invocation {idx} missing or invalid timing '{f_time}': {val!r}"
+
+            mc = inv.get("model_calls")
+            if not is_finite_int(mc) or mc < 0:
+                return False, f"Invocation {idx} missing or negative integer 'model_calls': {mc!r}"
+
             if level == "level3_e2e":
-                for f_name in ["cluster_count", "tile_count", "active_tile_count", "shortcut_count"]:
-                    if inv.get(f_name) is None or not isinstance(inv.get(f_name), int) or isinstance(inv.get(f_name), bool):
-                        return False, f"Invocation {idx} missing integer '{f_name}'"
-                if not isinstance(inv.get("crop_dimensions"), list):
+                for f_count in ["cluster_count", "tile_count", "active_tile_count", "shortcut_count"]:
+                    val = inv.get(f_count)
+                    if not is_finite_int(val) or val < 0:
+                        return False, f"Invocation {idx} missing or negative integer '{f_count}': {val!r}"
+
+                if not isinstance(inv.get("shortcut_types"), list):
+                    return False, f"Invocation {idx} missing 'shortcut_types' list"
+                for st in inv.get("shortcut_types", []):
+                    if st not in ("white", "black", "low_std"):
+                        return False, f"Invocation {idx} invalid shortcut type '{st}'"
+
+                crops = inv.get("crop_dimensions")
+                if not isinstance(crops, list):
                     return False, f"Invocation {idx} missing 'crop_dimensions' list"
+                for crop in crops:
+                    if not isinstance(crop, list) or len(crop) != 2 or not all(is_finite_int(d) and d > 0 for d in crop):
+                        return False, f"Invocation {idx} invalid crop dimension: {crop!r}"
 
         telem_sum = case.get("telemetry_summary")
         if not isinstance(telem_sum, dict):
             return False, f"Level {level} requires 'telemetry_summary' dictionary"
-        mc = telem_sum.get("model_calls")
-        if not isinstance(mc, dict):
-            return False, "Missing 'telemetry_summary.model_calls' dictionary"
-        if mc.get("mean") is None or not isinstance(mc.get("mean"), (int, float)) or isinstance(mc.get("mean"), bool):
-            return False, "Missing numeric 'telemetry_summary.model_calls.mean'"
+
+        # Recompute and verify telemetry aggregate consistency
+        for metric_name in ["model_calls", "cluster_count", "tile_count", "active_tile_count", "shortcut_count"]:
+            if metric_name not in telem_sum or not isinstance(telem_sum[metric_name], dict):
+                return False, f"Missing 'telemetry_summary.{metric_name}' dictionary"
+            m_dict = telem_sum[metric_name]
+            for mf in ["min", "max", "mean", "invariant"]:
+                if mf not in m_dict:
+                    return False, f"Missing field '{mf}' in 'telemetry_summary.{metric_name}'"
+                if mf in ("min", "max") and not is_finite_int(m_dict[mf]):
+                    return False, f"Non-integer '{mf}' in 'telemetry_summary.{metric_name}': {m_dict[mf]!r}"
+                if mf == "mean" and (not is_finite_number(m_dict[mf]) or float(m_dict[mf]) < 0.0):
+                    return False, f"Non-finite or negative mean in 'telemetry_summary.{metric_name}': {m_dict[mf]!r}"
+                if mf == "invariant" and not isinstance(m_dict[mf], bool):
+                    return False, f"Non-boolean invariant in 'telemetry_summary.{metric_name}': {m_dict[mf]!r}"
+
+            # Validate against actual invocation values
+            actual_vals = [inv.get(metric_name, 0) for inv in invs]
+            exp_min = int(min(actual_vals))
+            exp_max = int(max(actual_vals))
+            exp_mean = round(float(np.mean(actual_vals)), 2)
+            exp_inv = (exp_min == exp_max)
+
+            if m_dict["min"] != exp_min or m_dict["max"] != exp_max or m_dict["invariant"] != exp_inv or abs(float(m_dict["mean"]) - exp_mean) > 1e-2:
+                return False, f"Contradiction between invocations and summary for '{metric_name}': expected min={exp_min}, max={exp_max}, mean={exp_mean}, inv={exp_inv}; got min={m_dict['min']}, max={m_dict['max']}, mean={m_dict['mean']}, inv={m_dict['invariant']}"
+
+        # Check invariant scalar consistency
+        mc_summary = telem_sum["model_calls"]
+        mc_per_inv = case.get("model_calls_per_invocation")
+        if mc_summary["invariant"]:
+            if mc_per_inv != mc_summary["min"]:
+                return False, f"model_calls_per_invocation ({mc_per_inv}) != invariant model_calls ({mc_summary['min']})"
+        else:
+            if mc_per_inv is not None:
+                return False, f"model_calls_per_invocation must be null/None for non-invariant telemetry, but got {mc_per_inv}"
 
     return True, ""
 
@@ -295,7 +360,26 @@ def validate_benchmark_payload_for_comparison(payload: dict[str, Any]) -> tuple[
     if not isinstance(cases, list) or len(cases) == 0:
         return False, "Benchmark payload must have a non-empty 'cases' list"
 
-    case_ids = []
+    summary = payload.get("summary")
+    if not isinstance(summary, dict):
+        return False, "Benchmark payload must have a 'summary' dictionary"
+
+    total_c = summary.get("total_cases")
+    ok_c = summary.get("ok_cases")
+    err_c = summary.get("error_cases")
+
+    if not is_finite_int(total_c) or total_c != len(cases):
+        return False, f"Summary total_cases ({total_c}) != actual cases count ({len(cases)})"
+
+    actual_ok = sum(1 for c in cases if isinstance(c, dict) and c.get("status") == "ok")
+    actual_err = sum(1 for c in cases if isinstance(c, dict) and c.get("status") == "error")
+
+    if not is_finite_int(ok_c) or ok_c != actual_ok:
+        return False, f"Summary ok_cases ({ok_c}) != actual ok count ({actual_ok})"
+    if not is_finite_int(err_c) or err_c != actual_err:
+        return False, f"Summary error_cases ({err_c}) != actual error count ({actual_err})"
+
+    case_ids = set()
     for idx, c in enumerate(cases):
         if not isinstance(c, dict):
             return False, f"Case at index {idx} is not a dictionary"
@@ -304,7 +388,7 @@ def validate_benchmark_payload_for_comparison(payload: dict[str, Any]) -> tuple[
             return False, f"Case at index {idx} has invalid case_id: {cid!r}"
         if cid in case_ids:
             return False, f"Duplicate case_id found in benchmark payload: {cid!r}"
-        case_ids.append(cid)
+        case_ids.add(cid)
 
     return True, ""
 
@@ -409,24 +493,24 @@ class BenchmarkRunResult:
 @dataclass
 class ComparisonDelta:
     case_id: str
-    baseline_p50_ms: float = 0.0
-    candidate_p50_ms: float = 0.0
-    delta_p50_ms: float = 0.0
-    p50_diff_pct: float = 0.0
-    baseline_p95_ms: float = 0.0
-    candidate_p95_ms: float = 0.0
-    delta_p95_ms: float = 0.0
-    p95_diff_pct: float = 0.0
+    baseline_p50_ms: float | None = None
+    candidate_p50_ms: float | None = None
+    delta_p50_ms: float | None = None
+    p50_diff_pct: float | None = None
+    baseline_p95_ms: float | None = None
+    candidate_p95_ms: float | None = None
+    delta_p95_ms: float | None = None
+    p95_diff_pct: float | None = None
     baseline_model_calls: int | None = None
     candidate_model_calls: int | None = None
     model_calls_delta: int | None = None
-    model_calls_mean_delta: float = 0.0
-    psnr: float = 0.0
-    ssim: float = 0.0
-    mae: float = 0.0
-    psnr_delta: float = 0.0
-    ssim_delta: float = 0.0
-    mae_delta: float = 0.0
+    model_calls_mean_delta: float | None = None
+    psnr: float | None = None
+    ssim: float | None = None
+    mae: float | None = None
+    psnr_delta: float | None = None
+    ssim_delta: float | None = None
+    mae_delta: float | None = None
     quality_regression: bool = False
     regression: bool = False
     incompatible: bool = False

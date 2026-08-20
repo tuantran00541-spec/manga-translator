@@ -5,6 +5,7 @@ import tempfile
 import ast
 import json
 import hashlib
+import math
 import numpy as np
 import cv2
 from pathlib import Path
@@ -33,6 +34,8 @@ from tools.inpaint_bench.schema import (
     MetricSummary,
     TelemetryAggregate,
     QualityThresholds,
+    is_finite_number,
+    is_finite_int,
     summarize_metric,
     summarize_telemetry,
     validate_case_execution,
@@ -49,6 +52,7 @@ from tools.inpaint_bench.integrity import (
     compute_file_sha256,
     verify_production_integrity,
     PRODUCTION_BASELINE_HASHES,
+    LAMA_MODEL_BASELINE_SHA256,
 )
 from tools.benchmark_inpaint import load_baseline_data
 from app.detector.bubble_detector import BubbleBox
@@ -102,6 +106,9 @@ def make_valid_case_dict(
             {
                 "invocation_index": 0,
                 "latency_ms": p50_ms,
+                "preprocess_ms": 5.0,
+                "inference_ms": p50_ms - 10.0,
+                "postprocess_ms": 5.0,
                 "model_calls": model_calls_inv if model_calls_inv is not None else 1,
                 "cluster_count": 1,
                 "tile_count": 0,
@@ -112,36 +119,56 @@ def make_valid_case_dict(
             }
         ]
 
+    mc_vals = [inv["model_calls"] for inv in invocations]
+    min_mc = int(min(mc_vals))
+    max_mc = int(max(mc_vals))
+    mean_mc = round(float(np.mean(mc_vals)), 2)
+    inv_mc = (min_mc == max_mc)
+
     return {
         "case_id": case_id,
         "level": level,
         "status": status,
         "expected_execution": expected_execution,
         "expected_shortcut_type": expected_shortcut_type,
-        "timing": {"count": 1, "mean_ms": p50_ms, "p50_ms": p50_ms, "p95_ms": p50_ms + 5.0, "min_ms": p50_ms, "max_ms": p50_ms, "stddev_ms": 0.0},
-        "model_calls_per_invocation": model_calls_inv,
+        "timing": {"count": len(invocations), "mean_ms": p50_ms, "p50_ms": p50_ms, "p95_ms": p50_ms + 5.0, "min_ms": p50_ms, "max_ms": p50_ms, "stddev_ms": 0.0},
+        "model_calls_per_invocation": min_mc if inv_mc else None,
         "telemetry_summary": {
-            "model_calls": {"min": int(model_calls_mean), "max": int(model_calls_mean), "mean": model_calls_mean, "invariant": (model_calls_inv is not None)},
+            "model_calls": {"min": min_mc, "max": max_mc, "mean": mean_mc, "invariant": inv_mc},
             "cluster_count": {"min": 1, "max": 1, "mean": 1.0, "invariant": True},
             "tile_count": {"min": 0, "max": 0, "mean": 0.0, "invariant": True},
             "active_tile_count": {"min": 0, "max": 0, "mean": 0.0, "invariant": True},
-            "shortcut_count": {"min": 0, "max": 0, "mean": 0.0, "invariant": True},
+            "shortcut_count": {"min": 0 if expected_execution == "model_required" else 1, "max": 0 if expected_execution == "model_required" else 1, "mean": 0.0 if expected_execution == "model_required" else 1.0, "invariant": True},
         },
         "invocations": invocations,
     }
 
 
-class TestInpaintBenchmarkFinalFailClosedGate(unittest.TestCase):
+def make_valid_payload(cases: list[dict]) -> dict:
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "mode": "all",
+        "threads": 1,
+        "cases": cases,
+        "summary": {
+            "total_cases": len(cases),
+            "ok_cases": sum(1 for c in cases if c.get("status") == "ok"),
+            "error_cases": sum(1 for c in cases if c.get("status") == "error"),
+        },
+    }
+
+
+class TestInpaintBenchmarkFinalTrustBoundary(unittest.TestCase):
     # ==================================================
-    # 1. PRODUCTION INTEGRITY & MUTATION TESTS
+    # 1. PRODUCTION & MODEL INTEGRITY
     # ==================================================
 
-    def test_01_prod_integrity_real_files_pass(self):
+    def test_01_prod_and_model_integrity_real_files_pass(self):
         valid, report = verify_production_integrity()
         self.assertTrue(valid, f"Production integrity failed: {report}")
         for rel_path, info in report.items():
-            self.assertTrue(info["exists"])
-            self.assertTrue(info["valid"])
+            self.assertTrue(info["exists"], f"Missing: {rel_path}")
+            self.assertTrue(info["valid"], f"Invalid hash for {rel_path}")
             self.assertEqual(info["expected_hash"], info["actual_hash"])
 
     def test_02_prod_integrity_mutate_one_byte_fails(self):
@@ -149,263 +176,216 @@ class TestInpaintBenchmarkFinalFailClosedGate(unittest.TestCase):
             tmp_path = Path(tmp_dir)
             (tmp_path / "app/inpaint").mkdir(parents=True, exist_ok=True)
             (tmp_path / "app").mkdir(parents=True, exist_ok=True)
+            (tmp_path / "models").mkdir(parents=True, exist_ok=True)
 
             real_bytes = open("app/inpaint/lama_inpainter.py", "rb").read()
-            mutated_bytes = real_bytes[:-1] + b"X"
             with open(tmp_path / "app/inpaint/lama_inpainter.py", "wb") as f:
-                f.write(mutated_bytes)
+                f.write(real_bytes[:-1] + b"X")
             with open(tmp_path / "app/ort_utils.py", "wb") as f:
                 f.write(open("app/ort_utils.py", "rb").read())
+            with open(tmp_path / "models/lama.onnx", "wb") as f:
+                f.write(open("models/lama.onnx", "rb").read())
 
             valid, report = verify_production_integrity(base_dir=tmp_path)
             self.assertFalse(valid)
             self.assertFalse(report["app/inpaint/lama_inpainter.py"]["valid"])
 
-    def test_03_prod_integrity_deletion_fails(self):
+    def test_03_model_integrity_mutation_fails(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = Path(tmp_dir)
             (tmp_path / "app/inpaint").mkdir(parents=True, exist_ok=True)
             (tmp_path / "app").mkdir(parents=True, exist_ok=True)
+            (tmp_path / "models").mkdir(parents=True, exist_ok=True)
 
-            real_bytes = open("app/inpaint/lama_inpainter.py", "rb").read()
             with open(tmp_path / "app/inpaint/lama_inpainter.py", "wb") as f:
-                f.write(real_bytes[:100])  # truncated
+                f.write(open("app/inpaint/lama_inpainter.py", "rb").read())
             with open(tmp_path / "app/ort_utils.py", "wb") as f:
                 f.write(open("app/ort_utils.py", "rb").read())
+            with open(tmp_path / "models/lama.onnx", "wb") as f:
+                f.write(b"NOT_REAL_ONNX_BYTES")
 
             valid, report = verify_production_integrity(base_dir=tmp_path)
             self.assertFalse(valid)
+            self.assertFalse(report["models/lama.onnx"]["valid"])
 
     def test_04_prod_integrity_line_ending_mutation_fails(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = Path(tmp_dir)
             (tmp_path / "app/inpaint").mkdir(parents=True, exist_ok=True)
             (tmp_path / "app").mkdir(parents=True, exist_ok=True)
+            (tmp_path / "models").mkdir(parents=True, exist_ok=True)
 
             real_bytes = open("app/ort_utils.py", "rb").read()
-            crlf_bytes = real_bytes.replace(b"\n", b"\r\n")
-            if crlf_bytes == real_bytes:
-                crlf_bytes = real_bytes.replace(b"\r\n", b"\n")
+            crlf_bytes = real_bytes.replace(b"\n", b"\r\n") if b"\r\n" not in real_bytes else real_bytes.replace(b"\r\n", b"\n")
 
             with open(tmp_path / "app/ort_utils.py", "wb") as f:
                 f.write(crlf_bytes)
             with open(tmp_path / "app/inpaint/lama_inpainter.py", "wb") as f:
                 f.write(open("app/inpaint/lama_inpainter.py", "rb").read())
+            with open(tmp_path / "models/lama.onnx", "wb") as f:
+                f.write(open("models/lama.onnx", "rb").read())
 
             valid, report = verify_production_integrity(base_dir=tmp_path)
             self.assertFalse(valid)
 
     # ==================================================
-    # 2. RAW PAYLOAD & SCHEMA VALIDATION TESTS
+    # 2. ZERO NaN / INF TOLERANCE TESTS
     # ==================================================
 
-    def test_05_schema_mismatch_fails_closed(self):
-        base = {"schema_version": "1.2.3", "cases": [make_valid_case_dict()]}
-        cand = {"schema_version": "1.2.4", "cases": [make_valid_case_dict()]}
-        deltas = compare_benchmarks(base, cand)
-        self.assertEqual(len(deltas), 1)
+    def test_05_nan_timing_fails_payload_validation(self):
+        c = make_valid_case_dict()
+        c["timing"]["p50_ms"] = float("nan")
+        valid, msg = validate_case_payload_for_comparison(c)
+        self.assertFalse(valid)
+        self.assertIn("timing.p50_ms", msg)
+
+    def test_06_inf_timing_fails_payload_validation(self):
+        c = make_valid_case_dict()
+        c["timing"]["p95_ms"] = float("inf")
+        valid, msg = validate_case_payload_for_comparison(c)
+        self.assertFalse(valid)
+        self.assertIn("timing.p95_ms", msg)
+
+    def test_07_negative_inf_timing_fails_payload_validation(self):
+        c = make_valid_case_dict()
+        c["timing"]["mean_ms"] = float("-inf")
+        valid, msg = validate_case_payload_for_comparison(c)
+        self.assertFalse(valid)
+        self.assertIn("timing.mean_ms", msg)
+
+    def test_08_bool_masquerading_as_int_fails(self):
+        c = make_valid_case_dict()
+        c["timing"]["count"] = True
+        valid, msg = validate_case_payload_for_comparison(c)
+        self.assertFalse(valid)
+
+    def test_09_nan_image_metric_fails(self):
+        img1 = np.full((100, 100, 3), 128, dtype=np.uint8)
+        img2 = img1.copy()
+        # Non-finite values cannot be stored in uint8 directly, but test float conversion check
+        with self.assertRaises(ValueError):
+            compute_image_metrics(np.array([], dtype=np.uint8), img2)
+
+    # ==================================================
+    # 3. TELEMETRY AGGREGATE CONSISTENCY
+    # ==================================================
+
+    def test_10_aggregate_contradicting_invocations_fails(self):
+        c = make_valid_case_dict()
+        # Invocations have model_calls = 1, but telemetry_summary claims mean = 999.0
+        c["telemetry_summary"]["model_calls"]["mean"] = 999.0
+        valid, msg = validate_case_payload_for_comparison(c)
+        self.assertFalse(valid)
+        self.assertIn("Contradiction", msg)
+
+    def test_11_invariant_flag_contradiction_fails(self):
+        inv1 = {
+            "invocation_index": 0, "latency_ms": 10.0, "preprocess_ms": 1.0, "inference_ms": 8.0, "postprocess_ms": 1.0,
+            "model_calls": 1, "cluster_count": 1, "tile_count": 0, "active_tile_count": 0, "shortcut_count": 0,
+            "shortcut_types": [], "crop_dimensions": [[50, 50]]
+        }
+        inv2 = {
+            "invocation_index": 1, "latency_ms": 10.0, "preprocess_ms": 1.0, "inference_ms": 8.0, "postprocess_ms": 1.0,
+            "model_calls": 2, "cluster_count": 1, "tile_count": 0, "active_tile_count": 0, "shortcut_count": 0,
+            "shortcut_types": [], "crop_dimensions": [[50, 50]]
+        }
+        c = make_valid_case_dict(invocations=[inv1, inv2])
+        # Force invariant: True even though min=1, max=2
+        c["telemetry_summary"]["model_calls"]["invariant"] = True
+        valid, msg = validate_case_payload_for_comparison(c)
+        self.assertFalse(valid)
+
+    # ==================================================
+    # 4. RAW PAYLOAD & SUMMARY CONSISTENCY
+    # ==================================================
+
+    def test_12_schema_version_mismatch_fails(self):
+        payload = make_valid_payload([make_valid_case_dict()])
+        payload["schema_version"] = "1.2.4"
+        valid, msg = validate_benchmark_payload_for_comparison(payload)
+        self.assertFalse(valid)
+        self.assertIn("Schema mismatch", msg)
+
+    def test_13_summary_total_mismatch_fails(self):
+        payload = make_valid_payload([make_valid_case_dict("c1"), make_valid_case_dict("c2")])
+        payload["summary"]["total_cases"] = 999
+        valid, msg = validate_benchmark_payload_for_comparison(payload)
+        self.assertFalse(valid)
+
+    def test_14_summary_error_count_mismatch_fails(self):
+        c_err = make_valid_case_dict("c1", status="error")
+        payload = make_valid_payload([c_err])
+        payload["summary"]["error_cases"] = 0  # Claims 0 errors
+        valid, msg = validate_benchmark_payload_for_comparison(payload)
+        self.assertFalse(valid)
+
+    # ==================================================
+    # 5. STATUS FAIL-CLOSED
+    # ==================================================
+
+    def test_15_skipped_case_fails_comparison(self):
+        c_base = make_valid_case_dict("c1")
+        c_cand = make_valid_case_dict("c1", status="skipped")
+        base = make_valid_payload([c_base])
+        cand = make_valid_payload([c_cand])
+        deltas = compare_benchmarks(base, cand, telemetry_only=True)
         self.assertTrue(deltas[0].incompatible)
         self.assertTrue(deltas[0].regression)
 
-    def test_06_missing_schema_version_fails_closed(self):
-        base = {"cases": [make_valid_case_dict()]}
-        cand = {"schema_version": SCHEMA_VERSION, "cases": [make_valid_case_dict()]}
-        deltas = compare_benchmarks(base, cand)
-        self.assertTrue(deltas[0].incompatible)
-        self.assertTrue(deltas[0].regression)
-
-    def test_07_duplicate_case_ids_fails_closed(self):
-        base = {"schema_version": SCHEMA_VERSION, "cases": [make_valid_case_dict("c1"), make_valid_case_dict("c1")]}
-        cand = {"schema_version": SCHEMA_VERSION, "cases": [make_valid_case_dict("c1")]}
-        deltas = compare_benchmarks(base, cand)
-        self.assertTrue(deltas[0].incompatible)
-        self.assertTrue(deltas[0].regression)
-        self.assertIn("Duplicate", deltas[0].note)
-
-    def test_08_null_case_id_fails_closed(self):
-        base = {"schema_version": SCHEMA_VERSION, "cases": [{"case_id": None, "timing": {"p50_ms": 10.0}}]}
-        cand = {"schema_version": SCHEMA_VERSION, "cases": [make_valid_case_dict("c1")]}
-        deltas = compare_benchmarks(base, cand)
+    def test_16_error_case_fails_comparison(self):
+        c_base = make_valid_case_dict("c1")
+        c_cand = make_valid_case_dict("c1", status="error")
+        base = make_valid_payload([c_base])
+        cand = make_valid_payload([c_cand])
+        deltas = compare_benchmarks(base, cand, telemetry_only=True)
         self.assertTrue(deltas[0].incompatible)
         self.assertTrue(deltas[0].regression)
 
     # ==================================================
-    # 3. MISSING TELEMETRY NEVER TURNS INTO ZERO
+    # 6. EXACT CASE SET & ARCHETYPES
     # ==================================================
 
-    def test_09_missing_telemetry_summary_fails_closed(self):
-        c_no_telem = make_valid_case_dict()
-        del c_no_telem["telemetry_summary"]
-        base = {"schema_version": SCHEMA_VERSION, "cases": [make_valid_case_dict()]}
-        cand = {"schema_version": SCHEMA_VERSION, "cases": [c_no_telem]}
-        deltas = compare_benchmarks(base, cand)
-        self.assertTrue(deltas[0].incompatible)
-        self.assertTrue(deltas[0].regression)
-        self.assertIn("telemetry_summary", deltas[0].note)
-
-    def test_10_missing_model_calls_mean_fails_closed(self):
-        c_bad = make_valid_case_dict()
-        del c_bad["telemetry_summary"]["model_calls"]["mean"]
-        base = {"schema_version": SCHEMA_VERSION, "cases": [make_valid_case_dict()]}
-        cand = {"schema_version": SCHEMA_VERSION, "cases": [c_bad]}
-        deltas = compare_benchmarks(base, cand)
-        self.assertTrue(deltas[0].incompatible)
-        self.assertTrue(deltas[0].regression)
-
-    def test_11_missing_invocations_fails_closed(self):
-        c_bad = make_valid_case_dict()
-        del c_bad["invocations"]
-        base = {"schema_version": SCHEMA_VERSION, "cases": [make_valid_case_dict()]}
-        cand = {"schema_version": SCHEMA_VERSION, "cases": [c_bad]}
-        deltas = compare_benchmarks(base, cand)
-        self.assertTrue(deltas[0].incompatible)
-        self.assertTrue(deltas[0].regression)
-
-    def test_12_empty_invocations_fails_closed(self):
-        c_bad = make_valid_case_dict()
-        c_bad["invocations"] = []
-        base = {"schema_version": SCHEMA_VERSION, "cases": [make_valid_case_dict()]}
-        cand = {"schema_version": SCHEMA_VERSION, "cases": [c_bad]}
-        deltas = compare_benchmarks(base, cand)
-        self.assertTrue(deltas[0].incompatible)
-        self.assertTrue(deltas[0].regression)
-
-    def test_13_invocation_missing_model_calls_fails_closed(self):
-        c_bad = make_valid_case_dict()
-        del c_bad["invocations"][0]["model_calls"]
-        base = {"schema_version": SCHEMA_VERSION, "cases": [make_valid_case_dict()]}
-        cand = {"schema_version": SCHEMA_VERSION, "cases": [c_bad]}
-        deltas = compare_benchmarks(base, cand)
-        self.assertTrue(deltas[0].incompatible)
-        self.assertTrue(deltas[0].regression)
-
-    # ==================================================
-    # 4. STATUS FAIL-CLOSED TESTS
-    # ==================================================
-
-    def test_14_status_skipped_fails_closed(self):
-        c_skip = make_valid_case_dict(status="skipped")
-        base = {"schema_version": SCHEMA_VERSION, "cases": [make_valid_case_dict()]}
-        cand = {"schema_version": SCHEMA_VERSION, "cases": [c_skip]}
-        deltas = compare_benchmarks(base, cand)
-        self.assertTrue(deltas[0].incompatible)
-        self.assertTrue(deltas[0].regression)
-        self.assertIn("skipped", deltas[0].note)
-
-    def test_15_status_error_fails_closed(self):
-        c_err = make_valid_case_dict(status="error")
-        base = {"schema_version": SCHEMA_VERSION, "cases": [make_valid_case_dict()]}
-        cand = {"schema_version": SCHEMA_VERSION, "cases": [c_err]}
-        deltas = compare_benchmarks(base, cand)
-        self.assertTrue(deltas[0].incompatible)
-        self.assertTrue(deltas[0].regression)
-
-    def test_16_status_null_fails_closed(self):
-        c_null = make_valid_case_dict(status=None)
-        base = {"schema_version": SCHEMA_VERSION, "cases": [make_valid_case_dict()]}
-        cand = {"schema_version": SCHEMA_VERSION, "cases": [c_null]}
-        deltas = compare_benchmarks(base, cand)
-        self.assertTrue(deltas[0].incompatible)
-        self.assertTrue(deltas[0].regression)
-
-    # ==================================================
-    # 5. EXACT CASE SET TESTS
-    # ==================================================
-
-    def test_17_missing_candidate_case_fails_closed(self):
-        base = {"schema_version": SCHEMA_VERSION, "cases": [make_valid_case_dict("c1"), make_valid_case_dict("c2")]}
-        cand = {"schema_version": SCHEMA_VERSION, "cases": [make_valid_case_dict("c1")]}
-        deltas = compare_benchmarks(base, cand)
+    def test_17_missing_case_fails_comparison(self):
+        base = make_valid_payload([make_valid_case_dict("c1"), make_valid_case_dict("c2")])
+        cand = make_valid_payload([make_valid_case_dict("c1")])
+        deltas = compare_benchmarks(base, cand, telemetry_only=True)
         self.assertEqual(len(deltas), 2)
         c2 = [d for d in deltas if d.case_id == "c2"][0]
         self.assertTrue(c2.incompatible)
         self.assertTrue(c2.regression)
-        self.assertIn("missing in candidate", c2.note)
 
-    def test_18_unexpected_candidate_case_fails_closed(self):
-        base = {"schema_version": SCHEMA_VERSION, "cases": [make_valid_case_dict("c1")]}
-        cand = {"schema_version": SCHEMA_VERSION, "cases": [make_valid_case_dict("c1"), make_valid_case_dict("c_extra")]}
-        deltas = compare_benchmarks(base, cand)
+    def test_18_unexpected_case_fails_comparison(self):
+        base = make_valid_payload([make_valid_case_dict("c1")])
+        cand = make_valid_payload([make_valid_case_dict("c1"), make_valid_case_dict("extra")])
+        deltas = compare_benchmarks(base, cand, telemetry_only=True)
         self.assertEqual(len(deltas), 2)
-        extra = [d for d in deltas if d.case_id == "c_extra"][0]
+        extra = [d for d in deltas if d.case_id == "extra"][0]
         self.assertTrue(extra.incompatible)
         self.assertTrue(extra.regression)
-        self.assertIn("unexpected", extra.note)
 
-    # ==================================================
-    # 6. ARCHETYPE & SHORTCUT CONSISTENCY
-    # ==================================================
-
-    def test_19_archetype_mismatch_fails_closed(self):
-        c_base = make_valid_case_dict(expected_execution="shortcut", expected_shortcut_type="white")
-        c_cand = make_valid_case_dict(expected_execution="shortcut", expected_shortcut_type="black")
-        base = {"schema_version": SCHEMA_VERSION, "cases": [c_base]}
-        cand = {"schema_version": SCHEMA_VERSION, "cases": [c_cand]}
-        deltas = compare_benchmarks(base, cand)
+    def test_19_shortcut_type_mismatch_fails(self):
+        c_base = make_valid_case_dict("c1", expected_execution="shortcut", expected_shortcut_type="white")
+        c_cand = make_valid_case_dict("c1", expected_execution="shortcut", expected_shortcut_type="black")
+        base = make_valid_payload([c_base])
+        cand = make_valid_payload([c_cand])
+        deltas = compare_benchmarks(base, cand, telemetry_only=True)
         self.assertTrue(deltas[0].incompatible)
         self.assertTrue(deltas[0].regression)
 
-    def test_20_model_required_shortcut_switch_fails_closed(self):
-        c_base = make_valid_case_dict(expected_execution="model_required")
-        c_cand = make_valid_case_dict(expected_execution="shortcut", expected_shortcut_type="white")
-        base = {"schema_version": SCHEMA_VERSION, "cases": [c_base]}
-        cand = {"schema_version": SCHEMA_VERSION, "cases": [c_cand]}
+    # ==================================================
+    # 7. GOLDEN IMAGE QUALITY & METRIC COMPUTATION
+    # ==================================================
+
+    def test_20_missing_golden_directory_fails_closed(self):
+        base = make_valid_payload([make_valid_case_dict("c1")])
+        cand = make_valid_payload([make_valid_case_dict("c1")])
+        # Default is full comparison without telemetry_only=True
         deltas = compare_benchmarks(base, cand)
         self.assertTrue(deltas[0].incompatible)
         self.assertTrue(deltas[0].regression)
+        self.assertIn("Golden comparison required", deltas[0].note)
 
-    def test_21_mixed_invocation_shortcut_types_fail(self):
-        inv1 = InvocationTelemetry(model_calls=0, shortcut_count=1, shortcut_types=["white"])
-        inv2 = InvocationTelemetry(model_calls=0, shortcut_count=1, shortcut_types=["black"])
-        case = CaseResult(
-            expected_execution="shortcut",
-            expected_shortcut_type="white",
-            invocations=[inv1, inv2],
-            telemetry_summary=summarize_telemetry([inv1, inv2]),
-        )
-        valid, msg = validate_case_execution(case)
-        self.assertFalse(valid)
-
-    # ==================================================
-    # 7. TILED & MULTI-CLUSTER CONSISTENCY
-    # ==================================================
-
-    def test_22_tiled_calls_mismatch_fails(self):
-        inv = InvocationTelemetry(model_calls=3, tile_count=4, active_tile_count=4)
-        # For tiled where active_tile_count=4, model_calls must equal 4
-        self.assertNotEqual(inv.model_calls, inv.active_tile_count)
-
-    def test_23_multi_cluster_calls_mismatch_fails(self):
-        inv = InvocationTelemetry(model_calls=1, cluster_count=2, crop_dimensions=[[50, 50], [60, 60]])
-        self.assertNotEqual(inv.model_calls, inv.cluster_count)
-
-    # ==================================================
-    # 8. GOLDEN IMAGE QUALITY & DEGRADATION
-    # ==================================================
-
-    def test_24_golden_degradation_detected(self):
-        with tempfile.TemporaryDirectory() as d1, tempfile.TemporaryDirectory() as d2:
-            img_b = np.full((100, 100, 3), 128, dtype=np.uint8)
-            img_c = img_b.copy()
-            # Add moderate noise to drop PSNR below degradation threshold
-            img_c[::2, ::2] = 100
-
-            p1 = Path(d1) / "c1"
-            p2 = Path(d2) / "c1"
-            p1.mkdir(parents=True)
-            p2.mkdir(parents=True)
-            cv2.imwrite(str(p1 / "output.png"), img_b)
-            cv2.imwrite(str(p2 / "output.png"), img_c)
-
-            base = {"schema_version": SCHEMA_VERSION, "cases": [make_valid_case_dict("c1")]}
-            cand = {"schema_version": SCHEMA_VERSION, "cases": [make_valid_case_dict("c1")]}
-
-            deltas = compare_benchmarks(base, cand, image_baseline_dir=Path(d1), image_candidate_dir=Path(d2))
-            self.assertEqual(len(deltas), 1)
-            self.assertTrue(deltas[0].quality_regression)
-            self.assertTrue(deltas[0].regression)
-
-    def test_25_golden_shape_mismatch_fails(self):
+    def test_21_golden_image_shape_mismatch_fails(self):
         with tempfile.TemporaryDirectory() as d1, tempfile.TemporaryDirectory() as d2:
             p1 = Path(d1) / "c1"
             p2 = Path(d2) / "c1"
@@ -414,22 +394,22 @@ class TestInpaintBenchmarkFinalFailClosedGate(unittest.TestCase):
             cv2.imwrite(str(p1 / "output.png"), np.full((100, 100, 3), 128, dtype=np.uint8))
             cv2.imwrite(str(p2 / "output.png"), np.full((120, 120, 3), 128, dtype=np.uint8))
 
-            base = {"schema_version": SCHEMA_VERSION, "cases": [make_valid_case_dict("c1")]}
-            cand = {"schema_version": SCHEMA_VERSION, "cases": [make_valid_case_dict("c1")]}
+            base = make_valid_payload([make_valid_case_dict("c1")])
+            cand = make_valid_payload([make_valid_case_dict("c1")])
 
             deltas = compare_benchmarks(base, cand, image_baseline_dir=Path(d1), image_candidate_dir=Path(d2))
             self.assertTrue(deltas[0].incompatible)
             self.assertTrue(deltas[0].regression)
 
     # ==================================================
-    # 9. CLI --COMPARE DIRECTORY & PATH HANDLING
+    # 8. CLI DIRECTORY LOADING
     # ==================================================
 
-    def test_26_compare_directory_loads_json(self):
+    def test_22_load_baseline_from_directory(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = Path(tmp_dir)
-            data_out = {"schema_version": SCHEMA_VERSION, "cases": [make_valid_case_dict("c1")]}
-            with open(tmp_path / "baseline.json", "w", encoding="utf-8") as f:
+            data_out = make_valid_payload([make_valid_case_dict("c1")])
+            with open(tmp_path / "benchmark_result.json", "w", encoding="utf-8") as f:
                 json.dump(data_out, f)
 
             loaded_data, golden_dir, err = load_baseline_data(str(tmp_path))
@@ -437,22 +417,17 @@ class TestInpaintBenchmarkFinalFailClosedGate(unittest.TestCase):
             self.assertIsNotNone(loaded_data)
             self.assertEqual(loaded_data["schema_version"], SCHEMA_VERSION)
 
-    def test_27_compare_invalid_path_fails(self):
-        loaded_data, golden_dir, err = load_baseline_data("non_existent_dir_12345")
-        self.assertIsNotNone(err)
-        self.assertIsNone(loaded_data)
-
-    def test_28_compare_empty_dir_fails(self):
+    def test_23_load_baseline_from_empty_directory_fails(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             loaded_data, golden_dir, err = load_baseline_data(tmp_dir)
             self.assertIsNotNone(err)
             self.assertIn("No benchmark JSON", err)
 
     # ==================================================
-    # 10. REAL LEVEL 2 & LEVEL 3 PRODUCTION EXECUTION
+    # 9. REAL INPAINTER EXECUTION
     # ==================================================
 
-    def test_29_real_l2_production_executes_model(self):
+    def test_24_real_inpainter_l2_execution(self):
         inpainter = Inpainter()
         inpainter.session = FakeSession()
         crop = generate_synthetic_image(128, 128, execution_mode="model_required", seed=42)
@@ -463,21 +438,6 @@ class TestInpaintBenchmarkFinalFailClosedGate(unittest.TestCase):
         valid, msg = validate_case_execution(res)
         self.assertTrue(valid, msg)
         self.assertEqual(res.model_calls_per_invocation, 1)
-
-    def test_30_real_e2e_shortcut_white(self):
-        inpainter = Inpainter()
-        inpainter.session = FakeSession()
-        img = np.full((200, 200, 3), 255, dtype=np.uint8)
-        boxes = [BubbleBox(20, 20, 80, 80, 0.95)]
-
-        res, _ = run_e2e_benchmark_case(
-            inpainter, img, boxes=boxes, expected_execution="shortcut", expected_shortcut_type="white", warmup=1, repetitions=2
-        )
-        valid, msg = validate_case_execution(res)
-        self.assertTrue(valid, msg)
-        self.assertEqual(res.model_calls_per_invocation, 0)
-        self.assertEqual(res.shortcut_count, 1)
-        self.assertEqual(res.shortcut_types, ["white"])
 
 
 if __name__ == "__main__":

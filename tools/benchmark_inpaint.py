@@ -91,6 +91,11 @@ def parse_args():
         help="Path to baseline benchmark JSON file or directory to compare against candidate run",
     )
     parser.add_argument(
+        "--compare-telemetry-only",
+        action="store_true",
+        help="Skip golden image comparison and compare telemetry/timing metrics only",
+    )
+    parser.add_argument(
         "--verify-model-hash",
         type=str,
         help="Assert that model SHA-256 matches this expected hash",
@@ -98,7 +103,7 @@ def parse_args():
     parser.add_argument(
         "--verify-integrity",
         action="store_true",
-        help="Verify byte-for-byte SHA-256 integrity of production files before execution",
+        help="Verify byte-for-byte SHA-256 integrity of production files and model before execution",
     )
     parser.add_argument(
         "--subproc",
@@ -171,7 +176,7 @@ def main() -> int:
                         print(f"   {f}: {info['error']}", file=sys.stderr)
             return 1
         if not args.quiet:
-            print("✓ Production file SHA-256 integrity verified.")
+            print("✓ Production file and model SHA-256 integrity verified.")
 
     if args.generate_corpus:
         out_dir = Path(args.generate_corpus)
@@ -237,6 +242,7 @@ def main() -> int:
             result,
             image_baseline_dir=base_golden_dir,
             image_candidate_dir=cand_golden_dir,
+            telemetry_only=args.compare_telemetry_only,
         )
         has_comparison_regression = any(d.regression or d.incompatible for d in comparisons)
 

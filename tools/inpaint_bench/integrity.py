@@ -4,9 +4,9 @@ from pathlib import Path
 from typing import Any
 
 # ==============================================================================
-# IMMUTABLE PRODUCTION BASELINE SHA-256 HASHES
+# IMMUTABLE PRODUCTION & MODEL BASELINE SHA-256 HASHES
 # These hashes are the exact byte-for-byte baseline fingerprints established
-# during Phase 0. Under NO circumstances should production files be modified.
+# during Phase 0. Under NO circumstances should production files or model be modified.
 # ==============================================================================
 
 LAMA_INPAINTER_BASELINE_SHA256 = (
@@ -15,10 +15,14 @@ LAMA_INPAINTER_BASELINE_SHA256 = (
 ORT_UTILS_BASELINE_SHA256 = (
     "9d5b066d7cefa089d81d2ef39d22be3f5ea27b949bc54b66dfa891e4f4841f39"
 )
+LAMA_MODEL_BASELINE_SHA256 = (
+    "e4b3e648c668b556942ad7096e23616a2ef74092b1be753d0c9c7f66a2e48fae"
+)
 
 PRODUCTION_BASELINE_HASHES = {
     "app/inpaint/lama_inpainter.py": LAMA_INPAINTER_BASELINE_SHA256,
     "app/ort_utils.py": ORT_UTILS_BASELINE_SHA256,
+    "models/lama.onnx": LAMA_MODEL_BASELINE_SHA256,
 }
 
 
@@ -26,8 +30,11 @@ def compute_file_sha256(path: Path | str) -> str:
     p = Path(path)
     if not p.is_file():
         return ""
+    h = hashlib.sha256()
     with open(p, "rb") as f:
-        return hashlib.sha256(f.read()).hexdigest()
+        while chunk := f.read(65536):
+            h.update(chunk)
+    return h.hexdigest()
 
 
 def verify_production_integrity(base_dir: Path | str = ".") -> tuple[bool, dict[str, Any]]:

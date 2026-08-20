@@ -24,6 +24,8 @@ from .schema import (
     CaseResult,
     ComparisonDelta,
     QualityThresholds,
+    is_finite_number,
+    is_finite_int,
     validate_case_execution,
     validate_case_payload_for_comparison,
     validate_benchmark_payload_for_comparison,
@@ -40,29 +42,44 @@ from .e2e_bench import run_e2e_benchmark_case
 
 
 def compute_image_metrics(img1: np.ndarray, img2: np.ndarray) -> tuple[float, float, float]:
+    if not isinstance(img1, np.ndarray) or not isinstance(img2, np.ndarray):
+        raise ValueError("Image inputs must be numpy ndarrays")
+    if img1.size == 0 or img2.size == 0:
+        raise ValueError("Image cannot be empty")
     if img1.shape != img2.shape:
-        return 0.0, 0.0, 255.0
+        raise ValueError(f"Shape mismatch: {img1.shape} vs {img2.shape}")
+    if len(img1.shape) != 3 or img1.shape[2] != 3:
+        raise ValueError(f"Expected 3-channel BGR image, got shape {img1.shape}")
+    if not np.all(np.isfinite(img1)) or not np.all(np.isfinite(img2)):
+        raise ValueError("Image contains NaN or Inf pixel values")
 
     diff = np.abs(img1.astype(np.float32) - img2.astype(np.float32))
     mae = float(np.mean(diff))
 
-    mse = float(np.mean((img1.astype(np.float32) - img2.astype(np.float32)) ** 2))
-    if mse == 0:
+    mse = float(np.mean(diff ** 2))
+    if mse == 0.0:
         psnr = 100.0
     else:
-        psnr = 20.0 * math.log10(255.0 / math.sqrt(mse))
+        psnr = float(20.0 * math.log10(255.0 / math.sqrt(mse)))
 
     gray1 = cv2.cvtColor(img1, cv2.COLOR_BGR2GRAY).astype(np.float64)
     gray2 = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY).astype(np.float64)
-    mu1 = np.mean(gray1)
-    mu2 = np.mean(gray2)
-    var1 = np.var(gray1)
-    var2 = np.var(gray2)
-    cov = np.mean((gray1 - mu1) * (gray2 - mu2))
+    mu1 = float(np.mean(gray1))
+    mu2 = float(np.mean(gray2))
+    var1 = float(np.var(gray1))
+    var2 = float(np.var(gray2))
+    cov = float(np.mean((gray1 - mu1) * (gray2 - mu2)))
 
     c1 = (0.01 * 255) ** 2
     c2 = (0.03 * 255) ** 2
-    ssim = float(((2 * mu1 * mu2 + c1) * (2 * cov + c2)) / ((mu1 ** 2 + mu2 ** 2 + c1) * (var1 + var2 + c2)))
+    denom = (mu1 ** 2 + mu2 ** 2 + c1) * (var1 + var2 + c2)
+    if denom == 0:
+        ssim = 1.0
+    else:
+        ssim = float(((2 * mu1 * mu2 + c1) * (2 * cov + c2)) / denom)
+
+    if not is_finite_number(psnr) or not is_finite_number(ssim) or not is_finite_number(mae):
+        raise ValueError("Computed non-finite image metric")
 
     return round(psnr, 2), round(ssim, 4), round(mae, 4)
 
@@ -262,10 +279,33 @@ class BenchmarkRunner:
             if res.returncode == 0:
                 try:
                     data = json.loads(res.stdout)
+                    valid_payload, err_payload = validate_benchmark_payload_for_comparison(data)
+                    if not valid_payload:
+                        all_cases.append(
+                            CaseResult(
+                                case_id=f"thread_{t}T",
+                                level=f"threads_{t}",
+                                status="error",
+                                error_message=f"Subprocess output failed schema validation: {err_payload}",
+                            )
+                        )
+                        continue
+
                     sub_cases = data.get("cases", [])
                     for sc in sub_cases:
-                        sc["case_id"] = f"[{t}T] {sc.get('case_id', '')}"
-                        all_cases.append(CaseResult.from_dict(sc))
+                        valid_c, err_c = validate_case_payload_for_comparison(sc)
+                        if not valid_c:
+                            all_cases.append(
+                                CaseResult(
+                                    case_id=f"[{t}T] {sc.get('case_id', 'unknown')}",
+                                    level=f"threads_{t}",
+                                    status="error",
+                                    error_message=f"Subprocess case failed validation: {err_c}",
+                                )
+                            )
+                        else:
+                            sc["case_id"] = f"[{t}T] {sc.get('case_id', '')}"
+                            all_cases.append(CaseResult.from_dict(sc))
                 except Exception as ex:
                     all_cases.append(
                         CaseResult(
@@ -294,7 +334,11 @@ class BenchmarkRunner:
             environment=env_meta,
             model=model_meta,
             cases=all_cases,
-            summary={"sweep_threads": self.threads, "total_cases": len(all_cases), "error_cases": sum(1 for c in all_cases if c.status == "error")},
+            summary={
+                "total_cases": len(all_cases),
+                "ok_cases": sum(1 for c in all_cases if c.status == "ok"),
+                "error_cases": sum(1 for c in all_cases if c.status == "error"),
+            },
         )
 
 
@@ -304,6 +348,7 @@ def compare_benchmarks(
     image_baseline_dir: Path | None = None,
     image_candidate_dir: Path | None = None,
     quality_thresholds: QualityThresholds | None = None,
+    telemetry_only: bool = False,
 ) -> list[ComparisonDelta]:
     thresholds = quality_thresholds or QualityThresholds()
     b_dict = baseline_result if isinstance(baseline_result, dict) else baseline_result.to_dict()
@@ -373,6 +418,17 @@ def compare_benchmarks(
             incompatible = True
             note_parts.append(f"Candidate case payload invalid: {err_cc}")
 
+        if incompatible:
+            deltas.append(
+                ComparisonDelta(
+                    case_id=cid,
+                    incompatible=True,
+                    regression=True,
+                    note="; ".join(note_parts),
+                )
+            )
+            continue
+
         b_exec = b_case.get("expected_execution", "")
         c_exec = c_case.get("expected_execution", "")
         b_sc = b_case.get("expected_shortcut_type", None)
@@ -382,43 +438,38 @@ def compare_benchmarks(
             incompatible = True
             note_parts.append(f"Archetype mismatch: ({b_exec}, {b_sc}) vs ({c_exec}, {c_sc})")
 
-        b_t = b_case.get("timing") or {}
-        c_t = c_case.get("timing") or {}
+        b_t = b_case["timing"]
+        c_t = c_case["timing"]
 
-        b_p50 = float(b_t.get("p50_ms", 0.0))
-        c_p50 = float(c_t.get("p50_ms", 0.0))
-        d_p50 = c_p50 - b_p50
-        p50_pct = (d_p50 / max(1e-4, b_p50)) * 100.0
+        b_p50 = float(b_t["p50_ms"])
+        c_p50 = float(c_t["p50_ms"])
+        d_p50 = round(c_p50 - b_p50, 2)
+        p50_pct = round((d_p50 / max(1e-4, b_p50)) * 100.0, 2)
 
-        b_p95 = float(b_t.get("p95_ms", 0.0))
-        c_p95 = float(c_t.get("p95_ms", 0.0))
-        d_p95 = c_p95 - b_p95
-        p95_pct = (d_p95 / max(1e-4, b_p95)) * 100.0
+        b_p95 = float(b_t["p95_ms"])
+        c_p95 = float(c_t["p95_ms"])
+        d_p95 = round(c_p95 - b_p95, 2)
+        p95_pct = round((d_p95 / max(1e-4, b_p95)) * 100.0, 2)
 
         b_calls = b_case.get("model_calls_per_invocation")
         c_calls = c_case.get("model_calls_per_invocation")
 
-        b_mean_raw = b_case.get("telemetry_summary", {}).get("model_calls", {}).get("mean")
-        c_mean_raw = c_case.get("telemetry_summary", {}).get("model_calls", {}).get("mean")
-
-        if b_mean_raw is not None and c_mean_raw is not None:
-            b_mean = float(b_mean_raw)
-            c_mean = float(c_mean_raw)
-            model_calls_mean_delta = round(c_mean - b_mean, 2)
-        else:
-            model_calls_mean_delta = 0.0
+        b_mean = float(b_case["telemetry_summary"]["model_calls"]["mean"])
+        c_mean = float(c_case["telemetry_summary"]["model_calls"]["mean"])
+        model_calls_mean_delta = round(c_mean - b_mean, 2)
 
         if b_calls is not None and c_calls is not None:
             calls_delta = c_calls - b_calls
         else:
             calls_delta = None
 
-        psnr, ssim, mae = 0.0, 0.0, 0.0
-        psnr_delta, ssim_delta, mae_delta = 0.0, 0.0, 0.0
-        if image_baseline_dir or image_candidate_dir:
+        psnr, ssim, mae = None, None, None
+        psnr_delta, ssim_delta, mae_delta = None, None, None
+
+        if not telemetry_only:
             if not image_baseline_dir or not image_candidate_dir:
                 incompatible = True
-                note_parts.append("Missing image comparison directory")
+                note_parts.append("Golden comparison required but directory not specified")
             else:
                 b_img_path = image_baseline_dir / cid / "output.png"
                 c_img_path = image_candidate_dir / cid / "output.png"
@@ -434,34 +485,35 @@ def compare_benchmarks(
                     if b_img is None or c_img is None:
                         incompatible = True
                         note_parts.append("Failed to decode golden image")
-                    elif b_img.shape != c_img.shape:
-                        incompatible = True
-                        note_parts.append(f"Shape mismatch: {b_img.shape} vs {c_img.shape}")
                     else:
-                        psnr, ssim, mae = compute_image_metrics(b_img, c_img)
-                        psnr_delta = round(psnr - 100.0, 2)
-                        ssim_delta = round(ssim - 1.0, 4)
-                        mae_delta = round(mae - 0.0, 4)
+                        try:
+                            psnr, ssim, mae = compute_image_metrics(b_img, c_img)
+                            psnr_delta = round(psnr - 100.0, 2)
+                            ssim_delta = round(ssim - 1.0, 4)
+                            mae_delta = round(mae - 0.0, 4)
 
-                        if psnr < thresholds.min_psnr:
-                            quality_regression = True
-                            note_parts.append(f"PSNR below floor: {psnr} < {thresholds.min_psnr}")
-                        if ssim < thresholds.min_ssim:
-                            quality_regression = True
-                            note_parts.append(f"SSIM below floor: {ssim} < {thresholds.min_ssim}")
-                        if mae > thresholds.max_mae:
-                            quality_regression = True
-                            note_parts.append(f"MAE above ceiling: {mae} > {thresholds.max_mae}")
+                            if psnr < thresholds.min_psnr:
+                                quality_regression = True
+                                note_parts.append(f"PSNR below floor: {psnr} < {thresholds.min_psnr}")
+                            if ssim < thresholds.min_ssim:
+                                quality_regression = True
+                                note_parts.append(f"SSIM below floor: {ssim} < {thresholds.min_ssim}")
+                            if mae > thresholds.max_mae:
+                                quality_regression = True
+                                note_parts.append(f"MAE above ceiling: {mae} > {thresholds.max_mae}")
 
-                        if (100.0 - psnr) > thresholds.max_psnr_drop:
-                            quality_regression = True
-                            note_parts.append(f"PSNR degradation: {psnr} dB (drop > {thresholds.max_psnr_drop})")
-                        if (1.0 - ssim) > thresholds.max_ssim_drop:
-                            quality_regression = True
-                            note_parts.append(f"SSIM degradation: {ssim} (drop > {thresholds.max_ssim_drop})")
-                        if mae > thresholds.max_mae_increase:
-                            quality_regression = True
-                            note_parts.append(f"MAE increase: {mae} (increase > {thresholds.max_mae_increase})")
+                            if (100.0 - psnr) > thresholds.max_psnr_drop:
+                                quality_regression = True
+                                note_parts.append(f"PSNR degradation: {psnr} dB (drop > {thresholds.max_psnr_drop})")
+                            if (1.0 - ssim) > thresholds.max_ssim_drop:
+                                quality_regression = True
+                                note_parts.append(f"SSIM degradation: {ssim} (drop > {thresholds.max_ssim_drop})")
+                            if mae > thresholds.max_mae_increase:
+                                quality_regression = True
+                                note_parts.append(f"MAE increase: {mae} (increase > {thresholds.max_mae_increase})")
+                        except Exception as ex:
+                            incompatible = True
+                            note_parts.append(f"Image metric error: {ex}")
 
         is_regression = (
             incompatible
@@ -474,14 +526,14 @@ def compare_benchmarks(
         deltas.append(
             ComparisonDelta(
                 case_id=cid,
-                baseline_p50_ms=round(b_p50, 2),
-                candidate_p50_ms=round(c_p50, 2),
-                delta_p50_ms=round(d_p50, 2),
-                p50_diff_pct=round(p50_pct, 2),
-                baseline_p95_ms=round(b_p95, 2),
-                candidate_p95_ms=round(c_p95, 2),
-                delta_p95_ms=round(d_p95, 2),
-                p95_diff_pct=round(p95_pct, 2),
+                baseline_p50_ms=b_p50,
+                candidate_p50_ms=c_p50,
+                delta_p50_ms=d_p50,
+                p50_diff_pct=p50_pct,
+                baseline_p95_ms=b_p95,
+                candidate_p95_ms=c_p95,
+                delta_p95_ms=d_p95,
+                p95_diff_pct=p95_pct,
                 baseline_model_calls=b_calls,
                 candidate_model_calls=c_calls,
                 model_calls_delta=calls_delta,
