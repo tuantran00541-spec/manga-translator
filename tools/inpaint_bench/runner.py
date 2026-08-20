@@ -35,7 +35,12 @@ from .metrics import (
     get_model_metadata,
     get_model_sha256,
 )
-from .corpus_generator import generate_corpus, load_corpus
+from .integrity import (
+    LAMA_MODEL_BASELINE_SHA256,
+    compute_file_sha256,
+    load_trusted_baseline_manifest,
+)
+from .corpus_generator import generate_corpus, load_corpus, compute_workload_sha256
 from .model_bench import run_model_benchmark
 from .pipeline_bench import run_pipeline_benchmark_case
 from .e2e_bench import run_e2e_benchmark_case
@@ -97,14 +102,14 @@ class BenchmarkRunner:
         expected_model_hash: str | None = None,
         case_limit: int | None = None,
     ):
-        self.model_path = Path(model_path)
-        self.corpus_dir = Path(corpus_dir) if corpus_dir else None
+        self.model_path = Path(model_path).resolve()
+        self.corpus_dir = Path(corpus_dir).resolve() if corpus_dir else None
         self.mode = mode
         self.threads = [threads] if isinstance(threads, int) else list(threads)
         self.repetitions = repetitions
         self.warmup = warmup
-        self.golden_dir = Path(golden_dir) if golden_dir else None
-        self.expected_model_hash = expected_model_hash
+        self.golden_dir = Path(golden_dir).resolve() if golden_dir else None
+        self.expected_model_hash = expected_model_hash or LAMA_MODEL_BASELINE_SHA256
         self.case_limit = case_limit
 
     def validate_runtime(self):
@@ -112,12 +117,17 @@ class BenchmarkRunner:
             raise RuntimeError("onnxruntime is not installed. Model and pipeline benchmarks cannot execute.")
         if not self.model_path.is_file():
             raise FileNotFoundError(f"LaMa ONNX model not found at: {self.model_path}")
-        if self.expected_model_hash:
-            actual_hash = get_model_sha256(self.model_path)
-            if actual_hash.lower() != self.expected_model_hash.lower():
-                raise ValueError(
-                    f"Model SHA-256 mismatch! Expected {self.expected_model_hash}, but found {actual_hash}"
-                )
+
+        actual_hash = compute_file_sha256(self.model_path)
+        if actual_hash.lower() != self.expected_model_hash.lower():
+            raise ValueError(
+                f"Model SHA-256 mismatch for {self.model_path}! Expected {self.expected_model_hash}, but found {actual_hash}"
+            )
+
+        test_sess = make_session(self.model_path, intra_op_threads=1)
+        providers = test_sess.get_providers()
+        if providers != ["CPUExecutionProvider"]:
+            raise ValueError(f"Execution provider mismatch! Expected ['CPUExecutionProvider'], but got {providers}")
 
     def run(self, isolated_subproc: bool = False) -> BenchmarkRunResult:
         self.validate_runtime()
@@ -174,6 +184,10 @@ class BenchmarkRunner:
                     warmup=self.warmup,
                     repetitions=self.repetitions,
                 )
+                case_l2.workload_sha256 = c_info.get("workload_sha256", "")
+                case_l2.original_sha256 = c_info.get("original_sha256", "")
+                case_l2.mask_sha256 = c_info.get("mask_sha256", "")
+
                 valid, err_msg = validate_case_execution(case_l2)
                 if not valid:
                     case_l2.status = "error"
@@ -210,6 +224,9 @@ class BenchmarkRunner:
                     repetitions=e2e_reps,
                     save_golden_path=golden_path,
                 )
+                case_l3.workload_sha256 = c_info.get("workload_sha256", "")
+                case_l3.original_sha256 = c_info.get("original_sha256", "")
+                case_l3.mask_sha256 = c_info.get("mask_sha256", "")
 
                 valid, err_msg = validate_case_execution(case_l3)
                 if not valid:
@@ -247,8 +264,8 @@ class BenchmarkRunner:
                     CaseResult(
                         case_id=f"thread_sweep_{t}T",
                         level=f"threads_{t}",
-                        status="skipped",
-                        error_message=f"Host CPU has {env_meta.logical_cpus} logical cores; {t} threads skipped.",
+                        status="error",
+                        error_message=f"Host CPU has {env_meta.logical_cpus} logical cores; {t} threads configuration is invalid.",
                     )
                 )
                 continue
@@ -350,7 +367,20 @@ def compare_benchmarks(
     quality_thresholds: QualityThresholds | None = None,
     telemetry_only: bool = False,
 ) -> list[ComparisonDelta]:
-    thresholds = quality_thresholds or QualityThresholds()
+    try:
+        manifest = load_trusted_baseline_manifest()
+        q_dict = manifest.get("quality_thresholds", {})
+        thresholds = QualityThresholds(
+            min_psnr=float(q_dict.get("min_psnr", 30.0)),
+            min_ssim=float(q_dict.get("min_ssim", 0.85)),
+            max_mae=float(q_dict.get("max_mae", 5.0)),
+            max_psnr_drop=float(q_dict.get("max_psnr_drop", 2.0)),
+            max_ssim_drop=float(q_dict.get("max_ssim_drop", 0.05)),
+            max_mae_increase=float(q_dict.get("max_mae_increase", 2.0)),
+        )
+    except Exception:
+        thresholds = quality_thresholds or QualityThresholds()
+
     b_dict = baseline_result if isinstance(baseline_result, dict) else baseline_result.to_dict()
     c_dict = candidate_result if isinstance(candidate_result, dict) else candidate_result.to_dict()
 
@@ -365,6 +395,27 @@ def compare_benchmarks(
                 incompatible=True,
                 regression=True,
                 note=f"Benchmark payload validation failed: {err_msg}",
+            )
+        ]
+
+    b_model = b_dict.get("model", {})
+    c_model = c_dict.get("model", {})
+    if c_model.get("model_sha256") and c_model["model_sha256"].lower() != LAMA_MODEL_BASELINE_SHA256.lower():
+        return [
+            ComparisonDelta(
+                case_id="<model_identity_validation>",
+                incompatible=True,
+                regression=True,
+                note=f"Candidate model SHA-256 mismatch: {c_model['model_sha256']}",
+            )
+        ]
+    if c_model.get("execution_provider") and c_model["execution_provider"] != "CPUExecutionProvider":
+        return [
+            ComparisonDelta(
+                case_id="<provider_identity_validation>",
+                incompatible=True,
+                regression=True,
+                note=f"Candidate execution provider mismatch: {c_model['execution_provider']}",
             )
         ]
 
@@ -429,6 +480,12 @@ def compare_benchmarks(
             )
             continue
 
+        b_w_hash = b_case.get("workload_sha256", "")
+        c_w_hash = c_case.get("workload_sha256", "")
+        if b_w_hash and c_w_hash and b_w_hash != c_w_hash:
+            incompatible = True
+            note_parts.append(f"Workload content SHA-256 mismatch for case '{cid}'")
+
         b_exec = b_case.get("expected_execution", "")
         c_exec = c_case.get("expected_execution", "")
         b_sc = b_case.get("expected_shortcut_type", None)
@@ -464,6 +521,7 @@ def compare_benchmarks(
             calls_delta = None
 
         psnr, ssim, mae = None, None, None
+        psnr_drop, ssim_drop, mae_increase = None, None, None
         psnr_delta, ssim_delta, mae_delta = None, None, None
 
         if not telemetry_only:
@@ -487,30 +545,43 @@ def compare_benchmarks(
                         note_parts.append("Failed to decode golden image")
                     else:
                         try:
-                            psnr, ssim, mae = compute_image_metrics(b_img, c_img)
-                            psnr_delta = round(psnr - 100.0, 2)
-                            ssim_delta = round(ssim - 1.0, 4)
-                            mae_delta = round(mae - 0.0, 4)
+                            cand_psnr, cand_ssim, cand_mae = compute_image_metrics(b_img, c_img)
+                            psnr, ssim, mae = cand_psnr, cand_ssim, cand_mae
 
-                            if psnr < thresholds.min_psnr:
+                            if cand_psnr < thresholds.min_psnr:
                                 quality_regression = True
-                                note_parts.append(f"PSNR below floor: {psnr} < {thresholds.min_psnr}")
-                            if ssim < thresholds.min_ssim:
+                                note_parts.append(f"PSNR below floor: {cand_psnr} < {thresholds.min_psnr}")
+                            if cand_ssim < thresholds.min_ssim:
                                 quality_regression = True
-                                note_parts.append(f"SSIM below floor: {ssim} < {thresholds.min_ssim}")
-                            if mae > thresholds.max_mae:
+                                note_parts.append(f"SSIM below floor: {cand_ssim} < {thresholds.min_ssim}")
+                            if cand_mae > thresholds.max_mae:
                                 quality_regression = True
-                                note_parts.append(f"MAE above ceiling: {mae} > {thresholds.max_mae}")
+                                note_parts.append(f"MAE above ceiling: {cand_mae} > {thresholds.max_mae}")
 
-                            if (100.0 - psnr) > thresholds.max_psnr_drop:
+                            base_psnr_recorded = b_case.get("psnr", 100.0) or 100.0
+                            base_ssim_recorded = b_case.get("ssim", 1.0) or 1.0
+                            base_mae_recorded = b_case.get("mae", 0.0) or 0.0
+
+                            p_drop = round(base_psnr_recorded - cand_psnr, 2)
+                            s_drop = round(base_ssim_recorded - cand_ssim, 4)
+                            m_inc = round(cand_mae - base_mae_recorded, 4)
+
+                            psnr_drop = p_drop
+                            ssim_drop = s_drop
+                            mae_increase = m_inc
+                            psnr_delta = round(-p_drop, 2)
+                            ssim_delta = round(-s_drop, 4)
+                            mae_delta = m_inc
+
+                            if p_drop > thresholds.max_psnr_drop:
                                 quality_regression = True
-                                note_parts.append(f"PSNR degradation: {psnr} dB (drop > {thresholds.max_psnr_drop})")
-                            if (1.0 - ssim) > thresholds.max_ssim_drop:
+                                note_parts.append(f"PSNR drop: {p_drop:.2f} dB (drop > {thresholds.max_psnr_drop})")
+                            if s_drop > thresholds.max_ssim_drop:
                                 quality_regression = True
-                                note_parts.append(f"SSIM degradation: {ssim} (drop > {thresholds.max_ssim_drop})")
-                            if mae > thresholds.max_mae_increase:
+                                note_parts.append(f"SSIM drop: {s_drop:.4f} (drop > {thresholds.max_ssim_drop})")
+                            if m_inc > thresholds.max_mae_increase:
                                 quality_regression = True
-                                note_parts.append(f"MAE increase: {mae} (increase > {thresholds.max_mae_increase})")
+                                note_parts.append(f"MAE increase: {m_inc:.4f} (increase > {thresholds.max_mae_increase})")
                         except Exception as ex:
                             incompatible = True
                             note_parts.append(f"Image metric error: {ex}")
@@ -526,6 +597,7 @@ def compare_benchmarks(
         deltas.append(
             ComparisonDelta(
                 case_id=cid,
+                workload_sha256=b_w_hash or c_w_hash,
                 baseline_p50_ms=b_p50,
                 candidate_p50_ms=c_p50,
                 delta_p50_ms=d_p50,
@@ -541,6 +613,9 @@ def compare_benchmarks(
                 psnr=psnr,
                 ssim=ssim,
                 mae=mae,
+                psnr_drop=psnr_drop,
+                ssim_drop=ssim_drop,
+                mae_increase=mae_increase,
                 psnr_delta=psnr_delta,
                 ssim_delta=ssim_delta,
                 mae_delta=mae_delta,

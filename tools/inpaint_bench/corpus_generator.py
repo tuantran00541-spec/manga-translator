@@ -1,7 +1,9 @@
 from __future__ import annotations
 import json
 import math
+import hashlib
 from pathlib import Path
+from typing import Any
 import numpy as np
 import cv2
 
@@ -34,6 +36,28 @@ MASK_TYPES = [
 ]
 
 
+def compute_workload_sha256(case_meta: dict[str, Any], original_bytes: bytes, mask_bytes: bytes) -> str:
+    orig_hash = hashlib.sha256(original_bytes).hexdigest()
+    mask_hash = hashlib.sha256(mask_bytes).hexdigest()
+    boxes = sorted(
+        case_meta.get("boxes", []),
+        key=lambda b: (b.get("x1", 0), b.get("y1", 0), b.get("x2", 0), b.get("y2", 0))
+    )
+    canonical = {
+        "case_id": case_meta.get("case_id", ""),
+        "expected_execution": case_meta.get("expected_execution", "model_required"),
+        "expected_shortcut_type": case_meta.get("expected_shortcut_type"),
+        "width": case_meta.get("width", 0),
+        "height": case_meta.get("height", 0),
+        "mask_type": case_meta.get("mask_type", ""),
+        "original_sha256": orig_hash,
+        "mask_sha256": mask_hash,
+        "boxes": boxes,
+    }
+    canonical_json = json.dumps(canonical, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical_json.encode("utf-8")).hexdigest()
+
+
 def generate_synthetic_image(
     width: int,
     height: int,
@@ -55,13 +79,6 @@ def generate_synthetic_image(
 
     if sc_type == "low_std":
         return np.full((height, width, 3), 128, dtype=np.uint8)
-
-    if execution_mode == "mixed":
-        img = np.full((height, width, 3), 255, dtype=np.uint8)
-        mid_x = width // 2
-        noise = rng.randint(60, 190, (height, width - mid_x, 3), dtype=np.uint8)
-        img[:, mid_x:] = noise
-        return img
 
     base = np.full((height, width, 3), 128, dtype=np.uint8)
 
@@ -267,6 +284,16 @@ def generate_case(
     meta["expected_shortcut_type"] = expected_shortcut_type
     meta["boxes"] = [{"x1": b.x1, "y1": b.y1, "x2": b.x2, "y2": b.y2, "confidence": b.confidence} for b in boxes]
 
+    # Compute content hashes
+    _, img_encoded = cv2.imencode(".png", img)
+    _, mask_encoded = cv2.imencode(".png", mask)
+    img_bytes = img_encoded.tobytes()
+    mask_bytes = mask_encoded.tobytes()
+
+    meta["original_sha256"] = hashlib.sha256(img_bytes).hexdigest()
+    meta["mask_sha256"] = hashlib.sha256(mask_bytes).hexdigest()
+    meta["workload_sha256"] = compute_workload_sha256(meta, img_bytes, mask_bytes)
+
     return img, mask, boxes, meta
 
 
@@ -360,6 +387,13 @@ def load_corpus(corpus_dir: Path | str) -> list[dict]:
 
         if "expected_execution" not in meta:
             meta["expected_execution"] = "model_required"
+
+        orig_bytes = open(orig_file, "rb").read()
+        mask_bytes = open(mask_file, "rb").read()
+
+        meta["original_sha256"] = hashlib.sha256(orig_bytes).hexdigest()
+        meta["mask_sha256"] = hashlib.sha256(mask_bytes).hexdigest()
+        meta["workload_sha256"] = compute_workload_sha256(meta, orig_bytes, mask_bytes)
 
         meta["original_path"] = str(orig_file.resolve())
         meta["mask_path"] = str(mask_file.resolve())

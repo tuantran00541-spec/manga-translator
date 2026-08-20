@@ -4,7 +4,7 @@ from dataclasses import dataclass, field, asdict
 from typing import Any
 import numpy as np
 
-SCHEMA_VERSION = "1.2.5"
+SCHEMA_VERSION = "1.2.6"
 
 
 def is_finite_number(val: Any) -> bool:
@@ -180,46 +180,43 @@ def validate_case_execution(case: CaseResult) -> tuple[bool, str]:
     exp_exec = case.expected_execution
     exp_sc_type = case.expected_shortcut_type
 
-    if case.level == "level2_pipeline":
-        if exp_exec != "model_required":
-            return False, f"Level 2 pipeline only supports 'model_required', but got '{exp_exec}'"
-        for i, inv in enumerate(case.invocations):
-            if inv.model_calls < 1:
-                return False, f"Invocation {i}: Expected Level 2 model_calls >= 1 but got {inv.model_calls}"
-            if inv.shortcut_count > 0 or len(inv.shortcut_types) > 0:
-                return False, f"Invocation {i}: Level 2 pipeline does not support shortcuts but got {inv.shortcut_count} ({inv.shortcut_types})"
-        return True, ""
+    if exp_exec not in ("model_required", "shortcut"):
+        return False, f"Unsupported expected_execution archetype: '{exp_exec}'. Allowed: ['model_required', 'shortcut']"
 
     if exp_exec == "model_required":
+        if exp_sc_type is not None:
+            return False, f"expected_shortcut_type must be None for model_required, but got '{exp_sc_type}'"
         for i, inv in enumerate(case.invocations):
             if inv.model_calls < 1:
-                return False, f"Invocation {i}: Expected model_calls >= 1 but got {inv.model_calls} (unwanted shortcut activation)"
+                return False, f"Invocation {i}: Expected model_calls >= 1 but got {inv.model_calls}"
             if inv.shortcut_count > 0 or len(inv.shortcut_types) > 0:
                 return False, f"Invocation {i}: Expected 0 shortcuts but got {inv.shortcut_count} ({inv.shortcut_types})"
+            if inv.tile_count > 0:
+                if inv.active_tile_count > inv.tile_count:
+                    return False, f"Invocation {i}: active_tile_count ({inv.active_tile_count}) > tile_count ({inv.tile_count})"
             if inv.tile_count > 1 and inv.active_tile_count >= 1:
                 if inv.model_calls != inv.active_tile_count:
                     return False, f"Invocation {i}: Tiled execution model_calls ({inv.model_calls}) != active_tile_count ({inv.active_tile_count})"
             if inv.cluster_count > 1:
                 if len(inv.crop_dimensions) != inv.cluster_count or inv.model_calls != inv.cluster_count:
                     return False, f"Invocation {i}: Multi-cluster execution mismatch: cluster_count={inv.cluster_count}, crops={len(inv.crop_dimensions)}, calls={inv.model_calls}"
+                for c_dim in inv.crop_dimensions:
+                    if case.image_width > 0 and (c_dim[0] > case.image_width or c_dim[1] > case.image_height):
+                        return False, f"Invocation {i}: Crop dimensions {c_dim} exceed image dimensions ({case.image_width}x{case.image_height})"
         return True, ""
 
-    if exp_exec in ("shortcut", "shortcut_expected") or (exp_exec and exp_exec.startswith("shortcut_")):
+    if exp_exec == "shortcut":
         allowed_types = {"white", "black", "low_std"}
-        target_type = exp_sc_type
-        if not target_type and exp_exec.startswith("shortcut_"):
-            target_type = exp_exec[len("shortcut_"):]
-
-        if not target_type or target_type not in allowed_types:
-            return False, f"Unsupported or missing expected shortcut type: '{target_type}'. Allowed: {sorted(list(allowed_types))}"
+        if not exp_sc_type or exp_sc_type not in allowed_types:
+            return False, f"Unsupported or missing expected shortcut type: '{exp_sc_type}'. Allowed: {sorted(list(allowed_types))}"
 
         for i, inv in enumerate(case.invocations):
             if inv.model_calls != 0:
                 return False, f"Invocation {i}: Expected model_calls == 0 for shortcut case but got {inv.model_calls}"
             if inv.shortcut_count != 1:
                 return False, f"Invocation {i}: Expected shortcut_count == 1 but got {inv.shortcut_count}"
-            if inv.shortcut_types != [target_type]:
-                return False, f"Invocation {i}: Expected shortcut_types == ['{target_type}'] but got {inv.shortcut_types}"
+            if inv.shortcut_types != [exp_sc_type]:
+                return False, f"Invocation {i}: Expected shortcut_types == ['{exp_sc_type}'] but got {inv.shortcut_types}"
         return True, ""
 
     return False, f"Unknown expected_execution archetype: '{exp_exec}'"
@@ -255,8 +252,8 @@ def validate_case_payload_for_comparison(case: dict[str, Any]) -> tuple[bool, st
             return False, f"Negative timing value in 'timing.{field_name}': {val!r}"
 
     exp_exec = case.get("expected_execution")
-    if not exp_exec or not isinstance(exp_exec, str):
-        return False, "Missing or invalid 'expected_execution'"
+    if not exp_exec or not isinstance(exp_exec, str) or exp_exec not in ("model_required", "shortcut"):
+        return False, f"Missing or invalid 'expected_execution': {exp_exec!r}"
 
     if exp_exec == "shortcut":
         sc_type = case.get("expected_shortcut_type")
@@ -268,15 +265,16 @@ def validate_case_payload_for_comparison(case: dict[str, Any]) -> tuple[bool, st
         if not isinstance(invs, list) or len(invs) == 0:
             return False, f"Level {level} requires a non-empty 'invocations' list"
 
-        seen_indices = set()
+        if timing.get("count") != len(invs):
+            return False, f"Timing count ({timing.get('count')}) != len(invocations) ({len(invs)})"
+
         for idx, inv in enumerate(invs):
             if not isinstance(inv, dict):
                 return False, f"Invocation {idx} is not a dictionary"
 
             inv_idx = inv.get("invocation_index")
-            if not is_finite_int(inv_idx) or inv_idx in seen_indices:
-                return False, f"Invocation {idx} has invalid or duplicate 'invocation_index': {inv_idx!r}"
-            seen_indices.add(inv_idx)
+            if not is_finite_int(inv_idx) or inv_idx != idx:
+                return False, f"Invocation at index {idx} has non-contiguous or invalid 'invocation_index': {inv_idx!r} (expected {idx})"
 
             for f_time in ["latency_ms", "preprocess_ms", "inference_ms", "postprocess_ms"]:
                 val = inv.get(f_time)
@@ -306,11 +304,15 @@ def validate_case_payload_for_comparison(case: dict[str, Any]) -> tuple[bool, st
                     if not isinstance(crop, list) or len(crop) != 2 or not all(is_finite_int(d) and d > 0 for d in crop):
                         return False, f"Invocation {idx} invalid crop dimension: {crop!r}"
 
+        total_mc = case.get("model_calls_total")
+        actual_mc_total = sum(inv.get("model_calls", 0) for inv in invs)
+        if is_finite_int(total_mc) and total_mc != actual_mc_total:
+            return False, f"model_calls_total ({total_mc}) != sum of invocation model_calls ({actual_mc_total})"
+
         telem_sum = case.get("telemetry_summary")
         if not isinstance(telem_sum, dict):
             return False, f"Level {level} requires 'telemetry_summary' dictionary"
 
-        # Recompute and verify telemetry aggregate consistency
         for metric_name in ["model_calls", "cluster_count", "tile_count", "active_tile_count", "shortcut_count"]:
             if metric_name not in telem_sum or not isinstance(telem_sum[metric_name], dict):
                 return False, f"Missing 'telemetry_summary.{metric_name}' dictionary"
@@ -325,7 +327,6 @@ def validate_case_payload_for_comparison(case: dict[str, Any]) -> tuple[bool, st
                 if mf == "invariant" and not isinstance(m_dict[mf], bool):
                     return False, f"Non-boolean invariant in 'telemetry_summary.{metric_name}': {m_dict[mf]!r}"
 
-            # Validate against actual invocation values
             actual_vals = [inv.get(metric_name, 0) for inv in invs]
             exp_min = int(min(actual_vals))
             exp_max = int(max(actual_vals))
@@ -335,7 +336,6 @@ def validate_case_payload_for_comparison(case: dict[str, Any]) -> tuple[bool, st
             if m_dict["min"] != exp_min or m_dict["max"] != exp_max or m_dict["invariant"] != exp_inv or abs(float(m_dict["mean"]) - exp_mean) > 1e-2:
                 return False, f"Contradiction between invocations and summary for '{metric_name}': expected min={exp_min}, max={exp_max}, mean={exp_mean}, inv={exp_inv}; got min={m_dict['min']}, max={m_dict['max']}, mean={m_dict['mean']}, inv={m_dict['invariant']}"
 
-        # Check invariant scalar consistency
         mc_summary = telem_sum["model_calls"]
         mc_per_inv = case.get("model_calls_per_invocation")
         if mc_summary["invariant"]:
@@ -404,6 +404,9 @@ class CaseResult:
     mask_area_pixels: int = 0
     expected_execution: str = "model_required"
     expected_shortcut_type: str | None = None
+    original_sha256: str = ""
+    mask_sha256: str = ""
+    workload_sha256: str = ""
     session_create_ms: float = 0.0
     first_inference_ms: float = 0.0
     cold_total_ms: float = 0.0
@@ -493,6 +496,7 @@ class BenchmarkRunResult:
 @dataclass
 class ComparisonDelta:
     case_id: str
+    workload_sha256: str = ""
     baseline_p50_ms: float | None = None
     candidate_p50_ms: float | None = None
     delta_p50_ms: float | None = None
@@ -508,6 +512,9 @@ class ComparisonDelta:
     psnr: float | None = None
     ssim: float | None = None
     mae: float | None = None
+    psnr_drop: float | None = None
+    ssim_drop: float | None = None
+    mae_increase: float | None = None
     psnr_delta: float | None = None
     ssim_delta: float | None = None
     mae_delta: float | None = None

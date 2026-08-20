@@ -103,7 +103,7 @@ def parse_args():
     parser.add_argument(
         "--verify-integrity",
         action="store_true",
-        help="Verify byte-for-byte SHA-256 integrity of production files and model before execution",
+        help="Verify byte-for-byte SHA-256 integrity of production files and actual model before execution",
     )
     parser.add_argument(
         "--subproc",
@@ -133,24 +133,26 @@ def load_baseline_data(compare_path_str: str) -> tuple[dict | None, Path | None,
             return None, None, f"Failed to load comparison JSON from {path}: {ex}"
 
     if path.is_dir():
-        candidates = [
+        canonical_candidates = [
             path / "benchmark_result.json",
             path / "results.json",
             path / "baseline.json",
             path / "result.json",
         ]
         json_file = None
-        for c in candidates:
+        for c in canonical_candidates:
             if c.is_file():
                 json_file = c
                 break
-        if json_file is None:
-            all_json = list(path.glob("*.json"))
-            if all_json:
-                json_file = all_json[0]
 
         if json_file is None:
-            return None, None, f"No benchmark JSON found in directory: {path}"
+            all_json = list(path.glob("*.json"))
+            if len(all_json) == 1:
+                json_file = all_json[0]
+            elif len(all_json) > 1:
+                return None, None, f"Ambiguous directory: multiple JSON files found in {path} without canonical benchmark_result.json"
+            else:
+                return None, None, f"No benchmark JSON found in directory: {path}"
 
         try:
             with open(json_file, "r", encoding="utf-8") as f:
@@ -167,16 +169,16 @@ def main() -> int:
     args = parse_args()
 
     if args.verify_integrity:
-        valid, report = verify_production_integrity()
+        valid, report = verify_production_integrity(actual_model_path=args.model)
         if not valid:
             if not args.quiet:
-                print("❌ Production integrity verification failed!", file=sys.stderr)
+                print("❌ Production and model integrity verification failed!", file=sys.stderr)
                 for f, info in report.items():
                     if not info["valid"]:
                         print(f"   {f}: {info['error']}", file=sys.stderr)
             return 1
         if not args.quiet:
-            print("✓ Production file and model SHA-256 integrity verified.")
+            print("✓ Production file and actual model SHA-256 integrity verified.")
 
     if args.generate_corpus:
         out_dir = Path(args.generate_corpus)
