@@ -22,6 +22,7 @@ from .schema import (
     BenchmarkRunResult,
     CaseResult,
     ComparisonDelta,
+    validate_case_execution,
 )
 from .metrics import (
     get_environment_metadata,
@@ -141,12 +142,14 @@ class BenchmarkRunner:
                     continue
                 case_id = f"pipeline_{c_info.get('case_id', 'unknown')}"
                 exp_exec = c_info.get("expected_execution", "model_required")
+                exp_sc_type = c_info.get("expected_shortcut_type", None)
                 case_l2 = run_pipeline_benchmark_case(
                     inpainter,
                     orig_img,
                     mask_img,
                     case_id=case_id,
                     expected_execution=exp_exec,
+                    expected_shortcut_type=exp_sc_type,
                     warmup=self.warmup,
                     repetitions=self.repetitions,
                 )
@@ -165,6 +168,7 @@ class BenchmarkRunner:
 
                 case_id = f"e2e_{c_info.get('case_id', 'unknown')}"
                 exp_exec = c_info.get("expected_execution", "model_required")
+                exp_sc_type = c_info.get("expected_shortcut_type", None)
                 golden_path = None
                 if self.golden_dir:
                     golden_path = self.golden_dir / case_id / "output.png"
@@ -175,17 +179,16 @@ class BenchmarkRunner:
                     mask=mask_img,
                     case_id=case_id,
                     expected_execution=exp_exec,
+                    expected_shortcut_type=exp_sc_type,
                     warmup=min(self.warmup, 2),
                     repetitions=e2e_reps,
                     save_golden_path=golden_path,
                 )
 
-                if exp_exec == "model_required" and case_l3.telemetry_summary.model_calls.max == 0:
+                valid, err_msg = validate_case_execution(case_l3)
+                if not valid:
                     case_l3.status = "error"
-                    case_l3.error_message = "Expected model execution but observed 0 model calls (unwanted shortcut activation)"
-                elif exp_exec.startswith("shortcut") and case_l3.telemetry_summary.shortcut_count.max == 0:
-                    case_l3.status = "error"
-                    case_l3.error_message = f"Expected shortcut execution ({exp_exec}) but shortcut was not activated"
+                    case_l3.error_message = err_msg
 
                 cases.append(case_l3)
 
@@ -315,8 +318,8 @@ def compare_benchmarks(
         d_p95 = c_p95 - b_p95
         p95_pct = (d_p95 / max(1e-4, b_p95)) * 100.0
 
-        b_calls = int(b_case.get("model_calls_per_invocation", b_case.get("model_calls", 0)))
-        c_calls = int(c_case.get("model_calls_per_invocation", c_case.get("model_calls", 0)))
+        b_calls = int(b_case.get("model_calls_per_invocation", b_case.get("model_calls", 0)) or 0)
+        c_calls = int(c_case.get("model_calls_per_invocation", c_case.get("model_calls", 0)) or 0)
         calls_delta = c_calls - b_calls
 
         psnr, ssim, mae = 0.0, 0.0, 0.0

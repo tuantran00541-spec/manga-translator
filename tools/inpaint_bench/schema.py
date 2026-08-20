@@ -3,7 +3,7 @@ from dataclasses import dataclass, field, asdict
 from typing import Any
 import numpy as np
 
-SCHEMA_VERSION = "1.2.0"
+SCHEMA_VERSION = "1.2.1"
 
 
 @dataclass
@@ -114,6 +114,39 @@ def summarize_telemetry(invocations: list[InvocationTelemetry]) -> TelemetryAggr
     )
 
 
+def validate_case_execution(case: CaseResult) -> tuple[bool, str]:
+    exp_exec = case.expected_execution
+    exp_sc_type = case.expected_shortcut_type
+
+    observed_sc_types = set()
+    for inv in case.invocations:
+        for st in inv.shortcut_types:
+            observed_sc_types.add(st)
+    for st in case.shortcut_types:
+        observed_sc_types.add(st)
+
+    if exp_exec == "model_required":
+        if case.telemetry_summary.model_calls.max == 0:
+            return False, "Expected model execution but observed 0 model calls (unwanted shortcut activation)"
+        if case.telemetry_summary.shortcut_count.max > 0:
+            return False, f"Expected model_required with 0 shortcuts but observed {case.telemetry_summary.shortcut_count.max} shortcuts ({sorted(list(observed_sc_types))})"
+
+    elif exp_exec in ("shortcut", "shortcut_expected") or exp_exec.startswith("shortcut_"):
+        if case.telemetry_summary.model_calls.max > 0:
+            return False, f"Expected shortcut execution with 0 model calls but observed {case.telemetry_summary.model_calls.max} model calls"
+        if case.telemetry_summary.shortcut_count.max == 0:
+            return False, "Expected shortcut execution but shortcut was not activated"
+
+        expected_type = exp_sc_type
+        if not expected_type and exp_exec.startswith("shortcut_"):
+            expected_type = exp_exec[len("shortcut_"):]
+
+        if expected_type and expected_type not in observed_sc_types:
+            return False, f"Expected shortcut type '{expected_type}' but observed {sorted(list(observed_sc_types))}"
+
+    return True, ""
+
+
 @dataclass
 class CaseResult:
     case_id: str = ""
@@ -124,6 +157,7 @@ class CaseResult:
     mask_ratio: float = 0.0
     mask_area_pixels: int = 0
     expected_execution: str = "model_required"
+    expected_shortcut_type: str | None = None
     session_create_ms: float = 0.0
     first_inference_ms: float = 0.0
     cold_total_ms: float = 0.0
@@ -133,7 +167,7 @@ class CaseResult:
     preprocess_timing: TimingStats = field(default_factory=TimingStats)
     inference_timing: TimingStats = field(default_factory=TimingStats)
     postprocess_timing: TimingStats = field(default_factory=TimingStats)
-    model_calls_per_invocation: int = 0
+    model_calls_per_invocation: int | None = 0
     model_calls_total: int = 0
     telemetry_summary: TelemetryAggregate = field(default_factory=TelemetryAggregate)
     cluster_count: int = 0
@@ -150,7 +184,9 @@ class CaseResult:
 
     @property
     def model_calls(self) -> int:
-        return self.model_calls_per_invocation
+        if self.model_calls_per_invocation is not None:
+            return self.model_calls_per_invocation
+        return int(round(self.telemetry_summary.model_calls.mean))
 
     @property
     def cold_start_ms(self) -> float:

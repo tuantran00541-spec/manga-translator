@@ -1,8 +1,8 @@
-# LaMa Inpaint Benchmark Harness Reference (Phase 0.2 Hardened)
+# LaMa Inpaint Benchmark Harness Reference (Phase 0.2.1 Final Gate)
 
 ## Overview
 
-The **LaMa Inpaint Benchmark Harness** is a dedicated benchmarking suite designed to evaluate the execution latency, throughput, memory consumption, and model invocation metrics of the LaMa background inpainting pipeline.
+The **LaMa Inpaint Benchmark Harness** is a rigorous, reproducible benchmarking suite designed to measure the execution latency, throughput, memory footprint, and model invocation metrics of the LaMa background inpainting pipeline.
 
 > [!IMPORTANT]
 > **Phase 0 Scope Disclaimer**: This phase establishes an immutable, reproducible measurement baseline. **No optimization or algorithmic changes to LaMa or production inpainting have been implemented in this phase.**
@@ -36,22 +36,22 @@ The **LaMa Inpaint Benchmark Harness** is a dedicated benchmarking suite designe
 │   Clustering ──▶ Crops ──▶ Shortcuts ──▶ Tiling ──▶ Blend   │
 │   Telemetry: model_calls per invocation (independent reset),│
 │   cluster_count, active_tile_count, crop dimensions,        │
-│   shortcut detection (white / black / low-std)              │
+│   exact shortcut detection ('white', 'black', 'low_std')   │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 2. Hardening & Correctness Guarantees (Phase 0.2)
+## 2. Correctness Guarantees (Phase 0.2.1 Final Gate)
 
 1. **Real Inpainter Execution**:
-   All benchmark levels and tests exercise the 100% real `Inpainter` class (`Inpainter.inpaint`, `Inpainter.inpaint_mask`, `Inpainter._lama_fill_single`, `Inpainter._lama_fill_tiled`, `Inpainter._cluster_boxes`).
-2. **Accurate Shortcut Detection**:
-   `InpaintTelemetryContext` inspects the non-mask region when `_smart_paint_region` exits without entering `_lama_fill`, correctly distinguishing `white`, `black`, and `low_std` shortcuts with `model_calls == 0`.
-3. **Deterministic Execution Modes**:
-   Corpus cases carry explicit `expected_execution` metadata (`model_required`, `shortcut_white`, `shortcut_black`, `shortcut_low_std`, `mixed`) ensuring that `model_required` cases have rich manga texture and do not accidentally trigger shortcuts.
-4. **Aggregate Telemetry Statistics**:
-   Telemetry is summarized across all repetitions into `TelemetryAggregate` with `min`, `max`, `mean`, and `invariant` flags instead of assuming `invocations[0]`.
+   All benchmark levels exercise the real `Inpainter` class (`Inpainter.inpaint`, `Inpainter.inpaint_mask`, `Inpainter._lama_fill_single`, `Inpainter._lama_fill_tiled`, `Inpainter._cluster_boxes`).
+2. **Exact Shortcut Type Validation**:
+   Metadata carries explicit `expected_execution` (`model_required`, `shortcut`) and `expected_shortcut_type` (`white`, `black`, `low_std`). Runner validates exact observed shortcut types and raises error on mismatches.
+3. **Telemetry Invariant Semantics**:
+   `model_calls_per_invocation` represents the exact per-invocation count when invariant across repetitions; otherwise `None` (mean is preserved in `telemetry_summary.model_calls.mean`).
+4. **Production Code Immutability**:
+   Production files (`app/inpaint/lama_inpainter.py` and `app/ort_utils.py`) remain completely untouched.
 
 ---
 
@@ -77,7 +77,7 @@ python -m tools.benchmark_inpaint --run --mode pipeline --threads 4 --repetition
 python -m tools.benchmark_inpaint --run --mode end-to-end --threads 4 --repetitions 5 --output results_l3.json
 ```
 
-### 5. Quick Smoke Test with Subset Limit
+### 5. Multi-Archetype Quick Smoke Test
 ```bash
-python -m tools.benchmark_inpaint --run --mode all --limit 1 --repetitions 1 --warmup 1
+python -m tools.benchmark_inpaint --run --mode all --limit 4 --repetitions 1 --warmup 1
 ```

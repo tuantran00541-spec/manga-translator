@@ -38,17 +38,22 @@ def generate_synthetic_image(
     width: int,
     height: int,
     execution_mode: str = "model_required",
+    expected_shortcut_type: str | None = None,
     seed: int = 42,
 ) -> np.ndarray:
     rng = np.random.RandomState(seed)
 
-    if execution_mode == "shortcut_white":
+    sc_type = expected_shortcut_type
+    if not sc_type and execution_mode.startswith("shortcut_"):
+        sc_type = execution_mode[len("shortcut_"):]
+
+    if sc_type == "white":
         return np.full((height, width, 3), 255, dtype=np.uint8)
 
-    if execution_mode == "shortcut_black":
+    if sc_type == "black":
         return np.full((height, width, 3), 0, dtype=np.uint8)
 
-    if execution_mode == "shortcut_low_std":
+    if sc_type == "low_std":
         return np.full((height, width, 3), 128, dtype=np.uint8)
 
     if execution_mode == "mixed":
@@ -224,16 +229,25 @@ def generate_case(
     height: int,
     mask_type: str,
     execution_mode: str = "model_required",
+    expected_shortcut_type: str | None = None,
     seed: int = 42,
 ) -> tuple[np.ndarray, np.ndarray, list[BubbleBox], dict]:
-    img = generate_synthetic_image(width, height, execution_mode=execution_mode, seed=seed)
+    img = generate_synthetic_image(
+        width,
+        height,
+        execution_mode=execution_mode,
+        expected_shortcut_type=expected_shortcut_type,
+        seed=seed,
+    )
     mask, boxes, meta = generate_mask_and_boxes(mask_type, width, height, seed=seed)
 
     mask_bool = mask > 127
-    if execution_mode != "shortcut_black":
-        img[mask_bool] = [255, 255, 255]
-    else:
+    sc_type = expected_shortcut_type or (execution_mode[len("shortcut_"):] if execution_mode.startswith("shortcut_") else None)
+
+    if sc_type == "black":
         img[mask_bool] = [0, 0, 0]
+    else:
+        img[mask_bool] = [255, 255, 255]
 
     for b in boxes:
         bw = b.x2 - b.x1
@@ -250,6 +264,7 @@ def generate_case(
     case_id = f"syn_{width}x{height}_{mask_type}"
     meta["case_id"] = case_id
     meta["expected_execution"] = execution_mode
+    meta["expected_shortcut_type"] = expected_shortcut_type
     meta["boxes"] = [{"x1": b.x1, "y1": b.y1, "x2": b.x2, "y2": b.y2, "confidence": b.confidence} for b in boxes]
 
     return img, mask, boxes, meta
@@ -272,7 +287,9 @@ def generate_corpus(
     for w, h in sizes:
         for m_type in mask_types:
             case_seed = seed + w * 1000 + h * 10 + len(m_type)
-            img, mask, boxes, meta = generate_case(w, h, m_type, execution_mode="model_required", seed=case_seed)
+            img, mask, boxes, meta = generate_case(
+                w, h, m_type, execution_mode="model_required", expected_shortcut_type=None, seed=case_seed
+            )
             case_id = meta["case_id"]
             case_dir = out_path / case_id
             case_dir.mkdir(parents=True, exist_ok=True)
@@ -288,10 +305,18 @@ def generate_corpus(
 
             manifest_cases.append(meta)
 
-    for s_mode in ["shortcut_white", "shortcut_black", "shortcut_low_std"]:
-        img, mask, boxes, meta = generate_case(512, 512, "M1_bubble_10pct", execution_mode=s_mode, seed=seed)
-        meta["case_id"] = f"syn_512x512_{s_mode}"
-        case_dir = out_path / meta["case_id"]
+    shortcut_modes = [
+        ("shortcut", "white"),
+        ("shortcut", "black"),
+        ("shortcut", "low_std"),
+    ]
+    for mode_name, sc_type in shortcut_modes:
+        case_id = f"syn_512x512_shortcut_{sc_type}"
+        img, mask, boxes, meta = generate_case(
+            512, 512, "M1_bubble_10pct", execution_mode=mode_name, expected_shortcut_type=sc_type, seed=seed
+        )
+        meta["case_id"] = case_id
+        case_dir = out_path / case_id
         case_dir.mkdir(parents=True, exist_ok=True)
         cv2.imwrite(str(case_dir / "original.png"), img)
         cv2.imwrite(str(case_dir / "mask.png"), mask)

@@ -101,6 +101,7 @@ def run_e2e_benchmark_case(
     mask: np.ndarray | None = None,
     case_id: str = "e2e_case",
     expected_execution: str = "model_required",
+    expected_shortcut_type: str | None = None,
     warmup: int = 3,
     repetitions: int = 5,
     save_golden_path: Path | None = None,
@@ -166,7 +167,7 @@ def run_e2e_benchmark_case(
     mask_pixels = int(np.count_nonzero(mask > 127)) if mask is not None else 0
     telemetry_agg = summarize_telemetry(invocations)
     total_calls = sum(inv.model_calls for inv in invocations)
-    model_calls_per_inv = int(round(telemetry_agg.model_calls.mean))
+    model_calls_per_inv = invocations[0].model_calls if telemetry_agg.model_calls.invariant and invocations else None
 
     rep_types = []
     for inv in invocations:
@@ -184,6 +185,7 @@ def run_e2e_benchmark_case(
         mask_area_pixels=mask_pixels,
         mask_ratio=round(mask_pixels / float(max(1, w * h)), 4),
         expected_execution=expected_execution,
+        expected_shortcut_type=expected_shortcut_type,
         first_inference_ms=round(first_inference_ms, 4),
         cold_total_ms=round(first_inference_ms, 4),
         warmup_count=warmup,

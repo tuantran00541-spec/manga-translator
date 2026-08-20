@@ -2,6 +2,7 @@ import os
 import sys
 import unittest
 import tempfile
+import ast
 import json
 import numpy as np
 from pathlib import Path
@@ -31,6 +32,7 @@ from tools.inpaint_bench.schema import (
     InvocationTelemetry,
     summarize_metric,
     summarize_telemetry,
+    validate_case_execution,
 )
 from tools.inpaint_bench.proxy import TelemetryCollector, TelemetrySessionProxy
 from tools.inpaint_bench.runner import compare_benchmarks, compute_image_metrics
@@ -72,7 +74,7 @@ class FakeSession:
         return [np.zeros((1, 3, 512, 512), dtype=np.float32)]
 
 
-class TestInpaintBenchmarkHardening(unittest.TestCase):
+class TestInpaintBenchmarkGate(unittest.TestCase):
     # ==================================================
     # 1-5: PROXY UNIT TESTS
     # ==================================================
@@ -246,7 +248,7 @@ class TestInpaintBenchmarkHardening(unittest.TestCase):
         boxes = [BubbleBox(20, 20, 80, 80, 0.95)]
 
         res, _ = run_e2e_benchmark_case(
-            inpainter, img, boxes=boxes, expected_execution="shortcut_white", warmup=1, repetitions=2
+            inpainter, img, boxes=boxes, expected_execution="shortcut", expected_shortcut_type="white", warmup=1, repetitions=2
         )
         self.assertEqual(res.model_calls_per_invocation, 0)
         self.assertGreaterEqual(res.shortcut_count, 1)
@@ -260,7 +262,7 @@ class TestInpaintBenchmarkHardening(unittest.TestCase):
         boxes = [BubbleBox(20, 20, 80, 80, 0.95)]
 
         res, _ = run_e2e_benchmark_case(
-            inpainter, img, boxes=boxes, expected_execution="shortcut_black", warmup=1, repetitions=2
+            inpainter, img, boxes=boxes, expected_execution="shortcut", expected_shortcut_type="black", warmup=1, repetitions=2
         )
         self.assertEqual(res.model_calls_per_invocation, 0)
         self.assertGreaterEqual(res.shortcut_count, 1)
@@ -274,7 +276,7 @@ class TestInpaintBenchmarkHardening(unittest.TestCase):
         boxes = [BubbleBox(20, 20, 80, 80, 0.95)]
 
         res, _ = run_e2e_benchmark_case(
-            inpainter, img, boxes=boxes, expected_execution="shortcut_low_std", warmup=1, repetitions=2
+            inpainter, img, boxes=boxes, expected_execution="shortcut", expected_shortcut_type="low_std", warmup=1, repetitions=2
         )
         self.assertEqual(res.model_calls_per_invocation, 0)
         self.assertGreaterEqual(res.shortcut_count, 1)
@@ -348,17 +350,113 @@ class TestInpaintBenchmarkHardening(unittest.TestCase):
         inv3 = InvocationTelemetry(invocation_index=2, model_calls=1)
 
         agg = summarize_telemetry([inv1, inv2, inv3])
-        calls_per_inv = int(round(agg.model_calls.mean))
+        calls_per_inv = invocations_val = inv1.model_calls if agg.model_calls.invariant else None
         calls_total = sum(x.model_calls for x in [inv1, inv2, inv3])
 
         self.assertEqual(calls_per_inv, 1)
         self.assertEqual(calls_total, 3)
 
+    def test_19b_non_invariant_telemetry_semantics(self):
+        inv1 = InvocationTelemetry(invocation_index=0, model_calls=1)
+        inv2 = InvocationTelemetry(invocation_index=1, model_calls=2)
+        inv3 = InvocationTelemetry(invocation_index=2, model_calls=2)
+
+        agg = summarize_telemetry([inv1, inv2, inv3])
+        self.assertFalse(agg.model_calls.invariant)
+        self.assertEqual(agg.model_calls.mean, 1.67)
+
+        case = CaseResult(
+            invocations=[inv1, inv2, inv3],
+            telemetry_summary=agg,
+            model_calls_per_invocation=None,
+            model_calls_total=5,
+        )
+        self.assertIsNone(case.model_calls_per_invocation)
+        self.assertEqual(case.model_calls_total, 5)
+
     # ==================================================
-    # 20-24: CORPUS, SCHEMA & REPRODUCIBILITY TESTS
+    # 20-25: EXPECTED SHORTCUT TYPE VALIDATION TESTS
     # ==================================================
 
-    def test_20_deterministic_corpus(self):
+    def test_20_validation_expected_white_observed_white_pass(self):
+        inv = InvocationTelemetry(model_calls=0, shortcut_count=1, shortcut_types=["white"])
+        case = CaseResult(
+            expected_execution="shortcut",
+            expected_shortcut_type="white",
+            shortcut_types=["white"],
+            invocations=[inv],
+            telemetry_summary=summarize_telemetry([inv]),
+        )
+        valid, msg = validate_case_execution(case)
+        self.assertTrue(valid, msg)
+
+    def test_21_validation_expected_white_observed_black_fail(self):
+        inv = InvocationTelemetry(model_calls=0, shortcut_count=1, shortcut_types=["black"])
+        case = CaseResult(
+            expected_execution="shortcut",
+            expected_shortcut_type="white",
+            shortcut_types=["black"],
+            invocations=[inv],
+            telemetry_summary=summarize_telemetry([inv]),
+        )
+        valid, msg = validate_case_execution(case)
+        self.assertFalse(valid)
+        self.assertIn("white", msg)
+        self.assertIn("black", msg)
+
+    def test_22_validation_expected_black_observed_low_std_fail(self):
+        inv = InvocationTelemetry(model_calls=0, shortcut_count=1, shortcut_types=["low_std"])
+        case = CaseResult(
+            expected_execution="shortcut",
+            expected_shortcut_type="black",
+            shortcut_types=["low_std"],
+            invocations=[inv],
+            telemetry_summary=summarize_telemetry([inv]),
+        )
+        valid, msg = validate_case_execution(case)
+        self.assertFalse(valid)
+        self.assertIn("black", msg)
+
+    def test_23_validation_expected_low_std_observed_low_std_pass(self):
+        inv = InvocationTelemetry(model_calls=0, shortcut_count=1, shortcut_types=["low_std"])
+        case = CaseResult(
+            expected_execution="shortcut",
+            expected_shortcut_type="low_std",
+            shortcut_types=["low_std"],
+            invocations=[inv],
+            telemetry_summary=summarize_telemetry([inv]),
+        )
+        valid, msg = validate_case_execution(case)
+        self.assertTrue(valid, msg)
+
+    def test_24_validation_model_required_model_calls_zero_fail(self):
+        inv = InvocationTelemetry(model_calls=0, shortcut_count=0)
+        case = CaseResult(
+            expected_execution="model_required",
+            invocations=[inv],
+            telemetry_summary=summarize_telemetry([inv]),
+        )
+        valid, msg = validate_case_execution(case)
+        self.assertFalse(valid)
+        self.assertIn("0 model calls", msg)
+
+    def test_25_validation_model_required_shortcut_count_gt_zero_fail(self):
+        inv = InvocationTelemetry(model_calls=1, shortcut_count=1, shortcut_types=["white"])
+        case = CaseResult(
+            expected_execution="model_required",
+            shortcut_types=["white"],
+            invocations=[inv],
+            telemetry_summary=summarize_telemetry([inv]),
+        )
+        valid, msg = validate_case_execution(case)
+        self.assertFalse(valid)
+        self.assertIn("shortcuts", msg)
+
+    # ==================================================
+    # 26-30: CORPUS, SCHEMA & INTEGRITY TESTS
+    # ==================================================
+
+    def test_26_deterministic_corpus(self):
         img1 = generate_synthetic_image(256, 256, execution_mode="model_required", seed=42)
         img2 = generate_synthetic_image(256, 256, execution_mode="model_required", seed=42)
         self.assertTrue(np.array_equal(img1, img2))
@@ -368,12 +466,7 @@ class TestInpaintBenchmarkHardening(unittest.TestCase):
         self.assertTrue(np.array_equal(mask1, mask2))
         self.assertEqual(meta1, meta2)
 
-    def test_21_expected_execution_metadata(self):
-        img, mask, boxes, meta = generate_case(256, 256, "M1_bubble_10pct", execution_mode="shortcut_white", seed=42)
-        self.assertEqual(meta["expected_execution"], "shortcut_white")
-        self.assertTrue(Path(meta.get("case_id", "")).name.startswith("syn_"))
-
-    def test_22_golden_comparison(self):
+    def test_27_golden_comparison(self):
         base = {"cases": [{"case_id": "c1", "timing": {"p50_ms": 100.0, "p95_ms": 120.0}, "model_calls_per_invocation": 1}]}
         cand = {"cases": [{"case_id": "c1", "timing": {"p50_ms": 80.0, "p95_ms": 100.0}, "model_calls_per_invocation": 1}]}
         deltas = compare_benchmarks(base, cand)
@@ -381,7 +474,7 @@ class TestInpaintBenchmarkHardening(unittest.TestCase):
         self.assertEqual(deltas[0].p50_diff_pct, -20.0)
         self.assertFalse(deltas[0].regression)
 
-    def test_23_image_metrics(self):
+    def test_28_image_metrics(self):
         img_a = np.full((50, 50, 3), 100, dtype=np.uint8)
         img_b = np.full((50, 50, 3), 100, dtype=np.uint8)
         psnr, ssim, mae = compute_image_metrics(img_a, img_b)
@@ -389,7 +482,7 @@ class TestInpaintBenchmarkHardening(unittest.TestCase):
         self.assertEqual(ssim, 1.0)
         self.assertEqual(mae, 0.0)
 
-    def test_24_model_sha256(self):
+    def test_29_model_sha256(self):
         with tempfile.NamedTemporaryFile(delete=False) as f:
             f.write(b"Test Content")
             tmp_name = f.name
@@ -399,6 +492,24 @@ class TestInpaintBenchmarkHardening(unittest.TestCase):
             self.assertEqual(h, hashlib.sha256(b"Test Content").hexdigest())
         finally:
             os.unlink(tmp_name)
+
+    def test_30_production_files_integrity(self):
+        lama_path = Path("app/inpaint/lama_inpainter.py")
+        ort_path = Path("app/ort_utils.py")
+
+        self.assertTrue(lama_path.is_file(), "Production app/inpaint/lama_inpainter.py must exist")
+        self.assertTrue(ort_path.is_file(), "Production app/ort_utils.py must exist")
+
+        with open(lama_path, "r", encoding="utf-8") as f:
+            lama_src = f.read()
+        with open(ort_path, "r", encoding="utf-8") as f:
+            ort_src = f.read()
+
+        ast.parse(lama_src)
+        ast.parse(ort_src)
+
+        self.assertNotIn("tools.inpaint_bench", lama_src)
+        self.assertNotIn("tools.inpaint_bench", ort_src)
 
 
 if __name__ == "__main__":

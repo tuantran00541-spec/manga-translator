@@ -1,14 +1,19 @@
 import os
 import sys
 import unittest
+import tempfile
 import numpy as np
+import cv2
 from pathlib import Path
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from app.config import LAMA_MODEL
+from app.detector.bubble_detector import BubbleBox
+from tools.inpaint_bench.corpus_generator import generate_synthetic_image, generate_case
 from tools.inpaint_bench.proxy import TelemetryCollector, TelemetrySessionProxy
 from tools.inpaint_bench.runner import BenchmarkRunner
+from tools.inpaint_bench.e2e_bench import run_e2e_benchmark_case
 
 
 class TestInpaintBenchmarkRealORT(unittest.TestCase):
@@ -21,7 +26,7 @@ class TestInpaintBenchmarkRealORT(unittest.TestCase):
 
         self.model_path = Path(LAMA_MODEL)
 
-    def test_25_real_ort_integration(self):
+    def test_25_real_ort_session_proxy(self):
         if self.ort is None:
             self.skipTest("onnxruntime is not installed in this environment")
         if not self.model_path.is_file():
@@ -45,8 +50,17 @@ class TestInpaintBenchmarkRealORT(unittest.TestCase):
         self.assertEqual(output[0].shape, (1, 3, 512, 512))
         self.assertEqual(collector.model_calls, 1)
 
+    def test_26_real_ort_pipeline_lama_fill_single(self):
+        if self.ort is None:
+            self.skipTest("onnxruntime is not installed in this environment")
+        if not self.model_path.is_file():
+            self.skipTest(f"LaMa ONNX model file not found at: {self.model_path}")
+
+        from app.ort_utils import make_session
         from app.inpaint.lama_inpainter import Inpainter
         inpainter = Inpainter()
+        collector = TelemetryCollector()
+        proxy = TelemetrySessionProxy(make_session(self.model_path, intra_op_threads=1), collector)
         inpainter.session = proxy
 
         test_crop = np.full((128, 128, 3), 140, dtype=np.uint8)
@@ -61,31 +75,120 @@ class TestInpaintBenchmarkRealORT(unittest.TestCase):
         self.assertEqual(result_img.dtype, np.uint8)
         self.assertEqual(collector.model_calls, 1)
 
-    def test_26_cli_smoke_test(self):
+    def test_27_real_ort_full_e2e(self):
         if self.ort is None:
             self.skipTest("onnxruntime is not installed in this environment")
         if not self.model_path.is_file():
             self.skipTest(f"LaMa ONNX model file not found at: {self.model_path}")
 
-        for mode_name in ["model", "pipeline", "end-to-end"]:
-            runner = BenchmarkRunner(
-                model_path=self.model_path,
-                mode=mode_name,
-                threads=1,
-                warmup=1,
-                repetitions=1,
-                case_limit=1,
-            )
+        from app.ort_utils import make_session
+        from app.inpaint.lama_inpainter import Inpainter
 
-            res = runner.run(isolated_subproc=False)
-            self.assertIsNotNone(res)
-            self.assertEqual(res.schema_version, "1.2.0")
-            self.assertGreater(len(res.cases), 0)
+        inpainter = Inpainter()
+        inpainter.session = make_session(self.model_path, intra_op_threads=1)
 
-            for c in res.cases:
-                self.assertEqual(c.status, "ok")
-                self.assertGreaterEqual(c.model_calls, 0)
-                self.assertGreater(c.timing.p50_ms, 0.0)
+        img = generate_synthetic_image(300, 300, execution_mode="model_required", seed=42)
+        boxes = [BubbleBox(40, 40, 100, 100, 0.95)]
+
+        res, out_img = run_e2e_benchmark_case(
+            inpainter,
+            img,
+            boxes=boxes,
+            expected_execution="model_required",
+            warmup=1,
+            repetitions=1,
+        )
+
+        self.assertEqual(res.status, "ok")
+        self.assertGreaterEqual(res.model_calls_per_invocation, 1)
+        self.assertGreaterEqual(res.cluster_count, 1)
+        self.assertEqual(res.shortcut_count, 0)
+        self.assertIsInstance(out_img, np.ndarray)
+        self.assertEqual(out_img.shape, (300, 300, 3))
+        self.assertEqual(out_img.dtype, np.uint8)
+
+    def test_28_real_ort_full_tiled_e2e(self):
+        if self.ort is None:
+            self.skipTest("onnxruntime is not installed in this environment")
+        if not self.model_path.is_file():
+            self.skipTest(f"LaMa ONNX model file not found at: {self.model_path}")
+
+        from app.ort_utils import make_session
+        from app.inpaint.lama_inpainter import Inpainter
+
+        inpainter = Inpainter()
+        inpainter.session = make_session(self.model_path, intra_op_threads=1)
+
+        img = generate_synthetic_image(1024, 1024, execution_mode="model_required", seed=42)
+        mask = np.zeros((1024, 1024), dtype=np.uint8)
+        mask[150:850, 150:850] = 255
+
+        res, out_img = run_e2e_benchmark_case(
+            inpainter,
+            img,
+            mask=mask,
+            expected_execution="model_required",
+            warmup=1,
+            repetitions=1,
+        )
+
+        self.assertEqual(res.status, "ok")
+        self.assertGreater(res.tile_count, 1)
+        self.assertGreater(res.active_tile_count, 1)
+        self.assertGreater(res.model_calls_per_invocation, 1)
+        self.assertIsInstance(out_img, np.ndarray)
+        self.assertEqual(out_img.shape, (1024, 1024, 3))
+        self.assertEqual(out_img.dtype, np.uint8)
+
+    def test_29_cli_smoke_4_execution_archetypes(self):
+        if self.ort is None:
+            self.skipTest("onnxruntime is not installed in this environment")
+        if not self.model_path.is_file():
+            self.skipTest(f"LaMa ONNX model file not found at: {self.model_path}")
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+
+            archetypes = [
+                ("syn_model_required", "model_required", None),
+                ("syn_shortcut_white", "shortcut", "white"),
+                ("syn_shortcut_black", "shortcut", "black"),
+                ("syn_shortcut_low_std", "shortcut", "low_std"),
+            ]
+
+            manifest = []
+            for cid, emode, stype in archetypes:
+                img, mask, boxes, meta = generate_case(
+                    256, 256, "M1_bubble_10pct", execution_mode=emode, expected_shortcut_type=stype, seed=42
+                )
+                meta["case_id"] = cid
+                cdir = tmp_path / cid
+                cdir.mkdir(parents=True, exist_ok=True)
+                cv2.imwrite(str(cdir / "original.png"), img)
+                cv2.imwrite(str(cdir / "mask.png"), mask)
+                import json
+                with open(cdir / "metadata.json", "w", encoding="utf-8") as f:
+                    json.dump(meta, f)
+                manifest.append(meta)
+
+            for mode_name in ["model", "pipeline", "end-to-end"]:
+                runner = BenchmarkRunner(
+                    model_path=self.model_path,
+                    corpus_dir=tmp_path,
+                    mode=mode_name,
+                    threads=1,
+                    warmup=1,
+                    repetitions=1,
+                )
+
+                res = runner.run(isolated_subproc=False)
+                self.assertIsNotNone(res)
+                self.assertEqual(res.schema_version, "1.2.1")
+                self.assertGreater(len(res.cases), 0)
+                self.assertEqual(res.summary.get("error_cases", 0), 0)
+
+                for c in res.cases:
+                    self.assertEqual(c.status, "ok", f"Case {c.case_id} failed: {c.error_message}")
 
 
 if __name__ == "__main__":

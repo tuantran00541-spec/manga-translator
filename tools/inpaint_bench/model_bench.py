@@ -90,7 +90,7 @@ def run_model_benchmark(
     mem_stats = mem_tracker.finish()
     telemetry_agg = summarize_telemetry(invocations)
     total_calls = sum(inv.model_calls for inv in invocations)
-    model_calls_per_inv = int(round(telemetry_agg.model_calls.mean))
+    model_calls_per_inv = invocations[0].model_calls if telemetry_agg.model_calls.invariant and invocations else None
 
     return CaseResult(
         case_id="lama_model_512x512",
