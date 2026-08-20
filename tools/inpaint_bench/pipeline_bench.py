@@ -98,6 +98,8 @@ def run_pipeline_benchmark_case(
 
     h, w = crop_img.shape[:2]
     mask_pixels = int(np.count_nonzero(local_mask > 127))
+    model_calls_per_inv = invocations[0].model_calls if invocations else 0
+    total_calls = sum(inv.model_calls for inv in invocations)
 
     return CaseResult(
         case_id=case_id,
@@ -114,8 +116,8 @@ def run_pipeline_benchmark_case(
         preprocess_timing=calculate_stats(pre_times),
         inference_timing=calculate_stats(inf_times),
         postprocess_timing=calculate_stats(post_times),
-        model_calls_per_invocation=1,
-        model_calls_total=len(invocations),
+        model_calls_per_invocation=model_calls_per_inv,
+        model_calls_total=total_calls,
         invocations=invocations,
         memory=mem_tracker.finish(),
         status="ok",

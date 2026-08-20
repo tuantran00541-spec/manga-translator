@@ -293,6 +293,31 @@ class TestInpaintBenchmarkMandatory(unittest.TestCase):
         self.assertEqual(res.model_calls_per_invocation, 1)
         self.assertEqual(res.model_calls_total, 2)
 
+    def test_13b_level2_multiple_model_calls_per_invocation(self):
+        mock_inpainter = MagicMock(spec=Inpainter)
+        mock_session = MagicMock()
+        mock_input = MagicMock()
+        mock_input.name = "image"
+        mock_session.get_inputs.return_value = [mock_input, mock_input]
+        mock_session.run.return_value = [np.zeros((1, 3, 512, 512), dtype=np.float32)]
+        mock_inpainter.session = mock_session
+
+        def multi_call_fill(crop, mask):
+            mock_inpainter.session.run(None, {})
+            mock_inpainter.session.run(None, {})
+            return crop
+
+        mock_inpainter._lama_fill_single = multi_call_fill
+
+        crop = np.zeros((128, 128, 3), dtype=np.uint8)
+        mask = np.zeros((128, 128), dtype=np.uint8)
+
+        res = run_pipeline_benchmark_case(mock_inpainter, crop, mask, "test_p2_multi_count", warmup=1, repetitions=2)
+        self.assertEqual(res.model_calls_per_invocation, 2)
+        self.assertEqual(res.model_calls_total, 4)
+        self.assertEqual(res.invocations[0].model_calls, 2)
+        self.assertEqual(res.invocations[1].model_calls, 2)
+
     # ==================================================
     # D. LEVEL 3 END-TO-END TESTS
     # ==================================================

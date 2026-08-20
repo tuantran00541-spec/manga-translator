@@ -88,6 +88,8 @@ def run_model_benchmark(
 
     stats = calculate_stats(times_ms)
     mem_stats = mem_tracker.finish()
+    model_calls_per_inv = invocations[0].model_calls if invocations else 0
+    total_calls = sum(inv.model_calls for inv in invocations)
 
     return CaseResult(
         case_id="lama_model_512x512",
@@ -101,8 +103,8 @@ def run_model_benchmark(
         warmup_count=warmup,
         repetitions=repetitions,
         timing=stats,
-        model_calls_per_invocation=1,
-        model_calls_total=len(invocations),
+        model_calls_per_invocation=model_calls_per_inv,
+        model_calls_total=total_calls,
         invocations=invocations,
         memory=mem_stats,
         status="ok",
