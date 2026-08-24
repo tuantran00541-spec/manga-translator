@@ -6,16 +6,11 @@ import math
 from app.visual_qc.regions import QCRegion
 
 _ALLOWED_ISSUE_TYPES = {
-    "residual_text",
-    "partial_erase",
-    "partial_text",
-    "smear",
-    "inpaint_artifact",
-    "over_erased_art",
-    "suspicious_fill",
-    "unknown",
+    "residual_text", "partial_erase", "partial_text", "smear", "inpaint_artifact",
+    "over_erased_art", "suspicious_fill", "unknown",
 }
 _ALLOWED_ACTIONS = {"repaint", "review", "review_original", "deep_qc", "none"}
+_ALLOWED_STATUSES = {"pass", "flagged", "ambiguous"}
 
 
 @dataclass(frozen=True)
@@ -27,6 +22,14 @@ class RegionBatchIssue:
     bbox: tuple[int, int, int, int]
     reason: str
     recommended_action: str
+
+
+@dataclass(frozen=True)
+class RegionBatchDecision:
+    page_index: int
+    region_id: str
+    status: str
+    issues: tuple[RegionBatchIssue, ...]
 
 
 def _map_relative_box(box_2d: object, region: QCRegion) -> tuple[int, int, int, int] | None:
@@ -55,10 +58,35 @@ def _map_relative_box(box_2d: object, region: QCRegion) -> tuple[int, int, int, 
     return x1, y1, x2, y2
 
 
-def parse_region_batch_response(parsed: dict, regions_by_id: dict[str, QCRegion]) -> list[RegionBatchIssue]:
+def _parse_region_issues(raw_region: dict, region: QCRegion) -> tuple[RegionBatchIssue, ...]:
+    out: list[RegionBatchIssue] = []
+    for raw_issue in raw_region.get("issues") or []:
+        if not isinstance(raw_issue, dict):
+            continue
+        issue_type = str(raw_issue.get("issue_type") or "")
+        if issue_type not in _ALLOWED_ISSUE_TYPES:
+            continue
+        try:
+            confidence = float(raw_issue.get("confidence", 0.0))
+        except (TypeError, ValueError):
+            continue
+        if not math.isfinite(confidence):
+            continue
+        confidence = max(0.0, min(1.0, confidence))
+        bbox = _map_relative_box(raw_issue.get("box_2d"), region)
+        if bbox is None:
+            continue
+        action = str(raw_issue.get("recommended_action") or "review")
+        if action not in _ALLOWED_ACTIONS:
+            action = "review"
+        out.append(RegionBatchIssue(region.page_index, region.region_id, issue_type, confidence, bbox, str(raw_issue.get("reason") or "")[:500], action))
+    return tuple(out)
+
+
+def parse_region_batch_decisions(parsed: dict, regions_by_id: dict[str, QCRegion]) -> list[RegionBatchDecision]:
     if not isinstance(parsed, dict):
         return []
-    out: list[RegionBatchIssue] = []
+    out: list[RegionBatchDecision] = []
     for raw_region in parsed.get("regions") or []:
         if not isinstance(raw_region, dict):
             continue
@@ -66,34 +94,15 @@ def parse_region_batch_response(parsed: dict, regions_by_id: dict[str, QCRegion]
         region = regions_by_id.get(region_id)
         if region is None:
             continue
-        for raw_issue in raw_region.get("issues") or []:
-            if not isinstance(raw_issue, dict):
-                continue
-            issue_type = str(raw_issue.get("issue_type") or "")
-            if issue_type not in _ALLOWED_ISSUE_TYPES:
-                continue
-            try:
-                confidence = float(raw_issue.get("confidence", 0.0))
-            except (TypeError, ValueError):
-                continue
-            if not math.isfinite(confidence):
-                continue
-            confidence = max(0.0, min(1.0, confidence))
-            bbox = _map_relative_box(raw_issue.get("box_2d"), region)
-            if bbox is None:
-                continue
-            action = str(raw_issue.get("recommended_action") or "review")
-            if action not in _ALLOWED_ACTIONS:
-                action = "review"
-            out.append(
-                RegionBatchIssue(
-                    page_index=region.page_index,
-                    region_id=region.region_id,
-                    issue_type=issue_type,
-                    confidence=confidence,
-                    bbox=bbox,
-                    reason=str(raw_issue.get("reason") or "")[:500],
-                    recommended_action=action,
-                )
-            )
+        status = str(raw_region.get("status") or "ambiguous")
+        if status not in _ALLOWED_STATUSES:
+            status = "ambiguous"
+        issues = _parse_region_issues(raw_region, region)
+        if issues and status == "pass":
+            status = "flagged"
+        out.append(RegionBatchDecision(region.page_index, region.region_id, status, issues))
     return out
+
+
+def parse_region_batch_response(parsed: dict, regions_by_id: dict[str, QCRegion]) -> list[RegionBatchIssue]:
+    return [issue for decision in parse_region_batch_decisions(parsed, regions_by_id) for issue in decision.issues]
