@@ -114,7 +114,7 @@ class GeminiVisualQC:
                 "mime_type": "application/json",
                 "schema": _RESPONSE_SCHEMA,
             },
-            "generation_config": {"thinking_level": "minimal"},
+            "generation_config": {"thinking_level": "low"},
         }
 
         try:
