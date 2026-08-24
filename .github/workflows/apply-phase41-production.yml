@@ -25,12 +25,12 @@ jobs:
         run: |
           set -euo pipefail
           test -f phase41.patch.gz.b64
+          test -f .phase41-ready
           base64 -d phase41.patch.gz.b64 | gzip -d > /tmp/phase41.patch
           echo "52edd1016477fe7960f94d3a2d091b20b6b3e6df96d47ba65ae9453f6be840d0  /tmp/phase41.patch" | sha256sum -c -
 
           set +e
           git apply --reject --whitespace=nowarn /tmp/phase41.patch
-          apply_status=$?
           set -e
 
           mapfile -t rejects < <(find . -name '*.rej' -print | sort)
@@ -79,6 +79,7 @@ jobs:
 
           rm -f app/pipeline.py.rej
           rm -f phase41.patch.gz.b64
+          rm -f .phase41-ready
           rm -f .github/workflows/apply-ui-rewrite-from-pr.yml
 
           grep -F 'MANIFEST_SCHEMA_VERSION = 2' app/manifest_utils.py >/dev/null
