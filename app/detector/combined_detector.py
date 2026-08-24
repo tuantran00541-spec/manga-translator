@@ -1,5 +1,6 @@
 import numpy as np
 import cv2
+from concurrent.futures import ThreadPoolExecutor
 from app.detector.bubble_detector import YoloDetector, BubbleBox, MAX_BOX_AREA_RATIO
 from app.config import (
     BUBBLE_DETECTOR_MODEL,
@@ -14,10 +15,21 @@ class CombinedTextDetector:
         self.bubble_detector = YoloDetector(BUBBLE_DETECTOR_MODEL, BUBBLE_CONF_THRESHOLD)
         self.text_detector = YoloDetector(TEXT_SEGMENTER_MODEL, TEXT_CONF_THRESHOLD)
 
-    def detect(self, image: np.ndarray) -> list[BubbleBox]:
+    def detect(self, image: np.ndarray, *, parallel: bool = False) -> list[BubbleBox]:
         h, w = image.shape[:2]
-        bubble_boxes = self.bubble_detector.detect(image)
-        text_boxes = self.text_detector.detect(image)
+        if parallel:
+            # Bubble and text models are independent. Running them together is
+            # useful when only one page is active; the pipeline disables this
+            # when it is already parallelising multiple pages to avoid CPU
+            # oversubscription.
+            with ThreadPoolExecutor(max_workers=2, thread_name_prefix="detector") as pool:
+                bubble_future = pool.submit(self.bubble_detector.detect, image)
+                text_future = pool.submit(self.text_detector.detect, image)
+                bubble_boxes = bubble_future.result()
+                text_boxes = text_future.result()
+        else:
+            bubble_boxes = self.bubble_detector.detect(image)
+            text_boxes = self.text_detector.detect(image)
 
         result_boxes = []
         used_text_boxes = set()
@@ -176,11 +188,6 @@ class CombinedTextDetector:
 
                 line_h = abs_y2 - abs_y1
                 line_w = abs_x2 - abs_x1
-
-                m_y1 = abs_y1 - box.y1
-                m_y2 = abs_y2 - box.y1
-                m_x1 = abs_x1 - box.x1
-                m_x2 = abs_x2 - box.x1
 
                 if box.mask is not None and box.mask.ndim == 2:
                     line_mask = np.zeros((line_h, line_w), dtype=box.mask.dtype)
