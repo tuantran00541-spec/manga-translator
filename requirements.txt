@@ -19,3 +19,5 @@ filelock==3.16.1
 loguru==0.7.2
 transformers>=4.36,<4.46
 torch
+
+keyring>=25,<26
