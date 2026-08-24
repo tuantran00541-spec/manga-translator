@@ -16,8 +16,16 @@ from app.security import MAX_IMAGE_PIXELS
 
 GEMINI_INTERACTIONS_URL = "https://generativelanguage.googleapis.com/v1beta/interactions"
 DEFAULT_GEMINI_MODEL = os.getenv("GEMINI_VISUAL_QC_MODEL", "gemini-3.7-flash")
-DEFAULT_TIMEOUT_SECONDS = 60
+DEFAULT_CONNECT_TIMEOUT_SECONDS = 10
+try:
+    DEFAULT_TIMEOUT_SECONDS = max(15, min(300, int(os.getenv("GEMINI_VISUAL_QC_TIMEOUT_SECONDS", "120"))))
+except ValueError:
+    DEFAULT_TIMEOUT_SECONDS = 120
 MAX_QC_SIDE = 2048
+
+
+class GeminiVisualQCTimeout(RuntimeError):
+    pass
 
 
 @dataclass(frozen=True)
@@ -126,8 +134,12 @@ class GeminiVisualQC:
                     "Api-Revision": "2026-05-20",
                 },
                 json=payload,
-                timeout=self.timeout_seconds,
+                timeout=(DEFAULT_CONNECT_TIMEOUT_SECONDS, self.timeout_seconds),
             )
+        except requests.Timeout as exc:
+            raise GeminiVisualQCTimeout(
+                f"Gemini did not respond within {self.timeout_seconds}s; retry the QC request"
+            ) from exc
         except requests.RequestException as exc:
             raise RuntimeError(f"Gemini request failed: {exc}") from exc
 
