@@ -1,5 +1,7 @@
 from playwright.sync_api import sync_playwright
+
 from app.downloader.base import BaseAdapter
+from app.security import browser_request_allowed, validate_url
 
 
 class GenericJsAdapter(BaseAdapter):
@@ -10,6 +12,7 @@ class GenericJsAdapter(BaseAdapter):
         return True
 
     def extract_image_urls(self, chapter_url: str) -> list[str]:
+        validate_url(chapter_url)
         urls = []
         with sync_playwright() as p:
             browser = p.chromium.launch(
@@ -22,7 +25,20 @@ class GenericJsAdapter(BaseAdapter):
                 ]
             )
             try:
-                page = browser.new_page()
+                context = browser.new_context(service_workers="block")
+
+                def guard_route(route):
+                    if browser_request_allowed(route.request.url):
+                        route.continue_()
+                    else:
+                        route.abort()
+
+                context.route("**/*", guard_route)
+                context.add_init_script(
+                    "Object.defineProperty(globalThis, 'WebSocket', "
+                    "{value: undefined, writable: false, configurable: false});"
+                )
+                page = context.new_page()
                 page.goto(chapter_url, wait_until="networkidle", timeout=60000)
                 page.mouse.wheel(0, 20000)
                 page.wait_for_timeout(1500)
@@ -32,7 +48,7 @@ class GenericJsAdapter(BaseAdapter):
                     if box and box["width"] < self.min_width:
                         continue
                     src = el.get_attribute("src") or el.get_attribute("data-src")
-                    if src and src.startswith("http"):
+                    if src and src.startswith("http") and browser_request_allowed(src):
                         urls.append(src)
             finally:
                 browser.close()
