@@ -4,6 +4,11 @@ on:
   push:
     branches:
       - phase-4-3-visual-qc-core
+  pull_request:
+    paths:
+      - ".github/workflows/phase43-final-validation.yml"
+      - "app/**"
+      - "tests/**"
 
 jobs:
   broad-regression:
