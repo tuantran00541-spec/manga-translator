@@ -17,7 +17,7 @@ from app.secret_store import (
     set_gemini_api_key,
 )
 from app.security import validate_chapter_id
-from app.visual_qc.gemini import DEFAULT_GEMINI_MODEL, GeminiVisualQC
+from app.visual_qc.gemini import DEFAULT_GEMINI_MODEL, GeminiVisualQC, GeminiVisualQCTimeout
 
 router = APIRouter(prefix="/api/visual_qc", tags=["visual-qc"])
 visual_qc = GeminiVisualQC()
@@ -98,11 +98,18 @@ async def inspect_visual_qc(req: VisualQCInspectRequest) -> dict:
         issues = await run_in_threadpool(visual_qc.inspect, original_path, cleaned_path, api_key)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
+    except GeminiVisualQCTimeout as exc:
+        logger.warning(
+            "Chapter {} page {} Gemini visual QC timed out: {}",
+            req.chapter_id,
+            req.page_index,
+            exc,
+        )
+        raise HTTPException(504, str(exc)) from exc
     except Exception as exc:
-        # Loguru uses `{}` formatting rather than printf-style `%s`. Keep the
-        # actual upstream error visible so auth/quota/schema failures can be
-        # diagnosed from the terminal without exposing the API key.
-        logger.opt(exception=exc).error(
+        # Do not attach a diagnostic traceback here: Gemini inspect receives the
+        # API key as an argument, and diagnostic tracebacks can expose locals.
+        logger.error(
             "Chapter {} page {} Gemini visual QC failed: {}",
             req.chapter_id,
             req.page_index,
