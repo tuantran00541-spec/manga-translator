@@ -388,7 +388,7 @@ def _group_text_object_ocr(chapter_id: str, page_index: int, text_object_id: str
                     )
                     return manifest
 
-                obj["source_boxes"] = overlap
+                obj["source_boxes"] = [str(cur_boxes[i]["id"]) for i in overlap if 0 <= i < len(cur_boxes)]
                 obj["ocr_text"] = combined
                 for i in overlap:
                     if 0 <= i < len(cur_boxes):

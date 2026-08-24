@@ -149,8 +149,8 @@ def test_1_delete_one_by_one_regression() -> None:
         mutation_done = threading.Event()
         orig_process_page = pipeline._process_page
 
-        def hooked_process_page(img_path, processed_dir, excluded_regions=None, *, parallel_detectors=False):
-            result = orig_process_page(img_path, processed_dir, excluded_regions=excluded_regions, parallel_detectors=parallel_detectors)
+        def hooked_process_page(img_path, processed_dir, excluded_regions=None, existing_boxes=None, *, parallel_detectors=False):
+            result = orig_process_page(img_path, processed_dir, excluded_regions=excluded_regions, existing_boxes=existing_boxes, parallel_detectors=parallel_detectors)
             process_started.set()
             mutation_done.wait(timeout=5)
             return result
@@ -222,8 +222,8 @@ def test_2_process_pages_vs_repaint_mask() -> None:
         mutation_done = threading.Event()
         orig_process_page = pipeline._process_page
 
-        def hooked_process_page(img_path, processed_dir, excluded_regions=None, *, parallel_detectors=False):
-            result = orig_process_page(img_path, processed_dir, excluded_regions=excluded_regions, parallel_detectors=parallel_detectors)
+        def hooked_process_page(img_path, processed_dir, excluded_regions=None, existing_boxes=None, *, parallel_detectors=False):
+            result = orig_process_page(img_path, processed_dir, excluded_regions=excluded_regions, existing_boxes=existing_boxes, parallel_detectors=parallel_detectors)
             process_started.set()
             mutation_done.wait(timeout=5)
             return result
@@ -264,8 +264,8 @@ def test_3_process_pages_vs_add_manual_box() -> None:
         mutation_done = threading.Event()
         orig_process_page = pipeline._process_page
 
-        def hooked_process_page(img_path, processed_dir, excluded_regions=None, *, parallel_detectors=False):
-            result = orig_process_page(img_path, processed_dir, excluded_regions=excluded_regions, parallel_detectors=parallel_detectors)
+        def hooked_process_page(img_path, processed_dir, excluded_regions=None, existing_boxes=None, *, parallel_detectors=False):
+            result = orig_process_page(img_path, processed_dir, excluded_regions=excluded_regions, existing_boxes=existing_boxes, parallel_detectors=parallel_detectors)
             process_started.set()
             mutation_done.wait(timeout=5)
             return result
@@ -311,8 +311,8 @@ def test_4_process_pages_vs_update_box() -> None:
         mutation_done = threading.Event()
         orig_process_page = pipeline._process_page
 
-        def hooked_process_page(img_path, processed_dir, excluded_regions=None, *, parallel_detectors=False):
-            result = orig_process_page(img_path, processed_dir, excluded_regions=excluded_regions, parallel_detectors=parallel_detectors)
+        def hooked_process_page(img_path, processed_dir, excluded_regions=None, existing_boxes=None, *, parallel_detectors=False):
+            result = orig_process_page(img_path, processed_dir, excluded_regions=excluded_regions, existing_boxes=existing_boxes, parallel_detectors=parallel_detectors)
             process_started.set()
             mutation_done.wait(timeout=5)
             return result
@@ -357,8 +357,8 @@ def test_5_process_pages_vs_reset_manual_mask() -> None:
         mutation_done = threading.Event()
         orig_process_page = pipeline._process_page
 
-        def hooked_process_page(img_path, processed_dir, excluded_regions=None, *, parallel_detectors=False):
-            result = orig_process_page(img_path, processed_dir, excluded_regions=excluded_regions, parallel_detectors=parallel_detectors)
+        def hooked_process_page(img_path, processed_dir, excluded_regions=None, existing_boxes=None, *, parallel_detectors=False):
+            result = orig_process_page(img_path, processed_dir, excluded_regions=excluded_regions, existing_boxes=existing_boxes, parallel_detectors=parallel_detectors)
             process_started.set()
             mutation_done.wait(timeout=5)
             return result
@@ -399,8 +399,8 @@ def test_6_process_pages_vs_mark_skipped() -> None:
         mutation_done = threading.Event()
         orig_process_page = pipeline._process_page
 
-        def hooked_process_page(img_path, processed_dir, excluded_regions=None, *, parallel_detectors=False):
-            result = orig_process_page(img_path, processed_dir, excluded_regions=excluded_regions, parallel_detectors=parallel_detectors)
+        def hooked_process_page(img_path, processed_dir, excluded_regions=None, existing_boxes=None, *, parallel_detectors=False):
+            result = orig_process_page(img_path, processed_dir, excluded_regions=excluded_regions, existing_boxes=existing_boxes, parallel_detectors=parallel_detectors)
             process_started.set()
             mutation_done.wait(timeout=5)
             return result
@@ -442,8 +442,8 @@ def test_7_process_pages_vs_save_excluded_regions() -> None:
         mutation_done = threading.Event()
         orig_process_page = pipeline._process_page
 
-        def hooked_process_page(img_path, processed_dir, excluded_regions=None, *, parallel_detectors=False):
-            result = orig_process_page(img_path, processed_dir, excluded_regions=excluded_regions, parallel_detectors=parallel_detectors)
+        def hooked_process_page(img_path, processed_dir, excluded_regions=None, existing_boxes=None, *, parallel_detectors=False):
+            result = orig_process_page(img_path, processed_dir, excluded_regions=excluded_regions, existing_boxes=existing_boxes, parallel_detectors=parallel_detectors)
             process_started.set()
             mutation_done.wait(timeout=5)
             return result
@@ -489,8 +489,8 @@ def test_8_no_orphaned_tmp_files() -> None:
         mutation_done = threading.Event()
         orig_process_page = pipeline._process_page
 
-        def hooked_process_page(img_path, processed_dir, excluded_regions=None, *, parallel_detectors=False):
-            result = orig_process_page(img_path, processed_dir, excluded_regions=excluded_regions, parallel_detectors=parallel_detectors)
+        def hooked_process_page(img_path, processed_dir, excluded_regions=None, existing_boxes=None, *, parallel_detectors=False):
+            result = orig_process_page(img_path, processed_dir, excluded_regions=excluded_regions, existing_boxes=existing_boxes, parallel_detectors=parallel_detectors)
             process_started.set()
             mutation_done.wait(timeout=5)
             return result

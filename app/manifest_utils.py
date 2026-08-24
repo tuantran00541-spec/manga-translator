@@ -1,10 +1,12 @@
 import copy
+import hashlib
 import json
 import os
 import uuid
 from contextlib import contextmanager
 from pathlib import Path
 from fastapi import HTTPException
+from PIL import Image
 from filelock import FileLock, Timeout
 
 from app.config import PROCESSED_DIR
@@ -12,6 +14,154 @@ from app.security import validate_chapter_id
 
 _MANIFEST_LOCK_TIMEOUT = 30
 _PAGE_LOCK_TIMEOUT = 60
+MANIFEST_SCHEMA_VERSION = 2
+
+
+def new_box_id() -> str:
+    return f"box_{uuid.uuid4().hex[:16]}"
+
+
+def _legacy_box_id(chapter_id: str, page_index: int, box_index: int, box: dict) -> str:
+    fingerprint = {
+        "chapter_id": chapter_id,
+        "page_index": page_index,
+        "box_index": box_index,
+        "x1": box.get("x1"), "y1": box.get("y1"),
+        "x2": box.get("x2"), "y2": box.get("y2"),
+        "manual": bool(box.get("manual", False)),
+    }
+    raw = json.dumps(fingerprint, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return f"box_{hashlib.sha256(raw).hexdigest()[:16]}"
+
+
+def _try_image_dimensions(path_value: str | None) -> tuple[int, int] | None:
+    if not path_value:
+        return None
+    try:
+        with Image.open(Path(path_value)) as image:
+            w, h = image.size
+        if w > 0 and h > 0:
+            return int(w), int(h)
+    except (OSError, ValueError):
+        return None
+    return None
+
+
+def normalize_manifest_schema(manifest: dict) -> bool:
+    """Upgrade legacy manifests in memory without changing user-visible content."""
+    changed = False
+    if int(manifest.get("schema_version") or 0) < MANIFEST_SCHEMA_VERSION:
+        manifest["schema_version"] = MANIFEST_SCHEMA_VERSION
+        changed = True
+
+    chapter_id = str(manifest.get("chapter_id") or "")
+    for page_index, page in enumerate(manifest.get("pages", [])):
+        if not isinstance(page, dict):
+            continue
+
+        if page.get("width") is None or page.get("height") is None:
+            dims = _try_image_dimensions(page.get("original"))
+            if dims is not None:
+                page["width"], page["height"] = dims
+                changed = True
+
+        revision_defaults = {
+            "source_revision": 1,
+            "process_revision": 1 if (page.get("clean") or page.get("boxes")) else 0,
+            "clean_revision": 1 if page.get("clean") else 0,
+            "render_revision": 1 if page.get("rendered") else 0,
+        }
+        for key, default in revision_defaults.items():
+            if page.get(key) is None:
+                page[key] = default
+                changed = True
+
+        boxes = page.get("boxes") or []
+        for box_index, box in enumerate(boxes):
+            if not isinstance(box, dict):
+                continue
+            if not box.get("id"):
+                box["id"] = _legacy_box_id(chapter_id, page_index, box_index, box)
+                changed = True
+            expected_origin = "manual" if box.get("manual") else "detector"
+            if box.get("origin") not in ("manual", "detector"):
+                box["origin"] = expected_origin
+                changed = True
+
+        box_ids = [b.get("id") if isinstance(b, dict) else None for b in boxes]
+        for obj in page.get("text_objects") or []:
+            if not isinstance(obj, dict):
+                continue
+            refs = obj.get("source_boxes")
+            if not isinstance(refs, list):
+                continue
+            migrated: list[str] = []
+            for ref in refs:
+                if isinstance(ref, int):
+                    if 0 <= ref < len(box_ids) and box_ids[ref]:
+                        migrated.append(str(box_ids[ref]))
+                elif isinstance(ref, str) and ref:
+                    migrated.append(ref)
+            if refs != migrated:
+                obj["source_boxes"] = migrated
+                changed = True
+    return changed
+
+
+def bump_page_revision(page: dict, field: str) -> int:
+    if field not in {"source_revision", "process_revision", "clean_revision", "render_revision"}:
+        raise ValueError(f"Unsupported page revision field: {field}")
+    try:
+        current = int(page.get(field) or 0)
+    except (TypeError, ValueError):
+        current = 0
+    page[field] = current + 1
+    return page[field]
+
+
+def _box_iou(a: dict, b: dict) -> float:
+    ax1, ay1, ax2, ay2 = (float(a.get(k, 0)) for k in ("x1", "y1", "x2", "y2"))
+    bx1, by1, bx2, by2 = (float(b.get(k, 0)) for k in ("x1", "y1", "x2", "y2"))
+    ix1, iy1 = max(ax1, bx1), max(ay1, by1)
+    ix2, iy2 = min(ax2, bx2), min(ay2, by2)
+    iw, ih = max(0.0, ix2 - ix1), max(0.0, iy2 - iy1)
+    inter = iw * ih
+    area_a = max(0.0, ax2 - ax1) * max(0.0, ay2 - ay1)
+    area_b = max(0.0, bx2 - bx1) * max(0.0, by2 - by1)
+    union = area_a + area_b - inter
+    return inter / union if union > 0 else 0.0
+
+
+def assign_stable_detector_box_ids(new_boxes: list[dict], existing_boxes: list[dict], min_iou: float = 0.5) -> list[dict]:
+    """Assign IDs to detector results, reusing the best unmatched legacy detector ID."""
+    candidates = [
+        b for b in existing_boxes
+        if isinstance(b, dict) and b.get("origin", "manual" if b.get("manual") else "detector") == "detector" and b.get("id")
+    ]
+    used: set[str] = set()
+    for box in new_boxes:
+        box["origin"] = "detector"
+        if box.get("id"):
+            used.add(str(box["id"]))
+            continue
+        best = None
+        best_iou = min_iou
+        for old in candidates:
+            old_id = str(old.get("id"))
+            if old_id in used:
+                continue
+            match_geometry = old.get("detector_anchor") if isinstance(old.get("detector_anchor"), dict) else old
+            score = _box_iou(box, match_geometry)
+            if score >= best_iou:
+                best_iou = score
+                best = old
+        if best is not None:
+            box["id"] = str(best["id"])
+            used.add(str(best["id"]))
+        else:
+            box["id"] = new_box_id()
+            used.add(str(box["id"]))
+    return new_boxes
 
 
 @contextmanager
@@ -43,10 +193,13 @@ def load_manifest_raw(chapter_id: str) -> dict:
     manifest_path = PROCESSED_DIR / chapter_id / "manifest.json"
     if not manifest_path.exists():
         raise HTTPException(404, f"Chapter {chapter_id} not found")
-    return json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    normalize_manifest_schema(manifest)
+    return manifest
 
 
 def save_manifest_raw(chapter_id: str, manifest: dict) -> None:
+    normalize_manifest_schema(manifest)
     processed_dir = PROCESSED_DIR / chapter_id
     processed_dir.mkdir(parents=True, exist_ok=True)
     tmp_path = processed_dir / f"manifest.json.{uuid.uuid4().hex}.tmp"

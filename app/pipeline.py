@@ -15,12 +15,15 @@ from app.inpaint.lama_inpainter import Inpainter
 from app.config import RAW_DIR, PROCESSED_DIR
 from app.logging_config import logger
 from app.manifest_utils import (
+    assign_stable_detector_box_ids,
+    bump_page_revision,
     capture_processing_state,
     get_manifest_lock,
     get_page_lock,
     invalidate_page_render,
     is_processing_state_current,
     load_manifest_raw,
+    new_box_id,
     save_manifest_raw,
 )
 from app.security import MAX_IMAGE_PIXELS, MAX_UPLOAD_FILE_BYTES, MAX_UPLOAD_FILES, MAX_UPLOAD_TOTAL_BYTES, validate_upload_image
@@ -286,6 +289,7 @@ class ChapterPipeline:
                             idx,
                             Path(page["original"]),
                             copy.deepcopy(page.get("excluded_regions", [])),
+                            copy.deepcopy(page.get("boxes", [])),
                             state_snapshot,
                         ))
 
@@ -305,12 +309,13 @@ class ChapterPipeline:
         # each page sequential avoids oversubscribing CPU threads.
         parallel_detectors = max_workers == 1
 
-        def _process_one(item: tuple[int, Path, list[dict], dict | None]) -> tuple[int, dict, dict | None]:
-            idx, img_path, excluded, snapshot = item
+        def _process_one(item: tuple[int, Path, list[dict], list[dict], dict | None]) -> tuple[int, dict, dict | None]:
+            idx, img_path, excluded, existing_boxes, snapshot = item
             return idx, self._process_page(
                 img_path,
                 processed_dir,
                 excluded_regions=excluded,
+                existing_boxes=existing_boxes,
                 parallel_detectors=parallel_detectors,
             ), snapshot
 
@@ -354,10 +359,13 @@ class ChapterPipeline:
                             orig_path = Path(manifest["pages"][idx]["original"])
                             os.replace(tmp_auto_clean_path, self._auto_clean_path(processed_dir, orig_path))
 
-                        existing_boxes = manifest["pages"][idx].get("boxes", [])
+                        target_page = manifest["pages"][idx]
+                        existing_boxes = target_page.get("boxes", [])
+                        detected_boxes = assign_stable_detector_box_ids(page_data["boxes"], existing_boxes)
                         manual_boxes = [b for b in existing_boxes if b.get("manual")]
-                        merged_boxes = page_data["boxes"] + manual_boxes
-                        manifest["pages"][idx]["boxes"] = merged_boxes
+                        target_page["boxes"] = detected_boxes + manual_boxes
+                        bump_page_revision(target_page, "process_revision")
+                        bump_page_revision(target_page, "clean_revision")
 
                         if "manual_mask" in page_data:
                             manifest["pages"][idx]["manual_mask"] = page_data["manual_mask"]
@@ -405,10 +413,16 @@ class ChapterPipeline:
             manifest = load_manifest_raw(chapter_id)
             for idx in page_indices:
                 if 0 <= idx < len(manifest["pages"]):
-                    manifest["pages"][idx]["skipped"] = skipped
+                    page = manifest["pages"][idx]
+                    changed = bool(page.get("skipped", False)) != bool(skipped)
+                    page["skipped"] = skipped
                     if skipped:
-                        manifest["pages"][idx]["clean"] = manifest["pages"][idx]["original"]
-                        manifest["pages"][idx]["boxes"] = []
+                        if page.get("clean") != page.get("original") or page.get("boxes"):
+                            changed = True
+                        page["clean"] = page["original"]
+                        page["boxes"] = []
+                    if changed:
+                        bump_page_revision(page, "clean_revision")
                     invalidate_page_render(manifest, idx)
             save_manifest_raw(chapter_id, manifest)
             self._sync_output_dir(chapter_id, manifest, page_indices)
@@ -456,6 +470,7 @@ class ChapterPipeline:
                 return manifest
 
             new_box = {
+                "id": new_box_id(), "origin": "manual",
                 "x1": nx1, "y1": ny1, "x2": nx2, "y2": ny2,
                 "confidence": 1.0, "mask": None, "manual": True,
             }
@@ -479,6 +494,7 @@ class ChapterPipeline:
                 target_page = manifest["pages"][page_index]
                 target_page.setdefault("boxes", []).append(new_box)
                 target_page["clean"] = clean_path_posix
+                bump_page_revision(target_page, "clean_revision")
                 invalidate_page_render(manifest, page_index)
                 save_manifest_raw(chapter_id, manifest)
                 self._sync_output_dir(chapter_id, manifest, [page_index])
@@ -515,7 +531,12 @@ class ChapterPipeline:
                     raise ValueError(f"Chapter {chapter_id} page {page_index}: Invalid box_index {box_index}")
 
                 boxes_snapshot = copy.deepcopy(target_boxes)
-                boxes_snapshot[box_index].update({"x1": nx1, "y1": ny1, "x2": nx2, "y2": ny2, "mask": None})
+                snapshot_box = boxes_snapshot[box_index]
+                if snapshot_box.get("origin") == "detector" and not snapshot_box.get("manual"):
+                    if not snapshot_box.get("geometry_overridden"):
+                        snapshot_box["detector_anchor"] = {k: snapshot_box.get(k) for k in ("x1", "y1", "x2", "y2")}
+                    snapshot_box["geometry_overridden"] = True
+                snapshot_box.update({"x1": nx1, "y1": ny1, "x2": nx2, "y2": ny2, "mask": None})
                 manual_mask_posix = target_page.get("manual_mask")
 
             clean_path_posix = self._do_reinpaint(
@@ -530,8 +551,14 @@ class ChapterPipeline:
                 target_boxes = target_page.get("boxes", [])
                 if box_index < 0 or box_index >= len(target_boxes):
                     raise ValueError(f"Chapter {chapter_id} page {page_index}: Invalid box_index {box_index}")
-                target_boxes[box_index].update({"x1": nx1, "y1": ny1, "x2": nx2, "y2": ny2, "mask": None})
+                target_box = target_boxes[box_index]
+                if target_box.get("origin") == "detector" and not target_box.get("manual"):
+                    if not target_box.get("geometry_overridden"):
+                        target_box["detector_anchor"] = {k: target_box.get(k) for k in ("x1", "y1", "x2", "y2")}
+                    target_box["geometry_overridden"] = True
+                target_box.update({"x1": nx1, "y1": ny1, "x2": nx2, "y2": ny2, "mask": None})
                 target_page["clean"] = clean_path_posix
+                bump_page_revision(target_page, "clean_revision")
                 invalidate_page_render(manifest, page_index)
                 save_manifest_raw(chapter_id, manifest)
                 self._sync_output_dir(chapter_id, manifest, [page_index])
@@ -571,6 +598,7 @@ class ChapterPipeline:
 
                 target_boxes[box_index]["removed"] = True
                 target_page["clean"] = clean_path_posix
+                bump_page_revision(target_page, "clean_revision")
                 invalidate_page_render(manifest, page_index)
                 save_manifest_raw(chapter_id, manifest)
                 self._sync_output_dir(chapter_id, manifest, [page_index])
@@ -669,6 +697,7 @@ class ChapterPipeline:
                 else:
                     target_page.pop("manual_mask", None)
                 target_page["clean"] = clean_path_posix
+                bump_page_revision(target_page, "clean_revision")
                 invalidate_page_render(manifest, page_index)
                 save_manifest_raw(chapter_id, manifest)
                 self._sync_output_dir(chapter_id, manifest, [page_index])
@@ -708,6 +737,7 @@ class ChapterPipeline:
                 target_page = manifest["pages"][page_index]
                 target_page.pop("manual_mask", None)
                 target_page["clean"] = clean_path_posix
+                bump_page_revision(target_page, "clean_revision")
                 invalidate_page_render(manifest, page_index)
                 save_manifest_raw(chapter_id, manifest)
                 self._sync_output_dir(chapter_id, manifest, [page_index])
@@ -938,14 +968,64 @@ class ChapterPipeline:
         img_path: Path,
         processed_dir: Path,
         excluded_regions: list[dict] | None = None,
+        existing_boxes: list[dict] | None = None,
         *,
         parallel_detectors: bool = False,
     ) -> dict:
         image = read_image(img_path)
-        boxes = self.detector.detect(image, parallel=parallel_detectors)
+        detected = self.detector.detect(image, parallel=parallel_detectors)
         if excluded_regions:
-            boxes = [b for b in boxes if not self._box_in_excluded(b, excluded_regions)]
-        clean_image = self.inpainter.inpaint(image, boxes)
+            detected = [b for b in detected if not self._box_in_excluded(b, excluded_regions)]
+
+        existing_boxes = copy.deepcopy(existing_boxes or [])
+        detector_records = [
+            {
+                "x1": b.x1, "y1": b.y1, "x2": b.x2, "y2": b.y2,
+                "confidence": b.confidence, "_mask_array": b.mask,
+            }
+            for b in detected
+        ]
+        assign_stable_detector_box_ids(detector_records, existing_boxes)
+        old_by_id = {str(b.get("id")): b for b in existing_boxes if isinstance(b, dict) and b.get("id")}
+
+        effective_boxes: list[BubbleBox] = []
+        for record in detector_records:
+            old = old_by_id.get(str(record.get("id")))
+            if old is not None:
+                if old.get("removed"):
+                    record["removed"] = True
+                if old.get("geometry_overridden"):
+                    record["geometry_overridden"] = True
+                    if isinstance(old.get("detector_anchor"), dict):
+                        record["detector_anchor"] = copy.deepcopy(old["detector_anchor"])
+                    for key in ("x1", "y1", "x2", "y2"):
+                        record[key] = int(old[key])
+                    record["_mask_array"] = None
+            if not record.get("removed"):
+                effective_boxes.append(BubbleBox(
+                    int(record["x1"]), int(record["y1"]), int(record["x2"]), int(record["y2"]),
+                    float(record.get("confidence", 1.0)), record.get("_mask_array"),
+                ))
+
+        for old in existing_boxes:
+            if not isinstance(old, dict) or not old.get("manual") or old.get("removed"):
+                continue
+            box_h = int(old.get("y2", 0)) - int(old.get("y1", 0))
+            box_w = int(old.get("x2", 0)) - int(old.get("x1", 0))
+            if box_h <= 0 or box_w <= 0:
+                continue
+            mask_arr = _decode_mask(old.get("mask"))
+            if mask_arr is not None and mask_arr.shape != (box_h, box_w):
+                try:
+                    mask_arr = cv2.resize(mask_arr, (box_w, box_h), interpolation=cv2.INTER_NEAREST)
+                except Exception:
+                    mask_arr = None
+            effective_boxes.append(BubbleBox(
+                int(old["x1"]), int(old["y1"]), int(old["x2"]), int(old["y2"]),
+                float(old.get("confidence", 1.0)), mask_arr,
+            ))
+
+        clean_image = self.inpainter.inpaint(image, effective_boxes)
 
         # Never mutate the canonical auto-clean cache inside a worker. The page
         # may change while detection/inpaint is running; write a job-local cache
@@ -978,16 +1058,15 @@ class ChapterPipeline:
 
         import psutil as _psutil_debug
         _rss_mb_debug = _psutil_debug.Process().memory_info().rss / (1024 * 1024)
-        logger.warning(f"Processed {img_path.name}: {len(boxes)} boxes, RSS={_rss_mb_debug:.1f}MB")
+        logger.warning(f"Processed {img_path.name}: {len(detector_records)} boxes, RSS={_rss_mb_debug:.1f}MB")
         res = {
             "tmp_clean": tmp_clean_path.as_posix(),
             "boxes": [
                 {
-                    "x1": b.x1, "y1": b.y1, "x2": b.x2, "y2": b.y2,
-                    "confidence": b.confidence,
-                    "mask": _encode_mask(b.mask),
+                    **{k: v for k, v in record.items() if k != "_mask_array"},
+                    "mask": _encode_mask(record.get("_mask_array")),
                 }
-                for b in boxes
+                for record in detector_records
             ],
         }
         if tmp_auto_clean_path is not None:
