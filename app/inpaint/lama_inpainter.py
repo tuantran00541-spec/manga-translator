@@ -1,6 +1,8 @@
+import os
+
 import numpy as np
 import cv2
-from app.config import LAMA_MODEL, INPAINT_SIZE
+from app.config import LAMA_MODEL, LAMA_DYNAMIC_MODEL, INPAINT_SIZE
 from app.detector.bubble_detector import BubbleBox, MAX_BOX_AREA_RATIO
 from app.detector.mask_builder import build_mask
 from app.logging_config import logger
@@ -17,9 +19,37 @@ MANUAL_TILE_OVERLAP = 64
 
 class Inpainter:
     def __init__(self):
-        self.session = make_session(LAMA_MODEL)
-        self.image_input = self.session.get_inputs()[0].name
-        self.mask_input = self.session.get_inputs()[1].name
+        # Prefer the manga-tuned dynamic LaMa when it is present. It accepts
+        # stride-aligned HxW inputs, so small crops no longer need to pay for a
+        # 512x512 inference. Keep the original fixed model as a compatibility
+        # fallback for existing installations and provide an env rollback
+        # switch for troubleshooting.
+        dynamic_enabled = os.getenv("MANGA_USE_DYNAMIC_LAMA", "1").strip().lower() not in (
+            "0", "false", "no", "off"
+        )
+        prefer_dynamic = dynamic_enabled and LAMA_DYNAMIC_MODEL.is_file()
+        model_path = LAMA_DYNAMIC_MODEL if prefer_dynamic else LAMA_MODEL
+        try:
+            self.session = make_session(model_path)
+        except Exception:
+            if not prefer_dynamic:
+                raise
+            logger.exception(
+                "Failed to load dynamic LaMa model %s; falling back to %s",
+                LAMA_DYNAMIC_MODEL,
+                LAMA_MODEL,
+            )
+            model_path = LAMA_MODEL
+            self.session = make_session(model_path)
+
+        inputs = self.session.get_inputs()
+        self.image_input = inputs[0].name
+        self.mask_input = inputs[1].name
+        image_shape = inputs[0].shape
+        self.dynamic_lama = any(
+            isinstance(dim, str) or dim is None for dim in image_shape[2:4]
+        )
+        self.lama_model_path = model_path
 
     def inpaint(self, image: np.ndarray, boxes: list[BubbleBox]) -> np.ndarray:
         if not boxes:
@@ -64,28 +94,49 @@ class Inpainter:
         h, w = image.shape[:2]
 
         for label in range(1, num_labels):
-            component_mask = (labels == label).astype(np.uint8) * 255
-            ys, xs = np.where(component_mask > 127)
-            if len(ys) == 0:
+            x, y, bbox_w, bbox_h, area = (int(v) for v in stats[label])
+            if area <= 0 or bbox_w <= 0 or bbox_h <= 0:
                 continue
 
-            bbox_w = int(xs.max() - xs.min() + 1)
-            bbox_h = int(ys.max() - ys.min() + 1)
             scale = max(1, min(bbox_w, bbox_h))
             kernel_size = int(np.clip(round(scale * 0.025) * 2 + 1, MANUAL_MIN_DILATION, MANUAL_MAX_DILATION))
             if kernel_size % 2 == 0:
                 kernel_size += 1
             kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
-            dilated_comp = cv2.dilate(component_mask, kernel, iterations=1)
 
-            dys, dxs = np.where(dilated_comp > 127)
+            # Avoid materializing a full-page mask for every connected component.
+            # The ROI includes the dilation radius, so this produces the same
+            # component dilation as the old full-page implementation.
+            radius = kernel_size // 2
+            rx1 = max(0, x - radius)
+            ry1 = max(0, y - radius)
+            rx2 = min(w, x + bbox_w + radius)
+            ry2 = min(h, y + bbox_h + radius)
+            component_roi = (labels[ry1:ry2, rx1:rx2] == label).astype(np.uint8) * 255
+            if not np.any(component_roi > 127):
+                continue
+            dilated_roi = cv2.dilate(component_roi, kernel, iterations=1)
+
+            dys, dxs = np.where(dilated_roi > 127)
             if len(dys) == 0:
                 continue
-            crop_box = self._compute_manual_crop_region(
-                int(dxs.min()), int(dys.min()), int(dxs.max()), int(dys.max()), w, h
-            )
+            gx1 = rx1 + int(dxs.min())
+            gy1 = ry1 + int(dys.min())
+            gx2 = rx1 + int(dxs.max())
+            gy2 = ry1 + int(dys.max())
+            crop_box = self._compute_manual_crop_region(gx1, gy1, gx2, gy2, w, h)
             cx1, cy1, cx2, cy2 = crop_box
-            local_mask = dilated_comp[cy1:cy2, cx1:cx2]
+
+            local_mask = np.zeros((cy2 - cy1, cx2 - cx1), dtype=np.uint8)
+            ix1 = max(cx1, rx1)
+            iy1 = max(cy1, ry1)
+            ix2 = min(cx2, rx2)
+            iy2 = min(cy2, ry2)
+            if ix2 <= ix1 or iy2 <= iy1:
+                continue
+            local_mask[iy1 - cy1:iy2 - cy1, ix1 - cx1:ix2 - cx1] = (
+                dilated_roi[iy1 - ry1:iy2 - ry1, ix1 - rx1:ix2 - rx1]
+            )
 
             result = self._smart_paint_region(result, local_mask, crop_box, feather=True)
 
@@ -152,6 +203,51 @@ class Inpainter:
         return image
 
     def _lama_fill_single(self, crop: np.ndarray, local_mask: np.ndarray) -> np.ndarray:
+        if self.dynamic_lama:
+            return self._lama_fill_single_dynamic(crop, local_mask)
+        return self._lama_fill_single_fixed(crop, local_mask)
+
+    def _lama_fill_single_dynamic(self, crop: np.ndarray, local_mask: np.ndarray) -> np.ndarray:
+        crop_h, crop_w = crop.shape[:2]
+
+        # The dynamic model requires each spatial dimension to be divisible by
+        # 8. Preserve native crop resolution whenever possible; only downscale
+        # crops larger than the legacy 512px budget. This avoids the previous
+        # unconditional upscaling to a 512x512 canvas.
+        scale = min(1.0, INPAINT_SIZE / max(crop_h, crop_w))
+        new_h = max(1, int(round(crop_h * scale)))
+        new_w = max(1, int(round(crop_w * scale)))
+
+        if new_h != crop_h or new_w != crop_w:
+            crop_resized = cv2.resize(crop, (new_w, new_h), interpolation=cv2.INTER_AREA)
+            mask_resized = cv2.resize(local_mask, (new_w, new_h), interpolation=cv2.INTER_NEAREST)
+        else:
+            crop_resized = crop
+            mask_resized = local_mask
+
+        canvas_h = max(8, ((new_h + 7) // 8) * 8)
+        canvas_w = max(8, ((new_w + 7) // 8) * 8)
+        pad_y = (canvas_h - new_h) // 2
+        pad_x = (canvas_w - new_w) // 2
+        pad_bottom = canvas_h - new_h - pad_y
+        pad_right = canvas_w - new_w - pad_x
+
+        canvas = cv2.copyMakeBorder(
+            crop_resized, pad_y, pad_bottom, pad_x, pad_right, cv2.BORDER_REPLICATE
+        )
+        mask_canvas = np.zeros((canvas_h, canvas_w), dtype=np.uint8)
+        mask_canvas[pad_y:pad_y + new_h, pad_x:pad_x + new_w] = mask_resized
+
+        painted_full = self._run_lama(canvas, mask_canvas)
+        painted_crop = painted_full[pad_y:pad_y + new_h, pad_x:pad_x + new_w]
+
+        if new_h == crop_h and new_w == crop_w:
+            return painted_crop
+        # We downscaled before inference, so returning to the original crop is
+        # an upscale operation. Cubic interpolation is appropriate here.
+        return cv2.resize(painted_crop, (crop_w, crop_h), interpolation=cv2.INTER_CUBIC)
+
+    def _lama_fill_single_fixed(self, crop: np.ndarray, local_mask: np.ndarray) -> np.ndarray:
         crop_h, crop_w = crop.shape[:2]
         scale = INPAINT_SIZE / max(crop_h, crop_w)
         new_h = max(1, int(round(crop_h * scale)))
@@ -159,33 +255,48 @@ class Inpainter:
         pad_y = (INPAINT_SIZE - new_h) // 2
         pad_x = (INPAINT_SIZE - new_w) // 2
 
-        crop_resized = cv2.resize(crop, (new_w, new_h), interpolation=cv2.INTER_AREA if scale < 1.0 else cv2.INTER_CUBIC)
-        pad_top = pad_y
-        pad_bottom = INPAINT_SIZE - new_h - pad_y
-        pad_left = pad_x
-        pad_right = INPAINT_SIZE - new_w - pad_x
-
-        canvas = cv2.copyMakeBorder(
-            crop_resized, pad_top, pad_bottom, pad_left, pad_right, cv2.BORDER_REPLICATE
+        crop_resized = cv2.resize(
+            crop,
+            (new_w, new_h),
+            interpolation=cv2.INTER_AREA if scale < 1.0 else cv2.INTER_CUBIC,
         )
-        crop_rgb = cv2.cvtColor(canvas, cv2.COLOR_BGR2RGB)
+        pad_bottom = INPAINT_SIZE - new_h - pad_y
+        pad_right = INPAINT_SIZE - new_w - pad_x
+        canvas = cv2.copyMakeBorder(
+            crop_resized, pad_y, pad_bottom, pad_x, pad_right, cv2.BORDER_REPLICATE
+        )
 
         mask_resized = cv2.resize(local_mask, (new_w, new_h), interpolation=cv2.INTER_NEAREST)
         mask_canvas = np.zeros((INPAINT_SIZE, INPAINT_SIZE), dtype=np.uint8)
         mask_canvas[pad_y:pad_y + new_h, pad_x:pad_x + new_w] = mask_resized
 
-        img_blob = crop_rgb.astype(np.float32) / 255.0
-        img_blob = img_blob.transpose(2, 0, 1)[None]
-        mask_blob = (mask_canvas > 127).astype(np.float32)[None, None]
+        painted_full = self._run_lama(canvas, mask_canvas)
+        painted_crop = painted_full[pad_y:pad_y + new_h, pad_x:pad_x + new_w]
 
-        output = self.session.run(None, {self.image_input: img_blob, self.mask_input: mask_blob})[0]
+        # Fix the legacy interpolation direction: scale > 1 means the crop was
+        # enlarged for inference and must now be downsampled; scale < 1 means
+        # it must be upsampled back to its original size.
+        interpolation = cv2.INTER_AREA if scale > 1.0 else cv2.INTER_CUBIC
+        return cv2.resize(painted_crop, (crop_w, crop_h), interpolation=interpolation)
+
+    def _run_lama(self, canvas: np.ndarray, mask_canvas: np.ndarray) -> np.ndarray:
+        crop_rgb = cv2.cvtColor(canvas, cv2.COLOR_BGR2RGB)
+        img_blob = np.ascontiguousarray(
+            (crop_rgb.astype(np.float32) / 255.0).transpose(2, 0, 1)[None]
+        )
+        mask_blob = np.ascontiguousarray(
+            (mask_canvas > 127).astype(np.float32)[None, None]
+        )
+
+        output = self.session.run(
+            None,
+            {self.image_input: img_blob, self.mask_input: mask_blob},
+        )[0]
         painted_rgb = output[0].transpose(1, 2, 0)
         if painted_rgb.max() <= 1.0:
             painted_rgb = painted_rgb * 255.0
         painted_rgb = np.clip(painted_rgb, 0, 255).astype(np.uint8)
-        painted_full = cv2.cvtColor(painted_rgb, cv2.COLOR_RGB2BGR)
-        painted_crop = painted_full[pad_y:pad_y + new_h, pad_x:pad_x + new_w]
-        return cv2.resize(painted_crop, (crop_w, crop_h), interpolation=cv2.INTER_CUBIC if scale > 1.0 else cv2.INTER_AREA)
+        return cv2.cvtColor(painted_rgb, cv2.COLOR_RGB2BGR)
 
     def _lama_fill_tiled(self, crop: np.ndarray, local_mask: np.ndarray) -> np.ndarray:
         h, w = crop.shape[:2]
@@ -238,9 +349,9 @@ class Inpainter:
             return weight
         ramp = np.linspace(0.0, 1.0, min(overlap, length), dtype=np.float32)
         if has_before:
-            weight[:len(ramp)] = np.maximum(weight[:len(ramp)], ramp)
+            weight[:len(ramp)] = np.minimum(weight[:len(ramp)], ramp)
         if has_after:
-            weight[-len(ramp):] = np.maximum(weight[-len(ramp):], ramp[::-1])
+            weight[-len(ramp):] = np.minimum(weight[-len(ramp):], ramp[::-1])
         return weight
 
     @staticmethod
