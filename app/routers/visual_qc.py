@@ -99,12 +99,14 @@ async def inspect_visual_qc(req: VisualQCInspectRequest) -> dict:
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     except Exception as exc:
-        logger.error(
-            "Chapter %s page %s Gemini visual QC failed: %s",
+        # Loguru uses `{}` formatting rather than printf-style `%s`. Keep the
+        # actual upstream error visible so auth/quota/schema failures can be
+        # diagnosed from the terminal without exposing the API key.
+        logger.opt(exception=exc).error(
+            "Chapter {} page {} Gemini visual QC failed: {}",
             req.chapter_id,
             req.page_index,
             exc,
-            exc_info=True,
         )
         raise HTTPException(502, str(exc)) from exc
 
