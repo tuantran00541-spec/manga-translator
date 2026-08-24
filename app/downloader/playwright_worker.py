@@ -4,7 +4,8 @@ import json
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from app.security import validate_url
+from app.downloader.http import safe_download_file
+from app.security import browser_request_allowed, validate_url
 
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -40,6 +41,12 @@ def main():
     output_dir = Path(sys.argv[2])
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    try:
+        validate_url(chapter_url)
+    except Exception:
+        print("[]")
+        return
+
     from playwright.sync_api import sync_playwright
 
     saved = []
@@ -52,8 +59,21 @@ def main():
             user_agent=USER_AGENT,
             viewport={"width": 1280, "height": 800},
             locale="en-US",
+            service_workers="block",
         )
         context.add_init_script("Object.defineProperty(navigator, 'webdriver', { get: () => undefined });")
+        context.add_init_script(
+            "Object.defineProperty(globalThis, 'WebSocket', "
+            "{value: undefined, writable: false, configurable: false});"
+        )
+
+        def guard_route(route):
+            if browser_request_allowed(route.request.url):
+                route.continue_()
+            else:
+                route.abort()
+
+        context.route("**/*", guard_route)
         page = context.new_page()
 
         try:
@@ -78,23 +98,22 @@ def main():
                     or el.get_attribute("data-lazy")
                     or el.get_attribute("src")
                 )
-                if src and src.startswith("http"):
+                if src and src.startswith("http") and browser_request_allowed(src):
                     image_urls.append(src)
 
             image_urls = dedupe(image_urls)
 
             for i, img_url in enumerate(image_urls):
-                try:
-                    validate_url(img_url)
-                except Exception:
-                    continue
                 ext = guess_ext(img_url)
                 out_path = output_dir / f"{i:03d}{ext}"
                 try:
-                    resp = context.request.get(img_url, headers={"Referer": chapter_url})
-                    if resp.ok:
-                        out_path.write_bytes(resp.body())
-                        saved.append(str(out_path))
+                    safe_download_file(
+                        img_url,
+                        out_path,
+                        headers={"User-Agent": USER_AGENT, "Referer": chapter_url},
+                        timeout=30,
+                    )
+                    saved.append(str(out_path))
                 except Exception:
                     pass
         finally:
