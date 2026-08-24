@@ -84,7 +84,7 @@ class GeminiRegionQC:
         try:
             body = response.json()
             parsed = json.loads(_extract_output_text(body))
-        except (ValueError, TypeError, json.JSONDecodeError) as exc:
+        except (ValueError, TypeError) as exc:
             raise RuntimeError("Gemini returned an invalid structured response") from exc
 
         parsed_decisions = parse_region_batch_decisions(parsed, regions_by_id)
