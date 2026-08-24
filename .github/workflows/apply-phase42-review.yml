@@ -1,0 +1,51 @@
+name: Apply Phase 4.2 review virtualization
+
+on:
+  push:
+    branches:
+      - phase-4-2-review-virtualization
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-phase42-review
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: phase-4-2-review-virtualization
+          fetch-depth: 0
+
+      - name: Apply verified Phase 4.2 patch
+        if: hashFiles('.phase42.patch.gz.b64') != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 -d .phase42.patch.gz.b64 | gzip -d > /tmp/phase42.patch
+          echo "5d884e7d140dd97e57c00cd0f8d2c25eb5096344ff29905a8adf4c54fe33d2b3  /tmp/phase42.patch" | sha256sum -c -
+          git apply --check /tmp/phase42.patch
+          git apply /tmp/phase42.patch
+
+          rm -f .phase42.patch.gz.b64 .phase42-ready
+          rm -f .github/workflows/apply-phase42-review.yml
+
+          grep -F 'window.REVIEW_VIRTUALIZED = true' app/static/js/review-workspace.js >/dev/null
+          grep -F 'window.createReviewCard = createReviewCard' app/static/js/review.js >/dev/null
+          grep -F 'cleanup_stale_temp_artifacts' app/main.py >/dev/null
+          grep -F 'Legacy fixed-512 ORT benchmark lane' tests/test_inpaint_benchmark_ort.py >/dev/null
+          test -f tests/test_phase42_review_artifacts.py
+          node --check app/static/js/review.js
+          node --check app/static/js/review-workspace.js
+          python -m compileall -q app tests
+          git diff --check
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "perf(phase4.2): virtualize review and clean transient artifacts"
+          git push origin HEAD:phase-4-2-review-virtualization
