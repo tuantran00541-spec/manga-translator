@@ -38,20 +38,29 @@ Worker = Callable[[QCWorkItem], Awaitable[list[RegionBatchDecision]]]
 
 
 class VisualQCJobManager:
-    def __init__(self, *, max_jobs: int = 32):
+    def __init__(self, *, max_jobs: int = 32, max_active_jobs: int = 2):
         self.max_jobs = max(1, int(max_jobs))
+        self.max_active_jobs = max(1, min(int(max_active_jobs), self.max_jobs))
         self._jobs: dict[str, VisualQCJob] = {}
 
     async def start(self, chapter_id: str, items: list[QCWorkItem], worker: Worker, *, concurrency: int = 2) -> VisualQCJob:
         if concurrency < 1:
             raise ValueError("concurrency must be >= 1")
         concurrency = min(int(concurrency), 8)
+        chapter_id = str(chapter_id)
         self._prune_completed()
         if len(self._jobs) >= self.max_jobs:
             raise RuntimeError("Too many visual QC jobs are retained")
+
+        active = [job for job in self._jobs.values() if job.status in {"pending", "running"}]
+        if any(job.chapter_id == chapter_id for job in active):
+            raise RuntimeError("Visual QC is already running for this chapter")
+        if len(active) >= self.max_active_jobs:
+            raise RuntimeError("Too many active visual QC jobs")
+
         job = VisualQCJob(
             job_id=uuid.uuid4().hex,
-            chapter_id=str(chapter_id),
+            chapter_id=chapter_id,
             total_regions=sum(len(item.region_ids) for item in items),
             concurrency=concurrency,
         )
@@ -84,7 +93,8 @@ class VisualQCJobManager:
                             job.errors.append({
                                 "work_id": item.work_id,
                                 "region_ids": list(item.region_ids),
-                                "detail": str(exc)[:500],
+                                "detail": "Visual QC batch failed",
+                                "error_type": type(exc).__name__[:120],
                             })
                         continue
 
