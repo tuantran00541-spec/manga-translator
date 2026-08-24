@@ -17,6 +17,10 @@ from tools.inpaint_bench.e2e_bench import run_e2e_benchmark_case
 from tools.inpaint_bench.schema import SCHEMA_VERSION, validate_case_execution
 
 
+@unittest.skipUnless(
+    os.getenv("RUN_LEGACY_FIXED_ORT_BENCHMARKS") == "1",
+    "Legacy fixed-512 ORT benchmark lane; run explicitly with RUN_LEGACY_FIXED_ORT_BENCHMARKS=1",
+)
 class TestInpaintBenchmarkRealORT(unittest.TestCase):
     def setUp(self):
         try:

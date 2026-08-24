@@ -33,11 +33,14 @@ def test_stage_shell_wraps_all_workspace_renderers():
 
 
 def test_review_workspace_removes_legacy_toolbar_and_preserves_controls_lifecycle():
+    review = read("app/static/js/review.js")
     js = read("app/static/js/review-workspace.js")
     assert "legacyToolbar?.remove()" in js
     assert "window.mountAISettings(geminiConfig)" in js
-    assert "mountedCard.insertBefore(mountedControls" in js
-    assert "parking.appendChild(mountedCard)" in js
+    assert "window.REVIEW_VIRTUALIZED = true" in js
+    assert "window.createReviewCard = createReviewCard" in review
+    assert "captureMaskSnapshot(mountedCard)" in js
+    assert "cleanupCard(mountedCard)" in js
     assert 'continueBtn.textContent = "Mở trình biên tập bản dịch"' in js
 
 
@@ -48,7 +51,7 @@ def test_review_ai_busy_state_locks_mutating_controls_and_navigation():
     assert 'control.disabled = true' in js
     assert 'aiQcBtn.textContent = "AI đang kiểm tra…"' in js
     assert 'prev.disabled = busy || activeReviewIndex === 0' in workspace
-    assert 'next.disabled = busy || activeReviewIndex === cards.length - 1' in workspace
+    assert 'next.disabled = busy || activeReviewIndex === pageIndices.length - 1' in workspace
     assert 'continueBtn.disabled = busy' in workspace
 
 

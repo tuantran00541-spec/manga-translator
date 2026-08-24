@@ -2,6 +2,7 @@ import copy
 import hashlib
 import json
 import os
+import time
 import uuid
 from contextlib import contextmanager
 from pathlib import Path
@@ -15,6 +16,43 @@ from app.security import validate_chapter_id
 _MANIFEST_LOCK_TIMEOUT = 30
 _PAGE_LOCK_TIMEOUT = 60
 MANIFEST_SCHEMA_VERSION = 2
+
+_STALE_TEMP_PATTERNS = (
+    "manifest.json.*.tmp",
+    "clean_*.tmp.png",
+    "auto_clean_*.tmp.png",
+    "manual_mask_*.tmp.png",
+    "page_*.rendering.*.tmp",
+)
+
+
+def cleanup_stale_temp_artifacts(
+    directory: Path, *, max_age_seconds: float = 3600.0, now: float | None = None
+) -> int:
+    """Remove only known orphan temp files older than the safety window."""
+    if max_age_seconds < 0:
+        raise ValueError("max_age_seconds must be >= 0")
+    if not directory.exists() or not directory.is_dir():
+        return 0
+
+    cutoff = (time.time() if now is None else float(now)) - float(max_age_seconds)
+    removed = 0
+    seen: set[Path] = set()
+    for pattern in _STALE_TEMP_PATTERNS:
+        for path in directory.glob(pattern):
+            if path in seen:
+                continue
+            seen.add(path)
+            try:
+                if path.is_symlink() or not path.is_file():
+                    continue
+                if path.stat().st_mtime > cutoff:
+                    continue
+                path.unlink()
+                removed += 1
+            except OSError:
+                continue
+    return removed
 
 
 def new_box_id() -> str:

@@ -1,5 +1,4 @@
 import os
-import shutil
 import base64
 import copy
 import uuid
@@ -443,12 +442,16 @@ class ChapterPipeline:
             if page.get("rendered"):
                 continue
 
+            # OUTPUT_DIR contains committed translation renders only. Before text
+            # rendering, /api/image and /api/download already fall back to the
+            # canonical clean/original image, so copying clean PNGs here only
+            # duplicates disk usage and can leave stale output artifacts behind.
             target_path = out_dir / f"page_{i:03d}.png"
-            clean_p = Path(page["clean"]) if page.get("clean") else None
-            src_p = clean_p if (clean_p and clean_p.exists()) else Path(page["original"])
-
-            if src_p and src_p.exists():
-                shutil.copyfile(src_p, target_path)
+            try:
+                if target_path.exists():
+                    target_path.unlink()
+            except OSError as exc:
+                logger.warning("Could not remove stale output %s: %s", target_path, exc)
 
     def add_manual_box(self, chapter_id: str, page_index: int, x1: int, y1: int, x2: int, y2: int) -> dict:
         processed_dir = PROCESSED_DIR / chapter_id

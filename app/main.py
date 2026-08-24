@@ -8,10 +8,13 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.config import (
     BASE_DIR,
+    OUTPUT_DIR,
+    PROCESSED_DIR,
     check_models,
     ensure_directories,
 )
 from app.logging_config import logger
+from app.manifest_utils import cleanup_stale_temp_artifacts
 from app.routers import chapters, editor, image, render, visual_qc
 from app.security import (
     MAX_REQUEST_BYTES,
@@ -22,6 +25,16 @@ from app.security import (
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     ensure_directories()
+    removed_temp_artifacts = 0
+    for root in (PROCESSED_DIR, OUTPUT_DIR):
+        if not root.exists():
+            continue
+        for chapter_dir in root.iterdir():
+            if chapter_dir.is_dir():
+                removed_temp_artifacts += cleanup_stale_temp_artifacts(chapter_dir)
+    if removed_temp_artifacts:
+        logger.info("Removed {} stale temporary artifact(s) from previous runs", removed_temp_artifacts)
+
     missing = check_models()
     if missing:
         logger.warning(
