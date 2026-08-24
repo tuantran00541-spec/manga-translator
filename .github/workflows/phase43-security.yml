@@ -20,6 +20,8 @@ jobs:
   focused-security-regression:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      PYTHONPATH: ${{ github.workspace }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -42,7 +44,7 @@ jobs:
         run: mkdir -p logs data/raw data/processed data/output models
       - name: Run Phase 4.3 security and QC unit tests
         run: |
-          pytest -q \
+          python -m pytest -q \
             tests/test_visual_qc.py \
             tests/test_phase43_visual_qc_core.py \
             tests/test_phase43_visual_qc_jobs.py \
