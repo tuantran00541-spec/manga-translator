@@ -1,0 +1,90 @@
+name: Apply staged UI rewrite
+
+on:
+  pull_request:
+    branches:
+      - ui-rewrite-helper-base
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  apply:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'ui-system-rewrite'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - name: Verify and apply staged payload v2
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f .ui-rewrite-payload-v2/.ready
+
+          cat > /tmp/ui-rewrite-chunks.sha256 <<'EOF'
+          844eb20726ee410491eeeb445977bf414f0da2f97986222749cf0b9ee0d7dbb0  .ui-rewrite-payload-v2/part-00
+          4c04e4a82db8eed1a416339ab8a0f7148860210fcde757ec84b8f9e2a746d791  .ui-rewrite-payload-v2/part-01
+          ac70bad61f48c3b006e29c69f55f4419999dddf7571907ef088271d72f38e4ff  .ui-rewrite-payload-v2/part-02
+          e5a80e73313e932078136b641c9c23907caf9302882ed47feafef65cfa8f9d1e  .ui-rewrite-payload-v2/part-03
+          ece130e8dd3622f7d917ad8f639df7e1436cc8471059ec382fe0e07c643bd8f7  .ui-rewrite-payload-v2/part-04
+          4d6ca4a79d7a51afd5ebc7a3d564df109a8c2e5af44262c678db9273e1ea57e2  .ui-rewrite-payload-v2/part-05
+          08175c6d06dffb0f45f99c81e5f6efdf6dbced5c57e32fd145c7324b6a014b3d  .ui-rewrite-payload-v2/part-06
+          e91fb8040a971e5f20f05b95b4d9509a45030d1e0510485b785ef4cd4b1773c4  .ui-rewrite-payload-v2/part-07
+          2fd7cbdd926d0abb40bd5de516a284510cefdeead8739c8a33dd151d80765f6f  .ui-rewrite-payload-v2/part-08
+          EOF
+          sha256sum -c /tmp/ui-rewrite-chunks.sha256
+
+          cat .ui-rewrite-payload-v2/part-* > /tmp/ui-rewrite.tar.gz.b64
+          base64 -d /tmp/ui-rewrite.tar.gz.b64 > /tmp/ui-rewrite.tar.gz
+          echo "30a0e0638e39f42e21f297a0f4145e790cc73b699c8a899730db884146fbd6e6  /tmp/ui-rewrite.tar.gz" | sha256sum -c -
+
+          tar -tzf /tmp/ui-rewrite.tar.gz > /tmp/ui-rewrite.list
+          if grep -Eq '(^/|(^|/)\.\.(/|$))' /tmp/ui-rewrite.list; then
+            echo "Unsafe path in staged archive" >&2
+            exit 1
+          fi
+
+          rm -rf /tmp/ui-rewrite-extract
+          mkdir -p /tmp/ui-rewrite-extract
+          tar -xzf /tmp/ui-rewrite.tar.gz -C /tmp/ui-rewrite-extract
+
+          cat > /tmp/ui-rewrite-files.sha256 <<'EOF'
+          60c270765f8f2d1916874829000354f079e458e562d98d391c5f5f607e3fa653  app/static/css/review-workspace.css
+          93c0a0532fb3711e26899d5cead97ac83273dae0a6301c583276b410815d23e2  app/static/js/api.js
+          9d9310c54e84316544228e79792edbe29fa338f8ffc3eb24244d0ecbba21f2f6  app/static/js/editor-box-transform.js
+          40c2d9adf4525f5d3f5dcd438c811052a0787a6c4181ef4dc40149612a974fdb  app/static/js/editor.js
+          fa0bc19f0494761230c5f800c5136791f09024eb7927821b30fd01baa1dd3ff7  app/static/js/preview.js
+          caf1df0018355001329e4d557a1a87a1080abae900bd7b494c22afaf35dc1ad6  app/static/js/review-workspace.js
+          7fee61fb94f4761f10668f0bf6a615b259ae6f720cd8a84ed5bfe51eff50e7be  app/static/js/review.js
+          248b7a1828cef3fcd3bf491b45a91fd4f758e5e2f45a1987eeb1e2c88852faa2  app/static/js/upload.js
+          4ad3b3d73ff53a3086bde99773ebd4ecf34df91fc4ab05832fe4b8a46d45fa69  app/templates/index.html
+          c47c17c76fa265dea18f6ca9f08ff1c5d80f94bcee77d2fc758d57c79329ad23  app/static/css/ui-system.css
+          2df6efe78da67268277b86bdac84b1e3341cf65b27c16fa54ca92b8a8753c437  app/static/js/ui-shell.js
+          dcfaa1c2954c8e081677cd322a24d80d4a297c0473c3a616f445fc18e66ef59c  docs/UI_GUIDELINES.md
+          480d34dd057afa98d59f1057955382187345b8c8f4da31cf7ff4929af7870640  tests/test_ui_system_contract.py
+          EOF
+          (cd /tmp/ui-rewrite-extract && sha256sum -c /tmp/ui-rewrite-files.sha256)
+
+          while read -r _hash path; do
+            mkdir -p "$(dirname "$path")"
+            cp "/tmp/ui-rewrite-extract/$path" "$path"
+          done < /tmp/ui-rewrite-files.sha256
+
+          rm -rf .ui-rewrite-payload .ui-rewrite-payload-v2
+          rm -f .github/workflows/apply-ui-system-rewrite.yml
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          if git diff --cached --quiet; then
+            echo "No UI changes to commit."
+            exit 0
+          fi
+          git commit -m "refactor(ui): unify application workspace and product language [ui-applied]"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
