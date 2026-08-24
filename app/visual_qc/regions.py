@@ -97,7 +97,7 @@ def _merge_bbox(a: tuple[int, int, int, int], b: tuple[int, int, int, int]) -> t
 
 
 def _merge_seeds(seeds: Iterable[_RegionSeed], merge_gap: int) -> list[_RegionSeed]:
-    remaining = sorted(list(seeds), key=lambda seed: (seed.bbox[1], seed.bbox[0], seed.bbox[3], seed.bbox[2]))
+    remaining = sorted(seeds, key=lambda seed: (seed.bbox[1], seed.bbox[0], seed.bbox[3], seed.bbox[2]))
     merged: list[_RegionSeed] = []
     while remaining:
         current = remaining.pop(0)
