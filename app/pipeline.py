@@ -299,9 +299,20 @@ class ChapterPipeline:
         results: dict[int, tuple[dict, dict | None]] = {}
         errors: list[tuple[int, Exception]] = []
 
+        # If only one page is active, use the otherwise-idle CPU cores to run
+        # bubble/text detection concurrently. With multiple page workers the
+        # outer executor already supplies model-level concurrency, so keeping
+        # each page sequential avoids oversubscribing CPU threads.
+        parallel_detectors = max_workers == 1
+
         def _process_one(item: tuple[int, Path, list[dict], dict | None]) -> tuple[int, dict, dict | None]:
             idx, img_path, excluded, snapshot = item
-            return idx, self._process_page(img_path, processed_dir, excluded_regions=excluded), snapshot
+            return idx, self._process_page(
+                img_path,
+                processed_dir,
+                excluded_regions=excluded,
+                parallel_detectors=parallel_detectors,
+            ), snapshot
 
         with ThreadPoolExecutor(max_workers=max_workers) as pool:
             futures = {
@@ -569,6 +580,21 @@ class ChapterPipeline:
             image = read_image(img_path)
             img_h, img_w = image.shape[:2]
 
+            # If this is the first manual/Gemini repaint, the existing clean image
+            # is already the automatic inpaint baseline. Seed the cache by copying
+            # it instead of running all automatic LaMa regions again.
+            auto_clean_path = self._auto_clean_path(processed_dir, img_path)
+            if not auto_clean_path.exists() and not manual_mask_posix:
+                clean_posix = page.get("clean")
+                clean_path = Path(clean_posix) if clean_posix else None
+                if clean_path is not None and clean_path.exists():
+                    try:
+                        cached = read_image(clean_path)
+                        if cached.shape[:2] == (img_h, img_w):
+                            self._write_auto_clean_cache(processed_dir, img_path, cached)
+                    except Exception as exc:
+                        logger.warning("Could not seed auto-clean cache from %s: %s", clean_path, exc)
+
             bin_mask = (mask > 10).astype(np.uint8) * 255 if mask is not None else None
             if bin_mask is not None and bin_mask.shape[:2] != (img_h, img_w):
                 bin_mask = cv2.resize(bin_mask, (img_w, img_h), interpolation=cv2.INTER_NEAREST)
@@ -605,7 +631,8 @@ class ChapterPipeline:
 
             try:
                 clean_path_posix = self._do_reinpaint(
-                    processed_dir, img_path, image, boxes_snapshot, inpaint_mask_posix
+                    processed_dir, img_path, image, boxes_snapshot, inpaint_mask_posix,
+                    reuse_auto_clean=True,
                 )
                 if accumulated_mask is not None:
                     final_mask_path = processed_dir / f"manual_mask_{img_path.name}"
@@ -656,7 +683,8 @@ class ChapterPipeline:
 
             image = read_image(img_path)
             clean_path_posix = self._do_reinpaint(
-                processed_dir, img_path, image, boxes_snapshot, manual_mask_posix=None
+                processed_dir, img_path, image, boxes_snapshot, manual_mask_posix=None,
+                reuse_auto_clean=True,
             )
 
             with get_manifest_lock(chapter_id):
@@ -802,6 +830,34 @@ class ChapterPipeline:
             save_manifest_raw(chapter_id, manifest)
         return manifest
 
+    @staticmethod
+    def _auto_clean_path(processed_dir: Path, img_path: Path) -> Path:
+        return processed_dir / f"auto_clean_{img_path.name}"
+
+    def _write_auto_clean_cache(self, processed_dir: Path, img_path: Path, image: np.ndarray) -> Path:
+        auto_path = self._auto_clean_path(processed_dir, img_path)
+        tmp_path = processed_dir / f"auto_clean_{img_path.name}.{uuid.uuid4().hex[:12]}.tmp.png"
+        write_image(tmp_path, image)
+        os.replace(tmp_path, auto_path)
+        return auto_path
+
+    def _load_auto_clean_cache(self, processed_dir: Path, img_path: Path, expected_shape: tuple[int, int]) -> np.ndarray | None:
+        auto_path = self._auto_clean_path(processed_dir, img_path)
+        if not auto_path.exists():
+            return None
+        try:
+            cached = read_image(auto_path)
+        except Exception as exc:
+            logger.warning("Could not read auto-clean cache at %s: %s", auto_path, exc)
+            return None
+        if cached.shape[:2] != expected_shape:
+            logger.warning(
+                "Ignoring stale auto-clean cache at %s: expected shape %s, got %s",
+                auto_path, expected_shape, cached.shape[:2],
+            )
+            return None
+        return cached
+
     def _do_reinpaint(
         self,
         processed_dir: Path,
@@ -809,6 +865,8 @@ class ChapterPipeline:
         image: np.ndarray,
         boxes: list[dict],
         manual_mask_posix: str | None = None,
+        *,
+        reuse_auto_clean: bool = False,
     ) -> str:
         boxes_objects = []
         for b in boxes:
@@ -829,7 +887,15 @@ class ChapterPipeline:
                 )
             )
 
-        clean_image = self.inpainter.inpaint(image, boxes_objects)
+        clean_image = None
+        if reuse_auto_clean:
+            clean_image = self._load_auto_clean_cache(processed_dir, img_path, image.shape[:2])
+
+        if clean_image is None:
+            clean_image = self.inpainter.inpaint(image, boxes_objects)
+            self._write_auto_clean_cache(processed_dir, img_path, clean_image)
+        else:
+            clean_image = clean_image.copy()
 
         manual_mask_path = Path(manual_mask_posix) if manual_mask_posix else processed_dir / f"manual_mask_{img_path.name}"
         if manual_mask_path.exists():
@@ -852,12 +918,29 @@ class ChapterPipeline:
         os.replace(tmp_clean_path, clean_path)
         return clean_path.as_posix()
 
-    def _process_page(self, img_path: Path, processed_dir: Path, excluded_regions: list[dict] | None = None) -> dict:
+    def _process_page(
+        self,
+        img_path: Path,
+        processed_dir: Path,
+        excluded_regions: list[dict] | None = None,
+        *,
+        parallel_detectors: bool = False,
+    ) -> dict:
         image = read_image(img_path)
-        boxes = self.detector.detect(image)
+        boxes = self.detector.detect(image, parallel=parallel_detectors)
         if excluded_regions:
             boxes = [b for b in boxes if not self._box_in_excluded(b, excluded_regions)]
         clean_image = self.inpainter.inpaint(image, boxes)
+
+        # A full page re-process can change the automatic boxes, so any previous
+        # automatic baseline cache is stale. If a persistent manual mask exists,
+        # cache the freshly computed automatic result before applying it.
+        auto_clean_path = self._auto_clean_path(processed_dir, img_path)
+        if auto_clean_path.exists():
+            try:
+                auto_clean_path.unlink()
+            except OSError:
+                pass
 
         manual_mask_path = processed_dir / f"manual_mask_{img_path.name}"
         manual_mask_posix = None
@@ -873,7 +956,8 @@ class ChapterPipeline:
                         manual_mask = None
                 if manual_mask is not None and np.any(manual_mask > 10):
                     manual_mask = (manual_mask > 10).astype(np.uint8) * 255
-                    clean_image = self.inpainter.inpaint_mask(clean_image, manual_mask)
+                    self._write_auto_clean_cache(processed_dir, img_path, clean_image)
+                    clean_image = self.inpainter.inpaint_mask(clean_image.copy(), manual_mask)
                     manual_mask_posix = manual_mask_path.as_posix()
 
         tmp_clean_path = processed_dir / f"clean_{img_path.name}.{uuid.uuid4().hex[:12]}.tmp.png"
