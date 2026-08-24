@@ -4,8 +4,9 @@ import json
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from app.config import RAW_DIR
 from app.downloader.http import safe_download_file
-from app.security import browser_request_allowed, validate_url
+from app.security import browser_request_allowed, validate_managed_path, validate_url
 
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -32,20 +33,24 @@ def dedupe(urls: list) -> list:
     return result
 
 
+def _resolve_output_dir(raw_output_dir: str) -> Path:
+    return validate_managed_path(Path(raw_output_dir), RAW_DIR)
+
+
 def main():
     if len(sys.argv) < 3:
         print("[]")
         return
 
     chapter_url = sys.argv[1]
-    output_dir = Path(sys.argv[2])
-    output_dir.mkdir(parents=True, exist_ok=True)
-
     try:
+        output_dir = _resolve_output_dir(sys.argv[2])
         validate_url(chapter_url)
     except Exception:
         print("[]")
         return
+
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     from playwright.sync_api import sync_playwright
 
