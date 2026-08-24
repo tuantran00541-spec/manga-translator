@@ -412,7 +412,7 @@
       if (typeof window.deleteTextObject === "function") {
         window.deleteTextObject(pageIndex, id).catch((err) => {
           if (typeof window.showToast === "function") {
-            window.showToast("Xóa text object thất bại: " + err.message, "error");
+            window.showToast("Không thể xóa vùng chữ: " + err.message, "error");
           }
         });
       }

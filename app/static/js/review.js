@@ -18,7 +18,7 @@ function renderReview() {
 
   const hint = document.createElement("span");
   hint.className = "review-hint";
-  hint.innerHTML = 'Bấm "Tô lỗi" rồi <b>double-click vào giữa vùng lỗi</b> (bong bóng/nền) để tự động chọn trọn vùng đồng màu đó — không cần tô tay chính xác. Nếu vùng lỗi không đồng màu (dính nhiều chi tiết), tô tay bằng cách kéo chuột, nhưng nhớ <b>phủ kín toàn bộ</b> phần lỗi trong 1 lần, tô sót thì phần còn lại vẫn hiện nguyên.';
+  hint.innerHTML = 'Chọn <b>Đánh dấu vùng lỗi</b> rồi nhấp đúp vào vùng nền đồng màu để chọn nhanh toàn bộ vùng liên thông. Với vùng có nhiều chi tiết, kéo cọ để đánh dấu thủ công và phủ kín phần cần xử lý.';
   toolbar.appendChild(hint);
 
   const geminiConfig = document.createElement("div");
@@ -26,7 +26,7 @@ function renderReview() {
 
   const geminiStatus = document.createElement("span");
   geminiStatus.className = "gemini-qc-status";
-  geminiStatus.textContent = "Gemini QC: đang kiểm tra…";
+  geminiStatus.textContent = "Kiểm tra AI: Đang kiểm tra cấu hình…";
 
   const geminiKeyInput = document.createElement("input");
   geminiKeyInput.type = "password";
@@ -39,23 +39,23 @@ function renderReview() {
   const geminiSaveBtn = document.createElement("button");
   geminiSaveBtn.type = "button";
   geminiSaveBtn.className = "gemini-key-save-btn";
-  geminiSaveBtn.textContent = "Lưu key";
+  geminiSaveBtn.textContent = "Lưu khóa API";
 
   const geminiClearBtn = document.createElement("button");
   geminiClearBtn.type = "button";
   geminiClearBtn.className = "gemini-key-clear-btn";
-  geminiClearBtn.textContent = "Xóa key";
+  geminiClearBtn.textContent = "Xóa khóa API";
 
   const geminiPrivacyNote = document.createElement("span");
   geminiPrivacyNote.className = "gemini-qc-privacy-note";
-  geminiPrivacyNote.textContent = "QC sẽ gửi ảnh gốc + ảnh clean tới Gemini";
+  geminiPrivacyNote.textContent = "Ảnh gốc và ảnh đã xử lý sẽ được gửi đến Gemini để kiểm tra chất lượng.";
 
   geminiConfig.append(geminiStatus, geminiKeyInput, geminiSaveBtn, geminiClearBtn, geminiPrivacyNote);
   toolbar.appendChild(geminiConfig);
   setupGeminiQCSettings(geminiStatus, geminiKeyInput, geminiSaveBtn, geminiClearBtn);
 
   const nextBtn = document.createElement("button");
-  nextBtn.textContent = "Ổn rồi, vào dịch";
+  nextBtn.textContent = "Mở trình biên tập bản dịch";
   nextBtn.addEventListener("click", () => {
     container.querySelectorAll(".brush-canvas").forEach((canvas) => {
       if (typeof canvas._cleanupBrush === "function") canvas._cleanupBrush();
@@ -91,34 +91,34 @@ function renderReview() {
 
     const brushBtn = document.createElement("button");
     brushBtn.className = "brush-toggle-btn";
-    brushBtn.textContent = "Tô lỗi";
+    brushBtn.textContent = "Đánh dấu vùng lỗi";
     controls.appendChild(brushBtn);
 
     const clearBtn = document.createElement("button");
     clearBtn.className = "clear-brush-btn";
-    clearBtn.textContent = "Xóa nét vẽ";
+    clearBtn.textContent = "Xóa nét đánh dấu";
     controls.appendChild(clearBtn);
 
     const submitBtn = document.createElement("button");
     submitBtn.className = "repaint-btn";
-    submitBtn.textContent = "Xử lý lại vùng đã tô";
+    submitBtn.textContent = "Xử lý vùng đánh dấu";
     controls.appendChild(submitBtn);
 
     const resetManualBtn = document.createElement("button");
     resetManualBtn.className = "reset-manual-btn";
-    resetManualBtn.textContent = "Xóa vùng tô tay";
+    resetManualBtn.textContent = "Xóa vùng chỉnh sửa";
     controls.appendChild(resetManualBtn);
 
     const aiQcBtn = document.createElement("button");
     aiQcBtn.type = "button";
     aiQcBtn.className = "ai-qc-btn";
-    aiQcBtn.textContent = "AI rà lỗi";
-    aiQcBtn.title = "Gemini so sánh ảnh gốc và ảnh đã xóa chữ, rồi tô vùng nghi lỗi lên cọ";
+    aiQcBtn.textContent = "Kiểm tra bằng AI";
+    aiQcBtn.title = "So sánh ảnh nguồn và ảnh đã xử lý để phát hiện vùng cần kiểm tra lại";
     controls.appendChild(aiQcBtn);
 
     const brushSizeWrap = document.createElement("label");
     brushSizeWrap.className = "brush-size-control";
-    brushSizeWrap.textContent = "Cỡ cọ ";
+    brushSizeWrap.textContent = "Kích thước cọ ";
     const brushSizeValue = document.createElement("output");
     brushSizeValue.className = "brush-size-value";
     brushSizeValue.textContent = "—";
@@ -128,7 +128,7 @@ function renderReview() {
     brushSize.max = "80";
     brushSize.step = "1";
     brushSize.className = "brush-size-slider";
-    brushSize.title = "Điều chỉnh bán kính cọ";
+    brushSize.title = "Điều chỉnh kích thước cọ";
     brushSizeWrap.appendChild(brushSize);
     brushSizeWrap.appendChild(brushSizeValue);
     controls.appendChild(brushSizeWrap);
@@ -242,7 +242,7 @@ function setupBrush(pageIndex, img, canvas, wrap, brushBtn, clearBtn, submitBtn,
     stopPainting();
     brushOn = false;
     wrap.classList.remove("brush-mode");
-    brushBtn.textContent = "Tô lỗi";
+    brushBtn.textContent = "Đánh dấu vùng lỗi";
   };
 
   const cleanupBrush = () => {
@@ -257,7 +257,7 @@ function setupBrush(pageIndex, img, canvas, wrap, brushBtn, clearBtn, submitBtn,
     brushOn = !brushOn;
     if (!brushOn) stopPainting();
     wrap.classList.toggle("brush-mode", brushOn);
-    brushBtn.textContent = brushOn ? "Đang tô (bấm để tắt)" : "Tô lỗi";
+    brushBtn.textContent = brushOn ? "Đang đánh dấu · Chọn để kết thúc" : "Đánh dấu vùng lỗi";
   }, { signal });
 
   clearBtn.addEventListener("click", () => {
@@ -308,7 +308,7 @@ function setupBrush(pageIndex, img, canvas, wrap, brushBtn, clearBtn, submitBtn,
       if (srcData) {
         floodFillSelect(ctx, srcData, x, y, canvas.width, canvas.height);
       } else {
-        showToast("Không thể tự động chọn vùng: thiếu dữ liệu ảnh gốc.", "error");
+        showToast("Không thể chọn vùng tự động do thiếu dữ liệu ảnh nguồn.", "error");
       }
       return;
     }
@@ -354,7 +354,7 @@ function setupBrush(pageIndex, img, canvas, wrap, brushBtn, clearBtn, submitBtn,
     brushRadius = Math.round(Math.max(8, Math.min(80, brushRadius + (e.deltaY < 0 ? 2 : -2))));
     brushSize.value = String(brushRadius);
     brushSizeValue.textContent = `${Math.round(brushRadius * 2)}px`;
-    showToast(`Cỡ cọ: ${Math.round(brushRadius * 2)} px`, "info");
+    showToast(`Kích thước cọ: ${Math.round(brushRadius * 2)} px`, "info");
   }, { passive: false, signal });
 
   window.addEventListener("mouseup", handleEnd, { signal });
@@ -370,7 +370,10 @@ function setupBrush(pageIndex, img, canvas, wrap, brushBtn, clearBtn, submitBtn,
 
   if (aiQcBtn) {
     aiQcBtn.addEventListener("click", () => {
-      inspectVisualQC(pageIndex, canvas, ctx, aiQcBtn, submitBtn, resetManualBtn);
+      inspectVisualQC(
+        pageIndex, canvas, ctx, aiQcBtn, submitBtn, resetManualBtn,
+        brushBtn, clearBtn, brushSize, wrap
+      );
     }, { signal });
   }
 
@@ -383,7 +386,7 @@ function setupBrush(pageIndex, img, canvas, wrap, brushBtn, clearBtn, submitBtn,
 
 async function setupGeminiQCSettings(statusEl, keyInput, saveBtn, clearBtn) {
   const parse = typeof window.parseApiResponse === "function" ? window.parseApiResponse : async (r) => (await r.json().catch(() => ({})));
-  const getErr = typeof window.getErrorMessage === "function" ? window.getErrorMessage : (s, d) => d.detail || `Server trả về ${s}`;
+  const getErr = typeof window.getErrorMessage === "function" ? window.getErrorMessage : (s, d) => d.detail || `Máy chủ trả về ${s}`;
 
   const refresh = async () => {
     try {
@@ -391,15 +394,17 @@ async function setupGeminiQCSettings(statusEl, keyInput, saveBtn, clearBtn) {
       const data = await parse(resp);
       if (!resp.ok) throw new Error(getErr(resp.status, data));
       if (data.configured) {
-        statusEl.textContent = `Gemini QC: sẵn sàng · ${data.model || "Flash"}`;
+        statusEl.textContent = `Kiểm tra AI: Sẵn sàng · ${data.model || "Flash"}`;
         statusEl.classList.add("configured");
       } else {
-        statusEl.textContent = data.source === "unavailable" ? "Gemini QC: secure storage chưa sẵn sàng" : "Gemini QC: chưa có key";
+        statusEl.textContent = data.source === "unavailable"
+          ? "Kiểm tra AI: Kho bí mật chưa sẵn sàng"
+          : "Kiểm tra AI: Chưa cấu hình";
         statusEl.classList.remove("configured");
       }
       clearBtn.disabled = !data.configured || data.source === "environment";
     } catch (err) {
-      statusEl.textContent = "Gemini QC: lỗi cấu hình";
+      statusEl.textContent = "Kiểm tra AI: Lỗi cấu hình";
       statusEl.classList.remove("configured");
       console.warn("Gemini QC settings check failed:", err);
     }
@@ -408,7 +413,7 @@ async function setupGeminiQCSettings(statusEl, keyInput, saveBtn, clearBtn) {
   saveBtn.addEventListener("click", async () => {
     const apiKey = keyInput.value.trim();
     if (!apiKey) {
-      showToast("Hãy nhập Gemini API key trước.", "error");
+      showToast("Nhập Gemini API key trước khi lưu.", "error");
       return;
     }
     saveBtn.disabled = true;
@@ -422,13 +427,13 @@ async function setupGeminiQCSettings(statusEl, keyInput, saveBtn, clearBtn) {
       const data = await parse(resp);
       if (!resp.ok) throw new Error(getErr(resp.status, data));
       keyInput.value = "";
-      showToast("Đã lưu Gemini API key trong secure storage của hệ điều hành.", "success");
+      showToast("Đã lưu khóa API trong kho bí mật của hệ điều hành.", "success");
       await refresh();
     } catch (err) {
-      showToast("Không lưu được Gemini key: " + err.message, "error");
+      showToast("Không thể lưu khóa API: " + err.message, "error");
     } finally {
       saveBtn.disabled = false;
-      saveBtn.textContent = "Lưu key";
+      saveBtn.textContent = "Lưu khóa API";
     }
   });
 
@@ -438,9 +443,9 @@ async function setupGeminiQCSettings(statusEl, keyInput, saveBtn, clearBtn) {
       const resp = await fetch("/api/visual_qc/key", { method: "DELETE" });
       const data = await parse(resp);
       if (!resp.ok) throw new Error(getErr(resp.status, data));
-      showToast("Đã xóa Gemini API key khỏi secure storage.", "success");
+      showToast("Đã xóa khóa API khỏi kho bí mật của hệ điều hành.", "success");
     } catch (err) {
-      showToast("Không xóa được Gemini key: " + err.message, "error");
+      showToast("Không thể xóa khóa API: " + err.message, "error");
     } finally {
       await refresh();
     }
@@ -449,12 +454,18 @@ async function setupGeminiQCSettings(statusEl, keyInput, saveBtn, clearBtn) {
   await refresh();
 }
 
-async function inspectVisualQC(pageIndex, canvas, ctx, aiQcBtn, submitBtn, resetManualBtn) {
-  aiQcBtn.disabled = true;
-  submitBtn.disabled = true;
-  resetManualBtn.disabled = true;
+async function inspectVisualQC(
+  pageIndex, canvas, ctx, aiQcBtn, submitBtn, resetManualBtn,
+  brushBtn, clearBtn, brushSize, wrap
+) {
+  const mutableControls = [brushBtn, clearBtn, submitBtn, resetManualBtn, aiQcBtn, brushSize].filter(Boolean);
+  const previousDisabled = new Map(mutableControls.map((control) => [control, control.disabled]));
+  if (typeof canvas._stopBrush === "function") canvas._stopBrush();
+  mutableControls.forEach((control) => { control.disabled = true; });
+  if (wrap) wrap.classList.add("ai-qc-running");
+
   const oldText = aiQcBtn.textContent;
-  aiQcBtn.textContent = "AI đang rà…";
+  aiQcBtn.textContent = "AI đang kiểm tra…";
   try {
     const resp = await fetch("/api/visual_qc/inspect", {
       method: "POST",
@@ -462,13 +473,13 @@ async function inspectVisualQC(pageIndex, canvas, ctx, aiQcBtn, submitBtn, reset
       body: JSON.stringify({ chapter_id: currentChapterId, page_index: pageIndex }),
     });
     const parse = typeof window.parseApiResponse === "function" ? window.parseApiResponse : async (r) => (await r.json().catch(() => ({})));
-    const getErr = typeof window.getErrorMessage === "function" ? window.getErrorMessage : (s, d) => d.detail || `Server trả về ${s}`;
+    const getErr = typeof window.getErrorMessage === "function" ? window.getErrorMessage : (s, d) => d.detail || `Máy chủ trả về ${s}`;
     const data = await parse(resp);
     if (!resp.ok) throw new Error(getErr(resp.status, data));
 
     const issues = Array.isArray(data.issues) ? data.issues : [];
     if (!issues.length) {
-      showToast("Gemini không thấy vùng nào cần xử lý lại trên trang này.", "success");
+      showToast("Không phát hiện vùng cần xử lý lại trên trang này.", "success");
       return;
     }
 
@@ -505,21 +516,20 @@ async function inspectVisualQC(pageIndex, canvas, ctx, aiQcBtn, submitBtn, reset
 
     if (painted) {
       const extra = [];
-      if (uncertain) extra.push(`${uncertain} vùng confidence thấp chưa tô`);
-      if (artDamage) extra.push(`${artDamage} vùng nghi mất nét cần xem tay`);
+      if (uncertain) extra.push(`${uncertain} vùng có độ tin cậy thấp chưa được đánh dấu`);
+      if (artDamage) extra.push(`${artDamage} vùng nghi mất chi tiết cần kiểm tra thủ công`);
       const suffix = extra.length ? ` (${extra.join(", ")})` : "";
-      showToast(`Gemini đã tô ${painted} vùng nghi lỗi${suffix}. Kiểm tra rồi bấm “Xử lý lại vùng đã tô”.`, "info");
+      showToast(`AI đã đánh dấu ${painted} vùng cần kiểm tra${suffix}. Xác nhận vùng đánh dấu trước khi xử lý.`, "info");
     } else if (artDamage || uncertain) {
-      showToast(`Gemini chỉ thấy ${uncertain} vùng chưa đủ confidence và ${artDamage} vùng nghi mất nét; chưa tự tô để tránh làm hỏng ảnh.`, "info");
+      showToast(`AI phát hiện ${uncertain} vùng có độ tin cậy thấp và ${artDamage} vùng nghi mất chi tiết; chưa tự động đánh dấu để tránh làm hỏng ảnh.`, "info");
     } else {
-      showToast("Gemini trả kết quả nhưng không có mask hợp lệ để tô.", "error");
+      showToast("AI trả về kết quả nhưng không có vùng đánh dấu hợp lệ.", "error");
     }
   } catch (err) {
-    showToast("Gemini QC thất bại: " + err.message, "error");
+    showToast("Không thể hoàn tất kiểm tra bằng AI: " + err.message, "error");
   } finally {
-    aiQcBtn.disabled = false;
-    submitBtn.disabled = false;
-    resetManualBtn.disabled = false;
+    mutableControls.forEach((control) => { control.disabled = previousDisabled.get(control) || false; });
+    if (wrap) wrap.classList.remove("ai-qc-running");
     aiQcBtn.textContent = oldText;
   }
 }
@@ -598,7 +608,7 @@ function floodFillSelect(ctx, srcData, startX, startY, width, height) {
   }
 
   if (capExceeded) {
-    showToast("Vùng này không đủ đồng màu để tự động chọn (lan quá rộng). Hãy tô tay bằng cách kéo chuột thay vì double-click.", "error");
+    showToast("Không thể chọn tự động vì vùng màu lan quá rộng. Hãy đánh dấu thủ công bằng cách kéo cọ.", "error");
     return;
   }
 
@@ -636,18 +646,18 @@ async function submitRepaint(pageIndex, canvas, img, ctx, submitBtn) {
   }
 
   if (!hasPaint) {
-    showToast("Chưa tô vùng lỗi nào trên ảnh.", "error");
+    showToast("Chưa có vùng nào được đánh dấu để xử lý.", "error");
     return;
   }
 
   submitBtn.disabled = true;
-  submitBtn.textContent = "Đang xử lý lại...";
+  submitBtn.textContent = "Đang xử lý…";
 
   try {
     const maskBlob = await new Promise((resolve, reject) => {
       canvas.toBlob((blob) => {
         if (blob) resolve(blob);
-        else reject(new Error("Không thể xuất mặt nạ (canvas.toBlob failed)"));
+        else reject(new Error("Không thể tạo dữ liệu vùng đánh dấu"));
       }, "image/png");
     });
 
@@ -667,11 +677,11 @@ async function submitRepaint(pageIndex, canvas, img, ctx, submitBtn) {
 
     img.src = manifest.pages[pageIndex].clean + "?t=" + Date.now();
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    showToast("Đã xử lý lại vùng tô thành công!", "success");
+    showToast("Đã xử lý vùng đánh dấu.", "success");
   } catch (err) {
-    showToast("Xử lý lại thất bại: " + err.message, "error");
+    showToast("Không thể xử lý vùng đánh dấu: " + err.message, "error");
   } finally {
     submitBtn.disabled = false;
-    submitBtn.textContent = "Xử lý lại vùng đã tô";
+    submitBtn.textContent = "Xử lý vùng đánh dấu";
   }
 }

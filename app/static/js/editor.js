@@ -136,11 +136,11 @@ async function createTextObject(pageIndex, shape, region) {
   const page = manifest.pages[pageIndex];
   const objs = page.text_objects || [];
   const obj = objs[objs.length - 1];
-  if (!obj) throw new Error("Không tạo được text object");
+  if (!obj) throw new Error("Không tạo được vùng chữ");
   editorState.selectedTextObjectId = obj.id;
   applyManifestResponse(manifest, pageIndex, { id: obj.id });
   associateTextObjectOcr(pageIndex, obj.id).catch((err) => {
-    showToast("Không nhóm được OCR tự động, bạn vẫn có thể nhập tay: " + err.message, "info");
+    showToast("Không thể nhóm OCR tự động. Bạn vẫn có thể nhập nội dung thủ công: " + err.message, "info");
   });
 }
 
@@ -164,7 +164,7 @@ const DUPLICATE_OFFSET = 24;
 
 async function duplicateTextObject(pageIndex, id) {
   const obj = findTextObject(pageIndex, id);
-  if (!obj) throw new Error("Không tìm thấy text object");
+  if (!obj) throw new Error("Không tìm thấy vùng chữ");
   await Promise.all([
     typeof window.flushTextObjectPersist === "function" ? window.flushTextObjectPersist() : Promise.resolve(),
     typeof window.flushGeomPersist === "function" ? window.flushGeomPersist() : Promise.resolve(),
@@ -184,7 +184,7 @@ async function duplicateTextObject(pageIndex, id) {
   });
   const objs = manifest.pages[pageIndex].text_objects || [];
   const created = objs[objs.length - 1];
-  if (!created) throw new Error("Không nhân đôi được text object");
+  if (!created) throw new Error("Không thể nhân đôi vùng chữ");
 
   const updated = await apiTextObject("update", {
     chapter_id: currentChapterId,
@@ -304,7 +304,7 @@ function renderEditorPanel(pageIndex) {
   if (!obj) {
     const empty = document.createElement("div");
     empty.className = "text-editor-empty";
-    empty.textContent = "Select a text region on the image.";
+    empty.textContent = "Chọn một vùng chữ trên ảnh để chỉnh sửa.";
     panel.appendChild(empty);
     panelHost.appendChild(panel);
     return;
@@ -313,13 +313,13 @@ function renderEditorPanel(pageIndex) {
 
   const ocrLabel = document.createElement("label");
   ocrLabel.className = "text-editor-label";
-  ocrLabel.textContent = "Chữ gốc / OCR";
+  ocrLabel.textContent = "Nội dung gốc / OCR";
 
   const ocrTa = document.createElement("textarea");
   ocrTa.className = "text-editor-textarea ocr-textarea";
   ocrTa.dataset.textObjectId = obj.id;
   ocrTa.rows = 4;
-  ocrTa.placeholder = "Chữ gốc (sửa tay được)...";
+  ocrTa.placeholder = "Nhập hoặc hiệu chỉnh nội dung gốc…";
   ocrTa.value = obj.ocr_text || "";
   ocrTa.addEventListener("input", () => {
     obj.ocr_text = ocrTa.value;
@@ -334,7 +334,7 @@ function renderEditorPanel(pageIndex) {
   trTa.className = "text-editor-textarea translation-textarea";
   trTa.dataset.textObjectId = obj.id;
   trTa.rows = 4;
-  trTa.placeholder = "Nhập bản dịch...";
+  trTa.placeholder = "Nhập nội dung bản dịch…";
   trTa.value = obj.translation || "";
   trTa.addEventListener("input", () => {
     obj.translation = trTa.value;
@@ -360,10 +360,10 @@ function renderEditorPanel(pageIndex) {
   const ocrBtn = document.createElement("button");
   ocrBtn.type = "button";
   ocrBtn.className = "text-object-action-btn";
-  ocrBtn.textContent = "Nhóm OCR lại";
+  ocrBtn.textContent = "Nhận dạng lại bằng OCR";
   ocrBtn.addEventListener("click", () => {
     associateTextObjectOcr(pageIndex, obj.id).catch((err) => {
-      showToast("Không nhóm được OCR: " + err.message, "info");
+      showToast("Không thể nhận dạng lại bằng OCR: " + err.message, "info");
     });
   });
 
@@ -374,7 +374,7 @@ function renderEditorPanel(pageIndex) {
   dupBtn.title = "Tạo bản sao vùng chữ này";
   dupBtn.addEventListener("click", () => {
     duplicateTextObject(pageIndex, obj.id).catch((err) => {
-      showToast("Nhân đôi text object thất bại: " + err.message, "error");
+      showToast("Không thể nhân đôi vùng chữ: " + err.message, "error");
     });
   });
 
@@ -382,16 +382,16 @@ function renderEditorPanel(pageIndex) {
   delBtn.type = "button";
   delBtn.className = "text-object-action-btn danger";
   delBtn.textContent = "Xóa";
-  delBtn.title = "Xóa text object";
+  delBtn.title = "Xóa vùng chữ";
   delBtn.addEventListener("click", () => {
     if (delBtn.dataset.armed !== "1") {
       delBtn.dataset.armed = "1";
       delBtn.classList.add("confirming");
-      delBtn.textContent = "Chắc chắn xóa?";
+      delBtn.textContent = "Xác nhận xóa";
       return;
     }
     deleteTextObject(pageIndex, obj.id).catch((err) => {
-      showToast("Xóa text object thất bại: " + err.message, "error");
+      showToast("Không thể xóa vùng chữ: " + err.message, "error");
     });
   });
 
@@ -485,12 +485,12 @@ function buildTextSection(body, panel, obj, pageIndex) {
   sizeGroup.className = "font-size-group";
   const sizeLabel = document.createElement("span");
   sizeLabel.className = "size-label";
-  sizeLabel.textContent = "Cỡ:";
+  sizeLabel.textContent = "Kích thước:";
   const autoBtn = document.createElement("button");
   autoBtn.type = "button";
   autoBtn.className = "size-auto-btn";
-  autoBtn.textContent = "Auto";
-  autoBtn.title = "Tự động vừa ô";
+  autoBtn.textContent = "Tự động";
+  autoBtn.title = "Tự động vừa vùng";
   const sizeSlider = document.createElement("input");
   sizeSlider.type = "range";
   sizeSlider.className = "font-size-slider";
@@ -503,7 +503,7 @@ function buildTextSection(body, panel, obj, pageIndex) {
   if (sizeIsAuto) {
     autoBtn.classList.add("selected");
     sizeSlider.disabled = true;
-    sizeValSpan.textContent = "Auto";
+    sizeValSpan.textContent = "Tự động";
   } else {
     sizeSlider.value = style.fontSize;
     sizeValSpan.textContent = style.fontSize + "px";
@@ -521,7 +521,7 @@ function buildTextSection(body, panel, obj, pageIndex) {
       sizeSlider.disabled = true;
       style.fontSize = "auto";
       panel.dataset.fontSize = "auto";
-      sizeValSpan.textContent = "Auto";
+      sizeValSpan.textContent = "Tự động";
     }
     schedule();
   });
@@ -547,7 +547,7 @@ function buildAppearanceSection(body, panel, obj, pageIndex) {
   colorToolbar.className = "color-toolbar";
   const colorLabel = document.createElement("span");
   colorLabel.className = "color-label";
-  colorLabel.textContent = "Màu chữ:";
+  colorLabel.textContent = "Màu chữ";
   colorToolbar.appendChild(colorLabel);
 
   const colors = [
@@ -593,7 +593,7 @@ function buildAppearanceSection(body, panel, obj, pageIndex) {
   strokeToolbar.className = "stroke-toolbar";
   const strokeLabel = document.createElement("span");
   strokeLabel.className = "style-group-label";
-  strokeLabel.textContent = "Viền chữ:";
+  strokeLabel.textContent = "Viền chữ";
   const strokeSlider = document.createElement("input");
   strokeSlider.type = "range";
   strokeSlider.className = "stroke-width-slider";
@@ -605,7 +605,7 @@ function buildAppearanceSection(body, panel, obj, pageIndex) {
   strokeValSpan.className = "style-val-span";
   const strokeIsAuto = !style.strokeWidth || style.strokeWidth === "auto";
   if (strokeIsAuto) {
-    strokeValSpan.textContent = "Auto";
+    strokeValSpan.textContent = "Tự động";
   } else {
     strokeSlider.value = style.strokeWidth;
     strokeValSpan.textContent = style.strokeWidth + "px";
@@ -658,7 +658,7 @@ function buildBackgroundSection(body, panel, obj, pageIndex) {
   bgColors.forEach((val) => {
     const opt = document.createElement("option");
     opt.value = val;
-    opt.textContent = val === "#ffffff" ? "Nền Trắng" : val === "#000000" ? "Nền Đen" : val;
+    opt.textContent = val === "#ffffff" ? "Trắng" : val === "#000000" ? "Đen" : val;
     bgSelect.appendChild(opt);
   });
   bgSelect.value = (style.bgColor && style.bgColor !== "transparent") ? style.bgColor : "#ffffff";
@@ -1012,7 +1012,7 @@ function setupEditorDraw(wrapper, pageIndex) {
     last = null;
     if (x2 - x1 < 10 || y2 - y1 < 10) return;
     createTextObject(pageIndex, shape, { x1, y1, x2, y2 }).catch((err) => {
-      showToast("Tạo text object thất bại: " + err.message, "error");
+      showToast("Không thể tạo vùng chữ: " + err.message, "error");
     });
   };
 
@@ -1084,7 +1084,7 @@ function showRenderResult(pageIndex, outputPath) {
 
   const label = document.createElement("div");
   label.className = "render-result-label";
-  label.textContent = "Kết quả:";
+  label.textContent = "Kết quả kết xuất";
   resultBox.appendChild(label);
 
   const img = document.createElement("img");
@@ -1095,7 +1095,7 @@ function showRenderResult(pageIndex, outputPath) {
   link.href = outputPath + cacheBust;
   link.download = `page_${pageIndex + 1}_rendered.png`;
   link.className = "download-link";
-  link.textContent = "Tải ảnh này về";
+  link.textContent = "Tải ảnh đã kết xuất";
   resultBox.appendChild(link);
 }
 
@@ -1136,14 +1136,14 @@ function renderEditor() {
 
   const title = document.createElement("div");
   title.className = "translation-toolbar-title";
-  title.innerHTML = '<strong>Biên tập bản dịch</strong><span>Chọn công cụ, kéo vùng quanh bong bóng chữ để tạo text object.</span>';
+  title.innerHTML = '<strong>Biên tập bản dịch</strong><span>Chọn công cụ hoặc tạo vùng chữ để hiệu chỉnh nội dung và trình bày.</span>';
 
   const tools = document.createElement("div");
   tools.className = "editor-tools";
   [
     { key: "select", label: "Chọn" },
-    { key: "rectangle", label: "Hình chữ nhật" },
-    { key: "ellipse", label: "Hình ellipse" },
+    { key: "rectangle", label: "Khung chữ nhật" },
+    { key: "ellipse", label: "Khung elip" },
   ].forEach((t) => {
     const btn = document.createElement("button");
     btn.type = "button";
@@ -1157,11 +1157,11 @@ function renderEditor() {
   const addBoxBtn = document.createElement("button");
   addBoxBtn.type = "button";
   addBoxBtn.className = "editor-tool-btn";
-  addBoxBtn.textContent = "Thêm ô chữ";
-  addBoxBtn.title = "Tạo ô chữ mới ở giữa trang";
+  addBoxBtn.textContent = "Thêm vùng chữ";
+  addBoxBtn.title = "Tạo một vùng chữ mới ở giữa trang";
   addBoxBtn.addEventListener("click", () => {
     addTextObjectBox().catch((err) => {
-      showToast("Không thêm được ô chữ: " + err.message, "error");
+      showToast("Không thể thêm vùng chữ: " + err.message, "error");
     });
   });
   tools.appendChild(addBoxBtn);
@@ -1169,7 +1169,7 @@ function renderEditor() {
   const renderBtn = document.createElement("button");
   renderBtn.type = "button";
   renderBtn.className = "render-btn editor-render-btn";
-  renderBtn.textContent = "Chèn chữ vào ảnh";
+  renderBtn.textContent = "Kết xuất bản dịch";
   renderBtn.addEventListener("click", () => renderTranslations(pageIndex));
 
   const saveStatus = document.createElement("div");
@@ -1194,7 +1194,7 @@ function renderEditor() {
   const prev = document.createElement("button");
   prev.type = "button";
   prev.className = "translation-nav-btn workspace-nav-btn";
-  prev.textContent = "← Trước";
+  prev.textContent = "← Trang trước";
   prev.setAttribute("aria-label", "Trang trước");
   prev.disabled = pageIndex === 0;
   prev.addEventListener("click", () => switchEditorPage(pageIndex - 1));
@@ -1248,7 +1248,7 @@ function renderEditor() {
   if (page.rendered) {
     const badge = document.createElement("span");
     badge.className = "page-status-badge rendered";
-    badge.textContent = "Đã xuất ảnh";
+    badge.textContent = "Đã kết xuất";
     position.appendChild(badge);
   } else if (page.skipped) {
     const badge = document.createElement("span");
@@ -1260,7 +1260,7 @@ function renderEditor() {
   const next = document.createElement("button");
   next.type = "button";
   next.className = "translation-nav-btn workspace-nav-btn";
-  next.textContent = "Sau →";
+  next.textContent = "Trang sau →";
   next.setAttribute("aria-label", "Trang sau");
   next.disabled = pageIndex === pages.length - 1;
   next.addEventListener("click", () => switchEditorPage(pageIndex + 1));
