@@ -23,7 +23,7 @@ class DummyInpainter:
 
 
 class DummyDetector:
-    def detect(self, image: np.ndarray) -> list:
+    def detect(self, image: np.ndarray, *, parallel: bool = False) -> list:
         return []
 
 
@@ -108,7 +108,7 @@ def report(name: str, condition: bool, detail: str = "") -> None:
 
 
 def test_1_primary_sequential() -> None:
-    cid = f"test_seq_{uuid.uuid4().hex[:8]}"
+    cid = uuid.uuid4().hex[:8]
     pipeline, p0, _ = create_test_chapter(cid)
     try:
         mask_a = make_rect_mask(200, 200, 10, 10, 50, 50)
@@ -133,7 +133,7 @@ def test_1_primary_sequential() -> None:
 
 
 def test_2_combined_request() -> None:
-    cid = f"test_comb_{uuid.uuid4().hex[:8]}"
+    cid = uuid.uuid4().hex[:8]
     pipeline, p0, _ = create_test_chapter(cid)
     try:
         mask_a = make_rect_mask(200, 200, 10, 10, 50, 50)
@@ -149,7 +149,7 @@ def test_2_combined_request() -> None:
 
 
 def test_3_duplicate_mask() -> None:
-    cid = f"test_dup_{uuid.uuid4().hex[:8]}"
+    cid = uuid.uuid4().hex[:8]
     pipeline, p0, _ = create_test_chapter(cid)
     try:
         mask_a = make_rect_mask(200, 200, 20, 20, 80, 80)
@@ -162,7 +162,7 @@ def test_3_duplicate_mask() -> None:
 
 
 def test_4_partial_overlap() -> None:
-    cid = f"test_ovl_{uuid.uuid4().hex[:8]}"
+    cid = uuid.uuid4().hex[:8]
     pipeline, p0, _ = create_test_chapter(cid)
     try:
         mask_a = make_rect_mask(200, 200, 20, 20, 60, 60)
@@ -177,7 +177,7 @@ def test_4_partial_overlap() -> None:
 
 
 def test_5_reset() -> None:
-    cid = f"test_rst_{uuid.uuid4().hex[:8]}"
+    cid = uuid.uuid4().hex[:8]
     pipeline, p0, _ = create_test_chapter(cid)
     try:
         mask = make_rect_mask(200, 200, 10, 10, 50, 50)
@@ -191,7 +191,7 @@ def test_5_reset() -> None:
 
 
 def test_6_reset_then_repaint() -> None:
-    cid = f"test_rstrp_{uuid.uuid4().hex[:8]}"
+    cid = uuid.uuid4().hex[:8]
     pipeline, p0, _ = create_test_chapter(cid)
     try:
         mask_a = make_rect_mask(200, 200, 10, 10, 50, 50)
@@ -210,7 +210,7 @@ def test_6_reset_then_repaint() -> None:
 
 
 def test_7_failure_preserves_previous() -> None:
-    cid = f"test_fail_{uuid.uuid4().hex[:8]}"
+    cid = uuid.uuid4().hex[:8]
     pipeline, p0, _ = create_test_chapter(cid)
     try:
         mask_a = make_rect_mask(200, 200, 10, 10, 50, 50)
@@ -241,7 +241,7 @@ def test_7_failure_preserves_previous() -> None:
 
 
 def test_8_concurrent_repaint_lost_update() -> None:
-    cid = f"test_conc_{uuid.uuid4().hex[:8]}"
+    cid = uuid.uuid4().hex[:8]
     pipeline, p0, _ = create_test_chapter(cid)
     try:
         mask_a = make_rect_mask(200, 200, 10, 10, 50, 50)
@@ -271,7 +271,7 @@ def test_8_concurrent_repaint_lost_update() -> None:
 
 
 def test_9_reset_vs_repaint_stale_result() -> None:
-    cid = f"test_race_{uuid.uuid4().hex[:8]}"
+    cid = uuid.uuid4().hex[:8]
     pipeline, p0, _ = create_test_chapter(cid)
     try:
         mask_a = make_rect_mask(200, 200, 10, 10, 50, 50)
@@ -303,7 +303,7 @@ def test_9_reset_vs_repaint_stale_result() -> None:
 
 
 def test_10_cross_page_isolation() -> None:
-    cid = f"test_iso_{uuid.uuid4().hex[:8]}"
+    cid = uuid.uuid4().hex[:8]
     pipeline, p0, p1 = create_test_chapter(cid)
     try:
         mask_0 = make_rect_mask(200, 200, 10, 10, 50, 50)
@@ -322,7 +322,7 @@ def test_10_cross_page_isolation() -> None:
 
 
 def test_11_reload_reprocess() -> None:
-    cid = f"test_proc_{uuid.uuid4().hex[:8]}"
+    cid = uuid.uuid4().hex[:8]
     pipeline, p0, _ = create_test_chapter(cid)
     try:
         mask_a = make_rect_mask(200, 200, 10, 10, 40, 40)

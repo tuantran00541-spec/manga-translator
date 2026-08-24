@@ -45,7 +45,7 @@ class DummyDetector:
             BubbleBox(90, 90, 120, 120, 1.0, None),
         ]
 
-    def detect(self, image: np.ndarray) -> list[BubbleBox]:
+    def detect(self, image: np.ndarray, *, parallel: bool = False) -> list[BubbleBox]:
         return list(self._boxes)
 
 
@@ -136,7 +136,7 @@ def test_1_delete_one_by_one_regression() -> None:
     Delete B -> A must NOT reappear!
     Delete C -> A and B must NOT reappear!
     """
-    cid = f"test_del1_{uuid.uuid4().hex[:8]}"
+    cid = uuid.uuid4().hex[:8]
     initial_boxes = [
         {"x1": 10, "y1": 10, "x2": 40, "y2": 40, "confidence": 1.0, "mask": None},  # A (idx 0)
         {"x1": 50, "y1": 50, "x2": 80, "y2": 80, "confidence": 1.0, "mask": None},  # B (idx 1)
@@ -149,8 +149,8 @@ def test_1_delete_one_by_one_regression() -> None:
         mutation_done = threading.Event()
         orig_process_page = pipeline._process_page
 
-        def hooked_process_page(img_path, processed_dir, excluded_regions=None):
-            result = orig_process_page(img_path, processed_dir, excluded_regions=excluded_regions)
+        def hooked_process_page(img_path, processed_dir, excluded_regions=None, *, parallel_detectors=False):
+            result = orig_process_page(img_path, processed_dir, excluded_regions=excluded_regions, parallel_detectors=parallel_detectors)
             process_started.set()
             mutation_done.wait(timeout=5)
             return result
@@ -214,7 +214,7 @@ def test_2_process_pages_vs_repaint_mask() -> None:
     process_pages starts (no manual mask) -> repaint_mask adds mask A ->
     process_pages finishes -> mask A must survive!
     """
-    cid = f"test_rp_{uuid.uuid4().hex[:8]}"
+    cid = uuid.uuid4().hex[:8]
     pipeline, p0 = create_test_chapter(cid)
     try:
         mask_a = make_rect_mask(200, 200, 10, 10, 50, 50)
@@ -222,8 +222,8 @@ def test_2_process_pages_vs_repaint_mask() -> None:
         mutation_done = threading.Event()
         orig_process_page = pipeline._process_page
 
-        def hooked_process_page(img_path, processed_dir, excluded_regions=None):
-            result = orig_process_page(img_path, processed_dir, excluded_regions=excluded_regions)
+        def hooked_process_page(img_path, processed_dir, excluded_regions=None, *, parallel_detectors=False):
+            result = orig_process_page(img_path, processed_dir, excluded_regions=excluded_regions, parallel_detectors=parallel_detectors)
             process_started.set()
             mutation_done.wait(timeout=5)
             return result
@@ -257,15 +257,15 @@ def test_3_process_pages_vs_add_manual_box() -> None:
     process_pages starts -> manual box M added ->
     process finishes -> M remains present!
     """
-    cid = f"test_add_{uuid.uuid4().hex[:8]}"
+    cid = uuid.uuid4().hex[:8]
     pipeline, p0 = create_test_chapter(cid)
     try:
         process_started = threading.Event()
         mutation_done = threading.Event()
         orig_process_page = pipeline._process_page
 
-        def hooked_process_page(img_path, processed_dir, excluded_regions=None):
-            result = orig_process_page(img_path, processed_dir, excluded_regions=excluded_regions)
+        def hooked_process_page(img_path, processed_dir, excluded_regions=None, *, parallel_detectors=False):
+            result = orig_process_page(img_path, processed_dir, excluded_regions=excluded_regions, parallel_detectors=parallel_detectors)
             process_started.set()
             mutation_done.wait(timeout=5)
             return result
@@ -301,7 +301,7 @@ def test_4_process_pages_vs_update_box() -> None:
     process starts -> box A updated ->
     process finishes -> updated box A survives!
     """
-    cid = f"test_upd_{uuid.uuid4().hex[:8]}"
+    cid = uuid.uuid4().hex[:8]
     initial_boxes = [
         {"x1": 10, "y1": 10, "x2": 50, "y2": 50, "confidence": 1.0, "mask": None},
     ]
@@ -311,8 +311,8 @@ def test_4_process_pages_vs_update_box() -> None:
         mutation_done = threading.Event()
         orig_process_page = pipeline._process_page
 
-        def hooked_process_page(img_path, processed_dir, excluded_regions=None):
-            result = orig_process_page(img_path, processed_dir, excluded_regions=excluded_regions)
+        def hooked_process_page(img_path, processed_dir, excluded_regions=None, *, parallel_detectors=False):
+            result = orig_process_page(img_path, processed_dir, excluded_regions=excluded_regions, parallel_detectors=parallel_detectors)
             process_started.set()
             mutation_done.wait(timeout=5)
             return result
@@ -347,7 +347,7 @@ def test_5_process_pages_vs_reset_manual_mask() -> None:
     manual mask exists -> process starts -> reset manual mask ->
     process finishes -> reset state survives (no old mask resurrected).
     """
-    cid = f"test_rst_{uuid.uuid4().hex[:8]}"
+    cid = uuid.uuid4().hex[:8]
     pipeline, p0 = create_test_chapter(cid)
     try:
         mask_a = make_rect_mask(200, 200, 10, 10, 50, 50)
@@ -357,8 +357,8 @@ def test_5_process_pages_vs_reset_manual_mask() -> None:
         mutation_done = threading.Event()
         orig_process_page = pipeline._process_page
 
-        def hooked_process_page(img_path, processed_dir, excluded_regions=None):
-            result = orig_process_page(img_path, processed_dir, excluded_regions=excluded_regions)
+        def hooked_process_page(img_path, processed_dir, excluded_regions=None, *, parallel_detectors=False):
+            result = orig_process_page(img_path, processed_dir, excluded_regions=excluded_regions, parallel_detectors=parallel_detectors)
             process_started.set()
             mutation_done.wait(timeout=5)
             return result
@@ -392,15 +392,15 @@ def test_6_process_pages_vs_mark_skipped() -> None:
     process starts -> page marked skipped ->
     process finishes -> skipped state remains authoritative.
     """
-    cid = f"test_skp_{uuid.uuid4().hex[:8]}"
+    cid = uuid.uuid4().hex[:8]
     pipeline, p0 = create_test_chapter(cid)
     try:
         process_started = threading.Event()
         mutation_done = threading.Event()
         orig_process_page = pipeline._process_page
 
-        def hooked_process_page(img_path, processed_dir, excluded_regions=None):
-            result = orig_process_page(img_path, processed_dir, excluded_regions=excluded_regions)
+        def hooked_process_page(img_path, processed_dir, excluded_regions=None, *, parallel_detectors=False):
+            result = orig_process_page(img_path, processed_dir, excluded_regions=excluded_regions, parallel_detectors=parallel_detectors)
             process_started.set()
             mutation_done.wait(timeout=5)
             return result
@@ -433,7 +433,7 @@ def test_7_process_pages_vs_save_excluded_regions() -> None:
     process starts with excluded regions X -> excluded regions changed to Y ->
     process finishes -> Y remains canonical, stale detection discarded.
     """
-    cid = f"test_excl_{uuid.uuid4().hex[:8]}"
+    cid = uuid.uuid4().hex[:8]
     reg_x = [{"x1": 0, "y1": 0, "x2": 50, "y2": 50}]
     reg_y = [{"x1": 60, "y1": 60, "x2": 120, "y2": 120}]
     pipeline, p0 = create_test_chapter(cid, excluded_regions=reg_x)
@@ -442,8 +442,8 @@ def test_7_process_pages_vs_save_excluded_regions() -> None:
         mutation_done = threading.Event()
         orig_process_page = pipeline._process_page
 
-        def hooked_process_page(img_path, processed_dir, excluded_regions=None):
-            result = orig_process_page(img_path, processed_dir, excluded_regions=excluded_regions)
+        def hooked_process_page(img_path, processed_dir, excluded_regions=None, *, parallel_detectors=False):
+            result = orig_process_page(img_path, processed_dir, excluded_regions=excluded_regions, parallel_detectors=parallel_detectors)
             process_started.set()
             mutation_done.wait(timeout=5)
             return result
@@ -475,7 +475,7 @@ def test_7_process_pages_vs_save_excluded_regions() -> None:
 
 def test_8_no_orphaned_tmp_files() -> None:
     """Verify that temporary .tmp files are always cleaned up."""
-    cid = f"test_tmp_{uuid.uuid4().hex[:8]}"
+    cid = uuid.uuid4().hex[:8]
     pipeline, p0 = create_test_chapter(cid)
     try:
         # Run normal process_pages
@@ -489,8 +489,8 @@ def test_8_no_orphaned_tmp_files() -> None:
         mutation_done = threading.Event()
         orig_process_page = pipeline._process_page
 
-        def hooked_process_page(img_path, processed_dir, excluded_regions=None):
-            result = orig_process_page(img_path, processed_dir, excluded_regions=excluded_regions)
+        def hooked_process_page(img_path, processed_dir, excluded_regions=None, *, parallel_detectors=False):
+            result = orig_process_page(img_path, processed_dir, excluded_regions=excluded_regions, parallel_detectors=parallel_detectors)
             process_started.set()
             mutation_done.wait(timeout=5)
             return result
@@ -512,7 +512,7 @@ def test_8_no_orphaned_tmp_files() -> None:
 
 def test_9_uncontended_process_pages_succeeds() -> None:
     """Verify that uncontended process_pages commits successfully."""
-    cid = f"test_succ_{uuid.uuid4().hex[:8]}"
+    cid = uuid.uuid4().hex[:8]
     pipeline, p0 = create_test_chapter(cid, initial_clean=False)
     try:
         m = pipeline.process_pages(cid, [0])

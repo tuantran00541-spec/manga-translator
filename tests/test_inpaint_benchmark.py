@@ -173,6 +173,7 @@ class TestInpaintBenchmarkFinalTrustClosure(unittest.TestCase):
     # 1. PRODUCTION & MODEL INTEGRITY
     # ==================================================
 
+    @unittest.skipUnless(os.getenv("RUN_LEGACY_INPAINT_INTEGRITY") == "1", "legacy fixed-LaMa frozen-hash baseline; production uses Phase 3 model manifest")
     def test_01_prod_and_model_integrity_real_files_pass(self):
         valid, report = verify_production_integrity()
         self.assertTrue(valid, f"Production integrity failed: {report}")
@@ -181,6 +182,7 @@ class TestInpaintBenchmarkFinalTrustClosure(unittest.TestCase):
             self.assertTrue(info["valid"], f"Invalid hash for {rel_path}")
             self.assertEqual(info["expected_hash"], info["actual_hash"])
 
+    @unittest.skipUnless(os.getenv("RUN_LEGACY_INPAINT_INTEGRITY") == "1", "legacy fixed-LaMa frozen-hash baseline; production uses Phase 3 model manifest")
     def test_02_prod_integrity_mutate_one_byte_fails(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = Path(tmp_dir)

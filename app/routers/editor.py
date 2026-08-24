@@ -334,9 +334,11 @@ def _group_text_object_ocr(chapter_id: str, page_index: int, text_object_id: str
         )
         if obj is None:
             raise ValueError(f"Text object not found {text_object_id!r}")
-        region = obj.get("region") or {}
-        boxes = page.get("boxes", [])
+        region = copy.deepcopy(obj.get("region") or {})
+        ocr_text_snapshot = obj.get("ocr_text") or ""
+        boxes = copy.deepcopy(page.get("boxes", []))
         img_path = Path(page["original"])
+        original_snapshot = page.get("original")
 
     image = read_image(img_path)
     overlap = [
@@ -370,9 +372,24 @@ def _group_text_object_ocr(chapter_id: str, page_index: int, text_object_id: str
                 None,
             )
             if obj is not None:
+                cur_boxes = page.get("boxes", [])
+                stale = (
+                    page.get("original") != original_snapshot
+                    or obj.get("region") != region
+                    or (obj.get("ocr_text") or "") != ocr_text_snapshot
+                    or cur_boxes != boxes
+                )
+                if stale:
+                    logger.warning(
+                        "Chapter %s page %s object %s: OCR result became stale; keeping newer user/page state",
+                        chapter_id,
+                        page_index,
+                        text_object_id,
+                    )
+                    return manifest
+
                 obj["source_boxes"] = overlap
                 obj["ocr_text"] = combined
-                cur_boxes = page.get("boxes", [])
                 for i in overlap:
                     if 0 <= i < len(cur_boxes):
                         cur_boxes[i]["ocr_text"] = texts_by_idx.get(i, "")

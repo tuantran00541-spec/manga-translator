@@ -339,6 +339,8 @@ class ChapterPipeline:
             for idx, (page_data, snapshot) in results.items():
                 tmp_clean_posix = page_data.get("tmp_clean")
                 tmp_clean_path = Path(tmp_clean_posix) if tmp_clean_posix else None
+                tmp_auto_clean_posix = page_data.get("tmp_auto_clean")
+                tmp_auto_clean_path = Path(tmp_auto_clean_posix) if tmp_auto_clean_posix else None
                 try:
                     if 0 <= idx < len(manifest.get("pages", [])) and is_processing_state_current(
                         manifest, idx, snapshot, processed_dir
@@ -348,6 +350,10 @@ class ChapterPipeline:
                             final_clean_path = processed_dir / f"clean_{orig_path.name}"
                             os.replace(tmp_clean_path, final_clean_path)
                             manifest["pages"][idx]["clean"] = final_clean_path.as_posix()
+
+                        if tmp_auto_clean_path and tmp_auto_clean_path.exists():
+                            orig_path = Path(manifest["pages"][idx]["original"])
+                            os.replace(tmp_auto_clean_path, self._auto_clean_path(processed_dir, orig_path))
 
                         existing_boxes = manifest["pages"][idx].get("boxes", [])
                         manual_boxes = [b for b in existing_boxes if b.get("manual")]
@@ -366,11 +372,12 @@ class ChapterPipeline:
                             idx,
                         )
                 finally:
-                    if tmp_clean_path and tmp_clean_path.exists():
-                        try:
-                            tmp_clean_path.unlink()
-                        except OSError:
-                            pass
+                    for tmp_path in (tmp_clean_path, tmp_auto_clean_path):
+                        if tmp_path and tmp_path.exists():
+                            try:
+                                tmp_path.unlink()
+                            except OSError:
+                                pass
 
             if committed_indices:
                 manifest["workflow"] = {
@@ -449,16 +456,17 @@ class ChapterPipeline:
             if nx2 <= nx1 or ny2 <= ny1:
                 return manifest
 
+            new_box = {
+                "x1": nx1, "y1": ny1, "x2": nx2, "y2": ny2,
+                "confidence": 1.0, "mask": None, "manual": True,
+            }
             with get_manifest_lock(chapter_id):
                 manifest = load_manifest_raw(chapter_id)
                 if page_index < 0 or page_index >= len(manifest.get("pages", [])):
                     raise ValueError(f"Chapter {chapter_id}: Invalid page_index {page_index}")
                 target_page = manifest["pages"][page_index]
-                target_page.setdefault("boxes", []).append({
-                    "x1": nx1, "y1": ny1, "x2": nx2, "y2": ny2,
-                    "confidence": 1.0, "mask": None, "manual": True,
-                })
-                boxes_snapshot = copy.deepcopy(target_page["boxes"])
+                boxes_snapshot = copy.deepcopy(target_page.get("boxes", []))
+                boxes_snapshot.append(copy.deepcopy(new_box))
                 manual_mask_posix = target_page.get("manual_mask")
 
             clean_path_posix = self._do_reinpaint(
@@ -470,6 +478,7 @@ class ChapterPipeline:
                 if page_index < 0 or page_index >= len(manifest.get("pages", [])):
                     raise ValueError(f"Chapter {chapter_id}: Invalid page_index {page_index}")
                 target_page = manifest["pages"][page_index]
+                target_page.setdefault("boxes", []).append(new_box)
                 target_page["clean"] = clean_path_posix
                 invalidate_page_render(manifest, page_index)
                 save_manifest_raw(chapter_id, manifest)
@@ -506,8 +515,8 @@ class ChapterPipeline:
                 if box_index < 0 or box_index >= len(target_boxes):
                     raise ValueError(f"Chapter {chapter_id} page {page_index}: Invalid box_index {box_index}")
 
-                target_boxes[box_index].update({"x1": nx1, "y1": ny1, "x2": nx2, "y2": ny2, "mask": None})
                 boxes_snapshot = copy.deepcopy(target_boxes)
+                boxes_snapshot[box_index].update({"x1": nx1, "y1": ny1, "x2": nx2, "y2": ny2, "mask": None})
                 manual_mask_posix = target_page.get("manual_mask")
 
             clean_path_posix = self._do_reinpaint(
@@ -519,6 +528,10 @@ class ChapterPipeline:
                 if page_index < 0 or page_index >= len(manifest.get("pages", [])):
                     raise ValueError(f"Chapter {chapter_id}: Invalid page_index {page_index}")
                 target_page = manifest["pages"][page_index]
+                target_boxes = target_page.get("boxes", [])
+                if box_index < 0 or box_index >= len(target_boxes):
+                    raise ValueError(f"Chapter {chapter_id} page {page_index}: Invalid box_index {box_index}")
+                target_boxes[box_index].update({"x1": nx1, "y1": ny1, "x2": nx2, "y2": ny2, "mask": None})
                 target_page["clean"] = clean_path_posix
                 invalidate_page_render(manifest, page_index)
                 save_manifest_raw(chapter_id, manifest)
@@ -675,17 +688,19 @@ class ChapterPipeline:
                 boxes_snapshot = copy.deepcopy(page.get("boxes", []))
 
             manual_mask_path = processed_dir / f"manual_mask_{img_path.name}"
-            if manual_mask_path.exists():
-                try:
-                    manual_mask_path.unlink()
-                except OSError as exc:
-                    raise RuntimeError(f"Cannot remove manual mask: {exc}") from exc
 
             image = read_image(img_path)
             clean_path_posix = self._do_reinpaint(
                 processed_dir, img_path, image, boxes_snapshot, manual_mask_posix=None,
                 reuse_auto_clean=True,
+                apply_manual_mask=False,
             )
+
+            if manual_mask_path.exists():
+                try:
+                    manual_mask_path.unlink()
+                except OSError as exc:
+                    raise RuntimeError(f"Cannot remove manual mask: {exc}") from exc
 
             with get_manifest_lock(chapter_id):
                 manifest = load_manifest_raw(chapter_id)
@@ -867,6 +882,7 @@ class ChapterPipeline:
         manual_mask_posix: str | None = None,
         *,
         reuse_auto_clean: bool = False,
+        apply_manual_mask: bool = True,
     ) -> str:
         boxes_objects = []
         for b in boxes:
@@ -898,7 +914,7 @@ class ChapterPipeline:
             clean_image = clean_image.copy()
 
         manual_mask_path = Path(manual_mask_posix) if manual_mask_posix else processed_dir / f"manual_mask_{img_path.name}"
-        if manual_mask_path.exists():
+        if apply_manual_mask and manual_mask_path.exists():
             raw = np.fromfile(str(manual_mask_path), dtype=np.uint8)
             manual_mask = cv2.imdecode(raw, cv2.IMREAD_GRAYSCALE)
             if manual_mask is not None and np.any(manual_mask > 10):
@@ -932,17 +948,16 @@ class ChapterPipeline:
             boxes = [b for b in boxes if not self._box_in_excluded(b, excluded_regions)]
         clean_image = self.inpainter.inpaint(image, boxes)
 
-        # A full page re-process can change the automatic boxes, so any previous
-        # automatic baseline cache is stale. If a persistent manual mask exists,
-        # cache the freshly computed automatic result before applying it.
+        # Never mutate the canonical auto-clean cache inside a worker. The page
+        # may change while detection/inpaint is running; write a job-local cache
+        # candidate and only promote it after the processing-state check passes.
         auto_clean_path = self._auto_clean_path(processed_dir, img_path)
-        if auto_clean_path.exists():
-            try:
-                auto_clean_path.unlink()
-            except OSError:
-                pass
-
         manual_mask_path = processed_dir / f"manual_mask_{img_path.name}"
+        tmp_auto_clean_path = None
+        if auto_clean_path.exists() or manual_mask_path.exists():
+            tmp_auto_clean_path = processed_dir / f"auto_clean_{img_path.name}.{uuid.uuid4().hex[:12]}.tmp.png"
+            write_image(tmp_auto_clean_path, clean_image)
+
         manual_mask_posix = None
         if manual_mask_path.exists():
             raw = np.fromfile(str(manual_mask_path), dtype=np.uint8)
@@ -956,7 +971,6 @@ class ChapterPipeline:
                         manual_mask = None
                 if manual_mask is not None and np.any(manual_mask > 10):
                     manual_mask = (manual_mask > 10).astype(np.uint8) * 255
-                    self._write_auto_clean_cache(processed_dir, img_path, clean_image)
                     clean_image = self.inpainter.inpaint_mask(clean_image.copy(), manual_mask)
                     manual_mask_posix = manual_mask_path.as_posix()
 
@@ -975,6 +989,8 @@ class ChapterPipeline:
                 for b in boxes
             ],
         }
+        if tmp_auto_clean_path is not None:
+            res["tmp_auto_clean"] = tmp_auto_clean_path.as_posix()
         if manual_mask_posix:
             res["manual_mask"] = manual_mask_posix
         return res

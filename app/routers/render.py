@@ -34,6 +34,11 @@ def _cleanup_tmp(path: Path) -> None:
         pass
 
 
+def _file_revision(path: Path) -> tuple[int, int, int]:
+    st = path.stat()
+    return (st.st_size, st.st_mtime_ns, st.st_ctime_ns)
+
+
 @router.get("/fonts")
 def get_available_fonts() -> list[dict[str, str]]:
     return list_available_fonts()
@@ -339,6 +344,11 @@ def render_page(req: RenderRequest) -> dict:
         )
 
     try:
+        base_revision = _file_revision(base_path)
+    except OSError as exc:
+        raise HTTPException(409, "Base image changed before rendering could start") from exc
+
+    try:
         image = Image.open(base_path).convert("RGB")
     except Exception as e:
         logger.exception("Failed to open base image %s", base_path)
@@ -399,6 +409,18 @@ def render_page(req: RenderRequest) -> dict:
                     k: v for k, v in m.get("drafts", {}).items()
                     if str(k).startswith(_page_prefix)
                 }
+                current_base_value = cur_page.get("clean") or cur_page.get("original")
+                current_base_path = Path(current_base_value) if current_base_value else None
+                try:
+                    base_file_changed = (
+                        current_base_path is None
+                        or current_base_path != base_path
+                        or not current_base_path.is_file()
+                        or _file_revision(current_base_path) != base_revision
+                    )
+                except OSError:
+                    base_file_changed = True
+
                 if (
                     cur_page.get("boxes", []) != boxes_snapshot
                     or cur_page.get("text_objects", []) != text_objects_snapshot
@@ -406,6 +428,7 @@ def render_page(req: RenderRequest) -> dict:
                     or cur_page.get("original") != original_snapshot
                     or cur_page.get("skipped", False) != skipped_snapshot
                     or cur_page_drafts != page_drafts_snapshot
+                    or base_file_changed
                 ):
                     state_changed = True
             else:
