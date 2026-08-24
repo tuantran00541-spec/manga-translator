@@ -6,6 +6,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from fastapi.concurrency import run_in_threadpool
 
+from app.config import PROCESSED_DIR, RAW_DIR
 from app.logging_config import logger
 from app.manifest_utils import load_manifest_raw
 from app.schemas import VisualQCInspectRequest, VisualQCKeyRequest
@@ -16,7 +17,7 @@ from app.secret_store import (
     get_gemini_api_key,
     set_gemini_api_key,
 )
-from app.security import validate_chapter_id
+from app.security import validate_chapter_id, validate_managed_path
 from app.visual_qc.batch_runner import RegionBatchRunner
 from app.visual_qc.gemini import DEFAULT_GEMINI_MODEL, GeminiVisualQC, GeminiVisualQCTimeout
 from app.visual_qc.jobs import VisualQCJobManager
@@ -36,14 +37,28 @@ chapter_qc_service = ChapterQCService(
 
 
 def _file_revision(path: Path) -> tuple[int, int, int]:
-    """Cheap identity token used to reject stale QC results after a page changes."""
     st = path.stat()
     return (st.st_size, st.st_mtime_ns, st.st_ctime_ns)
 
 
-def _page_paths(manifest: dict, page_index: int) -> tuple[Path, Path]:
+def _page_paths(manifest: dict, page_index: int, chapter_id: str) -> tuple[Path, Path]:
     page = manifest["pages"][page_index]
-    return Path(page.get("original") or ""), Path(page.get("clean") or "")
+    original_value = page.get("original")
+    cleaned_value = page.get("clean")
+    if not original_value:
+        raise HTTPException(404, "Original page image not found")
+    if not cleaned_value:
+        raise HTTPException(409, "Page has not been cleaned yet")
+    original = validate_managed_path(original_value, RAW_DIR / chapter_id)
+    cleaned = validate_managed_path(cleaned_value, PROCESSED_DIR / chapter_id)
+    return original, cleaned
+
+
+def _redact_secret(text: object, secret: str | None) -> str:
+    value = str(text)
+    if secret:
+        value = value.replace(secret, "[redacted]")
+    return value
 
 
 @router.get("/settings")
@@ -87,7 +102,7 @@ async def inspect_visual_qc(req: VisualQCInspectRequest) -> dict:
     if req.page_index < 0 or req.page_index >= len(pages):
         raise HTTPException(400, f"Invalid page_index: {req.page_index}")
 
-    original_path, cleaned_path = _page_paths(manifest, req.page_index)
+    original_path, cleaned_path = _page_paths(manifest, req.page_index, req.chapter_id)
     if not original_path.is_file():
         raise HTTPException(404, "Original page image not found")
     if not cleaned_path.is_file():
@@ -109,34 +124,32 @@ async def inspect_visual_qc(req: VisualQCInspectRequest) -> dict:
     try:
         issues = await run_in_threadpool(visual_qc.inspect, original_path, cleaned_path, api_key)
     except ValueError as exc:
-        raise HTTPException(400, str(exc)) from exc
+        raise HTTPException(400, _redact_secret(exc, api_key)) from exc
     except GeminiVisualQCTimeout as exc:
+        detail = _redact_secret(exc, api_key)
         logger.warning(
             "Chapter {} page {} Gemini visual QC timed out: {}",
             req.chapter_id,
             req.page_index,
-            exc,
+            detail,
         )
-        raise HTTPException(504, str(exc)) from exc
+        raise HTTPException(504, detail) from exc
     except Exception as exc:
-        # Do not attach a diagnostic traceback here: Gemini inspect receives the
-        # API key as an argument, and diagnostic tracebacks can expose locals.
+        detail = _redact_secret(exc, api_key)
         logger.error(
             "Chapter {} page {} Gemini visual QC failed: {}",
             req.chapter_id,
             req.page_index,
-            exc,
+            detail,
         )
-        raise HTTPException(502, str(exc)) from exc
+        raise HTTPException(502, detail) from exc
 
-    # A Gemini request can take long enough for the user to repaint/reset the page
-    # in another tab. Never apply coordinates computed against an obsolete image.
     try:
         latest_manifest = load_manifest_raw(req.chapter_id)
         latest_pages = latest_manifest.get("pages", [])
         if req.page_index >= len(latest_pages):
             raise HTTPException(409, "Page changed while Gemini was inspecting it; run AI QC again")
-        latest_original, latest_cleaned = _page_paths(latest_manifest, req.page_index)
+        latest_original, latest_cleaned = _page_paths(latest_manifest, req.page_index, req.chapter_id)
         if (
             latest_original != original_path
             or latest_cleaned != cleaned_path
