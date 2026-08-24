@@ -3,12 +3,32 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 
-from app.config import OUTPUT_DIR
+from app.config import OUTPUT_DIR, PROCESSED_DIR, RAW_DIR
 from app.logging_config import logger
 from app.manifest_utils import load_manifest_raw
-from app.security import validate_chapter_id, validate_image_size
+from app.security import validate_chapter_id, validate_image_size, validate_managed_path
 
 router = APIRouter(prefix="/api", tags=["images"])
+
+
+def _page_file_path(chapter_id: str, page: dict, field: str) -> Path | None:
+    value = page.get(field)
+    if not value:
+        return None
+    if field == "original":
+        root = RAW_DIR / chapter_id
+    elif field == "clean":
+        root = PROCESSED_DIR / chapter_id
+    else:
+        raise ValueError(f"Unsupported manifest image field: {field}")
+    return validate_managed_path(value, root)
+
+
+def _rendered_file_path(chapter_id: str, page_index: int) -> Path:
+    return validate_managed_path(
+        OUTPUT_DIR / chapter_id / f"page_{page_index:03d}.png",
+        OUTPUT_DIR / chapter_id,
+    )
 
 
 @router.get("/image/{chapter_id}/{page_index}/{kind}")
@@ -28,25 +48,24 @@ def get_image(chapter_id: str, page_index: int, kind: str):
 
         if kind == "rendered":
             if page.get("rendered"):
-                path = OUTPUT_DIR / chapter_id / f"page_{page_index:03d}.png"
+                path = _rendered_file_path(chapter_id, page_index)
                 if not path.exists():
                     logger.warning(
                         "Chapter %s page %s: rendered=True but rendered file missing, using fallback",
                         chapter_id,
                         page_index,
                     )
-                    clean_p = Path(page["clean"]) if page.get("clean") else None
-                    path = clean_p if (clean_p and clean_p.exists()) else Path(page["original"])
+                    clean_p = _page_file_path(chapter_id, page, "clean")
+                    path = clean_p if (clean_p and clean_p.exists()) else _page_file_path(chapter_id, page, "original")
             else:
-                clean_p = Path(page["clean"]) if page.get("clean") else None
-                path = clean_p if (clean_p and clean_p.exists()) else Path(page["original"])
+                clean_p = _page_file_path(chapter_id, page, "clean")
+                path = clean_p if (clean_p and clean_p.exists()) else _page_file_path(chapter_id, page, "original")
         else:
-            field = page.get(kind) if kind != "original" else page.get("original")
-            if not field:
+            path = _page_file_path(chapter_id, page, kind)
+            if path is None:
                 raise HTTPException(404, f"{kind} image not available for page {page_index}")
-            path = Path(field)
 
-        if not path.exists():
+        if path is None or not path.exists():
             raise HTTPException(404, "Image file not found")
         validate_image_size(path)
         return FileResponse(path)
@@ -78,20 +97,20 @@ def download_page(chapter_id: str, page_index: int):
         page = pages[page_index]
 
         if page.get("rendered"):
-            path = OUTPUT_DIR / chapter_id / f"page_{page_index:03d}.png"
+            path = _rendered_file_path(chapter_id, page_index)
             if not path.exists():
                 logger.warning(
                     "Chapter %s page %s: rendered=True but rendered file missing for download, using fallback",
                     chapter_id,
                     page_index,
                 )
-                clean_p = Path(page["clean"]) if page.get("clean") else None
-                path = clean_p if (clean_p and clean_p.exists()) else Path(page["original"])
+                clean_p = _page_file_path(chapter_id, page, "clean")
+                path = clean_p if (clean_p and clean_p.exists()) else _page_file_path(chapter_id, page, "original")
         else:
-            clean_p = Path(page["clean"]) if page.get("clean") else None
-            path = clean_p if (clean_p and clean_p.exists()) else Path(page["original"])
+            clean_p = _page_file_path(chapter_id, page, "clean")
+            path = clean_p if (clean_p and clean_p.exists()) else _page_file_path(chapter_id, page, "original")
 
-        if not path.exists():
+        if path is None or not path.exists():
             raise HTTPException(404, "Output image file not found")
         validate_image_size(path)
         return FileResponse(path)
