@@ -1,0 +1,96 @@
+name: Apply Phase 4.1 production patch
+
+on:
+  pull_request:
+    branches:
+      - phase41-production-helper
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  apply:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'phase-4-1-production'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - name: Verify and apply Phase 4.1
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f phase41.patch.gz.b64
+          base64 -d phase41.patch.gz.b64 | gzip -d > /tmp/phase41.patch
+          echo "52edd1016477fe7960f94d3a2d091b20b6b3e6df96d47ba65ae9453f6be840d0  /tmp/phase41.patch" | sha256sum -c -
+
+          set +e
+          git apply --reject --whitespace=nowarn /tmp/phase41.patch
+          apply_status=$?
+          set -e
+
+          mapfile -t rejects < <(find . -name '*.rej' -print | sort)
+          if [[ ${#rejects[@]} -ne 1 || "${rejects[0]}" != "./app/pipeline.py.rej" ]]; then
+            echo "Unexpected Phase 4.1 reject set:" >&2
+            printf '%s\n' "${rejects[@]:-<none>}" >&2
+            exit 1
+          fi
+          grep -F 'logger.debug(f"Processed {img_path.name}: {len(boxes)} boxes detected (after excluded filtering)")' app/pipeline.py.rej >/dev/null
+
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('app/pipeline.py')
+          s = p.read_text(encoding='utf-8')
+          old = '''        import psutil as _psutil_debug
+          _rss_mb_debug = _psutil_debug.Process().memory_info().rss / (1024 * 1024)
+          logger.warning(f"Processed {img_path.name}: {len(boxes)} boxes, RSS={_rss_mb_debug:.1f}MB")
+          res = {
+              "tmp_clean": tmp_clean_path.as_posix(),
+              "boxes": [
+                  {
+                      "x1": b.x1, "y1": b.y1, "x2": b.x2, "y2": b.y2,
+                      "confidence": b.confidence,
+                      "mask": _encode_mask(b.mask),
+                  }
+                  for b in boxes
+              ],
+          }'''
+          new = '''        import psutil as _psutil_debug
+          _rss_mb_debug = _psutil_debug.Process().memory_info().rss / (1024 * 1024)
+          logger.warning(f"Processed {img_path.name}: {len(detector_records)} boxes, RSS={_rss_mb_debug:.1f}MB")
+          res = {
+              "tmp_clean": tmp_clean_path.as_posix(),
+              "boxes": [
+                  {
+                      **{k: v for k, v in record.items() if k != "_mask_array"},
+                      "mask": _encode_mask(record.get("_mask_array")),
+                  }
+                  for record in detector_records
+              ],
+          }'''
+          if old not in s:
+              raise SystemExit('Known current-main logger/output block was not found')
+          p.write_text(s.replace(old, new), encoding='utf-8')
+          PY
+
+          rm -f app/pipeline.py.rej
+          rm -f phase41.patch.gz.b64
+          rm -f .github/workflows/apply-ui-rewrite-from-pr.yml
+
+          grep -F 'MANIFEST_SCHEMA_VERSION = 2' app/manifest_utils.py >/dev/null
+          grep -F 'assign_stable_detector_box_ids' app/pipeline.py >/dev/null
+          grep -F 'obj["source_boxes"] = [str(cur_boxes[i]["id"])' app/routers/editor.py >/dev/null
+          grep -F 'bump_page_revision(cur_page, "render_revision")' app/routers/render.py >/dev/null
+          test -f tests/test_phase41_data_model.py
+          python -m compileall -q app tests
+          git diff --check
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat(phase4.1): add stable page and box revision model"
+          git push origin HEAD:phase-4-1-production
