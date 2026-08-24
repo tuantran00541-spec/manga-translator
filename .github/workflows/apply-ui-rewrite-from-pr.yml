@@ -27,8 +27,40 @@ jobs:
           test -f .ui-rewrite-payload/.ready
           cat .ui-rewrite-payload/part-* > /tmp/ui-rewrite.tar.gz.b64
           base64 -d /tmp/ui-rewrite.tar.gz.b64 > /tmp/ui-rewrite.tar.gz
-          echo "c42cbd1e942866a673473bb6e1a839fb7c5d66ef0fd60978bfc2f27de285b2d4  /tmp/ui-rewrite.tar.gz" | sha256sum -c -
-          tar -xzf /tmp/ui-rewrite.tar.gz -C .
+
+          tar -tzf /tmp/ui-rewrite.tar.gz > /tmp/ui-rewrite.list
+          if grep -Eq '(^/|(^|/)\.\.(/|$))' /tmp/ui-rewrite.list; then
+            echo "Unsafe path in staged archive" >&2
+            exit 1
+          fi
+
+          rm -rf /tmp/ui-rewrite-extract
+          mkdir -p /tmp/ui-rewrite-extract
+          tar -xzf /tmp/ui-rewrite.tar.gz -C /tmp/ui-rewrite-extract
+
+          cat > /tmp/ui-rewrite-files.sha256 <<'EOF'
+          60c270765f8f2d1916874829000354f079e458e562d98d391c5f5f607e3fa653  app/static/css/review-workspace.css
+          93c0a0532fb3711e26899d5cead97ac83273dae0a6301c583276b410815d23e2  app/static/js/api.js
+          9d9310c54e84316544228e79792edbe29fa338f8ffc3eb24244d0ecbba21f2f6  app/static/js/editor-box-transform.js
+          40c2d9adf4525f5d3f5dcd438c811052a0787a6c4181ef4dc40149612a974fdb  app/static/js/editor.js
+          fa0bc19f0494761230c5f800c5136791f09024eb7927821b30fd01baa1dd3ff7  app/static/js/preview.js
+          caf1df0018355001329e4d557a1a87a1080abae900bd7b494c22afaf35dc1ad6  app/static/js/review-workspace.js
+          7fee61fb94f4761f10668f0bf6a615b259ae6f720cd8a84ed5bfe51eff50e7be  app/static/js/review.js
+          248b7a1828cef3fcd3bf491b45a91fd4f758e5e2f45a1987eeb1e2c88852faa2  app/static/js/upload.js
+          4ad3b3d73ff53a3086bde99773ebd4ecf34df91fc4ab05832fe4b8a46d45fa69  app/templates/index.html
+          c47c17c76fa265dea18f6ca9f08ff1c5d80f94bcee77d2fc758d57c79329ad23  app/static/css/ui-system.css
+          2df6efe78da67268277b86bdac84b1e3341cf65b27c16fa54ca92b8a8753c437  app/static/js/ui-shell.js
+          dcfaa1c2954c8e081677cd322a24d80d4a297c0473c3a616f445fc18e66ef59c  docs/UI_GUIDELINES.md
+          480d34dd057afa98d59f1057955382187345b8c8f4da31cf7ff4929af7870640  tests/test_ui_system_contract.py
+          EOF
+
+          (cd /tmp/ui-rewrite-extract && sha256sum -c /tmp/ui-rewrite-files.sha256)
+
+          while read -r _hash path; do
+            mkdir -p "$(dirname "$path")"
+            cp "/tmp/ui-rewrite-extract/$path" "$path"
+          done < /tmp/ui-rewrite-files.sha256
+
           rm -rf .ui-rewrite-payload
           rm -f .github/workflows/apply-ui-system-rewrite.yml
 
