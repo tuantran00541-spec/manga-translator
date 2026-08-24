@@ -1,0 +1,64 @@
+name: Apply Phase 4.3 visual QC throughput
+
+on:
+  push:
+    branches:
+      - phase-4-3-visual-qc-throughput
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-phase43-visual-qc
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: phase-4-3-visual-qc-throughput
+          fetch-depth: 0
+
+      - name: Apply verified Phase 4.3 patch
+        if: hashFiles('.phase43-payload/.ready') != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/chunks.sha256 <<'EOF'
+          eaf7175a93936569829e2a0d7a929f9c02a176153644529f5dd0a66b8589948d  .phase43-payload/part-00
+          e88b521c446d476557adfeae754c7f5bc78fda57b4a8d56fa6e233894dab4154  .phase43-payload/part-01
+          a9e023127f2004be3a1d44860cada1c6d8a84d6074590f2a5868d34c44f30ee9  .phase43-payload/part-02
+          ee94e9841b72756a5370187f89a562cb6906e602f8273e7887623e1006a54d93  .phase43-payload/part-03
+          EOF
+          sha256sum -c /tmp/chunks.sha256
+          cat .phase43-payload/part-* > /tmp/phase43.patch.gz.b64
+          base64 -d /tmp/phase43.patch.gz.b64 > /tmp/phase43.patch.gz
+          echo "5b85a06cdaa61a0be6944635c9c5189c4430f8a338c65c92c4d98a3accb4ed78  /tmp/phase43.patch.gz" | sha256sum -c -
+          gzip -dc /tmp/phase43.patch.gz > /tmp/phase43.patch
+          echo "dd732852440c6102897114ce240c27775465466abbcd21118d00da18d0cefcec  /tmp/phase43.patch" | sha256sum -c -
+
+          git apply --check /tmp/phase43.patch
+          git apply /tmp/phase43.patch
+
+          rm -rf .phase43-payload
+          rm -f .github/workflows/apply-phase43-visual-qc.yml
+
+          grep -F 'class VisualQCPageSpec' app/visual_qc/gemini.py >/dev/null
+          grep -F 'def build_candidate_regions' app/visual_qc/regions.py >/dev/null
+          grep -F '@router.post("/inspect_chapter")' app/routers/visual_qc.py >/dev/null
+          grep -F 'Kiểm tra toàn chương bằng AI' app/static/js/review-workspace.js >/dev/null
+          grep -F 'Trang có lỗi tiếp theo' app/static/js/review-workspace.js >/dev/null
+          test -f tests/test_phase43_visual_qc_fastpath.py
+          test -f tests/test_phase43_visual_qc_ui.py
+          node --check app/static/js/review.js
+          node --check app/static/js/review-workspace.js
+          python -m compileall -q app tests
+          git diff --check
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "perf(phase4.3): batch visual QC by inpaint regions"
+          git push origin HEAD:phase-4-3-visual-qc-throughput
