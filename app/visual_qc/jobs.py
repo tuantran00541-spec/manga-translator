@@ -13,6 +13,7 @@ class QCWorkItem:
     work_id: str
     region_ids: tuple[str, ...]
     page_indices: tuple[int, ...]
+    mode: str = "region-clean"
 
 
 @dataclass
@@ -20,13 +21,15 @@ class VisualQCJob:
     job_id: str
     chapter_id: str
     total_regions: int
+    concurrency: int = 1
     status: str = "pending"
     completed_regions: int = 0
     passed: int = 0
     flagged: int = 0
     failed: int = 0
-    skipped: int = 0
+    skipped_pages: int = 0
     errors: list[dict] = field(default_factory=list)
+    results: list[dict] = field(default_factory=list)
     cancel_event: asyncio.Event = field(default_factory=asyncio.Event, repr=False)
     task: asyncio.Task | None = field(default=None, repr=False)
 
@@ -46,7 +49,12 @@ class VisualQCJobManager:
         self._prune_completed()
         if len(self._jobs) >= self.max_jobs:
             raise RuntimeError("Too many visual QC jobs are retained")
-        job = VisualQCJob(uuid.uuid4().hex, str(chapter_id), sum(len(item.region_ids) for item in items))
+        job = VisualQCJob(
+            job_id=uuid.uuid4().hex,
+            chapter_id=str(chapter_id),
+            total_regions=sum(len(item.region_ids) for item in items),
+            concurrency=concurrency,
+        )
         self._jobs[job.job_id] = job
         job.task = asyncio.create_task(self._run(job, list(items), worker, concurrency))
         return job
@@ -73,16 +81,41 @@ class VisualQCJobManager:
                             count = len(item.region_ids)
                             job.completed_regions += count
                             job.failed += count
-                            job.errors.append({"work_id": item.work_id, "region_ids": list(item.region_ids), "detail": str(exc)[:500]})
+                            job.errors.append({
+                                "work_id": item.work_id,
+                                "region_ids": list(item.region_ids),
+                                "detail": str(exc)[:500],
+                            })
                         continue
+
                     if job.cancel_event.is_set():
                         continue
-                    by_id = {d.region_id: d for d in decisions if isinstance(d, RegionBatchDecision)}
+                    by_id = {
+                        decision.region_id: decision
+                        for decision in decisions
+                        if isinstance(decision, RegionBatchDecision)
+                    }
                     for region_id in item.region_ids:
                         decision = by_id.get(region_id)
                         if decision is None:
                             job.failed += 1
-                        elif decision.status == "pass":
+                            continue
+                        job.results.append({
+                            "page_index": decision.page_index,
+                            "region_id": decision.region_id,
+                            "status": decision.status,
+                            "issues": [
+                                {
+                                    "issue_type": issue.issue_type,
+                                    "confidence": issue.confidence,
+                                    "bbox": list(issue.bbox),
+                                    "reason": issue.reason,
+                                    "recommended_action": issue.recommended_action,
+                                }
+                                for issue in decision.issues
+                            ],
+                        })
+                        if decision.status == "pass":
                             job.passed += 1
                         elif decision.status in {"flagged", "ambiguous"}:
                             job.flagged += 1
@@ -120,17 +153,23 @@ class VisualQCJobManager:
             "job_id": job.job_id,
             "chapter_id": job.chapter_id,
             "status": job.status,
+            "concurrency": job.concurrency,
             "total_regions": job.total_regions,
             "completed_regions": job.completed_regions,
             "pending_regions": max(0, job.total_regions - job.completed_regions),
             "passed": job.passed,
             "flagged": job.flagged,
             "failed": job.failed,
-            "skipped": job.skipped,
+            "skipped_pages": job.skipped_pages,
+            "cancel_requested": job.cancel_event.is_set(),
             "errors": [dict(error) for error in job.errors],
+            "results": [dict(result) for result in job.results],
         }
 
     def _prune_completed(self) -> None:
-        removable = [job_id for job_id, job in self._jobs.items() if job.status in {"completed", "cancelled"}]
+        removable = [
+            job_id for job_id, job in self._jobs.items()
+            if job.status in {"completed", "cancelled"}
+        ]
         while len(self._jobs) >= self.max_jobs and removable:
             self._jobs.pop(removable.pop(0), None)
