@@ -28,6 +28,7 @@ def _env_batch_size(name: str, default: int) -> int:
 DEFAULT_GLOBAL_BATCH_SIZE = _env_batch_size("GEMINI_VISUAL_QC_GLOBAL_BATCH_SIZE", 2)
 DEFAULT_REGION_BATCH_SIZE = _env_batch_size("GEMINI_VISUAL_QC_REGION_BATCH_SIZE", 4)
 DEFAULT_PAIR_BATCH_SIZE = _env_batch_size("GEMINI_VISUAL_QC_PAIR_BATCH_SIZE", 2)
+_IMAGES_UNAVAILABLE = "Page images are no longer available for visual QC"
 
 
 class StaleVisualQCResult(RuntimeError):
@@ -76,36 +77,47 @@ def _decision_to_dict(decision: RegionBatchDecision) -> dict:
     }
 
 
+def _cached_issue_from_dict(item: object, region: QCRegion) -> RegionBatchIssue | None:
+    if not isinstance(item, dict):
+        return None
+    bbox = item.get("bbox")
+    if not isinstance(bbox, (list, tuple)) or len(bbox) != 4:
+        return None
+    try:
+        box = tuple(int(v) for v in bbox)
+        confidence = float(item.get("confidence", 0.0))
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return RegionBatchIssue(
+        page_index=region.page_index,
+        region_id=region.region_id,
+        issue_type=str(item.get("issue_type") or "unknown"),
+        confidence=max(0.0, min(1.0, confidence)),
+        bbox=box,
+        reason=str(item.get("reason") or "")[:500],
+        recommended_action=str(item.get("recommended_action") or "review"),
+    )
+
+
 def _decision_from_dict(raw: dict | None, region: QCRegion) -> RegionBatchDecision | None:
     if not isinstance(raw, dict) or raw.get("region_id") != region.region_id:
         return None
     status = str(raw.get("status") or "")
     if status not in {"pass", "flagged", "ambiguous"}:
         return None
-    issues: list[RegionBatchIssue] = []
-    for item in raw.get("issues") or []:
-        if not isinstance(item, dict):
-            continue
-        bbox = item.get("bbox")
-        if not isinstance(bbox, (list, tuple)) or len(bbox) != 4:
-            continue
-        try:
-            box = tuple(int(v) for v in bbox)
-            confidence = float(item.get("confidence", 0.0))
-        except (TypeError, ValueError, OverflowError):
-            continue
-        issues.append(
-            RegionBatchIssue(
-                page_index=region.page_index,
-                region_id=region.region_id,
-                issue_type=str(item.get("issue_type") or "unknown"),
-                confidence=max(0.0, min(1.0, confidence)),
-                bbox=box,
-                reason=str(item.get("reason") or "")[:500],
-                recommended_action=str(item.get("recommended_action") or "review"),
-            )
-        )
-    return RegionBatchDecision(region.page_index, region.region_id, status, tuple(issues))
+    issues = tuple(
+        issue
+        for item in (raw.get("issues") or [])
+        if (issue := _cached_issue_from_dict(item, region)) is not None
+    )
+    return RegionBatchDecision(region.page_index, region.region_id, status, issues)
+
+
+def _needs_pair(decision: RegionBatchDecision) -> bool:
+    return decision.status == "ambiguous" or any(
+        issue.recommended_action in {"review_original", "deep_qc"}
+        for issue in decision.issues
+    )
 
 
 class ChapterQCService:
@@ -194,6 +206,39 @@ class ChapterQCService:
         job.skipped_pages = len(plan.skipped_pages)
         return job
 
+    @staticmethod
+    def _managed_page_paths(chapter_id: str, page: dict) -> tuple[Path, Path]:
+        original_value = str(page.get("original") or "")
+        clean_value = str(page.get("clean") or "")
+        if not original_value or not clean_value:
+            raise StaleVisualQCResult(_IMAGES_UNAVAILABLE)
+        original_path = validate_managed_path(original_value, RAW_DIR / chapter_id)
+        clean_path = validate_managed_path(clean_value, PROCESSED_DIR / chapter_id)
+        if not original_path.is_file() or not clean_path.is_file():
+            raise StaleVisualQCResult(_IMAGES_UNAVAILABLE)
+        return original_path, clean_path
+
+    def _snapshot_page(
+        self,
+        chapter_id: str,
+        page_index: int,
+        page: dict,
+        planned_revisions: dict[int, tuple[int, int, int]],
+    ) -> _PageSnapshot:
+        if _page_revision_tuple(page) != planned_revisions.get(page_index):
+            raise StaleVisualQCResult("Page revision changed before visual QC could start")
+        original_path, clean_path = self._managed_page_paths(chapter_id, page)
+        page["original"] = str(original_path)
+        page["clean"] = str(clean_path)
+        return _PageSnapshot(
+            page_index,
+            *_page_revision_tuple(page),
+            str(original_path),
+            str(clean_path),
+            _file_revision(original_path),
+            _file_revision(clean_path),
+        )
+
     def _snapshot(self, chapter_id: str, page_indices: tuple[int, ...], planned_revisions: dict[int, tuple[int, int, int]]):
         with self.manifest_lock(chapter_id):
             manifest = self.manifest_loader(chapter_id)
@@ -202,28 +247,40 @@ class ChapterQCService:
         for page_index in page_indices:
             if page_index < 0 or page_index >= len(pages):
                 raise StaleVisualQCResult("Page changed before visual QC could start")
-            page = pages[page_index]
-            if _page_revision_tuple(page) != planned_revisions.get(page_index):
-                raise StaleVisualQCResult("Page revision changed before visual QC could start")
-            original_value = str(page.get("original") or "")
-            clean_value = str(page.get("clean") or "")
-            if not original_value or not clean_value:
-                raise StaleVisualQCResult("Page images are no longer available for visual QC")
-            original_path = validate_managed_path(original_value, RAW_DIR / chapter_id)
-            clean_path = validate_managed_path(clean_value, PROCESSED_DIR / chapter_id)
-            if not original_path.is_file() or not clean_path.is_file():
-                raise StaleVisualQCResult("Page images are no longer available for visual QC")
-            page["original"] = str(original_path)
-            page["clean"] = str(clean_path)
-            snapshots[page_index] = _PageSnapshot(
+            snapshots[page_index] = self._snapshot_page(
+                chapter_id,
                 page_index,
-                *_page_revision_tuple(page),
-                str(original_path),
-                str(clean_path),
-                _file_revision(original_path),
-                _file_revision(clean_path),
+                pages[page_index],
+                planned_revisions,
             )
         return manifest, snapshots
+
+    def _assert_snapshot_page_current(
+        self,
+        chapter_id: str,
+        page: dict,
+        snapshot: _PageSnapshot,
+        *,
+        during_commit: bool = False,
+    ) -> None:
+        expected_revision = (
+            snapshot.source_revision,
+            snapshot.process_revision,
+            snapshot.clean_revision,
+        )
+        if _page_revision_tuple(page) != expected_revision:
+            suffix = "before visual QC cache commit" if during_commit else "while visual QC was running"
+            raise StaleVisualQCResult(f"Page revision changed {suffix}")
+        original_path, clean_path = self._managed_page_paths(chapter_id, page)
+        if str(original_path) != snapshot.original_path or str(clean_path) != snapshot.clean_path:
+            suffix = "before visual QC cache commit" if during_commit else "while visual QC was running"
+            raise StaleVisualQCResult(f"Page image path changed {suffix}")
+        if _file_revision(original_path) != snapshot.original_file_revision:
+            suffix = "before visual QC cache commit" if during_commit else "while visual QC was running"
+            raise StaleVisualQCResult(f"Original image changed {suffix}")
+        if _file_revision(clean_path) != snapshot.clean_file_revision:
+            suffix = "before visual QC cache commit" if during_commit else "while visual QC was running"
+            raise StaleVisualQCResult(f"Clean image changed {suffix}")
 
     def _assert_current(self, chapter_id: str, snapshots: dict[int, _PageSnapshot]) -> dict:
         with self.manifest_lock(chapter_id):
@@ -232,19 +289,11 @@ class ChapterQCService:
             for page_index, snapshot in snapshots.items():
                 if page_index >= len(pages):
                     raise StaleVisualQCResult("Page changed while visual QC was running")
-                page = pages[page_index]
-                if _page_revision_tuple(page) != (snapshot.source_revision, snapshot.process_revision, snapshot.clean_revision):
-                    raise StaleVisualQCResult("Page revision changed while visual QC was running")
-                original_value = str(page.get("original") or "")
-                clean_value = str(page.get("clean") or "")
-                if not original_value or not clean_value:
-                    raise StaleVisualQCResult("Page images are no longer available for visual QC")
-                original_path = validate_managed_path(original_value, RAW_DIR / chapter_id)
-                clean_path = validate_managed_path(clean_value, PROCESSED_DIR / chapter_id)
-                if str(original_path) != snapshot.original_path or str(clean_path) != snapshot.clean_path:
-                    raise StaleVisualQCResult("Page image path changed while visual QC was running")
-                if _file_revision(original_path) != snapshot.original_file_revision or _file_revision(clean_path) != snapshot.clean_file_revision:
-                    raise StaleVisualQCResult("Page image changed while visual QC was running")
+                self._assert_snapshot_page_current(
+                    chapter_id,
+                    pages[page_index],
+                    snapshot,
+                )
             return manifest
 
     def _cached_decision(self, manifest: dict, snapshots: dict[int, _PageSnapshot], region: QCRegion, mode: str):
@@ -260,92 +309,169 @@ class ChapterQCService:
         )
         return _decision_from_dict(raw, region)
 
-    async def _execute_item(self, chapter_id: str, item: QCWorkItem, regions_by_id: dict[str, QCRegion], planned_revisions: dict[int, tuple[int, int, int]], api_key: str) -> list[RegionBatchDecision]:
-        manifest, snapshots = self._snapshot(chapter_id, item.page_indices, planned_revisions)
-        ordered_regions = [regions_by_id[region_id] for region_id in item.region_ids]
+    def _partition_cached(
+        self,
+        manifest: dict,
+        snapshots: dict[int, _PageSnapshot],
+        regions: list[QCRegion],
+        mode: str,
+    ) -> tuple[dict[str, RegionBatchDecision], list[str]]:
         decisions: dict[str, RegionBatchDecision] = {}
         fresh_ids: list[str] = []
-        pending_cache: list[tuple[str, RegionBatchDecision]] = []
-
-        for region in ordered_regions:
-            cached = self._cached_decision(manifest, snapshots, region, item.mode)
+        for region in regions:
+            cached = self._cached_decision(manifest, snapshots, region, mode)
             if cached is None:
                 fresh_ids.append(region.region_id)
             else:
                 decisions[region.region_id] = cached
+        return decisions, fresh_ids
 
-        if fresh_ids:
-            subitem = QCWorkItem(item.work_id, tuple(fresh_ids), item.page_indices, item.mode)
-            fresh = await asyncio.to_thread(self.runner.inspect, subitem, manifest, regions_by_id, api_key)
-            self._assert_current(chapter_id, snapshots)
-            for decision in fresh:
-                if decision.region_id not in fresh_ids:
-                    continue
-                decisions[decision.region_id] = decision
-                pending_cache.append((item.mode, decision))
+    async def _inspect_ids(
+        self,
+        chapter_id: str,
+        item: QCWorkItem,
+        region_ids: list[str],
+        mode: str,
+        manifest: dict,
+        regions_by_id: dict[str, QCRegion],
+        snapshots: dict[int, _PageSnapshot],
+        api_key: str,
+    ) -> list[RegionBatchDecision]:
+        if not region_ids:
+            return []
+        subitem = QCWorkItem(item.work_id, tuple(region_ids), item.page_indices, mode)
+        decisions = await asyncio.to_thread(
+            self.runner.inspect,
+            subitem,
+            manifest,
+            regions_by_id,
+            api_key,
+        )
+        self._assert_current(chapter_id, snapshots)
+        allowed = set(region_ids)
+        return [decision for decision in decisions if decision.region_id in allowed]
+
+    @staticmethod
+    def _merge_fresh(
+        decisions: dict[str, RegionBatchDecision],
+        pending_cache: list[tuple[str, RegionBatchDecision]],
+        mode: str,
+        fresh: list[RegionBatchDecision],
+    ) -> None:
+        for decision in fresh:
+            decisions[decision.region_id] = decision
+            pending_cache.append((mode, decision))
+
+    def _pair_fallback_ids(
+        self,
+        manifest: dict,
+        snapshots: dict[int, _PageSnapshot],
+        regions: list[QCRegion],
+        decisions: dict[str, RegionBatchDecision],
+    ) -> list[str]:
+        fallback_ids: list[str] = []
+        for region in regions:
+            decision = decisions.get(region.region_id)
+            if decision is None or not _needs_pair(decision):
+                continue
+            pair_cached = self._cached_decision(
+                manifest,
+                snapshots,
+                region,
+                "region-pair",
+            )
+            if pair_cached is None:
+                fallback_ids.append(region.region_id)
+            else:
+                decisions[region.region_id] = pair_cached
+        return fallback_ids
+
+    def _commit_cache(
+        self,
+        chapter_id: str,
+        snapshots: dict[int, _PageSnapshot],
+        pending_cache: list[tuple[str, RegionBatchDecision]],
+    ) -> None:
+        if not pending_cache:
+            return
+        with self.manifest_lock(chapter_id):
+            latest = self.manifest_loader(chapter_id)
+            pages = latest.get("pages") or []
+            for page_index, snapshot in snapshots.items():
+                if page_index >= len(pages):
+                    raise StaleVisualQCResult("Page changed before visual QC cache commit")
+                self._assert_snapshot_page_current(
+                    chapter_id,
+                    pages[page_index],
+                    snapshot,
+                    during_commit=True,
+                )
+            for mode, decision in pending_cache:
+                page = pages[decision.page_index]
+                snapshot = snapshots[decision.page_index]
+                store_region_qc_cache(
+                    page,
+                    region_id=decision.region_id,
+                    model=self.model,
+                    mode=mode,
+                    clean_file_revision=snapshot.clean_file_revision,
+                    source_file_revision=(snapshot.original_file_revision if mode == "region-pair" else None),
+                    result=_decision_to_dict(decision),
+                )
+            self.manifest_saver(chapter_id, latest)
+
+    async def _execute_item(self, chapter_id: str, item: QCWorkItem, regions_by_id: dict[str, QCRegion], planned_revisions: dict[int, tuple[int, int, int]], api_key: str) -> list[RegionBatchDecision]:
+        manifest, snapshots = self._snapshot(
+            chapter_id,
+            item.page_indices,
+            planned_revisions,
+        )
+        ordered_regions = [regions_by_id[region_id] for region_id in item.region_ids]
+        decisions, fresh_ids = self._partition_cached(
+            manifest,
+            snapshots,
+            ordered_regions,
+            item.mode,
+        )
+        pending_cache: list[tuple[str, RegionBatchDecision]] = []
+
+        fresh = await self._inspect_ids(
+            chapter_id,
+            item,
+            fresh_ids,
+            item.mode,
+            manifest,
+            regions_by_id,
+            snapshots,
+            api_key,
+        )
+        self._merge_fresh(decisions, pending_cache, item.mode, fresh)
 
         if item.mode in {"global-clean", "region-clean"}:
-            fallback_ids = []
-            for region in ordered_regions:
-                decision = decisions.get(region.region_id)
-                if decision is None:
-                    continue
-                needs_pair = decision.status == "ambiguous" or any(
-                    issue.recommended_action in {"review_original", "deep_qc"}
-                    for issue in decision.issues
-                )
-                if not needs_pair:
-                    continue
-                pair_cached = self._cached_decision(manifest, snapshots, region, "region-pair")
-                if pair_cached is not None:
-                    decisions[region.region_id] = pair_cached
-                else:
-                    fallback_ids.append(region.region_id)
+            fallback_ids = self._pair_fallback_ids(
+                manifest,
+                snapshots,
+                ordered_regions,
+                decisions,
+            )
+            pair_fresh = await self._inspect_ids(
+                chapter_id,
+                item,
+                fallback_ids,
+                "region-pair",
+                manifest,
+                regions_by_id,
+                snapshots,
+                api_key,
+            )
+            self._merge_fresh(
+                decisions,
+                pending_cache,
+                "region-pair",
+                pair_fresh,
+            )
 
-            if fallback_ids:
-                pair_item = QCWorkItem(item.work_id + "-pair", tuple(fallback_ids), item.page_indices, "region-pair")
-                pair_decisions = await asyncio.to_thread(self.runner.inspect, pair_item, manifest, regions_by_id, api_key)
-                self._assert_current(chapter_id, snapshots)
-                for decision in pair_decisions:
-                    if decision.region_id not in fallback_ids:
-                        continue
-                    decisions[decision.region_id] = decision
-                    pending_cache.append(("region-pair", decision))
-
-        if pending_cache:
-            with self.manifest_lock(chapter_id):
-                latest = self.manifest_loader(chapter_id)
-                pages = latest.get("pages") or []
-                for page_index, snapshot in snapshots.items():
-                    if page_index >= len(pages) or _page_revision_tuple(pages[page_index]) != (snapshot.source_revision, snapshot.process_revision, snapshot.clean_revision):
-                        raise StaleVisualQCResult("Page changed before visual QC cache commit")
-                    page = pages[page_index]
-                    original_value = str(page.get("original") or "")
-                    clean_value = str(page.get("clean") or "")
-                    if not original_value or not clean_value:
-                        raise StaleVisualQCResult("Page images disappeared before visual QC cache commit")
-                    original_path = validate_managed_path(original_value, RAW_DIR / chapter_id)
-                    clean_path = validate_managed_path(clean_value, PROCESSED_DIR / chapter_id)
-                    if str(original_path) != snapshot.original_path or str(clean_path) != snapshot.clean_path:
-                        raise StaleVisualQCResult("Page image path changed before visual QC cache commit")
-                    if _file_revision(original_path) != snapshot.original_file_revision:
-                        raise StaleVisualQCResult("Original image changed before visual QC cache commit")
-                    if _file_revision(clean_path) != snapshot.clean_file_revision:
-                        raise StaleVisualQCResult("Clean image changed before visual QC cache commit")
-                for mode, decision in pending_cache:
-                    page = pages[decision.page_index]
-                    snapshot = snapshots[decision.page_index]
-                    store_region_qc_cache(
-                        page,
-                        region_id=decision.region_id,
-                        model=self.model,
-                        mode=mode,
-                        clean_file_revision=snapshot.clean_file_revision,
-                        source_file_revision=(snapshot.original_file_revision if mode == "region-pair" else None),
-                        result=_decision_to_dict(decision),
-                    )
-                self.manifest_saver(chapter_id, latest)
-
+        self._commit_cache(chapter_id, snapshots, pending_cache)
         return [
             decisions.get(region.region_id)
             or RegionBatchDecision(region.page_index, region.region_id, "ambiguous", ())
