@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException
 
 from app.config import OUTPUT_DIR
 from app.logging_config import logger
-from app.manifest_utils import get_manifest_lock, load_manifest_raw, save_manifest_raw
+from app.manifest_utils import bump_page_revision, get_manifest_lock, load_manifest_raw, save_manifest_raw
 from app.render.text_renderer import list_available_fonts, render_text_in_box
 from app.schemas import RenderRequest
 from app.security import validate_chapter_id
@@ -437,6 +437,7 @@ def render_page(req: RenderRequest) -> dict:
             if not state_changed:
                 os.replace(tmp_path, final_path)
                 cur_page["rendered"] = True
+                bump_page_revision(cur_page, "render_revision")
                 if text_objects:
                     cur_text_objects = cur_page.setdefault("text_objects", [])
                     for obj in cur_text_objects:
