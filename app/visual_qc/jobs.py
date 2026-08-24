@@ -68,75 +68,97 @@ class VisualQCJobManager:
         job.task = asyncio.create_task(self._run(job, list(items), worker, concurrency))
         return job
 
+    @staticmethod
+    def _result_payload(decision: RegionBatchDecision) -> dict:
+        return {
+            "page_index": decision.page_index,
+            "region_id": decision.region_id,
+            "status": decision.status,
+            "issues": [
+                {
+                    "issue_type": issue.issue_type,
+                    "confidence": issue.confidence,
+                    "bbox": list(issue.bbox),
+                    "reason": issue.reason,
+                    "recommended_action": issue.recommended_action,
+                }
+                for issue in decision.issues
+            ],
+        }
+
+    @staticmethod
+    def _record_batch_failure(job: VisualQCJob, item: QCWorkItem, exc: Exception) -> None:
+        count = len(item.region_ids)
+        job.completed_regions += count
+        job.failed += count
+        job.errors.append({
+            "work_id": item.work_id,
+            "region_ids": list(item.region_ids),
+            "detail": "Visual QC batch failed",
+            "error_type": type(exc).__name__[:120],
+        })
+
+    def _record_decisions(
+        self,
+        job: VisualQCJob,
+        item: QCWorkItem,
+        decisions: list[RegionBatchDecision],
+    ) -> None:
+        by_id = {
+            decision.region_id: decision
+            for decision in decisions
+            if isinstance(decision, RegionBatchDecision)
+        }
+        for region_id in item.region_ids:
+            decision = by_id.get(region_id)
+            if decision is None:
+                job.failed += 1
+                continue
+            job.results.append(self._result_payload(decision))
+            if decision.status == "pass":
+                job.passed += 1
+            elif decision.status in {"flagged", "ambiguous"}:
+                job.flagged += 1
+            else:
+                job.failed += 1
+        job.completed_regions += len(item.region_ids)
+
+    async def _run_worker(
+        self,
+        job: VisualQCJob,
+        queue: asyncio.Queue[QCWorkItem],
+        worker: Worker,
+    ) -> None:
+        while not job.cancel_event.is_set():
+            try:
+                item = queue.get_nowait()
+            except asyncio.QueueEmpty:
+                return
+            try:
+                if job.cancel_event.is_set():
+                    return
+                try:
+                    decisions = await worker(item)
+                except Exception as exc:
+                    if not job.cancel_event.is_set():
+                        self._record_batch_failure(job, item, exc)
+                    continue
+                if not job.cancel_event.is_set():
+                    self._record_decisions(job, item, decisions)
+            finally:
+                queue.task_done()
+
     async def _run(self, job: VisualQCJob, items: list[QCWorkItem], worker: Worker, concurrency: int) -> None:
         job.status = "running"
         queue: asyncio.Queue[QCWorkItem] = asyncio.Queue()
         for item in items:
             queue.put_nowait(item)
 
-        async def run_worker() -> None:
-            while not job.cancel_event.is_set():
-                try:
-                    item = queue.get_nowait()
-                except asyncio.QueueEmpty:
-                    return
-                try:
-                    if job.cancel_event.is_set():
-                        return
-                    try:
-                        decisions = await worker(item)
-                    except Exception as exc:
-                        if not job.cancel_event.is_set():
-                            count = len(item.region_ids)
-                            job.completed_regions += count
-                            job.failed += count
-                            job.errors.append({
-                                "work_id": item.work_id,
-                                "region_ids": list(item.region_ids),
-                                "detail": "Visual QC batch failed",
-                                "error_type": type(exc).__name__[:120],
-                            })
-                        continue
-
-                    if job.cancel_event.is_set():
-                        continue
-                    by_id = {
-                        decision.region_id: decision
-                        for decision in decisions
-                        if isinstance(decision, RegionBatchDecision)
-                    }
-                    for region_id in item.region_ids:
-                        decision = by_id.get(region_id)
-                        if decision is None:
-                            job.failed += 1
-                            continue
-                        job.results.append({
-                            "page_index": decision.page_index,
-                            "region_id": decision.region_id,
-                            "status": decision.status,
-                            "issues": [
-                                {
-                                    "issue_type": issue.issue_type,
-                                    "confidence": issue.confidence,
-                                    "bbox": list(issue.bbox),
-                                    "reason": issue.reason,
-                                    "recommended_action": issue.recommended_action,
-                                }
-                                for issue in decision.issues
-                            ],
-                        })
-                        if decision.status == "pass":
-                            job.passed += 1
-                        elif decision.status in {"flagged", "ambiguous"}:
-                            job.flagged += 1
-                        else:
-                            job.failed += 1
-                    job.completed_regions += len(item.region_ids)
-                finally:
-                    queue.task_done()
-
         worker_count = min(concurrency, max(1, len(items))) if items else 0
-        tasks = [asyncio.create_task(run_worker()) for _ in range(worker_count)]
+        tasks = [
+            asyncio.create_task(self._run_worker(job, queue, worker))
+            for _ in range(worker_count)
+        ]
         if tasks:
             await asyncio.gather(*tasks)
         job.status = "cancelled" if job.cancel_event.is_set() else "completed"
