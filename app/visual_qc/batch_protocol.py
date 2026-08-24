@@ -58,29 +58,41 @@ def _map_relative_box(box_2d: object, region: QCRegion) -> tuple[int, int, int, 
     return x1, y1, x2, y2
 
 
+def _parse_issue(raw_issue: object, region: QCRegion) -> RegionBatchIssue | None:
+    if not isinstance(raw_issue, dict):
+        return None
+    issue_type = str(raw_issue.get("issue_type") or "")
+    if issue_type not in _ALLOWED_ISSUE_TYPES:
+        return None
+    try:
+        confidence = float(raw_issue.get("confidence", 0.0))
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(confidence):
+        return None
+    bbox = _map_relative_box(raw_issue.get("box_2d"), region)
+    if bbox is None:
+        return None
+    action = str(raw_issue.get("recommended_action") or "review")
+    if action not in _ALLOWED_ACTIONS:
+        action = "review"
+    return RegionBatchIssue(
+        region.page_index,
+        region.region_id,
+        issue_type,
+        max(0.0, min(1.0, confidence)),
+        bbox,
+        str(raw_issue.get("reason") or "")[:500],
+        action,
+    )
+
+
 def _parse_region_issues(raw_region: dict, region: QCRegion) -> tuple[RegionBatchIssue, ...]:
-    out: list[RegionBatchIssue] = []
-    for raw_issue in raw_region.get("issues") or []:
-        if not isinstance(raw_issue, dict):
-            continue
-        issue_type = str(raw_issue.get("issue_type") or "")
-        if issue_type not in _ALLOWED_ISSUE_TYPES:
-            continue
-        try:
-            confidence = float(raw_issue.get("confidence", 0.0))
-        except (TypeError, ValueError):
-            continue
-        if not math.isfinite(confidence):
-            continue
-        confidence = max(0.0, min(1.0, confidence))
-        bbox = _map_relative_box(raw_issue.get("box_2d"), region)
-        if bbox is None:
-            continue
-        action = str(raw_issue.get("recommended_action") or "review")
-        if action not in _ALLOWED_ACTIONS:
-            action = "review"
-        out.append(RegionBatchIssue(region.page_index, region.region_id, issue_type, confidence, bbox, str(raw_issue.get("reason") or "")[:500], action))
-    return tuple(out)
+    return tuple(
+        issue
+        for raw_issue in (raw_region.get("issues") or [])
+        if (issue := _parse_issue(raw_issue, region)) is not None
+    )
 
 
 def parse_region_batch_decisions(parsed: dict, regions_by_id: dict[str, QCRegion]) -> list[RegionBatchDecision]:
