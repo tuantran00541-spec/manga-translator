@@ -61,6 +61,15 @@ def _redact_secret(text: object, secret: str | None) -> str:
     return value
 
 
+def _raise_job_capacity_error(exc: RuntimeError) -> None:
+    detail = str(exc)
+    if detail == "Visual QC is already running for this chapter":
+        raise HTTPException(409, detail) from exc
+    if detail in {"Too many active visual QC jobs", "Too many visual QC jobs are retained"}:
+        raise HTTPException(429, detail) from exc
+    raise HTTPException(500, "Could not start chapter visual QC") from exc
+
+
 @router.get("/settings")
 def visual_qc_settings() -> dict:
     status = gemini_key_status()
@@ -184,11 +193,15 @@ async def start_chapter_visual_qc(req: VisualQCChapterRequest) -> dict:
     validate_chapter_id(req.chapter_id)
     try:
         job = await chapter_qc_service.start(req.chapter_id, concurrency=req.concurrency)
+    except HTTPException:
+        raise
     except SecretStoreUnavailable as exc:
         raise HTTPException(503, str(exc)) from exc
     except ValueError as exc:
         status = 409 if "API key" in str(exc) else 400
         raise HTTPException(status, str(exc)) from exc
+    except RuntimeError as exc:
+        _raise_job_capacity_error(exc)
     except Exception as exc:
         logger.error("Chapter {} visual QC job failed to start: {}", req.chapter_id, exc)
         raise HTTPException(500, "Could not start chapter visual QC") from exc
@@ -227,9 +240,13 @@ async def retry_failed_chapter_visual_qc(job_id: str) -> dict:
             previous["chapter_id"],
             concurrency=int(previous.get("concurrency") or 2),
         )
+    except HTTPException:
+        raise
     except SecretStoreUnavailable as exc:
         raise HTTPException(503, str(exc)) from exc
     except ValueError as exc:
         status = 409 if "API key" in str(exc) else 400
         raise HTTPException(status, str(exc)) from exc
+    except RuntimeError as exc:
+        _raise_job_capacity_error(exc)
     return chapter_qc_jobs.snapshot(job.job_id)
