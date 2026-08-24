@@ -42,38 +42,53 @@ class RegionBatchRunner:
             raise ValueError(f"Invalid crop for {region.region_id}")
         return image[y1:y2, x1:x2]
 
+    @staticmethod
+    def _page_for_region(pages: list, region: QCRegion) -> dict:
+        if region.page_index < 0 or region.page_index >= len(pages):
+            raise ValueError(f"Invalid page index for {region.region_id}")
+        page = pages[region.page_index]
+        if not isinstance(page, dict):
+            raise ValueError(f"Invalid page data for {region.region_id}")
+        return page
+
+    def _cached_page_image(
+        self,
+        cache: dict[int, np.ndarray],
+        page: dict,
+        region: QCRegion,
+        field: str,
+    ) -> np.ndarray:
+        if region.page_index not in cache:
+            cache[region.page_index] = self._read(page.get(field) or "")
+        return cache[region.page_index]
+
+    def _build_clean_sheet(self, regions: list[QCRegion], pages: list):
+        clean_cache: dict[int, np.ndarray] = {}
+        crops = []
+        for region in regions:
+            page = self._page_for_region(pages, region)
+            clean = self._cached_page_image(clean_cache, page, region, "clean")
+            crops.append((region, self._crop(clean, region)))
+        return build_contact_sheet(crops)
+
+    def _build_pair_sheet(self, regions: list[QCRegion], pages: list):
+        clean_cache: dict[int, np.ndarray] = {}
+        original_cache: dict[int, np.ndarray] = {}
+        pairs = []
+        for region in regions:
+            page = self._page_for_region(pages, region)
+            original = self._cached_page_image(original_cache, page, region, "original")
+            clean = self._cached_page_image(clean_cache, page, region, "clean")
+            pairs.append((region, self._crop(original, region), self._crop(clean, region)))
+        return build_pair_contact_sheet(pairs)
+
     def inspect(self, item: QCWorkItem, manifest: dict, regions_by_id: dict[str, QCRegion], api_key: str) -> list[RegionBatchDecision]:
         regions = [regions_by_id[region_id] for region_id in item.region_ids]
         pages = manifest.get("pages") or []
-        clean_cache: dict[int, np.ndarray] = {}
-        original_cache: dict[int, np.ndarray] = {}
-
         if item.mode in {"global-clean", "region-clean"}:
-            crops = []
-            for region in regions:
-                if region.page_index < 0 or region.page_index >= len(pages):
-                    raise ValueError(f"Invalid page index for {region.region_id}")
-                page = pages[region.page_index]
-                if region.page_index not in clean_cache:
-                    clean_cache[region.page_index] = self._read(page.get("clean") or "")
-                crops.append((region, self._crop(clean_cache[region.page_index], region)))
-            sheet = build_contact_sheet(crops)
+            sheet = self._build_clean_sheet(regions, pages)
         elif item.mode == "region-pair":
-            pairs = []
-            for region in regions:
-                if region.page_index < 0 or region.page_index >= len(pages):
-                    raise ValueError(f"Invalid page index for {region.region_id}")
-                page = pages[region.page_index]
-                if region.page_index not in clean_cache:
-                    clean_cache[region.page_index] = self._read(page.get("clean") or "")
-                if region.page_index not in original_cache:
-                    original_cache[region.page_index] = self._read(page.get("original") or "")
-                pairs.append((
-                    region,
-                    self._crop(original_cache[region.page_index], region),
-                    self._crop(clean_cache[region.page_index], region),
-                ))
-            sheet = build_pair_contact_sheet(pairs)
+            sheet = self._build_pair_sheet(regions, pages)
         else:
             raise ValueError(f"Unsupported QC work mode: {item.mode}")
 
