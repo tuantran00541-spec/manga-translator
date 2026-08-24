@@ -1,15 +1,104 @@
+function createReviewCard(pageIndex, maskSnapshot = null) {
+  const page = currentManifest?.pages?.[pageIndex];
+  if (!page || page.skipped) return null;
+
+  const card = document.createElement("div");
+  card.className = "review-card";
+  card.dataset.pageIndex = pageIndex;
+
+  const label = document.createElement("div");
+  label.className = "page-block-label";
+  label.textContent = pageLabel(currentManifest.pages, pageIndex);
+  card.appendChild(label);
+
+  const controls = document.createElement("div");
+  controls.className = "review-controls review-controls-top";
+
+  const brushBtn = document.createElement("button");
+  brushBtn.className = "brush-toggle-btn";
+  brushBtn.textContent = "Đánh dấu vùng lỗi";
+  controls.appendChild(brushBtn);
+
+  const clearBtn = document.createElement("button");
+  clearBtn.className = "clear-brush-btn";
+  clearBtn.textContent = "Xóa nét đánh dấu";
+  controls.appendChild(clearBtn);
+
+  const submitBtn = document.createElement("button");
+  submitBtn.className = "repaint-btn";
+  submitBtn.textContent = "Xử lý vùng đánh dấu";
+  controls.appendChild(submitBtn);
+
+  const resetManualBtn = document.createElement("button");
+  resetManualBtn.className = "reset-manual-btn";
+  resetManualBtn.textContent = "Xóa vùng chỉnh sửa";
+  controls.appendChild(resetManualBtn);
+
+  const aiQcBtn = document.createElement("button");
+  aiQcBtn.type = "button";
+  aiQcBtn.className = "ai-qc-btn";
+  aiQcBtn.textContent = "Kiểm tra bằng AI";
+  aiQcBtn.title = "So sánh ảnh nguồn và ảnh đã xử lý để phát hiện vùng cần kiểm tra lại";
+  controls.appendChild(aiQcBtn);
+
+  const brushSizeWrap = document.createElement("label");
+  brushSizeWrap.className = "brush-size-control";
+  brushSizeWrap.textContent = "Kích thước cọ ";
+  const brushSizeValue = document.createElement("output");
+  brushSizeValue.className = "brush-size-value";
+  brushSizeValue.textContent = "—";
+  const brushSize = document.createElement("input");
+  brushSize.type = "range";
+  brushSize.min = "8";
+  brushSize.max = "80";
+  brushSize.step = "1";
+  brushSize.className = "brush-size-slider";
+  brushSize.title = "Điều chỉnh kích thước cọ";
+  brushSizeWrap.append(brushSize, brushSizeValue);
+  controls.appendChild(brushSizeWrap);
+  card.appendChild(controls);
+
+  const wrap = document.createElement("div");
+  wrap.className = "review-image-wrap";
+  const img = document.createElement("img");
+  const canvas = document.createElement("canvas");
+  canvas.className = "brush-canvas";
+  wrap.append(img, canvas);
+  card.appendChild(wrap);
+
+  let initialized = false;
+  const restoreSnapshot = () => {
+    if (!maskSnapshot || !canvas.width || !canvas.height) return;
+    const overlay = new Image();
+    overlay.onload = () => {
+      if (!canvas.isConnected) return;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(overlay, 0, 0, canvas.width, canvas.height);
+      canvas._reviewDirty = true;
+    };
+    overlay.src = maskSnapshot;
+  };
+  const initBrush = () => {
+    if (initialized || !canvas.isConnected || !img.naturalWidth) return;
+    initialized = true;
+    setupBrush(pageIndex, img, canvas, wrap, brushBtn, clearBtn, submitBtn, resetManualBtn, aiQcBtn, brushSize, brushSizeValue);
+    restoreSnapshot();
+  };
+  img.addEventListener("load", initBrush, { once: true });
+  img.src = page.clean + "?t=" + Date.now();
+  card._mountReview = initBrush;
+  return card;
+}
+window.createReviewCard = createReviewCard;
+
 function renderReview() {
   const container = document.getElementById("page-view");
   if (!container) return;
 
   container.querySelectorAll(".brush-canvas").forEach((canvas) => {
-    if (typeof canvas._cleanupBrush === "function") {
-      canvas._cleanupBrush();
-    } else if (canvas._brushAbort) {
-      canvas._brushAbort.abort();
-    }
+    if (typeof canvas._cleanupBrush === "function") canvas._cleanupBrush();
+    else if (canvas._brushAbort) canvas._brushAbort.abort();
   });
-
   container.innerHTML = "";
   container.className = "";
 
@@ -23,11 +112,9 @@ function renderReview() {
 
   const geminiConfig = document.createElement("div");
   geminiConfig.className = "gemini-qc-config";
-
   const geminiStatus = document.createElement("span");
   geminiStatus.className = "gemini-qc-status";
   geminiStatus.textContent = "Kiểm tra AI: Đang kiểm tra cấu hình…";
-
   const geminiKeyInput = document.createElement("input");
   geminiKeyInput.type = "password";
   geminiKeyInput.className = "gemini-key-input";
@@ -35,21 +122,17 @@ function renderReview() {
   geminiKeyInput.autocomplete = "off";
   geminiKeyInput.spellcheck = false;
   geminiKeyInput.setAttribute("aria-label", "Gemini API key");
-
   const geminiSaveBtn = document.createElement("button");
   geminiSaveBtn.type = "button";
   geminiSaveBtn.className = "gemini-key-save-btn";
   geminiSaveBtn.textContent = "Lưu khóa API";
-
   const geminiClearBtn = document.createElement("button");
   geminiClearBtn.type = "button";
   geminiClearBtn.className = "gemini-key-clear-btn";
   geminiClearBtn.textContent = "Xóa khóa API";
-
   const geminiPrivacyNote = document.createElement("span");
   geminiPrivacyNote.className = "gemini-qc-privacy-note";
   geminiPrivacyNote.textContent = "Ảnh gốc và ảnh đã xử lý sẽ được gửi đến Gemini để kiểm tra chất lượng.";
-
   geminiConfig.append(geminiStatus, geminiKeyInput, geminiSaveBtn, geminiClearBtn, geminiPrivacyNote);
   toolbar.appendChild(geminiConfig);
   setupGeminiQCSettings(geminiStatus, geminiKeyInput, geminiSaveBtn, geminiClearBtn);
@@ -62,104 +145,24 @@ function renderReview() {
     });
     const activeCard = container.querySelector(".review-canvas-host .review-card") || container.querySelector(".review-card");
     const canonicalIndex = activeCard ? (parseInt(activeCard.dataset.pageIndex, 10) || 0) : 0;
-    if (window.editorState) {
-      window.editorState.activePageIndex = canonicalIndex;
-    }
-    if (typeof setWorkflowCheckpoint === "function") {
-      setWorkflowCheckpoint("editor", canonicalIndex);
-    }
+    if (window.editorState) window.editorState.activePageIndex = canonicalIndex;
+    if (typeof setWorkflowCheckpoint === "function") setWorkflowCheckpoint("editor", canonicalIndex);
     renderEditor();
   });
   toolbar.appendChild(nextBtn);
-
   container.appendChild(toolbar);
 
-  currentManifest.pages.forEach((page, pageIndex) => {
-    if (page.skipped) return;
-
-    const card = document.createElement("div");
-    card.className = "review-card";
-    card.dataset.pageIndex = pageIndex;
-
-    const label = document.createElement("div");
-    label.className = "page-block-label";
-    label.textContent = pageLabel(currentManifest.pages, pageIndex);
-    card.appendChild(label);
-
-    const controls = document.createElement("div");
-    controls.className = "review-controls review-controls-top";
-
-    const brushBtn = document.createElement("button");
-    brushBtn.className = "brush-toggle-btn";
-    brushBtn.textContent = "Đánh dấu vùng lỗi";
-    controls.appendChild(brushBtn);
-
-    const clearBtn = document.createElement("button");
-    clearBtn.className = "clear-brush-btn";
-    clearBtn.textContent = "Xóa nét đánh dấu";
-    controls.appendChild(clearBtn);
-
-    const submitBtn = document.createElement("button");
-    submitBtn.className = "repaint-btn";
-    submitBtn.textContent = "Xử lý vùng đánh dấu";
-    controls.appendChild(submitBtn);
-
-    const resetManualBtn = document.createElement("button");
-    resetManualBtn.className = "reset-manual-btn";
-    resetManualBtn.textContent = "Xóa vùng chỉnh sửa";
-    controls.appendChild(resetManualBtn);
-
-    const aiQcBtn = document.createElement("button");
-    aiQcBtn.type = "button";
-    aiQcBtn.className = "ai-qc-btn";
-    aiQcBtn.textContent = "Kiểm tra bằng AI";
-    aiQcBtn.title = "So sánh ảnh nguồn và ảnh đã xử lý để phát hiện vùng cần kiểm tra lại";
-    controls.appendChild(aiQcBtn);
-
-    const brushSizeWrap = document.createElement("label");
-    brushSizeWrap.className = "brush-size-control";
-    brushSizeWrap.textContent = "Kích thước cọ ";
-    const brushSizeValue = document.createElement("output");
-    brushSizeValue.className = "brush-size-value";
-    brushSizeValue.textContent = "—";
-    const brushSize = document.createElement("input");
-    brushSize.type = "range";
-    brushSize.min = "8";
-    brushSize.max = "80";
-    brushSize.step = "1";
-    brushSize.className = "brush-size-slider";
-    brushSize.title = "Điều chỉnh kích thước cọ";
-    brushSizeWrap.appendChild(brushSize);
-    brushSizeWrap.appendChild(brushSizeValue);
-    controls.appendChild(brushSizeWrap);
-
-    card.appendChild(controls);
-
-    const wrap = document.createElement("div");
-    wrap.className = "review-image-wrap";
-
-    const img = document.createElement("img");
-    img.src = page.clean + "?t=" + Date.now();
-    wrap.appendChild(img);
-
-    const canvas = document.createElement("canvas");
-    canvas.className = "brush-canvas";
-    wrap.appendChild(canvas);
-
-    card.appendChild(wrap);
-    container.appendChild(card);
-
-    const initBrush = () => {
-      if (!canvas.isConnected) return;
-      setupBrush(pageIndex, img, canvas, wrap, brushBtn, clearBtn, submitBtn, resetManualBtn, aiQcBtn, brushSize, brushSizeValue);
-    };
-
-    if (img.complete && img.naturalWidth > 0) {
-      initBrush();
-    } else {
-      img.onload = initBrush;
-    }
-  });
+  // The Review workspace owns page virtualization. Keep a fallback for builds
+  // that intentionally load review.js without review-workspace.js.
+  if (!window.REVIEW_VIRTUALIZED) {
+    currentManifest.pages.forEach((page, pageIndex) => {
+      if (page.skipped) return;
+      const card = createReviewCard(pageIndex);
+      if (!card) return;
+      container.appendChild(card);
+      if (typeof card._mountReview === "function") card._mountReview();
+    });
+  }
 }
 
 function setupBrush(pageIndex, img, canvas, wrap, brushBtn, clearBtn, submitBtn, resetManualBtn, aiQcBtn, brushSize, brushSizeValue) {
@@ -172,6 +175,7 @@ function setupBrush(pageIndex, img, canvas, wrap, brushBtn, clearBtn, submitBtn,
   const abortCtrl = new AbortController();
   const { signal } = abortCtrl;
   canvas._brushAbort = abortCtrl;
+  if (typeof canvas._reviewDirty !== "boolean") canvas._reviewDirty = false;
 
   const syncCanvasSize = () => {
     const nw = img.naturalWidth || img.width;
@@ -263,6 +267,7 @@ function setupBrush(pageIndex, img, canvas, wrap, brushBtn, clearBtn, submitBtn,
   clearBtn.addEventListener("click", () => {
     stopPainting();
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    canvas._reviewDirty = false;
   }, { signal });
 
   function getCanvasCoords(e) {
@@ -281,6 +286,7 @@ function setupBrush(pageIndex, img, canvas, wrap, brushBtn, clearBtn, submitBtn,
     ctx.beginPath();
     ctx.arc(x, y, brushRadius, 0, Math.PI * 2);
     ctx.fill();
+    canvas._reviewDirty = true;
   }
 
   function paintStrokeTo(x, y) {
@@ -290,6 +296,7 @@ function setupBrush(pageIndex, img, canvas, wrap, brushBtn, clearBtn, submitBtn,
     ctx.lineJoin = "round";
     ctx.lineTo(x, y);
     ctx.stroke();
+    canvas._reviewDirty = true;
   }
 
   const handleStart = (e) => {
@@ -306,7 +313,7 @@ function setupBrush(pageIndex, img, canvas, wrap, brushBtn, clearBtn, submitBtn,
       stopPainting(e);
       if (!srcData) refreshSrcData();
       if (srcData) {
-        floodFillSelect(ctx, srcData, x, y, canvas.width, canvas.height);
+        if (floodFillSelect(ctx, srcData, x, y, canvas.width, canvas.height)) canvas._reviewDirty = true;
       } else {
         showToast("Không thể chọn vùng tự động do thiếu dữ liệu ảnh nguồn.", "error");
       }
@@ -515,6 +522,7 @@ async function inspectVisualQC(
     ctx.restore();
 
     if (painted) {
+      canvas._reviewDirty = true;
       const extra = [];
       if (uncertain) extra.push(`${uncertain} vùng có độ tin cậy thấp chưa được đánh dấu`);
       if (artDamage) extra.push(`${artDamage} vùng nghi mất chi tiết cần kiểm tra thủ công`);
@@ -609,7 +617,7 @@ function floodFillSelect(ctx, srcData, startX, startY, width, height) {
 
   if (capExceeded) {
     showToast("Không thể chọn tự động vì vùng màu lan quá rộng. Hãy đánh dấu thủ công bằng cách kéo cọ.", "error");
-    return;
+    return false;
   }
 
   const imgData = ctx.createImageData(width, height);
@@ -629,6 +637,7 @@ function floodFillSelect(ctx, srcData, startX, startY, width, height) {
   tmpCanvas.height = height;
   tmpCanvas.getContext("2d").putImageData(imgData, 0, 0);
   ctx.drawImage(tmpCanvas, 0, 0);
+  return true;
 }
 
 async function submitRepaint(pageIndex, canvas, img, ctx, submitBtn) {
@@ -677,6 +686,7 @@ async function submitRepaint(pageIndex, canvas, img, ctx, submitBtn) {
 
     img.src = manifest.pages[pageIndex].clean + "?t=" + Date.now();
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    canvas._reviewDirty = false;
     showToast("Đã xử lý vùng đánh dấu.", "success");
   } catch (err) {
     showToast("Không thể xử lý vùng đánh dấu: " + err.message, "error");

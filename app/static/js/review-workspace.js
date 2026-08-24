@@ -1,9 +1,12 @@
 (() => {
   const legacyRenderReview = window.renderReview;
-  if (typeof legacyRenderReview !== "function") return;
+  if (typeof legacyRenderReview !== "function" || typeof window.createReviewCard !== "function") return;
+
+  window.REVIEW_VIRTUALIZED = true;
 
   let activeReviewIndex = 0;
   let reviewLastChapterId = null;
+  const maskSnapshots = new Map();
 
   const CONTROL_COPY = new Map([
     ["Tô lỗi", "Đánh dấu vùng lỗi"],
@@ -46,6 +49,14 @@
     if (canvas && typeof canvas._stopBrush === "function") canvas._stopBrush();
   }
 
+  function cleanupCard(card) {
+    if (!card) return;
+    const canvas = card.querySelector("canvas.brush-canvas");
+    if (canvas && typeof canvas._cleanupBrush === "function") canvas._cleanupBrush();
+    else if (canvas?._brushAbort) canvas._brushAbort.abort();
+    card.remove();
+  }
+
   function updateAIStatus(source, target) {
     if (!target) return;
     const raw = source?.textContent || "";
@@ -70,6 +81,22 @@
     observer.observe(source, { childList: true, characterData: true, subtree: true, attributes: true });
   }
 
+  function captureMaskSnapshot(card) {
+    if (!card) return;
+    const canonicalIndex = parseInt(card.dataset.pageIndex, 10);
+    const canvas = card.querySelector("canvas.brush-canvas");
+    if (!Number.isFinite(canonicalIndex) || !canvas) return;
+    if (!canvas._reviewDirty || !canvas.width || !canvas.height) {
+      maskSnapshots.delete(canonicalIndex);
+      return;
+    }
+    try {
+      maskSnapshots.set(canonicalIndex, canvas.toDataURL("image/png"));
+    } catch (err) {
+      console.warn("Could not preserve review mask snapshot:", err);
+    }
+  }
+
   function setupReviewWorkspace() {
     const container = document.getElementById("page-view");
     if (!container) return;
@@ -78,6 +105,7 @@
     if (window.currentChapterId && reviewLastChapterId !== window.currentChapterId) {
       reviewLastChapterId = window.currentChapterId;
       activeReviewIndex = 0;
+      maskSnapshots.clear();
     }
 
     const legacyToolbar = container.querySelector("#preview-toolbar");
@@ -92,8 +120,12 @@
       continueBtn = [...legacyToolbar.children].find((el) => el.tagName === "BUTTON") || null;
     }
 
-    const cards = [...container.querySelectorAll(":scope > .review-card")];
-    if (!cards.length) {
+    const pageIndices = (window.currentManifest?.pages || [])
+      .map((page, index) => ({ page, index }))
+      .filter(({ page }) => !page.skipped)
+      .map(({ index }) => index);
+
+    if (!pageIndices.length) {
       legacyToolbar?.remove();
       return;
     }
@@ -105,12 +137,11 @@
           : null);
 
     if (targetCanonical !== null) {
-      const foundIdx = cards.findIndex((c) => c.dataset.pageIndex === String(targetCanonical));
+      const foundIdx = pageIndices.indexOf(Number(targetCanonical));
       if (foundIdx !== -1) activeReviewIndex = foundIdx;
       window.initialReviewCanonicalPageIndex = null;
     }
-
-    activeReviewIndex = Math.max(0, Math.min(activeReviewIndex, cards.length - 1));
+    activeReviewIndex = Math.max(0, Math.min(activeReviewIndex, pageIndices.length - 1));
     legacyToolbar?.remove();
 
     const workspace = document.createElement("div");
@@ -118,17 +149,13 @@
 
     const toolbar = document.createElement("div");
     toolbar.className = "review-sticky-toolbar";
-
     const title = document.createElement("div");
     title.className = "review-toolbar-title";
     title.innerHTML = '<span class="ui-eyebrow">Kiểm tra chất lượng</span><strong>Hiệu chỉnh ảnh đã xử lý</strong><span>Đánh dấu vùng còn lỗi và xử lý lại khi cần.</span>';
-
     const controlsSlot = document.createElement("div");
     controlsSlot.className = "review-controls-slot";
-
     const actions = document.createElement("div");
     actions.className = "review-actions-group";
-
     const aiStatus = document.createElement("span");
     aiStatus.className = "review-ai-status";
     bindAIStatus(geminiStatus, aiStatus);
@@ -155,46 +182,33 @@
     }
     continueBtn.className = "ui-btn ui-btn-primary review-primary-action";
     continueBtn.textContent = "Mở trình biên tập bản dịch";
-
     actions.append(aiStatus, help, continueBtn);
     toolbar.append(title, controlsSlot, actions);
 
     const nav = document.createElement("nav");
     nav.className = "review-page-nav workspace-nav-bar";
     nav.setAttribute("aria-label", "Điều hướng trang kiểm tra chất lượng");
-
     const prev = document.createElement("button");
     prev.type = "button";
     prev.className = "review-nav-btn workspace-nav-btn";
     prev.textContent = "← Trang trước";
     prev.setAttribute("aria-label", "Trang trước");
-
     const position = document.createElement("div");
     position.className = "review-position workspace-nav-position";
     position.setAttribute("aria-live", "polite");
-
     const next = document.createElement("button");
     next.type = "button";
     next.className = "review-nav-btn workspace-nav-btn";
     next.textContent = "Trang sau →";
     next.setAttribute("aria-label", "Trang sau");
-
     nav.append(prev, position, next);
 
     const canvasHost = document.createElement("div");
     canvasHost.className = "review-canvas-host";
-
     workspace.append(toolbar, nav, canvasHost);
     container.appendChild(workspace);
 
-    const parking = document.createDocumentFragment();
-    cards.forEach((card) => {
-      card.style.display = "none";
-      parking.appendChild(card);
-    });
-
     let mountedCard = null;
-    let mountedControls = null;
     let busyObserver = null;
 
     const restoreMounted = () => {
@@ -202,49 +216,43 @@
         busyObserver.disconnect();
         busyObserver = null;
       }
-      if (mountedCard) stopCardBrush(mountedCard);
-      if (mountedCard && mountedControls) mountedCard.insertBefore(mountedControls, mountedCard.children[1] || null);
-      if (mountedCard) {
-        mountedCard.style.display = "none";
-        parking.appendChild(mountedCard);
-      }
+      if (!mountedCard) return;
+      stopCardBrush(mountedCard);
+      captureMaskSnapshot(mountedCard);
+      cleanupCard(mountedCard);
       mountedCard = null;
-      mountedControls = null;
     };
 
     const renderActive = () => {
       restoreMounted();
       controlsSlot.replaceChildren();
 
-      const card = cards[activeReviewIndex];
+      const canonicalIndex = pageIndices[activeReviewIndex];
+      const card = window.createReviewCard(canonicalIndex, maskSnapshots.get(canonicalIndex) || null);
+      if (!card) return;
       mountedCard = card;
-      card.style.display = "flex";
       canvasHost.replaceChildren(card);
+      if (typeof card._mountReview === "function") card._mountReview();
 
       const controls = card.querySelector(".review-controls");
-      mountedControls = controls;
       if (controls) {
         normalizeReviewControls(controls);
         controlsSlot.appendChild(controls);
       }
 
-      const label = card.querySelector(".page-block-label");
       position.replaceChildren();
-
       const jumpWrap = document.createElement("label");
       jumpWrap.className = "workspace-nav-jump-wrap";
       jumpWrap.textContent = "Trang ";
-
       const jumpInput = document.createElement("input");
       jumpInput.type = "number";
       jumpInput.min = "1";
-      jumpInput.max = String(cards.length);
+      jumpInput.max = String(pageIndices.length);
       jumpInput.value = String(activeReviewIndex + 1);
       jumpInput.className = "workspace-nav-jump-input";
       jumpInput.setAttribute("aria-label", "Nhảy đến trang");
-
       const doJump = () => {
-        const targetIndex = parsePageNumber(jumpInput.value, cards.length);
+        const targetIndex = parsePageNumber(jumpInput.value, pageIndices.length);
         if (targetIndex === null) {
           jumpInput.value = String(activeReviewIndex + 1);
           return;
@@ -262,39 +270,23 @@
         }
       });
       jumpWrap.appendChild(jumpInput);
-
       const totalText = document.createElement("span");
-      totalText.textContent = ` / ${cards.length}`;
+      totalText.textContent = ` / ${pageIndices.length}`;
       const labelSpan = document.createElement("span");
-      labelSpan.textContent = label ? ` · ${label.textContent}` : "";
+      labelSpan.textContent = ` · ${pageLabel(window.currentManifest.pages, canonicalIndex)}`;
       position.append(jumpWrap, totalText, labelSpan);
 
       prev.disabled = activeReviewIndex === 0;
-      next.disabled = activeReviewIndex === cards.length - 1;
-
-      const canonicalIndex = parseInt(card.dataset.pageIndex, 10) || 0;
+      next.disabled = activeReviewIndex === pageIndices.length - 1;
       if (typeof window.setWorkflowCheckpoint === "function") {
         window.setWorkflowCheckpoint("review", canonicalIndex);
       }
 
       const canvas = card.querySelector("canvas.brush-canvas");
-      const img = card.querySelector("img");
-      if (canvas && img) {
-        const nw = img.naturalWidth || img.width;
-        const nh = img.naturalHeight || img.height;
-        if (nw && nh) {
-          canvas.width = nw;
-          canvas.height = nh;
-        }
-        canvas.style.width = "100%";
-        canvas.style.height = "100%";
-      }
-
       const brushBtn = controls?.querySelector(".brush-toggle-btn") || null;
       const clearBtn = controls?.querySelector(".clear-brush-btn") || null;
       const brushSize = controls?.querySelector(".brush-size-slider") || null;
       const aiQcBtn = controls?.querySelector(".ai-qc-btn") || null;
-
       const syncBusy = () => {
         const busy = Boolean(aiQcBtn?.disabled && /đang/i.test(aiQcBtn.textContent));
         workspace.classList.toggle("review-busy", busy);
@@ -303,11 +295,10 @@
         if (clearBtn) clearBtn.disabled = busy;
         if (brushSize) brushSize.disabled = busy;
         prev.disabled = busy || activeReviewIndex === 0;
-        next.disabled = busy || activeReviewIndex === cards.length - 1;
+        next.disabled = busy || activeReviewIndex === pageIndices.length - 1;
         jumpInput.disabled = busy;
         continueBtn.disabled = busy;
       };
-
       if (aiQcBtn) {
         busyObserver = new MutationObserver(syncBusy);
         busyObserver.observe(aiQcBtn, { attributes: true, childList: true, characterData: true, subtree: true });
@@ -321,7 +312,7 @@
       renderActive();
     });
     next.addEventListener("click", () => {
-      if (workspace.classList.contains("review-busy") || activeReviewIndex >= cards.length - 1) return;
+      if (workspace.classList.contains("review-busy") || activeReviewIndex >= pageIndices.length - 1) return;
       activeReviewIndex += 1;
       renderActive();
     });
