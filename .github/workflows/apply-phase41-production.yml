@@ -45,36 +45,36 @@ jobs:
           from pathlib import Path
           p = Path('app/pipeline.py')
           s = p.read_text(encoding='utf-8')
-          old = '''        import psutil as _psutil_debug
-          _rss_mb_debug = _psutil_debug.Process().memory_info().rss / (1024 * 1024)
-          logger.warning(f"Processed {img_path.name}: {len(boxes)} boxes, RSS={_rss_mb_debug:.1f}MB")
-          res = {
-              "tmp_clean": tmp_clean_path.as_posix(),
-              "boxes": [
-                  {
-                      "x1": b.x1, "y1": b.y1, "x2": b.x2, "y2": b.y2,
-                      "confidence": b.confidence,
-                      "mask": _encode_mask(b.mask),
-                  }
-                  for b in boxes
-              ],
-          }'''
-          new = '''        import psutil as _psutil_debug
-          _rss_mb_debug = _psutil_debug.Process().memory_info().rss / (1024 * 1024)
-          logger.warning(f"Processed {img_path.name}: {len(detector_records)} boxes, RSS={_rss_mb_debug:.1f}MB")
-          res = {
-              "tmp_clean": tmp_clean_path.as_posix(),
-              "boxes": [
-                  {
-                      **{k: v for k, v in record.items() if k != "_mask_array"},
-                      "mask": _encode_mask(record.get("_mask_array")),
-                  }
-                  for record in detector_records
-              ],
-          }'''
-          if old not in s:
-              raise SystemExit('Known current-main logger/output block was not found')
-          p.write_text(s.replace(old, new), encoding='utf-8')
+          old_log = 'logger.warning(f"Processed {img_path.name}: {len(boxes)} boxes, RSS={_rss_mb_debug:.1f}MB")'
+          new_log = 'logger.warning(f"Processed {img_path.name}: {len(detector_records)} boxes, RSS={_rss_mb_debug:.1f}MB")'
+          if old_log not in s:
+              raise SystemExit('Known current-main RSS log line was not found')
+          s = s.replace(old_log, new_log, 1)
+
+          old_lines = [
+              '            "boxes": [',
+              '                {',
+              '                    "x1": b.x1, "y1": b.y1, "x2": b.x2, "y2": b.y2,',
+              '                    "confidence": b.confidence,',
+              '                    "mask": _encode_mask(b.mask),',
+              '                }',
+              '                for b in boxes',
+              '            ],',
+          ]
+          new_lines = [
+              '            "boxes": [',
+              '                {',
+              '                    **{k: v for k, v in record.items() if k != "_mask_array"},',
+              '                    "mask": _encode_mask(record.get("_mask_array")),',
+              '                }',
+              '                for record in detector_records',
+              '            ],',
+          ]
+          old_block = '\n'.join(old_lines)
+          if old_block not in s:
+              raise SystemExit('Known current-main box serialization block was not found')
+          s = s.replace(old_block, '\n'.join(new_lines), 1)
+          p.write_text(s, encoding='utf-8')
           PY
 
           rm -f app/pipeline.py.rej
