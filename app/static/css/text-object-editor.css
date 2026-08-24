@@ -140,8 +140,73 @@
 
 .text-object-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   margin-top: 4px;
+}
+
+.text-object-action-btn.confirming {
+  border-color: var(--red);
+  background: rgba(232, 67, 44, .16);
+  color: #ff9d8c;
+}
+
+.text-editor-section {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm, 6px);
+  overflow: hidden;
+}
+
+.text-editor-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  background: var(--ink-raised);
+  color: var(--text);
+  font: 600 11px var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  text-align: left;
+}
+
+.text-editor-section-header:hover {
+  background: var(--surface, var(--panel));
+}
+
+.text-editor-section-header .section-caret {
+  color: var(--text-dim);
+  transition: transform var(--transition-fast, 140ms ease);
+}
+
+.text-editor-section.open .text-editor-section-header .section-caret {
+  transform: rotate(90deg);
+}
+
+.text-editor-section-body {
+  display: none;
+  padding: 8px 10px;
+  border-top: 1px solid var(--line);
+  background: var(--surface, var(--panel));
+}
+
+.text-editor-section.open .text-editor-section-body {
+  display: block;
+}
+
+.bg-toggle-checkbox {
+  accent-color: var(--blue);
+  cursor: pointer;
+}
+
+.bg-toggle-label {
+  color: var(--text-dim);
+  font: 600 11px var(--font-mono);
+  cursor: pointer;
 }
 
 .text-object-action-btn {

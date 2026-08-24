@@ -31,7 +31,7 @@ class BenchmarkReporter:
         mod = result.model
 
         lines = [
-            "# LaMa Inpainting Benchmark Baseline Report",
+            "# LaMa Inpainting Benchmark Baseline Report (Phase 0.2 Hardened)",
             "",
             "> **Phase 0 Baseline Tool**: This report captures reproducible baseline measurements for LaMa inpainting. "
             "No optimizations have been implemented in this phase.",
@@ -65,27 +65,27 @@ class BenchmarkReporter:
             lines.extend([
                 "### Level 1 — Model Only (Raw ONNX session.run)",
                 "",
-                "| Case | Cold Start (ms) | p50 (ms) | p95 (ms) | Mean (ms) | StdDev (ms) | Repetitions |",
+                "| Case | First Inf (ms) | p50 (ms) | p95 (ms) | Mean (ms) | StdDev (ms) | Repetitions |",
                 "| :--- | :---:| :---:| :---:| :---:| :---:| :---:|",
             ])
             for c in l1_cases:
                 t = c.timing
                 lines.append(
-                    f"| `{c.case_id}` | {c.cold_start_ms:.1f} | **{t.p50_ms:.1f}** | {t.p95_ms:.1f} | {t.mean_ms:.1f} | {t.stddev_ms:.2f} | {c.repetitions} |"
+                    f"| `{c.case_id}` | {c.first_inference_ms:.1f} | **{t.p50_ms:.1f}** | {t.p95_ms:.1f} | {t.mean_ms:.1f} | {t.stddev_ms:.2f} | {c.repetitions} |"
                 )
             lines.append("")
 
         l2_cases = [c for c in result.cases if c.level == "level2_pipeline" and c.status == "ok"]
         if l2_cases:
             lines.extend([
-                "### Level 2 — LaMa Pipeline Breakdown",
+                "### Level 2 — Production LaMa Pipeline Breakdown",
                 "",
-                "| Case ID | Size | Preprocess p50 (ms) | Inference p50 (ms) | Postprocess p50 (ms) | Total p50 (ms) | Total p95 (ms) |",
+                "| Case ID | Size | Preprocess p50 (ms) | Inference p50 (ms) | Postprocess p50 (ms) | Total p50 (ms) | Calls/Inv |",
                 "| :--- | :---:| :---:| :---:| :---:| :---:| :---:|",
             ])
             for c in l2_cases[:16]:
                 lines.append(
-                    f"| `{c.case_id}` | {c.image_width}x{c.image_height} | {c.preprocess_timing.p50_ms:.1f} | {c.inference_timing.p50_ms:.1f} | {c.postprocess_timing.p50_ms:.1f} | **{c.timing.p50_ms:.1f}** | {c.timing.p95_ms:.1f} |"
+                    f"| `{c.case_id}` | {c.image_width}x{c.image_height} | {c.preprocess_timing.p50_ms:.1f} | {c.inference_timing.p50_ms:.1f} | {c.postprocess_timing.p50_ms:.1f} | **{c.timing.p50_ms:.1f}** | {c.model_calls_per_invocation} |"
                 )
             if len(l2_cases) > 16:
                 lines.append(f"*(and {len(l2_cases) - 16} additional pipeline cases)*")
@@ -96,13 +96,14 @@ class BenchmarkReporter:
             lines.extend([
                 "### Level 3 — End-to-End Inpainting",
                 "",
-                "| Case ID | Size | Mask Type | Model Calls | Clusters | Crops | Total p50 (ms) | Total p95 (ms) |",
-                "| :--- | :---:| :---:| :---:| :---:| :---:| :---:| :---:|",
+                "| Case ID | Size | Mask Type | Exec Mode | Calls/Inv | Shortcuts | Clusters | Crops | Total p50 (ms) |",
+                "| :--- | :---:| :---:| :---:| :---:| :---:| :---:| :---:| :---:|",
             ])
             for c in l3_cases[:16]:
                 crops_str = f"{len(c.crop_dimensions)}"
+                sc_str = f"{c.shortcut_count} ({','.join(c.shortcut_types) if c.shortcut_types else 'none'})"
                 lines.append(
-                    f"| `{c.case_id}` | {c.image_width}x{c.image_height} | `{c.mask_type}` | **{c.model_calls}** | {c.cluster_count} | {crops_str} | **{c.timing.p50_ms:.1f}** | {c.timing.p95_ms:.1f} |"
+                    f"| `{c.case_id}` | {c.image_width}x{c.image_height} | `{c.mask_type}` | `{c.expected_execution}` | **{c.model_calls_per_invocation}** | {sc_str} | {c.cluster_count} | {crops_str} | **{c.timing.p50_ms:.1f}** |"
                 )
             if len(l3_cases) > 16:
                 lines.append(f"*(and {len(l3_cases) - 16} additional end-to-end cases)*")
@@ -145,9 +146,9 @@ class BenchmarkReporter:
             "",
             "- Baseline timing and model-call telemetry successfully recorded.",
             "- Preprocess and postprocess times scale linearly with crop size due to interpolation.",
-            "- Inpainting on crops larger than 512x512 with manual mask feathering triggers tiled processing (`_lama_fill_tiled`), executing multiple model calls per region.",
-            "- High-level shortcuts (flat white, flat black, low-std backgrounds) bypass inference calls when active.",
-            "- *Phase 0 completed. No model or pipeline optimizations were applied in this phase.*",
+            "- Tiling execution (`_lama_fill_tiled`) is accurately recorded on large crops with multi-model calls.",
+            "- White, black, and low-std shortcuts are accurately detected and reported with `model_calls == 0`.",
+            "- *Phase 0.2 completed. No model or pipeline optimizations were applied in this phase.*",
         ])
 
         return "\n".join(lines)
@@ -168,14 +169,14 @@ class BenchmarkReporter:
         if l1_cases:
             lines.append("[LEVEL 1: MODEL ONLY]")
             for c in l1_cases:
-                lines.append(f"  • {c.case_id}: Cold={c.cold_start_ms:.1f}ms | p50={c.timing.p50_ms:.1f}ms | p95={c.timing.p95_ms:.1f}ms | Mean={c.timing.mean_ms:.1f}ms (std={c.timing.stddev_ms:.2f}ms)")
+                lines.append(f"  • {c.case_id}: FirstInf={c.first_inference_ms:.1f}ms | p50={c.timing.p50_ms:.1f}ms | p95={c.timing.p95_ms:.1f}ms | Mean={c.timing.mean_ms:.1f}ms (std={c.timing.stddev_ms:.2f}ms)")
             lines.append("-" * 70)
 
         l2_cases = [c for c in result.cases if c.level == "level2_pipeline" and c.status == "ok"]
         if l2_cases:
             lines.append(f"[LEVEL 2: PIPELINE BREAKDOWN] ({len(l2_cases)} cases)")
             for c in l2_cases[:5]:
-                lines.append(f"  • {c.case_id}: Pre={c.preprocess_timing.p50_ms:.1f}ms | Inf={c.inference_timing.p50_ms:.1f}ms | Post={c.postprocess_timing.p50_ms:.1f}ms | Total={c.timing.p50_ms:.1f}ms")
+                lines.append(f"  • {c.case_id}: Pre={c.preprocess_timing.p50_ms:.1f}ms | Inf={c.inference_timing.p50_ms:.1f}ms | Post={c.postprocess_timing.p50_ms:.1f}ms | Total={c.timing.p50_ms:.1f}ms | Calls/Inv={c.model_calls_per_invocation}")
             if len(l2_cases) > 5:
                 lines.append(f"  ... and {len(l2_cases) - 5} more cases.")
             lines.append("-" * 70)
@@ -184,7 +185,7 @@ class BenchmarkReporter:
         if l3_cases:
             lines.append(f"[LEVEL 3: END-TO-END INPAINT] ({len(l3_cases)} cases)")
             for c in l3_cases[:5]:
-                lines.append(f"  • {c.case_id}: Total p50={c.timing.p50_ms:.1f}ms | Model Calls={c.model_calls} | Clusters={c.cluster_count}")
+                lines.append(f"  • {c.case_id}: Total p50={c.timing.p50_ms:.1f}ms | Calls/Inv={c.model_calls_per_invocation} | Shortcuts={c.shortcut_count} | Total Calls={c.model_calls_total}")
             if len(l3_cases) > 5:
                 lines.append(f"  ... and {len(l3_cases) - 5} more cases.")
             lines.append("-" * 70)

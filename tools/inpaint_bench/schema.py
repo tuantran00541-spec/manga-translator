@@ -304,6 +304,7 @@ def validate_case_payload_for_comparison(case: dict[str, Any]) -> tuple[bool, st
                     if not isinstance(crop, list) or len(crop) != 2 or not all(is_finite_int(d) and d > 0 for d in crop):
                         return False, f"Invocation {idx} invalid crop dimension: {crop!r}"
 
+        # Check total model calls
         total_mc = case.get("model_calls_total")
         actual_mc_total = sum(inv.get("model_calls", 0) for inv in invs)
         if is_finite_int(total_mc) and total_mc != actual_mc_total:
@@ -313,6 +314,7 @@ def validate_case_payload_for_comparison(case: dict[str, Any]) -> tuple[bool, st
         if not isinstance(telem_sum, dict):
             return False, f"Level {level} requires 'telemetry_summary' dictionary"
 
+        # Recompute and verify telemetry aggregate consistency
         for metric_name in ["model_calls", "cluster_count", "tile_count", "active_tile_count", "shortcut_count"]:
             if metric_name not in telem_sum or not isinstance(telem_sum[metric_name], dict):
                 return False, f"Missing 'telemetry_summary.{metric_name}' dictionary"
@@ -327,6 +329,7 @@ def validate_case_payload_for_comparison(case: dict[str, Any]) -> tuple[bool, st
                 if mf == "invariant" and not isinstance(m_dict[mf], bool):
                     return False, f"Non-boolean invariant in 'telemetry_summary.{metric_name}': {m_dict[mf]!r}"
 
+            # Validate against actual invocation values
             actual_vals = [inv.get(metric_name, 0) for inv in invs]
             exp_min = int(min(actual_vals))
             exp_max = int(max(actual_vals))
@@ -336,6 +339,7 @@ def validate_case_payload_for_comparison(case: dict[str, Any]) -> tuple[bool, st
             if m_dict["min"] != exp_min or m_dict["max"] != exp_max or m_dict["invariant"] != exp_inv or abs(float(m_dict["mean"]) - exp_mean) > 1e-2:
                 return False, f"Contradiction between invocations and summary for '{metric_name}': expected min={exp_min}, max={exp_max}, mean={exp_mean}, inv={exp_inv}; got min={m_dict['min']}, max={m_dict['max']}, mean={m_dict['mean']}, inv={m_dict['invariant']}"
 
+        # Check invariant scalar consistency
         mc_summary = telem_sum["model_calls"]
         mc_per_inv = case.get("model_calls_per_invocation")
         if mc_summary["invariant"]:

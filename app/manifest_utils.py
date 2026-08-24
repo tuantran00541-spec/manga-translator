@@ -115,3 +115,5 @@ def is_processing_state_current(
         return False
     current = capture_processing_state(manifest, page_index, processed_dir)
     return current == snapshot
+
+

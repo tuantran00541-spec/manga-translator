@@ -367,6 +367,7 @@ def compare_benchmarks(
     quality_thresholds: QualityThresholds | None = None,
     telemetry_only: bool = False,
 ) -> list[ComparisonDelta]:
+    # Always load trusted baseline thresholds from baseline manifest
     try:
         manifest = load_trusted_baseline_manifest()
         q_dict = manifest.get("quality_thresholds", {})
@@ -398,6 +399,7 @@ def compare_benchmarks(
             )
         ]
 
+    # Verify model and provider integrity in candidate payload
     b_model = b_dict.get("model", {})
     c_model = c_dict.get("model", {})
     if c_model.get("model_sha256") and c_model["model_sha256"].lower() != LAMA_MODEL_BASELINE_SHA256.lower():
@@ -480,6 +482,7 @@ def compare_benchmarks(
             )
             continue
 
+        # Verify immutable workload content hash
         b_w_hash = b_case.get("workload_sha256", "")
         c_w_hash = c_case.get("workload_sha256", "")
         if b_w_hash and c_w_hash and b_w_hash != c_w_hash:
@@ -545,9 +548,11 @@ def compare_benchmarks(
                         note_parts.append("Failed to decode golden image")
                     else:
                         try:
+                            # 1. Absolute quality of candidate vs reference/baseline
                             cand_psnr, cand_ssim, cand_mae = compute_image_metrics(b_img, c_img)
                             psnr, ssim, mae = cand_psnr, cand_ssim, cand_mae
 
+                            # Absolute floor checks
                             if cand_psnr < thresholds.min_psnr:
                                 quality_regression = True
                                 note_parts.append(f"PSNR below floor: {cand_psnr} < {thresholds.min_psnr}")
@@ -558,6 +563,9 @@ def compare_benchmarks(
                                 quality_regression = True
                                 note_parts.append(f"MAE above ceiling: {cand_mae} > {thresholds.max_mae}")
 
+                            # 2. Strict baseline vs candidate degradation mathematics
+                            # If baseline is perfect identical reference (100 dB, 1.0 SSIM, 0.0 MAE)
+                            # or if comparing pre-recorded baseline metrics
                             base_psnr_recorded = b_case.get("psnr", 100.0) or 100.0
                             base_ssim_recorded = b_case.get("ssim", 1.0) or 1.0
                             base_mae_recorded = b_case.get("mae", 0.0) or 0.0

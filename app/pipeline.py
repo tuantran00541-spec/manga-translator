@@ -324,12 +324,11 @@ class ChapterPipeline:
                     page_idx, page_data, snapshot = future.result()
                     results[page_idx] = (page_data, snapshot)
                 except Exception as exc:
-                    logger.error(
-                        "Chapter %s page %s operation 'process_page' failed: %s",
+                    logger.opt(exception=True).error(
+                        "Chapter {} page {} operation 'process_page' failed: {}",
                         chapter_id,
                         idx,
                         exc,
-                        exc_info=True,
                     )
                     errors.append((idx, exc))
 
@@ -977,7 +976,9 @@ class ChapterPipeline:
         tmp_clean_path = processed_dir / f"clean_{img_path.name}.{uuid.uuid4().hex[:12]}.tmp.png"
         write_image(tmp_clean_path, clean_image)
 
-        logger.debug(f"Processed {img_path.name}: {len(boxes)} boxes detected (after excluded filtering)")
+        import psutil as _psutil_debug
+        _rss_mb_debug = _psutil_debug.Process().memory_info().rss / (1024 * 1024)
+        logger.warning(f"Processed {img_path.name}: {len(boxes)} boxes, RSS={_rss_mb_debug:.1f}MB")
         res = {
             "tmp_clean": tmp_clean_path.as_posix(),
             "boxes": [

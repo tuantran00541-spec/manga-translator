@@ -173,7 +173,6 @@ class TestInpaintBenchmarkFinalTrustClosure(unittest.TestCase):
     # 1. PRODUCTION & MODEL INTEGRITY
     # ==================================================
 
-    @unittest.skipUnless(os.getenv("RUN_LEGACY_INPAINT_INTEGRITY") == "1", "legacy fixed-LaMa frozen-hash baseline; production uses Phase 3 model manifest")
     def test_01_prod_and_model_integrity_real_files_pass(self):
         valid, report = verify_production_integrity()
         self.assertTrue(valid, f"Production integrity failed: {report}")
@@ -182,7 +181,6 @@ class TestInpaintBenchmarkFinalTrustClosure(unittest.TestCase):
             self.assertTrue(info["valid"], f"Invalid hash for {rel_path}")
             self.assertEqual(info["expected_hash"], info["actual_hash"])
 
-    @unittest.skipUnless(os.getenv("RUN_LEGACY_INPAINT_INTEGRITY") == "1", "legacy fixed-LaMa frozen-hash baseline; production uses Phase 3 model manifest")
     def test_02_prod_integrity_mutate_one_byte_fails(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = Path(tmp_dir)
@@ -245,9 +243,11 @@ class TestInpaintBenchmarkFinalTrustClosure(unittest.TestCase):
         mask_bytes = b"MASK_BYTES_1"
         hash1 = compute_workload_sha256(meta, orig_bytes, mask_bytes)
 
+        # Mutate original bytes
         hash2 = compute_workload_sha256(meta, b"MUTATED_ORIGINAL", mask_bytes)
         self.assertNotEqual(hash1, hash2)
 
+        # Mutate mask bytes
         hash3 = compute_workload_sha256(meta, orig_bytes, b"MUTATED_MASK")
         self.assertNotEqual(hash1, hash3)
 
@@ -266,6 +266,8 @@ class TestInpaintBenchmarkFinalTrustClosure(unittest.TestCase):
     # ==================================================
 
     def test_07_degradation_within_tolerance_passes(self):
+        # Baseline recorded: PSNR 35.0, SSIM 0.95, MAE 2.0
+        # Candidate measured: PSNR 33.5 (drop 1.5 <= 2.0), SSIM 0.92 (drop 0.03 <= 0.05), MAE 3.0 (inc 1.0 <= 2.0)
         c_base = make_valid_case_dict("c1")
         c_base["psnr"] = 35.0
         c_base["ssim"] = 0.95
@@ -280,7 +282,7 @@ class TestInpaintBenchmarkFinalTrustClosure(unittest.TestCase):
             p2.mkdir(parents=True)
             img1 = np.full((100, 100, 3), 128, dtype=np.uint8)
             cv2.imwrite(str(p1 / "output.png"), img1)
-            cv2.imwrite(str(p2 / "output.png"), img1)
+            cv2.imwrite(str(p2 / "output.png"), img1)  # Identical image gives PSNR 100
 
             base = make_valid_payload([c_base])
             cand = make_valid_payload([c_cand])
@@ -296,6 +298,7 @@ class TestInpaintBenchmarkFinalTrustClosure(unittest.TestCase):
             p2.mkdir(parents=True)
             img1 = np.full((100, 100, 3), 128, dtype=np.uint8)
             img2 = img1.copy()
+            # Add severe degradation to drop PSNR significantly
             img2[::2, ::2] = 50
 
             cv2.imwrite(str(p1 / "output.png"), img1)
@@ -340,7 +343,7 @@ class TestInpaintBenchmarkFinalTrustClosure(unittest.TestCase):
             "shortcut_types": [], "crop_dimensions": [[50, 50]]
         }
         inv2 = {
-            "invocation_index": 5,
+            "invocation_index": 5,  # Non-contiguous (expected 1)
             "latency_ms": 10.0, "preprocess_ms": 1.0, "inference_ms": 8.0, "postprocess_ms": 1.0,
             "model_calls": 1, "cluster_count": 1, "tile_count": 0, "active_tile_count": 0, "shortcut_count": 0,
             "shortcut_types": [], "crop_dimensions": [[50, 50]]
@@ -352,14 +355,14 @@ class TestInpaintBenchmarkFinalTrustClosure(unittest.TestCase):
 
     def test_11_model_calls_total_contradiction_fails(self):
         c = make_valid_case_dict()
-        c["model_calls_total"] = 999
+        c["model_calls_total"] = 999  # Invocations sum to 1
         valid, msg = validate_case_payload_for_comparison(c)
         self.assertFalse(valid)
         self.assertIn("model_calls_total", msg)
 
     def test_12_timing_count_contradiction_fails(self):
         c = make_valid_case_dict()
-        c["timing"]["count"] = 999
+        c["timing"]["count"] = 999  # Invocations length is 1
         valid, msg = validate_case_payload_for_comparison(c)
         self.assertFalse(valid)
         self.assertIn("Timing count", msg)
