@@ -12,7 +12,7 @@ from app.config import (
     ensure_directories,
 )
 from app.logging_config import logger
-from app.routers import chapters, editor, image, render
+from app.routers import chapters, editor, image, render, visual_qc
 from app.security import (
     MAX_REQUEST_BYTES,
     MAX_UPLOAD_TOTAL_BYTES,
@@ -67,6 +67,7 @@ app.include_router(chapters.router)
 app.include_router(editor.router)
 app.include_router(render.router)
 app.include_router(image.router)
+app.include_router(visual_qc.router)
 
 
 @app.get("/health")
