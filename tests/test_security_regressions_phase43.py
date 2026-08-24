@@ -106,6 +106,18 @@ class TestManagedPathRegression(unittest.TestCase):
             with self.assertRaises(HTTPException):
                 validate_managed_path(outside, root)
 
+    def test_playwright_worker_rejects_cli_output_outside_raw_root(self):
+        from app.config import RAW_DIR
+        from app.downloader.playwright_worker import _resolve_output_dir
+
+        inside = RAW_DIR / "deadbeef"
+        self.assertEqual(_resolve_output_dir(str(inside)), inside.resolve())
+
+        with tempfile.TemporaryDirectory() as tmp:
+            outside = Path(tmp) / "escape"
+            with self.assertRaises(HTTPException):
+                _resolve_output_dir(str(outside))
+
     def test_image_router_does_not_serve_manifest_path_outside_project_root(self):
         from app.routers import image as image_router
 
