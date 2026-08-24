@@ -11,7 +11,7 @@ import numpy as np
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from app.visual_qc.gemini import GeminiVisualQC
+from app.visual_qc.gemini import GeminiVisualQC, GeminiVisualQCTimeout
 
 
 class _FakeResponse:
@@ -55,7 +55,7 @@ class VisualQCRequestTests(unittest.TestCase):
                 return _FakeResponse()
 
             with patch("app.visual_qc.gemini.requests.post", side_effect=fake_post):
-                issues = GeminiVisualQC().inspect(original_path, cleaned_path, "test-key")
+                issues = GeminiVisualQC(timeout_seconds=123).inspect(original_path, cleaned_path, "test-key")
 
             self.assertEqual(issues, [])
             payload = captured["json"]
@@ -79,6 +79,29 @@ class VisualQCRequestTests(unittest.TestCase):
             self.assertIn("schema", payload["response_format"])
             self.assertEqual(captured["headers"]["x-goog-api-key"], "test-key")
             self.assertEqual(captured["headers"]["Api-Revision"], "2026-05-20")
+            self.assertEqual(captured["timeout"], (10, 123))
+
+    def test_timeout_is_distinct_and_does_not_echo_key(self):
+        import requests
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            image = np.full((32, 32, 3), 255, dtype=np.uint8)
+            original_path = root / "original.png"
+            cleaned_path = root / "cleaned.png"
+            self.assertTrue(cv2.imwrite(str(original_path), image))
+            self.assertTrue(cv2.imwrite(str(cleaned_path), image))
+
+            secret = "test-secret-that-must-not-appear"
+            with patch(
+                "app.visual_qc.gemini.requests.post",
+                side_effect=requests.ReadTimeout("simulated timeout"),
+            ):
+                with self.assertRaises(GeminiVisualQCTimeout) as ctx:
+                    GeminiVisualQC(timeout_seconds=17).inspect(original_path, cleaned_path, secret)
+
+            self.assertIn("17s", str(ctx.exception))
+            self.assertNotIn(secret, str(ctx.exception))
 
 
 if __name__ == "__main__":
