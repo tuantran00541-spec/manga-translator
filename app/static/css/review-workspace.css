@@ -171,3 +171,70 @@
     width: 100%;
   }
 }
+
+.gemini-qc-config {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 6px 8px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-soft);
+}
+
+.gemini-qc-status {
+  color: var(--color-text-subtle);
+  font: 11px/1.3 var(--font-mono);
+  white-space: nowrap;
+}
+
+.gemini-qc-status.configured {
+  color: var(--color-success);
+}
+
+.gemini-qc-privacy-note {
+  color: var(--color-text-subtle);
+  font: 10px/1.3 var(--font-mono);
+}
+
+.gemini-key-input {
+  width: min(240px, 44vw);
+  min-height: 32px;
+  padding: 6px 9px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+}
+
+.gemini-key-save-btn,
+.gemini-key-clear-btn,
+.ai-qc-btn {
+  min-height: 32px;
+  padding: 6px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.ai-qc-btn {
+  border-color: color-mix(in srgb, var(--color-accent) 65%, var(--color-border));
+}
+
+.ai-qc-btn:hover:not(:disabled),
+.gemini-key-save-btn:hover:not(:disabled) {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+}
+
+@media (max-width: 760px) {
+  .gemini-qc-config {
+    width: 100%;
+  }
+  .gemini-key-input {
+    flex: 1 1 180px;
+    width: auto;
+  }
+}
