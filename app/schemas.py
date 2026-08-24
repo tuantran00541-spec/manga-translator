@@ -277,3 +277,29 @@ class OcrTextObjectRequest(BaseModel):
         if not v or not v.strip():
             raise ValueError("text_object id is required")
         return v
+
+
+class VisualQCKeyRequest(BaseModel):
+    api_key: str
+
+    @field_validator("api_key")
+    @classmethod
+    def _api_key_not_empty(cls, v: str) -> str:
+        v = (v or "").strip()
+        if not v:
+            raise ValueError("Gemini API key is required")
+        if len(v) > 4096:
+            raise ValueError("Gemini API key is unexpectedly long")
+        return v
+
+
+class VisualQCInspectRequest(BaseModel):
+    chapter_id: str
+    page_index: int
+
+    @field_validator("page_index")
+    @classmethod
+    def _page_index_non_negative(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError("page_index must be non-negative")
+        return v
