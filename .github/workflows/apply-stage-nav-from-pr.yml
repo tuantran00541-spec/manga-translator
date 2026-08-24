@@ -1,0 +1,44 @@
+name: Apply staged workflow navigation fix
+
+on:
+  pull_request:
+    branches:
+      - stage-nav-helper-base
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  apply:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'fix/workflow-stage-navigation'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+      - name: Verify and apply staged navigation patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -f .stage-nav-fix.patch ]]; then
+            echo "Patch already applied; nothing to do."
+            exit 0
+          fi
+          echo "c3d162ff889930a6d1c816254cf043475958e2ff7389a502cb8d2544d65122fa  .stage-nav-fix.patch" | sha256sum -c -
+          git apply --check .stage-nav-fix.patch
+          git apply .stage-nav-fix.patch
+          rm -f .stage-nav-fix.patch
+          rm -f .github/workflows/apply-stage-nav-fix.yml
+          node --check app/static/js/ui-shell.js
+          node --check app/static/js/preview.js
+          node --check app/static/js/api.js
+          PYTHONPATH=. pytest -q tests/test_ui_system_contract.py tests/test_workflow_stage_navigation.py
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix(ui): make workflow stages reversible"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
