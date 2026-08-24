@@ -52,3 +52,44 @@ jobs:
             tests/test_phase43_security_resource_guards.py \
             tests/test_phase43_qc_cache_security.py \
             tests/test_security_regressions_phase43.py
+      - name: Diagnose Sonar PR security findings
+        if: always()
+        env:
+          SONAR_PROJECT: tuantran00541-spec_manga-translator
+          SONAR_PR: "7"
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import urllib.parse
+          import urllib.request
+
+          query = urllib.parse.urlencode({
+              "componentKeys": os.environ["SONAR_PROJECT"],
+              "pullRequest": os.environ["SONAR_PR"],
+              "resolved": "false",
+              "ps": "100",
+          })
+          url = "https://sonarcloud.io/api/issues/search?" + query
+          with urllib.request.urlopen(url, timeout=20) as response:
+              payload = json.load(response)
+          findings = []
+          for issue in payload.get("issues", []):
+              impacts = issue.get("impacts") or []
+              if issue.get("type") != "VULNERABILITY" and not any(
+                  impact.get("softwareQuality") == "SECURITY" for impact in impacts
+              ):
+                  continue
+              findings.append({
+                  "key": issue.get("key"),
+                  "rule": issue.get("rule"),
+                  "severity": issue.get("severity"),
+                  "type": issue.get("type"),
+                  "component": issue.get("component"),
+                  "line": issue.get("line"),
+                  "message": issue.get("message"),
+                  "impacts": impacts,
+                  "flows": issue.get("flows"),
+              })
+          print("SONAR_SECURITY_FINDINGS=" + json.dumps(findings, separators=(",", ":")))
+          PY
