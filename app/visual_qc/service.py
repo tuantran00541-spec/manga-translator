@@ -8,6 +8,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from app.config import PROCESSED_DIR, RAW_DIR
+from app.security import validate_image_size, validate_managed_path
 from app.visual_qc.batch_protocol import RegionBatchDecision, RegionBatchIssue
 from app.visual_qc.cache import load_region_qc_cache, store_region_qc_cache
 from app.visual_qc.jobs import QCWorkItem, VisualQCJobManager
@@ -44,7 +46,7 @@ class _PageSnapshot:
     clean_file_revision: tuple[int, int, int]
 
 
-def _file_revision(path_value: str) -> tuple[int, int, int]:
+def _file_revision(path_value: str | Path) -> tuple[int, int, int]:
     st = Path(path_value).stat()
     return st.st_size, st.st_mtime_ns, st.st_ctime_ns
 
@@ -90,7 +92,7 @@ def _decision_from_dict(raw: dict | None, region: QCRegion) -> RegionBatchDecisi
         try:
             box = tuple(int(v) for v in bbox)
             confidence = float(item.get("confidence", 0.0))
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             continue
         issues.append(
             RegionBatchIssue(
@@ -140,15 +142,16 @@ class ChapterQCService:
         self.region_batch_size = max(1, int(region_batch_size))
         self.pair_batch_size = max(1, int(pair_batch_size))
 
-    def _load_manual_masks(self, manifest: dict) -> dict[int, np.ndarray]:
+    def _load_manual_masks(self, manifest: dict, chapter_id: str) -> dict[int, np.ndarray]:
         masks: dict[int, np.ndarray] = {}
         for page_index, page in enumerate(manifest.get("pages") or []):
             path_value = page.get("manual_mask") if isinstance(page, dict) else None
             if not path_value:
                 continue
-            path = Path(path_value)
+            path = validate_managed_path(path_value, PROCESSED_DIR / chapter_id)
             if not path.is_file():
                 continue
+            validate_image_size(path)
             try:
                 data = np.fromfile(str(path), dtype=np.uint8)
                 mask = cv2.imdecode(data, cv2.IMREAD_GRAYSCALE)
@@ -165,7 +168,10 @@ class ChapterQCService:
         if not api_key:
             raise ValueError("Gemini API key is not configured")
 
-        plan = build_chapter_qc_plan(manifest, manual_masks=self._load_manual_masks(manifest))
+        plan = build_chapter_qc_plan(
+            manifest,
+            manual_masks=self._load_manual_masks(manifest, chapter_id),
+        )
         all_regions = tuple(plan.global_regions) + tuple(plan.candidate_regions)
         regions_by_id = {region.region_id: region for region in all_regions}
         planned_revisions = {
@@ -199,15 +205,21 @@ class ChapterQCService:
             page = pages[page_index]
             if _page_revision_tuple(page) != planned_revisions.get(page_index):
                 raise StaleVisualQCResult("Page revision changed before visual QC could start")
-            original_path = str(page.get("original") or "")
-            clean_path = str(page.get("clean") or "")
-            if not original_path or not clean_path:
+            original_value = str(page.get("original") or "")
+            clean_value = str(page.get("clean") or "")
+            if not original_value or not clean_value:
                 raise StaleVisualQCResult("Page images are no longer available for visual QC")
+            original_path = validate_managed_path(original_value, RAW_DIR / chapter_id)
+            clean_path = validate_managed_path(clean_value, PROCESSED_DIR / chapter_id)
+            if not original_path.is_file() or not clean_path.is_file():
+                raise StaleVisualQCResult("Page images are no longer available for visual QC")
+            page["original"] = str(original_path)
+            page["clean"] = str(clean_path)
             snapshots[page_index] = _PageSnapshot(
                 page_index,
                 *_page_revision_tuple(page),
-                original_path,
-                clean_path,
+                str(original_path),
+                str(clean_path),
                 _file_revision(original_path),
                 _file_revision(clean_path),
             )
@@ -223,20 +235,28 @@ class ChapterQCService:
                 page = pages[page_index]
                 if _page_revision_tuple(page) != (snapshot.source_revision, snapshot.process_revision, snapshot.clean_revision):
                     raise StaleVisualQCResult("Page revision changed while visual QC was running")
-                if str(page.get("original") or "") != snapshot.original_path or str(page.get("clean") or "") != snapshot.clean_path:
+                original_value = str(page.get("original") or "")
+                clean_value = str(page.get("clean") or "")
+                if not original_value or not clean_value:
+                    raise StaleVisualQCResult("Page images are no longer available for visual QC")
+                original_path = validate_managed_path(original_value, RAW_DIR / chapter_id)
+                clean_path = validate_managed_path(clean_value, PROCESSED_DIR / chapter_id)
+                if str(original_path) != snapshot.original_path or str(clean_path) != snapshot.clean_path:
                     raise StaleVisualQCResult("Page image path changed while visual QC was running")
-                if _file_revision(snapshot.original_path) != snapshot.original_file_revision or _file_revision(snapshot.clean_path) != snapshot.clean_file_revision:
+                if _file_revision(original_path) != snapshot.original_file_revision or _file_revision(clean_path) != snapshot.clean_file_revision:
                     raise StaleVisualQCResult("Page image changed while visual QC was running")
             return manifest
 
     def _cached_decision(self, manifest: dict, snapshots: dict[int, _PageSnapshot], region: QCRegion, mode: str):
         page = manifest["pages"][region.page_index]
+        snapshot = snapshots[region.page_index]
         raw = load_region_qc_cache(
             page,
             region_id=region.region_id,
             model=self.model,
             mode=mode,
-            clean_file_revision=snapshots[region.page_index].clean_file_revision,
+            clean_file_revision=snapshot.clean_file_revision,
+            source_file_revision=(snapshot.original_file_revision if mode == "region-pair" else None),
         )
         return _decision_from_dict(raw, region)
 
@@ -259,6 +279,8 @@ class ChapterQCService:
             fresh = await asyncio.to_thread(self.runner.inspect, subitem, manifest, regions_by_id, api_key)
             self._assert_current(chapter_id, snapshots)
             for decision in fresh:
+                if decision.region_id not in fresh_ids:
+                    continue
                 decisions[decision.region_id] = decision
                 pending_cache.append((item.mode, decision))
 
@@ -285,6 +307,8 @@ class ChapterQCService:
                 pair_decisions = await asyncio.to_thread(self.runner.inspect, pair_item, manifest, regions_by_id, api_key)
                 self._assert_current(chapter_id, snapshots)
                 for decision in pair_decisions:
+                    if decision.region_id not in fallback_ids:
+                        continue
                     decisions[decision.region_id] = decision
                     pending_cache.append(("region-pair", decision))
 
@@ -295,16 +319,29 @@ class ChapterQCService:
                 for page_index, snapshot in snapshots.items():
                     if page_index >= len(pages) or _page_revision_tuple(pages[page_index]) != (snapshot.source_revision, snapshot.process_revision, snapshot.clean_revision):
                         raise StaleVisualQCResult("Page changed before visual QC cache commit")
-                    if _file_revision(snapshot.clean_path) != snapshot.clean_file_revision:
+                    page = pages[page_index]
+                    original_value = str(page.get("original") or "")
+                    clean_value = str(page.get("clean") or "")
+                    if not original_value or not clean_value:
+                        raise StaleVisualQCResult("Page images disappeared before visual QC cache commit")
+                    original_path = validate_managed_path(original_value, RAW_DIR / chapter_id)
+                    clean_path = validate_managed_path(clean_value, PROCESSED_DIR / chapter_id)
+                    if str(original_path) != snapshot.original_path or str(clean_path) != snapshot.clean_path:
+                        raise StaleVisualQCResult("Page image path changed before visual QC cache commit")
+                    if _file_revision(original_path) != snapshot.original_file_revision:
+                        raise StaleVisualQCResult("Original image changed before visual QC cache commit")
+                    if _file_revision(clean_path) != snapshot.clean_file_revision:
                         raise StaleVisualQCResult("Clean image changed before visual QC cache commit")
                 for mode, decision in pending_cache:
                     page = pages[decision.page_index]
+                    snapshot = snapshots[decision.page_index]
                     store_region_qc_cache(
                         page,
                         region_id=decision.region_id,
                         model=self.model,
                         mode=mode,
-                        clean_file_revision=snapshots[decision.page_index].clean_file_revision,
+                        clean_file_revision=snapshot.clean_file_revision,
+                        source_file_revision=(snapshot.original_file_revision if mode == "region-pair" else None),
                         result=_decision_to_dict(decision),
                     )
                 self.manifest_saver(chapter_id, latest)
