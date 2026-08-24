@@ -17,10 +17,22 @@ from app.secret_store import (
     set_gemini_api_key,
 )
 from app.security import validate_chapter_id
+from app.visual_qc.batch_runner import RegionBatchRunner
 from app.visual_qc.gemini import DEFAULT_GEMINI_MODEL, GeminiVisualQC, GeminiVisualQCTimeout
+from app.visual_qc.jobs import VisualQCJobManager
+from app.visual_qc.region_client import GeminiRegionQC
+from app.visual_qc.schemas import VisualQCChapterRequest
+from app.visual_qc.service import ChapterQCService
 
 router = APIRouter(prefix="/api/visual_qc", tags=["visual-qc"])
 visual_qc = GeminiVisualQC()
+region_qc = GeminiRegionQC()
+chapter_qc_jobs = VisualQCJobManager()
+chapter_qc_service = ChapterQCService(
+    RegionBatchRunner(region_qc),
+    chapter_qc_jobs,
+    model=region_qc.model,
+)
 
 
 def _file_revision(path: Path) -> tuple[int, int, int]:
@@ -152,3 +164,59 @@ async def inspect_visual_qc(req: VisualQCInspectRequest) -> dict:
             for issue in issues
         ],
     }
+
+
+@router.post("/chapter")
+async def start_chapter_visual_qc(req: VisualQCChapterRequest) -> dict:
+    validate_chapter_id(req.chapter_id)
+    try:
+        job = await chapter_qc_service.start(req.chapter_id, concurrency=req.concurrency)
+    except SecretStoreUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc
+    except ValueError as exc:
+        status = 409 if "API key" in str(exc) else 400
+        raise HTTPException(status, str(exc)) from exc
+    except Exception as exc:
+        logger.error("Chapter {} visual QC job failed to start: {}", req.chapter_id, exc)
+        raise HTTPException(500, "Could not start chapter visual QC") from exc
+    return chapter_qc_jobs.snapshot(job.job_id)
+
+
+def _job_snapshot_or_404(job_id: str) -> dict:
+    try:
+        return chapter_qc_jobs.snapshot(job_id)
+    except KeyError as exc:
+        raise HTTPException(404, "Visual QC job not found") from exc
+
+
+@router.get("/chapter/{job_id}")
+def chapter_visual_qc_status(job_id: str) -> dict:
+    return _job_snapshot_or_404(job_id)
+
+
+@router.post("/chapter/{job_id}/cancel")
+def cancel_chapter_visual_qc(job_id: str) -> dict:
+    snapshot = _job_snapshot_or_404(job_id)
+    if snapshot["status"] not in {"completed", "cancelled"}:
+        chapter_qc_jobs.cancel(job_id)
+    return chapter_qc_jobs.snapshot(job_id)
+
+
+@router.post("/chapter/{job_id}/retry")
+async def retry_failed_chapter_visual_qc(job_id: str) -> dict:
+    previous = _job_snapshot_or_404(job_id)
+    if previous["status"] not in {"completed", "cancelled"}:
+        raise HTTPException(409, "Visual QC job is still running")
+    if int(previous.get("failed") or 0) <= 0:
+        raise HTTPException(409, "Visual QC job has no failed regions to retry")
+    try:
+        job = await chapter_qc_service.start(
+            previous["chapter_id"],
+            concurrency=int(previous.get("concurrency") or 2),
+        )
+    except SecretStoreUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc
+    except ValueError as exc:
+        status = 409 if "API key" in str(exc) else 400
+        raise HTTPException(status, str(exc)) from exc
+    return chapter_qc_jobs.snapshot(job.job_id)
