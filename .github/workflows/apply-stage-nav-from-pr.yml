@@ -35,7 +35,15 @@ jobs:
           node --check app/static/js/ui-shell.js
           node --check app/static/js/preview.js
           node --check app/static/js/api.js
-          PYTHONPATH=. pytest -q tests/test_ui_system_contract.py tests/test_workflow_stage_navigation.py
+          PYTHONPATH=. python - <<'PY'
+          import runpy
+          for path in ("tests/test_ui_system_contract.py", "tests/test_workflow_stage_navigation.py"):
+              ns = runpy.run_path(path)
+              for name, fn in ns.items():
+                  if name.startswith("test_") and callable(fn):
+                      fn()
+          print("UI contract tests passed")
+          PY
           git diff --check
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
