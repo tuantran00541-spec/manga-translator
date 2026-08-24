@@ -18,15 +18,97 @@
 <link rel="stylesheet" href="/static/css/toolbar.css">
 <link rel="stylesheet" href="/static/css/recent-toast.css">
 <link rel="stylesheet" href="/static/css/review-workspace.css">
+<link rel="stylesheet" href="/static/css/ui-system.css">
 </head>
-<body>
-<div id="app">
-  <header id="site-header"><div id="wordmark"><span class="wordmark-mark">✛</span><span class="wordmark-text">MANGA<span class="wordmark-accent">TRANSLATOR</span></span></div><span id="wordmark-tag">bàn biên tập &middot; local</span></header>
-  <div id="chapter-input"><input type="text" id="chapter-url" placeholder="Dán link chapter"><select id="lang-select" title="Ngôn ngữ OCR"><option value="ja">Nhật</option><option value="ch">Trung</option><option value="korean">Hàn</option><option value="en">Anh</option></select><label id="workers-label" for="workers-select" title="Số luồng xử lý song song. Máy mạnh tăng lên, máy yếu giảm xuống.">Luồng <select id="workers-select"><option value="1">1</option><option value="2" selected>2</option><option value="3">3</option><option value="4">4</option><option value="6">6</option><option value="8">8</option></select></label><button id="load-btn">Tải chapter</button></div>
-  <div id="upload-divider">hoặc</div>
-  <div id="upload-dropzone"><p>Kéo thả ảnh hoặc file ZIP vào đây, hoặc <label for="upload-input" id="upload-browse-label">chọn file</label></p><span id="upload-hint">Chấp nhận PNG, JPG, WEBP, BMP, ZIP, CBZ — kéo thả tập ảnh hoặc file ZIP</span><input type="file" id="upload-input" accept="image/png,image/jpeg,image/webp,image/bmp,.zip,.cbz" multiple hidden></div>
-  <div id="recent-chapters"></div><div id="page-view"></div>
-</div><div id="toast-container"></div>
-<script src="/static/js/toast.js"></script><script src="/static/js/api.js"></script><script src="/static/js/upload.js"></script><script src="/static/js/preview.js"></script><script src="/static/js/review.js"></script><script src="/static/js/review-workspace.js"></script><script src="/static/js/editor.js"></script><script src="/static/js/editor-box-transform.js"></script><script src="/static/js/main.js"></script>
+<body data-app-stage="landing">
+<div id="app" class="app-shell">
+  <header id="site-header" class="app-header">
+    <div class="app-brand-block">
+      <div id="wordmark"><span class="wordmark-mark" aria-hidden="true">✛</span><span class="wordmark-text">MANGA<span class="wordmark-accent">TRANSLATOR</span></span></div>
+      <span id="wordmark-tag">Trình biên tập cục bộ</span>
+    </div>
+
+    <nav id="workflow-steps" class="workflow-steps" aria-label="Tiến trình xử lý">
+      <span class="workflow-step active" data-stage="landing">Nhập nội dung</span>
+      <span class="workflow-step" data-stage="preview">Xử lý ảnh</span>
+      <span class="workflow-step" data-stage="review">Kiểm tra chất lượng</span>
+      <span class="workflow-step" data-stage="editor">Biên tập bản dịch</span>
+    </nav>
+
+    <div class="app-header-actions">
+      <span id="app-context" class="app-context" aria-live="polite">Chưa mở chương</span>
+      <button id="settings-toggle" class="ui-btn ui-btn-ghost" type="button" aria-haspopup="dialog" aria-controls="settings-drawer">Cài đặt</button>
+    </div>
+  </header>
+
+  <section id="landing-view" class="app-stage app-stage-active" data-stage="landing" aria-labelledby="landing-title">
+    <div class="landing-intro">
+      <span class="ui-eyebrow">Bắt đầu</span>
+      <h1 id="landing-title">Chuẩn bị chương để xử lý và biên tập</h1>
+      <p>Tải một chương từ liên kết hoặc nhập ảnh trực tiếp từ thiết bị. Các bước xử lý tiếp theo sẽ được lưu để có thể tiếp tục sau.</p>
+    </div>
+
+    <div class="landing-source-grid">
+      <section class="app-panel landing-panel" aria-labelledby="url-source-title">
+        <div class="panel-heading">
+          <div><span class="ui-eyebrow">Nguồn trực tuyến</span><h2 id="url-source-title">Tải từ liên kết</h2></div>
+          <span class="panel-meta">URL chương</span>
+        </div>
+        <div id="chapter-input" class="chapter-input-grid">
+          <label class="ui-field chapter-url-field" for="chapter-url"><span>Liên kết chương</span><input type="text" id="chapter-url" placeholder="Dán URL chương"></label>
+          <label class="ui-field" for="lang-select"><span>Ngôn ngữ nguồn</span><select id="lang-select" title="Ngôn ngữ dùng cho nhận dạng ký tự"><option value="ja">Tiếng Nhật</option><option value="ch">Tiếng Trung</option><option value="korean">Tiếng Hàn</option><option value="en">Tiếng Anh</option></select></label>
+          <label class="ui-field" id="workers-label" for="workers-select" title="Số tác vụ xử lý song song. Tăng trên máy mạnh, giảm trên máy có ít tài nguyên."><span>Tác vụ song song</span><select id="workers-select"><option value="1">1</option><option value="2" selected>2</option><option value="3">3</option><option value="4">4</option><option value="6">6</option><option value="8">8</option></select></label>
+          <button id="load-btn" class="ui-btn ui-btn-primary" type="button">Tải chương</button>
+        </div>
+      </section>
+
+      <div id="upload-divider" aria-hidden="true"><span>hoặc</span></div>
+
+      <section class="app-panel landing-panel" aria-labelledby="file-source-title">
+        <div class="panel-heading">
+          <div><span class="ui-eyebrow">Tệp cục bộ</span><h2 id="file-source-title">Nhập từ thiết bị</h2></div>
+          <span class="panel-meta">Ảnh · ZIP · CBZ</span>
+        </div>
+        <div id="upload-dropzone" tabindex="0" role="button" aria-controls="upload-input">
+          <p><strong>Kéo thả tệp vào đây</strong> hoặc <label for="upload-input" id="upload-browse-label">chọn tệp từ thiết bị</label></p>
+          <span id="upload-hint">Hỗ trợ PNG, JPG, WEBP, BMP, ZIP và CBZ. Có thể chọn nhiều ảnh cùng lúc.</span>
+          <input type="file" id="upload-input" accept="image/png,image/jpeg,image/webp,image/bmp,.zip,.cbz" multiple hidden>
+        </div>
+      </section>
+    </div>
+
+    <section class="app-panel recent-panel" aria-label="Chương đang xử lý" hidden>
+      <div id="recent-chapters"></div>
+    </section>
+  </section>
+
+  <main id="page-view" class="app-workspace" hidden></main>
+</div>
+
+<div id="settings-backdrop" class="settings-backdrop" hidden></div>
+<aside id="settings-drawer" class="settings-drawer" role="dialog" aria-modal="true" aria-labelledby="settings-title" hidden>
+  <header class="settings-header">
+    <div><span class="ui-eyebrow">Ứng dụng</span><h2 id="settings-title">Cài đặt</h2></div>
+    <button id="settings-close" class="ui-btn ui-btn-ghost" type="button" aria-label="Đóng bảng cài đặt">Đóng</button>
+  </header>
+  <div class="settings-body">
+    <section class="settings-section" aria-labelledby="ai-settings-title">
+      <div class="settings-section-heading"><h3 id="ai-settings-title">Kiểm tra chất lượng bằng AI</h3><p>Cấu hình Gemini được lưu trong kho bí mật của hệ điều hành khi khả dụng.</p></div>
+      <div id="ai-settings-host" class="ai-settings-host"><p class="settings-placeholder">Cấu hình AI sẽ xuất hiện tại đây khi bước kiểm tra chất lượng được mở.</p></div>
+    </section>
+  </div>
+</aside>
+
+<div id="toast-container" aria-live="polite" aria-atomic="true"></div>
+<script src="/static/js/toast.js"></script>
+<script src="/static/js/api.js"></script>
+<script src="/static/js/upload.js"></script>
+<script src="/static/js/preview.js"></script>
+<script src="/static/js/review.js"></script>
+<script src="/static/js/review-workspace.js"></script>
+<script src="/static/js/editor.js"></script>
+<script src="/static/js/editor-box-transform.js"></script>
+<script src="/static/js/ui-shell.js"></script>
+<script src="/static/js/main.js"></script>
 </body>
 </html>

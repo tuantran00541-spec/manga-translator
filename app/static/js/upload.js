@@ -12,6 +12,13 @@ function initUpload() {
     }
   });
 
+  dropzone.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      input.click();
+    }
+  });
+
   dropzone.addEventListener("dragover", (e) => {
     e.preventDefault();
     dropzone.classList.add("dragover");
@@ -40,7 +47,7 @@ function handleUploadFiles(files) {
 
   if (rejected.length > 0) {
     showToast(
-      `Bỏ qua ${rejected.length} file không đúng định dạng (chỉ nhận PNG, JPG, WEBP, BMP, ZIP, CBZ).`,
+      `Đã bỏ qua ${rejected.length} tệp không được hỗ trợ. Chỉ chấp nhận PNG, JPG, WEBP, BMP, ZIP và CBZ.`,
       "error"
     );
   }
@@ -57,7 +64,7 @@ async function uploadChapter(files) {
   const originalHint = hint ? hint.textContent : "";
 
   if (dropzone) dropzone.classList.add("uploading");
-  if (hint) hint.textContent = `Đang tải lên ${files.length} file...`;
+  if (hint) hint.textContent = `Đang tải ${files.length} tệp…`;
 
   try {
     const formData = new FormData();
@@ -84,7 +91,7 @@ async function uploadChapter(files) {
     window.previewActivePageIndex = 0;
     renderPreview();
   } catch (err) {
-    showToast("Tải file lên thất bại: " + err.message, "error");
+    showToast("Không thể tải tệp lên: " + err.message, "error");
   } finally {
     if (dropzone) dropzone.classList.remove("uploading");
     if (hint) hint.textContent = originalHint;

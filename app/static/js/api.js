@@ -82,46 +82,54 @@ window.setWorkflowCheckpoint = setWorkflowCheckpoint;
 async function loadRecentChapters() {
   const container = document.getElementById("recent-chapters");
   if (!container) return;
+  const panel = container.closest(".recent-panel");
+  const setPanelVisible = (visible) => {
+    if (panel) panel.hidden = !visible;
+  };
   try {
     const resp = await fetch("/api/chapters");
     const data = await parseApiResponse(resp);
     if (!resp.ok) {
-      showToast("Không tải được danh sách chapter: " + getErrorMessage(resp.status, data), "error");
+      showToast("Không tải được danh sách chương: " + getErrorMessage(resp.status, data), "error");
       container.innerHTML = "";
+      setPanelVisible(false);
       return;
     }
     const chapters = Array.isArray(data) ? data : [];
     if (chapters.length === 0) {
       container.innerHTML = "";
+      setPanelVisible(false);
       return;
     }
-    container.innerHTML = '<div class="recent-title">📂 Các Chapter đang dịch dở</div>';
+    setPanelVisible(true);
+    container.innerHTML = '<div class="recent-title">Chương đang xử lý</div>';
     const list = document.createElement("div");
     list.className = "recent-list";
     const stageLabels = {
-      preview: "Xem trước",
-      review: "Sửa lỗi ảnh",
-      editor: "Biên tập dịch",
+      preview: "Xử lý ảnh",
+      review: "Kiểm tra chất lượng",
+      editor: "Biên tập bản dịch",
     };
     chapters.forEach((ch) => {
       const card = document.createElement("div");
       card.className = "recent-card";
       const info = document.createElement("div");
       info.className = "recent-info";
-      const stageText = stageLabels[ch.workflow?.stage] || (ch.workflow?.stage || "Đang dịch");
-      info.innerHTML = `<strong>${ch.chapter_id}</strong><br><span class="recent-url">${ch.source_url || "(không có URL)"}</span><br><span class="recent-meta">${ch.total_pages} trang &middot; <span class="recent-stage-badge">${stageText}</span></span>`;
+      const stageText = stageLabels[ch.workflow?.stage] || (ch.workflow?.stage || "Đang xử lý");
+      info.innerHTML = `<strong>${ch.chapter_id}</strong><br><span class="recent-url">${ch.source_url || "(không có liên kết nguồn)"}</span><br><span class="recent-meta">${ch.total_pages} trang &middot; <span class="recent-stage-badge">${stageText}</span></span>`;
       card.appendChild(info);
       const btn = document.createElement("button");
       btn.className = "recent-resume-btn";
-      btn.textContent = "Tiếp tục dịch";
+      btn.textContent = "Tiếp tục xử lý";
       btn.addEventListener("click", () => resumeChapter(ch.chapter_id));
       card.appendChild(btn);
       list.appendChild(card);
     });
     container.appendChild(list);
   } catch (e) {
-    showToast("Không tải được danh sách chapter: " + e.message, "error");
+    showToast("Không tải được danh sách chương: " + e.message, "error");
     container.innerHTML = "";
+    setPanelVisible(false);
   }
 }
 
@@ -175,7 +183,7 @@ async function resumeChapter(chapterId) {
       renderEditor();
     }
   } catch (err) {
-    showToast("Không tiếp tục được chapter: " + err.message, "error");
+    showToast("Không thể tiếp tục chương: " + err.message, "error");
   }
 }
 
@@ -188,7 +196,7 @@ async function loadChapter() {
   const loadBtn = document.getElementById("load-btn");
   if (loadBtn) {
     loadBtn.disabled = true;
-    loadBtn.textContent = "Đang tải...";
+    loadBtn.textContent = "Đang tải chương…";
   }
 
   try {
@@ -210,11 +218,11 @@ async function loadChapter() {
     window.previewActivePageIndex = 0;
     renderPreview();
   } catch (err) {
-    showToast("Không tải được chapter: " + err.message, "error");
+    showToast("Không tải được chương: " + err.message, "error");
   } finally {
     if (loadBtn) {
       loadBtn.disabled = false;
-      loadBtn.textContent = "Tải chapter";
+      loadBtn.textContent = "Tải chương";
     }
   }
 }
@@ -239,7 +247,7 @@ async function toggleSkip(pageIndex, card, btn) {
     }
     page.skipped = newSkipped;
     card.classList.toggle("skipped", newSkipped);
-    btn.textContent = newSkipped ? "Đã bỏ qua (bấm để hủy)" : "Bỏ qua trang này";
+    btn.textContent = newSkipped ? "Đã bỏ qua · Chọn để khôi phục" : "Bỏ qua trang";
   } catch (err) {
     showToast("Không đổi được trạng thái bỏ qua: " + err.message, "error");
   }
@@ -265,7 +273,7 @@ async function processSelectedPages() {
   const btn = document.querySelector("#preview-toolbar button");
   if (btn) {
     btn.disabled = true;
-    btn.textContent = "Đang xử lý, vui lòng đợi...";
+    btn.textContent = "Đang xử lý…";
   }
 
   try {
@@ -288,7 +296,7 @@ async function processSelectedPages() {
     showToast("Xử lý trang thất bại: " + err.message, "error");
     if (btn) {
       btn.disabled = false;
-      btn.textContent = "Xử lý các trang đã chọn (bỏ qua trang đã đánh dấu)";
+      btn.textContent = "Bắt đầu xử lý";
     }
   }
 }
@@ -322,10 +330,10 @@ async function fetchOcr(pageIndex, boxIndex, originalEl) {
       box.ocr_text = data.text || "";
       box.ocr_lang = lang;
     }
-    originalEl.textContent = data.text || "(không đọc được)";
+    originalEl.textContent = data.text || "(không nhận dạng được)";
   } catch (err) {
-    originalEl.textContent = "(OCR lỗi: " + err.message + ")";
-    showToast("Lỗi OCR: " + err.message, "error");
+    originalEl.textContent = "(Lỗi OCR: " + err.message + ")";
+    showToast("Không thể hoàn tất OCR: " + err.message, "error");
   }
 }
 
@@ -417,7 +425,7 @@ async function renderTranslations(pageIndex) {
   const btn = document.querySelector(".editor-render-btn");
   if (btn) {
     btn.disabled = true;
-    btn.textContent = "Đang chèn chữ...";
+    btn.textContent = "Đang kết xuất…";
   }
 
   try {
@@ -443,7 +451,7 @@ async function renderTranslations(pageIndex) {
 
     const data = await parseApiResponse(resp);
     if (!resp.ok) {
-      showToast("Chèn chữ thất bại: " + getErrorMessage(resp.status, data), "error");
+      showToast("Kết xuất ảnh thất bại: " + getErrorMessage(resp.status, data), "error");
       return;
     }
 
@@ -455,11 +463,11 @@ async function renderTranslations(pageIndex) {
       showToast(data.warning, "info");
     }
   } catch (err) {
-    showToast("Chèn chữ thất bại: " + err.message, "error");
+    showToast("Kết xuất ảnh thất bại: " + err.message, "error");
   } finally {
     if (btn) {
       btn.disabled = false;
-      btn.textContent = "Chèn chữ vào ảnh";
+      btn.textContent = "Kết xuất bản dịch";
     }
   }
 }
@@ -504,7 +512,7 @@ async function saveExcludedRegions(pageIndex, excludedRegions) {
 async function resetManualMask(pageIndex, img, canvas, ctx, resetBtn) {
   if (resetBtn) {
     resetBtn.disabled = true;
-    resetBtn.textContent = "Đang xóa...";
+    resetBtn.textContent = "Đang xóa…";
   }
   try {
     const resp = await fetch("/api/reset_manual_mask", {
@@ -520,11 +528,11 @@ async function resetManualMask(pageIndex, img, canvas, ctx, resetBtn) {
     if (img) img.src = data.pages[pageIndex].clean + "?t=" + Date.now();
     if (ctx && canvas) ctx.clearRect(0, 0, canvas.width, canvas.height);
   } catch (err) {
-    showToast("Không xóa được vùng tô tay: " + err.message, "error");
+    showToast("Không xóa được vùng chỉnh sửa thủ công: " + err.message, "error");
   } finally {
     if (resetBtn) {
       resetBtn.disabled = false;
-      resetBtn.textContent = "Xóa vùng tô tay";
+      resetBtn.textContent = "Xóa vùng chỉnh sửa";
     }
   }
 }

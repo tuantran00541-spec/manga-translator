@@ -3,7 +3,7 @@ function pageLabel(pages, pageIndex) {
   const page = pages[pageIndex];
   const total = pages.filter((p) => p.source_page === page.source_page).length;
   if (total <= 1) return "Trang " + (page.source_page + 1);
-  return "Trang " + (page.source_page + 1) + " - Lát " + (page.slice_index + 1) + "/" + total;
+  return "Trang " + (page.source_page + 1) + " · Lát " + (page.slice_index + 1) + "/" + total;
 }
 
 let previewActivePageIndex = 0;
@@ -46,16 +46,16 @@ function renderPreview() {
   heading.className = "preview-workspace-heading";
   const title = document.createElement("div");
   title.className = "preview-workspace-title";
-  title.textContent = "Xem trước & chọn lát";
+  title.textContent = "Xử lý ảnh";
   const subtitle = document.createElement("div");
   subtitle.className = "preview-workspace-subtitle";
-  subtitle.textContent = "Xem từng lát một để kiểm tra ảnh trước khi xử lý.";
+  subtitle.textContent = "Kiểm tra từng lát ảnh, chọn vùng loại trừ và quyết định trang nào sẽ được xử lý.";
   heading.appendChild(title);
   heading.appendChild(subtitle);
 
   const processBtn = document.createElement("button");
   processBtn.className = "preview-primary-action";
-  processBtn.textContent = "Xử lý các trang đã chọn";
+  processBtn.textContent = "Bắt đầu xử lý";
   processBtn.addEventListener("click", processSelectedPages);
 
   toolbar.appendChild(heading);
@@ -69,7 +69,7 @@ function renderPreview() {
   const prevBtn = document.createElement("button");
   prevBtn.type = "button";
   prevBtn.className = "preview-nav-btn workspace-nav-btn";
-  prevBtn.textContent = "← Trước";
+  prevBtn.textContent = "← Trang trước";
   prevBtn.setAttribute("aria-label", "Trang trước");
   prevBtn.disabled = previewActivePageIndex === 0;
   prevBtn.addEventListener("click", () => {
@@ -135,7 +135,7 @@ function renderPreview() {
   const nextBtn = document.createElement("button");
   nextBtn.type = "button";
   nextBtn.className = "preview-nav-btn workspace-nav-btn";
-  nextBtn.textContent = "Sau →";
+  nextBtn.textContent = "Trang sau →";
   nextBtn.setAttribute("aria-label", "Trang sau");
   nextBtn.disabled = previewActivePageIndex >= pages.length - 1;
   nextBtn.addEventListener("click", () => {
@@ -208,7 +208,7 @@ function renderPreviewPage(card, page, pageIndex, pages) {
   label.textContent = pageLabel(pages, pageIndex);
   const status = document.createElement("span");
   status.className = "preview-page-status";
-  status.textContent = page.skipped ? "Đã bỏ qua" : "Đang xem";
+  status.textContent = page.skipped ? "Đã bỏ qua" : "Sẵn sàng xử lý";
   labelWrap.appendChild(label);
   labelWrap.appendChild(status);
   header.appendChild(labelWrap);
@@ -301,15 +301,15 @@ function renderPreviewPage(card, page, pageIndex, pages) {
   tools.className = "preview-tools";
   const drawToggleBtn = document.createElement("button");
   drawToggleBtn.className = "excluded-toggle-btn";
-  drawToggleBtn.textContent = "Đánh dấu vùng cấm dịch";
+  drawToggleBtn.textContent = "Đánh dấu vùng loại trừ";
   const clearBtn = document.createElement("button");
   clearBtn.className = "excluded-clear-btn";
-  clearBtn.textContent = "Xóa vùng cấm";
-  clearBtn.title = "Xóa toàn bộ vùng cấm dịch của lát này";
+  clearBtn.textContent = "Xóa vùng loại trừ";
+  clearBtn.title = "Xóa toàn bộ vùng loại trừ của lát ảnh này";
 
   drawToggleBtn.addEventListener("click", () => {
     const active = card.classList.toggle("draw-excluded-active");
-    drawToggleBtn.textContent = active ? "Đang đánh dấu · bấm để tắt" : "Đánh dấu vùng cấm dịch";
+    drawToggleBtn.textContent = active ? "Đang đánh dấu · Chọn để kết thúc" : "Đánh dấu vùng loại trừ";
     drawToggleBtn.classList.toggle("active", active);
   });
   clearBtn.addEventListener("click", () => {
@@ -414,10 +414,10 @@ function renderPreviewPage(card, page, pageIndex, pages) {
   footer.className = "preview-card-footer";
   const skipBtn = document.createElement("button");
   skipBtn.className = "skip-btn";
-  skipBtn.textContent = page.skipped ? "Đã bỏ qua · bấm để hủy" : "Bỏ qua lát này";
+  skipBtn.textContent = page.skipped ? "Đã bỏ qua · Chọn để khôi phục" : "Bỏ qua lát ảnh";
   skipBtn.addEventListener("click", () => {
     toggleSkip(pageIndex, card, skipBtn);
-    status.textContent = page.skipped ? "Đã bỏ qua" : "Đang xem";
+    status.textContent = page.skipped ? "Đã bỏ qua" : "Sẵn sàng xử lý";
     document.querySelectorAll(`.preview-thumbnail[data-page-index="${pageIndex}"]`).forEach((el) => {
       el.classList.toggle("skipped", !!page.skipped);
     });

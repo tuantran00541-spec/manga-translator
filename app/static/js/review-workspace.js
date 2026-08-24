@@ -5,29 +5,98 @@
   let activeReviewIndex = 0;
   let reviewLastChapterId = null;
 
-  function stopActiveBrushes(cards) {
-    cards.forEach((card) => {
-      const canvas = card.querySelector("canvas.brush-canvas");
-      if (canvas && typeof canvas._stopBrush === "function") {
-        canvas._stopBrush();
-      } else {
-        const btn = card.querySelector(".brush-toggle-btn");
-        if (btn && btn.textContent.startsWith("Đang tô")) btn.click();
-      }
-    });
+  const CONTROL_COPY = new Map([
+    ["Tô lỗi", "Đánh dấu vùng lỗi"],
+    ["Đang tô (bấm để tắt)", "Đang đánh dấu · Chọn để kết thúc"],
+    ["Xóa nét vẽ", "Xóa nét đánh dấu"],
+    ["Xử lý lại vùng đã tô", "Xử lý vùng đánh dấu"],
+    ["Đang xử lý lại...", "Đang xử lý…"],
+    ["Xóa vùng tô tay", "Xóa vùng chỉnh sửa"],
+    ["Đang xóa...", "Đang xóa…"],
+    ["AI rà lỗi", "Kiểm tra bằng AI"],
+    ["AI đang rà…", "AI đang kiểm tra…"],
+  ]);
+
+  function normalizeControlText(control) {
+    if (!control) return;
+    const next = CONTROL_COPY.get(control.textContent.trim());
+    if (next && control.textContent !== next) control.textContent = next;
+  }
+
+  function observeControlText(control) {
+    if (!control || control._uiCopyObserver) return;
+    normalizeControlText(control);
+    const observer = new MutationObserver(() => normalizeControlText(control));
+    observer.observe(control, { childList: true, characterData: true, subtree: true });
+    control._uiCopyObserver = observer;
+  }
+
+  function normalizeReviewControls(controls) {
+    if (!controls) return;
+    controls.querySelectorAll("button").forEach(observeControlText);
+    const size = controls.querySelector(".brush-size-control");
+    if (size && size.firstChild && size.firstChild.nodeType === Node.TEXT_NODE) {
+      size.firstChild.nodeValue = "Kích thước cọ ";
+    }
+  }
+
+  function stopCardBrush(card) {
+    if (!card) return;
+    const canvas = card.querySelector("canvas.brush-canvas");
+    if (canvas && typeof canvas._stopBrush === "function") canvas._stopBrush();
+  }
+
+  function updateAIStatus(source, target) {
+    if (!target) return;
+    const raw = source?.textContent || "";
+    target.classList.toggle("ready", /sẵn sàng/i.test(raw));
+    if (/sẵn sàng/i.test(raw)) {
+      target.textContent = raw.replace(/^(?:Gemini QC|Kiểm tra AI):\s*/i, "AI ");
+    } else if (/chưa (?:có key|cấu hình)/i.test(raw)) {
+      target.textContent = "AI chưa cấu hình";
+    } else if (/(?:secure storage|kho bí mật)/i.test(raw)) {
+      target.textContent = "Kho bí mật chưa sẵn sàng";
+    } else if (/lỗi cấu hình/i.test(raw)) {
+      target.textContent = "Lỗi cấu hình AI";
+    } else {
+      target.textContent = "Đang kiểm tra cấu hình AI…";
+    }
+  }
+
+  function bindAIStatus(source, target) {
+    updateAIStatus(source, target);
+    if (!source) return;
+    const observer = new MutationObserver(() => updateAIStatus(source, target));
+    observer.observe(source, { childList: true, characterData: true, subtree: true, attributes: true });
   }
 
   function setupReviewWorkspace() {
     const container = document.getElementById("page-view");
     if (!container) return;
+    container.className = "review-mode";
 
     if (window.currentChapterId && reviewLastChapterId !== window.currentChapterId) {
       reviewLastChapterId = window.currentChapterId;
       activeReviewIndex = 0;
     }
 
-    const cards = [...container.querySelectorAll(".review-card")];
-    if (!cards.length) return;
+    const legacyToolbar = container.querySelector("#preview-toolbar");
+    const geminiConfig = legacyToolbar?.querySelector(".gemini-qc-config") || null;
+    const geminiStatus = geminiConfig?.querySelector(".gemini-qc-status") || null;
+    if (geminiConfig && typeof window.mountAISettings === "function") {
+      window.mountAISettings(geminiConfig);
+    }
+
+    let continueBtn = null;
+    if (legacyToolbar) {
+      continueBtn = [...legacyToolbar.children].find((el) => el.tagName === "BUTTON") || null;
+    }
+
+    const cards = [...container.querySelectorAll(":scope > .review-card")];
+    if (!cards.length) {
+      legacyToolbar?.remove();
+      return;
+    }
 
     const targetCanonical = window.initialReviewCanonicalPageIndex !== undefined && window.initialReviewCanonicalPageIndex !== null
       ? window.initialReviewCanonicalPageIndex
@@ -37,36 +106,67 @@
 
     if (targetCanonical !== null) {
       const foundIdx = cards.findIndex((c) => c.dataset.pageIndex === String(targetCanonical));
-      if (foundIdx !== -1) {
-        activeReviewIndex = foundIdx;
-      }
+      if (foundIdx !== -1) activeReviewIndex = foundIdx;
       window.initialReviewCanonicalPageIndex = null;
     }
 
     activeReviewIndex = Math.max(0, Math.min(activeReviewIndex, cards.length - 1));
+    legacyToolbar?.remove();
 
-    let workspace = container.querySelector(".review-workspace-shell");
-    if (workspace) workspace.remove();
-
-    workspace = document.createElement("div");
+    const workspace = document.createElement("div");
     workspace.className = "review-workspace-shell";
 
     const toolbar = document.createElement("div");
     toolbar.className = "review-sticky-toolbar";
-    toolbar.innerHTML = '<div class="review-toolbar-title"><strong>Sửa lỗi ảnh</strong><span>Chỉ hiển thị một lát để tập trung xử lý.</span></div>';
+
+    const title = document.createElement("div");
+    title.className = "review-toolbar-title";
+    title.innerHTML = '<span class="ui-eyebrow">Kiểm tra chất lượng</span><strong>Hiệu chỉnh ảnh đã xử lý</strong><span>Đánh dấu vùng còn lỗi và xử lý lại khi cần.</span>';
 
     const controlsSlot = document.createElement("div");
     controlsSlot.className = "review-controls-slot";
-    toolbar.appendChild(controlsSlot);
+
+    const actions = document.createElement("div");
+    actions.className = "review-actions-group";
+
+    const aiStatus = document.createElement("span");
+    aiStatus.className = "review-ai-status";
+    bindAIStatus(geminiStatus, aiStatus);
+
+    const help = document.createElement("details");
+    help.className = "review-help";
+    const helpSummary = document.createElement("summary");
+    helpSummary.className = "ui-btn ui-btn-ghost";
+    helpSummary.textContent = "Hướng dẫn";
+    const helpPanel = document.createElement("div");
+    helpPanel.className = "review-help-panel";
+    helpPanel.innerHTML = '<p>Chọn <strong>Đánh dấu vùng lỗi</strong> để tô thủ công. Nhấp đúp vào vùng nền đồng màu để chọn nhanh toàn bộ vùng liên thông. Sau khi kiểm tra vùng đánh dấu, chọn <strong>Xử lý vùng đánh dấu</strong>.</p>';
+    help.append(helpSummary, helpPanel);
+
+    if (!continueBtn) {
+      continueBtn = document.createElement("button");
+      continueBtn.addEventListener("click", () => {
+        const activeCard = container.querySelector(".review-canvas-host .review-card");
+        const canonicalIndex = activeCard ? (parseInt(activeCard.dataset.pageIndex, 10) || 0) : 0;
+        if (window.editorState) window.editorState.activePageIndex = canonicalIndex;
+        if (typeof window.setWorkflowCheckpoint === "function") window.setWorkflowCheckpoint("editor", canonicalIndex);
+        if (typeof window.renderEditor === "function") window.renderEditor();
+      });
+    }
+    continueBtn.className = "ui-btn ui-btn-primary review-primary-action";
+    continueBtn.textContent = "Mở trình biên tập bản dịch";
+
+    actions.append(aiStatus, help, continueBtn);
+    toolbar.append(title, controlsSlot, actions);
 
     const nav = document.createElement("nav");
     nav.className = "review-page-nav workspace-nav-bar";
-    nav.setAttribute("aria-label", "Điều hướng trang sửa lỗi ảnh");
+    nav.setAttribute("aria-label", "Điều hướng trang kiểm tra chất lượng");
 
     const prev = document.createElement("button");
     prev.type = "button";
     prev.className = "review-nav-btn workspace-nav-btn";
-    prev.textContent = "← Trước";
+    prev.textContent = "← Trang trước";
     prev.setAttribute("aria-label", "Trang trước");
 
     const position = document.createElement("div");
@@ -76,7 +176,7 @@
     const next = document.createElement("button");
     next.type = "button";
     next.className = "review-nav-btn workspace-nav-btn";
-    next.textContent = "Sau →";
+    next.textContent = "Trang sau →";
     next.setAttribute("aria-label", "Trang sau");
 
     nav.append(prev, position, next);
@@ -87,23 +187,49 @@
     workspace.append(toolbar, nav, canvasHost);
     container.appendChild(workspace);
 
+    const parking = document.createDocumentFragment();
+    cards.forEach((card) => {
+      card.style.display = "none";
+      parking.appendChild(card);
+    });
+
+    let mountedCard = null;
+    let mountedControls = null;
+    let busyObserver = null;
+
+    const restoreMounted = () => {
+      if (busyObserver) {
+        busyObserver.disconnect();
+        busyObserver = null;
+      }
+      if (mountedCard) stopCardBrush(mountedCard);
+      if (mountedCard && mountedControls) mountedCard.insertBefore(mountedControls, mountedCard.children[1] || null);
+      if (mountedCard) {
+        mountedCard.style.display = "none";
+        parking.appendChild(mountedCard);
+      }
+      mountedCard = null;
+      mountedControls = null;
+    };
+
     const renderActive = () => {
-      stopActiveBrushes(cards);
-      cards.forEach((card) => {
-        if (card.parentElement === canvasHost) card.remove();
-        card.style.display = "none";
-      });
+      restoreMounted();
+      controlsSlot.replaceChildren();
 
       const card = cards[activeReviewIndex];
+      mountedCard = card;
       card.style.display = "flex";
-      canvasHost.appendChild(card);
+      canvasHost.replaceChildren(card);
 
-      controlsSlot.innerHTML = "";
       const controls = card.querySelector(".review-controls");
-      if (controls) controlsSlot.appendChild(controls);
+      mountedControls = controls;
+      if (controls) {
+        normalizeReviewControls(controls);
+        controlsSlot.appendChild(controls);
+      }
 
       const label = card.querySelector(".page-block-label");
-      position.innerHTML = "";
+      position.replaceChildren();
 
       const jumpWrap = document.createElement("label");
       jumpWrap.className = "workspace-nav-jump-wrap";
@@ -115,7 +241,7 @@
       jumpInput.max = String(cards.length);
       jumpInput.value = String(activeReviewIndex + 1);
       jumpInput.className = "workspace-nav-jump-input";
-      jumpInput.setAttribute("aria-label", "Nhảy tới số trang");
+      jumpInput.setAttribute("aria-label", "Nhảy đến trang");
 
       const doJump = () => {
         const targetIndex = parsePageNumber(jumpInput.value, cards.length);
@@ -128,23 +254,19 @@
           renderActive();
         }
       };
-
       jumpInput.addEventListener("change", doJump);
-      jumpInput.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") {
-          e.preventDefault();
+      jumpInput.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
           doJump();
         }
       });
-
       jumpWrap.appendChild(jumpInput);
 
       const totalText = document.createElement("span");
       totalText.textContent = ` / ${cards.length}`;
-
       const labelSpan = document.createElement("span");
       labelSpan.textContent = label ? ` · ${label.textContent}` : "";
-
       position.append(jumpWrap, totalText, labelSpan);
 
       prev.disabled = activeReviewIndex === 0;
@@ -167,19 +289,41 @@
         canvas.style.width = "100%";
         canvas.style.height = "100%";
       }
+
+      const brushBtn = controls?.querySelector(".brush-toggle-btn") || null;
+      const clearBtn = controls?.querySelector(".clear-brush-btn") || null;
+      const brushSize = controls?.querySelector(".brush-size-slider") || null;
+      const aiQcBtn = controls?.querySelector(".ai-qc-btn") || null;
+
+      const syncBusy = () => {
+        const busy = Boolean(aiQcBtn?.disabled && /đang/i.test(aiQcBtn.textContent));
+        workspace.classList.toggle("review-busy", busy);
+        if (busy && canvas && typeof canvas._stopBrush === "function") canvas._stopBrush();
+        if (brushBtn) brushBtn.disabled = busy;
+        if (clearBtn) clearBtn.disabled = busy;
+        if (brushSize) brushSize.disabled = busy;
+        prev.disabled = busy || activeReviewIndex === 0;
+        next.disabled = busy || activeReviewIndex === cards.length - 1;
+        jumpInput.disabled = busy;
+        continueBtn.disabled = busy;
+      };
+
+      if (aiQcBtn) {
+        busyObserver = new MutationObserver(syncBusy);
+        busyObserver.observe(aiQcBtn, { attributes: true, childList: true, characterData: true, subtree: true });
+      }
+      syncBusy();
     };
 
     prev.addEventListener("click", () => {
-      if (activeReviewIndex > 0) {
-        activeReviewIndex -= 1;
-        renderActive();
-      }
+      if (workspace.classList.contains("review-busy") || activeReviewIndex <= 0) return;
+      activeReviewIndex -= 1;
+      renderActive();
     });
     next.addEventListener("click", () => {
-      if (activeReviewIndex < cards.length - 1) {
-        activeReviewIndex += 1;
-        renderActive();
-      }
+      if (workspace.classList.contains("review-busy") || activeReviewIndex >= cards.length - 1) return;
+      activeReviewIndex += 1;
+      renderActive();
     });
 
     renderActive();
