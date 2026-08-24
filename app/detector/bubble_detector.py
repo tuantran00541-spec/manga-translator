@@ -171,6 +171,9 @@ class YoloDetector:
         if out_arr.ndim == 2 and out_arr.shape[0] < out_arr.shape[1]:
             out_arr = out_arr.T
 
+        if out_arr.ndim != 2 or out_arr.shape[0] == 0:
+            return []
+
         has_proto = len(outputs) > 1 and outputs[1].ndim == 4
         if has_proto:
             num_mask_coeffs = outputs[1].shape[1]
@@ -181,33 +184,64 @@ class YoloDetector:
             num_classes = max(1, out_arr.shape[1] - 4)
             prototypes = None
 
+        # ONNX returns 21,504 predictions for these models. Filtering them one
+        # by one in Python becomes noticeable on long webtoons, so confidence
+        # and box conversion are vectorised. Mask decoding remains after NMS,
+        # exactly like the legacy path, to avoid extra work and preserve output.
+        if num_classes == 1:
+            confidences = out_arr[:, 4].astype(np.float32, copy=False)
+        else:
+            class_end = 4 + num_classes
+            confidences = np.max(out_arr[:, 4:class_end], axis=1).astype(
+                np.float32, copy=False
+            )
+
+        keep = np.flatnonzero(confidences >= self.conf_threshold)
+        if keep.size == 0:
+            return []
+
+        selected = out_arr[keep]
+        conf_selected = confidences[keep]
+        cx = selected[:, 0]
+        cy = selected[:, 1]
+        bw = selected[:, 2]
+        bh = selected[:, 3]
+
+        x1 = np.maximum(0.0, (cx - bw / 2.0 - pad_x) / scale)
+        y1 = np.maximum(0.0, (cy - bh / 2.0 - pad_y) / scale)
+        x2 = np.minimum(float(orig_w), (cx + bw / 2.0 - pad_x) / scale)
+        y2 = np.minimum(float(orig_h), (cy + bh / 2.0 - pad_y) / scale)
+
+        valid = ((x2 - x1) >= 4.0) & ((y2 - y1) >= 4.0)
+        if not np.any(valid):
+            return []
+
+        valid_rows = np.flatnonzero(valid)
         candidates = []
-        for pred in out_arr:
-            if num_classes == 1:
-                conf = float(pred[4])
-            else:
-                class_scores = pred[4 : 4 + num_classes]
-                class_id = int(np.argmax(class_scores))
-                conf = float(class_scores[class_id])
+        coeff_start = 4 + num_classes
+        coeff_end = coeff_start + num_mask_coeffs
 
-            if conf < self.conf_threshold:
-                continue
+        for j in valid_rows.tolist():
+            canvas_box = None
+            mask_coeffs = None
+            if has_proto and num_mask_coeffs > 0:
+                canvas_box = (
+                    float(cx[j] - bw[j] / 2.0),
+                    float(cy[j] - bh[j] / 2.0),
+                    float(cx[j] + bw[j] / 2.0),
+                    float(cy[j] + bh[j] / 2.0),
+                )
+                mask_coeffs = selected[j, coeff_start:coeff_end].copy()
 
-            cx, cy, bw, bh = pred[:4]
-            x1 = (cx - bw / 2 - pad_x) / scale
-            y1 = (cy - bh / 2 - pad_y) / scale
-            x2 = (cx + bw / 2 - pad_x) / scale
-            y2 = (cy + bh / 2 - pad_y) / scale
-            x1, y1 = max(0, x1), max(0, y1)
-            x2, y2 = min(orig_w, x2), min(orig_h, y2)
-
-            if (x2 - x1) >= 4 and (y2 - y1) >= 4:
-                mask_coeffs = None
-                canvas_box = None
-                if has_proto and num_mask_coeffs > 0:
-                    mask_coeffs = pred[4 + num_classes : 4 + num_classes + num_mask_coeffs].copy()
-                    canvas_box = (cx - bw / 2, cy - bh / 2, cx + bw / 2, cy + bh / 2)
-                candidates.append((float(x1), float(y1), float(x2), float(y2), float(conf), canvas_box, mask_coeffs))
+            candidates.append((
+                float(x1[j]),
+                float(y1[j]),
+                float(x2[j]),
+                float(y2[j]),
+                float(conf_selected[j]),
+                canvas_box,
+                mask_coeffs,
+            ))
 
         return self._nms(candidates, prototypes)
 
