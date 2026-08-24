@@ -46,12 +46,11 @@ def validate_chapter_id(chapter_id: str) -> str:
     return chapter_id
 
 
-def validate_url(url: str) -> str:
+def _parse_remote_url(url: str) -> tuple[str, int | None]:
     if not url or not isinstance(url, str):
         raise HTTPException(400, "URL is required")
     if len(url) > MAX_REMOTE_URL_LENGTH:
         raise HTTPException(400, "URL is too long")
-
     try:
         parsed = urlparse(url)
     except ValueError as exc:
@@ -60,7 +59,6 @@ def validate_url(url: str) -> str:
         raise HTTPException(400, f"URL scheme '{parsed.scheme}' not allowed")
     if parsed.username is not None or parsed.password is not None:
         raise HTTPException(400, "Credentials in URLs are not allowed")
-
     hostname = parsed.hostname
     if not hostname:
         raise HTTPException(400, "URL has no hostname")
@@ -70,31 +68,38 @@ def validate_url(url: str) -> str:
         raise HTTPException(400, "URL has an invalid port") from exc
     if port is not None and not 1 <= port <= 65535:
         raise HTTPException(400, "URL has an invalid port")
+    return hostname, port
 
+
+def _resolve_hostname(hostname: str, port: int | None) -> list[ipaddress.IPv4Address | ipaddress.IPv6Address]:
     try:
-        ip_obj = ipaddress.ip_address(hostname)
-        _check_ip(ip_obj, hostname)
-    except ValueError:
+        infos = socket.getaddrinfo(hostname, port, type=socket.SOCK_STREAM)
+    except socket.gaierror as exc:
+        raise HTTPException(400, f"Cannot resolve hostname: {hostname}") from exc
+    addresses: list[ipaddress.IPv4Address | ipaddress.IPv6Address] = []
+    for _, _, _, _, sockaddr in infos:
+        if not sockaddr:
+            continue
         try:
-            infos = socket.getaddrinfo(hostname, port, type=socket.SOCK_STREAM)
-        except socket.gaierror as exc:
-            raise HTTPException(400, f"Cannot resolve hostname: {hostname}") from exc
-        if not infos:
-            raise HTTPException(400, f"Cannot resolve hostname: {hostname}")
+            addresses.append(ipaddress.ip_address(sockaddr[0]))
+        except ValueError:
+            continue
+    if not addresses:
+        raise HTTPException(400, f"Cannot resolve hostname: {hostname}")
+    return addresses
 
-        checked = 0
-        for _, _, _, _, sockaddr in infos:
-            if not sockaddr:
-                continue
-            try:
-                ip_obj = ipaddress.ip_address(sockaddr[0])
-            except ValueError:
-                continue
-            _check_ip(ip_obj, hostname)
-            checked += 1
-        if checked == 0:
-            raise HTTPException(400, f"Cannot resolve hostname: {hostname}")
 
+def _url_addresses(hostname: str, port: int | None) -> list[ipaddress.IPv4Address | ipaddress.IPv6Address]:
+    try:
+        return [ipaddress.ip_address(hostname)]
+    except ValueError:
+        return _resolve_hostname(hostname, port)
+
+
+def validate_url(url: str) -> str:
+    hostname, port = _parse_remote_url(url)
+    for ip_obj in _url_addresses(hostname, port):
+        _check_ip(ip_obj, hostname)
     return url
 
 
