@@ -28,6 +28,12 @@ function renderPreview() {
     previewActivePageIndex = 0;
   }
 
+  if (window.initialPreviewCanonicalPageIndex !== undefined && window.initialPreviewCanonicalPageIndex !== null) {
+    const requestedIndex = parseInt(window.initialPreviewCanonicalPageIndex, 10);
+    if (Number.isFinite(requestedIndex)) previewActivePageIndex = requestedIndex;
+    window.initialPreviewCanonicalPageIndex = null;
+  }
+
   cleanupPreviewDrawListeners();
 
   const pages = currentManifest.pages;

@@ -93,14 +93,32 @@ body.settings-open {
   position: relative;
   min-width: 0;
   padding: 8px 10px;
+  border: 0;
   border-radius: 7px;
+  background: transparent;
   color: var(--text-3);
   font: 500 11px/1.25 var(--font-body);
   text-align: center;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  transition: background var(--transition-fast), color var(--transition-fast);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast), opacity var(--transition-fast);
+}
+
+.workflow-step:not(:disabled):not(.active):hover {
+  color: var(--text-1);
+  background: var(--surface-2);
+}
+
+.workflow-step:focus-visible {
+  outline: 2px solid var(--accent-1);
+  outline-offset: 2px;
+}
+
+.workflow-step:disabled {
+  cursor: default;
+  opacity: 0.46;
 }
 
 .workflow-step::after {
@@ -114,7 +132,8 @@ body.settings-open {
   background: transparent;
 }
 
-.workflow-step.complete {
+.workflow-step.complete,
+.workflow-step.available {
   color: var(--text-2);
 }
 

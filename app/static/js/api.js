@@ -171,7 +171,7 @@ async function resumeChapter(chapterId) {
     const pageIndex = Math.max(0, Math.min(rawIndex, Math.max(0, pages.length - 1)));
 
     if (stage === "preview") {
-      window.previewActivePageIndex = pageIndex;
+      window.initialPreviewCanonicalPageIndex = pageIndex;
       renderPreview();
     } else if (stage === "review") {
       window.initialReviewCanonicalPageIndex = pageIndex;
