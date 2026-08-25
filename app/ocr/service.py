@@ -78,16 +78,23 @@ def ocr_crop_from_box(image: np.ndarray, box: dict) -> np.ndarray:
 
 
 def _active_overlap_signatures(page: dict, region: dict) -> list[tuple[str, tuple[int, int, int, int]]]:
-    matches = []
+    matches: list[tuple[int, int, str, tuple[int, int, int, int]]] = []
     for box in page.get("boxes", []) or []:
         if not isinstance(box, dict) or box.get("removed"):
             continue
         box_id = box.get("id")
         if not box_id or not _region_overlaps_box(region, box):
             continue
-        matches.append((str(box_id), geometry_signature(box)))
-    matches.sort(key=lambda item: item[0])
-    return matches
+        matches.append(
+            (
+                int(box.get("y1", 0)),
+                int(box.get("x1", 0)),
+                str(box_id),
+                geometry_signature(box),
+            )
+        )
+    matches.sort(key=lambda item: (item[0], item[1], item[2]))
+    return [(box_id, geometry) for _, _, box_id, geometry in matches]
 
 
 class OCRService:
