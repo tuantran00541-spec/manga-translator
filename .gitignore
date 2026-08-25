@@ -29,8 +29,8 @@ Thumbs.db
 
 *.log
 
-debug_detect.py
-debug_text_threshold_sweep.py
 inspect_model.py
 
-bench/
+bench/detect_box_mask_v*/
+bench/results/
+bench/reports/
