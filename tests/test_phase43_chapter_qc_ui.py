@@ -11,8 +11,9 @@ def read(path: str) -> str:
 def test_chapter_qc_controller_is_loaded_after_review_workspace():
     html = read("app/templates/index.html")
     workspace_pos = html.index('/static/js/review-workspace.js')
+    deepseek_settings_pos = html.index('/static/js/deepseek-qc-settings.js')
     chapter_qc_pos = html.index('/static/js/chapter-qc.js')
-    assert workspace_pos < chapter_qc_pos
+    assert workspace_pos < deepseek_settings_pos < chapter_qc_pos
 
 
 def test_chapter_qc_ui_wires_start_status_cancel_and_retry_endpoints():
@@ -62,7 +63,7 @@ def test_cancel_keeps_polling_until_backend_reaches_terminal_state():
     js = read("app/static/js/chapter-qc.js")
     assert "snapshot.cancel_requested" in js
     assert "if (isRunning(snapshot)) schedulePoll(snapshot.job_id, generation)" in js
-    assert 'return `Đang hủy · ${completed}/${total} vùng đã xử lý…`' in js
+    assert "Đang hủy · ${completed}/${total} vùng đã xử lý" in js
 
 
 def test_chapter_qc_panel_has_progress_results_and_highlight_styles():
@@ -72,3 +73,24 @@ def test_chapter_qc_panel_has_progress_results_and_highlight_styles():
     assert ".chapter-qc-result" in css
     assert ".review-qc-highlight" in css
     assert ".review-chapter-qc-running" in css
+
+
+def test_deepseek_chapter_controls_send_provider_budget_and_show_usage():
+    js = read("app/static/js/chapter-qc.js")
+    css = read("app/static/css/deepseek-qc.css")
+    assert 'class="chapter-qc-provider"' in js
+    assert '<option value="deepseek">DeepSeek Vision Exp</option>' in js
+    assert 'class="chapter-qc-budget-input"' in js
+    assert "provider, budget_usd: budget" in js
+    assert "snapshot.usage.estimated_cost_usd" in js
+    assert ".chapter-qc-options" in css
+    assert ".chapter-qc-usage" in css
+
+
+def test_deepseek_key_ui_is_separate_and_never_echoes_key():
+    js = read("app/static/js/deepseek-qc-settings.js")
+    assert '"/api/visual_qc/deepseek/key"' in js
+    assert 'input.type = "password"' in js
+    assert 'input.value = ""' in js
+    assert "data.api_key" not in js
+    assert "provider.api_key" not in js
