@@ -1,0 +1,57 @@
+name: Release gate
+
+on:
+  push:
+    branches:
+      - main
+      - "release/**"
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  product-closure:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install runtime and test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pytest httpx
+
+      - name: Compile source
+        run: python -m compileall -q app tests
+
+      - name: Run model-independent product gate
+        run: |
+          pytest -q \
+            tests/test_auto_text_objects.py \
+            tests/test_translation_deepseek.py \
+            tests/test_chapter_export.py \
+            tests/test_downloader_discovery.py \
+            tests/test_v01_product_closure.py \
+            tests/test_phase41_data_model.py \
+            tests/test_phase42_review_artifacts.py \
+            tests/test_phase43_chapter_qc_ui.py \
+            tests/test_phase45_render_export.py \
+            tests/test_ui_system_contract.py
+
+      - name: Install Chromium
+        run: playwright install --with-deps chromium
+
+      - name: Run browser regression gate
+        run: |
+          python tests/browser_phase43_chapter_qc.py
+          python tests/browser_phase44_ocr.py
+          python tests/browser_phase45_render_export.py
+
+      - name: Explain model gate
+        run: |
+          echo "Detection/inpaint model-integrity tests remain a local/model-artifact gate because ONNX production binaries are intentionally not stored in Git."
