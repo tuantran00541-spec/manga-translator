@@ -24,6 +24,17 @@
     return data;
   }
 
+  function syncChapterState() {
+    const chapterId = window.currentChapterId || null;
+    const snapshotChapter = state.snapshot?.chapter_id || null;
+    if (snapshotChapter && snapshotChapter !== chapterId) {
+      state.generation += 1;
+      window.clearTimeout(state.pollTimer);
+      state.pollTimer = null;
+      state.snapshot = null;
+    }
+  }
+
   function isRunning(snapshot = state.snapshot) {
     return snapshot?.status === "pending" || snapshot?.status === "running";
   }
@@ -131,6 +142,7 @@
 
   function renderPanel(workspace) {
     if (!workspace?.isConnected) return;
+    syncChapterState();
     const panel = workspace.querySelector(".chapter-qc-panel");
     if (!panel) return;
     const snapshot = state.snapshot;
@@ -193,6 +205,7 @@
   }
 
   function renderAll() {
+    syncChapterState();
     document.querySelectorAll(".review-workspace-shell[data-chapter-qc-bound='1']").forEach(renderPanel);
   }
 
@@ -201,7 +214,9 @@
     if (!jobId || generation !== state.generation) return;
     state.pollTimer = window.setTimeout(async () => {
       try {
-        state.snapshot = await requestJson(`/api/visual_qc/chapter/${encodeURIComponent(jobId)}`);
+        const snapshot = await requestJson(`/api/visual_qc/chapter/${encodeURIComponent(jobId)}`);
+        if (generation !== state.generation || snapshot?.chapter_id !== window.currentChapterId) return;
+        state.snapshot = snapshot;
         renderAll();
         if (isRunning() && generation === state.generation) schedulePoll(jobId, generation);
       } catch (err) {
@@ -214,14 +229,18 @@
   }
 
   async function startChapterQC(workspace) {
-    if (!window.currentChapterId || isRunning()) return;
+    syncChapterState();
+    const chapterId = window.currentChapterId;
+    if (!chapterId || isRunning()) return;
     const generation = ++state.generation;
     try {
-      state.snapshot = await requestJson("/api/visual_qc/chapter", {
+      const snapshot = await requestJson("/api/visual_qc/chapter", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ chapter_id: window.currentChapterId, concurrency: 2 }),
+        body: JSON.stringify({ chapter_id: chapterId, concurrency: 2 }),
       });
+      if (generation !== state.generation || chapterId !== window.currentChapterId) return;
+      state.snapshot = snapshot;
       renderAll();
       schedulePoll(state.snapshot.job_id, generation);
     } catch (err) {
@@ -235,11 +254,14 @@
 
   async function cancelChapterQC() {
     if (!state.snapshot?.job_id || !isRunning()) return;
+    const chapterId = window.currentChapterId;
     try {
-      state.snapshot = await requestJson(
+      const snapshot = await requestJson(
         `/api/visual_qc/chapter/${encodeURIComponent(state.snapshot.job_id)}/cancel`,
         { method: "POST" }
       );
+      if (chapterId !== window.currentChapterId) return;
+      state.snapshot = snapshot;
       state.generation += 1;
       window.clearTimeout(state.pollTimer);
       renderAll();
@@ -250,12 +272,15 @@
 
   async function retryChapterQC() {
     if (!state.snapshot?.job_id || isRunning()) return;
+    const chapterId = window.currentChapterId;
     const generation = ++state.generation;
     try {
-      state.snapshot = await requestJson(
+      const snapshot = await requestJson(
         `/api/visual_qc/chapter/${encodeURIComponent(state.snapshot.job_id)}/retry`,
         { method: "POST" }
       );
+      if (generation !== state.generation || chapterId !== window.currentChapterId) return;
+      state.snapshot = snapshot;
       renderAll();
       schedulePoll(state.snapshot.job_id, generation);
     } catch (err) {
@@ -264,6 +289,7 @@
   }
 
   function bindWorkspace(workspace) {
+    syncChapterState();
     if (!workspace || workspace.dataset.chapterQcBound === "1") return;
     workspace.dataset.chapterQcBound = "1";
     const actions = workspace.querySelector(".review-actions-group");
@@ -305,6 +331,7 @@
   }
 
   function scan() {
+    syncChapterState();
     document.querySelectorAll(".review-workspace-shell").forEach(bindWorkspace);
   }
 
