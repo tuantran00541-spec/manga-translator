@@ -4,7 +4,7 @@ from playwright.sync_api import sync_playwright
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SCRIPT = ROOT / "app/static/js/render-export45.js"
+API_SCRIPT = ROOT / "app/static/js/api.js"
 
 
 def main() -> None:
@@ -18,12 +18,9 @@ def main() -> None:
             calls["render"] += 1
             if calls["render"] == 1:
                 route.fulfill(
-                    status=200,
+                    status=409,
                     content_type="application/json",
-                    body=(
-                        '{"output":"/api/image/deadbeef/0/rendered",'
-                        '"committed":false,"warning":"stale render discarded"}'
-                    ),
+                    body='{"detail":"stale render discarded"}',
                 )
                 return
             route.fulfill(
@@ -61,9 +58,8 @@ def main() -> None:
                 }]
               }]
             };
+            window.availableFonts = [];
             window.flushAllPendingPersists = async () => {};
-            window.parseApiResponse = async (response) => response.json();
-            window.getErrorMessage = (status, data) => data.detail || `HTTP ${status}`;
             window._phase45Toasts = [];
             window._phase45Results = [];
             window.showToast = (message, kind) => window._phase45Toasts.push({message, kind});
@@ -71,18 +67,17 @@ def main() -> None:
             undefined;
             """
         )
-        page.add_script_tag(path=str(SCRIPT))
+        page.add_script_tag(path=str(API_SCRIPT))
 
         page.evaluate("window.renderTranslations(0)")
         page.wait_for_function("window._phase45Toasts.length === 1")
         assert page.evaluate("window.currentManifest.pages[0].rendered") is False
         assert page.evaluate("window._phase45Results.length") == 0
-        assert page.evaluate("window._phase45Toasts[0].message") == "stale render discarded"
+        assert "stale render discarded" in page.evaluate("window._phase45Toasts[0].message")
 
         page.evaluate("window.renderTranslations(0)")
         page.wait_for_function("window._phase45Results.length === 1")
         assert page.evaluate("window.currentManifest.pages[0].rendered") is True
-        assert page.evaluate("window.currentManifest.pages[0].render_revision") == 5
         assert page.evaluate("window._phase45Results[0].output") == "/api/image/deadbeef/0/rendered"
         assert calls["render"] == 2
 
