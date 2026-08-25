@@ -21,6 +21,7 @@ LEGACY_BENCHMARK_PATHS = (
     "debug_detect.py",
     "debug_text_threshold_sweep.py",
     "tools/bench_gt_frozen_candidate.json",
+    "tools/benchmark_inpaint.py",
     "tools/benchmark_tta.py",
     "tools/detect_box_mask_baseline_cpu.py",
     "tools/detect_box_mask_bench.py",
@@ -73,9 +74,12 @@ def test_detect_box_mask_benchmark_has_one_implementation():
     assert len(entry_text.splitlines()) < 40
 
 
-def test_legacy_inpaint_cli_is_only_a_thin_compatibility_shim():
-    shim = ROOT / "tools/benchmark_inpaint.py"
-    assert shim.is_file()
-    text = shim.read_text(encoding="utf-8")
-    assert "from bench.scripts.benchmark_inpaint import main" in text
-    assert len(text.splitlines()) < 30
+def test_legacy_inpaint_cli_is_only_a_thin_compatibility_package():
+    package_dir = ROOT / "tools/benchmark_inpaint"
+    assert package_dir.is_dir()
+    init_text = (package_dir / "__init__.py").read_text(encoding="utf-8")
+    main_text = (package_dir / "__main__.py").read_text(encoding="utf-8")
+    assert "from bench.scripts.benchmark_inpaint import main" in init_text
+    assert "raise SystemExit(main() or 0)" in main_text
+    assert len(init_text.splitlines()) < 10
+    assert len(main_text.splitlines()) < 10

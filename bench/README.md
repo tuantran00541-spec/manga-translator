@@ -6,7 +6,7 @@
 - `bench/scripts/` contains executable benchmark, profiler, reviewer, and audit entry points.
 - `bench/ground_truth/` contains versioned benchmark ground-truth JSON.
 - `debug/` contains diagnostic scripts that are useful during development but are not benchmark entry points.
-- `tools/benchmark_inpaint.py` is a compatibility shim only; it delegates to the canonical CLI and contains no benchmark implementation.
+- `tools/benchmark_inpaint/` is a compatibility package only; `python -m tools.benchmark_inpaint` delegates to the canonical CLI without duplicating its implementation.
 - Other files in `tools/` are UI/developer utilities.
 
 Run the inpaint harness with:
