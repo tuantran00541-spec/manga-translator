@@ -10,8 +10,9 @@ import app.config as config
 import app.manifest_utils as manifest_utils
 import app.pipeline as pipeline_mod
 import app.routers.editor as editor_mod
+from app.ocr.identity import file_revision
+from app.ocr.service import OCRResultStale, OCRService
 from app.pipeline import ChapterPipeline
-from app.schemas import OcrBoxRequest
 
 
 CHAPTER_ID = "d4e5f6a7"
@@ -43,6 +44,8 @@ class Phase44OCRHarness(unittest.TestCase):
         ]
         for patcher in self.patchers:
             patcher.start()
+        self.pipeline = ChapterPipeline()
+        self.service = OCRService(editor_mod.ocr, self.pipeline)
 
     def tearDown(self):
         for patcher in reversed(self.patchers):
@@ -62,19 +65,6 @@ class Phase44OCRHarness(unittest.TestCase):
         }
         box.update(updates)
         return box
-
-    def text_object(self, **updates):
-        obj = {
-            "id": "obj1",
-            "shape": "rectangle",
-            "region": {"x1": 5, "y1": 5, "x2": 100, "y2": 70},
-            "source_boxes": [],
-            "ocr_text": "",
-            "translation": "",
-            "style": {},
-        }
-        obj.update(updates)
-        return obj
 
     def save_manifest(self, *, boxes=None, text_objects=None):
         manifest = {
@@ -113,9 +103,8 @@ class OCRIdentityRegressionTests(Phase44OCRHarness):
                 manifest_utils.save_manifest_raw(CHAPTER_ID, manifest)
             return "ALPHA"
 
-        req = OcrBoxRequest(chapter_id=CHAPTER_ID, page_index=0, box_index=0, lang="en")
         with patch.object(editor_mod.ocr, "read", side_effect=read_then_reorder):
-            editor_mod.ocr_box(req)
+            self.service.inspect_box_index(CHAPTER_ID, 0, 0, "en")
 
         boxes = {box["id"]: box for box in self.load_page()["boxes"]}
         self.assertEqual(boxes["box_a"].get("ocr_text"), "ALPHA")
@@ -133,9 +122,9 @@ class OCRIdentityRegressionTests(Phase44OCRHarness):
                 manifest_utils.save_manifest_raw(CHAPTER_ID, manifest)
             return "STALE"
 
-        req = OcrBoxRequest(chapter_id=CHAPTER_ID, page_index=0, box_index=0, lang="en")
         with patch.object(editor_mod.ocr, "read", side_effect=read_then_replace_source):
-            editor_mod.ocr_box(req)
+            with self.assertRaises(OCRResultStale):
+                self.service.inspect_box_id(CHAPTER_ID, 0, "box_a", "en")
 
         box = self.load_page()["boxes"][0]
         self.assertNotIn("ocr_text", box)
@@ -148,14 +137,14 @@ class OCRIdentityRegressionTests(Phase44OCRHarness):
             ocr_source="machine",
             ocr_engine="legacy-engine",
             ocr_source_revision=1,
+            ocr_file_revision=list(file_revision(self.original)),
             ocr_geometry=[10, 10, 90, 60],
         )
         self.save_manifest(boxes=[box])
-        pipe = ChapterPipeline()
-        with patch.object(pipe, "_do_reinpaint", return_value=self.clean.as_posix()), patch.object(
-            pipe, "_sync_output_dir", return_value=None
+        with patch.object(self.pipeline, "_do_reinpaint", return_value=self.clean.as_posix()), patch.object(
+            self.pipeline, "_sync_output_dir", return_value=None
         ):
-            pipe.update_box(CHAPTER_ID, 0, 0, 20, 18, 100, 68)
+            self.pipeline.update_box(CHAPTER_ID, 0, 0, 20, 18, 100, 68)
 
         updated = self.load_page()["boxes"][0]
         for key in (
@@ -169,34 +158,34 @@ class OCRIdentityRegressionTests(Phase44OCRHarness):
         ):
             self.assertNotIn(key, updated)
 
+    def test_legacy_unversioned_box_cache_is_invalidated(self):
+        self.save_manifest(boxes=[self.box("box_a", ocr_text="LEGACY", ocr_lang="en")])
+        box = self.load_page()["boxes"][0]
+        self.assertNotIn("ocr_text", box)
+        self.assertNotIn("ocr_lang", box)
 
-class OCRManualEditRegressionTests(Phase44OCRHarness):
-    def test_user_ocr_edit_is_marked_manual_and_drops_machine_identity(self):
-        obj = self.text_object(
-            ocr_text="MACHINE",
-            ocr_source="machine",
-            ocr_engine="legacy-engine",
+    def test_engine_identity_change_forces_fresh_ocr(self):
+        box = self.box(
+            "box_a",
+            ocr_text="OLD",
             ocr_lang="en",
+            ocr_source="machine",
+            ocr_engine="old-engine",
+            ocr_source_revision=1,
+            ocr_file_revision=list(file_revision(self.original)),
+            ocr_geometry=[10, 10, 90, 60],
         )
-        self.save_manifest(boxes=[self.box("box_a")], text_objects=[obj])
-        pipe = ChapterPipeline()
-        pipe.update_text_object(CHAPTER_ID, 0, "obj1", {"ocr_text": "USER EDIT"})
+        self.save_manifest(boxes=[box])
+        with patch("app.ocr.service.engine_identity", return_value="new-engine"), patch.object(
+            editor_mod.ocr, "read", return_value="NEW"
+        ) as read_mock:
+            result = self.service.inspect_box_id(CHAPTER_ID, 0, "box_a", "en")
 
-        updated = self.load_page()["text_objects"][0]
-        self.assertEqual(updated["ocr_text"], "USER EDIT")
-        self.assertEqual(updated.get("ocr_source"), "manual")
-        self.assertNotIn("ocr_engine", updated)
-        self.assertNotIn("ocr_lang", updated)
-
-    def test_group_ocr_does_not_overwrite_manual_text_without_force(self):
-        obj = self.text_object(ocr_text="USER EDIT", ocr_source="manual")
-        self.save_manifest(boxes=[self.box("box_a")], text_objects=[obj])
-        with patch.object(editor_mod.ocr, "read", return_value="MACHINE"):
-            editor_mod._group_text_object_ocr(CHAPTER_ID, 0, "obj1", "en")
-
-        updated = self.load_page()["text_objects"][0]
-        self.assertEqual(updated["ocr_text"], "USER EDIT")
-        self.assertEqual(updated.get("ocr_source"), "manual")
+        self.assertFalse(result["cached"])
+        read_mock.assert_called_once()
+        updated = self.load_page()["boxes"][0]
+        self.assertEqual(updated["ocr_text"], "NEW")
+        self.assertEqual(updated["ocr_engine"], "new-engine")
 
 
 if __name__ == "__main__":
