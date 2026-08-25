@@ -113,7 +113,7 @@ class Phase45RenderHarness(unittest.TestCase):
     def load_manifest(self):
         return manifest_utils.load_manifest_raw(CHAPTER_ID)
 
-    def request(self, **overrides):
+    def _request(self, **overrides):
         payload = {
             "chapter_id": CHAPTER_ID,
             "page_index": 0,
@@ -127,15 +127,15 @@ class Phase45RenderHarness(unittest.TestCase):
         payload.update(overrides)
         return RenderRequest(**payload)
 
-    def render_successfully(self):
+    def _render_successfully(self):
         with patch.object(render45, "_render_snapshot", return_value=1):
-            return render45.render_page(self.request())
+            return render45.render_page(self._request())
 
 
 class RenderIdentityTests(Phase45RenderHarness):
     def test_successful_render_stamps_identity_and_persists_render_state(self):
         self.save_manifest()
-        result = self.render_successfully()
+        result = self._render_successfully()
 
         self.assertTrue(result["committed"])
         manifest = self.load_manifest()
@@ -166,9 +166,10 @@ class RenderIdentityTests(Phase45RenderHarness):
                 manifest_utils.save_manifest_raw(CHAPTER_ID, manifest)
             return 1
 
+        request = self._request()
         with patch.object(render45, "_render_snapshot", side_effect=mutate_during_render):
             with self.assertRaises(HTTPException) as caught:
-                render45.render_page(self.request())
+                render45.render_page(request)
 
         self.assertEqual(caught.exception.status_code, 409)
         page = self.load_manifest()["pages"][0]
@@ -178,7 +179,7 @@ class RenderIdentityTests(Phase45RenderHarness):
 
     def test_same_path_base_replacement_invalidates_rendered_artifact(self):
         self.save_manifest()
-        self.render_successfully()
+        self._render_successfully()
         output = self.output_page_dir / "page_000.png"
 
         replacement = np.full((96, 128, 3), 7, dtype=np.uint8)
@@ -192,7 +193,7 @@ class RenderIdentityTests(Phase45RenderHarness):
 
     def test_output_tamper_invalidates_download(self):
         self.save_manifest()
-        self.render_successfully()
+        self._render_successfully()
         output = self.output_page_dir / "page_000.png"
         output.write_bytes(output.read_bytes() + b"tamper")
 
@@ -213,7 +214,7 @@ class RenderIdentityTests(Phase45RenderHarness):
 
     def test_rendered_preview_falls_back_to_current_base_when_artifact_is_stale(self):
         self.save_manifest()
-        self.render_successfully()
+        self._render_successfully()
         output = self.output_page_dir / "page_000.png"
         output.write_bytes(output.read_bytes() + b"tamper")
 
