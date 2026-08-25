@@ -101,11 +101,13 @@ def main() -> None:
             window.getErrorMessage = (status, data) => data.detail || `HTTP ${status}`;
             window.showToast = () => {};
             window.fetchOcr = async () => { throw new Error('legacy fetchOcr should have been replaced'); };
+            void 0;
             """
         )
         page.add_script_tag(path=str(SCRIPT))
 
         page.wait_for_selector(".chapter-ocr-run")
+        assert page.evaluate("window.fetchOcr.name") == "safeFetchOcr"
         assert not page.locator(".nav-next").is_disabled()
 
         page.evaluate("window.fetchOcr(0, 0, document.getElementById('box-original'))")
