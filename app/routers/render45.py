@@ -180,6 +180,7 @@ def _commit_render(
     responses={
         400: {"description": "Invalid render request"},
         404: {"description": "Base image missing"},
+        409: {"description": "Page changed while render was running"},
         500: {"description": "Render failed"},
     },
 )
@@ -233,18 +234,16 @@ def render_page(req: RenderRequest) -> dict:
     finally:
         _cleanup_tmp(tmp_path)
 
-    output = f"/api/image/{req.chapter_id}/{req.page_index}/rendered"
     if not committed:
         logger.warning(
             "Chapter {} page {} changed during render; stale output discarded",
             req.chapter_id,
             req.page_index,
         )
-        return {
-            "output": output,
-            "committed": False,
-            "warning": "Dữ liệu trang đã thay đổi trong lúc kết xuất. Vui lòng kết xuất lại.",
-        }
+        raise HTTPException(
+            409,
+            "Dữ liệu trang đã thay đổi trong lúc kết xuất. Vui lòng kết xuất lại.",
+        )
 
     logger.info(
         "Chapter {} page {} rendered {} object(s) at revision {}",
@@ -254,7 +253,7 @@ def render_page(req: RenderRequest) -> dict:
         render_revision,
     )
     return {
-        "output": output,
+        "output": f"/api/image/{req.chapter_id}/{req.page_index}/rendered",
         "committed": True,
         "render_revision": render_revision,
     }
