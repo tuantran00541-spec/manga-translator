@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 import time
 from pathlib import Path
@@ -26,7 +27,84 @@ except ImportError:
     psutil = None
 
 
+DATA_ROOT = (PROJECT_ROOT / "data").resolve()
+BENCH_ROOT = (PROJECT_ROOT / "bench").resolve()
+MODELS_ROOT = (PROJECT_ROOT / "models").resolve()
+RESULTS_ROOT = (BENCH_ROOT / "results").resolve()
 IMAGE_EXTENSIONS = {".bmp", ".jpeg", ".jpg", ".png", ".webp"}
+_RESULT_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*\.json$")
+
+
+def _is_within(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+        return True
+    except ValueError:
+        return False
+
+
+def _resolve_bounded_path(
+    raw: str | Path,
+    *,
+    allowed_roots: tuple[Path, ...],
+    must_exist: bool = True,
+    must_be_file: bool = False,
+) -> Path:
+    text = str(raw).strip()
+    if not text or "\x00" in text:
+        raise argparse.ArgumentTypeError("path is empty or invalid")
+    candidate = Path(text)
+    if not candidate.is_absolute():
+        candidate = PROJECT_ROOT / candidate
+    resolved = candidate.resolve()
+    if not any(_is_within(resolved, root) for root in allowed_roots):
+        roots = ", ".join(str(root.relative_to(PROJECT_ROOT)) for root in allowed_roots)
+        raise argparse.ArgumentTypeError(f"path must stay inside: {roots}")
+    if must_exist and not resolved.exists():
+        raise argparse.ArgumentTypeError(f"path does not exist: {resolved}")
+    if must_be_file and not resolved.is_file():
+        raise argparse.ArgumentTypeError(f"expected a file: {resolved}")
+    return resolved
+
+
+def _input_path(raw: str) -> Path:
+    return _resolve_bounded_path(raw, allowed_roots=(DATA_ROOT, BENCH_ROOT))
+
+
+def _model_path(raw: str) -> Path:
+    return _resolve_bounded_path(
+        raw,
+        allowed_roots=(MODELS_ROOT,),
+        must_exist=True,
+        must_be_file=True,
+    )
+
+
+def _comparison_path(raw: str) -> Path:
+    return _resolve_bounded_path(
+        raw,
+        allowed_roots=(RESULTS_ROOT,),
+        must_exist=True,
+        must_be_file=True,
+    )
+
+
+def _result_path(raw: str) -> Path:
+    name = raw.strip()
+    if not _RESULT_NAME_RE.fullmatch(name) or Path(name).name != name:
+        raise argparse.ArgumentTypeError(
+            "--output must be a JSON filename such as slicer-current.json"
+        )
+    return RESULTS_ROOT / name
+
+
+def _safe_discovered_image(path: Path) -> Path | None:
+    resolved = path.resolve()
+    if not any(_is_within(resolved, root) for root in (DATA_ROOT, BENCH_ROOT)):
+        return None
+    if not resolved.is_file() or resolved.suffix.lower() not in IMAGE_EXTENSIONS:
+        return None
+    return resolved
 
 
 def _percentile(values: list[float], percentile: float) -> float:
@@ -48,30 +126,46 @@ def _summary(values: list[int | float]) -> dict[str, float | int]:
 
 
 def _image_paths(root: Path) -> list[Path]:
+    root = _resolve_bounded_path(root, allowed_roots=(DATA_ROOT, BENCH_ROOT))
     if root.is_file():
-        return [root]
-    return sorted(
-        path
-        for path in root.rglob("*")
-        if path.is_file()
-        and path.suffix.lower() in IMAGE_EXTENSIONS
-        and "sliced" not in path.parts
-    )
+        safe = _safe_discovered_image(root)
+        return [safe] if safe is not None else []
+
+    paths: list[Path] = []
+    for path in root.rglob("*"):
+        if "sliced" in path.parts:
+            continue
+        safe = _safe_discovered_image(path)
+        if safe is not None:
+            paths.append(safe)
+    return sorted(set(paths))
 
 
 def _load_gray(path: Path) -> np.ndarray:
-    encoded = np.fromfile(str(path), dtype=np.uint8)
+    safe = _resolve_bounded_path(
+        path,
+        allowed_roots=(DATA_ROOT, BENCH_ROOT),
+        must_exist=True,
+        must_be_file=True,
+    )
+    encoded = np.fromfile(str(safe), dtype=np.uint8)
     image = cv2.imdecode(encoded, cv2.IMREAD_GRAYSCALE)
     if image is None:
-        raise ValueError(f"Could not decode image: {path}")
+        raise ValueError(f"Could not decode image: {safe}")
     return image
 
 
 def _load_color(path: Path) -> np.ndarray:
-    encoded = np.fromfile(str(path), dtype=np.uint8)
+    safe = _resolve_bounded_path(
+        path,
+        allowed_roots=(DATA_ROOT, BENCH_ROOT),
+        must_exist=True,
+        must_be_file=True,
+    )
+    encoded = np.fromfile(str(safe), dtype=np.uint8)
     image = cv2.imdecode(encoded, cv2.IMREAD_COLOR)
     if image is None:
-        raise ValueError(f"Could not decode image: {path}")
+        raise ValueError(f"Could not decode image: {safe}")
     return image
 
 
@@ -79,10 +173,11 @@ def _measure_page(path: Path, strategy: str) -> tuple[dict, float, float]:
     started = time.perf_counter()
     gray = _load_gray(path)
     height, width = gray.shape[:2]
-    if strategy == "current":
-        unsafe_rows = _get_content_row_mask(gray, height, width)
-    else:
-        unsafe_rows = np.ones(height, dtype=bool)
+    unsafe_rows = (
+        _get_content_row_mask(gray, height, width)
+        if strategy == "current"
+        else np.ones(height, dtype=bool)
+    )
     cuts = _find_cut_rows(gray, height, width, unsafe_rows)
     elapsed_ms = (time.perf_counter() - started) * 1_000
 
@@ -91,18 +186,21 @@ def _measure_page(path: Path, strategy: str) -> tuple[dict, float, float]:
         {"y_start": start, "y_end": end, "height": end - start}
         for start, end in zip(boundaries, boundaries[1:])
     ]
-    continuity = all(
-        left["y_end"] == right["y_start"] for left, right in zip(slices, slices[1:])
-    )
     coverage = sum(item["height"] for item in slices)
-
+    continuity = all(
+        left["y_end"] == right["y_start"]
+        for left, right in zip(slices, slices[1:])
+    )
     unsafe_cuts = None
     if strategy == "current":
         unsafe_cuts = [
             cut
             for cut in cuts
-            if unsafe_rows[max(0, cut - SAFE_CUT_BAND) : cut + SAFE_CUT_BAND + 1].any()
+            if unsafe_rows[
+                max(0, cut - SAFE_CUT_BAND) : cut + SAFE_CUT_BAND + 1
+            ].any()
         ]
+
     rss_mb = 0.0
     if psutil is not None:
         rss_mb = psutil.Process().memory_info().rss / (1024 * 1024)
@@ -134,13 +232,28 @@ def _detector_cut_metrics(
     model_path: Path,
     comparison_report: Path | None,
 ) -> dict:
-    detector = YoloDetector(model_path, conf_threshold=0.4)
+    safe_model = _resolve_bounded_path(
+        model_path,
+        allowed_roots=(MODELS_ROOT,),
+        must_exist=True,
+        must_be_file=True,
+    )
+    detector = YoloDetector(safe_model, conf_threshold=0.4)
     comparison_cuts: dict[str, list[int]] = {}
-    if comparison_report:
-        comparison = json.loads(comparison_report.read_text(encoding="utf-8"))
+    if comparison_report is not None:
+        safe_report = _resolve_bounded_path(
+            comparison_report,
+            allowed_roots=(RESULTS_ROOT,),
+            must_exist=True,
+            must_be_file=True,
+        )
+        comparison = json.loads(safe_report.read_text(encoding="utf-8"))
         comparison_cuts = {
             str(page["path"]): page["cut_positions"]
-            for page in comparison["page_details"]
+            for page in comparison.get("page_details", [])
+            if isinstance(page, dict)
+            and isinstance(page.get("path"), str)
+            and isinstance(page.get("cut_positions"), list)
         }
 
     total_boxes = 0
@@ -161,7 +274,7 @@ def _detector_cut_metrics(
             )
 
     result = {
-        "model": str(model_path),
+        "model": str(safe_model),
         "source_page_boxes": total_boxes,
         "crossed_boxes": current_crossed_boxes,
         "runtime_ms": round((time.perf_counter() - started) * 1_000, 3),
@@ -179,9 +292,15 @@ def benchmark(
     detector_model: Path | None = None,
     comparison_report: Path | None = None,
 ) -> dict:
-    paths = _image_paths(root)
+    if repeat < 1:
+        raise ValueError("repeat must be at least 1")
+    if strategy not in {"current", "score-only"}:
+        raise ValueError("unsupported slicer strategy")
+
+    safe_root = _resolve_bounded_path(root, allowed_roots=(DATA_ROOT, BENCH_ROOT))
+    paths = _image_paths(safe_root)
     if not paths:
-        raise ValueError(f"No supported images found under {root}")
+        raise ValueError(f"No supported images found under {safe_root}")
 
     runs: list[list[dict]] = []
     all_timings: list[float] = []
@@ -204,7 +323,7 @@ def benchmark(
         for cut in (page["unsafe_cuts_current_content_mask"] or [])
     ]
     report = {
-        "input": str(root),
+        "input": str(safe_root),
         "strategy": strategy,
         "repeat": repeat,
         "pages": len(pages),
@@ -225,7 +344,7 @@ def benchmark(
         ),
         "page_details": pages,
     }
-    if detector_model:
+    if detector_model is not None:
         report["detector_cut_metrics"] = _detector_cut_metrics(
             paths, pages, detector_model, comparison_report
         )
@@ -233,26 +352,38 @@ def benchmark(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Measure deterministic long-page slicing without writing derived images.")
-    parser.add_argument("input", type=Path, help="Image file or directory of source pages")
-    parser.add_argument("--repeat", type=int, default=3, help="Planner repetitions (default: 3)")
+    parser = argparse.ArgumentParser(
+        description=(
+            "Measure deterministic long-page slicing. Input is restricted to "
+            "data/ or bench/; reports are written only under bench/results/."
+        )
+    )
+    parser.add_argument(
+        "input",
+        type=_input_path,
+        help="Repository-local image file or directory under data/ or bench/",
+    )
+    parser.add_argument("--repeat", type=int, default=3)
     parser.add_argument(
         "--strategy",
         choices=("current", "score-only"),
         default="current",
-        help="Planner path to benchmark (default: current)",
     )
     parser.add_argument(
         "--detector-model",
-        type=Path,
-        help="Optional bubble YOLO model for measured cut-crossing metrics",
+        type=_model_path,
+        help="Optional model under models/ for measured cut-crossing metrics",
     )
     parser.add_argument(
         "--comparison-report",
-        type=Path,
-        help="Optional slicer JSON report whose cuts are evaluated with the same detector boxes",
+        type=_comparison_path,
+        help="Optional prior JSON report under bench/results/",
     )
-    parser.add_argument("--output", type=Path, help="Optional JSON report path")
+    parser.add_argument(
+        "--output",
+        type=_result_path,
+        help="JSON filename written under bench/results/",
+    )
     args = parser.parse_args()
     if args.repeat < 1:
         parser.error("--repeat must be at least 1")
@@ -265,7 +396,8 @@ def main() -> None:
         args.comparison_report,
     )
     output = json.dumps(report, ensure_ascii=False, indent=2)
-    if args.output:
+    if args.output is not None:
+        RESULTS_ROOT.mkdir(parents=True, exist_ok=True)
         args.output.write_text(output + "\n", encoding="utf-8")
     print(output)
 
