@@ -78,7 +78,11 @@ def main() -> None:
                 return
             route.abort()
 
-        page.route("**/api/ocr**", handle)
+        # Playwright 1.47 glob matching is stricter than newer versions around
+        # a trailing **. Keep the chapter and legacy box routes explicit so the
+        # smoke test validates browser behaviour instead of glob semantics.
+        page.route("**/api/ocr/**", handle)
+        page.route("**/api/ocr_box", handle)
         page.set_content(
             """
             <html><head><base href="http://ocr.test/"></head><body>
