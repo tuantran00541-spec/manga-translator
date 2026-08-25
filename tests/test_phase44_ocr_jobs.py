@@ -72,7 +72,7 @@ class ChapterOCRJobTests(unittest.IsolatedAsyncioTestCase):
     async def test_concurrency_is_bounded_to_two_workers(self):
         service = FakeOCRService([(0, "a"), (0, "b"), (1, "c"), (1, "d")])
         manager = ChapterOCRJobManager(service)
-        started = await manager.start("abc12345", lang="en", concurrency=2)
+        started = manager.start("abc12345", lang="en", concurrency=2)
         done = await wait_terminal(manager, started["job_id"])
 
         self.assertEqual(done["status"], "completed")
@@ -83,7 +83,7 @@ class ChapterOCRJobTests(unittest.IsolatedAsyncioTestCase):
         service = FakeOCRService([(0, "a"), (0, "b"), (0, "c")])
         service.block = True
         manager = ChapterOCRJobManager(service)
-        started = await manager.start("abc12345", lang="en", concurrency=1)
+        started = manager.start("abc12345", lang="en", concurrency=1)
         await asyncio.to_thread(service.started.wait, 1)
 
         manager.cancel(started["job_id"])
@@ -98,11 +98,11 @@ class ChapterOCRJobTests(unittest.IsolatedAsyncioTestCase):
         service = FakeOCRService([(0, "a"), (0, "b")])
         service.fail_once.add((0, "b"))
         manager = ChapterOCRJobManager(service)
-        started = await manager.start("abc12345", lang="en", concurrency=1)
+        started = manager.start("abc12345", lang="en", concurrency=1)
         first = await wait_terminal(manager, started["job_id"])
         self.assertEqual(first["failed"], 1)
 
-        retried = await manager.retry(started["job_id"])
+        retried = manager.retry(started["job_id"])
         second = await wait_terminal(manager, retried["job_id"])
         self.assertEqual(second["total"], 1)
         self.assertEqual(second["completed"], 1)
@@ -112,15 +112,28 @@ class ChapterOCRJobTests(unittest.IsolatedAsyncioTestCase):
         service = FakeOCRService([(0, "a")])
         service.block = True
         manager = ChapterOCRJobManager(service)
-        started = await manager.start("abc12345", lang="en", concurrency=1)
+        started = manager.start("abc12345", lang="en", concurrency=1)
         await asyncio.to_thread(service.started.wait, 1)
 
         with self.assertRaisesRegex(RuntimeError, "already running"):
-            await manager.start("abc12345", lang="en", concurrency=1)
+            manager.start("abc12345", lang="en", concurrency=1)
 
         manager.cancel(started["job_id"])
         service.release.set()
         await wait_terminal(manager, started["job_id"])
+
+    async def test_manager_retains_background_task_until_completion(self):
+        service = FakeOCRService([(0, "a")])
+        service.block = True
+        manager = ChapterOCRJobManager(service)
+        started = manager.start("abc12345", lang="en", concurrency=1)
+        await asyncio.to_thread(service.started.wait, 1)
+
+        self.assertEqual(len(manager._tasks), 1)
+        service.release.set()
+        await wait_terminal(manager, started["job_id"])
+        await asyncio.sleep(0)
+        self.assertEqual(len(manager._tasks), 0)
 
 
 if __name__ == "__main__":
