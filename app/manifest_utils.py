@@ -11,11 +11,12 @@ from PIL import Image
 from filelock import FileLock, Timeout
 
 from app.config import PROCESSED_DIR
+from app.ocr.identity import OCR_CACHE_FIELDS, clear_ocr_cache, geometry_signature
 from app.security import validate_chapter_id
 
 _MANIFEST_LOCK_TIMEOUT = 30
 _PAGE_LOCK_TIMEOUT = 60
-MANIFEST_SCHEMA_VERSION = 2
+MANIFEST_SCHEMA_VERSION = 3
 
 _STALE_TEMP_PATTERNS = (
     "manifest.json.*.tmp",
@@ -85,6 +86,47 @@ def _try_image_dimensions(path_value: str | None) -> tuple[int, int] | None:
     return None
 
 
+def _try_file_revision(path_value: str | None) -> tuple[int, int, int] | None:
+    if not path_value:
+        return None
+    try:
+        st = Path(path_value).stat()
+        return (int(st.st_size), int(st.st_mtime_ns), int(st.st_ctime_ns))
+    except OSError:
+        return None
+
+
+def _normalize_box_ocr_cache(
+    box: dict,
+    *,
+    source_revision: int,
+    original_revision: tuple[int, int, int] | None,
+) -> bool:
+    if not any(key in box for key in OCR_CACHE_FIELDS):
+        return False
+    if box.get("ocr_source") == "manual":
+        return False
+    valid = box.get("ocr_source") == "machine" and original_revision is not None
+    if valid:
+        try:
+            cached_source = int(box.get("ocr_source_revision"))
+            cached_file = tuple(int(value) for value in box.get("ocr_file_revision", ()))
+            cached_geometry = tuple(int(value) for value in box.get("ocr_geometry", ()))
+        except (TypeError, ValueError):
+            valid = False
+        else:
+            valid = (
+                bool(box.get("ocr_engine"))
+                and cached_source == int(source_revision)
+                and cached_file == original_revision
+                and cached_geometry == geometry_signature(box)
+            )
+    if valid:
+        return False
+    clear_ocr_cache(box)
+    return True
+
+
 def normalize_manifest_schema(manifest: dict) -> bool:
     """Upgrade legacy manifests in memory without changing user-visible content."""
     changed = False
@@ -114,7 +156,15 @@ def normalize_manifest_schema(manifest: dict) -> bool:
                 page[key] = default
                 changed = True
 
+        source_revision = int(page.get("source_revision") or 0)
         boxes = page.get("boxes") or []
+        has_ocr_cache = any(
+            isinstance(box, dict) and any(key in box for key in OCR_CACHE_FIELDS)
+            for box in boxes
+        )
+        original_revision = (
+            _try_file_revision(page.get("original")) if has_ocr_cache else None
+        )
         for box_index, box in enumerate(boxes):
             if not isinstance(box, dict):
                 continue
@@ -124,6 +174,12 @@ def normalize_manifest_schema(manifest: dict) -> bool:
             expected_origin = "manual" if box.get("manual") else "detector"
             if box.get("origin") not in ("manual", "detector"):
                 box["origin"] = expected_origin
+                changed = True
+            if _normalize_box_ocr_cache(
+                box,
+                source_revision=source_revision,
+                original_revision=original_revision,
+            ):
                 changed = True
 
         box_ids = [b.get("id") if isinstance(b, dict) else None for b in boxes]
@@ -306,5 +362,3 @@ def is_processing_state_current(
         return False
     current = capture_processing_state(manifest, page_index, processed_dir)
     return current == snapshot
-
-
