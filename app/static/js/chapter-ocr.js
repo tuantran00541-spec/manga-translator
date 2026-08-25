@@ -38,15 +38,17 @@
     state.snapshot = null;
   }
 
+  function statusLabel(status) {
+    if (status === "cancelled") return "Đã hủy";
+    if (status === "completed") return "Hoàn tất";
+    return "Đang nhận dạng";
+  }
+
   function summaryText(snapshot) {
     if (!snapshot) return "Chưa chạy OCR toàn chương.";
     const total = Number(snapshot.total) || 0;
     const done = Number(snapshot.completed) + Number(snapshot.stale) + Number(snapshot.failed);
-    const status = snapshot.status === "cancelled"
-      ? "Đã hủy"
-      : snapshot.status === "completed"
-        ? "Hoàn tất"
-        : "Đang nhận dạng";
+    const status = statusLabel(snapshot.status);
     return `${status}: ${done}/${total} · có chữ ${snapshot.recognized || 0} · rỗng ${snapshot.empty || 0} · cache ${snapshot.cached || 0} · stale ${snapshot.stale || 0} · lỗi ${snapshot.failed || 0}`;
   }
 
