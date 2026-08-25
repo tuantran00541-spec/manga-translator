@@ -15,6 +15,7 @@ from app.security import validate_chapter_id
 router = APIRouter(prefix="/api", tags=["ocr"])
 ocr_service = OCRService(ocr, pipeline)
 chapter_ocr_jobs = ChapterOCRJobManager(ocr_service)
+OCR_JOB_NOT_FOUND = "OCR job not found"
 
 
 @router.post(
@@ -85,7 +86,7 @@ async def text_object_ocr(req: OcrTextObjectRequest) -> dict:
 async def start_chapter_ocr(req: ChapterOCRRequest) -> dict:
     validate_chapter_id(req.chapter_id)
     try:
-        return await chapter_ocr_jobs.start(
+        return chapter_ocr_jobs.start(
             req.chapter_id,
             lang=req.lang,
             concurrency=req.concurrency,
@@ -103,31 +104,31 @@ def _snapshot_or_404(job_id: str) -> dict:
     try:
         return chapter_ocr_jobs.snapshot(job_id)
     except KeyError as exc:
-        raise HTTPException(404, "OCR job not found") from exc
+        raise HTTPException(404, OCR_JOB_NOT_FOUND) from exc
 
 
-@router.get("/ocr/chapter/{job_id}", responses={404: {"description": "OCR job not found"}})
+@router.get("/ocr/chapter/{job_id}", responses={404: {"description": OCR_JOB_NOT_FOUND}})
 def chapter_ocr_status(job_id: str) -> dict:
     return _snapshot_or_404(job_id)
 
 
-@router.post("/ocr/chapter/{job_id}/cancel", responses={404: {"description": "OCR job not found"}})
+@router.post("/ocr/chapter/{job_id}/cancel", responses={404: {"description": OCR_JOB_NOT_FOUND}})
 def cancel_chapter_ocr(job_id: str) -> dict:
     try:
         return chapter_ocr_jobs.cancel(job_id)
     except KeyError as exc:
-        raise HTTPException(404, "OCR job not found") from exc
+        raise HTTPException(404, OCR_JOB_NOT_FOUND) from exc
 
 
 @router.post(
     "/ocr/chapter/{job_id}/retry",
-    responses={400: {"description": "Nothing to retry"}, 404: {"description": "OCR job not found"}, 409: {"description": "OCR job still running"}},
+    responses={400: {"description": "Nothing to retry"}, 404: {"description": OCR_JOB_NOT_FOUND}, 409: {"description": "OCR job still running"}},
 )
 async def retry_chapter_ocr(job_id: str) -> dict:
     try:
-        return await chapter_ocr_jobs.retry(job_id)
+        return chapter_ocr_jobs.retry(job_id)
     except KeyError as exc:
-        raise HTTPException(404, "OCR job not found") from exc
+        raise HTTPException(404, OCR_JOB_NOT_FOUND) from exc
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     except RuntimeError as exc:
