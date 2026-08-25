@@ -1,9 +1,12 @@
 from pathlib import Path
 from urllib.parse import urlparse
+
 from bs4 import BeautifulSoup
-import requests
+
 from app.downloader.base import BaseAdapter
 from app.downloader.generic_js import GenericJsAdapter
+from app.downloader.http import read_response_limited, safe_get
+from app.security import MAX_REMOTE_DOCUMENT_BYTES
 
 
 def _is_safe_image_url(url: str) -> bool:
@@ -20,9 +23,12 @@ class GenericStaticAdapter(BaseAdapter):
         return True
 
     def extract_image_urls(self, chapter_url: str) -> list[str]:
-        resp = requests.get(chapter_url, headers=self.headers, timeout=30)
-        resp.raise_for_status()
-        soup = BeautifulSoup(resp.text, "lxml")
+        response = safe_get(chapter_url, headers=self.headers, timeout=30, stream=True)
+        try:
+            body = read_response_limited(response, limit_bytes=MAX_REMOTE_DOCUMENT_BYTES)
+        finally:
+            response.close()
+        soup = BeautifulSoup(body, "lxml")
         urls = []
         for img in soup.select(self.img_selector):
             src = img.get("data-src") or img.get("src")

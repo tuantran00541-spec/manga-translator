@@ -20,6 +20,7 @@ from app.security import (
     validate_chapter_id,
     validate_url,
 )
+from app.upload_utils import read_upload_limited
 
 router = APIRouter(prefix="/api", tags=["chapters"])
 
@@ -113,10 +114,17 @@ async def create_chapter_from_upload(
     uploads = []
     total_bytes = 0
     for f in files:
-        data = await f.read()
+        remaining = MAX_UPLOAD_TOTAL_BYTES - total_bytes
+        try:
+            data = await read_upload_limited(f, remaining)
+        except HTTPException as exc:
+            if exc.status_code == 413:
+                raise HTTPException(
+                    413,
+                    f"Total upload size exceeds {MAX_UPLOAD_TOTAL_BYTES // (1024*1024)}MB",
+                ) from exc
+            raise
         total_bytes += len(data)
-        if total_bytes > MAX_UPLOAD_TOTAL_BYTES:
-            raise HTTPException(413, f"Total upload size exceeds {MAX_UPLOAD_TOTAL_BYTES // (1024*1024)}MB")
         uploads.append((f.filename or "unnamed", data))
 
     chapter_id = os.urandom(4).hex()

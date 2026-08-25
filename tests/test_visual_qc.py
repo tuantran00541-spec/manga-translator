@@ -126,6 +126,7 @@ class TestVisualQCRouterConcurrency(unittest.TestCase):
 
             req = VisualQCInspectRequest(chapter_id="deadbeef", page_index=0)
             with patch.object(router_mod, "load_manifest_raw", return_value=manifest), \
+                 patch.object(router_mod, "_page_paths", return_value=(original, cleaned)), \
                  patch.object(router_mod, "get_gemini_api_key", return_value="test-key"), \
                  patch.object(router_mod.visual_qc, "inspect", side_effect=fake_inspect):
                 with self.assertRaises(HTTPException) as cm:

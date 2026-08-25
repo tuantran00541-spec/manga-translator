@@ -1,8 +1,7 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
-import requests
-import shutil
-from app.security import validate_url
+
+from app.downloader.http import safe_download_file
 
 
 class BaseAdapter(ABC):
@@ -31,14 +30,9 @@ class BaseAdapter(ABC):
         return saved_paths
 
     def _download_file(self, url: str, out_path: Path, referer: str) -> None:
-        validate_url(url)
         headers = dict(self.headers)
         headers["Referer"] = referer
-        with requests.get(url, headers=headers, timeout=30, stream=True) as resp:
-            resp.raise_for_status()
-            resp.raw.decode_content = True
-            with open(out_path, "wb") as f:
-                shutil.copyfileobj(resp.raw, f)
+        safe_download_file(url, out_path, headers=headers, timeout=30)
 
     @staticmethod
     def _guess_ext(url: str) -> str:
