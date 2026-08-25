@@ -2,7 +2,7 @@ import os
 
 import numpy as np
 import cv2
-from app.config import LAMA_MODEL, LAMA_DYNAMIC_MODEL, INPAINT_SIZE
+from app.config import LAMA_MODEL, LAMA_DYNAMIC_MODEL, INPAINT_SIZE, SMART_FILL_CLEAN_RING_MARGIN
 from app.detector.bubble_detector import BubbleBox, MAX_BOX_AREA_RATIO
 from app.detector.mask_builder import build_mask
 from app.logging_config import logger
@@ -15,6 +15,15 @@ MANUAL_MIN_DILATION = 9
 MANUAL_MAX_DILATION = 15
 MANUAL_FEATHER_RADIUS = 3
 MANUAL_TILE_OVERLAP = 64
+FIXED_LAMA_TILE_ASPECT = 1.6
+SMART_FILL_WHITE_RATIO_MIN = 0.97
+SMART_FILL_BLACK_RATIO_MIN = 0.995
+SMART_FILL_WHITE_STD_MAX = 8.0
+SMART_FILL_BLACK_STD_MAX = 2.5
+SMART_FILL_MIDTONE_STD_MAX = 5.0
+SMART_FILL_FULL_STD_MAX = 12.0
+SMART_FILL_EDGE_DENSITY_MAX = 0.01
+SMART_FILL_BLACK_EDGE_DENSITY_MAX = 0.002
 
 
 class Inpainter:
@@ -72,10 +81,14 @@ class Inpainter:
             crop_box = self._compute_crop_region(x1, y1, x2, y2, w, h)
 
             cx1, cy1, cx2, cy2 = crop_box
-            local_boxes = [
-                BubbleBox(b.x1 - cx1, b.y1 - cy1, b.x2 - cx1, b.y2 - cy1, b.confidence, b.mask)
-                for b in cluster
-            ]
+            local_boxes = []
+            for b in cluster:
+                local_box = BubbleBox(
+                    b.x1 - cx1, b.y1 - cy1, b.x2 - cx1, b.y2 - cy1, b.confidence, b.mask
+                )
+                if bool(getattr(b, "allow_rectangle_fallback", False)):
+                    local_box.allow_rectangle_fallback = True
+                local_boxes.append(local_box)
             crop_img = image[cy1:cy2, cx1:cx2]
             local_mask = build_mask((cy2 - cy1, cx2 - cx1), local_boxes, crop_img)
 
@@ -142,6 +155,68 @@ class Inpainter:
 
         return result
 
+    @staticmethod
+    def _smart_fill_color(crop: np.ndarray, local_mask: np.ndarray) -> np.ndarray | None:
+        mask_bool = local_mask > 127
+        if not np.any(mask_bool):
+            return None
+
+        gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop
+        non_mask = ~mask_bool
+        if not np.any(non_mask):
+            return None
+
+        margin = max(1, int(SMART_FILL_CLEAN_RING_MARGIN))
+        kernel = cv2.getStructuringElement(
+            cv2.MORPH_ELLIPSE, (margin * 2 + 1, margin * 2 + 1)
+        )
+        ring = (cv2.dilate(mask_bool.astype(np.uint8), kernel) > 0) & non_mask
+        if int(np.count_nonzero(ring)) < 32:
+            return None
+
+        ring_gray = gray[ring]
+        full_gray = gray[non_mask]
+        ring_pixels = crop[ring]
+        full_std = float(full_gray.std())
+
+        edges = cv2.Canny(gray, 64, 128, L2gradient=True) > 0
+        full_edge_density = float(edges[non_mask].mean())
+
+        white_ratio = float((ring_gray > 215).mean())
+        black_ratio = float((ring_gray < 35).mean())
+        ring_std = float(ring_gray.std())
+        median_gray = float(np.median(ring_gray))
+
+        if (
+            white_ratio >= SMART_FILL_WHITE_RATIO_MIN
+            and ring_std <= SMART_FILL_WHITE_STD_MAX
+            and full_std <= SMART_FILL_FULL_STD_MAX
+            and full_edge_density <= SMART_FILL_EDGE_DENSITY_MAX
+        ):
+            white_pixels = ring_pixels[ring_gray > 215]
+            if len(white_pixels):
+                return np.median(white_pixels, axis=0).astype(np.uint8)
+
+        if (
+            black_ratio >= SMART_FILL_BLACK_RATIO_MIN
+            and ring_std <= SMART_FILL_BLACK_STD_MAX
+            and full_std <= SMART_FILL_BLACK_STD_MAX
+            and full_edge_density <= SMART_FILL_BLACK_EDGE_DENSITY_MAX
+        ):
+            black_pixels = ring_pixels[ring_gray < 35]
+            if len(black_pixels):
+                return np.median(black_pixels, axis=0).astype(np.uint8)
+
+        if (
+            50.0 <= median_gray <= 205.0
+            and ring_std <= SMART_FILL_MIDTONE_STD_MAX
+            and full_std <= SMART_FILL_MIDTONE_STD_MAX
+            and full_edge_density <= SMART_FILL_BLACK_EDGE_DENSITY_MAX
+        ):
+            return np.median(ring_pixels, axis=0).astype(np.uint8)
+
+        return None
+
     def _smart_paint_region(self, image: np.ndarray, local_mask: np.ndarray, crop_box: tuple, feather: bool = False) -> np.ndarray:
         cx1, cy1, cx2, cy2 = crop_box
         crop = image[cy1:cy2, cx1:cx2]
@@ -153,30 +228,12 @@ class Inpainter:
         if not np.any(mask_bool):
             return image
 
-        non_mask_bool = ~mask_bool
-        if np.any(non_mask_bool):
-            non_mask_pixels = crop[non_mask_bool]
-            gray_non_mask = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)[non_mask_bool]
-
-            white_mask = gray_non_mask > 215
-            if float(white_mask.mean()) >= 0.70:
-                fill_color = np.median(non_mask_pixels[white_mask], axis=0).astype(np.uint8) if np.any(white_mask) else np.array([255, 255, 255], dtype=np.uint8)
-                crop[mask_bool] = fill_color
-                image[cy1:cy2, cx1:cx2] = crop
-                return image
-
-            black_mask = gray_non_mask < 35
-            if float(black_mask.mean()) >= 0.70:
-                fill_color = np.median(non_mask_pixels[black_mask], axis=0).astype(np.uint8) if np.any(black_mask) else np.array([0, 0, 0], dtype=np.uint8)
-                crop[mask_bool] = fill_color
-                image[cy1:cy2, cx1:cx2] = crop
-                return image
-
-            if float(gray_non_mask.std()) < 12.0:
-                fill_color = np.median(non_mask_pixels, axis=0).astype(np.uint8)
-                crop[mask_bool] = fill_color
-                image[cy1:cy2, cx1:cx2] = crop
-                return image
+        fill_color = self._smart_fill_color(crop, local_mask)
+        if fill_color is not None:
+            filled = crop.copy()
+            filled[mask_bool] = fill_color
+            image[cy1:cy2, cx1:cx2] = filled
+            return image
 
         return self._lama_fill(image, crop, local_mask, crop_box, feather=feather)
 
@@ -184,7 +241,16 @@ class Inpainter:
         cx1, cy1, cx2, cy2 = crop_box
         crop_h, crop_w = crop.shape[:2]
 
-        if feather and max(crop_h, crop_w) > INPAINT_SIZE:
+        max_dim = max(crop_h, crop_w)
+        min_dim = max(1, min(crop_h, crop_w))
+        aspect = max_dim / min_dim
+        fixed_long_crop = (
+            not self.dynamic_lama
+            and max_dim > INPAINT_SIZE
+            and aspect >= FIXED_LAMA_TILE_ASPECT
+        )
+
+        if fixed_long_crop or (feather and max_dim > INPAINT_SIZE):
             painted = self._lama_fill_tiled(crop, local_mask)
         else:
             painted = self._lama_fill_single(crop, local_mask)
