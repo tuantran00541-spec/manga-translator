@@ -17,6 +17,7 @@ DEFAULT_DEEPSEEK_MODEL = os.getenv(
     "deepseek-v4-flash-vision-exp",
 )
 DEFAULT_CONNECT_TIMEOUT_SECONDS = 10
+_INVALID_RESPONSE_MESSAGE = "DeepSeek returned an invalid structured response"
 
 
 def _int_env(name: str, default: int, low: int, high: int) -> int:
@@ -320,13 +321,13 @@ class DeepSeekRegionQC:
             body = response.json()
         except ValueError as exc:
             self._charge_unknown(reservation)
-            raise RuntimeError("DeepSeek returned an invalid structured response") from exc
+            raise RuntimeError(_INVALID_RESPONSE_MESSAGE) from exc
         if not isinstance(body, dict):
             self._charge_unknown(reservation)
-            raise RuntimeError("DeepSeek returned an invalid structured response")
+            raise RuntimeError(_INVALID_RESPONSE_MESSAGE)
         self._commit_usage(body, reservation)
         try:
             parsed = json.loads(_extract_output_text(body))
         except (ValueError, TypeError) as exc:
-            raise RuntimeError("DeepSeek returned an invalid structured response") from exc
+            raise RuntimeError(_INVALID_RESPONSE_MESSAGE) from exc
         return _ordered_decisions(parsed, expected_ids, regions_by_id)
