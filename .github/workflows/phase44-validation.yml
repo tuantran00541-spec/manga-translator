@@ -8,7 +8,7 @@ on:
 jobs:
   focused:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     env:
       PYTHONPATH: ${{ github.workspace }}
     steps:
@@ -47,3 +47,7 @@ jobs:
             tests/test_phase44_ocr_routes.py \
             tests/test_phase4_correctness_foundation.py \
             tests/test_phase41_data_model.py
+      - name: Install Chromium
+        run: python -m playwright install --with-deps chromium
+      - name: Run Phase 4.4 OCR browser smoke
+        run: python tests/browser_phase44_ocr.py
