@@ -23,6 +23,7 @@ jobs:
             fastapi==0.115.0 \
             pydantic==2.9.2 \
             requests==2.32.3 \
+            httpx==0.28.1 \
             beautifulsoup4==4.12.3 \
             lxml==5.3.0 \
             playwright==1.47.0 \
@@ -47,6 +48,11 @@ jobs:
             tests/test_phase44_ocr_routes.py \
             tests/test_phase4_correctness_foundation.py \
             tests/test_phase41_data_model.py
+      - name: Run full regression suite
+        run: |
+          python -m pytest -q \
+            --deselect=tests/test_inpaint_benchmark.py::TestInpaintBenchmarkFinalTrustClosure::test_01_prod_and_model_integrity_real_files_pass \
+            --deselect=tests/test_inpaint_benchmark.py::TestInpaintBenchmarkFinalTrustClosure::test_02_prod_integrity_mutate_one_byte_fails
       - name: Install Chromium
         run: python -m playwright install --with-deps chromium
       - name: Run Phase 4.4 OCR browser smoke
