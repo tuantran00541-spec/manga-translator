@@ -129,6 +129,20 @@ class OCRIdentityRegressionTests(Phase44OCRHarness):
         box = self.load_page()["boxes"][0]
         self.assertNotIn("ocr_text", box)
 
+    def test_box_ocr_discards_same_path_file_replacement(self):
+        self.save_manifest(boxes=[self.box("box_a")])
+
+        def read_then_replace_file(_rgb, _lang):
+            replacement = np.full((96, 128, 3), 17, dtype=np.uint8)
+            self.assertTrue(cv2.imwrite(str(self.original), replacement))
+            return "STALE"
+
+        with patch.object(editor_mod.ocr, "read", side_effect=read_then_replace_file):
+            with self.assertRaises(OCRResultStale):
+                self.service.inspect_box_id(CHAPTER_ID, 0, "box_a", "en")
+
+        self.assertNotIn("ocr_text", self.load_page()["boxes"][0])
+
     def test_geometry_edit_invalidates_machine_ocr_cache(self):
         box = self.box(
             "box_a",
@@ -164,6 +178,27 @@ class OCRIdentityRegressionTests(Phase44OCRHarness):
         self.assertNotIn("ocr_text", box)
         self.assertNotIn("ocr_lang", box)
 
+    def test_valid_machine_cache_skips_ocr_engine(self):
+        box = self.box(
+            "box_a",
+            ocr_text="CACHED",
+            ocr_lang="en",
+            ocr_source="machine",
+            ocr_engine="same-engine",
+            ocr_source_revision=1,
+            ocr_file_revision=list(file_revision(self.original)),
+            ocr_geometry=[10, 10, 90, 60],
+        )
+        self.save_manifest(boxes=[box])
+        with patch("app.ocr.service.engine_identity", return_value="same-engine"), patch.object(
+            editor_mod.ocr, "read"
+        ) as read_mock:
+            result = self.service.inspect_box_id(CHAPTER_ID, 0, "box_a", "en")
+
+        self.assertTrue(result["cached"])
+        self.assertEqual(result["text"], "CACHED")
+        read_mock.assert_not_called()
+
     def test_engine_identity_change_forces_fresh_ocr(self):
         box = self.box(
             "box_a",
@@ -186,6 +221,30 @@ class OCRIdentityRegressionTests(Phase44OCRHarness):
         updated = self.load_page()["boxes"][0]
         self.assertEqual(updated["ocr_text"], "NEW")
         self.assertEqual(updated["ocr_engine"], "new-engine")
+
+    def test_group_ocr_preserves_page_reading_order(self):
+        top = self.box("box_z", x1=30, y1=8, x2=100, y2=35)
+        bottom = self.box("box_a", x1=10, y1=45, x2=90, y2=75)
+        obj = {
+            "id": "obj1",
+            "shape": "rectangle",
+            "region": {"x1": 0, "y1": 0, "x2": 120, "y2": 90},
+            "source_boxes": [],
+            "ocr_text": "",
+            "translation": "",
+            "style": {},
+        }
+        self.save_manifest(boxes=[bottom, top], text_objects=[obj])
+
+        def fake_inspect(_chapter, _page, box_id, _lang, **_kwargs):
+            return {"box_id": box_id, "text": box_id, "cached": True}
+
+        with patch.object(self.service, "inspect_box_id", side_effect=fake_inspect):
+            self.service.group_text_object(CHAPTER_ID, 0, "obj1", "en")
+
+        updated = self.load_page()["text_objects"][0]
+        self.assertEqual(updated["source_boxes"], ["box_z", "box_a"])
+        self.assertEqual(updated["ocr_text"], "box_z\nbox_a")
 
 
 if __name__ == "__main__":
