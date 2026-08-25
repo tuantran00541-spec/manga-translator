@@ -15,7 +15,7 @@ from app.config import (
 )
 from app.logging_config import logger
 from app.manifest_utils import cleanup_stale_temp_artifacts
-from app.routers import automation, chapters, editor, image, ocr, render, render45, visual_qc
+from app.routers import automation, chapters, editor, image, ocr, render, render45, translation, visual_qc
 from app.security import (
     MAX_REQUEST_BYTES,
     MAX_UPLOAD_TOTAL_BYTES,
@@ -78,6 +78,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 
 app.include_router(chapters.router)
 app.include_router(automation.router)
+app.include_router(translation.router)
 # Phase 4.4 OCR routes intentionally precede the legacy editor OCR endpoints.
 # The rest of editor.router remains unchanged while existing clients keep the same URLs.
 app.include_router(ocr.router)
