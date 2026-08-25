@@ -157,8 +157,14 @@ def normalize_manifest_schema(manifest: dict) -> bool:
                 changed = True
 
         source_revision = int(page.get("source_revision") or 0)
-        original_revision = _try_file_revision(page.get("original"))
         boxes = page.get("boxes") or []
+        has_ocr_cache = any(
+            isinstance(box, dict) and any(key in box for key in OCR_CACHE_FIELDS)
+            for box in boxes
+        )
+        original_revision = (
+            _try_file_revision(page.get("original")) if has_ocr_cache else None
+        )
         for box_index, box in enumerate(boxes):
             if not isinstance(box, dict):
                 continue
