@@ -22,6 +22,13 @@ from app.text_objects import ensure_page_text_objects
 router = APIRouter(prefix="/api", tags=["export"])
 
 
+def _safe_int(value, fallback: int) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return int(fallback)
+
+
 def _render_request_from_page(chapter_id: str, page_index: int, page: dict) -> RenderRequest:
     translations: dict[str, str] = {}
     colors: dict[str, str] = {}
@@ -48,10 +55,7 @@ def _render_request_from_page(chapter_id: str, page_index: int, page: dict) -> R
         stroke_widths[oid] = style.get("strokeWidth", "auto")
         stroke_colors[oid] = str(style.get("strokeColor") or "auto")
         bg_colors[oid] = str(style.get("bgColor") or "transparent")
-        try:
-            corner_radii[oid] = int(style.get("cornerRadius") or 0)
-        except (TypeError, ValueError):
-            corner_radii[oid] = 0
+        corner_radii[oid] = _safe_int(style.get("cornerRadius"), 0)
         h_align = str(style.get("horizontalAlign") or "center")
         v_align = str(style.get("verticalAlign") or "middle")
         horizontal_aligns[oid] = h_align if h_align in {"left", "center", "right"} else "center"
@@ -163,8 +167,8 @@ def export_chapter(chapter_id: str):
             if path is None or not path.is_file():
                 raise HTTPException(404, f"Page {page_index + 1} image is unavailable")
             validate_image_size(path)
-            source_page = int(page.get("source_page", page_index))
-            slice_index = int(page.get("slice_index", 0))
+            source_page = _safe_int(page.get("source_page"), page_index)
+            slice_index = _safe_int(page.get("slice_index"), 0)
             groups.setdefault(source_page, []).append((slice_index, page_index, path))
 
         try:

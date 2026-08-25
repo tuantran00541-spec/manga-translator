@@ -8,12 +8,34 @@
     return new Set(Array.isArray(obj?.source_boxes) ? obj.source_boxes.map(String) : []);
   }
 
+  function sameRegion(region, box) {
+    if (!region || !box) return false;
+    return ["x1", "y1", "x2", "y2"].every((key) => Number(region[key]) === Number(box[key]));
+  }
+
+  function autoObjectNeedsSync(obj, box) {
+    if (!obj?.auto_generated) return false;
+    const boxText = String(box?.ocr_text || "");
+    const objectText = String(obj.ocr_text || "");
+    const previousAutoText = String(obj.auto_ocr_text || "");
+    const machineTextCanMove = !objectText || objectText === previousAutoText;
+    if (machineTextCanMove && boxText !== objectText) return true;
+
+    const currentRegion = obj.region || null;
+    const previousAutoRegion = obj.auto_geometry || null;
+    const machineGeometryCanMove = !previousAutoRegion || sameRegion(currentRegion, previousAutoRegion);
+    return machineGeometryCanMove && !sameRegion(currentRegion, box);
+  }
+
   function needsSync(page) {
     if (!page || page.skipped) return false;
     const activeBoxes = (page.boxes || []).filter((box) => box && !box.removed && box.id);
     if (!activeBoxes.length) return false;
     const objects = page.text_objects || [];
-    return activeBoxes.some((box) => !objects.some((obj) => sourceBoxSet(obj).has(String(box.id))));
+    return activeBoxes.some((box) => {
+      const linked = objects.find((obj) => sourceBoxSet(obj).has(String(box.id)));
+      return !linked || autoObjectNeedsSync(linked, box);
+    });
   }
 
   async function ensurePage(pageIndex) {
@@ -66,7 +88,7 @@
       })
       .catch((err) => {
         if (typeof window.showToast === "function") {
-          window.showToast("Không thể tự tạo vùng chữ từ nhận diện: " + err.message, "error");
+          window.showToast("Không thể đồng bộ vùng chữ từ nhận diện: " + err.message, "error");
         }
       });
   };
