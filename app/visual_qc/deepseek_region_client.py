@@ -307,9 +307,15 @@ class DeepSeekRegionQC:
             )
         try:
             body = response.json()
-            self._commit_usage(body, reservation)
+        except ValueError as exc:
+            self._charge_unknown(reservation)
+            raise RuntimeError("DeepSeek returned an invalid structured response") from exc
+        if not isinstance(body, dict):
+            self._charge_unknown(reservation)
+            raise RuntimeError("DeepSeek returned an invalid structured response")
+        self._commit_usage(body, reservation)
+        try:
             parsed = json.loads(_extract_output_text(body))
         except (ValueError, TypeError) as exc:
-            self._charge_unknown(0.0)
             raise RuntimeError("DeepSeek returned an invalid structured response") from exc
         return _ordered_decisions(parsed, expected_ids, regions_by_id)
