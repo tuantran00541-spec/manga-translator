@@ -16,4 +16,12 @@ python -m bench.scripts.benchmark_inpaint --generate-corpus data/benchmark_corpu
 python -m bench.scripts.benchmark_inpaint --run --mode all --output results.json --report report.md
 ```
 
+Run the current detect → box → mask correctness benchmark through the stable entry point:
+
+```bash
+python -m bench.scripts.detect_box_mask_bench --images path/to/page.webp
+```
+
+`detect_box_mask_bench.py` delegates to the current v3 correctness engine. The older v1/v2 implementations are intentionally not kept as parallel copies; benchmark behavior has one implementation source of truth.
+
 Benchmark source files must not be duplicated at the repository root or under `tools/`. Generated reports and corpora should be written to explicit output paths rather than committed beside the benchmark source.

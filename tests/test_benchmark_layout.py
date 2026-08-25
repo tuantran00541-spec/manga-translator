@@ -34,6 +34,7 @@ LEGACY_BENCHMARK_PATHS = (
     "tools/profile_yolo_detector.py",
     "tools/test_repaint_pipeline.py",
     "tools/test_stale_concurrency.py",
+    "bench/scripts/detect_box_mask_bench_v2_fixed.py",
 )
 
 
@@ -61,3 +62,13 @@ def test_benchmark_source_directory_is_not_gitignored():
 def test_lama_integrity_baseline_matches_production_source():
     production_file = ROOT / "app/inpaint/lama_inpainter.py"
     assert compute_file_sha256(production_file) == LAMA_INPAINTER_BASELINE_SHA256
+
+
+def test_detect_box_mask_benchmark_has_one_implementation():
+    stable_entry = ROOT / "bench/scripts/detect_box_mask_bench.py"
+    current_engine = ROOT / "bench/scripts/detect_box_mask_bench_v3.py"
+    assert stable_entry.is_file()
+    assert current_engine.is_file()
+    entry_text = stable_entry.read_text(encoding="utf-8")
+    assert "from bench.scripts.detect_box_mask_bench_v3 import main" in entry_text
+    assert len(entry_text.splitlines()) < 40
