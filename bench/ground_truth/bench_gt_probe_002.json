@@ -1,0 +1,211 @@
+{
+  "schema_version": "1.0.0",
+  "scope": "speech_bubble_only",
+  "exclude": [
+    "sfx",
+    "captions",
+    "narration",
+    "titles",
+    "credits",
+    "ui_text",
+    "decorative_text"
+  ],
+  "instructions": [
+    "Label every raw bubble candidate as target_speech_bubble / non_target / uncertain.",
+    "Label every raw text candidate as target_speech_text / non_target / uncertain.",
+    "For each target speech bubble, identify which raw text candidates belong to it.",
+    "If a real speech bubble was missed by the detector, add a missed_gt_bubble box in source coordinates.",
+    "If speech text was missed inside a detected bubble, add missed_gt_text boxes.",
+    "Do not count SFX, captions, titles, credits, UI text, or decorative typography as target speech text."
+  ],
+  "images": [
+    {
+      "image": {
+        "path": "C:\\Users\\tin11\\Downloads\\manga-translator\\manga-translator\\bench\\images\\002.webp",
+        "sha256": "968c538722d38209fdba870550ad4d41bc841809157ce3938e25428c3b138d39",
+        "shape": [
+          16000,
+          900,
+          3
+        ]
+      },
+      "raw_bubble_candidates": [
+        {
+          "x1": 373,
+          "y1": 567,
+          "x2": 776,
+          "y2": 884,
+          "confidence": 0.9582072496414185,
+          "label": "target_speech_bubble"
+        },
+        {
+          "x1": 349,
+          "y1": 5041,
+          "x2": 799,
+          "y2": 5430,
+          "confidence": 0.9491585493087769,
+          "label": "target_speech_bubble"
+        },
+        {
+          "x1": 139,
+          "y1": 4407,
+          "x2": 479,
+          "y2": 4633,
+          "confidence": 0.924720287322998,
+          "label": "target_speech_bubble"
+        },
+        {
+          "x1": 214,
+          "y1": 3958,
+          "x2": 733,
+          "y2": 4320,
+          "confidence": 0.9201761484146118,
+          "label": "target_speech_bubble"
+        },
+        {
+          "x1": 209,
+          "y1": 15271,
+          "x2": 677,
+          "y2": 15690,
+          "confidence": 0.9148594737052917,
+          "label": "uncertain"
+        },
+        {
+          "x1": 169,
+          "y1": 2472,
+          "x2": 732,
+          "y2": 2836,
+          "confidence": 0.9009250998497009,
+          "label": "target_speech_bubble"
+        },
+        {
+          "x1": 356,
+          "y1": 5041,
+          "x2": 788,
+          "y2": 5144,
+          "confidence": 0.8569105863571167,
+          "label": "uncertain"
+        },
+        {
+          "x1": 82,
+          "y1": 7464,
+          "x2": 760,
+          "y2": 7982,
+          "confidence": 0.8551704287528992,
+          "label": "target_speech_bubble"
+        },
+        {
+          "x1": 371,
+          "y1": 824,
+          "x2": 779,
+          "y2": 883,
+          "confidence": 0.589314341545105,
+          "label": "uncertain"
+        },
+        {
+          "x1": 148,
+          "y1": 7461,
+          "x2": 743,
+          "y2": 7615,
+          "confidence": 0.5117242336273193,
+          "label": "uncertain"
+        },
+        {
+          "x1": 97,
+          "y1": 11119,
+          "x2": 824,
+          "y2": 11736,
+          "confidence": 0.4903695583343506,
+          "label": "target_speech_bubble"
+        }
+      ],
+      "raw_text_candidates": [
+        {
+          "x1": 244,
+          "y1": 4104,
+          "x2": 699,
+          "y2": 4273,
+          "confidence": 0.9372640252113342,
+          "label": "uncertain",
+          "assigned_bubble_indices": []
+        },
+        {
+          "x1": 399,
+          "y1": 643,
+          "x2": 754,
+          "y2": 812,
+          "confidence": 0.9232858419418335,
+          "label": "uncertain",
+          "assigned_bubble_indices": []
+        },
+        {
+          "x1": 266,
+          "y1": 15399,
+          "x2": 632,
+          "y2": 15569,
+          "confidence": 0.9145848751068115,
+          "label": "uncertain",
+          "assigned_bubble_indices": []
+        },
+        {
+          "x1": 212,
+          "y1": 4451,
+          "x2": 408,
+          "y2": 4538,
+          "confidence": 0.9136557579040527,
+          "label": "uncertain",
+          "assigned_bubble_indices": []
+        },
+        {
+          "x1": 202,
+          "y1": 7604,
+          "x2": 680,
+          "y2": 7843,
+          "confidence": 0.9127888679504395,
+          "label": "uncertain",
+          "assigned_bubble_indices": []
+        },
+        {
+          "x1": 211,
+          "y1": 2520,
+          "x2": 680,
+          "y2": 2648,
+          "confidence": 0.9105086326599121,
+          "label": "uncertain",
+          "assigned_bubble_indices": []
+        },
+        {
+          "x1": 16,
+          "y1": 14758,
+          "x2": 250,
+          "y2": 14792,
+          "confidence": 0.8236042261123657,
+          "label": "uncertain",
+          "assigned_bubble_indices": []
+        },
+        {
+          "x1": 493,
+          "y1": 5212,
+          "x2": 655,
+          "y2": 5268,
+          "confidence": 0.7859232425689697,
+          "label": "uncertain",
+          "assigned_bubble_indices": []
+        },
+        {
+          "x1": 106,
+          "y1": 11289,
+          "x2": 585,
+          "y2": 11490,
+          "confidence": 0.7156264781951904,
+          "label": "uncertain",
+          "assigned_bubble_indices": []
+        }
+      ],
+      "missed_gt_bubbles": [],
+      "missed_gt_text": []
+    }
+  ],
+  "review_tool": "detect_box_mask_reviewer",
+  "review_tool_version": "1.0.0"
+}

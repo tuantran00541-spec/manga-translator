@@ -1,0 +1,134 @@
+{
+  "schema_version": "1.1.0",
+  "mode": "end-to-end",
+  "threads": 1,
+  "warmup_count": 1,
+  "repetitions": 1,
+  "environment": {
+    "timestamp": "2026-08-20T00:44:24Z",
+    "python_version": "3.12.10",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "os": "Windows",
+    "cpu_model": "Intel64 Family 6 Model 186 Stepping 3, GenuineIntel",
+    "logical_cpus": 12,
+    "physical_cpus": 10,
+    "numpy_version": "1.26.4",
+    "opencv_version": "4.11.0",
+    "onnxruntime_version": "1.19.2",
+    "git_commit": "d930395960b54d9200415a070611e2b068f141f5"
+  },
+  "model": {
+    "model_name": "lama.onnx",
+    "model_path": "C:\\Users\\tin11\\Downloads\\manga-translator\\manga-translator\\models\\lama.onnx",
+    "model_sha256": "1faef5301d78db7dda502fe59966957ec4b79dd64e16f03ed96913c7a4eb68d6",
+    "model_size_bytes": 208044816,
+    "input_resolution": [
+      512,
+      512
+    ],
+    "data_type": "FP32",
+    "execution_provider": "CPUExecutionProvider",
+    "intra_op_threads": 1,
+    "inter_op_threads": 1,
+    "execution_mode": "ORT_SEQUENTIAL"
+  },
+  "cases": [
+    {
+      "case_id": "e2e_syn_512x512_M3_bubble_50pct",
+      "level": "level3_e2e",
+      "image_width": 512,
+      "image_height": 512,
+      "mask_type": "",
+      "mask_ratio": 0.5027,
+      "mask_area_pixels": 131769,
+      "session_create_ms": 0.0,
+      "first_inference_ms": 17.4713,
+      "cold_total_ms": 17.4713,
+      "warmup_count": 1,
+      "repetitions": 1,
+      "timing": {
+        "count": 1,
+        "mean_ms": 13.8571,
+        "p50_ms": 13.8571,
+        "p95_ms": 13.8571,
+        "min_ms": 13.8571,
+        "max_ms": 13.8571,
+        "stddev_ms": 0.0
+      },
+      "preprocess_timing": {
+        "count": 0,
+        "mean_ms": 0.0,
+        "p50_ms": 0.0,
+        "p95_ms": 0.0,
+        "min_ms": 0.0,
+        "max_ms": 0.0,
+        "stddev_ms": 0.0
+      },
+      "inference_timing": {
+        "count": 0,
+        "mean_ms": 0.0,
+        "p50_ms": 0.0,
+        "p95_ms": 0.0,
+        "min_ms": 0.0,
+        "max_ms": 0.0,
+        "stddev_ms": 0.0
+      },
+      "postprocess_timing": {
+        "count": 0,
+        "mean_ms": 0.0,
+        "p50_ms": 0.0,
+        "p95_ms": 0.0,
+        "min_ms": 0.0,
+        "max_ms": 0.0,
+        "stddev_ms": 0.0
+      },
+      "model_calls_per_invocation": 0,
+      "model_calls_total": 0,
+      "cluster_count": 0,
+      "tile_count": 0,
+      "active_tile_count": 0,
+      "shortcut_count": 0,
+      "crop_dimensions": [
+        [
+          512,
+          512
+        ]
+      ],
+      "invocations": [
+        {
+          "invocation_index": 0,
+          "latency_ms": 13.8571,
+          "preprocess_ms": 0.0,
+          "inference_ms": 0.0,
+          "postprocess_ms": 0.0,
+          "model_calls": 0,
+          "cluster_count": 0,
+          "tile_count": 0,
+          "active_tile_count": 0,
+          "shortcut_count": 0,
+          "crop_dimensions": [
+            [
+              512,
+              512
+            ]
+          ]
+        }
+      ],
+      "memory": {
+        "rss_start_mb": 376.82,
+        "rss_peak_mb": 384.44,
+        "rss_end_mb": 384.48,
+        "measured": true,
+        "note": ""
+      },
+      "golden_output_path": "",
+      "status": "ok",
+      "error_message": ""
+    }
+  ],
+  "summary": {
+    "total_cases": 1,
+    "ok_cases": 1,
+    "error_cases": 0
+  }
+}
