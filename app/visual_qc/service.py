@@ -29,6 +29,8 @@ DEFAULT_GLOBAL_BATCH_SIZE = _env_batch_size("GEMINI_VISUAL_QC_GLOBAL_BATCH_SIZE"
 DEFAULT_REGION_BATCH_SIZE = _env_batch_size("GEMINI_VISUAL_QC_REGION_BATCH_SIZE", 4)
 DEFAULT_PAIR_BATCH_SIZE = _env_batch_size("GEMINI_VISUAL_QC_PAIR_BATCH_SIZE", 2)
 _IMAGES_UNAVAILABLE = "Page images are no longer available for visual QC"
+_CACHE_COMMIT_SUFFIX = "before visual QC cache commit"
+_RUNNING_SUFFIX = "while visual QC was running"
 
 
 class StaleVisualQCResult(RuntimeError):
@@ -131,6 +133,7 @@ class ChapterQCService:
         manifest_lock=None,
         api_key_provider=None,
         model: str = DEFAULT_GEMINI_MODEL,
+        provider: str = "gemini",
         global_batch_size: int = DEFAULT_GLOBAL_BATCH_SIZE,
         region_batch_size: int = DEFAULT_REGION_BATCH_SIZE,
         pair_batch_size: int = DEFAULT_PAIR_BATCH_SIZE,
@@ -143,6 +146,9 @@ class ChapterQCService:
         if api_key_provider is None:
             from app.secret_store import get_gemini_api_key
             api_key_provider = get_gemini_api_key
+        provider = str(provider or "gemini").strip().lower()
+        if provider not in {"gemini", "deepseek"}:
+            raise ValueError(f"Unsupported visual QC provider: {provider}")
         self.runner = runner
         self.job_manager = job_manager or VisualQCJobManager()
         self.manifest_loader = manifest_loader
@@ -150,6 +156,7 @@ class ChapterQCService:
         self.manifest_lock = manifest_lock
         self.api_key_provider = api_key_provider
         self.model = model
+        self.provider = provider
         self.global_batch_size = max(1, int(global_batch_size))
         self.region_batch_size = max(1, int(region_batch_size))
         self.pair_batch_size = max(1, int(pair_batch_size))
@@ -178,7 +185,8 @@ class ChapterQCService:
             manifest = self.manifest_loader(chapter_id)
         api_key = self.api_key_provider()
         if not api_key:
-            raise ValueError("Gemini API key is not configured")
+            label = "DeepSeek" if self.provider == "deepseek" else "Gemini"
+            raise ValueError(f"{label} API key is not configured")
 
         plan = build_chapter_qc_plan(
             manifest,
@@ -268,18 +276,15 @@ class ChapterQCService:
             snapshot.process_revision,
             snapshot.clean_revision,
         )
+        suffix = _CACHE_COMMIT_SUFFIX if during_commit else _RUNNING_SUFFIX
         if _page_revision_tuple(page) != expected_revision:
-            suffix = "before visual QC cache commit" if during_commit else "while visual QC was running"
             raise StaleVisualQCResult(f"Page revision changed {suffix}")
         original_path, clean_path = self._managed_page_paths(chapter_id, page)
         if str(original_path) != snapshot.original_path or str(clean_path) != snapshot.clean_path:
-            suffix = "before visual QC cache commit" if during_commit else "while visual QC was running"
             raise StaleVisualQCResult(f"Page image path changed {suffix}")
         if _file_revision(original_path) != snapshot.original_file_revision:
-            suffix = "before visual QC cache commit" if during_commit else "while visual QC was running"
             raise StaleVisualQCResult(f"Original image changed {suffix}")
         if _file_revision(clean_path) != snapshot.clean_file_revision:
-            suffix = "before visual QC cache commit" if during_commit else "while visual QC was running"
             raise StaleVisualQCResult(f"Clean image changed {suffix}")
 
     def _assert_current(self, chapter_id: str, snapshots: dict[int, _PageSnapshot]) -> dict:
@@ -306,6 +311,7 @@ class ChapterQCService:
             mode=mode,
             clean_file_revision=snapshot.clean_file_revision,
             source_file_revision=(snapshot.original_file_revision if mode == "region-pair" else None),
+            provider=self.provider,
         )
         return _decision_from_dict(raw, region)
 
@@ -417,6 +423,7 @@ class ChapterQCService:
                     clean_file_revision=snapshot.clean_file_revision,
                     source_file_revision=(snapshot.original_file_revision if mode == "region-pair" else None),
                     result=_decision_to_dict(decision),
+                    provider=self.provider,
                 )
             self.manifest_saver(chapter_id, latest)
 

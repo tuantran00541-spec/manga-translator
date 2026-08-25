@@ -5,6 +5,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 from fastapi.concurrency import run_in_threadpool
+from pydantic import BaseModel, field_validator
 
 from app.config import PROCESSED_DIR, RAW_DIR
 from app.logging_config import logger
@@ -12,13 +13,18 @@ from app.manifest_utils import load_manifest_raw
 from app.schemas import VisualQCInspectRequest, VisualQCKeyRequest
 from app.secret_store import (
     SecretStoreUnavailable,
+    deepseek_key_status,
+    delete_deepseek_api_key,
     delete_gemini_api_key,
     gemini_key_status,
+    get_deepseek_api_key,
     get_gemini_api_key,
+    set_deepseek_api_key,
     set_gemini_api_key,
 )
 from app.security import validate_chapter_id, validate_managed_path
 from app.visual_qc.batch_runner import RegionBatchRunner
+from app.visual_qc.deepseek_region_client import DEFAULT_DEEPSEEK_MODEL, DeepSeekRegionQC
 from app.visual_qc.gemini import DEFAULT_GEMINI_MODEL, GeminiVisualQC, GeminiVisualQCTimeout
 from app.visual_qc.jobs import VisualQCJobManager
 from app.visual_qc.region_client import GeminiRegionQC
@@ -33,7 +39,23 @@ chapter_qc_service = ChapterQCService(
     RegionBatchRunner(region_qc),
     chapter_qc_jobs,
     model=region_qc.model,
+    provider="gemini",
 )
+_chapter_qc_context: dict[str, dict] = {}
+
+
+class DeepSeekKeyRequest(BaseModel):
+    api_key: str
+
+    @field_validator("api_key")
+    @classmethod
+    def _api_key_not_empty(cls, value: str) -> str:
+        value = (value or "").strip()
+        if not value:
+            raise ValueError("DeepSeek API key is required")
+        if len(value) > 4096:
+            raise ValueError("DeepSeek API key is unexpectedly long")
+        return value
 
 
 def _file_revision(path: Path) -> tuple[int, int, int]:
@@ -70,10 +92,54 @@ def _raise_job_capacity_error(exc: RuntimeError) -> None:
     raise HTTPException(500, "Could not start chapter visual QC") from exc
 
 
+def _make_deepseek_service(client: DeepSeekRegionQC) -> ChapterQCService:
+    return ChapterQCService(
+        RegionBatchRunner(client),
+        chapter_qc_jobs,
+        api_key_provider=get_deepseek_api_key,
+        model=client.model,
+        provider="deepseek",
+    )
+
+
+def _remember_job(job_id: str, *, provider: str, client=None) -> None:
+    _chapter_qc_context[job_id] = {
+        "provider": provider,
+        "model": client.model if client is not None else region_qc.model,
+        "client": client,
+    }
+    if len(_chapter_qc_context) > 64:
+        for stale_id in list(_chapter_qc_context)[:-64]:
+            _chapter_qc_context.pop(stale_id, None)
+
+
+def _enrich_snapshot(snapshot: dict) -> dict:
+    result = dict(snapshot)
+    context = _chapter_qc_context.get(str(snapshot.get("job_id"))) or {}
+    provider = str(context.get("provider") or "gemini")
+    result["provider"] = provider
+    result["model"] = str(
+        context.get("model")
+        or (DEFAULT_DEEPSEEK_MODEL if provider == "deepseek" else DEFAULT_GEMINI_MODEL)
+    )
+    client = context.get("client")
+    if isinstance(client, DeepSeekRegionQC):
+        result["usage"] = client.usage_snapshot()
+    return result
+
+
 @router.get("/settings")
 def visual_qc_settings() -> dict:
-    status = gemini_key_status()
-    return {**status, "model": DEFAULT_GEMINI_MODEL}
+    gemini = gemini_key_status()
+    deepseek = deepseek_key_status()
+    return {
+        **gemini,
+        "model": DEFAULT_GEMINI_MODEL,
+        "providers": {
+            "gemini": {**gemini, "model": DEFAULT_GEMINI_MODEL},
+            "deepseek": {**deepseek, "model": DEFAULT_DEEPSEEK_MODEL},
+        },
+    }
 
 
 @router.post("/key")
@@ -101,6 +167,46 @@ def clear_visual_qc_key() -> dict:
     except SecretStoreUnavailable as exc:
         raise HTTPException(503, str(exc)) from exc
     return {"configured": False, "source": "none", "model": DEFAULT_GEMINI_MODEL}
+
+
+@router.post(
+    "/deepseek/key",
+    responses={
+        400: {"description": "Invalid DeepSeek API key"},
+        503: {"description": "OS secure storage is unavailable"},
+    },
+)
+def save_deepseek_visual_qc_key(req: DeepSeekKeyRequest) -> dict:
+    try:
+        set_deepseek_api_key(req.api_key)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except SecretStoreUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc
+    return {
+        "configured": True,
+        "source": "os_secure_storage",
+        "model": DEFAULT_DEEPSEEK_MODEL,
+    }
+
+
+@router.delete(
+    "/deepseek/key",
+    responses={503: {"description": "OS secure storage is unavailable"}},
+)
+def clear_deepseek_visual_qc_key() -> dict:
+    if os.getenv("DEEPSEEK_API_KEY"):
+        return {
+            "configured": True,
+            "source": "environment",
+            "model": DEFAULT_DEEPSEEK_MODEL,
+            "detail": "Environment-provided keys must be removed from the process environment.",
+        }
+    try:
+        delete_deepseek_api_key()
+    except SecretStoreUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc
+    return {"configured": False, "source": "none", "model": DEFAULT_DEEPSEEK_MODEL}
 
 
 @router.post("/inspect")
@@ -188,11 +294,26 @@ async def inspect_visual_qc(req: VisualQCInspectRequest) -> dict:
     }
 
 
-@router.post("/chapter")
+@router.post(
+    "/chapter",
+    responses={
+        400: {"description": "Invalid chapter QC request"},
+        409: {"description": "Provider key missing or chapter QC already active"},
+        429: {"description": "Visual QC job capacity reached"},
+        500: {"description": "Chapter visual QC could not be started"},
+        503: {"description": "OS secure storage is unavailable"},
+    },
+)
 async def start_chapter_visual_qc(req: VisualQCChapterRequest) -> dict:
     validate_chapter_id(req.chapter_id)
+    provider = req.provider
+    deepseek_client = None
+    service = chapter_qc_service
+    if provider == "deepseek":
+        deepseek_client = DeepSeekRegionQC(budget_usd=req.budget_usd)
+        service = _make_deepseek_service(deepseek_client)
     try:
-        job = await chapter_qc_service.start(req.chapter_id, concurrency=req.concurrency)
+        job = await service.start(req.chapter_id, concurrency=req.concurrency)
     except HTTPException:
         raise
     except SecretStoreUnavailable as exc:
@@ -205,13 +326,15 @@ async def start_chapter_visual_qc(req: VisualQCChapterRequest) -> dict:
     except Exception as exc:
         logger.error("Chapter {} visual QC job failed to start: {}", req.chapter_id, exc)
         raise HTTPException(500, "Could not start chapter visual QC") from exc
-    return chapter_qc_jobs.snapshot(job.job_id)
+    _remember_job(job.job_id, provider=provider, client=deepseek_client)
+    return _enrich_snapshot(chapter_qc_jobs.snapshot(job.job_id))
 
 
 def _job_snapshot_or_404(job_id: str) -> dict:
     try:
-        return chapter_qc_jobs.snapshot(job_id)
+        return _enrich_snapshot(chapter_qc_jobs.snapshot(job_id))
     except KeyError as exc:
+        _chapter_qc_context.pop(job_id, None)
         raise HTTPException(404, "Visual QC job not found") from exc
 
 
@@ -225,18 +348,37 @@ def cancel_chapter_visual_qc(job_id: str) -> dict:
     snapshot = _job_snapshot_or_404(job_id)
     if snapshot["status"] not in {"completed", "cancelled"}:
         chapter_qc_jobs.cancel(job_id)
-    return chapter_qc_jobs.snapshot(job_id)
+    return _enrich_snapshot(chapter_qc_jobs.snapshot(job_id))
 
 
-@router.post("/chapter/{job_id}/retry")
+@router.post(
+    "/chapter/{job_id}/retry",
+    responses={
+        400: {"description": "Invalid retry request"},
+        404: {"description": "Visual QC job not found"},
+        409: {"description": "Visual QC job cannot be retried in its current state"},
+        429: {"description": "Visual QC job capacity reached"},
+        500: {"description": "Visual QC retry could not be started"},
+        503: {"description": "OS secure storage is unavailable"},
+    },
+)
 async def retry_failed_chapter_visual_qc(job_id: str) -> dict:
     previous = _job_snapshot_or_404(job_id)
     if previous["status"] not in {"completed", "cancelled"}:
         raise HTTPException(409, "Visual QC job is still running")
     if int(previous.get("failed") or 0) <= 0:
         raise HTTPException(409, "Visual QC job has no failed regions to retry")
+
+    context = _chapter_qc_context.get(job_id) or {"provider": "gemini"}
+    provider = str(context.get("provider") or "gemini")
+    client = context.get("client")
+    service = chapter_qc_service
+    if provider == "deepseek":
+        if not isinstance(client, DeepSeekRegionQC):
+            raise HTTPException(409, "DeepSeek QC job context is no longer available")
+        service = _make_deepseek_service(client)
     try:
-        job = await chapter_qc_service.start(
+        job = await service.start(
             previous["chapter_id"],
             concurrency=int(previous.get("concurrency") or 2),
         )
@@ -249,4 +391,5 @@ async def retry_failed_chapter_visual_qc(job_id: str) -> dict:
         raise HTTPException(status, str(exc)) from exc
     except RuntimeError as exc:
         _raise_job_capacity_error(exc)
-    return chapter_qc_jobs.snapshot(job.job_id)
+    _remember_job(job.job_id, provider=provider, client=client)
+    return _enrich_snapshot(chapter_qc_jobs.snapshot(job.job_id))

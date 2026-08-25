@@ -16,7 +16,20 @@ def _normalize_file_revision(value: object) -> tuple[int, int, int] | None:
         return None
 
 
-def store_page_qc_cache(page: dict, *, model: str, mode: str, clean_file_revision: tuple[int, int, int], result: dict) -> None:
+def _cache_slot(mode: str, provider: str) -> str:
+    provider = str(provider or "gemini").strip().lower()
+    return str(mode) if provider == "gemini" else f"{provider}:{mode}"
+
+
+def store_page_qc_cache(
+    page: dict,
+    *,
+    model: str,
+    mode: str,
+    clean_file_revision: tuple[int, int, int],
+    result: dict,
+    provider: str = "gemini",
+) -> None:
     revision = _normalize_file_revision(clean_file_revision)
     if revision is None:
         raise ValueError("clean_file_revision must be a 3-value file identity")
@@ -24,21 +37,28 @@ def store_page_qc_cache(page: dict, *, model: str, mode: str, clean_file_revisio
     if not isinstance(cache, dict):
         cache = {}
         page[CACHE_FIELD] = cache
-    cache[str(mode)] = {
+    cache[_cache_slot(mode, provider)] = {
         "identity": qc_cache_identity(page, model=model, mode=mode),
         "clean_file_revision": list(revision),
         "result": copy.deepcopy(result),
     }
 
 
-def load_page_qc_cache(page: dict, *, model: str, mode: str, clean_file_revision: tuple[int, int, int]) -> dict | None:
+def load_page_qc_cache(
+    page: dict,
+    *,
+    model: str,
+    mode: str,
+    clean_file_revision: tuple[int, int, int],
+    provider: str = "gemini",
+) -> dict | None:
     revision = _normalize_file_revision(clean_file_revision)
     if revision is None:
         return None
     cache = page.get(CACHE_FIELD)
     if not isinstance(cache, dict):
         return None
-    entry = cache.get(str(mode))
+    entry = cache.get(_cache_slot(mode, provider))
     if not isinstance(entry, dict):
         return None
     if not qc_cache_matches(entry.get("identity"), page, model=model, mode=mode):
@@ -78,6 +98,7 @@ def store_region_qc_cache(
     clean_file_revision: tuple[int, int, int],
     result: dict,
     source_file_revision: tuple[int, int, int] | None = None,
+    provider: str = "gemini",
 ) -> None:
     revision = _normalize_file_revision(clean_file_revision)
     if revision is None:
@@ -92,7 +113,8 @@ def store_region_qc_cache(
     if not isinstance(cache, dict):
         cache = {}
         page[CACHE_FIELD] = cache
-    entry = cache.get(str(mode))
+    slot = _cache_slot(mode, provider)
+    entry = cache.get(slot)
     if not _entry_matches(
         entry,
         page,
@@ -108,7 +130,7 @@ def store_region_qc_cache(
         }
         if source_revision is not None:
             entry["source_file_revision"] = list(source_revision)
-        cache[str(mode)] = entry
+        cache[slot] = entry
     regions = entry.setdefault("regions", {})
     if not isinstance(regions, dict):
         regions = {}
@@ -124,6 +146,7 @@ def load_region_qc_cache(
     mode: str,
     clean_file_revision: tuple[int, int, int],
     source_file_revision: tuple[int, int, int] | None = None,
+    provider: str = "gemini",
 ) -> dict | None:
     revision = _normalize_file_revision(clean_file_revision)
     if revision is None:
@@ -137,7 +160,7 @@ def load_region_qc_cache(
     cache = page.get(CACHE_FIELD)
     if not isinstance(cache, dict):
         return None
-    entry = cache.get(str(mode))
+    entry = cache.get(_cache_slot(mode, provider))
     if not _entry_matches(
         entry,
         page,
