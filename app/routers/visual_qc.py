@@ -169,7 +169,13 @@ def clear_visual_qc_key() -> dict:
     return {"configured": False, "source": "none", "model": DEFAULT_GEMINI_MODEL}
 
 
-@router.post("/deepseek/key")
+@router.post(
+    "/deepseek/key",
+    responses={
+        400: {"description": "Invalid DeepSeek API key"},
+        503: {"description": "OS secure storage is unavailable"},
+    },
+)
 def save_deepseek_visual_qc_key(req: DeepSeekKeyRequest) -> dict:
     try:
         set_deepseek_api_key(req.api_key)
@@ -184,7 +190,10 @@ def save_deepseek_visual_qc_key(req: DeepSeekKeyRequest) -> dict:
     }
 
 
-@router.delete("/deepseek/key")
+@router.delete(
+    "/deepseek/key",
+    responses={503: {"description": "OS secure storage is unavailable"}},
+)
 def clear_deepseek_visual_qc_key() -> dict:
     if os.getenv("DEEPSEEK_API_KEY"):
         return {
@@ -285,7 +294,16 @@ async def inspect_visual_qc(req: VisualQCInspectRequest) -> dict:
     }
 
 
-@router.post("/chapter")
+@router.post(
+    "/chapter",
+    responses={
+        400: {"description": "Invalid chapter QC request"},
+        409: {"description": "Provider key missing or chapter QC already active"},
+        429: {"description": "Visual QC job capacity reached"},
+        500: {"description": "Chapter visual QC could not be started"},
+        503: {"description": "OS secure storage is unavailable"},
+    },
+)
 async def start_chapter_visual_qc(req: VisualQCChapterRequest) -> dict:
     validate_chapter_id(req.chapter_id)
     provider = req.provider
@@ -333,7 +351,17 @@ def cancel_chapter_visual_qc(job_id: str) -> dict:
     return _enrich_snapshot(chapter_qc_jobs.snapshot(job_id))
 
 
-@router.post("/chapter/{job_id}/retry")
+@router.post(
+    "/chapter/{job_id}/retry",
+    responses={
+        400: {"description": "Invalid retry request"},
+        404: {"description": "Visual QC job not found"},
+        409: {"description": "Visual QC job cannot be retried in its current state"},
+        429: {"description": "Visual QC job capacity reached"},
+        500: {"description": "Visual QC retry could not be started"},
+        503: {"description": "OS secure storage is unavailable"},
+    },
+)
 async def retry_failed_chapter_visual_qc(job_id: str) -> dict:
     previous = _job_snapshot_or_404(job_id)
     if previous["status"] not in {"completed", "cancelled"}:
