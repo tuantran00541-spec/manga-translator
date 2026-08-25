@@ -58,6 +58,13 @@ def test_chapter_qc_state_is_invalidated_when_the_open_chapter_changes():
     assert "snapshot?.chapter_id !== window.currentChapterId" in js
 
 
+def test_cancel_keeps_polling_until_backend_reaches_terminal_state():
+    js = read("app/static/js/chapter-qc.js")
+    assert "snapshot.cancel_requested" in js
+    assert "if (isRunning(snapshot)) schedulePoll(snapshot.job_id, generation)" in js
+    assert 'return `Đang hủy · ${completed}/${total} vùng đã xử lý…`' in js
+
+
 def test_chapter_qc_panel_has_progress_results_and_highlight_styles():
     css = read("app/static/css/review-workspace.css")
     assert ".chapter-qc-panel" in css
