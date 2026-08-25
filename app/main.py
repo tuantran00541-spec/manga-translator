@@ -15,7 +15,7 @@ from app.config import (
 )
 from app.logging_config import logger
 from app.manifest_utils import cleanup_stale_temp_artifacts
-from app.routers import automation, chapters, editor, image, ocr, render, render45, translation, visual_qc
+from app.routers import automation, chapters, editor, export, image, ocr, render, render45, translation, visual_qc
 from app.security import (
     MAX_REQUEST_BYTES,
     MAX_UPLOAD_TOTAL_BYTES,
@@ -87,6 +87,7 @@ app.include_router(editor.router)
 app.include_router(render45.router)
 app.include_router(render.router)
 app.include_router(image.router)
+app.include_router(export.router)
 app.include_router(visual_qc.router)
 
 
