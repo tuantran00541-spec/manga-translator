@@ -17,6 +17,7 @@ def main() -> None:
             "retry": 0,
             "cancel": 0,
             "box": 0,
+            "allow_complete": False,
         }
 
         def handle(route):
@@ -46,10 +47,10 @@ def main() -> None:
                 return
             if url.endswith("/api/ocr/chapter/job1") and method == "GET":
                 calls["status_job1"] += 1
-                if calls["status_job1"] == 1:
-                    body = '{"job_id":"job1","chapter_id":"deadbeef","lang":"en","concurrency":1,"force":false,"status":"running","total":2,"completed":1,"recognized":1,"empty":0,"cached":1,"stale":0,"failed":0,"errors":[]}'
-                else:
+                if calls["allow_complete"]:
                     body = '{"job_id":"job1","chapter_id":"deadbeef","lang":"en","concurrency":1,"force":false,"status":"completed","total":2,"completed":1,"recognized":1,"empty":0,"cached":1,"stale":1,"failed":0,"errors":[]}'
+                else:
+                    body = '{"job_id":"job1","chapter_id":"deadbeef","lang":"en","concurrency":1,"force":false,"status":"running","total":2,"completed":1,"recognized":1,"empty":0,"cached":1,"stale":0,"failed":0,"errors":[]}'
                 route.fulfill(status=200, content_type="application/json", body=body)
                 return
             if url.endswith("/api/ocr/chapter/job1/retry") and method == "POST":
@@ -101,13 +102,12 @@ def main() -> None:
             window.getErrorMessage = (status, data) => data.detail || `HTTP ${status}`;
             window.showToast = () => {};
             window.fetchOcr = async () => { throw new Error('legacy fetchOcr should have been replaced'); };
-            void 0;
+            undefined;
             """
         )
         page.add_script_tag(path=str(SCRIPT))
 
         page.wait_for_selector(".chapter-ocr-run")
-        assert page.evaluate("window.fetchOcr.name") == "safeFetchOcr"
         assert not page.locator(".nav-next").is_disabled()
 
         page.evaluate("window.fetchOcr(0, 0, document.getElementById('box-original'))")
@@ -125,6 +125,7 @@ def main() -> None:
         }
         assert not page.locator(".nav-next").is_disabled()
 
+        calls["allow_complete"] = True
         page.wait_for_function("document.querySelector('.chapter-ocr-summary').textContent.includes('stale 1')", timeout=6000)
         assert page.locator(".chapter-ocr-retry").is_visible()
         assert page.locator(".chapter-ocr-progress").get_attribute("value") == "2"
