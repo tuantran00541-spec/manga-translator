@@ -88,7 +88,7 @@ class Phase44OCRHarness(unittest.TestCase):
         }
         manifest_utils.save_manifest_raw(CHAPTER_ID, manifest)
 
-    def load_page(self):
+    def _load_page(self):
         return manifest_utils.load_manifest_raw(CHAPTER_ID)["pages"][0]
 
 
@@ -106,7 +106,7 @@ class OCRIdentityRegressionTests(Phase44OCRHarness):
         with patch.object(editor_mod.ocr, "read", side_effect=read_then_reorder):
             self.service.inspect_box_index(CHAPTER_ID, 0, 0, "en")
 
-        boxes = {box["id"]: box for box in self.load_page()["boxes"]}
+        boxes = {box["id"]: box for box in self._load_page()["boxes"]}
         self.assertEqual(boxes["box_a"].get("ocr_text"), "ALPHA")
         self.assertFalse(boxes["box_b"].get("ocr_text"))
 
@@ -126,7 +126,7 @@ class OCRIdentityRegressionTests(Phase44OCRHarness):
             with self.assertRaises(OCRResultStale):
                 self.service.inspect_box_id(CHAPTER_ID, 0, "box_a", "en")
 
-        box = self.load_page()["boxes"][0]
+        box = self._load_page()["boxes"][0]
         self.assertNotIn("ocr_text", box)
 
     def test_box_ocr_discards_same_path_file_replacement(self):
@@ -141,7 +141,7 @@ class OCRIdentityRegressionTests(Phase44OCRHarness):
             with self.assertRaises(OCRResultStale):
                 self.service.inspect_box_id(CHAPTER_ID, 0, "box_a", "en")
 
-        self.assertNotIn("ocr_text", self.load_page()["boxes"][0])
+        self.assertNotIn("ocr_text", self._load_page()["boxes"][0])
 
     def test_geometry_edit_invalidates_machine_ocr_cache(self):
         box = self.box(
@@ -160,7 +160,7 @@ class OCRIdentityRegressionTests(Phase44OCRHarness):
         ):
             self.pipeline.update_box(CHAPTER_ID, 0, 0, 20, 18, 100, 68)
 
-        updated = self.load_page()["boxes"][0]
+        updated = self._load_page()["boxes"][0]
         for key in (
             "ocr_text",
             "ocr_lang",
@@ -174,7 +174,7 @@ class OCRIdentityRegressionTests(Phase44OCRHarness):
 
     def test_legacy_unversioned_box_cache_is_invalidated(self):
         self.save_manifest(boxes=[self.box("box_a", ocr_text="LEGACY", ocr_lang="en")])
-        box = self.load_page()["boxes"][0]
+        box = self._load_page()["boxes"][0]
         self.assertNotIn("ocr_text", box)
         self.assertNotIn("ocr_lang", box)
 
@@ -218,7 +218,7 @@ class OCRIdentityRegressionTests(Phase44OCRHarness):
 
         self.assertFalse(result["cached"])
         read_mock.assert_called_once()
-        updated = self.load_page()["boxes"][0]
+        updated = self._load_page()["boxes"][0]
         self.assertEqual(updated["ocr_text"], "NEW")
         self.assertEqual(updated["ocr_engine"], "new-engine")
 
@@ -242,7 +242,7 @@ class OCRIdentityRegressionTests(Phase44OCRHarness):
         with patch.object(self.service, "inspect_box_id", side_effect=fake_inspect):
             self.service.group_text_object(CHAPTER_ID, 0, "obj1", "en")
 
-        updated = self.load_page()["text_objects"][0]
+        updated = self._load_page()["text_objects"][0]
         self.assertEqual(updated["source_boxes"], ["box_z", "box_a"])
         self.assertEqual(updated["ocr_text"], "box_z\nbox_a")
 
