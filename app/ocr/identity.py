@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from functools import lru_cache
 from importlib import metadata
 from pathlib import Path
 
@@ -24,6 +25,7 @@ def geometry_signature(box: dict) -> tuple[int, int, int, int]:
     return tuple(int(box.get(key, 0)) for key in ("x1", "y1", "x2", "y2"))
 
 
+@lru_cache(maxsize=8)
 def _package_version(package_name: str) -> str:
     try:
         return metadata.version(package_name)
@@ -31,6 +33,7 @@ def _package_version(package_name: str) -> str:
         return "unknown"
 
 
+@lru_cache(maxsize=16)
 def engine_identity(lang: str) -> str:
     normalized = (lang or "").strip().lower()
     if normalized == "ja":
