@@ -24,6 +24,8 @@ from app.ocr.identity import (
 from app.pipeline import _decode_mask, read_image
 from app.security import validate_chapter_id
 
+OCR_CANCELLED_MESSAGE = "OCR job was cancelled"
+
 
 class OCRResultStale(RuntimeError):
     pass
@@ -61,7 +63,7 @@ def ocr_crop_from_box(image: np.ndarray, box: dict) -> np.ndarray:
     mask = _decode_mask(box.get("mask"))
     expected_shape = (by2 - by1, bx2 - bx1)
     if mask is not None and mask.shape == expected_shape:
-        ys, xs = np.where(mask > 127)
+        ys, xs = np.nonzero(mask > 127)
         if xs.size and ys.size:
             pad = 12
             x1 = max(bx1, bx1 + int(xs.min()) - pad)
@@ -77,7 +79,9 @@ def ocr_crop_from_box(image: np.ndarray, box: dict) -> np.ndarray:
     ]
 
 
-def _active_overlap_signatures(page: dict, region: dict) -> list[tuple[str, tuple[int, int, int, int]]]:
+def _active_overlap_signatures(
+    page: dict, region: dict
+) -> list[tuple[str, tuple[int, int, int, int]]]:
     matches: list[tuple[int, int, str, tuple[int, int, int, int]]] = []
     for box in page.get("boxes", []) or []:
         if not isinstance(box, dict) or box.get("removed"):
@@ -95,6 +99,33 @@ def _active_overlap_signatures(page: dict, region: dict) -> list[tuple[str, tupl
         )
     matches.sort(key=lambda item: (item[0], item[1], item[2]))
     return [(box_id, geometry) for _, _, box_id, geometry in matches]
+
+
+def _find_box(page: dict, box_id: str) -> dict | None:
+    return next(
+        (
+            item
+            for item in (page.get("boxes", []) or [])
+            if isinstance(item, dict) and str(item.get("id")) == str(box_id)
+        ),
+        None,
+    )
+
+
+def _find_text_object(page: dict, text_object_id: str) -> dict | None:
+    return next(
+        (
+            item
+            for item in (page.get("text_objects", []) or [])
+            if isinstance(item, dict) and item.get("id") == text_object_id
+        ),
+        None,
+    )
+
+
+def _check_cancelled(cancel_event: threading.Event | None) -> None:
+    if cancel_event is not None and cancel_event.is_set():
+        raise OCRCancelled(OCR_CANCELLED_MESSAGE)
 
 
 class OCRService:
@@ -165,6 +196,52 @@ class OCRService:
     ) -> dict:
         validate_chapter_id(chapter_id)
         engine = engine_identity(lang)
+        box_snapshot, original_value, source_revision = self._snapshot_box(
+            chapter_id, page_index, box_id
+        )
+        original_path, original_revision = self._source_identity(original_value)
+
+        if not force and machine_cache_valid(
+            box_snapshot,
+            lang=lang,
+            engine=engine,
+            source_revision=source_revision,
+            original_revision=original_revision,
+        ):
+            return self._cached_box_result(
+                page_index, box_id, box_snapshot, lang, engine
+            )
+
+        _check_cancelled(cancel_event)
+        text = self._read_box_text(original_path, box_snapshot, lang)
+        _check_cancelled(cancel_event)
+        self._commit_box_result(
+            chapter_id,
+            page_index,
+            box_id,
+            box_snapshot=box_snapshot,
+            original_value=original_value,
+            source_revision=source_revision,
+            original_revision=original_revision,
+            text=text,
+            lang=lang,
+            engine=engine,
+            cancel_event=cancel_event,
+        )
+        return {
+            "page_index": page_index,
+            "box_id": str(box_id),
+            "text": text or "",
+            "lang": lang,
+            "engine": engine,
+            "cached": False,
+            "committed": True,
+            "stale": False,
+        }
+
+    def _snapshot_box(
+        self, chapter_id: str, page_index: int, box_id: str
+    ) -> tuple[dict, str, int]:
         with get_manifest_lock(chapter_id):
             manifest = load_manifest_raw(chapter_id)
             pages = manifest.get("pages", [])
@@ -173,93 +250,76 @@ class OCRService:
             page = pages[page_index]
             if page.get("skipped"):
                 raise ValueError("Cannot OCR a skipped page")
-            box = next(
-                (
-                    item
-                    for item in (page.get("boxes", []) or [])
-                    if isinstance(item, dict) and str(item.get("id")) == str(box_id)
-                ),
-                None,
-            )
+            box = _find_box(page, box_id)
             if box is None or box.get("removed"):
                 raise ValueError(f"OCR target box not found: {box_id}")
-            box_snapshot = copy.deepcopy(box)
             original_value = page.get("original")
             if not original_value:
                 raise FileNotFoundError("Original page image is not configured")
-            original_path = Path(original_value)
-            source_revision = int(page.get("source_revision") or 0)
+            return (
+                copy.deepcopy(box),
+                str(original_value),
+                int(page.get("source_revision") or 0),
+            )
 
+    @staticmethod
+    def _source_identity(original_value: str) -> tuple[Path, tuple[int, int, int]]:
+        original_path = Path(original_value)
         if not original_path.is_file():
             raise FileNotFoundError("Original page image not found")
-        original_revision = file_revision(original_path)
-        if not force and machine_cache_valid(
-            box_snapshot,
-            lang=lang,
-            engine=engine,
-            source_revision=source_revision,
-            original_revision=original_revision,
-        ):
-            return {
-                "page_index": page_index,
-                "box_id": str(box_id),
-                "text": str(box_snapshot.get("ocr_text") or ""),
-                "lang": lang,
-                "engine": engine,
-                "cached": True,
-                "committed": True,
-                "stale": False,
-            }
+        return original_path, file_revision(original_path)
 
-        if cancel_event is not None and cancel_event.is_set():
-            raise OCRCancelled("OCR job was cancelled")
+    @staticmethod
+    def _cached_box_result(
+        page_index: int, box_id: str, box_snapshot: dict, lang: str, engine: str
+    ) -> dict:
+        return {
+            "page_index": page_index,
+            "box_id": str(box_id),
+            "text": str(box_snapshot.get("ocr_text") or ""),
+            "lang": lang,
+            "engine": engine,
+            "cached": True,
+            "committed": True,
+            "stale": False,
+        }
 
+    def _read_box_text(self, original_path: Path, box_snapshot: dict, lang: str) -> str:
         image = read_image(original_path)
         crop = ocr_crop_from_box(image, box_snapshot)
-        if crop.size:
-            rgb = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
-            text = self.ocr.read(rgb, lang)
-        else:
-            text = ""
+        if not crop.size:
+            return ""
+        rgb = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
+        return self.ocr.read(rgb, lang)
 
-        if cancel_event is not None and cancel_event.is_set():
-            raise OCRCancelled("OCR job was cancelled")
-
+    def _commit_box_result(
+        self,
+        chapter_id: str,
+        page_index: int,
+        box_id: str,
+        *,
+        box_snapshot: dict,
+        original_value: str,
+        source_revision: int,
+        original_revision: tuple[int, int, int],
+        text: str,
+        lang: str,
+        engine: str,
+        cancel_event: threading.Event | None,
+    ) -> None:
         with get_manifest_lock(chapter_id):
             manifest = load_manifest_raw(chapter_id)
-            pages = manifest.get("pages", [])
-            if page_index < 0 or page_index >= len(pages):
-                raise OCRResultStale("Page disappeared while OCR was running")
-            page = pages[page_index]
-            current_original = page.get("original")
-            current_source_revision = int(page.get("source_revision") or 0)
-            if current_original != original_value or current_source_revision != source_revision:
-                raise OCRResultStale("Original page changed while OCR was running")
-            current_path = Path(str(current_original))
-            try:
-                current_file_revision = file_revision(current_path)
-            except OSError as exc:
-                raise OCRResultStale("Original page changed while OCR was running") from exc
-            if current_file_revision != original_revision:
-                raise OCRResultStale("Original page file changed while OCR was running")
-
-            target = next(
-                (
-                    item
-                    for item in (page.get("boxes", []) or [])
-                    if isinstance(item, dict) and str(item.get("id")) == str(box_id)
-                ),
-                None,
+            page = self._current_box_page(
+                manifest,
+                page_index,
+                original_value=original_value,
+                source_revision=source_revision,
+                original_revision=original_revision,
             )
-            if (
-                target is None
-                or target.get("removed")
-                or geometry_signature(target) != geometry_signature(box_snapshot)
-            ):
+            target = _find_box(page, box_id)
+            if self._box_changed(target, box_snapshot):
                 raise OCRResultStale("OCR target box changed while OCR was running")
-            if cancel_event is not None and cancel_event.is_set():
-                raise OCRCancelled("OCR job was cancelled")
-
+            _check_cancelled(cancel_event)
             stamp_machine_cache(
                 target,
                 text=text,
@@ -272,16 +332,38 @@ class OCRService:
             save_manifest_raw(chapter_id, manifest)
             self.pipeline._sync_output_dir(chapter_id, manifest, [page_index])
 
-        return {
-            "page_index": page_index,
-            "box_id": str(box_id),
-            "text": text or "",
-            "lang": lang,
-            "engine": engine,
-            "cached": False,
-            "committed": True,
-            "stale": False,
-        }
+    @staticmethod
+    def _current_box_page(
+        manifest: dict,
+        page_index: int,
+        *,
+        original_value: str,
+        source_revision: int,
+        original_revision: tuple[int, int, int],
+    ) -> dict:
+        pages = manifest.get("pages", [])
+        if page_index < 0 or page_index >= len(pages):
+            raise OCRResultStale("Page disappeared while OCR was running")
+        page = pages[page_index]
+        current_original = page.get("original")
+        current_source_revision = int(page.get("source_revision") or 0)
+        if current_original != original_value or current_source_revision != source_revision:
+            raise OCRResultStale("Original page changed while OCR was running")
+        try:
+            current_file_revision = file_revision(Path(str(current_original)))
+        except OSError as exc:
+            raise OCRResultStale("Original page changed while OCR was running") from exc
+        if current_file_revision != original_revision:
+            raise OCRResultStale("Original page file changed while OCR was running")
+        return page
+
+    @staticmethod
+    def _box_changed(target: dict | None, box_snapshot: dict) -> bool:
+        return (
+            target is None
+            or bool(target.get("removed"))
+            or geometry_signature(target) != geometry_signature(box_snapshot)
+        )
 
     def group_text_object(
         self,
@@ -292,35 +374,59 @@ class OCRService:
     ) -> dict:
         validate_chapter_id(chapter_id)
         engine = engine_identity(lang)
+        snapshot = self._snapshot_group(chapter_id, page_index, text_object_id)
+        original_path, original_revision = self._source_identity(snapshot["original_value"])
+        del original_path
+
+        source_box_ids, combined = self._collect_group_text(
+            chapter_id,
+            page_index,
+            snapshot["signatures"],
+            lang,
+        )
+        return self._commit_group_text(
+            chapter_id,
+            page_index,
+            text_object_id,
+            lang=lang,
+            engine=engine,
+            source_box_ids=source_box_ids,
+            combined=combined,
+            snapshot=snapshot,
+            original_revision=original_revision,
+        )
+
+    def _snapshot_group(
+        self, chapter_id: str, page_index: int, text_object_id: str
+    ) -> dict:
         with get_manifest_lock(chapter_id):
             manifest = load_manifest_raw(chapter_id)
             pages = manifest.get("pages", [])
             if page_index < 0 or page_index >= len(pages):
                 raise ValueError(f"Invalid page index {page_index}")
             page = pages[page_index]
-            obj = next(
-                (
-                    item
-                    for item in (page.get("text_objects", []) or [])
-                    if isinstance(item, dict) and item.get("id") == text_object_id
-                ),
-                None,
-            )
+            obj = _find_text_object(page, text_object_id)
             if obj is None:
                 raise ValueError(f"Text object not found {text_object_id!r}")
-            region = copy.deepcopy(obj.get("region") or {})
-            text_snapshot = obj.get("ocr_text") or ""
             original_value = page.get("original")
-            source_revision = int(page.get("source_revision") or 0)
-            signatures = _active_overlap_signatures(page, region)
+            if not original_value:
+                raise FileNotFoundError("Original page image is not configured")
+            region = copy.deepcopy(obj.get("region") or {})
+            return {
+                "region": region,
+                "text": obj.get("ocr_text") or "",
+                "original_value": str(original_value),
+                "source_revision": int(page.get("source_revision") or 0),
+                "signatures": _active_overlap_signatures(page, region),
+            }
 
-        if not original_value:
-            raise FileNotFoundError("Original page image is not configured")
-        original_path = Path(original_value)
-        if not original_path.is_file():
-            raise FileNotFoundError("Original page image not found")
-        original_revision = file_revision(original_path)
-
+    def _collect_group_text(
+        self,
+        chapter_id: str,
+        page_index: int,
+        signatures: list[tuple[str, tuple[int, int, int, int]]],
+        lang: str,
+    ) -> tuple[list[str], str]:
         texts: list[str] = []
         source_box_ids: list[str] = []
         for box_id, _geometry in signatures:
@@ -344,39 +450,31 @@ class OCRService:
             text = str(result.get("text") or "")
             if text:
                 texts.append(text)
-        combined = "\n".join(texts)
+        return source_box_ids, "\n".join(texts)
 
+    def _commit_group_text(
+        self,
+        chapter_id: str,
+        page_index: int,
+        text_object_id: str,
+        *,
+        lang: str,
+        engine: str,
+        source_box_ids: list[str],
+        combined: str,
+        snapshot: dict,
+        original_revision: tuple[int, int, int],
+    ) -> dict:
         with get_manifest_lock(chapter_id):
             manifest = load_manifest_raw(chapter_id)
             pages = manifest.get("pages", [])
             if page_index < 0 or page_index >= len(pages):
                 return manifest
             page = pages[page_index]
-            obj = next(
-                (
-                    item
-                    for item in (page.get("text_objects", []) or [])
-                    if isinstance(item, dict) and item.get("id") == text_object_id
-                ),
-                None,
-            )
+            obj = _find_text_object(page, text_object_id)
             if obj is None:
                 return manifest
-            current_original = page.get("original")
-            current_source_revision = int(page.get("source_revision") or 0)
-            try:
-                current_file_revision = file_revision(Path(str(current_original)))
-            except OSError:
-                current_file_revision = None
-            stale = (
-                current_original != original_value
-                or current_source_revision != source_revision
-                or current_file_revision != original_revision
-                or obj.get("region") != region
-                or (obj.get("ocr_text") or "") != text_snapshot
-                or _active_overlap_signatures(page, region) != signatures
-            )
-            if stale:
+            if self._group_result_stale(page, obj, snapshot, original_revision):
                 logger.warning(
                     "Chapter {} page {} object {}: OCR result became stale; keeping newer state",
                     chapter_id,
@@ -385,17 +483,62 @@ class OCRService:
                 )
                 return manifest
 
-            obj["source_boxes"] = source_box_ids
-            obj["ocr_text"] = combined
-            obj["ocr_source"] = "machine"
-            obj["ocr_lang"] = lang
-            obj["ocr_engine"] = engine
-            obj["ocr_source_revision"] = source_revision
-            obj["ocr_file_revision"] = list(original_revision)
-            obj["ocr_region"] = [
-                int(region.get(key, 0)) for key in ("x1", "y1", "x2", "y2")
-            ]
+            self._stamp_group_object(
+                obj,
+                source_box_ids=source_box_ids,
+                combined=combined,
+                lang=lang,
+                engine=engine,
+                source_revision=snapshot["source_revision"],
+                original_revision=original_revision,
+                region=snapshot["region"],
+            )
             invalidate_page_render(manifest, page_index)
             save_manifest_raw(chapter_id, manifest)
             self.pipeline._sync_output_dir(chapter_id, manifest, [page_index])
             return manifest
+
+    @staticmethod
+    def _group_result_stale(
+        page: dict,
+        obj: dict,
+        snapshot: dict,
+        original_revision: tuple[int, int, int],
+    ) -> bool:
+        current_original = page.get("original")
+        try:
+            current_file_revision = file_revision(Path(str(current_original)))
+        except OSError:
+            current_file_revision = None
+        return (
+            current_original != snapshot["original_value"]
+            or int(page.get("source_revision") or 0) != snapshot["source_revision"]
+            or current_file_revision != original_revision
+            or obj.get("region") != snapshot["region"]
+            or (obj.get("ocr_text") or "") != snapshot["text"]
+            or _active_overlap_signatures(page, snapshot["region"])
+            != snapshot["signatures"]
+        )
+
+    @staticmethod
+    def _stamp_group_object(
+        obj: dict,
+        *,
+        source_box_ids: list[str],
+        combined: str,
+        lang: str,
+        engine: str,
+        source_revision: int,
+        original_revision: tuple[int, int, int],
+        region: dict,
+    ) -> None:
+        obj["source_boxes"] = source_box_ids
+        obj["ocr_text"] = combined
+        obj["ocr_source"] = "machine"
+        obj["ocr_lang"] = lang
+        obj["ocr_engine"] = engine
+        obj["ocr_source_revision"] = source_revision
+        obj["ocr_file_revision"] = list(original_revision)
+        obj["ocr_region"] = [
+            int(region.get(key, 0)) for key in ("x1", "y1", "x2", "y2")
+        ]
