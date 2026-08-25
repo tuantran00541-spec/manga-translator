@@ -55,6 +55,10 @@
     return labels[issue?.issue_type] || "Vùng cần kiểm tra";
   }
 
+  function providerLabel(provider) {
+    return provider === "deepseek" ? "DeepSeek" : "Gemini";
+  }
+
   function clearHighlight(workspace) {
     workspace?.querySelectorAll(".review-qc-highlight").forEach((node) => node.remove());
   }
@@ -141,20 +145,46 @@
     if (!snapshot) return "Chưa chạy kiểm tra toàn chương.";
     const completed = Number(snapshot.completed_regions) || 0;
     const total = Number(snapshot.total_regions) || 0;
-    if (isRunning(snapshot) && snapshot.cancel_requested) return `Đang hủy · ${completed}/${total} vùng đã xử lý…`;
-    if (isRunning(snapshot)) return `Đang kiểm tra ${completed}/${total} vùng…`;
-    if (snapshot.status === "cancelled") return `Đã hủy sau ${completed}/${total} vùng.`;
-    return `Hoàn tất · ${snapshot.passed || 0} đạt · ${snapshot.flagged || 0} cần xem · ${snapshot.failed || 0} lỗi.`;
+    const provider = providerLabel(snapshot.provider);
+    if (isRunning(snapshot) && snapshot.cancel_requested) return `${provider} · Đang hủy · ${completed}/${total} vùng đã xử lý…`;
+    if (isRunning(snapshot)) return `${provider} · Đang kiểm tra ${completed}/${total} vùng…`;
+    if (snapshot.status === "cancelled") return `${provider} · Đã hủy sau ${completed}/${total} vùng.`;
+    return `${provider} · Hoàn tất · ${snapshot.passed || 0} đạt · ${snapshot.flagged || 0} cần xem · ${snapshot.failed || 0} lỗi.`;
+  }
+
+  function usageText(snapshot) {
+    if (snapshot?.provider !== "deepseek" || !snapshot.usage) return "";
+    const spent = Number(snapshot.usage.estimated_cost_usd) || 0;
+    const budget = Number(snapshot.usage.budget_usd) || 0;
+    const requests = Number(snapshot.usage.requests) || 0;
+    return `Chi phí ước tính: $${spent.toFixed(4)} / $${budget.toFixed(3)} · ${requests} request`;
   }
 
   function updateProgress(panel, snapshot) {
     const status = panel.querySelector(".chapter-qc-summary");
     const progress = panel.querySelector("progress");
+    const usage = panel.querySelector(".chapter-qc-usage");
     if (status) status.textContent = summaryText(snapshot);
+    if (usage) {
+      usage.textContent = usageText(snapshot);
+      usage.hidden = !usage.textContent;
+    }
     if (!progress) return;
     progress.max = Math.max(1, Number(snapshot?.total_regions) || 1);
     progress.value = Math.min(progress.max, Number(snapshot?.completed_regions) || 0);
     progress.hidden = !snapshot;
+  }
+
+  function syncProviderControls(panel, snapshot, running) {
+    const select = panel.querySelector(".chapter-qc-provider");
+    const budget = panel.querySelector(".chapter-qc-budget-input");
+    const budgetWrap = panel.querySelector(".chapter-qc-budget");
+    if (!select || !budget || !budgetWrap) return;
+    if (running && snapshot?.provider) select.value = snapshot.provider;
+    select.disabled = running;
+    const deepseek = select.value === "deepseek";
+    budgetWrap.hidden = !deepseek;
+    budget.disabled = running || !deepseek;
   }
 
   function updateButtons(workspace, panel, snapshot, running) {
@@ -167,6 +197,7 @@
     }
     if (cancelBtn) cancelBtn.hidden = !running || Boolean(snapshot?.cancel_requested);
     if (retryBtn) retryBtn.hidden = running || Number(snapshot?.failed) <= 0;
+    syncProviderControls(panel, snapshot, running);
   }
 
   function makeResultButton(workspace, result, issue) {
@@ -249,6 +280,14 @@
     if (typeof window.showToast === "function") window.showToast(prefix + err.message, "error");
   }
 
+  function chapterRequest(workspace, chapterId) {
+    const panel = workspace.querySelector(".chapter-qc-panel");
+    const provider = panel?.querySelector(".chapter-qc-provider")?.value || "gemini";
+    const budgetRaw = Number(panel?.querySelector(".chapter-qc-budget-input")?.value);
+    const budget = Number.isFinite(budgetRaw) ? Math.max(0.005, Math.min(0.15, budgetRaw)) : 0.08;
+    return { chapter_id: chapterId, concurrency: 2, provider, budget_usd: budget };
+  }
+
   async function startChapterQC(workspace) {
     syncChapterState();
     const chapterId = window.currentChapterId;
@@ -257,12 +296,17 @@
       if (typeof window.showToast === "function") window.showToast("Hãy hoàn tất kiểm tra trang hiện tại trước khi kiểm tra toàn chương.", "info");
       return;
     }
+    const request = chapterRequest(workspace, chapterId);
+    if (request.provider === "deepseek" && window.deepseekVisualQCConfigured === false) {
+      if (typeof window.showToast === "function") window.showToast("Hãy cấu hình DeepSeek API key trong Cài đặt trước.", "error");
+      return;
+    }
     const generation = ++state.generation;
     try {
       const snapshot = await requestJson("/api/visual_qc/chapter", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ chapter_id: chapterId, concurrency: 2 }),
+        body: JSON.stringify(request),
       });
       if (generation !== state.generation || chapterId !== window.currentChapterId) return;
       state.snapshot = snapshot;
@@ -319,11 +363,26 @@
           <button type="button" class="ui-btn ui-btn-ghost chapter-qc-cancel" hidden>Hủy kiểm tra</button>
         </div>
       </div>
+      <div class="chapter-qc-options">
+        <label>Provider
+          <select class="chapter-qc-provider">
+            <option value="gemini">Gemini</option>
+            <option value="deepseek">DeepSeek Vision Exp</option>
+          </select>
+        </label>
+        <label class="chapter-qc-budget" hidden>Giới hạn chi phí
+          <span>$<input class="chapter-qc-budget-input" type="number" min="0.005" max="0.15" step="0.005" value="0.08" inputmode="decimal"></span>
+        </label>
+      </div>
       <p class="chapter-qc-summary">Chưa chạy kiểm tra toàn chương.</p>
+      <p class="chapter-qc-usage" hidden></p>
       <progress class="chapter-qc-progress" max="1" value="0" hidden></progress>
       <div class="chapter-qc-results"></div>`;
     panel.querySelector(".chapter-qc-cancel")?.addEventListener("click", cancelChapterQC);
     panel.querySelector(".chapter-qc-retry")?.addEventListener("click", retryChapterQC);
+    panel.querySelector(".chapter-qc-provider")?.addEventListener("change", () => {
+      syncProviderControls(panel, state.snapshot, isRunning());
+    });
     return panel;
   }
 
