@@ -33,7 +33,8 @@ jobs:
             onnxruntime==1.21.0 \
             filelock==3.16.1 \
             loguru==0.7.2 \
-            keyring==25.6.0
+            keyring==25.6.0 \
+            psutil==6.1.1
       - name: Prepare runtime directories
         run: mkdir -p logs data/raw data/processed data/output models
       - name: Check OCR JavaScript syntax
