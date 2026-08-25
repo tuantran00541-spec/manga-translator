@@ -22,7 +22,7 @@ def test_chapter_qc_ui_wires_start_status_cancel_and_retry_endpoints():
     assert '/cancel`' in js
     assert '/retry`' in js
     assert 'chapter_id: chapterId' in js
-    assert 'schedulePoll(state.snapshot.job_id, generation)' in js
+    assert 'schedulePoll(snapshot.job_id, generation)' in js
 
 
 def test_chapter_qc_results_jump_to_page_without_polluting_repaint_mask():
@@ -53,7 +53,7 @@ def test_chapter_qc_locks_mutating_review_controls_while_running():
 def test_chapter_qc_state_is_invalidated_when_the_open_chapter_changes():
     js = read("app/static/js/chapter-qc.js")
     assert "function syncChapterState()" in js
-    assert "snapshotChapter !== chapterId" in js
+    assert "snapshotChapter === chapterId" in js
     assert "state.snapshot = null" in js
     assert "snapshot?.chapter_id !== window.currentChapterId" in js
 
