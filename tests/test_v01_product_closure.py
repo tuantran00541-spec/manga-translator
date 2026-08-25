@@ -71,6 +71,7 @@ def test_processed_chapter_closes_translate_render_export_loop():
                                     "y2": 85,
                                     "confidence": 0.95,
                                     "ocr_text": "Hello",
+                                    "ocr_source": "manual",
                                 }
                             ],
                             "text_objects": [],
