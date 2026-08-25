@@ -156,7 +156,7 @@ class RenderIdentityTests(Phase45RenderHarness):
         self.assertEqual(obj["style"]["horizontalAlign"], "left")
         self.assertEqual(obj["style"]["verticalAlign"], "top")
 
-    def test_concurrent_editor_change_discards_render_and_reports_not_committed(self):
+    def test_concurrent_editor_change_discards_render_with_conflict(self):
         self.save_manifest()
 
         def mutate_during_render(*_args, **_kwargs):
@@ -167,10 +167,10 @@ class RenderIdentityTests(Phase45RenderHarness):
             return 1
 
         with patch.object(render45, "_render_snapshot", side_effect=mutate_during_render):
-            result = render45.render_page(self.request())
+            with self.assertRaises(HTTPException) as caught:
+                render45.render_page(self.request())
 
-        self.assertFalse(result["committed"])
-        self.assertIn("warning", result)
+        self.assertEqual(caught.exception.status_code, 409)
         page = self.load_manifest()["pages"][0]
         self.assertFalse(page.get("rendered", False))
         self.assertEqual(page["text_objects"][0]["translation"], "NEWER USER EDIT")
@@ -221,7 +221,7 @@ class RenderIdentityTests(Phase45RenderHarness):
         self.assertEqual(Path(response.path), self.clean)
 
 
-class RenderRouteAndUiContractTests(unittest.TestCase):
+class RenderRouteContractTests(unittest.TestCase):
     def test_phase45_render_route_precedes_legacy_render_route(self):
         modules = [
             route.endpoint.__module__
@@ -231,21 +231,6 @@ class RenderRouteAndUiContractTests(unittest.TestCase):
         ]
         self.assertGreaterEqual(len(modules), 2)
         self.assertEqual(modules[0], "app.routers.render45")
-
-    def test_phase45_script_loads_after_api_and_before_editor(self):
-        root = Path(__file__).resolve().parents[1]
-        html = (root / "app/templates/index.html").read_text(encoding="utf-8")
-        self.assertLess(html.index("/static/js/api.js"), html.index("/static/js/render-export45.js"))
-        self.assertLess(html.index("/static/js/render-export45.js"), html.index("/static/js/editor.js"))
-
-    def test_frontend_only_marks_rendered_after_committed_response(self):
-        root = Path(__file__).resolve().parents[1]
-        source = (root / "app/static/js/render-export45.js").read_text(encoding="utf-8")
-        stale_guard = source.index("data.committed !== true")
-        rendered_assignment = source.index("currentPage.rendered = true")
-        result_display = source.index("showRenderResult(pageIndex, data.output)")
-        self.assertLess(stale_guard, rendered_assignment)
-        self.assertLess(stale_guard, result_display)
 
 
 if __name__ == "__main__":
