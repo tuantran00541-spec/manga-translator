@@ -44,6 +44,10 @@ jobs:
         run: mkdir -p logs data/raw data/processed data/output models
       - name: Check chapter QC JavaScript syntax
         run: node --check app/static/js/chapter-qc.js
+      - name: Install Chromium for browser smoke
+        run: python -m playwright install --with-deps chromium
+      - name: Run chapter QC browser smoke
+        run: python tests/browser_phase43_chapter_qc.py
       - name: Run repository regression suite
         run: |
           python -m pytest -q \
