@@ -7,7 +7,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import cv2
 import numpy as np
 from app.downloader.registry import download_chapter as fetch_chapter_images
-from app.downloader.slicer import slice_image
+from app.downloader.slicer import slice_image_with_layout
 from app.detector.combined_detector import CombinedTextDetector
 from app.detector.bubble_detector import BubbleBox
 from app.inpaint.lama_inpainter import Inpainter
@@ -240,7 +240,7 @@ class ChapterPipeline:
 
             def _slice_one(item):
                 idx, raw_path = item
-                return idx, slice_image(raw_path, sliced_dir, f"{idx:03d}")
+                return idx, slice_image_with_layout(raw_path, sliced_dir, f"{idx:03d}")
 
             with ThreadPoolExecutor(max_workers=max_workers) as pool:
                 futures = {
@@ -252,15 +252,17 @@ class ChapterPipeline:
 
         pages = []
         for source_index in range(len(raw_paths)):
-            for slice_index, slice_path in enumerate(slice_results[source_index]):
+            for slice_index, slice_layout in enumerate(slice_results[source_index]):
                 pages.append({
-                    "original": slice_path.as_posix(),
+                    "original": slice_layout.path.as_posix(),
                     "clean": None,
                     "boxes": [],
                     "skipped": False,
                     "excluded_regions": [],
                     "source_page": source_index,
                     "slice_index": slice_index,
+                    "source_y_start": slice_layout.source_y_start,
+                    "source_y_end": slice_layout.source_y_end,
                 })
 
         manifest = {
@@ -302,10 +304,6 @@ class ChapterPipeline:
         results: dict[int, tuple[dict, dict | None]] = {}
         errors: list[tuple[int, Exception]] = []
 
-        # If only one page is active, use the otherwise-idle CPU cores to run
-        # bubble/text detection concurrently. With multiple page workers the
-        # outer executor already supplies model-level concurrency, so keeping
-        # each page sequential avoids oversubscribing CPU threads.
         parallel_detectors = max_workers == 1
 
         def _process_one(item: tuple[int, Path, list[dict], list[dict], dict | None]) -> tuple[int, dict, dict | None]:
@@ -442,10 +440,6 @@ class ChapterPipeline:
             if page.get("rendered"):
                 continue
 
-            # OUTPUT_DIR contains committed translation renders only. Before text
-            # rendering, /api/image and /api/download already fall back to the
-            # canonical clean/original image, so copying clean PNGs here only
-            # duplicates disk usage and can leave stale output artifacts behind.
             target_path = out_dir / f"page_{i:03d}.png"
             try:
                 if target_path.exists():
@@ -623,9 +617,6 @@ class ChapterPipeline:
             image = read_image(img_path)
             img_h, img_w = image.shape[:2]
 
-            # If this is the first manual/Gemini repaint, the existing clean image
-            # is already the automatic inpaint baseline. Seed the cache by copying
-            # it instead of running all automatic LaMa regions again.
             auto_clean_path = self._auto_clean_path(processed_dir, img_path)
             if not auto_clean_path.exists() and not manual_mask_posix:
                 clean_posix = page.get("clean")
@@ -1030,9 +1021,6 @@ class ChapterPipeline:
 
         clean_image = self.inpainter.inpaint(image, effective_boxes)
 
-        # Never mutate the canonical auto-clean cache inside a worker. The page
-        # may change while detection/inpaint is running; write a job-local cache
-        # candidate and only promote it after the processing-state check passes.
         auto_clean_path = self._auto_clean_path(processed_dir, img_path)
         manual_mask_path = processed_dir / f"manual_mask_{img_path.name}"
         tmp_auto_clean_path = None

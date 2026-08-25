@@ -18,10 +18,6 @@ class CombinedTextDetector:
     def detect(self, image: np.ndarray, *, parallel: bool = False) -> list[BubbleBox]:
         h, w = image.shape[:2]
         if parallel:
-            # Bubble and text models are independent. Running them together is
-            # useful when only one page is active; the pipeline disables this
-            # when it is already parallelising multiple pages to avoid CPU
-            # oversubscription.
             with ThreadPoolExecutor(max_workers=2, thread_name_prefix="detector") as pool:
                 bubble_future = pool.submit(self.bubble_detector.detect, image)
                 text_future = pool.submit(self.text_detector.detect, image)

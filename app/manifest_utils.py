@@ -30,7 +30,6 @@ _STALE_TEMP_PATTERNS = (
 def cleanup_stale_temp_artifacts(
     directory: Path, *, max_age_seconds: float = 3600.0, now: float | None = None
 ) -> int:
-    """Remove only known orphan temp files older than the safety window."""
     if max_age_seconds < 0:
         raise ValueError("max_age_seconds must be >= 0")
     if not directory.exists() or not directory.is_dir():
@@ -128,7 +127,6 @@ def _normalize_box_ocr_cache(
 
 
 def normalize_manifest_schema(manifest: dict) -> bool:
-    """Upgrade legacy manifests in memory without changing user-visible content."""
     changed = False
     if int(manifest.get("schema_version") or 0) < MANIFEST_SCHEMA_VERSION:
         manifest["schema_version"] = MANIFEST_SCHEMA_VERSION
@@ -227,7 +225,6 @@ def _box_iou(a: dict, b: dict) -> float:
 
 
 def assign_stable_detector_box_ids(new_boxes: list[dict], existing_boxes: list[dict], min_iou: float = 0.5) -> list[dict]:
-    """Assign IDs to detector results, reusing the best unmatched legacy detector ID."""
     candidates = [
         b for b in existing_boxes
         if isinstance(b, dict) and b.get("origin", "manual" if b.get("manual") else "detector") == "detector" and b.get("id")
@@ -334,11 +331,6 @@ def _get_manual_mask_state(processed_dir: Path, img_path: Path) -> tuple[bool, i
 
 
 def capture_processing_state(manifest: dict, page_index: int, processed_dir: Path) -> dict | None:
-    """Capture snapshot of canonical inputs for page detection and inpainting.
-
-    Derived outputs (such as 'clean') are deliberately excluded to prevent
-    self-referential validation.
-    """
     pages = manifest.get("pages", [])
     if page_index < 0 or page_index >= len(pages):
         return None
@@ -357,7 +349,6 @@ def capture_processing_state(manifest: dict, page_index: int, processed_dir: Pat
 def is_processing_state_current(
     manifest: dict, page_index: int, snapshot: dict | None, processed_dir: Path
 ) -> bool:
-    """Check whether a page's canonical processing inputs still match the snapshot."""
     if snapshot is None:
         return False
     current = capture_processing_state(manifest, page_index, processed_dir)

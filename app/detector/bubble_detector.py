@@ -184,10 +184,6 @@ class YoloDetector:
             num_classes = max(1, out_arr.shape[1] - 4)
             prototypes = None
 
-        # ONNX returns 21,504 predictions for these models. Filtering them one
-        # by one in Python becomes noticeable on long webtoons, so confidence
-        # and box conversion are vectorised. Mask decoding remains after NMS,
-        # exactly like the legacy path, to avoid extra work and preserve output.
         if num_classes == 1:
             confidences = out_arr[:, 4].astype(np.float32, copy=False)
         else:

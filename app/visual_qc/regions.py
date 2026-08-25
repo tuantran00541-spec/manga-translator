@@ -119,7 +119,6 @@ def _merge_seeds(seeds: Iterable[_RegionSeed], merge_gap: int) -> list[_RegionSe
 
 
 def extract_candidate_regions(page: dict, page_index: int, *, manual_mask: np.ndarray | None = None, margin: int = 64, merge_gap: int = 32, min_manual_component_area: int = 9, deep_area_ratio: float = 0.35) -> list[QCRegion]:
-    """Build deterministic QC regions from canonical changed/inpaint sources."""
     if page_index < 0:
         raise ValueError("page_index must be non-negative")
     if margin < 0 or merge_gap < 0:

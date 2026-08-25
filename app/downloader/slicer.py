@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 import math
 
@@ -19,11 +20,26 @@ MAX_SAFE_SEARCH_EXPANSION = 360
 FALLBACK_BAND = 18
 
 
+@dataclass(frozen=True)
+class SliceLayout:
+    path: Path
+    source_y_start: int
+    source_y_end: int
+
+
 def slice_image(image_path: Path, out_dir: Path, prefix: str) -> list[Path]:
+    return [layout.path for layout in slice_image_with_layout(image_path, out_dir, prefix)]
+
+
+def slice_image_with_layout(
+    image_path: Path,
+    out_dir: Path,
+    prefix: str,
+) -> list[SliceLayout]:
     data = np.fromfile(str(image_path), dtype=np.uint8)
     image = cv2.imdecode(data, cv2.IMREAD_COLOR)
     if image is None:
-        return [image_path]
+        return [SliceLayout(image_path, 0, 0)]
 
     h, w = image.shape[:2]
     ext = image_path.suffix or ".jpg"
@@ -35,43 +51,37 @@ def slice_image(image_path: Path, out_dir: Path, prefix: str) -> list[Path]:
         else:
             cv2.imwrite(str(path), seg)
 
-    # A page below the detector's single-pass limit does not need slicing.
     if h <= SLICE_MAX_HEIGHT:
         out_path = out_dir / f"{prefix}_00{ext}"
         save_segment(out_path, image)
-        return [out_path]
+        return [SliceLayout(out_path, 0, h)]
 
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     cut_rows = _find_cut_rows(gray, h, w)
 
-    paths = []
+    layouts = []
     y_start = 0
     for i, y_end in enumerate(cut_rows + [h]):
         segment = image[y_start:y_end, :]
         out_path = out_dir / f"{prefix}_{i:02d}{ext}"
         save_segment(out_path, segment)
-        paths.append(out_path)
+        layouts.append(SliceLayout(out_path, y_start, y_end))
         y_start = y_end
 
-    return paths
+    return layouts
 
 
-def _find_cut_rows(gray: np.ndarray, h: int, w: int) -> list[int]:
-    """Return cuts that prefer blank gutters but always bound slice height.
-
-    The old slicer stopped entirely when it could not find a perfectly safe
-    25-row band. On dense webtoon pages that could leave a 16k image intact,
-    forcing each detector to perform ~20 overlapping internal passes.
-
-    This version keeps the existing safe-cut preference. If there is no safe
-    band, it chooses the lowest-content band within a constrained range. The
-    constraints guarantee every produced segment is <= SLICE_MAX_HEIGHT while
-    avoiding tiny trailing fragments whenever possible.
-    """
+def _find_cut_rows(
+    gray: np.ndarray,
+    h: int,
+    w: int,
+    unsafe_rows: np.ndarray | None = None,
+) -> list[int]:
     if h <= SLICE_MAX_HEIGHT:
         return []
 
-    unsafe_rows = _get_content_row_mask(gray, h, w)
+    if unsafe_rows is None:
+        unsafe_rows = _get_content_row_mask(gray, h, w)
     scores = _get_row_scores(gray)
 
     cuts: list[int] = []
@@ -82,8 +92,6 @@ def _find_cut_rows(gray: np.ndarray, h: int, w: int) -> list[int]:
         chunks = max(2, math.ceil(remaining / SLICE_MAX_HEIGHT))
         chunks_after = chunks - 1
 
-        # Current segment must leave enough (and not too much) height for the
-        # remaining chunks. This is what prevents a final 7k tail.
         min_len = max(
             SLICE_MIN_HEIGHT,
             remaining - chunks_after * SLICE_MAX_HEIGHT,
@@ -93,7 +101,6 @@ def _find_cut_rows(gray: np.ndarray, h: int, w: int) -> list[int]:
             remaining - chunks_after * SLICE_MIN_HEIGHT,
         )
         if min_len > max_len:
-            # Defensive fallback for unusual user-configured constants.
             min_len = min(SLICE_MIN_HEIGHT, SLICE_MAX_HEIGHT)
             max_len = SLICE_MAX_HEIGHT
 
@@ -123,14 +130,9 @@ def _find_cut_rows(gray: np.ndarray, h: int, w: int) -> list[int]:
             )
 
         if cut is None:
-            # Dense artwork can legitimately have no completely blank band.
-            # Pick the least-content local band instead of giving up and
-            # passing the entire long page into the detector.
             cut = _find_low_content_cut(scores, expanded_lo, expanded_hi, target)
 
         if cut is None or cut <= y or cut >= h:
-            # Should be unreachable with sane constants, but avoids a loop if
-            # configuration is malformed.
             cut = min(h - 1, y + SLICE_MAX_HEIGHT)
             if cut <= y:
                 break
@@ -201,8 +203,6 @@ def _find_low_content_cut(
     if lo > hi:
         return None
 
-    # Mean content score in a small vertical band. Using an integral sum keeps
-    # this O(number of rows), even for 16k+ webtoons.
     radius = FALLBACK_BAND
     padded = np.pad(scores.astype(np.float64), (1, 0), mode="constant")
     integral = np.cumsum(padded)
@@ -211,9 +211,6 @@ def _find_low_content_cut(
     ends = rows + radius + 1
     band_score = (integral[ends] - integral[starts]) / float(2 * radius + 1)
 
-    # First choose genuinely low-content candidates, then prefer the one near
-    # the balanced target. This prevents a tiny visual-score improvement from
-    # creating very uneven chunks.
     best = float(np.min(band_score))
     tolerance = max(1.0, abs(best) * 0.08)
     low_content = rows[band_score <= best + tolerance]
@@ -225,7 +222,6 @@ def _find_low_content_cut(
     if nearest.size == 1:
         return int(nearest[0])
 
-    # Tie-break by exact local score.
     idx = np.searchsorted(rows, nearest)
     return int(nearest[int(np.argmin(band_score[idx]))])
 

@@ -77,11 +77,8 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 
 
 app.include_router(chapters.router)
-# Phase 4.4 OCR routes intentionally precede the legacy editor OCR endpoints.
-# The rest of editor.router remains unchanged while existing clients keep the same URLs.
 app.include_router(ocr.router)
 app.include_router(editor.router)
-# Phase 4.5 render route precedes the legacy renderer while preserving /api/render.
 app.include_router(render45.router)
 app.include_router(render.router)
 app.include_router(image.router)

@@ -47,7 +47,7 @@ The **LaMa Inpaint Benchmark Harness** is a dedicated, reproducible benchmarking
 ## 2. Trust-Boundary & Fail-Closed Guarantees (Phase 0.2.5)
 
 1. **Immutable Production & Model Integrity Gate**:
-   `tools/inpaint_bench/integrity.py` and `tools/inpaint_bench/baseline_manifest.json` verify byte-for-byte SHA-256 hashes against literal baseline constants for:
+   `bench/inpaint_bench/integrity.py` and `bench/inpaint_bench/baseline_manifest.json` verify byte-for-byte SHA-256 hashes against literal baseline constants for:
    - `app/inpaint/lama_inpainter.py`: `1d6046e7fbb64f2db163a8301fa3839aa6400dbdc270fe17fa008fe37ba42a42`
    - `app/ort_utils.py`: `9d5b066d7cefa089d81d2ef39d22be3f5ea27b949bc54b66dfa891e4f4841f39`
    - `models/lama.onnx`: `e4b3e648c668b556942ad7096e23616a2ef74092b1be753d0c9c7f66a2e48fae`
@@ -72,16 +72,16 @@ The **LaMa Inpaint Benchmark Harness** is a dedicated, reproducible benchmarking
 
 ### Verify Production and Model Integrity
 ```bash
-python -m tools.benchmark_inpaint --verify-integrity
+python -m bench.scripts.benchmark_inpaint --verify-integrity
 ```
 
 ### Generate Synthetic Benchmark Corpus
 ```bash
-python -m tools.benchmark_inpaint --generate-corpus data/benchmark_corpus
+python -m bench.scripts.benchmark_inpaint --generate-corpus data/benchmark_corpus
 ```
 
 ### Run Benchmark Suite & Compare
 ```bash
-python -m tools.benchmark_inpaint --run --mode all --output results.json --report report.md
-python -m tools.benchmark_inpaint --run --compare baseline.json
+python -m bench.scripts.benchmark_inpaint --run --mode all --output results.json --report report.md
+python -m bench.scripts.benchmark_inpaint --run --compare baseline.json
 ```

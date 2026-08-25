@@ -19,11 +19,6 @@ MANUAL_TILE_OVERLAP = 64
 
 class Inpainter:
     def __init__(self):
-        # Prefer the manga-tuned dynamic LaMa when it is present. It accepts
-        # stride-aligned HxW inputs, so small crops no longer need to pay for a
-        # 512x512 inference. Keep the original fixed model as a compatibility
-        # fallback for existing installations and provide an env rollback
-        # switch for troubleshooting.
         dynamic_enabled = os.getenv("MANGA_USE_DYNAMIC_LAMA", "1").strip().lower() not in (
             "0", "false", "no", "off"
         )
@@ -104,9 +99,6 @@ class Inpainter:
                 kernel_size += 1
             kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
 
-            # Avoid materializing a full-page mask for every connected component.
-            # The ROI includes the dilation radius, so this produces the same
-            # component dilation as the old full-page implementation.
             radius = kernel_size // 2
             rx1 = max(0, x - radius)
             ry1 = max(0, y - radius)
@@ -210,10 +202,6 @@ class Inpainter:
     def _lama_fill_single_dynamic(self, crop: np.ndarray, local_mask: np.ndarray) -> np.ndarray:
         crop_h, crop_w = crop.shape[:2]
 
-        # The dynamic model requires each spatial dimension to be divisible by
-        # 8. Preserve native crop resolution whenever possible; only downscale
-        # crops larger than the legacy 512px budget. This avoids the previous
-        # unconditional upscaling to a 512x512 canvas.
         scale = min(1.0, INPAINT_SIZE / max(crop_h, crop_w))
         new_h = max(1, int(round(crop_h * scale)))
         new_w = max(1, int(round(crop_w * scale)))
@@ -243,8 +231,6 @@ class Inpainter:
 
         if new_h == crop_h and new_w == crop_w:
             return painted_crop
-        # We downscaled before inference, so returning to the original crop is
-        # an upscale operation. Cubic interpolation is appropriate here.
         return cv2.resize(painted_crop, (crop_w, crop_h), interpolation=cv2.INTER_CUBIC)
 
     def _lama_fill_single_fixed(self, crop: np.ndarray, local_mask: np.ndarray) -> np.ndarray:
@@ -273,9 +259,6 @@ class Inpainter:
         painted_full = self._run_lama(canvas, mask_canvas)
         painted_crop = painted_full[pad_y:pad_y + new_h, pad_x:pad_x + new_w]
 
-        # Fix the legacy interpolation direction: scale > 1 means the crop was
-        # enlarged for inference and must now be downsampled; scale < 1 means
-        # it must be upsampled back to its original size.
         interpolation = cv2.INTER_AREA if scale > 1.0 else cv2.INTER_CUBIC
         return cv2.resize(painted_crop, (crop_w, crop_h), interpolation=interpolation)
 
