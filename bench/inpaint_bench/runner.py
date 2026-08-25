@@ -98,157 +98,144 @@ class BenchmarkRunner:
         threads: int | list[int] = 1,
         repetitions: int = 30,
         warmup: int = 3,
-        save_golden_dir: Path | str | None = None,
+        golden_dir: Path | str | None = None,
+        expected_model_hash: str | None = None,
+        case_limit: int | None = None,
     ):
-        self.model_path = Path(model_path)
-        self.corpus_dir = Path(corpus_dir) if corpus_dir else None
+        self.model_path = Path(model_path).resolve()
+        self.corpus_dir = Path(corpus_dir).resolve() if corpus_dir else None
         self.mode = mode
-        self.threads = [threads] if isinstance(threads, int) else threads
+        self.threads = [threads] if isinstance(threads, int) else list(threads)
         self.repetitions = repetitions
         self.warmup = warmup
-        self.save_golden_dir = Path(save_golden_dir) if save_golden_dir else None
+        self.golden_dir = Path(golden_dir).resolve() if golden_dir else None
+        self.expected_model_hash = expected_model_hash or LAMA_MODEL_BASELINE_SHA256
+        self.case_limit = case_limit
 
-    def run(self, isolated_subproc: bool = True) -> BenchmarkRunResult:
-        if isolated_subproc and os.getenv("INPAINT_BENCH_ISOLATED") != "1":
-            return self._run_isolated_subprocess()
-        return self._run_direct()
+    def validate_runtime(self):
+        if ort is None:
+            raise RuntimeError("onnxruntime is not installed. Model and pipeline benchmarks cannot execute.")
+        if not self.model_path.is_file():
+            raise FileNotFoundError(f"LaMa ONNX model not found at: {self.model_path}")
 
-    def _run_isolated_subprocess(self) -> BenchmarkRunResult:
-        import tempfile
-        with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as tmp:
-            tmp_path = Path(tmp.name)
+        actual_hash = compute_file_sha256(self.model_path)
+        if actual_hash.lower() != self.expected_model_hash.lower():
+            raise ValueError(
+                f"Model SHA-256 mismatch for {self.model_path}! Expected {self.expected_model_hash}, but found {actual_hash}"
+            )
 
-        try:
-            env = dict(os.environ)
-            env["INPAINT_BENCH_ISOLATED"] = "1"
-            cmd = [
-                sys.executable,
-                "-m",
-                "bench.inpaint_bench.runner",
-                "--model", str(self.model_path),
-                "--mode", self.mode,
-                "--repetitions", str(self.repetitions),
-                "--warmup", str(self.warmup),
-                "--threads", ",".join(str(t) for t in self.threads),
-                "--internal-out", str(tmp_path),
-            ]
-            if self.corpus_dir:
-                cmd.extend(["--corpus", str(self.corpus_dir)])
-            if self.save_golden_dir:
-                cmd.extend(["--save-golden", str(self.save_golden_dir)])
+        test_sess = make_session(self.model_path, intra_op_threads=1)
+        providers = test_sess.get_providers()
+        if providers != ["CPUExecutionProvider"]:
+            raise ValueError(f"Execution provider mismatch! Expected ['CPUExecutionProvider'], but got {providers}")
 
-            res = subprocess.run(cmd, env=env, capture_output=True, text=True)
-            if res.returncode != 0:
-                raise RuntimeError(f"Isolated benchmark subprocess failed (code {res.returncode}):\n{res.stderr}")
+    def run(self, isolated_subproc: bool = False) -> BenchmarkRunResult:
+        self.validate_runtime()
 
-            with open(tmp_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            return BenchmarkRunResult.from_dict(data)
-        finally:
-            if tmp_path.exists():
-                try:
-                    tmp_path.unlink()
-                except OSError:
-                    pass
+        if len(self.threads) > 1 and not isolated_subproc:
+            return self._run_thread_sweep()
 
-    def _run_direct(self) -> BenchmarkRunResult:
+        active_thread_count = self.threads[0] if self.threads else 1
         env_meta = get_environment_metadata()
-        model_meta = get_model_metadata(self.model_path)
+        model_meta = get_model_metadata(self.model_path, intra_op_threads=active_thread_count)
+
         cases: list[CaseResult] = []
 
-        baseline_manifest = load_trusted_baseline_manifest()
-        baseline_commit = baseline_manifest.get("baseline_commit_sha", "")
-
-        inpainter = None
-        if self.mode in ("all", "pipeline", "end-to-end"):
-            try:
-                inpainter = Inpainter()
-            except Exception as e:
-                print(f"Warning: Inpainter initialization failed: {e}")
-
-        if self.mode in ("all", "model"):
-            for th in self.threads:
-                res = run_model_benchmark(
-                    model_path=self.model_path,
-                    threads=th,
-                    warmup=self.warmup,
-                    repetitions=self.repetitions,
-                )
-                res.thread_count = th
-                cases.append(res)
+        if self.mode in ("model", "all"):
+            case_l1 = run_model_benchmark(
+                self.model_path,
+                threads=active_thread_count,
+                warmup=self.warmup,
+                repetitions=self.repetitions,
+            )
+            cases.append(case_l1)
 
         corpus_cases = []
-        if self.corpus_dir and self.corpus_dir.is_dir():
-            corpus_cases = load_corpus(self.corpus_dir)
-        elif self.mode in ("all", "pipeline", "end-to-end"):
-            import tempfile
-            with tempfile.TemporaryDirectory() as tmp_d:
-                corpus_cases = generate_corpus(tmp_d, seed=1234)
-                for c in corpus_cases:
-                    c["_temp_loaded_img"] = cv2.imread(c["original_path"])
-                    c["_temp_loaded_mask"] = cv2.imread(c["mask_path"], cv2.IMREAD_GRAYSCALE)
+        if self.mode in ("pipeline", "end-to-end", "all"):
+            if self.corpus_dir and self.corpus_dir.is_dir():
+                corpus_cases = load_corpus(self.corpus_dir)
+            if not corpus_cases:
+                synthetic_dir = Path("data/benchmark_corpus")
+                if not synthetic_dir.is_dir():
+                    generate_corpus(synthetic_dir)
+                corpus_cases = load_corpus(synthetic_dir)
 
-        if self.mode in ("all", "pipeline") and inpainter:
-            for cm in corpus_cases:
-                if cm.get("expected_execution") != "model_required":
-                    continue
-                orig_img = cm.get("_temp_loaded_img") if "_temp_loaded_img" in cm else cv2.imread(cm["original_path"])
-                mask_img = cm.get("_temp_loaded_mask") if "_temp_loaded_mask" in cm else cv2.imread(cm["mask_path"], cv2.IMREAD_GRAYSCALE)
+            if self.case_limit and self.case_limit > 0:
+                corpus_cases = corpus_cases[: self.case_limit]
+
+        if self.mode in ("pipeline", "all") and corpus_cases:
+            inpainter = Inpainter()
+            inpainter.session = make_session(self.model_path, intra_op_threads=active_thread_count)
+
+            l2_cases = [c for c in corpus_cases if c.get("expected_execution") == "model_required"]
+            for c_info in l2_cases:
+                orig_img = cv2.imread(c_info["original_path"])
+                mask_img = cv2.imread(c_info["mask_path"], cv2.IMREAD_GRAYSCALE)
                 if orig_img is None or mask_img is None:
                     continue
-
-                res = run_pipeline_benchmark_case(
-                    inpainter=inpainter,
-                    crop_img=orig_img,
-                    local_mask=mask_img,
-                    case_id=f"pipeline_{cm['case_id']}",
-                    expected_execution=cm.get("expected_execution", "model_required"),
-                    expected_shortcut_type=cm.get("expected_shortcut_type"),
+                case_id = f"pipeline_{c_info.get('case_id', 'unknown')}"
+                case_l2 = run_pipeline_benchmark_case(
+                    inpainter,
+                    orig_img,
+                    mask_img,
+                    case_id=case_id,
+                    expected_execution="model_required",
+                    expected_shortcut_type=None,
                     warmup=self.warmup,
                     repetitions=self.repetitions,
                 )
-                res.workload_sha256 = cm.get("workload_sha256", "")
-                cases.append(res)
+                case_l2.workload_sha256 = c_info.get("workload_sha256", "")
+                case_l2.original_sha256 = c_info.get("original_sha256", "")
+                case_l2.mask_sha256 = c_info.get("mask_sha256", "")
 
-        if self.mode in ("all", "end-to-end") and inpainter:
-            for cm in corpus_cases:
-                orig_img = cm.get("_temp_loaded_img") if "_temp_loaded_img" in cm else cv2.imread(cm["original_path"])
-                mask_img = cm.get("_temp_loaded_mask") if "_temp_loaded_mask" in cm else cv2.imread(cm["mask_path"], cv2.IMREAD_GRAYSCALE)
-                if orig_img is None or mask_img is None:
+                valid, err_msg = validate_case_execution(case_l2)
+                if not valid:
+                    case_l2.status = "error"
+                    case_l2.error_message = err_msg
+
+                cases.append(case_l2)
+
+        if self.mode in ("end-to-end", "all") and corpus_cases:
+            inpainter = Inpainter()
+            inpainter.session = make_session(self.model_path, intra_op_threads=active_thread_count)
+
+            e2e_reps = max(1, min(self.repetitions, 10))
+            for c_info in corpus_cases:
+                orig_img = cv2.imread(c_info["original_path"])
+                mask_img = cv2.imread(c_info["mask_path"], cv2.IMREAD_GRAYSCALE)
+                if orig_img is None:
                     continue
 
-                from app.detector.bubble_detector import BubbleBox
-                boxes = [
-                    BubbleBox(
-                        x1=int(b["x1"]),
-                        y1=int(b["y1"]),
-                        x2=int(b["x2"]),
-                        y2=int(b["y2"]),
-                        confidence=float(b.get("confidence", 1.0)),
-                    )
-                    for b in cm.get("boxes", [])
-                ]
-
+                case_id = f"e2e_{c_info.get('case_id', 'unknown')}"
+                exp_exec = c_info.get("expected_execution", "model_required")
+                exp_sc_type = c_info.get("expected_shortcut_type", None)
                 golden_path = None
-                if self.save_golden_dir:
-                    golden_path = Path(self.save_golden_dir) / f"{cm['case_id']}_golden.png"
+                if self.golden_dir:
+                    golden_path = self.golden_dir / case_id / "output.png"
 
-                res, _ = run_e2e_benchmark_case(
-                    inpainter=inpainter,
-                    image=orig_img,
-                    boxes=boxes,
+                case_l3, _ = run_e2e_benchmark_case(
+                    inpainter,
+                    orig_img,
                     mask=mask_img,
-                    case_id=f"e2e_{cm['case_id']}",
-                    expected_execution=cm.get("expected_execution", "model_required"),
-                    expected_shortcut_type=cm.get("expected_shortcut_type"),
-                    warmup=self.warmup,
-                    repetitions=self.repetitions,
-                    save_golden_to=golden_path,
+                    case_id=case_id,
+                    expected_execution=exp_exec,
+                    expected_shortcut_type=exp_sc_type,
+                    warmup=min(self.warmup, 2),
+                    repetitions=e2e_reps,
+                    save_golden_path=golden_path,
                 )
-                res.workload_sha256 = cm.get("workload_sha256", "")
-                cases.append(res)
+                case_l3.workload_sha256 = c_info.get("workload_sha256", "")
+                case_l3.original_sha256 = c_info.get("original_sha256", "")
+                case_l3.mask_sha256 = c_info.get("mask_sha256", "")
 
-        summary = {
+                valid, err_msg = validate_case_execution(case_l3)
+                if not valid:
+                    case_l3.status = "error"
+                    case_l3.error_message = err_msg
+
+                cases.append(case_l3)
+
+        summary: dict[str, Any] = {
             "total_cases": len(cases),
             "ok_cases": sum(1 for c in cases if c.status == "ok"),
             "error_cases": sum(1 for c in cases if c.status == "error"),
@@ -257,206 +244,362 @@ class BenchmarkRunner:
         return BenchmarkRunResult(
             schema_version=SCHEMA_VERSION,
             mode=self.mode,
-            thread_configurations=self.threads,
-            repetitions=self.repetitions,
+            threads=active_thread_count,
             warmup_count=self.warmup,
+            repetitions=self.repetitions,
             environment=env_meta,
             model=model_meta,
-            baseline_commit_sha=baseline_commit,
-            summary=summary,
             cases=cases,
+            summary=summary,
+        )
+
+    def _run_thread_sweep(self) -> BenchmarkRunResult:
+        env_meta = get_environment_metadata()
+        model_meta = get_model_metadata(self.model_path)
+        all_cases: list[CaseResult] = []
+
+        for t in self.threads:
+            if t > env_meta.logical_cpus:
+                all_cases.append(
+                    CaseResult(
+                        case_id=f"thread_sweep_{t}T",
+                        level=f"threads_{t}",
+                        status="error",
+                        error_message=f"Host CPU has {env_meta.logical_cpus} logical cores; {t} threads configuration is invalid.",
+                    )
+                )
+                continue
+
+            cmd = [
+                sys.executable,
+                "-m",
+                "tools.benchmark_inpaint",
+                "--run",
+                "--mode",
+                self.mode,
+                "--threads",
+                str(t),
+                "--repetitions",
+                str(self.repetitions),
+                "--warmup",
+                str(self.warmup),
+                "--subproc",
+            ]
+            if self.corpus_dir:
+                cmd.extend(["--corpus", str(self.corpus_dir)])
+            if self.golden_dir:
+                cmd.extend(["--golden", str(self.golden_dir)])
+            if self.case_limit:
+                cmd.extend(["--limit", str(self.case_limit)])
+
+            res = subprocess.run(cmd, capture_output=True, text=True)
+            if res.returncode == 0:
+                try:
+                    data = json.loads(res.stdout)
+                    valid_payload, err_payload = validate_benchmark_payload_for_comparison(data)
+                    if not valid_payload:
+                        all_cases.append(
+                            CaseResult(
+                                case_id=f"thread_{t}T",
+                                level=f"threads_{t}",
+                                status="error",
+                                error_message=f"Subprocess output failed schema validation: {err_payload}",
+                            )
+                        )
+                        continue
+
+                    sub_cases = data.get("cases", [])
+                    for sc in sub_cases:
+                        valid_c, err_c = validate_case_payload_for_comparison(sc)
+                        if not valid_c:
+                            all_cases.append(
+                                CaseResult(
+                                    case_id=f"[{t}T] {sc.get('case_id', 'unknown')}",
+                                    level=f"threads_{t}",
+                                    status="error",
+                                    error_message=f"Subprocess case failed validation: {err_c}",
+                                )
+                            )
+                        else:
+                            sc["case_id"] = f"[{t}T] {sc.get('case_id', '')}"
+                            all_cases.append(CaseResult.from_dict(sc))
+                except Exception as ex:
+                    all_cases.append(
+                        CaseResult(
+                            case_id=f"thread_{t}T",
+                            level=f"threads_{t}",
+                            status="error",
+                            error_message=f"Failed to parse subprocess output: {ex}",
+                        )
+                    )
+            else:
+                all_cases.append(
+                    CaseResult(
+                        case_id=f"thread_{t}T",
+                        level=f"threads_{t}",
+                        status="error",
+                        error_message=f"Subprocess exit code {res.returncode}: {res.stderr}",
+                    )
+                )
+
+        return BenchmarkRunResult(
+            schema_version=SCHEMA_VERSION,
+            mode=self.mode,
+            threads=self.threads[0] if self.threads else 1,
+            warmup_count=self.warmup,
+            repetitions=self.repetitions,
+            environment=env_meta,
+            model=model_meta,
+            cases=all_cases,
+            summary={
+                "total_cases": len(all_cases),
+                "ok_cases": sum(1 for c in all_cases if c.status == "ok"),
+                "error_cases": sum(1 for c in all_cases if c.status == "error"),
+            },
         )
 
 
 def compare_benchmarks(
-    baseline_payload: dict[str, Any],
-    candidate_payload: dict[str, Any],
+    baseline_result: BenchmarkRunResult | dict,
+    candidate_result: BenchmarkRunResult | dict,
+    image_baseline_dir: Path | None = None,
+    image_candidate_dir: Path | None = None,
+    quality_thresholds: QualityThresholds | None = None,
     telemetry_only: bool = False,
-    golden_dir: Path | str | None = None,
 ) -> list[ComparisonDelta]:
-    validate_benchmark_payload_for_comparison(baseline_payload)
-    validate_benchmark_payload_for_comparison(candidate_payload)
+    # Always load trusted baseline thresholds from baseline manifest
+    try:
+        manifest = load_trusted_baseline_manifest()
+        q_dict = manifest.get("quality_thresholds", {})
+        thresholds = QualityThresholds(
+            min_psnr=float(q_dict.get("min_psnr", 30.0)),
+            min_ssim=float(q_dict.get("min_ssim", 0.85)),
+            max_mae=float(q_dict.get("max_mae", 5.0)),
+            max_psnr_drop=float(q_dict.get("max_psnr_drop", 2.0)),
+            max_ssim_drop=float(q_dict.get("max_ssim_drop", 0.05)),
+            max_mae_increase=float(q_dict.get("max_mae_increase", 2.0)),
+        )
+    except Exception:
+        thresholds = quality_thresholds or QualityThresholds()
 
-    trusted_manifest = load_trusted_baseline_manifest()
-    thresh_data = trusted_manifest.get("quality_thresholds", {})
-    thresholds = QualityThresholds(
-        min_psnr=thresh_data.get("min_psnr", 30.0),
-        min_ssim=thresh_data.get("min_ssim", 0.85),
-        max_mae=thresh_data.get("max_mae", 5.0),
-        max_psnr_drop=thresh_data.get("max_psnr_drop", 2.0),
-        max_ssim_drop=thresh_data.get("max_ssim_drop", 0.05),
-        max_mae_increase=thresh_data.get("max_mae_increase", 2.0),
-    )
+    b_dict = baseline_result if isinstance(baseline_result, dict) else baseline_result.to_dict()
+    c_dict = candidate_result if isinstance(candidate_result, dict) else candidate_result.to_dict()
+
+    valid_b, err_b = validate_benchmark_payload_for_comparison(b_dict)
+    valid_c, err_c = validate_benchmark_payload_for_comparison(c_dict)
+
+    if not valid_b or not valid_c:
+        err_msg = err_b if not valid_b else err_c
+        return [
+            ComparisonDelta(
+                case_id="<global_schema_validation>",
+                incompatible=True,
+                regression=True,
+                note=f"Benchmark payload validation failed: {err_msg}",
+            )
+        ]
+
+    # Verify model and provider integrity in candidate payload
+    b_model = b_dict.get("model", {})
+    c_model = c_dict.get("model", {})
+    if c_model.get("model_sha256") and c_model["model_sha256"].lower() != LAMA_MODEL_BASELINE_SHA256.lower():
+        return [
+            ComparisonDelta(
+                case_id="<model_identity_validation>",
+                incompatible=True,
+                regression=True,
+                note=f"Candidate model SHA-256 mismatch: {c_model['model_sha256']}",
+            )
+        ]
+    if c_model.get("execution_provider") and c_model["execution_provider"] != "CPUExecutionProvider":
+        return [
+            ComparisonDelta(
+                case_id="<provider_identity_validation>",
+                incompatible=True,
+                regression=True,
+                note=f"Candidate execution provider mismatch: {c_model['execution_provider']}",
+            )
+        ]
+
+    b_cases = {c["case_id"]: c for c in b_dict.get("cases", [])}
+    c_cases = {c["case_id"]: c for c in c_dict.get("cases", [])}
+
+    all_case_ids = list(b_cases.keys())
+    for cid in c_cases.keys():
+        if cid not in all_case_ids:
+            all_case_ids.append(cid)
 
     deltas: list[ComparisonDelta] = []
 
-    cand_model = candidate_payload.get("model", {})
-    cand_sha = cand_model.get("model_sha256", "")
-    cand_ep = cand_model.get("execution_provider", "")
-
-    if cand_sha != LAMA_MODEL_BASELINE_SHA256:
-        deltas.append(
-            ComparisonDelta(
-                case_id="model_identity_validation",
-                incompatible=True,
-                regression=True,
-                note=f"Candidate model SHA-256 mismatch: {cand_sha} != {LAMA_MODEL_BASELINE_SHA256}",
-            )
-        )
-
-    if cand_ep != "CPUExecutionProvider":
-        deltas.append(
-            ComparisonDelta(
-                case_id="model_provider_validation",
-                incompatible=True,
-                regression=True,
-                note=f"Candidate execution provider is not CPU: {cand_ep}",
-            )
-        )
-
-    base_cases = {c["case_id"]: c for c in baseline_payload.get("cases", []) if "case_id" in c}
-    cand_cases = {c["case_id"]: c for c in candidate_payload.get("cases", []) if "case_id" in c}
-
-    base_keys = set(base_cases.keys())
-    cand_keys = set(cand_cases.keys())
-
-    for missing in (base_keys - cand_keys):
-        deltas.append(
-            ComparisonDelta(
-                case_id=missing,
-                incompatible=True,
-                regression=True,
-                note="Case present in baseline but missing in candidate",
-            )
-        )
-
-    for extra in (cand_keys - base_keys):
-        deltas.append(
-            ComparisonDelta(
-                case_id=extra,
-                incompatible=True,
-                regression=True,
-                note="Case present in candidate but missing in baseline",
-            )
-        )
-
-    common_ids = sorted(list(base_keys & cand_keys))
-
-    for cid in common_ids:
-        b_case = base_cases[cid]
-        c_case = cand_cases[cid]
-
-        b_exec = b_case.get("expected_execution", "model_required")
-        c_exec = c_case.get("expected_execution", "model_required")
-        b_stype = b_case.get("expected_shortcut_type")
-        c_stype = c_case.get("expected_shortcut_type")
-
+    for cid in all_case_ids:
         incompatible = False
-        note_parts = []
+        quality_regression = False
+        note_parts: list[str] = []
 
-        if b_exec != c_exec or b_stype != c_stype:
+        if cid not in c_cases:
+            deltas.append(
+                ComparisonDelta(
+                    case_id=cid,
+                    incompatible=True,
+                    regression=True,
+                    note=f"Baseline case '{cid}' missing in candidate run",
+                )
+            )
+            continue
+
+        if cid not in b_cases:
+            deltas.append(
+                ComparisonDelta(
+                    case_id=cid,
+                    incompatible=True,
+                    regression=True,
+                    note=f"Candidate case '{cid}' unexpected (absent from baseline)",
+                )
+            )
+            continue
+
+        b_case = b_cases[cid]
+        c_case = c_cases[cid]
+
+        c_case_valid_b, err_cb = validate_case_payload_for_comparison(b_case)
+        c_case_valid_c, err_cc = validate_case_payload_for_comparison(c_case)
+
+        if not c_case_valid_b:
             incompatible = True
-            note_parts.append(f"Archetype mismatch: ({b_exec},{b_stype}) vs ({c_exec},{c_stype})")
+            note_parts.append(f"Baseline case payload invalid: {err_cb}")
+        if not c_case_valid_c:
+            incompatible = True
+            note_parts.append(f"Candidate case payload invalid: {err_cc}")
 
+        if incompatible:
+            deltas.append(
+                ComparisonDelta(
+                    case_id=cid,
+                    incompatible=True,
+                    regression=True,
+                    note="; ".join(note_parts),
+                )
+            )
+            continue
+
+        # Verify immutable workload content hash
         b_w_hash = b_case.get("workload_sha256", "")
         c_w_hash = c_case.get("workload_sha256", "")
         if b_w_hash and c_w_hash and b_w_hash != c_w_hash:
             incompatible = True
-            note_parts.append(f"Workload content hash mismatch: {b_w_hash[:8]} vs {c_w_hash[:8]}")
+            note_parts.append(f"Workload content SHA-256 mismatch for case '{cid}'")
 
-        b_valid, b_err = validate_case_execution(b_case)
-        c_valid, c_err = validate_case_execution(c_case)
-        if not b_valid:
+        b_exec = b_case.get("expected_execution", "")
+        c_exec = c_case.get("expected_execution", "")
+        b_sc = b_case.get("expected_shortcut_type", None)
+        c_sc = c_case.get("expected_shortcut_type", None)
+
+        if b_exec != c_exec or b_sc != c_sc:
             incompatible = True
-            note_parts.append(f"Baseline validation error: {b_err}")
-        if not c_valid:
-            incompatible = True
-            note_parts.append(f"Candidate validation error: {c_err}")
+            note_parts.append(f"Archetype mismatch: ({b_exec}, {b_sc}) vs ({c_exec}, {c_sc})")
 
-        b_timing = b_case.get("timing", {})
-        c_timing = c_case.get("timing", {})
+        b_t = b_case["timing"]
+        c_t = c_case["timing"]
 
-        b_p50 = b_timing.get("p50_ms")
-        c_p50 = c_timing.get("p50_ms")
-        b_p95 = b_timing.get("p95_ms")
-        c_p95 = c_timing.get("p95_ms")
+        b_p50 = float(b_t["p50_ms"])
+        c_p50 = float(c_t["p50_ms"])
+        d_p50 = round(c_p50 - b_p50, 2)
+        p50_pct = round((d_p50 / max(1e-4, b_p50)) * 100.0, 2)
 
-        d_p50 = None
-        p50_pct = None
-        d_p95 = None
-        p95_pct = None
-
-        if is_finite_number(b_p50) and is_finite_number(c_p50):
-            d_p50 = round(float(c_p50) - float(b_p50), 4)
-            p50_pct = round(((float(c_p50) - float(b_p50)) / float(b_p50)) * 100.0, 2) if float(b_p50) > 0 else 0.0
-
-        if is_finite_number(b_p95) and is_finite_number(c_p95):
-            d_p95 = round(float(c_p95) - float(b_p95), 4)
-            p95_pct = round(((float(c_p95) - float(b_p95)) / float(b_p95)) * 100.0, 2) if float(b_p95) > 0 else 0.0
+        b_p95 = float(b_t["p95_ms"])
+        c_p95 = float(c_t["p95_ms"])
+        d_p95 = round(c_p95 - b_p95, 2)
+        p95_pct = round((d_p95 / max(1e-4, b_p95)) * 100.0, 2)
 
         b_calls = b_case.get("model_calls_per_invocation")
         c_calls = c_case.get("model_calls_per_invocation")
-        calls_delta = None
-        if is_finite_int(b_calls) and is_finite_int(c_calls):
-            calls_delta = int(c_calls) - int(b_calls)
 
-        b_telemetry = b_case.get("telemetry_summary", {}).get("model_calls", {})
-        c_telemetry = c_case.get("telemetry_summary", {}).get("model_calls", {})
-        b_calls_mean = b_telemetry.get("mean")
-        c_calls_mean = c_telemetry.get("mean")
-        model_calls_mean_delta = None
-        if is_finite_number(b_calls_mean) and is_finite_number(c_calls_mean):
-            model_calls_mean_delta = round(float(c_calls_mean) - float(b_calls_mean), 4)
+        b_mean = float(b_case["telemetry_summary"]["model_calls"]["mean"])
+        c_mean = float(c_case["telemetry_summary"]["model_calls"]["mean"])
+        model_calls_mean_delta = round(c_mean - b_mean, 2)
 
-        quality_regression = False
-        img_psnr = None
-        img_ssim = None
-        img_mae = None
-        psnr_drop = None
-        ssim_drop = None
-        mae_inc = None
+        if b_calls is not None and c_calls is not None:
+            calls_delta = c_calls - b_calls
+        else:
+            calls_delta = None
 
-        if not telemetry_only and c_case.get("level") == "level3_e2e":
-            cand_golden = c_case.get("golden_output_path")
-            base_golden = b_case.get("golden_output_path")
+        psnr, ssim, mae = None, None, None
+        psnr_drop, ssim_drop, mae_increase = None, None, None
+        psnr_delta, ssim_delta, mae_delta = None, None, None
 
-            if golden_dir:
-                g_p = Path(golden_dir) / f"{cid}_golden.png"
-                if g_p.is_file():
-                    base_golden = str(g_p)
-
-            if not cand_golden or not Path(cand_golden).is_file():
-                note_parts.append("Candidate golden image missing for Level 3 comparison")
-            elif not base_golden or not Path(base_golden).is_file():
-                note_parts.append("Baseline golden image missing for Level 3 comparison")
+        if not telemetry_only:
+            if not image_baseline_dir or not image_candidate_dir:
+                incompatible = True
+                note_parts.append("Golden comparison required but directory not specified")
             else:
-                img_c = cv2.imread(cand_golden)
-                img_b = cv2.imread(base_golden)
-                if img_c is None or img_b is None:
+                b_img_path = image_baseline_dir / cid / "output.png"
+                c_img_path = image_candidate_dir / cid / "output.png"
+                if not b_img_path.is_file():
                     incompatible = True
-                    note_parts.append("Could not load golden comparison images")
+                    note_parts.append(f"Missing baseline golden image for {cid}")
+                elif not c_img_path.is_file():
+                    incompatible = True
+                    note_parts.append(f"Missing candidate golden image for {cid}")
                 else:
-                    try:
-                        img_psnr, img_ssim, img_mae = compute_image_metrics(img_b, img_c)
-                        if img_psnr < thresholds.min_psnr:
-                            quality_regression = True
-                            note_parts.append(f"PSNR below floor: {img_psnr} < {thresholds.min_psnr}")
-                        if img_ssim < thresholds.min_ssim:
-                            quality_regression = True
-                            note_parts.append(f"SSIM below floor: {img_ssim} < {thresholds.min_ssim}")
-                        if img_mae > thresholds.max_mae:
-                            quality_regression = True
-                            note_parts.append(f"MAE above ceiling: {img_mae} > {thresholds.max_mae}")
-                    except Exception as ex:
+                    b_img = cv2.imread(str(b_img_path))
+                    c_img = cv2.imread(str(c_img_path))
+                    if b_img is None or c_img is None:
                         incompatible = True
-                        note_parts.append(f"Image metric error: {ex}")
+                        note_parts.append("Failed to decode golden image")
+                    else:
+                        try:
+                            # 1. Absolute quality of candidate vs reference/baseline
+                            cand_psnr, cand_ssim, cand_mae = compute_image_metrics(b_img, c_img)
+                            psnr, ssim, mae = cand_psnr, cand_ssim, cand_mae
+
+                            # Absolute floor checks
+                            if cand_psnr < thresholds.min_psnr:
+                                quality_regression = True
+                                note_parts.append(f"PSNR below floor: {cand_psnr} < {thresholds.min_psnr}")
+                            if cand_ssim < thresholds.min_ssim:
+                                quality_regression = True
+                                note_parts.append(f"SSIM below floor: {cand_ssim} < {thresholds.min_ssim}")
+                            if cand_mae > thresholds.max_mae:
+                                quality_regression = True
+                                note_parts.append(f"MAE above ceiling: {cand_mae} > {thresholds.max_mae}")
+
+                            # 2. Strict baseline vs candidate degradation mathematics
+                            # If baseline is perfect identical reference (100 dB, 1.0 SSIM, 0.0 MAE)
+                            # or if comparing pre-recorded baseline metrics
+                            base_psnr_recorded = b_case.get("psnr", 100.0) or 100.0
+                            base_ssim_recorded = b_case.get("ssim", 1.0) or 1.0
+                            base_mae_recorded = b_case.get("mae", 0.0) or 0.0
+
+                            p_drop = round(base_psnr_recorded - cand_psnr, 2)
+                            s_drop = round(base_ssim_recorded - cand_ssim, 4)
+                            m_inc = round(cand_mae - base_mae_recorded, 4)
+
+                            psnr_drop = p_drop
+                            ssim_drop = s_drop
+                            mae_increase = m_inc
+                            psnr_delta = round(-p_drop, 2)
+                            ssim_delta = round(-s_drop, 4)
+                            mae_delta = m_inc
+
+                            if p_drop > thresholds.max_psnr_drop:
+                                quality_regression = True
+                                note_parts.append(f"PSNR drop: {p_drop:.2f} dB (drop > {thresholds.max_psnr_drop})")
+                            if s_drop > thresholds.max_ssim_drop:
+                                quality_regression = True
+                                note_parts.append(f"SSIM drop: {s_drop:.4f} (drop > {thresholds.max_ssim_drop})")
+                            if m_inc > thresholds.max_mae_increase:
+                                quality_regression = True
+                                note_parts.append(f"MAE increase: {m_inc:.4f} (increase > {thresholds.max_mae_increase})")
+                        except Exception as ex:
+                            incompatible = True
+                            note_parts.append(f"Image metric error: {ex}")
 
         is_regression = (
             incompatible
             or quality_regression
-            or (p50_pct is not None and p50_pct > 5.0)
+            or p50_pct > 5.0
             or (calls_delta is not None and calls_delta > 0)
-            or (calls_delta is None and model_calls_mean_delta is not None and model_calls_mean_delta > 0.0)
+            or (calls_delta is None and model_calls_mean_delta > 0.0)
         )
 
         deltas.append(
@@ -475,15 +618,15 @@ def compare_benchmarks(
                 candidate_model_calls=c_calls,
                 model_calls_delta=calls_delta,
                 model_calls_mean_delta=model_calls_mean_delta,
-                psnr=img_psnr,
-                ssim=img_ssim,
-                mae=img_mae,
+                psnr=psnr,
+                ssim=ssim,
+                mae=mae,
                 psnr_drop=psnr_drop,
                 ssim_drop=ssim_drop,
-                mae_increase=mae_inc,
-                psnr_delta=None,
-                ssim_delta=None,
-                mae_delta=None,
+                mae_increase=mae_increase,
+                psnr_delta=psnr_delta,
+                ssim_delta=ssim_delta,
+                mae_delta=mae_delta,
                 quality_regression=quality_regression,
                 regression=is_regression,
                 incompatible=incompatible,

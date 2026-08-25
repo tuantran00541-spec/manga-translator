@@ -3,6 +3,12 @@ import hashlib
 from pathlib import Path
 from typing import Any
 
+# ==============================================================================
+# IMMUTABLE PRODUCTION & MODEL BASELINE SHA-256 HASHES
+# These hashes are the exact byte-for-byte baseline fingerprints established
+# during Phase 0. Under NO circumstances should production files or model be modified.
+# ==============================================================================
+
 LAMA_INPAINTER_BASELINE_SHA256 = (
     "1d6046e7fbb64f2db163a8301fa3839aa6400dbdc270fe17fa008fe37ba42a42"
 )

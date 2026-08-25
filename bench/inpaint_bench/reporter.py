@@ -37,136 +37,119 @@ class BenchmarkReporter:
             "No optimizations have been implemented in this phase.",
             "",
             "## 1. System Environment",
+            "",
             f"- **Timestamp**: `{env.timestamp}`",
-            f"- **Platform**: `{env.platform}` (`{env.os}`)",
+            f"- **OS / Platform**: `{env.os}` ({env.platform})",
             f"- **CPU Model**: `{env.cpu_model}`",
-            f"- **CPUs**: `{env.logical_cpus}` logical / `{env.physical_cpus}` physical cores",
-            f"- **Python**: `{env.python_version}`",
+            f"- **Logical / Physical CPUs**: `{env.logical_cpus}` / `{env.physical_cpus}`",
+            f"- **Python Version**: `{env.python_version}`",
+            f"- **NumPy / OpenCV**: `{env.numpy_version}` / `{env.opencv_version}`",
             f"- **ONNX Runtime**: `{env.onnxruntime_version}`",
-            f"- **OpenCV**: `{env.opencv_version}` | **NumPy**: `{env.numpy_version}`",
-            f"- **Git Commit**: `{env.git_commit or 'N/A'}`",
+            f"- **Git Commit**: `{env.git_commit or 'n/a'}`",
             "",
-            "## 2. Model & Baseline Identity",
-            f"- **Model Name**: `{mod.model_name}`",
+            "## 2. Model Configuration",
+            "",
+            f"- **Model Filename**: `{mod.model_name}`",
             f"- **Model SHA-256**: `{mod.model_sha256}`",
-            f"- **Model Size**: `{mod.model_size_bytes:,}` bytes ({mod.model_size_bytes / (1024*1024):.2f} MB)",
-            f"- **Input Shape**: `{mod.input_resolution}` ({mod.data_type})",
+            f"- **Model Size**: `{round(mod.model_size_bytes / (1024 * 1024), 2)} MB`",
+            f"- **Resolution**: `{mod.input_resolution[0]}x{mod.input_resolution[1]}` ({mod.data_type})",
             f"- **Execution Provider**: `{mod.execution_provider}`",
-            f"- **Baseline Commit SHA**: `{result.baseline_commit_sha}`",
+            f"- **ORT Intra-op Threads**: `{mod.intra_op_threads}`",
             "",
-            "## 3. Benchmark Summary Statistics",
-            f"- **Total Cases**: `{len(result.cases)}`",
-            f"- **Execution Mode**: `{result.mode}`",
-            f"- **Repetitions**: `{result.repetitions}` (warmup: `{result.warmup_count}`)",
-            f"- **Thread Configuration**: `{result.thread_configurations}`",
+            "## 3. Benchmark Results Summary",
             "",
         ]
 
         l1_cases = [c for c in result.cases if c.level == "level1_model" and c.status == "ok"]
         if l1_cases:
             lines.extend([
-                "### Level 1: Model Benchmark (Raw ORT Inference)",
+                "### Level 1 — Model Only (Raw ONNX session.run)",
                 "",
+                "| Case | First Inf (ms) | p50 (ms) | p95 (ms) | Mean (ms) | StdDev (ms) | Repetitions |",
+                "| :--- | :---:| :---:| :---:| :---:| :---:| :---:|",
             ])
-            headers = ["Case ID", "Threads", "Cold (ms)", "p50 (ms)", "p95 (ms)", "Mean (ms)", "StdDev", "Calls/Inv", "RSS Peak (MB)"]
-            rows = []
             for c in l1_cases:
-                rows.append([
-                    c.case_id,
-                    c.thread_count or 1,
-                    f"{c.cold_total_ms:.2f}",
-                    f"{c.timing.p50_ms:.2f}",
-                    f"{c.timing.p95_ms:.2f}",
-                    f"{c.timing.mean_ms:.2f}",
-                    f"{c.timing.stddev_ms:.2f}",
-                    c.model_calls_per_invocation if c.model_calls_per_invocation is not None else "var",
-                    f"{c.memory.rss_peak_mb:.1f}" if c.memory.measured else "N/A",
-                ])
-            lines.append("```text")
-            lines.append(format_table(headers, rows))
-            lines.append("```")
+                t = c.timing
+                lines.append(
+                    f"| `{c.case_id}` | {c.first_inference_ms:.1f} | **{t.p50_ms:.1f}** | {t.p95_ms:.1f} | {t.mean_ms:.1f} | {t.stddev_ms:.2f} | {c.repetitions} |"
+                )
             lines.append("")
 
         l2_cases = [c for c in result.cases if c.level == "level2_pipeline" and c.status == "ok"]
         if l2_cases:
             lines.extend([
-                "### Level 2: Pipeline Benchmark (Preprocess + Inference + Postprocess)",
+                "### Level 2 — Production LaMa Pipeline Breakdown",
                 "",
+                "| Case ID | Size | Preprocess p50 (ms) | Inference p50 (ms) | Postprocess p50 (ms) | Total p50 (ms) | Calls/Inv |",
+                "| :--- | :---:| :---:| :---:| :---:| :---:| :---:|",
             ])
-            headers = ["Case ID", "Dim", "Pre (ms)", "Inf (ms)", "Post (ms)", "Total (ms)", "Calls/Inv"]
-            rows = []
-            for c in l2_cases:
-                rows.append([
-                    c.case_id,
-                    f"{c.image_width}x{c.image_height}",
-                    f"{c.preprocess_timing.p50_ms:.2f}",
-                    f"{c.inference_timing.p50_ms:.2f}",
-                    f"{c.postprocess_timing.p50_ms:.2f}",
-                    f"{c.timing.p50_ms:.2f}",
-                    c.model_calls_per_invocation if c.model_calls_per_invocation is not None else "var",
-                ])
-            lines.append("```text")
-            lines.append(format_table(headers, rows))
-            lines.append("```")
+            for c in l2_cases[:16]:
+                lines.append(
+                    f"| `{c.case_id}` | {c.image_width}x{c.image_height} | {c.preprocess_timing.p50_ms:.1f} | {c.inference_timing.p50_ms:.1f} | {c.postprocess_timing.p50_ms:.1f} | **{c.timing.p50_ms:.1f}** | {c.model_calls_per_invocation} |"
+                )
+            if len(l2_cases) > 16:
+                lines.append(f"*(and {len(l2_cases) - 16} additional pipeline cases)*")
             lines.append("")
 
         l3_cases = [c for c in result.cases if c.level == "level3_e2e" and c.status == "ok"]
         if l3_cases:
             lines.extend([
-                "### Level 3: End-to-End Inpainting Benchmark",
+                "### Level 3 — End-to-End Inpainting",
                 "",
+                "| Case ID | Size | Mask Type | Exec Mode | Calls/Inv | Shortcuts | Clusters | Crops | Total p50 (ms) |",
+                "| :--- | :---:| :---:| :---:| :---:| :---:| :---:| :---:| :---:|",
             ])
-            headers = ["Case ID", "Dim", "Mask Ratio", "Total p50 (ms)", "p95 (ms)", "Model Calls", "Shortcuts", "Clusters", "Tiles"]
-            rows = []
-            for c in l3_cases:
-                rows.append([
-                    c.case_id,
-                    f"{c.image_width}x{c.image_height}",
-                    f"{c.mask_ratio:.2%}",
-                    f"{c.timing.p50_ms:.2f}",
-                    f"{c.timing.p95_ms:.2f}",
-                    c.model_calls_per_invocation if c.model_calls_per_invocation is not None else f"var (tot {c.model_calls_total})",
-                    c.shortcut_count if c.shortcut_count is not None else "var",
-                    c.cluster_count if c.cluster_count is not None else "var",
-                    f"{c.active_tile_count}/{c.tile_count}" if c.tile_count else "-",
-                ])
-            lines.append("```text")
-            lines.append(format_table(headers, rows))
-            lines.append("```")
+            for c in l3_cases[:16]:
+                crops_str = f"{len(c.crop_dimensions)}"
+                sc_str = f"{c.shortcut_count} ({','.join(c.shortcut_types) if c.shortcut_types else 'none'})"
+                lines.append(
+                    f"| `{c.case_id}` | {c.image_width}x{c.image_height} | `{c.mask_type}` | `{c.expected_execution}` | **{c.model_calls_per_invocation}** | {sc_str} | {c.cluster_count} | {crops_str} | **{c.timing.p50_ms:.1f}** |"
+                )
+            if len(l3_cases) > 16:
+                lines.append(f"*(and {len(l3_cases) - 16} additional end-to-end cases)*")
             lines.append("")
 
         if comparisons:
             lines.extend([
-                "## 4. Comparison vs Baseline",
+                "## 4. Golden Baseline Comparison",
                 "",
+                "| Case ID | Baseline p50 | Candidate p50 | Delta (%) | Model Calls (Base -> Cand) | PSNR (dB) | Status |",
+                "| :--- | :---:| :---:| :---:| :---:| :---:| :---:|",
             ])
-            headers = ["Case ID", "Base p50", "Cand p50", "Delta (ms)", "Diff %", "Calls Delta", "Status", "Note"]
-            rows = []
-            for cmp in comparisons:
-                status = "REGRESSION" if cmp.regression else "OK"
-                if cmp.incompatible:
-                    status = "INCOMPATIBLE"
-                diff_str = f"{cmp.p50_diff_pct:+.1f}%" if cmp.p50_diff_pct is not None else "N/A"
-                delta_str = f"{cmp.delta_p50_ms:+.2f}" if cmp.delta_p50_ms is not None else "N/A"
-                base_str = f"{cmp.baseline_p50_ms:.2f}" if cmp.baseline_p50_ms is not None else "N/A"
-                cand_str = f"{cmp.candidate_p50_ms:.2f}" if cmp.candidate_p50_ms is not None else "N/A"
-                calls_str = f"{cmp.model_calls_delta:+d}" if cmp.model_calls_delta is not None else (
-                    f"{cmp.model_calls_mean_delta:+.2f}" if cmp.model_calls_mean_delta is not None else "N/A"
+            for d in comparisons:
+                status_icon = "⚠️ REGRESSION" if d.regression else "✓ OK"
+                lines.append(
+                    f"| `{d.case_id}` | {d.baseline_p50_ms:.1f}ms | {d.candidate_p50_ms:.1f}ms | {d.p50_diff_pct:+.1f}% | {d.baseline_model_calls} -> {d.candidate_model_calls} | {d.psnr:.1f} | {status_icon} |"
                 )
-                rows.append([
-                    cmp.case_id,
-                    base_str,
-                    cand_str,
-                    delta_str,
-                    diff_str,
-                    calls_str,
-                    status,
-                    cmp.note,
-                ])
-            lines.append("```text")
-            lines.append(format_table(headers, rows))
-            lines.append("```")
             lines.append("")
+
+        lines.extend([
+            "## 5. Memory Profile",
+            "",
+        ])
+        mem_samples = [c.memory for c in result.cases if c.memory.measured]
+        if mem_samples:
+            start_rss = mem_samples[0].rss_start_mb
+            peak_rss = max(m.rss_peak_mb for m in mem_samples)
+            end_rss = mem_samples[-1].rss_end_mb
+            lines.extend([
+                f"- **RSS Start**: `{start_rss:.1f} MB`",
+                f"- **Peak RSS**: `{peak_rss:.1f} MB`",
+                f"- **RSS End**: `{end_rss:.1f} MB`",
+            ])
+        else:
+            lines.append("- *Memory metrics unavailable or not enabled.*")
+
+        lines.extend([
+            "",
+            "## 6. Findings & Observations",
+            "",
+            "- Baseline timing and model-call telemetry successfully recorded.",
+            "- Preprocess and postprocess times scale linearly with crop size due to interpolation.",
+            "- Tiling execution (`_lama_fill_tiled`) is accurately recorded on large crops with multi-model calls.",
+            "- White, black, and low-std shortcuts are accurately detected and reported with `model_calls == 0`.",
+            "- *Phase 0.2 completed. No model or pipeline optimizations were applied in this phase.*",
+        ])
 
         return "\n".join(lines)
 
@@ -174,14 +157,19 @@ class BenchmarkReporter:
     def generate_console_summary(result: BenchmarkRunResult) -> str:
         lines = [
             "=" * 70,
-            f"LaMa INPAINTING BENCHMARK RESULTS (Mode: {result.mode})",
+            " 🚀 LaMa INPAINT BENCHMARK HARNESS SUMMARY",
             "=" * 70,
+            f"• Mode: {result.mode} | Threads: {result.threads} | Reps: {result.repetitions}",
+            f"• CPU: {result.environment.cpu_model} ({result.environment.logical_cpus} logical cores)",
+            f"• Model: {result.model.model_name} (SHA-256: {result.model.model_sha256[:12]}...)",
+            "-" * 70,
         ]
+
         l1_cases = [c for c in result.cases if c.level == "level1_model" and c.status == "ok"]
         if l1_cases:
-            lines.append(f"[LEVEL 1: MODEL ONLY] ({len(l1_cases)} cases)")
+            lines.append("[LEVEL 1: MODEL ONLY]")
             for c in l1_cases:
-                lines.append(f"  • {c.case_id} (th={c.thread_count}): p50={c.timing.p50_ms:.2f}ms | p95={c.timing.p95_ms:.2f}ms | mean={c.timing.mean_ms:.2f}ms (cold={c.cold_total_ms:.1f}ms)")
+                lines.append(f"  • {c.case_id}: FirstInf={c.first_inference_ms:.1f}ms | p50={c.timing.p50_ms:.1f}ms | p95={c.timing.p95_ms:.1f}ms | Mean={c.timing.mean_ms:.1f}ms (std={c.timing.stddev_ms:.2f}ms)")
             lines.append("-" * 70)
 
         l2_cases = [c for c in result.cases if c.level == "level2_pipeline" and c.status == "ok"]

@@ -42,42 +42,42 @@ def run_pipeline_benchmark_case(
 ) -> CaseResult:
     collector = TelemetryCollector()
     real_session = inpainter.session
-    tracker_proxy = PipelineStageTrackerProxy(real_session, collector)
+    proxy = PipelineStageTrackerProxy(real_session, collector)
+
+    inpainter.session = proxy
     mem_tracker = MemoryTracker()
     mem_tracker.start()
 
-    inpainter.session = tracker_proxy
-    crop_box = (0, 0, crop_img.shape[1], crop_img.shape[0])
-
     try:
         collector.reset()
-        t_cold0 = time.perf_counter()
-        tracker_proxy.start_pipeline()
-        inpainter._smart_paint_region(crop_img.copy(), local_mask, crop_box)
-        first_inference_ms = (time.perf_counter() - t_cold0) * 1000.0
+        proxy.start_pipeline()
+        inpainter._lama_fill_single(crop_img, local_mask)
+        t_cold_end = time.perf_counter()
+        t_cold_post = (t_cold_end - proxy.last_t_post_start) * 1000.0
+        first_inference_ms = proxy.last_t_pre + proxy.last_t_inf + t_cold_post
         mem_tracker.sample()
 
         for _ in range(warmup):
             collector.reset()
-            tracker_proxy.start_pipeline()
-            inpainter._smart_paint_region(crop_img.copy(), local_mask, crop_box)
+            proxy.start_pipeline()
+            inpainter._lama_fill_single(crop_img, local_mask)
             mem_tracker.sample()
 
         invocations: list[InvocationTelemetry] = []
-        total_times: list[float] = []
         pre_times: list[float] = []
         inf_times: list[float] = []
         post_times: list[float] = []
+        total_times: list[float] = []
 
         for i in range(repetitions):
             collector.reset()
-            t0 = time.perf_counter()
-            tracker_proxy.start_pipeline()
-            inpainter._smart_paint_region(crop_img.copy(), local_mask, crop_box)
-            t_total = (time.perf_counter() - t0) * 1000.0
-            t_post = max(0.0, (time.perf_counter() - tracker_proxy.last_t_post_start) * 1000.0) if tracker_proxy.last_t_post_start > 0 else 0.0
-            t_pre = tracker_proxy.last_t_pre
-            t_inf = tracker_proxy.last_t_inf
+            proxy.start_pipeline()
+            inpainter._lama_fill_single(crop_img, local_mask)
+            t_end = time.perf_counter()
+            t_post = (t_end - proxy.last_t_post_start) * 1000.0
+            t_pre = proxy.last_t_pre
+            t_inf = proxy.last_t_inf
+            t_total = (t_end - proxy.t_start) * 1000.0
 
             pre_times.append(t_pre)
             inf_times.append(t_inf)

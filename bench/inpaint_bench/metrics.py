@@ -67,14 +67,18 @@ def get_environment_metadata() -> EnvironmentMetadata:
         except Exception:
             pass
 
+    cpu_model = platform.processor() or ""
+    if not cpu_model and platform.system() == "Windows":
+        try:
+            import winreg
+            key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"HARDWARE\DESCRIPTION\System\CentralProcessor\0")
+            cpu_model = str(winreg.QueryValueEx(key, "ProcessorNameString")[0]).strip()
+        except Exception:
+            pass
+
     git_commit = ""
     try:
-        res = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+        res = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True, timeout=2)
         if res.returncode == 0:
             git_commit = res.stdout.strip()
     except Exception:
@@ -85,28 +89,32 @@ def get_environment_metadata() -> EnvironmentMetadata:
         python_version=sys.version.split()[0],
         platform=platform.platform(),
         os=platform.system(),
-        cpu_model=platform.processor() or "Unknown",
+        cpu_model=cpu_model,
         logical_cpus=logical_cpus,
         physical_cpus=physical_cpus,
         numpy_version=np.__version__,
         opencv_version=cv2.__version__,
-        onnxruntime_version=ort.__version__ if ort else "N/A",
+        onnxruntime_version=ort.__version__ if ort else "not_installed",
         git_commit=git_commit,
     )
 
 
-def get_model_metadata(model_path: Path | str) -> ModelMetadata:
+def get_model_metadata(model_path: Path | str, intra_op_threads: int = 1) -> ModelMetadata:
     path = Path(model_path)
-    sha = get_model_sha256(path)
-    size = path.stat().st_size if path.is_file() else 0
+    sha256 = get_model_sha256(path)
+    size_bytes = path.stat().st_size if path.is_file() else 0
+
     return ModelMetadata(
         model_name=path.name,
-        model_path=str(path.resolve()) if path.is_file() else str(path),
-        model_sha256=sha,
-        model_size_bytes=size,
+        model_path=str(path.resolve()) if path.exists() else str(path),
+        model_sha256=sha256,
+        model_size_bytes=size_bytes,
         input_resolution=[512, 512],
         data_type="FP32",
         execution_provider="CPUExecutionProvider",
+        intra_op_threads=intra_op_threads,
+        inter_op_threads=1,
+        execution_mode="ORT_SEQUENTIAL",
     )
 
 
@@ -130,7 +138,6 @@ class MemoryTracker:
             try:
                 import ctypes
                 from ctypes import wintypes
-
                 class PROCESS_MEMORY_COUNTERS(ctypes.Structure):
                     _fields_ = [
                         ("cb", wintypes.DWORD),
@@ -144,7 +151,6 @@ class MemoryTracker:
                         ("PagefileUsage", ctypes.c_size_t),
                         ("PeakPagefileUsage", ctypes.c_size_t),
                     ]
-
                 counters = PROCESS_MEMORY_COUNTERS()
                 counters.cb = ctypes.sizeof(PROCESS_MEMORY_COUNTERS)
                 handle = ctypes.windll.kernel32.GetCurrentProcess()

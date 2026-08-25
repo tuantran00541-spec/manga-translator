@@ -51,13 +51,14 @@ def run_model_benchmark(
     image_input = proxy.image_input
     mask_input = proxy.mask_input
 
-    img_blob = np.random.uniform(0.0, 1.0, (1, 3, 512, 512)).astype(np.float32)
-    mask_blob = (np.random.uniform(0.0, 1.0, (1, 1, 512, 512)) > 0.5).astype(np.float32)
+    rng = np.random.RandomState(42)
+    img_blob = rng.rand(1, 3, 512, 512).astype(np.float32)
+    mask_blob = (rng.rand(1, 1, 512, 512) > 0.8).astype(np.float32)
 
     collector.reset()
-    t_first0 = time.perf_counter()
+    t_inf0 = time.perf_counter()
     proxy.run(None, {image_input: img_blob, mask_input: mask_blob})
-    first_inference_ms = (time.perf_counter() - t_first0) * 1000.0
+    first_inference_ms = (time.perf_counter() - t_inf0) * 1000.0
     cold_total_ms = session_create_ms + first_inference_ms
     mem_tracker.sample()
 
