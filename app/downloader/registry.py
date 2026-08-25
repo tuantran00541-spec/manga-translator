@@ -1,23 +1,17 @@
 from pathlib import Path
-from urllib.parse import urlparse
 
 from bs4 import BeautifulSoup
 
 from app.downloader.base import BaseAdapter
 from app.downloader.generic_js import GenericJsAdapter
 from app.downloader.http import read_response_limited, safe_get
+from app.downloader.image_urls import best_srcset_candidate, resolve_image_candidate
 from app.security import MAX_REMOTE_DOCUMENT_BYTES
-
-
-def _is_safe_image_url(url: str) -> bool:
-    if not url or not isinstance(url, str):
-        return False
-    parsed = urlparse(url)
-    return parsed.scheme in ("http", "https")
 
 
 class GenericStaticAdapter(BaseAdapter):
     img_selector = "img"
+    min_declared_width = 240
 
     def can_handle(self, url: str) -> bool:
         return True
@@ -31,27 +25,60 @@ class GenericStaticAdapter(BaseAdapter):
         soup = BeautifulSoup(body, "lxml")
         urls = []
         for img in soup.select(self.img_selector):
-            src = img.get("data-src") or img.get("src")
-            if src and _is_safe_image_url(src):
-                urls.append(src)
-        return urls
+            declared_width = img.get("width")
+            if declared_width:
+                try:
+                    if int(str(declared_width).replace("px", "").strip()) < self.min_declared_width:
+                        continue
+                except ValueError:
+                    pass
+            srcset = best_srcset_candidate(img.get("data-srcset") or img.get("srcset"))
+            url = resolve_image_candidate(
+                chapter_url,
+                srcset,
+                img.get("data-src"),
+                img.get("data-original"),
+                img.get("data-lazy"),
+                img.get("src"),
+            )
+            if url:
+                urls.append(url)
+        return self._dedupe(urls)
 
 
 STATIC_ADAPTER = GenericStaticAdapter()
 JS_ADAPTER = GenericJsAdapter()
 
 
+def _choose_image_urls(static_urls: list[str], js_urls: list[str]) -> list[str]:
+    static_urls = STATIC_ADAPTER._dedupe(static_urls)
+    js_urls = STATIC_ADAPTER._dedupe(js_urls)
+    if len(js_urls) >= 2:
+        return js_urls
+    if static_urls:
+        return static_urls
+    return js_urls
+
+
 def download_chapter(chapter_url: str, output_dir: Path) -> list[Path]:
     from app.security import validate_url
+
     validate_url(chapter_url)
+    static_urls: list[str] = []
+    js_urls: list[str] = []
 
     try:
-        paths = STATIC_ADAPTER.download(chapter_url, output_dir)
-        if paths:
-            return paths
+        static_urls = STATIC_ADAPTER.extract_image_urls(chapter_url)
     except Exception:
-        for f in output_dir.glob("*"):
-            if f.is_file():
-                f.unlink()
+        static_urls = []
 
-    return JS_ADAPTER.download(chapter_url, output_dir)
+    try:
+        js_urls = JS_ADAPTER.extract_image_urls(chapter_url)
+    except Exception:
+        js_urls = []
+
+    selected = _choose_image_urls(static_urls, js_urls)
+    if not selected:
+        raise ValueError("Không tìm thấy ảnh chương hợp lệ từ URL này")
+
+    return STATIC_ADAPTER.download_urls(selected, output_dir, referer=chapter_url)

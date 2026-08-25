@@ -19,13 +19,22 @@ class BaseAdapter(ABC):
         ...
 
     def download(self, chapter_url: str, output_dir: Path) -> list[Path]:
-        output_dir.mkdir(parents=True, exist_ok=True)
         image_urls = self.extract_image_urls(chapter_url)
+        return self.download_urls(image_urls, output_dir, referer=chapter_url)
+
+    def download_urls(
+        self,
+        image_urls: list[str],
+        output_dir: Path,
+        *,
+        referer: str,
+    ) -> list[Path]:
+        output_dir.mkdir(parents=True, exist_ok=True)
         saved_paths = []
-        for i, img_url in enumerate(image_urls):
+        for i, img_url in enumerate(self._dedupe(image_urls)):
             ext = self._guess_ext(img_url)
             out_path = output_dir / f"{i:03d}{ext}"
-            self._download_file(img_url, out_path, referer=chapter_url)
+            self._download_file(img_url, out_path, referer=referer)
             saved_paths.append(out_path)
         return saved_paths
 
@@ -33,6 +42,16 @@ class BaseAdapter(ABC):
         headers = dict(self.headers)
         headers["Referer"] = referer
         safe_download_file(url, out_path, headers=headers, timeout=30)
+
+    @staticmethod
+    def _dedupe(urls: list[str]) -> list[str]:
+        seen = set()
+        result = []
+        for url in urls:
+            if url and url not in seen:
+                seen.add(url)
+                result.append(url)
+        return result
 
     @staticmethod
     def _guess_ext(url: str) -> str:
