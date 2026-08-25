@@ -11,6 +11,7 @@ from PIL import Image
 from filelock import FileLock, Timeout
 
 from app.config import PROCESSED_DIR
+from app.inpaint.mask_geometry import reconcile_detector_geometry_override
 from app.ocr.identity import OCR_CACHE_FIELDS, clear_ocr_cache, geometry_signature
 from app.security import validate_chapter_id
 
@@ -227,7 +228,13 @@ def _box_iou(a: dict, b: dict) -> float:
 
 
 def assign_stable_detector_box_ids(new_boxes: list[dict], existing_boxes: list[dict], min_iou: float = 0.5) -> list[dict]:
-    """Assign IDs to detector results, reusing the best unmatched legacy detector ID."""
+    """Assign stable detector IDs and reconcile persisted geometry overrides.
+
+    During the pre-inpaint call, detector records carry ``_mask_array`` and
+    ``existing_boxes`` is a job-local deep copy. At that point a matched geometry
+    override can safely remap the fresh segmentation mask into page-space edited
+    geometry and neutralize the legacy branch that used to discard the mask.
+    """
     candidates = [
         b for b in existing_boxes
         if isinstance(b, dict) and b.get("origin", "manual" if b.get("manual") else "detector") == "detector" and b.get("id")
@@ -251,6 +258,7 @@ def assign_stable_detector_box_ids(new_boxes: list[dict], existing_boxes: list[d
                 best = old
         if best is not None:
             box["id"] = str(best["id"])
+            reconcile_detector_geometry_override(box, best)
             used.add(str(best["id"]))
         else:
             box["id"] = new_box_id()
