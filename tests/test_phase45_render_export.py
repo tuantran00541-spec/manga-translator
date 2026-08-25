@@ -61,7 +61,7 @@ class Phase45RenderHarness(unittest.TestCase):
             patcher.stop()
         self.td.cleanup()
 
-    def text_object(self):
+    def _text_object(self):
         return {
             "id": "obj1",
             "shape": "rectangle",
@@ -83,12 +83,12 @@ class Phase45RenderHarness(unittest.TestCase):
             },
         }
 
-    def save_manifest(self, **page_updates):
+    def _save_manifest(self, **page_updates):
         page = {
             "original": self.original.as_posix(),
             "clean": self.clean.as_posix(),
             "boxes": [],
-            "text_objects": [self.text_object()],
+            "text_objects": [self._text_object()],
             "skipped": False,
             "excluded_regions": [],
             "source_page": 0,
@@ -110,7 +110,7 @@ class Phase45RenderHarness(unittest.TestCase):
             },
         )
 
-    def load_manifest(self):
+    def _load_manifest(self):
         return manifest_utils.load_manifest_raw(CHAPTER_ID)
 
     def _request(self, **overrides):
@@ -134,11 +134,11 @@ class Phase45RenderHarness(unittest.TestCase):
 
 class RenderIdentityTests(Phase45RenderHarness):
     def test_successful_render_stamps_identity_and_persists_render_state(self):
-        self.save_manifest()
+        self._save_manifest()
         result = self._render_successfully()
 
         self.assertTrue(result["committed"])
-        manifest = self.load_manifest()
+        manifest = self._load_manifest()
         page = manifest["pages"][0]
         output = self.output_page_dir / "page_000.png"
         self.assertTrue(output.is_file())
@@ -157,7 +157,7 @@ class RenderIdentityTests(Phase45RenderHarness):
         self.assertEqual(obj["style"]["verticalAlign"], "top")
 
     def test_concurrent_editor_change_discards_render_with_conflict(self):
-        self.save_manifest()
+        self._save_manifest()
 
         def mutate_during_render(*_args, **_kwargs):
             with manifest_utils.get_manifest_lock(CHAPTER_ID):
@@ -172,48 +172,48 @@ class RenderIdentityTests(Phase45RenderHarness):
                 render45.render_page(request)
 
         self.assertEqual(caught.exception.status_code, 409)
-        page = self.load_manifest()["pages"][0]
+        page = self._load_manifest()["pages"][0]
         self.assertFalse(page.get("rendered", False))
         self.assertEqual(page["text_objects"][0]["translation"], "NEWER USER EDIT")
         self.assertFalse((self.output_page_dir / "page_000.png").exists())
 
     def test_same_path_base_replacement_invalidates_rendered_artifact(self):
-        self.save_manifest()
+        self._save_manifest()
         self._render_successfully()
         output = self.output_page_dir / "page_000.png"
 
         replacement = np.full((96, 128, 3), 7, dtype=np.uint8)
         self.assertTrue(cv2.imwrite(str(self.clean), replacement))
 
-        manifest = self.load_manifest()
+        manifest = self._load_manifest()
         self.assertFalse(render_artifact_is_current(manifest, 0, output))
         with self.assertRaises(HTTPException) as caught:
             image_mod.download_page(CHAPTER_ID, 0)
         self.assertEqual(caught.exception.status_code, 409)
 
     def test_output_tamper_invalidates_download(self):
-        self.save_manifest()
+        self._save_manifest()
         self._render_successfully()
         output = self.output_page_dir / "page_000.png"
         output.write_bytes(output.read_bytes() + b"tamper")
 
-        self.assertFalse(render_artifact_is_current(self.load_manifest(), 0, output))
+        self.assertFalse(render_artifact_is_current(self._load_manifest(), 0, output))
         with self.assertRaises(HTTPException) as caught:
             image_mod.download_page(CHAPTER_ID, 0)
         self.assertEqual(caught.exception.status_code, 409)
 
     def test_legacy_rendered_boolean_without_identity_is_not_exportable(self):
-        self.save_manifest(rendered=True, render_revision=4)
+        self._save_manifest(rendered=True, render_revision=4)
         output = self.output_page_dir / "page_000.png"
         output.write_bytes(self.clean.read_bytes())
 
-        self.assertFalse(render_artifact_is_current(self.load_manifest(), 0, output))
+        self.assertFalse(render_artifact_is_current(self._load_manifest(), 0, output))
         with self.assertRaises(HTTPException) as caught:
             image_mod.download_page(CHAPTER_ID, 0)
         self.assertEqual(caught.exception.status_code, 409)
 
     def test_rendered_preview_falls_back_to_current_base_when_artifact_is_stale(self):
-        self.save_manifest()
+        self._save_manifest()
         self._render_successfully()
         output = self.output_page_dir / "page_000.png"
         output.write_bytes(output.read_bytes() + b"tamper")
