@@ -14,6 +14,7 @@ The application keeps a human editor in control. Automatic steps create a first 
 - Import chapter URLs with HTTP + Playwright discovery, including relative image URLs, `srcset`, common lazy-load attributes, and scroll-until-stable discovery.
 - Slice long webtoon images into CPU-friendly segments while preferring low-content cut bands.
 - Detect speech/text regions with local ONNX models and clean source text using LaMa inpainting.
+- Protect line art during cleanup with edge-aware flat-fill shortcuts, safe detector-mask fallback, fixed-LaMa tiling for long narrow regions, and page-space segmentation-mask remapping after user geometry edits.
 - Review cleaned pages, repaint mistakes manually, and optionally use Gemini or DeepSeek visual QC.
 - OCR Japanese with MangaOCR and Chinese/Korean/English with PaddleOCR.
 - Automatically turn detector boxes into editable text objects; re-processing keeps stable box links and does not overwrite user geometry/text edits.
@@ -79,6 +80,14 @@ Configure a DeepSeek API key through the app's AI settings (or `DEEPSEEK_API_KEY
 
 The provider response is never committed blindly: object identity, OCR source text, and existing translation are checked again after the network call. Concurrent editor changes win and are counted as stale instead of being overwritten.
 
+## Inpainting safety
+
+- Flat-fill shortcuts inspect a clean ring and edge density before bypassing LaMa; artwork edges near text force model inpainting.
+- Missing detector segmentation masks no longer silently become destructive full-rectangle masks. Explicit manual boxes retain their rectangle fallback.
+- Long, narrow crops on the fixed 512×512 LaMa model use tiled inference instead of squeezing the crop into a thin strip.
+- Detector geometry edits remap masks in page coordinates instead of stretching or discarding them. Re-detection reconciles fresh detector masks to the persisted user geometry.
+- Regression tests verify local mask behavior, geometry remapping, and that automatic compositing leaves pixels outside the effective mask unchanged.
+
 ## Main API surface
 
 ### Chapter / processing
@@ -120,7 +129,7 @@ Local equivalent:
 make release-check
 ```
 
-The gate compiles source, runs the v0.1 model-independent integration/regression suite, then runs Chromium regressions. `tests/test_v01_product_closure.py` specifically validates the connected path:
+The gate compiles source, runs the v0.1 model-independent integration/regression suite (including artwork-safety and geometry-mask tests), then runs Chromium regressions. `tests/test_v01_product_closure.py` specifically validates the connected path:
 
 **processed OCR box → auto text object → translation commit → revision-safe render → strict ZIP export**
 
@@ -132,7 +141,7 @@ The external DeepSeek network call is stubbed in that test; the product state tr
 app/
   detector/       local bubble/text detection
   downloader/     URL/local ingestion and webtoon slicing
-  inpaint/        LaMa cleanup
+  inpaint/        LaMa cleanup + mask geometry safety
   ocr/            MangaOCR/PaddleOCR service + jobs
   translation/    DeepSeek chapter translator
   render/         typography + render identity
