@@ -135,6 +135,7 @@
     if (!snapshot) return "Chưa chạy kiểm tra toàn chương.";
     const completed = Number(snapshot.completed_regions) || 0;
     const total = Number(snapshot.total_regions) || 0;
+    if (isRunning(snapshot) && snapshot.cancel_requested) return `Đang hủy · ${completed}/${total} vùng đã xử lý…`;
     if (isRunning(snapshot)) return `Đang kiểm tra ${completed}/${total} vùng…`;
     if (snapshot.status === "cancelled") return `Đã hủy sau ${completed}/${total} vùng.`;
     return `Hoàn tất · ${snapshot.passed || 0} đạt · ${snapshot.flagged || 0} cần xem · ${snapshot.failed || 0} lỗi.`;
@@ -163,10 +164,10 @@
       progress.hidden = !snapshot;
     }
     if (runBtn) {
-      runBtn.disabled = running;
+      runBtn.disabled = running || workspace.classList.contains("review-busy");
       runBtn.textContent = snapshot && !running ? "Kiểm tra lại toàn chương" : "Kiểm tra toàn chương bằng AI";
     }
-    if (cancelBtn) cancelBtn.hidden = !running;
+    if (cancelBtn) cancelBtn.hidden = !running || Boolean(snapshot?.cancel_requested);
     if (retryBtn) retryBtn.hidden = running || !(Number(snapshot?.failed) > 0);
 
     if (!resultsHost) return;
@@ -232,6 +233,10 @@
     syncChapterState();
     const chapterId = window.currentChapterId;
     if (!chapterId || isRunning()) return;
+    if (workspace?.classList.contains("review-busy")) {
+      if (typeof window.showToast === "function") window.showToast("Hãy hoàn tất kiểm tra trang hiện tại trước khi kiểm tra toàn chương.", "info");
+      return;
+    }
     const generation = ++state.generation;
     try {
       const snapshot = await requestJson("/api/visual_qc/chapter", {
@@ -253,7 +258,7 @@
   }
 
   async function cancelChapterQC() {
-    if (!state.snapshot?.job_id || !isRunning()) return;
+    if (!state.snapshot?.job_id || !isRunning() || state.snapshot.cancel_requested) return;
     const chapterId = window.currentChapterId;
     try {
       const snapshot = await requestJson(
@@ -262,9 +267,10 @@
       );
       if (chapterId !== window.currentChapterId) return;
       state.snapshot = snapshot;
-      state.generation += 1;
+      const generation = ++state.generation;
       window.clearTimeout(state.pollTimer);
       renderAll();
+      if (isRunning(snapshot)) schedulePoll(snapshot.job_id, generation);
     } catch (err) {
       if (typeof window.showToast === "function") window.showToast("Không thể hủy kiểm tra: " + err.message, "error");
     }
