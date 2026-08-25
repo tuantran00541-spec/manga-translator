@@ -152,7 +152,7 @@ def _commit_render(
         manifest = load_manifest_raw(req.chapter_id)
         try:
             current_signature = render_input_signature(manifest, req.page_index)
-        except (FileNotFoundError, IndexError, OSError):
+        except (IndexError, OSError):
             return False, None
         if current_signature != snapshot_signature:
             return False, None
