@@ -241,7 +241,6 @@
   }
 
   window.fetchOcr = safeFetchOcr;
-  try { fetchOcr = safeFetchOcr; } catch (_) {}
 
   const observer = new MutationObserver(scan);
   observer.observe(document.documentElement, { childList: true, subtree: true });
