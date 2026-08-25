@@ -1,0 +1,144 @@
+from __future__ import annotations
+
+import copy
+
+
+DEFAULT_TEXT_OBJECT_STYLE = {
+    "color": "auto",
+    "font": "default",
+    "fontSize": "auto",
+    "bold": False,
+    "strokeWidth": "auto",
+    "strokeColor": "auto",
+    "bgColor": "transparent",
+    "cornerRadius": "0",
+    "horizontalAlign": "center",
+    "verticalAlign": "middle",
+}
+
+
+def _region_from_box(box: dict) -> dict | None:
+    try:
+        x1 = int(box["x1"])
+        y1 = int(box["y1"])
+        x2 = int(box["x2"])
+        y2 = int(box["y2"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    if x1 >= x2 or y1 >= y2:
+        return None
+    return {"x1": x1, "y1": y1, "x2": x2, "y2": y2}
+
+
+def _auto_object_id(box_id: str) -> str:
+    suffix = box_id[4:] if box_id.startswith("box_") else box_id
+    return f"text_{suffix}"
+
+
+def _source_box_ids(obj: dict) -> set[str]:
+    refs = obj.get("source_boxes")
+    if not isinstance(refs, list):
+        return set()
+    return {str(ref) for ref in refs if isinstance(ref, str) and ref}
+
+
+def _sync_existing_auto_object(obj: dict, box: dict, region: dict) -> bool:
+    changed = False
+    previous_auto_geometry = obj.get("auto_geometry")
+    current_region = obj.get("region")
+    if previous_auto_geometry is None or current_region == previous_auto_geometry:
+        if current_region != region:
+            obj["region"] = copy.deepcopy(region)
+            changed = True
+    if obj.get("auto_geometry") != region:
+        obj["auto_geometry"] = copy.deepcopy(region)
+        changed = True
+
+    box_text = str(box.get("ocr_text") or "")
+    previous_auto_text = str(obj.get("auto_ocr_text") or "")
+    current_text = str(obj.get("ocr_text") or "")
+    if box_text and (not current_text or current_text == previous_auto_text):
+        if current_text != box_text:
+            obj["ocr_text"] = box_text
+            changed = True
+        if previous_auto_text != box_text:
+            obj["auto_ocr_text"] = box_text
+            changed = True
+
+    if obj.pop("source_missing", None) is not None:
+        changed = True
+    return changed
+
+
+def ensure_page_text_objects(page: dict) -> tuple[int, bool]:
+    """Ensure detected text boxes have editable text objects without overwriting user work.
+
+    Existing objects that already reference a detector box win, including manually
+    grouped objects. Auto-generated objects only follow detector geometry/OCR while
+    the user has not changed those fields since the previous automatic sync.
+    """
+    objects = page.setdefault("text_objects", [])
+    if not isinstance(objects, list):
+        objects = []
+        page["text_objects"] = objects
+
+    boxes = page.get("boxes") or []
+    active_box_ids: set[str] = set()
+    covered: dict[str, dict] = {}
+    for obj in objects:
+        if not isinstance(obj, dict):
+            continue
+        for box_id in _source_box_ids(obj):
+            covered.setdefault(box_id, obj)
+
+    created = 0
+    changed = False
+    for box in boxes:
+        if not isinstance(box, dict) or box.get("removed"):
+            continue
+        box_id = str(box.get("id") or "")
+        if not box_id:
+            continue
+        region = _region_from_box(box)
+        if region is None:
+            continue
+        active_box_ids.add(box_id)
+
+        existing = covered.get(box_id)
+        if existing is not None:
+            if existing.get("auto_generated"):
+                changed = _sync_existing_auto_object(existing, box, region) or changed
+            continue
+
+        box_text = str(box.get("ocr_text") or "")
+        obj = {
+            "id": _auto_object_id(box_id),
+            "shape": "rectangle",
+            "region": copy.deepcopy(region),
+            "source_boxes": [box_id],
+            "ocr_text": box_text,
+            "translation": "",
+            "style": dict(DEFAULT_TEXT_OBJECT_STYLE),
+            "origin": "detector",
+            "auto_generated": True,
+            "auto_geometry": copy.deepcopy(region),
+            "auto_ocr_text": box_text,
+        }
+        objects.append(obj)
+        covered[box_id] = obj
+        created += 1
+        changed = True
+
+    for obj in objects:
+        if not isinstance(obj, dict) or not obj.get("auto_generated"):
+            continue
+        refs = _source_box_ids(obj)
+        missing = bool(refs) and refs.isdisjoint(active_box_ids)
+        if bool(obj.get("source_missing")) != missing:
+            if missing:
+                obj["source_missing"] = True
+            else:
+                obj.pop("source_missing", None)
+            changed = True
+
+    return created, changed
