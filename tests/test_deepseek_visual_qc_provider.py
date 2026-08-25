@@ -148,19 +148,11 @@ def test_budget_guard_blocks_new_request_before_network(monkeypatch):
     monkeypatch.setattr(requests, "post", fake_post)
     client = DeepSeekRegionQC(budget_usd=0.005)
     region = _region("P0001-R01")
-    client.inspect(
-        _sheet(region.region_id),
-        {region.region_id: region},
-        "secret-key",
-        mode="region-clean",
-    )
+    sheet = _sheet(region.region_id)
+    regions = {region.region_id: region}
+    client.inspect(sheet, regions, "secret-key", mode="region-clean")
     with pytest.raises(DeepSeekBudgetExceeded):
-        client.inspect(
-            _sheet(region.region_id),
-            {region.region_id: region},
-            "secret-key",
-            mode="region-clean",
-        )
+        client.inspect(sheet, regions, "secret-key", mode="region-clean")
     assert calls == 1
 
 
@@ -172,13 +164,10 @@ def test_invalid_http_200_body_settles_reservation_conservatively(monkeypatch):
     )
     client = DeepSeekRegionQC(budget_usd=0.02)
     region = _region("P0001-R01")
+    sheet = _sheet(region.region_id)
+    regions = {region.region_id: region}
     with pytest.raises(RuntimeError, match="invalid structured response"):
-        client.inspect(
-            _sheet(region.region_id),
-            {region.region_id: region},
-            "secret-key",
-            mode="region-clean",
-        )
+        client.inspect(sheet, regions, "secret-key", mode="region-clean")
     usage = client.usage_snapshot()
     assert usage["requests"] == 1
     assert usage["estimated_cost_usd"] > 0
