@@ -11,24 +11,25 @@ def main() -> None:
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
         page = browser.new_page()
-        calls = {"status": 0}
+        calls = {"status": 0, "start": None}
 
         def handle(route):
             url = route.request.url
             method = route.request.method
             if url.endswith("/api/visual_qc/chapter") and method == "POST":
+                calls["start"] = route.request.post_data_json
                 route.fulfill(
                     status=200,
                     content_type="application/json",
-                    body='{"job_id":"job1","chapter_id":"deadbeef","status":"running","total_regions":2,"completed_regions":0,"passed":0,"flagged":0,"failed":0,"results":[]}',
+                    body='{"job_id":"job1","chapter_id":"deadbeef","provider":"deepseek","model":"deepseek-v4-flash-vision-exp","status":"running","total_regions":2,"completed_regions":0,"passed":0,"flagged":0,"failed":0,"results":[],"usage":{"requests":1,"estimated_cost_usd":0.0012,"budget_usd":0.02}}',
                 )
                 return
             if url.endswith("/api/visual_qc/chapter/job1") and method == "GET":
                 calls["status"] += 1
                 if calls["status"] == 1:
-                    body = '{"job_id":"job1","chapter_id":"deadbeef","status":"running","total_regions":2,"completed_regions":1,"passed":1,"flagged":0,"failed":0,"results":[]}'
+                    body = '{"job_id":"job1","chapter_id":"deadbeef","provider":"deepseek","model":"deepseek-v4-flash-vision-exp","status":"running","total_regions":2,"completed_regions":1,"passed":1,"flagged":0,"failed":0,"results":[],"usage":{"requests":2,"estimated_cost_usd":0.0024,"budget_usd":0.02}}'
                 else:
-                    body = '{"job_id":"job1","chapter_id":"deadbeef","status":"completed","total_regions":2,"completed_regions":2,"passed":1,"flagged":1,"failed":0,"results":[{"page_index":0,"region_id":"P0001-R01","status":"flagged","issues":[{"issue_type":"residual_text","confidence":0.91,"bbox":[100,120,280,260],"reason":"glyph remains","recommended_action":"review"}]}]}'
+                    body = '{"job_id":"job1","chapter_id":"deadbeef","provider":"deepseek","model":"deepseek-v4-flash-vision-exp","status":"completed","total_regions":2,"completed_regions":2,"passed":1,"flagged":1,"failed":0,"results":[{"page_index":0,"region_id":"P0001-R01","status":"flagged","issues":[{"issue_type":"residual_text","confidence":0.91,"bbox":[100,120,280,260],"reason":"glyph remains","recommended_action":"review"}]}],"usage":{"requests":2,"estimated_cost_usd":0.0024,"budget_usd":0.02}}'
                 route.fulfill(status=200, content_type="application/json", body=body)
                 return
             route.abort()
@@ -64,6 +65,7 @@ def main() -> None:
             """
             window.currentChapterId = 'deadbeef';
             window.currentManifest = {pages:[{skipped:false,width:1000,height:1400}]};
+            window.deepseekVisualQCConfigured = true;
             window.parseApiResponse = async (response) => response.json();
             window.getErrorMessage = (status, data) => data.detail || `HTTP ${status}`;
             window.showToast = () => {};
@@ -74,13 +76,20 @@ def main() -> None:
         page.add_script_tag(path=str(SCRIPT))
 
         page.wait_for_selector(".chapter-qc-run")
+        page.select_option(".chapter-qc-provider", "deepseek")
+        page.fill(".chapter-qc-budget-input", "0.02")
         page.click(".chapter-qc-run")
         page.wait_for_function("document.querySelector('.review-workspace-shell').classList.contains('review-chapter-qc-running')")
+        assert calls["start"]["provider"] == "deepseek"
+        assert calls["start"]["budget_usd"] == 0.02
         assert page.locator(".repaint-btn").is_disabled()
+        assert page.locator(".chapter-qc-provider").is_disabled()
 
         page.wait_for_selector(".chapter-qc-result", timeout=6000)
         summary = page.locator(".chapter-qc-summary").inner_text()
+        assert "DeepSeek" in summary
         assert "Hoàn tất" in summary
+        assert "$0.0024 / $0.020" in page.locator(".chapter-qc-usage").inner_text()
         assert not page.locator(".repaint-btn").is_disabled()
 
         page.click(".chapter-qc-result")
