@@ -74,19 +74,26 @@ class DeepSeekBudgetExceeded(RuntimeError):
     pass
 
 
-def _safe_error_detail(response: requests.Response) -> str:
+def _redact_secret(text: object, secret: str) -> str:
+    value = str(text)
+    return value.replace(secret, "[redacted]") if secret else value
+
+
+def _safe_error_detail(response: requests.Response, secret: str) -> str:
+    detail = ""
     try:
         payload = response.json()
         if isinstance(payload, dict):
             err = payload.get("error")
             if isinstance(err, dict) and err.get("message"):
-                return str(err["message"])[:500]
-            if payload.get("message"):
-                return str(payload["message"])[:500]
+                detail = str(err["message"])
+            elif payload.get("message"):
+                detail = str(payload["message"])
     except ValueError:
         pass
-    text = (response.text or "").strip()
-    return text[:500] if text else "unknown error"
+    if not detail:
+        detail = (response.text or "").strip() or "unknown error"
+    return _redact_secret(detail, secret)[:500]
 
 
 def _extract_output_text(body: dict) -> str:
@@ -276,7 +283,8 @@ class DeepSeekRegionQC:
         *,
         mode: str,
     ) -> list[RegionBatchDecision]:
-        if not api_key or not api_key.strip():
+        secret = (api_key or "").strip()
+        if not secret:
             raise ValueError("DeepSeek API key is not configured")
         expected_ids = [item.region_id for item in sheet.items]
         if not expected_ids:
@@ -286,7 +294,7 @@ class DeepSeekRegionQC:
             response = requests.post(
                 DEEPSEEK_CHAT_URL,
                 headers={
-                    "Authorization": f"Bearer {api_key.strip()}",
+                    "Authorization": f"Bearer {secret}",
                     "Content-Type": "application/json",
                 },
                 json=self._payload(sheet, mode),
@@ -299,11 +307,14 @@ class DeepSeekRegionQC:
             ) from exc
         except requests.RequestException as exc:
             self._release(reservation)
-            raise RuntimeError(f"DeepSeek request failed: {exc}") from exc
+            raise RuntimeError(
+                f"DeepSeek request failed: {_redact_secret(exc, secret)}"
+            ) from exc
         if not response.ok:
             self._release(reservation)
             raise RuntimeError(
-                f"DeepSeek API returned HTTP {response.status_code}: {_safe_error_detail(response)}"
+                f"DeepSeek API returned HTTP {response.status_code}: "
+                f"{_safe_error_detail(response, secret)}"
             )
         try:
             body = response.json()
