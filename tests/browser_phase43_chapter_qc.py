@@ -36,7 +36,7 @@ def main() -> None:
         page.route("**/api/visual_qc/**", handle)
         page.set_content(
             """
-            <html><body>
+            <html><head><base href="http://qc.test/"></head><body>
               <div class="review-workspace-shell">
                 <div class="review-sticky-toolbar">
                   <div class="review-actions-group"><button class="review-primary-action">Editor</button></div>
