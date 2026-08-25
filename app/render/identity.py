@@ -126,7 +126,7 @@ def render_artifact_is_current(
         current_signature = render_input_signature(manifest, page_index)
         current_output_revision = file_revision(output_path)
         stored_output_revision = tuple(int(value) for value in expected_output_revision)
-    except (FileNotFoundError, IndexError, OSError, TypeError, ValueError):
+    except (IndexError, OSError, TypeError, ValueError):
         return False
     return (
         current_signature == expected_signature
