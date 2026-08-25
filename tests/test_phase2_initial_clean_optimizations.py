@@ -4,7 +4,7 @@ import cv2
 import numpy as np
 
 from app.config import SLICE_MAX_HEIGHT, SLICE_MIN_HEIGHT
-from app.downloader.slicer import _find_cut_rows
+from app.downloader.slicer import _find_cut_rows, slice_image_with_layout
 from app.detector.bubble_detector import YoloDetector
 
 
@@ -65,7 +65,6 @@ def _box_signature(boxes):
 
 
 def test_dense_long_page_always_gets_bounded_slices():
-    # Dense synthetic artwork intentionally has no blank 25-row safe gutter.
     h, w = 16000, 900
     y = np.arange(h, dtype=np.uint16)[:, None]
     x = np.arange(w, dtype=np.uint16)[None, :]
@@ -84,8 +83,27 @@ def test_dense_long_page_always_gets_bounded_slices():
     assert sum(segments) == h
 
 
+def test_slice_layout_reconstructs_source_rows_without_gaps_or_duplicates(tmp_path):
+    height, width = 1900, 64
+    source = np.tile(np.arange(height, dtype=np.uint8)[:, None], (1, width))
+    source_path = tmp_path / "source.png"
+    assert cv2.imwrite(str(source_path), source)
+
+    layouts = slice_image_with_layout(source_path, tmp_path, "slice")
+
+    assert layouts[0].source_y_start == 0
+    assert layouts[-1].source_y_end == height
+    assert all(
+        left.source_y_end == right.source_y_start
+        for left, right in zip(layouts, layouts[1:])
+    )
+    reconstructed = np.vstack([
+        cv2.imread(str(layout.path), cv2.IMREAD_GRAYSCALE) for layout in layouts
+    ])
+    assert np.array_equal(reconstructed, source)
+
+
 def test_vectorized_postprocess_matches_legacy_detection_output():
-    # Detection-only shape: 2 classes, 128 predictions.
     rng = np.random.default_rng(1234)
     det = object.__new__(YoloDetector)
     det.conf_threshold = 0.4
@@ -104,8 +122,6 @@ def test_vectorized_postprocess_matches_legacy_detection_output():
 
 
 def test_vectorized_postprocess_matches_legacy_segmentation_output():
-    # Segmentation shape: 1 class + 4 mask coefficients. Small prototype keeps
-    # the unit test cheap while exercising mask decode equivalence.
     rng = np.random.default_rng(4321)
     det = object.__new__(YoloDetector)
     det.conf_threshold = 0.2

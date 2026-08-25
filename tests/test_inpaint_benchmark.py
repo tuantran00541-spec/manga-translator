@@ -13,19 +13,19 @@ from unittest.mock import MagicMock
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from tools.inpaint_bench.corpus_generator import (
+from bench.inpaint_bench.corpus_generator import (
     generate_synthetic_image,
     generate_corpus,
     generate_case,
     compute_workload_sha256,
 )
-from tools.inpaint_bench.metrics import (
+from bench.inpaint_bench.metrics import (
     calculate_stats,
     get_model_sha256,
     get_environment_metadata,
     MemoryTracker,
 )
-from tools.inpaint_bench.schema import (
+from bench.inpaint_bench.schema import (
     SCHEMA_VERSION,
     BenchmarkRunResult,
     CaseResult,
@@ -43,20 +43,20 @@ from tools.inpaint_bench.schema import (
     validate_case_payload_for_comparison,
     validate_benchmark_payload_for_comparison,
 )
-from tools.inpaint_bench.proxy import TelemetryCollector, TelemetrySessionProxy
-from tools.inpaint_bench.runner import BenchmarkRunner, compare_benchmarks, compute_image_metrics
-from tools.inpaint_bench.reporter import BenchmarkReporter
-from tools.inpaint_bench.model_bench import run_model_benchmark
-from tools.inpaint_bench.pipeline_bench import run_pipeline_benchmark_case
-from tools.inpaint_bench.e2e_bench import InpaintTelemetryContext, run_e2e_benchmark_case
-from tools.inpaint_bench.integrity import (
+from bench.inpaint_bench.proxy import TelemetryCollector, TelemetrySessionProxy
+from bench.inpaint_bench.runner import BenchmarkRunner, compare_benchmarks, compute_image_metrics
+from bench.inpaint_bench.reporter import BenchmarkReporter
+from bench.inpaint_bench.model_bench import run_model_benchmark
+from bench.inpaint_bench.pipeline_bench import run_pipeline_benchmark_case
+from bench.inpaint_bench.e2e_bench import InpaintTelemetryContext, run_e2e_benchmark_case
+from bench.inpaint_bench.integrity import (
     compute_file_sha256,
     verify_production_integrity,
     PRODUCTION_BASELINE_HASHES,
     LAMA_MODEL_BASELINE_SHA256,
     load_trusted_baseline_manifest,
 )
-from tools.benchmark_inpaint import load_baseline_data
+from bench.scripts.benchmark_inpaint import load_baseline_data
 from app.detector.bubble_detector import BubbleBox
 from app.inpaint.lama_inpainter import Inpainter
 
@@ -169,10 +169,6 @@ def make_valid_payload(cases: list[dict], model_sha: str = LAMA_MODEL_BASELINE_S
 
 
 class TestInpaintBenchmarkFinalTrustClosure(unittest.TestCase):
-    # ==================================================
-    # 1. PRODUCTION & MODEL INTEGRITY
-    # ==================================================
-
     def test_01_prod_and_model_integrity_real_files_pass(self):
         valid, report = verify_production_integrity()
         self.assertTrue(valid, f"Production integrity failed: {report}")
@@ -225,10 +221,6 @@ class TestInpaintBenchmarkFinalTrustClosure(unittest.TestCase):
             with self.assertRaises(ValueError):
                 load_trusted_baseline_manifest(fake_manifest)
 
-    # ==================================================
-    # 2. CORPUS IMMUTABLE WORKLOAD IDENTITY
-    # ==================================================
-
     def test_05_corpus_workload_hash_mutation_detected(self):
         meta = {
             "case_id": "case_test",
@@ -243,11 +235,9 @@ class TestInpaintBenchmarkFinalTrustClosure(unittest.TestCase):
         mask_bytes = b"MASK_BYTES_1"
         hash1 = compute_workload_sha256(meta, orig_bytes, mask_bytes)
 
-        # Mutate original bytes
         hash2 = compute_workload_sha256(meta, b"MUTATED_ORIGINAL", mask_bytes)
         self.assertNotEqual(hash1, hash2)
 
-        # Mutate mask bytes
         hash3 = compute_workload_sha256(meta, orig_bytes, b"MUTATED_MASK")
         self.assertNotEqual(hash1, hash3)
 
@@ -261,13 +251,7 @@ class TestInpaintBenchmarkFinalTrustClosure(unittest.TestCase):
         self.assertTrue(deltas[0].regression)
         self.assertIn("Workload content SHA-256 mismatch", deltas[0].note)
 
-    # ==================================================
-    # 3. GOLDEN COMPARISON MATHEMATICS & DEGRADATION
-    # ==================================================
-
     def test_07_degradation_within_tolerance_passes(self):
-        # Baseline recorded: PSNR 35.0, SSIM 0.95, MAE 2.0
-        # Candidate measured: PSNR 33.5 (drop 1.5 <= 2.0), SSIM 0.92 (drop 0.03 <= 0.05), MAE 3.0 (inc 1.0 <= 2.0)
         c_base = make_valid_case_dict("c1")
         c_base["psnr"] = 35.0
         c_base["ssim"] = 0.95
@@ -282,7 +266,7 @@ class TestInpaintBenchmarkFinalTrustClosure(unittest.TestCase):
             p2.mkdir(parents=True)
             img1 = np.full((100, 100, 3), 128, dtype=np.uint8)
             cv2.imwrite(str(p1 / "output.png"), img1)
-            cv2.imwrite(str(p2 / "output.png"), img1)  # Identical image gives PSNR 100
+            cv2.imwrite(str(p2 / "output.png"), img1)
 
             base = make_valid_payload([c_base])
             cand = make_valid_payload([c_cand])
@@ -298,7 +282,6 @@ class TestInpaintBenchmarkFinalTrustClosure(unittest.TestCase):
             p2.mkdir(parents=True)
             img1 = np.full((100, 100, 3), 128, dtype=np.uint8)
             img2 = img1.copy()
-            # Add severe degradation to drop PSNR significantly
             img2[::2, ::2] = 50
 
             cv2.imwrite(str(p1 / "output.png"), img1)
@@ -312,10 +295,6 @@ class TestInpaintBenchmarkFinalTrustClosure(unittest.TestCase):
             deltas = compare_benchmarks(base, cand, image_baseline_dir=Path(d1), image_candidate_dir=Path(d2))
             self.assertTrue(deltas[0].quality_regression)
             self.assertTrue(deltas[0].regression)
-
-    # ==================================================
-    # 4. ZERO NaN / INF TOLERANCE IN METRICS & IMAGES
-    # ==================================================
 
     def test_09_nan_inf_in_image_metrics_fails(self):
         img_nan = np.full((50, 50, 3), np.nan, dtype=np.float32)
@@ -332,10 +311,6 @@ class TestInpaintBenchmarkFinalTrustClosure(unittest.TestCase):
         with self.assertRaises(ValueError):
             compute_image_metrics(img_ninf, img_valid)
 
-    # ==================================================
-    # 5. TELEMETRY & INVOCATION INTEGRITY
-    # ==================================================
-
     def test_10_non_contiguous_invocation_index_fails(self):
         inv1 = {
             "invocation_index": 0, "latency_ms": 10.0, "preprocess_ms": 1.0, "inference_ms": 8.0, "postprocess_ms": 1.0,
@@ -343,7 +318,7 @@ class TestInpaintBenchmarkFinalTrustClosure(unittest.TestCase):
             "shortcut_types": [], "crop_dimensions": [[50, 50]]
         }
         inv2 = {
-            "invocation_index": 5,  # Non-contiguous (expected 1)
+            "invocation_index": 5,
             "latency_ms": 10.0, "preprocess_ms": 1.0, "inference_ms": 8.0, "postprocess_ms": 1.0,
             "model_calls": 1, "cluster_count": 1, "tile_count": 0, "active_tile_count": 0, "shortcut_count": 0,
             "shortcut_types": [], "crop_dimensions": [[50, 50]]
@@ -355,21 +330,17 @@ class TestInpaintBenchmarkFinalTrustClosure(unittest.TestCase):
 
     def test_11_model_calls_total_contradiction_fails(self):
         c = make_valid_case_dict()
-        c["model_calls_total"] = 999  # Invocations sum to 1
+        c["model_calls_total"] = 999
         valid, msg = validate_case_payload_for_comparison(c)
         self.assertFalse(valid)
         self.assertIn("model_calls_total", msg)
 
     def test_12_timing_count_contradiction_fails(self):
         c = make_valid_case_dict()
-        c["timing"]["count"] = 999  # Invocations length is 1
+        c["timing"]["count"] = 999
         valid, msg = validate_case_payload_for_comparison(c)
         self.assertFalse(valid)
         self.assertIn("Timing count", msg)
-
-    # ==================================================
-    # 6. ARCHETYPE & SHORTCUT SEMANTICS
-    # ==================================================
 
     def test_13_duplicate_or_invalid_shortcut_types_fail(self):
         inv = InvocationTelemetry(model_calls=0, shortcut_count=1, shortcut_types=["white", "white"])
@@ -395,10 +366,6 @@ class TestInpaintBenchmarkFinalTrustClosure(unittest.TestCase):
         self.assertFalse(valid)
         self.assertIn("exceed", msg)
 
-    # ==================================================
-    # 7. MODEL METADATA & PROVIDER ENFORCEMENT
-    # ==================================================
-
     def test_16_candidate_model_hash_mismatch_fails_comparison(self):
         base = make_valid_payload([make_valid_case_dict("c1")])
         cand = make_valid_payload([make_valid_case_dict("c1")], model_sha="TAMPERED_SHA")
@@ -406,10 +373,6 @@ class TestInpaintBenchmarkFinalTrustClosure(unittest.TestCase):
         self.assertTrue(deltas[0].incompatible)
         self.assertTrue(deltas[0].regression)
         self.assertIn("model_identity_validation", deltas[0].case_id)
-
-    # ==================================================
-    # 8. DIRECTORY COMPARISON AMBIGUITY
-    # ==================================================
 
     def test_17_ambiguous_directory_fails(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

@@ -10,11 +10,11 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from app.config import LAMA_MODEL
 from app.detector.bubble_detector import BubbleBox
-from tools.inpaint_bench.corpus_generator import generate_synthetic_image, generate_case
-from tools.inpaint_bench.proxy import TelemetryCollector, TelemetrySessionProxy
-from tools.inpaint_bench.runner import BenchmarkRunner
-from tools.inpaint_bench.e2e_bench import run_e2e_benchmark_case
-from tools.inpaint_bench.schema import SCHEMA_VERSION, validate_case_execution
+from bench.inpaint_bench.corpus_generator import generate_synthetic_image, generate_case
+from bench.inpaint_bench.proxy import TelemetryCollector, TelemetrySessionProxy
+from bench.inpaint_bench.runner import BenchmarkRunner
+from bench.inpaint_bench.e2e_bench import run_e2e_benchmark_case
+from bench.inpaint_bench.schema import SCHEMA_VERSION, validate_case_execution
 
 
 @unittest.skipUnless(
