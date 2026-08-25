@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import expect, sync_playwright
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -111,12 +111,13 @@ def main() -> None:
         assert not page.locator(".nav-next").is_disabled()
 
         page.evaluate("window.fetchOcr(0, 0, document.getElementById('box-original'))")
-        page.wait_for_function("document.getElementById('box-original').textContent === 'FRESH'")
+        expect(page.locator("#box-original")).to_have_text("FRESH")
         assert calls["box"] == 1
         assert page.evaluate("window.currentManifest.pages[0].boxes[0].ocr_text") == "FRESH"
 
         page.click(".chapter-ocr-run")
-        page.wait_for_function("document.querySelector('.chapter-ocr-summary').textContent.includes('Đang nhận dạng')")
+        page.wait_for_selector(".chapter-ocr-cancel:visible")
+        expect(page.locator(".chapter-ocr-summary")).to_contain_text("Đang nhận dạng")
         assert calls["start"][0] == {
             "chapter_id": "deadbeef",
             "lang": "en",
@@ -126,19 +127,19 @@ def main() -> None:
         assert not page.locator(".nav-next").is_disabled()
 
         calls["allow_complete"] = True
-        page.wait_for_function("document.querySelector('.chapter-ocr-summary').textContent.includes('stale 1')", timeout=6000)
-        assert page.locator(".chapter-ocr-retry").is_visible()
-        assert page.locator(".chapter-ocr-progress").get_attribute("value") == "2"
+        expect(page.locator(".chapter-ocr-summary")).to_contain_text("stale 1", timeout=6000)
+        expect(page.locator(".chapter-ocr-retry")).to_be_visible()
+        expect(page.locator(".chapter-ocr-progress")).to_have_attribute("value", "2")
 
         page.click(".chapter-ocr-retry")
-        page.wait_for_function("document.querySelector('.chapter-ocr-summary').textContent.includes('Hoàn tất')", timeout=4000)
+        expect(page.locator(".chapter-ocr-summary")).to_contain_text("Hoàn tất", timeout=4000)
         assert calls["retry"] == 1
-        assert page.locator(".chapter-ocr-retry").is_hidden()
+        expect(page.locator(".chapter-ocr-retry")).to_be_hidden()
 
         page.click(".chapter-ocr-run")
         page.wait_for_selector(".chapter-ocr-cancel:visible")
         page.click(".chapter-ocr-cancel")
-        page.wait_for_function("document.querySelector('.chapter-ocr-summary').textContent.includes('Đã hủy')")
+        expect(page.locator(".chapter-ocr-summary")).to_contain_text("Đã hủy")
         assert calls["cancel"] == 1
         assert not page.locator(".nav-next").is_disabled()
 
