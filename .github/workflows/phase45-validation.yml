@@ -6,6 +6,20 @@ on:
       - phase-4-5-render-export
 
 jobs:
+  sonar-annotations:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions:
+      checks: read
+    steps:
+      - name: Read Sonar annotations
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api \
+            repos/tuantran00541-spec/manga-translator/check-runs/97738630887/annotations \
+            --jq '.[] | {path,start_line,end_line,annotation_level,title}'
+
   validate:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
