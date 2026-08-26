@@ -13,7 +13,7 @@ from PIL import Image
 from app.config import OUTPUT_DIR
 from app.manifest_utils import get_manifest_lock, load_manifest_raw, save_manifest_raw, urlify_manifest
 from app.routers.image import _current_rendered_path, _fallback_page_path
-from app.routers.render45 import render_page
+from app.routers.render_commit import render_page
 from app.schemas import RenderRequest
 from app.security import validate_chapter_id, validate_image_size
 from app.text_objects import ensure_page_text_objects
