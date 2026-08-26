@@ -11,7 +11,7 @@ import app.config as config
 import app.manifest_utils as manifest_utils
 import app.routers.export as export_router
 import app.routers.image as image_router
-import app.routers.render45 as render45
+import app.routers.render_commit as render_commit
 import app.routers.translation as translation_router
 from app.translation.deepseek import TranslationResult
 
@@ -43,7 +43,7 @@ def test_processed_chapter_closes_translate_render_export_loop():
             patch.object(config, "PROCESSED_DIR", processed),
             patch.object(config, "OUTPUT_DIR", output),
             patch.object(manifest_utils, "PROCESSED_DIR", processed),
-            patch.object(render45, "OUTPUT_DIR", output),
+            patch.object(render_commit, "OUTPUT_DIR", output),
             patch.object(export_router, "OUTPUT_DIR", output),
             patch.object(image_router, "RAW_DIR", raw),
             patch.object(image_router, "PROCESSED_DIR", processed),
