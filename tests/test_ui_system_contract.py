@@ -55,8 +55,7 @@ def test_review_ai_busy_state_locks_mutating_controls_and_navigation():
     assert "mutableControls = [brushBtn, clearBtn, submitBtn, resetManualBtn, aiQcBtn, brushSize]" in js
     assert 'control.disabled = true' in js
     assert 'aiQcBtn.textContent = "AI đang kiểm tra…"' in js
-    assert 'prev.disabled = busy || activeReviewIndex === 0' in workspace
-    assert 'next.disabled = busy || activeReviewIndex === pageIndices.length - 1' in workspace
+    assert 'navigator.setBusy(busy)' in workspace
     assert 'continueBtn.disabled = busy' in workspace
 
 
