@@ -1,0 +1,161 @@
+diff --git a/app/static/js/review-workspace.js b/app/static/js/review-workspace.js
+index 0b6c20e..c1c2ea5 100644
+--- a/app/static/js/review-workspace.js
++++ b/app/static/js/review-workspace.js
+@@ -182,30 +182,59 @@
+     }
+     continueBtn.className = "ui-btn ui-btn-primary review-primary-action";
+     continueBtn.textContent = "Mở trình biên tập bản dịch";
+-    actions.append(aiStatus, help, continueBtn);
+-    toolbar.append(title, controlsSlot, actions);
+-
+-    const nav = document.createElement("nav");
+-    nav.className = "review-page-nav workspace-nav-bar";
+-    nav.setAttribute("aria-label", "Điều hướng trang kiểm tra chất lượng");
+-    const prev = document.createElement("button");
+-    prev.type = "button";
+-    prev.className = "review-nav-btn workspace-nav-btn";
+-    prev.textContent = "← Trang trước";
+-    prev.setAttribute("aria-label", "Trang trước");
+-    const position = document.createElement("div");
+-    position.className = "review-position workspace-nav-position";
+-    position.setAttribute("aria-live", "polite");
+-    const next = document.createElement("button");
+-    next.type = "button";
+-    next.className = "review-nav-btn workspace-nav-btn";
+-    next.textContent = "Trang sau →";
+-    next.setAttribute("aria-label", "Trang sau");
+-    nav.append(prev, position, next);
++    actions.append(aiStatus, continueBtn);
++    toolbar.append(title, actions);
++
++    const layout = document.createElement("div");
++    layout.className = "workbench-stage-grid review-workbench-grid";
++
++    const navItems = pageIndices.map((canonicalIndex) => {
++      const item = window.currentManifest.pages[canonicalIndex];
++      const needsReview = Boolean(item.needs_review || item.detection_state === "needs_review" || (item.detection_issues || []).length);
++      return {
++        key: canonicalIndex,
++        label: pageLabel(window.currentManifest.pages, canonicalIndex),
++        image: item.clean || item.original,
++        state: needsReview ? "review" : "ready",
++        stateLabel: needsReview ? "Cần kiểm tra" : "Đã xác minh",
++      };
++    });
++    let navigator = null;
+ 
+     const canvasHost = document.createElement("div");
+-    canvasHost.className = "review-canvas-host";
+-    workspace.append(toolbar, nav, canvasHost);
++    canvasHost.className = "review-canvas-host workbench-canvas-column";
++
++    const inspector = document.createElement("aside");
++    inspector.className = "context-inspector review-inspector";
++    inspector.setAttribute("aria-label", "Công cụ và kiểm tra chất lượng");
++    const inspectorHeading = document.createElement("div");
++    inspectorHeading.className = "context-inspector-heading";
++    inspectorHeading.innerHTML = '<span class="ui-eyebrow">Trang đang chọn</span><strong>Hiệu chỉnh & kiểm tra</strong>';
++    const gestureSection = document.createElement("section");
++    gestureSection.className = "inspector-section review-gesture-section";
++    const gestureTitle = document.createElement("h3");
++    gestureTitle.textContent = "Công cụ chỉnh sửa";
++    gestureSection.append(gestureTitle, controlsSlot);
++    const helpSection = document.createElement("section");
++    helpSection.className = "inspector-section review-help-section";
++    helpSection.appendChild(help);
++    inspector.append(inspectorHeading, gestureSection, helpSection);
++
++    navigator = window.createPageNavigator({
++      items: navItems,
++      activeIndex: activeReviewIndex,
++      title: "Trang kiểm tra",
++      ariaLabel: "Điều hướng trang kiểm tra chất lượng",
++      onSelect: (index) => {
++        if (workspace.classList.contains("review-busy")) return;
++        activeReviewIndex = index;
++        navigator.setActive(index);
++        renderActive();
++      },
++    });
++
++    layout.append(navigator.element, canvasHost, inspector);
++    workspace.append(toolbar, layout);
+     container.appendChild(workspace);
+ 
+     let mountedCard = null;
+@@ -240,44 +269,7 @@
+         controlsSlot.appendChild(controls);
+       }
+ 
+-      position.replaceChildren();
+-      const jumpWrap = document.createElement("label");
+-      jumpWrap.className = "workspace-nav-jump-wrap";
+-      jumpWrap.textContent = "Trang ";
+-      const jumpInput = document.createElement("input");
+-      jumpInput.type = "number";
+-      jumpInput.min = "1";
+-      jumpInput.max = String(pageIndices.length);
+-      jumpInput.value = String(activeReviewIndex + 1);
+-      jumpInput.className = "workspace-nav-jump-input";
+-      jumpInput.setAttribute("aria-label", "Nhảy đến trang");
+-      const doJump = () => {
+-        const targetIndex = parsePageNumber(jumpInput.value, pageIndices.length);
+-        if (targetIndex === null) {
+-          jumpInput.value = String(activeReviewIndex + 1);
+-          return;
+-        }
+-        if (targetIndex !== activeReviewIndex) {
+-          activeReviewIndex = targetIndex;
+-          renderActive();
+-        }
+-      };
+-      jumpInput.addEventListener("change", doJump);
+-      jumpInput.addEventListener("keydown", (event) => {
+-        if (event.key === "Enter") {
+-          event.preventDefault();
+-          doJump();
+-        }
+-      });
+-      jumpWrap.appendChild(jumpInput);
+-      const totalText = document.createElement("span");
+-      totalText.textContent = ` / ${pageIndices.length}`;
+-      const labelSpan = document.createElement("span");
+-      labelSpan.textContent = ` · ${pageLabel(window.currentManifest.pages, canonicalIndex)}`;
+-      position.append(jumpWrap, totalText, labelSpan);
+-
+-      prev.disabled = activeReviewIndex === 0;
+-      next.disabled = activeReviewIndex === pageIndices.length - 1;
++      navigator.setActive(activeReviewIndex);
+       if (typeof window.setWorkflowCheckpoint === "function") {
+         window.setWorkflowCheckpoint("review", canonicalIndex);
+       }
+@@ -294,9 +286,7 @@
+         if (brushBtn) brushBtn.disabled = busy;
+         if (clearBtn) clearBtn.disabled = busy;
+         if (brushSize) brushSize.disabled = busy;
+-        prev.disabled = busy || activeReviewIndex === 0;
+-        next.disabled = busy || activeReviewIndex === pageIndices.length - 1;
+-        jumpInput.disabled = busy;
++        navigator.setBusy(busy);
+         continueBtn.disabled = busy;
+       };
+       if (aiQcBtn) {
+@@ -306,17 +296,6 @@
+       syncBusy();
+     };
+ 
+-    prev.addEventListener("click", () => {
+-      if (workspace.classList.contains("review-busy") || activeReviewIndex <= 0) return;
+-      activeReviewIndex -= 1;
+-      renderActive();
+-    });
+-    next.addEventListener("click", () => {
+-      if (workspace.classList.contains("review-busy") || activeReviewIndex >= pageIndices.length - 1) return;
+-      activeReviewIndex += 1;
+-      renderActive();
+-    });
+-
+     renderActive();
+   }
+ 
