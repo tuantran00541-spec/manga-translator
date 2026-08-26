@@ -1,0 +1,190 @@
+ee_text",
++                                  mask_source="none", safe_to_inpaint=False,
++                                  ocr_eligible=False, needs_review=True)
++            if any(self._iou(candidate, b) > 0.55 for b in existing):
++                continue
++            contained_verified = 0
++            for b in existing:
++                if not b.safe_to_inpaint:
++                    continue
++                cx = (b.x1 + b.x2) / 2.0; cy = (b.y1 + b.y2) / 2.0
++                if x1 <= cx <= x2 and y1 <= cy <= y2:
++                    contained_verified += 1
++            if contained_verified >= 2:
++                continue
++
++            watermark = self._watermark_like(x1, y1, x2, y2, w, h)
++            crop = gray[y1:y2, x1:x2]
++            mask = self._seed_mask(crop)
++            ratio = float(np.count_nonzero(mask)) / float(max(1, mask.size))
++            page_ratio = (bw * bh) / float(max(1, w * h))
++            if page_ratio > 0.45 and any(b.safe_to_inpaint for b in existing):
++                continue
++            # Only very compact, non-watermark recovery masks are allowed to
++            # become destructive. Large outlined/SFX text stays review-only.
++            safe = bool(not watermark and 0.015 <= ratio <= 0.42 and page_ratio <= 0.035 and len(cluster) >= 3)
++            if safe:
++                candidate = replace(candidate, mask=mask, mask_source="opencv_mser",
++                                    safe_to_inpaint=True, ocr_eligible=True,
++                                    needs_review=False, confidence=0.35)
++            elif watermark:
++                candidate = replace(candidate, semantic_type="watermark", class_name="watermark")
++            out.append(candidate)
++        return out
+--- a/app/downloader/slicer.py	2026-08-26 09:12:32.000000000 +0000
++++ b/app/downloader/slicer.py	2026-08-26 09:21:43.478451801 +0000
+@@ -17,13 +17,14 @@
+ SAFE_CUT_BAND = 12
+ MAX_SAFE_SEARCH_EXPANSION = 360
+ FALLBACK_BAND = 18
++OVERLAP_CONTEXT = 160
+ 
+ 
+-def slice_image(image_path: Path, out_dir: Path, prefix: str) -> list[Path]:
++def slice_image(image_path: Path, out_dir: Path, prefix: str, *, return_metadata: bool = False):
+     data = np.fromfile(str(image_path), dtype=np.uint8)
+     image = cv2.imdecode(data, cv2.IMREAD_COLOR)
+     if image is None:
+-        return [image_path]
++        return [image_path] if not return_metadata else [{"path": image_path}]
+ 
+     h, w = image.shape[:2]
+     ext = image_path.suffix or ".jpg"
+@@ -35,25 +36,47 @@
+         else:
+             cv2.imwrite(str(path), seg)
+ 
+-    # A page below the detector's single-pass limit does not need slicing.
+     if h <= SLICE_MAX_HEIGHT:
+         out_path = out_dir / f"{prefix}_00{ext}"
+         save_segment(out_path, image)
+-        return [out_path]
++        if not return_metadata:
++            return [out_path]
++        return [{
++            "path": out_path, "source_y1": 0, "source_y2": h,
++            "core_y1": 0, "core_y2": h, "core_source_y1": 0, "core_source_y2": h,
++            "unsafe_before": False, "unsafe_after": False, "source_height": h,
++        }]
+ 
+     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+     cut_rows = _find_cut_rows(gray, h, w)
++    unsafe_rows = _get_content_row_mask(gray, h, w)
+ 
+-    paths = []
+-    y_start = 0
+-    for i, y_end in enumerate(cut_rows + [h]):
+-        segment = image[y_start:y_end, :]
+-        out_path = out_dir / f"{prefix}_{i:02d}{ext}"
+-        save_segment(out_path, segment)
++    def boundary_unsafe(y: int) -> bool:
++        lo=max(0,int(y)-SAFE_CUT_BAND); hi=min(h,int(y)+SAFE_CUT_BAND+1)
++        return bool(np.any(unsafe_rows[lo:hi]))
++
++    boundaries = [0] + cut_rows + [h]
++    flags = {int(y): boundary_unsafe(int(y)) for y in cut_rows}
++    paths=[]; meta=[]
++    for i in range(len(boundaries)-1):
++        core_start, core_end = int(boundaries[i]), int(boundaries[i+1])
++        unsafe_before = bool(flags.get(core_start, False))
++        unsafe_after = bool(flags.get(core_end, False))
++        context_start = max(0, core_start - (OVERLAP_CONTEXT if unsafe_before else 0))
++        context_end = min(h, core_end + (OVERLAP_CONTEXT if unsafe_after else 0))
++        segment=image[context_start:context_end,:]
++        out_path=out_dir / f"{prefix}_{i:02d}{ext}"
++        save_segment(out_path,segment)
+         paths.append(out_path)
+-        y_start = y_end
+-
+-    return paths
++        meta.append({
++            "path": out_path,
++            "source_y1": context_start, "source_y2": context_end,
++            "core_y1": core_start-context_start, "core_y2": core_end-context_start,
++            "core_source_y1": core_start, "core_source_y2": core_end,
++            "unsafe_before": unsafe_before, "unsafe_after": unsafe_after,
++            "source_height": h,
++        })
++    return meta if return_metadata else paths
+ 
+ 
+ def _find_cut_rows(gray: np.ndarray, h: int, w: int) -> list[int]:
+@@ -126,7 +149,7 @@
+             # Dense artwork can legitimately have no completely blank band.
+             # Pick the least-content local band instead of giving up and
+             # passing the entire long page into the detector.
+-            cut = _find_low_content_cut(scores, expanded_lo, expanded_hi, target)
++            cut = _find_low_content_cut(scores, expanded_lo, expanded_hi, target, unsafe_rows)
+ 
+         if cut is None or cut <= y or cut >= h:
+             # Should be unreachable with sane constants, but avoids a loop if
+@@ -192,6 +215,7 @@
+     lo: int,
+     hi: int,
+     target: int,
++    unsafe_rows: np.ndarray | None = None,
+ ) -> int | None:
+     if lo > hi or len(scores) == 0:
+         return None
+@@ -217,6 +241,10 @@
+     best = float(np.min(band_score))
+     tolerance = max(1.0, abs(best) * 0.08)
+     low_content = rows[band_score <= best + tolerance]
++    if unsafe_rows is not None and low_content.size:
++        safe_candidates = low_content[~unsafe_rows[low_content]]
++        if safe_candidates.size:
++            low_content = safe_candidates
+     if low_content.size == 0:
+         return int(rows[int(np.argmin(band_score))])
+ 
+--- a/app/ocr/service.py	2026-08-26 09:12:32.000000000 +0000
++++ b/app/ocr/service.py	2026-08-26 09:21:14.046438485 +0000
+@@ -144,6 +144,8 @@
+                 for box in page.get("boxes", []) or []:
+                     if not isinstance(box, dict) or box.get("removed"):
+                         continue
++                    if box.get("ocr_eligible") is False:
++                        continue
+                     box_id = box.get("id")
+                     if box_id:
+                         items.append((page_index, str(box_id)))
+@@ -253,6 +255,8 @@
+             box = _find_box(page, box_id)
+             if box is None or box.get("removed"):
+                 raise ValueError(f"OCR target box not found: {box_id}")
++            if box.get("ocr_eligible") is False:
++                raise ValueError(f"OCR target box is not eligible: {box_id}")
+             original_value = page.get("original")
+             if not original_value:
+                 raise FileNotFoundError("Original page image is not configured")
+--- a/app/pipeline.py	2026-08-26 09:12:32.000000000 +0000
++++ b/app/pipeline.py	2026-08-26 09:22:42.300685358 +0000
+@@ -240,7 +240,7 @@
+ 
+             def _slice_one(item):
+                 idx, raw_path = item
+-                return idx, slice_image(raw_path, sliced_dir, f"{idx:03d}")
++                return idx, slice_image(raw_path, sliced_dir, f"{idx:03d}", return_metadata=True)
+ 
+             with ThreadPoolExecutor(max_workers=max_workers) as pool:
+                 futures = {
+@@ -252,8 +252,20 @@
+ 
+         pages = []
+         for source_index in range(len(raw_paths)):
+-            for slice_index, slice_path in enumerate(slice_results[source_index]):
+-                pages.append({
++            for slice_index, slice_item in enumerate(slice_results[source_index]):
++                if isinstance(slice_item, dict):
++                    slice_path = Path(slice_item["path"])
++                    stitch_core = {
++                        k: slice_item.get(k) for k in (
++                            "source_y1", "source_y2", "core_y1", "core_y2",
++                            "core_source_y1", "core_source_y2", "unsafe_before",
++                            "unsafe_after", "source_height"
++                        )
++                    }
++                else:
++                    slice_path = Path(slice_item)
++                    stitch_core = None
++                page = {
