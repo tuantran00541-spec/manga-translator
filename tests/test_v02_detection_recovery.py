@@ -1,3 +1,4 @@
+# Real-chapter acceptance also covers Asura chapter 195 under production workers=2.
 import numpy as np
 
 from app.detector.bubble_detector import BubbleBox, YoloDetector
