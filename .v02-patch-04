@@ -1,196 +1,185 @@
-work_images}
-         if len(widths) != 1:
-             raise ValueError("Slice widths do not match")
--        if len(images) == 1:
-+        if len(work_images) == 1:
-             buffer = io.BytesIO()
--            images[0].save(buffer, format="PNG")
-+            work_images[0].save(buffer, format="PNG")
-             return buffer.getvalue()
--        width = images[0].width
--        total_height = sum(image.height for image in images)
-+        width = work_images[0].width
-+        total_height = sum(image.height for image in work_images)
-         canvas = Image.new("RGB", (width, total_height), "white")
-         y = 0
--        for image in images:
-+        for image in work_images:
-             canvas.paste(image, (0, y))
-             y += image.height
-         buffer = io.BytesIO()
-         canvas.save(buffer, format="PNG")
-         return buffer.getvalue()
-     finally:
-+        for image in cropped:
-+            image.close()
-         for image in images:
-             image.close()
+nd memory-pattern cache retain large peak allocations for
+     Manga Translator's detector/segmenter/LaMa sessions, so both are disabled by
+-    default. Inference serialization is opt-in per session: detectors remain
+-    concurrent across workers, while LaMa requests serialization because two
+-    simultaneous 512px workspaces materially increase peak RSS.
++    default. Inference serialization is opt-in per session: detectors and the
++    preferred dynamic LaMa can use the two-page worker schedule concurrently,
++    while the fixed 512px LaMa fallback serializes its larger compatibility
++    workspaces to bound peak RSS.
+     """
  
-@@ -153,7 +168,7 @@
+     opts = ort.SessionOptions()
+@@ -106,6 +128,7 @@ def make_session(
+         sess_options=opts,
+         providers=["CPUExecutionProvider"],
+     )
++    _drop_model_file_cache_hint(model_path)
+     should_serialize = (
+         _env_flag(_SERIALIZE_ENV, False)
+         if serialize_inference is None
+diff --git a/app/pipeline.py b/app/pipeline.py
+index 2016a6c..9a1cac0 100644
+--- a/app/pipeline.py
++++ b/app/pipeline.py
+@@ -28,8 +28,19 @@ from app.manifest_utils import (
+ from app.security import MAX_IMAGE_PIXELS, MAX_UPLOAD_FILE_BYTES, MAX_UPLOAD_FILES, MAX_UPLOAD_TOTAL_BYTES, validate_upload_image
  
-     with get_manifest_lock(chapter_id):
-         manifest = load_manifest_raw(chapter_id)
--        groups: dict[int, list[tuple[int, int, Path]]] = {}
-+        groups: dict[int, list[tuple[int, int, Path, tuple[int, int] | None]]] = {}
-         for page_index, page in enumerate(manifest.get("pages", [])):
-             if page.get("skipped"):
-                 path = _fallback_page_path(chapter_id, page)
-@@ -169,13 +184,20 @@
-             validate_image_size(path)
-             source_page = _safe_int(page.get("source_page"), page_index)
-             slice_index = _safe_int(page.get("slice_index"), 0)
--            groups.setdefault(source_page, []).append((slice_index, page_index, path))
-+            core = page.get("stitch_core") if isinstance(page.get("stitch_core"), dict) else None
-+            core_range = None
-+            if core is not None:
-+                try:
-+                    core_range = (int(core.get("core_y1", 0)), int(core.get("core_y2", 0)))
-+                except (TypeError, ValueError):
-+                    core_range = None
-+            groups.setdefault(source_page, []).append((slice_index, page_index, path, core_range))
  
-         try:
-             with zipfile.ZipFile(tmp_archive, "w", compression=zipfile.ZIP_STORED) as archive:
-                 for output_index, source_page in enumerate(sorted(groups), start=1):
-                     items = sorted(groups[source_page], key=lambda item: (item[0], item[1]))
--                    payload = _stitch_pngs([item[2] for item in items])
-+                    payload = _stitch_pngs([item[2] for item in items], [item[3] for item in items])
-                     archive.writestr(f"page_{output_index:03d}.png", payload)
-             os.replace(tmp_archive, final_archive)
-         finally:
---- a/app/text_objects.py	2026-08-26 09:12:32.000000000 +0000
-+++ b/app/text_objects.py	2026-08-26 09:21:14.046581912 +0000
-@@ -96,6 +96,8 @@
-     for box in boxes:
-         if not isinstance(box, dict) or box.get("removed"):
-             continue
-+        if box.get("ocr_eligible") is False:
-+            continue
-         box_id = str(box.get("id") or "")
-         if not box_id:
-             continue
---- /dev/null	2026-08-26 08:50:09.058596701 +0000
-+++ b/tests/test_v02_detection_recovery.py	2026-08-26 09:29:18.184586724 +0000
-@@ -0,0 +1,142 @@
-+from __future__ import annotations
-+
-+from contextlib import nullcontext
-+from pathlib import Path
-+from unittest.mock import patch
-+
-+import cv2
-+import numpy as np
-+from PIL import Image
-+
-+from app.detector.bubble_detector import BubbleBox, YoloDetector
-+from app.detector.combined_detector import CombinedTextDetector
-+from app.detector.recovery import SecondaryTextRecovery
-+from app.downloader.slicer import slice_image
-+from app.ocr.service import OCRService
-+from app.routers.export import _stitch_pngs
-+from app.text_objects import ensure_page_text_objects
++def _advise_file_cache_drop(file_obj) -> None:
++    if not hasattr(os, "posix_fadvise") or not hasattr(os, "POSIX_FADV_DONTNEED"):
++        return
++    try:
++        os.posix_fadvise(file_obj.fileno(), 0, 0, os.POSIX_FADV_DONTNEED)
++    except (OSError, AttributeError, ValueError):
++        pass
 +
 +
-+def test_bubblebox_keeps_detection_provenance():
-+    b = BubbleBox(1, 2, 11, 12, 0.7, source_model="bubble_yolo.onnx", class_id=1,
-+                  class_name="text_free", semantic_type="free_text")
-+    assert b.source_model == "bubble_yolo.onnx"
-+    assert b.class_id == 1 and b.class_name == "text_free"
-+    assert b.semantic_type == "free_text"
+ def read_image(path: Path) -> np.ndarray:
+-    data = np.fromfile(str(path), dtype=np.uint8)
++    with path.open("rb") as source_file:
++        data = np.fromfile(source_file, dtype=np.uint8)
++        _advise_file_cache_drop(source_file)
+     img = cv2.imdecode(data, cv2.IMREAD_COLOR)
+     if img is None:
+         raise ValueError(f"Could not read image at {path}")
+@@ -43,9 +54,17 @@ def write_image(path: Path, image: np.ndarray) -> None:
+     ext = path.suffix or ".png"
+     success, buf = cv2.imencode(ext, image)
+     if success:
+-        buf.tofile(str(path))
++        with path.open("wb") as output_file:
++            buf.tofile(output_file)
++            output_file.flush()
++            _advise_file_cache_drop(output_file)
+     else:
+         cv2.imwrite(str(path), image)
++        try:
++            with path.open("rb") as output_file:
++                _advise_file_cache_drop(output_file)
++        except OSError:
++            pass
+ 
+ 
+ def _encode_mask(mask: np.ndarray | None) -> str | None:
+@@ -240,7 +259,7 @@ class ChapterPipeline:
+ 
+             def _slice_one(item):
+                 idx, raw_path = item
+-                return idx, slice_image(raw_path, sliced_dir, f"{idx:03d}")
++                return idx, slice_image(raw_path, sliced_dir, f"{idx:03d}", return_metadata=True)
+ 
+             with ThreadPoolExecutor(max_workers=max_workers) as pool:
+                 futures = {
+@@ -252,8 +271,20 @@ class ChapterPipeline:
+ 
+         pages = []
+         for source_index in range(len(raw_paths)):
+-            for slice_index, slice_path in enumerate(slice_results[source_index]):
+-                pages.append({
++            for slice_index, slice_item in enumerate(slice_results[source_index]):
++                if isinstance(slice_item, dict):
++                    slice_path = Path(slice_item["path"])
++                    stitch_core = {
++                        k: slice_item.get(k) for k in (
++                            "source_y1", "source_y2", "core_y1", "core_y2",
++                            "core_source_y1", "core_source_y2", "unsafe_before",
++                            "unsafe_after", "source_height"
++                        )
++                    }
++                else:
++                    slice_path = Path(slice_item)
++                    stitch_core = None
++                page = {
+                     "original": slice_path.as_posix(),
+                     "clean": None,
+                     "boxes": [],
+@@ -261,7 +292,10 @@ class ChapterPipeline:
+                     "excluded_regions": [],
+                     "source_page": source_index,
+                     "slice_index": slice_index,
+-                })
++                }
++                if stitch_core is not None:
++                    page["stitch_core"] = stitch_core
++                pages.append(page)
+ 
+         manifest = {
+             "chapter_id": chapter_id,
+@@ -289,6 +323,7 @@ class ChapterPipeline:
+                             Path(page["original"]),
+                             copy.deepcopy(page.get("excluded_regions", [])),
+                             copy.deepcopy(page.get("boxes", [])),
++                            copy.deepcopy(page.get("stitch_core")),
+                             state_snapshot,
+                         ))
+ 
+@@ -308,13 +343,14 @@ class ChapterPipeline:
+         # each page sequential avoids oversubscribing CPU threads.
+         parallel_detectors = max_workers == 1
+ 
+-        def _process_one(item: tuple[int, Path, list[dict], list[dict], dict | None]) -> tuple[int, dict, dict | None]:
+-            idx, img_path, excluded, existing_boxes, snapshot = item
++        def _process_one(item) -> tuple[int, dict, dict | None]:
++            idx, img_path, excluded, existing_boxes, stitch_core, snapshot = item
+             return idx, self._process_page(
+                 img_path,
+                 processed_dir,
+                 excluded_regions=excluded,
+                 existing_boxes=existing_boxes,
++                stitch_core=stitch_core,
+                 parallel_detectors=parallel_detectors,
+             ), snapshot
+ 
+@@ -363,6 +399,10 @@ class ChapterPipeline:
+                         detected_boxes = assign_stable_detector_box_ids(page_data["boxes"], existing_boxes)
+                         manual_boxes = [b for b in existing_boxes if b.get("manual")]
+                         target_page["boxes"] = detected_boxes + manual_boxes
++                        target_page["detection_state"] = page_data.get("detection_state", "verified")
++                        target_page["detection_issues"] = list(page_data.get("detection_issues") or [])
++                        target_page["unverified_regions"] = list(page_data.get("unverified_regions") or [])
++                        target_page["needs_review"] = bool(page_data.get("needs_review"))
+                         bump_page_revision(target_page, "process_revision")
+                         bump_page_revision(target_page, "clean_revision")
+ 
+@@ -972,6 +1012,7 @@ class ChapterPipeline:
+         processed_dir: Path,
+         excluded_regions: list[dict] | None = None,
+         existing_boxes: list[dict] | None = None,
++        stitch_core: dict | None = None,
+         *,
+         parallel_detectors: bool = False,
+     ) -> dict:
+@@ -985,9 +1026,25 @@ class ChapterPipeline:
+             {
+                 "x1": b.x1, "y1": b.y1, "x2": b.x2, "y2": b.y2,
+                 "confidence": b.confidence, "_mask_array": b.mask,
++                "source_model": b.source_model, "class_id": b.class_id,
++                "class_name": b.class_name, "semantic_type": b.semantic_type,
++                "mask_source": b.mask_source, "safe_to_inpaint": bool(b.safe_to_inpaint),
++                "ocr_eligible": bool(b.ocr_eligible), "needs_review": bool(b.needs_review),
+             }
+             for b in detected
+         ]
++        if isinstance(stitch_core, dict):
++            try:
++                core_y1 = int(stitch_core.get("core_y1", 0))
++                core_y2 = int(stitch_core.get("core_y2", image.shape[0]))
++            except (TypeError, ValueError):
++                core_y1, core_y2 = 0, image.shape[0]
++            for record in detector_records:
++                cy = (int(record["y1"]) + int(record["y2"])) / 2.0
++                if cy < core_y1 or cy >= core_y2:
++                    record["overlap_context_only"] = True
++                    record["ocr_eligible"] = False
 +
-+
-+def test_verified_mask_requires_exact_nonempty_geometry():
-+    b = BubbleBox(0, 0, 10, 10, 0.8, np.ones((10, 10), np.uint8))
-+    assert b.verified_mask
-+    assert not BubbleBox(0, 0, 10, 10, 0.8, np.zeros((10, 10), np.uint8)).verified_mask
-+    assert not BubbleBox(0, 0, 10, 10, 0.8, np.ones((9, 10), np.uint8)).verified_mask
-+
-+
-+def test_class_aware_nms_does_not_suppress_text_free_with_bubble():
-+    d = YoloDetector.__new__(YoloDetector)
-+    d.conf_threshold = 0.1
-+    d.source_model = "bubble_yolo.onnx"
-+    d._decode_mask = lambda *args, **kwargs: None
-+    candidates = [
-+        (10, 10, 100, 100, 0.9, 0, 2, None, None),
-+        (12, 12, 98, 98, 0.8, 1, 2, None, None),
-+    ]
-+    boxes = d._nms(candidates, None)
-+    assert {b.class_name for b in boxes} == {"text_bubble", "text_free"}
-+
-+
-+def test_proposal_without_mask_is_review_only():
-+    d = YoloDetector.__new__(YoloDetector)
-+    d.source_model = "bubble_yolo.onnx"
-+    b = BubbleBox(0, 0, 20, 20, 0.4, None, source_model="bubble_yolo.onnx",
-+                  class_name="text_free", semantic_type="free_text")
-+    out = d._with_semantics(b)
-+    assert not out.safe_to_inpaint and not out.ocr_eligible and out.needs_review
-+
-+
-+def test_segmenter_verified_mask_is_safe():
-+    d = YoloDetector.__new__(YoloDetector)
-+    d.source_model = "text_segmenter.onnx"
-+    b = BubbleBox(0, 0, 20, 20, 0.9, np.ones((20, 20), np.uint8),
-+                  source_model="text_segmenter.onnx", class_name="text_comic", semantic_type="text")
-+    out = d._with_semantics(b)
-+    assert out.safe_to_inpaint and out.ocr_eligible and not out.needs_review
-+
-+
-+def test_watermark_edge_region_is_downgraded():
-+    d = CombinedTextDetector.__new__(CombinedTextDetector)
-+    mask = np.ones((30, 250), np.uint8)
-+    b = BubbleBox(650, 500, 900, 530, 0.8, mask, source_model="text_segmenter.onnx",
-+                  class_name="text_comic", semantic_type="text", safe_to_inpaint=True, ocr_eligible=True)
-+    out = d._classify(b, 900, 1000)
-+    assert out.semantic_type == "watermark"
-+    assert not out.safe_to_inpaint and not out.ocr_eligible and out.needs_review
-+
-+
-+def test_normal_dialogue_not_misclassified_as_watermark():
-+    d = CombinedTextDetector.__new__(CombinedTextDetector)
-+    mask = np.ones((35, 300), np.uint8)
-+    b = BubbleBox(200, 500, 500, 535, 0.9, mask, source_model="text_segmenter.onnx",
-+                  class_name="text_comic", semantic_type="text")
-+    out = d._classify(b, 900, 1000)
-+    assert out.semantic_type == "text"
-+    assert out.safe_to_inpaint and out.ocr_eligible
-+
-+
-+def test_recovery_watermark_heuristic_requires_edge_alignment():
-+    assert SecondaryTextRecovery._watermark_like(650, 500, 900, 530, 900, 1000)
-+    assert not SecondaryTextRecovery._watermark_like(250, 500, 600, 535, 900, 1000)
-+
-+
-+def test_ocr_plan_skips_review_only_regions():
-+    manifest = {"pages": [{"boxes": [
-+        {"id": "safe", "ocr_eligible": True},
-+        {"id": "review", "ocr_eligible": False},
-+    ]}]}
-+    svc = OCRService.__new__(OCRService)
-+    with patch("app.ocr.service.get_manifest_lock", return_value=nullcontext()), \
-+         patch("app.ocr.service.load_manifest_raw", return_value=manifest):
-+        assert svc.plan_chapter("deadbeef") == [(0, "safe")]
-+
-+
-+def test_auto_text_objects_skip_review_only_boxes():
-+    page = {"boxes": [
-+        {"id": "safe", "x1": 0, "y1": 0, "x2": 20, "y2": 20, "ocr_eligible": True},
-+        {"id": "review", "x1": 30, "y1": 0, "x2": 50, "y2": 20, "ocr_eligible": False},
-+    ]}
-+    created, changed = ensure_page_text_objects(page)
-+    assert changed and created == 1
-+    assert page["text_objects"][0]["source_boxes"] == ["safe"]
-+
-+
-+def test_overlap_slicer_records_core_ownership(tmp_path: Path):
-+    # Dense synthetic artwork: no blank gutter, forcing overlap context.
-+    h, w = 3400, 120
-+    image = np.full((h, w, 3), 127, np.uint8)
-+    cv2.line(image, (0, 0), (w - 1, h - 1), (0, 0, 0), 4)
-+    src = tmp_path / "dense.png"
-+    cv2.imwrite(str(src), image)
-+    items = slice_image(src, tmp_path, "dense", return_metadata=True)
-+    assert len(items) >= 3
-+    assert any(x["unsafe_after"] for x in items[:-1])
-+    for item in ite
+         assign_stable_detector_box_ids(detector_records, existing_boxes)
+         old_by_id = {str(b.get("id")): b for b in existing_boxes if isinstance(b, dict) and b.get("id")}
+ 
+@@ -1004,11 +1061,24 @@ class ChapterPipeline:
+                     for key in ("x1", "y1", "x2", "y2"):
+                         record[key] = int(old[key])
+                     record["_mask_array"] = None
+-            if not record.get("removed"):
+-                effective_boxes.append(BubbleBox(
++                    record["safe
