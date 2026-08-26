@@ -1,12 +1,12 @@
 import numpy as np
 import cv2
-from app.detector.bubble_detector import BubbleBox
+from app.detector.bubble_detector import BubbleBox, DETECTOR_CONFIDENCE_MAX
 from app.logging_config import logger
 
 from app.config import MASK_DILATE_KERNEL_SIZE
 
 MASK_EXPAND = 8
-MANUAL_CONFIDENCE_SENTINEL = 0.999999
+MANUAL_CONFIDENCE_SENTINEL = 1.0
 
 
 def adaptive_dilate_mask(mask: np.ndarray, crop_img: np.ndarray | None = None) -> np.ndarray:
@@ -30,14 +30,20 @@ def adaptive_dilate_mask(mask: np.ndarray, crop_img: np.ndarray | None = None) -
 
 
 def _rectangle_fallback_allowed(box: BubbleBox) -> bool:
-    """Rectangle masks are destructive and must be opt-in.
+    """Allow destructive rectangle masks only for explicit/manual intent.
 
-    Current manual boxes are persisted with confidence=1.0 while detector boxes
-    retain model confidence. Keep that legacy sentinel working until provenance is
-    carried directly on BubbleBox, and prefer the explicit attribute when callers
-    can supply it.
+    Callers may opt in with ``allow_rectangle_fallback``. The persisted v0.1
+    manual-box format predates that attribute and uses confidence=1.0. Detector
+    confidence is capped at ``DETECTOR_CONFIDENCE_MAX`` strictly below 1.0, so
+    the legacy sentinel is now collision-free rather than heuristic.
     """
-    return bool(getattr(box, "allow_rectangle_fallback", False)) or float(box.confidence) >= MANUAL_CONFIDENCE_SENTINEL
+    explicit = getattr(box, "allow_rectangle_fallback", None)
+    if explicit is not None:
+        return bool(explicit)
+    return (
+        DETECTOR_CONFIDENCE_MAX < MANUAL_CONFIDENCE_SENTINEL
+        and float(box.confidence) >= MANUAL_CONFIDENCE_SENTINEL
+    )
 
 
 def build_mask(image_shape: tuple[int, int], boxes: list[BubbleBox], crop_img: np.ndarray | None = None) -> np.ndarray:
