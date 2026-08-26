@@ -10,7 +10,7 @@ from fastapi import HTTPException
 import app.config as config
 import app.manifest_utils as manifest_utils
 import app.routers.image as image_mod
-import app.routers.render45 as render45
+import app.routers.render_commit as render_commit
 from app.main import app
 from app.render.identity import render_artifact_is_current
 from app.schemas import RenderRequest
@@ -19,7 +19,7 @@ from app.schemas import RenderRequest
 CHAPTER_ID = "45abc123"
 
 
-class Phase45RenderHarness(unittest.TestCase):
+class RenderHarness(unittest.TestCase):
     def setUp(self):
         self.td = tempfile.TemporaryDirectory()
         self.root = Path(self.td.name)
@@ -48,7 +48,7 @@ class Phase45RenderHarness(unittest.TestCase):
             patch.object(config, "PROCESSED_DIR", self.processed),
             patch.object(config, "OUTPUT_DIR", self.output),
             patch.object(manifest_utils, "PROCESSED_DIR", self.processed),
-            patch.object(render45, "OUTPUT_DIR", self.output),
+            patch.object(render_commit, "OUTPUT_DIR", self.output),
             patch.object(image_mod, "RAW_DIR", self.raw),
             patch.object(image_mod, "PROCESSED_DIR", self.processed),
             patch.object(image_mod, "OUTPUT_DIR", self.output),
@@ -128,11 +128,11 @@ class Phase45RenderHarness(unittest.TestCase):
         return RenderRequest(**payload)
 
     def _render_successfully(self):
-        with patch.object(render45, "_render_snapshot", return_value=1):
-            return render45.render_page(self._request())
+        with patch.object(render_commit, "_render_snapshot", return_value=1):
+            return render_commit.render_page(self._request())
 
 
-class RenderIdentityTests(Phase45RenderHarness):
+class RenderIdentityTests(RenderHarness):
     def test_successful_render_stamps_identity_and_persists_render_state(self):
         self._save_manifest()
         result = self._render_successfully()
@@ -167,9 +167,9 @@ class RenderIdentityTests(Phase45RenderHarness):
             return 1
 
         request = self._request()
-        with patch.object(render45, "_render_snapshot", side_effect=mutate_during_render):
+        with patch.object(render_commit, "_render_snapshot", side_effect=mutate_during_render):
             with self.assertRaises(HTTPException) as caught:
-                render45.render_page(request)
+                render_commit.render_page(request)
 
         self.assertEqual(caught.exception.status_code, 409)
         page = self._load_manifest()["pages"][0]
@@ -223,7 +223,7 @@ class RenderIdentityTests(Phase45RenderHarness):
 
 
 class RenderRouteContractTests(unittest.TestCase):
-    def test_phase45_render_route_precedes_legacy_render_route(self):
+    def test_revision_safe_render_route_precedes_legacy_render_route(self):
         modules = [
             route.endpoint.__module__
             for route in app.routes
@@ -231,7 +231,7 @@ class RenderRouteContractTests(unittest.TestCase):
             and "POST" in (getattr(route, "methods", None) or set())
         ]
         self.assertGreaterEqual(len(modules), 2)
-        self.assertEqual(modules[0], "app.routers.render45")
+        self.assertEqual(modules[0], "app.routers.render_commit")
 
 
 if __name__ == "__main__":
