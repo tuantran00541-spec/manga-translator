@@ -1,7 +1,9 @@
 import numpy as np
 import cv2
+from dataclasses import replace
 from concurrent.futures import ThreadPoolExecutor
 from app.detector.bubble_detector import YoloDetector, BubbleBox, MAX_BOX_AREA_RATIO
+from app.detector.recovery import SecondaryTextRecovery
 from app.config import (
     BUBBLE_DETECTOR_MODEL,
     TEXT_SEGMENTER_MODEL,
@@ -12,16 +14,31 @@ from app.config import (
 
 class CombinedTextDetector:
     def __init__(self):
-        self.bubble_detector = YoloDetector(BUBBLE_DETECTOR_MODEL, BUBBLE_CONF_THRESHOLD)
+        self.bubble_detector = YoloDetector(BUBBLE_DETECTOR_MODEL, min(BUBBLE_CONF_THRESHOLD, 0.12))
         self.text_detector = YoloDetector(TEXT_SEGMENTER_MODEL, TEXT_CONF_THRESHOLD)
+        self.recovery = SecondaryTextRecovery()
+
+    @staticmethod
+    def _watermark_like(box: BubbleBox, w: int, h: int) -> bool:
+        bw, bh = box.x2 - box.x1, box.y2 - box.y1
+        aspect = bw / max(1.0, float(bh))
+        edge_touch = box.x1 < w * 0.04 or box.x2 > w * 0.96
+        vertical_edge = box.y1 < h * 0.05 or box.y2 > h * 0.95
+        return bool((edge_touch and aspect >= 4.0 and bh <= h * 0.12) or
+                    (vertical_edge and aspect >= 6.0 and bh <= h * 0.08))
+
+    def _classify(self, box: BubbleBox, w: int, h: int) -> BubbleBox:
+        if self._watermark_like(box, w, h):
+            return replace(box, semantic_type="watermark", class_name="watermark",
+                           safe_to_inpaint=False, ocr_eligible=False, needs_review=True)
+        if box.verified_mask and "text_segmenter" in box.source_model.lower():
+            return replace(box, mask_source="text_segmenter", safe_to_inpaint=True,
+                           ocr_eligible=True, needs_review=False)
+        return replace(box, safe_to_inpaint=False, ocr_eligible=False, needs_review=True)
 
     def detect(self, image: np.ndarray, *, parallel: bool = False) -> list[BubbleBox]:
         h, w = image.shape[:2]
         if parallel:
-            # Bubble and text models are independent. Running them together is
-            # useful when only one page is active; the pipeline disables this
-            # when it is already parallelising multiple pages to avoid CPU
-            # oversubscription.
             with ThreadPoolExecutor(max_workers=2, thread_name_prefix="detector") as pool:
                 bubble_future = pool.submit(self.bubble_detector.detect, image)
                 text_future = pool.submit(self.text_detector.detect, image)
@@ -31,85 +48,56 @@ class CombinedTextDetector:
             bubble_boxes = self.bubble_detector.detect(image)
             text_boxes = self.text_detector.detect(image)
 
-        result_boxes = []
-        used_text_boxes = set()
+        bubble_boxes = [self._classify(b, w, h) for b in bubble_boxes]
+        text_boxes = [self._classify(t, w, h) for t in text_boxes]
+        result_boxes: list[BubbleBox] = []
+        used_text_boxes: set[int] = set()
 
         for b in bubble_boxes:
-            inside_text = [
-                t for i, t in enumerate(text_boxes)
-                if self._is_inside(t, b)
-            ]
-            if inside_text:
-                avg_box_h = sum(t.y2 - t.y1 for t in inside_text) / len(inside_text)
-                cluster_h = max(t.y2 for t in inside_text) - min(t.y1 for t in inside_text)
-                if len(inside_text) > 3 or cluster_h > 4.0 * avg_box_h:
-                    sub_groups = self._split_cluster_by_lines(inside_text, avg_box_h)
-                else:
-                    sub_groups = [inside_text]
-
-                for group in sub_groups:
-                    raw_min_x = min(t.x1 for t in group) - 24
-                    raw_min_y = min(t.y1 for t in group) - 10
-                    raw_max_x = max(t.x2 for t in group) + 24
-                    raw_max_y = max(t.y2 for t in group) + 10
-
-                    min_x = max(b.x1 - 8, raw_min_x)
-                    min_y = max(b.y1 - 8, raw_min_y)
-                    max_x = min(b.x2 + 8, raw_max_x)
-                    max_y = min(b.y2 + 8, raw_max_y)
-
-                    if max_x > min_x and max_y > min_y:
-                        min_x, min_y, max_x, max_y = int(min_x), int(min_y), int(max_x), int(max_y)
-                        merged_mask = self._merge_masks(group, min_x, min_y, max_x, max_y)
-                        merged_box = BubbleBox(
-                            min_x, min_y, max_x, max_y,
-                            max(t.confidence for t in group),
-                            merged_mask,
-                        )
-                        result_boxes.append(merged_box)
-
-                for i, t in enumerate(text_boxes):
-                    if self._is_inside(t, b):
-                        used_text_boxes.add(i)
+            inside = [(i, t) for i, t in enumerate(text_boxes) if self._is_inside(t, b)]
+            if inside:
+                group = [t for _, t in inside]
+                min_x = max(0, min(t.x1 for t in group) - 20)
+                min_y = max(0, min(t.y1 for t in group) - 8)
+                max_x = min(w, max(t.x2 for t in group) + 20)
+                max_y = min(h, max(t.y2 for t in group) + 8)
+                merged_mask = self._merge_masks(group, min_x, min_y, max_x, max_y)
+                seed = max(group, key=lambda t: t.confidence)
+                safe = merged_mask is not None and bool(np.any(merged_mask > 0))
+                merged = replace(seed, x1=int(min_x), y1=int(min_y), x2=int(max_x), y2=int(max_y),
+                                 mask=merged_mask, semantic_type=b.semantic_type,
+                                 mask_source="text_segmenter" if safe else "none",
+                                 safe_to_inpaint=safe, ocr_eligible=safe, needs_review=not safe)
+                result_boxes.append(self._classify(merged, w, h))
+                used_text_boxes.update(i for i, _ in inside)
             else:
-                bw = b.x2 - b.x1
-                bh = b.y2 - b.y1
-                if b.mask is not None and b.mask.shape == (bh, bw) and b.mask.any():
-                    margin_x = max(2, int(bw * 0.03))
-                    margin_y = max(2, int(bh * 0.03))
-                    x1 = b.x1 + margin_x
-                    y1 = b.y1 + margin_y
-                    x2 = max(x1 + 1, b.x2 - margin_x)
-                    y2 = max(y1 + 1, b.y2 - margin_y)
-                    cropped_mask = b.mask[margin_y : bh - margin_y, margin_x : bw - margin_x]
-                    if cropped_mask.shape == (y2 - y1, x2 - x1):
-                        result_boxes.append(BubbleBox(x1, y1, x2, y2, b.confidence, cropped_mask))
+                 # Keep low-confidence bubble/free-text proposals visible, but
+                # never promote proposal geometry to a destructive mask.
+                result_boxes.append(replace(b, safe_to_inpaint=False, ocr_eligible=False, needs_review=True))
 
-        standalone_text = [
-            t for i, t in enumerate(text_boxes)
-            if i not in used_text_boxes
-        ]
+        standalone = [t for i, t in enumerate(text_boxes) if i not in used_text_boxes]
+        result_boxes.extend(self._cluster_free_text_boxes(standalone, w, h))
 
-        clustered_free_text = self._cluster_free_text_boxes(standalone_text, w, h)
-        result_boxes.extend(clustered_free_text)
-
+        recovered = self.recovery.detect(image, existing=result_boxes)
+        result_boxes.extend(recovered)
         result_boxes = self._refine_and_split_tall_boxes(result_boxes, image)
         result_boxes = self._apply_final_nms(result_boxes, iou_threshold=0.35)
-
-        return result_boxes
+        return [self._classify(b, w, h) if b.source_model != "opencv_mser" else b for b in result_boxes]
 
     @staticmethod
     def _apply_final_nms(boxes: list[BubbleBox], iou_threshold: float = 0.35) -> list[BubbleBox]:
         if not boxes:
             return []
-        rects = np.array([[b.x1, b.y1, max(1, b.x2 - b.x1), max(1, b.y2 - b.y1)] for b in boxes])
-        scores = np.array([b.confidence for b in boxes])
-        indices = cv2.dnn.NMSBoxes(
-            rects.tolist(), scores.tolist(), score_threshold=0.05, nms_threshold=iou_threshold
-        )
-        if len(indices) == 0:
-            return []
-        return [boxes[i] for i in np.array(indices).flatten()]
+        result: list[BubbleBox] = []
+        groups: dict[tuple[str, str], list[BubbleBox]] = {}
+        for b in boxes:
+            groups.setdefault((b.source_model, b.semantic_type), []).append(b)
+        for members in groups.values():
+            rects = np.array([[b.x1, b.y1, max(1,b.x2-b.x1), max(1,b.y2-b.y1)] for b in members])
+            scores = np.array([max(0.05, float(b.confidence)) for b in members])
+            indices = cv2.dnn.NMSBoxes(rects.tolist(), scores.tolist(), 0.05, iou_threshold)
+            result.extend(members[int(i)] for i in np.array(indices).flatten())
+        return sorted(result, key=lambda b: b.confidence, reverse=True)
 
     @staticmethod
     def _refine_and_split_tall_boxes(boxes: list[BubbleBox], img: np.ndarray) -> list[BubbleBox]:
@@ -129,7 +117,7 @@ class CombinedTextDetector:
             bw = box.x2 - box.x1
             if bh <= 45:
                 refined_boxes.append(
-                    BubbleBox(box.x1, box.y1, box.x2, box.y2, box.confidence, box.mask)
+                    replace(box)
                 )
                 continue
 
@@ -141,7 +129,7 @@ class CombinedTextDetector:
             exp_crop = full_gray[y1_exp:y2_exp, crop_x1:crop_x2]
             if exp_crop.size == 0:
                 refined_boxes.append(
-                    BubbleBox(box.x1, box.y1, box.x2, box.y2, box.confidence, box.mask)
+                    replace(box)
                 )
                 continue
 
@@ -165,7 +153,7 @@ class CombinedTextDetector:
 
             if len(line_bounds) <= 1:
                 refined_boxes.append(
-                    BubbleBox(box.x1, box.y1, box.x2, box.y2, box.confidence, box.mask)
+                    replace(box)
                 )
                 continue
 
@@ -221,7 +209,7 @@ class CombinedTextDetector:
                         line_mask[dst_y1:dst_y2, dst_x1:dst_x2] = box.mask[src_y1i:src_y2i, src_x1i:src_x2i]
 
                 refined_boxes.append(
-                    BubbleBox(abs_x1, abs_y1, abs_x2, abs_y2, box.confidence, line_mask)
+                    replace(box, x1=abs_x1, y1=abs_y1, x2=abs_x2, y2=abs_y2, mask=line_mask)
                 )
 
         return refined_boxes
@@ -273,7 +261,7 @@ class CombinedTextDetector:
                     if cluster_area > img_w * img_h * MAX_BOX_AREA_RATIO:
                         continue
                     merged_mask = self._merge_masks([b], min_x, min_y, max_x, max_y)
-                    final_clusters.append(BubbleBox(min_x, min_y, max_x, max_y, b.confidence, merged_mask))
+                    final_clusters.append(replace(b, x1=min_x, y1=min_y, x2=max_x, y2=max_y, mask=merged_mask))
                 else:
                     min_x = max(0, min(t.x1 for t in sub) - 20)
                     min_y = max(0, min(t.y1 for t in sub) - 8)
@@ -285,12 +273,10 @@ class CombinedTextDetector:
                     if cluster_area > img_w * img_h * MAX_BOX_AREA_RATIO:
                         continue
                     merged_mask = self._merge_masks(sub, min_x, min_y, max_x, max_y)
+                    seed = max(sub, key=lambda t: t.confidence)
                     final_clusters.append(
-                        BubbleBox(
-                            min_x, min_y, max_x, max_y,
-                            max(t.confidence for t in sub),
-                            merged_mask,
-                        )
+                        replace(seed, x1=min_x, y1=min_y, x2=max_x, y2=max_y,
+                                confidence=max(t.confidence for t in sub), mask=merged_mask)
                     )
 
         return final_clusters

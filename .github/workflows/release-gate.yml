@@ -43,7 +43,9 @@ jobs:
             tests/test_review_artifacts.py \
             tests/test_chapter_qc_ui.py \
             tests/test_render_export.py \
-            tests/test_ui_system_contract.py
+            tests/test_ui_system_contract.py \
+            tests/test_v02_detection_recovery.py \
+            tests/test_ort_low_memory.py
 
       - name: Install Chromium
         run: playwright install --with-deps chromium

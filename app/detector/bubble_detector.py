@@ -1,6 +1,11 @@
-import numpy as np
+from __future__ import annotations
+
+from dataclasses import dataclass, replace
+from pathlib import Path
+
 import cv2
-from dataclasses import dataclass
+import numpy as np
+
 from app.config import BUBBLE_IOU_THRESHOLD, ENABLE_TTA
 from app.ort_utils import make_session
 
@@ -9,10 +14,6 @@ SLICE_OVERLAP = 200
 MAX_BOX_WIDTH_RATIO = 0.97
 MAX_BOX_AREA_RATIO = 0.35
 MAX_ASPECT_RATIO = 25
-# Manual boxes in the persisted v0.1 manifest use confidence=1.0 as a legacy
-# provenance marker. Keep detector confidences strictly below that value so a
-# detector box whose segmentation mask is later unavailable can never be
-# mistaken for an explicit manual rectangle-removal request.
 DETECTOR_CONFIDENCE_MAX = 0.999998
 
 
@@ -24,14 +25,65 @@ class BubbleBox:
     y2: int
     confidence: float
     mask: np.ndarray | None = None
+    source_model: str = "unknown"
+    class_id: int = 0
+    class_name: str = "unknown"
+    semantic_type: str = "unknown"
+    mask_source: str = "none"
+    safe_to_inpaint: bool = False
+    ocr_eligible: bool = False
+    needs_review: bool = False
+
+    @property
+    def verified_mask(self) -> bool:
+        h = self.y2 - self.y1
+        w = self.x2 - self.x1
+        return (
+            self.mask is not None
+            and self.mask.ndim == 2
+            and self.mask.shape == (h, w)
+            and bool(np.any(self.mask > 0))
+        )
 
 
 class YoloDetector:
     def __init__(self, model_path, conf_threshold: float, use_tta: bool | None = None):
-        self.session = make_session(model_path)
+        self.model_path = str(model_path)
+        self.source_model = Path(model_path).name
+        self.session = make_session(model_path, serialize_inference=True)
         self.input_name = self.session.get_inputs()[0].name
         self.conf_threshold = conf_threshold
         self.use_tta = ENABLE_TTA if use_tta is None else use_tta
+
+    def _class_name(self, class_id: int, num_classes: int) -> str:
+        name = getattr(self, "source_model", "unknown").lower()
+        if "bubble" in name and num_classes >= 2:
+            return "text_bubble" if class_id == 0 else "text_free" if class_id == 1 else f"class_{class_id}"
+        if "text_segmenter" in name or num_classes == 1:
+            return "text_comic"
+        return f"class_{class_id}"
+
+    @staticmethod
+    def _semantic_type(class_name: str) -> str:
+        if class_name == "text_bubble":
+            return "speech_bubble"
+        if class_name == "text_free":
+            return "free_text"
+        if class_name == "text_comic":
+            return "text"
+        return class_name or "unknown"
+
+    def _with_semantics(self, box: BubbleBox) -> BubbleBox:
+        verified = box.verified_mask
+        segmenter_evidence = "text_segmenter" in box.source_model.lower()
+        safe = bool(verified and segmenter_evidence)
+        return replace(
+            box,
+            mask_source="text_segmenter" if safe else ("model" if verified else "none"),
+            safe_to_inpaint=safe,
+            ocr_eligible=safe,
+            needs_review=not safe,
+        )
 
     def detect(self, image: np.ndarray) -> list[BubbleBox]:
         h, w = image.shape[:2]
@@ -49,9 +101,19 @@ class YoloDetector:
                 if y + slice_h >= h:
                     break
                 y += step
+
+            # Tall webtoon slices need one global text-segmentation view in
+            # addition to the local 1024px windows. A glyph can sit just
+            # outside the highest-confidence window proposal even though the
+            # same model sees it in full-page context. Keep this restricted
+            # to the segmentation model: the extra pass supplies pixel-mask
+            # evidence only; it never turns proposal geometry into a mask.
+            if "text_segmenter" in self.source_model.lower():
+                all_boxes.extend(self._detect_single_plain(image, 0, 0))
+
             boxes = self._nms_boxes(all_boxes)
 
-        return self._filter_invalid(boxes, w, h)
+        return [self._with_semantics(b) for b in self._filter_invalid(boxes, w, h)]
 
     @staticmethod
     def _filter_invalid(boxes: list[BubbleBox], img_w: int, img_h: int) -> list[BubbleBox]:
@@ -86,7 +148,13 @@ class YoloDetector:
         boxes = self._postprocess(outputs, scale, pad, w, h)
         if offset_x or offset_y:
             boxes = [
-                BubbleBox(b.x1 + offset_x, b.y1 + offset_y, b.x2 + offset_x, b.y2 + offset_y, b.confidence, b.mask)
+                replace(
+                    b,
+                    x1=b.x1 + offset_x,
+                    y1=b.y1 + offset_y,
+                    x2=b.x2 + offset_x,
+                    y2=b.y2 + offset_y,
+                )
                 for b in boxes
             ]
         return boxes
@@ -97,7 +165,6 @@ class YoloDetector:
             return []
 
         all_boxes = []
-
         all_boxes.extend(self._detect_single_plain(image, offset_x, offset_y))
 
         flipped = cv2.flip(image, 1)
@@ -107,18 +174,16 @@ class YoloDetector:
             nx2 = max(0, min(w, w - b.x1))
             ny1 = max(0, min(h, b.y1))
             ny2 = max(0, min(h, b.y2))
-            nw = nx2 - nx1
-            nh = ny2 - ny1
-            if nw > 0 and nh > 0:
+            if nx2 > nx1 and ny2 > ny1:
                 mask = cv2.flip(b.mask, 1) if b.mask is not None else None
                 all_boxes.append(
-                    BubbleBox(
-                        nx1 + offset_x,
-                        ny1 + offset_y,
-                        nx2 + offset_x,
-                        ny2 + offset_y,
-                        b.confidence,
-                        mask,
+                    replace(
+                        b,
+                        x1=nx1 + offset_x,
+                        y1=ny1 + offset_y,
+                        x2=nx2 + offset_x,
+                        y2=ny2 + offset_y,
+                        mask=mask,
                     )
                 )
 
@@ -141,13 +206,13 @@ class YoloDetector:
                     if b.mask is not None:
                         mask = cv2.resize(b.mask, (nw, nh), interpolation=cv2.INTER_NEAREST)
                     all_boxes.append(
-                        BubbleBox(
-                            nx1 + offset_x,
-                            ny1 + offset_y,
-                            nx2 + offset_x,
-                            ny2 + offset_y,
-                            b.confidence,
-                            mask,
+                        replace(
+                            b,
+                            x1=nx1 + offset_x,
+                            y1=ny1 + offset_y,
+                            x2=nx2 + offset_x,
+                            y2=ny2 + offset_y,
+                            mask=mask,
                         )
                     )
 
@@ -189,17 +254,14 @@ class YoloDetector:
             num_classes = max(1, out_arr.shape[1] - 4)
             prototypes = None
 
-        # ONNX returns 21,504 predictions for these models. Filtering them one
-        # by one in Python becomes noticeable on long webtoons, so confidence
-        # and box conversion are vectorised. Mask decoding remains after NMS,
-        # exactly like the legacy path, to avoid extra work and preserve output.
+        class_end = 4 + num_classes
+        class_scores = out_arr[:, 4:class_end].astype(np.float32, copy=False)
         if num_classes == 1:
-            confidences = out_arr[:, 4].astype(np.float32, copy=False)
+            class_ids = np.zeros(out_arr.shape[0], dtype=np.int32)
+            confidences = class_scores[:, 0]
         else:
-            class_end = 4 + num_classes
-            confidences = np.max(out_arr[:, 4:class_end], axis=1).astype(
-                np.float32, copy=False
-            )
+            class_ids = np.argmax(class_scores, axis=1).astype(np.int32, copy=False)
+            confidences = class_scores[np.arange(class_scores.shape[0]), class_ids]
 
         keep = np.flatnonzero(confidences >= self.conf_threshold)
         if keep.size == 0:
@@ -207,6 +269,7 @@ class YoloDetector:
 
         selected = out_arr[keep]
         conf_selected = confidences[keep]
+        class_selected = class_ids[keep]
         cx = selected[:, 0]
         cy = selected[:, 1]
         bw = selected[:, 2]
@@ -221,12 +284,10 @@ class YoloDetector:
         if not np.any(valid):
             return []
 
-        valid_rows = np.flatnonzero(valid)
         candidates = []
         coeff_start = 4 + num_classes
         coeff_end = coeff_start + num_mask_coeffs
-
-        for j in valid_rows.tolist():
+        for j in np.flatnonzero(valid).tolist():
             canvas_box = None
             mask_coeffs = None
             if has_proto and num_mask_coeffs > 0:
@@ -237,15 +298,10 @@ class YoloDetector:
                     float(cy[j] + bh[j] / 2.0),
                 )
                 mask_coeffs = selected[j, coeff_start:coeff_end].copy()
-
             candidates.append((
-                float(x1[j]),
-                float(y1[j]),
-                float(x2[j]),
-                float(y2[j]),
-                float(conf_selected[j]),
-                canvas_box,
-                mask_coeffs,
+                float(x1[j]), float(y1[j]), float(x2[j]), float(y2[j]),
+                float(conf_selected[j]), int(class_selected[j]), num_classes,
+                canvas_box, mask_coeffs,
             ))
 
         return self._nms(candidates, prototypes)
@@ -269,35 +325,74 @@ class YoloDetector:
         crop = mask_full[py1:py2, px1:px2]
         if crop.size == 0:
             return None
-
         resized = cv2.resize(crop, (box_w, box_h), interpolation=cv2.INTER_LINEAR)
         return (resized > 0.5).astype(np.uint8) * 255
+
+    @staticmethod
+    def _candidate_fields(candidate: tuple) -> tuple[float, int, int, object, object]:
+        """Normalize current and v0.1 candidate tuple layouts.
+
+        v0.1 tests and third-party callers may still pass the legacy seven-field
+        tuple ``(x1, y1, x2, y2, score, canvas_box, mask_coeffs)``. Production
+        v0.2 candidates append class provenance before the mask metadata. Keep
+        that compatibility without weakening class-aware NMS for new detections.
+        """
+        if len(candidate) >= 9 and isinstance(candidate[5], (int, np.integer)):
+            return float(candidate[4]), int(candidate[5]), int(candidate[6]), candidate[7], candidate[8]
+        if len(candidate) >= 7:
+            return float(candidate[4]), 0, 1, candidate[5], candidate[6]
+        raise ValueError("Invalid detector candidate tuple")
 
     def _nms(self, candidates: list[tuple], prototypes=None) -> list[BubbleBox]:
         if not candidates:
             return []
-        boxes = np.array([[c[0], c[1], c[2] - c[0], c[3] - c[1]] for c in candidates])
-        corners = np.array([[c[0], c[1], c[2], c[3]] for c in candidates])
-        scores = np.array([c[4] for c in candidates])
-        indices = cv2.dnn.NMSBoxes(
-            boxes.tolist(), scores.tolist(), self.conf_threshold, BUBBLE_IOU_THRESHOLD
-        )
-        result = []
-        for i in np.array(indices).flatten():
-            x1, y1, x2, y2 = corners[i]
-            x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
-            _, _, _, _, _, canvas_box, mask_coeffs = candidates[i]
-            mask = self._decode_mask(mask_coeffs, prototypes, canvas_box, x2 - x1, y2 - y1)
-            confidence = min(float(scores[i]), DETECTOR_CONFIDENCE_MAX)
-            result.append(BubbleBox(x1, y1, x2, y2, confidence, mask))
+        result: list[BubbleBox] = []
+        by_class: dict[int, list[int]] = {}
+        for idx, candidate in enumerate(candidates):
+            _, class_id, _, _, _ = self._candidate_fields(candidate)
+            by_class.setdefault(class_id, []).append(idx)
+
+        for class_id, member_indices in by_class.items():
+            subset = [candidates[i] for i in member_indices]
+            rects = np.array([[c[0], c[1], c[2] - c[0], c[3] - c[1]] for c in subset])
+            scores = np.array([c[4] for c in subset])
+            indices = cv2.dnn.NMSBoxes(
+                rects.tolist(), scores.tolist(), self.conf_threshold, BUBBLE_IOU_THRESHOLD
+            )
+            for local_i in np.array(indices).flatten():
+                c = subset[int(local_i)]
+                x1, y1, x2, y2 = map(int, c[:4])
+                score, cid, num_classes, canvas_box, mask_coeffs = self._candidate_fields(c)
+                mask = self._decode_mask(mask_coeffs, prototypes, canvas_box, x2 - x1, y2 - y1)
+                class_name = self._class_name(int(cid), int(num_classes))
+                result.append(BubbleBox(
+                    x1=x1,
+                    y1=y1,
+                    x2=x2,
+                    y2=y2,
+                    confidence=min(float(score), DETECTOR_CONFIDENCE_MAX),
+                    mask=mask,
+                    source_model=getattr(self, "source_model", "unknown"),
+                    class_id=int(cid),
+                    class_name=class_name,
+                    semantic_type=self._semantic_type(class_name),
+                ))
+        result.sort(key=lambda b: b.confidence, reverse=True)
         return result
 
     def _nms_boxes(self, boxes: list[BubbleBox]) -> list[BubbleBox]:
         if not boxes:
             return []
-        rects = np.array([[b.x1, b.y1, b.x2 - b.x1, b.y2 - b.y1] for b in boxes])
-        scores = np.array([b.confidence for b in boxes])
-        indices = cv2.dnn.NMSBoxes(
-            rects.tolist(), scores.tolist(), self.conf_threshold, BUBBLE_IOU_THRESHOLD
-        )
-        return [boxes[i] for i in np.array(indices).flatten()]
+        result: list[BubbleBox] = []
+        by_class: dict[tuple[str, int], list[BubbleBox]] = {}
+        for b in boxes:
+            by_class.setdefault((b.source_model, b.class_id), []).append(b)
+        for members in by_class.values():
+            rects = np.array([[b.x1, b.y1, b.x2 - b.x1, b.y2 - b.y1] for b in members])
+            scores = np.array([b.confidence for b in members])
+            indices = cv2.dnn.NMSBoxes(
+                rects.tolist(), scores.tolist(), self.conf_threshold, BUBBLE_IOU_THRESHOLD
+            )
+            result.extend(members[int(i)] for i in np.array(indices).flatten())
+        result.sort(key=lambda b: b.confidence, reverse=True)
+        return result

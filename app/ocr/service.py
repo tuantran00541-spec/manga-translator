@@ -144,6 +144,8 @@ class OCRService:
                 for box in page.get("boxes", []) or []:
                     if not isinstance(box, dict) or box.get("removed"):
                         continue
+                    if box.get("ocr_eligible") is False:
+                        continue
                     box_id = box.get("id")
                     if box_id:
                         items.append((page_index, str(box_id)))
@@ -253,6 +255,8 @@ class OCRService:
             box = _find_box(page, box_id)
             if box is None or box.get("removed"):
                 raise ValueError(f"OCR target box not found: {box_id}")
+            if box.get("ocr_eligible") is False:
+                raise ValueError(f"OCR target box is not eligible: {box_id}")
             original_value = page.get("original")
             if not original_value:
                 raise FileNotFoundError("Original page image is not configured")

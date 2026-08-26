@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import math
+import os
 
 import cv2
 import numpy as np
@@ -17,46 +18,89 @@ from app.config import (
 SAFE_CUT_BAND = 12
 MAX_SAFE_SEARCH_EXPANSION = 360
 FALLBACK_BAND = 18
+# 384px is large enough to retain full detector context for the real 002.webp
+# speech bubble that spans ~321px above an unsafe core boundary.  The overlap
+# is detector-only; stitch ownership remains the non-overlapping core.
+OVERLAP_CONTEXT = 384
 
 
-def slice_image(image_path: Path, out_dir: Path, prefix: str) -> list[Path]:
+def slice_image(image_path: Path, out_dir: Path, prefix: str, *, return_metadata: bool = False):
     data = np.fromfile(str(image_path), dtype=np.uint8)
     image = cv2.imdecode(data, cv2.IMREAD_COLOR)
+    if hasattr(os, "posix_fadvise") and hasattr(os, "POSIX_FADV_DONTNEED"):
+        try:
+            with image_path.open("rb") as source_file:
+                os.posix_fadvise(source_file.fileno(), 0, 0, os.POSIX_FADV_DONTNEED)
+        except OSError:
+            pass
     if image is None:
-        return [image_path]
+        return [image_path] if not return_metadata else [{"path": image_path}]
 
     h, w = image.shape[:2]
-    ext = image_path.suffix or ".jpg"
+    # Slices are internal detector inputs. Use PNG lossless to avoid repeated
+    # WebP re-encoding artifacts and libwebp encoder retention on long chapters.
+    ext = ".png"
 
     def save_segment(path: Path, seg: np.ndarray):
         succ, buf = cv2.imencode(ext, seg)
         if succ:
-            buf.tofile(str(path))
+            with path.open("wb") as out_file:
+                out_file.write(buf.tobytes())
+                out_file.flush()
+                if hasattr(os, "posix_fadvise") and hasattr(os, "POSIX_FADV_DONTNEED"):
+                    try:
+                        os.posix_fadvise(out_file.fileno(), 0, 0, os.POSIX_FADV_DONTNEED)
+                    except OSError:
+                        pass
         else:
             cv2.imwrite(str(path), seg)
 
-    # A page below the detector's single-pass limit does not need slicing.
     if h <= SLICE_MAX_HEIGHT:
         out_path = out_dir / f"{prefix}_00{ext}"
         save_segment(out_path, image)
-        return [out_path]
+        if not return_metadata:
+            return [out_path]
+        return [{
+            "path": out_path, "source_y1": 0, "source_y2": h,
+            "core_y1": 0, "core_y2": h, "core_source_y1": 0, "core_source_y2": h,
+            "unsafe_before": False, "unsafe_after": False, "source_height": h,
+        }]
 
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    cut_rows = _find_cut_rows(gray, h, w)
+    unsafe_rows = _get_content_row_mask(gray, h, w)
+    cut_rows = _find_cut_rows(gray, h, w, unsafe_rows=unsafe_rows)
 
-    paths = []
-    y_start = 0
-    for i, y_end in enumerate(cut_rows + [h]):
-        segment = image[y_start:y_end, :]
-        out_path = out_dir / f"{prefix}_{i:02d}{ext}"
-        save_segment(out_path, segment)
+    def boundary_unsafe(y: int) -> bool:
+        lo=max(0,int(y)-SAFE_CUT_BAND); hi=min(h,int(y)+SAFE_CUT_BAND+1)
+        return bool(np.any(unsafe_rows[lo:hi]))
+
+    boundaries = [0] + cut_rows + [h]
+    flags = {int(y): boundary_unsafe(int(y)) for y in cut_rows}
+    paths=[]; meta=[]
+    for i in range(len(boundaries)-1):
+        core_start, core_end = int(boundaries[i]), int(boundaries[i+1])
+        unsafe_before = bool(flags.get(core_start, False))
+        unsafe_after = bool(flags.get(core_end, False))
+        context_start = max(0, core_start - (OVERLAP_CONTEXT if unsafe_before else 0))
+        context_end = min(h, core_end + (OVERLAP_CONTEXT if unsafe_after else 0))
+        segment=image[context_start:context_end,:]
+        out_path=out_dir / f"{prefix}_{i:02d}{ext}"
+        save_segment(out_path,segment)
         paths.append(out_path)
-        y_start = y_end
+        meta.append({
+            "path": out_path,
+            "source_y1": context_start, "source_y2": context_end,
+            "core_y1": core_start-context_start, "core_y2": core_end-context_start,
+            "core_source_y1": core_start, "core_source_y2": core_end,
+            "unsafe_before": unsafe_before, "unsafe_after": unsafe_after,
+            "source_height": h,
+        })
+    return meta if return_metadata else paths
 
-    return paths
 
-
-def _find_cut_rows(gray: np.ndarray, h: int, w: int) -> list[int]:
+def _find_cut_rows(
+    gray: np.ndarray, h: int, w: int, *, unsafe_rows: np.ndarray | None = None
+) -> list[int]:
     """Return cuts that prefer blank gutters but always bound slice height.
 
     The old slicer stopped entirely when it could not find a perfectly safe
@@ -71,7 +115,8 @@ def _find_cut_rows(gray: np.ndarray, h: int, w: int) -> list[int]:
     if h <= SLICE_MAX_HEIGHT:
         return []
 
-    unsafe_rows = _get_content_row_mask(gray, h, w)
+    if unsafe_rows is None:
+        unsafe_rows = _get_content_row_mask(gray, h, w)
     scores = _get_row_scores(gray)
 
     cuts: list[int] = []
@@ -126,7 +171,7 @@ def _find_cut_rows(gray: np.ndarray, h: int, w: int) -> list[int]:
             # Dense artwork can legitimately have no completely blank band.
             # Pick the least-content local band instead of giving up and
             # passing the entire long page into the detector.
-            cut = _find_low_content_cut(scores, expanded_lo, expanded_hi, target)
+            cut = _find_low_content_cut(scores, expanded_lo, expanded_hi, target, unsafe_rows)
 
         if cut is None or cut <= y or cut >= h:
             # Should be unreachable with sane constants, but avoids a loop if
@@ -192,6 +237,7 @@ def _find_low_content_cut(
     lo: int,
     hi: int,
     target: int,
+    unsafe_rows: np.ndarray | None = None,
 ) -> int | None:
     if lo > hi or len(scores) == 0:
         return None
@@ -217,6 +263,10 @@ def _find_low_content_cut(
     best = float(np.min(band_score))
     tolerance = max(1.0, abs(best) * 0.08)
     low_content = rows[band_score <= best + tolerance]
+    if unsafe_rows is not None and low_content.size:
+        safe_candidates = low_content[~unsafe_rows[low_content]]
+        if safe_candidates.size:
+            low_content = safe_candidates
     if low_content.size == 0:
         return int(rows[int(np.argmin(band_score))])
 

@@ -1,4 +1,6 @@
 import os
+import gc
+import threading
 
 import numpy as np
 import cv2
@@ -24,6 +26,10 @@ SMART_FILL_MIDTONE_STD_MAX = 5.0
 SMART_FILL_FULL_STD_MAX = 12.0
 SMART_FILL_EDGE_DENSITY_MAX = 0.01
 SMART_FILL_BLACK_EDGE_DENSITY_MAX = 0.002
+# onnxruntime 1.21 CPU can retain/degrade fixed-LaMa workspaces after several
+# consecutive runs under a tight cgroup. Recycle the fixed session before that
+# pathological point. Dynamic LaMa does not use this compatibility guard.
+FIXED_LAMA_SESSION_MAX_RUNS = 4
 
 
 class Inpainter:
@@ -38,8 +44,10 @@ class Inpainter:
         )
         prefer_dynamic = dynamic_enabled and LAMA_DYNAMIC_MODEL.is_file()
         model_path = LAMA_DYNAMIC_MODEL if prefer_dynamic else LAMA_MODEL
+        self._session_lock = threading.RLock()
+        self._session_run_count = 0
         try:
-            self.session = make_session(model_path)
+            self.session = make_session(model_path, serialize_inference=not prefer_dynamic)
         except Exception:
             if not prefer_dynamic:
                 raise
@@ -49,7 +57,7 @@ class Inpainter:
                 LAMA_MODEL,
             )
             model_path = LAMA_MODEL
-            self.session = make_session(model_path)
+            self.session = make_session(model_path, serialize_inference=True)
 
         inputs = self.session.get_inputs()
         self.image_input = inputs[0].name
@@ -59,6 +67,26 @@ class Inpainter:
             isinstance(dim, str) or dim is None for dim in image_shape[2:4]
         )
         self.lama_model_path = model_path
+
+    def _recycle_fixed_session_if_needed(self) -> None:
+        if self.dynamic_lama or self._session_run_count < FIXED_LAMA_SESSION_MAX_RUNS:
+            return
+
+        old_session = self.session
+        self.session = None
+        del old_session
+        gc.collect()
+        try:
+            import ctypes
+            libc = ctypes.CDLL(None)
+            trim = getattr(libc, "malloc_trim", None)
+            if trim is not None:
+                trim(0)
+        except Exception:
+            pass
+
+        self.session = make_session(self.lama_model_path, serialize_inference=True)
+        self._session_run_count = 0
 
     def inpaint(self, image: np.ndarray, boxes: list[BubbleBox]) -> np.ndarray:
         if not boxes:
@@ -354,10 +382,13 @@ class Inpainter:
             (mask_canvas > 127).astype(np.float32)[None, None]
         )
 
-        output = self.session.run(
-            None,
-            {self.image_input: img_blob, self.mask_input: mask_blob},
-        )[0]
+        with self._session_lock:
+            self._recycle_fixed_session_if_needed()
+            output = self.session.run(
+                None,
+                {self.image_input: img_blob, self.mask_input: mask_blob},
+            )[0]
+            self._session_run_count += 1
         painted_rgb = output[0].transpose(1, 2, 0)
         if painted_rgb.max() <= 1.0:
             painted_rgb = painted_rgb * 255.0

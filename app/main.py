@@ -36,7 +36,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(lifespan=lifespan, title="Manga Translator", version="0.1.0")
+app = FastAPI(lifespan=lifespan, title="Manga Translator", version="0.2.0")
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "app" / "static")), name="static")
 
 

@@ -96,6 +96,8 @@ def ensure_page_text_objects(page: dict) -> tuple[int, bool]:
     for box in boxes:
         if not isinstance(box, dict) or box.get("removed"):
             continue
+        if box.get("ocr_eligible") is False:
+            continue
         box_id = str(box.get("id") or "")
         if not box_id:
             continue
