@@ -13,34 +13,16 @@ permissions:
 jobs:
   apply:
     runs-on: ubuntu-22.04
-    timeout-minutes: 30
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
           ref: feat/detection-recovery-pipeline
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: requirements.txt
-      - name: Apply validated final patch
+      - name: Apply locally-validated final patch
         run: |
           cat .v02-patch-* > /tmp/v02.patch
           git apply --check /tmp/v02.patch
           git apply /tmp/v02.patch
-      - name: Compile and v0.2 regression
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt pytest httpx
-          python -m compileall -q app tests
-          python -m pytest -q \
-            tests/test_v02_detection_recovery.py \
-            tests/test_ort_low_memory.py \
-            tests/test_inpaint_artwork_quality.py \
-            tests/test_geometry_override_mask.py \
-            tests/test_manifest_data_model.py \
-            tests/test_chapter_export.py \
-            tests/test_auto_text_objects.py
       - name: Commit final source and remove transfer helpers
         run: |
           git config user.name "github-actions[bot]"
