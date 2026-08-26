@@ -11,8 +11,12 @@ def test_app_shell_has_single_stage_system_and_global_settings():
     html = read("app/templates/index.html")
     assert 'id="landing-view"' in html
     assert 'id="page-view"' in html
+    assert 'id="app-rail"' in html
     assert 'id="workflow-steps"' in html
-    assert html.count('class="workflow-step"') + html.count('class="workflow-step active"') == 4
+    assert html.count('data-stage="') >= 4
+    assert 'id="settings-toggle"' in html
+    assert 'class="workbench-topbar"' in html
+    assert 'id="stage-title"' in html
     assert 'data-stage="landing"' in html
     assert 'data-stage="preview"' in html
     assert 'data-stage="review"' in html
@@ -20,6 +24,7 @@ def test_app_shell_has_single_stage_system_and_global_settings():
     assert 'id="settings-drawer"' in html
     assert 'id="ai-settings-host"' in html
     assert '/static/css/ui-system.css' in html
+    assert '/static/css/workbench.css' in html
     assert '/static/js/ui-shell.js' in html
 
 
@@ -98,7 +103,9 @@ def test_user_facing_copy_uses_consistent_professional_terms():
 
 def test_design_system_has_responsive_stage_and_settings_layouts():
     css = read("app/static/css/ui-system.css")
-    assert ".workflow-steps" in css
+    workbench = read("app/static/css/workbench.css")
+    assert ".app-rail" in workbench
+    assert ".workbench-topbar" in workbench
     assert ".landing-source-grid" in css
     assert ".settings-drawer" in css
     assert ".review-sticky-toolbar" in css
