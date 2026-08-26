@@ -1,0 +1,20 @@
+name: v0.2 source artifact
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  source-snapshot:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Upload branch source
+        uses: actions/upload-artifact@v4
+        with:
+          name: v02-branch-source
+          path: |
+            .
+            !.git/**
+          include-hidden-files: true
+          retention-days: 1
