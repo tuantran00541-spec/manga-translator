@@ -1,0 +1,294 @@
+diff --git a/app/static/css/workbench.css b/app/static/css/workbench.css
+index bf385d6..03c46f4 100644
+--- a/app/static/css/workbench.css
++++ b/app/static/css/workbench.css
+@@ -300,3 +300,289 @@ body {
+   .workbench-title-block .app-context { display: none; }
+ }
+ 
++/* Process workspace migration: shared page navigator + canvas + inspector. */
++.process-workspace {
++  gap: 0 !important;
++}
++
++.process-commandbar {
++  position: sticky;
++  top: 58px !important;
++  z-index: 82;
++  margin: 0 !important;
++  border: 0 !important;
++  border-bottom: 1px solid var(--border-1) !important;
++  border-radius: 0 !important;
++  background: color-mix(in srgb, var(--surface-0) 94%, transparent) !important;
++  box-shadow: none !important;
++}
++
++.workbench-stage-grid {
++  min-width: 0;
++  display: grid;
++  grid-template-columns: 220px minmax(0, 1fr) 260px;
++  align-items: start;
++}
++
++.process-workbench-grid {
++  min-height: calc(100vh - 124px);
++}
++
++.workbench-canvas-column {
++  min-width: 0;
++  padding: 16px;
++}
++
++.preview-main.workbench-canvas-column {
++  display: block;
++}
++
++.preview-canvas-surface {
++  width: min(100%, 920px);
++  margin: 0 auto;
++  min-width: 0;
++}
++
++.preview-canvas-surface .preview-card-header {
++  margin: 0 0 8px;
++}
++
++.preview-canvas-surface .preview-viewport {
++  border-radius: 6px;
++  border-color: var(--border-1);
++}
++
++.context-inspector {
++  position: sticky;
++  top: 76px;
++  align-self: start;
++  min-width: 0;
++  max-height: calc(100vh - 92px);
++  overflow-y: auto;
++  padding: 12px;
++  border-left: 1px solid var(--border-1);
++  background: color-mix(in srgb, var(--surface-0) 70%, var(--surface-1));
++}
++
++.context-inspector-heading {
++  display: flex;
++  flex-direction: column;
++  gap: 4px;
++  padding: 2px 2px 12px;
++  border-bottom: 1px solid var(--border-1);
++}
++
++.context-inspector-heading strong {
++  color: var(--text-1);
++  font: 600 12px/1.35 var(--font-display);
++}
++
++.process-inspector .preview-tools {
++  display: grid;
++  gap: 6px;
++  margin: 12px 0 8px;
++}
++
++.process-inspector .preview-tools button,
++.process-inspector .skip-btn {
++  width: 100%;
++  min-height: 34px;
++  text-align: left;
++}
++
++.process-inspector .preview-card-footer {
++  margin-top: 8px;
++  padding-top: 8px;
++  border-top: 1px solid var(--border-1);
++}
++
++@media (max-width: 1100px) {
++  .workbench-stage-grid {
++    grid-template-columns: 190px minmax(0, 1fr) 220px;
++  }
++}
++
++@media (max-width: 900px) {
++  .process-commandbar {
++    top: 0 !important;
++  }
++
++  .workbench-stage-grid {
++    grid-template-columns: 1fr;
++  }
++
++  .context-inspector {
++    position: static;
++    max-height: none;
++    border-left: 0;
++    border-top: 1px solid var(--border-1);
++  }
++}
++
++/* Review workspace: page navigator left, canvas center, task/QC inspector right. */
++.review-workspace-shell {
++  width: 100% !important;
++  max-width: none !important;
++  gap: 0 !important;
++}
++
++.review-sticky-toolbar {
++  top: 58px !important;
++  grid-template-columns: minmax(0, 1fr) auto !important;
++  margin: 0 !important;
++  padding: 10px 12px !important;
++  border: 0 !important;
++  border-bottom: 1px solid var(--border-1) !important;
++  border-radius: 0 !important;
++  background: color-mix(in srgb, var(--surface-0) 94%, transparent) !important;
++  box-shadow: none !important;
++}
++
++.review-workbench-grid {
++  min-height: calc(100vh - 116px);
++}
++
++.review-canvas-host.workbench-canvas-column .review-card {
++  width: min(100%, 980px);
++  margin: 0 auto;
++}
++
++.inspector-section {
++  padding: 12px 2px;
++  border-bottom: 1px solid var(--border-1);
++}
++
++.inspector-section:last-child {
++  border-bottom: 0;
++}
++
++.inspector-section h3 {
++  margin: 0 0 8px;
++  color: var(--text-2);
++  font: 600 10px/1.2 var(--font-display);
++}
++
++.review-inspector .review-controls-slot,
++.review-inspector .review-controls {
++  display: grid !important;
++  grid-template-columns: 1fr !important;
++  width: 100% !important;
++  gap: 6px !important;
++}
++
++.review-inspector .review-controls button,
++.review-inspector .brush-size-control {
++  width: 100%;
++  min-height: 34px;
++  justify-content: flex-start;
++}
++
++.review-inspector .review-help {
++  width: 100%;
++}
++
++.review-inspector .review-help > summary {
++  width: 100%;
++  justify-content: flex-start;
++}
++
++.review-inspector .review-help-panel {
++  position: static;
++  width: auto;
++  margin-top: 8px;
++  box-shadow: none;
++}
++
++.review-inspector .chapter-qc-panel {
++  display: grid;
++  margin: 0;
++  padding: 12px 2px;
++  border: 0;
++  border-bottom: 1px solid var(--border-1);
++  border-radius: 0;
++  background: transparent;
++}
++
++.review-inspector .chapter-qc-head,
++.review-inspector .chapter-qc-job-actions,
++.review-inspector .chapter-qc-options {
++  align-items: stretch;
++  flex-direction: column;
++}
++
++.review-inspector .chapter-qc-results {
++  grid-template-columns: 1fr;
++}
++
++@media (max-width: 900px) {
++  .review-sticky-toolbar {
++    top: 0 !important;
++  }
++}
++
++/* Editor workspace: reuse the same page navigator and contextual right inspector. */
++.translation-workspace {
++  max-width: none !important;
++  width: 100%;
++  gap: 0 !important;
++}
++
++.translation-sticky-toolbar {
++  top: 58px !important;
++  margin: 0 !important;
++  padding: 10px 12px !important;
++  border: 0 !important;
++  border-bottom: 1px solid var(--border-1) !important;
++  border-radius: 0 !important;
++  background: color-mix(in srgb, var(--surface-0) 94%, transparent) !important;
++  box-shadow: none !important;
++}
++
++.translation-workspace-body.editor-workbench-grid {
++  display: grid;
++  grid-template-columns: 220px minmax(0, 1fr) 300px;
++  gap: 0;
++  min-height: calc(100vh - 116px);
++}
++
++.translation-canvas-host {
++  padding: 16px;
++}
++
++.translation-canvas-host .page-image-wrap {
++  width: min(100%, 820px);
++  padding: 0;
++  background: transparent;
++  border: 0;
++}
++
++.translation-panel-host.context-inspector {
++  top: 76px;
++  padding: 0;
++  border-top: 0;
++  border-right: 0;
++  border-bottom: 0;
++  border-radius: 0;
++  background: color-mix(in srgb, var(--surface-0) 70%, var(--surface-1));
++}
++
++@media (max-width: 1100px) {
++  .translation-workspace-body.editor-workbench-grid {
++    grid-template-columns: 190px minmax(0, 1fr) 260px;
++  }
++}
++
++@media (max-width: 900px) {
++  .translation-sticky-toolbar {
++    top: 0 !important;
++  }
++
++  .translation-workspace-body.editor-workbench-grid {
++    grid-template-columns: 1fr;
++  }
++
++  .translation-panel-host.context-inspector {
++    position: static;
++    max-height: none;
++  }
++}
