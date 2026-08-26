@@ -1,0 +1,25 @@
+name: Recover v0.2 source snapshot
+
+on:
+  push:
+    branches:
+      - test/asura-ch195-v02
+    paths:
+      - .github/workflows/v02-recover-source.yml
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/detection-recovery-pipeline
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v02-final-source
+          path: |
+            .
+            !.git/**
+          include-hidden-files: true
+          retention-days: 1
+          compression-level: 0
