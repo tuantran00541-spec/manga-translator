@@ -1,0 +1,196 @@
+work_images}
+         if len(widths) != 1:
+             raise ValueError("Slice widths do not match")
+-        if len(images) == 1:
++        if len(work_images) == 1:
+             buffer = io.BytesIO()
+-            images[0].save(buffer, format="PNG")
++            work_images[0].save(buffer, format="PNG")
+             return buffer.getvalue()
+-        width = images[0].width
+-        total_height = sum(image.height for image in images)
++        width = work_images[0].width
++        total_height = sum(image.height for image in work_images)
+         canvas = Image.new("RGB", (width, total_height), "white")
+         y = 0
+-        for image in images:
++        for image in work_images:
+             canvas.paste(image, (0, y))
+             y += image.height
+         buffer = io.BytesIO()
+         canvas.save(buffer, format="PNG")
+         return buffer.getvalue()
+     finally:
++        for image in cropped:
++            image.close()
+         for image in images:
+             image.close()
+ 
+@@ -153,7 +168,7 @@
+ 
+     with get_manifest_lock(chapter_id):
+         manifest = load_manifest_raw(chapter_id)
+-        groups: dict[int, list[tuple[int, int, Path]]] = {}
++        groups: dict[int, list[tuple[int, int, Path, tuple[int, int] | None]]] = {}
+         for page_index, page in enumerate(manifest.get("pages", [])):
+             if page.get("skipped"):
+                 path = _fallback_page_path(chapter_id, page)
+@@ -169,13 +184,20 @@
+             validate_image_size(path)
+             source_page = _safe_int(page.get("source_page"), page_index)
+             slice_index = _safe_int(page.get("slice_index"), 0)
+-            groups.setdefault(source_page, []).append((slice_index, page_index, path))
++            core = page.get("stitch_core") if isinstance(page.get("stitch_core"), dict) else None
++            core_range = None
++            if core is not None:
++                try:
++                    core_range = (int(core.get("core_y1", 0)), int(core.get("core_y2", 0)))
++                except (TypeError, ValueError):
++                    core_range = None
++            groups.setdefault(source_page, []).append((slice_index, page_index, path, core_range))
+ 
+         try:
+             with zipfile.ZipFile(tmp_archive, "w", compression=zipfile.ZIP_STORED) as archive:
+                 for output_index, source_page in enumerate(sorted(groups), start=1):
+                     items = sorted(groups[source_page], key=lambda item: (item[0], item[1]))
+-                    payload = _stitch_pngs([item[2] for item in items])
++                    payload = _stitch_pngs([item[2] for item in items], [item[3] for item in items])
+                     archive.writestr(f"page_{output_index:03d}.png", payload)
+             os.replace(tmp_archive, final_archive)
+         finally:
+--- a/app/text_objects.py	2026-08-26 09:12:32.000000000 +0000
++++ b/app/text_objects.py	2026-08-26 09:21:14.046581912 +0000
+@@ -96,6 +96,8 @@
+     for box in boxes:
+         if not isinstance(box, dict) or box.get("removed"):
+             continue
++        if box.get("ocr_eligible") is False:
++            continue
+         box_id = str(box.get("id") or "")
+         if not box_id:
+             continue
+--- /dev/null	2026-08-26 08:50:09.058596701 +0000
++++ b/tests/test_v02_detection_recovery.py	2026-08-26 09:29:18.184586724 +0000
+@@ -0,0 +1,142 @@
++from __future__ import annotations
++
++from contextlib import nullcontext
++from pathlib import Path
++from unittest.mock import patch
++
++import cv2
++import numpy as np
++from PIL import Image
++
++from app.detector.bubble_detector import BubbleBox, YoloDetector
++from app.detector.combined_detector import CombinedTextDetector
++from app.detector.recovery import SecondaryTextRecovery
++from app.downloader.slicer import slice_image
++from app.ocr.service import OCRService
++from app.routers.export import _stitch_pngs
++from app.text_objects import ensure_page_text_objects
++
++
++def test_bubblebox_keeps_detection_provenance():
++    b = BubbleBox(1, 2, 11, 12, 0.7, source_model="bubble_yolo.onnx", class_id=1,
++                  class_name="text_free", semantic_type="free_text")
++    assert b.source_model == "bubble_yolo.onnx"
++    assert b.class_id == 1 and b.class_name == "text_free"
++    assert b.semantic_type == "free_text"
++
++
++def test_verified_mask_requires_exact_nonempty_geometry():
++    b = BubbleBox(0, 0, 10, 10, 0.8, np.ones((10, 10), np.uint8))
++    assert b.verified_mask
++    assert not BubbleBox(0, 0, 10, 10, 0.8, np.zeros((10, 10), np.uint8)).verified_mask
++    assert not BubbleBox(0, 0, 10, 10, 0.8, np.ones((9, 10), np.uint8)).verified_mask
++
++
++def test_class_aware_nms_does_not_suppress_text_free_with_bubble():
++    d = YoloDetector.__new__(YoloDetector)
++    d.conf_threshold = 0.1
++    d.source_model = "bubble_yolo.onnx"
++    d._decode_mask = lambda *args, **kwargs: None
++    candidates = [
++        (10, 10, 100, 100, 0.9, 0, 2, None, None),
++        (12, 12, 98, 98, 0.8, 1, 2, None, None),
++    ]
++    boxes = d._nms(candidates, None)
++    assert {b.class_name for b in boxes} == {"text_bubble", "text_free"}
++
++
++def test_proposal_without_mask_is_review_only():
++    d = YoloDetector.__new__(YoloDetector)
++    d.source_model = "bubble_yolo.onnx"
++    b = BubbleBox(0, 0, 20, 20, 0.4, None, source_model="bubble_yolo.onnx",
++                  class_name="text_free", semantic_type="free_text")
++    out = d._with_semantics(b)
++    assert not out.safe_to_inpaint and not out.ocr_eligible and out.needs_review
++
++
++def test_segmenter_verified_mask_is_safe():
++    d = YoloDetector.__new__(YoloDetector)
++    d.source_model = "text_segmenter.onnx"
++    b = BubbleBox(0, 0, 20, 20, 0.9, np.ones((20, 20), np.uint8),
++                  source_model="text_segmenter.onnx", class_name="text_comic", semantic_type="text")
++    out = d._with_semantics(b)
++    assert out.safe_to_inpaint and out.ocr_eligible and not out.needs_review
++
++
++def test_watermark_edge_region_is_downgraded():
++    d = CombinedTextDetector.__new__(CombinedTextDetector)
++    mask = np.ones((30, 250), np.uint8)
++    b = BubbleBox(650, 500, 900, 530, 0.8, mask, source_model="text_segmenter.onnx",
++                  class_name="text_comic", semantic_type="text", safe_to_inpaint=True, ocr_eligible=True)
++    out = d._classify(b, 900, 1000)
++    assert out.semantic_type == "watermark"
++    assert not out.safe_to_inpaint and not out.ocr_eligible and out.needs_review
++
++
++def test_normal_dialogue_not_misclassified_as_watermark():
++    d = CombinedTextDetector.__new__(CombinedTextDetector)
++    mask = np.ones((35, 300), np.uint8)
++    b = BubbleBox(200, 500, 500, 535, 0.9, mask, source_model="text_segmenter.onnx",
++                  class_name="text_comic", semantic_type="text")
++    out = d._classify(b, 900, 1000)
++    assert out.semantic_type == "text"
++    assert out.safe_to_inpaint and out.ocr_eligible
++
++
++def test_recovery_watermark_heuristic_requires_edge_alignment():
++    assert SecondaryTextRecovery._watermark_like(650, 500, 900, 530, 900, 1000)
++    assert not SecondaryTextRecovery._watermark_like(250, 500, 600, 535, 900, 1000)
++
++
++def test_ocr_plan_skips_review_only_regions():
++    manifest = {"pages": [{"boxes": [
++        {"id": "safe", "ocr_eligible": True},
++        {"id": "review", "ocr_eligible": False},
++    ]}]}
++    svc = OCRService.__new__(OCRService)
++    with patch("app.ocr.service.get_manifest_lock", return_value=nullcontext()), \
++         patch("app.ocr.service.load_manifest_raw", return_value=manifest):
++        assert svc.plan_chapter("deadbeef") == [(0, "safe")]
++
++
++def test_auto_text_objects_skip_review_only_boxes():
++    page = {"boxes": [
++        {"id": "safe", "x1": 0, "y1": 0, "x2": 20, "y2": 20, "ocr_eligible": True},
++        {"id": "review", "x1": 30, "y1": 0, "x2": 50, "y2": 20, "ocr_eligible": False},
++    ]}
++    created, changed = ensure_page_text_objects(page)
++    assert changed and created == 1
++    assert page["text_objects"][0]["source_boxes"] == ["safe"]
++
++
++def test_overlap_slicer_records_core_ownership(tmp_path: Path):
++    # Dense synthetic artwork: no blank gutter, forcing overlap context.
++    h, w = 3400, 120
++    image = np.full((h, w, 3), 127, np.uint8)
++    cv2.line(image, (0, 0), (w - 1, h - 1), (0, 0, 0), 4)
++    src = tmp_path / "dense.png"
++    cv2.imwrite(str(src), image)
++    items = slice_image(src, tmp_path, "dense", return_metadata=True)
++    assert len(items) >= 3
++    assert any(x["unsafe_after"] for x in items[:-1])
++    for item in ite
