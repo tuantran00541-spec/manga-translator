@@ -142,3 +142,71 @@ def test_default_sessions_can_run_concurrently(monkeypatch):
     t2.join()
 
     assert max_active >= 2
+
+
+def test_fixed_lama_recycles_session_before_pathological_run_count(monkeypatch):
+    import numpy as np
+    import app.inpaint.lama_inpainter as lama_mod
+
+    created = []
+
+    class _Input:
+        def __init__(self, name, shape):
+            self.name = name
+            self.shape = shape
+
+    class FakeLamaSession:
+        def __init__(self):
+            self.runs = 0
+
+        def get_inputs(self):
+            return [
+                _Input("image", [1, 3, 512, 512]),
+                _Input("mask", [1, 1, 512, 512]),
+            ]
+
+        def run(self, *_args, **_kwargs):
+            self.runs += 1
+            return [np.zeros((1, 3, 512, 512), dtype=np.float32)]
+
+    def fake_make_session(*_args, **_kwargs):
+        session = FakeLamaSession()
+        created.append(session)
+        return session
+
+    monkeypatch.setenv("MANGA_USE_DYNAMIC_LAMA", "0")
+    monkeypatch.setattr(lama_mod, "make_session", fake_make_session)
+
+    inpainter = lama_mod.Inpainter()
+    canvas = np.zeros((512, 512, 3), dtype=np.uint8)
+    mask = np.zeros((512, 512), dtype=np.uint8)
+    mask[100:200, 100:200] = 255
+
+    for _ in range(lama_mod.FIXED_LAMA_SESSION_MAX_RUNS + 1):
+        inpainter._run_lama(canvas, mask)
+
+    assert len(created) == 2
+    assert created[0].runs == lama_mod.FIXED_LAMA_SESSION_MAX_RUNS
+    assert created[1].runs == 1
+
+
+def test_cpu_count_respects_cgroup_quota(monkeypatch):
+    monkeypatch.setattr(ort_utils.os, "cpu_count", lambda: 64)
+    real_open = open
+
+    class _FakeCpuMax:
+        def __enter__(self):
+            return self
+        def __exit__(self, *_args):
+            return False
+        def read(self):
+            return "400000 100000\n"
+
+    def fake_open(path, *args, **kwargs):
+        if str(path) == "/sys/fs/cgroup/cpu.max":
+            return _FakeCpuMax()
+        return real_open(path, *args, **kwargs)
+
+    monkeypatch.setattr("builtins.open", fake_open)
+    assert ort_utils._cpu_count() == 4
+    assert ort_utils._default_intra_op_threads() == 2

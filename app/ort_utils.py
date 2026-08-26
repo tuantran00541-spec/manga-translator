@@ -15,7 +15,17 @@ _ORT_INFERENCE_LOCK = threading.RLock()
 
 
 def _cpu_count() -> int:
-    return max(1, os.cpu_count() or 2)
+    """Return CPU capacity visible to the process, including cgroup quota."""
+    host = max(1, os.cpu_count() or 2)
+    try:
+        raw = open("/sys/fs/cgroup/cpu.max", "r", encoding="utf-8").read().strip().split()
+        if len(raw) >= 2 and raw[0] != "max":
+            quota, period = int(raw[0]), int(raw[1])
+            if quota > 0 and period > 0:
+                host = min(host, max(1, (quota + period - 1) // period))
+    except (OSError, ValueError):
+        pass
+    return host
 
 
 def _default_intra_op_threads() -> int:
@@ -38,6 +48,17 @@ def _configured_intra_op_threads() -> int:
         return _default_intra_op_threads()
 
     return max(1, value)
+
+
+def _drop_model_file_cache_hint(model_path) -> None:
+    """Best-effort release of model file pages after ORT has parsed the model."""
+    if not hasattr(os, "posix_fadvise") or not hasattr(os, "POSIX_FADV_DONTNEED"):
+        return
+    try:
+        with open(model_path, "rb") as model_file:
+            os.posix_fadvise(model_file.fileno(), 0, 0, os.POSIX_FADV_DONTNEED)
+    except (OSError, TypeError, ValueError):
+        pass
 
 
 def _env_flag(name: str, default: bool) -> bool:
@@ -77,9 +98,10 @@ def make_session(
 
     ORT's CPU arena and memory-pattern cache retain large peak allocations for
     Manga Translator's detector/segmenter/LaMa sessions, so both are disabled by
-    default. Inference serialization is opt-in per session: detectors remain
-    concurrent across workers, while LaMa requests serialization because two
-    simultaneous 512px workspaces materially increase peak RSS.
+    default. Inference serialization is opt-in per session: detectors and the
+    preferred dynamic LaMa can use the two-page worker schedule concurrently,
+    while the fixed 512px LaMa fallback serializes its larger compatibility
+    workspaces to bound peak RSS.
     """
 
     opts = ort.SessionOptions()
@@ -106,6 +128,7 @@ def make_session(
         sess_options=opts,
         providers=["CPUExecutionProvider"],
     )
+    _drop_model_file_cache_hint(model_path)
     should_serialize = (
         _env_flag(_SERIALIZE_ENV, False)
         if serialize_inference is None

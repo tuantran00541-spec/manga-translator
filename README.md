@@ -1,20 +1,20 @@
-# Manga & Webtoon Translator Studio — v0.1
+# Manga & Webtoon Translator Studio — v0.2
 
 Local-first, CPU-oriented manga / manhua / manhwa / webtoon translation studio.
 
-The v0.1 product flow is intentionally narrow and complete:
+The v0.2 product flow is intentionally narrow and complete:
 
 **Import → Slice → Detect/Clean → Review → OCR → Auto-translate → Edit/Typeset → Render chapter → ZIP export**
 
 The application keeps a human editor in control. Automatic steps create a first pass; the editor can correct OCR, translation, geometry, typography and inpainting before export.
 
-## What v0.1 does
+## What v0.2 does
 
 - Import local PNG/JPEG/WEBP/BMP images, ZIP or CBZ archives.
 - Import chapter URLs with HTTP + Playwright discovery, including relative image URLs, `srcset`, common lazy-load attributes, and scroll-until-stable discovery.
-- Slice long webtoon images into CPU-friendly segments while preferring low-content cut bands.
-- Detect speech/text regions with local ONNX models and clean source text using LaMa inpainting.
-- Protect line art during cleanup with edge-aware flat-fill shortcuts, safe detector-mask fallback, fixed-LaMa tiling for long narrow regions, and page-space segmentation-mask remapping after user geometry edits.
+- Slice long webtoon images into CPU-friendly segments while preferring safe cut bands; unsafe boundaries keep detector-only overlap context while stitch ownership remains non-overlapping.
+- Detect speech bubbles and free text with local ONNX models while preserving detector/class provenance; secondary OpenCV/MSER recovery surfaces outlined SFX/free text that the segmenter misses.
+- Protect line art during cleanup with verified pixel masks only: proposal-only detections, uncertain recovery, and watermarks remain review-only instead of becoming destructive rectangle inpaint. Fixed-LaMa tiling and page-space mask remapping remain available for compatibility.
 - Review cleaned pages, repaint mistakes manually, and optionally use Gemini or DeepSeek visual QC.
 - OCR Japanese with MangaOCR and Chinese/Korean/English with PaddleOCR.
 - Automatically turn detector boxes into editable text objects; re-processing keeps stable box links and does not overwrite user geometry/text edits.
@@ -25,7 +25,7 @@ The application keeps a human editor in control. Automatic steps create a first 
 
 ## Current limits
 
-v0.1 is designed to accelerate a human editor, not replace professional redraw/lettering work. Rotation, curved/path text, perspective/warp typography, advanced SFX recreation, and difficult art redraw still need external/editor intervention. URL scraping is generic rather than site-specific, so heavily protected readers may still require local upload.
+v0.2 is designed to accelerate a human editor, not replace professional redraw/lettering work. Rotation, curved/path text, perspective/warp typography, advanced SFX recreation, and difficult art redraw still need external/editor intervention. URL scraping is generic rather than site-specific, so heavily protected readers may still require local upload.
 
 Production ONNX binaries are intentionally not stored in Git. Model-dependent detector/inpaint validation therefore remains a local/model-artifact gate; the repository CI verifies the model-independent product closure path.
 
@@ -33,7 +33,7 @@ Production ONNX binaries are intentionally not stored in Git. Model-dependent de
 
 - Python 3.12 is the release-gate runtime.
 - CPU execution is the supported baseline; GPU is not required.
-- 8 GB RAM or more is recommended.
+- The v0.2 chapter acceptance gate is exercised under a 4 GiB memory limit with the production default two page workers; additional RAM is still useful for OCR/browser workloads.
 - Chromium is required for Playwright URL ingestion and browser regression tests.
 
 Install:
@@ -88,6 +88,16 @@ The provider response is never committed blindly: object identity, OCR source te
 - Detector geometry edits remap masks in page coordinates instead of stretching or discarding them. Re-detection reconciles fresh detector masks to the persisted user geometry.
 - Regression tests verify local mask behavior, geometry remapping, and that automatic compositing leaves pixels outside the effective mask unchanged.
 
+
+## v0.2 detection and CPU-memory safety
+
+- Detection records retain `source_model`, class id/name, semantic type, mask provenance, inpaint safety, OCR eligibility, and review state.
+- NMS is class-aware, so `text_bubble` and `text_free` proposals do not suppress each other blindly.
+- Proposal geometry is not an inpaint mask. Only verified pixel masks can trigger automatic cleanup; watermarks and uncertain outlined/SFX recovery are review-only.
+- Content-heavy zero-box pages and detector disagreement are surfaced through `detection_state`, `detection_issues`, `unverified_regions`, and `needs_review` instead of silently passing as clean.
+- Unsafe webtoon seams keep overlap context for detection while export/stitch owns each source core pixel exactly once. Intermediate slices use lossless PNG to avoid repeated WebP encoder retention/artifacts.
+- ONNX Runtime CPU arena/memory-pattern retention is disabled by default on the low-memory path, thread defaults respect cgroup CPU quota, and dynamic LaMa can run across the production two-page worker schedule while the fixed fallback uses a serialized compatibility path.
+
 ## Main API surface
 
 ### Chapter / processing
@@ -129,7 +139,7 @@ Local equivalent:
 make release-check
 ```
 
-The gate compiles source, runs the v0.1 model-independent integration/regression suite (including artwork-safety and geometry-mask tests), then runs Chromium regressions. `tests/test_v01_product_closure.py` specifically validates the connected path:
+The gate compiles source, runs the v0.1 + v0.2 model-independent integration/regression suite (including artwork-safety and geometry-mask tests), then runs Chromium regressions. `tests/test_v01_product_closure.py` specifically validates the connected path:
 
 **processed OCR box → auto text object → translation commit → revision-safe render → strict ZIP export**
 
@@ -162,4 +172,4 @@ Release-critical tests use functional names rather than phase numbers. New exper
 
 ## Release rule
 
-For v0.1, new work must answer one question: **does it block a real chapter from reaching a correct export?** Non-blocking model experiments, benchmark refactors, extra providers, and advanced lettering features stay outside the release branch until the product-closure gate is green.
+For v0.2, new work must answer one question: **does it block a real chapter from reaching a correct export?** Non-blocking model experiments, benchmark refactors, extra providers, and advanced lettering features stay outside the release branch until the product-closure gate is green.
