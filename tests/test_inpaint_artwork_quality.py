@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 
 from app.detector.bubble_detector import BubbleBox
+from app.detector.combined_detector import CombinedTextDetector
 from app.detector.mask_builder import build_mask
 from app.inpaint.lama_inpainter import Inpainter
 
@@ -79,9 +80,6 @@ def test_missing_detector_mask_is_not_expanded_to_rectangle():
 def test_geometry_override_missing_mask_fails_safe_instead_of_erasing_art():
     image = np.full((80, 120, 3), 180, dtype=np.uint8)
     cv2.line(image, (10, 38), (110, 38), (20, 20, 20), 2)
-    # Detector-origin boxes keep model confidence after a geometry override. If
-    # the old pipeline drops their segmentation mask, cleanup must now no-op
-    # instead of converting the entire edited rectangle into a destructive mask.
     overridden = BubbleBox(25, 18, 95, 58, 0.86, None)
     mask = build_mask((80, 120), [overridden], image)
     assert not np.any(mask > 127)
@@ -89,10 +87,53 @@ def test_geometry_override_missing_mask_fails_safe_instead_of_erasing_art():
 
 def test_manual_box_keeps_explicit_rectangle_fallback_contract():
     image = np.full((80, 120, 3), 180, dtype=np.uint8)
-    # Manual boxes are persisted by the current pipeline with confidence=1.0.
     manual = BubbleBox(30, 20, 90, 55, 1.0, None)
     mask = build_mask((80, 120), [manual], image)
     assert np.any(mask > 127)
+
+
+def test_detector_refine_never_synthesizes_short_box_rectangle():
+    image = np.full((80, 120, 3), 180, dtype=np.uint8)
+    missing = BubbleBox(30, 20, 90, 50, 0.88, None)
+
+    refined = CombinedTextDetector._refine_and_split_tall_boxes([missing], image)
+
+    assert len(refined) == 1
+    assert refined[0].mask is None
+
+
+def test_detector_refine_never_synthesizes_split_line_rectangles():
+    image = np.full((130, 140, 3), 245, dtype=np.uint8)
+    cv2.rectangle(image, (35, 28), (100, 36), (20, 20, 20), -1)
+    cv2.rectangle(image, (35, 78), (100, 86), (20, 20, 20), -1)
+    missing = BubbleBox(25, 15, 115, 105, 0.91, None)
+
+    refined = CombinedTextDetector._refine_and_split_tall_boxes([missing], image)
+
+    assert len(refined) >= 2
+    assert all(box.mask is None for box in refined)
+
+
+def test_merge_masks_returns_none_when_all_segmentation_is_missing():
+    missing_a = BubbleBox(10, 10, 30, 30, 0.8, None)
+    missing_b = BubbleBox(35, 10, 55, 30, 0.8, None)
+
+    merged = CombinedTextDetector._merge_masks([missing_a, missing_b], 5, 5, 60, 35)
+
+    assert merged is None
+
+
+def test_merge_masks_uses_only_real_segmentation_evidence():
+    real_mask = np.zeros((20, 20), dtype=np.uint8)
+    real_mask[7:13, 8:12] = 255
+    real = BubbleBox(10, 10, 30, 30, 0.8, real_mask)
+    missing = BubbleBox(35, 10, 55, 30, 0.8, None)
+
+    merged = CombinedTextDetector._merge_masks([real, missing], 5, 5, 60, 35)
+
+    assert merged is not None
+    assert int(np.count_nonzero(merged > 127)) == int(np.count_nonzero(real_mask > 127))
+    assert not np.any(merged[:, 30:] > 127)
 
 
 def test_fixed_long_crop_uses_tiled_path():
