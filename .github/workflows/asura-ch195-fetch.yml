@@ -1,4 +1,4 @@
-name: Apply final v0.2 context fix
+name: Apply v0.3 workstation patch
 
 on:
   push:
@@ -16,28 +16,34 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout helper patches
+        uses: actions/checkout@v4
         with:
-          ref: feat/detection-recovery-pipeline
-      - name: Add global context pass for tall text-segmenter slices
+          ref: test/asura-ch195-v02
+          path: helper
+      - name: Checkout v0.3 UI branch
+        uses: actions/checkout@v4
+        with:
+          ref: feat/v03-workstation-ui
+          path: target
+      - name: Apply checked workstation patches
         run: |
-          python - <<'PY'
-          from pathlib import Path
-          p = Path('app/detector/bubble_detector.py')
-          s = p.read_text()
-          old = '''                if y + slice_h >= h:\n                    break\n                y += step\n            boxes = self._nms_boxes(all_boxes)\n'''
-          new = '''                if y + slice_h >= h:\n                    break\n                y += step\n\n            # Tall webtoon slices need one global text-segmentation view in\n            # addition to the local 1024px windows. A glyph can sit just\n            # outside the highest-confidence window proposal even though the\n            # same model sees it in full-page context. Keep this restricted\n            # to the segmentation model: the extra pass supplies pixel-mask\n            # evidence only; it never turns proposal geometry into a mask.\n            if "text_segmenter" in self.source_model.lower():\n                all_boxes.extend(self._detect_single_plain(image, 0, 0))\n\n            boxes = self._nms_boxes(all_boxes)\n'''
-          if old not in s:
-              if '_detect_single_plain(image, 0, 0)' in s and 'Tall webtoon slices need one global' in s:
-                  raise SystemExit(0)
-              raise SystemExit('target block not found')
-          p.write_text(s.replace(old, new, 1))
-          PY
-      - name: Commit source-only fix
+          cd target
+          for patch in ../helper/.v03-preview.patch ../helper/.v03-review.patch ../helper/.v03-editor-qc.patch ../helper/.v03-workbench.patch; do
+            git apply --check "$patch"
+            git apply "$patch"
+          done
+          git diff --check
+          node --check app/static/js/preview.js
+          node --check app/static/js/review-workspace.js
+          node --check app/static/js/chapter-qc.js
+          node --check app/static/js/editor.js
+      - name: Commit source-only workstation migration
         run: |
+          cd target
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add app/detector/bubble_detector.py
+          git add app/static/js/preview.js app/static/js/review-workspace.js app/static/js/chapter-qc.js app/static/js/editor.js app/static/css/workbench.css
           git diff --cached --quiet && exit 0
-          git commit -m "fix(v0.2): add full-slice context for tall text segmentation"
-          git push origin HEAD:feat/detection-recovery-pipeline
+          git commit -m "feat(v0.3-ui): unify page navigation and workspace layout"
+          git push origin HEAD:feat/v03-workstation-ui
