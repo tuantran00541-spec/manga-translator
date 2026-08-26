@@ -39,10 +39,10 @@ jobs:
             tests/test_inpaint_artwork_quality.py \
             tests/test_geometry_override_mask.py \
             tests/test_v01_product_closure.py \
-            tests/test_phase41_data_model.py \
-            tests/test_phase42_review_artifacts.py \
-            tests/test_phase43_chapter_qc_ui.py \
-            tests/test_phase45_render_export.py \
+            tests/test_manifest_data_model.py \
+            tests/test_review_artifacts.py \
+            tests/test_chapter_qc_ui.py \
+            tests/test_render_export.py \
             tests/test_ui_system_contract.py
 
       - name: Install Chromium
@@ -50,9 +50,9 @@ jobs:
 
       - name: Run browser regression gate
         run: |
-          python tests/browser_phase43_chapter_qc.py
-          python tests/browser_phase44_ocr.py
-          python tests/browser_phase45_render_export.py
+          python tests/browser_chapter_qc.py
+          python tests/browser_ocr.py
+          python tests/browser_render_export.py
 
       - name: Explain model gate
         run: |

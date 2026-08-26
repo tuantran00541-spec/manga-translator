@@ -15,6 +15,12 @@ env/
 *.egg-info/
 dist/
 build/
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+playwright-report/
+test-results/
 
 .env
 .env.*
@@ -26,11 +32,13 @@ build/
 Thumbs.db
 *.swp
 *.tmp
-
 *.log
 
-debug_detect.py
-debug_text_threshold_sweep.py
-inspect_model.py
-
+# Local experiment/benchmark outputs. Historical pre-v0.1 benchmark code lives
+# on archive/pre-v0.1-benchmarks rather than the production branch.
 bench/
+benchmark-results/
+bench_*.json
+*_probe_*.json
+*_e2e.json
+*_profile.json

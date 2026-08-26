@@ -138,7 +138,7 @@ The external DeepSeek network call is stubbed in that test; the product state tr
 ## Project layout
 
 ```text
-app/
+app/              production application
   detector/       local bubble/text detection
   downloader/     URL/local ingestion and webtoon slicing
   inpaint/        LaMa cleanup + mask geometry safety
@@ -148,10 +148,17 @@ app/
   routers/        FastAPI endpoints
   static/         browser UI
   visual_qc/      Gemini/DeepSeek image QC
-tests/            regression + product-closure tests
-models/           local model binaries (not committed)
-data/             runtime chapter data
+tests/            correctness, security and product-release regression tests
+models/           local model files + setup note; binaries are not committed
+data/             runtime chapter data (ignored)
+docs/             maintained architecture/UI/security history
 ```
+
+## Repository hygiene
+
+The production branch intentionally does not carry exploratory benchmark generations, one-off debug scripts, frozen benchmark JSON, or stale model hash manifests. The pre-v0.1 benchmark/debug tree is preserved intact on `archive/pre-v0.1-benchmarks` for future archaeology or model experiments.
+
+Release-critical tests use functional names rather than phase numbers. New experiments should live on a feature/benchmark branch and only enter `main` when they become part of the maintained product or release gate.
 
 ## Release rule
 
