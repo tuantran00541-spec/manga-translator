@@ -1,0 +1,193 @@
+
++        groups: dict[tuple[str, str], list[BubbleBox]] = {}
++        for b in boxes:
++            groups.setdefault((b.source_model, b.semantic_type), []).append(b)
++        for members in groups.values():
++            rects = np.array([[b.x1, b.y1, max(1,b.x2-b.x1), max(1,b.y2-b.y1)] for b in members])
++            scores = np.array([max(0.05, float(b.confidence)) for b in members])
++            indices = cv2.dnn.NMSBoxes(rects.tolist(), scores.tolist(), 0.05, iou_threshold)
++            result.extend(members[int(i)] for i in np.array(indices).flatten())
++        return sorted(result, key=lambda b: b.confidence, reverse=True)
+ 
+     @staticmethod
+     def _refine_and_split_tall_boxes(boxes: list[BubbleBox], img: np.ndarray) -> list[BubbleBox]:
+@@ -129,7 +117,7 @@
+             bw = box.x2 - box.x1
+             if bh <= 45:
+                 refined_boxes.append(
+-                    BubbleBox(box.x1, box.y1, box.x2, box.y2, box.confidence, box.mask)
++                    replace(box)
+                 )
+                 continue
+ 
+@@ -141,7 +129,7 @@
+             exp_crop = full_gray[y1_exp:y2_exp, crop_x1:crop_x2]
+             if exp_crop.size == 0:
+                 refined_boxes.append(
+-                    BubbleBox(box.x1, box.y1, box.x2, box.y2, box.confidence, box.mask)
++                    replace(box)
+                 )
+                 continue
+ 
+@@ -165,7 +153,7 @@
+ 
+             if len(line_bounds) <= 1:
+                 refined_boxes.append(
+-                    BubbleBox(box.x1, box.y1, box.x2, box.y2, box.confidence, box.mask)
++                    replace(box)
+                 )
+                 continue
+ 
+@@ -221,7 +209,7 @@
+                         line_mask[dst_y1:dst_y2, dst_x1:dst_x2] = box.mask[src_y1i:src_y2i, src_x1i:src_x2i]
+ 
+                 refined_boxes.append(
+-                    BubbleBox(abs_x1, abs_y1, abs_x2, abs_y2, box.confidence, line_mask)
++                    replace(box, x1=abs_x1, y1=abs_y1, x2=abs_x2, y2=abs_y2, mask=line_mask)
+                 )
+ 
+         return refined_boxes
+@@ -273,7 +261,7 @@
+                     if cluster_area > img_w * img_h * MAX_BOX_AREA_RATIO:
+                         continue
+                     merged_mask = self._merge_masks([b], min_x, min_y, max_x, max_y)
+-                    final_clusters.append(BubbleBox(min_x, min_y, max_x, max_y, b.confidence, merged_mask))
++                    final_clusters.append(replace(b, x1=min_x, y1=min_y, x2=max_x, y2=max_y, mask=merged_mask))
+                 else:
+                     min_x = max(0, min(t.x1 for t in sub) - 20)
+                     min_y = max(0, min(t.y1 for t in sub) - 8)
+@@ -285,12 +273,10 @@
+                     if cluster_area > img_w * img_h * MAX_BOX_AREA_RATIO:
+                         continue
+                     merged_mask = self._merge_masks(sub, min_x, min_y, max_x, max_y)
++                    seed = max(sub, key=lambda t: t.confidence)
+                     final_clusters.append(
+-                        BubbleBox(
+-                            min_x, min_y, max_x, max_y,
+-                            max(t.confidence for t in sub),
+-                            merged_mask,
+-                        )
++                        replace(seed, x1=min_x, y1=min_y, x2=max_x, y2=max_y,
++                                confidence=max(t.confidence for t in sub), mask=merged_mask)
+                     )
+ 
+         return final_clusters
+--- /dev/null	2026-08-26 08:50:09.058596701 +0000
++++ b/app/detector/recovery.py	2026-08-26 09:28:20.780597195 +0000
+@@ -0,0 +1,148 @@
++from __future__ import annotations
++
++from dataclasses import replace
++import cv2
++import numpy as np
++
++from app.detector.bubble_detector import BubbleBox
++
++
++class SecondaryTextRecovery:
++    """Conservative OpenCV/MSER recovery for text styles missed by the segmenter.
++
++    Recovery is deliberately detection-first, not cleanup-first. Candidates are
++    review-only unless a compact pixel mask can be reconstructed with conservative
++    geometry. This prevents an outlined/SFX proposal from turning into rectangle
++    inpainting while still ensuring detector misses are visible to the editor.
++    """
++
++    def __init__(self) -> None:
++        self._mser = cv2.MSER_create(5, 18, 120000)
++
++    @staticmethod
++    def _iou(a: BubbleBox, b: BubbleBox) -> float:
++        x1, y1 = max(a.x1, b.x1), max(a.y1, b.y1)
++        x2, y2 = min(a.x2, b.x2), min(a.y2, b.y2)
++        if x2 <= x1 or y2 <= y1:
++            return 0.0
++        inter = (x2 - x1) * (y2 - y1)
++        aa = max(1, (a.x2 - a.x1) * (a.y2 - a.y1))
++        bb = max(1, (b.x2 - b.x1) * (b.y2 - b.y1))
++        return inter / float(aa + bb - inter)
++
++    @staticmethod
++    def _watermark_like(x1: int, y1: int, x2: int, y2: int, w: int, h: int) -> bool:
++        bw, bh = x2 - x1, y2 - y1
++        aspect = bw / max(1.0, float(bh))
++        edge_touch = x1 < w * 0.04 or x2 > w * 0.96
++        vertical_edge = y1 < h * 0.05 or y2 > h * 0.95
++        return bool((edge_touch and aspect >= 4.0 and bh <= h * 0.12) or
++                    (vertical_edge and aspect >= 6.0 and bh <= h * 0.08))
++
++    @staticmethod
++    def _seed_mask(gray_crop: np.ndarray) -> np.ndarray:
++        if gray_crop.size == 0:
++            return np.zeros_like(gray_crop, dtype=np.uint8)
++        blur = cv2.GaussianBlur(gray_crop, (3, 3), 0)
++        # Combine local dark/light contrast and edges; keep this conservative.
++        med = float(np.median(blur))
++        dark = blur < max(0.0, med - 22.0)
++        light = blur > min(255.0, med + 22.0)
++        edges = cv2.Canny(blur, 45, 120) > 0
++        seed = (dark | light) & (cv2.dilate(edges.astype(np.uint8), np.ones((3, 3), np.uint8), iterations=1) > 0)
++        mask = seed.astype(np.uint8) * 255
++        if np.any(mask):
++            mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8), iterations=1)
++        return mask
++
++    def detect(self, image: np.ndarray, existing: list[BubbleBox] | None = None) -> list[BubbleBox]:
++        if image is None or image.size == 0:
++            return []
++        h, w = image.shape[:2]
++        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if image.ndim == 3 else image
++        _, boxes = self._mser.detectRegions(gray)
++        if boxes is None or len(boxes) == 0:
++            return []
++
++        rects = []
++        for x, y, bw, bh in np.asarray(boxes).reshape(-1, 4):
++            x, y, bw, bh = map(int, (x, y, bw, bh))
++            if bw < 4 or bh < 4 or bw > w * 0.9 or bh > h * 0.65:
++                continue
++            area = bw * bh
++            if area < 24 or area > w * h * 0.20:
++                continue
++            rects.append((x, y, x + bw, y + bh))
++        if not rects:
++            return []
++
++        # Cluster nearby glyph components into text candidates.
++        remaining = rects[:]
++        clusters: list[list[tuple[int, int, int, int]]] = []
++        while remaining:
++            cluster = [remaining.pop()]
++            changed = True
++            while changed:
++                changed = False
++                keep = []
++                cx1 = min(r[0] for r in cluster); cy1 = min(r[1] for r in cluster)
++                cx2 = max(r[2] for r in cluster); cy2 = max(r[3] for r in cluster)
++                ch = max(8, cy2 - cy1)
++                for r in remaining:
++                    rx1, ry1, rx2, ry2 = r
++                    near_x = not (rx1 > cx2 + ch * 1.8 or rx2 < cx1 - ch * 1.8)
++                    near_y = not (ry1 > cy2 + ch * 1.3 or ry2 < cy1 - ch * 1.3)
++                    if near_x and near_y:
++                        cluster.append(r); changed = True
++                    else:
++                        keep.append(r)
++                remaining = keep
++            clusters.append(cluster)
++
++        out: list[BubbleBox] = []
++        existing = existing or []
++        for cluster in clusters:
++            if len(cluster) < 2:
++                continue
++            x1 = max(0, min(r[0] for r in cluster) - 6)
++            y1 = max(0, min(r[1] for r in cluster) - 6)
++            x2 = min(w, max(r[2] for r in cluster) + 6)
++            y2 = min(h, max(r[3] for r in cluster) + 6)
++            bw, bh = x2 - x1, y2 - y1
++            if bw < 12 or bh < 10:
++                continue
++            candidate = BubbleBox(x1, y1, x2, y2, 0.20, None,
++                                  source_model="opencv_mser", class_id=0,
++                                  class_name="text_recovery", semantic_type="fr
