@@ -1,0 +1,301 @@
+/* v0.3 workstation shell. Stage-specific legacy CSS remains during migration. */
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--surface-0);
+}
+
+.workbench-shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+}
+
+.app-rail {
+  position: sticky;
+  top: 0;
+  z-index: 120;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+  padding: 12px 8px;
+  background: #0b111d;
+  border-right: 1px solid var(--border-1);
+}
+
+.app-rail-brand {
+  display: grid;
+  place-items: center;
+  min-height: 44px;
+  margin-bottom: 4px;
+}
+
+.app-rail-brand-mark {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--border-2);
+  border-radius: 9px;
+  background: var(--surface-2);
+  color: var(--text-1);
+  font: 700 11px/1 var(--font-display);
+  letter-spacing: -.02em;
+}
+
+.app-rail-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.app-rail-footer {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.app-rail-item {
+  position: relative;
+  min-height: 50px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px 3px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-3);
+  font: 500 9.5px/1.1 var(--font-body);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.app-rail-item:hover:not(:disabled) {
+  background: var(--surface-2);
+  color: var(--text-1);
+}
+
+.app-rail-item:focus-visible {
+  outline: 2px solid var(--accent-1);
+  outline-offset: 1px;
+}
+
+.app-rail-item:disabled {
+  opacity: .38;
+  cursor: default;
+}
+
+.app-rail-item.active {
+  background: var(--accent-soft);
+  border-color: rgba(79, 143, 247, .28);
+  color: var(--text-1);
+}
+
+.app-rail-item.active::before {
+  content: "";
+  position: absolute;
+  left: -9px;
+  width: 2px;
+  height: 26px;
+  border-radius: 99px;
+  background: var(--accent-1);
+}
+
+.app-rail-item.complete:not(.active) .app-rail-glyph {
+  color: #6ee7b7;
+}
+
+.app-rail-glyph {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  color: currentColor;
+  font: 600 15px/1 var(--font-display);
+}
+
+.workbench-frame {
+  min-width: 0;
+  padding: 0 24px 56px;
+}
+
+.workbench-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 90;
+  min-height: 58px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 0 -24px 18px;
+  padding: 0 24px;
+  border-bottom: 1px solid var(--border-1);
+  background: color-mix(in srgb, var(--surface-0) 94%, transparent);
+  backdrop-filter: blur(12px);
+}
+
+.workbench-title-block {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.workbench-stage-title {
+  color: var(--text-1);
+  font: 600 13px/1.2 var(--font-display);
+}
+
+.workbench-title-block .app-context {
+  max-width: 360px;
+  color: var(--text-3);
+  font: 500 10px/1.2 var(--font-mono);
+}
+
+.workbench-status {
+  min-width: 0;
+  color: var(--text-3);
+  font: 500 10px/1.2 var(--font-mono);
+}
+
+/* Landing: quieter hierarchy, fewer decorative surfaces. */
+#landing-view {
+  width: min(100%, 1180px);
+  margin: 0 auto;
+}
+
+.landing-intro {
+  max-width: 760px;
+  margin: 38px 0 24px;
+  text-align: left;
+}
+
+.landing-intro h1 {
+  max-width: 720px;
+  font-size: clamp(27px, 3vw, 38px);
+}
+
+.landing-intro p {
+  max-width: 680px;
+  margin-left: 0;
+}
+
+.landing-source-grid {
+  grid-template-columns: minmax(0, 1.25fr) minmax(320px, .75fr);
+  gap: 12px;
+  max-width: none;
+}
+
+#upload-divider {
+  display: none;
+}
+
+.workbench-frame .app-panel {
+  background: var(--surface-1);
+  box-shadow: none;
+}
+
+.recent-panel {
+  max-width: none;
+}
+
+@media (max-width: 980px) {
+  .landing-source-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .workbench-shell {
+    display: block;
+  }
+
+  .app-rail {
+    position: sticky;
+    top: 0;
+    width: 100%;
+    height: auto;
+    flex-direction: row;
+    align-items: center;
+    padding: 6px 8px;
+    border-right: 0;
+    border-bottom: 1px solid var(--border-1);
+  }
+
+  .app-rail-brand {
+    min-height: 38px;
+    margin: 0 4px 0 0;
+  }
+
+  .app-rail-brand-mark {
+    width: 30px;
+    height: 30px;
+  }
+
+  .app-rail-nav {
+    flex: 1;
+    min-width: 0;
+    flex-direction: row;
+    gap: 2px;
+  }
+
+  .app-rail-footer {
+    margin: 0 0 0 auto;
+  }
+
+  .app-rail-item {
+    min-width: 54px;
+    min-height: 40px;
+    flex: 1 1 auto;
+    padding: 4px 2px;
+    font-size: 8.5px;
+  }
+
+  .app-rail-settings {
+    width: 42px;
+    min-width: 42px;
+  }
+
+  .app-rail-item.active::before {
+    left: 50%;
+    top: -7px;
+    width: 24px;
+    height: 2px;
+    transform: translateX(-50%);
+  }
+
+  .app-rail-glyph {
+    width: 18px;
+    height: 18px;
+    font-size: 13px;
+  }
+
+  .workbench-frame {
+    padding: 0 12px 40px;
+  }
+
+  .workbench-topbar {
+    position: static;
+    min-height: 48px;
+    margin: 0 -12px 10px;
+    padding: 0 12px;
+  }
+
+  .landing-intro {
+    margin-top: 24px;
+  }
+}
+
+@media (max-width: 480px) {
+  .app-rail-brand { display: none; }
+  .app-rail-item span:last-child { display: none; }
+  .app-rail-item { min-width: 38px; }
+  .workbench-title-block .app-context { display: none; }
+}
