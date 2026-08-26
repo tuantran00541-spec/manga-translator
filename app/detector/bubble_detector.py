@@ -56,7 +56,7 @@ class YoloDetector:
         self.use_tta = ENABLE_TTA if use_tta is None else use_tta
 
     def _class_name(self, class_id: int, num_classes: int) -> str:
-        name = self.source_model.lower()
+        name = getattr(self, "source_model", "unknown").lower()
         if "bubble" in name and num_classes >= 2:
             return "text_bubble" if class_id == 0 else "text_free" if class_id == 1 else f"class_{class_id}"
         if "text_segmenter" in name or num_classes == 1:
@@ -318,13 +318,29 @@ class YoloDetector:
         resized = cv2.resize(crop, (box_w, box_h), interpolation=cv2.INTER_LINEAR)
         return (resized > 0.5).astype(np.uint8) * 255
 
+    @staticmethod
+    def _candidate_fields(candidate: tuple) -> tuple[float, int, int, object, object]:
+        """Normalize current and v0.1 candidate tuple layouts.
+
+        v0.1 tests and third-party callers may still pass the legacy seven-field
+        tuple ``(x1, y1, x2, y2, score, canvas_box, mask_coeffs)``. Production
+        v0.2 candidates append class provenance before the mask metadata. Keep
+        that compatibility without weakening class-aware NMS for new detections.
+        """
+        if len(candidate) >= 9 and isinstance(candidate[5], (int, np.integer)):
+            return float(candidate[4]), int(candidate[5]), int(candidate[6]), candidate[7], candidate[8]
+        if len(candidate) >= 7:
+            return float(candidate[4]), 0, 1, candidate[5], candidate[6]
+        raise ValueError("Invalid detector candidate tuple")
+
     def _nms(self, candidates: list[tuple], prototypes=None) -> list[BubbleBox]:
         if not candidates:
             return []
         result: list[BubbleBox] = []
         by_class: dict[int, list[int]] = {}
         for idx, candidate in enumerate(candidates):
-            by_class.setdefault(int(candidate[5]), []).append(idx)
+            _, class_id, _, _, _ = self._candidate_fields(candidate)
+            by_class.setdefault(class_id, []).append(idx)
 
         for class_id, member_indices in by_class.items():
             subset = [candidates[i] for i in member_indices]
@@ -336,7 +352,7 @@ class YoloDetector:
             for local_i in np.array(indices).flatten():
                 c = subset[int(local_i)]
                 x1, y1, x2, y2 = map(int, c[:4])
-                _, _, _, _, score, cid, num_classes, canvas_box, mask_coeffs = c
+                score, cid, num_classes, canvas_box, mask_coeffs = self._candidate_fields(c)
                 mask = self._decode_mask(mask_coeffs, prototypes, canvas_box, x2 - x1, y2 - y1)
                 class_name = self._class_name(int(cid), int(num_classes))
                 result.append(BubbleBox(
@@ -346,7 +362,7 @@ class YoloDetector:
                     y2=y2,
                     confidence=min(float(score), DETECTOR_CONFIDENCE_MAX),
                     mask=mask,
-                    source_model=self.source_model,
+                    source_model=getattr(self, "source_model", "unknown"),
                     class_id=int(cid),
                     class_name=class_name,
                     semantic_type=self._semantic_type(class_name),
