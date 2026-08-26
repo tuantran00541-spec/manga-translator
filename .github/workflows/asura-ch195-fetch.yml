@@ -1,4 +1,4 @@
-name: Asura chapter 195 fetch
+name: Apply final v0.2 context fix
 
 on:
   push:
@@ -8,21 +8,36 @@ on:
       - .github/workflows/asura-ch195-fetch.yml
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
-  fetch:
+  patch:
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
           ref: feat/detection-recovery-pipeline
-      - name: Upload v0.2 source snapshot
-        uses: actions/upload-artifact@v4
-        with:
-          name: v02-final-source
-          path: |
-            .
-            !.git/**
-          include-hidden-files: true
-          retention-days: 1
-          compression-level: 0
+      - name: Add global context pass for tall text-segmenter slices
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('app/detector/bubble_detector.py')
+          s = p.read_text()
+          old = '''                if y + slice_h >= h:\n                    break\n                y += step\n            boxes = self._nms_boxes(all_boxes)\n'''
+          new = '''                if y + slice_h >= h:\n                    break\n                y += step\n\n            # Tall webtoon slices need one global text-segmentation view in\n            # addition to the local 1024px windows. A glyph can sit just\n            # outside the highest-confidence window proposal even though the\n            # same model sees it in full-page context. Keep this restricted\n            # to the segmentation model: the extra pass supplies pixel-mask\n            # evidence only; it never turns proposal geometry into a mask.\n            if "text_segmenter" in self.source_model.lower():\n                all_boxes.extend(self._detect_single_plain(image, 0, 0))\n\n            boxes = self._nms_boxes(all_boxes)\n'''
+          if old not in s:
+              if '_detect_single_plain(image, 0, 0)' in s and 'Tall webtoon slices need one global' in s:
+                  raise SystemExit(0)
+              raise SystemExit('target block not found')
+          p.write_text(s.replace(old, new, 1))
+          PY
+      - name: Commit source-only fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/detector/bubble_detector.py
+          git diff --cached --quiet && exit 0
+          git commit -m "fix(v0.2): add full-slice context for tall text segmentation"
+          git push origin HEAD:feat/detection-recovery-pipeline
