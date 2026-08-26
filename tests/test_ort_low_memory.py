@@ -45,7 +45,7 @@ def test_low_memory_defaults_disable_ort_retention(monkeypatch):
 
     assert opts.enable_cpu_mem_arena is False
     assert opts.enable_mem_pattern is False
-    assert session.get_inputs() == []
+    assert isinstance(session, _FakeSession)
 
 
 def test_environment_can_restore_ort_allocator_features(monkeypatch):
@@ -69,7 +69,44 @@ def test_environment_can_restore_ort_allocator_features(monkeypatch):
     assert isinstance(session, _FakeSession)
 
 
-def test_default_serialization_prevents_overlapping_session_runs(monkeypatch):
+def test_opt_in_serialization_prevents_overlapping_high_memory_runs(monkeypatch):
+    created = []
+    active = 0
+    max_active = 0
+    active_lock = threading.Lock()
+
+    class FakeConcurrentSession(_FakeSession):
+        def run(self, *args, **kwargs):
+            nonlocal active, max_active
+            with active_lock:
+                active += 1
+                max_active = max(max_active, active)
+            time.sleep(0.05)
+            with active_lock:
+                active -= 1
+            return [1]
+
+    def fake_ctor(*args, **kwargs):
+        session = FakeConcurrentSession(*args, **kwargs)
+        created.append(session)
+        return session
+
+    monkeypatch.setattr(ort_utils.ort, "InferenceSession", fake_ctor)
+
+    a = ort_utils.make_session("lama-a.onnx", intra_op_threads=1, serialize_inference=True)
+    b = ort_utils.make_session("lama-b.onnx", intra_op_threads=1, serialize_inference=True)
+
+    t1 = threading.Thread(target=a.run, args=(None, {}))
+    t2 = threading.Thread(target=b.run, args=(None, {}))
+    t1.start()
+    t2.start()
+    t1.join()
+    t2.join()
+
+    assert max_active == 1
+
+
+def test_default_sessions_can_run_concurrently(monkeypatch):
     created = []
     active = 0
     max_active = 0
@@ -94,8 +131,8 @@ def test_default_serialization_prevents_overlapping_session_runs(monkeypatch):
     monkeypatch.delenv("MANGA_ORT_SERIALIZE_INFERENCE", raising=False)
     monkeypatch.setattr(ort_utils.ort, "InferenceSession", fake_ctor)
 
-    a = ort_utils.make_session("a.onnx", intra_op_threads=1)
-    b = ort_utils.make_session("b.onnx", intra_op_threads=1)
+    a = ort_utils.make_session("det-a.onnx", intra_op_threads=1)
+    b = ort_utils.make_session("det-b.onnx", intra_op_threads=1)
 
     t1 = threading.Thread(target=a.run, args=(None, {}))
     t2 = threading.Thread(target=b.run, args=(None, {}))
@@ -104,4 +141,4 @@ def test_default_serialization_prevents_overlapping_session_runs(monkeypatch):
     t1.join()
     t2.join()
 
-    assert max_active == 1
+    assert max_active >= 2
