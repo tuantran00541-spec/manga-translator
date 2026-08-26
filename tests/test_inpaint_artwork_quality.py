@@ -1,7 +1,11 @@
 import cv2
 import numpy as np
 
-from app.detector.bubble_detector import BubbleBox
+from app.detector.bubble_detector import (
+    BubbleBox,
+    DETECTOR_CONFIDENCE_MAX,
+    YoloDetector,
+)
 from app.detector.combined_detector import CombinedTextDetector
 from app.detector.mask_builder import build_mask
 from app.inpaint.lama_inpainter import Inpainter
@@ -90,6 +94,22 @@ def test_manual_box_keeps_explicit_rectangle_fallback_contract():
     manual = BubbleBox(30, 20, 90, 55, 1.0, None)
     mask = build_mask((80, 120), [manual], image)
     assert np.any(mask > 127)
+
+
+def test_detector_confidence_cannot_collide_with_manual_rectangle_sentinel():
+    detector = YoloDetector.__new__(YoloDetector)
+    detector.conf_threshold = 0.1
+    detector._decode_mask = lambda *args, **kwargs: None
+    candidates = [(10.0, 10.0, 40.0, 35.0, 1.0, None, None)]
+
+    boxes = detector._nms(candidates, prototypes=None)
+
+    assert len(boxes) == 1
+    assert boxes[0].confidence == DETECTOR_CONFIDENCE_MAX
+    assert boxes[0].confidence < 1.0
+    image = np.full((60, 80, 3), 180, dtype=np.uint8)
+    mask = build_mask((60, 80), boxes, image)
+    assert not np.any(mask > 127)
 
 
 def test_detector_refine_never_synthesizes_short_box_rectangle():
