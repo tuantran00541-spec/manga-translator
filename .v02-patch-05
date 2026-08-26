@@ -1,0 +1,21 @@
+ms:
++        assert item["core_y2"] > item["core_y1"]
++        assert item["core_source_y2"] > item["core_source_y1"]
++
++
++def test_stitch_core_ranges_own_each_source_pixel_once(tmp_path: Path):
++    a = tmp_path / "a.png"; b = tmp_path / "b.png"
++    Image.new("RGB", (20, 120), "white").save(a)
++    Image.new("RGB", (20, 140), "white").save(b)
++    payload = _stitch_pngs([a, b], [(10, 100), (20, 130)])
++    out = tmp_path / "out.png"; out.write_bytes(payload)
++    with Image.open(out) as im:
++        assert im.size == (20, 200)
++
++
++def test_review_only_recovery_never_implies_rectangle_mask():
++    b = BubbleBox(10, 10, 200, 100, 0.2, None, source_model="opencv_mser",
++                  class_name="text_recovery", semantic_type="free_text",
++                  mask_source="none", safe_to_inpaint=False, ocr_eligible=False, needs_review=True)
++    assert b.mask is None
++    assert not b.safe_to_inpaint and b.needs_review
