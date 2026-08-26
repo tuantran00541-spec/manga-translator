@@ -6,32 +6,23 @@ on:
       - test/asura-ch195-v02
     paths:
       - .github/workflows/asura-ch195-fetch.yml
-      - scripts/fetch_asura_chapter.py
   workflow_dispatch:
 
 jobs:
   fetch:
     runs-on: ubuntu-22.04
-    timeout-minutes: 20
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
-      - name: Install fetch dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install beautifulsoup4 pillow playwright
-          playwright install chromium
-      - name: Fetch untouched chapter assets
-        run: |
-          python scripts/fetch_asura_chapter.py \
-            'https://asurascans.com/comics/the-dark-magician-transmigrates-after-66666-years-b57aa235/chapter/195' \
-            /tmp/asura-ch195
-      - name: Upload chapter artifact
+          ref: feat/detection-recovery-pipeline
+      - name: Upload v0.2 source snapshot
         uses: actions/upload-artifact@v4
         with:
-          name: asura-ch195-source
-          path: /tmp/asura-ch195
+          name: v02-final-source
+          path: |
+            .
+            !.git/**
+          include-hidden-files: true
           retention-days: 1
           compression-level: 0
