@@ -113,6 +113,12 @@ class CombinedTextDetector:
 
     @staticmethod
     def _refine_and_split_tall_boxes(boxes: list[BubbleBox], img: np.ndarray) -> list[BubbleBox]:
+        """Refine geometry without inventing segmentation pixels.
+
+        Detector masks are evidence. A missing mask must stay missing all the way
+        to the artwork-safe mask builder; turning ``None`` into a filled rectangle
+        here would bypass the downstream safety policy and erase artwork.
+        """
         img_h, img_w = img.shape[:2]
         full_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if img.ndim == 3 else img
 
@@ -122,8 +128,9 @@ class CombinedTextDetector:
             bh = box.y2 - box.y1
             bw = box.x2 - box.x1
             if bh <= 45:
-                rect_mask = np.full((bh, bw), 255, dtype=np.uint8) if box.mask is None else box.mask
-                refined_boxes.append(BubbleBox(box.x1, box.y1, box.x2, box.y2, box.confidence, rect_mask))
+                refined_boxes.append(
+                    BubbleBox(box.x1, box.y1, box.x2, box.y2, box.confidence, box.mask)
+                )
                 continue
 
             crop_x1 = box.x1
@@ -133,8 +140,9 @@ class CombinedTextDetector:
 
             exp_crop = full_gray[y1_exp:y2_exp, crop_x1:crop_x2]
             if exp_crop.size == 0:
-                rect_mask = np.full((bh, bw), 255, dtype=np.uint8) if box.mask is None else box.mask
-                refined_boxes.append(BubbleBox(box.x1, box.y1, box.x2, box.y2, box.confidence, rect_mask))
+                refined_boxes.append(
+                    BubbleBox(box.x1, box.y1, box.x2, box.y2, box.confidence, box.mask)
+                )
                 continue
 
             crop_bg = np.percentile(exp_crop, 90)
@@ -156,8 +164,9 @@ class CombinedTextDetector:
                 line_bounds.append((start_y, len(text_rows)))
 
             if len(line_bounds) <= 1:
-                rect_mask = np.full((bh, bw), 255, dtype=np.uint8) if box.mask is None else box.mask
-                refined_boxes.append(BubbleBox(box.x1, box.y1, box.x2, box.y2, box.confidence, rect_mask))
+                refined_boxes.append(
+                    BubbleBox(box.x1, box.y1, box.x2, box.y2, box.confidence, box.mask)
+                )
                 continue
 
             for idx, (ly1, ly2) in enumerate(line_bounds):
@@ -188,7 +197,10 @@ class CombinedTextDetector:
 
                 line_h = abs_y2 - abs_y1
                 line_w = abs_x2 - abs_x1
+                if line_h <= 0 or line_w <= 0:
+                    continue
 
+                line_mask = None
                 if box.mask is not None and box.mask.ndim == 2:
                     line_mask = np.zeros((line_h, line_w), dtype=box.mask.dtype)
 
@@ -207,10 +219,10 @@ class CombinedTextDetector:
                         dst_x2 = dst_x1 + (src_x2 - src_x1)
                         dst_y2 = dst_y1 + (src_y2 - src_y1)
                         line_mask[dst_y1:dst_y2, dst_x1:dst_x2] = box.mask[src_y1i:src_y2i, src_x1i:src_x2i]
-                else:
-                    line_mask = np.full((line_h, line_w), 255, dtype=np.uint8)
 
-                refined_boxes.append(BubbleBox(abs_x1, abs_y1, abs_x2, abs_y2, box.confidence, line_mask))
+                refined_boxes.append(
+                    BubbleBox(abs_x1, abs_y1, abs_x2, abs_y2, box.confidence, line_mask)
+                )
 
         return refined_boxes
 
@@ -327,27 +339,39 @@ class CombinedTextDetector:
         return x_overlap and y_close
 
     @staticmethod
-    def _merge_masks(inside_text: list[BubbleBox], min_x: int, min_y: int, max_x: int, max_y: int) -> np.ndarray:
+    def _merge_masks(
+        inside_text: list[BubbleBox], min_x: int, min_y: int, max_x: int, max_y: int
+    ) -> np.ndarray | None:
+        """Merge only segmentation evidence; never synthesize rectangles.
+
+        Missing child masks are ignored. If no child contributes a real non-empty
+        mask, return ``None`` so downstream policy can fail safe explicitly.
+        """
         merged = np.zeros((max_y - min_y, max_x - min_x), dtype=np.uint8)
+        contributed = False
         for t in inside_text:
             tx1 = max(min_x, t.x1)
             ty1 = max(min_y, t.y1)
             tx2 = min(max_x, t.x2)
             ty2 = min(max_y, t.y2)
-            if tx2 <= tx1 or ty2 <= ty1:
+            if tx2 <= tx1 or ty2 <= ty1 or t.mask is None:
                 continue
-            if t.mask is not None:
-                mask_x1 = tx1 - t.x1
-                mask_y1 = ty1 - t.y1
-                mask_x2 = mask_x1 + (tx2 - tx1)
-                mask_y2 = mask_y1 + (ty2 - ty1)
-                sub_mask = t.mask[mask_y1:mask_y2, mask_x1:mask_x2]
-                dest = merged[ty1 - min_y:ty2 - min_y, tx1 - min_x:tx2 - min_x]
-                merged[ty1 - min_y:ty2 - min_y, tx1 - min_x:tx2 - min_x] = np.maximum(dest, sub_mask)
-            else:
-                merged[ty1 - min_y:ty2 - min_y, tx1 - min_x:tx2 - min_x] = 255
 
-        return merged
+            mask_x1 = tx1 - t.x1
+            mask_y1 = ty1 - t.y1
+            mask_x2 = mask_x1 + (tx2 - tx1)
+            mask_y2 = mask_y1 + (ty2 - ty1)
+            sub_mask = t.mask[mask_y1:mask_y2, mask_x1:mask_x2]
+            if sub_mask.size == 0 or not np.any(sub_mask > 0):
+                continue
+
+            dest = merged[ty1 - min_y:ty2 - min_y, tx1 - min_x:tx2 - min_x]
+            if dest.shape != sub_mask.shape:
+                continue
+            merged[ty1 - min_y:ty2 - min_y, tx1 - min_x:tx2 - min_x] = np.maximum(dest, sub_mask)
+            contributed = True
+
+        return merged if contributed else None
 
     @staticmethod
     def _is_inside(text_box: BubbleBox, bubble_box: BubbleBox) -> bool:

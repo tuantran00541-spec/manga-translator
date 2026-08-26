@@ -9,6 +9,11 @@ SLICE_OVERLAP = 200
 MAX_BOX_WIDTH_RATIO = 0.97
 MAX_BOX_AREA_RATIO = 0.35
 MAX_ASPECT_RATIO = 25
+# Manual boxes in the persisted v0.1 manifest use confidence=1.0 as a legacy
+# provenance marker. Keep detector confidences strictly below that value so a
+# detector box whose segmentation mask is later unavailable can never be
+# mistaken for an explicit manual rectangle-removal request.
+DETECTOR_CONFIDENCE_MAX = 0.999998
 
 
 @dataclass
@@ -283,7 +288,8 @@ class YoloDetector:
             x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
             _, _, _, _, _, canvas_box, mask_coeffs = candidates[i]
             mask = self._decode_mask(mask_coeffs, prototypes, canvas_box, x2 - x1, y2 - y1)
-            result.append(BubbleBox(x1, y1, x2, y2, float(scores[i]), mask))
+            confidence = min(float(scores[i]), DETECTOR_CONFIDENCE_MAX)
+            result.append(BubbleBox(x1, y1, x2, y2, confidence, mask))
         return result
 
     def _nms_boxes(self, boxes: list[BubbleBox]) -> list[BubbleBox]:

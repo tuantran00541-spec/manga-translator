@@ -1,491 +1,165 @@
-# Manga & Webtoon Translator Studio
+# Manga & Webtoon Translator Studio — v0.1
 
-<p align="center">
-  <strong>Local-First AI-Assisted Manga, Manhwa, and Webtoon Typesetting & Translation Studio</strong>
-</p>
+Local-first, CPU-oriented manga / manhua / manhwa / webtoon translation studio.
 
-<p align="center">
-  <img src="https://img.shields.io/badge/Python-3.10%20%7C%203.11%20%7C%203.12-blue?logo=python&logoColor=white" alt="Python Version" />
-  <img src="https://img.shields.io/badge/FastAPI-Framework-009688?logo=fastapi&logoColor=white" alt="FastAPI" />
-  <img src="https://img.shields.io/badge/ONNX%20Runtime-CPU%20Optimized-005CED?logo=onnx&logoColor=white" alt="ONNX Runtime" />
-  <img src="https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white" alt="Docker" />
-  <img src="https://img.shields.io/badge/License-MIT-green" alt="License" />
-</p>
+The v0.1 product flow is intentionally narrow and complete:
 
----
+**Import → Slice → Detect/Clean → Review → OCR → Auto-translate → Edit/Typeset → Render chapter → ZIP export**
 
-<p align="center">
-  <a href="#english"><strong>English</strong></a> &bull;
-  <a href="#tiếng-việt"><strong>Tiếng Việt</strong></a>
-</p>
+The application keeps a human editor in control. Automatic steps create a first pass; the editor can correct OCR, translation, geometry, typography and inpainting before export.
 
----
+## What v0.1 does
 
-<a name="english"></a>
-# English
+- Import local PNG/JPEG/WEBP/BMP images, ZIP or CBZ archives.
+- Import chapter URLs with HTTP + Playwright discovery, including relative image URLs, `srcset`, common lazy-load attributes, and scroll-until-stable discovery.
+- Slice long webtoon images into CPU-friendly segments while preferring low-content cut bands.
+- Detect speech/text regions with local ONNX models and clean source text using LaMa inpainting.
+- Protect line art during cleanup with edge-aware flat-fill shortcuts, safe detector-mask fallback, fixed-LaMa tiling for long narrow regions, and page-space segmentation-mask remapping after user geometry edits.
+- Review cleaned pages, repaint mistakes manually, and optionally use Gemini or DeepSeek visual QC.
+- OCR Japanese with MangaOCR and Chinese/Korean/English with PaddleOCR.
+- Automatically turn detector boxes into editable text objects; re-processing keeps stable box links and does not overwrite user geometry/text edits.
+- Translate OCR text in chapter batches with DeepSeek V4 Flash. Translation is opt-in, uses the DeepSeek key already stored by the app, has a per-run USD budget (UI default `$0.02`), and rejects stale writes if the editor changes text while the request is in flight.
+- Edit translation, font, font size, bold, stroke, background, alignment, and text-region geometry.
+- Render every non-skipped page with the revision-safe renderer.
+- Export one ZIP for the chapter. Webtoon slices belonging to the same source page are vertically stitched back together before packaging.
 
-## Overview
+## Current limits
 
-**Manga & Webtoon Translator Studio** is a high-performance, local-first web application designed for manga, manhwa, and webtoon translation teams and solo scanlators. It automates repetitive, labor-intensive tasks—image ingestion, long-strip webtoon slicing, speech bubble detection, text removal (inpainting), and optical character recognition (OCR)—while giving human editors complete creative control over translation, typography, and styling.
+v0.1 is designed to accelerate a human editor, not replace professional redraw/lettering work. Rotation, curved/path text, perspective/warp typography, advanced SFX recreation, and difficult art redraw still need external/editor intervention. URL scraping is generic rather than site-specific, so heavily protected readers may still require local upload.
 
-> [!NOTE]
-> **No Automated Machine Translation**: This tool does not use black-box machine translation or hallucinating LLMs. OCR extracts original source text to assist the editor, who retains full ownership over translation accuracy, tone, and typeset styling.
+Production ONNX binaries are intentionally not stored in Git. Model-dependent detector/inpaint validation therefore remains a local/model-artifact gate; the repository CI verifies the model-independent product closure path.
 
----
+## Requirements
 
-## Key Features
+- Python 3.12 is the release-gate runtime.
+- CPU execution is the supported baseline; GPU is not required.
+- 8 GB RAM or more is recommended.
+- Chromium is required for Playwright URL ingestion and browser regression tests.
 
-- 📥 **Flexible Ingestion**: Ingest chapters directly from online URLs via Playwright/HTTP scraping, or upload local image folders, ZIP, and CBZ archives.
-- ✂️ **Intelligent Webtoon Slicing**: Splits continuous vertical manhwa/webtoon strips into manageable pages using smart seam-carving algorithms that avoid cutting through dialogue bubbles.
-- 🎯 **Deep Learning Detection**: Accurately localizes speech bubbles and stylized text regions using YOLOv8 ONNX models (`bubble_yolo.onnx` and `text_segmenter.onnx`).
-- 🧹 **CPU-Optimized Inpainting**: Reconstructs pristine background artwork using LaMa (Large Mask Inpainting) on ONNX Runtime, tuned for multi-threaded CPU execution without requiring high-end GPUs.
-- 🔤 **Multilingual OCR**: Fast, high-accuracy text extraction for Japanese (vertical & horizontal), Chinese, Korean, and English.
-- 🖌️ **Single-Card Review & Manual Repair**: Intuitive canvas workspace with interactive brush tools, inpaint repair, magic-wand exclusion zones, and live mask rendering.
-- ✍️ **Professional Typography Studio**: Full vector-like canvas editing for text objects:
-  - Drag, resize, and position bounding boxes directly on the canvas.
-  - Multi-font selection with instant preview.
-  - Auto-fit font sizing or custom point size scaling.
-  - Stroke width, stroke color, background highlight pills, corner radiuses, and multi-axis text alignment (horizontal & vertical).
-- ⚡ **Concurrency-Safe Architecture**: Atomic manifest persistence with cross-process file locks, debounced async background synchronization, request generation tracking, and local state diff preservation.
-- 🔒 **Enterprise-Grade Security Hardening**: SSRF defense against loopback/internal metadata probing, strict path traversal validation, input dimension clamping, and sanitization.
+Install:
 
----
+```bash
+python -m venv .venv
+# Linux/macOS
+source .venv/bin/activate
+# Windows PowerShell: .\.venv\Scripts\Activate.ps1
 
-## Workflow Architecture
-
-```text
-┌─────────────────────────────────────────────────────────────┐
-│ 1. INGESTION & PREPARATION                                  │
-│    URL Scrape (Playwright) / Upload (Images, ZIP, CBZ)      │
-└──────────────────────────────┬──────────────────────────────┘
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│ 2. PREVIEW & WEBTOON SLICING                                │
-│    Smart Seam Slicing ──▶ Exclusion Masking ──▶ Skip Pages  │
-└──────────────────────────────┬──────────────────────────────┘
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│ 3. AI PIPELINE EXECUTION                                    │
-│    YOLO Detection ──▶ LaMa Inpainting ──▶ Multilingual OCR  │
-└──────────────────────────────┬──────────────────────────────┘
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│ 4. REVIEW & MANUAL INPAINT REPAIR                           │
-│    Single-Card Carousel ──▶ Brush Erase ──▶ Inpaint Re-run  │
-└──────────────────────────────┬──────────────────────────────┘
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│ 5. TYPESETTING & EDITING STUDIO                             │
-│    Interactive Bounding Boxes ──▶ Typography ──▶ Live Sync  │
-└──────────────────────────────┬──────────────────────────────┘
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│ 6. FINAL RENDERING & EXPORT                                 │
-│    Pillow Text Layout Engine ──▶ Hi-Res Rendered PNGs       │
-└─────────────────────────────────────────────────────────────┘
+python -m pip install -r requirements.txt
+playwright install chromium
 ```
 
----
+Required local models in `models/`:
 
-## Quick Start
+- `bubble_yolo.onnx`
+- `text_segmenter.onnx`
+- `lama.onnx`
 
-### Option A: Docker (Recommended)
+Optional preferred inpaint model:
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/tuantran00541-spec/manga-translator.git
-   cd manga-translator
-   ```
+- `lama-manga-dynamic.onnx` — used automatically when present; `lama.onnx` remains the fallback.
 
-2. Place required ONNX models into the `models/` directory (see [Models Setup](#models-setup)).
+Start:
 
-3. Start the containerized service:
-   ```bash
-   docker compose up --build
-   ```
-
-4. Navigate to **`http://127.0.0.1:8000`** in your browser.
-
----
-
-### Option B: Local Python Environment
-
-**Prerequisites**: Python 3.10–3.12, RAM &ge; 8 GB recommended.
-
-1. Clone the repository and set up a virtual environment:
-   ```bash
-   git clone https://github.com/tuantran00541-spec/manga-translator.git
-   cd manga-translator
-
-   python -m venv venv
-   # Linux / macOS:
-   source venv/bin/activate
-   # Windows PowerShell:
-   .\venv\Scripts\Activate.ps1
-   ```
-
-2. Install dependencies and browser binaries:
-   ```bash
-   pip install -r requirements.txt
-   playwright install chromium
-   ```
-
-3. Place ONNX models in `models/` (see [Models Setup](#models-setup)).
-
-4. Launch the application:
-   ```bash
-   python run.py
-   ```
-
-5. Open **`http://127.0.0.1:8000`**.
-
----
-
-## Models Setup
-
-Download and place the following 3 ONNX models into the `models/` folder:
-
-| Model File | Function | Recommended Source |
-| :--- | :--- | :--- |
-| `bubble_yolo.onnx` | Speech bubble detection | [ogkalu/comic-speech-bubble-detector-yolov8m](https://huggingface.co/ogkalu/comic-speech-bubble-detector-yolov8m) |
-| `text_segmenter.onnx` | Fine-grained text localization | [ogkalu/comic-text-segmenter-yolov8m](https://huggingface.co/ogkalu/comic-text-segmenter-yolov8m) |
-| `lama.onnx` | Background reconstruction & text removal | [Carve/LaMa-ONNX](https://huggingface.co/Carve/LaMa-ONNX) (`lama_fp32.onnx`) |
-
-> [!TIP]
-> **Converting YOLO PyTorch Weights (`.pt`) to ONNX**:
-> ```bash
-> pip install ultralytics
-> python convert_model.py path/to/weights.pt
-> ```
-> Rename generated files to `bubble_yolo.onnx` or `text_segmenter.onnx` accordingly.
-
----
-
-## Keyboard Shortcuts
-
-| Key / Shortcut | Context | Action |
-| :--- | :--- | :--- |
-| `PageUp` / `PageDown` | Global (Editor, Preview, Review) | Navigate to Previous / Next page without browser scrolling |
-| `ArrowLeft` / `ArrowRight` | Editor (No box selected) | Navigate to Previous / Next page |
-| `ArrowUp` / `Down` / `Left` / `Right` | Editor (Box selected) | Nudge active bounding box by 1px (`Shift` + Arrow for 5px) |
-| `Escape` | Editor | Deselect currently active text object |
-| `Delete` / `Backspace` | Editor (Box selected) | Delete selected text object |
-| `Double Click` | Editor (Canvas Overlay) | Focus translation textarea in sidebar |
-| `Enter` | Page Jump input | Validate integer and navigate directly to target page |
-
----
-
-## Configuration & Environment Variables
-
-| Variable | Default | Description |
-| :--- | :---:| :--- |
-| `HOST` | `127.0.0.1` | Network binding address (`0.0.0.0` for container/network exposure) |
-| `PORT` | `8000` | HTTP listening port |
-| `WORKERS` | `1` | Uvicorn worker processes (keep `1` to avoid CPU thread oversubscription) |
-| `ENABLE_TTA` | `0` | Enable Test-Time Augmentation for bubble detector (higher accuracy, slower inference) |
-| `MANGA_ORT_INTRA_OP_THREADS` | auto | Override ONNX Runtime intra-op thread pool (recommended: `4`–`8` on multi-core CPUs) |
-| `RELOAD` | `0` | Enable auto-reload for local development |
-
----
-
-## REST API Reference
-
-### Chapters & Pipeline
-- `GET /health` — Check system readiness and model loading status.
-- `GET /api/chapters` — Retrieve recent active chapters with progress checkpoints.
-- `GET /api/chapter/{chapter_id}` — Retrieve full chapter manifest JSON.
-- `POST /api/chapter` — Ingest and slice chapter from URL.
-- `POST /api/chapter/upload` — Ingest chapter from uploaded image archive (ZIP/CBZ) or files.
-- `POST /api/workflow_checkpoint` — Save current workflow stage (`preview`, `review`, `editor`) and page index.
-- `POST /api/process_pages` — Execute batch AI pipeline (detection, inpainting, OCR).
-- `POST /api/skip_pages` — Toggle skip status for specific pages.
-- `POST /api/save_excluded_regions` — Save non-translatable rectangular zones.
-
-### Review & Manual Inpaint
-- `POST /api/manual_mask` — Apply brush stroke inpaint repair on canvas.
-- `POST /api/reset_manual_mask` — Reset manual inpaint modifications to clean image.
-
-### Typesetting & Text Objects
-- `POST /api/text_object/create` — Create text object (`rectangle` or `ellipse`).
-- `POST /api/text_object/update` — Update text object text, geometry, or typography styles.
-- `POST /api/text_object/delete` — Delete text object.
-- `POST /api/text_object/ocr` — Re-run targeted OCR for a specific text object box.
-- `POST /api/render` — Render translated typography onto cleaned page image.
-- `GET /api/fonts` — List available bundled and system fonts.
-
----
-
-## Project Structure
-
-```text
-manga-translator/
-├── app/
-│   ├── detector/          # YOLO Bubble and Text segmentation & mask generators
-│   ├── downloader/        # Scrapers, archive extractors, and seam slicer
-│   ├── inpaint/           # LaMa ONNX CPU inpainting engine
-│   ├── ocr/               # Multi-engine OCR adapters (Manga-OCR, PaddleOCR, RapidOCR)
-│   ├── render/            # Text layout, font metrics, and rendering engine
-│   ├── routers/           # FastAPI modular route handlers
-│   ├── static/            # Frontend assets (CSS stylesheets, JS modules)
-│   │   ├── css/           # Modern dark-mode styling
-│   │   └── js/            # Canvas manipulators, state machines, API bridges
-│   ├── templates/         # Jinja2 HTML layout templates
-│   ├── config.py          # Centralized configuration & environment loader
-│   ├── dependencies.py    # Shared singleton pipeline lifecycles
-│   ├── logging_config.py  # Structured JSON/text logging setup
-│   ├── manifest_utils.py  # Concurrency-safe atomic manifest IO with file locks
-│   ├── pipeline.py        # Core pipeline coordinator
-│   └── security.py        # SSRF filter, path traversal guards, upload limits
-├── data/                  # Runtime storage (raw, processed, output)
-├── models/                # Local ONNX weights
-├── logs/                  # Application logs
-├── convert_model.py       # Helper script to export PyTorch weights to ONNX
-├── run.py                 # Application launcher
-├── Dockerfile             # Production container definition
-├── docker-compose.yml     # Container orchestration
-└── requirements.txt       # Python dependencies
+```bash
+python run.py
 ```
 
----
----
+Open `http://127.0.0.1:8000`.
 
-<a name="tiếng-việt"></a>
-# Tiếng Việt
+Docker is also supported:
 
-## Tổng quan
-
-**Manga & Webtoon Translator Studio** là ứng dụng web cục bộ (Local-First), chuyên dụng cho các nhóm dịch và cá nhân làm scanlation manga, manhwa, webtoon. Hệ thống tự động hóa toàn bộ các công đoạn xử lý hình ảnh phức tạp—tải chapter, cắt lát webtoon dài, nhận diện bong bóng thoại/vùng chữ, tẩy chữ gốc (Inpaint) và nhận diện chữ (OCR)—đồng thời cung cấp bộ công cụ biên tập trực quan giúp editor toàn quyền kiểm soát bản dịch và kiểu chữ (typeset).
-
-> [!NOTE]
-> **Không dịch tự động bằng AI**: Ứng dụng không sử dụng dịch máy hay LLM tự động dịch. OCR chỉ trích xuất chữ gốc hỗ trợ editor; nội dung bản dịch và kiểu dáng chữ do người dùng quyết định hoàn toàn.
-
----
-
-## Tính năng nổi bật
-
-- 📥 **Nhập liệu đa dạng**: Tải tự động chapter từ đường dẫn URL (qua Playwright/HTTP) hoặc tải lên file ảnh rời, file nén ZIP, CBZ.
-- ✂️ **Cắt lát Webtoon thông minh**: Tự động chia các trang truyện dài thành từng lát an toàn, hạn chế tối đa việc cắt ngang bong bóng thoại hay khung hình.
-- 🎯 **Nhận diện bằng Deep Learning**: Định vị chính xác bong bóng thoại và vùng chữ cách điệu bằng mô hình YOLOv8 ONNX (`bubble_yolo.onnx` và `text_segmenter.onnx`).
-- 🧹 **Tẩy chữ LaMa tối ưu CPU**: Tái tạo phông nền nguyên bản bằng mô hình LaMa Inpainting trên ONNX Runtime đa luồng, vận hành mượt mà trên CPU thông thường mà không cần GPU đắt tiền.
-- 🔤 **OCR đa ngôn ngữ chất lượng cao**: Đọc nhanh và chuẩn xác chữ tiếng Nhật (dọc & ngang), tiếng Trung, tiếng Hàn và tiếng Anh.
-- 🖌️ **Chế độ kiểm tra & sửa ảnh thủ công (Review)**: Giao diện sửa ảnh đơn lát tập trung, hỗ trợ cọ vẽ tẩy tay (brush), khoanh vùng cấm dịch và xem trước mask trực tiếp.
-- ✍️ **Studio Typeset chuyên nghiệp**: Thao tác trực tiếp trên canvas tương tự phần mềm đồ họa vector:
-  - Kéo thả, thay đổi kích thước và vị trí ô chữ trực quan trên ảnh.
-  - Chọn phông chữ với xem trước tức thì.
-  - Tự động co giãn cỡ chữ vừa khung (Auto-fit) hoặc tùy chỉnh kích thước theo ý muốn.
-  - Viền chữ (stroke), màu chữ, đổ nền nổi (pill background), bo góc nền và căn lề đa chiều (ngang & dọc).
-- ⚡ **Kiến trúc an toàn dữ liệu & đa luồng**: Lưu trữ manifest nguyên tử (atomic write) kèm khóa file (file lock), đồng bộ dữ liệu ngầm chống nghẽn, theo dõi thế hệ request tránh ghi đè dữ liệu cũ.
-- 🔒 **Bảo mật chuẩn doanh nghiệp**: Chống tấn công SSRF khi cào dữ liệu, kiểm soát nghiêm ngặt đường dẫn (Path Traversal), giới hạn dung lượng tải lên và kích thước ảnh.
-
----
-
-## Quy trình làm việc (Workflow)
-
-```text
-┌─────────────────────────────────────────────────────────────┐
-│ 1. NHẬP LIỆU & CHUẨN BỊ                                     │
-│    Tải từ URL (Playwright) / Upload (Ảnh, ZIP, CBZ)         │
-└──────────────────────────────┬──────────────────────────────┘
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│ 2. XEM TRƯỚC & CẮT LÁT WEBTOON                              │
-│    Cắt lát thông minh ──▶ Đánh dấu vùng cấm ──▶ Bỏ qua lát │
-└──────────────────────────────┬──────────────────────────────┘
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│ 3. XỬ LÝ AI TỰ ĐỘNG                                         │
-│    Nhận diện YOLO ──▶ Tẩy chữ LaMa Inpaint ──▶ OCR Đa ngữ   │
-└──────────────────────────────┬──────────────────────────────┘
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│ 4. KIỂM TRA & TẨY SỬA THỦ CÔNG (REVIEW)                     │
-│    Giao diện đơn lát ──▶ Cọ vẽ sửa lỗi ──▶ Tẩy lại LaMa    │
-└──────────────────────────────┬──────────────────────────────┘
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│ 5. BIÊN TẬP DỊCH & TYPESET                                  │
-│    Ô chữ tương tác ──▶ Kiểu chữ & Màu sắc ──▶ Tự động lưu   │
-└──────────────────────────────┬──────────────────────────────┘
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│ 6. XUẤT ẢNH HOÀN THIỆN                                      │
-│    Bộ dựng chữ Pillow ──▶ Xuất file ảnh PNG độ nét cao      │
-└─────────────────────────────────────────────────────────────┘
+```bash
+docker compose up --build
 ```
 
----
+The Docker image expects model files to be supplied through the mounted `./models` directory.
 
-## Hướng dẫn cài đặt
+## DeepSeek translation
 
-### Cách 1: Sử dụng Docker (Khuyên dùng)
+Configure a DeepSeek API key through the app's AI settings (or `DEEPSEEK_API_KEY`). Translation uses the current `deepseek-v4-flash` chat-completion API in non-thinking JSON mode. The chapter translator performs a preflight cost check and the UI defaults to a `$0.02` cap per run; increase it only when a larger chapter needs it.
 
-1. Clone mã nguồn về máy:
-   ```bash
-   git clone https://github.com/tuantran00541-spec/manga-translator.git
-   cd manga-translator
-   ```
+The provider response is never committed blindly: object identity, OCR source text, and existing translation are checked again after the network call. Concurrent editor changes win and are counted as stale instead of being overwritten.
 
-2. Tải và đặt 3 file mô hình ONNX vào thư mục `models/` (xem [Cài đặt Models](#cài-đặt-models)).
+## Inpainting safety
 
-3. Khởi chạy ứng dụng:
-   ```bash
-   docker compose up --build
-   ```
+- Flat-fill shortcuts inspect a clean ring and edge density before bypassing LaMa; artwork edges near text force model inpainting.
+- Missing detector segmentation masks no longer silently become destructive full-rectangle masks. Explicit manual boxes retain their rectangle fallback.
+- Long, narrow crops on the fixed 512×512 LaMa model use tiled inference instead of squeezing the crop into a thin strip.
+- Detector geometry edits remap masks in page coordinates instead of stretching or discarding them. Re-detection reconciles fresh detector masks to the persisted user geometry.
+- Regression tests verify local mask behavior, geometry remapping, and that automatic compositing leaves pixels outside the effective mask unchanged.
 
-4. Truy cập trình duyệt tại **`http://127.0.0.1:8000`**.
+## Main API surface
 
----
+### Chapter / processing
 
-### Cách 2: Chạy trực tiếp với Python
+- `POST /api/chapter` — import from URL.
+- `POST /api/chapter/upload` — import images / ZIP / CBZ.
+- `POST /api/process_pages` — detect and inpaint selected pages.
+- `GET /api/chapter/{chapter_id}` — current manifest.
+- `POST /api/workflow_checkpoint` — persist current editor stage/page.
 
-**Yêu cầu môi trường**: Python 3.10–3.12, RAM &ge; 8 GB.
+### OCR / editor automation
 
-1. Clone mã nguồn và tạo môi trường ảo:
-   ```bash
-   git clone https://github.com/tuantran00541-spec/manga-translator.git
-   cd manga-translator
+- `POST /api/ocr/chapter` — start chapter OCR job.
+- `GET /api/ocr/chapter/{job_id}` — OCR job status.
+- `POST /api/ocr/chapter/{job_id}/cancel` — cancel OCR.
+- `POST /api/ocr/chapter/{job_id}/retry` — retry failed/stale OCR targets.
+- `POST /api/text_objects/ensure` — map detected boxes into stable editor text objects.
+- `POST /api/text_object/create|update|delete` — manual text-object editing.
 
-   python -m venv venv
-   # Linux / macOS:
-   source venv/bin/activate
-   # Windows PowerShell:
-   .\venv\Scripts\Activate.ps1
-   ```
+### Translation / render / export
 
-2. Cài đặt các thư viện phụ thuộc và trình duyệt Playwright:
-   ```bash
-   pip install -r requirements.txt
-   playwright install chromium
-   ```
+- `POST /api/translate/chapter` — budgeted chapter translation.
+- `POST /api/render` — revision-safe single-page render.
+- `POST /api/render/chapter?chapter_id=...` — render all non-skipped pages from persisted editor state.
+- `GET /api/download/{chapter_id}/{page_index}` — strict current single-page download.
+- `GET /api/export/{chapter_id}.zip` — strict chapter ZIP export.
 
-3. Đặt các file mô hình ONNX vào thư mục `models/` (xem mục kế tiếp).
+### Visual QC
 
-4. Khởi chạy máy chủ:
-   ```bash
-   python run.py
-   ```
+- `/api/visual_qc/...` — Gemini / DeepSeek quality inspection, chapter jobs, retry/cancel and key settings.
 
-5. Mở trình duyệt tại **`http://127.0.0.1:8000`**.
+## Release gate
 
----
+The permanent GitHub Actions workflow is `.github/workflows/release-gate.yml`.
 
-## Cài đặt Models
+Local equivalent:
 
-Đặt 3 file mô hình ONNX sau vào thư mục `models/`:
-
-| Tên file | Chức năng | Nguồn khuyến nghị |
-| :--- | :--- | :--- |
-| `bubble_yolo.onnx` | Nhận diện bong bóng thoại | [ogkalu/comic-speech-bubble-detector-yolov8m](https://huggingface.co/ogkalu/comic-speech-bubble-detector-yolov8m) |
-| `text_segmenter.onnx` | Phân đoạn và định vị chữ | [ogkalu/comic-text-segmenter-yolov8m](https://huggingface.co/ogkalu/comic-text-segmenter-yolov8m) |
-| `lama.onnx` | Tái tạo phông nền, tẩy chữ gốc | [Carve/LaMa-ONNX](https://huggingface.co/Carve/LaMa-ONNX) (`lama_fp32.onnx`) |
-
-> [!TIP]
-> **Chuyển đổi trọng số YOLO PyTorch (`.pt`) sang ONNX**:
-> ```bash
-> pip install ultralytics
-> python convert_model.py path/to/model.pt
-> ```
-> Đổi tên file đầu ra thành `bubble_yolo.onnx` hoặc `text_segmenter.onnx` tương ứng.
-
----
-
-## Bảng phím tắt điều khiển
-
-| Phím tắt | Ngữ cảnh | Thao tác |
-| :--- | :--- | :--- |
-| `PageUp` / `PageDown` | Toàn hệ thống (Biên tập, Xem trước, Sửa ảnh) | Chuyển sang Trang trước / Trang sau (ngăn cuộn trang mặc định) |
-| `ArrowLeft` / `ArrowRight` | Biên tập (Khi không chọn ô chữ) | Chuyển sang Trang trước / Trang sau |
-| Phím mũi tên (`↑` `↓` `←` `→`) | Biên tập (Khi đang chọn ô chữ) | Dịch chuyển ô chữ 1px (giữ `Shift` để dịch chuyển 5px) |
-| `Escape` | Biên tập | Hủy chọn ô chữ đang kích hoạt |
-| `Delete` / `Backspace` | Biên tập (Khi đang chọn ô chữ) | Xóa ô chữ được chọn |
-| `Double Click` | Biên tập (Lớp phủ trên ảnh) | Nhảy chuột vào khung nhập bản dịch ở thanh bên |
-| `Enter` | Ô nhập nhảy số trang | Xác thực số nguyên và chuyển ngay tới trang chỉ định |
-
----
-
-## Cấu hình & Biến môi trường
-
-| Biến môi trường | Mặc định | Ý nghĩa |
-| :--- | :---:| :--- |
-| `HOST` | `127.0.0.1` | Địa chỉ IP máy chủ lắng nghe (`0.0.0.0` để mở mạng ngoài/Docker) |
-| `PORT` | `8000` | Cổng HTTP |
-| `WORKERS` | `1` | Số tiến trình Uvicorn (nên giữ `1` để tối ưu tải đa luồng CPU cho AI) |
-| `ENABLE_TTA` | `0` | Bật Test-Time Augmentation cho phát hiện bong bóng (chính xác hơn, chậm hơn) |
-| `MANGA_ORT_INTRA_OP_THREADS` | auto | Số luồng xử lý CPU của ONNX Runtime (khuyến nghị: `4`–`8` trên CPU đa nhân) |
-| `RELOAD` | `0` | Tự động tải lại mã nguồn khi lập trình (Development) |
-
----
-
-## Danh mục API RESTful
-
-### Chapter & Tiến trình Pipeline
-- `GET /health` — Kiểm tra trạng thái máy chủ và tình trạng tải models.
-- `GET /api/chapters` — Lấy danh sách các chapter đang xử lý kèm mốc tiến độ.
-- `GET /api/chapter/{chapter_id}` — Lấy dữ liệu chi tiết manifest của chapter.
-- `POST /api/chapter` — Tải và cắt lát chapter từ URL.
-- `POST /api/chapter/upload` — Tải lên chapter từ file ảnh hoặc file nén ZIP/CBZ.
-- `POST /api/workflow_checkpoint` — Lưu mốc trạng thái làm việc (`preview`, `review`, `editor`) và số trang.
-- `POST /api/process_pages` — Chạy tiến trình xử lý AI hàng loạt (phát hiện, tẩy chữ, OCR).
-- `POST /api/skip_pages` — Đánh dấu bỏ qua hoặc khôi phục trang chỉ định.
-- `POST /api/save_excluded_regions` — Lưu các vùng chữ nhật cấm dịch.
-
-### Sửa ảnh thủ công (Review)
-- `POST /api/manual_mask` — Tẩy xóa bằng cọ vẽ thủ công trên canvas.
-- `POST /api/reset_manual_mask` — Khôi phục ảnh đã tẩy về trạng thái gốc sạch ban đầu.
-
-### Biên tập & Typeset Ô chữ
-- `POST /api/text_object/create` — Tạo ô chữ mới (`rectangle` hoặc `ellipse`).
-- `POST /api/text_object/update` — Cập nhật nội dung, vị trí hoặc kiểu dáng ô chữ.
-- `POST /api/text_object/delete` — Xóa ô chữ.
-- `POST /api/text_object/ocr` — Chạy lại OCR riêng biệt cho một ô chữ cụ thể.
-- `POST /api/render` — Dựng chữ bản dịch lên ảnh nền đã tẩy.
-- `GET /api/fonts` — Danh sách các phông chữ khả dụng trong hệ thống.
-
----
-
-## Cấu trúc thư mục dự án
-
-```text
-manga-translator/
-├── app/
-│   ├── detector/          # Mô hình nhận diện bong bóng thoại và phân đoạn chữ
-│   ├── downloader/        # Cào dữ liệu webtoon, giải nén và thuật toán cắt lát
-│   ├── inpaint/           # Động cơ tẩy chữ LaMa ONNX tối ưu CPU
-│   ├── ocr/               # Bộ kết nối các động cơ OCR (Manga-OCR, PaddleOCR, RapidOCR)
-│   ├── render/            # Động cơ định dạng văn bản và dựng chữ Pillow
-│   ├── routers/           # Bộ điều phối API theo từng nhóm chức năng
-│   ├── static/            # Tài nguyên giao diện Web (CSS, JS)
-│   │   ├── css/           # Bảng phong cách Dark-mode hiện đại
-│   │   └── js/            # Xử lý canvas, máy trạng thái lưu trữ, cầu nối API
-│   ├── templates/         # Giao diện HTML Jinja2
-│   ├── config.py          # Nạp và quản lý cấu hình tập trung
-│   ├── dependencies.py    # Khởi tạo và chia sẻ vòng đời pipeline duy nhất
-│   ├── logging_config.py  # Hệ thống ghi nhật ký (logging) có cấu trúc
-│   ├── manifest_utils.py  # Đọc/ghi manifest nguyên tử kèm khóa file an toàn
-│   ├── pipeline.py        # Điều phối luồng xử lý toàn cục
-│   └── security.py        # Bộ lọc chống SSRF, chống Path Traversal, kiểm soát tải lên
-├── data/                  # Thư mục lưu trữ dữ liệu thực thi (raw, processed, output)
-├── models/                # Thư mục chứa trọng số mô hình ONNX
-├── logs/                  # Nhật ký hoạt động của ứng dụng
-├── convert_model.py       # Script hỗ trợ chuyển đổi model PyTorch sang ONNX
-├── run.py                 # File khởi động chính của ứng dụng
-├── Dockerfile             # Cấu hình đóng gói Docker
-├── docker-compose.yml     # Cấu hình khởi chạy dịch vụ Docker Compose
-└── requirements.txt       # Danh sách thư viện phụ thuộc Python
+```bash
+make release-check
 ```
 
----
+The gate compiles source, runs the v0.1 model-independent integration/regression suite (including artwork-safety and geometry-mask tests), then runs Chromium regressions. `tests/test_v01_product_closure.py` specifically validates the connected path:
 
-## Giấy phép (License)
+**processed OCR box → auto text object → translation commit → revision-safe render → strict ZIP export**
 
-Dự án được phân phối dưới giấy phép **MIT License**. Chi tiết xem tại file `LICENSE`.
+The external DeepSeek network call is stubbed in that test; the product state transitions, filesystem render, render identity, and ZIP generation are real.
+
+## Project layout
+
+```text
+app/              production application
+  detector/       local bubble/text detection
+  downloader/     URL/local ingestion and webtoon slicing
+  inpaint/        LaMa cleanup + mask geometry safety
+  ocr/            MangaOCR/PaddleOCR service + jobs
+  translation/    DeepSeek chapter translator
+  render/         typography + render identity
+  routers/        FastAPI endpoints
+  static/         browser UI
+  visual_qc/      Gemini/DeepSeek image QC
+tests/            correctness, security and product-release regression tests
+models/           local model files + setup note; binaries are not committed
+data/             runtime chapter data (ignored)
+docs/             maintained architecture/UI/security history
+```
+
+## Repository hygiene
+
+The production branch intentionally does not carry exploratory benchmark generations, one-off debug scripts, frozen benchmark JSON, or stale model hash manifests. The pre-v0.1 benchmark/debug tree is preserved intact on `archive/pre-v0.1-benchmarks` for future archaeology or model experiments.
+
+Release-critical tests use functional names rather than phase numbers. New experiments should live on a feature/benchmark branch and only enter `main` when they become part of the maintained product or release gate.
+
+## Release rule
+
+For v0.1, new work must answer one question: **does it block a real chapter from reaching a correct export?** Non-blocking model experiments, benchmark refactors, extra providers, and advanced lettering features stay outside the release branch until the product-closure gate is green.

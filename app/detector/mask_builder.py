@@ -1,11 +1,12 @@
 import numpy as np
 import cv2
-from app.detector.bubble_detector import BubbleBox
+from app.detector.bubble_detector import BubbleBox, DETECTOR_CONFIDENCE_MAX
 from app.logging_config import logger
 
 from app.config import MASK_DILATE_KERNEL_SIZE
 
 MASK_EXPAND = 8
+MANUAL_CONFIDENCE_SENTINEL = 1.0
 
 
 def adaptive_dilate_mask(mask: np.ndarray, crop_img: np.ndarray | None = None) -> np.ndarray:
@@ -26,6 +27,23 @@ def adaptive_dilate_mask(mask: np.ndarray, crop_img: np.ndarray | None = None) -
                 dilated = cv2.dilate(mask, expanded_kernel, iterations=1)
 
     return dilated
+
+
+def _rectangle_fallback_allowed(box: BubbleBox) -> bool:
+    """Allow destructive rectangle masks only for explicit/manual intent.
+
+    Callers may opt in with ``allow_rectangle_fallback``. The persisted v0.1
+    manual-box format predates that attribute and uses confidence=1.0. Detector
+    confidence is capped at ``DETECTOR_CONFIDENCE_MAX`` strictly below 1.0, so
+    the legacy sentinel is now collision-free rather than heuristic.
+    """
+    explicit = getattr(box, "allow_rectangle_fallback", None)
+    if explicit is not None:
+        return bool(explicit)
+    return (
+        DETECTOR_CONFIDENCE_MAX < MANUAL_CONFIDENCE_SENTINEL
+        and float(box.confidence) >= MANUAL_CONFIDENCE_SENTINEL
+    )
 
 
 def build_mask(image_shape: tuple[int, int], boxes: list[BubbleBox], crop_img: np.ndarray | None = None) -> np.ndarray:
@@ -67,8 +85,21 @@ def build_mask(image_shape: tuple[int, int], boxes: list[BubbleBox], crop_img: n
             dest = mask[y1:y2, x1:x2]
             mask[y1:y2, x1:x2] = np.maximum(dest, src)
         else:
+            if not _rectangle_fallback_allowed(box):
+                logger.warning(
+                    "Skipping unsafe rectangle fallback for detector box (%d, %d, %d, %d): segmentation mask is missing",
+                    box.x1,
+                    box.y1,
+                    box.x2,
+                    box.y2,
+                )
+                continue
             logger.warning(
-                f"Using rectangle fallback mask for box ({box.x1}, {box.y1}, {box.x2}, {box.y2}): mask is None"
+                "Using explicit rectangle fallback mask for manual box (%d, %d, %d, %d)",
+                box.x1,
+                box.y1,
+                box.x2,
+                box.y2,
             )
             x1 = max(0, box.x1 - MASK_EXPAND)
             y1 = max(0, box.y1 - MASK_EXPAND)
