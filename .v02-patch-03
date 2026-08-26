@@ -1,0 +1,175 @@
+                    "original": slice_path.as_posix(),
+                     "clean": None,
+                     "boxes": [],
+@@ -261,7 +273,10 @@
+                     "excluded_regions": [],
+                     "source_page": source_index,
+                     "slice_index": slice_index,
+-                })
++                }
++                if stitch_core is not None:
++                    page["stitch_core"] = stitch_core
++                pages.append(page)
+ 
+         manifest = {
+             "chapter_id": chapter_id,
+@@ -289,6 +304,7 @@
+                             Path(page["original"]),
+                             copy.deepcopy(page.get("excluded_regions", [])),
+                             copy.deepcopy(page.get("boxes", [])),
++                            copy.deepcopy(page.get("stitch_core")),
+                             state_snapshot,
+                         ))
+ 
+@@ -308,13 +324,14 @@
+         # each page sequential avoids oversubscribing CPU threads.
+         parallel_detectors = max_workers == 1
+ 
+-        def _process_one(item: tuple[int, Path, list[dict], list[dict], dict | None]) -> tuple[int, dict, dict | None]:
+-            idx, img_path, excluded, existing_boxes, snapshot = item
++        def _process_one(item) -> tuple[int, dict, dict | None]:
++            idx, img_path, excluded, existing_boxes, stitch_core, snapshot = item
+             return idx, self._process_page(
+                 img_path,
+                 processed_dir,
+                 excluded_regions=excluded,
+                 existing_boxes=existing_boxes,
++                stitch_core=stitch_core,
+                 parallel_detectors=parallel_detectors,
+             ), snapshot
+ 
+@@ -363,6 +380,10 @@
+                         detected_boxes = assign_stable_detector_box_ids(page_data["boxes"], existing_boxes)
+                         manual_boxes = [b for b in existing_boxes if b.get("manual")]
+                         target_page["boxes"] = detected_boxes + manual_boxes
++                        target_page["detection_state"] = page_data.get("detection_state", "verified")
++                        target_page["detection_issues"] = list(page_data.get("detection_issues") or [])
++                        target_page["unverified_regions"] = list(page_data.get("unverified_regions") or [])
++                        target_page["needs_review"] = bool(page_data.get("needs_review"))
+                         bump_page_revision(target_page, "process_revision")
+                         bump_page_revision(target_page, "clean_revision")
+ 
+@@ -972,6 +993,7 @@
+         processed_dir: Path,
+         excluded_regions: list[dict] | None = None,
+         existing_boxes: list[dict] | None = None,
++        stitch_core: dict | None = None,
+         *,
+         parallel_detectors: bool = False,
+     ) -> dict:
+@@ -985,9 +1007,25 @@
+             {
+                 "x1": b.x1, "y1": b.y1, "x2": b.x2, "y2": b.y2,
+                 "confidence": b.confidence, "_mask_array": b.mask,
++                "source_model": b.source_model, "class_id": b.class_id,
++                "class_name": b.class_name, "semantic_type": b.semantic_type,
++                "mask_source": b.mask_source, "safe_to_inpaint": bool(b.safe_to_inpaint),
++                "ocr_eligible": bool(b.ocr_eligible), "needs_review": bool(b.needs_review),
+             }
+             for b in detected
+         ]
++        if isinstance(stitch_core, dict):
++            try:
++                core_y1 = int(stitch_core.get("core_y1", 0))
++                core_y2 = int(stitch_core.get("core_y2", image.shape[0]))
++            except (TypeError, ValueError):
++                core_y1, core_y2 = 0, image.shape[0]
++            for record in detector_records:
++                cy = (int(record["y1"]) + int(record["y2"])) / 2.0
++                if cy < core_y1 or cy >= core_y2:
++                    record["overlap_context_only"] = True
++                    record["ocr_eligible"] = False
++
+         assign_stable_detector_box_ids(detector_records, existing_boxes)
+         old_by_id = {str(b.get("id")): b for b in existing_boxes if isinstance(b, dict) and b.get("id")}
+ 
+@@ -1004,11 +1042,24 @@
+                     for key in ("x1", "y1", "x2", "y2"):
+                         record[key] = int(old[key])
+                     record["_mask_array"] = None
+-            if not record.get("removed"):
+-                effective_boxes.append(BubbleBox(
++                    record["safe_to_inpaint"] = False
++                    record["ocr_eligible"] = False
++                    record["needs_review"] = True
++            if not record.get("removed") and (record.get("safe_to_inpaint") or record.get("geometry_overridden")):
++                _effective = BubbleBox(
+                     int(record["x1"]), int(record["y1"]), int(record["x2"]), int(record["y2"]),
+                     float(record.get("confidence", 1.0)), record.get("_mask_array"),
+-                ))
++                    source_model=str(record.get("source_model") or "unknown"),
++                    class_id=int(record.get("class_id") or 0),
++                    class_name=str(record.get("class_name") or "unknown"),
++                    semantic_type=str(record.get("semantic_type") or "unknown"),
++                    mask_source=str(record.get("mask_source") or "none"),
++                    safe_to_inpaint=True, ocr_eligible=bool(record.get("ocr_eligible")),
++                    needs_review=bool(record.get("needs_review")),
++                )
++                if record.get("geometry_overridden"):
++                    _effective.allow_rectangle_fallback = True
++                effective_boxes.append(_effective)
+ 
+         for old in existing_boxes:
+             if not isinstance(old, dict) or not old.get("manual") or old.get("removed"):
+@@ -1059,9 +1110,20 @@
+         tmp_clean_path = processed_dir / f"clean_{img_path.name}.{uuid.uuid4().hex[:12]}.tmp.png"
+         write_image(tmp_clean_path, clean_image)
+ 
+-        import psutil as _psutil_debug
+-        _rss_mb_debug = _psutil_debug.Process().memory_info().rss / (1024 * 1024)
+-        logger.warning(f"Processed {img_path.name}: {len(detector_records)} boxes, RSS={_rss_mb_debug:.1f}MB")
++        unverified_regions = [
++            {k: record.get(k) for k in ("x1", "y1", "x2", "y2", "confidence", "source_model", "class_name", "semantic_type")}
++            for record in detector_records
++            if record.get("needs_review") or not record.get("safe_to_inpaint")
++        ]
++        detection_issues = []
++        if unverified_regions:
++            detection_issues.append("unverified_regions")
++        if not detector_records:
++            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
++            if float(gray.std()) > 24.0:
++                detection_issues.append("content_heavy_zero_box")
++        detection_state = "needs_review" if detection_issues else "verified"
++
+         res = {
+             "tmp_clean": tmp_clean_path.as_posix(),
+             "boxes": [
+@@ -1071,6 +1133,10 @@
+                 }
+                 for record in detector_records
+             ],
++            "detection_state": detection_state,
++            "detection_issues": detection_issues,
++            "unverified_regions": unverified_regions,
++            "needs_review": bool(detection_issues),
+         }
+         if tmp_auto_clean_path is not None:
+             res["tmp_auto_clean"] = tmp_auto_clean_path.as_posix()
+--- a/app/routers/export.py	2026-08-26 09:12:32.000000000 +0000
++++ b/app/routers/export.py	2026-08-26 09:22:18.564451955 +0000
+@@ -78,29 +78,44 @@
+     )
+ 
+ 
+-def _stitch_pngs(paths: list[Path]) -> bytes:
++def _stitch_pngs(paths: list[Path], core_ranges: list[tuple[int, int] | None] | None = None) -> bytes:
+     if not paths:
+         raise ValueError("No images to stitch")
+     images = [Image.open(path).convert("RGB") for path in paths]
++    cropped = []
+     try:
+-        widths = {image.width for image in images}
++        if core_ranges is not None:
++            for image, core in zip(images, core_ranges):
++                if core is None:
++                    cropped.append(image.copy())
++                    continue
++                y1, y2 = core
++                y1 = max(0, min(int(y1), image.height))
++                y2 = max(y1, min(int(y2), image.height))
++                cropped.append(image.crop((0, y1, image.width, y2)))
++            work_images = cropped
++        else:
++            work_images = images
++        widths = {image.width for image in 
