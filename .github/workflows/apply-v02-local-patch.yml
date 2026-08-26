@@ -18,18 +18,16 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: feat/detection-recovery-pipeline
-      - name: Apply locally-validated final patch
+      - name: Apply locally-validated source patch
         run: |
           cat .v02-patch-* > /tmp/v02.patch
-          git apply --check /tmp/v02.patch
-          git apply /tmp/v02.patch
-      - name: Commit final source and remove transfer helpers
+          git apply --check --exclude=.github/workflows/release-gate.yml /tmp/v02.patch
+          git apply --exclude=.github/workflows/release-gate.yml /tmp/v02.patch
+      - name: Commit source without workflow mutations
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git rm .v02-local.patch .v02-patch-* \
-            .github/workflows/apply-v02-local-patch.yml \
-            .github/workflows/v02-source-artifact.yml
-          git add -A
+          git rm .v02-local.patch .v02-patch-*
+          git add app tests README.md Makefile
           git commit -m "feat(v0.2): ship safe detection recovery and low-memory CPU pipeline"
           git push origin HEAD:feat/detection-recovery-pipeline
