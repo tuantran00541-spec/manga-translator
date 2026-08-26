@@ -101,6 +101,16 @@ class YoloDetector:
                 if y + slice_h >= h:
                     break
                 y += step
+
+            # Tall webtoon slices need one global text-segmentation view in
+            # addition to the local 1024px windows. A glyph can sit just
+            # outside the highest-confidence window proposal even though the
+            # same model sees it in full-page context. Keep this restricted
+            # to the segmentation model: the extra pass supplies pixel-mask
+            # evidence only; it never turns proposal geometry into a mask.
+            if "text_segmenter" in self.source_model.lower():
+                all_boxes.extend(self._detect_single_plain(image, 0, 0))
+
             boxes = self._nms_boxes(all_boxes)
 
         return [self._with_semantics(b) for b in self._filter_invalid(boxes, w, h)]
