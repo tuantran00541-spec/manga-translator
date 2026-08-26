@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import threading
 
 import onnxruntime as ort
 
@@ -8,7 +9,9 @@ import onnxruntime as ort
 _THREAD_ENV = "MANGA_ORT_INTRA_OP_THREADS"
 _CPU_ARENA_ENV = "MANGA_ORT_CPU_MEM_ARENA"
 _MEM_PATTERN_ENV = "MANGA_ORT_MEM_PATTERN"
+_SERIALIZE_ENV = "MANGA_ORT_SERIALIZE_INFERENCE"
 _DEFAULT_HIGH_CPU_THREADS = 8
+_ORT_INFERENCE_LOCK = threading.RLock()
 
 
 def _cpu_count() -> int:
@@ -48,20 +51,42 @@ def _env_flag(name: str, default: bool) -> bool:
     return default
 
 
+class _SerializedSession:
+    """Thin proxy that prevents high-memory ORT inference from overlapping.
+
+    Page workers may still decode images, build masks and write outputs in
+    parallel. Only ``InferenceSession.run`` is serialized, which avoids two
+    detector/LaMa workspaces peaking at the same time under the supported
+    workers=2 CPU path. All other session APIs are delegated transparently.
+    """
+
+    def __init__(self, session: ort.InferenceSession):
+        self._session = session
+
+    def run(self, *args, **kwargs):
+        with _ORT_INFERENCE_LOCK:
+            return self._session.run(*args, **kwargs)
+
+    def __getattr__(self, name):
+        return getattr(self._session, name)
+
+
 def make_session(
     model_path,
     *,
     intra_op_threads: int | None = None,
     enable_cpu_mem_arena: bool | None = None,
     enable_mem_pattern: bool | None = None,
-) -> ort.InferenceSession:
-    """Create a CPU-only ONNX Runtime session with bounded allocator retention.
+    serialize_inference: bool | None = None,
+):
+    """Create a CPU-only ONNX Runtime session for the low-memory production path.
 
-    Manga Translator commonly keeps several independent ONNX sessions alive at
-    once (bubble detector, text segmenter and LaMa).  ORT's CPU arena and memory
-    pattern cache can each retain large peak allocations per session, which is a
-    poor trade-off on the supported low-memory CPU path.  They therefore default
-    to disabled, while environment/argument overrides remain available for
+    Manga Translator keeps several ONNX sessions alive at once (bubble detector,
+    text segmenter and LaMa). ORT's CPU arena/memory pattern cache can retain
+    large peak allocations per session, while concurrent session.run calls can
+    make those peaks overlap. The low-memory defaults therefore disable arena
+    retention and mem-pattern caching and serialize only the high-memory ORT run
+    calls. Environment/argument overrides remain available for benchmarking on
     machines where throughput matters more than peak RSS.
     """
 
@@ -84,8 +109,14 @@ def make_session(
     )
     opts.inter_op_num_threads = 1
 
-    return ort.InferenceSession(
+    session = ort.InferenceSession(
         str(model_path),
         sess_options=opts,
         providers=["CPUExecutionProvider"],
     )
+    should_serialize = (
+        _env_flag(_SERIALIZE_ENV, True)
+        if serialize_inference is None
+        else bool(serialize_inference)
+    )
+    return _SerializedSession(session) if should_serialize else session
