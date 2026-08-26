@@ -39,7 +39,7 @@ class Inpainter:
         prefer_dynamic = dynamic_enabled and LAMA_DYNAMIC_MODEL.is_file()
         model_path = LAMA_DYNAMIC_MODEL if prefer_dynamic else LAMA_MODEL
         try:
-            self.session = make_session(model_path)
+            self.session = make_session(model_path, serialize_inference=True)
         except Exception:
             if not prefer_dynamic:
                 raise
@@ -49,7 +49,7 @@ class Inpainter:
                 LAMA_MODEL,
             )
             model_path = LAMA_MODEL
-            self.session = make_session(model_path)
+            self.session = make_session(model_path, serialize_inference=True)
 
         inputs = self.session.get_inputs()
         self.image_input = inputs[0].name
