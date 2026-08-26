@@ -15,16 +15,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Upload branch source snapshot
-        uses: actions/upload-artifact@v4
-        with:
-          name: v02-branch-source
-          path: |
-            .
-            !.git/**
-          include-hidden-files: true
-          retention-days: 1
-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -53,7 +43,9 @@ jobs:
             tests/test_review_artifacts.py \
             tests/test_chapter_qc_ui.py \
             tests/test_render_export.py \
-            tests/test_ui_system_contract.py
+            tests/test_ui_system_contract.py \
+            tests/test_v02_detection_recovery.py \
+            tests/test_ort_low_memory.py
 
       - name: Install Chromium
         run: playwright install --with-deps chromium
