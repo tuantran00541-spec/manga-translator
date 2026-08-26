@@ -52,13 +52,7 @@ def _env_flag(name: str, default: bool) -> bool:
 
 
 class _SerializedSession:
-    """Thin proxy that prevents high-memory ORT inference from overlapping.
-
-    Page workers may still decode images, build masks and write outputs in
-    parallel. Only ``InferenceSession.run`` is serialized, which avoids two
-    detector/LaMa workspaces peaking at the same time under the supported
-    workers=2 CPU path. All other session APIs are delegated transparently.
-    """
+    """Thin proxy for sessions whose workspace must not overlap another run."""
 
     def __init__(self, session: ort.InferenceSession):
         self._session = session
@@ -79,15 +73,13 @@ def make_session(
     enable_mem_pattern: bool | None = None,
     serialize_inference: bool | None = None,
 ):
-    """Create a CPU-only ONNX Runtime session for the low-memory production path.
+    """Create a CPU-only ONNX Runtime session for the low-memory path.
 
-    Manga Translator keeps several ONNX sessions alive at once (bubble detector,
-    text segmenter and LaMa). ORT's CPU arena/memory pattern cache can retain
-    large peak allocations per session, while concurrent session.run calls can
-    make those peaks overlap. The low-memory defaults therefore disable arena
-    retention and mem-pattern caching and serialize only the high-memory ORT run
-    calls. Environment/argument overrides remain available for benchmarking on
-    machines where throughput matters more than peak RSS.
+    ORT's CPU arena and memory-pattern cache retain large peak allocations for
+    Manga Translator's detector/segmenter/LaMa sessions, so both are disabled by
+    default. Inference serialization is opt-in per session: detectors remain
+    concurrent across workers, while LaMa requests serialization because two
+    simultaneous 512px workspaces materially increase peak RSS.
     """
 
     opts = ort.SessionOptions()
@@ -115,7 +107,7 @@ def make_session(
         providers=["CPUExecutionProvider"],
     )
     should_serialize = (
-        _env_flag(_SERIALIZE_ENV, True)
+        _env_flag(_SERIALIZE_ENV, False)
         if serialize_inference is None
         else bool(serialize_inference)
     )
