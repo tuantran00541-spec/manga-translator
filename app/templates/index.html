@@ -21,27 +21,33 @@
 <link rel="stylesheet" href="/static/css/deepseek-qc.css">
 <link rel="stylesheet" href="/static/css/chapter-ocr.css">
 <link rel="stylesheet" href="/static/css/ui-system.css">
+<link rel="stylesheet" href="/static/css/workbench.css">
 </head>
 <body data-app-stage="landing">
-<div id="app" class="app-shell">
-  <header id="site-header" class="app-header">
-    <div class="app-brand-block">
-      <div id="wordmark"><span class="wordmark-mark" aria-hidden="true">✛</span><span class="wordmark-text">MANGA<span class="wordmark-accent">TRANSLATOR</span></span></div>
-      <span id="wordmark-tag">Trình biên tập cục bộ</span>
+<div id="app" class="workbench-shell">
+  <aside id="app-rail" class="app-rail" aria-label="Không gian làm việc">
+    <div class="app-rail-brand" aria-label="Manga Translator" title="Manga Translator">
+      <span class="app-rail-brand-mark" aria-hidden="true">MT</span>
     </div>
-
-    <nav id="workflow-steps" class="workflow-steps" aria-label="Tiến trình xử lý">
-      <button class="workflow-step active" type="button" data-stage="landing">Nhập nội dung</button>
-      <button class="workflow-step" type="button" data-stage="preview" disabled>Xử lý ảnh</button>
-      <button class="workflow-step" type="button" data-stage="review" disabled>Kiểm tra chất lượng</button>
-      <button class="workflow-step" type="button" data-stage="editor" disabled>Biên tập bản dịch</button>
+    <nav id="workflow-steps" class="app-rail-nav" aria-label="Tiến trình xử lý">
+      <button class="app-rail-item active" type="button" data-stage="landing" title="Nhập nội dung"><span class="app-rail-glyph" aria-hidden="true">＋</span><span>Nhập</span></button>
+      <button class="app-rail-item" type="button" data-stage="preview" title="Xử lý ảnh" disabled><span class="app-rail-glyph" aria-hidden="true">▧</span><span>Xử lý</span></button>
+      <button class="app-rail-item" type="button" data-stage="review" title="Kiểm tra chất lượng" disabled><span class="app-rail-glyph" aria-hidden="true">✓</span><span>Kiểm tra</span></button>
+      <button class="app-rail-item" type="button" data-stage="editor" title="Biên tập bản dịch" disabled><span class="app-rail-glyph" aria-hidden="true">T</span><span>Biên tập</span></button>
     </nav>
-
-    <div class="app-header-actions">
-      <span id="app-context" class="app-context" aria-live="polite">Chưa mở chương</span>
-      <button id="settings-toggle" class="ui-btn ui-btn-ghost" type="button" aria-haspopup="dialog" aria-controls="settings-drawer">Cài đặt</button>
+    <div class="app-rail-footer">
+      <button id="settings-toggle" class="app-rail-item app-rail-settings" type="button" aria-haspopup="dialog" aria-controls="settings-drawer" title="Cài đặt"><span class="app-rail-glyph" aria-hidden="true">⚙</span><span>Cài đặt</span></button>
     </div>
-  </header>
+  </aside>
+
+  <div class="workbench-frame">
+    <header id="site-header" class="workbench-topbar">
+      <div class="workbench-title-block">
+        <span id="stage-title" class="workbench-stage-title">Nhập nội dung</span>
+        <span id="app-context" class="app-context" aria-live="polite">Chưa mở chương</span>
+      </div>
+      <div id="workbench-status" class="workbench-status" aria-live="polite"></div>
+    </header>
 
   <section id="landing-view" class="app-stage app-stage-active" data-stage="landing" aria-labelledby="landing-title">
     <div class="landing-intro">
@@ -85,6 +91,7 @@
   </section>
 
   <main id="page-view" class="app-workspace" hidden></main>
+  </div>
 </div>
 
 <div id="settings-backdrop" class="settings-backdrop" hidden></div>
