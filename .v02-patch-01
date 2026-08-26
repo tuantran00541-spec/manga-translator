@@ -1,193 +1,156 @@
-
-+        groups: dict[tuple[str, str], list[BubbleBox]] = {}
-+        for b in boxes:
-+            groups.setdefault((b.source_model, b.semantic_type), []).append(b)
-+        for members in groups.values():
-+            rects = np.array([[b.x1, b.y1, max(1,b.x2-b.x1), max(1,b.y2-b.y1)] for b in members])
-+            scores = np.array([max(0.05, float(b.confidence)) for b in members])
-+            indices = cv2.dnn.NMSBoxes(rects.tolist(), scores.tolist(), 0.05, iou_threshold)
-+            result.extend(members[int(i)] for i in np.array(indices).flatten())
-+        return sorted(result, key=lambda b: b.confidence, reverse=True)
+se functional names rather than phase numbers. New exper
  
-     @staticmethod
-     def _refine_and_split_tall_boxes(boxes: list[BubbleBox], img: np.ndarray) -> list[BubbleBox]:
-@@ -129,7 +117,7 @@
-             bw = box.x2 - box.x1
-             if bh <= 45:
-                 refined_boxes.append(
--                    BubbleBox(box.x1, box.y1, box.x2, box.y2, box.confidence, box.mask)
-+                    replace(box)
-                 )
-                 continue
+ ## Release rule
  
-@@ -141,7 +129,7 @@
-             exp_crop = full_gray[y1_exp:y2_exp, crop_x1:crop_x2]
-             if exp_crop.size == 0:
-                 refined_boxes.append(
--                    BubbleBox(box.x1, box.y1, box.x2, box.y2, box.confidence, box.mask)
-+                    replace(box)
-                 )
-                 continue
- 
-@@ -165,7 +153,7 @@
- 
-             if len(line_bounds) <= 1:
-                 refined_boxes.append(
--                    BubbleBox(box.x1, box.y1, box.x2, box.y2, box.confidence, box.mask)
-+                    replace(box)
-                 )
-                 continue
- 
-@@ -221,7 +209,7 @@
-                         line_mask[dst_y1:dst_y2, dst_x1:dst_x2] = box.mask[src_y1i:src_y2i, src_x1i:src_x2i]
- 
-                 refined_boxes.append(
--                    BubbleBox(abs_x1, abs_y1, abs_x2, abs_y2, box.confidence, line_mask)
-+                    replace(box, x1=abs_x1, y1=abs_y1, x2=abs_x2, y2=abs_y2, mask=line_mask)
-                 )
- 
-         return refined_boxes
-@@ -273,7 +261,7 @@
-                     if cluster_area > img_w * img_h * MAX_BOX_AREA_RATIO:
-                         continue
-                     merged_mask = self._merge_masks([b], min_x, min_y, max_x, max_y)
--                    final_clusters.append(BubbleBox(min_x, min_y, max_x, max_y, b.confidence, merged_mask))
-+                    final_clusters.append(replace(b, x1=min_x, y1=min_y, x2=max_x, y2=max_y, mask=merged_mask))
-                 else:
-                     min_x = max(0, min(t.x1 for t in sub) - 20)
-                     min_y = max(0, min(t.y1 for t in sub) - 8)
-@@ -285,12 +273,10 @@
-                     if cluster_area > img_w * img_h * MAX_BOX_AREA_RATIO:
-                         continue
-                     merged_mask = self._merge_masks(sub, min_x, min_y, max_x, max_y)
-+                    seed = max(sub, key=lambda t: t.confidence)
-                     final_clusters.append(
--                        BubbleBox(
--                            min_x, min_y, max_x, max_y,
--                            max(t.confidence for t in sub),
--                            merged_mask,
--                        )
-+                        replace(seed, x1=min_x, y1=min_y, x2=max_x, y2=max_y,
-+                                confidence=max(t.confidence for t in sub), mask=merged_mask)
-                     )
- 
-         return final_clusters
---- /dev/null	2026-08-26 08:50:09.058596701 +0000
-+++ b/app/detector/recovery.py	2026-08-26 09:28:20.780597195 +0000
-@@ -0,0 +1,148 @@
-+from __future__ import annotations
-+
+-For v0.1, new work must answer one question: **does it block a real chapter from reaching a correct export?** Non-blocking model experiments, benchmark refactors, extra providers, and advanced lettering features stay outside the release branch until the product-closure gate is green.
++For v0.2, new work must answer one question: **does it block a real chapter from reaching a correct export?** Non-blocking model experiments, benchmark refactors, extra providers, and advanced lettering features stay outside the release branch until the product-closure gate is green.
+diff --git a/app/detector/bubble_detector.py b/app/detector/bubble_detector.py
+index 8aed4b2..41b05e6 100644
+--- a/app/detector/bubble_detector.py
++++ b/app/detector/bubble_detector.py
+@@ -50,7 +50,7 @@ class YoloDetector:
+     def __init__(self, model_path, conf_threshold: float, use_tta: bool | None = None):
+         self.model_path = str(model_path)
+         self.source_model = Path(model_path).name
+-        self.session = make_session(model_path)
++        self.session = make_session(model_path, serialize_inference=True)
+         self.input_name = self.session.get_inputs()[0].name
+         self.conf_threshold = conf_threshold
+         self.use_tta = ENABLE_TTA if use_tta is None else use_tta
+diff --git a/app/detector/combined_detector.py b/app/detector/combined_detector.py
+index ac6a765..6e37624 100644
+--- a/app/detector/combined_detector.py
++++ b/app/detector/combined_detector.py
+@@ -1,7 +1,9 @@
+ import numpy as np
+ import cv2
 +from dataclasses import replace
-+import cv2
-+import numpy as np
-+
-+from app.detector.bubble_detector import BubbleBox
-+
-+
-+class SecondaryTextRecovery:
-+    """Conservative OpenCV/MSER recovery for text styles missed by the segmenter.
-+
-+    Recovery is deliberately detection-first, not cleanup-first. Candidates are
-+    review-only unless a compact pixel mask can be reconstructed with conservative
-+    geometry. This prevents an outlined/SFX proposal from turning into rectangle
-+    inpainting while still ensuring detector misses are visible to the editor.
-+    """
-+
-+    def __init__(self) -> None:
-+        self._mser = cv2.MSER_create(5, 18, 120000)
+ from concurrent.futures import ThreadPoolExecutor
+ from app.detector.bubble_detector import YoloDetector, BubbleBox, MAX_BOX_AREA_RATIO
++from app.detector.recovery import SecondaryTextRecovery
+ from app.config import (
+     BUBBLE_DETECTOR_MODEL,
+     TEXT_SEGMENTER_MODEL,
+@@ -12,16 +14,31 @@ from app.config import (
+ 
+ class CombinedTextDetector:
+     def __init__(self):
+-        self.bubble_detector = YoloDetector(BUBBLE_DETECTOR_MODEL, BUBBLE_CONF_THRESHOLD)
++        self.bubble_detector = YoloDetector(BUBBLE_DETECTOR_MODEL, min(BUBBLE_CONF_THRESHOLD, 0.12))
+         self.text_detector = YoloDetector(TEXT_SEGMENTER_MODEL, TEXT_CONF_THRESHOLD)
++        self.recovery = SecondaryTextRecovery()
 +
 +    @staticmethod
-+    def _iou(a: BubbleBox, b: BubbleBox) -> float:
-+        x1, y1 = max(a.x1, b.x1), max(a.y1, b.y1)
-+        x2, y2 = min(a.x2, b.x2), min(a.y2, b.y2)
-+        if x2 <= x1 or y2 <= y1:
-+            return 0.0
-+        inter = (x2 - x1) * (y2 - y1)
-+        aa = max(1, (a.x2 - a.x1) * (a.y2 - a.y1))
-+        bb = max(1, (b.x2 - b.x1) * (b.y2 - b.y1))
-+        return inter / float(aa + bb - inter)
-+
-+    @staticmethod
-+    def _watermark_like(x1: int, y1: int, x2: int, y2: int, w: int, h: int) -> bool:
-+        bw, bh = x2 - x1, y2 - y1
++    def _watermark_like(box: BubbleBox, w: int, h: int) -> bool:
++        bw, bh = box.x2 - box.x1, box.y2 - box.y1
 +        aspect = bw / max(1.0, float(bh))
-+        edge_touch = x1 < w * 0.04 or x2 > w * 0.96
-+        vertical_edge = y1 < h * 0.05 or y2 > h * 0.95
++        edge_touch = box.x1 < w * 0.04 or box.x2 > w * 0.96
++        vertical_edge = box.y1 < h * 0.05 or box.y2 > h * 0.95
 +        return bool((edge_touch and aspect >= 4.0 and bh <= h * 0.12) or
 +                    (vertical_edge and aspect >= 6.0 and bh <= h * 0.08))
 +
-+    @staticmethod
-+    def _seed_mask(gray_crop: np.ndarray) -> np.ndarray:
-+        if gray_crop.size == 0:
-+            return np.zeros_like(gray_crop, dtype=np.uint8)
-+        blur = cv2.GaussianBlur(gray_crop, (3, 3), 0)
-+        # Combine local dark/light contrast and edges; keep this conservative.
-+        med = float(np.median(blur))
-+        dark = blur < max(0.0, med - 22.0)
-+        light = blur > min(255.0, med + 22.0)
-+        edges = cv2.Canny(blur, 45, 120) > 0
-+        seed = (dark | light) & (cv2.dilate(edges.astype(np.uint8), np.ones((3, 3), np.uint8), iterations=1) > 0)
-+        mask = seed.astype(np.uint8) * 255
-+        if np.any(mask):
-+            mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8), iterations=1)
-+        return mask
-+
-+    def detect(self, image: np.ndarray, existing: list[BubbleBox] | None = None) -> list[BubbleBox]:
-+        if image is None or image.size == 0:
-+            return []
-+        h, w = image.shape[:2]
-+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if image.ndim == 3 else image
-+        _, boxes = self._mser.detectRegions(gray)
-+        if boxes is None or len(boxes) == 0:
-+            return []
-+
-+        rects = []
-+        for x, y, bw, bh in np.asarray(boxes).reshape(-1, 4):
-+            x, y, bw, bh = map(int, (x, y, bw, bh))
-+            if bw < 4 or bh < 4 or bw > w * 0.9 or bh > h * 0.65:
-+                continue
-+            area = bw * bh
-+            if area < 24 or area > w * h * 0.20:
-+                continue
-+            rects.append((x, y, x + bw, y + bh))
-+        if not rects:
-+            return []
-+
-+        # Cluster nearby glyph components into text candidates.
-+        remaining = rects[:]
-+        clusters: list[list[tuple[int, int, int, int]]] = []
-+        while remaining:
-+            cluster = [remaining.pop()]
-+            changed = True
-+            while changed:
-+                changed = False
-+                keep = []
-+                cx1 = min(r[0] for r in cluster); cy1 = min(r[1] for r in cluster)
-+                cx2 = max(r[2] for r in cluster); cy2 = max(r[3] for r in cluster)
-+                ch = max(8, cy2 - cy1)
-+                for r in remaining:
-+                    rx1, ry1, rx2, ry2 = r
-+                    near_x = not (rx1 > cx2 + ch * 1.8 or rx2 < cx1 - ch * 1.8)
-+                    near_y = not (ry1 > cy2 + ch * 1.3 or ry2 < cy1 - ch * 1.3)
-+                    if near_x and near_y:
-+                        cluster.append(r); changed = True
-+                    else:
-+                        keep.append(r)
-+                remaining = keep
-+            clusters.append(cluster)
-+
-+        out: list[BubbleBox] = []
-+        existing = existing or []
-+        for cluster in clusters:
-+            if len(cluster) < 2:
-+                continue
-+            x1 = max(0, min(r[0] for r in cluster) - 6)
-+            y1 = max(0, min(r[1] for r in cluster) - 6)
-+            x2 = min(w, max(r[2] for r in cluster) + 6)
-+            y2 = min(h, max(r[3] for r in cluster) + 6)
-+            bw, bh = x2 - x1, y2 - y1
-+            if bw < 12 or bh < 10:
-+                continue
-+            candidate = BubbleBox(x1, y1, x2, y2, 0.20, None,
-+                                  source_model="opencv_mser", class_id=0,
-+                                  class_name="text_recovery", semantic_type="fr
++    def _classify(self, box: BubbleBox, w: int, h: int) -> BubbleBox:
++        if self._watermark_like(box, w, h):
++            return replace(box, semantic_type="watermark", class_name="watermark",
++                           safe_to_inpaint=False, ocr_eligible=False, needs_review=True)
++        if box.verified_mask and "text_segmenter" in box.source_model.lower():
++            return replace(box, mask_source="text_segmenter", safe_to_inpaint=True,
++                           ocr_eligible=True, needs_review=False)
++        return replace(box, safe_to_inpaint=False, ocr_eligible=False, needs_review=True)
+ 
+     def detect(self, image: np.ndarray, *, parallel: bool = False) -> list[BubbleBox]:
+         h, w = image.shape[:2]
+         if parallel:
+-            # Bubble and text models are independent. Running them together is
+-            # useful when only one page is active; the pipeline disables this
+-            # when it is already parallelising multiple pages to avoid CPU
+-            # oversubscription.
+             with ThreadPoolExecutor(max_workers=2, thread_name_prefix="detector") as pool:
+                 bubble_future = pool.submit(self.bubble_detector.detect, image)
+                 text_future = pool.submit(self.text_detector.detect, image)
+@@ -31,85 +48,56 @@ class CombinedTextDetector:
+             bubble_boxes = self.bubble_detector.detect(image)
+             text_boxes = self.text_detector.detect(image)
+ 
+-        result_boxes = []
+-        used_text_boxes = set()
++        bubble_boxes = [self._classify(b, w, h) for b in bubble_boxes]
++        text_boxes = [self._classify(t, w, h) for t in text_boxes]
++        result_boxes: list[BubbleBox] = []
++        used_text_boxes: set[int] = set()
+ 
+         for b in bubble_boxes:
+-            inside_text = [
+-                t for i, t in enumerate(text_boxes)
+-                if self._is_inside(t, b)
+-            ]
+-            if inside_text:
+-                avg_box_h = sum(t.y2 - t.y1 for t in inside_text) / len(inside_text)
+-                cluster_h = max(t.y2 for t in inside_text) - min(t.y1 for t in inside_text)
+-                if len(inside_text) > 3 or cluster_h > 4.0 * avg_box_h:
+-                    sub_groups = self._split_cluster_by_lines(inside_text, avg_box_h)
+-                else:
+-                    sub_groups = [inside_text]
+-
+-                for group in sub_groups:
+-                    raw_min_x = min(t.x1 for t in group) - 24
+-                    raw_min_y = min(t.y1 for t in group) - 10
+-                    raw_max_x = max(t.x2 for t in group) + 24
+-                    raw_max_y = max(t.y2 for t in group) + 10
+-
+-                    min_x = max(b.x1 - 8, raw_min_x)
+-                    min_y = max(b.y1 - 8, raw_min_y)
+-                    max_x = min(b.x2 + 8, raw_max_x)
+-                    max_y = min(b.y2 + 8, raw_max_y)
+-
+-                    if max_x > min_x and max_y > min_y:
+-                        min_x, min_y, max_x, max_y = int(min_x), int(min_y), int(max_x), int(max_y)
+-                        merged_mask = self._merge_masks(group, min_x, min_y, max_x, max_y)
+-                        merged_box = BubbleBox(
+-                            min_x, min_y, max_x, max_y,
+-                            max(t.confidence for t in group),
+-                            merged_mask,
+-                        )
+-                        result_boxes.append(merged_box)
+-
+-                for i, t in enumerate(text_boxes):
+-                    if self._is_inside(t, b):
+-                        used_text_boxes.add(i)
++            inside = [(i, t) for i, t in enumerate(text_boxes) if self._is_inside(t, b)]
++            if inside:
++                group = [t for _, t in inside]
++                min_x = max(0, min(t.x1 for t in group) - 20)
++                min_y = max(0, min(t.y1 for t in group) - 8)
++                max_x = min(w, max(t.x2 for t in group) + 20)
++                max_y = min(h, max(t.y2 for t in group) + 8)
++                merged_mask = self._merge_masks(group, min_x, min_y, max_x, max_y)
++                seed = max(group, key=lambda t: t.confidence)
++                safe = merged_mask is not None and bool(np.any(merged_mask > 0))
++                merged = replace(seed, x1=int(min_x), y1=int(min_y), x2=int(max_x), y2=int(max_y),
++                                 mask=merged_mask, semantic_type=b.semantic_type,
++                                 mask_source="text_segmenter" if safe else "none",
++                                 safe_to_inpaint=safe, ocr_eligible=safe, needs_review=not safe)
++                result_boxes.append(self._classify(merged, w, h))
++                used_text_boxes.update(i for i, _ in inside)
+             else:
+-                bw = b.x2 - b.x1
+-                bh = b.y2 - b.y1
+-                if b.mask is not None and b.mask.shape == (bh, bw) and b.mask.any():
+-                    margin_x = max(2, int(bw * 0.03))
+-                    margin_y = max(2, int(bh * 0.03))
+-                    x1 = b.x1 + margin_x
+-                    y1 = b.y1 + margin_y
+-                    x2 = max(x1 + 1, b.x2 - margin_x)
+-                    y2 = max(y1 + 1, b.y2 - margin_y)
+-                    cropped_mask = b.mask[margin_y : bh - margin_y, margin_x : bw - margin_x]
+-                    if cropped_mask.shape == (y2 - y1, x2 - x1):
+-                        result_boxes.append(BubbleBox(x1, y1, x2, y2, b.confidence, cropped_mask))
+-
+-        standalone_text = [
+-            t for i, t in enumerate(text_boxes)
+-            if i not in used_text_boxes
+-        ]
+-
+-        clustered_free_text = self._cluster_free_text_boxes(standalone_text, w, h)
+-        result_boxes.extend(clustered_free_text)
++              
