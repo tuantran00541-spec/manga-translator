@@ -1,21 +1,73 @@
-ms:
-+        assert item["core_y2"] > item["core_y1"]
-+        assert item["core_source_y2"] > item["core_source_y1"]
+_to_inpaint"] = False
++                    record["ocr_eligible"] = False
++                    record["needs_review"] = True
++            if not record.get("removed") and (record.get("safe_to_inpaint") or record.get("geometry_overridden")):
++                _effective = BubbleBox(
+                     int(record["x1"]), int(record["y1"]), int(record["x2"]), int(record["y2"]),
+                     float(record.get("confidence", 1.0)), record.get("_mask_array"),
+-                ))
++                    source_model=str(record.get("source_model") or "unknown"),
++                    class_id=int(record.get("class_id") or 0),
++                    class_name=str(record.get("class_name") or "unknown"),
++                    semantic_type=str(record.get("semantic_type") or "unknown"),
++                    mask_source=str(record.get("mask_source") or "none"),
++                    safe_to_inpaint=True, ocr_eligible=bool(record.get("ocr_eligible")),
++                    needs_review=bool(record.get("needs_review")),
++                )
++                if record.get("geometry_overridden"):
++                    _effective.allow_rectangle_fallback = True
++                effective_boxes.append(_effective)
+ 
+         for old in existing_boxes:
+             if not isinstance(old, dict) or not old.get("manual") or old.get("removed"):
+@@ -1059,9 +1129,20 @@ class ChapterPipeline:
+         tmp_clean_path = processed_dir / f"clean_{img_path.name}.{uuid.uuid4().hex[:12]}.tmp.png"
+         write_image(tmp_clean_path, clean_image)
+ 
+-        import psutil as _psutil_debug
+-        _rss_mb_debug = _psutil_debug.Process().memory_info().rss / (1024 * 1024)
+-        logger.warning(f"Processed {img_path.name}: {len(detector_records)} boxes, RSS={_rss_mb_debug:.1f}MB")
++        unverified_regions = [
++            {k: record.get(k) for k in ("x1", "y1", "x2", "y2", "confidence", "source_model", "class_name", "semantic_type")}
++            for record in detector_records
++            if record.get("needs_review") or not record.get("safe_to_inpaint")
++        ]
++        detection_issues = []
++        if unverified_regions:
++            detection_issues.append("unverified_regions")
++        if not detector_records:
++            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
++            if float(gray.std()) > 24.0:
++                detection_issues.append("content_heavy_zero_box")
++        detection_state = "needs_review" if detection_issues else "verified"
 +
-+
-+def test_stitch_core_ranges_own_each_source_pixel_once(tmp_path: Path):
-+    a = tmp_path / "a.png"; b = tmp_path / "b.png"
-+    Image.new("RGB", (20, 120), "white").save(a)
-+    Image.new("RGB", (20, 140), "white").save(b)
-+    payload = _stitch_pngs([a, b], [(10, 100), (20, 130)])
-+    out = tmp_path / "out.png"; out.write_bytes(payload)
-+    with Image.open(out) as im:
-+        assert im.size == (20, 200)
-+
-+
-+def test_review_only_recovery_never_implies_rectangle_mask():
-+    b = BubbleBox(10, 10, 200, 100, 0.2, None, source_model="opencv_mser",
-+                  class_name="text_recovery", semantic_type="free_text",
-+                  mask_source="none", safe_to_inpaint=False, ocr_eligible=False, needs_review=True)
-+    assert b.mask is None
-+    assert not b.safe_to_inpaint and b.needs_review
+         res = {
+             "tmp_clean": tmp_clean_path.as_posix(),
+             "boxes": [
+@@ -1071,6 +1152,10 @@ class ChapterPipeline:
+                 }
+                 for record in detector_records
+             ],
++            "detection_state": detection_state,
++            "detection_issues": detection_issues,
++            "unverified_regions": unverified_regions,
++            "needs_review": bool(detection_issues),
+         }
+         if tmp_auto_clean_path is not None:
+             res["tmp_auto_clean"] = tmp_auto_clean_path.as_posix()
+         if manual_mask_posix:
+             res["manual_mask"] = manual_mask_posix
+         return res
+ 
+     @staticmethod
+     def _box_in_excluded(box, excluded_regions: list[dict]) -> bool:
+         box_cx = (box.x1 + box.x2) / 2
+         box_cy = (box.y1 + box.y2) / 2
+         for r in excluded_regions:
+             x1 = r.get("x1", 0)
+             y1 = r.get("y1", 0)
+             x2 = r.get("x2", 0)
+             y2 = r.get("y2", 0)
+             if min(x1, x2) <= box_cx <= max(x1, x2) and min(y1, y2) <= box_cy <= max(y1, y2):
+                 return True
+         return False
