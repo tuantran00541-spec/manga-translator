@@ -1,0 +1,86 @@
+name: Relay chapter 92 feature acceptance
+
+on:
+  push:
+    branches:
+      - relay/ch92-feature-acceptance
+
+permissions:
+  contents: read
+
+jobs:
+  fetch:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact feature commit
+        uses: actions/checkout@v4
+        with:
+          ref: 9f3950509613a5ffb91c88054873818e3c79ea2f
+          fetch-depth: 1
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install downloader runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install fastapi==0.115.0 requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 playwright==1.47.0 Pillow==10.4.0 numpy==1.26.4 opencv-python-headless==4.10.0.84 onnxruntime==1.21.0 pydantic==2.9.2 filelock==3.16.1 loguru==0.7.2 psutil==6.1.1 python-multipart==0.0.12
+          python -m playwright install --with-deps chromium
+
+      - name: Fetch chapter through production downloader
+        env:
+          CHAPTER_URL: https://asurascans.com/comics/the-academys-sashimi-sword-master-b57aa235/chapter/92
+        run: |
+          python - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          from PIL import Image
+          from app.pipeline import ChapterPipeline
+
+          cid = 'ch92feature'
+          url = os.environ['CHAPTER_URL']
+          manifest = ChapterPipeline().download_chapter(url, cid, workers=2)
+          raw_dir = Path('data/raw') / cid
+          source_files = sorted(p for p in raw_dir.iterdir() if p.is_file())
+          records = []
+          for p in source_files:
+              with Image.open(p) as im:
+                  records.append({
+                      'name': p.name,
+                      'width': im.width,
+                      'height': im.height,
+                      'bytes': p.stat().st_size,
+                      'sha256': hashlib.sha256(p.read_bytes()).hexdigest(),
+                  })
+          out = {
+              'target_feature_sha': '9f3950509613a5ffb91c88054873818e3c79ea2f',
+              'url': url,
+              'source_count': len(source_files),
+              'slice_count': len(manifest.get('pages', [])),
+              'sources': records,
+          }
+          Path('ch92_feature_fetch.json').write_text(json.dumps(out, indent=2), encoding='utf-8')
+          print(json.dumps(out, indent=2))
+          if len(source_files) != 24:
+              raise SystemExit(f'Expected 24 chapter sources, got {len(source_files)}')
+          PY
+
+      - name: Package exact feature source
+        run: |
+          tar --exclude='.git' --exclude='data' -czf feature-source.tgz .
+
+      - name: Upload transport artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ch92-feature-9f395
+          path: |
+            feature-source.tgz
+            ch92_feature_fetch.json
+            data/raw/ch92feature
+            data/processed/ch92feature/manifest.json
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 6
