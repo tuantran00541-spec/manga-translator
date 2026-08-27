@@ -27,8 +27,28 @@ class CombinedTextDetector:
         return bool((edge_touch and aspect >= 4.0 and bh <= h * 0.12) or
                     (vertical_edge and aspect >= 6.0 and bh <= h * 0.08))
 
-    def _classify(self, box: BubbleBox, w: int, h: int) -> BubbleBox:
-        if self._watermark_like(box, w, h):
+    @staticmethod
+    def _tail_credit_like(box: BubbleBox, w: int, h: int) -> bool:
+        """Conservative geometry for end-card/credit text on the final source tail.
+
+        This rule is deliberately context-gated by the pipeline.  Applying the
+        same lower-page geometry to every slice would incorrectly downgrade
+        ordinary dialogue; on the final tail, a wide compact text block is a
+        high-risk credit/end-card candidate and must fail safe to review.
+        """
+        bw, bh = box.x2 - box.x1, box.y2 - box.y1
+        return bool(
+            box.y1 >= h * 0.52
+            and bw >= w * 0.34
+            and bh <= h * 0.22
+        )
+
+    def _classify(
+        self, box: BubbleBox, w: int, h: int, *, protect_tail_credits: bool = False
+    ) -> BubbleBox:
+        if self._watermark_like(box, w, h) or (
+            protect_tail_credits and self._tail_credit_like(box, w, h)
+        ):
             return replace(box, semantic_type="watermark", class_name="watermark",
                            safe_to_inpaint=False, ocr_eligible=False, needs_review=True)
         if box.verified_mask and "text_segmenter" in box.source_model.lower():
@@ -36,7 +56,9 @@ class CombinedTextDetector:
                            ocr_eligible=True, needs_review=False)
         return replace(box, safe_to_inpaint=False, ocr_eligible=False, needs_review=True)
 
-    def detect(self, image: np.ndarray, *, parallel: bool = False) -> list[BubbleBox]:
+    def detect(
+        self, image: np.ndarray, *, parallel: bool = False, protect_tail_credits: bool = False
+    ) -> list[BubbleBox]:
         h, w = image.shape[:2]
         if parallel:
             with ThreadPoolExecutor(max_workers=2, thread_name_prefix="detector") as pool:
@@ -48,8 +70,14 @@ class CombinedTextDetector:
             bubble_boxes = self.bubble_detector.detect(image)
             text_boxes = self.text_detector.detect(image)
 
-        bubble_boxes = [self._classify(b, w, h) for b in bubble_boxes]
-        text_boxes = [self._classify(t, w, h) for t in text_boxes]
+        bubble_boxes = [
+            self._classify(b, w, h, protect_tail_credits=protect_tail_credits)
+            for b in bubble_boxes
+        ]
+        text_boxes = [
+            self._classify(t, w, h, protect_tail_credits=protect_tail_credits)
+            for t in text_boxes
+        ]
         result_boxes: list[BubbleBox] = []
         used_text_boxes: set[int] = set()
 
@@ -68,7 +96,9 @@ class CombinedTextDetector:
                                  mask=merged_mask, semantic_type=b.semantic_type,
                                  mask_source="text_segmenter" if safe else "none",
                                  safe_to_inpaint=safe, ocr_eligible=safe, needs_review=not safe)
-                result_boxes.append(self._classify(merged, w, h))
+                result_boxes.append(
+                    self._classify(merged, w, h, protect_tail_credits=protect_tail_credits)
+                )
                 used_text_boxes.update(i for i, _ in inside)
             else:
                  # Keep low-confidence bubble/free-text proposals visible, but
@@ -82,7 +112,11 @@ class CombinedTextDetector:
         result_boxes.extend(recovered)
         result_boxes = self._refine_and_split_tall_boxes(result_boxes, image)
         result_boxes = self._apply_final_nms(result_boxes, iou_threshold=0.35)
-        return [self._classify(b, w, h) if b.source_model != "opencv_mser" else b for b in result_boxes]
+        return [
+            self._classify(b, w, h, protect_tail_credits=protect_tail_credits)
+            if b.source_model != "opencv_mser" else b
+            for b in result_boxes
+        ]
 
     @staticmethod
     def _apply_final_nms(boxes: list[BubbleBox], iou_threshold: float = 0.35) -> list[BubbleBox]:
