@@ -27,10 +27,11 @@ jobs:
           ref: feat/v03-workstation-ui
           path: target
           fetch-depth: 0
-      - name: Finalize CSS architecture
+      - name: Finalize UI architecture
         run: |
           set -euo pipefail
           test "$(git -C target rev-parse HEAD)" = "0003e10e064ee88731ce00847b88b00207cc574f"
+          python helper/.v03-fix-qc-nav.py target
           python helper/.v03-finalize-css.py target
           git -C target diff --check
           for f in target/app/static/js/*.js; do node --check "$f" >/dev/null; done
@@ -41,9 +42,7 @@ jobs:
           cd target
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add app/static/css app/templates/index.html tests/test_ui_system_contract.py
+          git add app/static/css app/static/js/page-navigator.js app/static/js/review-workspace.js app/static/js/chapter-qc.js app/templates/index.html tests/test_ui_system_contract.py
           git diff --cached --quiet && exit 0
-          git commit -m "refactor(v0.3-ui): layer CSS and remove legacy navigation styles"
+          git commit -m "refactor(v0.3-ui): finalize layered workstation UI"
           git push origin HEAD:feat/v03-workstation-ui
-
-# Diagnostic rerun: stale selector path reporting enabled.
