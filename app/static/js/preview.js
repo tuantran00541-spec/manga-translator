@@ -39,7 +39,7 @@ function renderPreview() {
   const pages = currentManifest.pages;
   previewActivePageIndex = Math.max(0, Math.min(previewActivePageIndex, pages.length - 1));
   container.innerHTML = "";
-  container.className = "preview-workspace";
+  container.className = "preview-workspace process-workspace";
 
   pages.forEach((page) => {
     if (!page.excluded_regions) page.excluded_regions = [];
@@ -47,163 +47,78 @@ function renderPreview() {
 
   const toolbar = document.createElement("div");
   toolbar.id = "preview-toolbar";
+  toolbar.classList.add("process-commandbar");
 
   const heading = document.createElement("div");
   heading.className = "preview-workspace-heading";
   const title = document.createElement("div");
   title.className = "preview-workspace-title";
-  title.textContent = "Xử lý ảnh";
+  title.textContent = "Chuẩn bị ảnh";
   const subtitle = document.createElement("div");
   subtitle.className = "preview-workspace-subtitle";
-  subtitle.textContent = "Kiểm tra từng lát ảnh, chọn vùng loại trừ và quyết định trang nào sẽ được xử lý.";
-  heading.appendChild(title);
-  heading.appendChild(subtitle);
+  subtitle.textContent = "Chọn lát cần xử lý; vùng loại trừ và trạng thái của trang nằm trong bảng thuộc tính.";
+  heading.append(title, subtitle);
 
   const processBtn = document.createElement("button");
   processBtn.className = "preview-primary-action";
   processBtn.textContent = "Bắt đầu xử lý";
   processBtn.addEventListener("click", processSelectedPages);
-
-  toolbar.appendChild(heading);
-  toolbar.appendChild(processBtn);
+  toolbar.append(heading, processBtn);
   container.appendChild(toolbar);
 
-  const navigation = document.createElement("nav");
-  navigation.className = "preview-navigation workspace-nav-bar";
-  navigation.setAttribute("aria-label", "Điều hướng trang xem trước");
+  const layout = document.createElement("div");
+  layout.className = "workbench-stage-grid process-workbench-grid";
 
-  const prevBtn = document.createElement("button");
-  prevBtn.type = "button";
-  prevBtn.className = "preview-nav-btn workspace-nav-btn";
-  prevBtn.textContent = "← Trang trước";
-  prevBtn.setAttribute("aria-label", "Trang trước");
-  prevBtn.disabled = previewActivePageIndex === 0;
-  prevBtn.addEventListener("click", () => {
-    if (previewActivePageIndex <= 0) return;
-    previewActivePageIndex -= 1;
-    renderPreview();
-  });
-
-  const position = document.createElement("div");
-  position.className = "preview-page-position workspace-nav-position";
-  position.setAttribute("aria-live", "polite");
-
-  const jumpWrap = document.createElement("label");
-  jumpWrap.className = "workspace-nav-jump-wrap";
-  jumpWrap.textContent = "Trang ";
-
-  const jumpInput = document.createElement("input");
-  jumpInput.type = "number";
-  jumpInput.min = "1";
-  jumpInput.max = String(pages.length);
-  jumpInput.value = String(previewActivePageIndex + 1);
-  jumpInput.className = "workspace-nav-jump-input";
-  jumpInput.setAttribute("aria-label", "Nhảy tới số trang");
-
-  const doJump = () => {
-    const targetIndex = parsePageNumber(jumpInput.value, pages.length);
-    if (targetIndex === null) {
-      jumpInput.value = String(previewActivePageIndex + 1);
-      return;
-    }
-    if (targetIndex !== previewActivePageIndex) {
-      previewActivePageIndex = targetIndex;
+  const navItems = pages.map((item, index) => ({
+    key: index,
+    label: pageLabel(pages, index),
+    image: item.original,
+    state: item.skipped ? "skipped" : (item.excluded_regions?.length ? "review" : "ready"),
+    stateLabel: item.skipped ? "Bỏ qua" : (item.excluded_regions?.length ? `${item.excluded_regions.length} vùng loại trừ` : "Sẵn sàng"),
+  }));
+  const navigator = window.createPageNavigator({
+    items: navItems,
+    activeIndex: previewActivePageIndex,
+    title: "Trang & lát",
+    ariaLabel: "Điều hướng trang xử lý",
+    onSelect: (index) => {
+      previewActivePageIndex = index;
       renderPreview();
-    }
-  };
-
-  jumpInput.addEventListener("change", doJump);
-  jumpInput.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      doJump();
-    }
+    },
   });
-
-  jumpWrap.appendChild(jumpInput);
-
-  const totalText = document.createElement("span");
-  totalText.textContent = ` / ${pages.length}`;
-
-  const labelSpan = document.createElement("span");
-  labelSpan.textContent = ` · ${pageLabel(pages, previewActivePageIndex)}`;
-
-  position.append(jumpWrap, totalText, labelSpan);
-
-  const pageItem = pages[previewActivePageIndex];
-  if (pageItem && pageItem.skipped) {
-    const badge = document.createElement("span");
-    badge.className = "page-status-badge skipped";
-    badge.textContent = "Bỏ qua";
-    position.appendChild(badge);
-  }
-
-  const nextBtn = document.createElement("button");
-  nextBtn.type = "button";
-  nextBtn.className = "preview-nav-btn workspace-nav-btn";
-  nextBtn.textContent = "Trang sau →";
-  nextBtn.setAttribute("aria-label", "Trang sau");
-  nextBtn.disabled = previewActivePageIndex >= pages.length - 1;
-  nextBtn.addEventListener("click", () => {
-    if (previewActivePageIndex >= pages.length - 1) return;
-    previewActivePageIndex += 1;
-    renderPreview();
-  });
-
-  navigation.appendChild(prevBtn);
-  navigation.appendChild(position);
-  navigation.appendChild(nextBtn);
-  container.appendChild(navigation);
 
   const workspace = document.createElement("div");
-  workspace.className = "preview-main";
+  workspace.className = "preview-main workbench-canvas-column";
+  const surface = document.createElement("section");
+  surface.className = "preview-canvas-surface preview-card-active";
+  surface.dataset.pageIndex = previewActivePageIndex;
+  workspace.appendChild(surface);
 
-  const card = document.createElement("section");
-  card.className = "preview-card preview-card-active";
-  card.dataset.pageIndex = previewActivePageIndex;
-  workspace.appendChild(card);
-  container.appendChild(workspace);
+  const inspector = document.createElement("aside");
+  inspector.className = "context-inspector process-inspector";
+  inspector.setAttribute("aria-label", "Thuộc tính trang xử lý");
+  const inspectorHeading = document.createElement("div");
+  inspectorHeading.className = "context-inspector-heading";
+  const inspectorEyebrow = document.createElement("span");
+  inspectorEyebrow.className = "ui-eyebrow";
+  inspectorEyebrow.textContent = "Trang đang chọn";
+  const inspectorTitle = document.createElement("strong");
+  inspectorTitle.textContent = pageLabel(pages, previewActivePageIndex);
+  inspectorHeading.append(inspectorEyebrow, inspectorTitle);
+  inspector.appendChild(inspectorHeading);
+
+  layout.append(navigator.element, workspace, inspector);
+  container.appendChild(layout);
 
   const page = pages[previewActivePageIndex];
-  renderPreviewPage(card, page, previewActivePageIndex, pages);
+  renderPreviewPage(surface, page, previewActivePageIndex, pages, inspector);
 
   if (typeof setWorkflowCheckpoint === "function") {
     setWorkflowCheckpoint("preview", previewActivePageIndex);
   }
-
-  const strip = document.createElement("div");
-  strip.className = "preview-thumbnail-strip";
-  strip.setAttribute("aria-label", "Chọn lát xem trước");
-
-  pages.forEach((item, index) => {
-    const thumb = document.createElement("button");
-    thumb.className = "preview-thumbnail";
-    thumb.dataset.pageIndex = index;
-    thumb.title = pageLabel(pages, index);
-    if (index === previewActivePageIndex) thumb.classList.add("active");
-    if (item.skipped) thumb.classList.add("skipped");
-
-    const thumbImage = document.createElement("img");
-    thumbImage.src = item.original;
-    thumbImage.alt = pageLabel(pages, index);
-    thumbImage.loading = "lazy";
-    thumb.appendChild(thumbImage);
-
-    const thumbLabel = document.createElement("span");
-    thumbLabel.textContent = String(index + 1).padStart(2, "0");
-    thumb.appendChild(thumbLabel);
-
-    thumb.addEventListener("click", () => {
-      previewActivePageIndex = index;
-      renderPreview();
-    });
-    strip.appendChild(thumb);
-  });
-
-  container.appendChild(strip);
 }
 
-function renderPreviewPage(card, page, pageIndex, pages) {
+function renderPreviewPage(card, page, pageIndex, pages, inspector = null) {
   const header = document.createElement("div");
   header.className = "preview-card-header";
 
@@ -324,7 +239,7 @@ function renderPreviewPage(card, page, pageIndex, pages) {
     renderExcludedBoxes();
   });
   tools.append(drawToggleBtn, clearBtn);
-  card.appendChild(tools);
+  (inspector || card).appendChild(tools);
 
   let isDragging = false;
   let startPos = null;
@@ -421,15 +336,13 @@ function renderPreviewPage(card, page, pageIndex, pages) {
   const skipBtn = document.createElement("button");
   skipBtn.className = "skip-btn";
   skipBtn.textContent = page.skipped ? "Đã bỏ qua · Chọn để khôi phục" : "Bỏ qua lát ảnh";
-  skipBtn.addEventListener("click", () => {
-    toggleSkip(pageIndex, card, skipBtn);
+  skipBtn.addEventListener("click", async () => {
+    await toggleSkip(pageIndex, card, skipBtn);
     status.textContent = page.skipped ? "Đã bỏ qua" : "Sẵn sàng xử lý";
-    document.querySelectorAll(`.preview-thumbnail[data-page-index="${pageIndex}"]`).forEach((el) => {
-      el.classList.toggle("skipped", !!page.skipped);
-    });
+    renderPreview();
   });
   footer.appendChild(skipBtn);
-  card.appendChild(footer);
+  (inspector || card).appendChild(footer);
 }
 
 function isPreviewEditingText() {

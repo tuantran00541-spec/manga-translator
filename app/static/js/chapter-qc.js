@@ -391,8 +391,8 @@
     if (!workspace || workspace.dataset.chapterQcBound === "1") return;
     const actions = workspace.querySelector(".review-actions-group");
     const toolbar = workspace.querySelector(".review-sticky-toolbar");
-    const nav = workspace.querySelector(".review-page-nav");
-    if (!actions || !toolbar || !nav) return;
+    const inspector = workspace.querySelector(".review-inspector");
+    if (!actions || !toolbar || !inspector) return;
     workspace.dataset.chapterQcBound = "1";
 
     const runBtn = document.createElement("button");
@@ -403,7 +403,8 @@
     actions.prepend(runBtn);
 
     const panel = createPanel();
-    toolbar.after(panel);
+    panel.classList.add("inspector-section", "review-qc-inspector-section");
+    inspector.appendChild(panel);
     const observer = new MutationObserver(() => {
       if (isRunning()) setLocked(workspace, true);
     });
