@@ -1,0 +1,85 @@
+name: Asura chapter 92 relay
+
+on:
+  push:
+    branches:
+      - "test/asura-ch92-relay"
+
+permissions:
+  contents: read
+
+jobs:
+  relay:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact main commit under test
+        uses: actions/checkout@v4
+        with:
+          ref: d6eb5f82652d8c6c3a0831e3b34022b479cc53dc
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install project dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Install Chromium for project downloader
+        run: playwright install --with-deps chromium
+
+      - name: Run Manga Translator downloader unchanged
+        env:
+          CHAPTER_URL: https://asurascans.com/comics/the-academys-sashimi-sword-master-b57aa235/chapter/92
+          CHAPTER_ID: c0922026
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          from app.config import ensure_directories
+          from app.pipeline import ChapterPipeline
+
+          url = os.environ["CHAPTER_URL"]
+          chapter_id = os.environ["CHAPTER_ID"]
+          ensure_directories()
+          manifest = ChapterPipeline().download_chapter(url, chapter_id, workers=2)
+
+          raw_dir = Path("data/raw") / chapter_id
+          raw_sources = sorted(p for p in raw_dir.iterdir() if p.is_file())
+          meta = {
+              "tested_commit": "d6eb5f82652d8c6c3a0831e3b34022b479cc53dc",
+              "chapter_url": url,
+              "chapter_id": chapter_id,
+              "downloaded_source_count": len(raw_sources),
+              "manifest_page_count": len(manifest.get("pages", [])),
+              "sources": [
+                  {
+                      "name": p.name,
+                      "size": p.stat().st_size,
+                      "sha256": hashlib.sha256(p.read_bytes()).hexdigest(),
+                  }
+                  for p in raw_sources
+              ],
+          }
+          Path("relay_meta.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
+          print(json.dumps(meta, indent=2))
+          PY
+
+      - name: Upload downloaded source and manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: asura-ch92-main-d6eb5f8
+          if-no-files-found: error
+          retention-days: 1
+          path: |
+            data/raw/c0922026/
+            data/processed/c0922026/manifest.json
+            relay_meta.json
