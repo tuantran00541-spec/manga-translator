@@ -1,0 +1,25 @@
+name: Export feature snapshot
+
+on:
+  push:
+    branches:
+      - feature/custom-ai-provider-final
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pack source snapshot
+        run: |
+          tar --exclude=.git -czf /tmp/manga-source.tgz .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: manga-source-snapshot
+          path: /tmp/manga-source.tgz
+          if-no-files-found: error
+          retention-days: 1
