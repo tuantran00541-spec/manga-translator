@@ -18,69 +18,50 @@ jobs:
         with:
           ref: test/v03-ui-sync
           path: sync-source
-
       - name: Checkout feature target
         uses: actions/checkout@v4
         with:
           ref: feat/v03-workstation-ui
           path: target
           fetch-depth: 0
-
-      - name: Recover and verify tested snapshot
+      - name: Recover snapshot by SHA-256
         shell: bash
         run: |
           set -euo pipefail
           test "$(git -C target rev-parse HEAD)" = "a110b47c211ddab05e96530b94bea980640cae5f"
           python - <<'PY'
           from pathlib import Path
-          import base64, gzip, hashlib
-
+          import base64, hashlib
           root = Path('sync-source/.v03-sync')
-          p0 = (root / 'payload.00').read_bytes().strip()
-          p1 = (root / 'payload.01').read_bytes().strip()
-          p2 = (root / 'payload.02').read_bytes().strip()
-          p3 = (root / 'payload.03').read_bytes().strip()
+          p0 = (root/'payload.00').read_bytes().strip()
+          p1 = (root/'payload.01').read_bytes().strip()
+          p2 = (root/'payload.02').read_bytes().strip()
+          p3 = (root/'payload.03').read_bytes().strip()
           target = 'b51d05eeb32c95d24ac15f1ee5737f36c280c43aba77278ab24f0b020baad713'
           alphabet = b'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
-
-          bad = p0 + p1 + p2 + p3
+          suffix = p2 + p3
           found = None
-          try:
-              raw = base64.b64decode(bad, validate=True)
-              if hashlib.sha256(raw).hexdigest() == target:
-                  found = raw
-          except Exception:
-              pass
-
-          if found is None:
-              prefix = p0
-              suffix = p2 + p3
-              for pos in range(len(p1) + 1):
-                  left, right = p1[:pos], p1[pos:]
-                  for ch in alphabet:
-                      encoded = prefix + left + bytes((ch,)) + right + suffix
-                      try:
-                          raw = base64.b64decode(encoded, validate=True)
-                          gzip.decompress(raw)
-                      except Exception:
-                          continue
-                      if hashlib.sha256(raw).hexdigest() == target:
-                          print(f'recovered missing base64 byte at payload.01 offset {pos}: {chr(ch)}')
-                          found = raw
-                          break
-                  if found is not None:
+          # The uploaded second chunk is exactly one byte short. Search from its
+          # end first because transcription truncation most often occurs at a boundary.
+          for pos in range(len(p1), -1, -1):
+              left, right = p1[:pos], p1[pos:]
+              stem = p0 + left
+              tail = right + suffix
+              for ch in alphabet:
+                  raw = base64.b64decode(stem + bytes((ch,)) + tail, validate=True)
+                  if hashlib.sha256(raw).hexdigest() == target:
+                      print(f'recovered payload.01 offset={pos} char={chr(ch)}')
+                      found = raw
                       break
-
+              if found is not None:
+                  break
           if found is None:
-              raise SystemExit('unable to recover payload to known SHA-256')
-          if hashlib.sha256(found).hexdigest() != target:
-              raise SystemExit('payload checksum mismatch')
+              raise SystemExit('no one-byte recovery matches known snapshot SHA-256')
           Path('/tmp/v03-ui-final.tar.gz').write_bytes(found)
           PY
           echo "b51d05eeb32c95d24ac15f1ee5737f36c280c43aba77278ab24f0b020baad713  /tmp/v03-ui-final.tar.gz" | sha256sum --check
           test "$(tar -tzf /tmp/v03-ui-final.tar.gz | wc -l)" -eq 20
-
-      - name: Apply tested snapshot
+      - name: Apply and verify tested snapshot
         shell: bash
         run: |
           set -euo pipefail
@@ -91,7 +72,6 @@ jobs:
           test "$(grep -o '/static/css/' target/app/templates/index.html | wc -l)" -eq 1
           test "$(grep -Roh '!important' target/app/static/css | wc -l)" -eq 5
           test "$(grep -R -E 'workspace-nav-|preview-navigation|preview-thumbnail|review-page-nav|translation-page-nav' target/app/static/css target/app/static/js 2>/dev/null | wc -l)" -eq 0
-
       - name: Commit snapshot to feature branch
         shell: bash
         run: |
