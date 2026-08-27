@@ -1,0 +1,110 @@
+name: Diagnostic Asura 92 image DOM
+
+on:
+  push:
+    branches:
+      - diag/asura92-image-dom
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact main under test
+        uses: actions/checkout@v4
+        with:
+          ref: d6eb5f82652d8c6c3a0831e3b34022b479cc53dc
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install diagnostic runtime
+        run: |
+          python -m pip install playwright==1.47.0 fastapi==0.115.0
+          python -m playwright install --with-deps chromium
+
+      - name: Capture image DOM metadata
+        env:
+          CHAPTER_URL: https://asurascans.com/comics/the-academys-sashimi-sword-master-b57aa235/chapter/92
+        run: |
+          python - <<'PY'
+          import json, os
+          from urllib.parse import urljoin
+          from playwright.sync_api import sync_playwright
+
+          url = os.environ['CHAPTER_URL']
+          records = []
+          with sync_playwright() as p:
+              browser = p.chromium.launch(args=['--disable-dev-shm-usage','--disable-gpu','--no-zygote','--disable-extensions','--disable-background-networking'])
+              context = browser.new_context(service_workers='block')
+              page = context.new_page()
+              page.goto(url, wait_until='domcontentloaded', timeout=60000)
+              last_height = last_count = -1
+              stable = 0
+              for _ in range(30):
+                  height = int(page.evaluate('Math.max(document.body.scrollHeight, document.documentElement.scrollHeight)'))
+                  count = int(page.locator('img').count())
+                  page.evaluate('window.scrollTo(0, Math.max(document.body.scrollHeight, document.documentElement.scrollHeight))')
+                  page.wait_for_timeout(400)
+                  nh = int(page.evaluate('Math.max(document.body.scrollHeight, document.documentElement.scrollHeight)'))
+                  nc = int(page.locator('img').count())
+                  if nh == height == last_height and nc == count == last_count:
+                      stable += 1
+                  else:
+                      stable = 0
+                  last_height, last_count = nh, nc
+                  if stable >= 3:
+                      break
+
+              for i, el in enumerate(page.query_selector_all('img')):
+                  rec = el.evaluate('''(img, idx) => {
+                    const r = img.getBoundingClientRect();
+                    const ancestors = [];
+                    let n = img;
+                    for (let depth=0; n && depth<7; depth++, n=n.parentElement) {
+                      ancestors.push({tag:n.tagName, id:n.id || '', cls:n.className || '', role:n.getAttribute && (n.getAttribute('role')||'')});
+                    }
+                    return {
+                      dom_index: idx,
+                      src: img.getAttribute('src') || '',
+                      currentSrc: img.currentSrc || '',
+                      srcset: img.getAttribute('srcset') || '',
+                      dataSrc: img.getAttribute('data-src') || '',
+                      alt: img.getAttribute('alt') || '',
+                      widthAttr: img.getAttribute('width') || '',
+                      heightAttr: img.getAttribute('height') || '',
+                      naturalWidth: img.naturalWidth || 0,
+                      naturalHeight: img.naturalHeight || 0,
+                      visibleWidth: r.width || 0,
+                      visibleHeight: r.height || 0,
+                      className: img.className || '',
+                      ancestors
+                    };
+                  }''', i)
+                  rec['candidate_by_current_js_width_rule'] = max(float(rec['visibleWidth']), int(rec['naturalWidth'])) >= 300
+                  raw = rec['currentSrc'] or rec['dataSrc'] or rec['src']
+                  rec['resolved'] = urljoin(url, raw) if raw else ''
+                  records.append(rec)
+              browser.close()
+
+          out = {
+            'target_main_sha': 'd6eb5f82652d8c6c3a0831e3b34022b479cc53dc',
+            'url': url,
+            'total_img_elements': len(records),
+            'candidate_count_by_current_js_width_rule': sum(1 for r in records if r['candidate_by_current_js_width_rule']),
+            'images': records,
+          }
+          with open('asura92_image_dom.json','w',encoding='utf-8') as f:
+              json.dump(out,f,ensure_ascii=False,indent=2)
+          print(json.dumps({'total':out['total_img_elements'],'candidates':out['candidate_count_by_current_js_width_rule']}, indent=2))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: asura92-image-dom
+          path: asura92_image_dom.json
+          retention-days: 1
