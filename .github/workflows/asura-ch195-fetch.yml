@@ -47,3 +47,5 @@ jobs:
           git diff --cached --quiet && exit 0
           git commit -m "feat(v0.3-ui): unify page navigation and workspace layout"
           git push origin HEAD:feat/v03-workstation-ui
+
+# Triggered for final v0.3 closure; source patches remain unchanged.
