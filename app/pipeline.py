@@ -7,6 +7,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import cv2
 import numpy as np
 from app.downloader.registry import download_chapter as fetch_chapter_images
+from app.downloader.asura import is_asura_chapter_page
 from app.downloader.slicer import slice_image
 from app.detector.combined_detector import CombinedTextDetector
 from app.detector.bubble_detector import BubbleBox
@@ -312,18 +313,40 @@ class ChapterPipeline:
 
         with get_manifest_lock(chapter_id):
             manifest = load_manifest_raw(chapter_id)
+            manifest_pages = manifest.get("pages", [])
+            source_page_ids = [
+                int(page.get("source_page", -1))
+                for page in manifest_pages
+                if isinstance(page, dict)
+            ]
+            last_source_page = max(source_page_ids, default=-1)
+            protect_asura_tail_credits = is_asura_chapter_page(str(manifest.get("source_url") or ""))
             work_items = []
             for idx in page_indices:
                 if 0 <= idx < len(manifest.get("pages", [])):
                     page = manifest["pages"][idx]
                     if not page.get("skipped", False):
                         state_snapshot = capture_processing_state(manifest, idx, processed_dir)
+                        stitch_core = copy.deepcopy(page.get("stitch_core"))
+                        is_final_source_tail = (
+                            protect_asura_tail_credits
+                            and int(page.get("source_page", -1)) == last_source_page
+                        )
+                        if is_final_source_tail and isinstance(stitch_core, dict):
+                            try:
+                                is_final_source_tail = (
+                                    int(stitch_core.get("core_source_y2", -1))
+                                    >= int(stitch_core.get("source_height", 0))
+                                )
+                            except (TypeError, ValueError):
+                                is_final_source_tail = False
                         work_items.append((
                             idx,
                             Path(page["original"]),
                             copy.deepcopy(page.get("excluded_regions", [])),
                             copy.deepcopy(page.get("boxes", [])),
-                            copy.deepcopy(page.get("stitch_core")),
+                            stitch_core,
+                            is_final_source_tail,
                             state_snapshot,
                         ))
 
@@ -344,13 +367,14 @@ class ChapterPipeline:
         parallel_detectors = max_workers == 1
 
         def _process_one(item) -> tuple[int, dict, dict | None]:
-            idx, img_path, excluded, existing_boxes, stitch_core, snapshot = item
+            idx, img_path, excluded, existing_boxes, stitch_core, is_final_source_tail, snapshot = item
             return idx, self._process_page(
                 img_path,
                 processed_dir,
                 excluded_regions=excluded,
                 existing_boxes=existing_boxes,
                 stitch_core=stitch_core,
+                protect_tail_credits=is_final_source_tail,
                 parallel_detectors=parallel_detectors,
             ), snapshot
 
@@ -1014,10 +1038,14 @@ class ChapterPipeline:
         existing_boxes: list[dict] | None = None,
         stitch_core: dict | None = None,
         *,
+        protect_tail_credits: bool = False,
         parallel_detectors: bool = False,
     ) -> dict:
         image = read_image(img_path)
-        detected = self.detector.detect(image, parallel=parallel_detectors)
+        detector_kwargs = {"parallel": parallel_detectors}
+        if protect_tail_credits:
+            detector_kwargs["protect_tail_credits"] = True
+        detected = self.detector.detect(image, **detector_kwargs)
         if excluded_regions:
             detected = [b for b in detected if not self._box_in_excluded(b, excluded_regions)]
 

@@ -3,6 +3,11 @@ from pathlib import Path
 from bs4 import BeautifulSoup
 
 from app.downloader.base import BaseAdapter
+from app.downloader.asura import (
+    AsuraScansJsAdapter,
+    AsuraScansStaticAdapter,
+    is_asura_chapter_page,
+)
 from app.downloader.generic_js import GenericJsAdapter
 from app.downloader.http import read_response_limited, safe_get
 from app.downloader.image_urls import best_srcset_candidate, resolve_image_candidate
@@ -48,6 +53,8 @@ class GenericStaticAdapter(BaseAdapter):
 
 STATIC_ADAPTER = GenericStaticAdapter()
 JS_ADAPTER = GenericJsAdapter()
+ASURA_STATIC_ADAPTER = AsuraScansStaticAdapter()
+ASURA_JS_ADAPTER = AsuraScansJsAdapter()
 
 
 def _choose_image_urls(static_urls: list[str], js_urls: list[str]) -> list[str]:
@@ -67,17 +74,30 @@ def download_chapter(chapter_url: str, output_dir: Path) -> list[Path]:
     static_urls: list[str] = []
     js_urls: list[str] = []
 
-    try:
-        static_urls = STATIC_ADAPTER.extract_image_urls(chapter_url)
-    except Exception:
-        static_urls = []
-
-    try:
-        js_urls = JS_ADAPTER.extract_image_urls(chapter_url)
-    except Exception:
-        js_urls = []
-
-    selected = _choose_image_urls(static_urls, js_urls)
+    if is_asura_chapter_page(chapter_url):
+        # Asura comments/profile UI contains many large intrinsic images.  Both
+        # discovery paths are therefore scoped to reader page elements; never
+        # fall back to the generic all-<img> adapter for a recognized Asura
+        # chapter because that would silently reintroduce website assets.
+        try:
+            static_urls = ASURA_STATIC_ADAPTER.extract_image_urls(chapter_url)
+        except Exception:
+            static_urls = []
+        try:
+            js_urls = ASURA_JS_ADAPTER.extract_image_urls(chapter_url)
+        except Exception:
+            js_urls = []
+        selected = js_urls or static_urls
+    else:
+        try:
+            static_urls = STATIC_ADAPTER.extract_image_urls(chapter_url)
+        except Exception:
+            static_urls = []
+        try:
+            js_urls = JS_ADAPTER.extract_image_urls(chapter_url)
+        except Exception:
+            js_urls = []
+        selected = _choose_image_urls(static_urls, js_urls)
     if not selected:
         raise ValueError("Không tìm thấy ảnh chương hợp lệ từ URL này")
 

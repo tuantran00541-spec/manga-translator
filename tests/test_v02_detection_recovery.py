@@ -98,3 +98,64 @@ def test_tall_segmenter_has_global_context_path():
     src = inspect.getsource(YoloDetector.detect)
     assert "_detect_single_plain(image, 0, 0)" in src
     assert "text_segmenter" in src
+
+
+def test_final_source_tail_credit_guard_downgrades_wide_endcard_text():
+    d = CombinedTextDetector.__new__(CombinedTextDetector)
+    b = BubbleBox(
+        140, 1235, 831, 1516, .84, _mask(281, 691),
+        source_model="text_segmenter.onnx",
+        semantic_type="text",
+    )
+
+    normal = d._classify(b, 900, 1766)
+    guarded = d._classify(b, 900, 1766, protect_tail_credits=True)
+
+    assert normal.safe_to_inpaint and not normal.needs_review
+    assert guarded.semantic_type == "watermark"
+    assert not guarded.safe_to_inpaint
+    assert not guarded.ocr_eligible
+    assert guarded.needs_review
+
+
+def test_tail_credit_geometry_is_not_global_watermark_rule():
+    d = CombinedTextDetector.__new__(CombinedTextDetector)
+    b = BubbleBox(
+        514, 986, 862, 1060, .76, _mask(74, 348),
+        source_model="text_segmenter.onnx",
+    )
+    assert not d._watermark_like(b, 900, 1766)
+    assert d._tail_credit_like(b, 900, 1766)
+
+
+def test_residual_mser_line_is_review_only_when_primary_detector_missed_it():
+    raw = np.array([
+        [100, 120, 12, 28],
+        [118, 121, 11, 27],
+        [136, 120, 13, 28],
+        [155, 122, 12, 26],
+        [174, 121, 12, 27],
+        [193, 120, 13, 28],
+        # A page-scale region must not bridge or suppress the glyph line.
+        [0, 0, 800, 900],
+    ], dtype=np.int32)
+    out = SecondaryTextRecovery._residual_line_candidates(raw, (1000, 800), [])
+    assert out
+    candidate = out[0]
+    assert candidate.source_model == "opencv_mser"
+    assert candidate.needs_review
+    assert not candidate.safe_to_inpaint
+    assert not candidate.ocr_eligible
+    assert candidate.mask is None
+
+
+def test_residual_mser_line_is_suppressed_when_verified_box_already_covers_it():
+    raw = np.array([
+        [100, 120, 12, 28], [118, 121, 11, 27], [136, 120, 13, 28],
+        [155, 122, 12, 26], [174, 121, 12, 27], [193, 120, 13, 28],
+    ], dtype=np.int32)
+    existing = [BubbleBox(
+        80, 100, 230, 170, .9, _mask(70, 150),
+        source_model="text_segmenter.onnx", safe_to_inpaint=True,
+    )]
+    assert SecondaryTextRecovery._residual_line_candidates(raw, (1000, 800), existing) == []
