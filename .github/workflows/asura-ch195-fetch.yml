@@ -1,4 +1,4 @@
-name: Apply v0.3 workstation patch
+name: Finalize v0.3 CSS architecture
 
 on:
   push:
@@ -12,34 +12,36 @@ permissions:
   contents: write
 
 jobs:
-  patch:
+  finalize:
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     steps:
-      - name: Checkout helper patches
+      - name: Checkout helper
         uses: actions/checkout@v4
         with:
           ref: test/asura-ch195-v02
           path: helper
-      - name: Checkout v0.3 UI branch
+      - name: Checkout feature
         uses: actions/checkout@v4
         with:
           ref: feat/v03-workstation-ui
           path: target
           fetch-depth: 0
-      - name: Reconcile workbench CSS patch
+      - name: Finalize CSS architecture
         run: |
           set -euo pipefail
-          cd target
-          git apply --3way ../helper/.v03-workbench.patch
-          git diff --check
-      - name: Commit workbench CSS migration
+          test "$(git -C target rev-parse HEAD)" = "0003e10e064ee88731ce00847b88b00207cc574f"
+          python helper/.v03-finalize-css.py target
+          git -C target diff --check
+          for f in target/app/static/js/*.js; do node --check "$f" >/dev/null; done
+          python -m compileall -q target/app target/tests
+      - name: Commit final UI architecture
         run: |
           set -euo pipefail
           cd target
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add app/static/css/workbench.css
+          git add app/static/css app/templates/index.html tests/test_ui_system_contract.py
           git diff --cached --quiet && exit 0
-          git commit -m "style(v0.3-ui): finish workstation layout migration"
+          git commit -m "refactor(v0.3-ui): layer CSS and remove legacy navigation styles"
           git push origin HEAD:feat/v03-workstation-ui
