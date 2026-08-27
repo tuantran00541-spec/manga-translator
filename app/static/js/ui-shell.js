@@ -17,7 +17,7 @@
   }
 
   function syncWorkflowSteps(activeIndex) {
-    document.querySelectorAll(".workflow-step").forEach((step) => {
+    document.querySelectorAll(".app-rail-item[data-stage]").forEach((step) => {
       const idx = STAGES.indexOf(step.dataset.stage);
       const available = idx >= 0 && idx <= maxReachedIndex;
       step.classList.toggle("active", idx === activeIndex);
@@ -45,6 +45,8 @@
     }
 
     document.body.dataset.appStage = resolved;
+    const stageTitle = document.getElementById("stage-title");
+    if (stageTitle) stageTitle.textContent = STAGE_LABELS[resolved];
 
     const landing = document.getElementById("landing-view");
     const workspace = document.getElementById("page-view");
@@ -219,7 +221,7 @@
     if (close) close.addEventListener("click", closeSettings);
     if (backdrop) backdrop.addEventListener("click", closeSettings);
 
-    document.querySelectorAll(".workflow-step").forEach((step) => {
+    document.querySelectorAll(".app-rail-item[data-stage]").forEach((step) => {
       step.addEventListener("click", () => navigateAppStage(step.dataset.stage));
     });
 

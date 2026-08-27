@@ -106,12 +106,10 @@
   function jumpToResult(workspace, result, issue) {
     const pageIndex = Number(result?.page_index);
     if (!Number.isInteger(pageIndex) || pageIndex < 0) return;
-    const visibleIndex = visiblePageIndices().indexOf(pageIndex);
-    if (visibleIndex < 0) return;
-    const jump = workspace.querySelector(".workspace-nav-jump-input");
-    if (!jump) return;
-    jump.value = String(visibleIndex + 1);
-    jump.dispatchEvent(new Event("change", { bubbles: true }));
+    if (!visiblePageIndices().includes(pageIndex)) return;
+    const navigator = workspace._pageNavigator;
+    if (!navigator || typeof navigator.selectByKey !== "function") return;
+    navigator.selectByKey(pageIndex);
     window.setTimeout(() => drawHighlight(workspace, pageIndex, issue), 40);
   }
 
@@ -391,8 +389,8 @@
     if (!workspace || workspace.dataset.chapterQcBound === "1") return;
     const actions = workspace.querySelector(".review-actions-group");
     const toolbar = workspace.querySelector(".review-sticky-toolbar");
-    const nav = workspace.querySelector(".review-page-nav");
-    if (!actions || !toolbar || !nav) return;
+    const inspector = workspace.querySelector(".review-inspector");
+    if (!actions || !toolbar || !inspector) return;
     workspace.dataset.chapterQcBound = "1";
 
     const runBtn = document.createElement("button");
@@ -403,7 +401,8 @@
     actions.prepend(runBtn);
 
     const panel = createPanel();
-    toolbar.after(panel);
+    panel.classList.add("inspector-section", "review-qc-inspector-section");
+    inspector.appendChild(panel);
     const observer = new MutationObserver(() => {
       if (isRunning()) setLocked(workspace, true);
     });

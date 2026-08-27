@@ -1,0 +1,67 @@
+@layer base, stage, system, components, workbench, utilities;
+
+@import url("./base.css") layer(base);
+
+@import url("./upload.css") layer(stage);
+@import url("./preview.css") layer(stage);
+@import url("./editor.css") layer(stage);
+@import url("./editor-workspace.css") layer(stage);
+@import url("./review-workspace.css") layer(stage);
+
+@import url("./ui-system.css") layer(system);
+
+@import url("./editor-box-transform.css") layer(components);
+@import url("./box-panel.css") layer(components);
+@import url("./text-object-editor.css") layer(components);
+@import url("./toolbar.css") layer(components);
+@import url("./recent-toast.css") layer(components);
+@import url("./deepseek-qc.css") layer(components);
+@import url("./chapter-ocr.css") layer(components);
+@import url("./page-navigator.css") layer(components);
+
+@import url("./workbench.css") layer(workbench);
+
+@layer utilities {
+  .workbench-frame {
+    container-type: inline-size;
+    container-name: workbench;
+  }
+
+  .page-navigator-item {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 56px;
+  }
+
+  :where(button, [role="button"]) {
+    min-height: 24px;
+    min-width: 24px;
+  }
+
+  :where(button, input, select, textarea, [role="button"], [tabindex]):focus-visible {
+    outline: 2px solid var(--color-focus, var(--accent-1));
+    outline-offset: 2px;
+  }
+
+  @container workbench (max-width: 900px) {
+    .workbench-stage-grid,
+    .translation-workspace-body.editor-workbench-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .context-inspector,
+    .translation-panel-host.context-inspector {
+      position: static;
+      max-height: none;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      scroll-behavior: auto !important;
+      animation-duration: .01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: .01ms !important;
+      transition-delay: 0s !important;
+    }
+  }
+}

@@ -1187,99 +1187,34 @@ function renderEditor() {
 
   toolbar.append(title, tools, renderBtn, saveStatus);
 
-  const nav = document.createElement("nav");
-  nav.className = "translation-page-nav workspace-nav-bar";
-  nav.setAttribute("aria-label", "Điều hướng trang biên tập");
-
-  const prev = document.createElement("button");
-  prev.type = "button";
-  prev.className = "translation-nav-btn workspace-nav-btn";
-  prev.textContent = "← Trang trước";
-  prev.setAttribute("aria-label", "Trang trước");
-  prev.disabled = pageIndex === 0;
-  prev.addEventListener("click", () => switchEditorPage(pageIndex - 1));
-
-  const position = document.createElement("div");
-  position.className = "translation-position workspace-nav-position";
-  position.setAttribute("aria-live", "polite");
-
-  const jumpWrap = document.createElement("label");
-  jumpWrap.className = "workspace-nav-jump-wrap";
-  jumpWrap.textContent = "Trang ";
-
-  const jumpInput = document.createElement("input");
-  jumpInput.type = "number";
-  jumpInput.min = "1";
-  jumpInput.max = String(pages.length);
-  jumpInput.value = String(pageIndex + 1);
-  jumpInput.className = "workspace-nav-jump-input";
-  jumpInput.setAttribute("aria-label", "Nhảy tới số trang");
-
-  const doJump = () => {
-    const targetIndex = parsePageNumber(jumpInput.value, pages.length);
-    if (targetIndex === null) {
-      jumpInput.value = String(pageIndex + 1);
-      return;
-    }
-    if (targetIndex !== pageIndex) {
-      switchEditorPage(targetIndex);
-    }
-  };
-
-  jumpInput.addEventListener("change", doJump);
-  jumpInput.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      doJump();
-    }
+  const navItems = pages.map((item, index) => ({
+    key: index,
+    label: typeof pageLabel === "function" ? pageLabel(pages, index) : `Trang ${index + 1}`,
+    image: item.rendered || item.clean || item.original,
+    state: item.skipped ? "skipped" : (item.rendered ? "rendered" : "ready"),
+    stateLabel: item.skipped ? "Bỏ qua" : (item.rendered ? "Đã kết xuất" : "Đang biên tập"),
+  }));
+  const navigator = window.createPageNavigator({
+    items: navItems,
+    activeIndex: pageIndex,
+    title: "Trang biên tập",
+    ariaLabel: "Điều hướng trang biên tập",
+    onSelect: (index) => switchEditorPage(index),
   });
 
-  jumpWrap.appendChild(jumpInput);
-
-  const totalText = document.createElement("span");
-  totalText.textContent = ` / ${pages.length}`;
-
-  const labelSpan = document.createElement("span");
-  const labelText = typeof pageLabel === "function" ? pageLabel(pages, pageIndex) : `Trang ${pageIndex + 1}`;
-  labelSpan.textContent = ` · ${labelText}`;
-
-  position.append(jumpWrap, totalText, labelSpan);
-
-  if (page.rendered) {
-    const badge = document.createElement("span");
-    badge.className = "page-status-badge rendered";
-    badge.textContent = "Đã kết xuất";
-    position.appendChild(badge);
-  } else if (page.skipped) {
-    const badge = document.createElement("span");
-    badge.className = "page-status-badge skipped";
-    badge.textContent = "Bỏ qua";
-    position.appendChild(badge);
-  }
-
-  const next = document.createElement("button");
-  next.type = "button";
-  next.className = "translation-nav-btn workspace-nav-btn";
-  next.textContent = "Trang sau →";
-  next.setAttribute("aria-label", "Trang sau");
-  next.disabled = pageIndex === pages.length - 1;
-  next.addEventListener("click", () => switchEditorPage(pageIndex + 1));
-
-  nav.append(prev, position, next);
-
   const body = document.createElement("div");
-  body.className = "translation-workspace-body";
+  body.className = "translation-workspace-body workbench-stage-grid editor-workbench-grid";
 
   const canvasHost = document.createElement("main");
   canvasHost.className = "translation-canvas-host";
 
   const panelHost = document.createElement("aside");
-  panelHost.className = "translation-panel-host";
+  panelHost.className = "translation-panel-host context-inspector editor-inspector";
   panelHost.setAttribute("aria-label", "Bảng biên tập vùng chữ");
 
-  body.append(canvasHost, panelHost);
+  body.append(navigator.element, canvasHost, panelHost);
 
-  shell.append(toolbar, nav, body);
+  shell.append(toolbar, body);
   container.appendChild(shell);
 
   const wrapper = buildPageWrapper(page, pageIndex, pages);

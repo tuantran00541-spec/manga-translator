@@ -28,7 +28,8 @@ def test_chapter_qc_ui_wires_start_status_cancel_and_retry_endpoints():
 
 def test_chapter_qc_results_jump_to_page_without_polluting_repaint_mask():
     js = read("app/static/js/chapter-qc.js")
-    assert 'jump.dispatchEvent(new Event("change", { bubbles: true }))' in js
+    assert 'navigator.selectByKey(pageIndex)' in js
+    assert 'workspace._pageNavigator' in js
     assert 'marker.className = "review-qc-highlight"' in js
     assert 'wrap.appendChild(marker)' in js
     assert 'canvas.getContext' not in js

@@ -10,8 +10,9 @@ def read(path: str) -> str:
 def test_workflow_steps_are_real_navigation_controls():
     html = read("app/templates/index.html")
     shell = read("app/static/js/ui-shell.js")
-    assert html.count('<button class="workflow-step') == 4
-    assert '<span class="workflow-step' not in html
+    assert html.count('data-stage="') >= 4
+    assert 'id="settings-toggle"' in html
+    assert 'id="app-rail"' in html
     assert 'window.navigateAppStage = navigateAppStage' in shell
     assert 'step.addEventListener("click", () => navigateAppStage(step.dataset.stage))' in shell
     assert 'targetIndex > maxReachedIndex' in shell
