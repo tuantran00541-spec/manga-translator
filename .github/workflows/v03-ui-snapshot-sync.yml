@@ -31,7 +31,16 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git -C target rev-parse HEAD)" = "a110b47c211ddab05e96530b94bea980640cae5f"
-          cat sync-source/.v03-sync/payload.* | base64 --decode > /tmp/v03-ui-final.tar.gz
+          python - <<'PY'
+          from pathlib import Path
+          import base64
+          parts = sorted(Path('sync-source/.v03-sync').glob('payload.*'))
+          if len(parts) != 4:
+              raise SystemExit(f'expected 4 payload chunks, got {len(parts)}')
+          encoded = b''.join(part.read_bytes() for part in parts)
+          encoded = b''.join(encoded.split())
+          Path('/tmp/v03-ui-final.tar.gz').write_bytes(base64.b64decode(encoded, validate=True))
+          PY
           echo "b51d05eeb32c95d24ac15f1ee5737f36c280c43aba77278ab24f0b020baad713  /tmp/v03-ui-final.tar.gz" | sha256sum --check
           test "$(tar -tzf /tmp/v03-ui-final.tar.gz | wc -l)" -eq 20
           tar -xzf /tmp/v03-ui-final.tar.gz -C target
