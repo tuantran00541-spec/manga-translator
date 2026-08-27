@@ -26,10 +26,12 @@ jobs:
         with:
           ref: feat/v03-workstation-ui
           path: target
-      - name: Apply checked workstation patches
+          fetch-depth: 0
+      - name: Apply checked workstation JS patches
         run: |
+          set -euo pipefail
           cd target
-          for patch in ../helper/.v03-preview.patch ../helper/.v03-review.patch ../helper/.v03-editor-qc.patch ../helper/.v03-workbench.patch; do
+          for patch in ../helper/.v03-preview.patch ../helper/.v03-review.patch ../helper/.v03-editor-qc.patch; do
             git apply --check "$patch"
             git apply "$patch"
           done
@@ -38,14 +40,13 @@ jobs:
           node --check app/static/js/review-workspace.js
           node --check app/static/js/chapter-qc.js
           node --check app/static/js/editor.js
-      - name: Commit source-only workstation migration
+      - name: Commit source-only workstation JS migration
         run: |
+          set -euo pipefail
           cd target
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add app/static/js/preview.js app/static/js/review-workspace.js app/static/js/chapter-qc.js app/static/js/editor.js app/static/css/workbench.css
+          git add app/static/js/preview.js app/static/js/review-workspace.js app/static/js/chapter-qc.js app/static/js/editor.js
           git diff --cached --quiet && exit 0
-          git commit -m "feat(v0.3-ui): unify page navigation and workspace layout"
+          git commit -m "feat(v0.3-ui): unify page navigation and workspace behavior"
           git push origin HEAD:feat/v03-workstation-ui
-
-# Triggered for final v0.3 closure; source patches remain unchanged.
