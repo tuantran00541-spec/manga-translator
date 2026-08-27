@@ -1,4 +1,4 @@
-name: Relay chapter 92 feature acceptance
+name: Relay chapter 195 feature regression
 
 on:
   push:
@@ -32,7 +32,7 @@ jobs:
 
       - name: Fetch chapter through production downloader
         env:
-          CHAPTER_URL: https://asurascans.com/comics/the-academys-sashimi-sword-master-b57aa235/chapter/92
+          CHAPTER_URL: https://asurascans.com/comics/the-dark-magician-transmigrates-after-66666-years-b57aa235/chapter/195
         run: |
           python - <<'PY'
           import hashlib, json, os
@@ -40,7 +40,7 @@ jobs:
           from PIL import Image
           from app.pipeline import ChapterPipeline
 
-          cid = 'ch92feature'
+          cid = 'a195f395'
           url = os.environ['CHAPTER_URL']
           manifest = ChapterPipeline().download_chapter(url, cid, workers=2)
           raw_dir = Path('data/raw') / cid
@@ -62,26 +62,20 @@ jobs:
               'slice_count': len(manifest.get('pages', [])),
               'sources': records,
           }
-          Path('ch92_feature_fetch.json').write_text(json.dumps(out, indent=2), encoding='utf-8')
-          print(json.dumps(out, indent=2))
-          if len(source_files) != 24:
-              raise SystemExit(f'Expected 24 chapter sources, got {len(source_files)}')
+          Path('ch195_feature_fetch.json').write_text(json.dumps(out, indent=2), encoding='utf-8')
+          print(json.dumps({'source_count': out['source_count'], 'slice_count': out['slice_count']}, indent=2))
+          if len(source_files) != 22 or len(manifest.get('pages', [])) != 144:
+              raise SystemExit(f"Expected 22 sources / 144 slices, got {len(source_files)} / {len(manifest.get('pages', []))}")
           PY
-
-      - name: Package exact feature source
-        run: |
-          tar --exclude='.git' --exclude='data' --exclude='feature-source.tgz' -czf /tmp/feature-source.tgz .
-          mv /tmp/feature-source.tgz ./feature-source.tgz
 
       - name: Upload transport artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ch92-feature-9f395
+          name: ch195-feature-9f395
           path: |
-            feature-source.tgz
-            ch92_feature_fetch.json
-            data/raw/ch92feature
-            data/processed/ch92feature/manifest.json
+            ch195_feature_fetch.json
+            data/raw/a195f395
+            data/processed/a195f395/manifest.json
           if-no-files-found: error
           retention-days: 1
           compression-level: 6
