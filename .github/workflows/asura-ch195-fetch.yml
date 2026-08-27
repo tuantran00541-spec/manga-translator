@@ -45,3 +45,5 @@ jobs:
           git diff --cached --quiet && exit 0
           git commit -m "refactor(v0.3-ui): layer CSS and remove legacy navigation styles"
           git push origin HEAD:feat/v03-workstation-ui
+
+# Diagnostic rerun: stale selector path reporting enabled.
