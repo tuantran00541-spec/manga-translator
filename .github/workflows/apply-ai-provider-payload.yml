@@ -22,7 +22,7 @@ jobs:
         run: |
           test -f .tmp/ai-provider-payload.part-000
           cat .tmp/ai-provider-payload.part-* | base64 -d > /tmp/ai-provider-files.tgz
-          echo 'c41926ee4eeba1a43fea3f0e2fb048c8db94e7ca9b2c6cbb57aff44b8be5a208  /tmp/ai-provider-files.tgz' | sha256sum -c -
+          echo '15df4db85f668cf472707725916aa2bb6e6ab18e3d6e82a04eacff919427191d  /tmp/ai-provider-files.tgz' | sha256sum -c -
           tar -tzf /tmp/ai-provider-files.tgz > /tmp/ai-provider-files.txt
           test "$(wc -l < /tmp/ai-provider-files.txt)" -eq 22
           tar -xzf /tmp/ai-provider-files.tgz
