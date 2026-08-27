@@ -226,12 +226,18 @@ def test_v03_shared_page_navigator_replaces_duplicate_jump_logic():
 '''
 test_path.write_text(tests, encoding="utf-8")
 
+stale_locations = []
+for path in list(css_root.glob("*.css")) + list((root / "app/static/js").glob("*.js")):
+    text = path.read_text(encoding="utf-8")
+    for lineno, line in enumerate(text.splitlines(), 1):
+        for marker in forbidden:
+            if marker in line:
+                stale_locations.append(f"{path.relative_to(root)}:{lineno}: {marker}: {line.strip()}")
+if stale_locations:
+    print("STALE_REFERENCES")
+    print("\n".join(stale_locations))
+    raise SystemExit("legacy navigation references remain")
 css_text = "\n".join(p.read_text(encoding="utf-8") for p in css_root.glob("*.css"))
-js_text = "\n".join(p.read_text(encoding="utf-8") for p in (root / "app/static/js").glob("*.js"))
-combined = css_text + "\n" + js_text
-stale = [marker for marker in forbidden if marker in combined]
-if stale:
-    raise SystemExit(f"legacy navigation selectors remain: {stale}")
 if css_text.count("!important") != 5:
     raise SystemExit(f"expected 5 accessibility !important declarations, got {css_text.count('!important')}")
 if html.count("/static/css/") != 1:
