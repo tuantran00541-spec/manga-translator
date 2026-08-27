@@ -1,0 +1,239 @@
+from pathlib import Path
+import re
+import sys
+
+root = Path(sys.argv[1]).resolve()
+css_root = root / "app/static/css"
+forbidden = (
+    "workspace-nav-",
+    "preview-navigation",
+    "preview-nav-btn",
+    "preview-thumbnail",
+    "review-page-nav",
+    "review-nav-btn",
+    "review-position",
+    "translation-page-nav",
+    "translation-nav-btn",
+)
+
+
+def match_close(text: str, opening: int) -> int:
+    depth = 1
+    i = opening + 1
+    quote = None
+    comment = False
+    while i < len(text):
+        if comment:
+            if text.startswith("*/", i):
+                comment = False
+                i += 2
+                continue
+            i += 1
+            continue
+        if quote:
+            if text[i] == "\\":
+                i += 2
+                continue
+            if text[i] == quote:
+                quote = None
+            i += 1
+            continue
+        if text.startswith("/*", i):
+            comment = True
+            i += 2
+            continue
+        if text[i] in ('"', "'"):
+            quote = text[i]
+            i += 1
+            continue
+        if text[i] == "{":
+            depth += 1
+        elif text[i] == "}":
+            depth -= 1
+            if depth == 0:
+                return i
+        i += 1
+    raise ValueError("unbalanced CSS block")
+
+
+def strip_legacy_rules(text: str) -> str:
+    out = []
+    cursor = 0
+    while True:
+        opening = text.find("{", cursor)
+        if opening < 0:
+            out.append(text[cursor:])
+            break
+        closing = match_close(text, opening)
+        header = text[cursor:opening]
+        body = text[opening + 1 : closing]
+        normalized = re.sub(r"^(?:\s|/\*.*?\*/)*", "", header, flags=re.S)
+        if any(marker in header for marker in forbidden):
+            cursor = closing + 1
+            continue
+        if normalized.startswith(("@media", "@supports", "@container", "@layer")):
+            body = strip_legacy_rules(body)
+        out.extend((header, "{", body, "}"))
+        cursor = closing + 1
+    return "".join(out)
+
+
+for path in sorted(css_root.glob("*.css")):
+    if path.name == "app.css":
+        continue
+    text = path.read_text(encoding="utf-8")
+    text = strip_legacy_rules(text)
+    text = re.sub(r"\s*!important\b", "", text)
+    path.write_text(text, encoding="utf-8")
+
+app_css = '''@layer base, stage, system, components, workbench, utilities;
+
+@import url("./base.css") layer(base);
+
+@import url("./upload.css") layer(stage);
+@import url("./preview.css") layer(stage);
+@import url("./editor.css") layer(stage);
+@import url("./editor-workspace.css") layer(stage);
+@import url("./review-workspace.css") layer(stage);
+
+@import url("./ui-system.css") layer(system);
+
+@import url("./editor-box-transform.css") layer(components);
+@import url("./box-panel.css") layer(components);
+@import url("./text-object-editor.css") layer(components);
+@import url("./toolbar.css") layer(components);
+@import url("./recent-toast.css") layer(components);
+@import url("./deepseek-qc.css") layer(components);
+@import url("./chapter-ocr.css") layer(components);
+@import url("./page-navigator.css") layer(components);
+
+@import url("./workbench.css") layer(workbench);
+
+@layer utilities {
+  .workbench-frame {
+    container-type: inline-size;
+    container-name: workbench;
+  }
+
+  .page-navigator-item {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 56px;
+  }
+
+  :where(button, [role="button"]) {
+    min-height: 24px;
+    min-width: 24px;
+  }
+
+  :where(button, input, select, textarea, [role="button"], [tabindex]):focus-visible {
+    outline: 2px solid var(--color-focus, var(--accent-1));
+    outline-offset: 2px;
+  }
+
+  @container workbench (max-width: 900px) {
+    .workbench-stage-grid,
+    .translation-workspace-body.editor-workbench-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .context-inspector,
+    .translation-panel-host.context-inspector {
+      position: static;
+      max-height: none;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      scroll-behavior: auto !important;
+      animation-duration: .01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: .01ms !important;
+      transition-delay: 0s !important;
+    }
+  }
+}
+'''
+(css_root / "app.css").write_text(app_css, encoding="utf-8")
+
+html_path = root / "app/templates/index.html"
+html = html_path.read_text(encoding="utf-8")
+html, count = re.subn(
+    r'(?:<link rel="stylesheet" href="/static/css/[^"]+">\n)+',
+    '<link rel="stylesheet" href="/static/css/app.css">\n',
+    html,
+    count=1,
+)
+if count != 1:
+    raise SystemExit("stylesheet block not found exactly once")
+html_path.write_text(html, encoding="utf-8")
+
+test_path = root / "tests/test_ui_system_contract.py"
+tests = test_path.read_text(encoding="utf-8")
+old = "    assert '/static/css/ui-system.css' in html\n    assert '/static/css/workbench.css' in html\n"
+new = "    assert html.count('/static/css/') == 1\n    assert '/static/css/app.css' in html\n"
+if old not in tests:
+    raise SystemExit("UI CSS-link contract target not found")
+tests = tests.replace(old, new, 1)
+if "def test_v03_css_uses_layered_single_entrypoint():" not in tests:
+    tests += '''\n\ndef test_v03_css_uses_layered_single_entrypoint():
+    html = read("app/templates/index.html")
+    css = read("app/static/css/app.css")
+    assert html.count('/static/css/') == 1
+    assert '/static/css/app.css' in html
+    assert '@layer base, stage, system, components, workbench, utilities;' in css
+    assert 'layer(workbench)' in css
+
+
+def test_v03_css_removes_legacy_navigation_and_specificity_debt():
+    roots = [ROOT / "app/static/css", ROOT / "app/static/js"]
+    text = "\\n".join(
+        path.read_text(encoding="utf-8")
+        for root in roots
+        for path in root.glob("*.*")
+        if path.suffix in {".css", ".js"}
+    )
+    for legacy in (
+        "workspace-nav-", "preview-navigation", "preview-thumbnail",
+        "review-page-nav", "translation-page-nav",
+    ):
+        assert legacy not in text
+    assert text.count("!important") == 5
+
+
+def test_v03_css_keeps_accessibility_and_long_list_performance_contracts():
+    css = read("app/static/css/app.css")
+    assert "prefers-reduced-motion: reduce" in css
+    assert "min-height: 24px" in css
+    assert ":focus-visible" in css
+    assert "content-visibility: auto" in css
+    assert "contain-intrinsic-size" in css
+    assert "container-type: inline-size" in css
+    assert "@container workbench" in css
+
+
+def test_v03_shared_page_navigator_replaces_duplicate_jump_logic():
+    html = read("app/templates/index.html")
+    navigator = read("app/static/js/page-navigator.js")
+    stage_js = "\\n".join(read(path) for path in (
+        "app/static/js/preview.js",
+        "app/static/js/review-workspace.js",
+        "app/static/js/editor.js",
+    ))
+    assert '/static/js/page-navigator.js' in html
+    assert 'window.createPageNavigator' in navigator
+    assert 'const doJump' not in stage_js
+'''
+test_path.write_text(tests, encoding="utf-8")
+
+css_text = "\n".join(p.read_text(encoding="utf-8") for p in css_root.glob("*.css"))
+js_text = "\n".join(p.read_text(encoding="utf-8") for p in (root / "app/static/js").glob("*.js"))
+combined = css_text + "\n" + js_text
+stale = [marker for marker in forbidden if marker in combined]
+if stale:
+    raise SystemExit(f"legacy navigation selectors remain: {stale}")
+if css_text.count("!important") != 5:
+    raise SystemExit(f"expected 5 accessibility !important declarations, got {css_text.count('!important')}")
+if html.count("/static/css/") != 1:
+    raise SystemExit("expected one CSS entrypoint")
+print("V03_CSS_FINALIZE_OK")
