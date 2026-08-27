@@ -27,26 +27,19 @@ jobs:
           ref: feat/v03-workstation-ui
           path: target
           fetch-depth: 0
-      - name: Apply checked workstation JS patches
+      - name: Reconcile workbench CSS patch
         run: |
           set -euo pipefail
           cd target
-          for patch in ../helper/.v03-preview.patch ../helper/.v03-review.patch ../helper/.v03-editor-qc.patch; do
-            git apply --check "$patch"
-            git apply "$patch"
-          done
+          git apply --3way ../helper/.v03-workbench.patch
           git diff --check
-          node --check app/static/js/preview.js
-          node --check app/static/js/review-workspace.js
-          node --check app/static/js/chapter-qc.js
-          node --check app/static/js/editor.js
-      - name: Commit source-only workstation JS migration
+      - name: Commit workbench CSS migration
         run: |
           set -euo pipefail
           cd target
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add app/static/js/preview.js app/static/js/review-workspace.js app/static/js/chapter-qc.js app/static/js/editor.js
+          git add app/static/css/workbench.css
           git diff --cached --quiet && exit 0
-          git commit -m "feat(v0.3-ui): unify page navigation and workspace behavior"
+          git commit -m "style(v0.3-ui): finish workstation layout migration"
           git push origin HEAD:feat/v03-workstation-ui
