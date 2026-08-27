@@ -42,20 +42,23 @@ def main() -> None:
                 <div class="review-sticky-toolbar">
                   <div class="review-actions-group"><button class="review-primary-action">Editor</button></div>
                 </div>
-                <nav class="review-page-nav">
-                  <input class="workspace-nav-jump-input" value="1">
-                </nav>
-                <div class="review-card" data-page-index="0">
-                  <div class="review-image-wrap" style="position:relative;width:500px;height:700px">
-                    <img width="500" height="700">
-                    <canvas class="brush-canvas"></canvas>
+                <div class="workbench-stage-grid review-workbench-grid">
+                  <aside class="page-navigator"></aside>
+                  <div class="review-canvas-host">
+                    <div class="review-card" data-page-index="0">
+                      <div class="review-image-wrap" style="position:relative;width:500px;height:700px">
+                        <img width="500" height="700">
+                        <canvas class="brush-canvas"></canvas>
+                      </div>
+                      <button class="brush-toggle-btn">Brush</button>
+                      <button class="clear-brush-btn">Clear</button>
+                      <button class="repaint-btn">Repaint</button>
+                      <button class="reset-manual-btn">Reset</button>
+                      <button class="ai-qc-btn">Page AI</button>
+                      <input class="brush-size-slider">
+                    </div>
                   </div>
-                  <button class="brush-toggle-btn">Brush</button>
-                  <button class="clear-brush-btn">Clear</button>
-                  <button class="repaint-btn">Repaint</button>
-                  <button class="reset-manual-btn">Reset</button>
-                  <button class="ai-qc-btn">Page AI</button>
-                  <input class="brush-size-slider">
+                  <aside class="context-inspector review-inspector"></aside>
                 </div>
               </div>
             </body></html>
@@ -69,13 +72,16 @@ def main() -> None:
             window.parseApiResponse = async (response) => response.json();
             window.getErrorMessage = (status, data) => data.detail || `HTTP ${status}`;
             window.showToast = () => {};
-            const jump = document.querySelector('.workspace-nav-jump-input');
-            jump.addEventListener('change', () => { window.__jumped = jump.value; });
+            const workspace = document.querySelector('.review-workspace-shell');
+            workspace._pageNavigator = {
+              selectByKey(key) { window.__jumped = String(key); }
+            };
             """
         )
         page.add_script_tag(path=str(SCRIPT))
 
         page.wait_for_selector(".chapter-qc-run")
+        page.wait_for_selector(".review-inspector .chapter-qc-panel")
         page.select_option(".chapter-qc-provider", "deepseek")
         page.fill(".chapter-qc-budget-input", "0.02")
         page.click(".chapter-qc-run")
@@ -93,7 +99,7 @@ def main() -> None:
         assert not page.locator(".repaint-btn").is_disabled()
 
         page.click(".chapter-qc-result")
-        page.wait_for_function("window.__jumped === '1'")
+        page.wait_for_function("window.__jumped === '0'")
         page.wait_for_selector(".review-qc-highlight")
         assert page.locator(".review-qc-highlight").count() == 1
         assert page.evaluate("document.querySelector('.brush-canvas')._reviewDirty === undefined")
