@@ -1,4 +1,4 @@
-name: Finalize v0.3 CSS architecture
+name: Finalize v0.3 accessibility polish
 
 on:
   push:
@@ -12,7 +12,7 @@ permissions:
   contents: write
 
 jobs:
-  finalize:
+  polish:
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     steps:
@@ -27,22 +27,21 @@ jobs:
           ref: feat/v03-workstation-ui
           path: target
           fetch-depth: 0
-      - name: Finalize UI architecture
+      - name: Apply final polish
         run: |
           set -euo pipefail
-          test "$(git -C target rev-parse HEAD)" = "0003e10e064ee88731ce00847b88b00207cc574f"
-          python helper/.v03-fix-qc-nav.py target
-          python helper/.v03-finalize-css.py target
+          test "$(git -C target rev-parse HEAD)" = "542e9865f000bb918c4c63ecbbbf110b09202237"
+          python helper/.v03-final-polish.py target
           git -C target diff --check
           for f in target/app/static/js/*.js; do node --check "$f" >/dev/null; done
           python -m compileall -q target/app target/tests
-      - name: Commit final UI architecture
+      - name: Commit final polish
         run: |
           set -euo pipefail
           cd target
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add app/static/css app/static/js/page-navigator.js app/static/js/review-workspace.js app/static/js/chapter-qc.js app/templates/index.html tests/test_ui_system_contract.py
+          git add app/static/css/preview.css app/static/js/page-navigator.js app/static/js/chapter-qc.js tests/test_chapter_qc_ui.py tests/test_ui_system_contract.py
           git diff --cached --quiet && exit 0
-          git commit -m "refactor(v0.3-ui): finalize layered workstation UI"
+          git commit -m "fix(v0.3-ui): harden navigator and keyboard accessibility"
           git push origin HEAD:feat/v03-workstation-ui
