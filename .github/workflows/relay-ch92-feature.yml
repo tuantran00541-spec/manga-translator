@@ -1,0 +1,13 @@
+name: Relay chapter 195 feature regression
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  noop:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo "Temporary relay disabled after acceptance transport"
