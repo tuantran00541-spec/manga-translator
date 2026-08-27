@@ -28,7 +28,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git -C target rev-parse HEAD)" = "a110b47c211ddab05e96530b94bea980640cae5f"
+          test "$(git -C target rev-parse HEAD)" = "fde454dceb8910e02f33f051cfe95a678cc4c8bb"
           python - <<'PY'
           from pathlib import Path
           import base64, hashlib
@@ -41,12 +41,9 @@ jobs:
           alphabet = b'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
           suffix = p2 + p3
           found = None
-          # The uploaded second chunk is exactly one byte short. Search from its
-          # end first because transcription truncation most often occurs at a boundary.
           for pos in range(len(p1), -1, -1):
               left, right = p1[:pos], p1[pos:]
-              stem = p0 + left
-              tail = right + suffix
+              stem, tail = p0 + left, right + suffix
               for ch in alphabet:
                   raw = base64.b64decode(stem + bytes((ch,)) + tail, validate=True)
                   if hashlib.sha256(raw).hexdigest() == target:
@@ -81,5 +78,5 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add app/static/css app/static/js app/templates/index.html tests docs/UI_GUIDELINES.md docs/UI_V03_WORKSTATION_AUDIT.md
           git diff --cached --quiet && exit 0
-          git commit -m "feat(v0.3): unify workstation UI and CSS architecture"
+          git commit -m "feat(v0.3): finalize CSS architecture and workstation UI"
           git push origin HEAD:feat/v03-workstation-ui
