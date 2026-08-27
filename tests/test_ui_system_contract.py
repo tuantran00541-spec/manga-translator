@@ -147,6 +147,9 @@ def test_v03_css_keeps_accessibility_and_long_list_performance_contracts():
     assert "contain-intrinsic-size" in css
     assert "container-type: inline-size" in css
     assert "@container workbench" in css
+    preview = read("app/static/css/preview.css")
+    assert "width: 24px" in preview
+    assert ".excluded-region-box:focus-within .excluded-region-del" in preview
 
 
 def test_v03_shared_page_navigator_replaces_duplicate_jump_logic():

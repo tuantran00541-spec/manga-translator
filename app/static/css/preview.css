@@ -203,22 +203,28 @@
   position: absolute;
   top: -8px;
   right: -8px;
-  width: 18px;
-  height: 18px;
+  width: 24px;
+  height: 24px;
   padding: 0;
-  line-height: 16px;
+  line-height: 22px;
   text-align: center;
   background: var(--danger, #ff4d4d);
   color: #fff;
   border: 0;
   border-radius: 50%;
   cursor: pointer;
-  display: none;
+  display: block;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--transition-fast);
   box-shadow: 0 1px 3px rgba(0,0,0,0.4);
 }
 
-.excluded-region-box:hover .excluded-region-del {
-  display: block;
+.excluded-region-box:hover .excluded-region-del,
+.excluded-region-box:focus-within .excluded-region-del,
+.excluded-region-del:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .preview-tools {

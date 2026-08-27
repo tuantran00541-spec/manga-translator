@@ -106,11 +106,10 @@
   function jumpToResult(workspace, result, issue) {
     const pageIndex = Number(result?.page_index);
     if (!Number.isInteger(pageIndex) || pageIndex < 0) return;
-    const visibleIndex = visiblePageIndices().indexOf(pageIndex);
-    if (visibleIndex < 0) return;
+    if (!visiblePageIndices().includes(pageIndex)) return;
     const navigator = workspace._pageNavigator;
-    if (!navigator || typeof navigator.select !== "function") return;
-    navigator.select(visibleIndex);
+    if (!navigator || typeof navigator.selectByKey !== "function") return;
+    navigator.selectByKey(pageIndex);
     window.setTimeout(() => drawHighlight(workspace, pageIndex, issue), 40);
   }
 

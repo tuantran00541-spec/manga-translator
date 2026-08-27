@@ -146,6 +146,10 @@
       select(index) {
         select(index);
       },
+      selectByKey(key) {
+        const index = currentItems.findIndex((item) => String(item?.key) === String(key));
+        if (index >= 0) select(index);
+      },
       setBusy(value) {
         locked = Boolean(value);
         render();
