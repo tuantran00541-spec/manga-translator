@@ -15,7 +15,7 @@
 
 .box-transforming,
 .box-transforming * {
-  user-select: none !important;
+  user-select: none;
 }
 
 .box-transforming .translation-canvas-host .box-overlay {

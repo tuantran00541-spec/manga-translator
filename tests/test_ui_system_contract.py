@@ -23,8 +23,8 @@ def test_app_shell_has_single_stage_system_and_global_settings():
     assert 'data-stage="editor"' in html
     assert 'id="settings-drawer"' in html
     assert 'id="ai-settings-host"' in html
-    assert '/static/css/ui-system.css' in html
-    assert '/static/css/workbench.css' in html
+    assert html.count('/static/css/') == 1
+    assert '/static/css/app.css' in html
     assert '/static/js/ui-shell.js' in html
 
 
@@ -111,3 +111,52 @@ def test_design_system_has_responsive_stage_and_settings_layouts():
     assert ".translation-sticky-toolbar" in css
     assert "@media (max-width: 820px)" in css
     assert "@media (max-width: 560px)" in css
+
+
+def test_v03_css_uses_layered_single_entrypoint():
+    html = read("app/templates/index.html")
+    css = read("app/static/css/app.css")
+    assert html.count('/static/css/') == 1
+    assert '/static/css/app.css' in html
+    assert '@layer base, stage, system, components, workbench, utilities;' in css
+    assert 'layer(workbench)' in css
+
+
+def test_v03_css_removes_legacy_navigation_and_specificity_debt():
+    roots = [ROOT / "app/static/css", ROOT / "app/static/js"]
+    text = "\n".join(
+        path.read_text(encoding="utf-8")
+        for root in roots
+        for path in root.glob("*.*")
+        if path.suffix in {".css", ".js"}
+    )
+    for legacy in (
+        "workspace-nav-", "preview-navigation", "preview-thumbnail",
+        "review-page-nav", "translation-page-nav",
+    ):
+        assert legacy not in text
+    assert text.count("!important") == 5
+
+
+def test_v03_css_keeps_accessibility_and_long_list_performance_contracts():
+    css = read("app/static/css/app.css")
+    assert "prefers-reduced-motion: reduce" in css
+    assert "min-height: 24px" in css
+    assert ":focus-visible" in css
+    assert "content-visibility: auto" in css
+    assert "contain-intrinsic-size" in css
+    assert "container-type: inline-size" in css
+    assert "@container workbench" in css
+
+
+def test_v03_shared_page_navigator_replaces_duplicate_jump_logic():
+    html = read("app/templates/index.html")
+    navigator = read("app/static/js/page-navigator.js")
+    stage_js = "\n".join(read(path) for path in (
+        "app/static/js/preview.js",
+        "app/static/js/review-workspace.js",
+        "app/static/js/editor.js",
+    ))
+    assert '/static/js/page-navigator.js' in html
+    assert 'window.createPageNavigator' in navigator
+    assert 'const doJump' not in stage_js

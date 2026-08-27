@@ -233,6 +233,7 @@
       },
     });
 
+    workspace._pageNavigator = navigator;
     layout.append(navigator.element, canvasHost, inspector);
     workspace.append(toolbar, layout);
     container.appendChild(workspace);

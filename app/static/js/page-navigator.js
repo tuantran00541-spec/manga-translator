@@ -143,6 +143,9 @@
 
     return {
       element: root,
+      select(index) {
+        select(index);
+      },
       setBusy(value) {
         locked = Boolean(value);
         render();

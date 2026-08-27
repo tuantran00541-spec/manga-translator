@@ -57,47 +57,6 @@
   box-shadow: none;
 }
 
-.review-page-nav {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  align-items: center;
-  gap: 12px;
-  width: min(100%, 1120px);
-  margin: 0 auto;
-}
-
-.review-nav-btn {
-  min-height: 36px;
-  padding: 8px 14px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-surface);
-  color: var(--color-text);
-  font: 600 12px var(--font-body);
-  cursor: pointer;
-}
-
-.review-nav-btn:last-child {
-  justify-self: end;
-}
-
-.review-nav-btn:hover:not(:disabled) {
-  border-color: var(--color-accent);
-}
-
-.review-position {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  min-width: 0;
-  color: var(--color-text-muted);
-  font: 500 12px var(--font-mono);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 .review-canvas-host {
   min-width: 0;
 }

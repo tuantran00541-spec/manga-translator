@@ -108,10 +108,9 @@
     if (!Number.isInteger(pageIndex) || pageIndex < 0) return;
     const visibleIndex = visiblePageIndices().indexOf(pageIndex);
     if (visibleIndex < 0) return;
-    const jump = workspace.querySelector(".workspace-nav-jump-input");
-    if (!jump) return;
-    jump.value = String(visibleIndex + 1);
-    jump.dispatchEvent(new Event("change", { bubbles: true }));
+    const navigator = workspace._pageNavigator;
+    if (!navigator || typeof navigator.select !== "function") return;
+    navigator.select(visibleIndex);
     window.setTimeout(() => drawHighlight(workspace, pageIndex, issue), 40);
   }
 

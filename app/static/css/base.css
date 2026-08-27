@@ -282,53 +282,6 @@ textarea:disabled {
   font-family: var(--font-mono);
 }
 
-.workspace-nav-bar {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  align-items: center;
-  gap: 12px;
-  width: min(100%, 920px);
-  margin: 0 auto;
-}
-
-.workspace-nav-btn {
-  min-height: 38px;
-  padding: 8px 16px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-surface);
-  color: var(--color-text);
-  font: 600 13px var(--font-body);
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  transition: border-color var(--transition-fast), background var(--transition-fast);
-}
-
-.workspace-nav-btn:hover:not(:disabled) {
-  border-color: var(--color-accent);
-  background: var(--color-surface-raised);
-}
-
-.workspace-nav-btn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-.workspace-nav-position {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  text-align: center;
-  color: var(--color-text-muted);
-  font: 500 13px var(--font-mono);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 .recent-stage-badge {
   display: inline-block;
   font-size: 11px;
@@ -338,30 +291,6 @@ textarea:disabled {
   background: var(--color-accent-soft);
   color: var(--color-accent);
   font-family: var(--font-body);
-}
-
-.workspace-nav-jump-input {
-  width: 52px;
-  height: 28px;
-  padding: 2px 4px;
-  text-align: center;
-  background: var(--color-surface-soft);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  color: var(--color-text);
-  font: 600 13px var(--font-mono);
-  outline: none;
-  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
-}
-
-.workspace-nav-jump-input:focus {
-  border-color: var(--color-accent);
-  box-shadow: 0 0 0 2px var(--color-accent-soft);
-}
-
-.workspace-nav-jump-input::-webkit-inner-spin-button,
-.workspace-nav-jump-input::-webkit-outer-spin-button {
-  opacity: 0.6;
 }
 
 .page-status-badge {

@@ -108,47 +108,6 @@
   margin-bottom: 8px;
 }
 
-.translation-page-nav {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  align-items: center;
-  gap: 12px;
-  width: min(100%, 1100px);
-  margin: 0 auto;
-}
-
-.translation-nav-btn {
-  min-height: 38px;
-  padding: 8px 16px;
-  border: 1px solid var(--border, var(--line));
-  border-radius: var(--radius-sm, 6px);
-  background: var(--surface, var(--panel));
-  color: var(--text);
-  font: 600 13px var(--font-body);
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.translation-nav-btn:last-child {
-  justify-self: end;
-}
-
-.translation-nav-btn:not(:disabled):hover {
-  border-color: var(--accent, var(--blue));
-}
-
-.translation-nav-btn:disabled {
-  opacity: .45;
-  cursor: not-allowed;
-}
-
-.translation-nav-btn:focus-visible {
-  outline: 2px solid var(--focus, var(--blue));
-  outline-offset: 2px;
-}
-
 @media (max-width: 900px) {
   .translation-workspace-body {
     grid-template-columns: minmax(0, 1fr) minmax(250px, 310px);
