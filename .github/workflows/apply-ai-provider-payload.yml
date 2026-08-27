@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   apply:
-    if: github.actor != 'github-actions[bot]'
+    if: contains(github.event.head_commit.message, '[apply-ai-provider]') && github.actor != 'github-actions[bot]'
     runs-on: ubuntu-22.04
     timeout-minutes: 20
     steps:
@@ -18,10 +18,15 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Apply payload
+      - name: Verify and apply payload
         run: |
-          test -f .tmp/ai-provider-files.tgz.b64
-          base64 -d .tmp/ai-provider-files.tgz.b64 | tar -xzf -
+          test -f .tmp/ai-provider-payload.part-000
+          cat .tmp/ai-provider-payload.part-* | base64 -d > /tmp/ai-provider-files.tgz
+          echo 'c41926ee4eeba1a43fea3f0e2fb048c8db94e7ca9b2c6cbb57aff44b8be5a208  /tmp/ai-provider-files.tgz' | sha256sum -c -
+          tar -tzf /tmp/ai-provider-files.tgz > /tmp/ai-provider-files.txt
+          test "$(wc -l < /tmp/ai-provider-files.txt)" -eq 22
+          tar -xzf /tmp/ai-provider-files.tgz
+          rm -f .tmp/ai-provider-payload.part-*
           rm -f .tmp/ai-provider-files.tgz.b64
           rm -f .github/workflows/apply-ai-provider-payload.yml
 
