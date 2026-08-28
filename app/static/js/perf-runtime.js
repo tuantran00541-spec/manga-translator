@@ -1,5 +1,5 @@
 (() => {
-  const PROCESS_BATCH_SIZE = 2;
+  const PROCESS_BATCH_SIZE = 16;
   const pageCountCache = new WeakMap();
 
   function pageCounts(pages) {
@@ -16,7 +16,7 @@
   }
 
   // Replace the O(n) filter inside pageLabel with a single O(n) precompute per
-  // manifest page array.  Large webtoon chapters can expose 100-300 slices, and
+  // manifest page array. Large webtoon chapters can expose 100-300 slices, and
   // the navigator calls pageLabel once for every item on each render.
   window.pageLabel = function optimizedPageLabel(pages, pageIndex) {
     const page = Array.isArray(pages) ? pages[pageIndex] : null;
@@ -28,11 +28,10 @@
     return `Trang ${source + 1} · Lát ${slice + 1}/${total}`;
   };
 
-  // Process long chapters in small committed batches.  The backend commits when
-  // a process_pages request finishes, so sending 150 slices in one request can
-  // leave many temporary outputs waiting for the slowest page.  Two-page batches
-  // match the bounded worker count: both workers stay busy, then the pair becomes
-  // durable before the next pair starts.
+  // The backend now publishes each completed page immediately, so a large HTTP
+  // batch no longer strands clean images behind its slowest worker. Use a larger
+  // scheduling window to let shared-seam detection deduplicate almost every seam,
+  // while still returning UI progress periodically on very long chapters.
   window.processSelectedPages = async function optimizedProcessSelectedPages() {
     const pages = currentManifest?.pages || [];
     const indices = pages
@@ -79,7 +78,7 @@
       renderReview();
     } catch (err) {
       const prefix = completed > 0
-        ? `Đã xử lý ${completed}/${total} trang. Phần tiếp theo thất bại: `
+        ? `Đã xử lý ít nhất ${completed}/${total} trang. Phần tiếp theo thất bại: `
         : "Xử lý trang thất bại: ";
       showToast(prefix + err.message, "error");
       if (btn) {
