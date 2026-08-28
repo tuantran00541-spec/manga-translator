@@ -1061,17 +1061,14 @@ class ChapterPipeline:
             }
             for b in detected
         ]
+        core_bounds: tuple[int, int] | None = None
         if isinstance(stitch_core, dict):
             try:
                 core_y1 = int(stitch_core.get("core_y1", 0))
                 core_y2 = int(stitch_core.get("core_y2", image.shape[0]))
             except (TypeError, ValueError):
                 core_y1, core_y2 = 0, image.shape[0]
-            for record in detector_records:
-                cy = (int(record["y1"]) + int(record["y2"])) / 2.0
-                if cy < core_y1 or cy >= core_y2:
-                    record["overlap_context_only"] = True
-                    record["ocr_eligible"] = False
+            core_bounds = (core_y1, core_y2)
 
         assign_stable_detector_box_ids(detector_records, existing_boxes)
         old_by_id = {str(b.get("id")): b for b in existing_boxes if isinstance(b, dict) and b.get("id")}
@@ -1092,7 +1089,27 @@ class ChapterPipeline:
                     record["safe_to_inpaint"] = False
                     record["ocr_eligible"] = False
                     record["needs_review"] = True
-            if not record.get("removed") and (record.get("safe_to_inpaint") or record.get("geometry_overridden")):
+
+            if core_bounds is not None:
+                core_y1, core_y2 = core_bounds
+                record_y1 = int(record["y1"])
+                record_y2 = int(record["y2"])
+                overlap_only = record_y2 <= core_y1 or record_y1 >= core_y2
+                if overlap_only:
+                    record["overlap_context_only"] = True
+                    record["ocr_eligible"] = False
+                else:
+                    record.pop("overlap_context_only", None)
+
+            skip_auto_overlap_inpaint = bool(
+                record.get("overlap_context_only")
+                and not record.get("geometry_overridden")
+            )
+            if (
+                not record.get("removed")
+                and not skip_auto_overlap_inpaint
+                and (record.get("safe_to_inpaint") or record.get("geometry_overridden"))
+            ):
                 _effective = BubbleBox(
                     int(record["x1"]), int(record["y1"]), int(record["x2"]), int(record["y2"]),
                     float(record.get("confidence", 1.0)), record.get("_mask_array"),
