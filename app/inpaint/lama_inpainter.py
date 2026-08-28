@@ -30,6 +30,56 @@ SMART_FILL_BLACK_EDGE_DENSITY_MAX = 0.002
 # consecutive runs under a tight cgroup. Recycle the fixed session before that
 # pathological point. Dynamic LaMa does not use this compatibility guard.
 FIXED_LAMA_SESSION_MAX_RUNS = 4
+FIXED_LAMA_RECYCLE_MEMORY_LIMIT_BYTES = 6 * 1024**3
+_FIXED_LAMA_RECYCLE_ENV = "MANGA_FIXED_LAMA_SESSION_RECYCLE"
+
+
+def _optional_env_flag(name: str) -> bool | None:
+    raw = os.getenv(name, "").strip().lower()
+    if not raw:
+        return None
+    if raw in {"1", "true", "yes", "on"}:
+        return True
+    if raw in {"0", "false", "no", "off"}:
+        return False
+    return None
+
+
+def _tight_cgroup_memory_limit() -> bool:
+    """Return True only for Linux-style memory cgroups with a small hard cap.
+
+    The fixed-session recycle workaround exists for the 4 GiB acceptance
+    container. Recreating a ~200 MB ONNX session every four calls is harmful on
+    normal desktop installs, especially Windows, so do not enable it merely
+    because the fixed model is selected.
+    """
+    if os.name != "posix":
+        return False
+
+    for path in (
+        "/sys/fs/cgroup/memory.max",
+        "/sys/fs/cgroup/memory/memory.limit_in_bytes",
+    ):
+        try:
+            raw = open(path, "r", encoding="utf-8").read().strip()
+        except OSError:
+            continue
+        if not raw or raw == "max":
+            continue
+        try:
+            limit = int(raw)
+        except ValueError:
+            continue
+        if 0 < limit <= FIXED_LAMA_RECYCLE_MEMORY_LIMIT_BYTES:
+            return True
+    return False
+
+
+def _should_recycle_fixed_session() -> bool:
+    override = _optional_env_flag(_FIXED_LAMA_RECYCLE_ENV)
+    if override is not None:
+        return override
+    return _tight_cgroup_memory_limit()
 
 
 class Inpainter:
@@ -67,9 +117,16 @@ class Inpainter:
             isinstance(dim, str) or dim is None for dim in image_shape[2:4]
         )
         self.lama_model_path = model_path
+        self._recycle_fixed_session = (
+            not self.dynamic_lama and _should_recycle_fixed_session()
+        )
 
     def _recycle_fixed_session_if_needed(self) -> None:
-        if self.dynamic_lama or self._session_run_count < FIXED_LAMA_SESSION_MAX_RUNS:
+        if (
+            self.dynamic_lama
+            or not self._recycle_fixed_session
+            or self._session_run_count < FIXED_LAMA_SESSION_MAX_RUNS
+        ):
             return
 
         old_session = self.session
