@@ -2,13 +2,14 @@ import os
 import base64
 import copy
 import uuid
+from dataclasses import replace
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import cv2
 import numpy as np
 from app.downloader.registry import download_chapter as fetch_chapter_images
 from app.downloader.asura import is_asura_chapter_page
-from app.downloader.slicer import slice_image
+from app.downloader.slicer import OVERLAP_CONTEXT, slice_image
 from app.detector.combined_detector import CombinedTextDetector
 from app.detector.bubble_detector import BubbleBox
 from app.inpaint.lama_inpainter import Inpainter
@@ -308,6 +309,175 @@ class ChapterPipeline:
             save_manifest_raw(chapter_id, manifest)
         return manifest
 
+    @staticmethod
+    def _map_seam_detection_to_page(
+        box: BubbleBox,
+        *,
+        seam_source_y1: int,
+        page_source_y1: int,
+        page_height: int,
+    ) -> BubbleBox | None:
+        """Translate one seam-strip detection into an overlapping slice.
+
+        Physical slices keep their existing overlap so OCR/review/render geometry
+        remains backward compatible. The detector strip is shared, however, so
+        the same +/-384px seam context is not inferred twice by adjacent pages.
+        """
+        source_y1 = int(seam_source_y1) + int(box.y1)
+        source_y2 = int(seam_source_y1) + int(box.y2)
+        page_source_y2 = int(page_source_y1) + int(page_height)
+        clipped_source_y1 = max(source_y1, int(page_source_y1))
+        clipped_source_y2 = min(source_y2, page_source_y2)
+        if clipped_source_y2 <= clipped_source_y1:
+            return None
+
+        clip_top = clipped_source_y1 - source_y1
+        clip_bottom = source_y2 - clipped_source_y2
+        clipped_mask = box.mask
+        if clipped_mask is not None:
+            mask_h = clipped_mask.shape[0]
+            mask_end = mask_h - clip_bottom if clip_bottom else mask_h
+            clipped_mask = clipped_mask[clip_top:mask_end, :].copy()
+            if clipped_mask.shape[0] != clipped_source_y2 - clipped_source_y1:
+                return None
+
+        if box.safe_to_inpaint and (
+            clipped_mask is None or not np.any(clipped_mask > 0)
+        ):
+            # Never turn a safe segmentation proposal whose actual pixels were
+            # clipped away into a destructive rectangle.
+            return None
+
+        return replace(
+            box,
+            y1=clipped_source_y1 - int(page_source_y1),
+            y2=clipped_source_y2 - int(page_source_y1),
+            mask=clipped_mask,
+        )
+
+    @staticmethod
+    def _shift_detection_y(box: BubbleBox, offset_y: int) -> BubbleBox:
+        return replace(box, y1=box.y1 + offset_y, y2=box.y2 + offset_y)
+
+    def _shared_seam_detections(
+        self, chapter_id: str, work_items: list[tuple]
+    ) -> tuple[dict[int, list[BubbleBox]], set[int]]:
+        """Detect each unsafe overlap seam once, then share it across pages.
+
+        The slicer deliberately stores +/-384px overlap around unsafe cuts. That
+        protects bubbles crossing a cut, but letting each physical slice run its
+        full detector duplicates the same context and can push a 1400px core to
+        1800-2300px, triggering multiple 1024px detector windows. Instead, each
+        page detects only its non-overlapping core while every unsafe seam gets
+        one 768px detector pass shared by all requested adjacent pages.
+
+        The physical slice files and their coordinates are unchanged, preserving
+        OCR/review/render behavior. If required seam context cannot be read or
+        detected, affected pages fail safe to ``needs_review``.
+        """
+        consumers: dict[tuple[int, int], list[tuple[int, Path, dict]]] = {}
+        unavailable_pages: set[int] = set()
+
+        for item in work_items:
+            (
+                idx, img_path, _excluded, _existing_boxes, stitch_core,
+                _is_final_source_tail, _snapshot,
+            ) = item
+            if not isinstance(stitch_core, dict):
+                continue
+            try:
+                source_page = int(stitch_core.get("source_page", -1))
+            except (TypeError, ValueError):
+                source_page = -1
+            # source_page is normally stored on the page rather than inside
+            # stitch_core; process_pages adds it below for this scheduling pass.
+            if source_page < 0:
+                try:
+                    source_page = int(stitch_core["_source_page"])
+                except (KeyError, TypeError, ValueError):
+                    source_page = -1
+            try:
+                core_source_y1 = int(stitch_core["core_source_y1"])
+                core_source_y2 = int(stitch_core["core_source_y2"])
+                source_height = int(stitch_core["source_height"])
+                source_y1 = int(stitch_core["source_y1"])
+                source_y2 = int(stitch_core["source_y2"])
+                core_y1 = int(stitch_core["core_y1"])
+                core_y2 = int(stitch_core["core_y2"])
+            except (KeyError, TypeError, ValueError):
+                if stitch_core.get("unsafe_before") or stitch_core.get("unsafe_after"):
+                    unavailable_pages.add(idx)
+                continue
+            if source_page < 0 or source_y2 <= source_y1 or core_y2 <= core_y1:
+                if stitch_core.get("unsafe_before") or stitch_core.get("unsafe_after"):
+                    unavailable_pages.add(idx)
+                continue
+
+            if bool(stitch_core.get("unsafe_before")) and core_source_y1 > 0:
+                consumers.setdefault((source_page, core_source_y1), []).append(
+                    (idx, img_path, stitch_core)
+                )
+            if bool(stitch_core.get("unsafe_after")) and core_source_y2 < source_height:
+                consumers.setdefault((source_page, core_source_y2), []).append(
+                    (idx, img_path, stitch_core)
+                )
+
+        if not consumers:
+            return {}, unavailable_pages
+
+        by_page: dict[int, list[BubbleBox]] = {}
+        for (source_page, cut_y), seam_consumers in sorted(consumers.items()):
+            provider_idx, provider_path, provider_core = seam_consumers[0]
+            try:
+                provider_image = read_image(provider_path)
+                provider_source_y1 = int(provider_core["source_y1"])
+                provider_h = provider_image.shape[0]
+                seam_center = int(cut_y) - provider_source_y1
+                seam_local_y1 = max(0, seam_center - OVERLAP_CONTEXT)
+                seam_local_y2 = min(provider_h, seam_center + OVERLAP_CONTEXT)
+                if seam_local_y2 <= seam_local_y1:
+                    raise ValueError("empty seam detector strip")
+                seam_image = provider_image[seam_local_y1:seam_local_y2, :]
+                seam_source_y1 = provider_source_y1 + seam_local_y1
+                seam_boxes = self.detector.detect(seam_image, parallel=False)
+            except Exception as exc:
+                logger.warning(
+                    "Chapter %s source page %s seam %s: shared context detection failed: %s",
+                    chapter_id, source_page, cut_y, exc,
+                )
+                unavailable_pages.update(idx for idx, _path, _core in seam_consumers)
+                continue
+            finally:
+                if "provider_image" in locals():
+                    del provider_image
+
+            for idx, target_path, target_core in seam_consumers:
+                try:
+                    target_source_y1 = int(target_core["source_y1"])
+                    target_height = int(target_core["source_y2"]) - target_source_y1
+                except (KeyError, TypeError, ValueError):
+                    unavailable_pages.add(idx)
+                    continue
+                if target_height <= 0:
+                    unavailable_pages.add(idx)
+                    continue
+                target = by_page.setdefault(idx, [])
+                for box in seam_boxes:
+                    mapped = self._map_seam_detection_to_page(
+                        box,
+                        seam_source_y1=seam_source_y1,
+                        page_source_y1=target_source_y1,
+                        page_height=target_height,
+                    )
+                    if mapped is not None:
+                        target.append(mapped)
+
+        for idx, boxes in list(by_page.items()):
+            by_page[idx] = CombinedTextDetector._apply_final_nms(
+                boxes, iou_threshold=0.35
+            )
+        return by_page, unavailable_pages
+
     def process_pages(self, chapter_id: str, page_indices: list[int], workers: int = 2) -> dict:
         processed_dir = PROCESSED_DIR / chapter_id
 
@@ -328,6 +498,8 @@ class ChapterPipeline:
                     if not page.get("skipped", False):
                         state_snapshot = capture_processing_state(manifest, idx, processed_dir)
                         stitch_core = copy.deepcopy(page.get("stitch_core"))
+                        if isinstance(stitch_core, dict):
+                            stitch_core["_source_page"] = int(page.get("source_page", -1))
                         is_final_source_tail = (
                             protect_asura_tail_credits
                             and int(page.get("source_page", -1)) == last_source_page
@@ -357,6 +529,9 @@ class ChapterPipeline:
         _ = self.inpainter
 
         max_workers = max(1, min(int(workers or 2), 8, len(work_items)))
+        shared_seam_detections, seam_context_unavailable = self._shared_seam_detections(
+            chapter_id, work_items
+        )
         results: dict[int, tuple[dict, dict | None]] = {}
         errors: list[tuple[int, Exception]] = []
 
@@ -374,6 +549,8 @@ class ChapterPipeline:
                 excluded_regions=excluded,
                 existing_boxes=existing_boxes,
                 stitch_core=stitch_core,
+                supplemental_detections=shared_seam_detections.get(idx),
+                seam_context_unavailable=idx in seam_context_unavailable,
                 protect_tail_credits=is_final_source_tail,
                 parallel_detectors=parallel_detectors,
             ), snapshot
@@ -1037,6 +1214,8 @@ class ChapterPipeline:
         excluded_regions: list[dict] | None = None,
         existing_boxes: list[dict] | None = None,
         stitch_core: dict | None = None,
+        supplemental_detections: list[BubbleBox] | None = None,
+        seam_context_unavailable: bool = False,
         *,
         protect_tail_credits: bool = False,
         parallel_detectors: bool = False,
@@ -1045,7 +1224,42 @@ class ChapterPipeline:
         detector_kwargs = {"parallel": parallel_detectors}
         if protect_tail_credits:
             detector_kwargs["protect_tail_credits"] = True
-        detected = self.detector.detect(image, **detector_kwargs)
+
+        core_bounds: tuple[int, int] | None = None
+        if isinstance(stitch_core, dict):
+            try:
+                core_y1 = max(0, min(int(stitch_core.get("core_y1", 0)), image.shape[0]))
+                core_y2 = max(core_y1, min(int(stitch_core.get("core_y2", image.shape[0])), image.shape[0]))
+            except (TypeError, ValueError):
+                core_y1, core_y2 = 0, image.shape[0]
+            if core_y2 > core_y1:
+                core_bounds = (core_y1, core_y2)
+
+        # Preserve the existing full-slice geometry on Asura's final source tail.
+        # Its credit/watermark safety heuristics are relative to image height, so
+        # cropping that one page would change a review-only classification rule for
+        # negligible throughput benefit. All ordinary slices use their owned core.
+        use_core_detector = (
+            core_bounds is not None
+            and core_bounds != (0, image.shape[0])
+            and not protect_tail_credits
+        )
+        if use_core_detector:
+            core_y1, core_y2 = core_bounds
+            core_image = image[core_y1:core_y2, :]
+            detected = [
+                self._shift_detection_y(box, core_y1)
+                for box in self.detector.detect(core_image, **detector_kwargs)
+            ]
+        else:
+            detected = self.detector.detect(image, **detector_kwargs)
+
+        # A protected final tail already used the full physical slice, including
+        # its overlap. Do not append the shared seam copy a second time.
+        if supplemental_detections and not protect_tail_credits:
+            detected = CombinedTextDetector._apply_final_nms(
+                detected + list(supplemental_detections), iou_threshold=0.35
+            )
         if excluded_regions:
             detected = [b for b in detected if not self._box_in_excluded(b, excluded_regions)]
 
@@ -1061,15 +1275,6 @@ class ChapterPipeline:
             }
             for b in detected
         ]
-        core_bounds: tuple[int, int] | None = None
-        if isinstance(stitch_core, dict):
-            try:
-                core_y1 = int(stitch_core.get("core_y1", 0))
-                core_y2 = int(stitch_core.get("core_y2", image.shape[0]))
-            except (TypeError, ValueError):
-                core_y1, core_y2 = 0, image.shape[0]
-            core_bounds = (core_y1, core_y2)
-
         assign_stable_detector_box_ids(detector_records, existing_boxes)
         old_by_id = {str(b.get("id")): b for b in existing_boxes if isinstance(b, dict) and b.get("id")}
 
@@ -1180,6 +1385,8 @@ class ChapterPipeline:
             if record.get("needs_review") or not record.get("safe_to_inpaint")
         ]
         detection_issues = []
+        if seam_context_unavailable:
+            detection_issues.append("seam_context_unavailable")
         if unverified_regions:
             detection_issues.append("unverified_regions")
         if not detector_records:
