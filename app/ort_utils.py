@@ -10,7 +10,11 @@ _THREAD_ENV = "MANGA_ORT_INTRA_OP_THREADS"
 _CPU_ARENA_ENV = "MANGA_ORT_CPU_MEM_ARENA"
 _MEM_PATTERN_ENV = "MANGA_ORT_MEM_PATTERN"
 _SERIALIZE_ENV = "MANGA_ORT_SERIALIZE_INFERENCE"
-_DEFAULT_HIGH_CPU_THREADS = 8
+# Heavy page processing can overlap detector and dynamic-LaMa inference.  Letting
+# each ORT session claim all logical cores makes an 8C/16T Windows machine run
+# two 8-thread kernels at once and often slows the chapter down.  Four threads
+# per session leaves enough headroom for the bounded two-page pipeline.
+_DEFAULT_HIGH_CPU_THREADS = 4
 _ORT_INFERENCE_LOCK = threading.RLock()
 
 
@@ -98,10 +102,11 @@ def make_session(
 
     ORT's CPU arena and memory-pattern cache retain large peak allocations for
     Manga Translator's detector/segmenter/LaMa sessions, so both are disabled by
-    default. Inference serialization is opt-in per session: detectors and the
-    preferred dynamic LaMa can use the two-page worker schedule concurrently,
-    while the fixed 512px LaMa fallback serializes its larger compatibility
-    workspaces to bound peak RSS.
+    default. Inference serialization is opt-in per session: detector sessions and
+    the fixed 512px LaMa compatibility fallback can serialize their workspaces,
+    while the preferred dynamic LaMa is allowed to overlap the bounded two-page
+    schedule.  The conservative per-session thread cap prevents that overlap from
+    oversubscribing common desktop CPUs.
     """
 
     opts = ort.SessionOptions()
