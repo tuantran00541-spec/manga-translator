@@ -3,7 +3,6 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.config import BASE_DIR, OUTPUT_DIR, PROCESSED_DIR, check_models, ensure_directories
 from app.logging_config import logger
@@ -40,18 +39,72 @@ app = FastAPI(lifespan=lifespan, title="Manga Translator", version="0.2.0")
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "app" / "static")), name="static")
 
 
-class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
-        limit = MAX_UPLOAD_TOTAL_BYTES if request.url.path == "/api/chapter/upload" else MAX_REQUEST_BYTES
-        cl = request.headers.get("content-length")
-        if cl:
+class _RequestTooLarge(Exception):
+    pass
+
+
+class RequestSizeLimitMiddleware:
+    """Enforce request limits on bytes actually received, not only headers."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") != "http":
+            await self.app(scope, receive, send)
+            return
+
+        path = str(scope.get("path") or "")
+        limit = (
+            MAX_UPLOAD_TOTAL_BYTES
+            if path == "/api/chapter/upload"
+            else MAX_REQUEST_BYTES
+        )
+        headers = {
+            key.lower(): value
+            for key, value in scope.get("headers", [])
+        }
+        content_length = headers.get(b"content-length")
+        if content_length:
             try:
-                size = int(cl)
-            except (TypeError, ValueError):
-                return JSONResponse({"detail": "Invalid Content-Length"}, status_code=400)
-            if size > limit:
-                return JSONResponse({"detail": "Request too large"}, status_code=413)
-        return await call_next(request)
+                declared_size = int(content_length.decode("ascii"))
+            except (UnicodeDecodeError, ValueError):
+                response = JSONResponse(
+                    {"detail": "Invalid Content-Length"}, status_code=400
+                )
+                await response(scope, receive, send)
+                return
+            if declared_size < 0:
+                response = JSONResponse(
+                    {"detail": "Invalid Content-Length"}, status_code=400
+                )
+                await response(scope, receive, send)
+                return
+            if declared_size > limit:
+                response = JSONResponse(
+                    {"detail": "Request too large"}, status_code=413
+                )
+                await response(scope, receive, send)
+                return
+
+        received = 0
+
+        async def limited_receive():
+            nonlocal received
+            message = await receive()
+            if message.get("type") == "http.request":
+                received += len(message.get("body", b""))
+                if received > limit:
+                    raise _RequestTooLarge
+            return message
+
+        try:
+            await self.app(scope, limited_receive, send)
+        except _RequestTooLarge:
+            response = JSONResponse(
+                {"detail": "Request too large"}, status_code=413
+            )
+            await response(scope, receive, send)
 
 
 app.add_middleware(RequestSizeLimitMiddleware)
@@ -90,3 +143,28 @@ def health():
 @app.get("/")
 def index():
     return FileResponse("app/templates/index.html")
+
+
+def _remove_duplicate_routes() -> None:
+    """Keep the first canonical handler for exact duplicate path/method routes."""
+    seen: set[tuple[str, frozenset[str]]] = set()
+    unique_routes = []
+    for route in app.router.routes:
+        path = getattr(route, "path", None)
+        methods = frozenset(getattr(route, "methods", set()) or set())
+        if path and methods:
+            key = (str(path), methods)
+            if key in seen:
+                logger.warning(
+                    "Ignoring duplicate route %s %s from %s",
+                    ",".join(sorted(methods)),
+                    path,
+                    getattr(route, "name", "unknown"),
+                )
+                continue
+            seen.add(key)
+        unique_routes.append(route)
+    app.router.routes[:] = unique_routes
+
+
+_remove_duplicate_routes()
