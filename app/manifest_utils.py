@@ -313,7 +313,11 @@ def save_manifest_raw(chapter_id: str, manifest: dict) -> None:
 
 
 def urlify_manifest(manifest: dict) -> dict:
-    result = json.loads(json.dumps(manifest))
+    # ``json.loads(json.dumps(...))`` used to duplicate every base64 segmentation
+    # mask just to remove it from the API response a few lines later.  A deep
+    # copy keeps the same isolation semantics without serializing large strings;
+    # immutable mask strings are shared until the copied box drops the key.
+    result = copy.deepcopy(manifest)
     chapter_id = result["chapter_id"]
     for i, page in enumerate(result["pages"]):
         page["original"] = f"/api/image/{chapter_id}/{i}/original"

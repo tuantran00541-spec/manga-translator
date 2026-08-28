@@ -1,6 +1,6 @@
-from app.pipeline_artwork_safe import ArtworkSafeChapterPipeline
+from app.pipeline_optimized import OptimizedArtworkSafeChapterPipeline
 
 from app.ocr.multi_lang_ocr import MultiLangOCR
 
-pipeline = ArtworkSafeChapterPipeline()
+pipeline = OptimizedArtworkSafeChapterPipeline()
 ocr = MultiLangOCR()
