@@ -19,8 +19,15 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Compile production source
+      - name: Compile production Python source
         run: python -m compileall -q app run.py
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Check browser JavaScript syntax
+        run: find app/static/js -type f -name '*.js' -print0 | xargs -0 -n1 node --check
 
       - name: Test-suite location
         run: |
