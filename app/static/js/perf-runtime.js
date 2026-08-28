@@ -1,5 +1,5 @@
 (() => {
-  const PROCESS_BATCH_SIZE = 4;
+  const PROCESS_BATCH_SIZE = 2;
   const pageCountCache = new WeakMap();
 
   function pageCounts(pages) {
@@ -28,11 +28,11 @@
     return `Trang ${source + 1} · Lát ${slice + 1}/${total}`;
   };
 
-  // Process long chapters in small committed batches.  The backend currently
-  // commits after a process_pages request finishes, so sending 150 slices in one
-  // request can leave a large set of temporary outputs waiting for the slowest
-  // page.  Four-page batches preserve two-worker overlap while making progress
-  // durable and visible every few pages.
+  // Process long chapters in small committed batches.  The backend commits when
+  // a process_pages request finishes, so sending 150 slices in one request can
+  // leave many temporary outputs waiting for the slowest page.  Two-page batches
+  // match the bounded worker count: both workers stay busy, then the pair becomes
+  // durable before the next pair starts.
   window.processSelectedPages = async function optimizedProcessSelectedPages() {
     const pages = currentManifest?.pages || [];
     const indices = pages
