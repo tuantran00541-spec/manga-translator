@@ -10,6 +10,7 @@ import numpy as np
 import app.config as config
 import app.manifest_utils as manifest_utils
 import app.routers.export as export_router
+import app.routers.editorial as editorial_router
 import app.routers.image as image_router
 import app.routers.render_commit as render_commit
 import app.routers.translation as translation_router
@@ -114,6 +115,18 @@ def test_processed_chapter_closes_translate_render_export_loop():
             assert page["text_objects"][0]["source_boxes"] == ["box_deadbeef"]
             assert page["text_objects"][0]["translation"] == "Xin chào"
 
+            # P0 editorial flow: machine translation must be proofed before typeset/export.
+            review = editorial_router.set_script_review(
+                editorial_router.ScriptReviewRequest(
+                    chapter_id=CHAPTER_ID,
+                    page_index=0,
+                    object_id="text_deadbeef",
+                    status="reviewed",
+                )
+            )
+            assert review["status"] == "reviewed"
+            assert review["script_review_fingerprint"]
+
             rendered = export_router.render_chapter(CHAPTER_ID)
             assert rendered["chapter_render"]["rendered"] == 1
             assert image_router._current_rendered_path(
@@ -121,6 +134,13 @@ def test_processed_chapter_closes_translate_render_export_loop():
                 0,
                 manifest_utils.load_manifest_raw(CHAPTER_ID),
             ) is not None
+
+            qc = editorial_router.set_final_qc_page(
+                editorial_router.FinalQCPageRequest(
+                    chapter_id=CHAPTER_ID, page_index=0, approved=True
+                )
+            )
+            assert qc["ready_for_export"] is True
 
             response = export_router.export_chapter(CHAPTER_ID)
             archive_path = Path(response.path)

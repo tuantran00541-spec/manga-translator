@@ -11,6 +11,7 @@ from fastapi.responses import FileResponse
 from PIL import Image
 
 from app.config import OUTPUT_DIR
+from app.editorial_qc import build_final_qc_report
 from app.manifest_utils import get_manifest_lock, load_manifest_raw, save_manifest_raw, urlify_manifest
 from app.routers.image import _current_rendered_path, _fallback_page_path
 from app.routers.render_commit import render_page
@@ -135,10 +136,14 @@ def render_chapter(chapter_id: str) -> dict:
             save_manifest_raw(chapter_id, manifest)
 
     rendered = 0
+    reused = 0
     skipped = 0
     for page_index, page in enumerate(manifest.get("pages", [])):
         if page.get("skipped"):
             skipped += 1
+            continue
+        if _current_rendered_path(chapter_id, page_index, manifest) is not None:
+            reused += 1
             continue
         request = _render_request_from_page(chapter_id, page_index, page)
         render_page(request)
@@ -148,10 +153,12 @@ def render_chapter(chapter_id: str) -> dict:
     result = urlify_manifest(latest)
     result["chapter_render"] = {
         "rendered": rendered,
+        "reused": reused,
         "skipped": skipped,
         "total": len(latest.get("pages", [])),
         "download_url": f"/api/export/{chapter_id}.zip",
     }
+    result["final_qc"] = build_final_qc_report(latest)
     return result
 
 
@@ -168,6 +175,15 @@ def export_chapter(chapter_id: str):
 
     with get_manifest_lock(chapter_id):
         manifest = load_manifest_raw(chapter_id)
+        final_qc = build_final_qc_report(manifest)
+        if not final_qc.get("ready_for_export"):
+            raise HTTPException(
+                409,
+                {
+                    "message": "Final QC chưa hoàn tất. Hãy xử lý các lỗi và duyệt tất cả trang trước khi xuất.",
+                    "final_qc": final_qc,
+                },
+            )
         groups: dict[int, list[tuple[int, int, Path, tuple[int, int] | None]]] = {}
         for page_index, page in enumerate(manifest.get("pages", [])):
             if page.get("skipped"):

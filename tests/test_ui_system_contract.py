@@ -46,7 +46,7 @@ def test_review_workspace_removes_legacy_toolbar_and_preserves_controls_lifecycl
     assert "window.createReviewCard = createReviewCard" in review
     assert "captureMaskSnapshot(mountedCard)" in js
     assert "cleanupCard(mountedCard)" in js
-    assert 'continueBtn.textContent = "Mở trình biên tập bản dịch"' in js
+    assert 'continueBtn.textContent = "Mở Script & Proof"' in js
 
 
 def test_review_ai_busy_state_locks_mutating_controls_and_navigation():
@@ -93,11 +93,12 @@ def test_user_facing_copy_uses_consistent_professional_terms():
         "Đánh dấu vùng lỗi",
         "Kiểm tra bằng AI",
         "Kích thước cọ",
-        "Mở trình biên tập bản dịch",
         "Kết xuất bản dịch",
     ]
     for phrase in required:
         assert phrase in text, phrase
+
+    assert "Mở Script & Proof" in read("app/static/js/review-workspace.js")
 
 
 def test_design_system_has_responsive_stage_and_settings_layouts():
@@ -157,7 +158,6 @@ def test_v03_shared_page_navigator_replaces_duplicate_jump_logic():
     navigator = read("app/static/js/page-navigator.js")
     stage_js = "\n".join(read(path) for path in (
         "app/static/js/preview.js",
-        "app/static/js/review-workspace.js",
         "app/static/js/editor.js",
     ))
     assert '/static/js/page-navigator.js' in html
