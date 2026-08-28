@@ -10,7 +10,10 @@ _THREAD_ENV = "MANGA_ORT_INTRA_OP_THREADS"
 _CPU_ARENA_ENV = "MANGA_ORT_CPU_MEM_ARENA"
 _MEM_PATTERN_ENV = "MANGA_ORT_MEM_PATTERN"
 _SERIALIZE_ENV = "MANGA_ORT_SERIALIZE_INFERENCE"
-_DEFAULT_HIGH_CPU_THREADS = 8
+# Keep one heavy ORT run from claiming every logical core. Page processing can
+# overlap two model runs, so 4 threads per session gives better chapter throughput
+# on common 8C/16T Windows CPUs and avoids severe oversubscription.
+_DEFAULT_HIGH_CPU_THREADS = 4
 _ORT_INFERENCE_LOCK = threading.RLock()
 
 
