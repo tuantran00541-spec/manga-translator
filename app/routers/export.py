@@ -29,6 +29,11 @@ def _safe_int(value, fallback: int) -> int:
         return int(fallback)
 
 
+def _file_revision(path: Path) -> tuple[int, int, int]:
+    st = path.stat()
+    return int(st.st_size), int(st.st_mtime_ns), int(st.st_ctime_ns)
+
+
 def _render_request_from_page(chapter_id: str, page_index: int, page: dict) -> RenderRequest:
     translations: dict[str, str] = {}
     colors: dict[str, str] = {}
@@ -120,6 +125,75 @@ def _stitch_pngs(paths: list[Path], core_ranges: list[tuple[int, int] | None] | 
             image.close()
 
 
+def _export_path_for_page(chapter_id: str, page_index: int, page: dict, manifest: dict) -> Path:
+    if page.get("skipped"):
+        path = _fallback_page_path(chapter_id, page)
+    else:
+        path = _current_rendered_path(chapter_id, page_index, manifest)
+        if path is None:
+            raise HTTPException(
+                409,
+                f"Page {page_index + 1} is not currently rendered. Render the chapter again before export.",
+            )
+    if path is None or not path.is_file():
+        raise HTTPException(404, f"Page {page_index + 1} image is unavailable")
+    return path
+
+
+def _core_range(page: dict) -> tuple[int, int] | None:
+    core = page.get("stitch_core") if isinstance(page.get("stitch_core"), dict) else None
+    if core is None:
+        return None
+    try:
+        return int(core.get("core_y1", 0)), int(core.get("core_y2", 0))
+    except (TypeError, ValueError):
+        return None
+
+
+def _snapshot_export_inputs(chapter_id: str) -> list[dict]:
+    """Capture canonical export inputs while holding the manifest lock briefly."""
+    with get_manifest_lock(chapter_id):
+        manifest = load_manifest_raw(chapter_id)
+        snapshot: list[dict] = []
+        for page_index, page in enumerate(manifest.get("pages", [])):
+            path = _export_path_for_page(chapter_id, page_index, page, manifest)
+            try:
+                revision = _file_revision(path)
+            except OSError as exc:
+                raise HTTPException(409, f"Page {page_index + 1} changed before export started") from exc
+            snapshot.append(
+                {
+                    "page_index": page_index,
+                    "source_page": _safe_int(page.get("source_page"), page_index),
+                    "slice_index": _safe_int(page.get("slice_index"), 0),
+                    "path": path,
+                    "revision": revision,
+                    "core_range": _core_range(page),
+                }
+            )
+        return snapshot
+
+
+def _export_snapshot_is_current(chapter_id: str, snapshot: list[dict]) -> bool:
+    """Revalidate page identity after expensive stitching completes."""
+    manifest = load_manifest_raw(chapter_id)
+    pages = manifest.get("pages", [])
+    if len(snapshot) != len(pages):
+        return False
+    for item in snapshot:
+        page_index = int(item["page_index"])
+        if page_index < 0 or page_index >= len(pages):
+            return False
+        try:
+            path = _export_path_for_page(chapter_id, page_index, pages[page_index], manifest)
+            revision = _file_revision(path)
+        except (HTTPException, OSError):
+            return False
+        if path != item["path"] or revision != item["revision"]:
+            return False
+    return True
+
+
 @router.post("/render/chapter")
 def render_chapter(chapter_id: str) -> dict:
     validate_chapter_id(chapter_id)
@@ -166,46 +240,43 @@ def export_chapter(chapter_id: str):
     final_archive = out_dir / f"chapter_{chapter_id}.zip"
     tmp_archive = out_dir / f"chapter_{chapter_id}.export.{uuid.uuid4().hex[:12]}.tmp"
 
-    with get_manifest_lock(chapter_id):
-        manifest = load_manifest_raw(chapter_id)
-        groups: dict[int, list[tuple[int, int, Path, tuple[int, int] | None]]] = {}
-        for page_index, page in enumerate(manifest.get("pages", [])):
-            if page.get("skipped"):
-                path = _fallback_page_path(chapter_id, page)
-            else:
-                path = _current_rendered_path(chapter_id, page_index, manifest)
-                if path is None:
-                    raise HTTPException(
-                        409,
-                        f"Page {page_index + 1} is not currently rendered. Render the chapter again before export.",
-                    )
-            if path is None or not path.is_file():
-                raise HTTPException(404, f"Page {page_index + 1} image is unavailable")
-            validate_image_size(path)
-            source_page = _safe_int(page.get("source_page"), page_index)
-            slice_index = _safe_int(page.get("slice_index"), 0)
-            core = page.get("stitch_core") if isinstance(page.get("stitch_core"), dict) else None
-            core_range = None
-            if core is not None:
-                try:
-                    core_range = (int(core.get("core_y1", 0)), int(core.get("core_y2", 0)))
-                except (TypeError, ValueError):
-                    core_range = None
-            groups.setdefault(source_page, []).append((slice_index, page_index, path, core_range))
+    snapshot = _snapshot_export_inputs(chapter_id)
+    groups: dict[int, list[dict]] = {}
+    for item in snapshot:
+        path = item["path"]
+        validate_image_size(path)
+        groups.setdefault(int(item["source_page"]), []).append(item)
 
-        try:
-            with zipfile.ZipFile(tmp_archive, "w", compression=zipfile.ZIP_STORED) as archive:
-                for output_index, source_page in enumerate(sorted(groups), start=1):
-                    items = sorted(groups[source_page], key=lambda item: (item[0], item[1]))
-                    payload = _stitch_pngs([item[2] for item in items], [item[3] for item in items])
-                    archive.writestr(f"page_{output_index:03d}.png", payload)
+    try:
+        with zipfile.ZipFile(tmp_archive, "w", compression=zipfile.ZIP_STORED) as archive:
+            for output_index, source_page in enumerate(sorted(groups), start=1):
+                items = sorted(
+                    groups[source_page],
+                    key=lambda item: (int(item["slice_index"]), int(item["page_index"])),
+                )
+                payload = _stitch_pngs(
+                    [item["path"] for item in items],
+                    [item["core_range"] for item in items],
+                )
+                archive.writestr(f"page_{output_index:03d}.png", payload)
+
+        # Stitching/PNG encoding can take seconds for a long webtoon.  Do that
+        # work without blocking every editor/OCR/render request on the manifest
+        # lock, then take the lock only for a final identity check and atomic
+        # publish of the archive.
+        with get_manifest_lock(chapter_id):
+            if not _export_snapshot_is_current(chapter_id, snapshot):
+                raise HTTPException(
+                    409,
+                    "Chapter changed while export was running. Export again to include the latest edits.",
+                )
             os.replace(tmp_archive, final_archive)
-        finally:
-            if tmp_archive.exists():
-                try:
-                    tmp_archive.unlink()
-                except OSError:
-                    pass
+    finally:
+        if tmp_archive.exists():
+            try:
+                tmp_archive.unlink()
+            except OSError:
+                pass
 
     return FileResponse(
         final_archive,
