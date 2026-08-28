@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import os
+import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
@@ -9,8 +10,10 @@ import cv2
 import numpy as np
 
 from app.config import PROCESSED_DIR
+from app.detector.bubble_detector import BubbleBox
 from app.downloader.asura import is_asura_chapter_page
 from app.inpaint.lama_inpainter import Inpainter
+from app.inpaint.mask_geometry import geometry_dict, remap_local_mask_page_space
 from app.logging_config import logger
 from app.manifest_utils import (
     assign_stable_detector_box_ids,
@@ -22,6 +25,8 @@ from app.manifest_utils import (
     load_manifest_raw,
     save_manifest_raw,
 )
+from app.mask_store import decode_mask_value, externalize_page_masks
+from app.pipeline import _encode_mask, read_image, write_image
 from app.pipeline_artwork_safe import ArtworkSafeChapterPipeline
 
 
@@ -29,8 +34,8 @@ class ConcurrentDynamicInpainter(Inpainter):
     """Keep fixed-LaMa safety while allowing the dynamic model to overlap runs.
 
     The preferred dynamic model is created without the global ORT serialization
-    wrapper.  The base inpainter still takes a per-instance lock around every
-    ``session.run`` though, which accidentally removes that concurrency.  ORT
+    wrapper. The base inpainter still takes a per-instance lock around every
+    ``session.run`` though, which accidentally removes that concurrency. ORT
     sessions support concurrent ``run`` calls, so only the fixed compatibility
     path needs the lock because it may recycle the session between calls.
     """
@@ -68,6 +73,119 @@ class OptimizedArtworkSafeChapterPipeline(ArtworkSafeChapterPipeline):
         if self._inpainter is None:
             self._inpainter = ConcurrentDynamicInpainter()
         return self._inpainter
+
+    @staticmethod
+    def _apply_box_geometry(box: dict, new_geometry: dict[str, int]) -> None:
+        """Geometry-safe edit that understands both legacy and sidecar masks."""
+        source_geometry = geometry_dict(box)
+        source_mask = decode_mask_value(box.get("mask"))
+        detector_origin = box.get("origin") == "detector" and not box.get("manual")
+
+        if detector_origin:
+            if not box.get("geometry_overridden"):
+                box["detector_anchor"] = copy.deepcopy(source_geometry)
+            box["geometry_overridden"] = True
+
+        remapped = (
+            remap_local_mask_page_space(source_mask, source_geometry, new_geometry)
+            if source_mask is not None
+            else None
+        )
+
+        box.update(new_geometry)
+        if remapped is None or not np.any(remapped > 127):
+            box["mask"] = None
+        else:
+            # Geometry edits are comparatively rare. Keep the freshly remapped
+            # mask inline for this transaction; the next processing commit moves
+            # it back to a sidecar. This preserves the inherited update flow
+            # without giving path-writing responsibilities to a geometry helper.
+            box["mask"] = _encode_mask(remapped)
+
+    def _do_reinpaint(
+        self,
+        processed_dir: Path,
+        img_path: Path,
+        image: np.ndarray,
+        boxes: list[dict],
+        manual_mask_posix: str | None = None,
+        *,
+        reuse_auto_clean: bool = False,
+        apply_manual_mask: bool = True,
+    ) -> str:
+        """Repaint using masks stored inline or in managed PNG sidecars."""
+        boxes_objects = []
+        for box in boxes:
+            if box.get("removed"):
+                continue
+            box_h = int(box["y2"]) - int(box["y1"])
+            box_w = int(box["x2"]) - int(box["x1"])
+            mask_arr = decode_mask_value(box.get("mask"))
+            if mask_arr is not None and mask_arr.shape != (box_h, box_w):
+                try:
+                    mask_arr = cv2.resize(
+                        mask_arr,
+                        (box_w, box_h),
+                        interpolation=cv2.INTER_NEAREST,
+                    )
+                except Exception:
+                    mask_arr = None
+            boxes_objects.append(
+                BubbleBox(
+                    box["x1"],
+                    box["y1"],
+                    box["x2"],
+                    box["y2"],
+                    box.get("confidence", 1.0),
+                    mask_arr,
+                )
+            )
+
+        clean_image = None
+        if reuse_auto_clean:
+            clean_image = self._load_auto_clean_cache(
+                processed_dir, img_path, image.shape[:2]
+            )
+
+        if clean_image is None:
+            clean_image = self.inpainter.inpaint(image, boxes_objects)
+            self._write_auto_clean_cache(processed_dir, img_path, clean_image)
+        else:
+            clean_image = clean_image.copy()
+
+        manual_mask_path = (
+            Path(manual_mask_posix)
+            if manual_mask_posix
+            else processed_dir / f"manual_mask_{img_path.name}"
+        )
+        if apply_manual_mask and manual_mask_path.exists():
+            raw = np.fromfile(str(manual_mask_path), dtype=np.uint8)
+            manual_mask = cv2.imdecode(raw, cv2.IMREAD_GRAYSCALE)
+            if manual_mask is not None and np.any(manual_mask > 10):
+                h, w = clean_image.shape[:2]
+                if manual_mask.shape[:2] != (h, w):
+                    try:
+                        manual_mask = cv2.resize(
+                            manual_mask,
+                            (w, h),
+                            interpolation=cv2.INTER_NEAREST,
+                        )
+                    except Exception:
+                        manual_mask = None
+                if manual_mask is not None and np.any(manual_mask > 10):
+                    manual_mask = (manual_mask > 10).astype(np.uint8) * 255
+                    clean_image = self.inpainter.inpaint_mask(
+                        clean_image, manual_mask
+                    )
+
+        clean_path = processed_dir / f"clean_{img_path.name}"
+        tmp_clean_path = (
+            processed_dir
+            / f"clean_{img_path.name}.{uuid.uuid4().hex[:12]}.tmp.png"
+        )
+        write_image(tmp_clean_path, clean_image)
+        os.replace(tmp_clean_path, clean_path)
+        return clean_path.as_posix()
 
     def _commit_processed_page(
         self,
@@ -119,7 +237,18 @@ class OptimizedArtworkSafeChapterPipeline(ArtworkSafeChapterPipeline):
                     page_data["boxes"], existing_boxes
                 )
                 manual_boxes = [b for b in existing_boxes if b.get("manual")]
-                target_page["boxes"] = detected_boxes + manual_boxes
+                committed_boxes = detected_boxes + manual_boxes
+                externalized = externalize_page_masks(
+                    processed_dir, page_index, committed_boxes
+                )
+                if externalized:
+                    logger.debug(
+                        "Chapter {} page {} externalized {} detector mask(s)",
+                        chapter_id,
+                        page_index,
+                        externalized,
+                    )
+                target_page["boxes"] = committed_boxes
                 target_page["detection_state"] = page_data.get(
                     "detection_state", "verified"
                 )
@@ -157,8 +286,8 @@ class OptimizedArtworkSafeChapterPipeline(ArtworkSafeChapterPipeline):
         """Process pages with shared seams and durable per-page progress.
 
         The base pipeline waits for every future before publishing any temporary
-        output.  Long webtoon requests therefore leave many completed ``.tmp``
-        files stranded behind the slowest page.  This implementation preserves
+        output. Long webtoon requests therefore leave many completed ``.tmp``
+        files stranded behind the slowest page. This implementation preserves
         the one-pass shared-seam scheduler for the whole request, but commits each
         completed page immediately after its worker returns.
         """
