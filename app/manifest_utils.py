@@ -12,6 +12,7 @@ from filelock import FileLock, Timeout
 
 from app.config import PROCESSED_DIR
 from app.inpaint.mask_geometry import reconcile_detector_geometry_override
+from app.mask_store import externalize_page_masks, is_mask_ref
 from app.ocr.identity import OCR_CACHE_FIELDS, clear_ocr_cache, geometry_signature
 from app.security import validate_chapter_id
 
@@ -25,6 +26,7 @@ _STALE_TEMP_PATTERNS = (
     "auto_clean_*.tmp.png",
     "manual_mask_*.tmp.png",
     "page_*.rendering.*.tmp",
+    "masks/**/*.tmp.png",
 )
 
 
@@ -304,6 +306,23 @@ def save_manifest_raw(chapter_id: str, manifest: dict) -> None:
     normalize_manifest_schema(manifest)
     processed_dir = PROCESSED_DIR / chapter_id
     processed_dir.mkdir(parents=True, exist_ok=True)
+
+    # Only pages that still contain inline/legacy masks need sidecar work. Normal
+    # OCR/draft/editor saves therefore stay O(number of boxes) in memory and avoid
+    # reopening every mask directory in a 100-300 slice chapter.
+    for page_index, page in enumerate(manifest.get("pages", [])):
+        if not isinstance(page, dict):
+            continue
+        boxes = page.get("boxes") or []
+        has_inline_mask = any(
+            isinstance(box, dict)
+            and box.get("mask")
+            and not is_mask_ref(box.get("mask"))
+            for box in boxes
+        )
+        if has_inline_mask:
+            externalize_page_masks(processed_dir, page_index, boxes)
+
     tmp_path = processed_dir / f"manifest.json.{uuid.uuid4().hex}.tmp"
     final_path = processed_dir / "manifest.json"
     tmp_path.write_text(
