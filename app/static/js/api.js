@@ -107,8 +107,10 @@ async function loadRecentChapters() {
     list.className = "recent-list";
     const stageLabels = {
       preview: "Xử lý ảnh",
-      review: "Kiểm tra chất lượng",
-      editor: "Biên tập bản dịch",
+      review: "Kiểm tra cleaning",
+      script: "Dịch & soát Script",
+      editor: "Typeset",
+      final_qc: "Final QC",
     };
     chapters.forEach((ch) => {
       const card = document.createElement("div");
@@ -176,6 +178,12 @@ async function resumeChapter(chapterId) {
     } else if (stage === "review") {
       window.initialReviewCanonicalPageIndex = pageIndex;
       renderReview();
+    } else if (stage === "script") {
+      window.initialScriptCanonicalPageIndex = pageIndex;
+      renderScript();
+    } else if (stage === "final_qc") {
+      window.initialFinalQCCanonicalPageIndex = pageIndex;
+      renderFinalQC();
     } else {
       if (window.editorState) {
         window.editorState.activePageIndex = pageIndex;

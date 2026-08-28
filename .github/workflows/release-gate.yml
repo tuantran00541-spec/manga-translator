@@ -29,6 +29,12 @@ jobs:
       - name: Compile source
         run: python -m compileall -q app tests
 
+      - name: Check browser JavaScript syntax
+        run: |
+          for file in app/static/js/*.js; do
+            node --check "$file"
+          done
+
       - name: Run model-independent product gate
         run: |
           python -m pytest -q \
@@ -44,6 +50,8 @@ jobs:
             tests/test_chapter_qc_ui.py \
             tests/test_render_export.py \
             tests/test_ui_system_contract.py \
+            tests/test_editorial_p0.py \
+            tests/test_editorial_p0_ui.py \
             tests/test_v02_detection_recovery.py \
             tests/test_ort_low_memory.py
 
@@ -55,6 +63,7 @@ jobs:
           python tests/browser_chapter_qc.py
           python tests/browser_ocr.py
           python tests/browser_render_export.py
+          python tests/browser_editorial_p0.py
 
       - name: Explain model gate
         run: |

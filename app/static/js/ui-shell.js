@@ -1,10 +1,12 @@
 (() => {
-  const STAGES = ["landing", "preview", "review", "editor"];
+  const STAGES = ["landing", "preview", "review", "script", "editor", "final_qc"];
   const STAGE_LABELS = {
     landing: "Nhập nội dung",
     preview: "Xử lý ảnh",
-    review: "Kiểm tra chất lượng",
-    editor: "Biên tập bản dịch",
+    review: "Kiểm tra cleaning",
+    script: "Dịch & soát Script",
+    editor: "Typeset",
+    final_qc: "Final QC",
   };
 
   let trackedChapterId = null;
@@ -96,8 +98,12 @@
       window.initialPreviewCanonicalPageIndex = canonicalIndex;
     } else if (stage === "review") {
       window.initialReviewCanonicalPageIndex = canonicalIndex;
+    } else if (stage === "script") {
+      window.initialScriptCanonicalPageIndex = canonicalIndex;
     } else if (stage === "editor" && window.editorState) {
       window.editorState.activePageIndex = canonicalIndex;
+    } else if (stage === "final_qc") {
+      window.initialFinalQCCanonicalPageIndex = canonicalIndex;
     }
   }
 
@@ -152,7 +158,9 @@
       const rendererName = {
         preview: "renderPreview",
         review: "renderReview",
+        script: "renderScript",
         editor: "renderEditor",
+        final_qc: "renderFinalQC",
       }[stage];
       const renderer = window[rendererName];
       if (typeof renderer !== "function") {
@@ -241,7 +249,9 @@
 
   wrapRenderer("renderPreview", "preview");
   wrapRenderer("renderReview", "review");
+  wrapRenderer("renderScript", "script");
   wrapRenderer("renderEditor", "editor");
+  wrapRenderer("renderFinalQC", "final_qc");
 
   document.addEventListener("DOMContentLoaded", () => {
     setupShellEvents();

@@ -17,12 +17,14 @@ health:
 
 test:
 	python -m compileall -q app tests
-	python -m pytest -q tests/test_auto_text_objects.py tests/test_translation_deepseek.py tests/test_chapter_export.py tests/test_downloader_discovery.py tests/test_inpaint_artwork_quality.py tests/test_geometry_override_mask.py tests/test_v01_product_closure.py tests/test_manifest_data_model.py tests/test_review_artifacts.py tests/test_chapter_qc_ui.py tests/test_render_export.py tests/test_ui_system_contract.py tests/test_v02_detection_recovery.py tests/test_ort_low_memory.py
+	@for file in app/static/js/*.js; do node --check "$$file" || exit 1; done
+	python -m pytest -q tests/test_auto_text_objects.py tests/test_translation_deepseek.py tests/test_chapter_export.py tests/test_downloader_discovery.py tests/test_inpaint_artwork_quality.py tests/test_geometry_override_mask.py tests/test_v01_product_closure.py tests/test_manifest_data_model.py tests/test_review_artifacts.py tests/test_chapter_qc_ui.py tests/test_render_export.py tests/test_ui_system_contract.py tests/test_editorial_p0.py tests/test_editorial_p0_ui.py tests/test_v02_detection_recovery.py tests/test_ort_low_memory.py
 
 test-browser:
 	python tests/browser_chapter_qc.py
 	python tests/browser_ocr.py
 	python tests/browser_render_export.py
+	python tests/browser_editorial_p0.py
 
 release-check: test test-browser
 

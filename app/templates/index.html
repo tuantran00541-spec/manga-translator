@@ -18,8 +18,10 @@
     <nav id="workflow-steps" class="app-rail-nav" aria-label="Tiến trình xử lý">
       <button class="app-rail-item active" type="button" data-stage="landing" title="Nhập nội dung"><span class="app-rail-glyph" aria-hidden="true">＋</span><span>Nhập</span></button>
       <button class="app-rail-item" type="button" data-stage="preview" title="Xử lý ảnh" disabled><span class="app-rail-glyph" aria-hidden="true">▧</span><span>Xử lý</span></button>
-      <button class="app-rail-item" type="button" data-stage="review" title="Kiểm tra chất lượng" disabled><span class="app-rail-glyph" aria-hidden="true">✓</span><span>Kiểm tra</span></button>
-      <button class="app-rail-item" type="button" data-stage="editor" title="Biên tập bản dịch" disabled><span class="app-rail-glyph" aria-hidden="true">T</span><span>Biên tập</span></button>
+      <button class="app-rail-item" type="button" data-stage="review" title="Kiểm tra cleaning" disabled><span class="app-rail-glyph" aria-hidden="true">✓</span><span>Clean</span></button>
+      <button class="app-rail-item" type="button" data-stage="script" title="Dịch và soát Script" disabled><span class="app-rail-glyph" aria-hidden="true">S</span><span>Script</span></button>
+      <button class="app-rail-item" type="button" data-stage="editor" title="Typeset" disabled><span class="app-rail-glyph" aria-hidden="true">T</span><span>Typeset</span></button>
+      <button class="app-rail-item" type="button" data-stage="final_qc" title="Final QC" disabled><span class="app-rail-glyph" aria-hidden="true">Q</span><span>Final QC</span></button>
     </nav>
     <div class="app-rail-footer">
       <button id="settings-toggle" class="app-rail-item app-rail-settings" type="button" aria-haspopup="dialog" aria-controls="settings-drawer" title="Cài đặt"><span class="app-rail-glyph" aria-hidden="true">⚙</span><span>Cài đặt</span></button>
@@ -105,10 +107,12 @@
 <script src="/static/js/deepseek-qc-settings.js"></script>
 <script src="/static/js/chapter-qc.js"></script>
 <script src="/static/js/chapter-ocr.js"></script>
+<script src="/static/js/script-workspace.js"></script>
 <script src="/static/js/editor.js"></script>
 <script src="/static/js/auto-text-objects.js"></script>
 <script src="/static/js/chapter-translate.js"></script>
 <script src="/static/js/chapter-export.js"></script>
+<script src="/static/js/final-qc.js"></script>
 <script src="/static/js/editor-box-transform.js"></script>
 <script src="/static/js/ui-shell.js"></script>
 <script src="/static/js/main.js"></script>

@@ -8,7 +8,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from app.config import BASE_DIR, OUTPUT_DIR, PROCESSED_DIR, check_models, ensure_directories
 from app.logging_config import logger
 from app.manifest_utils import cleanup_stale_temp_artifacts
-from app.routers import automation, chapters, editor, export, image, ocr, render, render_commit, translation, visual_qc
+from app.routers import automation, chapters, editor, editorial, export, image, ocr, render, render_commit, translation, visual_qc
 from app.security import MAX_REQUEST_BYTES, MAX_UPLOAD_TOTAL_BYTES
 
 
@@ -70,6 +70,7 @@ app.include_router(automation.router)
 app.include_router(translation.router)
 app.include_router(ocr.router)
 app.include_router(editor.router)
+app.include_router(editorial.router)
 app.include_router(render_commit.router)
 app.include_router(render.router)
 app.include_router(image.router)

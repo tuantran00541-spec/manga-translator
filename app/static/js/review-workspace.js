@@ -170,19 +170,58 @@
     helpPanel.innerHTML = '<p>Chọn <strong>Đánh dấu vùng lỗi</strong> để tô thủ công. Nhấp đúp vào vùng nền đồng màu để chọn nhanh toàn bộ vùng liên thông. Sau khi kiểm tra vùng đánh dấu, chọn <strong>Xử lý vùng đánh dấu</strong>.</p>';
     help.append(helpSummary, helpPanel);
 
-    if (!continueBtn) {
-      continueBtn = document.createElement("button");
-      continueBtn.addEventListener("click", () => {
-        const activeCard = container.querySelector(".review-canvas-host .review-card");
-        const canonicalIndex = activeCard ? (parseInt(activeCard.dataset.pageIndex, 10) || 0) : 0;
-        if (window.editorState) window.editorState.activePageIndex = canonicalIndex;
-        if (typeof window.setWorkflowCheckpoint === "function") window.setWorkflowCheckpoint("editor", canonicalIndex);
-        if (typeof window.renderEditor === "function") window.renderEditor();
-      });
-    }
+    if (continueBtn) continueBtn = continueBtn.cloneNode(true);
+    else continueBtn = document.createElement("button");
+    continueBtn.addEventListener("click", () => {
+      const activeCard = container.querySelector(".review-canvas-host .review-card");
+      const canonicalIndex = activeCard ? (parseInt(activeCard.dataset.pageIndex, 10) || 0) : 0;
+      window.initialScriptCanonicalPageIndex = canonicalIndex;
+      if (typeof window.setWorkflowCheckpoint === "function") window.setWorkflowCheckpoint("script", canonicalIndex);
+      if (typeof window.renderScript === "function") window.renderScript();
+    });
     continueBtn.className = "ui-btn ui-btn-primary review-primary-action";
-    continueBtn.textContent = "Mở trình biên tập bản dịch";
-    actions.append(aiStatus, continueBtn);
+    continueBtn.textContent = "Mở Script & Proof";
+
+    const cleanApproveBtn = document.createElement("button");
+    cleanApproveBtn.type = "button";
+    cleanApproveBtn.className = "ui-btn ui-btn-ghost review-clean-approve";
+    cleanApproveBtn.hidden = true;
+    cleanApproveBtn.addEventListener("click", async () => {
+      const canonicalIndex = pageIndices[activeReviewIndex];
+      const page = window.currentManifest?.pages?.[canonicalIndex];
+      if (!page || cleanApproveBtn.disabled) return;
+      const cleanRevision = Number(page.clean_revision) || 0;
+      const approved = cleanRevision > 0 && Number(page.clean_review_approved_revision || 0) === cleanRevision;
+      cleanApproveBtn.disabled = true;
+      try {
+        const response = await fetch("/api/clean_review/page", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            chapter_id: window.currentChapterId,
+            page_index: canonicalIndex,
+            approved: !approved,
+          }),
+        });
+        const data = typeof window.parseApiResponse === "function"
+          ? await window.parseApiResponse(response)
+          : await response.json().catch(() => ({}));
+        if (!response.ok) {
+          const message = typeof window.getErrorMessage === "function"
+            ? window.getErrorMessage(response.status, data)
+            : data?.detail || `HTTP ${response.status}`;
+          throw new Error(message);
+        }
+        if (!approved) page.clean_review_approved_revision = data.clean_revision;
+        else delete page.clean_review_approved_revision;
+        renderActive();
+      } catch (err) {
+        cleanApproveBtn.disabled = false;
+        if (typeof window.showToast === "function") window.showToast("Không cập nhật được xác nhận cleaning: " + err.message, "error");
+      }
+    });
+
+    actions.append(aiStatus, cleanApproveBtn, continueBtn);
     toolbar.append(title, actions);
 
     const layout = document.createElement("div");
@@ -258,6 +297,19 @@
       controlsSlot.replaceChildren();
 
       const canonicalIndex = pageIndices[activeReviewIndex];
+      const activePage = window.currentManifest?.pages?.[canonicalIndex] || {};
+      const hasCleanupWarning = Boolean(
+        activePage.needs_review
+        || activePage.detection_state === "needs_review"
+        || (activePage.detection_issues || []).length
+      );
+      const cleanRevision = Number(activePage.clean_revision) || 0;
+      const cleanApproved = cleanRevision > 0 && Number(activePage.clean_review_approved_revision || 0) === cleanRevision;
+      cleanApproveBtn.hidden = !hasCleanupWarning;
+      cleanApproveBtn.textContent = cleanApproved ? "Bỏ xác nhận cleaning" : "Xác nhận trang đã kiểm tra";
+      cleanApproveBtn.classList.toggle("active", cleanApproved);
+      cleanApproveBtn.disabled = false;
+
       const card = window.createReviewCard(canonicalIndex, maskSnapshots.get(canonicalIndex) || null);
       if (!card) return;
       mountedCard = card;
@@ -289,6 +341,7 @@
         if (brushSize) brushSize.disabled = busy;
         navigator.setBusy(busy);
         continueBtn.disabled = busy;
+        cleanApproveBtn.disabled = busy;
       };
       if (aiQcBtn) {
         busyObserver = new MutationObserver(syncBusy);
