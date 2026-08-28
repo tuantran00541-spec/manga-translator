@@ -29,6 +29,12 @@ jobs:
       - name: Compile source
         run: python -m compileall -q app tests
 
+      - name: Check browser JavaScript syntax
+        run: |
+          for file in app/static/js/*.js; do
+            node --check "$file"
+          done
+
       - name: Run model-independent product gate
         run: |
           python -m pytest -q \
