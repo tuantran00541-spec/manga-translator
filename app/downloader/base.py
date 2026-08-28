@@ -1,7 +1,17 @@
 from abc import ABC, abstractmethod
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import os
 from pathlib import Path
 
 from app.downloader.http import safe_download_file
+
+
+def _download_worker_limit() -> int:
+    try:
+        value = int(os.getenv("MANGA_DOWNLOAD_WORKERS", "4"))
+    except ValueError:
+        value = 4
+    return max(1, min(value, 8))
 
 
 class BaseAdapter(ABC):
@@ -30,13 +40,39 @@ class BaseAdapter(ABC):
         referer: str,
     ) -> list[Path]:
         output_dir.mkdir(parents=True, exist_ok=True)
-        saved_paths = []
-        for i, img_url in enumerate(self._dedupe(image_urls)):
+        urls = self._dedupe(image_urls)
+        if not urls:
+            return []
+
+        work: list[tuple[str, Path]] = []
+        for i, img_url in enumerate(urls):
             ext = self._guess_ext(img_url)
-            out_path = output_dir / f"{i:03d}{ext}"
-            self._download_file(img_url, out_path, referer=referer)
-            saved_paths.append(out_path)
-        return saved_paths
+            work.append((img_url, output_dir / f"{i:03d}{ext}"))
+
+        max_workers = min(_download_worker_limit(), len(work))
+        if max_workers <= 1:
+            for img_url, out_path in work:
+                self._download_file(img_url, out_path, referer=referer)
+            return [path for _url, path in work]
+
+        # Image downloads are network-bound and independent.  A small bounded
+        # pool hides per-request latency without opening enough simultaneous
+        # connections to look like an aggressive crawler.  Results remain in
+        # chapter order because output paths are assigned before scheduling.
+        with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="chapter-download") as pool:
+            futures = {
+                pool.submit(self._download_file, img_url, out_path, referer): out_path
+                for img_url, out_path in work
+            }
+            try:
+                for future in as_completed(futures):
+                    future.result()
+            except Exception:
+                for pending in futures:
+                    pending.cancel()
+                raise
+
+        return [path for _url, path in work]
 
     def _download_file(self, url: str, out_path: Path, referer: str) -> None:
         headers = dict(self.headers)
