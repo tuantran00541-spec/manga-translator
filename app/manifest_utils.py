@@ -12,7 +12,7 @@ from filelock import FileLock, Timeout
 
 from app.config import PROCESSED_DIR
 from app.inpaint.mask_geometry import reconcile_detector_geometry_override
-from app.mask_store import externalize_page_masks
+from app.mask_store import externalize_page_masks, is_mask_ref
 from app.ocr.identity import OCR_CACHE_FIELDS, clear_ocr_cache, geometry_signature
 from app.security import validate_chapter_id
 
@@ -307,18 +307,21 @@ def save_manifest_raw(chapter_id: str, manifest: dict) -> None:
     processed_dir = PROCESSED_DIR / chapter_id
     processed_dir.mkdir(parents=True, exist_ok=True)
 
-    # Persist segmentation evidence outside the hot JSON document. This is
-    # intentionally centralized here so geometry edits, OCR commits, old chapter
-    # migrations, and new detector results all converge to the same representation.
-    # The sidecar writer is best-effort: if disk I/O fails, the legacy base64 value
-    # remains in the manifest rather than sacrificing artwork-safe mask evidence.
+    # Only pages that still contain inline/legacy masks need sidecar work. Normal
+    # OCR/draft/editor saves therefore stay O(number of boxes) in memory and avoid
+    # reopening every mask directory in a 100-300 slice chapter.
     for page_index, page in enumerate(manifest.get("pages", [])):
-        if isinstance(page, dict):
-            externalize_page_masks(
-                processed_dir,
-                page_index,
-                page.get("boxes") or [],
-            )
+        if not isinstance(page, dict):
+            continue
+        boxes = page.get("boxes") or []
+        has_inline_mask = any(
+            isinstance(box, dict)
+            and box.get("mask")
+            and not is_mask_ref(box.get("mask"))
+            for box in boxes
+        )
+        if has_inline_mask:
+            externalize_page_masks(processed_dir, page_index, boxes)
 
     tmp_path = processed_dir / f"manifest.json.{uuid.uuid4().hex}.tmp"
     final_path = processed_dir / "manifest.json"
