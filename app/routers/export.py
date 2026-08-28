@@ -175,7 +175,7 @@ def _snapshot_export_inputs(chapter_id: str) -> list[dict]:
 
 
 def _export_snapshot_is_current(chapter_id: str, snapshot: list[dict]) -> bool:
-    """Revalidate page identity after expensive stitching completes."""
+    """Revalidate page/file and stitch metadata after expensive encoding."""
     manifest = load_manifest_raw(chapter_id)
     pages = manifest.get("pages", [])
     if len(snapshot) != len(pages):
@@ -184,8 +184,15 @@ def _export_snapshot_is_current(chapter_id: str, snapshot: list[dict]) -> bool:
         page_index = int(item["page_index"])
         if page_index < 0 or page_index >= len(pages):
             return False
+        page = pages[page_index]
+        if (
+            _safe_int(page.get("source_page"), page_index) != int(item["source_page"])
+            or _safe_int(page.get("slice_index"), 0) != int(item["slice_index"])
+            or _core_range(page) != item["core_range"]
+        ):
+            return False
         try:
-            path = _export_path_for_page(chapter_id, page_index, pages[page_index], manifest)
+            path = _export_path_for_page(chapter_id, page_index, page, manifest)
             revision = _file_revision(path)
         except (HTTPException, OSError):
             return False
