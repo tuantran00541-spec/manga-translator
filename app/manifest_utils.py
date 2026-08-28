@@ -12,6 +12,7 @@ from filelock import FileLock, Timeout
 
 from app.config import PROCESSED_DIR
 from app.inpaint.mask_geometry import reconcile_detector_geometry_override
+from app.mask_store import externalize_page_masks
 from app.ocr.identity import OCR_CACHE_FIELDS, clear_ocr_cache, geometry_signature
 from app.security import validate_chapter_id
 
@@ -25,6 +26,7 @@ _STALE_TEMP_PATTERNS = (
     "auto_clean_*.tmp.png",
     "manual_mask_*.tmp.png",
     "page_*.rendering.*.tmp",
+    "masks/**/*.tmp.png",
 )
 
 
@@ -304,6 +306,20 @@ def save_manifest_raw(chapter_id: str, manifest: dict) -> None:
     normalize_manifest_schema(manifest)
     processed_dir = PROCESSED_DIR / chapter_id
     processed_dir.mkdir(parents=True, exist_ok=True)
+
+    # Persist segmentation evidence outside the hot JSON document. This is
+    # intentionally centralized here so geometry edits, OCR commits, old chapter
+    # migrations, and new detector results all converge to the same representation.
+    # The sidecar writer is best-effort: if disk I/O fails, the legacy base64 value
+    # remains in the manifest rather than sacrificing artwork-safe mask evidence.
+    for page_index, page in enumerate(manifest.get("pages", [])):
+        if isinstance(page, dict):
+            externalize_page_masks(
+                processed_dir,
+                page_index,
+                page.get("boxes") or [],
+            )
+
     tmp_path = processed_dir / f"manifest.json.{uuid.uuid4().hex}.tmp"
     final_path = processed_dir / "manifest.json"
     tmp_path.write_text(
