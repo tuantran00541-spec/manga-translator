@@ -39,10 +39,6 @@ app = FastAPI(lifespan=lifespan, title="Manga Translator", version="0.2.0")
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "app" / "static")), name="static")
 
 
-class _RequestTooLarge(Exception):
-    pass
-
-
 class RequestSizeLimitMiddleware:
     """Enforce request limits on bytes actually received, not only headers."""
 
@@ -95,16 +91,13 @@ class RequestSizeLimitMiddleware:
             if message.get("type") == "http.request":
                 received += len(message.get("body", b""))
                 if received > limit:
-                    raise _RequestTooLarge
+                    # Request parsing happens inside Starlette's ExceptionMiddleware,
+                    # so an HTTPException here becomes the intended 413 response even
+                    # for chunked bodies without a Content-Length header.
+                    raise HTTPException(status_code=413, detail="Request too large")
             return message
 
-        try:
-            await self.app(scope, limited_receive, send)
-        except _RequestTooLarge:
-            response = JSONResponse(
-                {"detail": "Request too large"}, status_code=413
-            )
-            await response(scope, receive, send)
+        await self.app(scope, limited_receive, send)
 
 
 app.add_middleware(RequestSizeLimitMiddleware)
