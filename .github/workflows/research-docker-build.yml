@@ -29,9 +29,11 @@ jobs:
           import sys
           from importlib import metadata
 
+          import chardet
           import cv2
           import paddle
           import paddleocr
+          import requests
           import torch
           from playwright.sync_api import sync_playwright
 
@@ -44,6 +46,8 @@ jobs:
           nvidia_dists = sorted(name for name in distributions if name.startswith('nvidia-'))
           assert sys.version_info[:2] == (3, 12), sys.version
           assert opencv_dists == ['opencv-contrib-python'], opencv_dists
+          assert requests.__version__ == '2.32.3', requests.__version__
+          assert chardet.__version__ == '5.2.0', chardet.__version__
           assert paddle.__version__ == '3.2.2', paddle.__version__
           assert paddleocr.__version__ == '3.7.0', paddleocr.__version__
           assert torch.__version__.startswith('2.5.1'), torch.__version__
@@ -59,6 +63,8 @@ jobs:
               'python': sys.version.split()[0],
               'opencv': cv2.__version__,
               'opencv_distributions': opencv_dists,
+              'requests': requests.__version__,
+              'chardet': chardet.__version__,
               'paddle': paddle.__version__,
               'paddleocr': paddleocr.__version__,
               'torch': torch.__version__,
