@@ -55,12 +55,10 @@ jobs:
 
           css_path = Path("app/static/css/ui-system.css")
           css = css_path.read_text(encoding="utf-8")
-          if css.count(".app-shell {") != 1:
-              raise SystemExit("Unexpected .app-shell selector count")
-          start = css.index(".app-shell {")
-          end = css.find(".app-context {", start)
-          if end < 0:
-              raise SystemExit("Could not find live .app-context boundary after legacy block")
+          start = css.find(".app-shell {")
+          end = css.find(".app-context {", start + 1) if start >= 0 else -1
+          if start < 0 or end < 0 or end <= start:
+              raise SystemExit("Could not isolate pinned legacy UI CSS block")
           removed = css[start:end]
           required = (
               ".app-header {", ".app-brand-block {", ".workflow-steps {",
