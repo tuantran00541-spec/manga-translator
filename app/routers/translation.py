@@ -11,6 +11,7 @@ from app.manifest_utils import (
     save_manifest_raw,
     urlify_manifest,
 )
+from app.ocr.quality import should_block_translation
 from app.secret_store import SecretStoreUnavailable, get_deepseek_api_key
 from app.security import validate_chapter_id
 from app.text_objects import ensure_page_text_objects
@@ -67,6 +68,7 @@ async def translate_chapter(req: TranslateChapterRequest) -> dict:
     if not api_key:
         raise HTTPException(409, "DeepSeek API key is not configured")
 
+    skipped_ocr_reject = 0
     with get_manifest_lock(req.chapter_id):
         manifest = load_manifest_raw(req.chapter_id)
         ensured = False
@@ -82,6 +84,9 @@ async def translate_chapter(req: TranslateChapterRequest) -> dict:
                 source = str(obj.get("ocr_text") or "").strip()
                 current_translation = str(obj.get("translation") or "")
                 if not source or (current_translation.strip() and not req.force):
+                    continue
+                if should_block_translation(obj):
+                    skipped_ocr_reject += 1
                     continue
                 candidates.append(
                     {
@@ -104,6 +109,7 @@ async def translate_chapter(req: TranslateChapterRequest) -> dict:
         result["translation_run"] = {
             "translated": 0,
             "stale": 0,
+            "skipped_ocr_reject": skipped_ocr_reject,
             "model": translator.model,
             "estimated_cost_usd": 0.0,
             "budget_usd": req.budget_usd,
@@ -167,6 +173,7 @@ async def translate_chapter(req: TranslateChapterRequest) -> dict:
     result["translation_run"] = {
         "translated": committed,
         "stale": stale,
+        "skipped_ocr_reject": skipped_ocr_reject,
         "model": translated.model,
         "usage": translated.usage,
         "estimated_cost_usd": round(translated.estimated_cost_usd, 6),
