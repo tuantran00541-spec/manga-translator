@@ -15,8 +15,6 @@ docker-down:
 health:
 	curl -s http://127.0.0.1:8000/health | python -m json.tool
 
-# Production main intentionally carries runtime source only. Full regression and
-# browser suites are preserved on archive/main-tests-20260828 and feature branches.
 test:
 	python -m compileall -q app run.py
 
