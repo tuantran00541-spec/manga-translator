@@ -9,6 +9,7 @@ from typing import Any
 import cv2
 import numpy as np
 
+from app.env_utils import env_enabled
 from app.ocr.quality import classify_ocr_quality
 from app.ocr.reading_order import reconstruct_reading_order
 
@@ -25,13 +26,6 @@ class OCRReadResult:
     region_count: int
     quality: str = "unknown"
     quality_reason: str | None = None
-
-
-def _env_enabled(name: str, default: bool) -> bool:
-    value = os.getenv(name)
-    if value is None:
-        return default
-    return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _payload(result: Any) -> dict[str, Any]:
@@ -102,7 +96,7 @@ class PaddleV6OCR:
         # Text-line orientation adds another model/cold-start cost. Detector
         # crops are normally upright, so keep it opt-in and benchmark rotated
         # material separately before enabling it globally.
-        self.textline_orientation = _env_enabled(
+        self.textline_orientation = env_enabled(
             "MANGA_PPOCRV6_TEXTLINE_ORIENTATION", False
         )
         self._pipelines: dict[str, Any] = {}
