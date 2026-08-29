@@ -1,92 +1,50 @@
 from __future__ import annotations
 
-import os
 import threading
 
 import numpy as np
 from PIL import Image
 
 from app.ocr.paddle_v6 import OCRReadResult, PaddleV6OCR
-
-
-def _env_enabled(name: str, default: bool) -> bool:
-    value = os.getenv(name)
-    if value is None:
-        return default
-    return value.strip().lower() in {"1", "true", "yes", "on"}
-
-
-def _fallback_threshold() -> float:
-    try:
-        value = float(os.getenv("MANGA_OCR_JA_FALLBACK_CONFIDENCE", "0.55"))
-    except ValueError:
-        value = 0.55
-    return max(0.0, min(1.0, value))
+from app.ocr.quality import classify_ocr_quality
 
 
 class MultiLangOCR:
-    """Production OCR facade backed by PaddleOCR 3.x.
+    """Production OCR facade for manga/manhua/webtoon crops.
 
-    PP-OCRv6 small handles English, Chinese, and Japanese. Korean uses the
-    dedicated Korean PP-OCRv5 mobile recognizer behind the same PaddleOCR
-    detector. MangaOCR is retained only as a conservative Japanese safety
-    fallback while the Japanese holdout gate is still active.
+    Japanese stays on MangaOCR because the Japanese ground-truth gate still
+    shows materially better exact transcription there. English and Chinese use
+    PP-OCRv6; Korean uses the dedicated Korean PP-OCRv5 mobile recognizer behind
+    the same PaddleOCR 3.x detector.
     """
 
     def __init__(self):
         self._paddle = PaddleV6OCR()
         self._manga_ocr = None
         self._manga_lock = threading.RLock()
-        self._ja_fallback_enabled = _env_enabled("MANGA_OCR_JA_FALLBACK", True)
-        self._ja_fallback_threshold = _fallback_threshold()
 
     def read(self, image: np.ndarray, lang: str) -> str:
         return self.read_detailed(image, lang).text
 
     def read_detailed(self, image: np.ndarray, lang: str) -> OCRReadResult:
         if image is None or image.size == 0:
-            return OCRReadResult("", None, "none", "unknown", 0)
+            return OCRReadResult("", None, "none", "unknown", 0, "reject", "empty")
 
         normalized = (lang or "").strip().lower()
-        is_japanese = normalized in {"ja", "japan"}
-
-        try:
-            result = self._paddle.read(image, lang)
-        except Exception:
-            if not (is_japanese and self._ja_fallback_enabled):
-                raise
-            fallback = self._read_manga_ocr(image)
-            if not fallback:
-                raise
+        if normalized in {"ja", "japan"}:
+            text = self._read_manga_ocr(image)
+            quality = classify_ocr_quality(text, "ja", confidence=None)
             return OCRReadResult(
-                fallback,
-                None,
-                "manga-ocr-fallback",
-                "unknown",
-                1,
+                text=text,
+                confidence=None,
+                model="manga-ocr",
+                orientation="unknown",
+                region_count=1 if text else 0,
+                quality=quality.status,
+                quality_reason=quality.reason,
             )
 
-        if not (is_japanese and self._ja_fallback_enabled):
-            return result
-
-        should_fallback = (
-            not result.text
-            or result.confidence is None
-            or result.confidence < self._ja_fallback_threshold
-        )
-        if not should_fallback:
-            return result
-
-        fallback = self._read_manga_ocr(image)
-        if not fallback:
-            return result
-        return OCRReadResult(
-            fallback,
-            None,
-            "manga-ocr-fallback",
-            result.orientation,
-            result.region_count,
-        )
+        return self._paddle.read(image, lang)
 
     def _read_manga_ocr(self, image: np.ndarray) -> str:
         with self._manga_lock:
