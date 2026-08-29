@@ -14,6 +14,8 @@ import app.ocr.service as service_module
 from app.ocr.hybrid_service import HybridOCRService
 from app.ocr.paddle_v6 import OCRReadResult
 
+CHAPTER_ID = "deadbeef"
+
 
 class _FakePipeline:
     def __init__(self) -> None:
@@ -120,10 +122,10 @@ def main() -> int:
 
         with ThreadPoolExecutor(max_workers=2) as executor:
             dark_future = executor.submit(
-                service.inspect_box_id, "sanity", 0, "dark", "en"
+                service.inspect_box_id, CHAPTER_ID, 0, "dark", "en"
             )
             light_future = executor.submit(
-                service.inspect_box_id, "sanity", 0, "light", "en"
+                service.inspect_box_id, CHAPTER_ID, 0, "light", "en"
             )
             dark = dark_future.result(timeout=10)
             light = light_future.result(timeout=10)
@@ -150,8 +152,8 @@ def main() -> int:
 
         # Second pass must use the persisted machine cache and must not invoke
         # the engine or another manifest sync.
-        dark_cached = service.inspect_box_id("sanity", 0, "dark", "en")
-        light_cached = service.inspect_box_id("sanity", 0, "light", "en")
+        dark_cached = service.inspect_box_id(CHAPTER_ID, 0, "dark", "en")
+        light_cached = service.inspect_box_id(CHAPTER_ID, 0, "light", "en")
         assert dark_cached["cached"] and light_cached["cached"]
         assert dark_cached["model"] == "fake-dark"
         assert light_cached["model"] == "fake-light"
