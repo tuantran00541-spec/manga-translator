@@ -1,0 +1,51 @@
+name: Research OCR Python 3.12 compatibility
+
+on:
+  push:
+    branches:
+      - feat/ppocrv6-runtime-migration
+    paths:
+      - .github/workflows/research-ocr-python312.yml
+      - requirements.txt
+      - Dockerfile
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  python312-ocr-deps:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install production OCR dependency pins
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install \
+            "numpy==1.26.4" \
+            "opencv-python-headless==4.10.0.84" \
+            "paddlepaddle==3.2.2" \
+            "paddleocr==3.7.0"
+
+      - name: Import OCR runtime on Python 3.12
+        run: |
+          python - <<'PY'
+          import sys
+          import cv2
+          import numpy
+          import paddle
+          import paddleocr
+          print("PY312_OCR_RUNTIME", {
+              "python": sys.version,
+              "numpy": numpy.__version__,
+              "opencv": cv2.__version__,
+              "paddle": paddle.__version__,
+              "paddleocr": paddleocr.__version__,
+          })
+          PY
