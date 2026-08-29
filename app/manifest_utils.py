@@ -322,9 +322,13 @@ def save_manifest_raw(chapter_id: str, manifest: dict) -> None:
 
     tmp_path = processed_dir / f"manifest.json.{uuid.uuid4().hex}.tmp"
     final_path = processed_dir / "manifest.json"
-    tmp_path.write_text(
-        json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
+    with tmp_path.open("w", encoding="utf-8") as output:
+        json.dump(
+            manifest,
+            output,
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
     os.replace(tmp_path, final_path)
 
 
