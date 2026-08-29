@@ -1,4 +1,4 @@
-/* v0.3 workstation shell. Stage-specific legacy CSS remains during migration. */
+
 body {
   margin: 0;
   padding: 0;
@@ -165,7 +165,7 @@ body {
   font: 500 10px/1.2 var(--font-mono);
 }
 
-/* Landing: quieter hierarchy, fewer decorative surfaces. */
+
 #landing-view {
   width: min(100%, 1180px);
   margin: 0 auto;
@@ -300,7 +300,7 @@ body {
   .workbench-title-block .app-context { display: none; }
 }
 
-/* Process workspace migration: shared page navigator + canvas + inspector. */
+
 .process-workspace {
   gap: 0;
 }
@@ -419,7 +419,7 @@ body {
   }
 }
 
-/* Review workspace: page navigator left, canvas center, task/QC inspector right. */
+
 .review-workspace-shell {
   width: 100%;
   max-width: none;
@@ -520,7 +520,7 @@ body {
   }
 }
 
-/* Editor workspace: reuse the same page navigator and contextual right inspector. */
+
 .translation-workspace {
   max-width: none;
   width: 100%;

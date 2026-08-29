@@ -517,7 +517,7 @@ body.settings-open {
   border: 1px solid transparent;
 }
 
-/* Review workspace */
+
 .review-workspace-shell {
   width: min(100%, 1120px);
   gap: 12px;
@@ -667,7 +667,7 @@ body.settings-open {
   backdrop-filter: blur(1.5px);
 }
 
-/* Editor */
+
 .translation-workspace {
   max-width: 1320px;
   margin: 0 auto;
@@ -709,7 +709,7 @@ body.settings-open {
   border-radius: 10px;
 }
 
-/* Settings */
+
 .settings-backdrop {
   position: fixed;
   inset: 0;
