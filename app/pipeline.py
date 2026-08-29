@@ -80,16 +80,6 @@ def _encode_mask(mask: np.ndarray | None) -> str | None:
     return base64.b64encode(buf.tobytes()).decode("ascii")
 
 
-def _decode_mask(mask_b64: str | None) -> np.ndarray | None:
-    if not mask_b64:
-        return None
-    try:
-        raw = base64.b64decode(mask_b64)
-    except (ValueError, TypeError):
-        return None
-    arr = np.frombuffer(raw, dtype=np.uint8)
-    return cv2.imdecode(arr, cv2.IMREAD_GRAYSCALE)
-
 
 _TEXT_OBJECT_STYLE_KEYS = {
     "color", "font", "fontSize", "bold",
@@ -370,8 +360,6 @@ class ChapterPipeline:
         if box.safe_to_inpaint and (
             clipped_mask is None or not np.any(clipped_mask > 0)
         ):
-            # Never turn a safe segmentation proposal whose actual pixels were
-            # clipped away into a destructive rectangle.
             return None
 
         return replace(
@@ -415,8 +403,6 @@ class ChapterPipeline:
                 source_page = int(stitch_core.get("source_page", -1))
             except (TypeError, ValueError):
                 source_page = -1
-            # source_page is normally stored on the page rather than inside
-            # stitch_core; process_pages adds it below for this scheduling pass.
             if source_page < 0:
                 try:
                     source_page = int(stitch_core["_source_page"])
@@ -465,8 +451,6 @@ class ChapterPipeline:
                     raise ValueError("empty seam detector strip")
                 seam_image = provider_image[seam_local_y1:seam_local_y2, :]
                 seam_source_y1 = provider_source_y1 + seam_local_y1
-                # Seam discovery completes before page workers start, so use the
-                # otherwise-idle bubble/text model concurrency without nesting it.
                 seam_boxes = self.detector.detect(seam_image, parallel=True)
             except Exception as exc:
                 logger.warning(
@@ -782,10 +766,6 @@ class ChapterPipeline:
             if page.get("rendered"):
                 continue
 
-            # OUTPUT_DIR contains committed translation renders only. Before text
-            # rendering, /api/image and /api/download already fall back to the
-            # canonical clean/original image, so copying clean PNGs here only
-            # duplicates disk usage and can leave stale output artifacts behind.
             target_path = out_dir / f"page_{i:03d}.png"
             try:
                 if target_path.exists():
@@ -988,9 +968,6 @@ class ChapterPipeline:
             image = read_image(img_path)
             img_h, img_w = image.shape[:2]
 
-            # If this is the first manual/Gemini repaint, the existing clean image
-            # is already the automatic inpaint baseline. Seed the cache by copying
-            # it instead of running all automatic LaMa regions again.
             auto_clean_path = self._auto_clean_path(processed_dir, img_path)
             if not auto_clean_path.exists() and not manual_mask_posix:
                 clean_posix = page.get("clean")
@@ -1383,10 +1360,6 @@ class ChapterPipeline:
             if core_y2 > core_y1:
                 core_bounds = (core_y1, core_y2)
 
-        # Preserve the existing full-slice geometry on Asura's final source tail.
-        # Its credit/watermark safety heuristics are relative to image height, so
-        # cropping that one page would change a review-only classification rule for
-        # negligible throughput benefit. All ordinary slices use their owned core.
         use_core_detector = (
             core_bounds is not None
             and core_bounds != (0, image.shape[0])
@@ -1402,8 +1375,6 @@ class ChapterPipeline:
         else:
             detected = self.detector.detect(image, **detector_kwargs)
 
-        # A protected final tail already used the full physical slice, including
-        # its overlap. Do not append the shared seam copy a second time.
         if supplemental_detections and not protect_tail_credits:
             detected = CombinedTextDetector._apply_final_nms(
                 detected + list(supplemental_detections), iou_threshold=0.35
@@ -1485,7 +1456,7 @@ class ChapterPipeline:
             box_w = int(old.get("x2", 0)) - int(old.get("x1", 0))
             if box_h <= 0 or box_w <= 0:
                 continue
-            mask_arr = _decode_mask(old.get("mask"))
+            mask_arr = decode_mask_value(old.get("mask"))
             if mask_arr is not None and mask_arr.shape != (box_h, box_w):
                 try:
                     mask_arr = cv2.resize(mask_arr, (box_w, box_h), interpolation=cv2.INTER_NEAREST)
@@ -1498,9 +1469,6 @@ class ChapterPipeline:
 
         clean_image = self.inpainter.inpaint(image, effective_boxes)
 
-        # Never mutate the canonical auto-clean cache inside a worker. The page
-        # may change while detection/inpaint is running; write a job-local cache
-        # candidate and only promote it after the processing-state check passes.
         auto_clean_path = self._auto_clean_path(processed_dir, img_path)
         manual_mask_path = processed_dir / f"manual_mask_{img_path.name}"
         tmp_auto_clean_path = None

@@ -101,8 +101,6 @@ class CombinedTextDetector:
                 )
                 used_text_boxes.update(i for i, _ in inside)
             else:
-                 # Keep low-confidence bubble/free-text proposals visible, but
-                # never promote proposal geometry to a destructive mask.
                 result_boxes.append(replace(b, safe_to_inpaint=False, ocr_eligible=False, needs_review=True))
 
         standalone = [t for i, t in enumerate(text_boxes) if i not in used_text_boxes]

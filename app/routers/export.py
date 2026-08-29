@@ -267,10 +267,6 @@ def export_chapter(chapter_id: str):
                 )
                 archive.writestr(f"page_{output_index:03d}.png", payload)
 
-        # Stitching/PNG encoding can take seconds for a long webtoon.  Do that
-        # work without blocking every editor/OCR/render request on the manifest
-        # lock, then take the lock only for a final identity check and atomic
-        # publish of the archive.
         with get_manifest_lock(chapter_id):
             if not _export_snapshot_is_current(chapter_id, snapshot):
                 raise HTTPException(

@@ -75,10 +75,6 @@ def download_chapter(chapter_url: str, output_dir: Path) -> list[Path]:
     js_urls: list[str] = []
 
     if is_asura_chapter_page(chapter_url):
-        # Asura's static adapter is provenance-scoped to /asura-images/chapters/
-        # and only accepts a contiguous Page 1..N sequence.  When it finds two
-        # or more pages we already have strong reader-specific evidence, so do
-        # not pay the several-second Chromium startup/scroll cost as well.
         try:
             static_urls = ASURA_STATIC_ADAPTER.extract_image_urls(chapter_url)
         except Exception:
@@ -93,8 +89,6 @@ def download_chapter(chapter_url: str, output_dir: Path) -> list[Path]:
                 js_urls = []
             selected = js_urls or static_urls
     else:
-        # Generic pages are less trustworthy: large site images can look like
-        # reader content, so keep the JS discovery comparison for correctness.
         try:
             static_urls = STATIC_ADAPTER.extract_image_urls(chapter_url)
         except Exception:

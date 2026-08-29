@@ -132,7 +132,6 @@ class SecondaryTextRecovery:
             if rank[ra] == rank[rb]:
                 rank[ra] += 1
 
-        # Spatial buckets keep this near-linear despite thousands of MSER boxes.
         cell = 64
         grid: dict[tuple[int, int], list[int]] = {}
         for i, rect in enumerate(rects):
@@ -163,8 +162,6 @@ class SecondaryTextRecovery:
                 continue
             if bh > h * 0.12 or (bw * bh) > page_area * 0.05:
                 continue
-            # A line-like proposal should be wider than tall.  This rejects
-            # most character/body texture groups while keeping words/titles.
             if bw / max(1.0, float(bh)) < 1.8:
                 continue
 
@@ -179,8 +176,6 @@ class SecondaryTextRecovery:
             )
             if any(cls._iou(candidate, box) > 0.25 for box in existing):
                 continue
-            # Also ignore a line whose centre is already covered by a verified
-            # detector region; low IoU alone is insufficient for nested boxes.
             cx, cy = (px1 + px2) / 2.0, (py1 + py2) / 2.0
             if any(
                 box.safe_to_inpaint
@@ -282,10 +277,6 @@ class SecondaryTextRecovery:
                 candidate = replace(candidate, semantic_type="watermark", class_name="watermark")
             out.append(candidate)
 
-        # Run the residual verifier only when the page would otherwise be an
-        # all-safe/verified page.  Pages that already contain a review proposal
-        # cannot become a silent verified miss, so extra MSER texture proposals
-        # would only add noise and CPU cost.
         verification_set = existing + out
         if verification_set and all(
             box.safe_to_inpaint and not box.needs_review for box in verification_set

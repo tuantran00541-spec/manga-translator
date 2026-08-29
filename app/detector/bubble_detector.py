@@ -50,10 +50,6 @@ class YoloDetector:
     def __init__(self, model_path, conf_threshold: float, use_tta: bool | None = None):
         self.model_path = str(model_path)
         self.source_model = Path(model_path).name
-        # Detector sessions are safe to run concurrently and the bounded
-        # two-page scheduler benefits substantially from overlapping them.
-        # Leave serialization at the ORT default so the existing
-        # MANGA_ORT_SERIALIZE_INFERENCE environment switch remains a rollback.
         self.session = make_session(model_path)
         self.input_name = self.session.get_inputs()[0].name
         self.conf_threshold = conf_threshold
@@ -106,12 +102,6 @@ class YoloDetector:
                     break
                 y += step
 
-            # Tall webtoon slices need one global text-segmentation view in
-            # addition to the local 1024px windows. A glyph can sit just
-            # outside the highest-confidence window proposal even though the
-            # same model sees it in full-page context. Keep this restricted
-            # to the segmentation model: the extra pass supplies pixel-mask
-            # evidence only; it never turns proposal geometry into a mask.
             if "text_segmenter" in self.source_model.lower():
                 all_boxes.extend(self._detect_single_plain(image, 0, 0))
 

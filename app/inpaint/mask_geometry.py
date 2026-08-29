@@ -76,8 +76,5 @@ def reconcile_detector_geometry_override(new_box: dict, existing_box: dict) -> b
     anchor = existing_box.get("detector_anchor")
     new_box["detector_anchor"] = copy.deepcopy(anchor if isinstance(anchor, dict) else source_geometry)
 
-    # ``_process_page`` builds old_by_id from this job-local existing_boxes copy
-    # after stable ID assignment. Neutralize only that legacy branch so it cannot
-    # replace the remapped mask with None.
     existing_box["geometry_overridden"] = False
     return True

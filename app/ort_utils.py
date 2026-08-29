@@ -10,10 +10,6 @@ _THREAD_ENV = "MANGA_ORT_INTRA_OP_THREADS"
 _CPU_ARENA_ENV = "MANGA_ORT_CPU_MEM_ARENA"
 _MEM_PATTERN_ENV = "MANGA_ORT_MEM_PATTERN"
 _SERIALIZE_ENV = "MANGA_ORT_SERIALIZE_INFERENCE"
-# Heavy page processing can overlap detector and dynamic-LaMa inference.  Letting
-# each ORT session claim all logical cores makes an 8C/16T Windows machine run
-# two 8-thread kernels at once and often slows the chapter down.  Four threads
-# per session leaves enough headroom for the bounded two-page pipeline.
 _DEFAULT_HIGH_CPU_THREADS = 4
 _ORT_INFERENCE_LOCK = threading.RLock()
 

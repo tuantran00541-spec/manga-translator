@@ -91,9 +91,6 @@ class RequestSizeLimitMiddleware:
             if message.get("type") == "http.request":
                 received += len(message.get("body", b""))
                 if received > limit:
-                    # Request parsing happens inside Starlette's ExceptionMiddleware,
-                    # so an HTTPException here becomes the intended 413 response even
-                    # for chunked bodies without a Content-Length header.
                     raise HTTPException(status_code=413, detail="Request too large")
             return message
 

@@ -114,7 +114,4 @@ class AsuraScansJsAdapter(GenericJsAdapter):
     def extract_image_urls(self, chapter_url: str) -> list[str]:
         if not self.can_handle(chapter_url):
             return []
-        # GenericJsAdapter preserves DOM order.  The selector removes site UI,
-        # avatars and comment media; asset provenance is a second independent
-        # guard against unrelated page-labelled images.
         return filter_asura_chapter_assets(super().extract_image_urls(chapter_url))

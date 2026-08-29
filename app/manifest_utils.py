@@ -307,9 +307,6 @@ def save_manifest_raw(chapter_id: str, manifest: dict) -> None:
     processed_dir = PROCESSED_DIR / chapter_id
     processed_dir.mkdir(parents=True, exist_ok=True)
 
-    # Only pages that still contain inline/legacy masks need sidecar work. Normal
-    # OCR/draft/editor saves therefore stay O(number of boxes) in memory and avoid
-    # reopening every mask directory in a 100-300 slice chapter.
     for page_index, page in enumerate(manifest.get("pages", [])):
         if not isinstance(page, dict):
             continue
@@ -332,10 +329,6 @@ def save_manifest_raw(chapter_id: str, manifest: dict) -> None:
 
 
 def urlify_manifest(manifest: dict) -> dict:
-    # ``json.loads(json.dumps(...))`` used to duplicate every base64 segmentation
-    # mask just to remove it from the API response a few lines later.  A deep
-    # copy keeps the same isolation semantics without serializing large strings;
-    # immutable mask strings are shared until the copied box drops the key.
     result = copy.deepcopy(manifest)
     chapter_id = result["chapter_id"]
     for i, page in enumerate(result["pages"]):

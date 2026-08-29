@@ -133,8 +133,6 @@ def externalize_page_masks(
             if existing is not None and existing.is_file() and not existing.is_symlink():
                 live_paths.add(existing)
             else:
-                # A broken reference must fail safe: no segmentation evidence is
-                # preferable to silently treating geometry as a destructive mask.
                 box["mask"] = None
             continue
 

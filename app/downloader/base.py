@@ -55,10 +55,6 @@ class BaseAdapter(ABC):
                 self._download_file(img_url, out_path, referer=referer)
             return [path for _url, path in work]
 
-        # Image downloads are network-bound and independent.  A small bounded
-        # pool hides per-request latency without opening enough simultaneous
-        # connections to look like an aggressive crawler.  Results remain in
-        # chapter order because output paths are assigned before scheduling.
         with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="chapter-download") as pool:
             futures = {
                 pool.submit(self._download_file, img_url, out_path, referer): out_path

@@ -34,9 +34,6 @@ INPAINT_SIZE = 512
 SLICE_TARGET_HEIGHT = 1400
 SLICE_SEARCH_WINDOW = 180
 SLICE_MIN_HEIGHT = 500
-# Keep each emitted slice within the detector's single-pass vertical limit.
-# This prevents long webtoon pages from falling back to many internal 1024px
-# detector passes when no perfectly blank cut row exists.
 SLICE_MAX_HEIGHT = 1536
 
 DEFAULT_FONT = BASE_DIR / "app" / "static" / "fonts" / "default.ttf"

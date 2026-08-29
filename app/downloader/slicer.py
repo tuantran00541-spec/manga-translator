@@ -18,9 +18,6 @@ from app.config import (
 SAFE_CUT_BAND = 12
 MAX_SAFE_SEARCH_EXPANSION = 360
 FALLBACK_BAND = 18
-# 384px is large enough to retain full detector context for the real 002.webp
-# speech bubble that spans ~321px above an unsafe core boundary.  The overlap
-# is detector-only; stitch ownership remains the non-overlapping core.
 OVERLAP_CONTEXT = 384
 
 
@@ -37,8 +34,6 @@ def slice_image(image_path: Path, out_dir: Path, prefix: str, *, return_metadata
         return [image_path] if not return_metadata else [{"path": image_path}]
 
     h, w = image.shape[:2]
-    # Slices are internal detector inputs. Use PNG lossless to avoid repeated
-    # WebP re-encoding artifacts and libwebp encoder retention on long chapters.
     ext = ".png"
 
     def save_segment(path: Path, seg: np.ndarray):
@@ -127,8 +122,6 @@ def _find_cut_rows(
         chunks = max(2, math.ceil(remaining / SLICE_MAX_HEIGHT))
         chunks_after = chunks - 1
 
-        # Current segment must leave enough (and not too much) height for the
-        # remaining chunks. This is what prevents a final 7k tail.
         min_len = max(
             SLICE_MIN_HEIGHT,
             remaining - chunks_after * SLICE_MAX_HEIGHT,
@@ -138,7 +131,6 @@ def _find_cut_rows(
             remaining - chunks_after * SLICE_MIN_HEIGHT,
         )
         if min_len > max_len:
-            # Defensive fallback for unusual user-configured constants.
             min_len = min(SLICE_MIN_HEIGHT, SLICE_MAX_HEIGHT)
             max_len = SLICE_MAX_HEIGHT
 
@@ -168,14 +160,9 @@ def _find_cut_rows(
             )
 
         if cut is None:
-            # Dense artwork can legitimately have no completely blank band.
-            # Pick the least-content local band instead of giving up and
-            # passing the entire long page into the detector.
             cut = _find_low_content_cut(scores, expanded_lo, expanded_hi, target, unsafe_rows)
 
         if cut is None or cut <= y or cut >= h:
-            # Should be unreachable with sane constants, but avoids a loop if
-            # configuration is malformed.
             cut = min(h - 1, y + SLICE_MAX_HEIGHT)
             if cut <= y:
                 break
@@ -247,8 +234,6 @@ def _find_low_content_cut(
     if lo > hi:
         return None
 
-    # Mean content score in a small vertical band. Using an integral sum keeps
-    # this O(number of rows), even for 16k+ webtoons.
     radius = FALLBACK_BAND
     padded = np.pad(scores.astype(np.float64), (1, 0), mode="constant")
     integral = np.cumsum(padded)
@@ -257,9 +242,6 @@ def _find_low_content_cut(
     ends = rows + radius + 1
     band_score = (integral[ends] - integral[starts]) / float(2 * radius + 1)
 
-    # First choose genuinely low-content candidates, then prefer the one near
-    # the balanced target. This prevents a tiny visual-score improvement from
-    # creating very uneven chunks.
     best = float(np.min(band_score))
     tolerance = max(1.0, abs(best) * 0.08)
     low_content = rows[band_score <= best + tolerance]
@@ -275,7 +257,6 @@ def _find_low_content_cut(
     if nearest.size == 1:
         return int(nearest[0])
 
-    # Tie-break by exact local score.
     idx = np.searchsorted(rows, nearest)
     return int(nearest[int(np.argmin(band_score[idx]))])
 
