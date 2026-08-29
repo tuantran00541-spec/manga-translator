@@ -1,19 +1,16 @@
 from pathlib import Path
-import copy
 import cv2
 import numpy as np
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.concurrency import run_in_threadpool
-from app.dependencies import ocr, pipeline
+from app.dependencies import pipeline
 from app.logging_config import logger
 from app.manifest_utils import get_manifest_lock, invalidate_page_render, load_manifest_raw, save_manifest_raw, urlify_manifest
-from app.pipeline import _decode_mask, read_image
+from app.pipeline import read_image
 from app.schemas import (
     AddBoxRequest,
     CreateTextObjectRequest,
     DeleteTextObjectRequest,
-    OcrBoxRequest,
-    OcrTextObjectRequest,
     RemoveBoxRequest,
     ResetManualMaskRequest,
     SaveDraftRequest,
@@ -281,200 +278,6 @@ def delete_text_object(req: DeleteTextObjectRequest) -> dict:
             req.chapter_id, req.page_index, req.id, exc, exc_info=True,
         )
         raise HTTPException(500, f"Delete text object failed: {exc}") from exc
-
-
-@router.post("/text_object/ocr")
-async def text_object_ocr(req: OcrTextObjectRequest) -> dict:
-    validate_chapter_id(req.chapter_id)
-    try:
-        manifest = await run_in_threadpool(
-            _group_text_object_ocr, req.chapter_id, req.page_index, req.id, req.lang
-        )
-        return urlify_manifest(manifest)
-    except ValueError as exc:
-        logger.error(
-            "Chapter %s page %s object %s operation 'text_object_ocr' invalid value: %s",
-            req.chapter_id, req.page_index, req.id, exc,
-        )
-        raise HTTPException(400, str(exc)) from exc
-    except Exception as exc:
-        logger.error(
-            "Chapter %s page %s object %s operation 'text_object_ocr' failed: %s",
-            req.chapter_id, req.page_index, req.id, exc, exc_info=True,
-        )
-        raise HTTPException(500, f"Text object OCR failed: {exc}") from exc
-
-
-def _region_overlaps_box(region: dict, box: dict) -> bool:
-    if not box:
-        return False
-    bx = (box.get("x1", 0) + box.get("x2", 0)) / 2
-    by = (box.get("y1", 0) + box.get("y2", 0)) / 2
-    rx1, ry1 = region.get("x1", 0), region.get("y1", 0)
-    rx2, ry2 = region.get("x2", 0), region.get("y2", 0)
-    if rx1 <= bx <= rx2 and ry1 <= by <= ry2:
-        return True
-    ix1 = max(rx1, box.get("x1", 0))
-    iy1 = max(ry1, box.get("y1", 0))
-    ix2 = min(rx2, box.get("x2", 0))
-    iy2 = min(ry2, box.get("y2", 0))
-    return ix2 > ix1 and iy2 > iy1
-
-
-def _group_text_object_ocr(chapter_id: str, page_index: int, text_object_id: str, lang: str) -> dict:
-    with get_manifest_lock(chapter_id):
-        manifest = load_manifest_raw(chapter_id)
-        pages = manifest.get("pages", [])
-        if page_index < 0 or page_index >= len(pages):
-            raise ValueError(f"Invalid page index {page_index}")
-        page = pages[page_index]
-        obj = next(
-            (o for o in (page.get("text_objects") or []) if o.get("id") == text_object_id),
-            None,
-        )
-        if obj is None:
-            raise ValueError(f"Text object not found {text_object_id!r}")
-        region = copy.deepcopy(obj.get("region") or {})
-        ocr_text_snapshot = obj.get("ocr_text") or ""
-        boxes = copy.deepcopy(page.get("boxes", []))
-        img_path = Path(page["original"])
-        original_snapshot = page.get("original")
-
-    image = read_image(img_path)
-    overlap = [
-        i for i, b in enumerate(boxes)
-        if not b.get("removed") and _region_overlaps_box(region, b)
-    ]
-    overlap.sort(key=lambda i: (boxes[i].get("y1", 0), boxes[i].get("x1", 0)))
-
-    texts_by_idx: dict[int, str] = {}
-    combined_parts: list[str] = []
-    for i in overlap:
-        b = boxes[i]
-        cached = b.get("ocr_text")
-        if cached and b.get("ocr_lang") == lang:
-            t = cached
-        else:
-            crop = _ocr_crop_from_box(image, b)
-            t = ocr.read(cv2.cvtColor(crop, cv2.COLOR_BGR2RGB), lang) if crop.size else ""
-        texts_by_idx[i] = t
-        if t:
-            combined_parts.append(t)
-    combined = "\n".join(combined_parts)
-
-    with get_manifest_lock(chapter_id):
-        manifest = load_manifest_raw(chapter_id)
-        pages = manifest.get("pages", [])
-        if 0 <= page_index < len(pages):
-            page = pages[page_index]
-            obj = next(
-                (o for o in (page.get("text_objects") or []) if o.get("id") == text_object_id),
-                None,
-            )
-            if obj is not None:
-                cur_boxes = page.get("boxes", [])
-                stale = (
-                    page.get("original") != original_snapshot
-                    or obj.get("region") != region
-                    or (obj.get("ocr_text") or "") != ocr_text_snapshot
-                    or cur_boxes != boxes
-                )
-                if stale:
-                    logger.warning(
-                        "Chapter %s page %s object %s: OCR result became stale; keeping newer user/page state",
-                        chapter_id,
-                        page_index,
-                        text_object_id,
-                    )
-                    return manifest
-
-                obj["source_boxes"] = [str(cur_boxes[i]["id"]) for i in overlap if 0 <= i < len(cur_boxes)]
-                obj["ocr_text"] = combined
-                for i in overlap:
-                    if 0 <= i < len(cur_boxes):
-                        cur_boxes[i]["ocr_text"] = texts_by_idx.get(i, "")
-                        cur_boxes[i]["ocr_lang"] = lang
-                save_manifest_raw(chapter_id, manifest)
-    return manifest
-
-
-def _ocr_crop_from_box(image: np.ndarray, box: dict) -> np.ndarray:
-    h, w = image.shape[:2]
-    bx1, by1, bx2, by2 = map(int, (box["x1"], box["y1"], box["x2"], box["y2"]))
-    bx1, by1 = max(0, min(w, bx1)), max(0, min(h, by1))
-    bx2, by2 = max(bx1, min(w, bx2)), max(by1, min(h, by2))
-    if bx2 <= bx1 or by2 <= by1:
-        return image[0:0, 0:0]
-    mask = _decode_mask(box.get("mask"))
-    expected_shape = (by2 - by1, bx2 - bx1)
-    if mask is not None and mask.shape == expected_shape:
-        ys, xs = np.where(mask > 127)
-        if xs.size and ys.size:
-            pad = 12
-            x1 = max(bx1, bx1 + int(xs.min()) - pad)
-            y1 = max(by1, by1 + int(ys.min()) - pad)
-            x2 = min(bx2, bx1 + int(xs.max()) + 1 + pad)
-            y2 = min(by2, by1 + int(ys.max()) + 1 + pad)
-            if x2 > x1 and y2 > y1:
-                return image[y1:y2, x1:x2]
-    pad = 20
-    return image[max(0, by1 - pad):min(h, by2 + pad), max(0, bx1 - pad):min(w, bx2 + pad)]
-
-
-@router.post("/ocr_box")
-def ocr_box(req: OcrBoxRequest) -> dict:
-    validate_chapter_id(req.chapter_id)
-    with get_manifest_lock(req.chapter_id):
-        manifest = load_manifest_raw(req.chapter_id)
-        pages = manifest.get("pages", [])
-        if req.page_index < 0 or req.page_index >= len(pages):
-            raise HTTPException(400, f"Invalid page_index: {req.page_index}")
-        page = pages[req.page_index]
-        boxes = page.get("boxes", [])
-        if req.box_index < 0 or req.box_index >= len(boxes):
-            raise HTTPException(400, f"Invalid box_index: {req.box_index}")
-        box_snapshot = copy.deepcopy(boxes[req.box_index])
-        img_path = Path(page["original"])
-
-    if not img_path.is_file():
-        raise HTTPException(404, f"Original page image not found: page_{req.page_index:03d}")
-
-    try:
-        image = read_image(img_path)
-        crop = _ocr_crop_from_box(image, box_snapshot)
-        text = ocr.read(cv2.cvtColor(crop, cv2.COLOR_BGR2RGB), req.lang)
-    except Exception as e:
-        logger.error(
-            "Chapter %s page %s box %s operation 'ocr_box' failed: %s",
-            req.chapter_id,
-            req.page_index,
-            req.box_index,
-            e,
-            exc_info=True,
-        )
-        raise HTTPException(500, f"OCR failed: {e}") from e
-
-    with get_manifest_lock(req.chapter_id):
-        manifest = load_manifest_raw(req.chapter_id)
-        if (
-            0 <= req.page_index < len(manifest.get("pages", []))
-            and 0 <= req.box_index < len(manifest["pages"][req.page_index].get("boxes", []))
-        ):
-            target = manifest["pages"][req.page_index]["boxes"][req.box_index]
-            if (
-                target.get("x1") == box_snapshot.get("x1")
-                and target.get("y1") == box_snapshot.get("y1")
-                and target.get("x2") == box_snapshot.get("x2")
-                and target.get("y2") == box_snapshot.get("y2")
-                and not target.get("removed", False)
-            ):
-                target["ocr_text"] = text
-                target["ocr_lang"] = req.lang
-                invalidate_page_render(manifest, req.page_index)
-                save_manifest_raw(req.chapter_id, manifest)
-                pipeline._sync_output_dir(req.chapter_id, manifest, [req.page_index])
-
-    return {"text": text, "lang": req.lang}
 
 
 @router.post("/save_draft")
