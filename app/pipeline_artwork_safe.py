@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import copy
+import os
+import uuid
 from pathlib import Path
 
+import cv2
 import numpy as np
 
 from app.config import PROCESSED_DIR
+from app.detector.bubble_detector import BubbleBox
 from app.inpaint.mask_geometry import geometry_dict, remap_local_mask_page_space
 from app.manifest_utils import (
     bump_page_revision,
@@ -15,24 +19,18 @@ from app.manifest_utils import (
     load_manifest_raw,
     save_manifest_raw,
 )
-from app.pipeline import ChapterPipeline, _decode_mask, _encode_mask, read_image
+from app.mask_store import decode_mask_value
+from app.pipeline import ChapterPipeline, _encode_mask, read_image, write_image
 
 
 class ArtworkSafeChapterPipeline(ChapterPipeline):
-    """Chapter pipeline with geometry-safe detector-mask editing.
-
-    The base pipeline historically dropped detector segmentation whenever a user
-    edited the detector rectangle. That forced later cleanup into a destructive
-    rectangle fallback. This override changes only ``update_box``: the existing
-    mask is kept in page coordinates and cropped into the edited geometry.
-    Re-detection/reprocessing is handled by the shared stable-ID reconciliation in
-    ``manifest_utils`` so fresh detector masks follow the same rule.
-    """
+    """Chapter pipeline with geometry-safe detector-mask editing and repainting."""
 
     @staticmethod
     def _apply_box_geometry(box: dict, new_geometry: dict[str, int]) -> None:
+        """Geometry-safe edit that understands legacy and sidecar detector masks."""
         source_geometry = geometry_dict(box)
-        source_mask = _decode_mask(box.get("mask"))
+        source_mask = decode_mask_value(box.get("mask"))
         detector_origin = box.get("origin") == "detector" and not box.get("manual")
 
         if detector_origin:
@@ -40,9 +38,11 @@ class ArtworkSafeChapterPipeline(ChapterPipeline):
                 box["detector_anchor"] = copy.deepcopy(source_geometry)
             box["geometry_overridden"] = True
 
-        remapped = remap_local_mask_page_space(
-            source_mask, source_geometry, new_geometry
-        ) if source_mask is not None else None
+        remapped = (
+            remap_local_mask_page_space(source_mask, source_geometry, new_geometry)
+            if source_mask is not None
+            else None
+        )
 
         box.update(new_geometry)
         if remapped is None or not np.any(remapped > 127):
@@ -51,7 +51,95 @@ class ArtworkSafeChapterPipeline(ChapterPipeline):
             # rectangle, and a later detector pass can recover a fresh mask.
             box["mask"] = None
         else:
+            # Geometry edits are comparatively rare. Keep the freshly remapped
+            # mask inline for this transaction; the next processing commit moves
+            # it back to a sidecar.
             box["mask"] = _encode_mask(remapped)
+
+    def _do_reinpaint(
+        self,
+        processed_dir: Path,
+        img_path: Path,
+        image: np.ndarray,
+        boxes: list[dict],
+        manual_mask_posix: str | None = None,
+        *,
+        reuse_auto_clean: bool = False,
+        apply_manual_mask: bool = True,
+    ) -> str:
+        """Repaint using masks stored inline or in managed PNG sidecars."""
+        boxes_objects = []
+        for box in boxes:
+            if box.get("removed"):
+                continue
+            box_h = int(box["y2"]) - int(box["y1"])
+            box_w = int(box["x2"]) - int(box["x1"])
+            mask_arr = decode_mask_value(box.get("mask"))
+            if mask_arr is not None and mask_arr.shape != (box_h, box_w):
+                try:
+                    mask_arr = cv2.resize(
+                        mask_arr,
+                        (box_w, box_h),
+                        interpolation=cv2.INTER_NEAREST,
+                    )
+                except Exception:
+                    mask_arr = None
+            boxes_objects.append(
+                BubbleBox(
+                    box["x1"],
+                    box["y1"],
+                    box["x2"],
+                    box["y2"],
+                    box.get("confidence", 1.0),
+                    mask_arr,
+                )
+            )
+
+        clean_image = None
+        if reuse_auto_clean:
+            clean_image = self._load_auto_clean_cache(
+                processed_dir, img_path, image.shape[:2]
+            )
+
+        if clean_image is None:
+            clean_image = self.inpainter.inpaint(image, boxes_objects)
+            self._write_auto_clean_cache(processed_dir, img_path, clean_image)
+        else:
+            clean_image = clean_image.copy()
+
+        manual_mask_path = (
+            Path(manual_mask_posix)
+            if manual_mask_posix
+            else processed_dir / f"manual_mask_{img_path.name}"
+        )
+        if apply_manual_mask and manual_mask_path.exists():
+            raw = np.fromfile(str(manual_mask_path), dtype=np.uint8)
+            manual_mask = cv2.imdecode(raw, cv2.IMREAD_GRAYSCALE)
+            if manual_mask is not None and np.any(manual_mask > 10):
+                h, w = clean_image.shape[:2]
+                if manual_mask.shape[:2] != (h, w):
+                    try:
+                        manual_mask = cv2.resize(
+                            manual_mask,
+                            (w, h),
+                            interpolation=cv2.INTER_NEAREST,
+                        )
+                    except Exception:
+                        manual_mask = None
+                if manual_mask is not None and np.any(manual_mask > 10):
+                    manual_mask = (manual_mask > 10).astype(np.uint8) * 255
+                    clean_image = self.inpainter.inpaint_mask(
+                        clean_image, manual_mask
+                    )
+
+        clean_path = processed_dir / f"clean_{img_path.name}"
+        tmp_clean_path = (
+            processed_dir
+            / f"clean_{img_path.name}.{uuid.uuid4().hex[:12]}.tmp.png"
+        )
+        write_image(tmp_clean_path, clean_image)
+        os.replace(tmp_clean_path, clean_path)
+        return clean_path.as_posix()
 
     def update_box(
         self,
