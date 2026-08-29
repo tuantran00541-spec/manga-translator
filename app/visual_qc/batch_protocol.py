@@ -114,7 +114,3 @@ def parse_region_batch_decisions(parsed: dict, regions_by_id: dict[str, QCRegion
             status = "flagged"
         out.append(RegionBatchDecision(region.page_index, region.region_id, status, issues))
     return out
-
-
-def parse_region_batch_response(parsed: dict, regions_by_id: dict[str, QCRegion]) -> list[RegionBatchIssue]:
-    return [issue for decision in parse_region_batch_decisions(parsed, regions_by_id) for issue in decision.issues]
