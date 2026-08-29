@@ -21,31 +21,53 @@ jobs:
           from pathlib import Path
           import re
 
-          files = list(Path("app/templates").rglob("*.html")) + list(Path("app/static/js").rglob("*.js"))
-          texts = {path: path.read_text(encoding="utf-8") for path in files}
+          html_files = list(Path("app/templates").rglob("*.html"))
+          js_files = list(Path("app/static/js").rglob("*.js"))
 
-          dead_tokens = (
+          dead_classes = {
               "app-shell",
               "app-header",
               "app-brand-block",
               "wordmark-text",
               "wordmark-accent",
-              "wordmark-tag",
+              "workflow-steps",
               "workflow-step",
               "app-header-actions",
-          )
-          for token in dead_tokens:
-              hits = [path.as_posix() for path, text in texts.items() if token in text]
-              if hits:
-                  raise SystemExit(f"Refusing to remove live selector token {token!r}: {hits}")
+          }
+          dead_ids = {"wordmark", "wordmark-tag"}
 
-          for path, text in texts.items():
-              if path.suffix == ".js" and "workflow-steps" in text:
-                  raise SystemExit(f"Refusing to remove .workflow-steps; JS still references it in {path}")
-              if path.suffix == ".html":
-                  for match in re.finditer(r'class\s*=\s*(["\'])(.*?)\1', text, flags=re.I | re.S):
-                      if "workflow-steps" in match.group(2).split():
-                          raise SystemExit(f"Refusing to remove .workflow-steps; class still used in {path}")
+          for path in html_files:
+              text = path.read_text(encoding="utf-8")
+              classes = set()
+              ids = set()
+              for match in re.finditer(r'class\s*=\s*(["\'])(.*?)\1', text, flags=re.I | re.S):
+                  classes.update(match.group(2).split())
+              for match in re.finditer(r'id\s*=\s*(["\'])(.*?)\1', text, flags=re.I | re.S):
+                  ids.add(match.group(2).strip())
+              live_classes = sorted(dead_classes & classes)
+              live_ids = sorted(dead_ids & ids)
+              if live_classes or live_ids:
+                  raise SystemExit(
+                      f"Refusing legacy CSS removal; {path} still uses classes={live_classes}, ids={live_ids}"
+                  )
+
+          selector_literals = (
+              ".app-shell",
+              ".app-header",
+              ".app-brand-block",
+              ".wordmark-text",
+              ".wordmark-accent",
+              ".workflow-steps",
+              ".workflow-step",
+              ".app-header-actions",
+              "#wordmark",
+              "#wordmark-tag",
+          )
+          for path in js_files:
+              text = path.read_text(encoding="utf-8")
+              hits = [selector for selector in selector_literals if selector in text]
+              if hits:
+                  raise SystemExit(f"Refusing legacy CSS removal; {path} still references {hits}")
 
           css_path = Path("app/static/css/ui-system.css")
           css = css_path.read_text(encoding="utf-8")
