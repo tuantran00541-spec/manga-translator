@@ -37,13 +37,7 @@ def _crop_polygon_with_context(
     *,
     pad: int,
 ) -> np.ndarray:
-    """Approximate OCRService's context-preserving crop.
-
-    The previous probe rectified exactly to the Paddle polygon and then added
-    replicated pixels. That cannot recover glyph strokes that lie just outside
-    a tight detection polygon. Production OCRService crops from the original
-    image with real surrounding pixels, so this probe now does the same.
-    """
+    """Approximate OCRService's context-preserving crop."""
     points = np.asarray(polygon, dtype=np.float32).reshape(-1, 2)
     if len(points) < 3:
         return image[0:0, 0:0]
@@ -96,6 +90,8 @@ def main() -> int:
     comparisons: list[dict[str, Any]] = []
     latencies: list[float] = []
     confidences: list[float] = []
+    quality_counts = {"good": 0, "review": 0, "reject": 0, "unknown": 0}
+    quality_reasons: dict[str, int] = {}
     same = 0
     runtime_blank = 0
     reference_blank = 0
@@ -130,6 +126,14 @@ def main() -> int:
             if result.confidence is not None:
                 confidences.append(float(result.confidence))
 
+            quality = str(result.quality or "unknown").lower()
+            if quality not in quality_counts:
+                quality = "unknown"
+            quality_counts[quality] += 1
+            if result.quality_reason:
+                reason = str(result.quality_reason)
+                quality_reasons[reason] = quality_reasons.get(reason, 0) + 1
+
             runtime_text = str(result.text or "").strip()
             reference_norm = _normalize(reference_text)
             runtime_norm = _normalize(runtime_text)
@@ -150,6 +154,8 @@ def main() -> int:
                 "runtime_model": result.model,
                 "runtime_orientation": result.orientation,
                 "runtime_regions": result.region_count,
+                "runtime_quality": quality,
+                "runtime_quality_reason": result.quality_reason,
                 "same_normalized": is_same,
                 "latency_ms": latency_ms,
                 "crop_pad": crop_pad,
@@ -186,6 +192,10 @@ def main() -> int:
         "disagreement_count": total - same,
         "runtime_blank_count": runtime_blank,
         "reference_blank_count": reference_blank,
+        "quality_counts": quality_counts,
+        "quality_reasons": quality_reasons,
+        "reject_rate": quality_counts["reject"] / max(1, total),
+        "review_rate": quality_counts["review"] / max(1, total),
         "mean_runtime_confidence": _mean(confidences),
         "mean_region_latency_ms": _mean(latencies),
         "p95_region_latency_ms": float(np.percentile(latencies, 95)) if latencies else None,
@@ -212,6 +222,8 @@ def main() -> int:
             "reference": item["reference_text"],
             "runtime": item["runtime_text"],
             "confidence": item["runtime_confidence"],
+            "quality": item["runtime_quality"],
+            "reason": item["runtime_quality_reason"],
             "orientation": item["runtime_orientation"],
             "latency_ms": item["latency_ms"],
         }, ensure_ascii=False))
