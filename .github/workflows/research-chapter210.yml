@@ -65,14 +65,25 @@ jobs:
           .venv-ppocrv6/bin/pip install \
             "numpy==1.26.4" \
             "Pillow==10.4.0" \
-            "opencv-python-headless==4.10.0.84" \
+            "opencv-contrib-python==4.10.0.84" \
             "paddlepaddle==3.2.2" \
             "paddleocr==3.7.0"
           .venv-ppocrv6/bin/python - <<'PY'
+          from importlib import metadata
           import cv2, numpy, paddle, paddleocr
+
+          opencv_dists = sorted(
+              {
+                  (dist.metadata.get("Name") or "").strip().lower()
+                  for dist in metadata.distributions()
+                  if (dist.metadata.get("Name") or "").strip().lower().startswith("opencv-")
+              }
+          )
+          assert opencv_dists == ["opencv-contrib-python"], opencv_dists
           print("RUNTIME_VERSIONS", {
               "numpy": numpy.__version__,
               "opencv": cv2.__version__,
+              "opencv_distributions": opencv_dists,
               "paddle": paddle.__version__,
               "paddleocr": paddleocr.__version__,
           })
@@ -116,7 +127,7 @@ jobs:
             --lang en \
             --target-mode centered
 
-      - name: Compare target-selection A/B
+      - name: Enforce target-selection A/B gate
         run: |
           python - <<'PY'
           import json
@@ -143,16 +154,23 @@ jobs:
               "baseline_mean_latency_ms": baseline["mean_region_latency_ms"],
               "centered_mean_latency_ms": centered["mean_region_latency_ms"],
           }
-          comparison["centered_candidate_promising"] = (
-              comparison["centered_agreement"] >= comparison["baseline_agreement"]
-              and comparison["centered_plus_noise"] < comparison["baseline_plus_noise"]
-              and comparison["centered_partial"] <= comparison["baseline_partial"] + 2
-              and comparison["centered_blank"] <= comparison["baseline_blank"] + 2
-          )
+          limits = {
+              "agreement_not_worse": comparison["centered_agreement"] >= comparison["baseline_agreement"],
+              "neighbor_noise_not_worse": comparison["centered_plus_noise"] <= comparison["baseline_plus_noise"],
+              "partial_not_worse": comparison["centered_partial"] <= comparison["baseline_partial"],
+              "blank_not_worse": comparison["centered_blank"] <= comparison["baseline_blank"],
+              "different_not_worse": comparison["centered_different"] <= comparison["baseline_different"],
+              "latency_within_10_percent": comparison["centered_mean_latency_ms"] <= comparison["baseline_mean_latency_ms"] * 1.10,
+          }
+          comparison["gate_checks"] = limits
+          comparison["passed"] = all(limits.values())
           (root / "target_selection_comparison.json").write_text(
               json.dumps(comparison, ensure_ascii=False, indent=2), encoding="utf-8"
           )
           print("TARGET_SELECTION_AB", json.dumps(comparison, ensure_ascii=False))
+          failed = [name for name, passed in limits.items() if not passed]
+          if failed:
+              raise SystemExit("Centered target selection regression: " + ", ".join(failed))
           PY
 
       - name: Recheck PP-OCRv6 regions with Korean PP-OCRv5 mobile recognizer
