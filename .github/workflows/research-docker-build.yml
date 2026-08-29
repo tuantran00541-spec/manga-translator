@@ -33,6 +33,7 @@ jobs:
           import paddle
           import paddleocr
           import torch
+          from playwright.sync_api import sync_playwright
 
           distributions = {
               (dist.metadata.get('Name') or '').strip().lower()
@@ -48,6 +49,12 @@ jobs:
           assert torch.__version__.startswith('2.5.1'), torch.__version__
           assert torch.version.cuda is None, torch.version.cuda
           assert not nvidia_dists, nvidia_dists
+          with sync_playwright() as playwright:
+              browser = playwright.chromium.launch(headless=True)
+              page = browser.new_page()
+              page.set_content('<title>manga-translator-smoke</title>')
+              assert page.title() == 'manga-translator-smoke'
+              browser.close()
           print('DOCKER_OCR_RUNTIME', {
               'python': sys.version.split()[0],
               'opencv': cv2.__version__,
@@ -57,6 +64,7 @@ jobs:
               'torch': torch.__version__,
               'torch_cuda': torch.version.cuda,
               'nvidia_distributions': nvidia_dists,
+              'chromium_launch': 'ok',
           })
           PY
           docker run --rm --entrypoint python manga-translator:research -m pip check
