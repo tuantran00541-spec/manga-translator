@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 from collections import defaultdict
+import importlib.util
 from pathlib import Path
 import re
 
@@ -111,6 +112,65 @@ def check_top_level_python_reachability() -> None:
 
     _fail("Unreachable top-level definitions found:", failures)
     print("Top-level definition reachability OK")
+
+
+def _module_name(path: Path) -> str:
+    if path.name == "__init__.py":
+        return ".".join(path.parent.parts)
+    return ".".join(path.with_suffix("").parts)
+
+
+def check_python_module_reachability() -> None:
+    app_paths = sorted(Path("app").rglob("*.py"))
+    existing = {
+        _module_name(path)
+        for path in app_paths
+        if path.name != "__init__.py"
+    }
+    incoming: dict[str, list[str]] = defaultdict(list)
+
+    for path in [*app_paths, Path("run.py")]:
+        source = path.read_text(encoding="utf-8")
+        tree = ast.parse(source, filename=str(path))
+        current_module = _module_name(path) if path != Path("run.py") else "run"
+        package = current_module if path.name == "__init__.py" else current_module.rpartition(".")[0]
+
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name in existing:
+                        incoming[alias.name].append(f"{path}:{node.lineno}")
+                continue
+            if not isinstance(node, ast.ImportFrom):
+                continue
+
+            if node.level:
+                if not package:
+                    continue
+                relative = "." * node.level + (node.module or "")
+                try:
+                    base = importlib.util.resolve_name(relative, package)
+                except (ImportError, ValueError):
+                    continue
+            else:
+                base = node.module or ""
+
+            if base in existing:
+                incoming[base].append(f"{path}:{node.lineno}")
+            for alias in node.names:
+                if alias.name == "*":
+                    continue
+                candidate = f"{base}.{alias.name}" if base else alias.name
+                if candidate in existing:
+                    incoming[candidate].append(f"{path}:{node.lineno}")
+
+    failures = [
+        f"{module} has no incoming runtime import"
+        for module in sorted(existing)
+        if module not in incoming
+    ]
+    _fail("Orphan Python runtime modules found:", failures)
+    print(f"Python module reachability OK: {len(existing)} modules")
 
 
 def check_exact_python_helper_duplication() -> None:
@@ -234,6 +294,7 @@ def check_named_javascript_reachability() -> None:
 def main() -> None:
     check_unused_python_imports()
     check_top_level_python_reachability()
+    check_python_module_reachability()
     check_exact_python_helper_duplication()
     check_duplicate_api_routes()
     check_named_javascript_reachability()
