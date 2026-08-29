@@ -1,0 +1,101 @@
+name: One-shot final unused CSS cleanup
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/css-final-unused-cleanup-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Remove final confirmed unused UI rule
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" || {
+            echo 'main moved after this cleanup run started; refusing stale rewrite'
+            exit 1
+          }
+
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          runtime_files = [
+              *Path('app/static/js').rglob('*.js'),
+              *Path('app/templates').rglob('*.html'),
+              *Path('app').rglob('*.py'),
+          ]
+          runtime_text = '\n'.join(path.read_text(encoding='utf-8', errors='ignore') for path in runtime_files)
+          if 'ui-btn-danger' in runtime_text:
+              raise SystemExit('ui-btn-danger is still referenced by runtime source')
+
+          path = Path('app/static/css/ui-system.css')
+          text = path.read_text(encoding='utf-8')
+          pattern = re.compile(r'(?m)^\.ui-btn-danger\s*\{[^{}]*\}\s*\n?')
+          text, count = pattern.subn('', text)
+          if count != 1:
+              raise SystemExit(f'Expected exactly one .ui-btn-danger rule, removed {count}')
+          if '.ui-btn-danger' in text:
+              raise SystemExit('.ui-btn-danger remains after cleanup')
+          path.write_text(text, encoding='utf-8')
+
+          toast = Path('app/static/js/toast.js').read_text(encoding='utf-8')
+          if 'toast-${type}' not in toast:
+              raise SystemExit('Expected dynamic toast variant construction is missing')
+
+          css_files = sorted(Path('app/static/css').glob('*.css'))
+          all_css = '\n'.join(p.read_text(encoding='utf-8', errors='ignore') for p in css_files)
+          token_re = re.compile(r'(?<![\w-])([.#])([A-Za-z_][A-Za-z0-9_-]*)')
+          rule_re = re.compile(r'([^{}]+)\{')
+          ignore_classes = {
+              'active', 'ready', 'selected', 'disabled', 'hidden', 'error', 'success',
+              'warning', 'danger', 'loading', 'busy', 'open', 'closed', 'dragover',
+              'drawing', 'ellipse', 'clean', 'manual', 'auto', 'pending', 'done',
+          }
+          occurrences = {}
+          for css_path in css_files:
+              css = css_path.read_text(encoding='utf-8', errors='ignore')
+              for match in rule_re.finditer(css):
+                  selector = match.group(1).strip()
+                  if selector.startswith('@'):
+                      continue
+                  for sigil, name in token_re.findall(selector):
+                      occurrences.setdefault((sigil, name), set()).add(str(css_path))
+          candidates = []
+          for (sigil, name), files in sorted(occurrences.items()):
+              if sigil == '.' and name in ignore_classes:
+                  continue
+              if name not in runtime_text:
+                  candidates.append((sigil + name, sorted(files)))
+          print(f'Residual textual dead-token candidates: {len(candidates)}')
+          for token, files in candidates:
+              print(f'  {token}: {",".join(files)}')
+          unexpected = [token for token, _ in candidates if token not in {'.toast-error', '.toast-success'}]
+          if unexpected:
+              raise SystemExit(f'Unexpected dead CSS candidates remain: {unexpected}')
+          print('Keeping .toast-error/.toast-success because toast.js constructs toast-${type} dynamically')
+          PY
+
+          python -m compileall -q app run.py
+          find app/static/js -type f -name '*.js' -print0 | xargs -0 -n1 node --check
+          git diff --check
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/static/css/ui-system.css
+          git rm .github/workflows/css-final-unused-cleanup-once.yml
+          git diff --cached --check
+          git diff --cached --stat
+          git commit -m 'refactor(ui): remove final unused UI rule'
+          git push origin HEAD:main
