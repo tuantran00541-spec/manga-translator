@@ -11,7 +11,7 @@ import numpy as np
 
 from app.env_utils import env_enabled
 from app.ocr.quality import classify_ocr_quality
-from app.ocr.reading_order import reconstruct_reading_order
+from app.ocr.reading_order import reconstruct_reading_order, select_centered_target
 
 UNIFIED_LANGS = {"en", "english", "ch", "zh", "ja", "japan"}
 KOREAN_LANGS = {"ko", "korean"}
@@ -118,9 +118,17 @@ class PaddleV6OCR:
     def korean_model_name() -> str:
         return "korean_PP-OCRv5_mobile_rec"
 
-    def read(self, image: np.ndarray, lang: str) -> OCRReadResult:
+    def read(
+        self,
+        image: np.ndarray,
+        lang: str,
+        *,
+        target_mode: str = "all",
+    ) -> OCRReadResult:
         if image is None or image.size == 0:
             return OCRReadResult("", None, "none", "unknown", 0, "reject", "empty")
+        if target_mode not in {"all", "centered"}:
+            raise ValueError(f"Unsupported OCR target mode: {target_mode!r}")
 
         normalized = _normalize_lang(lang)
         if normalized in {"en", "ch", "ja"}:
@@ -163,6 +171,12 @@ class PaddleV6OCR:
             polygons,
             lang=normalized,
         )
+        if target_mode == "centered" and ordered["regions"]:
+            ordered = select_centered_target(
+                ordered,
+                prepared.shape,
+                lang=normalized,
+            )
         if ordered["regions"]:
             text = str(ordered["text"] or "").strip()
             confidence = ordered["confidence"]
