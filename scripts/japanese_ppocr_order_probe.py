@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import statistics
 import time
+import unicodedata
 from typing import Any
 
 from japanese_ocr_benchmark import SAMPLES, _download, _levenshtein, _normalize, _payload, _percentile
@@ -35,13 +36,69 @@ def _quantile(values: list[float], q: float) -> float:
     return ordered[low] * (1.0 - f) + ordered[high] * f
 
 
-def _horizontal_order(regions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _overlap(a1: float, a2: float, b1: float, b2: float) -> float:
+    return max(0.0, min(a2, b2) - max(a1, b1))
+
+
+def _content_normalize(text: str) -> str:
+    """Secondary semantic metric: ignore punctuation/symbol styling only.
+
+    Strict CER remains the acceptance metric. This content metric exists to
+    distinguish reading/recognition failures from punctuation/wave-dash loss,
+    which is useful for translation-oriented OCR analysis.
+    """
+    normalized = unicodedata.normalize("NFKC", text or "")
+    return "".join(
+        ch for ch in normalized
+        if not ch.isspace()
+        and not unicodedata.category(ch).startswith("P")
+        and not unicodedata.category(ch).startswith("S")
+    )
+
+
+def _horizontal_order(regions: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]], float]:
     if not regions:
-        return []
-    heights = [r["box"]["h"] for r in regions]
-    tolerance = max(8.0, _quantile(heights, 0.6) * 0.65)
+        return [], [], 0.0
+
+    horizontalish = [r for r in regions if r["box"]["w"] >= r["box"]["h"] * 1.20]
+    heights = [r["box"]["h"] for r in horizontalish] or [r["box"]["h"] for r in regions]
+    main_height = _quantile(heights, 0.75)
+    ruby_height_threshold = max(8.0, main_height * 0.72)
+    main_lines = [
+        r for r in regions
+        if r["box"]["h"] >= main_height * 0.80
+        and r["box"]["w"] >= r["box"]["h"] * 1.80
+    ]
+
+    removed_indices: set[int] = set()
+    for candidate in regions:
+        if candidate in main_lines or candidate["box"]["h"] >= ruby_height_threshold:
+            continue
+        c = candidate["box"]
+        for main in main_lines:
+            m = main["box"]
+            dy = abs(c["cy"] - m["cy"])
+            x_overlap = _overlap(c["x1"], c["x2"], m["x1"], m["x2"])
+            # Horizontal furigana is a shorter line immediately above the
+            # full-size text it annotates and overlaps that main line in X.
+            if (
+                main_height * 0.20 <= dy <= main_height * 1.20
+                and x_overlap >= min(c["w"], m["w"]) * 0.25
+            ):
+                removed_indices.add(candidate["index"])
+                break
+
+    kept = [r for r in regions if r["index"] not in removed_indices]
+    removed = [r for r in regions if r["index"] in removed_indices]
+    if len(kept) < max(1, len(regions) // 3):
+        kept = list(regions)
+        removed = []
+        removed_indices.clear()
+
+    heights_kept = [r["box"]["h"] for r in kept]
+    tolerance = max(8.0, _quantile(heights_kept, 0.60) * 0.65)
     rows: list[dict[str, Any]] = []
-    for region in sorted(regions, key=lambda r: (r["box"]["cy"], r["box"]["cx"])):
+    for region in sorted(kept, key=lambda r: (r["box"]["cy"], r["box"]["cx"])):
         best = None
         best_distance = None
         for row in rows:
@@ -54,43 +111,52 @@ def _horizontal_order(regions: list[dict[str, Any]]) -> list[dict[str, Any]]:
         else:
             best["items"].append(region)
             best["cy"] = statistics.fmean(item["box"]["cy"] for item in best["items"])
+
     ordered: list[dict[str, Any]] = []
     for row in sorted(rows, key=lambda item: item["cy"]):
         ordered.extend(sorted(row["items"], key=lambda r: r["box"]["cx"]))
-    return ordered
+    return ordered, removed, ruby_height_threshold
 
 
 def _vertical_order(regions: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]], float]:
-    verticalish = [r for r in regions if r["box"]["h"] >= r["box"]["w"] * 1.10]
+    verticalish = [r for r in regions if r["box"]["h"] >= r["box"]["w"] * 0.90]
     widths = [r["box"]["w"] for r in verticalish] or [r["box"]["w"] for r in regions]
     main_width = _quantile(widths, 0.75)
-    ruby_width_threshold = max(8.0, main_width * 0.58)
+    ruby_width_threshold = max(8.0, main_width * 0.72)
+    main_columns = [
+        r for r in regions
+        if r["box"]["w"] >= main_width * 0.80
+        and r["box"]["h"] >= r["box"]["w"] * 1.20
+    ]
 
-    kept: list[dict[str, Any]] = []
-    removed: list[dict[str, Any]] = []
-    for region in regions:
-        box = region["box"]
-        score = region.get("score")
-        # Ruby/furigana normally forms a much narrower vertical strip adjacent
-        # to a full-size text column. Do not throw away short main columns: the
-        # width test, not height, is the primary signal.
-        ruby_like = box["h"] >= box["w"] * 1.05 and box["w"] < ruby_width_threshold
-        tiny_low_conf = (
-            score is not None
-            and score < 0.35
-            and len(str(region.get("text") or "")) <= 2
-            and box["w"] < main_width * 0.85
-        )
-        if ruby_like or tiny_low_conf:
-            removed.append(region)
-        else:
-            kept.append(region)
+    removed_indices: set[int] = set()
+    for candidate in regions:
+        if candidate in main_columns or candidate["box"]["w"] >= ruby_width_threshold:
+            continue
+        c = candidate["box"]
+        for main in main_columns:
+            m = main["box"]
+            dx = abs(c["cx"] - m["cx"])
+            y_overlap = _overlap(c["y1"], c["y2"], m["y1"], m["y2"])
+            # Vertical furigana is a narrower strip beside a main text column.
+            # Requiring an X offset prevents centered punctuation from being
+            # discarded merely because its bounding box is small.
+            if (
+                main_width * 0.20 <= dx <= main_width * 1.35
+                and y_overlap >= min(c["h"], m["h"]) * 0.25
+            ):
+                removed_indices.add(candidate["index"])
+                break
+
+    kept = [r for r in regions if r["index"] not in removed_indices]
+    removed = [r for r in regions if r["index"] in removed_indices]
 
     # Be conservative: if filtering would remove nearly everything, fall back
     # to all regions rather than silently deleting real text.
     if len(kept) < max(1, len(regions) // 3):
         kept = list(regions)
         removed = []
+        removed_indices.clear()
 
     column_tolerance = max(10.0, main_width * 0.85)
     columns: list[dict[str, Any]] = []
@@ -134,16 +200,14 @@ def _reconstruct(texts: list[str], scores: list[Any], polygons: list[Any]) -> di
     if is_vertical:
         ordered, removed, threshold = _vertical_order(regions)
     else:
-        ordered = _horizontal_order(regions)
-        removed = []
-        threshold = 0.0
+        ordered, removed, threshold = _horizontal_order(regions)
 
     return {
         "orientation": "vertical" if is_vertical else "horizontal",
         "prediction": "".join(r["text"] for r in ordered),
         "ordered_indices": [r["index"] for r in ordered],
         "removed_indices": [r["index"] for r in removed],
-        "ruby_width_threshold": threshold,
+        "ruby_size_threshold": threshold,
         "regions": regions,
     }
 
@@ -175,9 +239,12 @@ def main() -> int:
     rows: list[dict[str, Any]] = []
     raw_edits = 0
     ordered_edits = 0
+    content_edits = 0
     char_total = 0
+    content_char_total = 0
     raw_exact = 0
     ordered_exact = 0
+    content_exact = 0
     latencies: list[float] = []
 
     for sample_id, remote_path, gt in SAMPLES:
@@ -209,15 +276,23 @@ def main() -> int:
         gt_norm = _normalize(gt)
         raw_norm = _normalize(raw_prediction)
         ordered_norm = _normalize(ordered_prediction)
+        content_gt = _content_normalize(gt)
+        content_pred = _content_normalize(ordered_prediction)
+
         raw_distance = _levenshtein(gt_norm, raw_norm)
         ordered_distance = _levenshtein(gt_norm, ordered_norm)
+        content_distance = _levenshtein(content_gt, content_pred)
         raw_cer = raw_distance / max(1, len(gt_norm))
         ordered_cer = ordered_distance / max(1, len(gt_norm))
+        content_cer = content_distance / max(1, len(content_gt))
         raw_edits += raw_distance
         ordered_edits += ordered_distance
+        content_edits += content_distance
         char_total += len(gt_norm)
+        content_char_total += len(content_gt)
         raw_exact += int(raw_norm == gt_norm)
         ordered_exact += int(ordered_norm == gt_norm)
+        content_exact += int(content_pred == content_gt)
 
         row = {
             "id": sample_id,
@@ -231,11 +306,14 @@ def main() -> int:
             "ordered_prediction": ordered_prediction,
             "ordered_prediction_normalized": ordered_norm,
             "ordered_cer": ordered_cer,
+            "content_ground_truth": content_gt,
+            "content_prediction": content_pred,
+            "content_cer": content_cer,
             "latency_ms": latency_ms,
             "orientation": geometry["orientation"],
             "ordered_indices": geometry["ordered_indices"],
             "removed_indices": geometry["removed_indices"],
-            "ruby_width_threshold": geometry["ruby_width_threshold"],
+            "ruby_size_threshold": geometry["ruby_size_threshold"],
             "regions": geometry["regions"],
         }
         rows.append(row)
@@ -247,17 +325,20 @@ def main() -> int:
             "ordered": ordered_norm,
             "raw_cer": raw_cer,
             "ordered_cer": ordered_cer,
+            "content_cer": content_cer,
             "removed": row["removed_indices"],
         }, ensure_ascii=False), flush=True)
 
     summary = {
-        "engine": "ppocrv6-small-geometry-order",
+        "engine": "ppocrv6-small-geometry-order-v2",
         "samples": len(rows),
         "init_ms": init_ms,
         "raw_aggregate_cer": raw_edits / max(1, char_total),
         "ordered_aggregate_cer": ordered_edits / max(1, char_total),
+        "content_aggregate_cer": content_edits / max(1, content_char_total),
         "raw_exact_match_rate": raw_exact / max(1, len(rows)),
         "ordered_exact_match_rate": ordered_exact / max(1, len(rows)),
+        "content_exact_match_rate": content_exact / max(1, len(rows)),
         "mean_latency_ms": statistics.fmean(latencies) if latencies else None,
         "p95_latency_ms": _percentile(latencies, 0.95),
         "vertical_samples": sum(1 for row in rows if row["orientation"] == "vertical"),
