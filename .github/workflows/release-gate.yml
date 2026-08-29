@@ -91,6 +91,53 @@ jobs:
           print("Unused import check OK")
           PY
 
+      - name: Reject unreachable top-level Python definitions
+        shell: bash
+        run: |
+          python - <<'PY'
+          import ast
+          import re
+          from pathlib import Path
+
+          paths = sorted([*Path("app").rglob("*.py"), Path("run.py")])
+          source_by_path = {
+              path: path.read_text(encoding="utf-8")
+              for path in paths
+          }
+          all_source = "\n".join(source_by_path.values())
+          failures = []
+
+          for path, source in source_by_path.items():
+              if path.name == "__init__.py":
+                  continue
+              tree = ast.parse(source, filename=str(path))
+              for node in tree.body:
+                  if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                      continue
+                  if getattr(node, "decorator_list", None):
+                      continue
+                  name = node.name
+                  if name.startswith("__") and name.endswith("__"):
+                      continue
+                  occurrences = len(
+                      re.findall(
+                          rf"(?<![A-Za-z0-9_]){re.escape(name)}(?![A-Za-z0-9_])",
+                          all_source,
+                      )
+                  )
+                  if occurrences == 1:
+                      failures.append(
+                          f"{path}:{node.lineno}: {type(node).__name__} {name} has no textual reference"
+                      )
+
+          if failures:
+              print("Unreachable top-level definitions found:")
+              for failure in failures:
+                  print(f"  {failure}")
+              raise SystemExit(1)
+          print("Top-level definition reachability OK")
+          PY
+
       - name: Reject duplicate API routes
         shell: bash
         run: |
