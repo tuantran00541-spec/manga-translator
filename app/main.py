@@ -136,28 +136,3 @@ def health():
 @app.get("/")
 def index():
     return FileResponse("app/templates/index.html")
-
-
-def _remove_duplicate_routes() -> None:
-    """Keep the first canonical handler for exact duplicate path/method routes."""
-    seen: set[tuple[str, frozenset[str]]] = set()
-    unique_routes = []
-    for route in app.router.routes:
-        path = getattr(route, "path", None)
-        methods = frozenset(getattr(route, "methods", set()) or set())
-        if path and methods:
-            key = (str(path), methods)
-            if key in seen:
-                logger.warning(
-                    "Ignoring duplicate route %s %s from %s",
-                    ",".join(sorted(methods)),
-                    path,
-                    getattr(route, "name", "unknown"),
-                )
-                continue
-            seen.add(key)
-        unique_routes.append(route)
-    app.router.routes[:] = unique_routes
-
-
-_remove_duplicate_routes()

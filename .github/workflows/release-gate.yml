@@ -22,6 +22,71 @@ jobs:
       - name: Compile production Python source
         run: python -m compileall -q app run.py
 
+      - name: Reject duplicate API routes
+        shell: bash
+        run: |
+          python - <<'PY'
+          import ast
+          from pathlib import Path
+
+          METHODS = {"get", "post", "put", "patch", "delete", "options", "head"}
+          seen = {}
+          duplicates = []
+
+          for path in sorted(Path("app/routers").glob("*.py")):
+              if path.name == "__init__.py":
+                  continue
+              tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+              prefix = ""
+              for node in tree.body:
+                  if not isinstance(node, (ast.Assign, ast.AnnAssign)):
+                      continue
+                  value = node.value
+                  targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+                  if not any(isinstance(target, ast.Name) and target.id == "router" for target in targets):
+                      continue
+                  if not isinstance(value, ast.Call):
+                      continue
+                  func = value.func
+                  if not (isinstance(func, ast.Name) and func.id == "APIRouter"):
+                      continue
+                  for keyword in value.keywords:
+                      if keyword.arg == "prefix" and isinstance(keyword.value, ast.Constant) and isinstance(keyword.value.value, str):
+                          prefix = keyword.value.value
+
+              for node in ast.walk(tree):
+                  if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                      continue
+                  for decorator in node.decorator_list:
+                      if not isinstance(decorator, ast.Call) or not isinstance(decorator.func, ast.Attribute):
+                          continue
+                      if not (isinstance(decorator.func.value, ast.Name) and decorator.func.value.id == "router"):
+                          continue
+                      method = decorator.func.attr.lower()
+                      if method not in METHODS:
+                          continue
+                      route_value = decorator.args[0] if decorator.args else next(
+                          (kw.value for kw in decorator.keywords if kw.arg in {"path", "route"}),
+                          None,
+                      )
+                      if not isinstance(route_value, ast.Constant) or not isinstance(route_value.value, str):
+                          continue
+                      route_path = prefix + route_value.value
+                      key = (method.upper(), route_path)
+                      location = f"{path}:{node.lineno} ({node.name})"
+                      previous = seen.get(key)
+                      if previous:
+                          duplicates.append((key, previous, location))
+                      else:
+                          seen[key] = location
+
+          if duplicates:
+              for (method, route_path), first, second in duplicates:
+                  print(f"Duplicate route {method} {route_path}: {first} <> {second}")
+              raise SystemExit(1)
+          print(f"Route uniqueness OK: {len(seen)} API routes")
+          PY
+
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
