@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - "release/**"
+      - feat/ppocrv6-runtime-migration
   pull_request:
   workflow_dispatch:
 
@@ -20,7 +21,7 @@ jobs:
           python-version: "3.12"
 
       - name: Compile production Python source
-        run: python -m compileall -q app run.py scripts/release_sanity.py scripts/browser_sanity.py
+        run: python -m compileall -q app run.py scripts/release_sanity.py scripts/browser_sanity.py scripts/ocr_hybrid_sanity.py
 
       - name: Run source sanity checks
         run: python scripts/release_sanity.py
