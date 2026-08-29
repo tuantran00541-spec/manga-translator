@@ -8,6 +8,14 @@ JS_PATHS = sorted(Path("app/static/js").rglob("*.js"))
 HTML_PATHS = sorted(Path("app/templates").rglob("*.html"))
 CSS_PATHS = sorted(Path("app/static/css").rglob("*.css"))
 STATIC_ROOT = Path("app/static")
+CSS_IMPORT_PATTERN = re.compile(
+    r"@import\s+url\(\s*(?:['\"])?([^'\")\s]+)(?:['\"])?\s*\)",
+    re.IGNORECASE,
+)
+HTML_STATIC_REF_PATTERN = re.compile(
+    r"(?:src|href)\s*=\s*['\"](/?static/[^'\"?#]+)(?:[?#][^'\"]*)?['\"]",
+    re.IGNORECASE,
+)
 
 
 class _MarkupParser(HTMLParser):
@@ -60,16 +68,32 @@ def _fail(title: str, failures: list[str]) -> None:
     raise SystemExit(1)
 
 
-def _check_static_ref(source_path: Path, line: int, ref: str, failures: list[str]) -> None:
+def _static_path(ref: str) -> Path | None:
     clean = ref.split("?", 1)[0].split("#", 1)[0]
     if clean.startswith("/static/"):
-        target = STATIC_ROOT / clean.removeprefix("/static/")
-    elif clean.startswith("static/"):
-        target = STATIC_ROOT / clean.removeprefix("static/")
-    else:
-        return
-    if not target.is_file():
+        return STATIC_ROOT / clean.removeprefix("/static/")
+    if clean.startswith("static/"):
+        return STATIC_ROOT / clean.removeprefix("static/")
+    return None
+
+
+def _check_static_ref(source_path: Path, line: int, ref: str, failures: list[str]) -> None:
+    target = _static_path(ref)
+    if target is not None and not target.is_file():
         failures.append(f"{source_path}:{line}: missing static asset {ref!r} -> {target}")
+
+
+def _css_local_imports(path: Path) -> list[Path]:
+    source = path.read_text(encoding="utf-8")
+    imports: list[Path] = []
+    for match in CSS_IMPORT_PATTERN.finditer(source):
+        ref = match.group(1)
+        if ref.startswith(("http://", "https://", "data:")):
+            continue
+        imports.append(
+            (path.parent / ref.split("?", 1)[0].split("#", 1)[0]).resolve()
+        )
+    return imports
 
 
 def check_markup_integrity() -> None:
@@ -83,13 +107,9 @@ def check_markup_integrity() -> None:
             failures.append(f"{path}: HTML parse failed: {exc}")
         failures.extend(parser.failures)
 
-    import_pattern = re.compile(
-        r"@import\s+url\(\s*(?:['\"])?([^'\")\s]+)(?:['\"])?\s*\)",
-        re.IGNORECASE,
-    )
     for path in CSS_PATHS:
         source = path.read_text(encoding="utf-8")
-        for match in import_pattern.finditer(source):
+        for match in CSS_IMPORT_PATTERN.finditer(source):
             ref = match.group(1)
             if ref.startswith(("http://", "https://", "data:")):
                 continue
@@ -100,6 +120,48 @@ def check_markup_integrity() -> None:
 
     _fail("Browser markup integrity failures:", failures)
     print(f"Browser markup integrity OK: {len(HTML_PATHS)} HTML, {len(CSS_PATHS)} CSS files")
+
+
+def check_browser_asset_reachability() -> None:
+    entrypoints: set[Path] = set()
+    failures: list[str] = []
+    for path in HTML_PATHS:
+        source = path.read_text(encoding="utf-8")
+        for match in HTML_STATIC_REF_PATTERN.finditer(source):
+            target = _static_path(match.group(1))
+            if target is not None:
+                entrypoints.add(target.resolve())
+
+    reachable_css = {
+        path for path in entrypoints if path.suffix.lower() == ".css"
+    }
+    queue = list(reachable_css)
+    while queue:
+        current = queue.pop()
+        if not current.is_file():
+            continue
+        for imported in _css_local_imports(current):
+            if imported not in reachable_css:
+                reachable_css.add(imported)
+                queue.append(imported)
+
+    reachable_js = {
+        path for path in entrypoints if path.suffix.lower() == ".js"
+    }
+    for path in JS_PATHS:
+        resolved = path.resolve()
+        if resolved not in reachable_js:
+            failures.append(f"{path}: JavaScript file is not loaded by any HTML entrypoint")
+    for path in CSS_PATHS:
+        resolved = path.resolve()
+        if resolved not in reachable_css:
+            failures.append(f"{path}: CSS file is unreachable from HTML/CSS entrypoints")
+
+    _fail("Orphan browser assets found:", failures)
+    print(
+        f"Browser asset reachability OK: {len(reachable_js)} JS, "
+        f"{len(reachable_css)} CSS assets reachable"
+    )
 
 
 def _consume_js_string_literal(source: str, start: int) -> str | None:
@@ -172,6 +234,7 @@ def check_unsafe_html_sinks() -> None:
 
 def main() -> None:
     check_markup_integrity()
+    check_browser_asset_reachability()
     check_unsafe_html_sinks()
 
 
