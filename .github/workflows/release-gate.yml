@@ -22,6 +22,75 @@ jobs:
       - name: Compile production Python source
         run: python -m compileall -q app run.py
 
+      - name: Reject unused Python imports
+        shell: bash
+        run: |
+          python - <<'PY'
+          import ast
+          from pathlib import Path
+
+          failures = []
+          for path in sorted([*Path("app").rglob("*.py"), Path("run.py")]):
+              if path.name == "__init__.py":
+                  continue
+              source = path.read_text(encoding="utf-8")
+              lines = source.splitlines()
+              tree = ast.parse(source, filename=str(path))
+              used = {
+                  node.id
+                  for node in ast.walk(tree)
+                  if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load)
+              }
+              exported = set()
+              for node in tree.body:
+                  if not isinstance(node, (ast.Assign, ast.AnnAssign)):
+                      continue
+                  value = node.value
+                  targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+                  if not any(isinstance(target, ast.Name) and target.id == "__all__" for target in targets):
+                      continue
+                  if isinstance(value, (ast.List, ast.Tuple, ast.Set)):
+                      exported.update(
+                          item.value
+                          for item in value.elts
+                          if isinstance(item, ast.Constant) and isinstance(item.value, str)
+                      )
+
+              for node in ast.walk(tree):
+                  aliases = []
+                  if isinstance(node, ast.Import):
+                      aliases = [
+                          (alias.asname or alias.name.split(".")[0], alias.name)
+                          for alias in node.names
+                      ]
+                  elif isinstance(node, ast.ImportFrom):
+                      if node.module == "__future__":
+                          continue
+                      aliases = [
+                          (alias.asname or alias.name, f"{node.module or ''}.{alias.name}")
+                          for alias in node.names
+                          if alias.name != "*"
+                      ]
+                  else:
+                      continue
+
+                  source_line = lines[node.lineno - 1] if 0 < node.lineno <= len(lines) else ""
+                  if "noqa" in source_line.lower():
+                      continue
+                  for local_name, imported_name in aliases:
+                      if local_name not in used and local_name not in exported:
+                          failures.append(
+                              f"{path}:{node.lineno}: unused import {local_name} <- {imported_name}"
+                          )
+
+          if failures:
+              print("Unused imports found:")
+              for failure in failures:
+                  print(f"  {failure}")
+              raise SystemExit(1)
+          print("Unused import check OK")
+          PY
+
       - name: Reject duplicate API routes
         shell: bash
         run: |
