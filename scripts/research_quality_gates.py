@@ -359,6 +359,9 @@ def run_mask(samples: list[Sample], args: argparse.Namespace, output: Path) -> d
     samples = [s for s in samples if s.task == "mask"]
     if not samples:
         return {"status": "skipped", "reason": "no mask rows"}
+    missing_truth_samples = sorted(
+        sample.id for sample in samples if sample.path("truth_mask", False) is None
+    )
     rows: list[dict[str, Any]] = []
     for sample in samples:
         image_path = sample.path("image", False)
@@ -394,12 +397,24 @@ def run_mask(samples: list[Sample], args: argparse.Namespace, output: Path) -> d
         }
     base, cand = summary["current-adaptive-dilate"], summary["stroke-width-refinement"]
     reasons: list[str] = []
+    if missing_truth_samples:
+        reasons.append(
+            f"truth_mask required for promotion ({len(missing_truth_samples)} sample(s) missing)"
+        )
     if base["mean_f1"] is not None and cand["mean_f1"] + args.mask_f1_tolerance < base["mean_f1"]: reasons.append("mean F1 regressed")
     if base["mean_recall"] is not None and cand["mean_recall"] + args.mask_recall_tolerance < base["mean_recall"]: reasons.append("recall regressed")
     if base["mean_false_positive_share"] is not None and cand["mean_false_positive_share"] > base["mean_false_positive_share"] + args.mask_fp_tolerance: reasons.append("artwork-overreach increased")
     if cand["mean_outside_safe_share"] is not None and cand["mean_outside_safe_share"] > 0: reasons.append("safe envelope crossed")
     write_jsonl(output / "mask_rows.jsonl", rows)
-    return {"summary": summary, "gate": {"eligible_for_next_stage": not reasons, "reasons": reasons}}
+    return {
+        "summary": summary,
+        "gate": {
+            "eligible_for_next_stage": not reasons,
+            "reasons": reasons,
+            "truth_required": True,
+            "missing_truth_samples": missing_truth_samples,
+        },
+    }
 
 
 # ---------------------------------------------------------------------------
