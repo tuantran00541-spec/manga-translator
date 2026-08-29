@@ -52,9 +52,19 @@ jobs:
           .venv-jp-ppocr/bin/pip install \
             "numpy==1.26.4" \
             "Pillow==10.4.0" \
-            "opencv-python-headless==4.10.0.84" \
+            "opencv-contrib-python==4.10.0.84" \
             "paddlepaddle==3.2.2" \
             "paddleocr==3.7.0"
+          .venv-jp-ppocr/bin/python - <<'PY'
+          from importlib import metadata
+          opencv_dists = sorted({
+              (dist.metadata.get("Name") or "").strip().lower()
+              for dist in metadata.distributions()
+              if (dist.metadata.get("Name") or "").strip().lower().startswith("opencv-")
+          })
+          assert opencv_dists == ["opencv-contrib-python"], opencv_dists
+          print("JP_PPOCR_OPENCV", opencv_dists)
+          PY
 
       - name: Benchmark PP-OCRv6 small on Japanese ground truth
         run: |
@@ -91,11 +101,21 @@ jobs:
           .venv-jp-runtime/bin/pip install \
             "numpy==1.26.4" \
             "Pillow==10.4.0" \
-            "opencv-python-headless==4.10.0.84" \
+            "opencv-contrib-python==4.10.0.84" \
             "paddlepaddle==3.2.2" \
             "paddleocr==3.7.0" \
             "manga-ocr==0.1.11" \
             "transformers>=4.36,<4.46"
+          .venv-jp-runtime/bin/python - <<'PY'
+          from importlib import metadata
+          opencv_dists = sorted({
+              (dist.metadata.get("Name") or "").strip().lower()
+              for dist in metadata.distributions()
+              if (dist.metadata.get("Name") or "").strip().lower().startswith("opencv-")
+          })
+          assert opencv_dists == ["opencv-contrib-python"], opencv_dists
+          print("JP_RUNTIME_OPENCV", opencv_dists)
+          PY
 
       - name: Validate hybrid routing and quality invariants
         run: |
