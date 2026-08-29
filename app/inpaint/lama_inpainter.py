@@ -438,14 +438,20 @@ class Inpainter:
         mask_blob = np.ascontiguousarray(
             (mask_canvas > 127).astype(np.float32)[None, None]
         )
+        feed = {self.image_input: img_blob, self.mask_input: mask_blob}
 
-        with self._session_lock:
-            self._recycle_fixed_session_if_needed()
-            output = self.session.run(
-                None,
-                {self.image_input: img_blob, self.mask_input: mask_blob},
-            )[0]
-            self._session_run_count += 1
+        # Dynamic LaMa sessions are created without the global ORT serialization
+        # wrapper and may safely overlap independent run calls. The fixed model
+        # retains the per-instance lock because that path can recycle its session
+        # between calls under tight memory cgroups.
+        if self.dynamic_lama:
+            output = self.session.run(None, feed)[0]
+        else:
+            with self._session_lock:
+                self._recycle_fixed_session_if_needed()
+                output = self.session.run(None, feed)[0]
+                self._session_run_count += 1
+
         painted_rgb = output[0].transpose(1, 2, 0)
         if painted_rgb.max() <= 1.0:
             painted_rgb = painted_rgb * 255.0
