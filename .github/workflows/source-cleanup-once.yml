@@ -1,0 +1,98 @@
+name: One-shot source cleanup
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+jobs:
+  cleanup:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Consolidate mask decoding and remove redundant comments
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object app/pipeline.py)" = "e716cc6933ec0cb4abdb6508c6eef556f7bfc4ec"
+          test "$(git hash-object app/pipeline_artwork_safe.py)" = "c4ff477a971f4d9b66d10e99619416ef0a442697"
+          if git grep -nE 'pipeline_artwork_safe|ArtworkSafeChapterPipeline' -- '*.py' ':!app/pipeline_artwork_safe.py'; then
+            echo 'Unexpected compatibility-shim reference remains.' >&2
+            exit 1
+          fi
+          python - <<'PY'
+          from __future__ import annotations
+          import io
+          import tokenize
+          from pathlib import Path
+          pipeline_path = Path("app/pipeline.py")
+          text = pipeline_path.read_text(encoding="utf-8")
+          if text.count("_decode_mask(") != 2:
+              raise SystemExit("Unexpected _decode_mask occurrence count")
+          old_call = 'mask_arr = _decode_mask(old.get("mask"))'
+          if text.count(old_call) != 1:
+              raise SystemExit("Expected legacy decoder call exactly once")
+          text = text.replace(old_call, 'mask_arr = decode_mask_value(old.get("mask"))', 1)
+          start = text.find("\ndef _decode_mask(")
+          end = text.find("\n\n_TEXT_OBJECT_STYLE_KEYS", start)
+          if start < 0 or end < 0:
+              raise SystemExit("Could not isolate legacy _decode_mask helper")
+          text = text[:start] + text[end:]
+          pipeline_path.write_text(text, encoding="utf-8")
+          shim = Path("app/pipeline_artwork_safe.py")
+          expected_shim = (
+              "from app.pipeline import ChapterPipeline\n\n\n"
+              "class ArtworkSafeChapterPipeline(ChapterPipeline):\n"
+              '    """Backward-compatible name for the canonical artwork-safe pipeline."""\n\n'
+              "    pass\n"
+          )
+          if shim.read_text(encoding="utf-8") != expected_shim:
+              raise SystemExit("Compatibility shim changed unexpectedly")
+          shim.unlink()
+          directive_markers = (
+              "noqa", "type: ignore", "pragma:", "nosec", "fmt:",
+              "isort:", "pylint:", "pyright:", "mypy:",
+          )
+          removed_total = 0
+          touched = []
+          for path in sorted(Path("app").rglob("*.py")):
+              source = path.read_text(encoding="utf-8")
+              lines = source.splitlines(keepends=True)
+              removable = set()
+              try:
+                  tokens = tokenize.generate_tokens(io.StringIO(source).readline)
+                  for token in tokens:
+                      if token.type != tokenize.COMMENT:
+                          continue
+                      line_no, column = token.start
+                      if lines[line_no - 1][:column].strip():
+                          continue
+                      lowered = token.string.lower()
+                      if any(marker in lowered for marker in directive_markers):
+                          continue
+                      removable.add(line_no)
+              except tokenize.TokenError as exc:
+                  raise SystemExit(f"Could not tokenize {path}: {exc}") from exc
+              if not removable:
+                  continue
+              cleaned = "".join(line for line_no, line in enumerate(lines, 1) if line_no not in removable)
+              path.write_text(cleaned, encoding="utf-8")
+              removed_total += len(removable)
+              touched.append((path.as_posix(), len(removable)))
+          print(f"Removed {removed_total} standalone comment lines from {len(touched)} Python files")
+          for path, count in touched:
+              print(f"  {count:3d}  {path}")
+          PY
+          ! grep -R --line-number --fixed-strings '_decode_mask(' app/pipeline.py
+          test ! -e app/pipeline_artwork_safe.py
+          python -m compileall -q app run.py
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A app
+          git rm .github/workflows/source-cleanup-once.yml
+          git diff --cached --check
+          git diff --cached --stat
+          git commit -m 'refactor: remove redundant compatibility and comments'
+          git push origin HEAD:main
