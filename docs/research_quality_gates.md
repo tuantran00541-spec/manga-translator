@@ -4,14 +4,16 @@ This branch is intentionally research-only. None of the experimental algorithms 
 
 ## OCR gate
 
-Baseline: the current `MultiLangOCR` implementation: MangaOCR for Japanese and PaddleOCR 2.x for the other configured languages.
+Baseline: the current `MultiLangOCR` implementation at the point where the benchmark is run.
 
-Challenger: PP-OCRv6 small/medium in a **separate Python environment**. Do not upgrade the production PaddleOCR/PaddlePaddle environment during the A/B test or the baseline ceases to be the current application.
+**Migration-branch warning:** on `feat/ppocrv6-runtime-migration`, `MultiLangOCR` already contains the PaddleOCR 3.x / PP-OCRv6 migration. Therefore the generic `baseline_ocr()` helper in `scripts/research_quality_gates.py` must **not** be described or interpreted as a PaddleOCR 2.x baseline on that branch. The authoritative migration evidence is the dedicated chapter-210 runtime workflow plus the Japanese head-to-head workflow. A true PaddleOCR 2.8.1 comparison requires the old `main` implementation and PaddleOCR 2.8.1/PaddlePaddle 2.6.2 in a separate isolated environment, using the same crop corpus.
+
+Challenger: PP-OCRv6 small/medium in a **separate Python environment**. When benchmarking a pre-migration baseline, do not upgrade that baseline environment to PaddleOCR 3.x/PaddlePaddle 3.x or the comparison ceases to represent the old application.
 
 OCR has two independent evaluation stages and their aggregate scores must not be mixed:
 
 - `ocr_stage=line`: a ground-truth single text-line crop. This measures recognizer quality without detector/crop errors.
-- `ocr_stage=pipeline`: a real bubble/free-text crop similar to what the application passes to OCR. This measures whether the complete PP-OCRv6 detector+recognizer path is a safe replacement for current behavior.
+- `ocr_stage=pipeline`: a real bubble/free-text crop similar to what the application passes to OCR. This measures whether the complete detector+recognizer path is a safe replacement for current behavior.
 
 `vertical` and `furigana` are protected tags. A challenger that improves overall CER but materially regresses either protected group is rejected.
 
@@ -47,7 +49,7 @@ Example row:
 {"id":"mask-0001","task":"mask","image":"mask/source.png","seed_mask":"mask/seed.png","truth_mask":"mask/truth.png","safe_envelope":"mask/safe.png","tags":["manga_bw","screentone"]}
 ```
 
-`truth_mask` and `safe_envelope` should be human-reviewed before their samples are used for a merge decision.
+`truth_mask` is **required** for a sample to contribute to a promotion decision. If any mask sample lacks `truth_mask`, the harness reports the candidate as not eligible for the next stage. `truth_mask` and `safe_envelope` should be human-reviewed before their samples are used for a merge decision.
 
 ## Inpainting gate
 
@@ -70,7 +72,7 @@ The production Docker image uses Python 3.12, so use Python 3.12 for the challen
 ```bash
 python3.12 -m venv .venv-ppocrv6
 .venv-ppocrv6/bin/python -m pip install --upgrade pip
-.venv-ppocrv6/bin/python -m pip install paddlepaddle==3.2.0 -i https://www.paddlepaddle.org.cn/packages/stable/cpu/
+.venv-ppocrv6/bin/python -m pip install paddlepaddle==3.2.2
 .venv-ppocrv6/bin/python -m pip install paddleocr==3.7.0
 ```
 
@@ -136,7 +138,7 @@ These gates determine only **eligibility for the next evaluation stage**, never 
 
 OCR rejects a challenger when overall CER regresses by more than 0.01 absolute, when `vertical` or `furigana` CER regresses by more than 0.02 absolute, or when worker errors exceed 1%. Speed never compensates for an OCR quality regression.
 
-Mask refinement rejects when mean F1 drops by more than 0.005, recall drops by more than 0.02, false-positive/artwork-overreach share rises by more than 0.005, or any new candidate pixel crosses a supplied safe envelope.
+Mask refinement cannot be promoted without `truth_mask` for every evaluated mask sample. With complete truth data, it rejects when mean F1 drops by more than 0.005, recall drops by more than 0.02, false-positive/artwork-overreach share rises by more than 0.005, or any new candidate pixel crosses a supplied safe envelope.
 
 MI-GAN is only eligible when clean-reference metrics exist, allowed-region MAE is within 1.05x of LaMa, edge F1 is within 0.02 of LaMa, and it does not increase changes outside the allowed mask neighborhood. Automatic metrics still require visual review of screentone, hair/face line art, speed lines, gradients, and flat color.
 
