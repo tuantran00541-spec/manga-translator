@@ -26,6 +26,7 @@ from app.security import (
 from app.upload_utils import read_upload_limited
 
 router = APIRouter(prefix="/api", tags=["chapters"])
+_CHAPTER_LIST_CACHE: dict[str, tuple[tuple[int, int, int], dict]] = {}
 
 
 def _clamp_workers(n: int | None) -> int:
@@ -42,32 +43,56 @@ def _region_payload(regions: list[RegionModel]) -> list[dict]:
     return [region.model_dump() for region in regions]
 
 
+def _manifest_revision(path) -> tuple[tuple[int, int, int], float]:
+    stat = path.stat()
+    return (
+        (int(stat.st_size), int(stat.st_mtime_ns), int(stat.st_ctime_ns)),
+        float(stat.st_mtime),
+    )
+
+
 @router.get("/chapters")
 def list_chapters() -> list[dict]:
     chapters = []
     if not PROCESSED_DIR.exists():
+        _CHAPTER_LIST_CACHE.clear()
         return chapters
-    for d in list(PROCESSED_DIR.iterdir()):
+
+    active_chapters: set[str] = set()
+    for d in PROCESSED_DIR.iterdir():
         if not d.is_dir():
             continue
         manifest_path = d / "manifest.json"
         if not manifest_path.exists():
             continue
+        active_chapters.add(d.name)
         try:
-            mtime = manifest_path.stat().st_mtime
+            revision, mtime = _manifest_revision(manifest_path)
+            cached = _CHAPTER_LIST_CACHE.get(d.name)
+            if cached is not None and cached[0] == revision:
+                chapters.append(dict(cached[1]))
+                continue
+
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
             pages = manifest.get("pages", [])
             if not pages:
+                _CHAPTER_LIST_CACHE.pop(d.name, None)
                 continue
-            chapters.append({
+            item = {
                 "chapter_id": manifest.get("chapter_id", d.name),
                 "source_url": manifest.get("source_url", ""),
                 "total_pages": len(pages),
                 "workflow": manifest.get("workflow", {"stage": "preview", "page_index": 0}),
                 "updated_at": mtime,
-            })
+            }
+            _CHAPTER_LIST_CACHE[d.name] = (revision, item)
+            chapters.append(dict(item))
         except (json.JSONDecodeError, OSError, KeyError):
+            _CHAPTER_LIST_CACHE.pop(d.name, None)
             continue
+
+    for chapter_id in set(_CHAPTER_LIST_CACHE) - active_chapters:
+        _CHAPTER_LIST_CACHE.pop(chapter_id, None)
     chapters.sort(key=lambda x: x["updated_at"], reverse=True)
     return chapters
 
