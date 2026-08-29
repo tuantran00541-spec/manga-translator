@@ -9,6 +9,10 @@ on:
       - .github/workflows/research-japanese-ocr.yml
       - requirements.txt
       - app/ocr/**
+      - app/text_objects.py
+      - app/routers/ocr.py
+      - app/routers/translation.py
+      - scripts/ocr_hybrid_sanity.py
       - scripts/japanese_ocr_benchmark.py
       - scripts/japanese_ppocr_order_probe.py
       - scripts/japanese_runtime_probe.py
@@ -29,14 +33,17 @@ jobs:
       OMP_NUM_THREADS: "4"
       MKL_NUM_THREADS: "4"
       MANGA_PPOCRV6_TIER: "small"
-      MANGA_OCR_JA_FALLBACK: "1"
-      MANGA_OCR_JA_FALLBACK_CONFIDENCE: "0.55"
+      MANGA_PPOCRV6_TEXTLINE_ORIENTATION: "0"
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+
+      - name: Compile hybrid OCR sources
+        run: |
+          python -m compileall -q app/ocr app/text_objects.py app/routers/ocr.py app/routers/translation.py scripts/ocr_hybrid_sanity.py scripts/japanese_runtime_probe.py
 
       - name: Install PP-OCRv6 challenger
         run: |
@@ -90,6 +97,10 @@ jobs:
             "manga-ocr==0.1.11" \
             "transformers>=4.36,<4.46"
 
+      - name: Validate hybrid routing and quality invariants
+        run: |
+          PYTHONPATH=. .venv-jp-runtime/bin/python scripts/ocr_hybrid_sanity.py
+
       - name: Benchmark migrated MultiLangOCR Japanese route
         run: |
           PYTHONPATH=. .venv-jp-runtime/bin/python scripts/japanese_runtime_probe.py \
@@ -111,7 +122,7 @@ jobs:
           print("JP_PPOCR_RAW", json.dumps({k:p.get(k) for k in summary_keys}, ensure_ascii=False))
           print("JP_PPOCR_GEOMETRY", json.dumps({k:g.get(k) for k in ["engine", "samples", "raw_aggregate_cer", "ordered_aggregate_cer", "raw_exact_match_rate", "ordered_exact_match_rate", "vertical_samples", "mean_latency_ms", "p95_latency_ms"]}, ensure_ascii=False))
           print("JP_MANGAOCR", json.dumps({k:m.get(k) for k in summary_keys}, ensure_ascii=False))
-          print("JP_RUNTIME", json.dumps({k:r.get(k) for k in ["engine", "samples", "aggregate_cer", "exact_match_rate", "exact_match_count", "mangaocr_fallback_count", "mangaocr_fallback_rate", "mean_latency_ms", "p95_latency_ms"]}, ensure_ascii=False))
+          print("JP_RUNTIME", json.dumps({k:r.get(k) for k in ["engine", "samples", "aggregate_cer", "exact_match_rate", "exact_match_count", "mangaocr_primary_count", "mangaocr_primary_rate", "mean_latency_ms", "p95_latency_ms"]}, ensure_ascii=False))
 
           gate = {
               "ppocr_raw_cer": p["aggregate_cer"],
@@ -121,11 +132,15 @@ jobs:
               "ppocr_geometry_exact": g["ordered_exact_match_rate"],
               "mangaocr_exact": m["exact_match_rate"],
               "runtime_exact": r["exact_match_rate"],
-              "runtime_fallback_count": r["mangaocr_fallback_count"],
-              "runtime_fallback_rate": r["mangaocr_fallback_rate"],
+              "runtime_mangaocr_primary_count": r["mangaocr_primary_count"],
+              "runtime_mangaocr_primary_rate": r["mangaocr_primary_rate"],
+              "runtime_routes_all_ja_to_mangaocr": (
+                  r["mangaocr_primary_count"] == r["samples"]
+                  and r["mangaocr_primary_rate"] == 1.0
+              ),
               "runtime_safe_for_feature_branch": (
-                  r["aggregate_cer"] <= m["aggregate_cer"] * 1.10 + 0.01
-                  and r["exact_match_rate"] + 0.05 >= m["exact_match_rate"]
+                  r["aggregate_cer"] <= m["aggregate_cer"] + 0.005
+                  and r["exact_match_rate"] + 0.01 >= m["exact_match_rate"]
               ),
               "ppocr_geometry_can_replace_mangaocr_on_this_sample": (
                   g["ordered_aggregate_cer"] <= m["aggregate_cer"] * 1.10 + 0.01
@@ -134,6 +149,8 @@ jobs:
           }
           (root / "comparison.json").write_text(json.dumps(gate, ensure_ascii=False, indent=2), encoding="utf-8")
           print("JP_GATE", json.dumps(gate, ensure_ascii=False))
+          if not gate["runtime_routes_all_ja_to_mangaocr"]:
+              raise SystemExit("Japanese runtime routed a sample away from MangaOCR primary")
           if not gate["runtime_safe_for_feature_branch"]:
               raise SystemExit("Migrated Japanese runtime failed the feature-branch safety gate")
           PY
