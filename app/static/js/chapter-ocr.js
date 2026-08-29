@@ -80,9 +80,13 @@
     }
   }
 
+  function workspaceRoot() {
+    return document.getElementById("page-view") || document;
+  }
+
   function renderAll() {
     syncChapter();
-    document.querySelectorAll(".review-workspace-shell").forEach(renderPanel);
+    workspaceRoot().querySelectorAll(".review-workspace-shell").forEach(renderPanel);
   }
 
   function schedulePoll(jobId, generation) {
@@ -209,7 +213,7 @@
 
   function scan() {
     syncChapter();
-    document.querySelectorAll(".review-workspace-shell").forEach(bindWorkspace);
+    workspaceRoot().querySelectorAll(".review-workspace-shell").forEach(bindWorkspace);
   }
 
   async function safeFetchOcr(pageIndex, boxIndex, originalEl) {
@@ -244,8 +248,28 @@
 
   window.fetchOcr = safeFetchOcr;
 
-  const observer = new MutationObserver(scan);
-  observer.observe(document.documentElement, { childList: true, subtree: true });
-  document.addEventListener("DOMContentLoaded", scan);
+  let scanScheduled = false;
+  function scheduleScan() {
+    if (scanScheduled) return;
+    scanScheduled = true;
+    window.requestAnimationFrame(() => {
+      scanScheduled = false;
+      scan();
+    });
+  }
+
+  function observeWorkspaceRoot() {
+    const root = document.getElementById("page-view");
+    if (!root || root.dataset.chapterOcrObserved === "1") return;
+    root.dataset.chapterOcrObserved = "1";
+    const observer = new MutationObserver(scheduleScan);
+    observer.observe(root, { childList: true, subtree: true });
+  }
+
+  observeWorkspaceRoot();
+  document.addEventListener("DOMContentLoaded", () => {
+    observeWorkspaceRoot();
+    scheduleScan();
+  });
   scan();
 })();
