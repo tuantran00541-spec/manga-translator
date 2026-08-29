@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from collections import OrderedDict
 import copy
+import os
 import threading
 from pathlib import Path
 
@@ -14,6 +16,7 @@ from app.manifest_utils import (
     load_manifest_raw,
     save_manifest_raw,
 )
+from app.mask_store import decode_mask_value
 from app.ocr.identity import (
     engine_identity,
     file_revision,
@@ -21,7 +24,7 @@ from app.ocr.identity import (
     machine_cache_valid,
     stamp_machine_cache,
 )
-from app.pipeline import _decode_mask, read_image
+from app.pipeline import read_image
 from app.security import validate_chapter_id
 
 OCR_CANCELLED_MESSAGE = "OCR job was cancelled"
@@ -33,6 +36,14 @@ class OCRResultStale(RuntimeError):
 
 class OCRCancelled(RuntimeError):
     pass
+
+
+def _cache_budget_bytes() -> int:
+    try:
+        value = int(os.getenv("MANGA_OCR_IMAGE_CACHE_MB", "128"))
+    except ValueError:
+        value = 128
+    return max(0, min(value, 1024)) * 1024 * 1024
 
 
 def _region_overlaps_box(region: dict, box: dict) -> bool:
@@ -60,7 +71,7 @@ def ocr_crop_from_box(image: np.ndarray, box: dict) -> np.ndarray:
     bx2, by2 = max(bx1, min(w, bx2)), max(by1, min(h, by2))
     if bx2 <= bx1 or by2 <= by1:
         return image[0:0, 0:0]
-    mask = _decode_mask(box.get("mask"))
+    mask = decode_mask_value(box.get("mask"))
     expected_shape = (by2 - by1, bx2 - bx1)
     if mask is not None and mask.shape == expected_shape:
         ys, xs = np.nonzero(mask > 127)
@@ -132,6 +143,12 @@ class OCRService:
     def __init__(self, ocr_engine, pipeline):
         self.ocr = ocr_engine
         self.pipeline = pipeline
+        self._image_cache: OrderedDict[
+            tuple[str, tuple[int, int, int]], np.ndarray
+        ] = OrderedDict()
+        self._image_cache_bytes = 0
+        self._image_cache_budget = _cache_budget_bytes()
+        self._image_cache_lock = threading.RLock()
 
     def plan_chapter(self, chapter_id: str) -> list[tuple[int, str]]:
         validate_chapter_id(chapter_id)
@@ -288,8 +305,39 @@ class OCRService:
             "stale": False,
         }
 
-    def _read_box_text(self, original_path: Path, box_snapshot: dict, lang: str) -> str:
+    def _cached_source_image(self, original_path: Path) -> np.ndarray:
+        revision = file_revision(original_path)
+        key = (str(original_path), revision)
+        with self._image_cache_lock:
+            cached = self._image_cache.pop(key, None)
+            if cached is not None:
+                self._image_cache[key] = cached
+                return cached
+
         image = read_image(original_path)
+        image_bytes = int(image.nbytes)
+        if self._image_cache_budget <= 0 or image_bytes > self._image_cache_budget:
+            return image
+
+        with self._image_cache_lock:
+            cached = self._image_cache.pop(key, None)
+            if cached is not None:
+                self._image_cache[key] = cached
+                return cached
+
+            while (
+                self._image_cache
+                and self._image_cache_bytes + image_bytes > self._image_cache_budget
+            ):
+                _old_key, old_image = self._image_cache.popitem(last=False)
+                self._image_cache_bytes -= int(old_image.nbytes)
+
+            self._image_cache[key] = image
+            self._image_cache_bytes += image_bytes
+        return image
+
+    def _read_box_text(self, original_path: Path, box_snapshot: dict, lang: str) -> str:
+        image = self._cached_source_image(original_path)
         crop = ocr_crop_from_box(image, box_snapshot)
         if not crop.size:
             return ""
