@@ -14,16 +14,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from app.downloader.registry import download_chapter
-
-
-def _sample_indices(count: int, wanted: int) -> list[int]:
-    if count <= 0:
-        return []
-    wanted = max(1, min(wanted, count))
-    if wanted == 1:
-        return [count // 2]
-    out = {round(i * (count - 1) / (wanted - 1)) for i in range(wanted)}
-    return sorted(out)
+from app.downloader.slicer import slice_image
 
 
 def _sha256(path: Path) -> str:
@@ -38,18 +29,20 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("url")
     parser.add_argument("--output", default="benchmark-results/chapter210")
-    parser.add_argument("--samples", type=int, default=8)
     args = parser.parse_args()
 
     root = Path(args.output).resolve()
     raw_dir = root / "raw"
+    slices_dir = root / "slices"
     root.mkdir(parents=True, exist_ok=True)
+    slices_dir.mkdir(parents=True, exist_ok=True)
 
     paths = download_chapter(args.url, raw_dir)
     if not paths:
         raise RuntimeError("Downloader returned no chapter images")
 
     pages = []
+    slices = []
     for index, path in enumerate(paths):
         with Image.open(path) as image:
             width, height = image.size
@@ -67,27 +60,51 @@ def main() -> int:
             }
         )
 
-    selected = _sample_indices(len(pages), args.samples)
-    selected_paths = [str(paths[i].resolve()) for i in selected]
+        metadata = slice_image(path, slices_dir, f"p{index:03d}", return_metadata=True)
+        for slice_index, item in enumerate(metadata):
+            slice_path = Path(item["path"]).resolve()
+            with Image.open(slice_path) as slice_image_file:
+                slice_width, slice_height = slice_image_file.size
+            slices.append(
+                {
+                    "page_index": index,
+                    "slice_index": slice_index,
+                    "path": str(slice_path),
+                    "filename": slice_path.name,
+                    "width": slice_width,
+                    "height": slice_height,
+                    "source_y1": int(item.get("source_y1", 0)),
+                    "source_y2": int(item.get("source_y2", height)),
+                    "core_y1": int(item.get("core_y1", 0)),
+                    "core_y2": int(item.get("core_y2", slice_height)),
+                    "core_source_y1": int(item.get("core_source_y1", 0)),
+                    "core_source_y2": int(item.get("core_source_y2", height)),
+                    "unsafe_before": bool(item.get("unsafe_before", False)),
+                    "unsafe_after": bool(item.get("unsafe_after", False)),
+                }
+            )
+
     payload = {
         "url": args.url,
         "page_count": len(pages),
         "total_bytes": sum(item["bytes"] for item in pages),
-        "selected_indices": selected,
-        "selected_paths": selected_paths,
+        "slice_count": len(slices),
+        "max_slice_height": max((item["height"] for item in slices), default=0),
         "pages": pages,
+        "slices": slices,
     }
     (root / "chapter_info.json").write_text(
         json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
     )
-    (root / "selected_pages.txt").write_text(
-        "\n".join(selected_paths) + "\n", encoding="utf-8"
+    (root / "all_slices.txt").write_text(
+        "\n".join(item["path"] for item in slices) + "\n", encoding="utf-8"
     )
 
     print("@@CHAPTER@@" + json.dumps({
         "page_count": payload["page_count"],
         "total_bytes": payload["total_bytes"],
-        "selected_indices": selected,
+        "slice_count": payload["slice_count"],
+        "max_slice_height": payload["max_slice_height"],
     }))
     return 0
 
