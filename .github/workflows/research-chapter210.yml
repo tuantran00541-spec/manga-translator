@@ -13,7 +13,11 @@ on:
       - scripts/korean_fallback_probe.py
       - scripts/runtime_v6_chapter_probe.py
       - scripts/ocr_v6_runtime_sanity.py
+      - scripts/ocr_hybrid_sanity.py
       - app/ocr/**
+      - app/text_objects.py
+      - app/routers/ocr.py
+      - app/routers/translation.py
       - app/downloader/**
       - app/security.py
   workflow_dispatch:
@@ -31,13 +35,17 @@ jobs:
       MANGA_DOWNLOAD_WORKERS: "4"
       PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK: "True"
       MANGA_PPOCRV6_TIER: "small"
-      MANGA_OCR_JA_FALLBACK: "1"
+      MANGA_PPOCRV6_TEXTLINE_ORIENTATION: "0"
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+
+      - name: Compile OCR migration sources
+        run: |
+          python -m compileall -q app/ocr app/text_objects.py app/routers/ocr.py app/routers/translation.py scripts/ocr_hybrid_sanity.py scripts/runtime_v6_chapter_probe.py
 
       - name: Install downloader and slicer dependencies
         run: |
@@ -74,6 +82,10 @@ jobs:
         run: |
           PYTHONPATH=. .venv-ppocrv6/bin/python scripts/ocr_v6_runtime_sanity.py --model-smoke --korean
 
+      - name: Validate hybrid routing and quality invariants
+        run: |
+          PYTHONPATH=. .venv-ppocrv6/bin/python scripts/ocr_hybrid_sanity.py
+
       - name: Probe PP-OCRv6 small on all production slices
         run: |
           .venv-ppocrv6/bin/python scripts/ppocrv6_chapter_probe.py \
@@ -99,7 +111,7 @@ jobs:
           from pathlib import Path
           p = Path("benchmark-results/chapter210/runtime_v6/summary.json")
           d = json.loads(p.read_text(encoding="utf-8"))
-          keys = ["regions_compared","same_normalized_count","same_normalized_rate","disagreement_count","runtime_blank_count","reference_blank_count","mean_runtime_confidence","mean_region_latency_ms","p95_region_latency_ms","reference_full_slice_mean_latency_ms"]
+          keys = ["regions_compared","same_normalized_count","same_normalized_rate","disagreement_count","runtime_blank_count","reference_blank_count","quality_counts","quality_reasons","reject_rate","review_rate","mean_runtime_confidence","mean_region_latency_ms","p95_region_latency_ms","reference_full_slice_mean_latency_ms"]
           print("RUNTIME_ADAPTER_FINAL", json.dumps({k:d.get(k) for k in keys}, ensure_ascii=False))
           PY
 
