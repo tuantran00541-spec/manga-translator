@@ -41,7 +41,7 @@ def geometry_checks() -> None:
     ruby = reconstruct_reading_order(
         ["かんじ", "漢字"],
         [0.98, 0.99],
-        [_quad(40, 10, 100, 18), _quad(20, 30, 140, 54)],
+        [_quad(40, 14, 100, 22), _quad(20, 30, 140, 54)],
         lang="ja",
     )
     assert ruby["text"] == "漢字", ruby
