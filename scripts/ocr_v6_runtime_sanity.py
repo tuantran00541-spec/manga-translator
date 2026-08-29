@@ -8,7 +8,7 @@ import cv2
 import numpy as np
 
 from app.ocr.paddle_v6 import PaddleV6OCR
-from app.ocr.reading_order import reconstruct_reading_order
+from app.ocr.reading_order import reconstruct_reading_order, select_centered_target
 
 
 def _quad(x1: int, y1: int, x2: int, y2: int) -> list[list[int]]:
@@ -47,11 +47,66 @@ def geometry_checks() -> None:
     assert ruby["text"] == "漢字", ruby
     assert ruby["removed_indices"] == [0], ruby
 
+    centered = reconstruct_reading_order(
+        ["WHITE", "FACE"],
+        [0.99, 0.98],
+        [_quad(30, 45, 170, 65), _quad(40, 88, 160, 108)],
+        lang="en",
+    )
+    centered = select_centered_target(centered, (120, 200, 3), lang="en")
+    assert centered["text"] == "WHITE", centered
+    assert centered.get("target_selection_applied") is True, centered
+
+    split_line = reconstruct_reading_order(
+        ["FAST", "ER?", "YOU"],
+        [0.99, 0.99, 0.99],
+        [
+            _quad(35, 48, 92, 68),
+            _quad(96, 48, 155, 68),
+            _quad(65, 92, 135, 112),
+        ],
+        lang="en",
+    )
+    split_line = select_centered_target(split_line, (120, 190, 3), lang="en")
+    assert split_line["text"] == "FAST\nER?", split_line
+
+    centered_vertical = reconstruct_reading_order(
+        ["TARGET", "NEIGHBOR"],
+        [0.99, 0.99],
+        [_quad(48, 20, 68, 105), _quad(92, 20, 112, 105)],
+        lang="en",
+    )
+    centered_vertical = select_centered_target(
+        centered_vertical, (125, 120, 3), lang="en"
+    )
+    assert centered_vertical["text"] == "TARGET", centered_vertical
+
+    lone = reconstruct_reading_order(
+        ["ONLY"], [0.99], [_quad(30, 45, 170, 65)], lang="en"
+    )
+    assert select_centered_target(lone, (120, 200, 3), lang="en") == lone
+
+    ambiguous = reconstruct_reading_order(
+        ["TOP", "BOTTOM"],
+        [0.99, 0.99],
+        [_quad(45, 42, 155, 58), _quad(45, 62, 155, 78)],
+        lang="en",
+    )
+    ambiguous_selected = select_centered_target(
+        ambiguous, (120, 200, 3), lang="en"
+    )
+    assert ambiguous_selected["text"] == ambiguous["text"], ambiguous_selected
+    assert not ambiguous_selected.get("target_selection_applied"), ambiguous_selected
+
     print("@@OCR_V6_GEOMETRY@@" + json.dumps({
         "horizontal": horizontal["text"],
         "vertical": vertical["text"],
         "ruby": ruby["text"],
         "ruby_removed": ruby["removed_indices"],
+        "centered": centered["text"],
+        "split_line": split_line["text"],
+        "centered_vertical": centered_vertical["text"],
+        "ambiguous": ambiguous_selected["text"],
     }, ensure_ascii=False))
 
 
