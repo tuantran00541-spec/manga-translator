@@ -8,6 +8,7 @@ on:
       - .github/workflows/research-chapter210.yml
       - scripts/asura_chapter_action_probe.py
       - scripts/ppocrv6_chapter_probe.py
+      - scripts/korean_fallback_probe.py
       - app/downloader/**
       - app/security.py
   workflow_dispatch:
@@ -66,6 +67,23 @@ jobs:
               print("TEXT", " | ".join(row["texts"][:20]))
           PY
 
+      - name: Recheck PP-OCRv6 regions with Korean PP-OCRv5 mobile recognizer
+        run: |
+          .venv-ppocrv6/bin/python scripts/korean_fallback_probe.py \
+            --ppocr-summary "$PROBE_ROOT/ppocrv6/summary.json" \
+            --output "$PROBE_ROOT/korean_fallback" \
+            --v6-low-threshold 0.75
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path("benchmark-results/chapter210/korean_fallback/summary.json")
+          d = json.loads(p.read_text(encoding="utf-8"))
+          keys = ["model", "init_ms", "regions_rechecked", "mean_rec_latency_ms", "p95_rec_latency_ms", "v6_low_conf_candidates", "ko_confidence_improved_count", "hangul_recovered_count"]
+          print("KO_FALLBACK_FINAL", json.dumps({k:d.get(k) for k in keys}, ensure_ascii=False))
+          for item in d.get("hangul_examples", [])[:20]:
+              print("KO_RECOVERED", Path(item["source"]).name, "region", item["region_index"], "v6=", repr(item["v6_text"]), item["v6_score"], "ko=", repr(item["ko_text"]), item["ko_score"], "ms=", item["ko_latency_ms"])
+          PY
+
       - name: Upload downloaded chapter metadata and raw images
         if: always()
         uses: actions/upload-artifact@v4
@@ -78,11 +96,13 @@ jobs:
           retention-days: 3
           if-no-files-found: warn
 
-      - name: Upload PP-OCRv6 probe results
+      - name: Upload PP-OCRv6 and Korean fallback results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: chapter210-ppocrv6
-          path: benchmark-results/chapter210/ppocrv6
+          name: chapter210-ocr-research
+          path: |
+            benchmark-results/chapter210/ppocrv6
+            benchmark-results/chapter210/korean_fallback
           retention-days: 7
           if-no-files-found: warn
