@@ -1,0 +1,121 @@
+name: One-shot dead runtime audit
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  audit:
+    if: github.event.head_commit.message == 'chore: audit dead runtime code'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Audit dead runtime candidates
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" || {
+            echo 'main moved after audit started; refusing stale audit'
+            exit 1
+          }
+
+          python - <<'PY'
+          from pathlib import Path
+          import ast
+          import re
+
+          py_files = sorted([*Path('app').rglob('*.py'), Path('run.py')])
+          js_files = sorted(Path('app/static/js').rglob('*.js'))
+          html_files = sorted(Path('app/templates').rglob('*.html'))
+          all_text = '\n'.join(p.read_text(encoding='utf-8', errors='ignore') for p in [*py_files, *js_files, *html_files])
+
+          print('=== UNUSED IMPORT CANDIDATES (per-file AST) ===')
+          unused_imports = []
+          for path in py_files:
+            tree = ast.parse(path.read_text(encoding='utf-8'), filename=str(path))
+            used = {n.id for n in ast.walk(tree) if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load)}
+            for node in ast.walk(tree):
+              if isinstance(node, ast.Import):
+                for alias in node.names:
+                  name = alias.asname or alias.name.split('.')[0]
+                  if name not in used:
+                    unused_imports.append((str(path), node.lineno, name, alias.name))
+              elif isinstance(node, ast.ImportFrom):
+                if node.module == '__future__':
+                  continue
+                for alias in node.names:
+                  if alias.name == '*':
+                    continue
+                  name = alias.asname or alias.name
+                  if name not in used:
+                    unused_imports.append((str(path), node.lineno, name, f'{node.module or ""}.{alias.name}'))
+          for row in unused_imports:
+            print(f'{row[0]}:{row[1]}\t{row[2]}\t<- {row[3]}')
+          print(f'count={len(unused_imports)}')
+
+          print('\n=== TOP-LEVEL UNDECORATED DEF/CLASS WITH SINGLE TEXTUAL OCCURRENCE ===')
+          single_defs = []
+          for path in py_files:
+            tree = ast.parse(path.read_text(encoding='utf-8'), filename=str(path))
+            for node in tree.body:
+              if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                continue
+              if getattr(node, 'decorator_list', None):
+                continue
+              name = node.name
+              if name.startswith('__') and name.endswith('__'):
+                continue
+              count = len(re.findall(rf'(?<![A-Za-z0-9_]){re.escape(name)}(?![A-Za-z0-9_])', all_text))
+              if count == 1:
+                single_defs.append((str(path), node.lineno, type(node).__name__, name))
+          for row in single_defs:
+            print(f'{row[0]}:{row[1]}\t{row[2]}\t{row[3]}')
+          print(f'count={len(single_defs)}')
+
+          print('\n=== JS NAMED FUNCTION WITH SINGLE TEXTUAL OCCURRENCE ===')
+          js_text = '\n'.join(p.read_text(encoding='utf-8', errors='ignore') for p in [*js_files, *html_files])
+          js_candidates = []
+          decl_re = re.compile(r'(?m)^\s*(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(')
+          for path in js_files:
+            text = path.read_text(encoding='utf-8', errors='ignore')
+            for m in decl_re.finditer(text):
+              name = m.group(1)
+              count = len(re.findall(rf'(?<![\w$]){re.escape(name)}(?![\w$])', js_text))
+              if count == 1:
+                line = text.count('\n', 0, m.start()) + 1
+                js_candidates.append((str(path), line, name))
+          for row in js_candidates:
+            print(f'{row[0]}:{row[1]}\t{row[2]}')
+          print(f'count={len(js_candidates)}')
+
+          print('\n=== PYTHON MODULES WITH NO IMPORT-TEXT REFERENCE BY STEM ===')
+          module_candidates = []
+          for path in py_files:
+            if path.name in {'__init__.py', 'main.py'} or path == Path('run.py'):
+              continue
+            stem = path.stem
+            count = len(re.findall(rf'(?<![A-Za-z0-9_]){re.escape(stem)}(?![A-Za-z0-9_])', all_text))
+            if count <= 1:
+              module_candidates.append((str(path), count))
+          for path, count in module_candidates:
+            print(f'{path}\tstem_occurrences={count}')
+          print(f'count={len(module_candidates)}')
+          PY
+
+          python -m compileall -q app run.py
+          find app/static/js -type f -name '*.js' -print0 | xargs -0 -n1 node --check
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/dead-runtime-audit-once.yml
+          git diff --cached --check
+          git commit -m 'chore: finish dead runtime audit'
+          git push origin HEAD:main
