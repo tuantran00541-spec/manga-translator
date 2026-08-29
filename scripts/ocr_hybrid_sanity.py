@@ -139,6 +139,47 @@ def _assert_target_selection() -> None:
         engine_identity.cache_clear()
 
 
+def _assert_cache_identity_settings() -> None:
+    tracked = (
+        "MANGA_PPOCRV6_TIER",
+        "MANGA_PPOCRV6_TEXTLINE_ORIENTATION",
+        "MANGA_OCR_TARGET_SELECTION",
+    )
+    original = {name: os.environ.get(name) for name in tracked}
+    try:
+        os.environ["MANGA_PPOCRV6_TEXTLINE_ORIENTATION"] = "0"
+        os.environ["MANGA_OCR_TARGET_SELECTION"] = "centered"
+
+        os.environ["MANGA_PPOCRV6_TIER"] = "small"
+        engine_identity.cache_clear()
+        en_small = engine_identity("en")
+        ko_small = engine_identity("ko")
+        assert "ppocrv6-small" in en_small
+        assert "ppocrv6-small-det" in ko_small
+        assert "korean-ppocrv5-mobile-rec" in ko_small
+
+        os.environ["MANGA_PPOCRV6_TIER"] = "medium"
+        engine_identity.cache_clear()
+        en_medium = engine_identity("en")
+        ko_medium = engine_identity("ko")
+        assert "ppocrv6-medium" in en_medium
+        assert "ppocrv6-medium-det" in ko_medium
+        assert en_medium != en_small
+        assert ko_medium != ko_small
+
+        os.environ["MANGA_PPOCRV6_TEXTLINE_ORIENTATION"] = "1"
+        engine_identity.cache_clear()
+        assert engine_identity("en") != en_medium
+        assert engine_identity("ko") != ko_medium
+    finally:
+        for name, value in original.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+        engine_identity.cache_clear()
+
+
 def main() -> int:
     _assert_quality()
     _assert_manual_override()
@@ -146,6 +187,7 @@ def main() -> int:
     _assert_japanese_route()
     _assert_orientation_default()
     _assert_target_selection()
+    _assert_cache_identity_settings()
     print("hybrid OCR invariants: OK")
     return 0
 
