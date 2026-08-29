@@ -1,9 +1,8 @@
-import os
-
 import numpy as np
 import cv2
 from app.detector.bubble_detector import BubbleBox, DETECTOR_CONFIDENCE_MAX
 from app.detector.stroke_refinement import refine_stroke_mask
+from app.env_utils import env_enabled
 from app.logging_config import logger
 
 from app.config import MASK_DILATE_KERNEL_SIZE
@@ -12,20 +11,11 @@ MASK_EXPAND = 8
 MANUAL_CONFIDENCE_SENTINEL = 1.0
 
 
-def _stroke_refinement_enabled() -> bool:
-    return os.getenv("MANGA_STROKE_MASK_REFINEMENT", "0").strip().lower() in {
-        "1",
-        "true",
-        "yes",
-        "on",
-    }
-
-
 def adaptive_dilate_mask(mask: np.ndarray, crop_img: np.ndarray | None = None) -> np.ndarray:
     if not np.any(mask > 127):
         return mask
 
-    if _stroke_refinement_enabled():
+    if env_enabled("MANGA_STROKE_MASK_REFINEMENT", False):
         refined, stats = refine_stroke_mask(
             mask,
             crop_img,
