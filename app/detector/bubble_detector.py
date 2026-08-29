@@ -50,7 +50,11 @@ class YoloDetector:
     def __init__(self, model_path, conf_threshold: float, use_tta: bool | None = None):
         self.model_path = str(model_path)
         self.source_model = Path(model_path).name
-        self.session = make_session(model_path, serialize_inference=True)
+        # Detector sessions are safe to run concurrently and the bounded
+        # two-page scheduler benefits substantially from overlapping them.
+        # Leave serialization at the ORT default so the existing
+        # MANGA_ORT_SERIALIZE_INFERENCE environment switch remains a rollback.
+        self.session = make_session(model_path)
         self.input_name = self.session.get_inputs()[0].name
         self.conf_threshold = conf_threshold
         self.use_tta = ENABLE_TTA if use_tta is None else use_tta
