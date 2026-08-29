@@ -1,9 +1,26 @@
-function pageLabel(pages, pageIndex) {
+const pageCountCache = new WeakMap();
 
-  const page = pages[pageIndex];
-  const total = pages.filter((p) => p.source_page === page.source_page).length;
-  if (total <= 1) return "Trang " + (page.source_page + 1);
-  return "Trang " + (page.source_page + 1) + " · Lát " + (page.slice_index + 1) + "/" + total;
+function pageCounts(pages) {
+  if (!Array.isArray(pages)) return new Map();
+  let counts = pageCountCache.get(pages);
+  if (counts) return counts;
+  counts = new Map();
+  pages.forEach((page) => {
+    const source = Number.isInteger(page?.source_page) ? page.source_page : -1;
+    counts.set(source, (counts.get(source) || 0) + 1);
+  });
+  pageCountCache.set(pages, counts);
+  return counts;
+}
+
+function pageLabel(pages, pageIndex) {
+  const page = Array.isArray(pages) ? pages[pageIndex] : null;
+  if (!page) return `Trang ${Number(pageIndex) + 1}`;
+  const source = Number.isInteger(page.source_page) ? page.source_page : pageIndex;
+  const total = pageCounts(pages).get(source) || 1;
+  if (total <= 1) return `Trang ${source + 1}`;
+  const slice = Number.isInteger(page.slice_index) ? page.slice_index : 0;
+  return `Trang ${source + 1} · Lát ${slice + 1}/${total}`;
 }
 
 let previewActivePageIndex = 0;

@@ -1,16 +1,11 @@
-import copy
-import os
-import uuid
 from pathlib import Path
+
 from PIL import Image
 from fastapi import APIRouter, HTTPException
 
-from app.config import OUTPUT_DIR
 from app.logging_config import logger
-from app.manifest_utils import bump_page_revision, get_manifest_lock, load_manifest_raw, save_manifest_raw
 from app.render.text_renderer import list_available_fonts, render_text_in_box
 from app.schemas import RenderRequest
-from app.security import validate_chapter_id
 
 router = APIRouter(prefix="/api", tags=["render"])
 
@@ -32,11 +27,6 @@ def _cleanup_tmp(path: Path) -> None:
             path.unlink()
     except OSError:
         pass
-
-
-def _file_revision(path: Path) -> tuple[int, int, int]:
-    st = path.stat()
-    return (st.st_size, st.st_mtime_ns, st.st_ctime_ns)
 
 
 @router.get("/fonts")
@@ -305,193 +295,3 @@ def _render_text_objects(
             raise HTTPException(500, f"Chèn chữ thất bại (vùng {oid})") from e
 
     return rendered_count
-
-
-@router.post("/render")
-def render_page(req: RenderRequest) -> dict:
-    validate_chapter_id(req.chapter_id)
-    with get_manifest_lock(req.chapter_id):
-        manifest = load_manifest_raw(req.chapter_id)
-        if req.page_index < 0 or req.page_index >= len(manifest.get("pages", [])):
-            raise HTTPException(400, f"Invalid page_index: {req.page_index}")
-        page = copy.deepcopy(manifest["pages"][req.page_index])
-        boxes_snapshot = copy.deepcopy(page.get("boxes", []))
-        text_objects_snapshot = copy.deepcopy(page.get("text_objects", []))
-        clean_snapshot = page.get("clean")
-        original_snapshot = page.get("original")
-        skipped_snapshot = page.get("skipped", False)
-        drafts = copy.deepcopy(manifest.get("drafts", {}))
-        _page_prefix = f"{req.page_index}_"
-        page_drafts_snapshot = {
-            k: v for k, v in drafts.items()
-            if str(k).startswith(_page_prefix)
-        }
-
-    logger.info(
-        f"Chapter {req.chapter_id} page {req.page_index}: "
-        f"rendering translations (req keys: {len(req.translations)})"
-    )
-
-    base_image_path = page.get("clean") or page.get("original")
-    if not base_image_path:
-        raise HTTPException(400, "Page has no image to render onto")
-    base_path = Path(base_image_path)
-    if not base_path.is_file():
-        raise HTTPException(
-            404,
-            f"Base image not found: {base_path.name}. "
-            "Hãy chạy xử lý trang (process) trước khi chèn chữ.",
-        )
-
-    try:
-        base_revision = _file_revision(base_path)
-    except OSError as exc:
-        raise HTTPException(409, "Base image changed before rendering could start") from exc
-
-    try:
-        image = Image.open(base_path).convert("RGB")
-    except Exception as e:
-        logger.exception("Failed to open base image %s", base_path)
-        raise HTTPException(500, f"Cannot open base image: {e}") from e
-
-    colors_dict = req.colors or {}
-    fonts_dict = req.fonts or {}
-    font_sizes_dict = req.font_sizes or {}
-    bolds_dict = req.bolds or {}
-    stroke_w_dict = req.stroke_widths or {}
-    stroke_c_dict = req.stroke_colors or {}
-    bg_colors_dict = req.bg_colors or {}
-    radii_dict = req.corner_radii or {}
-    horizontal_aligns_dict = req.horizontal_aligns or {}
-    vertical_aligns_dict = req.vertical_aligns or {}
-
-    rendered_count = 0
-    text_objects = page.get("text_objects") or []
-    if text_objects:
-        rendered_count = _render_text_objects(
-            image, req, text_objects,
-            colors_dict, fonts_dict, font_sizes_dict, bolds_dict,
-            stroke_w_dict, stroke_c_dict, bg_colors_dict, radii_dict,
-            horizontal_aligns_dict, vertical_aligns_dict,
-        )
-    else:
-        rendered_count = _render_boxes_legacy(
-            image, req, page, drafts,
-            colors_dict, fonts_dict, font_sizes_dict, bolds_dict,
-            stroke_w_dict, stroke_c_dict, bg_colors_dict, radii_dict,
-        )
-
-    out_dir = OUTPUT_DIR / req.chapter_id
-    out_dir.mkdir(parents=True, exist_ok=True)
-    final_path = out_dir / f"page_{req.page_index:03d}.png"
-    tmp_path = out_dir / f"page_{req.page_index:03d}.rendering.{uuid.uuid4().hex[:12]}.tmp"
-
-    try:
-        image.save(tmp_path, format="PNG")
-    except Exception as e:
-        logger.error(
-            "Chapter %s page %s operation 'render_page' save failed: %s",
-            req.chapter_id,
-            req.page_index,
-            e,
-            exc_info=True,
-        )
-        _cleanup_tmp(tmp_path)
-        raise HTTPException(500, "Cannot save rendered image") from e
-
-    state_changed = False
-    try:
-        with get_manifest_lock(req.chapter_id):
-            m = load_manifest_raw(req.chapter_id)
-            if 0 <= req.page_index < len(m.get("pages", [])):
-                cur_page = m["pages"][req.page_index]
-                cur_page_drafts = {
-                    k: v for k, v in m.get("drafts", {}).items()
-                    if str(k).startswith(_page_prefix)
-                }
-                current_base_value = cur_page.get("clean") or cur_page.get("original")
-                current_base_path = Path(current_base_value) if current_base_value else None
-                try:
-                    base_file_changed = (
-                        current_base_path is None
-                        or current_base_path != base_path
-                        or not current_base_path.is_file()
-                        or _file_revision(current_base_path) != base_revision
-                    )
-                except OSError:
-                    base_file_changed = True
-
-                if (
-                    cur_page.get("boxes", []) != boxes_snapshot
-                    or cur_page.get("text_objects", []) != text_objects_snapshot
-                    or cur_page.get("clean") != clean_snapshot
-                    or cur_page.get("original") != original_snapshot
-                    or cur_page.get("skipped", False) != skipped_snapshot
-                    or cur_page_drafts != page_drafts_snapshot
-                    or base_file_changed
-                ):
-                    state_changed = True
-            else:
-                state_changed = True
-
-            if not state_changed:
-                os.replace(tmp_path, final_path)
-                cur_page["rendered"] = True
-                bump_page_revision(cur_page, "render_revision")
-                if text_objects:
-                    cur_text_objects = cur_page.setdefault("text_objects", [])
-                    for obj in cur_text_objects:
-                        oid = obj.get("id")
-                        if not oid:
-                            continue
-                        t = _style_get(req.translations, oid)
-                        if t is None:
-                            t = obj.get("translation", "")
-                        if (t or "").strip():
-                            obj["translation"] = t.strip()
-                else:
-                    m_drafts = m.setdefault("drafts", {})
-                    for box_key, translation in req.translations.items():
-                        if (translation or "").strip():
-                            dk = f"{req.page_index}_{box_key}"
-                            d = m_drafts.setdefault(dk, {})
-                            d["text"] = translation.strip()
-                            if _style_get(colors_dict, box_key) is not None:
-                                d["color"] = _style_get(colors_dict, box_key)
-                            if _style_get(fonts_dict, box_key) is not None:
-                                d["font"] = _style_get(fonts_dict, box_key)
-                            if _style_get(font_sizes_dict, box_key) is not None:
-                                d["fontSize"] = _style_get(font_sizes_dict, box_key)
-                            if _style_get(bolds_dict, box_key) is not None:
-                                d["bold"] = bool(_style_get(bolds_dict, box_key))
-                            if _style_get(stroke_w_dict, box_key) is not None:
-                                d["strokeWidth"] = _style_get(stroke_w_dict, box_key)
-                            if _style_get(stroke_c_dict, box_key) is not None:
-                                d["strokeColor"] = _style_get(stroke_c_dict, box_key)
-                            if _style_get(bg_colors_dict, box_key) is not None:
-                                d["bgColor"] = _style_get(bg_colors_dict, box_key)
-                            if _style_get(radii_dict, box_key) is not None:
-                                d["cornerRadius"] = _style_get(radii_dict, box_key)
-                save_manifest_raw(req.chapter_id, m)
-    finally:
-        _cleanup_tmp(tmp_path)
-
-    if state_changed:
-        logger.warning(
-            "Chapter %s page %s: page state changed during render, discarding stale output",
-            req.chapter_id,
-            req.page_index,
-        )
-        return {
-            "output": f"/api/image/{req.chapter_id}/{req.page_index}/rendered",
-            "warning": "Vùng thoại đã bị sửa trong quá trình chèn chữ. Vui lòng chèn chữ lại.",
-        }
-
-    logger.info(
-        "Chapter %s page %s: rendered %s box(es) -> %s",
-        req.chapter_id,
-        req.page_index,
-        rendered_count,
-        final_path.name,
-    )
-    return {"output": f"/api/image/{req.chapter_id}/{req.page_index}/rendered"}
