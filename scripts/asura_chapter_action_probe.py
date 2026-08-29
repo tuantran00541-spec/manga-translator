@@ -5,8 +5,13 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
+import sys
 
 from PIL import Image
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 from app.downloader.registry import download_chapter
 
@@ -63,7 +68,7 @@ def main() -> int:
         )
 
     selected = _sample_indices(len(pages), args.samples)
-    selected_paths = [str((raw_dir / paths[i].name).resolve()) for i in selected]
+    selected_paths = [str(paths[i].resolve()) for i in selected]
     payload = {
         "url": args.url,
         "page_count": len(pages),
