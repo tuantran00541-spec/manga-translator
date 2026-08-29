@@ -4,10 +4,14 @@ on:
   push:
     branches:
       - research/paper-gates-ocr-mask-inpaint-20260829
+      - feat/ppocrv6-runtime-migration
     paths:
       - .github/workflows/research-japanese-ocr.yml
+      - requirements.txt
+      - app/ocr/**
       - scripts/japanese_ocr_benchmark.py
       - scripts/japanese_ppocr_order_probe.py
+      - scripts/japanese_runtime_probe.py
   workflow_dispatch:
 
 permissions:
@@ -24,6 +28,9 @@ jobs:
       TOKENIZERS_PARALLELISM: "false"
       OMP_NUM_THREADS: "4"
       MKL_NUM_THREADS: "4"
+      MANGA_PPOCRV6_TIER: "small"
+      MANGA_OCR_JA_FALLBACK: "1"
+      MANGA_OCR_JA_FALLBACK_CONFIDENCE: "0.55"
     steps:
       - uses: actions/checkout@v4
 
@@ -35,7 +42,12 @@ jobs:
         run: |
           python -m venv .venv-jp-ppocr
           .venv-jp-ppocr/bin/python -m pip install --upgrade pip
-          .venv-jp-ppocr/bin/pip install "paddlepaddle>=3.2,<3.3" "paddleocr==3.7.0"
+          .venv-jp-ppocr/bin/pip install \
+            "numpy==1.26.4" \
+            "Pillow==10.4.0" \
+            "opencv-python-headless==4.10.0.84" \
+            "paddlepaddle==3.2.2" \
+            "paddleocr==3.7.0"
 
       - name: Benchmark PP-OCRv6 small on Japanese ground truth
         run: |
@@ -64,6 +76,26 @@ jobs:
             --image-dir "$BENCH_ROOT/images" \
             --output "$BENCH_ROOT/mangaocr.json"
 
+      - name: Install mixed migrated OCR runtime
+        run: |
+          python -m venv .venv-jp-runtime
+          .venv-jp-runtime/bin/python -m pip install --upgrade pip
+          .venv-jp-runtime/bin/pip install --index-url https://download.pytorch.org/whl/cpu "torch==2.5.1"
+          .venv-jp-runtime/bin/pip install \
+            "numpy==1.26.4" \
+            "Pillow==10.4.0" \
+            "opencv-python-headless==4.10.0.84" \
+            "paddlepaddle==3.2.2" \
+            "paddleocr==3.7.0" \
+            "manga-ocr==0.1.11" \
+            "transformers>=4.36,<4.46"
+
+      - name: Benchmark migrated MultiLangOCR Japanese route
+        run: |
+          PYTHONPATH=. .venv-jp-runtime/bin/python scripts/japanese_runtime_probe.py \
+            --image-dir "$BENCH_ROOT/images" \
+            --output "$BENCH_ROOT/runtime.json"
+
       - name: Compare Japanese OCR results
         run: |
           python - <<'PY'
@@ -74,37 +106,27 @@ jobs:
           p = json.loads((root / "ppocrv6.json").read_text(encoding="utf-8"))
           g = json.loads((root / "ppocrv6-geometry.json").read_text(encoding="utf-8"))
           m = json.loads((root / "mangaocr.json").read_text(encoding="utf-8"))
+          r = json.loads((root / "runtime.json").read_text(encoding="utf-8"))
           summary_keys = ["engine", "samples", "aggregate_cer", "exact_match_rate", "exact_match_count", "init_ms", "mean_latency_ms", "p95_latency_ms"]
           print("JP_PPOCR_RAW", json.dumps({k:p.get(k) for k in summary_keys}, ensure_ascii=False))
           print("JP_PPOCR_GEOMETRY", json.dumps({k:g.get(k) for k in ["engine", "samples", "raw_aggregate_cer", "ordered_aggregate_cer", "raw_exact_match_rate", "ordered_exact_match_rate", "vertical_samples", "mean_latency_ms", "p95_latency_ms"]}, ensure_ascii=False))
           print("JP_MANGAOCR", json.dumps({k:m.get(k) for k in summary_keys}, ensure_ascii=False))
-
-          g_rows = {r["id"]: r for r in g["rows"]}
-          m_rows = {r["id"]: r for r in m["rows"]}
-          improvements = []
-          for sample_id in sorted(set(g_rows) & set(m_rows)):
-              gr = g_rows[sample_id]
-              mr = m_rows[sample_id]
-              improvements.append((gr["raw_cer"] - gr["ordered_cer"], sample_id, gr, mr))
-
-          print("GEOMETRY_BIGGEST_IMPROVEMENTS")
-          for improvement, sample_id, gr, mr in sorted(improvements, reverse=True)[:12]:
-              print(sample_id, "improve=", round(improvement, 4), "orientation=", gr["orientation"], "gt=", repr(gr["ground_truth_normalized"]), "raw=", repr(gr["raw_prediction_normalized"]), "ordered=", repr(gr["ordered_prediction_normalized"]), "manga=", repr(mr["prediction_normalized"]), "removed=", gr["removed_indices"])
-          print("GEOMETRY_REGRESSIONS")
-          for improvement, sample_id, gr, mr in sorted(improvements)[:8]:
-              if improvement >= 0:
-                  break
-              print(sample_id, "regress=", round(-improvement, 4), "orientation=", gr["orientation"], "gt=", repr(gr["ground_truth_normalized"]), "raw=", repr(gr["raw_prediction_normalized"]), "ordered=", repr(gr["ordered_prediction_normalized"]), "removed=", gr["removed_indices"])
+          print("JP_RUNTIME", json.dumps({k:r.get(k) for k in ["engine", "samples", "aggregate_cer", "exact_match_rate", "exact_match_count", "mangaocr_fallback_count", "mangaocr_fallback_rate", "mean_latency_ms", "p95_latency_ms"]}, ensure_ascii=False))
 
           gate = {
               "ppocr_raw_cer": p["aggregate_cer"],
               "ppocr_geometry_cer": g["ordered_aggregate_cer"],
               "mangaocr_cer": m["aggregate_cer"],
-              "ppocr_raw_exact": p["exact_match_rate"],
+              "runtime_cer": r["aggregate_cer"],
               "ppocr_geometry_exact": g["ordered_exact_match_rate"],
               "mangaocr_exact": m["exact_match_rate"],
-              "ppocr_mean_ms": g["mean_latency_ms"],
-              "mangaocr_mean_ms": m["mean_latency_ms"],
+              "runtime_exact": r["exact_match_rate"],
+              "runtime_fallback_count": r["mangaocr_fallback_count"],
+              "runtime_fallback_rate": r["mangaocr_fallback_rate"],
+              "runtime_safe_for_feature_branch": (
+                  r["aggregate_cer"] <= m["aggregate_cer"] * 1.10 + 0.01
+                  and r["exact_match_rate"] + 0.05 >= m["exact_match_rate"]
+              ),
               "ppocr_geometry_can_replace_mangaocr_on_this_sample": (
                   g["ordered_aggregate_cer"] <= m["aggregate_cer"] * 1.10 + 0.01
                   and g["ordered_exact_match_rate"] + 0.05 >= m["exact_match_rate"]
@@ -112,6 +134,8 @@ jobs:
           }
           (root / "comparison.json").write_text(json.dumps(gate, ensure_ascii=False, indent=2), encoding="utf-8")
           print("JP_GATE", json.dumps(gate, ensure_ascii=False))
+          if not gate["runtime_safe_for_feature_branch"]:
+              raise SystemExit("Migrated Japanese runtime failed the feature-branch safety gate")
           PY
 
       - name: Upload Japanese OCR benchmark
