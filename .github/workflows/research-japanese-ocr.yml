@@ -1,0 +1,111 @@
+name: Research Japanese OCR head-to-head
+
+on:
+  push:
+    branches:
+      - research/paper-gates-ocr-mask-inpaint-20260829
+    paths:
+      - .github/workflows/research-japanese-ocr.yml
+      - scripts/japanese_ocr_benchmark.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  japanese-ocr:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    env:
+      BENCH_ROOT: benchmark-results/japanese-ocr
+      PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK: "True"
+      HF_HUB_DISABLE_TELEMETRY: "1"
+      TOKENIZERS_PARALLELISM: "false"
+      OMP_NUM_THREADS: "4"
+      MKL_NUM_THREADS: "4"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install PP-OCRv6 challenger
+        run: |
+          python -m venv .venv-jp-ppocr
+          .venv-jp-ppocr/bin/python -m pip install --upgrade pip
+          .venv-jp-ppocr/bin/pip install "paddlepaddle>=3.2,<3.3" "paddleocr==3.7.0"
+
+      - name: Benchmark PP-OCRv6 small on Japanese ground truth
+        run: |
+          .venv-jp-ppocr/bin/python scripts/japanese_ocr_benchmark.py \
+            --engine ppocrv6 \
+            --image-dir "$BENCH_ROOT/images" \
+            --output "$BENCH_ROOT/ppocrv6.json"
+
+      - name: Install current MangaOCR baseline
+        run: |
+          python -m venv .venv-jp-manga
+          .venv-jp-manga/bin/python -m pip install --upgrade pip
+          .venv-jp-manga/bin/pip install --index-url https://download.pytorch.org/whl/cpu "torch==2.5.1"
+          .venv-jp-manga/bin/pip install "manga-ocr==0.1.11" "transformers>=4.36,<4.46"
+
+      - name: Benchmark MangaOCR baseline on same Japanese ground truth
+        run: |
+          .venv-jp-manga/bin/python scripts/japanese_ocr_benchmark.py \
+            --engine mangaocr \
+            --image-dir "$BENCH_ROOT/images" \
+            --output "$BENCH_ROOT/mangaocr.json"
+
+      - name: Compare Japanese OCR results
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path("benchmark-results/japanese-ocr")
+          p = json.loads((root / "ppocrv6.json").read_text(encoding="utf-8"))
+          m = json.loads((root / "mangaocr.json").read_text(encoding="utf-8"))
+          summary_keys = ["engine", "samples", "aggregate_cer", "exact_match_rate", "exact_match_count", "init_ms", "mean_latency_ms", "p95_latency_ms"]
+          print("JP_PPOCR", json.dumps({k:p.get(k) for k in summary_keys}, ensure_ascii=False))
+          print("JP_MANGAOCR", json.dumps({k:m.get(k) for k in summary_keys}, ensure_ascii=False))
+
+          p_rows = {r["id"]: r for r in p["rows"]}
+          m_rows = {r["id"]: r for r in m["rows"]}
+          deltas = []
+          for sample_id in sorted(set(p_rows) & set(m_rows)):
+              pr = p_rows[sample_id]
+              mr = m_rows[sample_id]
+              deltas.append((pr["cer"] - mr["cer"], sample_id, pr, mr))
+
+          print("PPOCR_WORST_RELATIVE")
+          for delta, sample_id, pr, mr in sorted(deltas, reverse=True)[:8]:
+              print(sample_id, "delta_cer=", round(delta, 4), "gt=", repr(pr["ground_truth_normalized"]), "ppocr=", repr(pr["prediction_normalized"]), "manga=", repr(mr["prediction_normalized"]))
+          print("PPOCR_BEST_RELATIVE")
+          for delta, sample_id, pr, mr in sorted(deltas)[:8]:
+              print(sample_id, "delta_cer=", round(delta, 4), "gt=", repr(pr["ground_truth_normalized"]), "ppocr=", repr(pr["prediction_normalized"]), "manga=", repr(mr["prediction_normalized"]))
+
+          gate = {
+              "ppocr_cer": p["aggregate_cer"],
+              "mangaocr_cer": m["aggregate_cer"],
+              "ppocr_exact": p["exact_match_rate"],
+              "mangaocr_exact": m["exact_match_rate"],
+              "ppocr_mean_ms": p["mean_latency_ms"],
+              "mangaocr_mean_ms": m["mean_latency_ms"],
+              "ppocr_can_replace_mangaocr_on_this_sample": (
+                  p["aggregate_cer"] <= m["aggregate_cer"] * 1.10 + 0.01
+                  and p["exact_match_rate"] + 0.05 >= m["exact_match_rate"]
+              ),
+          }
+          (root / "comparison.json").write_text(json.dumps(gate, ensure_ascii=False, indent=2), encoding="utf-8")
+          print("JP_GATE", json.dumps(gate, ensure_ascii=False))
+          PY
+
+      - name: Upload Japanese OCR benchmark
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: japanese-ocr-head-to-head
+          path: benchmark-results/japanese-ocr
+          retention-days: 7
+          if-no-files-found: warn
