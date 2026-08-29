@@ -100,19 +100,59 @@ jobs:
           print("PPOCRV6_FINAL", json.dumps({k:v for k,v in d.items() if k != "rows"}, ensure_ascii=False))
           PY
 
-      - name: Run new runtime adapter on all detected chapter regions
+      - name: Run current all-region adapter baseline
         run: |
           PYTHONPATH=. .venv-ppocrv6/bin/python scripts/runtime_v6_chapter_probe.py \
             --ppocr-summary "$PROBE_ROOT/ppocrv6/summary.json" \
-            --output "$PROBE_ROOT/runtime_v6" \
-            --lang en
+            --output "$PROBE_ROOT/runtime_v6_all" \
+            --lang en \
+            --target-mode all
+
+      - name: Run centered-target adapter candidate
+        run: |
+          PYTHONPATH=. .venv-ppocrv6/bin/python scripts/runtime_v6_chapter_probe.py \
+            --ppocr-summary "$PROBE_ROOT/ppocrv6/summary.json" \
+            --output "$PROBE_ROOT/runtime_v6_centered" \
+            --lang en \
+            --target-mode centered
+
+      - name: Compare target-selection A/B
+        run: |
           python - <<'PY'
           import json
           from pathlib import Path
-          p = Path("benchmark-results/chapter210/runtime_v6/summary.json")
-          d = json.loads(p.read_text(encoding="utf-8"))
-          keys = ["regions_compared","same_normalized_count","same_normalized_rate","disagreement_count","runtime_blank_count","reference_blank_count","quality_counts","quality_reasons","reject_rate","review_rate","mean_runtime_confidence","mean_region_latency_ms","p95_region_latency_ms","reference_full_slice_mean_latency_ms"]
-          print("RUNTIME_ADAPTER_FINAL", json.dumps({k:d.get(k) for k in keys}, ensure_ascii=False))
+
+          root = Path("benchmark-results/chapter210")
+          baseline = json.loads((root / "runtime_v6_all/summary.json").read_text(encoding="utf-8"))
+          centered = json.loads((root / "runtime_v6_centered/summary.json").read_text(encoding="utf-8"))
+          b_m = baseline["mismatch_counts"]
+          c_m = centered["mismatch_counts"]
+          comparison = {
+              "baseline_agreement": baseline["same_normalized_rate"],
+              "centered_agreement": centered["same_normalized_rate"],
+              "agreement_delta": centered["same_normalized_rate"] - baseline["same_normalized_rate"],
+              "baseline_plus_noise": b_m["runtime_contains_reference_plus_noise"],
+              "centered_plus_noise": c_m["runtime_contains_reference_plus_noise"],
+              "plus_noise_removed": b_m["runtime_contains_reference_plus_noise"] - c_m["runtime_contains_reference_plus_noise"],
+              "baseline_partial": b_m["runtime_partial_reference"],
+              "centered_partial": c_m["runtime_partial_reference"],
+              "baseline_blank": b_m["runtime_blank"],
+              "centered_blank": c_m["runtime_blank"],
+              "baseline_different": b_m["different"],
+              "centered_different": c_m["different"],
+              "baseline_mean_latency_ms": baseline["mean_region_latency_ms"],
+              "centered_mean_latency_ms": centered["mean_region_latency_ms"],
+          }
+          comparison["centered_candidate_promising"] = (
+              comparison["centered_agreement"] >= comparison["baseline_agreement"]
+              and comparison["centered_plus_noise"] < comparison["baseline_plus_noise"]
+              and comparison["centered_partial"] <= comparison["baseline_partial"] + 2
+              and comparison["centered_blank"] <= comparison["baseline_blank"] + 2
+          )
+          (root / "target_selection_comparison.json").write_text(
+              json.dumps(comparison, ensure_ascii=False, indent=2), encoding="utf-8"
+          )
+          print("TARGET_SELECTION_AB", json.dumps(comparison, ensure_ascii=False))
           PY
 
       - name: Recheck PP-OCRv6 regions with Korean PP-OCRv5 mobile recognizer
@@ -149,7 +189,9 @@ jobs:
           name: chapter210-ocr-v6-runtime
           path: |
             benchmark-results/chapter210/ppocrv6
-            benchmark-results/chapter210/runtime_v6
+            benchmark-results/chapter210/runtime_v6_all
+            benchmark-results/chapter210/runtime_v6_centered
+            benchmark-results/chapter210/target_selection_comparison.json
             benchmark-results/chapter210/korean_fallback
           retention-days: 7
           if-no-files-found: warn
