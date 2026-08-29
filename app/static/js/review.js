@@ -91,80 +91,6 @@ function createReviewCard(pageIndex, maskSnapshot = null) {
 }
 window.createReviewCard = createReviewCard;
 
-function renderReview() {
-  const container = document.getElementById("page-view");
-  if (!container) return;
-
-  container.querySelectorAll(".brush-canvas").forEach((canvas) => {
-    if (typeof canvas._cleanupBrush === "function") canvas._cleanupBrush();
-    else if (canvas._brushAbort) canvas._brushAbort.abort();
-  });
-  container.innerHTML = "";
-  container.className = "";
-
-  const toolbar = document.createElement("div");
-  toolbar.id = "preview-toolbar";
-
-  const hint = document.createElement("span");
-  hint.className = "review-hint";
-  hint.innerHTML = 'Chọn <b>Đánh dấu vùng lỗi</b> rồi nhấp đúp vào vùng nền đồng màu để chọn nhanh toàn bộ vùng liên thông. Với vùng có nhiều chi tiết, kéo cọ để đánh dấu thủ công và phủ kín phần cần xử lý.';
-  toolbar.appendChild(hint);
-
-  const geminiConfig = document.createElement("div");
-  geminiConfig.className = "gemini-qc-config";
-  const geminiStatus = document.createElement("span");
-  geminiStatus.className = "gemini-qc-status";
-  geminiStatus.textContent = "Kiểm tra AI: Đang kiểm tra cấu hình…";
-  const geminiKeyInput = document.createElement("input");
-  geminiKeyInput.type = "password";
-  geminiKeyInput.className = "gemini-key-input";
-  geminiKeyInput.placeholder = "Gemini API key";
-  geminiKeyInput.autocomplete = "off";
-  geminiKeyInput.spellcheck = false;
-  geminiKeyInput.setAttribute("aria-label", "Gemini API key");
-  const geminiSaveBtn = document.createElement("button");
-  geminiSaveBtn.type = "button";
-  geminiSaveBtn.className = "gemini-key-save-btn";
-  geminiSaveBtn.textContent = "Lưu khóa API";
-  const geminiClearBtn = document.createElement("button");
-  geminiClearBtn.type = "button";
-  geminiClearBtn.className = "gemini-key-clear-btn";
-  geminiClearBtn.textContent = "Xóa khóa API";
-  const geminiPrivacyNote = document.createElement("span");
-  geminiPrivacyNote.className = "gemini-qc-privacy-note";
-  geminiPrivacyNote.textContent = "Ảnh gốc và ảnh đã xử lý sẽ được gửi đến Gemini để kiểm tra chất lượng.";
-  geminiConfig.append(geminiStatus, geminiKeyInput, geminiSaveBtn, geminiClearBtn, geminiPrivacyNote);
-  toolbar.appendChild(geminiConfig);
-  setupGeminiQCSettings(geminiStatus, geminiKeyInput, geminiSaveBtn, geminiClearBtn);
-
-  const nextBtn = document.createElement("button");
-  nextBtn.textContent = "Mở trình biên tập bản dịch";
-  nextBtn.addEventListener("click", () => {
-    container.querySelectorAll(".brush-canvas").forEach((canvas) => {
-      if (typeof canvas._cleanupBrush === "function") canvas._cleanupBrush();
-    });
-    const activeCard = container.querySelector(".review-canvas-host .review-card") || container.querySelector(".review-card");
-    const canonicalIndex = activeCard ? (parseInt(activeCard.dataset.pageIndex, 10) || 0) : 0;
-    if (window.editorState) window.editorState.activePageIndex = canonicalIndex;
-    if (typeof setWorkflowCheckpoint === "function") setWorkflowCheckpoint("editor", canonicalIndex);
-    renderEditor();
-  });
-  toolbar.appendChild(nextBtn);
-  container.appendChild(toolbar);
-
-  // The Review workspace owns page virtualization. Keep a fallback for builds
-  // that intentionally load review.js without review-workspace.js.
-  if (!window.REVIEW_VIRTUALIZED) {
-    currentManifest.pages.forEach((page, pageIndex) => {
-      if (page.skipped) return;
-      const card = createReviewCard(pageIndex);
-      if (!card) return;
-      container.appendChild(card);
-      if (typeof card._mountReview === "function") card._mountReview();
-    });
-  }
-}
-
 function setupBrush(pageIndex, img, canvas, wrap, brushBtn, clearBtn, submitBtn, resetManualBtn, aiQcBtn, brushSize, brushSizeValue) {
   if (typeof canvas._cleanupBrush === "function") {
     canvas._cleanupBrush();
@@ -360,7 +286,7 @@ function setupBrush(pageIndex, img, canvas, wrap, brushBtn, clearBtn, submitBtn,
     e.preventDefault();
     brushRadius = Math.round(Math.max(8, Math.min(80, brushRadius + (e.deltaY < 0 ? 2 : -2))));
     brushSize.value = String(brushRadius);
-    brushSizeValue.textContent = `${Math.round(brushRadius * 2)}px`;
+    brushSizeValue.textContent = `${Math.round(brushRadius * 2)} px`;
     showToast(`Kích thước cọ: ${Math.round(brushRadius * 2)} px`, "info");
   }, { passive: false, signal });
 
@@ -460,6 +386,7 @@ async function setupGeminiQCSettings(statusEl, keyInput, saveBtn, clearBtn) {
 
   await refresh();
 }
+window.setupGeminiQCSettings = setupGeminiQCSettings;
 
 async function inspectVisualQC(
   pageIndex, canvas, ctx, aiQcBtn, submitBtn, resetManualBtn,
