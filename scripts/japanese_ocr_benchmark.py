@@ -62,6 +62,19 @@ def _levenshtein(a: str, b: str) -> int:
     return previous[-1]
 
 
+def _percentile(values: list[float], percentile: float) -> float | None:
+    if not values:
+        return None
+    ordered = sorted(values)
+    if len(ordered) == 1:
+        return ordered[0]
+    position = (len(ordered) - 1) * max(0.0, min(1.0, percentile))
+    lower = int(position)
+    upper = min(len(ordered) - 1, lower + 1)
+    fraction = position - lower
+    return ordered[lower] * (1.0 - fraction) + ordered[upper] * fraction
+
+
 def _payload(result: Any) -> dict[str, Any]:
     value = getattr(result, "json", result)
     if callable(value):
@@ -210,13 +223,9 @@ def main() -> int:
         "exact_match_rate": exact_count / max(1, len(rows)),
         "exact_match_count": exact_count,
         "mean_latency_ms": statistics.fmean(latencies) if latencies else None,
-        "p95_latency_ms": float(np.percentile(latencies, 95)) if args.engine == "ppocrv6" and latencies else None,
+        "p95_latency_ms": _percentile(latencies, 0.95),
         "rows": rows,
     }
-    if args.engine == "mangaocr" and latencies:
-        ordered = sorted(latencies)
-        idx = min(len(ordered) - 1, max(0, int(round(0.95 * (len(ordered) - 1)))))
-        summary["p95_latency_ms"] = ordered[idx]
 
     out = Path(args.output)
     out.parent.mkdir(parents=True, exist_ok=True)
