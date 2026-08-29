@@ -138,6 +138,44 @@ jobs:
           print("Top-level definition reachability OK")
           PY
 
+      - name: Reject substantial exact Python helper duplication
+        shell: bash
+        run: |
+          python - <<'PY'
+          import ast
+          from collections import defaultdict
+          from pathlib import Path
+
+          groups = defaultdict(list)
+          for path in sorted([*Path("app").rglob("*.py"), Path("run.py")]):
+              if path.name == "__init__.py":
+                  continue
+              tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+              for node in ast.walk(tree):
+                  if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                      continue
+                  if node.name.startswith("__") and node.name.endswith("__"):
+                      continue
+                  if len(node.body) < 3:
+                      continue
+                  normalized = ast.dump(
+                      ast.Module(body=node.body, type_ignores=[]),
+                      annotate_fields=True,
+                      include_attributes=False,
+                  )
+                  if len(normalized) < 700:
+                      continue
+                  groups[normalized].append(f"{path}:{node.lineno} ({node.name})")
+
+          duplicates = [locations for locations in groups.values() if len(locations) > 1]
+          if duplicates:
+              print("Substantial exact duplicate Python function bodies found:")
+              for locations in duplicates:
+                  print("  " + " <> ".join(locations))
+              raise SystemExit(1)
+          print("Substantial exact Python helper duplication check OK")
+          PY
+
       - name: Reject duplicate API routes
         shell: bash
         run: |
