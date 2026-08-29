@@ -5,77 +5,39 @@ import threading
 
 import cv2
 
-from app.ocr.identity import engine_identity, machine_cache_valid, stamp_machine_cache
+from app.ocr.identity import stamp_machine_cache
 from app.ocr.quality import classify_ocr_quality
-from app.ocr.service import OCRService, _check_cancelled, _find_box
+from app.ocr.service import OCRService, _check_cancelled, _find_box, ocr_crop_from_box
 
 
 class HybridOCRService(OCRService):
-    """OCRService variant that persists detailed hybrid-runtime metadata.
+    """OCRService that persists detailed hybrid-runtime metadata.
 
-    The base service remains untouched while the migration branch is being
-    validated. Once the hybrid runtime is accepted this small override can be
-    folded back into OCRService.
+    Snapshot, cache, cancellation and stale-result orchestration stay in the
+    base service. This subclass only captures detailed reader metadata and
+    includes it in the same atomic manifest commit as the OCR text.
     """
 
-    def inspect_box_id(
-        self,
-        chapter_id: str,
-        page_index: int,
-        box_id: str,
-        lang: str,
-        *,
-        force: bool = False,
-        cancel_event: threading.Event | None = None,
-    ) -> dict:
-        from app.security import validate_chapter_id
+    def __init__(self, ocr_engine, pipeline):
+        super().__init__(ocr_engine, pipeline)
+        self._result_local = threading.local()
 
-        validate_chapter_id(chapter_id)
-        engine = engine_identity(lang)
-        box_snapshot, original_value, source_revision = self._snapshot_box(
-            chapter_id, page_index, box_id
-        )
-        original_path, original_revision = self._source_identity(original_value)
-
-        if not force and machine_cache_valid(
-            box_snapshot,
-            lang=lang,
-            engine=engine,
-            source_revision=source_revision,
-            original_revision=original_revision,
-        ):
-            return self._cached_box_result(
-                page_index, box_id, box_snapshot, lang, engine
-            )
-
-        _check_cancelled(cancel_event)
-        text, metadata = self._read_box_result(original_path, box_snapshot, lang)
-        _check_cancelled(cancel_event)
-        self._commit_box_result(
-            chapter_id,
-            page_index,
-            box_id,
-            box_snapshot=box_snapshot,
-            original_value=original_value,
-            source_revision=source_revision,
-            original_revision=original_revision,
-            text=text,
-            metadata=metadata,
-            lang=lang,
-            engine=engine,
-            cancel_event=cancel_event,
-        )
-        return {
-            "page_index": page_index,
-            "box_id": str(box_id),
-            "text": text,
-            "lang": lang,
-            "engine": engine,
-            "cached": False,
-            "committed": True,
-            "stale": False,
-            **metadata,
-        }
+    def inspect_box_id(self, *args, **kwargs) -> dict:
+        # One OCRService instance can serve concurrent jobs, so never keep the
+        # transient metadata on the instance itself.
+        self._result_local.metadata = None
+        try:
+            result = super().inspect_box_id(*args, **kwargs)
+            if result.get("cached"):
+                # Base orchestration dispatches to our detailed cached-result
+                # formatter, so the metadata is already present.
+                return result
+            metadata = getattr(self._result_local, "metadata", None)
+            if metadata:
+                return {**result, **metadata}
+            return result
+        finally:
+            self._result_local.metadata = None
 
     @staticmethod
     def _cached_box_result(
@@ -98,13 +60,11 @@ class HybridOCRService(OCRService):
             "quality_reason": box_snapshot.get("ocr_quality_reason"),
         }
 
-    def _read_box_result(
-        self, original_path: Path, box_snapshot: dict, lang: str
-    ) -> tuple[str, dict]:
+    def _read_box_text(self, original_path: Path, box_snapshot: dict, lang: str) -> str:
         image = self._cached_source_image(original_path)
-        crop = self._crop(image, box_snapshot)
+        crop = ocr_crop_from_box(image, box_snapshot)
         if not crop.size:
-            return "", {
+            metadata = {
                 "confidence": None,
                 "model": "none",
                 "orientation": "unknown",
@@ -112,23 +72,29 @@ class HybridOCRService(OCRService):
                 "quality": "reject",
                 "quality_reason": "empty-crop",
             }
+            self._result_local.metadata = metadata
+            return ""
 
         rgb = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
         detailed_reader = getattr(self.ocr, "read_detailed", None)
         if callable(detailed_reader):
             result = detailed_reader(rgb, lang)
-            return str(getattr(result, "text", "") or "").strip(), {
+            text = str(getattr(result, "text", "") or "").strip()
+            self._result_local.metadata = {
                 "confidence": getattr(result, "confidence", None),
                 "model": str(getattr(result, "model", "") or ""),
-                "orientation": str(getattr(result, "orientation", "unknown") or "unknown"),
+                "orientation": str(
+                    getattr(result, "orientation", "unknown") or "unknown"
+                ),
                 "region_count": int(getattr(result, "region_count", 0) or 0),
                 "quality": str(getattr(result, "quality", "unknown") or "unknown"),
                 "quality_reason": getattr(result, "quality_reason", None),
             }
+            return text
 
         text = str(self.ocr.read(rgb, lang) or "").strip()
         quality = classify_ocr_quality(text, lang, confidence=None)
-        return text, {
+        self._result_local.metadata = {
             "confidence": None,
             "model": "legacy-reader",
             "orientation": "unknown",
@@ -136,12 +102,7 @@ class HybridOCRService(OCRService):
             "quality": quality.status,
             "quality_reason": quality.reason,
         }
-
-    @staticmethod
-    def _crop(image, box_snapshot):
-        from app.ocr.service import ocr_crop_from_box
-
-        return ocr_crop_from_box(image, box_snapshot)
+        return text
 
     def _commit_box_result(
         self,
@@ -154,7 +115,6 @@ class HybridOCRService(OCRService):
         source_revision: int,
         original_revision: tuple[int, int, int],
         text: str,
-        metadata: dict,
         lang: str,
         engine: str,
         cancel_event: threading.Event | None,
@@ -166,6 +126,7 @@ class HybridOCRService(OCRService):
             save_manifest_raw,
         )
 
+        metadata = getattr(self._result_local, "metadata", None)
         with get_manifest_lock(chapter_id):
             manifest = load_manifest_raw(chapter_id)
             page = self._current_box_page(
