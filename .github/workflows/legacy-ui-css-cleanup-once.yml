@@ -1,0 +1,109 @@
+name: One-shot legacy UI CSS cleanup
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+jobs:
+  cleanup:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Remove unused legacy workstation selectors
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object app/static/css/ui-system.css)" = "6caa0c5360ac149002ef4611dbd390a690278b77"
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          files = list(Path("app/templates").rglob("*.html")) + list(Path("app/static/js").rglob("*.js"))
+          texts = {path: path.read_text(encoding="utf-8") for path in files}
+
+          dead_tokens = (
+              "app-shell",
+              "app-header",
+              "app-brand-block",
+              "wordmark-text",
+              "wordmark-accent",
+              "wordmark-tag",
+              "workflow-step",
+              "app-header-actions",
+          )
+          for token in dead_tokens:
+              hits = [path.as_posix() for path, text in texts.items() if token in text]
+              if hits:
+                  raise SystemExit(f"Refusing to remove live selector token {token!r}: {hits}")
+
+          for path, text in texts.items():
+              if path.suffix == ".js" and "workflow-steps" in text:
+                  raise SystemExit(f"Refusing to remove .workflow-steps; JS still references it in {path}")
+              if path.suffix == ".html":
+                  for match in re.finditer(r'class\s*=\s*(["\'])(.*?)\1', text, flags=re.I | re.S):
+                      if "workflow-steps" in match.group(2).split():
+                          raise SystemExit(f"Refusing to remove .workflow-steps; class still used in {path}")
+
+          css_path = Path("app/static/css/ui-system.css")
+          css = css_path.read_text(encoding="utf-8")
+          if css.count(".app-shell {") != 1 or css.count(".app-context {") != 1:
+              raise SystemExit("Unexpected ui-system.css selector layout")
+          start = css.index(".app-shell {")
+          end = css.index(".app-context {", start)
+          removed = css[start:end]
+          required = (
+              ".app-header {",
+              ".app-brand-block {",
+              ".workflow-steps {",
+              ".workflow-step {",
+              ".app-header-actions {",
+          )
+          missing = [selector for selector in required if selector not in removed]
+          if missing:
+              raise SystemExit(f"Legacy selector block changed unexpectedly; missing {missing}")
+          css_path.write_text(css[:start] + css[end:], encoding="utf-8")
+          print(f"Removed {removed.count(chr(10))} lines of unused legacy UI CSS")
+          PY
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("app/static/css/ui-system.css")
+          text = path.read_text(encoding="utf-8")
+          quote = None
+          depth = 0
+          i = 0
+          while i < len(text):
+              ch = text[i]
+              if quote is not None:
+                  if ch == "\\" and i + 1 < len(text):
+                      i += 2
+                      continue
+                  if ch == quote:
+                      quote = None
+                  i += 1
+                  continue
+              if ch in ("'", '"'):
+                  quote = ch
+              elif ch == "{":
+                  depth += 1
+              elif ch == "}":
+                  depth -= 1
+                  if depth < 0:
+                      raise SystemExit("Unbalanced CSS braces")
+              i += 1
+          if quote is not None or depth != 0:
+              raise SystemExit(f"Invalid CSS structure: quote={quote!r}, depth={depth}")
+          PY
+          python -m compileall -q app run.py
+          find app/static/js -type f -name '*.js' -print0 | xargs -0 -n1 node --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/static/css/ui-system.css
+          git rm .github/workflows/legacy-ui-css-cleanup-once.yml
+          git diff --cached --check
+          git diff --cached --stat
+          git commit -m 'refactor(ui): remove obsolete header workflow CSS'
+          git push origin HEAD:main
