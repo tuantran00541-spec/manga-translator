@@ -7,6 +7,7 @@ import numpy as np
 
 from app.ocr.identity import engine_identity
 from app.ocr.multi_lang_ocr import MultiLangOCR
+from app.ocr.paddle_v6 import OCRReadResult
 from app.ocr.quality import classify_ocr_quality, should_block_translation
 from app.text_objects import ensure_page_text_objects
 
@@ -89,12 +90,62 @@ def _assert_orientation_default() -> None:
     assert PaddleV6OCR().textline_orientation is False
 
 
+def _assert_target_selection() -> None:
+    class CapturePaddle:
+        def __init__(self):
+            self.modes: list[str] = []
+
+        def read(self, _image, _lang, *, target_mode: str):
+            self.modes.append(target_mode)
+            return OCRReadResult(
+                "HELLO",
+                0.99,
+                "PP-OCRv6_small_rec",
+                "horizontal",
+                1,
+                "good",
+                None,
+            )
+
+    original = os.environ.get("MANGA_OCR_TARGET_SELECTION")
+    image = np.full((32, 64, 3), 255, dtype=np.uint8)
+    try:
+        os.environ.pop("MANGA_OCR_TARGET_SELECTION", None)
+        engine_identity.cache_clear()
+        default_engine = MultiLangOCR()
+        capture = CapturePaddle()
+        default_engine._paddle = capture
+        assert default_engine.read(image, "en") == "HELLO"
+        assert capture.modes == ["centered"]
+        assert "target-centered" in engine_identity("en")
+
+        capture.modes.clear()
+        default_engine.read_detailed(image, "en", target_mode="all")
+        assert capture.modes == ["all"]
+
+        os.environ["MANGA_OCR_TARGET_SELECTION"] = "all"
+        engine_identity.cache_clear()
+        rollback_engine = MultiLangOCR()
+        rollback_capture = CapturePaddle()
+        rollback_engine._paddle = rollback_capture
+        rollback_engine.read(image, "en")
+        assert rollback_capture.modes == ["all"]
+        assert "target-all" in engine_identity("en")
+    finally:
+        if original is None:
+            os.environ.pop("MANGA_OCR_TARGET_SELECTION", None)
+        else:
+            os.environ["MANGA_OCR_TARGET_SELECTION"] = original
+        engine_identity.cache_clear()
+
+
 def main() -> int:
     _assert_quality()
     _assert_manual_override()
     _assert_metadata_sync()
     _assert_japanese_route()
     _assert_orientation_default()
+    _assert_target_selection()
     print("hybrid OCR invariants: OK")
     return 0
 
