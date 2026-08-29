@@ -26,7 +26,13 @@ class MultiLangOCR:
     def read(self, image: np.ndarray, lang: str) -> str:
         return self.read_detailed(image, lang).text
 
-    def read_detailed(self, image: np.ndarray, lang: str) -> OCRReadResult:
+    def read_detailed(
+        self,
+        image: np.ndarray,
+        lang: str,
+        *,
+        target_mode: str = "all",
+    ) -> OCRReadResult:
         if image is None or image.size == 0:
             return OCRReadResult("", None, "none", "unknown", 0, "reject", "empty")
 
@@ -44,7 +50,7 @@ class MultiLangOCR:
                 quality_reason=quality.reason,
             )
 
-        return self._paddle.read(image, lang)
+        return self._paddle.read(image, lang, target_mode=target_mode)
 
     def _read_manga_ocr(self, image: np.ndarray) -> str:
         with self._manga_lock:
