@@ -1,0 +1,52 @@
+name: Research quality-gate sanity
+
+on:
+  push:
+    branches:
+      - feat/ppocrv6-runtime-migration
+      - research/paper-gates-ocr-mask-inpaint-20260829
+    paths:
+      - .github/workflows/research-quality-sanity.yml
+      - scripts/research_quality_gates.py
+      - scripts/research_quality_sanity.py
+      - scripts/migan_onnx_adapter.py
+      - app/detector/stroke_refinement.py
+      - app/detector/mask_builder.py
+      - app/env_utils.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  research-quality-sanity:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install lightweight research dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install \
+            "numpy==1.26.4" \
+            "opencv-contrib-python==4.10.0.84" \
+            "onnxruntime==1.21.0" \
+            "psutil==6.1.1" \
+            "loguru==0.7.2"
+
+      - name: Compile research gate sources
+        run: |
+          python -m compileall -q \
+            app/detector/stroke_refinement.py \
+            app/detector/mask_builder.py \
+            scripts/migan_onnx_adapter.py \
+            scripts/research_quality_gates.py \
+            scripts/research_quality_sanity.py
+
+      - name: Validate mask and MI-GAN invariants
+        run: PYTHONPATH=. python scripts/research_quality_sanity.py
