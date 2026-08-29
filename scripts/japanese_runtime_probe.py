@@ -50,7 +50,7 @@ def main() -> int:
     edit_total = 0
     char_total = 0
     exact_count = 0
-    fallback_count = 0
+    mangaocr_count = 0
 
     for sample_id, remote_path, gt in SAMPLES:
         image = _read_rgb(paths[sample_id])
@@ -65,12 +65,12 @@ def main() -> int:
         edits = _levenshtein(gt_norm, pred_norm)
         cer = edits / max(1, len(gt_norm))
         exact = pred_norm == gt_norm
-        used_fallback = result.model == "manga-ocr-fallback"
+        used_mangaocr = result.model == "manga-ocr"
 
         edit_total += edits
         char_total += len(gt_norm)
         exact_count += int(exact)
-        fallback_count += int(used_fallback)
+        mangaocr_count += int(used_mangaocr)
 
         row = {
             "id": sample_id,
@@ -88,7 +88,9 @@ def main() -> int:
             "confidence": result.confidence,
             "orientation": result.orientation,
             "region_count": result.region_count,
-            "used_mangaocr_fallback": used_fallback,
+            "quality": result.quality,
+            "quality_reason": result.quality_reason,
+            "used_mangaocr_primary": used_mangaocr,
         }
         rows.append(row)
         print("@@JP_RUNTIME_SAMPLE@@" + json.dumps({
@@ -98,13 +100,12 @@ def main() -> int:
             "cer": cer,
             "exact": exact,
             "model": result.model,
-            "confidence": result.confidence,
-            "orientation": result.orientation,
+            "quality": result.quality,
             "latency_ms": latency_ms,
         }, ensure_ascii=False), flush=True)
 
     summary = {
-        "engine": "multilangocr-ppocrv6-with-ja-fallback",
+        "engine": "multilangocr-hybrid-ja-mangaocr-primary",
         "dataset": DATASET_REPO,
         "dataset_license": DATASET_LICENSE,
         "samples": len(rows),
@@ -112,8 +113,8 @@ def main() -> int:
         "aggregate_cer": edit_total / max(1, char_total),
         "exact_match_rate": exact_count / max(1, len(rows)),
         "exact_match_count": exact_count,
-        "mangaocr_fallback_count": fallback_count,
-        "mangaocr_fallback_rate": fallback_count / max(1, len(rows)),
+        "mangaocr_primary_count": mangaocr_count,
+        "mangaocr_primary_rate": mangaocr_count / max(1, len(rows)),
         "mean_latency_ms": statistics.fmean(latencies) if latencies else None,
         "p95_latency_ms": _percentile(latencies, 0.95),
         "rows": rows,
