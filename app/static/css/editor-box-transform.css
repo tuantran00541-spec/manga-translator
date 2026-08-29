@@ -1,15 +1,15 @@
-.translation-canvas-host .box-overlay {
+.translation-canvas-host .text-object-overlay {
   touch-action: none;
   cursor: move;
 }
 
-.translation-canvas-host .box-overlay.transforming {
+.translation-canvas-host .text-object-overlay.transforming {
   border: 1px solid var(--accent, var(--blue));
   box-shadow: 0 0 0 2px var(--accent-soft, rgba(59,130,246,.16));
 }
 
-.translation-canvas-host .box-overlay.transforming::before,
-.translation-canvas-host .box-overlay.transforming::after {
+.translation-canvas-host .text-object-overlay.transforming::before,
+.translation-canvas-host .text-object-overlay.transforming::after {
   border-color: var(--accent, var(--blue));
 }
 
@@ -18,15 +18,15 @@
   user-select: none;
 }
 
-.box-transforming .translation-canvas-host .box-overlay {
+.box-transforming .translation-canvas-host .text-object-overlay {
   cursor: grabbing;
 }
 
-.box-transforming .translation-canvas-host .box-overlay.transforming {
+.box-transforming .translation-canvas-host .text-object-overlay.transforming {
   cursor: grabbing;
 }
 
-.translation-canvas-host .box-overlay::before,
-.translation-canvas-host .box-overlay::after {
+.translation-canvas-host .text-object-overlay::before,
+.translation-canvas-host .text-object-overlay::after {
   pointer-events: none;
 }

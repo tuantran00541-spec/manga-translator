@@ -39,14 +39,6 @@
   line-height: 1.45;
 }
 
-.translation-position {
-  flex: 0 0 auto;
-  color: var(--text-dim);
-  font: 500 12px var(--font-mono);
-  text-align: right;
-  white-space: nowrap;
-}
-
 .translation-workspace-body {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
@@ -100,14 +92,6 @@
   box-sizing: border-box;
 }
 
-.translation-panel-host .box-panel {
-  width: 100%;
-}
-
-.translation-panel-host .box-item {
-  margin-bottom: 8px;
-}
-
 @media (max-width: 900px) {
   .translation-workspace-body {
     grid-template-columns: minmax(0, 1fr) minmax(250px, 310px);
@@ -119,10 +103,6 @@
   .translation-sticky-toolbar {
     align-items: flex-start;
     flex-direction: column;
-  }
-
-  .translation-position {
-    text-align: left;
   }
 
   .translation-workspace-body {

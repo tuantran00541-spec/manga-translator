@@ -286,19 +286,6 @@
   filter: grayscale(0.6);
 }
 
-.preview-page-position {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  text-align: center;
-  color: var(--text-dim);
-  font: 500 13px var(--font-mono);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 @media (max-width: 760px) {
   #preview-toolbar {
     align-items: stretch;

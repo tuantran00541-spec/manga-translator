@@ -393,10 +393,6 @@ body.settings-open {
   background: #050912;
 }
 
-.page-status-badge {
-  border: 1px solid transparent;
-}
-
 
 .review-workspace-shell {
   width: min(100%, 1120px);
@@ -725,8 +721,6 @@ body.settings-open {
 }
 
 @media (max-width: 820px) {
-
-
 
 
   .landing-intro {

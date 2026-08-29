@@ -132,39 +132,6 @@ textarea:disabled {
   border-bottom: 1px solid var(--color-border);
 }
 
-#wordmark {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.wordmark-mark {
-  color: var(--color-danger);
-  font-size: 20px;
-  line-height: 1;
-}
-
-.wordmark-text {
-  font-family: var(--font-display);
-  font-weight: 700;
-  font-size: 19px;
-  letter-spacing: 0.02em;
-  color: var(--color-text);
-}
-
-.wordmark-accent {
-  color: var(--color-text-muted);
-  font-weight: 500;
-  margin-left: 6px;
-}
-
-#wordmark-tag {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  color: var(--color-text-subtle);
-  letter-spacing: 0.03em;
-}
-
 #chapter-input {
   display: flex;
   gap: 10px;
@@ -258,30 +225,6 @@ textarea:disabled {
   color: var(--color-text-subtle);
 }
 
-.ui-surface {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-}
-
-.ui-surface-raised {
-  background: var(--color-surface-raised);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-}
-
-.ui-muted {
-  color: var(--color-text-muted);
-}
-
-.ui-subtle {
-  color: var(--color-text-subtle);
-}
-
-.ui-mono {
-  font-family: var(--font-mono);
-}
-
 .recent-stage-badge {
   display: inline-block;
   font-size: 11px;
@@ -291,27 +234,6 @@ textarea:disabled {
   background: var(--color-accent-soft);
   color: var(--color-accent);
   font-family: var(--font-body);
-}
-
-.page-status-badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 7px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 500;
-  font-family: var(--font-body);
-  line-height: 1.2;
-}
-
-.page-status-badge.skipped {
-  background: var(--color-danger-soft);
-  color: var(--color-danger);
-}
-
-.page-status-badge.rendered {
-  background: rgba(16, 185, 129, 0.14);
-  color: var(--color-success);
 }
 
 .editor-save-status {
