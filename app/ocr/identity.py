@@ -64,8 +64,8 @@ def engine_identity(lang: str) -> str:
         )
         if normalized in {"ko", "korean"}:
             backend = (
-                f"paddleocr:{paddle_version}:korean-ppocrv5-mobile:"
-                f"{orientation}:target-{target_mode}"
+                f"paddleocr:{paddle_version}:ppocrv6-{tier}-det:"
+                f"korean-ppocrv5-mobile-rec:{orientation}:target-{target_mode}"
             )
         else:
             backend = (
