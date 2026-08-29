@@ -12,12 +12,7 @@ from app.config import OUTPUT_DIR
 from app.logging_config import logger
 from app.manifest_utils import bump_page_revision, get_manifest_lock, load_manifest_raw, save_manifest_raw
 from app.render.identity import render_input_signature, stamp_render_artifact
-from app.routers.render import (
-    _cleanup_tmp,
-    _render_boxes_legacy,
-    _render_text_objects,
-    _style_get,
-)
+from app.render.page_renderer import cleanup_tmp, render_boxes_legacy, render_text_objects, style_get
 from app.schemas import RenderRequest
 from app.security import validate_chapter_id
 
@@ -42,7 +37,7 @@ def _request_style_maps(req: RenderRequest) -> dict[str, dict]:
 def _render_snapshot(image: Image.Image, req: RenderRequest, page: dict, drafts: dict, styles: dict[str, dict]) -> int:
     text_objects = page.get("text_objects") or []
     if text_objects:
-        return _render_text_objects(
+        return render_text_objects(
             image,
             req,
             text_objects,
@@ -57,7 +52,7 @@ def _render_snapshot(image: Image.Image, req: RenderRequest, page: dict, drafts:
             styles["horizontal_aligns"],
             styles["vertical_aligns"],
         )
-    return _render_boxes_legacy(
+    return render_boxes_legacy(
         image,
         req,
         page,
@@ -86,21 +81,21 @@ def _persist_text_object_state(page: dict, req: RenderRequest, styles: dict[str,
         oid = obj.get("id")
         if not oid:
             continue
-        translation = _style_get(req.translations, oid)
+        translation = style_get(req.translations, oid)
         if translation is not None and str(translation).strip():
             obj["translation"] = str(translation).strip()
 
         style = obj.setdefault("style", {})
-        _set_style_value(style, "color", _style_get(styles["colors"], oid))
-        _set_style_value(style, "font", _style_get(styles["fonts"], oid))
-        _set_style_value(style, "fontSize", _style_get(styles["font_sizes"], oid), stringify=True)
-        _set_style_value(style, "bold", _style_get(styles["bolds"], oid))
-        _set_style_value(style, "strokeWidth", _style_get(styles["stroke_widths"], oid), stringify=True)
-        _set_style_value(style, "strokeColor", _style_get(styles["stroke_colors"], oid))
-        _set_style_value(style, "bgColor", _style_get(styles["bg_colors"], oid))
-        _set_style_value(style, "cornerRadius", _style_get(styles["corner_radii"], oid), stringify=True)
-        _set_style_value(style, "horizontalAlign", _style_get(styles["horizontal_aligns"], oid))
-        _set_style_value(style, "verticalAlign", _style_get(styles["vertical_aligns"], oid))
+        _set_style_value(style, "color", style_get(styles["colors"], oid))
+        _set_style_value(style, "font", style_get(styles["fonts"], oid))
+        _set_style_value(style, "fontSize", style_get(styles["font_sizes"], oid), stringify=True)
+        _set_style_value(style, "bold", style_get(styles["bolds"], oid))
+        _set_style_value(style, "strokeWidth", style_get(styles["stroke_widths"], oid), stringify=True)
+        _set_style_value(style, "strokeColor", style_get(styles["stroke_colors"], oid))
+        _set_style_value(style, "bgColor", style_get(styles["bg_colors"], oid))
+        _set_style_value(style, "cornerRadius", style_get(styles["corner_radii"], oid), stringify=True)
+        _set_style_value(style, "horizontalAlign", style_get(styles["horizontal_aligns"], oid))
+        _set_style_value(style, "verticalAlign", style_get(styles["vertical_aligns"], oid))
 
 
 def _persist_legacy_drafts(manifest: dict, req: RenderRequest, styles: dict[str, dict]) -> None:
@@ -121,7 +116,7 @@ def _persist_legacy_drafts(manifest: dict, req: RenderRequest, styles: dict[str,
             ("cornerRadius", styles["corner_radii"]),
         )
         for field, values in mappings:
-            value = _style_get(values, box_key)
+            value = style_get(values, box_key)
             if value is not None:
                 draft[field] = bool(value) if field == "bold" else value
 
@@ -232,7 +227,7 @@ def render_page(req: RenderRequest) -> dict:
         )
         raise HTTPException(500, "Cannot save rendered image") from exc
     finally:
-        _cleanup_tmp(tmp_path)
+        cleanup_tmp(tmp_path)
 
     if not committed:
         logger.warning(
