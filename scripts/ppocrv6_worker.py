@@ -39,6 +39,15 @@ def _result_payload(result: Any) -> dict[str, Any]:
     return inner if isinstance(inner, dict) else payload
 
 
+def _read_image(path: str) -> np.ndarray:
+    """Match the app's Unicode-safe OpenCV loading pattern."""
+    data = np.fromfile(path, dtype=np.uint8)
+    image = cv2.imdecode(data, cv2.IMREAD_COLOR)
+    if image is None or image.size == 0:
+        raise ValueError(f"Cannot read image: {path}")
+    return image
+
+
 class PPOCRV6Runner:
     def __init__(
         self,
@@ -178,9 +187,7 @@ def main() -> int:
         try:
             request = json.loads(raw)
             image_path = str(request["image_path"])
-            image = cv2.imread(image_path, cv2.IMREAD_COLOR)
-            if image is None or image.size == 0:
-                raise ValueError(f"Cannot read image: {image_path}")
+            image = _read_image(image_path)
             started = time.perf_counter()
             text, confidence = runner.predict(image, str(request.get("lang") or ""))
             latency_ms = (time.perf_counter() - started) * 1000.0
