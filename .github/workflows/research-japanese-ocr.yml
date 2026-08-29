@@ -84,7 +84,7 @@ jobs:
           python -m venv .venv-jp-manga
           .venv-jp-manga/bin/python -m pip install --upgrade pip
           .venv-jp-manga/bin/pip install --index-url https://download.pytorch.org/whl/cpu "torch==2.5.1"
-          .venv-jp-manga/bin/pip install "manga-ocr==0.1.11" "transformers>=4.36,<4.46"
+          .venv-jp-manga/bin/pip install "manga-ocr==0.1.16" "transformers>=4.36,<4.46"
 
       - name: Benchmark MangaOCR baseline on same Japanese ground truth
         run: |
@@ -104,7 +104,7 @@ jobs:
             "opencv-contrib-python==4.10.0.84" \
             "paddlepaddle==3.2.2" \
             "paddleocr==3.7.0" \
-            "manga-ocr==0.1.11" \
+            "manga-ocr==0.1.16" \
             "transformers>=4.36,<4.46"
           .venv-jp-runtime/bin/python - <<'PY'
           from importlib import metadata
