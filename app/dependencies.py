@@ -1,6 +1,6 @@
-from app.pipeline_dynamic_inpaint import ConcurrentDynamicArtworkSafePipeline
+from app.pipeline_artwork_safe import ArtworkSafeChapterPipeline
 
 from app.ocr.multi_lang_ocr import MultiLangOCR
 
-pipeline = ConcurrentDynamicArtworkSafePipeline()
+pipeline = ArtworkSafeChapterPipeline()
 ocr = MultiLangOCR()
