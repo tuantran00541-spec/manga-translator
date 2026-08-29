@@ -31,61 +31,30 @@ def _write_image(path: Path, image: np.ndarray) -> None:
     buf.tofile(path)
 
 
-def _order_quad(points: np.ndarray) -> np.ndarray:
-    pts = np.asarray(points, dtype=np.float32).reshape(4, 2)
-    rect = np.zeros((4, 2), dtype=np.float32)
-    sums = pts.sum(axis=1)
-    diffs = np.diff(pts, axis=1).reshape(-1)
-    rect[0] = pts[np.argmin(sums)]
-    rect[2] = pts[np.argmax(sums)]
-    rect[1] = pts[np.argmin(diffs)]
-    rect[3] = pts[np.argmax(diffs)]
-    return rect
-
-
-def _crop_polygon(
+def _crop_polygon_with_context(
     image: np.ndarray,
     polygon: list[list[int]] | list[list[float]],
-    pad: int = 8,
+    *,
+    pad: int,
 ) -> np.ndarray:
-    points = np.asarray(polygon, dtype=np.float32).reshape(-1, 2)
-    height, width = image.shape[:2]
-    if len(points) == 4:
-        rect = _order_quad(points)
-        tl, tr, br, bl = rect
-        crop_width = max(int(np.linalg.norm(br - bl)), int(np.linalg.norm(tr - tl)))
-        crop_height = max(int(np.linalg.norm(tr - br)), int(np.linalg.norm(tl - bl)))
-        if crop_width >= 4 and crop_height >= 4:
-            destination = np.array(
-                [
-                    [0, 0],
-                    [crop_width - 1, 0],
-                    [crop_width - 1, crop_height - 1],
-                    [0, crop_height - 1],
-                ],
-                dtype=np.float32,
-            )
-            matrix = cv2.getPerspectiveTransform(rect, destination)
-            crop = cv2.warpPerspective(
-                image,
-                matrix,
-                (crop_width, crop_height),
-                borderMode=cv2.BORDER_REPLICATE,
-            )
-            if pad > 0:
-                crop = cv2.copyMakeBorder(
-                    crop,
-                    pad,
-                    pad,
-                    pad,
-                    pad,
-                    cv2.BORDER_REPLICATE,
-                )
-            return crop
+    """Approximate OCRService's context-preserving crop.
 
+    The previous probe rectified exactly to the Paddle polygon and then added
+    replicated pixels. That cannot recover glyph strokes that lie just outside
+    a tight detection polygon. Production OCRService crops from the original
+    image with real surrounding pixels, so this probe now does the same.
+    """
+    points = np.asarray(polygon, dtype=np.float32).reshape(-1, 2)
+    if len(points) < 3:
+        return image[0:0, 0:0]
+    height, width = image.shape[:2]
     x, y, box_width, box_height = cv2.boundingRect(points.astype(np.int32))
-    x1, y1 = max(0, x - pad), max(0, y - pad)
-    x2, y2 = min(width, x + box_width + pad), min(height, y + box_height + pad)
+    x1 = max(0, x - pad)
+    y1 = max(0, y - pad)
+    x2 = min(width, x + box_width + pad)
+    y2 = min(height, y + box_height + pad)
+    if x2 <= x1 or y2 <= y1:
+        return image[0:0, 0:0]
     return image[y1:y2, x1:x2].copy()
 
 
@@ -106,6 +75,12 @@ def main() -> int:
         default="benchmark-results/chapter210/runtime_v6",
     )
     parser.add_argument("--lang", default="en")
+    parser.add_argument(
+        "--crop-pad",
+        type=int,
+        default=12,
+        help="Real source-image context around the reference polygon.",
+    )
     args = parser.parse_args()
 
     source_summary = json.loads(Path(args.ppocr_summary).read_text(encoding="utf-8"))
@@ -126,6 +101,8 @@ def main() -> int:
     reference_blank = 0
     total = 0
 
+    crop_pad = max(0, min(int(args.crop_pad), 64))
+
     for page_index, row in enumerate(rows):
         source = Path(str(row["source"]))
         image = _read_image(source)
@@ -137,7 +114,11 @@ def main() -> int:
         for region_index in range(region_count):
             reference_text = str(texts[region_index] or "").strip()
             reference_score = scores[region_index] if region_index < len(scores) else None
-            crop = _crop_polygon(image, polygons[region_index])
+            crop = _crop_polygon_with_context(
+                image,
+                polygons[region_index],
+                pad=crop_pad,
+            )
             if crop.size == 0:
                 continue
 
@@ -171,6 +152,7 @@ def main() -> int:
                 "runtime_regions": result.region_count,
                 "same_normalized": is_same,
                 "latency_ms": latency_ms,
+                "crop_pad": crop_pad,
                 "polygon": polygons[region_index],
             }
             comparisons.append(comparison)
@@ -197,6 +179,7 @@ def main() -> int:
 
     summary = {
         "lang": args.lang,
+        "crop_pad": crop_pad,
         "regions_compared": total,
         "same_normalized_count": same,
         "same_normalized_rate": same / max(1, total),
