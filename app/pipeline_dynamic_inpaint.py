@@ -35,8 +35,8 @@ class ConcurrentDynamicInpainter(Inpainter):
         return cv2.cvtColor(painted_rgb, cv2.COLOR_RGB2BGR)
 
 
-class OptimizedArtworkSafeChapterPipeline(ArtworkSafeChapterPipeline):
-    """Artwork-safe pipeline with concurrent dynamic-LaMa inference."""
+class ConcurrentDynamicArtworkSafePipeline(ArtworkSafeChapterPipeline):
+    """Artwork-safe runtime pipeline with concurrent dynamic-LaMa inference."""
 
     @property
     def inpainter(self):
