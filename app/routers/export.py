@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import io
 import os
 import uuid
 import zipfile
@@ -83,46 +82,78 @@ def _render_request_from_page(chapter_id: str, page_index: int, page: dict) -> R
     )
 
 
-def _stitch_pngs(paths: list[Path], core_ranges: list[tuple[int, int] | None] | None = None) -> bytes:
+def _normalized_core_range(height: int, core: tuple[int, int] | None) -> tuple[int, int]:
+    if core is None:
+        return 0, height
+    y1, y2 = core
+    y1 = max(0, min(int(y1), height))
+    y2 = max(y1, min(int(y2), height))
+    return y1, y2
+
+
+def _stitch_png_to_file(
+    paths: list[Path],
+    output_path: Path,
+    core_ranges: list[tuple[int, int] | None] | None = None,
+) -> None:
+    """Stitch slices with only one decoded source image resident at a time."""
     if not paths:
         raise ValueError("No images to stitch")
-    images = [Image.open(path).convert("RGB") for path in paths]
-    cropped = []
+    if core_ranges is not None and len(core_ranges) != len(paths):
+        raise ValueError("Core range count does not match image count")
+
+    metadata: list[tuple[int, int, int]] = []
+    for index, path in enumerate(paths):
+        core = core_ranges[index] if core_ranges is not None else None
+        with Image.open(path) as image:
+            width, height = image.size
+        y1, y2 = _normalized_core_range(height, core)
+        metadata.append((width, y1, y2))
+
+    widths = {width for width, _, _ in metadata}
+    if len(widths) != 1:
+        raise ValueError("Slice widths do not match")
+
+    if len(paths) == 1:
+        width, y1, y2 = metadata[0]
+        with Image.open(paths[0]) as source:
+            image = source.convert("RGB")
+            try:
+                if y1 == 0 and y2 == image.height:
+                    image.save(output_path, format="PNG")
+                else:
+                    cropped = image.crop((0, y1, width, y2))
+                    try:
+                        cropped.save(output_path, format="PNG")
+                    finally:
+                        cropped.close()
+            finally:
+                image.close()
+        return
+
+    width = metadata[0][0]
+    total_height = sum(y2 - y1 for _, y1, y2 in metadata)
+    canvas = Image.new("RGB", (width, total_height), "white")
     try:
-        if core_ranges is not None:
-            for image, core in zip(images, core_ranges):
-                if core is None:
-                    cropped.append(image.copy())
-                    continue
-                y1, y2 = core
-                y1 = max(0, min(int(y1), image.height))
-                y2 = max(y1, min(int(y2), image.height))
-                cropped.append(image.crop((0, y1, image.width, y2)))
-            work_images = cropped
-        else:
-            work_images = images
-        widths = {image.width for image in work_images}
-        if len(widths) != 1:
-            raise ValueError("Slice widths do not match")
-        if len(work_images) == 1:
-            buffer = io.BytesIO()
-            work_images[0].save(buffer, format="PNG")
-            return buffer.getvalue()
-        width = work_images[0].width
-        total_height = sum(image.height for image in work_images)
-        canvas = Image.new("RGB", (width, total_height), "white")
-        y = 0
-        for image in work_images:
-            canvas.paste(image, (0, y))
-            y += image.height
-        buffer = io.BytesIO()
-        canvas.save(buffer, format="PNG")
-        return buffer.getvalue()
+        target_y = 0
+        for path, (_, y1, y2) in zip(paths, metadata):
+            with Image.open(path) as source:
+                image = source.convert("RGB")
+                try:
+                    if y1 == 0 and y2 == image.height:
+                        canvas.paste(image, (0, target_y))
+                    else:
+                        cropped = image.crop((0, y1, width, y2))
+                        try:
+                            canvas.paste(cropped, (0, target_y))
+                        finally:
+                            cropped.close()
+                finally:
+                    image.close()
+            target_y += y2 - y1
+        canvas.save(output_path, format="PNG")
     finally:
-        for image in cropped:
-            image.close()
-        for image in images:
-            image.close()
+        canvas.close()
 
 
 def _export_path_for_page(chapter_id: str, page_index: int, page: dict, manifest: dict) -> Path:
@@ -261,11 +292,22 @@ def export_chapter(chapter_id: str):
                     groups[source_page],
                     key=lambda item: (int(item["slice_index"]), int(item["page_index"])),
                 )
-                payload = _stitch_pngs(
-                    [item["path"] for item in items],
-                    [item["core_range"] for item in items],
+                page_tmp = out_dir / (
+                    f"page_{output_index:03d}.export.{uuid.uuid4().hex[:12]}.png"
                 )
-                archive.writestr(f"page_{output_index:03d}.png", payload)
+                try:
+                    _stitch_png_to_file(
+                        [item["path"] for item in items],
+                        page_tmp,
+                        [item["core_range"] for item in items],
+                    )
+                    archive.write(page_tmp, arcname=f"page_{output_index:03d}.png")
+                finally:
+                    if page_tmp.exists():
+                        try:
+                            page_tmp.unlink()
+                        except OSError:
+                            pass
 
         with get_manifest_lock(chapter_id):
             if not _export_snapshot_is_current(chapter_id, snapshot):
