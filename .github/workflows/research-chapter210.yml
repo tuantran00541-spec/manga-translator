@@ -30,27 +30,27 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install downloader dependencies
+      - name: Install downloader and slicer dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 Pillow==10.4.0 playwright==1.47.0 fastapi==0.115.0
+          pip install requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 Pillow==10.4.0 playwright==1.47.0 fastapi==0.115.0 numpy==1.26.4 opencv-python-headless==4.10.0.84
           python -m playwright install --with-deps chromium
 
-      - name: Download full Asura chapter with project downloader
+      - name: Download and slice full Asura chapter with project pipeline
         run: |
-          python scripts/asura_chapter_action_probe.py "$CHAPTER_URL" --output "$PROBE_ROOT" --samples 8
-          cat "$PROBE_ROOT/chapter_info.json" | python -c 'import json,sys; d=json.load(sys.stdin); print("pages=",d["page_count"],"bytes=",d["total_bytes"],"selected=",d["selected_indices"])'
+          python scripts/asura_chapter_action_probe.py "$CHAPTER_URL" --output "$PROBE_ROOT"
+          cat "$PROBE_ROOT/chapter_info.json" | python -c 'import json,sys; d=json.load(sys.stdin); print("pages=",d["page_count"],"bytes=",d["total_bytes"],"slices=",d["slice_count"],"max_slice_height=",d["max_slice_height"])'
 
       - name: Install isolated PaddleOCR 3.x challenger
         run: |
           python -m venv .venv-ppocrv6
           .venv-ppocrv6/bin/python -m pip install --upgrade pip
-          .venv-ppocrv6/bin/pip install "paddlepaddle>=3.2,<3.3" "paddleocr==3.7.0" opencv-python-headless
+          .venv-ppocrv6/bin/pip install "paddlepaddle>=3.2,<3.3" "paddleocr==3.7.0"
 
-      - name: Probe PP-OCRv6 small on representative pages
+      - name: Probe PP-OCRv6 small on all production slices
         run: |
           .venv-ppocrv6/bin/python scripts/ppocrv6_chapter_probe.py \
-            --selected-file "$PROBE_ROOT/selected_pages.txt" \
+            --selected-file "$PROBE_ROOT/all_slices.txt" \
             --output "$PROBE_ROOT/ppocrv6" \
             --tier small
           python - <<'PY'
@@ -59,12 +59,14 @@ jobs:
           p = Path("benchmark-results/chapter210/ppocrv6/summary.json")
           d = json.loads(p.read_text(encoding="utf-8"))
           print("PPOCRV6_FINAL", json.dumps({k:v for k,v in d.items() if k != "rows"}, ensure_ascii=False))
-          for row in d["rows"]:
-              print("PAGE", Path(row["source"]).name, "regions", row["regions"], "conf", row["mean_confidence"], "ms", row["latency_ms"])
+          noisy = sorted(d["rows"], key=lambda r: (r["mean_confidence"] is None, r["mean_confidence"] or 0))[:12]
+          print("LOWEST_CONFIDENCE_SLICES")
+          for row in noisy:
+              print("SLICE", Path(row["source"]).name, "regions", row["regions"], "conf", row["mean_confidence"], "low", row["low_confidence_lt_0_65"], "ms", row["latency_ms"])
               print("TEXT", " | ".join(row["texts"][:20]))
           PY
 
-      - name: Upload downloaded chapter
+      - name: Upload downloaded chapter metadata and raw images
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -72,7 +74,7 @@ jobs:
           path: |
             benchmark-results/chapter210/raw
             benchmark-results/chapter210/chapter_info.json
-            benchmark-results/chapter210/selected_pages.txt
+            benchmark-results/chapter210/all_slices.txt
           retention-days: 3
           if-no-files-found: warn
 
