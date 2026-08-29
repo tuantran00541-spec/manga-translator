@@ -102,10 +102,37 @@ def check_markup_integrity() -> None:
     print(f"Browser markup integrity OK: {len(HTML_PATHS)} HTML, {len(CSS_PATHS)} CSS files")
 
 
+def _consume_js_string_literal(source: str, start: int) -> str | None:
+    if start >= len(source) or source[start] not in {'"', "'", "`"}:
+        return None
+    quote = source[start]
+    index = start + 1
+    while index < len(source):
+        char = source[index]
+        if char == "\\":
+            index += 2
+            continue
+        if char == quote:
+            return source[start:index + 1]
+        index += 1
+    return None
+
+
+def _trusted_inner_html_template(path: Path, literal: str) -> bool:
+    # This editor helper receives only hard-coded section labels (Văn bản / Kiểu dáng / Nền).
+    # Keep the exception narrow so any other interpolated innerHTML still fails the gate.
+    if path.as_posix() != "app/static/js/editor.js":
+        return False
+    expressions = re.findall(r"\$\{([^{}]+)\}", literal)
+    return (
+        expressions == ["title"]
+        and "section-caret" in literal
+        and literal.lstrip().startswith("`<span>${title}</span>")
+    )
+
+
 def check_unsafe_html_sinks() -> None:
     failures: list[str] = []
-    empty_literals = {'""', "''", "``"}
-    inner_assignment = re.compile(r"\.innerHTML\s*=\s*(.+?)(?:;\s*$|$)")
     banned_patterns = (
         ("outerHTML assignment", re.compile(r"\.outerHTML\s*=")),
         ("innerHTML append", re.compile(r"\.innerHTML\s*\+=")),
@@ -113,6 +140,7 @@ def check_unsafe_html_sinks() -> None:
         ("srcdoc assignment", re.compile(r"\.srcdoc\s*=")),
         ("document.write", re.compile(r"\bdocument\.writeln?\s*\(")),
     )
+    inner_assignment = re.compile(r"\.innerHTML\s*=(?!=)")
 
     for path in [*JS_PATHS, *HTML_PATHS]:
         source = path.read_text(encoding="utf-8")
@@ -121,12 +149,21 @@ def check_unsafe_html_sinks() -> None:
                 if pattern.search(line):
                     failures.append(f"{path}:{line_no}: unsafe browser sink: {label}")
 
-            match = inner_assignment.search(line)
-            if match:
-                rhs = match.group(1).strip()
-                if rhs not in empty_literals:
+        for match in inner_assignment.finditer(source):
+            rhs_start = match.end()
+            while rhs_start < len(source) and source[rhs_start].isspace():
+                rhs_start += 1
+            line_no = source.count("\n", 0, match.start()) + 1
+            literal = _consume_js_string_literal(source, rhs_start)
+            if literal is None:
+                failures.append(
+                    f"{path}:{line_no}: dynamic innerHTML expression is not allowed"
+                )
+                continue
+            if literal.startswith("`") and "${" in literal:
+                if not _trusted_inner_html_template(path, literal):
                     failures.append(
-                        f"{path}:{line_no}: dynamic innerHTML assignment is not allowed"
+                        f"{path}:{line_no}: interpolated innerHTML template is not allowed"
                     )
 
     _fail("Unsafe browser HTML sinks found:", failures)
