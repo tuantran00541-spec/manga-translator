@@ -1,0 +1,142 @@
+name: One-shot dead editor box overlay CSS cleanup
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/editor-box-overlay-cleanup-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Remove dead box-overlay rules
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" || {
+            echo 'main moved after this cleanup run started; refusing stale rewrite'
+            exit 1
+          }
+
+          if grep -RFn --include='*.js' --include='*.html' --include='*.py' 'box-overlay' app | grep -v 'app/static/css/editor.css'; then
+            echo 'box-overlay is still referenced by runtime source; refusing cleanup'
+            exit 1
+          fi
+
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('app/static/css/editor.css')
+          text = path.read_text(encoding='utf-8')
+
+          def find_rule_start(source: str, needle: str, offset: int) -> int:
+              index = source.find(needle, offset)
+              while index >= 0:
+                  line_start = source.rfind('\n', 0, index) + 1
+                  if not source[line_start:index].strip():
+                      return line_start
+                  index = source.find(needle, index + len(needle))
+              return -1
+
+          removed = 0
+          cursor = 0
+          while True:
+              start = find_rule_start(text, '.box-overlay', cursor)
+              if start < 0:
+                  break
+              brace = text.find('{', start)
+              if brace < 0:
+                  raise SystemExit('Malformed box-overlay CSS rule')
+              selector = text[start:brace]
+              if '.box-overlay' not in selector:
+                  raise SystemExit('Unexpected selector while removing box-overlay CSS')
+
+              depth = 0
+              i = brace
+              quote = None
+              while i < len(text):
+                  ch = text[i]
+                  if quote is not None:
+                      if ch == '\\' and i + 1 < len(text):
+                          i += 2
+                          continue
+                      if ch == quote:
+                          quote = None
+                  elif ch in ('"', "'"):
+                      quote = ch
+                  elif ch == '{':
+                      depth += 1
+                  elif ch == '}':
+                      depth -= 1
+                      if depth == 0:
+                          end = i + 1
+                          while end < len(text) and text[end] in ' \t':
+                              end += 1
+                          if end < len(text) and text[end] == '\n':
+                              end += 1
+                          if end < len(text) and text[end] == '\n':
+                              end += 1
+                          text = text[:start] + text[end:]
+                          removed += 1
+                          cursor = start
+                          break
+                  i += 1
+              else:
+                  raise SystemExit('Unterminated box-overlay CSS rule')
+
+          if removed != 7:
+              raise SystemExit(f'Expected 7 box-overlay rules, removed {removed}')
+          if '.box-overlay' in text:
+              raise SystemExit('box-overlay selector remains after cleanup')
+          path.write_text(text, encoding='utf-8')
+          print(f'Removed {removed} dead box-overlay CSS rules')
+          PY
+
+          python - <<'PY'
+          from pathlib import Path
+          text = Path('app/static/css/editor.css').read_text(encoding='utf-8')
+          depth = 0
+          quote = None
+          i = 0
+          while i < len(text):
+              ch = text[i]
+              if quote is not None:
+                  if ch == '\\' and i + 1 < len(text):
+                      i += 2
+                      continue
+                  if ch == quote:
+                      quote = None
+              elif ch in ('"', "'"):
+                  quote = ch
+              elif ch == '{':
+                  depth += 1
+              elif ch == '}':
+                  depth -= 1
+                  if depth < 0:
+                      raise SystemExit('Unbalanced CSS braces')
+              i += 1
+          if quote is not None or depth != 0:
+              raise SystemExit(f'Invalid CSS structure: quote={quote!r}, depth={depth}')
+          PY
+
+          python -m compileall -q app run.py
+          find app/static/js -type f -name '*.js' -print0 | xargs -0 -n1 node --check
+          git diff --check
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/static/css/editor.css
+          git rm .github/workflows/editor-box-overlay-cleanup-once.yml
+          git diff --cached --check
+          git diff --cached --stat
+          git commit -m 'refactor(ui): remove dead editor box overlay CSS'
+          git push origin HEAD:main
