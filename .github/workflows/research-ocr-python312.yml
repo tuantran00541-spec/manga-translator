@@ -16,7 +16,7 @@ permissions:
 jobs:
   python312-ocr-deps:
     runs-on: ubuntu-22.04
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
 
@@ -24,9 +24,29 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install production OCR dependency pins
+      - name: Resolve full production requirements
         run: |
           python -m pip install --upgrade pip
+          python -m pip install --dry-run --ignore-installed --report /tmp/requirements-plan.json -r requirements.txt
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          plan = json.loads(Path('/tmp/requirements-plan.json').read_text(encoding='utf-8'))
+          names = sorted({
+              str(item.get('metadata', {}).get('name') or '').lower()
+              for item in plan.get('install', [])
+              if item.get('metadata', {}).get('name')
+          })
+          required = {'paddleocr', 'paddlepaddle', 'opencv-contrib-python', 'manga-ocr', 'torch'}
+          missing = sorted(required - set(names))
+          assert not missing, f'missing from resolver plan: {missing}'
+          assert 'opencv-python-headless' not in names, names
+          print('PY312_REQUIREMENTS_RESOLVED', {'packages': len(names), 'required': sorted(required)})
+          PY
+
+      - name: Install production OCR dependency pins
+        run: |
           python -m pip install \
             "numpy==1.26.4" \
             "opencv-contrib-python==4.10.0.84" \
