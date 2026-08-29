@@ -19,6 +19,7 @@ filelock==3.16.1
 loguru==0.7.2
 psutil==6.1.1
 transformers>=4.36,<4.46
-torch
+# Docker preinstalls the matching CPU-only 2.5.1+cpu wheel before resolving this pin.
+torch==2.5.1
 
 keyring>=25,<26

@@ -32,24 +32,34 @@ jobs:
           import cv2
           import paddle
           import paddleocr
+          import torch
 
-          opencv_dists = sorted({
+          distributions = {
               (dist.metadata.get('Name') or '').strip().lower()
               for dist in metadata.distributions()
-              if (dist.metadata.get('Name') or '').strip().lower().startswith('opencv-')
-          })
+              if (dist.metadata.get('Name') or '').strip()
+          }
+          opencv_dists = sorted(name for name in distributions if name.startswith('opencv-'))
+          nvidia_dists = sorted(name for name in distributions if name.startswith('nvidia-'))
           assert sys.version_info[:2] == (3, 12), sys.version
           assert opencv_dists == ['opencv-contrib-python'], opencv_dists
           assert paddle.__version__ == '3.2.2', paddle.__version__
           assert paddleocr.__version__ == '3.7.0', paddleocr.__version__
+          assert torch.__version__.startswith('2.5.1'), torch.__version__
+          assert torch.version.cuda is None, torch.version.cuda
+          assert not nvidia_dists, nvidia_dists
           print('DOCKER_OCR_RUNTIME', {
               'python': sys.version.split()[0],
               'opencv': cv2.__version__,
               'opencv_distributions': opencv_dists,
               'paddle': paddle.__version__,
               'paddleocr': paddleocr.__version__,
+              'torch': torch.__version__,
+              'torch_cuda': torch.version.cuda,
+              'nvidia_distributions': nvidia_dists,
           })
           PY
+          docker run --rm --entrypoint python manga-translator:research -m pip check
 
       - name: Validate non-root production user
         run: |
