@@ -224,12 +224,6 @@ body.settings-open {
   background: transparent;
 }
 
-.ui-btn-danger {
-  border-color: rgba(239, 68, 68, .55);
-  background: var(--danger-soft);
-  color: #fca5a5;
-}
-
 #upload-divider {
   display: flex;
   width: 24px;
