@@ -25,7 +25,7 @@ jobs:
 
       - name: Validate image runtime and dependency contract
         run: |
-          docker run --rm --entrypoint python manga-translator:research - <<'PY'
+          docker run --rm -i --entrypoint python manga-translator:research - <<'PY'
           import sys
           from importlib import metadata
 
