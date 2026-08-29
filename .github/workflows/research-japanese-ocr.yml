@@ -7,6 +7,7 @@ on:
     paths:
       - .github/workflows/research-japanese-ocr.yml
       - scripts/japanese_ocr_benchmark.py
+      - scripts/japanese_ppocr_order_probe.py
   workflow_dispatch:
 
 permissions:
@@ -43,6 +44,12 @@ jobs:
             --image-dir "$BENCH_ROOT/images" \
             --output "$BENCH_ROOT/ppocrv6.json"
 
+      - name: Benchmark geometry-aware Japanese reading order
+        run: |
+          .venv-jp-ppocr/bin/python scripts/japanese_ppocr_order_probe.py \
+            --image-dir "$BENCH_ROOT/images" \
+            --output "$BENCH_ROOT/ppocrv6-geometry.json"
+
       - name: Install current MangaOCR baseline
         run: |
           python -m venv .venv-jp-manga
@@ -65,36 +72,42 @@ jobs:
 
           root = Path("benchmark-results/japanese-ocr")
           p = json.loads((root / "ppocrv6.json").read_text(encoding="utf-8"))
+          g = json.loads((root / "ppocrv6-geometry.json").read_text(encoding="utf-8"))
           m = json.loads((root / "mangaocr.json").read_text(encoding="utf-8"))
           summary_keys = ["engine", "samples", "aggregate_cer", "exact_match_rate", "exact_match_count", "init_ms", "mean_latency_ms", "p95_latency_ms"]
-          print("JP_PPOCR", json.dumps({k:p.get(k) for k in summary_keys}, ensure_ascii=False))
+          print("JP_PPOCR_RAW", json.dumps({k:p.get(k) for k in summary_keys}, ensure_ascii=False))
+          print("JP_PPOCR_GEOMETRY", json.dumps({k:g.get(k) for k in ["engine", "samples", "raw_aggregate_cer", "ordered_aggregate_cer", "raw_exact_match_rate", "ordered_exact_match_rate", "vertical_samples", "mean_latency_ms", "p95_latency_ms"]}, ensure_ascii=False))
           print("JP_MANGAOCR", json.dumps({k:m.get(k) for k in summary_keys}, ensure_ascii=False))
 
-          p_rows = {r["id"]: r for r in p["rows"]}
+          g_rows = {r["id"]: r for r in g["rows"]}
           m_rows = {r["id"]: r for r in m["rows"]}
-          deltas = []
-          for sample_id in sorted(set(p_rows) & set(m_rows)):
-              pr = p_rows[sample_id]
+          improvements = []
+          for sample_id in sorted(set(g_rows) & set(m_rows)):
+              gr = g_rows[sample_id]
               mr = m_rows[sample_id]
-              deltas.append((pr["cer"] - mr["cer"], sample_id, pr, mr))
+              improvements.append((gr["raw_cer"] - gr["ordered_cer"], sample_id, gr, mr))
 
-          print("PPOCR_WORST_RELATIVE")
-          for delta, sample_id, pr, mr in sorted(deltas, reverse=True)[:8]:
-              print(sample_id, "delta_cer=", round(delta, 4), "gt=", repr(pr["ground_truth_normalized"]), "ppocr=", repr(pr["prediction_normalized"]), "manga=", repr(mr["prediction_normalized"]))
-          print("PPOCR_BEST_RELATIVE")
-          for delta, sample_id, pr, mr in sorted(deltas)[:8]:
-              print(sample_id, "delta_cer=", round(delta, 4), "gt=", repr(pr["ground_truth_normalized"]), "ppocr=", repr(pr["prediction_normalized"]), "manga=", repr(mr["prediction_normalized"]))
+          print("GEOMETRY_BIGGEST_IMPROVEMENTS")
+          for improvement, sample_id, gr, mr in sorted(improvements, reverse=True)[:12]:
+              print(sample_id, "improve=", round(improvement, 4), "orientation=", gr["orientation"], "gt=", repr(gr["ground_truth_normalized"]), "raw=", repr(gr["raw_prediction_normalized"]), "ordered=", repr(gr["ordered_prediction_normalized"]), "manga=", repr(mr["prediction_normalized"]), "removed=", gr["removed_indices"])
+          print("GEOMETRY_REGRESSIONS")
+          for improvement, sample_id, gr, mr in sorted(improvements)[:8]:
+              if improvement >= 0:
+                  break
+              print(sample_id, "regress=", round(-improvement, 4), "orientation=", gr["orientation"], "gt=", repr(gr["ground_truth_normalized"]), "raw=", repr(gr["raw_prediction_normalized"]), "ordered=", repr(gr["ordered_prediction_normalized"]), "removed=", gr["removed_indices"])
 
           gate = {
-              "ppocr_cer": p["aggregate_cer"],
+              "ppocr_raw_cer": p["aggregate_cer"],
+              "ppocr_geometry_cer": g["ordered_aggregate_cer"],
               "mangaocr_cer": m["aggregate_cer"],
-              "ppocr_exact": p["exact_match_rate"],
+              "ppocr_raw_exact": p["exact_match_rate"],
+              "ppocr_geometry_exact": g["ordered_exact_match_rate"],
               "mangaocr_exact": m["exact_match_rate"],
-              "ppocr_mean_ms": p["mean_latency_ms"],
+              "ppocr_mean_ms": g["mean_latency_ms"],
               "mangaocr_mean_ms": m["mean_latency_ms"],
-              "ppocr_can_replace_mangaocr_on_this_sample": (
-                  p["aggregate_cer"] <= m["aggregate_cer"] * 1.10 + 0.01
-                  and p["exact_match_rate"] + 0.05 >= m["exact_match_rate"]
+              "ppocr_geometry_can_replace_mangaocr_on_this_sample": (
+                  g["ordered_aggregate_cer"] <= m["aggregate_cer"] * 1.10 + 0.01
+                  and g["ordered_exact_match_rate"] + 0.05 >= m["exact_match_rate"]
               ),
           }
           (root / "comparison.json").write_text(json.dumps(gate, ensure_ascii=False, indent=2), encoding="utf-8")
