@@ -6,6 +6,8 @@ import os
 from pathlib import Path
 from typing import Any
 
+from app.env_utils import env_enabled
+
 OCR_PIPELINE_VERSION = "phase44-v3-hybrid"
 OCR_CACHE_FIELDS = (
     "ocr_text",
@@ -41,13 +43,6 @@ def _package_version(package_name: str) -> str:
         return "unknown"
 
 
-def _env_enabled(name: str, default: bool) -> bool:
-    value = os.getenv(name)
-    if value is None:
-        return default
-    return value.strip().lower() in {"1", "true", "yes", "on"}
-
-
 @lru_cache(maxsize=16)
 def engine_identity(lang: str) -> str:
     normalized = (lang or "").strip().lower()
@@ -59,7 +54,7 @@ def engine_identity(lang: str) -> str:
         backend = f"manga-ocr:{_package_version('manga-ocr')}"
     else:
         paddle_version = _package_version("paddleocr")
-        orientation = "ori-on" if _env_enabled(
+        orientation = "ori-on" if env_enabled(
             "MANGA_PPOCRV6_TEXTLINE_ORIENTATION", False
         ) else "ori-off"
         if normalized in {"ko", "korean"}:
