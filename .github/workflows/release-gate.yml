@@ -207,6 +207,50 @@ jobs:
         with:
           node-version: "20"
 
+      - name: Reject unreachable named JavaScript functions
+        shell: bash
+        run: |
+          python - <<'PY'
+          import re
+          from pathlib import Path
+
+          js_paths = sorted(Path("app/static/js").rglob("*.js"))
+          html_paths = sorted(Path("app/templates").rglob("*.html"))
+          source_by_path = {
+              path: path.read_text(encoding="utf-8")
+              for path in js_paths
+          }
+          runtime_source = "\n".join(
+              [*source_by_path.values(), *(path.read_text(encoding="utf-8") for path in html_paths)]
+          )
+          declaration = re.compile(
+              r"(?m)^\s*(?:async\s+)?function\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*\("
+          )
+          failures = []
+
+          for path, source in source_by_path.items():
+              for match in declaration.finditer(source):
+                  name = match.group(1)
+                  occurrences = len(
+                      re.findall(
+                          rf"(?<![A-Za-z0-9_$]){re.escape(name)}(?![A-Za-z0-9_$])",
+                          runtime_source,
+                      )
+                  )
+                  if occurrences == 1:
+                      line = source.count("\n", 0, match.start()) + 1
+                      failures.append(
+                          f"{path}:{line}: function {name} has no textual reference"
+                      )
+
+          if failures:
+              print("Unreachable named JavaScript functions found:")
+              for failure in failures:
+                  print(f"  {failure}")
+              raise SystemExit(1)
+          print("Named JavaScript function reachability OK")
+          PY
+
       - name: Check browser JavaScript syntax
         run: find app/static/js -type f -name '*.js' -print0 | xargs -0 -n1 node --check
 
