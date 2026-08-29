@@ -61,6 +61,18 @@ def _mean(values: list[float]) -> float | None:
     return statistics.fmean(values) if values else None
 
 
+def _mismatch_class(reference_norm: str, runtime_norm: str) -> str:
+    if reference_norm == runtime_norm:
+        return "same"
+    if not runtime_norm:
+        return "runtime_blank"
+    if reference_norm and reference_norm in runtime_norm:
+        return "runtime_contains_reference_plus_noise"
+    if runtime_norm and runtime_norm in reference_norm:
+        return "runtime_partial_reference"
+    return "different"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--ppocr-summary", required=True)
@@ -69,6 +81,7 @@ def main() -> int:
         default="benchmark-results/chapter210/runtime_v6",
     )
     parser.add_argument("--lang", default="en")
+    parser.add_argument("--target-mode", choices=("all", "centered"), default="all")
     parser.add_argument(
         "--crop-pad",
         type=int,
@@ -92,7 +105,13 @@ def main() -> int:
     confidences: list[float] = []
     quality_counts = {"good": 0, "review": 0, "reject": 0, "unknown": 0}
     quality_reasons: dict[str, int] = {}
-    same = 0
+    mismatch_counts = {
+        "same": 0,
+        "runtime_contains_reference_plus_noise": 0,
+        "runtime_partial_reference": 0,
+        "runtime_blank": 0,
+        "different": 0,
+    }
     runtime_blank = 0
     reference_blank = 0
     total = 0
@@ -120,7 +139,11 @@ def main() -> int:
 
             rgb = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
             started = time.perf_counter()
-            result = engine.read_detailed(rgb, args.lang)
+            result = engine.read_detailed(
+                rgb,
+                args.lang,
+                target_mode=args.target_mode,
+            )
             latency_ms = (time.perf_counter() - started) * 1000.0
             latencies.append(latency_ms)
             if result.confidence is not None:
@@ -137,8 +160,9 @@ def main() -> int:
             runtime_text = str(result.text or "").strip()
             reference_norm = _normalize(reference_text)
             runtime_norm = _normalize(runtime_text)
-            is_same = reference_norm == runtime_norm
-            same += int(is_same)
+            mismatch_class = _mismatch_class(reference_norm, runtime_norm)
+            mismatch_counts[mismatch_class] += 1
+            is_same = mismatch_class == "same"
             runtime_blank += int(not runtime_norm)
             reference_blank += int(not reference_norm)
             total += 1
@@ -157,8 +181,10 @@ def main() -> int:
                 "runtime_quality": quality,
                 "runtime_quality_reason": result.quality_reason,
                 "same_normalized": is_same,
+                "mismatch_class": mismatch_class,
                 "latency_ms": latency_ms,
                 "crop_pad": crop_pad,
+                "target_mode": args.target_mode,
                 "polygon": polygons[region_index],
             }
             comparisons.append(comparison)
@@ -175,6 +201,7 @@ def main() -> int:
                     crop,
                 )
 
+    same = mismatch_counts["same"]
     disagreements = [item for item in comparisons if not item["same_normalized"]]
     disagreements.sort(
         key=lambda item: (
@@ -185,11 +212,13 @@ def main() -> int:
 
     summary = {
         "lang": args.lang,
+        "target_mode": args.target_mode,
         "crop_pad": crop_pad,
         "regions_compared": total,
         "same_normalized_count": same,
         "same_normalized_rate": same / max(1, total),
         "disagreement_count": total - same,
+        "mismatch_counts": mismatch_counts,
         "runtime_blank_count": runtime_blank,
         "reference_blank_count": reference_blank,
         "quality_counts": quality_counts,
@@ -224,6 +253,7 @@ def main() -> int:
             "confidence": item["runtime_confidence"],
             "quality": item["runtime_quality"],
             "reason": item["runtime_quality_reason"],
+            "mismatch_class": item["mismatch_class"],
             "orientation": item["runtime_orientation"],
             "latency_ms": item["latency_ms"],
         }, ensure_ascii=False))
