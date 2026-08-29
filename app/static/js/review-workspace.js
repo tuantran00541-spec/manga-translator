@@ -1,47 +1,9 @@
 (() => {
-  const legacyRenderReview = window.renderReview;
-  if (typeof legacyRenderReview !== "function" || typeof window.createReviewCard !== "function") return;
-
-  window.REVIEW_VIRTUALIZED = true;
+  if (typeof window.createReviewCard !== "function") return;
 
   let activeReviewIndex = 0;
   let reviewLastChapterId = null;
   const maskSnapshots = new Map();
-
-  const CONTROL_COPY = new Map([
-    ["Tô lỗi", "Đánh dấu vùng lỗi"],
-    ["Đang tô (bấm để tắt)", "Đang đánh dấu · Chọn để kết thúc"],
-    ["Xóa nét vẽ", "Xóa nét đánh dấu"],
-    ["Xử lý lại vùng đã tô", "Xử lý vùng đánh dấu"],
-    ["Đang xử lý lại...", "Đang xử lý…"],
-    ["Xóa vùng tô tay", "Xóa vùng chỉnh sửa"],
-    ["Đang xóa...", "Đang xóa…"],
-    ["AI rà lỗi", "Kiểm tra bằng AI"],
-    ["AI đang rà…", "AI đang kiểm tra…"],
-  ]);
-
-  function normalizeControlText(control) {
-    if (!control) return;
-    const next = CONTROL_COPY.get(control.textContent.trim());
-    if (next && control.textContent !== next) control.textContent = next;
-  }
-
-  function observeControlText(control) {
-    if (!control || control._uiCopyObserver) return;
-    normalizeControlText(control);
-    const observer = new MutationObserver(() => normalizeControlText(control));
-    observer.observe(control, { childList: true, characterData: true, subtree: true });
-    control._uiCopyObserver = observer;
-  }
-
-  function normalizeReviewControls(controls) {
-    if (!controls) return;
-    controls.querySelectorAll("button").forEach(observeControlText);
-    const size = controls.querySelector(".brush-size-control");
-    if (size && size.firstChild && size.firstChild.nodeType === Node.TEXT_NODE) {
-      size.firstChild.nodeValue = "Kích thước cọ ";
-    }
-  }
 
   function stopCardBrush(card) {
     if (!card) return;
@@ -81,6 +43,48 @@
     observer.observe(source, { childList: true, characterData: true, subtree: true, attributes: true });
   }
 
+  function mountGeminiSettings() {
+    const config = document.createElement("div");
+    config.className = "gemini-qc-config";
+
+    const status = document.createElement("span");
+    status.className = "gemini-qc-status";
+    status.textContent = "Kiểm tra AI: Đang kiểm tra cấu hình…";
+
+    const keyInput = document.createElement("input");
+    keyInput.type = "password";
+    keyInput.className = "gemini-key-input";
+    keyInput.placeholder = "Gemini API key";
+    keyInput.autocomplete = "off";
+    keyInput.spellcheck = false;
+    keyInput.setAttribute("aria-label", "Gemini API key");
+
+    const saveBtn = document.createElement("button");
+    saveBtn.type = "button";
+    saveBtn.className = "gemini-key-save-btn";
+    saveBtn.textContent = "Lưu khóa API";
+
+    const clearBtn = document.createElement("button");
+    clearBtn.type = "button";
+    clearBtn.className = "gemini-key-clear-btn";
+    clearBtn.textContent = "Xóa khóa API";
+
+    const privacyNote = document.createElement("span");
+    privacyNote.className = "gemini-qc-privacy-note";
+    privacyNote.textContent = "Ảnh gốc và ảnh đã xử lý sẽ được gửi đến Gemini để kiểm tra chất lượng.";
+
+    config.append(status, keyInput, saveBtn, clearBtn, privacyNote);
+    if (typeof window.setupGeminiQCSettings === "function") {
+      window.setupGeminiQCSettings(status, keyInput, saveBtn, clearBtn);
+    } else if (typeof setupGeminiQCSettings === "function") {
+      setupGeminiQCSettings(status, keyInput, saveBtn, clearBtn);
+    }
+    if (typeof window.mountAISettings === "function") {
+      window.mountAISettings(config);
+    }
+    return status;
+  }
+
   function captureMaskSnapshot(card) {
     if (!card) return;
     const canonicalIndex = parseInt(card.dataset.pageIndex, 10);
@@ -100,6 +104,12 @@
   function setupReviewWorkspace() {
     const container = document.getElementById("page-view");
     if (!container) return;
+
+    container.querySelectorAll(".brush-canvas").forEach((canvas) => {
+      if (typeof canvas._cleanupBrush === "function") canvas._cleanupBrush();
+      else if (canvas._brushAbort) canvas._brushAbort.abort();
+    });
+    container.replaceChildren();
     container.className = "review-mode";
 
     if (window.currentChapterId && reviewLastChapterId !== window.currentChapterId) {
@@ -108,27 +118,13 @@
       maskSnapshots.clear();
     }
 
-    const legacyToolbar = container.querySelector("#preview-toolbar");
-    const geminiConfig = legacyToolbar?.querySelector(".gemini-qc-config") || null;
-    const geminiStatus = geminiConfig?.querySelector(".gemini-qc-status") || null;
-    if (geminiConfig && typeof window.mountAISettings === "function") {
-      window.mountAISettings(geminiConfig);
-    }
-
-    let continueBtn = null;
-    if (legacyToolbar) {
-      continueBtn = [...legacyToolbar.children].find((el) => el.tagName === "BUTTON") || null;
-    }
-
+    const geminiStatus = mountGeminiSettings();
     const pageIndices = (window.currentManifest?.pages || [])
       .map((page, index) => ({ page, index }))
       .filter(({ page }) => !page.skipped)
       .map(({ index }) => index);
 
-    if (!pageIndices.length) {
-      legacyToolbar?.remove();
-      return;
-    }
+    if (!pageIndices.length) return;
 
     const targetCanonical = window.initialReviewCanonicalPageIndex !== undefined && window.initialReviewCanonicalPageIndex !== null
       ? window.initialReviewCanonicalPageIndex
@@ -142,7 +138,6 @@
       window.initialReviewCanonicalPageIndex = null;
     }
     activeReviewIndex = Math.max(0, Math.min(activeReviewIndex, pageIndices.length - 1));
-    legacyToolbar?.remove();
 
     const workspace = document.createElement("div");
     workspace.className = "review-workspace-shell";
@@ -170,18 +165,16 @@
     helpPanel.innerHTML = '<p>Chọn <strong>Đánh dấu vùng lỗi</strong> để tô thủ công. Nhấp đúp vào vùng nền đồng màu để chọn nhanh toàn bộ vùng liên thông. Sau khi kiểm tra vùng đánh dấu, chọn <strong>Xử lý vùng đánh dấu</strong>.</p>';
     help.append(helpSummary, helpPanel);
 
-    if (!continueBtn) {
-      continueBtn = document.createElement("button");
-      continueBtn.addEventListener("click", () => {
-        const activeCard = container.querySelector(".review-canvas-host .review-card");
-        const canonicalIndex = activeCard ? (parseInt(activeCard.dataset.pageIndex, 10) || 0) : 0;
-        if (window.editorState) window.editorState.activePageIndex = canonicalIndex;
-        if (typeof window.setWorkflowCheckpoint === "function") window.setWorkflowCheckpoint("editor", canonicalIndex);
-        if (typeof window.renderEditor === "function") window.renderEditor();
-      });
-    }
+    const continueBtn = document.createElement("button");
     continueBtn.className = "ui-btn ui-btn-primary review-primary-action";
     continueBtn.textContent = "Mở trình biên tập bản dịch";
+    continueBtn.addEventListener("click", () => {
+      const activeCard = container.querySelector(".review-canvas-host .review-card");
+      const canonicalIndex = activeCard ? (parseInt(activeCard.dataset.pageIndex, 10) || 0) : 0;
+      if (window.editorState) window.editorState.activePageIndex = canonicalIndex;
+      if (typeof window.setWorkflowCheckpoint === "function") window.setWorkflowCheckpoint("editor", canonicalIndex);
+      if (typeof window.renderEditor === "function") window.renderEditor();
+    });
     actions.append(aiStatus, continueBtn);
     toolbar.append(title, actions);
 
@@ -265,10 +258,7 @@
       if (typeof card._mountReview === "function") card._mountReview();
 
       const controls = card.querySelector(".review-controls");
-      if (controls) {
-        normalizeReviewControls(controls);
-        controlsSlot.appendChild(controls);
-      }
+      if (controls) controlsSlot.appendChild(controls);
 
       navigator.setActive(activeReviewIndex);
       if (typeof window.setWorkflowCheckpoint === "function") {
@@ -300,8 +290,5 @@
     renderActive();
   }
 
-  window.renderReview = function reviewWorkspaceRender() {
-    legacyRenderReview();
-    setupReviewWorkspace();
-  };
+  window.renderReview = setupReviewWorkspace;
 })();
