@@ -1,0 +1,84 @@
+name: One-shot residual dead CSS audit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/css-dead-selector-audit-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Audit simple CSS selector references
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" || {
+            echo 'main moved after this audit started; refusing stale audit'
+            exit 1
+          }
+
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          css_files = sorted(Path('app/static/css').glob('*.css'))
+          runtime_files = [
+              *Path('app/static/js').rglob('*.js'),
+              *Path('app/templates').rglob('*.html'),
+              *Path('app').rglob('*.py'),
+          ]
+          runtime_text = '\n'.join(path.read_text(encoding='utf-8', errors='ignore') for path in runtime_files)
+
+          token_re = re.compile(r'(?<![\w-])([.#])([A-Za-z_][A-Za-z0-9_-]*)')
+          rule_re = re.compile(r'([^{}]+)\{')
+          ignore_classes = {
+              'active', 'ready', 'selected', 'disabled', 'hidden', 'error', 'success',
+              'warning', 'danger', 'loading', 'busy', 'open', 'closed', 'dragover',
+              'drawing', 'ellipse', 'clean', 'manual', 'auto', 'pending', 'done',
+          }
+
+          occurrences = {}
+          for path in css_files:
+              text = path.read_text(encoding='utf-8', errors='ignore')
+              text = re.sub(r'/\*.*?\*/', '', text, flags=re.S)
+              for match in rule_re.finditer(text):
+                  selector = match.group(1).strip()
+                  if selector.startswith('@'):
+                      continue
+                  for sigil, name in token_re.findall(selector):
+                      occurrences.setdefault((sigil, name), set()).add(str(path))
+
+          candidates = []
+          for (sigil, name), files in sorted(occurrences.items(), key=lambda item: (item[0][0], item[0][1])):
+              if sigil == '.' and name in ignore_classes:
+                  continue
+              needle = name
+              if needle not in runtime_text:
+                  candidates.append((sigil + name, sorted(files)))
+
+          print(f'CSS files scanned: {len(css_files)}')
+          print(f'Runtime files scanned: {len(runtime_files)}')
+          print(f'High-confidence textual dead-token candidates: {len(candidates)}')
+          for token, files in candidates:
+              print(f'{token}\t' + ','.join(files))
+          PY
+
+          python -m compileall -q app run.py
+          find app/static/js -type f -name '*.js' -print0 | xargs -0 -n1 node --check
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/css-dead-selector-audit-once.yml
+          git diff --cached --check
+          git commit -m 'chore: finish residual dead CSS audit'
+          git push origin HEAD:main
