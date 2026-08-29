@@ -29,7 +29,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install \
             "numpy==1.26.4" \
-            "opencv-python-headless==4.10.0.84" \
+            "opencv-contrib-python==4.10.0.84" \
             "paddlepaddle==3.2.2" \
             "paddleocr==3.7.0"
 
@@ -37,14 +37,27 @@ jobs:
         run: |
           python - <<'PY'
           import sys
+          from importlib import metadata
+
           import cv2
           import numpy
           import paddle
           import paddleocr
+
+          opencv_dists = sorted(
+              {
+                  (dist.metadata.get("Name") or "").strip().lower()
+                  for dist in metadata.distributions()
+                  if (dist.metadata.get("Name") or "").strip().lower().startswith("opencv-")
+              }
+          )
+          assert opencv_dists == ["opencv-contrib-python"], opencv_dists
+
           print("PY312_OCR_RUNTIME", {
               "python": sys.version,
               "numpy": numpy.__version__,
               "opencv": cv2.__version__,
+              "opencv_distributions": opencv_dists,
               "paddle": paddle.__version__,
               "paddleocr": paddleocr.__version__,
           })
