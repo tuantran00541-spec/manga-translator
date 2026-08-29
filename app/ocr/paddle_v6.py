@@ -9,6 +9,7 @@ from typing import Any
 import cv2
 import numpy as np
 
+from app.ocr.quality import classify_ocr_quality
 from app.ocr.reading_order import reconstruct_reading_order
 
 UNIFIED_LANGS = {"en", "english", "ch", "zh", "ja", "japan"}
@@ -22,6 +23,15 @@ class OCRReadResult:
     model: str
     orientation: str
     region_count: int
+    quality: str = "unknown"
+    quality_reason: str | None = None
+
+
+def _env_enabled(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _payload(result: Any) -> dict[str, Any]:
@@ -77,9 +87,10 @@ def _prepare_rgb_for_paddle(image: np.ndarray) -> np.ndarray:
 class PaddleV6OCR:
     """Lazy CPU-only PaddleOCR 3.x backend.
 
-    EN/ZH/JA use PP-OCRv6 small detection + recognition. Korean reuses the
-    same PP-OCRv6 detector with the dedicated Korean PP-OCRv5 mobile
-    recognizer because the unified PP-OCRv6 recognizer does not cover Korean.
+    EN/ZH use PP-OCRv6 small detection + recognition in production. Japanese
+    remains supported here for research probes, while MultiLangOCR routes JA to
+    MangaOCR. Korean reuses the PP-OCRv6 detector with the dedicated Korean
+    PP-OCRv5 mobile recognizer.
     """
 
     def __init__(self) -> None:
@@ -88,6 +99,12 @@ class PaddleV6OCR:
             tier = "small"
         self.tier = tier
         self.device = "cpu"
+        # Text-line orientation adds another model/cold-start cost. Detector
+        # crops are normally upright, so keep it opt-in and benchmark rotated
+        # material separately before enabling it globally.
+        self.textline_orientation = _env_enabled(
+            "MANGA_PPOCRV6_TEXTLINE_ORIENTATION", False
+        )
         self._pipelines: dict[str, Any] = {}
         self._locks = {
             "unified": threading.RLock(),
@@ -109,7 +126,7 @@ class PaddleV6OCR:
 
     def read(self, image: np.ndarray, lang: str) -> OCRReadResult:
         if image is None or image.size == 0:
-            return OCRReadResult("", None, "none", "unknown", 0)
+            return OCRReadResult("", None, "none", "unknown", 0, "reject", "empty")
 
         normalized = _normalize_lang(lang)
         if normalized in {"en", "ch", "ja"}:
@@ -153,17 +170,26 @@ class PaddleV6OCR:
             lang=normalized,
         )
         if ordered["regions"]:
+            text = str(ordered["text"] or "").strip()
+            confidence = ordered["confidence"]
+            quality = classify_ocr_quality(text, normalized, confidence=confidence)
             return OCRReadResult(
-                text=str(ordered["text"] or "").strip(),
-                confidence=ordered["confidence"],
+                text=text,
+                confidence=confidence,
                 model=model_name,
                 orientation=str(ordered["orientation"]),
                 region_count=len(ordered["ordered_indices"]),
+                quality=quality.status,
+                quality_reason=quality.reason,
             )
 
         # Paddle can occasionally return recognition text without polygons.
         # Preserve useful text rather than dropping the result entirely.
-        fallback_texts = [str(value or "").strip() for value in texts if str(value or "").strip()]
+        fallback_texts = [
+            str(value or "").strip()
+            for value in texts
+            if str(value or "").strip()
+        ]
         finite_scores: list[float] = []
         for score in scores:
             try:
@@ -172,12 +198,17 @@ class PaddleV6OCR:
             except (TypeError, ValueError):
                 pass
         separator = "" if normalized == "ja" else "\n"
+        text = separator.join(fallback_texts).strip()
+        confidence = statistics.fmean(finite_scores) if finite_scores else None
+        quality = classify_ocr_quality(text, normalized, confidence=confidence)
         return OCRReadResult(
-            text=separator.join(fallback_texts).strip(),
-            confidence=statistics.fmean(finite_scores) if finite_scores else None,
+            text=text,
+            confidence=confidence,
             model=model_name,
             orientation="unknown",
             region_count=len(fallback_texts),
+            quality=quality.status,
+            quality_reason=quality.reason,
         )
 
     def _get_pipeline(self, key: str) -> Any:
@@ -201,7 +232,7 @@ class PaddleV6OCR:
                 text_recognition_model_name=recognition_model,
                 use_doc_orientation_classify=False,
                 use_doc_unwarping=False,
-                use_textline_orientation=True,
+                use_textline_orientation=self.textline_orientation,
                 device=self.device,
             )
             self._pipelines[key] = pipeline
