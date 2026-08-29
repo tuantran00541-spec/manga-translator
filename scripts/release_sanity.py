@@ -260,7 +260,7 @@ def check_duplicate_api_routes() -> None:
     print(f"Route uniqueness OK: {len(seen)} API routes")
 
 
-def check_named_javascript_reachability() -> None:
+def check_javascript_function_reachability() -> None:
     source_by_path = {
         path: path.read_text(encoding="utf-8")
         for path in JS_PATHS
@@ -268,28 +268,53 @@ def check_named_javascript_reachability() -> None:
     runtime_source = "\n".join(
         [*source_by_path.values(), *(path.read_text(encoding="utf-8") for path in HTML_PATHS)]
     )
-    declaration = re.compile(
-        r"(?m)^\s*(?:async\s+)?function\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*\("
+    patterns = (
+        (
+            "function",
+            re.compile(
+                r"(?m)^\s*(?:async\s+)?function\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*\("
+            ),
+        ),
+        (
+            "arrow binding",
+            re.compile(
+                r"(?m)^\s*(?:const|let|var)\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*"
+                r"(?:async\s*)?(?:\([^;\n]*\)|[A-Za-z_$][A-Za-z0-9_$]*)\s*=>"
+            ),
+        ),
+        (
+            "function binding",
+            re.compile(
+                r"(?m)^\s*(?:const|let|var)\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*"
+                r"(?:async\s*)?function(?:\s+[A-Za-z_$][A-Za-z0-9_$]*)?\s*\("
+            ),
+        ),
     )
     failures: list[str] = []
+    seen_declarations: set[tuple[Path, int, str]] = set()
 
     for path, source in source_by_path.items():
-        for match in declaration.finditer(source):
-            name = match.group(1)
-            occurrences = len(
-                re.findall(
-                    rf"(?<![A-Za-z0-9_$]){re.escape(name)}(?![A-Za-z0-9_$])",
-                    runtime_source,
-                )
-            )
-            if occurrences == 1:
+        for kind, pattern in patterns:
+            for match in pattern.finditer(source):
+                name = match.group(1)
                 line = source.count("\n", 0, match.start()) + 1
-                failures.append(
-                    f"{path}:{line}: function {name} has no textual reference"
+                key = (path, line, name)
+                if key in seen_declarations:
+                    continue
+                seen_declarations.add(key)
+                occurrences = len(
+                    re.findall(
+                        rf"(?<![A-Za-z0-9_$]){re.escape(name)}(?![A-Za-z0-9_$])",
+                        runtime_source,
+                    )
                 )
+                if occurrences == 1:
+                    failures.append(
+                        f"{path}:{line}: {kind} {name} has no textual reference"
+                    )
 
-    _fail("Unreachable named JavaScript functions found:", failures)
-    print("Named JavaScript function reachability OK")
+    _fail("Unreachable JavaScript function bindings found:", failures)
+    print("JavaScript function reachability OK")
 
 
 def main() -> None:
@@ -298,7 +323,7 @@ def main() -> None:
     check_python_module_reachability()
     check_exact_python_helper_duplication()
     check_duplicate_api_routes()
-    check_named_javascript_reachability()
+    check_javascript_function_reachability()
 
 
 if __name__ == "__main__":
