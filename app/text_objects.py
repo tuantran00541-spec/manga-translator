@@ -16,6 +16,15 @@ DEFAULT_TEXT_OBJECT_STYLE = {
     "verticalAlign": "middle",
 }
 
+OCR_METADATA_FIELDS = (
+    "ocr_confidence",
+    "ocr_model",
+    "ocr_orientation",
+    "ocr_region_count",
+    "ocr_quality",
+    "ocr_quality_reason",
+)
+
 
 def _region_from_box(box: dict) -> dict | None:
     try:
@@ -42,6 +51,19 @@ def _source_box_ids(obj: dict) -> set[str]:
     return {str(ref) for ref in refs if isinstance(ref, str) and ref}
 
 
+def _sync_ocr_metadata(obj: dict, box: dict) -> bool:
+    changed = False
+    for key in OCR_METADATA_FIELDS:
+        if key in box:
+            value = copy.deepcopy(box[key])
+            if obj.get(key) != value:
+                obj[key] = value
+                changed = True
+        elif obj.pop(key, None) is not None:
+            changed = True
+    return changed
+
+
 def _sync_existing_auto_object(obj: dict, box: dict, region: dict) -> bool:
     changed = False
     previous_auto_geometry = obj.get("auto_geometry")
@@ -57,13 +79,15 @@ def _sync_existing_auto_object(obj: dict, box: dict, region: dict) -> bool:
     box_text = str(box.get("ocr_text") or "")
     previous_auto_text = str(obj.get("auto_ocr_text") or "")
     current_text = str(obj.get("ocr_text") or "")
-    if box_text and (not current_text or current_text == previous_auto_text):
+    follows_machine_text = not current_text or current_text == previous_auto_text
+    if box_text and follows_machine_text:
         if current_text != box_text:
             obj["ocr_text"] = box_text
             changed = True
         if previous_auto_text != box_text:
             obj["auto_ocr_text"] = box_text
             changed = True
+        changed = _sync_ocr_metadata(obj, box) or changed
 
     if obj.pop("source_missing", None) is not None:
         changed = True
@@ -126,6 +150,9 @@ def ensure_page_text_objects(page: dict) -> tuple[int, bool]:
             "auto_geometry": copy.deepcopy(region),
             "auto_ocr_text": box_text,
         }
+        for key in OCR_METADATA_FIELDS:
+            if key in box:
+                obj[key] = copy.deepcopy(box[key])
         objects.append(obj)
         covered[box_id] = obj
         created += 1
