@@ -23,16 +23,9 @@ jobs:
 
           html_files = list(Path("app/templates").rglob("*.html"))
           js_files = list(Path("app/static/js").rglob("*.js"))
-
           dead_classes = {
-              "app-shell",
-              "app-header",
-              "app-brand-block",
-              "wordmark-text",
-              "wordmark-accent",
-              "workflow-steps",
-              "workflow-step",
-              "app-header-actions",
+              "app-shell", "app-header", "app-brand-block", "wordmark-text",
+              "wordmark-accent", "workflow-steps", "workflow-step", "app-header-actions",
           }
           dead_ids = {"wordmark", "wordmark-tag"}
 
@@ -47,21 +40,12 @@ jobs:
               live_classes = sorted(dead_classes & classes)
               live_ids = sorted(dead_ids & ids)
               if live_classes or live_ids:
-                  raise SystemExit(
-                      f"Refusing legacy CSS removal; {path} still uses classes={live_classes}, ids={live_ids}"
-                  )
+                  raise SystemExit(f"Refusing legacy CSS removal; {path} uses classes={live_classes}, ids={live_ids}")
 
           selector_literals = (
-              ".app-shell",
-              ".app-header",
-              ".app-brand-block",
-              ".wordmark-text",
-              ".wordmark-accent",
-              ".workflow-steps",
-              ".workflow-step",
-              ".app-header-actions",
-              "#wordmark",
-              "#wordmark-tag",
+              ".app-shell", ".app-header", ".app-brand-block", ".wordmark-text",
+              ".wordmark-accent", ".workflow-steps", ".workflow-step",
+              ".app-header-actions", "#wordmark", "#wordmark-tag",
           )
           for path in js_files:
               text = path.read_text(encoding="utf-8")
@@ -71,17 +55,16 @@ jobs:
 
           css_path = Path("app/static/css/ui-system.css")
           css = css_path.read_text(encoding="utf-8")
-          if css.count(".app-shell {") != 1 or css.count(".app-context {") != 1:
-              raise SystemExit("Unexpected ui-system.css selector layout")
+          if css.count(".app-shell {") != 1:
+              raise SystemExit("Unexpected .app-shell selector count")
           start = css.index(".app-shell {")
-          end = css.index(".app-context {", start)
+          end = css.find(".app-context {", start)
+          if end < 0:
+              raise SystemExit("Could not find live .app-context boundary after legacy block")
           removed = css[start:end]
           required = (
-              ".app-header {",
-              ".app-brand-block {",
-              ".workflow-steps {",
-              ".workflow-step {",
-              ".app-header-actions {",
+              ".app-header {", ".app-brand-block {", ".workflow-steps {",
+              ".workflow-step {", ".app-header-actions {",
           )
           missing = [selector for selector in required if selector not in removed]
           if missing:
@@ -91,7 +74,6 @@ jobs:
           PY
           python - <<'PY'
           from pathlib import Path
-
           path = Path("app/static/css/ui-system.css")
           text = path.read_text(encoding="utf-8")
           quote = None
