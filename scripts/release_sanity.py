@@ -164,10 +164,11 @@ def check_python_module_reachability() -> None:
                 if candidate in existing:
                     incoming[candidate].append(f"{path}:{node.lineno}")
 
+    entrypoints = {"app.main"}
     failures = [
         f"{module} has no incoming runtime import"
         for module in sorted(existing)
-        if module not in incoming
+        if module not in incoming and module not in entrypoints
     ]
     _fail("Orphan Python runtime modules found:", failures)
     print(f"Python module reachability OK: {len(existing)} modules")
