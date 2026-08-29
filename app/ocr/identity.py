@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from functools import lru_cache
 from importlib import metadata
+import os
 from pathlib import Path
 
-OCR_PIPELINE_VERSION = "phase44-v1"
+OCR_PIPELINE_VERSION = "phase44-v2-ppocrv6"
 OCR_CACHE_FIELDS = (
     "ocr_text",
     "ocr_lang",
@@ -33,13 +34,29 @@ def _package_version(package_name: str) -> str:
         return "unknown"
 
 
+def _env_enabled(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 @lru_cache(maxsize=16)
 def engine_identity(lang: str) -> str:
     normalized = (lang or "").strip().lower()
-    if normalized == "ja":
-        backend = f"manga-ocr:{_package_version('manga-ocr')}"
+    tier = os.getenv("MANGA_PPOCRV6_TIER", "small").strip().lower()
+    if tier not in {"small", "medium"}:
+        tier = "small"
+    paddle_version = _package_version("paddleocr")
+
+    if normalized in {"ko", "korean"}:
+        backend = f"paddleocr:{paddle_version}:korean-ppocrv5-mobile"
+    elif normalized in {"ja", "japan"}:
+        backend = f"paddleocr:{paddle_version}:ppocrv6-{tier}"
+        if _env_enabled("MANGA_OCR_JA_FALLBACK", True):
+            backend += f"+manga-ocr-fallback:{_package_version('manga-ocr')}"
     else:
-        backend = f"paddleocr:{_package_version('paddleocr')}"
+        backend = f"paddleocr:{paddle_version}:ppocrv6-{tier}"
     return f"{OCR_PIPELINE_VERSION}:{backend}"
 
 
