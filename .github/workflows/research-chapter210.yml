@@ -9,6 +9,8 @@ on:
       - scripts/asura_chapter_action_probe.py
       - scripts/ppocrv6_chapter_probe.py
       - scripts/korean_fallback_probe.py
+      - scripts/chapter210_current_vs_v6_probe.py
+      - app/ocr/multi_lang_ocr.py
       - app/downloader/**
       - app/security.py
   workflow_dispatch:
@@ -24,6 +26,7 @@ jobs:
       CHAPTER_URL: https://asurascans.com/comics/the-return-of-the-crazy-demon-b57aa235/chapter/210
       PROBE_ROOT: benchmark-results/chapter210
       MANGA_DOWNLOAD_WORKERS: "4"
+      PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK: "True"
     steps:
       - uses: actions/checkout@v4
 
@@ -67,6 +70,26 @@ jobs:
               print("TEXT", " | ".join(row["texts"][:20]))
           PY
 
+      - name: Install exact current PaddleOCR 2.8 baseline
+        run: |
+          python -m venv .venv-current-ocr
+          .venv-current-ocr/bin/python -m pip install --upgrade pip
+          .venv-current-ocr/bin/pip install "numpy==1.26.4" "Pillow==10.4.0" "opencv-python-headless==4.10.0.84" "paddlepaddle==2.6.2" "paddleocr==2.8.1"
+
+      - name: Recheck all chapter regions with production MultiLangOCR
+        run: |
+          PYTHONPATH=. .venv-current-ocr/bin/python scripts/chapter210_current_vs_v6_probe.py \
+            --ppocr-summary "$PROBE_ROOT/ppocrv6/summary.json" \
+            --output "$PROBE_ROOT/current_vs_v6"
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path("benchmark-results/chapter210/current_vs_v6/summary.json")
+          d = json.loads(p.read_text(encoding="utf-8"))
+          keys = ["regions_compared","current_init_ms","current_mean_region_latency_ms","current_p95_region_latency_ms","same_normalized_count","same_normalized_rate","disagreement_count","current_blank_count","v6_blank_count","v6_likely_win_review_count","current_likely_win_review_count","current_normalized_chars","v6_normalized_chars","candidate_full_slice_mean_latency_ms","candidate_full_slice_p95_latency_ms"]
+          print("CURRENT_VS_V6_FINAL", json.dumps({k:d.get(k) for k in keys}, ensure_ascii=False))
+          PY
+
       - name: Recheck PP-OCRv6 regions with Korean PP-OCRv5 mobile recognizer
         run: |
           .venv-ppocrv6/bin/python scripts/korean_fallback_probe.py \
@@ -96,13 +119,14 @@ jobs:
           retention-days: 3
           if-no-files-found: warn
 
-      - name: Upload PP-OCRv6 and Korean fallback results
+      - name: Upload OCR comparison results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: chapter210-ocr-research
           path: |
             benchmark-results/chapter210/ppocrv6
+            benchmark-results/chapter210/current_vs_v6
             benchmark-results/chapter210/korean_fallback
           retention-days: 7
           if-no-files-found: warn
