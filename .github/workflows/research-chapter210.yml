@@ -4,13 +4,16 @@ on:
   push:
     branches:
       - research/paper-gates-ocr-mask-inpaint-20260829
+      - feat/ppocrv6-runtime-migration
     paths:
       - .github/workflows/research-chapter210.yml
+      - requirements.txt
       - scripts/asura_chapter_action_probe.py
       - scripts/ppocrv6_chapter_probe.py
       - scripts/korean_fallback_probe.py
-      - scripts/chapter210_current_vs_v6_probe.py
-      - app/ocr/multi_lang_ocr.py
+      - scripts/runtime_v6_chapter_probe.py
+      - scripts/ocr_v6_runtime_sanity.py
+      - app/ocr/**
       - app/downloader/**
       - app/security.py
   workflow_dispatch:
@@ -27,6 +30,8 @@ jobs:
       PROBE_ROOT: benchmark-results/chapter210
       MANGA_DOWNLOAD_WORKERS: "4"
       PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK: "True"
+      MANGA_PPOCRV6_TIER: "small"
+      MANGA_OCR_JA_FALLBACK: "1"
     steps:
       - uses: actions/checkout@v4
 
@@ -45,11 +50,29 @@ jobs:
           python scripts/asura_chapter_action_probe.py "$CHAPTER_URL" --output "$PROBE_ROOT"
           cat "$PROBE_ROOT/chapter_info.json" | python -c 'import json,sys; d=json.load(sys.stdin); print("pages=",d["page_count"],"bytes=",d["total_bytes"],"slices=",d["slice_count"],"max_slice_height=",d["max_slice_height"])'
 
-      - name: Install isolated PaddleOCR 3.x challenger
+      - name: Install production-shaped PaddleOCR 3.x runtime
         run: |
           python -m venv .venv-ppocrv6
           .venv-ppocrv6/bin/python -m pip install --upgrade pip
-          .venv-ppocrv6/bin/pip install "paddlepaddle>=3.2,<3.3" "paddleocr==3.7.0"
+          .venv-ppocrv6/bin/pip install \
+            "numpy==1.26.4" \
+            "Pillow==10.4.0" \
+            "opencv-python-headless==4.10.0.84" \
+            "paddlepaddle==3.2.2" \
+            "paddleocr==3.7.0"
+          .venv-ppocrv6/bin/python - <<'PY'
+          import cv2, numpy, paddle, paddleocr
+          print("RUNTIME_VERSIONS", {
+              "numpy": numpy.__version__,
+              "opencv": cv2.__version__,
+              "paddle": paddle.__version__,
+              "paddleocr": paddleocr.__version__,
+          })
+          PY
+
+      - name: Validate reading order and Paddle runtime models
+        run: |
+          PYTHONPATH=. .venv-ppocrv6/bin/python scripts/ocr_v6_runtime_sanity.py --model-smoke --korean
 
       - name: Probe PP-OCRv6 small on all production slices
         run: |
@@ -63,31 +86,21 @@ jobs:
           p = Path("benchmark-results/chapter210/ppocrv6/summary.json")
           d = json.loads(p.read_text(encoding="utf-8"))
           print("PPOCRV6_FINAL", json.dumps({k:v for k,v in d.items() if k != "rows"}, ensure_ascii=False))
-          noisy = sorted(d["rows"], key=lambda r: (r["mean_confidence"] is None, r["mean_confidence"] or 0))[:12]
-          print("LOWEST_CONFIDENCE_SLICES")
-          for row in noisy:
-              print("SLICE", Path(row["source"]).name, "regions", row["regions"], "conf", row["mean_confidence"], "low", row["low_confidence_lt_0_65"], "ms", row["latency_ms"])
-              print("TEXT", " | ".join(row["texts"][:20]))
           PY
 
-      - name: Install exact current PaddleOCR 2.8 baseline
+      - name: Run new runtime adapter on all detected chapter regions
         run: |
-          python -m venv .venv-current-ocr
-          .venv-current-ocr/bin/python -m pip install --upgrade pip
-          .venv-current-ocr/bin/pip install "numpy==1.26.4" "Pillow==10.4.0" "opencv-python-headless==4.10.0.84" "paddlepaddle==2.6.2" "paddleocr==2.8.1"
-
-      - name: Recheck all chapter regions with production MultiLangOCR
-        run: |
-          PYTHONPATH=. .venv-current-ocr/bin/python scripts/chapter210_current_vs_v6_probe.py \
+          PYTHONPATH=. .venv-ppocrv6/bin/python scripts/runtime_v6_chapter_probe.py \
             --ppocr-summary "$PROBE_ROOT/ppocrv6/summary.json" \
-            --output "$PROBE_ROOT/current_vs_v6"
+            --output "$PROBE_ROOT/runtime_v6" \
+            --lang en
           python - <<'PY'
           import json
           from pathlib import Path
-          p = Path("benchmark-results/chapter210/current_vs_v6/summary.json")
+          p = Path("benchmark-results/chapter210/runtime_v6/summary.json")
           d = json.loads(p.read_text(encoding="utf-8"))
-          keys = ["regions_compared","current_init_ms","current_mean_region_latency_ms","current_p95_region_latency_ms","same_normalized_count","same_normalized_rate","disagreement_count","current_blank_count","v6_blank_count","v6_likely_win_review_count","current_likely_win_review_count","current_normalized_chars","v6_normalized_chars","candidate_full_slice_mean_latency_ms","candidate_full_slice_p95_latency_ms"]
-          print("CURRENT_VS_V6_FINAL", json.dumps({k:d.get(k) for k in keys}, ensure_ascii=False))
+          keys = ["regions_compared","same_normalized_count","same_normalized_rate","disagreement_count","runtime_blank_count","reference_blank_count","mean_runtime_confidence","mean_region_latency_ms","p95_region_latency_ms","reference_full_slice_mean_latency_ms"]
+          print("RUNTIME_ADAPTER_FINAL", json.dumps({k:d.get(k) for k in keys}, ensure_ascii=False))
           PY
 
       - name: Recheck PP-OCRv6 regions with Korean PP-OCRv5 mobile recognizer
@@ -103,8 +116,6 @@ jobs:
           d = json.loads(p.read_text(encoding="utf-8"))
           keys = ["model", "init_ms", "regions_rechecked", "mean_rec_latency_ms", "p95_rec_latency_ms", "v6_low_conf_candidates", "ko_confidence_improved_count", "hangul_recovered_count"]
           print("KO_FALLBACK_FINAL", json.dumps({k:d.get(k) for k in keys}, ensure_ascii=False))
-          for item in d.get("hangul_examples", [])[:20]:
-              print("KO_RECOVERED", Path(item["source"]).name, "region", item["region_index"], "v6=", repr(item["v6_text"]), item["v6_score"], "ko=", repr(item["ko_text"]), item["ko_score"], "ms=", item["ko_latency_ms"])
           PY
 
       - name: Upload downloaded chapter metadata and raw images
@@ -119,14 +130,14 @@ jobs:
           retention-days: 3
           if-no-files-found: warn
 
-      - name: Upload OCR comparison results
+      - name: Upload OCR migration results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: chapter210-ocr-research
+          name: chapter210-ocr-v6-runtime
           path: |
             benchmark-results/chapter210/ppocrv6
-            benchmark-results/chapter210/current_vs_v6
+            benchmark-results/chapter210/runtime_v6
             benchmark-results/chapter210/korean_fallback
           retention-days: 7
           if-no-files-found: warn
