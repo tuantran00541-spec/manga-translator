@@ -14,6 +14,7 @@ on:
       - scripts/runtime_v6_chapter_probe.py
       - scripts/ocr_v6_runtime_sanity.py
       - scripts/ocr_hybrid_sanity.py
+      - scripts/hybrid_service_sanity.py
       - app/ocr/**
       - app/text_objects.py
       - app/routers/ocr.py
@@ -45,13 +46,17 @@ jobs:
 
       - name: Compile OCR migration sources
         run: |
-          python -m compileall -q app/ocr app/text_objects.py app/routers/ocr.py app/routers/translation.py scripts/ocr_hybrid_sanity.py scripts/runtime_v6_chapter_probe.py
+          python -m compileall -q app/ocr app/text_objects.py app/routers/ocr.py app/routers/translation.py scripts/ocr_hybrid_sanity.py scripts/hybrid_service_sanity.py scripts/runtime_v6_chapter_probe.py
 
-      - name: Install downloader and slicer dependencies
+      - name: Install downloader and service-sanity dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 Pillow==10.4.0 playwright==1.47.0 fastapi==0.115.0 numpy==1.26.4 opencv-python-headless==4.10.0.84
+          pip install requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 Pillow==10.4.0 playwright==1.47.0 fastapi==0.115.0 numpy==1.26.4 opencv-python-headless==4.10.0.84 onnxruntime==1.21.0 filelock==3.16.1 loguru==0.7.2
           python -m playwright install --with-deps chromium
+
+      - name: Validate hybrid service cache and concurrency
+        run: |
+          PYTHONPATH=. python scripts/hybrid_service_sanity.py
 
       - name: Download and slice full Asura chapter with project pipeline
         run: |
