@@ -251,9 +251,13 @@
     if (resultsHost) renderResultList(workspace, resultsHost, snapshot);
   }
 
+  function workspaceRoot() {
+    return document.getElementById("page-view") || document;
+  }
+
   function renderAll() {
     syncChapterState();
-    document.querySelectorAll(".review-workspace-shell[data-chapter-qc-bound='1']").forEach(renderPanel);
+    workspaceRoot().querySelectorAll(".review-workspace-shell[data-chapter-qc-bound='1']").forEach(renderPanel);
   }
 
   function schedulePoll(jobId, generation) {
@@ -384,6 +388,23 @@
     return panel;
   }
 
+  function observeWorkspaceLocks(workspace) {
+    let lockScheduled = false;
+    const observer = new MutationObserver(() => {
+      if (!workspace.isConnected) {
+        observer.disconnect();
+        return;
+      }
+      if (!isRunning() || lockScheduled) return;
+      lockScheduled = true;
+      window.requestAnimationFrame(() => {
+        lockScheduled = false;
+        if (workspace.isConnected && isRunning()) setLocked(workspace, true);
+      });
+    });
+    observer.observe(workspace, { childList: true, subtree: true });
+  }
+
   function bindWorkspace(workspace) {
     syncChapterState();
     if (!workspace || workspace.dataset.chapterQcBound === "1") return;
@@ -403,20 +424,37 @@
     const panel = createPanel();
     panel.classList.add("inspector-section", "review-qc-inspector-section");
     inspector.appendChild(panel);
-    const observer = new MutationObserver(() => {
-      if (isRunning()) setLocked(workspace, true);
-    });
-    observer.observe(workspace, { childList: true, subtree: true });
+    observeWorkspaceLocks(workspace);
     renderPanel(workspace);
   }
 
   function scan() {
     syncChapterState();
-    document.querySelectorAll(".review-workspace-shell").forEach(bindWorkspace);
+    workspaceRoot().querySelectorAll(".review-workspace-shell").forEach(bindWorkspace);
   }
 
-  const observer = new MutationObserver(scan);
-  observer.observe(document.documentElement, { childList: true, subtree: true });
-  document.addEventListener("DOMContentLoaded", scan);
+  let scanScheduled = false;
+  function scheduleScan() {
+    if (scanScheduled) return;
+    scanScheduled = true;
+    window.requestAnimationFrame(() => {
+      scanScheduled = false;
+      scan();
+    });
+  }
+
+  function observeWorkspaceRoot() {
+    const root = document.getElementById("page-view");
+    if (!root || root.dataset.chapterQcObserved === "1") return;
+    root.dataset.chapterQcObserved = "1";
+    const observer = new MutationObserver(scheduleScan);
+    observer.observe(root, { childList: true, subtree: true });
+  }
+
+  observeWorkspaceRoot();
+  document.addEventListener("DOMContentLoaded", () => {
+    observeWorkspaceRoot();
+    scheduleScan();
+  });
   scan();
 })();
