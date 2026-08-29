@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import statistics
 from typing import Any
 
@@ -282,4 +283,113 @@ def reconstruct_reading_order(
         "ordered_indices": [region["index"] for region in ordered],
         "removed_indices": [region["index"] for region in removed],
         "regions": regions,
+    }
+
+
+def select_centered_target(
+    result: dict[str, Any],
+    image_shape: tuple[int, int] | tuple[int, int, int],
+    *,
+    lang: str,
+) -> dict[str, Any]:
+    """Conservatively select the OCR line/column nearest a crop's center.
+
+    OCRService crops are centered around one detector target, but Paddle may see
+    a neighboring line through the safety padding. This helper only prunes when
+    the central anchor is strong and the off-band regions are clearly farther
+    from center; ambiguous layouts keep the original reading-order result.
+    """
+    ordered_indices = list(result.get("ordered_indices") or [])
+    regions = list(result.get("regions") or [])
+    if len(ordered_indices) < 2 or not regions:
+        return result
+
+    try:
+        height = max(1.0, float(image_shape[0]))
+        width = max(1.0, float(image_shape[1]))
+    except (TypeError, ValueError, IndexError):
+        return result
+
+    by_index = {int(region["index"]): region for region in regions}
+    ordered = [by_index[index] for index in ordered_indices if index in by_index]
+    if len(ordered) < 2:
+        return result
+
+    center_x = width / 2.0
+    center_y = height / 2.0
+
+    def center_distance(region: dict[str, Any]) -> float:
+        box = region["box"]
+        dx = (float(box["cx"]) - center_x) / width
+        dy = (float(box["cy"]) - center_y) / height
+        return math.hypot(dx, dy)
+
+    anchor = min(ordered, key=center_distance)
+    anchor_distance = center_distance(anchor)
+    # Symmetric detector crops should put the intended line very near center.
+    # If they do not, geometry is ambiguous and pruning would be unsafe.
+    if anchor_distance > 0.22:
+        return result
+
+    orientation = str(result.get("orientation") or "unknown")
+    anchor_box = anchor["box"]
+    selected: list[dict[str, Any]] = []
+    removed: list[dict[str, Any]] = []
+
+    for region in ordered:
+        box = region["box"]
+        if orientation == "vertical":
+            overlap = _overlap(
+                anchor_box["x1"], anchor_box["x2"], box["x1"], box["x2"]
+            )
+            overlap_ratio = overlap / max(1.0, min(anchor_box["w"], box["w"]))
+            axis_distance = abs(float(box["cx"]) - float(anchor_box["cx"]))
+            same_band = (
+                overlap_ratio >= 0.30
+                or axis_distance <= max(anchor_box["w"], box["w"]) * 0.55
+            )
+        else:
+            overlap = _overlap(
+                anchor_box["y1"], anchor_box["y2"], box["y1"], box["y2"]
+            )
+            overlap_ratio = overlap / max(1.0, min(anchor_box["h"], box["h"]))
+            axis_distance = abs(float(box["cy"]) - float(anchor_box["cy"]))
+            same_band = (
+                overlap_ratio >= 0.30
+                or axis_distance <= max(anchor_box["h"], box["h"]) * 0.55
+            )
+
+        if same_band:
+            selected.append(region)
+        else:
+            removed.append(region)
+
+    if not removed or not selected:
+        return result
+
+    nearest_removed_distance = min(center_distance(region) for region in removed)
+    # Require a real center-distance margin. Closely competing rows/columns are
+    # treated as ambiguous and retain the full reading order.
+    if nearest_removed_distance < anchor_distance + 0.08:
+        return result
+
+    finite_scores = [
+        float(region["score"])
+        for region in selected
+        if region.get("score") is not None
+    ]
+    confidence = statistics.fmean(finite_scores) if finite_scores else None
+    normalized_lang = (lang or "").strip().lower()
+    separator = "" if normalized_lang in {"ja", "japan"} else "\n"
+    removed_indices = list(result.get("removed_indices") or [])
+    removed_indices.extend(region["index"] for region in removed)
+
+    return {
+        **result,
+        "text": separator.join(region["text"] for region in selected),
+        "confidence": confidence,
+        "ordered_indices": [region["index"] for region in selected],
+        "removed_indices": sorted(set(int(index) for index in removed_indices)),
+        "target_selection_applied": True,
+        "target_anchor_index": int(anchor["index"]),
     }
