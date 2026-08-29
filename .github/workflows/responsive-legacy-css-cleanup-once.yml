@@ -1,0 +1,134 @@
+name: One-shot responsive legacy CSS cleanup
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+jobs:
+  cleanup:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Remove residual legacy responsive selectors
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object app/static/css/ui-system.css)" = "15faa6c4fba734957b825f18073a0b34b400b5d3"
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          html_files = list(Path("app/templates").rglob("*.html"))
+          js_files = list(Path("app/static/js").rglob("*.js"))
+          dead_classes = {"app-shell", "app-header", "workflow-steps", "workflow-step"}
+          dead_ids = {"wordmark-tag"}
+          for path in html_files:
+              text = path.read_text(encoding="utf-8")
+              classes = set()
+              ids = set()
+              for match in re.finditer(r'class\s*=\s*(["\'])(.*?)\1', text, flags=re.I | re.S):
+                  classes.update(match.group(2).split())
+              for match in re.finditer(r'id\s*=\s*(["\'])(.*?)\1', text, flags=re.I | re.S):
+                  ids.add(match.group(2).strip())
+              if dead_classes & classes or dead_ids & ids:
+                  raise SystemExit(f"Legacy responsive selector still live in {path}")
+          for path in js_files:
+              text = path.read_text(encoding="utf-8")
+              if any(token in text for token in (".app-shell", ".app-header", ".workflow-steps", ".workflow-step", "#wordmark-tag")):
+                  raise SystemExit(f"Legacy responsive selector still referenced by {path}")
+
+          path = Path("app/static/css/ui-system.css")
+          css = path.read_text(encoding="utf-8")
+
+          def remove_exact_rule(text: str, selector: str) -> tuple[str, int]:
+              removed = 0
+              needle = selector + " {"
+              while True:
+                  start = text.find(needle)
+                  if start < 0:
+                      return text, removed
+                  line_start = text.rfind("\n", 0, start) + 1
+                  if text[line_start:start].strip():
+                      raise SystemExit(f"Unexpected selector placement for {selector}")
+                  open_brace = text.find("{", start)
+                  depth = 0
+                  i = open_brace
+                  while i < len(text):
+                      if text[i] == "{":
+                          depth += 1
+                      elif text[i] == "}":
+                          depth -= 1
+                          if depth == 0:
+                              end = i + 1
+                              while end < len(text) and text[end] in " \t":
+                                  end += 1
+                              if end < len(text) and text[end] == "\n":
+                                  end += 1
+                              text = text[:line_start] + text[end:]
+                              removed += 1
+                              break
+                      i += 1
+                  else:
+                      raise SystemExit(f"Unterminated CSS rule for {selector}")
+
+          counts = {}
+          for selector in (".app-shell", ".app-header", ".workflow-steps", ".workflow-step"):
+              css, count = remove_exact_rule(css, selector)
+              counts[selector] = count
+          expected = {".app-shell": 2, ".app-header": 2, ".workflow-steps": 2, ".workflow-step": 1}
+          if counts != expected:
+              raise SystemExit(f"Unexpected responsive legacy rule counts: {counts}")
+
+          pattern = re.compile(r'(?m)^(\s*)#wordmark-tag,\n\1\.app-context \{')
+          css, substitutions = pattern.subn(r'\1.app-context {', css)
+          if substitutions != 1:
+              raise SystemExit(f"Expected one #wordmark-tag grouped selector, got {substitutions}")
+
+          forbidden = (".app-shell", ".app-header", ".workflow-steps", ".workflow-step", "#wordmark-tag")
+          leftovers = [token for token in forbidden if token in css]
+          if leftovers:
+              raise SystemExit(f"Legacy CSS selector leftovers: {leftovers}")
+          path.write_text(css, encoding="utf-8")
+          print(f"Removed residual responsive rules: {counts}; simplified #wordmark-tag group")
+          PY
+          python - <<'PY'
+          from pathlib import Path
+          text = Path("app/static/css/ui-system.css").read_text(encoding="utf-8")
+          quote = None
+          depth = 0
+          i = 0
+          while i < len(text):
+              ch = text[i]
+              if quote is not None:
+                  if ch == "\\" and i + 1 < len(text):
+                      i += 2
+                      continue
+                  if ch == quote:
+                      quote = None
+                  i += 1
+                  continue
+              if ch in ("'", '"'):
+                  quote = ch
+              elif ch == "{":
+                  depth += 1
+              elif ch == "}":
+                  depth -= 1
+                  if depth < 0:
+                      raise SystemExit("Unbalanced CSS braces")
+              i += 1
+          if quote is not None or depth != 0:
+              raise SystemExit(f"Invalid CSS structure: quote={quote!r}, depth={depth}")
+          PY
+          python -m compileall -q app run.py
+          find app/static/js -type f -name '*.js' -print0 | xargs -0 -n1 node --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/static/css/ui-system.css
+          git rm .github/workflows/responsive-legacy-css-cleanup-once.yml
+          git diff --cached --check
+          git diff --cached --stat
+          git commit -m 'refactor(ui): remove residual legacy responsive CSS'
+          git push origin HEAD:main
