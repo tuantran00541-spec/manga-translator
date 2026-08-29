@@ -3,7 +3,6 @@ from __future__ import annotations
 import base64
 import json
 import math
-import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -13,14 +12,15 @@ import numpy as np
 import requests
 
 from app.security import MAX_IMAGE_PIXELS
+from app.visual_qc.gemini_interactions import (
+    DEFAULT_CONNECT_TIMEOUT_SECONDS,
+    DEFAULT_GEMINI_MODEL,
+    DEFAULT_TIMEOUT_SECONDS,
+    GEMINI_INTERACTIONS_URL,
+    extract_output_text,
+    safe_error_detail,
+)
 
-GEMINI_INTERACTIONS_URL = "https://generativelanguage.googleapis.com/v1beta/interactions"
-DEFAULT_GEMINI_MODEL = os.getenv("GEMINI_VISUAL_QC_MODEL", "gemini-3.7-flash")
-DEFAULT_CONNECT_TIMEOUT_SECONDS = 10
-try:
-    DEFAULT_TIMEOUT_SECONDS = max(15, min(300, int(os.getenv("GEMINI_VISUAL_QC_TIMEOUT_SECONDS", "120"))))
-except ValueError:
-    DEFAULT_TIMEOUT_SECONDS = 120
 MAX_QC_SIDE = 2048
 
 
@@ -144,12 +144,12 @@ class GeminiVisualQC:
             raise RuntimeError(f"Gemini request failed: {exc}") from exc
 
         if not response.ok:
-            detail = _safe_error_detail(response)
+            detail = safe_error_detail(response)
             raise RuntimeError(f"Gemini API returned HTTP {response.status_code}: {detail}")
 
         try:
             body = response.json()
-            raw_text = _extract_output_text(body)
+            raw_text = extract_output_text(body)
             parsed = json.loads(raw_text)
         except (ValueError, TypeError, json.JSONDecodeError) as exc:
             raise RuntimeError("Gemini returned an invalid structured response") from exc
@@ -182,31 +182,6 @@ def _encode_for_gemini(image: np.ndarray) -> str:
     if not ok:
         raise RuntimeError("Could not encode page for Gemini")
     return base64.b64encode(buf.tobytes()).decode("ascii")
-
-
-def _extract_output_text(body: dict) -> str:
-    for step in reversed(body.get("steps") or []):
-        if step.get("type") != "model_output":
-            continue
-        for content in step.get("content") or []:
-            if content.get("type") == "text" and isinstance(content.get("text"), str):
-                return content["text"]
-    raise ValueError("No text model output found")
-
-
-def _safe_error_detail(response: requests.Response) -> str:
-    try:
-        payload = response.json()
-        if isinstance(payload, dict):
-            err = payload.get("error")
-            if isinstance(err, dict) and err.get("message"):
-                return str(err["message"])[:500]
-            if payload.get("message"):
-                return str(payload["message"])[:500]
-    except ValueError:
-        pass
-    text = (response.text or "").strip()
-    return text[:500] if text else "unknown error"
 
 
 def _parse_issues(parsed: dict, width: int, height: int) -> list[VisualQCIssue]:
