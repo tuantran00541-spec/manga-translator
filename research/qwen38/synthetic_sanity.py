@@ -5,12 +5,15 @@ import torch
 
 from core import (
     activation_energy_channel_scores,
+    activation_energy_scores_from_hidden,
+    activation_guided_reconstruction_refine,
     aligned_prune_count,
     mlp_forward,
     norm_channel_scores,
     output_metrics,
     qdq_rows,
     select_keep_indices,
+    swiglu_hidden,
     tensor_name,
     validate_official_metadata,
 )
@@ -60,6 +63,25 @@ def test_activation_score_beats_norm_on_functionally_dead_heavy_channel() -> Non
     old_err = output_metrics(ref, old_out)["relative_l2"]
     new_err = output_metrics(ref, new_out)["relative_l2"]
     assert new_err < old_err * 0.05, (old_err, new_err)
+
+    hidden = swiglu_hidden(calibration, gate, up, chunk_size=2)
+    activation_from_hidden, _ = activation_energy_scores_from_hidden(hidden, down, chunk_size=2)
+    assert torch.allclose(new, activation_from_hidden)
+    calibration_ref = hidden @ down.float().T
+    refined_keep, diagnostics = activation_guided_reconstruction_refine(
+        calibration_ref,
+        hidden,
+        down,
+        old_keep,
+        activation_from_hidden,
+        swap_sizes=(1,),
+    )
+    assert 0 not in refined_keep.tolist(), refined_keep.tolist()
+    assert diagnostics["chosen_swap_channels"] == 1
+    refined_err = output_metrics(
+        ref, mlp_forward(evaluation, gate, up, down, keep=refined_keep)
+    )["relative_l2"]
+    assert refined_err < old_err * 0.05, (old_err, refined_err)
 
 
 def test_qdq_and_alignment_helpers() -> None:

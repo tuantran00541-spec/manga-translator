@@ -81,15 +81,15 @@ def qdq_rows(w: torch.Tensor, bits: int, group_size: int) -> torch.Tensor:
         raise ValueError("bits must be in [2,8]")
     if group_size <= 0:
         raise ValueError("group_size must be positive")
-    _, cols = w.shape
+    rows, cols = w.shape
     pad = (-cols) % group_size
     w2 = torch.nn.functional.pad(w, (0, pad)) if pad else w
-    blocks = w2.reshape(w.shape[0], -1, group_size)
+    blocks = w2.reshape(rows, -1, group_size)
     qmax = (1 << (bits - 1)) - 1
     amax = blocks.abs().amax(dim=2, keepdim=True)
     scale = torch.where(amax > 0, amax / qmax, torch.ones_like(amax))
     q = torch.round(blocks / scale).clamp(-qmax, qmax)
-    return (q * scale).reshape(w.shape[0], -1)[:, :cols]
+    return (q * scale).reshape(rows, -1)[:, :cols]
 
 
 def output_metrics(reference: torch.Tensor, candidate: torch.Tensor) -> dict:
@@ -99,7 +99,10 @@ def output_metrics(reference: torch.Tensor, candidate: torch.Tensor) -> dict:
     anorm = torch.linalg.vector_norm(a)
     enorm = torch.linalg.vector_norm(err)
     denom = torch.linalg.vector_norm(a) * torch.linalg.vector_norm(b)
-    cosine = float(torch.dot(a, b) / denom) if float(denom) else (1.0 if torch.equal(a, b) else 0.0)
+    if float(denom):
+        cosine = float(torch.dot(a, b) / denom)
+    else:
+        cosine = 1.0 if torch.equal(a, b) else 0.0
     mse = torch.mean(err * err)
     return {
         "mse": float(mse),
@@ -110,8 +113,13 @@ def output_metrics(reference: torch.Tensor, candidate: torch.Tensor) -> dict:
     }
 
 
-def norm_channel_scores(gate: torch.Tensor, up: torch.Tensor, down: torch.Tensor, chunk_size: int = 256) -> torch.Tensor:
-    """Legacy baseline: combined L2 weight energy per SwiGLU intermediate channel."""
+def norm_channel_scores(
+    gate: torch.Tensor,
+    up: torch.Tensor,
+    down: torch.Tensor,
+    chunk_size: int = 256,
+) -> torch.Tensor:
+    """Legacy baseline: combined L2 weight energy for each SwiGLU intermediate channel."""
     _validate_mlp_shapes(gate, up, down)
     score = torch.zeros(gate.shape[0], dtype=torch.float64)
     for w in (gate, up):
@@ -124,48 +132,40 @@ def norm_channel_scores(gate: torch.Tensor, up: torch.Tensor, down: torch.Tensor
     return score
 
 
-def activation_energy_channel_scores(
-    calibration_x: torch.Tensor,
+def swiglu_hidden(
+    x: torch.Tensor,
     gate: torch.Tensor,
     up: torch.Tensor,
+    chunk_size: int = 256,
+) -> torch.Tensor:
+    if gate.ndim != 2 or up.ndim != 2 or gate.shape != up.shape:
+        raise ValueError("gate/up weights must be rank-2 with matching shapes")
+    if x.ndim != 2 or x.shape[1] != gate.shape[1]:
+        raise ValueError("x shape must be [samples, hidden]")
+    g = linear_rows(x, gate, chunk_size=chunk_size)
+    u = linear_rows(x, up, chunk_size=chunk_size)
+    return torch.nn.functional.silu(g) * u
+
+
+def activation_energy_scores_from_hidden(
+    hidden: torch.Tensor,
     down: torch.Tensor,
     chunk_size: int = 256,
 ) -> tuple[torch.Tensor, dict]:
-    """Rank channels by estimated expected squared output contribution.
-
-    score_j = E[(SiLU(gate_j(x)) * up_j(x))^2] * ||down[:,j]||_2^2
-
-    This captures activation weakness/sparsity while remaining cheap enough for
-    a layer-local pruning pilot. Cross-channel cancellation is not modeled.
-    """
-    _validate_mlp_shapes(gate, up, down)
-    if calibration_x.ndim != 2 or calibration_x.shape[1] != gate.shape[1]:
-        raise ValueError("calibration_x shape must be [samples, hidden]")
-    if calibration_x.shape[0] == 0:
-        raise ValueError("calibration_x must contain at least one sample")
-
-    inter = gate.shape[0]
-    score = torch.empty(inter, dtype=torch.float64)
-    rms = torch.empty(inter, dtype=torch.float64)
-    mean_abs = torch.empty(inter, dtype=torch.float64)
-    x = calibration_x.float()
-
+    if hidden.ndim != 2 or down.ndim != 2 or hidden.shape[1] != down.shape[1]:
+        raise ValueError("hidden/down shapes are incompatible")
+    if hidden.shape[0] == 0:
+        raise ValueError("hidden must contain at least one sample")
+    inter = hidden.shape[1]
+    h64 = hidden.double()
+    activation_energy = (h64 * h64).mean(dim=0)
+    rms = torch.sqrt(activation_energy)
+    mean_abs = h64.abs().mean(dim=0)
     down_energy = torch.zeros(inter, dtype=torch.float64)
     for start in range(0, down.shape[0], chunk_size):
         c = down[start:start + chunk_size].float().double()
         down_energy += (c * c).sum(dim=0)
-
-    for start in range(0, inter, chunk_size):
-        end = min(start + chunk_size, inter)
-        g = x @ gate[start:end].float().T
-        u = x @ up[start:end].float().T
-        h = torch.nn.functional.silu(g) * u
-        h64 = h.double()
-        activation_energy = (h64 * h64).mean(dim=0)
-        score[start:end] = activation_energy * down_energy[start:end]
-        rms[start:end] = torch.sqrt(activation_energy)
-        mean_abs[start:end] = h64.abs().mean(dim=0)
-
+    score = activation_energy * down_energy
     return score, {
         "post_gate_rms_mean": float(rms.mean()),
         "post_gate_rms_median": float(rms.median()),
@@ -174,6 +174,110 @@ def activation_energy_channel_scores(
         "score_median": float(score.median()),
         "score_max": float(score.max()),
     }
+
+
+def activation_energy_channel_scores(
+    calibration_x: torch.Tensor,
+    gate: torch.Tensor,
+    up: torch.Tensor,
+    down: torch.Tensor,
+    chunk_size: int = 256,
+) -> tuple[torch.Tensor, dict]:
+    """Estimate expected squared output contribution per intermediate channel.
+
+    score_j = E[(SiLU(gate_j(x)) * up_j(x))^2] * ||down[:,j]||_2^2
+    Cross-channel cancellation is ignored by this ranking signal.
+    """
+    _validate_mlp_shapes(gate, up, down)
+    hidden = swiglu_hidden(calibration_x, gate, up, chunk_size=chunk_size)
+    return activation_energy_scores_from_hidden(hidden, down, chunk_size=chunk_size)
+
+
+def keep_to_pruned(keep: torch.Tensor, intermediate: int) -> torch.Tensor:
+    if keep.ndim != 1:
+        raise ValueError("keep must be rank-1")
+    mask = torch.ones(intermediate, dtype=torch.bool)
+    mask[keep.long()] = False
+    return mask.nonzero(as_tuple=False).flatten()
+
+
+def pruned_to_keep(pruned: torch.Tensor, intermediate: int) -> torch.Tensor:
+    if pruned.ndim != 1:
+        raise ValueError("pruned must be rank-1")
+    mask = torch.ones(intermediate, dtype=torch.bool)
+    mask[pruned.long()] = False
+    return mask.nonzero(as_tuple=False).flatten()
+
+
+def candidate_output_from_pruned(
+    full_output: torch.Tensor,
+    hidden: torch.Tensor,
+    down: torch.Tensor,
+    pruned: torch.Tensor,
+) -> torch.Tensor:
+    if hidden.ndim != 2 or down.ndim != 2 or hidden.shape[1] != down.shape[1]:
+        raise ValueError("hidden/down shapes are incompatible")
+    if pruned.numel() == 0:
+        return full_output.clone()
+    hp = hidden.index_select(1, pruned.long()).float()
+    dp = down.index_select(1, pruned.long()).float()
+    removed = hp @ dp.T
+    return full_output.float() - removed
+
+
+def activation_guided_reconstruction_refine(
+    full_output: torch.Tensor,
+    hidden: torch.Tensor,
+    down: torch.Tensor,
+    baseline_keep: torch.Tensor,
+    activation_scores: torch.Tensor,
+    swap_sizes: tuple[int, ...] = (32, 64, 128, 256, 512),
+) -> tuple[torch.Tensor, dict]:
+    """Refine norm pruning with activation-guided swaps chosen by calibration reconstruction.
+
+    The baseline set is always a candidate, so the selected set cannot be worse
+    than baseline on the calibration reconstruction metric used for selection.
+    Held-out evaluation is still required to detect overfitting.
+    """
+    inter = activation_scores.numel()
+    if hidden.shape[1] != inter or down.shape[1] != inter:
+        raise ValueError("activation score width mismatch")
+    baseline_pruned = keep_to_pruned(baseline_keep, inter)
+    if baseline_pruned.numel() == 0:
+        raise ValueError("baseline must prune at least one channel")
+
+    pruned_scores = activation_scores.index_select(0, baseline_pruned)
+    rescue_order = baseline_pruned.index_select(0, torch.argsort(pruned_scores, descending=True))
+    kept_scores = activation_scores.index_select(0, baseline_keep)
+    replacement_order = baseline_keep.index_select(0, torch.argsort(kept_scores, descending=False))
+
+    candidates: list[tuple[float, int, torch.Tensor, dict]] = []
+
+    def add_candidate(swap: int, pruned: torch.Tensor) -> None:
+        pruned = pruned.sort().values
+        candidate = candidate_output_from_pruned(full_output, hidden, down, pruned)
+        metric = output_metrics(full_output, candidate)
+        candidates.append((metric["relative_l2"], swap, pruned, metric))
+
+    add_candidate(0, baseline_pruned)
+    for swap in swap_sizes:
+        if swap <= 0 or swap > baseline_pruned.numel() or swap > baseline_keep.numel():
+            continue
+        proposed = torch.cat((rescue_order[swap:], replacement_order[:swap]))
+        add_candidate(int(swap), proposed)
+
+    best = min(candidates, key=lambda item: (item[0], item[1]))
+    best_keep = pruned_to_keep(best[2], inter)
+    diagnostics = {
+        "chosen_swap_channels": best[1],
+        "baseline_calibration_metrics": candidates[0][3],
+        "chosen_calibration_metrics": best[3],
+        "candidates": [
+            {"swap_channels": swap, "calibration_metrics": metric}
+            for _, swap, _, metric in candidates
+        ],
+    }
+    return best_keep, diagnostics
 
 
 def select_keep_indices(scores: torch.Tensor, prune_channels: int, alignment: int = 128) -> torch.Tensor:
@@ -185,7 +289,8 @@ def select_keep_indices(scores: torch.Tensor, prune_channels: int, alignment: in
     keep_n = inter - prune_channels
     if alignment > 1 and keep_n % alignment:
         raise ValueError(f"kept intermediate {keep_n} is not aligned to {alignment}")
-    return torch.topk(scores, k=keep_n, largest=True, sorted=False).indices.sort().values
+    keep = torch.topk(scores, k=keep_n, largest=True, sorted=False).indices
+    return keep.sort().values
 
 
 def linear_rows(
@@ -199,7 +304,11 @@ def linear_rows(
     nout = w.shape[0] if row_idx is None else row_idx.numel()
     out = torch.empty((x.shape[0], nout), dtype=torch.float32)
     for start in range(0, nout, chunk_size):
-        wc = w[start:start + chunk_size].float() if row_idx is None else w.index_select(0, row_idx[start:start + chunk_size]).float()
+        if row_idx is None:
+            wc = w[start:start + chunk_size].float()
+        else:
+            idx = row_idx[start:start + chunk_size]
+            wc = w.index_select(0, idx).float()
         if bits is not None:
             wc = qdq_rows(wc, bits, group_size)
         out[:, start:start + wc.shape[0]] = x.float() @ wc.T
@@ -241,6 +350,8 @@ def mlp_forward(
 
 
 def projected_qbytes(hidden: int, intermediate: int, bits: int, group_size: int) -> dict:
+    if hidden <= 0 or intermediate <= 0:
+        raise ValueError("dimensions must be positive")
     params = 3 * hidden * intermediate
     scales = 2 * intermediate * math.ceil(hidden / group_size) + hidden * math.ceil(intermediate / group_size)
     payload_bytes = (params * bits + 7) // 8
@@ -254,6 +365,7 @@ def projected_qbytes(hidden: int, intermediate: int, bits: int, group_size: int)
 
 
 def aligned_prune_count(intermediate: int, fraction: float, alignment: int = 128) -> int:
+    """Return a prune count that leaves the kept width aligned, nearest to target fraction."""
     if not 0 < fraction < 1:
         raise ValueError("fraction must be in (0,1)")
     if alignment <= 0:

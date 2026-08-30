@@ -24,20 +24,14 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-
       - name: Install CPU torch
-        run: python -m pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
-
+        run: python -m pip install --no-cache-dir numpy torch --index-url https://download.pytorch.org/whl/cpu
       - name: Compile and run synthetic sanity
         run: |
-          python -m py_compile \
-            research/qwen38/core.py \
-            research/qwen38/synthetic_sanity.py \
-            research/qwen38/real_layer_experiment.py
+          python -m py_compile research/qwen38/core.py research/qwen38/synthetic_sanity.py research/qwen38/real_layer_experiment.py
           python research/qwen38/synthetic_sanity.py
 
   real-weight:
@@ -55,23 +49,19 @@ jobs:
       MKL_NUM_THREADS: "2"
     steps:
       - uses: actions/checkout@v4
-
       - name: Reclaim runner disk
         run: |
           sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup || true
           docker system prune -af || true
           sudo apt-get clean || true
           df -h
-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-
       - name: Install lightweight real-weight dependencies
         run: |
-          python -m pip install --no-cache-dir huggingface_hub safetensors
+          python -m pip install --no-cache-dir huggingface_hub safetensors numpy
           python -m pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
-
       - name: Resolve sequential layer list
         id: layers
         env:
@@ -88,10 +78,8 @@ jobs:
           fi
           echo "layers=$layers" >> "$GITHUB_OUTPUT"
           echo "QWEN38_REAL_LAYERS=$layers"
-
       - name: Validate synthetic knife before real downloads
         run: python research/qwen38/synthetic_sanity.py
-
       - name: Run real BF16 layers sequentially
         env:
           QWEN_LAYERS: ${{ steps.layers.outputs.layers }}
@@ -112,14 +100,13 @@ jobs:
               --prune-fractions 0.05,0.10,0.15 \
               --bits 6,5,4 \
               --group-size 128 \
-              --calibration-samples 8 \
-              --evaluation-samples 4 \
+              --calibration-samples 64 \
+              --evaluation-samples 16 \
               --seed 1234 \
               --output "$evidence/layer${layer}-sparse-aware.json"
             rm -rf "$work"
             df -h
           done
-
       - name: Print compact evidence summary
         if: always()
         shell: bash
@@ -130,19 +117,17 @@ jobs:
           for path in sorted(root.glob("layer*-sparse-aware.json")):
               result = json.loads(path.read_text())
               layer = result["layer_result"]
-              print(f"QWEN38_EVIDENCE layer={layer['layer']} revision={result['model']['revision']}")
-              for name, metric in layer["qonly_metrics"].items():
-                  print(f"QWEN38_QONLY variant={name} rel_l2={metric['relative_l2']:.9g} cosine={metric['cosine']:.9g} rmse={metric['rmse']:.9g} max_abs={metric['max_abs']:.9g}")
+              print(f"QWEN38_EVIDENCE layer={layer['layer']} schema={result['schema']} revision={result['model']['revision']} split_pearson={layer['activation_scorer']['split_half_log_score_pearson']:.6g}")
               for pruning in layer["pruning_results"]:
+                  refine = pruning["reconstruction_refinement"]
+                  print(f"QWEN38_REFINE actual={pruning['actual_prune_fraction']:.6f} swap={refine['chosen_swap_channels']} cal_before={refine['baseline_calibration_metrics']['relative_l2']:.9g} cal_after={refine['chosen_calibration_metrics']['relative_l2']:.9g}")
                   for scorer_name, scorer in pruning["scorers"].items():
                       metric = scorer["prune_only_bf16"]
                       print(f"QWEN38_PRUNE scorer={scorer_name} actual={pruning['actual_prune_fraction']:.6f} rel_l2={metric['relative_l2']:.9g} cosine={metric['cosine']:.9g} rmse={metric['rmse']:.9g} max_abs={metric['max_abs']:.9g}")
           PY
-
       - name: Remove all source model shards
         if: always()
         run: rm -rf "$RUNNER_TEMP"/qwen38-source-layer*
-
       - name: Upload metrics only
         if: always()
         uses: actions/upload-artifact@v4

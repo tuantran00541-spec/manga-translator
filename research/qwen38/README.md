@@ -17,9 +17,9 @@ Pinned model source:
 
 The runner validates config and all MLP tensor names before loading real weights. Tokenizer/config/weights must not be mixed across revisions.
 
-## Existing measured baseline
+## Historical baseline from In-c-test
 
-The previous real-weight experiment measured only layer 0 MLP using deterministic synthetic RMS-normalized activations:
+The earlier real-weight layer-0 MLP run measured deterministic synthetic RMS-normalized activations:
 
 | Variant | Relative L2 | Output cosine |
 | --- | ---: | ---: |
@@ -27,29 +27,57 @@ The previous real-weight experiment measured only layer 0 MLP using deterministi
 | 5.15% norm prune only | ~0.03937 | ~0.999265 |
 | 5.15% norm prune + Q6 | ~0.04051 | ~0.999202 |
 
-These are historical one-layer measurements, not a full-model quality PASS. The old storage estimates are projections, not physically packed full-model sizes.
+These are one-layer measurements, not a full-model quality PASS. Storage estimates are projections, not physically packed model sizes.
 
-## Sparse-aware knife
+## Manga-side v1 real result: raw activation score failed
 
-Legacy baseline ranks channel `j` by combined gate/up row and down column weight energy.
+Run `33314915626`, job `99266497668`, artifact `qwen38-sparse-aware-evidence-33314915626` (artifact ID `9733151720`, digest `sha256:85c3e44414cbb7887932723e9be3d3786b0fb35bc6a93661c7c800b83a0f01fa`) completed successfully on real BF16 layer-0 weights at the pinned revision.
 
-The new activation-aware score is:
+Measured Q-only relative L2:
+
+- Q6: 0.0110832
+- Q5: 0.0234378
+- Q4: 0.0492856
+
+Measured prune-only relative L2:
+
+| Actual prune | Weight norm | Raw activation energy |
+| ---: | ---: | ---: |
+| 5.147% | 0.0378318 | 0.0581582 |
+| 10.294% | 0.0590623 | 0.0982869 |
+| 14.706% | 0.0781544 | 0.1323941 |
+
+So the first activation-only ranking is worse than the old norm baseline at every tested ratio. At 5.147% pruning, only 94/896 pruned channels overlap between the two rankings (~10.5% of the pruned set). This is evidence against blindly replacing norm ranking with the raw 8-sample activation score.
+
+## V2 knife: activation-guided reconstruction refinement
+
+Raw activation energy remains a diagnostic/proposal signal:
 
 `E[(SiLU(gate_j(x)) * up_j(x))^2] * ||down[:,j]||_2^2`
 
-It tries to remove channels whose post-gating activity contributes little output energy on calibration data. This layer-local score does not model cross-channel cancellation.
+V2 does not let that signal replace the baseline directly. It:
 
-Current experiment compares:
+1. starts from the weight-norm prune set;
+2. uses activation energy to identify baseline-pruned channels worth rescuing and baseline-kept channels worth replacing;
+3. evaluates fixed-size channel swaps with exact calibration MLP reconstruction;
+4. selects the lowest reconstruction-error candidate;
+5. always includes the original norm set as fallback, so calibration reconstruction cannot regress by construction;
+6. evaluates the selected set on disjoint held-out synthetic hidden states to detect overfitting.
+
+Calibration is increased to 64 samples and evaluation to 16 samples. The runner also records split-half activation-score correlation and split-half pruned-set overlap.
+
+Current comparisons remain:
 
 - pruning around 5%, 10%, 15%, aligned to 128 channels;
-- old weight-norm scorer vs activation-energy scorer;
+- old weight norm vs raw activation energy vs reconstruction-refined pruning;
 - BF16 prune-only;
 - Q6/Q5/Q4-only;
 - prune + Q6/Q5/Q4;
 - relative L2, cosine, RMSE, max absolute error;
-- overlap between the two pruned channel sets.
+- measured reconstruction diagnostics and overlap;
+- storage projections explicitly marked projection-only.
 
-The current real-weight runner still uses synthetic hidden-state calibration/evaluation. Real prompt/image activations, hidden-state/logit divergence, deterministic generation and vision semantics remain future gates.
+The calibration/evaluation inputs are still synthetic hidden states. Real prompt/image activations, hidden-state/logit divergence, deterministic generation and vision semantics remain future gates.
 
 ## CI discipline
 
