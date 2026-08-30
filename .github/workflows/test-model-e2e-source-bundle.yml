@@ -1,0 +1,37 @@
+name: Model E2E source bundle
+
+on:
+  push:
+    branches:
+      - test/model-e2e-ocr-inpaint-20260830
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bundle-source:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Record source revision
+        run: git rev-parse HEAD > SOURCE_SHA.txt
+
+      - name: Create source tarball
+        run: |
+          tar \
+            --exclude=.git \
+            --exclude=models \
+            --exclude=data \
+            --exclude=benchmark-results \
+            -czf model-e2e-source.tar.gz \
+            app docs scripts .github requirements.txt run.py Dockerfile docker-compose.yml README.md SOURCE_SHA.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: model-e2e-source
+          path: model-e2e-source.tar.gz
+          retention-days: 1
+          if-no-files-found: error
