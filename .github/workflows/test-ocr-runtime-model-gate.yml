@@ -1,0 +1,75 @@
+name: OCR runtime model gate
+
+on:
+  push:
+    branches:
+      - test/model-e2e-ocr-inpaint-20260830
+    paths:
+      - .github/workflows/test-ocr-runtime-model-gate.yml
+      - scripts/ocr_runtime_model_gate.py
+      - app/ocr/**
+      - app/downloader/slicer.py
+      - requirements.txt
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  real-model-ocr:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK: "True"
+      MANGA_PPOCRV6_TIER: small
+      MANGA_OCR_TARGET_SELECTION: centered
+      MANGA_PPOCRV6_TEXTLINE_ORIENTATION: "0"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install pinned production OCR runtime
+        run: |
+          python -m pip install --upgrade pip
+          pip install \
+            numpy==1.26.4 \
+            Pillow==10.4.0 \
+            opencv-contrib-python==4.10.0.84 \
+            paddlepaddle==3.2.2 \
+            paddleocr==3.7.0 \
+            manga-ocr==0.1.16 \
+            "transformers>=4.36,<4.46" \
+            torch==2.5.1
+
+      - name: Download established real-image artifacts
+        run: |
+          mkdir -p gate-input/chapter210 gate-input/chapter210-ocr gate-input/japanese
+          gh run download 33252381481 --name chapter210-download --dir gate-input/chapter210
+          gh run download 33252381481 --name chapter210-ocr-research --dir gate-input/chapter210-ocr
+          gh run download 33251640859 --name japanese-ocr-head-to-head --dir gate-input/japanese
+          test -f gate-input/chapter210/raw/014.webp
+          test -f gate-input/chapter210-ocr/ppocrv6/summary.json
+          test -f gate-input/japanese/mangaocr.json
+
+      - name: Run production OCR routing on real crops
+        run: |
+          python scripts/ocr_runtime_model_gate.py \
+            --chapter-raw-dir gate-input/chapter210/raw \
+            --chapter-ocr-dir gate-input/chapter210-ocr \
+            --japanese-dir gate-input/japanese \
+            --work-dir gate-work \
+            --report-json gate-results/ocr-runtime.json
+
+      - name: Upload OCR gate report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ocr-runtime-model-gate
+          path: gate-results/ocr-runtime.json
+          retention-days: 7
+          if-no-files-found: error
