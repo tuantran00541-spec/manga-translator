@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import statistics
+import sys
 import threading
 import time
 from typing import Iterable
@@ -14,12 +15,16 @@ import cv2
 import numpy as np
 import psutil
 
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
 _IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
 _ALLOWED_AUTO_MASK_SOURCES = {"text_segmenter", "opencv_mser"}
 
 
 def _source_revision() -> str | None:
-    path = Path("SOURCE_SHA.txt")
+    path = _REPO_ROOT / "SOURCE_SHA.txt"
     if path.is_file():
         value = path.read_text(encoding="utf-8").strip()
         return value or None
