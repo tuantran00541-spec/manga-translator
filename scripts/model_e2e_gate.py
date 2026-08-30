@@ -97,6 +97,7 @@ def _authority_mask(image: np.ndarray, records: list[dict], inpainter) -> np.nda
         for record in records
         if isinstance(record, dict)
         and not record.get("removed")
+        and not (record.get("overlap_context_only") and not record.get("geometry_overridden"))
         and (record.get("safe_to_inpaint") or record.get("geometry_overridden"))
     ]
     full_mask = np.zeros((h, w), dtype=np.uint8)
@@ -251,6 +252,8 @@ def _run_ocr(chapter_id: str, pipeline, lang: str, max_boxes: int, require: bool
         plan = service.plan_chapter(chapter_id)
         if max_boxes > 0:
             plan = plan[:max_boxes]
+        if require and not plan:
+            failures.append("OCR gate has no eligible boxes; no real OCR evidence was produced")
         results: list[dict] = []
         latencies: list[float] = []
         for page_index, box_id in plan:
@@ -350,6 +353,14 @@ def run(args: argparse.Namespace) -> dict:
                 )
             )
 
+        model_mode_failures: list[str] = []
+        if args.lama_mode == "dynamic" and not pipeline.inpainter.dynamic_lama:
+            model_mode_failures.append("dynamic LaMa gate fell back to fixed LaMa")
+        if args.lama_mode == "fixed" and pipeline.inpainter.dynamic_lama:
+            model_mode_failures.append("fixed LaMa gate unexpectedly loaded a dynamic model")
+        if args.lama_mode == "fixed" and type(pipeline.inpainter.session).__name__ != "_SerializedSession":
+            model_mode_failures.append("fixed LaMa session is not on the serialized compatibility path")
+
         ocr = _run_ocr(
             args.chapter_id,
             pipeline,
@@ -371,7 +382,7 @@ def run(args: argparse.Namespace) -> dict:
             f"peak RSS {rss_peak:.1f} MiB exceeded limit {args.max_rss_mb:.1f} MiB"
         )
 
-    all_failures = provenance_failures + pixel_failures + memory_failures + list(ocr.get("failures") or [])
+    all_failures = provenance_failures + pixel_failures + memory_failures + model_mode_failures + list(ocr.get("failures") or [])
     if args.require_ocr and ocr.get("status") != "pass" and not ocr.get("failures"):
         all_failures.append(f"OCR status is {ocr.get('status')!r} while --require-ocr is set")
 
