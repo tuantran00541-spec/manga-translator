@@ -36,7 +36,7 @@ The established Chapter 210 source can be used either through the importer URL o
 ```bash
 python scripts/model_e2e_gate.py \
   --raw-dir benchmark-results/chapter210/raw \
-  --chapter-id chapter210-model-e2e-dynamic \
+  --chapter-id e2e21001 \
   --source-lang en \
   --lama-mode dynamic \
   --workers 2 \
@@ -50,7 +50,7 @@ Run the fixed fallback independently so the fixed session remains on its seriali
 ```bash
 python scripts/model_e2e_gate.py \
   --raw-dir benchmark-results/chapter210/raw \
-  --chapter-id chapter210-model-e2e-fixed \
+  --chapter-id e2e21002 \
   --source-lang en \
   --lama-mode fixed \
   --workers 2 \
@@ -59,7 +59,7 @@ python scripts/model_e2e_gate.py \
   --report-json benchmark-results/model-e2e-fixed.json
 ```
 
-A smaller smoke run can use `--max-source-images`, `--max-pages`, or `--max-ocr-boxes`. Do not treat a reduced smoke run as the promotion gate.
+A smaller smoke run can use `--max-source-images`, `--start-page`, `--max-pages`, or `--max-ocr-boxes`. `--chapter-id` must match the production validator: exactly 8 lowercase hexadecimal characters (`[a-f0-9]{8}`). Do not treat a reduced smoke run as the promotion gate.
 
 ## Hard assertions
 
