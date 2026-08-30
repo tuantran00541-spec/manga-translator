@@ -1,0 +1,152 @@
+name: Qwen3.8 sparse-aware knife
+
+on:
+  workflow_dispatch:
+    inputs:
+      layers:
+        description: "Comma-separated layers; representative pilot: 0,3,16,31,47,63"
+        required: true
+        default: "0"
+        type: string
+  push:
+    branches:
+      - test/qwen3.8-27b
+    paths:
+      - "research/qwen38/**"
+      - ".github/workflows/qwen38-sparse-aware-knife.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  synthetic-sanity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install CPU torch
+        run: python -m pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Compile and run synthetic sanity
+        run: |
+          python -m py_compile \
+            research/qwen38/core.py \
+            research/qwen38/synthetic_sanity.py \
+            research/qwen38/real_layer_experiment.py
+          python research/qwen38/synthetic_sanity.py
+
+  real-weight:
+    needs: synthetic-sanity
+    if: >-
+      ${{
+        github.event_name == 'workflow_dispatch' ||
+        contains(github.event.head_commit.message, '[qwen-real]') ||
+        contains(github.event.head_commit.message, '[qwen-reps]')
+      }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      OMP_NUM_THREADS: "2"
+      MKL_NUM_THREADS: "2"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reclaim runner disk
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup || true
+          docker system prune -af || true
+          sudo apt-get clean || true
+          df -h
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install lightweight real-weight dependencies
+        run: |
+          python -m pip install --no-cache-dir huggingface_hub safetensors
+          python -m pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Resolve sequential layer list
+        id: layers
+        env:
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+          DISPATCH_LAYERS: ${{ inputs.layers }}
+        shell: bash
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            layers="$DISPATCH_LAYERS"
+          elif [[ "$COMMIT_MESSAGE" == *"[qwen-reps]"* ]]; then
+            layers="0,3,16,31,47,63"
+          else
+            layers="0"
+          fi
+          echo "layers=$layers" >> "$GITHUB_OUTPUT"
+          echo "QWEN38_REAL_LAYERS=$layers"
+
+      - name: Validate synthetic knife before real downloads
+        run: python research/qwen38/synthetic_sanity.py
+
+      - name: Run real BF16 layers sequentially
+        env:
+          QWEN_LAYERS: ${{ steps.layers.outputs.layers }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/qwen38-evidence"
+          mkdir -p "$evidence"
+          IFS=',' read -ra layers <<< "$QWEN_LAYERS"
+          for raw_layer in "${layers[@]}"; do
+            layer="$(echo "$raw_layer" | xargs)"
+            [[ "$layer" =~ ^[0-9]+$ ]] || { echo "Invalid layer: $layer"; exit 2; }
+            work="$RUNNER_TEMP/qwen38-source-layer${layer}"
+            echo "QWEN38_REAL_START layer=$layer"
+            python research/qwen38/real_layer_experiment.py \
+              --work-dir "$work" \
+              --layer "$layer" \
+              --prune-fractions 0.05,0.10,0.15 \
+              --bits 6,5,4 \
+              --group-size 128 \
+              --calibration-samples 8 \
+              --evaluation-samples 4 \
+              --seed 1234 \
+              --output "$evidence/layer${layer}-sparse-aware.json"
+            rm -rf "$work"
+            df -h
+          done
+
+      - name: Print compact evidence summary
+        if: always()
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, os, pathlib
+          root = pathlib.Path(os.environ["RUNNER_TEMP"]) / "qwen38-evidence"
+          for path in sorted(root.glob("layer*-sparse-aware.json")):
+              result = json.loads(path.read_text())
+              layer = result["layer_result"]
+              print(f"QWEN38_EVIDENCE layer={layer['layer']} revision={result['model']['revision']}")
+              for name, metric in layer["qonly_metrics"].items():
+                  print(f"QWEN38_QONLY variant={name} rel_l2={metric['relative_l2']:.9g} cosine={metric['cosine']:.9g} rmse={metric['rmse']:.9g} max_abs={metric['max_abs']:.9g}")
+              for pruning in layer["pruning_results"]:
+                  for scorer_name, scorer in pruning["scorers"].items():
+                      metric = scorer["prune_only_bf16"]
+                      print(f"QWEN38_PRUNE scorer={scorer_name} actual={pruning['actual_prune_fraction']:.6f} rel_l2={metric['relative_l2']:.9g} cosine={metric['cosine']:.9g} rmse={metric['rmse']:.9g} max_abs={metric['max_abs']:.9g}")
+          PY
+
+      - name: Remove all source model shards
+        if: always()
+        run: rm -rf "$RUNNER_TEMP"/qwen38-source-layer*
+
+      - name: Upload metrics only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen38-sparse-aware-evidence-${{ github.run_id }}
+          path: ${{ runner.temp }}/qwen38-evidence/*.json
+          if-no-files-found: warn
