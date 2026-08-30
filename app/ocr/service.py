@@ -24,8 +24,13 @@ from app.ocr.identity import (
     machine_cache_valid,
     stamp_machine_cache,
 )
+from app.ocr.quality import classify_ocr_quality
 from app.pipeline import read_image
 from app.security import validate_chapter_id
+from app.text_objects import (
+    invalidate_stale_machine_translation,
+    sync_existing_auto_text_object,
+)
 
 OCR_CANCELLED_MESSAGE = "OCR job was cancelled"
 
@@ -149,6 +154,9 @@ class OCRService:
         self._image_cache_bytes = 0
         self._image_cache_budget = _cache_budget_bytes()
         self._image_cache_lock = threading.RLock()
+        # Detailed OCR metadata is transient per call. One OCRService instance can
+        # serve concurrent jobs, so it must never live directly on the instance.
+        self._result_local = threading.local()
 
     def plan_chapter(self, chapter_id: str) -> list[tuple[int, str]]:
         validate_chapter_id(chapter_id)
@@ -213,50 +221,58 @@ class OCRService:
         force: bool = False,
         cancel_event: threading.Event | None = None,
     ) -> dict:
-        validate_chapter_id(chapter_id)
-        engine = engine_identity(lang)
-        box_snapshot, original_value, source_revision = self._snapshot_box(
-            chapter_id, page_index, box_id
-        )
-        original_path, original_revision = self._source_identity(original_value)
-
-        if not force and machine_cache_valid(
-            box_snapshot,
-            lang=lang,
-            engine=engine,
-            source_revision=source_revision,
-            original_revision=original_revision,
-        ):
-            return self._cached_box_result(
-                page_index, box_id, box_snapshot, lang, engine
+        self._result_local.metadata = None
+        try:
+            validate_chapter_id(chapter_id)
+            engine = engine_identity(lang)
+            box_snapshot, original_value, source_revision = self._snapshot_box(
+                chapter_id, page_index, box_id
             )
+            original_path, original_revision = self._source_identity(original_value)
 
-        _check_cancelled(cancel_event)
-        text = self._read_box_text(original_path, box_snapshot, lang)
-        _check_cancelled(cancel_event)
-        self._commit_box_result(
-            chapter_id,
-            page_index,
-            box_id,
-            box_snapshot=box_snapshot,
-            original_value=original_value,
-            source_revision=source_revision,
-            original_revision=original_revision,
-            text=text,
-            lang=lang,
-            engine=engine,
-            cancel_event=cancel_event,
-        )
-        return {
-            "page_index": page_index,
-            "box_id": str(box_id),
-            "text": text or "",
-            "lang": lang,
-            "engine": engine,
-            "cached": False,
-            "committed": True,
-            "stale": False,
-        }
+            if not force and machine_cache_valid(
+                box_snapshot,
+                lang=lang,
+                engine=engine,
+                source_revision=source_revision,
+                original_revision=original_revision,
+            ):
+                return self._cached_box_result(
+                    page_index, box_id, box_snapshot, lang, engine
+                )
+
+            _check_cancelled(cancel_event)
+            text = self._read_box_text(original_path, box_snapshot, lang)
+            _check_cancelled(cancel_event)
+            self._commit_box_result(
+                chapter_id,
+                page_index,
+                box_id,
+                box_snapshot=box_snapshot,
+                original_value=original_value,
+                source_revision=source_revision,
+                original_revision=original_revision,
+                text=text,
+                lang=lang,
+                engine=engine,
+                cancel_event=cancel_event,
+            )
+            result = {
+                "page_index": page_index,
+                "box_id": str(box_id),
+                "text": text or "",
+                "lang": lang,
+                "engine": engine,
+                "cached": False,
+                "committed": True,
+                "stale": False,
+            }
+            metadata = getattr(self._result_local, "metadata", None)
+            if metadata:
+                result.update(metadata)
+            return result
+        finally:
+            self._result_local.metadata = None
 
     def _snapshot_box(
         self, chapter_id: str, page_index: int, box_id: str
@@ -303,6 +319,12 @@ class OCRService:
             "cached": True,
             "committed": True,
             "stale": False,
+            "confidence": box_snapshot.get("ocr_confidence"),
+            "model": str(box_snapshot.get("ocr_model") or ""),
+            "orientation": str(box_snapshot.get("ocr_orientation") or "unknown"),
+            "region_count": int(box_snapshot.get("ocr_region_count") or 0),
+            "quality": str(box_snapshot.get("ocr_quality") or "unknown"),
+            "quality_reason": box_snapshot.get("ocr_quality_reason"),
         }
 
     def _cached_source_image(self, original_path: Path) -> np.ndarray:
@@ -340,9 +362,44 @@ class OCRService:
         image = self._cached_source_image(original_path)
         crop = ocr_crop_from_box(image, box_snapshot)
         if not crop.size:
+            self._result_local.metadata = {
+                "confidence": None,
+                "model": "none",
+                "orientation": "unknown",
+                "region_count": 0,
+                "quality": "reject",
+                "quality_reason": "empty-crop",
+            }
             return ""
+
         rgb = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
-        return self.ocr.read(rgb, lang)
+        detailed_reader = getattr(self.ocr, "read_detailed", None)
+        if callable(detailed_reader):
+            result = detailed_reader(rgb, lang)
+            text = str(getattr(result, "text", "") or "").strip()
+            self._result_local.metadata = {
+                "confidence": getattr(result, "confidence", None),
+                "model": str(getattr(result, "model", "") or ""),
+                "orientation": str(
+                    getattr(result, "orientation", "unknown") or "unknown"
+                ),
+                "region_count": int(getattr(result, "region_count", 0) or 0),
+                "quality": str(getattr(result, "quality", "unknown") or "unknown"),
+                "quality_reason": getattr(result, "quality_reason", None),
+            }
+            return text
+
+        text = str(self.ocr.read(rgb, lang) or "").strip()
+        quality = classify_ocr_quality(text, lang, confidence=None)
+        self._result_local.metadata = {
+            "confidence": None,
+            "model": "legacy-reader",
+            "orientation": "unknown",
+            "region_count": 1 if text else 0,
+            "quality": quality.status,
+            "quality_reason": quality.reason,
+        }
+        return text
 
     def _commit_box_result(
         self,
@@ -359,6 +416,7 @@ class OCRService:
         engine: str,
         cancel_event: threading.Event | None,
     ) -> None:
+        metadata = getattr(self._result_local, "metadata", None)
         with get_manifest_lock(chapter_id):
             manifest = load_manifest_raw(chapter_id)
             page = self._current_box_page(
@@ -379,7 +437,11 @@ class OCRService:
                 engine=engine,
                 source_revision=source_revision,
                 original_revision=original_revision,
+                metadata=metadata,
             )
+            # Existing auto-generated objects track committed machine OCR in the
+            # same manifest transaction, including translation ownership rules.
+            sync_existing_auto_text_object(page, target)
             invalidate_page_render(manifest, page_index)
             save_manifest_raw(chapter_id, manifest)
             self.pipeline._sync_output_dir(chapter_id, manifest, [page_index])
@@ -584,6 +646,9 @@ class OCRService:
         original_revision: tuple[int, int, int],
         region: dict,
     ) -> None:
+        # Grouped OCR writes directly to a text object, so apply the same
+        # translation-ownership rule before replacing its machine-owned source.
+        invalidate_stale_machine_translation(obj, combined)
         obj["source_boxes"] = source_box_ids
         obj["ocr_text"] = combined
         obj["ocr_source"] = "machine"
@@ -594,3 +659,5 @@ class OCRService:
         obj["ocr_region"] = [
             int(region.get(key, 0)) for key in ("x1", "y1", "x2", "y2")
         ]
+        obj["ocr_quality"] = "review"
+        obj["ocr_quality_reason"] = "grouped-machine-ocr"
