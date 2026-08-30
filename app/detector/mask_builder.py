@@ -46,6 +46,19 @@ def _rectangle_fallback_allowed(box: BubbleBox) -> bool:
     )
 
 
+def is_destructive_box_authorized(box: BubbleBox) -> bool:
+    """Return whether a box may contribute pixels to automatic cleanup.
+
+    A verified detector mask needs explicit ``safe_to_inpaint`` provenance.
+    Manual/geometry-override boxes retain their explicit rectangle fallback
+    permission. Merely carrying a pixel mask is never sufficient authority.
+    """
+    return bool(
+        getattr(box, "safe_to_inpaint", False)
+        or _rectangle_fallback_allowed(box)
+    )
+
+
 def build_mask(image_shape: tuple[int, int], boxes: list[BubbleBox], crop_img: np.ndarray | None = None) -> np.ndarray:
     h, w = image_shape
     mask = np.zeros((h, w), dtype=np.uint8)
@@ -54,6 +67,16 @@ def build_mask(image_shape: tuple[int, int], boxes: list[BubbleBox], crop_img: n
         box_w = box.x2 - box.x1
         box_h = box.y2 - box.y1
         if box_w <= 0 or box_h <= 0:
+            continue
+
+        if not is_destructive_box_authorized(box):
+            logger.warning(
+                "Skipping non-authorized destructive mask for box (%d, %d, %d, %d)",
+                box.x1,
+                box.y1,
+                box.x2,
+                box.y2,
+            )
             continue
 
         if box.mask is not None:
