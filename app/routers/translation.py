@@ -161,6 +161,8 @@ async def translate_chapter(req: TranslateChapterRequest) -> dict:
             obj["translation"] = value
             obj["translation_source"] = "deepseek"
             obj["translation_model"] = translated.model
+            obj["translation_input_text"] = str(item["text"])
+            obj["auto_translation"] = value
             changed_pages.add(page_index)
             committed += 1
 

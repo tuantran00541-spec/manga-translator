@@ -87,9 +87,14 @@ def _assert_empty_rerun_ownership() -> None:
     }
     ensure_page_text_objects(page)
     obj = page["text_objects"][0]
+    obj["translation"] = "XIN CHAO"
+    obj["translation_source"] = "deepseek"
+    obj["translation_model"] = "deepseek-chat"
+    obj["translation_input_text"] = "HELLO"
+    obj["auto_translation"] = "XIN CHAO"
 
     # If the object still follows machine OCR, an empty/rejected rerun must clear
-    # stale text so translation cannot reuse an obsolete source string.
+    # both stale OCR and a still-machine-owned translation derived from it.
     page["boxes"][0]["ocr_text"] = ""
     page["boxes"][0].pop("ocr_confidence", None)
     page["boxes"][0]["ocr_region_count"] = 0
@@ -103,6 +108,11 @@ def _assert_empty_rerun_ownership() -> None:
     assert obj["ocr_quality_reason"] == "empty"
     assert obj["ocr_region_count"] == 0
     assert "ocr_confidence" not in obj
+    assert obj["translation"] == ""
+    assert "translation_source" not in obj
+    assert "translation_model" not in obj
+    assert "translation_input_text" not in obj
+    assert "auto_translation" not in obj
 
     # A manual clear is also a user edit and must not be repopulated by a later
     # machine rerun.
@@ -115,6 +125,69 @@ def _assert_empty_rerun_ownership() -> None:
     assert obj["ocr_text"] == ""
     assert obj["auto_ocr_text"] == "OLDER MACHINE TEXT"
     assert obj["ocr_quality"] == "reject"
+
+
+def _assert_translation_ownership() -> None:
+    page = {
+        "boxes": [
+            {
+                "id": "box_1",
+                "x1": 1,
+                "y1": 2,
+                "x2": 50,
+                "y2": 20,
+                "ocr_text": "OLD SOURCE",
+                "ocr_quality": "good",
+            }
+        ]
+    }
+    ensure_page_text_objects(page)
+    obj = page["text_objects"][0]
+
+    # A tracked DeepSeek result that has not been edited is machine-owned and
+    # must be invalidated when its OCR source changes.
+    obj.update(
+        {
+            "translation": "OLD TRANSLATION",
+            "translation_source": "deepseek",
+            "translation_model": "deepseek-chat",
+            "translation_input_text": "OLD SOURCE",
+            "auto_translation": "OLD TRANSLATION",
+        }
+    )
+    page["boxes"][0]["ocr_text"] = "NEW SOURCE"
+    ensure_page_text_objects(page)
+    assert obj["ocr_text"] == "NEW SOURCE"
+    assert obj["translation"] == ""
+    assert "auto_translation" not in obj
+
+    # If the user edits a generated translation, current text no longer equals
+    # auto_translation, so later OCR changes must preserve the user's work.
+    obj.update(
+        {
+            "translation": "MANUAL TRANSLATION EDIT",
+            "translation_source": "deepseek",
+            "translation_model": "deepseek-chat",
+            "translation_input_text": "NEW SOURCE",
+            "auto_translation": "AUTO NEW TRANSLATION",
+        }
+    )
+    page["boxes"][0]["ocr_text"] = "THIRD SOURCE"
+    ensure_page_text_objects(page)
+    assert obj["ocr_text"] == "THIRD SOURCE"
+    assert obj["translation"] == "MANUAL TRANSLATION EDIT"
+    assert obj["auto_translation"] == "AUTO NEW TRANSLATION"
+
+    # Legacy DeepSeek metadata without an ownership snapshot is intentionally
+    # conservative: never delete it because a user may already have edited it.
+    obj["translation"] = "LEGACY OR MANUAL"
+    obj["translation_source"] = "deepseek"
+    obj["translation_input_text"] = "THIRD SOURCE"
+    obj.pop("auto_translation", None)
+    page["boxes"][0]["ocr_text"] = "FOURTH SOURCE"
+    ensure_page_text_objects(page)
+    assert obj["ocr_text"] == "FOURTH SOURCE"
+    assert obj["translation"] == "LEGACY OR MANUAL"
 
 
 def _assert_japanese_route() -> None:
@@ -235,6 +308,7 @@ def main() -> int:
     _assert_manual_override()
     _assert_metadata_sync()
     _assert_empty_rerun_ownership()
+    _assert_translation_ownership()
     _assert_japanese_route()
     _assert_orientation_default()
     _assert_target_selection()

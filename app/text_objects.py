@@ -24,6 +24,12 @@ OCR_METADATA_FIELDS = (
     "ocr_quality",
     "ocr_quality_reason",
 )
+TRANSLATION_MACHINE_FIELDS = (
+    "translation_source",
+    "translation_model",
+    "translation_input_text",
+    "auto_translation",
+)
 
 
 def _region_from_box(box: dict) -> dict | None:
@@ -64,6 +70,25 @@ def _sync_ocr_metadata(obj: dict, box: dict) -> bool:
     return changed
 
 
+def _clear_stale_machine_translation(obj: dict, previous_auto_text: str, box_text: str) -> bool:
+    if previous_auto_text == box_text:
+        return False
+    # Only translations created after ownership tracking was introduced can be
+    # safely invalidated. Older manifests may say `deepseek` even after a user
+    # manually edited the translated text, so missing auto_translation is treated
+    # conservatively as user-owned/unknown rather than destructive migration.
+    if obj.get("translation_source") != "deepseek" or "auto_translation" not in obj:
+        return False
+    current_translation = str(obj.get("translation") or "")
+    auto_translation = str(obj.get("auto_translation") or "")
+    if current_translation != auto_translation:
+        return False
+    obj["translation"] = ""
+    for key in TRANSLATION_MACHINE_FIELDS:
+        obj.pop(key, None)
+    return True
+
+
 def _sync_existing_auto_object(obj: dict, box: dict, region: dict) -> bool:
     changed = False
     previous_auto_geometry = obj.get("auto_geometry")
@@ -85,6 +110,7 @@ def _sync_existing_auto_object(obj: dict, box: dict, region: dict) -> bool:
     # clear to the empty string.
     follows_machine_text = current_text == previous_auto_text
     if follows_machine_text:
+        changed = _clear_stale_machine_translation(obj, previous_auto_text, box_text) or changed
         if current_text != box_text:
             obj["ocr_text"] = box_text
             changed = True
