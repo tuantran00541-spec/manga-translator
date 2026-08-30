@@ -70,15 +70,18 @@ def _sync_ocr_metadata(obj: dict, box: dict) -> bool:
     return changed
 
 
-def _clear_stale_machine_translation(obj: dict, source_text: str) -> bool:
-    # Only translations created after ownership tracking was introduced can be
-    # safely invalidated. Older manifests may say `deepseek` even after a user
-    # manually edited the translated text, so missing auto_translation is treated
-    # conservatively as user-owned/unknown rather than destructive migration.
+def invalidate_stale_machine_translation(obj: dict, source_text: str) -> bool:
+    """Clear only an untouched generated translation whose OCR source changed.
+
+    Ownership is intentionally prospective. Legacy manifests without the
+    ``auto_translation`` snapshot are left untouched because a user may already
+    have edited the translated text while older versions still labelled it as
+    coming from DeepSeek.
+    """
     if obj.get("translation_source") != "deepseek" or "auto_translation" not in obj:
         return False
-    translation_input = str(obj.get("translation_input_text") or "")
-    if translation_input == source_text:
+    translation_input = str(obj.get("translation_input_text") or "").strip()
+    if translation_input == str(source_text or "").strip():
         return False
     current_translation = str(obj.get("translation") or "")
     auto_translation = str(obj.get("auto_translation") or "")
@@ -111,7 +114,7 @@ def _sync_existing_auto_object(obj: dict, box: dict, region: dict) -> bool:
     # clear to the empty string.
     follows_machine_text = current_text == previous_auto_text
     effective_source = box_text if follows_machine_text else current_text
-    changed = _clear_stale_machine_translation(obj, effective_source) or changed
+    changed = invalidate_stale_machine_translation(obj, effective_source) or changed
     if follows_machine_text:
         if current_text != box_text:
             obj["ocr_text"] = box_text
@@ -123,6 +126,27 @@ def _sync_existing_auto_object(obj: dict, box: dict, region: dict) -> bool:
 
     if obj.pop("source_missing", None) is not None:
         changed = True
+    return changed
+
+
+def sync_existing_auto_text_object(page: dict, box: dict) -> bool:
+    """Sync existing auto-generated text objects for one committed detector box.
+
+    This deliberately does not create objects for unrelated boxes, making it safe
+    to call from the per-box OCR commit path without changing text-object creation
+    lifecycle for the rest of the page.
+    """
+    box_id = str(box.get("id") or "")
+    region = _region_from_box(box)
+    if not box_id or region is None:
+        return False
+    changed = False
+    for obj in page.get("text_objects") or []:
+        if not isinstance(obj, dict) or not obj.get("auto_generated"):
+            continue
+        if box_id not in _source_box_ids(obj):
+            continue
+        changed = _sync_existing_auto_object(obj, box, region) or changed
     return changed
 
 
