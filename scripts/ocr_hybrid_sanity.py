@@ -67,6 +67,56 @@ def _assert_metadata_sync() -> None:
     assert obj["ocr_quality"] == "good"
 
 
+def _assert_empty_rerun_ownership() -> None:
+    page = {
+        "boxes": [
+            {
+                "id": "box_1",
+                "x1": 1,
+                "y1": 2,
+                "x2": 50,
+                "y2": 20,
+                "ocr_text": "HELLO",
+                "ocr_confidence": 0.98,
+                "ocr_model": "PP-OCRv6_small_rec",
+                "ocr_orientation": "horizontal",
+                "ocr_region_count": 1,
+                "ocr_quality": "good",
+            }
+        ]
+    }
+    ensure_page_text_objects(page)
+    obj = page["text_objects"][0]
+
+    # If the object still follows machine OCR, an empty/rejected rerun must clear
+    # stale text so translation cannot reuse an obsolete source string.
+    page["boxes"][0]["ocr_text"] = ""
+    page["boxes"][0].pop("ocr_confidence", None)
+    page["boxes"][0]["ocr_region_count"] = 0
+    page["boxes"][0]["ocr_quality"] = "reject"
+    page["boxes"][0]["ocr_quality_reason"] = "empty"
+    _, changed = ensure_page_text_objects(page)
+    assert changed
+    assert obj["ocr_text"] == ""
+    assert obj["auto_ocr_text"] == ""
+    assert obj["ocr_quality"] == "reject"
+    assert obj["ocr_quality_reason"] == "empty"
+    assert obj["ocr_region_count"] == 0
+    assert "ocr_confidence" not in obj
+
+    # A manual clear is also a user edit and must not be repopulated by a later
+    # machine rerun.
+    page["boxes"][0]["ocr_text"] = "MACHINE AGAIN"
+    page["boxes"][0]["ocr_quality"] = "good"
+    page["boxes"][0].pop("ocr_quality_reason", None)
+    obj["auto_ocr_text"] = "OLDER MACHINE TEXT"
+    obj["ocr_text"] = ""
+    _, changed = ensure_page_text_objects(page)
+    assert obj["ocr_text"] == ""
+    assert obj["auto_ocr_text"] == "OLDER MACHINE TEXT"
+    assert obj["ocr_quality"] == "reject"
+
+
 def _assert_japanese_route() -> None:
     class BombPaddle:
         def read(self, *_args, **_kwargs):
@@ -184,6 +234,7 @@ def main() -> int:
     _assert_quality()
     _assert_manual_override()
     _assert_metadata_sync()
+    _assert_empty_rerun_ownership()
     _assert_japanese_route()
     _assert_orientation_default()
     _assert_target_selection()
