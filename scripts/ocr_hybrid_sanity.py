@@ -145,7 +145,7 @@ def _assert_translation_ownership() -> None:
     obj = page["text_objects"][0]
 
     # A tracked DeepSeek result that has not been edited is machine-owned and
-    # must be invalidated when its OCR source changes.
+    # must be invalidated when its machine OCR source changes.
     obj.update(
         {
             "translation": "OLD TRANSLATION",
@@ -161,32 +161,46 @@ def _assert_translation_ownership() -> None:
     assert obj["translation"] == ""
     assert "auto_translation" not in obj
 
-    # If the user edits a generated translation, current text no longer equals
-    # auto_translation, so later OCR changes must preserve the user's work.
+    # A manual OCR correction also invalidates an untouched machine translation.
     obj.update(
         {
-            "translation": "MANUAL TRANSLATION EDIT",
+            "translation": "AUTO NEW TRANSLATION",
             "translation_source": "deepseek",
             "translation_model": "deepseek-chat",
             "translation_input_text": "NEW SOURCE",
             "auto_translation": "AUTO NEW TRANSLATION",
         }
     )
-    page["boxes"][0]["ocr_text"] = "THIRD SOURCE"
+    obj["ocr_text"] = "MANUAL SOURCE FIX"
     ensure_page_text_objects(page)
-    assert obj["ocr_text"] == "THIRD SOURCE"
+    assert obj["ocr_text"] == "MANUAL SOURCE FIX"
+    assert obj["auto_ocr_text"] == "NEW SOURCE"
+    assert obj["translation"] == ""
+
+    # If the user edits a generated translation too, current text no longer
+    # equals auto_translation, so later OCR changes must preserve that user work.
+    obj.update(
+        {
+            "translation": "MANUAL TRANSLATION EDIT",
+            "translation_source": "deepseek",
+            "translation_model": "deepseek-chat",
+            "translation_input_text": "MANUAL SOURCE FIX",
+            "auto_translation": "AUTO FOR MANUAL SOURCE",
+        }
+    )
+    obj["ocr_text"] = "SECOND MANUAL SOURCE"
+    ensure_page_text_objects(page)
     assert obj["translation"] == "MANUAL TRANSLATION EDIT"
-    assert obj["auto_translation"] == "AUTO NEW TRANSLATION"
+    assert obj["auto_translation"] == "AUTO FOR MANUAL SOURCE"
 
     # Legacy DeepSeek metadata without an ownership snapshot is intentionally
     # conservative: never delete it because a user may already have edited it.
     obj["translation"] = "LEGACY OR MANUAL"
     obj["translation_source"] = "deepseek"
-    obj["translation_input_text"] = "THIRD SOURCE"
+    obj["translation_input_text"] = "SECOND MANUAL SOURCE"
     obj.pop("auto_translation", None)
-    page["boxes"][0]["ocr_text"] = "FOURTH SOURCE"
+    obj["ocr_text"] = "THIRD MANUAL SOURCE"
     ensure_page_text_objects(page)
-    assert obj["ocr_text"] == "FOURTH SOURCE"
     assert obj["translation"] == "LEGACY OR MANUAL"
 
 

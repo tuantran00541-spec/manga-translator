@@ -70,14 +70,15 @@ def _sync_ocr_metadata(obj: dict, box: dict) -> bool:
     return changed
 
 
-def _clear_stale_machine_translation(obj: dict, previous_auto_text: str, box_text: str) -> bool:
-    if previous_auto_text == box_text:
-        return False
+def _clear_stale_machine_translation(obj: dict, source_text: str) -> bool:
     # Only translations created after ownership tracking was introduced can be
     # safely invalidated. Older manifests may say `deepseek` even after a user
     # manually edited the translated text, so missing auto_translation is treated
     # conservatively as user-owned/unknown rather than destructive migration.
     if obj.get("translation_source") != "deepseek" or "auto_translation" not in obj:
+        return False
+    translation_input = str(obj.get("translation_input_text") or "")
+    if translation_input == source_text:
         return False
     current_translation = str(obj.get("translation") or "")
     auto_translation = str(obj.get("auto_translation") or "")
@@ -109,8 +110,9 @@ def _sync_existing_auto_object(obj: dict, box: dict, region: dict) -> bool:
     # clear stale text, while preserving explicit user edits including a manual
     # clear to the empty string.
     follows_machine_text = current_text == previous_auto_text
+    effective_source = box_text if follows_machine_text else current_text
+    changed = _clear_stale_machine_translation(obj, effective_source) or changed
     if follows_machine_text:
-        changed = _clear_stale_machine_translation(obj, previous_auto_text, box_text) or changed
         if current_text != box_text:
             obj["ocr_text"] = box_text
             changed = True
