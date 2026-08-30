@@ -110,6 +110,23 @@ def main() -> int:
                             "ocr_eligible": True,
                         },
                     ],
+                    "text_objects": [
+                        {
+                            "id": "text_dark",
+                            "shape": "rectangle",
+                            "region": {"x1": 10, "y1": 20, "x2": 70, "y2": 80},
+                            "source_boxes": ["dark"],
+                            "ocr_text": "OLD DARK",
+                            "auto_ocr_text": "OLD DARK",
+                            "auto_geometry": {"x1": 10, "y1": 20, "x2": 70, "y2": 80},
+                            "translation": "BAN DICH CU",
+                            "translation_source": "deepseek",
+                            "translation_model": "deepseek-chat",
+                            "translation_input_text": "OLD DARK",
+                            "auto_translation": "BAN DICH CU",
+                            "auto_generated": True,
+                        }
+                    ],
                 }
             ]
         }
@@ -150,6 +167,21 @@ def main() -> int:
         assert boxes["light"]["ocr_confidence"] == 0.97
         assert boxes["light"]["ocr_quality"] == "good"
 
+        # Production HybridOCRService must propagate a committed box result to an
+        # already-created auto text object in the same manifest transaction. An
+        # untouched DeepSeek translation derived from the old OCR source is stale
+        # and must be invalidated immediately rather than waiting for Translate.
+        text_obj = manifest["pages"][0]["text_objects"][0]
+        assert text_obj["ocr_text"] == "DARK"
+        assert text_obj["auto_ocr_text"] == "DARK"
+        assert text_obj["ocr_model"] == "fake-dark"
+        assert text_obj["ocr_quality"] == "good"
+        assert text_obj["translation"] == ""
+        assert "translation_source" not in text_obj
+        assert "translation_model" not in text_obj
+        assert "translation_input_text" not in text_obj
+        assert "auto_translation" not in text_obj
+
         # Second pass must use the persisted machine cache and must not invoke
         # the engine or another manifest sync.
         dark_cached = service.inspect_box_id(CHAPTER_ID, 0, "dark", "en")
@@ -160,7 +192,7 @@ def main() -> int:
         assert engine.calls == 2
         assert pipeline.sync_calls == 2
 
-    print("hybrid service cache/concurrency invariants: OK")
+    print("hybrid service cache/concurrency/propagation invariants: OK")
     return 0
 
 
