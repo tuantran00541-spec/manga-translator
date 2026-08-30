@@ -317,12 +317,49 @@ def check_javascript_function_reachability() -> None:
     print("JavaScript function reachability OK")
 
 
+def check_inpaint_authority_contract() -> None:
+    recovery = Path("app/detector/recovery.py").read_text(encoding="utf-8")
+    mask_builder = Path("app/detector/mask_builder.py").read_text(encoding="utf-8")
+    pipeline = Path("app/pipeline.py").read_text(encoding="utf-8")
+    failures: list[str] = []
+
+    if "safe_to_inpaint=True" in recovery:
+        failures.append("MSER recovery must never grant automatic inpaint authority")
+    for expected in (
+        "safe_to_inpaint=False",
+        "ocr_eligible=True",
+        "needs_review=True",
+    ):
+        if expected not in recovery:
+            failures.append(f"MSER recovery missing review-only marker: {expected}")
+
+    for expected in (
+        "def is_destructive_box_authorized",
+        "if not is_destructive_box_authorized(box)",
+    ):
+        if expected not in mask_builder:
+            failures.append(f"mask builder missing destructive-authority guard: {expected}")
+
+    for expected in (
+        "Persisted review-only detector masks are evidence",
+        "if overlap_context_only and not geometry_overridden",
+        "if not (safe_to_inpaint or geometry_overridden or explicit_manual)",
+        "safe_to_inpaint=safe_to_inpaint",
+    ):
+        if expected not in pipeline:
+            failures.append(f"reinpaint path missing authority preservation: {expected}")
+
+    _fail("Inpaint authority contract broken:", failures)
+    print("Inpaint authority contract OK")
+
+
 def main() -> None:
     check_unused_python_imports()
     check_top_level_python_reachability()
     check_python_module_reachability()
     check_exact_python_helper_duplication()
     check_duplicate_api_routes()
+    check_inpaint_authority_contract()
     check_javascript_function_reachability()
 
 
