@@ -1,0 +1,38 @@
+name: Research OCR service fold
+
+on:
+  push:
+    branches:
+      - test/ocr-service-fold-gates
+    paths:
+      - .github/workflows/research-ocr-service-fold.yml
+      - scripts/ocr_service_fold_sanity.py
+      - app/ocr/service.py
+      - app/routers/ocr.py
+      - app/text_objects.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  service-fold:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Compile unified OCR service
+        run: python -m compileall -q app/ocr app/routers/ocr.py app/text_objects.py scripts/ocr_service_fold_sanity.py
+
+      - name: Install service sanity dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 Pillow==10.4.0 playwright==1.47.0 fastapi==0.115.0 numpy==1.26.4 opencv-contrib-python==4.10.0.84 onnxruntime==1.21.0 filelock==3.16.1 loguru==0.7.2
+
+      - name: Validate unified service invariants
+        run: PYTHONPATH=. python scripts/ocr_service_fold_sanity.py
