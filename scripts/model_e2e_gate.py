@@ -18,6 +18,15 @@ _IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
 _ALLOWED_AUTO_MASK_SOURCES = {"text_segmenter", "opencv_mser"}
 
 
+def _source_revision() -> str | None:
+    path = Path("SOURCE_SHA.txt")
+    if path.is_file():
+        value = path.read_text(encoding="utf-8").strip()
+        return value or None
+    value = os.getenv("GITHUB_SHA", "").strip()
+    return value or None
+
+
 class GateFailure(RuntimeError):
     pass
 
@@ -308,6 +317,9 @@ def run(args: argparse.Namespace) -> dict:
     )
     from app.manifest_utils import load_manifest_raw
     from app.pipeline import ChapterPipeline
+    from app.security import validate_chapter_id
+
+    validate_chapter_id(args.chapter_id)
 
     required_models = [
         BUBBLE_DETECTOR_MODEL,
@@ -333,7 +345,11 @@ def run(args: argparse.Namespace) -> dict:
             )
 
         all_page_indices = list(range(len(manifest.get("pages", []))))
-        page_indices = all_page_indices[:args.max_pages] if args.max_pages > 0 else all_page_indices
+        page_indices = all_page_indices[max(0, args.start_page):]
+        if args.max_pages > 0:
+            page_indices = page_indices[:args.max_pages]
+        if not page_indices:
+            raise GateFailure("No generated slices selected for the gate")
         process_chunk_ms: list[float] = []
         for chunk in _chunked(page_indices, args.workers):
             t0 = time.perf_counter()
@@ -398,11 +414,13 @@ def run(args: argparse.Namespace) -> dict:
 
     return {
         "status": "pass" if not all_failures else "fail",
+        "source_revision": _source_revision(),
         "chapter_id": args.chapter_id,
         "chapter_url": args.chapter_url,
         "source_lang": args.source_lang,
         "lama_mode": args.lama_mode,
         "workers": args.workers,
+        "start_page": args.start_page,
         "source_pages": (
             max((int(page.get("source_page", -1)) for page in manifest.get("pages", [])), default=-1) + 1
         ),
@@ -433,12 +451,13 @@ def parse_args() -> argparse.Namespace:
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--raw-dir", type=Path, help="Directory of ordered source images.")
     source.add_argument("--chapter-url", help="Download and process a chapter URL through production importer.")
-    parser.add_argument("--chapter-id", default="model-e2e-gate")
+    parser.add_argument("--chapter-id", default="e2e00001", help="Production chapter id: exactly 8 lowercase hex characters.")
     parser.add_argument("--source-lang", default="en", choices=["en", "ch", "ja", "korean"])
     parser.add_argument("--lama-mode", choices=["dynamic", "fixed"], default="dynamic")
     parser.add_argument("--workers", type=int, default=2)
     parser.add_argument("--max-source-images", type=int, default=0, help="0 means all source images.")
-    parser.add_argument("--max-pages", type=int, default=0, help="0 means all generated slices.")
+    parser.add_argument("--start-page", type=int, default=0, help="First generated slice index to process.")
+    parser.add_argument("--max-pages", type=int, default=0, help="0 means all selected generated slices.")
     parser.add_argument("--max-ocr-boxes", type=int, default=0, help="0 means all OCR-eligible boxes.")
     parser.add_argument("--require-ocr", action="store_true")
     parser.add_argument("--outside-pixel-tolerance", type=int, default=0)
