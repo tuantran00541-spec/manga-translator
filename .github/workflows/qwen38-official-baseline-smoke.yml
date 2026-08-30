@@ -1,0 +1,84 @@
+name: Qwen3.8 official baseline smoke
+
+on:
+  push:
+    branches:
+      - test/qwen3.8-27b
+    paths:
+      - .github/workflows/qwen38-official-baseline-smoke.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: qwen38-official-baseline-smoke
+  cancel-in-progress: false
+
+jobs:
+  official-bf16-bilingual:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      OMP_NUM_THREADS: "4"
+      MKL_NUM_THREADS: "4"
+      TOKENIZERS_PARALLELISM: "false"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reclaim runner disk
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup || true
+          docker system prune -af || true
+          sudo apt-get clean || true
+          df -h
+          free -h
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install CPU inference dependencies
+        run: |
+          python -m pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install --no-cache-dir -U "transformers" "accelerate>1.14.0" huggingface_hub safetensors psutil sentencepiece pillow
+          python - <<'PY'
+          import accelerate, torch, transformers
+          print("torch", torch.__version__)
+          print("transformers", transformers.__version__)
+          print("accelerate", accelerate.__version__)
+          PY
+
+      - name: Pull official checkpoint and run VI plus EN prompts
+        shell: bash
+        env:
+          HF_HOME: ${{ runner.temp }}/hf
+        run: |
+          set -euo pipefail
+          evidence="${RUNNER_TEMP}/qwen38-baseline-evidence"
+          mkdir -p "$evidence" "${RUNNER_TEMP}/qwen38-offload"
+          /usr/bin/time -v python research/qwen38/baseline_smoke.py \
+            --offload-dir "${RUNNER_TEMP}/qwen38-offload" \
+            --cpu-memory 9GiB \
+            --max-new-tokens 24 \
+            --output "$evidence/smoke.json" \
+            2>&1 | tee "$evidence/smoke.log"
+
+      - name: Show evidence and disk state
+        if: always()
+        run: |
+          cat "${RUNNER_TEMP}/qwen38-baseline-evidence/smoke.json" || true
+          df -h || true
+          free -h || true
+
+      - name: Upload metrics and prompt outputs only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen38-official-baseline-smoke-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/qwen38-baseline-evidence/smoke.json
+            ${{ runner.temp }}/qwen38-baseline-evidence/smoke.log
+          if-no-files-found: warn
+          retention-days: 14
