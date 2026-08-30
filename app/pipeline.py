@@ -1263,8 +1263,28 @@ class ChapterPipeline:
         for box in boxes:
             if box.get("removed"):
                 continue
+
+            confidence = float(box.get("confidence", 1.0))
+            geometry_overridden = bool(box.get("geometry_overridden"))
+            explicit_manual = bool(
+                box.get("manual")
+                or box.get("origin") == "manual"
+                or confidence >= 1.0
+            )
+            safe_to_inpaint = bool(box.get("safe_to_inpaint"))
+            overlap_context_only = bool(box.get("overlap_context_only"))
+
+            # Persisted review-only detector masks are evidence, not erase
+            # authority. Preserve the same overlap rule as initial processing.
+            if overlap_context_only and not geometry_overridden:
+                continue
+            if not (safe_to_inpaint or geometry_overridden or explicit_manual):
+                continue
+
             box_h = int(box["y2"]) - int(box["y1"])
             box_w = int(box["x2"]) - int(box["x1"])
+            if box_h <= 0 or box_w <= 0:
+                continue
             mask_arr = decode_mask_value(box.get("mask"))
             if mask_arr is not None and mask_arr.shape != (box_h, box_w):
                 try:
@@ -1275,16 +1295,26 @@ class ChapterPipeline:
                     )
                 except Exception:
                     mask_arr = None
-            boxes_objects.append(
-                BubbleBox(
-                    box["x1"],
-                    box["y1"],
-                    box["x2"],
-                    box["y2"],
-                    box.get("confidence", 1.0),
-                    mask_arr,
-                )
+
+            box_object = BubbleBox(
+                int(box["x1"]),
+                int(box["y1"]),
+                int(box["x2"]),
+                int(box["y2"]),
+                confidence,
+                mask_arr,
+                source_model=str(box.get("source_model") or "unknown"),
+                class_id=int(box.get("class_id") or 0),
+                class_name=str(box.get("class_name") or "unknown"),
+                semantic_type=str(box.get("semantic_type") or "unknown"),
+                mask_source=str(box.get("mask_source") or "none"),
+                safe_to_inpaint=safe_to_inpaint,
+                ocr_eligible=bool(box.get("ocr_eligible")),
+                needs_review=bool(box.get("needs_review")),
             )
+            if geometry_overridden or explicit_manual:
+                box_object.allow_rectangle_fallback = True
+            boxes_objects.append(box_object)
 
         clean_image = None
         if reuse_auto_clean:
