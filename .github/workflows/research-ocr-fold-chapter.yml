@@ -1,0 +1,126 @@
+name: Research OCR fold chapter gate
+
+on:
+  push:
+    branches:
+      - test/ocr-service-fold-gates
+    paths:
+      - .github/workflows/research-ocr-fold-chapter.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  chapter-gate:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    env:
+      CHAPTER_URL: https://asurascans.com/comics/the-return-of-the-crazy-demon-b57aa235/chapter/210
+      PROBE_ROOT: benchmark-results/chapter210-fold
+      MANGA_DOWNLOAD_WORKERS: "4"
+      PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK: "True"
+      MANGA_PPOCRV6_TIER: "small"
+      MANGA_PPOCRV6_TEXTLINE_ORIENTATION: "0"
+      MANGA_OCR_TARGET_SELECTION: "centered"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Load frozen migration probe scripts
+        run: |
+          git fetch --depth=1 origin feat/ppocrv6-runtime-migration
+          for file in \
+            asura_chapter_action_probe.py \
+            ppocrv6_chapter_probe.py \
+            ppocrv6_worker.py \
+            korean_fallback_probe.py \
+            runtime_v6_chapter_probe.py \
+            ocr_v6_runtime_sanity.py \
+            ocr_hybrid_sanity.py; do
+            git show FETCH_HEAD:scripts/$file > scripts/$file
+          done
+
+      - name: Compile OCR fold and probes
+        run: |
+          python -m compileall -q app/ocr app/text_objects.py app/routers/ocr.py app/routers/translation.py scripts/ocr_service_fold_sanity.py scripts/ocr_hybrid_sanity.py scripts/ocr_v6_runtime_sanity.py scripts/runtime_v6_chapter_probe.py
+
+      - name: Install service and downloader dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 Pillow==10.4.0 playwright==1.47.0 fastapi==0.115.0 numpy==1.26.4 opencv-contrib-python==4.10.0.84 onnxruntime==1.21.0 filelock==3.16.1 loguru==0.7.2
+
+      - name: Validate unified OCR service invariants
+        run: PYTHONPATH=. python scripts/ocr_service_fold_sanity.py
+
+      - name: Install Chromium for chapter downloader
+        run: python -m playwright install --with-deps chromium
+
+      - name: Download and slice full chapter
+        run: |
+          python scripts/asura_chapter_action_probe.py "$CHAPTER_URL" --output "$PROBE_ROOT"
+          cat "$PROBE_ROOT/chapter_info.json" | python -c 'import json,sys; d=json.load(sys.stdin); print("CHAPTER_FOLD", {"pages":d["page_count"],"bytes":d["total_bytes"],"slices":d["slice_count"],"max_slice_height":d["max_slice_height"]})'
+
+      - name: Install production-shaped PaddleOCR runtime
+        run: |
+          python -m venv .venv-ppocrv6
+          .venv-ppocrv6/bin/python -m pip install --upgrade pip
+          .venv-ppocrv6/bin/pip install \
+            "numpy==1.26.4" \
+            "Pillow==10.4.0" \
+            "opencv-contrib-python==4.10.0.84" \
+            "paddlepaddle==3.2.2" \
+            "paddleocr==3.7.0"
+
+      - name: Validate reading order and runtime models
+        run: PYTHONPATH=. .venv-ppocrv6/bin/python scripts/ocr_v6_runtime_sanity.py --model-smoke --korean
+
+      - name: Validate hybrid routing and quality invariants
+        run: PYTHONPATH=. .venv-ppocrv6/bin/python scripts/ocr_hybrid_sanity.py
+
+      - name: Probe PP-OCRv6 on production slices
+        run: |
+          .venv-ppocrv6/bin/python scripts/ppocrv6_chapter_probe.py \
+            --selected-file "$PROBE_ROOT/all_slices.txt" \
+            --output "$PROBE_ROOT/ppocrv6" \
+            --tier small
+
+      - name: Probe centered production adapter
+        run: |
+          PYTHONPATH=. .venv-ppocrv6/bin/python scripts/runtime_v6_chapter_probe.py \
+            --ppocr-summary "$PROBE_ROOT/ppocrv6/summary.json" \
+            --output "$PROBE_ROOT/runtime_v6_centered" \
+            --lang en \
+            --target-mode centered
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          d = json.loads(Path("benchmark-results/chapter210-fold/runtime_v6_centered/summary.json").read_text(encoding="utf-8"))
+          keys = ["regions", "same_normalized_rate", "mean_region_latency_ms", "p95_region_latency_ms", "quality_counts", "mismatch_counts"]
+          print("FOLD_CHAPTER_RUNTIME", json.dumps({k:d.get(k) for k in keys}, ensure_ascii=False))
+          if d.get("same_normalized_rate", 0.0) < 0.84:
+              raise SystemExit("Centered adapter agreement regressed below migration floor")
+          mismatch = d.get("mismatch_counts") or {}
+          if int(mismatch.get("runtime_blank", 0)) > 20:
+              raise SystemExit("Centered adapter blank count regressed")
+          PY
+
+      - name: Recheck Korean recognizer
+        run: |
+          .venv-ppocrv6/bin/python scripts/korean_fallback_probe.py \
+            --ppocr-summary "$PROBE_ROOT/ppocrv6/summary.json" \
+            --output "$PROBE_ROOT/korean_fallback" \
+            --v6-low-threshold 0.75
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          d = json.loads(Path("benchmark-results/chapter210-fold/korean_fallback/summary.json").read_text(encoding="utf-8"))
+          print("FOLD_KO", json.dumps({k:d.get(k) for k in ["regions_rechecked","mean_rec_latency_ms","p95_rec_latency_ms","v6_low_conf_candidates","ko_confidence_improved_count","hangul_recovered_count"]}, ensure_ascii=False))
+          if int(d.get("hangul_recovered_count", 0)) < 5:
+              raise SystemExit("Korean recovery regressed")
+          PY
