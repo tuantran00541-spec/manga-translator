@@ -10,7 +10,7 @@ from pathlib import Path
 
 import psutil
 import torch
-from transformers import AutoModelForMultimodalLM, AutoProcessor
+from transformers import AutoModelForMultimodalLM, AutoTokenizer
 
 from core import MODEL_ID, PINNED_REVISION
 
@@ -27,7 +27,7 @@ def max_rss_gib() -> float:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Qwen3.8-27B official BF16 low-RAM baseline smoke")
+    parser = argparse.ArgumentParser(description="Qwen3.8-27B official BF16 low-RAM text baseline smoke")
     parser.add_argument("--offload-dir", required=True)
     parser.add_argument("--cpu-memory", default="9GiB")
     parser.add_argument("--max-new-tokens", type=int, default=24)
@@ -48,9 +48,9 @@ def main() -> None:
         flush=True,
     )
 
-    processor_started = time.perf_counter()
-    processor = AutoProcessor.from_pretrained(MODEL_ID, revision=PINNED_REVISION)
-    processor_seconds = time.perf_counter() - processor_started
+    tokenizer_started = time.perf_counter()
+    tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, revision=PINNED_REVISION, use_fast=True)
+    tokenizer_seconds = time.perf_counter() - tokenizer_started
 
     load_started = time.perf_counter()
     model = AutoModelForMultimodalLM.from_pretrained(
@@ -79,15 +79,13 @@ def main() -> None:
 
     replies: dict[str, dict[str, object]] = {}
     for lang, prompt in PROMPTS.items():
-        messages = [{"role": "user", "content": [{"type": "text", "text": prompt}]}]
-        encoded = processor.apply_chat_template(
+        messages = [{"role": "user", "content": prompt}]
+        rendered = tokenizer.apply_chat_template(
             messages,
             add_generation_prompt=True,
-            tokenize=True,
-            return_dict=True,
-            return_tensors="pt",
+            tokenize=False,
         )
-        # A disk-dispatched model still starts on CPU in this CPU-only smoke.
+        encoded = tokenizer(rendered, return_tensors="pt")
         encoded = {key: value.to("cpu") if torch.is_tensor(value) else value for key, value in encoded.items()}
         prompt_tokens = int(encoded["input_ids"].shape[-1])
 
@@ -101,7 +99,7 @@ def main() -> None:
             )
         gen_seconds = time.perf_counter() - gen_started
         continuation = generated[0][prompt_tokens:]
-        text = processor.decode(continuation, skip_special_tokens=True).strip()
+        text = tokenizer.decode(continuation, skip_special_tokens=True).strip()
         output_tokens = int(continuation.numel())
         tok_per_s = output_tokens / gen_seconds if gen_seconds > 0 else 0.0
         replies[lang] = {
@@ -134,7 +132,7 @@ def main() -> None:
             "ram_gib": psutil.virtual_memory().total / 2**30,
         },
         "timing": {
-            "processor_seconds": processor_seconds,
+            "tokenizer_seconds": tokenizer_seconds,
             "model_load_seconds": load_seconds,
             "total_seconds": time.perf_counter() - started,
         },
