@@ -213,16 +213,33 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A["POST /api/ocr_box (editor.py)"] --> B["_ocr_crop_from_box: crop theo box + mask<br/>(tight mask, padding 12; fallback padding 20)"]
-    B --> C["MultiLangOCR.read(image, lang)"]
-    C --> D{"lang?"}
-    D -->|"ja"| E["manga_ocr (MangaOcr) — lazy load + lock"]
-    D -->|"ch / korean / en"| F["PaddleOCR: _split_lines → OCR từng dòng<br/>(lazy load engine theo lang + lock)"]
-    E --> G["Chạy 2 lần: ảnh gốc + ảnh enhanced (CLAHE + sharpen)<br/>→ chọn kết quả dài/tốt hơn"]
-    F --> G
-    G --> H["Cache ocr_text + ocr_lang vào box trong manifest"]
-    H --> I["save_manifest_raw + invalidate_page_render"]
+    A["POST /api/ocr_box hoặc chapter OCR job"] --> B["OCRService: snapshot source/file/box geometry<br/>+ kiểm machine cache"]
+    B -->|"cache hợp lệ"| C["trả ocr_text + confidence/model/orientation/<br/>region_count/quality metadata"]
+    B -->|"cache miss"| D["ocr_crop_from_box: tight theo segmentation mask + 12px<br/>fallback bbox + 20px"]
+    D --> E["MultiLangOCR.read_detailed(image, lang)"]
+    E --> F{"lang?"}
+    F -->|"ja"| G["MangaOCR primary<br/>lazy load + lock"]
+    F -->|"en / ch / zh"| H["PaddleOCR 3.x<br/>PP-OCRv6 small/medium det + rec"]
+    F -->|"ko / korean"| I["PP-OCRv6 detector +<br/>korean_PP-OCRv5_mobile_rec"]
+    H --> J["reconstruct_reading_order"]
+    I --> J
+    J --> K["centered target selection mặc định<br/>rollback: MANGA_OCR_TARGET_SELECTION=all"]
+    G --> L["classify_ocr_quality"]
+    K --> L
+    L --> M["OCRService commit dưới manifest lock:<br/>kiểm lại source/file/geometry stale"]
+    M --> N["stamp machine cache + metadata<br/>sync auto text object + translation ownership"]
+    N --> O["invalidate render → save manifest → sync output"]
 ```
+
+Production routing và knobs:
+
+- Japanese luôn đi MangaOCR primary; không dùng confidence để fallback sang MangaOCR.
+- English/Chinese dùng PP-OCRv6; Korean dùng recognizer Korean PP-OCRv5 mobile với detector PP-OCRv6.
+- `MANGA_PPOCRV6_TIER=small|medium`, mặc định `small`.
+- `MANGA_PPOCRV6_TEXTLINE_ORIENTATION=1` bật model orientation bổ sung; mặc định tắt để giảm cold-start/CPU/memory.
+- `MANGA_OCR_TARGET_SELECTION=centered|all`, mặc định `centered`; `all` là rollback nhanh nếu crop đặc biệt cần toàn bộ region.
+- OCR `review` vẫn được phép dịch; chỉ kết quả machine OCR `reject` chưa bị người dùng sửa mới bị chặn translation.
+- Paddle detector polygon chỉ phục vụ localization/reading order OCR, không trở thành erase/inpaint mask.
 
 ## 9. Render / Typeset
 
