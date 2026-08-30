@@ -50,7 +50,7 @@ jobs:
           print("accelerate", accelerate.__version__)
           PY
 
-      - name: Pull official checkpoint and run VI plus EN prompts
+      - name: Pull official checkpoint and run text-only VI plus EN prompts
         shell: bash
         env:
           HF_HOME: ${{ runner.temp }}/hf
