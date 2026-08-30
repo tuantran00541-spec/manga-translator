@@ -1,0 +1,108 @@
+name: Research OCR fold Japanese gate
+
+on:
+  push:
+    branches:
+      - test/ocr-service-fold-gates
+    paths:
+      - .github/workflows/research-ocr-fold-japanese.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  japanese-gate:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    env:
+      BENCH_ROOT: benchmark-results/japanese-ocr-fold
+      PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK: "True"
+      HF_HUB_DISABLE_TELEMETRY: "1"
+      TOKENIZERS_PARALLELISM: "false"
+      OMP_NUM_THREADS: "4"
+      MKL_NUM_THREADS: "4"
+      MANGA_PPOCRV6_TIER: "small"
+      MANGA_PPOCRV6_TEXTLINE_ORIENTATION: "0"
+      MANGA_OCR_TARGET_SELECTION: "centered"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Load frozen Japanese probe scripts
+        run: |
+          git fetch --depth=1 origin feat/ppocrv6-runtime-migration
+          for file in japanese_ocr_benchmark.py japanese_runtime_probe.py ocr_hybrid_sanity.py; do
+            git show FETCH_HEAD:scripts/$file > scripts/$file
+          done
+
+      - name: Compile Japanese route and unified service
+        run: |
+          python -m compileall -q app/ocr app/text_objects.py app/routers/ocr.py app/routers/translation.py scripts/ocr_service_fold_sanity.py scripts/ocr_hybrid_sanity.py scripts/japanese_ocr_benchmark.py scripts/japanese_runtime_probe.py
+
+      - name: Install mixed production OCR runtime
+        run: |
+          python -m pip install --upgrade pip
+          pip install --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple "torch==2.5.1+cpu"
+          pip install \
+            "numpy==1.26.4" \
+            "Pillow==10.4.0" \
+            "opencv-contrib-python==4.10.0.84" \
+            "paddlepaddle==3.2.2" \
+            "paddleocr==3.7.0" \
+            "manga-ocr==0.1.16" \
+            "transformers>=4.36,<4.46" \
+            "requests==2.32.3" \
+            "beautifulsoup4==4.12.3" \
+            "lxml==5.3.0" \
+            "fastapi==0.115.0" \
+            "playwright==1.47.0" \
+            "onnxruntime==1.21.0" \
+            "filelock==3.16.1" \
+            "loguru==0.7.2"
+
+      - name: Validate unified service and hybrid routing invariants
+        run: |
+          PYTHONPATH=. python scripts/ocr_service_fold_sanity.py
+          PYTHONPATH=. python scripts/ocr_hybrid_sanity.py
+
+      - name: Benchmark MangaOCR baseline and migrated Japanese route
+        run: |
+          python scripts/japanese_ocr_benchmark.py \
+            --engine mangaocr \
+            --image-dir "$BENCH_ROOT/images" \
+            --output "$BENCH_ROOT/mangaocr.json"
+          PYTHONPATH=. python scripts/japanese_runtime_probe.py \
+            --image-dir "$BENCH_ROOT/images" \
+            --output "$BENCH_ROOT/runtime.json"
+
+      - name: Enforce Japanese route gate
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path("benchmark-results/japanese-ocr-fold")
+          baseline = json.loads((root / "mangaocr.json").read_text(encoding="utf-8"))
+          runtime = json.loads((root / "runtime.json").read_text(encoding="utf-8"))
+          gate = {
+              "samples": runtime["samples"],
+              "baseline_cer": baseline["aggregate_cer"],
+              "runtime_cer": runtime["aggregate_cer"],
+              "baseline_exact": baseline["exact_match_rate"],
+              "runtime_exact": runtime["exact_match_rate"],
+              "mangaocr_primary_count": runtime["mangaocr_primary_count"],
+              "mangaocr_primary_rate": runtime["mangaocr_primary_rate"],
+          }
+          print("FOLD_JA_GATE", json.dumps(gate, ensure_ascii=False))
+          if runtime["mangaocr_primary_count"] != runtime["samples"] or runtime["mangaocr_primary_rate"] != 1.0:
+              raise SystemExit("Japanese routing left MangaOCR primary")
+          if runtime["aggregate_cer"] > baseline["aggregate_cer"] + 0.005:
+              raise SystemExit("Japanese runtime CER regressed")
+          if runtime["exact_match_rate"] + 0.01 < baseline["exact_match_rate"]:
+              raise SystemExit("Japanese runtime exact-match regressed")
+          PY
