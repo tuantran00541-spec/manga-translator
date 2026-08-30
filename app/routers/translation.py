@@ -11,6 +11,7 @@ from app.manifest_utils import (
     save_manifest_raw,
     urlify_manifest,
 )
+from app.ocr.quality import should_block_translation
 from app.secret_store import SecretStoreUnavailable, get_deepseek_api_key
 from app.security import validate_chapter_id
 from app.text_objects import ensure_page_text_objects
@@ -67,21 +68,26 @@ async def translate_chapter(req: TranslateChapterRequest) -> dict:
     if not api_key:
         raise HTTPException(409, "DeepSeek API key is not configured")
 
+    skipped_ocr_reject = 0
     with get_manifest_lock(req.chapter_id):
         manifest = load_manifest_raw(req.chapter_id)
-        ensured = False
+        ensured_pages: set[int] = set()
         candidates: list[dict] = []
         for page_index, page in enumerate(manifest.get("pages", [])):
             if page.get("skipped"):
                 continue
             _, changed = ensure_page_text_objects(page)
-            ensured = ensured or changed
+            if changed:
+                ensured_pages.add(page_index)
             for obj in page.get("text_objects") or []:
                 if not isinstance(obj, dict) or not obj.get("id"):
                     continue
                 source = str(obj.get("ocr_text") or "").strip()
                 current_translation = str(obj.get("translation") or "")
                 if not source or (current_translation.strip() and not req.force):
+                    continue
+                if should_block_translation(obj):
+                    skipped_ocr_reject += 1
                     continue
                 candidates.append(
                     {
@@ -91,7 +97,9 @@ async def translate_chapter(req: TranslateChapterRequest) -> dict:
                         "initial_translation": current_translation,
                     }
                 )
-        if ensured:
+        if ensured_pages:
+            for page_index in ensured_pages:
+                invalidate_page_render(manifest, page_index)
             save_manifest_raw(req.chapter_id, manifest)
 
     if len(candidates) > MAX_CHAPTER_TRANSLATION_OBJECTS:
@@ -104,6 +112,7 @@ async def translate_chapter(req: TranslateChapterRequest) -> dict:
         result["translation_run"] = {
             "translated": 0,
             "stale": 0,
+            "skipped_ocr_reject": skipped_ocr_reject,
             "model": translator.model,
             "estimated_cost_usd": 0.0,
             "budget_usd": req.budget_usd,
@@ -155,6 +164,8 @@ async def translate_chapter(req: TranslateChapterRequest) -> dict:
             obj["translation"] = value
             obj["translation_source"] = "deepseek"
             obj["translation_model"] = translated.model
+            obj["translation_input_text"] = str(item["text"])
+            obj["auto_translation"] = value
             changed_pages.add(page_index)
             committed += 1
 
@@ -167,6 +178,7 @@ async def translate_chapter(req: TranslateChapterRequest) -> dict:
     result["translation_run"] = {
         "translated": committed,
         "stale": stale,
+        "skipped_ocr_reject": skipped_ocr_reject,
         "model": translated.model,
         "usage": translated.usage,
         "estimated_cost_usd": round(translated.estimated_cost_usd, 6),

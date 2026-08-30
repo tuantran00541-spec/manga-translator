@@ -2,9 +2,13 @@ from __future__ import annotations
 
 from functools import lru_cache
 from importlib import metadata
+import os
 from pathlib import Path
+from typing import Any
 
-OCR_PIPELINE_VERSION = "phase44-v1"
+from app.env_utils import env_choice, env_enabled
+
+OCR_PIPELINE_VERSION = "phase44-v4-hybrid"
 OCR_CACHE_FIELDS = (
     "ocr_text",
     "ocr_lang",
@@ -13,6 +17,12 @@ OCR_CACHE_FIELDS = (
     "ocr_source_revision",
     "ocr_file_revision",
     "ocr_geometry",
+    "ocr_confidence",
+    "ocr_model",
+    "ocr_orientation",
+    "ocr_region_count",
+    "ocr_quality",
+    "ocr_quality_reason",
 )
 
 
@@ -36,10 +46,32 @@ def _package_version(package_name: str) -> str:
 @lru_cache(maxsize=16)
 def engine_identity(lang: str) -> str:
     normalized = (lang or "").strip().lower()
-    if normalized == "ja":
+    tier = os.getenv("MANGA_PPOCRV6_TIER", "small").strip().lower()
+    if tier not in {"small", "medium"}:
+        tier = "small"
+
+    if normalized in {"ja", "japan"}:
         backend = f"manga-ocr:{_package_version('manga-ocr')}"
     else:
-        backend = f"paddleocr:{_package_version('paddleocr')}"
+        paddle_version = _package_version("paddleocr")
+        orientation = "ori-on" if env_enabled(
+            "MANGA_PPOCRV6_TEXTLINE_ORIENTATION", False
+        ) else "ori-off"
+        target_mode = env_choice(
+            "MANGA_OCR_TARGET_SELECTION",
+            default="centered",
+            allowed={"all", "centered"},
+        )
+        if normalized in {"ko", "korean"}:
+            backend = (
+                f"paddleocr:{paddle_version}:ppocrv6-{tier}-det:"
+                f"korean-ppocrv5-mobile-rec:{orientation}:target-{target_mode}"
+            )
+        else:
+            backend = (
+                f"paddleocr:{paddle_version}:ppocrv6-{tier}:"
+                f"{orientation}:target-{target_mode}"
+            )
     return f"{OCR_PIPELINE_VERSION}:{backend}"
 
 
@@ -79,6 +111,14 @@ def machine_cache_valid(
     return cached_geometry == geometry_signature(box)
 
 
+def _metadata_value(metadata: Any, key: str, default=None):
+    if metadata is None:
+        return default
+    if isinstance(metadata, dict):
+        return metadata.get(key, default)
+    return getattr(metadata, key, default)
+
+
 def stamp_machine_cache(
     box: dict,
     *,
@@ -87,6 +127,7 @@ def stamp_machine_cache(
     engine: str,
     source_revision: int,
     original_revision: tuple[int, int, int],
+    metadata: Any = None,
 ) -> None:
     box["ocr_text"] = text or ""
     box["ocr_lang"] = lang
@@ -95,3 +136,39 @@ def stamp_machine_cache(
     box["ocr_source_revision"] = int(source_revision)
     box["ocr_file_revision"] = [int(value) for value in original_revision]
     box["ocr_geometry"] = list(geometry_signature(box))
+
+    confidence = _metadata_value(metadata, "confidence")
+    if confidence is None:
+        box.pop("ocr_confidence", None)
+    else:
+        try:
+            box["ocr_confidence"] = float(confidence)
+        except (TypeError, ValueError):
+            box.pop("ocr_confidence", None)
+
+    model = str(_metadata_value(metadata, "model", "") or "").strip()
+    if model:
+        box["ocr_model"] = model
+    else:
+        box.pop("ocr_model", None)
+
+    orientation = str(_metadata_value(metadata, "orientation", "") or "").strip()
+    if orientation:
+        box["ocr_orientation"] = orientation
+    else:
+        box.pop("ocr_orientation", None)
+
+    try:
+        region_count = int(_metadata_value(metadata, "region_count", 0) or 0)
+    except (TypeError, ValueError):
+        region_count = 0
+    box["ocr_region_count"] = max(0, region_count)
+
+    quality = str(_metadata_value(metadata, "quality", "unknown") or "unknown").strip().lower()
+    box["ocr_quality"] = quality if quality in {"good", "review", "reject"} else "unknown"
+
+    reason = str(_metadata_value(metadata, "quality_reason", "") or "").strip()
+    if reason:
+        box["ocr_quality_reason"] = reason
+    else:
+        box.pop("ocr_quality_reason", None)

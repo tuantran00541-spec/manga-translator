@@ -1,16 +1,18 @@
 fastapi==0.115.0
 uvicorn[standard]==0.30.6
 requests==2.32.3
+# PaddleX installs chardet; keep it inside Requests 2.32.x supported range.
+chardet==5.2.0
 beautifulsoup4==4.12.3
 lxml==5.3.0
 playwright==1.47.0
 Pillow==10.4.0
 numpy==1.26.4
-opencv-python-headless==4.10.0.84
+opencv-contrib-python==4.10.0.84
 onnxruntime==1.21.0
-paddleocr==2.8.1
-paddlepaddle==2.6.2
-manga-ocr>=0.1.11
+paddleocr==3.7.0
+paddlepaddle==3.2.2
+manga-ocr==0.1.16
 pyclipper==1.3.0.post5
 shapely==2.0.6
 python-multipart==0.0.12
@@ -19,6 +21,7 @@ filelock==3.16.1
 loguru==0.7.2
 psutil==6.1.1
 transformers>=4.36,<4.46
-torch
+# Docker preinstalls the matching CPU-only 2.5.1+cpu wheel before resolving this pin.
+torch==2.5.1
 
 keyring>=25,<26
