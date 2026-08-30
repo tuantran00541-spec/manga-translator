@@ -12,10 +12,11 @@ from app.detector.bubble_detector import BubbleBox
 class SecondaryTextRecovery:
     """Conservative OpenCV/MSER recovery for text styles missed by the segmenter.
 
-    Recovery is deliberately detection-first, not cleanup-first. Candidates are
-    review-only unless a compact pixel mask can be reconstructed with conservative
-    geometry. This prevents an outlined/SFX proposal from turning into rectangle
-    inpainting while still ensuring detector misses are visible to the editor.
+    Recovery is deliberately detection-first, not cleanup-first. MSER proposals
+    are always review-only for destructive cleanup. A compact reconstructed mask
+    may still make a proposal useful for OCR localization, but it never grants
+    automatic inpaint permission because textured artwork can satisfy the same
+    local geometry heuristics.
     """
 
     def __init__(self) -> None:
@@ -268,11 +269,22 @@ class SecondaryTextRecovery:
             page_ratio = (bw * bh) / float(max(1, w * h))
             if page_ratio > 0.45 and any(b.safe_to_inpaint for b in existing):
                 continue
-            safe = bool(not watermark and 0.015 <= ratio <= 0.42 and page_ratio <= 0.035 and len(cluster) >= 3)
-            if safe:
-                candidate = replace(candidate, mask=mask, mask_source="opencv_mser",
-                                    safe_to_inpaint=True, ocr_eligible=True,
-                                    needs_review=False, confidence=0.35)
+            ocr_candidate = bool(
+                not watermark
+                and 0.015 <= ratio <= 0.42
+                and page_ratio <= 0.035
+                and len(cluster) >= 3
+            )
+            if ocr_candidate:
+                candidate = replace(
+                    candidate,
+                    mask=mask,
+                    mask_source="opencv_mser",
+                    safe_to_inpaint=False,
+                    ocr_eligible=True,
+                    needs_review=True,
+                    confidence=0.35,
+                )
             elif watermark:
                 candidate = replace(candidate, semantic_type="watermark", class_name="watermark")
             out.append(candidate)
