@@ -5,6 +5,7 @@ import os
 
 import numpy as np
 
+from app.ocr.hybrid_service import HybridOCRService
 from app.ocr.identity import engine_identity
 from app.ocr.multi_lang_ocr import MultiLangOCR
 from app.ocr.paddle_v6 import OCRReadResult
@@ -204,6 +205,56 @@ def _assert_translation_ownership() -> None:
     assert obj["translation"] == "LEGACY OR MANUAL"
 
 
+def _assert_grouped_translation_ownership() -> None:
+    obj = {
+        "ocr_text": "OLD GROUP SOURCE",
+        "translation": "OLD GROUP TRANSLATION",
+        "translation_source": "deepseek",
+        "translation_model": "deepseek-chat",
+        "translation_input_text": "OLD GROUP SOURCE",
+        "auto_translation": "OLD GROUP TRANSLATION",
+    }
+    HybridOCRService._stamp_group_object(
+        obj,
+        source_box_ids=["box_a", "box_b"],
+        combined="NEW GROUP SOURCE",
+        lang="en",
+        engine="test-engine",
+        source_revision=4,
+        original_revision=(100, 200, 300),
+        region={"x1": 1, "y1": 2, "x2": 50, "y2": 60},
+    )
+    assert obj["ocr_text"] == "NEW GROUP SOURCE"
+    assert obj["translation"] == ""
+    assert "auto_translation" not in obj
+    assert obj["ocr_quality"] == "review"
+    assert obj["ocr_quality_reason"] == "grouped-machine-ocr"
+
+    # A user-edited translation on the same grouped object is not machine-owned
+    # anymore and must survive a subsequent grouped OCR refresh.
+    obj.update(
+        {
+            "translation": "MANUAL GROUP TRANSLATION",
+            "translation_source": "deepseek",
+            "translation_input_text": "NEW GROUP SOURCE",
+            "auto_translation": "AUTO GROUP TRANSLATION",
+        }
+    )
+    HybridOCRService._stamp_group_object(
+        obj,
+        source_box_ids=["box_a", "box_b"],
+        combined="THIRD GROUP SOURCE",
+        lang="en",
+        engine="test-engine",
+        source_revision=5,
+        original_revision=(100, 200, 300),
+        region={"x1": 1, "y1": 2, "x2": 50, "y2": 60},
+    )
+    assert obj["ocr_text"] == "THIRD GROUP SOURCE"
+    assert obj["translation"] == "MANUAL GROUP TRANSLATION"
+    assert obj["auto_translation"] == "AUTO GROUP TRANSLATION"
+
+
 def _assert_japanese_route() -> None:
     class BombPaddle:
         def read(self, *_args, **_kwargs):
@@ -323,6 +374,7 @@ def main() -> int:
     _assert_metadata_sync()
     _assert_empty_rerun_ownership()
     _assert_translation_ownership()
+    _assert_grouped_translation_ownership()
     _assert_japanese_route()
     _assert_orientation_default()
     _assert_target_selection()
