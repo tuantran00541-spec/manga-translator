@@ -18,8 +18,43 @@ from app.schemas import (
     UpdateTextObjectRequest,
 )
 from app.security import validate_chapter_id
+from app.text_objects import invalidate_stale_machine_translation
 
 router = APIRouter(prefix="/api", tags=["editor"])
+
+
+def _reconcile_translation_after_ocr_edit(req: UpdateTextObjectRequest) -> dict:
+    """Invalidate an untouched generated translation after a source-only OCR edit.
+
+    ``pipeline.update_text_object`` owns the editor mutation itself. This follow-up
+    transaction is optimistic and only applies if the object still contains the
+    exact OCR text from this request; a concurrent newer edit therefore wins. If
+    the request also supplied a translation, that is explicit user intent and the
+    caller skips this reconciliation entirely.
+    """
+    expected_source = str(req.ocr_text or "")
+    with get_manifest_lock(req.chapter_id):
+        manifest = load_manifest_raw(req.chapter_id)
+        pages = manifest.get("pages", [])
+        if req.page_index < 0 or req.page_index >= len(pages):
+            return manifest
+        page = pages[req.page_index]
+        obj = next(
+            (
+                item
+                for item in (page.get("text_objects") or [])
+                if isinstance(item, dict) and str(item.get("id")) == str(req.id)
+            ),
+            None,
+        )
+        if obj is None or str(obj.get("ocr_text") or "") != expected_source:
+            return manifest
+        if invalidate_stale_machine_translation(obj, expected_source):
+            invalidate_page_render(manifest, req.page_index)
+            save_manifest_raw(req.chapter_id, manifest)
+            pipeline._sync_output_dir(req.chapter_id, manifest, [req.page_index])
+        return manifest
+
 
 @router.post("/add_box")
 def add_box(req: AddBoxRequest) -> dict:
@@ -195,9 +230,7 @@ def reset_manual_mask(req: ResetManualMaskRequest) -> dict:
     except Exception as exc:
         logger.error(
             "Chapter %s page %s operation 'reset_manual_mask' failed: %s",
-            req.chapter_id,
-            req.page_index,
-            exc,
+            req.chapter_id, req.page_index, exc,
             exc_info=True,
         )
         raise HTTPException(500, f"Reset manual mask failed: {exc}") from exc
@@ -243,6 +276,8 @@ def update_text_object(req: UpdateTextObjectRequest) -> dict:
         manifest = pipeline.update_text_object(
             req.chapter_id, req.page_index, req.id, changes
         )
+        if req.ocr_text is not None and req.translation is None:
+            manifest = _reconcile_translation_after_ocr_edit(req)
         return urlify_manifest(manifest)
     except ValueError as exc:
         logger.error(

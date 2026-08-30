@@ -4,6 +4,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
     HOST=0.0.0.0 \
     PORT=8000 \
     DEBIAN_FRONTEND=noninteractive
@@ -25,9 +26,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY requirements.txt .
 RUN pip install --upgrade pip \
+    && pip install --index-url https://download.pytorch.org/whl/cpu \
+        --extra-index-url https://pypi.org/simple \
+        "torch==2.5.1+cpu" \
     && pip install -r requirements.txt
 
-RUN playwright install --with-deps chromium
+RUN playwright install --with-deps chromium \
+    && chmod -R a+rX "$PLAYWRIGHT_BROWSERS_PATH"
 
 COPY app/ ./app/
 COPY run.py ./

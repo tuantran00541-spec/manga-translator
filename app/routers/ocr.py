@@ -6,14 +6,15 @@ from fastapi.concurrency import run_in_threadpool
 from app.dependencies import ocr, pipeline
 from app.logging_config import logger
 from app.manifest_utils import urlify_manifest
+from app.ocr.hybrid_service import HybridOCRService
 from app.ocr.jobs import ChapterOCRJobManager
 from app.ocr.schemas import ChapterOCRRequest
-from app.ocr.service import OCRCancelled, OCRResultStale, OCRService
+from app.ocr.service import OCRCancelled, OCRResultStale
 from app.schemas import OcrBoxRequest, OcrTextObjectRequest
 from app.security import validate_chapter_id
 
 router = APIRouter(prefix="/api", tags=["ocr"])
-ocr_service = OCRService(ocr, pipeline)
+ocr_service = HybridOCRService(ocr, pipeline)
 chapter_ocr_jobs = ChapterOCRJobManager(ocr_service)
 OCR_JOB_NOT_FOUND = "OCR job not found"
 
