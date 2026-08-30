@@ -78,6 +78,61 @@ def _install_manifest_fakes(manifest: dict, lock: threading.RLock) -> None:
     manifest_utils.invalidate_page_render = invalidate
 
 
+def _assert_grouped_translation_ownership() -> None:
+    obj = {
+        "ocr_text": "OLD GROUP SOURCE",
+        "translation": "OLD GROUP TRANSLATION",
+        "translation_source": "deepseek",
+        "translation_model": "deepseek-chat",
+        "translation_input_text": "OLD GROUP SOURCE",
+        "auto_translation": "OLD GROUP TRANSLATION",
+    }
+    HybridOCRService._stamp_group_object(
+        obj,
+        source_box_ids=["box_a", "box_b"],
+        combined="NEW GROUP SOURCE",
+        lang="en",
+        engine="test-engine",
+        source_revision=4,
+        original_revision=(100, 200, 300),
+        region={"x1": 1, "y1": 2, "x2": 50, "y2": 60},
+    )
+    assert obj["ocr_text"] == "NEW GROUP SOURCE"
+    assert obj["translation"] == ""
+    assert "translation_source" not in obj
+    assert "translation_model" not in obj
+    assert "translation_input_text" not in obj
+    assert "auto_translation" not in obj
+    assert obj["ocr_quality"] == "review"
+    assert obj["ocr_quality_reason"] == "grouped-machine-ocr"
+
+    # A user-edited translation no longer equals the machine ownership snapshot,
+    # so refreshing grouped OCR must preserve the user's translation.
+    obj.update(
+        {
+            "translation": "MANUAL GROUP TRANSLATION",
+            "translation_source": "deepseek",
+            "translation_model": "deepseek-chat",
+            "translation_input_text": "NEW GROUP SOURCE",
+            "auto_translation": "AUTO GROUP TRANSLATION",
+        }
+    )
+    HybridOCRService._stamp_group_object(
+        obj,
+        source_box_ids=["box_a", "box_b"],
+        combined="THIRD GROUP SOURCE",
+        lang="en",
+        engine="test-engine",
+        source_revision=5,
+        original_revision=(100, 200, 300),
+        region={"x1": 1, "y1": 2, "x2": 50, "y2": 60},
+    )
+    assert obj["ocr_text"] == "THIRD GROUP SOURCE"
+    assert obj["translation"] == "MANUAL GROUP TRANSLATION"
+    assert obj["auto_translation"] == "AUTO GROUP TRANSLATION"
+    assert obj["ocr_quality"] == "review"
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="hybrid-service-sanity-") as temp_dir:
         source = Path(temp_dir) / "source.png"
@@ -192,7 +247,8 @@ def main() -> int:
         assert engine.calls == 2
         assert pipeline.sync_calls == 2
 
-    print("hybrid service cache/concurrency/propagation invariants: OK")
+    _assert_grouped_translation_ownership()
+    print("hybrid service cache/concurrency/propagation/grouped invariants: OK")
     return 0
 
 
