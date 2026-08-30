@@ -79,8 +79,12 @@ def _sync_existing_auto_object(obj: dict, box: dict, region: dict) -> bool:
     box_text = str(box.get("ocr_text") or "")
     previous_auto_text = str(obj.get("auto_ocr_text") or "")
     current_text = str(obj.get("ocr_text") or "")
-    follows_machine_text = not current_text or current_text == previous_auto_text
-    if box_text and follows_machine_text:
+    # Auto-generated objects follow machine OCR only while the displayed text
+    # still equals the last machine-owned value. This lets an empty OCR rerun
+    # clear stale text, while preserving explicit user edits including a manual
+    # clear to the empty string.
+    follows_machine_text = current_text == previous_auto_text
+    if follows_machine_text:
         if current_text != box_text:
             obj["ocr_text"] = box_text
             changed = True
