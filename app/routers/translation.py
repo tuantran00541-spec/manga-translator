@@ -71,13 +71,14 @@ async def translate_chapter(req: TranslateChapterRequest) -> dict:
     skipped_ocr_reject = 0
     with get_manifest_lock(req.chapter_id):
         manifest = load_manifest_raw(req.chapter_id)
-        ensured = False
+        ensured_pages: set[int] = set()
         candidates: list[dict] = []
         for page_index, page in enumerate(manifest.get("pages", [])):
             if page.get("skipped"):
                 continue
             _, changed = ensure_page_text_objects(page)
-            ensured = ensured or changed
+            if changed:
+                ensured_pages.add(page_index)
             for obj in page.get("text_objects") or []:
                 if not isinstance(obj, dict) or not obj.get("id"):
                     continue
@@ -96,7 +97,9 @@ async def translate_chapter(req: TranslateChapterRequest) -> dict:
                         "initial_translation": current_translation,
                     }
                 )
-        if ensured:
+        if ensured_pages:
+            for page_index in ensured_pages:
+                invalidate_page_render(manifest, page_index)
             save_manifest_raw(req.chapter_id, manifest)
 
     if len(candidates) > MAX_CHAPTER_TRANSLATION_OBJECTS:
