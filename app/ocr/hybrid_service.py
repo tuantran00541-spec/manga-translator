@@ -8,6 +8,10 @@ import cv2
 from app.ocr.identity import stamp_machine_cache
 from app.ocr.quality import classify_ocr_quality
 from app.ocr.service import OCRService, _check_cancelled, _find_box, ocr_crop_from_box
+from app.text_objects import (
+    invalidate_stale_machine_translation,
+    sync_existing_auto_text_object,
+)
 
 
 class HybridOCRService(OCRService):
@@ -151,6 +155,11 @@ class HybridOCRService(OCRService):
                 original_revision=original_revision,
                 metadata=metadata,
             )
+            # Keep an already-created auto text object in the same transaction as
+            # the box OCR commit. This also invalidates an untouched generated
+            # translation if its OCR source changed, without creating unrelated
+            # text objects elsewhere on the page.
+            sync_existing_auto_text_object(page, target)
             invalidate_page_render(manifest, page_index)
             save_manifest_raw(chapter_id, manifest)
             self.pipeline._sync_output_dir(chapter_id, manifest, [page_index])
@@ -167,6 +176,9 @@ class HybridOCRService(OCRService):
         original_revision: tuple[int, int, int],
         region: dict,
     ) -> None:
+        # Grouped OCR writes directly to a text object rather than a detector box,
+        # so apply the same translation-ownership rule before replacing its source.
+        invalidate_stale_machine_translation(obj, combined)
         OCRService._stamp_group_object(
             obj,
             source_box_ids=source_box_ids,
