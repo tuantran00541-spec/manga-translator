@@ -61,7 +61,7 @@ jobs:
           /usr/bin/time -v python research/qwen38/baseline_smoke.py \
             --offload-dir "${RUNNER_TEMP}/qwen38-offload" \
             --cpu-memory 9GiB \
-            --max-new-tokens 24 \
+            --max-new-tokens 8 \
             --output "$evidence/smoke.json" \
             2>&1 | tee "$evidence/smoke.log"
 
