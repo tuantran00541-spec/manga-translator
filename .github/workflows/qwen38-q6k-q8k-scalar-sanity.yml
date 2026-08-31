@@ -1,0 +1,28 @@
+name: Qwen3.8 Q6_K Q8_K scalar sanity
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - test/qwen3.8-27b
+    paths:
+      - research/qwen38/gguf_quant_dot.c
+      - .github/workflows/qwen38-q6k-q8k-scalar-sanity.yml
+
+permissions:
+  contents: read
+
+jobs:
+  zero-model-native-dot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile scalar Q6_K x Q8_K gate
+        run: |
+          cc -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
+            -DQWEN_QUANT_DOT_SELFTEST \
+            research/qwen38/gguf_quant_dot.c \
+            -lm -o "$RUNNER_TEMP/qwen38-quant-dot"
+      - name: Run zero-model native quant dot gate
+        run: "$RUNNER_TEMP/qwen38-quant-dot"
