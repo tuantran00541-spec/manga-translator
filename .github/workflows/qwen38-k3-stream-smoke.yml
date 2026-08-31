@@ -1,0 +1,94 @@
+name: Qwen3.8 K3-style stream smoke
+
+on:
+  push:
+    branches:
+      - test/qwen3.8-27b
+    paths:
+      - 'research/qwen38/k3_stream.py'
+      - 'research/qwen38/k3_stream_sanity.py'
+      - 'research/qwen38/k3_real_layer_smoke.py'
+      - '.github/workflows/qwen38-k3-stream-smoke.yml'
+  workflow_dispatch:
+    inputs:
+      layers:
+        description: 'Comma-separated real Qwen language layers'
+        required: false
+        default: '0,1'
+
+permissions:
+  contents: read
+
+jobs:
+  synthetic-storage-runtime:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Prove pack layout and safe ring semantics
+        run: python research/qwen38/k3_stream_sanity.py
+
+  real-layer-stream:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      contains(github.event.head_commit.message, '[qwen-stream-real]')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      HF_HOME: ${{ runner.temp }}/hf
+      HF_HUB_DISABLE_TELEMETRY: '1'
+      TOKENIZERS_PARALLELISM: 'false'
+      OMP_NUM_THREADS: '4'
+      MKL_NUM_THREADS: '4'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reclaim runner disk
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup || true
+          docker system prune -af || true
+          sudo apt-get clean || true
+          df -h
+          free -h
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install minimal real-weight dependencies
+        run: |
+          python -m pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install --no-cache-dir -U huggingface_hub
+      - name: Pack and stream real Qwen layers without generation
+        shell: bash
+        run: |
+          set -euo pipefail
+          work="${RUNNER_TEMP}/qwen38-k3-real"
+          evidence="${RUNNER_TEMP}/qwen38-k3-evidence"
+          mkdir -p "$work" "$evidence"
+          layers='0,1'
+          if [[ "${{ github.event_name }}" == 'workflow_dispatch' && -n "${{ inputs.layers }}" ]]; then
+            layers="${{ inputs.layers }}"
+          fi
+          /usr/bin/time -v python research/qwen38/k3_real_layer_smoke.py \
+            --work-dir "$work" \
+            --layers "$layers" \
+            --output "$evidence/stream.json" \
+            2>&1 | tee "$evidence/stream.log"
+      - name: Show evidence and clean weights
+        if: always()
+        run: |
+          cat "${RUNNER_TEMP}/qwen38-k3-evidence/stream.json" || true
+          df -h || true
+          free -h || true
+          rm -rf "${RUNNER_TEMP}/qwen38-k3-real" "${HF_HOME}" || true
+      - name: Upload metrics only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen38-k3-stream-evidence-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/qwen38-k3-evidence/stream.json
+            ${{ runner.temp }}/qwen38-k3-evidence/stream.log
+          if-no-files-found: warn
+          retention-days: 14
