@@ -1,21 +1,7 @@
 import os
 from pathlib import Path
 
-from app.parameters import (
-    BUBBLE_DESTRUCTIVE_CONF_THRESHOLD,
-    BUBBLE_IOU_THRESHOLD,
-    DETECTOR_TTA_ENABLED,
-    INPAINT_SIZE,
-    MASK_DILATE_KERNEL_SIZE,
-    MAX_FONT_SIZE,
-    MIN_FONT_SIZE,
-    SLICE_MAX_HEIGHT,
-    SLICE_MIN_HEIGHT,
-    SLICE_SEARCH_WINDOW,
-    SLICE_TARGET_HEIGHT,
-    SMART_FILL_CLEAN_RING_MARGIN,
-    TEXT_CONF_THRESHOLD,
-)
+from app import parameters as _parameters
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -37,8 +23,19 @@ REQUIRED_MODELS = [
 
 # Compatibility aliases for modules/third-party code that historically imported
 # tuning from app.config. New runtime code should import from app.parameters.
-BUBBLE_CONF_THRESHOLD = BUBBLE_DESTRUCTIVE_CONF_THRESHOLD
-ENABLE_TTA = DETECTOR_TTA_ENABLED
+BUBBLE_CONF_THRESHOLD = _parameters.BUBBLE_DESTRUCTIVE_CONF_THRESHOLD
+BUBBLE_IOU_THRESHOLD = _parameters.BUBBLE_IOU_THRESHOLD
+TEXT_CONF_THRESHOLD = _parameters.TEXT_CONF_THRESHOLD
+ENABLE_TTA = _parameters.DETECTOR_TTA_ENABLED
+MASK_DILATE_KERNEL_SIZE = _parameters.MASK_DILATE_KERNEL_SIZE
+SMART_FILL_CLEAN_RING_MARGIN = _parameters.SMART_FILL_CLEAN_RING_MARGIN
+INPAINT_SIZE = _parameters.INPAINT_SIZE
+SLICE_TARGET_HEIGHT = _parameters.SLICE_TARGET_HEIGHT
+SLICE_SEARCH_WINDOW = _parameters.SLICE_SEARCH_WINDOW
+SLICE_MIN_HEIGHT = _parameters.SLICE_MIN_HEIGHT
+SLICE_MAX_HEIGHT = _parameters.SLICE_MAX_HEIGHT
+MIN_FONT_SIZE = _parameters.MIN_FONT_SIZE
+MAX_FONT_SIZE = _parameters.MAX_FONT_SIZE
 
 DEFAULT_FONT = BASE_DIR / "app" / "static" / "fonts" / "default.ttf"
 
