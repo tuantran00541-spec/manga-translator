@@ -19,6 +19,7 @@ from gguf_quant_ref import dequantize_q6_k, dequantize_q8_0, row_nbytes
 REPO = "bartowski/Qwen3.8-27B-GGUF"
 FILE = "Qwen3.8-27B-Q6_K_L.gguf"
 SHA256 = "a487690b9f17de581857c4ae484dab50800335bb9eb978a4fb02c0465629dc0a"
+Q6K_BLOCK_BYTES = 210
 Q8K_BLOCK_BYTES = 292
 QK_K = 256
 
@@ -71,6 +72,27 @@ def q8k_dequant(data: bytes, n: int) -> list[float]:
     return out
 
 
+def q6_scale_summary(data: bytes, n: int) -> dict:
+    if n % QK_K or len(data) != (n // QK_K) * Q6K_BLOCK_BYTES:
+        raise ValueError("invalid Q6_K packed vector")
+    bits: list[int] = []
+    values: list[float] = []
+    for base in range(0, len(data), Q6K_BLOCK_BYTES):
+        raw = struct.unpack_from("<H", data, base + 208)[0]
+        value = float(struct.unpack("<e", struct.pack("<H", raw))[0])
+        bits.append(raw)
+        values.append(value)
+    subnormal_count = sum(1 for raw in bits if (raw & 0x7C00) == 0 and (raw & 0x03FF) != 0)
+    return {
+        "block_count": len(bits),
+        "subnormal_count": subnormal_count,
+        "first8_bits_hex": [f"0x{raw:04x}" for raw in bits[:8]],
+        "first8_values": values[:8],
+        "min_abs_nonzero": min((abs(v) for v in values if v != 0.0), default=0.0),
+        "max_abs": max((abs(v) for v in values), default=0.0),
+    }
+
+
 def load_native(lib_path: Path):
     lib = ctypes.CDLL(str(lib_path))
     lib.qwen_quantize_q8_k_scalar.argtypes = [
@@ -107,8 +129,6 @@ def native_q6_case(fd: int, directory, lib, name: str, row: int, seed: int) -> d
     expected = math.fsum(a * b for a, b in zip(w, qx))
     err = abs(native - expected)
     limit = 2e-5 * max(1.0, abs(expected))
-    if err > limit:
-        raise AssertionError(f"{name} row {row}: native={native} expected={expected} err={err} limit={limit}")
     return {
         "name": name,
         "type": tensor.type_name,
@@ -123,6 +143,8 @@ def native_q6_case(fd: int, directory, lib, name: str, row: int, seed: int) -> d
         "python_reference_dot": expected,
         "abs_error": err,
         "error_limit": limit,
+        "pass": err <= limit,
+        "q6_super_scales": q6_scale_summary(packed, ne0),
     }
 
 
@@ -132,8 +154,7 @@ def q8_0_case(fd: int, directory, name: str, row: int) -> dict:
         raise ValueError(f"{name}: expected Q8_0, got {tensor.type_name}")
     packed, ne0, ne1 = read_row(fd, tensor, row)
     values = dequantize_q8_0(packed, ne0)
-    if not values or not all(math.isfinite(v) for v in values):
-        raise AssertionError(f"{name}: non-finite Q8_0 row")
+    finite = bool(values) and all(math.isfinite(v) for v in values)
     return {
         "name": name,
         "type": tensor.type_name,
@@ -143,8 +164,9 @@ def q8_0_case(fd: int, directory, name: str, row: int) -> dict:
         "row_sha256": hashlib.sha256(packed).hexdigest(),
         "ne0": ne0,
         "ne1": ne1,
-        "min": min(values),
-        "max": max(values),
+        "finite": finite,
+        "min": min(values) if values else None,
+        "max": max(values) if values else None,
         "l2_sq": math.fsum(v * v for v in values),
         "first8": values[:8],
     }
@@ -179,9 +201,11 @@ def main() -> None:
     finally:
         os.close(fd)
 
+    q6_ok = all(case["pass"] for case in q6_cases)
+    q8_ok = all(case["finite"] for case in q8_cases)
     result = {
-        "schema": "qwen38-real-quant-row-slice-v1",
-        "status": "PASS",
+        "schema": "qwen38-real-quant-row-slice-v2",
+        "status": "PASS" if q6_ok and q8_ok else "FAIL",
         "repo": REPO,
         "file": FILE,
         "file_bytes": model.stat().st_size,
@@ -191,9 +215,13 @@ def main() -> None:
         "q6_k_native_cases": q6_cases,
         "q8_0_reference_cases": q8_cases,
         "max_q6_native_abs_error": max(case["abs_error"] for case in q6_cases),
+        "all_q6_native_cases_pass": q6_ok,
+        "all_q8_0_rows_finite": q8_ok,
     }
     args.output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(json.dumps(result, indent=2, sort_keys=True))
+    if result["status"] != "PASS":
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":
