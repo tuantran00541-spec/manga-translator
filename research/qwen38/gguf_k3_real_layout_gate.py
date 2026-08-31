@@ -17,7 +17,7 @@ from huggingface_hub import hf_hub_download
 
 from gguf_stream import parse_gguf
 from gguf_k3_layout import ManifestK3Trunk, pack_gguf_layers, split_tensors
-from k3_stream import MemoryPlanner
+from k3_stream import plan_memory, verify_layer
 
 REPO = "bartowski/Qwen3.8-27B-GGUF"
 FILE = "Qwen3.8-27B-Q6_K_L.gguf"
@@ -71,22 +71,27 @@ def main() -> None:
     )
 
     max_read = max(int(x["read_bytes"]) for x in manifest["layers"])
-    two_slot_budget = max_read * 2 + 64 * 1024 * 1024
-    planner = MemoryPlanner(two_slot_budget, reserve_bytes=64 * 1024 * 1024)
-    slots = planner.choose_slots(max_read, requested_slots=2)
-    if slots != 2:
-        raise RuntimeError(f"expected two safe slots, got {slots}")
+    two_slot_budget = max_read * 2
+    plan = plan_memory(manifest, two_slot_budget, want_ring=2, max_pinned=0)
+    if plan.ring_slots != 2:
+        raise RuntimeError(f"expected two safe slots, got {plan.ring_slots}")
 
-    with ManifestK3Trunk(trunk, index, slots=slots) as reader:
+    verified0 = verify_layer(manifest, trunk, 0)
+    verified3 = verify_layer(manifest, trunk, 3)
+    with ManifestK3Trunk(
+        trunk, index, budget_bytes=two_slot_budget, want_ring=2,
+        max_pinned=0, prefer_direct_io=True,
+    ) as reader:
         v0 = reader.bind(0)
-        verified0 = reader.verify_layer(0)
+        sample0 = manifest["layers"][0]["tensors"][0]["name"]
+        sample0_bytes = len(reader.tensor_view(v0, sample0))
         prefetch3 = reader.prefetch(3)
         v3 = reader.bind(3)
-        verified3 = reader.verify_layer(3)
-        sample0 = manifest["layers"][0]["tensors"][0]["name"]
         sample3 = manifest["layers"][1]["tensors"][0]["name"]
-        sample0_bytes = len(reader.tensor_view(v0, sample0))
         sample3_bytes = len(reader.tensor_view(v3, sample3))
+        reader_report = reader.report()
+        v0.release()
+        v3.release()
 
     result = {
         "schema": "qwen38-gguf-k3-real-layout-v1",
@@ -109,7 +114,7 @@ def main() -> None:
         "copy_chunk_bytes": manifest["copy_chunk_bytes"],
         "max_copy_chunk_observed": manifest["max_copy_chunk_observed"],
         "two_slot_budget_bytes": two_slot_budget,
-        "slots": slots,
+        "slots": plan.ring_slots,
         "prefetch_3": prefetch3,
         "verified_0": verified0,
         "verified_3": verified3,
@@ -117,9 +122,11 @@ def main() -> None:
         "sample_0_bytes": sample0_bytes,
         "sample_3": sample3,
         "sample_3_bytes": sample3_bytes,
+        "reader_report": reader_report,
         "manifest_layers": manifest["layers"],
     }
-    if len(q4_names) != 8 or not (verified0 and verified3 and prefetch3):
+    verification_ok = verified0.get("checked_tensors", 0) > 0 and verified3.get("checked_tensors", 0) > 0
+    if len(q4_names) != 8 or not (verification_ok and prefetch3):
         result["status"] = "FAIL"
     args.output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(json.dumps(result, indent=2, sort_keys=True))
