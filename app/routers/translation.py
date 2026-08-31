@@ -69,6 +69,7 @@ async def translate_chapter(req: TranslateChapterRequest) -> dict:
         raise HTTPException(409, "DeepSeek API key is not configured")
 
     skipped_ocr_reject = 0
+    skipped_source_missing = 0
     with get_manifest_lock(req.chapter_id):
         manifest = load_manifest_raw(req.chapter_id)
         ensured_pages: set[int] = set()
@@ -81,6 +82,9 @@ async def translate_chapter(req: TranslateChapterRequest) -> dict:
                 ensured_pages.add(page_index)
             for obj in page.get("text_objects") or []:
                 if not isinstance(obj, dict) or not obj.get("id"):
+                    continue
+                if obj.get("source_missing"):
+                    skipped_source_missing += 1
                     continue
                 source = str(obj.get("ocr_text") or "").strip()
                 current_translation = str(obj.get("translation") or "")
@@ -113,6 +117,7 @@ async def translate_chapter(req: TranslateChapterRequest) -> dict:
             "translated": 0,
             "stale": 0,
             "skipped_ocr_reject": skipped_ocr_reject,
+            "skipped_source_missing": skipped_source_missing,
             "model": translator.model,
             "estimated_cost_usd": 0.0,
             "budget_usd": req.budget_usd,
@@ -147,8 +152,12 @@ async def translate_chapter(req: TranslateChapterRequest) -> dict:
             if page_index < 0 or page_index >= len(pages):
                 stale += 1
                 continue
-            obj = _find_object(pages[page_index], str(item["id"]))
-            if obj is None:
+            page = pages[page_index]
+            if page.get("skipped"):
+                stale += 1
+                continue
+            obj = _find_object(page, str(item["id"]))
+            if obj is None or obj.get("source_missing"):
                 stale += 1
                 continue
             if str(obj.get("ocr_text") or "").strip() != str(item["text"]).strip():
@@ -179,6 +188,7 @@ async def translate_chapter(req: TranslateChapterRequest) -> dict:
         "translated": committed,
         "stale": stale,
         "skipped_ocr_reject": skipped_ocr_reject,
+        "skipped_source_missing": skipped_source_missing,
         "model": translated.model,
         "usage": translated.usage,
         "estimated_cost_usd": round(translated.estimated_cost_usd, 6),
