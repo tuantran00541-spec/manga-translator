@@ -6,6 +6,12 @@ from typing import Iterable
 import cv2
 import numpy as np
 
+from app.parameters import (
+    VISUAL_QC_DEEP_AREA_RATIO,
+    VISUAL_QC_MERGE_GAP,
+    VISUAL_QC_REGION_MARGIN,
+)
+
 QC_PIPELINE_VERSION = 1
 
 
@@ -118,7 +124,16 @@ def _merge_seeds(seeds: Iterable[_RegionSeed], merge_gap: int) -> list[_RegionSe
     return sorted(merged, key=lambda seed: (seed.bbox[1], seed.bbox[0], seed.bbox[3], seed.bbox[2]))
 
 
-def extract_candidate_regions(page: dict, page_index: int, *, manual_mask: np.ndarray | None = None, margin: int = 64, merge_gap: int = 32, min_manual_component_area: int = 9, deep_area_ratio: float = 0.35) -> list[QCRegion]:
+def extract_candidate_regions(
+    page: dict,
+    page_index: int,
+    *,
+    manual_mask: np.ndarray | None = None,
+    margin: int = VISUAL_QC_REGION_MARGIN,
+    merge_gap: int = VISUAL_QC_MERGE_GAP,
+    min_manual_component_area: int = 9,
+    deep_area_ratio: float = VISUAL_QC_DEEP_AREA_RATIO,
+) -> list[QCRegion]:
     """Build deterministic QC regions from canonical changed/inpaint sources."""
     if page_index < 0:
         raise ValueError("page_index must be non-negative")
@@ -134,21 +149,60 @@ def extract_candidate_regions(page: dict, page_index: int, *, manual_mask: np.nd
             continue
         box_id = str(box.get("id") or "").strip()
         seeds.append(_RegionSeed(bbox, {box_id} if box_id else set(), {"box"}))
-    seeds.extend(_manual_mask_seeds(manual_mask, width=width, height=height, min_component_area=max(1, int(min_manual_component_area))))
-    expanded = [_RegionSeed(_expand_bbox(seed.bbox, margin=int(margin), width=width, height=height), set(seed.source_box_ids), set(seed.source_kinds)) for seed in seeds]
+    seeds.extend(
+        _manual_mask_seeds(
+            manual_mask,
+            width=width,
+            height=height,
+            min_component_area=max(1, int(min_manual_component_area)),
+        )
+    )
+    expanded = [
+        _RegionSeed(
+            _expand_bbox(seed.bbox, margin=int(margin), width=width, height=height),
+            set(seed.source_box_ids),
+            set(seed.source_kinds),
+        )
+        for seed in seeds
+    ]
     merged = _merge_seeds(expanded, int(merge_gap))
     page_area = float(max(1, width * height))
     regions: list[QCRegion] = []
     for ordinal, seed in enumerate(merged, start=1):
         x1, y1, x2, y2 = seed.bbox
         area_ratio = ((x2 - x1) * (y2 - y1)) / page_area
-        regions.append(QCRegion(page_index, f"P{page_index + 1:04d}-R{ordinal:02d}", seed.bbox, tuple(sorted(seed.source_box_ids)), tuple(sorted(seed.source_kinds)), area_ratio, area_ratio >= float(deep_area_ratio)))
+        regions.append(
+            QCRegion(
+                page_index,
+                f"P{page_index + 1:04d}-R{ordinal:02d}",
+                seed.bbox,
+                tuple(sorted(seed.source_box_ids)),
+                tuple(sorted(seed.source_kinds)),
+                area_ratio,
+                area_ratio >= float(deep_area_ratio),
+            )
+        )
     return regions
 
 
 def qc_cache_identity(page: dict, *, model: str, mode: str, pipeline_version: int = QC_PIPELINE_VERSION) -> dict:
-    return {"source_revision": int(page.get("source_revision") or 0), "clean_revision": int(page.get("clean_revision") or 0), "model": str(model), "mode": str(mode), "pipeline_version": int(pipeline_version)}
+    return {
+        "source_revision": int(page.get("source_revision") or 0),
+        "clean_revision": int(page.get("clean_revision") or 0),
+        "model": str(model),
+        "mode": str(mode),
+        "pipeline_version": int(pipeline_version),
+    }
 
 
 def qc_cache_matches(cached_identity: dict | None, page: dict, *, model: str, mode: str, pipeline_version: int = QC_PIPELINE_VERSION) -> bool:
-    return isinstance(cached_identity, dict) and cached_identity == qc_cache_identity(page, model=model, mode=mode, pipeline_version=pipeline_version)
+    return (
+        isinstance(cached_identity, dict)
+        and cached_identity
+        == qc_cache_identity(
+            page,
+            model=model,
+            mode=mode,
+            pipeline_version=pipeline_version,
+        )
+    )
