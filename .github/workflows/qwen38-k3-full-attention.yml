@@ -1,4 +1,4 @@
-name: Qwen3.8 K3 full-attention gate
+name: Qwen3.8 K3 decoder gates
 
 on:
   push:
@@ -6,6 +6,8 @@ on:
       - test/qwen3.8-27b
     paths:
       - "research/qwen38/k3_full_attention_gate.py"
+      - "research/qwen38/k3_four_layer_chain_gate.py"
+      - "research/qwen38/k3_linear_layer_gate.py"
       - "research/qwen38/k3_stream.py"
       - "research/qwen38/core.py"
       - ".github/workflows/qwen38-k3-full-attention.yml"
@@ -30,7 +32,6 @@ jobs:
       USE_HUB_KERNELS: "NO"
     steps:
       - uses: actions/checkout@v4
-
       - name: Reclaim runner disk
         run: |
           sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup || true
@@ -38,23 +39,19 @@ jobs:
           sudo apt-get clean || true
           df -h
           free -h
-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-
       - name: Install decoder reference dependencies
         run: |
           python -m pip install --no-cache-dir numpy "transformers==5.16.1" safetensors huggingface_hub
           python -m pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
-
       - name: Compile gate before downloading weights
         run: |
           python -m py_compile \
             research/qwen38/core.py \
             research/qwen38/k3_stream.py \
             research/qwen38/k3_full_attention_gate.py
-
       - name: Compare official layer3 against streamed full-attention compute
         shell: bash
         run: |
@@ -68,7 +65,6 @@ jobs:
             --seq-len 4 \
             --output "$evidence/layer3.json" \
             2>&1 | tee "$evidence/layer3.log"
-
       - name: Show evidence and clean source weights
         if: always()
         run: |
@@ -76,7 +72,6 @@ jobs:
           df -h || true
           free -h || true
           rm -rf "$RUNNER_TEMP/qwen38-k3-fullattn" || true
-
       - name: Upload metrics only
         if: always()
         uses: actions/upload-artifact@v4
@@ -85,5 +80,72 @@ jobs:
           path: |
             ${{ runner.temp }}/qwen38-k3-fullattn-evidence/layer3.json
             ${{ runner.temp }}/qwen38-k3-fullattn-evidence/layer3.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  layers0-3-prefetch-chain:
+    if: >-
+      ${{
+        github.event_name == 'push' &&
+        contains(github.event.head_commit.message, '[qwen-stream-chain]')
+      }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      OMP_NUM_THREADS: "4"
+      MKL_NUM_THREADS: "4"
+      HF_HUB_DISABLE_TELEMETRY: "1"
+      USE_HUB_KERNELS: "NO"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reclaim runner disk
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup || true
+          docker system prune -af || true
+          sudo apt-get clean || true
+          df -h
+          free -h
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install decoder reference dependencies
+        run: |
+          python -m pip install --no-cache-dir numpy "transformers==5.16.1" safetensors huggingface_hub
+          python -m pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+      - name: Compile chain before downloading weights
+        run: |
+          python -m py_compile \
+            research/qwen38/core.py \
+            research/qwen38/k3_stream.py \
+            research/qwen38/k3_linear_layer_gate.py \
+            research/qwen38/k3_full_attention_gate.py \
+            research/qwen38/k3_four_layer_chain_gate.py
+      - name: Compare official layers0-3 against two-slot streamed chain
+        shell: bash
+        run: |
+          set -euo pipefail
+          work="$RUNNER_TEMP/qwen38-k3-chain"
+          evidence="$RUNNER_TEMP/qwen38-k3-chain-evidence"
+          mkdir -p "$work" "$evidence"
+          /usr/bin/time -v python research/qwen38/k3_four_layer_chain_gate.py \
+            --work-dir "$work" \
+            --seq-len 4 \
+            --output "$evidence/chain.json" \
+            2>&1 | tee "$evidence/chain.log"
+      - name: Show evidence and clean source weights
+        if: always()
+        run: |
+          cat "$RUNNER_TEMP/qwen38-k3-chain-evidence/chain.json" || true
+          df -h || true
+          free -h || true
+          rm -rf "$RUNNER_TEMP/qwen38-k3-chain" || true
+      - name: Upload metrics only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen38-k3-chain-evidence-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/qwen38-k3-chain-evidence/chain.json
+            ${{ runner.temp }}/qwen38-k3-chain-evidence/chain.log
           if-no-files-found: warn
           retention-days: 14
