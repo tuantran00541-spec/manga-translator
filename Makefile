@@ -16,12 +16,15 @@ health:
 	curl -s http://127.0.0.1:8000/health | python -m json.tool
 
 test:
-	python -m compileall -q app run.py
+	python -m compileall -q app run.py scripts
 
 test-browser:
 	@echo "Browser regression tests are archived on archive/main-tests-20260828"
 
 release-check: test
+	python scripts/release_sanity.py
+	python scripts/inpaint_authority_sanity.py
+	python scripts/browser_sanity.py
 
 clean:
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
