@@ -5,13 +5,20 @@ from dataclasses import dataclass
 
 import requests
 
-
-DEEPSEEK_API_URL = "https://api.deepseek.com/chat/completions"
-DEFAULT_TRANSLATION_MODEL = "deepseek-v4-flash"
-PRICING_VERSION = "2026-08"
-INPUT_CACHE_HIT_USD_PER_M = 0.0028
-INPUT_CACHE_MISS_USD_PER_M = 0.14
-OUTPUT_USD_PER_M = 0.28
+from app.parameters import (
+    DEEPSEEK_API_URL,
+    DEEPSEEK_INPUT_CACHE_HIT_USD_PER_M as INPUT_CACHE_HIT_USD_PER_M,
+    DEEPSEEK_INPUT_CACHE_MISS_USD_PER_M as INPUT_CACHE_MISS_USD_PER_M,
+    DEEPSEEK_OUTPUT_USD_PER_M as OUTPUT_USD_PER_M,
+    DEEPSEEK_PRICING_VERSION as PRICING_VERSION,
+    DEEPSEEK_TRANSLATION_MODEL as DEFAULT_TRANSLATION_MODEL,
+    TRANSLATION_CONNECT_TIMEOUT_SECONDS,
+    TRANSLATION_MAX_TOKENS,
+    TRANSLATION_PREFLIGHT_MIN_TOKENS,
+    TRANSLATION_PREFLIGHT_OUTPUT_MULTIPLIER,
+    TRANSLATION_PREFLIGHT_PROMPT_OVERHEAD,
+    TRANSLATION_READ_TIMEOUT_SECONDS,
+)
 
 
 class TranslationBudgetExceeded(ValueError):
@@ -61,8 +68,14 @@ def _usage_cost_usd(usage: dict) -> float:
 
 def _preflight_cost_usd(items: list[dict]) -> float:
     source_chars = sum(len(str(item.get("text") or "")) for item in items)
-    estimated_input_tokens = max(1000, source_chars + 2500)
-    estimated_output_tokens = max(1000, source_chars * 2)
+    estimated_input_tokens = max(
+        TRANSLATION_PREFLIGHT_MIN_TOKENS,
+        source_chars + TRANSLATION_PREFLIGHT_PROMPT_OVERHEAD,
+    )
+    estimated_output_tokens = max(
+        TRANSLATION_PREFLIGHT_MIN_TOKENS,
+        int(round(source_chars * TRANSLATION_PREFLIGHT_OUTPUT_MULTIPLIER)),
+    )
     return (
         estimated_input_tokens * INPUT_CACHE_MISS_USD_PER_M
         + estimated_output_tokens * OUTPUT_USD_PER_M
@@ -137,9 +150,12 @@ class DeepSeekTranslator:
                 ],
                 "thinking": {"type": "disabled"},
                 "response_format": {"type": "json_object"},
-                "max_tokens": 32768,
+                "max_tokens": TRANSLATION_MAX_TOKENS,
             },
-            timeout=(10, 120),
+            timeout=(
+                TRANSLATION_CONNECT_TIMEOUT_SECONDS,
+                TRANSLATION_READ_TIMEOUT_SECONDS,
+            ),
         )
         try:
             response.raise_for_status()
