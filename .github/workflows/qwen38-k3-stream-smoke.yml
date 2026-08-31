@@ -1,11 +1,11 @@
-name: Qwen3.8 K3-style stream smoke
+name: Qwen3.8 K3 stream smoke
 
 on:
   workflow_dispatch:
     inputs:
       layers:
         description: "Comma-separated real Qwen language layers"
-        required: false
+        required: true
         default: "0,1"
         type: string
   push:
@@ -22,15 +22,17 @@ permissions:
 
 jobs:
   synthetic-storage-runtime:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Prove pack layout and safe ring semantics
-        run: python research/qwen38/k3_stream_sanity.py
+      - name: Prove pack layout and ring safety
+        run: |
+          python -m py_compile research/qwen38/k3_stream.py research/qwen38/k3_stream_sanity.py research/qwen38/k3_real_layer_smoke.py
+          python research/qwen38/k3_stream_sanity.py
 
   real-layer-stream:
     needs: synthetic-storage-runtime
@@ -39,14 +41,12 @@ jobs:
         github.event_name == 'workflow_dispatch' ||
         contains(github.event.head_commit.message, '[qwen-stream-real]')
       }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
-      HF_HOME: ${{ runner.temp }}/hf
-      HF_HUB_DISABLE_TELEMETRY: "1"
-      TOKENIZERS_PARALLELISM: "false"
       OMP_NUM_THREADS: "4"
       MKL_NUM_THREADS: "4"
+      HF_HUB_DISABLE_TELEMETRY: "1"
     steps:
       - uses: actions/checkout@v4
       - name: Reclaim runner disk
@@ -59,23 +59,20 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Install minimal real-weight dependencies
-        run: |
-          python -m pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
-          python -m pip install --no-cache-dir -U huggingface_hub
-      - name: Resolve layer list
+      - name: Install real-weight dependencies
+        run: python -m pip install --no-cache-dir huggingface_hub torch --index-url https://download.pytorch.org/whl/cpu
+      - name: Resolve layers
         id: layers
         env:
           DISPATCH_LAYERS: ${{ inputs.layers }}
         shell: bash
         run: |
-          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" && -n "$DISPATCH_LAYERS" ]]; then
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
             layers="$DISPATCH_LAYERS"
           else
             layers="0,1"
           fi
           echo "layers=$layers" >> "$GITHUB_OUTPUT"
-          echo "QWEN38_STREAM_LAYERS=$layers"
       - name: Pack and stream real Qwen layers without generation
         env:
           QWEN38_STREAM_LAYERS: ${{ steps.layers.outputs.layers }}
@@ -96,7 +93,7 @@ jobs:
           cat "${RUNNER_TEMP}/qwen38-k3-evidence/stream.json" || true
           df -h || true
           free -h || true
-          rm -rf "${RUNNER_TEMP}/qwen38-k3-real" "${HF_HOME}" || true
+          rm -rf "${RUNNER_TEMP}/qwen38-k3-real" || true
       - name: Upload metrics only
         if: always()
         uses: actions/upload-artifact@v4
