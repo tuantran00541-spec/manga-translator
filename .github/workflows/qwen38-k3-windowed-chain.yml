@@ -13,11 +13,11 @@ permissions:
   contents: read
 
 jobs:
-  layers0-15-two-window-chain:
+  layers0-63-eight-window-chain:
     if: >-
       ${{
         github.event_name == 'workflow_dispatch' ||
-        contains(github.event.head_commit.message, '[qwen-stream-window16]')
+        contains(github.event.head_commit.message, '[qwen-stream-full64]')
       }}
     runs-on: ubuntu-latest
     timeout-minutes: 120
@@ -55,36 +55,36 @@ jobs:
             research/qwen38/k3_full_attention_gate.py \
             research/qwen38/k3_windowed_chain_gate.py
 
-      - name: Compare official layers0-15 across two temporary K3 windows
+      - name: Compare official layers0-63 across eight temporary K3 windows
         shell: bash
         run: |
           set -euo pipefail
-          work="$RUNNER_TEMP/qwen38-k3-window16"
-          evidence="$RUNNER_TEMP/qwen38-k3-window16-evidence"
+          work="$RUNNER_TEMP/qwen38-k3-full64"
+          evidence="$RUNNER_TEMP/qwen38-k3-full64-evidence"
           mkdir -p "$work" "$evidence"
           /usr/bin/time -v python research/qwen38/k3_windowed_chain_gate.py \
             --work-dir "$work" \
-            --end-layer 15 \
+            --end-layer 63 \
             --window-size 8 \
             --seq-len 4 \
-            --output "$evidence/window16.json" \
-            2>&1 | tee "$evidence/window16.log"
+            --output "$evidence/full64.json" \
+            2>&1 | tee "$evidence/full64.log"
 
       - name: Show evidence and clean temporary weights
         if: always()
         run: |
-          cat "$RUNNER_TEMP/qwen38-k3-window16-evidence/window16.json" || true
+          cat "$RUNNER_TEMP/qwen38-k3-full64-evidence/full64.json" || true
           df -h || true
           free -h || true
-          rm -rf "$RUNNER_TEMP/qwen38-k3-window16" || true
+          rm -rf "$RUNNER_TEMP/qwen38-k3-full64" || true
 
       - name: Upload metrics only
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: qwen38-k3-window16-evidence-${{ github.run_id }}
+          name: qwen38-k3-full64-evidence-${{ github.run_id }}
           path: |
-            ${{ runner.temp }}/qwen38-k3-window16-evidence/window16.json
-            ${{ runner.temp }}/qwen38-k3-window16-evidence/window16.log
+            ${{ runner.temp }}/qwen38-k3-full64-evidence/full64.json
+            ${{ runner.temp }}/qwen38-k3-full64-evidence/full64.log
           if-no-files-found: warn
           retention-days: 14
