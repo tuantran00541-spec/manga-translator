@@ -65,7 +65,7 @@ def main() -> None:
     args.work_dir.mkdir(parents=True, exist_ok=True)
     started = time.monotonic()
     state: dict[str, Any] = {
-        "schema": "qwen38-k3-gguf-q6-first-token-v3",
+        "schema": "qwen38-k3-gguf-q6-first-token-v4",
         "status": "INCOMPLETE",
         "phase": "start",
         "repo": REPO,
@@ -151,6 +151,7 @@ def main() -> None:
         checkpoint("gguf_directory_started")
         directory = parse_gguf(model)
         type_counts = Counter(tensor.type_name for tensor in directory.tensors)
+        type_id_counts = Counter(tensor.ggml_type for tensor in directory.tensors)
         by_name = directory.by_name()
         token_embd = by_name.get("token_embd.weight")
         output = by_name.get("output.weight")
@@ -166,6 +167,7 @@ def main() -> None:
             alignment=directory.alignment,
             data_offset=directory.data_offset,
             tensor_type_counts=dict(sorted(type_counts.items())),
+            tensor_type_id_counts={str(k): v for k, v in sorted(type_id_counts.items())},
             token_embd_type=token_embd.type_name if token_embd else None,
             output_type=output.type_name if output else None,
         )
