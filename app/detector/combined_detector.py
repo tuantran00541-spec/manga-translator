@@ -12,6 +12,18 @@ from app.config import (
 )
 
 
+FLAT_BUBBLE_BACKGROUND_RATIO_MIN = 0.70
+FLAT_BUBBLE_TEXT_RATIO_MIN = 0.005
+FLAT_BUBBLE_TEXT_RATIO_MAX = 0.28
+FLAT_BUBBLE_PAGE_AREA_MAX = 0.18
+FLAT_BUBBLE_WHITE_MIN = 205
+FLAT_BUBBLE_WHITE_MEDIAN_MIN = 215
+FLAT_BUBBLE_DARK_TEXT_MAX = 180
+FLAT_BUBBLE_BLACK_MAX = 50
+FLAT_BUBBLE_BLACK_MEDIAN_MAX = 45
+FLAT_BUBBLE_LIGHT_TEXT_MIN = 78
+
+
 class CombinedTextDetector:
     def __init__(self):
         self.bubble_detector = YoloDetector(BUBBLE_DETECTOR_MODEL, min(BUBBLE_CONF_THRESHOLD, 0.12))
@@ -31,7 +43,7 @@ class CombinedTextDetector:
     def _tail_credit_like(box: BubbleBox, w: int, h: int) -> bool:
         """Conservative geometry for end-card/credit text on the final source tail.
 
-        This rule is deliberately context-gated by the pipeline.  Applying the
+        This rule is deliberately context-gated by the pipeline. Applying the
         same lower-page geometry to every slice would incorrectly downgrade
         ordinary dialogue; on the final tail, a wide compact text block is a
         high-risk credit/end-card candidate and must fail safe to review.
@@ -54,7 +66,129 @@ class CombinedTextDetector:
         if box.verified_mask and "text_segmenter" in box.source_model.lower():
             return replace(box, mask_source="text_segmenter", safe_to_inpaint=True,
                            ocr_eligible=True, needs_review=False)
+        if (
+            box.verified_mask
+            and box.semantic_type == "speech_bubble"
+            and box.mask_source == "bubble_flat_contrast"
+        ):
+            return replace(
+                box,
+                safe_to_inpaint=True,
+                ocr_eligible=True,
+                needs_review=False,
+            )
         return replace(box, safe_to_inpaint=False, ocr_eligible=False, needs_review=True)
+
+    @staticmethod
+    def _flat_bubble_text_fallback(
+        image: np.ndarray,
+        box: BubbleBox,
+        img_w: int,
+        img_h: int,
+    ) -> BubbleBox | None:
+        """Recover text strokes only inside a high-confidence flat speech bubble.
+
+        v0.1 used the bubble segmentation itself as the destructive mask whenever
+        the text segmenter missed a bubble. That gave good recall but could erase
+        artwork. This fallback keeps the useful signal while rebuilding a narrow
+        contrast mask: the bubble must pass the original 0.4 destructive
+        confidence, its interior must be overwhelmingly white or black, and only
+        contrasting stroke pixels become the inpaint mask.
+        """
+        if (
+            box.semantic_type != "speech_bubble"
+            or float(box.confidence) < float(BUBBLE_CONF_THRESHOLD)
+            or not box.verified_mask
+        ):
+            return None
+
+        bw = int(box.x2 - box.x1)
+        bh = int(box.y2 - box.y1)
+        if bw <= 8 or bh <= 8:
+            return None
+        if (bw * bh) > float(max(1, img_w * img_h)) * FLAT_BUBBLE_PAGE_AREA_MAX:
+            return None
+
+        crop = image[box.y1:box.y2, box.x1:box.x2]
+        if crop.shape[:2] != (bh, bw):
+            return None
+        gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop
+
+        bubble_roi = (box.mask > 127).astype(np.uint8) * 255
+        inset = max(2, min(10, int(round(min(bw, bh) * 0.04))))
+        kernel_size = inset * 2 + 1
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
+        interior = cv2.erode(bubble_roi, kernel, iterations=1) > 0
+        interior_count = int(np.count_nonzero(interior))
+        if interior_count < max(64, int(bw * bh * 0.12)):
+            return None
+
+        values = gray[interior]
+        if values.size < 64:
+            return None
+        median = float(np.median(values))
+        white_ratio = float(np.mean(values >= FLAT_BUBBLE_WHITE_MIN))
+        black_ratio = float(np.mean(values <= FLAT_BUBBLE_BLACK_MAX))
+
+        if (
+            white_ratio >= FLAT_BUBBLE_BACKGROUND_RATIO_MIN
+            and median >= FLAT_BUBBLE_WHITE_MEDIAN_MIN
+        ):
+            strokes = (gray <= FLAT_BUBBLE_DARK_TEXT_MAX) & interior
+        elif (
+            black_ratio >= FLAT_BUBBLE_BACKGROUND_RATIO_MIN
+            and median <= FLAT_BUBBLE_BLACK_MEDIAN_MAX
+        ):
+            strokes = (gray >= FLAT_BUBBLE_LIGHT_TEXT_MIN) & interior
+        else:
+            return None
+
+        stroke_count = int(np.count_nonzero(strokes))
+        stroke_ratio = stroke_count / float(max(1, interior_count))
+        if not (
+            FLAT_BUBBLE_TEXT_RATIO_MIN
+            <= stroke_ratio
+            <= FLAT_BUBBLE_TEXT_RATIO_MAX
+        ):
+            return None
+
+        stroke_mask = strokes.astype(np.uint8) * 255
+        stroke_mask = cv2.morphologyEx(
+            stroke_mask,
+            cv2.MORPH_CLOSE,
+            np.ones((3, 3), np.uint8),
+            iterations=1,
+        )
+        ys, xs = np.nonzero(stroke_mask > 0)
+        if xs.size == 0 or ys.size == 0:
+            return None
+
+        pad = 4
+        local_x1 = max(0, int(xs.min()) - pad)
+        local_y1 = max(0, int(ys.min()) - pad)
+        local_x2 = min(bw, int(xs.max()) + 1 + pad)
+        local_y2 = min(bh, int(ys.max()) + 1 + pad)
+        if local_x2 <= local_x1 or local_y2 <= local_y1:
+            return None
+
+        text_mask = stroke_mask[local_y1:local_y2, local_x1:local_x2].copy()
+        if not np.any(text_mask > 0):
+            return None
+
+        return replace(
+            box,
+            x1=int(box.x1 + local_x1),
+            y1=int(box.y1 + local_y1),
+            x2=int(box.x1 + local_x2),
+            y2=int(box.y1 + local_y2),
+            mask=text_mask,
+            class_name="text_bubble_fallback",
+            semantic_type="speech_bubble",
+            mask_source="bubble_flat_contrast",
+            safe_to_inpaint=True,
+            ocr_eligible=True,
+            needs_review=False,
+        )
 
     def detect(
         self, image: np.ndarray, *, parallel: bool = False, protect_tail_credits: bool = False
@@ -101,7 +235,18 @@ class CombinedTextDetector:
                 )
                 used_text_boxes.update(i for i, _ in inside)
             else:
-                result_boxes.append(replace(b, safe_to_inpaint=False, ocr_eligible=False, needs_review=True))
+                fallback = self._flat_bubble_text_fallback(image, b, w, h)
+                if fallback is not None:
+                    result_boxes.append(fallback)
+                else:
+                    result_boxes.append(
+                        replace(
+                            b,
+                            safe_to_inpaint=False,
+                            ocr_eligible=False,
+                            needs_review=True,
+                        )
+                    )
 
         standalone = [t for i, t in enumerate(text_boxes) if i not in used_text_boxes]
         result_boxes.extend(self._cluster_free_text_boxes(standalone, w, h))
@@ -148,9 +293,7 @@ class CombinedTextDetector:
             bh = box.y2 - box.y1
             bw = box.x2 - box.x1
             if bh <= 45:
-                refined_boxes.append(
-                    replace(box)
-                )
+                refined_boxes.append(replace(box))
                 continue
 
             crop_x1 = box.x1
@@ -160,9 +303,7 @@ class CombinedTextDetector:
 
             exp_crop = full_gray[y1_exp:y2_exp, crop_x1:crop_x2]
             if exp_crop.size == 0:
-                refined_boxes.append(
-                    replace(box)
-                )
+                refined_boxes.append(replace(box))
                 continue
 
             crop_bg = np.percentile(exp_crop, 90)
@@ -184,9 +325,7 @@ class CombinedTextDetector:
                 line_bounds.append((start_y, len(text_rows)))
 
             if len(line_bounds) <= 1:
-                refined_boxes.append(
-                    replace(box)
-                )
+                refined_boxes.append(replace(box))
                 continue
 
             for idx, (ly1, ly2) in enumerate(line_bounds):
