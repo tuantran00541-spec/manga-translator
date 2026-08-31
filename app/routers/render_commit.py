@@ -37,10 +37,17 @@ def _request_style_maps(req: RenderRequest) -> dict[str, dict]:
 def _render_snapshot(image: Image.Image, req: RenderRequest, page: dict, drafts: dict, styles: dict[str, dict]) -> int:
     text_objects = page.get("text_objects") or []
     if text_objects:
+        active_text_objects = [
+            obj
+            for obj in text_objects
+            if isinstance(obj, dict) and not obj.get("source_missing")
+        ]
+        if not active_text_objects:
+            return 0
         return render_text_objects(
             image,
             req,
-            text_objects,
+            active_text_objects,
             styles["colors"],
             styles["fonts"],
             styles["font_sizes"],
@@ -76,7 +83,7 @@ def _set_style_value(style: dict, field: str, value, *, stringify: bool = False)
 
 def _persist_text_object_state(page: dict, req: RenderRequest, styles: dict[str, dict]) -> None:
     for obj in page.get("text_objects") or []:
-        if not isinstance(obj, dict):
+        if not isinstance(obj, dict) or obj.get("source_missing"):
             continue
         oid = obj.get("id")
         if not oid:
