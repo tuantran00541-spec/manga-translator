@@ -104,10 +104,11 @@ def decoder_rms_norm(x: torch.Tensor, weight: torch.Tensor, eps: float) -> torch
 
 
 def attention_rms_norm(x: torch.Tensor, weight: torch.Tensor, eps: float) -> torch.Tensor:
-    input_dtype = x.dtype
+    # Qwen3Next q_norm/k_norm are zero-centered RMSNorm too: (1 + weight).
     y = x.float()
     y = y * torch.rsqrt(y.pow(2).mean(-1, keepdim=True) + eps)
-    return weight * y.to(input_dtype)
+    y = y * (1.0 + weight.float())
+    return y.to(x.dtype)
 
 
 def repeat_kv(hidden_states: torch.Tensor, n_rep: int) -> torch.Tensor:
