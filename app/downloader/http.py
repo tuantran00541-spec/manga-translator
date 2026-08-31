@@ -7,6 +7,7 @@ import uuid
 
 import requests
 
+from app.parameters import REMOTE_CHUNK_BYTES, REMOTE_CONNECT_TIMEOUT_SECONDS
 from app.security import (
     MAX_REMOTE_IMAGE_BYTES,
     MAX_REMOTE_REDIRECTS,
@@ -21,7 +22,7 @@ def safe_get(
     url: str,
     *,
     headers: dict[str, str] | None = None,
-    timeout: int | float = 30,
+    timeout: int | float = REMOTE_CONNECT_TIMEOUT_SECONDS,
     stream: bool = True,
     max_redirects: int = MAX_REMOTE_REDIRECTS,
 ) -> requests.Response:
@@ -57,7 +58,7 @@ def read_response_limited(response: requests.Response, *, limit_bytes: int) -> b
 
     chunks: list[bytes] = []
     total = 0
-    for chunk in response.iter_content(chunk_size=64 * 1024):
+    for chunk in response.iter_content(chunk_size=REMOTE_CHUNK_BYTES):
         if not chunk:
             continue
         total += len(chunk)
@@ -72,7 +73,7 @@ def safe_download_file(
     out_path: Path,
     *,
     headers: dict[str, str] | None = None,
-    timeout: int | float = 30,
+    timeout: int | float = REMOTE_CONNECT_TIMEOUT_SECONDS,
     limit_bytes: int = MAX_REMOTE_IMAGE_BYTES,
 ) -> None:
     if limit_bytes < 1:
@@ -86,7 +87,7 @@ def safe_download_file(
         _reject_oversized_content_length(response, limit_bytes)
         total = 0
         with open(tmp_path, "wb") as handle:
-            for chunk in response.iter_content(chunk_size=64 * 1024):
+            for chunk in response.iter_content(chunk_size=REMOTE_CHUNK_BYTES):
                 if not chunk:
                     continue
                 total += len(chunk)
