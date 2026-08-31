@@ -47,7 +47,11 @@ def _render_request_from_page(chapter_id: str, page_index: int, page: dict) -> R
     vertical_aligns: dict[str, str] = {}
 
     for obj in page.get("text_objects") or []:
-        if not isinstance(obj, dict) or not obj.get("id"):
+        if (
+            not isinstance(obj, dict)
+            or not obj.get("id")
+            or obj.get("source_missing")
+        ):
             continue
         oid = str(obj["id"])
         translations[oid] = str(obj.get("translation") or "")
@@ -213,8 +217,6 @@ def _validate_stitch_group(source_page: int, items: list[dict]) -> None:
     source_metadata = [item.get("source_core_range") for item in items]
     source_heights = [item.get("source_height") for item in items]
 
-    # Legacy unsliced chapters may not have stitch metadata. A single image is
-    # still unambiguous; multi-slice reconstruction is not.
     if len(items) == 1 and source_metadata[0] is None and source_heights[0] is None:
         return
     if any(value is None for value in source_metadata) or any(value is None for value in source_heights):
@@ -336,14 +338,29 @@ def render_chapter(chapter_id: str) -> dict:
             changed = changed or page_changed
         if changed:
             save_manifest_raw(chapter_id, manifest)
+        total = len(manifest.get("pages", []))
 
     rendered = 0
+    reused = 0
     skipped = 0
-    for page_index, page in enumerate(manifest.get("pages", [])):
-        if page.get("skipped"):
-            skipped += 1
-            continue
-        request = _render_request_from_page(chapter_id, page_index, page)
+    for page_index in range(total):
+        with get_manifest_lock(chapter_id):
+            latest_page_manifest = load_manifest_raw(chapter_id)
+            pages = latest_page_manifest.get("pages", [])
+            if page_index >= len(pages):
+                raise HTTPException(409, "Chapter page list changed while rendering")
+            page = pages[page_index]
+            if page.get("skipped"):
+                skipped += 1
+                continue
+            if _current_rendered_path(
+                chapter_id,
+                page_index,
+                latest_page_manifest,
+            ) is not None:
+                reused += 1
+                continue
+            request = _render_request_from_page(chapter_id, page_index, page)
         render_page(request)
         rendered += 1
 
@@ -351,6 +368,7 @@ def render_chapter(chapter_id: str) -> dict:
     result = urlify_manifest(latest)
     result["chapter_render"] = {
         "rendered": rendered,
+        "reused": reused,
         "skipped": skipped,
         "total": len(latest.get("pages", [])),
         "download_url": f"/api/export/{chapter_id}.zip",
