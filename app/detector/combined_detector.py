@@ -2,31 +2,63 @@ import numpy as np
 import cv2
 from dataclasses import replace
 from concurrent.futures import ThreadPoolExecutor
+
+from app.config import BUBBLE_DETECTOR_MODEL, TEXT_SEGMENTER_MODEL
 from app.detector.bubble_detector import YoloDetector, BubbleBox, MAX_BOX_AREA_RATIO
 from app.detector.recovery import SecondaryTextRecovery
-from app.config import (
-    BUBBLE_DETECTOR_MODEL,
-    TEXT_SEGMENTER_MODEL,
-    BUBBLE_CONF_THRESHOLD,
+from app.parameters import (
+    BUBBLE_DESTRUCTIVE_CONF_THRESHOLD,
+    BUBBLE_GROUP_PAD_X,
+    BUBBLE_GROUP_PAD_Y,
+    BUBBLE_PROPOSAL_CONF_THRESHOLD,
+    DETECTOR_FINAL_NMS_IOU,
+    DETECTOR_NMS_SCORE_FLOOR,
+    FLAT_BUBBLE_BACKGROUND_RATIO_MIN,
+    FLAT_BUBBLE_BLACK_MAX,
+    FLAT_BUBBLE_BLACK_MEDIAN_MAX,
+    FLAT_BUBBLE_DARK_TEXT_MAX,
+    FLAT_BUBBLE_INSET_MAX,
+    FLAT_BUBBLE_INSET_MIN,
+    FLAT_BUBBLE_INSET_RATIO,
+    FLAT_BUBBLE_INTERIOR_AREA_RATIO_MIN,
+    FLAT_BUBBLE_INTERIOR_PIXELS_MIN,
+    FLAT_BUBBLE_LIGHT_TEXT_MIN,
+    FLAT_BUBBLE_PAGE_AREA_MAX,
+    FLAT_BUBBLE_STROKE_CLOSE_KERNEL,
+    FLAT_BUBBLE_TEXT_BBOX_PAD,
+    FLAT_BUBBLE_TEXT_RATIO_MAX,
+    FLAT_BUBBLE_TEXT_RATIO_MIN,
+    FLAT_BUBBLE_WHITE_MEDIAN_MIN,
+    FLAT_BUBBLE_WHITE_MIN,
+    FREE_TEXT_CLUSTER_HEIGHT_FACTOR,
+    FREE_TEXT_CLUSTER_SPLIT_COUNT,
+    FREE_TEXT_GROUP_HEIGHT_FACTOR,
+    FREE_TEXT_GROUP_PAD_X,
+    FREE_TEXT_GROUP_PAD_Y,
+    FREE_TEXT_LINE_OVERLAP_MIN,
+    FREE_TEXT_SINGLE_PAD_X,
+    FREE_TEXT_SINGLE_PAD_Y,
+    FREE_TEXT_X_GAP,
+    FREE_TEXT_Y_ALIGNMENT,
+    FREE_TEXT_Y_GAP,
+    TAIL_CREDIT_HEIGHT_RATIO_MAX,
+    TAIL_CREDIT_WIDTH_RATIO_MIN,
+    TAIL_CREDIT_Y_RATIO_MIN,
     TEXT_CONF_THRESHOLD,
+    WATERMARK_EDGE_X_RATIO,
+    WATERMARK_EDGE_Y_RATIO,
+    WATERMARK_HORIZONTAL_ASPECT_MIN,
+    WATERMARK_HORIZONTAL_HEIGHT_RATIO_MAX,
+    WATERMARK_VERTICAL_ASPECT_MIN,
+    WATERMARK_VERTICAL_HEIGHT_RATIO_MAX,
 )
-
-
-FLAT_BUBBLE_BACKGROUND_RATIO_MIN = 0.70
-FLAT_BUBBLE_TEXT_RATIO_MIN = 0.005
-FLAT_BUBBLE_TEXT_RATIO_MAX = 0.28
-FLAT_BUBBLE_PAGE_AREA_MAX = 0.18
-FLAT_BUBBLE_WHITE_MIN = 205
-FLAT_BUBBLE_WHITE_MEDIAN_MIN = 215
-FLAT_BUBBLE_DARK_TEXT_MAX = 180
-FLAT_BUBBLE_BLACK_MAX = 50
-FLAT_BUBBLE_BLACK_MEDIAN_MAX = 45
-FLAT_BUBBLE_LIGHT_TEXT_MIN = 78
 
 
 class CombinedTextDetector:
     def __init__(self):
-        self.bubble_detector = YoloDetector(BUBBLE_DETECTOR_MODEL, min(BUBBLE_CONF_THRESHOLD, 0.12))
+        self.bubble_detector = YoloDetector(
+            BUBBLE_DETECTOR_MODEL, BUBBLE_PROPOSAL_CONF_THRESHOLD
+        )
         self.text_detector = YoloDetector(TEXT_SEGMENTER_MODEL, TEXT_CONF_THRESHOLD)
         self.recovery = SecondaryTextRecovery()
 
@@ -34,10 +66,26 @@ class CombinedTextDetector:
     def _watermark_like(box: BubbleBox, w: int, h: int) -> bool:
         bw, bh = box.x2 - box.x1, box.y2 - box.y1
         aspect = bw / max(1.0, float(bh))
-        edge_touch = box.x1 < w * 0.04 or box.x2 > w * 0.96
-        vertical_edge = box.y1 < h * 0.05 or box.y2 > h * 0.95
-        return bool((edge_touch and aspect >= 4.0 and bh <= h * 0.12) or
-                    (vertical_edge and aspect >= 6.0 and bh <= h * 0.08))
+        edge_touch = (
+            box.x1 < w * WATERMARK_EDGE_X_RATIO
+            or box.x2 > w * (1.0 - WATERMARK_EDGE_X_RATIO)
+        )
+        vertical_edge = (
+            box.y1 < h * WATERMARK_EDGE_Y_RATIO
+            or box.y2 > h * (1.0 - WATERMARK_EDGE_Y_RATIO)
+        )
+        return bool(
+            (
+                edge_touch
+                and aspect >= WATERMARK_HORIZONTAL_ASPECT_MIN
+                and bh <= h * WATERMARK_HORIZONTAL_HEIGHT_RATIO_MAX
+            )
+            or (
+                vertical_edge
+                and aspect >= WATERMARK_VERTICAL_ASPECT_MIN
+                and bh <= h * WATERMARK_VERTICAL_HEIGHT_RATIO_MAX
+            )
+        )
 
     @staticmethod
     def _tail_credit_like(box: BubbleBox, w: int, h: int) -> bool:
@@ -50,9 +98,9 @@ class CombinedTextDetector:
         """
         bw, bh = box.x2 - box.x1, box.y2 - box.y1
         return bool(
-            box.y1 >= h * 0.52
-            and bw >= w * 0.34
-            and bh <= h * 0.22
+            box.y1 >= h * TAIL_CREDIT_Y_RATIO_MIN
+            and bw >= w * TAIL_CREDIT_WIDTH_RATIO_MIN
+            and bh <= h * TAIL_CREDIT_HEIGHT_RATIO_MAX
         )
 
     def _classify(
@@ -91,13 +139,13 @@ class CombinedTextDetector:
         v0.1 used the bubble segmentation itself as the destructive mask whenever
         the text segmenter missed a bubble. That gave good recall but could erase
         artwork. This fallback keeps the useful signal while rebuilding a narrow
-        contrast mask: the bubble must pass the original 0.4 destructive
-        confidence, its interior must be overwhelmingly white or black, and only
-        contrasting stroke pixels become the inpaint mask.
+        contrast mask: the bubble must pass the destructive confidence threshold,
+        its interior must be overwhelmingly white or black, and only contrasting
+        stroke pixels become the inpaint mask.
         """
         if (
             box.semantic_type != "speech_bubble"
-            or float(box.confidence) < float(BUBBLE_CONF_THRESHOLD)
+            or float(box.confidence) < BUBBLE_DESTRUCTIVE_CONF_THRESHOLD
             or not box.verified_mask
         ):
             return None
@@ -115,16 +163,25 @@ class CombinedTextDetector:
         gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop
 
         bubble_roi = (box.mask > 127).astype(np.uint8) * 255
-        inset = max(2, min(10, int(round(min(bw, bh) * 0.04))))
+        inset = max(
+            FLAT_BUBBLE_INSET_MIN,
+            min(
+                FLAT_BUBBLE_INSET_MAX,
+                int(round(min(bw, bh) * FLAT_BUBBLE_INSET_RATIO)),
+            ),
+        )
         kernel_size = inset * 2 + 1
         kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
         interior = cv2.erode(bubble_roi, kernel, iterations=1) > 0
         interior_count = int(np.count_nonzero(interior))
-        if interior_count < max(64, int(bw * bh * 0.12)):
+        if interior_count < max(
+            FLAT_BUBBLE_INTERIOR_PIXELS_MIN,
+            int(bw * bh * FLAT_BUBBLE_INTERIOR_AREA_RATIO_MIN),
+        ):
             return None
 
         values = gray[interior]
-        if values.size < 64:
+        if values.size < FLAT_BUBBLE_INTERIOR_PIXELS_MIN:
             return None
         median = float(np.median(values))
         white_ratio = float(np.mean(values >= FLAT_BUBBLE_WHITE_MIN))
@@ -156,14 +213,17 @@ class CombinedTextDetector:
         stroke_mask = cv2.morphologyEx(
             stroke_mask,
             cv2.MORPH_CLOSE,
-            np.ones((3, 3), np.uint8),
+            np.ones(
+                (FLAT_BUBBLE_STROKE_CLOSE_KERNEL, FLAT_BUBBLE_STROKE_CLOSE_KERNEL),
+                np.uint8,
+            ),
             iterations=1,
         )
         ys, xs = np.nonzero(stroke_mask > 0)
         if xs.size == 0 or ys.size == 0:
             return None
 
-        pad = 4
+        pad = FLAT_BUBBLE_TEXT_BBOX_PAD
         local_x1 = max(0, int(xs.min()) - pad)
         local_y1 = max(0, int(ys.min()) - pad)
         local_x2 = min(bw, int(xs.max()) + 1 + pad)
@@ -219,10 +279,10 @@ class CombinedTextDetector:
             inside = [(i, t) for i, t in enumerate(text_boxes) if self._is_inside(t, b)]
             if inside:
                 group = [t for _, t in inside]
-                min_x = max(0, min(t.x1 for t in group) - 20)
-                min_y = max(0, min(t.y1 for t in group) - 8)
-                max_x = min(w, max(t.x2 for t in group) + 20)
-                max_y = min(h, max(t.y2 for t in group) + 8)
+                min_x = max(0, min(t.x1 for t in group) - BUBBLE_GROUP_PAD_X)
+                min_y = max(0, min(t.y1 for t in group) - BUBBLE_GROUP_PAD_Y)
+                max_x = min(w, max(t.x2 for t in group) + BUBBLE_GROUP_PAD_X)
+                max_y = min(h, max(t.y2 for t in group) + BUBBLE_GROUP_PAD_Y)
                 merged_mask = self._merge_masks(group, min_x, min_y, max_x, max_y)
                 seed = max(group, key=lambda t: t.confidence)
                 safe = merged_mask is not None and bool(np.any(merged_mask > 0))
@@ -254,7 +314,9 @@ class CombinedTextDetector:
         recovered = self.recovery.detect(image, existing=result_boxes)
         result_boxes.extend(recovered)
         result_boxes = self._refine_and_split_tall_boxes(result_boxes, image)
-        result_boxes = self._apply_final_nms(result_boxes, iou_threshold=0.35)
+        result_boxes = self._apply_final_nms(
+            result_boxes, iou_threshold=DETECTOR_FINAL_NMS_IOU
+        )
         return [
             self._classify(b, w, h, protect_tail_credits=protect_tail_credits)
             if b.source_model != "opencv_mser" else b
@@ -262,7 +324,10 @@ class CombinedTextDetector:
         ]
 
     @staticmethod
-    def _apply_final_nms(boxes: list[BubbleBox], iou_threshold: float = 0.35) -> list[BubbleBox]:
+    def _apply_final_nms(
+        boxes: list[BubbleBox],
+        iou_threshold: float = DETECTOR_FINAL_NMS_IOU,
+    ) -> list[BubbleBox]:
         if not boxes:
             return []
         result: list[BubbleBox] = []
@@ -271,8 +336,15 @@ class CombinedTextDetector:
             groups.setdefault((b.source_model, b.semantic_type), []).append(b)
         for members in groups.values():
             rects = np.array([[b.x1, b.y1, max(1,b.x2-b.x1), max(1,b.y2-b.y1)] for b in members])
-            scores = np.array([max(0.05, float(b.confidence)) for b in members])
-            indices = cv2.dnn.NMSBoxes(rects.tolist(), scores.tolist(), 0.05, iou_threshold)
+            scores = np.array(
+                [max(DETECTOR_NMS_SCORE_FLOOR, float(b.confidence)) for b in members]
+            )
+            indices = cv2.dnn.NMSBoxes(
+                rects.tolist(),
+                scores.tolist(),
+                DETECTOR_NMS_SCORE_FLOOR,
+                iou_threshold,
+            )
             result.extend(members[int(i)] for i in np.array(indices).flatten())
         return sorted(result, key=lambda b: b.confidence, reverse=True)
 
@@ -340,8 +412,8 @@ class CombinedTextDetector:
 
                 line_strip = full_gray[abs_y1:abs_y2, crop_x1:crop_x2]
                 if line_strip.size == 0:
-                    abs_x1 = max(0, box.x1 - 20)
-                    abs_x2 = min(img_w, box.x2 + 20)
+                    abs_x1 = max(0, box.x1 - BUBBLE_GROUP_PAD_X)
+                    abs_x2 = min(img_w, box.x2 + BUBBLE_GROUP_PAD_X)
                 else:
                     col_means = line_strip.mean(axis=0)
                     strip_bg = np.percentile(col_means, 90)
@@ -412,7 +484,10 @@ class CombinedTextDetector:
             if len(cluster) > 1:
                 avg_box_h = sum(b.y2 - b.y1 for b in cluster) / len(cluster)
                 cluster_h = max(b.y2 for b in cluster) - min(b.y1 for b in cluster)
-                if len(cluster) > 3 or cluster_h > 4.0 * avg_box_h:
+                if (
+                    len(cluster) > FREE_TEXT_CLUSTER_SPLIT_COUNT
+                    or cluster_h > FREE_TEXT_CLUSTER_HEIGHT_FACTOR * avg_box_h
+                ):
                     sub_clusters = self._split_cluster_by_lines(cluster, avg_box_h)
                 else:
                     sub_clusters = [cluster]
@@ -422,10 +497,10 @@ class CombinedTextDetector:
             for sub in sub_clusters:
                 if len(sub) == 1:
                     b = sub[0]
-                    min_x = max(0, b.x1 - 20)
-                    min_y = max(0, b.y1 - 6)
-                    max_x = min(img_w, b.x2 + 20)
-                    max_y = min(img_h, b.y2 + 6)
+                    min_x = max(0, b.x1 - FREE_TEXT_SINGLE_PAD_X)
+                    min_y = max(0, b.y1 - FREE_TEXT_SINGLE_PAD_Y)
+                    max_x = min(img_w, b.x2 + FREE_TEXT_SINGLE_PAD_X)
+                    max_y = min(img_h, b.y2 + FREE_TEXT_SINGLE_PAD_Y)
                     if max_x <= min_x or max_y <= min_y:
                         continue
                     cluster_area = (max_x - min_x) * (max_y - min_y)
@@ -434,10 +509,10 @@ class CombinedTextDetector:
                     merged_mask = self._merge_masks([b], min_x, min_y, max_x, max_y)
                     final_clusters.append(replace(b, x1=min_x, y1=min_y, x2=max_x, y2=max_y, mask=merged_mask))
                 else:
-                    min_x = max(0, min(t.x1 for t in sub) - 20)
-                    min_y = max(0, min(t.y1 for t in sub) - 8)
-                    max_x = min(img_w, max(t.x2 for t in sub) + 20)
-                    max_y = min(img_h, max(t.y2 for t in sub) + 8)
+                    min_x = max(0, min(t.x1 for t in sub) - FREE_TEXT_GROUP_PAD_X)
+                    min_y = max(0, min(t.y1 for t in sub) - FREE_TEXT_GROUP_PAD_Y)
+                    max_x = min(img_w, max(t.x2 for t in sub) + FREE_TEXT_GROUP_PAD_X)
+                    max_y = min(img_h, max(t.y2 for t in sub) + FREE_TEXT_GROUP_PAD_Y)
                     if max_x <= min_x or max_y <= min_y:
                         continue
                     cluster_area = (max_x - min_x) * (max_y - min_y)
@@ -463,7 +538,10 @@ class CombinedTextDetector:
                 line_y2 = max(x.y2 for x in line)
                 overlap = min(b.y2, line_y2) - max(b.y1, line_y1)
                 min_h = min(b.y2 - b.y1, line_y2 - line_y1)
-                if min_h > 0 and overlap / min_h > 0.5:
+                if (
+                    min_h > 0
+                    and overlap / min_h > FREE_TEXT_LINE_OVERLAP_MIN
+                ):
                     line.append(b)
                     placed = True
                     break
@@ -479,7 +557,7 @@ class CombinedTextDetector:
                 current_group = list(line)
             else:
                 group_h = max(b.y2 for b in current_group + line) - min(b.y1 for b in current_group + line)
-                if group_h > 3.0 * avg_box_h:
+                if group_h > FREE_TEXT_GROUP_HEIGHT_FACTOR * avg_box_h:
                     sub_clusters.append(current_group)
                     current_group = list(line)
                 else:
@@ -491,8 +569,18 @@ class CombinedTextDetector:
 
     @staticmethod
     def _is_free_text_close(a: BubbleBox, b: BubbleBox) -> bool:
-        x_overlap = not (a.x2 < b.x1 - 35 or b.x2 < a.x1 - 35)
-        y_close = abs(a.y1 - b.y1) < 45 or abs(a.y2 - b.y2) < 45 or not (a.y2 < b.y1 - 40 or b.y2 < a.y1 - 40)
+        x_overlap = not (
+            a.x2 < b.x1 - FREE_TEXT_X_GAP
+            or b.x2 < a.x1 - FREE_TEXT_X_GAP
+        )
+        y_close = (
+            abs(a.y1 - b.y1) < FREE_TEXT_Y_ALIGNMENT
+            or abs(a.y2 - b.y2) < FREE_TEXT_Y_ALIGNMENT
+            or not (
+                a.y2 < b.y1 - FREE_TEXT_Y_GAP
+                or b.y2 < a.y1 - FREE_TEXT_Y_GAP
+            )
+        )
         return x_overlap and y_close
 
     @staticmethod
