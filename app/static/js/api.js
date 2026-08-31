@@ -174,6 +174,19 @@ async function loadRecentChapters() {
   }
 }
 
+async function refreshChapterManifest(chapterId) {
+  if (!chapterId) return null;
+  const resp = await fetch(`/api/chapter/${encodeURIComponent(chapterId)}`);
+  const data = await parseApiResponse(resp);
+  if (!resp.ok) {
+    throw new Error(getErrorMessage(resp.status, data));
+  }
+  if (chapterId !== currentChapterId) return null;
+  currentManifest = data;
+  return data;
+}
+window.refreshChapterManifest = refreshChapterManifest;
+
 async function resumeChapter(chapterId) {
   if (!chapterId) return;
   currentChapterId = chapterId;
@@ -286,9 +299,9 @@ async function toggleSkip(pageIndex, card, btn) {
     if (!resp.ok) {
       throw new Error(getErrorMessage(resp.status, data));
     }
-    page.skipped = newSkipped;
-    card.classList.toggle("skipped", newSkipped);
-    btn.textContent = newSkipped ? "Đã bỏ qua · Chọn để khôi phục" : "Bỏ qua trang";
+    currentManifest = data;
+    window.previewActivePageIndex = pageIndex;
+    renderPreview();
   } catch (err) {
     showToast("Không đổi được trạng thái bỏ qua: " + err.message, "error");
   }
@@ -348,10 +361,29 @@ async function processSelectedPages() {
 
     renderReview();
   } catch (err) {
+    let resynced = false;
+    if (chapterId === currentChapterId) {
+      try {
+        await refreshChapterManifest(chapterId);
+        resynced = true;
+      } catch (syncErr) {
+        console.error("Could not resync chapter after partial process failure:", syncErr);
+      }
+    }
+
     const prefix = completed > 0
       ? `Đã xử lý ít nhất ${completed}/${total} trang. Phần tiếp theo thất bại: `
       : "Xử lý trang thất bại: ";
     showToast(prefix + err.message, "error");
+
+    if (resynced) {
+      window.previewActivePageIndex = Math.min(
+        Number(window.previewActivePageIndex) || 0,
+        Math.max(0, (currentManifest?.pages?.length || 1) - 1),
+      );
+      renderPreview();
+      return;
+    }
     if (btn) {
       btn.disabled = false;
       btn.textContent = "Tiếp tục xử lý";
