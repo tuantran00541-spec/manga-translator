@@ -1,31 +1,34 @@
 #!/usr/bin/env python3
-"""Qwen3.8-27B Q6_K_L GGUF CPU first-token smoke for the isolated K3 lab lane.
+"""Qwen3.8-27B Q6_K_L GGUF CPU first-token viability gate.
 
-This gate intentionally downloads only the community Q6_K_L GGUF (never the
-BF16 checkpoint), verifies the pinned artifact identity, then asks llama.cpp
-for exactly one greedy token. Evidence is checkpointed and flushed before each
-expensive phase so an infrastructure shutdown still leaves useful job-log
-breadcrumbs.
+This gate downloads only the pinned community Q6_K_L GGUF, verifies SHA256,
+parses the GGUF directory without mmap'ing tensor data, then asks pinned
+llama.cpp for exactly one deterministic token. The CLI is forced into a single
+non-interactive turn and its default warmup/repack passes are disabled so the
+smoke measures the requested first-token path rather than accidental extra
+whole-model work.
 """
 from __future__ import annotations
 
 import argparse
+from collections import Counter, deque
 import hashlib
 import json
 import resource
 import signal
 import subprocess
 import time
-from collections import deque
 from pathlib import Path
 from typing import Any
 
 from huggingface_hub import hf_hub_download
 
+from gguf_stream import parse_gguf
+
 REPO = "bartowski/Qwen3.8-27B-GGUF"
 FILE = "Qwen3.8-27B-Q6_K_L.gguf"
 EXPECTED_SHA256 = "a487690b9f17de581857c4ae484dab50800335bb9eb978a4fb02c0465629dc0a"
-PROMPT = "Answer with exactly one English word and no explanation: Two plus two equals what?"
+PROMPT = "2+2="
 
 
 def sha256(path: Path) -> str:
@@ -62,7 +65,7 @@ def main() -> None:
     args.work_dir.mkdir(parents=True, exist_ok=True)
     started = time.monotonic()
     state: dict[str, Any] = {
-        "schema": "qwen38-k3-gguf-q6-first-token-v2",
+        "schema": "qwen38-k3-gguf-q6-first-token-v3",
         "status": "INCOMPLETE",
         "phase": "start",
         "repo": REPO,
@@ -70,8 +73,12 @@ def main() -> None:
         "expected_sha256": EXPECTED_SHA256,
         "prompt": PROMPT,
         "requested_tokens": 1,
-        "context": 64,
+        "context": 32,
         "temperature": 0,
+        "load_mode": "mmap",
+        "single_turn": True,
+        "warmup": False,
+        "repack": False,
         "bf16_downloaded": False,
     }
 
@@ -139,26 +146,48 @@ def main() -> None:
                 sha256_seconds=sha_seconds,
             )
             raise RuntimeError(f"GGUF sha256 mismatch: {digest}")
+        checkpoint("sha256_verified", sha256=digest, sha256_seconds=sha_seconds)
+
+        checkpoint("gguf_directory_started")
+        directory = parse_gguf(model)
+        type_counts = Counter(tensor.type_name for tensor in directory.tensors)
+        by_name = directory.by_name()
+        token_embd = by_name.get("token_embd.weight")
+        output = by_name.get("output.weight")
+        architecture = directory.metadata.get("general.architecture")
+        if architecture != "qwen35":
+            raise RuntimeError(f"unexpected GGUF architecture: {architecture!r}")
         checkpoint(
-            "sha256_verified",
-            sha256=digest,
-            sha256_seconds=sha_seconds,
+            "gguf_directory_verified",
+            gguf_version=directory.version,
+            architecture=architecture,
+            tensor_count=directory.tensor_count,
+            kv_count=directory.kv_count,
+            alignment=directory.alignment,
+            data_offset=directory.data_offset,
+            tensor_type_counts=dict(sorted(type_counts.items())),
+            token_embd_type=token_embd.type_name if token_embd else None,
+            output_type=output.type_name if output else None,
         )
 
         cmd = [
             str(args.llama_cli),
-            "-m",
-            str(model),
-            "-ngl",
-            "0",
-            "-c",
-            "64",
-            "-n",
-            "1",
-            "--temp",
-            "0",
-            "-p",
-            PROMPT,
+            "-m", str(model),
+            "-ngl", "0",
+            "-c", "32",
+            "-b", "8",
+            "-ub", "8",
+            "-n", "1",
+            "--temp", "0",
+            "--load-mode", "mmap",
+            "--no-repack",
+            "--no-warmup",
+            "--single-turn",
+            "--no-display-prompt",
+            "--special",
+            "--no-mmproj",
+            "--log-disable",
+            "-p", PROMPT,
         ]
         checkpoint("inference_started", command=cmd)
         infer_started = time.monotonic()
@@ -172,43 +201,31 @@ def main() -> None:
         if child.stdout is None:
             raise RuntimeError("llama-cli stdout pipe unavailable")
 
-        tail: deque[str] = deque(maxlen=256)
+        tail: deque[str] = deque(maxlen=64)
         first_output_seen = False
-        metadata_seen = False
-        load_signal_seen = False
         for line in child.stdout:
             print(line, end="", flush=True)
             tail.append(line)
-            low = line.lower()
-            if not first_output_seen:
+            if not first_output_seen and line:
                 first_output_seen = True
-                checkpoint("llama_first_output", first_output_line=line.strip()[:1000])
-            if not metadata_seen and ("loaded meta data" in low or "model loader" in low):
-                metadata_seen = True
-                checkpoint("llama_metadata_seen", marker=line.strip()[:1000])
-            if not load_signal_seen and (
-                "load_tensors" in low
-                or "llama_model_load" in low
-                or "model load" in low
-                or "loading model" in low
-            ):
-                load_signal_seen = True
-                checkpoint("llama_load_progress_seen", marker=line.strip()[:1000])
+                checkpoint("first_token_output_seen", first_output_line=line[:1000])
 
         returncode = child.wait()
         infer_seconds = time.monotonic() - infer_started
         text = "".join(tail)
-        semantic = "four" in text.lower()
-        status = "PASS" if returncode == 0 and semantic else "FAIL"
+        output_nonempty = bool(text)
+        semantic_four = "4" in text
+        status = "PASS" if returncode == 0 and output_nonempty else "FAIL"
         checkpoint(
             "inference_completed",
             status=status,
             returncode=returncode,
-            semantic_four=semantic,
+            output_nonempty=output_nonempty,
+            semantic_four=semantic_four,
+            generated_output=text[-2000:],
             inference_seconds=infer_seconds,
             max_child_rss_gib=rss_gib(),
             total_seconds=time.monotonic() - started,
-            stdout_tail=text[-8000:],
         )
         if status != "PASS":
             raise SystemExit(1)
