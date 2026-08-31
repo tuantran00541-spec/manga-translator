@@ -125,7 +125,7 @@ def main() -> None:
         "reader_report": reader_report,
         "manifest_layers": manifest["layers"],
     }
-    verification_ok = verified0.get("checked_tensors", 0) > 0 and verified3.get("checked_tensors", 0) > 0
+    verification_ok = verified0.get("tensors_checked", 0) > 0 and verified3.get("tensors_checked", 0) > 0
     if len(q4_names) != 8 or not (verification_ok and prefetch3):
         result["status"] = "FAIL"
     args.output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
