@@ -37,6 +37,14 @@ def main() -> None:
         "ocr_eligible=bool(b.ocr_eligible)",
         "needs_review=bool(b.needs_review)",
     )
+    _require(
+        "scripts/model_e2e_gate.py",
+        "source_model=box.source_model",
+        "mask_source=box.mask_source",
+        "safe_to_inpaint=bool(box.safe_to_inpaint)",
+        "ocr_eligible=bool(box.ocr_eligible)",
+        "needs_review=bool(box.needs_review)",
+    )
     print("Inpaint destructive-authority source contract OK")
 
 

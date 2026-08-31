@@ -127,6 +127,14 @@ def _authority_mask(image: np.ndarray, records: list[dict], inpainter) -> np.nda
                 box.x1 - cx1, box.y1 - cy1,
                 box.x2 - cx1, box.y2 - cy1,
                 box.confidence, box.mask,
+                source_model=box.source_model,
+                class_id=box.class_id,
+                class_name=box.class_name,
+                semantic_type=box.semantic_type,
+                mask_source=box.mask_source,
+                safe_to_inpaint=bool(box.safe_to_inpaint),
+                ocr_eligible=bool(box.ocr_eligible),
+                needs_review=bool(box.needs_review),
             )
             if bool(getattr(box, "allow_rectangle_fallback", False)):
                 local.allow_rectangle_fallback = True
