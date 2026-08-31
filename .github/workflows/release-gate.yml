@@ -20,10 +20,13 @@ jobs:
           python-version: "3.12"
 
       - name: Compile production Python source
-        run: python -m compileall -q app run.py scripts/release_sanity.py scripts/browser_sanity.py scripts/model_e2e_gate.py scripts/ocr_runtime_model_gate.py
+        run: python -m compileall -q app run.py scripts/release_sanity.py scripts/browser_sanity.py scripts/inpaint_authority_sanity.py scripts/model_e2e_gate.py scripts/ocr_runtime_model_gate.py
 
       - name: Run source sanity checks
         run: python scripts/release_sanity.py
+
+      - name: Run inpaint authority sanity checks
+        run: python scripts/inpaint_authority_sanity.py
 
       - name: Run browser markup safety checks
         run: python scripts/browser_sanity.py
