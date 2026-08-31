@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Real Q6_K_L GGUF -> K3 storage/layout integration gate.
 
-Downloads the pinned GGUF once, verifies it, inventories all decoder layers,
-then repacks only representative layers 0 and 3 and exercises the existing K3
+Downloads the pinned GGUF once, verifies it, inventories the 64 decoder layers
+and any auxiliary GGUF blocks (Qwen3.8 carries its MTP head as blk.64), then
+repacks representative decoder layers 0 and 3 and exercises the existing K3
 ring reader. No inference or dequantization is performed here.
 """
 from __future__ import annotations
@@ -16,7 +17,7 @@ from pathlib import Path
 from huggingface_hub import hf_hub_download
 
 from gguf_stream import parse_gguf
-from gguf_k3_layout import ManifestK3Trunk, pack_gguf_layers, split_tensors
+from gguf_k3_layout import ManifestK3Trunk, pack_gguf_layers, partition_tensors
 from k3_stream import plan_memory, verify_layer
 
 REPO = "bartowski/Qwen3.8-27B-GGUF"
@@ -24,6 +25,8 @@ FILE = "Qwen3.8-27B-Q6_K_L.gguf"
 SHA256 = "a487690b9f17de581857c4ae484dab50800335bb9eb978a4fb02c0465629dc0a"
 MODEL_ID = "Qwen/Qwen3.8-27B"
 REVISION = "1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0"
+DECODER_LAYERS = 64
+EXPECTED_AUX_BLOCKS = [64]  # one MTP layer in the pinned official config/GGUF
 
 
 def sha256(path: Path) -> str:
@@ -48,10 +51,14 @@ def main() -> None:
         raise RuntimeError(f"SHA256 mismatch: {digest}")
 
     directory = parse_gguf(model)
-    grouped, globals_ = split_tensors(directory, expected_layers=64)
+    grouped, auxiliary, globals_ = partition_tensors(directory, expected_layers=DECODER_LAYERS)
+    aux_ids = sorted(auxiliary)
+    if aux_ids != EXPECTED_AUX_BLOCKS:
+        raise RuntimeError(f"unexpected auxiliary GGUF blocks: {aux_ids}")
+
     q4_names = sorted(t.name for t in directory.tensors if t.type_name == "Q4_0")
     layer_stats = []
-    for layer in range(64):
+    for layer in range(DECODER_LAYERS):
         tensors = grouped[layer]
         types = Counter(t.type_name for t in tensors)
         raw = sum(t.nbytes for t in tensors)
@@ -61,13 +68,20 @@ def main() -> None:
             "raw_bytes": raw,
             "type_counts": dict(sorted(types.items())),
         })
+    auxiliary_stats = [{
+        "block": block,
+        "tensor_count": len(tensors),
+        "raw_bytes": sum(t.nbytes for t in tensors),
+        "type_counts": dict(sorted(Counter(t.type_name for t in tensors).items())),
+        "tensor_names": [t.name for t in tensors],
+    } for block, tensors in sorted(auxiliary.items())]
 
     trunk = args.work_dir / "representative-layers.k3.bin"
     index = args.work_dir / "representative-layers.k3.json"
     manifest = pack_gguf_layers(
         directory, trunk, index,
         layers=[0, 3], model_id=MODEL_ID, revision=REVISION,
-        source_sha256=digest, expected_layers=64,
+        source_sha256=digest, expected_layers=DECODER_LAYERS,
     )
 
     max_read = max(int(x["read_bytes"]) for x in manifest["layers"])
@@ -103,10 +117,13 @@ def main() -> None:
         "gguf_version": directory.version,
         "architecture": directory.metadata.get("general.architecture"),
         "tensor_count": directory.tensor_count,
+        "decoder_layer_count": DECODER_LAYERS,
         "global_tensor_count": len(globals_),
+        "auxiliary_block_ids": aux_ids,
+        "auxiliary_stats": auxiliary_stats,
         "q4_0_count": len(q4_names),
         "q4_0_names": q4_names,
-        "max_layer": max(grouped),
+        "max_decoder_layer": max(grouped),
         "layer_stats": layer_stats,
         "packed_layers": [0, 3],
         "packed_file_bytes": manifest["packed_file_bytes"],
@@ -123,6 +140,7 @@ def main() -> None:
         "sample_3": sample3,
         "sample_3_bytes": sample3_bytes,
         "reader_report": reader_report,
+        "manifest_auxiliary_blocks": manifest.get("auxiliary_blocks", []),
         "manifest_layers": manifest["layers"],
     }
     verification_ok = verified0.get("tensors_checked", 0) > 0 and verified3.get("tensors_checked", 0) > 0
