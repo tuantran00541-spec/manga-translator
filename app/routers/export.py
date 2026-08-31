@@ -181,6 +181,91 @@ def _core_range(page: dict) -> tuple[int, int] | None:
         return None
 
 
+def _source_core_metadata(page: dict) -> tuple[tuple[int, int] | None, int | None]:
+    core = page.get("stitch_core") if isinstance(page.get("stitch_core"), dict) else None
+    if core is None:
+        return None, None
+    try:
+        source_range = (
+            int(core["core_source_y1"]),
+            int(core["core_source_y2"]),
+        )
+        source_height = int(core["source_height"])
+    except (KeyError, TypeError, ValueError):
+        return None, None
+    return source_range, source_height
+
+
+def _validate_stitch_group(source_page: int, items: list[dict]) -> None:
+    """Fail closed when slice ownership cannot reconstruct one source page exactly."""
+    if not items:
+        raise HTTPException(409, f"Source page {source_page + 1} has no export slices")
+
+    slice_indices = [int(item["slice_index"]) for item in items]
+    expected_indices = list(range(len(items)))
+    if slice_indices != expected_indices:
+        raise HTTPException(
+            409,
+            f"Source page {source_page + 1} has invalid slice ordering/coverage: "
+            f"expected {expected_indices}, got {slice_indices}.",
+        )
+
+    source_metadata = [item.get("source_core_range") for item in items]
+    source_heights = [item.get("source_height") for item in items]
+
+    # Legacy unsliced chapters may not have stitch metadata. A single image is
+    # still unambiguous; multi-slice reconstruction is not.
+    if len(items) == 1 and source_metadata[0] is None and source_heights[0] is None:
+        return
+    if any(value is None for value in source_metadata) or any(value is None for value in source_heights):
+        raise HTTPException(
+            409,
+            f"Source page {source_page + 1} is missing stitch ownership metadata.",
+        )
+
+    heights = {int(value) for value in source_heights}
+    if len(heights) != 1:
+        raise HTTPException(
+            409,
+            f"Source page {source_page + 1} has inconsistent source heights across slices.",
+        )
+    source_height = heights.pop()
+    if source_height <= 0:
+        raise HTTPException(409, f"Source page {source_page + 1} has invalid source height")
+
+    expected_source_y = 0
+    for item in items:
+        source_y1, source_y2 = item["source_core_range"]
+        if source_y1 != expected_source_y or source_y2 <= source_y1:
+            relation = "gap" if source_y1 > expected_source_y else "overlap"
+            raise HTTPException(
+                409,
+                f"Source page {source_page + 1} stitch ownership has a {relation} at "
+                f"y={expected_source_y}: next core is [{source_y1}, {source_y2}).",
+            )
+
+        physical_core = item.get("core_range")
+        if physical_core is None:
+            raise HTTPException(
+                409,
+                f"Source page {source_page + 1} is missing physical core metadata.",
+            )
+        core_y1, core_y2 = physical_core
+        if core_y2 <= core_y1 or (core_y2 - core_y1) != (source_y2 - source_y1):
+            raise HTTPException(
+                409,
+                f"Source page {source_page + 1} has inconsistent physical/source core lengths.",
+            )
+        expected_source_y = source_y2
+
+    if expected_source_y != source_height:
+        raise HTTPException(
+            409,
+            f"Source page {source_page + 1} stitch ownership ends at y={expected_source_y}, "
+            f"expected source height {source_height}.",
+        )
+
+
 def _snapshot_export_inputs(chapter_id: str) -> list[dict]:
     """Capture canonical export inputs while holding the manifest lock briefly."""
     with get_manifest_lock(chapter_id):
@@ -192,6 +277,7 @@ def _snapshot_export_inputs(chapter_id: str) -> list[dict]:
                 revision = _file_revision(path)
             except OSError as exc:
                 raise HTTPException(409, f"Page {page_index + 1} changed before export started") from exc
+            source_core_range, source_height = _source_core_metadata(page)
             snapshot.append(
                 {
                     "page_index": page_index,
@@ -200,6 +286,8 @@ def _snapshot_export_inputs(chapter_id: str) -> list[dict]:
                     "path": path,
                     "revision": revision,
                     "core_range": _core_range(page),
+                    "source_core_range": source_core_range,
+                    "source_height": source_height,
                 }
             )
         return snapshot
@@ -216,10 +304,13 @@ def _export_snapshot_is_current(chapter_id: str, snapshot: list[dict]) -> bool:
         if page_index < 0 or page_index >= len(pages):
             return False
         page = pages[page_index]
+        source_core_range, source_height = _source_core_metadata(page)
         if (
             _safe_int(page.get("source_page"), page_index) != int(item["source_page"])
             or _safe_int(page.get("slice_index"), 0) != int(item["slice_index"])
             or _core_range(page) != item["core_range"]
+            or source_core_range != item["source_core_range"]
+            or source_height != item["source_height"]
         ):
             return False
         try:
@@ -292,6 +383,7 @@ def export_chapter(chapter_id: str):
                     groups[source_page],
                     key=lambda item: (int(item["slice_index"]), int(item["page_index"])),
                 )
+                _validate_stitch_group(source_page, items)
                 page_tmp = out_dir / (
                     f"page_{output_index:03d}.export.{uuid.uuid4().hex[:12]}.png"
                 )
