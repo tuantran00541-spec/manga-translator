@@ -31,7 +31,7 @@ jobs:
         run: python -m pip install --no-cache-dir numpy torch --index-url https://download.pytorch.org/whl/cpu
       - name: Compile and run synthetic sanity
         run: |
-          python -m py_compile research/qwen38/core.py research/qwen38/synthetic_sanity.py research/qwen38/real_layer_experiment.py research/qwen38/k3_stream.py research/qwen38/k3_stream_sanity.py research/qwen38/k3_real_layer_smoke.py research/qwen38/k3_mlp_compute_gate.py
+          python -m py_compile research/qwen38/core.py research/qwen38/synthetic_sanity.py research/qwen38/real_layer_experiment.py research/qwen38/k3_stream.py research/qwen38/k3_stream_sanity.py research/qwen38/k3_real_layer_smoke.py research/qwen38/k3_mlp_compute_gate.py research/qwen38/k3_linear_layer_gate.py
           python research/qwen38/synthetic_sanity.py
           python research/qwen38/k3_stream_sanity.py
 
@@ -253,5 +253,66 @@ jobs:
           path: |
             ${{ runner.temp }}/qwen38-k3-mlp-evidence/mlp.json
             ${{ runner.temp }}/qwen38-k3-mlp-evidence/mlp.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  k3-linear-layer:
+    needs: synthetic-sanity
+    if: >-
+      ${{
+        github.event_name == 'push' &&
+        contains(github.event.head_commit.message, '[qwen-stream-layer]')
+      }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      OMP_NUM_THREADS: "4"
+      MKL_NUM_THREADS: "4"
+      HF_HUB_DISABLE_TELEMETRY: "1"
+      USE_HUB_KERNELS: "NO"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reclaim runner disk
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup || true
+          docker system prune -af || true
+          sudo apt-get clean || true
+          df -h
+          free -h
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install decoder-layer reference dependencies
+        run: |
+          python -m pip install --no-cache-dir numpy "transformers==5.16.1" safetensors huggingface_hub
+          python -m pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+      - name: Compare official layer0 against ring-buffer decoder compute
+        shell: bash
+        run: |
+          set -euo pipefail
+          work="$RUNNER_TEMP/qwen38-k3-linear-layer"
+          evidence="$RUNNER_TEMP/qwen38-k3-linear-layer-evidence"
+          mkdir -p "$work" "$evidence"
+          /usr/bin/time -v python research/qwen38/k3_linear_layer_gate.py \
+            --work-dir "$work" \
+            --layer 0 \
+            --seq-len 1 \
+            --output "$evidence/layer.json" \
+            2>&1 | tee "$evidence/layer.log"
+      - name: Show layer evidence and clean source weights
+        if: always()
+        run: |
+          cat "$RUNNER_TEMP/qwen38-k3-linear-layer-evidence/layer.json" || true
+          df -h || true
+          free -h || true
+          rm -rf "$RUNNER_TEMP/qwen38-k3-linear-layer" || true
+      - name: Upload layer metrics only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen38-k3-linear-layer-evidence-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/qwen38-k3-linear-layer-evidence/layer.json
+            ${{ runner.temp }}/qwen38-k3-linear-layer-evidence/layer.log
           if-no-files-found: warn
           retention-days: 14
