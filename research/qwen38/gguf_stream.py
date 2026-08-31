@@ -34,31 +34,64 @@ GGUF_TYPE_UINT64 = 10
 GGUF_TYPE_INT64 = 11
 GGUF_TYPE_FLOAT64 = 12
 
+# GGML tensor type ids used by ordinary dense GGUF quantization.  Keep these
+# numerically pinned to the llama.cpp revision above; do not infer from file type.
 GGML_TYPE_F32 = 0
 GGML_TYPE_F16 = 1
+GGML_TYPE_Q4_0 = 2
+GGML_TYPE_Q4_1 = 3
+GGML_TYPE_Q5_0 = 6
+GGML_TYPE_Q5_1 = 7
 GGML_TYPE_Q8_0 = 8
+GGML_TYPE_Q8_1 = 9
+GGML_TYPE_Q2_K = 10
+GGML_TYPE_Q3_K = 11
+GGML_TYPE_Q4_K = 12
+GGML_TYPE_Q5_K = 13
 GGML_TYPE_Q6_K = 14
+GGML_TYPE_Q8_K = 15
+GGML_TYPE_I8 = 24
+GGML_TYPE_I16 = 25
+GGML_TYPE_I32 = 26
+GGML_TYPE_I64 = 27
+GGML_TYPE_F64 = 28
 GGML_TYPE_BF16 = 30
 
-# (quant block elements, encoded bytes)
+# (name, quant block elements, encoded bytes). Values mirror
+# gguf-py/gguf/constants.py::GGML_QUANT_SIZES at the pinned llama.cpp commit.
 GGML_TYPE_INFO: dict[int, tuple[str, int, int]] = {
     GGML_TYPE_F32: ("F32", 1, 4),
     GGML_TYPE_F16: ("F16", 1, 2),
+    GGML_TYPE_Q4_0: ("Q4_0", 32, 18),
+    GGML_TYPE_Q4_1: ("Q4_1", 32, 20),
+    GGML_TYPE_Q5_0: ("Q5_0", 32, 22),
+    GGML_TYPE_Q5_1: ("Q5_1", 32, 24),
     GGML_TYPE_Q8_0: ("Q8_0", 32, 34),
+    GGML_TYPE_Q8_1: ("Q8_1", 32, 40),
+    GGML_TYPE_Q2_K: ("Q2_K", 256, 84),
+    GGML_TYPE_Q3_K: ("Q3_K", 256, 110),
+    GGML_TYPE_Q4_K: ("Q4_K", 256, 144),
+    GGML_TYPE_Q5_K: ("Q5_K", 256, 176),
     GGML_TYPE_Q6_K: ("Q6_K", 256, 210),
+    GGML_TYPE_Q8_K: ("Q8_K", 256, 292),
+    GGML_TYPE_I8: ("I8", 1, 1),
+    GGML_TYPE_I16: ("I16", 1, 2),
+    GGML_TYPE_I32: ("I32", 1, 4),
+    GGML_TYPE_I64: ("I64", 1, 8),
+    GGML_TYPE_F64: ("F64", 1, 8),
     GGML_TYPE_BF16: ("BF16", 1, 2),
 }
 
-# Exact encoded block layout used by llama.cpp.
+# Exact encoded block layouts used by llama.cpp for the primary gold path.
 Q6_K_LAYOUT = {
-    "ql": (0, 128),       # lower 4 bits for 256 values
-    "qh": (128, 192),     # upper 2 bits
-    "scales": (192, 208), # 16 x int8 scale
-    "d": (208, 210),      # fp16 super-scale
+    "ql": (0, 128),
+    "qh": (128, 192),
+    "scales": (192, 208),
+    "d": (208, 210),
 }
 Q8_0_LAYOUT = {
-    "d": (0, 2),          # fp16 scale
-    "qs": (2, 34),        # 32 x int8
+    "d": (0, 2),
+    "qs": (2, 34),
 }
 
 _WANTED_DEFAULT = frozenset({
@@ -238,9 +271,6 @@ def tensor_nbytes(shape: Iterable[int], ggml_type: int) -> tuple[int, str, int, 
         if dim <= 0:
             raise GGUFError(f"tensor dimensions must be positive, got {dims}")
 
-    # ggml stores quant blocks along ne[0] (the contiguous row width), not
-    # across a flattened tensor boundary. Checking only total element count
-    # would incorrectly accept shapes such as (1, 256) for Q6_K.
     if dims[0] % block_elements:
         raise GGUFError(
             f"{type_name} tensor row width {dims[0]} is not divisible by block size {block_elements}"
@@ -261,7 +291,9 @@ def parse_gguf(
     """Parse only the GGUF v3 directory and selected metadata.
 
     Tensor data itself is never mmap'd/read. Unselected metadata is skipped in
-    place, including large tokenizer arrays.
+    place, including large tokenizer arrays. Tensor entries are all collected
+    before type validation so one expensive real-file scan reports every
+    unsupported GGML type id at once instead of failing on the first tensor.
     """
     path_obj = Path(path)
     file_bytes = path_obj.stat().st_size
@@ -292,7 +324,7 @@ def parse_gguf(
 
         alignment = _validate_alignment(metadata.get("general.alignment", GGUF_DEFAULT_ALIGNMENT))
 
-        raw_tensors: list[tuple[str, tuple[int, ...], int, int, int, str, int, int]] = []
+        raw_tensors: list[tuple[str, tuple[int, ...], int, int]] = []
         seen_names: set[str] = set()
         for _ in range(tensor_count):
             name = r.string(materialize=True)
@@ -307,17 +339,20 @@ def parse_gguf(
             shape = tuple(r.u64() for _ in range(n_dims))
             ggml_type = r.u32()
             relative_offset = r.u64()
-            nbytes, type_name, block_elements, block_bytes = tensor_nbytes(shape, ggml_type)
-            raw_tensors.append(
-                (name, shape, ggml_type, relative_offset, nbytes, type_name, block_elements, block_bytes)
-            )
+            raw_tensors.append((name, shape, ggml_type, relative_offset))
 
         data_offset = _align_up(r.tell(), alignment)
         if data_offset > file_bytes:
             raise GGUFError("tensor data offset is beyond end of file")
 
-        tensors = tuple(
-            TensorSpan(
+        unsupported = sorted({ggml_type for _, _, ggml_type, _ in raw_tensors if ggml_type not in GGML_TYPE_INFO})
+        if unsupported:
+            raise GGUFError(f"unsupported GGML tensor types {unsupported}")
+
+        tensors_list: list[TensorSpan] = []
+        for name, shape, ggml_type, relative_offset in raw_tensors:
+            nbytes, type_name, block_elements, block_bytes = tensor_nbytes(shape, ggml_type)
+            tensors_list.append(TensorSpan(
                 name=name,
                 shape=shape,
                 ggml_type=ggml_type,
@@ -327,10 +362,8 @@ def parse_gguf(
                 nbytes=nbytes,
                 block_elements=block_elements,
                 block_bytes=block_bytes,
-            )
-            for name, shape, ggml_type, relative_offset, nbytes, type_name, block_elements, block_bytes
-            in raw_tensors
-        )
+            ))
+        tensors = tuple(tensors_list)
 
         if validate_spans:
             ordered = sorted(tensors, key=lambda t: (t.data_offset, t.end_offset, t.name))
