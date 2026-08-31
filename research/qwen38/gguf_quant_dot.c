@@ -1,4 +1,4 @@
-/* Portable scalar Q6_K x Q8_K reference/runtime bridge for the Qwen3.8 lab.
+/* Portable scalar quantized dot/runtime bridges for the Qwen3.8 lab.
  * Semantics mirror llama.cpp pin 557614e0296ff4a5b6f649737a65ae2076eea2fd.
  */
 #include <assert.h>
@@ -8,6 +8,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define QWEN_QK8_0 32
+#define QWEN_BLOCK_Q8_0 34
 #define QWEN_QK_K 256
 #define QWEN_BLOCK_Q6_K 210
 #define QWEN_BLOCK_Q8_K 292
@@ -44,6 +46,53 @@ static float qwen_f16_to_f32(uint16_t h) {
     return out;
 }
 
+/* IEEE-754 binary32 -> binary16, round-to-nearest-even.  Keeping this local
+ * avoids depending on compiler-specific _Float16 support in the future
+ * Windows CPU runtime while matching the FP16 scale storage used by GGML. */
+static uint16_t qwen_f32_to_f16(float value) {
+    uint32_t bits;
+    memcpy(&bits, &value, sizeof(bits));
+    const uint16_t sign = (uint16_t)((bits >> 16) & 0x8000u);
+    const uint32_t exp32 = (bits >> 23) & 0xffu;
+    uint32_t mant = bits & 0x007fffffu;
+
+    if (exp32 == 0xffu) {
+        if (mant == 0) return (uint16_t)(sign | 0x7c00u);
+        uint16_t payload = (uint16_t)(mant >> 13);
+        if (payload == 0) payload = 1;
+        return (uint16_t)(sign | 0x7c00u | payload | 0x0200u);
+    }
+
+    int exp16 = (int)exp32 - 127 + 15;
+    if (exp16 >= 31) return (uint16_t)(sign | 0x7c00u);
+
+    if (exp16 <= 0) {
+        if (exp16 < -10) return sign;
+        mant |= 0x00800000u;
+        const int shift = 14 - exp16;
+        uint32_t half_mant = mant >> shift;
+        const uint32_t mask = (1u << shift) - 1u;
+        const uint32_t remainder = mant & mask;
+        const uint32_t halfway = 1u << (shift - 1);
+        if (remainder > halfway || (remainder == halfway && (half_mant & 1u))) {
+            ++half_mant;
+        }
+        return (uint16_t)(sign | half_mant);
+    }
+
+    uint32_t half_mant = mant >> 13;
+    const uint32_t remainder = mant & 0x1fffu;
+    if (remainder > 0x1000u || (remainder == 0x1000u && (half_mant & 1u))) {
+        ++half_mant;
+        if (half_mant == 0x0400u) {
+            half_mant = 0;
+            ++exp16;
+            if (exp16 >= 31) return (uint16_t)(sign | 0x7c00u);
+        }
+    }
+    return (uint16_t)(sign | ((uint16_t)exp16 << 10) | (uint16_t)half_mant);
+}
+
 static int qwen_host_little_endian(void) {
     const uint16_t one = 1;
     return *((const uint8_t *)&one) == 1;
@@ -51,6 +100,11 @@ static int qwen_host_little_endian(void) {
 
 static uint16_t qwen_load_u16_le(const uint8_t *p) {
     return (uint16_t)p[0] | ((uint16_t)p[1] << 8);
+}
+
+static void qwen_store_u16_le(uint8_t *p, uint16_t value) {
+    p[0] = (uint8_t)(value & 0xffu);
+    p[1] = (uint8_t)(value >> 8);
 }
 
 static float qwen_load_f32_le(const uint8_t *p) {
@@ -67,6 +121,54 @@ static void qwen_store_f32_le(uint8_t *p, float x) {
     p[1] = (uint8_t)((bits >> 8) & 0xffu);
     p[2] = (uint8_t)((bits >> 16) & 0xffu);
     p[3] = (uint8_t)((bits >> 24) & 0xffu);
+}
+
+int qwen_quantize_q8_0_scalar(const float *x, size_t n, uint8_t *dst, size_t dst_bytes) {
+    if (!x || !dst || n == 0 || n % QWEN_QK8_0 != 0) return -1;
+    const size_t nb = n / QWEN_QK8_0;
+    if (dst_bytes != nb * QWEN_BLOCK_Q8_0) return -2;
+
+    for (size_t ib = 0; ib < nb; ++ib) {
+        const float *xb = x + ib * QWEN_QK8_0;
+        uint8_t *out = dst + ib * QWEN_BLOCK_Q8_0;
+        float amax = 0.0f;
+        for (size_t j = 0; j < QWEN_QK8_0; ++j) {
+            amax = fmaxf(amax, fabsf(xb[j]));
+        }
+        const float d = amax / 127.0f;
+        const float id = d != 0.0f ? 1.0f / d : 0.0f;
+        qwen_store_u16_le(out, qwen_f32_to_f16(d));
+        int8_t *qs = (int8_t *)(out + 2);
+        for (size_t j = 0; j < QWEN_QK8_0; ++j) {
+            long q = lroundf(xb[j] * id);
+            if (q > 127) q = 127;
+            if (q < -128) q = -128;
+            qs[j] = (int8_t)q;
+        }
+    }
+    return 0;
+}
+
+float qwen_vec_dot_q8_0_q8_0_scalar(const uint8_t *x, size_t x_bytes, const uint8_t *y, size_t y_bytes, size_t n) {
+    if (!x || !y || n == 0 || n % QWEN_QK8_0 != 0) return NAN;
+    const size_t nb = n / QWEN_QK8_0;
+    if (x_bytes != nb * QWEN_BLOCK_Q8_0 || y_bytes != nb * QWEN_BLOCK_Q8_0) return NAN;
+
+    float sum = 0.0f;
+    for (size_t ib = 0; ib < nb; ++ib) {
+        const uint8_t *xb = x + ib * QWEN_BLOCK_Q8_0;
+        const uint8_t *yb = y + ib * QWEN_BLOCK_Q8_0;
+        const int8_t *xq = (const int8_t *)(xb + 2);
+        const int8_t *yq = (const int8_t *)(yb + 2);
+        int32_t sumi = 0;
+        for (size_t j = 0; j < QWEN_QK8_0; ++j) {
+            sumi += (int32_t)xq[j] * (int32_t)yq[j];
+        }
+        const float dx = qwen_f16_to_f32(qwen_load_u16_le(xb));
+        const float dy = qwen_f16_to_f32(qwen_load_u16_le(yb));
+        sum += (float)sumi * dx * dy;
+    }
+    return sum;
 }
 
 int qwen_quantize_q8_k_scalar(const float *x, size_t n, uint8_t *dst, size_t dst_bytes) {
@@ -181,7 +283,7 @@ static void pack_q6_fixture(uint8_t out[QWEN_BLOCK_Q6_K], uint16_t f16_scale, co
     out[209] = (uint8_t)(f16_scale >> 8);
 }
 
-static double independent_dot(const uint8_t *q6, const uint8_t *q8k) {
+static double independent_q6_dot(const uint8_t *q6, const uint8_t *q8k) {
     const float q6d = qwen_f16_to_f32(qwen_load_u16_le(q6 + 208));
     const float q8d = qwen_load_f32_le(q8k);
     const int8_t *sc = (const int8_t *)(q6 + 192);
@@ -205,10 +307,36 @@ static double independent_dot(const uint8_t *q6, const uint8_t *q8k) {
     return sum;
 }
 
+static double independent_q8_0_dot(const uint8_t *x, const uint8_t *y, size_t n) {
+    const size_t nb = n / QWEN_QK8_0;
+    double sum = 0.0;
+    for (size_t ib = 0; ib < nb; ++ib) {
+        const uint8_t *xb = x + ib * QWEN_BLOCK_Q8_0;
+        const uint8_t *yb = y + ib * QWEN_BLOCK_Q8_0;
+        const double dx = qwen_f16_to_f32(qwen_load_u16_le(xb));
+        const double dy = qwen_f16_to_f32(qwen_load_u16_le(yb));
+        const int8_t *xq = (const int8_t *)(xb + 2);
+        const int8_t *yq = (const int8_t *)(yb + 2);
+        for (size_t j = 0; j < QWEN_QK8_0; ++j) {
+            sum += dx * (double)xq[j] * dy * (double)yq[j];
+        }
+    }
+    return sum;
+}
+
 static int check_f16_case(uint16_t bits, float expected) {
     const float got = qwen_f16_to_f32(bits);
     if (got != expected) {
         fprintf(stderr, "f16 mismatch bits=0x%04x got=%.9g expected=%.9g\n", bits, got, expected);
+        return 0;
+    }
+    return 1;
+}
+
+static int check_f32_to_f16_case(float value, uint16_t expected) {
+    const uint16_t got = qwen_f32_to_f16(value);
+    if (got != expected) {
+        fprintf(stderr, "f32->f16 mismatch value=%.9g got=0x%04x expected=0x%04x\n", value, got, expected);
         return 0;
     }
     return 1;
@@ -225,6 +353,13 @@ int main(void) {
         !check_f16_case(0x0400u, 0x1p-14f) ||
         !check_f16_case(0x8001u, -0x1p-24f)) {
         return 9;
+    }
+    if (!check_f32_to_f16_case(1.0f, 0x3c00u) ||
+        !check_f32_to_f16_case(-2.0f, 0xc000u) ||
+        !check_f32_to_f16_case(0x1p-14f, 0x0400u) ||
+        !check_f32_to_f16_case(0x1p-24f, 0x0001u) ||
+        !check_f32_to_f16_case(-0x1p-24f, 0x8001u)) {
+        return 10;
     }
 
     uint8_t q6[2 * QWEN_BLOCK_Q6_K];
@@ -243,12 +378,12 @@ int main(void) {
     uint8_t q8k[2 * QWEN_BLOCK_Q8_K];
     if (qwen_quantize_q8_k_scalar(x, 512, q8k, sizeof(q8k)) != 0) return 3;
 
-    const double expected = independent_dot(q6, q8k) + independent_dot(q6 + QWEN_BLOCK_Q6_K, q8k + QWEN_BLOCK_Q8_K);
+    const double expected = independent_q6_dot(q6, q8k) + independent_q6_dot(q6 + QWEN_BLOCK_Q6_K, q8k + QWEN_BLOCK_Q8_K);
     const float got = qwen_vec_dot_q6_k_q8_k_scalar(q6, sizeof(q6), q8k, sizeof(q8k), 512);
     const double err = fabs((double)got - expected);
     const double limit = 2e-5 * fmax(1.0, fabs(expected));
     if (!(err <= limit)) {
-        fprintf(stderr, "dot mismatch got=%.9g expected=%.17g err=%.9g limit=%.9g\n", got, expected, err, limit);
+        fprintf(stderr, "Q6_K dot mismatch got=%.9g expected=%.17g err=%.9g limit=%.9g\n", got, expected, err, limit);
         return 4;
     }
 
@@ -258,21 +393,60 @@ int main(void) {
     for (size_t i = 0; i < sizeof(zq8); ++i) if (zq8[i] != 0) return 6;
     const float zdot = qwen_vec_dot_q6_k_q8_k_scalar(q6, QWEN_BLOCK_Q6_K, zq8, sizeof(zq8), 256);
     if (zdot != 0.0f) return 7;
-
     if (!isnan(qwen_vec_dot_q6_k_q8_k_scalar(q6, QWEN_BLOCK_Q6_K - 1, zq8, sizeof(zq8), 256))) return 8;
 
+    /* Keep amplitudes small enough that d = amax/127 is a genuine FP16
+     * subnormal.  This exercises the exact bug class found on real Q6_K
+     * super-scales, now on both Q8_0 scale encode and decode. */
+    float q8w[64];
+    float q8a[64];
+    for (int i = 0; i < 64; ++i) {
+        q8w[i] = 0.0018f * (float)(((i * 13 + 5) % 63) - 31) / 31.0f;
+        q8a[i] = 0.0024f * (float)(((i * 19 + 7) % 61) - 30) / 30.0f;
+    }
+    uint8_t qw[2 * QWEN_BLOCK_Q8_0];
+    uint8_t qa[2 * QWEN_BLOCK_Q8_0];
+    if (qwen_quantize_q8_0_scalar(q8w, 64, qw, sizeof(qw)) != 0) return 11;
+    if (qwen_quantize_q8_0_scalar(q8a, 64, qa, sizeof(qa)) != 0) return 12;
+    int q8_subnormal_scales = 0;
+    for (int ib = 0; ib < 2; ++ib) {
+        const uint16_t sw = qwen_load_u16_le(qw + ib * QWEN_BLOCK_Q8_0);
+        const uint16_t sa = qwen_load_u16_le(qa + ib * QWEN_BLOCK_Q8_0);
+        if ((sw & 0x7c00u) == 0 && (sw & 0x03ffu) != 0) ++q8_subnormal_scales;
+        if ((sa & 0x7c00u) == 0 && (sa & 0x03ffu) != 0) ++q8_subnormal_scales;
+    }
+    if (q8_subnormal_scales != 4) return 13;
+    const double q8_expected = independent_q8_0_dot(qw, qa, 64);
+    const float q8_got = qwen_vec_dot_q8_0_q8_0_scalar(qw, sizeof(qw), qa, sizeof(qa), 64);
+    const double q8_err = fabs((double)q8_got - q8_expected);
+    const double q8_limit = 2e-6 * fmax(1.0, fabs(q8_expected));
+    if (!(q8_err <= q8_limit)) {
+        fprintf(stderr, "Q8_0 dot mismatch got=%.9g expected=%.17g err=%.9g limit=%.9g\n", q8_got, q8_expected, q8_err, q8_limit);
+        return 14;
+    }
+    uint8_t q8zero[QWEN_BLOCK_Q8_0];
+    if (qwen_quantize_q8_0_scalar(zero, 32, q8zero, sizeof(q8zero)) != 0) return 15;
+    for (size_t i = 0; i < sizeof(q8zero); ++i) if (q8zero[i] != 0) return 16;
+    if (!isnan(qwen_vec_dot_q8_0_q8_0_scalar(qw, QWEN_BLOCK_Q8_0 - 1, qa, QWEN_BLOCK_Q8_0, 32))) return 17;
+
     printf("{\n");
-    printf("  \"schema\": \"qwen38-q6k-q8k-scalar-sanity-v1\",\n");
+    printf("  \"schema\": \"qwen38-native-quant-sanity-v2\",\n");
     printf("  \"status\": \"PASS\",\n");
     printf("  \"llama_cpp_reference_revision\": \"557614e0296ff4a5b6f649737a65ae2076eea2fd\",\n");
     printf("  \"model_weights_downloaded\": false,\n");
-    printf("  \"f16_subnormal_cases\": 5,\n");
+    printf("  \"f16_decode_subnormal_cases\": 5,\n");
+    printf("  \"f16_encode_cases\": 5,\n");
     printf("  \"q6_k_block_bytes\": %d,\n", QWEN_BLOCK_Q6_K);
     printf("  \"q8_k_block_bytes\": %d,\n", QWEN_BLOCK_Q8_K);
-    printf("  \"tested_elements\": 512,\n");
-    printf("  \"dot_abs_error\": %.9g,\n", err);
-    printf("  \"dot_error_limit\": %.9g,\n", limit);
-    printf("  \"zero_activation_dot\": %.9g,\n", zdot);
+    printf("  \"q8_0_block_bytes\": %d,\n", QWEN_BLOCK_Q8_0);
+    printf("  \"q6_tested_elements\": 512,\n");
+    printf("  \"q6_dot_abs_error\": %.9g,\n", err);
+    printf("  \"q6_dot_error_limit\": %.9g,\n", limit);
+    printf("  \"q6_zero_activation_dot\": %.9g,\n", zdot);
+    printf("  \"q8_0_tested_elements\": 64,\n");
+    printf("  \"q8_0_subnormal_scales\": %d,\n", q8_subnormal_scales);
+    printf("  \"q8_0_dot_abs_error\": %.9g,\n", q8_err);
+    printf("  \"q8_0_dot_error_limit\": %.9g,\n", q8_limit);
     printf("  \"invalid_size_rejected\": true\n");
     printf("}\n");
     return 0;
