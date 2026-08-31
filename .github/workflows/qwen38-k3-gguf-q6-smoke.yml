@@ -47,11 +47,6 @@ jobs:
           cmake -S "$RUNNER_TEMP/llama.cpp" -B "$RUNNER_TEMP/llama.cpp/build" -G Ninja \
             -DGGML_NATIVE=OFF \
             -DGGML_OPENMP=ON \
-            -DLLAMA_BUILD_TESTS=OFF \
-            -DLLAMA_BUILD_EXAMPLES=OFF \
-            -DLLAMA_BUILD_SERVER=OFF \
-            -DLLAMA_BUILD_APP=OFF \
-            -DLLAMA_BUILD_UI=OFF \
             -DCMAKE_BUILD_TYPE=Release
           cmake --build "$RUNNER_TEMP/llama.cpp/build" --target llama-cli -j2
           "$RUNNER_TEMP/llama.cpp/build/bin/llama-cli" --version
