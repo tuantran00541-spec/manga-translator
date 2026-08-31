@@ -6,6 +6,7 @@ on:
       - test/qwen3.8-27b
     paths:
       - "research/qwen38/k3_windowed_chain_gate.py"
+      - "research/qwen38/k3_logits_gate.py"
       - ".github/workflows/qwen38-k3-windowed-chain.yml"
   workflow_dispatch:
 
@@ -86,5 +87,81 @@ jobs:
           path: |
             ${{ runner.temp }}/qwen38-k3-full64-evidence/full64.json
             ${{ runner.temp }}/qwen38-k3-full64-evidence/full64.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  full-text-logits-equivalence:
+    if: >-
+      ${{
+        github.event_name == 'workflow_dispatch' ||
+        contains(github.event.head_commit.message, '[qwen-stream-logits]')
+      }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      OMP_NUM_THREADS: "4"
+      MKL_NUM_THREADS: "4"
+      HF_HUB_DISABLE_TELEMETRY: "1"
+      USE_HUB_KERNELS: "NO"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reclaim runner disk
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup || true
+          docker system prune -af || true
+          sudo apt-get clean || true
+          df -h
+          free -h
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install exact text reference dependencies
+        run: |
+          python -m pip install --no-cache-dir numpy "transformers==5.16.1" safetensors huggingface_hub
+          python -m pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Compile logits gate before downloading weights
+        run: |
+          python -m py_compile \
+            research/qwen38/core.py \
+            research/qwen38/k3_stream.py \
+            research/qwen38/k3_linear_layer_gate.py \
+            research/qwen38/k3_full_attention_gate.py \
+            research/qwen38/k3_windowed_chain_gate.py \
+            research/qwen38/k3_logits_gate.py
+
+      - name: Compare embedding decoder final norm and last-token logits
+        shell: bash
+        run: |
+          set -euo pipefail
+          work="$RUNNER_TEMP/qwen38-k3-logits"
+          evidence="$RUNNER_TEMP/qwen38-k3-logits-evidence"
+          mkdir -p "$work" "$evidence"
+          /usr/bin/time -v python research/qwen38/k3_logits_gate.py \
+            --work-dir "$work" \
+            --window-size 8 \
+            --seq-len 4 \
+            --output "$evidence/logits.json" \
+            2>&1 | tee "$evidence/logits.log"
+
+      - name: Show evidence and clean temporary weights
+        if: always()
+        run: |
+          cat "$RUNNER_TEMP/qwen38-k3-logits-evidence/logits.json" || true
+          df -h || true
+          free -h || true
+          rm -rf "$RUNNER_TEMP/qwen38-k3-logits" || true
+
+      - name: Upload metrics only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen38-k3-logits-evidence-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/qwen38-k3-logits-evidence/logits.json
+            ${{ runner.temp }}/qwen38-k3-logits-evidence/logits.log
           if-no-files-found: warn
           retention-days: 14
