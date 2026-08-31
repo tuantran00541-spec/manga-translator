@@ -27,7 +27,10 @@ static float qwen_f16_to_f32(uint16_t h) {
                 ++shift;
             }
             mant &= 0x03ffu;
-            const uint32_t fexp = (uint32_t)(127 - 15 - shift);
+            /* Half subnormals have an unbiased exponent of -14 before the
+             * mantissa normalization shift. Using -15 here halves every
+             * subnormal value, which real Q6_K super-scales can expose. */
+            const uint32_t fexp = (uint32_t)(127 - 14 - shift);
             bits = sign | (fexp << 23) | (mant << 13);
         }
     } else if (exp == 0x1fu) {
@@ -202,11 +205,28 @@ static double independent_dot(const uint8_t *q6, const uint8_t *q8k) {
     return sum;
 }
 
+static int check_f16_case(uint16_t bits, float expected) {
+    const float got = qwen_f16_to_f32(bits);
+    if (got != expected) {
+        fprintf(stderr, "f16 mismatch bits=0x%04x got=%.9g expected=%.9g\n", bits, got, expected);
+        return 0;
+    }
+    return 1;
+}
+
 int main(void) {
     if (!qwen_host_little_endian()) {
         fprintf(stderr, "selftest currently requires little-endian host\n");
         return 2;
     }
+    if (!check_f16_case(0x0001u, 0x1p-24f) ||
+        !check_f16_case(0x0002u, 0x1p-23f) ||
+        !check_f16_case(0x03ffu, 1023.0f * 0x1p-24f) ||
+        !check_f16_case(0x0400u, 0x1p-14f) ||
+        !check_f16_case(0x8001u, -0x1p-24f)) {
+        return 9;
+    }
+
     uint8_t q6[2 * QWEN_BLOCK_Q6_K];
     int8_t scales[16];
     int8_t quants[256];
@@ -246,6 +266,7 @@ int main(void) {
     printf("  \"status\": \"PASS\",\n");
     printf("  \"llama_cpp_reference_revision\": \"557614e0296ff4a5b6f649737a65ae2076eea2fd\",\n");
     printf("  \"model_weights_downloaded\": false,\n");
+    printf("  \"f16_subnormal_cases\": 5,\n");
     printf("  \"q6_k_block_bytes\": %d,\n", QWEN_BLOCK_Q6_K);
     printf("  \"q8_k_block_bytes\": %d,\n", QWEN_BLOCK_Q8_K);
     printf("  \"tested_elements\": 512,\n");
