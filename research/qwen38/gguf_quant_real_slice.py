@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Real-weight Q6_K/Q8_0 row gates against the native scalar quant bridges."""
+"""Real-weight Q6_K/Q8_0 row and contiguous projection gates."""
 from __future__ import annotations
 
 import argparse
@@ -41,19 +41,35 @@ def tensor_by_name(directory, name: str):
     raise KeyError(name)
 
 
-def read_row(fd: int, tensor, row: int) -> tuple[bytes, int, int]:
+def tensor_layout(tensor) -> tuple[int, int, int]:
     if len(tensor.shape) != 2:
         raise ValueError(f"{tensor.name}: expected 2-D tensor, got {tensor.shape}")
     ne0, ne1 = (int(tensor.shape[0]), int(tensor.shape[1]))
     stride = row_nbytes(tensor.type_name, ne0)
     if tensor.nbytes != stride * ne1:
         raise ValueError(f"{tensor.name}: packed bytes {tensor.nbytes} != row stride {stride} * {ne1}")
+    return ne0, ne1, stride
+
+
+def read_row(fd: int, tensor, row: int) -> tuple[bytes, int, int]:
+    ne0, ne1, stride = tensor_layout(tensor)
     if row < 0 or row >= ne1:
         raise ValueError(f"{tensor.name}: row {row} outside [0,{ne1})")
     data = os.pread(fd, stride, tensor.data_offset + row * stride)
     if len(data) != stride:
         raise IOError(f"{tensor.name}: short row read")
     return data, ne0, ne1
+
+
+def read_rows(fd: int, tensor, start_row: int, rows: int) -> tuple[bytes, int, int, int]:
+    ne0, ne1, stride = tensor_layout(tensor)
+    if rows <= 0 or start_row < 0 or start_row + rows > ne1:
+        raise ValueError(f"{tensor.name}: invalid row span start={start_row} rows={rows} ne1={ne1}")
+    nbytes = stride * rows
+    data = os.pread(fd, nbytes, tensor.data_offset + start_row * stride)
+    if len(data) != nbytes:
+        raise IOError(f"{tensor.name}: short row-span read {len(data)} != {nbytes}")
+    return data, ne0, ne1, stride
 
 
 def activation(ne0: int, seed: int) -> list[float]:
@@ -128,6 +144,13 @@ def load_native(lib_path: Path):
         ctypes.c_size_t,
     ]
     lib.qwen_vec_dot_q8_0_q8_0_scalar.restype = ctypes.c_float
+    lib.qwen_matvec_q8_0_q8_0_scalar.argtypes = [
+        ctypes.POINTER(ctypes.c_uint8), ctypes.c_size_t,
+        ctypes.c_size_t, ctypes.c_size_t,
+        ctypes.POINTER(ctypes.c_uint8), ctypes.c_size_t,
+        ctypes.POINTER(ctypes.c_float),
+    ]
+    lib.qwen_matvec_q8_0_q8_0_scalar.restype = ctypes.c_int
     lib.qwen_quantize_q8_k_scalar.argtypes = [
         ctypes.POINTER(ctypes.c_float), ctypes.c_size_t,
         ctypes.POINTER(ctypes.c_uint8), ctypes.c_size_t,
@@ -139,6 +162,13 @@ def load_native(lib_path: Path):
         ctypes.c_size_t,
     ]
     lib.qwen_vec_dot_q6_k_q8_k_scalar.restype = ctypes.c_float
+    lib.qwen_matvec_q6_k_q8_k_scalar.argtypes = [
+        ctypes.POINTER(ctypes.c_uint8), ctypes.c_size_t,
+        ctypes.c_size_t, ctypes.c_size_t,
+        ctypes.POINTER(ctypes.c_uint8), ctypes.c_size_t,
+        ctypes.POINTER(ctypes.c_float),
+    ]
+    lib.qwen_matvec_q6_k_q8_k_scalar.restype = ctypes.c_int
     return lib
 
 
@@ -227,6 +257,82 @@ def native_q8_0_case(fd: int, directory, lib, name: str, row: int, seed: int) ->
     }
 
 
+def native_projection_span(fd: int, directory, lib, name: str, start_row: int, rows: int, seed: int) -> dict:
+    tensor = tensor_by_name(directory, name)
+    if tensor.type_name not in {"Q6_K", "Q8_0"}:
+        raise ValueError(f"{name}: unsupported projection type {tensor.type_name}")
+    packed, ne0, ne1, row_bytes = read_rows(fd, tensor, start_row, rows)
+    x = activation(ne0, seed)
+    x_arr = (ctypes.c_float * ne0)(*x)
+
+    if tensor.type_name == "Q6_K":
+        activation_bytes = (ne0 // QK_K) * Q8K_BLOCK_BYTES
+        activation_arr = (ctypes.c_uint8 * activation_bytes)()
+        rc = lib.qwen_quantize_q8_k_scalar(x_arr, ne0, activation_arr, activation_bytes)
+        if rc != 0:
+            raise RuntimeError(f"{name}: native Q8_K quantization failed rc={rc}")
+        activation_raw = bytes(activation_arr)
+        qx = q8k_dequant(activation_raw, ne0)
+        matvec = lib.qwen_matvec_q6_k_q8_k_scalar
+        decoder = dequantize_q6_k
+        activation_type = "Q8_K"
+    else:
+        activation_bytes = (ne0 // Q8_0_BLOCK_SIZE) * Q8_0_BLOCK_BYTES
+        activation_arr = (ctypes.c_uint8 * activation_bytes)()
+        rc = lib.qwen_quantize_q8_0_scalar(x_arr, ne0, activation_arr, activation_bytes)
+        if rc != 0:
+            raise RuntimeError(f"{name}: native Q8_0 quantization failed rc={rc}")
+        activation_raw = bytes(activation_arr)
+        qx = dequantize_q8_0(activation_raw, ne0)
+        matvec = lib.qwen_matvec_q8_0_q8_0_scalar
+        decoder = dequantize_q8_0
+        activation_type = "Q8_0"
+
+    weight_arr = (ctypes.c_uint8 * len(packed)).from_buffer_copy(packed)
+    out_arr = (ctypes.c_float * rows)()
+    rc = matvec(weight_arr, len(packed), rows, ne0, activation_arr, activation_bytes, out_arr)
+    if rc != 0:
+        raise RuntimeError(f"{name}: native matvec failed rc={rc}")
+    native_outputs = [float(out_arr[i]) for i in range(rows)]
+
+    expected_outputs: list[float] = []
+    abs_errors: list[float] = []
+    error_limits: list[float] = []
+    for i in range(rows):
+        row_raw = packed[i * row_bytes:(i + 1) * row_bytes]
+        weights = decoder(row_raw, ne0)
+        expected = math.fsum(a * b for a, b in zip(weights, qx))
+        err = abs(native_outputs[i] - expected)
+        limit = 2e-5 * max(1.0, abs(expected))
+        expected_outputs.append(expected)
+        abs_errors.append(err)
+        error_limits.append(limit)
+
+    passed = all(err <= limit for err, limit in zip(abs_errors, error_limits))
+    return {
+        "name": name,
+        "weight_type": tensor.type_name,
+        "activation_type": activation_type,
+        "shape": list(tensor.shape),
+        "ne0": ne0,
+        "ne1": ne1,
+        "start_row": start_row,
+        "rows": rows,
+        "weight_row_bytes": row_bytes,
+        "packed_span_bytes": len(packed),
+        "packed_span_sha256": hashlib.sha256(packed).hexdigest(),
+        "activation_bytes": activation_bytes,
+        "activation_sha256": hashlib.sha256(activation_raw).hexdigest(),
+        "activation_quantizations": 1,
+        "native_outputs": native_outputs,
+        "python_reference_outputs": expected_outputs,
+        "abs_errors": abs_errors,
+        "max_abs_error": max(abs_errors),
+        "max_error_limit": max(error_limits),
+        "pass": passed,
+    }
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--work-dir", type=Path, required=True)
@@ -253,14 +359,21 @@ def main() -> None:
             native_q8_0_case(fd, directory, lib, "blk.0.attn_qkv.weight", 0, 3),
             native_q8_0_case(fd, directory, lib, "blk.3.attn_q.weight", 17, 4),
         ]
+        projection_spans = [
+            native_projection_span(fd, directory, lib, "blk.0.attn_qkv.weight", 0, 8, 11),
+            native_projection_span(fd, directory, lib, "blk.0.attn_gate.weight", 0, 8, 12),
+            native_projection_span(fd, directory, lib, "blk.3.attn_q.weight", 16, 8, 13),
+            native_projection_span(fd, directory, lib, "blk.3.ffn_down.weight", 16, 8, 14),
+        ]
     finally:
         os.close(fd)
 
     q6_ok = all(case["pass"] for case in q6_cases)
     q8_ok = all(case["pass"] for case in q8_cases)
+    projection_ok = all(case["pass"] for case in projection_spans)
     result = {
-        "schema": "qwen38-real-quant-row-slice-v3",
-        "status": "PASS" if q6_ok and q8_ok else "FAIL",
+        "schema": "qwen38-real-quant-projection-slice-v4",
+        "status": "PASS" if q6_ok and q8_ok and projection_ok else "FAIL",
         "repo": REPO,
         "file": FILE,
         "file_bytes": model.stat().st_size,
@@ -269,10 +382,15 @@ def main() -> None:
         "llama_cpp_reference_revision": "557614e0296ff4a5b6f649737a65ae2076eea2fd",
         "q6_k_native_cases": q6_cases,
         "q8_0_native_cases": q8_cases,
+        "projection_spans": projection_spans,
         "max_q6_native_abs_error": max(case["abs_error"] for case in q6_cases),
         "max_q8_0_native_abs_error": max(case["abs_error"] for case in q8_cases),
+        "max_projection_abs_error": max(case["max_abs_error"] for case in projection_spans),
+        "projection_rows_checked": sum(case["rows"] for case in projection_spans),
+        "projection_activation_quantizations": sum(case["activation_quantizations"] for case in projection_spans),
         "all_q6_native_cases_pass": q6_ok,
         "all_q8_0_native_cases_pass": q8_ok,
+        "all_projection_spans_pass": projection_ok,
     }
     args.output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(json.dumps(result, indent=2, sort_keys=True))
