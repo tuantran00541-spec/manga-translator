@@ -20,7 +20,7 @@ jobs:
           python-version: "3.12"
 
       - name: Compile production Python source
-        run: python -m compileall -q app run.py scripts/release_sanity.py scripts/browser_sanity.py scripts/inpaint_authority_sanity.py scripts/model_e2e_gate.py scripts/ocr_runtime_model_gate.py
+        run: python -m compileall -q app run.py scripts/release_sanity.py scripts/browser_sanity.py scripts/inpaint_authority_sanity.py scripts/detection_report.py scripts/model_e2e_gate.py scripts/ocr_runtime_model_gate.py
 
       - name: Run source sanity checks
         run: python scripts/release_sanity.py
