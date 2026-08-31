@@ -94,6 +94,22 @@
     state.timer = window.setTimeout(() => poll(jobId, generation), POLL_INTERVAL_MS);
   }
 
+  async function refreshCanonicalChapter(chapterId, generation) {
+    if (!chapterId || generation !== state.generation || chapterId !== window.currentChapterId) return false;
+    if (typeof window.refreshChapterManifest === "function") {
+      const manifest = await window.refreshChapterManifest(chapterId);
+      if (!manifest || generation !== state.generation || chapterId !== window.currentChapterId) return false;
+    } else {
+      const manifest = await requestJson(`/api/chapter/${encodeURIComponent(chapterId)}`);
+      if (generation !== state.generation || chapterId !== window.currentChapterId) return false;
+      window.currentManifest = manifest;
+    }
+    if (typeof window.renderReview === "function") {
+      window.renderReview();
+    }
+    return true;
+  }
+
   async function poll(jobId, generation) {
     try {
       const snapshot = await requestJson(`/api/ocr/chapter/${encodeURIComponent(jobId)}`);
@@ -102,7 +118,17 @@
       renderAll();
       if (isRunning(snapshot)) {
         schedulePoll(jobId, generation);
-      } else if (snapshot.status === "completed") {
+        return;
+      }
+
+      try {
+        await refreshCanonicalChapter(snapshot.chapter_id, generation);
+      } catch (refreshErr) {
+        console.error("Could not refresh chapter after OCR job:", refreshErr);
+        showToast("OCR đã dừng nhưng không thể làm mới dữ liệu chương. Hãy tải lại chương.", "error");
+      }
+
+      if (snapshot.status === "completed") {
         showToast("OCR toàn chương đã hoàn tất.", "info");
       }
     } catch (err) {
@@ -147,6 +173,7 @@
       );
       renderAll();
       if (isRunning(state.snapshot)) schedulePoll(snapshot.job_id, generation);
+      else await refreshCanonicalChapter(state.snapshot.chapter_id, generation);
     } catch (err) {
       showToast("Không thể hủy OCR: " + err.message, "error");
     }
@@ -166,6 +193,7 @@
       state.snapshot = next;
       renderAll();
       if (isRunning(next)) schedulePoll(next.job_id, generation);
+      else await refreshCanonicalChapter(chapterId, generation);
     } catch (err) {
       showToast("Không thể thử lại OCR: " + err.message, "error");
     }
