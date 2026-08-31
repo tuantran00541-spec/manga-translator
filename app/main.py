@@ -1,10 +1,21 @@
 from contextlib import asynccontextmanager
+import os
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.config import BASE_DIR, OUTPUT_DIR, PROCESSED_DIR, check_models, ensure_directories
+from app.config import (
+    BASE_DIR,
+    LAMA_DYNAMIC_MODEL,
+    LAMA_MODEL,
+    OUTPUT_DIR,
+    PROCESSED_DIR,
+    check_models,
+    ensure_directories,
+)
+from app.dependencies import ocr as ocr_runtime, pipeline
 from app.logging_config import logger
 from app.manifest_utils import cleanup_stale_temp_artifacts
 from app.routers import automation, chapters, editor, export, image, ocr, render, render_commit, translation, visual_qc
@@ -120,6 +131,104 @@ app.include_router(export.router)
 app.include_router(visual_qc.router)
 
 
+def _current_rss_bytes() -> int | None:
+    """Return current process RSS without adding a runtime dependency."""
+    if os.name == "nt":
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            class PROCESS_MEMORY_COUNTERS(ctypes.Structure):
+                _fields_ = [
+                    ("cb", wintypes.DWORD),
+                    ("PageFaultCount", wintypes.DWORD),
+                    ("PeakWorkingSetSize", ctypes.c_size_t),
+                    ("WorkingSetSize", ctypes.c_size_t),
+                    ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+                    ("QuotaPagedPoolUsage", ctypes.c_size_t),
+                    ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+                    ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+                    ("PagefileUsage", ctypes.c_size_t),
+                    ("PeakPagefileUsage", ctypes.c_size_t),
+                ]
+
+            counters = PROCESS_MEMORY_COUNTERS()
+            counters.cb = ctypes.sizeof(counters)
+            process = ctypes.windll.kernel32.GetCurrentProcess()
+            ok = ctypes.windll.psapi.GetProcessMemoryInfo(
+                process,
+                ctypes.byref(counters),
+                counters.cb,
+            )
+            return int(counters.WorkingSetSize) if ok else None
+        except Exception:
+            return None
+
+    try:
+        statm = Path("/proc/self/statm").read_text(encoding="ascii").split()
+        if len(statm) >= 2:
+            return int(statm[1]) * int(os.sysconf("SC_PAGE_SIZE"))
+    except (OSError, ValueError, AttributeError):
+        pass
+    return None
+
+
+def _runtime_state() -> dict:
+    detector = getattr(pipeline, "_detector", None)
+    inpainter = getattr(pipeline, "_inpainter", None)
+    paddle = getattr(ocr_runtime, "_paddle", None)
+    paddle_pipelines = getattr(paddle, "_pipelines", {}) if paddle is not None else {}
+
+    inpaint_session_loaded = bool(
+        inpainter is not None and getattr(inpainter, "session_loaded", False)
+    )
+    active_inpaint_model = None
+    inpaint_dynamic = None
+    if inpaint_session_loaded:
+        model_path = getattr(inpainter, "lama_model_path", None)
+        active_inpaint_model = Path(model_path).name if model_path else None
+        inpaint_dynamic = bool(getattr(inpainter, "dynamic_lama", False))
+
+    dynamic_enabled = os.getenv("MANGA_USE_DYNAMIC_LAMA", "1").strip().lower() not in {
+        "0", "false", "no", "off"
+    }
+    preferred_inpaint_model = (
+        LAMA_DYNAMIC_MODEL.name
+        if dynamic_enabled and LAMA_DYNAMIC_MODEL.is_file()
+        else LAMA_MODEL.name
+    )
+
+    return {
+        "rss_bytes": _current_rss_bytes(),
+        "models": {
+            "detector": {
+                "resident": detector is not None,
+                "bubble_session_loaded": bool(
+                    detector is not None
+                    and getattr(getattr(detector, "bubble_detector", None), "session", None) is not None
+                ),
+                "text_session_loaded": bool(
+                    detector is not None
+                    and getattr(getattr(detector, "text_detector", None), "session", None) is not None
+                ),
+            },
+            "inpaint": {
+                "object_created": inpainter is not None,
+                "session_loaded": inpaint_session_loaded,
+                "preferred_model": preferred_inpaint_model,
+                "active_model": active_inpaint_model,
+                "dynamic": inpaint_dynamic,
+                "fixed_available": LAMA_MODEL.is_file(),
+                "dynamic_available": LAMA_DYNAMIC_MODEL.is_file(),
+            },
+            "ocr": {
+                "manga_ocr_loaded": getattr(ocr_runtime, "_manga_ocr", None) is not None,
+                "paddle_loaded": sorted(str(key) for key in paddle_pipelines.keys()),
+            },
+        },
+    }
+
+
 @app.get("/health")
 def health():
     missing = check_models()
@@ -127,6 +236,7 @@ def health():
         "status": "ok" if not missing else "degraded",
         "models_missing": missing,
         "version": app.version,
+        "runtime": _runtime_state(),
     }
 
 
