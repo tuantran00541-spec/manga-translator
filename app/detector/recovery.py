@@ -7,6 +7,32 @@ import cv2
 import numpy as np
 
 from app.detector.bubble_detector import BubbleBox
+from app.parameters import (
+    MSER_CONTAINED_SAFE_SKIP_COUNT,
+    MSER_DELTA,
+    MSER_EXISTING_IOU_SKIP,
+    MSER_MAX_AREA,
+    MSER_MIN_AREA,
+    MSER_PAGE_CLUSTER_SKIP_RATIO,
+    MSER_REGION_AREA_MIN,
+    MSER_REGION_AREA_RATIO_MAX,
+    MSER_REGION_MAX_HEIGHT_RATIO,
+    MSER_REGION_MAX_WIDTH_RATIO,
+    MSER_REGION_MIN_SIDE,
+    MSER_SAFE_CLUSTER_MIN_REGIONS,
+    MSER_SAFE_MASK_RATIO_MAX,
+    MSER_SAFE_MASK_RATIO_MIN,
+    MSER_SAFE_PAGE_AREA_RATIO_MAX,
+    MSER_SEED_CANNY_HIGH,
+    MSER_SEED_CANNY_LOW,
+    MSER_SEED_CONTRAST_DELTA,
+    WATERMARK_EDGE_X_RATIO,
+    WATERMARK_EDGE_Y_RATIO,
+    WATERMARK_HORIZONTAL_ASPECT_MIN,
+    WATERMARK_HORIZONTAL_HEIGHT_RATIO_MAX,
+    WATERMARK_VERTICAL_ASPECT_MIN,
+    WATERMARK_VERTICAL_HEIGHT_RATIO_MAX,
+)
 
 
 class SecondaryTextRecovery:
@@ -19,7 +45,7 @@ class SecondaryTextRecovery:
     """
 
     def __init__(self) -> None:
-        self._mser = cv2.MSER_create(5, 18, 120000)
+        self._mser = cv2.MSER_create(MSER_DELTA, MSER_MIN_AREA, MSER_MAX_AREA)
         self._mser_lock = threading.Lock()
 
     @staticmethod
@@ -37,10 +63,20 @@ class SecondaryTextRecovery:
     def _watermark_like(x1: int, y1: int, x2: int, y2: int, w: int, h: int) -> bool:
         bw, bh = x2 - x1, y2 - y1
         aspect = bw / max(1.0, float(bh))
-        edge_touch = x1 < w * 0.04 or x2 > w * 0.96
-        vertical_edge = y1 < h * 0.05 or y2 > h * 0.95
-        return bool((edge_touch and aspect >= 4.0 and bh <= h * 0.12) or
-                    (vertical_edge and aspect >= 6.0 and bh <= h * 0.08))
+        edge_touch = x1 < w * WATERMARK_EDGE_X_RATIO or x2 > w * (1.0 - WATERMARK_EDGE_X_RATIO)
+        vertical_edge = y1 < h * WATERMARK_EDGE_Y_RATIO or y2 > h * (1.0 - WATERMARK_EDGE_Y_RATIO)
+        return bool(
+            (
+                edge_touch
+                and aspect >= WATERMARK_HORIZONTAL_ASPECT_MIN
+                and bh <= h * WATERMARK_HORIZONTAL_HEIGHT_RATIO_MAX
+            )
+            or (
+                vertical_edge
+                and aspect >= WATERMARK_VERTICAL_ASPECT_MIN
+                and bh <= h * WATERMARK_VERTICAL_HEIGHT_RATIO_MAX
+            )
+        )
 
     @staticmethod
     def _seed_mask(gray_crop: np.ndarray) -> np.ndarray:
@@ -48,13 +84,23 @@ class SecondaryTextRecovery:
             return np.zeros_like(gray_crop, dtype=np.uint8)
         blur = cv2.GaussianBlur(gray_crop, (3, 3), 0)
         med = float(np.median(blur))
-        dark = blur < max(0.0, med - 22.0)
-        light = blur > min(255.0, med + 22.0)
-        edges = cv2.Canny(blur, 45, 120) > 0
-        seed = (dark | light) & (cv2.dilate(edges.astype(np.uint8), np.ones((3, 3), np.uint8), iterations=1) > 0)
+        dark = blur < max(0.0, med - MSER_SEED_CONTRAST_DELTA)
+        light = blur > min(255.0, med + MSER_SEED_CONTRAST_DELTA)
+        edges = cv2.Canny(blur, MSER_SEED_CANNY_LOW, MSER_SEED_CANNY_HIGH) > 0
+        seed = (dark | light) & (
+            cv2.dilate(
+                edges.astype(np.uint8), np.ones((3, 3), np.uint8), iterations=1
+            )
+            > 0
+        )
         mask = seed.astype(np.uint8) * 255
         if np.any(mask):
-            mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8), iterations=1)
+            mask = cv2.morphologyEx(
+                mask,
+                cv2.MORPH_CLOSE,
+                np.ones((3, 3), np.uint8),
+                iterations=1,
+            )
         return mask
 
     @staticmethod
@@ -97,9 +143,9 @@ class SecondaryTextRecovery:
         for x, y, bw, bh in np.asarray(raw_boxes).reshape(-1, 4):
             x, y, bw, bh = map(int, (x, y, bw, bh))
             area = bw * bh
-            if bw < 4 or bh < 4 or bw > w * 0.16 or bh > h * 0.10:
+            if bw < MSER_REGION_MIN_SIDE or bh < MSER_REGION_MIN_SIDE or bw > w * 0.16 or bh > h * 0.10:
                 continue
-            if area < 24 or area > page_area * 0.015:
+            if area < MSER_REGION_AREA_MIN or area > page_area * MSER_SAFE_MASK_RATIO_MIN:
                 continue
             aspect = bw / max(1.0, float(bh))
             if aspect < 0.07 or aspect > 5.0:
@@ -168,11 +214,20 @@ class SecondaryTextRecovery:
             px1, py1 = max(0, x1 - 6), max(0, y1 - 6)
             px2, py2 = min(w, x2 + 6), min(h, y2 + 6)
             candidate = BubbleBox(
-                px1, py1, px2, py2, 0.18, None,
-                source_model="opencv_mser", class_id=0,
-                class_name="text_recovery", semantic_type="free_text",
-                mask_source="none", safe_to_inpaint=False,
-                ocr_eligible=False, needs_review=True,
+                px1,
+                py1,
+                px2,
+                py2,
+                0.18,
+                None,
+                source_model="opencv_mser",
+                class_id=0,
+                class_name="text_recovery",
+                semantic_type="free_text",
+                mask_source="none",
+                safe_to_inpaint=False,
+                ocr_eligible=False,
+                needs_review=True,
             )
             if any(cls._iou(candidate, box) > 0.25 for box in existing):
                 continue
@@ -201,10 +256,18 @@ class SecondaryTextRecovery:
         rects = []
         for x, y, bw, bh in np.asarray(boxes).reshape(-1, 4):
             x, y, bw, bh = map(int, (x, y, bw, bh))
-            if bw < 4 or bh < 4 or bw > w * 0.9 or bh > h * 0.65:
+            if (
+                bw < MSER_REGION_MIN_SIDE
+                or bh < MSER_REGION_MIN_SIDE
+                or bw > w * MSER_REGION_MAX_WIDTH_RATIO
+                or bh > h * MSER_REGION_MAX_HEIGHT_RATIO
+            ):
                 continue
             area = bw * bh
-            if area < 24 or area > w * h * 0.20:
+            if (
+                area < MSER_REGION_AREA_MIN
+                or area > w * h * MSER_REGION_AREA_RATIO_MAX
+            ):
                 continue
             rects.append((x, y, x + bw, y + bh))
         if not rects:
@@ -218,15 +281,18 @@ class SecondaryTextRecovery:
             while changed:
                 changed = False
                 keep = []
-                cx1 = min(r[0] for r in cluster); cy1 = min(r[1] for r in cluster)
-                cx2 = max(r[2] for r in cluster); cy2 = max(r[3] for r in cluster)
+                cx1 = min(r[0] for r in cluster)
+                cy1 = min(r[1] for r in cluster)
+                cx2 = max(r[2] for r in cluster)
+                cy2 = max(r[3] for r in cluster)
                 ch = max(8, cy2 - cy1)
                 for r in remaining:
                     rx1, ry1, rx2, ry2 = r
                     near_x = not (rx1 > cx2 + ch * 1.8 or rx2 < cx1 - ch * 1.8)
                     near_y = not (ry1 > cy2 + ch * 1.3 or ry2 < cy1 - ch * 1.3)
                     if near_x and near_y:
-                        cluster.append(r); changed = True
+                        cluster.append(r)
+                        changed = True
                     else:
                         keep.append(r)
                 remaining = keep
@@ -244,21 +310,33 @@ class SecondaryTextRecovery:
             bw, bh = x2 - x1, y2 - y1
             if bw < 12 or bh < 10:
                 continue
-            candidate = BubbleBox(x1, y1, x2, y2, 0.20, None,
-                                  source_model="opencv_mser", class_id=0,
-                                  class_name="text_recovery", semantic_type="free_text",
-                                  mask_source="none", safe_to_inpaint=False,
-                                  ocr_eligible=False, needs_review=True)
-            if any(self._iou(candidate, b) > 0.55 for b in existing):
+            candidate = BubbleBox(
+                x1,
+                y1,
+                x2,
+                y2,
+                0.20,
+                None,
+                source_model="opencv_mser",
+                class_id=0,
+                class_name="text_recovery",
+                semantic_type="free_text",
+                mask_source="none",
+                safe_to_inpaint=False,
+                ocr_eligible=False,
+                needs_review=True,
+            )
+            if any(self._iou(candidate, b) > MSER_EXISTING_IOU_SKIP for b in existing):
                 continue
             contained_verified = 0
             for b in existing:
                 if not b.safe_to_inpaint:
                     continue
-                cx = (b.x1 + b.x2) / 2.0; cy = (b.y1 + b.y2) / 2.0
+                cx = (b.x1 + b.x2) / 2.0
+                cy = (b.y1 + b.y2) / 2.0
                 if x1 <= cx <= x2 and y1 <= cy <= y2:
                     contained_verified += 1
-            if contained_verified >= 2:
+            if contained_verified >= MSER_CONTAINED_SAFE_SKIP_COUNT:
                 continue
 
             watermark = self._watermark_like(x1, y1, x2, y2, w, h)
@@ -266,15 +344,30 @@ class SecondaryTextRecovery:
             mask = self._seed_mask(crop)
             ratio = float(np.count_nonzero(mask)) / float(max(1, mask.size))
             page_ratio = (bw * bh) / float(max(1, w * h))
-            if page_ratio > 0.45 and any(b.safe_to_inpaint for b in existing):
+            if page_ratio > MSER_PAGE_CLUSTER_SKIP_RATIO and any(
+                b.safe_to_inpaint for b in existing
+            ):
                 continue
-            safe = bool(not watermark and 0.015 <= ratio <= 0.42 and page_ratio <= 0.035 and len(cluster) >= 3)
+            safe = bool(
+                not watermark
+                and MSER_SAFE_MASK_RATIO_MIN <= ratio <= MSER_SAFE_MASK_RATIO_MAX
+                and page_ratio <= MSER_SAFE_PAGE_AREA_RATIO_MAX
+                and len(cluster) >= MSER_SAFE_CLUSTER_MIN_REGIONS
+            )
             if safe:
-                candidate = replace(candidate, mask=mask, mask_source="opencv_mser",
-                                    safe_to_inpaint=True, ocr_eligible=True,
-                                    needs_review=False, confidence=0.35)
+                candidate = replace(
+                    candidate,
+                    mask=mask,
+                    mask_source="opencv_mser",
+                    safe_to_inpaint=True,
+                    ocr_eligible=True,
+                    needs_review=False,
+                    confidence=0.35,
+                )
             elif watermark:
-                candidate = replace(candidate, semantic_type="watermark", class_name="watermark")
+                candidate = replace(
+                    candidate, semantic_type="watermark", class_name="watermark"
+                )
             out.append(candidate)
 
         verification_set = existing + out
