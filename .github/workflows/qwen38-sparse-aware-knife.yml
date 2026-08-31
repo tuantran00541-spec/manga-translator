@@ -31,8 +31,9 @@ jobs:
         run: python -m pip install --no-cache-dir numpy torch --index-url https://download.pytorch.org/whl/cpu
       - name: Compile and run synthetic sanity
         run: |
-          python -m py_compile research/qwen38/core.py research/qwen38/synthetic_sanity.py research/qwen38/real_layer_experiment.py
+          python -m py_compile research/qwen38/core.py research/qwen38/synthetic_sanity.py research/qwen38/real_layer_experiment.py research/qwen38/k3_stream.py research/qwen38/k3_stream_sanity.py research/qwen38/k3_real_layer_smoke.py
           python research/qwen38/synthetic_sanity.py
+          python research/qwen38/k3_stream_sanity.py
 
   real-weight:
     needs: synthetic-sanity
@@ -135,3 +136,62 @@ jobs:
           name: qwen38-sparse-aware-evidence-${{ github.run_id }}
           path: ${{ runner.temp }}/qwen38-evidence/*.json
           if-no-files-found: warn
+
+  k3-real-layer-stream:
+    needs: synthetic-sanity
+    if: >-
+      ${{
+        github.event_name == 'push' &&
+        contains(github.event.head_commit.message, '[qwen-stream-real]')
+      }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      OMP_NUM_THREADS: "4"
+      MKL_NUM_THREADS: "4"
+      HF_HUB_DISABLE_TELEMETRY: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reclaim runner disk
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup || true
+          docker system prune -af || true
+          sudo apt-get clean || true
+          df -h
+          free -h
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install K3 stream gate dependencies
+        run: |
+          python -m pip install --no-cache-dir huggingface_hub
+          python -m pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+      - name: Pack and stream official layers 0 and 1 without generation
+        shell: bash
+        run: |
+          set -euo pipefail
+          work="$RUNNER_TEMP/qwen38-k3-real"
+          evidence="$RUNNER_TEMP/qwen38-k3-evidence"
+          mkdir -p "$work" "$evidence"
+          /usr/bin/time -v python research/qwen38/k3_real_layer_smoke.py \
+            --work-dir "$work" \
+            --layers "0,1" \
+            --output "$evidence/stream.json" \
+            2>&1 | tee "$evidence/stream.log"
+      - name: Show K3 evidence and clean source weights
+        if: always()
+        run: |
+          cat "$RUNNER_TEMP/qwen38-k3-evidence/stream.json" || true
+          df -h || true
+          free -h || true
+          rm -rf "$RUNNER_TEMP/qwen38-k3-real" || true
+      - name: Upload K3 metrics only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen38-k3-stream-evidence-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/qwen38-k3-evidence/stream.json
+            ${{ runner.temp }}/qwen38-k3-evidence/stream.log
+          if-no-files-found: warn
+          retention-days: 14
