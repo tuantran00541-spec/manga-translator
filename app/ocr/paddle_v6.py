@@ -12,6 +12,7 @@ import numpy as np
 from app.env_utils import env_enabled
 from app.ocr.quality import classify_ocr_quality
 from app.ocr.reading_order import reconstruct_reading_order, select_centered_target
+from app.parameters import OCR_PADDLE_MAX_UPSCALE, OCR_PADDLE_MIN_SIDE
 
 UNIFIED_LANGS = {"en", "english", "ch", "zh", "ja", "japan"}
 KOREAN_LANGS = {"ko", "korean"}
@@ -68,8 +69,11 @@ def _prepare_rgb_for_paddle(image: np.ndarray) -> np.ndarray:
 
     height, width = bgr.shape[:2]
     shortest = min(height, width)
-    if shortest < 32:
-        scale = min(4.0, 32.0 / max(1, shortest))
+    if shortest < OCR_PADDLE_MIN_SIDE:
+        scale = min(
+            OCR_PADDLE_MAX_UPSCALE,
+            OCR_PADDLE_MIN_SIDE / max(1, shortest),
+        )
         bgr = cv2.resize(
             bgr,
             (max(1, int(round(width * scale))), max(1, int(round(height * scale)))),
