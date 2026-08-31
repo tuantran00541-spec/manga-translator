@@ -17,7 +17,6 @@ LAMA_DYNAMIC_MODEL = MODELS_DIR / "lama-manga-dynamic.onnx"
 REQUIRED_MODELS = [
     BUBBLE_DETECTOR_MODEL,
     TEXT_SEGMENTER_MODEL,
-    LAMA_MODEL,
 ]
 
 BUBBLE_CONF_THRESHOLD = 0.4
@@ -58,4 +57,8 @@ def check_models() -> list[str]:
     for path in REQUIRED_MODELS:
         if not path.is_file():
             missing.append(path.name)
+    if not LAMA_DYNAMIC_MODEL.is_file() and not LAMA_MODEL.is_file():
+        # Preserve the historical filename in the public response while accepting
+        # the preferred dynamic model as a complete inpaint backend on its own.
+        missing.append(LAMA_MODEL.name)
     return missing
