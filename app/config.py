@@ -1,6 +1,22 @@
 import os
 from pathlib import Path
 
+from app.parameters import (
+    BUBBLE_DESTRUCTIVE_CONF_THRESHOLD,
+    BUBBLE_IOU_THRESHOLD,
+    DETECTOR_TTA_ENABLED,
+    INPAINT_SIZE,
+    MASK_DILATE_KERNEL_SIZE,
+    MAX_FONT_SIZE,
+    MIN_FONT_SIZE,
+    SLICE_MAX_HEIGHT,
+    SLICE_MIN_HEIGHT,
+    SLICE_SEARCH_WINDOW,
+    SLICE_TARGET_HEIGHT,
+    SMART_FILL_CLEAN_RING_MARGIN,
+    TEXT_CONF_THRESHOLD,
+)
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 RAW_DIR = BASE_DIR / "data" / "raw"
@@ -19,25 +35,12 @@ REQUIRED_MODELS = [
     TEXT_SEGMENTER_MODEL,
 ]
 
-BUBBLE_CONF_THRESHOLD = 0.4
-BUBBLE_IOU_THRESHOLD = 0.3
-TEXT_CONF_THRESHOLD = 0.20
-
-ENABLE_TTA = os.getenv("ENABLE_TTA", "0").lower() in ("1", "true", "yes")
-
-MASK_DILATE_KERNEL_SIZE = 7
-SMART_FILL_CLEAN_RING_MARGIN = 6
-
-INPAINT_SIZE = 512
-
-SLICE_TARGET_HEIGHT = 1400
-SLICE_SEARCH_WINDOW = 180
-SLICE_MIN_HEIGHT = 500
-SLICE_MAX_HEIGHT = 1536
+# Compatibility aliases for modules/third-party code that historically imported
+# tuning from app.config. New runtime code should import from app.parameters.
+BUBBLE_CONF_THRESHOLD = BUBBLE_DESTRUCTIVE_CONF_THRESHOLD
+ENABLE_TTA = DETECTOR_TTA_ENABLED
 
 DEFAULT_FONT = BASE_DIR / "app" / "static" / "fonts" / "default.ttf"
-MIN_FONT_SIZE = 6
-MAX_FONT_SIZE = 48
 
 SUPPORTED_OCR_LANGS = ["ja", "ch", "korean", "en"]
 
