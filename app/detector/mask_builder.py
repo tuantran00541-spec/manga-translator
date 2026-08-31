@@ -7,6 +7,9 @@ from app.config import MASK_DILATE_KERNEL_SIZE
 
 MASK_EXPAND = 8
 MANUAL_CONFIDENCE_SENTINEL = 1.0
+AUTO_DESTRUCTIVE_MASK_SOURCES = frozenset(
+    {"text_segmenter", "bubble_flat_contrast", "opencv_mser"}
+)
 
 
 def adaptive_dilate_mask(mask: np.ndarray, crop_img: np.ndarray | None = None) -> np.ndarray:

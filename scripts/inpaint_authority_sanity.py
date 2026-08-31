@@ -23,8 +23,12 @@ def main() -> None:
     )
     _require(
         "app/detector/mask_builder.py",
+        "AUTO_DESTRUCTIVE_MASK_SOURCES = frozenset(",
+        '"text_segmenter"',
+        '"bubble_flat_contrast"',
+        '"opencv_mser"',
         "def is_destructive_box_authorized(box: BubbleBox) -> bool:",
-        "getattr(box, \"safe_to_inpaint\", False)",
+        'getattr(box, "safe_to_inpaint", False)',
         "or _rectangle_fallback_allowed(box)",
         "if not is_destructive_box_authorized(box):",
         "Skipping non-authorized destructive mask",
@@ -44,7 +48,8 @@ def main() -> None:
     )
     _require(
         "scripts/model_e2e_gate.py",
-        '"bubble_flat_contrast"',
+        "from app.detector.mask_builder import AUTO_DESTRUCTIVE_MASK_SOURCES",
+        "mask_source not in AUTO_DESTRUCTIVE_MASK_SOURCES",
         "source_model=box.source_model",
         "mask_source=box.mask_source",
         "safe_to_inpaint=bool(box.safe_to_inpaint)",
@@ -53,6 +58,7 @@ def main() -> None:
         "if not args.allow_empty_cleanup:",
         '"model E2E produced no authorized cleanup mask pixels; inpaint path was not exercised"',
         '"cleanup_evidence": cleanup_evidence',
+        'box_counts["ocr_eligible"] += int(bool(record.get("ocr_eligible")))',
     )
     print("Inpaint destructive-authority source contract OK")
 

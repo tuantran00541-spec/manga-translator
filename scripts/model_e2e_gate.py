@@ -20,7 +20,6 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 _IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
-_ALLOWED_AUTO_MASK_SOURCES = {"text_segmenter", "bubble_flat_contrast", "opencv_mser"}
 
 
 def _source_revision() -> str | None:
@@ -148,13 +147,15 @@ def _authority_mask(image: np.ndarray, records: list[dict], inpainter) -> np.nda
 
 
 def _check_detector_provenance(page_index: int, records: list[dict], failures: list[str]) -> None:
+    from app.detector.mask_builder import AUTO_DESTRUCTIVE_MASK_SOURCES
+
     for box_index, record in enumerate(records):
         if not isinstance(record, dict) or record.get("removed"):
             continue
         safe = bool(record.get("safe_to_inpaint"))
         mask_source = str(record.get("mask_source") or "none")
         manual = bool(record.get("manual") or record.get("geometry_overridden"))
-        if safe and not manual and mask_source not in _ALLOWED_AUTO_MASK_SOURCES:
+        if safe and not manual and mask_source not in AUTO_DESTRUCTIVE_MASK_SOURCES:
             failures.append(
                 f"page {page_index} box {box_index}: unsafe automatic mask provenance {mask_source!r}"
             )
@@ -447,7 +448,7 @@ def run(args: argparse.Namespace) -> dict:
             box_counts["total"] += 1
             box_counts["safe"] += int(bool(record.get("safe_to_inpaint")))
             box_counts["review"] += int(bool(record.get("needs_review")))
-            box_counts["ocr_eligible"] += int(record.get("ocr_eligible") is not False)
+            box_counts["ocr_eligible"] += int(bool(record.get("ocr_eligible")))
 
     return {
         "status": "pass" if not all_failures else "fail",
