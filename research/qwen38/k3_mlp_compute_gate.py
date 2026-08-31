@@ -176,6 +176,7 @@ def main() -> None:
             tensor, view = streamed_tensor(layer_view, layer_meta, name)
             streamed[key] = tensor
             keepalive.append(view)
+        del tensor, view
 
         stream_norm_out = rms_norm(x, streamed["input_norm"])
         stream_mlp_in = rms_norm(x, streamed["post_norm"])
