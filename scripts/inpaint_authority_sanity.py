@@ -29,6 +29,14 @@ def main() -> None:
         "if not is_destructive_box_authorized(box):",
         "Skipping non-authorized destructive mask",
     )
+    _require(
+        "app/inpaint/lama_inpainter.py",
+        "source_model=b.source_model",
+        "mask_source=b.mask_source",
+        "safe_to_inpaint=bool(b.safe_to_inpaint)",
+        "ocr_eligible=bool(b.ocr_eligible)",
+        "needs_review=bool(b.needs_review)",
+    )
     print("Inpaint destructive-authority source contract OK")
 
 

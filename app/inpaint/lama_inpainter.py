@@ -195,7 +195,20 @@ class Inpainter:
             local_boxes = []
             for b in cluster:
                 local_box = BubbleBox(
-                    b.x1 - cx1, b.y1 - cy1, b.x2 - cx1, b.y2 - cy1, b.confidence, b.mask
+                    b.x1 - cx1,
+                    b.y1 - cy1,
+                    b.x2 - cx1,
+                    b.y2 - cy1,
+                    b.confidence,
+                    b.mask,
+                    source_model=b.source_model,
+                    class_id=b.class_id,
+                    class_name=b.class_name,
+                    semantic_type=b.semantic_type,
+                    mask_source=b.mask_source,
+                    safe_to_inpaint=bool(b.safe_to_inpaint),
+                    ocr_eligible=bool(b.ocr_eligible),
+                    needs_review=bool(b.needs_review),
                 )
                 if bool(getattr(b, "allow_rectangle_fallback", False)):
                     local_box.allow_rectangle_fallback = True
