@@ -312,6 +312,96 @@ MSER_PAGE_CLUSTER_SKIP_RATIO = _env_float(
     "MANGA_MSER_PAGE_CLUSTER_SKIP_RATIO", 0.45, minimum=0.0, maximum=1.0
 )
 
+# Residual-line verifier. These are separate from primary MSER mask authority:
+# equal defaults must not imply shared semantics when one side is tuned later.
+MSER_LINE_OVERLAP_MIN = _env_float(
+    "MANGA_MSER_LINE_OVERLAP_MIN", 0.45, minimum=0.0, maximum=1.0
+)
+MSER_LINE_GAP_MIN = _env_float(
+    "MANGA_MSER_LINE_GAP_MIN", 18.0, minimum=0.0, maximum=512.0
+)
+MSER_LINE_GAP_HEIGHT_FACTOR = _env_float(
+    "MANGA_MSER_LINE_GAP_HEIGHT_FACTOR", 1.6, minimum=0.0, maximum=20.0
+)
+MSER_RESIDUAL_MAX_WIDTH_RATIO = _env_float(
+    "MANGA_MSER_RESIDUAL_MAX_WIDTH_RATIO", 0.16, minimum=0.0, maximum=1.0
+)
+MSER_RESIDUAL_MAX_HEIGHT_RATIO = _env_float(
+    "MANGA_MSER_RESIDUAL_MAX_HEIGHT_RATIO", 0.10, minimum=0.0, maximum=1.0
+)
+MSER_RESIDUAL_AREA_RATIO_MAX = _env_float(
+    "MANGA_MSER_RESIDUAL_AREA_RATIO_MAX", 0.015, minimum=0.0, maximum=1.0
+)
+MSER_RESIDUAL_ASPECT_MIN = _env_float(
+    "MANGA_MSER_RESIDUAL_ASPECT_MIN", 0.07, minimum=0.001, maximum=10.0
+)
+MSER_RESIDUAL_ASPECT_MAX = _env_float(
+    "MANGA_MSER_RESIDUAL_ASPECT_MAX", 5.0, minimum=0.01, maximum=100.0
+)
+MSER_RESIDUAL_GRID_CELL = _env_int(
+    "MANGA_MSER_RESIDUAL_GRID_CELL", 64, minimum=4, maximum=1024
+)
+MSER_RESIDUAL_GRID_Y_RADIUS = _env_int(
+    "MANGA_MSER_RESIDUAL_GRID_Y_RADIUS", 2, minimum=0, maximum=32
+)
+MSER_RESIDUAL_DISTINCT_X_BUCKET = _env_int(
+    "MANGA_MSER_RESIDUAL_DISTINCT_X_BUCKET", 8, minimum=1, maximum=256
+)
+MSER_RESIDUAL_DISTINCT_X_MIN = _env_int(
+    "MANGA_MSER_RESIDUAL_DISTINCT_X_MIN", 5, minimum=1, maximum=100
+)
+MSER_RESIDUAL_MIN_WIDTH = _env_int(
+    "MANGA_MSER_RESIDUAL_MIN_WIDTH", 70, minimum=1, maximum=4096
+)
+MSER_RESIDUAL_MIN_HEIGHT = _env_int(
+    "MANGA_MSER_RESIDUAL_MIN_HEIGHT", 8, minimum=1, maximum=4096
+)
+MSER_RESIDUAL_MAX_LINE_HEIGHT_RATIO = _env_float(
+    "MANGA_MSER_RESIDUAL_MAX_LINE_HEIGHT_RATIO", 0.12, minimum=0.0, maximum=1.0
+)
+MSER_RESIDUAL_MAX_BBOX_AREA_RATIO = _env_float(
+    "MANGA_MSER_RESIDUAL_MAX_BBOX_AREA_RATIO", 0.05, minimum=0.0, maximum=1.0
+)
+MSER_RESIDUAL_GROUP_ASPECT_MIN = _env_float(
+    "MANGA_MSER_RESIDUAL_GROUP_ASPECT_MIN", 1.8, minimum=0.01, maximum=100.0
+)
+MSER_RECOVERY_PAD = _env_int(
+    "MANGA_MSER_RECOVERY_PAD", 6, minimum=0, maximum=256
+)
+MSER_RESIDUAL_REVIEW_CONFIDENCE = _env_float(
+    "MANGA_MSER_RESIDUAL_REVIEW_CONFIDENCE", 0.18, minimum=0.0, maximum=1.0
+)
+MSER_RESIDUAL_EXISTING_IOU_SKIP = _env_float(
+    "MANGA_MSER_RESIDUAL_EXISTING_IOU_SKIP", 0.25, minimum=0.0, maximum=1.0
+)
+MSER_RESIDUAL_SAFE_CENTER_PAD = _env_int(
+    "MANGA_MSER_RESIDUAL_SAFE_CENTER_PAD", 8, minimum=0, maximum=256
+)
+MSER_CLUSTER_NEAR_X_FACTOR = _env_float(
+    "MANGA_MSER_CLUSTER_NEAR_X_FACTOR", 1.8, minimum=0.0, maximum=20.0
+)
+MSER_CLUSTER_NEAR_Y_FACTOR = _env_float(
+    "MANGA_MSER_CLUSTER_NEAR_Y_FACTOR", 1.3, minimum=0.0, maximum=20.0
+)
+MSER_CLUSTER_MIN_REGIONS = _env_int(
+    "MANGA_MSER_CLUSTER_MIN_REGIONS", 2, minimum=1, maximum=100
+)
+MSER_CLUSTER_MIN_WIDTH = _env_int(
+    "MANGA_MSER_CLUSTER_MIN_WIDTH", 12, minimum=1, maximum=4096
+)
+MSER_CLUSTER_MIN_HEIGHT = _env_int(
+    "MANGA_MSER_CLUSTER_MIN_HEIGHT", 10, minimum=1, maximum=4096
+)
+MSER_REVIEW_CONFIDENCE = _env_float(
+    "MANGA_MSER_REVIEW_CONFIDENCE", 0.20, minimum=0.0, maximum=1.0
+)
+MSER_SAFE_CONFIDENCE = _env_float(
+    "MANGA_MSER_SAFE_CONFIDENCE", 0.35, minimum=0.0, maximum=1.0
+)
+MSER_RESIDUAL_FINAL_IOU_SKIP = _env_float(
+    "MANGA_MSER_RESIDUAL_FINAL_IOU_SKIP", 0.35, minimum=0.0, maximum=1.0
+)
+
 # ---------------------------------------------------------------------------
 # Mask building
 # ---------------------------------------------------------------------------
@@ -402,6 +492,18 @@ INPAINT_CROP_PADDING = _env_int(
 )
 INPAINT_CLUSTER_MAX_DIM = _env_int(
     "MANGA_INPAINT_CLUSTER_MAX_DIM", 600, minimum=64, maximum=4096
+)
+INPAINT_CLUSTER_SPLIT_COUNT = _env_int(
+    "MANGA_INPAINT_CLUSTER_SPLIT_COUNT", 3, minimum=1, maximum=100
+)
+INPAINT_CLUSTER_SPLIT_HEIGHT_FACTOR = _env_float(
+    "MANGA_INPAINT_CLUSTER_SPLIT_HEIGHT_FACTOR", 4.0, minimum=1.0, maximum=20.0
+)
+INPAINT_CLUSTER_LINE_OVERLAP_MIN = _env_float(
+    "MANGA_INPAINT_CLUSTER_LINE_OVERLAP_MIN", 0.5, minimum=0.0, maximum=1.0
+)
+INPAINT_CLUSTER_GROUP_HEIGHT_FACTOR = _env_float(
+    "MANGA_INPAINT_CLUSTER_GROUP_HEIGHT_FACTOR", 3.0, minimum=1.0, maximum=20.0
 )
 INPAINT_CROP_LONG_ASPECT_THRESHOLD = _env_float(
     "MANGA_INPAINT_CROP_LONG_ASPECT_THRESHOLD", 1.8, minimum=1.0, maximum=20.0
@@ -621,6 +723,12 @@ VISUAL_QC_MERGE_GAP = _env_int(
 VISUAL_QC_DEEP_AREA_RATIO = _env_float(
     "MANGA_VISUAL_QC_DEEP_AREA_RATIO", 0.35, minimum=0.0, maximum=1.0
 )
+VISUAL_QC_MANUAL_COMPONENT_AREA_MIN = _env_int(
+    "MANGA_VISUAL_QC_MANUAL_COMPONENT_AREA_MIN", 9, minimum=1, maximum=100000
+)
+VISUAL_QC_MANUAL_MASK_THRESHOLD = _env_int(
+    "MANGA_VISUAL_QC_MANUAL_MASK_THRESHOLD", 10, minimum=0, maximum=255
+)
 VISUAL_QC_GLOBAL_BATCH_SIZE = _env_int(
     "MANGA_VISUAL_QC_GLOBAL_BATCH_SIZE", 2, minimum=1, maximum=8
 )
@@ -629,6 +737,9 @@ VISUAL_QC_REGION_BATCH_SIZE = _env_int(
 )
 VISUAL_QC_PAIR_BATCH_SIZE = _env_int(
     "MANGA_VISUAL_QC_PAIR_BATCH_SIZE", 2, minimum=1, maximum=8
+)
+VISUAL_QC_JOB_CONCURRENCY = _env_int(
+    "MANGA_VISUAL_QC_JOB_CONCURRENCY", 2, minimum=1, maximum=32
 )
 
 # ---------------------------------------------------------------------------
@@ -695,6 +806,7 @@ FLAT_BUBBLE_TEXT_RATIO_MIN = min(
 )
 SMART_FILL_MIDTONE_MIN = min(SMART_FILL_MIDTONE_MIN, SMART_FILL_MIDTONE_MAX)
 OCR_REJECT_CONFIDENCE = min(OCR_REJECT_CONFIDENCE, OCR_REVIEW_CONFIDENCE)
+MSER_RESIDUAL_ASPECT_MIN = min(MSER_RESIDUAL_ASPECT_MIN, MSER_RESIDUAL_ASPECT_MAX)
 
 
 def parameter_snapshot() -> dict[str, Number | bool | str]:
