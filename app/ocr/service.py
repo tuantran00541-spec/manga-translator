@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from collections import OrderedDict
 import copy
-import os
 import threading
 from pathlib import Path
 
@@ -25,6 +24,11 @@ from app.ocr.identity import (
     stamp_machine_cache,
 )
 from app.ocr.quality import classify_ocr_quality
+from app.parameters import (
+    OCR_BOX_CROP_PADDING,
+    OCR_IMAGE_CACHE_MB,
+    OCR_MASK_CROP_PADDING,
+)
 from app.pipeline import read_image
 from app.security import validate_chapter_id
 from app.text_objects import (
@@ -44,11 +48,7 @@ class OCRCancelled(RuntimeError):
 
 
 def _cache_budget_bytes() -> int:
-    try:
-        value = int(os.getenv("MANGA_OCR_IMAGE_CACHE_MB", "128"))
-    except ValueError:
-        value = 128
-    return max(0, min(value, 1024)) * 1024 * 1024
+    return int(OCR_IMAGE_CACHE_MB) * 1024 * 1024
 
 
 def _region_overlaps_box(region: dict, box: dict) -> bool:
@@ -81,14 +81,14 @@ def ocr_crop_from_box(image: np.ndarray, box: dict) -> np.ndarray:
     if mask is not None and mask.shape == expected_shape:
         ys, xs = np.nonzero(mask > 127)
         if xs.size and ys.size:
-            pad = 12
+            pad = OCR_MASK_CROP_PADDING
             x1 = max(bx1, bx1 + int(xs.min()) - pad)
             y1 = max(by1, by1 + int(ys.min()) - pad)
             x2 = min(bx2, bx1 + int(xs.max()) + 1 + pad)
             y2 = min(by2, by1 + int(ys.max()) + 1 + pad)
             if x2 > x1 and y2 > y1:
                 return image[y1:y2, x1:x2]
-    pad = 20
+    pad = OCR_BOX_CROP_PADDING
     return image[
         max(0, by1 - pad) : min(h, by2 + pad),
         max(0, bx1 - pad) : min(w, bx2 + pad),
