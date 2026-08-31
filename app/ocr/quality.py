@@ -3,6 +3,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 import unicodedata
 
+from app.parameters import (
+    OCR_EN_SCRIPT_MISMATCH_RATIO,
+    OCR_REJECT_CONFIDENCE,
+    OCR_REVIEW_CONFIDENCE,
+    OCR_SYMBOL_NOISE_RATIO,
+    OCR_UNEXPECTED_LATIN_RATIO,
+)
+
 
 @dataclass(frozen=True)
 class OCRQuality:
@@ -94,9 +102,9 @@ def classify_ocr_quality(
     except (TypeError, ValueError):
         conf = None
     if conf is not None:
-        if conf < 0.35:
+        if conf < OCR_REJECT_CONFIDENCE:
             return OCRQuality("reject", "very-low-confidence")
-        if conf < 0.55:
+        if conf < OCR_REVIEW_CONFIDENCE:
             return OCRQuality("review", "low-confidence")
 
     letters = [ch for ch in value if unicodedata.category(ch).startswith("L")]
@@ -108,19 +116,22 @@ def classify_ocr_quality(
 
     if lang_key == "en" and len(letters) >= 2:
         non_latin_cjk = han + kana + hangul
-        if non_latin_cjk >= 2 and non_latin_cjk / len(letters) >= 0.5:
+        if (
+            non_latin_cjk >= 2
+            and non_latin_cjk / len(letters) >= OCR_EN_SCRIPT_MISMATCH_RATIO
+        ):
             return OCRQuality("reject", "script-mismatch")
 
     if lang_key == "ja" and len(letters) >= 3:
-        if han + kana == 0 and latin / len(letters) >= 0.85:
+        if han + kana == 0 and latin / len(letters) >= OCR_UNEXPECTED_LATIN_RATIO:
             return OCRQuality("review", "unexpected-script")
 
     if lang_key == "zh" and len(letters) >= 3:
-        if han == 0 and latin / len(letters) >= 0.85:
+        if han == 0 and latin / len(letters) >= OCR_UNEXPECTED_LATIN_RATIO:
             return OCRQuality("review", "unexpected-script")
 
     if lang_key == "ko" and len(letters) >= 3:
-        if hangul == 0 and latin / len(letters) >= 0.85:
+        if hangul == 0 and latin / len(letters) >= OCR_UNEXPECTED_LATIN_RATIO:
             return OCRQuality("review", "unexpected-script")
 
     compact = [ch.casefold() for ch in content]
@@ -135,7 +146,11 @@ def classify_ocr_quality(
         and not unicodedata.category(ch).startswith("P")
     ]
     visible = [ch for ch in value if not ch.isspace()]
-    if visible and len(symbols) / len(visible) > 0.45 and len(content) <= 2:
+    if (
+        visible
+        and len(symbols) / len(visible) > OCR_SYMBOL_NOISE_RATIO
+        and len(content) <= 2
+    ):
         return OCRQuality("reject", "symbol-noise")
 
     return OCRQuality("good", None)
