@@ -6,15 +6,23 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from app.config import BUBBLE_IOU_THRESHOLD, ENABLE_TTA
 from app.ort_utils import make_session
-
-INPUT_SIZE = 1024
-SLICE_OVERLAP = 200
-MAX_BOX_WIDTH_RATIO = 0.97
-MAX_BOX_AREA_RATIO = 0.35
-MAX_ASPECT_RATIO = 25
-DETECTOR_CONFIDENCE_MAX = 0.999998
+from app.parameters import (
+    BUBBLE_IOU_THRESHOLD,
+    DETECTOR_CONFIDENCE_MAX,
+    DETECTOR_INPUT_SIZE as INPUT_SIZE,
+    DETECTOR_LETTERBOX_VALUE,
+    DETECTOR_MASK_THRESHOLD,
+    DETECTOR_MAX_ASPECT_RATIO as MAX_ASPECT_RATIO,
+    DETECTOR_MAX_BOX_AREA_RATIO as MAX_BOX_AREA_RATIO,
+    DETECTOR_MAX_BOX_WIDTH_RATIO as MAX_BOX_WIDTH_RATIO,
+    DETECTOR_MIN_BOX_SIDE,
+    DETECTOR_TALL_IMAGE_FACTOR,
+    DETECTOR_TTA_ENABLED as ENABLE_TTA,
+    DETECTOR_TTA_MIN_SIDE,
+    DETECTOR_TTA_SMALL_SCALE,
+    DETECTOR_WINDOW_OVERLAP as SLICE_OVERLAP,
+)
 
 
 @dataclass
@@ -87,7 +95,7 @@ class YoloDetector:
 
     def detect(self, image: np.ndarray) -> list[BubbleBox]:
         h, w = image.shape[:2]
-        if h <= INPUT_SIZE * 1.5:
+        if h <= INPUT_SIZE * DETECTOR_TALL_IMAGE_FACTOR:
             boxes = self._detect_single(image, 0, 0)
         else:
             all_boxes = []
@@ -181,9 +189,9 @@ class YoloDetector:
                     )
                 )
 
-        small_scale = 0.85
+        small_scale = DETECTOR_TTA_SMALL_SCALE
         sh, sw = int(round(h * small_scale)), int(round(w * small_scale))
-        if sh > 10 and sw > 10:
+        if sh > DETECTOR_TTA_MIN_SIDE and sw > DETECTOR_TTA_MIN_SIDE:
             scale_x = sw / w
             scale_y = sh / h
             small = cv2.resize(image, (sw, sh))
@@ -220,7 +228,9 @@ class YoloDetector:
         nh, nw = int(h * scale), int(w * scale)
         img_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB) if image.ndim == 3 and image.shape[2] == 3 else image
         resized = cv2.resize(img_rgb, (nw, nh))
-        canvas = np.full((INPUT_SIZE, INPUT_SIZE, 3), 114, dtype=np.uint8)
+        canvas = np.full(
+            (INPUT_SIZE, INPUT_SIZE, 3), DETECTOR_LETTERBOX_VALUE, dtype=np.uint8
+        )
         pad_x, pad_y = (INPUT_SIZE - nw) // 2, (INPUT_SIZE - nh) // 2
         canvas[pad_y:pad_y + nh, pad_x:pad_x + nw] = resized
         blob = canvas.astype(np.float32) / 255.0
@@ -274,7 +284,10 @@ class YoloDetector:
         x2 = np.minimum(float(orig_w), (cx + bw / 2.0 - pad_x) / scale)
         y2 = np.minimum(float(orig_h), (cy + bh / 2.0 - pad_y) / scale)
 
-        valid = ((x2 - x1) >= 4.0) & ((y2 - y1) >= 4.0)
+        valid = (
+            ((x2 - x1) >= DETECTOR_MIN_BOX_SIDE)
+            & ((y2 - y1) >= DETECTOR_MIN_BOX_SIDE)
+        )
         if not np.any(valid):
             return []
 
@@ -320,7 +333,7 @@ class YoloDetector:
         if crop.size == 0:
             return None
         resized = cv2.resize(crop, (box_w, box_h), interpolation=cv2.INTER_LINEAR)
-        return (resized > 0.5).astype(np.uint8) * 255
+        return (resized > DETECTOR_MASK_THRESHOLD).astype(np.uint8) * 255
 
     @staticmethod
     def _candidate_fields(candidate: tuple) -> tuple[float, int, int, object, object]:
