@@ -37,6 +37,11 @@ SLICE_MAX_HEIGHT = _parameters.SLICE_MAX_HEIGHT
 MIN_FONT_SIZE = _parameters.MIN_FONT_SIZE
 MAX_FONT_SIZE = _parameters.MAX_FONT_SIZE
 
+# Process-start snapshot for health/debug/reproducibility. Tuning values are
+# intentionally read once from environment at import time, so this is stable for
+# the lifetime of the process and matches the values used by runtime modules.
+EFFECTIVE_PARAMETERS = _parameters.parameter_snapshot()
+
 DEFAULT_FONT = BASE_DIR / "app" / "static" / "fonts" / "default.ttf"
 
 SUPPORTED_OCR_LANGS = ["ja", "ch", "korean", "en"]
