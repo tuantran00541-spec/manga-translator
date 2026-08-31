@@ -1,0 +1,32 @@
+name: Qwen3.8 GGUF quant reference sanity
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - test/qwen3.8-27b
+    paths:
+      - research/qwen38/gguf_quant_ref.py
+      - research/qwen38/gguf_quant_ref_sanity.py
+      - .github/workflows/qwen38-gguf-quant-ref-sanity.yml
+
+permissions:
+  contents: read
+
+jobs:
+  zero-model-quant-ref:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Compile reference gate
+        run: |
+          python -m py_compile \
+            research/qwen38/gguf_quant_ref.py \
+            research/qwen38/gguf_quant_ref_sanity.py
+      - name: Run zero-model quant reference gate
+        working-directory: research/qwen38
+        run: python gguf_quant_ref_sanity.py
