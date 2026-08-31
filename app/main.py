@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 import os
 from pathlib import Path
+import time
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
@@ -12,6 +13,7 @@ from app.config import (
     LAMA_MODEL,
     OUTPUT_DIR,
     PROCESSED_DIR,
+    RAW_DIR,
     check_models,
     ensure_directories,
 )
@@ -22,10 +24,36 @@ from app.routers import automation, chapters, editor, export, image, ocr, render
 from app.security import MAX_REQUEST_BYTES, MAX_UPLOAD_TOTAL_BYTES
 
 
+def _cleanup_extra_stale_artifacts(max_age_seconds: float = 3600.0) -> int:
+    """Clean crash leftovers not covered by per-chapter manifest temp cleanup."""
+    cutoff = time.time() - max(0.0, float(max_age_seconds))
+    candidates: set[Path] = set()
+
+    if RAW_DIR.exists():
+        candidates.update(RAW_DIR.rglob("*.part"))
+
+    if OUTPUT_DIR.exists():
+        candidates.update(OUTPUT_DIR.rglob("*.export.*.tmp"))
+        candidates.update(OUTPUT_DIR.rglob("page_*.export.*.png"))
+
+    removed = 0
+    for path in candidates:
+        try:
+            if path.is_symlink() or not path.is_file():
+                continue
+            if path.stat().st_mtime > cutoff:
+                continue
+            path.unlink()
+            removed += 1
+        except OSError:
+            continue
+    return removed
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     ensure_directories()
-    removed_temp_artifacts = 0
+    removed_temp_artifacts = _cleanup_extra_stale_artifacts()
     for root in (PROCESSED_DIR, OUTPUT_DIR):
         if not root.exists():
             continue
