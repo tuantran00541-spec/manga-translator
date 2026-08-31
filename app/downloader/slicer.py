@@ -7,18 +7,25 @@ import os
 import cv2
 import numpy as np
 
-from app.config import (
-    SLICE_TARGET_HEIGHT,
-    SLICE_SEARCH_WINDOW,
-    SLICE_MIN_HEIGHT,
+from app.parameters import (
+    SLICE_BACKGROUND_DISTANCE,
+    SLICE_CLOSE_KERNEL_SIZE,
+    SLICE_CONTENT_CANNY_HIGH,
+    SLICE_CONTENT_CANNY_LOW,
+    SLICE_CONTENT_SCORE_WEIGHT,
+    SLICE_CONTOUR_MIN_HEIGHT,
+    SLICE_CONTOUR_MIN_WIDTH,
+    SLICE_CONTOUR_PAD_Y,
+    SLICE_FALLBACK_BAND as FALLBACK_BAND,
+    SLICE_FALLBACK_TOLERANCE_RATIO,
     SLICE_MAX_HEIGHT,
+    SLICE_MAX_SAFE_SEARCH_EXPANSION as MAX_SAFE_SEARCH_EXPANSION,
+    SLICE_MIN_HEIGHT,
+    SLICE_OVERLAP_CONTEXT as OVERLAP_CONTEXT,
+    SLICE_SAFE_CUT_BAND as SAFE_CUT_BAND,
+    SLICE_SEARCH_WINDOW,
+    SLICE_TARGET_HEIGHT,
 )
-
-
-SAFE_CUT_BAND = 12
-MAX_SAFE_SEARCH_EXPANSION = 360
-FALLBACK_BAND = 18
-OVERLAP_CONTEXT = 384
 
 
 def slice_image(image_path: Path, out_dir: Path, prefix: str, *, return_metadata: bool = False):
@@ -66,26 +73,28 @@ def slice_image(image_path: Path, out_dir: Path, prefix: str, *, return_metadata
     cut_rows = _find_cut_rows(gray, h, w, unsafe_rows=unsafe_rows)
 
     def boundary_unsafe(y: int) -> bool:
-        lo=max(0,int(y)-SAFE_CUT_BAND); hi=min(h,int(y)+SAFE_CUT_BAND+1)
+        lo = max(0, int(y) - SAFE_CUT_BAND)
+        hi = min(h, int(y) + SAFE_CUT_BAND + 1)
         return bool(np.any(unsafe_rows[lo:hi]))
 
     boundaries = [0] + cut_rows + [h]
     flags = {int(y): boundary_unsafe(int(y)) for y in cut_rows}
-    paths=[]; meta=[]
-    for i in range(len(boundaries)-1):
-        core_start, core_end = int(boundaries[i]), int(boundaries[i+1])
+    paths = []
+    meta = []
+    for i in range(len(boundaries) - 1):
+        core_start, core_end = int(boundaries[i]), int(boundaries[i + 1])
         unsafe_before = bool(flags.get(core_start, False))
         unsafe_after = bool(flags.get(core_end, False))
         context_start = max(0, core_start - (OVERLAP_CONTEXT if unsafe_before else 0))
         context_end = min(h, core_end + (OVERLAP_CONTEXT if unsafe_after else 0))
-        segment=image[context_start:context_end,:]
-        out_path=out_dir / f"{prefix}_{i:02d}{ext}"
-        save_segment(out_path,segment)
+        segment = image[context_start:context_end, :]
+        out_path = out_dir / f"{prefix}_{i:02d}{ext}"
+        save_segment(out_path, segment)
         paths.append(out_path)
         meta.append({
             "path": out_path,
             "source_y1": context_start, "source_y2": context_end,
-            "core_y1": core_start-context_start, "core_y2": core_end-context_start,
+            "core_y1": core_start - context_start, "core_y2": core_end - context_start,
             "core_source_y1": core_start, "core_source_y2": core_end,
             "unsafe_before": unsafe_before, "unsafe_after": unsafe_after,
             "source_height": h,
@@ -99,8 +108,8 @@ def _find_cut_rows(
     """Return cuts that prefer blank gutters but always bound slice height.
 
     The old slicer stopped entirely when it could not find a perfectly safe
-    25-row band. On dense webtoon pages that could leave a 16k image intact,
-    forcing each detector to perform ~20 overlapping internal passes.
+    band. On dense webtoon pages that could leave a very tall image intact,
+    forcing each detector to perform many overlapping internal passes.
 
     This version keeps the existing safe-cut preference. If there is no safe
     band, it chooses the lowest-content band within a constrained range. The
@@ -146,6 +155,8 @@ def _find_cut_rows(
         hi = min(allowed_hi, target + SLICE_SEARCH_WINDOW)
         cut = _find_safe_cut(unsafe_rows, scores, lo, hi, target)
 
+        expanded_lo = lo
+        expanded_hi = hi
         if cut is None:
             expanded_lo = max(
                 allowed_lo,
@@ -160,7 +171,9 @@ def _find_cut_rows(
             )
 
         if cut is None:
-            cut = _find_low_content_cut(scores, expanded_lo, expanded_hi, target, unsafe_rows)
+            cut = _find_low_content_cut(
+                scores, expanded_lo, expanded_hi, target, unsafe_rows
+            )
 
         if cut is None or cut <= y or cut >= h:
             cut = min(h - 1, y + SLICE_MAX_HEIGHT)
@@ -178,10 +191,13 @@ def _get_row_scores(gray: np.ndarray) -> np.ndarray:
 
     white_diff = cv2.absdiff(gray, 255)
     black_diff = cv2.absdiff(gray, 0)
-    non_bg_pixels = (white_diff > 18) & (black_diff > 18)
+    non_bg_pixels = (
+        (white_diff > SLICE_BACKGROUND_DISTANCE)
+        & (black_diff > SLICE_BACKGROUND_DISTANCE)
+    )
     content_count_per_row = non_bg_pixels.sum(axis=1).astype(np.float32)
 
-    return row_std + content_count_per_row * 2.0
+    return row_std + content_count_per_row * SLICE_CONTENT_SCORE_WEIGHT
 
 
 def _find_safe_cut(
@@ -243,7 +259,7 @@ def _find_low_content_cut(
     band_score = (integral[ends] - integral[starts]) / float(2 * radius + 1)
 
     best = float(np.min(band_score))
-    tolerance = max(1.0, abs(best) * 0.08)
+    tolerance = max(1.0, abs(best) * SLICE_FALLBACK_TOLERANCE_RATIO)
     low_content = rows[band_score <= best + tolerance]
     if unsafe_rows is not None and low_content.size:
         safe_candidates = low_content[~unsafe_rows[low_content]]
@@ -264,25 +280,37 @@ def _find_low_content_cut(
 def _get_content_row_mask(gray: np.ndarray, h: int, w: int) -> np.ndarray:
     mask = np.zeros(h, dtype=bool)
 
-    edges = cv2.Canny(gray, 30, 120)
+    edges = cv2.Canny(
+        gray, SLICE_CONTENT_CANNY_LOW, SLICE_CONTENT_CANNY_HIGH
+    )
 
     white_diff = cv2.absdiff(gray, 255)
     black_diff = cv2.absdiff(gray, 0)
-    content_binary = ((white_diff > 18) & (black_diff > 18)).astype(np.uint8) * 255
+    content_binary = (
+        (white_diff > SLICE_BACKGROUND_DISTANCE)
+        & (black_diff > SLICE_BACKGROUND_DISTANCE)
+    ).astype(np.uint8) * 255
 
     combined = cv2.bitwise_or(edges, content_binary)
 
-    close_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (31, 31))
+    close_kernel = cv2.getStructuringElement(
+        cv2.MORPH_ELLIPSE,
+        (SLICE_CLOSE_KERNEL_SIZE, SLICE_CLOSE_KERNEL_SIZE),
+    )
     combined = cv2.morphologyEx(combined, cv2.MORPH_CLOSE, close_kernel)
 
-    contours, _ = cv2.findContours(combined, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    contours, _ = cv2.findContours(
+        combined, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+    )
 
-    pad_y = 40
     for c in contours:
         _x_box, y_box, w_box, h_box = cv2.boundingRect(c)
-        if w_box >= 15 and h_box >= 15:
-            y_start = max(0, y_box - pad_y)
-            y_end = min(h, y_box + h_box + pad_y)
+        if (
+            w_box >= SLICE_CONTOUR_MIN_WIDTH
+            and h_box >= SLICE_CONTOUR_MIN_HEIGHT
+        ):
+            y_start = max(0, y_box - SLICE_CONTOUR_PAD_Y)
+            y_end = min(h, y_box + h_box + SLICE_CONTOUR_PAD_Y)
             mask[y_start:y_end] = True
 
     return mask
