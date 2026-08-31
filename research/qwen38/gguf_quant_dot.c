@@ -93,6 +93,15 @@ static uint16_t qwen_f32_to_f16(float value) {
     return (uint16_t)(sign | ((uint16_t)exp16 << 10) | (uint16_t)half_mant);
 }
 
+/* Exact scalar helper used by llama.cpp's Q8_K reference quantizer. */
+static int qwen_nearest_int(float fval) {
+    assert(fabsf(fval) <= 4194303.0f);
+    const float val = fval + 12582912.0f;
+    int i;
+    memcpy(&i, &val, sizeof(i));
+    return (i & 0x007fffff) - 0x00400000;
+}
+
 static int qwen_host_little_endian(void) {
     const uint16_t one = 1;
     return *((const uint8_t *)&one) == 1;
@@ -197,9 +206,8 @@ int qwen_quantize_q8_k_scalar(const float *x, size_t n, uint8_t *dst, size_t dst
         qwen_store_f32_le(out, d);
         int8_t *qs = (int8_t *)(out + 4);
         for (size_t j = 0; j < QWEN_QK_K; ++j) {
-            long q = lrintf(iscale * xb[j]);
+            int q = qwen_nearest_int(iscale * xb[j]);
             if (q > 127) q = 127;
-            if (q < -128) q = -128;
             qs[j] = (int8_t)q;
         }
         uint8_t *bs = out + 4 + QWEN_QK_K;
@@ -258,6 +266,39 @@ float qwen_vec_dot_q6_k_q8_k_scalar(const uint8_t *q6, size_t q6_bytes, const ui
     float sumf = 0.0f;
     for (int l = 0; l < 8; ++l) sumf += sums[l];
     return sumf;
+}
+
+/* Matrix storage follows GGML's contiguous row layout: each output row owns
+ * all packed blocks for ne0. The activation is already quantized once and is
+ * reused across every row, which is the shape needed by the K3 runtime. */
+int qwen_matvec_q8_0_q8_0_scalar(
+        const uint8_t *weights, size_t weights_bytes, size_t rows, size_t n,
+        const uint8_t *activation, size_t activation_bytes, float *out) {
+    if (!weights || !activation || !out || rows == 0 || n == 0 || n % QWEN_QK8_0 != 0) return -1;
+    const size_t row_bytes = (n / QWEN_QK8_0) * QWEN_BLOCK_Q8_0;
+    if (activation_bytes != row_bytes) return -2;
+    if (weights_bytes % row_bytes != 0 || weights_bytes / row_bytes != rows) return -3;
+    for (size_t row = 0; row < rows; ++row) {
+        out[row] = qwen_vec_dot_q8_0_q8_0_scalar(
+            weights + row * row_bytes, row_bytes, activation, activation_bytes, n);
+    }
+    return 0;
+}
+
+int qwen_matvec_q6_k_q8_k_scalar(
+        const uint8_t *weights, size_t weights_bytes, size_t rows, size_t n,
+        const uint8_t *activation, size_t activation_bytes, float *out) {
+    if (!weights || !activation || !out || rows == 0 || n == 0 || n % QWEN_QK_K != 0) return -1;
+    const size_t weight_row_bytes = (n / QWEN_QK_K) * QWEN_BLOCK_Q6_K;
+    const size_t activation_row_bytes = (n / QWEN_QK_K) * QWEN_BLOCK_Q8_K;
+    if (activation_bytes != activation_row_bytes) return -2;
+    if (weights_bytes % weight_row_bytes != 0 || weights_bytes / weight_row_bytes != rows) return -3;
+    for (size_t row = 0; row < rows; ++row) {
+        out[row] = qwen_vec_dot_q6_k_q8_k_scalar(
+            weights + row * weight_row_bytes, weight_row_bytes,
+            activation, activation_bytes, n);
+    }
+    return 0;
 }
 
 #ifdef QWEN_QUANT_DOT_SELFTEST
@@ -361,6 +402,10 @@ int main(void) {
         !check_f32_to_f16_case(-0x1p-24f, 0x8001u)) {
         return 10;
     }
+    if (qwen_nearest_int(1.5f) != 2 || qwen_nearest_int(2.5f) != 2 ||
+        qwen_nearest_int(-1.5f) != -2 || qwen_nearest_int(-2.5f) != -2) {
+        return 18;
+    }
 
     uint8_t q6[2 * QWEN_BLOCK_Q6_K];
     int8_t scales[16];
@@ -386,6 +431,15 @@ int main(void) {
         fprintf(stderr, "Q6_K dot mismatch got=%.9g expected=%.17g err=%.9g limit=%.9g\n", got, expected, err, limit);
         return 4;
     }
+
+    uint8_t q8k_row[QWEN_BLOCK_Q8_K];
+    if (qwen_quantize_q8_k_scalar(x, 256, q8k_row, sizeof(q8k_row)) != 0) return 19;
+    float q6_mv[2] = {0};
+    if (qwen_matvec_q6_k_q8_k_scalar(q6, sizeof(q6), 2, 256, q8k_row, sizeof(q8k_row), q6_mv) != 0) return 20;
+    const double q6_mv_e0 = independent_q6_dot(q6, q8k_row);
+    const double q6_mv_e1 = independent_q6_dot(q6 + QWEN_BLOCK_Q6_K, q8k_row);
+    const double q6_mv_err = fmax(fabs((double)q6_mv[0] - q6_mv_e0), fabs((double)q6_mv[1] - q6_mv_e1));
+    if (q6_mv_err > 2e-5 * fmax(1.0, fmax(fabs(q6_mv_e0), fabs(q6_mv_e1)))) return 21;
 
     float zero[256] = {0};
     uint8_t zq8[QWEN_BLOCK_Q8_K];
@@ -424,29 +478,44 @@ int main(void) {
         fprintf(stderr, "Q8_0 dot mismatch got=%.9g expected=%.17g err=%.9g limit=%.9g\n", q8_got, q8_expected, q8_err, q8_limit);
         return 14;
     }
+
+    float q8_mv[2] = {0};
+    if (qwen_matvec_q8_0_q8_0_scalar(qw, sizeof(qw), 2, 32, qa, QWEN_BLOCK_Q8_0, q8_mv) != 0) return 22;
+    const double q8_mv_e0 = independent_q8_0_dot(qw, qa, 32);
+    const double q8_mv_e1 = independent_q8_0_dot(qw + QWEN_BLOCK_Q8_0, qa, 32);
+    const double q8_mv_err = fmax(fabs((double)q8_mv[0] - q8_mv_e0), fabs((double)q8_mv[1] - q8_mv_e1));
+    if (q8_mv_err > 2e-6 * fmax(1.0, fmax(fabs(q8_mv_e0), fabs(q8_mv_e1)))) return 23;
+
     uint8_t q8zero[QWEN_BLOCK_Q8_0];
     if (qwen_quantize_q8_0_scalar(zero, 32, q8zero, sizeof(q8zero)) != 0) return 15;
     for (size_t i = 0; i < sizeof(q8zero); ++i) if (q8zero[i] != 0) return 16;
     if (!isnan(qwen_vec_dot_q8_0_q8_0_scalar(qw, QWEN_BLOCK_Q8_0 - 1, qa, QWEN_BLOCK_Q8_0, 32))) return 17;
+    if (qwen_matvec_q8_0_q8_0_scalar(qw, sizeof(qw) - 1, 2, 32, qa, QWEN_BLOCK_Q8_0, q8_mv) == 0) return 24;
+    if (qwen_matvec_q6_k_q8_k_scalar(q6, sizeof(q6) - 1, 2, 256, q8k_row, sizeof(q8k_row), q6_mv) == 0) return 25;
 
     printf("{\n");
-    printf("  \"schema\": \"qwen38-native-quant-sanity-v2\",\n");
+    printf("  \"schema\": \"qwen38-native-quant-sanity-v3\",\n");
     printf("  \"status\": \"PASS\",\n");
     printf("  \"llama_cpp_reference_revision\": \"557614e0296ff4a5b6f649737a65ae2076eea2fd\",\n");
     printf("  \"model_weights_downloaded\": false,\n");
     printf("  \"f16_decode_subnormal_cases\": 5,\n");
     printf("  \"f16_encode_cases\": 5,\n");
+    printf("  \"q8_k_nearest_int_tie_cases\": 4,\n");
     printf("  \"q6_k_block_bytes\": %d,\n", QWEN_BLOCK_Q6_K);
     printf("  \"q8_k_block_bytes\": %d,\n", QWEN_BLOCK_Q8_K);
     printf("  \"q8_0_block_bytes\": %d,\n", QWEN_BLOCK_Q8_0);
     printf("  \"q6_tested_elements\": 512,\n");
     printf("  \"q6_dot_abs_error\": %.9g,\n", err);
     printf("  \"q6_dot_error_limit\": %.9g,\n", limit);
+    printf("  \"q6_matvec_rows\": 2,\n");
+    printf("  \"q6_matvec_max_abs_error\": %.9g,\n", q6_mv_err);
     printf("  \"q6_zero_activation_dot\": %.9g,\n", zdot);
     printf("  \"q8_0_tested_elements\": 64,\n");
     printf("  \"q8_0_subnormal_scales\": %d,\n", q8_subnormal_scales);
     printf("  \"q8_0_dot_abs_error\": %.9g,\n", q8_err);
     printf("  \"q8_0_dot_error_limit\": %.9g,\n", q8_limit);
+    printf("  \"q8_0_matvec_rows\": 2,\n");
+    printf("  \"q8_0_matvec_max_abs_error\": %.9g,\n", q8_mv_err);
     printf("  \"invalid_size_rejected\": true\n");
     printf("}\n");
     return 0;
