@@ -84,38 +84,72 @@ class Inpainter:
         dynamic_enabled = os.getenv("MANGA_USE_DYNAMIC_LAMA", "1").strip().lower() not in (
             "0", "false", "no", "off"
         )
-        prefer_dynamic = dynamic_enabled and LAMA_DYNAMIC_MODEL.is_file()
-        model_path = LAMA_DYNAMIC_MODEL if prefer_dynamic else LAMA_MODEL
+        self._prefer_dynamic = dynamic_enabled and LAMA_DYNAMIC_MODEL.is_file()
         self._session_lock = threading.RLock()
         self._session_run_count = 0
-        try:
-            self.session = make_session(model_path, serialize_inference=not prefer_dynamic)
-        except Exception:
-            if not prefer_dynamic:
-                raise
-            logger.exception(
-                "Failed to load dynamic LaMa model %s; falling back to %s",
-                LAMA_DYNAMIC_MODEL,
-                LAMA_MODEL,
-            )
-            model_path = LAMA_MODEL
-            self.session = make_session(model_path, serialize_inference=True)
+        self.session = None
+        self.image_input = None
+        self.mask_input = None
+        self.dynamic_lama = False
+        self.lama_model_path = LAMA_DYNAMIC_MODEL if self._prefer_dynamic else LAMA_MODEL
+        self._recycle_fixed_session = False
 
-        inputs = self.session.get_inputs()
-        self.image_input = inputs[0].name
-        self.mask_input = inputs[1].name
+    @property
+    def session_loaded(self) -> bool:
+        return self.session is not None
+
+    def _configure_loaded_session(self, session, model_path) -> None:
+        inputs = session.get_inputs()
         image_shape = inputs[0].shape
-        self.dynamic_lama = any(
+        dynamic_lama = any(
             isinstance(dim, str) or dim is None for dim in image_shape[2:4]
         )
+        self.session = session
+        self.image_input = inputs[0].name
+        self.mask_input = inputs[1].name
+        self.dynamic_lama = dynamic_lama
         self.lama_model_path = model_path
+        self._session_run_count = 0
         self._recycle_fixed_session = (
-            not self.dynamic_lama and _should_recycle_fixed_session()
+            not dynamic_lama and _should_recycle_fixed_session()
         )
+
+    def _ensure_session(self) -> None:
+        if self.session is not None:
+            return
+        with self._session_lock:
+            if self.session is not None:
+                return
+
+            prefer_dynamic = self._prefer_dynamic
+            model_path = LAMA_DYNAMIC_MODEL if prefer_dynamic else LAMA_MODEL
+            try:
+                session = make_session(
+                    model_path,
+                    serialize_inference=not prefer_dynamic,
+                )
+            except Exception:
+                if not prefer_dynamic:
+                    raise
+                logger.exception(
+                    "Failed to load dynamic LaMa model {}; falling back to {}",
+                    LAMA_DYNAMIC_MODEL,
+                    LAMA_MODEL,
+                )
+                model_path = LAMA_MODEL
+                session = make_session(model_path, serialize_inference=True)
+
+            self._configure_loaded_session(session, model_path)
+            logger.info(
+                "Loaded inpaint model {} lazily (dynamic={})",
+                self.lama_model_path,
+                self.dynamic_lama,
+            )
 
     def _recycle_fixed_session_if_needed(self) -> None:
         if (
-            self.dynamic_lama
+            self.session is None
+            or self.dynamic_lama
             or not self._recycle_fixed_session
             or self._session_run_count < FIXED_LAMA_SESSION_MAX_RUNS
         ):
@@ -134,8 +168,8 @@ class Inpainter:
         except Exception:
             pass
 
-        self.session = make_session(self.lama_model_path, serialize_inference=True)
-        self._session_run_count = 0
+        session = make_session(self.lama_model_path, serialize_inference=True)
+        self._configure_loaded_session(session, self.lama_model_path)
 
     def inpaint(self, image: np.ndarray, boxes: list[BubbleBox]) -> np.ndarray:
         if not boxes:
@@ -312,6 +346,7 @@ class Inpainter:
         return self._lama_fill(image, crop, local_mask, crop_box, feather=feather)
 
     def _lama_fill(self, image: np.ndarray, crop: np.ndarray, local_mask: np.ndarray, crop_box: tuple, feather: bool = False) -> np.ndarray:
+        self._ensure_session()
         cx1, cy1, cx2, cy2 = crop_box
         crop_h, crop_w = crop.shape[:2]
 
@@ -411,6 +446,7 @@ class Inpainter:
         return cv2.resize(painted_crop, (crop_w, crop_h), interpolation=interpolation)
 
     def _run_lama(self, canvas: np.ndarray, mask_canvas: np.ndarray) -> np.ndarray:
+        self._ensure_session()
         crop_rgb = cv2.cvtColor(canvas, cv2.COLOR_BGR2RGB)
         img_blob = np.ascontiguousarray(
             (crop_rgb.astype(np.float32) / 255.0).transpose(2, 0, 1)[None]
