@@ -1,12 +1,16 @@
 import numpy as np
 import cv2
+
 from app.detector.bubble_detector import BubbleBox, DETECTOR_CONFIDENCE_MAX
 from app.logging_config import logger
+from app.parameters import (
+    MANUAL_CONFIDENCE_SENTINEL,
+    MASK_ADAPTIVE_BORDER_STD_THRESHOLD,
+    MASK_ADAPTIVE_DILATE_KERNEL_SIZE,
+    MASK_DILATE_KERNEL_SIZE,
+    MASK_EXPAND,
+)
 
-from app.config import MASK_DILATE_KERNEL_SIZE
-
-MASK_EXPAND = 8
-MANUAL_CONFIDENCE_SENTINEL = 1.0
 AUTO_DESTRUCTIVE_MASK_SOURCES = frozenset(
     {"text_segmenter", "bubble_flat_contrast", "opencv_mser"}
 )
@@ -16,7 +20,7 @@ def adaptive_dilate_mask(mask: np.ndarray, crop_img: np.ndarray | None = None) -
     if not np.any(mask > 127):
         return mask
 
-    initial_k = MASK_DILATE_KERNEL_SIZE if MASK_DILATE_KERNEL_SIZE % 2 == 1 else 7
+    initial_k = MASK_DILATE_KERNEL_SIZE
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (initial_k, initial_k))
     dilated = cv2.dilate(mask, kernel, iterations=1)
 
@@ -25,8 +29,14 @@ def adaptive_dilate_mask(mask: np.ndarray, crop_img: np.ndarray | None = None) -
         border_bool = (cv2.dilate(dilated, np.ones((3, 3), np.uint8)) > 127) & (dilated <= 127)
         if np.any(border_bool):
             border_std = float(gray[border_bool].std())
-            if border_std > 18.0:
-                expanded_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9))
+            if border_std > MASK_ADAPTIVE_BORDER_STD_THRESHOLD:
+                expanded_kernel = cv2.getStructuringElement(
+                    cv2.MORPH_ELLIPSE,
+                    (
+                        MASK_ADAPTIVE_DILATE_KERNEL_SIZE,
+                        MASK_ADAPTIVE_DILATE_KERNEL_SIZE,
+                    ),
+                )
                 dilated = cv2.dilate(mask, expanded_kernel, iterations=1)
 
     return dilated
