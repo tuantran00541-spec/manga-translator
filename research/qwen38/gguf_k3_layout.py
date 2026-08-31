@@ -18,8 +18,17 @@ MANIFEST_VERSION = 2
 K3_SCHEMA = "qwen38-k3-trunk-v1"  # reader-compatible; version/source fields disambiguate layout.
 
 
-def split_tensors(directory: GGUFDirectory, *, expected_layers: int = 64) -> tuple[dict[int, list[TensorSpan]], list[TensorSpan]]:
+def partition_tensors(
+    directory: GGUFDirectory, *, expected_layers: int = 64
+) -> tuple[dict[int, list[TensorSpan]], dict[int, list[TensorSpan]], list[TensorSpan]]:
+    """Partition decoder, auxiliary blk.N (for example MTP), and true globals.
+
+    Qwen3.8 has 64 decoder layers but its GGUF may also encode the one-layer MTP
+    head as blk.64.*.  Auxiliary blocks must not be silently treated as decoder
+    layers or as global tensors.
+    """
     layers = {i: [] for i in range(expected_layers)}
+    auxiliary: dict[int, list[TensorSpan]] = {}
     globals_: list[TensorSpan] = []
     for tensor in directory.tensors:
         match = LAYER_RE.match(tensor.name)
@@ -27,15 +36,28 @@ def split_tensors(directory: GGUFDirectory, *, expected_layers: int = 64) -> tup
             globals_.append(tensor)
             continue
         layer = int(match.group(1))
-        if layer not in layers:
-            raise ValueError(f"GGUF tensor {tensor.name} has out-of-range layer {layer}")
-        layers[layer].append(tensor)
+        if layer in layers:
+            layers[layer].append(tensor)
+        else:
+            auxiliary.setdefault(layer, []).append(tensor)
     missing = [layer for layer, tensors in layers.items() if not tensors]
     if missing:
         raise ValueError(f"GGUF decoder layers missing tensors: {missing}")
     for tensors in layers.values():
         tensors.sort(key=lambda t: t.name)
+    for tensors in auxiliary.values():
+        tensors.sort(key=lambda t: t.name)
     globals_.sort(key=lambda t: t.name)
+    return layers, auxiliary, globals_
+
+
+def split_tensors(directory: GGUFDirectory, *, expected_layers: int = 64) -> tuple[dict[int, list[TensorSpan]], list[TensorSpan]]:
+    """Legacy strict decoder/global split used by existing synthetic gates."""
+    layers, auxiliary, globals_ = partition_tensors(directory, expected_layers=expected_layers)
+    if auxiliary:
+        first = min(auxiliary)
+        tensor = auxiliary[first][0]
+        raise ValueError(f"GGUF tensor {tensor.name} has out-of-range layer {first}")
     return layers, globals_
 
 
@@ -77,7 +99,7 @@ def pack_gguf_layers(
 ) -> dict:
     if chunk_bytes <= 0:
         raise ValueError("chunk_bytes must be positive")
-    grouped, globals_ = split_tensors(directory, expected_layers=expected_layers)
+    grouped, auxiliary, globals_ = partition_tensors(directory, expected_layers=expected_layers)
     selected = list(range(expected_layers)) if layers is None else sorted({int(x) for x in layers})
     if not selected or any(x not in grouped for x in selected):
         raise ValueError("selected layer ids are invalid")
@@ -141,6 +163,14 @@ def pack_gguf_layers(
         "alignment": ALIGN,
         "tensor_alignment": TENSOR_ALIGN,
         "layers": manifest_layers,
+        "auxiliary_blocks": [{
+            "block": block,
+            "tensor_count": len(tensors),
+            "tensors": [{
+                "name": t.name, "ggml_type": t.ggml_type, "type_name": t.type_name,
+                "shape": list(t.shape), "source_offset": t.data_offset, "nbytes": t.nbytes,
+            } for t in tensors],
+        } for block, tensors in sorted(auxiliary.items())],
         "globals": [{
             "name": t.name, "ggml_type": t.ggml_type, "type_name": t.type_name,
             "shape": list(t.shape), "source_offset": t.data_offset, "nbytes": t.nbytes,
