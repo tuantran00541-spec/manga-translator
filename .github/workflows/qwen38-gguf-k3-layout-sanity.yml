@@ -1,0 +1,35 @@
+name: Qwen3.8 GGUF K3 layout sanity
+
+on:
+  push:
+    branches: [test/qwen3.8-27b]
+    paths:
+      - "research/qwen38/gguf_k3_layout.py"
+      - "research/qwen38/gguf_k3_layout_sanity.py"
+      - "research/qwen38/k3_stream.py"
+      - "research/qwen38/gguf_stream.py"
+      - ".github/workflows/qwen38-gguf-k3-layout-sanity.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  zero-model-gguf-k3:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Compile GGUF K3 storage gate
+        run: |
+          python -m py_compile \
+            research/qwen38/gguf_stream.py \
+            research/qwen38/k3_stream.py \
+            research/qwen38/gguf_k3_layout.py \
+            research/qwen38/gguf_k3_layout_sanity.py
+      - name: Run zero-model GGUF to K3 gate
+        working-directory: research/qwen38
+        run: python gguf_k3_layout_sanity.py
