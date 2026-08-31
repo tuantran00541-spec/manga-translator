@@ -50,6 +50,13 @@
       run.disabled = true;
       run.textContent = "Đang dịch…";
       try {
+        if (typeof window.flushAllPendingPersists === "function") {
+          await window.flushAllPendingPersists();
+        } else if (typeof window.flushTextObjectPersist === "function") {
+          await window.flushTextObjectPersist();
+        }
+        if (chapterId !== window.currentChapterId) return;
+
         const response = await fetch("/api/translate/chapter", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
