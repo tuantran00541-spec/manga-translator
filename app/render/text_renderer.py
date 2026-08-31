@@ -1,11 +1,24 @@
 from functools import lru_cache
 from pathlib import Path
+
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
-from app.config import DEFAULT_FONT, MIN_FONT_SIZE, MAX_FONT_SIZE
+
+from app.config import DEFAULT_FONT
+from app.parameters import (
+    FONT_CACHE_SIZE,
+    MAX_FONT_SIZE,
+    MIN_FONT_SIZE,
+    RENDER_AUTO_STROKE_WIDTH,
+    RENDER_AUTO_TEXT_DARK_BG_THRESHOLD,
+    RENDER_DEFAULT_PADDING,
+    RENDER_LINE_HEIGHT_FACTOR,
+    RENDER_PADDING_RATIO_MAX,
+    RENDER_STROKE_WIDTH_MAX,
+)
 
 
-@lru_cache(maxsize=256)
+@lru_cache(maxsize=FONT_CACHE_SIZE)
 def get_font_object(font_path_str: str, size: int) -> ImageFont.FreeTypeFont:
     size = max(1, int(size))
     try:
@@ -47,7 +60,7 @@ def auto_detect_text_color(image: Image.Image, box: tuple[int, int, int, int]) -
     if arr.size == 0:
         return (0, 0, 0)
     mean_bg = float(arr.mean())
-    if mean_bg < 135:
+    if mean_bg < RENDER_AUTO_TEXT_DARK_BG_THRESHOLD:
         return (255, 255, 255)
     return (0, 0, 0)
 
@@ -125,7 +138,7 @@ def _calc_line_height(draw, font, stroke_w: int = 0) -> int:
     except Exception:
         bbox = draw.textbbox((0, 0), "ÅgỶệJqỹ", font=font)
         base_h = bbox[3] - bbox[1]
-    return int(max(base_h, 8) * 1.18) + stroke_w * 2
+    return int(max(base_h, 8) * RENDER_LINE_HEIGHT_FACTOR) + stroke_w * 2
 
 
 def render_text_in_box(
@@ -133,7 +146,7 @@ def render_text_in_box(
     text: str,
     box: tuple[int, int, int, int],
     font_path=None,
-    padding: int = 6,
+    padding: int = RENDER_DEFAULT_PADDING,
     fill=None,
     font_size: int | str = "auto",
     is_bold: bool = False,
@@ -157,7 +170,10 @@ def render_text_in_box(
         return image
     text = str(text).strip()
 
-    pad = max(2, min(padding, int(min(raw_w, raw_h) * 0.08)))
+    pad = max(
+        2,
+        min(padding, int(min(raw_w, raw_h) * RENDER_PADDING_RATIO_MAX)),
+    )
     box_w = raw_w - pad * 2
     box_h = raw_h - pad * 2
 
@@ -179,12 +195,12 @@ def render_text_in_box(
         text_color = parse_color(fill, default=(0, 0, 0))
 
     if stroke_width is None or stroke_width == "auto" or stroke_width == "":
-        stroke_w = 2 if font_path else 1
+        stroke_w = RENDER_AUTO_STROKE_WIDTH if font_path else 1
     else:
         try:
-            stroke_w = max(0, min(12, int(stroke_width)))
+            stroke_w = max(0, min(RENDER_STROKE_WIDTH_MAX, int(stroke_width)))
         except (ValueError, TypeError):
-            stroke_w = 2
+            stroke_w = RENDER_AUTO_STROKE_WIDTH
 
     if stroke_color is None or stroke_color == "auto" or stroke_color == "":
         luminance = (text_color[0] * 299 + text_color[1] * 587 + text_color[2] * 114) / 1000
@@ -268,7 +284,7 @@ def _fits(draw, text: str, box_w: int, box_h: int, font_path_str: str, size: int
     return total_h <= box_h and max_line_w <= box_w, lines
 
 
-def _fit_text(draw, text: str, box_w: int, box_h: int, font_path_str: str, stroke_w: int = 2) -> tuple[int, list[str]]:
+def _fit_text(draw, text: str, box_w: int, box_h: int, font_path_str: str, stroke_w: int = RENDER_AUTO_STROKE_WIDTH) -> tuple[int, list[str]]:
     lo, hi = MIN_FONT_SIZE, MAX_FONT_SIZE
     best_size = MIN_FONT_SIZE
     best_lines: list[str] = []
