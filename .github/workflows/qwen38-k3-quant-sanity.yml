@@ -1,0 +1,40 @@
+name: Qwen3.8 K3 quantization sanity
+
+on:
+  push:
+    branches:
+      - test/qwen3.8-27b
+    paths:
+      - "research/qwen38/k3_quant_sanity.py"
+      - ".github/workflows/qwen38-k3-quant-sanity.yml"
+  workflow_dispatch:
+
+jobs:
+  q4-q5-packed-sanity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install CPU Torch
+        run: python -m pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+      - name: Compile before execution
+        run: python -m py_compile research/qwen38/k3_quant_sanity.py
+      - name: Run Q5/Q4 packed format gate
+        run: |
+          mkdir -p "$RUNNER_TEMP/qwen38-quant"
+          python research/qwen38/k3_quant_sanity.py \
+            --output "$RUNNER_TEMP/qwen38-quant/quant-sanity.json"
+      - name: Show evidence
+        if: always()
+        run: cat "$RUNNER_TEMP/qwen38-quant/quant-sanity.json" || true
+      - name: Upload metrics only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen38-k3-quant-sanity-${{ github.run_id }}
+          path: ${{ runner.temp }}/qwen38-quant/quant-sanity.json
+          if-no-files-found: warn
+          retention-days: 14
