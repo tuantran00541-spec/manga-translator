@@ -5,12 +5,19 @@ import threading
 
 import onnxruntime as ort
 
+from app.parameters import (
+    ORT_HIGH_CPU_THRESHOLD,
+    ORT_HIGH_CPU_THREADS,
+    ORT_INTER_OP_THREADS,
+    ORT_MEDIUM_CPU_THRESHOLD,
+    ORT_MEDIUM_CPU_THREADS,
+)
+
 
 _THREAD_ENV = "MANGA_ORT_INTRA_OP_THREADS"
 _CPU_ARENA_ENV = "MANGA_ORT_CPU_MEM_ARENA"
 _MEM_PATTERN_ENV = "MANGA_ORT_MEM_PATTERN"
 _SERIALIZE_ENV = "MANGA_ORT_SERIALIZE_INFERENCE"
-_DEFAULT_HIGH_CPU_THREADS = 4
 _ORT_INFERENCE_LOCK = threading.RLock()
 
 
@@ -30,10 +37,10 @@ def _cpu_count() -> int:
 
 def _default_intra_op_threads() -> int:
     cpu = _cpu_count()
-    if cpu >= 8:
-        return _DEFAULT_HIGH_CPU_THREADS
-    if cpu >= 4:
-        return 2
+    if cpu >= ORT_HIGH_CPU_THRESHOLD:
+        return ORT_HIGH_CPU_THREADS
+    if cpu >= ORT_MEDIUM_CPU_THRESHOLD:
+        return ORT_MEDIUM_CPU_THREADS
     return 1
 
 
@@ -101,7 +108,7 @@ def make_session(
     default. Inference serialization is opt-in per session: detector sessions and
     the fixed 512px LaMa compatibility fallback can serialize their workspaces,
     while the preferred dynamic LaMa is allowed to overlap the bounded two-page
-    schedule.  The conservative per-session thread cap prevents that overlap from
+    schedule. The conservative per-session thread cap prevents that overlap from
     oversubscribing common desktop CPUs.
     """
 
@@ -120,9 +127,11 @@ def make_session(
     )
     opts.intra_op_num_threads = max(
         1,
-        int(intra_op_threads) if intra_op_threads is not None else _configured_intra_op_threads(),
+        int(intra_op_threads)
+        if intra_op_threads is not None
+        else _configured_intra_op_threads(),
     )
-    opts.inter_op_num_threads = 1
+    opts.inter_op_num_threads = ORT_INTER_OP_THREADS
 
     session = ort.InferenceSession(
         str(model_path),
