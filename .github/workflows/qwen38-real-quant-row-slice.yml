@@ -1,0 +1,72 @@
+name: Qwen3.8 real Q6 Q8 quant row slice
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - test/qwen3.8-27b
+    paths:
+      - research/qwen38/gguf_quant_real_slice.py
+      - research/qwen38/gguf_quant_ref.py
+      - research/qwen38/gguf_quant_dot.c
+      - research/qwen38/gguf_stream.py
+      - .github/workflows/qwen38-real-quant-row-slice.yml
+
+permissions:
+  contents: read
+
+jobs:
+  real-q6-q8-row-slice:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[qwen-quant-real]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Reclaim disk
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup || true
+          docker system prune -af || true
+          df -h
+          free -h
+      - name: Install download dependency
+        run: python -m pip install --no-cache-dir huggingface_hub hf_xet
+      - name: Compile gate and native scalar bridge
+        run: |
+          python -m py_compile \
+            research/qwen38/gguf_stream.py \
+            research/qwen38/gguf_quant_ref.py \
+            research/qwen38/gguf_quant_real_slice.py
+          cc -std=c11 -O2 -fPIC -shared \
+            research/qwen38/gguf_quant_dot.c \
+            -lm -o "$RUNNER_TEMP/libqwen38_quant_dot.so"
+      - name: Run real Q6 Q8 row slice gate
+        shell: bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          set -euo pipefail
+          work="$RUNNER_TEMP/qwen38-real-quant-slice"
+          evidence="$RUNNER_TEMP/qwen38-real-quant-slice-evidence"
+          mkdir -p "$work" "$evidence"
+          /usr/bin/time -v python -u research/qwen38/gguf_quant_real_slice.py \
+            --work-dir "$work" \
+            --native-lib "$RUNNER_TEMP/libqwen38_quant_dot.so" \
+            --output "$evidence/quant-slice.json" \
+            2>&1 | tee "$evidence/quant-slice.log"
+      - name: Show evidence and cleanup
+        if: always()
+        run: |
+          cat "$RUNNER_TEMP/qwen38-real-quant-slice-evidence/quant-slice.json" || true
+          tail -n 160 "$RUNNER_TEMP/qwen38-real-quant-slice-evidence/quant-slice.log" || true
+          rm -rf "$RUNNER_TEMP/qwen38-real-quant-slice" || true
+          df -h
+          free -h
+      - name: Upload metrics only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen38-real-quant-row-slice-${{ github.run_id }}
+          path: ${{ runner.temp }}/qwen38-real-quant-slice-evidence/
+          if-no-files-found: warn
+          retention-days: 14
