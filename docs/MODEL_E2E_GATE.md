@@ -11,6 +11,7 @@ This gate is a model-dependent acceptance check for the production Manga Transla
 - `CombinedTextDetector` with the real bubble detector and text segmenter ONNX models;
 - persisted mask provenance and `safe_to_inpaint` policy;
 - production LaMa inpaint path (dynamic or fixed fallback);
+- non-empty authorized cleanup evidence for full promotion runs;
 - exact pixel-safety verification outside the effective destructive mask;
 - `OCRService` + `MultiLangOCR` when OCR runtime dependencies are available;
 - OCR model-route checks and target-selection cache-identity checks;
@@ -59,7 +60,7 @@ python scripts/model_e2e_gate.py \
   --report-json benchmark-results/model-e2e-fixed.json
 ```
 
-A smaller smoke run can use `--max-source-images`, `--start-page`, `--max-pages`, or `--max-ocr-boxes`. `--chapter-id` must match the production validator: exactly 8 lowercase hexadecimal characters (`[a-f0-9]{8}`). Do not treat a reduced smoke run as the promotion gate.
+A smaller smoke run can use `--max-source-images`, `--start-page`, `--max-pages`, or `--max-ocr-boxes`. `--chapter-id` must match the production validator: exactly 8 lowercase hexadecimal characters (`[a-f0-9]{8}`). An intentionally text-free smoke dataset may additionally use `--allow-empty-cleanup`; that flag only suppresses the cleanup-evidence assertion and must not be used for a promotion run. Do not treat a reduced smoke run as the promotion gate.
 
 ## Hard assertions
 
@@ -69,10 +70,13 @@ The gate fails when any of these conditions are observed:
 2. Automatic destructive mask provenance is outside the allowed detector/recovery sources.
 3. Paddle output appears in detector mask records.
 4. The cleaned image changes any pixel outside the effective production mask above `--outside-pixel-tolerance` (default `0`).
-5. Peak RSS exceeds the configured acceptance limit.
-6. OCR target-selection cache identity does not change between `centered` and `all` for Paddle-backed languages.
-7. Japanese does not route to MangaOCR, Korean does not route to `korean_PP-OCRv5_mobile_rec`, or English/Chinese does not route to PP-OCRv6.
-8. `--require-ocr` is set and the production OCR runtime cannot complete.
+5. Unless `--allow-empty-cleanup` is explicitly set, the run produces no authorized cleanup-mask pixels or an authorized mask changes no pixels, meaning the detector → mask → inpaint path was not actually exercised.
+6. Peak RSS exceeds the configured acceptance limit.
+7. OCR target-selection cache identity does not change between `centered` and `all` for Paddle-backed languages.
+8. Japanese does not route to MangaOCR, Korean does not route to `korean_PP-OCRv5_mobile_rec`, or English/Chinese does not route to PP-OCRv6.
+9. `--require-ocr` is set and the production OCR runtime cannot complete.
+
+The cleanup-evidence assertion proves that the destructive production path ran; it is not a text-removal-recall score and is not a substitute for representative human-reviewed ground truth. Recall/overreach promotion decisions still belong to the research mask-quality gate and visual review.
 
 The normal production invariants still apply: Paddle polygons are localization/reading-order evidence only and never destructive mask authority; manual edits remain editor-owned; fixed LaMa remains serialized; dynamic LaMa is only allowed bounded page overlap.
 
@@ -83,5 +87,5 @@ For a change that affects detector, mask, OCR, inpaint, ownership, render, or ex
 1. Run the full dynamic model-E2E gate.
 2. Run the full fixed fallback model-E2E gate.
 3. Run the ordinary Release gate and browser regression gates.
-4. Review the JSON reports for latency, OCR quality counts, RSS, and any review/reject concentration.
+4. Review the JSON reports for cleanup evidence, latency, OCR quality counts, RSS, and any review/reject concentration.
 5. Only then create a clean production candidate from current `main`; never merge an exploratory research branch wholesale.

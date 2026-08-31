@@ -20,7 +20,7 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 _IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
-_ALLOWED_AUTO_MASK_SOURCES = {"text_segmenter", "opencv_mser"}
+_ALLOWED_AUTO_MASK_SOURCES = {"text_segmenter", "bubble_flat_contrast", "opencv_mser"}
 
 
 def _source_revision() -> str | None:
@@ -404,6 +404,23 @@ def run(args: argparse.Namespace) -> dict:
         for row in pixel_rows
         if row["outside_changed_pixels"] > 0
     ]
+    cleanup_evidence = {
+        "mask_pixels": sum(row["mask_pixels"] for row in pixel_rows),
+        "changed_pixels": sum(row["changed_pixels"] for row in pixel_rows),
+        "pages_with_mask": sum(int(row["mask_pixels"] > 0) for row in pixel_rows),
+        "pages_with_changes": sum(int(row["changed_pixels"] > 0) for row in pixel_rows),
+    }
+    cleanup_failures: list[str] = []
+    if not args.allow_empty_cleanup:
+        if cleanup_evidence["mask_pixels"] <= 0:
+            cleanup_failures.append(
+                "model E2E produced no authorized cleanup mask pixels; inpaint path was not exercised"
+            )
+        elif cleanup_evidence["changed_pixels"] <= 0:
+            cleanup_failures.append(
+                "model E2E produced an authorized mask but changed no pixels; cleanup effectiveness was not exercised"
+            )
+
     rss_peak = float(memory["peak_mb"])
     memory_failures = []
     if args.max_rss_mb > 0 and rss_peak > args.max_rss_mb:
@@ -411,7 +428,14 @@ def run(args: argparse.Namespace) -> dict:
             f"peak RSS {rss_peak:.1f} MiB exceeded limit {args.max_rss_mb:.1f} MiB"
         )
 
-    all_failures = provenance_failures + pixel_failures + memory_failures + model_mode_failures + list(ocr.get("failures") or [])
+    all_failures = (
+        provenance_failures
+        + pixel_failures
+        + cleanup_failures
+        + memory_failures
+        + model_mode_failures
+        + list(ocr.get("failures") or [])
+    )
     if args.require_ocr and ocr.get("status") != "pass" and not ocr.get("failures"):
         all_failures.append(f"OCR status is {ocr.get('status')!r} while --require-ocr is set")
 
@@ -452,6 +476,7 @@ def run(args: argparse.Namespace) -> dict:
             "pages": pixel_rows,
             "outside_changed_pixels": sum(row["outside_changed_pixels"] for row in pixel_rows),
         },
+        "cleanup_evidence": cleanup_evidence,
         "ocr": ocr,
         "failures": all_failures,
     }
@@ -474,6 +499,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-ocr-boxes", type=int, default=0, help="0 means all OCR-eligible boxes.")
     parser.add_argument("--require-ocr", action="store_true")
     parser.add_argument("--outside-pixel-tolerance", type=int, default=0)
+    parser.add_argument(
+        "--allow-empty-cleanup",
+        action="store_true",
+        help="Allow a smoke dataset that exercises no authorized cleanup pixels.",
+    )
     parser.add_argument("--max-rss-mb", type=float, default=4096.0)
     parser.add_argument("--report-json", type=Path)
     return parser.parse_args()

@@ -30,6 +30,11 @@ def main() -> None:
         "Skipping non-authorized destructive mask",
     )
     _require(
+        "app/detector/combined_detector.py",
+        'mask_source="bubble_flat_contrast"',
+        "safe_to_inpaint=True",
+    )
+    _require(
         "app/inpaint/lama_inpainter.py",
         "source_model=b.source_model",
         "mask_source=b.mask_source",
@@ -39,11 +44,15 @@ def main() -> None:
     )
     _require(
         "scripts/model_e2e_gate.py",
+        '"bubble_flat_contrast"',
         "source_model=box.source_model",
         "mask_source=box.mask_source",
         "safe_to_inpaint=bool(box.safe_to_inpaint)",
         "ocr_eligible=bool(box.ocr_eligible)",
         "needs_review=bool(box.needs_review)",
+        "if not args.allow_empty_cleanup:",
+        '"model E2E produced no authorized cleanup mask pixels; inpaint path was not exercised"',
+        '"cleanup_evidence": cleanup_evidence',
     )
     print("Inpaint destructive-authority source contract OK")
 
