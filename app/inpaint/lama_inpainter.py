@@ -4,30 +4,45 @@ import threading
 
 import numpy as np
 import cv2
-from app.config import LAMA_MODEL, LAMA_DYNAMIC_MODEL, INPAINT_SIZE, SMART_FILL_CLEAN_RING_MARGIN
+from app.config import LAMA_MODEL, LAMA_DYNAMIC_MODEL
 from app.detector.bubble_detector import BubbleBox, MAX_BOX_AREA_RATIO
 from app.detector.mask_builder import build_mask
 from app.logging_config import logger
 from app.ort_utils import make_session
+from app.parameters import (
+    DYNAMIC_LAMA_MAX_SINGLE_CROP_DIM,
+    FIXED_LAMA_RECYCLE_MEMORY_LIMIT_BYTES,
+    FIXED_LAMA_SESSION_MAX_RUNS,
+    FIXED_LAMA_TILE_ASPECT,
+    INPAINT_CLUSTER_MAX_DIM,
+    INPAINT_CLUSTER_PADDING,
+    INPAINT_CROP_LONG_ASPECT_THRESHOLD,
+    INPAINT_CROP_PADDING,
+    INPAINT_SIZE,
+    MANUAL_CROP_PADDING,
+    MANUAL_DILATION_SCALE,
+    MANUAL_FEATHER_RADIUS,
+    MANUAL_MAX_DILATION,
+    MANUAL_MIN_DILATION,
+    MANUAL_TILE_OVERLAP,
+    SMART_FILL_BLACK_EDGE_DENSITY_MAX,
+    SMART_FILL_BLACK_LEVEL,
+    SMART_FILL_BLACK_RATIO_MIN,
+    SMART_FILL_BLACK_STD_MAX,
+    SMART_FILL_CANNY_HIGH,
+    SMART_FILL_CANNY_LOW,
+    SMART_FILL_CLEAN_RING_MARGIN,
+    SMART_FILL_EDGE_DENSITY_MAX,
+    SMART_FILL_FULL_STD_MAX,
+    SMART_FILL_MIDTONE_MAX,
+    SMART_FILL_MIDTONE_MIN,
+    SMART_FILL_MIDTONE_STD_MAX,
+    SMART_FILL_RING_PIXELS_MIN,
+    SMART_FILL_WHITE_LEVEL,
+    SMART_FILL_WHITE_RATIO_MIN,
+    SMART_FILL_WHITE_STD_MAX,
+)
 
-CLUSTER_PADDING = 35
-CROP_PADDING = 35
-MANUAL_CROP_PADDING = 72
-MANUAL_MIN_DILATION = 9
-MANUAL_MAX_DILATION = 15
-MANUAL_FEATHER_RADIUS = 3
-MANUAL_TILE_OVERLAP = 64
-FIXED_LAMA_TILE_ASPECT = 1.6
-SMART_FILL_WHITE_RATIO_MIN = 0.97
-SMART_FILL_BLACK_RATIO_MIN = 0.995
-SMART_FILL_WHITE_STD_MAX = 8.0
-SMART_FILL_BLACK_STD_MAX = 2.5
-SMART_FILL_MIDTONE_STD_MAX = 5.0
-SMART_FILL_FULL_STD_MAX = 12.0
-SMART_FILL_EDGE_DENSITY_MAX = 0.01
-SMART_FILL_BLACK_EDGE_DENSITY_MAX = 0.002
-FIXED_LAMA_SESSION_MAX_RUNS = 4
-FIXED_LAMA_RECYCLE_MEMORY_LIMIT_BYTES = 6 * 1024**3
 _FIXED_LAMA_RECYCLE_ENV = "MANGA_FIXED_LAMA_SESSION_RECYCLE"
 
 
@@ -236,7 +251,13 @@ class Inpainter:
                 continue
 
             scale = max(1, min(bbox_w, bbox_h))
-            kernel_size = int(np.clip(round(scale * 0.025) * 2 + 1, MANUAL_MIN_DILATION, MANUAL_MAX_DILATION))
+            kernel_size = int(
+                np.clip(
+                    round(scale * MANUAL_DILATION_SCALE) * 2 + 1,
+                    MANUAL_MIN_DILATION,
+                    MANUAL_MAX_DILATION,
+                )
+            )
             if kernel_size % 2 == 0:
                 kernel_size += 1
             kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
@@ -292,7 +313,7 @@ class Inpainter:
             cv2.MORPH_ELLIPSE, (margin * 2 + 1, margin * 2 + 1)
         )
         ring = (cv2.dilate(mask_bool.astype(np.uint8), kernel) > 0) & non_mask
-        if int(np.count_nonzero(ring)) < 32:
+        if int(np.count_nonzero(ring)) < SMART_FILL_RING_PIXELS_MIN:
             return None
 
         ring_gray = gray[ring]
@@ -300,11 +321,16 @@ class Inpainter:
         ring_pixels = crop[ring]
         full_std = float(full_gray.std())
 
-        edges = cv2.Canny(gray, 64, 128, L2gradient=True) > 0
+        edges = cv2.Canny(
+            gray,
+            SMART_FILL_CANNY_LOW,
+            SMART_FILL_CANNY_HIGH,
+            L2gradient=True,
+        ) > 0
         full_edge_density = float(edges[non_mask].mean())
 
-        white_ratio = float((ring_gray > 215).mean())
-        black_ratio = float((ring_gray < 35).mean())
+        white_ratio = float((ring_gray > SMART_FILL_WHITE_LEVEL).mean())
+        black_ratio = float((ring_gray < SMART_FILL_BLACK_LEVEL).mean())
         ring_std = float(ring_gray.std())
         median_gray = float(np.median(ring_gray))
 
@@ -314,7 +340,7 @@ class Inpainter:
             and full_std <= SMART_FILL_FULL_STD_MAX
             and full_edge_density <= SMART_FILL_EDGE_DENSITY_MAX
         ):
-            white_pixels = ring_pixels[ring_gray > 215]
+            white_pixels = ring_pixels[ring_gray > SMART_FILL_WHITE_LEVEL]
             if len(white_pixels):
                 return np.median(white_pixels, axis=0).astype(np.uint8)
 
@@ -324,12 +350,12 @@ class Inpainter:
             and full_std <= SMART_FILL_BLACK_STD_MAX
             and full_edge_density <= SMART_FILL_BLACK_EDGE_DENSITY_MAX
         ):
-            black_pixels = ring_pixels[ring_gray < 35]
+            black_pixels = ring_pixels[ring_gray < SMART_FILL_BLACK_LEVEL]
             if len(black_pixels):
                 return np.median(black_pixels, axis=0).astype(np.uint8)
 
         if (
-            50.0 <= median_gray <= 205.0
+            SMART_FILL_MIDTONE_MIN <= median_gray <= SMART_FILL_MIDTONE_MAX
             and ring_std <= SMART_FILL_MIDTONE_STD_MAX
             and full_std <= SMART_FILL_MIDTONE_STD_MAX
             and full_edge_density <= SMART_FILL_BLACK_EDGE_DENSITY_MAX
@@ -398,7 +424,10 @@ class Inpainter:
     def _lama_fill_single_dynamic(self, crop: np.ndarray, local_mask: np.ndarray) -> np.ndarray:
         crop_h, crop_w = crop.shape[:2]
 
-        scale = min(1.0, INPAINT_SIZE / max(crop_h, crop_w))
+        scale = min(
+            1.0,
+            DYNAMIC_LAMA_MAX_SINGLE_CROP_DIM / max(crop_h, crop_w),
+        )
         new_h = max(1, int(round(crop_h * scale)))
         new_w = max(1, int(round(crop_w * scale)))
 
@@ -551,7 +580,7 @@ class Inpainter:
                 changed = False
                 still_remaining = []
                 for b in remaining:
-                    if any(Inpainter._boxes_close(b, c) for c in current) and Inpainter._can_add_to_cluster(current, b, 600):
+                    if any(Inpainter._boxes_close(b, c) for c in current) and Inpainter._can_add_to_cluster(current, b, INPAINT_CLUSTER_MAX_DIM):
                         current.append(b)
                         changed = True
                     else:
@@ -612,12 +641,21 @@ class Inpainter:
 
     @staticmethod
     def _boxes_close(a: BubbleBox, b: BubbleBox) -> bool:
-        ax1, ay1, ax2, ay2 = a.x1 - CLUSTER_PADDING, a.y1 - CLUSTER_PADDING, a.x2 + CLUSTER_PADDING, a.y2 + CLUSTER_PADDING
+        ax1, ay1, ax2, ay2 = (
+            a.x1 - INPAINT_CLUSTER_PADDING,
+            a.y1 - INPAINT_CLUSTER_PADDING,
+            a.x2 + INPAINT_CLUSTER_PADDING,
+            a.y2 + INPAINT_CLUSTER_PADDING,
+        )
         bx1, by1, bx2, by2 = b.x1, b.y1, b.x2, b.y2
         return not (ax2 < bx1 or bx2 < ax1 or ay2 < by1 or by2 < ay1)
 
     @staticmethod
-    def _can_add_to_cluster(cluster: list[BubbleBox], b: BubbleBox, max_dim: int = 600) -> bool:
+    def _can_add_to_cluster(
+        cluster: list[BubbleBox],
+        b: BubbleBox,
+        max_dim: int = INPAINT_CLUSTER_MAX_DIM,
+    ) -> bool:
         x1 = min(min(box.x1 for box in cluster), b.x1)
         y1 = min(min(box.y1 for box in cluster), b.y1)
         x2 = max(max(box.x2 for box in cluster), b.x2)
@@ -634,16 +672,16 @@ class Inpainter:
 
     @staticmethod
     def _compute_crop_region(x1: int, y1: int, x2: int, y2: int, img_w: int, img_h: int) -> tuple:
-        x1 -= CROP_PADDING
-        y1 -= CROP_PADDING
-        x2 += CROP_PADDING
-        y2 += CROP_PADDING
+        x1 -= INPAINT_CROP_PADDING
+        y1 -= INPAINT_CROP_PADDING
+        x2 += INPAINT_CROP_PADDING
+        y2 += INPAINT_CROP_PADDING
 
         box_w = x2 - x1
         box_h = y2 - y1
 
         aspect = max(box_w / max(1, box_h), box_h / max(1, box_w))
-        if aspect > 1.8:
+        if aspect > INPAINT_CROP_LONG_ASPECT_THRESHOLD:
             x1 = max(0, x1)
             y1 = max(0, y1)
             x2 = min(img_w, x2)
