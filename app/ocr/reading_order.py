@@ -4,6 +4,20 @@ import math
 import statistics
 from typing import Any
 
+from app.parameters import (
+    OCR_CENTER_ANCHOR_DISTANCE_MAX,
+    OCR_CENTER_AXIS_FACTOR,
+    OCR_CENTER_BAND_OVERLAP_MIN,
+    OCR_CENTER_DISTANCE_MARGIN,
+    OCR_COLUMN_TOLERANCE_FACTOR,
+    OCR_MAIN_SIZE_FACTOR,
+    OCR_READING_HORIZONTAL_ASPECT,
+    OCR_READING_VERTICAL_ASPECT,
+    OCR_ROW_TOLERANCE_FACTOR,
+    OCR_RUBY_OVERLAP_MIN,
+    OCR_RUBY_SIZE_FACTOR,
+)
+
 
 def _box(poly: Any) -> dict[str, float]:
     points = list(poly or [])
@@ -63,22 +77,26 @@ def _horizontal_order(
         horizontalish = [
             region
             for region in regions
-            if region["box"]["w"] >= region["box"]["h"] * 1.20
+            if region["box"]["w"]
+            >= region["box"]["h"] * OCR_READING_HORIZONTAL_ASPECT
         ]
         heights = [region["box"]["h"] for region in horizontalish] or [
             region["box"]["h"] for region in regions
         ]
         main_height = _quantile(heights, 0.75)
-        ruby_height_threshold = max(8.0, main_height * 0.72)
+        ruby_height_threshold = max(8.0, main_height * OCR_RUBY_SIZE_FACTOR)
         main_lines = [
             region
             for region in regions
-            if region["box"]["h"] >= main_height * 0.80
+            if region["box"]["h"] >= main_height * OCR_MAIN_SIZE_FACTOR
             and region["box"]["w"] >= region["box"]["h"] * 1.80
         ]
         removed_indices: set[int] = set()
         for candidate in regions:
-            if candidate in main_lines or candidate["box"]["h"] >= ruby_height_threshold:
+            if (
+                candidate in main_lines
+                or candidate["box"]["h"] >= ruby_height_threshold
+            ):
                 continue
             candidate_box = candidate["box"]
             for main in main_lines:
@@ -93,20 +111,29 @@ def _horizontal_order(
                 if (
                     main_height * 0.20 <= dy <= main_height * 1.20
                     and x_overlap
-                    >= min(candidate_box["w"], main_box["w"]) * 0.25
+                    >= min(candidate_box["w"], main_box["w"])
+                    * OCR_RUBY_OVERLAP_MIN
                 ):
                     removed_indices.add(candidate["index"])
                     break
-        kept = [region for region in regions if region["index"] not in removed_indices]
-        removed = [region for region in regions if region["index"] in removed_indices]
+        kept = [
+            region for region in regions if region["index"] not in removed_indices
+        ]
+        removed = [
+            region for region in regions if region["index"] in removed_indices
+        ]
         if len(kept) < max(1, len(regions) // 3):
             kept = list(regions)
             removed = []
 
     heights_kept = [region["box"]["h"] for region in kept]
-    row_tolerance = max(8.0, _quantile(heights_kept, 0.60) * 0.65)
+    row_tolerance = max(
+        8.0, _quantile(heights_kept, 0.60) * OCR_ROW_TOLERANCE_FACTOR
+    )
     rows: list[dict[str, Any]] = []
-    for region in sorted(kept, key=lambda item: (item["box"]["cy"], item["box"]["cx"])):
+    for region in sorted(
+        kept, key=lambda item: (item["box"]["cy"], item["box"]["cx"])
+    ):
         best = None
         best_distance = None
         for row in rows:
@@ -141,7 +168,8 @@ def _vertical_order(
     verticalish = [
         region
         for region in regions
-        if region["box"]["h"] >= region["box"]["w"] * 0.90
+        if region["box"]["h"]
+        >= region["box"]["w"] * OCR_READING_VERTICAL_ASPECT
     ]
     widths = [region["box"]["w"] for region in verticalish] or [
         region["box"]["w"] for region in regions
@@ -149,16 +177,20 @@ def _vertical_order(
     main_width = _quantile(widths, 0.75)
 
     if filter_ruby:
-        ruby_width_threshold = max(8.0, main_width * 0.72)
+        ruby_width_threshold = max(8.0, main_width * OCR_RUBY_SIZE_FACTOR)
         main_columns = [
             region
             for region in regions
-            if region["box"]["w"] >= main_width * 0.80
-            and region["box"]["h"] >= region["box"]["w"] * 1.20
+            if region["box"]["w"] >= main_width * OCR_MAIN_SIZE_FACTOR
+            and region["box"]["h"]
+            >= region["box"]["w"] * OCR_READING_HORIZONTAL_ASPECT
         ]
         removed_indices: set[int] = set()
         for candidate in regions:
-            if candidate in main_columns or candidate["box"]["w"] >= ruby_width_threshold:
+            if (
+                candidate in main_columns
+                or candidate["box"]["w"] >= ruby_width_threshold
+            ):
                 continue
             candidate_box = candidate["box"]
             for main in main_columns:
@@ -173,19 +205,26 @@ def _vertical_order(
                 if (
                     main_width * 0.20 <= dx <= main_width * 1.35
                     and y_overlap
-                    >= min(candidate_box["h"], main_box["h"]) * 0.25
+                    >= min(candidate_box["h"], main_box["h"])
+                    * OCR_RUBY_OVERLAP_MIN
                 ):
                     removed_indices.add(candidate["index"])
                     break
-        kept = [region for region in regions if region["index"] not in removed_indices]
-        removed = [region for region in regions if region["index"] in removed_indices]
+        kept = [
+            region for region in regions if region["index"] not in removed_indices
+        ]
+        removed = [
+            region for region in regions if region["index"] in removed_indices
+        ]
         if len(kept) < max(1, len(regions) // 3):
             kept = list(regions)
             removed = []
 
-    column_tolerance = max(10.0, main_width * 0.85)
+    column_tolerance = max(10.0, main_width * OCR_COLUMN_TOLERANCE_FACTOR)
     columns: list[dict[str, Any]] = []
-    for region in sorted(kept, key=lambda item: (-item["box"]["cx"], item["box"]["cy"])):
+    for region in sorted(
+        kept, key=lambda item: (-item["box"]["cx"], item["box"]["cy"])
+    ):
         best = None
         best_distance = None
         for column in columns:
@@ -240,7 +279,11 @@ def reconstruct_reading_order(
         )
 
     if not regions:
-        fallback = [str(text or "").strip() for text in texts if str(text or "").strip()]
+        fallback = [
+            str(text or "").strip()
+            for text in texts
+            if str(text or "").strip()
+        ]
         return {
             "text": "\n".join(fallback),
             "confidence": None,
@@ -253,12 +296,14 @@ def reconstruct_reading_order(
     vertical_weight = sum(
         max(1, len(region["text"]))
         for region in regions
-        if region["box"]["h"] >= region["box"]["w"] * 1.20
+        if region["box"]["h"]
+        >= region["box"]["w"] * OCR_READING_HORIZONTAL_ASPECT
     )
     horizontal_weight = sum(
         max(1, len(region["text"]))
         for region in regions
-        if region["box"]["w"] >= region["box"]["h"] * 1.20
+        if region["box"]["w"]
+        >= region["box"]["h"] * OCR_READING_HORIZONTAL_ASPECT
     )
     is_vertical = vertical_weight > horizontal_weight
     normalized_lang = (lang or "").strip().lower()
@@ -326,9 +371,7 @@ def select_centered_target(
 
     anchor = min(ordered, key=center_distance)
     anchor_distance = center_distance(anchor)
-    # Symmetric detector crops should put the intended line very near center.
-    # If they do not, geometry is ambiguous and pruning would be unsafe.
-    if anchor_distance > 0.22:
+    if anchor_distance > OCR_CENTER_ANCHOR_DISTANCE_MAX:
         return result
 
     orientation = str(result.get("orientation") or "unknown")
@@ -342,21 +385,27 @@ def select_centered_target(
             overlap = _overlap(
                 anchor_box["x1"], anchor_box["x2"], box["x1"], box["x2"]
             )
-            overlap_ratio = overlap / max(1.0, min(anchor_box["w"], box["w"]))
+            overlap_ratio = overlap / max(
+                1.0, min(anchor_box["w"], box["w"])
+            )
             axis_distance = abs(float(box["cx"]) - float(anchor_box["cx"]))
             same_band = (
-                overlap_ratio >= 0.30
-                or axis_distance <= max(anchor_box["w"], box["w"]) * 0.55
+                overlap_ratio >= OCR_CENTER_BAND_OVERLAP_MIN
+                or axis_distance
+                <= max(anchor_box["w"], box["w"]) * OCR_CENTER_AXIS_FACTOR
             )
         else:
             overlap = _overlap(
                 anchor_box["y1"], anchor_box["y2"], box["y1"], box["y2"]
             )
-            overlap_ratio = overlap / max(1.0, min(anchor_box["h"], box["h"]))
+            overlap_ratio = overlap / max(
+                1.0, min(anchor_box["h"], box["h"])
+            )
             axis_distance = abs(float(box["cy"]) - float(anchor_box["cy"]))
             same_band = (
-                overlap_ratio >= 0.30
-                or axis_distance <= max(anchor_box["h"], box["h"]) * 0.55
+                overlap_ratio >= OCR_CENTER_BAND_OVERLAP_MIN
+                or axis_distance
+                <= max(anchor_box["h"], box["h"]) * OCR_CENTER_AXIS_FACTOR
             )
 
         if same_band:
@@ -368,9 +417,7 @@ def select_centered_target(
         return result
 
     nearest_removed_distance = min(center_distance(region) for region in removed)
-    # Require a real center-distance margin. Closely competing rows/columns are
-    # treated as ambiguous and retain the full reading order.
-    if nearest_removed_distance < anchor_distance + 0.08:
+    if nearest_removed_distance < anchor_distance + OCR_CENTER_DISTANCE_MARGIN:
         return result
 
     finite_scores = [
