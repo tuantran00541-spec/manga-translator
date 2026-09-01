@@ -264,7 +264,13 @@ class Inpainter:
 
         return result
 
-    def inpaint_mask(self, image: np.ndarray, mask: np.ndarray) -> np.ndarray:
+    def inpaint_mask(
+        self,
+        image: np.ndarray,
+        mask: np.ndarray,
+        *,
+        force_lama: bool = False,
+    ) -> np.ndarray:
         self._begin_metrics()
         if mask is None or not np.any(mask > 127):
             return image.copy()
@@ -324,7 +330,13 @@ class Inpainter:
                 dilated_roi[iy1 - ry1:iy2 - ry1, ix1 - rx1:ix2 - rx1]
             )
 
-            result = self._smart_paint_region(result, local_mask, crop_box, feather=True)
+            result = self._smart_paint_region(
+                result,
+                local_mask,
+                crop_box,
+                feather=True,
+                force_lama=force_lama,
+            )
 
         return result
 
@@ -395,7 +407,14 @@ class Inpainter:
 
         return None
 
-    def _smart_paint_region(self, image: np.ndarray, local_mask: np.ndarray, crop_box: tuple, feather: bool = False) -> np.ndarray:
+    def _smart_paint_region(
+        self,
+        image: np.ndarray,
+        local_mask: np.ndarray,
+        crop_box: tuple,
+        feather: bool = False,
+        force_lama: bool = False,
+    ) -> np.ndarray:
         cx1, cy1, cx2, cy2 = crop_box
         crop = image[cy1:cy2, cx1:cx2]
         crop_h, crop_w = crop.shape[:2]
@@ -406,7 +425,7 @@ class Inpainter:
         if not np.any(mask_bool):
             return image
 
-        fill_color = self._smart_fill_color(crop, local_mask)
+        fill_color = None if force_lama else self._smart_fill_color(crop, local_mask)
         if fill_color is not None:
             self._metric_add("smart_fill_regions")
             filled = crop.copy()

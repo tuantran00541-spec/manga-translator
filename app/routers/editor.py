@@ -158,8 +158,16 @@ def remove_box(req: RemoveBoxRequest) -> dict:
 
 
 @router.post("/repaint_mask")
-async def repaint_mask(chapter_id: str = Form(...), page_index: int = Form(...), mask: UploadFile = File(...)) -> dict:
+async def repaint_mask(
+    chapter_id: str = Form(...),
+    page_index: int = Form(...),
+    mode: str = Form("standard"),
+    mask: UploadFile = File(...),
+) -> dict:
     validate_chapter_id(chapter_id)
+    mode = str(mode).strip().lower()
+    if mode not in {"standard", "lama"}:
+        raise HTTPException(400, "Invalid repaint mode")
     manifest_raw = load_manifest_raw(chapter_id)
     pages = manifest_raw.get("pages", [])
     if page_index < 0 or page_index >= len(pages):
@@ -179,7 +187,13 @@ async def repaint_mask(chapter_id: str = Form(...), page_index: int = Form(...),
     mask_bytes = await mask.read()
     if not mask_bytes:
         raise HTTPException(400, "Empty mask payload")
-    logger.info(f"Chapter {chapter_id} page {page_index}: repaint mask ({len(mask_bytes)} bytes)")
+    logger.info(
+        "Chapter %s page %s: repaint mask (%s bytes, mode=%s)",
+        chapter_id,
+        page_index,
+        len(mask_bytes),
+        mode,
+    )
 
     encoded = np.frombuffer(mask_bytes, dtype=np.uint8)
     decoded = cv2.imdecode(encoded, cv2.IMREAD_UNCHANGED)
@@ -203,7 +217,13 @@ async def repaint_mask(chapter_id: str = Form(...), page_index: int = Form(...),
         raise HTTPException(400, "Repaint mask is empty")
 
     try:
-        manifest = await run_in_threadpool(pipeline.repaint_mask, chapter_id, page_index, mask_array)
+        manifest = await run_in_threadpool(
+            pipeline.repaint_mask,
+            chapter_id,
+            page_index,
+            mask_array,
+            force_lama=mode == "lama",
+        )
         return urlify_manifest(manifest)
     except Exception as exc:
         logger.error(

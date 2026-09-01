@@ -1028,7 +1028,14 @@ class ChapterPipeline:
                 self._sync_output_dir(chapter_id, manifest, [page_index])
             return manifest
 
-    def repaint_mask(self, chapter_id: str, page_index: int, mask: np.ndarray) -> dict:
+    def repaint_mask(
+        self,
+        chapter_id: str,
+        page_index: int,
+        mask: np.ndarray,
+        *,
+        force_lama: bool = False,
+    ) -> dict:
         processed_dir = PROCESSED_DIR / chapter_id
 
         with get_page_lock(chapter_id, page_index):
@@ -1094,6 +1101,7 @@ class ChapterPipeline:
                 clean_path_posix = self._do_reinpaint(
                     processed_dir, img_path, image, boxes_snapshot, inpaint_mask_posix,
                     reuse_auto_clean=True,
+                    force_lama_manual=force_lama,
                 )
                 if accumulated_mask is not None:
                     final_mask_path = processed_dir / f"manual_mask_{img_path.name}"
@@ -1333,6 +1341,7 @@ class ChapterPipeline:
         *,
         reuse_auto_clean: bool = False,
         apply_manual_mask: bool = True,
+        force_lama_manual: bool = False,
     ) -> str:
         """Repaint using masks stored inline or in managed PNG sidecars."""
         boxes_objects = []
@@ -1426,7 +1435,7 @@ class ChapterPipeline:
                 if manual_mask is not None and np.any(manual_mask > 10):
                     manual_mask = (manual_mask > 10).astype(np.uint8) * 255
                     clean_image = self.inpainter.inpaint_mask(
-                        clean_image, manual_mask
+                        clean_image, manual_mask, force_lama=force_lama_manual
                     )
 
         clean_path = processed_dir / f"clean_{img_path.name}"

@@ -586,8 +586,11 @@ async function submitRepaint(pageIndex, canvas, img, ctx, submitBtn) {
     return;
   }
 
+  const mode = await chooseRepaintMode();
+  if (!mode) return;
+
   submitBtn.disabled = true;
-  submitBtn.textContent = "Đang xử lý…";
+  submitBtn.textContent = mode === "lama" ? "LaMa đang xử lý…" : "Đang xử lý…";
 
   try {
     const maskBlob = await new Promise((resolve, reject) => {
@@ -600,6 +603,7 @@ async function submitRepaint(pageIndex, canvas, img, ctx, submitBtn) {
     const formData = new FormData();
     formData.append("chapter_id", currentChapterId);
     formData.append("page_index", pageIndex);
+    formData.append("mode", mode);
     formData.append("mask", maskBlob, "mask.png");
 
     const resp = await fetch("/api/repaint_mask", { method: "POST", body: formData });
@@ -614,11 +618,133 @@ async function submitRepaint(pageIndex, canvas, img, ctx, submitBtn) {
     img.src = manifest.pages[pageIndex].clean + "?t=" + Date.now();
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     canvas._reviewDirty = false;
-    showToast("Đã xử lý vùng đánh dấu.", "success");
+    showToast(
+      mode === "lama"
+        ? "Đã tái inpaint vùng đánh dấu bằng LaMa."
+        : "Đã xử lý vùng đánh dấu theo phương thức mặc định.",
+      "success"
+    );
   } catch (err) {
     showToast("Không thể xử lý vùng đánh dấu: " + err.message, "error");
   } finally {
     submitBtn.disabled = false;
     submitBtn.textContent = "Xử lý vùng đánh dấu";
   }
+}
+
+function chooseRepaintMode() {
+  return new Promise((resolve) => {
+    const backdrop = document.createElement("div");
+    backdrop.className = "repaint-mode-backdrop";
+
+    const dialog = document.createElement("section");
+    dialog.className = "repaint-mode-dialog";
+    dialog.setAttribute("role", "dialog");
+    dialog.setAttribute("aria-modal", "true");
+    dialog.setAttribute("aria-labelledby", "repaint-mode-title");
+
+    const eyebrow = document.createElement("p");
+    eyebrow.className = "repaint-mode-eyebrow";
+    eyebrow.textContent = "Tái xử lý vùng đánh dấu";
+
+    const title = document.createElement("h2");
+    title.id = "repaint-mode-title";
+    title.textContent = "Chọn phương thức xử lý";
+
+    const description = document.createElement("p");
+    description.className = "repaint-mode-description";
+    description.textContent = "Lựa chọn này áp dụng cho toàn bộ vùng đánh dấu hiện có trên trang.";
+
+    const options = document.createElement("div");
+    options.className = "repaint-mode-options";
+    let selectedMode = "standard";
+
+    const selectMode = (mode) => {
+      selectedMode = mode;
+      for (const option of options.querySelectorAll(".repaint-mode-option")) {
+        const isSelected = option.dataset.mode === mode;
+        option.classList.toggle("is-selected", isSelected);
+        option.setAttribute("aria-pressed", String(isSelected));
+      }
+    };
+
+    const createOption = (mode, label, detail, badge = "") => {
+      const option = document.createElement("button");
+      option.type = "button";
+      option.className = "repaint-mode-option";
+      option.dataset.mode = mode;
+      option.setAttribute("aria-pressed", "false");
+
+      const optionHeader = document.createElement("span");
+      optionHeader.className = "repaint-mode-option-header";
+      const optionLabel = document.createElement("strong");
+      optionLabel.textContent = label;
+      optionHeader.appendChild(optionLabel);
+      if (badge) {
+        const badgeEl = document.createElement("span");
+        badgeEl.className = "repaint-mode-badge";
+        badgeEl.textContent = badge;
+        optionHeader.appendChild(badgeEl);
+      }
+
+      const optionDetail = document.createElement("span");
+      optionDetail.className = "repaint-mode-option-detail";
+      optionDetail.textContent = detail;
+      option.append(optionHeader, optionDetail);
+      option.addEventListener("click", () => selectMode(mode));
+      return option;
+    };
+
+    const standardOption = createOption(
+      "standard",
+      "Xử lý mặc định",
+      "Ưu tiên Smart Fill trên nền đồng nhất và chỉ chuyển sang LaMa khi vùng ảnh cần tái tạo phức tạp hơn.",
+      "Khuyến nghị"
+    );
+    const lamaOption = createOption(
+      "lama",
+      "Tái inpaint bằng LaMa",
+      "Bỏ qua Smart Fill và buộc LaMa tái tạo toàn bộ vùng đã đánh dấu. Phương án này có thể mất nhiều thời gian hơn."
+    );
+    options.append(standardOption, lamaOption);
+    selectMode(selectedMode);
+
+    const actions = document.createElement("div");
+    actions.className = "repaint-mode-actions";
+    const cancelBtn = document.createElement("button");
+    cancelBtn.type = "button";
+    cancelBtn.className = "repaint-mode-cancel";
+    cancelBtn.textContent = "Hủy";
+    const confirmBtn = document.createElement("button");
+    confirmBtn.type = "button";
+    confirmBtn.className = "repaint-mode-confirm";
+    confirmBtn.textContent = "Bắt đầu xử lý";
+    actions.append(cancelBtn, confirmBtn);
+
+    let closed = false;
+    const close = (value) => {
+      if (closed) return;
+      closed = true;
+      document.removeEventListener("keydown", onKeyDown);
+      document.body.classList.remove("repaint-mode-open");
+      backdrop.remove();
+      resolve(value);
+    };
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") close(null);
+    };
+
+    cancelBtn.addEventListener("click", () => close(null));
+    confirmBtn.addEventListener("click", () => close(selectedMode));
+    backdrop.addEventListener("click", (event) => {
+      if (event.target === backdrop) close(null);
+    });
+
+    dialog.append(eyebrow, title, description, options, actions);
+    backdrop.appendChild(dialog);
+    document.body.appendChild(backdrop);
+    document.body.classList.add("repaint-mode-open");
+    document.addEventListener("keydown", onKeyDown);
+    standardOption.focus();
+  });
 }
