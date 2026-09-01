@@ -278,6 +278,49 @@ def _layer_map(manifest: Mapping) -> dict[int, dict]:
     return out
 
 
+def _build_tensor_index(manifest: Mapping, layers: Mapping[int, Mapping]) -> dict[str, dict]:
+    """Return a validated name -> layer-relative byte span index.
+
+    GGUF manifests provide a top-level ``tensor_index`` because tensor names do
+    not follow the legacy Hugging Face regex.  Older SafeTensors manifests do
+    not, so derive the same index from ``layers[].tensors``.  This keeps tensor
+    lookup manifest-driven without breaking the already-proven SafeTensors K3
+    path.
+    """
+    raw = manifest.get("tensor_index")
+    if raw is None:
+        raw = {
+            str(tensor["name"]): {
+                "layer": int(layer),
+                "offset": int(tensor["offset"]),
+                "nbytes": int(tensor["nbytes"]),
+            }
+            for layer, layer_meta in layers.items()
+            for tensor in layer_meta.get("tensors", [])
+        }
+    if not isinstance(raw, Mapping):
+        raise ValueError("tensor_index must be a mapping")
+
+    out: dict[str, dict] = {}
+    for raw_name, raw_meta in raw.items():
+        name = str(raw_name)
+        if not name or name in out:
+            raise ValueError(f"invalid or duplicate tensor index name: {name!r}")
+        if not isinstance(raw_meta, Mapping):
+            raise ValueError(f"tensor {name}: invalid tensor index entry")
+        layer = int(raw_meta["layer"])
+        offset = int(raw_meta["offset"])
+        nbytes = int(raw_meta["nbytes"])
+        layer_meta = layers.get(layer)
+        if layer_meta is None:
+            raise ValueError(f"tensor {name}: unknown layer {layer}")
+        read_bytes = int(layer_meta["read_bytes"])
+        if offset < 0 or nbytes < 0 or offset + nbytes > read_bytes:
+            raise ValueError(f"tensor {name}: byte span exceeds layer {layer}")
+        out[name] = {"layer": layer, "offset": offset, "nbytes": nbytes}
+    return out
+
+
 def plan_memory(manifest: Mapping, budget_bytes: int, *, want_ring: int = 2, max_pinned: int | None = None) -> MemoryPlan:
     """Choose the largest pinned prefix while preferring two safe ring slots."""
     layers = _layer_map(manifest)
@@ -317,9 +360,11 @@ def plan_memory(manifest: Mapping, budget_bytes: int, *, want_ring: int = 2, max
 class K3Trunk:
     """Pinned-prefix + ring-slot reader for a qwen38-k3-trunk-v1 file.
 
-    Async prefetch is correctness-gated: it is disabled when fewer than two ring
-    slots exist, so a worker can never overwrite the layer currently bound for
-    compute.
+    Tensor lookup is manifest-driven.  GGUF manifests can provide a top-level
+    ``tensor_index``; legacy SafeTensors manifests are indexed from their layer
+    tensor records.  Async prefetch is correctness-gated: it is disabled when
+    fewer than two ring slots exist, so a worker can never overwrite the layer
+    currently bound for compute.
     """
 
     def __init__(
@@ -335,6 +380,7 @@ class K3Trunk:
         self.bin_path = Path(bin_path)
         self.manifest = json.loads(Path(index_path).read_text(encoding="utf-8"))
         self.layers = _layer_map(self.manifest)
+        self.tensor_index = _build_tensor_index(self.manifest, self.layers)
         self.order = sorted(self.layers)
         self.plan = plan_memory(self.manifest, budget_bytes, want_ring=want_ring, max_pinned=max_pinned)
         self._io_lock = threading.Lock()
@@ -490,14 +536,15 @@ class K3Trunk:
         return True
 
     def tensor_view(self, layer_view: memoryview, tensor_name: str) -> memoryview:
-        match = LAYER_RE.match(tensor_name)
-        if not match:
-            raise KeyError(tensor_name)
-        for tensor in self.layers[int(match.group(1))]["tensors"]:
-            if tensor["name"] == tensor_name:
-                start = int(tensor["offset"])
-                return layer_view[start : start + int(tensor["nbytes"])]
-        raise KeyError(tensor_name)
+        try:
+            meta = self.tensor_index[tensor_name]
+        except KeyError as exc:
+            raise KeyError(tensor_name) from exc
+        start = int(meta["offset"])
+        end = start + int(meta["nbytes"])
+        if start < 0 or end > len(layer_view):
+            raise ValueError(f"tensor {tensor_name} exceeds bound layer view")
+        return layer_view[start:end]
 
     def report(self) -> dict:
         return {
