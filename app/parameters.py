@@ -478,6 +478,7 @@ SLICE_FALLBACK_TOLERANCE_RATIO = _env_float(
 # Inpaint / smart-fill / LaMa
 # ---------------------------------------------------------------------------
 
+USE_DYNAMIC_LAMA = _env_bool("MANGA_USE_DYNAMIC_LAMA", True)
 INPAINT_SIZE = _env_int(
     "MANGA_INPAINT_SIZE", 512, minimum=128, maximum=4096
 )

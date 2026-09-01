@@ -1,5 +1,5 @@
-import os
 import gc
+import os
 import threading
 
 import numpy as np
@@ -45,6 +45,7 @@ from app.parameters import (
     SMART_FILL_WHITE_LEVEL,
     SMART_FILL_WHITE_RATIO_MIN,
     SMART_FILL_WHITE_STD_MAX,
+    USE_DYNAMIC_LAMA,
 )
 
 _FIXED_LAMA_RECYCLE_ENV = "MANGA_FIXED_LAMA_SESSION_RECYCLE"
@@ -100,10 +101,7 @@ def _should_recycle_fixed_session() -> bool:
 
 class Inpainter:
     def __init__(self):
-        dynamic_enabled = os.getenv("MANGA_USE_DYNAMIC_LAMA", "1").strip().lower() not in (
-            "0", "false", "no", "off"
-        )
-        self._prefer_dynamic = dynamic_enabled and LAMA_DYNAMIC_MODEL.is_file()
+        self._prefer_dynamic = USE_DYNAMIC_LAMA and LAMA_DYNAMIC_MODEL.is_file()
         self._session_lock = threading.RLock()
         self._session_run_count = 0
         self.session = None

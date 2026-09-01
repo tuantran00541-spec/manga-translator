@@ -20,6 +20,7 @@ from app.config import (
 from app.dependencies import ocr as ocr_runtime, pipeline
 from app.logging_config import logger
 from app.manifest_utils import cleanup_stale_temp_artifacts
+from app.parameters import USE_DYNAMIC_LAMA
 from app.routers import automation, chapters, editor, export, image, ocr, render, render_commit, translation, visual_qc
 from app.security import MAX_REQUEST_BYTES, MAX_UPLOAD_TOTAL_BYTES
 
@@ -217,12 +218,9 @@ def _runtime_state() -> dict:
         active_inpaint_model = Path(model_path).name if model_path else None
         inpaint_dynamic = bool(getattr(inpainter, "dynamic_lama", False))
 
-    dynamic_enabled = os.getenv("MANGA_USE_DYNAMIC_LAMA", "1").strip().lower() not in {
-        "0", "false", "no", "off"
-    }
     preferred_inpaint_model = (
         LAMA_DYNAMIC_MODEL.name
-        if dynamic_enabled and LAMA_DYNAMIC_MODEL.is_file()
+        if USE_DYNAMIC_LAMA and LAMA_DYNAMIC_MODEL.is_file()
         else LAMA_MODEL.name
     )
 
