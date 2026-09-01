@@ -1,0 +1,253 @@
+name: Qwen3.8 real Q6 full-attention layer3 semantic gate
+
+on:
+  push:
+    branches: [test/qwen3.8-27b]
+    paths:
+      - "research/qwen38/qwen35_full_attn_layer3_gate.py"
+      - "research/qwen38/llama_layer3_oracle.cpp"
+      - "research/qwen38/qwen35_gdn_quant_layer_gate.py"
+      - "research/qwen38/qwen35_gguf_decoder_contract.py"
+      - "research/qwen38/gguf_stream.py"
+      - "research/qwen38/gguf_k3_layout.py"
+      - "research/qwen38/k3_stream.py"
+      - "research/qwen38/gguf_quant_ref.py"
+      - "research/qwen38/gguf_quant_dot.c"
+      - ".github/workflows/qwen38-full-attn-real-layer3.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sanity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Compile layer3 gate and dependencies
+        run: |
+          python -m py_compile \
+            research/qwen38/gguf_stream.py \
+            research/qwen38/gguf_k3_layout.py \
+            research/qwen38/k3_stream.py \
+            research/qwen38/gguf_quant_ref.py \
+            research/qwen38/qwen35_gdn_quant_layer_gate.py \
+            research/qwen38/qwen35_full_attn_layer3_gate.py \
+            research/qwen38/qwen35_gguf_decoder_contract.py
+      - name: Run zero-model full-attention layer3 sanity
+        run: python research/qwen38/qwen35_full_attn_layer3_gate.py sanity
+      - name: Run mixed-quant decoder contract sanity
+        run: python research/qwen38/qwen35_gguf_decoder_contract.py sanity
+      - name: Compile and run native quant regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          cc -O2 -std=c11 -DQWEN_QUANT_DOT_SELFTEST \
+            research/qwen38/gguf_quant_dot.c -lm -o "$RUNNER_TEMP/qwen-quant-selftest"
+          "$RUNNER_TEMP/qwen-quant-selftest"
+
+  real-layer3:
+    needs: sanity
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[qwen-attn3-real]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      HF_HUB_DISABLE_TELEMETRY: "1"
+      LLAMA_CPP_COMMIT: "557614e0296ff4a5b6f649737a65ae2076eea2fd"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Reclaim disk
+        shell: bash
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup || true
+          docker system prune -af || true
+          df -h
+          free -h
+
+      - name: Install download dependency
+        run: python -m pip install --no-cache-dir huggingface_hub hf_xet
+
+      - name: Download pinned gold GGUF once
+        shell: bash
+        run: |
+          set -euo pipefail
+          model="$(python - <<'PY'
+          from huggingface_hub import hf_hub_download
+          print(hf_hub_download(
+              "bartowski/Qwen3.8-27B-GGUF",
+              filename="Qwen3.8-27B-Q6_K_L.gguf",
+              local_dir="${{ runner.temp }}/qwen38-model",
+          ))
+          PY
+          )"
+          test -f "$model"
+          echo "MODEL=$model" >> "$GITHUB_ENV"
+          ls -lh "$model"
+
+      - name: Emit mixed-quant decoder contract before risky validation
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/qwen38-attn3-evidence"
+          mkdir -p "$evidence"
+          python -u research/qwen38/qwen35_gguf_decoder_contract.py real \
+            --model "$MODEL" \
+            --output "$evidence/inventory.json" \
+            2>&1 | tee "$evidence/inventory.log"
+
+      - name: Build pinned llama.cpp layer3 oracle
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq cmake ninja-build
+          llama="$RUNNER_TEMP/llama.cpp"
+          mkdir -p "$llama"
+          git -C "$llama" init
+          git -C "$llama" remote add origin https://github.com/ggml-org/llama.cpp.git
+          git -C "$llama" fetch --depth 1 origin "$LLAMA_CPP_COMMIT"
+          git -C "$llama" checkout --detach FETCH_HEAD
+          test "$(git -C "$llama" rev-parse HEAD)" = "$LLAMA_CPP_COMMIT"
+
+          mkdir -p "$llama/examples/qwen38-layer3-oracle"
+          cp research/qwen38/llama_layer3_oracle.cpp \
+            "$llama/examples/qwen38-layer3-oracle/qwen38_layer3_oracle.cpp"
+          cat > "$llama/examples/qwen38-layer3-oracle/CMakeLists.txt" <<'EOF'
+          set(TARGET llama-qwen38-layer3-oracle)
+          add_executable(${TARGET} qwen38_layer3_oracle.cpp)
+          target_link_libraries(${TARGET} PRIVATE llama)
+          target_compile_features(${TARGET} PRIVATE cxx_std_17)
+          EOF
+          printf '\nadd_subdirectory(qwen38-layer3-oracle)\n' >> "$llama/examples/CMakeLists.txt"
+
+          cmake -S "$llama" -B "$llama/build" -G Ninja \
+            -DGGML_NATIVE=OFF \
+            -DGGML_OPENMP=ON \
+            -DLLAMA_BUILD_EXAMPLES=ON \
+            -DCMAKE_BUILD_TYPE=Release
+          cmake --build "$llama/build" --target llama-qwen38-layer3-oracle -j2
+          test -x "$llama/build/bin/llama-qwen38-layer3-oracle"
+
+      - name: Compile native quant bridge
+        shell: bash
+        run: |
+          set -euo pipefail
+          cc -O2 -std=c11 -fPIC -shared research/qwen38/gguf_quant_dot.c -lm \
+            -o "$RUNNER_TEMP/libqwen_quant_dot.so"
+          cc -O2 -std=c11 -DQWEN_QUANT_DOT_SELFTEST research/qwen38/gguf_quant_dot.c -lm \
+            -o "$RUNNER_TEMP/qwen-quant-selftest"
+          "$RUNNER_TEMP/qwen-quant-selftest"
+
+      - name: Capture pinned llama.cpp layer3 oracle
+        timeout-minutes: 20
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/qwen38-attn3-evidence"
+          /usr/bin/time -v "$RUNNER_TEMP/llama.cpp/build/bin/llama-qwen38-layer3-oracle" \
+            "$MODEL" "$evidence/oracle.json" \
+            2>&1 | tee "$evidence/oracle.log"
+
+      - name: Validate layer3 oracle contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/qwen38-attn3-evidence"
+          python - "$evidence/oracle.json" <<'PY'
+          import json, sys
+          data = json.load(open(sys.argv[1], encoding="utf-8"))
+          assert data["schema"] == "qwen38-llama-layer3-oracle-v1", data["schema"]
+          assert data["decode_returncode"] == 0, data["decode_returncode"]
+          assert data["captured_complete_layer"] is True
+          assert data["layer3_input_source"] in {
+              "cb_eval(l_out-2)",
+              "cb_eval(post_ffn-2; cvec identity)",
+              "derived_fp32_add(attn_residual-2,ffn_out-2; cvec identity)",
+          }, data["layer3_input_source"]
+          assert data["post_ffn_source"] in {
+              "cb_eval",
+              "derived_fp32_add(attn_residual-3,ffn_out-3)",
+          }, data["post_ffn_source"]
+          expected = {
+              "layer3_input": 5120,
+              "attn_norm-3": 5120,
+              "Qcur_full-3": 12288,
+              "Qcur_reshaped-3": 6144,
+              "Qcur_normed-3": 6144,
+              "Kcur-3": 1024,
+              "Kcur_normed-3": 1024,
+              "gate_reshaped-3": 6144,
+              "Vcur-3": 1024,
+              "attn_pregate-3": 6144,
+              "gate_sigmoid-3": 6144,
+              "attn_gated-3": 6144,
+              "attn_output-3": 5120,
+              "attn_residual-3": 5120,
+              "attn_post_norm-3": 5120,
+              "ffn_out-3": 5120,
+              "post_ffn-3": 5120,
+          }
+          checkpoints = data["checkpoints"]
+          missing = sorted(set(expected) - set(checkpoints))
+          assert not missing, missing
+          bad = {name: (len(checkpoints[name]), width) for name, width in expected.items()
+                 if len(checkpoints[name]) != width}
+          assert not bad, bad
+          print(json.dumps({
+              "status": "PASS",
+              "checkpoint_count": len(checkpoints),
+              "layer3_input_source": data["layer3_input_source"],
+              "post_ffn_source": data["post_ffn_source"],
+          }, sort_keys=True))
+          PY
+
+      - name: Run custom K3 real Q6 layer3 semantic gate
+        timeout-minutes: 25
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/qwen38-attn3-evidence"
+          work="$RUNNER_TEMP/qwen38-k3-layer3"
+          mkdir -p "$work"
+          /usr/bin/time -v python -u research/qwen38/qwen35_full_attn_layer3_gate.py run \
+            --model "$MODEL" \
+            --native-lib "$RUNNER_TEMP/libqwen_quant_dot.so" \
+            --inventory "$evidence/inventory.json" \
+            --oracle "$evidence/oracle.json" \
+            --work-dir "$work" \
+            --output "$evidence/layer3.json" \
+            2>&1 | tee "$evidence/layer3.log"
+
+      - name: Show evidence and cleanup
+        if: always()
+        shell: bash
+        run: |
+          evidence="$RUNNER_TEMP/qwen38-attn3-evidence"
+          for f in inventory.json oracle.json layer3.json; do
+            echo "=== $f ==="
+            cat "$evidence/$f" 2>/dev/null || true
+          done
+          echo "=== log tails ==="
+          tail -n 120 "$evidence/inventory.log" 2>/dev/null || true
+          tail -n 160 "$evidence/oracle.log" 2>/dev/null || true
+          tail -n 180 "$evidence/layer3.log" 2>/dev/null || true
+          rm -rf "$RUNNER_TEMP/qwen38-model" "$RUNNER_TEMP/qwen38-k3-layer3" "$RUNNER_TEMP/llama.cpp" || true
+          df -h
+          free -h
+
+      - name: Upload semantic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen38-full-attn-real-layer3-${{ github.run_id }}
+          path: ${{ runner.temp }}/qwen38-attn3-evidence/
+          if-no-files-found: warn
+          retention-days: 14
