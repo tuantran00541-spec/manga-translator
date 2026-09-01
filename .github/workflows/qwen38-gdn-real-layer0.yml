@@ -5,6 +5,7 @@ on:
     branches: [test/qwen3.8-27b]
     paths:
       - "research/qwen38/qwen35_gdn_quant_layer_gate.py"
+      - "research/qwen38/qwen35_gguf_decoder_contract.py"
       - "research/qwen38/llama_layer0_oracle.cpp"
       - "research/qwen38/gguf_stream.py"
       - "research/qwen38/gguf_k3_layout.py"
@@ -26,16 +27,19 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Compile layer gate
+      - name: Compile layer gate and decoder contract
         run: |
           python -m py_compile \
             research/qwen38/gguf_stream.py \
             research/qwen38/gguf_k3_layout.py \
             research/qwen38/k3_stream.py \
             research/qwen38/gguf_quant_ref.py \
-            research/qwen38/qwen35_gdn_quant_layer_gate.py
+            research/qwen38/qwen35_gdn_quant_layer_gate.py \
+            research/qwen38/qwen35_gguf_decoder_contract.py
       - name: Run zero-model GDN execution sanity
         run: python research/qwen38/qwen35_gdn_quant_layer_gate.py sanity
+      - name: Run mixed-quant decoder contract sanity
+        run: python research/qwen38/qwen35_gguf_decoder_contract.py sanity
       - name: Compile and run native quant regression
         shell: bash
         run: |
@@ -86,13 +90,13 @@ jobs:
           echo "MODEL=$model" >> "$GITHUB_ENV"
           ls -lh "$model"
 
-      - name: Emit decoder inventory before risky validation
+      - name: Emit mixed-quant decoder contract before risky validation
         shell: bash
         run: |
           set -euo pipefail
           evidence="$RUNNER_TEMP/qwen38-gdn-layer0-evidence"
           mkdir -p "$evidence"
-          python -u research/qwen38/qwen35_gdn_quant_layer_gate.py inventory \
+          python -u research/qwen38/qwen35_gguf_decoder_contract.py real \
             --model "$MODEL" \
             --output "$evidence/inventory.json" \
             2>&1 | tee "$evidence/inventory.log"
