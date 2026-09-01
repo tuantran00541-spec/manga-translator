@@ -170,6 +170,7 @@ jobs:
               "v_conv_predelta-0", "linear_attn_out-0", "attn_residual-0",
               "attn_post_norm-0", "ffn_out-0", "post_ffn-0",
           }
+          assert data["schema"] == "qwen38-llama-layer0-oracle-v2", data["schema"]
           assert data["decode_returncode"] == 0, data["decode_returncode"]
           assert data["captured_complete_layer"] is True
           assert data["post_ffn_source"] in {
@@ -178,11 +179,35 @@ jobs:
           }, data["post_ffn_source"]
           missing = sorted(required - set(data["checkpoints"]))
           assert not missing, missing
+          assert len(data["checkpoints"]["q_conv_predelta-0"]) == 6144
+          assert len(data["checkpoints"]["k_conv_predelta-0"]) == 6144
           print(json.dumps({
               "status": "PASS",
+              "schema": data["schema"],
               "checkpoint_count": len(data["checkpoints"]),
+              "q_predelta_elements": len(data["checkpoints"]["q_conv_predelta-0"]),
+              "k_predelta_elements": len(data["checkpoints"]["k_conv_predelta-0"]),
               "post_ffn_source": data["post_ffn_source"],
           }, sort_keys=True))
+          PY
+
+      - name: Adapt oracle v2 for current candidate reader
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/qwen38-gdn-layer0-evidence"
+          python - "$evidence/oracle.json" "$evidence/oracle-candidate.json" <<'PY'
+          import json, sys
+          src, dst = sys.argv[1:]
+          data = json.load(open(src, encoding="utf-8"))
+          assert data["schema"] == "qwen38-llama-layer0-oracle-v2"
+          compat = dict(data)
+          compat["schema"] = "qwen38-llama-layer0-oracle-v1"
+          compat["compat_source_schema"] = data["schema"]
+          with open(dst, "w", encoding="utf-8") as f:
+              json.dump(compat, f, indent=2, sort_keys=True)
+              f.write("\n")
+          print(json.dumps({"status": "PASS", "source_schema": data["schema"], "candidate_schema": compat["schema"]}, sort_keys=True))
           PY
 
       - name: Run custom K3 real Q6 layer0 semantic gate
@@ -197,7 +222,7 @@ jobs:
             --model "$MODEL" \
             --native-lib "$RUNNER_TEMP/libqwen_quant_dot.so" \
             --inventory "$evidence/inventory.json" \
-            --oracle "$evidence/oracle.json" \
+            --oracle "$evidence/oracle-candidate.json" \
             --work-dir "$work" \
             --output "$evidence/layer0.json" \
             2>&1 | tee "$evidence/layer0.log"
@@ -207,7 +232,7 @@ jobs:
         shell: bash
         run: |
           evidence="$RUNNER_TEMP/qwen38-gdn-layer0-evidence"
-          for f in inventory.json oracle.json layer0.json; do
+          for f in inventory.json oracle.json oracle-candidate.json layer0.json; do
             echo "=== $f ==="
             cat "$evidence/$f" 2>/dev/null || true
           done
