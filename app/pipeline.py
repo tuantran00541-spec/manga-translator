@@ -70,7 +70,8 @@ def write_image(path: Path, image: np.ndarray) -> None:
             output_file.flush()
             _advise_file_cache_drop(output_file)
     else:
-        cv2.imwrite(str(path), image)
+        if not cv2.imwrite(str(path), image):
+            raise ValueError(f"Could not write image at {path}")
         try:
             with path.open("rb") as output_file:
                 _advise_file_cache_drop(output_file)

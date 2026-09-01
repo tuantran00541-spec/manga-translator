@@ -55,7 +55,8 @@ def slice_image(image_path: Path, out_dir: Path, prefix: str, *, return_metadata
                     except OSError:
                         pass
         else:
-            cv2.imwrite(str(path), seg)
+            if not cv2.imwrite(str(path), seg):
+                raise ValueError(f"Could not write image segment at {path}")
 
     if h <= SLICE_MAX_HEIGHT:
         out_path = out_dir / f"{prefix}_00{ext}"
