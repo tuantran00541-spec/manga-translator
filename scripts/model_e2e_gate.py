@@ -36,10 +36,14 @@ class GateFailure(RuntimeError):
     pass
 
 
-def _report_path(lama_mode: str) -> Path:
-    if lama_mode == "fixed":
-        return _REPORT_ROOT / "model-e2e-fixed.json"
-    return _REPORT_ROOT / "model-e2e-dynamic.json"
+def _write_dynamic_report(text: str) -> None:
+    _REPORT_ROOT.mkdir(parents=True, exist_ok=True)
+    (_REPORT_ROOT / "model-e2e-dynamic.json").write_text(text + "\n", encoding="utf-8")
+
+
+def _write_fixed_report(text: str) -> None:
+    _REPORT_ROOT.mkdir(parents=True, exist_ok=True)
+    (_REPORT_ROOT / "model-e2e-fixed.json").write_text(text + "\n", encoding="utf-8")
 
 
 def _rss_mb() -> float:
@@ -534,9 +538,10 @@ def main() -> int:
     text = json.dumps(report, ensure_ascii=False, indent=2)
     print(text)
     if args.report_json:
-        report_path = _report_path(args.lama_mode)
-        report_path.parent.mkdir(parents=True, exist_ok=True)
-        report_path.write_text(text + "\n", encoding="utf-8")
+        if args.lama_mode == "fixed":
+            _write_fixed_report(text)
+        else:
+            _write_dynamic_report(text)
     return 0 if report.get("status") == "pass" else 1
 
 
