@@ -186,24 +186,5 @@ def pack_gguf_layers(
 
 
 class ManifestK3Trunk(K3Trunk):
-    """K3Trunk using manifest tensor ownership instead of HF/GGUF name regexes."""
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        raw = self.manifest.get("tensor_index")
-        if raw is None:
-            raw = {
-                tensor["name"]: {"layer": meta["layer"], "offset": tensor["offset"], "nbytes": tensor["nbytes"]}
-                for meta in self.layers.values() for tensor in meta.get("tensors", [])
-            }
-        self.tensor_index = {str(name): dict(meta) for name, meta in raw.items()}
-
-    def tensor_view(self, layer_view: memoryview, tensor_name: str) -> memoryview:
-        try:
-            meta = self.tensor_index[tensor_name]
-        except KeyError as exc:
-            raise KeyError(tensor_name) from exc
-        start = int(meta["offset"])
-        end = start + int(meta["nbytes"])
-        if start < 0 or end > len(layer_view):
-            raise ValueError(f"tensor {tensor_name} exceeds bound layer view")
-        return layer_view[start:end]
+    """Compatibility alias; base K3Trunk is now manifest-index aware."""
+    pass
