@@ -2,6 +2,8 @@ import numpy as np
 import cv2
 from dataclasses import replace
 from concurrent.futures import ThreadPoolExecutor
+import threading
+import time
 
 from app.config import BUBBLE_DETECTOR_MODEL, TEXT_SEGMENTER_MODEL
 from app.detector.bubble_detector import YoloDetector, BubbleBox, MAX_BOX_AREA_RATIO
@@ -61,6 +63,15 @@ class CombinedTextDetector:
         )
         self.text_detector = YoloDetector(TEXT_SEGMENTER_MODEL, TEXT_CONF_THRESHOLD)
         self.recovery = SecondaryTextRecovery()
+        self._metrics_local = threading.local()
+
+    def last_metrics(self) -> dict[str, float | int]:
+        """Return detector counters from the current page-processing thread."""
+        metrics = getattr(self._metrics_local, "value", {})
+        return {
+            str(name): float(value) if str(name).endswith("_ms") else int(value)
+            for name, value in metrics.items()
+        }
 
     @staticmethod
     def _watermark_like(box: BubbleBox, w: int, h: int) -> bool:
@@ -253,16 +264,37 @@ class CombinedTextDetector:
     def detect(
         self, image: np.ndarray, *, parallel: bool = False, protect_tail_credits: bool = False
     ) -> list[BubbleBox]:
+        started_at = time.perf_counter()
         h, w = image.shape[:2]
         if parallel:
             with ThreadPoolExecutor(max_workers=2, thread_name_prefix="detector") as pool:
-                bubble_future = pool.submit(self.bubble_detector.detect, image)
-                text_future = pool.submit(self.text_detector.detect, image)
-                bubble_boxes = bubble_future.result()
-                text_boxes = text_future.result()
+                def _timed_detect(detector):
+                    detector_started_at = time.perf_counter()
+                    boxes = detector.detect(image)
+                    return boxes, (time.perf_counter() - detector_started_at) * 1000.0
+
+                bubble_future = pool.submit(_timed_detect, self.bubble_detector)
+                text_future = pool.submit(_timed_detect, self.text_detector)
+                bubble_boxes, bubble_ms = bubble_future.result()
+                text_boxes, text_ms = text_future.result()
         else:
+            bubble_started_at = time.perf_counter()
             bubble_boxes = self.bubble_detector.detect(image)
+            bubble_ms = (time.perf_counter() - bubble_started_at) * 1000.0
+            text_started_at = time.perf_counter()
             text_boxes = self.text_detector.detect(image)
+            text_ms = (time.perf_counter() - text_started_at) * 1000.0
+
+        metrics: dict[str, float | int] = {
+            "bubble_model_ms": round(bubble_ms, 3),
+            "text_model_ms": round(text_ms, 3),
+            "mser_ms": 0.0,
+            "bubble_proposals": len(bubble_boxes),
+            "text_proposals": len(text_boxes),
+            "result_boxes": 0,
+            "review_boxes": 0,
+            "total_ms": 0.0,
+        }
 
         bubble_boxes = [
             self._classify(b, w, h, protect_tail_credits=protect_tail_credits)
@@ -311,17 +343,26 @@ class CombinedTextDetector:
         standalone = [t for i, t in enumerate(text_boxes) if i not in used_text_boxes]
         result_boxes.extend(self._cluster_free_text_boxes(standalone, w, h))
 
+        recovery_started_at = time.perf_counter()
         recovered = self.recovery.detect(image, existing=result_boxes)
+        metrics["mser_ms"] = round(
+            (time.perf_counter() - recovery_started_at) * 1000.0, 3
+        )
         result_boxes.extend(recovered)
         result_boxes = self._refine_and_split_tall_boxes(result_boxes, image)
         result_boxes = self._apply_final_nms(
             result_boxes, iou_threshold=DETECTOR_FINAL_NMS_IOU
         )
-        return [
+        result = [
             self._classify(b, w, h, protect_tail_credits=protect_tail_credits)
             if b.source_model != "opencv_mser" else b
             for b in result_boxes
         ]
+        metrics["result_boxes"] = len(result)
+        metrics["review_boxes"] = sum(bool(box.needs_review) for box in result)
+        metrics["total_ms"] = round((time.perf_counter() - started_at) * 1000.0, 3)
+        self._metrics_local.value = metrics
+        return result
 
     @staticmethod
     def _apply_final_nms(

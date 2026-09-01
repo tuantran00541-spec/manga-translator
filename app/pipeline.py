@@ -1440,6 +1440,7 @@ class ChapterPipeline:
             ]
         else:
             detected = self.detector.detect(image, **detector_kwargs)
+        detector_metrics = self.detector.last_metrics()
 
         if supplemental_detections and not protect_tail_credits:
             detected = CombinedTextDetector._apply_final_nms(
@@ -1602,6 +1603,7 @@ class ChapterPipeline:
                 "total": round((time.perf_counter() - started_at) * 1000.0, 3),
             },
             "detector": {
+                **detector_metrics,
                 "records": len(detector_records),
                 "authorized": len(effective_boxes),
                 "review_only": len(unverified_regions),

@@ -22,6 +22,7 @@ COLUMNS = (
 )
 METRIC_COLUMNS = (
     "detect_ms",
+    "mser_ms",
     "inpaint_ms",
     "lama_runs",
     "smart_fill",
@@ -51,6 +52,7 @@ def _page_stats(page: dict) -> dict[str, int | float | str | bool | dict]:
     timing = metrics.get("timing_ms") if isinstance(metrics.get("timing_ms"), dict) else {}
     auto = metrics.get("auto_inpaint") if isinstance(metrics.get("auto_inpaint"), dict) else {}
     manual = metrics.get("manual_inpaint") if isinstance(metrics.get("manual_inpaint"), dict) else {}
+    detector = metrics.get("detector") if isinstance(metrics.get("detector"), dict) else {}
     detect_ms = float(timing.get("detect") or 0.0)
     inpaint_ms = float(timing.get("auto_inpaint") or 0.0) + float(
         timing.get("manual_inpaint") or 0.0
@@ -71,6 +73,7 @@ def _page_stats(page: dict) -> dict[str, int | float | str | bool | dict]:
         "needs_review": bool(page.get("needs_review")),
         "metrics_available": bool(metrics),
         "detect_ms": round(detect_ms, 3),
+        "mser_ms": round(float(detector.get("mser_ms") or 0.0), 3),
         "inpaint_ms": round(inpaint_ms, 3),
         "lama_runs": int(auto.get("lama_model_runs") or 0)
         + int(manual.get("lama_model_runs") or 0),
