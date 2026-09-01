@@ -1,0 +1,163 @@
+name: Qwen3.8 K3 real text generation
+
+on:
+  push:
+    branches: [test/qwen3.8-27b]
+    paths:
+      - "research/qwen38/qwen35_k3_generate.py"
+      - "research/qwen38/qwen35_k3_two_token.py"
+      - "research/qwen38/gdn_state_ar.c"
+      - ".github/workflows/qwen38-generate-real.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  HF_HUB_DISABLE_TELEMETRY: "1"
+  QWEN_REVISION: "1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0"
+
+jobs:
+  sanity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Compile stateful generator
+        run: |
+          python -m py_compile \
+            research/qwen38/qwen35_k3_generate.py \
+            research/qwen38/qwen35_k3_two_token.py \
+            research/qwen38/qwen35_k3_full64_one_token.py \
+            research/qwen38/qwen35_k3_full64_ggml_exact.py \
+            research/qwen38/qwen35_k3_full64_ggml_rmsnorm.py \
+            research/qwen38/qwen35_gdn_quant_layer_gate.py \
+            research/qwen38/qwen35_full_attn_layer3_gate.py \
+            research/qwen38/gguf_stream.py \
+            research/qwen38/gguf_k3_layout.py \
+            research/qwen38/k3_stream.py
+          python research/qwen38/qwen35_k3_generate.py sanity
+      - name: Native GDN state selftest
+        run: |
+          cc -O2 -std=c11 -DQWEN_GDN_STATE_SELFTEST research/qwen38/gdn_state_ar.c -lm -o "$RUNNER_TEMP/gdn-state-selftest"
+          "$RUNNER_TEMP/gdn-state-selftest"
+      - name: Native quant regression
+        run: |
+          cc -O2 -std=c11 -DQWEN_QUANT_DOT_SELFTEST research/qwen38/gguf_quant_dot.c -lm -o "$RUNNER_TEMP/qwen-quant-selftest"
+          "$RUNNER_TEMP/qwen-quant-selftest"
+
+  real-text:
+    needs: sanity
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[qwen-generate-real]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Reclaim disk
+        shell: bash
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup || true
+          docker system prune -af || true
+          df -h
+          free -h
+      - name: Install runtime dependencies
+        run: python -m pip install --no-cache-dir huggingface_hub hf_xet tokenizers
+      - name: Download pinned GGUF and official tokenizer
+        shell: bash
+        run: |
+          set -euo pipefail
+          readarray -t files < <(python - <<'PY'
+          from huggingface_hub import hf_hub_download
+          rev="1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0"
+          print(hf_hub_download(
+              "bartowski/Qwen3.8-27B-GGUF",
+              filename="Qwen3.8-27B-Q6_K_L.gguf",
+              local_dir="${{ runner.temp }}/qwen38-model",
+          ))
+          print(hf_hub_download(
+              "Qwen/Qwen3.8-27B",
+              filename="tokenizer.json",
+              revision=rev,
+              local_dir="${{ runner.temp }}/qwen38-tokenizer",
+          ))
+          PY
+          )
+          test -f "${files[0]}"; test -f "${files[1]}"
+          echo "MODEL=${files[0]}" >> "$GITHUB_ENV"
+          echo "TOKENIZER_JSON=${files[1]}" >> "$GITHUB_ENV"
+      - name: Emit mixed-quant decoder contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/qwen38-generate-evidence"; mkdir -p "$evidence"
+          python -u research/qwen38/qwen35_gguf_decoder_contract.py real \
+            --model "$MODEL" --output "$evidence/inventory.json" \
+            2>&1 | tee "$evidence/inventory.log"
+      - name: Compile native runtime bridges
+        run: |
+          cc -O2 -std=c11 -fPIC -shared research/qwen38/gguf_quant_dot.c -lm -o "$RUNNER_TEMP/libqwen_quant_dot.so"
+          cc -O2 -std=c11 -fPIC -shared research/qwen38/gdn_state_ar.c -lm -o "$RUNNER_TEMP/libqwen_gdn_state.so"
+      - name: Run first custom K3 text generation
+        timeout-minutes: 35
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/qwen38-generate-evidence"; work="$RUNNER_TEMP/qwen38-generate-work"; mkdir -p "$work"
+          /usr/bin/time -v python -u research/qwen38/qwen35_k3_generate.py run \
+            --model "$MODEL" \
+            --native-lib "$RUNNER_TEMP/libqwen_quant_dot.so" \
+            --state-lib "$RUNNER_TEMP/libqwen_gdn_state.so" \
+            --inventory "$evidence/inventory.json" \
+            --tokenizer-json "$TOKENIZER_JSON" \
+            --prompt "Hello" --raw-prompt --max-new-tokens 3 --max-prompt-tokens 8 \
+            --work-dir "$work" --output "$evidence/generated.json" \
+            2>&1 | tee "$evidence/generated.log"
+      - name: Validate generated text evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os
+          p=os.path.join(os.environ['RUNNER_TEMP'],'qwen38-generate-evidence','generated.json')
+          d=json.load(open(p,encoding='utf-8'))
+          assert d['schema']=='qwen38-k3-generate-v1' and d['status']=='PASS'
+          assert d['mode']=='raw' and d['prompt']=='Hello'
+          assert 1 <= d['prompt_token_count'] <= 8
+          assert 1 <= len(d['generated_token_ids']) <= 3
+          assert isinstance(d['generated_text'],str)
+          assert len(d['token_reports'])==len(d['generated_token_ids'])
+          print('QWEN38_REAL_TEXT PASS')
+          print('prompt_ids=',d['prompt_token_ids'])
+          print('generated_ids=',d['generated_token_ids'])
+          print('generated_text=',repr(d['generated_text']))
+          print('elapsed_seconds=',d['elapsed_seconds'],'max_rss_gib=',d['max_rss_gib'])
+          print('state=',d['state'])
+          PY
+      - name: Show compact evidence and cleanup
+        if: always()
+        shell: bash
+        run: |
+          evidence="$RUNNER_TEMP/qwen38-generate-evidence"
+          python - <<'PY'
+          import json, os
+          p=os.path.join(os.environ['RUNNER_TEMP'],'qwen38-generate-evidence','generated.json')
+          if os.path.exists(p):
+              d=json.load(open(p,encoding='utf-8'))
+              print({k:d.get(k) for k in ['status','prompt_token_count','generated_token_ids','generated_text','stop_reason','elapsed_seconds','max_rss_gib']})
+          PY
+          tail -n 120 "$evidence/generated.log" 2>/dev/null || true
+          rm -rf "$RUNNER_TEMP/qwen38-model" "$RUNNER_TEMP/qwen38-tokenizer" "$RUNNER_TEMP/qwen38-generate-work" || true
+      - name: Upload text-generation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen38-generate-${{ github.run_id }}
+          path: ${{ runner.temp }}/qwen38-generate-evidence/
+          if-no-files-found: warn
+          retention-days: 14
