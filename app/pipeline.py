@@ -17,6 +17,12 @@ from app.inpaint.mask_geometry import geometry_dict, remap_local_mask_page_space
 from app.config import RAW_DIR, PROCESSED_DIR
 from app.logging_config import logger
 from app.mask_store import decode_mask_value, externalize_page_masks
+from app.parameters import (
+    DETECTOR_FINAL_NMS_IOU,
+    PIPELINE_DEFAULT_WORKERS,
+    PIPELINE_PROCESS_WORKER_LIMIT,
+    PIPELINE_SLICE_WORKER_LIMIT,
+)
 from app.manifest_utils import (
     assign_stable_detector_box_ids,
     bump_page_revision,
@@ -161,7 +167,12 @@ class ChapterPipeline:
         else:
             box["mask"] = _encode_mask(remapped)
 
-    def download_chapter(self, chapter_url: str, chapter_id: str, workers: int = 2) -> dict:
+    def download_chapter(
+        self,
+        chapter_url: str,
+        chapter_id: str,
+        workers: int = PIPELINE_DEFAULT_WORKERS,
+    ) -> dict:
         raw_dir = RAW_DIR / chapter_id
         raw_paths = fetch_chapter_images(chapter_url, raw_dir)
         logger.info(f"Chapter {chapter_id}: downloaded {len(raw_paths)} raw images")
@@ -170,7 +181,10 @@ class ChapterPipeline:
         )
 
     def create_chapter_from_uploads(
-        self, chapter_id: str, uploads: list[tuple[str, bytes]], workers: int = 2
+        self,
+        chapter_id: str,
+        uploads: list[tuple[str, bytes]],
+        workers: int = PIPELINE_DEFAULT_WORKERS,
     ) -> dict:
         import io
         import re
@@ -264,7 +278,7 @@ class ChapterPipeline:
         chapter_id: str,
         raw_paths: list[Path],
         source_url: str | None,
-        workers: int = 2,
+        workers: int = PIPELINE_DEFAULT_WORKERS,
     ) -> dict:
         sliced_dir = RAW_DIR / chapter_id / "sliced"
         processed_dir = PROCESSED_DIR / chapter_id
@@ -273,7 +287,14 @@ class ChapterPipeline:
 
         slice_results: dict[int, list] = {}
         if raw_paths:
-            max_workers = max(1, min(int(workers or 2), 8, len(raw_paths)))
+            max_workers = max(
+                1,
+                min(
+                    int(workers or PIPELINE_DEFAULT_WORKERS),
+                    PIPELINE_SLICE_WORKER_LIMIT,
+                    len(raw_paths),
+                ),
+            )
 
             def _slice_one(item):
                 idx, raw_path = item
@@ -486,7 +507,7 @@ class ChapterPipeline:
 
         for idx, boxes in list(by_page.items()):
             by_page[idx] = CombinedTextDetector._apply_final_nms(
-                boxes, iou_threshold=0.35
+                boxes, iou_threshold=DETECTOR_FINAL_NMS_IOU
             )
         return by_page, unavailable_pages
 
@@ -584,7 +605,7 @@ class ChapterPipeline:
         self,
         chapter_id: str,
         page_indices: list[int],
-        workers: int = 2,
+        workers: int = PIPELINE_DEFAULT_WORKERS,
     ) -> dict:
         """Process pages with shared seams and durable per-page progress."""
         processed_dir = PROCESSED_DIR / chapter_id
@@ -646,7 +667,14 @@ class ChapterPipeline:
         _ = self.detector
         _ = self.inpainter
 
-        max_workers = max(1, min(int(workers or 2), 2, len(work_items)))
+        max_workers = max(
+            1,
+            min(
+                int(workers or PIPELINE_DEFAULT_WORKERS),
+                PIPELINE_PROCESS_WORKER_LIMIT,
+                len(work_items),
+            ),
+        )
         shared_seam_detections, seam_context_unavailable = (
             self._shared_seam_detections(chapter_id, work_items)
         )
@@ -1407,7 +1435,8 @@ class ChapterPipeline:
 
         if supplemental_detections and not protect_tail_credits:
             detected = CombinedTextDetector._apply_final_nms(
-                detected + list(supplemental_detections), iou_threshold=0.35
+                detected + list(supplemental_detections),
+                iou_threshold=DETECTOR_FINAL_NMS_IOU,
             )
         if excluded_regions:
             detected = [b for b in detected if not self._box_in_excluded(b, excluded_regions)]

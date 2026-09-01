@@ -15,7 +15,11 @@ from app.parameters import (
     FIXED_LAMA_SESSION_MAX_RUNS,
     FIXED_LAMA_TILE_ASPECT,
     INPAINT_CLUSTER_MAX_DIM,
+    INPAINT_CLUSTER_GROUP_HEIGHT_FACTOR,
+    INPAINT_CLUSTER_LINE_OVERLAP_MIN,
     INPAINT_CLUSTER_PADDING,
+    INPAINT_CLUSTER_SPLIT_COUNT,
+    INPAINT_CLUSTER_SPLIT_HEIGHT_FACTOR,
     INPAINT_CROP_LONG_ASPECT_THRESHOLD,
     INPAINT_CROP_PADDING,
     INPAINT_SIZE,
@@ -593,7 +597,10 @@ class Inpainter:
             if len(cluster) > 1:
                 avg_h = sum(b.y2 - b.y1 for b in cluster) / len(cluster)
                 cluster_h = max(b.y2 for b in cluster) - min(b.y1 for b in cluster)
-                if len(cluster) > 3 or cluster_h > 4.0 * avg_h:
+                if (
+                    len(cluster) > INPAINT_CLUSTER_SPLIT_COUNT
+                    or cluster_h > INPAINT_CLUSTER_SPLIT_HEIGHT_FACTOR * avg_h
+                ):
                     sub_clusters = Inpainter._split_cluster_lines(cluster, avg_h)
                     final_clusters.extend(sub_clusters)
                 else:
@@ -614,7 +621,10 @@ class Inpainter:
                 line_y2 = max(x.y2 for x in line)
                 overlap = min(b.y2, line_y2) - max(b.y1, line_y1)
                 min_h = min(b.y2 - b.y1, line_y2 - line_y1)
-                if min_h > 0 and overlap / min_h > 0.5:
+                if (
+                    min_h > 0
+                    and overlap / min_h > INPAINT_CLUSTER_LINE_OVERLAP_MIN
+                ):
                     line.append(b)
                     placed = True
                     break
@@ -629,7 +639,7 @@ class Inpainter:
                 current_group = list(line)
             else:
                 group_h = max(b.y2 for b in current_group + line) - min(b.y1 for b in current_group + line)
-                if group_h > 3.0 * avg_h:
+                if group_h > INPAINT_CLUSTER_GROUP_HEIGHT_FACTOR * avg_h:
                     sub_clusters.append(current_group)
                     current_group = list(line)
                 else:

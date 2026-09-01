@@ -5,10 +5,12 @@ from typing import Literal
 
 from pydantic import BaseModel, field_validator
 
+from app.parameters import VISUAL_QC_JOB_CONCURRENCY
+
 
 class VisualQCChapterRequest(BaseModel):
     chapter_id: str
-    concurrency: int = 2
+    concurrency: int = VISUAL_QC_JOB_CONCURRENCY
     provider: Literal["gemini", "deepseek"] = "gemini"
     budget_usd: float = 0.08
 

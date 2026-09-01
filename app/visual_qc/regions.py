@@ -8,6 +8,8 @@ import numpy as np
 
 from app.parameters import (
     VISUAL_QC_DEEP_AREA_RATIO,
+    VISUAL_QC_MANUAL_COMPONENT_AREA_MIN,
+    VISUAL_QC_MANUAL_MASK_THRESHOLD,
     VISUAL_QC_MERGE_GAP,
     VISUAL_QC_REGION_MARGIN,
 )
@@ -79,7 +81,7 @@ def _manual_mask_seeds(manual_mask: np.ndarray | None, *, width: int, height: in
         manual_mask = cv2.cvtColor(manual_mask, cv2.COLOR_BGR2GRAY)
     if manual_mask.shape[:2] != (height, width):
         manual_mask = cv2.resize(manual_mask, (width, height), interpolation=cv2.INTER_NEAREST)
-    binary = (manual_mask > 10).astype(np.uint8)
+    binary = (manual_mask > VISUAL_QC_MANUAL_MASK_THRESHOLD).astype(np.uint8)
     if not np.any(binary):
         return []
     count, _labels, stats, _centroids = cv2.connectedComponentsWithStats(binary, connectivity=8)
@@ -131,7 +133,7 @@ def extract_candidate_regions(
     manual_mask: np.ndarray | None = None,
     margin: int = VISUAL_QC_REGION_MARGIN,
     merge_gap: int = VISUAL_QC_MERGE_GAP,
-    min_manual_component_area: int = 9,
+    min_manual_component_area: int = VISUAL_QC_MANUAL_COMPONENT_AREA_MIN,
     deep_area_ratio: float = VISUAL_QC_DEEP_AREA_RATIO,
 ) -> list[QCRegion]:
     """Build deterministic QC regions from canonical changed/inpaint sources."""

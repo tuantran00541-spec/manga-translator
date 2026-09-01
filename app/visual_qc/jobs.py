@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from typing import Awaitable, Callable
 import uuid
 
+from app.parameters import VISUAL_QC_JOB_CONCURRENCY
 from app.visual_qc.batch_protocol import RegionBatchDecision
 
 
@@ -43,7 +44,14 @@ class VisualQCJobManager:
         self.max_active_jobs = max(1, min(int(max_active_jobs), self.max_jobs))
         self._jobs: dict[str, VisualQCJob] = {}
 
-    async def start(self, chapter_id: str, items: list[QCWorkItem], worker: Worker, *, concurrency: int = 2) -> VisualQCJob:
+    async def start(
+        self,
+        chapter_id: str,
+        items: list[QCWorkItem],
+        worker: Worker,
+        *,
+        concurrency: int = VISUAL_QC_JOB_CONCURRENCY,
+    ) -> VisualQCJob:
         if concurrency < 1:
             raise ValueError("concurrency must be >= 1")
         concurrency = min(int(concurrency), 8)

@@ -9,17 +9,45 @@ import numpy as np
 from app.detector.bubble_detector import BubbleBox
 from app.parameters import (
     MSER_CONTAINED_SAFE_SKIP_COUNT,
+    MSER_CLUSTER_MIN_HEIGHT,
+    MSER_CLUSTER_MIN_REGIONS,
+    MSER_CLUSTER_MIN_WIDTH,
+    MSER_CLUSTER_NEAR_X_FACTOR,
+    MSER_CLUSTER_NEAR_Y_FACTOR,
     MSER_DELTA,
     MSER_EXISTING_IOU_SKIP,
+    MSER_LINE_GAP_HEIGHT_FACTOR,
+    MSER_LINE_GAP_MIN,
+    MSER_LINE_OVERLAP_MIN,
     MSER_MAX_AREA,
     MSER_MIN_AREA,
     MSER_PAGE_CLUSTER_SKIP_RATIO,
+    MSER_RECOVERY_PAD,
+    MSER_RESIDUAL_AREA_RATIO_MAX,
+    MSER_RESIDUAL_ASPECT_MAX,
+    MSER_RESIDUAL_ASPECT_MIN,
+    MSER_RESIDUAL_DISTINCT_X_BUCKET,
+    MSER_RESIDUAL_DISTINCT_X_MIN,
+    MSER_RESIDUAL_EXISTING_IOU_SKIP,
+    MSER_RESIDUAL_FINAL_IOU_SKIP,
+    MSER_RESIDUAL_GRID_CELL,
+    MSER_RESIDUAL_GRID_Y_RADIUS,
+    MSER_RESIDUAL_GROUP_ASPECT_MIN,
+    MSER_RESIDUAL_MAX_BBOX_AREA_RATIO,
+    MSER_RESIDUAL_MAX_HEIGHT_RATIO,
+    MSER_RESIDUAL_MAX_LINE_HEIGHT_RATIO,
+    MSER_RESIDUAL_MAX_WIDTH_RATIO,
+    MSER_RESIDUAL_MIN_HEIGHT,
+    MSER_RESIDUAL_MIN_WIDTH,
+    MSER_RESIDUAL_REVIEW_CONFIDENCE,
+    MSER_RESIDUAL_SAFE_CENTER_PAD,
     MSER_REGION_AREA_MIN,
     MSER_REGION_AREA_RATIO_MAX,
     MSER_REGION_MAX_HEIGHT_RATIO,
     MSER_REGION_MAX_WIDTH_RATIO,
     MSER_REGION_MIN_SIDE,
     MSER_SAFE_CLUSTER_MIN_REGIONS,
+    MSER_SAFE_CONFIDENCE,
     MSER_SAFE_MASK_RATIO_MAX,
     MSER_SAFE_MASK_RATIO_MIN,
     MSER_SAFE_PAGE_AREA_RATIO_MAX,
@@ -108,10 +136,13 @@ class SecondaryTextRecovery:
         ah, bh = a[3] - a[1], b[3] - b[1]
         overlap = min(a[3], b[3]) - max(a[1], b[1])
         min_h = min(ah, bh)
-        if min_h <= 0 or overlap / float(min_h) < 0.45:
+        if min_h <= 0 or overlap / float(min_h) < MSER_LINE_OVERLAP_MIN:
             return False
         horizontal_gap = max(0, max(a[0], b[0]) - min(a[2], b[2]))
-        return horizontal_gap <= max(18.0, 1.6 * max(ah, bh))
+        return horizontal_gap <= max(
+            MSER_LINE_GAP_MIN,
+            MSER_LINE_GAP_HEIGHT_FACTOR * max(ah, bh),
+        )
 
     @classmethod
     def _residual_line_candidates(
@@ -143,12 +174,20 @@ class SecondaryTextRecovery:
         for x, y, bw, bh in np.asarray(raw_boxes).reshape(-1, 4):
             x, y, bw, bh = map(int, (x, y, bw, bh))
             area = bw * bh
-            if bw < MSER_REGION_MIN_SIDE or bh < MSER_REGION_MIN_SIDE or bw > w * 0.16 or bh > h * 0.10:
+            if (
+                bw < MSER_REGION_MIN_SIDE
+                or bh < MSER_REGION_MIN_SIDE
+                or bw > w * MSER_RESIDUAL_MAX_WIDTH_RATIO
+                or bh > h * MSER_RESIDUAL_MAX_HEIGHT_RATIO
+            ):
                 continue
-            if area < MSER_REGION_AREA_MIN or area > page_area * MSER_SAFE_MASK_RATIO_MIN:
+            if (
+                area < MSER_REGION_AREA_MIN
+                or area > page_area * MSER_RESIDUAL_AREA_RATIO_MAX
+            ):
                 continue
             aspect = bw / max(1.0, float(bh))
-            if aspect < 0.07 or aspect > 5.0:
+            if aspect < MSER_RESIDUAL_ASPECT_MIN or aspect > MSER_RESIDUAL_ASPECT_MAX:
                 continue
             key = (x, y, bw, bh)
             if key in seen:
@@ -178,15 +217,30 @@ class SecondaryTextRecovery:
             if rank[ra] == rank[rb]:
                 rank[ra] += 1
 
-        cell = 64
+        cell = MSER_RESIDUAL_GRID_CELL
         grid: dict[tuple[int, int], list[int]] = {}
         for i, rect in enumerate(rects):
             cx = (rect[0] + rect[2]) // 2
             cy = (rect[1] + rect[3]) // 2
             gx, gy = cx // cell, cy // cell
-            reach = max(1, int(np.ceil(max(18.0, 1.6 * (rect[3] - rect[1])) / cell)) + 1)
+            reach = max(
+                1,
+                int(
+                    np.ceil(
+                        max(
+                            MSER_LINE_GAP_MIN,
+                            MSER_LINE_GAP_HEIGHT_FACTOR * (rect[3] - rect[1]),
+                        )
+                        / cell
+                    )
+                )
+                + 1,
+            )
             for xx in range(gx - reach, gx + reach + 1):
-                for yy in range(gy - 2, gy + 3):
+                for yy in range(
+                    gy - MSER_RESIDUAL_GRID_Y_RADIUS,
+                    gy + MSER_RESIDUAL_GRID_Y_RADIUS + 1,
+                ):
                     for j in grid.get((xx, yy), ()):
                         if cls._line_neighbors(rect, rects[j]):
                             union(i, j)
@@ -203,22 +257,41 @@ class SecondaryTextRecovery:
             x2 = max(r[2] for r in group)
             y2 = max(r[3] for r in group)
             bw, bh = x2 - x1, y2 - y1
-            distinct_x = len({int(((r[0] + r[2]) / 2.0) // 8) for r in group})
-            if distinct_x < 5 or bw < 70 or bh < 8:
+            distinct_x = len(
+                {
+                    int(
+                        ((r[0] + r[2]) / 2.0)
+                        // MSER_RESIDUAL_DISTINCT_X_BUCKET
+                    )
+                    for r in group
+                }
+            )
+            if (
+                distinct_x < MSER_RESIDUAL_DISTINCT_X_MIN
+                or bw < MSER_RESIDUAL_MIN_WIDTH
+                or bh < MSER_RESIDUAL_MIN_HEIGHT
+            ):
                 continue
-            if bh > h * 0.12 or (bw * bh) > page_area * 0.05:
+            if (
+                bh > h * MSER_RESIDUAL_MAX_LINE_HEIGHT_RATIO
+                or (bw * bh) > page_area * MSER_RESIDUAL_MAX_BBOX_AREA_RATIO
+            ):
                 continue
-            if bw / max(1.0, float(bh)) < 1.8:
+            if bw / max(1.0, float(bh)) < MSER_RESIDUAL_GROUP_ASPECT_MIN:
                 continue
 
-            px1, py1 = max(0, x1 - 6), max(0, y1 - 6)
-            px2, py2 = min(w, x2 + 6), min(h, y2 + 6)
+            px1, py1 = max(0, x1 - MSER_RECOVERY_PAD), max(
+                0, y1 - MSER_RECOVERY_PAD
+            )
+            px2, py2 = min(w, x2 + MSER_RECOVERY_PAD), min(
+                h, y2 + MSER_RECOVERY_PAD
+            )
             candidate = BubbleBox(
                 px1,
                 py1,
                 px2,
                 py2,
-                0.18,
+                MSER_RESIDUAL_REVIEW_CONFIDENCE,
                 None,
                 source_model="opencv_mser",
                 class_id=0,
@@ -229,13 +302,20 @@ class SecondaryTextRecovery:
                 ocr_eligible=False,
                 needs_review=True,
             )
-            if any(cls._iou(candidate, box) > 0.25 for box in existing):
+            if any(
+                cls._iou(candidate, box) > MSER_RESIDUAL_EXISTING_IOU_SKIP
+                for box in existing
+            ):
                 continue
             cx, cy = (px1 + px2) / 2.0, (py1 + py2) / 2.0
             if any(
                 box.safe_to_inpaint
-                and box.x1 - 8 <= cx <= box.x2 + 8
-                and box.y1 - 8 <= cy <= box.y2 + 8
+                and box.x1 - MSER_RESIDUAL_SAFE_CENTER_PAD
+                <= cx
+                <= box.x2 + MSER_RESIDUAL_SAFE_CENTER_PAD
+                and box.y1 - MSER_RESIDUAL_SAFE_CENTER_PAD
+                <= cy
+                <= box.y2 + MSER_RESIDUAL_SAFE_CENTER_PAD
                 for box in existing
             ):
                 continue
@@ -288,8 +368,14 @@ class SecondaryTextRecovery:
                 ch = max(8, cy2 - cy1)
                 for r in remaining:
                     rx1, ry1, rx2, ry2 = r
-                    near_x = not (rx1 > cx2 + ch * 1.8 or rx2 < cx1 - ch * 1.8)
-                    near_y = not (ry1 > cy2 + ch * 1.3 or ry2 < cy1 - ch * 1.3)
+                    near_x = not (
+                        rx1 > cx2 + ch * MSER_CLUSTER_NEAR_X_FACTOR
+                        or rx2 < cx1 - ch * MSER_CLUSTER_NEAR_X_FACTOR
+                    )
+                    near_y = not (
+                        ry1 > cy2 + ch * MSER_CLUSTER_NEAR_Y_FACTOR
+                        or ry2 < cy1 - ch * MSER_CLUSTER_NEAR_Y_FACTOR
+                    )
                     if near_x and near_y:
                         cluster.append(r)
                         changed = True
@@ -301,21 +387,21 @@ class SecondaryTextRecovery:
         out: list[BubbleBox] = []
         existing = existing or []
         for cluster in clusters:
-            if len(cluster) < 2:
+            if len(cluster) < MSER_CLUSTER_MIN_REGIONS:
                 continue
-            x1 = max(0, min(r[0] for r in cluster) - 6)
-            y1 = max(0, min(r[1] for r in cluster) - 6)
-            x2 = min(w, max(r[2] for r in cluster) + 6)
-            y2 = min(h, max(r[3] for r in cluster) + 6)
+            x1 = max(0, min(r[0] for r in cluster) - MSER_RECOVERY_PAD)
+            y1 = max(0, min(r[1] for r in cluster) - MSER_RECOVERY_PAD)
+            x2 = min(w, max(r[2] for r in cluster) + MSER_RECOVERY_PAD)
+            y2 = min(h, max(r[3] for r in cluster) + MSER_RECOVERY_PAD)
             bw, bh = x2 - x1, y2 - y1
-            if bw < 12 or bh < 10:
+            if bw < MSER_CLUSTER_MIN_WIDTH or bh < MSER_CLUSTER_MIN_HEIGHT:
                 continue
             candidate = BubbleBox(
                 x1,
                 y1,
                 x2,
                 y2,
-                0.20,
+                MSER_REVIEW_CONFIDENCE,
                 None,
                 source_model="opencv_mser",
                 class_id=0,
@@ -362,7 +448,7 @@ class SecondaryTextRecovery:
                     safe_to_inpaint=True,
                     ocr_eligible=True,
                     needs_review=False,
-                    confidence=0.35,
+                    confidence=MSER_SAFE_CONFIDENCE,
                 )
             elif watermark:
                 candidate = replace(
@@ -378,7 +464,10 @@ class SecondaryTextRecovery:
                 np.asarray(boxes), (h, w), verification_set
             )
             for candidate in residual:
-                if any(self._iou(candidate, box) > 0.35 for box in out):
+                if any(
+                    self._iou(candidate, box) > MSER_RESIDUAL_FINAL_IOU_SKIP
+                    for box in out
+                ):
                     continue
                 out.append(candidate)
         return out

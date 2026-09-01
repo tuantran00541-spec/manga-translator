@@ -9,6 +9,12 @@ import cv2
 import numpy as np
 
 from app.config import PROCESSED_DIR, RAW_DIR
+from app.parameters import (
+    VISUAL_QC_GLOBAL_BATCH_SIZE,
+    VISUAL_QC_JOB_CONCURRENCY,
+    VISUAL_QC_PAIR_BATCH_SIZE,
+    VISUAL_QC_REGION_BATCH_SIZE,
+)
 from app.security import validate_image_size, validate_managed_path
 from app.visual_qc.batch_protocol import RegionBatchDecision, RegionBatchIssue
 from app.visual_qc.cache import load_region_qc_cache, store_region_qc_cache
@@ -18,16 +24,30 @@ from app.visual_qc.region_client import DEFAULT_GEMINI_MODEL
 from app.visual_qc.regions import QCRegion
 
 
-def _env_batch_size(name: str, default: int) -> int:
+def _legacy_batch_size(legacy_name: str, manga_name: str, default: int) -> int:
+    if os.getenv(manga_name, "").strip():
+        return default
     try:
-        return max(1, min(8, int(os.getenv(name, str(default)))))
+        return max(1, min(8, int(os.getenv(legacy_name, str(default)))))
     except ValueError:
         return default
 
 
-DEFAULT_GLOBAL_BATCH_SIZE = _env_batch_size("GEMINI_VISUAL_QC_GLOBAL_BATCH_SIZE", 2)
-DEFAULT_REGION_BATCH_SIZE = _env_batch_size("GEMINI_VISUAL_QC_REGION_BATCH_SIZE", 4)
-DEFAULT_PAIR_BATCH_SIZE = _env_batch_size("GEMINI_VISUAL_QC_PAIR_BATCH_SIZE", 2)
+DEFAULT_GLOBAL_BATCH_SIZE = _legacy_batch_size(
+    "GEMINI_VISUAL_QC_GLOBAL_BATCH_SIZE",
+    "MANGA_VISUAL_QC_GLOBAL_BATCH_SIZE",
+    VISUAL_QC_GLOBAL_BATCH_SIZE,
+)
+DEFAULT_REGION_BATCH_SIZE = _legacy_batch_size(
+    "GEMINI_VISUAL_QC_REGION_BATCH_SIZE",
+    "MANGA_VISUAL_QC_REGION_BATCH_SIZE",
+    VISUAL_QC_REGION_BATCH_SIZE,
+)
+DEFAULT_PAIR_BATCH_SIZE = _legacy_batch_size(
+    "GEMINI_VISUAL_QC_PAIR_BATCH_SIZE",
+    "MANGA_VISUAL_QC_PAIR_BATCH_SIZE",
+    VISUAL_QC_PAIR_BATCH_SIZE,
+)
 _IMAGES_UNAVAILABLE = "Page images are no longer available for visual QC"
 _CACHE_COMMIT_SUFFIX = "before visual QC cache commit"
 _RUNNING_SUFFIX = "while visual QC was running"
@@ -180,7 +200,9 @@ class ChapterQCService:
                 continue
         return masks
 
-    async def start(self, chapter_id: str, *, concurrency: int = 2):
+    async def start(
+        self, chapter_id: str, *, concurrency: int = VISUAL_QC_JOB_CONCURRENCY
+    ):
         with self.manifest_lock(chapter_id):
             manifest = self.manifest_loader(chapter_id)
         api_key = self.api_key_provider()
