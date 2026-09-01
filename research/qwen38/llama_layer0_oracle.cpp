@@ -15,6 +15,7 @@ struct capture_state {
     std::map<std::string, std::vector<float>> tensors;
     std::string error;
     bool done = false;
+    std::string post_ffn_source;
 };
 
 static const char * TARGETS[] = {
@@ -64,9 +65,35 @@ static bool capture_cb(struct ggml_tensor * t, bool ask, void * user_data) {
     state->tensors[name] = std::move(values);
     if (name && std::strcmp(name, "post_ffn-0") == 0) {
         state->done = true;
-        return false; // stop after the complete layer-0 output is materialized
+        state->post_ffn_source = "cb_eval";
     }
     return true;
+}
+
+static void finalize_layer0(capture_state & state) {
+    if (state.done) return;
+
+    // qwen35.cpp defines post_ffn exactly as:
+    //   post_ffn = ffn_out + attn_residual
+    // The CPU graph optimizer may fuse that add so cb_eval never materializes a
+    // tensor named post_ffn-0. Both inputs are observable F32 checkpoints, so
+    // reconstruct the exact semantic checkpoint rather than requiring an
+    // optimizer-visible node.
+    const auto residual = state.tensors.find("attn_residual-0");
+    const auto ffn = state.tensors.find("ffn_out-0");
+    if (residual == state.tensors.end() || ffn == state.tensors.end()) return;
+    if (residual->second.size() != ffn->second.size()) {
+        state.error = "attn_residual-0 / ffn_out-0 size mismatch while deriving post_ffn-0";
+        return;
+    }
+
+    std::vector<float> post_ffn(residual->second.size());
+    for (size_t i = 0; i < post_ffn.size(); ++i) {
+        post_ffn[i] = residual->second[i] + ffn->second[i];
+    }
+    state.tensors["post_ffn-0"] = std::move(post_ffn);
+    state.done = true;
+    state.post_ffn_source = "derived_fp32_add(attn_residual-0,ffn_out-0)";
 }
 
 static void write_json(const char * path, llama_token token, int decode_rc, const capture_state & state) {
@@ -78,6 +105,7 @@ static void write_json(const char * path, llama_token token, int decode_rc, cons
     out << "  \"token_id\": " << token << ",\n";
     out << "  \"decode_returncode\": " << decode_rc << ",\n";
     out << "  \"captured_complete_layer\": " << (state.done ? "true" : "false") << ",\n";
+    out << "  \"post_ffn_source\": \"" << state.post_ffn_source << "\",\n";
     out << "  \"error\": \"" << state.error << "\",\n";
     out << "  \"checkpoints\": {\n";
     size_t ti = 0;
@@ -136,6 +164,7 @@ int main(int argc, char ** argv) {
 
     llama_batch batch = llama_batch_get_one(&token, 1);
     const int rc = llama_decode(ctx, batch);
+    finalize_layer0(state);
     write_json(argv[2], token, rc, state);
 
     llama_free(ctx);
@@ -145,11 +174,16 @@ int main(int argc, char ** argv) {
         std::fprintf(stderr, "%s\n", state.error.c_str());
         return 6;
     }
+    if (rc != 0) {
+        std::fprintf(stderr, "llama_decode failed rc=%d\n", rc);
+        return 8;
+    }
     if (!state.done) {
-        std::fprintf(stderr, "post_ffn-0 was not captured; decode rc=%d\n", rc);
+        std::fprintf(stderr, "complete layer-0 checkpoint was not captured/derived; decode rc=%d\n", rc);
         return 7;
     }
-    std::fprintf(stderr, "QWEN38_LLAMA_LAYER0_ORACLE token=%d checkpoints=%zu decode_rc=%d\n",
-                 (int) token, state.tensors.size(), rc);
+    std::fprintf(stderr,
+                 "QWEN38_LLAMA_LAYER0_ORACLE token=%d checkpoints=%zu decode_rc=%d post_ffn_source=%s\n",
+                 (int) token, state.tensors.size(), rc, state.post_ffn_source.c_str());
     return 0;
 }
