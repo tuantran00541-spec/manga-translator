@@ -7,9 +7,10 @@ same native quantized matvec bridge as the proven recurrent layer-0 gate.
 
 For the single BOS token at position 0, RoPE is the identity and attention has
 exactly one key.  The softmax is therefore exactly 1 for every query head; the
-attention pre-gate output is the GQA-expanded V vector.  Q/K projections and
-normalization are still checked against llama.cpp so the full-attention tensor
-layout is validated rather than skipped.
+attention pre-gate output is the GQA-expanded V vector after the default llama.cpp
+F16 KV-cache storage round-trip.  Q/K projections and normalization are still
+checked against llama.cpp so the full-attention tensor layout is validated rather
+than skipped.
 """
 from __future__ import annotations
 
@@ -18,6 +19,7 @@ import json
 import math
 from pathlib import Path
 import resource
+import struct
 import sys
 import time
 from typing import Any, Sequence
@@ -102,8 +104,13 @@ def rms_norm_heads(values: Sequence[float], heads: int, weight: Sequence[float])
     return flatten(out)
 
 
+def f16_roundtrip(values: Sequence[float]) -> list[float]:
+    """Round F32 activations through IEEE binary16 like default llama.cpp KV cache."""
+    return [struct.unpack("<e", struct.pack("<e", float(v)))[0] for v in values]
+
+
 def gqa_one_key_attention(v: Sequence[float]) -> list[float]:
-    """Expand 4 KV heads to 24 query heads for a one-key attention row."""
+    """Expand 4 cached KV heads to 24 query heads for a one-key attention row."""
     kv = split_heads(v, N_HEAD_KV)
     return flatten([kv[qh // GQA_REPEAT] for qh in range(N_HEAD)])
 
@@ -123,10 +130,20 @@ def execute(model: Path, native_lib: Path, inventory_json: Path, oracle_json: Pa
     oracle = json.loads(oracle_json.read_text(encoding="utf-8"))
     if oracle.get("schema") != "qwen38-llama-layer3-oracle-v1" or not oracle.get("captured_complete_layer"):
         raise RuntimeError("llama layer3 oracle is incomplete")
-    reference = oracle["checkpoints"]
+    reference = dict(oracle["checkpoints"])
     hidden = list(map(float, reference["layer3_input"]))
     if len(hidden) != HIDDEN:
         raise ValueError("layer3 oracle input width mismatch")
+
+    # Qcur_reshaped is a non-contiguous view into interleaved Q/G storage.  The
+    # optimized oracle callback can observe the aliased physical buffer rather
+    # than logical view order, so canonicalize it from the stable Qcur_full
+    # checkpoint.  Kcur is similarly optimizer-aliased with Kcur_normed in the
+    # pinned graph and is intentionally diagnostic-only; Kcur_normed remains a
+    # required semantic checkpoint.
+    oracle_q, oracle_gate = split_q_gate(reference["Qcur_full-3"])
+    reference["Qcur_reshaped-3"] = oracle_q
+    reference["gate_reshaped-3"] = oracle_gate
 
     directory = parse_gguf(model)
     trunk = work_dir / "layer3.k3.bin"
@@ -171,14 +188,19 @@ def execute(model: Path, native_lib: Path, inventory_json: Path, oracle_json: Pa
 
         k = runtime.matvec(view("attn_k.weight"), metas["blk.3.attn_k.weight"], attn_norm)
         v = runtime.matvec(view("attn_v.weight"), metas["blk.3.attn_v.weight"], attn_norm)
-        checkpoints["Kcur-3"] = k
         checkpoints["Vcur-3"] = v
         k_normed = rms_norm_heads(k, N_HEAD_KV, vec("attn_k_norm.weight"))
         checkpoints["Kcur_normed-3"] = k_normed
 
-        # BOS is decoded at position 0. RoPE is identity at p=0, and with one
-        # key the softmax row is [1], so Q/K do not change the attention value.
-        pregate = gqa_one_key_attention(v)
+        # BOS is decoded at position 0, so RoPE is identity.  llama.cpp then
+        # writes normalized K and raw V to the default F16 KV cache before
+        # attention reads them back.  With one key softmax is exactly [1], so
+        # only the cached V value contributes to the attention output, but we
+        # round-trip K too because this is the state representation required by
+        # subsequent multi-token decoding.
+        k_cache = f16_roundtrip(k_normed)
+        v_cache = f16_roundtrip(v)
+        pregate = gqa_one_key_attention(v_cache)
         checkpoints["attn_pregate-3"] = pregate
         gate_sigmoid = [base.sigmoid(x) for x in gate]
         checkpoints["gate_sigmoid-3"] = gate_sigmoid
@@ -226,7 +248,6 @@ def execute(model: Path, native_lib: Path, inventory_json: Path, oracle_json: Pa
         "Qcur_full-3": (5e-4, 2e-4),
         "Qcur_reshaped-3": (5e-4, 2e-4),
         "Qcur_normed-3": (8e-4, 4e-4),
-        "Kcur-3": (5e-4, 2e-4),
         "Kcur_normed-3": (8e-4, 4e-4),
         "gate_reshaped-3": (5e-4, 2e-4),
         "Vcur-3": (5e-4, 2e-4),
@@ -252,7 +273,7 @@ def execute(model: Path, native_lib: Path, inventory_json: Path, oracle_json: Pa
             )
 
     result = {
-        "schema": "qwen38-k3-real-q6-layer3-attn-semantic-v1",
+        "schema": "qwen38-k3-real-q6-layer3-attn-semantic-v2",
         "status": "PASS" if not failures else "FAIL",
         "failure_class": None if not failures else "model correctness",
         "model_sha256": base.SHA256,
@@ -263,6 +284,18 @@ def execute(model: Path, native_lib: Path, inventory_json: Path, oracle_json: Pa
         "input_source": oracle.get("layer3_input_source"),
         "one_key_attention_softmax_exact": True,
         "gqa_repeat": GQA_REPEAT,
+        "kv_cache": {
+            "type_k": "F16",
+            "type_v": "F16",
+            "k_roundtrip_applied": True,
+            "v_roundtrip_applied": True,
+            "k_values": len(k_cache),
+            "v_values": len(v_cache),
+        },
+        "oracle_checkpoint_notes": {
+            "Qcur_reshaped-3": "canonicalized from Qcur_full-3 interleaved Q/G logical layout",
+            "Kcur-3": "pinned optimized oracle aliases raw K with Kcur_normed; diagnostic-only and not gated",
+        },
         "candidate": {
             "storage": "existing K3Trunk one-slot layer3",
             "native_quant_matvec": True,
@@ -293,19 +326,24 @@ def sanity() -> None:
     if q[0] != 0.0 or q[HEAD_DIM] != 1.0 or gate[0] != 1000.0 or gate[HEAD_DIM] != 1001.0:
         raise SystemExit("interleaved Q/G split sanity failed")
 
-    v = flatten([[float(h)] * HEAD_DIM for h in range(N_HEAD_KV)])
-    pregate = gqa_one_key_attention(v)
+    f16_probe = f16_roundtrip([1.0 / 3.0, -1.0 / 3.0])
+    if f16_probe != [0.333251953125, -0.333251953125]:
+        raise SystemExit(f"F16 KV-cache round-trip sanity failed: {f16_probe}")
+
+    v = flatten([[float(h) + 1.0 / 3.0] * HEAD_DIM for h in range(N_HEAD_KV)])
+    v_cache = f16_roundtrip(v)
+    pregate = gqa_one_key_attention(v_cache)
     heads = split_heads(pregate, N_HEAD)
-    expected = [h // GQA_REPEAT for h in range(N_HEAD)]
-    if [int(head[0]) for head in heads] != expected:
-        raise SystemExit("GQA one-key repeat sanity failed")
+    expected = [f16_roundtrip([float(h // GQA_REPEAT) + 1.0 / 3.0])[0] for h in range(N_HEAD)]
+    if [head[0] for head in heads] != expected:
+        raise SystemExit("GQA one-key cached-V repeat sanity failed")
 
     normed = rms_norm_heads([0.1] * Q_DIM, N_HEAD, [1.0] * HEAD_DIM)
     if len(normed) != Q_DIM or not all(math.isfinite(x) for x in normed):
         raise SystemExit("per-head RMSNorm sanity failed")
 
     print(json.dumps({
-        "schema": "qwen38-k3-layer3-attn-zero-model-sanity-v1",
+        "schema": "qwen38-k3-layer3-attn-zero-model-sanity-v2",
         "status": "PASS",
         "n_head": N_HEAD,
         "n_head_kv": N_HEAD_KV,
@@ -314,6 +352,9 @@ def sanity() -> None:
         "gqa_repeat": GQA_REPEAT,
         "position0_rope_identity": True,
         "one_key_softmax": 1.0,
+        "kv_cache_type_k": "F16",
+        "kv_cache_type_v": "F16",
+        "invalid_raw_k_oracle_is_not_required": True,
     }, indent=2, sort_keys=True))
 
 
