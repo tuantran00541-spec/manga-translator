@@ -1,0 +1,164 @@
+name: Qwen3.8 stateful two-token real gate
+
+on:
+  push:
+    branches: [test/qwen3.8-27b]
+    paths:
+      - "research/qwen38/llama_full64_two_token_oracle.cpp"
+      - "research/qwen38/qwen35_k3_two_token.py"
+      - "research/qwen38/gdn_state_ar.c"
+      - ".github/workflows/qwen38-two-token-real.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sanity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Compile Python stateful executor
+        run: |
+          python -m py_compile \
+            research/qwen38/qwen35_k3_two_token.py \
+            research/qwen38/qwen35_k3_full64_one_token.py \
+            research/qwen38/qwen35_k3_full64_ggml_exact.py \
+            research/qwen38/qwen35_k3_full64_ggml_rmsnorm.py \
+            research/qwen38/qwen35_gdn_quant_layer_gate.py \
+            research/qwen38/qwen35_full_attn_layer3_gate.py \
+            research/qwen38/gguf_stream.py \
+            research/qwen38/gguf_k3_layout.py \
+            research/qwen38/k3_stream.py
+          python research/qwen38/qwen35_k3_two_token.py sanity
+      - name: Native GDN state selftest
+        run: |
+          cc -O2 -std=c11 -DQWEN_GDN_STATE_SELFTEST research/qwen38/gdn_state_ar.c -lm -o "$RUNNER_TEMP/gdn-state-selftest"
+          "$RUNNER_TEMP/gdn-state-selftest"
+      - name: Native quant regression
+        run: |
+          cc -O2 -std=c11 -DQWEN_QUANT_DOT_SELFTEST research/qwen38/gguf_quant_dot.c -lm -o "$RUNNER_TEMP/qwen-quant-selftest"
+          "$RUNNER_TEMP/qwen-quant-selftest"
+
+  real-token2:
+    needs: sanity
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[qwen-token2-real]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      HF_HUB_DISABLE_TELEMETRY: "1"
+      LLAMA_CPP_COMMIT: "557614e0296ff4a5b6f649737a65ae2076eea2fd"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Reclaim disk
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup || true
+          docker system prune -af || true
+          df -h
+      - name: Install download dependency
+        run: python -m pip install --no-cache-dir huggingface_hub hf_xet
+      - name: Download pinned gold GGUF once
+        shell: bash
+        run: |
+          set -euo pipefail
+          model="$(python - <<'PY'
+          from huggingface_hub import hf_hub_download
+          print(hf_hub_download("bartowski/Qwen3.8-27B-GGUF", filename="Qwen3.8-27B-Q6_K_L.gguf", local_dir="${{ runner.temp }}/qwen38-model"))
+          PY
+          )"
+          test -f "$model"
+          echo "MODEL=$model" >> "$GITHUB_ENV"
+      - name: Emit pinned decoder inventory
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/qwen38-token2-evidence"; mkdir -p "$evidence"
+          python research/qwen38/qwen35_gdn_quant_layer_gate.py inventory --model "$MODEL" --output "$evidence/inventory.json" 2>&1 | tee "$evidence/inventory.log"
+      - name: Build pinned llama.cpp two-token oracle
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq cmake ninja-build
+          llama="$RUNNER_TEMP/llama.cpp"; mkdir -p "$llama"
+          git -C "$llama" init
+          git -C "$llama" remote add origin https://github.com/ggml-org/llama.cpp.git
+          git -C "$llama" fetch --depth 1 origin "$LLAMA_CPP_COMMIT"
+          git -C "$llama" checkout --detach FETCH_HEAD
+          test "$(git -C "$llama" rev-parse HEAD)" = "$LLAMA_CPP_COMMIT"
+          mkdir -p "$llama/examples/qwen38-token2"
+          cp research/qwen38/llama_full64_two_token_oracle.cpp "$llama/examples/qwen38-token2/oracle.cpp"
+          cat > "$llama/examples/qwen38-token2/CMakeLists.txt" <<'EOF'
+          set(TARGET llama-qwen38-token2)
+          add_executable(${TARGET} oracle.cpp)
+          target_link_libraries(${TARGET} PRIVATE llama)
+          target_compile_features(${TARGET} PRIVATE cxx_std_17)
+          EOF
+          printf '\nadd_subdirectory(qwen38-token2)\n' >> "$llama/examples/CMakeLists.txt"
+          cmake -S "$llama" -B "$llama/build" -G Ninja -DGGML_NATIVE=OFF -DGGML_OPENMP=ON -DLLAMA_BUILD_EXAMPLES=ON -DCMAKE_BUILD_TYPE=Release
+          cmake --build "$llama/build" --target llama-qwen38-token2 -j2
+      - name: Compile native runtime bridges
+        run: |
+          cc -O2 -std=c11 -fPIC -shared research/qwen38/gguf_quant_dot.c -lm -o "$RUNNER_TEMP/libqwen_quant_dot.so"
+          cc -O2 -std=c11 -fPIC -shared research/qwen38/gdn_state_ar.c -lm -o "$RUNNER_TEMP/libqwen_gdn_state.so"
+      - name: Capture pinned two-token oracle
+        timeout-minutes: 25
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/qwen38-token2-evidence"
+          /usr/bin/time -v "$RUNNER_TEMP/llama.cpp/build/bin/llama-qwen38-token2" "$MODEL" "$evidence/oracle.json" 2>&1 | tee "$evidence/oracle.log"
+      - name: Validate oracle contract
+        run: |
+          python - <<'PY'
+          import json, os
+          p=os.path.join(os.environ['RUNNER_TEMP'],'qwen38-token2-evidence','oracle.json')
+          d=json.load(open(p)); cp=d['checkpoints']
+          assert d['schema']=='qwen38-llama-full64-two-token-oracle-v1' and d['captured_complete']
+          assert d['position']==1 and d['token1']>=0 and d['token2']>=0
+          assert all(len(cp[f'post_ffn-{i}'])==5120 for i in range(64))
+          for i in range(3,64,4):
+              assert len(cp[f'Qcur-{i}'])==6144
+              assert len(cp[f'Kcur-{i}'])==1024
+              assert len(cp[f'Vcur-{i}'])==1024
+          assert len(cp['result_norm'])==5120 and len(cp['result_output'])==248320
+          print('QWEN38_TWO_TOKEN_ORACLE_CONTRACT PASS', d['bos_token'], d['token1'], d['token2'])
+          PY
+      - name: Run custom K3 stateful token2 gate
+        timeout-minutes: 35
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/qwen38-token2-evidence"; work="$RUNNER_TEMP/qwen38-token2-work"; mkdir -p "$work"
+          /usr/bin/time -v python -u research/qwen38/qwen35_k3_two_token.py run \
+            --model "$MODEL" --native-lib "$RUNNER_TEMP/libqwen_quant_dot.so" --state-lib "$RUNNER_TEMP/libqwen_gdn_state.so" \
+            --inventory "$evidence/inventory.json" --oracle "$evidence/oracle.json" --work-dir "$work" --output "$evidence/token2.json" \
+            2>&1 | tee "$evidence/token2.log"
+      - name: Show compact evidence and cleanup
+        if: always()
+        shell: bash
+        run: |
+          evidence="$RUNNER_TEMP/qwen38-token2-evidence"
+          python - <<'PY'
+          import json, os
+          p=os.path.join(os.environ['RUNNER_TEMP'],'qwen38-token2-evidence','token2.json')
+          if os.path.exists(p):
+              d=json.load(open(p)); print({k:d.get(k) for k in ['status','bos_token','token1','candidate_token2','oracle_token2','top5_overlap','first_bad_layer_loose','elapsed_seconds','max_rss_gib']}); print(d.get('final_metrics'))
+          PY
+          tail -n 100 "$evidence/token2.log" 2>/dev/null || true
+          rm -rf "$RUNNER_TEMP/qwen38-model" "$RUNNER_TEMP/qwen38-token2-work" "$RUNNER_TEMP/llama.cpp" || true
+      - name: Upload token2 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen38-token2-${{ github.run_id }}
+          path: ${{ runner.temp }}/qwen38-token2-evidence/
+          if-no-files-found: warn
+          retention-days: 14
