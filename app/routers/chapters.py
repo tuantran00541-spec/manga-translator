@@ -8,6 +8,7 @@ from app.config import PROCESSED_DIR
 from app.dependencies import pipeline
 from app.logging_config import logger
 from app.manifest_utils import get_manifest_lock, invalidate_page_render, load_manifest_raw, save_manifest_raw, urlify_manifest
+from app.parameters import PIPELINE_DEFAULT_WORKERS
 from app.schemas import (
     ChapterRequest,
     ProcessPagesRequest,
@@ -31,9 +32,9 @@ _CHAPTER_LIST_CACHE: dict[str, tuple[tuple[int, int, int], dict]] = {}
 
 def _clamp_workers(n: int | None) -> int:
     try:
-        v = int(n) if n is not None else 2
+        v = int(n) if n is not None else PIPELINE_DEFAULT_WORKERS
     except (TypeError, ValueError):
-        v = 2
+        v = PIPELINE_DEFAULT_WORKERS
     return max(1, min(v, 8))
 
 
@@ -138,7 +139,7 @@ def create_chapter(req: ChapterRequest) -> dict:
 @router.post("/chapter/upload")
 async def create_chapter_from_upload(
     files: list[UploadFile] = File(...),
-    workers: int = Form(2),
+    workers: int = Form(PIPELINE_DEFAULT_WORKERS),
 ) -> dict:
     if not files:
         raise HTTPException(400, "No files uploaded")

@@ -4,6 +4,11 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from app.parameters import (
+    VISUAL_QC_DEEP_AREA_RATIO,
+    VISUAL_QC_MERGE_GAP,
+    VISUAL_QC_REGION_MARGIN,
+)
 from app.visual_qc.jobs import QCWorkItem
 from app.visual_qc.regions import QCRegion, extract_candidate_regions
 
@@ -32,7 +37,14 @@ def _full_page_region(page: dict, page_index: int) -> QCRegion:
     )
 
 
-def build_chapter_qc_plan(manifest: dict, *, manual_masks: dict[int, np.ndarray] | None = None, margin: int = 64, merge_gap: int = 32, deep_area_ratio: float = 0.35) -> ChapterQCPlan:
+def build_chapter_qc_plan(
+    manifest: dict,
+    *,
+    manual_masks: dict[int, np.ndarray] | None = None,
+    margin: int = VISUAL_QC_REGION_MARGIN,
+    merge_gap: int = VISUAL_QC_MERGE_GAP,
+    deep_area_ratio: float = VISUAL_QC_DEEP_AREA_RATIO,
+) -> ChapterQCPlan:
     manual_masks = manual_masks or {}
     global_regions: list[QCRegion] = []
     candidate_regions: list[QCRegion] = []

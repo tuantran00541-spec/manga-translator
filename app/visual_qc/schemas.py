@@ -5,7 +5,7 @@ from typing import Literal
 
 from pydantic import BaseModel, field_validator
 
-from app.parameters import VISUAL_QC_JOB_CONCURRENCY
+from app.parameters import VISUAL_QC_JOB_CONCURRENCY, VISUAL_QC_JOB_CONCURRENCY_LIMIT
 
 
 class VisualQCChapterRequest(BaseModel):
@@ -17,8 +17,11 @@ class VisualQCChapterRequest(BaseModel):
     @field_validator("concurrency")
     @classmethod
     def _bounded_concurrency(cls, value: int) -> int:
-        if value < 1 or value > 4:
-            raise ValueError("concurrency must be between 1 and 4")
+        if value < 1 or value > VISUAL_QC_JOB_CONCURRENCY_LIMIT:
+            raise ValueError(
+                "concurrency must be between 1 and "
+                f"{VISUAL_QC_JOB_CONCURRENCY_LIMIT}"
+            )
         return value
 
     @field_validator("budget_usd")

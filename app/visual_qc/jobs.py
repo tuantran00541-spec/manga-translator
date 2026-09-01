@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from typing import Awaitable, Callable
 import uuid
 
-from app.parameters import VISUAL_QC_JOB_CONCURRENCY
+from app.parameters import VISUAL_QC_JOB_CONCURRENCY, VISUAL_QC_JOB_CONCURRENCY_LIMIT
 from app.visual_qc.batch_protocol import RegionBatchDecision
 
 
@@ -54,7 +54,7 @@ class VisualQCJobManager:
     ) -> VisualQCJob:
         if concurrency < 1:
             raise ValueError("concurrency must be >= 1")
-        concurrency = min(int(concurrency), 8)
+        concurrency = min(int(concurrency), VISUAL_QC_JOB_CONCURRENCY_LIMIT)
         chapter_id = str(chapter_id)
         self._prune_completed()
         if len(self._jobs) >= self.max_jobs:

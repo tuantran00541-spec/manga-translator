@@ -2,6 +2,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.parameters import PIPELINE_DEFAULT_WORKERS
 from app.security import (
     MAX_REMOTE_URL_LENGTH,
     MAX_RENDER_TEXT_LEN,
@@ -54,7 +55,7 @@ def _validate_text_object_id(value: str) -> str:
 
 class ChapterRequest(BaseModel):
     url: str
-    workers: int = Field(default=2, ge=1, le=8)
+    workers: int = Field(default=PIPELINE_DEFAULT_WORKERS, ge=1, le=8)
 
     @field_validator("url")
     @classmethod
@@ -170,7 +171,7 @@ class SaveDraftRequest(BaseModel):
 class ProcessPagesRequest(BaseModel):
     chapter_id: str
     page_indices: list[int]
-    workers: int = Field(default=2, ge=1, le=8)
+    workers: int = Field(default=PIPELINE_DEFAULT_WORKERS, ge=1, le=8)
 
     @field_validator("page_indices")
     @classmethod

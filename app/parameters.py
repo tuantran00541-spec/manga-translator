@@ -738,8 +738,12 @@ VISUAL_QC_REGION_BATCH_SIZE = _env_int(
 VISUAL_QC_PAIR_BATCH_SIZE = _env_int(
     "MANGA_VISUAL_QC_PAIR_BATCH_SIZE", 2, minimum=1, maximum=8
 )
+VISUAL_QC_JOB_CONCURRENCY_LIMIT: Final[int] = 4
 VISUAL_QC_JOB_CONCURRENCY = _env_int(
-    "MANGA_VISUAL_QC_JOB_CONCURRENCY", 2, minimum=1, maximum=32
+    "MANGA_VISUAL_QC_JOB_CONCURRENCY",
+    2,
+    minimum=1,
+    maximum=VISUAL_QC_JOB_CONCURRENCY_LIMIT,
 )
 
 # ---------------------------------------------------------------------------
