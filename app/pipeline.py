@@ -398,7 +398,7 @@ class ChapterPipeline:
 
     def _shared_seam_detections(
         self, chapter_id: str, work_items: list[tuple]
-    ) -> tuple[dict[int, list[BubbleBox]], set[int]]:
+    ) -> tuple[dict[int, list[BubbleBox]], set[int], dict[str, float | int]]:
         """Detect each unsafe overlap seam once, then share it across pages.
 
         The slicer deliberately stores +/-384px overlap around unsafe cuts. That
@@ -414,6 +414,15 @@ class ChapterPipeline:
         """
         consumers: dict[tuple[int, int], list[tuple[int, Path, dict]]] = {}
         unavailable_pages: set[int] = set()
+        shared_metrics: dict[str, float | int] = {
+            "attempts": 0,
+            "failures": 0,
+            "wall_ms": 0.0,
+            "bubble_model_ms": 0.0,
+            "text_model_ms": 0.0,
+            "mser_ms": 0.0,
+            "detector_total_ms": 0.0,
+        }
 
         for item in work_items:
             (
@@ -458,11 +467,13 @@ class ChapterPipeline:
                 )
 
         if not consumers:
-            return {}, unavailable_pages
+            return {}, unavailable_pages, shared_metrics
 
         by_page: dict[int, list[BubbleBox]] = {}
         for (source_page, cut_y), seam_consumers in sorted(consumers.items()):
             provider_idx, provider_path, provider_core = seam_consumers[0]
+            seam_started_at = time.perf_counter()
+            detector_metrics: dict[str, float | int] = {}
             try:
                 provider_image = read_image(provider_path)
                 provider_source_y1 = int(provider_core["source_y1"])
@@ -475,7 +486,9 @@ class ChapterPipeline:
                 seam_image = provider_image[seam_local_y1:seam_local_y2, :]
                 seam_source_y1 = provider_source_y1 + seam_local_y1
                 seam_boxes = self.detector.detect(seam_image, parallel=True)
+                detector_metrics = self.detector.last_metrics()
             except Exception as exc:
+                shared_metrics["failures"] = int(shared_metrics["failures"]) + 1
                 logger.warning(
                     "Chapter %s source page %s seam %s: shared context detection failed: %s",
                     chapter_id, source_page, cut_y, exc,
@@ -483,6 +496,19 @@ class ChapterPipeline:
                 unavailable_pages.update(idx for idx, _path, _core in seam_consumers)
                 continue
             finally:
+                shared_metrics["attempts"] = int(shared_metrics["attempts"]) + 1
+                shared_metrics["wall_ms"] = float(shared_metrics["wall_ms"]) + (
+                    (time.perf_counter() - seam_started_at) * 1000.0
+                )
+                for source_name, target_name in (
+                    ("bubble_model_ms", "bubble_model_ms"),
+                    ("text_model_ms", "text_model_ms"),
+                    ("mser_ms", "mser_ms"),
+                    ("total_ms", "detector_total_ms"),
+                ):
+                    shared_metrics[target_name] = float(
+                        shared_metrics[target_name]
+                    ) + float(detector_metrics.get(source_name) or 0.0)
                 if "provider_image" in locals():
                     del provider_image
 
@@ -511,7 +537,7 @@ class ChapterPipeline:
             by_page[idx] = CombinedTextDetector._apply_final_nms(
                 boxes, iou_threshold=DETECTOR_FINAL_NMS_IOU
             )
-        return by_page, unavailable_pages
+        return by_page, unavailable_pages, shared_metrics
 
     def _commit_processed_page(
         self,
@@ -613,6 +639,7 @@ class ChapterPipeline:
         workers: int = PIPELINE_DEFAULT_WORKERS,
     ) -> dict:
         """Process pages with shared seams and durable per-page progress."""
+        run_started_at = time.perf_counter()
         processed_dir = PROCESSED_DIR / chapter_id
         unique_indices = list(dict.fromkeys(page_indices))
 
@@ -680,7 +707,7 @@ class ChapterPipeline:
                 len(work_items),
             ),
         )
-        shared_seam_detections, seam_context_unavailable = (
+        shared_seam_detections, seam_context_unavailable, shared_seam_metrics = (
             self._shared_seam_detections(chapter_id, work_items)
         )
         committed_indices: list[int] = []
@@ -740,6 +767,7 @@ class ChapterPipeline:
                     )
                     errors.append((idx, exc))
 
+        failed_indices = [item[0] for item in errors]
         with get_manifest_lock(chapter_id):
             manifest = load_manifest_raw(chapter_id)
             if committed_indices:
@@ -747,10 +775,22 @@ class ChapterPipeline:
                     "stage": "review",
                     "page_index": min(committed_indices),
                 }
-                save_manifest_raw(chapter_id, manifest)
+            manifest["last_processing_run"] = {
+                "requested_page_indices": [item[0] for item in work_items],
+                "committed_page_indices": sorted(committed_indices),
+                "failed_page_indices": failed_indices,
+                "workers": max_workers,
+                "wall_ms": round((time.perf_counter() - run_started_at) * 1000.0, 3),
+                "shared_seam": {
+                    name: round(float(value), 3)
+                    if name.endswith("_ms")
+                    else int(value)
+                    for name, value in shared_seam_metrics.items()
+                },
+            }
+            save_manifest_raw(chapter_id, manifest)
 
         if errors:
-            failed_indices = [item[0] for item in errors]
             first_exc = errors[0][1]
             if not committed_indices:
                 raise RuntimeError(

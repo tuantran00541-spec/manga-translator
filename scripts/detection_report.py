@@ -124,6 +124,9 @@ def main() -> None:
         "pages": rows,
         "totals": totals,
     }
+    last_run = manifest.get("last_processing_run")
+    if isinstance(last_run, dict):
+        report["last_processing_run"] = last_run
 
     if args.json:
         print(json.dumps(report, ensure_ascii=False, indent=2))
@@ -149,6 +152,23 @@ def main() -> None:
         "-",
     ]
     print("\t".join(total_values))
+    if isinstance(last_run, dict):
+        print(
+            "LAST_RUN"
+            f"\tworkers={last_run.get('workers', '?')}"
+            f"\twall_ms={last_run.get('wall_ms', 0)}"
+            f"\tcommitted={last_run.get('committed_page_indices', [])}"
+            f"\tfailed={last_run.get('failed_page_indices', [])}"
+        )
+        shared = last_run.get("shared_seam")
+        if isinstance(shared, dict):
+            print(
+                "SHARED_SEAM"
+                f"\tattempts={shared.get('attempts', 0)}"
+                f"\tfailures={shared.get('failures', 0)}"
+                f"\twall_ms={shared.get('wall_ms', 0)}"
+                f"\tmser_ms={shared.get('mser_ms', 0)}"
+            )
 
 
 if __name__ == "__main__":
