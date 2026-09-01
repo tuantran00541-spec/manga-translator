@@ -150,7 +150,7 @@ int main(int argc, char ** argv) {
     const int rc0 = llama_decode(ctx, b0);
     const int vocab_n = llama_vocab_n_tokens(vocab);
     const float * logits0 = llama_get_logits(ctx);
-    const llama_token token1 = (llama_token) argmax(logits0, vocab_n);
+    llama_token token1 = (llama_token) argmax(logits0, vocab_n);
 
     s.enabled = true;
     llama_batch b1 = llama_batch_get_one(&token1, 1);
