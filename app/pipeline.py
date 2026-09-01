@@ -773,9 +773,12 @@ class ChapterPipeline:
                     changed = bool(page.get("skipped", False)) != bool(skipped)
                     page["skipped"] = skipped
                     if skipped:
-                        if page.get("clean") != page.get("original") or page.get("boxes"):
+                        if page.get("clean") is not None or page.get("boxes"):
                             changed = True
-                        page["clean"] = page["original"]
+                        # ``clean`` is always a processed artifact. A skipped page
+                        # intentionally has none, so render/export falls back to
+                        # its raw original without violating managed-path roots.
+                        page["clean"] = None
                         page["boxes"] = []
                     if changed:
                         bump_page_revision(page, "clean_revision")

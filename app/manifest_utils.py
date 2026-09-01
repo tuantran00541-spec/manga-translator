@@ -148,6 +148,13 @@ def normalize_manifest_schema(manifest: dict) -> bool:
                 page["width"], page["height"] = dims
                 changed = True
 
+        # Older skip handling stored the raw original in ``clean``. The two
+        # fields have distinct managed roots, so normalize that legacy sentinel
+        # to the absence of a processed artifact.
+        if page.get("skipped") and page.get("clean") == page.get("original"):
+            page["clean"] = None
+            changed = True
+
         revision_defaults = {
             "source_revision": 1,
             "process_revision": 1 if (page.get("clean") or page.get("boxes")) else 0,
