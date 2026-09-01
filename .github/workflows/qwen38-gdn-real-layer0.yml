@@ -154,6 +154,37 @@ jobs:
             "$MODEL" "$evidence/oracle.json" \
             2>&1 | tee "$evidence/oracle.log"
 
+      - name: Validate fusion-aware oracle contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/qwen38-gdn-layer0-evidence"
+          python - "$evidence/oracle.json" <<'PY'
+          import json, sys
+          path = sys.argv[1]
+          data = json.load(open(path, encoding="utf-8"))
+          required = {
+              "model.input_embed", "attn_norm-0", "linear_attn_qkv_mixed-0", "z-0",
+              "beta-0", "beta_sigmoid-0", "alpha-0", "a_softplus-0", "gate-0",
+              "conv_output_silu-0", "q_conv_predelta-0", "k_conv_predelta-0",
+              "v_conv_predelta-0", "linear_attn_out-0", "attn_residual-0",
+              "attn_post_norm-0", "ffn_out-0", "post_ffn-0",
+          }
+          assert data["decode_returncode"] == 0, data["decode_returncode"]
+          assert data["captured_complete_layer"] is True
+          assert data["post_ffn_source"] in {
+              "cb_eval",
+              "derived_fp32_add(attn_residual-0,ffn_out-0)",
+          }, data["post_ffn_source"]
+          missing = sorted(required - set(data["checkpoints"]))
+          assert not missing, missing
+          print(json.dumps({
+              "status": "PASS",
+              "checkpoint_count": len(data["checkpoints"]),
+              "post_ffn_source": data["post_ffn_source"],
+          }, sort_keys=True))
+          PY
+
       - name: Run custom K3 real Q6 layer0 semantic gate
         timeout-minutes: 25
         shell: bash
