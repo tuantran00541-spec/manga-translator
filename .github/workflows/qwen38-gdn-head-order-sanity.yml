@@ -1,0 +1,24 @@
+name: Qwen3.8 GDN head-order sanity
+
+on:
+  push:
+    branches:
+      - test/qwen3.8-27b
+    paths:
+      - research/qwen38/qwen35_gdn_semantics.py
+      - .github/workflows/qwen38-gdn-head-order-sanity.yml
+  workflow_dispatch:
+
+jobs:
+  zero-model-gdn-order:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Compile GDN semantic oracle
+        run: python -m py_compile research/qwen38/qwen35_gdn_semantics.py
+      - name: Run zero-model GDN head-order gate
+        run: python research/qwen38/qwen35_gdn_semantics.py
