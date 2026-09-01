@@ -16,11 +16,20 @@ REPO_ROOT = Path(__file__).resolve().parents[1] if Path(__file__).resolve().pare
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from app.security import validate_managed_path
+
 _HANGUL_RE = re.compile(r"[\uac00-\ud7a3]")
+_WORK_ROOT = REPO_ROOT / "gate-work"
+_REPORT_ROOT = REPO_ROOT / "gate-results"
 
 
 def _normalize(text: str) -> str:
     return "".join(str(text or "").split())
+
+
+def _managed_output_path(path: Path, root: Path) -> Path:
+    candidate = path if path.is_absolute() else REPO_ROOT / path
+    return validate_managed_path(candidate, root)
 
 
 def _load_json(path: Path) -> dict:
@@ -244,13 +253,17 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    args.work_dir = _managed_output_path(args.work_dir, _WORK_ROOT)
+    report_path = _managed_output_path(args.report_json, _REPORT_ROOT)
     args.work_dir.mkdir(parents=True, exist_ok=True)
     try:
         report = run(args)
     except Exception as exc:
         report = {"status": "fail", "error": f"{type(exc).__name__}: {exc}"}
-    args.report_json.parent.mkdir(parents=True, exist_ok=True)
-    args.report_json.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(  # NOSONAR(S8707): report_path is constrained to gate-results above.
+        json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
     print(json.dumps(report, ensure_ascii=False, indent=2))
     return 0 if report.get("status") == "pass" else 1
 

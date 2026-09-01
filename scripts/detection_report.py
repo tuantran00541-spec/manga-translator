@@ -4,6 +4,8 @@ import argparse
 import json
 from pathlib import Path
 
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+_PROCESSED_ROOT = _REPO_ROOT / "data" / "processed"
 
 COLUMNS = (
     "total",
@@ -21,10 +23,18 @@ COLUMNS = (
 
 
 def _manifest_path(target: str) -> Path:
-    path = Path(target)
-    if path.is_file():
-        return path
-    return Path("data") / "processed" / target / "manifest.json"
+    candidate = Path(target)
+    if candidate.suffix.lower() == ".json":
+        path = candidate if candidate.is_absolute() else _REPO_ROOT / candidate
+    else:
+        path = _PROCESSED_ROOT / candidate / "manifest.json"
+    root = _PROCESSED_ROOT.resolve(strict=False)
+    resolved = path.resolve(strict=False)
+    try:
+        resolved.relative_to(root)
+    except ValueError as exc:
+        raise ValueError("Manifest path must stay under data/processed") from exc
+    return resolved
 
 
 def _page_stats(page: dict) -> dict[str, int | str | bool]:
@@ -60,7 +70,7 @@ def main() -> None:
     )
     parser.add_argument(
         "target",
-        help="Chapter id (data/processed/<id>/manifest.json) or an explicit manifest path.",
+        help="Chapter id or explicit manifest path under data/processed/.",
     )
     parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
     args = parser.parse_args()
@@ -69,7 +79,7 @@ def main() -> None:
     if not path.is_file():
         raise SystemExit(f"Manifest not found: {path}")
 
-    manifest = json.loads(path.read_text(encoding="utf-8"))
+    manifest = json.loads(path.read_text(encoding="utf-8"))  # NOSONAR(S8707): _manifest_path confines explicit paths to data/processed.
     pages = manifest.get("pages") or []
     rows = []
     for index, page in enumerate(pages):

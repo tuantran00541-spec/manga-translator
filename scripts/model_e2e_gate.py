@@ -19,7 +19,10 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+from app.security import validate_managed_path
+
 _IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
+_REPORT_ROOT = _REPO_ROOT / "benchmark-results"
 
 
 def _source_revision() -> str | None:
@@ -33,6 +36,11 @@ def _source_revision() -> str | None:
 
 class GateFailure(RuntimeError):
     pass
+
+
+def _report_path(path: Path) -> Path:
+    candidate = path if path.is_absolute() else _REPO_ROOT / path
+    return validate_managed_path(candidate, _REPORT_ROOT)
 
 
 def _rss_mb() -> float:
@@ -523,8 +531,9 @@ def main() -> int:
     text = json.dumps(report, ensure_ascii=False, indent=2)
     print(text)
     if args.report_json:
-        args.report_json.parent.mkdir(parents=True, exist_ok=True)
-        args.report_json.write_text(text + "\n", encoding="utf-8")
+        report_path = _report_path(args.report_json)
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(text + "\n", encoding="utf-8")  # NOSONAR(S8707): _report_path confines CLI output to benchmark-results.
     return 0 if report.get("status") == "pass" else 1
 
 

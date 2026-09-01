@@ -30,7 +30,7 @@ def safe_get(
     redirects = 0
 
     while True:
-        response = requests.get(
+        response = requests.get(  # NOSONAR(S5144): validate_url rejects non-public addresses before the initial request and every redirect hop.
             current,
             headers=headers,
             timeout=timeout,

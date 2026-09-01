@@ -81,14 +81,14 @@ def main() -> int:
 
         no_truth = evaluate([missing, missing], _args(0.0), root / "no-truth")
         assert no_truth["coverage"]["truth_samples"] == 0
-        assert no_truth["coverage"]["truth_coverage"] == 0.0
+        assert np.isclose(no_truth["coverage"]["truth_coverage"], 0.0)
         assert not no_truth["gate"]["eligible_for_next_stage"]
         assert "ground-truth mask evidence missing for all samples" in no_truth["gate"]["reasons"]
 
         blocked = evaluate([complete, missing], _args(1.0), root / "blocked")
         assert blocked["coverage"]["truth_samples"] == 1
         assert blocked["coverage"]["total_samples"] == 2
-        assert blocked["coverage"]["truth_coverage"] == 0.5
+        assert np.isclose(blocked["coverage"]["truth_coverage"], 0.5)
         assert not blocked["gate"]["eligible_for_next_stage"]
         assert any(
             "ground-truth mask missing for 1/2 samples" in reason
@@ -113,7 +113,7 @@ def main() -> int:
         )
         full = evaluate([complete, complete_2], _args(1.0), root / "full")
         assert full["coverage"]["truth_samples"] == 2
-        assert full["coverage"]["truth_coverage"] == 1.0
+        assert np.isclose(full["coverage"]["truth_coverage"], 1.0)
         assert not any(
             "ground-truth mask missing" in reason for reason in full["gate"]["reasons"]
         )
