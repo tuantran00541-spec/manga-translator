@@ -7,6 +7,7 @@ on:
       - "research/qwen38/llama_full64_two_token_oracle.cpp"
       - "research/qwen38/qwen35_k3_two_token.py"
       - "research/qwen38/gdn_state_ar.c"
+      - "research/qwen38/qwen35_gguf_decoder_contract.py"
       - ".github/workflows/qwen38-two-token-real.yml"
   workflow_dispatch:
 
@@ -31,6 +32,7 @@ jobs:
             research/qwen38/qwen35_k3_full64_ggml_rmsnorm.py \
             research/qwen38/qwen35_gdn_quant_layer_gate.py \
             research/qwen38/qwen35_full_attn_layer3_gate.py \
+            research/qwen38/qwen35_gguf_decoder_contract.py \
             research/qwen38/gguf_stream.py \
             research/qwen38/gguf_k3_layout.py \
             research/qwen38/k3_stream.py
@@ -80,7 +82,9 @@ jobs:
         run: |
           set -euo pipefail
           evidence="$RUNNER_TEMP/qwen38-token2-evidence"; mkdir -p "$evidence"
-          python research/qwen38/qwen35_gdn_quant_layer_gate.py inventory --model "$MODEL" --output "$evidence/inventory.json" 2>&1 | tee "$evidence/inventory.log"
+          python -u research/qwen38/qwen35_gguf_decoder_contract.py real \
+            --model "$MODEL" --output "$evidence/inventory.json" \
+            2>&1 | tee "$evidence/inventory.log"
       - name: Build pinned llama.cpp two-token oracle
         shell: bash
         run: |
