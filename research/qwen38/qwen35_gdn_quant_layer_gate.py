@@ -337,8 +337,10 @@ def rms_norm(x: Sequence[float], weight: Sequence[float], eps: float = RMS_EPS) 
 
 
 def l2_norm(x: Sequence[float], eps: float = RMS_EPS) -> list[float]:
-    inv = 1.0 / math.sqrt(math.fsum(float(v) * float(v) for v in x) + eps)
-    return [float(v) * inv for v in x]
+    # Match pinned ggml CPU L2_NORM exactly at the semantic level: eps is a
+    # floor on ||x||_2, not an additive term inside the square root.
+    denom = max(math.sqrt(math.fsum(float(v) * float(v) for v in x)), eps)
+    return [float(v) / denom for v in x]
 
 
 def split_heads(x: Sequence[float], heads: int) -> list[list[float]]:
@@ -594,6 +596,17 @@ def sanity() -> None:
     out = one_token_core(q, k, v, beta)
     if len(out) != VALUE_DIM or not all(math.isfinite(x) for x in out):
         raise SystemExit("one-token core sanity failed")
+
+    # Pinned ggml CPU L2_NORM uses 1/fmax(sqrt(sum(x^2)), eps).
+    # The first case catches the historical additive-epsilon bug; the second
+    # locks the actual floor behavior when the norm is below eps.
+    l2_regular = l2_norm([3e-4, 4e-4])
+    if max(abs(a - b) for a, b in zip(l2_regular, [0.6, 0.8])) > 1e-12:
+        raise SystemExit(f"ggml L2 norm regular-case sanity failed: {l2_regular}")
+    l2_floor = l2_norm([3e-7, 4e-7])
+    if max(abs(a - b) for a, b in zip(l2_floor, [0.3, 0.4])) > 1e-12:
+        raise SystemExit(f"ggml L2 norm floor-case sanity failed: {l2_floor}")
+
     a = [-math.exp(-1.0 + i * 0.01) for i in range(V_HEADS)]
     alpha = [0.1 * math.sin(i) for i in range(V_HEADS)]
     dt = [0.01 * math.cos(i) for i in range(V_HEADS)]
@@ -601,10 +614,11 @@ def sanity() -> None:
     if not all(x < 0.0 for x in gate):
         raise SystemExit("converted ssm_a gate sanity failed")
     print(json.dumps({
-        "schema": "qwen38-k3-layer0-zero-model-sanity-v1",
+        "schema": "qwen38-k3-layer0-zero-model-sanity-v2",
         "status": "PASS",
         "value_dim": VALUE_DIM,
         "tiled_repeats": V_HEADS // K_HEADS,
+        "ggml_l2_norm_epsilon_semantics": "floor_on_l2_norm",
         "converter_ssm_a_is_pretransformed_negative_exp": True,
     }, indent=2, sort_keys=True))
 
