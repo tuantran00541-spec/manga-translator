@@ -93,7 +93,11 @@ static uint16_t qwen_f32_to_f16(float value) {
     return (uint16_t)(sign | ((uint16_t)exp16 << 10) | (uint16_t)half_mant);
 }
 
-/* Exact scalar helper used by llama.cpp's Q8_K reference quantizer. */
+/* Exact scalar helper used by llama.cpp's Q8_K reference quantizer.  The same
+ * FP32 nearest-even primitive also matches the AVX/AVX2 Q8_0 activation
+ * runtime path (_MM_ROUND_NEAREST).  This deliberately differs on exact .5
+ * ties from quantize_row_q8_0_ref(), which is a deterministic file-creation
+ * reference and uses roundf(). */
 static int qwen_nearest_int(float fval) {
     assert(fabsf(fval) <= 4194303.0f);
     const float val = fval + 12582912.0f;
@@ -149,7 +153,7 @@ int qwen_quantize_q8_0_scalar(const float *x, size_t n, uint8_t *dst, size_t dst
         qwen_store_u16_le(out, qwen_f32_to_f16(d));
         int8_t *qs = (int8_t *)(out + 2);
         for (size_t j = 0; j < QWEN_QK8_0; ++j) {
-            long q = lroundf(xb[j] * id);
+            int q = qwen_nearest_int(xb[j] * id);
             if (q > 127) q = 127;
             if (q < -128) q = -128;
             qs[j] = (int8_t)q;
@@ -366,7 +370,7 @@ static double independent_q8_0_dot(const uint8_t *x, const uint8_t *y, size_t n)
 }
 
 static int check_f16_case(uint16_t bits, float expected) {
-    const float got = qwen_f16_to_f32(bits);
+    const float got = qwen_f16_to_f32(qwen_load_u16_le((const uint8_t *)&bits));
     if (got != expected) {
         fprintf(stderr, "f16 mismatch bits=0x%04x got=%.9g expected=%.9g\n", bits, got, expected);
         return 0;
@@ -405,6 +409,26 @@ int main(void) {
     if (qwen_nearest_int(1.5f) != 2 || qwen_nearest_int(2.5f) != 2 ||
         qwen_nearest_int(-1.5f) != -2 || qwen_nearest_int(-2.5f) != -2) {
         return 18;
+    }
+
+    /* llama.cpp's optimized x86 Q8_0 activation path uses nearest-even, not
+     * the roundf() ties-away behavior of quantize_row_q8_0_ref().  A real
+     * Qwen3.8 BOS attn_norm activation contains an exact 22.5 tie, so this is
+     * a model-visible correctness requirement rather than a cosmetic detail. */
+    float q8_ties[QWEN_QK8_0] = {0};
+    q8_ties[0] = 127.0f;
+    q8_ties[1] = 22.5f;
+    q8_ties[2] = -22.5f;
+    q8_ties[3] = 23.5f;
+    q8_ties[4] = -23.5f;
+    uint8_t q8_tie_block[QWEN_BLOCK_Q8_0];
+    if (qwen_quantize_q8_0_scalar(q8_ties, QWEN_QK8_0, q8_tie_block, sizeof(q8_tie_block)) != 0) return 26;
+    const int8_t *q8_tie_qs = (const int8_t *)(q8_tie_block + 2);
+    if (q8_tie_qs[0] != 127 || q8_tie_qs[1] != 22 || q8_tie_qs[2] != -22 ||
+        q8_tie_qs[3] != 24 || q8_tie_qs[4] != -24) {
+        fprintf(stderr, "Q8_0 nearest-even tie mismatch: %d %d %d %d %d\n",
+                q8_tie_qs[0], q8_tie_qs[1], q8_tie_qs[2], q8_tie_qs[3], q8_tie_qs[4]);
+        return 27;
     }
 
     uint8_t q6[2 * QWEN_BLOCK_Q6_K];
@@ -494,13 +518,14 @@ int main(void) {
     if (qwen_matvec_q6_k_q8_k_scalar(q6, sizeof(q6) - 1, 2, 256, q8k_row, sizeof(q8k_row), q6_mv) == 0) return 25;
 
     printf("{\n");
-    printf("  \"schema\": \"qwen38-native-quant-sanity-v3\",\n");
+    printf("  \"schema\": \"qwen38-native-quant-sanity-v4\",\n");
     printf("  \"status\": \"PASS\",\n");
     printf("  \"llama_cpp_reference_revision\": \"557614e0296ff4a5b6f649737a65ae2076eea2fd\",\n");
     printf("  \"model_weights_downloaded\": false,\n");
     printf("  \"f16_decode_subnormal_cases\": 5,\n");
     printf("  \"f16_encode_cases\": 5,\n");
     printf("  \"q8_k_nearest_int_tie_cases\": 4,\n");
+    printf("  \"q8_0_x86_runtime_nearest_even_tie_cases\": 4,\n");
     printf("  \"q6_k_block_bytes\": %d,\n", QWEN_BLOCK_Q6_K);
     printf("  \"q8_k_block_bytes\": %d,\n", QWEN_BLOCK_Q8_K);
     printf("  \"q8_0_block_bytes\": %d,\n", QWEN_BLOCK_Q8_0);
