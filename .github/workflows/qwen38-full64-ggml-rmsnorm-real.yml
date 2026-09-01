@@ -1,0 +1,209 @@
+name: Qwen3.8 full64 pinned ggml RMSNorm real gate
+
+on:
+  push:
+    branches: [test/qwen3.8-27b]
+    paths:
+      - "research/qwen38/qwen35_k3_full64_ggml_rmsnorm.py"
+      - "research/qwen38/qwen35_k3_full64_one_token.py"
+      - "research/qwen38/llama_full64_one_token_oracle.cpp"
+      - "research/qwen38/qwen35_gdn_quant_layer_gate.py"
+      - "research/qwen38/qwen35_full_attn_layer3_gate.py"
+      - "research/qwen38/qwen35_gguf_decoder_contract.py"
+      - "research/qwen38/gguf_stream.py"
+      - "research/qwen38/gguf_k3_layout.py"
+      - "research/qwen38/k3_stream.py"
+      - "research/qwen38/gguf_quant_ref.py"
+      - "research/qwen38/gguf_quant_dot.c"
+      - ".github/workflows/qwen38-full64-ggml-rmsnorm-real.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sanity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Compile wrapper and dependencies
+        run: |
+          python -m py_compile \
+            research/qwen38/gguf_stream.py \
+            research/qwen38/gguf_k3_layout.py \
+            research/qwen38/k3_stream.py \
+            research/qwen38/gguf_quant_ref.py \
+            research/qwen38/qwen35_gdn_quant_layer_gate.py \
+            research/qwen38/qwen35_full_attn_layer3_gate.py \
+            research/qwen38/qwen35_k3_full64_one_token.py \
+            research/qwen38/qwen35_k3_full64_ggml_rmsnorm.py \
+            research/qwen38/qwen35_gguf_decoder_contract.py
+      - name: Run wrapper arithmetic sanity
+        working-directory: research/qwen38
+        run: python -c 'import qwen35_k3_full64_ggml_rmsnorm as w; w.sanity()'
+      - name: Run zero-model full64 composition sanity through wrapper
+        run: python research/qwen38/qwen35_k3_full64_ggml_rmsnorm.py sanity
+      - name: Compile and run native quant regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          cc -O2 -std=c11 -DQWEN_QUANT_DOT_SELFTEST research/qwen38/gguf_quant_dot.c -lm -o "$RUNNER_TEMP/qwen-quant-selftest"
+          "$RUNNER_TEMP/qwen-quant-selftest"
+
+  real-full64-rmsnorm:
+    needs: sanity
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[qwen-full64-rms-real]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      HF_HUB_DISABLE_TELEMETRY: "1"
+      LLAMA_CPP_COMMIT: "557614e0296ff4a5b6f649737a65ae2076eea2fd"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Reclaim disk
+        shell: bash
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup || true
+          docker system prune -af || true
+          df -h
+          free -h
+
+      - name: Install download dependency
+        run: python -m pip install --no-cache-dir huggingface_hub hf_xet
+
+      - name: Download pinned gold GGUF once
+        shell: bash
+        run: |
+          set -euo pipefail
+          model="$(python - <<'PY'
+          from huggingface_hub import hf_hub_download
+          print(hf_hub_download(
+              "bartowski/Qwen3.8-27B-GGUF",
+              filename="Qwen3.8-27B-Q6_K_L.gguf",
+              local_dir="${{ runner.temp }}/qwen38-model",
+          ))
+          PY
+          )"
+          test -f "$model"
+          echo "MODEL=$model" >> "$GITHUB_ENV"
+          ls -lh "$model"
+
+      - name: Emit mixed-quant decoder contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/qwen38-full64-rms-evidence"
+          mkdir -p "$evidence"
+          python -u research/qwen38/qwen35_gguf_decoder_contract.py real \
+            --model "$MODEL" --output "$evidence/inventory.json" \
+            2>&1 | tee "$evidence/inventory.log"
+
+      - name: Build pinned llama.cpp full-model oracle
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq cmake ninja-build
+          llama="$RUNNER_TEMP/llama.cpp"
+          mkdir -p "$llama"
+          git -C "$llama" init
+          git -C "$llama" remote add origin https://github.com/ggml-org/llama.cpp.git
+          git -C "$llama" fetch --depth 1 origin "$LLAMA_CPP_COMMIT"
+          git -C "$llama" checkout --detach FETCH_HEAD
+          test "$(git -C "$llama" rev-parse HEAD)" = "$LLAMA_CPP_COMMIT"
+          mkdir -p "$llama/examples/qwen38-full64-oracle"
+          cp research/qwen38/llama_full64_one_token_oracle.cpp "$llama/examples/qwen38-full64-oracle/qwen38_full64_oracle.cpp"
+          cat > "$llama/examples/qwen38-full64-oracle/CMakeLists.txt" <<'EOF'
+          set(TARGET llama-qwen38-full64-oracle)
+          add_executable(${TARGET} qwen38_full64_oracle.cpp)
+          target_link_libraries(${TARGET} PRIVATE llama)
+          target_compile_features(${TARGET} PRIVATE cxx_std_17)
+          EOF
+          printf '\nadd_subdirectory(qwen38-full64-oracle)\n' >> "$llama/examples/CMakeLists.txt"
+          cmake -S "$llama" -B "$llama/build" -G Ninja \
+            -DGGML_NATIVE=OFF -DGGML_OPENMP=ON -DLLAMA_BUILD_EXAMPLES=ON -DCMAKE_BUILD_TYPE=Release
+          cmake --build "$llama/build" --target llama-qwen38-full64-oracle -j2
+
+      - name: Compile native quant bridge
+        shell: bash
+        run: |
+          set -euo pipefail
+          cc -O2 -std=c11 -fPIC -shared research/qwen38/gguf_quant_dot.c -lm -o "$RUNNER_TEMP/libqwen_quant_dot.so"
+          cc -O2 -std=c11 -DQWEN_QUANT_DOT_SELFTEST research/qwen38/gguf_quant_dot.c -lm -o "$RUNNER_TEMP/qwen-quant-selftest"
+          "$RUNNER_TEMP/qwen-quant-selftest"
+
+      - name: Capture pinned llama.cpp full-model oracle
+        timeout-minutes: 25
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/qwen38-full64-rms-evidence"
+          /usr/bin/time -v "$RUNNER_TEMP/llama.cpp/build/bin/llama-qwen38-full64-oracle" \
+            "$MODEL" "$evidence/oracle.json" 2>&1 | tee "$evidence/oracle.log"
+
+      - name: Validate full-model oracle contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/qwen38-full64-rms-evidence"
+          python - "$evidence/oracle.json" <<'PY'
+          import json, sys
+          data=json.load(open(sys.argv[1], encoding="utf-8"))
+          assert data["schema"] == "qwen38-llama-full64-one-token-oracle-v1"
+          assert data["decode_returncode"] == 0
+          assert data["captured_complete_model"] is True
+          cp=data["checkpoints"]
+          for il in range(64):
+              assert len(cp[f"post_ffn-{il}"]) == 5120
+          assert len(cp["result_norm"]) == 5120
+          assert len(cp["result_output"]) == 248320
+          print({"status":"PASS","top_token":data["top_token"],"checkpoints":len(cp)})
+          PY
+
+      - name: Run custom K3 full64 with pinned ggml RMSNorm
+        timeout-minutes: 45
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/qwen38-full64-rms-evidence"
+          work="$RUNNER_TEMP/qwen38-k3-full64-rms"
+          mkdir -p "$work"
+          /usr/bin/time -v python -u research/qwen38/qwen35_k3_full64_ggml_rmsnorm.py run \
+            --model "$MODEL" \
+            --native-lib "$RUNNER_TEMP/libqwen_quant_dot.so" \
+            --inventory "$evidence/inventory.json" \
+            --oracle "$evidence/oracle.json" \
+            --work-dir "$work" \
+            --output "$evidence/full64.json" \
+            2>&1 | tee "$evidence/full64.log"
+
+      - name: Show compact evidence and cleanup
+        if: always()
+        shell: bash
+        run: |
+          evidence="$RUNNER_TEMP/qwen38-full64-rms-evidence"
+          echo '=== candidate ==='; cat "$evidence/full64.json" 2>/dev/null || true
+          echo '=== tails ==='
+          tail -n 100 "$evidence/inventory.log" 2>/dev/null || true
+          tail -n 120 "$evidence/oracle.log" 2>/dev/null || true
+          tail -n 220 "$evidence/full64.log" 2>/dev/null || true
+          rm -rf "$RUNNER_TEMP/qwen38-model" "$RUNNER_TEMP/qwen38-k3-full64-rms" "$RUNNER_TEMP/llama.cpp" || true
+          df -h
+          free -h
+
+      - name: Upload full64 RMSNorm evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen38-full64-rmsnorm-${{ github.run_id }}
+          path: ${{ runner.temp }}/qwen38-full64-rms-evidence/
+          if-no-files-found: warn
+          retention-days: 14
