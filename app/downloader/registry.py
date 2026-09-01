@@ -11,6 +11,7 @@ from app.downloader.asura import (
 from app.downloader.generic_js import GenericJsAdapter
 from app.downloader.http import read_response_limited, safe_get
 from app.downloader.image_urls import best_srcset_candidate, resolve_image_candidate
+from app.parameters import REMOTE_CONNECT_TIMEOUT_SECONDS
 from app.security import MAX_REMOTE_DOCUMENT_BYTES
 
 
@@ -22,7 +23,12 @@ class GenericStaticAdapter(BaseAdapter):
         return True
 
     def extract_image_urls(self, chapter_url: str) -> list[str]:
-        response = safe_get(chapter_url, headers=self.headers, timeout=30, stream=True)
+        response = safe_get(
+            chapter_url,
+            headers=self.headers,
+            timeout=REMOTE_CONNECT_TIMEOUT_SECONDS,
+            stream=True,
+        )
         try:
             body = read_response_limited(response, limit_bytes=MAX_REMOTE_DOCUMENT_BYTES)
         finally:

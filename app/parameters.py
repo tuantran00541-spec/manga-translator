@@ -794,6 +794,9 @@ REMOTE_CONNECT_TIMEOUT_SECONDS = _env_float(
 REMOTE_CHUNK_BYTES = _env_int(
     "MANGA_REMOTE_CHUNK_BYTES", 64 * 1024, minimum=1024, maximum=4 * 1024 * 1024
 )
+DOWNLOAD_WORKER_LIMIT = _env_int(
+    "MANGA_DOWNLOAD_WORKERS", 4, minimum=1, maximum=8
+)
 
 
 # Cross-parameter constraints. Individual env parsers clamp each value, while

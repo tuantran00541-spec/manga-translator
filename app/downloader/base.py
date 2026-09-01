@@ -1,17 +1,9 @@
 from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor, as_completed
-import os
 from pathlib import Path
 
 from app.downloader.http import safe_download_file
-
-
-def _download_worker_limit() -> int:
-    try:
-        value = int(os.getenv("MANGA_DOWNLOAD_WORKERS", "4"))
-    except ValueError:
-        value = 4
-    return max(1, min(value, 8))
+from app.parameters import DOWNLOAD_WORKER_LIMIT
 
 
 class BaseAdapter(ABC):
@@ -49,7 +41,7 @@ class BaseAdapter(ABC):
             ext = self._guess_ext(img_url)
             work.append((img_url, output_dir / f"{i:03d}{ext}"))
 
-        max_workers = min(_download_worker_limit(), len(work))
+        max_workers = min(DOWNLOAD_WORKER_LIMIT, len(work))
         if max_workers <= 1:
             for img_url, out_path in work:
                 self._download_file(img_url, out_path, referer=referer)
@@ -73,7 +65,7 @@ class BaseAdapter(ABC):
     def _download_file(self, url: str, out_path: Path, referer: str) -> None:
         headers = dict(self.headers)
         headers["Referer"] = referer
-        safe_download_file(url, out_path, headers=headers, timeout=30)
+        safe_download_file(url, out_path, headers=headers)
 
     @staticmethod
     def _dedupe(urls: list[str]) -> list[str]:
