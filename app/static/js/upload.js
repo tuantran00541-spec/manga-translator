@@ -12,12 +12,7 @@ function initUpload() {
     }
   });
 
-  dropzone.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
-      input.click();
-    }
-  });
+  dropzone.addEventListener("click", () => input.click());
 
   dropzone.addEventListener("dragover", (e) => {
     e.preventDefault();

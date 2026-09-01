@@ -43,7 +43,7 @@ python scripts/model_e2e_gate.py \
   --workers 2 \
   --require-ocr \
   --max-rss-mb 4096 \
-  --report-json benchmark-results/model-e2e-dynamic.json
+  --report-json
 ```
 
 Run the fixed fallback independently so the fixed session remains on its serialized compatibility path:
@@ -57,10 +57,10 @@ python scripts/model_e2e_gate.py \
   --workers 2 \
   --require-ocr \
   --max-rss-mb 4096 \
-  --report-json benchmark-results/model-e2e-fixed.json
+  --report-json
 ```
 
-A smaller smoke run can use `--max-source-images`, `--start-page`, `--max-pages`, or `--max-ocr-boxes`. `--chapter-id` must match the production validator: exactly 8 lowercase hexadecimal characters (`[a-f0-9]{8}`). An intentionally text-free smoke dataset may additionally use `--allow-empty-cleanup`; that flag only suppresses the cleanup-evidence assertion and must not be used for a promotion run. Do not treat a reduced smoke run as the promotion gate.
+A smaller smoke run can use `--max-source-images`, `--start-page`, `--max-pages`, or `--max-ocr-boxes`. `--chapter-id` must match the production validator: exactly 8 lowercase hexadecimal characters (`[a-f0-9]{8}`). An intentionally text-free smoke dataset may additionally use `--allow-empty-cleanup`; that flag only suppresses the cleanup-evidence assertion and must not be used for a promotion run. Do not treat a reduced smoke run as the promotion gate. `--report-json` writes the fixed report name for the selected LaMa mode under `benchmark-results/`.
 
 ## Hard assertions
 

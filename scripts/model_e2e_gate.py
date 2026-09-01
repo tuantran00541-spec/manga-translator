@@ -19,8 +19,6 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from app.security import validate_managed_path
-
 _IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
 _REPORT_ROOT = _REPO_ROOT / "benchmark-results"
 
@@ -38,9 +36,10 @@ class GateFailure(RuntimeError):
     pass
 
 
-def _report_path(path: Path) -> Path:
-    candidate = path if path.is_absolute() else _REPO_ROOT / path
-    return validate_managed_path(candidate, _REPORT_ROOT)
+def _report_path(lama_mode: str) -> Path:
+    if lama_mode == "fixed":
+        return _REPORT_ROOT / "model-e2e-fixed.json"
+    return _REPORT_ROOT / "model-e2e-dynamic.json"
 
 
 def _rss_mb() -> float:
@@ -514,7 +513,11 @@ def parse_args() -> argparse.Namespace:
         help="Allow a smoke dataset that exercises no authorized cleanup pixels.",
     )
     parser.add_argument("--max-rss-mb", type=float, default=4096.0)
-    parser.add_argument("--report-json", type=Path)
+    parser.add_argument(
+        "--report-json",
+        action="store_true",
+        help="Write the established report name under benchmark-results/.",
+    )
     return parser.parse_args()
 
 
@@ -531,9 +534,9 @@ def main() -> int:
     text = json.dumps(report, ensure_ascii=False, indent=2)
     print(text)
     if args.report_json:
-        report_path = _report_path(args.report_json)
+        report_path = _report_path(args.lama_mode)
         report_path.parent.mkdir(parents=True, exist_ok=True)
-        report_path.write_text(text + "\n", encoding="utf-8")  # NOSONAR(S8707): _report_path confines CLI output to benchmark-results.
+        report_path.write_text(text + "\n", encoding="utf-8")
     return 0 if report.get("status") == "pass" else 1
 
 

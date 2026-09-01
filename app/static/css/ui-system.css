@@ -249,12 +249,17 @@ body.settings-open {
 #upload-dropzone {
   display: grid;
   place-content: center;
+  width: 100%;
   min-height: 146px;
   margin: 0;
   padding: 22px;
   border: 1px dashed var(--border-2);
   border-radius: 9px;
   background: rgba(9, 13, 22, .32);
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: center;
 }
 
 #upload-dropzone:hover,
@@ -264,12 +269,13 @@ body.settings-open {
   background: var(--accent-soft);
 }
 
-#upload-dropzone p {
+#upload-dropzone .upload-copy {
+  display: block;
   margin-bottom: 8px;
   font-size: 13px;
 }
 
-#upload-browse-label {
+#upload-browse-text {
   font-weight: 600;
   text-decoration: none;
 }

@@ -28,14 +28,15 @@
   transition: border-color 0.15s ease, background 0.15s ease;
 }
 
-#upload-dropzone p {
+#upload-dropzone .upload-copy {
+  display: block;
   margin: 0 0 6px;
   color: var(--text);
   font-family: var(--font-body);
   font-size: 14px;
 }
 
-#upload-browse-label {
+#upload-browse-text {
   color: var(--blue);
   cursor: pointer;
   text-decoration: underline;
