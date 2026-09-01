@@ -36,6 +36,9 @@ static const char * TARGETS[] = {
     "linear_attn_out-0",
     "attn_residual-0",
     "attn_post_norm-0",
+    "ffn_up-0",
+    "ffn_gate-0",
+    "ffn_swiglu-0",
     "ffn_out-0",
     "post_ffn-0",
 };
@@ -92,9 +95,9 @@ static bool normalize_fused_qk_predelta(capture_state & state) {
         }
 
         // With fused GDN enabled llama.cpp leaves q/k at 16 heads and lets the
-        // fused recurrence broadcast K heads internally.  The custom scalar K3
+        // fused recurrence broadcast K heads internally. The custom scalar K3
         // path explicitly repeats them to the converter's tiled 48-head order:
-        // [k0..k15, k0..k15, k0..k15].  Expand only the oracle checkpoint so
+        // [k0..k15, k0..k15, k0..k15]. Expand only the oracle checkpoint so
         // both implementations are compared at the same semantic boundary.
         std::vector<float> tiled;
         tiled.reserve(tiled_elems);
@@ -146,7 +149,7 @@ static void write_json(const char * path, llama_token token, int decode_rc, cons
     std::ofstream out(path);
     out << std::setprecision(9);
     out << "{\n";
-    out << "  \"schema\": \"qwen38-llama-layer0-oracle-v2\",\n";
+    out << "  \"schema\": \"qwen38-llama-layer0-oracle-v3\",\n";
     out << "  \"llama_cpp_revision\": \"557614e0296ff4a5b6f649737a65ae2076eea2fd\",\n";
     out << "  \"token_id\": " << token << ",\n";
     out << "  \"decode_returncode\": " << decode_rc << ",\n";
