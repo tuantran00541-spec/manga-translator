@@ -20,6 +20,12 @@ COLUMNS = (
     "overlap_only",
     "geometry_override",
 )
+METRIC_COLUMNS = (
+    "detect_ms",
+    "inpaint_ms",
+    "lama_runs",
+    "smart_fill",
+)
 
 
 def _manifest_path(target: str) -> Path:
@@ -37,9 +43,18 @@ def _manifest_path(target: str) -> Path:
     return resolved
 
 
-def _page_stats(page: dict) -> dict[str, int | str | bool]:
+def _page_stats(page: dict) -> dict[str, int | float | str | bool | dict]:
     boxes = [box for box in (page.get("boxes") or []) if isinstance(box, dict)]
     active = [box for box in boxes if not box.get("removed")]
+    metrics = page.get("processing_metrics")
+    metrics = metrics if isinstance(metrics, dict) else {}
+    timing = metrics.get("timing_ms") if isinstance(metrics.get("timing_ms"), dict) else {}
+    auto = metrics.get("auto_inpaint") if isinstance(metrics.get("auto_inpaint"), dict) else {}
+    manual = metrics.get("manual_inpaint") if isinstance(metrics.get("manual_inpaint"), dict) else {}
+    detect_ms = float(timing.get("detect") or 0.0)
+    inpaint_ms = float(timing.get("auto_inpaint") or 0.0) + float(
+        timing.get("manual_inpaint") or 0.0
+    )
     return {
         "total": len(boxes),
         "active": len(active),
@@ -54,19 +69,30 @@ def _page_stats(page: dict) -> dict[str, int | str | bool]:
         "geometry_override": sum(bool(box.get("geometry_overridden")) for box in active),
         "detection_state": str(page.get("detection_state") or "unknown"),
         "needs_review": bool(page.get("needs_review")),
+        "metrics_available": bool(metrics),
+        "detect_ms": round(detect_ms, 3),
+        "inpaint_ms": round(inpaint_ms, 3),
+        "lama_runs": int(auto.get("lama_model_runs") or 0)
+        + int(manual.get("lama_model_runs") or 0),
+        "smart_fill": int(auto.get("smart_fill_regions") or 0)
+        + int(manual.get("smart_fill_regions") or 0),
+        "processing_metrics": metrics,
     }
 
 
-def _sum_stats(rows: list[dict[str, int | str | bool]]) -> dict[str, int]:
-    return {
-        key: sum(int(row.get(key) or 0) for row in rows)
-        for key in COLUMNS
+def _sum_stats(rows: list[dict[str, int | float | str | bool | dict]]) -> dict[str, int | float]:
+    totals: dict[str, int | float] = {
+        key: sum(int(row.get(key) or 0) for row in rows) for key in COLUMNS
     }
+    for key in METRIC_COLUMNS:
+        values = [row.get(key) or 0 for row in rows]
+        totals[key] = round(sum(float(value) for value in values), 3)
+    return totals
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Summarize persisted detector/inpaint provenance for one processed chapter."
+        description="Summarize detector authority and observed processing timing for one chapter."
     )
     parser.add_argument(
         "target",
@@ -100,18 +126,25 @@ def main() -> None:
         print(json.dumps(report, ensure_ascii=False, indent=2))
         return
 
-    header = ("page", *COLUMNS, "state", "page_review")
+    header = ("page", *COLUMNS, *METRIC_COLUMNS, "state", "page_review")
     print("\t".join(header))
     for row in rows:
         values = [
             str(row["page"]),
             *(str(row[key]) for key in COLUMNS),
+            *(str(row[key]) for key in METRIC_COLUMNS),
             str(row["detection_state"]),
             "1" if row["needs_review"] else "0",
         ]
         print("\t".join(values))
 
-    total_values = ["TOTAL", *(str(totals[key]) for key in COLUMNS), "-", "-"]
+    total_values = [
+        "TOTAL",
+        *(str(totals[key]) for key in COLUMNS),
+        *(str(totals[key]) for key in METRIC_COLUMNS),
+        "-",
+        "-",
+    ]
     print("\t".join(total_values))
 
 

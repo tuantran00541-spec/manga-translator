@@ -1,6 +1,7 @@
 import os
 import base64
 import copy
+import time
 import uuid
 from dataclasses import replace
 from pathlib import Path
@@ -583,6 +584,9 @@ class ChapterPipeline:
                     page_data.get("unverified_regions") or []
                 )
                 target_page["needs_review"] = bool(page_data.get("needs_review"))
+                target_page["processing_metrics"] = dict(
+                    page_data.get("processing_metrics") or {}
+                )
                 bump_page_revision(target_page, "process_revision")
                 bump_page_revision(target_page, "clean_revision")
 
@@ -1403,7 +1407,10 @@ class ChapterPipeline:
         protect_tail_credits: bool = False,
         parallel_detectors: bool = False,
     ) -> dict:
+        started_at = time.perf_counter()
+        read_started_at = started_at
         image = read_image(img_path)
+        read_ms = (time.perf_counter() - read_started_at) * 1000.0
         detector_kwargs = {"parallel": parallel_detectors}
         if protect_tail_credits:
             detector_kwargs["protect_tail_credits"] = True
@@ -1423,6 +1430,7 @@ class ChapterPipeline:
             and core_bounds != (0, image.shape[0])
             and not protect_tail_credits
         )
+        detect_started_at = time.perf_counter()
         if use_core_detector:
             core_y1, core_y2 = core_bounds
             core_image = image[core_y1:core_y2, :]
@@ -1440,6 +1448,7 @@ class ChapterPipeline:
             )
         if excluded_regions:
             detected = [b for b in detected if not self._box_in_excluded(b, excluded_regions)]
+        detect_ms = (time.perf_counter() - detect_started_at) * 1000.0
 
         existing_boxes = copy.deepcopy(existing_boxes or [])
         detector_records = [
@@ -1526,7 +1535,10 @@ class ChapterPipeline:
                 float(old.get("confidence", 1.0)), mask_arr,
             ))
 
+        auto_inpaint_started_at = time.perf_counter()
         clean_image = self.inpainter.inpaint(image, effective_boxes)
+        auto_inpaint_ms = (time.perf_counter() - auto_inpaint_started_at) * 1000.0
+        auto_inpaint_metrics = self.inpainter.last_metrics()
 
         auto_clean_path = self._auto_clean_path(processed_dir, img_path)
         manual_mask_path = processed_dir / f"manual_mask_{img_path.name}"
@@ -1536,6 +1548,8 @@ class ChapterPipeline:
             write_image(tmp_auto_clean_path, clean_image)
 
         manual_mask_posix = None
+        manual_inpaint_ms = 0.0
+        manual_inpaint_metrics: dict[str, int] = {}
         if manual_mask_path.exists():
             raw = np.fromfile(str(manual_mask_path), dtype=np.uint8)
             manual_mask = cv2.imdecode(raw, cv2.IMREAD_GRAYSCALE)
@@ -1548,11 +1562,18 @@ class ChapterPipeline:
                         manual_mask = None
                 if manual_mask is not None and np.any(manual_mask > 10):
                     manual_mask = (manual_mask > 10).astype(np.uint8) * 255
+                    manual_inpaint_started_at = time.perf_counter()
                     clean_image = self.inpainter.inpaint_mask(clean_image.copy(), manual_mask)
+                    manual_inpaint_ms = (
+                        time.perf_counter() - manual_inpaint_started_at
+                    ) * 1000.0
+                    manual_inpaint_metrics = self.inpainter.last_metrics()
                     manual_mask_posix = manual_mask_path.as_posix()
 
         tmp_clean_path = processed_dir / f"clean_{img_path.name}.{uuid.uuid4().hex[:12]}.tmp.png"
+        write_started_at = time.perf_counter()
         write_image(tmp_clean_path, clean_image)
+        write_ms = (time.perf_counter() - write_started_at) * 1000.0
 
         unverified_regions = [
             {k: record.get(k) for k in ("x1", "y1", "x2", "y2", "confidence", "source_model", "class_name", "semantic_type")}
@@ -1569,6 +1590,30 @@ class ChapterPipeline:
             if float(gray.std()) > 24.0:
                 detection_issues.append("content_heavy_zero_box")
         detection_state = "needs_review" if detection_issues else "verified"
+        inpainter = self.inpainter
+        inpaint_model_path = getattr(inpainter, "lama_model_path", None)
+        processing_metrics = {
+            "timing_ms": {
+                "read": round(read_ms, 3),
+                "detect": round(detect_ms, 3),
+                "auto_inpaint": round(auto_inpaint_ms, 3),
+                "manual_inpaint": round(manual_inpaint_ms, 3),
+                "write": round(write_ms, 3),
+                "total": round((time.perf_counter() - started_at) * 1000.0, 3),
+            },
+            "detector": {
+                "records": len(detector_records),
+                "authorized": len(effective_boxes),
+                "review_only": len(unverified_regions),
+            },
+            "auto_inpaint": auto_inpaint_metrics,
+            "manual_inpaint": manual_inpaint_metrics,
+            "model": {
+                "active": Path(inpaint_model_path).name if inpaint_model_path else None,
+                "dynamic": bool(getattr(inpainter, "dynamic_lama", False)),
+                "session_loaded": bool(getattr(inpainter, "session_loaded", False)),
+            },
+        }
 
         res = {
             "tmp_clean": tmp_clean_path.as_posix(),
@@ -1583,6 +1628,7 @@ class ChapterPipeline:
             "detection_issues": detection_issues,
             "unverified_regions": unverified_regions,
             "needs_review": bool(detection_issues),
+            "processing_metrics": processing_metrics,
         }
         if tmp_auto_clean_path is not None:
             res["tmp_auto_clean"] = tmp_auto_clean_path.as_posix()

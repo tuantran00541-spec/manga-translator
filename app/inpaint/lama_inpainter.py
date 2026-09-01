@@ -103,6 +103,7 @@ class Inpainter:
     def __init__(self):
         self._prefer_dynamic = USE_DYNAMIC_LAMA and LAMA_DYNAMIC_MODEL.is_file()
         self._session_lock = threading.RLock()
+        self._metrics_local = threading.local()
         self._session_run_count = 0
         self.session = None
         self.image_input = None
@@ -110,6 +111,29 @@ class Inpainter:
         self.dynamic_lama = False
         self.lama_model_path = LAMA_DYNAMIC_MODEL if self._prefer_dynamic else LAMA_MODEL
         self._recycle_fixed_session = False
+
+    def _begin_metrics(self, *, boxes: int = 0) -> None:
+        self._metrics_local.value = {
+            "boxes": max(0, int(boxes)),
+            "clusters": 0,
+            "skipped_clusters": 0,
+            "smart_fill_regions": 0,
+            "lama_regions": 0,
+            "lama_model_runs": 0,
+            "mask_components": 0,
+        }
+
+    def _metric_add(self, name: str, amount: int = 1) -> None:
+        metrics = getattr(self._metrics_local, "value", None)
+        if metrics is None:
+            self._begin_metrics()
+            metrics = self._metrics_local.value
+        metrics[name] = int(metrics.get(name, 0)) + int(amount)
+
+    def last_metrics(self) -> dict[str, int]:
+        """Return counters from the current worker thread's latest inpaint call."""
+        metrics = getattr(self._metrics_local, "value", {})
+        return {str(name): int(value) for name, value in metrics.items()}
 
     @property
     def session_loaded(self) -> bool:
@@ -189,12 +213,14 @@ class Inpainter:
         self._configure_loaded_session(session, self.lama_model_path)
 
     def inpaint(self, image: np.ndarray, boxes: list[BubbleBox]) -> np.ndarray:
+        self._begin_metrics(boxes=len(boxes))
         if not boxes:
             return image.copy()
 
         result = image.copy()
         h, w = image.shape[:2]
         clusters = self._cluster_boxes(boxes)
+        self._metrics_local.value["clusters"] = len(clusters)
 
         for cluster in clusters:
             x1 = min(b.x1 for b in cluster)
@@ -203,6 +229,7 @@ class Inpainter:
             y2 = max(b.y2 for b in cluster)
 
             if len(cluster) > 1 and (x2 - x1) * (y2 - y1) > w * h * MAX_BOX_AREA_RATIO:
+                self._metric_add("skipped_clusters")
                 logger.warning(f"Skipping multi-box cluster ({len(cluster)} boxes) at ({x1}, {y1}, {x2}, {y2}): area exceeds MAX_BOX_AREA_RATIO")
                 continue
 
@@ -238,11 +265,13 @@ class Inpainter:
         return result
 
     def inpaint_mask(self, image: np.ndarray, mask: np.ndarray) -> np.ndarray:
+        self._begin_metrics()
         if mask is None or not np.any(mask > 127):
             return image.copy()
 
         binary_mask = (mask > 127).astype(np.uint8) * 255
         num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(binary_mask, connectivity=8)
+        self._metrics_local.value["mask_components"] = max(0, int(num_labels) - 1)
 
         result = image.copy()
         h, w = image.shape[:2]
@@ -379,11 +408,13 @@ class Inpainter:
 
         fill_color = self._smart_fill_color(crop, local_mask)
         if fill_color is not None:
+            self._metric_add("smart_fill_regions")
             filled = crop.copy()
             filled[mask_bool] = fill_color
             image[cy1:cy2, cx1:cx2] = filled
             return image
 
+        self._metric_add("lama_regions")
         return self._lama_fill(image, crop, local_mask, crop_box, feather=feather)
 
     def _lama_fill(self, image: np.ndarray, crop: np.ndarray, local_mask: np.ndarray, crop_box: tuple, feather: bool = False) -> np.ndarray:
@@ -491,6 +522,7 @@ class Inpainter:
 
     def _run_lama(self, canvas: np.ndarray, mask_canvas: np.ndarray) -> np.ndarray:
         self._ensure_session()
+        self._metric_add("lama_model_runs")
         crop_rgb = cv2.cvtColor(canvas, cv2.COLOR_BGR2RGB)
         img_blob = np.ascontiguousarray(
             (crop_rgb.astype(np.float32) / 255.0).transpose(2, 0, 1)[None]
