@@ -1,0 +1,114 @@
+name: Qwen3.8 full-attention layer59 FFN microscope
+on:
+  push:
+    branches: [test/qwen3.8-27b]
+    paths:
+      - "research/qwen38/llama_layer59_ffn_oracle.cpp"
+      - "research/qwen38/qwen35_full_attn_layer59_ffn_probe.py"
+      - "research/qwen38/qwen35_k3_full64_ggml_exact.py"
+      - "research/qwen38/qwen35_k3_full64_ggml_rmsnorm.py"
+      - "research/qwen38/qwen35_k3_full64_one_token.py"
+      - "research/qwen38/qwen35_gdn_quant_layer_gate.py"
+      - "research/qwen38/qwen35_full_attn_layer3_gate.py"
+      - "research/qwen38/gguf_stream.py"
+      - "research/qwen38/gguf_k3_layout.py"
+      - "research/qwen38/k3_stream.py"
+      - "research/qwen38/gguf_quant_dot.c"
+      - ".github/workflows/qwen38-full-attn-layer59-ffn.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  sanity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Compile microscope
+        run: |
+          python -m py_compile research/qwen38/qwen35_full_attn_layer59_ffn_probe.py research/qwen38/qwen35_k3_full64_ggml_exact.py research/qwen38/qwen35_k3_full64_ggml_rmsnorm.py research/qwen38/qwen35_k3_full64_one_token.py research/qwen38/qwen35_gdn_quant_layer_gate.py research/qwen38/qwen35_full_attn_layer3_gate.py research/qwen38/gguf_stream.py research/qwen38/gguf_k3_layout.py research/qwen38/k3_stream.py
+      - name: Run layer59 FFN sanity
+        run: python research/qwen38/qwen35_full_attn_layer59_ffn_probe.py sanity
+      - name: Native quant regression
+        run: |
+          cc -O2 -std=c11 -DQWEN_QUANT_DOT_SELFTEST research/qwen38/gguf_quant_dot.c -lm -o "$RUNNER_TEMP/qwen-quant-selftest"
+          "$RUNNER_TEMP/qwen-quant-selftest"
+  real-layer59-ffn:
+    needs: sanity
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[qwen-attn59-real]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      HF_HUB_DISABLE_TELEMETRY: "1"
+      LLAMA_CPP_COMMIT: "557614e0296ff4a5b6f649737a65ae2076eea2fd"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Reclaim disk
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup || true
+          docker system prune -af || true
+          df -h
+      - name: Install download dependency
+        run: python -m pip install --no-cache-dir huggingface_hub hf_xet
+      - name: Download pinned gold GGUF once
+        shell: bash
+        run: |
+          set -euo pipefail
+          model="$(python - <<'PY'
+          from huggingface_hub import hf_hub_download
+          print(hf_hub_download("bartowski/Qwen3.8-27B-GGUF",filename="Qwen3.8-27B-Q6_K_L.gguf",local_dir="${{ runner.temp }}/qwen38-model"))
+          PY
+          )"
+          test -f "$model"; echo "MODEL=$model" >> "$GITHUB_ENV"
+      - name: Build pinned llama.cpp layer59 oracle
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq; sudo apt-get install -y -qq cmake ninja-build
+          llama="$RUNNER_TEMP/llama.cpp"; mkdir -p "$llama"; git -C "$llama" init
+          git -C "$llama" remote add origin https://github.com/ggml-org/llama.cpp.git
+          git -C "$llama" fetch --depth 1 origin "$LLAMA_CPP_COMMIT"; git -C "$llama" checkout --detach FETCH_HEAD
+          test "$(git -C "$llama" rev-parse HEAD)" = "$LLAMA_CPP_COMMIT"
+          mkdir -p "$llama/examples/qwen38-layer59-ffn"; cp research/qwen38/llama_layer59_ffn_oracle.cpp "$llama/examples/qwen38-layer59-ffn/oracle.cpp"
+          cat > "$llama/examples/qwen38-layer59-ffn/CMakeLists.txt" <<'EOF'
+          set(TARGET llama-qwen38-layer59-ffn)
+          add_executable(${TARGET} oracle.cpp)
+          target_link_libraries(${TARGET} PRIVATE llama)
+          target_compile_features(${TARGET} PRIVATE cxx_std_17)
+          EOF
+          printf '\nadd_subdirectory(qwen38-layer59-ffn)\n' >> "$llama/examples/CMakeLists.txt"
+          cmake -S "$llama" -B "$llama/build" -G Ninja -DGGML_NATIVE=OFF -DGGML_OPENMP=ON -DLLAMA_BUILD_EXAMPLES=ON -DCMAKE_BUILD_TYPE=Release
+          cmake --build "$llama/build" --target llama-qwen38-layer59-ffn -j2
+      - name: Compile native quant bridge
+        run: cc -O2 -std=c11 -fPIC -shared research/qwen38/gguf_quant_dot.c -lm -o "$RUNNER_TEMP/libqwen_quant_dot.so"
+      - name: Capture pinned layer59 oracle
+        timeout-minutes: 20
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/qwen38-attn59-evidence"; mkdir -p "$evidence"
+          /usr/bin/time -v "$RUNNER_TEMP/llama.cpp/build/bin/llama-qwen38-layer59-ffn" "$MODEL" "$evidence/oracle.json" 2>&1 | tee "$evidence/oracle.log"
+      - name: Run layer59 FFN microscope
+        timeout-minutes: 20
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/qwen38-attn59-evidence"; work="$RUNNER_TEMP/qwen38-attn59-work"; mkdir -p "$work"
+          /usr/bin/time -v python -u research/qwen38/qwen35_full_attn_layer59_ffn_probe.py run --model "$MODEL" --native-lib "$RUNNER_TEMP/libqwen_quant_dot.so" --oracle "$evidence/oracle.json" --work-dir "$work" --output "$evidence/diagnostic.json" 2>&1 | tee "$evidence/diagnostic.log"
+      - name: Show evidence and cleanup
+        if: always()
+        run: |
+          evidence="$RUNNER_TEMP/qwen38-attn59-evidence"; cat "$evidence/diagnostic.json" 2>/dev/null || true; tail -n 160 "$evidence/diagnostic.log" 2>/dev/null || true
+          rm -rf "$RUNNER_TEMP/qwen38-model" "$RUNNER_TEMP/qwen38-attn59-work" "$RUNNER_TEMP/llama.cpp" || true
+      - name: Upload layer59 FFN evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen38-attn59-ffn-${{ github.run_id }}
+          path: ${{ runner.temp }}/qwen38-attn59-evidence/
+          if-no-files-found: warn
+          retention-days: 14
