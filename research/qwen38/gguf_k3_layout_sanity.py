@@ -10,7 +10,7 @@ import tempfile
 
 from gguf_stream import GGML_TYPE_F32, GGML_TYPE_Q4_0, GGML_TYPE_Q6_K, GGML_TYPE_Q8_0, parse_gguf, tensor_nbytes
 from gguf_k3_layout import ManifestK3Trunk, pack_gguf_layers
-from k3_stream import ALIGN, TENSOR_ALIGN, plan_memory, verify_layer
+from k3_stream import ALIGN, TENSOR_ALIGN, K3Trunk, plan_memory, verify_layer
 
 TYPE_UINT32 = 4
 TYPE_STRING = 8
@@ -92,16 +92,18 @@ def main() -> None:
         one = plan_memory(manifest, layer_bytes, want_ring=2, max_pinned=0)
         assert two.ring_slots == 2 and one.ring_slots == 1
 
-        with ManifestK3Trunk(trunk, index, budget_bytes=2 * layer_bytes, want_ring=2, max_pinned=0, prefer_direct_io=False) as reader:
+        # Base K3Trunk must understand GGUF tensor names through manifest.tensor_index.
+        with K3Trunk(trunk, index, budget_bytes=2 * layer_bytes, want_ring=2, max_pinned=0, prefer_direct_io=False) as reader:
             v0 = reader.bind(0)
             assert bytes(reader.tensor_view(v0, "blk.0.a_f32")) == expected["blk.0.a_f32"]
             assert reader.prefetch(1) is True
             v1 = reader.bind(1)
             assert bytes(reader.tensor_view(v1, "blk.1.a_q4")) == expected["blk.1.a_q4"]
             assert reader.report()["async_prefetch_enabled"] is True
+            assert set(reader.tensor_index) == set(manifest["tensor_index"])
             del v0, v1
 
-        with ManifestK3Trunk(trunk, index, budget_bytes=layer_bytes, want_ring=2, max_pinned=0, prefer_direct_io=False) as reader:
+        with K3Trunk(trunk, index, budget_bytes=layer_bytes, want_ring=2, max_pinned=0, prefer_direct_io=False) as reader:
             v0 = reader.bind(0)
             snapshot = bytes(reader.tensor_view(v0, "blk.0.b_q6"))
             assert reader.prefetch(1) is False
@@ -109,7 +111,13 @@ def main() -> None:
             assert reader.report()["async_prefetch_enabled"] is False
             del v0
 
-        print(json.dumps({"schema":"qwen38-gguf-k3-layout-sanity-v1","status":"PASS","model_weights_downloaded":False,"layers":2,"globals":3,"max_copy_chunk":manifest["max_copy_chunk_observed"],"two_slot_prefetch":True,"one_slot_prefetch":False}, indent=2, sort_keys=True))
+        # Keep the old subclass as a compatibility surface until callers migrate.
+        with ManifestK3Trunk(trunk, index, budget_bytes=layer_bytes, want_ring=1, max_pinned=0, prefer_direct_io=False) as reader:
+            v0 = reader.bind(0)
+            assert bytes(reader.tensor_view(v0, "blk.0.a_f32")) == expected["blk.0.a_f32"]
+            del v0
+
+        print(json.dumps({"schema":"qwen38-gguf-k3-layout-sanity-v2","status":"PASS","model_weights_downloaded":False,"layers":2,"globals":3,"max_copy_chunk":manifest["max_copy_chunk_observed"],"base_manifest_index":True,"compat_subclass":True,"two_slot_prefetch":True,"one_slot_prefetch":False}, indent=2, sort_keys=True))
 
 
 if __name__ == "__main__":
