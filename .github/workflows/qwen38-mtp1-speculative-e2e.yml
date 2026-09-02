@@ -1,0 +1,175 @@
+name: Qwen3.8 exact MTP-1 speculative end-to-end gate
+
+on:
+  push:
+    branches: [research/qwen3.8-27b-runtime-finish]
+    paths:
+      - "research/qwen38/qwen38_mtp1_speculative_e2e_probe.py"
+      - ".github/workflows/qwen38-mtp1-speculative-e2e.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  HF_HUB_DISABLE_TELEMETRY: "1"
+
+jobs:
+  speculative-e2e:
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[qwen-spec-e2e]') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Exact target, Q4 and speculative sanity gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          cc -O3 -std=c11 -mavx2 -fno-fast-math -ffp-contract=off \
+            -DQWEN_AVX2_EXACT_SELFTEST research/qwen38/gguf_quant_dot_avx2.c -lm \
+            -o "$RUNNER_TEMP/qwen-avx2-selftest"
+          "$RUNNER_TEMP/qwen-avx2-selftest"
+          cc -O3 -std=c11 -mavx2 -fno-fast-math -ffp-contract=off \
+            -DQWEN_Q4_AVX2_EXACT_SELFTEST research/qwen38/gguf_quant_q4_avx2.c -lm \
+            -o "$RUNNER_TEMP/qwen-q4-selftest"
+          "$RUNNER_TEMP/qwen-q4-selftest"
+          PYTHONPATH=research/qwen38 python -u research/qwen38/qwen38_mtp1_speculative_e2e_probe.py sanity
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Runner CPU and storage information
+        shell: bash
+        run: |
+          lscpu
+          df -h
+          free -h
+
+      - name: Reclaim disk
+        shell: bash
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup || true
+          docker system prune -af || true
+          df -h
+          free -h
+
+      - name: Install download dependencies
+        run: python -m pip install --no-cache-dir huggingface_hub hf_xet
+
+      - name: Download pinned real GGUF once
+        shell: bash
+        run: |
+          set -euo pipefail
+          MODEL=$(python - <<'PY'
+          from huggingface_hub import hf_hub_download
+          print(hf_hub_download(
+              "bartowski/Qwen3.8-27B-GGUF",
+              filename="Qwen3.8-27B-Q6_K_L.gguf",
+              local_dir="${{ runner.temp }}/qwen38-model",
+          ))
+          PY
+          )
+          test -f "$MODEL"
+          echo "MODEL=$MODEL" >> "$GITHUB_ENV"
+          echo "K3_WORK=$RUNNER_TEMP/qwen38-spec-e2e-k3" >> "$GITHUB_ENV"
+          echo "EVIDENCE=$RUNNER_TEMP/qwen38-spec-e2e-evidence" >> "$GITHUB_ENV"
+
+      - name: Validate pinned decoder inventory
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$EVIDENCE"
+          PYTHONPATH=research/qwen38 python -u research/qwen38/qwen35_gguf_decoder_contract.py real \
+            --model "$MODEL" --output "$EVIDENCE/inventory.json" \
+            2>&1 | tee "$EVIDENCE/inventory.log"
+
+      - name: Compile exact target, Q4 and recurrent-state bridges
+        shell: bash
+        run: |
+          set -euo pipefail
+          cc -O3 -std=c11 -mavx2 -fno-fast-math -ffp-contract=off -fPIC -shared \
+            research/qwen38/gguf_quant_dot_avx2.c -lm -o "$RUNNER_TEMP/libqwen_quant_avx2.so"
+          cc -O3 -std=c11 -mavx2 -fno-fast-math -ffp-contract=off -fPIC -shared \
+            research/qwen38/gguf_quant_q4_avx2.c -lm -o "$RUNNER_TEMP/libqwen_mtp_q4.so"
+          cc -O2 -std=c11 -fPIC -shared research/qwen38/gdn_state_ar.c -lm \
+            -o "$RUNNER_TEMP/libqwen_gdn_serial.so"
+
+      - name: Run exact baseline-vs-speculative miss-hit sequence
+        timeout-minutes: 22
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$K3_WORK" "$EVIDENCE"
+          PYTHONPATH=research/qwen38 python -u research/qwen38/qwen38_mtp1_speculative_e2e_probe.py run \
+            --model "$MODEL" \
+            --target-native-lib "$RUNNER_TEMP/libqwen_quant_avx2.so" \
+            --q4-native-lib "$RUNNER_TEMP/libqwen_mtp_q4.so" \
+            --state-lib "$RUNNER_TEMP/libqwen_gdn_serial.so" \
+            --inventory "$EVIDENCE/inventory.json" \
+            --work-dir "$K3_WORK" \
+            --output "$EVIDENCE/speculative-e2e.json" \
+            2>&1 | tee "$EVIDENCE/speculative-e2e.log"
+          grep -F "QWEN38_MTP1_SPECULATIVE_E2E_EXACT_PASS" "$EVIDENCE/speculative-e2e.log"
+
+      - name: Require exact sequence, final state and reduced target traffic
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          r=json.loads((Path(os.environ["EVIDENCE"])/"speculative-e2e.json").read_text(encoding="utf-8"))
+          assert r["status"] == "PASS"
+          assert r["model_sha256"] == "a487690b9f17de581857c4ae484dab50800335bb9eb978a4fb02c0465629dc0a"
+          assert r["target_tokens"] == [11, 353, 2688, 264]
+          assert r["speculative_tokens"] == r["target_tokens"]
+          assert r["target_sequence_exact"] is True
+          assert r["final_target_state_bitwise_exact"] is True
+          assert r["final_target_state_mismatch"] is None
+          assert r["baseline_final_state_sha256"] == r["speculative_final_state_sha256"]
+          b=r["baseline"]
+          s=r["speculative"]
+          assert b["target_steps"] == 3
+          assert b["k3_bytes"] == 63_382_290_432
+          assert s["rounds"] == 2
+          assert s["accepted_count"] == 1
+          assert s["acceptance_rate"] == 0.5
+          assert [x["accepted"] for x in s["round_records"]] == [False, True]
+          assert s["k3_bytes"] == 42_254_860_288
+          assert s["effective_k3_bytes_per_transition"] == 14_084_953_429.333334
+          assert s["target_pair_lm_bytes"] == 2 * 1_350_860_800
+          assert s["mtp_lm_head_bytes"] == 2 * 1_350_860_800
+          assert s["mtp_cache_positions"] == s["target_position"] == 4
+          assert r["comparison"]["k3_bytes_saved"] == 21_127_430_144
+          assert abs(r["comparison"]["k3_reduction_fraction"] - (1/3)) < 1e-12
+          assert r["comparison"]["decoder_plus_lm_bytes_saved"] > 19_000_000_000
+          assert r["mtp"]["resident_mtp_weight_bytes"] == 238_983_168
+          assert r["target_reader"]["direct_io"] is True
+          print("QWEN38_MTP1_SPECULATIVE_E2E_REAL_GATE_PASS")
+          print(json.dumps({
+              "tokens": r["speculative_tokens"],
+              "accepted_count": s["accepted_count"],
+              "rounds": s["rounds"],
+              "baseline_seconds": b["elapsed_seconds"],
+              "speculative_seconds": s["elapsed_seconds"],
+              "elapsed_speedup": r["comparison"]["elapsed_speedup"],
+              "baseline_k3_bytes": b["k3_bytes"],
+              "speculative_k3_bytes": s["k3_bytes"],
+              "effective_k3_bytes_per_transition": s["effective_k3_bytes_per_transition"],
+              "decoder_plus_lm_reduction_fraction": r["comparison"]["decoder_plus_lm_reduction_fraction"],
+              "mtp_seconds": s["mtp_seconds"],
+              "checkpoint_copy_seconds": s["checkpoint_copy_seconds"],
+              "rollback_seconds": s["rollback_seconds"],
+              "max_rss_gib": r["max_rss_gib"],
+          }, indent=2))
+          PY
+
+      - name: Upload compact speculative evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen38-mtp1-speculative-e2e-${{ github.run_id }}
+          path: ${{ runner.temp }}/qwen38-spec-e2e-evidence/
+          retention-days: 14
