@@ -1,0 +1,29 @@
+name: Qwen3.8 MTP Q4 exact bridge
+
+on:
+  push:
+    branches: [research/qwen3.8-27b-runtime-finish]
+    paths:
+      - "research/qwen38/gguf_quant_q4_avx2.c"
+      - ".github/workflows/qwen38-mtp-q4-exact.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  q4-exact:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compile and require bitwise Q4_0 x Q8_0 exactness
+        shell: bash
+        run: |
+          set -euo pipefail
+          cc -O3 -std=c11 -mavx2 -fno-fast-math -ffp-contract=off \
+            -DQWEN_Q4_AVX2_EXACT_SELFTEST research/qwen38/gguf_quant_q4_avx2.c -lm \
+            -o "$RUNNER_TEMP/qwen-q4-exact"
+          "$RUNNER_TEMP/qwen-q4-exact" | tee "$RUNNER_TEMP/qwen-q4-exact.log"
+          grep -F "QWEN38_Q4_AVX2_SINGLE_THREAD_BITWISE_PASS" "$RUNNER_TEMP/qwen-q4-exact.log"
