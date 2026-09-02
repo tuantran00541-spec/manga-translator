@@ -48,14 +48,22 @@ window.parsePageNumber = parsePageNumber;
 
 let _lastCheckpointStage = null;
 let _lastCheckpointPage = null;
+let _lastCheckpointChapter = null;
 let _checkpointSeq = 0;
+let _chapterNavigationSeq = 0;
 
 async function setWorkflowCheckpoint(stage, pageIndex) {
-  if (!currentChapterId) return;
+  const chapterId = currentChapterId;
+  if (!chapterId) return;
   const canonicalIndex = Math.max(0, parseInt(pageIndex, 10) || 0);
-  if (_lastCheckpointStage === stage && _lastCheckpointPage === canonicalIndex) {
+  if (
+    _lastCheckpointChapter === chapterId
+    && _lastCheckpointStage === stage
+    && _lastCheckpointPage === canonicalIndex
+  ) {
     return;
   }
+  _lastCheckpointChapter = chapterId;
   _lastCheckpointStage = stage;
   _lastCheckpointPage = canonicalIndex;
   const seq = ++_checkpointSeq;
@@ -65,15 +73,33 @@ async function setWorkflowCheckpoint(stage, pageIndex) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        chapter_id: currentChapterId,
+        chapter_id: chapterId,
         stage,
         page_index: canonicalIndex,
       }),
     });
-    if (resp.ok && seq === _checkpointSeq && currentManifest) {
+    const data = await parseApiResponse(resp);
+    if (!resp.ok) {
+      throw new Error(getErrorMessage(resp.status, data));
+    }
+    if (
+      seq === _checkpointSeq
+      && chapterId === currentChapterId
+      && currentManifest
+    ) {
       currentManifest.workflow = { stage, page_index: canonicalIndex };
     }
   } catch (err) {
+    if (
+      seq === _checkpointSeq
+      && _lastCheckpointChapter === chapterId
+      && _lastCheckpointStage === stage
+      && _lastCheckpointPage === canonicalIndex
+    ) {
+      _lastCheckpointChapter = null;
+      _lastCheckpointStage = null;
+      _lastCheckpointPage = null;
+    }
     console.error("Workflow checkpoint save failed:", err);
   }
 }
@@ -189,13 +215,14 @@ window.refreshChapterManifest = refreshChapterManifest;
 
 async function resumeChapter(chapterId) {
   if (!chapterId) return;
-  currentChapterId = chapterId;
+  const navigationSeq = ++_chapterNavigationSeq;
   try {
-    const resp = await fetch(`/api/chapter/${chapterId}`);
+    const resp = await fetch(`/api/chapter/${encodeURIComponent(chapterId)}`);
     const data = await parseApiResponse(resp);
     if (!resp.ok) {
       throw new Error(getErrorMessage(resp.status, data));
     }
+    if (navigationSeq !== _chapterNavigationSeq) return;
     currentManifest = data;
     currentChapterId = currentManifest.chapter_id;
     try {
@@ -237,7 +264,9 @@ async function resumeChapter(chapterId) {
       renderEditor();
     }
   } catch (err) {
-    showToast("Không thể tiếp tục chương: " + err.message, "error");
+    if (navigationSeq === _chapterNavigationSeq) {
+      showToast("Không thể tiếp tục chương: " + err.message, "error");
+    }
   }
 }
 
@@ -246,6 +275,7 @@ async function loadChapter() {
   if (!urlEl) return;
   const url = urlEl.value.trim();
   if (!url) return;
+  const navigationSeq = ++_chapterNavigationSeq;
 
   const loadBtn = document.getElementById("load-btn");
   if (loadBtn) {
@@ -263,6 +293,7 @@ async function loadChapter() {
     if (!resp.ok) {
       throw new Error(getErrorMessage(resp.status, data));
     }
+    if (navigationSeq !== _chapterNavigationSeq) return;
     currentManifest = data;
     currentChapterId = currentManifest.chapter_id;
     try {
@@ -272,7 +303,9 @@ async function loadChapter() {
     window.previewActivePageIndex = 0;
     renderPreview();
   } catch (err) {
-    showToast("Không tải được chương: " + err.message, "error");
+    if (navigationSeq === _chapterNavigationSeq) {
+      showToast("Không tải được chương: " + err.message, "error");
+    }
   } finally {
     if (loadBtn) {
       loadBtn.disabled = false;
