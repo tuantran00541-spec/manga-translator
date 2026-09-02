@@ -2,14 +2,21 @@ from playwright.sync_api import sync_playwright
 
 from app.downloader.base import BaseAdapter
 from app.downloader.image_urls import best_srcset_candidate, resolve_image_candidate
+from app.parameters import (
+    DOWNLOAD_JS_MAX_SCROLL_ROUNDS,
+    DOWNLOAD_JS_MIN_IMAGE_WIDTH,
+    DOWNLOAD_JS_NAVIGATION_TIMEOUT_MS,
+    DOWNLOAD_JS_SCROLL_WAIT_MS,
+    DOWNLOAD_JS_STABLE_ROUNDS,
+)
 from app.security import browser_request_allowed, validate_url
 
 
 class GenericJsAdapter(BaseAdapter):
     img_selector = "img"
-    min_width = 300
-    max_scroll_rounds = 30
-    stable_rounds_required = 3
+    min_width = DOWNLOAD_JS_MIN_IMAGE_WIDTH
+    max_scroll_rounds = DOWNLOAD_JS_MAX_SCROLL_ROUNDS
+    stable_rounds_required = DOWNLOAD_JS_STABLE_ROUNDS
 
     def can_handle(self, url: str) -> bool:
         return True
@@ -22,7 +29,7 @@ class GenericJsAdapter(BaseAdapter):
             height = int(page.evaluate("Math.max(document.body.scrollHeight, document.documentElement.scrollHeight)"))
             count = int(page.locator(self.img_selector).count())
             page.evaluate("window.scrollTo(0, Math.max(document.body.scrollHeight, document.documentElement.scrollHeight))")
-            page.wait_for_timeout(400)
+            page.wait_for_timeout(DOWNLOAD_JS_SCROLL_WAIT_MS)
             next_height = int(page.evaluate("Math.max(document.body.scrollHeight, document.documentElement.scrollHeight)"))
             next_count = int(page.locator(self.img_selector).count())
             if next_height == height == last_height and next_count == count == last_count:
@@ -62,7 +69,11 @@ class GenericJsAdapter(BaseAdapter):
                     "{value: undefined, writable: false, configurable: false});"
                 )
                 page = context.new_page()
-                page.goto(chapter_url, wait_until="domcontentloaded", timeout=60000)
+                page.goto(
+                    chapter_url,
+                    wait_until="domcontentloaded",
+                    timeout=DOWNLOAD_JS_NAVIGATION_TIMEOUT_MS,
+                )
                 self._scroll_until_stable(page)
 
                 elements = page.query_selector_all(self.img_selector)

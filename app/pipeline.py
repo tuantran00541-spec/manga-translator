@@ -19,7 +19,9 @@ from app.config import RAW_DIR, PROCESSED_DIR
 from app.logging_config import logger
 from app.mask_store import decode_mask_value, externalize_page_masks
 from app.parameters import (
+    DETECTION_CONTENT_STD_MIN,
     DETECTOR_FINAL_NMS_IOU,
+    MANUAL_MASK_THRESHOLD,
     PIPELINE_DEFAULT_WORKERS,
     PIPELINE_PROCESS_WORKER_LIMIT,
     PIPELINE_SLICE_WORKER_LIMIT,
@@ -1142,10 +1144,16 @@ class ChapterPipeline:
                     except Exception as exc:
                         logger.warning("Could not seed auto-clean cache from %s: %s", clean_path, exc)
 
-            bin_mask = (mask > 10).astype(np.uint8) * 255 if mask is not None else None
+            bin_mask = (
+                (mask > MANUAL_MASK_THRESHOLD).astype(np.uint8) * 255
+                if mask is not None
+                else None
+            )
             if bin_mask is not None and bin_mask.shape[:2] != (img_h, img_w):
                 bin_mask = cv2.resize(bin_mask, (img_w, img_h), interpolation=cv2.INTER_NEAREST)
-                bin_mask = (bin_mask > 10).astype(np.uint8) * 255
+                bin_mask = (
+                    (bin_mask > MANUAL_MASK_THRESHOLD).astype(np.uint8) * 255
+                )
 
             target_field = "manual_lama_mask" if force_lama else "manual_mask"
             target_path = manual_lama_mask_path if force_lama else manual_mask_path
@@ -1424,7 +1432,7 @@ class ChapterPipeline:
         except (OSError, ValueError) as exc:
             logger.warning("Could not read manual mask at %s: %s", mask_path, exc)
             return None
-        if mask is None or not np.any(mask > 10):
+        if mask is None or not np.any(mask > MANUAL_MASK_THRESHOLD):
             return None
         if mask.shape[:2] != expected_shape:
             try:
@@ -1436,9 +1444,9 @@ class ChapterPipeline:
             except Exception as exc:
                 logger.warning("Could not resize manual mask at %s: %s", mask_path, exc)
                 return None
-        if not np.any(mask > 10):
+        if not np.any(mask > MANUAL_MASK_THRESHOLD):
             return None
-        return (mask > 10).astype(np.uint8) * 255
+        return (mask > MANUAL_MASK_THRESHOLD).astype(np.uint8) * 255
 
     def _write_auto_clean_cache(self, processed_dir: Path, img_path: Path, image: np.ndarray) -> Path:
         auto_path = self._auto_clean_path(processed_dir, img_path)
@@ -1788,7 +1796,7 @@ class ChapterPipeline:
             detection_issues.append("unverified_regions")
         if not detector_records:
             gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-            if float(gray.std()) > 24.0:
+            if float(gray.std()) > DETECTION_CONTENT_STD_MIN:
                 detection_issues.append("content_heavy_zero_box")
         detection_state = "needs_review" if detection_issues else "verified"
         inpainter = self.inpainter

@@ -9,13 +9,23 @@ from app.parameters import (
     OCR_CENTER_AXIS_FACTOR,
     OCR_CENTER_BAND_OVERLAP_MIN,
     OCR_CENTER_DISTANCE_MARGIN,
+    OCR_COLUMN_TOLERANCE_MIN,
     OCR_COLUMN_TOLERANCE_FACTOR,
+    OCR_HORIZONTAL_RUBY_DISTANCE_MAX_FACTOR,
+    OCR_MAIN_LINE_ASPECT_MIN,
     OCR_MAIN_SIZE_FACTOR,
+    OCR_MAIN_SIZE_QUANTILE,
     OCR_READING_HORIZONTAL_ASPECT,
     OCR_READING_VERTICAL_ASPECT,
+    OCR_ROW_SIZE_QUANTILE,
+    OCR_ROW_TOLERANCE_MIN,
     OCR_ROW_TOLERANCE_FACTOR,
+    OCR_RUBY_DISTANCE_MIN_FACTOR,
+    OCR_RUBY_FILTER_MIN_KEEP_DIVISOR,
+    OCR_RUBY_MIN_SIDE,
     OCR_RUBY_OVERLAP_MIN,
     OCR_RUBY_SIZE_FACTOR,
+    OCR_VERTICAL_RUBY_DISTANCE_MAX_FACTOR,
 )
 
 
@@ -83,13 +93,16 @@ def _horizontal_order(
         heights = [region["box"]["h"] for region in horizontalish] or [
             region["box"]["h"] for region in regions
         ]
-        main_height = _quantile(heights, 0.75)
-        ruby_height_threshold = max(8.0, main_height * OCR_RUBY_SIZE_FACTOR)
+        main_height = _quantile(heights, OCR_MAIN_SIZE_QUANTILE)
+        ruby_height_threshold = max(
+            OCR_RUBY_MIN_SIDE, main_height * OCR_RUBY_SIZE_FACTOR
+        )
         main_lines = [
             region
             for region in regions
             if region["box"]["h"] >= main_height * OCR_MAIN_SIZE_FACTOR
-            and region["box"]["w"] >= region["box"]["h"] * 1.80
+            and region["box"]["w"]
+            >= region["box"]["h"] * OCR_MAIN_LINE_ASPECT_MIN
         ]
         removed_indices: set[int] = set()
         for candidate in regions:
@@ -109,7 +122,9 @@ def _horizontal_order(
                     main_box["x2"],
                 )
                 if (
-                    main_height * 0.20 <= dy <= main_height * 1.20
+                    main_height * OCR_RUBY_DISTANCE_MIN_FACTOR
+                    <= dy
+                    <= main_height * OCR_HORIZONTAL_RUBY_DISTANCE_MAX_FACTOR
                     and x_overlap
                     >= min(candidate_box["w"], main_box["w"])
                     * OCR_RUBY_OVERLAP_MIN
@@ -122,13 +137,17 @@ def _horizontal_order(
         removed = [
             region for region in regions if region["index"] in removed_indices
         ]
-        if len(kept) < max(1, len(regions) // 3):
+        if len(kept) < max(
+            1, len(regions) // OCR_RUBY_FILTER_MIN_KEEP_DIVISOR
+        ):
             kept = list(regions)
             removed = []
 
     heights_kept = [region["box"]["h"] for region in kept]
     row_tolerance = max(
-        8.0, _quantile(heights_kept, 0.60) * OCR_ROW_TOLERANCE_FACTOR
+        OCR_ROW_TOLERANCE_MIN,
+        _quantile(heights_kept, OCR_ROW_SIZE_QUANTILE)
+        * OCR_ROW_TOLERANCE_FACTOR,
     )
     rows: list[dict[str, Any]] = []
     for region in sorted(
@@ -174,10 +193,12 @@ def _vertical_order(
     widths = [region["box"]["w"] for region in verticalish] or [
         region["box"]["w"] for region in regions
     ]
-    main_width = _quantile(widths, 0.75)
+    main_width = _quantile(widths, OCR_MAIN_SIZE_QUANTILE)
 
     if filter_ruby:
-        ruby_width_threshold = max(8.0, main_width * OCR_RUBY_SIZE_FACTOR)
+        ruby_width_threshold = max(
+            OCR_RUBY_MIN_SIDE, main_width * OCR_RUBY_SIZE_FACTOR
+        )
         main_columns = [
             region
             for region in regions
@@ -203,7 +224,9 @@ def _vertical_order(
                     main_box["y2"],
                 )
                 if (
-                    main_width * 0.20 <= dx <= main_width * 1.35
+                    main_width * OCR_RUBY_DISTANCE_MIN_FACTOR
+                    <= dx
+                    <= main_width * OCR_VERTICAL_RUBY_DISTANCE_MAX_FACTOR
                     and y_overlap
                     >= min(candidate_box["h"], main_box["h"])
                     * OCR_RUBY_OVERLAP_MIN
@@ -216,11 +239,16 @@ def _vertical_order(
         removed = [
             region for region in regions if region["index"] in removed_indices
         ]
-        if len(kept) < max(1, len(regions) // 3):
+        if len(kept) < max(
+            1, len(regions) // OCR_RUBY_FILTER_MIN_KEEP_DIVISOR
+        ):
             kept = list(regions)
             removed = []
 
-    column_tolerance = max(10.0, main_width * OCR_COLUMN_TOLERANCE_FACTOR)
+    column_tolerance = max(
+        OCR_COLUMN_TOLERANCE_MIN,
+        main_width * OCR_COLUMN_TOLERANCE_FACTOR,
+    )
     columns: list[dict[str, Any]] = []
     for region in sorted(
         kept, key=lambda item: (-item["box"]["cx"], item["box"]["cy"])

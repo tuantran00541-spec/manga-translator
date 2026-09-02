@@ -20,12 +20,18 @@ from app.config import (
 from app.dependencies import ocr as ocr_runtime, pipeline
 from app.logging_config import logger
 from app.manifest_utils import cleanup_stale_temp_artifacts
-from app.parameters import FIXED_LAMA_CONCURRENT_INFERENCE, USE_DYNAMIC_LAMA
+from app.parameters import (
+    FIXED_LAMA_CONCURRENT_INFERENCE,
+    STALE_TEMP_MAX_AGE_SECONDS,
+    USE_DYNAMIC_LAMA,
+)
 from app.routers import automation, chapters, editor, export, image, ocr, render, render_commit, translation, visual_qc
 from app.security import MAX_REQUEST_BYTES, MAX_UPLOAD_TOTAL_BYTES
 
 
-def _cleanup_extra_stale_artifacts(max_age_seconds: float = 3600.0) -> int:
+def _cleanup_extra_stale_artifacts(
+    max_age_seconds: float = STALE_TEMP_MAX_AGE_SECONDS,
+) -> int:
     """Clean crash leftovers not covered by per-chapter manifest temp cleanup."""
     cutoff = time.time() - max(0.0, float(max_age_seconds))
     candidates: set[Path] = set()

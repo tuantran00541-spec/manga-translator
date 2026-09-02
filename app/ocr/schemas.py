@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, field_validator
 
+from app.parameters import OCR_JOB_CONCURRENCY_LIMIT
+
 _ALLOWED_OCR_LANGS = {"ja", "japan", "ch", "zh", "korean", "ko", "en"}
 
 
@@ -22,6 +24,8 @@ class ChapterOCRRequest(BaseModel):
     @field_validator("concurrency")
     @classmethod
     def _bounded_concurrency(cls, value: int) -> int:
-        if value < 1 or value > 2:
-            raise ValueError("OCR concurrency must be between 1 and 2")
+        if value < 1 or value > OCR_JOB_CONCURRENCY_LIMIT:
+            raise ValueError(
+                f"OCR concurrency must be between 1 and {OCR_JOB_CONCURRENCY_LIMIT}"
+            )
         return value

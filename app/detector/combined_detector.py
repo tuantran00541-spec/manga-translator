@@ -13,6 +13,13 @@ from app.parameters import (
     BUBBLE_GROUP_PAD_X,
     BUBBLE_GROUP_PAD_Y,
     BUBBLE_PROPOSAL_CONF_THRESHOLD,
+    BUBBLE_TEXT_OVERLAP_MIN,
+    DETECTOR_TALL_SPLIT_BACKGROUND_PERCENTILE,
+    DETECTOR_TALL_SPLIT_CONTRAST_DELTA,
+    DETECTOR_TALL_SPLIT_HEIGHT_THRESHOLD,
+    DETECTOR_TALL_SPLIT_HORIZONTAL_PADDING,
+    DETECTOR_TALL_SPLIT_LINE_HEIGHT_MIN,
+    DETECTOR_TALL_SPLIT_LINE_PADDING_MAX,
     DETECTOR_FINAL_NMS_IOU,
     DETECTOR_NMS_SCORE_FLOOR,
     FLAT_BUBBLE_BACKGROUND_RATIO_MIN,
@@ -25,6 +32,7 @@ from app.parameters import (
     FLAT_BUBBLE_INTERIOR_AREA_RATIO_MIN,
     FLAT_BUBBLE_INTERIOR_PIXELS_MIN,
     FLAT_BUBBLE_LIGHT_TEXT_MIN,
+    FLAT_BUBBLE_MIN_SIDE,
     FLAT_BUBBLE_PAGE_AREA_MAX,
     FLAT_BUBBLE_STROKE_CLOSE_KERNEL,
     FLAT_BUBBLE_TEXT_BBOX_PAD,
@@ -163,7 +171,7 @@ class CombinedTextDetector:
 
         bw = int(box.x2 - box.x1)
         bh = int(box.y2 - box.y1)
-        if bw <= 8 or bh <= 8:
+        if bw < FLAT_BUBBLE_MIN_SIDE or bh < FLAT_BUBBLE_MIN_SIDE:
             return None
         if (bw * bh) > float(max(1, img_w * img_h)) * FLAT_BUBBLE_PAGE_AREA_MAX:
             return None
@@ -404,8 +412,7 @@ class CombinedTextDetector:
 
         for box in boxes:
             bh = box.y2 - box.y1
-            bw = box.x2 - box.x1
-            if bh <= 45:
+            if bh <= DETECTOR_TALL_SPLIT_HEIGHT_THRESHOLD:
                 refined_boxes.append(replace(box))
                 continue
 
@@ -419,8 +426,12 @@ class CombinedTextDetector:
                 refined_boxes.append(replace(box))
                 continue
 
-            crop_bg = np.percentile(exp_crop, 90)
-            text_rows = exp_crop.mean(axis=1) < (crop_bg - 2)
+            crop_bg = np.percentile(
+                exp_crop, DETECTOR_TALL_SPLIT_BACKGROUND_PERCENTILE
+            )
+            text_rows = exp_crop.mean(axis=1) < (
+                crop_bg - DETECTOR_TALL_SPLIT_CONTRAST_DELTA
+            )
 
             line_bounds = []
             in_line = False
@@ -431,10 +442,14 @@ class CombinedTextDetector:
                     start_y = y
                 elif not is_text and in_line:
                     in_line = False
-                    if y - start_y >= 4:
+                    if y - start_y >= DETECTOR_TALL_SPLIT_LINE_HEIGHT_MIN:
                         line_bounds.append((start_y, y))
 
-            if in_line and (len(text_rows) - start_y) >= 4:
+            if (
+                in_line
+                and (len(text_rows) - start_y)
+                >= DETECTOR_TALL_SPLIT_LINE_HEIGHT_MIN
+            ):
                 line_bounds.append((start_y, len(text_rows)))
 
             if len(line_bounds) <= 1:
@@ -445,8 +460,14 @@ class CombinedTextDetector:
                 prev_y = line_bounds[idx - 1][1] if idx > 0 else 0
                 next_y = line_bounds[idx + 1][0] if idx < len(line_bounds) - 1 else (y2_exp - y1_exp)
 
-                pad_top = min(3, max(1, (ly1 - prev_y) // 2))
-                pad_bot = min(3, max(1, (next_y - ly2) // 2))
+                pad_top = min(
+                    DETECTOR_TALL_SPLIT_LINE_PADDING_MAX,
+                    max(1, (ly1 - prev_y) // 2),
+                )
+                pad_bot = min(
+                    DETECTOR_TALL_SPLIT_LINE_PADDING_MAX,
+                    max(1, (next_y - ly2) // 2),
+                )
 
                 abs_y1 = max(0, y1_exp + ly1 - pad_top)
                 abs_y2 = min(img_h, y1_exp + ly2 + pad_bot)
@@ -457,12 +478,27 @@ class CombinedTextDetector:
                     abs_x2 = min(img_w, box.x2 + BUBBLE_GROUP_PAD_X)
                 else:
                     col_means = line_strip.mean(axis=0)
-                    strip_bg = np.percentile(col_means, 90)
-                    text_col_indices = np.where(col_means < (strip_bg - 2))[0]
+                    strip_bg = np.percentile(
+                        col_means, DETECTOR_TALL_SPLIT_BACKGROUND_PERCENTILE
+                    )
+                    text_col_indices = np.where(
+                        col_means
+                        < (strip_bg - DETECTOR_TALL_SPLIT_CONTRAST_DELTA)
+                    )[0]
 
                     if len(text_col_indices) > 0:
-                        abs_x1 = max(box.x1, crop_x1 + int(text_col_indices.min()) - 10)
-                        abs_x2 = min(box.x2, crop_x1 + int(text_col_indices.max()) + 10)
+                        abs_x1 = max(
+                            box.x1,
+                            crop_x1
+                            + int(text_col_indices.min())
+                            - DETECTOR_TALL_SPLIT_HORIZONTAL_PADDING,
+                        )
+                        abs_x2 = min(
+                            box.x2,
+                            crop_x1
+                            + int(text_col_indices.max())
+                            + DETECTOR_TALL_SPLIT_HORIZONTAL_PADDING,
+                        )
                     else:
                         abs_x1 = box.x1
                         abs_x2 = box.x2
@@ -674,7 +710,10 @@ class CombinedTextDetector:
         if ix2 > ix1 and iy2 > iy1:
             intersection_area = (ix2 - ix1) * (iy2 - iy1)
             text_box_area = (text_box.x2 - text_box.x1) * (text_box.y2 - text_box.y1)
-            if text_box_area > 0 and (intersection_area / text_box_area) >= 0.50:
+            if (
+                text_box_area > 0
+                and (intersection_area / text_box_area) >= BUBBLE_TEXT_OVERLAP_MIN
+            ):
                 return True
 
         return False

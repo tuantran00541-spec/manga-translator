@@ -98,6 +98,9 @@ BUBBLE_IOU_THRESHOLD = _env_float(
 DETECTOR_FINAL_NMS_IOU = _env_float(
     "MANGA_DETECTOR_FINAL_NMS_IOU", 0.35, minimum=0.0, maximum=1.0
 )
+DETECTOR_STABLE_ID_IOU_MIN = _env_float(
+    "MANGA_DETECTOR_STABLE_ID_IOU_MIN", 0.50, minimum=0.0, maximum=1.0
+)
 DETECTOR_INPUT_SIZE = _env_int(
     "MANGA_DETECTOR_INPUT_SIZE", 1024, minimum=256, maximum=4096
 )
@@ -136,6 +139,9 @@ DETECTOR_MASK_THRESHOLD = _env_float(
 DETECTOR_NMS_SCORE_FLOOR = _env_float(
     "MANGA_DETECTOR_NMS_SCORE_FLOOR", 0.05, minimum=0.0, maximum=1.0
 )
+DETECTION_CONTENT_STD_MIN = _env_float(
+    "MANGA_DETECTION_CONTENT_STD_MIN", 24.0, minimum=0.0, maximum=128.0
+)
 
 # Bubble/text grouping and safety heuristics.
 WATERMARK_EDGE_X_RATIO = _env_float(
@@ -170,6 +176,33 @@ BUBBLE_GROUP_PAD_X = _env_int(
 )
 BUBBLE_GROUP_PAD_Y = _env_int(
     "MANGA_BUBBLE_GROUP_PAD_Y", 8, minimum=0, maximum=128
+)
+BUBBLE_TEXT_OVERLAP_MIN = _env_float(
+    "MANGA_BUBBLE_TEXT_OVERLAP_MIN", 0.50, minimum=0.0, maximum=1.0
+)
+DETECTOR_TALL_SPLIT_HEIGHT_THRESHOLD = _env_int(
+    "MANGA_DETECTOR_TALL_SPLIT_HEIGHT_THRESHOLD", 45, minimum=1, maximum=4096
+)
+DETECTOR_TALL_SPLIT_BACKGROUND_PERCENTILE = _env_float(
+    "MANGA_DETECTOR_TALL_SPLIT_BACKGROUND_PERCENTILE",
+    90.0,
+    minimum=0.0,
+    maximum=100.0,
+)
+DETECTOR_TALL_SPLIT_CONTRAST_DELTA = _env_float(
+    "MANGA_DETECTOR_TALL_SPLIT_CONTRAST_DELTA",
+    2.0,
+    minimum=0.0,
+    maximum=255.0,
+)
+DETECTOR_TALL_SPLIT_LINE_HEIGHT_MIN = _env_int(
+    "MANGA_DETECTOR_TALL_SPLIT_LINE_HEIGHT_MIN", 4, minimum=1, maximum=256
+)
+DETECTOR_TALL_SPLIT_LINE_PADDING_MAX = _env_int(
+    "MANGA_DETECTOR_TALL_SPLIT_LINE_PADDING_MAX", 3, minimum=0, maximum=128
+)
+DETECTOR_TALL_SPLIT_HORIZONTAL_PADDING = _env_int(
+    "MANGA_DETECTOR_TALL_SPLIT_HORIZONTAL_PADDING", 10, minimum=0, maximum=256
 )
 FREE_TEXT_SINGLE_PAD_X = _env_int(
     "MANGA_FREE_TEXT_SINGLE_PAD_X", 20, minimum=0, maximum=128
@@ -207,6 +240,9 @@ FREE_TEXT_GROUP_HEIGHT_FACTOR = _env_float(
 
 FLAT_BUBBLE_BACKGROUND_RATIO_MIN = _env_float(
     "MANGA_FLAT_BUBBLE_BACKGROUND_RATIO_MIN", 0.70, minimum=0.0, maximum=1.0
+)
+FLAT_BUBBLE_MIN_SIDE = _env_int(
+    "MANGA_FLAT_BUBBLE_MIN_SIDE", 9, minimum=1, maximum=512
 )
 FLAT_BUBBLE_TEXT_RATIO_MIN = _env_float(
     "MANGA_FLAT_BUBBLE_TEXT_RATIO_MIN", 0.005, minimum=0.0, maximum=1.0
@@ -422,6 +458,9 @@ MASK_ADAPTIVE_BORDER_STD_THRESHOLD = _env_float(
     "MANGA_MASK_ADAPTIVE_BORDER_STD_THRESHOLD", 18.0, minimum=0.0, maximum=128.0
 )
 MASK_EXPAND = _env_int("MANGA_MANUAL_MASK_EXPAND", 8, minimum=0, maximum=128)
+MANUAL_MASK_THRESHOLD = _env_int(
+    "MANGA_MANUAL_MASK_THRESHOLD", 10, minimum=0, maximum=254
+)
 MANUAL_CONFIDENCE_SENTINEL: Final[float] = 1.0
 
 # ---------------------------------------------------------------------------
@@ -613,6 +652,15 @@ PIPELINE_SLICE_WORKER_LIMIT = _env_int(
 PIPELINE_PROCESS_WORKER_LIMIT = _env_int(
     "MANGA_PIPELINE_PROCESS_WORKER_LIMIT", 2, minimum=1, maximum=16
 )
+MANIFEST_LOCK_TIMEOUT_SECONDS = _env_float(
+    "MANGA_MANIFEST_LOCK_TIMEOUT_SECONDS", 30.0, minimum=1.0, maximum=600.0
+)
+PAGE_LOCK_TIMEOUT_SECONDS = _env_float(
+    "MANGA_PAGE_LOCK_TIMEOUT_SECONDS", 60.0, minimum=1.0, maximum=600.0
+)
+STALE_TEMP_MAX_AGE_SECONDS = _env_float(
+    "MANGA_STALE_TEMP_MAX_AGE_SECONDS", 3600.0, minimum=60.0, maximum=604800.0
+)
 ORT_HIGH_CPU_THRESHOLD = _env_int(
     "MANGA_ORT_HIGH_CPU_THRESHOLD", 8, minimum=1, maximum=256
 )
@@ -635,6 +683,12 @@ ORT_INTER_OP_THREADS = _env_int(
 
 OCR_IMAGE_CACHE_MB = _env_int(
     "MANGA_OCR_IMAGE_CACHE_MB", 128, minimum=0, maximum=1024
+)
+OCR_JOB_CONCURRENCY_LIMIT = _env_int(
+    "MANGA_OCR_JOB_CONCURRENCY_LIMIT", 2, minimum=1, maximum=8
+)
+OCR_JOB_ACTIVE_LIMIT = _env_int(
+    "MANGA_OCR_JOB_ACTIVE_LIMIT", 2, minimum=1, maximum=8
 )
 OCR_MASK_CROP_PADDING = _env_int(
     "MANGA_OCR_MASK_CROP_PADDING", 12, minimum=0, maximum=256
@@ -687,14 +741,50 @@ OCR_RUBY_SIZE_FACTOR = _env_float(
 OCR_MAIN_SIZE_FACTOR = _env_float(
     "MANGA_OCR_MAIN_SIZE_FACTOR", 0.80, minimum=0.1, maximum=2.0
 )
+OCR_MAIN_SIZE_QUANTILE = _env_float(
+    "MANGA_OCR_MAIN_SIZE_QUANTILE", 0.75, minimum=0.0, maximum=1.0
+)
+OCR_MAIN_LINE_ASPECT_MIN = _env_float(
+    "MANGA_OCR_MAIN_LINE_ASPECT_MIN", 1.80, minimum=1.0, maximum=20.0
+)
 OCR_RUBY_OVERLAP_MIN = _env_float(
     "MANGA_OCR_RUBY_OVERLAP_MIN", 0.25, minimum=0.0, maximum=1.0
+)
+OCR_RUBY_MIN_SIDE = _env_float(
+    "MANGA_OCR_RUBY_MIN_SIDE", 8.0, minimum=1.0, maximum=256.0
+)
+OCR_RUBY_DISTANCE_MIN_FACTOR = _env_float(
+    "MANGA_OCR_RUBY_DISTANCE_MIN_FACTOR", 0.20, minimum=0.0, maximum=10.0
+)
+OCR_HORIZONTAL_RUBY_DISTANCE_MAX_FACTOR = _env_float(
+    "MANGA_OCR_HORIZONTAL_RUBY_DISTANCE_MAX_FACTOR",
+    1.20,
+    minimum=0.0,
+    maximum=10.0,
+)
+OCR_VERTICAL_RUBY_DISTANCE_MAX_FACTOR = _env_float(
+    "MANGA_OCR_VERTICAL_RUBY_DISTANCE_MAX_FACTOR",
+    1.35,
+    minimum=0.0,
+    maximum=10.0,
+)
+OCR_RUBY_FILTER_MIN_KEEP_DIVISOR = _env_int(
+    "MANGA_OCR_RUBY_FILTER_MIN_KEEP_DIVISOR", 3, minimum=1, maximum=100
 )
 OCR_ROW_TOLERANCE_FACTOR = _env_float(
     "MANGA_OCR_ROW_TOLERANCE_FACTOR", 0.65, minimum=0.0, maximum=5.0
 )
+OCR_ROW_SIZE_QUANTILE = _env_float(
+    "MANGA_OCR_ROW_SIZE_QUANTILE", 0.60, minimum=0.0, maximum=1.0
+)
+OCR_ROW_TOLERANCE_MIN = _env_float(
+    "MANGA_OCR_ROW_TOLERANCE_MIN", 8.0, minimum=0.0, maximum=256.0
+)
 OCR_COLUMN_TOLERANCE_FACTOR = _env_float(
     "MANGA_OCR_COLUMN_TOLERANCE_FACTOR", 0.85, minimum=0.0, maximum=5.0
+)
+OCR_COLUMN_TOLERANCE_MIN = _env_float(
+    "MANGA_OCR_COLUMN_TOLERANCE_MIN", 10.0, minimum=0.0, maximum=256.0
 )
 
 # ---------------------------------------------------------------------------
@@ -810,6 +900,24 @@ REMOTE_CHUNK_BYTES = _env_int(
 DOWNLOAD_WORKER_LIMIT = _env_int(
     "MANGA_DOWNLOAD_WORKERS", 4, minimum=1, maximum=8
 )
+DOWNLOAD_STATIC_MIN_DECLARED_WIDTH = _env_int(
+    "MANGA_DOWNLOAD_STATIC_MIN_DECLARED_WIDTH", 240, minimum=0, maximum=8192
+)
+DOWNLOAD_JS_MIN_IMAGE_WIDTH = _env_int(
+    "MANGA_DOWNLOAD_JS_MIN_IMAGE_WIDTH", 300, minimum=0, maximum=8192
+)
+DOWNLOAD_JS_MAX_SCROLL_ROUNDS = _env_int(
+    "MANGA_DOWNLOAD_JS_MAX_SCROLL_ROUNDS", 30, minimum=1, maximum=1000
+)
+DOWNLOAD_JS_STABLE_ROUNDS = _env_int(
+    "MANGA_DOWNLOAD_JS_STABLE_ROUNDS", 3, minimum=1, maximum=50
+)
+DOWNLOAD_JS_SCROLL_WAIT_MS = _env_int(
+    "MANGA_DOWNLOAD_JS_SCROLL_WAIT_MS", 400, minimum=0, maximum=10000
+)
+DOWNLOAD_JS_NAVIGATION_TIMEOUT_MS = _env_int(
+    "MANGA_DOWNLOAD_JS_NAVIGATION_TIMEOUT_MS", 60000, minimum=1000, maximum=300000
+)
 
 
 # Cross-parameter constraints. Individual env parsers clamp each value, while
@@ -826,6 +934,11 @@ FLAT_BUBBLE_TEXT_RATIO_MIN = min(
 )
 SMART_FILL_MIDTONE_MIN = min(SMART_FILL_MIDTONE_MIN, SMART_FILL_MIDTONE_MAX)
 OCR_REJECT_CONFIDENCE = min(OCR_REJECT_CONFIDENCE, OCR_REVIEW_CONFIDENCE)
+OCR_RUBY_DISTANCE_MIN_FACTOR = min(
+    OCR_RUBY_DISTANCE_MIN_FACTOR,
+    OCR_HORIZONTAL_RUBY_DISTANCE_MAX_FACTOR,
+    OCR_VERTICAL_RUBY_DISTANCE_MAX_FACTOR,
+)
 MSER_RESIDUAL_ASPECT_MIN = min(MSER_RESIDUAL_ASPECT_MIN, MSER_RESIDUAL_ASPECT_MAX)
 
 

@@ -11,13 +11,16 @@ from app.downloader.asura import (
 from app.downloader.generic_js import GenericJsAdapter
 from app.downloader.http import read_response_limited, safe_get
 from app.downloader.image_urls import best_srcset_candidate, resolve_image_candidate
-from app.parameters import REMOTE_CONNECT_TIMEOUT_SECONDS
+from app.parameters import (
+    DOWNLOAD_STATIC_MIN_DECLARED_WIDTH,
+    REMOTE_CONNECT_TIMEOUT_SECONDS,
+)
 from app.security import MAX_REMOTE_DOCUMENT_BYTES
 
 
 class GenericStaticAdapter(BaseAdapter):
     img_selector = "img"
-    min_declared_width = 240
+    min_declared_width = DOWNLOAD_STATIC_MIN_DECLARED_WIDTH
 
     def can_handle(self, url: str) -> bool:
         return True

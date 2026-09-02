@@ -14,10 +14,14 @@ from app.config import PROCESSED_DIR
 from app.inpaint.mask_geometry import reconcile_detector_geometry_override
 from app.mask_store import externalize_page_masks, is_mask_ref
 from app.ocr.identity import OCR_CACHE_FIELDS, clear_ocr_cache, geometry_signature
+from app.parameters import (
+    DETECTOR_STABLE_ID_IOU_MIN,
+    MANIFEST_LOCK_TIMEOUT_SECONDS,
+    PAGE_LOCK_TIMEOUT_SECONDS,
+    STALE_TEMP_MAX_AGE_SECONDS,
+)
 from app.security import validate_chapter_id
 
-_MANIFEST_LOCK_TIMEOUT = 30
-_PAGE_LOCK_TIMEOUT = 60
 MANIFEST_SCHEMA_VERSION = 3
 
 _STALE_TEMP_PATTERNS = (
@@ -32,7 +36,10 @@ _STALE_TEMP_PATTERNS = (
 
 
 def cleanup_stale_temp_artifacts(
-    directory: Path, *, max_age_seconds: float = 3600.0, now: float | None = None
+    directory: Path,
+    *,
+    max_age_seconds: float = STALE_TEMP_MAX_AGE_SECONDS,
+    now: float | None = None,
 ) -> int:
     """Remove only known orphan temp files older than the safety window."""
     if max_age_seconds < 0:
@@ -237,7 +244,11 @@ def _box_iou(a: dict, b: dict) -> float:
     return inter / union if union > 0 else 0.0
 
 
-def assign_stable_detector_box_ids(new_boxes: list[dict], existing_boxes: list[dict], min_iou: float = 0.5) -> list[dict]:
+def assign_stable_detector_box_ids(
+    new_boxes: list[dict],
+    existing_boxes: list[dict],
+    min_iou: float = DETECTOR_STABLE_ID_IOU_MIN,
+) -> list[dict]:
     """Assign stable detector IDs and reconcile persisted geometry overrides.
 
     During the pre-inpaint call, detector records carry ``_mask_array`` and
@@ -282,7 +293,7 @@ def get_manifest_lock(chapter_id: str):
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     lock = FileLock(lock_path)
     try:
-        with lock.acquire(timeout=_MANIFEST_LOCK_TIMEOUT):
+        with lock.acquire(timeout=MANIFEST_LOCK_TIMEOUT_SECONDS):
             yield
     except Timeout:
         raise RuntimeError(f"Manifest lock timeout for chapter {chapter_id}")
@@ -294,7 +305,7 @@ def get_page_lock(chapter_id: str, page_index: int):
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     lock = FileLock(lock_path)
     try:
-        with lock.acquire(timeout=_PAGE_LOCK_TIMEOUT):
+        with lock.acquire(timeout=PAGE_LOCK_TIMEOUT_SECONDS):
             yield
     except Timeout:
         raise RuntimeError(f"Page lock timeout for chapter {chapter_id} page {page_index}")

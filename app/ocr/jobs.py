@@ -7,10 +7,10 @@ from dataclasses import dataclass, field
 
 from app.logging_config import logger
 from app.ocr.service import OCRCancelled, OCRResultStale, OCRService
+from app.parameters import OCR_JOB_ACTIVE_LIMIT, OCR_JOB_CONCURRENCY_LIMIT
 
 MAX_OCR_ITEMS = 5000
 MAX_RETAINED_JOBS = 32
-MAX_ACTIVE_JOBS = 2
 MAX_JOB_ERRORS = 50
 _TERMINAL_STATUSES = {"completed", "cancelled"}
 _ACTIVE_STATUSES = {"pending", "running"}
@@ -53,7 +53,7 @@ class ChapterOCRJobManager:
         force: bool = False,
         items: list[tuple[int, str]] | None = None,
     ) -> dict:
-        concurrency = max(1, min(2, int(concurrency)))
+        concurrency = max(1, min(OCR_JOB_CONCURRENCY_LIMIT, int(concurrency)))
         planned = list(items) if items is not None else self.service.plan_chapter(chapter_id)
         if len(planned) > MAX_OCR_ITEMS:
             raise ValueError(f"Too many OCR regions: {len(planned)} > {MAX_OCR_ITEMS}")
@@ -91,7 +91,7 @@ class ChapterOCRJobManager:
             )
             if chapter_id in self._active_chapters:
                 raise RuntimeError("OCR is already running for this chapter")
-            if active_count >= MAX_ACTIVE_JOBS:
+            if active_count >= OCR_JOB_ACTIVE_LIMIT:
                 raise RuntimeError("Too many active OCR jobs")
             self._prune_locked()
             job = ChapterOCRJob(
