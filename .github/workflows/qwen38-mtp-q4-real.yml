@@ -1,0 +1,79 @@
+name: Qwen3.8 MTP Q4 real eh_proj gate
+
+on:
+  push:
+    branches: [research/qwen3.8-27b-runtime-finish]
+    paths:
+      - "research/qwen38/gguf_quant_q4_avx2.c"
+      - "research/qwen38/qwen38_mtp_q4_real_gate.py"
+      - ".github/workflows/qwen38-mtp-q4-real.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  HF_HUB_DISABLE_TELEMETRY: "1"
+
+jobs:
+  real-eh-proj:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Reclaim disk
+        shell: bash
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup || true
+          docker system prune -af || true
+
+      - name: Install download dependency
+        run: python -m pip install --no-cache-dir huggingface_hub hf_xet
+
+      - name: Download pinned real GGUF
+        shell: bash
+        run: |
+          set -euo pipefail
+          MODEL=$(python - <<'PY'
+          from huggingface_hub import hf_hub_download
+          print(hf_hub_download(
+              "bartowski/Qwen3.8-27B-GGUF",
+              filename="Qwen3.8-27B-Q6_K_L.gguf",
+              local_dir="${{ runner.temp }}/qwen38-model",
+          ))
+          PY
+          )
+          test -f "$MODEL"
+          echo "MODEL=$MODEL" >> "$GITHUB_ENV"
+          echo "EVIDENCE=$RUNNER_TEMP/qwen38-mtp-q4-real" >> "$GITHUB_ENV"
+
+      - name: Compile isolated exact Q4 runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          cc -O3 -std=c11 -mavx2 -fno-fast-math -ffp-contract=off -fPIC -shared \
+            research/qwen38/gguf_quant_q4_avx2.c -lm \
+            -o "$RUNNER_TEMP/libqwen_mtp_q4.so"
+
+      - name: Require full real eh_proj bitwise equality
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$EVIDENCE"
+          PYTHONPATH=research/qwen38 python -u research/qwen38/qwen38_mtp_q4_real_gate.py \
+            --model "$MODEL" --native-lib "$RUNNER_TEMP/libqwen_mtp_q4.so" \
+            --output "$EVIDENCE/q4-real.json" \
+            2>&1 | tee "$EVIDENCE/q4-real.log"
+          grep -F "QWEN38_MTP_Q4_REAL_EH_PROJ_BITWISE_PASS" "$EVIDENCE/q4-real.log"
+
+      - name: Upload compact evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen38-mtp-q4-real-${{ github.run_id }}
+          path: ${{ runner.temp }}/qwen38-mtp-q4-real/
+          retention-days: 14
