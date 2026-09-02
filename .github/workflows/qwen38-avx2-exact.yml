@@ -1,0 +1,31 @@
+name: Qwen3.8 single-thread AVX2 exact gate
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [research/qwen3.8-27b-runtime-finish]
+    paths:
+      - 'research/qwen38/gguf_quant_dot_avx2.c'
+      - 'research/qwen38/gguf_quant_dot.c'
+      - '.github/workflows/qwen38-avx2-exact.yml'
+
+jobs:
+  avx2-bitwise:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile scalar oracle
+        run: |
+          cc -O2 -std=c11 -DQWEN_QUANT_DOT_SELFTEST research/qwen38/gguf_quant_dot.c -lm -o /tmp/qwen_scalar
+          /tmp/qwen_scalar
+      - name: Compile AVX2 exact overlay
+        run: |
+          cc -O3 -std=c11 -mavx2 -fno-fast-math -ffp-contract=off \
+            -DQWEN_AVX2_EXACT_SELFTEST research/qwen38/gguf_quant_dot_avx2.c -lm -o /tmp/qwen_avx2
+          /tmp/qwen_avx2
+      - name: Compile runtime shared object ABI
+        run: |
+          cc -O3 -std=c11 -mavx2 -fno-fast-math -ffp-contract=off -fPIC -shared \
+            research/qwen38/gguf_quant_dot_avx2.c -lm -o /tmp/libqwen_quant_avx2.so
+          nm -D /tmp/libqwen_quant_avx2.so | grep ' qwen_matvec_q6_k_q8_k_scalar$'
+          nm -D /tmp/libqwen_quant_avx2.so | grep ' qwen_matvec_q8_0_q8_0_scalar$'
