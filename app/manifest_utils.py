@@ -25,6 +25,7 @@ _STALE_TEMP_PATTERNS = (
     "clean_*.tmp.png",
     "auto_clean_*.tmp.png",
     "manual_mask_*.tmp.png",
+    "manual_lama_mask_*.tmp.png",
     "page_*.rendering.*.tmp",
     "masks/**/*.tmp.png",
 )
@@ -357,10 +358,13 @@ def invalidate_page_render(manifest: dict, page_index: int) -> None:
         pages[page_index]["rendered"] = False
 
 
-def _get_manual_mask_state(processed_dir: Path, img_path: Path) -> tuple[bool, int, int]:
+def _get_manual_mask_state(
+    processed_dir: Path, img_path: Path, *, force_lama: bool = False
+) -> tuple[bool, int, int]:
     if not img_path.name:
         return (False, 0, 0)
-    mask_path = processed_dir / f"manual_mask_{img_path.name}"
+    prefix = "manual_lama_mask" if force_lama else "manual_mask"
+    mask_path = processed_dir / f"{prefix}_{img_path.name}"
     try:
         st = mask_path.stat()
         return (True, st.st_mtime_ns, st.st_size)
@@ -385,7 +389,11 @@ def capture_processing_state(manifest: dict, page_index: int, processed_dir: Pat
         "excluded_regions": copy.deepcopy(page.get("excluded_regions", [])),
         "boxes": copy.deepcopy(page.get("boxes", [])),
         "manual_mask": page.get("manual_mask"),
+        "manual_lama_mask": page.get("manual_lama_mask"),
         "disk_mask_state": _get_manual_mask_state(processed_dir, img_path),
+        "disk_lama_mask_state": _get_manual_mask_state(
+            processed_dir, img_path, force_lama=True
+        ),
     }
 
 

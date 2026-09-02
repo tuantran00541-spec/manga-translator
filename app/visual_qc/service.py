@@ -184,20 +184,36 @@ class ChapterQCService:
     def _load_manual_masks(self, manifest: dict, chapter_id: str) -> dict[int, np.ndarray]:
         masks: dict[int, np.ndarray] = {}
         for page_index, page in enumerate(manifest.get("pages") or []):
-            path_value = page.get("manual_mask") if isinstance(page, dict) else None
-            if not path_value:
+            if not isinstance(page, dict):
                 continue
-            path = validate_managed_path(path_value, PROCESSED_DIR / chapter_id)
-            if not path.is_file():
-                continue
-            validate_image_size(path)
-            try:
-                data = np.fromfile(str(path), dtype=np.uint8)
-                mask = cv2.imdecode(data, cv2.IMREAD_GRAYSCALE)
-                if mask is not None:
-                    masks[page_index] = mask
-            except OSError:
-                continue
+            combined_mask: np.ndarray | None = None
+            for mask_field in ("manual_mask", "manual_lama_mask"):
+                path_value = page.get(mask_field)
+                if not path_value:
+                    continue
+                path = validate_managed_path(path_value, PROCESSED_DIR / chapter_id)
+                if not path.is_file():
+                    continue
+                validate_image_size(path)
+                try:
+                    data = np.fromfile(str(path), dtype=np.uint8)
+                    mask = cv2.imdecode(data, cv2.IMREAD_GRAYSCALE)
+                except OSError:
+                    continue
+                if mask is None:
+                    continue
+                if combined_mask is None:
+                    combined_mask = mask
+                    continue
+                if mask.shape[:2] != combined_mask.shape[:2]:
+                    mask = cv2.resize(
+                        mask,
+                        (combined_mask.shape[1], combined_mask.shape[0]),
+                        interpolation=cv2.INTER_NEAREST,
+                    )
+                combined_mask = np.maximum(combined_mask, mask)
+            if combined_mask is not None:
+                masks[page_index] = combined_mask
         return masks
 
     async def start(

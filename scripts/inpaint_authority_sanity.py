@@ -20,6 +20,9 @@ def main() -> None:
         "safe_to_inpaint=safe_to_inpaint",
         "if geometry_overridden or explicit_manual:",
         "box_object.allow_rectangle_fallback = True",
+        "manual_lama_mask_posix: str | None = None",
+        "(manual_mask_path, False)",
+        "(manual_lama_mask_path, True)",
     )
     _require(
         "app/detector/mask_builder.py",

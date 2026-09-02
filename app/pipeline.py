@@ -617,8 +617,11 @@ class ChapterPipeline:
                 bump_page_revision(target_page, "process_revision")
                 bump_page_revision(target_page, "clean_revision")
 
-                if "manual_mask" in page_data:
-                    target_page["manual_mask"] = page_data["manual_mask"]
+                for mask_field in ("manual_mask", "manual_lama_mask"):
+                    if mask_field in page_data:
+                        target_page[mask_field] = page_data[mask_field]
+                    else:
+                        target_page.pop(mask_field, None)
 
                 invalidate_page_render(manifest, page_index)
                 save_manifest_raw(chapter_id, manifest)
@@ -881,9 +884,15 @@ class ChapterPipeline:
                 boxes_snapshot = copy.deepcopy(target_page.get("boxes", []))
                 boxes_snapshot.append(copy.deepcopy(new_box))
                 manual_mask_posix = target_page.get("manual_mask")
+                manual_lama_mask_posix = target_page.get("manual_lama_mask")
 
             clean_path_posix = self._do_reinpaint(
-                processed_dir, img_path, image, boxes_snapshot, manual_mask_posix
+                processed_dir,
+                img_path,
+                image,
+                boxes_snapshot,
+                manual_mask_posix=manual_mask_posix,
+                manual_lama_mask_posix=manual_lama_mask_posix,
             )
 
             with get_manifest_lock(chapter_id):
@@ -960,9 +969,15 @@ class ChapterPipeline:
                 boxes_snapshot = copy.deepcopy(target_boxes)
                 self._apply_box_geometry(boxes_snapshot[box_index], new_geometry)
                 manual_mask_posix = target_page.get("manual_mask")
+                manual_lama_mask_posix = target_page.get("manual_lama_mask")
 
             clean_path_posix = self._do_reinpaint(
-                processed_dir, img_path, image, boxes_snapshot, manual_mask_posix
+                processed_dir,
+                img_path,
+                image,
+                boxes_snapshot,
+                manual_mask_posix=manual_mask_posix,
+                manual_lama_mask_posix=manual_lama_mask_posix,
             )
 
             with get_manifest_lock(chapter_id):
@@ -1003,12 +1018,18 @@ class ChapterPipeline:
 
                 img_path = Path(page["original"])
                 manual_mask_posix = page.get("manual_mask")
+                manual_lama_mask_posix = page.get("manual_lama_mask")
                 boxes_snapshot = copy.deepcopy(boxes)
                 boxes_snapshot[box_index]["removed"] = True
 
             image = read_image(img_path)
             clean_path_posix = self._do_reinpaint(
-                processed_dir, img_path, image, boxes_snapshot, manual_mask_posix
+                processed_dir,
+                img_path,
+                image,
+                boxes_snapshot,
+                manual_mask_posix=manual_mask_posix,
+                manual_lama_mask_posix=manual_lama_mask_posix,
             )
 
             with get_manifest_lock(chapter_id):
@@ -1047,13 +1068,31 @@ class ChapterPipeline:
                 img_path = Path(page["original"])
                 boxes_snapshot = copy.deepcopy(page.get("boxes", []))
                 manual_mask_posix = page.get("manual_mask")
+                manual_lama_mask_posix = page.get("manual_lama_mask")
+                clean_posix = page.get("clean")
 
             image = read_image(img_path)
             img_h, img_w = image.shape[:2]
 
+            manual_mask_path = (
+                Path(manual_mask_posix)
+                if manual_mask_posix
+                else self._manual_mask_path(processed_dir, img_path)
+            )
+            manual_lama_mask_path = (
+                Path(manual_lama_mask_posix)
+                if manual_lama_mask_posix
+                else self._manual_mask_path(
+                    processed_dir, img_path, force_lama=True
+                )
+            )
+
             auto_clean_path = self._auto_clean_path(processed_dir, img_path)
-            if not auto_clean_path.exists() and not manual_mask_posix:
-                clean_posix = page.get("clean")
+            if (
+                not auto_clean_path.exists()
+                and not manual_mask_path.exists()
+                and not manual_lama_mask_path.exists()
+            ):
                 clean_path = Path(clean_posix) if clean_posix else None
                 if clean_path is not None and clean_path.exists():
                     try:
@@ -1068,18 +1107,10 @@ class ChapterPipeline:
                 bin_mask = cv2.resize(bin_mask, (img_w, img_h), interpolation=cv2.INTER_NEAREST)
                 bin_mask = (bin_mask > 10).astype(np.uint8) * 255
 
-            manual_mask_path = Path(manual_mask_posix) if manual_mask_posix else processed_dir / f"manual_mask_{img_path.name}"
-            existing_mask = None
-            if manual_mask_path.exists():
-                try:
-                    raw = np.fromfile(str(manual_mask_path), dtype=np.uint8)
-                    decoded = cv2.imdecode(raw, cv2.IMREAD_GRAYSCALE)
-                    if decoded is not None and np.any(decoded > 10):
-                        if decoded.shape[:2] != (img_h, img_w):
-                            decoded = cv2.resize(decoded, (img_w, img_h), interpolation=cv2.INTER_NEAREST)
-                        existing_mask = (decoded > 10).astype(np.uint8) * 255
-                except Exception as exc:
-                    logger.warning("Could not read existing manual mask at %s: %s", manual_mask_path, exc)
+            target_field = "manual_lama_mask" if force_lama else "manual_mask"
+            target_path = manual_lama_mask_path if force_lama else manual_mask_path
+            target_prefix = "manual_lama_mask" if force_lama else "manual_mask"
+            existing_mask = self._read_manual_mask(target_path, (img_h, img_w))
 
             if existing_mask is not None and bin_mask is not None:
                 accumulated_mask = np.maximum(existing_mask, bin_mask)
@@ -1090,25 +1121,40 @@ class ChapterPipeline:
             else:
                 accumulated_mask = None
 
-            tmp_mask_path = processed_dir / f"manual_mask_{img_path.name}.{uuid.uuid4().hex}.tmp.png"
+            tmp_mask_path = processed_dir / (
+                f"{target_prefix}_{img_path.name}.{uuid.uuid4().hex}.tmp.png"
+            )
             if accumulated_mask is not None:
                 write_image(tmp_mask_path, accumulated_mask)
-                inpaint_mask_posix = tmp_mask_path.as_posix()
-            else:
-                inpaint_mask_posix = None
 
             try:
+                standard_mask_for_repaint = (
+                    tmp_mask_path.as_posix()
+                    if accumulated_mask is not None and not force_lama
+                    else manual_mask_posix
+                )
+                lama_mask_for_repaint = (
+                    tmp_mask_path.as_posix()
+                    if accumulated_mask is not None and force_lama
+                    else manual_lama_mask_posix
+                )
                 clean_path_posix = self._do_reinpaint(
-                    processed_dir, img_path, image, boxes_snapshot, inpaint_mask_posix,
+                    processed_dir,
+                    img_path,
+                    image,
+                    boxes_snapshot,
+                    manual_mask_posix=standard_mask_for_repaint,
+                    manual_lama_mask_posix=lama_mask_for_repaint,
                     reuse_auto_clean=True,
-                    force_lama_manual=force_lama,
                 )
                 if accumulated_mask is not None:
-                    final_mask_path = processed_dir / f"manual_mask_{img_path.name}"
+                    final_mask_path = self._manual_mask_path(
+                        processed_dir, img_path, force_lama=force_lama
+                    )
                     os.replace(tmp_mask_path, final_mask_path)
-                    manual_mask_posix = final_mask_path.as_posix()
+                    target_mask_posix = final_mask_path.as_posix()
                 else:
-                    manual_mask_posix = None
+                    target_mask_posix = None
             finally:
                 if tmp_mask_path.exists():
                     try:
@@ -1121,10 +1167,10 @@ class ChapterPipeline:
                 if page_index < 0 or page_index >= len(manifest.get("pages", [])):
                     raise ValueError(f"Chapter {chapter_id}: Invalid page index {page_index}")
                 target_page = manifest["pages"][page_index]
-                if manual_mask_posix:
-                    target_page["manual_mask"] = manual_mask_posix
+                if target_mask_posix:
+                    target_page[target_field] = target_mask_posix
                 else:
-                    target_page.pop("manual_mask", None)
+                    target_page.pop(target_field, None)
                 target_page["clean"] = clean_path_posix
                 bump_page_revision(target_page, "clean_revision")
                 invalidate_page_render(manifest, page_index)
@@ -1144,20 +1190,31 @@ class ChapterPipeline:
                 img_path = Path(page["original"])
                 boxes_snapshot = copy.deepcopy(page.get("boxes", []))
 
-            manual_mask_path = processed_dir / f"manual_mask_{img_path.name}"
+            manual_mask_path = self._manual_mask_path(processed_dir, img_path)
+            manual_lama_mask_path = self._manual_mask_path(
+                processed_dir, img_path, force_lama=True
+            )
 
             image = read_image(img_path)
             clean_path_posix = self._do_reinpaint(
-                processed_dir, img_path, image, boxes_snapshot, manual_mask_posix=None,
+                processed_dir,
+                img_path,
+                image,
+                boxes_snapshot,
+                manual_mask_posix=None,
+                manual_lama_mask_posix=None,
                 reuse_auto_clean=True,
                 apply_manual_mask=False,
             )
 
-            if manual_mask_path.exists():
-                try:
-                    manual_mask_path.unlink()
-                except OSError as exc:
-                    raise RuntimeError(f"Cannot remove manual mask: {exc}") from exc
+            for mask_path in (manual_mask_path, manual_lama_mask_path):
+                if mask_path.exists():
+                    try:
+                        mask_path.unlink()
+                    except OSError as exc:
+                        raise RuntimeError(
+                            f"Cannot remove manual mask: {exc}"
+                        ) from exc
 
             with get_manifest_lock(chapter_id):
                 manifest = load_manifest_raw(chapter_id)
@@ -1165,6 +1222,7 @@ class ChapterPipeline:
                     raise ValueError("Invalid page index")
                 target_page = manifest["pages"][page_index]
                 target_page.pop("manual_mask", None)
+                target_page.pop("manual_lama_mask", None)
                 target_page["clean"] = clean_path_posix
                 bump_page_revision(target_page, "clean_revision")
                 invalidate_page_render(manifest, page_index)
@@ -1307,6 +1365,41 @@ class ChapterPipeline:
     def _auto_clean_path(processed_dir: Path, img_path: Path) -> Path:
         return processed_dir / f"auto_clean_{img_path.name}"
 
+    @staticmethod
+    def _manual_mask_path(
+        processed_dir: Path, img_path: Path, *, force_lama: bool = False
+    ) -> Path:
+        prefix = "manual_lama_mask" if force_lama else "manual_mask"
+        return processed_dir / f"{prefix}_{img_path.name}"
+
+    @staticmethod
+    def _read_manual_mask(
+        mask_path: Path, expected_shape: tuple[int, int]
+    ) -> np.ndarray | None:
+        if not mask_path.exists():
+            return None
+        try:
+            raw = np.fromfile(str(mask_path), dtype=np.uint8)
+            mask = cv2.imdecode(raw, cv2.IMREAD_GRAYSCALE)
+        except (OSError, ValueError) as exc:
+            logger.warning("Could not read manual mask at %s: %s", mask_path, exc)
+            return None
+        if mask is None or not np.any(mask > 10):
+            return None
+        if mask.shape[:2] != expected_shape:
+            try:
+                mask = cv2.resize(
+                    mask,
+                    (expected_shape[1], expected_shape[0]),
+                    interpolation=cv2.INTER_NEAREST,
+                )
+            except Exception as exc:
+                logger.warning("Could not resize manual mask at %s: %s", mask_path, exc)
+                return None
+        if not np.any(mask > 10):
+            return None
+        return (mask > 10).astype(np.uint8) * 255
+
     def _write_auto_clean_cache(self, processed_dir: Path, img_path: Path, image: np.ndarray) -> Path:
         auto_path = self._auto_clean_path(processed_dir, img_path)
         tmp_path = processed_dir / f"auto_clean_{img_path.name}.{uuid.uuid4().hex[:12]}.tmp.png"
@@ -1338,10 +1431,10 @@ class ChapterPipeline:
         image: np.ndarray,
         boxes: list[dict],
         manual_mask_posix: str | None = None,
+        manual_lama_mask_posix: str | None = None,
         *,
         reuse_auto_clean: bool = False,
         apply_manual_mask: bool = True,
-        force_lama_manual: bool = False,
     ) -> str:
         """Repaint using masks stored inline or in managed PNG sidecars."""
         boxes_objects = []
@@ -1416,26 +1509,28 @@ class ChapterPipeline:
         manual_mask_path = (
             Path(manual_mask_posix)
             if manual_mask_posix
-            else processed_dir / f"manual_mask_{img_path.name}"
+            else self._manual_mask_path(processed_dir, img_path)
         )
-        if apply_manual_mask and manual_mask_path.exists():
-            raw = np.fromfile(str(manual_mask_path), dtype=np.uint8)
-            manual_mask = cv2.imdecode(raw, cv2.IMREAD_GRAYSCALE)
-            if manual_mask is not None and np.any(manual_mask > 10):
-                h, w = clean_image.shape[:2]
-                if manual_mask.shape[:2] != (h, w):
-                    try:
-                        manual_mask = cv2.resize(
-                            manual_mask,
-                            (w, h),
-                            interpolation=cv2.INTER_NEAREST,
-                        )
-                    except Exception:
-                        manual_mask = None
-                if manual_mask is not None and np.any(manual_mask > 10):
-                    manual_mask = (manual_mask > 10).astype(np.uint8) * 255
+        manual_lama_mask_path = (
+            Path(manual_lama_mask_posix)
+            if manual_lama_mask_posix
+            else self._manual_mask_path(processed_dir, img_path, force_lama=True)
+        )
+        # Keep repaint authority attached to the persisted mask. Standard marks
+        # retain Smart Fill eligibility; explicit LaMa marks always run LaMa,
+        # including after box edits and later page reprocessing.
+        mask_passes = (
+            (manual_mask_path, False),
+            (manual_lama_mask_path, True),
+        )
+        if apply_manual_mask:
+            for mask_path, force_lama in mask_passes:
+                manual_mask = self._read_manual_mask(
+                    mask_path, clean_image.shape[:2]
+                )
+                if manual_mask is not None:
                     clean_image = self.inpainter.inpaint_mask(
-                        clean_image, manual_mask, force_lama=force_lama_manual
+                        clean_image, manual_mask, force_lama=force_lama
                     )
 
         clean_path = processed_dir / f"clean_{img_path.name}"
@@ -1595,34 +1690,46 @@ class ChapterPipeline:
         auto_inpaint_metrics = self.inpainter.last_metrics()
 
         auto_clean_path = self._auto_clean_path(processed_dir, img_path)
-        manual_mask_path = processed_dir / f"manual_mask_{img_path.name}"
+        manual_mask_path = self._manual_mask_path(processed_dir, img_path)
+        manual_lama_mask_path = self._manual_mask_path(
+            processed_dir, img_path, force_lama=True
+        )
         tmp_auto_clean_path = None
-        if auto_clean_path.exists() or manual_mask_path.exists():
+        if (
+            auto_clean_path.exists()
+            or manual_mask_path.exists()
+            or manual_lama_mask_path.exists()
+        ):
             tmp_auto_clean_path = processed_dir / f"auto_clean_{img_path.name}.{uuid.uuid4().hex[:12]}.tmp.png"
             write_image(tmp_auto_clean_path, clean_image)
 
         manual_mask_posix = None
+        manual_lama_mask_posix = None
         manual_inpaint_ms = 0.0
         manual_inpaint_metrics: dict[str, int] = {}
-        if manual_mask_path.exists():
-            raw = np.fromfile(str(manual_mask_path), dtype=np.uint8)
-            manual_mask = cv2.imdecode(raw, cv2.IMREAD_GRAYSCALE)
-            if manual_mask is not None and np.any(manual_mask > 10):
-                h, w = clean_image.shape[:2]
-                if manual_mask.shape[:2] != (h, w):
-                    try:
-                        manual_mask = cv2.resize(manual_mask, (w, h), interpolation=cv2.INTER_NEAREST)
-                    except Exception:
-                        manual_mask = None
-                if manual_mask is not None and np.any(manual_mask > 10):
-                    manual_mask = (manual_mask > 10).astype(np.uint8) * 255
-                    manual_inpaint_started_at = time.perf_counter()
-                    clean_image = self.inpainter.inpaint_mask(clean_image.copy(), manual_mask)
-                    manual_inpaint_ms = (
-                        time.perf_counter() - manual_inpaint_started_at
-                    ) * 1000.0
-                    manual_inpaint_metrics = self.inpainter.last_metrics()
-                    manual_mask_posix = manual_mask_path.as_posix()
+        manual_passes = (
+            ("manual_mask", manual_mask_path, False),
+            ("manual_lama_mask", manual_lama_mask_path, True),
+        )
+        for mask_field, mask_path, force_lama in manual_passes:
+            manual_mask = self._read_manual_mask(mask_path, clean_image.shape[:2])
+            if manual_mask is None:
+                continue
+            manual_inpaint_started_at = time.perf_counter()
+            clean_image = self.inpainter.inpaint_mask(
+                clean_image.copy(), manual_mask, force_lama=force_lama
+            )
+            manual_inpaint_ms += (
+                time.perf_counter() - manual_inpaint_started_at
+            ) * 1000.0
+            for metric_name, metric_value in self.inpainter.last_metrics().items():
+                manual_inpaint_metrics[metric_name] = (
+                    manual_inpaint_metrics.get(metric_name, 0) + int(metric_value)
+                )
+            if mask_field == "manual_mask":
+                manual_mask_posix = mask_path.as_posix()
+            else:
+                manual_lama_mask_posix = mask_path.as_posix()
 
         tmp_clean_path = processed_dir / f"clean_{img_path.name}.{uuid.uuid4().hex[:12]}.tmp.png"
         write_started_at = time.perf_counter()
@@ -1689,6 +1796,8 @@ class ChapterPipeline:
             res["tmp_auto_clean"] = tmp_auto_clean_path.as_posix()
         if manual_mask_posix:
             res["manual_mask"] = manual_mask_posix
+        if manual_lama_mask_posix:
+            res["manual_lama_mask"] = manual_lama_mask_posix
         return res
 
     @staticmethod
