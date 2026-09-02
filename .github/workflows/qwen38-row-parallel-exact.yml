@@ -1,0 +1,39 @@
+name: Qwen3.8 exact row-parallel quant kernel probe
+
+on:
+  push:
+    branches: [research/qwen3.8-27b-runtime-finish]
+    paths:
+      - "research/qwen38/gguf_quant_row_parallel_avx2.c"
+      - ".github/workflows/qwen38-row-parallel-exact.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  row-parallel-exact:
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[qwen-row-parallel]') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Runner CPU information
+        run: lscpu
+
+      - name: Compile exact row-parallel selftest
+        shell: bash
+        run: |
+          set -euo pipefail
+          cc -O3 -std=c11 -mavx2 -fno-fast-math -ffp-contract=off \
+            -D_POSIX_C_SOURCE=200809L -DQWEN_ROW_PARALLEL_SELFTEST \
+            research/qwen38/gguf_quant_row_parallel_avx2.c -lm -pthread \
+            -o "$RUNNER_TEMP/qwen-row-parallel-selftest"
+
+      - name: Run bitwise row-parallel gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/qwen-row-parallel-selftest" | tee "$RUNNER_TEMP/row-parallel.log"
+          grep -F "QWEN38_ROW_PARALLEL_BITWISE_PASS" "$RUNNER_TEMP/row-parallel.log"
