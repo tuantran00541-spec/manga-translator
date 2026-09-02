@@ -1,6 +1,7 @@
 import os
 import base64
 import copy
+import threading
 import time
 import uuid
 from dataclasses import replace
@@ -134,17 +135,23 @@ class ChapterPipeline:
     def __init__(self):
         self._detector = None
         self._inpainter = None
+        self._detector_init_lock = threading.Lock()
+        self._inpainter_init_lock = threading.Lock()
 
     @property
     def detector(self):
         if self._detector is None:
-            self._detector = CombinedTextDetector()
+            with self._detector_init_lock:
+                if self._detector is None:
+                    self._detector = CombinedTextDetector()
         return self._detector
 
     @property
     def inpainter(self):
         if self._inpainter is None:
-            self._inpainter = Inpainter()
+            with self._inpainter_init_lock:
+                if self._inpainter is None:
+                    self._inpainter = Inpainter()
         return self._inpainter
 
     @staticmethod
@@ -556,7 +563,7 @@ class ChapterPipeline:
         tmp_auto_clean_path = Path(tmp_auto_clean_value) if tmp_auto_clean_value else None
 
         try:
-            with get_manifest_lock(chapter_id):
+            with get_page_lock(chapter_id, page_index), get_manifest_lock(chapter_id):
                 manifest = load_manifest_raw(chapter_id)
                 pages = manifest.get("pages", [])
                 if not (
