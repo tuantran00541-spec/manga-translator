@@ -263,11 +263,18 @@ def run(args) -> dict[str, Any]:
 def sanity() -> None:
     assert MTP_LAYER == 64
     assert gdn.HIDDEN == 5120
-    assert attn.N_HEAD_KV == 8
+    assert attn.N_HEAD == 24
+    assert attn.N_HEAD_KV == 4
+    assert attn.HEAD_DIM == 256
+    assert attn.QG_DIM == 12288
+    assert attn.KV_DIM == 1024
     print(json.dumps({
         "schema": "qwen38-mtp1-real-probe-sanity-v1",
         "status": "PASS",
         "mtp_layer": MTP_LAYER,
+        "query_heads": attn.N_HEAD,
+        "kv_heads": attn.N_HEAD_KV,
+        "head_dim": attn.HEAD_DIM,
         "zero_h_bytes": gdn.HIDDEN * 4,
     }, indent=2))
 
