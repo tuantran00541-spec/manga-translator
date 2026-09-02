@@ -1,10 +1,11 @@
 import json
 import os
+import shutil
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.concurrency import run_in_threadpool
 
-from app.config import PROCESSED_DIR
+from app.config import OUTPUT_DIR, PROCESSED_DIR, RAW_DIR
 from app.dependencies import pipeline
 from app.logging_config import logger
 from app.manifest_utils import get_manifest_lock, invalidate_page_render, load_manifest_raw, save_manifest_raw, urlify_manifest
@@ -28,6 +29,48 @@ from app.upload_utils import read_upload_limited
 
 router = APIRouter(prefix="/api", tags=["chapters"])
 _CHAPTER_LIST_CACHE: dict[str, tuple[tuple[int, int, int], dict]] = {}
+
+
+def _allocate_chapter_id() -> str:
+    """Reserve a collision-free raw directory for one new chapter."""
+    RAW_DIR.mkdir(parents=True, exist_ok=True)
+    for _attempt in range(256):
+        chapter_id = os.urandom(4).hex()
+        raw_dir = RAW_DIR / chapter_id
+        try:
+            raw_dir.mkdir()
+        except FileExistsError:
+            continue
+        if (PROCESSED_DIR / chapter_id).exists() or (OUTPUT_DIR / chapter_id).exists():
+            try:
+                raw_dir.rmdir()
+            except OSError:
+                pass
+            continue
+        return chapter_id
+    raise HTTPException(503, "Could not allocate chapter storage")
+
+
+def _cleanup_uncommitted_chapter(chapter_id: str) -> None:
+    """Remove only storage reserved for a creation that never committed."""
+    manifest_path = PROCESSED_DIR / chapter_id / "manifest.json"
+    if manifest_path.exists():
+        return
+    _CHAPTER_LIST_CACHE.pop(chapter_id, None)
+    for root in (RAW_DIR, PROCESSED_DIR, OUTPUT_DIR):
+        path = root / chapter_id
+        try:
+            if path.is_symlink():
+                path.unlink()
+            elif path.is_dir():
+                shutil.rmtree(path)
+        except OSError as exc:
+            logger.warning(
+                "Could not roll back uncommitted chapter %s at %s: %s",
+                chapter_id,
+                path,
+                exc,
+            )
 
 
 def _clamp_workers(n: int | None) -> int:
@@ -117,15 +160,17 @@ def set_workflow_checkpoint(req: WorkflowCheckpointRequest) -> dict:
 @router.post("/chapter")
 def create_chapter(req: ChapterRequest) -> dict:
     validate_url(req.url)
-    chapter_id = os.urandom(4).hex()
+    chapter_id = _allocate_chapter_id()
     workers = _clamp_workers(req.workers)
     logger.info(f"Creating chapter {chapter_id} from {req.url} (workers={workers})")
     try:
         manifest = pipeline.download_chapter(req.url, chapter_id, workers=workers)
         return urlify_manifest(manifest)
     except HTTPException:
+        _cleanup_uncommitted_chapter(chapter_id)
         raise
     except Exception as exc:
+        _cleanup_uncommitted_chapter(chapter_id)
         logger.error(
             "Chapter %s operation 'create_chapter' failed for URL %s: %s",
             chapter_id,
@@ -162,16 +207,21 @@ async def create_chapter_from_upload(
         total_bytes += len(data)
         uploads.append((f.filename or "unnamed", data))
 
-    chapter_id = os.urandom(4).hex()
+    chapter_id = _allocate_chapter_id()
     workers_n = _clamp_workers(workers)
     logger.info(f"Creating chapter {chapter_id} from {len(uploads)} uploaded files (workers={workers_n})")
     try:
         manifest = await run_in_threadpool(pipeline.create_chapter_from_uploads, chapter_id, uploads, workers=workers_n)
         return urlify_manifest(manifest)
+    except HTTPException:
+        _cleanup_uncommitted_chapter(chapter_id)
+        raise
     except ValueError as exc:
+        _cleanup_uncommitted_chapter(chapter_id)
         logger.error("Chapter %s operation 'create_chapter_from_upload' invalid payload: %s", chapter_id, exc)
         raise HTTPException(400, str(exc)) from exc
     except Exception as exc:
+        _cleanup_uncommitted_chapter(chapter_id)
         logger.error("Chapter %s operation 'create_chapter_from_upload' failed: %s", chapter_id, exc, exc_info=True)
         raise HTTPException(500, f"Upload chapter failed: {exc}") from exc
 
