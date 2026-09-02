@@ -1,0 +1,178 @@
+name: Qwen3.8 MTP-1 bounded essay benchmark
+
+on:
+  push:
+    branches: [research/qwen3.8-27b-runtime-finish]
+    paths:
+      - "research/qwen38/qwen38_mtp1_essay_benchmark.py"
+      - ".github/workflows/qwen38-mtp1-essay-benchmark.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  HF_HUB_DISABLE_TELEMETRY: "1"
+  QWEN_REVISION: "1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0"
+
+jobs:
+  essay-benchmark:
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[qwen-essay-bench]') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Exact kernels and essay benchmark sanity
+        shell: bash
+        run: |
+          set -euo pipefail
+          cc -O3 -std=c11 -mavx2 -fno-fast-math -ffp-contract=off \
+            -DQWEN_AVX2_EXACT_SELFTEST research/qwen38/gguf_quant_dot_avx2.c -lm \
+            -o "$RUNNER_TEMP/qwen-avx2-selftest"
+          "$RUNNER_TEMP/qwen-avx2-selftest"
+          cc -O3 -std=c11 -mavx2 -fno-fast-math -ffp-contract=off \
+            -DQWEN_Q4_AVX2_EXACT_SELFTEST research/qwen38/gguf_quant_q4_avx2.c -lm \
+            -o "$RUNNER_TEMP/qwen-q4-selftest"
+          "$RUNNER_TEMP/qwen-q4-selftest"
+          PYTHONPATH=research/qwen38 python -u research/qwen38/qwen38_mtp1_essay_benchmark.py sanity
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Runner CPU and storage information
+        shell: bash
+        run: |
+          lscpu
+          df -h
+          free -h
+
+      - name: Reclaim disk
+        shell: bash
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup || true
+          docker system prune -af || true
+          df -h
+          free -h
+
+      - name: Install runtime dependencies
+        run: python -m pip install --no-cache-dir huggingface_hub hf_xet tokenizers
+
+      - name: Download pinned real GGUF and tokenizer once
+        shell: bash
+        run: |
+          set -euo pipefail
+          readarray -t files < <(python - <<'PY'
+          from huggingface_hub import hf_hub_download
+          rev="1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0"
+          print(hf_hub_download(
+              "bartowski/Qwen3.8-27B-GGUF",
+              filename="Qwen3.8-27B-Q6_K_L.gguf",
+              local_dir="${{ runner.temp }}/qwen38-model",
+          ))
+          print(hf_hub_download(
+              "Qwen/Qwen3.8-27B",
+              filename="tokenizer.json",
+              revision=rev,
+              local_dir="${{ runner.temp }}/qwen38-tokenizer",
+          ))
+          PY
+          )
+          test -f "${files[0]}"; test -f "${files[1]}"
+          echo "MODEL=${files[0]}" >> "$GITHUB_ENV"
+          echo "TOKENIZER_JSON=${files[1]}" >> "$GITHUB_ENV"
+          echo "K3_WORK=$RUNNER_TEMP/qwen38-essay-bench-k3" >> "$GITHUB_ENV"
+          echo "EVIDENCE=$RUNNER_TEMP/qwen38-essay-bench-evidence" >> "$GITHUB_ENV"
+
+      - name: Validate pinned decoder inventory
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$EVIDENCE"
+          PYTHONPATH=research/qwen38 python -u research/qwen38/qwen35_gguf_decoder_contract.py real \
+            --model "$MODEL" --output "$EVIDENCE/inventory.json" \
+            2>&1 | tee "$EVIDENCE/inventory.log"
+
+      - name: Compile exact target, Q4 and recurrent-state bridges
+        shell: bash
+        run: |
+          set -euo pipefail
+          cc -O3 -std=c11 -mavx2 -fno-fast-math -ffp-contract=off -fPIC -shared \
+            research/qwen38/gguf_quant_dot_avx2.c -lm -o "$RUNNER_TEMP/libqwen_quant_avx2.so"
+          cc -O3 -std=c11 -mavx2 -fno-fast-math -ffp-contract=off -fPIC -shared \
+            research/qwen38/gguf_quant_q4_avx2.c -lm -o "$RUNNER_TEMP/libqwen_mtp_q4.so"
+          cc -O2 -std=c11 -fPIC -shared research/qwen38/gdn_state_ar.c -lm \
+            -o "$RUNNER_TEMP/libqwen_gdn_serial.so"
+
+      - name: Run bounded 700-word essay prompt benchmark
+        timeout-minutes: 24
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$K3_WORK" "$EVIDENCE"
+          PYTHONPATH=research/qwen38 python -u research/qwen38/qwen38_mtp1_essay_benchmark.py run \
+            --model "$MODEL" \
+            --target-native-lib "$RUNNER_TEMP/libqwen_quant_avx2.so" \
+            --q4-native-lib "$RUNNER_TEMP/libqwen_mtp_q4.so" \
+            --state-lib "$RUNNER_TEMP/libqwen_gdn_serial.so" \
+            --inventory "$EVIDENCE/inventory.json" \
+            --tokenizer-json "$TOKENIZER_JSON" \
+            --prompt "Write a 700-word essay on curiosity." --raw-prompt \
+            --max-prompt-tokens 16 --max-new-tokens 12 \
+            --work-dir "$K3_WORK" --output "$EVIDENCE/essay-benchmark.json" \
+            2>&1 | tee "$EVIDENCE/essay-benchmark.log"
+          grep -F "QWEN38_MTP1_ESSAY_BENCHMARK_PASS" "$EVIDENCE/essay-benchmark.log"
+
+      - name: Validate benchmark evidence and print summary
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          p=Path(os.environ["EVIDENCE"])/"essay-benchmark.json"
+          r=json.loads(p.read_text(encoding="utf-8"))
+          assert r["status"] == "PASS"
+          assert r["model_sha256"] == "a487690b9f17de581857c4ae484dab50800335bb9eb978a4fb02c0465629dc0a"
+          assert r["prompt"] == "Write a 700-word essay on curiosity."
+          assert r["benchmark_scope"] == "bounded-prefix; full essay not generated"
+          assert r["generated_token_count"] >= 2
+          assert r["generated_text_prefix"]
+          assert r["mtp_target_cache_aligned"] is True
+          assert r["target_reader"]["direct_io"] is True
+          g=r["generation"]
+          assert g["transitions_after_first_token"] >= 1
+          assert g["tokens_per_second_after_first_token"] > 0
+          assert g["effective_k3_bytes_per_transition"] > 0
+          print("QWEN38_MTP1_ESSAY_BENCHMARK_REAL_PASS")
+          print(json.dumps({
+              "prompt_token_count": r["prompt_token_count"],
+              "generated_token_count": r["generated_token_count"],
+              "generated_prefix_word_count": r["generated_prefix_word_count"],
+              "generated_text_prefix": r["generated_text_prefix"],
+              "runtime_init_seconds": r["startup"]["runtime_init_seconds"],
+              "cold_start_to_first_token_seconds": r["startup"]["cold_start_to_first_token_seconds"],
+              "ttft_after_runtime_init_seconds": r["ttft"]["seconds_after_runtime_init"],
+              "generation_seconds": g["seconds"],
+              "tokens_per_second_after_first_token": g["tokens_per_second_after_first_token"],
+              "seconds_per_token_after_first_token": g["seconds_per_token_after_first_token"],
+              "speculative_rounds": g["speculative_rounds"],
+              "accepted_rounds": g["accepted_rounds"],
+              "acceptance_rate": g["acceptance_rate"],
+              "generation_k3_bytes": g["k3_bytes"],
+              "effective_k3_bytes_per_transition": g["effective_k3_bytes_per_transition"],
+              "max_rss_gib": r["max_rss_gib"],
+              "projection_700_words": r["projection"]["essay_700_words"],
+              "projection_1000_words": r["projection"]["essay_1000_words"],
+          }, indent=2, ensure_ascii=False))
+          PY
+
+      - name: Upload essay benchmark evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen38-mtp1-essay-benchmark-${{ github.run_id }}
+          path: ${{ runner.temp }}/qwen38-essay-bench-evidence/
+          if-no-files-found: warn
+          retention-days: 14
