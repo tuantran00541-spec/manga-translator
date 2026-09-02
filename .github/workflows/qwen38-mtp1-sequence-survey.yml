@@ -1,0 +1,165 @@
+name: Qwen3.8 real MTP-1 sequential acceptance survey
+
+on:
+  push:
+    branches: [research/qwen3.8-27b-runtime-finish]
+    paths:
+      - "research/qwen38/qwen38_mtp1_sequence_survey.py"
+      - ".github/workflows/qwen38-mtp1-sequence-survey.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  HF_HUB_DISABLE_TELEMETRY: "1"
+  QWEN_REVISION: "1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0"
+
+jobs:
+  mtp1-survey:
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[qwen-mtp-survey]') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Exact kernel and survey sanity gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          cc -O3 -std=c11 -mavx2 -fno-fast-math -ffp-contract=off \
+            -DQWEN_AVX2_EXACT_SELFTEST research/qwen38/gguf_quant_dot_avx2.c -lm \
+            -o "$RUNNER_TEMP/qwen-avx2-selftest"
+          "$RUNNER_TEMP/qwen-avx2-selftest"
+          cc -O3 -std=c11 -mavx2 -fno-fast-math -ffp-contract=off \
+            -DQWEN_Q4_AVX2_EXACT_SELFTEST research/qwen38/gguf_quant_q4_avx2.c -lm \
+            -o "$RUNNER_TEMP/qwen-q4-selftest"
+          "$RUNNER_TEMP/qwen-q4-selftest"
+          PYTHONPATH=research/qwen38 python -u research/qwen38/qwen38_mtp1_real_probe.py sanity
+          PYTHONPATH=research/qwen38 python -u research/qwen38/qwen38_mtp1_sequence_survey.py sanity
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Reclaim disk
+        shell: bash
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup || true
+          docker system prune -af || true
+          df -h
+          free -h
+
+      - name: Install runtime dependencies
+        run: python -m pip install --no-cache-dir huggingface_hub hf_xet tokenizers
+
+      - name: Download pinned real GGUF and tokenizer once
+        shell: bash
+        run: |
+          set -euo pipefail
+          readarray -t files < <(python - <<'PY'
+          from huggingface_hub import hf_hub_download
+          rev="1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0"
+          print(hf_hub_download(
+              "bartowski/Qwen3.8-27B-GGUF",
+              filename="Qwen3.8-27B-Q6_K_L.gguf",
+              local_dir="${{ runner.temp }}/qwen38-model",
+          ))
+          print(hf_hub_download(
+              "Qwen/Qwen3.8-27B",
+              filename="tokenizer.json",
+              revision=rev,
+              local_dir="${{ runner.temp }}/qwen38-tokenizer",
+          ))
+          PY
+          )
+          test -f "${files[0]}"; test -f "${files[1]}"
+          echo "MODEL=${files[0]}" >> "$GITHUB_ENV"
+          echo "TOKENIZER_JSON=${files[1]}" >> "$GITHUB_ENV"
+          echo "K3_WORK=$RUNNER_TEMP/qwen38-mtp1-survey-k3" >> "$GITHUB_ENV"
+          echo "EVIDENCE=$RUNNER_TEMP/qwen38-mtp1-survey-evidence" >> "$GITHUB_ENV"
+
+      - name: Validate pinned decoder inventory
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$EVIDENCE"
+          PYTHONPATH=research/qwen38 python -u research/qwen38/qwen35_gguf_decoder_contract.py real \
+            --model "$MODEL" --output "$EVIDENCE/inventory.json" \
+            2>&1 | tee "$EVIDENCE/inventory.log"
+
+      - name: Compile exact target, Q4 and recurrent-state bridges
+        shell: bash
+        run: |
+          set -euo pipefail
+          cc -O3 -std=c11 -mavx2 -fno-fast-math -ffp-contract=off -fPIC -shared \
+            research/qwen38/gguf_quant_dot_avx2.c -lm -o "$RUNNER_TEMP/libqwen_quant_avx2.so"
+          cc -O3 -std=c11 -mavx2 -fno-fast-math -ffp-contract=off -fPIC -shared \
+            research/qwen38/gguf_quant_q4_avx2.c -lm -o "$RUNNER_TEMP/libqwen_mtp_q4.so"
+          cc -O2 -std=c11 -fPIC -shared research/qwen38/gdn_state_ar.c -lm \
+            -o "$RUNNER_TEMP/libqwen_gdn_serial.so"
+
+      - name: Run six-position real MTP-1 survey
+        timeout-minutes: 14
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$K3_WORK" "$EVIDENCE"
+          PYTHONPATH=research/qwen38 python -u research/qwen38/qwen38_mtp1_sequence_survey.py run \
+            --model "$MODEL" \
+            --target-native-lib "$RUNNER_TEMP/libqwen_quant_avx2.so" \
+            --q4-native-lib "$RUNNER_TEMP/libqwen_mtp_q4.so" \
+            --state-lib "$RUNNER_TEMP/libqwen_gdn_serial.so" \
+            --inventory "$EVIDENCE/inventory.json" \
+            --tokenizer-json "$TOKENIZER_JSON" \
+            --prompt "Hi" --raw-prompt --max-prompt-tokens 4 --steps 6 \
+            --work-dir "$K3_WORK" --output "$EVIDENCE/survey.json" \
+            2>&1 | tee "$EVIDENCE/survey.log"
+          grep -F "QWEN38_MTP1_SEQUENCE_SURVEY_PASS" "$EVIDENCE/survey.log"
+
+      - name: Require oracle-anchored first step and summarize acceptance
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          r=json.loads((Path(os.environ["EVIDENCE"])/"survey.json").read_text(encoding="utf-8"))
+          assert r["status"] == "PASS"
+          assert r["model_sha256"] == "a487690b9f17de581857c4ae484dab50800335bb9eb978a4fb02c0465629dc0a"
+          assert r["prompt_token_ids"] == [12675]
+          assert r["completed_steps"] == 6
+          assert r["first_target_token"] == 11
+          first=r["records"][0]
+          # This exact triple was independently reproduced by upstream llama.cpp.
+          assert first["input_target_token"] == 11
+          assert first["mtp_draft_token"] == 1092
+          assert first["target_verify_token"] == 353
+          assert first["accepted"] is False
+          assert r["global_lm_head_bytes"] == 1_350_860_800
+          assert r["mtp"]["resident_mtp_weight_bytes"] == 238_983_168
+          assert r["target_state"]["reader"]["direct_io"] is True
+          print("QWEN38_MTP1_SEQUENCE_ORACLE_ANCHOR_PASS")
+          print(json.dumps({
+              "target_token_ids": r["target_token_ids"],
+              "target_text": r["target_text"],
+              "accepted_count": r["accepted_count"],
+              "completed_steps": r["completed_steps"],
+              "acceptance_rate": r["acceptance_rate"],
+              "mtp_draft_seconds_total": r["mtp_draft_seconds_total"],
+              "mtp_lm_head_seconds_total": r["mtp_lm_head_seconds_total"],
+              "target_step_seconds_total": r["target_step_seconds_total"],
+              "target_lm_head_seconds_total": r["target_lm_head_seconds_total"],
+              "target_k3_bytes_read": r["target_state"]["reader"]["bytes_read"],
+              "max_rss_gib": r["max_rss_gib"],
+          }, indent=2, ensure_ascii=False))
+          PY
+
+      - name: Upload compact survey evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen38-mtp1-sequence-survey-${{ github.run_id }}
+          path: ${{ runner.temp }}/qwen38-mtp1-survey-evidence/
+          if-no-files-found: warn
+          retention-days: 14
