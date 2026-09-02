@@ -47,6 +47,12 @@ def _write_fixed_report(text: str) -> None:
 
 
 def _rss_mb() -> float:
+    statm_path = Path("/proc/self/statm")
+    try:
+        resident_pages = int(statm_path.read_text(encoding="ascii").split()[1])
+        return resident_pages * os.sysconf("SC_PAGE_SIZE") / (1024 * 1024)
+    except (IndexError, OSError, ValueError):
+        pass
     return psutil.Process(os.getpid()).memory_info().rss / (1024 * 1024)
 
 
