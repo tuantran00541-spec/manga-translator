@@ -118,6 +118,30 @@ int qwen_matvec_q6_k_q8_k_scalar(const uint8_t *weights, size_t weights_bytes, s
 }
 
 #ifdef QWEN_AVX2_EXACT_SELFTEST
+static void avx2_pack_q6_fixture(
+        uint8_t out[QWEN_BLOCK_Q6_K], uint16_t f16_scale,
+        const int8_t scales[16], const int8_t quants[256]) {
+    memset(out, 0, QWEN_BLOCK_Q6_K);
+    uint8_t *ql = out;
+    uint8_t *qh = out + 128;
+    for (int n = 0; n < 256; n += 128) {
+        const int ql_base = n == 0 ? 0 : 64;
+        const int qh_base = n == 0 ? 0 : 32;
+        for (int l = 0; l < 32; ++l) {
+            const uint8_t q1 = (uint8_t)(quants[n+l+0] + 32);
+            const uint8_t q2 = (uint8_t)(quants[n+l+32] + 32);
+            const uint8_t q3 = (uint8_t)(quants[n+l+64] + 32);
+            const uint8_t q4 = (uint8_t)(quants[n+l+96] + 32);
+            ql[ql_base+l] = (uint8_t)((q1 & 15) | ((q3 & 15) << 4));
+            ql[ql_base+l+32] = (uint8_t)((q2 & 15) | ((q4 & 15) << 4));
+            qh[qh_base+l] = (uint8_t)(((q1 >> 4) & 3) | (((q2 >> 4)&3)<<2) | (((q3>>4)&3)<<4) | (((q4>>4)&3)<<6));
+        }
+    }
+    memcpy(out + 192, scales, 16);
+    out[208] = (uint8_t)(f16_scale & 0xffu);
+    out[209] = (uint8_t)(f16_scale >> 8);
+}
+
 int main(void) {
     uint32_t s=0x12345678u;
     for (int trial=0; trial<200; ++trial) {
@@ -125,7 +149,7 @@ int main(void) {
         int8_t sc[16], qv[256]; float x[256];
         for(int i=0;i<16;++i){s=s*1664525u+1013904223u;sc[i]=(int8_t)((s>>24)%31-15);}
         for(int i=0;i<256;++i){s=s*1664525u+1013904223u;qv[i]=(int8_t)((s>>24)%64-32);s=s*1664525u+1013904223u;x[i]=((int32_t)(s>>8)%20001-10000)/997.0f;}
-        pack_q6_fixture(q6,qwen_f32_to_f16(0.03125f),sc,qv);
+        avx2_pack_q6_fixture(q6,qwen_f32_to_f16(0.03125f),sc,qv);
         if(qwen_quantize_q8_k_scalar(x,256,q8k,sizeof(q8k))!=0) return 2;
         float a=qwen_vec_dot_q6_k_q8_k_reference(q6,sizeof(q6),q8k,sizeof(q8k),256);
         float b=qwen_vec_dot_q6_k_q8_k_scalar(q6,sizeof(q6),q8k,sizeof(q8k),256);
