@@ -213,14 +213,17 @@ def _runtime_state() -> dict:
     )
     active_inpaint_model = None
     inpaint_dynamic = None
+    inpaint_serialized = None
     if inpaint_session_loaded:
         model_path = getattr(inpainter, "lama_model_path", None)
         active_inpaint_model = Path(model_path).name if model_path else None
         inpaint_dynamic = bool(getattr(inpainter, "dynamic_lama", False))
+        inpaint_serialized = not inpaint_dynamic
 
+    prefers_dynamic_inpaint = USE_DYNAMIC_LAMA and LAMA_DYNAMIC_MODEL.is_file()
     preferred_inpaint_model = (
         LAMA_DYNAMIC_MODEL.name
-        if USE_DYNAMIC_LAMA and LAMA_DYNAMIC_MODEL.is_file()
+        if prefers_dynamic_inpaint
         else LAMA_MODEL.name
     )
 
@@ -244,6 +247,11 @@ def _runtime_state() -> dict:
                 "preferred_model": preferred_inpaint_model,
                 "active_model": active_inpaint_model,
                 "dynamic": inpaint_dynamic,
+                "serialized_inference": inpaint_serialized,
+                "serialization_scope": (
+                    "global" if inpaint_serialized else None
+                ),
+                "preferred_serialized_inference": not prefers_dynamic_inpaint,
                 "fixed_available": LAMA_MODEL.is_file(),
                 "dynamic_available": LAMA_DYNAMIC_MODEL.is_file(),
             },

@@ -778,6 +778,33 @@ class ChapterPipeline:
                     "stage": "review",
                     "page_index": min(committed_indices),
                 }
+            inpaint_metric_names = (
+                "lama_model_runs",
+                "lama_model_ms",
+                "session_lock_wait_ms",
+                "ort_global_lock_wait_ms",
+                "smart_fill_regions",
+            )
+            inpaint_totals = {name: 0 for name in inpaint_metric_names}
+            for page_index in committed_indices:
+                if not 0 <= page_index < len(manifest.get("pages", [])):
+                    continue
+                page_metrics = manifest["pages"][page_index].get(
+                    "processing_metrics", {}
+                )
+                for section in ("auto_inpaint", "manual_inpaint"):
+                    section_metrics = page_metrics.get(section, {})
+                    if not isinstance(section_metrics, dict):
+                        continue
+                    for name in inpaint_metric_names:
+                        inpaint_totals[name] += int(section_metrics.get(name, 0) or 0)
+            inpainter = self.inpainter
+            session_loaded = bool(getattr(inpainter, "session_loaded", False))
+            selected_dynamic = bool(
+                getattr(inpainter, "dynamic_lama", False)
+                if session_loaded
+                else getattr(inpainter, "_prefer_dynamic", False)
+            )
             manifest["last_processing_run"] = {
                 "requested_page_indices": [item[0] for item in work_items],
                 "committed_page_indices": sorted(committed_indices),
@@ -789,6 +816,14 @@ class ChapterPipeline:
                     if name.endswith("_ms")
                     else int(value)
                     for name, value in shared_seam_metrics.items()
+                },
+                "inpaint": {
+                    "model": Path(getattr(inpainter, "lama_model_path", "")).name
+                    or None,
+                    "dynamic": selected_dynamic,
+                    "serialized_inference": not selected_dynamic,
+                    "serialization_scope": None if selected_dynamic else "global",
+                    **inpaint_totals,
                 },
             }
             save_manifest_raw(chapter_id, manifest)
@@ -1753,6 +1788,12 @@ class ChapterPipeline:
         detection_state = "needs_review" if detection_issues else "verified"
         inpainter = self.inpainter
         inpaint_model_path = getattr(inpainter, "lama_model_path", None)
+        inpaint_session_loaded = bool(getattr(inpainter, "session_loaded", False))
+        inpaint_dynamic = bool(
+            getattr(inpainter, "dynamic_lama", False)
+            if inpaint_session_loaded
+            else getattr(inpainter, "_prefer_dynamic", False)
+        )
         processing_metrics = {
             "timing_ms": {
                 "read": round(read_ms, 3),
@@ -1772,8 +1813,10 @@ class ChapterPipeline:
             "manual_inpaint": manual_inpaint_metrics,
             "model": {
                 "active": Path(inpaint_model_path).name if inpaint_model_path else None,
-                "dynamic": bool(getattr(inpainter, "dynamic_lama", False)),
-                "session_loaded": bool(getattr(inpainter, "session_loaded", False)),
+                "dynamic": inpaint_dynamic,
+                "serialized_inference": not inpaint_dynamic,
+                "serialization_scope": None if inpaint_dynamic else "global",
+                "session_loaded": inpaint_session_loaded,
             },
         }
 

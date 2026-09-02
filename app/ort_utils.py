@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import threading
+import time
 
 import onnxruntime as ort
 
@@ -84,10 +85,27 @@ class _SerializedSession:
 
     def __init__(self, session: ort.InferenceSession):
         self._session = session
+        self._timing_local = threading.local()
 
     def run(self, *args, **kwargs):
+        wait_started_at = time.perf_counter()
         with _ORT_INFERENCE_LOCK:
-            return self._session.run(*args, **kwargs)
+            lock_wait_ms = (time.perf_counter() - wait_started_at) * 1000.0
+            run_started_at = time.perf_counter()
+            try:
+                return self._session.run(*args, **kwargs)
+            finally:
+                self._timing_local.value = {
+                    "global_lock_wait_ms": lock_wait_ms,
+                    "model_run_ms": (time.perf_counter() - run_started_at) * 1000.0,
+                }
+
+    def last_run_timing(self) -> dict[str, float]:
+        timing = getattr(self._timing_local, "value", {})
+        return {
+            "global_lock_wait_ms": float(timing.get("global_lock_wait_ms", 0.0)),
+            "model_run_ms": float(timing.get("model_run_ms", 0.0)),
+        }
 
     def __getattr__(self, name):
         return getattr(self._session, name)

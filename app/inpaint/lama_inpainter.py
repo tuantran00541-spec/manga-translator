@@ -1,6 +1,7 @@
 import gc
 import os
 import threading
+import time
 
 import numpy as np
 import cv2
@@ -120,6 +121,9 @@ class Inpainter:
             "smart_fill_regions": 0,
             "lama_regions": 0,
             "lama_model_runs": 0,
+            "lama_model_ms": 0,
+            "session_lock_wait_ms": 0,
+            "ort_global_lock_wait_ms": 0,
             "mask_components": 0,
         }
 
@@ -552,11 +556,42 @@ class Inpainter:
         feed = {self.image_input: img_blob, self.mask_input: mask_blob}
 
         if self.dynamic_lama:
+            model_started_at = time.perf_counter()
             output = self.session.run(None, feed)[0]
+            self._metric_add(
+                "lama_model_ms",
+                round((time.perf_counter() - model_started_at) * 1000.0),
+            )
         else:
+            lock_started_at = time.perf_counter()
             with self._session_lock:
+                self._metric_add(
+                    "session_lock_wait_ms",
+                    round((time.perf_counter() - lock_started_at) * 1000.0),
+                )
                 self._recycle_fixed_session_if_needed()
+                model_started_at = time.perf_counter()
                 output = self.session.run(None, feed)[0]
+                measured_model_ms = (
+                    time.perf_counter() - model_started_at
+                ) * 1000.0
+                timing_provider = getattr(self.session, "last_run_timing", None)
+                run_timing = (
+                    timing_provider()
+                    if callable(timing_provider)
+                    else {
+                        "global_lock_wait_ms": 0.0,
+                        "model_run_ms": measured_model_ms,
+                    }
+                )
+                self._metric_add(
+                    "ort_global_lock_wait_ms",
+                    round(run_timing["global_lock_wait_ms"]),
+                )
+                self._metric_add(
+                    "lama_model_ms",
+                    round(run_timing["model_run_ms"]),
+                )
                 self._session_run_count += 1
 
         painted_rgb = output[0].transpose(1, 2, 0)
