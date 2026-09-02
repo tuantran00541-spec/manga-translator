@@ -1,0 +1,39 @@
+name: Qwen3.8 exact fused GDN two-pass probe
+
+on:
+  push:
+    branches: [research/qwen3.8-27b-runtime-finish]
+    paths:
+      - "research/qwen38/gdn_state_fused_exact.c"
+      - ".github/workflows/qwen38-gdn-fused-exact.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gdn-fused-exact:
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[qwen-gdn-fused]') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Runner CPU information
+        run: lscpu
+
+      - name: Compile strict fused GDN selftest
+        shell: bash
+        run: |
+          set -euo pipefail
+          cc -O2 -std=c11 -fno-fast-math -ffp-contract=off \
+            -D_POSIX_C_SOURCE=200809L -DQWEN_GDN_FUSED_SELFTEST \
+            research/qwen38/gdn_state_fused_exact.c -lm \
+            -o "$RUNNER_TEMP/qwen-gdn-fused-selftest"
+
+      - name: Run bitwise fused GDN gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/qwen-gdn-fused-selftest" | tee "$RUNNER_TEMP/gdn-fused.log"
+          grep -F "QWEN38_GDN_FUSED_TWO_PASS_BITWISE_PASS" "$RUNNER_TEMP/gdn-fused.log"
