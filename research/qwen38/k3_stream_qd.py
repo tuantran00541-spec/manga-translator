@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Experimental bounded K3 reader with deeper lookahead and I/O queue depth.
 
-This module is intentionally opt-in.  The proven K3Trunk remains the default
-runtime path.  K3QDTrunk preserves the same bind/prefetch/tensor_view API while
+This module is intentionally opt-in. The proven K3Trunk remains the default
+runtime path. K3QDTrunk preserves the same bind/prefetch/tensor_view API while
 allowing a bounded number of ring slots, prefetch lookahead layers, and
 synchronous pread workers so we can measure whether NVMe queue depth improves
 real direct-I/O service rate before committing extra RAM to the production
@@ -87,6 +87,8 @@ class K3QDTrunk(BaseK3Trunk):
         self._stats_lock = threading.Lock()
         self._qd_io_service_seconds = 0.0
         self._qd_io_bytes = 0
+        self._qd_io_first_start: float | None = None
+        self._qd_io_last_end: float | None = None
         self._qd_bind_wait_seconds = 0.0
         self._qd_bind_wait_calls = 0
         self._qd_prefetch_issued = 0
@@ -94,12 +96,17 @@ class K3QDTrunk(BaseK3Trunk):
         self._qd_max_pending = 0
 
     def _load_layer(self, layer: int, target: mmap.mmap) -> int:
-        t = time.perf_counter()
+        started = time.perf_counter()
         got = super()._load_layer(layer, target)
-        elapsed = time.perf_counter() - t
+        ended = time.perf_counter()
+        elapsed = ended - started
         with self._stats_lock:
             self._qd_io_service_seconds += elapsed
             self._qd_io_bytes += int(got)
+            if self._qd_io_first_start is None or started < self._qd_io_first_start:
+                self._qd_io_first_start = started
+            if self._qd_io_last_end is None or ended > self._qd_io_last_end:
+                self._qd_io_last_end = ended
         return got
 
     def _finalize_pending(self, layer: int, *, count_wait: bool) -> bool:
@@ -206,7 +213,10 @@ class K3QDTrunk(BaseK3Trunk):
             ]
             if not candidates:
                 raise RuntimeError("no safe K3 ring slot available for bind")
-            slot = min(candidates, key=lambda i: self._layer_of[i] if self._layer_of[i] >= 0 else -1)
+            slot = min(
+                candidates,
+                key=lambda i: self._layer_of[i] if self._layer_of[i] >= 0 else -1,
+            )
             old = self._layer_of[slot]
             if old >= 0:
                 self._slot_of.pop(old, None)
@@ -222,20 +232,28 @@ class K3QDTrunk(BaseK3Trunk):
     def prefetch(self, layer: int) -> bool:
         layer = int(layer)
         issued_requested = False
-        for target in range(layer, min(layer + self._qd_lookahead, max(self.order) + 1)):
+        last = max(self.order) + 1
+        for target in range(layer, min(layer + self._qd_lookahead, last)):
             issued = self._issue_one(target, layer)
             if target == layer:
                 issued_requested = issued
         return issued_requested
 
     def report(self) -> dict:
+        with self._stats_lock:
+            first = self._qd_io_first_start
+            last = self._qd_io_last_end
+            service = self._qd_io_service_seconds
+            io_bytes = self._qd_io_bytes
+        io_span = 0.0 if first is None or last is None else max(0.0, last - first)
         report = super().report()
         report.update({
             "experimental_qd": True,
             "io_workers": self._qd_io_workers,
             "lookahead_layers": self._qd_lookahead,
-            "io_service_seconds_sum_nonadditive": self._qd_io_service_seconds,
-            "io_bytes_completed": self._qd_io_bytes,
+            "io_service_seconds_sum_nonadditive": service,
+            "io_span_seconds": io_span,
+            "io_bytes_completed": io_bytes,
             "bind_wait_seconds": self._qd_bind_wait_seconds,
             "bind_wait_calls": self._qd_bind_wait_calls,
             "prefetch_issued": self._qd_prefetch_issued,
