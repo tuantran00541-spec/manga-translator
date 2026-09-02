@@ -123,7 +123,7 @@ jobs:
           assert miss["candidate_rejected"] is True
           assert miss["hidden_a_bitwise_exact"] is True
           assert miss["rollback_state_bitwise_exact"] is True
-          assert miss["rollback_state_mismatch"] == []
+          assert miss["rollback_state_mismatch"] is None
           assert miss["after_a_state_sha256"] == miss["rollback_state_sha256"]
           assert miss["pair_k3_bytes"] == miss["ordinary_a_k3_bytes"]
           assert miss["pair_k3_bytes"] > 20_000_000_000
@@ -136,7 +136,7 @@ jobs:
           assert acc["hidden_a_bitwise_exact"] is True
           assert acc["hidden_b_bitwise_exact"] is True
           assert acc["final_state_bitwise_exact"] is True
-          assert acc["final_state_mismatch"] == []
+          assert acc["final_state_mismatch"] is None
           assert acc["sequential_final_state_sha256"] == acc["pair_final_state_sha256"]
           assert acc["sequential_k3_bytes"] == 2 * acc["pair_k3_bytes"]
           assert acc["k3_bytes_saved"] == acc["pair_k3_bytes"]
@@ -172,6 +172,7 @@ jobs:
           PY
 
       - name: Upload compact transaction evidence
+        if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
           name: qwen38-k3-pair-transaction-${{ github.run_id }}
