@@ -1,0 +1,185 @@
+name: Qwen3.8 runtime-finish OpenMP exact A/B
+
+on:
+  push:
+    branches: [research/qwen3.8-27b-runtime-finish]
+    paths:
+      - "research/qwen38/gguf_quant_dot_parallel.c"
+      - "research/qwen38/gdn_state_ar_parallel.c"
+      - "research/qwen38/qwen35_k3_generate_cached.py"
+      - ".github/workflows/qwen38-runtime-finish-openmp-real.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  HF_HUB_DISABLE_TELEMETRY: "1"
+  QWEN_REVISION: "1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0"
+  OMP_DYNAMIC: "FALSE"
+
+jobs:
+  exact-selftests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Python syntax and inherited generator sanity
+        run: |
+          python -m py_compile research/qwen38/qwen35_k3_generate_cached.py
+          PYTHONPATH=research/qwen38 python research/qwen38/qwen35_k3_generate_cached.py sanity
+      - name: Serial reference selftests
+        run: |
+          cc -O2 -std=c11 -DQWEN_QUANT_DOT_SELFTEST research/qwen38/gguf_quant_dot.c -lm -o "$RUNNER_TEMP/qwen-quant-serial-test"
+          "$RUNNER_TEMP/qwen-quant-serial-test"
+          cc -O2 -std=c11 -DQWEN_GDN_STATE_SELFTEST research/qwen38/gdn_state_ar.c -lm -o "$RUNNER_TEMP/qwen-gdn-serial-test"
+          "$RUNNER_TEMP/qwen-gdn-serial-test"
+      - name: OpenMP overlays must be bit exact to serial
+        run: |
+          cc -O2 -std=c11 -fopenmp -DQWEN_QUANT_PARALLEL_SELFTEST research/qwen38/gguf_quant_dot_parallel.c -lm -o "$RUNNER_TEMP/qwen-quant-omp-test"
+          OMP_NUM_THREADS=4 "$RUNNER_TEMP/qwen-quant-omp-test"
+          cc -O2 -std=c11 -fopenmp -DQWEN_GDN_PARALLEL_SELFTEST research/qwen38/gdn_state_ar_parallel.c -lm -o "$RUNNER_TEMP/qwen-gdn-omp-test"
+          OMP_NUM_THREADS=4 "$RUNNER_TEMP/qwen-gdn-omp-test"
+
+  real-ab:
+    needs: exact-selftests
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[qwen-runtime-real]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Reclaim disk
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup || true
+          docker system prune -af || true
+          df -h
+          free -h
+      - name: Install runtime dependencies
+        run: python -m pip install --no-cache-dir huggingface_hub hf_xet tokenizers
+      - name: Download pinned real GGUF and tokenizer once
+        shell: bash
+        run: |
+          set -euo pipefail
+          readarray -t files < <(python - <<'PY'
+          from huggingface_hub import hf_hub_download
+          rev="1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0"
+          print(hf_hub_download(
+              "bartowski/Qwen3.8-27B-GGUF",
+              filename="Qwen3.8-27B-Q6_K_L.gguf",
+              local_dir="${{ runner.temp }}/qwen38-model",
+          ))
+          print(hf_hub_download(
+              "Qwen/Qwen3.8-27B",
+              filename="tokenizer.json",
+              revision=rev,
+              local_dir="${{ runner.temp }}/qwen38-tokenizer",
+          ))
+          PY
+          )
+          test -f "${files[0]}"; test -f "${files[1]}"
+          echo "MODEL=${files[0]}" >> "$GITHUB_ENV"
+          echo "TOKENIZER_JSON=${files[1]}" >> "$GITHUB_ENV"
+          echo "K3_WORK=$RUNNER_TEMP/qwen38-runtime-finish-work" >> "$GITHUB_ENV"
+          echo "EVIDENCE=$RUNNER_TEMP/qwen38-runtime-finish-evidence" >> "$GITHUB_ENV"
+      - name: Validate pinned decoder inventory
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$EVIDENCE"
+          PYTHONPATH=research/qwen38 python -u research/qwen38/qwen35_gguf_decoder_contract.py real \
+            --model "$MODEL" --output "$EVIDENCE/inventory.json" \
+            2>&1 | tee "$EVIDENCE/inventory.log"
+      - name: Compile serial and OpenMP runtime bridges
+        run: |
+          cc -O2 -std=c11 -fPIC -shared research/qwen38/gguf_quant_dot.c -lm -o "$RUNNER_TEMP/libqwen_quant_serial.so"
+          cc -O2 -std=c11 -fPIC -shared research/qwen38/gdn_state_ar.c -lm -o "$RUNNER_TEMP/libqwen_gdn_serial.so"
+          cc -O2 -std=c11 -fopenmp -fPIC -shared research/qwen38/gguf_quant_dot_parallel.c -lm -o "$RUNNER_TEMP/libqwen_quant_omp.so"
+          cc -O2 -std=c11 -fopenmp -fPIC -shared research/qwen38/gdn_state_ar_parallel.c -lm -o "$RUNNER_TEMP/libqwen_gdn_omp.so"
+      - name: Pack the 64-layer K3 decoder once
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$K3_WORK"
+          PYTHONPATH=research/qwen38 python - <<'PY'
+          import os
+          from pathlib import Path
+          import qwen35_gdn_quant_layer_gate as gdn
+          from gguf_stream import parse_gguf
+          from gguf_k3_layout import pack_gguf_layers
+          model=Path(os.environ["MODEL"])
+          work=Path(os.environ["K3_WORK"])
+          manifest=pack_gguf_layers(
+              parse_gguf(model), work/"decoder64.k3.bin", work/"decoder64.k3.json",
+              layers=range(64), model_id=gdn.MODEL_ID, revision=gdn.REVISION,
+              source_sha256=gdn.SHA256, expected_layers=64,
+          )
+          print("QWEN38_K3_PREPACK_PASS",
+                "bytes=", manifest["packed_file_bytes"],
+                "layers=", len(manifest["layers"]))
+          PY
+      - name: Real serial cached-trunk baseline
+        timeout-minutes: 20
+        shell: bash
+        run: |
+          set -euo pipefail
+          OMP_NUM_THREADS=1 /usr/bin/time -v python -u research/qwen38/qwen35_k3_generate_cached.py run \
+            --model "$MODEL" --native-lib "$RUNNER_TEMP/libqwen_quant_serial.so" \
+            --state-lib "$RUNNER_TEMP/libqwen_gdn_serial.so" \
+            --inventory "$EVIDENCE/inventory.json" --tokenizer-json "$TOKENIZER_JSON" \
+            --prompt "Hi" --raw-prompt --max-new-tokens 2 --max-prompt-tokens 4 \
+            --work-dir "$K3_WORK" --output "$EVIDENCE/serial.json" \
+            2>&1 | tee "$EVIDENCE/serial.log"
+      - name: Real OpenMP cached-trunk candidate
+        timeout-minutes: 20
+        shell: bash
+        run: |
+          set -euo pipefail
+          OMP_NUM_THREADS=4 OMP_PROC_BIND=close OMP_PLACES=cores /usr/bin/time -v python -u research/qwen38/qwen35_k3_generate_cached.py run \
+            --model "$MODEL" --native-lib "$RUNNER_TEMP/libqwen_quant_omp.so" \
+            --state-lib "$RUNNER_TEMP/libqwen_gdn_omp.so" \
+            --inventory "$EVIDENCE/inventory.json" --tokenizer-json "$TOKENIZER_JSON" \
+            --prompt "Hi" --raw-prompt --max-new-tokens 2 --max-prompt-tokens 4 \
+            --work-dir "$K3_WORK" --output "$EVIDENCE/omp4.json" \
+            2>&1 | tee "$EVIDENCE/omp4.log"
+      - name: Require real token-ID exactness and report timing
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os
+          root=os.environ["EVIDENCE"]
+          serial=json.load(open(os.path.join(root,"serial.json"),encoding="utf-8"))
+          omp=json.load(open(os.path.join(root,"omp4.json"),encoding="utf-8"))
+          assert serial["status"] == omp["status"] == "PASS"
+          assert serial["prompt_token_ids"] == omp["prompt_token_ids"]
+          assert serial["generated_token_ids"] == omp["generated_token_ids"], (serial["generated_token_ids"], omp["generated_token_ids"])
+          assert serial["generated_text"] == omp["generated_text"]
+          assert serial["state"]["packed_trunk_reused"] is True
+          assert omp["state"]["packed_trunk_reused"] is True
+          ratio=serial["elapsed_seconds"] / omp["elapsed_seconds"]
+          print("QWEN38_REAL_OPENMP_TOKEN_IDS_EXACT_PASS")
+          print("prompt_ids=", serial["prompt_token_ids"])
+          print("generated_ids=", serial["generated_token_ids"])
+          print("generated_text=", repr(serial["generated_text"]))
+          print("serial_elapsed_s=", serial["elapsed_seconds"])
+          print("omp4_elapsed_s=", omp["elapsed_seconds"])
+          print("serial_over_omp4_ratio=", ratio)
+          print("serial_rss_gib=", serial["max_rss_gib"])
+          print("omp4_rss_gib=", omp["max_rss_gib"])
+          print("serial_reader=", serial["state"]["reader"])
+          print("omp4_reader=", omp["state"]["reader"])
+          PY
+      - name: Upload compact A/B evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen38-runtime-finish-openmp-${{ github.run_id }}
+          path: ${{ runner.temp }}/qwen38-runtime-finish-evidence/
+          if-no-files-found: warn
+          retention-days: 14
