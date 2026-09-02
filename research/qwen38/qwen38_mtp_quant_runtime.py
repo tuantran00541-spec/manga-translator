@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """MTP-only quant runtime extension for Qwen3.8.
 
-The proven decoder QuantRuntime remains unchanged.  This adapter binds the
-isolated Q4_0 x Q8_0 bridge needed by blk.64 and delegates all existing
-F32/Q6_K/Q8_0 behavior to the proven runtime.
+The proven decoder QuantRuntime remains unchanged.  This adapter keeps the
+proven Q6_K/Q8_0 AVX2 library as the base runtime and binds the isolated Q4_0
+library only for blk.64 matrices.  That avoids silently sending the MTP's
+shared Q8_0 LM head through the older scalar bridge.
 """
 from __future__ import annotations
 
@@ -14,8 +15,8 @@ from typing import Any, Sequence
 import qwen35_gdn_quant_layer_gate as gdn
 
 
-def load_mtp_native(path: Path):
-    lib = gdn._load_native(path)
+def load_q4_native(path: Path):
+    lib = ctypes.CDLL(str(path))
     c_u8p = ctypes.POINTER(ctypes.c_uint8)
     c_fp = ctypes.POINTER(ctypes.c_float)
     for name in ("qwen_matvec_q4_0_q8_0_reference", "qwen_matvec_q4_0_q8_0_scalar"):
@@ -27,8 +28,9 @@ def load_mtp_native(path: Path):
 
 
 class MTPQuantRuntime(gdn.QuantRuntime):
-    def __init__(self, lib, *, q4_reference: bool = False):
-        super().__init__(lib)
+    def __init__(self, base_lib, q4_lib, *, q4_reference: bool = False):
+        super().__init__(base_lib)
+        self.q4_lib = q4_lib
         self.q4_reference = bool(q4_reference)
         self.q4_matvec_rows = 0
         self.q4_weight_bytes = 0
@@ -52,8 +54,8 @@ class MTPQuantRuntime(gdn.QuantRuntime):
         activation, activation_bytes = prepared
         w_arr = (ctypes.c_uint8 * len(weights)).from_buffer(weights)
         out = (ctypes.c_float * rows)()
-        fn = (self.lib.qwen_matvec_q4_0_q8_0_reference if self.q4_reference
-              else self.lib.qwen_matvec_q4_0_q8_0_scalar)
+        fn = (self.q4_lib.qwen_matvec_q4_0_q8_0_reference if self.q4_reference
+              else self.q4_lib.qwen_matvec_q4_0_q8_0_scalar)
         rc = fn(w_arr, len(weights), rows, ne0, activation, activation_bytes, out)
         if rc != 0:
             raise RuntimeError(f"{meta['name']}: Q4 native matvec failed rc={rc}")
