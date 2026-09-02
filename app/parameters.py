@@ -296,6 +296,12 @@ MSER_SAFE_MASK_RATIO_MIN = _env_float(
 MSER_SAFE_MASK_RATIO_MAX = _env_float(
     "MANGA_MSER_SAFE_MASK_RATIO_MAX", 0.42, minimum=0.0, maximum=1.0
 )
+MSER_SAFE_COMPONENT_SPAN_RATIO_MAX = _env_float(
+    "MANGA_MSER_SAFE_COMPONENT_SPAN_RATIO_MAX",
+    0.95,
+    minimum=0.1,
+    maximum=1.0,
+)
 MSER_SAFE_PAGE_AREA_RATIO_MAX = _env_float(
     "MANGA_MSER_SAFE_PAGE_AREA_RATIO_MAX", 0.035, minimum=0.0, maximum=1.0
 )

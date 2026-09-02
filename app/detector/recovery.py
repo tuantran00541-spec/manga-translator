@@ -48,6 +48,7 @@ from app.parameters import (
     MSER_REGION_MAX_WIDTH_RATIO,
     MSER_REGION_MIN_SIDE,
     MSER_SAFE_CLUSTER_MIN_REGIONS,
+    MSER_SAFE_COMPONENT_SPAN_RATIO_MAX,
     MSER_SAFE_CONFIDENCE,
     MSER_SAFE_MASK_RATIO_MAX,
     MSER_SAFE_MASK_RATIO_MIN,
@@ -131,6 +132,26 @@ class SecondaryTextRecovery:
                 iterations=1,
             )
         return mask
+
+    @staticmethod
+    def _mask_component_spans_crop(mask: np.ndarray) -> bool:
+        if mask is None or mask.size == 0:
+            return False
+        height, width = mask.shape[:2]
+        count, _, stats, _ = cv2.connectedComponentsWithStats(
+            (mask > 127).astype(np.uint8),
+            connectivity=8,
+        )
+        for label in range(1, count):
+            component_width = int(stats[label, cv2.CC_STAT_WIDTH])
+            component_height = int(stats[label, cv2.CC_STAT_HEIGHT])
+            if (
+                component_width >= width * MSER_SAFE_COMPONENT_SPAN_RATIO_MAX
+                and component_height
+                >= height * MSER_SAFE_COMPONENT_SPAN_RATIO_MAX
+            ):
+                return True
+        return False
 
     @staticmethod
     def _line_neighbors(a: tuple[int, int, int, int], b: tuple[int, int, int, int]) -> bool:
@@ -438,6 +459,7 @@ class SecondaryTextRecovery:
             safe = bool(
                 not watermark
                 and MSER_SAFE_MASK_RATIO_MIN <= ratio <= MSER_SAFE_MASK_RATIO_MAX
+                and not self._mask_component_spans_crop(mask)
                 and page_ratio <= MSER_SAFE_PAGE_AREA_RATIO_MAX
                 and len(cluster) >= MSER_SAFE_CLUSTER_MIN_REGIONS
             )
