@@ -11,7 +11,6 @@ import threading
 import time
 from typing import Iterable
 
-import cv2
 import numpy as np
 import psutil
 
@@ -346,6 +345,7 @@ def run(args: argparse.Namespace) -> dict:
         BUBBLE_DETECTOR_MODEL, TEXT_SEGMENTER_MODEL,
         LAMA_DYNAMIC_MODEL, LAMA_MODEL,
     )
+    from app.parameters import FIXED_LAMA_CONCURRENT_INFERENCE
     from app.manifest_utils import load_manifest_raw
     from app.pipeline import ChapterPipeline
     from app.security import validate_chapter_id
@@ -405,8 +405,25 @@ def run(args: argparse.Namespace) -> dict:
             model_mode_failures.append("dynamic LaMa gate fell back to fixed LaMa")
         if args.lama_mode == "fixed" and pipeline.inpainter.dynamic_lama:
             model_mode_failures.append("fixed LaMa gate unexpectedly loaded a dynamic model")
-        if args.lama_mode == "fixed" and type(pipeline.inpainter.session).__name__ != "_SerializedSession":
-            model_mode_failures.append("fixed LaMa session is not on the serialized compatibility path")
+        fixed_session_serialized = (
+            type(pipeline.inpainter.session).__name__ == "_SerializedSession"
+        )
+        if (
+            args.lama_mode == "fixed"
+            and FIXED_LAMA_CONCURRENT_INFERENCE
+            and fixed_session_serialized
+        ):
+            model_mode_failures.append(
+                "fixed LaMa concurrency was requested but the session is serialized"
+            )
+        if (
+            args.lama_mode == "fixed"
+            and not FIXED_LAMA_CONCURRENT_INFERENCE
+            and not fixed_session_serialized
+        ):
+            model_mode_failures.append(
+                "fixed LaMa session is not on the serialized compatibility path"
+            )
 
         ocr = _run_ocr(
             args.chapter_id,
@@ -474,6 +491,7 @@ def run(args: argparse.Namespace) -> dict:
         "chapter_url": args.chapter_url,
         "source_lang": args.source_lang,
         "lama_mode": args.lama_mode,
+        "fixed_concurrent_inference": bool(FIXED_LAMA_CONCURRENT_INFERENCE),
         "workers": args.workers,
         "start_page": args.start_page,
         "source_pages": (

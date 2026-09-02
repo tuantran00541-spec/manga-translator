@@ -13,6 +13,7 @@ from app.ort_utils import make_session
 from app.parameters import (
     DYNAMIC_LAMA_MAX_SINGLE_CROP_DIM,
     FIXED_LAMA_RECYCLE_MEMORY_LIMIT_BYTES,
+    FIXED_LAMA_CONCURRENT_INFERENCE,
     FIXED_LAMA_SESSION_MAX_RUNS,
     FIXED_LAMA_TILE_ASPECT,
     INPAINT_CLUSTER_MAX_DIM,
@@ -111,6 +112,7 @@ class Inpainter:
         self.image_input = None
         self.mask_input = None
         self.dynamic_lama = False
+        self._serialize_fixed_inference = not FIXED_LAMA_CONCURRENT_INFERENCE
         self.lama_model_path = LAMA_DYNAMIC_MODEL if self._prefer_dynamic else LAMA_MODEL
         self._recycle_fixed_session = False
 
@@ -144,6 +146,14 @@ class Inpainter:
     def session_loaded(self) -> bool:
         return self.session is not None
 
+    @property
+    def serialized_inference(self) -> bool:
+        if not self.session_loaded:
+            return bool(
+                not self._prefer_dynamic and self._serialize_fixed_inference
+            )
+        return bool(not self.dynamic_lama and self._serialize_fixed_inference)
+
     def _configure_loaded_session(self, session, model_path) -> None:
         inputs = session.get_inputs()
         image_shape = inputs[0].shape
@@ -154,10 +164,13 @@ class Inpainter:
         self.image_input = inputs[0].name
         self.mask_input = inputs[1].name
         self.dynamic_lama = dynamic_lama
+        self._serialize_fixed_inference = bool(
+            not dynamic_lama and type(session).__name__ == "_SerializedSession"
+        )
         self.lama_model_path = model_path
         self._session_run_count = 0
         self._recycle_fixed_session = (
-            not dynamic_lama and _should_recycle_fixed_session()
+            self._serialize_fixed_inference and _should_recycle_fixed_session()
         )
 
     def _ensure_session(self) -> None:
@@ -172,7 +185,10 @@ class Inpainter:
             try:
                 session = make_session(
                     model_path,
-                    serialize_inference=not prefer_dynamic,
+                    serialize_inference=(
+                        not prefer_dynamic
+                        and not FIXED_LAMA_CONCURRENT_INFERENCE
+                    ),
                 )
             except Exception:
                 if not prefer_dynamic:
@@ -183,7 +199,10 @@ class Inpainter:
                     LAMA_MODEL,
                 )
                 model_path = LAMA_MODEL
-                session = make_session(model_path, serialize_inference=True)
+                session = make_session(
+                    model_path,
+                    serialize_inference=not FIXED_LAMA_CONCURRENT_INFERENCE,
+                )
 
             self._configure_loaded_session(session, model_path)
             logger.info(
@@ -565,13 +584,15 @@ class Inpainter:
         )
         feed = {self.image_input: img_blob, self.mask_input: mask_blob}
 
-        if self.dynamic_lama:
+        if self.dynamic_lama or not self._serialize_fixed_inference:
             model_started_at = time.perf_counter()
             output = self.session.run(None, feed)[0]
             self._metric_add(
                 "lama_model_ms",
                 round((time.perf_counter() - model_started_at) * 1000.0),
             )
+            if not self.dynamic_lama:
+                self._session_run_count += 1
         else:
             lock_started_at = time.perf_counter()
             with self._session_lock:

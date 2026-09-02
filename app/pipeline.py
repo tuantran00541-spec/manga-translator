@@ -805,6 +805,9 @@ class ChapterPipeline:
                 if session_loaded
                 else getattr(inpainter, "_prefer_dynamic", False)
             )
+            serialized_inference = bool(
+                getattr(inpainter, "serialized_inference", not selected_dynamic)
+            )
             manifest["last_processing_run"] = {
                 "requested_page_indices": [item[0] for item in work_items],
                 "committed_page_indices": sorted(committed_indices),
@@ -821,8 +824,10 @@ class ChapterPipeline:
                     "model": Path(getattr(inpainter, "lama_model_path", "")).name
                     or None,
                     "dynamic": selected_dynamic,
-                    "serialized_inference": not selected_dynamic,
-                    "serialization_scope": None if selected_dynamic else "global",
+                    "serialized_inference": serialized_inference,
+                    "serialization_scope": (
+                        "global" if serialized_inference else None
+                    ),
                     **inpaint_totals,
                 },
             }
@@ -1794,6 +1799,9 @@ class ChapterPipeline:
             if inpaint_session_loaded
             else getattr(inpainter, "_prefer_dynamic", False)
         )
+        serialized_inference = bool(
+            getattr(inpainter, "serialized_inference", not inpaint_dynamic)
+        )
         processing_metrics = {
             "timing_ms": {
                 "read": round(read_ms, 3),
@@ -1814,8 +1822,10 @@ class ChapterPipeline:
             "model": {
                 "active": Path(inpaint_model_path).name if inpaint_model_path else None,
                 "dynamic": inpaint_dynamic,
-                "serialized_inference": not inpaint_dynamic,
-                "serialization_scope": None if inpaint_dynamic else "global",
+                "serialized_inference": serialized_inference,
+                "serialization_scope": (
+                    "global" if serialized_inference else None
+                ),
                 "session_loaded": inpaint_session_loaded,
             },
         }

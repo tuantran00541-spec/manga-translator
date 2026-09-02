@@ -20,7 +20,7 @@ from app.config import (
 from app.dependencies import ocr as ocr_runtime, pipeline
 from app.logging_config import logger
 from app.manifest_utils import cleanup_stale_temp_artifacts
-from app.parameters import USE_DYNAMIC_LAMA
+from app.parameters import FIXED_LAMA_CONCURRENT_INFERENCE, USE_DYNAMIC_LAMA
 from app.routers import automation, chapters, editor, export, image, ocr, render, render_commit, translation, visual_qc
 from app.security import MAX_REQUEST_BYTES, MAX_UPLOAD_TOTAL_BYTES
 
@@ -218,7 +218,9 @@ def _runtime_state() -> dict:
         model_path = getattr(inpainter, "lama_model_path", None)
         active_inpaint_model = Path(model_path).name if model_path else None
         inpaint_dynamic = bool(getattr(inpainter, "dynamic_lama", False))
-        inpaint_serialized = not inpaint_dynamic
+        inpaint_serialized = bool(
+            getattr(inpainter, "serialized_inference", not inpaint_dynamic)
+        )
 
     prefers_dynamic_inpaint = USE_DYNAMIC_LAMA and LAMA_DYNAMIC_MODEL.is_file()
     preferred_inpaint_model = (
@@ -251,7 +253,10 @@ def _runtime_state() -> dict:
                 "serialization_scope": (
                     "global" if inpaint_serialized else None
                 ),
-                "preferred_serialized_inference": not prefers_dynamic_inpaint,
+                "preferred_serialized_inference": bool(
+                    not prefers_dynamic_inpaint
+                    and not FIXED_LAMA_CONCURRENT_INFERENCE
+                ),
                 "fixed_available": LAMA_MODEL.is_file(),
                 "dynamic_available": LAMA_DYNAMIC_MODEL.is_file(),
             },
