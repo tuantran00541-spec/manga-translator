@@ -1,0 +1,44 @@
+name: Qwen3.8 scalar vs AVX2 kernel benchmark
+
+on:
+  push:
+    branches:
+      - research/qwen3.8-27b-runtime-finish
+    paths:
+      - research/qwen38/gguf_quant_dot.c
+      - research/qwen38/gguf_quant_dot_avx2.c
+      - research/qwen38/gguf_quant_dot_avx2_bench.c
+      - .github/workflows/qwen38-avx2-bench.yml
+  workflow_dispatch:
+
+jobs:
+  scalar-vs-avx2:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Runner CPU information
+        run: |
+          lscpu
+          uname -a
+
+      - name: Compile exact kernel benchmark
+        run: |
+          cc -O3 -std=c11 -mavx2 -fno-fast-math -ffp-contract=off \
+            research/qwen38/gguf_quant_dot_avx2_bench.c -lm \
+            -o /tmp/qwen38_avx2_bench
+
+      - name: Benchmark scalar vs AVX2 with ABBA ordering
+        run: |
+          set -o pipefail
+          /tmp/qwen38_avx2_bench | tee /tmp/qwen38-avx2-bench.jsonl
+          grep -F 'QWEN38_AVX2_BENCH_EXACT_PASS' /tmp/qwen38-avx2-bench.jsonl
+
+      - name: Upload benchmark output
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen38-avx2-kernel-bench-${{ github.run_id }}
+          path: /tmp/qwen38-avx2-bench.jsonl
+          if-no-files-found: error
+          retention-days: 14
