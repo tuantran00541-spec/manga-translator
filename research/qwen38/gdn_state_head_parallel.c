@@ -133,7 +133,7 @@ static double now_s(void) {
 }
 
 int main(void) {
-    enum { STEPS = 12 };
+    enum { STEPS = 16 };
     const size_t state_n = (size_t)QWEN_GDN_HEADS * QWEN_GDN_DIM * QWEN_GDN_DIM;
     const size_t vec_n = (size_t)QWEN_GDN_HEADS * QWEN_GDN_DIM;
     float *initial = (float *)malloc(state_n * sizeof(float));
@@ -161,55 +161,35 @@ int main(void) {
         }
     }
 
+    /* Build one exact serial final-state/output oracle outside all timings. */
+    memcpy(ref_state, initial, state_n*sizeof(float));
+    for (int s = 0; s < STEPS; ++s) {
+        if (qwen_gdn_ar_step_f32_reference(
+                ref_state,
+                q+(size_t)s*vec_n, k+(size_t)s*vec_n, v+(size_t)s*vec_n,
+                gate+(size_t)s*QWEN_GDN_HEADS, beta+(size_t)s*QWEN_GDN_HEADS,
+                ref_out) != 0) return 11;
+    }
+
     const int thread_counts[] = {1, 2, 4};
     double elapsed[3] = {0};
     for (int tc = 0; tc < 3; ++tc) {
-        memcpy(ref_state, initial, state_n*sizeof(float));
         memcpy(cand_state, initial, state_n*sizeof(float));
-        double t0 = now_s();
-        for (int s = 0; s < STEPS; ++s) {
-            if (qwen_gdn_ar_step_f32_reference(
-                    ref_state,
-                    q+(size_t)s*vec_n, k+(size_t)s*vec_n, v+(size_t)s*vec_n,
-                    gate+(size_t)s*QWEN_GDN_HEADS, beta+(size_t)s*QWEN_GDN_HEADS,
-                    ref_out) != 0) return 11;
-        }
-        const double ref_elapsed = now_s() - t0;
-
-        t0 = now_s();
+        memset(cand_out, 0, vec_n*sizeof(float));
+        const double t0 = now_s();
         for (int s = 0; s < STEPS; ++s) {
             if (qwen_gdn_ar_step_f32_head_parallel(
                     cand_state,
                     q+(size_t)s*vec_n, k+(size_t)s*vec_n, v+(size_t)s*vec_n,
                     gate+(size_t)s*QWEN_GDN_HEADS, beta+(size_t)s*QWEN_GDN_HEADS,
                     cand_out, thread_counts[tc]) != 0) return 12;
-            /* Recompute the matching reference output for this step only when
-             * checking tc>1 would otherwise compare against final-step data. */
-            if (tc > 0) {
-                float *tmp_state = (float *)malloc(state_n*sizeof(float));
-                if (!tmp_state) return 13;
-                memcpy(tmp_state, initial, state_n*sizeof(float));
-                for (int j = 0; j <= s; ++j) {
-                    if (qwen_gdn_ar_step_f32_reference(
-                            tmp_state,
-                            q+(size_t)j*vec_n, k+(size_t)j*vec_n, v+(size_t)j*vec_n,
-                            gate+(size_t)j*QWEN_GDN_HEADS, beta+(size_t)j*QWEN_GDN_HEADS,
-                            ref_out) != 0) return 14;
-                }
-                if (memcmp(ref_out, cand_out, vec_n*sizeof(float)) != 0 ||
-                    memcmp(tmp_state, cand_state, state_n*sizeof(float)) != 0) {
-                    fprintf(stderr, "GDN mismatch threads=%d step=%d\n", thread_counts[tc], s);
-                    free(tmp_state); return 15;
-                }
-                free(tmp_state);
-            }
         }
         elapsed[tc] = now_s() - t0;
         if (memcmp(ref_state, cand_state, state_n*sizeof(float)) != 0 ||
             memcmp(ref_out, cand_out, vec_n*sizeof(float)) != 0) {
-            fprintf(stderr, "GDN final mismatch threads=%d\n", thread_counts[tc]); return 16;
+            fprintf(stderr, "GDN mismatch threads=%d\n", thread_counts[tc]);
+            return 13;
         }
-        if (tc == 0) elapsed[tc] = ref_elapsed;
     }
 
     printf("GDN head-parallel t1=%.6f t2=%.6f t4=%.6f speedup4=%.4fx\n",
