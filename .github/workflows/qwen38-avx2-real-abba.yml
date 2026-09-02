@@ -1,0 +1,274 @@
+name: Qwen3.8 real AVX2 ABBA exact gate
+
+on:
+  push:
+    branches: [research/qwen3.8-27b-runtime-finish]
+    paths:
+      - "research/qwen38/gguf_quant_dot.c"
+      - "research/qwen38/gguf_quant_dot_avx2.c"
+      - "research/qwen38/qwen35_runtime_profile.py"
+      - ".github/workflows/qwen38-avx2-real-abba.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  HF_HUB_DISABLE_TELEMETRY: "1"
+  QWEN_REVISION: "1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0"
+
+jobs:
+  real-avx2-abba:
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[qwen-avx2-real]') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prove AVX2 exact gate before expensive model work
+        run: |
+          set -euo pipefail
+          cc -O2 -std=c11 -DQWEN_QUANT_DOT_SELFTEST \
+            research/qwen38/gguf_quant_dot.c -lm -o "$RUNNER_TEMP/qwen-scalar-selftest"
+          "$RUNNER_TEMP/qwen-scalar-selftest"
+          cc -O3 -std=c11 -mavx2 -fno-fast-math -ffp-contract=off \
+            -DQWEN_AVX2_EXACT_SELFTEST research/qwen38/gguf_quant_dot_avx2.c -lm \
+            -o "$RUNNER_TEMP/qwen-avx2-selftest"
+          "$RUNNER_TEMP/qwen-avx2-selftest"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Runner CPU information
+        run: |
+          lscpu
+          uname -a
+
+      - name: Reclaim disk
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup || true
+          docker system prune -af || true
+          df -h
+          free -h
+
+      - name: Install runtime dependencies
+        run: python -m pip install --no-cache-dir huggingface_hub hf_xet tokenizers
+
+      - name: Download pinned real GGUF and tokenizer once
+        shell: bash
+        run: |
+          set -euo pipefail
+          readarray -t files < <(python - <<'PY'
+          from huggingface_hub import hf_hub_download
+          rev="1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0"
+          print(hf_hub_download(
+              "bartowski/Qwen3.8-27B-GGUF",
+              filename="Qwen3.8-27B-Q6_K_L.gguf",
+              local_dir="${{ runner.temp }}/qwen38-model",
+          ))
+          print(hf_hub_download(
+              "Qwen/Qwen3.8-27B",
+              filename="tokenizer.json",
+              revision=rev,
+              local_dir="${{ runner.temp }}/qwen38-tokenizer",
+          ))
+          PY
+          )
+          test -f "${files[0]}"; test -f "${files[1]}"
+          echo "MODEL=${files[0]}" >> "$GITHUB_ENV"
+          echo "TOKENIZER_JSON=${files[1]}" >> "$GITHUB_ENV"
+          echo "K3_WORK=$RUNNER_TEMP/qwen38-avx2-real-work" >> "$GITHUB_ENV"
+          echo "EVIDENCE=$RUNNER_TEMP/qwen38-avx2-real-evidence" >> "$GITHUB_ENV"
+
+      - name: Validate pinned decoder inventory
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$EVIDENCE"
+          PYTHONPATH=research/qwen38 python -u research/qwen38/qwen35_gguf_decoder_contract.py real \
+            --model "$MODEL" --output "$EVIDENCE/inventory.json" \
+            2>&1 | tee "$EVIDENCE/inventory.log"
+
+      - name: Compile fair scalar and AVX2 runtime bridges
+        run: |
+          set -euo pipefail
+          cc -O3 -std=c11 -fno-fast-math -ffp-contract=off -fPIC -shared \
+            research/qwen38/gguf_quant_dot.c -lm -o "$RUNNER_TEMP/libqwen_quant_scalar_o3.so"
+          cc -O3 -std=c11 -mavx2 -fno-fast-math -ffp-contract=off -fPIC -shared \
+            research/qwen38/gguf_quant_dot_avx2.c -lm -o "$RUNNER_TEMP/libqwen_quant_avx2.so"
+          cc -O2 -std=c11 -fPIC -shared research/qwen38/gdn_state_ar.c -lm \
+            -o "$RUNNER_TEMP/libqwen_gdn_serial.so"
+          nm -D "$RUNNER_TEMP/libqwen_quant_avx2.so" | grep ' qwen_matvec_q6_k_q8_k_scalar$'
+          nm -D "$RUNNER_TEMP/libqwen_quant_avx2.so" | grep ' qwen_matvec_q8_0_q8_0_scalar$'
+
+      - name: Pack 64-layer K3 decoder exactly once
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$K3_WORK"
+          PYTHONPATH=research/qwen38 python - <<'PY'
+          import os
+          from pathlib import Path
+          import qwen35_gdn_quant_layer_gate as gdn
+          from gguf_stream import parse_gguf
+          from gguf_k3_layout import pack_gguf_layers
+          model=Path(os.environ["MODEL"])
+          work=Path(os.environ["K3_WORK"])
+          manifest=pack_gguf_layers(
+              parse_gguf(model), work/"decoder64.k3.bin", work/"decoder64.k3.json",
+              layers=range(64), model_id=gdn.MODEL_ID, revision=gdn.REVISION,
+              source_sha256=gdn.SHA256, expected_layers=64,
+          )
+          print("QWEN38_AVX2_REAL_K3_PREPACK_PASS",
+                "bytes=", manifest["packed_file_bytes"],
+                "layers=", len(manifest["layers"]))
+          PY
+
+      - name: Warm scalar path
+        timeout-minutes: 8
+        shell: bash
+        run: |
+          set -euo pipefail
+          PYTHONPATH=research/qwen38 python -u research/qwen38/qwen35_runtime_profile.py run \
+            --model "$MODEL" --native-lib "$RUNNER_TEMP/libqwen_quant_scalar_o3.so" \
+            --state-lib "$RUNNER_TEMP/libqwen_gdn_serial.so" \
+            --inventory "$EVIDENCE/inventory.json" --tokenizer-json "$TOKENIZER_JSON" \
+            --prompt "Hi" --raw-prompt --max-new-tokens 1 --max-prompt-tokens 4 \
+            --work-dir "$K3_WORK" --output "$EVIDENCE/warm-scalar.json"
+
+      - name: Warm AVX2 path
+        timeout-minutes: 8
+        shell: bash
+        run: |
+          set -euo pipefail
+          PYTHONPATH=research/qwen38 python -u research/qwen38/qwen35_runtime_profile.py run \
+            --model "$MODEL" --native-lib "$RUNNER_TEMP/libqwen_quant_avx2.so" \
+            --state-lib "$RUNNER_TEMP/libqwen_gdn_serial.so" \
+            --inventory "$EVIDENCE/inventory.json" --tokenizer-json "$TOKENIZER_JSON" \
+            --prompt "Hi" --raw-prompt --max-new-tokens 1 --max-prompt-tokens 4 \
+            --work-dir "$K3_WORK" --output "$EVIDENCE/warm-avx2.json"
+
+      - name: A1 scalar profiled
+        timeout-minutes: 8
+        shell: bash
+        run: |
+          set -euo pipefail
+          PYTHONPATH=research/qwen38 python -u research/qwen38/qwen35_runtime_profile.py run \
+            --model "$MODEL" --native-lib "$RUNNER_TEMP/libqwen_quant_scalar_o3.so" \
+            --state-lib "$RUNNER_TEMP/libqwen_gdn_serial.so" \
+            --inventory "$EVIDENCE/inventory.json" --tokenizer-json "$TOKENIZER_JSON" \
+            --prompt "Hi" --raw-prompt --max-new-tokens 1 --max-prompt-tokens 4 \
+            --work-dir "$K3_WORK" --output "$EVIDENCE/scalar-a1.json" \
+            --profile --profile-output "$EVIDENCE/scalar-a1-profile.json"
+
+      - name: B1 AVX2 profiled
+        timeout-minutes: 8
+        shell: bash
+        run: |
+          set -euo pipefail
+          PYTHONPATH=research/qwen38 python -u research/qwen38/qwen35_runtime_profile.py run \
+            --model "$MODEL" --native-lib "$RUNNER_TEMP/libqwen_quant_avx2.so" \
+            --state-lib "$RUNNER_TEMP/libqwen_gdn_serial.so" \
+            --inventory "$EVIDENCE/inventory.json" --tokenizer-json "$TOKENIZER_JSON" \
+            --prompt "Hi" --raw-prompt --max-new-tokens 1 --max-prompt-tokens 4 \
+            --work-dir "$K3_WORK" --output "$EVIDENCE/avx2-b1.json" \
+            --profile --profile-output "$EVIDENCE/avx2-b1-profile.json"
+
+      - name: B2 AVX2 profiled
+        timeout-minutes: 8
+        shell: bash
+        run: |
+          set -euo pipefail
+          PYTHONPATH=research/qwen38 python -u research/qwen38/qwen35_runtime_profile.py run \
+            --model "$MODEL" --native-lib "$RUNNER_TEMP/libqwen_quant_avx2.so" \
+            --state-lib "$RUNNER_TEMP/libqwen_gdn_serial.so" \
+            --inventory "$EVIDENCE/inventory.json" --tokenizer-json "$TOKENIZER_JSON" \
+            --prompt "Hi" --raw-prompt --max-new-tokens 1 --max-prompt-tokens 4 \
+            --work-dir "$K3_WORK" --output "$EVIDENCE/avx2-b2.json" \
+            --profile --profile-output "$EVIDENCE/avx2-b2-profile.json"
+
+      - name: A2 scalar profiled
+        timeout-minutes: 8
+        shell: bash
+        run: |
+          set -euo pipefail
+          PYTHONPATH=research/qwen38 python -u research/qwen38/qwen35_runtime_profile.py run \
+            --model "$MODEL" --native-lib "$RUNNER_TEMP/libqwen_quant_scalar_o3.so" \
+            --state-lib "$RUNNER_TEMP/libqwen_gdn_serial.so" \
+            --inventory "$EVIDENCE/inventory.json" --tokenizer-json "$TOKENIZER_JSON" \
+            --prompt "Hi" --raw-prompt --max-new-tokens 1 --max-prompt-tokens 4 \
+            --work-dir "$K3_WORK" --output "$EVIDENCE/scalar-a2.json" \
+            --profile --profile-output "$EVIDENCE/scalar-a2-profile.json"
+
+      - name: Require real token state exactness and report AVX2 attribution
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os, statistics
+          from pathlib import Path
+
+          root=Path(os.environ["EVIDENCE"])
+          names=("scalar-a1","avx2-b1","avx2-b2","scalar-a2")
+          runs={name:json.loads((root/f"{name}.json").read_text(encoding="utf-8")) for name in names}
+          ref=runs["scalar-a1"]
+          exact_keys=(
+              "status","model_sha256","tokenizer_revision","mode","prompt","rendered_prompt",
+              "prompt_token_count","prompt_token_ids","generated_token_ids","generated_text",
+              "token_reports","stop_reason",
+          )
+          for name,run in runs.items():
+              assert run["status"] == "PASS", name
+              for key in exact_keys:
+                  assert run[key] == ref[key], (name,key)
+              assert run["state"] == ref["state"], (name,"state")
+              assert run["state"]["packed_trunk_reused"] is True, name
+              assert run["state"]["reader"]["direct_io"] is True, name
+              prof=run.get("profile")
+              assert prof and prof["schema"] == "qwen38-runtime-aggregate-profile-v1", name
+              assert prof["quant_and_matvec"]["by_role_and_weight_kind"]["ffn:Q6_K"]["native_seconds"] > 0
+
+          scalar=[runs["scalar-a1"],runs["scalar-a2"]]
+          avx2=[runs["avx2-b1"],runs["avx2-b2"]]
+          def med(group, fn): return statistics.median(fn(r) for r in group)
+          def total(r): return float(r["elapsed_seconds"])
+          def decoder(r): return float(r["profile"]["main_thread_additive"]["decoder_steps_wall_seconds"])
+          def matvec(r): return float(r["profile"]["quant_and_matvec"]["matvec_native_wall_seconds"])
+          def role(r, key): return float(r["profile"]["quant_and_matvec"]["by_role_and_weight_kind"].get(key,{}).get("native_seconds",0.0))
+          def q8_total(r):
+              roles=r["profile"]["quant_and_matvec"]["by_role_and_weight_kind"]
+              return sum(float(v.get("native_seconds",0.0)) for k,v in roles.items() if k.endswith(":Q8_0"))
+
+          sm_total=med(scalar,total); am_total=med(avx2,total)
+          sm_dec=med(scalar,decoder); am_dec=med(avx2,decoder)
+          sm_mv=med(scalar,matvec); am_mv=med(avx2,matvec)
+          sm_ffn=med(scalar,lambda r:role(r,"ffn:Q6_K")); am_ffn=med(avx2,lambda r:role(r,"ffn:Q6_K"))
+          sm_q8=med(scalar,q8_total); am_q8=med(avx2,q8_total)
+          print("QWEN38_AVX2_REAL_TOKEN_TOP5_STATE_EXACT_PASS")
+          print("generated_token_ids=",ref["generated_token_ids"])
+          print("generated_text=",repr(ref["generated_text"]))
+          print("scalar_elapsed_s=",[total(r) for r in scalar])
+          print("avx2_elapsed_s=",[total(r) for r in avx2])
+          print("scalar_median_elapsed_s=",sm_total)
+          print("avx2_median_elapsed_s=",am_total)
+          print("end_to_end_speedup=",sm_total/am_total)
+          print("decoder_speedup=",sm_dec/am_dec)
+          print("native_matvec_speedup=",sm_mv/am_mv)
+          print("ffn_q6_native_speedup=",sm_ffn/am_ffn)
+          print("q8_native_speedup=",sm_q8/am_q8 if am_q8 else None)
+          print("scalar_median_ffn_q6_s=",sm_ffn)
+          print("avx2_median_ffn_q6_s=",am_ffn)
+          print("scalar_median_q8_s=",sm_q8)
+          print("avx2_median_q8_s=",am_q8)
+          print("QWEN38_AVX2_REAL_ABBA_PASS")
+          PY
+
+      - name: Upload compact real AVX2 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen38-avx2-real-${{ github.run_id }}
+          path: ${{ runner.temp }}/qwen38-avx2-real-evidence/
+          if-no-files-found: warn
+          retention-days: 14
