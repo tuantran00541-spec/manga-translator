@@ -66,7 +66,7 @@ def _cleanup_uncommitted_chapter(chapter_id: str) -> None:
                 shutil.rmtree(path)
         except OSError as exc:
             logger.warning(
-                "Could not roll back uncommitted chapter %s at %s: %s",
+                "Could not roll back uncommitted chapter {} at {}: {}",
                 chapter_id,
                 path,
                 exc,
@@ -171,12 +171,11 @@ def create_chapter(req: ChapterRequest) -> dict:
         raise
     except Exception as exc:
         _cleanup_uncommitted_chapter(chapter_id)
-        logger.error(
-            "Chapter %s operation 'create_chapter' failed for URL %s: %s",
+        logger.opt(exception=True).error(
+            "Chapter {} operation 'create_chapter' failed for URL {}: {}",
             chapter_id,
             req.url,
             exc,
-            exc_info=True,
         )
         raise HTTPException(500, f"Download chapter failed: {exc}") from exc
 
@@ -218,11 +217,11 @@ async def create_chapter_from_upload(
         raise
     except ValueError as exc:
         _cleanup_uncommitted_chapter(chapter_id)
-        logger.error("Chapter %s operation 'create_chapter_from_upload' invalid payload: %s", chapter_id, exc)
+        logger.error("Chapter {} operation 'create_chapter_from_upload' invalid payload: {}", chapter_id, exc)
         raise HTTPException(400, str(exc)) from exc
     except Exception as exc:
         _cleanup_uncommitted_chapter(chapter_id)
-        logger.error("Chapter %s operation 'create_chapter_from_upload' failed: %s", chapter_id, exc, exc_info=True)
+        logger.opt(exception=True).error("Chapter {} operation 'create_chapter_from_upload' failed: {}", chapter_id, exc)
         raise HTTPException(500, f"Upload chapter failed: {exc}") from exc
 
 
@@ -245,21 +244,19 @@ def process_pages(req: ProcessPagesRequest) -> dict:
         manifest = pipeline.process_pages(req.chapter_id, req.page_indices, workers=workers)
         return urlify_manifest(manifest)
     except RuntimeError as exc:
-        logger.error(
-            "Chapter %s pages %s operation 'process_pages' failed: %s",
+        logger.opt(exception=True).error(
+            "Chapter {} pages {} operation 'process_pages' failed: {}",
             req.chapter_id,
             req.page_indices,
             exc,
-            exc_info=True,
         )
         raise HTTPException(500, str(exc)) from exc
     except Exception as exc:
-        logger.error(
-            "Chapter %s pages %s operation 'process_pages' failed unexpectedly: %s",
+        logger.opt(exception=True).error(
+            "Chapter {} pages {} operation 'process_pages' failed unexpectedly: {}",
             req.chapter_id,
             req.page_indices,
             exc,
-            exc_info=True,
         )
         raise HTTPException(500, f"Process pages failed: {exc}") from exc
 
@@ -276,12 +273,11 @@ def skip_pages(req: SkipPagesRequest) -> dict:
         manifest = pipeline.mark_skipped(req.chapter_id, req.page_indices, req.skipped)
         return urlify_manifest(manifest)
     except Exception as exc:
-        logger.error(
-            "Chapter %s pages %s operation 'skip_pages' failed: %s",
+        logger.opt(exception=True).error(
+            "Chapter {} pages {} operation 'skip_pages' failed: {}",
             req.chapter_id,
             req.page_indices,
             exc,
-            exc_info=True,
         )
         raise HTTPException(500, f"Skip pages failed: {exc}") from exc
 
@@ -308,12 +304,11 @@ def save_excluded_regions(req: SaveExcludedRegionsRequest) -> dict:
     except HTTPException:
         raise
     except Exception as exc:
-        logger.error(
-            "Chapter %s page %s operation 'save_excluded_regions' failed: %s",
+        logger.opt(exception=True).error(
+            "Chapter {} page {} operation 'save_excluded_regions' failed: {}",
             req.chapter_id,
             req.page_index,
             exc,
-            exc_info=True,
         )
         raise HTTPException(500, f"Save excluded regions failed: {exc}") from exc
 
@@ -342,11 +337,10 @@ def set_page_excluded_regions(
     except HTTPException:
         raise
     except Exception as exc:
-        logger.error(
-            "Chapter %s page %s operation 'set_page_excluded_regions' failed: %s",
+        logger.opt(exception=True).error(
+            "Chapter {} page {} operation 'set_page_excluded_regions' failed: {}",
             chapter_id,
             page_index,
             exc,
-            exc_info=True,
         )
         raise HTTPException(500, f"Set page excluded regions failed: {exc}") from exc

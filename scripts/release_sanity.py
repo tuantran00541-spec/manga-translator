@@ -79,6 +79,55 @@ def check_unused_python_imports() -> None:
     print("Unused import check OK")
 
 
+def check_loguru_usage() -> None:
+    """Reject stdlib logging syntax that Loguru does not interpret."""
+    methods = {
+        "trace", "debug", "info", "success", "warning", "error",
+        "critical", "exception",
+    }
+    placeholder = re.compile(r"%(?:[-+0-9.]*[sdif])")
+    failures: list[str] = []
+
+    for path in PYTHON_PATHS:
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if (
+                not isinstance(node, ast.Call)
+                or not isinstance(node.func, ast.Attribute)
+                or node.func.attr not in methods
+                or not node.args
+            ):
+                continue
+
+            receiver = node.func.value
+            is_logger = isinstance(receiver, ast.Name) and receiver.id == "logger"
+            if isinstance(receiver, ast.Call) and isinstance(receiver.func, ast.Attribute):
+                is_logger = (
+                    isinstance(receiver.func.value, ast.Name)
+                    and receiver.func.value.id == "logger"
+                )
+            message = node.args[0]
+            if is_logger and any(
+                keyword.arg == "exc_info" for keyword in node.keywords
+            ):
+                failures.append(
+                    f"{path}:{node.lineno}: use logger.opt(exception=True), not exc_info"
+                )
+            if (
+                is_logger
+                and len(node.args) > 1
+                and isinstance(message, ast.Constant)
+                and isinstance(message.value, str)
+                and placeholder.search(message.value)
+            ):
+                failures.append(
+                    f"{path}:{node.lineno}: Loguru call uses %-style placeholders"
+                )
+
+    _fail("Invalid Loguru usage found:", failures)
+    print("Loguru usage check OK")
+
+
 def check_top_level_python_reachability() -> None:
     source_by_path = {
         path: path.read_text(encoding="utf-8")
@@ -319,6 +368,7 @@ def check_javascript_function_reachability() -> None:
 
 def main() -> None:
     check_unused_python_imports()
+    check_loguru_usage()
     check_top_level_python_reachability()
     check_python_module_reachability()
     check_exact_python_helper_duplication()

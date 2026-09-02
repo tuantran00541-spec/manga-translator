@@ -79,17 +79,17 @@ def add_box(req: AddBoxRequest) -> dict:
     except HTTPException:
         raise
     except Exception as exc:
-        logger.error("Chapter %s page %s operation 'add_box' cannot read image: %s", req.chapter_id, req.page_index, exc, exc_info=True)
+        logger.opt(exception=True).error("Chapter {} page {} operation 'add_box' cannot read image: {}", req.chapter_id, req.page_index, exc)
         raise HTTPException(500, f"Cannot read page image: {exc}") from exc
 
     try:
         manifest = pipeline.add_manual_box(req.chapter_id, req.page_index, req.x1, req.y1, req.x2, req.y2)
         return urlify_manifest(manifest)
     except ValueError as exc:
-        logger.error("Chapter %s page %s operation 'add_box' invalid value: %s", req.chapter_id, req.page_index, exc)
+        logger.error("Chapter {} page {} operation 'add_box' invalid value: {}", req.chapter_id, req.page_index, exc)
         raise HTTPException(400, str(exc)) from exc
     except Exception as exc:
-        logger.error("Chapter %s page %s operation 'add_box' failed: %s", req.chapter_id, req.page_index, exc, exc_info=True)
+        logger.opt(exception=True).error("Chapter {} page {} operation 'add_box' failed: {}", req.chapter_id, req.page_index, exc)
         raise HTTPException(500, f"Add box failed: {exc}") from exc
 
 
@@ -119,7 +119,7 @@ def update_box(req: UpdateBoxRequest) -> dict:
     except HTTPException:
         raise
     except Exception as exc:
-        logger.error("Chapter %s page %s box %s operation 'update_box' cannot read image: %s", req.chapter_id, req.page_index, req.box_index, exc, exc_info=True)
+        logger.opt(exception=True).error("Chapter {} page {} box {} operation 'update_box' cannot read image: {}", req.chapter_id, req.page_index, req.box_index, exc)
         raise HTTPException(500, f"Cannot read page image: {exc}") from exc
 
     try:
@@ -128,10 +128,10 @@ def update_box(req: UpdateBoxRequest) -> dict:
         )
         return urlify_manifest(manifest)
     except ValueError as exc:
-        logger.error("Chapter %s page %s box %s operation 'update_box' invalid value: %s", req.chapter_id, req.page_index, req.box_index, exc)
+        logger.error("Chapter {} page {} box {} operation 'update_box' invalid value: {}", req.chapter_id, req.page_index, req.box_index, exc)
         raise HTTPException(400, str(exc)) from exc
     except Exception as exc:
-        logger.error("Chapter %s page %s box %s operation 'update_box' failed: %s", req.chapter_id, req.page_index, req.box_index, exc, exc_info=True)
+        logger.opt(exception=True).error("Chapter {} page {} box {} operation 'update_box' failed: {}", req.chapter_id, req.page_index, req.box_index, exc)
         raise HTTPException(500, f"Update box failed: {exc}") from exc
 
 
@@ -150,10 +150,10 @@ def remove_box(req: RemoveBoxRequest) -> dict:
         manifest = pipeline.remove_box(req.chapter_id, req.page_index, req.box_index)
         return urlify_manifest(manifest)
     except ValueError as exc:
-        logger.error("Chapter %s page %s box %s operation 'remove_box' invalid value: %s", req.chapter_id, req.page_index, req.box_index, exc)
+        logger.error("Chapter {} page {} box {} operation 'remove_box' invalid value: {}", req.chapter_id, req.page_index, req.box_index, exc)
         raise HTTPException(400, str(exc)) from exc
     except Exception as exc:
-        logger.error("Chapter %s page %s box %s operation 'remove_box' failed: %s", req.chapter_id, req.page_index, req.box_index, exc, exc_info=True)
+        logger.opt(exception=True).error("Chapter {} page {} box {} operation 'remove_box' failed: {}", req.chapter_id, req.page_index, req.box_index, exc)
         raise HTTPException(500, f"Remove box failed: {exc}") from exc
 
 
@@ -181,14 +181,14 @@ async def repaint_mask(
         image = read_image(img_path)
         img_h, img_w = image.shape[:2]
     except Exception as exc:
-        logger.error("Chapter %s page %s operation 'repaint_mask' cannot read base image: %s", chapter_id, page_index, exc, exc_info=True)
+        logger.opt(exception=True).error("Chapter {} page {} operation 'repaint_mask' cannot read base image: {}", chapter_id, page_index, exc)
         raise HTTPException(500, f"Cannot read base page image: {exc}") from exc
 
     mask_bytes = await mask.read()
     if not mask_bytes:
         raise HTTPException(400, "Empty mask payload")
     logger.info(
-        "Chapter %s page %s: repaint mask (%s bytes, mode=%s)",
+        "Chapter {} page {}: repaint mask ({} bytes, mode={})",
         chapter_id,
         page_index,
         len(mask_bytes),
@@ -226,12 +226,11 @@ async def repaint_mask(
         )
         return urlify_manifest(manifest)
     except Exception as exc:
-        logger.error(
-            "Chapter %s page %s operation 'repaint_mask' failed: %s",
+        logger.opt(exception=True).error(
+            "Chapter {} page {} operation 'repaint_mask' failed: {}",
             chapter_id,
             page_index,
             exc,
-            exc_info=True,
         )
         raise HTTPException(500, f"Repaint mask failed: {exc}") from exc
 
@@ -248,10 +247,9 @@ def reset_manual_mask(req: ResetManualMaskRequest) -> dict:
         manifest = pipeline.reset_manual_mask(req.chapter_id, req.page_index)
         return urlify_manifest(manifest)
     except Exception as exc:
-        logger.error(
-            "Chapter %s page %s operation 'reset_manual_mask' failed: %s",
+        logger.opt(exception=True).error(
+            "Chapter {} page {} operation 'reset_manual_mask' failed: {}",
             req.chapter_id, req.page_index, exc,
-            exc_info=True,
         )
         raise HTTPException(500, f"Reset manual mask failed: {exc}") from exc
 
@@ -265,15 +263,15 @@ def create_text_object(req: CreateTextObjectRequest) -> dict:
         )
         return urlify_manifest(manifest)
     except ValueError as exc:
-        logger.error(
-            "Chapter %s page %s operation 'create_text_object' invalid value: %s",
+        logger.opt(exception=True).error(
+            "Chapter {} page {} operation 'create_text_object' invalid value: {}",
             req.chapter_id, req.page_index, exc,
         )
         raise HTTPException(400, str(exc)) from exc
     except Exception as exc:
         logger.error(
-            "Chapter %s page %s operation 'create_text_object' failed: %s",
-            req.chapter_id, req.page_index, exc, exc_info=True,
+            "Chapter {} page {} operation 'create_text_object' failed: {}",
+            req.chapter_id, req.page_index, exc,
         )
         raise HTTPException(500, f"Create text object failed: {exc}") from exc
 
@@ -300,15 +298,15 @@ def update_text_object(req: UpdateTextObjectRequest) -> dict:
             manifest = _reconcile_translation_after_ocr_edit(req)
         return urlify_manifest(manifest)
     except ValueError as exc:
-        logger.error(
-            "Chapter %s page %s object %s operation 'update_text_object' invalid value: %s",
+        logger.opt(exception=True).error(
+            "Chapter {} page {} object {} operation 'update_text_object' invalid value: {}",
             req.chapter_id, req.page_index, req.id, exc,
         )
         raise HTTPException(400, str(exc)) from exc
     except Exception as exc:
         logger.error(
-            "Chapter %s page %s object %s operation 'update_text_object' failed: %s",
-            req.chapter_id, req.page_index, req.id, exc, exc_info=True,
+            "Chapter {} page {} object {} operation 'update_text_object' failed: {}",
+            req.chapter_id, req.page_index, req.id, exc,
         )
         raise HTTPException(500, f"Update text object failed: {exc}") from exc
 
@@ -322,15 +320,15 @@ def delete_text_object(req: DeleteTextObjectRequest) -> dict:
         )
         return urlify_manifest(manifest)
     except ValueError as exc:
-        logger.error(
-            "Chapter %s page %s object %s operation 'delete_text_object' invalid value: %s",
+        logger.opt(exception=True).error(
+            "Chapter {} page {} object {} operation 'delete_text_object' invalid value: {}",
             req.chapter_id, req.page_index, req.id, exc,
         )
         raise HTTPException(400, str(exc)) from exc
     except Exception as exc:
         logger.error(
-            "Chapter %s page %s object %s operation 'delete_text_object' failed: %s",
-            req.chapter_id, req.page_index, req.id, exc, exc_info=True,
+            "Chapter {} page {} object {} operation 'delete_text_object' failed: {}",
+            req.chapter_id, req.page_index, req.id, exc,
         )
         raise HTTPException(500, f"Delete text object failed: {exc}") from exc
 
@@ -357,5 +355,5 @@ def save_draft(req: SaveDraftRequest) -> dict:
     except HTTPException:
         raise
     except Exception as exc:
-        logger.error("Chapter %s operation 'save_draft' failed: %s", req.chapter_id, exc, exc_info=True)
+        logger.opt(exception=True).error("Chapter {} operation 'save_draft' failed: {}", req.chapter_id, exc)
         raise HTTPException(500, f"Save draft failed: {exc}") from exc

@@ -88,7 +88,7 @@ def render_boxes_legacy(
         y2 = max(0, min(img_h, coords_raw[3]))
         if x2 <= x1 or y2 <= y1:
             logger.warning(
-                "Chapter %s page %s box %s invalid coordinates (%s,%s,%s,%s) for image size (%s,%s), skipping",
+                "Chapter {} page {} box {} invalid coordinates ({},{},{},{}) for image size ({},{}), skipping",
                 req.chapter_id,
                 req.page_index,
                 box_idx,
@@ -151,13 +151,12 @@ def render_boxes_legacy(
             )
             rendered_count += 1
         except Exception as e:
-            logger.error(
-                "Chapter %s page %s box %s operation 'render_text_in_box' failed: %s",
+            logger.opt(exception=True).error(
+                "Chapter {} page {} box {} operation 'render_text_in_box' failed: {}",
                 req.chapter_id,
                 req.page_index,
                 box_idx,
                 e,
-                exc_info=True,
             )
             raise HTTPException(
                 500,
@@ -202,7 +201,7 @@ def render_text_objects(
             )
         except (KeyError, TypeError, ValueError):
             logger.warning(
-                "Chapter %s page %s object %s has malformed region, skipping",
+                "Chapter {} page {} object {} has malformed region, skipping",
                 req.chapter_id, req.page_index, oid,
             )
             continue
@@ -213,7 +212,7 @@ def render_text_objects(
         y2 = max(0, min(img_h, coords_raw[3]))
         if x2 <= x1 or y2 <= y1:
             logger.warning(
-                "Chapter %s page %s object %s invalid coordinates (%s,%s,%s,%s) for image size (%s,%s), skipping",
+                "Chapter {} page {} object {} invalid coordinates ({},{},{},{}) for image size ({},{}), skipping",
                 req.chapter_id, req.page_index, oid,
                 x1, y1, x2, y2, img_w, img_h,
             )
@@ -281,9 +280,9 @@ def render_text_objects(
             )
             rendered_count += 1
         except Exception as e:
-            logger.error(
-                "Chapter %s page %s object %s operation 'render_text_in_box' failed: %s",
-                req.chapter_id, req.page_index, oid, e, exc_info=True,
+            logger.opt(exception=True).error(
+                "Chapter {} page {} object {} operation 'render_text_in_box' failed: {}",
+                req.chapter_id, req.page_index, oid, e,
             )
             raise HTTPException(500, f"Chèn chữ thất bại (vùng {oid})") from e
 

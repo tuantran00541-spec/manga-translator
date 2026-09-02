@@ -84,7 +84,7 @@ def build_mask(image_shape: tuple[int, int], boxes: list[BubbleBox], crop_img: n
 
         if not is_destructive_box_authorized(box):
             logger.warning(
-                "Skipping non-authorized destructive mask for box (%d, %d, %d, %d)",
+                "Skipping non-authorized destructive mask for box ({}, {}, {}, {})",
                 box.x1,
                 box.y1,
                 box.x2,
@@ -95,7 +95,7 @@ def build_mask(image_shape: tuple[int, int], boxes: list[BubbleBox], crop_img: n
         if box.mask is not None:
             if box.mask.shape != (box_h, box_w):
                 logger.warning(
-                    "Resizing mismatched box mask from %s to (%d, %d) at (%d, %d, %d, %d)",
+                    "Resizing mismatched box mask from {} to ({}, {}) at ({}, {}, {}, {})",
                     box.mask.shape,
                     box_h,
                     box_w,
@@ -107,7 +107,7 @@ def build_mask(image_shape: tuple[int, int], boxes: list[BubbleBox], crop_img: n
                 try:
                     box.mask = cv2.resize(box.mask, (box_w, box_h), interpolation=cv2.INTER_NEAREST)
                 except Exception as exc:
-                    logger.error("Failed to resize box mask at (%d, %d, %d, %d): %s", box.x1, box.y1, box.x2, box.y2, exc)
+                    logger.error("Failed to resize box mask at ({}, {}, {}, {}): {}", box.x1, box.y1, box.x2, box.y2, exc)
                     box.mask = None
 
         if box.mask is not None:
@@ -123,7 +123,7 @@ def build_mask(image_shape: tuple[int, int], boxes: list[BubbleBox], crop_img: n
         else:
             if not _rectangle_fallback_allowed(box):
                 logger.warning(
-                    "Skipping unsafe rectangle fallback for detector box (%d, %d, %d, %d): segmentation mask is missing",
+                    "Skipping unsafe rectangle fallback for detector box ({}, {}, {}, {}): segmentation mask is missing",
                     box.x1,
                     box.y1,
                     box.x2,
@@ -131,7 +131,7 @@ def build_mask(image_shape: tuple[int, int], boxes: list[BubbleBox], crop_img: n
                 )
                 continue
             logger.warning(
-                "Using explicit rectangle fallback mask for manual box (%d, %d, %d, %d)",
+                "Using explicit rectangle fallback mask for manual box ({}, {}, {}, {})",
                 box.x1,
                 box.y1,
                 box.x2,

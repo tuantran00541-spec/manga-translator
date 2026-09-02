@@ -499,7 +499,7 @@ class ChapterPipeline:
             except Exception as exc:
                 shared_metrics["failures"] = int(shared_metrics["failures"]) + 1
                 logger.warning(
-                    "Chapter %s source page %s seam %s: shared context detection failed: %s",
+                    "Chapter {} source page {} seam {}: shared context detection failed: {}",
                     chapter_id, source_page, cut_y, exc,
                 )
                 unavailable_pages.update(idx for idx, _path, _core in seam_consumers)
@@ -573,7 +573,7 @@ class ChapterPipeline:
                     )
                 ):
                     logger.warning(
-                        "Chapter %s page %s: page state changed during processing, discarding stale output",
+                        "Chapter {} page {}: page state changed during processing, discarding stale output",
                         chapter_id,
                         page_index,
                     )
@@ -889,7 +889,7 @@ class ChapterPipeline:
                 if target_path.exists():
                     target_path.unlink()
             except OSError as exc:
-                logger.warning("Could not remove stale output %s: %s", target_path, exc)
+                logger.warning("Could not remove stale output {}: {}", target_path, exc)
 
     def add_manual_box(self, chapter_id: str, page_index: int, x1: int, y1: int, x2: int, y2: int) -> dict:
         processed_dir = PROCESSED_DIR / chapter_id
@@ -1139,7 +1139,7 @@ class ChapterPipeline:
                         if cached.shape[:2] == (img_h, img_w):
                             self._write_auto_clean_cache(processed_dir, img_path, cached)
                     except Exception as exc:
-                        logger.warning("Could not seed auto-clean cache from %s: %s", clean_path, exc)
+                        logger.warning("Could not seed auto-clean cache from {}: {}", clean_path, exc)
 
             bin_mask = (
                 (mask > MANUAL_MASK_THRESHOLD).astype(np.uint8) * 255
@@ -1427,7 +1427,7 @@ class ChapterPipeline:
             raw = np.fromfile(str(mask_path), dtype=np.uint8)
             mask = cv2.imdecode(raw, cv2.IMREAD_GRAYSCALE)
         except (OSError, ValueError) as exc:
-            logger.warning("Could not read manual mask at %s: %s", mask_path, exc)
+            logger.warning("Could not read manual mask at {}: {}", mask_path, exc)
             return None
         if mask is None or not np.any(mask > MANUAL_MASK_THRESHOLD):
             return None
@@ -1439,7 +1439,7 @@ class ChapterPipeline:
                     interpolation=cv2.INTER_NEAREST,
                 )
             except Exception as exc:
-                logger.warning("Could not resize manual mask at %s: %s", mask_path, exc)
+                logger.warning("Could not resize manual mask at {}: {}", mask_path, exc)
                 return None
         if not np.any(mask > MANUAL_MASK_THRESHOLD):
             return None
@@ -1459,11 +1459,11 @@ class ChapterPipeline:
         try:
             cached = read_image(auto_path)
         except Exception as exc:
-            logger.warning("Could not read auto-clean cache at %s: %s", auto_path, exc)
+            logger.warning("Could not read auto-clean cache at {}: {}", auto_path, exc)
             return None
         if cached.shape[:2] != expected_shape:
             logger.warning(
-                "Ignoring stale auto-clean cache at %s: expected shape %s, got %s",
+                "Ignoring stale auto-clean cache at {}: expected shape {}, got {}",
                 auto_path, expected_shape, cached.shape[:2],
             )
             return None

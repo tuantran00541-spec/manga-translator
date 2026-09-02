@@ -180,7 +180,7 @@ def externalize_page_masks(
             externalized += 1
         except (OSError, RuntimeError, ValueError) as exc:
             logger.warning(
-                "Could not externalize mask for page %s box %s: %s",
+                "Could not externalize mask for page {} box {}: {}",
                 page_index,
                 box.get("id"),
                 exc,

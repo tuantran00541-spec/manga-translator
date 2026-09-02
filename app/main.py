@@ -73,7 +73,7 @@ async def lifespan(app: FastAPI):
     missing = check_models()
     if missing:
         logger.warning(
-            "Models missing: %s — /api/process_pages will fail until models are placed in models/",
+            "Models missing: {} — /api/process_pages will fail until models are placed in models/",
             ", ".join(missing),
         )
     else:
