@@ -1,0 +1,248 @@
+name: Qwen3.8 runtime aggregate profile exact gate
+
+on:
+  push:
+    branches: [research/qwen3.8-27b-runtime-finish]
+    paths:
+      - "research/qwen38/qwen35_runtime_profile.py"
+      - ".github/workflows/qwen38-runtime-profile-real.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  HF_HUB_DISABLE_TELEMETRY: "1"
+  QWEN_REVISION: "1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0"
+  PROFILE_OVERHEAD_BUDGET_PCT: "2.0"
+
+jobs:
+  profiler-sanity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Syntax and aggregate-accounting sanity
+        run: |
+          python -m py_compile research/qwen38/qwen35_runtime_profile.py
+          PYTHONPATH=research/qwen38 python research/qwen38/qwen35_runtime_profile.py sanity
+      - name: Proven scalar native selftests remain green
+        run: |
+          cc -O2 -std=c11 -DQWEN_QUANT_DOT_SELFTEST research/qwen38/gguf_quant_dot.c -lm -o "$RUNNER_TEMP/qwen-quant-serial-test"
+          "$RUNNER_TEMP/qwen-quant-serial-test"
+          cc -O2 -std=c11 -DQWEN_GDN_STATE_SELFTEST research/qwen38/gdn_state_ar.c -lm -o "$RUNNER_TEMP/qwen-gdn-serial-test"
+          "$RUNNER_TEMP/qwen-gdn-serial-test"
+
+  real-profile-abba:
+    needs: profiler-sanity
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[qwen-profile-real]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Reclaim disk
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup || true
+          docker system prune -af || true
+          df -h
+          free -h
+      - name: Install runtime dependencies
+        run: python -m pip install --no-cache-dir huggingface_hub hf_xet tokenizers
+      - name: Download pinned real GGUF and tokenizer once
+        shell: bash
+        run: |
+          set -euo pipefail
+          readarray -t files < <(python - <<'PY'
+          from huggingface_hub import hf_hub_download
+          rev="1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0"
+          print(hf_hub_download(
+              "bartowski/Qwen3.8-27B-GGUF",
+              filename="Qwen3.8-27B-Q6_K_L.gguf",
+              local_dir="${{ runner.temp }}/qwen38-model",
+          ))
+          print(hf_hub_download(
+              "Qwen/Qwen3.8-27B",
+              filename="tokenizer.json",
+              revision=rev,
+              local_dir="${{ runner.temp }}/qwen38-tokenizer",
+          ))
+          PY
+          )
+          test -f "${files[0]}"; test -f "${files[1]}"
+          echo "MODEL=${files[0]}" >> "$GITHUB_ENV"
+          echo "TOKENIZER_JSON=${files[1]}" >> "$GITHUB_ENV"
+          echo "K3_WORK=$RUNNER_TEMP/qwen38-profile-work" >> "$GITHUB_ENV"
+          echo "EVIDENCE=$RUNNER_TEMP/qwen38-profile-evidence" >> "$GITHUB_ENV"
+      - name: Validate pinned decoder inventory
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$EVIDENCE"
+          PYTHONPATH=research/qwen38 python -u research/qwen38/qwen35_gguf_decoder_contract.py real \
+            --model "$MODEL" --output "$EVIDENCE/inventory.json" \
+            2>&1 | tee "$EVIDENCE/inventory.log"
+      - name: Compile proven scalar runtime bridges
+        run: |
+          cc -O2 -std=c11 -fPIC -shared research/qwen38/gguf_quant_dot.c -lm -o "$RUNNER_TEMP/libqwen_quant_serial.so"
+          cc -O2 -std=c11 -fPIC -shared research/qwen38/gdn_state_ar.c -lm -o "$RUNNER_TEMP/libqwen_gdn_serial.so"
+      - name: Pack 64-layer K3 decoder exactly once
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$K3_WORK"
+          PYTHONPATH=research/qwen38 python - <<'PY'
+          import os
+          from pathlib import Path
+          import qwen35_gdn_quant_layer_gate as gdn
+          from gguf_stream import parse_gguf
+          from gguf_k3_layout import pack_gguf_layers
+          model=Path(os.environ["MODEL"])
+          work=Path(os.environ["K3_WORK"])
+          manifest=pack_gguf_layers(
+              parse_gguf(model), work/"decoder64.k3.bin", work/"decoder64.k3.json",
+              layers=range(64), model_id=gdn.MODEL_ID, revision=gdn.REVISION,
+              source_sha256=gdn.SHA256, expected_layers=64,
+          )
+          print("QWEN38_PROFILE_K3_PREPACK_PASS",
+                "bytes=", manifest["packed_file_bytes"],
+                "layers=", len(manifest["layers"]))
+          PY
+      - name: Warm buffered GGUF paths before measured A-B-B-A
+        timeout-minutes: 8
+        shell: bash
+        run: |
+          set -euo pipefail
+          PYTHONPATH=research/qwen38 python -u research/qwen38/qwen35_runtime_profile.py run \
+            --model "$MODEL" --native-lib "$RUNNER_TEMP/libqwen_quant_serial.so" \
+            --state-lib "$RUNNER_TEMP/libqwen_gdn_serial.so" \
+            --inventory "$EVIDENCE/inventory.json" --tokenizer-json "$TOKENIZER_JSON" \
+            --prompt "Hi" --raw-prompt --max-new-tokens 1 --max-prompt-tokens 4 \
+            --work-dir "$K3_WORK" --output "$EVIDENCE/warmup.json"
+      - name: A1 profile off
+        timeout-minutes: 8
+        shell: bash
+        run: |
+          set -euo pipefail
+          PYTHONPATH=research/qwen38 python -u research/qwen38/qwen35_runtime_profile.py run \
+            --model "$MODEL" --native-lib "$RUNNER_TEMP/libqwen_quant_serial.so" \
+            --state-lib "$RUNNER_TEMP/libqwen_gdn_serial.so" \
+            --inventory "$EVIDENCE/inventory.json" --tokenizer-json "$TOKENIZER_JSON" \
+            --prompt "Hi" --raw-prompt --max-new-tokens 1 --max-prompt-tokens 4 \
+            --work-dir "$K3_WORK" --output "$EVIDENCE/off-a1.json"
+      - name: B1 profile on
+        timeout-minutes: 8
+        shell: bash
+        run: |
+          set -euo pipefail
+          PYTHONPATH=research/qwen38 python -u research/qwen38/qwen35_runtime_profile.py run \
+            --model "$MODEL" --native-lib "$RUNNER_TEMP/libqwen_quant_serial.so" \
+            --state-lib "$RUNNER_TEMP/libqwen_gdn_serial.so" \
+            --inventory "$EVIDENCE/inventory.json" --tokenizer-json "$TOKENIZER_JSON" \
+            --prompt "Hi" --raw-prompt --max-new-tokens 1 --max-prompt-tokens 4 \
+            --work-dir "$K3_WORK" --output "$EVIDENCE/on-b1.json" \
+            --profile --profile-output "$EVIDENCE/profile-b1.json"
+      - name: B2 profile on
+        timeout-minutes: 8
+        shell: bash
+        run: |
+          set -euo pipefail
+          PYTHONPATH=research/qwen38 python -u research/qwen38/qwen35_runtime_profile.py run \
+            --model "$MODEL" --native-lib "$RUNNER_TEMP/libqwen_quant_serial.so" \
+            --state-lib "$RUNNER_TEMP/libqwen_gdn_serial.so" \
+            --inventory "$EVIDENCE/inventory.json" --tokenizer-json "$TOKENIZER_JSON" \
+            --prompt "Hi" --raw-prompt --max-new-tokens 1 --max-prompt-tokens 4 \
+            --work-dir "$K3_WORK" --output "$EVIDENCE/on-b2.json" \
+            --profile --profile-output "$EVIDENCE/profile-b2.json"
+      - name: A2 profile off
+        timeout-minutes: 8
+        shell: bash
+        run: |
+          set -euo pipefail
+          PYTHONPATH=research/qwen38 python -u research/qwen38/qwen35_runtime_profile.py run \
+            --model "$MODEL" --native-lib "$RUNNER_TEMP/libqwen_quant_serial.so" \
+            --state-lib "$RUNNER_TEMP/libqwen_gdn_serial.so" \
+            --inventory "$EVIDENCE/inventory.json" --tokenizer-json "$TOKENIZER_JSON" \
+            --prompt "Hi" --raw-prompt --max-new-tokens 1 --max-prompt-tokens 4 \
+            --work-dir "$K3_WORK" --output "$EVIDENCE/off-a2.json"
+      - name: Require profile exactness, byte accounting, and <=2 percent median overhead
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os, statistics
+          from pathlib import Path
+
+          root=Path(os.environ["EVIDENCE"])
+          names=("off-a1","on-b1","on-b2","off-a2")
+          runs={name:json.loads((root/f"{name}.json").read_text(encoding="utf-8")) for name in names}
+          ref=runs["off-a1"]
+
+          exact_keys=(
+              "status","model_sha256","tokenizer_revision","mode","prompt","rendered_prompt",
+              "prompt_token_count","prompt_token_ids","generated_token_ids","generated_text",
+              "token_reports","stop_reason",
+          )
+          for name,run in runs.items():
+              assert run["status"] == "PASS", name
+              for key in exact_keys:
+                  assert run[key] == ref[key], (name,key)
+              assert run["state"] == ref["state"], (name,"state")
+              assert run["state"]["packed_trunk_reused"] is True, name
+              assert run["state"]["reader"]["direct_io"] is True, name
+
+          for name in ("on-b1","on-b2"):
+              prof=runs[name].get("profile")
+              assert prof and prof["schema"] == "qwen38-runtime-aggregate-profile-v1", name
+              assert prof["timing_semantics"]["main_thread_categories_additive"] is True
+              assert prof["timing_semantics"]["io_service_seconds_nonadditive"] is True
+              storage=prof["storage"]
+              assert storage["k3_logical_bytes"] == runs[name]["state"]["reader"]["bytes_read"], name
+              assert storage["lm_head_logical_bytes"] > 0, name
+              assert storage["embedding_logical_bytes"] > 0, name
+              assert storage["global_f32_logical_bytes"] > 0, name
+              assert storage["total_profiled_logical_model_bytes"] == (
+                  storage["k3_logical_bytes"] + storage["lm_head_logical_bytes"]
+                  + storage["embedding_logical_bytes"] + storage["global_f32_logical_bytes"]
+              )
+              main=prof["main_thread_additive"]
+              assert main["accounted_wall_seconds"] <= prof["total"]["wall_seconds"] * 1.001
+              assert len(prof["layer_wall_seconds"]) == 64
+              assert prof["layer_calls"] == [1]*64
+              assert storage["bind_calls"] == 64
+              assert prof["quant_and_matvec"]["matvec_calls"] > 0
+              assert prof["nested_compute"]["gdn_native_state_wall_seconds"] > 0
+
+          off=statistics.median([runs["off-a1"]["elapsed_seconds"],runs["off-a2"]["elapsed_seconds"]])
+          on=statistics.median([runs["on-b1"]["elapsed_seconds"],runs["on-b2"]["elapsed_seconds"]])
+          overhead_pct=(on/off-1.0)*100.0
+          budget=float(os.environ["PROFILE_OVERHEAD_BUDGET_PCT"])
+          print("QWEN38_RUNTIME_PROFILE_TOKEN_TOP5_STATE_EXACT_PASS")
+          print("off_seconds=",[runs["off-a1"]["elapsed_seconds"],runs["off-a2"]["elapsed_seconds"]])
+          print("on_seconds=",[runs["on-b1"]["elapsed_seconds"],runs["on-b2"]["elapsed_seconds"]])
+          print("off_median_s=",off)
+          print("on_median_s=",on)
+          print("profile_overhead_pct=",overhead_pct)
+          print("profile_overhead_budget_pct=",budget)
+          p=runs["on-b2"]["profile"]
+          print("main_thread_additive=",p["main_thread_additive"])
+          print("storage=",p["storage"])
+          print("nested_compute=",p["nested_compute"])
+          print("quant_and_matvec=",p["quant_and_matvec"])
+          if overhead_pct > budget:
+              raise SystemExit(f"profile overhead {overhead_pct:.3f}% exceeds {budget:.3f}% budget")
+          print("QWEN38_RUNTIME_PROFILE_OVERHEAD_PASS")
+          PY
+      - name: Upload compact profiling evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen38-runtime-profile-${{ github.run_id }}
+          path: ${{ runner.temp }}/qwen38-profile-evidence/
+          if-no-files-found: warn
+          retention-days: 14
