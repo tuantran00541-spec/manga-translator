@@ -1,0 +1,39 @@
+name: Qwen3.8 exact GDN output-fusion probe
+
+on:
+  push:
+    branches: [research/qwen3.8-27b-runtime-finish]
+    paths:
+      - "research/qwen38/gdn_state_fused_output_exact.c"
+      - ".github/workflows/qwen38-gdn-fuse-output-exact.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gdn-fuse-output-exact:
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[qwen-gdn-fuseout]') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Runner CPU information
+        run: lscpu
+
+      - name: Compile strict output-fusion selftest
+        shell: bash
+        run: |
+          set -euo pipefail
+          cc -O2 -std=c11 -fno-fast-math -ffp-contract=off \
+            -D_POSIX_C_SOURCE=200809L -DQWEN_GDN_FUSE_OUTPUT_SELFTEST \
+            research/qwen38/gdn_state_fused_output_exact.c -lm \
+            -o "$RUNNER_TEMP/qwen-gdn-fuseout-selftest"
+
+      - name: Run bitwise output-fusion gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/qwen-gdn-fuseout-selftest" | tee "$RUNNER_TEMP/gdn-fuseout.log"
+          grep -F "QWEN38_GDN_FUSE_OUTPUT_BITWISE_PASS" "$RUNNER_TEMP/gdn-fuseout.log"
