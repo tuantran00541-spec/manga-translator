@@ -1,0 +1,39 @@
+name: Qwen3.8 exact GDN head-parallel probe
+
+on:
+  push:
+    branches: [research/qwen3.8-27b-runtime-finish]
+    paths:
+      - "research/qwen38/gdn_state_head_parallel.c"
+      - ".github/workflows/qwen38-gdn-head-parallel-exact.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gdn-head-parallel-exact:
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[qwen-gdn-heads]') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Runner CPU information
+        run: lscpu
+
+      - name: Compile strict GDN head-parallel selftest
+        shell: bash
+        run: |
+          set -euo pipefail
+          cc -O2 -std=c11 -fno-fast-math -ffp-contract=off \
+            -D_POSIX_C_SOURCE=200809L -DQWEN_GDN_HEAD_PARALLEL_SELFTEST \
+            research/qwen38/gdn_state_head_parallel.c -lm -pthread \
+            -o "$RUNNER_TEMP/qwen-gdn-heads-selftest"
+
+      - name: Run bitwise GDN head-parallel gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/qwen-gdn-heads-selftest" | tee "$RUNNER_TEMP/gdn-heads.log"
+          grep -F "QWEN38_GDN_HEAD_PARALLEL_BITWISE_PASS" "$RUNNER_TEMP/gdn-heads.log"
