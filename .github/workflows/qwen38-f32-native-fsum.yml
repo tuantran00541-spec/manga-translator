@@ -1,0 +1,40 @@
+name: Qwen3.8 native F32 fsum matvec probe
+
+on:
+  push:
+    branches: [research/qwen3.8-27b-runtime-finish]
+    paths:
+      - "research/qwen38/f32_fsum_matvec.c"
+      - "research/qwen38/f32_fsum_matvec_probe.py"
+      - ".github/workflows/qwen38-f32-native-fsum.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  f32-native-fsum:
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[qwen-f32-native]') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Runner CPU information
+        run: lscpu
+
+      - name: Compile strict native fsum matvec
+        shell: bash
+        run: |
+          set -euo pipefail
+          cc -O3 -std=c11 -fno-fast-math -fno-associative-math -ffp-contract=off \
+            -fPIC -shared research/qwen38/f32_fsum_matvec.c -lm \
+            -o "$RUNNER_TEMP/libqwen_f32_fsum.so"
+
+      - name: Compare against Python math.fsum bitwise
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -u research/qwen38/f32_fsum_matvec_probe.py \
+            --lib "$RUNNER_TEMP/libqwen_f32_fsum.so" | tee "$RUNNER_TEMP/f32-fsum.log"
+          grep -F "QWEN38_F32_NATIVE_FSUM_DOUBLE_BITWISE_PASS" "$RUNNER_TEMP/f32-fsum.log"
