@@ -113,7 +113,7 @@ int main(int argc, char ** argv) {
     if (rc_t0 != 0) return 7;
     const float * logits0 = llama_get_logits(ctx_tgt);
     if (!logits0) return 8;
-    const llama_token token1 = (llama_token) argmax(logits0, n_vocab);
+    llama_token token1 = (llama_token) argmax(logits0, n_vocab);
     const auto target0_top5 = topk(logits0, n_vocab, 5);
 
     const float * h0_ptr = llama_get_embeddings_nextn_ith(ctx_tgt, 0);
