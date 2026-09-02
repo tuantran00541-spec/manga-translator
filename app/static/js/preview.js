@@ -225,7 +225,7 @@ function renderPreviewPage(card, page, pageIndex, pages, inspector = null) {
       delBtn.addEventListener("click", (e) => {
         e.stopPropagation();
         page.excluded_regions.splice(rIdx, 1);
-        saveExcludedRegions(pageIndex, page.excluded_regions);
+        void saveExcludedRegions(pageIndex, page.excluded_regions);
         renderExcludedBoxes();
       });
       boxEl.appendChild(delBtn);
@@ -252,7 +252,7 @@ function renderPreviewPage(card, page, pageIndex, pages, inspector = null) {
   });
   clearBtn.addEventListener("click", () => {
     page.excluded_regions = [];
-    saveExcludedRegions(pageIndex, page.excluded_regions);
+    void saveExcludedRegions(pageIndex, page.excluded_regions);
     renderExcludedBoxes();
   });
   tools.append(drawToggleBtn, clearBtn);
@@ -342,7 +342,7 @@ function renderPreviewPage(card, page, pageIndex, pages, inspector = null) {
       x2: Math.round((left + w) * scaleX),
       y2: Math.round((top + h) * scaleY)
     });
-    saveExcludedRegions(pageIndex, page.excluded_regions);
+    void saveExcludedRegions(pageIndex, page.excluded_regions);
     renderExcludedBoxes();
   };
 

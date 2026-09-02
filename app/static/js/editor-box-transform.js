@@ -29,6 +29,7 @@
   window.cancelGeomPersist = cancelGeomPersist;
 
   function clearPendingGeom() {
+    geomGeneration += 1;
     clearTimeout(geomTimer);
     geomTimer = null;
     geomDirty.clear();
@@ -133,6 +134,9 @@
   window.flushGeomPersist = flushGeomPersist;
 
   function scheduleGeomPersist(pageIndex, id) {
+    // Invalidate every response that captured an older geometry. Aborting the
+    // browser request alone cannot undo a server commit that already finished.
+    geomGeneration += 1;
     if (geomController) {
       geomController.abort();
       geomController = null;
@@ -154,6 +158,7 @@
   window.scheduleGeomPersist = scheduleGeomPersist;
 
   function removePendingGeom(pageIndex, id) {
+    geomGeneration += 1;
     geomDirty.delete(`${pageIndex}:${id}`);
     geomBatchKeys = geomBatchKeys.filter((k) => k !== `${pageIndex}:${id}`);
     if (typeof window.refreshSaveStatus === "function") {

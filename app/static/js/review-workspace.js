@@ -105,6 +105,7 @@
     const container = document.getElementById("page-view");
     if (!container) return;
 
+    container.querySelectorAll(".review-card").forEach(captureMaskSnapshot);
     container.querySelectorAll(".brush-canvas").forEach((canvas) => {
       if (typeof canvas._cleanupBrush === "function") canvas._cleanupBrush();
       else if (canvas._brushAbort) canvas._brushAbort.abort();
@@ -170,6 +171,22 @@
     continueBtn.textContent = "Mở trình biên tập bản dịch";
     continueBtn.addEventListener("click", () => {
       const activeCard = container.querySelector(".review-canvas-host .review-card");
+      captureMaskSnapshot(activeCard);
+      if (maskSnapshots.size > 0) {
+        const pendingCanonical = maskSnapshots.keys().next().value;
+        const pendingIndex = pageIndices.indexOf(pendingCanonical);
+        if (pendingIndex >= 0 && pendingIndex !== activeReviewIndex) {
+          activeReviewIndex = pendingIndex;
+          navigator.setActive(pendingIndex);
+          renderActive();
+        }
+        showToast(
+          `${maskSnapshots.size} trang còn vùng đánh dấu chưa được xử lý. `
+            + "Hãy xử lý hoặc xóa các nét đánh dấu trước khi mở trình biên tập.",
+          "error",
+        );
+        return;
+      }
       const canonicalIndex = activeCard ? (parseInt(activeCard.dataset.pageIndex, 10) || 0) : 0;
       if (window.editorState) window.editorState.activePageIndex = canonicalIndex;
       if (typeof window.setWorkflowCheckpoint === "function") window.setWorkflowCheckpoint("editor", canonicalIndex);
@@ -268,18 +285,25 @@
       const canvas = card.querySelector("canvas.brush-canvas");
       const brushBtn = controls?.querySelector(".brush-toggle-btn") || null;
       const clearBtn = controls?.querySelector(".clear-brush-btn") || null;
+      const repaintBtn = controls?.querySelector(".repaint-btn") || null;
+      const resetBtn = controls?.querySelector(".reset-manual-btn") || null;
       const brushSize = controls?.querySelector(".brush-size-slider") || null;
       const aiQcBtn = controls?.querySelector(".ai-qc-btn") || null;
       const syncBusy = () => {
-        const busy = Boolean(aiQcBtn?.disabled && /đang/i.test(aiQcBtn.textContent));
+        const aiBusy = Boolean(aiQcBtn?.disabled && /đang/i.test(aiQcBtn.textContent));
+        const busy = Boolean(card._reviewBusy || aiBusy);
         workspace.classList.toggle("review-busy", busy);
         if (busy && canvas && typeof canvas._stopBrush === "function") canvas._stopBrush();
         if (brushBtn) brushBtn.disabled = busy;
         if (clearBtn) clearBtn.disabled = busy;
+        if (repaintBtn) repaintBtn.disabled = busy;
+        if (resetBtn) resetBtn.disabled = busy;
         if (brushSize) brushSize.disabled = busy;
+        if (aiQcBtn) aiQcBtn.disabled = busy;
         navigator.setBusy(busy);
         continueBtn.disabled = busy;
       };
+      card._syncReviewBusy = syncBusy;
       if (aiQcBtn) {
         busyObserver = new MutationObserver(syncBusy);
         busyObserver.observe(aiQcBtn, { attributes: true, childList: true, characterData: true, subtree: true });

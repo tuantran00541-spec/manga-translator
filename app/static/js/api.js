@@ -282,15 +282,20 @@ async function loadChapter() {
 }
 
 async function toggleSkip(pageIndex, card, btn) {
+  const chapterId = currentChapterId;
   const page = currentManifest.pages[pageIndex];
   const newSkipped = !page.skipped;
 
   try {
+    if (typeof window.flushExcludedRegionSaves === "function") {
+      await window.flushExcludedRegionSaves(chapterId, pageIndex);
+    }
+    if (chapterId !== currentChapterId) return;
     const resp = await fetch("/api/skip_pages", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        chapter_id: currentChapterId,
+        chapter_id: chapterId,
         page_indices: [pageIndex],
         skipped: newSkipped,
       }),
@@ -299,6 +304,7 @@ async function toggleSkip(pageIndex, card, btn) {
     if (!resp.ok) {
       throw new Error(getErrorMessage(resp.status, data));
     }
+    if (chapterId !== currentChapterId) return;
     currentManifest = data;
     window.previewActivePageIndex = pageIndex;
     renderPreview();
@@ -332,6 +338,24 @@ async function processSelectedPages() {
   const btn = document.querySelector("#preview-toolbar .preview-primary-action")
     || document.querySelector("#preview-toolbar button");
   if (btn) btn.disabled = true;
+
+  try {
+    if (btn) btn.textContent = "Đang lưu vùng loại trừ…";
+    if (typeof window.flushExcludedRegionSaves === "function") {
+      await window.flushExcludedRegionSaves(chapterId);
+    }
+  } catch (err) {
+    showToast(
+      "Không thể bắt đầu xử lý vì vùng loại trừ chưa được lưu: " + err.message,
+      "error",
+    );
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = "Bắt đầu xử lý";
+    }
+    return;
+  }
+  if (chapterId !== currentChapterId) return;
 
   let completed = 0;
   try {
@@ -576,30 +600,113 @@ async function loadFonts() {
   }
 }
 
-async function saveExcludedRegions(pageIndex, excludedRegions) {
-  try {
+const _excludedRegionSaveStates = new Map();
+
+function _cloneExcludedRegions(excludedRegions) {
+  if (!Array.isArray(excludedRegions)) return [];
+  return excludedRegions.map((region) => ({
+    x1: Number(region.x1),
+    y1: Number(region.y1),
+    x2: Number(region.x2),
+    y2: Number(region.y2),
+  }));
+}
+
+function _excludedRegionSaveKey(chapterId, pageIndex) {
+  return `${chapterId}:${pageIndex}`;
+}
+
+async function _drainExcludedRegionSaves(state) {
+  while (state.persistedVersion < state.version) {
+    const requestVersion = state.version;
+    const regions = _cloneExcludedRegions(state.regions);
     const resp = await fetch("/api/save_excluded_regions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        chapter_id: currentChapterId,
-        page_index: pageIndex,
-        excluded_regions: excludedRegions,
+        chapter_id: state.chapterId,
+        page_index: state.pageIndex,
+        excluded_regions: regions,
       }),
     });
     const data = await parseApiResponse(resp);
     if (!resp.ok) {
       throw new Error(getErrorMessage(resp.status, data));
     }
-    currentManifest.pages[pageIndex] = data.pages[pageIndex];
-    return data;
-  } catch (err) {
-    showToast("Không lưu được vùng cấm dịch: " + err.message, "error");
-    throw err;
+    state.persistedVersion = requestVersion;
+
+    if (
+      requestVersion === state.version
+      && state.chapterId === currentChapterId
+      && currentManifest?.pages?.[state.pageIndex]
+    ) {
+      const serverRegions = data?.pages?.[state.pageIndex]?.excluded_regions;
+      currentManifest.pages[state.pageIndex].excluded_regions =
+        _cloneExcludedRegions(Array.isArray(serverRegions) ? serverRegions : regions);
+    }
   }
 }
 
+function _ensureExcludedRegionSave(state) {
+  if (state.promise) return state.promise;
+  const key = _excludedRegionSaveKey(state.chapterId, state.pageIndex);
+  state.promise = _drainExcludedRegionSaves(state).finally(() => {
+    state.promise = null;
+    if (state.persistedVersion >= state.version) {
+      _excludedRegionSaveStates.delete(key);
+    }
+  });
+  return state.promise;
+}
+
+function saveExcludedRegions(pageIndex, excludedRegions) {
+  const chapterId = currentChapterId;
+  const key = _excludedRegionSaveKey(chapterId, pageIndex);
+  let state = _excludedRegionSaveStates.get(key);
+  if (!state) {
+    state = {
+      chapterId,
+      pageIndex,
+      regions: [],
+      version: 0,
+      persistedVersion: 0,
+      notifiedVersion: 0,
+      promise: null,
+    };
+    _excludedRegionSaveStates.set(key, state);
+  }
+  state.regions = _cloneExcludedRegions(excludedRegions);
+  state.version += 1;
+  const requestedVersion = state.version;
+  return _ensureExcludedRegionSave(state).catch((err) => {
+    if (state.notifiedVersion < requestedVersion) {
+      state.notifiedVersion = state.version;
+      showToast("Không lưu được vùng loại trừ: " + err.message, "error");
+    }
+  });
+}
+
+async function flushExcludedRegionSaves(chapterId = currentChapterId, pageIndex) {
+  const jobs = [];
+  for (const state of _excludedRegionSaveStates.values()) {
+    if (state.chapterId !== chapterId) continue;
+    if (pageIndex !== undefined && state.pageIndex !== pageIndex) continue;
+    if (state.persistedVersion < state.version || state.promise) {
+      jobs.push(_ensureExcludedRegionSave(state));
+    }
+  }
+  await Promise.all(jobs);
+}
+window.flushExcludedRegionSaves = flushExcludedRegionSaves;
+
 async function resetManualMask(pageIndex, img, canvas, ctx, resetBtn) {
+  const chapterId = currentChapterId;
+  const card = resetBtn?.closest(".review-card") || null;
+  if (card) {
+    card._reviewBusy = true;
+    if (typeof card._syncReviewBusy === "function") card._syncReviewBusy();
+  }
+  if (canvas && typeof canvas._stopBrush === "function") canvas._stopBrush();
   if (resetBtn) {
     resetBtn.disabled = true;
     resetBtn.textContent = "Đang xóa…";
@@ -608,11 +715,14 @@ async function resetManualMask(pageIndex, img, canvas, ctx, resetBtn) {
     const resp = await fetch("/api/reset_manual_mask", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ chapter_id: currentChapterId, page_index: pageIndex }),
+      body: JSON.stringify({ chapter_id: chapterId, page_index: pageIndex }),
     });
     const data = await parseApiResponse(resp);
     if (!resp.ok) {
       throw new Error(getErrorMessage(resp.status, data));
+    }
+    if (chapterId !== currentChapterId || !currentManifest?.pages?.[pageIndex]) {
+      return;
     }
     currentManifest.pages[pageIndex] = data.pages[pageIndex];
     if (img) img.src = data.pages[pageIndex].clean + "?t=" + Date.now();
@@ -620,6 +730,10 @@ async function resetManualMask(pageIndex, img, canvas, ctx, resetBtn) {
   } catch (err) {
     showToast("Không xóa được vùng chỉnh sửa thủ công: " + err.message, "error");
   } finally {
+    if (card) {
+      card._reviewBusy = false;
+      if (typeof card._syncReviewBusy === "function") card._syncReviewBusy();
+    }
     if (resetBtn) {
       resetBtn.disabled = false;
       resetBtn.textContent = "Xóa vùng chỉnh sửa";

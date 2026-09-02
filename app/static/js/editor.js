@@ -1107,6 +1107,14 @@ function renderEditor() {
   if (!currentManifest || !currentManifest.pages || currentManifest.pages.length === 0) return;
 
   if (currentChapterId && editorState.lastChapterId !== currentChapterId) {
+    if (
+      editorState.lastChapterId
+      && typeof window.cancelPendingPersist === "function"
+    ) {
+      // Pending edits are keyed by page/object within one chapter. Never carry
+      // them into another chapter where the same identifiers may mean new data.
+      window.cancelPendingPersist();
+    }
     editorState.lastChapterId = currentChapterId;
     editorState.activePageIndex = 0;
     editorState.selectedTextObjectId = null;

@@ -232,10 +232,41 @@ def check_unsafe_html_sinks() -> None:
     print("Browser HTML sink check OK")
 
 
+def check_browser_state_contracts() -> None:
+    contracts = {
+        Path("app/static/js/api.js"): (
+            "async function flushExcludedRegionSaves(",
+            "await window.flushExcludedRegionSaves(chapterId);",
+            "state.persistedVersion < state.version",
+        ),
+        Path("app/static/js/editor-box-transform.js"): (
+            "browser request alone cannot undo a server commit",
+            "if (currentGen === geomGeneration)",
+        ),
+        Path("app/static/js/review-workspace.js"): (
+            "container.querySelectorAll(\".review-card\").forEach(captureMaskSnapshot);",
+            "if (maskSnapshots.size > 0)",
+        ),
+        Path("app/static/js/review.js"): (
+            "card._reviewBusy = true",
+            "chapterId !== currentChapterId",
+        ),
+    }
+    failures: list[str] = []
+    for path, markers in contracts.items():
+        source = path.read_text(encoding="utf-8")
+        for marker in markers:
+            if marker not in source:
+                failures.append(f"{path}: missing browser state contract marker {marker!r}")
+    _fail("Browser state persistence contract failures:", failures)
+    print("Browser state persistence contracts OK")
+
+
 def main() -> None:
     check_markup_integrity()
     check_browser_asset_reachability()
     check_unsafe_html_sinks()
+    check_browser_state_contracts()
 
 
 if __name__ == "__main__":

@@ -589,6 +589,13 @@ async function submitRepaint(pageIndex, canvas, img, ctx, submitBtn) {
   const mode = await chooseRepaintMode();
   if (!mode) return;
 
+  const chapterId = currentChapterId;
+  const card = submitBtn.closest(".review-card");
+  if (card) {
+    card._reviewBusy = true;
+    if (typeof card._syncReviewBusy === "function") card._syncReviewBusy();
+  }
+  if (typeof canvas._stopBrush === "function") canvas._stopBrush();
   submitBtn.disabled = true;
   submitBtn.textContent = mode === "lama" ? "LaMa đang xử lý…" : "Đang xử lý…";
 
@@ -601,7 +608,7 @@ async function submitRepaint(pageIndex, canvas, img, ctx, submitBtn) {
     });
 
     const formData = new FormData();
-    formData.append("chapter_id", currentChapterId);
+    formData.append("chapter_id", chapterId);
     formData.append("page_index", pageIndex);
     formData.append("mode", mode);
     formData.append("mask", maskBlob, "mask.png");
@@ -612,6 +619,9 @@ async function submitRepaint(pageIndex, canvas, img, ctx, submitBtn) {
     const manifest = await parse(resp);
     if (!resp.ok) {
       throw new Error(getErr(resp.status, manifest));
+    }
+    if (chapterId !== currentChapterId || !currentManifest?.pages?.[pageIndex]) {
+      return;
     }
     currentManifest.pages[pageIndex] = manifest.pages[pageIndex];
 
@@ -627,6 +637,10 @@ async function submitRepaint(pageIndex, canvas, img, ctx, submitBtn) {
   } catch (err) {
     showToast("Không thể xử lý vùng đánh dấu: " + err.message, "error");
   } finally {
+    if (card) {
+      card._reviewBusy = false;
+      if (typeof card._syncReviewBusy === "function") card._syncReviewBusy();
+    }
     submitBtn.disabled = false;
     submitBtn.textContent = "Xử lý vùng đánh dấu";
   }
