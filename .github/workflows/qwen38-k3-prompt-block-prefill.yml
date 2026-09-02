@@ -1,0 +1,160 @@
+name: Qwen3.8 exact prompt block prefill probe
+
+on:
+  push:
+    branches: [research/qwen3.8-27b-runtime-finish]
+    paths:
+      - "research/qwen38/qwen38_k3_prompt_block_prefill_probe.py"
+      - ".github/workflows/qwen38-k3-prompt-block-prefill.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  HF_HUB_DISABLE_TELEMETRY: "1"
+  QWEN_REVISION: "1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0"
+
+jobs:
+  prompt-block-prefill:
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[qwen-prefill-block]') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Exact target and prefill sanity
+        shell: bash
+        run: |
+          set -euo pipefail
+          cc -O3 -std=c11 -mavx2 -fno-fast-math -ffp-contract=off \
+            -DQWEN_AVX2_EXACT_SELFTEST research/qwen38/gguf_quant_dot_avx2.c -lm \
+            -o "$RUNNER_TEMP/qwen-avx2-selftest"
+          "$RUNNER_TEMP/qwen-avx2-selftest"
+          PYTHONPATH=research/qwen38 python -u research/qwen38/qwen38_k3_prompt_block_prefill_probe.py sanity
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Runner CPU and storage information
+        shell: bash
+        run: |
+          lscpu
+          df -h
+          free -h
+
+      - name: Reclaim disk
+        shell: bash
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup || true
+          docker system prune -af || true
+          df -h
+          free -h
+
+      - name: Install runtime dependencies
+        run: python -m pip install --no-cache-dir huggingface_hub hf_xet tokenizers
+
+      - name: Download pinned real GGUF and tokenizer once
+        shell: bash
+        run: |
+          set -euo pipefail
+          readarray -t files < <(python - <<'PY'
+          from huggingface_hub import hf_hub_download
+          rev="1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0"
+          print(hf_hub_download(
+              "bartowski/Qwen3.8-27B-GGUF",
+              filename="Qwen3.8-27B-Q6_K_L.gguf",
+              local_dir="${{ runner.temp }}/qwen38-model",
+          ))
+          print(hf_hub_download(
+              "Qwen/Qwen3.8-27B",
+              filename="tokenizer.json",
+              revision=rev,
+              local_dir="${{ runner.temp }}/qwen38-tokenizer",
+          ))
+          PY
+          )
+          test -f "${files[0]}"; test -f "${files[1]}"
+          echo "MODEL=${files[0]}" >> "$GITHUB_ENV"
+          echo "TOKENIZER_JSON=${files[1]}" >> "$GITHUB_ENV"
+          echo "K3_WORK=$RUNNER_TEMP/qwen38-prompt-block-k3" >> "$GITHUB_ENV"
+          echo "EVIDENCE=$RUNNER_TEMP/qwen38-prompt-block-evidence" >> "$GITHUB_ENV"
+
+      - name: Validate pinned decoder inventory
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$EVIDENCE"
+          PYTHONPATH=research/qwen38 python -u research/qwen38/qwen35_gguf_decoder_contract.py real \
+            --model "$MODEL" --output "$EVIDENCE/inventory.json" \
+            2>&1 | tee "$EVIDENCE/inventory.log"
+
+      - name: Compile exact target and recurrent-state bridges
+        shell: bash
+        run: |
+          set -euo pipefail
+          cc -O3 -std=c11 -mavx2 -fno-fast-math -ffp-contract=off -fPIC -shared \
+            research/qwen38/gguf_quant_dot_avx2.c -lm -o "$RUNNER_TEMP/libqwen_quant_avx2.so"
+          cc -O2 -std=c11 -fPIC -shared research/qwen38/gdn_state_ar.c -lm \
+            -o "$RUNNER_TEMP/libqwen_gdn_serial.so"
+
+      - name: Run exact 11-token prompt block prefill probe
+        timeout-minutes: 30
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$K3_WORK" "$EVIDENCE"
+          PYTHONPATH=research/qwen38 python -u research/qwen38/qwen38_k3_prompt_block_prefill_probe.py run \
+            --model "$MODEL" \
+            --native-lib "$RUNNER_TEMP/libqwen_quant_avx2.so" \
+            --state-lib "$RUNNER_TEMP/libqwen_gdn_serial.so" \
+            --inventory "$EVIDENCE/inventory.json" \
+            --tokenizer-json "$TOKENIZER_JSON" \
+            --prompt "Write a 700-word essay on curiosity." --raw-prompt \
+            --max-prompt-tokens 16 \
+            --work-dir "$K3_WORK" --output "$EVIDENCE/prompt-block.json" \
+            2>&1 | tee "$EVIDENCE/prompt-block.log"
+          grep -F "QWEN38_K3_PROMPT_BLOCK_PREFILL_EXACT_PASS" "$EVIDENCE/prompt-block.log"
+
+      - name: Validate exactness and print prefill summary
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          p=Path(os.environ["EVIDENCE"])/"prompt-block.json"
+          r=json.loads(p.read_text(encoding="utf-8"))
+          assert r["status"] == "PASS"
+          assert r["model_sha256"] == "a487690b9f17de581857c4ae484dab50800335bb9eb978a4fb02c0465629dc0a"
+          assert r["prompt"] == "Write a 700-word essay on curiosity."
+          assert r["prompt_token_count"] == 11
+          assert r["hidden_vectors_bitwise_exact"] is True
+          assert r["persistent_state_bitwise_exact"] is True
+          assert r["exact_n_to_one_k3_bytes"] is True
+          assert r["sequential_k3_bytes"] == 11 * 21127430144
+          assert r["block_k3_bytes"] == 21127430144
+          assert r["reader"]["direct_io"] is True
+          print("QWEN38_K3_PROMPT_BLOCK_PREFILL_REAL_PASS")
+          print(json.dumps({
+              "prompt_token_count": r["prompt_token_count"],
+              "sequential_seconds": r["sequential_seconds"],
+              "block_seconds": r["block_seconds"],
+              "speedup_vs_sequential_prefill": r["speedup_vs_sequential_prefill"],
+              "sequential_k3_bytes": r["sequential_k3_bytes"],
+              "block_k3_bytes": r["block_k3_bytes"],
+              "k3_bytes_saved": r["k3_bytes_saved"],
+              "k3_stream_reuse_ratio": r["k3_stream_reuse_ratio"],
+              "max_rss_gib": r["max_rss_gib"],
+          }, indent=2))
+          PY
+
+      - name: Upload prompt block evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen38-prompt-block-prefill-${{ github.run_id }}
+          path: ${{ runner.temp }}/qwen38-prompt-block-evidence/
+          if-no-files-found: warn
+          retention-days: 14
