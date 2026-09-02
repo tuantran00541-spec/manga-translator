@@ -1,0 +1,158 @@
+name: Qwen3.8 exact prompt block GDN 4-thread probe
+
+on:
+  push:
+    branches: [research/qwen3.8-27b-runtime-finish]
+    paths:
+      - "research/qwen38/gdn_state_head_parallel.c"
+      - "research/qwen38/gdn_state_ar_4t.c"
+      - "research/qwen38/qwen38_k3_prompt_block_gdn_4t_probe.py"
+      - ".github/workflows/qwen38-k3-prompt-block-gdn-4t.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  HF_HUB_DISABLE_TELEMETRY: "1"
+  QWEN_REVISION: "1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0"
+
+jobs:
+  prompt-block-gdn-4t:
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[qwen-gdn-real]') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Exact kernel and probe sanity
+        shell: bash
+        run: |
+          set -euo pipefail
+          cc -O3 -std=c11 -mavx2 -fno-fast-math -ffp-contract=off \
+            -DQWEN_AVX2_EXACT_SELFTEST research/qwen38/gguf_quant_dot_avx2.c -lm \
+            -o "$RUNNER_TEMP/qwen-avx2-selftest"
+          "$RUNNER_TEMP/qwen-avx2-selftest"
+          cc -O2 -std=c11 -fno-fast-math -ffp-contract=off \
+            -D_POSIX_C_SOURCE=200809L -DQWEN_GDN_HEAD_PARALLEL_SELFTEST \
+            research/qwen38/gdn_state_head_parallel.c -lm -pthread \
+            -o "$RUNNER_TEMP/qwen-gdn-heads-selftest"
+          "$RUNNER_TEMP/qwen-gdn-heads-selftest"
+          PYTHONPATH=research/qwen38 python -u research/qwen38/qwen38_k3_prompt_block_gdn_4t_probe.py sanity
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Runner CPU and storage information
+        shell: bash
+        run: |
+          lscpu
+          df -h
+          free -h
+
+      - name: Reclaim disk
+        shell: bash
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup || true
+          docker system prune -af || true
+          df -h
+          free -h
+
+      - name: Install download dependency
+        run: python -m pip install --no-cache-dir huggingface_hub hf_xet
+
+      - name: Download pinned real GGUF once
+        shell: bash
+        run: |
+          set -euo pipefail
+          MODEL=$(python - <<'PY'
+          from huggingface_hub import hf_hub_download
+          print(hf_hub_download(
+              "bartowski/Qwen3.8-27B-GGUF",
+              filename="Qwen3.8-27B-Q6_K_L.gguf",
+              local_dir="${{ runner.temp }}/qwen38-model",
+          ))
+          PY
+          )
+          test -f "$MODEL"
+          echo "MODEL=$MODEL" >> "$GITHUB_ENV"
+          echo "K3_WORK=$RUNNER_TEMP/qwen38-gdn4t-k3" >> "$GITHUB_ENV"
+          echo "EVIDENCE=$RUNNER_TEMP/qwen38-gdn4t-evidence" >> "$GITHUB_ENV"
+
+      - name: Validate pinned decoder inventory
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$EVIDENCE"
+          PYTHONPATH=research/qwen38 python -u research/qwen38/qwen35_gguf_decoder_contract.py real \
+            --model "$MODEL" --output "$EVIDENCE/inventory.json" \
+            2>&1 | tee "$EVIDENCE/inventory.log"
+
+      - name: Compile exact serial and 4-thread state bridges
+        shell: bash
+        run: |
+          set -euo pipefail
+          cc -O3 -std=c11 -mavx2 -fno-fast-math -ffp-contract=off -fPIC -shared \
+            research/qwen38/gguf_quant_dot_avx2.c -lm \
+            -o "$RUNNER_TEMP/libqwen_quant_avx2.so"
+          cc -O2 -std=c11 -fno-fast-math -ffp-contract=off -fPIC -shared \
+            research/qwen38/gdn_state_ar.c -lm \
+            -o "$RUNNER_TEMP/libqwen_gdn_serial.so"
+          cc -O2 -std=c11 -fno-fast-math -ffp-contract=off -fPIC -shared \
+            research/qwen38/gdn_state_ar_4t.c -lm -pthread \
+            -o "$RUNNER_TEMP/libqwen_gdn_4t.so"
+
+      - name: Run same-run serial vs 4-thread GDN block probe
+        timeout-minutes: 20
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$K3_WORK" "$EVIDENCE"
+          PYTHONPATH=research/qwen38 python -u research/qwen38/qwen38_k3_prompt_block_gdn_4t_probe.py run \
+            --model "$MODEL" \
+            --native-lib "$RUNNER_TEMP/libqwen_quant_avx2.so" \
+            --serial-state-lib "$RUNNER_TEMP/libqwen_gdn_serial.so" \
+            --parallel-state-lib "$RUNNER_TEMP/libqwen_gdn_4t.so" \
+            --inventory "$EVIDENCE/inventory.json" \
+            --work-dir "$K3_WORK" \
+            --output "$EVIDENCE/gdn4t.json" \
+            2>&1 | tee "$EVIDENCE/gdn4t.log"
+          grep -F "QWEN38_K3_PROMPT_BLOCK_GDN_4T_EXACT_PASS" "$EVIDENCE/gdn4t.log"
+
+      - name: Validate exactness and print real summary
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          r=json.loads((Path(os.environ["EVIDENCE"])/"gdn4t.json").read_text(encoding="utf-8"))
+          assert r["status"] == "PASS"
+          assert r["model_sha256"] == "a487690b9f17de581857c4ae484dab50800335bb9eb978a4fb02c0465629dc0a"
+          assert r["prompt_token_count"] == 11
+          assert r["gdn_threads"] == 4
+          assert r["hidden_vectors_bitwise_exact"] is True
+          assert r["persistent_state_bitwise_exact"] is True
+          assert r["hidden_sha256"] == "e40dfb2d14456006608b095dd0c6bd018cdeed4214fdc573c8e352fb463f2e04"
+          assert r["state_sha256"] == "41f6fcd8f9947833956aaad0175da197456a3e678e0e31b40c5d7a08560fda06"
+          assert r["block_serial_k3_bytes"] == 21127430144
+          assert r["block_gdn_4t_k3_bytes"] == 21127430144
+          assert r["reader"]["direct_io"] is True
+          print("QWEN38_K3_PROMPT_BLOCK_GDN_4T_REAL_PASS")
+          print(json.dumps({
+              "block_serial_seconds_same_run": r["block_serial_seconds_same_run"],
+              "block_gdn_4t_seconds_same_run": r["block_gdn_4t_seconds_same_run"],
+              "speedup_vs_serial_same_run": r["speedup_vs_serial_same_run"],
+              "max_rss_gib": r["max_rss_gib"],
+          }, indent=2))
+          PY
+
+      - name: Upload GDN 4-thread evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen38-prompt-block-gdn4t-${{ github.run_id }}
+          path: ${{ runner.temp }}/qwen38-gdn4t-evidence/
+          if-no-files-found: warn
+          retention-days: 14
