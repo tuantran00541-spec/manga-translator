@@ -12,7 +12,7 @@ from filelock import FileLock, Timeout
 
 from app.config import PROCESSED_DIR
 from app.inpaint.mask_geometry import reconcile_detector_geometry_override
-from app.mask_store import externalize_page_masks, is_mask_ref
+from app.mask_store import externalize_page_masks, prune_page_masks
 from app.ocr.identity import OCR_CACHE_FIELDS, clear_ocr_cache, geometry_signature
 from app.parameters import (
     DETECTOR_STABLE_ID_IOU_MIN,
@@ -326,29 +326,47 @@ def save_manifest_raw(chapter_id: str, manifest: dict) -> None:
     processed_dir = PROCESSED_DIR / chapter_id
     processed_dir.mkdir(parents=True, exist_ok=True)
 
-    for page_index, page in enumerate(manifest.get("pages", [])):
-        if not isinstance(page, dict):
-            continue
-        boxes = page.get("boxes") or []
-        has_inline_mask = any(
-            isinstance(box, dict)
-            and box.get("mask")
-            and not is_mask_ref(box.get("mask"))
-            for box in boxes
-        )
-        if has_inline_mask:
-            externalize_page_masks(processed_dir, page_index, boxes)
-
     tmp_path = processed_dir / f"manifest.json.{uuid.uuid4().hex}.tmp"
     final_path = processed_dir / "manifest.json"
-    with tmp_path.open("w", encoding="utf-8") as output:
-        json.dump(
-            manifest,
-            output,
-            ensure_ascii=False,
-            separators=(",", ":"),
-        )
-    os.replace(tmp_path, final_path)
+    created_sidecars: set[Path] = set()
+    pages = manifest.get("pages", [])
+    try:
+        for page_index, page in enumerate(pages):
+            if not isinstance(page, dict):
+                continue
+            externalize_page_masks(
+                processed_dir,
+                page_index,
+                page.get("boxes") or [],
+                created_paths=created_sidecars,
+            )
+
+        with tmp_path.open("w", encoding="utf-8") as output:
+            json.dump(
+                manifest,
+                output,
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
+        os.replace(tmp_path, final_path)
+    except Exception:
+        try:
+            tmp_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+        for sidecar in created_sidecars:
+            try:
+                if sidecar.is_file() and not sidecar.is_symlink():
+                    sidecar.unlink()
+            except OSError:
+                pass
+        raise
+
+    # The new manifest is now the source of truth. Pruning before os.replace()
+    # could invalidate sidecar references held by the previous manifest.
+    for page_index, page in enumerate(pages):
+        if isinstance(page, dict):
+            prune_page_masks(processed_dir, page_index, page.get("boxes") or [])
 
 
 def urlify_manifest(manifest: dict) -> dict:

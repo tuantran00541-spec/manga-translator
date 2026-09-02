@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import hashlib
 import os
 import re
 import uuid
@@ -102,13 +103,16 @@ def externalize_page_masks(
     processed_dir: Path,
     page_index: int,
     boxes: list[dict],
+    *,
+    created_paths: set[Path] | None = None,
 ) -> int:
-    """Move legacy base64 masks out of manifest state into atomic PNG sidecars.
+    """Move legacy base64 masks into immutable PNG sidecars.
 
     The function is deliberately best-effort: an I/O failure leaves the original
     base64 value untouched so correctness is never traded for manifest size.
-    Existing managed references are retained. Orphan PNGs in this page's sidecar
-    directory are removed only after the current live reference set is known.
+    Existing managed references are retained. Sidecars are content-addressed so
+    publishing a replacement mask cannot alter data referenced by the currently
+    committed manifest. Orphans are pruned separately, after manifest commit.
     """
     try:
         chapter_dir = processed_dir.resolve()
@@ -117,8 +121,8 @@ def externalize_page_masks(
     except (OSError, RuntimeError, ValueError):
         return 0
 
-    mask_dir = processed_dir / "masks" / f"page_{int(page_index):03d}"
-    live_paths: set[Path] = set()
+    masks_root = processed_dir / "masks"
+    mask_dir = masks_root / f"page_{int(page_index):03d}"
     externalized = 0
 
     for fallback_index, box in enumerate(boxes):
@@ -131,7 +135,7 @@ def externalize_page_masks(
         if is_mask_ref(value):
             existing = _validated_mask_path(value)
             if existing is not None and existing.is_file() and not existing.is_symlink():
-                live_paths.add(existing)
+                continue
             else:
                 box["mask"] = None
             continue
@@ -142,16 +146,39 @@ def externalize_page_masks(
             continue
 
         try:
+            if masks_root.is_symlink() or mask_dir.is_symlink():
+                raise OSError("Refusing to write masks through a symlink")
             mask_dir.mkdir(parents=True, exist_ok=True)
+            resolved_mask_dir = mask_dir.resolve()
+            if not resolved_mask_dir.is_relative_to(chapter_dir):
+                raise OSError("Mask directory escapes the chapter directory")
+
             safe_id = _safe_box_id(box, fallback_index)
-            final_path = mask_dir / f"{safe_id}.png"
+            digest = hashlib.sha256(raw).hexdigest()
+            final_path = mask_dir / f"{safe_id}.{digest}.png"
+            if final_path.exists():
+                reusable = (
+                    not final_path.is_symlink()
+                    and final_path.is_file()
+                    and final_path.read_bytes() == raw
+                )
+                if not reusable:
+                    final_path = mask_dir / (
+                        f"{safe_id}.{digest}.{uuid.uuid4().hex}.png"
+                    )
+            if final_path.exists():
+                box["mask"] = _ref_for_path(final_path)
+                externalized += 1
+                continue
+
             tmp_path = mask_dir / f".{safe_id}.{uuid.uuid4().hex[:10]}.tmp.png"
             tmp_path.write_bytes(raw)
             os.replace(tmp_path, final_path)
             box["mask"] = _ref_for_path(final_path)
-            live_paths.add(final_path.resolve())
+            if created_paths is not None:
+                created_paths.add(final_path.resolve())
             externalized += 1
-        except OSError as exc:
+        except (OSError, RuntimeError, ValueError) as exc:
             logger.warning(
                 "Could not externalize mask for page %s box %s: %s",
                 page_index,
@@ -164,12 +191,43 @@ def externalize_page_masks(
             except OSError:
                 pass
 
+    return externalized
+
+
+def prune_page_masks(
+    processed_dir: Path,
+    page_index: int,
+    boxes: list[dict],
+) -> int:
+    """Best-effort removal of sidecars not referenced by a committed page."""
+    try:
+        chapter_dir = processed_dir.resolve()
+        if not chapter_dir.is_relative_to(_processed_root()):
+            return 0
+    except (OSError, RuntimeError, ValueError):
+        return 0
+
+    masks_root = processed_dir / "masks"
+    mask_dir = masks_root / f"page_{int(page_index):03d}"
+    if masks_root.is_symlink() or mask_dir.is_symlink() or not mask_dir.is_dir():
+        return 0
+
+    live_paths: set[Path] = set()
+    for box in boxes:
+        if not isinstance(box, dict):
+            continue
+        existing = _validated_mask_path(box.get("mask"))
+        if existing is not None and existing.is_file() and not existing.is_symlink():
+            live_paths.add(existing)
+
+    removed = 0
     if mask_dir.is_dir():
         for candidate in mask_dir.glob("*.png"):
             try:
                 resolved = candidate.resolve()
                 if resolved not in live_paths and not candidate.is_symlink():
                     candidate.unlink()
+                    removed += 1
             except OSError:
                 continue
         try:
@@ -178,4 +236,9 @@ def externalize_page_masks(
         except OSError:
             pass
 
-    return externalized
+    try:
+        if masks_root.is_dir() and not any(masks_root.iterdir()):
+            masks_root.rmdir()
+    except OSError:
+        pass
+    return removed

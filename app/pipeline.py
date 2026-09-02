@@ -17,7 +17,7 @@ from app.inpaint.lama_inpainter import Inpainter
 from app.inpaint.mask_geometry import geometry_dict, remap_local_mask_page_space
 from app.config import RAW_DIR, PROCESSED_DIR
 from app.logging_config import logger
-from app.mask_store import decode_mask_value, externalize_page_masks
+from app.mask_store import decode_mask_value
 from app.parameters import (
     DETECTION_CONTENT_STD_MIN,
     DETECTOR_FINAL_NMS_IOU,
@@ -592,16 +592,6 @@ class ChapterPipeline:
                 )
                 manual_boxes = [b for b in existing_boxes if b.get("manual")]
                 committed_boxes = detected_boxes + manual_boxes
-                externalized = externalize_page_masks(
-                    processed_dir, page_index, committed_boxes
-                )
-                if externalized:
-                    logger.debug(
-                        "Chapter {} page {} externalized {} detector mask(s)",
-                        chapter_id,
-                        page_index,
-                        externalized,
-                    )
                 target_page["boxes"] = committed_boxes
                 target_page["detection_state"] = page_data.get(
                     "detection_state", "verified"
