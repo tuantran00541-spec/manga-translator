@@ -37,6 +37,7 @@ from app.parameters import (
     SMART_FILL_CANNY_HIGH,
     SMART_FILL_CANNY_LOW,
     SMART_FILL_CLEAN_RING_MARGIN,
+    SMART_FILL_CONTEXT_MARGIN_FACTOR,
     SMART_FILL_EDGE_DENSITY_MAX,
     SMART_FILL_FULL_STD_MAX,
     SMART_FILL_MIDTONE_MAX,
@@ -363,10 +364,19 @@ class Inpainter:
         if int(np.count_nonzero(ring)) < SMART_FILL_RING_PIXELS_MIN:
             return None
 
+        context_margin = margin * SMART_FILL_CONTEXT_MARGIN_FACTOR
+        context_kernel = cv2.getStructuringElement(
+            cv2.MORPH_ELLIPSE,
+            (context_margin * 2 + 1, context_margin * 2 + 1),
+        )
+        context = (
+            cv2.dilate(mask_bool.astype(np.uint8), context_kernel) > 0
+        ) & non_mask
+
         ring_gray = gray[ring]
-        full_gray = gray[non_mask]
+        context_gray = gray[context]
         ring_pixels = crop[ring]
-        full_std = float(full_gray.std())
+        context_std = float(context_gray.std())
 
         edges = cv2.Canny(
             gray,
@@ -374,7 +384,7 @@ class Inpainter:
             SMART_FILL_CANNY_HIGH,
             L2gradient=True,
         ) > 0
-        full_edge_density = float(edges[non_mask].mean())
+        context_edge_density = float(edges[context].mean())
 
         white_ratio = float((ring_gray > SMART_FILL_WHITE_LEVEL).mean())
         black_ratio = float((ring_gray < SMART_FILL_BLACK_LEVEL).mean())
@@ -384,8 +394,8 @@ class Inpainter:
         if (
             white_ratio >= SMART_FILL_WHITE_RATIO_MIN
             and ring_std <= SMART_FILL_WHITE_STD_MAX
-            and full_std <= SMART_FILL_FULL_STD_MAX
-            and full_edge_density <= SMART_FILL_EDGE_DENSITY_MAX
+            and context_std <= SMART_FILL_FULL_STD_MAX
+            and context_edge_density <= SMART_FILL_EDGE_DENSITY_MAX
         ):
             white_pixels = ring_pixels[ring_gray > SMART_FILL_WHITE_LEVEL]
             if len(white_pixels):
@@ -394,8 +404,8 @@ class Inpainter:
         if (
             black_ratio >= SMART_FILL_BLACK_RATIO_MIN
             and ring_std <= SMART_FILL_BLACK_STD_MAX
-            and full_std <= SMART_FILL_BLACK_STD_MAX
-            and full_edge_density <= SMART_FILL_BLACK_EDGE_DENSITY_MAX
+            and context_std <= SMART_FILL_BLACK_STD_MAX
+            and context_edge_density <= SMART_FILL_BLACK_EDGE_DENSITY_MAX
         ):
             black_pixels = ring_pixels[ring_gray < SMART_FILL_BLACK_LEVEL]
             if len(black_pixels):
@@ -404,8 +414,8 @@ class Inpainter:
         if (
             SMART_FILL_MIDTONE_MIN <= median_gray <= SMART_FILL_MIDTONE_MAX
             and ring_std <= SMART_FILL_MIDTONE_STD_MAX
-            and full_std <= SMART_FILL_MIDTONE_STD_MAX
-            and full_edge_density <= SMART_FILL_BLACK_EDGE_DENSITY_MAX
+            and context_std <= SMART_FILL_MIDTONE_STD_MAX
+            and context_edge_density <= SMART_FILL_BLACK_EDGE_DENSITY_MAX
         ):
             return np.median(ring_pixels, axis=0).astype(np.uint8)
 
