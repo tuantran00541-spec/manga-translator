@@ -525,6 +525,8 @@ window.saveDraftNow = saveDraftNow;
 window.scheduleSaveDraft = scheduleSaveDraft;
 
 async function renderTranslations(pageIndex) {
+  const chapterId = currentChapterId;
+  if (!chapterId) return;
   try {
     if (typeof window.flushAllPendingPersists === "function") {
       await window.flushAllPendingPersists(pageIndex);
@@ -535,6 +537,7 @@ async function renderTranslations(pageIndex) {
     showToast("Không thể chèn chữ vì lưu dữ liệu không thành công.", "error");
     return;
   }
+  if (chapterId !== currentChapterId) return;
   const page = currentManifest && currentManifest.pages ? currentManifest.pages[pageIndex] : null;
   if (!page) return;
 
@@ -580,7 +583,7 @@ async function renderTranslations(pageIndex) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        chapter_id: currentChapterId,
+        chapter_id: chapterId,
         page_index: pageIndex,
         translations,
         colors,
@@ -597,6 +600,7 @@ async function renderTranslations(pageIndex) {
     });
 
     const data = await parseApiResponse(resp);
+    if (chapterId !== currentChapterId) return;
     if (!resp.ok) {
       showToast("Kết xuất ảnh thất bại: " + getErrorMessage(resp.status, data), "error");
       return;
@@ -610,7 +614,9 @@ async function renderTranslations(pageIndex) {
       showToast(data.warning, "info");
     }
   } catch (err) {
-    showToast("Kết xuất ảnh thất bại: " + err.message, "error");
+    if (chapterId === currentChapterId) {
+      showToast("Kết xuất ảnh thất bại: " + err.message, "error");
+    }
   } finally {
     if (btn) {
       btn.disabled = false;

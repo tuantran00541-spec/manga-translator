@@ -122,8 +122,10 @@
       }
 
       try {
-        await refreshCanonicalChapter(snapshot.chapter_id, generation);
+        const refreshed = await refreshCanonicalChapter(snapshot.chapter_id, generation);
+        if (!refreshed) return;
       } catch (refreshErr) {
+        if (generation !== state.generation || snapshot.chapter_id !== window.currentChapterId) return;
         console.error("Could not refresh chapter after OCR job:", refreshErr);
         showToast("OCR đã dừng nhưng không thể làm mới dữ liệu chương. Hãy tải lại chương.", "error");
       }
@@ -158,7 +160,9 @@
       renderAll();
       if (isRunning(snapshot)) schedulePoll(snapshot.job_id, generation);
     } catch (err) {
-      showToast("Không thể chạy OCR toàn chương: " + err.message, "error");
+      if (generation === state.generation && chapterId === window.currentChapterId) {
+        showToast("Không thể chạy OCR toàn chương: " + err.message, "error");
+      }
     }
   }
 
@@ -166,16 +170,21 @@
     const snapshot = state.snapshot;
     if (!snapshot?.job_id || !isRunning(snapshot)) return;
     const generation = state.generation;
+    const chapterId = snapshot.chapter_id;
     try {
-      state.snapshot = await requestJson(
+      const next = await requestJson(
         `/api/ocr/chapter/${encodeURIComponent(snapshot.job_id)}/cancel`,
         { method: "POST" },
       );
+      if (generation !== state.generation || chapterId !== window.currentChapterId) return;
+      state.snapshot = next;
       renderAll();
-      if (isRunning(state.snapshot)) schedulePoll(snapshot.job_id, generation);
-      else await refreshCanonicalChapter(state.snapshot.chapter_id, generation);
+      if (isRunning(next)) schedulePoll(snapshot.job_id, generation);
+      else await refreshCanonicalChapter(next.chapter_id, generation);
     } catch (err) {
-      showToast("Không thể hủy OCR: " + err.message, "error");
+      if (generation === state.generation && chapterId === window.currentChapterId) {
+        showToast("Không thể hủy OCR: " + err.message, "error");
+      }
     }
   }
 
@@ -195,7 +204,9 @@
       if (isRunning(next)) schedulePoll(next.job_id, generation);
       else await refreshCanonicalChapter(chapterId, generation);
     } catch (err) {
-      showToast("Không thể thử lại OCR: " + err.message, "error");
+      if (generation === state.generation && chapterId === window.currentChapterId) {
+        showToast("Không thể thử lại OCR: " + err.message, "error");
+      }
     }
   }
 
@@ -269,8 +280,10 @@
       }
       if (originalEl) originalEl.textContent = data.text || "(không nhận dạng được)";
     } catch (err) {
-      if (originalEl) originalEl.textContent = "(Lỗi OCR: " + err.message + ")";
-      showToast("Không thể hoàn tất OCR: " + err.message, "error");
+      if (chapterId === window.currentChapterId) {
+        if (originalEl) originalEl.textContent = "(Lỗi OCR: " + err.message + ")";
+        showToast("Không thể hoàn tất OCR: " + err.message, "error");
+      }
     }
   }
 
