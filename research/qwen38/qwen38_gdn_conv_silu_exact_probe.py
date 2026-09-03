@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 from array import array
+import ctypes
 import json
 from pathlib import Path
 import resource
@@ -121,7 +122,7 @@ def _recurrent_layer_native_conv(core: ExactGDNConvSilu, stats: dict[str, float]
         q48 = [gen.mulf(vv, gen.t2.SCALE_GDN) for vv in gen.t2.repeat_k_heads(qn)]
         k48 = gen.t2.repeat_k_heads(kn)
 
-        out_buf = (attn_probe.ctypes.c_float * gdn.VALUE_DIM)()
+        out_buf = (ctypes.c_float * gdn.VALUE_DIM)()
         rc = engine.state_lib.qwen_gdn_ar_step_f32(
             state,
             gen.t2.carr(q48),
@@ -142,8 +143,6 @@ def _recurrent_layer_native_conv(core: ExactGDNConvSilu, stats: dict[str, float]
             gated.extend(gen.mulf(nh[d], gen.t2.siluf(zh[d])) for d in range(gdn.HEAD_DIM))
         gated_rows.append(gated)
 
-    # The native convolution already consumed exactly the same causal qkv
-    # sequence.  Materialize only the final canonical 3-row history here.
     merged = [array("f", row) for row in hist]
     merged.extend(array("f", row) for row in qkv)
     hist[:] = merged[-3:]
