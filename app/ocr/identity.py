@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from functools import lru_cache
+import hashlib
 from importlib import metadata
+import json
 import os
 from pathlib import Path
 from typing import Any
@@ -17,6 +19,7 @@ OCR_CACHE_FIELDS = (
     "ocr_source_revision",
     "ocr_file_revision",
     "ocr_geometry",
+    "ocr_crop_signature",
     "ocr_confidence",
     "ocr_model",
     "ocr_orientation",
@@ -33,6 +36,29 @@ def file_revision(path: Path) -> tuple[int, int, int]:
 
 def geometry_signature(box: dict) -> tuple[int, int, int, int]:
     return tuple(int(box.get(key, 0)) for key in ("x1", "y1", "x2", "y2"))
+
+
+def ocr_crop_signature(box: dict) -> str:
+    """Identify every persisted input that changes the pixels sent to OCR."""
+    mask_value = box.get("mask")
+    mask_revision = None
+    if isinstance(mask_value, str) and not mask_value.startswith("data:"):
+        try:
+            mask_revision = file_revision(Path(mask_value))
+        except OSError:
+            mask_revision = None
+    payload = {
+        "geometry": geometry_signature(box),
+        "mask": mask_value,
+        "mask_revision": mask_revision,
+    }
+    encoded = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
 
 
 @lru_cache(maxsize=8)
@@ -108,7 +134,10 @@ def machine_cache_valid(
         cached_geometry = tuple(int(value) for value in box.get("ocr_geometry", ()))
     except (TypeError, ValueError):
         return False
-    return cached_geometry == geometry_signature(box)
+    return (
+        cached_geometry == geometry_signature(box)
+        and box.get("ocr_crop_signature") == ocr_crop_signature(box)
+    )
 
 
 def _metadata_value(metadata: Any, key: str, default=None):
@@ -136,6 +165,7 @@ def stamp_machine_cache(
     box["ocr_source_revision"] = int(source_revision)
     box["ocr_file_revision"] = [int(value) for value in original_revision]
     box["ocr_geometry"] = list(geometry_signature(box))
+    box["ocr_crop_signature"] = ocr_crop_signature(box)
 
     confidence = _metadata_value(metadata, "confidence")
     if confidence is None:

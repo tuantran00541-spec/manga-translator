@@ -19,8 +19,8 @@ from app.mask_store import decode_mask_value
 from app.ocr.identity import (
     engine_identity,
     file_revision,
-    geometry_signature,
     machine_cache_valid,
+    ocr_crop_signature,
     stamp_machine_cache,
 )
 from app.ocr.quality import classify_ocr_quality
@@ -97,8 +97,8 @@ def ocr_crop_from_box(image: np.ndarray, box: dict) -> np.ndarray:
 
 def _active_overlap_signatures(
     page: dict, region: dict
-) -> list[tuple[str, tuple[int, int, int, int]]]:
-    matches: list[tuple[int, int, str, tuple[int, int, int, int]]] = []
+) -> list[tuple[str, str]]:
+    matches: list[tuple[int, int, str, str]] = []
     for box in page.get("boxes", []) or []:
         if not isinstance(box, dict) or box.get("removed"):
             continue
@@ -110,7 +110,7 @@ def _active_overlap_signatures(
                 int(box.get("y1", 0)),
                 int(box.get("x1", 0)),
                 str(box_id),
-                geometry_signature(box),
+                ocr_crop_signature(box),
             )
         )
     matches.sort(key=lambda item: (item[0], item[1], item[2]))
@@ -293,8 +293,10 @@ class OCRService:
             original_value = page.get("original")
             if not original_value:
                 raise FileNotFoundError("Original page image is not configured")
+            box_snapshot = copy.deepcopy(box)
+            box_snapshot["_ocr_snapshot_crop_signature"] = ocr_crop_signature(box)
             return (
-                copy.deepcopy(box),
+                box_snapshot,
                 str(original_value),
                 int(page.get("source_revision") or 0),
             )
@@ -476,7 +478,12 @@ class OCRService:
         return (
             target is None
             or bool(target.get("removed"))
-            or geometry_signature(target) != geometry_signature(box_snapshot)
+            or target.get("ocr_eligible") is False
+            or ocr_crop_signature(target)
+            != box_snapshot.get(
+                "_ocr_snapshot_crop_signature",
+                ocr_crop_signature(box_snapshot),
+            )
         )
 
     def group_text_object(
@@ -538,7 +545,7 @@ class OCRService:
         self,
         chapter_id: str,
         page_index: int,
-        signatures: list[tuple[str, tuple[int, int, int, int]]],
+        signatures: list[tuple[str, str]],
         lang: str,
     ) -> tuple[list[str], str]:
         texts: list[str] = []

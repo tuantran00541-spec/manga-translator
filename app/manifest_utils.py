@@ -13,7 +13,12 @@ from filelock import FileLock, Timeout
 from app.config import PROCESSED_DIR
 from app.inpaint.mask_geometry import reconcile_detector_geometry_override
 from app.mask_store import externalize_page_masks, prune_page_masks
-from app.ocr.identity import OCR_CACHE_FIELDS, clear_ocr_cache, geometry_signature
+from app.ocr.identity import (
+    OCR_CACHE_FIELDS,
+    clear_ocr_cache,
+    geometry_signature,
+    ocr_crop_signature,
+)
 from app.parameters import (
     DETECTOR_STABLE_ID_IOU_MIN,
     MANIFEST_LOCK_TIMEOUT_SECONDS,
@@ -131,6 +136,7 @@ def _normalize_box_ocr_cache(
                 and cached_source == int(source_revision)
                 and cached_file == original_revision
                 and cached_geometry == geometry_signature(box)
+                and box.get("ocr_crop_signature") == ocr_crop_signature(box)
             )
     if valid:
         return False
