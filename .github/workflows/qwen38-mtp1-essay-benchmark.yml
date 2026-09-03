@@ -19,7 +19,7 @@ jobs:
   essay-benchmark:
     if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[qwen-essay-bench]') }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 35
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
@@ -105,8 +105,8 @@ jobs:
           cc -O2 -std=c11 -fPIC -shared research/qwen38/gdn_state_ar.c -lm \
             -o "$RUNNER_TEMP/libqwen_gdn_serial.so"
 
-      - name: Run bounded 700-word essay prompt benchmark
-        timeout-minutes: 24
+      - name: Run 32-token bounded 700-word essay prompt smoke
+        timeout-minutes: 40
         shell: bash
         run: |
           set -euo pipefail
@@ -119,7 +119,7 @@ jobs:
             --inventory "$EVIDENCE/inventory.json" \
             --tokenizer-json "$TOKENIZER_JSON" \
             --prompt "Write a 700-word essay on curiosity." --raw-prompt \
-            --max-prompt-tokens 16 --max-new-tokens 12 \
+            --max-prompt-tokens 16 --max-new-tokens 32 \
             --work-dir "$K3_WORK" --output "$EVIDENCE/essay-benchmark.json" \
             2>&1 | tee "$EVIDENCE/essay-benchmark.log"
           grep -F "QWEN38_MTP1_ESSAY_BENCHMARK_PASS" "$EVIDENCE/essay-benchmark.log"
