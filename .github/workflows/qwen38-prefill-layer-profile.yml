@@ -1,0 +1,147 @@
+name: Qwen3.8 bounded prefill layer profile
+
+on:
+  push:
+    branches:
+      - research/qwen3.8-27b-runtime-finish
+    paths:
+      - research/qwen38/qwen38_prefill_layer_profile.py
+      - .github/workflows/qwen38-prefill-layer-profile.yml
+  workflow_dispatch:
+
+jobs:
+  prefill-layer-profile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      HF_HUB_DISABLE_TELEMETRY: "1"
+      QWEN_REVISION: 1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Exact profile sanity
+        shell: bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          cc -O3 -std=c11 -mavx2 -fno-fast-math -ffp-contract=off \
+            -D_POSIX_C_SOURCE=200809L -DQWEN_MATVEC_MANY_SELFTEST \
+            research/qwen38/gguf_quant_matvec_many_avx2.c -lm \
+            -o "$RUNNER_TEMP/qwen-matvec-many-selftest"
+          "$RUNNER_TEMP/qwen-matvec-many-selftest"
+          PYTHONPATH=research/qwen38 python -u research/qwen38/qwen38_prefill_layer_profile.py sanity
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Runner CPU and storage information
+        run: |
+          lscpu
+          df -h
+          free -h
+
+      - name: Reclaim disk
+        shell: bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup || true
+          docker system prune -af || true
+          df -h
+          free -h
+
+      - name: Install runtime dependencies
+        run: python -m pip install --no-cache-dir huggingface_hub hf_xet tokenizers
+
+      - name: Download pinned GGUF and tokenizer
+        shell: bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          set -euo pipefail
+          readarray -t files < <(python - <<'PY'
+          from huggingface_hub import hf_hub_download
+          rev="1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0"
+          print(hf_hub_download("bartowski/Qwen3.8-27B-GGUF", filename="Qwen3.8-27B-Q6_K_L.gguf", local_dir="${{ runner.temp }}/qwen38-model"))
+          print(hf_hub_download("Qwen/Qwen3.8-27B", filename="tokenizer.json", revision=rev, local_dir="${{ runner.temp }}/qwen38-tokenizer"))
+          PY
+          )
+          echo "MODEL=${files[0]}" >> "$GITHUB_ENV"
+          echo "TOKENIZER_JSON=${files[1]}" >> "$GITHUB_ENV"
+          echo "K3_WORK=$RUNNER_TEMP/qwen38-prefill-layer-profile-k3" >> "$GITHUB_ENV"
+          echo "EVIDENCE=$RUNNER_TEMP/qwen38-prefill-layer-profile-evidence" >> "$GITHUB_ENV"
+
+      - name: Validate pinned decoder inventory
+        shell: bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          set -euo pipefail
+          mkdir -p "$EVIDENCE"
+          PYTHONPATH=research/qwen38 python -u research/qwen38/qwen35_gguf_decoder_contract.py real \
+            --model "$MODEL" --output "$EVIDENCE/inventory.json" \
+            2>&1 | tee "$EVIDENCE/inventory.log"
+
+      - name: Compile exact runtime bridges
+        shell: bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          set -euo pipefail
+          cc -O3 -std=c11 -mavx2 -fno-fast-math -ffp-contract=off -fPIC -shared \
+            research/qwen38/gguf_quant_matvec_many_bridge.c -lm \
+            -o "$RUNNER_TEMP/libqwen_quant_many.so"
+          cc -O2 -std=c11 -fno-fast-math -ffp-contract=off -fPIC -shared \
+            research/qwen38/gdn_state_ar.c -lm \
+            -o "$RUNNER_TEMP/libqwen_gdn_serial.so"
+          cc -O3 -std=c11 -fno-fast-math -fno-associative-math -ffp-contract=off -fPIC -shared \
+            research/qwen38/f32_fsum_matvec.c -lm \
+            -o "$RUNNER_TEMP/libqwen_f32_fsum.so"
+
+      - name: Run 44-token prefill layer profile
+        timeout-minutes: 20
+        shell: bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          set -euo pipefail
+          mkdir -p "$EVIDENCE"
+          PYTHONPATH=research/qwen38 python -u research/qwen38/qwen38_prefill_layer_profile.py run \
+            --model "$MODEL" \
+            --quant-lib "$RUNNER_TEMP/libqwen_quant_many.so" \
+            --many-lib "$RUNNER_TEMP/libqwen_quant_many.so" \
+            --state-lib "$RUNNER_TEMP/libqwen_gdn_serial.so" \
+            --f32-lib "$RUNNER_TEMP/libqwen_f32_fsum.so" \
+            --inventory "$EVIDENCE/inventory.json" \
+            --tokenizer-json "$TOKENIZER_JSON" \
+            --profile-tokens 44 \
+            --work-dir "$K3_WORK" \
+            --output "$EVIDENCE/prefill-layer-profile.json" \
+            2>&1 | tee "$EVIDENCE/prefill-layer-profile.log"
+          grep -F "QWEN38_PREFILL_LAYER_PROFILE_COMPLETE" "$EVIDENCE/prefill-layer-profile.log"
+
+      - name: Print profile summary
+        if: always()
+        shell: bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          set -euo pipefail
+          if [[ -f "$EVIDENCE/prefill-layer-profile.log" ]]; then
+            grep -F 'QWEN38_PREFILL_LAYER_PROFILE' "$EVIDENCE/prefill-layer-profile.log" || true
+          fi
+          if [[ -f "$EVIDENCE/prefill-layer-profile.json" ]]; then
+            python - <<'PY'
+          import json, os
+          from pathlib import Path
+          r=json.loads((Path(os.environ["EVIDENCE"])/"prefill-layer-profile.json").read_text())
+          b=r["breakdown"]
+          print(json.dumps({
+              "status": r["status"],
+              "profile_token_count": r["profile_token_count"],
+              "prefill_seconds": r["prefill_seconds"],
+              "gdn": b["gdn"],
+              "attention": b["attention"],
+              "role_seconds": b["role_seconds"],
+              "slowest_layers": b["slowest_layers"],
+              "k3_bytes": r["k3_bytes"],
+              "max_rss_gib": r["max_rss_gib"],
+          }, indent=2))
+          PY
+          fi
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen38-prefill-layer-profile-${{ github.run_id }}
+          path: ${{ env.EVIDENCE }}/
+          if-no-files-found: warn
+          retention-days: 14
