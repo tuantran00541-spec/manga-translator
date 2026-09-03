@@ -27,6 +27,7 @@
         if (typeof window.flushAllPendingPersists === "function") {
           await window.flushAllPendingPersists();
         }
+        if (chapterId !== window.currentChapterId) return;
         const response = await fetch(`/api/render/chapter?chapter_id=${encodeURIComponent(chapterId)}`, {
           method: "POST",
         });
@@ -53,7 +54,7 @@
           window.showToast(`Đã kết xuất ${data.chapter_render?.rendered || 0} trang.`, "info");
         }
       } catch (err) {
-        if (typeof window.showToast === "function") {
+        if (chapterId === window.currentChapterId && typeof window.showToast === "function") {
           window.showToast("Xuất chương thất bại: " + err.message, "error");
         }
       } finally {

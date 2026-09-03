@@ -97,6 +97,9 @@ function _applyStateDiff(obj, current, snapshot) {
 }
 
 function applyManifestResponse(manifest, pageIndex, opts = {}) {
+  if (!manifest || (manifest.chapter_id && manifest.chapter_id !== currentChapterId)) {
+    return false;
+  }
   const skipOverlays = opts.skipOverlays === true;
   const snapshot = opts.snapshot || null;
   const targetId = opts.id || editorState.selectedTextObjectId;
@@ -120,19 +123,24 @@ function applyManifestResponse(manifest, pageIndex, opts = {}) {
   const page = currentManifest ? currentManifest.pages[pageIndex] : null;
   if (!skipOverlays && wrapper && page) renderTextObjectOverlays(pageIndex, page);
   renderEditorPanel(pageIndex);
+  return true;
 }
 
 async function createTextObject(pageIndex, shape, region) {
+  const chapterId = currentChapterId;
+  if (!chapterId) return;
   await Promise.all([
     typeof window.flushTextObjectPersist === "function" ? window.flushTextObjectPersist() : Promise.resolve(),
     typeof window.flushGeomPersist === "function" ? window.flushGeomPersist() : Promise.resolve(),
   ]);
+  if (chapterId !== currentChapterId) return;
   const manifest = await apiTextObject("create", {
-    chapter_id: currentChapterId,
+    chapter_id: chapterId,
     page_index: pageIndex,
     shape,
     region,
   });
+  if (chapterId !== currentChapterId) return;
   const page = manifest.pages[pageIndex];
   const objs = page.text_objects || [];
   const obj = objs[objs.length - 1];
@@ -145,15 +153,19 @@ async function createTextObject(pageIndex, shape, region) {
 }
 
 async function deleteTextObject(pageIndex, id) {
+  const chapterId = currentChapterId;
+  if (!chapterId) return;
   await Promise.all([
     typeof window.flushTextObjectPersist === "function" ? window.flushTextObjectPersist() : Promise.resolve(),
     typeof window.flushGeomPersist === "function" ? window.flushGeomPersist() : Promise.resolve(),
   ]);
+  if (chapterId !== currentChapterId) return;
   const manifest = await apiTextObject("delete", {
-    chapter_id: currentChapterId,
+    chapter_id: chapterId,
     page_index: pageIndex,
     id,
   });
+  if (chapterId !== currentChapterId) return;
   if (editorState.selectedTextObjectId === id) editorState.selectedTextObjectId = null;
   if (typeof window.removePendingPersist === "function") window.removePendingPersist(pageIndex, id);
   applyManifestResponse(manifest, pageIndex, { id });
@@ -163,23 +175,33 @@ window.deleteTextObject = deleteTextObject;
 const DUPLICATE_OFFSET = 24;
 
 async function duplicateTextObject(pageIndex, id) {
+  const chapterId = currentChapterId;
+  if (!chapterId) return;
   const obj = findTextObject(pageIndex, id);
   if (!obj) throw new Error("Không tìm thấy vùng chữ");
+  const source = {
+    shape: obj.shape,
+    region: Object.assign({}, obj.region),
+    ocrText: obj.ocr_text || "",
+    translation: obj.translation || "",
+    style: JSON.parse(JSON.stringify(obj.style || DEFAULT_TEXT_OBJECT_STYLE)),
+  };
+  const { w: W, h: H } = getPageImageSize(pageIndex);
   await Promise.all([
     typeof window.flushTextObjectPersist === "function" ? window.flushTextObjectPersist() : Promise.resolve(),
     typeof window.flushGeomPersist === "function" ? window.flushGeomPersist() : Promise.resolve(),
   ]);
-  const { w: W, h: H } = getPageImageSize(pageIndex);
+  if (chapterId !== currentChapterId) return;
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-  const bw = obj.region.x2 - obj.region.x1;
-  const bh = obj.region.y2 - obj.region.y1;
-  const x1 = clamp(obj.region.x1 + DUPLICATE_OFFSET, 0, Math.max(0, W - bw));
-  const y1 = clamp(obj.region.y1 + DUPLICATE_OFFSET, 0, Math.max(0, H - bh));
+  const bw = source.region.x2 - source.region.x1;
+  const bh = source.region.y2 - source.region.y1;
+  const x1 = clamp(source.region.x1 + DUPLICATE_OFFSET, 0, Math.max(0, W - bw));
+  const y1 = clamp(source.region.y1 + DUPLICATE_OFFSET, 0, Math.max(0, H - bh));
 
   const manifest = await apiTextObject("create", {
-    chapter_id: currentChapterId,
+    chapter_id: chapterId,
     page_index: pageIndex,
-    shape: obj.shape,
+    shape: source.shape,
     region: { x1, y1, x2: x1 + bw, y2: y1 + bh },
   });
   const objs = manifest.pages[pageIndex].text_objects || [];
@@ -187,13 +209,14 @@ async function duplicateTextObject(pageIndex, id) {
   if (!created) throw new Error("Không thể nhân đôi vùng chữ");
 
   const updated = await apiTextObject("update", {
-    chapter_id: currentChapterId,
+    chapter_id: chapterId,
     page_index: pageIndex,
     id: created.id,
-    ocr_text: obj.ocr_text || "",
-    translation: obj.translation || "",
-    style: JSON.parse(JSON.stringify(obj.style || DEFAULT_TEXT_OBJECT_STYLE)),
+    ocr_text: source.ocrText,
+    translation: source.translation,
+    style: source.style,
   });
+  if (chapterId !== currentChapterId) return;
   editorState.selectedTextObjectId = created.id;
   applyManifestResponse(updated, pageIndex, { id: created.id });
 }
@@ -214,15 +237,18 @@ async function addTextObjectBox() {
 window.addTextObjectBox = addTextObjectBox;
 
 async function associateTextObjectOcr(pageIndex, id) {
+  const chapterId = currentChapterId;
+  if (!chapterId) return;
   const langEl = document.getElementById("lang-select");
   const lang = langEl ? langEl.value : "ja";
   const snapshot = collectPanelState(pageIndex, id);
   const manifest = await apiTextObject("ocr", {
-    chapter_id: currentChapterId,
+    chapter_id: chapterId,
     page_index: pageIndex,
     id,
     lang,
   });
+  if (chapterId !== currentChapterId) return;
   if (!findTextObject(pageIndex, id)) return;
   applyManifestResponse(manifest, pageIndex, { skipOverlays: true, snapshot, id });
 }
@@ -897,6 +923,8 @@ async function flushTextObjectPersist(pageIndex) {
     if (pageIndex === undefined || v.pageIndex === pageIndex) items.push(v);
   });
   if (items.length === 0) return;
+  const chapterId = currentChapterId;
+  if (!chapterId) return;
   items.forEach((v) => _textDirty.delete(`${v.pageIndex}:${v.id}`));
   _textSaving += items.length;
   refreshSaveStatus();
@@ -907,7 +935,7 @@ async function flushTextObjectPersist(pageIndex) {
       if (!obj) return;
       try {
         await apiTextObject("update", {
-          chapter_id: currentChapterId,
+          chapter_id: chapterId,
           page_index: p.pageIndex,
           id: p.id,
           ocr_text: p.ocr_text,
@@ -916,14 +944,17 @@ async function flushTextObjectPersist(pageIndex) {
         });
       } catch (err) {
         failures.push(err);
-        _textHasError = true;
-        _textDirty.set(`${p.pageIndex}:${p.id}`, Object.assign({ pageIndex: p.pageIndex, id: p.id }, _captureTextState(obj)));
+        if (chapterId === currentChapterId) {
+          _textHasError = true;
+          _textDirty.set(`${p.pageIndex}:${p.id}`, Object.assign({ pageIndex: p.pageIndex, id: p.id }, _captureTextState(obj)));
+        }
       }
     }));
   } finally {
     _textSaving -= items.length;
     refreshSaveStatus();
   }
+  if (chapterId !== currentChapterId) return;
   if (failures.length) {
     showToast("Không lưu được nội dung: " + failures[0].message, "error");
     throw new Error("Không lưu được nội dung");
@@ -1057,6 +1088,7 @@ function buildPageWrapper(page, pageIndex, pages) {
 }
 
 async function switchEditorPage(newIndex) {
+  const chapterId = currentChapterId;
   const pages = currentManifest ? currentManifest.pages : null;
   if (!pages || newIndex < 0 || newIndex >= pages.length) return;
   try {
@@ -1065,6 +1097,7 @@ async function switchEditorPage(newIndex) {
     showToast("Không thể chuyển trang vì lưu dữ liệu thất bại.", "error");
     return;
   }
+  if (chapterId !== currentChapterId) return;
   editorState.activePageIndex = newIndex;
   editorState.selectedTextObjectId = null;
   renderEditor();

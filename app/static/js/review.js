@@ -392,6 +392,8 @@ async function inspectVisualQC(
   pageIndex, canvas, ctx, aiQcBtn, submitBtn, resetManualBtn,
   brushBtn, clearBtn, brushSize, wrap
 ) {
+  const chapterId = currentChapterId;
+  if (!chapterId) return;
   const mutableControls = [brushBtn, clearBtn, submitBtn, resetManualBtn, aiQcBtn, brushSize].filter(Boolean);
   const previousDisabled = new Map(mutableControls.map((control) => [control, control.disabled]));
   if (typeof canvas._stopBrush === "function") canvas._stopBrush();
@@ -404,11 +406,12 @@ async function inspectVisualQC(
     const resp = await fetch("/api/visual_qc/inspect", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ chapter_id: currentChapterId, page_index: pageIndex }),
+      body: JSON.stringify({ chapter_id: chapterId, page_index: pageIndex }),
     });
     const parse = typeof window.parseApiResponse === "function" ? window.parseApiResponse : async (r) => (await r.json().catch(() => ({})));
     const getErr = typeof window.getErrorMessage === "function" ? window.getErrorMessage : (s, d) => d.detail || `Máy chủ trả về ${s}`;
     const data = await parse(resp);
+    if (chapterId !== currentChapterId || !canvas.isConnected) return;
     if (!resp.ok) throw new Error(getErr(resp.status, data));
 
     const issues = Array.isArray(data.issues) ? data.issues : [];
@@ -461,7 +464,9 @@ async function inspectVisualQC(
       showToast("AI trả về kết quả nhưng không có vùng đánh dấu hợp lệ.", "error");
     }
   } catch (err) {
-    showToast("Không thể hoàn tất kiểm tra bằng AI: " + err.message, "error");
+    if (chapterId === currentChapterId && canvas.isConnected) {
+      showToast("Không thể hoàn tất kiểm tra bằng AI: " + err.message, "error");
+    }
   } finally {
     mutableControls.forEach((control) => { control.disabled = previousDisabled.get(control) || false; });
     if (wrap) wrap.classList.remove("ai-qc-running");
@@ -568,6 +573,8 @@ function floodFillSelect(ctx, srcData, startX, startY, width, height) {
 }
 
 async function submitRepaint(pageIndex, canvas, img, ctx, submitBtn) {
+  const chapterId = currentChapterId;
+  if (!chapterId) return;
   const pixelCheckCtx = document.createElement("canvas").getContext("2d");
   pixelCheckCtx.canvas.width = canvas.width;
   pixelCheckCtx.canvas.height = canvas.height;
@@ -587,9 +594,8 @@ async function submitRepaint(pageIndex, canvas, img, ctx, submitBtn) {
   }
 
   const mode = await chooseRepaintMode();
-  if (!mode) return;
+  if (!mode || chapterId !== currentChapterId || !canvas.isConnected) return;
 
-  const chapterId = currentChapterId;
   const card = submitBtn.closest(".review-card");
   if (card) {
     card._reviewBusy = true;
@@ -635,7 +641,9 @@ async function submitRepaint(pageIndex, canvas, img, ctx, submitBtn) {
       "success"
     );
   } catch (err) {
-    showToast("Không thể xử lý vùng đánh dấu: " + err.message, "error");
+    if (chapterId === currentChapterId && canvas.isConnected) {
+      showToast("Không thể xử lý vùng đánh dấu: " + err.message, "error");
+    }
   } finally {
     if (card) {
       card._reviewBusy = false;

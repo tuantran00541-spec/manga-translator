@@ -767,7 +767,9 @@ async function resetManualMask(pageIndex, img, canvas, ctx, resetBtn) {
     if (img) img.src = data.pages[pageIndex].clean + "?t=" + Date.now();
     if (ctx && canvas) ctx.clearRect(0, 0, canvas.width, canvas.height);
   } catch (err) {
-    showToast("Không xóa được vùng chỉnh sửa thủ công: " + err.message, "error");
+    if (chapterId === currentChapterId) {
+      showToast("Không xóa được vùng chỉnh sửa thủ công: " + err.message, "error");
+    }
   } finally {
     if (card) {
       card._reviewBusy = false;
