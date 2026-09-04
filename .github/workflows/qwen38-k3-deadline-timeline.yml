@@ -1,0 +1,188 @@
+name: Qwen3.8 promoted K3 deadline timeline
+
+on:
+  push:
+    branches:
+      - research/qwen3.8-27b-runtime-finish
+    paths:
+      - research/qwen38/qwen38_k3_deadline_timeline_probe.py
+      - .github/workflows/qwen38-k3-deadline-timeline.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deadline-timeline:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 32
+    env:
+      HF_HUB_DISABLE_TELEMETRY: "1"
+      QWEN_GGUF_SHA256: a487690b9f17de581857c4ae484dab50800335bb9eb978a4fb02c0465629dc0a
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Synthetic timeline gate
+        shell: bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            research/qwen38/qwen38_k3_deadline_timeline_probe.py \
+            research/qwen38/qwen38_current_best_k3_runtime.py \
+            research/qwen38/qwen38_progressive_current_best_profile.py
+          PYTHONPATH=research/qwen38 python -u \
+            research/qwen38/qwen38_k3_deadline_timeline_probe.py sanity \
+            2>&1 | tee "$RUNNER_TEMP/timeline-sanity.log"
+          grep -F "QWEN38_K3_DEADLINE_TIMELINE_SANITY PASS" \
+            "$RUNNER_TEMP/timeline-sanity.log"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Reclaim disk and show runner
+        shell: bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup || true
+          docker system prune -af || true
+          lscpu
+          lsblk -o NAME,TYPE,SIZE,ROTA,MOUNTPOINTS || true
+          df -h
+          free -h
+
+      - name: Install runtime dependencies
+        run: python -m pip install --no-cache-dir huggingface_hub hf_xet
+
+      - name: Download and hash pinned GGUF
+        shell: bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          set -euo pipefail
+          MODEL=$(python - <<'PY'
+          from huggingface_hub import hf_hub_download
+          print(hf_hub_download(
+              "bartowski/Qwen3.8-27B-GGUF",
+              filename="Qwen3.8-27B-Q6_K_L.gguf",
+              local_dir="${{ runner.temp }}/qwen38-model"))
+          PY
+          )
+          echo "$QWEN_GGUF_SHA256  $MODEL" | sha256sum -c -
+          echo "MODEL=$MODEL" >> "$GITHUB_ENV"
+          echo "EVIDENCE=$RUNNER_TEMP/qwen38-k3-deadline-timeline-evidence" >> "$GITHUB_ENV"
+          echo "K3_WORK=$RUNNER_TEMP/qwen38-k3-deadline-timeline-work" >> "$GITHUB_ENV"
+
+      - name: Validate pinned decoder inventory
+        shell: bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          set -euo pipefail
+          mkdir -p "$EVIDENCE"
+          PYTHONPATH=research/qwen38 python -u \
+            research/qwen38/qwen35_gguf_decoder_contract.py real \
+            --model "$MODEL" --output "$EVIDENCE/inventory.json" \
+            2>&1 | tee "$EVIDENCE/inventory.log"
+
+      - name: Compile exact current-best bridges
+        shell: bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          set -euo pipefail
+          cc -O3 -std=c11 -mavx2 -fno-fast-math -ffp-contract=off -fPIC -shared \
+            research/qwen38/gguf_quant_matvec_many_bridge.c -lm -o "$RUNNER_TEMP/libqwen_quant_base.so"
+          cc -O3 -std=c11 -mavx2 -fno-fast-math -ffp-contract=off -fPIC -shared -pthread \
+            research/qwen38/q6_persistent_pool_exact.c -lm -o "$RUNNER_TEMP/libqwen_q6_persistent_pool.so"
+          cc -O2 -std=c11 -fno-fast-math -ffp-contract=off -fPIC -shared \
+            research/qwen38/gdn_state_ar.c -lm -o "$RUNNER_TEMP/libqwen_gdn_serial.so"
+          cc -O2 -std=c11 -fno-fast-math -ffp-contract=off -fPIC -shared \
+            research/qwen38/gdn_state_ar.c research/qwen38/gdn_state_batch_exact.c \
+            -lm -o "$RUNNER_TEMP/libqwen_gdn_batch.so"
+          cc -O3 -std=c11 -fno-fast-math -fno-associative-math -ffp-contract=off -fPIC -shared \
+            research/qwen38/f32_fsum_matvec.c -lm -o "$RUNNER_TEMP/libqwen_f32_fsum.so"
+          cc -O3 -std=c11 -fno-fast-math -fno-associative-math -ffp-contract=off -fPIC -shared \
+            research/qwen38/attention_core_exact.c -lm -o "$RUNNER_TEMP/libqwen_attention_exact.so"
+          cc -O3 -std=c11 -fno-fast-math -fno-associative-math -ffp-contract=off -fno-tree-vectorize -fPIC -shared \
+            research/qwen38/gdn_conv_silu_exact.c -lm -o "$RUNNER_TEMP/libqwen_gdn_conv_exact.so"
+          cc -O3 -std=c11 -fno-fast-math -fno-associative-math -ffp-contract=off -fno-tree-vectorize -fPIC -shared \
+            research/qwen38/gdn_output_gate_exact.c -lm -o "$RUNNER_TEMP/libqwen_gdn_output_gate_exact.so"
+          cc -O3 -std=c11 -fno-fast-math -fno-associative-math -ffp-contract=off -fno-tree-vectorize -fPIC -shared \
+            research/qwen38/swiglu_exact.c -lm -o "$RUNNER_TEMP/libqwen_swiglu_exact.so"
+          cc -O3 -std=c11 -fno-fast-math -fno-associative-math -ffp-contract=off -fno-tree-vectorize -fPIC -shared \
+            research/qwen38/rmsnorm_exact.c -lm -o "$RUNNER_TEMP/libqwen_rmsnorm_exact.so"
+          cc -O3 -std=c11 -fno-fast-math -fno-associative-math -ffp-contract=off -fno-tree-vectorize -fPIC -shared \
+            research/qwen38/rmsnorm_exact.c research/qwen38/rmsnorm_many_exact.c \
+            -lm -o "$RUNNER_TEMP/libqwen_rmsnorm_many_exact.so"
+          cc -O3 -std=c11 -fno-fast-math -fno-associative-math -ffp-contract=off -fno-tree-vectorize -fPIC -shared \
+            research/qwen38/rmsnorm_exact.c research/qwen38/rmsnorm_heads_many_exact.c \
+            -lm -o "$RUNNER_TEMP/libqwen_rmsnorm_heads_many_exact.so"
+          cc -O3 -std=c11 -fno-fast-math -fno-associative-math -ffp-contract=off -fno-tree-vectorize -fPIC -shared \
+            research/qwen38/residual_add_exact.c -o "$RUNNER_TEMP/libqwen_residual_add_exact.so"
+          cc -O3 -std=c11 -fno-fast-math -fno-associative-math -ffp-contract=off -fno-tree-vectorize -fPIC -shared \
+            research/qwen38/attention_gate_exact.c -lm -o "$RUNNER_TEMP/libqwen_attention_gate_exact.so"
+          cc -O3 -std=c11 -fno-fast-math -fno-associative-math -ffp-contract=off -fno-tree-vectorize -fPIC -shared \
+            research/qwen38/gdn_repeat_scale_exact.c -o "$RUNNER_TEMP/libqwen_gdn_repeat_scale_exact.so"
+
+      - name: Run real promoted deadline timeline
+        timeout-minutes: 18
+        shell: bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          set -euo pipefail
+          mkdir -p "$EVIDENCE" "$K3_WORK"
+          PYTHONPATH=research/qwen38 python -u \
+            research/qwen38/qwen38_k3_deadline_timeline_probe.py run \
+            --model "$MODEL" \
+            --quant-lib "$RUNNER_TEMP/libqwen_quant_base.so" \
+            --pool-lib "$RUNNER_TEMP/libqwen_q6_persistent_pool.so" \
+            --state-lib "$RUNNER_TEMP/libqwen_gdn_serial.so" \
+            --batch-state-lib "$RUNNER_TEMP/libqwen_gdn_batch.so" \
+            --f32-lib "$RUNNER_TEMP/libqwen_f32_fsum.so" \
+            --attn-lib "$RUNNER_TEMP/libqwen_attention_exact.so" \
+            --conv-lib "$RUNNER_TEMP/libqwen_gdn_conv_exact.so" \
+            --gate-lib "$RUNNER_TEMP/libqwen_gdn_output_gate_exact.so" \
+            --swiglu-lib "$RUNNER_TEMP/libqwen_swiglu_exact.so" \
+            --rmsnorm-lib "$RUNNER_TEMP/libqwen_rmsnorm_exact.so" \
+            --rmsnorm-many-lib "$RUNNER_TEMP/libqwen_rmsnorm_many_exact.so" \
+            --head-rmsnorm-many-lib "$RUNNER_TEMP/libqwen_rmsnorm_heads_many_exact.so" \
+            --residual-lib "$RUNNER_TEMP/libqwen_residual_add_exact.so" \
+            --attention-gate-lib "$RUNNER_TEMP/libqwen_attention_gate_exact.so" \
+            --repeat-lib "$RUNNER_TEMP/libqwen_gdn_repeat_scale_exact.so" \
+            --inventory "$EVIDENCE/inventory.json" \
+            --work-dir "$K3_WORK" \
+            --output "$EVIDENCE/promoted-profile.json" \
+            --timeline-output "$EVIDENCE/deadline-timeline.json" \
+            2>&1 | tee "$EVIDENCE/deadline-timeline.log"
+          grep -F "QWEN38_K3_DEADLINE_TIMELINE_REAL_BITWISE_PASS" \
+            "$EVIDENCE/deadline-timeline.log"
+
+      - name: Print timeline summary
+        if: always()
+        shell: bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          if [[ -f "$EVIDENCE/deadline-timeline.json" ]]; then
+            python - <<'PY'
+          import json, os
+          from pathlib import Path
+          r=json.loads((Path(os.environ["EVIDENCE"])/"deadline-timeline.json").read_text())
+          s=r["summary"]
+          print(json.dumps({
+              "status": r["status"],
+              "contracts": r["contracts"],
+              "profile": r["profile"],
+              "event_count": s["event_count"],
+              "io_frontier_count": s["io_frontier_count"],
+              "tensor_wait_calls_observed": s["tensor_wait_calls_observed"],
+              "tensor_wait_seconds_observed": s["tensor_wait_seconds_observed"],
+              "prefetch_to_first_io": {
+                  k:v for k,v in s["prefetch_to_first_io"].items() if k != "rows"
+              },
+              "stage_summary": s["stage_summary"],
+              "top_finish_before_demand_margins": s["top_finish_before_demand_margins"][:12],
+              "top_tensor_waits": s["top_tensor_waits"][:12],
+          }, indent=2))
+          PY
+          fi
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen38-k3-deadline-timeline-${{ github.run_id }}
+          path: ${{ env.EVIDENCE }}/
+          if-no-files-found: warn
+          retention-days: 14
