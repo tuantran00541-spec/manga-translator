@@ -64,8 +64,8 @@ def _copy_hash_seek_read(
         raise RuntimeError("Win32 GGUF pack copy requires native Windows")
     if chunk_bytes <= 0:
         raise ValueError("chunk_bytes must be positive")
-    if hasattr(os, "setmode") and hasattr(os, "O_BINARY"):
-        os.setmode(src_fd, os.O_BINARY)
+    import msvcrt
+    msvcrt.setmode(src_fd, os.O_BINARY)
 
     digest = hashlib.sha256()
     done = 0
