@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Exact post-RMSNorm hotspot profile for the current best Qwen3.8 staged prefill path.
 
-This is a thin evidence wrapper around qwen38_post_swiglu_profile.  It installs
-the already-proven exact scalar native RMSNorm helpers, then delegates the same
-11-token real GGUF profile so model/hash/state/K3/direct-I/O gates stay intact.
-The wrapper accounts RMSNorm time separately and recomputes the remaining
-Python/orchestration bucket without changing decoder arithmetic.
+This is a thin evidence wrapper around qwen38_post_swiglu_profile. It installs
+the already-proven exact scalar native RMSNorm helpers after generator init,
+then delegates the same 11-token real GGUF profile so model/hash/state/K3/
+direct-I/O gates stay intact. The wrapper accounts RMSNorm time separately and
+recomputes the remaining Python/orchestration bucket without changing decoder
+arithmetic.
 """
 from __future__ import annotations
 
@@ -40,6 +41,7 @@ def run(args) -> dict[str, Any]:
     core = ExactRMSNorm(args.rmsnorm_lib)
     old_rms = gdn.rms_norm
     old_heads = gen.attn.rms_norm_heads
+    old_generator = gen.StatefulK3Generator
     rms_seconds = 0.0
 
     def native_rms(values, weight, eps=gdn.RMS_EPS):
@@ -56,6 +58,16 @@ def run(args) -> dict[str, Any]:
         rms_seconds += time.monotonic() - t0
         return out
 
+    # StatefulK3Generator.__init__ calls exact.install(), which deliberately
+    # restores the pinned Python arithmetic helpers. Reapply only our already-
+    # proven native RMSNorm hooks immediately after construction; this avoids
+    # touching the production generator or duplicating decoder code here.
+    def patched_generator(*a, **kw):
+        engine = old_generator(*a, **kw)
+        gdn.rms_norm = native_rms
+        gen.attn.rms_norm_heads = native_heads
+        return engine
+
     delegated = argparse.Namespace(
         model=args.model,
         quant_lib=args.quant_lib,
@@ -71,11 +83,11 @@ def run(args) -> dict[str, Any]:
         output=args.base_output,
     )
 
-    gdn.rms_norm = native_rms
-    gen.attn.rms_norm_heads = native_heads
+    gen.StatefulK3Generator = patched_generator
     try:
         base = post.run(delegated)
     finally:
+        gen.StatefulK3Generator = old_generator
         gdn.rms_norm = old_rms
         gen.attn.rms_norm_heads = old_heads
 
