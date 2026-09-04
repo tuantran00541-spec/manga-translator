@@ -1,0 +1,91 @@
+name: Qwen3.8 K3 deadline replay
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - research/qwen3.8-27b-runtime-finish
+    paths:
+      - research/qwen38/qwen38_k3_deadline_replay.py
+      - .github/workflows/qwen38-k3-deadline-replay.yml
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  replay:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Synthetic replay gate
+        run: |
+          set -euo pipefail
+          python -m py_compile research/qwen38/qwen38_k3_deadline_replay.py
+          python -u research/qwen38/qwen38_k3_deadline_replay.py sanity \
+            2>&1 | tee "$RUNNER_TEMP/replay-sanity.log"
+          grep -F "QWEN38_K3_DEADLINE_REPLAY_SANITY PASS" \
+            "$RUNNER_TEMP/replay-sanity.log"
+
+      - name: Download proven deadline timeline
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/timeline-source"
+          gh run download 33871326183 \
+            --repo "${{ github.repository }}" \
+            --name qwen38-k3-deadline-timeline-33871326183 \
+            --dir "$RUNNER_TEMP/timeline-source"
+          test -s "$RUNNER_TEMP/timeline-source/deadline-timeline.json"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          p = Path(os.environ["RUNNER_TEMP"]) / "timeline-source" / "deadline-timeline.json"
+          r = json.loads(p.read_text())
+          assert r["status"] == "PASS"
+          assert r["contracts"]["k3_bytes"] == 21127430144
+          assert r["contracts"]["ring_slots"] == 2
+          assert r["contracts"]["planned_bytes"] == 672899072
+          assert r["contracts"]["storage_io_concurrency"] == 1
+          assert r["summary"]["io_frontier_count"] == 512
+          print("QWEN38_K3_DEADLINE_REPLAY_SOURCE_PASS")
+          PY
+
+      - name: Replay monolithic versus deadline schedulers
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/replay-evidence"
+          cp "$RUNNER_TEMP/timeline-source/deadline-timeline.json" \
+             "$RUNNER_TEMP/replay-evidence/source-deadline-timeline.json"
+          python -u research/qwen38/qwen38_k3_deadline_replay.py run \
+            --timeline "$RUNNER_TEMP/timeline-source/deadline-timeline.json" \
+            --output "$RUNNER_TEMP/replay-evidence/deadline-replay.json" \
+            2>&1 | tee "$RUNNER_TEMP/replay-evidence/deadline-replay.log"
+          grep -F "QWEN38_K3_DEADLINE_REPLAY_PASS" \
+            "$RUNNER_TEMP/replay-evidence/deadline-replay.log"
+
+      - name: Print replay decision
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          p = Path(os.environ["RUNNER_TEMP"]) / "replay-evidence" / "deadline-replay.json"
+          r = json.loads(p.read_text())
+          print(json.dumps({
+              "status": r["status"],
+              "baseline_fidelity": r["baseline_fidelity"],
+              "best_candidate": r["best_candidate"],
+              "recommendation": r["recommendation"],
+          }, indent=2))
+          PY
+
+      - name: Upload replay evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen38-k3-deadline-replay-${{ github.run_id }}
+          path: ${{ runner.temp }}/replay-evidence/
+          retention-days: 14
