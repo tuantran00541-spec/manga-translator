@@ -1,0 +1,250 @@
+name: Qwen3.8 Win32 full-GGUF current-best exact gate
+
+on:
+  push:
+    branches:
+      - research/qwen3.8-27b-runtime-finish
+    paths:
+      - research/qwen38/qwen38_progressive_current_best_profile_win32.py
+      - .github/workflows/qwen38-win32-full-gguf-current-best.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  win32-full-gguf-current-best:
+    runs-on: windows-latest
+    timeout-minutes: 50
+    env:
+      HF_HUB_DISABLE_TELEMETRY: "1"
+      QWEN_GGUF_SHA256: a487690b9f17de581857c4ae484dab50800335bb9eb978a4fb02c0465629dc0a
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set evidence paths
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $evidence = Join-Path $env:RUNNER_TEMP 'qwen38-win32-full-real-evidence'
+          $work = Join-Path $env:RUNNER_TEMP 'qwen38-win32-full-real-k3'
+          $dll = Join-Path $env:RUNNER_TEMP 'qwen38-win32-full-real-dll'
+          $hf = Join-Path $env:RUNNER_TEMP 'qwen38-win32-hf-cache'
+          New-Item -ItemType Directory -Force -Path $evidence,$work,$dll,$hf | Out-Null
+          "QWEN_EVIDENCE=$evidence" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "QWEN_K3_WORK=$work" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "QWEN_DLL_DIR=$dll" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "HF_HOME=$hf" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Verify proven source blobs
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $expected = @{
+            'research/qwen38/qwen38_k3_progressive.py' = 'a1c85c05c4e3b2cb8892f0c53dbd3db2891a590b'
+            'research/qwen38/qwen38_k3_progressive_win32.py' = 'd21710912c8ccabe394b29853a0f64a705b9d030'
+            'research/qwen38/qwen38_current_best_q6_profile.py' = '398d2b464e7eb40b2f8d5f848bc64da6a7d44f51'
+            'research/qwen38/qwen38_current_best_runtime_win32.py' = '6163649280b04ebd3b216567cc69849a68c593f9'
+            'research/qwen38/qwen38_win32_bootstrap.py' = '25339dfc677ed5ff3d548186f5ce6ee6f7fc53fe'
+            'research/qwen38/attention_core_exact.c' = '580953c54acbbc243763dc08cb02bae676f56d7c'
+            'research/qwen38/attention_gate_exact.c' = '9e648ee01b9cf1a1e1367903d04aea45cb402a07'
+            'research/qwen38/f32_fsum_matvec.c' = 'c07db99577f3925061410770d09491c338ca3747'
+            'research/qwen38/gdn_conv_silu_exact.c' = 'e25726656288846e081bc08af90975711eb09987'
+            'research/qwen38/gdn_output_gate_exact.c' = 'e67f602ee230dd3ef127f5a0ddb2c8edb7bf1bc0'
+            'research/qwen38/gdn_repeat_scale_exact.c' = 'a85f1e4990d6bd7b83a68cc7e8333dda5d01371b'
+            'research/qwen38/gdn_state_ar.c' = 'df79e103920145225133f745fcbff0763ea6a5c6'
+            'research/qwen38/gdn_state_batch_exact.c' = 'c472ef3fce53dd07dca53dec10feeab6d95b9442'
+            'research/qwen38/gguf_quant_dot.c' = 'b8f8a8de51df341994827ad5d3265218d5ae0920'
+            'research/qwen38/gguf_quant_dot_avx2.c' = '4022a1501cd4503af0ce29c356429dddfe2b05c8'
+            'research/qwen38/gguf_quant_matvec_many_avx2.c' = 'f9265ced3ddb4902710039ee4d5da459e829ad76'
+            'research/qwen38/gguf_quant_matvec_many_bridge.c' = 'eb6473f8acefab0c57eaa7e76bf673d962776cd2'
+            'research/qwen38/gguf_quant_matvec_many_noalloc_bridge.c' = 'c7411f8d521e767f9dead9a74ad91a5a6ed94654'
+            'research/qwen38/q6_persistent_pool_portable_exact.c' = 'fbd991e715068834e1a77cce921e4410e67bf8e2'
+            'research/qwen38/qwen_thread_compat.h' = '2b90018e141f88c85852ec32604b7075a5fe0353'
+            'research/qwen38/residual_add_exact.c' = 'bdc96e14442dbfe1b870a8a9417d19d3bffff4f5'
+            'research/qwen38/rmsnorm_exact.c' = '7a8c7a8bb39d7e55e6cbd8460954140042580a11'
+            'research/qwen38/rmsnorm_many_exact.c' = '196c143a6a4f3cef0ee7b90968a2a81075186c7d'
+            'research/qwen38/rmsnorm_heads_many_exact.c' = '200888a3f793bc18020b0640bcf33f1ce02f6394'
+            'research/qwen38/swiglu_exact.c' = '5cbf5629ab777a84735340f747a0e77cb8eb7018'
+            'research/qwen38/win32_direct_io.c' = '689d5a22b0353ec1ee19ba9c037be64194bd041f'
+          }
+          foreach ($entry in $expected.GetEnumerator()) {
+            $actual = (git hash-object $entry.Key).Trim()
+            if ($actual -ne $entry.Value) {
+              throw "proven-source blob changed: $($entry.Key) actual=$actual expected=$($entry.Value)"
+            }
+          }
+          Write-Host 'QWEN38_WIN32_FULL_REAL_SOURCE_INTEGRITY_PASS'
+
+      - name: Compile exact Windows DLL bundle
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $out = $env:QWEN_DLL_DIR
+          function Build-Dll {
+            param(
+              [string]$Name,
+              [string[]]$Sources,
+              [string[]]$Exports,
+              [string[]]$ExtraFlags = @()
+            )
+            $args = @(
+              '-O3', '-std=c11', '-shared',
+              '-fno-fast-math', '-fno-associative-math', '-ffp-contract=off',
+              '-fno-vectorize', '-fno-slp-vectorize'
+            )
+            $args += $ExtraFlags
+            $args += $Sources
+            foreach ($symbol in $Exports) {
+              $args += '-Xlinker'
+              $args += "/EXPORT:$symbol"
+            }
+            $target = Join-Path $out $Name
+            $args += @('-o', $target)
+            & clang @args
+            if ($LASTEXITCODE -ne 0) { throw "clang failed for $Name rc=$LASTEXITCODE" }
+          }
+
+          Build-Dll 'qwen_quant_base.dll' @('research/qwen38/gguf_quant_matvec_many_bridge.c') @(
+            'qwen_quantize_q8_k_scalar','qwen_quantize_q8_0_scalar',
+            'qwen_matvec_q6_k_q8_k_scalar','qwen_matvec_q8_0_q8_0_scalar',
+            'qwen_matvec_many_q6_k_q8_k_bridge','qwen_matvec_many_q8_0_q8_0_bridge') @('-mavx2')
+          Build-Dll 'qwen_q6_portable.dll' @('research/qwen38/q6_persistent_pool_portable_exact.c') @(
+            'qwen_q6_pool_create','qwen_q6_pool_destroy','qwen_q6_pool_matvec_many',
+            'qwen_q6_pool_calls','qwen_q6_pool_threads',
+            'qwen_matvec_many_q6_k_q8_k_bridge','qwen_matvec_many_q8_0_q8_0_bridge') @('-mavx2')
+          Build-Dll 'qwen_gdn_state.dll' @('research/qwen38/gdn_state_ar.c') @('qwen_gdn_ar_step_f32')
+          Build-Dll 'qwen_gdn_state_batch.dll' @('research/qwen38/gdn_state_ar.c','research/qwen38/gdn_state_batch_exact.c') @('qwen_gdn_ar_batch_f32')
+          Build-Dll 'qwen_f32.dll' @('research/qwen38/f32_fsum_matvec.c') @('qwen_matvec_f32_fsum_exact')
+          Build-Dll 'qwen_attention_core.dll' @('research/qwen38/attention_core_exact.c') @('qwen_attention_core_f32_exact')
+          Build-Dll 'qwen_gdn_conv_silu.dll' @('research/qwen38/gdn_conv_silu_exact.c') @('qwen_gdn_conv_silu_many_f32_exact')
+          Build-Dll 'qwen_gdn_output_gate.dll' @('research/qwen38/gdn_output_gate_exact.c') @('qwen_gdn_output_rmsnorm_gate_f32_exact')
+          Build-Dll 'qwen_swiglu.dll' @('research/qwen38/swiglu_exact.c') @('qwen_swiglu_many_f32_exact')
+          Build-Dll 'qwen_rmsnorm.dll' @('research/qwen38/rmsnorm_exact.c') @('qwen38_rmsnorm_exact_f32','qwen38_rmsnorm_heads_exact_f32')
+          Build-Dll 'qwen_rmsnorm_many.dll' @('research/qwen38/rmsnorm_exact.c','research/qwen38/rmsnorm_many_exact.c') @('qwen38_rmsnorm_many_exact_f32')
+          Build-Dll 'qwen_rmsnorm_heads_many.dll' @('research/qwen38/rmsnorm_exact.c','research/qwen38/rmsnorm_heads_many_exact.c') @('qwen38_rmsnorm_heads_many_exact_f32')
+          Build-Dll 'qwen_residual_add.dll' @('research/qwen38/residual_add_exact.c') @('qwen38_residual_add_many_exact_f32')
+          Build-Dll 'qwen_attention_gate.dll' @('research/qwen38/attention_gate_exact.c') @('qwen38_attention_gate_exact_f32')
+          Build-Dll 'qwen_gdn_repeat_scale.dll' @('research/qwen38/gdn_repeat_scale_exact.c') @('qwen38_gdn_repeat_scale_many_exact_f32')
+          Build-Dll 'qwen_win32_direct_io.dll' @('research/qwen38/win32_direct_io.c') @(
+            'qwen_win32_direct_open_utf8','qwen_win32_direct_close',
+            'qwen_win32_direct_alignment','qwen_win32_direct_read',
+            'qwen_win32_direct_no_buffering','qwen_win32_direct_overlapped',
+            'qwen_win32_buffer_create','qwen_win32_buffer_ptr','qwen_win32_buffer_destroy')
+          Write-Host 'QWEN38_WIN32_FULL_REAL_DLL_BUILD_PASS'
+
+      - name: Windows adapter sanity
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:PYTHONPATH = 'research/qwen38'
+          python -m py_compile research/qwen38/qwen38_progressive_current_best_profile_win32.py
+          $log = Join-Path $env:QWEN_EVIDENCE 'sanity.log'
+          python -u research/qwen38/qwen38_progressive_current_best_profile_win32.py sanity 2>&1 | Tee-Object -FilePath $log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (-not (Select-String -Path $log -SimpleMatch 'QWEN38_WIN32_PROGRESSIVE_CURRENT_BEST_SANITY PASS')) {
+            throw 'Win32 current-best sanity marker missing'
+          }
+
+      - name: Install Hugging Face downloader
+        shell: pwsh
+        run: python -m pip install --no-cache-dir huggingface_hub hf_xet
+
+      - name: Download and hash pinned GGUF on D drive
+        shell: pwsh
+        timeout-minutes: 18
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $model = python -c "import os; from huggingface_hub import hf_hub_download; print(hf_hub_download('bartowski/Qwen3.8-27B-GGUF', filename='Qwen3.8-27B-Q6_K_L.gguf', cache_dir=os.path.join(os.environ['RUNNER_TEMP'],'qwen38-win32-hf-download')))"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $model = $model.Trim()
+          if (-not (Test-Path $model)) { throw "model download path missing: $model" }
+          $actual = (Get-FileHash -Algorithm SHA256 $model).Hash.ToLowerInvariant()
+          if ($actual -ne $env:QWEN_GGUF_SHA256) {
+            throw "GGUF SHA mismatch actual=$actual expected=$env:QWEN_GGUF_SHA256"
+          }
+          "QWEN_MODEL=$model" | Out-File -FilePath $env:GITHUB_ENV -Append
+          Write-Host "model=$model"
+          Write-Host "bytes=$((Get-Item $model).Length)"
+          Write-Host 'QWEN38_WIN32_PINNED_GGUF_SHA_PASS'
+
+      - name: Validate pinned decoder inventory
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:PYTHONPATH = 'research/qwen38'
+          $log = Join-Path $env:QWEN_EVIDENCE 'inventory.log'
+          $json = Join-Path $env:QWEN_EVIDENCE 'inventory.json'
+          python -u research/qwen38/qwen35_gguf_decoder_contract.py real `
+            --model $env:QWEN_MODEL --output $json 2>&1 | Tee-Object -FilePath $log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run full real Win32 exact current-best profile
+        shell: pwsh
+        timeout-minutes: 22
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:PYTHONPATH = 'research/qwen38'
+          $log = Join-Path $env:QWEN_EVIDENCE 'win32-full-real.log'
+          $json = Join-Path $env:QWEN_EVIDENCE 'win32-full-real.json'
+          python -u research/qwen38/qwen38_progressive_current_best_profile_win32.py run `
+            --model $env:QWEN_MODEL `
+            --quant-lib (Join-Path $env:QWEN_DLL_DIR 'qwen_quant_base.dll') `
+            --pool-lib (Join-Path $env:QWEN_DLL_DIR 'qwen_q6_portable.dll') `
+            --state-lib (Join-Path $env:QWEN_DLL_DIR 'qwen_gdn_state.dll') `
+            --batch-state-lib (Join-Path $env:QWEN_DLL_DIR 'qwen_gdn_state_batch.dll') `
+            --f32-lib (Join-Path $env:QWEN_DLL_DIR 'qwen_f32.dll') `
+            --attn-lib (Join-Path $env:QWEN_DLL_DIR 'qwen_attention_core.dll') `
+            --conv-lib (Join-Path $env:QWEN_DLL_DIR 'qwen_gdn_conv_silu.dll') `
+            --gate-lib (Join-Path $env:QWEN_DLL_DIR 'qwen_gdn_output_gate.dll') `
+            --swiglu-lib (Join-Path $env:QWEN_DLL_DIR 'qwen_swiglu.dll') `
+            --rmsnorm-lib (Join-Path $env:QWEN_DLL_DIR 'qwen_rmsnorm.dll') `
+            --rmsnorm-many-lib (Join-Path $env:QWEN_DLL_DIR 'qwen_rmsnorm_many.dll') `
+            --head-rmsnorm-many-lib (Join-Path $env:QWEN_DLL_DIR 'qwen_rmsnorm_heads_many.dll') `
+            --residual-lib (Join-Path $env:QWEN_DLL_DIR 'qwen_residual_add.dll') `
+            --attention-gate-lib (Join-Path $env:QWEN_DLL_DIR 'qwen_attention_gate.dll') `
+            --repeat-lib (Join-Path $env:QWEN_DLL_DIR 'qwen_gdn_repeat_scale.dll') `
+            --inventory (Join-Path $env:QWEN_EVIDENCE 'inventory.json') `
+            --work-dir $env:QWEN_K3_WORK `
+            --output $json `
+            --win32-direct-lib (Join-Path $env:QWEN_DLL_DIR 'qwen_win32_direct_io.dll') `
+            2>&1 | Tee-Object -FilePath $log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (-not (Select-String -Path $log -SimpleMatch 'QWEN38_WIN32_FULL_GGUF_CURRENT_BEST_REAL_BITWISE_PASS')) {
+            throw 'full real Win32 exact marker missing'
+          }
+
+      - name: Print compact evidence summary
+        if: always()
+        shell: pwsh
+        run: |
+          $json = Join-Path $env:QWEN_EVIDENCE 'win32-full-real.json'
+          if (Test-Path $json) {
+            $r = Get-Content $json -Raw | ConvertFrom-Json
+            [pscustomobject]@{
+              status = $r.status
+              prefill_seconds = $r.prefill_seconds
+              hidden_sha256 = $r.hidden_sha256
+              state_sha256 = $r.state_sha256
+              k3_bytes = $r.k3_bytes
+              q6_boundary_seconds = $r.q6_boundary_seconds
+              reader_bind_seconds = $r.reader_bind_seconds
+              max_rss_gib = $r.max_rss_gib
+              direct_io = $r.reader.direct_io
+              no_buffering = $r.reader.win32_no_buffering
+              overlapped = $r.reader.win32_overlapped
+              native_read_bytes = $r.reader.win32_native_read_bytes
+              ring_slots = $r.reader.ring_slots
+              planned_bytes = $r.reader.planned_bytes
+              q6_workers = $r.quant_stack.q6_workers
+            } | ConvertTo-Json -Depth 4
+          }
+
+      - name: Upload full real evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen38-win32-full-gguf-current-best-${{ github.run_id }}
+          path: ${{ env.QWEN_EVIDENCE }}/
+          if-no-files-found: warn
+          retention-days: 14
