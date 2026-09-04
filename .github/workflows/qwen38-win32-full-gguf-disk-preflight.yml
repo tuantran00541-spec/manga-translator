@@ -1,0 +1,82 @@
+name: Qwen3.8 Win32 full-GGUF disk preflight
+
+on:
+  push:
+    branches:
+      - research/qwen3.8-27b-runtime-finish
+    paths:
+      - .github/workflows/qwen38-win32-full-gguf-disk-preflight.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  win32-full-gguf-disk-preflight:
+    runs-on: windows-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Measure hosted Windows storage
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $evidence = Join-Path $env:RUNNER_TEMP 'qwen38-win32-disk-preflight.json'
+          $modelBytes = 24080000000
+          $k3Bytes = 21127430144
+          $headroomBytes = 4GB
+          $requiredBytes = $modelBytes + $k3Bytes + $headroomBytes
+
+          $drives = Get-PSDrive -PSProvider FileSystem | ForEach-Object {
+            [pscustomobject]@{
+              name = $_.Name
+              root = $_.Root
+              used_bytes = [int64]$_.Used
+              free_bytes = [int64]$_.Free
+              free_gib = [math]::Round($_.Free / 1GB, 3)
+            }
+          }
+          $tempRoot = [System.IO.Path]::GetPathRoot($env:RUNNER_TEMP).TrimEnd('\')
+          $tempDriveName = $tempRoot.TrimEnd(':')
+          $tempDrive = $drives | Where-Object { $_.name -eq $tempDriveName } | Select-Object -First 1
+          if ($null -eq $tempDrive) {
+            throw "RUNNER_TEMP drive $tempDriveName was not found"
+          }
+
+          $payload = [ordered]@{
+            schema = 'qwen38-win32-full-gguf-disk-preflight-v1'
+            status = 'MEASURED'
+            runner_temp = $env:RUNNER_TEMP
+            runner_temp_drive = $tempDriveName
+            model_bytes_estimate = [int64]$modelBytes
+            exact_k3_stream_bytes = [int64]$k3Bytes
+            safety_headroom_bytes = [int64]$headroomBytes
+            required_bytes = [int64]$requiredBytes
+            required_gib = [math]::Round($requiredBytes / 1GB, 3)
+            available_bytes = [int64]$tempDrive.free_bytes
+            available_gib = [double]$tempDrive.free_gib
+            enough_for_model_plus_k3 = ([int64]$tempDrive.free_bytes -ge [int64]$requiredBytes)
+            drives = @($drives)
+            arithmetic_change = $false
+            runtime_change = $false
+            model_downloaded = $false
+          }
+          $payload | ConvertTo-Json -Depth 6 | Set-Content -Encoding UTF8 $evidence
+          Get-Content $evidence
+          "QWEN38_WIN32_DISK_PREFLIGHT_EVIDENCE=$evidence" | Out-File -FilePath $env:GITHUB_ENV -Append
+          if ($payload.enough_for_model_plus_k3) {
+            Write-Host 'QWEN38_WIN32_FULL_GGUF_DISK_PREFLIGHT_CAPACITY_PASS'
+          } else {
+            Write-Host 'QWEN38_WIN32_FULL_GGUF_DISK_PREFLIGHT_CAPACITY_BLOCKED'
+          }
+          Write-Host 'QWEN38_WIN32_FULL_GGUF_DISK_PREFLIGHT_MEASURED'
+
+      - name: Upload disk evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen38-win32-full-gguf-disk-preflight-${{ github.run_id }}
+          path: ${{ env.QWEN38_WIN32_DISK_PREFLIGHT_EVIDENCE }}
+          if-no-files-found: warn
+          retention-days: 14
