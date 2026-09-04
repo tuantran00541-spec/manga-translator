@@ -144,33 +144,6 @@ DETECTION_CONTENT_STD_MIN = _env_float(
 )
 
 # Bubble/text grouping and safety heuristics.
-WATERMARK_EDGE_X_RATIO = _env_float(
-    "MANGA_WATERMARK_EDGE_X_RATIO", 0.04, minimum=0.0, maximum=0.25
-)
-WATERMARK_EDGE_Y_RATIO = _env_float(
-    "MANGA_WATERMARK_EDGE_Y_RATIO", 0.05, minimum=0.0, maximum=0.25
-)
-WATERMARK_HORIZONTAL_ASPECT_MIN = _env_float(
-    "MANGA_WATERMARK_HORIZONTAL_ASPECT_MIN", 4.0, minimum=1.0, maximum=30.0
-)
-WATERMARK_VERTICAL_ASPECT_MIN = _env_float(
-    "MANGA_WATERMARK_VERTICAL_ASPECT_MIN", 6.0, minimum=1.0, maximum=30.0
-)
-WATERMARK_HORIZONTAL_HEIGHT_RATIO_MAX = _env_float(
-    "MANGA_WATERMARK_HORIZONTAL_HEIGHT_RATIO_MAX", 0.12, minimum=0.01, maximum=0.5
-)
-WATERMARK_VERTICAL_HEIGHT_RATIO_MAX = _env_float(
-    "MANGA_WATERMARK_VERTICAL_HEIGHT_RATIO_MAX", 0.08, minimum=0.01, maximum=0.5
-)
-TAIL_CREDIT_Y_RATIO_MIN = _env_float(
-    "MANGA_TAIL_CREDIT_Y_RATIO_MIN", 0.52, minimum=0.0, maximum=1.0
-)
-TAIL_CREDIT_WIDTH_RATIO_MIN = _env_float(
-    "MANGA_TAIL_CREDIT_WIDTH_RATIO_MIN", 0.34, minimum=0.0, maximum=1.0
-)
-TAIL_CREDIT_HEIGHT_RATIO_MAX = _env_float(
-    "MANGA_TAIL_CREDIT_HEIGHT_RATIO_MAX", 0.22, minimum=0.01, maximum=1.0
-)
 BUBBLE_GROUP_PAD_X = _env_int(
     "MANGA_BUBBLE_GROUP_PAD_X", 20, minimum=0, maximum=128
 )

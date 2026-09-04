@@ -51,16 +51,7 @@ from app.parameters import (
     FREE_TEXT_X_GAP,
     FREE_TEXT_Y_ALIGNMENT,
     FREE_TEXT_Y_GAP,
-    TAIL_CREDIT_HEIGHT_RATIO_MAX,
-    TAIL_CREDIT_WIDTH_RATIO_MIN,
-    TAIL_CREDIT_Y_RATIO_MIN,
     TEXT_CONF_THRESHOLD,
-    WATERMARK_EDGE_X_RATIO,
-    WATERMARK_EDGE_Y_RATIO,
-    WATERMARK_HORIZONTAL_ASPECT_MIN,
-    WATERMARK_HORIZONTAL_HEIGHT_RATIO_MAX,
-    WATERMARK_VERTICAL_ASPECT_MIN,
-    WATERMARK_VERTICAL_HEIGHT_RATIO_MAX,
 )
 
 
@@ -81,60 +72,7 @@ class CombinedTextDetector:
             for name, value in metrics.items()
         }
 
-    @staticmethod
-    def _watermark_like(box: BubbleBox, w: int, h: int) -> bool:
-        bw, bh = box.x2 - box.x1, box.y2 - box.y1
-        aspect = bw / max(1.0, float(bh))
-        edge_touch = (
-            box.x1 < w * WATERMARK_EDGE_X_RATIO
-            or box.x2 > w * (1.0 - WATERMARK_EDGE_X_RATIO)
-        )
-        vertical_edge = (
-            box.y1 < h * WATERMARK_EDGE_Y_RATIO
-            or box.y2 > h * (1.0 - WATERMARK_EDGE_Y_RATIO)
-        )
-        return bool(
-            (
-                edge_touch
-                and aspect >= WATERMARK_HORIZONTAL_ASPECT_MIN
-                and bh <= h * WATERMARK_HORIZONTAL_HEIGHT_RATIO_MAX
-            )
-            or (
-                vertical_edge
-                and aspect >= WATERMARK_VERTICAL_ASPECT_MIN
-                and bh <= h * WATERMARK_VERTICAL_HEIGHT_RATIO_MAX
-            )
-        )
-
-    @staticmethod
-    def _tail_credit_like(box: BubbleBox, w: int, h: int) -> bool:
-        """Conservative geometry for end-card/credit text on the final source tail.
-
-        This rule is deliberately context-gated by the pipeline. Applying the
-        same lower-page geometry to every slice would incorrectly downgrade
-        ordinary dialogue; on the final tail, a wide compact text block is a
-        high-risk credit/end-card candidate and must fail safe to review.
-        """
-        bw, bh = box.x2 - box.x1, box.y2 - box.y1
-        return bool(
-            box.y1 >= h * TAIL_CREDIT_Y_RATIO_MIN
-            and bw >= w * TAIL_CREDIT_WIDTH_RATIO_MIN
-            and bh <= h * TAIL_CREDIT_HEIGHT_RATIO_MAX
-        )
-
-    def _classify(
-        self, box: BubbleBox, w: int, h: int, *, protect_tail_credits: bool = False
-    ) -> BubbleBox:
-        # A detector-confirmed speech bubble may legitimately be wide and touch
-        # a page edge. Watermark geometry must not revoke verified text masks or
-        # the bounded flat-bubble fallback for that semantic class.
-        protected_text = box.semantic_type != "speech_bubble" and (
-            self._watermark_like(box, w, h)
-            or (protect_tail_credits and self._tail_credit_like(box, w, h))
-        )
-        if protected_text:
-            return replace(box, semantic_type="watermark", class_name="watermark",
-                           safe_to_inpaint=False, ocr_eligible=False, needs_review=True)
+    def _classify(self, box: BubbleBox) -> BubbleBox:
         if box.verified_mask and "text_segmenter" in box.source_model.lower():
             return replace(box, mask_source="text_segmenter", safe_to_inpaint=True,
                            ocr_eligible=True, needs_review=False)
@@ -284,9 +222,7 @@ class CombinedTextDetector:
             needs_review=False,
         )
 
-    def detect(
-        self, image: np.ndarray, *, parallel: bool = False, protect_tail_credits: bool = False
-    ) -> list[BubbleBox]:
+    def detect(self, image: np.ndarray, *, parallel: bool = False) -> list[BubbleBox]:
         started_at = time.perf_counter()
         h, w = image.shape[:2]
         if parallel:
@@ -319,14 +255,8 @@ class CombinedTextDetector:
             "total_ms": 0.0,
         }
 
-        bubble_boxes = [
-            self._classify(b, w, h, protect_tail_credits=protect_tail_credits)
-            for b in bubble_boxes
-        ]
-        text_boxes = [
-            self._classify(t, w, h, protect_tail_credits=protect_tail_credits)
-            for t in text_boxes
-        ]
+        bubble_boxes = [self._classify(b) for b in bubble_boxes]
+        text_boxes = [self._classify(t) for t in text_boxes]
         result_boxes: list[BubbleBox] = []
         used_text_boxes: set[int] = set()
 
@@ -345,9 +275,7 @@ class CombinedTextDetector:
                                  mask=merged_mask, semantic_type=b.semantic_type,
                                  mask_source="text_segmenter" if safe else "none",
                                  safe_to_inpaint=safe, ocr_eligible=True, needs_review=not safe)
-                result_boxes.append(
-                    self._classify(merged, w, h, protect_tail_credits=protect_tail_credits)
-                )
+                result_boxes.append(self._classify(merged))
                 used_text_boxes.update(i for i, _ in inside)
             else:
                 fallback = self._flat_bubble_text_fallback(image, b, w, h)
@@ -377,8 +305,7 @@ class CombinedTextDetector:
             result_boxes, iou_threshold=DETECTOR_FINAL_NMS_IOU
         )
         result = [
-            self._classify(b, w, h, protect_tail_credits=protect_tail_credits)
-            if b.source_model != "opencv_mser" else b
+            self._classify(b) if b.source_model != "opencv_mser" else b
             for b in result_boxes
         ]
         metrics["result_boxes"] = len(result)

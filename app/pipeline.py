@@ -10,7 +10,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import cv2
 import numpy as np
 from app.downloader.registry import download_chapter as fetch_chapter_images
-from app.downloader.asura import is_asura_chapter_page
 from app.downloader.slicer import OVERLAP_CONTEXT, slice_image
 from app.detector.combined_detector import CombinedTextDetector
 from app.detector.bubble_detector import BubbleBox
@@ -437,7 +436,7 @@ class ChapterPipeline:
         for item in work_items:
             (
                 idx, img_path, _excluded, _existing_boxes, stitch_core,
-                _is_final_source_tail, _snapshot,
+                _snapshot,
             ) = item
             if not isinstance(stitch_core, dict):
                 continue
@@ -658,15 +657,6 @@ class ChapterPipeline:
         with get_manifest_lock(chapter_id):
             manifest = load_manifest_raw(chapter_id)
             manifest_pages = manifest.get("pages", [])
-            source_page_ids = [
-                int(page.get("source_page", -1))
-                for page in manifest_pages
-                if isinstance(page, dict)
-            ]
-            last_source_page = max(source_page_ids, default=-1)
-            protect_asura_tail_credits = is_asura_chapter_page(
-                str(manifest.get("source_url") or "")
-            )
             work_items = []
             for idx in unique_indices:
                 if 0 <= idx < len(manifest_pages):
@@ -681,18 +671,6 @@ class ChapterPipeline:
                         stitch_core["_source_page"] = int(
                             page.get("source_page", -1)
                         )
-                    is_final_source_tail = (
-                        protect_asura_tail_credits
-                        and int(page.get("source_page", -1)) == last_source_page
-                    )
-                    if is_final_source_tail and isinstance(stitch_core, dict):
-                        try:
-                            is_final_source_tail = (
-                                int(stitch_core.get("core_source_y2", -1))
-                                >= int(stitch_core.get("source_height", 0))
-                            )
-                        except (TypeError, ValueError):
-                            is_final_source_tail = False
                     work_items.append(
                         (
                             idx,
@@ -700,7 +678,6 @@ class ChapterPipeline:
                             copy.deepcopy(page.get("excluded_regions", [])),
                             copy.deepcopy(page.get("boxes", [])),
                             stitch_core,
-                            is_final_source_tail,
                             state_snapshot,
                         )
                     )
@@ -733,7 +710,6 @@ class ChapterPipeline:
                 excluded,
                 existing_boxes,
                 stitch_core,
-                is_final_source_tail,
                 snapshot,
             ) = item
             return (
@@ -746,7 +722,6 @@ class ChapterPipeline:
                     stitch_core=stitch_core,
                     supplemental_detections=shared_seam_detections.get(idx),
                     seam_context_unavailable=idx in seam_context_unavailable,
-                    protect_tail_credits=is_final_source_tail,
                     parallel_detectors=parallel_detectors,
                 ),
                 snapshot,
@@ -1690,7 +1665,6 @@ class ChapterPipeline:
         supplemental_detections: list[BubbleBox] | None = None,
         seam_context_unavailable: bool = False,
         *,
-        protect_tail_credits: bool = False,
         parallel_detectors: bool = False,
     ) -> dict:
         started_at = time.perf_counter()
@@ -1698,8 +1672,6 @@ class ChapterPipeline:
         image = read_image(img_path)
         read_ms = (time.perf_counter() - read_started_at) * 1000.0
         detector_kwargs = {"parallel": parallel_detectors}
-        if protect_tail_credits:
-            detector_kwargs["protect_tail_credits"] = True
 
         core_bounds: tuple[int, int] | None = None
         if isinstance(stitch_core, dict):
@@ -1714,7 +1686,6 @@ class ChapterPipeline:
         use_core_detector = (
             core_bounds is not None
             and core_bounds != (0, image.shape[0])
-            and not protect_tail_credits
         )
         detect_started_at = time.perf_counter()
         if use_core_detector:
@@ -1728,7 +1699,7 @@ class ChapterPipeline:
             detected = self.detector.detect(image, **detector_kwargs)
         detector_metrics = self.detector.last_metrics()
 
-        if supplemental_detections and not protect_tail_credits:
+        if supplemental_detections:
             detected = CombinedTextDetector._apply_final_nms(
                 detected + list(supplemental_detections),
                 iou_threshold=DETECTOR_FINAL_NMS_IOU,

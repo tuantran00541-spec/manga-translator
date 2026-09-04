@@ -56,12 +56,6 @@ from app.parameters import (
     MSER_SEED_CANNY_HIGH,
     MSER_SEED_CANNY_LOW,
     MSER_SEED_CONTRAST_DELTA,
-    WATERMARK_EDGE_X_RATIO,
-    WATERMARK_EDGE_Y_RATIO,
-    WATERMARK_HORIZONTAL_ASPECT_MIN,
-    WATERMARK_HORIZONTAL_HEIGHT_RATIO_MAX,
-    WATERMARK_VERTICAL_ASPECT_MIN,
-    WATERMARK_VERTICAL_HEIGHT_RATIO_MAX,
 )
 
 
@@ -88,25 +82,6 @@ class SecondaryTextRecovery:
         aa = max(1, (a.x2 - a.x1) * (a.y2 - a.y1))
         bb = max(1, (b.x2 - b.x1) * (b.y2 - b.y1))
         return inter / float(aa + bb - inter)
-
-    @staticmethod
-    def _watermark_like(x1: int, y1: int, x2: int, y2: int, w: int, h: int) -> bool:
-        bw, bh = x2 - x1, y2 - y1
-        aspect = bw / max(1.0, float(bh))
-        edge_touch = x1 < w * WATERMARK_EDGE_X_RATIO or x2 > w * (1.0 - WATERMARK_EDGE_X_RATIO)
-        vertical_edge = y1 < h * WATERMARK_EDGE_Y_RATIO or y2 > h * (1.0 - WATERMARK_EDGE_Y_RATIO)
-        return bool(
-            (
-                edge_touch
-                and aspect >= WATERMARK_HORIZONTAL_ASPECT_MIN
-                and bh <= h * WATERMARK_HORIZONTAL_HEIGHT_RATIO_MAX
-            )
-            or (
-                vertical_edge
-                and aspect >= WATERMARK_VERTICAL_ASPECT_MIN
-                and bh <= h * WATERMARK_VERTICAL_HEIGHT_RATIO_MAX
-            )
-        )
 
     @staticmethod
     def _seed_mask(gray_crop: np.ndarray) -> np.ndarray:
@@ -321,15 +296,9 @@ class SecondaryTextRecovery:
                 semantic_type="free_text",
                 mask_source="none",
                 safe_to_inpaint=False,
-                ocr_eligible=not cls._watermark_like(px1, py1, px2, py2, w, h),
+                ocr_eligible=True,
                 needs_review=True,
             )
-            if not candidate.ocr_eligible:
-                candidate = replace(
-                    candidate,
-                    semantic_type="watermark",
-                    class_name="watermark",
-                )
             if any(
                 cls._iou(candidate, box) > MSER_RESIDUAL_EXISTING_IOU_SKIP
                 for box in existing
@@ -453,7 +422,6 @@ class SecondaryTextRecovery:
             if contained_verified >= MSER_CONTAINED_SAFE_SKIP_COUNT:
                 continue
 
-            watermark = self._watermark_like(x1, y1, x2, y2, w, h)
             crop = gray[y1:y2, x1:x2]
             mask = self._seed_mask(crop)
             ratio = float(np.count_nonzero(mask)) / float(max(1, mask.size))
@@ -463,8 +431,7 @@ class SecondaryTextRecovery:
             ):
                 continue
             safe = bool(
-                not watermark
-                and MSER_SAFE_MASK_RATIO_MIN <= ratio <= MSER_SAFE_MASK_RATIO_MAX
+                MSER_SAFE_MASK_RATIO_MIN <= ratio <= MSER_SAFE_MASK_RATIO_MAX
                 and not self._mask_component_spans_crop(mask)
                 and page_ratio <= MSER_SAFE_PAGE_AREA_RATIO_MAX
                 and len(cluster) >= MSER_SAFE_CLUSTER_MIN_REGIONS
@@ -478,13 +445,6 @@ class SecondaryTextRecovery:
                     ocr_eligible=True,
                     needs_review=False,
                     confidence=MSER_SAFE_CONFIDENCE,
-                )
-            elif watermark:
-                candidate = replace(
-                    candidate,
-                    semantic_type="watermark",
-                    class_name="watermark",
-                    ocr_eligible=False,
                 )
             out.append(candidate)
 
