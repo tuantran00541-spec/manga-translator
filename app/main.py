@@ -19,7 +19,10 @@ from app.config import (
 )
 from app.dependencies import ocr as ocr_runtime, pipeline
 from app.logging_config import logger
-from app.manifest_utils import cleanup_stale_temp_artifacts
+from app.manifest_utils import (
+    cleanup_stale_temp_artifacts,
+    recover_page_artifact_transactions,
+)
 from app.parameters import (
     FIXED_LAMA_CONCURRENT_INFERENCE,
     STALE_TEMP_MAX_AGE_SECONDS,
@@ -60,6 +63,18 @@ def _cleanup_extra_stale_artifacts(
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     ensure_directories()
+    recovered_transactions = 0
+    if PROCESSED_DIR.exists():
+        for chapter_dir in PROCESSED_DIR.iterdir():
+            if chapter_dir.is_dir():
+                recovered_transactions += recover_page_artifact_transactions(
+                    chapter_dir
+                )
+    if recovered_transactions:
+        logger.warning(
+            "Recovered {} interrupted page artifact transaction(s)",
+            recovered_transactions,
+        )
     removed_temp_artifacts = _cleanup_extra_stale_artifacts()
     for root in (PROCESSED_DIR, OUTPUT_DIR):
         if not root.exists():

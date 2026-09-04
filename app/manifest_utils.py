@@ -2,6 +2,7 @@ import copy
 import hashlib
 import json
 import os
+import shutil
 import time
 import uuid
 from contextlib import contextmanager
@@ -37,7 +38,229 @@ _STALE_TEMP_PATTERNS = (
     "manual_lama_mask_*.tmp.png",
     "page_*.rendering.*.tmp",
     "masks/**/*.tmp.png",
+    ".page-*.artifact-txn.json.*.tmp",
+    ".*.rollback",
 )
+
+_ARTIFACT_TRANSACTION_PATTERN = ".page-*.artifact-txn.json"
+
+
+def _artifact_path_under(root: Path, value: str | Path) -> Path:
+    root = root.resolve()
+    raw_path = Path(value)
+    path = (raw_path if raw_path.is_absolute() else root / raw_path).resolve()
+    try:
+        path.relative_to(root)
+    except ValueError as exc:
+        raise ValueError(f"Artifact path escapes chapter directory: {value}") from exc
+    return path
+
+
+def _manifest_page_clean_revision(
+    chapter_dir: Path, page_index: int
+) -> int | None:
+    try:
+        raw = json.loads((chapter_dir / "manifest.json").read_text(encoding="utf-8"))
+        pages = raw.get("pages") if isinstance(raw, dict) else None
+        if isinstance(pages, list) and 0 <= page_index < len(pages):
+            page = pages[page_index]
+            if isinstance(page, dict):
+                return int(page.get("clean_revision") or 0)
+    except (OSError, TypeError, ValueError):
+        pass
+    return None
+
+
+class PageArtifactTransaction:
+    """Keep page artifacts consistent with an atomic manifest revision update."""
+
+    def __init__(
+        self,
+        chapter_dir: Path,
+        page_index: int,
+        paths: list[Path],
+        target_clean_revision: int,
+    ) -> None:
+        self.chapter_dir = Path(chapter_dir).resolve()
+        self.page_index = int(page_index)
+        self.target_clean_revision = int(target_clean_revision)
+        if self.page_index < 0 or self.target_clean_revision < 1:
+            raise ValueError("Invalid page artifact transaction revision")
+        unique: dict[str, Path] = {}
+        for value in paths:
+            path = _artifact_path_under(self.chapter_dir, value)
+            unique[str(path)] = path
+        self.paths = list(unique.values())
+        self.transaction_id = uuid.uuid4().hex
+        self.journal_path = self.chapter_dir / (
+            f".page-{self.page_index:04d}.{self.transaction_id}.artifact-txn.json"
+        )
+        self.records: list[dict[str, object]] = []
+        self._closed = False
+
+    def _cleanup_backups(self) -> None:
+        for record in self.records:
+            backup_value = record.get("backup")
+            if not backup_value:
+                continue
+            try:
+                _artifact_path_under(self.chapter_dir, str(backup_value)).unlink(
+                    missing_ok=True
+                )
+            except OSError:
+                pass
+
+    def _write_journal(self) -> None:
+        tmp_path = self.journal_path.with_name(
+            f"{self.journal_path.name}.{uuid.uuid4().hex}.tmp"
+        )
+        payload = {
+            "version": 1,
+            "page_index": self.page_index,
+            "target_clean_revision": self.target_clean_revision,
+            "artifacts": self.records,
+        }
+        try:
+            with tmp_path.open("w", encoding="utf-8") as output:
+                json.dump(payload, output, ensure_ascii=False, separators=(",", ":"))
+                output.flush()
+                os.fsync(output.fileno())
+            os.replace(tmp_path, self.journal_path)
+        finally:
+            tmp_path.unlink(missing_ok=True)
+
+    def __enter__(self) -> "PageArtifactTransaction":
+        self.chapter_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            for path in self.paths:
+                if path.is_symlink():
+                    raise ValueError(f"Refusing symlink page artifact: {path}")
+                existed = path.is_file()
+                backup: Path | None = None
+                if existed:
+                    backup = self.chapter_dir / (
+                        f".{path.name}.{self.transaction_id}.rollback"
+                    )
+                    try:
+                        os.link(path, backup)
+                    except OSError:
+                        shutil.copy2(path, backup)
+                self.records.append(
+                    {
+                        "path": path.relative_to(self.chapter_dir).as_posix(),
+                        "existed": existed,
+                        "backup": (
+                            backup.relative_to(self.chapter_dir).as_posix()
+                            if backup is not None
+                            else None
+                        ),
+                    }
+                )
+            self._write_journal()
+        except Exception:
+            self._cleanup_backups()
+            self.journal_path.unlink(missing_ok=True)
+            raise
+        return self
+
+    def commit(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        self._cleanup_backups()
+        try:
+            self.journal_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+    def rollback(self) -> bool:
+        if self._closed:
+            return True
+        restored = True
+        for record in self.records:
+            try:
+                path = _artifact_path_under(self.chapter_dir, str(record["path"]))
+                backup_value = record.get("backup")
+                if backup_value:
+                    backup = _artifact_path_under(
+                        self.chapter_dir, str(backup_value)
+                    )
+                    if backup.is_file():
+                        path.unlink(missing_ok=True)
+                        os.replace(backup, path)
+                elif not bool(record.get("existed")):
+                    path.unlink(missing_ok=True)
+            except (KeyError, TypeError, ValueError, OSError):
+                restored = False
+        if not restored:
+            # Keep both the journal and any remaining backups so startup
+            # recovery can retry instead of turning a transient I/O failure
+            # into permanent artifact loss.
+            return False
+        try:
+            self.journal_path.unlink(missing_ok=True)
+        except OSError:
+            return False
+        self._closed = True
+        self._cleanup_backups()
+        return True
+
+    def __exit__(self, exc_type, exc, traceback) -> None:
+        if not self._closed:
+            current_revision = _manifest_page_clean_revision(
+                self.chapter_dir, self.page_index
+            )
+            if current_revision is None:
+                return
+            if current_revision >= self.target_clean_revision:
+                self.commit()
+            else:
+                self.rollback()
+
+
+def recover_page_artifact_transactions(chapter_dir: Path) -> int:
+    """Resolve crash-left page transactions using the committed clean revision."""
+    chapter_dir = Path(chapter_dir).resolve()
+    if not chapter_dir.is_dir():
+        return 0
+    recovered = 0
+    for journal_path in chapter_dir.glob(_ARTIFACT_TRANSACTION_PATTERN):
+        try:
+            payload = json.loads(journal_path.read_text(encoding="utf-8"))
+            page_index = int(payload["page_index"])
+            target_revision = int(payload["target_clean_revision"])
+            records = payload["artifacts"]
+            if page_index < 0 or target_revision < 1 or not isinstance(records, list):
+                continue
+            current_revision = _manifest_page_clean_revision(
+                chapter_dir, page_index
+            )
+            if current_revision is None:
+                continue
+            committed = current_revision >= target_revision
+            for record in records:
+                if not isinstance(record, dict) or "path" not in record:
+                    raise ValueError("Invalid artifact transaction record")
+                path = _artifact_path_under(chapter_dir, str(record["path"]))
+                backup_value = record.get("backup")
+                backup = (
+                    _artifact_path_under(chapter_dir, str(backup_value))
+                    if backup_value
+                    else None
+                )
+                if committed:
+                    if backup is not None:
+                        backup.unlink(missing_ok=True)
+                elif backup is not None and backup.is_file():
+                    path.unlink(missing_ok=True)
+                    os.replace(backup, path)
+                elif not bool(record.get("existed")):
+                    path.unlink(missing_ok=True)
+            journal_path.unlink(missing_ok=True)
+            recovered += 1
+        except (KeyError, TypeError, ValueError, OSError):
+            continue
+    return recovered
 
 
 def cleanup_stale_temp_artifacts(
@@ -55,6 +278,14 @@ def cleanup_stale_temp_artifacts(
     cutoff = (time.time() if now is None else float(now)) - float(max_age_seconds)
     removed = 0
     seen: set[Path] = set()
+    active_transaction_ids = {
+        parts[2]
+        for journal_path in directory.glob(_ARTIFACT_TRANSACTION_PATTERN)
+        if len(parts := journal_path.name.split(".")) == 5
+        and parts[2]
+        and parts[3] == "artifact-txn"
+        and parts[4] == "json"
+    }
     for pattern in _STALE_TEMP_PATTERNS:
         for path in directory.glob(pattern):
             if path in seen:
@@ -62,6 +293,11 @@ def cleanup_stale_temp_artifacts(
             seen.add(path)
             try:
                 if path.is_symlink() or not path.is_file():
+                    continue
+                if path.name.endswith(".rollback") and any(
+                    path.name.endswith(f".{transaction_id}.rollback")
+                    for transaction_id in active_transaction_ids
+                ):
                     continue
                 if path.stat().st_mtime > cutoff:
                     continue

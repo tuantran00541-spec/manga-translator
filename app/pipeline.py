@@ -37,6 +37,7 @@ from app.manifest_utils import (
     is_processing_state_current,
     load_manifest_raw,
     new_box_id,
+    PageArtifactTransaction,
     save_manifest_raw,
 )
 from app.security import MAX_IMAGE_PIXELS, MAX_UPLOAD_FILE_BYTES, MAX_UPLOAD_FILES, MAX_UPLOAD_TOTAL_BYTES, validate_upload_image
@@ -581,51 +582,60 @@ class ChapterPipeline:
 
                 target_page = pages[page_index]
                 orig_path = Path(target_page["original"])
+                final_clean_path = processed_dir / f"clean_{orig_path.name}"
+                auto_clean_path = self._auto_clean_path(processed_dir, orig_path)
+                target_clean_revision = int(target_page.get("clean_revision") or 0) + 1
+                with PageArtifactTransaction(
+                    processed_dir,
+                    page_index,
+                    [final_clean_path, auto_clean_path],
+                    target_clean_revision,
+                ) as artifact_tx:
+                    if tmp_clean_path and tmp_clean_path.exists():
+                        os.replace(tmp_clean_path, final_clean_path)
+                        target_page["clean"] = final_clean_path.as_posix()
 
-                if tmp_clean_path and tmp_clean_path.exists():
-                    final_clean_path = processed_dir / f"clean_{orig_path.name}"
-                    os.replace(tmp_clean_path, final_clean_path)
-                    target_page["clean"] = final_clean_path.as_posix()
+                    if tmp_auto_clean_path and tmp_auto_clean_path.exists():
+                        os.replace(tmp_auto_clean_path, auto_clean_path)
 
-                if tmp_auto_clean_path and tmp_auto_clean_path.exists():
-                    os.replace(
-                        tmp_auto_clean_path,
-                        self._auto_clean_path(processed_dir, orig_path),
+                    existing_boxes = target_page.get("boxes", [])
+                    detected_boxes = assign_stable_detector_box_ids(
+                        page_data["boxes"], existing_boxes
                     )
+                    manual_boxes = [b for b in existing_boxes if b.get("manual")]
+                    committed_boxes = detected_boxes + manual_boxes
+                    target_page["boxes"] = committed_boxes
+                    target_page["detection_state"] = page_data.get(
+                        "detection_state", "verified"
+                    )
+                    target_page["detection_issues"] = list(
+                        page_data.get("detection_issues") or []
+                    )
+                    target_page["unverified_regions"] = list(
+                        page_data.get("unverified_regions") or []
+                    )
+                    target_page["needs_review"] = bool(page_data.get("needs_review"))
+                    target_page["processing_metrics"] = dict(
+                        page_data.get("processing_metrics") or {}
+                    )
+                    bump_page_revision(target_page, "process_revision")
+                    clean_revision = bump_page_revision(
+                        target_page, "clean_revision"
+                    )
+                    if clean_revision != target_clean_revision:
+                        raise RuntimeError("Page clean revision changed during commit")
 
-                existing_boxes = target_page.get("boxes", [])
-                detected_boxes = assign_stable_detector_box_ids(
-                    page_data["boxes"], existing_boxes
-                )
-                manual_boxes = [b for b in existing_boxes if b.get("manual")]
-                committed_boxes = detected_boxes + manual_boxes
-                target_page["boxes"] = committed_boxes
-                target_page["detection_state"] = page_data.get(
-                    "detection_state", "verified"
-                )
-                target_page["detection_issues"] = list(
-                    page_data.get("detection_issues") or []
-                )
-                target_page["unverified_regions"] = list(
-                    page_data.get("unverified_regions") or []
-                )
-                target_page["needs_review"] = bool(page_data.get("needs_review"))
-                target_page["processing_metrics"] = dict(
-                    page_data.get("processing_metrics") or {}
-                )
-                bump_page_revision(target_page, "process_revision")
-                bump_page_revision(target_page, "clean_revision")
+                    for mask_field in ("manual_mask", "manual_lama_mask"):
+                        if mask_field in page_data:
+                            target_page[mask_field] = page_data[mask_field]
+                        else:
+                            target_page.pop(mask_field, None)
 
-                for mask_field in ("manual_mask", "manual_lama_mask"):
-                    if mask_field in page_data:
-                        target_page[mask_field] = page_data[mask_field]
-                    else:
-                        target_page.pop(mask_field, None)
-
-                invalidate_page_render(manifest, page_index)
-                save_manifest_raw(chapter_id, manifest)
-                self._sync_output_dir(chapter_id, manifest, [page_index])
-                return True
+                    invalidate_page_render(manifest, page_index)
+                    save_manifest_raw(chapter_id, manifest)
+                    artifact_tx.commit()
+                    self._sync_output_dir(chapter_id, manifest, [page_index])
+                    return True
         finally:
             for tmp_path in (tmp_clean_path, tmp_auto_clean_path):
                 if tmp_path and tmp_path.exists():
@@ -924,27 +934,38 @@ class ChapterPipeline:
                 boxes_snapshot.append(copy.deepcopy(new_box))
                 manual_mask_posix = target_page.get("manual_mask")
                 manual_lama_mask_posix = target_page.get("manual_lama_mask")
+                target_clean_revision = int(
+                    target_page.get("clean_revision") or 0
+                ) + 1
 
-            clean_path_posix = self._do_reinpaint(
-                processed_dir,
-                img_path,
-                image,
-                boxes_snapshot,
-                manual_mask_posix=manual_mask_posix,
-                manual_lama_mask_posix=manual_lama_mask_posix,
-            )
+            with self._page_artifact_transaction(
+                processed_dir, img_path, page_index, target_clean_revision
+            ) as artifact_tx:
+                clean_path_posix = self._do_reinpaint(
+                    processed_dir,
+                    img_path,
+                    image,
+                    boxes_snapshot,
+                    manual_mask_posix=manual_mask_posix,
+                    manual_lama_mask_posix=manual_lama_mask_posix,
+                )
 
-            with get_manifest_lock(chapter_id):
-                manifest = load_manifest_raw(chapter_id)
-                if page_index < 0 or page_index >= len(manifest.get("pages", [])):
-                    raise ValueError(f"Chapter {chapter_id}: Invalid page_index {page_index}")
-                target_page = manifest["pages"][page_index]
-                target_page.setdefault("boxes", []).append(new_box)
-                target_page["clean"] = clean_path_posix
-                bump_page_revision(target_page, "clean_revision")
-                invalidate_page_render(manifest, page_index)
-                save_manifest_raw(chapter_id, manifest)
-                self._sync_output_dir(chapter_id, manifest, [page_index])
+                with get_manifest_lock(chapter_id):
+                    manifest = load_manifest_raw(chapter_id)
+                    if page_index < 0 or page_index >= len(manifest.get("pages", [])):
+                        raise ValueError(f"Chapter {chapter_id}: Invalid page_index {page_index}")
+                    target_page = manifest["pages"][page_index]
+                    target_page.setdefault("boxes", []).append(new_box)
+                    target_page["clean"] = clean_path_posix
+                    clean_revision = bump_page_revision(
+                        target_page, "clean_revision"
+                    )
+                    if clean_revision != target_clean_revision:
+                        raise RuntimeError("Page clean revision changed during repaint")
+                    invalidate_page_render(manifest, page_index)
+                    save_manifest_raw(chapter_id, manifest)
+                    artifact_tx.commit()
+                    self._sync_output_dir(chapter_id, manifest, [page_index])
             return manifest
 
     def update_box(
@@ -1009,37 +1030,48 @@ class ChapterPipeline:
                 self._apply_box_geometry(boxes_snapshot[box_index], new_geometry)
                 manual_mask_posix = target_page.get("manual_mask")
                 manual_lama_mask_posix = target_page.get("manual_lama_mask")
+                target_clean_revision = int(
+                    target_page.get("clean_revision") or 0
+                ) + 1
 
-            clean_path_posix = self._do_reinpaint(
-                processed_dir,
-                img_path,
-                image,
-                boxes_snapshot,
-                manual_mask_posix=manual_mask_posix,
-                manual_lama_mask_posix=manual_lama_mask_posix,
-            )
+            with self._page_artifact_transaction(
+                processed_dir, img_path, page_index, target_clean_revision
+            ) as artifact_tx:
+                clean_path_posix = self._do_reinpaint(
+                    processed_dir,
+                    img_path,
+                    image,
+                    boxes_snapshot,
+                    manual_mask_posix=manual_mask_posix,
+                    manual_lama_mask_posix=manual_lama_mask_posix,
+                )
 
-            with get_manifest_lock(chapter_id):
-                manifest = load_manifest_raw(chapter_id)
-                if page_index < 0 or page_index >= len(manifest.get("pages", [])):
-                    raise ValueError(f"Chapter {chapter_id}: Invalid page_index {page_index}")
-                target_page = manifest["pages"][page_index]
-                target_boxes = target_page.get("boxes", [])
-                if box_index < 0 or box_index >= len(target_boxes):
-                    raise ValueError(
-                        f"Chapter {chapter_id} page {page_index}: Invalid box_index {box_index}"
+                with get_manifest_lock(chapter_id):
+                    manifest = load_manifest_raw(chapter_id)
+                    if page_index < 0 or page_index >= len(manifest.get("pages", [])):
+                        raise ValueError(f"Chapter {chapter_id}: Invalid page_index {page_index}")
+                    target_page = manifest["pages"][page_index]
+                    target_boxes = target_page.get("boxes", [])
+                    if box_index < 0 or box_index >= len(target_boxes):
+                        raise ValueError(
+                            f"Chapter {chapter_id} page {page_index}: Invalid box_index {box_index}"
+                        )
+                    if expected_box_id and target_boxes[box_index].get("id") != expected_box_id:
+                        raise RuntimeError(
+                            f"Chapter {chapter_id} page {page_index}: Box changed during geometry repaint"
+                        )
+
+                    self._apply_box_geometry(target_boxes[box_index], new_geometry)
+                    target_page["clean"] = clean_path_posix
+                    clean_revision = bump_page_revision(
+                        target_page, "clean_revision"
                     )
-                if expected_box_id and target_boxes[box_index].get("id") != expected_box_id:
-                    raise RuntimeError(
-                        f"Chapter {chapter_id} page {page_index}: Box changed during geometry repaint"
-                    )
-
-                self._apply_box_geometry(target_boxes[box_index], new_geometry)
-                target_page["clean"] = clean_path_posix
-                bump_page_revision(target_page, "clean_revision")
-                invalidate_page_render(manifest, page_index)
-                save_manifest_raw(chapter_id, manifest)
-                self._sync_output_dir(chapter_id, manifest, [page_index])
+                    if clean_revision != target_clean_revision:
+                        raise RuntimeError("Page clean revision changed during repaint")
+                    invalidate_page_render(manifest, page_index)
+                    save_manifest_raw(chapter_id, manifest)
+                    artifact_tx.commit()
+                    self._sync_output_dir(chapter_id, manifest, [page_index])
             return manifest
 
     def remove_box(self, chapter_id: str, page_index: int, box_index: int) -> dict:
@@ -1060,32 +1092,41 @@ class ChapterPipeline:
                 manual_lama_mask_posix = page.get("manual_lama_mask")
                 boxes_snapshot = copy.deepcopy(boxes)
                 boxes_snapshot[box_index]["removed"] = True
+                target_clean_revision = int(page.get("clean_revision") or 0) + 1
 
             image = read_image(img_path)
-            clean_path_posix = self._do_reinpaint(
-                processed_dir,
-                img_path,
-                image,
-                boxes_snapshot,
-                manual_mask_posix=manual_mask_posix,
-                manual_lama_mask_posix=manual_lama_mask_posix,
-            )
+            with self._page_artifact_transaction(
+                processed_dir, img_path, page_index, target_clean_revision
+            ) as artifact_tx:
+                clean_path_posix = self._do_reinpaint(
+                    processed_dir,
+                    img_path,
+                    image,
+                    boxes_snapshot,
+                    manual_mask_posix=manual_mask_posix,
+                    manual_lama_mask_posix=manual_lama_mask_posix,
+                )
 
-            with get_manifest_lock(chapter_id):
-                manifest = load_manifest_raw(chapter_id)
-                if page_index < 0 or page_index >= len(manifest.get("pages", [])):
-                    raise ValueError("Invalid page index")
-                target_page = manifest["pages"][page_index]
-                target_boxes = target_page.get("boxes", [])
-                if box_index < 0 or box_index >= len(target_boxes):
-                    raise ValueError("Invalid box index")
+                with get_manifest_lock(chapter_id):
+                    manifest = load_manifest_raw(chapter_id)
+                    if page_index < 0 or page_index >= len(manifest.get("pages", [])):
+                        raise ValueError("Invalid page index")
+                    target_page = manifest["pages"][page_index]
+                    target_boxes = target_page.get("boxes", [])
+                    if box_index < 0 or box_index >= len(target_boxes):
+                        raise ValueError("Invalid box index")
 
-                target_boxes[box_index]["removed"] = True
-                target_page["clean"] = clean_path_posix
-                bump_page_revision(target_page, "clean_revision")
-                invalidate_page_render(manifest, page_index)
-                save_manifest_raw(chapter_id, manifest)
-                self._sync_output_dir(chapter_id, manifest, [page_index])
+                    target_boxes[box_index]["removed"] = True
+                    target_page["clean"] = clean_path_posix
+                    clean_revision = bump_page_revision(
+                        target_page, "clean_revision"
+                    )
+                    if clean_revision != target_clean_revision:
+                        raise RuntimeError("Page clean revision changed during repaint")
+                    invalidate_page_render(manifest, page_index)
+                    save_manifest_raw(chapter_id, manifest)
+                    artifact_tx.commit()
+                    self._sync_output_dir(chapter_id, manifest, [page_index])
             return manifest
 
     def repaint_mask(
@@ -1106,6 +1147,7 @@ class ChapterPipeline:
                 page = manifest["pages"][page_index]
                 img_path = Path(page["original"])
                 boxes_snapshot = copy.deepcopy(page.get("boxes", []))
+                target_clean_revision = int(page.get("clean_revision") or 0) + 1
                 manual_mask_posix = page.get("manual_mask")
                 manual_lama_mask_posix = page.get("manual_lama_mask")
                 clean_posix = page.get("clean")
@@ -1125,21 +1167,6 @@ class ChapterPipeline:
                     processed_dir, img_path, force_lama=True
                 )
             )
-
-            auto_clean_path = self._auto_clean_path(processed_dir, img_path)
-            if (
-                not auto_clean_path.exists()
-                and not manual_mask_path.exists()
-                and not manual_lama_mask_path.exists()
-            ):
-                clean_path = Path(clean_posix) if clean_posix else None
-                if clean_path is not None and clean_path.exists():
-                    try:
-                        cached = read_image(clean_path)
-                        if cached.shape[:2] == (img_h, img_w):
-                            self._write_auto_clean_cache(processed_dir, img_path, cached)
-                    except Exception as exc:
-                        logger.warning("Could not seed auto-clean cache from {}: {}", clean_path, exc)
 
             bin_mask = (
                 (mask > MANUAL_MASK_THRESHOLD).astype(np.uint8) * 255
@@ -1172,55 +1199,88 @@ class ChapterPipeline:
             if accumulated_mask is not None:
                 write_image(tmp_mask_path, accumulated_mask)
 
-            try:
-                standard_mask_for_repaint = (
-                    tmp_mask_path.as_posix()
-                    if accumulated_mask is not None and not force_lama
-                    else manual_mask_posix
-                )
-                lama_mask_for_repaint = (
-                    tmp_mask_path.as_posix()
-                    if accumulated_mask is not None and force_lama
-                    else manual_lama_mask_posix
-                )
-                clean_path_posix = self._do_reinpaint(
-                    processed_dir,
-                    img_path,
-                    image,
-                    boxes_snapshot,
-                    manual_mask_posix=standard_mask_for_repaint,
-                    manual_lama_mask_posix=lama_mask_for_repaint,
-                    reuse_auto_clean=True,
-                )
-                if accumulated_mask is not None:
-                    final_mask_path = self._manual_mask_path(
-                        processed_dir, img_path, force_lama=force_lama
-                    )
-                    os.replace(tmp_mask_path, final_mask_path)
-                    target_mask_posix = final_mask_path.as_posix()
-                else:
-                    target_mask_posix = None
-            finally:
-                if tmp_mask_path.exists():
-                    try:
-                        tmp_mask_path.unlink()
-                    except OSError:
-                        pass
+            final_mask_path = self._manual_mask_path(
+                processed_dir, img_path, force_lama=force_lama
+            )
+            with self._page_artifact_transaction(
+                processed_dir,
+                img_path,
+                page_index,
+                target_clean_revision,
+                [final_mask_path],
+            ) as artifact_tx:
+                auto_clean_path = self._auto_clean_path(processed_dir, img_path)
+                if (
+                    not auto_clean_path.exists()
+                    and not manual_mask_path.exists()
+                    and not manual_lama_mask_path.exists()
+                ):
+                    clean_path = Path(clean_posix) if clean_posix else None
+                    if clean_path is not None and clean_path.exists():
+                        try:
+                            cached = read_image(clean_path)
+                            if cached.shape[:2] == (img_h, img_w):
+                                self._write_auto_clean_cache(
+                                    processed_dir, img_path, cached
+                                )
+                        except Exception as exc:
+                            logger.warning(
+                                "Could not seed auto-clean cache from {}: {}",
+                                clean_path,
+                                exc,
+                            )
 
-            with get_manifest_lock(chapter_id):
-                manifest = load_manifest_raw(chapter_id)
-                if page_index < 0 or page_index >= len(manifest.get("pages", [])):
-                    raise ValueError(f"Chapter {chapter_id}: Invalid page index {page_index}")
-                target_page = manifest["pages"][page_index]
-                if target_mask_posix:
-                    target_page[target_field] = target_mask_posix
-                else:
-                    target_page.pop(target_field, None)
-                target_page["clean"] = clean_path_posix
-                bump_page_revision(target_page, "clean_revision")
-                invalidate_page_render(manifest, page_index)
-                save_manifest_raw(chapter_id, manifest)
-                self._sync_output_dir(chapter_id, manifest, [page_index])
+                try:
+                    standard_mask_for_repaint = (
+                        tmp_mask_path.as_posix()
+                        if accumulated_mask is not None and not force_lama
+                        else manual_mask_posix
+                    )
+                    lama_mask_for_repaint = (
+                        tmp_mask_path.as_posix()
+                        if accumulated_mask is not None and force_lama
+                        else manual_lama_mask_posix
+                    )
+                    clean_path_posix = self._do_reinpaint(
+                        processed_dir,
+                        img_path,
+                        image,
+                        boxes_snapshot,
+                        manual_mask_posix=standard_mask_for_repaint,
+                        manual_lama_mask_posix=lama_mask_for_repaint,
+                        reuse_auto_clean=True,
+                    )
+                    if accumulated_mask is not None:
+                        os.replace(tmp_mask_path, final_mask_path)
+                        target_mask_posix = final_mask_path.as_posix()
+                    else:
+                        target_mask_posix = None
+                finally:
+                    if tmp_mask_path.exists():
+                        try:
+                            tmp_mask_path.unlink()
+                        except OSError:
+                            pass
+
+                with get_manifest_lock(chapter_id):
+                    manifest = load_manifest_raw(chapter_id)
+                    if page_index < 0 or page_index >= len(manifest.get("pages", [])):
+                        raise ValueError(f"Chapter {chapter_id}: Invalid page index {page_index}")
+                    target_page = manifest["pages"][page_index]
+                    if target_mask_posix:
+                        target_page[target_field] = target_mask_posix
+                    else:
+                        target_page.pop(target_field, None)
+                    target_page["clean"] = clean_path_posix
+                    clean_revision = bump_page_revision(
+                        target_page, "clean_revision"
+                    )
+                    if clean_revision != target_clean_revision:
+                        raise RuntimeError("Page clean revision changed during repaint")
+                    invalidate_page_render(manifest, page_index)
+                    save_manifest_raw(chapter_id, manifest)
+                    artifact_tx.commit()
+                    self._sync_output_dir(chapter_id, manifest, [page_index])
             return manifest
 
     def reset_manual_mask(self, chapter_id: str, page_index: int) -> dict:
@@ -1234,6 +1294,7 @@ class ChapterPipeline:
                 page = manifest["pages"][page_index]
                 img_path = Path(page["original"])
                 boxes_snapshot = copy.deepcopy(page.get("boxes", []))
+                target_clean_revision = int(page.get("clean_revision") or 0) + 1
 
             manual_mask_path = self._manual_mask_path(processed_dir, img_path)
             manual_lama_mask_path = self._manual_mask_path(
@@ -1241,38 +1302,50 @@ class ChapterPipeline:
             )
 
             image = read_image(img_path)
-            clean_path_posix = self._do_reinpaint(
+            with self._page_artifact_transaction(
                 processed_dir,
                 img_path,
-                image,
-                boxes_snapshot,
-                manual_mask_posix=None,
-                manual_lama_mask_posix=None,
-                reuse_auto_clean=True,
-                apply_manual_mask=False,
-            )
+                page_index,
+                target_clean_revision,
+                [manual_mask_path, manual_lama_mask_path],
+            ) as artifact_tx:
+                clean_path_posix = self._do_reinpaint(
+                    processed_dir,
+                    img_path,
+                    image,
+                    boxes_snapshot,
+                    manual_mask_posix=None,
+                    manual_lama_mask_posix=None,
+                    reuse_auto_clean=True,
+                    apply_manual_mask=False,
+                )
 
-            for mask_path in (manual_mask_path, manual_lama_mask_path):
-                if mask_path.exists():
-                    try:
-                        mask_path.unlink()
-                    except OSError as exc:
-                        raise RuntimeError(
-                            f"Cannot remove manual mask: {exc}"
-                        ) from exc
+                for mask_path in (manual_mask_path, manual_lama_mask_path):
+                    if mask_path.exists():
+                        try:
+                            mask_path.unlink()
+                        except OSError as exc:
+                            raise RuntimeError(
+                                f"Cannot remove manual mask: {exc}"
+                            ) from exc
 
-            with get_manifest_lock(chapter_id):
-                manifest = load_manifest_raw(chapter_id)
-                if page_index < 0 or page_index >= len(manifest.get("pages", [])):
-                    raise ValueError("Invalid page index")
-                target_page = manifest["pages"][page_index]
-                target_page.pop("manual_mask", None)
-                target_page.pop("manual_lama_mask", None)
-                target_page["clean"] = clean_path_posix
-                bump_page_revision(target_page, "clean_revision")
-                invalidate_page_render(manifest, page_index)
-                save_manifest_raw(chapter_id, manifest)
-                self._sync_output_dir(chapter_id, manifest, [page_index])
+                with get_manifest_lock(chapter_id):
+                    manifest = load_manifest_raw(chapter_id)
+                    if page_index < 0 or page_index >= len(manifest.get("pages", [])):
+                        raise ValueError("Invalid page index")
+                    target_page = manifest["pages"][page_index]
+                    target_page.pop("manual_mask", None)
+                    target_page.pop("manual_lama_mask", None)
+                    target_page["clean"] = clean_path_posix
+                    clean_revision = bump_page_revision(
+                        target_page, "clean_revision"
+                    )
+                    if clean_revision != target_clean_revision:
+                        raise RuntimeError("Page clean revision changed during repaint")
+                    invalidate_page_render(manifest, page_index)
+                    save_manifest_raw(chapter_id, manifest)
+                    artifact_tx.commit()
+                    self._sync_output_dir(chapter_id, manifest, [page_index])
             return manifest
 
     def create_text_object(
@@ -1409,6 +1482,26 @@ class ChapterPipeline:
     @staticmethod
     def _auto_clean_path(processed_dir: Path, img_path: Path) -> Path:
         return processed_dir / f"auto_clean_{img_path.name}"
+
+    def _page_artifact_transaction(
+        self,
+        processed_dir: Path,
+        img_path: Path,
+        page_index: int,
+        target_clean_revision: int,
+        extra_paths: list[Path] | None = None,
+    ) -> PageArtifactTransaction:
+        paths = [
+            processed_dir / f"clean_{img_path.name}",
+            self._auto_clean_path(processed_dir, img_path),
+        ]
+        paths.extend(extra_paths or [])
+        return PageArtifactTransaction(
+            processed_dir,
+            page_index,
+            paths,
+            target_clean_revision,
+        )
 
     @staticmethod
     def _manual_mask_path(
