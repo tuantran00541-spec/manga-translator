@@ -1,0 +1,204 @@
+name: Qwen3.8 exact Q6 persistent row-pool A-B
+
+on:
+  push:
+    branches:
+      - research/qwen3.8-27b-runtime-finish
+    paths:
+      - research/qwen38/q6_persistent_pool_exact.c
+      - research/qwen38/q6_persistent_pool_runtime.py
+      - research/qwen38/qwen38_q6_persistent_pool_exact_probe.py
+      - .github/workflows/qwen38-q6-persistent-pool-exact.yml
+  workflow_dispatch:
+
+jobs:
+  q6-persistent-pool-exact:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 32
+    env:
+      HF_HUB_DISABLE_TELEMETRY: "1"
+      QWEN_REVISION: 1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0
+      QWEN_GGUF_SHA256: a487690b9f17de581857c4ae484dab50800335bb9eb978a4fb02c0465629dc0a
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set evidence paths
+        shell: bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          echo "K3_WORK=$RUNNER_TEMP/qwen38-q6-persistent-pool-k3" >> "$GITHUB_ENV"
+          echo "EVIDENCE=$RUNNER_TEMP/qwen38-q6-persistent-pool-evidence" >> "$GITHUB_ENV"
+
+      - name: Compile and run synthetic exact Q6 persistent-pool gate
+        shell: bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            research/qwen38/q6_persistent_pool_runtime.py \
+            research/qwen38/qwen38_q6_persistent_pool_exact_probe.py
+          PYTHONPATH=research/qwen38 python -u \
+            research/qwen38/qwen38_q6_persistent_pool_exact_probe.py sanity
+          cc -O3 -std=c11 -mavx2 -fno-fast-math -ffp-contract=off -pthread \
+            -DQWEN_Q6_PERSISTENT_POOL_SELFTEST \
+            research/qwen38/q6_persistent_pool_exact.c -lm \
+            -o "$RUNNER_TEMP/qwen_q6_persistent_pool_selftest"
+          "$RUNNER_TEMP/qwen_q6_persistent_pool_selftest" \
+            2>&1 | tee "$RUNNER_TEMP/qwen-q6-persistent-pool-synthetic.log"
+          grep -F "QWEN38_Q6_PERSISTENT_POOL_BITWISE_PASS" \
+            "$RUNNER_TEMP/qwen-q6-persistent-pool-synthetic.log"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Runner CPU and storage information
+        run: |
+          lscpu
+          df -h
+          free -h
+
+      - name: Reclaim disk
+        shell: bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup || true
+          docker system prune -af || true
+          df -h
+          free -h
+
+      - name: Install runtime dependencies
+        run: python -m pip install --no-cache-dir huggingface_hub hf_xet
+
+      - name: Download and hash pinned GGUF
+        shell: bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          set -euo pipefail
+          MODEL=$(python - <<'PY'
+          from huggingface_hub import hf_hub_download
+          print(hf_hub_download("bartowski/Qwen3.8-27B-GGUF", filename="Qwen3.8-27B-Q6_K_L.gguf", local_dir="${{ runner.temp }}/qwen38-model"))
+          PY
+          )
+          echo "$QWEN_GGUF_SHA256  $MODEL" | sha256sum -c -
+          echo "MODEL=$MODEL" >> "$GITHUB_ENV"
+
+      - name: Validate pinned decoder inventory
+        shell: bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          set -euo pipefail
+          mkdir -p "$EVIDENCE"
+          PYTHONPATH=research/qwen38 python -u research/qwen38/qwen35_gguf_decoder_contract.py real \
+            --model "$MODEL" --output "$EVIDENCE/inventory.json" 2>&1 | tee "$EVIDENCE/inventory.log"
+
+      - name: Compile exact current-best and Q6 pool bridges
+        shell: bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          set -euo pipefail
+          cc -O3 -std=c11 -mavx2 -fno-fast-math -ffp-contract=off -fPIC -shared \
+            research/qwen38/gguf_quant_matvec_many_bridge.c -lm -o "$RUNNER_TEMP/libqwen_quant_base.so"
+          cc -O3 -std=c11 -mavx2 -fno-fast-math -ffp-contract=off -fPIC -shared \
+            research/qwen38/gguf_quant_matvec_many_noalloc_bridge.c -lm -o "$RUNNER_TEMP/libqwen_quant_many_noalloc.so"
+          cc -O3 -std=c11 -mavx2 -fno-fast-math -ffp-contract=off -fPIC -shared -pthread \
+            research/qwen38/q6_persistent_pool_exact.c -lm -o "$RUNNER_TEMP/libqwen_q6_persistent_pool.so"
+          cc -O2 -std=c11 -fno-fast-math -ffp-contract=off -fPIC -shared \
+            research/qwen38/gdn_state_ar.c -lm -o "$RUNNER_TEMP/libqwen_gdn_serial.so"
+          cc -O2 -std=c11 -fno-fast-math -ffp-contract=off -fPIC -shared \
+            research/qwen38/gdn_state_ar.c research/qwen38/gdn_state_batch_exact.c \
+            -lm -o "$RUNNER_TEMP/libqwen_gdn_batch.so"
+          cc -O3 -std=c11 -fno-fast-math -fno-associative-math -ffp-contract=off -fPIC -shared \
+            research/qwen38/f32_fsum_matvec.c -lm -o "$RUNNER_TEMP/libqwen_f32_fsum.so"
+          cc -O3 -std=c11 -fno-fast-math -fno-associative-math -ffp-contract=off -fPIC -shared \
+            research/qwen38/attention_core_exact.c -lm -o "$RUNNER_TEMP/libqwen_attention_exact.so"
+          cc -O3 -std=c11 -fno-fast-math -fno-associative-math -ffp-contract=off -fno-tree-vectorize -fPIC -shared \
+            research/qwen38/gdn_conv_silu_exact.c -lm -o "$RUNNER_TEMP/libqwen_gdn_conv_exact.so"
+          cc -O3 -std=c11 -fno-fast-math -fno-associative-math -ffp-contract=off -fno-tree-vectorize -fPIC -shared \
+            research/qwen38/gdn_output_gate_exact.c -lm -o "$RUNNER_TEMP/libqwen_gdn_output_gate_exact.so"
+          cc -O3 -std=c11 -fno-fast-math -fno-associative-math -ffp-contract=off -fno-tree-vectorize -fPIC -shared \
+            research/qwen38/swiglu_exact.c -lm -o "$RUNNER_TEMP/libqwen_swiglu_exact.so"
+          cc -O3 -std=c11 -fno-fast-math -fno-associative-math -ffp-contract=off -fno-tree-vectorize -fPIC -shared \
+            research/qwen38/rmsnorm_exact.c -lm -o "$RUNNER_TEMP/libqwen_rmsnorm_exact.so"
+          cc -O3 -std=c11 -fno-fast-math -fno-associative-math -ffp-contract=off -fno-tree-vectorize -fPIC -shared \
+            research/qwen38/rmsnorm_exact.c research/qwen38/rmsnorm_many_exact.c \
+            -lm -o "$RUNNER_TEMP/libqwen_rmsnorm_many_exact.so"
+          cc -O3 -std=c11 -fno-fast-math -fno-associative-math -ffp-contract=off -fno-tree-vectorize -fPIC -shared \
+            research/qwen38/rmsnorm_exact.c research/qwen38/rmsnorm_heads_many_exact.c \
+            -lm -o "$RUNNER_TEMP/libqwen_rmsnorm_heads_many_exact.so"
+          cc -O3 -std=c11 -fno-fast-math -fno-associative-math -ffp-contract=off -fno-tree-vectorize -fPIC -shared \
+            research/qwen38/residual_add_exact.c -o "$RUNNER_TEMP/libqwen_residual_add_exact.so"
+          cc -O3 -std=c11 -fno-fast-math -fno-associative-math -ffp-contract=off -fno-tree-vectorize -fPIC -shared \
+            research/qwen38/attention_gate_exact.c -lm -o "$RUNNER_TEMP/libqwen_attention_gate_exact.so"
+          cc -O3 -std=c11 -fno-fast-math -fno-associative-math -ffp-contract=off -fno-tree-vectorize -fPIC -shared \
+            research/qwen38/gdn_repeat_scale_exact.c -o "$RUNNER_TEMP/libqwen_gdn_repeat_scale_exact.so"
+
+      - name: Run real exact current-best reference plus Q6 pool 1-2-4 A-B
+        timeout-minutes: 22
+        shell: bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          set -euo pipefail
+          mkdir -p "$EVIDENCE"
+          PYTHONPATH=research/qwen38 python -u research/qwen38/qwen38_q6_persistent_pool_exact_probe.py real \
+            --model "$MODEL" \
+            --quant-lib "$RUNNER_TEMP/libqwen_quant_base.so" \
+            --many-lib "$RUNNER_TEMP/libqwen_quant_many_noalloc.so" \
+            --pool-lib "$RUNNER_TEMP/libqwen_q6_persistent_pool.so" \
+            --state-lib "$RUNNER_TEMP/libqwen_gdn_serial.so" \
+            --batch-state-lib "$RUNNER_TEMP/libqwen_gdn_batch.so" \
+            --f32-lib "$RUNNER_TEMP/libqwen_f32_fsum.so" \
+            --attn-lib "$RUNNER_TEMP/libqwen_attention_exact.so" \
+            --conv-lib "$RUNNER_TEMP/libqwen_gdn_conv_exact.so" \
+            --gate-lib "$RUNNER_TEMP/libqwen_gdn_output_gate_exact.so" \
+            --swiglu-lib "$RUNNER_TEMP/libqwen_swiglu_exact.so" \
+            --rmsnorm-lib "$RUNNER_TEMP/libqwen_rmsnorm_exact.so" \
+            --rmsnorm-many-lib "$RUNNER_TEMP/libqwen_rmsnorm_many_exact.so" \
+            --head-rmsnorm-many-lib "$RUNNER_TEMP/libqwen_rmsnorm_heads_many_exact.so" \
+            --residual-lib "$RUNNER_TEMP/libqwen_residual_add_exact.so" \
+            --attention-gate-lib "$RUNNER_TEMP/libqwen_attention_gate_exact.so" \
+            --repeat-lib "$RUNNER_TEMP/libqwen_gdn_repeat_scale_exact.so" \
+            --inventory "$EVIDENCE/inventory.json" \
+            --work-dir "$K3_WORK" \
+            --output "$EVIDENCE/q6-persistent-pool-ab.json" \
+            2>&1 | tee "$EVIDENCE/q6-persistent-pool-ab.log"
+          grep -F "QWEN38_Q6_PERSISTENT_POOL_REAL_BITWISE_PASS" \
+            "$EVIDENCE/q6-persistent-pool-ab.log"
+
+      - name: Print Q6 pool summary
+        if: always()
+        shell: bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          if [[ -f "$EVIDENCE/q6-persistent-pool-ab.json" ]]; then
+            python - <<'PY'
+          import json, os
+          from pathlib import Path
+          r=json.loads((Path(os.environ["EVIDENCE"])/"q6-persistent-pool-ab.json").read_text())
+          print("reference", json.dumps({
+              "seconds": r["reference"]["seconds"],
+              "q6_boundary": r["reference"]["q6_boundary"],
+              "k3_bytes": r["reference"]["k3_bytes"],
+          }, indent=2))
+          for c in r["candidates"]:
+              print("candidate", json.dumps({
+                  "threads": c["threads"],
+                  "seconds": c["seconds"],
+                  "speedup_total": c["speedup_total_vs_reference"],
+                  "speedup_q6_boundary": c["speedup_q6_boundary_vs_reference"],
+                  "q6_boundary": c["q6_boundary"],
+                  "pool": c["pool"],
+                  "hidden_exact": c["hidden_vectors_bitwise_exact"],
+                  "state_exact": c["persistent_state_bitwise_exact"],
+              }, indent=2))
+          print(json.dumps({
+              "best_candidate_threads": r["best_candidate_threads"],
+              "best_candidate_seconds": r["best_candidate_seconds"],
+              "best_speedup_total_vs_reference": r["best_speedup_total_vs_reference"],
+              "best_speedup_q6_boundary_vs_reference": r["best_speedup_q6_boundary_vs_reference"],
+              "performance_positive_any": r["performance_positive_any"],
+              "max_rss_gib": r["max_rss_gib"],
+          }, indent=2))
+          PY
+          fi
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen38-q6-persistent-pool-exact-${{ github.run_id }}
+          path: ${{ env.EVIDENCE }}/
+          if-no-files-found: warn
+          retention-days: 14
