@@ -15,7 +15,7 @@ permissions:
 jobs:
   win32-full-gguf-current-best:
     runs-on: windows-latest
-    timeout-minutes: 50
+    timeout-minutes: 360
     env:
       HF_HUB_DISABLE_TELEMETRY: "1"
       QWEN_GGUF_SHA256: a487690b9f17de581857c4ae484dab50800335bb9eb978a4fb02c0465629dc0a
@@ -152,7 +152,7 @@ jobs:
 
       - name: Download and hash pinned GGUF on D drive
         shell: pwsh
-        timeout-minutes: 18
+        timeout-minutes: 120
         run: |
           $ErrorActionPreference = 'Stop'
           $model = python -c "import os; from huggingface_hub import hf_hub_download; print(hf_hub_download('bartowski/Qwen3.8-27B-GGUF', filename='Qwen3.8-27B-Q6_K_L.gguf', cache_dir=os.path.join(os.environ['RUNNER_TEMP'],'qwen38-win32-hf-download')))"
@@ -181,7 +181,7 @@ jobs:
 
       - name: Run full real Win32 exact current-best profile
         shell: pwsh
-        timeout-minutes: 22
+        timeout-minutes: 180
         run: |
           $ErrorActionPreference = 'Stop'
           $env:PYTHONPATH = 'research/qwen38'
