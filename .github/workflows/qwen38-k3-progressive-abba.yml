@@ -1,0 +1,159 @@
+name: Qwen3.8 K3 progressive same-run warm ABBA
+
+on:
+  push:
+    branches:
+      - research/qwen3.8-27b-runtime-finish
+    paths:
+      - research/qwen38/qwen38_k3_progressive_abba_probe.py
+      - .github/workflows/qwen38-k3-progressive-abba.yml
+  workflow_dispatch:
+
+jobs:
+  progressive-abba:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      HF_HUB_DISABLE_TELEMETRY: "1"
+      QWEN_GGUF_SHA256: a487690b9f17de581857c4ae484dab50800335bb9eb978a4fb02c0465629dc0a
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Synthetic ABBA gate
+        shell: bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          set -euo pipefail
+          python -m py_compile research/qwen38/qwen38_k3_progressive_abba_probe.py
+          PYTHONPATH=research/qwen38 python -u research/qwen38/qwen38_k3_progressive_abba_probe.py sanity \
+            2>&1 | tee "$RUNNER_TEMP/qwen38-progressive-abba-sanity.log"
+          grep -F "QWEN38_K3_PROGRESSIVE_ABBA_SANITY PASS" "$RUNNER_TEMP/qwen38-progressive-abba-sanity.log"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Reclaim disk and show runner
+        shell: bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup || true
+          docker system prune -af || true
+          lscpu
+          lsblk -o NAME,TYPE,SIZE,ROTA,MOUNTPOINTS || true
+          df -h
+          free -h
+
+      - name: Install runtime dependencies
+        run: python -m pip install --no-cache-dir huggingface_hub hf_xet
+
+      - name: Download and hash pinned GGUF
+        shell: bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          set -euo pipefail
+          MODEL=$(python - <<'PY'
+          from huggingface_hub import hf_hub_download
+          print(hf_hub_download(
+              "bartowski/Qwen3.8-27B-GGUF",
+              filename="Qwen3.8-27B-Q6_K_L.gguf",
+              local_dir="${{ runner.temp }}/qwen38-model"))
+          PY
+          )
+          echo "$QWEN_GGUF_SHA256  $MODEL" | sha256sum -c -
+          echo "MODEL=$MODEL" >> "$GITHUB_ENV"
+          echo "EVIDENCE=$RUNNER_TEMP/qwen38-progressive-abba-evidence" >> "$GITHUB_ENV"
+          echo "OLD_WORK=$RUNNER_TEMP/qwen38-progressive-abba-old" >> "$GITHUB_ENV"
+          echo "PROG_WORK=$RUNNER_TEMP/qwen38-progressive-abba-progressive" >> "$GITHUB_ENV"
+
+      - name: Validate pinned decoder inventory
+        shell: bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          mkdir -p "$EVIDENCE"
+          PYTHONPATH=research/qwen38 python -u research/qwen38/qwen35_gguf_decoder_contract.py real \
+            --model "$MODEL" --output "$EVIDENCE/inventory.json" \
+            2>&1 | tee "$EVIDENCE/inventory.log"
+
+      - name: Compile exact current-best bridges
+        shell: bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          set -euo pipefail
+          cc -O3 -std=c11 -mavx2 -fno-fast-math -ffp-contract=off -fPIC -shared \
+            research/qwen38/gguf_quant_matvec_many_bridge.c -lm -o "$RUNNER_TEMP/libqwen_quant_base.so"
+          cc -O3 -std=c11 -mavx2 -fno-fast-math -ffp-contract=off -fPIC -shared -pthread \
+            research/qwen38/q6_persistent_pool_exact.c -lm -o "$RUNNER_TEMP/libqwen_q6_persistent_pool.so"
+          cc -O2 -std=c11 -fno-fast-math -ffp-contract=off -fPIC -shared \
+            research/qwen38/gdn_state_ar.c -lm -o "$RUNNER_TEMP/libqwen_gdn_serial.so"
+          cc -O2 -std=c11 -fno-fast-math -ffp-contract=off -fPIC -shared \
+            research/qwen38/gdn_state_ar.c research/qwen38/gdn_state_batch_exact.c -lm -o "$RUNNER_TEMP/libqwen_gdn_batch.so"
+          cc -O3 -std=c11 -fno-fast-math -fno-associative-math -ffp-contract=off -fPIC -shared \
+            research/qwen38/f32_fsum_matvec.c -lm -o "$RUNNER_TEMP/libqwen_f32_fsum.so"
+          cc -O3 -std=c11 -fno-fast-math -fno-associative-math -ffp-contract=off -fPIC -shared \
+            research/qwen38/attention_core_exact.c -lm -o "$RUNNER_TEMP/libqwen_attention_exact.so"
+          cc -O3 -std=c11 -fno-fast-math -fno-associative-math -ffp-contract=off -fno-tree-vectorize -fPIC -shared \
+            research/qwen38/gdn_conv_silu_exact.c -lm -o "$RUNNER_TEMP/libqwen_gdn_conv_exact.so"
+          cc -O3 -std=c11 -fno-fast-math -fno-associative-math -ffp-contract=off -fno-tree-vectorize -fPIC -shared \
+            research/qwen38/gdn_output_gate_exact.c -lm -o "$RUNNER_TEMP/libqwen_gdn_output_gate_exact.so"
+          cc -O3 -std=c11 -fno-fast-math -fno-associative-math -ffp-contract=off -fno-tree-vectorize -fPIC -shared \
+            research/qwen38/swiglu_exact.c -lm -o "$RUNNER_TEMP/libqwen_swiglu_exact.so"
+          cc -O3 -std=c11 -fno-fast-math -fno-associative-math -ffp-contract=off -fno-tree-vectorize -fPIC -shared \
+            research/qwen38/rmsnorm_exact.c -lm -o "$RUNNER_TEMP/libqwen_rmsnorm_exact.so"
+          cc -O3 -std=c11 -fno-fast-math -fno-associative-math -ffp-contract=off -fno-tree-vectorize -fPIC -shared \
+            research/qwen38/rmsnorm_exact.c research/qwen38/rmsnorm_many_exact.c -lm -o "$RUNNER_TEMP/libqwen_rmsnorm_many_exact.so"
+          cc -O3 -std=c11 -fno-fast-math -fno-associative-math -ffp-contract=off -fno-tree-vectorize -fPIC -shared \
+            research/qwen38/rmsnorm_exact.c research/qwen38/rmsnorm_heads_many_exact.c -lm -o "$RUNNER_TEMP/libqwen_rmsnorm_heads_many_exact.so"
+          cc -O3 -std=c11 -fno-fast-math -fno-associative-math -ffp-contract=off -fno-tree-vectorize -fPIC -shared \
+            research/qwen38/residual_add_exact.c -o "$RUNNER_TEMP/libqwen_residual_add_exact.so"
+          cc -O3 -std=c11 -fno-fast-math -fno-associative-math -ffp-contract=off -fno-tree-vectorize -fPIC -shared \
+            research/qwen38/attention_gate_exact.c -lm -o "$RUNNER_TEMP/libqwen_attention_gate_exact.so"
+          cc -O3 -std=c11 -fno-fast-math -fno-associative-math -ffp-contract=off -fno-tree-vectorize -fPIC -shared \
+            research/qwen38/gdn_repeat_scale_exact.c -o "$RUNNER_TEMP/libqwen_gdn_repeat_scale_exact.so"
+
+      - name: Run real warm ABBA
+        timeout-minutes: 18
+        shell: bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          set -euo pipefail
+          PYTHONPATH=research/qwen38 python -u research/qwen38/qwen38_k3_progressive_abba_probe.py run \
+            --model "$MODEL" \
+            --quant-lib "$RUNNER_TEMP/libqwen_quant_base.so" \
+            --pool-lib "$RUNNER_TEMP/libqwen_q6_persistent_pool.so" \
+            --state-lib "$RUNNER_TEMP/libqwen_gdn_serial.so" \
+            --batch-state-lib "$RUNNER_TEMP/libqwen_gdn_batch.so" \
+            --f32-lib "$RUNNER_TEMP/libqwen_f32_fsum.so" \
+            --attn-lib "$RUNNER_TEMP/libqwen_attention_exact.so" \
+            --conv-lib "$RUNNER_TEMP/libqwen_gdn_conv_exact.so" \
+            --gate-lib "$RUNNER_TEMP/libqwen_gdn_output_gate_exact.so" \
+            --swiglu-lib "$RUNNER_TEMP/libqwen_swiglu_exact.so" \
+            --rmsnorm-lib "$RUNNER_TEMP/libqwen_rmsnorm_exact.so" \
+            --rmsnorm-many-lib "$RUNNER_TEMP/libqwen_rmsnorm_many_exact.so" \
+            --head-rmsnorm-many-lib "$RUNNER_TEMP/libqwen_rmsnorm_heads_many_exact.so" \
+            --residual-lib "$RUNNER_TEMP/libqwen_residual_add_exact.so" \
+            --attention-gate-lib "$RUNNER_TEMP/libqwen_attention_gate_exact.so" \
+            --repeat-lib "$RUNNER_TEMP/libqwen_gdn_repeat_scale_exact.so" \
+            --inventory "$EVIDENCE/inventory.json" \
+            --work-dir "$OLD_WORK" \
+            --old-work-dir "$OLD_WORK" \
+            --progressive-work-dir "$PROG_WORK" \
+            --output "$EVIDENCE/progressive-abba.json" \
+            2>&1 | tee "$EVIDENCE/progressive-abba.log"
+          grep -F "QWEN38_K3_PROGRESSIVE_ABBA_REAL_BITWISE_PASS" "$EVIDENCE/progressive-abba.log"
+
+      - name: Print ABBA summary
+        if: always()
+        shell: bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          if [[ -f "$EVIDENCE/progressive-abba.json" ]]; then
+            python - <<'PY'
+          import json, os
+          from pathlib import Path
+          r=json.loads((Path(os.environ["EVIDENCE"])/"progressive-abba.json").read_text())
+          print(json.dumps({"status":r["status"],"order":r["order"],"means":r["means"],"comparison":r["comparison"],"records":r["records"]}, indent=2))
+          PY
+          fi
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen38-k3-progressive-abba-${{ github.run_id }}
+          path: ${{ env.EVIDENCE }}/
+          if-no-files-found: warn
+          retention-days: 14
