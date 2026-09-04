@@ -54,7 +54,7 @@ EXPECTED_REF_RMS = {
     "values": 16 * len(PROMPT_IDS) * 2 * gdn.HIDDEN,
     "head_calls": 16 * len(PROMPT_IDS) * 2,
     "head_rows": 16 * len(PROMPT_IDS) * (gen.attn.N_HEAD + gen.attn.N_HEAD_KV),
-    "head_values": 16 * len(PROMPT_IDS) * (gen.attn.Q_DIM + gen.attn.K_DIM),
+    "head_values": 16 * len(PROMPT_IDS) * (gen.attn.Q_DIM + gen.attn.KV_DIM),
 }
 EXPECTED_TOTAL_RMS_ROWS = 6336
 EXPECTED_TOTAL_RMS_VALUES = 8470528
