@@ -1,0 +1,97 @@
+name: Qwen3.8 exact portable Q6 persistent pool
+
+on:
+  push:
+    branches:
+      - research/qwen3.8-27b-runtime-finish
+    paths:
+      - research/qwen38/qwen_thread_compat.h
+      - research/qwen38/q6_persistent_pool_portable_exact.c
+      - .github/workflows/qwen38-q6-portable-pool-exact.yml
+  workflow_dispatch:
+
+jobs:
+  portable-q6-pool:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Linux compile and exact synthetic gate
+        if: runner.os == 'Linux'
+        shell: bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          set -euo pipefail
+          cc -O3 -std=c11 -mavx2 -fno-fast-math -ffp-contract=off -pthread \
+            -DQWEN_Q6_PERSISTENT_POOL_SELFTEST \
+            research/qwen38/q6_persistent_pool_portable_exact.c -lm \
+            -o "$RUNNER_TEMP/qwen_q6_portable_selftest"
+          "$RUNNER_TEMP/qwen_q6_portable_selftest" 2>&1 | tee "$RUNNER_TEMP/q6-portable.log"
+          grep -F "QWEN38_Q6_PORTABLE_PERSISTENT_POOL_BITWISE_PASS" "$RUNNER_TEMP/q6-portable.log"
+
+          cc -O3 -std=c11 -mavx2 -fno-fast-math -ffp-contract=off -pthread -fPIC -shared \
+            research/qwen38/q6_persistent_pool_portable_exact.c -lm \
+            -o "$RUNNER_TEMP/libqwen_q6_portable.so"
+          QWEN_PORTABLE_LIB="$RUNNER_TEMP/libqwen_q6_portable.so" python - <<'PY'
+          import ctypes, os
+          lib = ctypes.CDLL(os.environ["QWEN_PORTABLE_LIB"])
+          for name in (
+              "qwen_q6_pool_create", "qwen_q6_pool_destroy",
+              "qwen_q6_pool_matvec_many", "qwen_q6_pool_calls",
+              "qwen_q6_pool_threads",
+              "qwen_matvec_many_q6_k_q8_k_bridge",
+              "qwen_matvec_many_q8_0_q8_0_bridge",
+          ):
+              getattr(lib, name)
+          print("QWEN38_Q6_PORTABLE_LINUX_ABI_PASS")
+          PY
+
+      - name: Windows compiler information
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          clang --version
+          python --version
+
+      - name: Windows compile and exact synthetic gate
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = Join-Path $env:RUNNER_TEMP 'qwen_q6_portable_selftest.exe'
+          clang -O3 -std=c11 -mavx2 -fno-fast-math -ffp-contract=off `
+            -DQWEN_Q6_PERSISTENT_POOL_SELFTEST `
+            research/qwen38/q6_persistent_pool_portable_exact.c `
+            -o $exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $log = Join-Path $env:RUNNER_TEMP 'q6-portable.log'
+          & $exe 2>&1 | Tee-Object -FilePath $log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (-not (Select-String -Path $log -SimpleMatch 'QWEN38_Q6_PORTABLE_PERSISTENT_POOL_BITWISE_PASS')) {
+            throw 'portable Windows exact marker missing'
+          }
+
+          $dll = Join-Path $env:RUNNER_TEMP 'qwen_q6_portable.dll'
+          clang -O3 -std=c11 -mavx2 -fno-fast-math -ffp-contract=off -shared `
+            research/qwen38/q6_persistent_pool_portable_exact.c `
+            -o $dll
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $env:QWEN_PORTABLE_LIB = $dll
+          @'
+          import ctypes, os
+          lib = ctypes.CDLL(os.environ["QWEN_PORTABLE_LIB"])
+          for name in (
+              "qwen_q6_pool_create", "qwen_q6_pool_destroy",
+              "qwen_q6_pool_matvec_many", "qwen_q6_pool_calls",
+              "qwen_q6_pool_threads",
+              "qwen_matvec_many_q6_k_q8_k_bridge",
+              "qwen_matvec_many_q8_0_q8_0_bridge",
+          ):
+              getattr(lib, name)
+          print("QWEN38_Q6_PORTABLE_WINDOWS_ABI_PASS")
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
