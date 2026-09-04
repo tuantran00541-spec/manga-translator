@@ -1,0 +1,189 @@
+name: Qwen3.8 exact K3 direct I-O service profile
+
+on:
+  push:
+    branches:
+      - research/qwen3.8-27b-runtime-finish
+    paths:
+      - research/qwen38/qwen38_k3_io_service_profile.py
+      - .github/workflows/qwen38-k3-io-service-profile.yml
+  workflow_dispatch:
+
+jobs:
+  k3-io-service-profile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 27
+    env:
+      HF_HUB_DISABLE_TELEMETRY: "1"
+      QWEN_REVISION: 1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0
+      QWEN_GGUF_SHA256: a487690b9f17de581857c4ae484dab50800335bb9eb978a4fb02c0465629dc0a
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set evidence paths
+        shell: bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          echo "K3_WORK=$RUNNER_TEMP/qwen38-k3-io-service-k3" >> "$GITHUB_ENV"
+          echo "EVIDENCE=$RUNNER_TEMP/qwen38-k3-io-service-evidence" >> "$GITHUB_ENV"
+
+      - name: Synthetic instrumentation gate
+        shell: bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          set -euo pipefail
+          python -m py_compile research/qwen38/qwen38_k3_io_service_profile.py
+          PYTHONPATH=research/qwen38 python -u research/qwen38/qwen38_k3_io_service_profile.py sanity
+          cc -O3 -std=c11 -mavx2 -fno-fast-math -ffp-contract=off -pthread \
+            -DQWEN_Q6_PERSISTENT_POOL_SELFTEST \
+            research/qwen38/q6_persistent_pool_exact.c -lm \
+            -o "$RUNNER_TEMP/qwen_q6_pool_selftest"
+          "$RUNNER_TEMP/qwen_q6_pool_selftest" 2>&1 | tee "$RUNNER_TEMP/q6-pool-selftest.log"
+          grep -F "QWEN38_Q6_PERSISTENT_POOL_BITWISE_PASS" "$RUNNER_TEMP/q6-pool-selftest.log"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Runner CPU and storage information
+        run: |
+          lscpu
+          df -h
+          free -h
+
+      - name: Reclaim disk
+        shell: bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup || true
+          docker system prune -af || true
+          df -h
+          free -h
+
+      - name: Install runtime dependencies
+        run: python -m pip install --no-cache-dir huggingface_hub hf_xet
+
+      - name: Download and hash pinned GGUF
+        shell: bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          set -euo pipefail
+          MODEL=$(python - <<'PY'
+          from huggingface_hub import hf_hub_download
+          print(hf_hub_download("bartowski/Qwen3.8-27B-GGUF", filename="Qwen3.8-27B-Q6_K_L.gguf", local_dir="${{ runner.temp }}/qwen38-model"))
+          PY
+          )
+          echo "$QWEN_GGUF_SHA256  $MODEL" | sha256sum -c -
+          echo "MODEL=$MODEL" >> "$GITHUB_ENV"
+
+      - name: Validate pinned decoder inventory
+        shell: bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          set -euo pipefail
+          mkdir -p "$EVIDENCE"
+          PYTHONPATH=research/qwen38 python -u research/qwen38/qwen35_gguf_decoder_contract.py real \
+            --model "$MODEL" --output "$EVIDENCE/inventory.json" 2>&1 | tee "$EVIDENCE/inventory.log"
+
+      - name: Compile exact promoted current-best bridges
+        shell: bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          set -euo pipefail
+          cc -O3 -std=c11 -mavx2 -fno-fast-math -ffp-contract=off -fPIC -shared \
+            research/qwen38/gguf_quant_matvec_many_bridge.c -lm -o "$RUNNER_TEMP/libqwen_quant_base.so"
+          cc -O3 -std=c11 -mavx2 -fno-fast-math -ffp-contract=off -fPIC -shared -pthread \
+            research/qwen38/q6_persistent_pool_exact.c -lm -o "$RUNNER_TEMP/libqwen_q6_persistent_pool.so"
+          cc -O2 -std=c11 -fno-fast-math -ffp-contract=off -fPIC -shared \
+            research/qwen38/gdn_state_ar.c -lm -o "$RUNNER_TEMP/libqwen_gdn_serial.so"
+          cc -O2 -std=c11 -fno-fast-math -ffp-contract=off -fPIC -shared \
+            research/qwen38/gdn_state_ar.c research/qwen38/gdn_state_batch_exact.c \
+            -lm -o "$RUNNER_TEMP/libqwen_gdn_batch.so"
+          cc -O3 -std=c11 -fno-fast-math -fno-associative-math -ffp-contract=off -fPIC -shared \
+            research/qwen38/f32_fsum_matvec.c -lm -o "$RUNNER_TEMP/libqwen_f32_fsum.so"
+          cc -O3 -std=c11 -fno-fast-math -fno-associative-math -ffp-contract=off -fPIC -shared \
+            research/qwen38/attention_core_exact.c -lm -o "$RUNNER_TEMP/libqwen_attention_exact.so"
+          cc -O3 -std=c11 -fno-fast-math -fno-associative-math -ffp-contract=off -fno-tree-vectorize -fPIC -shared \
+            research/qwen38/gdn_conv_silu_exact.c -lm -o "$RUNNER_TEMP/libqwen_gdn_conv_exact.so"
+          cc -O3 -std=c11 -fno-fast-math -fno-associative-math -ffp-contract=off -fno-tree-vectorize -fPIC -shared \
+            research/qwen38/gdn_output_gate_exact.c -lm -o "$RUNNER_TEMP/libqwen_gdn_output_gate_exact.so"
+          cc -O3 -std=c11 -fno-fast-math -fno-associative-math -ffp-contract=off -fno-tree-vectorize -fPIC -shared \
+            research/qwen38/swiglu_exact.c -lm -o "$RUNNER_TEMP/libqwen_swiglu_exact.so"
+          cc -O3 -std=c11 -fno-fast-math -fno-associative-math -ffp-contract=off -fno-tree-vectorize -fPIC -shared \
+            research/qwen38/rmsnorm_exact.c -lm -o "$RUNNER_TEMP/libqwen_rmsnorm_exact.so"
+          cc -O3 -std=c11 -fno-fast-math -fno-associative-math -ffp-contract=off -fno-tree-vectorize -fPIC -shared \
+            research/qwen38/rmsnorm_exact.c research/qwen38/rmsnorm_many_exact.c \
+            -lm -o "$RUNNER_TEMP/libqwen_rmsnorm_many_exact.so"
+          cc -O3 -std=c11 -fno-fast-math -fno-associative-math -ffp-contract=off -fno-tree-vectorize -fPIC -shared \
+            research/qwen38/rmsnorm_exact.c research/qwen38/rmsnorm_heads_many_exact.c \
+            -lm -o "$RUNNER_TEMP/libqwen_rmsnorm_heads_many_exact.so"
+          cc -O3 -std=c11 -fno-fast-math -fno-associative-math -ffp-contract=off -fno-tree-vectorize -fPIC -shared \
+            research/qwen38/residual_add_exact.c -o "$RUNNER_TEMP/libqwen_residual_add_exact.so"
+          cc -O3 -std=c11 -fno-fast-math -fno-associative-math -ffp-contract=off -fno-tree-vectorize -fPIC -shared \
+            research/qwen38/attention_gate_exact.c -lm -o "$RUNNER_TEMP/libqwen_attention_gate_exact.so"
+          cc -O3 -std=c11 -fno-fast-math -fno-associative-math -ffp-contract=off -fno-tree-vectorize -fPIC -shared \
+            research/qwen38/gdn_repeat_scale_exact.c -o "$RUNNER_TEMP/libqwen_gdn_repeat_scale_exact.so"
+
+      - name: Run real exact K3 I-O service profile
+        timeout-minutes: 16
+        shell: bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          set -euo pipefail
+          mkdir -p "$EVIDENCE"
+          PYTHONPATH=research/qwen38 python -u research/qwen38/qwen38_k3_io_service_profile.py run \
+            --model "$MODEL" \
+            --quant-lib "$RUNNER_TEMP/libqwen_quant_base.so" \
+            --pool-lib "$RUNNER_TEMP/libqwen_q6_persistent_pool.so" \
+            --state-lib "$RUNNER_TEMP/libqwen_gdn_serial.so" \
+            --batch-state-lib "$RUNNER_TEMP/libqwen_gdn_batch.so" \
+            --f32-lib "$RUNNER_TEMP/libqwen_f32_fsum.so" \
+            --attn-lib "$RUNNER_TEMP/libqwen_attention_exact.so" \
+            --conv-lib "$RUNNER_TEMP/libqwen_gdn_conv_exact.so" \
+            --gate-lib "$RUNNER_TEMP/libqwen_gdn_output_gate_exact.so" \
+            --swiglu-lib "$RUNNER_TEMP/libqwen_swiglu_exact.so" \
+            --rmsnorm-lib "$RUNNER_TEMP/libqwen_rmsnorm_exact.so" \
+            --rmsnorm-many-lib "$RUNNER_TEMP/libqwen_rmsnorm_many_exact.so" \
+            --head-rmsnorm-many-lib "$RUNNER_TEMP/libqwen_rmsnorm_heads_many_exact.so" \
+            --residual-lib "$RUNNER_TEMP/libqwen_residual_add_exact.so" \
+            --attention-gate-lib "$RUNNER_TEMP/libqwen_attention_gate_exact.so" \
+            --repeat-lib "$RUNNER_TEMP/libqwen_gdn_repeat_scale_exact.so" \
+            --inventory "$EVIDENCE/inventory.json" \
+            --work-dir "$K3_WORK" \
+            --output "$EVIDENCE/k3-io-service-profile.json" \
+            2>&1 | tee "$EVIDENCE/k3-io-service-profile.log"
+          grep -F "QWEN38_K3_IO_SERVICE_PROFILE_REAL_BITWISE_PASS" \
+            "$EVIDENCE/k3-io-service-profile.log"
+
+      - name: Print I-O service summary
+        if: always()
+        shell: bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          if [[ -f "$EVIDENCE/k3-io-service-profile.json" ]]; then
+            python - <<'PY'
+          import json, os
+          from pathlib import Path
+          r=json.loads((Path(os.environ["EVIDENCE"])/"k3-io-service-profile.json").read_text())
+          io=r["io"]
+          print(json.dumps({
+              "status": r["status"],
+              "prefill_seconds": r["prefill_seconds"],
+              "q6_boundary_seconds": r["q6_boundary_seconds"],
+              "k3_bytes": r["k3_bytes"],
+              "load_service_seconds_total": io["load_service_seconds_total"],
+              "visible_bind_seconds_total": io["visible_bind_seconds_total"],
+              "estimated_io_hidden_by_compute_seconds_total": io["estimated_io_hidden_by_compute_seconds_total"],
+              "preadv_calls_total": io["preadv_calls_total"],
+              "preadv_bytes_total": io["preadv_bytes_total"],
+              "preadv_seconds_total": io["preadv_seconds_total"],
+              "aggregate_service_gib_s": io["aggregate_service_gib_s"],
+              "aggregate_preadv_gib_s": io["aggregate_preadv_gib_s"],
+              "visible_bind_fraction_of_service": io["visible_bind_fraction_of_service"],
+              "top_service_layers": io["top_service_layers"][:5],
+              "top_visible_bind_layers": io["top_visible_bind_layers"][:5],
+              "max_rss_gib": r["max_rss_gib"],
+          }, indent=2))
+          PY
+          fi
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen38-k3-io-service-profile-${{ github.run_id }}
+          path: ${{ env.EVIDENCE }}/
+          if-no-files-found: warn
+          retention-days: 14
