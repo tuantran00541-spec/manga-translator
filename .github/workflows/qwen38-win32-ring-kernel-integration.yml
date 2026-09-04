@@ -1,0 +1,151 @@
+name: Qwen3.8 Win32 progressive-ring kernel integration
+
+on:
+  push:
+    branches:
+      - research/qwen3.8-27b-runtime-finish
+    paths:
+      - research/qwen38/qwen38_win32_ring_kernel_integration.py
+      - research/qwen38/qwen38_k3_progressive.py
+      - research/qwen38/qwen38_k3_progressive_win32.py
+      - research/qwen38/qwen38_win32_direct_io.py
+      - research/qwen38/qwen38_win32_bootstrap.py
+      - research/qwen38/q6_persistent_pool_runtime.py
+      - research/qwen38/q6_persistent_pool_portable_exact.c
+      - research/qwen38/qwen_thread_compat.h
+      - research/qwen38/gguf_quant_dot.c
+      - research/qwen38/gguf_quant_dot_avx2.c
+      - research/qwen38/gguf_quant_matvec_many_avx2.c
+      - research/qwen38/gguf_quant_matvec_many_bridge.c
+      - research/qwen38/gguf_quant_matvec_many_noalloc_bridge.c
+      - research/qwen38/f32_fsum_matvec.c
+      - research/qwen38/win32_direct_io.c
+      - .github/workflows/qwen38-win32-ring-kernel-integration.yml
+  workflow_dispatch:
+
+jobs:
+  win32-ring-kernel:
+    runs-on: windows-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify proven integration sources
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $expected = @{
+            'research/qwen38/qwen38_k3_progressive.py' = 'a1c85c05c4e3b2cb8892f0c53dbd3db2891a590b'
+            'research/qwen38/qwen38_k3_progressive_win32.py' = 'd21710912c8ccabe394b29853a0f64a705b9d030'
+            'research/qwen38/f32_fsum_matvec.c' = 'c07db99577f3925061410770d09491c338ca3747'
+            'research/qwen38/gguf_quant_dot.c' = 'b8f8a8de51df341994827ad5d3265218d5ae0920'
+            'research/qwen38/gguf_quant_dot_avx2.c' = '4022a1501cd4503af0ce29c356429dddfe2b05c8'
+            'research/qwen38/gguf_quant_matvec_many_avx2.c' = 'f9265ced3ddb4902710039ee4d5da459e829ad76'
+            'research/qwen38/gguf_quant_matvec_many_bridge.c' = 'eb6473f8acefab0c57eaa7e76bf673d962776cd2'
+            'research/qwen38/gguf_quant_matvec_many_noalloc_bridge.c' = 'c7411f8d521e767f9dead9a74ad91a5a6ed94654'
+            'research/qwen38/q6_persistent_pool_portable_exact.c' = 'fbd991e715068834e1a77cce921e4410e67bf8e2'
+            'research/qwen38/qwen_thread_compat.h' = '2b90018e141f88c85852ec32604b7075a5fe0353'
+            'research/qwen38/win32_direct_io.c' = '689d5a22b0353ec1ee19ba9c037be64194bd041f'
+          }
+          foreach ($entry in $expected.GetEnumerator()) {
+            $actual = (git hash-object $entry.Key).Trim()
+            if ($actual -ne $entry.Value) {
+              throw "integration source changed: $($entry.Key) actual=$actual expected=$($entry.Value)"
+            }
+          }
+          Write-Host "QWEN38_WIN32_RING_KERNEL_SOURCE_INTEGRITY_PASS"
+
+      - name: Compile native integration DLLs
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $out = Join-Path $env:RUNNER_TEMP 'qwen-win32-ring-kernel'
+          New-Item -ItemType Directory -Force -Path $out | Out-Null
+
+          function Build-Dll {
+            param(
+              [string]$Name,
+              [string[]]$Sources,
+              [string[]]$Exports,
+              [string[]]$ExtraFlags = @()
+            )
+            $args = @(
+              '-O3', '-std=c11', '-shared',
+              '-fno-fast-math', '-fno-associative-math', '-ffp-contract=off',
+              '-fno-vectorize', '-fno-slp-vectorize'
+            )
+            $args += $ExtraFlags
+            $args += $Sources
+            foreach ($symbol in $Exports) {
+              $args += '-Xlinker'
+              $args += "/EXPORT:$symbol"
+            }
+            $target = Join-Path $out $Name
+            $args += @('-o', $target)
+            & clang @args
+            if ($LASTEXITCODE -ne 0) { throw "clang failed for $Name rc=$LASTEXITCODE" }
+          }
+
+          Build-Dll 'qwen_quant_base.dll' `
+            @('research/qwen38/gguf_quant_matvec_many_bridge.c') `
+            @(
+              'qwen_quantize_q8_k_scalar',
+              'qwen_quantize_q8_0_scalar',
+              'qwen_matvec_q6_k_q8_k_scalar',
+              'qwen_matvec_q8_0_q8_0_scalar',
+              'qwen_matvec_many_q6_k_q8_k_bridge',
+              'qwen_matvec_many_q8_0_q8_0_bridge'
+            ) `
+            @('-mavx2')
+
+          Build-Dll 'qwen_q6_portable.dll' `
+            @('research/qwen38/q6_persistent_pool_portable_exact.c') `
+            @(
+              'qwen_q6_pool_create',
+              'qwen_q6_pool_destroy',
+              'qwen_q6_pool_matvec_many',
+              'qwen_q6_pool_calls',
+              'qwen_q6_pool_threads',
+              'qwen_matvec_many_q6_k_q8_k_bridge',
+              'qwen_matvec_many_q8_0_q8_0_bridge'
+            ) `
+            @('-mavx2')
+
+          Build-Dll 'qwen_f32.dll' `
+            @('research/qwen38/f32_fsum_matvec.c') `
+            @('qwen_matvec_f32_fsum_exact')
+
+          Build-Dll 'qwen_win32_direct_io.dll' `
+            @('research/qwen38/win32_direct_io.c') `
+            @(
+              'qwen_win32_direct_open_utf8',
+              'qwen_win32_direct_close',
+              'qwen_win32_direct_alignment',
+              'qwen_win32_direct_read',
+              'qwen_win32_direct_no_buffering',
+              'qwen_win32_direct_overlapped',
+              'qwen_win32_buffer_create',
+              'qwen_win32_buffer_ptr',
+              'qwen_win32_buffer_destroy'
+            )
+
+          "QWEN_RING_KERNEL_DLL_DIR=$out" | Out-File -FilePath $env:GITHUB_ENV -Append
+          Write-Host "QWEN38_WIN32_RING_KERNEL_DLL_BUILD_PASS"
+
+      - name: Run exact ring to kernel gate
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:PYTHONPATH = 'research/qwen38'
+          python -m py_compile research/qwen38/qwen38_win32_ring_kernel_integration.py
+          $log = Join-Path $env:RUNNER_TEMP 'qwen-win32-ring-kernel.log'
+          python -u research/qwen38/qwen38_win32_ring_kernel_integration.py `
+            --win32-direct-lib (Join-Path $env:QWEN_RING_KERNEL_DLL_DIR 'qwen_win32_direct_io.dll') `
+            --quant-lib (Join-Path $env:QWEN_RING_KERNEL_DLL_DIR 'qwen_quant_base.dll') `
+            --q6-pool-lib (Join-Path $env:QWEN_RING_KERNEL_DLL_DIR 'qwen_q6_portable.dll') `
+            --f32-lib (Join-Path $env:QWEN_RING_KERNEL_DLL_DIR 'qwen_f32.dll') `
+            2>&1 | Tee-Object -FilePath $log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (-not (Select-String -Path $log -SimpleMatch 'QWEN38_WIN32_RING_KERNEL_BITWISE_PASS')) {
+            throw 'Win32 ring/kernel marker missing'
+          }
