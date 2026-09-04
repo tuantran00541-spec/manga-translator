@@ -168,14 +168,15 @@
   window.removePendingGeom = removePendingGeom;
 
   function setOverlay(overlay, obj, img) {
-    if (!img.naturalWidth || !img.naturalHeight) return;
-    const sx = img.clientWidth / img.naturalWidth;
-    const sy = img.clientHeight / img.naturalHeight;
+    const metrics = typeof window.editorImageMetrics === "function"
+      ? window.editorImageMetrics(img)
+      : null;
+    if (!metrics) return;
     const r = obj.region;
-    overlay.style.left = `${r.x1 * sx}px`;
-    overlay.style.top = `${r.y1 * sy}px`;
-    overlay.style.width = `${Math.max(MIN_SIZE * sx, (r.x2 - r.x1) * sx)}px`;
-    overlay.style.height = `${Math.max(MIN_SIZE * sy, (r.y2 - r.y1) * sy)}px`;
+    overlay.style.left = `${metrics.offsetX + r.x1 * metrics.sx}px`;
+    overlay.style.top = `${metrics.offsetY + r.y1 * metrics.sy}px`;
+    overlay.style.width = `${Math.max(MIN_SIZE * metrics.sx, (r.x2 - r.x1) * metrics.sx)}px`;
+    overlay.style.height = `${Math.max(MIN_SIZE * metrics.sy, (r.y2 - r.y1) * metrics.sy)}px`;
   }
 
   function syncOverlayForObject(pageIndex, id) {

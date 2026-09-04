@@ -14,7 +14,7 @@ from app.parameters import (
     VISUAL_QC_REGION_MARGIN,
 )
 
-QC_PIPELINE_VERSION = 1
+QC_PIPELINE_VERSION = 2
 
 
 @dataclass(frozen=True)
@@ -50,6 +50,28 @@ def _page_dimensions(page: dict, manual_mask: np.ndarray | None) -> tuple[int, i
     raise ValueError("Page width/height are required for visual QC region extraction")
 
 
+def owned_core_bbox(page: dict, width: int, height: int) -> tuple[int, int, int, int]:
+    """Return the physical pixels this slice owns in the stitched source page.
+
+    Unsafe cuts deliberately leave detector context above/below a slice's core.
+    That context is not exported, so treating it as QC input creates false
+    residual-text findings for pixels that are correctly cleaned by a neighbor.
+    Invalid or legacy metadata falls back to the full image so QC never silently
+    drops real output pixels.
+    """
+    core = page.get("stitch_core")
+    if not isinstance(core, dict):
+        return 0, 0, width, height
+    try:
+        y1 = max(0, min(height, int(core.get("core_y1", 0))))
+        y2 = max(y1, min(height, int(core.get("core_y2", height))))
+    except (TypeError, ValueError):
+        return 0, 0, width, height
+    if y2 <= y1:
+        return 0, 0, width, height
+    return 0, y1, width, y2
+
+
 def _normalize_bbox(raw: dict, width: int, height: int) -> tuple[int, int, int, int] | None:
     try:
         x1 = int(round(float(raw.get("x1"))))
@@ -72,6 +94,19 @@ def _normalize_bbox(raw: dict, width: int, height: int) -> tuple[int, int, int, 
 def _expand_bbox(bbox: tuple[int, int, int, int], *, margin: int, width: int, height: int) -> tuple[int, int, int, int]:
     x1, y1, x2, y2 = bbox
     return max(0, x1 - margin), max(0, y1 - margin), min(width, x2 + margin), min(height, y2 + margin)
+
+
+def _intersect_bbox(
+    bbox: tuple[int, int, int, int],
+    bounds: tuple[int, int, int, int],
+) -> tuple[int, int, int, int] | None:
+    x1 = max(bbox[0], bounds[0])
+    y1 = max(bbox[1], bounds[1])
+    x2 = min(bbox[2], bounds[2])
+    y2 = min(bbox[3], bounds[3])
+    if x2 <= x1 or y2 <= y1:
+        return None
+    return x1, y1, x2, y2
 
 
 def _manual_mask_seeds(manual_mask: np.ndarray | None, *, width: int, height: int, min_component_area: int) -> list[_RegionSeed]:
@@ -142,31 +177,51 @@ def extract_candidate_regions(
     if margin < 0 or merge_gap < 0:
         raise ValueError("margin and merge_gap must be non-negative")
     width, height = _page_dimensions(page, manual_mask)
+    owned_bbox = owned_core_bbox(page, width, height)
     seeds: list[_RegionSeed] = []
     for box in page.get("boxes") or []:
-        if not isinstance(box, dict) or box.get("removed"):
+        if (
+            not isinstance(box, dict)
+            or box.get("removed")
+            or box.get("overlap_context_only")
+        ):
             continue
         bbox = _normalize_bbox(box, width, height)
         if bbox is None:
             continue
+        bbox = _intersect_bbox(bbox, owned_bbox)
+        if bbox is None:
+            continue
         box_id = str(box.get("id") or "").strip()
         seeds.append(_RegionSeed(bbox, {box_id} if box_id else set(), {"box"}))
-    seeds.extend(
-        _manual_mask_seeds(
-            manual_mask,
-            width=width,
-            height=height,
-            min_component_area=max(1, int(min_manual_component_area)),
+    for seed in _manual_mask_seeds(
+        manual_mask,
+        width=width,
+        height=height,
+        min_component_area=max(1, int(min_manual_component_area)),
+    ):
+        clipped = _intersect_bbox(seed.bbox, owned_bbox)
+        if clipped is not None:
+            seeds.append(_RegionSeed(clipped, set(), {"manual_mask"}))
+    expanded: list[_RegionSeed] = []
+    for seed in seeds:
+        clipped = _intersect_bbox(
+            _expand_bbox(
+                seed.bbox,
+                margin=int(margin),
+                width=width,
+                height=height,
+            ),
+            owned_bbox,
         )
-    )
-    expanded = [
-        _RegionSeed(
-            _expand_bbox(seed.bbox, margin=int(margin), width=width, height=height),
-            set(seed.source_box_ids),
-            set(seed.source_kinds),
-        )
-        for seed in seeds
-    ]
+        if clipped is not None:
+            expanded.append(
+                _RegionSeed(
+                    clipped,
+                    set(seed.source_box_ids),
+                    set(seed.source_kinds),
+                )
+            )
     merged = _merge_seeds(expanded, int(merge_gap))
     page_area = float(max(1, width * height))
     regions: list[QCRegion] = []

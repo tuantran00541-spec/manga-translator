@@ -350,6 +350,119 @@ class YoloDetector:
             return float(candidate[4]), 0, 1, candidate[5], candidate[6]
         raise ValueError("Invalid detector candidate tuple")
 
+    @staticmethod
+    def _box_iou(a: BubbleBox, b: BubbleBox) -> float:
+        ix1 = max(a.x1, b.x1)
+        iy1 = max(a.y1, b.y1)
+        ix2 = min(a.x2, b.x2)
+        iy2 = min(a.y2, b.y2)
+        if ix2 <= ix1 or iy2 <= iy1:
+            return 0.0
+        intersection = (ix2 - ix1) * (iy2 - iy1)
+        area_a = max(0, a.x2 - a.x1) * max(0, a.y2 - a.y1)
+        area_b = max(0, b.x2 - b.x1) * max(0, b.y2 - b.y1)
+        return intersection / float(max(1, area_a + area_b - intersection))
+
+    @staticmethod
+    def _merge_text_mask_evidence(boxes: list[BubbleBox]) -> BubbleBox:
+        """Union duplicate text masks instead of discarding their pixels.
+
+        Horizontal-flip TTA, detector windows, and shared seam passes can return
+        slightly different extents for the same text block. Conventional NMS
+        keeps only the highest score; a tighter high-score box can therefore
+        discard the right or bottom of a fuller lower-score mask. Only verified
+        text-segmenter pixels are merged here, so this never invents a rectangle.
+        """
+        base = max(boxes, key=lambda box: float(box.confidence))
+        evidence = [box for box in boxes if box.verified_mask]
+        if not evidence:
+            return replace(base)
+
+        x1 = min(box.x1 for box in evidence)
+        y1 = min(box.y1 for box in evidence)
+        x2 = max(box.x2 for box in evidence)
+        y2 = max(box.y2 for box in evidence)
+        merged = np.zeros((y2 - y1, x2 - x1), dtype=np.uint8)
+        for box in evidence:
+            mask = box.mask
+            box_w = box.x2 - box.x1
+            box_h = box.y2 - box.y1
+            if mask.shape != (box_h, box_w):
+                mask = cv2.resize(
+                    mask, (box_w, box_h), interpolation=cv2.INTER_NEAREST
+                )
+            dy1 = box.y1 - y1
+            dx1 = box.x1 - x1
+            target = merged[dy1 : dy1 + box_h, dx1 : dx1 + box_w]
+            merged[dy1 : dy1 + box_h, dx1 : dx1 + box_w] = np.maximum(
+                target, mask
+            )
+
+        safe = bool(
+            np.any(merged > 0)
+            and any(bool(box.safe_to_inpaint) for box in evidence)
+        )
+        mask_source = (
+            base.mask_source
+            if base.verified_mask
+            else max(evidence, key=lambda box: float(box.confidence)).mask_source
+        )
+        return replace(
+            base,
+            x1=x1,
+            y1=y1,
+            x2=x2,
+            y2=y2,
+            mask=merged,
+            mask_source=mask_source,
+            safe_to_inpaint=safe,
+            ocr_eligible=any(bool(box.ocr_eligible) for box in boxes),
+            needs_review=any(bool(box.needs_review) for box in boxes),
+        )
+
+    @classmethod
+    def _nms_box_group(
+        cls,
+        members: list[BubbleBox],
+        *,
+        score_threshold: float,
+        iou_threshold: float,
+    ) -> list[BubbleBox]:
+        if not members:
+            return []
+        rects = np.array(
+            [[b.x1, b.y1, b.x2 - b.x1, b.y2 - b.y1] for b in members]
+        )
+        scores = np.array(
+            [max(score_threshold, float(b.confidence)) for b in members]
+        )
+        raw_indices = cv2.dnn.NMSBoxes(
+            rects.tolist(), scores.tolist(), score_threshold, iou_threshold
+        )
+        kept = [int(i) for i in np.array(raw_indices).flatten()]
+        if not kept:
+            return []
+
+        source_name = str(members[kept[0]].source_model).lower()
+        if "text_segmenter" not in source_name:
+            return [members[i] for i in kept]
+
+        buckets = {index: [members[index]] for index in kept}
+        kept_set = set(kept)
+        for index, box in enumerate(members):
+            if index in kept_set or not box.verified_mask:
+                continue
+            target = max(
+                kept,
+                key=lambda kept_index: cls._box_iou(
+                    box, members[kept_index]
+                ),
+            )
+            if cls._box_iou(box, members[target]) > iou_threshold:
+                buckets[target].append(box)
+
+        return [cls._merge_text_mask_evidence(buckets[index]) for index in kept]
+
     def _nms(self, candidates: list[tuple], prototypes=None) -> list[BubbleBox]:
         if not candidates:
             return []
@@ -361,18 +474,13 @@ class YoloDetector:
 
         for class_id, member_indices in by_class.items():
             subset = [candidates[i] for i in member_indices]
-            rects = np.array([[c[0], c[1], c[2] - c[0], c[3] - c[1]] for c in subset])
-            scores = np.array([c[4] for c in subset])
-            indices = cv2.dnn.NMSBoxes(
-                rects.tolist(), scores.tolist(), self.conf_threshold, BUBBLE_IOU_THRESHOLD
-            )
-            for local_i in np.array(indices).flatten():
-                c = subset[int(local_i)]
+            decoded = []
+            for c in subset:
                 x1, y1, x2, y2 = map(int, c[:4])
                 score, cid, num_classes, canvas_box, mask_coeffs = self._candidate_fields(c)
                 mask = self._decode_mask(mask_coeffs, prototypes, canvas_box, x2 - x1, y2 - y1)
                 class_name = self._class_name(int(cid), int(num_classes))
-                result.append(BubbleBox(
+                decoded.append(BubbleBox(
                     x1=x1,
                     y1=y1,
                     x2=x2,
@@ -384,6 +492,13 @@ class YoloDetector:
                     class_name=class_name,
                     semantic_type=self._semantic_type(class_name),
                 ))
+            result.extend(
+                self._nms_box_group(
+                    decoded,
+                    score_threshold=self.conf_threshold,
+                    iou_threshold=BUBBLE_IOU_THRESHOLD,
+                )
+            )
         result.sort(key=lambda b: b.confidence, reverse=True)
         return result
 
@@ -395,11 +510,12 @@ class YoloDetector:
         for b in boxes:
             by_class.setdefault((b.source_model, b.class_id), []).append(b)
         for members in by_class.values():
-            rects = np.array([[b.x1, b.y1, b.x2 - b.x1, b.y2 - b.y1] for b in members])
-            scores = np.array([b.confidence for b in members])
-            indices = cv2.dnn.NMSBoxes(
-                rects.tolist(), scores.tolist(), self.conf_threshold, BUBBLE_IOU_THRESHOLD
+            result.extend(
+                self._nms_box_group(
+                    members,
+                    score_threshold=self.conf_threshold,
+                    iou_threshold=BUBBLE_IOU_THRESHOLD,
+                )
             )
-            result.extend(members[int(i)] for i in np.array(indices).flatten())
         result.sort(key=lambda b: b.confidence, reverse=True)
         return result

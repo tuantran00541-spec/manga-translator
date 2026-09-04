@@ -37,9 +37,17 @@ def main() -> None:
         "Skipping non-authorized destructive mask",
     )
     _require(
+        "app/detector/bubble_detector.py",
+        "def _merge_text_mask_evidence(boxes: list[BubbleBox]) -> BubbleBox:",
+        "Only verified",
+        'if "text_segmenter" not in source_name:',
+        "buckets[target].append(box)",
+    )
+    _require(
         "app/detector/combined_detector.py",
         'mask_source="bubble_flat_contrast"',
         "safe_to_inpaint=True",
+        "YoloDetector._nms_box_group(",
     )
     _require(
         "app/inpaint/lama_inpainter.py",

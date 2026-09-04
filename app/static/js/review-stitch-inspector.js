@@ -46,7 +46,7 @@
     const groups = new Map();
     const pages = window.currentManifest?.pages || [];
     pages.forEach((page, canonicalIndex) => {
-      if (!page || page.skipped) return;
+      if (!page) return;
       const sourcePage = cleanSourcePage(page, canonicalIndex);
       if (!groups.has(sourcePage)) groups.set(sourcePage, []);
       groups.get(sourcePage).push({ page, canonicalIndex });
@@ -58,9 +58,17 @@
   }
 
   function imageUrl(page) {
-    const url = page.clean || page.original;
+    // A skipped slice still owns part of the source page.  Showing only clean
+    // slices makes a mixed source page look truncated and no longer match the
+    // raw image.  Use the original pixels for skipped slices and the latest
+    // clean artifact everywhere else.
+    const url = page.skipped ? page.original : (page.clean || page.original);
     if (!url) return null;
-    const revision = Number(page.clean_revision || page.process_revision || page.source_revision || 0);
+    const revision = Number(
+      page.skipped
+        ? (page.source_revision || 0)
+        : (page.clean_revision || page.process_revision || page.source_revision || 0),
+    );
     const sep = url.includes("?") ? "&" : "?";
     return `${url}${sep}review_revision=${revision}`;
   }
@@ -205,7 +213,12 @@
           descriptor.sourceY1,
         );
       }
-      meta.textContent = `Trang gốc ${sourcePage + 1} · ${items.length} lát · ${width} × ${sourceHeight}px · ghép theo stitch_core`;
+      const skippedCount = items.filter((item) => item.page?.skipped).length;
+      const processedCount = items.length - skippedCount;
+      const sliceSummary = skippedCount
+        ? `${processedCount} lát đã xử lý + ${skippedCount} lát giữ nguyên`
+        : `${items.length} lát đã xử lý`;
+      meta.textContent = `Trang gốc ${sourcePage + 1} · ${sliceSummary} · ${width} × ${sourceHeight}px · ghép theo stitch_core`;
     } catch (err) {
       if (token !== renderToken) return;
       imageHost.replaceChildren();
@@ -254,7 +267,7 @@
     const stitchedBtn = document.createElement("button");
     stitchedBtn.type = "button";
     stitchedBtn.dataset.reviewMode = "stitched";
-    stitchedBtn.textContent = "Ảnh ghép";
+    stitchedBtn.textContent = "Ghép như ảnh gốc";
     const slicesBtn = document.createElement("button");
     slicesBtn.type = "button";
     slicesBtn.dataset.reviewMode = "slices";
@@ -291,7 +304,7 @@
 
     const note = document.createElement("div");
     note.className = "review-stitched-note";
-    note.textContent = "Ảnh ghép chỉ lấy phần stitch_core mà mỗi lát thực sự sở hữu, nên đây là cách nhìn gần nhất với output cuối. Muốn khoanh/reinpaint, chuyển sang “Từng lát”.";
+    note.textContent = "Ảnh đầy đủ chỉ lấy phần stitch_core mà mỗi lát thực sự sở hữu: lát đã xử lý dùng ảnh clean, lát bỏ qua giữ ảnh original. Muốn khoanh/reinpaint, chuyển sang “Từng lát”.";
     const meta = document.createElement("div");
     meta.className = "review-stitched-meta";
     const warning = document.createElement("div");

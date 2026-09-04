@@ -10,7 +10,7 @@ from app.parameters import (
     VISUAL_QC_REGION_MARGIN,
 )
 from app.visual_qc.jobs import QCWorkItem
-from app.visual_qc.regions import QCRegion, extract_candidate_regions
+from app.visual_qc.regions import QCRegion, extract_candidate_regions, owned_core_bbox
 
 
 @dataclass(frozen=True)
@@ -26,13 +26,15 @@ def _full_page_region(page: dict, page_index: int) -> QCRegion:
     height = int(page.get("height") or 0)
     if width <= 0 or height <= 0:
         raise ValueError(f"Page {page_index} width/height are required for chapter QC")
+    bbox = owned_core_bbox(page, width, height)
+    owned_area = max(1, (bbox[2] - bbox[0]) * (bbox[3] - bbox[1]))
     return QCRegion(
         page_index=page_index,
         region_id=f"P{page_index + 1:04d}-GLOBAL",
-        bbox=(0, 0, width, height),
+        bbox=bbox,
         source_box_ids=(),
         source_kinds=("global",),
-        area_ratio=1.0,
+        area_ratio=owned_area / float(max(1, width * height)),
         requires_deep_qc=False,
     )
 

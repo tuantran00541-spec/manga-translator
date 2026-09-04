@@ -242,6 +242,13 @@ def check_browser_state_contracts() -> None:
         Path("app/static/js/editor-box-transform.js"): (
             "browser request alone cannot undo a server commit",
             "if (currentGen === geomGeneration)",
+            "window.editorImageMetrics(img)",
+            "metrics.offsetX + r.x1 * metrics.sx",
+        ),
+        Path("app/static/js/editor.js"): (
+            "function editorImageMetrics(img)",
+            "const rect = img.getBoundingClientRect();",
+            "if (!point || !point.inside) return;",
         ),
         Path("app/static/js/review-workspace.js"): (
             "container.querySelectorAll(\".review-card\").forEach(captureMaskSnapshot);",

@@ -280,6 +280,21 @@ function clearSelectedTextObject() {
 }
 window.clearSelectedTextObject = clearSelectedTextObject;
 
+function editorImageMetrics(img) {
+  if (!img || !img.naturalWidth || !img.naturalHeight || !img.clientWidth || !img.clientHeight) {
+    return null;
+  }
+  return {
+    offsetX: img.offsetLeft,
+    offsetY: img.offsetTop,
+    width: img.clientWidth,
+    height: img.clientHeight,
+    sx: img.clientWidth / img.naturalWidth,
+    sy: img.clientHeight / img.naturalHeight,
+  };
+}
+window.editorImageMetrics = editorImageMetrics;
+
 function renderTextObjectOverlays(pageIndex, page) {
   const wrapper = document.querySelector(".translation-canvas-host .page-block-wrapper");
   if (!wrapper) return;
@@ -289,19 +304,18 @@ function renderTextObjectOverlays(pageIndex, page) {
   imgWrap.querySelectorAll(".text-object-overlay:not(.drawing)").forEach((el) => el.remove());
 
   const render = () => {
-    if (!img.naturalWidth || !img.clientWidth) return;
-    const sx = img.clientWidth / img.naturalWidth;
-    const sy = img.clientHeight / img.naturalHeight;
+    const metrics = editorImageMetrics(img);
+    if (!metrics) return;
     (page.text_objects || []).forEach((obj) => {
       if (!obj || !obj.region) return;
       const overlay = document.createElement("div");
       overlay.className = "text-object-overlay" + (obj.shape === "ellipse" ? " ellipse" : "");
       overlay.dataset.pageIndex = String(pageIndex);
       overlay.dataset.objectId = obj.id;
-      overlay.style.left = obj.region.x1 * sx + "px";
-      overlay.style.top = obj.region.y1 * sy + "px";
-      overlay.style.width = (obj.region.x2 - obj.region.x1) * sx + "px";
-      overlay.style.height = (obj.region.y2 - obj.region.y1) * sy + "px";
+      overlay.style.left = metrics.offsetX + obj.region.x1 * metrics.sx + "px";
+      overlay.style.top = metrics.offsetY + obj.region.y1 * metrics.sy + "px";
+      overlay.style.width = (obj.region.x2 - obj.region.x1) * metrics.sx + "px";
+      overlay.style.height = (obj.region.y2 - obj.region.y1) * metrics.sy + "px";
       if (editorState.selectedTextObjectId === obj.id) overlay.classList.add("selected");
       overlay.addEventListener("dblclick", (e) => {
         e.preventDefault();
@@ -996,10 +1010,27 @@ function setupEditorDraw(wrapper, pageIndex) {
   let last = null;
   let temp = null;
 
+  const pointInImage = (e) => {
+    const metrics = editorImageMetrics(img);
+    if (!metrics) return null;
+    const rect = img.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return null;
+    const rawX = (e.clientX - rect.left) * (metrics.width / rect.width);
+    const rawY = (e.clientY - rect.top) * (metrics.height / rect.height);
+    return {
+      x: Math.max(0, Math.min(metrics.width, rawX)),
+      y: Math.max(0, Math.min(metrics.height, rawY)),
+      inside: rawX >= 0 && rawX <= metrics.width && rawY >= 0 && rawY <= metrics.height,
+      metrics,
+    };
+  };
+
   const updateTemp = (x, y) => {
     if (!temp || !start) return;
-    temp.style.left = Math.min(start.x, x) + "px";
-    temp.style.top = Math.min(start.y, y) + "px";
+    const metrics = editorImageMetrics(img);
+    if (!metrics) return;
+    temp.style.left = metrics.offsetX + Math.min(start.x, x) + "px";
+    temp.style.top = metrics.offsetY + Math.min(start.y, y) + "px";
     temp.style.width = Math.abs(x - start.x) + "px";
     temp.style.height = Math.abs(y - start.y) + "px";
   };
@@ -1009,9 +1040,10 @@ function setupEditorDraw(wrapper, pageIndex) {
     if (e.button !== 0) return;
     if (e.target.closest(".text-object-overlay")) return;
     e.preventDefault();
-    const rect = imgWrap.getBoundingClientRect();
+    const point = pointInImage(e);
+    if (!point || !point.inside) return;
     drawing = true;
-    start = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    start = { x: point.x, y: point.y };
     last = start;
     temp = document.createElement("div");
     temp.className = "text-object-overlay drawing" + (editorState.tool === "ellipse" ? " ellipse" : "");
@@ -1021,8 +1053,9 @@ function setupEditorDraw(wrapper, pageIndex) {
 
   const onMove = (e) => {
     if (!drawing) return;
-    const rect = imgWrap.getBoundingClientRect();
-    last = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    const point = pointInImage(e);
+    if (!point) return;
+    last = { x: point.x, y: point.y };
     updateTemp(last.x, last.y);
   };
 
@@ -1031,9 +1064,10 @@ function setupEditorDraw(wrapper, pageIndex) {
     drawing = false;
     if (temp) { temp.remove(); temp = null; }
     if (!start || !last) { start = null; last = null; return; }
-    if (!img.naturalWidth || !img.clientWidth) { start = null; last = null; return; }
-    const sx = img.naturalWidth / img.clientWidth;
-    const sy = img.naturalHeight / img.clientHeight;
+    const metrics = editorImageMetrics(img);
+    if (!metrics) { start = null; last = null; return; }
+    const sx = img.naturalWidth / metrics.width;
+    const sy = img.naturalHeight / metrics.height;
     const x1 = Math.round(Math.min(start.x, last.x) * sx);
     const y1 = Math.round(Math.min(start.y, last.y) * sy);
     const x2 = Math.round(Math.max(start.x, last.x) * sx);

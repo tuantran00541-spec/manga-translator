@@ -326,17 +326,13 @@ class CombinedTextDetector:
         for b in boxes:
             groups.setdefault((b.source_model, b.semantic_type), []).append(b)
         for members in groups.values():
-            rects = np.array([[b.x1, b.y1, max(1,b.x2-b.x1), max(1,b.y2-b.y1)] for b in members])
-            scores = np.array(
-                [max(DETECTOR_NMS_SCORE_FLOOR, float(b.confidence)) for b in members]
+            result.extend(
+                YoloDetector._nms_box_group(
+                    members,
+                    score_threshold=DETECTOR_NMS_SCORE_FLOOR,
+                    iou_threshold=iou_threshold,
+                )
             )
-            indices = cv2.dnn.NMSBoxes(
-                rects.tolist(),
-                scores.tolist(),
-                DETECTOR_NMS_SCORE_FLOOR,
-                iou_threshold,
-            )
-            result.extend(members[int(i)] for i in np.array(indices).flatten())
         return sorted(result, key=lambda b: b.confidence, reverse=True)
 
     @staticmethod
