@@ -1,0 +1,81 @@
+name: Qwen3.8 Win32 direct I/O synthetic
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - research/qwen3.8-27b-runtime-finish
+    paths:
+      - research/qwen38/win32_direct_io.c
+      - research/qwen38/qwen38_win32_direct_io.py
+      - .github/workflows/qwen38-win32-direct-io.yml
+
+permissions:
+  contents: read
+
+jobs:
+  win32-direct-io:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compiler information
+        shell: pwsh
+        run: |
+          clang --version
+          python --version
+
+      - name: Compile native no-buffering bridge
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dll = Join-Path $env:RUNNER_TEMP 'qwen_win32_direct_io.dll'
+          clang -O2 -std=c11 -shared `
+            research/qwen38/win32_direct_io.c `
+            -o $dll
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $env:QWEN_WIN32_DIRECT_LIB = $dll
+          @'
+          import ctypes, os
+          lib = ctypes.CDLL(os.environ["QWEN_WIN32_DIRECT_LIB"])
+          for name in (
+              "qwen_win32_direct_open_utf8",
+              "qwen_win32_direct_close",
+              "qwen_win32_direct_logical_sector",
+              "qwen_win32_direct_physical_sector",
+              "qwen_win32_direct_alignment",
+              "qwen_win32_direct_read",
+              "qwen_win32_direct_calls",
+              "qwen_win32_direct_bytes",
+              "qwen_win32_direct_seconds",
+              "qwen_win32_direct_last_error",
+              "qwen_win32_direct_no_buffering",
+              "qwen_win32_direct_overlapped",
+              "qwen_win32_buffer_create",
+              "qwen_win32_buffer_ptr",
+              "qwen_win32_buffer_bytes",
+              "qwen_win32_buffer_alignment",
+              "qwen_win32_buffer_destroy",
+          ):
+              getattr(lib, name)
+          print("QWEN38_WIN32_DIRECT_IO_DLL_ABI_PASS")
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run exact aligned synthetic gate
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dll = Join-Path $env:RUNNER_TEMP 'qwen_win32_direct_io.dll'
+          $log = Join-Path $env:RUNNER_TEMP 'win32-direct-io.log'
+          python -m py_compile research/qwen38/qwen38_win32_direct_io.py
+          python -u research/qwen38/qwen38_win32_direct_io.py --lib $dll `
+            2>&1 | Tee-Object -FilePath $log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (-not (Select-String -Path $log -SimpleMatch 'QWEN38_WIN32_DIRECT_IO_SYNTHETIC_PASS')) {
+            throw 'Win32 direct-I/O synthetic marker missing'
+          }
+          if (-not (Select-String -Path $log -SimpleMatch 'QWEN38_WIN32_DIRECT_IO_NO_BUFFERING_ABI_PASS')) {
+            throw 'Win32 no-buffering ABI marker missing'
+          }
