@@ -175,7 +175,7 @@ def run(args) -> dict[str, Any]:
                 "q8_output_rows_per_prefill": 819200,
                 "baseline_allocation_pattern": "calloc/free once per Q8 output row",
                 "candidate_allocation_pattern": "calloc/free once per Q8 matvec-many call; memset once per output row",
-                "arithmetic_change": false,
+                "arithmetic_change": False,
             },
             "baseline_residual_ab_run": 33831051629,
         }
