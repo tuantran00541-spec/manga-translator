@@ -354,8 +354,32 @@ function getWorkersSetting() {
 }
 
 const PROCESS_BATCH_SIZE = 16;
+let _activePageProcessing = null;
+let _activePageProcessingChapter = null;
 
-async function processSelectedPages() {
+function processSelectedPages() {
+  if (_activePageProcessing) {
+    const label = _activePageProcessingChapter === currentChapterId
+      ? "Chương này đang được xử lý."
+      : "Một chương khác đang được xử lý.";
+    showToast(label + " Vui lòng chờ tiến trình hiện tại hoàn tất.", "info");
+    return _activePageProcessing;
+  }
+
+  const chapterId = currentChapterId;
+  const run = _processSelectedPagesOnce();
+  _activePageProcessingChapter = chapterId;
+  _activePageProcessing = run.finally(() => {
+    if (_activePageProcessing === wrappedRun) {
+      _activePageProcessing = null;
+      _activePageProcessingChapter = null;
+    }
+  });
+  const wrappedRun = _activePageProcessing;
+  return wrappedRun;
+}
+
+async function _processSelectedPagesOnce() {
   const pages = currentManifest?.pages || [];
   const indices = pages
     .map((page, index) => (page?.skipped ? null : index))

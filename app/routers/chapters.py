@@ -4,6 +4,7 @@ import shutil
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.concurrency import run_in_threadpool
+from filelock import FileLock, Timeout
 
 from app.config import OUTPUT_DIR, PROCESSED_DIR, RAW_DIR
 from app.dependencies import pipeline
@@ -237,6 +238,21 @@ def process_pages(req: ProcessPagesRequest) -> dict:
             raise HTTPException(400, f"Invalid page_index {idx} for chapter {req.chapter_id} (total pages: {total_pages})")
 
     workers = _clamp_workers(req.workers)
+    processing_lock = FileLock(
+        PROCESSED_DIR / req.chapter_id / "processing.lock"
+    )
+    try:
+        processing_lock.acquire(timeout=0)
+    except Timeout as exc:
+        logger.warning(
+            "Chapter {}: rejected overlapping page processing request for {}",
+            req.chapter_id,
+            req.page_indices,
+        )
+        raise HTTPException(
+            409,
+            "This chapter is already being processed. Wait for the active batch to finish.",
+        ) from exc
     logger.info(
         f"Chapter {req.chapter_id}: processing pages {req.page_indices} (workers={workers})"
     )
@@ -259,6 +275,8 @@ def process_pages(req: ProcessPagesRequest) -> dict:
             exc,
         )
         raise HTTPException(500, f"Process pages failed: {exc}") from exc
+    finally:
+        processing_lock.release()
 
 
 @router.post("/skip_pages")
