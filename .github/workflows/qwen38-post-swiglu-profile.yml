@@ -1,0 +1,169 @@
+name: Qwen3.8 exact post-SwiGLU hotspot profile
+
+on:
+  push:
+    branches:
+      - research/qwen3.8-27b-runtime-finish
+    paths:
+      - research/qwen38/qwen38_post_swiglu_profile.py
+      - research/qwen38/swiglu_exact.c
+      - research/qwen38/swiglu_runtime.py
+      - .github/workflows/qwen38-post-swiglu-profile.yml
+  workflow_dispatch:
+
+jobs:
+  post-swiglu-profile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    env:
+      HF_HUB_DISABLE_TELEMETRY: "1"
+      QWEN_REVISION: 1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Exact profiler and SwiGLU sanity
+        shell: bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          set -euo pipefail
+          python -m py_compile research/qwen38/qwen38_post_swiglu_profile.py research/qwen38/swiglu_runtime.py
+          PYTHONPATH=research/qwen38 python -u research/qwen38/qwen38_post_swiglu_profile.py sanity
+          cc -O3 -std=c11 -fno-fast-math -fno-associative-math -ffp-contract=off -fno-tree-vectorize -fPIC -shared \
+            research/qwen38/swiglu_exact.c -lm -o "$RUNNER_TEMP/libqwen_swiglu_exact.so"
+          PYTHONPATH=research/qwen38 python -u research/qwen38/qwen38_swiglu_exact_probe.py sanity \
+            --swiglu-lib "$RUNNER_TEMP/libqwen_swiglu_exact.so"
+
+      - name: Compile proven native sanity gates
+        shell: bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          set -euo pipefail
+          cc -O3 -std=c11 -fno-fast-math -fno-associative-math -ffp-contract=off -fPIC -shared \
+            research/qwen38/attention_core_exact.c -lm -o "$RUNNER_TEMP/libqwen_attention_exact.so"
+          PYTHONPATH=research/qwen38 python -u research/qwen38/qwen38_attention_core_exact_probe.py sanity \
+            --attn-lib "$RUNNER_TEMP/libqwen_attention_exact.so"
+          cc -O3 -std=c11 -fno-fast-math -fno-associative-math -ffp-contract=off -fno-tree-vectorize -fPIC -shared \
+            research/qwen38/gdn_conv_silu_exact.c -lm -o "$RUNNER_TEMP/libqwen_gdn_conv_exact.so"
+          PYTHONPATH=research/qwen38 python -u research/qwen38/qwen38_gdn_conv_silu_exact_probe.py sanity \
+            --conv-lib "$RUNNER_TEMP/libqwen_gdn_conv_exact.so"
+          cc -O3 -std=c11 -fno-fast-math -fno-associative-math -ffp-contract=off -fno-tree-vectorize -fPIC -shared \
+            research/qwen38/gdn_output_gate_exact.c -lm -o "$RUNNER_TEMP/libqwen_gdn_output_gate_exact.so"
+          PYTHONPATH=research/qwen38 python -u research/qwen38/qwen38_gdn_output_gate_exact_probe.py sanity \
+            --gate-lib "$RUNNER_TEMP/libqwen_gdn_output_gate_exact.so"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Runner CPU and storage information
+        run: |
+          lscpu
+          df -h
+          free -h
+
+      - name: Reclaim disk
+        shell: bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup || true
+          docker system prune -af || true
+          df -h
+          free -h
+
+      - name: Install runtime dependencies
+        run: python -m pip install --no-cache-dir huggingface_hub hf_xet
+
+      - name: Download pinned GGUF
+        shell: bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          set -euo pipefail
+          MODEL=$(python - <<'PY'
+          from huggingface_hub import hf_hub_download
+          print(hf_hub_download("bartowski/Qwen3.8-27B-GGUF", filename="Qwen3.8-27B-Q6_K_L.gguf", local_dir="${{ runner.temp }}/qwen38-model"))
+          PY
+          )
+          echo "MODEL=$MODEL" >> "$GITHUB_ENV"
+          echo "K3_WORK=$RUNNER_TEMP/qwen38-post-swiglu-k3" >> "$GITHUB_ENV"
+          echo "EVIDENCE=$RUNNER_TEMP/qwen38-post-swiglu-evidence" >> "$GITHUB_ENV"
+
+      - name: Validate pinned decoder inventory
+        shell: bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          set -euo pipefail
+          mkdir -p "$EVIDENCE"
+          PYTHONPATH=research/qwen38 python -u research/qwen38/qwen35_gguf_decoder_contract.py real \
+            --model "$MODEL" --output "$EVIDENCE/inventory.json" 2>&1 | tee "$EVIDENCE/inventory.log"
+
+      - name: Compile exact runtime bridges
+        shell: bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          set -euo pipefail
+          cc -O3 -std=c11 -mavx2 -fno-fast-math -ffp-contract=off -fPIC -shared \
+            research/qwen38/gguf_quant_matvec_many_bridge.c -lm -o "$RUNNER_TEMP/libqwen_quant_many.so"
+          cc -O2 -std=c11 -fno-fast-math -ffp-contract=off -fPIC -shared \
+            research/qwen38/gdn_state_ar.c -lm -o "$RUNNER_TEMP/libqwen_gdn_serial.so"
+          cc -O3 -std=c11 -fno-fast-math -fno-associative-math -ffp-contract=off -fPIC -shared \
+            research/qwen38/f32_fsum_matvec.c -lm -o "$RUNNER_TEMP/libqwen_f32_fsum.so"
+          cc -O3 -std=c11 -fno-fast-math -fno-associative-math -ffp-contract=off -fPIC -shared \
+            research/qwen38/attention_core_exact.c -lm -o "$RUNNER_TEMP/libqwen_attention_exact.so"
+          cc -O3 -std=c11 -fno-fast-math -fno-associative-math -ffp-contract=off -fno-tree-vectorize -fPIC -shared \
+            research/qwen38/gdn_conv_silu_exact.c -lm -o "$RUNNER_TEMP/libqwen_gdn_conv_exact.so"
+          cc -O3 -std=c11 -fno-fast-math -fno-associative-math -ffp-contract=off -fno-tree-vectorize -fPIC -shared \
+            research/qwen38/gdn_output_gate_exact.c -lm -o "$RUNNER_TEMP/libqwen_gdn_output_gate_exact.so"
+          cc -O3 -std=c11 -fno-fast-math -fno-associative-math -ffp-contract=off -fno-tree-vectorize -fPIC -shared \
+            research/qwen38/swiglu_exact.c -lm -o "$RUNNER_TEMP/libqwen_swiglu_exact.so"
+
+      - name: Run exact 11-token post-SwiGLU profile
+        timeout-minutes: 10
+        shell: bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          set -euo pipefail
+          mkdir -p "$EVIDENCE"
+          PYTHONPATH=research/qwen38 python -u research/qwen38/qwen38_post_swiglu_profile.py run \
+            --model "$MODEL" \
+            --quant-lib "$RUNNER_TEMP/libqwen_quant_many.so" \
+            --many-lib "$RUNNER_TEMP/libqwen_quant_many.so" \
+            --state-lib "$RUNNER_TEMP/libqwen_gdn_serial.so" \
+            --f32-lib "$RUNNER_TEMP/libqwen_f32_fsum.so" \
+            --attn-lib "$RUNNER_TEMP/libqwen_attention_exact.so" \
+            --conv-lib "$RUNNER_TEMP/libqwen_gdn_conv_exact.so" \
+            --gate-lib "$RUNNER_TEMP/libqwen_gdn_output_gate_exact.so" \
+            --swiglu-lib "$RUNNER_TEMP/libqwen_swiglu_exact.so" \
+            --inventory "$EVIDENCE/inventory.json" \
+            --work-dir "$K3_WORK" \
+            --output "$EVIDENCE/post-swiglu-profile.json" \
+            2>&1 | tee "$EVIDENCE/post-swiglu-profile.log"
+          grep -F "QWEN38_POST_SWIGLU_PROFILE_BITWISE_PASS" "$EVIDENCE/post-swiglu-profile.log"
+
+      - name: Print hotspot summary
+        if: always()
+        shell: bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          set -euo pipefail
+          if [[ -f "$EVIDENCE/post-swiglu-profile.json" ]]; then
+            python - <<'PY'
+          import json, os
+          from pathlib import Path
+          r=json.loads((Path(os.environ["EVIDENCE"])/"post-swiglu-profile.json").read_text())
+          print(json.dumps({
+              "status": r["status"],
+              "prefill_seconds": r["prefill_seconds"],
+              "k3_bytes": r["k3_bytes"],
+              "total_matvec_seconds": r["total_matvec_seconds"],
+              "total_prepare_seconds": r["total_prepare_seconds"],
+              "total_native_helper_seconds": r["total_native_helper_seconds"],
+              "unprofiled_python_orchestration_seconds": r["unprofiled_python_orchestration_seconds"],
+              "native_seconds": r["native_seconds"],
+              "ffn_stage_ranking": r["profile"]["ffn_stage_ranking"],
+              "matvec_role_seconds": r["profile"]["matvec_role_seconds"],
+              "prepare_seconds_by_kind": r["profile"]["prepare_seconds_by_kind"],
+              "max_rss_gib": r["max_rss_gib"],
+          }, indent=2))
+          PY
+          fi
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen38-post-swiglu-profile-${{ github.run_id }}
+          path: ${{ env.EVIDENCE }}/
+          if-no-files-found: warn
+          retention-days: 14
