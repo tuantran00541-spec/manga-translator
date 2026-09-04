@@ -1,0 +1,107 @@
+name: Qwen3.8 K3 sub-layer readiness frontier
+
+on:
+  push:
+    branches:
+      - research/qwen3.8-27b-runtime-finish
+    paths:
+      - research/qwen38/qwen38_k3_sub_layer_frontier_probe.py
+      - .github/workflows/qwen38-k3-sub-layer-frontier.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  k3-sub-layer-frontier:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      QWEN_GGUF_SHA256: a487690b9f17de581857c4ae484dab50800335bb9eb978a4fb02c0465629dc0a
+      HF_HUB_DISABLE_TELEMETRY: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Synthetic frontier gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m py_compile research/qwen38/qwen38_k3_sub_layer_frontier_probe.py
+          PYTHONPATH=research/qwen38 python -u research/qwen38/qwen38_k3_sub_layer_frontier_probe.py sanity \
+            2>&1 | tee "$RUNNER_TEMP/sub-layer-frontier-sanity.log"
+          grep -F "QWEN38_K3_SUB_LAYER_FRONTIER_SANITY PASS" "$RUNNER_TEMP/sub-layer-frontier-sanity.log"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Reclaim disk and show storage
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup || true
+          docker system prune -af || true
+          lscpu
+          lsblk -o NAME,TYPE,SIZE,ROTA,MOUNTPOINTS || true
+          df -h
+          free -h
+
+      - name: Install runtime dependencies
+        run: python -m pip install --no-cache-dir huggingface_hub hf_xet
+
+      - name: Download and hash pinned GGUF
+        shell: bash
+        run: |
+          set -euo pipefail
+          MODEL=$(python - <<'PY'
+          from huggingface_hub import hf_hub_download
+          print(hf_hub_download(
+              "bartowski/Qwen3.8-27B-GGUF",
+              filename="Qwen3.8-27B-Q6_K_L.gguf",
+              local_dir="${{ runner.temp }}/qwen38-model",
+          ))
+          PY
+          )
+          echo "$QWEN_GGUF_SHA256  $MODEL" | sha256sum -c -
+          echo "MODEL=$MODEL" >> "$GITHUB_ENV"
+          echo "EVIDENCE=$RUNNER_TEMP/qwen38-k3-sub-layer-frontier-evidence" >> "$GITHUB_ENV"
+
+      - name: Run real pinned-layout frontier probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$EVIDENCE"
+          PYTHONPATH=research/qwen38 python -u research/qwen38/qwen38_k3_sub_layer_frontier_probe.py real \
+            --model "$MODEL" \
+            --output "$EVIDENCE/k3-sub-layer-frontier.json" \
+            2>&1 | tee "$EVIDENCE/k3-sub-layer-frontier.log"
+          grep -F "QWEN38_K3_SUB_LAYER_FRONTIER_REAL_PASS" "$EVIDENCE/k3-sub-layer-frontier.log"
+
+      - name: Print frontier summary
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f "$EVIDENCE/k3-sub-layer-frontier.json" ]]; then
+            python - <<'PY'
+          import json, os
+          from pathlib import Path
+          p = Path(os.environ["EVIDENCE"]) / "k3-sub-layer-frontier.json"
+          r = json.loads(p.read_text())
+          print(json.dumps({
+              "status": r["status"],
+              "current_total_read_bytes": r["current_total_read_bytes"],
+              "proposed_total_read_bytes": r["proposed_total_read_bytes"],
+              "total_read_bytes_delta": r["total_read_bytes_delta"],
+              "aggregate": r["aggregate"],
+          }, indent=2, sort_keys=True))
+          PY
+          fi
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen38-k3-sub-layer-frontier-${{ github.run_id }}
+          path: ${{ runner.temp }}/qwen38-k3-sub-layer-frontier-evidence/
+          if-no-files-found: warn
+          retention-days: 14
