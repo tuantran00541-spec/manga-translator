@@ -1,0 +1,60 @@
+name: Qwen3.8 Win32 progressive K3 synthetic
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - research/qwen3.8-27b-runtime-finish
+    paths:
+      - research/qwen38/win32_direct_io.c
+      - research/qwen38/qwen38_win32_direct_io.py
+      - research/qwen38/qwen38_k3_progressive_win32.py
+      - .github/workflows/qwen38-win32-progressive-k3.yml
+
+permissions:
+  contents: read
+
+jobs:
+  win32-progressive-k3:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compile native Win32 direct-I/O bridge
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dll = Join-Path $env:RUNNER_TEMP 'qwen_win32_direct_io.dll'
+          clang -O2 -std=c11 -shared `
+            research/qwen38/win32_direct_io.c `
+            -o $dll
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          echo "QWEN_WIN32_DIRECT_LIB=$dll" >> $env:GITHUB_ENV
+
+      - name: Python syntax gate
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python -m py_compile `
+            research/qwen38/qwen38_win32_direct_io.py `
+            research/qwen38/qwen38_k3_progressive.py `
+            research/qwen38/qwen38_k3_progressive_win32.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run Win32 progressive exact lifecycle gate
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $log = Join-Path $env:RUNNER_TEMP 'win32-progressive-k3.log'
+          $env:PYTHONPATH = 'research/qwen38'
+          python -u research/qwen38/qwen38_k3_progressive_win32.py `
+            --win32-direct-lib $env:QWEN_WIN32_DIRECT_LIB `
+            2>&1 | Tee-Object -FilePath $log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (-not (Select-String -Path $log -SimpleMatch 'QWEN38_WIN32_PROGRESSIVE_K3_SYNTHETIC_PASS')) {
+            throw 'Win32 progressive synthetic marker missing'
+          }
+          if (-not (Select-String -Path $log -SimpleMatch 'QWEN38_WIN32_PROGRESSIVE_K3_LIFECYCLE_PASS')) {
+            throw 'Win32 progressive lifecycle marker missing'
+          }
