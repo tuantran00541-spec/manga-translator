@@ -1,0 +1,129 @@
+name: Qwen3.8 K3 Direct-I-O queue-depth sweep
+
+on:
+  push:
+    branches:
+      - research/qwen3.8-27b-runtime-finish
+    paths:
+      - research/qwen38/qwen38_k3_io_queue_depth_probe.py
+      - .github/workflows/qwen38-k3-io-queue-depth.yml
+  workflow_dispatch:
+
+jobs:
+  k3-io-queue-depth:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      QWEN_REVISION: 1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0
+      QWEN_GGUF_SHA256: a487690b9f17de581857c4ae484dab50800335bb9eb978a4fb02c0465629dc0a
+      HF_HUB_DISABLE_TELEMETRY: "1"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set evidence paths
+        shell: bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          echo "K3_WORK=$RUNNER_TEMP/qwen38-k3-io-qd-k3" >> "$GITHUB_ENV"
+          echo "EVIDENCE=$RUNNER_TEMP/qwen38-k3-io-qd-evidence" >> "$GITHUB_ENV"
+
+      - name: Synthetic queue-depth correctness gate
+        shell: bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          set -euo pipefail
+          python -m py_compile research/qwen38/qwen38_k3_io_queue_depth_probe.py
+          PYTHONPATH=research/qwen38 python -u research/qwen38/qwen38_k3_io_queue_depth_probe.py sanity
+          PYTHONPATH=research/qwen38 python -u research/qwen38/qwen38_k3_io_queue_depth_probe.py synthetic \
+            2>&1 | tee "$RUNNER_TEMP/k3-io-qd-synthetic.log"
+          grep -F "QWEN38_K3_IO_QD_SYNTHETIC_PASS" "$RUNNER_TEMP/k3-io-qd-synthetic.log"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Runner CPU and storage information
+        run: |
+          lscpu
+          df -h
+          free -h
+          lsblk -o NAME,TYPE,SIZE,ROTA,MOUNTPOINTS || true
+
+      - name: Reclaim disk
+        shell: bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup || true
+          docker system prune -af || true
+          df -h
+          free -h
+
+      - name: Install runtime dependencies
+        run: python -m pip install --no-cache-dir huggingface_hub hf_xet
+
+      - name: Download and hash pinned GGUF
+        shell: bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          set -euo pipefail
+          MODEL=$(python - <<'PY2'
+          from huggingface_hub import hf_hub_download
+          print(hf_hub_download(
+              "bartowski/Qwen3.8-27B-GGUF",
+              filename="Qwen3.8-27B-Q6_K_L.gguf",
+              local_dir="${{ runner.temp }}/qwen38-model",
+          ))
+          PY2
+          )
+          echo "$QWEN_GGUF_SHA256  $MODEL" | sha256sum -c -
+          echo "MODEL=$MODEL" >> "$GITHUB_ENV"
+
+      - name: Validate pinned decoder inventory
+        shell: bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          set -euo pipefail
+          mkdir -p "$EVIDENCE"
+          PYTHONPATH=research/qwen38 python -u research/qwen38/qwen35_gguf_decoder_contract.py real \
+            --model "$MODEL" --output "$EVIDENCE/inventory.json" \
+            2>&1 | tee "$EVIDENCE/inventory.log"
+
+      - name: Run real K3 Direct-I-O block-size x queue-depth sweep
+        timeout-minutes: 16
+        shell: bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          set -euo pipefail
+          mkdir -p "$EVIDENCE"
+          PYTHONPATH=research/qwen38 python -u research/qwen38/qwen38_k3_io_queue_depth_probe.py real \
+            --model "$MODEL" \
+            --work-dir "$K3_WORK" \
+            --output "$EVIDENCE/k3-io-queue-depth.json" \
+            2>&1 | tee "$EVIDENCE/k3-io-queue-depth.log"
+          grep -F "QWEN38_K3_IO_QD_REAL_PASS" "$EVIDENCE/k3-io-queue-depth.log"
+
+      - name: Print queue-depth summary
+        if: always()
+        shell: bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          if [[ -f "$EVIDENCE/k3-io-queue-depth.json" ]]; then
+            python - <<'PY2'
+          import json, os
+          from pathlib import Path
+          r = json.loads((Path(os.environ["EVIDENCE"]) / "k3-io-queue-depth.json").read_text())
+          print(json.dumps({
+              "status": r["status"],
+              "sample_layers": r["sample_layers"],
+              "sample_bytes_per_method_round": r["sample_bytes_per_method_round"],
+              "ring": r["ring"],
+              "baseline": r["aggregate"]["one_shot_current"],
+              "best_candidate": r["best_candidate"],
+              "performance_positive": r["performance_positive"],
+              "max_rss_gib": r["max_rss_gib"],
+          }, indent=2, sort_keys=True))
+          PY2
+          fi
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen38-k3-io-queue-depth-${{ github.run_id }}
+          path: ${{ env.EVIDENCE }}/
+          if-no-files-found: warn
+          retention-days: 14
