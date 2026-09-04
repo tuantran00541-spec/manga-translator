@@ -102,6 +102,8 @@ def _active_overlap_signatures(
     for box in page.get("boxes", []) or []:
         if not isinstance(box, dict) or box.get("removed"):
             continue
+        if box.get("ocr_eligible") is False:
+            continue
         box_id = box.get("id")
         if not box_id or not _region_overlaps_box(region, box):
             continue
@@ -497,7 +499,6 @@ class OCRService:
         engine = engine_identity(lang)
         snapshot = self._snapshot_group(chapter_id, page_index, text_object_id)
         original_path, original_revision = self._source_identity(snapshot["original_value"])
-        del original_path
 
         source_box_ids, combined = self._collect_group_text(
             chapter_id,
@@ -505,6 +506,17 @@ class OCRService:
             snapshot["signatures"],
             lang,
         )
+        if not combined:
+            # A manually drawn rectangle/ellipse is itself explicit OCR
+            # authority. Detector boxes improve grouping when available, but a
+            # complete detector miss must not turn the user's region into a
+            # silent empty result (common for HUD/system-panel/free text).
+            combined = self._read_box_text(
+                original_path,
+                snapshot["region"],
+                lang,
+            )
+            self._result_local.metadata = None
         return self._commit_group_text(
             chapter_id,
             page_index,

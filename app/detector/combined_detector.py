@@ -125,9 +125,14 @@ class CombinedTextDetector:
     def _classify(
         self, box: BubbleBox, w: int, h: int, *, protect_tail_credits: bool = False
     ) -> BubbleBox:
-        if self._watermark_like(box, w, h) or (
-            protect_tail_credits and self._tail_credit_like(box, w, h)
-        ):
+        # A detector-confirmed speech bubble may legitimately be wide and touch
+        # a page edge. Watermark geometry must not revoke verified text masks or
+        # the bounded flat-bubble fallback for that semantic class.
+        protected_text = box.semantic_type != "speech_bubble" and (
+            self._watermark_like(box, w, h)
+            or (protect_tail_credits and self._tail_credit_like(box, w, h))
+        )
+        if protected_text:
             return replace(box, semantic_type="watermark", class_name="watermark",
                            safe_to_inpaint=False, ocr_eligible=False, needs_review=True)
         if box.verified_mask and "text_segmenter" in box.source_model.lower():
@@ -144,7 +149,17 @@ class CombinedTextDetector:
                 ocr_eligible=True,
                 needs_review=False,
             )
-        return replace(box, safe_to_inpaint=False, ocr_eligible=False, needs_review=True)
+        has_text_evidence = bool(
+            "text_segmenter" in box.source_model.lower()
+            or box.source_model == "opencv_mser"
+            or box.semantic_type in {"text", "free_text"}
+        )
+        return replace(
+            box,
+            safe_to_inpaint=False,
+            ocr_eligible=has_text_evidence,
+            needs_review=True,
+        )
 
     @staticmethod
     def _flat_bubble_text_fallback(
@@ -329,7 +344,7 @@ class CombinedTextDetector:
                 merged = replace(seed, x1=int(min_x), y1=int(min_y), x2=int(max_x), y2=int(max_y),
                                  mask=merged_mask, semantic_type=b.semantic_type,
                                  mask_source="text_segmenter" if safe else "none",
-                                 safe_to_inpaint=safe, ocr_eligible=safe, needs_review=not safe)
+                                 safe_to_inpaint=safe, ocr_eligible=True, needs_review=not safe)
                 result_boxes.append(
                     self._classify(merged, w, h, protect_tail_credits=protect_tail_credits)
                 )
@@ -343,7 +358,7 @@ class CombinedTextDetector:
                         replace(
                             b,
                             safe_to_inpaint=False,
-                            ocr_eligible=False,
+                            ocr_eligible=(b.semantic_type == "free_text"),
                             needs_review=True,
                         )
                     )

@@ -321,9 +321,15 @@ class SecondaryTextRecovery:
                 semantic_type="free_text",
                 mask_source="none",
                 safe_to_inpaint=False,
-                ocr_eligible=False,
+                ocr_eligible=not cls._watermark_like(px1, py1, px2, py2, w, h),
                 needs_review=True,
             )
+            if not candidate.ocr_eligible:
+                candidate = replace(
+                    candidate,
+                    semantic_type="watermark",
+                    class_name="watermark",
+                )
             if any(
                 cls._iou(candidate, box) > MSER_RESIDUAL_EXISTING_IOU_SKIP
                 for box in existing
@@ -431,7 +437,7 @@ class SecondaryTextRecovery:
                 semantic_type="free_text",
                 mask_source="none",
                 safe_to_inpaint=False,
-                ocr_eligible=False,
+                ocr_eligible=True,
                 needs_review=True,
             )
             if any(self._iou(candidate, b) > MSER_EXISTING_IOU_SKIP for b in existing):
@@ -475,7 +481,10 @@ class SecondaryTextRecovery:
                 )
             elif watermark:
                 candidate = replace(
-                    candidate, semantic_type="watermark", class_name="watermark"
+                    candidate,
+                    semantic_type="watermark",
+                    class_name="watermark",
+                    ocr_eligible=False,
                 )
             out.append(candidate)
 

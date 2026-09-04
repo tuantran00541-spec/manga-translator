@@ -169,6 +169,19 @@ def main() -> None:
                 f"\twall_ms={shared.get('wall_ms', 0)}"
                 f"\tmser_ms={shared.get('mser_ms', 0)}"
             )
+        inpaint = last_run.get("inpaint")
+        if isinstance(inpaint, dict):
+            print(
+                "INPAINT"
+                f"\tmodel={inpaint.get('model') or '-'}"
+                f"\tdynamic={int(bool(inpaint.get('dynamic')))}"
+                f"\tserialized={int(bool(inpaint.get('serialized_inference')))}"
+                f"\tlama_runs={inpaint.get('lama_model_runs', 0)}"
+                f"\tmodel_ms={inpaint.get('lama_model_ms', 0)}"
+                f"\tsession_wait_ms={inpaint.get('session_lock_wait_ms', 0)}"
+                f"\tort_wait_ms={inpaint.get('ort_global_lock_wait_ms', 0)}"
+                f"\tsmart_fill={inpaint.get('smart_fill_regions', 0)}"
+            )
 
 
 if __name__ == "__main__":

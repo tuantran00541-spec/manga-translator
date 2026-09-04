@@ -1766,7 +1766,10 @@ class ChapterPipeline:
                         record[key] = int(old[key])
                     record["_mask_array"] = None
                     record["safe_to_inpaint"] = False
-                    record["ocr_eligible"] = False
+                    # Geometry explicitly confirmed by the user remains a valid
+                    # non-destructive OCR target even though rectangle inpaint
+                    # authority is handled separately below.
+                    record["ocr_eligible"] = True
                     record["needs_review"] = True
 
             if core_bounds is not None:
