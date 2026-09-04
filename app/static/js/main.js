@@ -1,4 +1,12 @@
 document.addEventListener("DOMContentLoaded", () => {
+  if (!document.querySelector('script[data-review-stitch-inspector="1"]')) {
+    const reviewInspector = document.createElement("script");
+    reviewInspector.src = "/static/js/review-stitch-inspector.js";
+    reviewInspector.dataset.reviewStitchInspector = "1";
+    reviewInspector.defer = true;
+    document.head.appendChild(reviewInspector);
+  }
+
   const loadBtn = document.getElementById("load-btn");
   if (loadBtn && typeof loadChapter === "function") {
     loadBtn.addEventListener("click", loadChapter);
