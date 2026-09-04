@@ -1,0 +1,107 @@
+name: Qwen3.8 Win32 current-best quant composition
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - research/qwen3.8-27b-runtime-finish
+    paths:
+      - research/qwen38/qwen_thread_compat.h
+      - research/qwen38/q6_persistent_pool_portable_exact.c
+      - research/qwen38/q6_persistent_pool_runtime.py
+      - research/qwen38/qwen38_current_best_runtime_win32.py
+      - .github/workflows/qwen38-win32-current-best-quant.yml
+
+permissions:
+  contents: read
+
+jobs:
+  win32-current-best-quant:
+    runs-on: windows-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compile and run portable Q6 arithmetic selftest
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = Join-Path $env:RUNNER_TEMP 'qwen_q6_portable_selftest.exe'
+          clang -O3 -std=c11 -mavx2 -fno-fast-math -ffp-contract=off `
+            -DQWEN_Q6_PERSISTENT_POOL_SELFTEST `
+            research/qwen38/q6_persistent_pool_portable_exact.c `
+            -o $exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $log = Join-Path $env:RUNNER_TEMP 'q6-portable-selftest.log'
+          & $exe 2>&1 | Tee-Object -FilePath $log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (-not (Select-String -Path $log -SimpleMatch 'QWEN38_Q6_PORTABLE_PERSISTENT_POOL_BITWISE_PASS')) {
+            throw 'portable Q6 exact arithmetic marker missing'
+          }
+
+      - name: Compile portable Q6 current-best DLL
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dll = Join-Path $env:RUNNER_TEMP 'qwen_q6_portable.dll'
+          clang -O3 -std=c11 -mavx2 -fno-fast-math -ffp-contract=off -shared `
+            research/qwen38/q6_persistent_pool_portable_exact.c `
+            -o $dll
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          echo "QWEN_Q6_PORTABLE_LIB=$dll" >> $env:GITHUB_ENV
+
+      - name: Win32 current-best Python composition gate
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:PYTHONPATH = 'research/qwen38'
+          python -m py_compile `
+            research/qwen38/qwen38_current_best_runtime.py `
+            research/qwen38/qwen38_current_best_runtime_win32.py `
+            research/qwen38/q6_persistent_pool_runtime.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          @'
+          import ctypes, os
+          from pathlib import Path
+          from qwen38_current_best_runtime_win32 import (
+              Qwen38CurrentBestWin32QuantStack, sanity)
+
+          sanity()
+          lib_path = Path(os.environ["QWEN_Q6_PORTABLE_LIB"])
+
+          class DummyRuntime:
+              def __init__(self):
+                  self.lib = ctypes.CDLL(str(lib_path))
+                  self.activation_quantizations = 0
+                  self.matvec_rows = 0
+              def quantize(self, x, kind):
+                  raise RuntimeError("dummy quantize should not run in composition gate")
+              def matvec(self, weights, meta, x, prepared=None):
+                  raise RuntimeError("dummy matvec should not run in composition gate")
+
+          class DummyEngine:
+              def __init__(self):
+                  self.runtime = DummyRuntime()
+
+          engine = DummyEngine()
+          base = engine.runtime
+          stack = Qwen38CurrentBestWin32QuantStack(engine, lib_path)
+          report = stack.report()
+          assert report["platform"] == "win32", report
+          assert report["q6_backend"] == "portable-win32-native-sync", report
+          assert report["q6_workers"] == 2, report
+          assert report["q6_pool"]["threads"] == 2, report
+          assert report["q6_pool"]["calls"] == 0, report
+          assert report["q6_pool"]["native_calls"] == 0, report
+          assert report["q8_noalloc"] is True, report
+          assert report["q6_static_disjoint_rows"] is True, report
+          assert report["q6_within_row_reduction_change"] is False, report
+          assert report["arithmetic_change"] is False, report
+          assert engine.runtime is stack.runtime
+          stack.close()
+          assert engine.runtime is base
+          print(report)
+          print("QWEN38_CURRENT_BEST_WIN32_QUANT_COMPOSITION_PASS")
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
