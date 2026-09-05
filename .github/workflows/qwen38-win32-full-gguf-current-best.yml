@@ -7,6 +7,9 @@ on:
     paths:
       - research/qwen38/qwen38_progressive_current_best_profile_win32.py
       - research/qwen38/qwen35_gguf_decoder_contract.py
+      - research/qwen38/qwen38_win32_bootstrap.py
+      - research/qwen38/qwen38_glibc_expf_compat.c
+      - research/qwen38/qwen38_glibc_expf_redirect.h
       - .github/workflows/qwen38-win32-full-gguf-current-best.yml
   workflow_dispatch:
 
@@ -31,11 +34,13 @@ jobs:
           $work = Join-Path $env:RUNNER_TEMP 'qwen38-win32-full-real-k3'
           $dll = Join-Path $env:RUNNER_TEMP 'qwen38-win32-full-real-dll'
           $hf = Join-Path $env:RUNNER_TEMP 'qwen38-win32-hf-cache'
+          $expfCompat = Join-Path $dll 'qwen_glibc_expf_compat.dll'
           New-Item -ItemType Directory -Force -Path $evidence,$work,$dll,$hf | Out-Null
           "QWEN_EVIDENCE=$evidence" | Out-File -FilePath $env:GITHUB_ENV -Append
           "QWEN_K3_WORK=$work" | Out-File -FilePath $env:GITHUB_ENV -Append
           "QWEN_DLL_DIR=$dll" | Out-File -FilePath $env:GITHUB_ENV -Append
           "HF_HOME=$hf" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "QWEN38_EXPF_COMPAT_LIB=$expfCompat" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Verify proven source blobs
         shell: pwsh
@@ -46,7 +51,9 @@ jobs:
             'research/qwen38/qwen38_k3_progressive_win32.py' = 'd21710912c8ccabe394b29853a0f64a705b9d030'
             'research/qwen38/qwen38_current_best_q6_profile.py' = '398d2b464e7eb40b2f8d5f848bc64da6a7d44f51'
             'research/qwen38/qwen38_current_best_runtime_win32.py' = '6163649280b04ebd3b216567cc69849a68c593f9'
-            'research/qwen38/qwen38_win32_bootstrap.py' = '25339dfc677ed5ff3d548186f5ce6ee6f7fc53fe'
+            'research/qwen38/qwen38_win32_bootstrap.py' = 'a336941de5f703ac7622aebeb8e57352d385c0a7'
+            'research/qwen38/qwen38_glibc_expf_compat.c' = 'e402829d1f7eaec418db9fa35f2bdc9b26be1137'
+            'research/qwen38/qwen38_glibc_expf_redirect.h' = '4858d47b4b1ade098f1cb49143a3b6fd8b15f918'
             'research/qwen38/attention_core_exact.c' = '580953c54acbbc243763dc08cb02bae676f56d7c'
             'research/qwen38/attention_gate_exact.c' = '9e648ee01b9cf1a1e1367903d04aea45cb402a07'
             'research/qwen38/f32_fsum_matvec.c' = 'c07db99577f3925061410770d09491c338ca3747'
@@ -106,6 +113,19 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "clang failed for $Name rc=$LASTEXITCODE" }
           }
 
+          $compatObj = Join-Path $out 'qwen38_glibc_expf_compat.obj'
+          $compatCompileArgs = @(
+            '-O3', '-std=c11', '-c', '-mfma',
+            '-fno-fast-math', '-fno-associative-math', '-ffp-contract=off',
+            '-fno-vectorize', '-fno-slp-vectorize',
+            'research/qwen38/qwen38_glibc_expf_compat.c',
+            '-o', $compatObj
+          )
+          & clang @compatCompileArgs
+          if ($LASTEXITCODE -ne 0) { throw "clang failed for glibc-compatible expf object rc=$LASTEXITCODE" }
+
+          $expfRedirect = @('-include', 'research/qwen38/qwen38_glibc_expf_redirect.h')
+          Build-Dll 'qwen_glibc_expf_compat.dll' @($compatObj) @('qwen38_glibc_expf_compat')
           Build-Dll 'qwen_quant_base.dll' @('research/qwen38/gguf_quant_matvec_many_bridge.c') @(
             'qwen_quantize_q8_k_scalar','qwen_quantize_q8_0_scalar',
             'qwen_matvec_q6_k_q8_k_scalar','qwen_matvec_q8_0_q8_0_scalar',
@@ -117,15 +137,15 @@ jobs:
           Build-Dll 'qwen_gdn_state.dll' @('research/qwen38/gdn_state_ar.c') @('qwen_gdn_ar_step_f32')
           Build-Dll 'qwen_gdn_state_batch.dll' @('research/qwen38/gdn_state_ar.c','research/qwen38/gdn_state_batch_exact.c') @('qwen_gdn_ar_batch_f32')
           Build-Dll 'qwen_f32.dll' @('research/qwen38/f32_fsum_matvec.c') @('qwen_matvec_f32_fsum_exact')
-          Build-Dll 'qwen_attention_core.dll' @('research/qwen38/attention_core_exact.c') @('qwen_attention_core_f32_exact')
-          Build-Dll 'qwen_gdn_conv_silu.dll' @('research/qwen38/gdn_conv_silu_exact.c') @('qwen_gdn_conv_silu_many_f32_exact')
-          Build-Dll 'qwen_gdn_output_gate.dll' @('research/qwen38/gdn_output_gate_exact.c') @('qwen_gdn_output_rmsnorm_gate_f32_exact')
-          Build-Dll 'qwen_swiglu.dll' @('research/qwen38/swiglu_exact.c') @('qwen_swiglu_many_f32_exact')
+          Build-Dll 'qwen_attention_core.dll' @('research/qwen38/attention_core_exact.c',$compatObj) @('qwen_attention_core_f32_exact') $expfRedirect
+          Build-Dll 'qwen_gdn_conv_silu.dll' @('research/qwen38/gdn_conv_silu_exact.c',$compatObj) @('qwen_gdn_conv_silu_many_f32_exact') $expfRedirect
+          Build-Dll 'qwen_gdn_output_gate.dll' @('research/qwen38/gdn_output_gate_exact.c',$compatObj) @('qwen_gdn_output_rmsnorm_gate_f32_exact') $expfRedirect
+          Build-Dll 'qwen_swiglu.dll' @('research/qwen38/swiglu_exact.c',$compatObj) @('qwen_swiglu_many_f32_exact') $expfRedirect
           Build-Dll 'qwen_rmsnorm.dll' @('research/qwen38/rmsnorm_exact.c') @('qwen38_rmsnorm_exact_f32','qwen38_rmsnorm_heads_exact_f32')
           Build-Dll 'qwen_rmsnorm_many.dll' @('research/qwen38/rmsnorm_exact.c','research/qwen38/rmsnorm_many_exact.c') @('qwen38_rmsnorm_many_exact_f32')
           Build-Dll 'qwen_rmsnorm_heads_many.dll' @('research/qwen38/rmsnorm_exact.c','research/qwen38/rmsnorm_heads_many_exact.c') @('qwen38_rmsnorm_heads_many_exact_f32')
           Build-Dll 'qwen_residual_add.dll' @('research/qwen38/residual_add_exact.c') @('qwen38_residual_add_many_exact_f32')
-          Build-Dll 'qwen_attention_gate.dll' @('research/qwen38/attention_gate_exact.c') @('qwen38_attention_gate_exact_f32')
+          Build-Dll 'qwen_attention_gate.dll' @('research/qwen38/attention_gate_exact.c',$compatObj) @('qwen38_attention_gate_exact_f32') $expfRedirect
           Build-Dll 'qwen_gdn_repeat_scale.dll' @('research/qwen38/gdn_repeat_scale_exact.c') @('qwen38_gdn_repeat_scale_many_exact_f32')
           Build-Dll 'qwen_win32_direct_io.dll' @('research/qwen38/win32_direct_io.c') @(
             'qwen_win32_direct_open_utf8','qwen_win32_direct_close',
@@ -139,10 +159,18 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $env:PYTHONPATH = 'research/qwen38'
-          python -m py_compile research/qwen38/qwen38_progressive_current_best_profile_win32.py research/qwen38/qwen35_gguf_decoder_contract.py
+          python -m py_compile research/qwen38/qwen38_progressive_current_best_profile_win32.py research/qwen38/qwen35_gguf_decoder_contract.py research/qwen38/qwen38_win32_bootstrap.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -u research/qwen38/qwen35_gguf_decoder_contract.py sanity
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          $bootstrapLog = Join-Path $env:QWEN_EVIDENCE 'bootstrap.log'
+          python -u research/qwen38/qwen38_win32_bootstrap.py 2>&1 | Tee-Object -FilePath $bootstrapLog
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (-not (Select-String -Path $bootstrapLog -SimpleMatch 'QWEN38_WIN32_GLIBC_EXPF_COMPAT_BIND_PASS')) {
+            throw 'Win32 glibc-compatible expf bootstrap marker missing'
+          }
+
           $log = Join-Path $env:QWEN_EVIDENCE 'sanity.log'
           python -u research/qwen38/qwen38_progressive_current_best_profile_win32.py sanity 2>&1 | Tee-Object -FilePath $log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
