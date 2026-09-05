@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-import math
 import os
 
 import cv2
@@ -19,7 +18,6 @@ from app.parameters import (
     SLICE_FALLBACK_BAND as FALLBACK_BAND,
     SLICE_FALLBACK_TOLERANCE_RATIO,
     SLICE_MAX_HEIGHT,
-    SLICE_MAX_SAFE_SEARCH_EXPANSION as MAX_SAFE_SEARCH_EXPANSION,
     SLICE_MIN_HEIGHT,
     SLICE_OVERLAP_CONTEXT as OVERLAP_CONTEXT,
     SLICE_SAFE_CUT_BAND as SAFE_CUT_BAND,
@@ -106,16 +104,12 @@ def slice_image(image_path: Path, out_dir: Path, prefix: str, *, return_metadata
 def _find_cut_rows(
     gray: np.ndarray, h: int, w: int, *, unsafe_rows: np.ndarray | None = None
 ) -> list[int]:
-    """Return cuts that prefer blank gutters but always bound slice height.
+    """Return long, content-aware cuts with a hard emergency height limit.
 
-    The old slicer stopped entirely when it could not find a perfectly safe
-    band. On dense webtoon pages that could leave a very tall image intact,
-    forcing each detector to perform many overlapping internal passes.
-
-    This version keeps the existing safe-cut preference. If there is no safe
-    band, it chooses the lowest-content band within a constrained range. The
-    constraints guarantee every produced segment is <= SLICE_MAX_HEIGHT while
-    avoiding tiny trailing fragments whenever possible.
+    ``SLICE_TARGET_HEIGHT`` is deliberately soft. A blank gutter anywhere in
+    the legal range is safer than a shorter cut through a speech bubble or
+    free text. Only when no safe band exists before ``SLICE_MAX_HEIGHT`` do we
+    choose the lowest-content row, keeping enough image for the trailing core.
     """
     if h <= SLICE_MAX_HEIGHT:
         return []
@@ -129,51 +123,28 @@ def _find_cut_rows(
 
     while h - y > SLICE_MAX_HEIGHT:
         remaining = h - y
-        chunks = max(2, math.ceil(remaining / SLICE_MAX_HEIGHT))
-        chunks_after = chunks - 1
-
-        min_len = max(
-            SLICE_MIN_HEIGHT,
-            remaining - chunks_after * SLICE_MAX_HEIGHT,
-        )
-        max_len = min(
-            SLICE_MAX_HEIGHT,
-            remaining - chunks_after * SLICE_MIN_HEIGHT,
-        )
-        if min_len > max_len:
-            min_len = min(SLICE_MIN_HEIGHT, SLICE_MAX_HEIGHT)
-            max_len = SLICE_MAX_HEIGHT
-
-        ideal_len = int(round(remaining / chunks))
-        preferred_len = int(round((ideal_len + SLICE_TARGET_HEIGHT) / 2.0))
-        preferred_len = max(min_len, min(max_len, preferred_len))
-
-        allowed_lo = y + min_len
-        allowed_hi = y + max_len
-        target = y + preferred_len
+        # Conflicting min/max overrides must never leave an oversized tail.
+        # If two minimum-size cores cannot fit, relax only the minimum.
+        min_height = min(SLICE_MIN_HEIGHT, remaining // 2)
+        allowed_lo = y + min_height
+        allowed_hi = min(y + SLICE_MAX_HEIGHT, h - min_height)
+        target = max(allowed_lo, min(allowed_hi, y + SLICE_TARGET_HEIGHT))
 
         lo = max(allowed_lo, target - SLICE_SEARCH_WINDOW)
         hi = min(allowed_hi, target + SLICE_SEARCH_WINDOW)
         cut = _find_safe_cut(unsafe_rows, scores, lo, hi, target)
 
-        expanded_lo = lo
-        expanded_hi = hi
+        # A safe gutter outside the local target window is still preferable to
+        # cutting through content. This is the key distinction between target
+        # height and the emergency maximum.
         if cut is None:
-            expanded_lo = max(
-                allowed_lo,
-                target - SLICE_SEARCH_WINDOW - MAX_SAFE_SEARCH_EXPANSION,
-            )
-            expanded_hi = min(
-                allowed_hi,
-                target + SLICE_SEARCH_WINDOW + MAX_SAFE_SEARCH_EXPANSION,
-            )
             cut = _find_safe_cut(
-                unsafe_rows, scores, expanded_lo, expanded_hi, target
+                unsafe_rows, scores, allowed_lo, allowed_hi, target
             )
 
         if cut is None:
             cut = _find_low_content_cut(
-                scores, expanded_lo, expanded_hi, target, unsafe_rows
+                scores, allowed_lo, allowed_hi, target, unsafe_rows
             )
 
         if cut is None or cut <= y or cut >= h:
@@ -208,11 +179,12 @@ def _find_safe_cut(
     hi: int,
     target: int,
 ) -> int | None:
-    if lo >= hi:
+    if lo > hi:
         return None
 
-    start = max(0, lo + SAFE_CUT_BAND)
-    end = min(len(unsafe_rows), hi - SAFE_CUT_BAND + 1)
+    # lo/hi constrain the cut coordinate, not the surrounding safety band.
+    start = max(SAFE_CUT_BAND, lo)
+    end = min(len(unsafe_rows) - SAFE_CUT_BAND, hi + 1)
     if start >= end:
         return None
 

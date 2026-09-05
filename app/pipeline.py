@@ -369,7 +369,7 @@ class ChapterPipeline:
 
         Physical slices keep their existing overlap so OCR/review/render geometry
         remains backward compatible. The detector strip is shared, however, so
-        the same +/-384px seam context is not inferred twice by adjacent pages.
+        the same seam context is not inferred twice by adjacent pages.
         """
         source_y1 = int(seam_source_y1) + int(box.y1)
         source_y2 = int(seam_source_y1) + int(box.y2)
@@ -410,12 +410,12 @@ class ChapterPipeline:
     ) -> tuple[dict[int, list[BubbleBox]], set[int], dict[str, float | int]]:
         """Detect each unsafe overlap seam once, then share it across pages.
 
-        The slicer deliberately stores +/-384px overlap around unsafe cuts. That
+        The slicer deliberately stores overlap around unsafe cuts. That
         protects bubbles crossing a cut, but letting each physical slice run its
-        full detector duplicates the same context and can push a 1400px core to
-        1800-2300px, triggering multiple 1024px detector windows. Instead, each
-        page detects only its non-overlapping core while every unsafe seam gets
-        one 768px detector pass shared by all requested adjacent pages.
+        full detector duplicates the same context and can make a long core even
+        taller. Instead, each page detects only its non-overlapping core while
+        every unsafe seam is detected once and shared by all requested adjacent
+        pages (the detector may use internal windows for large strips).
 
         The physical slice files and their coordinates are unchanged, preserving
         OCR/review/render behavior. If required seam context cannot be read or
@@ -430,6 +430,8 @@ class ChapterPipeline:
             "bubble_model_ms": 0.0,
             "text_model_ms": 0.0,
             "mser_ms": 0.0,
+            "text_grayscale_fallback_runs": 0,
+            "text_grayscale_fallback_ms": 0.0,
             "detector_total_ms": 0.0,
         }
 
@@ -513,6 +515,14 @@ class ChapterPipeline:
                     ("bubble_model_ms", "bubble_model_ms"),
                     ("text_model_ms", "text_model_ms"),
                     ("mser_ms", "mser_ms"),
+                    (
+                        "text_grayscale_fallback_runs",
+                        "text_grayscale_fallback_runs",
+                    ),
+                    (
+                        "text_grayscale_fallback_ms",
+                        "text_grayscale_fallback_ms",
+                    ),
                     ("total_ms", "detector_total_ms"),
                 ):
                     shared_metrics[target_name] = float(

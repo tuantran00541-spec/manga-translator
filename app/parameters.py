@@ -121,6 +121,9 @@ DETECTOR_MAX_ASPECT_RATIO = _env_float(
 )
 DETECTOR_CONFIDENCE_MAX: Final[float] = 0.999998
 DETECTOR_TTA_ENABLED = _env_bool("MANGA_DETECTOR_TTA", False)
+DETECTOR_FREE_TEXT_GRAYSCALE_FALLBACK = _env_bool(
+    "MANGA_DETECTOR_FREE_TEXT_GRAYSCALE_FALLBACK", True
+)
 DETECTOR_TTA_SMALL_SCALE = _env_float(
     "MANGA_DETECTOR_TTA_SMALL_SCALE", 0.85, minimum=0.25, maximum=1.0
 )
@@ -441,28 +444,25 @@ MANUAL_CONFIDENCE_SENTINEL: Final[float] = 1.0
 # ---------------------------------------------------------------------------
 
 SLICE_TARGET_HEIGHT = _env_int(
-    "MANGA_SLICE_TARGET_HEIGHT", 1400, minimum=256, maximum=8192
+    "MANGA_SLICE_TARGET_HEIGHT", 2400, minimum=256, maximum=8192
 )
 SLICE_SEARCH_WINDOW = _env_int(
-    "MANGA_SLICE_SEARCH_WINDOW", 180, minimum=0, maximum=2048
+    "MANGA_SLICE_SEARCH_WINDOW", 360, minimum=0, maximum=2048
 )
 SLICE_MIN_HEIGHT = _env_int(
-    "MANGA_SLICE_MIN_HEIGHT", 500, minimum=128, maximum=8192
+    "MANGA_SLICE_MIN_HEIGHT", 800, minimum=128, maximum=8192
 )
 SLICE_MAX_HEIGHT = _env_int(
-    "MANGA_SLICE_MAX_HEIGHT", 1536, minimum=256, maximum=8192
+    "MANGA_SLICE_MAX_HEIGHT", 4096, minimum=256, maximum=8192
 )
 SLICE_SAFE_CUT_BAND = _env_int(
     "MANGA_SLICE_SAFE_CUT_BAND", 12, minimum=1, maximum=256
-)
-SLICE_MAX_SAFE_SEARCH_EXPANSION = _env_int(
-    "MANGA_SLICE_MAX_SAFE_SEARCH_EXPANSION", 360, minimum=0, maximum=4096
 )
 SLICE_FALLBACK_BAND = _env_int(
     "MANGA_SLICE_FALLBACK_BAND", 18, minimum=1, maximum=512
 )
 SLICE_OVERLAP_CONTEXT = _env_int(
-    "MANGA_SLICE_OVERLAP_CONTEXT", 384, minimum=0, maximum=2048
+    "MANGA_SLICE_OVERLAP_CONTEXT", 768, minimum=0, maximum=2048
 )
 SLICE_CONTENT_CANNY_LOW = _env_int(
     "MANGA_SLICE_CONTENT_CANNY_LOW", 30, minimum=0, maximum=255
@@ -545,6 +545,7 @@ MANUAL_FEATHER_RADIUS = _env_int(
 MANUAL_TILE_OVERLAP = _env_int(
     "MANGA_MANUAL_TILE_OVERLAP", 64, minimum=0, maximum=1024
 )
+# Elongated crops use this on both backends; retain the historical env name.
 FIXED_LAMA_TILE_ASPECT = _env_float(
     "MANGA_FIXED_LAMA_TILE_ASPECT", 1.6, minimum=1.0, maximum=20.0
 )

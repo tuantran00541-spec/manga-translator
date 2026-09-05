@@ -23,6 +23,8 @@ COLUMNS = (
 METRIC_COLUMNS = (
     "detect_ms",
     "mser_ms",
+    "free_text_fallback_runs",
+    "free_text_fallback_ms",
     "inpaint_ms",
     "lama_runs",
     "smart_fill",
@@ -74,6 +76,12 @@ def _page_stats(page: dict) -> dict[str, int | float | str | bool | dict]:
         "metrics_available": bool(metrics),
         "detect_ms": round(detect_ms, 3),
         "mser_ms": round(float(detector.get("mser_ms") or 0.0), 3),
+        "free_text_fallback_runs": int(
+            detector.get("text_grayscale_fallback_runs") or 0
+        ),
+        "free_text_fallback_ms": round(
+            float(detector.get("text_grayscale_fallback_ms") or 0.0), 3
+        ),
         "inpaint_ms": round(inpaint_ms, 3),
         "lama_runs": int(auto.get("lama_model_runs") or 0)
         + int(manual.get("lama_model_runs") or 0),
@@ -168,6 +176,8 @@ def main() -> None:
                 f"\tfailures={shared.get('failures', 0)}"
                 f"\twall_ms={shared.get('wall_ms', 0)}"
                 f"\tmser_ms={shared.get('mser_ms', 0)}"
+                f"\tfree_text_fallback_runs={shared.get('text_grayscale_fallback_runs', 0)}"
+                f"\tfree_text_fallback_ms={shared.get('text_grayscale_fallback_ms', 0)}"
             )
         inpaint = last_run.get("inpaint")
         if isinstance(inpaint, dict):

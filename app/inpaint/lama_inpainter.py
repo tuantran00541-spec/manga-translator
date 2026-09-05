@@ -477,13 +477,16 @@ class Inpainter:
         max_dim = max(crop_h, crop_w)
         min_dim = max(1, min(crop_h, crop_w))
         aspect = max_dim / min_dim
-        fixed_long_crop = (
-            not self.dynamic_lama
-            and max_dim > INPAINT_SIZE
+        long_crop = (
+            max_dim > INPAINT_SIZE
             and aspect >= FIXED_LAMA_TILE_ASPECT
         )
 
-        if fixed_long_crop or (feather and max_dim > INPAINT_SIZE):
+        # Wide/tall free text loses background detail when a dynamic LaMa crop
+        # is squeezed to 512px just as it does with the fixed model. Preserve
+        # native detail with overlapping tiles for both backends. Small and
+        # near-square regions retain the single-call fast path.
+        if long_crop or (feather and max_dim > INPAINT_SIZE):
             painted = self._lama_fill_tiled(crop, local_mask)
         else:
             painted = self._lama_fill_single(crop, local_mask)

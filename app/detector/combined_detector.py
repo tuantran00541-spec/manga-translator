@@ -21,6 +21,7 @@ from app.parameters import (
     DETECTOR_TALL_SPLIT_LINE_HEIGHT_MIN,
     DETECTOR_TALL_SPLIT_LINE_PADDING_MAX,
     DETECTOR_FINAL_NMS_IOU,
+    DETECTOR_FREE_TEXT_GRAYSCALE_FALLBACK,
     DETECTOR_NMS_SCORE_FLOOR,
     FLAT_BUBBLE_BACKGROUND_RATIO_MIN,
     FLAT_BUBBLE_BLACK_MAX,
@@ -250,6 +251,9 @@ class CombinedTextDetector:
             "mser_ms": 0.0,
             "bubble_proposals": len(bubble_boxes),
             "text_proposals": len(text_boxes),
+            "text_grayscale_fallback_runs": 0,
+            "text_grayscale_fallback_ms": 0.0,
+            "text_grayscale_fallback_proposals": 0,
             "result_boxes": 0,
             "review_boxes": 0,
             "total_ms": 0.0,
@@ -257,6 +261,47 @@ class CombinedTextDetector:
 
         bubble_boxes = [self._classify(b) for b in bubble_boxes]
         text_boxes = [self._classify(t) for t in text_boxes]
+
+        # A bubble/free-text proposal can reveal a colourful line missed by
+        # the RGB segmenter. Grayscale is additive, never a replacement for
+        # RGB evidence, and only segmenter masks can gain erase authority.
+        unmatched_free_text = [
+            bubble
+            for bubble in bubble_boxes
+            if bubble.semantic_type == "free_text"
+            and not any(self._is_inside(text, bubble) for text in text_boxes)
+        ]
+        if DETECTOR_FREE_TEXT_GRAYSCALE_FALLBACK and unmatched_free_text:
+            fallback_started_at = time.perf_counter()
+            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+            gray_bgr = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
+            fallback_boxes = [
+                self._classify(box)
+                for box in self.text_detector.detect(gray_bgr)
+            ]
+            fallback_boxes = [
+                text
+                for text in fallback_boxes
+                if any(
+                    self._is_inside(text, bubble)
+                    for bubble in unmatched_free_text
+                )
+            ]
+            metrics["text_grayscale_fallback_runs"] = 1
+            metrics["text_grayscale_fallback_ms"] = round(
+                (time.perf_counter() - fallback_started_at) * 1000.0, 3
+            )
+            metrics["text_grayscale_fallback_proposals"] = len(fallback_boxes)
+            if fallback_boxes:
+                text_boxes = [
+                    self._classify(box)
+                    for box in YoloDetector._nms_box_group(
+                        text_boxes + fallback_boxes,
+                        score_threshold=TEXT_CONF_THRESHOLD,
+                        iou_threshold=DETECTOR_FINAL_NMS_IOU,
+                    )
+                ]
+
         result_boxes: list[BubbleBox] = []
         used_text_boxes: set[int] = set()
 
@@ -394,6 +439,10 @@ class CombinedTextDetector:
                 refined_boxes.append(replace(box))
                 continue
 
+            split_boxes = []
+            covered_mask = (
+                np.zeros(box.mask.shape, dtype=bool) if box.verified_mask else None
+            )
             for idx, (ly1, ly2) in enumerate(line_bounds):
                 prev_y = line_bounds[idx - 1][1] if idx > 0 else 0
                 next_y = line_bounds[idx + 1][0] if idx < len(line_bounds) - 1 else (y2_exp - y1_exp)
@@ -465,10 +514,23 @@ class CombinedTextDetector:
                         dst_x2 = dst_x1 + (src_x2 - src_x1)
                         dst_y2 = dst_y1 + (src_y2 - src_y1)
                         line_mask[dst_y1:dst_y2, dst_x1:dst_x2] = box.mask[src_y1i:src_y2i, src_x1i:src_x2i]
+                        if covered_mask is not None:
+                            covered_mask[src_y1i:src_y2i, src_x1i:src_x2i] = True
 
-                refined_boxes.append(
+                split_boxes.append(
                     replace(box, x1=abs_x1, y1=abs_y1, x2=abs_x2, y2=abs_y2, mask=line_mask)
                 )
+
+            # The dark-on-light row heuristic does not describe coloured or
+            # light-on-dark lettering. It may refine layout, but must never
+            # delete segmentation evidence (including outlines and accents).
+            if not split_boxes or (
+                covered_mask is not None
+                and np.any((box.mask > 0) & ~covered_mask)
+            ):
+                refined_boxes.append(replace(box))
+            else:
+                refined_boxes.extend(split_boxes)
 
         return refined_boxes
 
