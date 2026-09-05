@@ -1,0 +1,74 @@
+name: Qwen3.8 cross-platform libm fingerprint
+
+on:
+  push:
+    branches:
+      - research/qwen3.8-27b-runtime-finish
+    paths:
+      - research/qwen38/qwen38_cross_platform_libm_fingerprint.py
+      - .github/workflows/qwen38-cross-platform-libm-fingerprint.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fingerprint:
+    name: fingerprint-${{ matrix.label }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            label: linux
+          - os: windows-latest
+            label: windows
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fingerprint exact scalar math
+        shell: bash
+        run: |
+          set -euo pipefail
+          python research/qwen38/qwen38_cross_platform_libm_fingerprint.py fingerprint \
+            --output libm-fingerprint.bin \
+            --summary libm-summary.json
+      - name: Upload fingerprint
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen38-libm-${{ matrix.label }}
+          path: |
+            libm-fingerprint.bin
+            libm-summary.json
+          if-no-files-found: error
+
+  compare:
+    name: compare-linux-windows
+    needs: fingerprint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download Linux fingerprint
+        uses: actions/download-artifact@v4
+        with:
+          name: qwen38-libm-linux
+          path: artifacts/linux
+      - name: Download Windows fingerprint
+        uses: actions/download-artifact@v4
+        with:
+          name: qwen38-libm-windows
+          path: artifacts/windows
+      - name: Compare exact scalar math bitwise
+        run: |
+          python research/qwen38/qwen38_cross_platform_libm_fingerprint.py compare \
+            --linux artifacts/linux/libm-fingerprint.bin \
+            --windows artifacts/windows/libm-fingerprint.bin \
+            --output libm-compare.json
+      - name: Upload comparison
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen38-libm-comparison
+          path: libm-compare.json
+          if-no-files-found: error
