@@ -6,8 +6,11 @@ on:
       - research/qwen3.8-27b-runtime-finish
     paths:
       - research/qwen38/qwen38_cross_platform_libm_fingerprint.py
+      - research/qwen38/qwen38_cross_platform_gdn_state_fingerprint.py
       - research/qwen38/qwen38_cross_platform_rope_math_fingerprint.py
       - research/qwen38/qwen38_glibc_expf_compat.c
+      - research/qwen38/gdn_state_ar.c
+      - research/qwen38/gdn_state_batch_exact.c
       - .github/workflows/qwen38-cross-platform-libm-fingerprint.yml
   workflow_dispatch:
 
@@ -36,6 +39,34 @@ jobs:
           python research/qwen38/qwen38_cross_platform_libm_fingerprint.py fingerprint \
             --output libm-fingerprint.bin \
             --summary libm-summary.json
+      - name: Build and fingerprint Linux recurrent GDN state
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cc -O2 -std=c11 -fno-fast-math -ffp-contract=off -fPIC -shared \
+            research/qwen38/gdn_state_ar.c research/qwen38/gdn_state_batch_exact.c \
+            -lm -o gdn-state.so
+          python research/qwen38/qwen38_cross_platform_gdn_state_fingerprint.py fingerprint \
+            --lib gdn-state.so \
+            --output gdn-state-fingerprint.bin \
+            --summary gdn-state-summary.json
+      - name: Build and fingerprint Windows UCRT recurrent GDN state
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          clang -O3 -std=c11 -shared \
+            -fno-fast-math -fno-associative-math -ffp-contract=off \
+            -fno-vectorize -fno-slp-vectorize \
+            research/qwen38/gdn_state_ar.c research/qwen38/gdn_state_batch_exact.c \
+            -Xlinker /EXPORT:qwen_gdn_ar_step_f32 \
+            -Xlinker /EXPORT:qwen_gdn_ar_batch_f32 \
+            -o gdn-state.dll
+          python research/qwen38/qwen38_cross_platform_gdn_state_fingerprint.py fingerprint \
+            --lib gdn-state.dll \
+            --output gdn-state-fingerprint.bin \
+            --summary gdn-state-summary.json
       - name: Upload fingerprint
         uses: actions/upload-artifact@v4
         with:
@@ -43,6 +74,8 @@ jobs:
           path: |
             libm-fingerprint.bin
             libm-summary.json
+            gdn-state-fingerprint.bin
+            gdn-state-summary.json
           if-no-files-found: error
 
   windows-compat:
@@ -69,6 +102,28 @@ jobs:
             --expf-symbol qwen38_glibc_expf_compat \
             --output libm-fingerprint.bin \
             --summary libm-summary.json
+      - name: Build and fingerprint compatible recurrent GDN state
+        shell: bash
+        run: |
+          set -euo pipefail
+          clang -O3 -std=c11 -c -mfma \
+            -fno-fast-math -fno-associative-math -ffp-contract=off \
+            -fno-vectorize -fno-slp-vectorize \
+            research/qwen38/qwen38_glibc_expf_compat.c \
+            -o qwen38_glibc_expf_compat.obj
+          clang -O3 -std=c11 -shared \
+            -fno-fast-math -fno-associative-math -ffp-contract=off \
+            -fno-vectorize -fno-slp-vectorize \
+            -include research/qwen38/qwen38_glibc_expf_redirect.h \
+            research/qwen38/gdn_state_ar.c research/qwen38/gdn_state_batch_exact.c \
+            qwen38_glibc_expf_compat.obj \
+            -Xlinker /EXPORT:qwen_gdn_ar_step_f32 \
+            -Xlinker /EXPORT:qwen_gdn_ar_batch_f32 \
+            -o gdn-state.dll
+          python research/qwen38/qwen38_cross_platform_gdn_state_fingerprint.py fingerprint \
+            --lib gdn-state.dll \
+            --output gdn-state-fingerprint.bin \
+            --summary gdn-state-summary.json
       - name: Upload compatibility fingerprint
         uses: actions/upload-artifact@v4
         with:
@@ -76,6 +131,8 @@ jobs:
           path: |
             libm-fingerprint.bin
             libm-summary.json
+            gdn-state-fingerprint.bin
+            gdn-state-summary.json
           if-no-files-found: error
 
   compare:
@@ -114,6 +171,24 @@ jobs:
             --require-fields expf,sigmoid,silu \
             --output libm-compare-compat.json
           echo QWEN38_WIN32_GLIBC_EXPF_COMPAT_BITWISE_PASS
+      - name: Prove recurrent GDN UCRT divergence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python research/qwen38/qwen38_cross_platform_gdn_state_fingerprint.py compare \
+            --linux artifacts/linux/gdn-state-fingerprint.bin \
+            --windows artifacts/windows-ucrt/gdn-state-fingerprint.bin \
+            | tee gdn-state-compare-ucrt.txt
+      - name: Require recurrent GDN expf compatibility
+        shell: bash
+        run: |
+          set -euo pipefail
+          python research/qwen38/qwen38_cross_platform_gdn_state_fingerprint.py compare \
+            --linux artifacts/linux/gdn-state-fingerprint.bin \
+            --windows artifacts/windows-compat/gdn-state-fingerprint.bin \
+            --require-match \
+            | tee gdn-state-compare-compat.txt
+          echo QWEN38_WIN32_GDN_STATE_EXPF_COMPAT_BITWISE_PASS
       - name: Upload comparisons
         uses: actions/upload-artifact@v4
         with:
@@ -121,6 +196,8 @@ jobs:
           path: |
             libm-compare-ucrt.json
             libm-compare-compat.json
+            gdn-state-compare-ucrt.txt
+            gdn-state-compare-compat.txt
           if-no-files-found: error
 
   rope-fingerprint:
