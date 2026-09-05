@@ -6,6 +6,7 @@ on:
       - research/qwen3.8-27b-runtime-finish
     paths:
       - research/qwen38/qwen38_cross_platform_libm_fingerprint.py
+      - research/qwen38/qwen38_cross_platform_rope_math_fingerprint.py
       - research/qwen38/qwen38_glibc_expf_compat.c
       - .github/workflows/qwen38-cross-platform-libm-fingerprint.yml
   workflow_dispatch:
@@ -120,4 +121,64 @@ jobs:
           path: |
             libm-compare-ucrt.json
             libm-compare-compat.json
+          if-no-files-found: error
+
+  rope-fingerprint:
+    name: rope-${{ matrix.label }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            label: linux
+          - os: windows-latest
+            label: windows
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fingerprint exact 11-token RoPE math
+        shell: bash
+        run: |
+          set -euo pipefail
+          python research/qwen38/qwen38_cross_platform_rope_math_fingerprint.py fingerprint \
+            --output rope-fingerprint.bin \
+            --summary rope-summary.json
+      - name: Upload RoPE fingerprint
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen38-rope-${{ matrix.label }}
+          path: |
+            rope-fingerprint.bin
+            rope-summary.json
+          if-no-files-found: error
+
+  rope-compare:
+    name: compare-rope-linux-windows
+    needs: rope-fingerprint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download Linux RoPE fingerprint
+        uses: actions/download-artifact@v4
+        with:
+          name: qwen38-rope-linux
+          path: artifacts/linux
+      - name: Download Windows RoPE fingerprint
+        uses: actions/download-artifact@v4
+        with:
+          name: qwen38-rope-windows
+          path: artifacts/windows
+      - name: Require exact RoPE math identity
+        run: |
+          python research/qwen38/qwen38_cross_platform_rope_math_fingerprint.py compare \
+            --linux artifacts/linux/rope-fingerprint.bin \
+            --windows artifacts/windows/rope-fingerprint.bin \
+            --output rope-compare.json
+      - name: Upload RoPE comparison
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen38-rope-comparison
+          path: rope-compare.json
           if-no-files-found: error
