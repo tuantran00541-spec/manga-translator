@@ -5,11 +5,20 @@ This is diagnostic-only.  It does not change decoder arithmetic.  The same
 fixed F32 input corpus is evaluated on Linux/glibc and Windows/UCRT (or an
 explicit diagnostic expf shim) so hosted CI can characterize bitwise math
 portability before another full GGUF run is spent on a cross-platform anchor.
+
+Besides the expf-derived gate helpers, this probe fingerprints the remaining
+sqrt-sensitive boundaries used by the current-best path:
+  * sqrtf(mean_eps), as used by the native GDN output RMSNorm gate;
+  * sqrt((double)mean_eps) rounded to F32, as used by native RMSNorm;
+  * Python double sqrt followed by the proven F32 inverse-sqrt boundary;
+  * an L2-like double sqrt/divide followed by the F32 marshal boundary used
+    before native GDN repeat/scale.
 """
 from __future__ import annotations
 
 import argparse
 import ctypes
+import ctypes.util
 import hashlib
 import json
 import math
@@ -26,8 +35,18 @@ if sys.platform == "win32":
 
 import qwen35_k3_full64_ggml_exact as exact
 
-RECORD = struct.Struct("<IIIII")
-FIELDS = ("input", "expf", "sigmoid", "softplus", "silu")
+FIELDS = (
+    "input",
+    "expf",
+    "sigmoid",
+    "softplus",
+    "silu",
+    "sqrtf",
+    "sqrt64_f32",
+    "inv_sqrt_f32",
+    "l2_probe_f32",
+)
+RECORD = struct.Struct("<" + "I" * len(FIELDS))
 RANDOM_CASES = 262_144
 WIDE_RANDOM_CASES = 262_144
 GRID_DENOM = 256
@@ -56,6 +75,21 @@ def _bind_platform_expf(expf_lib: Path | None = None, expf_symbol: str | None = 
     return str(getattr(exact, "_name", None) or "python-math-exp-fallback")
 
 
+def _bind_platform_sqrt():
+    if sys.platform == "win32":
+        name = "ucrtbase.dll"
+    else:
+        name = ctypes.util.find_library("m")
+        if not name:
+            raise RuntimeError("platform libm was not found for sqrt fingerprint")
+    lib = ctypes.CDLL(name)
+    lib.sqrt.argtypes = [ctypes.c_double]
+    lib.sqrt.restype = ctypes.c_double
+    lib.sqrtf.argtypes = [ctypes.c_float]
+    lib.sqrtf.restype = ctypes.c_float
+    return lib, f"{name}!sqrt/sqrtf"
+
+
 def _f32(x: float) -> float:
     return exact.f32(float(x))
 
@@ -79,6 +113,36 @@ def _softplusf(x: float) -> float:
 
 def _siluf(x: float) -> float:
     return exact.mul_f32(x, exact.sigmoid_f32(x))
+
+
+def _sqrt_fields(x: float, sqrt_lib) -> tuple[int, int, int, int]:
+    xf = _f32(x)
+
+    # Native RMSNorm/GDN gate both see non-negative norm statistics.  Keep the
+    # probe in a realistic finite range and round the epsilon addition to F32
+    # before either sqrt style, matching the current exact RMSNorm boundaries.
+    mean = _f32(abs(xf))
+    mean_eps = _f32(mean + _f32(1e-6))
+
+    sqrtf_value = float(sqrt_lib.sqrtf(ctypes.c_float(mean_eps)))
+    sqrt64_value = float(sqrt_lib.sqrt(ctypes.c_double(float(mean_eps))))
+    sqrt64_f32 = _f32(sqrt64_value)
+    inv_sqrt_f32 = _f32(1.0 / _f32(math.sqrt(float(mean_eps))))
+
+    # The recurrent q/k L2 normalization is still Python double arithmetic:
+    # denom = sqrt(fsum(v*v)); each normalized double is later marshaled to F32
+    # by array('f') in ExactGDNRepeatScale.  This scalar surrogate deliberately
+    # retains the double sqrt/divide boundary and fingerprints the resulting F32.
+    norm_sq = abs(float(xf)) * 128.0 + 1.0e-12
+    numerator = _f32(xf * 0.03125 + 0.75)
+    l2_probe = _f32(float(numerator) / math.sqrt(norm_sq))
+
+    return (
+        _bits(sqrtf_value),
+        _bits(sqrt64_f32),
+        _bits(inv_sqrt_f32),
+        _bits(l2_probe),
+    )
 
 
 def _corpus_bits() -> list[int]:
@@ -123,27 +187,35 @@ def fingerprint(
     expf_symbol: str | None = None,
 ) -> dict:
     backend = _bind_platform_expf(expf_lib, expf_symbol)
+    sqrt_lib, sqrt_backend = _bind_platform_sqrt()
     corpus = _corpus_bits()
     digest = hashlib.sha256()
     output.parent.mkdir(parents=True, exist_ok=True)
     with output.open("wb") as f:
         for input_bits in corpus:
             x = _from_bits(input_bits)
+            sqrtf_bits, sqrt64_bits, inv_sqrt_bits, l2_probe_bits = _sqrt_fields(x, sqrt_lib)
             record = RECORD.pack(
                 input_bits,
                 _bits(exact.expf(x)),
                 _bits(exact.sigmoid_f32(x)),
                 _bits(_softplusf(x)),
                 _bits(_siluf(x)),
+                sqrtf_bits,
+                sqrt64_bits,
+                inv_sqrt_bits,
+                l2_probe_bits,
             )
             f.write(record)
             digest.update(record)
     payload = {
-        "schema": "qwen38-cross-platform-libm-fingerprint-v1",
+        "schema": "qwen38-cross-platform-libm-fingerprint-v2",
         "platform": sys.platform,
         "platform_detail": platform.platform(),
         "python": sys.version,
         "expf_backend": backend,
+        "sqrt_backend": sqrt_backend,
+        "fields": list(FIELDS),
         "cases": len(corpus),
         "record_bytes": RECORD.size,
         "fingerprint_sha256": digest.hexdigest(),
@@ -200,7 +272,7 @@ def compare(
     total = sum(mismatch_counts.values())
     required_match = all(mismatch_counts[name] == 0 for name in required_fields)
     payload = {
-        "schema": "qwen38-cross-platform-libm-compare-v1",
+        "schema": "qwen38-cross-platform-libm-compare-v2",
         "cases": cases,
         "bitwise_match": total == 0,
         "mismatch_counts": mismatch_counts,
