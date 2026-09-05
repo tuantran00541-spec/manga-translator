@@ -1,18 +1,23 @@
 /*
  * SPDX-License-Identifier: MIT OR Apache-2.0 WITH LLVM-exception
  *
- * Diagnostic-only x86-64 expf compatibility core for the Qwen3.8 Win32 gate.
+ * Diagnostic x86-64 expf compatibility core for the Qwen3.8 Win32 gate.
  * The range-reduction algorithm, polynomial coefficients, and exp2 table are
  * independently adapted from Arm Optimized Routines' permissively licensed
- * scalar expf/exp2f data.  The immediate goal is to reproduce the glibc x86-64
- * FMA expf result on the finite corpus used by the cross-platform fingerprint.
+ * scalar expf/exp2f data.  The goal is to reproduce the glibc x86-64 FMA expf
+ * value semantics without changing the pinned Linux decoder arithmetic.
  *
- * This file is NOT yet a promoted model arithmetic dependency.  Inputs outside
- * [-80, 80] deliberately fall back to the platform expf until special-case
- * behavior has its own bit-exact audit.
+ * Overflow/underflow return values are reproduced; errno/fenv side effects are
+ * intentionally outside this model-value diagnostic contract.
  */
 #include <math.h>
 #include <stdint.h>
+
+/* If a future Windows build redirects model expf calls with -Dexpf=..., keep
+ * this translation unit's own declaration/body independent of that macro. */
+#ifdef expf
+#undef expf
+#endif
 
 #define QWEN38_EXPF_TABLE_BITS 5
 #define QWEN38_EXPF_N (1u << QWEN38_EXPF_TABLE_BITS)
@@ -64,8 +69,21 @@ static inline double qwen38_fma(double a, double b, double c) {
 __declspec(dllexport)
 #endif
 float qwen38_glibc_expf_compat(float x) {
-    if (!(x >= -80.0f && x <= 80.0f)) {
-        return expf(x);
+    /* Match the value side of the Arm/glibc special cases. */
+    if (x != x) {
+        return x + x;
+    }
+    if (x == -INFINITY) {
+        return 0.0f;
+    }
+    if (x == INFINITY) {
+        return x;
+    }
+    if (x > 0x1.62e42ep6f) {
+        return INFINITY;
+    }
+    if (x < -0x1.9fe368p6f) {
+        return 0.0f;
     }
 
     const double inv_ln2_n = 0x1.71547652b82fep+0 * 32.0;

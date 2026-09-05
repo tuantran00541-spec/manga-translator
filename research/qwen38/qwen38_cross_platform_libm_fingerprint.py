@@ -29,6 +29,7 @@ import qwen35_k3_full64_ggml_exact as exact
 RECORD = struct.Struct("<IIIII")
 FIELDS = ("input", "expf", "sigmoid", "softplus", "silu")
 RANDOM_CASES = 262_144
+WIDE_RANDOM_CASES = 262_144
 GRID_DENOM = 256
 GRID_LIMIT = 8_192
 
@@ -82,20 +83,28 @@ def _siluf(x: float) -> float:
 
 def _corpus_bits() -> list[int]:
     fixed = (
-        -80.0, -40.0, -32.0, -20.0, -10.0, -5.0, -2.0, -1.0,
-        -0.5, -0.125, -0.0, 0.0, 0.125, 0.5, 1.0, 2.0, 5.0,
-        10.0, 20.0, 32.0, 40.0, 80.0,
+        -104.0, -103.98, -103.97, -103.3, -100.0, -90.0, -80.0,
+        -40.0, -32.0, -20.0, -10.0, -5.0, -2.0, -1.0, -0.5,
+        -0.125, -0.0, 0.0, 0.125, 0.5, 1.0, 2.0, 5.0, 10.0,
+        20.0, 32.0, 40.0, 80.0, 88.0, 88.7, 88.72, 88.73, 89.0,
     )
     values: list[int] = [_bits(x) for x in fixed]
     values.extend(_bits(i / GRID_DENOM) for i in range(-GRID_LIMIT, GRID_LIMIT + 1))
 
-    # Deterministic LCG, mapped to F32 values in [-32, 32).  This samples many
-    # mantissas rather than checking only a friendly regular grid.
+    # Dense random mantissa sample around the values most likely in gates.
     state = 0x6D2B79F5
     scale = 64.0 / float(1 << 24)
     for _ in range(RANDOM_CASES):
         state = (1664525 * state + 1013904223) & 0xFFFFFFFF
         values.append(_bits(((state >> 8) * scale) - 32.0))
+
+    # Separate wide sample spans expf's useful finite F32 domain, including
+    # subnormal underflow and overflow boundaries relevant to saturated gates.
+    state = 0xA341316C
+    wide_scale = 193.0 / float(1 << 24)  # [-104, 89)
+    for _ in range(WIDE_RANDOM_CASES):
+        state = (22695477 * state + 1) & 0xFFFFFFFF
+        values.append(_bits(((state >> 8) * wide_scale) - 104.0))
 
     seen: set[int] = set()
     unique: list[int] = []
