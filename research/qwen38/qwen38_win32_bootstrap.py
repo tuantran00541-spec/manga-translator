@@ -4,13 +4,17 @@
 Legacy evidence modules intentionally keep their proven Linux code unchanged.
 On Windows, Python lacks the ``resource`` module, although these modules use it
 only for peak-RSS diagnostics.  This bootstrap installs a minimal compatibility
-module before importing the generator and binds UCRT ``expf`` into the existing
-exact arithmetic wrapper.
+module before importing the generator.  By default it binds UCRT ``expf``;
+when ``QWEN38_EXPF_COMPAT_LIB`` is set, the exact Windows gate instead binds
+the audited glibc-compatible ``expf`` shim so Linux hidden/state anchors remain
+meaningful across platforms.
 """
 from __future__ import annotations
 
 import ctypes
 import importlib
+import os
+import struct
 import sys
 import types
 
@@ -81,6 +85,10 @@ def install_resource_compat():
     return module
 
 
+def _f32_bits(value: float) -> int:
+    return struct.unpack("<I", struct.pack("<f", float(value)))[0]
+
+
 def _bind_ucrt_expf(exact_module):
     """Bind the existing exact wrapper to Windows UCRT ``expf``."""
     if sys.platform != "win32":
@@ -92,11 +100,51 @@ def _bind_ucrt_expf(exact_module):
     return ucrt
 
 
+def _bind_compat_expf(exact_module, path: str):
+    """Bind the audited Win32 shim that reproduces pinned glibc expf values."""
+    if sys.platform != "win32":
+        raise RuntimeError("Win32 expf compatibility binding requires native Windows")
+    if not os.path.isfile(path):
+        raise RuntimeError(f"Win32 expf compatibility DLL missing: {path}")
+    lib = ctypes.CDLL(path)
+    fn = lib.qwen38_glibc_expf_compat
+    fn.argtypes = [ctypes.c_float]
+    fn.restype = ctypes.c_float
+    backend = types.SimpleNamespace(expf=fn, _library=lib, _path=path)
+    exact_module._LIBM = backend
+
+    # These are pinned Linux/glibc F32 results from the cross-platform probe.
+    # They catch accidental fallback to UCRT before the expensive GGUF gate.
+    cases = (
+        (-25.2421875, 0x2D3FC4B7),
+        (2.5060043334960938, 0x41441803),
+        (8.7109375, 0x45BDA770),
+    )
+    for value, expected in cases:
+        actual = _f32_bits(exact_module.expf(value))
+        if actual != expected:
+            raise RuntimeError(
+                f"Win32 expf compatibility mismatch x={value}: "
+                f"actual=0x{actual:08x} expected=0x{expected:08x}"
+            )
+    return backend
+
+
+def _bind_win32_expf(exact_module):
+    """Select UCRT or the explicitly requested exact compatibility backend."""
+    if sys.platform != "win32":
+        return getattr(exact_module, "_LIBM", None)
+    compat = os.environ.get("QWEN38_EXPF_COMPAT_LIB", "").strip()
+    if compat:
+        return _bind_compat_expf(exact_module, compat)
+    return _bind_ucrt_expf(exact_module)
+
+
 def import_generator():
     """Import the proven generator graph without editing its legacy modules."""
     install_resource_compat()
     generator = importlib.import_module("qwen35_k3_generate")
-    _bind_ucrt_expf(generator.exact)
+    _bind_win32_expf(generator.exact)
     return generator
 
 
@@ -111,9 +159,11 @@ def sanity() -> None:
     if int(generator.N_LAYER) != 64:
         raise SystemExit(f"unexpected generator layer count: {generator.N_LAYER}")
     if generator.exact._LIBM is None:
-        raise SystemExit("Windows UCRT expf was not bound")
+        raise SystemExit("Windows expf backend was not bound")
     if float(generator.exact.expf(0.0)) != 1.0:
-        raise SystemExit("Windows UCRT expf sanity failed")
+        raise SystemExit("Windows expf backend sanity failed")
+    if os.environ.get("QWEN38_EXPF_COMPAT_LIB", "").strip():
+        print("QWEN38_WIN32_GLIBC_EXPF_COMPAT_BIND_PASS")
     print("QWEN38_WIN32_GENERATOR_BOOTSTRAP_PASS")
 
 
