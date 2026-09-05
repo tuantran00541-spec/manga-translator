@@ -8,6 +8,8 @@ on:
       - research/qwen38/qwen38_win32_bootstrap.py
       - research/qwen38/qwen38_win32_native_stack_abi.py
       - research/qwen38/qwen38_current_best_runtime_win32.py
+      - research/qwen38/qwen38_glibc_expf_compat.c
+      - research/qwen38/qwen38_glibc_expf_redirect.h
       - research/qwen38/q6_persistent_pool_portable_exact.c
       - research/qwen38/qwen_thread_compat.h
       - research/qwen38/gguf_quant_dot.c
@@ -65,6 +67,8 @@ jobs:
             'research/qwen38/gguf_quant_matvec_many_noalloc_bridge.c' = 'c7411f8d521e767f9dead9a74ad91a5a6ed94654'
             'research/qwen38/q6_persistent_pool_portable_exact.c' = 'fbd991e715068834e1a77cce921e4410e67bf8e2'
             'research/qwen38/qwen_thread_compat.h' = '2b90018e141f88c85852ec32604b7075a5fe0353'
+            'research/qwen38/qwen38_glibc_expf_compat.c' = 'e402829d1f7eaec418db9fa35f2bdc9b26be1137'
+            'research/qwen38/qwen38_glibc_expf_redirect.h' = '4858d47b4b1ade098f1cb49143a3b6fd8b15f918'
             'research/qwen38/residual_add_exact.c' = 'bdc96e14442dbfe1b870a8a9417d19d3bffff4f5'
             'research/qwen38/rmsnorm_exact.c' = '7a8c7a8bb39d7e55e6cbd8460954140042580a11'
             'research/qwen38/rmsnorm_many_exact.c' = '196c143a6a4f3cef0ee7b90968a2a81075186c7d'
@@ -113,6 +117,20 @@ jobs:
             }
           }
 
+          $compatObj = Join-Path $out 'qwen38_glibc_expf_compat.obj'
+          $compatCompileArgs = @(
+            '-O3', '-std=c11', '-c', '-mfma',
+            '-fno-fast-math', '-fno-associative-math', '-ffp-contract=off',
+            '-fno-vectorize', '-fno-slp-vectorize',
+            'research/qwen38/qwen38_glibc_expf_compat.c',
+            '-o', $compatObj
+          )
+          & clang @compatCompileArgs
+          if ($LASTEXITCODE -ne 0) {
+            throw "clang failed for glibc-compatible expf object rc=$LASTEXITCODE"
+          }
+          $expfRedirect = @('-include', 'research/qwen38/qwen38_glibc_expf_redirect.h')
+
           Build-Dll 'qwen_quant_base.dll' `
             @('research/qwen38/gguf_quant_matvec_many_bridge.c') `
             @(
@@ -139,12 +157,14 @@ jobs:
             @('-mavx2')
 
           Build-Dll 'qwen_gdn_state.dll' `
-            @('research/qwen38/gdn_state_ar.c') `
-            @('qwen_gdn_ar_step_f32')
+            @('research/qwen38/gdn_state_ar.c', $compatObj) `
+            @('qwen_gdn_ar_step_f32') `
+            $expfRedirect
 
           Build-Dll 'qwen_gdn_state_batch.dll' `
-            @('research/qwen38/gdn_state_ar.c', 'research/qwen38/gdn_state_batch_exact.c') `
-            @('qwen_gdn_ar_batch_f32')
+            @('research/qwen38/gdn_state_ar.c', 'research/qwen38/gdn_state_batch_exact.c', $compatObj) `
+            @('qwen_gdn_ar_batch_f32') `
+            $expfRedirect
 
           Build-Dll 'qwen_f32.dll' `
             @('research/qwen38/f32_fsum_matvec.c') `
