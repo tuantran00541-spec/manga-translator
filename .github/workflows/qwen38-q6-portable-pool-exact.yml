@@ -49,6 +49,7 @@ jobs:
               getattr(lib, name)
           print("QWEN38_Q6_PORTABLE_LINUX_ABI_PASS")
           PY
+          echo "QWEN_PORTABLE_LIB=$RUNNER_TEMP/libqwen_q6_portable.so" >> "$GITHUB_ENV"
 
       - name: Windows compiler information
         if: runner.os == 'Windows'
@@ -95,3 +96,101 @@ jobs:
           print("QWEN38_Q6_PORTABLE_WINDOWS_ABI_PASS")
           '@ | python -
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "QWEN_PORTABLE_LIB=$dll" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Cross-platform exact Q6 output fingerprint
+        shell: bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          python - <<'PY'
+          import ctypes
+          import hashlib
+          import os
+          import struct
+
+          N = 512
+          ROWS = 17
+          NV = 3
+          QK = 256
+          BLOCK_Q6 = 210
+          BLOCK_Q8K = 292
+          row_bytes = (N // QK) * BLOCK_Q6
+          act_bytes = (N // QK) * BLOCK_Q8K
+
+          state = 0x243F6A88
+          def u32():
+              global state
+              state = (state * 1664525 + 1013904223) & 0xffffffff
+              return state
+
+          weights = bytearray(ROWS * row_bytes)
+          for r in range(ROWS):
+              for ib in range(N // QK):
+                  off = r * row_bytes + ib * BLOCK_Q6
+                  for j in range(128 + 64):
+                      weights[off + j] = (u32() >> 24) & 0xff
+                  for j in range(16):
+                      weights[off + 192 + j] = (((u32() >> 24) % 31) - 15) & 0xff
+                  # Exact binary16 0.03125, kept finite and identical on both OSes.
+                  weights[off + 208:off + 210] = struct.pack('<H', 0x2800)
+
+          activations = bytearray(NV * act_bytes)
+          for v in range(NV):
+              for ib in range(N // QK):
+                  off = v * act_bytes + ib * BLOCK_Q8K
+                  d = 0.00390625 * (1 + v + ib)
+                  activations[off:off + 4] = struct.pack('<f', d)
+                  qs = []
+                  for j in range(QK):
+                      q = int((u32() >> 24) % 255) - 127
+                      qs.append(q)
+                      activations[off + 4 + j] = q & 0xff
+                  bs_off = off + 4 + QK
+                  for group in range(QK // 16):
+                      s = sum(qs[group * 16:(group + 1) * 16])
+                      activations[bs_off + 2 * group:bs_off + 2 * group + 2] = struct.pack('<h', s)
+
+          lib = ctypes.CDLL(os.environ['QWEN_PORTABLE_LIB'])
+          U8P = ctypes.POINTER(ctypes.c_uint8)
+          F32P = ctypes.POINTER(ctypes.c_float)
+          lib.qwen_q6_pool_create.argtypes = [ctypes.c_int, ctypes.c_size_t, ctypes.c_size_t]
+          lib.qwen_q6_pool_create.restype = ctypes.c_void_p
+          lib.qwen_q6_pool_destroy.argtypes = [ctypes.c_void_p]
+          lib.qwen_q6_pool_destroy.restype = None
+          lib.qwen_q6_pool_matvec_many.argtypes = [
+              ctypes.c_void_p, U8P, ctypes.c_size_t, ctypes.c_size_t, ctypes.c_size_t,
+              U8P, ctypes.c_size_t, ctypes.c_size_t, F32P,
+          ]
+          lib.qwen_q6_pool_matvec_many.restype = ctypes.c_int
+          lib.qwen_matvec_many_q6_k_q8_k_bridge.argtypes = [
+              U8P, ctypes.c_size_t, ctypes.c_size_t, ctypes.c_size_t,
+              U8P, ctypes.c_size_t, ctypes.c_size_t, F32P,
+          ]
+          lib.qwen_matvec_many_q6_k_q8_k_bridge.restype = ctypes.c_int
+
+          W = (ctypes.c_uint8 * len(weights)).from_buffer(weights)
+          A = (ctypes.c_uint8 * len(activations)).from_buffer(activations)
+          Ref = ctypes.c_float * (NV * ROWS)
+          ref = Ref()
+          cand = Ref()
+          rc = lib.qwen_matvec_many_q6_k_q8_k_bridge(
+              W, len(weights), ROWS, N, A, act_bytes, NV, ref)
+          if rc != 0:
+              raise SystemExit(f'direct Q6 bridge rc={rc}')
+          pool = lib.qwen_q6_pool_create(2, ROWS, NV)
+          if not pool:
+              raise SystemExit('Q6 pool create failed')
+          try:
+              rc = lib.qwen_q6_pool_matvec_many(
+                  pool, W, len(weights), ROWS, N, A, act_bytes, NV, cand)
+          finally:
+              lib.qwen_q6_pool_destroy(pool)
+          if rc != 0:
+              raise SystemExit(f'pooled Q6 bridge rc={rc}')
+          ref_bytes = ctypes.string_at(ctypes.addressof(ref), ctypes.sizeof(ref))
+          cand_bytes = ctypes.string_at(ctypes.addressof(cand), ctypes.sizeof(cand))
+          if cand_bytes != ref_bytes:
+              raise SystemExit('2-worker pool differs from direct Q6 bridge')
+          digest = hashlib.sha256(ref_bytes).hexdigest()
+          print(f'QWEN38_Q6_CROSS_PLATFORM_SHA256 {digest}')
+          print('QWEN38_Q6_CROSS_PLATFORM_FINGERPRINT_PASS')
+          PY
