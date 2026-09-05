@@ -5,6 +5,8 @@ The proven decoder/profile is reused rather than forked.  This adapter changes
 only platform plumbing while keeping the Linux evidence path untouched:
 
 * install the existing Win32 resource/UCRT bootstrap before legacy imports;
+* provide a locked binary seek/read ``os.pread`` compatibility for the legacy
+  small positional GGUF reads used by output-norm and token embeddings;
 * pack the execution-ordered K3 trunk with an explicit-offset seek/read copy
   because Python on Windows has no os.pread;
 * bind the proven Win32 NO_BUFFERING|OVERLAPPED progressive two-slot reader;
@@ -50,6 +52,42 @@ K3_PLANNED_BYTES = 672_899_072
 K3_STORAGE_IO_CONCURRENCY = 1
 K3_MAX_DEFERRED_LAYER_REQUESTS = 1
 _PACK_LOCK = threading.Lock()
+_PREAD_LOCK = threading.Lock()
+
+
+def _pread_seek_read(fd: int, nbytes: int, offset: int) -> bytes:
+    """Win32 ``os.pread`` compatibility for independently-opened GGUF fds."""
+    if sys.platform != "win32":
+        raise RuntimeError("Win32 pread compatibility requires native Windows")
+    if int(nbytes) < 0 or int(offset) < 0:
+        raise ValueError("pread nbytes/offset must be non-negative")
+    import msvcrt
+
+    with _PREAD_LOCK:
+        msvcrt.setmode(fd, os.O_BINARY)
+        restore = os.lseek(fd, 0, os.SEEK_CUR)
+        try:
+            os.lseek(fd, int(offset), os.SEEK_SET)
+            chunks: list[bytes] = []
+            done = 0
+            while done < int(nbytes):
+                chunk = os.read(fd, int(nbytes) - done)
+                if not chunk:
+                    break
+                chunks.append(chunk)
+                done += len(chunk)
+            return b"".join(chunks)
+        finally:
+            os.lseek(fd, restore, os.SEEK_SET)
+
+
+def _install_pread_compat() -> None:
+    """Install the local Win32 positional-read shim only when Python lacks it."""
+    if hasattr(os, "pread"):
+        return
+    if sys.platform != "win32":
+        raise RuntimeError("os.pread unexpectedly missing on non-Windows host")
+    setattr(os, "pread", _pread_seek_read)
 
 
 def _copy_hash_seek_read(
@@ -153,6 +191,30 @@ def _copy_sanity() -> None:
             raise RuntimeError("Win32 seek/read copy exceeded chunk contract")
 
 
+def _pread_sanity() -> None:
+    if sys.platform != "win32":
+        raise RuntimeError("Win32 pread sanity requires native Windows")
+    _install_pread_compat()
+    prefix = b"prefix\x1a\r\n" * 17
+    payload = bytes(((i * 29 + 7) & 0xFF) for i in range(8193))
+    suffix = b"\ntrailer\x1a" * 11
+    with tempfile.TemporaryDirectory() as td:
+        path = Path(td) / "pread.bin"
+        path.write_bytes(prefix + payload + suffix)
+        fd = os.open(path, os.O_RDONLY)
+        try:
+            os.lseek(fd, 5, os.SEEK_SET)
+            before = os.lseek(fd, 0, os.SEEK_CUR)
+            raw = os.pread(fd, len(payload), len(prefix))
+            after = os.lseek(fd, 0, os.SEEK_CUR)
+        finally:
+            os.close(fd)
+    if raw != payload:
+        raise RuntimeError("Win32 pread compatibility changed bytes")
+    if before != after:
+        raise RuntimeError("Win32 pread compatibility changed file offset")
+
+
 def sanity() -> None:
     if sys.platform != "win32":
         raise SystemExit("Win32 current-best profile sanity must run on Windows")
@@ -160,6 +222,7 @@ def sanity() -> None:
         raise SystemExit("Win32 generator bootstrap did not expose 64 layers")
     win32_quant_sanity()
     _copy_sanity()
+    _pread_sanity()
     if K3_RING_SLOTS != 2 or K3_PLANNED_BYTES != 672_899_072:
         raise SystemExit("Win32 current-best K3 residency contract changed")
     if K3_STORAGE_IO_CONCURRENCY != 1 or K3_MAX_DEFERRED_LAYER_REQUESTS != 1:
@@ -172,6 +235,7 @@ def sanity() -> None:
 def run(args) -> dict[str, Any]:
     if sys.platform != "win32" or gen is None:
         raise RuntimeError("full real Win32 current-best gate requires native Windows")
+    _install_pread_compat()
 
     old_pack = gen.pack_gguf_layers
     old_reader = gen.K3Trunk
