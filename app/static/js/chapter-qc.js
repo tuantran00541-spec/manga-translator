@@ -244,6 +244,14 @@
     if (!panel) return;
     const snapshot = state.snapshot;
     const running = isRunning(snapshot);
+    const disclosure = panel.closest(".command-disclosure");
+    if (disclosure) {
+      const summary = disclosure.querySelector("summary");
+      summary.textContent = running ? "AI đang kiểm tra…" : (snapshot ? "Kết quả kiểm tra AI" : "Kiểm tra AI");
+      const jobState = snapshot ? `${snapshot.job_id}:${snapshot.status}` : "idle";
+      if (snapshot && disclosure.dataset.jobState !== jobState) disclosure.open = true;
+      disclosure.dataset.jobState = jobState;
+    }
     setLocked(workspace, running);
     updateProgress(panel, snapshot);
     updateButtons(workspace, panel, snapshot, running);
@@ -359,14 +367,14 @@
     panel.setAttribute("aria-live", "polite");
     panel.innerHTML = `
       <div class="chapter-qc-head">
-        <div><span class="ui-eyebrow">AI Visual QC</span><strong>Kiểm tra toàn chương</strong></div>
+        <div><strong>Kiểm tra toàn chương</strong></div>
         <div class="chapter-qc-job-actions">
           <button type="button" class="ui-btn ui-btn-ghost chapter-qc-retry" hidden>Thử lại phần lỗi</button>
           <button type="button" class="ui-btn ui-btn-ghost chapter-qc-cancel" hidden>Hủy kiểm tra</button>
         </div>
       </div>
       <div class="chapter-qc-options">
-        <label>Provider
+        <label>Dịch vụ AI
           <select class="chapter-qc-provider">
             <option value="gemini">Gemini</option>
             <option value="deepseek">DeepSeek Vision Exp</option>
@@ -410,8 +418,7 @@
     if (!workspace || workspace.dataset.chapterQcBound === "1") return;
     const actions = workspace.querySelector(".review-actions-group");
     const toolbar = workspace.querySelector(".review-sticky-toolbar");
-    const inspector = workspace.querySelector(".review-inspector");
-    if (!actions || !toolbar || !inspector) return;
+    if (!actions || !toolbar) return;
     workspace.dataset.chapterQcBound = "1";
 
     const runBtn = document.createElement("button");
@@ -419,11 +426,16 @@
     runBtn.className = "ui-btn ui-btn-ghost chapter-qc-run";
     runBtn.textContent = "Kiểm tra toàn chương bằng AI";
     runBtn.addEventListener("click", () => startChapterQC(workspace));
-    actions.prepend(runBtn);
-
+    const disclosure = document.createElement("details");
+    disclosure.className = "command-disclosure chapter-qc-disclosure";
+    const summary = document.createElement("summary");
+    summary.className = "ui-btn ui-btn-ghost";
+    summary.textContent = "Kiểm tra AI";
     const panel = createPanel();
-    panel.classList.add("inspector-section", "review-qc-inspector-section");
-    inspector.appendChild(panel);
+    panel.classList.add("command-disclosure-panel");
+    panel.querySelector(".chapter-qc-options").after(runBtn);
+    disclosure.append(summary, panel);
+    actions.prepend(disclosure);
     observeWorkspaceLocks(workspace);
     renderPanel(workspace);
   }

@@ -26,9 +26,12 @@ function pageLabel(pages, pageIndex) {
 let previewActivePageIndex = 0;
 let previewZoomScale = 1.0;
 let previewDrawCleanup = null;
+let previewResizeObserver = null;
 let previewLastChapterId = null;
 
 function cleanupPreviewDrawListeners() {
+  previewResizeObserver?.disconnect();
+  previewResizeObserver = null;
   if (typeof previewDrawCleanup === "function") {
     previewDrawCleanup();
     previewDrawCleanup = null;
@@ -70,11 +73,8 @@ function renderPreview() {
   heading.className = "preview-workspace-heading";
   const title = document.createElement("div");
   title.className = "preview-workspace-title";
-  title.textContent = "Chuẩn bị ảnh";
-  const subtitle = document.createElement("div");
-  subtitle.className = "preview-workspace-subtitle";
-  subtitle.textContent = "Chọn lát cần xử lý; vùng loại trừ và trạng thái của trang nằm trong bảng thuộc tính.";
-  heading.append(title, subtitle);
+  title.textContent = `${pages.filter((item) => !item.skipped).length}/${pages.length} lát được chọn`;
+  heading.appendChild(title);
 
   const processBtn = document.createElement("button");
   processBtn.className = "preview-primary-action";
@@ -129,6 +129,7 @@ function renderPreview() {
 
   const page = pages[previewActivePageIndex];
   renderPreviewPage(surface, page, previewActivePageIndex, pages, inspector);
+  window.setupWorkbenchPanels?.("preview");
 
   if (typeof setWorkflowCheckpoint === "function") {
     setWorkflowCheckpoint("preview", previewActivePageIndex);
@@ -347,6 +348,18 @@ function renderPreviewPage(card, page, pageIndex, pages, inspector = null) {
   };
 
   previewDrawCleanup = stopDrawing;
+
+  if (typeof ResizeObserver === "function") {
+    previewResizeObserver = new ResizeObserver(() => {
+      if (!img.isConnected) {
+        previewResizeObserver?.disconnect();
+        return;
+      }
+      stopDrawing();
+      renderExcludedBoxes();
+    });
+    previewResizeObserver.observe(img);
+  }
 
   const footer = document.createElement("div");
   footer.className = "preview-card-footer";

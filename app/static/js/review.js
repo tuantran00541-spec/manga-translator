@@ -17,6 +17,7 @@ function createReviewCard(pageIndex, maskSnapshot = null) {
   const brushBtn = document.createElement("button");
   brushBtn.className = "brush-toggle-btn";
   brushBtn.textContent = "Đánh dấu vùng lỗi";
+  brushBtn.setAttribute("aria-pressed", "false");
   controls.appendChild(brushBtn);
 
   const clearBtn = document.createElement("button");
@@ -32,17 +33,16 @@ function createReviewCard(pageIndex, maskSnapshot = null) {
   const resetManualBtn = document.createElement("button");
   resetManualBtn.className = "reset-manual-btn";
   resetManualBtn.textContent = "Xóa vùng chỉnh sửa";
-  controls.appendChild(resetManualBtn);
 
   const aiQcBtn = document.createElement("button");
   aiQcBtn.type = "button";
   aiQcBtn.className = "ai-qc-btn";
-  aiQcBtn.textContent = "Kiểm tra bằng AI";
+  aiQcBtn.textContent = "Kiểm tra trang bằng AI";
   aiQcBtn.title = "So sánh ảnh nguồn và ảnh đã xử lý để phát hiện vùng cần kiểm tra lại";
-  controls.appendChild(aiQcBtn);
 
   const brushSizeWrap = document.createElement("label");
   brushSizeWrap.className = "brush-size-control";
+  brushSizeWrap.hidden = true;
   brushSizeWrap.textContent = "Kích thước cọ ";
   const brushSizeValue = document.createElement("output");
   brushSizeValue.className = "brush-size-value";
@@ -56,6 +56,12 @@ function createReviewCard(pageIndex, maskSnapshot = null) {
   brushSize.title = "Điều chỉnh kích thước cọ";
   brushSizeWrap.append(brushSize, brushSizeValue);
   controls.appendChild(brushSizeWrap);
+  const more = document.createElement("details");
+  more.className = "review-more-actions";
+  const moreTitle = document.createElement("summary");
+  moreTitle.textContent = "Thao tác khác";
+  more.append(moreTitle, aiQcBtn, resetManualBtn);
+  controls.appendChild(more);
   card.appendChild(controls);
 
   const wrap = document.createElement("div");
@@ -173,6 +179,8 @@ function setupBrush(pageIndex, img, canvas, wrap, brushBtn, clearBtn, submitBtn,
     brushOn = false;
     wrap.classList.remove("brush-mode");
     brushBtn.textContent = "Đánh dấu vùng lỗi";
+    brushBtn.setAttribute("aria-pressed", "false");
+    brushSize.closest(".brush-size-control").hidden = true;
   };
 
   const cleanupBrush = () => {
@@ -188,6 +196,8 @@ function setupBrush(pageIndex, img, canvas, wrap, brushBtn, clearBtn, submitBtn,
     if (!brushOn) stopPainting();
     wrap.classList.toggle("brush-mode", brushOn);
     brushBtn.textContent = brushOn ? "Đang đánh dấu · Chọn để kết thúc" : "Đánh dấu vùng lỗi";
+    brushBtn.setAttribute("aria-pressed", String(brushOn));
+    brushSize.closest(".brush-size-control").hidden = !brushOn;
   }, { signal });
 
   clearBtn.addEventListener("click", () => {

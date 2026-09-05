@@ -258,6 +258,7 @@ function setEditorTool(tool) {
   editorState.tool = tool;
   document.querySelectorAll(".editor-tool-btn").forEach((btn) => {
     btn.classList.toggle("active", btn.dataset.tool === tool);
+    if (btn.dataset.tool) btn.setAttribute("aria-pressed", String(btn.dataset.tool === tool));
   });
   const imgWrap = document.querySelector(".translation-canvas-host .page-image-wrap");
   if (imgWrap) imgWrap.classList.toggle("draw-mode", tool !== "select");
@@ -270,6 +271,7 @@ function setSelectedTextObject(pageIndex, id) {
     el.classList.toggle("selected", el.dataset.objectId === id);
   });
   renderEditorPanel(pageIndex);
+  if (id) window.showWorkbenchInspector?.();
 }
 window.setSelectedTextObject = setSelectedTextObject;
 
@@ -296,16 +298,16 @@ function editorImageMetrics(img) {
 window.editorImageMetrics = editorImageMetrics;
 
 function renderTextObjectOverlays(pageIndex, page) {
+  window._editorOverlayResizeObserver?.disconnect();
   const wrapper = document.querySelector(".translation-canvas-host .page-block-wrapper");
   if (!wrapper) return;
   const imgWrap = wrapper.querySelector(".page-image-wrap");
   if (!imgWrap) return;
   const img = imgWrap.querySelector("img");
-  imgWrap.querySelectorAll(".text-object-overlay:not(.drawing)").forEach((el) => el.remove());
-
   const render = () => {
     const metrics = editorImageMetrics(img);
     if (!metrics) return;
+    imgWrap.querySelectorAll(".text-object-overlay:not(.drawing)").forEach((el) => el.remove());
     (page.text_objects || []).forEach((obj) => {
       if (!obj || !obj.region) return;
       const overlay = document.createElement("div");
@@ -329,6 +331,14 @@ function renderTextObjectOverlays(pageIndex, page) {
 
   if (img.complete && img.naturalWidth > 0) render();
   else img.onload = render;
+  if (typeof ResizeObserver === "function") {
+    const observer = new ResizeObserver(() => {
+      if (!img.isConnected) observer.disconnect();
+      else render();
+    });
+    observer.observe(img);
+    window._editorOverlayResizeObserver = observer;
+  }
 }
 
 function renderEditorPanel(pageIndex) {
@@ -1209,12 +1219,10 @@ function renderEditor() {
   const toolbar = document.createElement("div");
   toolbar.className = "translation-sticky-toolbar";
 
-  const title = document.createElement("div");
-  title.className = "translation-toolbar-title";
-  title.innerHTML = '<strong>Biên tập bản dịch</strong><span>Chọn công cụ hoặc tạo vùng chữ để hiệu chỉnh nội dung và trình bày.</span>';
-
   const tools = document.createElement("div");
   tools.className = "editor-tools";
+  tools.setAttribute("role", "group");
+  tools.setAttribute("aria-label", "Công cụ vùng chữ");
   [
     { key: "select", label: "Chọn" },
     { key: "rectangle", label: "Khung chữ nhật" },
@@ -1244,7 +1252,7 @@ function renderEditor() {
   const renderBtn = document.createElement("button");
   renderBtn.type = "button";
   renderBtn.className = "render-btn editor-render-btn";
-  renderBtn.textContent = "Kết xuất bản dịch";
+  renderBtn.textContent = "Kết xuất trang";
   renderBtn.addEventListener("click", () => renderTranslations(pageIndex));
 
   const saveStatus = document.createElement("div");
@@ -1260,7 +1268,8 @@ function renderEditor() {
     saveStatus.textContent = "⚠️ Lưu thất bại";
   }
 
-  toolbar.append(title, tools, renderBtn, saveStatus);
+  saveStatus.setAttribute("role", "status");
+  toolbar.append(tools, renderBtn, saveStatus);
 
   const navItems = pages.map((item, index) => ({
     key: index,
@@ -1303,4 +1312,5 @@ function renderEditor() {
   renderTextObjectOverlays(pageIndex, page);
   renderEditorPanel(pageIndex);
   setEditorTool(editorState.tool);
+  window.setupWorkbenchPanels?.("editor");
 }

@@ -13,8 +13,13 @@
 
   function buildControls(toolbar) {
     if (!toolbar || toolbar.querySelector(".chapter-translate-controls")) return;
-    const controls = document.createElement("div");
-    controls.className = "chapter-translate-controls";
+    const controls = document.createElement("details");
+    controls.className = "chapter-translate-controls command-disclosure";
+    const summary = document.createElement("summary");
+    summary.className = "ui-btn ui-btn-ghost";
+    summary.textContent = "Dịch tự động";
+    const options = document.createElement("div");
+    options.className = "command-disclosure-panel chapter-translate-options";
 
     const target = document.createElement("select");
     target.className = "chapter-translate-target";
@@ -38,6 +43,14 @@
     budget.className = "chapter-translate-budget";
     budget.title = "Ngân sách tối đa ước tính cho lần dịch chương (USD)";
     budget.setAttribute("aria-label", "Ngân sách dịch chương bằng USD");
+    const targetLabel = document.createElement("label");
+    targetLabel.className = "ui-field";
+    targetLabel.textContent = "Dịch sang";
+    targetLabel.appendChild(target);
+    const budgetLabel = document.createElement("label");
+    budgetLabel.className = "ui-field";
+    budgetLabel.textContent = "Giới hạn chi phí (USD)";
+    budgetLabel.appendChild(budget);
 
     const run = document.createElement("button");
     run.type = "button";
@@ -49,6 +62,7 @@
       if (!chapterId) return;
       run.disabled = true;
       run.textContent = "Đang dịch…";
+      summary.textContent = "Đang dịch…";
       try {
         if (typeof window.flushAllPendingPersists === "function") {
           await window.flushAllPendingPersists();
@@ -85,10 +99,12 @@
       } finally {
         run.disabled = false;
         run.textContent = "Dịch tự động";
+        summary.textContent = "Dịch tự động";
       }
     });
 
-    controls.append(target, budget, run);
+    options.append(targetLabel, budgetLabel, run);
+    controls.append(summary, options);
     const renderButton = toolbar.querySelector(".editor-render-btn");
     if (renderButton) toolbar.insertBefore(controls, renderButton);
     else toolbar.appendChild(controls);

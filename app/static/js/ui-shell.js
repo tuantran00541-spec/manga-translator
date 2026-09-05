@@ -10,6 +10,62 @@
   let trackedChapterId = null;
   let maxReachedIndex = 0;
   let navigationBusy = false;
+  const panelPreferences = new Map();
+  let activePanels = null;
+
+  function panelMode() {
+    return window.matchMedia("(max-width: 1000px)").matches ? "compact" : "wide";
+  }
+
+  function syncWorkbenchPanels() {
+    const controls = document.getElementById("workbench-panel-controls");
+    const pageView = document.getElementById("page-view");
+    const visible = activePanels?.grid.isConnected && !pageView?.hidden
+      && !pageView?.classList.contains("review-show-stitched");
+    if (controls) controls.hidden = !visible;
+    if (!activePanels?.grid.isConnected) return;
+    const { stage, grid, nav, inspector } = activePanels;
+    const compact = panelMode() === "compact";
+    const key = `${stage}:${panelMode()}`;
+    const state = panelPreferences.get(key) || { nav: !compact, inspector: !compact };
+    nav.hidden = !state.nav;
+    inspector.hidden = !state.inspector;
+    grid.dataset.navOpen = String(state.nav);
+    grid.dataset.inspectorOpen = String(state.inspector);
+    [["toggle-page-panel", nav, state.nav], ["toggle-inspector-panel", inspector, state.inspector]].forEach(([id, panel, open]) => {
+      const button = document.getElementById(id);
+      if (!button) return;
+      button.setAttribute("aria-controls", panel.id);
+      button.setAttribute("aria-expanded", String(open));
+      button.title = `${open ? "Ẩn" : "Hiện"} ${id === "toggle-page-panel" ? "danh sách trang" : "bảng công cụ"}`;
+    });
+  }
+
+  function setPanelOpen(name, open) {
+    if (!activePanels?.grid.isConnected) return;
+    const compact = panelMode() === "compact";
+    const key = `${activePanels.stage}:${panelMode()}`;
+    const state = { ...(panelPreferences.get(key) || { nav: !compact, inspector: !compact }), [name]: open };
+    // A narrow screen shows one auxiliary panel above the image at a time.
+    if (compact && open) state[name === "nav" ? "inspector" : "nav"] = false;
+    panelPreferences.set(key, state);
+    syncWorkbenchPanels();
+  }
+
+  function setupWorkbenchPanels(stage) {
+    const grid = document.querySelector("#page-view .workbench-stage-grid");
+    const nav = grid?.querySelector(":scope > .page-navigator");
+    const inspector = grid?.querySelector(":scope > .context-inspector");
+    if (!grid || !nav || !inspector) {
+      activePanels = null;
+      syncWorkbenchPanels();
+      return;
+    }
+    nav.id = `${stage}-page-panel`;
+    inspector.id = `${stage}-inspector-panel`;
+    activePanels = { stage, grid, nav, inspector };
+    syncWorkbenchPanels();
+  }
 
   function setAppContext(text) {
     const el = document.getElementById("app-context");
@@ -55,6 +111,7 @@
       landing.classList.toggle("app-stage-active", resolved === "landing");
     }
     if (workspace) workspace.hidden = resolved === "landing";
+    syncWorkbenchPanels();
 
     syncWorkflowSteps(activeIndex);
 
@@ -184,6 +241,8 @@
     drawer.hidden = false;
     backdrop.hidden = false;
     document.body.classList.add("settings-open");
+    document.getElementById("app").inert = true;
+    document.getElementById("settings-toggle")?.setAttribute("aria-expanded", "true");
     const closeBtn = document.getElementById("settings-close");
     if (closeBtn) closeBtn.focus();
   }
@@ -195,6 +254,8 @@
     drawer.hidden = true;
     backdrop.hidden = true;
     document.body.classList.remove("settings-open");
+    document.getElementById("app").inert = false;
+    document.getElementById("settings-toggle")?.setAttribute("aria-expanded", "false");
     const toggle = document.getElementById("settings-toggle");
     if (toggle) toggle.focus();
   }
@@ -205,6 +266,7 @@
     const wrapped = function uiSystemStageRenderer(...args) {
       setAppStage(stage);
       const result = original.apply(this, args);
+      setupWorkbenchPanels(stage);
       if (window.currentChapterId) setAppContext(`Chương ${window.currentChapterId}`);
       return result;
     };
@@ -220,6 +282,19 @@
     if (toggle) toggle.addEventListener("click", openSettings);
     if (close) close.addEventListener("click", closeSettings);
     if (backdrop) backdrop.addEventListener("click", closeSettings);
+    [["toggle-page-panel", "nav"], ["toggle-inspector-panel", "inspector"]].forEach(([id, name]) => {
+      document.getElementById(id)?.addEventListener("click", (event) => {
+        setPanelOpen(name, event.currentTarget.getAttribute("aria-expanded") !== "true");
+      });
+    });
+    window.matchMedia("(max-width: 1000px)").addEventListener("change", syncWorkbenchPanels);
+
+    // Native disclosures keep configuration out of the command bar until needed.
+    document.addEventListener("click", (event) => {
+      document.querySelectorAll(".command-disclosure[open]").forEach((details) => {
+        if (!details.contains(event.target)) details.open = false;
+      });
+    });
 
     document.querySelectorAll(".app-rail-item[data-stage]").forEach((step) => {
       step.addEventListener("click", () => navigateAppStage(step.dataset.stage));
@@ -227,9 +302,32 @@
 
     document.addEventListener("keydown", (event) => {
       if (event.key === "Escape" && document.body.classList.contains("settings-open")) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
         closeSettings();
+      } else if (event.key === "Escape") {
+        const details = event.target.closest?.(".command-disclosure[open]");
+        if (details) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          details.open = false;
+          details.querySelector("summary")?.focus();
+        }
+      } else if (event.key === "Tab" && document.body.classList.contains("settings-open")) {
+        const drawer = document.getElementById("settings-drawer");
+        const focusable = [...drawer.querySelectorAll("button, input, select, textarea, a[href], [tabindex='0']")]
+          .filter((el) => !el.disabled && !el.closest("[hidden]") && el.getClientRects().length);
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last?.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first?.focus();
+        }
       }
-    });
+    }, true);
   }
 
   window.setAppStage = setAppStage;
@@ -238,6 +336,9 @@
   window.mountAISettings = mountAISettings;
   window.openAppSettings = openSettings;
   window.closeAppSettings = closeSettings;
+  window.setupWorkbenchPanels = setupWorkbenchPanels;
+  window.syncWorkbenchPanels = syncWorkbenchPanels;
+  window.showWorkbenchInspector = () => setPanelOpen("inspector", true);
 
   wrapRenderer("renderPreview", "preview");
   wrapRenderer("renderReview", "review");

@@ -147,7 +147,7 @@
     toolbar.className = "review-sticky-toolbar";
     const title = document.createElement("div");
     title.className = "review-toolbar-title";
-    title.innerHTML = '<span class="ui-eyebrow">Kiểm tra chất lượng</span><strong>Hiệu chỉnh ảnh đã xử lý</strong><span>Đánh dấu vùng còn lỗi và xử lý lại khi cần.</span>';
+    title.textContent = `${pageIndices.length} lát đã xử lý`;
     const controlsSlot = document.createElement("div");
     controlsSlot.className = "review-controls-slot";
     const actions = document.createElement("div");
@@ -168,7 +168,7 @@
 
     const continueBtn = document.createElement("button");
     continueBtn.className = "ui-btn ui-btn-primary review-primary-action";
-    continueBtn.textContent = "Mở trình biên tập bản dịch";
+    continueBtn.textContent = "Biên tập bản dịch →";
     continueBtn.addEventListener("click", () => {
       const activeCard = container.querySelector(".review-canvas-host .review-card");
       captureMaskSnapshot(activeCard);
@@ -192,7 +192,7 @@
       if (typeof window.setWorkflowCheckpoint === "function") window.setWorkflowCheckpoint("editor", canonicalIndex);
       if (typeof window.renderEditor === "function") window.renderEditor();
     });
-    actions.append(aiStatus, continueBtn);
+    actions.appendChild(continueBtn);
     toolbar.append(title, actions);
 
     const layout = document.createElement("div");
@@ -219,15 +219,13 @@
     inspector.setAttribute("aria-label", "Công cụ và kiểm tra chất lượng");
     const inspectorHeading = document.createElement("div");
     inspectorHeading.className = "context-inspector-heading";
-    inspectorHeading.innerHTML = '<span class="ui-eyebrow">Trang đang chọn</span><strong>Hiệu chỉnh & kiểm tra</strong>';
+    inspectorHeading.innerHTML = '<strong>Hiệu chỉnh trang</strong>';
     const gestureSection = document.createElement("section");
     gestureSection.className = "inspector-section review-gesture-section";
-    const gestureTitle = document.createElement("h3");
-    gestureTitle.textContent = "Công cụ chỉnh sửa";
-    gestureSection.append(gestureTitle, controlsSlot);
+    gestureSection.appendChild(controlsSlot);
     const helpSection = document.createElement("section");
     helpSection.className = "inspector-section review-help-section";
-    helpSection.appendChild(help);
+    helpSection.append(aiStatus, help);
     inspector.append(inspectorHeading, gestureSection, helpSection);
 
     navigator = window.createPageNavigator({
@@ -312,6 +310,7 @@
     };
 
     renderActive();
+    window.setupWorkbenchPanels?.("review");
   }
 
   window.renderReview = setupReviewWorkspace;

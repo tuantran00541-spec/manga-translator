@@ -57,6 +57,7 @@
     if (!panel) return;
     const snapshot = state.snapshot;
     const running = isRunning(snapshot);
+    panel.hidden = !snapshot;
     const run = workspace.querySelector(".chapter-ocr-run");
     if (run) {
       run.disabled = running;
@@ -216,7 +217,7 @@
     panel.setAttribute("aria-live", "polite");
     panel.innerHTML = `
       <div class="chapter-ocr-head">
-        <div><span class="ui-eyebrow">OCR</span><strong>Nhận dạng toàn chương</strong></div>
+        <div><strong>Nhận dạng toàn chương</strong></div>
         <div class="chapter-ocr-actions">
           <button type="button" class="ui-btn ui-btn-ghost chapter-ocr-retry" hidden>Thử lại phần lỗi</button>
           <button type="button" class="ui-btn ui-btn-ghost chapter-ocr-cancel" hidden>Hủy OCR</button>
@@ -245,8 +246,8 @@
     actions.prepend(run);
 
     const panel = createPanel();
-    const qcPanel = workspace.querySelector(".chapter-qc-panel");
-    (qcPanel || toolbar).after(panel);
+    // Progress/cancel stays visible in both stitched and per-slice review.
+    toolbar.after(panel);
     renderPanel(workspace);
   }
 

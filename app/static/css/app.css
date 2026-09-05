@@ -23,6 +23,10 @@
 @import url("./workbench.css") layer(workbench);
 
 @layer utilities {
+  /* Native hidden state must win over component display:grid/flex rules. */
+  [hidden] {
+    display: none !important;
+  }
   .workbench-frame {
     container-type: inline-size;
     container-name: workbench;
@@ -41,19 +45,6 @@
   :where(button, input, select, textarea, [role="button"], [tabindex]):focus-visible {
     outline: 2px solid var(--color-focus, var(--accent-1));
     outline-offset: 2px;
-  }
-
-  @container workbench (max-width: 900px) {
-    .workbench-stage-grid,
-    .translation-workspace-body.editor-workbench-grid {
-      grid-template-columns: 1fr;
-    }
-
-    .context-inspector,
-    .translation-panel-host.context-inspector {
-      position: static;
-      max-height: none;
-    }
   }
 
   @media (prefers-reduced-motion: reduce) {

@@ -13,13 +13,13 @@
       <span class="app-rail-brand-mark" aria-hidden="true">MT</span>
     </div>
     <nav id="workflow-steps" class="app-rail-nav" aria-label="Tiến trình xử lý">
-      <button class="app-rail-item active" type="button" data-stage="landing" title="Nhập nội dung"><span class="app-rail-glyph" aria-hidden="true">＋</span><span>Nhập</span></button>
-      <button class="app-rail-item" type="button" data-stage="preview" title="Xử lý ảnh" disabled><span class="app-rail-glyph" aria-hidden="true">▧</span><span>Xử lý</span></button>
-      <button class="app-rail-item" type="button" data-stage="review" title="Kiểm tra chất lượng" disabled><span class="app-rail-glyph" aria-hidden="true">✓</span><span>Kiểm tra</span></button>
-      <button class="app-rail-item" type="button" data-stage="editor" title="Biên tập bản dịch" disabled><span class="app-rail-glyph" aria-hidden="true">T</span><span>Biên tập</span></button>
+      <button class="app-rail-item active" type="button" data-stage="landing" aria-label="Nhập nội dung" title="Nhập nội dung"><span class="app-rail-glyph" aria-hidden="true">＋</span><span>Nhập</span></button>
+      <button class="app-rail-item" type="button" data-stage="preview" aria-label="Xử lý ảnh" title="Xử lý ảnh" disabled><span class="app-rail-glyph" aria-hidden="true">▧</span><span>Xử lý</span></button>
+      <button class="app-rail-item" type="button" data-stage="review" aria-label="Kiểm tra chất lượng" title="Kiểm tra chất lượng" disabled><span class="app-rail-glyph" aria-hidden="true">✓</span><span>Kiểm tra</span></button>
+      <button class="app-rail-item" type="button" data-stage="editor" aria-label="Biên tập bản dịch" title="Biên tập bản dịch" disabled><span class="app-rail-glyph" aria-hidden="true">T</span><span>Biên tập</span></button>
     </nav>
     <div class="app-rail-footer">
-      <button id="settings-toggle" class="app-rail-item app-rail-settings" type="button" aria-haspopup="dialog" aria-controls="settings-drawer" title="Cài đặt"><span class="app-rail-glyph" aria-hidden="true">⚙</span><span>Cài đặt</span></button>
+      <button id="settings-toggle" class="app-rail-item app-rail-settings" type="button" aria-label="Cài đặt" aria-haspopup="dialog" aria-controls="settings-drawer" aria-expanded="false" title="Cài đặt"><span class="app-rail-glyph" aria-hidden="true">⚙</span><span>Cài đặt</span></button>
     </div>
   </aside>
 
@@ -29,26 +29,34 @@
         <span id="stage-title" class="workbench-stage-title">Nhập nội dung</span>
         <span id="app-context" class="app-context" aria-live="polite">Chưa mở chương</span>
       </div>
+      <div id="workbench-panel-controls" class="workbench-panel-controls" role="group" aria-label="Bố cục vùng làm việc" hidden>
+        <button id="toggle-page-panel" class="ui-btn ui-btn-ghost" type="button" aria-expanded="true">Trang & lát</button>
+        <button id="toggle-inspector-panel" class="ui-btn ui-btn-ghost" type="button" aria-expanded="true">Công cụ</button>
+      </div>
       <div id="workbench-status" class="workbench-status" aria-live="polite"></div>
     </header>
 
   <section id="landing-view" class="app-stage app-stage-active" data-stage="landing" aria-labelledby="landing-title">
     <div class="landing-intro">
-      <span class="ui-eyebrow">Bắt đầu</span>
-      <h1 id="landing-title">Chuẩn bị chương để xử lý và biên tập</h1>
-      <p>Tải một chương từ liên kết hoặc nhập ảnh trực tiếp từ thiết bị. Các bước xử lý tiếp theo sẽ được lưu để có thể tiếp tục sau.</p>
+      <h1 id="landing-title">Mở một chương</h1>
+      <p>Dán liên kết hoặc nhập ảnh, ZIP, CBZ để bắt đầu.</p>
+    </div>
+
+    <div class="landing-import-options">
+      <label class="ui-field" for="lang-select"><span>Ngôn ngữ gốc</span><select id="lang-select" title="Áp dụng cho cả liên kết và tệp tải lên"><option value="ja">Tiếng Nhật</option><option value="ch">Tiếng Trung</option><option value="korean">Tiếng Hàn</option><option value="en">Tiếng Anh</option></select></label>
+      <details class="import-advanced">
+        <summary>Tùy chọn xử lý</summary>
+        <label class="ui-field" id="workers-label" for="workers-select"><span>Tác vụ song song</span><select id="workers-select"><option value="1">1</option><option value="2" selected>2</option><option value="3">3</option><option value="4">4</option><option value="6">6</option><option value="8">8</option></select></label>
+      </details>
     </div>
 
     <div class="landing-source-grid">
       <section class="app-panel landing-panel" aria-labelledby="url-source-title">
         <div class="panel-heading">
-          <div><span class="ui-eyebrow">Nguồn trực tuyến</span><h2 id="url-source-title">Tải từ liên kết</h2></div>
-          <span class="panel-meta">URL chương</span>
+          <h2 id="url-source-title">Từ liên kết</h2>
         </div>
         <div id="chapter-input" class="chapter-input-grid">
           <label class="ui-field chapter-url-field" for="chapter-url"><span>Liên kết chương</span><input type="text" id="chapter-url" placeholder="Dán URL chương"></label>
-          <label class="ui-field" for="lang-select"><span>Ngôn ngữ nguồn</span><select id="lang-select" title="Ngôn ngữ dùng cho nhận dạng ký tự"><option value="ja">Tiếng Nhật</option><option value="ch">Tiếng Trung</option><option value="korean">Tiếng Hàn</option><option value="en">Tiếng Anh</option></select></label>
-          <label class="ui-field" id="workers-label" for="workers-select" title="Số tác vụ xử lý song song. Tăng trên máy mạnh, giảm trên máy có ít tài nguyên."><span>Tác vụ song song</span><select id="workers-select"><option value="1">1</option><option value="2" selected>2</option><option value="3">3</option><option value="4">4</option><option value="6">6</option><option value="8">8</option></select></label>
           <button id="load-btn" class="ui-btn ui-btn-primary" type="button">Tải chương</button>
         </div>
       </section>
@@ -57,8 +65,7 @@
 
       <section class="app-panel landing-panel" aria-labelledby="file-source-title">
         <div class="panel-heading">
-          <div><span class="ui-eyebrow">Tệp cục bộ</span><h2 id="file-source-title">Nhập từ thiết bị</h2></div>
-          <span class="panel-meta">Ảnh · ZIP · CBZ</span>
+          <h2 id="file-source-title">Từ thiết bị</h2>
         </div>
         <button id="upload-dropzone" type="button" aria-controls="upload-input">
           <span class="upload-copy"><strong>Kéo thả tệp vào đây</strong> hoặc <span id="upload-browse-text">chọn tệp từ thiết bị</span></span>

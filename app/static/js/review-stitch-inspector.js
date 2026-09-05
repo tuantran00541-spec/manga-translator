@@ -239,6 +239,7 @@
       button.setAttribute("aria-pressed", active ? "true" : "false");
     });
     shell.hidden = !stitched;
+    window.syncWorkbenchPanels?.();
   }
 
   function mount(workspace) {
@@ -304,7 +305,7 @@
 
     const note = document.createElement("div");
     note.className = "review-stitched-note";
-    note.textContent = "Ảnh đầy đủ chỉ lấy phần stitch_core mà mỗi lát thực sự sở hữu: lát đã xử lý dùng ảnh clean, lát bỏ qua giữ ảnh original. Muốn khoanh/reinpaint, chuyển sang “Từng lát”.";
+    note.textContent = "Chuyển sang “Từng lát” để đánh dấu và xử lý lại. Phần bỏ qua được giữ nguyên từ ảnh gốc.";
     const meta = document.createElement("div");
     meta.className = "review-stitched-meta";
     const warning = document.createElement("div");
