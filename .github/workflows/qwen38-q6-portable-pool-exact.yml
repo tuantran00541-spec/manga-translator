@@ -51,6 +51,15 @@ jobs:
           PY
           echo "QWEN_PORTABLE_LIB=$RUNNER_TEMP/libqwen_q6_portable.so" >> "$GITHUB_ENV"
 
+          # Match the Linux current-best quantizer build, not the stricter
+          # Win32 bundle flags.  This makes the fingerprint compare the two
+          # actual full-model build policies rather than an artificial common
+          # compiler configuration.
+          cc -O3 -std=c11 -mavx2 -fno-fast-math -ffp-contract=off -fPIC -shared \
+            research/qwen38/gguf_quant_matvec_many_bridge.c -lm \
+            -o "$RUNNER_TEMP/libqwen_quant_base.so"
+          echo "QWEN_QUANT_LIB=$RUNNER_TEMP/libqwen_quant_base.so" >> "$GITHUB_ENV"
+
       - name: Windows compiler information
         if: runner.os == 'Windows'
         shell: pwsh
@@ -97,6 +106,104 @@ jobs:
           '@ | python -
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           "QWEN_PORTABLE_LIB=$dll" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+          # Match Build-Dll qwen_quant_base.dll in the full Win32 gate.
+          $quant = Join-Path $env:RUNNER_TEMP 'qwen_quant_base.dll'
+          clang -O3 -std=c11 -shared `
+            -fno-fast-math -fno-associative-math -ffp-contract=off `
+            -fno-vectorize -fno-slp-vectorize -mavx2 `
+            research/qwen38/gguf_quant_matvec_many_bridge.c `
+            -Xlinker '/EXPORT:qwen_quantize_q8_k_scalar' `
+            -Xlinker '/EXPORT:qwen_quantize_q8_0_scalar' `
+            -o $quant
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "QWEN_QUANT_LIB=$quant" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Cross-platform activation quantization fingerprint
+        shell: bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          python - <<'PY'
+          import ctypes
+          import hashlib
+          import os
+          import struct
+
+          lib = ctypes.CDLL(os.environ['QWEN_QUANT_LIB'])
+          F32P = ctypes.POINTER(ctypes.c_float)
+          U8P = ctypes.POINTER(ctypes.c_uint8)
+          for name in ('qwen_quantize_q8_0_scalar', 'qwen_quantize_q8_k_scalar'):
+              fn = getattr(lib, name)
+              fn.argtypes = [F32P, ctypes.c_size_t, U8P, ctypes.c_size_t]
+              fn.restype = ctypes.c_int
+
+          # Inputs are built from raw finite F32 bit patterns so Python/libm is
+          # not involved in fixture generation.  Exponents stay within a broad
+          # but model-plausible range; fixed edge values cover signed zero,
+          # tiny normals, common fractions, and larger finite activations.
+          edge_bits = (
+              0x00000000, 0x80000000, 0x00800000, 0x80800000,
+              0x33800000, 0xb3800000, 0x3dcccccd, 0xbdcccccd,
+              0x3eaaaaab, 0xbeaaaaab, 0x3f000000, 0xbf000000,
+              0x3f800000, 0xbf800000, 0x40000000, 0xc0000000,
+              0x41200000, 0xc1200000, 0x42c80000, 0xc2c80000,
+          )
+
+          state = 0x9E3779B9
+          def u32():
+              global state
+              state = (state * 1664525 + 1013904223) & 0xffffffff
+              return state
+
+          def fixture(n, salt):
+              words = []
+              for i in range(n):
+                  if i < len(edge_bits):
+                      bits = edge_bits[(i + salt) % len(edge_bits)]
+                  else:
+                      r = u32()
+                      sign = r & 0x80000000
+                      # unbiased exponents [-20, +8], broad enough to stress
+                      # scale/division rounding without pathological overflow.
+                      exp = 127 - 20 + ((r >> 24) % 29)
+                      mant = u32() & 0x007fffff
+                      bits = sign | (exp << 23) | mant
+                  words.append(bits)
+              raw = struct.pack('<' + 'I' * n, *words)
+              values = (ctypes.c_float * n).from_buffer_copy(raw)
+              return values
+
+          q80 = hashlib.sha256()
+          q8k = hashlib.sha256()
+          cases = 0
+          for salt, n in enumerate((256, 5120, 6144, 17408), 1):
+              x = fixture(n, salt)
+
+              n80 = (n // 32) * 34
+              out80 = (ctypes.c_uint8 * n80)()
+              rc = lib.qwen_quantize_q8_0_scalar(x, n, out80, n80)
+              if rc != 0:
+                  raise SystemExit(f'Q8_0 quantize rc={rc} n={n}')
+              q80.update(struct.pack('<I', n))
+              q80.update(bytes(out80))
+
+              nk = (n // 256) * 292
+              outk = (ctypes.c_uint8 * nk)()
+              rc = lib.qwen_quantize_q8_k_scalar(x, n, outk, nk)
+              if rc != 0:
+                  raise SystemExit(f'Q8_K quantize rc={rc} n={n}')
+              q8k.update(struct.pack('<I', n))
+              q8k.update(bytes(outk))
+              cases += 1
+
+          q80_hex = q80.hexdigest()
+          q8k_hex = q8k.hexdigest()
+          combined = hashlib.sha256(bytes.fromhex(q80_hex) + bytes.fromhex(q8k_hex)).hexdigest()
+          print(f'QWEN38_Q8_0_QUANT_CROSS_PLATFORM_SHA256 {q80_hex}')
+          print(f'QWEN38_Q8_K_QUANT_CROSS_PLATFORM_SHA256 {q8k_hex}')
+          print(f'QWEN38_ACTIVATION_QUANT_CROSS_PLATFORM_SHA256 {combined}')
+          print(f'QWEN38_ACTIVATION_QUANT_CASES {cases}')
+          print('QWEN38_ACTIVATION_QUANT_CROSS_PLATFORM_FINGERPRINT_PASS')
+          PY
 
       - name: Cross-platform exact Q6 output fingerprint
         shell: bash --noprofile --norc -e -o pipefail {0}
