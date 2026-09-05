@@ -6,6 +6,7 @@ on:
       - research/qwen3.8-27b-runtime-finish
     paths:
       - research/qwen38/qwen38_progressive_current_best_profile_win32.py
+      - research/qwen38/qwen35_gguf_decoder_contract.py
       - .github/workflows/qwen38-win32-full-gguf-current-best.yml
   workflow_dispatch:
 
@@ -138,7 +139,10 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $env:PYTHONPATH = 'research/qwen38'
-          python -m py_compile research/qwen38/qwen38_progressive_current_best_profile_win32.py
+          python -m py_compile research/qwen38/qwen38_progressive_current_best_profile_win32.py research/qwen38/qwen35_gguf_decoder_contract.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -u research/qwen38/qwen35_gguf_decoder_contract.py sanity
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $log = Join-Path $env:QWEN_EVIDENCE 'sanity.log'
           python -u research/qwen38/qwen38_progressive_current_best_profile_win32.py sanity 2>&1 | Tee-Object -FilePath $log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
