@@ -13,9 +13,15 @@ from collections import Counter
 import hashlib
 import json
 from pathlib import Path
-import resource
 import time
 from typing import Any, Iterable, Sequence
+
+try:
+    import resource
+except ImportError:
+    from qwen38_win32_bootstrap import install_resource_compat
+
+    resource = install_resource_compat()
 
 from gguf_k3_layout import partition_tensors
 from gguf_stream import parse_gguf
