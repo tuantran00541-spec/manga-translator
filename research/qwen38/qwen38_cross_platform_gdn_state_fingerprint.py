@@ -4,9 +4,14 @@
 Diagnostic only: this drives the current ``gdn_state_ar.c`` arithmetic through
 its exported single-row and sequential-batch ABIs using fixed raw F32 fixtures.
 The gate corpus deliberately includes inputs already proven to produce different
-``expf`` bits between glibc and Windows UCRT.  The output captures both mutated
-persistent state and returned rows so a Windows compatibility build can be
-compared directly with Linux before touching the full GGUF gate.
+``expf`` bits between glibc and Windows UCRT.
+
+The fixture isolates the decay boundary: K, V and beta are zero, so the state
+update cannot numerically hide a one-ULP ``expf`` difference behind the later
+outer-product update. Q remains nonzero so the returned row also observes the
+decayed state. The output captures both mutated persistent state and returned
+rows so a Windows compatibility build can be compared directly with Linux
+before touching the full GGUF gate.
 """
 from __future__ import annotations
 
@@ -47,9 +52,7 @@ STATE_BITS = (
     0x00000000,
 )
 Q_BITS = (0x3C000000, 0xBC000000, 0x3B800000, 0xBB800000)  # +/-1/128, +/-1/256
-K_BITS = (0x3B800000, 0xBB800000, 0x3B000000, 0xBB000000)  # +/-1/256, +/-1/512
-V_BITS = (0x3E000000, 0xBE000000, 0x3D800000, 0xBD800000)  # +/-1/8, +/-1/16
-BETA_BITS = (0x3F000000, 0x3E800000)  # 1/2, 1/4
+ZERO_BITS = (0x00000000,)
 
 
 def _f32_from_bits(bits: int) -> float:
@@ -84,10 +87,13 @@ def fingerprint(lib_path: Path, output: Path, summary: Path) -> dict:
 
     initial = _fill_raw_f32(STATE_VALUES, STATE_BITS)
     q = _fill_raw_f32(ROWS * VALUE_DIM, Q_BITS, 1)
-    k = _fill_raw_f32(ROWS * VALUE_DIM, K_BITS, 2)
-    v = _fill_raw_f32(ROWS * VALUE_DIM, V_BITS, 3)
+    # Decay-only fixture: no outer-product update may overwrite the direct
+    # state *= expf(gate) observation.  Nonzero Q still propagates state bits
+    # into the returned output row.
+    k = _fill_raw_f32(ROWS * VALUE_DIM, ZERO_BITS)
+    v = _fill_raw_f32(ROWS * VALUE_DIM, ZERO_BITS)
     gate = _fill_raw_f32(ROWS * HEADS, GATE_BITS)
-    beta = _fill_raw_f32(ROWS * HEADS, BETA_BITS)
+    beta = _fill_raw_f32(ROWS * HEADS, ZERO_BITS)
 
     StepState = ctypes.c_float * STATE_VALUES
     StepOut = ctypes.c_float * VALUE_DIM
@@ -142,11 +148,12 @@ def fingerprint(lib_path: Path, output: Path, summary: Path) -> dict:
         pos += len(data)
 
     payload = {
-        "schema": "qwen38-cross-platform-gdn-state-fingerprint-v1",
+        "schema": "qwen38-cross-platform-gdn-state-fingerprint-v2",
         "library": str(lib_path),
         "rows": ROWS,
         "heads": HEADS,
         "dim": DIM,
+        "fixture": "decay-only-k-v-beta-zero-q-nonzero",
         "gate_bits": [f"0x{x:08x}" for x in GATE_BITS],
         "segments": offsets,
         "fingerprint_bytes": len(payload_bytes),
@@ -169,7 +176,7 @@ def compare(linux: Path, windows: Path, *, require_match: bool) -> bool:
     if not match:
         first = next(i for i, (a, b) in enumerate(zip(left, right)) if a != b)
     payload = {
-        "schema": "qwen38-cross-platform-gdn-state-compare-v1",
+        "schema": "qwen38-cross-platform-gdn-state-compare-v2",
         "bytes": len(left),
         "bitwise_match": match,
         "first_mismatch_byte": first,
