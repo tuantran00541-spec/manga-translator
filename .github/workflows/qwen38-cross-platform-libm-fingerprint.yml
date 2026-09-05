@@ -6,6 +6,7 @@ on:
       - research/qwen3.8-27b-runtime-finish
     paths:
       - research/qwen38/qwen38_cross_platform_libm_fingerprint.py
+      - research/qwen38/qwen38_glibc_expf_compat.c
       - .github/workflows/qwen38-cross-platform-libm-fingerprint.yml
   workflow_dispatch:
 
@@ -43,9 +44,42 @@ jobs:
             libm-summary.json
           if-no-files-found: error
 
+  windows-compat:
+    name: fingerprint-windows-glibc-expf-compat
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile diagnostic glibc-compatible expf DLL
+        shell: bash
+        run: |
+          set -euo pipefail
+          clang -O3 -std=c11 -shared -mfma \
+            -fno-fast-math -fno-associative-math -ffp-contract=off \
+            research/qwen38/qwen38_glibc_expf_compat.c \
+            -Xlinker /EXPORT:qwen38_glibc_expf_compat \
+            -o qwen38_glibc_expf_compat.dll
+      - name: Fingerprint Windows with diagnostic expf compatibility
+        shell: bash
+        run: |
+          set -euo pipefail
+          python research/qwen38/qwen38_cross_platform_libm_fingerprint.py fingerprint \
+            --expf-lib qwen38_glibc_expf_compat.dll \
+            --expf-symbol qwen38_glibc_expf_compat \
+            --output libm-fingerprint.bin \
+            --summary libm-summary.json
+      - name: Upload compatibility fingerprint
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen38-libm-windows-glibc-expf-compat
+          path: |
+            libm-fingerprint.bin
+            libm-summary.json
+          if-no-files-found: error
+
   compare:
     name: compare-linux-windows
-    needs: fingerprint
+    needs: [fingerprint, windows-compat]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -55,20 +89,35 @@ jobs:
         with:
           name: qwen38-libm-linux
           path: artifacts/linux
-      - name: Download Windows fingerprint
+      - name: Download Windows UCRT fingerprint
         uses: actions/download-artifact@v4
         with:
           name: qwen38-libm-windows
-          path: artifacts/windows
-      - name: Compare exact scalar math bitwise
+          path: artifacts/windows-ucrt
+      - name: Download Windows compatibility fingerprint
+        uses: actions/download-artifact@v4
+        with:
+          name: qwen38-libm-windows-glibc-expf-compat
+          path: artifacts/windows-compat
+      - name: Confirm baseline UCRT divergence
         run: |
           python research/qwen38/qwen38_cross_platform_libm_fingerprint.py compare \
             --linux artifacts/linux/libm-fingerprint.bin \
-            --windows artifacts/windows/libm-fingerprint.bin \
-            --output libm-compare.json
-      - name: Upload comparison
+            --windows artifacts/windows-ucrt/libm-fingerprint.bin \
+            --output libm-compare-ucrt.json
+      - name: Require compatible expf-derived fields
+        run: |
+          python research/qwen38/qwen38_cross_platform_libm_fingerprint.py compare \
+            --linux artifacts/linux/libm-fingerprint.bin \
+            --windows artifacts/windows-compat/libm-fingerprint.bin \
+            --require-fields expf,sigmoid,silu \
+            --output libm-compare-compat.json
+          echo QWEN38_WIN32_GLIBC_EXPF_COMPAT_BITWISE_PASS
+      - name: Upload comparisons
         uses: actions/upload-artifact@v4
         with:
           name: qwen38-libm-comparison
-          path: libm-compare.json
+          path: |
+            libm-compare-ucrt.json
+            libm-compare-compat.json
           if-no-files-found: error

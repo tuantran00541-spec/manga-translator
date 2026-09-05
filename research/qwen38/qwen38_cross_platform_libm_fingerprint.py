@@ -2,9 +2,9 @@
 """Cross-platform fingerprint for exact libm-dependent Qwen3.8 scalar helpers.
 
 This is diagnostic-only.  It does not change decoder arithmetic.  The same
-fixed F32 input corpus is evaluated on Linux/glibc and Windows/UCRT so hosted
-CI can prove whether platform libm semantics are bitwise identical before a
-full GGUF run is spent on another cross-platform anchor check.
+fixed F32 input corpus is evaluated on Linux/glibc and Windows/UCRT (or an
+explicit diagnostic expf shim) so hosted CI can characterize bitwise math
+portability before another full GGUF run is spent on a cross-platform anchor.
 """
 from __future__ import annotations
 
@@ -15,6 +15,7 @@ import json
 import math
 from pathlib import Path
 import platform
+from types import SimpleNamespace
 import struct
 import sys
 
@@ -26,12 +27,25 @@ if sys.platform == "win32":
 import qwen35_k3_full64_ggml_exact as exact
 
 RECORD = struct.Struct("<IIIII")
+FIELDS = ("input", "expf", "sigmoid", "softplus", "silu")
 RANDOM_CASES = 262_144
 GRID_DENOM = 256
 GRID_LIMIT = 8_192
 
 
-def _bind_platform_expf() -> str:
+def _bind_platform_expf(expf_lib: Path | None = None, expf_symbol: str | None = None) -> str:
+    if expf_lib is not None:
+        symbol = expf_symbol or "qwen38_glibc_expf_compat"
+        lib = ctypes.CDLL(str(expf_lib.resolve()))
+        fn = getattr(lib, symbol)
+        fn.argtypes = [ctypes.c_float]
+        fn.restype = ctypes.c_float
+        # Keep the CDLL alive through the namespace while exposing exactly the
+        # .expf attribute expected by the proven exact wrapper.
+        exact._LIBM = SimpleNamespace(expf=fn, _library=lib)
+        return f"{expf_lib.resolve()}!{symbol}"
+    if expf_symbol is not None:
+        raise ValueError("--expf-symbol requires --expf-lib")
     if sys.platform == "win32":
         ucrt = ctypes.CDLL("ucrtbase.dll")
         ucrt.expf.argtypes = [ctypes.c_float]
@@ -92,8 +106,14 @@ def _corpus_bits() -> list[int]:
     return unique
 
 
-def fingerprint(output: Path, summary: Path) -> dict:
-    backend = _bind_platform_expf()
+def fingerprint(
+    output: Path,
+    summary: Path,
+    *,
+    expf_lib: Path | None = None,
+    expf_symbol: str | None = None,
+) -> dict:
+    backend = _bind_platform_expf(expf_lib, expf_symbol)
     corpus = _corpus_bits()
     digest = hashlib.sha256()
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -127,15 +147,23 @@ def fingerprint(output: Path, summary: Path) -> dict:
     return payload
 
 
-def compare(linux: Path, windows: Path, output: Path) -> dict:
+def compare(
+    linux: Path,
+    windows: Path,
+    output: Path,
+    *,
+    required_fields: tuple[str, ...] = (),
+) -> dict:
+    unknown = set(required_fields) - set(FIELDS[1:])
+    if unknown:
+        raise ValueError(f"unknown required fields: {sorted(unknown)}")
     left = linux.read_bytes()
     right = windows.read_bytes()
     if len(left) != len(right) or len(left) % RECORD.size:
         raise RuntimeError(
             f"fingerprint shape mismatch linux={len(left)} windows={len(right)} record={RECORD.size}")
 
-    fields = ("input", "expf", "sigmoid", "softplus", "silu")
-    mismatch_counts = {name: 0 for name in fields[1:]}
+    mismatch_counts = {name: 0 for name in FIELDS[1:]}
     first_mismatches: list[dict] = []
     cases = len(left) // RECORD.size
     for idx in range(cases):
@@ -145,7 +173,7 @@ def compare(linux: Path, windows: Path, output: Path) -> dict:
         if lrec[0] != wrec[0]:
             raise RuntimeError(f"input corpus diverged at case {idx}: {lrec[0]:08x} != {wrec[0]:08x}")
         changed: dict[str, dict[str, str]] = {}
-        for pos, name in enumerate(fields[1:], start=1):
+        for pos, name in enumerate(FIELDS[1:], start=1):
             if lrec[pos] != wrec[pos]:
                 mismatch_counts[name] += 1
                 changed[name] = {
@@ -161,11 +189,14 @@ def compare(linux: Path, windows: Path, output: Path) -> dict:
             })
 
     total = sum(mismatch_counts.values())
+    required_match = all(mismatch_counts[name] == 0 for name in required_fields)
     payload = {
         "schema": "qwen38-cross-platform-libm-compare-v1",
         "cases": cases,
         "bitwise_match": total == 0,
         "mismatch_counts": mismatch_counts,
+        "required_fields": list(required_fields),
+        "required_fields_match": required_match,
         "first_mismatches": first_mismatches,
         "claim": (
             "diagnostic comparison only; a divergence identifies a platform-libm candidate "
@@ -178,6 +209,13 @@ def compare(linux: Path, windows: Path, output: Path) -> dict:
         print("QWEN38_CROSS_PLATFORM_LIBM_DIVERGENCE_FOUND")
     else:
         print("QWEN38_CROSS_PLATFORM_LIBM_BITWISE_MATCH")
+    if required_fields:
+        if not required_match:
+            raise SystemExit(
+                "required fields differ: "
+                + ", ".join(f"{name}={mismatch_counts[name]}" for name in required_fields)
+            )
+        print("QWEN38_CROSS_PLATFORM_LIBM_REQUIRED_FIELDS_MATCH " + ",".join(required_fields))
     return payload
 
 
@@ -187,15 +225,28 @@ def main() -> None:
     p_fp = sub.add_parser("fingerprint")
     p_fp.add_argument("--output", type=Path, required=True)
     p_fp.add_argument("--summary", type=Path, required=True)
+    p_fp.add_argument("--expf-lib", type=Path)
+    p_fp.add_argument("--expf-symbol")
     p_cmp = sub.add_parser("compare")
     p_cmp.add_argument("--linux", type=Path, required=True)
     p_cmp.add_argument("--windows", type=Path, required=True)
     p_cmp.add_argument("--output", type=Path, required=True)
+    p_cmp.add_argument(
+        "--require-fields",
+        default="",
+        help="comma-separated result fields that must be bitwise identical",
+    )
     args = parser.parse_args()
     if args.cmd == "fingerprint":
-        fingerprint(args.output, args.summary)
+        fingerprint(
+            args.output,
+            args.summary,
+            expf_lib=args.expf_lib,
+            expf_symbol=args.expf_symbol,
+        )
     else:
-        compare(args.linux, args.windows, args.output)
+        required = tuple(x.strip() for x in args.require_fields.split(",") if x.strip())
+        compare(args.linux, args.windows, args.output, required_fields=required)
 
 
 if __name__ == "__main__":
