@@ -193,9 +193,6 @@ class PageArtifactTransaction:
             except (KeyError, TypeError, ValueError, OSError):
                 restored = False
         if not restored:
-            # Keep both the journal and any remaining backups so startup
-            # recovery can retry instead of turning a transient I/O failure
-            # into permanent artifact loss.
             return False
         try:
             self.journal_path.unlink(missing_ok=True)
@@ -398,9 +395,6 @@ def normalize_manifest_schema(manifest: dict) -> bool:
                 page["width"], page["height"] = dims
                 changed = True
 
-        # Older skip handling stored the raw original in ``clean``. The two
-        # fields have distinct managed roots, so normalize that legacy sentinel
-        # to the absence of a processed artifact.
         if page.get("skipped") and page.get("clean") == page.get("original"):
             page["clean"] = None
             changed = True
@@ -588,7 +582,7 @@ def save_manifest_raw(chapter_id: str, manifest: dict) -> None:
                 manifest,
                 output,
                 ensure_ascii=False,
-                separators=(",", ":"),
+                indent=2,
             )
         os.replace(tmp_path, final_path)
     except Exception:
@@ -604,8 +598,6 @@ def save_manifest_raw(chapter_id: str, manifest: dict) -> None:
                 pass
         raise
 
-    # The new manifest is now the source of truth. Pruning before os.replace()
-    # could invalidate sidecar references held by the previous manifest.
     for page_index, page in enumerate(pages):
         if isinstance(page, dict):
             prune_page_masks(processed_dir, page_index, page.get("boxes") or [])
