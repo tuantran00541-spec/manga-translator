@@ -134,8 +134,8 @@ jobs:
             'qwen_q6_pool_create','qwen_q6_pool_destroy','qwen_q6_pool_matvec_many',
             'qwen_q6_pool_calls','qwen_q6_pool_threads',
             'qwen_matvec_many_q6_k_q8_k_bridge','qwen_matvec_many_q8_0_q8_0_bridge') @('-mavx2')
-          Build-Dll 'qwen_gdn_state.dll' @('research/qwen38/gdn_state_ar.c') @('qwen_gdn_ar_step_f32')
-          Build-Dll 'qwen_gdn_state_batch.dll' @('research/qwen38/gdn_state_ar.c','research/qwen38/gdn_state_batch_exact.c') @('qwen_gdn_ar_batch_f32')
+          Build-Dll 'qwen_gdn_state.dll' @('research/qwen38/gdn_state_ar.c',$compatObj) @('qwen_gdn_ar_step_f32') $expfRedirect
+          Build-Dll 'qwen_gdn_state_batch.dll' @('research/qwen38/gdn_state_ar.c','research/qwen38/gdn_state_batch_exact.c',$compatObj) @('qwen_gdn_ar_batch_f32') $expfRedirect
           Build-Dll 'qwen_f32.dll' @('research/qwen38/f32_fsum_matvec.c') @('qwen_matvec_f32_fsum_exact')
           Build-Dll 'qwen_attention_core.dll' @('research/qwen38/attention_core_exact.c',$compatObj) @('qwen_attention_core_f32_exact') $expfRedirect
           Build-Dll 'qwen_gdn_conv_silu.dll' @('research/qwen38/gdn_conv_silu_exact.c',$compatObj) @('qwen_gdn_conv_silu_many_f32_exact') $expfRedirect
