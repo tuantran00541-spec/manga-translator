@@ -32,7 +32,7 @@
 
 .page-navigator-heading span {
   color: var(--text-muted);
-  font: 500 9px/1 var(--font-mono);
+  font: 500 11px/1 var(--font-mono);
 }
 
 .page-navigator-stepper {
@@ -65,7 +65,7 @@
   width: 100%;
   padding: 0 4px;
   text-align: center;
-  font: 500 10px var(--font-mono);
+  font: 500 12px var(--font-mono);
 }
 
 .page-navigator-list {
@@ -128,7 +128,7 @@
   border-radius: 4px;
   background: #050912;
   color: var(--text-muted);
-  font: 500 9px var(--font-mono);
+  font: 500 11px var(--font-mono);
 }
 
 .page-navigator-thumb img {
@@ -155,12 +155,12 @@
 
 .page-navigator-item-text strong {
   color: currentColor;
-  font: 500 10px/1.25 var(--font-ui);
+  font: 500 11px/1.25 var(--font-ui);
 }
 
 .page-navigator-item-text span {
   color: var(--text-muted);
-  font: 500 8.5px/1.2 var(--font-mono);
+  font: 500 11px/1.2 var(--font-ui);
 }
 
 .page-navigator-busy {

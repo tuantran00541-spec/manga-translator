@@ -85,7 +85,7 @@
 }
 
 .preview-label {
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: 13px;
   font-weight: 600;
   color: var(--text-primary);
@@ -119,7 +119,7 @@
   color: var(--text-primary);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
-  font: 500 12px var(--font-mono);
+  font: 500 12px var(--font-ui);
   cursor: pointer;
 }
 

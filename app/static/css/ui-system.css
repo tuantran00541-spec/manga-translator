@@ -15,7 +15,7 @@ body.settings-open {
 .app-context {
   max-width: 170px;
   color: var(--text-muted);
-  font: 500 11px var(--font-mono);
+  font: 500 12px var(--font-ui);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -55,7 +55,7 @@ body.settings-open {
 .ui-eyebrow {
   display: inline-block;
   color: var(--accent);
-  font: 600 10px/1.2 var(--font-mono);
+  font: 600 11px/1.2 var(--font-ui);
   letter-spacing: .09em;
   text-transform: uppercase;
 }
@@ -103,7 +103,7 @@ body.settings-open {
 
 .panel-meta {
   color: var(--text-muted);
-  font: 10px var(--font-mono);
+  font: 500 11px var(--font-ui);
   text-transform: uppercase;
   letter-spacing: .06em;
 }
@@ -137,7 +137,7 @@ body.settings-open {
 #upload-divider span {
   writing-mode: vertical-rl;
   transform: rotate(180deg);
-  font: 500 9px var(--font-mono);
+  font: 500 11px var(--font-ui);
   letter-spacing: .08em;
   text-transform: uppercase;
 }
@@ -179,7 +179,7 @@ body.settings-open {
 #upload-hint {
   max-width: 410px;
   color: var(--text-muted);
-  font: 10.5px/1.45 var(--font-mono);
+  font: 400 12px/1.45 var(--font-ui);
 }
 
 .recent-panel {
@@ -367,7 +367,7 @@ body.settings-open {
   border: 1px solid var(--border-subtle);
   border-radius: 999px;
   color: var(--text-muted);
-  font: 500 10px var(--font-mono);
+  font: 500 11px var(--font-ui);
   white-space: nowrap;
 }
 
@@ -466,7 +466,7 @@ body.repaint-mode-open {
 .repaint-mode-eyebrow {
   margin: 0 0 6px;
   color: var(--accent);
-  font: 600 10px var(--font-mono);
+  font: 600 11px var(--font-ui);
   letter-spacing: .08em;
   text-transform: uppercase;
 }

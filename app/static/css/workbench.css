@@ -90,13 +90,13 @@ body {
 .workbench-title-block .app-context {
   max-width: min(28vw, 360px);
   color: var(--text-muted);
-  font: 500 12px/1.2 var(--font-mono);
+  font: 500 12px/1.2 var(--font-ui);
 }
 
 .workbench-status {
   min-width: 0;
   color: var(--text-muted);
-  font: 500 10px/1.2 var(--font-mono);
+  font: 500 11px/1.2 var(--font-ui);
 }
 
 .workbench-status:empty { display: none; }
@@ -428,7 +428,7 @@ body {
 .inspector-section h3 {
   margin: 0 0 8px;
   color: var(--text-secondary);
-  font: 600 10px/1.2 var(--font-ui);
+  font: 600 11px/1.2 var(--font-ui);
 }
 
 .review-inspector .review-controls-slot,

@@ -106,7 +106,7 @@
 
 .text-editor-label {
   color: var(--text-secondary);
-  font: 600 11px var(--font-mono);
+  font: 600 11px var(--font-ui);
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
@@ -159,7 +159,7 @@
   border: none;
   background: var(--surface-panel);
   color: var(--text-primary);
-  font: 600 11px var(--font-mono);
+  font: 600 11px var(--font-ui);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   cursor: pointer;
@@ -197,7 +197,7 @@
 
 .bg-toggle-label {
   color: var(--text-secondary);
-  font: 600 11px var(--font-mono);
+  font: 600 11px var(--font-ui);
   cursor: pointer;
 }
 
@@ -246,7 +246,7 @@
 
 .geometry-field-label {
   color: var(--text-muted);
-  font: 600 11px var(--font-mono);
+  font: 600 11px var(--font-ui);
 }
 
 .geometry-input {
@@ -285,7 +285,7 @@
   border-radius: 4px;
   background: var(--surface-panel);
   color: var(--text-secondary);
-  font: 600 11px var(--font-mono);
+  font: 600 11px var(--font-ui);
   cursor: pointer;
   transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
 }

@@ -4,10 +4,8 @@
   gap: 12px;
   margin: 4px 0 16px;
   color: var(--text-muted);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: 12px;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
 }
 
 #upload-divider::before,
@@ -45,7 +43,7 @@
 
 #upload-hint {
   color: var(--text-muted);
-  font-family: var(--font-mono);
+  font-family: var(--font-ui);
   font-size: 12px;
 }
 
