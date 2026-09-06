@@ -170,7 +170,6 @@ body {
   margin-bottom: 16px;
 }
 
-.import-advanced summary { cursor: pointer; padding: 10px 0; color: var(--text-secondary); font-size: 13px; }
 .import-advanced[open] { flex-basis: 100%; }
 .import-advanced .ui-field { max-width: 200px; }
 
@@ -547,8 +546,6 @@ body {
 .workbench-frame :is(.editor-tool-btn, .render-btn) { min-height: 34px; font-size: 13px; }
 
 .command-disclosure { position: relative; }
-.command-disclosure > summary { display: list-item; list-style: disclosure-closed inside; cursor: pointer; }
-.command-disclosure[open] > summary { list-style-type: disclosure-open; }
 .command-disclosure-panel {
   position: absolute;
   right: 0;
@@ -560,12 +557,7 @@ body {
   max-height: min(560px, 70vh);
   overflow: auto;
   padding: 16px;
-  background: var(--surface-panel);
-  border: 1px solid var(--border-strong);
-  border-radius: 8px;
-  box-shadow: 0 10px 30px #0005;
 }
-.command-disclosure-panel :is(input, select) { min-width: 0; width: 100%; min-height: 34px; }
 .command-disclosure-panel .chapter-qc-options { flex-wrap: wrap; }
 .command-disclosure-panel .chapter-qc-results { grid-template-columns: 1fr; }
 .review-more-actions { margin-top: 8px; border-top: 1px solid var(--border-subtle); padding-top: 8px; }

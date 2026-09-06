@@ -521,16 +521,6 @@ body.repaint-mode-open {
   font: 600 13px var(--font-ui);
 }
 
-.repaint-mode-badge {
-  padding: 2px 6px;
-  border-radius: 999px;
-  background: rgba(59, 130, 246, .16);
-  color: #9fc4ff;
-  font: 600 9px var(--font-mono);
-  letter-spacing: .04em;
-  text-transform: uppercase;
-}
-
 .repaint-mode-option-detail {
   display: block;
   margin-top: 6px;

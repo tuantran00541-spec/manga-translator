@@ -14,12 +14,12 @@
   function buildControls(toolbar) {
     if (!toolbar || toolbar.querySelector(".chapter-translate-controls")) return;
     const controls = document.createElement("details");
-    controls.className = "chapter-translate-controls command-disclosure";
+    controls.className = "ui-disclosure chapter-translate-controls command-disclosure";
     const summary = document.createElement("summary");
     summary.className = "ui-btn ui-btn-ghost";
     summary.textContent = "Dịch tự động";
     const options = document.createElement("div");
-    options.className = "command-disclosure-panel chapter-translate-options";
+    options.className = "ui-disclosure-panel command-disclosure-panel chapter-translate-options";
 
     const target = document.createElement("select");
     target.className = "chapter-translate-target";

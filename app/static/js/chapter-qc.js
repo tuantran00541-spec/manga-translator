@@ -374,19 +374,19 @@
         </div>
       </div>
       <div class="chapter-qc-options">
-        <label>Dịch vụ AI
-          <select class="chapter-qc-provider">
+        <label class="ui-field">Dịch vụ AI
+          <select class="ui-select chapter-qc-provider">
             <option value="gemini">Gemini</option>
             <option value="deepseek">DeepSeek Vision Exp</option>
           </select>
         </label>
-        <label class="chapter-qc-budget" hidden>Giới hạn chi phí
-          <span>$<input class="chapter-qc-budget-input" type="number" min="0.005" max="0.15" step="0.005" value="0.08" inputmode="decimal"></span>
+        <label class="ui-field chapter-qc-budget" hidden>Giới hạn chi phí
+          <span>$<input class="ui-input chapter-qc-budget-input" type="number" min="0.005" max="0.15" step="0.005" value="0.08" inputmode="decimal"></span>
         </label>
       </div>
       <p class="chapter-qc-summary">Chưa chạy kiểm tra toàn chương.</p>
       <p class="chapter-qc-usage" hidden></p>
-      <progress class="chapter-qc-progress" max="1" value="0" hidden></progress>
+      <progress class="ui-progress chapter-qc-progress" max="1" value="0" hidden></progress>
       <div class="chapter-qc-results"></div>`;
     panel.querySelector(".chapter-qc-cancel")?.addEventListener("click", cancelChapterQC);
     panel.querySelector(".chapter-qc-retry")?.addEventListener("click", retryChapterQC);
@@ -427,12 +427,12 @@
     runBtn.textContent = "Kiểm tra toàn chương bằng AI";
     runBtn.addEventListener("click", () => startChapterQC(workspace));
     const disclosure = document.createElement("details");
-    disclosure.className = "command-disclosure chapter-qc-disclosure";
+    disclosure.className = "ui-disclosure command-disclosure chapter-qc-disclosure";
     const summary = document.createElement("summary");
     summary.className = "ui-btn ui-btn-ghost";
     summary.textContent = "Kiểm tra AI";
     const panel = createPanel();
-    panel.classList.add("command-disclosure-panel");
+    panel.classList.add("ui-disclosure-panel", "command-disclosure-panel");
     panel.querySelector(".chapter-qc-options").after(runBtn);
     disclosure.append(summary, panel);
     actions.prepend(disclosure);

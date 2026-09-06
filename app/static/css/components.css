@@ -78,6 +78,9 @@
 }
 
 .ui-field > :is(input, select, textarea),
+.ui-input,
+.ui-select,
+.ui-textarea,
 .gemini-key-input {
   min-width: 0;
   min-height: var(--control-height);
@@ -93,26 +96,35 @@
 }
 
 .ui-field > :is(input, select),
+.ui-input,
+.ui-select,
 .gemini-key-input {
   padding: 0 var(--space-3);
 }
 
-.ui-field > select {
+.ui-field > select,
+.ui-select {
   cursor: pointer;
 }
 
-.ui-field > textarea {
+.ui-field > textarea,
+.ui-textarea {
   min-height: calc(var(--control-height) * 2);
   padding: var(--space-2) var(--space-3);
   resize: vertical;
 }
 
 .ui-field > :is(input, textarea)::placeholder,
+.ui-input::placeholder,
+.ui-textarea::placeholder,
 .gemini-key-input::placeholder {
   color: var(--text-muted);
 }
 
 .ui-field > :is(input, select, textarea):focus-visible,
+.ui-input:focus-visible,
+.ui-select:focus-visible,
+.ui-textarea:focus-visible,
 .gemini-key-input:focus-visible {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-soft);
@@ -160,10 +172,60 @@
   background: var(--danger-soft);
 }
 
+.ui-disclosure > summary {
+  cursor: pointer;
+  color: var(--text-secondary);
+  font: 500 13px/1.35 var(--font-ui);
+}
+
+.ui-disclosure > summary:not(.ui-btn) {
+  padding: var(--space-2) 0;
+}
+
+.ui-disclosure > summary.ui-btn {
+  list-style: none;
+}
+
+.ui-disclosure > summary.ui-btn::-webkit-details-marker {
+  display: none;
+}
+
+.ui-disclosure > summary.ui-btn::after {
+  width: 6px;
+  height: 6px;
+  margin-left: 2px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  content: "";
+  opacity: 0.8;
+  transform: rotate(45deg) translateY(-2px);
+  transition: transform var(--motion-fast);
+}
+
+.ui-disclosure[open] > summary.ui-btn::after {
+  transform: rotate(225deg) translate(-1px, -1px);
+}
+
+.ui-disclosure-panel {
+  background: var(--surface-panel);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-panel);
+}
+
+.ui-progress {
+  display: block;
+  width: 100%;
+  height: 8px;
+  accent-color: var(--accent);
+}
+
 @media (pointer: coarse) {
   .ui-btn,
   .ui-icon-btn,
   .ui-field > :is(input, select),
+  .ui-input,
+  .ui-select,
   .gemini-key-input {
     min-height: 44px;
   }

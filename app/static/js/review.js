@@ -714,7 +714,7 @@ function chooseRepaintMode() {
       optionHeader.appendChild(optionLabel);
       if (badge) {
         const badgeEl = document.createElement("span");
-        badgeEl.className = "repaint-mode-badge";
+        badgeEl.className = "ui-badge repaint-mode-badge";
         badgeEl.textContent = badge;
         optionHeader.appendChild(badgeEl);
       }

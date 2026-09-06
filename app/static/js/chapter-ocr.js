@@ -224,7 +224,7 @@
         </div>
       </div>
       <p class="chapter-ocr-summary">Chưa chạy OCR toàn chương.</p>
-      <progress class="chapter-ocr-progress" max="1" value="0" hidden></progress>`;
+          <progress class="ui-progress chapter-ocr-progress" max="1" value="0" hidden></progress>`;
     panel.querySelector(".chapter-ocr-cancel")?.addEventListener("click", cancelChapterOCR);
     panel.querySelector(".chapter-ocr-retry")?.addEventListener("click", retryChapterOCR);
     return panel;
