@@ -1,12 +1,25 @@
 (() => {
   const SOURCE_MASKS = new Map();
   const PAINT_THRESHOLD = 0.75;
+  let maskChapterId = null;
   let brushOn = false;
   let painting = false;
   let brushRadius = 20;
   let lastPoint = null;
   let lastClickAt = 0;
   let lastClick = { x: 0, y: 0 };
+
+  function syncChapterState() {
+    const chapterId = window.currentChapterId || null;
+    if (maskChapterId !== chapterId) {
+      SOURCE_MASKS.clear();
+      maskChapterId = chapterId;
+      brushOn = false;
+      painting = false;
+      lastPoint = null;
+    }
+    return chapterId;
+  }
 
   function reviewHost(workspace) {
     return workspace?.closest("#page-view.review-mode") || null;
@@ -16,24 +29,33 @@
     return Boolean(reviewHost(workspace)?.classList.contains("review-show-stitched"));
   }
 
-  function sourcePage(workspace) {
+  function selectedSourcePage(workspace) {
     const select = workspace.querySelector(".review-stitched-select");
     const selected = Number.parseInt(select?.value || "", 10);
     if (Number.isFinite(selected)) return selected;
-    const cardIndex = Number.parseInt(workspace.querySelector(".review-card")?.dataset.pageIndex || "", 10);
-    const page = Number.isFinite(cardIndex) ? window.currentManifest?.pages?.[cardIndex] : null;
+    const cardIndex = Number.parseInt(
+      workspace.querySelector(".review-card")?.dataset.pageIndex || "",
+      10,
+    );
+    const page = Number.isFinite(cardIndex)
+      ? window.currentManifest?.pages?.[cardIndex]
+      : null;
     return Number.isInteger(page?.source_page) ? page.source_page : cardIndex;
   }
 
   function sourceItems(workspace) {
-    const source = sourcePage(workspace);
+    const source = selectedSourcePage(workspace);
     return (window.currentManifest?.pages || [])
       .map((page, canonicalIndex) => ({ page, canonicalIndex }))
       .filter(({ page, canonicalIndex }) => {
-        const value = Number.isInteger(page?.source_page) ? page.source_page : canonicalIndex;
+        const value = Number.isInteger(page?.source_page)
+          ? page.source_page
+          : canonicalIndex;
         return value === source;
       })
-      .sort((a, b) => (Number(a.page?.slice_index) || 0) - (Number(b.page?.slice_index) || 0));
+      .sort(
+        (a, b) => (Number(a.page?.slice_index) || 0) - (Number(b.page?.slice_index) || 0),
+      );
   }
 
   function controls(workspace) {
@@ -54,10 +76,17 @@
         mask,
         ctx: mask.getContext("2d"),
         base: mask.parentElement?.querySelector(".review-stitched-base-editor"),
+        sourcePage: Number.parseInt(mask.dataset.sourcePage || "", 10),
         y1: Number(mask.dataset.sourceY) || 0,
         y2: (Number(mask.dataset.sourceY) || 0) + mask.height,
       }))
       .sort((a, b) => a.y1 - b.y1);
+  }
+
+  function renderedSourcePage(workspace) {
+    const currentLayers = layers(workspace);
+    const source = currentLayers[0]?.sourcePage;
+    return Number.isFinite(source) ? source : selectedSourcePage(workspace);
   }
 
   function sourceDimensions(workspace) {
@@ -79,16 +108,37 @@
     const localY2 = Number(core.core_y2);
     const sliceSourceY1 = Number(core.source_y1);
     const sliceSourceY2 = Number(core.source_y2);
-    if (![sourceY1, sourceY2, localY1, localY2, sliceSourceY1, sliceSourceY2].every(Number.isFinite)) return null;
-    if (sourceY2 <= sourceY1 || localY2 <= localY1 || sliceSourceY2 <= sliceSourceY1) return null;
-    if ((sourceY2 - sourceY1) !== (localY2 - localY1)) return null;
-    return { sourceY1, sourceY2, localY1, localY2, sliceSourceY1, sliceSourceY2 };
+    if (
+      ![
+        sourceY1,
+        sourceY2,
+        localY1,
+        localY2,
+        sliceSourceY1,
+        sliceSourceY2,
+      ].every(Number.isFinite)
+    ) return null;
+    if (
+      sourceY2 <= sourceY1
+      || localY2 <= localY1
+      || sliceSourceY2 <= sliceSourceY1
+      || (sourceY2 - sourceY1) !== (localY2 - localY1)
+    ) return null;
+    return {
+      sourceY1,
+      sourceY2,
+      localY1,
+      localY2,
+      sliceSourceY1,
+      sliceSourceY2,
+    };
   }
 
   function sourceMapping(workspace) {
     const dims = sourceDimensions(workspace);
     const items = sourceItems(workspace);
     if (!dims || !items.length) return null;
+
     if (items.length === 1 && !validCore(items[0].page)) {
       return {
         ...dims,
@@ -105,11 +155,11 @@
       };
     }
 
-    let expected = 0;
+    let expectedSourceY = 0;
     const mapped = [];
     for (const item of items) {
       const core = validCore(item.page);
-      if (!core || core.sourceY1 !== expected) return null;
+      if (!core || core.sourceY1 !== expectedSourceY) return null;
       mapped.push({
         ...item,
         sourceY1: core.sourceY1,
@@ -120,15 +170,22 @@
         physicalSourceY1: core.sliceSourceY1,
         core,
       });
-      expected = core.sourceY2;
+      expectedSourceY = core.sourceY2;
     }
-    if (expected !== dims.height) return null;
+    if (expectedSourceY !== dims.height) return null;
     return { ...dims, items: mapped };
+  }
+
+  function maskKey(sourcePage) {
+    const chapterId = syncChapterState();
+    return `${chapterId || "no-chapter"}:${sourcePage}`;
   }
 
   function updateBrushUi(workspace) {
     const { brushBtn, brushSize, brushSizeValue } = controls(workspace);
-    workspace.querySelector(".review-stitched-shell")?.classList.toggle("review-stitched-brush-mode", brushOn);
+    workspace
+      .querySelector(".review-stitched-shell")
+      ?.classList.toggle("review-stitched-brush-mode", brushOn);
     for (const { mask } of layers(workspace)) {
       mask.style.pointerEvents = brushOn && isStitched(workspace) ? "auto" : "none";
       mask.style.cursor = brushOn && isStitched(workspace) ? "crosshair" : "default";
@@ -136,7 +193,9 @@
     if (brushBtn) {
       brushBtn.classList.toggle("ui-btn-primary", brushOn);
       brushBtn.classList.toggle("ui-btn-ghost", !brushOn);
-      brushBtn.textContent = brushOn ? "Đang đánh dấu · Chọn để kết thúc" : "Đánh dấu vùng lỗi";
+      brushBtn.textContent = brushOn
+        ? "Đang đánh dấu · Chọn để kết thúc"
+        : "Đánh dấu vùng lỗi";
       brushBtn.setAttribute("aria-pressed", String(brushOn));
     }
     if (brushSize) {
@@ -144,7 +203,9 @@
       const wrap = brushSize.closest(".brush-size-control");
       if (wrap) wrap.hidden = !brushOn;
     }
-    if (brushSizeValue) brushSizeValue.textContent = `${Math.round(brushRadius * 2)}px`;
+    if (brushSizeValue) {
+      brushSizeValue.textContent = `${Math.round(brushRadius * 2)}px`;
+    }
   }
 
   function stopPainting() {
@@ -156,6 +217,11 @@
     brushOn = Boolean(value);
     if (!brushOn) stopPainting();
     updateBrushUi(workspace);
+  }
+
+  function stopSliceBrush(workspace) {
+    const canvas = workspace.querySelector("canvas.brush-canvas");
+    if (canvas && typeof canvas._stopBrush === "function") canvas._stopBrush();
   }
 
   function markDirty(mask) {
@@ -179,10 +245,17 @@
 
   function paintStroke(workspace, from, to) {
     const distance = Math.hypot(to.x - from.x, to.y - from.y);
-    const steps = Math.max(1, Math.ceil(distance / Math.max(2, brushRadius * 0.4)));
+    const steps = Math.max(
+      1,
+      Math.ceil(distance / Math.max(2, brushRadius * 0.4)),
+    );
     for (let i = 1; i <= steps; i += 1) {
       const t = i / steps;
-      paintDot(workspace, from.x + (to.x - from.x) * t, from.y + (to.y - from.y) * t);
+      paintDot(
+        workspace,
+        from.x + (to.x - from.x) * t,
+        from.y + (to.y - from.y) * t,
+      );
     }
   }
 
@@ -199,7 +272,7 @@
     };
   }
 
-  function floodFill(workspace, layer, startX, startY) {
+  function floodFill(layer, startX, startY) {
     const base = layer.base;
     if (!base) return false;
     const width = base.width;
@@ -213,6 +286,7 @@
       console.warn("Cannot read stitched pixels for flood fill:", err);
       return false;
     }
+
     const data = source.data;
     const root = (y0 * width + x0) * 4;
     const target = [data[root], data[root + 1], data[root + 2]];
@@ -227,15 +301,24 @@
       && Math.abs(data[index + 1] - target[1]) <= tolerance
       && Math.abs(data[index + 2] - target[2]) <= tolerance
     );
+
     while (stack.length) {
       const [x, y] = stack.pop();
       if (!matches((y * width + x) * 4)) continue;
       points.push([x, y]);
       if (points.length > cap) {
-        showToast("Vùng màu lan quá rộng. Hãy kéo cọ để đánh dấu thủ công.", "error");
+        showToast(
+          "Vùng màu lan quá rộng. Hãy kéo cọ để đánh dấu thủ công.",
+          "error",
+        );
         return false;
       }
-      for (const [nx, ny] of [[x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]]) {
+      for (const [nx, ny] of [
+        [x - 1, y],
+        [x + 1, y],
+        [x, y - 1],
+        [x, y + 1],
+      ]) {
         if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
         const flat = ny * width + nx;
         if (visited[flat]) continue;
@@ -243,6 +326,7 @@
         if (matches(flat * 4)) stack.push([nx, ny]);
       }
     }
+
     if (!points.length) return false;
     layer.ctx.fillStyle = "rgba(220, 38, 38, 0.7)";
     for (const [x, y] of points) layer.ctx.fillRect(x, y, 1, 1);
@@ -253,26 +337,33 @@
   function bindMaskEvents(workspace, mask) {
     if (mask.dataset.editorBound === "1") return;
     mask.dataset.editorBound = "1";
+
     mask.addEventListener("pointerdown", (event) => {
       if (!isStitched(workspace) || !brushOn || event.button !== 0) return;
       event.preventDefault();
       const point = eventPoint(event, mask);
       if (!point) return;
       const now = Date.now();
-      const doubleClick = now - lastClickAt < 350 && Math.hypot(point.x - lastClick.x, point.y - lastClick.y) < 20;
+      const doubleClick = (
+        now - lastClickAt < 350
+        && Math.hypot(point.x - lastClick.x, point.y - lastClick.y) < 20
+      );
       lastClickAt = doubleClick ? 0 : now;
       lastClick = { x: point.x, y: point.y };
       const layer = layers(workspace).find((item) => item.mask === mask);
       if (doubleClick && layer) {
         stopPainting();
-        floodFill(workspace, layer, point.x, point.localY);
+        floodFill(layer, point.x, point.localY);
         return;
       }
       painting = true;
       lastPoint = { x: point.x, y: point.y };
-      try { mask.setPointerCapture(event.pointerId); } catch (_) {}
+      try {
+        mask.setPointerCapture(event.pointerId);
+      } catch (_) {}
       paintDot(workspace, point.x, point.y);
     });
+
     mask.addEventListener("pointermove", (event) => {
       if (!brushOn || !painting || !lastPoint) return;
       const point = eventPoint(event, mask);
@@ -283,38 +374,63 @@
     });
     mask.addEventListener("pointerup", stopPainting);
     mask.addEventListener("pointercancel", stopPainting);
-    mask.addEventListener("wheel", (event) => {
-      if (!brushOn || !isStitched(workspace)) return;
-      event.preventDefault();
-      brushRadius = Math.max(8, Math.min(80, brushRadius + (event.deltaY < 0 ? 2 : -2)));
-      updateBrushUi(workspace);
-    }, { passive: false });
+    mask.addEventListener(
+      "wheel",
+      (event) => {
+        if (!brushOn || !isStitched(workspace)) return;
+        event.preventDefault();
+        brushRadius = Math.max(
+          8,
+          Math.min(80, brushRadius + (event.deltaY < 0 ? 2 : -2)),
+        );
+        updateBrushUi(workspace);
+      },
+      { passive: false },
+    );
   }
 
   function captureMask(workspace) {
-    const source = sourcePage(workspace);
-    if (!Number.isFinite(source)) return;
+    syncChapterState();
     const chunks = layers(workspace);
+    if (!chunks.length) return;
+    const source = renderedSourcePage(workspace);
+    if (!Number.isFinite(source)) return;
     const dirty = chunks.filter((chunk) => chunk.mask._reviewDirty);
+    const key = maskKey(source);
     if (!dirty.length) {
-      SOURCE_MASKS.delete(source);
+      SOURCE_MASKS.delete(key);
       return;
     }
-    const snapshot = dirty.map((chunk) => ({ y1: chunk.y1, data: chunk.mask.toDataURL("image/png") }));
-    SOURCE_MASKS.set(source, snapshot);
+    SOURCE_MASKS.set(
+      key,
+      dirty.map((chunk) => ({
+        y1: chunk.y1,
+        data: chunk.mask.toDataURL("image/png"),
+      })),
+    );
   }
 
   function restoreMask(workspace) {
-    const snapshot = SOURCE_MASKS.get(sourcePage(workspace));
+    syncChapterState();
+    const source = selectedSourcePage(workspace);
+    const snapshot = SOURCE_MASKS.get(maskKey(source));
     if (!snapshot?.length) return;
-    const targets = new Map(layers(workspace).map((chunk) => [chunk.y1, chunk]));
+    const targets = new Map(
+      layers(workspace).map((chunk) => [chunk.y1, chunk]),
+    );
     for (const item of snapshot) {
       const target = targets.get(item.y1);
       if (!target) continue;
       const image = new Image();
       image.onload = () => {
         if (!target.mask.isConnected) return;
-        target.ctx.drawImage(image, 0, 0, target.mask.width, target.mask.height);
+        target.ctx.drawImage(
+          image,
+          0,
+          0,
+          target.mask.width,
+          target.mask.height,
+        );
         markDirty(target.mask);
       };
       image.src = item.data;
@@ -322,18 +438,25 @@
   }
 
   function clearMask(workspace) {
+    const source = renderedSourcePage(workspace);
     for (const chunk of layers(workspace)) {
       chunk.ctx.clearRect(0, 0, chunk.mask.width, chunk.mask.height);
       chunk.mask._reviewDirty = false;
     }
-    SOURCE_MASKS.delete(sourcePage(workspace));
+    if (Number.isFinite(source)) SOURCE_MASKS.delete(maskKey(source));
   }
 
   function decorate(workspace) {
+    if (!workspace.isConnected) return;
+    syncChapterState();
     const imageHost = workspace.querySelector(".review-stitched-image");
     if (!imageHost) return;
-    const directCanvases = [...imageHost.children].filter((node) => node instanceof HTMLCanvasElement);
+    const directCanvases = [...imageHost.children].filter(
+      (node) => node instanceof HTMLCanvasElement,
+    );
     if (!directCanvases.length) return;
+    const source = selectedSourcePage(workspace);
+
     for (const base of directCanvases) {
       const y1 = Number(base.dataset.sourceY) || 0;
       const wrapper = document.createElement("div");
@@ -341,14 +464,17 @@
       wrapper.style.position = "relative";
       wrapper.style.lineHeight = "0";
       wrapper.style.width = "100%";
+
       base.classList.add("review-stitched-base-editor");
       base.style.position = "relative";
       base.style.zIndex = "1";
+
       const mask = document.createElement("canvas");
       mask.className = "review-stitched-mask-editor";
       mask.width = base.width;
       mask.height = base.height;
       mask.dataset.sourceY = String(y1);
+      mask.dataset.sourcePage = String(source);
       mask.style.position = "absolute";
       mask.style.inset = "0";
       mask.style.zIndex = "2";
@@ -356,6 +482,7 @@
       mask.style.height = "100%";
       mask.style.touchAction = "none";
       mask.style.pointerEvents = "none";
+
       wrapper.append(base, mask);
       imageHost.appendChild(wrapper);
       bindMaskEvents(workspace, mask);
@@ -368,17 +495,30 @@
     return layers(workspace).some((chunk) => chunk.mask._reviewDirty);
   }
 
+  function chapterHasSavedMasks() {
+    const chapterId = syncChapterState();
+    const prefix = `${chapterId || "no-chapter"}:`;
+    return [...SOURCE_MASKS.keys()].some((key) => key.startsWith(prefix));
+  }
+
   function canvasHasPaint(canvas) {
-    const data = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height).data;
-    for (let i = 3; i < data.length; i += 4) if (data[i] > 20) return true;
+    const data = canvas
+      .getContext("2d")
+      .getImageData(0, 0, canvas.width, canvas.height).data;
+    for (let i = 3; i < data.length; i += 4) {
+      if (data[i] > 20) return true;
+    }
     return false;
   }
 
-  function sliceMask(workspace, item) {
+  function sliceMask(workspace, canonicalIndex) {
     const mapping = sourceMapping(workspace);
     if (!mapping) return null;
-    const entry = mapping.items.find((candidate) => candidate.canonicalIndex === item.canonicalIndex);
+    const entry = mapping.items.find(
+      (candidate) => candidate.canonicalIndex === canonicalIndex,
+    );
     if (!entry) return null;
+
     const canvas = document.createElement("canvas");
     canvas.width = mapping.width;
     canvas.height = entry.sliceHeight;
@@ -387,17 +527,17 @@
       const y1 = Math.max(entry.sourceY1, chunk.y1);
       const y2 = Math.min(entry.sourceY2, chunk.y2);
       if (y2 <= y1) continue;
-      const h = y2 - y1;
+      const height = y2 - y1;
       ctx.drawImage(
         chunk.mask,
         0,
         y1 - chunk.y1,
         mapping.width,
-        h,
+        height,
         0,
         entry.localY1 + (y1 - entry.sourceY1),
         mapping.width,
-        h,
+        height,
       );
     }
     return { canvas, entry, mapping };
@@ -405,7 +545,10 @@
 
   function toBlob(canvas) {
     return new Promise((resolve, reject) => {
-      canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error("Không thể tạo mask PNG")), "image/png");
+      canvas.toBlob((blob) => {
+        if (blob) resolve(blob);
+        else reject(new Error("Không thể tạo mask PNG"));
+      }, "image/png");
     });
   }
 
@@ -415,7 +558,9 @@
       card._reviewBusy = Boolean(value);
       card._syncReviewBusy?.();
     }
-    workspace.querySelector(".review-stitched-shell")?.classList.toggle("is-busy", Boolean(value));
+    workspace
+      .querySelector(".review-stitched-shell")
+      ?.classList.toggle("is-busy", Boolean(value));
   }
 
   async function parseResponse(response) {
@@ -439,10 +584,15 @@
     }
     const mapping = sourceMapping(workspace);
     if (!mapping) {
-      showToast("Không thể ánh xạ ảnh ghép về các lát vì stitch_core không hợp lệ.", "error");
+      showToast(
+        "Không thể ánh xạ ảnh ghép về các lát vì stitch_core không hợp lệ.",
+        "error",
+      );
       return;
     }
-    const choose = typeof chooseRepaintMode === "function" ? chooseRepaintMode : null;
+    const choose = typeof chooseRepaintMode === "function"
+      ? chooseRepaintMode
+      : null;
     if (!choose || !window.currentChapterId) return;
     const repaintMode = await choose();
     if (!repaintMode || !isStitched(workspace)) return;
@@ -450,33 +600,53 @@
     setBrush(workspace, false);
     setBusy(workspace, true);
     const { repaintBtn } = controls(workspace);
-    if (repaintBtn) repaintBtn.textContent = repaintMode === "lama" ? "LaMa đang xử lý…" : "Đang xử lý…";
+    if (repaintBtn) {
+      repaintBtn.textContent = repaintMode === "lama"
+        ? "LaMa đang xử lý…"
+        : "Đang xử lý…";
+    }
+
     let processed = 0;
     let skippedTouched = false;
     try {
       for (const item of mapping.items) {
-        const local = sliceMask(workspace, item);
+        const local = sliceMask(workspace, item.canonicalIndex);
         if (!local || !canvasHasPaint(local.canvas)) continue;
         if (item.page.skipped) {
           skippedTouched = true;
           continue;
         }
+
         const formData = new FormData();
         formData.append("chapter_id", window.currentChapterId);
         formData.append("page_index", String(item.canonicalIndex));
         formData.append("mode", repaintMode);
         formData.append("mask", await toBlob(local.canvas), "mask.png");
-        const manifest = await parseResponse(await fetch("/api/repaint_mask", { method: "POST", body: formData }));
+        const manifest = await parseResponse(
+          await fetch("/api/repaint_mask", {
+            method: "POST",
+            body: formData,
+          }),
+        );
         currentManifest = manifest;
         window.currentManifest = manifest;
         processed += 1;
       }
+
       if (!processed) {
-        showToast(skippedTouched ? "Vùng đánh dấu chỉ nằm trên lát đang bỏ qua." : "Mask không chạm lát nào có thể xử lý.", "error");
+        showToast(
+          skippedTouched
+            ? "Vùng đánh dấu chỉ nằm trên lát đang bỏ qua."
+            : "Mask không chạm lát nào có thể xử lý.",
+          "error",
+        );
         return;
       }
       clearMask(workspace);
-      showToast(`Đã xử lý ${processed} lát từ một thao tác trên ảnh ghép.`, "success");
+      showToast(
+        `Đã xử lý ${processed} lát từ một thao tác trên ảnh ghép.`,
+        "success",
+      );
       window.renderReview?.();
     } catch (err) {
       showToast("Không thể xử lý vùng đánh dấu: " + err.message, "error");
@@ -496,16 +666,24 @@
     if (resetBtn) resetBtn.textContent = "Đang xóa vùng chỉnh sửa…";
     try {
       for (const item of items) {
-        const manifest = await parseResponse(await fetch("/api/reset_manual_mask", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ chapter_id: window.currentChapterId, page_index: item.canonicalIndex }),
-        }));
+        const manifest = await parseResponse(
+          await fetch("/api/reset_manual_mask", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              chapter_id: window.currentChapterId,
+              page_index: item.canonicalIndex,
+            }),
+          }),
+        );
         currentManifest = manifest;
         window.currentManifest = manifest;
       }
       clearMask(workspace);
-      showToast("Đã xóa vùng chỉnh sửa thủ công trên toàn trang ảnh gốc.", "success");
+      showToast(
+        "Đã xóa vùng chỉnh sửa thủ công trên toàn trang ảnh gốc.",
+        "success",
+      );
       window.renderReview?.();
     } catch (err) {
       showToast("Không thể xóa vùng chỉnh sửa: " + err.message, "error");
@@ -528,7 +706,9 @@
       chunk.ctx.lineWidth = 2;
       chunk.ctx.beginPath();
       chunk.ctx.moveTo(points[0][0], points[0][1] - chunk.y1);
-      for (let i = 1; i < points.length; i += 1) chunk.ctx.lineTo(points[i][0], points[i][1] - chunk.y1);
+      for (let i = 1; i < points.length; i += 1) {
+        chunk.ctx.lineTo(points[i][0], points[i][1] - chunk.y1);
+      }
       chunk.ctx.closePath();
       chunk.ctx.fill();
       chunk.ctx.stroke();
@@ -542,7 +722,10 @@
   async function aiQc(workspace) {
     const mapping = sourceMapping(workspace);
     if (!mapping || !window.currentChapterId) {
-      showToast("Không thể ánh xạ AI QC trên ảnh ghép vì stitch_core không hợp lệ.", "error");
+      showToast(
+        "Không thể ánh xạ AI QC trên ảnh ghép vì stitch_core không hợp lệ.",
+        "error",
+      );
       return;
     }
     setBrush(workspace, false);
@@ -550,17 +733,24 @@
     const { aiQcBtn } = controls(workspace);
     const previous = aiQcBtn?.textContent;
     if (aiQcBtn) aiQcBtn.textContent = "AI đang kiểm tra…";
+
     let painted = 0;
     let uncertain = 0;
     let artDamage = 0;
     try {
       for (const item of mapping.items) {
         if (item.page.skipped) continue;
-        const data = await parseResponse(await fetch("/api/visual_qc/inspect", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ chapter_id: window.currentChapterId, page_index: item.canonicalIndex }),
-        }));
+        const data = await parseResponse(
+          await fetch("/api/visual_qc/inspect", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              chapter_id: window.currentChapterId,
+              page_index: item.canonicalIndex,
+            }),
+          }),
+        );
+
         for (const issue of Array.isArray(data.issues) ? data.issues : []) {
           if (issue.issue_type === "over_erased_art") {
             artDamage += 1;
@@ -576,84 +766,178 @@
             Number(point?.[0]) || 0,
             item.physicalSourceY1 + (Number(point?.[1]) || 0),
           ]);
-          const centerY = points.reduce((sum, point) => sum + point[1], 0) / points.length;
-          if (item.core && (centerY < item.sourceY1 || centerY >= item.sourceY2)) continue;
+          const centerY = points.reduce((sum, point) => sum + point[1], 0)
+            / points.length;
+          if (
+            item.core
+            && (centerY < item.sourceY1 || centerY >= item.sourceY2)
+          ) continue;
           if (paintPolygon(workspace, points)) painted += 1;
         }
       }
+
       if (painted) {
         const extra = [];
         if (uncertain) extra.push(`${uncertain} vùng độ tin cậy thấp`);
         if (artDamage) extra.push(`${artDamage} vùng nghi mất chi tiết`);
-        showToast(`AI đã đánh dấu ${painted} vùng trên ảnh ghép${extra.length ? ` (${extra.join(", ")})` : ""}.`, "info");
+        showToast(
+          `AI đã đánh dấu ${painted} vùng trên ảnh ghép${
+            extra.length ? ` (${extra.join(", ")})` : ""
+          }.`,
+          "info",
+        );
       } else if (uncertain || artDamage) {
-        showToast(`AI phát hiện ${uncertain} vùng độ tin cậy thấp và ${artDamage} vùng nghi mất chi tiết; chưa tự tô.`, "info");
+        showToast(
+          `AI phát hiện ${uncertain} vùng độ tin cậy thấp và ${artDamage} vùng nghi mất chi tiết; chưa tự tô.`,
+          "info",
+        );
       } else {
-        showToast("Không phát hiện vùng cần xử lý lại trên trang ảnh gốc.", "success");
+        showToast(
+          "Không phát hiện vùng cần xử lý lại trên trang ảnh gốc.",
+          "success",
+        );
       }
     } catch (err) {
       showToast("Không thể hoàn tất kiểm tra bằng AI: " + err.message, "error");
     } finally {
-      if (aiQcBtn) aiQcBtn.textContent = previous || "Kiểm tra trang bằng AI";
+      if (aiQcBtn) {
+        aiQcBtn.textContent = previous || "Kiểm tra trang bằng AI";
+      }
       setBusy(workspace, false);
     }
   }
 
   function mount(workspace) {
-    if (!(workspace instanceof HTMLElement) || workspace.dataset.stitchedEditorMounted === "1") return;
+    if (
+      !(workspace instanceof HTMLElement)
+      || workspace.dataset.stitchedEditorMounted === "1"
+    ) return;
+    syncChapterState();
     workspace.dataset.stitchedEditorMounted = "1";
 
-    workspace.addEventListener("click", (event) => {
-      const modeButton = event.target.closest("button[data-review-mode]");
-      if (modeButton) {
-        captureMask(workspace);
-        setBrush(workspace, false);
-        if (modeButton.dataset.reviewMode === "stitched" && !isStitched(workspace)) {
-          setTimeout(() => window.renderReview?.(), 0);
-        }
-        return;
-      }
-      if (!isStitched(workspace)) return;
-      const control = event.target.closest(
-        ".brush-toggle-btn, .clear-brush-btn, .repaint-btn, .reset-manual-btn, .ai-qc-btn",
-      );
-      if (!control || !workspace.contains(control)) return;
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      if (control.matches(".brush-toggle-btn")) setBrush(workspace, !brushOn);
-      else if (control.matches(".clear-brush-btn")) clearMask(workspace);
-      else if (control.matches(".repaint-btn")) void repaint(workspace);
-      else if (control.matches(".reset-manual-btn")) void resetManual(workspace);
-      else if (control.matches(".ai-qc-btn")) void aiQc(workspace);
-    }, true);
+    const note = workspace.querySelector(".review-stitched-note");
+    if (note) {
+      note.textContent = "Ảnh ghép và từng lát đều chỉnh sửa trực tiếp được. Công cụ luôn tác động lên đúng chế độ đang hiển thị.";
+    }
 
-    workspace.addEventListener("input", (event) => {
-      if (!isStitched(workspace) || !event.target.matches(".brush-size-slider")) return;
-      event.stopImmediatePropagation();
-      brushRadius = Math.max(8, Math.min(80, Number(event.target.value) || 20));
-      updateBrushUi(workspace);
-    }, true);
+    workspace.addEventListener(
+      "click",
+      (event) => {
+        const modeButton = event.target.closest("button[data-review-mode]");
+        if (modeButton) {
+          captureMask(workspace);
+          setBrush(workspace, false);
+          if (modeButton.dataset.reviewMode === "stitched") {
+            stopSliceBrush(workspace);
+            if (!isStitched(workspace)) {
+              setTimeout(() => window.renderReview?.(), 0);
+            }
+          }
+          return;
+        }
+
+        const continueButton = event.target.closest(".review-primary-action");
+        if (continueButton && workspace.contains(continueButton)) {
+          captureMask(workspace);
+          if (chapterHasSavedMasks()) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            showToast(
+              "Còn vùng đánh dấu trên ảnh ghép chưa được xử lý. Hãy xử lý hoặc xóa các nét đánh dấu trước khi mở biên tập.",
+              "error",
+            );
+          }
+          return;
+        }
+
+        if (!isStitched(workspace)) return;
+        const control = event.target.closest(
+          ".brush-toggle-btn, .clear-brush-btn, .repaint-btn, .reset-manual-btn, .ai-qc-btn",
+        );
+        if (!control || !workspace.contains(control)) return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        if (control.matches(".brush-toggle-btn")) {
+          setBrush(workspace, !brushOn);
+        } else if (control.matches(".clear-brush-btn")) {
+          clearMask(workspace);
+        } else if (control.matches(".repaint-btn")) {
+          void repaint(workspace);
+        } else if (control.matches(".reset-manual-btn")) {
+          void resetManual(workspace);
+        } else if (control.matches(".ai-qc-btn")) {
+          void aiQc(workspace);
+        }
+      },
+      true,
+    );
+
+    workspace.addEventListener(
+      "input",
+      (event) => {
+        if (
+          !isStitched(workspace)
+          || !event.target.matches(".brush-size-slider")
+        ) return;
+        event.stopImmediatePropagation();
+        brushRadius = Math.max(
+          8,
+          Math.min(80, Number(event.target.value) || 20),
+        );
+        updateBrushUi(workspace);
+      },
+      true,
+    );
+
+    workspace.addEventListener(
+      "change",
+      (event) => {
+        if (event.target.matches(".review-stitched-select")) {
+          captureMask(workspace);
+        }
+      },
+      true,
+    );
 
     const shell = workspace.querySelector(".review-stitched-shell");
     if (shell) {
-      shell.addEventListener("click", (event) => {
-        if (event.target.closest(".review-stitched-toolbar")) captureMask(workspace);
-      }, true);
+      shell.addEventListener(
+        "click",
+        (event) => {
+          if (event.target.closest(".review-stitched-toolbar")) {
+            captureMask(workspace);
+          }
+        },
+        true,
+      );
     }
 
-    const observer = new MutationObserver(() => decorate(workspace));
     const imageHost = workspace.querySelector(".review-stitched-image");
-    if (imageHost) observer.observe(imageHost, { childList: true });
+    if (imageHost) {
+      const imageObserver = new MutationObserver(() => {
+        if (!workspace.isConnected) {
+          imageObserver.disconnect();
+          return;
+        }
+        decorate(workspace);
+      });
+      imageObserver.observe(imageHost, { childList: true });
+    }
     decorate(workspace);
   }
 
   function scan() {
-    document.querySelectorAll("#page-view.review-mode .review-workspace-shell").forEach(mount);
+    document
+      .querySelectorAll("#page-view.review-mode .review-workspace-shell")
+      .forEach(mount);
   }
 
   window.addEventListener("blur", stopPainting);
   const observer = new MutationObserver(scan);
   observer.observe(document.documentElement, { childList: true, subtree: true });
-  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", scan, { once: true });
-  else scan();
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", scan, { once: true });
+  } else {
+    scan();
+  }
 })();
