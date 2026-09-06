@@ -104,14 +104,6 @@
   gap: 8px;
 }
 
-.text-editor-empty {
-  padding: 22px 12px;
-  color: var(--text-secondary);
-  text-align: center;
-  font-size: 12px;
-  line-height: 1.5;
-}
-
 .text-editor-label {
   color: var(--text-secondary);
   font: 600 11px var(--font-mono);

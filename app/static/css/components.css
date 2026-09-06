@@ -220,6 +220,66 @@
   accent-color: var(--accent);
 }
 
+.ui-empty-state,
+.ui-state {
+  display: grid;
+  place-items: center;
+  min-height: 72px;
+  padding: var(--space-5) var(--space-3);
+  color: var(--text-secondary);
+  font: 400 12px/1.5 var(--font-ui);
+  text-align: center;
+}
+
+.ui-state {
+  background: var(--surface-panel);
+}
+
+.ui-state-error {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+#toast-container {
+  position: fixed;
+  top: var(--space-4);
+  right: var(--space-4);
+  z-index: var(--z-toast);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  pointer-events: none;
+}
+
+.ui-toast {
+  max-width: 380px;
+  padding: 10px var(--space-4);
+  border: 1px solid var(--border-strong);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-panel);
+  font: 400 13px/1.4 var(--font-ui);
+  opacity: 0;
+  pointer-events: auto;
+  transform: translateX(20px);
+  transition: opacity var(--motion-normal), transform var(--motion-normal);
+}
+
+.ui-toast.is-visible {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.ui-toast.is-error {
+  border-left-color: var(--danger);
+}
+
+.ui-toast.is-success {
+  border-left-color: var(--success);
+}
+
 @media (pointer: coarse) {
   .ui-btn,
   .ui-icon-btn,

@@ -20,8 +20,6 @@
     .review-stitched-viewport { overflow:auto; max-height:calc(100vh - 220px); border:1px solid var(--border-strong); border-radius:10px; background:#202020; padding:0; }
     .review-stitched-image { width:min(100%, 1000px); margin:0 auto; background:white; }
     .review-stitched-image canvas { display:block; width:100%; height:auto; margin:0; padding:0; }
-    .review-stitched-loading, .review-stitched-error { padding:28px; text-align:center; color:var(--text-muted); background:var(--surface-panel); }
-    .review-stitched-error { color:#b42318; }
     .review-mode.review-show-stitched .review-workbench-grid { display:none !important; }
     .review-mode.review-show-slices .review-stitched-shell { display:none !important; }
   `;
@@ -146,7 +144,7 @@
     warning.hidden = true;
 
     const loading = document.createElement("div");
-    loading.className = "review-stitched-loading";
+    loading.className = "ui-state review-stitched-loading";
     loading.textContent = "Đang ghép ảnh theo ownership của từng lát…";
     imageHost.appendChild(loading);
 
@@ -223,7 +221,7 @@
       if (token !== renderToken) return;
       imageHost.replaceChildren();
       const error = document.createElement("div");
-      error.className = "review-stitched-error";
+      error.className = "ui-state ui-state-error review-stitched-error";
       error.textContent = `Không dựng được ảnh ghép: ${err.message}`;
       imageHost.appendChild(error);
     }

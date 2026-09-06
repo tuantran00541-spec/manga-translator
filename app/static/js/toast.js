@@ -3,14 +3,14 @@ function showToast(message, type = "info") {
   if (!container) return;
 
   const toast = document.createElement("div");
-  toast.className = `toast toast-${type}`;
+  toast.className = `ui-toast is-${type}`;
   toast.textContent = message;
   container.appendChild(toast);
 
-  requestAnimationFrame(() => toast.classList.add("toast-visible"));
+  requestAnimationFrame(() => toast.classList.add("is-visible"));
 
   setTimeout(() => {
-    toast.classList.remove("toast-visible");
+    toast.classList.remove("is-visible");
     toast.addEventListener("transitionend", () => toast.remove(), { once: true });
     setTimeout(() => { if (toast.parentNode) toast.remove(); }, 1000);
   }, 3500);

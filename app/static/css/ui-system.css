@@ -675,18 +675,6 @@ body.repaint-mode-open {
   width: 100%;
 }
 
-#toast-container {
-  top: 76px;
-  right: 20px;
-}
-
-.toast {
-  border-radius: 8px;
-  background: var(--surface-raised);
-  border-color: var(--border-strong);
-  box-shadow: var(--shadow-panel);
-}
-
 @media (max-width: 1120px) {
 
   .app-context {

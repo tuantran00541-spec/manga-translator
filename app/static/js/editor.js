@@ -353,7 +353,7 @@ function renderEditorPanel(pageIndex) {
   const obj = findTextObject(pageIndex, editorState.selectedTextObjectId);
   if (!obj) {
     const empty = document.createElement("div");
-    empty.className = "text-editor-empty";
+    empty.className = "ui-empty-state text-editor-empty";
     empty.textContent = "Chọn một vùng chữ trên ảnh để chỉnh sửa.";
     panel.appendChild(empty);
     panelHost.appendChild(panel);

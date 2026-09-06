@@ -220,7 +220,7 @@
     const results = flaggedResults(snapshot);
     if (results.length === 0) {
       const empty = document.createElement("p");
-      empty.className = "chapter-qc-empty";
+      empty.className = "ui-empty-state chapter-qc-empty";
       empty.textContent = snapshot.status === "completed" && !snapshot.failed
         ? "AI không phát hiện vùng cần kiểm tra thêm."
         : "Không có kết quả đánh dấu để hiển thị.";
