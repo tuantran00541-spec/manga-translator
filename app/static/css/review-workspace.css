@@ -6,6 +6,38 @@
   margin: 0;
 }
 
+.review-workspace-shell { width: 100%; max-width: none; gap: 0; }
+.review-sticky-toolbar {
+  top: 48px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  margin: 0;
+  padding: 10px 12px;
+  border: 0;
+  border-bottom: 1px solid var(--border-subtle);
+  border-radius: 0;
+  background: color-mix(in srgb, var(--surface-app) 94%, transparent);
+  box-shadow: none;
+}
+.review-toolbar-title { color: var(--text-muted); font-size: 13px; }
+.review-primary-action { order: 5; }
+.review-workbench-grid { min-height: calc(100vh - 116px); }
+.review-canvas-host.workbench-canvas-column .review-card { width: 100%; margin: 0; }
+.review-inspector .review-controls-slot, .review-inspector .review-controls { display: grid; grid-template-columns: 1fr; width: 100%; gap: 6px; }
+.review-inspector .review-controls button, .review-inspector .brush-size-control { width: 100%; min-height: 34px; justify-content: flex-start; }
+.review-inspector .review-help { width: 100%; }
+.review-inspector .review-help > summary { width: 100%; justify-content: flex-start; }
+.review-inspector .review-help-panel { position: static; width: auto; margin-top: 8px; box-shadow: none; }
+.command-disclosure { position: relative; }
+.command-disclosure-panel { position: absolute; top: calc(100% + 6px); right: 0; z-index: var(--z-popover); display: grid; gap: 12px; width: min(340px, calc(100vw - 32px)); max-height: min(560px, 70vh); overflow: auto; padding: 16px; }
+.command-disclosure-panel .chapter-qc-options { flex-wrap: wrap; }
+.command-disclosure-panel .chapter-qc-results { grid-template-columns: 1fr; }
+.review-more-actions { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border-subtle); }
+.review-more-actions summary { width: 100%; justify-content: flex-start; }
+.review-more-actions button { margin-top: 6px; }
+.review-help-section .review-ai-status { display: block; margin-bottom: 8px; }
+
 .review-actions-group {
   display: flex;
   flex-wrap: wrap;
@@ -327,4 +359,10 @@
   .chapter-qc-job-actions {
     flex-wrap: wrap;
   }
+}
+
+@media (max-width: 1000px) {
+  .review-sticky-toolbar { position: static; }
+  .command-disclosure[open] { flex: 1 0 100%; order: 10; }
+  .command-disclosure-panel { position: static; width: 100%; max-height: 60vh; margin-top: 8px; }
 }
