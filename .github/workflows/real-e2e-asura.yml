@@ -50,7 +50,8 @@ jobs:
             --index-url https://download.pytorch.org/whl/cpu \
             --extra-index-url https://pypi.org/simple \
             "torch==2.5.1+cpu"
-          python -m pip install --only-binary=:all: -r requirements.txt
+          # manga-ocr depends on unidic_lite, which is source-distribution only.
+          python -m pip install -r requirements.txt
           # Model bootstrap only. Keep production OpenCV/Numpy pins authoritative.
           python -m pip install --no-deps "ultralytics==8.3.221"
           python -m pip install --only-binary=:all: \
