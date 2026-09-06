@@ -26,6 +26,12 @@ LAMA_URL = "https://huggingface.co/ogkalu/lama-manga-onnx-dynamic/resolve/main/l
 LAMA_SHA256 = EXACT_ONNX_SHA256["lama-manga-dynamic.onnx"]
 TEXT_PT_URL = "https://huggingface.co/ogkalu/comic-text-segmenter-yolov8m/resolve/main/comic-text-segmenter.pt"
 TEXT_PT_SHA256 = "f2dded0d2f5aaa25eed49f1c34a4720f1c1cd40da8bc3138fde1abb202de625e"
+BUBBLE_PT_REVISION = "a081a21a12d3e1bbf31536ef00e7f5bf0a9b72a3"
+BUBBLE_PT_URL = (
+    "https://huggingface.co/ogkalu/comic-speech-bubble-detector-yolov8m/"
+    f"resolve/{BUBBLE_PT_REVISION}/comic-speech-bubble-detector.pt"
+)
+BUBBLE_PT_SHA256 = "10bc9f702698148e079fb4462a6b910fcd69753e04838b54087ef91d5633097b"
 TYPER_COMMIT = "35dd0c3046a5a6f9d2ea7c6c6a5498da05f4529b"
 TYPER_ZIP_URL = (
     "https://raw.githubusercontent.com/darkmax159159357/TypeR/"
@@ -141,6 +147,14 @@ def _text_files(root: Path):
 def discover_typer_detector(
     typer_root: Path,
 ) -> tuple[str, str | None, list[str]]:
+    """Audit what the pinned TypeR bundle says, without trusting URL proximity.
+
+    TypeR places multiple model URLs close together in minified/generated files.
+    The previous bootstrap incorrectly paired the bubble SHA with a neighboring
+    .pt URL. The actual provisioning source is now the immutable Hugging Face
+    revision above; this discovery remains evidence that can be inspected in the
+    provenance report when TypeR changes its packaging.
+    """
     candidates: list[tuple[int, str, str | None, str]] = []
     debug: list[str] = []
     for path in _text_files(typer_root):
@@ -167,6 +181,8 @@ def discover_typer_detector(
                 url_lower = url.lower()
                 if "public.pt" in url_lower:
                     score += 100
+                if "comic-speech-bubble-detector" in url_lower:
+                    score += 100
                 if url_lower.endswith(".pt") or ".pt?" in url_lower:
                     score += 60
                 if any(
@@ -185,7 +201,8 @@ def discover_typer_detector(
         for url in _URL_RE.findall(text):
             url = url.rstrip("),;]")
             if url.lower().endswith(".pt") or ".pt?" in url.lower():
-                candidates.append((40, url, None, str(path)))
+                score = 140 if "comic-speech-bubble-detector" in url.lower() else 40
+                candidates.append((score, url, None, str(path)))
     candidates.sort(key=lambda item: (-item[0], item[1]))
     seen: set[str] = set()
     deduped: list[tuple[int, str, str | None, str]] = []
@@ -317,21 +334,18 @@ def public_equivalent() -> dict:
             expected_names={"text_comic"},
         )
 
+        # Keep TypeR only as immutable provenance evidence. Its generated bundle
+        # contains neighboring model URLs, so it must not choose the bytes that
+        # enter the E2E detector. The canonical detector is pinned directly to
+        # the upstream Hugging Face revision and verified before deserialization.
         typer_zip = tmp / "TypeR-v2.9.9.zip"
         typer_root = tmp / "TypeR"
         download(TYPER_ZIP_URL, typer_zip, max_bytes=50 * 1024 * 1024)
         safe_extract_zip(typer_zip, typer_root)
-        detector_url, expected_pt_sha, candidates = discover_typer_detector(
-            typer_root
-        )
-        bubble_pt = tmp / "public.pt"
-        download(detector_url, bubble_pt, max_bytes=250 * 1024 * 1024)
-        bubble_pt_sha = sha256(bubble_pt)
-        if expected_pt_sha and bubble_pt_sha != expected_pt_sha:
-            raise RuntimeError(
-                "TypeR detector SHA mismatch: "
-                f"expected {expected_pt_sha}, got {bubble_pt_sha}"
-            )
+        typer_url, typer_sha, candidates = discover_typer_detector(typer_root)
+
+        bubble_pt = tmp / "comic-speech-bubble-detector.pt"
+        ensure_sha(BUBBLE_PT_URL, bubble_pt, BUBBLE_PT_SHA256)
         bubble_info = export_yolo(
             bubble_pt,
             MODELS / "bubble_yolo.onnx",
@@ -347,11 +361,16 @@ def public_equivalent() -> dict:
         },
         "text_segmenter": {"url": TEXT_PT_URL, **text_info},
         "bubble_detector": {
-            "bootstrap": TYPER_ZIP_URL,
-            "source_url": detector_url,
-            "expected_pt_sha256": expected_pt_sha,
+            "source_url": BUBBLE_PT_URL,
+            "source_revision": BUBBLE_PT_REVISION,
+            "expected_pt_sha256": BUBBLE_PT_SHA256,
+            "typer_reference": {
+                "bundle": TYPER_ZIP_URL,
+                "discovered_url": typer_url,
+                "discovered_sha256": typer_sha,
+                "discovery_candidates": candidates,
+            },
             **bubble_info,
-            "discovery_candidates": candidates,
         },
     }
 
