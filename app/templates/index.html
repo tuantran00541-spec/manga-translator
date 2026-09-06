@@ -43,11 +43,10 @@
       </details>
     </div>
 
-    <div class="landing-source-grid">
-      <section class="app-panel landing-panel" aria-labelledby="url-source-title">
-        <div class="panel-heading">
-          <h2 id="url-source-title">Từ liên kết</h2>
-        </div>
+    <section class="landing-start" aria-label="Mở chương mới">
+      <div class="landing-source-grid">
+      <section class="landing-panel landing-url-source" aria-labelledby="url-source-title">
+        <h2 id="url-source-title">Mở từ liên kết</h2>
         <div id="chapter-input" class="chapter-input-grid">
           <label class="ui-field chapter-url-field" for="chapter-url"><span>Liên kết chương</span><input type="text" id="chapter-url" placeholder="Dán URL chương"></label>
           <button id="load-btn" class="ui-btn ui-btn-primary" type="button">Tải chương</button>
@@ -56,19 +55,18 @@
 
       <div id="upload-divider" aria-hidden="true"><span>hoặc</span></div>
 
-      <section class="app-panel landing-panel" aria-labelledby="file-source-title">
-        <div class="panel-heading">
-          <h2 id="file-source-title">Từ thiết bị</h2>
-        </div>
+      <section class="landing-panel landing-file-source" aria-labelledby="file-source-title">
+        <h2 id="file-source-title">Hoặc nhập tệp</h2>
         <button id="upload-dropzone" type="button" aria-controls="upload-input">
           <span class="upload-copy"><strong>Kéo thả tệp vào đây</strong> hoặc <span id="upload-browse-text">chọn tệp từ thiết bị</span></span>
           <span id="upload-hint">Hỗ trợ PNG, JPG, WEBP, BMP, ZIP và CBZ. Có thể chọn nhiều ảnh cùng lúc.</span>
         </button>
         <input type="file" id="upload-input" accept="image/png,image/jpeg,image/webp,image/bmp,.zip,.cbz" multiple hidden>
       </section>
-    </div>
+      </div>
+    </section>
 
-    <section class="app-panel recent-panel" aria-label="Chương đang xử lý" hidden>
+    <section class="recent-panel" aria-label="Chương đang xử lý" hidden>
       <div id="recent-chapters"></div>
     </section>
   </section>

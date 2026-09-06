@@ -6,6 +6,56 @@
   margin: 0;
 }
 
+.review-actions-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.review-help { position: relative; }
+.review-help > summary { list-style: none; }
+.review-help > summary::-webkit-details-marker { display: none; }
+.review-help-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: var(--z-popover);
+  width: min(360px, 80vw);
+  padding: 12px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.55;
+}
+.review-help-panel p { margin: 0; }
+.review-ai-status { display: inline-flex; align-items: center; gap: 6px; color: var(--text-muted); font: 500 11px/1.2 var(--font-ui); }
+.review-ai-status.ready { color: var(--success); }
+.review-busy .review-image-wrap::after {
+  content: "Đang kiểm tra bằng AI…";
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--surface-canvas) 72%, transparent);
+  color: var(--text-primary);
+  font: 600 12px var(--font-ui);
+}
+
+.repaint-mode-backdrop { position: fixed; inset: 0; z-index: var(--z-modal); display: grid; place-items: center; padding: 20px; background: var(--surface-overlay); }
+.repaint-mode-dialog { width: min(500px, 100%); padding: 20px; border: 1px solid var(--border-strong); border-radius: var(--radius-md); background: var(--surface-panel); box-shadow: var(--shadow-float); }
+.repaint-mode-eyebrow { margin: 0 0 6px; color: var(--accent); font: 600 11px var(--font-ui); letter-spacing: .08em; text-transform: uppercase; }
+.repaint-mode-dialog h2 { margin: 0; font: 600 20px/1.25 var(--font-ui); }
+.repaint-mode-description { margin: 8px 0 18px; color: var(--text-muted); font-size: 12px; line-height: 1.55; }
+.repaint-mode-options { display: grid; gap: 8px; }
+.repaint-mode-option { width: 100%; padding: 12px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface-raised); color: var(--text-secondary); text-align: left; cursor: pointer; }
+.repaint-mode-option:hover, .repaint-mode-option:focus-visible, .repaint-mode-option.is-selected { border-color: var(--accent); }
+.repaint-mode-option.is-selected { background: var(--accent-soft); color: var(--text-primary); }
+.repaint-mode-option-header { display: flex; align-items: center; gap: 8px; }
+.repaint-mode-option-header strong { font: 600 13px var(--font-ui); }
+.repaint-mode-option-detail { display: block; margin-top: 6px; color: var(--text-muted); font-size: 11px; line-height: 1.5; }
+.repaint-mode-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+
 .review-sticky-toolbar {
   position: sticky;
   top: 8px;

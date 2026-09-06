@@ -1,4 +1,4 @@
-@layer tokens, foundation, stage, system, components, workbench, utilities;
+@layer tokens, foundation, stage, components, workbench, utilities;
 
 @import url("./tokens.css") layer(tokens);
 @import url("./foundation.css") layer(foundation);
@@ -9,8 +9,6 @@
 @import url("./editor-workspace.css") layer(stage);
 @import url("./review-workspace.css") layer(stage);
 @import url("./review-overlap-context.css") layer(stage);
-
-@import url("./ui-system.css") layer(system);
 
 @import url("./components.css") layer(components);
 @import url("./editor-box-transform.css") layer(components);
