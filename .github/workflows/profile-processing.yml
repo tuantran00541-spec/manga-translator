@@ -1,0 +1,93 @@
+name: Profile detector and inpaint
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - scripts/profile_processing.py
+      - .github/workflows/profile-processing.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: profile-processing-main
+  cancel-in-progress: false
+
+jobs:
+  profile:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    env:
+      PYTHONUNBUFFERED: "1"
+      MANGA_USE_DYNAMIC_LAMA: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install detector and inpaint dependencies only
+        run: |
+          python -m pip install numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 onnxruntime==1.21.0 psutil==6.1.1 loguru==0.7.2 requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 playwright==1.47.0 fastapi==0.115.0 pydantic==2.9.2 filelock==3.16.1 threadpoolctl==3.6.0
+      - name: Restore benchmark models
+        id: models
+        uses: actions/cache@v4
+        with:
+          path: |
+            models/*.onnx
+            models/.e2e-provenance.json
+          key: processing-profile-models-b224548-v1
+      - name: Read pinned existing model provisioner
+        if: steps.models.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: b22454827f8190655d7070b80eb20c2550beadfa
+          path: benchmark-bootstrap
+          sparse-checkout: scripts/provision_real_e2e_models.py
+          sparse-checkout-cone-mode: false
+      - name: Provision public models with recorded hashes
+        if: steps.models.outputs.cache-hit != 'true'
+        run: |
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple torch==2.5.1+cpu torchvision==0.20.1+cpu
+          python -m pip install --no-deps ultralytics==8.3.221 onnx==1.17.0 onnxslim==0.1.71
+          python -m pip install numpy==1.26.4 sympy==1.13.1 PyYAML==6.0.2 scipy==1.14.1 tqdm==4.67.1 matplotlib==3.9.2 pandas==2.2.3 py-cpuinfo==9.0.0 ml_dtypes==0.5.3 colorama==0.4.6 polars==1.33.1 ultralytics-thop==2.0.17
+          python benchmark-bootstrap/scripts/provision_real_e2e_models.py
+          cp benchmark-bootstrap/models/*.onnx models/
+          cp benchmark-bootstrap/models/.e2e-provenance.json models/
+      - name: Fetch three original chapter images
+        run: python scripts/profile_processing.py --prepare
+      - name: Compare isolated CPU configurations on identical slices
+        run: |
+          python scripts/profile_processing.py --profile workers1 --workers 1 --output benchmark-results/profile/workers1.json
+          python scripts/profile_processing.py --profile workers2 --workers 2 --output benchmark-results/profile/workers2.json
+          OPENBLAS_NUM_THREADS=1 python scripts/profile_processing.py --profile blas1 --workers 2 --output benchmark-results/profile/blas1.json
+          MANGA_ORT_CPU_MEM_ARENA=1 python scripts/profile_processing.py --profile arena --workers 2 --output benchmark-results/profile/arena.json
+      - name: Publish timing evidence
+        if: always()
+        run: |
+          mkdir -p benchmark-results/profile
+          cp models/.e2e-provenance.json benchmark-results/profile/model-provenance.json || true
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          lines = ['## Detector and inpaint CPU profile', '', 'Inclusive timer sums overlap across threads; compare wall time.', '', '| Profile | Cold seconds | Warm seconds | Peak RSS MiB |', '|---|---:|---:|---:|']
+          for path in sorted(Path('benchmark-results/profile').glob('*.json')):
+              report = json.loads(path.read_text())
+              if 'runs' not in report:
+                  continue
+              times = [round(run['wall_ms'] / 1000, 2) for run in report['runs']]
+              lines.append(f"| {report['profile']} | {times[0] if times else '-'} | {times[1] if len(times)>1 else '-'} | {report.get('peak_rss_mb', 0):.0f} |")
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as output:
+              output.write('\n'.join(lines) + '\n')
+          print('\n'.join(lines))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: processing-profile-${{ github.run_id }}
+          path: |
+            benchmark-results/profile/
+            benchmark-results/profile-input/
+          retention-days: 7
+          if-no-files-found: error
