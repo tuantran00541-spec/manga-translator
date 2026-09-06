@@ -115,6 +115,32 @@
   padding-left: 1px;
 }
 
+.ui-range-field {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 32px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--surface-panel);
+  color: var(--text-secondary);
+  font: 500 12px/1 var(--font-ui);
+}
+
+.ui-range-field input[type="range"] {
+  width: 88px;
+  min-width: 0;
+  accent-color: var(--accent);
+}
+
+.ui-range-field output {
+  min-width: 2.5ch;
+  color: var(--text-primary);
+  font: 500 11px/1 var(--font-mono);
+  text-align: right;
+}
+
 .ui-field > :is(input, select, textarea),
 .ui-input,
 .ui-select,
@@ -324,7 +350,8 @@
   .ui-field > :is(input, select),
   .ui-input,
   .ui-select,
-  .gemini-key-input {
+  .gemini-key-input,
+  .ui-range-field {
     min-height: 44px;
   }
 

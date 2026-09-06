@@ -157,7 +157,7 @@
     bindAIStatus(geminiStatus, aiStatus);
 
     const help = document.createElement("details");
-    help.className = "review-help";
+    help.className = "ui-disclosure review-help";
     const helpSummary = document.createElement("summary");
     helpSummary.className = "ui-btn ui-btn-ghost";
     helpSummary.textContent = "Hướng dẫn";

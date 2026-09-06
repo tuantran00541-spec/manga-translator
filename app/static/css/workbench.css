@@ -561,7 +561,7 @@ body {
 .command-disclosure-panel .chapter-qc-options { flex-wrap: wrap; }
 .command-disclosure-panel .chapter-qc-results { grid-template-columns: 1fr; }
 .review-more-actions { margin-top: 8px; border-top: 1px solid var(--border-subtle); padding-top: 8px; }
-.review-more-actions summary { padding: 8px 0; cursor: pointer; color: var(--text-secondary); font-size: 13px; }
+.review-more-actions summary { width: 100%; justify-content: flex-start; }
 .review-more-actions button { margin-top: 6px; }
 .review-help-section .review-ai-status { display: block; margin-bottom: 8px; }
 

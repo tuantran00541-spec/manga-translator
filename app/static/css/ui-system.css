@@ -267,8 +267,7 @@ body.settings-open {
 
 .preview-primary-action,
 .editor-render-btn,
-.review-primary-action,
-.repaint-btn {
+.review-primary-action {
   border-color: var(--accent);
   background: var(--accent);
   color: #071321;
@@ -384,48 +383,6 @@ body.settings-open {
 .repaint-btn { order: 5; }
 .reset-manual-btn { order: 6; }
 
-.brush-toggle-btn,
-.clear-brush-btn,
-.reset-manual-btn,
-.ai-qc-btn,
-.brush-size-control,
-.review-controls button {
-  min-height: 32px;
-  border-radius: 7px;
-}
-
-.brush-toggle-btn,
-.clear-brush-btn,
-.ai-qc-btn {
-  border-color: var(--border-strong);
-  background: var(--surface-panel);
-  color: var(--text-secondary);
-}
-
-.brush-toggle-btn:hover:not(:disabled),
-.clear-brush-btn:hover:not(:disabled),
-.ai-qc-btn:hover:not(:disabled) {
-  border-color: var(--accent);
-  color: var(--text-primary);
-}
-
-.ai-qc-btn {
-  background: var(--accent-soft);
-  color: #9fc4ff;
-}
-
-.reset-manual-btn {
-  border-color: rgba(239, 68, 68, .35);
-  background: transparent;
-  color: #fca5a5;
-}
-
-.brush-size-control {
-  padding: 4px 8px;
-  border: 1px solid var(--border-subtle);
-  background: rgba(9, 13, 22, .28);
-}
-
 .review-busy .review-image-wrap::after {
   content: "Đang kiểm tra bằng AI…";
   position: absolute;
@@ -535,27 +492,6 @@ body.repaint-mode-open {
   gap: 8px;
   margin-top: 18px;
 }
-
-.repaint-mode-cancel,
-.repaint-mode-confirm {
-  min-height: 34px;
-  padding: 0 12px;
-  border-radius: 7px;
-}
-
-.repaint-mode-cancel {
-  border-color: var(--border-strong);
-  background: transparent;
-  color: var(--text-secondary);
-}
-
-.repaint-mode-confirm {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: #071321;
-  font-weight: 600;
-}
-
 
 .translation-workspace {
   max-width: 1320px;

@@ -15,33 +15,37 @@ function createReviewCard(pageIndex, maskSnapshot = null) {
   controls.className = "review-controls review-controls-top";
 
   const brushBtn = document.createElement("button");
-  brushBtn.className = "brush-toggle-btn";
+  brushBtn.type = "button";
+  brushBtn.className = "ui-btn ui-btn-ghost brush-toggle-btn";
   brushBtn.textContent = "Đánh dấu vùng lỗi";
   brushBtn.setAttribute("aria-pressed", "false");
   controls.appendChild(brushBtn);
 
   const clearBtn = document.createElement("button");
-  clearBtn.className = "clear-brush-btn";
+  clearBtn.type = "button";
+  clearBtn.className = "ui-btn ui-btn-ghost clear-brush-btn";
   clearBtn.textContent = "Xóa nét đánh dấu";
   controls.appendChild(clearBtn);
 
   const submitBtn = document.createElement("button");
-  submitBtn.className = "repaint-btn";
+  submitBtn.type = "button";
+  submitBtn.className = "ui-btn ui-btn-primary repaint-btn";
   submitBtn.textContent = "Xử lý vùng đánh dấu";
   controls.appendChild(submitBtn);
 
   const resetManualBtn = document.createElement("button");
-  resetManualBtn.className = "reset-manual-btn";
+  resetManualBtn.type = "button";
+  resetManualBtn.className = "ui-btn ui-btn-ghost reset-manual-btn";
   resetManualBtn.textContent = "Xóa vùng chỉnh sửa";
 
   const aiQcBtn = document.createElement("button");
   aiQcBtn.type = "button";
-  aiQcBtn.className = "ai-qc-btn";
+  aiQcBtn.className = "ui-btn ui-btn-ghost ai-qc-btn";
   aiQcBtn.textContent = "Kiểm tra trang bằng AI";
   aiQcBtn.title = "So sánh ảnh nguồn và ảnh đã xử lý để phát hiện vùng cần kiểm tra lại";
 
   const brushSizeWrap = document.createElement("label");
-  brushSizeWrap.className = "brush-size-control";
+  brushSizeWrap.className = "ui-range-field brush-size-control";
   brushSizeWrap.hidden = true;
   brushSizeWrap.textContent = "Kích thước cọ ";
   const brushSizeValue = document.createElement("output");
@@ -57,8 +61,9 @@ function createReviewCard(pageIndex, maskSnapshot = null) {
   brushSizeWrap.append(brushSize, brushSizeValue);
   controls.appendChild(brushSizeWrap);
   const more = document.createElement("details");
-  more.className = "review-more-actions";
+  more.className = "ui-disclosure review-more-actions";
   const moreTitle = document.createElement("summary");
+  moreTitle.className = "ui-btn ui-btn-ghost";
   moreTitle.textContent = "Thao tác khác";
   more.append(moreTitle, aiQcBtn, resetManualBtn);
   controls.appendChild(more);
@@ -178,6 +183,8 @@ function setupBrush(pageIndex, img, canvas, wrap, brushBtn, clearBtn, submitBtn,
     stopPainting();
     brushOn = false;
     wrap.classList.remove("brush-mode");
+    brushBtn.classList.remove("ui-btn-primary");
+    brushBtn.classList.add("ui-btn-ghost");
     brushBtn.textContent = "Đánh dấu vùng lỗi";
     brushBtn.setAttribute("aria-pressed", "false");
     brushSize.closest(".brush-size-control").hidden = true;
@@ -195,6 +202,8 @@ function setupBrush(pageIndex, img, canvas, wrap, brushBtn, clearBtn, submitBtn,
     brushOn = !brushOn;
     if (!brushOn) stopPainting();
     wrap.classList.toggle("brush-mode", brushOn);
+    brushBtn.classList.toggle("ui-btn-primary", brushOn);
+    brushBtn.classList.toggle("ui-btn-ghost", !brushOn);
     brushBtn.textContent = brushOn ? "Đang đánh dấu · Chọn để kết thúc" : "Đánh dấu vùng lỗi";
     brushBtn.setAttribute("aria-pressed", String(brushOn));
     brushSize.closest(".brush-size-control").hidden = !brushOn;
@@ -745,11 +754,11 @@ function chooseRepaintMode() {
     actions.className = "repaint-mode-actions";
     const cancelBtn = document.createElement("button");
     cancelBtn.type = "button";
-    cancelBtn.className = "repaint-mode-cancel";
+    cancelBtn.className = "ui-btn ui-btn-ghost repaint-mode-cancel";
     cancelBtn.textContent = "Hủy";
     const confirmBtn = document.createElement("button");
     confirmBtn.type = "button";
-    confirmBtn.className = "repaint-mode-confirm";
+    confirmBtn.className = "ui-btn ui-btn-primary repaint-mode-confirm";
     confirmBtn.textContent = "Bắt đầu xử lý";
     actions.append(cancelBtn, confirmBtn);
 
