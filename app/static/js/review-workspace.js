@@ -246,30 +246,6 @@
     workspace.append(toolbar, layout);
     container.appendChild(workspace);
 
-    // The stitched preview is intentionally read-only: its canvases are a
-    // reconstructed source-page view, while the repaint mask belongs to one
-    // canonical slice. Keep the edit controls usable by switching back to the
-    // owning slice before their click handlers run.
-    controlsSlot.addEventListener("click", (event) => {
-      const editControl = event.target.closest(
-        ".brush-toggle-btn, .clear-brush-btn, .repaint-btn, .reset-manual-btn",
-      );
-      if (!editControl || !container.classList.contains("review-show-stitched")) return;
-      const slicesBtn = workspace.querySelector('button[data-review-mode="slices"]');
-      if (slicesBtn && !slicesBtn.disabled) slicesBtn.click();
-    }, true);
-
-    // Never leave a hidden slice canvas in an active painting state when the
-    // user explicitly goes back to the stitched overview.
-    workspace.addEventListener("click", (event) => {
-      const modeBtn = event.target.closest('button[data-review-mode="stitched"]');
-      if (!modeBtn) return;
-      const activeCanvas = canvasHost.querySelector("canvas.brush-canvas");
-      if (activeCanvas && typeof activeCanvas._stopBrush === "function") {
-        activeCanvas._stopBrush();
-      }
-    }, true);
-
     let mountedCard = null;
     let busyObserver = null;
 
