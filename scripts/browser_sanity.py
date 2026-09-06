@@ -30,6 +30,9 @@ LEGACY_TOKEN_PATTERN = re.compile(
     r")(?![A-Za-z0-9_-])"
 )
 LOCAL_LAYOUT_TOKENS = {"--nav-width", "--inspector-width"}
+STRUCTURAL_GLYPH_PATTERN = re.compile(
+    r"[\u2190-\u21ff\u25a0-\u25ff\u2600-\u27ff\U0001f000-\U0001faff]"
+)
 REQUIRED_SEMANTIC_TOKENS = {
     "--surface-app",
     "--surface-canvas",
@@ -339,12 +342,26 @@ def check_browser_state_contracts() -> None:
     print("Browser state persistence contracts OK")
 
 
+def check_structural_glyphs() -> None:
+    failures: list[str] = []
+    for path in [*HTML_PATHS, *JS_PATHS]:
+        source = path.read_text(encoding="utf-8")
+        for match in STRUCTURAL_GLYPH_PATTERN.finditer(source):
+            line = source.count("\n", 0, match.start()) + 1
+            failures.append(
+                f"{path}:{line}: structural glyph {match.group()!r} is not allowed; use the SVG icon system"
+            )
+    _fail("Structural icon glyphs found:", failures)
+    print("Structural icon glyph check OK")
+
+
 def main() -> None:
     check_markup_integrity()
     check_browser_asset_reachability()
     check_design_token_convergence()
     check_unsafe_html_sinks()
     check_browser_state_contracts()
+    check_structural_glyphs()
 
 
 if __name__ == "__main__":

@@ -156,14 +156,16 @@ function renderPreviewPage(card, page, pageIndex, pages, inspector = null) {
   zoomBar.className = "zoom-controls";
   const zoomOutBtn = document.createElement("button");
   zoomOutBtn.className = "zoom-btn";
-  zoomOutBtn.textContent = "−";
+  zoomOutBtn.append(window.createUiIcon("minus"));
   zoomOutBtn.title = "Thu nhỏ";
+  zoomOutBtn.setAttribute("aria-label", "Thu nhỏ");
   const zoomLevelText = document.createElement("span");
   zoomLevelText.className = "zoom-level";
   const zoomInBtn = document.createElement("button");
   zoomInBtn.className = "zoom-btn";
-  zoomInBtn.textContent = "+";
+  zoomInBtn.append(window.createUiIcon("plus"));
   zoomInBtn.title = "Phóng to";
+  zoomInBtn.setAttribute("aria-label", "Phóng to");
   const zoomResetBtn = document.createElement("button");
   zoomResetBtn.className = "zoom-btn zoom-reset";
   zoomResetBtn.textContent = "1:1";

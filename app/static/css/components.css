@@ -28,6 +28,27 @@
   padding: 0;
 }
 
+.ui-icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+}
+
+.ui-status-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.ui-icon-spinner {
+  animation: ui-icon-spin 900ms linear infinite;
+}
+
+@keyframes ui-icon-spin {
+  to { transform: rotate(360deg); }
+}
+
 .ui-btn:hover:not(:disabled),
 .ui-icon-btn:hover:not(:disabled) {
   border-color: var(--accent);

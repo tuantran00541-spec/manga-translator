@@ -281,7 +281,7 @@
     const prev = document.createElement("button");
     prev.type = "button";
     prev.className = "ui-btn ui-btn-ghost";
-    prev.textContent = "← Trang trước";
+    prev.append(window.createUiIcon("chevron-left"), document.createTextNode("Trang trước"));
     const select = document.createElement("select");
     select.setAttribute("aria-label", "Chọn trang gốc đã ghép");
     sourcePages.forEach((sourcePage) => {
@@ -294,7 +294,7 @@
     const next = document.createElement("button");
     next.type = "button";
     next.className = "ui-btn ui-btn-ghost";
-    next.textContent = "Trang sau →";
+    next.append(document.createTextNode("Trang sau"), window.createUiIcon("chevron-right"));
     const refresh = document.createElement("button");
     refresh.type = "button";
     refresh.className = "ui-btn ui-btn-ghost";

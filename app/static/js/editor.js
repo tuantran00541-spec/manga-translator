@@ -460,7 +460,9 @@ function buildPanelSection(panel, title, open) {
   header.type = "button";
   header.className = "text-editor-section-header";
   header.setAttribute("aria-expanded", open ? "true" : "false");
-  header.innerHTML = `<span>${title}</span><span class="section-caret" aria-hidden="true">▸</span>`;
+  const titleEl = document.createElement("span");
+  titleEl.textContent = title;
+  header.append(titleEl, window.createUiIcon("chevron-right", "section-caret"));
   header.addEventListener("click", () => {
     const isOpen = section.classList.toggle("open");
     header.setAttribute("aria-expanded", isOpen ? "true" : "false");
@@ -872,22 +874,37 @@ let _currentSaveStatus = "saved";
 let _textSaving = 0;
 let _textHasError = false;
 
+function setSaveStatusContent(el, status) {
+  const copy = {
+    saved: ["check", "Đã lưu"],
+    dirty: ["unsaved", "Chưa lưu"],
+    saving: ["spinner", "Đang lưu…"],
+    error: ["alert", "Lưu thất bại"],
+  }[status];
+  if (!copy) return;
+  const [icon, text] = copy;
+  el.replaceChildren(
+    window.createUiIcon(icon, icon === "spinner" ? "ui-status-icon ui-icon-spinner" : "ui-status-icon"),
+    document.createTextNode(text),
+  );
+}
+
 function updateSaveStatus(status) {
   _currentSaveStatus = status;
   const statusEls = document.querySelectorAll(".editor-save-status");
   statusEls.forEach((el) => {
     el.className = `editor-save-status save-status-${status}`;
     if (status === "saved") {
-      el.textContent = "✓ Đã lưu";
+      setSaveStatusContent(el, status);
       el.setAttribute("aria-label", "Tất cả thay đổi đã được lưu");
     } else if (status === "dirty") {
-      el.textContent = "● Chưa lưu";
+      setSaveStatusContent(el, status);
       el.setAttribute("aria-label", "Có thay đổi chưa lưu");
     } else if (status === "saving") {
-      el.textContent = "⏳ Đang lưu...";
+      setSaveStatusContent(el, status);
       el.setAttribute("aria-label", "Đang lưu thay đổi");
     } else if (status === "error") {
-      el.textContent = "⚠️ Lưu thất bại";
+      setSaveStatusContent(el, status);
       el.setAttribute("aria-label", "Lưu thay đổi thất bại");
     }
   });
@@ -1258,15 +1275,7 @@ function renderEditor() {
   const saveStatus = document.createElement("div");
   const initialStatus = refreshSaveStatus();
   saveStatus.className = `editor-save-status save-status-${initialStatus}`;
-  if (initialStatus === "saved") {
-    saveStatus.textContent = "✓ Đã lưu";
-  } else if (initialStatus === "dirty") {
-    saveStatus.textContent = "● Chưa lưu";
-  } else if (initialStatus === "saving") {
-    saveStatus.textContent = "⏳ Đang lưu...";
-  } else if (initialStatus === "error") {
-    saveStatus.textContent = "⚠️ Lưu thất bại";
-  }
+  setSaveStatusContent(saveStatus, initialStatus);
 
   saveStatus.setAttribute("role", "status");
   toolbar.append(tools, renderBtn, saveStatus);

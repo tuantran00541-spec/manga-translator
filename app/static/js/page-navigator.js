@@ -38,7 +38,7 @@
     const prev = document.createElement("button");
     prev.type = "button";
     prev.className = "page-navigator-step";
-    prev.textContent = "←";
+    prev.append(window.createUiIcon("chevron-left"));
     prev.title = "Trang trước";
     prev.setAttribute("aria-label", "Trang trước");
     const jump = document.createElement("input");
@@ -49,7 +49,7 @@
     const next = document.createElement("button");
     next.type = "button";
     next.className = "page-navigator-step";
-    next.textContent = "→";
+    next.append(window.createUiIcon("chevron-right"));
     next.title = "Trang sau";
     next.setAttribute("aria-label", "Trang sau");
     stepper.append(prev, jump, next);
@@ -108,7 +108,7 @@
 
       const thumb = document.createElement("span");
       thumb.className = "page-navigator-thumb";
-      thumb.textContent = backward ? "↑" : "↓";
+      thumb.append(window.createUiIcon(backward ? "chevron-up" : "chevron-down"));
       const text = document.createElement("span");
       text.className = "page-navigator-item-text";
       const label = document.createElement("strong");

@@ -25,8 +25,8 @@
     target.className = "chapter-translate-target";
     target.setAttribute("aria-label", "Ngôn ngữ bản dịch");
     [
-      ["vi", "→ Tiếng Việt"],
-      ["en", "→ English"],
+      ["vi", "Tiếng Việt"],
+      ["en", "English"],
     ].forEach(([value, label]) => {
       const option = document.createElement("option");
       option.value = value;

@@ -168,7 +168,7 @@
 
     const continueBtn = document.createElement("button");
     continueBtn.className = "ui-btn ui-btn-primary review-primary-action";
-    continueBtn.textContent = "Biên tập bản dịch →";
+    continueBtn.textContent = "Mở biên tập";
     continueBtn.addEventListener("click", () => {
       const activeCard = container.querySelector(".review-canvas-host .review-card");
       captureMaskSnapshot(activeCard);
