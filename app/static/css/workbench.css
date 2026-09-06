@@ -363,22 +363,35 @@ body {
   }
 
   .workbench-stage-grid {
-    grid-template-columns: 1fr;
-    grid-template-areas: "pages" "inspector" "canvas";
+    display: block;
+    min-height: calc(100vh - 48px);
   }
 
-  .context-inspector {
-    position: static;
-    max-height: none;
-    border-left: 0;
-    border-top: 1px solid var(--border-subtle);
+  .workbench-stage-grid > :is(.workbench-canvas-column, .translation-canvas-host) {
+    min-height: calc(100vh - 96px);
   }
 
   .workbench-stage-grid > .page-navigator {
-    position: static;
-    max-height: 280px;
-    border-right: 0;
-    border-bottom: 1px solid var(--border-subtle);
+    position: fixed;
+    inset: 48px auto 0 0;
+    z-index: var(--z-panel);
+    width: min(320px, calc(100vw - 32px));
+    max-height: none;
+    border-right: 1px solid var(--border-strong);
+    border-bottom: 0;
+    box-shadow: var(--shadow-float);
+  }
+
+  .workbench-stage-grid > .context-inspector {
+    position: fixed;
+    inset: 48px 0 0 auto;
+    z-index: var(--z-panel);
+    width: min(360px, calc(100vw - 24px));
+    max-height: none;
+    padding: 12px;
+    border-top: 0;
+    border-left: 1px solid var(--border-strong);
+    box-shadow: var(--shadow-float);
   }
 }
 
@@ -527,15 +540,6 @@ body {
   .translation-sticky-toolbar {
     position: static;
     flex-direction: row;
-  }
-
-  .translation-workspace-body.editor-workbench-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .translation-panel-host.context-inspector {
-    position: static;
-    max-height: none;
   }
 }
 

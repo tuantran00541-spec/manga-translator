@@ -307,6 +307,16 @@
         event.stopImmediatePropagation();
         closeSettings();
       } else if (event.key === "Escape") {
+        const panelControls = document.getElementById("workbench-panel-controls");
+        const pagePanelOpen = document.getElementById("toggle-page-panel")?.getAttribute("aria-expanded") === "true";
+        const inspectorPanelOpen = document.getElementById("toggle-inspector-panel")?.getAttribute("aria-expanded") === "true";
+        if (panelMode() === "compact" && activePanels && (pagePanelOpen || inspectorPanelOpen)) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          setPanelOpen(pagePanelOpen ? "nav" : "inspector", false);
+          panelControls?.querySelector(pagePanelOpen ? "#toggle-page-panel" : "#toggle-inspector-panel")?.focus();
+          return;
+        }
         const details = event.target.closest?.(".command-disclosure[open]");
         if (details) {
           event.preventDefault();
