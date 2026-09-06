@@ -1,0 +1,156 @@
+name: Real Asura full-chapter E2E
+
+on:
+  push:
+    branches:
+      - test/real-e2e-asura
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: manga-translator-real-asura-e2e
+  cancel-in-progress: false
+
+jobs:
+  real-e2e:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 180
+    env:
+      PYTHONUNBUFFERED: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+      MANGA_USE_DYNAMIC_LAMA: "1"
+      MANGA_OCR_TARGET_SELECTION: centered
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+      E2E_MODEL_BUNDLE_URL: ${{ secrets.E2E_MODEL_BUNDLE_URL }}
+
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install native runtime libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential libgl1 libglib2.0-0 libgomp1 libsm6 libxext6 libxrender1 \
+            fonts-liberation fonts-noto-cjk
+
+      - name: Install CPU runtime dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --only-binary=:all: \
+            --index-url https://download.pytorch.org/whl/cpu \
+            --extra-index-url https://pypi.org/simple \
+            "torch==2.5.1+cpu"
+          python -m pip install --only-binary=:all: -r requirements.txt
+          # Model bootstrap only. Keep production OpenCV/Numpy pins authoritative.
+          python -m pip install --no-deps "ultralytics==8.3.221"
+          python -m pip install --only-binary=:all: \
+            "onnx==1.17.0" "onnxslim==0.1.71" \
+            "PyYAML==6.0.2" "scipy==1.14.1" "tqdm==4.67.1" \
+            "matplotlib==3.9.2" "pandas==2.2.3" "py-cpuinfo==9.0.0"
+
+      - name: Install Chromium for Asura JS fallback
+        run: python -m playwright install --with-deps chromium
+
+      - name: Validate E2E source
+        run: |
+          python -m py_compile \
+            scripts/provision_real_e2e_models.py \
+            scripts/real_e2e_asura.py
+          python scripts/release_sanity.py
+
+      - name: Restore detector and inpaint model cache
+        id: model-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            models/bubble_yolo.onnx
+            models/text_segmenter.onnx
+            models/lama-manga-dynamic.onnx
+            models/.e2e-provenance.json
+          key: real-e2e-models-v2-${{ runner.os }}-${{ hashFiles('scripts/provision_real_e2e_models.py') }}
+
+      - name: Provision and validate real models
+        run: python scripts/provision_real_e2e_models.py
+
+      - name: Restore OCR runtime cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.paddlex
+            ~/.paddleocr
+            ~/.cache/huggingface
+          key: real-e2e-ocr-v2-${{ runner.os }}-${{ hashFiles('requirements.txt', 'app/ocr/**') }}
+          restore-keys: |
+            real-e2e-ocr-v2-${{ runner.os }}-
+
+      - name: Run real full-chapter Asura E2E
+        shell: bash
+        run: |
+          args=(
+            --workers 2
+            --ocr-concurrency 2
+            --source-lang en
+            --target-lang vi
+            --translation-budget-usd 0.02
+            --max-download-attempts 6
+          )
+          if [[ -n "${DEEPSEEK_API_KEY:-}" ]]; then
+            args+=(--require-translation)
+          fi
+          python scripts/real_e2e_asura.py "${args[@]}"
+
+      - name: Publish run summary
+        if: always()
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          report_path = Path('benchmark-results/real-e2e-asura-report.json')
+          lines = ['## Real Asura full-chapter E2E', '']
+          if not report_path.is_file():
+              lines += ['No E2E report was produced.']
+          else:
+              report = json.loads(report_path.read_text(encoding='utf-8'))
+              lines += [
+                  f"- Status: **{report.get('status')}**",
+                  f"- Promotion ready: **{report.get('promotion_ready')}**",
+                  f"- Chapter: `{report.get('chapter_url') or 'unresolved'}`",
+                  f"- Seed: `{report.get('seed')}`",
+                  f"- Source pages / slices: `{report.get('source_pages')}` / `{report.get('slices')}`",
+                  f"- Boxes: `{(report.get('boxes') or {}).get('total')}`",
+                  f"- OCR recognized: `{(report.get('ocr') or {}).get('recognized')}` / `{(report.get('ocr') or {}).get('planned')}`",
+                  f"- Translation: `{(report.get('translation') or {}).get('status')}`",
+                  f"- Total wall ms: `{report.get('wall_ms')}`",
+              ]
+              failures = report.get('failures') or []
+              if failures:
+                  lines += ['', '### Failures'] + [f'- {item}' for item in failures]
+          summary = os.environ.get('GITHUB_STEP_SUMMARY')
+          if summary:
+              with open(summary, 'a', encoding='utf-8') as handle:
+                  handle.write('\n'.join(lines) + '\n')
+          print('\n'.join(lines))
+          PY
+
+      - name: Upload E2E evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: real-asura-e2e-${{ github.run_id }}
+          path: |
+            benchmark-results/
+          retention-days: 7
+          if-no-files-found: warn
