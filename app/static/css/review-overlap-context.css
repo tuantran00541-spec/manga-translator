@@ -12,35 +12,35 @@
   background:
     repeating-linear-gradient(
       135deg,
-      color-mix(in srgb, var(--color-surface-raised) 58%, transparent) 0,
-      color-mix(in srgb, var(--color-surface-raised) 58%, transparent) 8px,
-      color-mix(in srgb, var(--color-accent) 18%, transparent) 8px,
-      color-mix(in srgb, var(--color-accent) 18%, transparent) 16px
+      color-mix(in srgb, var(--surface-raised) 58%, transparent) 0,
+      color-mix(in srgb, var(--surface-raised) 58%, transparent) 8px,
+      color-mix(in srgb, var(--accent) 18%, transparent) 8px,
+      color-mix(in srgb, var(--accent) 18%, transparent) 16px
     );
 }
 
 .review-context-band-top {
-  border-bottom: 1px dashed var(--color-accent);
+  border-bottom: 1px dashed var(--accent);
 }
 
 .review-context-band-bottom {
   align-items: flex-end;
-  border-top: 1px dashed var(--color-accent);
+  border-top: 1px dashed var(--accent);
 }
 
 .review-context-band-label {
   max-width: calc(100% - 12px);
   padding: 4px 6px;
   border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--color-surface-raised) 90%, transparent);
-  color: var(--color-text-muted);
-  font: 600 10px/1.2 var(--font-body);
+  background: color-mix(in srgb, var(--surface-raised) 90%, transparent);
+  color: var(--text-secondary);
+  font: 600 10px/1.2 var(--font-ui);
   white-space: normal;
 }
 
 .review-context-legend {
   display: block;
   margin-top: 4px;
-  color: var(--color-text-muted);
-  font: 500 10px/1.35 var(--font-body);
+  color: var(--text-secondary);
+  font: 500 10px/1.35 var(--font-ui);
 }

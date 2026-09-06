@@ -1,0 +1,65 @@
+:root {
+  --surface-app: #090d16;
+  --surface-canvas: #0f172a;
+  --surface-panel: #101827;
+  --surface-raised: #151f31;
+  --surface-hover: #1b273a;
+  --surface-overlay: rgba(0, 0, 0, 0.42);
+
+  --border-subtle: #26354a;
+  --border-strong: #34455e;
+
+  --text-primary: #f4f7fb;
+  --text-secondary: #b9c4d4;
+  --text-muted: #7f8da3;
+  --text-disabled: #5f6b7d;
+
+  --accent: #4f8ff7;
+  --accent-hover: #6aa1fa;
+  --accent-pressed: #2f6fd6;
+  --accent-contrast: #071321;
+  --accent-soft: rgba(79, 143, 247, 0.14);
+
+  --success: #10b981;
+  --success-soft: rgba(16, 185, 129, 0.14);
+  --warning: #f59e0b;
+  --warning-soft: rgba(245, 158, 11, 0.14);
+  --danger: #ef4444;
+  --danger-hover: #f05252;
+  --danger-strong: #991b1b;
+  --danger-soft: rgba(239, 68, 68, 0.14);
+
+  --focus-ring: var(--accent-hover);
+  --selection: rgba(79, 143, 247, 0.24);
+
+  --font-ui: "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "Cascadia Mono", "Consolas", monospace;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+
+  --control-height: 40px;
+  --motion-fast: 140ms ease;
+  --motion-normal: 180ms ease;
+
+  --shadow-subtle: 0 1px 3px rgba(0, 0, 0, 0.25);
+  --shadow-panel: 0 10px 30px rgba(0, 0, 0, 0.22);
+  --shadow-float: 0 18px 60px rgba(0, 0, 0, 0.38);
+
+  --z-canvas: 0;
+  --z-panel: 20;
+  --z-toolbar: 80;
+  --z-popover: 100;
+  --z-modal: 200;
+  --z-toast: 300;
+}

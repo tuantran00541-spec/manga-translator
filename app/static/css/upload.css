@@ -3,7 +3,7 @@
   align-items: center;
   gap: 12px;
   margin: 4px 0 16px;
-  color: var(--text-faint);
+  color: var(--text-muted);
   font-family: var(--font-mono);
   font-size: 12px;
   letter-spacing: 0.05em;
@@ -15,43 +15,43 @@
   content: "";
   flex: 1;
   height: 1px;
-  background: var(--line);
+  background: var(--border-subtle);
 }
 
 #upload-dropzone {
-  border: 1.5px dashed var(--line);
+  border: 1.5px dashed var(--border-subtle);
   border-radius: 4px;
   padding: 22px 18px;
   text-align: center;
   margin-bottom: 32px;
-  background: var(--ink-raised);
+  background: var(--surface-panel);
   transition: border-color 0.15s ease, background 0.15s ease;
 }
 
 #upload-dropzone .upload-copy {
   display: block;
   margin: 0 0 6px;
-  color: var(--text);
-  font-family: var(--font-body);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
   font-size: 14px;
 }
 
 #upload-browse-text {
-  color: var(--blue);
+  color: var(--accent);
   cursor: pointer;
   text-decoration: underline;
   text-underline-offset: 2px;
 }
 
 #upload-hint {
-  color: var(--text-faint);
+  color: var(--text-muted);
   font-family: var(--font-mono);
   font-size: 12px;
 }
 
 #upload-dropzone.dragover {
-  border-color: var(--blue);
-  background: var(--blue-dim);
+  border-color: var(--accent);
+  background: var(--accent-pressed);
 }
 
 #upload-dropzone.uploading {

@@ -15,8 +15,8 @@
   align-items: center;
   gap: 12px;
   padding: 10px 12px;
-  background: var(--color-surface-raised);
-  border: 1px solid var(--color-border-subtle);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   backdrop-filter: blur(12px);
 }
@@ -29,13 +29,13 @@
 }
 
 .review-toolbar-title strong {
-  color: var(--color-text);
-  font: 600 14px var(--font-display);
+  color: var(--text-primary);
+  font: 600 14px var(--font-ui);
 }
 
 .review-toolbar-title > span:last-child {
-  color: var(--color-text-subtle);
-  font: 11px/1.35 var(--font-body);
+  color: var(--text-muted);
+  font: 11px/1.35 var(--font-ui);
 }
 
 .review-controls-slot {
@@ -99,9 +99,9 @@
   display: grid;
   gap: 10px;
   padding: 12px 14px;
-  border: 1px solid var(--color-border-subtle);
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
-  background: var(--color-surface);
+  background: var(--surface-panel);
 }
 
 .chapter-qc-head {
@@ -118,8 +118,8 @@
 }
 
 .chapter-qc-head strong {
-  color: var(--color-text);
-  font: 600 13px var(--font-display);
+  color: var(--text-primary);
+  font: 600 13px var(--font-ui);
 }
 
 .chapter-qc-job-actions {
@@ -131,14 +131,14 @@
 .chapter-qc-summary,
 .chapter-qc-empty {
   margin: 0;
-  color: var(--color-text-muted);
-  font: 12px/1.45 var(--font-body);
+  color: var(--text-secondary);
+  font: 12px/1.45 var(--font-ui);
 }
 
 .chapter-qc-progress {
   width: 100%;
   height: 7px;
-  accent-color: var(--color-accent);
+  accent-color: var(--accent);
 }
 
 .chapter-qc-results {
@@ -153,8 +153,8 @@
 }
 
 .chapter-qc-results-title {
-  color: var(--color-text);
-  font: 600 12px var(--font-body);
+  color: var(--text-primary);
+  font: 600 12px var(--font-ui);
 }
 
 .chapter-qc-result {
@@ -164,19 +164,19 @@
   min-width: 0;
   padding: 9px 10px;
   text-align: left;
-  border: 1px solid var(--color-border-subtle);
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
-  background: var(--color-surface-raised);
-  color: var(--color-text);
+  background: var(--surface-raised);
+  color: var(--text-primary);
   cursor: pointer;
 }
 
 .chapter-qc-result:hover {
-  border-color: var(--color-accent);
+  border-color: var(--accent);
 }
 
 .chapter-qc-result span {
-  color: var(--color-text-muted);
+  color: var(--text-secondary);
   font: 500 10px var(--font-mono);
 }
 
@@ -184,7 +184,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font: 600 12px var(--font-body);
+  font: 600 12px var(--font-ui);
 }
 
 .review-chapter-qc-running .review-image-wrap::after {
@@ -195,9 +195,9 @@
   z-index: 4;
   padding: 6px 8px;
   border-radius: var(--radius-sm);
-  background: var(--color-surface-raised);
-  color: var(--color-text-muted);
-  font: 600 10px var(--font-body);
+  background: var(--surface-raised);
+  color: var(--text-secondary);
+  font: 600 10px var(--font-ui);
   line-height: 1;
   pointer-events: none;
 }
@@ -206,10 +206,10 @@
   position: absolute;
   z-index: 5;
   box-sizing: border-box;
-  border: 3px solid var(--color-accent);
+  border: 3px solid var(--accent);
   border-radius: 6px;
-  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-surface) 75%, transparent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--surface-panel) 75%, transparent);
   pointer-events: none;
   animation: review-qc-pulse 1.2s ease-in-out 2;
 }

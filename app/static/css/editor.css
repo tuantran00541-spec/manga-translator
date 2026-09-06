@@ -11,7 +11,7 @@
 .page-block-label {
   font-family: var(--font-mono);
   font-size: 12px;
-  color: var(--text-faint);
+  color: var(--text-muted);
   margin-bottom: 10px;
   letter-spacing: 0.02em;
   text-transform: uppercase;
@@ -26,7 +26,7 @@
 .page-image-wrap {
   position: relative;
   padding: 14px;
-  background: var(--paper);
+  background: var(--surface-canvas);
   border-radius: 2px;
 }
 
@@ -43,8 +43,8 @@
   left: 6px;
   width: 12px;
   height: 12px;
-  border-top: 1.5px solid var(--text-faint);
-  border-left: 1.5px solid var(--text-faint);
+  border-top: 1.5px solid var(--text-muted);
+  border-left: 1.5px solid var(--text-muted);
   opacity: 0.5;
 }
 
@@ -55,8 +55,8 @@
   right: 6px;
   width: 12px;
   height: 12px;
-  border-bottom: 1.5px solid var(--text-faint);
-  border-right: 1.5px solid var(--text-faint);
+  border-bottom: 1.5px solid var(--text-muted);
+  border-right: 1.5px solid var(--text-muted);
   opacity: 0.5;
 }
 
@@ -70,6 +70,6 @@
 }
 
 .page-image-wrap.draw-mode img {
-  outline: 1.5px dashed var(--red);
+  outline: 1.5px dashed var(--danger);
   outline-offset: -1.5px;
 }

@@ -4,13 +4,13 @@
 }
 
 .translation-canvas-host .text-object-overlay.transforming {
-  border: 1px solid var(--accent, var(--blue));
-  box-shadow: 0 0 0 2px var(--accent-soft, rgba(59,130,246,.16));
+  border: 1px solid var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
 }
 
 .translation-canvas-host .text-object-overlay.transforming::before,
 .translation-canvas-host .text-object-overlay.transforming::after {
-  border-color: var(--accent, var(--blue));
+  border-color: var(--accent);
 }
 
 .box-transforming,

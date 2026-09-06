@@ -4,10 +4,10 @@
 }
 
 .recent-title {
-  font-family: var(--font-display);
+  font-family: var(--font-ui);
   font-size: 15px;
   font-weight: 600;
-  color: var(--text);
+  color: var(--text-primary);
   margin-bottom: 10px;
 }
 
@@ -21,42 +21,42 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: var(--ink-raised);
-  border: 1px solid var(--line);
+  background: var(--surface-panel);
+  border: 1px solid var(--border-subtle);
   border-radius: 6px;
   padding: 12px 16px;
   transition: border-color 0.15s ease;
 }
 
 .recent-card:hover {
-  border-color: var(--blue);
+  border-color: var(--accent);
 }
 
 .recent-info strong {
   font-family: var(--font-mono);
   font-size: 13px;
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 .recent-url {
   font-size: 11px;
-  color: var(--text-dim);
+  color: var(--text-secondary);
   word-break: break-all;
 }
 
 .recent-meta {
   font-family: var(--font-mono);
   font-size: 11px;
-  color: var(--text-faint);
+  color: var(--text-muted);
 }
 
 .recent-resume-btn {
-  background: var(--blue);
+  background: var(--accent);
   color: #0b1329;
   border: none;
   border-radius: 4px;
   padding: 7px 16px;
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
@@ -80,10 +80,10 @@
 }
 
 .toast {
-  background: var(--ink-raised);
-  color: var(--text);
-  border: 1px solid var(--line);
-  border-left: 3px solid var(--blue);
+  background: var(--surface-panel);
+  color: var(--text-primary);
+  border: 1px solid var(--border-subtle);
+  border-left: 3px solid var(--accent);
   padding: 10px 16px;
   border-radius: 4px;
   font-size: 13px;
@@ -101,9 +101,9 @@
 }
 
 .toast-error {
-  border-left-color: var(--red);
+  border-left-color: var(--danger);
 }
 
 .toast-success {
-  border-left-color: var(--ok);
+  border-left-color: var(--success);
 }

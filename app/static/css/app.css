@@ -1,6 +1,7 @@
-@layer base, stage, system, components, workbench, utilities;
+@layer tokens, foundation, stage, system, components, workbench, utilities;
 
-@import url("./base.css") layer(base);
+@import url("./tokens.css") layer(tokens);
+@import url("./foundation.css") layer(foundation);
 
 @import url("./upload.css") layer(stage);
 @import url("./preview.css") layer(stage);
@@ -43,7 +44,7 @@
   }
 
   :where(button, input, select, textarea, [role="button"], [tabindex]):focus-visible {
-    outline: 2px solid var(--color-focus, var(--accent-1));
+    outline: 2px solid var(--focus-ring);
     outline-offset: 2px;
   }
 

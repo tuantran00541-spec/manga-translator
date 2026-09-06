@@ -8,6 +8,7 @@ JS_PATHS = sorted(Path("app/static/js").rglob("*.js"))
 HTML_PATHS = sorted(Path("app/templates").rglob("*.html"))
 CSS_PATHS = sorted(Path("app/static/css").rglob("*.css"))
 STATIC_ROOT = Path("app/static")
+TOKENS_PATH = STATIC_ROOT / "css" / "tokens.css"
 CSS_IMPORT_PATTERN = re.compile(
     r"@import\s+url\(\s*(?:['\"])?([^'\")\s]+)(?:['\"])?\s*\)",
     re.IGNORECASE,
@@ -16,6 +17,49 @@ HTML_STATIC_REF_PATTERN = re.compile(
     r"(?:src|href)\s*=\s*['\"](/?static/[^'\"?#]+)(?:[?#][^'\"]*)?['\"]",
     re.IGNORECASE,
 )
+TOKEN_REFERENCE_PATTERN = re.compile(r"var\((--[A-Za-z0-9_-]+)")
+TOKEN_DEFINITION_PATTERN = re.compile(r"(?:^|[;{\s])(--[A-Za-z0-9_-]+)\s*:")
+LEGACY_TOKEN_PATTERN = re.compile(
+    r"--(?:"
+    r"color-[A-Za-z0-9_-]+|"
+    r"ink(?:-raised)?|panel|line|paper(?:-dim)?|"
+    r"text(?:-dim|-faint)?|blue(?:-dim)?|red(?:-dim)?|ok|"
+    r"transition-(?:fast|normal)|surface-[0-9]|border-[0-9]|text-[123]|"
+    r"accent-[12]|font-(?:body|display|heading)|muted-text|border-color|"
+    r"ui-border|ui-panel"
+    r")(?![A-Za-z0-9_-])"
+)
+LOCAL_LAYOUT_TOKENS = {"--nav-width", "--inspector-width"}
+REQUIRED_SEMANTIC_TOKENS = {
+    "--surface-app",
+    "--surface-canvas",
+    "--surface-panel",
+    "--surface-raised",
+    "--surface-overlay",
+    "--border-subtle",
+    "--border-strong",
+    "--text-primary",
+    "--text-secondary",
+    "--text-muted",
+    "--text-disabled",
+    "--accent",
+    "--accent-hover",
+    "--accent-soft",
+    "--success",
+    "--warning",
+    "--danger",
+    "--radius-xs",
+    "--radius-sm",
+    "--radius-md",
+    "--motion-fast",
+    "--motion-normal",
+    "--z-canvas",
+    "--z-panel",
+    "--z-toolbar",
+    "--z-popover",
+    "--z-modal",
+    "--z-toast",
+}
 
 
 class _MarkupParser(HTMLParser):
@@ -164,6 +208,32 @@ def check_browser_asset_reachability() -> None:
     )
 
 
+def check_design_token_convergence() -> None:
+    failures: list[str] = []
+    if not TOKENS_PATH.is_file():
+        _fail("Design token convergence failures:", [f"missing {TOKENS_PATH}"])
+
+    token_source = TOKENS_PATH.read_text(encoding="utf-8")
+    defined_tokens = set(TOKEN_DEFINITION_PATTERN.findall(token_source))
+    missing_required = sorted(REQUIRED_SEMANTIC_TOKENS - defined_tokens)
+    if missing_required:
+        failures.append(f"{TOKENS_PATH}: missing semantic tokens {missing_required}")
+
+    for path in [*CSS_PATHS, *JS_PATHS]:
+        source = path.read_text(encoding="utf-8")
+        if path != TOKENS_PATH and ":root" in source:
+            failures.append(f"{path}: token definitions must live in {TOKENS_PATH}")
+        for match in LEGACY_TOKEN_PATTERN.finditer(source):
+            line = source.count("\n", 0, match.start()) + 1
+            failures.append(f"{path}:{line}: legacy token {match.group()!r} is not allowed")
+        for name in TOKEN_REFERENCE_PATTERN.findall(source):
+            if name not in defined_tokens and name not in LOCAL_LAYOUT_TOKENS:
+                failures.append(f"{path}: undefined design token {name!r}")
+
+    _fail("Design token convergence failures:", failures)
+    print(f"Design token convergence OK: {len(defined_tokens)} canonical tokens")
+
+
 def _consume_js_string_literal(source: str, start: int) -> str | None:
     if start >= len(source) or source[start] not in {'"', "'", "`"}:
         return None
@@ -272,6 +342,7 @@ def check_browser_state_contracts() -> None:
 def main() -> None:
     check_markup_integrity()
     check_browser_asset_reachability()
+    check_design_token_convergence()
     check_unsafe_html_sinks()
     check_browser_state_contracts()
 

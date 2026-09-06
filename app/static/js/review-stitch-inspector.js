@@ -7,20 +7,20 @@
   let renderToken = 0;
 
   const css = `
-    .review-view-switch { display:inline-flex; gap:4px; padding:4px; border:1px solid var(--border-color, #d7d7d7); border-radius:10px; background:var(--surface-2, rgba(127,127,127,.08)); }
+    .review-view-switch { display:inline-flex; gap:4px; padding:4px; border:1px solid var(--border-strong); border-radius:10px; background:var(--surface-raised); }
     .review-view-switch button { border:0; border-radius:7px; padding:7px 11px; background:transparent; cursor:pointer; font:inherit; }
-    .review-view-switch button.active { background:var(--surface-1, #fff); box-shadow:0 1px 4px rgba(0,0,0,.14); font-weight:700; }
+    .review-view-switch button.active { background:var(--surface-panel); box-shadow:0 1px 4px rgba(0,0,0,.14); font-weight:700; }
     .review-stitched-shell { min-width:0; display:flex; flex-direction:column; gap:12px; padding:14px; }
     .review-stitched-toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
     .review-stitched-toolbar select, .review-stitched-toolbar button { font:inherit; }
-    .review-stitched-toolbar select { min-width:180px; padding:7px 9px; border-radius:8px; border:1px solid var(--border-color, #ccc); }
-    .review-stitched-meta { color:var(--muted-text, #666); font-size:.9rem; }
-    .review-stitched-note { padding:9px 11px; border-radius:8px; background:var(--surface-2, rgba(127,127,127,.08)); font-size:.9rem; }
+    .review-stitched-toolbar select { min-width:180px; padding:7px 9px; border-radius:8px; border:1px solid var(--border-strong); }
+    .review-stitched-meta { color:var(--text-muted); font-size:.9rem; }
+    .review-stitched-note { padding:9px 11px; border-radius:8px; background:var(--surface-raised); font-size:.9rem; }
     .review-stitched-warning { padding:9px 11px; border-radius:8px; background:#fff3cd; color:#664d03; font-size:.9rem; }
-    .review-stitched-viewport { overflow:auto; max-height:calc(100vh - 220px); border:1px solid var(--border-color, #ddd); border-radius:10px; background:#202020; padding:0; }
+    .review-stitched-viewport { overflow:auto; max-height:calc(100vh - 220px); border:1px solid var(--border-strong); border-radius:10px; background:#202020; padding:0; }
     .review-stitched-image { width:min(100%, 1000px); margin:0 auto; background:white; }
     .review-stitched-image canvas { display:block; width:100%; height:auto; margin:0; padding:0; }
-    .review-stitched-loading, .review-stitched-error { padding:28px; text-align:center; color:var(--muted-text, #777); background:var(--surface-1, #fff); }
+    .review-stitched-loading, .review-stitched-error { padding:28px; text-align:center; color:var(--text-muted); background:var(--surface-panel); }
     .review-stitched-error { color:#b42318; }
     .review-mode.review-show-stitched .review-workbench-grid { display:none !important; }
     .review-mode.review-show-slices .review-stitched-shell { display:none !important; }

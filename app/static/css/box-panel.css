@@ -5,7 +5,7 @@
   padding: 11px;
   margin-top: 6px;
   cursor: pointer;
-  background: var(--ok);
+  background: var(--success);
   color: #08281a;
   border: none;
   border-radius: 3px;
@@ -22,15 +22,15 @@
 .render-result {
   margin-top: 16px;
   padding: 12px;
-  background: var(--ink-raised);
-  border: 1px solid var(--line);
+  background: var(--surface-panel);
+  border: 1px solid var(--border-subtle);
   border-radius: 4px;
 }
 
 .render-result-label {
   font-family: var(--font-mono);
   font-size: 12px;
-  color: var(--ok);
+  color: var(--success);
   margin-bottom: 10px;
   letter-spacing: 0.02em;
   text-transform: uppercase;
@@ -41,7 +41,7 @@
   display: block;
   border-radius: 2px;
   margin-bottom: 10px;
-  background: var(--paper);
+  background: var(--surface-canvas);
 }
 
 .download-link {
@@ -49,17 +49,17 @@
   text-align: center;
   padding: 9px;
   background: transparent;
-  color: var(--ok);
-  border: 1px solid var(--ok);
+  color: var(--success);
+  border: 1px solid var(--success);
   border-radius: 3px;
   text-decoration: none;
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: 13.5px;
   transition: background 0.15s ease, color 0.15s ease;
 }
 
 .download-link:hover {
-  background: var(--ok);
+  background: var(--success);
   color: #08281a;
 }
 

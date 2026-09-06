@@ -8,7 +8,7 @@
 .color-label {
   font-family: var(--font-mono);
   font-size: 11px;
-  color: var(--text-faint);
+  color: var(--text-muted);
   margin-right: 2px;
 }
 
@@ -16,7 +16,7 @@
   width: 20px;
   height: 20px;
   border-radius: 50%;
-  border: 1.5px solid var(--line);
+  border: 1.5px solid var(--border-subtle);
   cursor: pointer;
   padding: 0;
   transition: transform 0.1s ease, border-color 0.15s ease;
@@ -24,11 +24,11 @@
 
 .color-btn:hover {
   transform: scale(1.2);
-  border-color: var(--text);
+  border-color: var(--text-primary);
 }
 
 .color-btn.selected {
-  outline: 2px solid var(--blue);
+  outline: 2px solid var(--accent);
   outline-offset: 1.5px;
 }
 
@@ -49,7 +49,7 @@
 }
 
 .box-color-picker::-webkit-color-swatch {
-  border: 1px solid var(--line);
+  border: 1px solid var(--border-subtle);
   border-radius: 50%;
 }
 
@@ -62,28 +62,28 @@
 }
 
 .font-family-select {
-  background: var(--ink-raised);
-  color: var(--text);
-  border: 1px solid var(--line);
+  background: var(--surface-panel);
+  color: var(--text-primary);
+  border: 1px solid var(--border-subtle);
   border-radius: 3px;
   padding: 3px 6px;
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: 12px;
   outline: none;
   cursor: pointer;
 }
 
 .font-family-select:focus {
-  border-color: var(--blue);
+  border-color: var(--accent);
 }
 
 .bold-toggle-btn {
   font-weight: 800;
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: 13px;
-  background: var(--ink-raised);
-  color: var(--text-dim);
-  border: 1px solid var(--line);
+  background: var(--surface-panel);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-subtle);
   border-radius: 3px;
   width: 26px;
   height: 26px;
@@ -95,14 +95,14 @@
 }
 
 .bold-toggle-btn:hover {
-  border-color: var(--text);
-  color: var(--text);
+  border-color: var(--text-primary);
+  color: var(--text-primary);
 }
 
 .bold-toggle-btn.active {
-  background: var(--blue);
+  background: var(--accent);
   color: #0b1329;
-  border-color: var(--blue);
+  border-color: var(--accent);
 }
 
 .font-size-group {
@@ -115,13 +115,13 @@
 .size-label {
   font-family: var(--font-mono);
   font-size: 11px;
-  color: var(--text-faint);
+  color: var(--text-muted);
 }
 
 .size-auto-btn {
-  background: var(--ink-raised);
-  color: var(--text-dim);
-  border: 1px solid var(--line);
+  background: var(--surface-panel);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-subtle);
   border-radius: 3px;
   padding: 2px 6px;
   font-family: var(--font-mono);
@@ -131,27 +131,27 @@
 }
 
 .size-auto-btn:hover {
-  border-color: var(--text);
-  color: var(--text);
+  border-color: var(--text-primary);
+  color: var(--text-primary);
 }
 
 .size-auto-btn.selected {
-  background: var(--blue-dim);
-  color: var(--blue);
-  border-color: var(--blue);
+  background: var(--accent-pressed);
+  color: var(--accent);
+  border-color: var(--accent);
 }
 
 .font-size-slider {
   width: 65px;
   height: 4px;
-  accent-color: var(--blue);
+  accent-color: var(--accent);
   cursor: pointer;
 }
 
 .font-size-val {
   font-family: var(--font-mono);
   font-size: 11px;
-  color: var(--text-dim);
+  color: var(--text-secondary);
   min-width: 32px;
 }
 
@@ -167,14 +167,14 @@
 .style-group-label {
   font-family: var(--font-mono);
   font-size: 11px;
-  color: var(--text-faint);
+  color: var(--text-muted);
   min-width: 70px;
 }
 
 .style-val-span {
   font-family: var(--font-mono);
   font-size: 11px;
-  color: var(--text-dim);
+  color: var(--text-secondary);
   min-width: 28px;
 }
 
@@ -182,17 +182,17 @@
 .corner-radius-slider {
   width: 60px;
   height: 4px;
-  accent-color: var(--blue);
+  accent-color: var(--accent);
   cursor: pointer;
 }
 
 .bg-color-select {
-  background: var(--ink-raised);
-  color: var(--text);
-  border: 1px solid var(--line);
+  background: var(--surface-panel);
+  color: var(--text-primary);
+  border: 1px solid var(--border-subtle);
   border-radius: 3px;
   padding: 2px 5px;
-  font-family: var(--font-body);
+  font-family: var(--font-ui);
   font-size: 11.5px;
   outline: none;
   cursor: pointer;

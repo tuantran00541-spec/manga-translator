@@ -9,25 +9,25 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
-  color: var(--color-text-muted);
-  font: 500 10px var(--font-body);
+  color: var(--text-secondary);
+  font: 500 10px var(--font-ui);
 }
 
 .chapter-qc-provider,
 .chapter-qc-budget-input {
   min-height: 32px;
   padding: 5px 8px;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
-  background: var(--color-surface-soft);
-  color: var(--color-text);
+  background: var(--surface-canvas);
+  color: var(--text-primary);
 }
 
 .chapter-qc-budget > span {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  color: var(--color-text-muted);
+  color: var(--text-secondary);
   font-family: var(--font-mono);
 }
 
@@ -37,13 +37,13 @@
 
 .chapter-qc-usage {
   margin: 0;
-  color: var(--color-text-subtle);
+  color: var(--text-muted);
   font: 500 10px/1.4 var(--font-mono);
 }
 
 .deepseek-qc-heading {
   margin-top: 8px;
   padding-top: 10px;
-  border-top: 1px solid var(--color-border-subtle);
-  color: var(--color-text);
+  border-top: 1px solid var(--border-subtle);
+  color: var(--text-primary);
 }

@@ -14,10 +14,10 @@
   justify-content: space-between;
   gap: 16px;
   padding: 12px 14px;
-  background: var(--surface-raised, var(--panel));
-  border: 1px solid var(--border, var(--line));
-  border-radius: var(--radius-md, 8px);
-  box-shadow: var(--shadow-sm, none);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-subtle);
   backdrop-filter: blur(10px);
 }
 
@@ -29,12 +29,12 @@
 }
 
 .translation-toolbar-title strong {
-  color: var(--text);
+  color: var(--text-primary);
   font-size: 15px;
 }
 
 .translation-toolbar-title span {
-  color: var(--text-dim);
+  color: var(--text-secondary);
   font-size: 12px;
   line-height: 1.45;
 }
@@ -86,9 +86,9 @@
   overflow: auto;
   min-width: 0;
   padding: 10px;
-  background: var(--surface, var(--panel));
-  border: 1px solid var(--border, var(--line));
-  border-radius: var(--radius-md, 8px);
+  background: var(--surface-panel);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
   box-sizing: border-box;
 }
 

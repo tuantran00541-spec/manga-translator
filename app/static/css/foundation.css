@@ -1,0 +1,225 @@
+* {
+  box-sizing: border-box;
+}
+
+html {
+  color-scheme: dark;
+  scroll-behavior: smooth;
+}
+
+::selection {
+  background: var(--selection);
+  color: var(--text-primary);
+}
+
+body {
+  font-family: var(--font-ui);
+  background: var(--surface-app);
+  background-image:
+    radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.028) 1px, transparent 0);
+  background-size: 22px 22px;
+  color: var(--text-primary);
+  margin: 0;
+  padding: 28px 32px 64px;
+  min-height: 100vh;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  font-family: var(--font-ui);
+}
+
+button,
+select,
+input,
+textarea {
+  color: var(--text-primary);
+}
+
+button:disabled,
+select:disabled,
+input:disabled,
+textarea:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+:where(button, select, input, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+#site-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 18px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--border-strong);
+}
+
+#chapter-input {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 32px;
+}
+
+#chapter-url,
+#lang-select,
+#workers-select {
+  min-height: var(--control-height);
+  background: var(--surface-panel);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  transition: border-color var(--motion-fast), background var(--motion-fast), box-shadow var(--motion-fast);
+}
+
+#chapter-url {
+  flex: 1;
+  padding: 10px 14px;
+}
+
+#chapter-url::placeholder {
+  color: var(--text-muted);
+}
+
+#chapter-url:focus,
+#lang-select:focus,
+#workers-select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+#lang-select {
+  padding: 10px 14px;
+  cursor: pointer;
+}
+
+#workers-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px 0 2px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  cursor: default;
+  user-select: none;
+}
+
+#workers-select {
+  padding: 10px;
+  min-width: 56px;
+  cursor: pointer;
+}
+
+#load-btn {
+  min-height: var(--control-height);
+  padding: 10px 22px;
+  background: var(--danger);
+  color: #fff2ee;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  font-size: 14px;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  transition: background var(--motion-fast), transform 100ms ease, box-shadow var(--motion-fast);
+}
+
+#load-btn:hover {
+  background: var(--danger-hover);
+  box-shadow: 0 4px 16px rgba(239, 68, 68, 0.16);
+}
+
+#load-btn:active {
+  transform: translateY(1px);
+}
+
+#upload-divider {
+  color: var(--text-muted);
+}
+
+#upload-hint {
+  color: var(--text-muted);
+}
+
+.recent-stage-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-family: var(--font-ui);
+}
+
+.editor-save-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  font-weight: 500;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+}
+
+.editor-save-status.save-status-saved {
+  color: var(--success);
+  background: rgba(16, 185, 129, 0.12);
+}
+
+.editor-save-status.save-status-dirty {
+  color: var(--warning);
+  background: rgba(245, 158, 11, 0.12);
+}
+
+.editor-save-status.save-status-saving {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.editor-save-status.save-status-error {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+@media (max-width: 760px) {
+  body {
+    padding: 20px 16px 48px;
+  }
+
+  #site-header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  #chapter-input {
+    flex-wrap: wrap;
+  }
+
+  #chapter-url {
+    flex-basis: 100%;
+  }
+}
