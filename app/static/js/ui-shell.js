@@ -73,7 +73,7 @@
   }
 
   function syncWorkflowSteps(activeIndex) {
-    document.querySelectorAll(".app-rail-item[data-stage]").forEach((step) => {
+    document.querySelectorAll(".workbench-stage-link[data-stage]").forEach((step) => {
       const idx = STAGES.indexOf(step.dataset.stage);
       const available = idx >= 0 && idx <= maxReachedIndex;
       step.classList.toggle("active", idx === activeIndex);
@@ -101,8 +101,8 @@
     }
 
     document.body.dataset.appStage = resolved;
-    const stageTitle = document.getElementById("stage-title");
-    if (stageTitle) stageTitle.textContent = STAGE_LABELS[resolved];
+    const workflowSteps = document.getElementById("workflow-steps");
+    if (workflowSteps) workflowSteps.hidden = resolved === "landing";
 
     const landing = document.getElementById("landing-view");
     const workspace = document.getElementById("page-view");
@@ -296,7 +296,8 @@
       });
     });
 
-    document.querySelectorAll(".app-rail-item[data-stage]").forEach((step) => {
+    document.getElementById("app-home")?.addEventListener("click", () => navigateAppStage("landing"));
+    document.querySelectorAll(".workbench-stage-link[data-stage]").forEach((step) => {
       step.addEventListener("click", () => navigateAppStage(step.dataset.stage));
     });
 

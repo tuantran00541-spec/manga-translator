@@ -8,32 +8,25 @@
 </head>
 <body data-app-stage="landing">
 <div id="app" class="workbench-shell">
-  <aside id="app-rail" class="app-rail" aria-label="Không gian làm việc">
-    <div class="app-rail-brand" aria-label="Manga Translator" title="Manga Translator">
-      <span class="app-rail-brand-mark" aria-hidden="true">MT</span>
-    </div>
-    <nav id="workflow-steps" class="app-rail-nav" aria-label="Tiến trình xử lý">
-      <button class="app-rail-item active" type="button" data-stage="landing" aria-label="Nhập nội dung" title="Nhập nội dung"><span class="app-rail-glyph" aria-hidden="true">＋</span><span>Nhập</span></button>
-      <button class="app-rail-item" type="button" data-stage="preview" aria-label="Xử lý ảnh" title="Xử lý ảnh" disabled><span class="app-rail-glyph" aria-hidden="true">▧</span><span>Xử lý</span></button>
-      <button class="app-rail-item" type="button" data-stage="review" aria-label="Kiểm tra chất lượng" title="Kiểm tra chất lượng" disabled><span class="app-rail-glyph" aria-hidden="true">✓</span><span>Kiểm tra</span></button>
-      <button class="app-rail-item" type="button" data-stage="editor" aria-label="Biên tập bản dịch" title="Biên tập bản dịch" disabled><span class="app-rail-glyph" aria-hidden="true">T</span><span>Biên tập</span></button>
-    </nav>
-    <div class="app-rail-footer">
-      <button id="settings-toggle" class="app-rail-item app-rail-settings" type="button" aria-label="Cài đặt" aria-haspopup="dialog" aria-controls="settings-drawer" aria-expanded="false" title="Cài đặt"><span class="app-rail-glyph" aria-hidden="true">⚙</span><span>Cài đặt</span></button>
-    </div>
-  </aside>
-
   <div class="workbench-frame">
     <header id="site-header" class="workbench-topbar">
+      <button id="app-home" class="workbench-brand" type="button" aria-label="Manga Translator — về trang nhập" title="Về trang nhập">Manga Translator</button>
+      <nav id="workflow-steps" class="workbench-stage-nav" aria-label="Các bước xử lý" hidden>
+        <button class="workbench-stage-link" type="button" data-stage="preview" aria-label="Xử lý ảnh" title="Xử lý ảnh" disabled>Xử lý</button>
+        <button class="workbench-stage-link" type="button" data-stage="review" aria-label="Kiểm tra chất lượng" title="Kiểm tra chất lượng" disabled>Kiểm tra</button>
+        <button class="workbench-stage-link" type="button" data-stage="editor" aria-label="Biên tập bản dịch" title="Biên tập bản dịch" disabled>Biên tập</button>
+      </nav>
       <div class="workbench-title-block">
-        <span id="stage-title" class="workbench-stage-title">Nhập nội dung</span>
         <span id="app-context" class="app-context" aria-live="polite">Chưa mở chương</span>
       </div>
-      <div id="workbench-panel-controls" class="workbench-panel-controls" role="group" aria-label="Bố cục vùng làm việc" hidden>
-        <button id="toggle-page-panel" class="ui-btn ui-btn-ghost" type="button" aria-expanded="true">Trang & lát</button>
-        <button id="toggle-inspector-panel" class="ui-btn ui-btn-ghost" type="button" aria-expanded="true">Công cụ</button>
+      <div class="workbench-topbar-actions">
+        <div id="workbench-panel-controls" class="workbench-panel-controls" role="group" aria-label="Bố cục vùng làm việc" hidden>
+          <button id="toggle-page-panel" class="ui-btn ui-btn-ghost" type="button" aria-expanded="true">Trang</button>
+          <button id="toggle-inspector-panel" class="ui-btn ui-btn-ghost" type="button" aria-expanded="true">Công cụ</button>
+        </div>
+        <div id="workbench-status" class="workbench-status" aria-live="polite"></div>
+        <button id="settings-toggle" class="ui-btn ui-btn-ghost workbench-settings" type="button" aria-haspopup="dialog" aria-controls="settings-drawer" aria-expanded="false">Cài đặt</button>
       </div>
-      <div id="workbench-status" class="workbench-status" aria-live="polite"></div>
     </header>
 
   <section id="landing-view" class="app-stage app-stage-active" data-stage="landing" aria-labelledby="landing-title">
