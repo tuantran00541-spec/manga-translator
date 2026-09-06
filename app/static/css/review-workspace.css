@@ -13,6 +13,46 @@
   gap: 6px;
 }
 
+.review-view-switch {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+}
+
+.review-view-switch .active {
+  border-color: var(--border-strong);
+  background: var(--surface-panel);
+  color: var(--text-primary);
+}
+
+.review-show-stitched .review-canvas-host > .review-card { display: none; }
+.review-show-slices .review-stitched-shell { display: none; }
+
+.review-stitched-shell {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 8px;
+}
+
+.review-stitched-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.review-stitched-select { min-width: 180px; }
+.review-stitched-meta { color: var(--text-muted); font-size: 12px; }
+.review-stitched-note { color: var(--text-secondary); font-size: 12px; line-height: 1.45; }
+.review-stitched-warning { padding: 8px 10px; border-left: 2px solid var(--warning); background: var(--warning-soft); color: var(--text-secondary); font-size: 12px; line-height: 1.45; }
+.review-stitched-viewport { max-height: calc(100vh - 190px); overflow: auto; background: var(--surface-canvas); }
+.review-stitched-image { width: min(100%, 1000px); margin: 0 auto; background: white; }
+.review-stitched-image canvas { display: block; width: 100%; height: auto; }
+
 .review-help { position: relative; }
 .review-help > summary { list-style: none; }
 .review-help > summary::-webkit-details-marker { display: none; }

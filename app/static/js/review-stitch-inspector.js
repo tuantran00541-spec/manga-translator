@@ -6,32 +6,6 @@
   let activeSourcePage = null;
   let renderToken = 0;
 
-  const css = `
-    .review-view-switch { display:inline-flex; gap:4px; padding:4px; border:1px solid var(--border-strong); border-radius:10px; background:var(--surface-raised); }
-    .review-view-switch button { border:0; border-radius:7px; padding:7px 11px; background:transparent; cursor:pointer; font:inherit; }
-    .review-view-switch button.active { background:var(--surface-panel); box-shadow:0 1px 4px rgba(0,0,0,.14); font-weight:700; }
-    .review-stitched-shell { min-width:0; display:flex; flex-direction:column; gap:12px; padding:14px; }
-    .review-stitched-toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
-    .review-stitched-toolbar select, .review-stitched-toolbar button { font:inherit; }
-    .review-stitched-toolbar select { min-width:180px; padding:7px 9px; border-radius:8px; border:1px solid var(--border-strong); }
-    .review-stitched-meta { color:var(--text-muted); font-size:.9rem; }
-    .review-stitched-note { padding:9px 11px; border-radius:8px; background:var(--surface-raised); font-size:.9rem; }
-    .review-stitched-warning { padding:9px 11px; border-radius:8px; background:#fff3cd; color:#664d03; font-size:.9rem; }
-    .review-stitched-viewport { overflow:auto; max-height:calc(100vh - 220px); border:1px solid var(--border-strong); border-radius:10px; background:#202020; padding:0; }
-    .review-stitched-image { width:min(100%, 1000px); margin:0 auto; background:white; }
-    .review-stitched-image canvas { display:block; width:100%; height:auto; margin:0; padding:0; }
-    .review-mode.review-show-stitched .review-workbench-grid { display:none !important; }
-    .review-mode.review-show-slices .review-stitched-shell { display:none !important; }
-  `;
-
-  function installStyle() {
-    if (document.getElementById("review-stitch-inspector-style")) return;
-    const style = document.createElement("style");
-    style.id = "review-stitch-inspector-style";
-    style.textContent = css;
-    document.head.appendChild(style);
-  }
-
   function cleanSourcePage(page, fallbackIndex) {
     return Number.isInteger(page?.source_page) ? page.source_page : fallbackIndex;
   }
@@ -246,7 +220,8 @@
     const toolbar = workspace.querySelector(".review-sticky-toolbar");
     const actions = toolbar?.querySelector(".review-actions-group");
     const layout = workspace.querySelector(".review-workbench-grid");
-    if (!host || !toolbar || !actions || !layout) return;
+    const canvasHost = layout?.querySelector(".review-canvas-host");
+    if (!host || !toolbar || !actions || !layout || !canvasHost) return;
     workspace.dataset.stitchInspectorMounted = "1";
 
     const groups = groupsFromManifest();
@@ -265,10 +240,12 @@
     switcher.setAttribute("aria-label", "Kiểu hiển thị ảnh kiểm tra");
     const stitchedBtn = document.createElement("button");
     stitchedBtn.type = "button";
+    stitchedBtn.className = "ui-btn ui-btn-ghost ui-btn-compact";
     stitchedBtn.dataset.reviewMode = "stitched";
     stitchedBtn.textContent = "Ghép như ảnh gốc";
     const slicesBtn = document.createElement("button");
     slicesBtn.type = "button";
+    slicesBtn.className = "ui-btn ui-btn-ghost ui-btn-compact";
     slicesBtn.dataset.reviewMode = "slices";
     slicesBtn.textContent = "Từng lát";
     switcher.append(stitchedBtn, slicesBtn);
@@ -283,6 +260,7 @@
     prev.className = "ui-btn ui-btn-ghost";
     prev.append(window.createUiIcon("chevron-left"), document.createTextNode("Trang trước"));
     const select = document.createElement("select");
+    select.className = "ui-select review-stitched-select";
     select.setAttribute("aria-label", "Chọn trang gốc đã ghép");
     sourcePages.forEach((sourcePage) => {
       const option = document.createElement("option");
@@ -315,7 +293,7 @@
     imageHost.className = "review-stitched-image";
     viewport.appendChild(imageHost);
     shell.append(stitchedToolbar, note, meta, warning, viewport);
-    layout.before(shell);
+    canvasHost.appendChild(shell);
 
     const rerender = () => {
       const items = groups.get(activeSourcePage);
@@ -364,7 +342,6 @@
     document.querySelectorAll("#page-view.review-mode .review-workspace-shell").forEach(mount);
   }
 
-  installStyle();
   const observer = new MutationObserver(scan);
   observer.observe(document.documentElement, { childList: true, subtree: true });
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", scan, { once: true });

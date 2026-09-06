@@ -269,7 +269,8 @@
       const card = window.createReviewCard(canonicalIndex, maskSnapshots.get(canonicalIndex) || null);
       if (!card) return;
       mountedCard = card;
-      canvasHost.replaceChildren(card);
+      const stitchedView = canvasHost.querySelector(".review-stitched-shell");
+      canvasHost.replaceChildren(card, ...(stitchedView ? [stitchedView] : []));
       if (typeof card._mountReview === "function") card._mountReview();
 
       const controls = card.querySelector(".review-controls");
