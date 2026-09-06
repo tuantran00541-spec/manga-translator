@@ -49,15 +49,20 @@ jobs:
           python -m pip install --only-binary=:all: \
             --index-url https://download.pytorch.org/whl/cpu \
             --extra-index-url https://pypi.org/simple \
-            "torch==2.5.1+cpu"
+            "torch==2.5.1+cpu" "torchvision==0.20.1+cpu"
           # manga-ocr depends on unidic_lite, which is source-distribution only.
           python -m pip install -r requirements.txt
-          # Model bootstrap only. Keep production OpenCV/Numpy pins authoritative.
-          python -m pip install --no-deps "ultralytics==8.3.221"
+          # Ultralytics is used only to export the pinned public bootstrap models.
+          # Keep production NumPy/Torch pins intact instead of allowing exporter
+          # helpers to upgrade the runtime to NumPy 2.x or SymPy 1.14.
+          python -m pip install --no-deps \
+            "ultralytics==8.3.221" "onnx==1.17.0" "onnxslim==0.1.71"
           python -m pip install --only-binary=:all: \
-            "onnx==1.17.0" "onnxslim==0.1.71" \
+            "numpy==1.26.4" "sympy==1.13.1" \
             "PyYAML==6.0.2" "scipy==1.14.1" "tqdm==4.67.1" \
-            "matplotlib==3.9.2" "pandas==2.2.3" "py-cpuinfo==9.0.0"
+            "matplotlib==3.9.2" "pandas==2.2.3" "py-cpuinfo==9.0.0" \
+            "ml_dtypes==0.5.3" "colorama==0.4.6" \
+            "polars==1.33.1" "ultralytics-thop==2.0.17"
 
       - name: Install Chromium for Asura JS fallback
         run: python -m playwright install --with-deps chromium
