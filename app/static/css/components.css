@@ -75,6 +75,19 @@
   background: var(--accent-pressed);
 }
 
+.ui-btn.ui-btn-danger,
+.ui-icon-btn.ui-btn-danger {
+  border-color: var(--danger);
+  background: var(--danger);
+  color: var(--text-primary);
+}
+
+.ui-btn.ui-btn-danger:hover:not(:disabled),
+.ui-icon-btn.ui-btn-danger:hover:not(:disabled) {
+  border-color: var(--danger-hover);
+  background: var(--danger-hover);
+}
+
 .ui-btn-ghost {
   background: transparent;
 }
@@ -83,6 +96,10 @@
   min-height: 32px;
   padding-inline: var(--space-2);
   font-size: 12px;
+}
+
+.ui-icon-btn.ui-btn-compact {
+  width: 32px;
 }
 
 .ui-field {

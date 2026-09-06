@@ -77,7 +77,7 @@ function renderPreview() {
   heading.appendChild(title);
 
   const processBtn = document.createElement("button");
-  processBtn.className = "preview-primary-action";
+  processBtn.className = "ui-btn ui-btn-primary preview-primary-action";
   processBtn.textContent = "Bắt đầu xử lý";
   processBtn.addEventListener("click", processSelectedPages);
   toolbar.append(heading, processBtn);
@@ -155,19 +155,19 @@ function renderPreviewPage(card, page, pageIndex, pages, inspector = null) {
   const zoomBar = document.createElement("div");
   zoomBar.className = "zoom-controls";
   const zoomOutBtn = document.createElement("button");
-  zoomOutBtn.className = "zoom-btn";
+  zoomOutBtn.className = "ui-icon-btn ui-btn-compact zoom-btn";
   zoomOutBtn.append(window.createUiIcon("minus"));
   zoomOutBtn.title = "Thu nhỏ";
   zoomOutBtn.setAttribute("aria-label", "Thu nhỏ");
   const zoomLevelText = document.createElement("span");
   zoomLevelText.className = "zoom-level";
   const zoomInBtn = document.createElement("button");
-  zoomInBtn.className = "zoom-btn";
+  zoomInBtn.className = "ui-icon-btn ui-btn-compact zoom-btn";
   zoomInBtn.append(window.createUiIcon("plus"));
   zoomInBtn.title = "Phóng to";
   zoomInBtn.setAttribute("aria-label", "Phóng to");
   const zoomResetBtn = document.createElement("button");
-  zoomResetBtn.className = "zoom-btn zoom-reset";
+  zoomResetBtn.className = "ui-btn ui-btn-compact zoom-btn zoom-reset";
   zoomResetBtn.textContent = "1:1";
   zoomResetBtn.title = "Đặt lại zoom";
   zoomBar.append(zoomOutBtn, zoomLevelText, zoomInBtn, zoomResetBtn);
@@ -222,9 +222,10 @@ function renderPreviewPage(card, page, pageIndex, pages, inspector = null) {
       boxEl.style.height = (region.y2 - region.y1) * scaleY + "px";
 
       const delBtn = document.createElement("button");
-      delBtn.className = "excluded-region-del";
-      delBtn.textContent = "×";
+      delBtn.className = "ui-icon-btn ui-btn-compact ui-btn-danger excluded-region-del";
+      delBtn.append(window.createUiIcon("trash"));
       delBtn.title = "Xóa vùng cấm này";
+      delBtn.setAttribute("aria-label", "Xóa vùng cấm này");
       delBtn.addEventListener("click", (e) => {
         e.stopPropagation();
         page.excluded_regions.splice(rIdx, 1);
@@ -241,10 +242,10 @@ function renderPreviewPage(card, page, pageIndex, pages, inspector = null) {
   const tools = document.createElement("div");
   tools.className = "preview-tools";
   const drawToggleBtn = document.createElement("button");
-  drawToggleBtn.className = "excluded-toggle-btn";
+  drawToggleBtn.className = "ui-btn ui-btn-ghost excluded-toggle-btn";
   drawToggleBtn.textContent = "Đánh dấu vùng loại trừ";
   const clearBtn = document.createElement("button");
-  clearBtn.className = "excluded-clear-btn";
+  clearBtn.className = "ui-btn ui-btn-ghost excluded-clear-btn";
   clearBtn.textContent = "Xóa vùng loại trừ";
   clearBtn.title = "Xóa toàn bộ vùng loại trừ của lát ảnh này";
 
@@ -252,6 +253,7 @@ function renderPreviewPage(card, page, pageIndex, pages, inspector = null) {
     const active = card.classList.toggle("draw-excluded-active");
     drawToggleBtn.textContent = active ? "Đang đánh dấu · Chọn để kết thúc" : "Đánh dấu vùng loại trừ";
     drawToggleBtn.classList.toggle("active", active);
+    drawToggleBtn.classList.toggle("ui-btn-danger", active);
   });
   clearBtn.addEventListener("click", () => {
     page.excluded_regions = [];
@@ -366,7 +368,7 @@ function renderPreviewPage(card, page, pageIndex, pages, inspector = null) {
   const footer = document.createElement("div");
   footer.className = "preview-card-footer";
   const skipBtn = document.createElement("button");
-  skipBtn.className = "skip-btn";
+  skipBtn.className = "ui-btn ui-btn-ghost skip-btn";
   skipBtn.textContent = page.skipped ? "Đã bỏ qua · Chọn để khôi phục" : "Bỏ qua lát ảnh";
   skipBtn.addEventListener("click", async () => {
     await toggleSkip(pageIndex, card, skipBtn);
