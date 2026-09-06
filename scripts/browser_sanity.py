@@ -9,6 +9,7 @@ HTML_PATHS = sorted(Path("app/templates").rglob("*.html"))
 CSS_PATHS = sorted(Path("app/static/css").rglob("*.css"))
 STATIC_ROOT = Path("app/static")
 TOKENS_PATH = STATIC_ROOT / "css" / "tokens.css"
+WORKBENCH_PATH = STATIC_ROOT / "css" / "workbench.css"
 CSS_IMPORT_PATTERN = re.compile(
     r"@import\s+url\(\s*(?:['\"])?([^'\")\s]+)(?:['\"])?\s*\)",
     re.IGNORECASE,
@@ -355,6 +356,20 @@ def check_structural_glyphs() -> None:
     print("Structural icon glyph check OK")
 
 
+def check_workbench_shell_contract() -> None:
+    failures: list[str] = []
+    source = WORKBENCH_PATH.read_text(encoding="utf-8")
+    for marker in (
+        "--nav-width: 168px;",
+        "--inspector-width: 288px;",
+        "grid-template-columns: var(--nav-width) minmax(0, 1fr) var(--inspector-width);",
+    ):
+        if marker not in source:
+            failures.append(f"{WORKBENCH_PATH}: missing shell geometry marker {marker!r}")
+    _fail("Workbench shell contract failures:", failures)
+    print("Workbench shell geometry contract OK")
+
+
 def main() -> None:
     check_markup_integrity()
     check_browser_asset_reachability()
@@ -362,6 +377,7 @@ def main() -> None:
     check_unsafe_html_sinks()
     check_browser_state_contracts()
     check_structural_glyphs()
+    check_workbench_shell_contract()
 
 
 if __name__ == "__main__":

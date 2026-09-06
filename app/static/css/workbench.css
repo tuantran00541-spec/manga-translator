@@ -264,8 +264,8 @@ body {
 }
 
 .workbench-stage-grid {
-  --nav-width: 200px;
-  --inspector-width: 260px;
+  --nav-width: 168px;
+  --inspector-width: 288px;
   min-width: 0;
   display: grid;
   grid-template-columns: var(--nav-width) minmax(0, 1fr) var(--inspector-width);
@@ -285,7 +285,7 @@ body {
 
 .workbench-canvas-column {
   min-width: 0;
-  padding: 12px;
+  padding: 8px 12px;
 }
 
 .preview-main.workbench-canvas-column {
@@ -293,8 +293,8 @@ body {
 }
 
 .preview-canvas-surface {
-  width: min(100%, 920px);
-  margin: 0 auto;
+  width: 100%;
+  margin: 0;
   min-width: 0;
 }
 
@@ -412,8 +412,8 @@ body {
 }
 
 .review-canvas-host.workbench-canvas-column .review-card {
-  width: min(100%, 980px);
-  margin: 0 auto;
+  width: 100%;
+  margin: 0;
 }
 
 .inspector-section {
@@ -489,7 +489,7 @@ body {
 }
 
 .translation-workspace-body.editor-workbench-grid {
-  --inspector-width: 300px;
+  --inspector-width: 288px;
   display: grid;
   grid-template-columns: var(--nav-width) minmax(0, 1fr) var(--inspector-width);
   gap: 0;
@@ -497,11 +497,11 @@ body {
 }
 
 .translation-canvas-host {
-  padding: 12px;
+  padding: 8px 12px;
 }
 
 .translation-canvas-host .page-image-wrap {
-  width: min(100%, 820px);
+  width: 100%;
   padding: 0;
   background: transparent;
   border: 0;
