@@ -194,6 +194,11 @@
   background: var(--surface-panel);
 }
 
+.chapter-ocr-panel { display: grid; gap: 8px; }
+.chapter-ocr-content { display: grid; gap: 8px; padding-top: 8px; }
+.chapter-ocr-head, .chapter-ocr-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.chapter-ocr-summary { margin: 0; color: var(--text-secondary); font-size: 12px; line-height: 1.45; }
+
 .chapter-qc-head {
   display: flex;
   align-items: center;

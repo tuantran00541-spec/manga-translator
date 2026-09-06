@@ -502,10 +502,10 @@ function buildTextSection(body, panel, obj, pageIndex) {
   const schedule = () => scheduleTextObjectPersist(pageIndex, obj.id);
 
   const fontToolbar = document.createElement("div");
-  fontToolbar.className = "font-style-toolbar";
+  fontToolbar.className = "ui-control-row font-style-toolbar";
 
   const fontSelect = document.createElement("select");
-  fontSelect.className = "font-family-select";
+  fontSelect.className = "ui-select";
   fontSelect.title = "Chọn kiểu chữ";
   const fonts = availableFonts || [];
   if (fonts.length === 0) {
@@ -528,8 +528,9 @@ function buildTextSection(body, panel, obj, pageIndex) {
 
   const boldBtn = document.createElement("button");
   boldBtn.type = "button";
-  boldBtn.className = "bold-toggle-btn";
-  boldBtn.textContent = "B";
+  boldBtn.className = "ui-icon-btn ui-btn-ghost ui-btn-compact bold-toggle-btn";
+  boldBtn.setAttribute("aria-label", "In đậm chữ");
+  boldBtn.appendChild(window.createUiIcon("bold"));
   boldBtn.title = "In đậm chữ";
   if (style.bold === true) boldBtn.classList.add("active");
   boldBtn.addEventListener("click", () => {
@@ -542,13 +543,13 @@ function buildTextSection(body, panel, obj, pageIndex) {
   fontToolbar.appendChild(boldBtn);
 
   const sizeGroup = document.createElement("div");
-  sizeGroup.className = "font-size-group";
+  sizeGroup.className = "ui-control-row font-size-group";
   const sizeLabel = document.createElement("span");
-  sizeLabel.className = "size-label";
+  sizeLabel.className = "ui-control-label";
   sizeLabel.textContent = "Kích thước:";
   const autoBtn = document.createElement("button");
   autoBtn.type = "button";
-  autoBtn.className = "size-auto-btn";
+  autoBtn.className = "ui-btn ui-btn-ghost ui-btn-compact size-auto-btn";
   autoBtn.textContent = "Tự động";
   autoBtn.title = "Tự động vừa vùng";
   const sizeSlider = document.createElement("input");
@@ -558,7 +559,7 @@ function buildTextSection(body, panel, obj, pageIndex) {
   sizeSlider.max = "60";
   sizeSlider.value = "20";
   const sizeValSpan = document.createElement("span");
-  sizeValSpan.className = "font-size-val";
+  sizeValSpan.className = "ui-value";
   const sizeIsAuto = !style.fontSize || style.fontSize === "auto";
   if (sizeIsAuto) {
     autoBtn.classList.add("selected");
@@ -604,9 +605,9 @@ function buildAppearanceSection(body, panel, obj, pageIndex) {
   const schedule = () => scheduleTextObjectPersist(pageIndex, obj.id);
 
   const colorToolbar = document.createElement("div");
-  colorToolbar.className = "color-toolbar";
+  colorToolbar.className = "ui-control-row color-toolbar";
   const colorLabel = document.createElement("span");
-  colorLabel.className = "color-label";
+  colorLabel.className = "ui-control-label";
   colorLabel.textContent = "Màu chữ";
   colorToolbar.appendChild(colorLabel);
 
@@ -620,12 +621,13 @@ function buildAppearanceSection(body, panel, obj, pageIndex) {
   colors.forEach((c) => {
     const btn = document.createElement("button");
     btn.type = "button";
-    btn.className = "color-btn" + (style.color === c.value ? " selected" : "");
+    btn.className = "ui-swatch color-btn";
+    btn.setAttribute("aria-pressed", style.color === c.value ? "true" : "false");
     btn.title = c.name;
     btn.style.background = c.bg;
     btn.addEventListener("click", () => {
-      colorToolbar.querySelectorAll(".color-btn").forEach((b) => b.classList.remove("selected"));
-      btn.classList.add("selected");
+      colorToolbar.querySelectorAll(".color-btn").forEach((b) => b.setAttribute("aria-pressed", "false"));
+      btn.setAttribute("aria-pressed", "true");
       style.color = c.value;
       panel.dataset.color = c.value;
       schedule();
@@ -635,14 +637,14 @@ function buildAppearanceSection(body, panel, obj, pageIndex) {
 
   const customPicker = document.createElement("input");
   customPicker.type = "color";
-  customPicker.className = "box-color-picker custom-color-picker";
+  customPicker.className = "ui-color-input custom-color-picker";
   customPicker.value = "#ffffff";
   customPicker.title = "Chọn màu tùy chỉnh";
   if (style.color && style.color !== "auto" && !colors.some((c) => c.value === style.color)) {
     customPicker.value = style.color;
   }
   customPicker.addEventListener("input", () => {
-    colorToolbar.querySelectorAll(".color-btn").forEach((b) => b.classList.remove("selected"));
+    colorToolbar.querySelectorAll(".color-btn").forEach((b) => b.setAttribute("aria-pressed", "false"));
     style.color = customPicker.value;
     panel.dataset.color = customPicker.value;
     schedule();
@@ -650,9 +652,9 @@ function buildAppearanceSection(body, panel, obj, pageIndex) {
   colorToolbar.appendChild(customPicker);
 
   const strokeToolbar = document.createElement("div");
-  strokeToolbar.className = "stroke-toolbar";
+  strokeToolbar.className = "ui-control-row stroke-toolbar";
   const strokeLabel = document.createElement("span");
-  strokeLabel.className = "style-group-label";
+  strokeLabel.className = "ui-control-label";
   strokeLabel.textContent = "Viền chữ";
   const strokeSlider = document.createElement("input");
   strokeSlider.type = "range";
@@ -662,7 +664,7 @@ function buildAppearanceSection(body, panel, obj, pageIndex) {
   strokeSlider.value = "2";
   strokeSlider.title = "Độ dày viền chữ";
   const strokeValSpan = document.createElement("span");
-  strokeValSpan.className = "style-val-span";
+  strokeValSpan.className = "ui-value";
   const strokeIsAuto = !style.strokeWidth || style.strokeWidth === "auto";
   if (strokeIsAuto) {
     strokeValSpan.textContent = "Tự động";
@@ -672,7 +674,7 @@ function buildAppearanceSection(body, panel, obj, pageIndex) {
   }
   const strokeColorPicker = document.createElement("input");
   strokeColorPicker.type = "color";
-  strokeColorPicker.className = "box-color-picker stroke-color-picker";
+  strokeColorPicker.className = "ui-color-input stroke-color-picker";
   strokeColorPicker.value = (style.strokeColor && style.strokeColor !== "auto") ? style.strokeColor : "#000000";
   strokeColorPicker.title = "Màu viền chữ";
   strokeSlider.addEventListener("input", () => {
@@ -696,7 +698,7 @@ function buildBackgroundSection(body, panel, obj, pageIndex) {
   const schedule = () => scheduleTextObjectPersist(pageIndex, obj.id);
 
   const bgToolbar = document.createElement("div");
-  bgToolbar.className = "bg-toolbar";
+  bgToolbar.className = "ui-control-row bg-toolbar";
 
   const toggleId = "bg-toggle-" + obj.id;
   const bgToggle = document.createElement("input");
@@ -710,7 +712,7 @@ function buildBackgroundSection(body, panel, obj, pageIndex) {
   toggleLabel.textContent = "Nền";
 
   const bgSelect = document.createElement("select");
-  bgSelect.className = "bg-color-select";
+  bgSelect.className = "ui-select";
   const bgColors = ["#ffffff", "#000000"];
   if (style.bgColor && style.bgColor !== "transparent" && !bgColors.includes(style.bgColor)) {
     bgColors.unshift(style.bgColor);
@@ -731,7 +733,7 @@ function buildBackgroundSection(body, panel, obj, pageIndex) {
   radiusSlider.value = style.cornerRadius || "0";
   radiusSlider.title = "Độ bo góc nền";
   const radiusValSpan = document.createElement("span");
-  radiusValSpan.className = "style-val-span";
+  radiusValSpan.className = "ui-value";
   radiusValSpan.textContent = (style.cornerRadius || "0") + "px";
 
   const updateEnabled = () => {
@@ -857,7 +859,7 @@ function buildAlignmentControls(body, panel, obj, pageIndex) {
     options.forEach(([val, txt]) => {
       const b = document.createElement("button");
       b.type = "button";
-      b.className = "align-btn" + ((style[key] || DEFAULT_TEXT_OBJECT_STYLE[key]) === val ? " selected" : "");
+      b.className = "ui-btn ui-btn-ghost ui-btn-compact align-btn" + ((style[key] || DEFAULT_TEXT_OBJECT_STYLE[key]) === val ? " selected" : "");
       b.textContent = txt;
       b.addEventListener("click", () => {
         style[key] = val;

@@ -141,6 +141,49 @@
   text-align: right;
 }
 
+.ui-control-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.ui-control-label {
+  color: var(--text-muted);
+  font: 500 11px/1.2 var(--font-ui);
+}
+
+.ui-swatch {
+  width: 28px;
+  min-width: 28px;
+  min-height: 28px;
+  padding: 0;
+  border: 2px solid var(--border-subtle);
+  border-radius: 50%;
+  cursor: pointer;
+  transition: border-color var(--motion-fast), transform var(--motion-fast);
+}
+
+.ui-swatch:hover:not(:disabled) { border-color: var(--text-primary); transform: scale(1.08); }
+.ui-swatch[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+
+.ui-color-input {
+  width: 28px;
+  min-width: 28px;
+  min-height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.ui-color-input::-webkit-color-swatch-wrapper { padding: 0; }
+.ui-color-input::-webkit-color-swatch { border: 1px solid var(--border-strong); border-radius: 50%; }
+
+.ui-value { min-width: 3ch; color: var(--text-secondary); font: 500 11px/1 var(--font-mono); }
+
 .ui-field > :is(input, select, textarea),
 .ui-input,
 .ui-select,

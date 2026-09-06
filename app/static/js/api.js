@@ -184,7 +184,7 @@ async function loadRecentChapters() {
       card.appendChild(info);
 
       const btn = document.createElement("button");
-      btn.className = "recent-resume-btn";
+      btn.className = "ui-btn ui-btn-ghost ui-btn-compact recent-resume-btn";
       btn.type = "button";
       btn.textContent = "Tiếp tục xử lý";
       btn.addEventListener("click", () => resumeChapter(String(ch?.chapter_id || "")));

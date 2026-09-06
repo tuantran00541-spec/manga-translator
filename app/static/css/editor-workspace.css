@@ -92,6 +92,12 @@
   box-sizing: border-box;
 }
 
+.render-result { display: grid; gap: 10px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-subtle); }
+.render-result-label { color: var(--success); font: 600 11px/1.2 var(--font-ui); letter-spacing: .06em; text-transform: uppercase; }
+.render-result img { display: block; width: 100%; background: var(--surface-canvas); }
+.download-link { display: inline-flex; align-items: center; justify-content: center; min-height: var(--control-height); padding: 0 var(--space-3); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); color: var(--text-primary); font: 600 13px var(--font-ui); text-decoration: none; }
+.download-link:hover { border-color: var(--accent); background: var(--surface-hover); }
+
 @media (max-width: 900px) {
   .translation-workspace-body {
     grid-template-columns: minmax(0, 1fr) minmax(250px, 310px);

@@ -12,12 +12,8 @@
 
 @import url("./components.css") layer(components);
 @import url("./editor-box-transform.css") layer(components);
-@import url("./box-panel.css") layer(components);
 @import url("./text-object-editor.css") layer(components);
-@import url("./toolbar.css") layer(components);
-@import url("./recent-toast.css") layer(components);
 @import url("./deepseek-qc.css") layer(components);
-@import url("./chapter-ocr.css") layer(components);
 @import url("./page-navigator.css") layer(components);
 
 @import url("./workbench.css") layer(workbench);

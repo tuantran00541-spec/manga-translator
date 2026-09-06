@@ -58,6 +58,7 @@
     const snapshot = state.snapshot;
     const running = isRunning(snapshot);
     panel.hidden = !snapshot;
+    if (running) panel.open = true;
     const run = workspace.querySelector(".chapter-ocr-run");
     if (run) {
       run.disabled = running;
@@ -212,10 +213,11 @@
   }
 
   function createPanel() {
-    const panel = document.createElement("section");
-    panel.className = "chapter-ocr-panel";
+    const panel = document.createElement("details");
+    panel.className = "ui-disclosure inspector-section chapter-ocr-panel";
     panel.setAttribute("aria-live", "polite");
-    panel.innerHTML = `
+    panel.innerHTML = `<summary>Nhận dạng toàn chương</summary>
+      <div class="chapter-ocr-content">
       <div class="chapter-ocr-head">
         <div><strong>Nhận dạng toàn chương</strong></div>
         <div class="chapter-ocr-actions">
@@ -224,7 +226,8 @@
         </div>
       </div>
       <p class="chapter-ocr-summary">Chưa chạy OCR toàn chương.</p>
-          <progress class="ui-progress chapter-ocr-progress" max="1" value="0" hidden></progress>`;
+          <progress class="ui-progress chapter-ocr-progress" max="1" value="0" hidden></progress>
+      </div>`;
     panel.querySelector(".chapter-ocr-cancel")?.addEventListener("click", cancelChapterOCR);
     panel.querySelector(".chapter-ocr-retry")?.addEventListener("click", retryChapterOCR);
     return panel;
@@ -234,8 +237,8 @@
     syncChapter();
     if (!workspace || workspace.dataset.chapterOcrBound === "1") return;
     const actions = workspace.querySelector(".review-actions-group");
-    const toolbar = workspace.querySelector(".review-sticky-toolbar");
-    if (!actions || !toolbar) return;
+    const inspector = workspace.querySelector(".review-inspector");
+    if (!actions || !inspector) return;
     workspace.dataset.chapterOcrBound = "1";
 
     const run = document.createElement("button");
@@ -246,8 +249,7 @@
     actions.prepend(run);
 
     const panel = createPanel();
-    // Progress/cancel stays visible in both stitched and per-slice review.
-    toolbar.after(panel);
+    inspector.appendChild(panel);
     renderPanel(workspace);
   }
 
