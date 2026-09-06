@@ -259,6 +259,11 @@ body.repaint-mode-open {
   background: var(--accent-soft);
 }
 
+#upload-dropzone.uploading {
+  opacity: .6;
+  pointer-events: none;
+}
+
 #upload-dropzone .upload-copy {
   display: block;
   margin-bottom: 6px;

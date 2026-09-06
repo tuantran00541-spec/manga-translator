@@ -66,11 +66,18 @@
 }
 
 .translation-canvas-host .page-image-wrap {
+  position: relative;
   width: 100%;
   margin: 0 auto;
   padding: 0;
   box-sizing: border-box;
 }
+
+.page-block-wrapper { width: 100%; min-width: 0; }
+.page-block-label { margin-bottom: 8px; color: var(--text-muted); font-size: 11px; letter-spacing: .05em; text-transform: uppercase; }
+.page-block { display: block; }
+.page-image-wrap.draw-mode { cursor: crosshair; }
+.page-image-wrap.draw-mode img { outline: 1.5px dashed var(--danger); outline-offset: -1.5px; }
 
 .translation-canvas-host .page-image-wrap img {
   display: block;

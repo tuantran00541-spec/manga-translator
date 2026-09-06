@@ -49,18 +49,6 @@
   min-width: 0;
 }
 
-.preview-card {
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  margin: 0;
-  padding: 0;
-  background: transparent;
-  border: 0;
-  border-radius: 0;
-  box-shadow: none;
-}
-
 .preview-card-header {
   display: flex;
   justify-content: space-between;
@@ -207,14 +195,6 @@
   width: 100%;
 }
 
-.preview-card.skipped {
-  border-color: var(--danger-strong);
-}
-
-.preview-card.skipped img {
-  filter: grayscale(0.6);
-}
-
 @media (max-width: 760px) {
   #preview-toolbar {
     align-items: stretch;
@@ -223,10 +203,6 @@
 
   .preview-primary-action {
     width: 100%;
-  }
-
-  .preview-card {
-    padding: 9px;
   }
 
   .preview-viewport {
