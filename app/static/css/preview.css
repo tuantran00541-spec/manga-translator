@@ -39,8 +39,7 @@
   background: var(--surface-raised);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-subtle);
-  backdrop-filter: blur(10px);
+  box-shadow: none;
 }
 
 .preview-workspace-heading {

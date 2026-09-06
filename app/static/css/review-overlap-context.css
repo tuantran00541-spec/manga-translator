@@ -9,14 +9,7 @@
   justify-content: flex-start;
   padding: 6px;
   pointer-events: none;
-  background:
-    repeating-linear-gradient(
-      135deg,
-      color-mix(in srgb, var(--surface-raised) 58%, transparent) 0,
-      color-mix(in srgb, var(--surface-raised) 58%, transparent) 8px,
-      color-mix(in srgb, var(--accent) 18%, transparent) 8px,
-      color-mix(in srgb, var(--accent) 18%, transparent) 16px
-    );
+  background: color-mix(in srgb, var(--surface-raised) 76%, transparent);
 }
 
 .review-context-band-top {
