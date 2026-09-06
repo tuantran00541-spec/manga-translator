@@ -1,0 +1,174 @@
+.ui-btn,
+.ui-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--control-height);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  cursor: pointer;
+  font: 600 13px var(--font-ui);
+  line-height: 1;
+  transition:
+    background var(--motion-fast),
+    border-color var(--motion-fast),
+    color var(--motion-fast),
+    transform var(--motion-fast);
+}
+
+.ui-btn {
+  gap: var(--space-2);
+  padding: 0 var(--space-3);
+}
+
+.ui-icon-btn {
+  width: var(--control-height);
+  padding: 0;
+}
+
+.ui-btn:hover:not(:disabled),
+.ui-icon-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--surface-hover);
+}
+
+.ui-btn:active:not(:disabled),
+.ui-icon-btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.ui-btn-primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+
+.ui-btn-primary:hover:not(:disabled) {
+  border-color: var(--accent-hover);
+  background: var(--accent-hover);
+}
+
+.ui-btn-primary:active:not(:disabled) {
+  background: var(--accent-pressed);
+}
+
+.ui-btn-ghost {
+  background: transparent;
+}
+
+.ui-btn-compact {
+  min-height: 32px;
+  padding-inline: var(--space-2);
+  font-size: 12px;
+}
+
+.ui-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+  color: var(--text-secondary);
+  font: 500 12px/1.35 var(--font-ui);
+}
+
+.ui-field > span {
+  padding-left: 1px;
+}
+
+.ui-field > :is(input, select, textarea),
+.gemini-key-input {
+  min-width: 0;
+  min-height: var(--control-height);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-panel);
+  color: var(--text-primary);
+  font: 400 13px var(--font-ui);
+  transition:
+    background var(--motion-fast),
+    border-color var(--motion-fast),
+    box-shadow var(--motion-fast);
+}
+
+.ui-field > :is(input, select),
+.gemini-key-input {
+  padding: 0 var(--space-3);
+}
+
+.ui-field > select {
+  cursor: pointer;
+}
+
+.ui-field > textarea {
+  min-height: calc(var(--control-height) * 2);
+  padding: var(--space-2) var(--space-3);
+  resize: vertical;
+}
+
+.ui-field > :is(input, textarea)::placeholder,
+.gemini-key-input::placeholder {
+  color: var(--text-muted);
+}
+
+.ui-field > :is(input, select, textarea):focus-visible,
+.gemini-key-input:focus-visible {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.ui-badge,
+.recent-stage-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 0 6px;
+  border-radius: var(--radius-xs);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font: 600 11px/1 var(--font-ui);
+}
+
+.editor-save-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  font: 500 12px/1.3 var(--font-mono);
+  white-space: nowrap;
+}
+
+.editor-save-status.save-status-saved {
+  color: var(--success);
+  background: var(--success-soft);
+}
+
+.editor-save-status.save-status-dirty {
+  color: var(--warning);
+  background: var(--warning-soft);
+}
+
+.editor-save-status.save-status-saving {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.editor-save-status.save-status-error {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+@media (pointer: coarse) {
+  .ui-btn,
+  .ui-icon-btn,
+  .ui-field > :is(input, select),
+  .gemini-key-input {
+    min-height: 44px;
+  }
+
+  .ui-icon-btn {
+    width: 44px;
+  }
+}

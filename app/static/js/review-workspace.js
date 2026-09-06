@@ -61,12 +61,12 @@
 
     const saveBtn = document.createElement("button");
     saveBtn.type = "button";
-    saveBtn.className = "gemini-key-save-btn";
+    saveBtn.className = "ui-btn ui-btn-primary gemini-key-save-btn";
     saveBtn.textContent = "Lưu khóa API";
 
     const clearBtn = document.createElement("button");
     clearBtn.type = "button";
-    clearBtn.className = "gemini-key-clear-btn";
+    clearBtn.className = "ui-btn ui-btn-ghost gemini-key-clear-btn";
     clearBtn.textContent = "Xóa khóa API";
 
     const privacyNote = document.createElement("span");

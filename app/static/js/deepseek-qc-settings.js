@@ -67,12 +67,12 @@
 
     const save = document.createElement("button");
     save.type = "button";
-    save.className = "gemini-key-save-btn deepseek-key-save-btn";
+    save.className = "ui-btn ui-btn-primary gemini-key-save-btn deepseek-key-save-btn";
     save.textContent = "Lưu khóa DeepSeek";
 
     const clear = document.createElement("button");
     clear.type = "button";
-    clear.className = "gemini-key-clear-btn deepseek-key-clear-btn";
+    clear.className = "ui-btn ui-btn-ghost gemini-key-clear-btn deepseek-key-clear-btn";
     clear.textContent = "Xóa khóa DeepSeek";
 
     const privacy = document.createElement("span");

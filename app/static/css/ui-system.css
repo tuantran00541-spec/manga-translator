@@ -116,90 +116,8 @@ body.settings-open {
   margin: 0;
 }
 
-.ui-field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 0;
-  color: var(--text-muted);
-  font: 500 11px var(--font-ui);
-}
-
-.ui-field > span {
-  padding-left: 1px;
-}
-
 .chapter-url-field {
   min-width: 220px;
-}
-
-#chapter-url,
-#lang-select,
-#workers-select,
-.gemini-key-input {
-  min-height: 38px;
-  border-color: var(--border-strong);
-  border-radius: 7px;
-  background: var(--surface-panel);
-}
-
-#workers-label {
-  padding: 0;
-  text-transform: none;
-  letter-spacing: 0;
-  font-family: var(--font-ui);
-}
-
-#load-btn,
-.ui-btn {
-  min-height: 38px;
-  border-radius: 7px;
-  font: 600 12px var(--font-ui);
-}
-
-#load-btn {
-  padding: 8px 18px;
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #081322;
-  box-shadow: none;
-}
-
-#load-btn:hover {
-  background: #6aa1fa;
-  box-shadow: 0 5px 16px rgba(79, 143, 247, .18);
-}
-
-.ui-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  padding: 8px 12px;
-  border: 1px solid var(--border-strong);
-  background: var(--surface-raised);
-  color: var(--text-primary);
-  cursor: pointer;
-  transition: border-color var(--motion-fast), background var(--motion-fast), color var(--motion-fast);
-}
-
-.ui-btn:hover:not(:disabled) {
-  border-color: var(--accent);
-  background: var(--surface-hover);
-}
-
-.ui-btn-primary {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: #071321;
-}
-
-.ui-btn-primary:hover:not(:disabled) {
-  background: #6aa1fa;
-}
-
-.ui-btn-ghost {
-  background: transparent;
 }
 
 #upload-divider {
@@ -767,12 +685,6 @@ body.repaint-mode-open {
   width: 100%;
 }
 
-.ai-settings-host .gemini-key-save-btn,
-.ai-settings-host .gemini-key-clear-btn {
-  min-height: 34px;
-  border-radius: 7px;
-}
-
 #toast-container {
   top: 76px;
   right: 20px;
@@ -809,7 +721,7 @@ body.repaint-mode-open {
     grid-template-columns: minmax(0, 1fr) repeat(2, minmax(130px, auto));
   }
 
-  #load-btn {
+  #chapter-input .ui-btn-primary {
     grid-column: 1 / -1;
   }
 
@@ -876,7 +788,7 @@ body.repaint-mode-open {
   }
 
   .chapter-url-field,
-  #load-btn {
+  #chapter-input .ui-btn-primary {
     grid-column: auto;
   }
 }

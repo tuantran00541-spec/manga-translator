@@ -12,6 +12,7 @@
 
 @import url("./ui-system.css") layer(system);
 
+@import url("./components.css") layer(components);
 @import url("./editor-box-transform.css") layer(components);
 @import url("./box-panel.css") layer(components);
 @import url("./text-object-editor.css") layer(components);
