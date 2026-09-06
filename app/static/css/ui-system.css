@@ -511,24 +511,6 @@ body.repaint-mode-open {
   gap: 6px;
 }
 
-.editor-tool-btn,
-.render-btn {
-  min-height: 32px;
-  border-radius: 7px;
-}
-
-.editor-tool-btn {
-  border-color: var(--border-strong);
-  background: var(--surface-panel);
-  color: var(--text-secondary);
-}
-
-.editor-tool-btn.active {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-  color: #b9d3ff;
-}
-
 .translation-panel-host {
   top: 132px;
   border-radius: 10px;

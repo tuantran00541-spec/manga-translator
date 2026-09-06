@@ -257,8 +257,11 @@ window.associateTextObjectOcr = associateTextObjectOcr;
 function setEditorTool(tool) {
   editorState.tool = tool;
   document.querySelectorAll(".editor-tool-btn").forEach((btn) => {
-    btn.classList.toggle("active", btn.dataset.tool === tool);
-    if (btn.dataset.tool) btn.setAttribute("aria-pressed", String(btn.dataset.tool === tool));
+    const active = btn.dataset.tool === tool;
+    btn.classList.toggle("active", active);
+    btn.classList.toggle("ui-btn-primary", active);
+    btn.classList.toggle("ui-btn-ghost", !active);
+    if (btn.dataset.tool) btn.setAttribute("aria-pressed", String(active));
   });
   const imgWrap = document.querySelector(".translation-canvas-host .page-image-wrap");
   if (imgWrap) imgWrap.classList.toggle("draw-mode", tool !== "select");
@@ -352,21 +355,31 @@ function renderEditorPanel(pageIndex) {
 
   const obj = findTextObject(pageIndex, editorState.selectedTextObjectId);
   if (!obj) {
+    const section = document.createElement("section");
+    section.className = "inspector-section editor-page-summary";
+    const title = document.createElement("h3");
+    title.textContent = "Trạng thái trang";
+    const pageStatus = document.createElement("p");
+    pageStatus.className = "editor-page-status";
+    const objects = page?.text_objects || [];
+    const translated = objects.filter((item) => item?.translation?.trim()).length;
+    pageStatus.textContent = `${objects.length} vùng chữ · ${translated}/${objects.length} đã dịch`;
     const empty = document.createElement("div");
     empty.className = "ui-empty-state text-editor-empty";
     empty.textContent = "Chọn một vùng chữ trên ảnh để chỉnh sửa.";
-    panel.appendChild(empty);
+    section.append(title, pageStatus, empty);
+    panel.appendChild(section);
     panelHost.appendChild(panel);
     return;
   }
   panel.dataset.objectId = obj.id;
 
   const ocrLabel = document.createElement("label");
-  ocrLabel.className = "text-editor-label";
+  ocrLabel.className = "ui-field text-editor-field";
   ocrLabel.textContent = "Nội dung gốc / OCR";
 
   const ocrTa = document.createElement("textarea");
-  ocrTa.className = "text-editor-textarea ocr-textarea";
+  ocrTa.className = "ui-textarea text-editor-textarea ocr-textarea";
   ocrTa.dataset.textObjectId = obj.id;
   ocrTa.rows = 4;
   ocrTa.placeholder = "Nhập hoặc hiệu chỉnh nội dung gốc…";
@@ -377,11 +390,11 @@ function renderEditorPanel(pageIndex) {
   });
 
   const trLabel = document.createElement("label");
-  trLabel.className = "text-editor-label";
+  trLabel.className = "ui-field text-editor-field";
   trLabel.textContent = "Bản dịch";
 
   const trTa = document.createElement("textarea");
-  trTa.className = "text-editor-textarea translation-textarea";
+  trTa.className = "ui-textarea text-editor-textarea translation-textarea";
   trTa.dataset.textObjectId = obj.id;
   trTa.rows = 4;
   trTa.placeholder = "Nhập nội dung bản dịch…";
@@ -391,25 +404,29 @@ function renderEditorPanel(pageIndex) {
     scheduleTextObjectPersist(pageIndex, obj.id);
   });
 
-  panel.append(ocrLabel, ocrTa, trLabel, trTa);
+  ocrLabel.appendChild(ocrTa);
+  trLabel.appendChild(trTa);
 
-  buildGeometryControls(panel, obj, pageIndex);
+  const textBody = buildPanelSection(panel, "Text", true);
+  textBody.append(ocrLabel, trLabel);
 
-  const textBody = buildPanelSection(panel, "Văn bản", true);
-  buildTextSection(textBody, panel, obj, pageIndex);
+  const typographyBody = buildPanelSection(panel, "Typography", false);
+  buildTextSection(typographyBody, panel, obj, pageIndex);
 
-  const appearanceBody = buildPanelSection(panel, "Kiểu dáng", false);
+  const appearanceBody = buildPanelSection(panel, "Appearance", false);
   buildAppearanceSection(appearanceBody, panel, obj, pageIndex);
 
-  const backgroundBody = buildPanelSection(panel, "Nền", false);
-  buildBackgroundSection(backgroundBody, panel, obj, pageIndex);
+  buildBackgroundSection(appearanceBody, panel, obj, pageIndex);
 
-  const actions = document.createElement("div");
-  actions.className = "text-object-actions";
+  const geometryBody = buildPanelSection(panel, "Geometry", false);
+  buildGeometryControls(geometryBody, obj, pageIndex);
+
+  const actions = buildPanelSection(panel, "Actions", false);
+  actions.classList.add("text-object-actions");
 
   const ocrBtn = document.createElement("button");
   ocrBtn.type = "button";
-  ocrBtn.className = "text-object-action-btn";
+  ocrBtn.className = "ui-btn ui-btn-ghost text-object-action-btn";
   ocrBtn.textContent = "Nhận dạng lại bằng OCR";
   ocrBtn.addEventListener("click", () => {
     associateTextObjectOcr(pageIndex, obj.id).catch((err) => {
@@ -419,7 +436,7 @@ function renderEditorPanel(pageIndex) {
 
   const dupBtn = document.createElement("button");
   dupBtn.type = "button";
-  dupBtn.className = "text-object-action-btn";
+  dupBtn.className = "ui-btn ui-btn-ghost text-object-action-btn";
   dupBtn.textContent = "Nhân đôi";
   dupBtn.title = "Tạo bản sao vùng chữ này";
   dupBtn.addEventListener("click", () => {
@@ -430,13 +447,12 @@ function renderEditorPanel(pageIndex) {
 
   const delBtn = document.createElement("button");
   delBtn.type = "button";
-  delBtn.className = "text-object-action-btn danger";
+  delBtn.className = "ui-btn ui-btn-danger text-object-action-btn";
   delBtn.textContent = "Xóa";
   delBtn.title = "Xóa vùng chữ";
   delBtn.addEventListener("click", () => {
     if (delBtn.dataset.armed !== "1") {
       delBtn.dataset.armed = "1";
-      delBtn.classList.add("confirming");
       delBtn.textContent = "Xác nhận xóa";
       return;
     }
@@ -453,20 +469,12 @@ function renderEditorPanel(pageIndex) {
 }
 
 function buildPanelSection(panel, title, open) {
-  const section = document.createElement("div");
-  section.className = "text-editor-section" + (open ? " open" : "");
+  const section = document.createElement("details");
+  section.className = "ui-disclosure inspector-section text-editor-section";
+  section.open = open;
 
-  const header = document.createElement("button");
-  header.type = "button";
-  header.className = "text-editor-section-header";
-  header.setAttribute("aria-expanded", open ? "true" : "false");
-  const titleEl = document.createElement("span");
-  titleEl.textContent = title;
-  header.append(titleEl, window.createUiIcon("chevron-right", "section-caret"));
-  header.addEventListener("click", () => {
-    const isOpen = section.classList.toggle("open");
-    header.setAttribute("aria-expanded", isOpen ? "true" : "false");
-  });
+  const header = document.createElement("summary");
+  header.textContent = title;
 
   const body = document.createElement("div");
   body.className = "text-editor-section-body";
@@ -773,13 +781,13 @@ function buildGeometryControls(panel, obj, pageIndex) {
 
   const mkField = (label, get, commit) => {
     const wrap = document.createElement("div");
-    wrap.className = "geometry-field";
+    wrap.className = "ui-field geometry-field";
     const lbl = document.createElement("span");
     lbl.className = "geometry-field-label";
     lbl.textContent = label;
     const inp = document.createElement("input");
     inp.type = "number";
-    inp.className = "geometry-input";
+    inp.className = "ui-input geometry-input";
     inp.dataset.geometryField = label;
     const refresh = () => { inp.value = String(get()); };
     refresh();
@@ -1247,7 +1255,7 @@ function renderEditor() {
   ].forEach((t) => {
     const btn = document.createElement("button");
     btn.type = "button";
-    btn.className = "editor-tool-btn" + (editorState.tool === t.key ? " active" : "");
+    btn.className = "ui-btn editor-tool-btn" + (editorState.tool === t.key ? " ui-btn-primary active" : " ui-btn-ghost");
     btn.dataset.tool = t.key;
     btn.textContent = t.label;
     btn.addEventListener("click", () => setEditorTool(t.key));
@@ -1256,7 +1264,7 @@ function renderEditor() {
 
   const addBoxBtn = document.createElement("button");
   addBoxBtn.type = "button";
-  addBoxBtn.className = "editor-tool-btn";
+  addBoxBtn.className = "ui-btn ui-btn-ghost editor-tool-btn";
   addBoxBtn.textContent = "Thêm vùng chữ";
   addBoxBtn.title = "Tạo một vùng chữ mới ở giữa trang";
   addBoxBtn.addEventListener("click", () => {
@@ -1268,7 +1276,7 @@ function renderEditor() {
 
   const renderBtn = document.createElement("button");
   renderBtn.type = "button";
-  renderBtn.className = "render-btn editor-render-btn";
+  renderBtn.className = "ui-btn ui-btn-primary render-btn editor-render-btn";
   renderBtn.textContent = "Kết xuất trang";
   renderBtn.addEventListener("click", () => renderTranslations(pageIndex));
 
