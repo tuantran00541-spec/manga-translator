@@ -29,6 +29,11 @@ jobs:
       MANGA_DETECTOR_FOCUS_FREE_PAD_Y: "160"
       MANGA_DETECTOR_FOCUS_MERGE_GAP: "64"
       MANGA_DETECTOR_FOCUS_MAX_CHIPS: "2"
+      MANGA_DETECTOR_FOCUS_GATE_MODEL: PP-OCRv6_small_det
+      MANGA_DETECTOR_FOCUS_GATE_LIMIT: "1024"
+      MANGA_DETECTOR_FOCUS_GATE_THREADS: "2"
+      MANGA_DETECTOR_FOCUS_CHIP_MAX_HEIGHT: "1344"
+      MANGA_DETECTOR_FOCUS_CHIP_OVERLAP: "96"
       E2E_BENCHMARK_CHAPTER_URL: https://asurascans.com/comics/killer-pietro-08677664/chapter/120
       DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
       E2E_MODEL_BUNDLE_URL: ${{ secrets.E2E_MODEL_BUNDLE_URL }}
@@ -80,8 +85,10 @@ jobs:
           python -m py_compile \
             scripts/provision_real_e2e_models.py \
             scripts/real_e2e_asura.py \
-            scripts/detector_experiment.py
+            scripts/detector_experiment.py \
+            scripts/detector_focus_v21.py
           python scripts/detector_experiment.py
+          python scripts/detector_focus_v21.py
           python scripts/release_sanity.py
 
       - name: Restore detector and inpaint model cache
@@ -124,7 +131,7 @@ jobs:
           if [[ -n "${DEEPSEEK_API_KEY:-}" ]]; then
             args+=(--require-translation)
           fi
-          python -c 'import runpy; from scripts.detector_experiment import install_from_env; assert install_from_env(), "detector experiment was not enabled"; runpy.run_path("scripts/real_e2e_asura.py", run_name="__main__")' "${args[@]}"
+          python -c 'import runpy; from scripts.detector_focus_v21 import install_focus_v21; assert install_focus_v21(), "focus v2.1 patch was not enabled"; from scripts.detector_experiment import install_from_env; assert install_from_env(), "detector experiment was not enabled"; runpy.run_path("scripts/real_e2e_asura.py", run_name="__main__")' "${args[@]}"
 
       - name: Publish run summary
         if: always()
@@ -172,6 +179,13 @@ jobs:
                       f"full_text={row.get('full_image_text_calls')}, "
                       f"focus_chips={row.get('focus_chip_calls')}, "
                       f"focus_uncovered={row.get('focus_uncovered_proposals')}"
+                  )
+              gate = experiment.get('v21') or {}
+              if gate:
+                  lines.append(
+                      f"- `ppocr_focus_gate`: runs={gate.get('gate_runs')}, "
+                      f"proposals={gate.get('gate_proposals')}, "
+                      f"ms={gate.get('gate_ms')}, failures={gate.get('gate_failures')}"
                   )
           summary = os.environ.get('GITHUB_STEP_SUMMARY')
           if summary:
