@@ -119,7 +119,8 @@ jobs:
         run: |
           python -m venv /tmp/nncf-v5
           /tmp/nncf-v5/bin/python -m pip install --upgrade pip
-          /tmp/nncf-v5/bin/python -m pip install --only-binary=:all: "nncf[onnx]==3.3.0"
+          /tmp/nncf-v5/bin/python -m pip install --only-binary=:all: \
+            "nncf==3.3.0" "onnx==1.22.0" "onnxruntime==1.24.1"
           /tmp/nncf-v5/bin/python scripts/quantize_detectors_nncf_v5.py \
             --calibration-dir /tmp/detector-calibration-v5/tensors \
             --report /tmp/detector-int8-v5.json \
