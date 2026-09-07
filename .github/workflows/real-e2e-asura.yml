@@ -22,9 +22,13 @@ jobs:
       PYTHONDONTWRITEBYTECODE: "1"
       MANGA_USE_DYNAMIC_LAMA: "1"
       MANGA_OCR_TARGET_SELECTION: centered
-      MANGA_DETECTOR_EXPERIMENT: adaptive_tiles_v1
+      MANGA_DETECTOR_EXPERIMENT: adaptive_focus_v2
       MANGA_DETECTOR_ADAPTIVE_TILE_MAX: "1344"
       MANGA_DETECTOR_ADAPTIVE_OVERLAP: "200"
+      MANGA_DETECTOR_FOCUS_PAD_Y: "96"
+      MANGA_DETECTOR_FOCUS_FREE_PAD_Y: "160"
+      MANGA_DETECTOR_FOCUS_MERGE_GAP: "64"
+      MANGA_DETECTOR_FOCUS_MAX_CHIPS: "2"
       E2E_BENCHMARK_CHAPTER_URL: https://asurascans.com/comics/killer-pietro-08677664/chapter/120
       DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
       E2E_MODEL_BUNDLE_URL: ${{ secrets.E2E_MODEL_BUNDLE_URL }}
@@ -165,7 +169,9 @@ jobs:
                       f"- `{name}`: calls={row.get('single_model_calls')}, "
                       f"tall={row.get('tall_invocations')}, "
                       f"adaptive_windows={row.get('adaptive_window_calls')}, "
-                      f"full_text={row.get('full_image_text_calls')}"
+                      f"full_text={row.get('full_image_text_calls')}, "
+                      f"focus_chips={row.get('focus_chip_calls')}, "
+                      f"focus_uncovered={row.get('focus_uncovered_proposals')}"
                   )
           summary = os.environ.get('GITHUB_STEP_SUMMARY')
           if summary:
