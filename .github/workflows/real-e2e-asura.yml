@@ -22,18 +22,16 @@ jobs:
       PYTHONDONTWRITEBYTECODE: "1"
       MANGA_USE_DYNAMIC_LAMA: "1"
       MANGA_OCR_TARGET_SELECTION: centered
-      MANGA_DETECTOR_EXPERIMENT: adaptive_focus_v2
+      MANGA_DETECTOR_EXPERIMENT: adaptive_tiles_v1
       MANGA_DETECTOR_ADAPTIVE_TILE_MAX: "1344"
       MANGA_DETECTOR_ADAPTIVE_OVERLAP: "200"
-      MANGA_DETECTOR_FOCUS_PAD_Y: "96"
-      MANGA_DETECTOR_FOCUS_FREE_PAD_Y: "160"
-      MANGA_DETECTOR_FOCUS_MERGE_GAP: "64"
-      MANGA_DETECTOR_FOCUS_MAX_CHIPS: "2"
-      MANGA_DETECTOR_FOCUS_GATE_MODEL: PP-OCRv6_small_det
-      MANGA_DETECTOR_FOCUS_GATE_LIMIT: "1024"
-      MANGA_DETECTOR_FOCUS_GATE_THREADS: "2"
-      MANGA_DETECTOR_FOCUS_CHIP_MAX_HEIGHT: "1344"
-      MANGA_DETECTOR_FOCUS_CHIP_OVERLAP: "96"
+      MANGA_EXTREME_DETECTOR: ppocr_tiny_stroke_v3
+      MANGA_EXTREME_PPOCR_MODEL: PP-OCRv6_tiny_det
+      MANGA_EXTREME_PPOCR_LIMIT: "1024"
+      MANGA_EXTREME_PPOCR_THREADS: "2"
+      MANGA_EXTREME_PPOCR_SCORE: "0.25"
+      MANGA_EXTREME_MASK_RATIO_MIN: "0.006"
+      MANGA_EXTREME_MASK_RATIO_MAX: "0.42"
       E2E_BENCHMARK_CHAPTER_URL: https://asurascans.com/comics/killer-pietro-08677664/chapter/120
       DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
       E2E_MODEL_BUNDLE_URL: ${{ secrets.E2E_MODEL_BUNDLE_URL }}
@@ -86,9 +84,9 @@ jobs:
             scripts/provision_real_e2e_models.py \
             scripts/real_e2e_asura.py \
             scripts/detector_experiment.py \
-            scripts/detector_focus_v21.py
+            scripts/extreme_detector_v3.py
           python scripts/detector_experiment.py
-          python scripts/detector_focus_v21.py
+          python scripts/extreme_detector_v3.py
           python scripts/release_sanity.py
 
       - name: Restore detector and inpaint model cache
@@ -131,7 +129,7 @@ jobs:
           if [[ -n "${DEEPSEEK_API_KEY:-}" ]]; then
             args+=(--require-translation)
           fi
-          python -c 'import runpy; from scripts.detector_focus_v21 import install_focus_v21; assert install_focus_v21(), "focus v2.1 patch was not enabled"; from scripts.detector_experiment import install_from_env; assert install_from_env(), "detector experiment was not enabled"; runpy.run_path("scripts/real_e2e_asura.py", run_name="__main__")' "${args[@]}"
+          python -c 'import runpy; from scripts.detector_experiment import install_from_env; assert install_from_env(), "detector experiment was not enabled"; from scripts.extreme_detector_v3 import install_extreme_v3; assert install_extreme_v3(), "extreme detector patch was not enabled"; runpy.run_path("scripts/real_e2e_asura.py", run_name="__main__")' "${args[@]}"
 
       - name: Publish run summary
         if: always()
@@ -144,6 +142,7 @@ jobs:
 
           report_path = Path('benchmark-results/real-e2e-asura-report.json')
           experiment_path = Path('benchmark-results/detector-experiment.json')
+          extreme_path = Path('benchmark-results/extreme-detector-v3.json')
           lines = ['## Real Asura full-chapter E2E', '']
           if not report_path.is_file():
               lines += ['No E2E report was produced.']
@@ -153,14 +152,14 @@ jobs:
               lines += [
                   f"- Status: **{report.get('status')}**",
                   f"- Promotion ready: **{report.get('promotion_ready')}**",
-                  f"- Detector experiment: `{os.getenv('MANGA_DETECTOR_EXPERIMENT') or 'baseline'}`",
+                  f"- Detector experiment: `{os.getenv('MANGA_EXTREME_DETECTOR') or os.getenv('MANGA_DETECTOR_EXPERIMENT') or 'baseline'}`",
                   f"- Chapter: `{report.get('chapter_url') or 'unresolved'}`",
                   f"- Seed: `{report.get('seed')}`",
                   f"- Source pages / slices: `{report.get('source_pages')}` / `{report.get('slices')}`",
                   f"- Boxes: `{(report.get('boxes') or {}).get('total')}`",
                   f"- Detector total ms: `{detector.get('total_ms')}`",
                   f"- Bubble model ms: `{detector.get('bubble_model_ms')}`",
-                  f"- Text model ms: `{detector.get('text_model_ms')}`",
+                  f"- PP-OCR/text ms: `{detector.get('text_model_ms')}`",
                   f"- OCR recognized: `{(report.get('ocr') or {}).get('recognized')}` / `{(report.get('ocr') or {}).get('planned')}`",
                   f"- Translation: `{(report.get('translation') or {}).get('status')}`",
                   f"- Total wall ms: `{report.get('wall_ms')}`",
@@ -170,23 +169,26 @@ jobs:
                   lines += ['', '### Failures'] + [f'- {item}' for item in failures]
           if experiment_path.is_file():
               experiment = json.loads(experiment_path.read_text(encoding='utf-8'))
-              lines += ['', '### Detector call counters']
+              lines += ['', '### Neural detector call counters']
               for name, row in sorted((experiment.get('models') or {}).items()):
                   lines.append(
                       f"- `{name}`: calls={row.get('single_model_calls')}, "
                       f"tall={row.get('tall_invocations')}, "
                       f"adaptive_windows={row.get('adaptive_window_calls')}, "
-                      f"full_text={row.get('full_image_text_calls')}, "
-                      f"focus_chips={row.get('focus_chip_calls')}, "
-                      f"focus_uncovered={row.get('focus_uncovered_proposals')}"
+                      f"full_text={row.get('full_image_text_calls')}"
                   )
-              gate = experiment.get('v21') or {}
-              if gate:
-                  lines.append(
-                      f"- `ppocr_focus_gate`: runs={gate.get('gate_runs')}, "
-                      f"proposals={gate.get('gate_proposals')}, "
-                      f"ms={gate.get('gate_ms')}, failures={gate.get('gate_failures')}"
-                  )
+          if extreme_path.is_file():
+              extreme = json.loads(extreme_path.read_text(encoding='utf-8'))
+              lines += ['', '### Extreme PP-OCR + stroke detector']
+              lines += [
+                  f"- PP-OCR model: `{extreme.get('ppocr_model')}`",
+                  f"- PP-OCR runs/proposals: `{extreme.get('ppocr_runs')}` / `{extreme.get('ppocr_proposals')}`",
+                  f"- PP-OCR ms: `{extreme.get('ppocr_ms')}`",
+                  f"- Stroke-mask ms: `{extreme.get('stroke_mask_ms')}`",
+                  f"- Safe/review stroke regions: `{extreme.get('safe_stroke_masks')}` / `{extreme.get('review_stroke_regions')}`",
+                  f"- Flat-bubble fallbacks: `{extreme.get('flat_bubble_fallbacks')}`",
+                  f"- PP-OCR failures: `{extreme.get('ppocr_failures')}`",
+              ]
           summary = os.environ.get('GITHUB_STEP_SUMMARY')
           if summary:
               with open(summary, 'a', encoding='utf-8') as handle:
