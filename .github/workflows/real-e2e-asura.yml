@@ -29,6 +29,8 @@ jobs:
       MANGA_DETECTOR_FOCUS_FREE_PAD_Y: "160"
       MANGA_DETECTOR_FOCUS_MERGE_GAP: "64"
       MANGA_DETECTOR_FOCUS_MAX_CHIPS: "2"
+      MANGA_COLOR_FREE_TEXT_RESCUE: lab_mser_v1
+      MANGA_COLOR_RESCUE_MIN_CHROMA: "18"
       MANGA_ORT_PROVIDER: openvino
       MANGA_ORT_REQUIRE_PROVIDER: "1"
       MANGA_ORT_OPENVINO_SCOPE: detectors
@@ -37,7 +39,6 @@ jobs:
       MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
       MANGA_ORT_CPU_MEM_ARENA: "1"
       MANGA_ORT_MEM_PATTERN: "1"
-      MANGA_DETECTOR_INT8_V5: "1"
       E2E_BENCHMARK_CHAPTER_URL: https://asurascans.com/comics/killer-pietro-08677664/chapter/120
       DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
       E2E_MODEL_BUNDLE_URL: ${{ secrets.E2E_MODEL_BUNDLE_URL }}
@@ -87,9 +88,9 @@ jobs:
             scripts/provision_real_e2e_models.py \
             scripts/real_e2e_asura.py \
             scripts/detector_experiment.py \
-            scripts/prepare_detector_calibration_v5.py \
-            scripts/quantize_detectors_nncf_v5.py
+            scripts/color_free_text_rescue_v6.py
           python scripts/detector_experiment.py
+          python scripts/color_free_text_rescue_v6.py
           python scripts/release_sanity.py
 
       - name: Restore detector and inpaint model cache
@@ -105,28 +106,6 @@ jobs:
 
       - name: Provision and validate real models
         run: python scripts/provision_real_e2e_models.py
-
-      - name: Prepare representative INT8 calibration tensors
-        run: |
-          python scripts/prepare_detector_calibration_v5.py \
-            --chapter-url "${E2E_BENCHMARK_CHAPTER_URL}" \
-            --output-dir /tmp/detector-calibration-v5 \
-            --base-slices 16 \
-            --window-height 1344
-
-      - name: Quantize detector models with NNCF INT8 PTQ
-        shell: bash
-        run: |
-          python -m venv /tmp/nncf-v5
-          /tmp/nncf-v5/bin/python -m pip install --upgrade pip
-          /tmp/nncf-v5/bin/python -m pip install --only-binary=:all: \
-            "nncf==3.3.0" "onnx==1.22.0" "onnxruntime==1.24.1"
-          /tmp/nncf-v5/bin/python scripts/quantize_detectors_nncf_v5.py \
-            --calibration-dir /tmp/detector-calibration-v5/tensors \
-            --report /tmp/detector-int8-v5.json \
-            models/bubble_yolo.onnx \
-            models/text_segmenter.onnx
-          rm -rf /tmp/nncf-v5 /tmp/detector-calibration-v5
 
       - name: Install OpenVINO runtime for benchmark
         run: |
@@ -165,7 +144,7 @@ jobs:
           if [[ -n "${DEEPSEEK_API_KEY:-}" ]]; then
             args+=(--require-translation)
           fi
-          python -c 'import runpy; from scripts.detector_experiment import install_from_env; assert install_from_env(), "detector experiment was not enabled"; runpy.run_path("scripts/real_e2e_asura.py", run_name="__main__")' "${args[@]}"
+          python -c 'import runpy; from scripts.detector_experiment import install_from_env; assert install_from_env(), "detector experiment was not enabled"; from scripts.color_free_text_rescue_v6 import install_from_env as install_color_rescue; assert install_color_rescue(), "color rescue was not enabled"; runpy.run_path("scripts/real_e2e_asura.py", run_name="__main__")' "${args[@]}"
 
       - name: Publish run summary
         if: always()
@@ -174,68 +153,55 @@ jobs:
           python - <<'PY'
           import json
           import os
-          import shutil
           from pathlib import Path
 
           report_path = Path('benchmark-results/real-e2e-asura-report.json')
           experiment_path = Path('benchmark-results/detector-experiment.json')
-          int8_path = Path('/tmp/detector-int8-v5.json')
-          lines = ['## Real Asura full-chapter E2E', '']
+          color_path = Path('benchmark-results/color-free-text-rescue-v6.json')
+          lines = ['## Real Asura full-chapter E2E — color free-text rescue', '']
           if not report_path.is_file():
               lines += ['No E2E report was produced.']
           else:
               report = json.loads(report_path.read_text(encoding='utf-8'))
               detector = ((report.get('process') or {}).get('detector') or {})
+              boxes = report.get('boxes') or {}
+              ocr = report.get('ocr') or {}
               lines += [
                   f"- Status: **{report.get('status')}**",
                   f"- Promotion ready: **{report.get('promotion_ready')}**",
-                  f"- Detector experiment: `{os.getenv('MANGA_DETECTOR_EXPERIMENT') or 'baseline'}`",
+                  f"- Detector experiment: `{os.getenv('MANGA_DETECTOR_EXPERIMENT') or 'baseline'}` + `{os.getenv('MANGA_COLOR_FREE_TEXT_RESCUE') or 'none'}`",
                   f"- Runtime provider: `{os.getenv('MANGA_ORT_PROVIDER') or 'cpu'}`",
-                  f"- Runtime scope: `{os.getenv('MANGA_ORT_OPENVINO_SCOPE') or 'all'}`",
-                  f"- INT8 PTQ: `{os.getenv('MANGA_DETECTOR_INT8_V5') == '1'}`",
                   f"- Chapter: `{report.get('chapter_url') or 'unresolved'}`",
                   f"- Source pages / slices: `{report.get('source_pages')}` / `{report.get('slices')}`",
-                  f"- Boxes: `{(report.get('boxes') or {}).get('total')}`",
+                  f"- Boxes total / safe / review: `{boxes.get('total')}` / `{boxes.get('safe_to_inpaint')}` / `{boxes.get('review_only')}`",
                   f"- Detector total ms: `{detector.get('total_ms')}`",
                   f"- Bubble model ms: `{detector.get('bubble_model_ms')}`",
                   f"- Text model ms: `{detector.get('text_model_ms')}`",
-                  f"- OCR recognized: `{(report.get('ocr') or {}).get('recognized')}` / `{(report.get('ocr') or {}).get('planned')}`",
-                  f"- Translation: `{(report.get('translation') or {}).get('status')}`",
+                  f"- OCR recognized: `{ocr.get('recognized')}` / `{ocr.get('planned')}`",
                   f"- Total wall ms: `{report.get('wall_ms')}`",
               ]
-              failures = report.get('failures') or []
-              if failures:
-                  lines += ['', '### Failures'] + [f'- {item}' for item in failures]
           if experiment_path.is_file():
               experiment = json.loads(experiment_path.read_text(encoding='utf-8'))
-              lines += ['', '### Detector call counters']
+              lines += ['', '### Detector focus counters']
               for name, row in sorted((experiment.get('models') or {}).items()):
                   lines.append(
                       f"- `{name}`: calls={row.get('single_model_calls')}, "
-                      f"tall={row.get('tall_invocations')}, "
-                      f"adaptive_windows={row.get('adaptive_window_calls')}, "
                       f"full_text={row.get('full_image_text_calls')}, "
                       f"focus_chips={row.get('focus_chip_calls')}, "
                       f"focus_uncovered={row.get('focus_uncovered_proposals')}"
                   )
-          if int8_path.is_file():
-              int8 = json.loads(int8_path.read_text(encoding='utf-8'))
-              lines += ['', '### NNCF INT8 PTQ']
+          if color_path.is_file():
+              color = json.loads(color_path.read_text(encoding='utf-8'))
+              lines += ['', '### Color proposal rescue']
               lines.append(
-                  f"- Calibration tensors: `{int8.get('calibration_tensors')}`; "
-                  f"quantization wall ms: `{int8.get('wall_ms')}`"
+                  f"- Invocations/skipped: `{color.get('invocations')}` / `{color.get('skipped_low_chroma')}`; "
+                  f"extra proposals: `{color.get('extra_boxes')}`; total ms: `{color.get('total_ms')}`"
               )
-              for row in int8.get('models') or []:
-                  ratio = row.get('size_ratio')
-                  ratio_text = f"{ratio:.3f}x" if isinstance(ratio, (int, float)) else "n/a"
+              for name, row in sorted((color.get('channels') or {}).items()):
                   lines.append(
-                      f"- `{row.get('name')}`: "
-                      f"{row.get('fp32_size_bytes')} -> {row.get('int8_size_bytes')} bytes "
-                      f"({ratio_text})"
+                      f"- `{name}`: runs={row.get('runs')}, raw={row.get('raw_regions')}, "
+                      f"accepted={row.get('proposals')}, ms={row.get('ms')}"
                   )
-              evidence_dir = Path('benchmark-results')
-              evidence_dir.mkdir(parents=True, exist_ok=True)
-              shutil.copy2(int8_path, evidence_dir / 'detector-int8-v5.json')
           summary = os.environ.get('GITHUB_STEP_SUMMARY')
           if summary:
               with open(summary, 'a', encoding='utf-8') as handle:
