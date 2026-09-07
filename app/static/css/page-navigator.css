@@ -156,6 +156,11 @@
   display: block;
   object-fit: cover;
   object-position: top center;
+  transition: opacity 0.15s ease-out;
+}
+
+.page-navigator-thumb img:not([src]) {
+  opacity: 0;
 }
 
 .page-navigator-item-text {

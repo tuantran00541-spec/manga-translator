@@ -424,24 +424,35 @@
       const resetBtn = controls?.querySelector(".reset-manual-btn") || null;
       const brushSize = controls?.querySelector(".brush-size-slider") || null;
       const aiQcBtn = controls?.querySelector(".ai-qc-btn") || null;
+      let isSyncing = false;
+      let lastBusy = null;
       const syncBusy = () => {
-        const aiBusy = Boolean(aiQcBtn?.disabled && /đang/i.test(aiQcBtn.textContent));
-        const busy = Boolean(card._reviewBusy || aiBusy);
-        workspace.classList.toggle("review-busy", busy);
-        if (busy && canvas && typeof canvas._stopBrush === "function") canvas._stopBrush();
-        if (brushBtn) brushBtn.disabled = busy;
-        if (clearBtn) clearBtn.disabled = busy;
-        if (repaintBtn) repaintBtn.disabled = busy;
-        if (resetBtn) resetBtn.disabled = busy;
-        if (brushSize) brushSize.disabled = busy;
-        if (aiQcBtn) aiQcBtn.disabled = busy;
-        navigator.setBusy(busy);
-        continueBtn.disabled = busy;
+        if (isSyncing) return;
+        isSyncing = true;
+        try {
+          const aiBusy = Boolean(aiQcBtn?.disabled && /đang/i.test(aiQcBtn.textContent));
+          const busy = Boolean(card._reviewBusy || aiBusy);
+          if (busy === lastBusy) return;
+          lastBusy = busy;
+
+          workspace.classList.toggle("review-busy", busy);
+          if (busy && canvas && typeof canvas._stopBrush === "function") canvas._stopBrush();
+          if (brushBtn && brushBtn.disabled !== busy) brushBtn.disabled = busy;
+          if (clearBtn && clearBtn.disabled !== busy) clearBtn.disabled = busy;
+          if (repaintBtn && repaintBtn.disabled !== busy) repaintBtn.disabled = busy;
+          if (resetBtn && resetBtn.disabled !== busy) resetBtn.disabled = busy;
+          if (brushSize && brushSize.disabled !== busy) brushSize.disabled = busy;
+          if (aiQcBtn && aiQcBtn.disabled !== busy) aiQcBtn.disabled = busy;
+          navigator.setBusy(busy);
+          if (continueBtn && continueBtn.disabled !== busy) continueBtn.disabled = busy;
+        } finally {
+          isSyncing = false;
+        }
       };
       card._syncReviewBusy = syncBusy;
       if (aiQcBtn) {
         busyObserver = new MutationObserver(syncBusy);
-        busyObserver.observe(aiQcBtn, { attributes: true, childList: true, characterData: true, subtree: true });
+        busyObserver.observe(aiQcBtn, { childList: true, characterData: true, subtree: true });
       }
       syncBusy();
     };

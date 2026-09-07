@@ -56,6 +56,26 @@
     list.className = "page-navigator-list";
     root.append(header, list);
 
+    let thumbObserver = null;
+    if (typeof window.IntersectionObserver !== "undefined") {
+      thumbObserver = new IntersectionObserver(
+        (entries, observer) => {
+          for (const entry of entries) {
+            if (entry.isIntersecting) {
+              const img = entry.target;
+              const dataSrc = img.dataset.src;
+              if (dataSrc) {
+                img.src = dataSrc;
+                img.removeAttribute("data-src");
+              }
+              observer.unobserve(img);
+            }
+          }
+        },
+        { root: list, rootMargin: "150px 0px" }
+      );
+    }
+
     const createItemButton = (item, index) => {
       const button = document.createElement("button");
       button.type = "button";
@@ -74,9 +94,14 @@
       thumb.className = "page-navigator-thumb";
       if (item.image) {
         const img = document.createElement("img");
-        img.src = item.image;
         img.alt = "";
-        img.loading = "lazy";
+        if (thumbObserver) {
+          img.dataset.src = item.image;
+          thumbObserver.observe(img);
+        } else {
+          img.src = item.image;
+          img.loading = "lazy";
+        }
         thumb.appendChild(img);
       } else {
         thumb.textContent = String(index + 1).padStart(2, "0");
@@ -136,6 +161,7 @@
     };
 
     const renderList = ({ scrollActive = true } = {}) => {
+      if (thumbObserver) thumbObserver.disconnect();
       updateControlsState();
       list.replaceChildren();
 

@@ -683,6 +683,28 @@ function floodFillSelect(ctx, srcData, startX, startY, width, height) {
   return true;
 }
 
+function canvasToBlob(canvas) {
+  return new Promise((resolve, reject) => {
+    try {
+      const dataUrl = canvas.toDataURL("image/png");
+      const parts = dataUrl.split(",");
+      if (parts.length < 2) {
+        throw new Error("Không thể tạo dữ liệu vùng đánh dấu từ canvas");
+      }
+      const binStr = atob(parts[1]);
+      const len = binStr.length;
+      const u8arr = new Uint8Array(len);
+      for (let i = 0; i < len; i++) {
+        u8arr[i] = binStr.charCodeAt(i);
+      }
+      resolve(new Blob([u8arr], { type: "image/png" }));
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+window.canvasToBlob = canvasToBlob;
+
 async function submitRepaint(pageIndex, canvas, img, ctx, submitBtn, card = null) {
   const chapterId = currentChapterId;
   if (!chapterId) return;
@@ -712,9 +734,15 @@ async function submitRepaint(pageIndex, canvas, img, ctx, submitBtn, card = null
   }
 
   const mode = await chooseRepaintMode();
-  if (!mode || chapterId !== currentChapterId || !canvas.isConnected) return;
+  if (!mode || chapterId !== currentChapterId || !canvas.isConnected) {
+    return;
+  }
 
   const activeCard = card || submitBtn.closest(".review-card") || document.querySelector(`.review-card[data-page-index="${pageIndex}"]`);
+  const imageWrap = activeCard ? activeCard.querySelector(".review-image-wrap") : null;
+  const busyText = mode === "lama" ? "LaMa đang tái tạo ảnh…" : "Đang xử lý inpaint vùng đánh dấu…";
+
+  if (imageWrap) imageWrap.setAttribute("data-busy-text", busyText);
   if (activeCard) {
     activeCard._reviewBusy = true;
     if (typeof activeCard._syncReviewBusy === "function") activeCard._syncReviewBusy();
@@ -724,13 +752,7 @@ async function submitRepaint(pageIndex, canvas, img, ctx, submitBtn, card = null
   submitBtn.textContent = mode === "lama" ? "LaMa đang xử lý…" : "Đang xử lý…";
 
   try {
-    const maskBlob = await new Promise((resolve, reject) => {
-      canvas.toBlob((blob) => {
-        if (blob) resolve(blob);
-        else reject(new Error("Không thể tạo dữ liệu vùng đánh dấu"));
-      }, "image/png");
-    });
-
+    const maskBlob = await canvasToBlob(canvas);
     const formData = new FormData();
     formData.append("chapter_id", chapterId);
     formData.append("page_index", pageIndex);
@@ -763,6 +785,7 @@ async function submitRepaint(pageIndex, canvas, img, ctx, submitBtn, card = null
       showToast("Không thể xử lý vùng đánh dấu: " + err.message, "error");
     }
   } finally {
+    if (imageWrap) imageWrap.removeAttribute("data-busy-text");
     if (activeCard) {
       activeCard._reviewBusy = false;
       if (typeof activeCard._syncReviewBusy === "function") activeCard._syncReviewBusy();
@@ -875,7 +898,9 @@ function chooseRepaintMode() {
     };
 
     cancelBtn.addEventListener("click", () => close(null));
-    confirmBtn.addEventListener("click", () => close(selectedMode));
+    confirmBtn.addEventListener("click", () => {
+      close(selectedMode);
+    });
     backdrop.addEventListener("click", (event) => {
       if (event.target === backdrop) close(null);
     });

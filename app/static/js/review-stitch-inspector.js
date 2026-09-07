@@ -652,12 +652,18 @@
             0, desc.localY1, w, subH
           );
 
-          const maskBlob = await new Promise((resolve, reject) => {
-            sliceMaskCanvas.toBlob((blob) => {
-              if (blob) resolve(blob);
-              else reject(new Error("Không thể tạo dữ liệu vùng đánh dấu cho lát"));
-            }, "image/png");
-          });
+          const toBlobFn = typeof window.canvasToBlob === "function"
+            ? window.canvasToBlob
+            : (c) => new Promise((res, rej) => {
+                try {
+                  const d = c.toDataURL("image/png").split(",")[1];
+                  const b = atob(d);
+                  const a = new Uint8Array(b.length);
+                  for (let i = 0; i < b.length; i++) a[i] = b.charCodeAt(i);
+                  res(new Blob([a], { type: "image/png" }));
+                } catch (e) { rej(e); }
+              });
+          const maskBlob = await toBlobFn(sliceMaskCanvas);
 
           const formData = new FormData();
           formData.append("chapter_id", chapterId);
