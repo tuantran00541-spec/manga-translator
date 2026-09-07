@@ -1,15 +1,14 @@
 """Same-run A/B benchmark for reusing raw MSER regions across adaptive focus.
 
-The production adaptive detector calls SecondaryTextRecovery twice per page:
-first for focus proposals and later against the final merged boxes. Both calls
-need different filtering semantics, so caching the final BubbleBox list would be
-incorrect. This experiment caches only cv2.MSER.detectRegions() output inside a
-single AdaptiveFocusCombinedTextDetector.detect() call. All downstream recovery
-filtering, mask construction, final NMS, and inpaint authority execute normally.
+Production adaptive detection invokes SecondaryTextRecovery twice per page:
+once to propose focus bands and again after neural results are merged. The two
+passes need different filtering semantics, so this experiment caches only the
+raw cv2.MSER.detectRegions() result inside one detector call. Downstream MSER
+filtering, masks, authority, final NMS, and inpainting remain unchanged.
 
-A cached full-chapter run is executed first, followed by an uncached baseline on
-the same runner, same model sessions, and same downloaded source images. Running
-the baseline second makes the speed comparison conservative for the cache.
+The cached full-chapter variant runs first and the uncached baseline second on
+the same runner, source images, model sessions, and process. Baseline therefore
+gets any residual warm-cache advantage, making a cache win conservative.
 """
 from __future__ import annotations
 
@@ -31,19 +30,17 @@ sys.path.insert(0, str(ROOT))
 import onnxruntime as ort
 import psutil
 
-from app.config import RAW_DIR
 from app.detector.adaptive_focus_detector import AdaptiveFocusCombinedTextDetector
 from app.downloader.registry import download_chapter as fetch_chapter_images
 from app.manifest_utils import load_manifest_raw
 from app.pipeline import ChapterPipeline
 from app.parameters import parameter_snapshot
 
-
 DEFAULT_CHAPTER = "https://asurascans.com/comics/killer-pietro-08677664/chapter/120"
 
 
 class PairedMserRegionsProxy:
-    """Transparent MSER proxy with optional per-page one-shot region reuse."""
+    """Transparent MSER proxy with optional one-shot per-detector-call reuse."""
 
     def __init__(self, inner) -> None:
         self._inner = inner
@@ -133,6 +130,10 @@ class CacheTogglePipeline(ChapterPipeline):
         return self._detector
 
 
+def _chapter_id(prefix: str) -> str:
+    return hashlib.sha256(f"{prefix}-{time.time_ns()}".encode()).hexdigest()[:8]
+
+
 def _digest_file(path: Path) -> str:
     with path.open("rb") as handle:
         return hashlib.file_digest(handle, "sha256").hexdigest()
@@ -195,7 +196,7 @@ def _run_variant(
     proxy.enabled = bool(cache_enabled)
     proxy.reset_stats()
 
-    chapter_id = hashlib.sha256(f"cached-mser-{label}-{time.time_ns()}".encode()).hexdigest()[:8]
+    chapter_id = _chapter_id(label)
     build_started = time.perf_counter()
     manifest = pipeline._build_chapter_from_raw_paths(
         chapter_id,
@@ -257,21 +258,24 @@ def main() -> None:
     pipeline = CacheTogglePipeline()
     process = psutil.Process()
 
-    # One real page warms detector/OpenVINO/LaMa once before either timed full run.
+    # Warm one real slice before either full run. Use the same validated 8-hex
+    # chapter-id shape as normal runtime chapters.
+    warm_id = _chapter_id("warm")
     warm_manifest = pipeline._build_chapter_from_raw_paths(
-        "mserwarm",
+        warm_id,
         raw_paths[:1],
         source_url=None,
         workers=args.workers,
     )
+    if not warm_manifest.get("pages"):
+        raise RuntimeError("Warmup source produced zero slices")
     pipeline.detector.mser_regions_proxy.enabled = False
-    pipeline.process_pages("mserwarm", [0], workers=1)
+    pipeline.process_pages(warm_id, [0], workers=1)
     gc.collect()
 
     rss_before = process.memory_info().rss / 2**20
 
-    # Cache runs first. Baseline runs second and therefore receives any residual
-    # OS/model-cache advantage; this makes a measured cache win conservative.
+    # Cached first; uncached baseline second intentionally gets warm-cache bias.
     cached = _run_variant(
         pipeline,
         raw_paths,
