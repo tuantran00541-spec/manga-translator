@@ -1,0 +1,117 @@
+name: Research full detector-inpaint benchmark
+
+on:
+  push:
+    branches:
+      - research/perf-tradeoffs
+    paths:
+      - scripts/research_full_processing.py
+      - .github/workflows/research-full-processing.yml
+      - app/detector/**
+      - app/inpaint/**
+      - app/optimized_pipeline.py
+      - app/ort_utils.py
+      - app/parameters.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: research-full-processing
+  cancel-in-progress: false
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    env:
+      PYTHONUNBUFFERED: "1"
+      MANGA_USE_DYNAMIC_LAMA: "1"
+      MANGA_ORT_PROVIDER: openvino
+      MANGA_ORT_REQUIRE_PROVIDER: "1"
+      MANGA_ORT_OPENVINO_SCOPE: detectors
+      MANGA_ORT_OPENVINO_THREADS: "2"
+      MANGA_ORT_OPENVINO_STREAMS: "1"
+      MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install production processing runtime
+        run: |
+          python -m pip install \
+            numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 \
+            onnxruntime-openvino==1.24.1 psutil==6.1.1 loguru==0.7.2 \
+            requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 \
+            playwright==1.47.0 fastapi==0.115.0 pydantic==2.9.2 \
+            filelock==3.16.1
+
+      - name: Restore detector and inpaint models
+        id: models
+        uses: actions/cache@v4
+        with:
+          path: |
+            models/*.onnx
+            models/.e2e-provenance.json
+          key: processing-profile-models-b224548-v1
+
+      - name: Read pinned model provisioner
+        if: steps.models.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: b22454827f8190655d7070b80eb20c2550beadfa
+          path: benchmark-bootstrap
+          sparse-checkout: scripts/provision_real_e2e_models.py
+          sparse-checkout-cone-mode: false
+
+      - name: Provision public-equivalent production models
+        if: steps.models.outputs.cache-hit != 'true'
+        run: |
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple torch==2.5.1+cpu torchvision==0.20.1+cpu
+          python -m pip install --no-deps ultralytics==8.3.221 onnx==1.17.0 onnxslim==0.1.71
+          python -m pip install numpy==1.26.4 sympy==1.13.1 PyYAML==6.0.2 scipy==1.14.1 tqdm==4.67.1 matplotlib==3.9.2 pandas==2.2.3 py-cpuinfo==9.0.0 ml_dtypes==0.5.3 colorama==0.4.6 polars==1.33.1 ultralytics-thop==2.0.17
+          python benchmark-bootstrap/scripts/provision_real_e2e_models.py
+          cp benchmark-bootstrap/models/*.onnx models/
+          cp benchmark-bootstrap/models/.e2e-provenance.json models/
+
+      - name: Run full production detector and inpaint path
+        run: |
+          python scripts/research_full_processing.py \
+            --workers 2 \
+            --output benchmark-results/research-full/report.json
+
+      - name: Publish benchmark summary
+        if: always()
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          path = Path('benchmark-results/research-full/report.json')
+          if not path.is_file():
+              raise SystemExit(0)
+          r = json.loads(path.read_text())
+          lines = [
+              '## Full production detector → inpaint benchmark', '',
+              f"- Source: `{r.get('source')}`",
+              f"- Source pages / slices: `{r.get('source_pages')}` / `{r.get('slices')}`",
+              f"- Process wall: **{r.get('process_wall_s')} s**",
+              f"- Throughput: **{r.get('throughput_ms_per_slice')} ms/slice**",
+              f"- Boxes / safe-to-inpaint: `{r.get('boxes')}` / `{r.get('safe_to_inpaint')}`",
+              f"- ORT: `{r.get('onnxruntime')}`; providers: `{r.get('providers')}`",
+          ]
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as out:
+              out.write('\n'.join(lines) + '\n')
+          print('\n'.join(lines))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: research-full-processing-${{ github.run_id }}
+          path: benchmark-results/research-full/
+          retention-days: 7
+          if-no-files-found: warn
