@@ -37,6 +37,7 @@ jobs:
       MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
       MANGA_ORT_CPU_MEM_ARENA: "1"
       MANGA_ORT_MEM_PATTERN: "1"
+      MANGA_DETECTOR_INT8_V5: "1"
       E2E_BENCHMARK_CHAPTER_URL: https://asurascans.com/comics/killer-pietro-08677664/chapter/120
       DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
       E2E_MODEL_BUNDLE_URL: ${{ secrets.E2E_MODEL_BUNDLE_URL }}
@@ -85,7 +86,9 @@ jobs:
             app/ort_utils.py \
             scripts/provision_real_e2e_models.py \
             scripts/real_e2e_asura.py \
-            scripts/detector_experiment.py
+            scripts/detector_experiment.py \
+            scripts/prepare_detector_calibration_v5.py \
+            scripts/quantize_detectors_nncf_v5.py
           python scripts/detector_experiment.py
           python scripts/release_sanity.py
 
@@ -102,6 +105,27 @@ jobs:
 
       - name: Provision and validate real models
         run: python scripts/provision_real_e2e_models.py
+
+      - name: Prepare representative INT8 calibration tensors
+        run: |
+          python scripts/prepare_detector_calibration_v5.py \
+            --chapter-url "${E2E_BENCHMARK_CHAPTER_URL}" \
+            --output-dir /tmp/detector-calibration-v5 \
+            --base-slices 16 \
+            --window-height 1344
+
+      - name: Quantize detector models with NNCF INT8 PTQ
+        shell: bash
+        run: |
+          python -m venv /tmp/nncf-v5
+          /tmp/nncf-v5/bin/python -m pip install --upgrade pip
+          /tmp/nncf-v5/bin/python -m pip install --only-binary=:all: "nncf[onnx]==3.3.0"
+          /tmp/nncf-v5/bin/python scripts/quantize_detectors_nncf_v5.py \
+            --calibration-dir /tmp/detector-calibration-v5/tensors \
+            --report /tmp/detector-int8-v5.json \
+            models/bubble_yolo.onnx \
+            models/text_segmenter.onnx
+          rm -rf /tmp/nncf-v5 /tmp/detector-calibration-v5
 
       - name: Install OpenVINO runtime for benchmark
         run: |
@@ -149,10 +173,12 @@ jobs:
           python - <<'PY'
           import json
           import os
+          import shutil
           from pathlib import Path
 
           report_path = Path('benchmark-results/real-e2e-asura-report.json')
           experiment_path = Path('benchmark-results/detector-experiment.json')
+          int8_path = Path('/tmp/detector-int8-v5.json')
           lines = ['## Real Asura full-chapter E2E', '']
           if not report_path.is_file():
               lines += ['No E2E report was produced.']
@@ -165,6 +191,7 @@ jobs:
                   f"- Detector experiment: `{os.getenv('MANGA_DETECTOR_EXPERIMENT') or 'baseline'}`",
                   f"- Runtime provider: `{os.getenv('MANGA_ORT_PROVIDER') or 'cpu'}`",
                   f"- Runtime scope: `{os.getenv('MANGA_ORT_OPENVINO_SCOPE') or 'all'}`",
+                  f"- INT8 PTQ: `{os.getenv('MANGA_DETECTOR_INT8_V5') == '1'}`",
                   f"- Chapter: `{report.get('chapter_url') or 'unresolved'}`",
                   f"- Source pages / slices: `{report.get('source_pages')}` / `{report.get('slices')}`",
                   f"- Boxes: `{(report.get('boxes') or {}).get('total')}`",
@@ -190,6 +217,24 @@ jobs:
                       f"focus_chips={row.get('focus_chip_calls')}, "
                       f"focus_uncovered={row.get('focus_uncovered_proposals')}"
                   )
+          if int8_path.is_file():
+              int8 = json.loads(int8_path.read_text(encoding='utf-8'))
+              lines += ['', '### NNCF INT8 PTQ']
+              lines.append(
+                  f"- Calibration tensors: `{int8.get('calibration_tensors')}`; "
+                  f"quantization wall ms: `{int8.get('wall_ms')}`"
+              )
+              for row in int8.get('models') or []:
+                  ratio = row.get('size_ratio')
+                  ratio_text = f"{ratio:.3f}x" if isinstance(ratio, (int, float)) else "n/a"
+                  lines.append(
+                      f"- `{row.get('name')}`: "
+                      f"{row.get('fp32_size_bytes')} -> {row.get('int8_size_bytes')} bytes "
+                      f"({ratio_text})"
+                  )
+              evidence_dir = Path('benchmark-results')
+              evidence_dir.mkdir(parents=True, exist_ok=True)
+              shutil.copy2(int8_path, evidence_dir / 'detector-int8-v5.json')
           summary = os.environ.get('GITHUB_STEP_SUMMARY')
           if summary:
               with open(summary, 'a', encoding='utf-8') as handle:
