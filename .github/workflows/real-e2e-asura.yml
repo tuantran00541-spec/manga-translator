@@ -75,8 +75,6 @@ jobs:
             "matplotlib==3.9.2" "pandas==2.2.3" "py-cpuinfo==9.0.0" \
             "ml_dtypes==0.5.3" "colorama==0.4.6" \
             "polars==1.33.1" "ultralytics-thop==2.0.17"
-          python -m pip uninstall -y onnxruntime
-          python -m pip install --only-binary=:all: "onnxruntime-openvino==1.24.1"
 
       - name: Install Chromium for Asura JS fallback
         run: python -m playwright install --with-deps chromium
@@ -88,12 +86,6 @@ jobs:
             scripts/provision_real_e2e_models.py \
             scripts/real_e2e_asura.py \
             scripts/detector_experiment.py
-          python - <<'PY'
-          import onnxruntime as ort
-          providers = ort.get_available_providers()
-          print({'onnxruntime': ort.__version__, 'providers': providers})
-          assert 'OpenVINOExecutionProvider' in providers, providers
-          PY
           python scripts/detector_experiment.py
           python scripts/release_sanity.py
 
@@ -110,6 +102,17 @@ jobs:
 
       - name: Provision and validate real models
         run: python scripts/provision_real_e2e_models.py
+
+      - name: Install OpenVINO runtime for benchmark
+        run: |
+          python -m pip uninstall -y onnxruntime onnxruntime-openvino || true
+          python -m pip install --only-binary=:all: "onnxruntime-openvino==1.24.1"
+          python - <<'PY'
+          import onnxruntime as ort
+          providers = ort.get_available_providers()
+          print({'onnxruntime': ort.__version__, 'providers': providers})
+          assert 'OpenVINOExecutionProvider' in providers, providers
+          PY
 
       - name: Restore OCR runtime cache
         uses: actions/cache@v4
