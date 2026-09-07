@@ -12,8 +12,13 @@ import json
 import math
 import os
 from pathlib import Path
+import sys
 import threading
 import time
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
 from app.detector import bubble_detector as bubble_mod
 
@@ -98,6 +103,7 @@ def plan_adaptive_windows(
         start = max(0, min(int(start), height - 1))
         end = min(height, start + tile_h)
         if windows and start > windows[-1][1]:
+            # Defensive no-gap repair; should not be needed with the planner.
             start = windows[-1][1]
             end = min(height, start + tile_h)
         if not windows or (start, end) != windows[-1]:
