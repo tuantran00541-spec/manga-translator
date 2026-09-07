@@ -6,38 +6,6 @@
   margin: 0;
 }
 
-.review-workspace-shell { width: 100%; max-width: none; gap: 0; }
-.review-sticky-toolbar {
-  top: 48px;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  margin: 0;
-  padding: 10px 12px;
-  border: 0;
-  border-bottom: 1px solid var(--border-subtle);
-  border-radius: 0;
-  background: color-mix(in srgb, var(--surface-app) 94%, transparent);
-  box-shadow: none;
-}
-.review-toolbar-title { color: var(--text-muted); font-size: 13px; }
-.review-primary-action { order: 5; }
-.review-workbench-grid { min-height: calc(100vh - 116px); }
-.review-canvas-host.workbench-canvas-column .review-card { width: 100%; margin: 0; }
-.review-inspector .review-controls-slot, .review-inspector .review-controls { display: grid; grid-template-columns: 1fr; width: 100%; gap: 6px; }
-.review-inspector .review-controls button, .review-inspector .brush-size-control { width: 100%; min-height: 34px; justify-content: flex-start; }
-.review-inspector .review-help { width: 100%; }
-.review-inspector .review-help > summary { width: 100%; justify-content: flex-start; }
-.review-inspector .review-help-panel { position: static; width: auto; margin-top: 8px; box-shadow: none; }
-.command-disclosure { position: relative; }
-.command-disclosure-panel { position: absolute; top: calc(100% + 6px); right: 0; z-index: var(--z-popover); display: grid; gap: 12px; width: min(340px, calc(100vw - 32px)); max-height: min(560px, 70vh); overflow: auto; padding: 16px; }
-.command-disclosure-panel .chapter-qc-options { flex-wrap: wrap; }
-.command-disclosure-panel .chapter-qc-results { grid-template-columns: 1fr; }
-.review-more-actions { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border-subtle); }
-.review-more-actions summary { width: 100%; justify-content: flex-start; }
-.review-more-actions button { margin-top: 6px; }
-.review-help-section .review-ai-status { display: block; margin-bottom: 8px; }
-
 .review-actions-group {
   display: flex;
   flex-wrap: wrap;
@@ -57,11 +25,36 @@
 .review-view-switch .active {
   border-color: var(--border-strong);
   background: var(--surface-panel);
-  color: var(--text-primary);
+  color: var(--accent);
+  font-weight: 600;
 }
 
-.review-show-stitched .review-canvas-host > .review-card { display: none; }
-.review-show-slices .review-stitched-shell { display: none; }
+/* Independent display modes */
+.review-show-slices .review-canvas-host > .review-card { display: block; }
+.review-show-slices .review-stitched-shell { display: none !important; }
+.review-show-slices .review-controls-slot { display: flex; }
+.review-show-slices .review-stitched-controls-slot { display: none !important; }
+
+.review-show-stitched .review-canvas-host > .review-card { display: none !important; }
+.review-show-stitched .review-stitched-shell { display: flex !important; }
+.review-show-stitched .review-controls-slot { display: none !important; }
+.review-show-stitched .review-stitched-controls-slot { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+
+.review-stitched-controls-slot {
+  width: 100%;
+}
+.review-stitched-controls-slot .review-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
 
 .review-stitched-shell {
   display: flex;
@@ -82,8 +75,29 @@
 .review-stitched-note { color: var(--text-secondary); font-size: 12px; line-height: 1.45; }
 .review-stitched-warning { padding: 8px 10px; border-left: 2px solid var(--warning); background: var(--warning-soft); color: var(--text-secondary); font-size: 12px; line-height: 1.45; }
 .review-stitched-viewport { max-height: calc(100vh - 190px); overflow: auto; background: var(--surface-canvas); }
-.review-stitched-image { width: min(100%, 1000px); margin: 0 auto; background: white; }
+.review-stitched-image {
+  position: relative;
+  width: min(100%, 1000px);
+  margin: 0 auto;
+  background: white;
+  line-height: 0;
+}
 .review-stitched-image canvas { display: block; width: 100%; height: auto; }
+.review-stitched-image .stitched-brush-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 2;
+  touch-action: none;
+  pointer-events: none;
+  cursor: default;
+}
+.review-stitched-image.brush-mode .stitched-brush-canvas {
+  pointer-events: auto;
+  cursor: crosshair;
+}
 
 .review-help { position: relative; }
 .review-help > summary { list-style: none; }
@@ -140,6 +154,7 @@
   background: var(--surface-raised);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
+  backdrop-filter: blur(12px);
 }
 
 .review-toolbar-title {
@@ -224,11 +239,6 @@
   border-radius: var(--radius-md);
   background: var(--surface-panel);
 }
-
-.chapter-ocr-panel { display: grid; gap: 8px; }
-.chapter-ocr-content { display: grid; gap: 8px; padding-top: 8px; }
-.chapter-ocr-head, .chapter-ocr-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.chapter-ocr-summary { margin: 0; color: var(--text-secondary); font-size: 12px; line-height: 1.45; }
 
 .chapter-qc-head {
   display: flex;
@@ -360,8 +370,79 @@
   }
 }
 
-@media (max-width: 1000px) {
-  .review-sticky-toolbar { position: static; }
-  .command-disclosure[open] { flex: 1 0 100%; order: 10; }
-  .command-disclosure-panel { position: static; width: 100%; max-height: 60vh; margin-top: 8px; }
+/* Overlap Context Bands */
+.review-context-band {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 1;
+  box-sizing: border-box;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  padding: 6px;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--surface-raised) 58%, transparent) 0,
+      color-mix(in srgb, var(--surface-raised) 58%, transparent) 8px,
+      color-mix(in srgb, var(--accent) 18%, transparent) 8px,
+      color-mix(in srgb, var(--accent) 18%, transparent) 16px
+    );
+}
+
+.review-context-band-top {
+  border-bottom: 1px dashed var(--accent);
+}
+
+.review-context-band-bottom {
+  align-items: flex-end;
+  border-top: 1px dashed var(--accent);
+}
+
+.review-context-band-label {
+  max-width: calc(100% - 12px);
+  padding: 4px 6px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--surface-raised) 90%, transparent);
+  color: var(--text-secondary);
+  font: 600 11px/1.2 var(--font-ui);
+  white-space: normal;
+}
+
+.review-context-legend {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-secondary);
+  font: 500 11px/1.35 var(--font-ui);
+}
+
+/* Chapter OCR Panel */
+.chapter-ocr-panel {
+  margin: 8px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-panel);
+}
+
+.chapter-ocr-head,
+.chapter-ocr-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.chapter-ocr-head > div:first-child {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.chapter-ocr-summary {
+  margin: 8px 0;
+  color: var(--text-secondary);
+  font-size: 12px;
 }

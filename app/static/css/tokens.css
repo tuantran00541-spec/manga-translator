@@ -49,8 +49,19 @@
   --radius-lg: 12px;
 
   --control-height: 36px;
+  --topbar-height: 48px;
+  --sticky-header-offset: 76px;
   --motion-fast: 140ms ease;
   --motion-normal: 180ms ease;
+
+  --studio-rail-width: 250px;
+  --studio-rail-collapsed: 64px;
+  --studio-inspector-width: 320px;
+  --studio-inspector-collapsed: 0px;
+
+  --dock-backdrop: blur(16px);
+  --dock-bg: color-mix(in srgb, var(--surface-app) 82%, transparent);
+  --dock-border: rgba(255, 255, 255, 0.08);
 
   --shadow-subtle: 0 1px 3px rgba(0, 0, 0, 0.25);
   --shadow-panel: 0 10px 30px rgba(0, 0, 0, 0.22);

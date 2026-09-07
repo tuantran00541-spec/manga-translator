@@ -1,10 +1,45 @@
 (() => {
   const MODE_KEY = "mt_review_display_mode";
-  const DEFAULT_MODE = "stitched";
+  const DEFAULT_MODE = "slices";
   const MAX_CANVAS_CHUNK_HEIGHT = 12000;
   let mode = localStorage.getItem(MODE_KEY) || DEFAULT_MODE;
   let activeSourcePage = null;
   let renderToken = 0;
+  const stitchedMaskSnapshots = new Map();
+
+  function captureStitchedSnapshot(shell) {
+    if (activeSourcePage === null || !shell) return;
+    const canvas = shell.querySelector("canvas.stitched-brush-canvas");
+    if (!canvas || !canvas._reviewDirty || !canvas.width || !canvas.height) {
+      stitchedMaskSnapshots.delete(activeSourcePage);
+      return;
+    }
+    try {
+      stitchedMaskSnapshots.set(activeSourcePage, canvas.toDataURL("image/png"));
+    } catch (err) {
+      console.warn("Could not preserve stitched mask snapshot:", err);
+    }
+  }
+
+  function restoreStitchedSnapshot(brushCanvas, sourcePage) {
+    if (sourcePage === null || !stitchedMaskSnapshots.has(sourcePage)) return;
+    const dataUrl = stitchedMaskSnapshots.get(sourcePage);
+    if (!dataUrl) return;
+    const overlay = new Image();
+    overlay.onload = () => {
+      if (!brushCanvas.isConnected) return;
+      const ctx = brushCanvas.getContext("2d");
+      ctx.drawImage(overlay, 0, 0, brushCanvas.width, brushCanvas.height);
+      brushCanvas._reviewDirty = true;
+    };
+    overlay.src = dataUrl;
+  }
+
+  window.hasUnsavedStitchedMarks = () => {
+    if (stitchedMaskSnapshots.size > 0) return true;
+    const canvas = document.querySelector(".review-stitched-image canvas.stitched-brush-canvas");
+    return Boolean(canvas && canvas._reviewDirty);
+  };
 
   function cleanSourcePage(page, fallbackIndex) {
     return Number.isInteger(page?.source_page) ? page.source_page : fallbackIndex;
@@ -42,7 +77,7 @@
         : (page.clean_revision || page.process_revision || page.source_revision || 0),
     );
     const sep = url.includes("?") ? "&" : "?";
-    return `${url}${sep}review_revision=${revision}`;
+    return `${url}${sep}review_revision=${revision}&t=${Date.now()}`;
   }
 
   function loadImage(url) {
@@ -109,7 +144,7 @@
     }
   }
 
-  async function renderSourcePage(shell, sourcePage, items) {
+  async function renderSourcePage(shell, sourcePage, items, brushHandlers) {
     const token = ++renderToken;
     const imageHost = shell.querySelector(".review-stitched-image");
     const meta = shell.querySelector(".review-stitched-meta");
@@ -150,10 +185,24 @@
           sourceHeight = core.sourceHeight;
           if (core.sourceY1 !== expectedSourceY) metadataValid = false;
           expectedSourceY = core.sourceY2;
-          descriptors.push({ img, localY1: core.localY1, localY2: core.localY2, sourceY1: core.sourceY1 });
+          descriptors.push({
+            item,
+            img,
+            localY1: core.localY1,
+            localY2: core.localY2,
+            sourceY1: core.sourceY1,
+            sourceY2: core.sourceY2,
+          });
         } else {
           metadataValid = false;
-          descriptors.push({ img, localY1: 0, localY2: img.naturalHeight, sourceY1: fallbackY });
+          descriptors.push({
+            item,
+            img,
+            localY1: 0,
+            localY2: img.naturalHeight,
+            sourceY1: fallbackY,
+            sourceY2: fallbackY + img.naturalHeight,
+          });
           fallbackY += img.naturalHeight;
         }
       }
@@ -162,7 +211,8 @@
         let y = 0;
         for (const descriptor of descriptors) {
           descriptor.sourceY1 = y;
-          y += descriptor.localY2 - descriptor.localY1;
+          descriptor.sourceY2 = y + (descriptor.localY2 - descriptor.localY1);
+          y = descriptor.sourceY2;
         }
         sourceHeight = y;
         warning.hidden = false;
@@ -185,6 +235,22 @@
           descriptor.sourceY1,
         );
       }
+
+      shell._descriptors = descriptors;
+
+      const brushCanvas = document.createElement("canvas");
+      brushCanvas.className = "brush-canvas stitched-brush-canvas";
+      brushCanvas.width = width;
+      brushCanvas.height = sourceHeight;
+      imageHost.appendChild(brushCanvas);
+      shell._brushCanvas = brushCanvas;
+
+      if (brushHandlers && typeof brushHandlers.bindCanvas === "function") {
+        brushHandlers.bindCanvas(brushCanvas);
+      }
+
+      restoreStitchedSnapshot(brushCanvas, sourcePage);
+
       const skippedCount = items.filter((item) => item.page?.skipped).length;
       const processedCount = items.length - skippedCount;
       const sliceSummary = skippedCount
@@ -201,19 +267,6 @@
     }
   }
 
-  function applyMode(host, shell, switcher) {
-    const stitched = mode === "stitched";
-    host.classList.toggle("review-show-stitched", stitched);
-    host.classList.toggle("review-show-slices", !stitched);
-    switcher.querySelectorAll("button[data-review-mode]").forEach((button) => {
-      const active = button.dataset.reviewMode === mode;
-      button.classList.toggle("active", active);
-      button.setAttribute("aria-pressed", active ? "true" : "false");
-    });
-    shell.hidden = !stitched;
-    window.syncWorkbenchPanels?.();
-  }
-
   function mount(workspace) {
     if (!(workspace instanceof HTMLElement) || workspace.dataset.stitchInspectorMounted === "1") return;
     const host = workspace.closest("#page-view.review-mode");
@@ -221,6 +274,7 @@
     const actions = toolbar?.querySelector(".review-actions-group");
     const layout = workspace.querySelector(".review-workbench-grid");
     const canvasHost = layout?.querySelector(".review-canvas-host");
+    const stitchedControlsSlot = workspace._stitchedControlsSlot;
     if (!host || !toolbar || !actions || !layout || !canvasHost) return;
     workspace.dataset.stitchInspectorMounted = "1";
 
@@ -234,23 +288,25 @@
       activeSourcePage = activePage ? cleanSourcePage(activePage, canonical) : sourcePages[0];
     }
 
+    // Top view switcher
     const switcher = document.createElement("div");
     switcher.className = "review-view-switch";
     switcher.setAttribute("role", "group");
     switcher.setAttribute("aria-label", "Kiểu hiển thị ảnh kiểm tra");
-    const stitchedBtn = document.createElement("button");
-    stitchedBtn.type = "button";
-    stitchedBtn.className = "ui-btn ui-btn-ghost ui-btn-compact";
-    stitchedBtn.dataset.reviewMode = "stitched";
-    stitchedBtn.textContent = "Ghép như ảnh gốc";
     const slicesBtn = document.createElement("button");
     slicesBtn.type = "button";
     slicesBtn.className = "ui-btn ui-btn-ghost ui-btn-compact";
     slicesBtn.dataset.reviewMode = "slices";
     slicesBtn.textContent = "Từng lát";
-    switcher.append(stitchedBtn, slicesBtn);
+    const stitchedBtn = document.createElement("button");
+    stitchedBtn.type = "button";
+    stitchedBtn.className = "ui-btn ui-btn-ghost ui-btn-compact";
+    stitchedBtn.dataset.reviewMode = "stitched";
+    stitchedBtn.textContent = "Ghép như ảnh gốc";
+    switcher.append(slicesBtn, stitchedBtn);
     actions.prepend(switcher);
 
+    // Stitched Canvas Shell
     const shell = document.createElement("section");
     shell.className = "review-stitched-shell";
     const stitchedToolbar = document.createElement("div");
@@ -281,7 +337,7 @@
 
     const note = document.createElement("div");
     note.className = "review-stitched-note";
-    note.textContent = "Chuyển sang “Từng lát” để đánh dấu và xử lý lại. Phần bỏ qua được giữ nguyên từ ảnh gốc.";
+    note.textContent = "Chế độ xem ghép toàn trang: Bạn có thể dùng cọ đánh dấu và xử lý lỗi trực tiếp trên ảnh ghép hoàn chỉnh hoặc chuyển sang “Từng lát” để chỉnh sửa chi tiết từng lát cắt.";
     const meta = document.createElement("div");
     meta.className = "review-stitched-meta";
     const warning = document.createElement("div");
@@ -295,6 +351,354 @@
     shell.append(stitchedToolbar, note, meta, warning, viewport);
     canvasHost.appendChild(shell);
 
+    // Stitched Inspector Controls inside stitchedControlsSlot
+    const controlsContainer = document.createElement("div");
+    controlsContainer.className = "review-controls review-stitched-controls";
+
+    const brushBtn = document.createElement("button");
+    brushBtn.type = "button";
+    brushBtn.className = "ui-btn ui-btn-ghost brush-toggle-btn";
+    brushBtn.textContent = "Đánh dấu vùng lỗi";
+    brushBtn.setAttribute("aria-pressed", "false");
+
+    const clearBtn = document.createElement("button");
+    clearBtn.type = "button";
+    clearBtn.className = "ui-btn ui-btn-ghost clear-brush-btn";
+    clearBtn.textContent = "Xóa nét đánh dấu";
+
+    const submitBtn = document.createElement("button");
+    submitBtn.type = "button";
+    submitBtn.className = "ui-btn ui-btn-primary repaint-btn";
+    submitBtn.textContent = "Xử lý vùng đánh dấu";
+
+    const brushSizeWrap = document.createElement("label");
+    brushSizeWrap.className = "ui-range-field brush-size-control";
+    brushSizeWrap.hidden = true;
+    brushSizeWrap.textContent = "Kích thước cọ ";
+    const brushSizeValue = document.createElement("output");
+    brushSizeValue.className = "brush-size-value";
+    brushSizeValue.textContent = "48px";
+    const brushSize = document.createElement("input");
+    brushSize.type = "range";
+    brushSize.min = "8";
+    brushSize.max = "80";
+    brushSize.step = "1";
+    brushSize.value = "24";
+    brushSize.className = "brush-size-slider";
+    brushSize.title = "Điều chỉnh kích thước cọ";
+    brushSizeWrap.append(brushSize, brushSizeValue);
+
+    controlsContainer.append(brushBtn, clearBtn, submitBtn, brushSizeWrap);
+    if (stitchedControlsSlot) {
+      stitchedControlsSlot.replaceChildren(controlsContainer);
+    }
+
+    // Brush State & Event Handling
+    let brushOn = false;
+    let painting = false;
+    let brushRadius = 24;
+    let lastStrokePos = { x: 0, y: 0 };
+    let currentBoundCanvas = null;
+
+    brushSize.value = String(brushRadius);
+    brushSizeValue.textContent = `${Math.round(brushRadius * 2)}px`;
+
+    const adjustBrushRadius = (delta) => {
+      const nextRadius = Math.max(8, Math.min(80, brushRadius + delta));
+      if (nextRadius !== brushRadius) {
+        brushRadius = nextRadius;
+        brushSize.value = String(brushRadius);
+        brushSizeValue.textContent = `${Math.round(brushRadius * 2)}px`;
+      }
+    };
+
+    brushSize.addEventListener("input", () => {
+      brushRadius = Number(brushSize.value);
+      brushSizeValue.textContent = `${Math.round(brushRadius * 2)}px`;
+    });
+
+    const onStitchKeyDown = (e) => {
+      if (e.target.matches && e.target.matches("input, textarea, select")) return;
+      if (e.key === "[") {
+        e.preventDefault();
+        adjustBrushRadius(-2);
+      } else if (e.key === "]") {
+        e.preventDefault();
+        adjustBrushRadius(2);
+      }
+    };
+    document.addEventListener("keydown", onStitchKeyDown);
+
+    const syncBrushUI = () => {
+      imageHost.classList.toggle("brush-mode", brushOn);
+      brushBtn.classList.toggle("ui-btn-primary", brushOn);
+      brushBtn.classList.toggle("ui-btn-ghost", !brushOn);
+      brushBtn.textContent = brushOn ? "Đang đánh dấu · Chọn để kết thúc" : "Đánh dấu vùng lỗi";
+      brushBtn.setAttribute("aria-pressed", String(brushOn));
+      brushSizeWrap.hidden = !brushOn;
+    };
+
+    const stopPainting = (e) => {
+      if (!painting) return;
+      painting = false;
+      if (e && e.pointerId !== undefined && currentBoundCanvas?.releasePointerCapture) {
+        try {
+          if (currentBoundCanvas.hasPointerCapture && currentBoundCanvas.hasPointerCapture(e.pointerId)) {
+            currentBoundCanvas.releasePointerCapture(e.pointerId);
+          }
+        } catch (_) {}
+      }
+    };
+
+    brushBtn.addEventListener("click", () => {
+      brushOn = !brushOn;
+      if (!brushOn) stopPainting();
+      syncBrushUI();
+    });
+
+    clearBtn.addEventListener("click", () => {
+      stopPainting();
+      if (currentBoundCanvas) {
+        const ctx = currentBoundCanvas.getContext("2d");
+        ctx.clearRect(0, 0, currentBoundCanvas.width, currentBoundCanvas.height);
+        currentBoundCanvas._reviewDirty = false;
+      }
+      stitchedMaskSnapshots.delete(activeSourcePage);
+      showToast("Đã xóa nét đánh dấu trên ảnh ghép.", "info");
+    });
+
+    function getCanvasCoords(e, canvas) {
+      const rect = canvas.getBoundingClientRect();
+      if (!rect.width || !rect.height) return { x: 0, y: 0 };
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+      return {
+        x: Math.round((e.clientX - rect.left) * scaleX),
+        y: Math.round((e.clientY - rect.top) * scaleY),
+      };
+    }
+
+    function paintDot(ctx, canvas, x, y) {
+      ctx.fillStyle = "rgba(220, 38, 38, 0.7)";
+      ctx.beginPath();
+      ctx.arc(x, y, brushRadius, 0, Math.PI * 2);
+      ctx.fill();
+      canvas._reviewDirty = true;
+    }
+
+    function paintStrokeSegment(ctx, canvas, x0, y0, x1, y1) {
+      ctx.strokeStyle = "rgba(220, 38, 38, 0.7)";
+      ctx.lineWidth = brushRadius * 2;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.beginPath();
+      ctx.moveTo(x0, y0);
+      ctx.lineTo(x1, y1);
+      ctx.stroke();
+      canvas._reviewDirty = true;
+    }
+
+    const brushHandlers = {
+      bindCanvas(canvas) {
+        currentBoundCanvas = canvas;
+        const ctx = canvas.getContext("2d");
+
+        const handleStart = (e) => {
+          if (!brushOn) return;
+          if (e.button !== undefined && e.button !== 0) return;
+          painting = true;
+          const { x, y } = getCanvasCoords(e, canvas);
+          lastStrokePos = { x, y };
+          if (e.pointerId !== undefined && canvas.setPointerCapture) {
+            try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
+          }
+          paintDot(ctx, canvas, x, y);
+        };
+
+        const handleMove = (e) => {
+          if (!brushOn || !painting) return;
+          if (e.buttons !== undefined && (e.buttons & 1) !== 1) {
+            stopPainting(e);
+            return;
+          }
+          const { x, y } = getCanvasCoords(e, canvas);
+          paintStrokeSegment(ctx, canvas, lastStrokePos.x, lastStrokePos.y, x, y);
+          lastStrokePos = { x, y };
+        };
+
+        const handleEnd = (e) => {
+          stopPainting(e);
+        };
+
+        if (window.PointerEvent) {
+          canvas.addEventListener("pointerdown", handleStart);
+          canvas.addEventListener("pointermove", handleMove);
+          canvas.addEventListener("pointerup", handleEnd);
+          canvas.addEventListener("pointercancel", handleEnd);
+        } else {
+          canvas.addEventListener("mousedown", handleStart);
+          canvas.addEventListener("mousemove", handleMove);
+          canvas.addEventListener("mouseup", handleEnd);
+        }
+
+        canvas.addEventListener("wheel", (e) => {
+          if (!brushOn) return;
+          if (e.ctrlKey || e.altKey) {
+            e.preventDefault();
+            brushRadius = Math.round(Math.max(8, Math.min(80, brushRadius + (e.deltaY < 0 ? 2 : -2))));
+            brushSize.value = String(brushRadius);
+            brushSizeValue.textContent = `${Math.round(brushRadius * 2)}px`;
+            showToast(`Kích thước cọ: ${Math.round(brushRadius * 2)}px`, "info");
+          }
+        }, { passive: false });
+      },
+    };
+
+    window.addEventListener("mouseup", stopPainting);
+    window.addEventListener("pointerup", stopPainting);
+    window.addEventListener("blur", () => stopPainting());
+
+    const setStitchedBusy = (busy, label = "Đang xử lý…") => {
+      workspace.classList.toggle("review-busy", busy);
+      brushBtn.disabled = busy;
+      clearBtn.disabled = busy;
+      submitBtn.disabled = busy;
+      submitBtn.textContent = busy ? label : "Xử lý vùng đánh dấu";
+      brushSize.disabled = busy;
+      const pos = sourcePages.indexOf(activeSourcePage);
+      prev.disabled = busy || pos <= 0;
+      next.disabled = busy || pos >= sourcePages.length - 1;
+      select.disabled = busy;
+      refresh.disabled = busy;
+      if (workspace._pageNavigator) workspace._pageNavigator.setBusy(busy);
+      const continueBtn = workspace.querySelector(".review-primary-action");
+      if (continueBtn) continueBtn.disabled = busy;
+    };
+
+    submitBtn.addEventListener("click", async () => {
+      const chapterId = window.currentChapterId;
+      if (!chapterId) return;
+
+      const brushCanvas = shell.querySelector("canvas.stitched-brush-canvas");
+      if (!brushCanvas || !brushCanvas._reviewDirty) {
+        showToast("Chưa có vùng nào được đánh dấu để xử lý trên ảnh ghép.", "error");
+        return;
+      }
+
+      const w = brushCanvas.width;
+      const h = brushCanvas.height;
+      const checkCanvas = document.createElement("canvas");
+      checkCanvas.width = Math.min(w, 800);
+      checkCanvas.height = Math.min(h, 800);
+      const checkCtx = checkCanvas.getContext("2d");
+      checkCtx.drawImage(brushCanvas, 0, 0, checkCanvas.width, checkCanvas.height);
+      const checkData = checkCtx.getImageData(0, 0, checkCanvas.width, checkCanvas.height);
+      let hasPaint = false;
+      for (let i = 3; i < checkData.data.length; i += 4) {
+        if (checkData.data[i] > 20) {
+          hasPaint = true;
+          break;
+        }
+      }
+      if (!hasPaint) {
+        brushCanvas._reviewDirty = false;
+        showToast("Chưa có vùng nào được đánh dấu để xử lý.", "error");
+        return;
+      }
+
+      const repaintMode = typeof window.chooseRepaintMode === "function"
+        ? await window.chooseRepaintMode()
+        : "standard";
+      if (!repaintMode || chapterId !== window.currentChapterId) return;
+
+      setStitchedBusy(true, repaintMode === "lama" ? "LaMa đang xử lý…" : "Đang xử lý…");
+
+      try {
+        const descriptors = shell._descriptors || [];
+        if (!descriptors.length) throw new Error("Không tìm thấy thông tin lát ảnh của trang ghép.");
+
+        let affectedCount = 0;
+        for (const desc of descriptors) {
+          const subH = desc.sourceY2 - desc.sourceY1;
+          if (subH <= 0) continue;
+
+          const sliceSubCanvas = document.createElement("canvas");
+          sliceSubCanvas.width = w;
+          sliceSubCanvas.height = subH;
+          const subCtx = sliceSubCanvas.getContext("2d");
+          subCtx.drawImage(
+            brushCanvas,
+            0, desc.sourceY1, w, subH,
+            0, 0, w, subH
+          );
+
+          const subData = subCtx.getImageData(0, 0, w, subH);
+          let slicePainted = false;
+          for (let i = 3; i < subData.data.length; i += 4) {
+            if (subData.data[i] > 20) {
+              slicePainted = true;
+              break;
+            }
+          }
+          if (!slicePainted) continue;
+
+          const sliceMaskCanvas = document.createElement("canvas");
+          sliceMaskCanvas.width = w;
+          sliceMaskCanvas.height = desc.img.naturalHeight;
+          const sliceMaskCtx = sliceMaskCanvas.getContext("2d");
+          sliceMaskCtx.drawImage(
+            sliceSubCanvas,
+            0, 0, w, subH,
+            0, desc.localY1, w, subH
+          );
+
+          const maskBlob = await new Promise((resolve, reject) => {
+            sliceMaskCanvas.toBlob((blob) => {
+              if (blob) resolve(blob);
+              else reject(new Error("Không thể tạo dữ liệu vùng đánh dấu cho lát"));
+            }, "image/png");
+          });
+
+          const formData = new FormData();
+          formData.append("chapter_id", chapterId);
+          formData.append("page_index", desc.item.canonicalIndex);
+          formData.append("mode", repaintMode);
+          formData.append("mask", maskBlob, "mask.png");
+
+          const resp = await fetch("/api/repaint_mask", { method: "POST", body: formData });
+          const parse = typeof window.parseApiResponse === "function" ? window.parseApiResponse : async (r) => (await r.json().catch(() => ({})));
+          const getErr = typeof window.getErrorMessage === "function" ? window.getErrorMessage : (s, d) => d.detail || `Server trả về ${s}`;
+          const manifest = await parse(resp);
+          if (!resp.ok) throw new Error(getErr(resp.status, manifest));
+
+          if (window.currentManifest?.pages) {
+            window.currentManifest.pages[desc.item.canonicalIndex] = manifest.pages[desc.item.canonicalIndex];
+          }
+          affectedCount++;
+        }
+
+        if (affectedCount > 0) {
+          const ctx = brushCanvas.getContext("2d");
+          ctx.clearRect(0, 0, brushCanvas.width, brushCanvas.height);
+          brushCanvas._reviewDirty = false;
+          stitchedMaskSnapshots.delete(activeSourcePage);
+          showToast(
+            repaintMode === "lama"
+              ? `Đã tái inpaint bằng LaMa cho ${affectedCount} lát ảnh trên trang ghép.`
+              : `Đã xử lý vùng đánh dấu cho ${affectedCount} lát ảnh trên trang ghép.`,
+            "success"
+          );
+          rerender();
+        } else {
+          showToast("Không tìm thấy lát ảnh tương ứng với vùng đã đánh dấu.", "info");
+        }
+      } catch (err) {
+        showToast("Không thể xử lý vùng đánh dấu trên ảnh ghép: " + err.message, "error");
+      } finally {
+        setStitchedBusy(false);
+      }
+    });
+
     const rerender = () => {
       const items = groups.get(activeSourcePage);
       if (!items) return;
@@ -302,36 +706,100 @@
       const pos = sourcePages.indexOf(activeSourcePage);
       prev.disabled = pos <= 0;
       next.disabled = pos < 0 || pos >= sourcePages.length - 1;
-      void renderSourcePage(shell, activeSourcePage, items);
+      const titleEl = toolbar.querySelector(".review-toolbar-title");
+      if (titleEl && mode === "stitched") {
+        titleEl.textContent = `Trang gốc ${activeSourcePage + 1} / ${sourcePages.length} · ${items.length} lát (Ghép như ảnh gốc)`;
+      }
+      void renderSourcePage(shell, activeSourcePage, items, brushHandlers);
     };
 
+    function applyMode(targetHost, targetShell, targetSwitcher) {
+      const stitched = mode === "stitched";
+      targetHost.classList.toggle("review-show-stitched", stitched);
+      targetHost.classList.toggle("review-show-slices", !stitched);
+      workspace.classList.toggle("review-show-stitched", stitched);
+      workspace.classList.toggle("review-show-slices", !stitched);
+      targetSwitcher.querySelectorAll("button[data-review-mode]").forEach((button) => {
+        const active = button.dataset.reviewMode === mode;
+        button.classList.toggle("active", active);
+        button.setAttribute("aria-pressed", active ? "true" : "false");
+      });
+      targetShell.hidden = !stitched;
+      const titleEl = toolbar.querySelector(".review-toolbar-title");
+      if (titleEl) {
+        if (stitched) {
+          const sliceCount = groups.get(activeSourcePage)?.length || 0;
+          titleEl.textContent = `Trang gốc ${activeSourcePage + 1} / ${sourcePages.length} · ${sliceCount} lát (Ghép như ảnh gốc)`;
+        } else {
+          const pageIndices = (window.currentManifest?.pages || []).filter((p) => !p.skipped);
+          titleEl.textContent = `${pageIndices.length} lát đã xử lý (Xem từng lát)`;
+        }
+      }
+      window.syncWorkbenchPanels?.();
+    }
+
     const setMode = (nextMode) => {
-      mode = nextMode === "slices" ? "slices" : "stitched";
+      mode = nextMode === "stitched" ? "stitched" : "slices";
       localStorage.setItem(MODE_KEY, mode);
       applyMode(host, shell, switcher);
-      if (mode === "stitched") rerender();
+      if (mode === "stitched") {
+        rerender();
+      } else {
+        const activeCard = workspace.querySelector(".review-card");
+        if (activeCard) {
+          const img = activeCard.querySelector("img");
+          const canonical = parseInt(activeCard.dataset.pageIndex, 10);
+          if (img && Number.isFinite(canonical) && window.currentManifest?.pages?.[canonical]) {
+            const page = window.currentManifest.pages[canonical];
+            const cleanSrc = (page.clean || page.original) + "?t=" + Date.now();
+            if (img.src !== cleanSrc) img.src = cleanSrc;
+          }
+        }
+      }
+    };
+    window.setReviewDisplayMode = setMode;
+
+    window.onReviewSliceSelect = (canonicalIndex) => {
+      if (mode === "stitched") {
+        const page = window.currentManifest?.pages?.[canonicalIndex];
+        if (page) {
+          const srcPage = cleanSourcePage(page, canonicalIndex);
+          if (srcPage !== activeSourcePage && sourcePages.includes(srcPage)) {
+            captureStitchedSnapshot(shell);
+            activeSourcePage = srcPage;
+            rerender();
+          }
+        }
+      }
     };
 
     stitchedBtn.addEventListener("click", () => setMode("stitched"));
     slicesBtn.addEventListener("click", () => setMode("slices"));
+
     select.addEventListener("change", () => {
+      captureStitchedSnapshot(shell);
       activeSourcePage = Number.parseInt(select.value, 10);
       rerender();
     });
+
     prev.addEventListener("click", () => {
       const pos = sourcePages.indexOf(activeSourcePage);
       if (pos > 0) {
+        captureStitchedSnapshot(shell);
         activeSourcePage = sourcePages[pos - 1];
         rerender();
       }
     });
+
     next.addEventListener("click", () => {
       const pos = sourcePages.indexOf(activeSourcePage);
       if (pos >= 0 && pos < sourcePages.length - 1) {
+        captureStitchedSnapshot(shell);
         activeSourcePage = sourcePages[pos + 1];
         rerender();
       }
     });
+
     refresh.addEventListener("click", rerender);
 
     applyMode(host, shell, switcher);
@@ -342,8 +810,7 @@
     document.querySelectorAll("#page-view.review-mode .review-workspace-shell").forEach(mount);
   }
 
-  const observer = new MutationObserver(scan);
-  observer.observe(document.documentElement, { childList: true, subtree: true });
+  window.mountStitchInspector = scan;
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", scan, { once: true });
   else scan();
 })();

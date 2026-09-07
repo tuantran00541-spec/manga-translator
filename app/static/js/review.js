@@ -1,3 +1,55 @@
+function _addContextBand(wrap, start, end, imageHeight, edge) {
+  if (end <= start || imageHeight <= 0) return;
+  const band = document.createElement("div");
+  band.className = `review-context-band review-context-band-${edge}`;
+  band.setAttribute("aria-hidden", "true");
+  band.style.top = `${(start / imageHeight) * 100}%`;
+  band.style.height = `${((end - start) / imageHeight) * 100}%`;
+
+  const label = document.createElement("span");
+  label.className = "review-context-band-label";
+  label.textContent = "Ngữ cảnh detector · không xuất";
+  band.appendChild(label);
+  wrap.appendChild(band);
+}
+
+function _decorateReviewOverlap(card, wrap, img, page) {
+  const core = page?.stitch_core;
+  if (!core || typeof core !== "object") return;
+  const clamp = (val, min, max) => Math.max(min, Math.min(max, val));
+
+  const apply = () => {
+    const imageHeight = Number(img.naturalHeight || 0);
+    if (!(imageHeight > 0)) return;
+
+    const rawY1 = Number(core.core_y1);
+    const rawY2 = Number(core.core_y2);
+    if (!Number.isFinite(rawY1) || !Number.isFinite(rawY2)) return;
+
+    const coreY1 = clamp(rawY1, 0, imageHeight);
+    const coreY2 = clamp(rawY2, coreY1, imageHeight);
+    wrap.querySelectorAll(".review-context-band").forEach((node) => node.remove());
+
+    const hasTopContext = coreY1 > 0;
+    const hasBottomContext = coreY2 < imageHeight;
+    if (!hasTopContext && !hasBottomContext) return;
+
+    if (hasTopContext) _addContextBand(wrap, 0, coreY1, imageHeight, "top");
+    if (hasBottomContext) _addContextBand(wrap, coreY2, imageHeight, imageHeight, "bottom");
+
+    const pageLabelEl = card.querySelector(".page-block-label");
+    if (pageLabelEl && !pageLabelEl.querySelector(".review-context-legend")) {
+      const legend = document.createElement("span");
+      legend.className = "review-context-legend";
+      legend.textContent = "Dải gạch là overlap dùng làm ngữ cảnh; pixel đó thuộc lát kế bên khi xuất.";
+      pageLabelEl.appendChild(legend);
+    }
+  };
+
+  if (img.complete && img.naturalHeight > 0) apply();
+  else img.addEventListener("load", apply, { once: true });
+}
+
 function createReviewCard(pageIndex, maskSnapshot = null) {
   const page = currentManifest?.pages?.[pageIndex];
   if (!page || page.skipped) return null;
@@ -77,6 +129,8 @@ function createReviewCard(pageIndex, maskSnapshot = null) {
   wrap.append(img, canvas);
   card.appendChild(wrap);
 
+  _decorateReviewOverlap(card, wrap, img, page);
+
   let initialized = false;
   const restoreSnapshot = () => {
     if (!maskSnapshot || !canvas.width || !canvas.height) return;
@@ -90,19 +144,24 @@ function createReviewCard(pageIndex, maskSnapshot = null) {
     overlay.src = maskSnapshot;
   };
   const initBrush = () => {
-    if (initialized || !canvas.isConnected || !img.naturalWidth) return;
+    if (initialized || !canvas.isConnected) return;
+    const nw = img.naturalWidth || img.width;
+    if (!nw) return;
     initialized = true;
-    setupBrush(pageIndex, img, canvas, wrap, brushBtn, clearBtn, submitBtn, resetManualBtn, aiQcBtn, brushSize, brushSizeValue);
+    setupBrush(pageIndex, img, canvas, wrap, brushBtn, clearBtn, submitBtn, resetManualBtn, aiQcBtn, brushSize, brushSizeValue, card);
     restoreSnapshot();
   };
-  img.addEventListener("load", initBrush, { once: true });
+  img.addEventListener("load", initBrush);
+  if (img.complete && (img.naturalWidth || img.width)) {
+    initBrush();
+  }
   img.src = page.clean + "?t=" + Date.now();
   card._mountReview = initBrush;
   return card;
 }
 window.createReviewCard = createReviewCard;
 
-function setupBrush(pageIndex, img, canvas, wrap, brushBtn, clearBtn, submitBtn, resetManualBtn, aiQcBtn, brushSize, brushSizeValue) {
+function setupBrush(pageIndex, img, canvas, wrap, brushBtn, clearBtn, submitBtn, resetManualBtn, aiQcBtn, brushSize, brushSizeValue, card = null) {
   if (typeof canvas._cleanupBrush === "function") {
     canvas._cleanupBrush();
   } else if (canvas._brushAbort) {
@@ -117,7 +176,7 @@ function setupBrush(pageIndex, img, canvas, wrap, brushBtn, clearBtn, submitBtn,
   const syncCanvasSize = () => {
     const nw = img.naturalWidth || img.width;
     const nh = img.naturalHeight || img.height;
-    if (nw && nh) {
+    if (nw && nh && (canvas.width !== nw || canvas.height !== nh)) {
       canvas.width = nw;
       canvas.height = nh;
     }
@@ -151,25 +210,53 @@ function setupBrush(pageIndex, img, canvas, wrap, brushBtn, clearBtn, submitBtn,
     refreshSrcData();
   }, { signal });
 
-  let brushRadius = Math.min(30, Math.max(10, Math.round(canvas.width * 0.018)));
+  if (window.ResizeObserver) {
+    const ro = new ResizeObserver(() => {
+      syncCanvasSize();
+    });
+    ro.observe(wrap);
+    signal.addEventListener("abort", () => ro.disconnect());
+  }
+
+  let brushRadius = Math.min(30, Math.max(10, Math.round((canvas.width || 1200) * 0.018)));
   brushRadius = Math.max(8, Math.min(80, brushRadius));
   brushSize.value = String(brushRadius);
   brushSizeValue.textContent = `${Math.round(brushRadius * 2)}px`;
+
+  const adjustBrushRadius = (delta) => {
+    const nextRadius = Math.max(8, Math.min(80, brushRadius + delta));
+    if (nextRadius !== brushRadius) {
+      brushRadius = nextRadius;
+      brushSize.value = String(brushRadius);
+      brushSizeValue.textContent = `${Math.round(brushRadius * 2)}px`;
+    }
+  };
 
   brushSize.addEventListener("input", () => {
     brushRadius = Number(brushSize.value);
     brushSizeValue.textContent = `${Math.round(brushRadius * 2)}px`;
   }, { signal });
 
+  document.addEventListener("keydown", (e) => {
+    if (e.target.matches && e.target.matches("input, textarea, select")) return;
+    if (e.key === "[") {
+      e.preventDefault();
+      adjustBrushRadius(-2);
+    } else if (e.key === "]") {
+      e.preventDefault();
+      adjustBrushRadius(2);
+    }
+  }, { signal });
+
   let brushOn = false;
   let painting = false;
   let lastClickTime = 0;
   let lastClickPos = { x: 0, y: 0 };
+  let lastStrokePos = { x: 0, y: 0 };
 
   const stopPainting = (e) => {
     if (!painting) return;
     painting = false;
-    ctx.closePath();
     if (e && e.pointerId !== undefined && canvas.releasePointerCapture) {
       try {
         if (canvas.hasPointerCapture && canvas.hasPointerCapture(e.pointerId)) {
@@ -187,7 +274,8 @@ function setupBrush(pageIndex, img, canvas, wrap, brushBtn, clearBtn, submitBtn,
     brushBtn.classList.add("ui-btn-ghost");
     brushBtn.textContent = "Đánh dấu vùng lỗi";
     brushBtn.setAttribute("aria-pressed", "false");
-    brushSize.closest(".brush-size-control").hidden = true;
+    const sizeCtrl = brushSize.closest(".brush-size-control");
+    if (sizeCtrl) sizeCtrl.hidden = true;
   };
 
   const cleanupBrush = () => {
@@ -199,6 +287,7 @@ function setupBrush(pageIndex, img, canvas, wrap, brushBtn, clearBtn, submitBtn,
   canvas._cleanupBrush = cleanupBrush;
 
   brushBtn.addEventListener("click", () => {
+    syncCanvasSize();
     brushOn = !brushOn;
     if (!brushOn) stopPainting();
     wrap.classList.toggle("brush-mode", brushOn);
@@ -206,7 +295,8 @@ function setupBrush(pageIndex, img, canvas, wrap, brushBtn, clearBtn, submitBtn,
     brushBtn.classList.toggle("ui-btn-ghost", !brushOn);
     brushBtn.textContent = brushOn ? "Đang đánh dấu · Chọn để kết thúc" : "Đánh dấu vùng lỗi";
     brushBtn.setAttribute("aria-pressed", String(brushOn));
-    brushSize.closest(".brush-size-control").hidden = !brushOn;
+    const sizeCtrl = brushSize.closest(".brush-size-control");
+    if (sizeCtrl) sizeCtrl.hidden = !brushOn;
   }, { signal });
 
   clearBtn.addEventListener("click", () => {
@@ -234,12 +324,14 @@ function setupBrush(pageIndex, img, canvas, wrap, brushBtn, clearBtn, submitBtn,
     canvas._reviewDirty = true;
   }
 
-  function paintStrokeTo(x, y) {
+  function paintStrokeSegment(x0, y0, x1, y1) {
     ctx.strokeStyle = "rgba(220, 38, 38, 0.7)";
     ctx.lineWidth = brushRadius * 2;
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
-    ctx.lineTo(x, y);
+    ctx.beginPath();
+    ctx.moveTo(x0, y0);
+    ctx.lineTo(x1, y1);
     ctx.stroke();
     canvas._reviewDirty = true;
   }
@@ -249,6 +341,7 @@ function setupBrush(pageIndex, img, canvas, wrap, brushBtn, clearBtn, submitBtn,
     if (e.button !== undefined && e.button !== 0) return;
 
     const { x, y } = getCanvasCoords(e);
+    lastStrokePos = { x, y };
     const now = Date.now();
     const isDbl = (now - lastClickTime < 350) && (Math.hypot(x - lastClickPos.x, y - lastClickPos.y) < 20);
     lastClickTime = isDbl ? 0 : now;
@@ -270,18 +363,17 @@ function setupBrush(pageIndex, img, canvas, wrap, brushBtn, clearBtn, submitBtn,
       try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
     }
     paintDot(x, y);
-    ctx.beginPath();
-    ctx.moveTo(x, y);
   };
 
   const handleMove = (e) => {
     if (!brushOn || !painting) return;
-    if (e.buttons !== undefined && e.buttons !== 1 && e.buttons !== 0) {
+    if (e.buttons !== undefined && (e.buttons & 1) !== 1) {
       stopPainting(e);
       return;
     }
     const { x, y } = getCanvasCoords(e);
-    paintStrokeTo(x, y);
+    paintStrokeSegment(lastStrokePos.x, lastStrokePos.y, x, y);
+    lastStrokePos = { x, y };
   };
 
   const handleEnd = (e) => {
@@ -317,7 +409,7 @@ function setupBrush(pageIndex, img, canvas, wrap, brushBtn, clearBtn, submitBtn,
   }, { signal });
 
   submitBtn.addEventListener("click", () => {
-    submitRepaint(pageIndex, canvas, img, ctx, submitBtn);
+    submitRepaint(pageIndex, canvas, img, ctx, submitBtn, card);
   }, { signal });
 
   if (aiQcBtn) {
@@ -591,9 +683,15 @@ function floodFillSelect(ctx, srcData, startX, startY, width, height) {
   return true;
 }
 
-async function submitRepaint(pageIndex, canvas, img, ctx, submitBtn) {
+async function submitRepaint(pageIndex, canvas, img, ctx, submitBtn, card = null) {
   const chapterId = currentChapterId;
   if (!chapterId) return;
+
+  if (!canvas._reviewDirty) {
+    showToast("Chưa có vùng nào được đánh dấu để xử lý.", "error");
+    return;
+  }
+
   const pixelCheckCtx = document.createElement("canvas").getContext("2d");
   pixelCheckCtx.canvas.width = canvas.width;
   pixelCheckCtx.canvas.height = canvas.height;
@@ -608,6 +706,7 @@ async function submitRepaint(pageIndex, canvas, img, ctx, submitBtn) {
   }
 
   if (!hasPaint) {
+    canvas._reviewDirty = false;
     showToast("Chưa có vùng nào được đánh dấu để xử lý.", "error");
     return;
   }
@@ -615,10 +714,10 @@ async function submitRepaint(pageIndex, canvas, img, ctx, submitBtn) {
   const mode = await chooseRepaintMode();
   if (!mode || chapterId !== currentChapterId || !canvas.isConnected) return;
 
-  const card = submitBtn.closest(".review-card");
-  if (card) {
-    card._reviewBusy = true;
-    if (typeof card._syncReviewBusy === "function") card._syncReviewBusy();
+  const activeCard = card || submitBtn.closest(".review-card") || document.querySelector(`.review-card[data-page-index="${pageIndex}"]`);
+  if (activeCard) {
+    activeCard._reviewBusy = true;
+    if (typeof activeCard._syncReviewBusy === "function") activeCard._syncReviewBusy();
   }
   if (typeof canvas._stopBrush === "function") canvas._stopBrush();
   submitBtn.disabled = true;
@@ -664,9 +763,9 @@ async function submitRepaint(pageIndex, canvas, img, ctx, submitBtn) {
       showToast("Không thể xử lý vùng đánh dấu: " + err.message, "error");
     }
   } finally {
-    if (card) {
-      card._reviewBusy = false;
-      if (typeof card._syncReviewBusy === "function") card._syncReviewBusy();
+    if (activeCard) {
+      activeCard._reviewBusy = false;
+      if (typeof activeCard._syncReviewBusy === "function") activeCard._syncReviewBusy();
     }
     submitBtn.disabled = false;
     submitBtn.textContent = "Xử lý vùng đánh dấu";
@@ -789,3 +888,4 @@ function chooseRepaintMode() {
     standardOption.focus();
   });
 }
+window.chooseRepaintMode = chooseRepaintMode;

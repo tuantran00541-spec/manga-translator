@@ -42,3 +42,8 @@ bench_*.json
 *_probe_*.json
 *_e2e.json
 *_profile.json
+
+# Local workspace agents and runner tools
+.agents/
+powershell.cmd
+debug/

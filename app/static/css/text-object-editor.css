@@ -58,9 +58,30 @@
   border-top: none;
 }
 
-.text-object-overlay.transforming {
+.text-object-overlay.transforming,
+.translation-canvas-host .text-object-overlay.transforming {
   border-color: var(--accent);
   box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.translation-canvas-host .text-object-overlay.transforming::before,
+.translation-canvas-host .text-object-overlay.transforming::after {
+  border-color: var(--accent);
+}
+
+.box-transforming,
+.box-transforming * {
+  user-select: none;
+}
+
+.box-transforming .translation-canvas-host .text-object-overlay,
+.box-transforming .translation-canvas-host .text-object-overlay.transforming {
+  cursor: grabbing;
+}
+
+.translation-canvas-host .text-object-overlay::before,
+.translation-canvas-host .text-object-overlay::after {
+  pointer-events: none;
 }
 
 .text-object-overlay.drawing {

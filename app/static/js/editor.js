@@ -1158,21 +1158,45 @@ function buildPageWrapper(page, pageIndex, pages) {
   return wrapper;
 }
 
+let _editorSwitchingPage = false;
+let _editorPendingSwitchIndex = null;
+
 async function switchEditorPage(newIndex) {
   const chapterId = currentChapterId;
   const pages = currentManifest ? currentManifest.pages : null;
   if (!pages || newIndex < 0 || newIndex >= pages.length) return;
-  try {
-    await flushAllPendingPersists();
-  } catch (err) {
-    showToast("Không thể chuyển trang vì lưu dữ liệu thất bại.", "error");
+
+  if (_editorSwitchingPage) {
+    _editorPendingSwitchIndex = newIndex;
     return;
   }
-  if (chapterId !== currentChapterId) return;
-  editorState.activePageIndex = newIndex;
-  editorState.selectedTextObjectId = null;
-  renderEditor();
+  _editorSwitchingPage = true;
+  _editorPendingSwitchIndex = null;
+
+  try {
+    try {
+      await Promise.race([
+        flushAllPendingPersists(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout lưu dữ liệu")), 3000)),
+      ]);
+    } catch (err) {
+      console.warn("Lưu dữ liệu trước khi chuyển trang bị cảnh báo/lỗi:", err);
+    }
+    if (chapterId !== currentChapterId) return;
+    editorState.activePageIndex = newIndex;
+    editorState.selectedTextObjectId = null;
+    renderEditor();
+  } finally {
+    _editorSwitchingPage = false;
+    if (_editorPendingSwitchIndex !== null && _editorPendingSwitchIndex !== editorState.activePageIndex) {
+      const nextTarget = _editorPendingSwitchIndex;
+      _editorPendingSwitchIndex = null;
+      void switchEditorPage(nextTarget);
+    }
+  }
 }
+
+window.switchEditorPage = switchEditorPage;
 
 function showRenderResult(pageIndex, outputPath) {
   const panelHost = document.querySelector(".translation-panel-host");
@@ -1196,11 +1220,234 @@ function showRenderResult(pageIndex, outputPath) {
   resultBox.appendChild(img);
 
   const link = document.createElement("a");
-  link.href = outputPath + cacheBust;
+  link.href = window.currentChapterId ? `/api/download/${encodeURIComponent(window.currentChapterId)}/${pageIndex}` : outputPath + cacheBust;
   link.download = `page_${pageIndex + 1}_rendered.png`;
   link.className = "download-link";
   link.textContent = "Tải ảnh đã kết xuất";
   resultBox.appendChild(link);
+}
+
+const _pendingAutoSync = new Map();
+
+function _sourceBoxSet(obj) {
+  return new Set(Array.isArray(obj?.source_boxes) ? obj.source_boxes.map(String) : []);
+}
+
+function _sameRegion(region, box) {
+  if (!region || !box) return false;
+  return ["x1", "y1", "x2", "y2"].every((key) => Number(region[key]) === Number(box[key]));
+}
+
+function _autoObjectNeedsSync(obj, box) {
+  if (!obj?.auto_generated) return false;
+  const boxText = String(box?.ocr_text || "");
+  const objectText = String(obj.ocr_text || "");
+  const previousAutoText = String(obj.auto_ocr_text || "");
+  const machineTextCanMove = !objectText || objectText === previousAutoText;
+  if (machineTextCanMove && boxText !== objectText) return true;
+
+  const currentRegion = obj.region || null;
+  const previousAutoRegion = obj.auto_geometry || null;
+  const machineGeometryCanMove = !previousAutoRegion || _sameRegion(currentRegion, previousAutoRegion);
+  return machineGeometryCanMove && !_sameRegion(currentRegion, box);
+}
+
+function _pageNeedsAutoSync(page) {
+  if (!page || page.skipped) return false;
+  const activeBoxes = (page.boxes || []).filter((box) => box && !box.removed && box.id);
+  if (!activeBoxes.length) return false;
+  const objects = page.text_objects || [];
+  return activeBoxes.some((box) => {
+    const linked = objects.find((obj) => _sourceBoxSet(obj).has(String(box.id)));
+    return !linked || _autoObjectNeedsSync(linked, box);
+  });
+}
+
+async function ensureAutoTextObjects(pageIndex) {
+  const chapterId = window.currentChapterId;
+  if (!chapterId) return null;
+  const key = `${chapterId}:${pageIndex}`;
+  if (_pendingAutoSync.has(key)) return _pendingAutoSync.get(key);
+
+  const job = (async () => {
+    const response = await fetch("/api/text_objects/ensure", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chapter_id: chapterId, page_indices: [pageIndex] }),
+    });
+    const parse = typeof window.parseApiResponse === "function"
+      ? window.parseApiResponse
+      : async (r) => r.json().catch(() => ({}));
+    const data = await parse(response);
+    if (!response.ok) {
+      const getError = typeof window.getErrorMessage === "function"
+        ? window.getErrorMessage
+        : (status, payload) => payload?.detail || `HTTP ${status}`;
+      throw new Error(getError(response.status, data));
+    }
+    if (chapterId !== window.currentChapterId) return null;
+    window.currentManifest = data;
+    return data;
+  })();
+
+  _pendingAutoSync.set(key, job);
+  try {
+    return await job;
+  } finally {
+    _pendingAutoSync.delete(key);
+  }
+}
+window.ensureAutoTextObjects = ensureAutoTextObjects;
+
+function buildChapterTranslateControls() {
+  const controls = document.createElement("details");
+  controls.className = "ui-disclosure chapter-translate-controls command-disclosure";
+  const summary = document.createElement("summary");
+  summary.className = "ui-btn ui-btn-ghost";
+  summary.textContent = "Dịch tự động";
+  const options = document.createElement("div");
+  options.className = "ui-disclosure-panel command-disclosure-panel chapter-translate-options";
+
+  const target = document.createElement("select");
+  target.className = "chapter-translate-target";
+  target.setAttribute("aria-label", "Ngôn ngữ bản dịch");
+  [
+    ["vi", "Tiếng Việt"],
+    ["en", "English"],
+  ].forEach(([value, label]) => {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = label;
+    target.appendChild(option);
+  });
+
+  const budget = document.createElement("input");
+  budget.type = "number";
+  budget.min = "0.001";
+  budget.max = "0.25";
+  budget.step = "0.001";
+  budget.value = "0.02";
+  budget.className = "chapter-translate-budget";
+  budget.title = "Ngân sách tối đa ước tính cho lần dịch chương (USD)";
+  budget.setAttribute("aria-label", "Ngân sách dịch chương bằng USD");
+  const targetLabel = document.createElement("label");
+  targetLabel.className = "ui-field";
+  targetLabel.textContent = "Dịch sang";
+  targetLabel.appendChild(target);
+  const budgetLabel = document.createElement("label");
+  budgetLabel.className = "ui-field";
+  budgetLabel.textContent = "Giới hạn chi phí (USD)";
+  budgetLabel.appendChild(budget);
+
+  const run = document.createElement("button");
+  run.type = "button";
+  run.className = "ui-btn ui-btn-primary chapter-translate-run";
+  run.textContent = "Dịch tự động";
+
+  run.addEventListener("click", async () => {
+    const chapterId = window.currentChapterId;
+    if (!chapterId) return;
+    run.disabled = true;
+    run.textContent = "Đang dịch…";
+    summary.textContent = "Đang dịch…";
+    try {
+      if (typeof window.flushAllPendingPersists === "function") {
+        await window.flushAllPendingPersists();
+      } else if (typeof window.flushTextObjectPersist === "function") {
+        await window.flushTextObjectPersist();
+      }
+      if (chapterId !== window.currentChapterId) return;
+
+      const response = await fetch("/api/translate/chapter", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chapter_id: chapterId,
+          source_lang: document.getElementById("lang-select")?.value || "ja",
+          target_lang: target.value,
+          budget_usd: Number(budget.value || 0.02),
+          force: false,
+        }),
+      });
+      const parse = typeof window.parseApiResponse === "function" ? window.parseApiResponse : async (r) => r.json().catch(() => ({}));
+      const data = await parse(response);
+      if (!response.ok) {
+        const getErr = typeof window.getErrorMessage === "function" ? window.getErrorMessage : (s, d) => d?.detail || `HTTP ${s}`;
+        throw new Error(getErr(response.status, data));
+      }
+      if (chapterId !== window.currentChapterId) return;
+      window.currentManifest = data;
+      const info = data.translation_run || {};
+      const cost = Number(info.estimated_cost_usd || 0).toFixed(4);
+      if (typeof window.showToast === "function") {
+        window.showToast(`Đã dịch ${info.translated || 0} vùng · chi phí ~$${cost}`, "info");
+      }
+      renderEditor();
+    } catch (err) {
+      if (typeof window.showToast === "function") {
+        window.showToast("Dịch tự động thất bại: " + err.message, "error");
+      }
+    } finally {
+      run.disabled = false;
+      run.textContent = "Dịch tự động";
+      summary.textContent = "Dịch tự động";
+    }
+  });
+
+  options.append(targetLabel, budgetLabel, run);
+  controls.append(summary, options);
+  return controls;
+}
+
+function buildChapterExportButton() {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "ui-btn ui-btn-primary chapter-export-run";
+  button.textContent = "Xuất chương (.zip)";
+
+  button.addEventListener("click", async () => {
+    const chapterId = window.currentChapterId;
+    if (!chapterId) return;
+    button.disabled = true;
+    button.textContent = "Đang kết xuất chương…";
+    try {
+      if (typeof window.flushAllPendingPersists === "function") {
+        await window.flushAllPendingPersists();
+      }
+      if (chapterId !== window.currentChapterId) return;
+      const response = await fetch(`/api/render/chapter?chapter_id=${encodeURIComponent(chapterId)}`, {
+        method: "POST",
+      });
+      const parse = typeof window.parseApiResponse === "function" ? window.parseApiResponse : async (r) => r.json().catch(() => ({}));
+      const data = await parse(response);
+      if (!response.ok) {
+        const getErr = typeof window.getErrorMessage === "function" ? window.getErrorMessage : (s, d) => d?.detail || `HTTP ${s}`;
+        throw new Error(getErr(response.status, data));
+      }
+      if (chapterId !== window.currentChapterId) return;
+      window.currentManifest = data;
+
+      const href = data.chapter_render?.download_url || `/api/export/${encodeURIComponent(chapterId)}.zip`;
+      const anchor = document.createElement("a");
+      anchor.href = href;
+      anchor.download = `manga-translator-${chapterId}.zip`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      if (typeof window.showToast === "function") {
+        window.showToast(`Đã kết xuất ${data.chapter_render?.rendered || 0} trang.`, "info");
+      }
+    } catch (err) {
+      if (chapterId === window.currentChapterId && typeof window.showToast === "function") {
+        window.showToast("Xuất chương thất bại: " + err.message, "error");
+      }
+    } finally {
+      button.disabled = false;
+      button.textContent = "Xuất chương (.zip)";
+    }
+  });
+
+  return button;
 }
 
 function renderEditor() {
@@ -1215,8 +1462,6 @@ function renderEditor() {
       editorState.lastChapterId
       && typeof window.cancelPendingPersist === "function"
     ) {
-      // Pending edits are keyed by page/object within one chapter. Never carry
-      // them into another chapter where the same identifiers may mean new data.
       window.cancelPendingPersist();
     }
     editorState.lastChapterId = currentChapterId;
@@ -1228,6 +1473,19 @@ function renderEditor() {
   editorState.activePageIndex = Math.max(0, Math.min(editorState.activePageIndex, pages.length - 1));
   const pageIndex = editorState.activePageIndex;
   const page = pages[pageIndex];
+
+  if (_pageNeedsAutoSync(page)) {
+    ensureAutoTextObjects(pageIndex)
+      .then((manifest) => {
+        if (!manifest || Number(editorState.activePageIndex || 0) !== pageIndex) return;
+        renderEditor();
+      })
+      .catch((err) => {
+        if (typeof window.showToast === "function") {
+          window.showToast("Không thể đồng bộ vùng chữ từ nhận diện: " + err.message, "error");
+        }
+      });
+  }
 
   if (typeof window.setWorkflowCheckpoint === "function") {
     window.setWorkflowCheckpoint("editor", pageIndex);
@@ -1276,11 +1534,15 @@ function renderEditor() {
   });
   tools.appendChild(addBoxBtn);
 
+  const translateControls = buildChapterTranslateControls();
+
   const renderBtn = document.createElement("button");
   renderBtn.type = "button";
   renderBtn.className = "ui-btn ui-btn-primary render-btn editor-render-btn";
   renderBtn.textContent = "Kết xuất trang";
   renderBtn.addEventListener("click", () => renderTranslations(pageIndex));
+
+  const exportBtn = buildChapterExportButton();
 
   const saveStatus = document.createElement("div");
   const initialStatus = refreshSaveStatus();
@@ -1288,7 +1550,7 @@ function renderEditor() {
   setSaveStatusContent(saveStatus, initialStatus);
 
   saveStatus.setAttribute("role", "status");
-  toolbar.append(tools, renderBtn, saveStatus);
+  toolbar.append(tools, translateControls, renderBtn, exportBtn, saveStatus);
 
   const navItems = pages.map((item, index) => ({
     key: index,

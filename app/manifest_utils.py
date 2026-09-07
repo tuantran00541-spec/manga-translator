@@ -45,6 +45,27 @@ _STALE_TEMP_PATTERNS = (
 _ARTIFACT_TRANSACTION_PATTERN = ".page-*.artifact-txn.json"
 
 
+def atomic_replace(src: Path | str, dst: Path | str, max_retries: int = 8, delay: float = 0.05) -> None:
+    src_path = Path(src)
+    dst_path = Path(dst)
+    for attempt in range(max_retries):
+        try:
+            os.replace(src_path, dst_path)
+            return
+        except PermissionError:
+            if attempt == max_retries - 1:
+                try:
+                    shutil.copyfile(src_path, dst_path)
+                    try:
+                        src_path.unlink()
+                    except OSError:
+                        pass
+                    return
+                except Exception:
+                    raise
+            time.sleep(delay)
+
+
 def _artifact_path_under(root: Path, value: str | Path) -> Path:
     root = root.resolve()
     raw_path = Path(value)
@@ -125,7 +146,7 @@ class PageArtifactTransaction:
                 json.dump(payload, output, ensure_ascii=False, separators=(",", ":"))
                 output.flush()
                 os.fsync(output.fileno())
-            os.replace(tmp_path, self.journal_path)
+            atomic_replace(tmp_path, self.journal_path)
         finally:
             tmp_path.unlink(missing_ok=True)
 
@@ -584,7 +605,7 @@ def save_manifest_raw(chapter_id: str, manifest: dict) -> None:
                 ensure_ascii=False,
                 indent=2,
             )
-        os.replace(tmp_path, final_path)
+        atomic_replace(tmp_path, final_path)
     except Exception:
         try:
             tmp_path.unlink(missing_ok=True)

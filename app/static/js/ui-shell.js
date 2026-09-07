@@ -13,6 +13,25 @@
   const panelPreferences = new Map();
   let activePanels = null;
 
+  let focusModeActive = false;
+
+  function toggleFocusMode() {
+    focusModeActive = !focusModeActive;
+    document.body.classList.toggle("focus-mode", focusModeActive);
+    if (activePanels?.grid) {
+      activePanels.grid.classList.toggle("focus-mode", focusModeActive);
+    }
+    const focusBtn = document.getElementById("toggle-focus-mode");
+    if (focusBtn) {
+      focusBtn.setAttribute("aria-pressed", String(focusModeActive));
+      focusBtn.classList.toggle("active", focusModeActive);
+      focusBtn.classList.toggle("ui-btn-primary", focusModeActive);
+      focusBtn.classList.toggle("ui-btn-ghost", !focusModeActive);
+      focusBtn.title = focusModeActive ? "Thoát chế độ tập trung (Phím Tab)" : "Chế độ tập trung (Phím Tab)";
+    }
+    syncWorkbenchPanels();
+  }
+
   function panelMode() {
     return window.matchMedia("(max-width: 1000px)").matches ? "compact" : "wide";
   }
@@ -20,11 +39,40 @@
   function syncWorkbenchPanels() {
     const controls = document.getElementById("workbench-panel-controls");
     const pageView = document.getElementById("page-view");
-    const visible = activePanels?.grid.isConnected && !pageView?.hidden
-      && !pageView?.classList.contains("review-show-stitched");
+    const visible = activePanels?.grid.isConnected && !pageView?.hidden;
     if (controls) controls.hidden = !visible;
     if (!activePanels?.grid.isConnected) return;
     const { stage, grid, nav, inspector } = activePanels;
+
+    const focusBtn = document.getElementById("toggle-focus-mode");
+    if (focusBtn) {
+      focusBtn.setAttribute("aria-pressed", String(focusModeActive));
+      focusBtn.classList.toggle("active", focusModeActive);
+      focusBtn.classList.toggle("ui-btn-primary", focusModeActive);
+      focusBtn.classList.toggle("ui-btn-ghost", !focusModeActive);
+      focusBtn.title = focusModeActive ? "Thoát chế độ tập trung (Phím Tab)" : "Chế độ tập trung (Phím Tab)";
+    }
+
+    if (focusModeActive) {
+      nav.hidden = true;
+      inspector.hidden = true;
+      grid.dataset.navOpen = "false";
+      grid.dataset.inspectorOpen = "false";
+      grid.classList.add("focus-mode");
+      const pageBtn = document.getElementById("toggle-page-panel");
+      const inspBtn = document.getElementById("toggle-inspector-panel");
+      if (pageBtn) {
+        pageBtn.setAttribute("aria-expanded", "false");
+        pageBtn.title = "Hiện danh sách trang (Đang trong Chế độ Tập trung)";
+      }
+      if (inspBtn) {
+        inspBtn.setAttribute("aria-expanded", "false");
+        inspBtn.title = "Hiện bảng công cụ (Đang trong Chế độ Tập trung)";
+      }
+      return;
+    }
+
+    grid.classList.remove("focus-mode");
     const compact = panelMode() === "compact";
     const key = `${stage}:${panelMode()}`;
     const state = panelPreferences.get(key) || { nav: !compact, inspector: !compact };
@@ -43,6 +91,10 @@
 
   function setPanelOpen(name, open) {
     if (!activePanels?.grid.isConnected) return;
+    if (focusModeActive && open) {
+      focusModeActive = false;
+      document.body.classList.remove("focus-mode");
+    }
     const compact = panelMode() === "compact";
     const key = `${activePanels.stage}:${panelMode()}`;
     const state = { ...(panelPreferences.get(key) || { nav: !compact, inspector: !compact }), [name]: open };
@@ -282,6 +334,7 @@
     if (toggle) toggle.addEventListener("click", openSettings);
     if (close) close.addEventListener("click", closeSettings);
     if (backdrop) backdrop.addEventListener("click", closeSettings);
+    document.getElementById("toggle-focus-mode")?.addEventListener("click", toggleFocusMode);
     [["toggle-page-panel", "nav"], ["toggle-inspector-panel", "inspector"]].forEach(([id, name]) => {
       document.getElementById(id)?.addEventListener("click", (event) => {
         setPanelOpen(name, event.currentTarget.getAttribute("aria-expanded") !== "true");
@@ -337,6 +390,23 @@
           event.preventDefault();
           first?.focus();
         }
+      } else if (event.key === "Tab" && !event.ctrlKey && !event.altKey && !event.metaKey && !document.body.classList.contains("settings-open")) {
+        const tag = event.target?.tagName?.toLowerCase();
+        const isEditable = event.target?.isContentEditable || tag === "input" || tag === "textarea" || tag === "select";
+        if (!isEditable && activePanels?.grid?.isConnected) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          toggleFocusMode();
+        }
+      } else if (event.key === "\\" && !document.body.classList.contains("settings-open")) {
+        const tag = event.target?.tagName?.toLowerCase();
+        const isEditable = event.target?.isContentEditable || tag === "input" || tag === "textarea" || tag === "select";
+        if (!isEditable && activePanels?.grid?.isConnected) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          const inspectorOpen = document.getElementById("toggle-inspector-panel")?.getAttribute("aria-expanded") === "true";
+          setPanelOpen("inspector", !inspectorOpen);
+        }
       }
     }, true);
   }
@@ -350,6 +420,7 @@
   window.setupWorkbenchPanels = setupWorkbenchPanels;
   window.syncWorkbenchPanels = syncWorkbenchPanels;
   window.showWorkbenchInspector = () => setPanelOpen("inspector", true);
+  window.toggleFocusMode = toggleFocusMode;
 
   wrapRenderer("renderPreview", "preview");
   wrapRenderer("renderReview", "review");

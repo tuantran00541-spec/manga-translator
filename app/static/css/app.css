@@ -6,11 +6,11 @@
 @import url("./preview.css") layer(stage);
 @import url("./editor-workspace.css") layer(stage);
 @import url("./review-workspace.css") layer(stage);
-@import url("./review-overlap-context.css") layer(stage);
 
 @import url("./components.css") layer(components);
-@import url("./editor-box-transform.css") layer(components);
+@import url("./box-panel.css") layer(components);
 @import url("./text-object-editor.css") layer(components);
+@import url("./toolbar.css") layer(components);
 @import url("./deepseek-qc.css") layer(components);
 @import url("./page-navigator.css") layer(components);
 

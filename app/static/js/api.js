@@ -764,7 +764,7 @@ window.flushExcludedRegionSaves = flushExcludedRegionSaves;
 
 async function resetManualMask(pageIndex, img, canvas, ctx, resetBtn) {
   const chapterId = currentChapterId;
-  const card = resetBtn?.closest(".review-card") || null;
+  const card = resetBtn?.closest(".review-card") || document.querySelector(`.review-card[data-page-index="${pageIndex}"]`) || null;
   if (card) {
     card._reviewBusy = true;
     if (typeof card._syncReviewBusy === "function") card._syncReviewBusy();

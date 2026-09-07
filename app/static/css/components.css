@@ -362,7 +362,6 @@
   max-width: 380px;
   padding: 10px var(--space-4);
   border: 1px solid var(--border-strong);
-  border-left: 3px solid var(--accent);
   border-radius: var(--radius-md);
   background: var(--surface-raised);
   color: var(--text-primary);
@@ -380,11 +379,13 @@
 }
 
 .ui-toast.is-error {
-  border-left-color: var(--danger);
+  border-color: rgba(239, 68, 68, 0.45);
+  background: color-mix(in srgb, var(--surface-raised) 92%, var(--danger));
 }
 
 .ui-toast.is-success {
-  border-left-color: var(--success);
+  border-color: rgba(16, 185, 129, 0.45);
+  background: color-mix(in srgb, var(--surface-raised) 92%, var(--success));
 }
 
 @media (pointer: coarse) {
@@ -394,11 +395,20 @@
   .ui-input,
   .ui-select,
   .gemini-key-input,
-  .ui-range-field {
+  .ui-range-field,
+  .page-navigator-step,
+  .page-navigator-jump,
+  .editor-tool-btn,
+  .render-btn {
     min-height: 44px;
   }
 
-  .ui-icon-btn {
-    width: 44px;
+  .ui-icon-btn,
+  .page-navigator-step {
+    min-width: 44px;
+  }
+
+  .page-navigator-stepper {
+    grid-template-columns: 44px minmax(0, 1fr) 44px;
   }
 }

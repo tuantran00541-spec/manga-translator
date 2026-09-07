@@ -1,11 +1,11 @@
 .page-navigator {
   position: sticky;
-  top: 76px;
+  top: var(--sticky-header-offset, 76px);
   align-self: start;
   display: flex;
   flex-direction: column;
   min-width: 0;
-  max-height: calc(100vh - 92px);
+  max-height: calc(100vh - var(--sticky-header-offset, 76px) - 16px);
   overflow: hidden;
   border-right: 1px solid var(--border-subtle);
   background: color-mix(in srgb, var(--surface-app) 70%, var(--surface-panel));
@@ -73,6 +73,25 @@
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 6px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+.page-navigator-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.page-navigator-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.page-navigator-list::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 3px;
+}
+
+.page-navigator-list::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
 }
 
 .page-navigator-item {

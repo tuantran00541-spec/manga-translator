@@ -28,6 +28,7 @@ from app.parameters import (
 )
 from app.manifest_utils import (
     assign_stable_detector_box_ids,
+    atomic_replace,
     bump_page_revision,
     capture_processing_state,
     get_manifest_lock,
@@ -601,11 +602,11 @@ class ChapterPipeline:
                     target_clean_revision,
                 ) as artifact_tx:
                     if tmp_clean_path and tmp_clean_path.exists():
-                        os.replace(tmp_clean_path, final_clean_path)
+                        atomic_replace(tmp_clean_path, final_clean_path)
                         target_page["clean"] = final_clean_path.as_posix()
 
                     if tmp_auto_clean_path and tmp_auto_clean_path.exists():
-                        os.replace(tmp_auto_clean_path, auto_clean_path)
+                        atomic_replace(tmp_auto_clean_path, auto_clean_path)
 
                     existing_boxes = target_page.get("boxes", [])
                     detected_boxes = assign_stable_detector_box_ids(
@@ -1236,7 +1237,7 @@ class ChapterPipeline:
                         reuse_auto_clean=True,
                     )
                     if accumulated_mask is not None:
-                        os.replace(tmp_mask_path, final_mask_path)
+                        atomic_replace(tmp_mask_path, final_mask_path)
                         target_mask_posix = final_mask_path.as_posix()
                     else:
                         target_mask_posix = None
@@ -1527,7 +1528,7 @@ class ChapterPipeline:
         auto_path = self._auto_clean_path(processed_dir, img_path)
         tmp_path = processed_dir / f"auto_clean_{img_path.name}.{uuid.uuid4().hex[:12]}.tmp.png"
         write_image(tmp_path, image)
-        os.replace(tmp_path, auto_path)
+        atomic_replace(tmp_path, auto_path)
         return auto_path
 
     def _load_auto_clean_cache(self, processed_dir: Path, img_path: Path, expected_shape: tuple[int, int]) -> np.ndarray | None:
@@ -1662,7 +1663,7 @@ class ChapterPipeline:
             / f"clean_{img_path.name}.{uuid.uuid4().hex[:12]}.tmp.png"
         )
         write_image(tmp_clean_path, clean_image)
-        os.replace(tmp_clean_path, clean_path)
+        atomic_replace(tmp_clean_path, clean_path)
         return clean_path.as_posix()
 
     def _process_page(
