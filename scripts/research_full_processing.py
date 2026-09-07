@@ -13,7 +13,11 @@ import json
 import os
 from pathlib import Path
 import statistics
+import sys
 import time
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
 
 import onnxruntime as ort
 import psutil
@@ -22,8 +26,6 @@ import requests
 from app.manifest_utils import load_manifest_raw
 from app.optimized_pipeline import OptimizedChapterPipeline
 from app.parameters import parameter_snapshot
-
-ROOT = Path(__file__).resolve().parent.parent
 
 
 def _write_json(path: Path, value: dict) -> None:
