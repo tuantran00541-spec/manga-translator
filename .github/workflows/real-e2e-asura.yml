@@ -22,6 +22,10 @@ jobs:
       PYTHONDONTWRITEBYTECODE: "1"
       MANGA_USE_DYNAMIC_LAMA: "1"
       MANGA_OCR_TARGET_SELECTION: centered
+      MANGA_DETECTOR_EXPERIMENT: adaptive_tiles_v1
+      MANGA_DETECTOR_ADAPTIVE_TILE_MAX: "1344"
+      MANGA_DETECTOR_ADAPTIVE_OVERLAP: "200"
+      E2E_BENCHMARK_CHAPTER_URL: https://asurascans.com/comics/killer-pietro-08677664/chapter/120
       DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
       E2E_MODEL_BUNDLE_URL: ${{ secrets.E2E_MODEL_BUNDLE_URL }}
 
@@ -71,7 +75,9 @@ jobs:
         run: |
           python -m py_compile \
             scripts/provision_real_e2e_models.py \
-            scripts/real_e2e_asura.py
+            scripts/real_e2e_asura.py \
+            scripts/detector_experiment.py
+          python scripts/detector_experiment.py
           python scripts/release_sanity.py
 
       - name: Restore detector and inpaint model cache
@@ -103,17 +109,18 @@ jobs:
         shell: bash
         run: |
           args=(
+            --chapter-url "${E2E_BENCHMARK_CHAPTER_URL}"
             --workers 2
             --ocr-concurrency 2
             --source-lang en
             --target-lang vi
             --translation-budget-usd 0.02
-            --max-download-attempts 6
+            --max-download-attempts 1
           )
           if [[ -n "${DEEPSEEK_API_KEY:-}" ]]; then
             args+=(--require-translation)
           fi
-          python scripts/real_e2e_asura.py "${args[@]}"
+          python -c 'import runpy; from scripts.detector_experiment import install_from_env; assert install_from_env(), "detector experiment was not enabled"; runpy.run_path("scripts/real_e2e_asura.py", run_name="__main__")' "${args[@]}"
 
       - name: Publish run summary
         if: always()
@@ -125,18 +132,24 @@ jobs:
           from pathlib import Path
 
           report_path = Path('benchmark-results/real-e2e-asura-report.json')
+          experiment_path = Path('benchmark-results/detector-experiment.json')
           lines = ['## Real Asura full-chapter E2E', '']
           if not report_path.is_file():
               lines += ['No E2E report was produced.']
           else:
               report = json.loads(report_path.read_text(encoding='utf-8'))
+              detector = ((report.get('process') or {}).get('detector') or {})
               lines += [
                   f"- Status: **{report.get('status')}**",
                   f"- Promotion ready: **{report.get('promotion_ready')}**",
+                  f"- Detector experiment: `{os.getenv('MANGA_DETECTOR_EXPERIMENT') or 'baseline'}`",
                   f"- Chapter: `{report.get('chapter_url') or 'unresolved'}`",
                   f"- Seed: `{report.get('seed')}`",
                   f"- Source pages / slices: `{report.get('source_pages')}` / `{report.get('slices')}`",
                   f"- Boxes: `{(report.get('boxes') or {}).get('total')}`",
+                  f"- Detector total ms: `{detector.get('total_ms')}`",
+                  f"- Bubble model ms: `{detector.get('bubble_model_ms')}`",
+                  f"- Text model ms: `{detector.get('text_model_ms')}`",
                   f"- OCR recognized: `{(report.get('ocr') or {}).get('recognized')}` / `{(report.get('ocr') or {}).get('planned')}`",
                   f"- Translation: `{(report.get('translation') or {}).get('status')}`",
                   f"- Total wall ms: `{report.get('wall_ms')}`",
@@ -144,6 +157,16 @@ jobs:
               failures = report.get('failures') or []
               if failures:
                   lines += ['', '### Failures'] + [f'- {item}' for item in failures]
+          if experiment_path.is_file():
+              experiment = json.loads(experiment_path.read_text(encoding='utf-8'))
+              lines += ['', '### Detector call counters']
+              for name, row in sorted((experiment.get('models') or {}).items()):
+                  lines.append(
+                      f"- `{name}`: calls={row.get('single_model_calls')}, "
+                      f"tall={row.get('tall_invocations')}, "
+                      f"adaptive_windows={row.get('adaptive_window_calls')}, "
+                      f"full_text={row.get('full_image_text_calls')}"
+                  )
           summary = os.environ.get('GITHUB_STEP_SUMMARY')
           if summary:
               with open(summary, 'a', encoding='utf-8') as handle:
