@@ -6,6 +6,7 @@ on:
     branches: [main]
     paths:
       - scripts/profile_processing.py
+      - scripts/profile_stage_breakdown.py
       - .github/workflows/profile-processing.yml
 
 permissions:
@@ -69,6 +70,14 @@ jobs:
           python scripts/profile_processing.py --profile workers2 --workers 2 --output benchmark-results/profile/workers2.json
           OPENBLAS_NUM_THREADS=1 python scripts/profile_processing.py --profile blas1 --workers 2 --output benchmark-results/profile/blas1.json
           MANGA_ORT_CPU_MEM_ARENA=1 python scripts/profile_processing.py --profile arena --workers 2 --output benchmark-results/profile/arena.json
+      - name: Build non-overlapping stage attribution
+        run: |
+          mkdir -p benchmark-results/profile/stage-breakdown
+          for profile in workers1 workers2 blas1 arena; do
+            python scripts/profile_stage_breakdown.py \
+              "benchmark-results/profile/${profile}.json" \
+              --output "benchmark-results/profile/stage-breakdown/${profile}.json"
+          done
       - name: Publish timing evidence
         if: always()
         run: |
@@ -77,8 +86,17 @@ jobs:
           python - <<'PY'
           import json, os
           from pathlib import Path
-          lines = ['## Production detector and inpaint CPU profile', '', 'Inclusive timer sums overlap across threads; compare wall time.', '', '| Profile | Cold seconds | Warm seconds | Peak RSS MiB |', '|---|---:|---:|---:|']
+
+          lines = [
+              '## Production detector and inpaint CPU profile',
+              '',
+              'Inclusive timer sums overlap across threads; compare wall time. Stage-attribution files use non-overlapping page budgets.',
+              '',
+              '| Profile | Cold seconds | Warm seconds | Peak RSS MiB |',
+              '|---|---:|---:|---:|',
+          ]
           provider_lines = []
+          bottleneck_lines = []
           for path in sorted(Path('benchmark-results/profile').glob('*.json')):
               report = json.loads(path.read_text())
               if 'runs' not in report:
@@ -87,7 +105,33 @@ jobs:
               lines.append(f"| {report['profile']} | {times[0] if times else '-'} | {times[1] if len(times)>1 else '-'} | {report.get('peak_rss_mb', 0):.0f} |")
               if report.get('runs'):
                   provider_lines.append(f"- `{report['profile']}` providers: `{report['runs'][-1].get('provider_placement')}`")
+
+              stage_path = Path('benchmark-results/profile/stage-breakdown') / path.name
+              if stage_path.is_file():
+                  stage = json.loads(stage_path.read_text())
+                  runs = stage.get('runs') or []
+                  if runs:
+                      warm = runs[-1]
+                      totals = {
+                          'detector': 0.0,
+                          'inpaint': 0.0,
+                          'read': 0.0,
+                          'write': 0.0,
+                          'orchestration': 0.0,
+                      }
+                      for page in warm.get('stage_breakdown') or []:
+                          totals['detector'] += float(page.get('detector', {}).get('detector_total_ms') or 0.0)
+                          totals['inpaint'] += float(page.get('auto_inpaint', {}).get('total_ms') or 0.0)
+                          totals['read'] += float(page.get('read_decode_ms') or 0.0)
+                          totals['write'] += float(page.get('write_encode_ms') or 0.0)
+                          totals['orchestration'] += float(page.get('orchestration_other_ms') or 0.0)
+                      top = max(totals, key=totals.get)
+                      bottleneck_lines.append(
+                          f"- `{report['profile']}` warm top stage: **{top}** `{totals[top]/1000:.2f}s` "
+                          f"(detector `{totals['detector']/1000:.2f}s`, inpaint `{totals['inpaint']/1000:.2f}s`)"
+                      )
           lines.extend(['', '### Effective provider placement', *provider_lines])
+          lines.extend(['', '### Warm-run non-overlapping bottlenecks', *bottleneck_lines])
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as output:
               output.write('\n'.join(lines) + '\n')
           print('\n'.join(lines))
