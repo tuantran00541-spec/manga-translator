@@ -77,7 +77,7 @@ jobs:
           from app.config import RAW_DIR, PROCESSED_DIR, OUTPUT_DIR
           from app.manifest_utils import load_manifest_raw, save_manifest_raw
           from app.optimized_pipeline import OptimizedChapterPipeline
-          from app.ort_utils import visible_cpu_count
+          from app.ort_utils import _cpu_count
 
           chapter_id = 'c165fc0b'
           url = 'https://asurascans.com/comics/player-who-returned-10000-years-later-53fc8424/chapter/159'
@@ -86,7 +86,6 @@ jobs:
           pipeline = OptimizedChapterPipeline()
           pipeline.download_chapter(url, chapter_id, workers=2)
           manifest = load_manifest_raw(chapter_id)
-          # Match the supplied processed manifest: 80 slices, these 4 owned slices skipped.
           skipped = {0, 8, 9, 79}
           for index, page in enumerate(manifest.get('pages', [])):
               page['skipped'] = index in skipped
@@ -102,7 +101,7 @@ jobs:
               'expected_batch_sizes': [len(indices[i:i+16]) for i in range(0, len(indices), 16)],
               'os_cpu_count': os.cpu_count(),
               'affinity_cpu_count': len(psutil.Process().cpu_affinity()) if hasattr(psutil.Process(), 'cpu_affinity') else None,
-              'visible_cpu_count': visible_cpu_count(),
+              'visible_cpu_count': _cpu_count(),
               'cv2_threads': cv2.getNumThreads(),
               'ort_version': ort.__version__,
               'ort_available_providers': ort.get_available_providers(),
@@ -138,7 +137,7 @@ jobs:
         run: |
           python - <<'PY'
           from __future__ import annotations
-          import json, math, os, shutil, statistics, time
+          import json, math, shutil, statistics, time
           from pathlib import Path
           import psutil, requests
           from playwright.sync_api import sync_playwright
