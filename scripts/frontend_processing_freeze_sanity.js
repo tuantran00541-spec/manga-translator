@@ -70,6 +70,18 @@ assert(
     && !optimized.includes('responsive_process_workers'),
   'processing worker/ORT throttling must not be reintroduced',
 );
+assert(
+  mainSource.includes('PROCESS_PROGRESS_POLL_MS = 1000')
+    && mainSource.includes('process_revision')
+    && mainSource.includes('/api/chapter/${encodeURIComponent(chapterId)}')
+    && mainSource.includes('Đang xử lý ${completed}/${indices.length}'),
+  'preview must surface durable per-page progress while a 16-page request is still running',
+);
+assert(
+  !mainSource.includes('window.fetch =')
+    && !mainSource.includes('window.processSelectedPages ='),
+  'progress reporting must observe the existing process path instead of monkey-patching fetch or duplicating processing',
+);
 
 const guardTag = '/static/js/frontend-observer-guard.js';
 const coordinatorTag = '/static/js/frontend-coordinator.js';
