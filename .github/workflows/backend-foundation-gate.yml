@@ -16,6 +16,7 @@ on:
       - app/routers/export.py
       - scripts/backend_foundation_sanity.py
       - scripts/backend_phase4_sanity.py
+      - scripts/backend_phase5_sanity.py
       - .github/workflows/backend-foundation-gate.yml
   pull_request:
   workflow_dispatch:
@@ -49,7 +50,14 @@ jobs:
           app/inpaint/lama_inpainter.py app/pipeline.py
           app/routers/render_commit.py app/routers/export.py
           scripts/backend_foundation_sanity.py scripts/backend_phase4_sanity.py
+          scripts/backend_phase5_sanity.py
       - name: Run deterministic backend foundation regressions
         run: |
           python scripts/backend_foundation_sanity.py
           python scripts/backend_phase4_sanity.py
+      - name: Run Phase 5 performance and equivalence regression
+        if: matrix.os == 'ubuntu-22.04'
+        run: python scripts/backend_phase5_sanity.py
+      - name: Run Phase 5 cross-platform equivalence regression
+        if: matrix.os == 'windows-2025'
+        run: python scripts/backend_phase5_sanity.py --correctness-only
