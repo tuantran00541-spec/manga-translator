@@ -22,7 +22,7 @@ jobs:
           python-version: "3.12"
       - name: Apply guarded source patch
         run: |
-          # Both helpers are temporary and removed by the verified runtime commit.
+          # Final one-shot rerun; helpers are removed by the verified runtime commit.
           python scripts/apply_backend_second_pass.py
           python scripts/migrate_backend_foundation_second_pass.py
       - name: Install foundation-test runtime
