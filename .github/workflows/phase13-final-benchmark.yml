@@ -1,0 +1,251 @@
+name: Phase 13 full production final gate
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/phase13-final-benchmark.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: phase13-full-production-main
+  cancel-in-progress: false
+
+jobs:
+  final-benchmark:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    env:
+      PYTHONUNBUFFERED: "1"
+      MANGA_USE_DYNAMIC_LAMA: "1"
+      MANGA_ORT_PROVIDER: openvino
+      MANGA_ORT_REQUIRE_PROVIDER: "1"
+      MANGA_ORT_OPENVINO_SCOPE: detectors
+      MANGA_ORT_OPENVINO_THREADS: "2"
+      MANGA_ORT_OPENVINO_STREAMS: "1"
+      MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
+      OPENBLAS_NUM_THREADS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install production processing runtime
+        run: |
+          python -m pip install \
+            numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 \
+            onnxruntime-openvino==1.24.1 psutil==6.1.1 loguru==0.7.2 \
+            requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 \
+            playwright==1.47.0 fastapi==0.115.0 pydantic==2.9.2 \
+            filelock==3.16.1 threadpoolctl==3.6.0
+      - name: Restore detector and inpaint models
+        id: models
+        uses: actions/cache@v4
+        with:
+          path: |
+            models/*.onnx
+            models/.e2e-provenance.json
+          key: processing-profile-models-b224548-v1
+      - name: Read pinned model provisioner
+        if: steps.models.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: b22454827f8190655d7070b80eb20c2550beadfa
+          path: benchmark-bootstrap
+          sparse-checkout: scripts/provision_real_e2e_models.py
+          sparse-checkout-cone-mode: false
+      - name: Provision public-equivalent production models
+        if: steps.models.outputs.cache-hit != 'true'
+        run: |
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple torch==2.5.1+cpu torchvision==0.20.1+cpu
+          python -m pip install --no-deps ultralytics==8.3.221 onnx==1.17.0 onnxslim==0.1.71
+          python -m pip install numpy==1.26.4 sympy==1.13.1 PyYAML==6.0.2 scipy==1.14.1 tqdm==4.67.1 matplotlib==3.9.2 pandas==2.2.3 py-cpuinfo==9.0.0 ml_dtypes==0.5.3 colorama==0.4.6 polars==1.33.1 ultralytics-thop==2.0.17
+          python benchmark-bootstrap/scripts/provision_real_e2e_models.py
+          cp benchmark-bootstrap/models/*.onnx models/
+          cp benchmark-bootstrap/models/.e2e-provenance.json models/
+      - name: Run full production detector to inpaint final gate
+        run: |
+          mkdir -p benchmark-results/phase13
+          python - <<'PY'
+          from __future__ import annotations
+          from collections import defaultdict
+          import hashlib, json, os, statistics, threading, time
+          from pathlib import Path
+          import cv2
+          import numpy as np
+          import onnxruntime as ort
+          import psutil
+
+          from app.manifest_utils import load_manifest_raw
+          from app.optimized_pipeline import OptimizedChapterPipeline
+          from app.parameters import DETECTOR_FOCUS_MAX_CHIPS, parameter_snapshot
+          from app.pipeline import read_image
+          from scripts.model_e2e_gate import _authority_mask
+
+          OUT = Path('benchmark-results/phase13/report.json')
+          URL = 'https://asurascans.com/comics/killer-pietro-08677664/chapter/120'
+          if DETECTOR_FOCUS_MAX_CHIPS != 2:
+              raise RuntimeError(f'expected restored focus budget 2, got {DETECTOR_FOCUS_MAX_CHIPS}')
+
+          process = psutil.Process()
+          peak = {'rss_mb': process.memory_info().rss / 2**20}
+          stop = threading.Event()
+          def sample():
+              while not stop.wait(0.10):
+                  peak['rss_mb'] = max(peak['rss_mb'], process.memory_info().rss / 2**20)
+          sampler = threading.Thread(target=sample, daemon=True)
+          sampler.start()
+
+          pipeline = OptimizedChapterPipeline()
+          chapter_id = hashlib.sha256(f'phase13-{time.time_ns()}'.encode()).hexdigest()[:8]
+          report = {
+              'source_sha': os.getenv('GITHUB_SHA'),
+              'chapter_url': URL,
+              'chapter_id': chapter_id,
+              'workers': 2,
+              'onnxruntime': ort.__version__,
+              'providers': ort.get_available_providers(),
+              'parameters': parameter_snapshot(),
+          }
+          try:
+              started = time.perf_counter()
+              manifest = pipeline.download_chapter(URL, chapter_id, workers=2)
+              report['ingest_ms'] = round((time.perf_counter() - started) * 1000.0, 3)
+              indices = list(range(len(manifest.get('pages', []))))
+              if len(indices) < 80:
+                  raise RuntimeError(f'final chapter produced only {len(indices)} slices')
+
+              started = time.perf_counter()
+              pipeline.process_pages(chapter_id, indices, workers=2)
+              report['process_wall_ms'] = round((time.perf_counter() - started) * 1000.0, 3)
+              report['process_wall_s'] = round(report['process_wall_ms'] / 1000.0, 3)
+              manifest = load_manifest_raw(chapter_id)
+
+              pages = manifest.get('pages', [])
+              report['slices'] = len(pages)
+              report['source_pages'] = len({page.get('source_page') for page in pages})
+              report['clean_pages'] = sum(bool(page.get('clean')) for page in pages)
+              report['boxes'] = sum(len(page.get('boxes', [])) for page in pages)
+              report['safe_to_inpaint'] = sum(
+                  bool(box.get('safe_to_inpaint')) for page in pages for box in page.get('boxes', [])
+              )
+              report['review_boxes'] = sum(
+                  bool(box.get('needs_review')) for page in pages for box in page.get('boxes', [])
+              )
+              report['deferred_boxes'] = sum(
+                  bool(box.get('deferred_reason')) for page in pages for box in page.get('boxes', [])
+              )
+              report['last_processing_run'] = manifest.get('last_processing_run')
+
+              metric_groups = defaultdict(list)
+              outside_total = 0
+              changed_total = 0
+              mask_total = 0
+              unsafe_pages = []
+              page_evidence = []
+              for index, page in enumerate(pages):
+                  metrics = page.get('processing_metrics') or {}
+                  for key, value in metrics.items():
+                      if isinstance(value, (int, float)) and not isinstance(value, bool):
+                          metric_groups[key].append(float(value))
+                  original = read_image(Path(page['original']))
+                  clean_path = page.get('clean')
+                  if not clean_path:
+                      unsafe_pages.append(index)
+                      continue
+                  clean = read_image(Path(clean_path))
+                  mask = _authority_mask(original, page.get('boxes', []), pipeline.inpainter)
+                  changed = np.any(original != clean, axis=2)
+                  outside = int(np.count_nonzero(changed & (mask <= 127)))
+                  changed_count = int(np.count_nonzero(changed))
+                  mask_count = int(np.count_nonzero(mask))
+                  outside_total += outside
+                  changed_total += changed_count
+                  mask_total += mask_count
+                  if outside:
+                      unsafe_pages.append(index)
+                  if index in {0, len(pages)//4, len(pages)//2, (3*len(pages))//4, len(pages)-1}:
+                      page_evidence.append({
+                          'index': index,
+                          'boxes': len(page.get('boxes', [])),
+                          'mask_pixels': mask_count,
+                          'changed_pixels': changed_count,
+                          'outside_mask_changed': outside,
+                          'mask_sha': hashlib.sha256(mask.tobytes()).hexdigest(),
+                          'clean_sha': hashlib.sha256(clean.tobytes()).hexdigest(),
+                      })
+
+              report['authority'] = {
+                  'mask_pixels': mask_total,
+                  'changed_pixels': changed_total,
+                  'outside_mask_changed': outside_total,
+                  'unsafe_pages': unsafe_pages,
+                  'sample_pages': page_evidence,
+              }
+              report['page_metrics'] = {
+                  key: {
+                      'count': len(values),
+                      'sum': round(sum(values), 3),
+                      'mean': round(statistics.mean(values), 3),
+                      'max': round(max(values), 3),
+                  }
+                  for key, values in sorted(metric_groups.items()) if values
+              }
+              report['peak_rss_mb'] = round(peak['rss_mb'], 1)
+              report['throughput_ms_per_slice'] = round(report['process_wall_ms'] / max(1, len(pages)), 3)
+
+              if report['clean_pages'] != report['slices']:
+                  raise RuntimeError(f"clean pages {report['clean_pages']} != slices {report['slices']}")
+              failed = (report.get('last_processing_run') or {}).get('failed_page_indices') or []
+              if failed:
+                  raise RuntimeError(f'processing failures: {failed}')
+              if outside_total:
+                  raise RuntimeError(f'{outside_total} changed pixels outside authorized masks on pages {unsafe_pages}')
+              if changed_total <= 0 or mask_total <= 0:
+                  raise RuntimeError('final chapter did not exercise destructive cleanup')
+              if report['process_wall_s'] > 900:
+                  raise RuntimeError(f"processing regression: {report['process_wall_s']}s exceeds 900s ceiling")
+              if report['peak_rss_mb'] > 3200:
+                  raise RuntimeError(f"memory regression: {report['peak_rss_mb']} MiB exceeds 3200 MiB ceiling")
+          finally:
+              stop.set()
+              sampler.join(timeout=1)
+              report['peak_rss_mb'] = round(max(peak['rss_mb'], process.memory_info().rss / 2**20), 1)
+              OUT.write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+              print(json.dumps(report, ensure_ascii=False), flush=True)
+          PY
+      - name: Publish Phase 13 summary
+        if: always()
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          p = Path('benchmark-results/phase13/report.json')
+          if not p.is_file():
+              raise SystemExit(0)
+          r = json.loads(p.read_text())
+          a = r.get('authority') or {}
+          lines = [
+              '## Phase 13 full production final gate', '',
+              f"- Source pages / slices: `{r.get('source_pages')}` / `{r.get('slices')}`",
+              f"- Clean pages: `{r.get('clean_pages')}`",
+              f"- Process wall: **{r.get('process_wall_s')} s**",
+              f"- Throughput: **{r.get('throughput_ms_per_slice')} ms/slice**",
+              f"- Peak RSS: **{r.get('peak_rss_mb')} MiB**",
+              f"- Boxes / safe / review / deferred: `{r.get('boxes')}` / `{r.get('safe_to_inpaint')}` / `{r.get('review_boxes')}` / `{r.get('deferred_boxes')}`",
+              f"- Outside-authority changed pixels: **{a.get('outside_mask_changed')}**",
+          ]
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as out:
+              out.write('\n'.join(lines) + '\n')
+          print('\n'.join(lines))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: phase13-final-${{ github.run_id }}
+          path: benchmark-results/phase13/
+          retention-days: 7
+          if-no-files-found: warn
