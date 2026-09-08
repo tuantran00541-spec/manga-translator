@@ -119,21 +119,6 @@ def _artifact_path_under(root: Path, value: str | Path) -> Path:
     return path
 
 
-def _manifest_page_clean_revision(
-    chapter_dir: Path, page_index: int
-) -> int | None:
-    try:
-        raw = json.loads((chapter_dir / "manifest.json").read_text(encoding="utf-8"))
-        pages = raw.get("pages") if isinstance(raw, dict) else None
-        if isinstance(pages, list) and 0 <= page_index < len(pages):
-            page = pages[page_index]
-            if isinstance(page, dict):
-                return int(page.get("clean_revision") or 0)
-    except (OSError, TypeError, ValueError):
-        pass
-    return None
-
-
 def _manifest_page_artifact_state(
     chapter_dir: Path,
     page_index: int,
