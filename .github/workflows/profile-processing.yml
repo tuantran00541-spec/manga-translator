@@ -5,6 +5,9 @@ on:
   push:
     branches: [main]
     paths:
+      - app/detector/adaptive_focus_detector.py
+      - app/detector/combined_detector.py
+      - app/parameters.py
       - scripts/profile_processing.py
       - scripts/profile_stage_breakdown.py
       - .github/workflows/profile-processing.yml
