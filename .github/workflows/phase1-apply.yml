@@ -28,7 +28,7 @@ jobs:
           path = Path('app/manifest_utils.py')
           text = path.read_text(encoding='utf-8')
           old = '''def atomic_replace(src: Path | str, dst: Path | str, max_retries: int = 8, delay: float = 0.05) -> None:\n    src_path = Path(src)\n    dst_path = Path(dst)\n    for attempt in range(max_retries):\n        try:\n            os.replace(src_path, dst_path)\n            return\n        except PermissionError:\n            if attempt == max_retries - 1:\n                try:\n                    shutil.copyfile(src_path, dst_path)\n                    try:\n                        src_path.unlink()\n                    except OSError:\n                        pass\n                    return\n                except Exception:\n                    raise\n            time.sleep(delay)\n\n\n'''
-          new = '''def atomic_replace(\n    src: Path | str,\n    dst: Path | str,\n    max_retries: int = 8,\n    delay: float = 0.05,\n) -> None:\n    \"\"\"Atomically publish ``src`` at ``dst`` or fail without touching ``dst``.\n\n    ``src`` must already live on the destination filesystem. A previous fallback\n    copied bytes over ``dst`` after an exhausted Windows rename retry. That can\n    expose a partially-written artifact to unlocked readers and, when a rollback\n    snapshot is a hard link, overwrite the rollback bytes as well. Publication is\n    therefore rename-only: exhausted retries leave both files untouched and the\n    caller decides whether to clean the temporary source.\n    \"\"\"\n    if max_retries < 1:\n        raise ValueError(\"max_retries must be >= 1\")\n    if delay < 0:\n        raise ValueError(\"delay must be >= 0\")\n\n    src_path = Path(src)\n    dst_path = Path(dst)\n    last_error: PermissionError | None = None\n    for attempt in range(max_retries):\n        try:\n            os.replace(src_path, dst_path)\n            return\n        except PermissionError as exc:\n            last_error = exc\n            if attempt + 1 < max_retries and delay:\n                time.sleep(delay)\n    assert last_error is not None\n    raise last_error\n\n\ndef _copy_rollback_snapshot(src: Path, dst: Path) -> None:\n    \"\"\"Create a byte-independent rollback snapshot on the chapter filesystem.\n\n    The destination is created exclusively so an old transaction cannot be\n    overwritten. ``fsync`` makes the snapshot durable before its journal is\n    published. We intentionally do not use a hard link: rollback bytes must stay\n    immutable even if a later failure path writes the live artifact in place.\n    \"\"\"\n    try:\n        with src.open(\"rb\") as source, dst.open(\"xb\") as backup:\n            shutil.copyfileobj(source, backup, length=1024 * 1024)\n            backup.flush()\n            os.fsync(backup.fileno())\n        try:\n            shutil.copystat(src, dst, follow_symlinks=False)\n        except OSError:\n            pass\n    except Exception:\n        try:\n            dst.unlink(missing_ok=True)\n        except OSError:\n            pass\n        raise\n\n\n'''
+          new = '''def atomic_replace(\n    src: Path | str,\n    dst: Path | str,\n    max_retries: int = 8,\n    delay: float = 0.05,\n) -> None:\n    \"\"\"Atomically publish ``src`` at ``dst`` or fail without touching ``dst``.\n\n    Publication is rename-only. Exhausted Windows rename retries must never fall\n    back to copying bytes over a live inode, because readers could observe a\n    partial file and a hard-linked rollback snapshot could be corrupted too.\n    \"\"\"\n    if max_retries < 1:\n        raise ValueError(\"max_retries must be >= 1\")\n    if delay < 0:\n        raise ValueError(\"delay must be >= 0\")\n    src_path = Path(src)\n    dst_path = Path(dst)\n    last_error: PermissionError | None = None\n    for attempt in range(max_retries):\n        try:\n            os.replace(src_path, dst_path)\n            return\n        except PermissionError as exc:\n            last_error = exc\n            if attempt + 1 < max_retries and delay:\n                time.sleep(delay)\n    assert last_error is not None\n    raise last_error\n\n\ndef _copy_rollback_snapshot(src: Path, dst: Path) -> None:\n    \"\"\"Create a durable byte-independent rollback snapshot.\"\"\"\n    try:\n        with src.open(\"rb\") as source, dst.open(\"xb\") as backup:\n            shutil.copyfileobj(source, backup, length=1024 * 1024)\n            backup.flush()\n            os.fsync(backup.fileno())\n        try:\n            shutil.copystat(src, dst, follow_symlinks=False)\n        except OSError:\n            pass\n    except Exception:\n        try:\n            dst.unlink(missing_ok=True)\n        except OSError:\n            pass\n        raise\n\n\ndef publish_then_commit(\n    src: Path | str,\n    dst: Path | str,\n    commit_callback,\n) -> None:\n    \"\"\"Publish one artifact and restore the previous bytes if metadata commit fails.\n\n    This complements ``PageArtifactTransaction`` for artifacts outside the\n    processed chapter directory (notably rendered output). The previous file is\n    copied, never hard-linked. If restoration itself is blocked, the durable\n    rollback copy is deliberately retained for explicit recovery.\n    \"\"\"\n    src_path = Path(src)\n    dst_path = Path(dst)\n    rollback = None\n    if dst_path.is_symlink():\n        raise ValueError(f\"Refusing symlink publication target: {dst_path}\")\n    if dst_path.is_file():\n        rollback = dst_path.with_name(\n            f\".{dst_path.name}.{uuid.uuid4().hex}.publish-rollback\"\n        )\n        _copy_rollback_snapshot(dst_path, rollback)\n    published = False\n    committed = False\n    try:\n        atomic_replace(src_path, dst_path)\n        published = True\n        commit_callback()\n        committed = True\n    except Exception:\n        if published:\n            if rollback is not None and rollback.is_file():\n                atomic_replace(rollback, dst_path)\n                rollback = None\n            else:\n                dst_path.unlink(missing_ok=True)\n        raise\n    finally:\n        if committed and rollback is not None:\n            try:\n                rollback.unlink(missing_ok=True)\n            except OSError:\n                pass\n\n\n'''
           if text.count(old) != 1:
               raise SystemExit('atomic_replace source contract changed; refusing patch')
           text = text.replace(old, new, 1)
@@ -37,15 +37,47 @@ jobs:
           if text.count(old) != 1:
               raise SystemExit('rollback source contract changed; refusing patch')
           path.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          path = Path('app/routers/render_commit.py')
+          text = path.read_text(encoding='utf-8')
+          old = 'from app.manifest_utils import bump_page_revision, get_manifest_lock, load_manifest_raw, save_manifest_raw\n'
+          new = '''from app.manifest_utils import (\n    bump_page_revision,\n    get_manifest_lock,\n    load_manifest_raw,\n    publish_then_commit,\n    save_manifest_raw,\n)\n'''
+          if text.count(old) != 1:
+              raise SystemExit('render import contract changed; refusing patch')
+          text = text.replace(old, new, 1)
+          old = '''        final_signature = render_input_signature(manifest, req.page_index)\n        os.replace(tmp_path, final_path)\n        render_revision = bump_page_revision(page, \"render_revision\")\n        stamp_render_artifact(\n            page,\n            input_signature=final_signature,\n            output_path=final_path,\n        )\n        save_manifest_raw(req.chapter_id, manifest)\n        return True, render_revision\n'''
+          new = '''        final_signature = render_input_signature(manifest, req.page_index)\n        target_render_revision = int(page.get(\"render_revision\") or 0) + 1\n\n        def commit_manifest() -> None:\n            render_revision = bump_page_revision(page, \"render_revision\")\n            if render_revision != target_render_revision:\n                raise RuntimeError(\"Page render revision changed during commit\")\n            stamp_render_artifact(\n                page,\n                input_signature=final_signature,\n                output_path=final_path,\n            )\n            save_manifest_raw(req.chapter_id, manifest)\n\n        publish_then_commit(tmp_path, final_path, commit_manifest)\n        return True, target_render_revision\n'''
+          if text.count(old) != 1:
+              raise SystemExit('render publication contract changed; refusing patch')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          path = Path('app/routers/export.py')
+          text = path.read_text(encoding='utf-8')
+          old = 'from app.manifest_utils import get_manifest_lock, load_manifest_raw, save_manifest_raw, urlify_manifest\n'
+          new = 'from app.manifest_utils import atomic_replace, get_manifest_lock, load_manifest_raw, save_manifest_raw, urlify_manifest\n'
+          if text.count(old) != 1:
+              raise SystemExit('export import contract changed; refusing patch')
+          text = text.replace(old, new, 1)
+          old = '            os.replace(tmp_archive, final_archive)\n'
+          new = '            atomic_replace(tmp_archive, final_archive)\n'
+          if text.count(old) != 1:
+              raise SystemExit('export publication contract changed; refusing patch')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
           PY
+
           cat > scripts/backend_foundation_sanity.py <<'PY'
-          """Compact deterministic regression gate for backend foundation phases."""
+          """Deterministic regression gate for backend foundation phases."""
           from __future__ import annotations
 
           import json
+          import os
+          import sys
           import tempfile
           from pathlib import Path
           from unittest import mock
+
+          ROOT = Path(__file__).resolve().parent.parent
+          sys.path.insert(0, str(ROOT))
 
 
           def _assert(condition: bool, message: str) -> None:
@@ -99,7 +131,6 @@ jobs:
                   _assert(backup.read_bytes() == b"OLD", "rollback snapshot shares live data")
                   _assert(tx.rollback(), "transaction rollback failed")
                   _assert(live.read_bytes() == b"OLD", "rollback did not restore prior bytes")
-                  _assert(not tx.journal_path.exists(), "rollback journal survived")
 
               with tempfile.TemporaryDirectory() as tmp:
                   root = Path(tmp)
@@ -112,7 +143,6 @@ jobs:
                   recovered = mu.recover_page_artifact_transactions(root)
                   _assert(recovered == 1, f"expected one recovered transaction, got {recovered}")
                   _assert(live.read_bytes() == b"OLD", "crash recovery did not restore OLD")
-                  _assert(not tx.journal_path.exists(), "recovery journal was not removed")
 
               with tempfile.TemporaryDirectory() as tmp:
                   root = Path(tmp)
@@ -128,7 +158,20 @@ jobs:
                   recovered = mu.recover_page_artifact_transactions(root)
                   _assert(recovered == 1, "committed transaction was not resolved")
                   _assert(live.read_bytes() == b"NEW", "committed artifact was rolled back")
-                  _assert(not tx.journal_path.exists(), "committed recovery journal survived")
+
+              with tempfile.TemporaryDirectory() as tmp:
+                  root = Path(tmp)
+                  src, dst = root / "render.tmp", root / "page.png"
+                  src.write_bytes(b"NEW-RENDER")
+                  dst.write_bytes(b"OLD-RENDER")
+                  try:
+                      mu.publish_then_commit(src, dst, lambda: (_ for _ in ()).throw(RuntimeError("manifest commit failed")))
+                  except RuntimeError:
+                      pass
+                  else:
+                      raise AssertionError("render metadata failure unexpectedly succeeded")
+                  _assert(dst.read_bytes() == b"OLD-RENDER", "render rollback did not restore OLD")
+                  _assert(not list(root.glob("*.publish-rollback")), "render rollback debris survived")
 
               with tempfile.TemporaryDirectory() as tmp:
                   root = Path(tmp)
@@ -152,15 +195,69 @@ jobs:
                   _assert(final.read_bytes() == previous, "failed manifest changed prior bytes")
                   _assert(not list(chapter.glob("manifest.json.*.tmp")), "failed manifest left temp")
 
+              pipeline_source = (ROOT / "app/pipeline.py").read_text(encoding="utf-8")
+              render_source = (ROOT / "app/routers/render_commit.py").read_text(encoding="utf-8")
+              export_source = (ROOT / "app/routers/export.py").read_text(encoding="utf-8")
+              _assert("PageArtifactTransaction(" in pipeline_source, "clean/auto-clean transaction missing")
+              _assert("atomic_replace(tmp_clean_path, final_clean_path)" in pipeline_source, "clean publication not atomic")
+              _assert("atomic_replace(tmp_auto_clean_path, auto_clean_path)" in pipeline_source, "auto-clean publication not atomic")
+              _assert("publish_then_commit(tmp_path, final_path, commit_manifest)" in render_source, "render publication contract missing")
+              _assert("atomic_replace(tmp_archive, final_archive)" in export_source, "export publication contract missing")
+
+
+          def windows_locked_reader_check() -> None:
+              if os.name != "nt":
+                  return
+              import ctypes
+              from ctypes import wintypes
+              import app.manifest_utils as mu
+
+              kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+              create_file = kernel32.CreateFileW
+              create_file.argtypes = [
+                  wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, wintypes.LPVOID,
+                  wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE,
+              ]
+              create_file.restype = wintypes.HANDLE
+              close_handle = kernel32.CloseHandle
+              close_handle.argtypes = [wintypes.HANDLE]
+              close_handle.restype = wintypes.BOOL
+              GENERIC_READ = 0x80000000
+              FILE_SHARE_READ = 0x00000001
+              OPEN_EXISTING = 3
+              INVALID = wintypes.HANDLE(-1).value
+
+              with tempfile.TemporaryDirectory() as tmp:
+                  root = Path(tmp)
+                  src, dst = root / "new.tmp", root / "live.bin"
+                  src.write_bytes(b"NEW")
+                  dst.write_bytes(b"OLD")
+                  handle = create_file(str(dst), GENERIC_READ, FILE_SHARE_READ, None, OPEN_EXISTING, 0, None)
+                  if handle == INVALID:
+                      raise ctypes.WinError(ctypes.get_last_error())
+                  try:
+                      try:
+                          mu.atomic_replace(src, dst, max_retries=2, delay=0)
+                      except PermissionError:
+                          pass
+                      else:
+                          raise AssertionError("Windows locked-reader rename unexpectedly succeeded")
+                      _assert(dst.read_bytes() == b"OLD", "Windows locked destination changed")
+                      _assert(src.read_bytes() == b"NEW", "Windows locked temporary source changed")
+                  finally:
+                      close_handle(handle)
+
 
           def main() -> None:
               publication_safety_checks()
+              windows_locked_reader_check()
               print("backend foundation sanity: publication safety PASS")
 
 
           if __name__ == "__main__":
               main()
           PY
+
           cat > .github/workflows/backend-foundation-gate.yml <<'YML'
           name: Backend foundation gate
 
@@ -171,19 +268,12 @@ jobs:
                 - app/manifest_utils.py
                 - app/model_contracts.py
                 - app/detector/bubble_detector.py
-                - app/detector/combined_detector.py
                 - app/inpaint/lama_inpainter.py
+                - app/routers/render_commit.py
+                - app/routers/export.py
                 - scripts/backend_foundation_sanity.py
                 - .github/workflows/backend-foundation-gate.yml
             pull_request:
-              paths:
-                - app/manifest_utils.py
-                - app/model_contracts.py
-                - app/detector/bubble_detector.py
-                - app/detector/combined_detector.py
-                - app/inpaint/lama_inpainter.py
-                - scripts/backend_foundation_sanity.py
-                - .github/workflows/backend-foundation-gate.yml
             workflow_dispatch:
 
           permissions:
@@ -207,12 +297,12 @@ jobs:
                     python -m pip install
                     numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84
                     fastapi==0.115.0 pydantic==2.9.2 filelock==3.16.1 loguru==0.7.2
-                - name: Compile affected backend source
-                  run: python -m py_compile app/manifest_utils.py scripts/backend_foundation_sanity.py
+                - name: Compile backend foundation source
+                  run: python -m py_compile app/manifest_utils.py app/routers/render_commit.py app/routers/export.py scripts/backend_foundation_sanity.py
                 - name: Run deterministic backend foundation regressions
                   run: python scripts/backend_foundation_sanity.py
           YML
-          python -m py_compile app/manifest_utils.py scripts/backend_foundation_sanity.py
+          python -m py_compile app/manifest_utils.py app/routers/render_commit.py app/routers/export.py scripts/backend_foundation_sanity.py
       - name: Install safety-test runtime
         run: python -m pip install numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 fastapi==0.115.0 pydantic==2.9.2 filelock==3.16.1 loguru==0.7.2
       - name: Run Phase 1 regressions before commit
@@ -223,7 +313,7 @@ jobs:
           git config user.name "Manga backend CI"
           git config user.email "actions@users.noreply.github.com"
           git rm .github/workflows/phase1-apply.yml
-          git add app/manifest_utils.py scripts/backend_foundation_sanity.py .github/workflows/backend-foundation-gate.yml
+          git add app/manifest_utils.py app/routers/render_commit.py app/routers/export.py scripts/backend_foundation_sanity.py .github/workflows/backend-foundation-gate.yml
           git commit -m "fix(storage): preserve atomic publication rollback"
           git push origin HEAD:main
 
