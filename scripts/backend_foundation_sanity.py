@@ -29,7 +29,7 @@ def publication_safety_checks():
         except RuntimeError: pass
         else: raise AssertionError('metadata failure succeeded')
         check(dst.read_bytes()==b'OLD','render rollback failed')
-    p=(ROOT/'app/pipeline.py').read_text(); rr=(ROOT/'app/routers/render_commit.py').read_text(); ex=(ROOT/'app/routers/export.py').read_text()
+    p=(ROOT/'app/pipeline.py').read_text(encoding='utf-8'); rr=(ROOT/'app/routers/render_commit.py').read_text(encoding='utf-8'); ex=(ROOT/'app/routers/export.py').read_text(encoding='utf-8')
     check('atomic_replace(tmp_clean_path, final_clean_path)' in p,'clean publish'); check('atomic_replace(tmp_auto_clean_path, auto_clean_path)' in p,'auto-clean publish'); check('publish_then_commit(tmp_path, final_path, commit_manifest)' in rr,'render publish'); check('atomic_replace(tmp_archive, final_archive)' in ex,'export publish')
 def windows_locked_reader_check():
     if os.name!='nt': return

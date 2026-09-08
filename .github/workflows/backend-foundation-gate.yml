@@ -1,0 +1,46 @@
+name: Backend foundation gate
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - app/manifest_utils.py
+      - app/model_contracts.py
+      - app/detector/bubble_detector.py
+      - app/detector/combined_detector.py
+      - app/inpaint/lama_inpainter.py
+      - app/routers/render_commit.py
+      - app/routers/export.py
+      - scripts/backend_foundation_sanity.py
+      - .github/workflows/backend-foundation-gate.yml
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  foundation:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install foundation-test runtime
+        run: >-
+          python -m pip install
+          numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84
+          fastapi==0.115.0 pydantic==2.9.2 filelock==3.16.1 loguru==0.7.2
+      - name: Compile backend foundation source
+        run: >-
+          python -m py_compile app/manifest_utils.py app/detector/bubble_detector.py
+          app/inpaint/lama_inpainter.py app/routers/render_commit.py app/routers/export.py
+          scripts/backend_foundation_sanity.py
+      - name: Run deterministic backend foundation regressions
+        run: python scripts/backend_foundation_sanity.py
