@@ -22,14 +22,20 @@ jobs:
     env:
       PYTHONUNBUFFERED: "1"
       MANGA_USE_DYNAMIC_LAMA: "1"
+      MANGA_ORT_PROVIDER: openvino
+      MANGA_ORT_REQUIRE_PROVIDER: "1"
+      MANGA_ORT_OPENVINO_SCOPE: detectors
+      MANGA_ORT_OPENVINO_THREADS: "2"
+      MANGA_ORT_OPENVINO_STREAMS: "1"
+      MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install detector and inpaint dependencies only
+      - name: Install production detector and inpaint dependencies only
         run: |
-          python -m pip install numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 onnxruntime==1.21.0 psutil==6.1.1 loguru==0.7.2 requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 playwright==1.47.0 fastapi==0.115.0 pydantic==2.9.2 filelock==3.16.1 threadpoolctl==3.6.0
+          python -m pip install numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 onnxruntime-openvino==1.24.1 psutil==6.1.1 loguru==0.7.2 requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 playwright==1.47.0 fastapi==0.115.0 pydantic==2.9.2 filelock==3.16.1 threadpoolctl==3.6.0
       - name: Restore benchmark models
         id: models
         uses: actions/cache@v4
@@ -57,7 +63,7 @@ jobs:
           cp benchmark-bootstrap/models/.e2e-provenance.json models/
       - name: Fetch three original chapter images
         run: python scripts/profile_processing.py --prepare
-      - name: Compare isolated CPU configurations on identical slices
+      - name: Compare isolated production CPU configurations on identical slices
         run: |
           python scripts/profile_processing.py --profile workers1 --workers 1 --output benchmark-results/profile/workers1.json
           python scripts/profile_processing.py --profile workers2 --workers 2 --output benchmark-results/profile/workers2.json
@@ -71,13 +77,17 @@ jobs:
           python - <<'PY'
           import json, os
           from pathlib import Path
-          lines = ['## Detector and inpaint CPU profile', '', 'Inclusive timer sums overlap across threads; compare wall time.', '', '| Profile | Cold seconds | Warm seconds | Peak RSS MiB |', '|---|---:|---:|---:|']
+          lines = ['## Production detector and inpaint CPU profile', '', 'Inclusive timer sums overlap across threads; compare wall time.', '', '| Profile | Cold seconds | Warm seconds | Peak RSS MiB |', '|---|---:|---:|---:|']
+          provider_lines = []
           for path in sorted(Path('benchmark-results/profile').glob('*.json')):
               report = json.loads(path.read_text())
               if 'runs' not in report:
                   continue
               times = [round(run['wall_ms'] / 1000, 2) for run in report['runs']]
               lines.append(f"| {report['profile']} | {times[0] if times else '-'} | {times[1] if len(times)>1 else '-'} | {report.get('peak_rss_mb', 0):.0f} |")
+              if report.get('runs'):
+                  provider_lines.append(f"- `{report['profile']}` providers: `{report['runs'][-1].get('provider_placement')}`")
+          lines.extend(['', '### Effective provider placement', *provider_lines])
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as output:
               output.write('\n'.join(lines) + '\n')
           print('\n'.join(lines))

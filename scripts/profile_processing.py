@@ -1,7 +1,13 @@
-"""Bounded real-image CPU profile. Instrumentation lives outside production.
+"""Bounded real-image CPU profile of the production detector/inpaint path.
 
 Timer rows are inclusive and may overlap across threads: never add them to
 infer elapsed time. Configuration comparisons run in separate processes.
+
+The profiler deliberately does not wrap the LaMa ONNX session. The fixed-LaMa
+runtime uses session capabilities to decide serialization/recycling behavior;
+wrapping that session used to change the control flow being measured (F15).
+LaMa execution is instead timed at the Inpainter method boundary and via the
+production inpaint metrics.
 """
 from __future__ import annotations
 
@@ -82,6 +88,8 @@ def instrument():
     make_session = ort_utils.make_session
 
     class Session:
+        """Detector-only timing proxy; attribute access remains transparent."""
+
         def __init__(self, session, name):
             self.session, self.name = session, name
 
@@ -98,8 +106,10 @@ def instrument():
             session = make_session(path, **kwargs)
         return Session(session, Path(path).name)
 
+    # Only detector sessions are wrapped. Inpainter keeps the exact production
+    # session object so fixed-session serialization/recycling decisions match an
+    # unprofiled run.
     yolo.make_session = measured_session
-    lama.make_session = measured_session
     for method in ("detect", "_preprocess", "_postprocess", "_decode_mask", "_nms", "_nms_boxes"):
         timers.wrap(yolo.YoloDetector, method, "yolo." + method)
     for method in ("detect", "_flat_bubble_text_fallback", "_merge_masks",
@@ -107,7 +117,8 @@ def instrument():
         timers.wrap(CombinedTextDetector, method, "combined." + method)
     timers.wrap(SecondaryTextRecovery, "detect", "recovery.detect")
     for method in ("_cluster_boxes", "_smart_fill_color", "_smart_paint_region",
-                   "_lama_fill_single_dynamic", "_lama_fill_single", "_lama_fill_tiled"):
+                   "_lama_fill_single_dynamic", "_lama_fill_single", "_lama_fill_tiled",
+                   "_run_lama"):
         if method in vars(lama.Inpainter):
             timers.wrap(lama.Inpainter, method, "inpaint." + method)
     original_mask = lama.build_mask
@@ -142,6 +153,18 @@ def prepare(args):
     print(json.dumps(records), flush=True)
 
 
+def _provider_snapshot(pipeline):
+    detector = pipeline.detector
+    result = {
+        "bubble_yolo.onnx": list(detector.bubble_detector.session.get_providers()),
+        "text_segmenter.onnx": list(detector.text_detector.session.get_providers()),
+    }
+    inpainter = pipeline.inpainter
+    if bool(getattr(inpainter, "session_loaded", False)) and inpainter.session is not None:
+        result[Path(inpainter.lama_model_path).name] = list(inpainter.session.get_providers())
+    return result
+
+
 def run(args):
     import cv2
     import numpy as np
@@ -153,14 +176,15 @@ def run(args):
     from app.parameters import parameter_snapshot
 
     timers = instrument()
-    from app.pipeline import ChapterPipeline, read_image
+    from app.optimized_pipeline import OptimizedChapterPipeline
+    from app.pipeline import read_image
     from scripts.model_e2e_gate import _authority_mask
 
     raw_paths = sorted(path for path in args.raw_dir.iterdir()
                        if path.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"})
     if not raw_paths:
         raise RuntimeError("No original images")
-    pipeline = ChapterPipeline()
+    pipeline = OptimizedChapterPipeline()
     process = psutil.Process()
     memory = {"peak_rss_mb": 0.0}
     stop = threading.Event()
@@ -172,11 +196,15 @@ def run(args):
     sampler = threading.Thread(target=sample, daemon=True)
     sampler.start()
     report = {"source_sha": os.getenv("GITHUB_SHA"), "profile": args.profile,
-              "workers": args.workers, "python": sys.version, "platform": platform.platform(),
+              "pipeline": "OptimizedChapterPipeline", "workers": args.workers,
+              "python": sys.version, "platform": platform.platform(),
               "cpu_count": os.cpu_count(), "effective_cpu_count": _cpu_count(),
               "ort_threads": _configured_intra_op_threads(), "opencv_threads": cv2.getNumThreads(),
-              "onnxruntime": ort.__version__, "numpy": np.__version__,
-              "threadpools": threadpool_info(), "parameters": parameter_snapshot(),
+              "onnxruntime": ort.__version__, "available_providers": ort.get_available_providers(),
+              "numpy": np.__version__, "threadpools": threadpool_info(),
+              "parameters": parameter_snapshot(),
+              "profiler_semantics": {"detector_session_wrapped": True,
+                                     "lama_session_wrapped": False},
               "env": {key: value for key, value in os.environ.items()
                       if key.startswith("MANGA_") or key in {"OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS"}},
               "models": {path.name: digest(path) for path in (ROOT / "models").glob("*.onnx")},
@@ -195,8 +223,16 @@ def run(args):
             pipeline.process_pages(chapter_id, indices, workers=args.workers)
             wall_ms = (time.perf_counter() - started) * 1000
             manifest = load_manifest_raw(chapter_id)
+            inpainter = pipeline.inpainter
             row = {"repeat": repeat, "cold": repeat == 0, "ingest_ms": ingest_ms,
                    "wall_ms": wall_ms, "indices": indices, "slice_count": count,
+                   "provider_placement": _provider_snapshot(pipeline),
+                   "inpaint_runtime": {
+                       "model": Path(getattr(inpainter, "lama_model_path", "")).name or None,
+                       "dynamic": bool(getattr(inpainter, "dynamic_lama", False)),
+                       "serialized_inference": bool(getattr(inpainter, "serialized_inference", False)),
+                       "session_type": type(getattr(inpainter, "session", None)).__name__,
+                   },
                    "timers": timers.summary(), "events": list(timers.rows),
                    "last_processing_run": manifest.get("last_processing_run"), "pages": []}
             for index in indices:
@@ -224,6 +260,8 @@ def run(args):
             report.update(memory)
             write_json(args.output, report)
             print(json.dumps({"profile": args.profile, "repeat": repeat, "wall_ms": wall_ms,
+                              "provider_placement": row["provider_placement"],
+                              "inpaint_runtime": row["inpaint_runtime"],
                               "timers": row["timers"], **memory}), flush=True)
         if not any(page["changed_pixels"] for row in report["runs"] for page in row["pages"]):
             raise RuntimeError("Sample did not exercise cleanup")
