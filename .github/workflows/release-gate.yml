@@ -38,6 +38,9 @@ jobs:
       - name: Check browser JavaScript syntax
         run: find app/static/js -type f -name '*.js' -print0 | xargs -0 -n1 node --check
 
+      - name: Run processing freeze regression
+        run: node scripts/frontend_processing_freeze_sanity.js
+
       - name: Run frontend coordinator regression
         run: node scripts/frontend_coordinator_sanity.js
 
