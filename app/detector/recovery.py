@@ -73,6 +73,7 @@ class SecondaryTextRecovery:
         self._mser = cv2.MSER_create(MSER_DELTA, MSER_MIN_AREA, MSER_MAX_AREA)
         self._mser_lock = threading.Lock()
         self._primitive_local = threading.local()
+        self._candidate_local = threading.local()
 
     @staticmethod
     def _iou(a: BubbleBox, b: BubbleBox) -> float:
@@ -342,16 +343,31 @@ class SecondaryTextRecovery:
         }
         return raw
 
-    def detect(self, image: np.ndarray, existing: list[BubbleBox] | None = None) -> list[BubbleBox]:
-        if image is None or image.size == 0:
-            return []
-        h, w = image.shape[:2]
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if image.ndim == 3 else image
-        boxes = self._extract_primitives(image, gray)
-        if boxes.size == 0:
-            return []
+    def _build_base_candidates(
+        self,
+        image: np.ndarray,
+        gray: np.ndarray,
+        boxes: np.ndarray,
+    ) -> tuple[tuple[BubbleBox, float], ...]:
+        """Build expensive MSER cluster/mask evidence once per exact image object.
 
-        rects = []
+        This cache deliberately stops before any check involving ``existing``.
+        First-pass bubble proposals and final merged detector evidence therefore
+        retain independent filtering semantics even when they share the same raw
+        MSER primitives, clusters and reconstructed review masks.
+        """
+        state = getattr(self._candidate_local, "value", None)
+        if state is not None:
+            image_ref = state.get("image_ref")
+            if (
+                image_ref is not None
+                and image_ref() is image
+                and state.get("shape") == tuple(image.shape[:2])
+            ):
+                return state["candidates"]
+
+        h, w = image.shape[:2]
+        rects: list[tuple[int, int, int, int]] = []
         for x, y, bw, bh in np.asarray(boxes).reshape(-1, 4):
             x, y, bw, bh = map(int, (x, y, bw, bh))
             if (
@@ -368,8 +384,6 @@ class SecondaryTextRecovery:
             ):
                 continue
             rects.append((x, y, x + bw, y + bh))
-        if not rects:
-            return []
 
         remaining = rects[:]
         clusters: list[list[tuple[int, int, int, int]]] = []
@@ -402,8 +416,7 @@ class SecondaryTextRecovery:
                 remaining = keep
             clusters.append(cluster)
 
-        out: list[BubbleBox] = []
-        existing = existing or []
+        base: list[tuple[BubbleBox, float]] = []
         for cluster in clusters:
             if len(cluster) < MSER_CLUSTER_MIN_REGIONS:
                 continue
@@ -430,27 +443,10 @@ class SecondaryTextRecovery:
                 ocr_eligible=True,
                 needs_review=True,
             )
-            if any(self._iou(candidate, b) > MSER_EXISTING_IOU_SKIP for b in existing):
-                continue
-            contained_verified = 0
-            for b in existing:
-                if not b.safe_to_inpaint:
-                    continue
-                cx = (b.x1 + b.x2) / 2.0
-                cy = (b.y1 + b.y2) / 2.0
-                if x1 <= cx <= x2 and y1 <= cy <= y2:
-                    contained_verified += 1
-            if contained_verified >= MSER_CONTAINED_SAFE_SKIP_COUNT:
-                continue
-
             crop = gray[y1:y2, x1:x2]
             mask = self._seed_mask(crop)
             ratio = float(np.count_nonzero(mask)) / float(max(1, mask.size))
             page_ratio = (bw * bh) / float(max(1, w * h))
-            if page_ratio > MSER_PAGE_CLUSTER_SKIP_RATIO and any(
-                b.safe_to_inpaint for b in existing
-            ):
-                continue
             review_mask_valid = bool(
                 MSER_SAFE_MASK_RATIO_MIN <= ratio <= MSER_SAFE_MASK_RATIO_MAX
                 and not self._mask_component_spans_crop(mask)
@@ -467,6 +463,56 @@ class SecondaryTextRecovery:
                     needs_review=True,
                     confidence=MSER_SAFE_CONFIDENCE,
                 )
+            base.append((candidate, page_ratio))
+
+        candidates = tuple(base)
+        self._candidate_local.value = {
+            "image_ref": weakref.ref(image),
+            "shape": tuple(image.shape[:2]),
+            "candidates": candidates,
+        }
+        return candidates
+
+    @staticmethod
+    def _clone_base_candidate(candidate: BubbleBox) -> BubbleBox:
+        mask = candidate.mask
+        return replace(
+            candidate,
+            mask=mask.copy() if mask is not None else None,
+        )
+
+    def detect(self, image: np.ndarray, existing: list[BubbleBox] | None = None) -> list[BubbleBox]:
+        if image is None or image.size == 0:
+            return []
+        h, w = image.shape[:2]
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if image.ndim == 3 else image
+        boxes = self._extract_primitives(image, gray)
+        if boxes.size == 0:
+            return []
+
+        base_candidates = self._build_base_candidates(image, gray, boxes)
+        if not base_candidates:
+            return []
+
+        out: list[BubbleBox] = []
+        existing = existing or []
+        has_safe_existing = any(b.safe_to_inpaint for b in existing)
+        for base_candidate, page_ratio in base_candidates:
+            candidate = self._clone_base_candidate(base_candidate)
+            if any(self._iou(candidate, b) > MSER_EXISTING_IOU_SKIP for b in existing):
+                continue
+            contained_verified = 0
+            for b in existing:
+                if not b.safe_to_inpaint:
+                    continue
+                cx = (b.x1 + b.x2) / 2.0
+                cy = (b.y1 + b.y2) / 2.0
+                if candidate.x1 <= cx <= candidate.x2 and candidate.y1 <= cy <= candidate.y2:
+                    contained_verified += 1
+            if contained_verified >= MSER_CONTAINED_SAFE_SKIP_COUNT:
+                continue
+            if page_ratio > MSER_PAGE_CLUSTER_SKIP_RATIO and has_safe_existing:
+                continue
             out.append(candidate)
 
         # Review-only MSER proposals must not suppress additional review
