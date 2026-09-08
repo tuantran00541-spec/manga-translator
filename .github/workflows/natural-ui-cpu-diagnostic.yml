@@ -1,0 +1,348 @@
+name: Natural UI CPU diagnostic
+
+on:
+  push:
+    branches:
+      - fix/observer-processing-freeze
+    paths:
+      - .github/workflows/natural-ui-cpu-diagnostic.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: natural-ui-cpu-diagnostic
+  cancel-in-progress: false
+
+jobs:
+  cpu-natural-diagnostic:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    env:
+      PYTHONUNBUFFERED: "1"
+      MANGA_USE_DYNAMIC_LAMA: "1"
+      MANGA_ORT_PROVIDER: cpu
+      OPENBLAS_NUM_THREADS: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install CPU production runtime
+        run: |
+          python -m pip install \
+            numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 \
+            onnxruntime==1.21.0 psutil==6.1.1 loguru==0.7.2 \
+            requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 \
+            playwright==1.47.0 fastapi==0.115.0 'uvicorn[standard]==0.30.6' \
+            pydantic==2.9.2 filelock==3.16.1 python-multipart==0.0.12
+
+      - name: Restore detector and inpaint models
+        id: models
+        uses: actions/cache@v4
+        with:
+          path: |
+            models/*.onnx
+            models/.e2e-provenance.json
+          key: processing-profile-models-b224548-v1
+
+      - name: Read pinned model provisioner
+        if: steps.models.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: b22454827f8190655d7070b80eb20c2550beadfa
+          path: benchmark-bootstrap
+          sparse-checkout: scripts/provision_real_e2e_models.py
+          sparse-checkout-cone-mode: false
+
+      - name: Provision public-equivalent production models
+        if: steps.models.outputs.cache-hit != 'true'
+        run: |
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple torch==2.5.1+cpu torchvision==0.20.1+cpu
+          python -m pip install --no-deps ultralytics==8.3.221 onnx==1.17.0 onnxslim==0.1.71
+          python -m pip install numpy==1.26.4 sympy==1.13.1 PyYAML==6.0.2 scipy==1.14.1 tqdm==4.67.1 matplotlib==3.9.2 pandas==2.2.3 py-cpuinfo==9.0.0 ml_dtypes==0.5.3 colorama==0.4.6 polars==1.33.1 ultralytics-thop==2.0.17
+          python benchmark-bootstrap/scripts/provision_real_e2e_models.py
+          cp benchmark-bootstrap/models/*.onnx models/
+          cp benchmark-bootstrap/models/.e2e-provenance.json models/
+
+      - name: Prepare exact chapter and local-like skipped slices
+        run: |
+          python - <<'PY'
+          import json, os, shutil
+          from pathlib import Path
+          import cv2, onnxruntime as ort, psutil
+          from app.config import RAW_DIR, PROCESSED_DIR, OUTPUT_DIR
+          from app.manifest_utils import load_manifest_raw, save_manifest_raw
+          from app.optimized_pipeline import OptimizedChapterPipeline
+          from app.ort_utils import visible_cpu_count
+
+          chapter_id = 'c165fc0b'
+          url = 'https://asurascans.com/comics/player-who-returned-10000-years-later-53fc8424/chapter/159'
+          for root in (RAW_DIR, PROCESSED_DIR, OUTPUT_DIR):
+              shutil.rmtree(root / chapter_id, ignore_errors=True)
+          pipeline = OptimizedChapterPipeline()
+          pipeline.download_chapter(url, chapter_id, workers=2)
+          manifest = load_manifest_raw(chapter_id)
+          # Match the supplied processed manifest: 80 slices, these 4 owned slices skipped.
+          skipped = {0, 8, 9, 79}
+          for index, page in enumerate(manifest.get('pages', [])):
+              page['skipped'] = index in skipped
+          manifest['workflow'] = {'stage': 'preview', 'page_index': 1}
+          save_manifest_raw(chapter_id, manifest)
+          indices = [i for i, page in enumerate(manifest.get('pages', [])) if not page.get('skipped')]
+          meta = {
+              'chapter_id': chapter_id,
+              'source_url': url,
+              'slices': len(manifest.get('pages', [])),
+              'skipped': sorted(skipped),
+              'processable': len(indices),
+              'expected_batch_sizes': [len(indices[i:i+16]) for i in range(0, len(indices), 16)],
+              'os_cpu_count': os.cpu_count(),
+              'affinity_cpu_count': len(psutil.Process().cpu_affinity()) if hasattr(psutil.Process(), 'cpu_affinity') else None,
+              'visible_cpu_count': visible_cpu_count(),
+              'cv2_threads': cv2.getNumThreads(),
+              'ort_version': ort.__version__,
+              'ort_available_providers': ort.get_available_providers(),
+              'memory_total_mb': round(psutil.virtual_memory().total / 2**20, 1),
+              'swap_total_mb': round(psutil.swap_memory().total / 2**20, 1),
+          }
+          Path('cpu-ui-meta.json').write_text(json.dumps(meta, indent=2), encoding='utf-8')
+          print(json.dumps(meta, indent=2))
+          if len(manifest.get('pages', [])) != 80 or len(indices) != 76:
+              raise RuntimeError(f'unexpected chapter shape: pages={len(manifest.get("pages", []))}, processable={len(indices)}')
+          PY
+
+      - name: Start real app server
+        run: |
+          nohup python -m uvicorn app.main:app --host 127.0.0.1 --port 8765 > cpu-ui-server.log 2>&1 &
+          echo $! > cpu-ui-server.pid
+          python - <<'PY'
+          import time, requests
+          deadline = time.time() + 30
+          while time.time() < deadline:
+              try:
+                  r = requests.get('http://127.0.0.1:8765/health', timeout=2)
+                  if r.status_code == 200:
+                      print(r.json())
+                      raise SystemExit(0)
+              except Exception:
+                  pass
+              time.sleep(0.5)
+          raise SystemExit('server did not become healthy')
+          PY
+
+      - name: Run real Chrome plus CPU ORT diagnostic
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+          import json, math, os, shutil, statistics, time
+          from pathlib import Path
+          import psutil, requests
+          from playwright.sync_api import sync_playwright
+
+          meta = json.loads(Path('cpu-ui-meta.json').read_text())
+          server_pid = int(Path('cpu-ui-server.pid').read_text().strip())
+          server_proc = psutil.Process(server_pid)
+          server_proc.cpu_percent(None)
+          psutil.cpu_percent(None)
+
+          report = {
+              'source_sha': '${{ github.sha }}', **meta,
+              'process_batch_sizes': [], 'batch_durations_s': [], 'process_elapsed_s': None,
+              'eval_latency_ms': [], 'aux_click_latency_ms': [], 'aux_clicks_ok': 0, 'aux_clicks_failed': 0,
+              'health_latency_ms': [], 'health_failures': 0,
+              'server_rss_mb': [], 'server_threads': [], 'server_cpu_percent': [],
+              'chrome_rss_mb': [], 'system_cpu_percent': [], 'memory_available_mb': [], 'swap_used_mb': [],
+              'review_reached': False, 'editor_reached': False, 'settings_responsive_after_editor': False,
+          }
+
+          def percentile(values, q):
+              if not values: return None
+              data = sorted(float(x) for x in values)
+              pos = (len(data)-1) * q / 100.0
+              lo, hi = math.floor(pos), math.ceil(pos)
+              if lo == hi: return data[lo]
+              return data[lo] * (hi-pos) + data[hi] * (pos-lo)
+
+          def summarize(values):
+              if not values: return None
+              return {
+                  'count': len(values), 'p50': round(percentile(values,50),3),
+                  'p95': round(percentile(values,95),3), 'p99': round(percentile(values,99),3),
+                  'max': round(max(values),3), 'mean': round(statistics.mean(values),3),
+              }
+
+          def chrome_rss_mb():
+              total = 0
+              for proc in psutil.process_iter(['name','cmdline','memory_info']):
+                  try:
+                      name = (proc.info.get('name') or '').lower()
+                      cmd = ' '.join(proc.info.get('cmdline') or []).lower()
+                      if 'chrome' in name or 'chromium' in name or 'chrome' in cmd or 'chromium' in cmd:
+                          total += proc.info['memory_info'].rss if proc.info.get('memory_info') else 0
+                  except (psutil.NoSuchProcess, psutil.AccessDenied):
+                      pass
+              return total / 2**20
+
+          chrome = shutil.which('google-chrome') or shutil.which('google-chrome-stable') or shutil.which('chromium') or shutil.which('chromium-browser')
+          if not chrome: raise RuntimeError('Chrome/Chromium unavailable')
+
+          request_starts = []
+          response_ends = []
+          with sync_playwright() as p:
+              browser = p.chromium.launch(headless=True, executable_path=chrome, args=['--no-sandbox','--disable-dev-shm-usage'])
+              page = browser.new_page(viewport={'width':1366,'height':900})
+              page.set_default_timeout(10000)
+
+              def on_request(req):
+                  if req.url.endswith('/api/process_pages'):
+                      request_starts.append(time.perf_counter())
+                      try:
+                          payload = req.post_data_json or {}
+                          report['process_batch_sizes'].append(len(payload.get('page_indices') or []))
+                      except Exception:
+                          report['process_batch_sizes'].append(0)
+              def on_response(resp):
+                  if resp.url.endswith('/api/process_pages'):
+                      response_ends.append(time.perf_counter())
+              page.on('request', on_request)
+              page.on('response', on_response)
+
+              page.goto('http://127.0.0.1:8765/', wait_until='domcontentloaded', timeout=30000)
+              page.locator('.recent-resume-btn').first.wait_for(state='visible', timeout=20000)
+              page.locator('.recent-resume-btn').first.click()
+              process_btn = page.locator('#preview-toolbar .preview-primary-action')
+              process_btn.wait_for(state='visible', timeout=20000)
+
+              page.evaluate('''() => {
+                window.__diagHeartbeat = {count:0,maxGapMs:0,last:performance.now()};
+                window.__diagLongTasks = [];
+                setInterval(() => { const n=performance.now(); const g=n-window.__diagHeartbeat.last; window.__diagHeartbeat.maxGapMs=Math.max(window.__diagHeartbeat.maxGapMs,g); window.__diagHeartbeat.last=n; window.__diagHeartbeat.count++; }, 100);
+                try { new PerformanceObserver((list) => { for (const e of list.getEntries()) window.__diagLongTasks.push(e.duration); }).observe({entryTypes:['longtask']}); } catch (_) {}
+              }''')
+
+              started = time.perf_counter()
+              process_btn.click()
+              last_aux = 0.0
+              deadline = started + 2100
+              while time.perf_counter() < deadline:
+                  if page.locator('button', has_text='Mở biên tập').count():
+                      report['review_reached'] = True
+                      break
+
+                  t0=time.perf_counter()
+                  page.evaluate('1+1')
+                  report['eval_latency_ms'].append((time.perf_counter()-t0)*1000)
+
+                  h0=time.perf_counter()
+                  try:
+                      hr=requests.get('http://127.0.0.1:8765/health',timeout=3)
+                      report['health_latency_ms'].append((time.perf_counter()-h0)*1000)
+                      if not hr.ok: report['health_failures'] += 1
+                  except Exception:
+                      report['health_latency_ms'].append(3000.0); report['health_failures'] += 1
+
+                  try:
+                      report['server_rss_mb'].append(server_proc.memory_info().rss/2**20)
+                      report['server_threads'].append(server_proc.num_threads())
+                      report['server_cpu_percent'].append(server_proc.cpu_percent(None))
+                  except psutil.Error:
+                      pass
+                  report['chrome_rss_mb'].append(chrome_rss_mb())
+                  report['system_cpu_percent'].append(psutil.cpu_percent(None))
+                  vm=psutil.virtual_memory(); sm=psutil.swap_memory()
+                  report['memory_available_mb'].append(vm.available/2**20)
+                  report['swap_used_mb'].append(sm.used/2**20)
+
+                  elapsed=time.perf_counter()-started
+                  if elapsed-last_aux >= 10:
+                      last_aux=elapsed
+                      try:
+                          toggle=page.locator('#toggle-page-panel')
+                          before=toggle.get_attribute('aria-expanded')
+                          c0=time.perf_counter(); toggle.click(timeout=5000); after=toggle.get_attribute('aria-expanded')
+                          report['aux_click_latency_ms'].append((time.perf_counter()-c0)*1000)
+                          if before != after: report['aux_clicks_ok'] += 1
+                          else: report['aux_clicks_failed'] += 1
+                      except Exception:
+                          report['aux_clicks_failed'] += 1
+                  time.sleep(0.5)
+              else:
+                  raise RuntimeError('processing did not reach review')
+
+              report['process_elapsed_s']=time.perf_counter()-started
+              for i,end in enumerate(response_ends):
+                  if i < len(request_starts): report['batch_durations_s'].append(end-request_starts[i])
+              perf=page.evaluate('({hb:window.__diagHeartbeat,longTasks:window.__diagLongTasks})')
+              report['heartbeat_count']=perf['hb']['count']; report['heartbeat_max_gap_ms']=perf['hb']['maxGapMs']
+              report['longtask_count']=len(perf['longTasks']); report['longtask_max_ms']=max(perf['longTasks'] or [0]); report['longtask_total_ms']=sum(perf['longTasks'])
+
+              editor_btn=page.locator('button',has_text='Mở biên tập').first
+              editor_btn.wait_for(state='visible',timeout=10000)
+              e0=time.perf_counter(); editor_btn.click(timeout=15000)
+              report['editor_click_return_ms']=(time.perf_counter()-e0)*1000
+              page.wait_for_function("document.body.dataset.appStage === 'editor'",timeout=30000)
+              report['editor_to_stage_ms']=(time.perf_counter()-e0)*1000
+              page.wait_for_function("document.querySelectorAll('.translation-workspace .page-navigator-item').length === 80",timeout=30000)
+              report['editor_to_nav80_ms']=(time.perf_counter()-e0)*1000
+              page.locator('.translation-canvas-host img').first.wait_for(state='visible',timeout=30000)
+              report['editor_to_canvas_visible_ms']=(time.perf_counter()-e0)*1000
+              page.wait_for_timeout(1000)
+              report['editor_reached']=True
+              eperf=page.evaluate('({hb:window.__diagHeartbeat,longTasks:window.__diagLongTasks})')
+              report['post_editor_heartbeat_max_gap_ms']=eperf['hb']['maxGapMs']
+              report['post_editor_longtask_max_ms']=max(eperf['longTasks'] or [0])
+
+              s0=time.perf_counter(); page.locator('#settings-toggle').click(timeout=5000); page.wait_for_timeout(100)
+              report['settings_click_ms']=(time.perf_counter()-s0)*1000
+              report['settings_responsive_after_editor']=page.locator('body').evaluate("el=>el.classList.contains('settings-open')")
+              page.screenshot(path='cpu-ui-after-editor.png',full_page=True)
+              browser.close()
+
+          if report['process_batch_sizes'] != meta['expected_batch_sizes']:
+              raise RuntimeError(f"batch mismatch {report['process_batch_sizes']} != {meta['expected_batch_sizes']}")
+          if not report['review_reached'] or not report['editor_reached'] or not report['settings_responsive_after_editor']:
+              raise RuntimeError('natural UI flow incomplete')
+          if report['aux_clicks_ok'] < 1: raise RuntimeError('no auxiliary click succeeded')
+
+          for key in ['eval_latency_ms','aux_click_latency_ms','health_latency_ms','server_rss_mb','server_threads','server_cpu_percent','chrome_rss_mb','system_cpu_percent','memory_available_mb','swap_used_mb','batch_durations_s']:
+              report[key+'_summary']=summarize(report[key])
+          Path('cpu-ui-diagnostic-report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
+          print(json.dumps({k:v for k,v in report.items() if not isinstance(v,list)},ensure_ascii=False,indent=2))
+          PY
+
+      - name: Capture final metrics and log
+        if: always()
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from app.manifest_utils import load_manifest_raw
+          try:
+              m=load_manifest_raw('c165fc0b')
+              Path('cpu-ui-final-processing.json').write_text(json.dumps(m.get('last_processing_run'),ensure_ascii=False,indent=2),encoding='utf-8')
+              print(json.dumps(m.get('last_processing_run'),ensure_ascii=False,indent=2))
+          except Exception as exc: print(exc)
+          PY
+          tail -300 cpu-ui-server.log || true
+
+      - name: Stop server
+        if: always()
+        run: |
+          if [ -f cpu-ui-server.pid ]; then kill "$(cat cpu-ui-server.pid)" || true; fi
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cpu-ui-diagnostic-${{ github.run_id }}
+          path: |
+            cpu-ui-meta.json
+            cpu-ui-diagnostic-report.json
+            cpu-ui-final-processing.json
+            cpu-ui-after-editor.png
+            cpu-ui-server.log
+          if-no-files-found: warn
+          retention-days: 3
