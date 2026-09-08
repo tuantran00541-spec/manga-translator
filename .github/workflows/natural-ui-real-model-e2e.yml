@@ -82,7 +82,7 @@ jobs:
           from app.manifest_utils import load_manifest_raw, save_manifest_raw
           from app.optimized_pipeline import OptimizedChapterPipeline
 
-          chapter_id = 'natural-ui-e2e'
+          chapter_id = 'c165fc0b'
           url = 'https://asurascans.com/comics/player-who-returned-10000-years-later-53fc8424/chapter/159'
           for root in (RAW_DIR, PROCESSED_DIR, OUTPUT_DIR):
               shutil.rmtree(root / chapter_id, ignore_errors=True)
@@ -279,7 +279,7 @@ jobs:
           from pathlib import Path
           from app.manifest_utils import load_manifest_raw
           try:
-              m = load_manifest_raw('natural-ui-e2e')
+              m = load_manifest_raw('c165fc0b')
               Path('natural-ui-final-processing.json').write_text(json.dumps(m.get('last_processing_run'), ensure_ascii=False, indent=2), encoding='utf-8')
               print(json.dumps(m.get('last_processing_run'), ensure_ascii=False, indent=2))
           except Exception as exc:
