@@ -67,6 +67,14 @@ window.fetch = (input, init) => {
 const sourcePath = process.argv[2] || 'app/static/js/frontend-coordinator.js';
 vm.runInThisContext(fs.readFileSync(sourcePath, 'utf8'), { filename: sourcePath });
 
+// The coordinator is loaded before ui-shell's DOMContentLoaded setup. A capture
+// keydown listener registered in that window must not receive ordinary Tab.
+let capturedTab = false;
+document.addEventListener('keydown', () => { capturedTab = true; }, true);
+const patchedKeydown = (listeners.get('document:keydown') || []).at(-1);
+patchedKeydown({ key: 'Tab' });
+assert.strictEqual(capturedTab, false, 'ordinary Tab must bypass the legacy focus-mode capture listener');
+
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 const updateInit = (translation) => ({
   method: 'POST',
@@ -127,6 +135,33 @@ const updateInit = (translation) => ({
   await repaint;
   await tick();
   assert.strictEqual(window.frontendOperationState.isBusy({ scope: 'review' }), false, 'review operation must clear explicitly');
+
+  // All chapter-opening paths share one generation. A late response from the
+  // first request must not replace the chapter chosen by the second request.
+  document.body.dataset.appStage = 'landing';
+  const oldOpen = window.resumeChapter('old-chapter');
+  await tick();
+  const newOpen = window.resumeChapter('new-chapter');
+  await tick();
+  assert.strictEqual(nativeCalls, 9, 'both chapter requests should be in flight independently');
+  pending[8].resolve({ ok: true, status: 200, json: async () => ({ chapter_id: 'new-chapter', pages: [{}] }) });
+  await newOpen;
+  assert.strictEqual(window.currentChapterId, 'new-chapter', 'latest chapter response should activate');
+  pending[7].resolve({ ok: true, status: 200, json: async () => ({ chapter_id: 'old-chapter', pages: [{}] }) });
+  await oldOpen;
+  assert.strictEqual(window.currentChapterId, 'new-chapter', 'late stale chapter response must be ignored');
+
+  // A dirty review mask is a shared exit guard, not only a Continue-button guard.
+  document.body.dataset.appStage = 'review';
+  const oldQuery = document.querySelector;
+  document.querySelector = (selector) => {
+    if (selector === '.review-canvas-host .review-card') {
+      return { dataset: { pageIndex: '1' }, querySelector: () => ({ _reviewDirty: true }) };
+    }
+    return null;
+  };
+  assert.strictEqual(await window.guardFrontendNavigation('editor'), false, 'dirty review mask must block top-level exit');
+  document.querySelector = oldQuery;
 
   console.log('frontend coordinator sanity: PASS');
 })().catch((err) => {
