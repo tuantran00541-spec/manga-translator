@@ -150,6 +150,8 @@ def main() -> None:
         "manual_lama_mask_posix: str | None = None",
         "(manual_mask_path, False)",
         "(manual_lama_mask_path, True)",
+        'and not record.get("deferred_reason")',
+        'target_page["deferred_regions"]',
     )
     _require(
         "app/detector/mask_builder.py",
@@ -167,8 +169,10 @@ def main() -> None:
         "app/detector/bubble_detector.py",
         "def _merge_text_mask_evidence(boxes: list[BubbleBox]) -> BubbleBox:",
         "Only verified",
-        'if "text_segmenter" not in source_name:',
+        'if members[kept[0]].source_role != "text_segmenter":',
         "buckets[target].append(box)",
+        "deferred_reason",
+        'safe_to_inpaint=False',
     )
     _require(
         "app/detector/combined_detector.py",
@@ -177,6 +181,7 @@ def main() -> None:
         "YoloDetector._nms_box_group(",
         "np.any((box.mask > 0) & ~covered_mask)",
         "DETECTOR_FREE_TEXT_GRAYSCALE_FALLBACK and unmatched_free_text",
+        "if box.deferred_reason:",
     )
     _require(
         "app/inpaint/lama_inpainter.py",
@@ -185,6 +190,8 @@ def main() -> None:
         "safe_to_inpaint=bool(b.safe_to_inpaint)",
         "ocr_eligible=bool(b.ocr_eligible)",
         "needs_review=bool(b.needs_review)",
+        "deferred_reason=b.deferred_reason",
+        "def _split_oversized_cluster_area(",
     )
     _require(
         "scripts/model_e2e_gate.py",
