@@ -29,5 +29,10 @@ replace_exact(
     '        "--nav-width: 168px;",\n        "--inspector-width: 288px;",',
     '        "--nav-width: var(--studio-rail-width, 250px);",\n        "--inspector-width: var(--studio-inspector-width, 320px);",',
 )
+replace_exact(
+    browser,
+    '            "card._reviewBusy = true",',
+    '            "activeCard._reviewBusy = true",',
+)
 
 print("phase9 release gate patch applied")
