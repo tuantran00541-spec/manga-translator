@@ -7,6 +7,7 @@ import cv2
 import numpy as np
 
 from app.ort_utils import make_session
+from app.model_contracts import validate_detector_session
 from app.parameters import (
     BUBBLE_IOU_THRESHOLD,
     DETECTOR_CONFIDENCE_MAX,
@@ -25,6 +26,95 @@ from app.parameters import (
 )
 
 
+@dataclass(frozen=True)
+class LetterboxTransform:
+    """Exact source-to-model transform for half-open pixel boxes [x1,y1,x2,y2)."""
+
+    src_w: int
+    src_h: int
+    input_w: int
+    input_h: int
+    resized_w: int
+    resized_h: int
+    pad_x: int
+    pad_y: int
+    scale_x: float
+    scale_y: float
+    offset_x: int = 0
+    offset_y: int = 0
+
+    @classmethod
+    def create(
+        cls,
+        src_w: int,
+        src_h: int,
+        input_w: int,
+        input_h: int,
+        *,
+        offset_x: int = 0,
+        offset_y: int = 0,
+    ):
+        if min(src_w, src_h, input_w, input_h) <= 0:
+            raise ValueError("Letterbox dimensions must be positive")
+        nominal = min(input_w / src_w, input_h / src_h)
+        resized_w = max(1, min(input_w, int(src_w * nominal)))
+        resized_h = max(1, min(input_h, int(src_h * nominal)))
+        pad_x = (input_w - resized_w) // 2
+        pad_y = (input_h - resized_h) // 2
+        return cls(
+            src_w=src_w,
+            src_h=src_h,
+            input_w=input_w,
+            input_h=input_h,
+            resized_w=resized_w,
+            resized_h=resized_h,
+            pad_x=pad_x,
+            pad_y=pad_y,
+            scale_x=resized_w / src_w,
+            scale_y=resized_h / src_h,
+            offset_x=int(offset_x),
+            offset_y=int(offset_y),
+        )
+
+    def page_box_from_canvas(self, canvas_box) -> tuple[int, int, int, int]:
+        import math
+
+        x1, y1, x2, y2 = (float(v) for v in canvas_box)
+        local_x1 = max(0.0, min(float(self.src_w), (x1 - self.pad_x) / self.scale_x))
+        local_y1 = max(0.0, min(float(self.src_h), (y1 - self.pad_y) / self.scale_y))
+        local_x2 = max(0.0, min(float(self.src_w), (x2 - self.pad_x) / self.scale_x))
+        local_y2 = max(0.0, min(float(self.src_h), (y2 - self.pad_y) / self.scale_y))
+        ix1 = max(0, min(self.src_w, int(math.floor(local_x1))))
+        iy1 = max(0, min(self.src_h, int(math.floor(local_y1))))
+        ix2 = max(ix1, min(self.src_w, int(math.ceil(local_x2))))
+        iy2 = max(iy1, min(self.src_h, int(math.ceil(local_y2))))
+        return (
+            ix1 + self.offset_x,
+            iy1 + self.offset_y,
+            ix2 + self.offset_x,
+            iy2 + self.offset_y,
+        )
+
+    def canvas_box_from_page(self, page_box) -> tuple[float, float, float, float]:
+        x1, y1, x2, y2 = (float(v) for v in page_box)
+        x1 -= self.offset_x
+        x2 -= self.offset_x
+        y1 -= self.offset_y
+        y2 -= self.offset_y
+        return (
+            x1 * self.scale_x + self.pad_x,
+            y1 * self.scale_y + self.pad_y,
+            x2 * self.scale_x + self.pad_x,
+            y2 * self.scale_y + self.pad_y,
+        )
+
+
+@dataclass(frozen=True)
+class MaskDecodeGeometry:
+    transform: LetterboxTransform
+    source_box: tuple[int, int, int, int]
+
+
 @dataclass
 class BubbleBox:
     x1: int
@@ -41,6 +131,7 @@ class BubbleBox:
     safe_to_inpaint: bool = False
     ocr_eligible: bool = False
     needs_review: bool = False
+    source_role: str = "unknown"
 
     @property
     def verified_mask(self) -> bool:
@@ -55,20 +146,32 @@ class BubbleBox:
 
 
 class YoloDetector:
-    def __init__(self, model_path, conf_threshold: float, use_tta: bool | None = None):
+    def __init__(
+        self,
+        model_path,
+        conf_threshold: float,
+        use_tta: bool | None = None,
+        *,
+        model_role: str,
+    ):
         self.model_path = str(model_path)
         self.source_model = Path(model_path).name
+        self.model_role = str(model_role)
         self.session = make_session(model_path)
-        self.input_name = self.session.get_inputs()[0].name
+        self.contract = validate_detector_session(
+            self.session,
+            role=self.model_role,
+            configured_input_size=INPUT_SIZE,
+        )
+        self.input_name = self.contract.input_name
         self.conf_threshold = conf_threshold
         self.use_tta = ENABLE_TTA if use_tta is None else use_tta
 
     def _class_name(self, class_id: int, num_classes: int) -> str:
-        name = getattr(self, "source_model", "unknown").lower()
-        if "bubble" in name and num_classes >= 2:
-            return "text_bubble" if class_id == 0 else "text_free" if class_id == 1 else f"class_{class_id}"
-        if "text_segmenter" in name or num_classes == 1:
-            return "text_comic"
+        if num_classes != len(self.contract.class_names):
+            return f"class_{class_id}"
+        if 0 <= class_id < len(self.contract.class_names):
+            return self.contract.class_names[class_id]
         return f"class_{class_id}"
 
     @staticmethod
@@ -83,7 +186,7 @@ class YoloDetector:
 
     def _with_semantics(self, box: BubbleBox) -> BubbleBox:
         verified = box.verified_mask
-        segmenter_evidence = "text_segmenter" in box.source_model.lower()
+        segmenter_evidence = box.source_role == "text_segmenter"
         safe = bool(verified and segmenter_evidence)
         return replace(
             box,
@@ -91,6 +194,7 @@ class YoloDetector:
             safe_to_inpaint=safe,
             ocr_eligible=safe,
             needs_review=not safe,
+            source_role=self.model_role,
         )
 
     def detect(self, image: np.ndarray) -> list[BubbleBox]:
@@ -110,7 +214,7 @@ class YoloDetector:
                     break
                 y += step
 
-            if "text_segmenter" in self.source_model.lower():
+            if self.model_role == "text_segmenter":
                 all_boxes.extend(self._detect_single_plain(image, 0, 0))
 
             boxes = self._nms_boxes(all_boxes)
@@ -141,25 +245,19 @@ class YoloDetector:
             return self._detect_single_tta(image, offset_x, offset_y)
         return self._detect_single_plain(image, offset_x, offset_y)
 
-    def _detect_single_plain(self, image: np.ndarray, offset_x: int, offset_y: int) -> list[BubbleBox]:
-        h, w = image.shape[:2]
-        blob, scale, pad = self._preprocess(image)
-        if blob is None:
+    def _detect_single_plain(
+        self,
+        image: np.ndarray,
+        offset_x: int,
+        offset_y: int,
+    ) -> list[BubbleBox]:
+        blob, transform = self._preprocess(
+            image, offset_x=offset_x, offset_y=offset_y
+        )
+        if blob is None or transform is None:
             return []
         outputs = self.session.run(None, {self.input_name: blob})
-        boxes = self._postprocess(outputs, scale, pad, w, h)
-        if offset_x or offset_y:
-            boxes = [
-                replace(
-                    b,
-                    x1=b.x1 + offset_x,
-                    y1=b.y1 + offset_y,
-                    x2=b.x2 + offset_x,
-                    y2=b.y2 + offset_y,
-                )
-                for b in boxes
-            ]
-        return boxes
+        return self._postprocess(outputs, transform)
 
     def _detect_single_tta(self, image: np.ndarray, offset_x: int, offset_y: int) -> list[BubbleBox]:
         h, w = image.shape[:2]
@@ -220,31 +318,51 @@ class YoloDetector:
 
         return self._nms_boxes(all_boxes)
 
-    def _preprocess(self, image: np.ndarray):
+    def _preprocess(
+        self,
+        image: np.ndarray,
+        *,
+        offset_x: int = 0,
+        offset_y: int = 0,
+    ):
         h, w = image.shape[:2]
         if h <= 0 or w <= 0:
-            return None, 1.0, (0, 0)
-        scale = INPUT_SIZE / max(h, w)
-        nh, nw = int(h * scale), int(w * scale)
-        img_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB) if image.ndim == 3 and image.shape[2] == 3 else image
-        resized = cv2.resize(img_rgb, (nw, nh))
-        canvas = np.full(
-            (INPUT_SIZE, INPUT_SIZE, 3), DETECTOR_LETTERBOX_VALUE, dtype=np.uint8
+            return None, None
+        transform = LetterboxTransform.create(
+            w,
+            h,
+            INPUT_SIZE,
+            INPUT_SIZE,
+            offset_x=offset_x,
+            offset_y=offset_y,
         )
-        pad_x, pad_y = (INPUT_SIZE - nw) // 2, (INPUT_SIZE - nh) // 2
-        canvas[pad_y:pad_y + nh, pad_x:pad_x + nw] = resized
-        blob = canvas.astype(np.float32) / 255.0
-        blob = blob.transpose(2, 0, 1)[None]
-        return blob, scale, (pad_x, pad_y)
+        img_rgb = (
+            cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            if image.ndim == 3 and image.shape[2] == 3
+            else image
+        )
+        resized = cv2.resize(img_rgb, (transform.resized_w, transform.resized_h))
+        canvas = np.full(
+            (transform.input_h, transform.input_w, 3),
+            DETECTOR_LETTERBOX_VALUE,
+            dtype=np.uint8,
+        )
+        y1, y2 = transform.pad_y, transform.pad_y + transform.resized_h
+        x1, x2 = transform.pad_x, transform.pad_x + transform.resized_w
+        canvas[y1:y2, x1:x2] = resized
+        blob = (canvas.astype(np.float32) / 255.0).transpose(2, 0, 1)[None]
+        return blob, transform
 
-    def _postprocess(self, outputs, scale, pad, orig_w, orig_h) -> list[BubbleBox]:
-        pad_x, pad_y = pad
+    def _postprocess(
+        self,
+        outputs,
+        transform: LetterboxTransform,
+    ) -> list[BubbleBox]:
         out_arr = np.squeeze(outputs[0])
         if out_arr.ndim == 1:
             out_arr = out_arr[np.newaxis, :]
         if out_arr.ndim == 2 and out_arr.shape[0] < out_arr.shape[1]:
             out_arr = out_arr.T
-
         if out_arr.ndim != 2 or out_arr.shape[0] == 0:
             return []
 
@@ -274,66 +392,93 @@ class YoloDetector:
         selected = out_arr[keep]
         conf_selected = confidences[keep]
         class_selected = class_ids[keep]
-        cx = selected[:, 0]
-        cy = selected[:, 1]
-        bw = selected[:, 2]
-        bh = selected[:, 3]
-
-        x1 = np.maximum(0.0, (cx - bw / 2.0 - pad_x) / scale)
-        y1 = np.maximum(0.0, (cy - bh / 2.0 - pad_y) / scale)
-        x2 = np.minimum(float(orig_w), (cx + bw / 2.0 - pad_x) / scale)
-        y2 = np.minimum(float(orig_h), (cy + bh / 2.0 - pad_y) / scale)
-
-        valid = (
-            ((x2 - x1) >= DETECTOR_MIN_BOX_SIDE)
-            & ((y2 - y1) >= DETECTOR_MIN_BOX_SIDE)
-        )
-        if not np.any(valid):
-            return []
-
-        candidates = []
         coeff_start = 4 + num_classes
         coeff_end = coeff_start + num_mask_coeffs
-        for j in np.flatnonzero(valid).tolist():
-            canvas_box = None
+        candidates = []
+        for j in range(selected.shape[0]):
+            cx, cy, bw, bh = (float(v) for v in selected[j, :4])
+            raw_canvas_box = (
+                cx - bw / 2.0,
+                cy - bh / 2.0,
+                cx + bw / 2.0,
+                cy + bh / 2.0,
+            )
+            source_box = transform.page_box_from_canvas(raw_canvas_box)
+            x1, y1, x2, y2 = source_box
+            if (
+                (x2 - x1) < DETECTOR_MIN_BOX_SIDE
+                or (y2 - y1) < DETECTOR_MIN_BOX_SIDE
+            ):
+                continue
+            geometry = None
             mask_coeffs = None
             if has_proto and num_mask_coeffs > 0:
-                canvas_box = (
-                    float(cx[j] - bw[j] / 2.0),
-                    float(cy[j] - bh[j] / 2.0),
-                    float(cx[j] + bw[j] / 2.0),
-                    float(cy[j] + bh[j] / 2.0),
-                )
+                geometry = MaskDecodeGeometry(transform, source_box)
                 mask_coeffs = selected[j, coeff_start:coeff_end].copy()
-            candidates.append((
-                float(x1[j]), float(y1[j]), float(x2[j]), float(y2[j]),
-                float(conf_selected[j]), int(class_selected[j]), num_classes,
-                canvas_box, mask_coeffs,
-            ))
-
+            candidates.append(
+                (
+                    float(x1),
+                    float(y1),
+                    float(x2),
+                    float(y2),
+                    float(conf_selected[j]),
+                    int(class_selected[j]),
+                    num_classes,
+                    geometry,
+                    mask_coeffs,
+                )
+            )
         return self._nms(candidates, prototypes)
 
-    def _decode_mask(self, mask_coeffs, prototypes, canvas_box, box_w: int, box_h: int) -> np.ndarray | None:
+    def _decode_mask(
+        self,
+        mask_coeffs,
+        prototypes,
+        geometry,
+        box_w: int,
+        box_h: int,
+    ) -> np.ndarray | None:
         if mask_coeffs is None or prototypes is None or box_w < 1 or box_h < 1:
             return None
 
         num_proto, mh, mw = prototypes.shape
-        proto_flat = prototypes.reshape(num_proto, -1)
-        logits = np.clip(mask_coeffs @ proto_flat, -88.0, 88.0)
-        mask_full = 1 / (1 + np.exp(-logits.reshape(mh, mw)))
+        logits = np.clip(
+            mask_coeffs @ prototypes.reshape(num_proto, -1),
+            -88.0,
+            88.0,
+        )
+        probability_map = 1 / (1 + np.exp(-logits.reshape(mh, mw)))
 
-        canvas_to_proto = mw / INPUT_SIZE
-        ccx1, ccy1, ccx2, ccy2 = canvas_box
-        px1 = int(max(0, min(mw - 1, round(ccx1 * canvas_to_proto))))
-        py1 = int(max(0, min(mh - 1, round(ccy1 * canvas_to_proto))))
-        px2 = int(max(px1 + 1, min(mw, round(ccx2 * canvas_to_proto))))
-        py2 = int(max(py1 + 1, min(mh, round(ccy2 * canvas_to_proto))))
+        if isinstance(geometry, MaskDecodeGeometry):
+            canvas_box = geometry.transform.canvas_box_from_page(geometry.source_box)
+            input_w = geometry.transform.input_w
+            input_h = geometry.transform.input_h
+        else:
+            # Legacy seven-field test/plugin candidates remain supported, but
+            # production candidates always carry the explicit transform above.
+            canvas_box = geometry
+            input_w = INPUT_SIZE
+            input_h = INPUT_SIZE
+        if canvas_box is None:
+            return None
 
-        crop = mask_full[py1:py2, px1:px2]
+        cx1, cy1, cx2, cy2 = (float(v) for v in canvas_box)
+        proto_scale_x = mw / float(input_w)
+        proto_scale_y = mh / float(input_h)
+        px1 = max(0, min(mw - 1, int(np.floor(cx1 * proto_scale_x))))
+        py1 = max(0, min(mh - 1, int(np.floor(cy1 * proto_scale_y))))
+        px2 = max(px1 + 1, min(mw, int(np.ceil(cx2 * proto_scale_x))))
+        py2 = max(py1 + 1, min(mh, int(np.ceil(cy2 * proto_scale_y))))
+
+        crop = probability_map[py1:py2, px1:px2]
         if crop.size == 0:
             return None
-        resized = cv2.resize(crop, (box_w, box_h), interpolation=cv2.INTER_LINEAR)
-        return (resized > DETECTOR_MASK_THRESHOLD).astype(np.uint8) * 255
+        probabilities = cv2.resize(
+            crop,
+            (box_w, box_h),
+            interpolation=cv2.INTER_LINEAR,
+        )
+        return (probabilities > DETECTOR_MASK_THRESHOLD).astype(np.uint8) * 255
 
     @staticmethod
     def _candidate_fields(candidate: tuple) -> tuple[float, int, int, object, object]:
@@ -443,8 +588,7 @@ class YoloDetector:
         if not kept:
             return []
 
-        source_name = str(members[kept[0]].source_model).lower()
-        if "text_segmenter" not in source_name:
+        if members[kept[0]].source_role != "text_segmenter":
             return [members[i] for i in kept]
 
         buckets = {index: [members[index]] for index in kept}
@@ -477,8 +621,10 @@ class YoloDetector:
             decoded = []
             for c in subset:
                 x1, y1, x2, y2 = map(int, c[:4])
-                score, cid, num_classes, canvas_box, mask_coeffs = self._candidate_fields(c)
-                mask = self._decode_mask(mask_coeffs, prototypes, canvas_box, x2 - x1, y2 - y1)
+                score, cid, num_classes, decode_geometry, mask_coeffs = self._candidate_fields(c)
+                mask = self._decode_mask(
+                    mask_coeffs, prototypes, decode_geometry, x2 - x1, y2 - y1
+                )
                 class_name = self._class_name(int(cid), int(num_classes))
                 decoded.append(BubbleBox(
                     x1=x1,
@@ -491,6 +637,7 @@ class YoloDetector:
                     class_id=int(cid),
                     class_name=class_name,
                     semantic_type=self._semantic_type(class_name),
+                    source_role=self.model_role,
                 ))
             result.extend(
                 self._nms_box_group(
@@ -506,9 +653,11 @@ class YoloDetector:
         if not boxes:
             return []
         result: list[BubbleBox] = []
-        by_class: dict[tuple[str, int], list[BubbleBox]] = {}
+        by_class: dict[tuple[str, str, int], list[BubbleBox]] = {}
         for b in boxes:
-            by_class.setdefault((b.source_model, b.class_id), []).append(b)
+            by_class.setdefault(
+                (b.source_role, b.source_model, b.class_id), []
+            ).append(b)
         for members in by_class.values():
             result.extend(
                 self._nms_box_group(

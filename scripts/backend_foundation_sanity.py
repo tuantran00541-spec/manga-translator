@@ -43,4 +43,241 @@ def windows_locked_reader_check():
             else: raise AssertionError('locked Windows rename succeeded')
             check(dst.read_bytes()==b'OLD','Windows old bytes changed'); check(src.read_bytes()==b'NEW','Windows temp changed')
         finally: ch(h)
-publication_safety_checks(); windows_locked_reader_check(); print('backend foundation sanity: publication safety PASS')
+
+
+def model_contract_checks():
+    import numpy as np
+    from app.model_contracts import (
+        decode_lama_output,
+        validate_detector_session,
+        validate_lama_session,
+    )
+
+    class Meta:
+        def __init__(self, name, shape, type="tensor(float)"):
+            self.name = name
+            self.shape = shape
+            self.type = type
+
+    class Session:
+        def __init__(self, inputs, outputs):
+            self._inputs = inputs
+            self._outputs = outputs
+        def get_inputs(self):
+            return self._inputs
+        def get_outputs(self):
+            return self._outputs
+
+    bubble = Session(
+        [Meta("images", [1, 3, 1024, 1024])],
+        [Meta("output0", [1, 6, 21504])],
+    )
+    bubble_contract = validate_detector_session(
+        bubble,
+        role="bubble_detector",
+        configured_input_size=1024,
+    )
+    check(
+        bubble_contract.class_names == ("text_bubble", "text_free")
+        and not bubble_contract.destructive_text_mask,
+        "bubble role authority",
+    )
+
+    text = Session(
+        [Meta("images", [1, 3, 1024, 1024])],
+        [
+            Meta("output0", [1, 37, 21504]),
+            Meta("output1", [1, 32, 256, 256]),
+        ],
+    )
+    text_contract = validate_detector_session(
+        text,
+        role="text_segmenter",
+        configured_input_size=1024,
+    )
+    check(
+        text_contract.provides_prototypes and text_contract.destructive_text_mask,
+        "text role authority",
+    )
+    try:
+        validate_detector_session(
+            text,
+            role="text_segmenter",
+            configured_input_size=960,
+        )
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("incompatible detector resolution accepted")
+
+    dynamic = Session(
+        [
+            Meta("mask", ["batch", 1, "h", "w"]),
+            Meta("image", ["batch", 3, "h", "w"]),
+        ],
+        [Meta("inpainted", ["batch", 3, "h", "w"])],
+    )
+    dynamic_contract = validate_lama_session(dynamic, dynamic=True, fixed_size=512)
+    check(
+        dynamic_contract.image_input_name == "image"
+        and dynamic_contract.mask_input_name == "mask"
+        and dynamic_contract.output_range == "zero_to_one",
+        "dynamic names/range",
+    )
+    check(
+        int(
+            decode_lama_output(
+                np.full((1, 3, 2, 2), 0.5, np.float32),
+                dynamic_contract,
+            )[0, 0, 0]
+        )
+        == 127,
+        "dynamic scale contract",
+    )
+
+    fixed = Session(
+        [
+            Meta("mask", [1, 1, 512, 512]),
+            Meta("image", [1, 3, 512, 512]),
+        ],
+        [Meta("output", [1, 3, 512, 512])],
+    )
+    fixed_contract = validate_lama_session(fixed, dynamic=False, fixed_size=512)
+    check(
+        fixed_contract.output_range == "zero_to_255"
+        and fixed_contract.output_name == "output",
+        "fixed output contract",
+    )
+    check(
+        int(
+            decode_lama_output(
+                np.full((1, 3, 2, 2), 0.5, np.float32),
+                fixed_contract,
+            )[0, 0, 0]
+        )
+        == 0,
+        "fixed dark output was incorrectly rescaled",
+    )
+    try:
+        decode_lama_output(
+            np.full((1, 3, 2, 2), 1.5, np.float32),
+            dynamic_contract,
+        )
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("out-of-range dynamic output accepted")
+
+
+def geometry_contract_checks():
+    import math
+    import types
+    import numpy as np
+
+    if "onnxruntime" not in sys.modules:
+        sys.modules["onnxruntime"] = types.ModuleType("onnxruntime")
+    from app.detector.bubble_detector import (
+        LetterboxTransform,
+        MaskDecodeGeometry,
+        YoloDetector,
+    )
+
+    def reference(src_w, src_h, box, offset_x=0, offset_y=0):
+        nominal = min(1024 / src_w, 1024 / src_h)
+        resized_w = max(1, min(1024, int(src_w * nominal)))
+        resized_h = max(1, min(1024, int(src_h * nominal)))
+        pad_x = (1024 - resized_w) // 2
+        pad_y = (1024 - resized_h) // 2
+        scale_x = resized_w / src_w
+        scale_y = resized_h / src_h
+        x1, y1, x2, y2 = box
+        x1 = max(0.0, min(src_w, (x1 - pad_x) / scale_x))
+        y1 = max(0.0, min(src_h, (y1 - pad_y) / scale_y))
+        x2 = max(0.0, min(src_w, (x2 - pad_x) / scale_x))
+        y2 = max(0.0, min(src_h, (y2 - pad_y) / scale_y))
+        ix1 = max(0, min(src_w, math.floor(x1)))
+        iy1 = max(0, min(src_h, math.floor(y1)))
+        ix2 = max(ix1, min(src_w, math.ceil(x2)))
+        iy2 = max(iy1, min(src_h, math.ceil(y2)))
+        return (
+            ix1 + offset_x,
+            iy1 + offset_y,
+            ix2 + offset_x,
+            iy2 + offset_y,
+        )
+
+    cases = [
+        (800, 1338, (-50, 200, 300, 600), 0, 0),
+        (517, 333, (0, -40, 1024, 600), 0, 0),
+        (333, 517, (900, 900, 1100, 1200), 0, 0),
+        (401, 277, (-20, -30, 1080, 1060), 37, 91),
+    ]
+    for src_w, src_h, box, ox, oy in cases:
+        transform = LetterboxTransform.create(
+            src_w,
+            src_h,
+            1024,
+            1024,
+            offset_x=ox,
+            offset_y=oy,
+        )
+        check(
+            transform.page_box_from_canvas(box)
+            == reference(src_w, src_h, box, ox, oy),
+            f"geometry mismatch {(src_w, src_h, box)}",
+        )
+
+    odd = LetterboxTransform.create(333, 517, 1024, 1024)
+    check(
+        abs(odd.scale_x - odd.scale_y) > 1e-6,
+        "odd-size transform lost actual x/y resize scales",
+    )
+
+    tile = LetterboxTransform.create(
+        320,
+        240,
+        1024,
+        1024,
+        offset_x=100,
+        offset_y=200,
+    )
+    full_content = (
+        tile.pad_x,
+        tile.pad_y,
+        tile.pad_x + tile.resized_w,
+        tile.pad_y + tile.resized_h,
+    )
+    check(
+        tile.page_box_from_canvas(full_content) == (100, 200, 420, 440),
+        "tile source ownership offset",
+    )
+
+    # Independent clipped-border mask reproduction: the final source box is
+    # [0,50,80,100), so prototype crop must be derived from that clipped box,
+    # not from the original detector rectangle that extended into padding.
+    transform = LetterboxTransform.create(400, 200, 1024, 1024)
+    source_box = (0, 50, 80, 100)
+    geometry = MaskDecodeGeometry(transform, source_box)
+    prototypes = np.full((1, 256, 256), -10.0, np.float32)
+    prototypes[0, 96:128, 0:26] = 10.0
+    mask = YoloDetector._decode_mask(
+        None,
+        np.array([1.0], np.float32),
+        prototypes,
+        geometry,
+        80,
+        50,
+    )
+    xs = np.where(mask > 0)[1]
+    check(
+        xs.size > 0 and int(xs.min()) == 0 and 37 <= int(xs.max()) <= 42,
+        f"clipped mask shifted: {xs.min() if xs.size else None}.."
+        f"{xs.max() if xs.size else None}",
+    )
+
+
+model_contract_checks()
+geometry_contract_checks()
+publication_safety_checks()
+windows_locked_reader_check()
+print("backend foundation sanity: phases 1-2 PASS")

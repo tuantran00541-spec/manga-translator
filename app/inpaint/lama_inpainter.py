@@ -9,6 +9,7 @@ from app.config import LAMA_MODEL, LAMA_DYNAMIC_MODEL
 from app.detector.bubble_detector import BubbleBox, MAX_BOX_AREA_RATIO
 from app.detector.mask_builder import build_mask
 from app.logging_config import logger
+from app.model_contracts import decode_lama_output, validate_lama_session
 from app.ort_utils import make_session
 from app.parameters import (
     DYNAMIC_LAMA_MAX_SINGLE_CROP_DIM,
@@ -112,6 +113,8 @@ class Inpainter:
         self.image_input = None
         self.mask_input = None
         self.dynamic_lama = False
+        self.lama_contract = None
+        self.output_name = None
         self._serialize_fixed_inference = not FIXED_LAMA_CONCURRENT_INFERENCE
         self.lama_model_path = LAMA_DYNAMIC_MODEL if self._prefer_dynamic else LAMA_MODEL
         self._recycle_fixed_session = False
@@ -154,18 +157,26 @@ class Inpainter:
             )
         return bool(not self.dynamic_lama and self._serialize_fixed_inference)
 
-    def _configure_loaded_session(self, session, model_path) -> None:
-        inputs = session.get_inputs()
-        image_shape = inputs[0].shape
-        dynamic_lama = any(
-            isinstance(dim, str) or dim is None for dim in image_shape[2:4]
+    def _configure_loaded_session(
+        self,
+        session,
+        model_path,
+        *,
+        expected_dynamic: bool,
+    ) -> None:
+        contract = validate_lama_session(
+            session,
+            dynamic=bool(expected_dynamic),
+            fixed_size=INPAINT_SIZE,
         )
         self.session = session
-        self.image_input = inputs[0].name
-        self.mask_input = inputs[1].name
-        self.dynamic_lama = dynamic_lama
+        self.lama_contract = contract
+        self.image_input = contract.image_input_name
+        self.mask_input = contract.mask_input_name
+        self.output_name = contract.output_name
+        self.dynamic_lama = contract.dynamic
         self._serialize_fixed_inference = bool(
-            not dynamic_lama and type(session).__name__ == "_SerializedSession"
+            not contract.dynamic and type(session).__name__ == "_SerializedSession"
         )
         self.lama_model_path = model_path
         self._session_run_count = 0
@@ -204,7 +215,11 @@ class Inpainter:
                     serialize_inference=not FIXED_LAMA_CONCURRENT_INFERENCE,
                 )
 
-            self._configure_loaded_session(session, model_path)
+            self._configure_loaded_session(
+                session,
+                model_path,
+                expected_dynamic=(model_path == LAMA_DYNAMIC_MODEL),
+            )
             logger.info(
                 "Loaded inpaint model {} lazily (dynamic={})",
                 self.lama_model_path,
@@ -234,7 +249,9 @@ class Inpainter:
             pass
 
         session = make_session(self.lama_model_path, serialize_inference=True)
-        self._configure_loaded_session(session, self.lama_model_path)
+        self._configure_loaded_session(
+            session, self.lama_model_path, expected_dynamic=False
+        )
 
     def inpaint(self, image: np.ndarray, boxes: list[BubbleBox]) -> np.ndarray:
         self._begin_metrics(boxes=len(boxes))
@@ -277,6 +294,7 @@ class Inpainter:
                     safe_to_inpaint=bool(b.safe_to_inpaint),
                     ocr_eligible=bool(b.ocr_eligible),
                     needs_review=bool(b.needs_review),
+                    source_role=b.source_role,
                 )
                 if bool(getattr(b, "allow_rectangle_fallback", False)):
                     local_box.allow_rectangle_fallback = True
@@ -589,7 +607,7 @@ class Inpainter:
 
         if self.dynamic_lama or not self._serialize_fixed_inference:
             model_started_at = time.perf_counter()
-            output = self.session.run(None, feed)[0]
+            output = self.session.run([self.output_name], feed)[0]
             self._metric_add(
                 "lama_model_ms",
                 round((time.perf_counter() - model_started_at) * 1000.0),
@@ -605,7 +623,7 @@ class Inpainter:
                 )
                 self._recycle_fixed_session_if_needed()
                 model_started_at = time.perf_counter()
-                output = self.session.run(None, feed)[0]
+                output = self.session.run([self.output_name], feed)[0]
                 measured_model_ms = (
                     time.perf_counter() - model_started_at
                 ) * 1000.0
@@ -628,10 +646,7 @@ class Inpainter:
                 )
                 self._session_run_count += 1
 
-        painted_rgb = output[0].transpose(1, 2, 0)
-        if painted_rgb.max() <= 1.0:
-            painted_rgb = painted_rgb * 255.0
-        painted_rgb = np.clip(painted_rgb, 0, 255).astype(np.uint8)
+        painted_rgb = decode_lama_output(output, self.lama_contract)
         return cv2.cvtColor(painted_rgb, cv2.COLOR_RGB2BGR)
 
     def _lama_fill_tiled(self, crop: np.ndarray, local_mask: np.ndarray) -> np.ndarray:

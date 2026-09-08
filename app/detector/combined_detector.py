@@ -59,9 +59,15 @@ from app.parameters import (
 class CombinedTextDetector:
     def __init__(self):
         self.bubble_detector = YoloDetector(
-            BUBBLE_DETECTOR_MODEL, BUBBLE_PROPOSAL_CONF_THRESHOLD
+            BUBBLE_DETECTOR_MODEL,
+            BUBBLE_PROPOSAL_CONF_THRESHOLD,
+            model_role="bubble_detector",
         )
-        self.text_detector = YoloDetector(TEXT_SEGMENTER_MODEL, TEXT_CONF_THRESHOLD)
+        self.text_detector = YoloDetector(
+            TEXT_SEGMENTER_MODEL,
+            TEXT_CONF_THRESHOLD,
+            model_role="text_segmenter",
+        )
         self.recovery = SecondaryTextRecovery()
         self._metrics_local = threading.local()
 
@@ -74,7 +80,7 @@ class CombinedTextDetector:
         }
 
     def _classify(self, box: BubbleBox) -> BubbleBox:
-        if box.verified_mask and "text_segmenter" in box.source_model.lower():
+        if box.verified_mask and box.source_role == "text_segmenter":
             return replace(box, mask_source="text_segmenter", safe_to_inpaint=True,
                            ocr_eligible=True, needs_review=False)
         if (
@@ -89,7 +95,7 @@ class CombinedTextDetector:
                 needs_review=False,
             )
         has_text_evidence = bool(
-            "text_segmenter" in box.source_model.lower()
+            box.source_role == "text_segmenter"
             or box.source_model == "opencv_mser"
             or box.semantic_type in {"text", "free_text"}
         )
