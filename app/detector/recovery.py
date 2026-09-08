@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 import threading
+import weakref
 
 import cv2
 import numpy as np
@@ -71,6 +72,7 @@ class SecondaryTextRecovery:
     def __init__(self) -> None:
         self._mser = cv2.MSER_create(MSER_DELTA, MSER_MIN_AREA, MSER_MAX_AREA)
         self._mser_lock = threading.Lock()
+        self._primitive_local = threading.local()
 
     @staticmethod
     def _iou(a: BubbleBox, b: BubbleBox) -> float:
@@ -320,14 +322,33 @@ class SecondaryTextRecovery:
 
         return out
 
+    def _extract_primitives(self, image: np.ndarray, gray: np.ndarray) -> np.ndarray:
+        """Extract raw MSER regions once per source-image object and worker thread."""
+        state = getattr(self._primitive_local, "value", None)
+        if state is not None:
+            image_ref = state.get("image_ref")
+            if image_ref is not None and image_ref() is image and state.get("shape") == tuple(image.shape[:2]):
+                return state["boxes"]
+        with self._mser_lock:
+            _, boxes = self._mser.detectRegions(gray)
+        if boxes is None or len(boxes) == 0:
+            raw = np.empty((0, 4), dtype=np.int32)
+        else:
+            raw = np.asarray(boxes, dtype=np.int32).reshape(-1, 4).copy()
+        self._primitive_local.value = {
+            "image_ref": weakref.ref(image),
+            "shape": tuple(image.shape[:2]),
+            "boxes": raw,
+        }
+        return raw
+
     def detect(self, image: np.ndarray, existing: list[BubbleBox] | None = None) -> list[BubbleBox]:
         if image is None or image.size == 0:
             return []
         h, w = image.shape[:2]
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if image.ndim == 3 else image
-        with self._mser_lock:
-            _, boxes = self._mser.detectRegions(gray)
-        if boxes is None or len(boxes) == 0:
+        boxes = self._extract_primitives(image, gray)
+        if boxes.size == 0:
             return []
 
         rects = []
