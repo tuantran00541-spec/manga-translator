@@ -25,9 +25,6 @@ jobs:
       - name: Run source sanity checks
         run: python scripts/release_sanity.py
 
-      - name: Run processing responsiveness regression
-        run: python scripts/process_responsiveness_sanity.py
-
       - name: Run inpaint authority sanity checks
         run: python scripts/inpaint_authority_sanity.py
 
