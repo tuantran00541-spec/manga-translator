@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
     paths:
+      - app/dependencies.py
+      - app/optimized_pipeline.py
+      - app/runtime_responsiveness.py
       - app/manifest_utils.py
       - app/model_contracts.py
       - app/parameters.py
@@ -19,6 +22,7 @@ on:
       - app/routers/chapters.py
       - app/routers/render_commit.py
       - app/routers/export.py
+      - scripts/process_responsiveness_sanity.py
       - scripts/backend_foundation_sanity.py
       - scripts/backend_second_pass_sanity.py
       - scripts/backend_phase4_sanity.py
@@ -57,12 +61,14 @@ jobs:
           python-multipart==0.0.12 requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0
       - name: Compile backend foundation source
         run: >-
-          python -m py_compile app/manifest_utils.py app/model_contracts.py app/parameters.py
+          python -m py_compile app/dependencies.py app/optimized_pipeline.py app/runtime_responsiveness.py
+          app/manifest_utils.py app/model_contracts.py app/parameters.py
           app/detector/bubble_detector.py app/detector/combined_detector.py
           app/detector/adaptive_focus_detector.py app/detector/recovery.py
           app/detector/mask_builder.py app/inpaint/lama_inpainter.py app/pipeline.py
           app/render/identity.py app/routers/editor.py app/routers/chapters.py
           app/routers/render_commit.py app/routers/export.py
+          scripts/process_responsiveness_sanity.py
           scripts/backend_foundation_sanity.py scripts/backend_second_pass_sanity.py
           scripts/backend_phase4_sanity.py scripts/backend_phase5_sanity.py
           scripts/backend_phase6_sanity.py scripts/backend_phase7_sanity.py scripts/backend_phase8_sanity.py
@@ -70,6 +76,7 @@ jobs:
           scripts/research_mask_quality_sanity.py
       - name: Run deterministic backend foundation regressions
         run: |
+          python scripts/process_responsiveness_sanity.py
           python scripts/backend_foundation_sanity.py
           python scripts/backend_second_pass_sanity.py
           python scripts/backend_phase4_sanity.py
