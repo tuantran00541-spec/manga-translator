@@ -14,9 +14,13 @@ on:
       - app/detector/mask_builder.py
       - app/inpaint/lama_inpainter.py
       - app/pipeline.py
+      - app/render/identity.py
+      - app/routers/editor.py
+      - app/routers/chapters.py
       - app/routers/render_commit.py
       - app/routers/export.py
       - scripts/backend_foundation_sanity.py
+      - scripts/backend_second_pass_sanity.py
       - scripts/backend_phase4_sanity.py
       - scripts/backend_phase5_sanity.py
       - scripts/backend_phase6_sanity.py
@@ -50,21 +54,24 @@ jobs:
           python -m pip install
           numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84
           fastapi==0.115.0 pydantic==2.9.2 filelock==3.16.1 loguru==0.7.2
+          python-multipart==0.0.12 requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0
       - name: Compile backend foundation source
         run: >-
           python -m py_compile app/manifest_utils.py app/model_contracts.py app/parameters.py
           app/detector/bubble_detector.py app/detector/combined_detector.py
           app/detector/adaptive_focus_detector.py app/detector/recovery.py
           app/detector/mask_builder.py app/inpaint/lama_inpainter.py app/pipeline.py
+          app/render/identity.py app/routers/editor.py app/routers/chapters.py
           app/routers/render_commit.py app/routers/export.py
-          scripts/backend_foundation_sanity.py scripts/backend_phase4_sanity.py
-          scripts/backend_phase5_sanity.py scripts/backend_phase6_sanity.py
-          scripts/backend_phase7_sanity.py scripts/backend_phase8_sanity.py
+          scripts/backend_foundation_sanity.py scripts/backend_second_pass_sanity.py
+          scripts/backend_phase4_sanity.py scripts/backend_phase5_sanity.py
+          scripts/backend_phase6_sanity.py scripts/backend_phase7_sanity.py scripts/backend_phase8_sanity.py
           scripts/profile_stage_breakdown.py scripts/research_mask_quality_gate.py
           scripts/research_mask_quality_sanity.py
       - name: Run deterministic backend foundation regressions
         run: |
           python scripts/backend_foundation_sanity.py
+          python scripts/backend_second_pass_sanity.py
           python scripts/backend_phase4_sanity.py
           python scripts/backend_phase6_sanity.py
           python scripts/backend_phase7_sanity.py
