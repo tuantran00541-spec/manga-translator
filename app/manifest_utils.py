@@ -46,24 +46,66 @@ _ARTIFACT_TRANSACTION_PATTERN = ".page-*.artifact-txn.json"
 
 
 def atomic_replace(src: Path | str, dst: Path | str, max_retries: int = 8, delay: float = 0.05) -> None:
-    src_path = Path(src)
-    dst_path = Path(dst)
+    """Publish by atomic rename only; exhausted retries leave old bytes intact."""
+    if max_retries < 1:
+        raise ValueError("max_retries must be >= 1")
+    if delay < 0:
+        raise ValueError("delay must be >= 0")
+    src_path, dst_path = Path(src), Path(dst)
+    last_error = None
     for attempt in range(max_retries):
         try:
             os.replace(src_path, dst_path)
             return
-        except PermissionError:
-            if attempt == max_retries - 1:
-                try:
-                    shutil.copyfile(src_path, dst_path)
-                    try:
-                        src_path.unlink()
-                    except OSError:
-                        pass
-                    return
-                except Exception:
-                    raise
-            time.sleep(delay)
+        except PermissionError as exc:
+            last_error = exc
+            if attempt + 1 < max_retries and delay:
+                time.sleep(delay)
+    raise last_error
+
+
+def _copy_rollback_snapshot(src: Path, dst: Path) -> None:
+    """Create a durable byte-independent rollback snapshot."""
+    try:
+        with src.open("rb") as source, dst.open("xb") as backup:
+            shutil.copyfileobj(source, backup, length=1024 * 1024)
+            backup.flush()
+            os.fsync(backup.fileno())
+        try:
+            shutil.copystat(src, dst, follow_symlinks=False)
+        except OSError:
+            pass
+    except Exception:
+        dst.unlink(missing_ok=True)
+        raise
+
+
+def publish_then_commit(src: Path | str, dst: Path | str, commit_callback) -> None:
+    """Publish one artifact and restore its previous bytes if metadata commit fails."""
+    src_path, dst_path = Path(src), Path(dst)
+    rollback = None
+    if dst_path.is_symlink():
+        raise ValueError(f"Refusing symlink publication target: {dst_path}")
+    if dst_path.is_file():
+        rollback = dst_path.with_name(f".{dst_path.name}.{uuid.uuid4().hex}.publish-rollback")
+        _copy_rollback_snapshot(dst_path, rollback)
+    published = committed = False
+    try:
+        atomic_replace(src_path, dst_path)
+        published = True
+        commit_callback()
+        committed = True
+    except Exception:
+        if published:
+            if rollback is not None and rollback.is_file():
+                atomic_replace(rollback, dst_path)
+                rollback = None
+            else:
+                dst_path.unlink(missing_ok=True)
+        raise
+    finally:
+        if committed and rollback is not None:
+            rollback.unlink(missing_ok=True)
 
 
 def _artifact_path_under(root: Path, value: str | Path) -> Path:
@@ -162,10 +204,7 @@ class PageArtifactTransaction:
                     backup = self.chapter_dir / (
                         f".{path.name}.{self.transaction_id}.rollback"
                     )
-                    try:
-                        os.link(path, backup)
-                    except OSError:
-                        shutil.copy2(path, backup)
+                    _copy_rollback_snapshot(path, backup)
                 self.records.append(
                     {
                         "path": path.relative_to(self.chapter_dir).as_posix(),

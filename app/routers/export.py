@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse
 from PIL import Image
 
 from app.config import OUTPUT_DIR
-from app.manifest_utils import get_manifest_lock, load_manifest_raw, save_manifest_raw, urlify_manifest
+from app.manifest_utils import atomic_replace, get_manifest_lock, load_manifest_raw, save_manifest_raw, urlify_manifest
 from app.routers.image import _current_rendered_path, _fallback_page_path
 from app.routers.render_commit import render_page
 from app.schemas import RenderRequest
@@ -425,7 +425,7 @@ def export_chapter(chapter_id: str):
                     409,
                     "Chapter changed while export was running. Export again to include the latest edits.",
                 )
-            os.replace(tmp_archive, final_archive)
+            atomic_replace(tmp_archive, final_archive)
     finally:
         if tmp_archive.exists():
             try:

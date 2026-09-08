@@ -10,7 +10,10 @@ from PIL import Image
 
 from app.config import OUTPUT_DIR
 from app.logging_config import logger
-from app.manifest_utils import bump_page_revision, get_manifest_lock, load_manifest_raw, save_manifest_raw
+from app.manifest_utils import (
+    bump_page_revision, get_manifest_lock, load_manifest_raw,
+    publish_then_commit, save_manifest_raw,
+)
 from app.render.identity import render_input_signature, stamp_render_artifact
 from app.render.page_renderer import cleanup_tmp, render_boxes_legacy, render_text_objects, style_get
 from app.schemas import RenderRequest
@@ -166,15 +169,15 @@ def _commit_render(
             _persist_legacy_drafts(manifest, req, styles)
 
         final_signature = render_input_signature(manifest, req.page_index)
-        os.replace(tmp_path, final_path)
-        render_revision = bump_page_revision(page, "render_revision")
-        stamp_render_artifact(
-            page,
-            input_signature=final_signature,
-            output_path=final_path,
-        )
-        save_manifest_raw(req.chapter_id, manifest)
-        return True, render_revision
+        target_render_revision = int(page.get("render_revision") or 0) + 1
+        def commit_manifest() -> None:
+            render_revision = bump_page_revision(page, "render_revision")
+            if render_revision != target_render_revision:
+                raise RuntimeError("Page render revision changed during commit")
+            stamp_render_artifact(page, input_signature=final_signature, output_path=final_path)
+            save_manifest_raw(req.chapter_id, manifest)
+        publish_then_commit(tmp_path, final_path, commit_manifest)
+        return True, target_render_revision
 
 
 @router.post(
