@@ -38,6 +38,9 @@ jobs:
       - name: Check browser JavaScript syntax
         run: find app/static/js -type f -name '*.js' -print0 | xargs -0 -n1 node --check
 
+      - name: Run frontend coordinator regression
+        run: node scripts/frontend_coordinator_sanity.js
+
       - name: Test-suite location
         run: |
           echo "Runtime main intentionally excludes tests/."
