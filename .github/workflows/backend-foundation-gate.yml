@@ -20,6 +20,8 @@ on:
       - scripts/backend_phase4_sanity.py
       - scripts/backend_phase5_sanity.py
       - scripts/backend_phase6_sanity.py
+      - scripts/backend_phase7_sanity.py
+      - scripts/profile_stage_breakdown.py
       - scripts/research_mask_quality_gate.py
       - scripts/research_mask_quality_sanity.py
       - .github/workflows/backend-foundation-gate.yml
@@ -56,12 +58,14 @@ jobs:
           app/routers/render_commit.py app/routers/export.py
           scripts/backend_foundation_sanity.py scripts/backend_phase4_sanity.py
           scripts/backend_phase5_sanity.py scripts/backend_phase6_sanity.py
+          scripts/backend_phase7_sanity.py scripts/profile_stage_breakdown.py
           scripts/research_mask_quality_gate.py scripts/research_mask_quality_sanity.py
       - name: Run deterministic backend foundation regressions
         run: |
           python scripts/backend_foundation_sanity.py
           python scripts/backend_phase4_sanity.py
           python scripts/backend_phase6_sanity.py
+          python scripts/backend_phase7_sanity.py
           python scripts/research_mask_quality_sanity.py
       - name: Run Phase 5 performance and equivalence regression
         if: matrix.os == 'ubuntu-22.04'
