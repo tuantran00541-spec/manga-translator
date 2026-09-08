@@ -145,6 +145,10 @@
         heapDeltaBytes: beforeHeap != null && afterHeap != null ? afterHeap - beforeHeap : null,
         exactPixels: checksum(original.data) === checksum(restored.data),
         encoder: window.frontendReleaseDebug?.encoderMetrics || null,
+        encoderGuard: window.frontendReleaseEncoderGuard ? {
+          timeoutMs: window.frontendReleaseEncoderGuard.timeoutMs,
+          degraded: window.frontendReleaseEncoderGuard.degraded,
+        } : null,
       };
     }
 
@@ -171,7 +175,13 @@
   document.head.appendChild(releaseCss);
   const script = document.createElement("script");
   script.src = "/static/js/frontend-release.js";
-  script.onload = () => { setTimeout(startChecks, 50); };
+  script.onload = () => {
+    const guard = document.createElement("script");
+    guard.src = "/static/js/frontend-release-encoder-guard.js";
+    guard.onload = () => { setTimeout(startChecks, 50); };
+    guard.onerror = () => publishFailure(new Error("frontend-release-encoder-guard.js failed to load"));
+    document.body.appendChild(guard);
+  };
   script.onerror = () => publishFailure(new Error("frontend-release.js failed to load"));
   document.body.appendChild(script);
 })();
