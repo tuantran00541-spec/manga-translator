@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - scripts/apply_phase6_patch.py
+      - scripts/run_phase6_apply.py
       - .github/workflows/phase6-apply.yml
 
 permissions:
@@ -22,7 +23,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Apply Phase 6 safety patch
-        run: python scripts/apply_phase6_patch.py
+        run: python scripts/run_phase6_apply.py
       - name: Compile Phase 6 source
         run: >-
           python -m py_compile app/parameters.py app/detector/recovery.py
