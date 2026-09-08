@@ -11,12 +11,17 @@ if count != 1:
     raise SystemExit(f"foundation transaction fixture changed; expected one match, found {count}")
 path.write_text(text.replace(old, new, 1), encoding="utf-8")
 
-# The stale-outcome regression exercises ChapterPipeline only. Stub the
-# downloader registry before importing app.pipeline so this deterministic test
-# does not pull Playwright/browser dependencies that are unrelated to B03.
+# The stale-outcome regression exercises ChapterPipeline control flow only.
+# Stub downloader and ORT modules before importing app.pipeline so this
+# deterministic unit test does not require Playwright/model runtimes.
 path = Path("scripts/backend_second_pass_sanity.py")
 text = path.read_text(encoding="utf-8")
 old = '''def stale_outcome_checks() -> None:
+    import types
+    registry = types.ModuleType("app.downloader.registry")
+    registry.download_chapter = lambda *args, **kwargs: []
+    sys.modules.setdefault("app.downloader.registry", registry)
+
     import app.manifest_utils as mu
     import app.pipeline as pipeline_module
 '''
@@ -25,6 +30,7 @@ new = '''def stale_outcome_checks() -> None:
     registry = types.ModuleType("app.downloader.registry")
     registry.download_chapter = lambda *args, **kwargs: []
     sys.modules.setdefault("app.downloader.registry", registry)
+    sys.modules.setdefault("onnxruntime", types.ModuleType("onnxruntime"))
 
     import app.manifest_utils as mu
     import app.pipeline as pipeline_module
@@ -34,4 +40,4 @@ if count != 1:
     raise SystemExit(f"second-pass pipeline import fixture changed; expected one match, found {count}")
 path.write_text(text.replace(old, new, 1), encoding="utf-8")
 
-print("foundation identity fixture and second-pass import isolation aligned")
+print("foundation identity fixture and second-pass dependency isolation aligned")
