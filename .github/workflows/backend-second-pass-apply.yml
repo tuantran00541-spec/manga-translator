@@ -21,7 +21,9 @@ jobs:
         with:
           python-version: "3.12"
       - name: Apply guarded source patch
-        run: python scripts/apply_backend_second_pass.py
+        run: |
+          python scripts/apply_backend_second_pass.py
+          python scripts/migrate_backend_foundation_second_pass.py
       - name: Install foundation-test runtime
         run: >-
           python -m pip install
@@ -33,7 +35,7 @@ jobs:
           python -m py_compile
           app/manifest_utils.py app/pipeline.py app/inpaint/lama_inpainter.py
           app/render/identity.py app/routers/editor.py app/routers/chapters.py
-          scripts/backend_second_pass_sanity.py
+          scripts/backend_foundation_sanity.py scripts/backend_second_pass_sanity.py
       - name: Run second-pass regressions before commit
         run: |
           python scripts/backend_foundation_sanity.py
@@ -43,7 +45,10 @@ jobs:
         run: |
           git config user.name "Manga backend CI"
           git config user.email "actions@users.noreply.github.com"
-          git rm .github/workflows/backend-second-pass-apply.yml scripts/apply_backend_second_pass.py
+          git rm \
+            .github/workflows/backend-second-pass-apply.yml \
+            scripts/apply_backend_second_pass.py \
+            scripts/migrate_backend_foundation_second_pass.py
           git add \
             app/manifest_utils.py \
             app/pipeline.py \
@@ -51,6 +56,7 @@ jobs:
             app/render/identity.py \
             app/routers/editor.py \
             app/routers/chapters.py \
+            scripts/backend_foundation_sanity.py \
             scripts/backend_second_pass_sanity.py \
             .github/workflows/backend-foundation-gate.yml
           git commit -m "fix(backend): close second-pass audit findings"
