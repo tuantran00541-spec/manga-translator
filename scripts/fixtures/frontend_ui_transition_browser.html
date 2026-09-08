@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Frontend UI transition harness</title>
+<link rel="stylesheet" href="/static/css/app.css">
+<link rel="stylesheet" href="/static/css/frontend-release.css">
+</head>
+<body data-app-stage="preview">
+<div id="app" class="workbench-shell">
+  <div class="workbench-frame">
+    <header id="site-header" class="workbench-topbar">
+      <button id="app-home" type="button">Home</button>
+      <nav id="workflow-steps">
+        <button class="workbench-stage-link" data-stage="preview" type="button">Xử lý</button>
+        <button class="workbench-stage-link" data-stage="review" type="button">Kiểm tra</button>
+        <button class="workbench-stage-link" data-stage="editor" type="button">Biên tập</button>
+      </nav>
+      <span id="app-context"></span>
+      <div id="workbench-panel-controls">
+        <button id="toggle-page-panel" type="button" aria-expanded="true">Trang</button>
+        <button id="toggle-inspector-panel" type="button" aria-expanded="true">Công cụ</button>
+        <button id="toggle-focus-mode" type="button" aria-pressed="false">Tập trung</button>
+      </div>
+      <button id="settings-toggle" type="button" aria-expanded="false">Cài đặt</button>
+    </header>
+    <section id="landing-view" hidden>
+      <select id="lang-select"><option value="ja" selected>JA</option></select>
+      <select id="workers-select"><option value="2" selected>2</option></select>
+      <button id="upload-dropzone" type="button"></button>
+      <input id="upload-input" type="file" hidden>
+      <span id="upload-hint"></span>
+      <div id="recent-chapters"></div>
+    </section>
+    <main id="page-view"></main>
+  </div>
+</div>
+<div id="settings-backdrop" hidden></div>
+<aside id="settings-drawer" hidden>
+  <button id="settings-close" type="button">Đóng</button>
+  <div id="ai-settings-host"></div>
+</aside>
+<div id="toast-container"></div>
+<pre id="fixture-result">pending</pre>
+
+<script>
+(() => {
+  const svg = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='640' height='960'%3E%3Crect width='640' height='960' fill='white'/%3E%3C/svg%3E";
+  const pages = Array.from({ length: 16 }, (_, index) => ({
+    original: svg,
+    clean: null,
+    skipped: false,
+    source_page: index,
+    slice_index: 0,
+    excluded_regions: [],
+    boxes: [],
+    text_objects: [],
+    detection_state: "ready",
+    detection_issues: [],
+    stitch_core: { core_y1: 0, core_y2: 960 },
+  }));
+
+  window.currentChapterId = "ui-transition-fixture";
+  window.currentManifest = {
+    chapter_id: window.currentChapterId,
+    pages,
+    workflow: { stage: "preview", page_index: 0 },
+  };
+  window.availableFonts = [{ id: "default", name: "Default" }];
+  window.__uiFixture = {
+    svg,
+    processCalls: 0,
+    batches: [],
+    checkpointCalls: [],
+    requests: [],
+  };
+
+  const clone = (value) => JSON.parse(JSON.stringify(value));
+  const response = (data, status = 200) => new Response(JSON.stringify(data), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+
+  window.fetch = async (input, init = {}) => {
+    const url = new URL(typeof input === "string" ? input : input.url, location.href);
+    const path = url.pathname;
+    window.__uiFixture.requests.push(path);
+    if (path === "/api/process_pages") {
+      const payload = JSON.parse(init.body || "{}");
+      window.__uiFixture.processCalls += 1;
+      window.__uiFixture.batches.push([...(payload.page_indices || [])]);
+      await new Promise((resolve) => setTimeout(resolve, 180));
+      const next = clone(window.currentManifest);
+      next.pages.forEach((page) => { page.clean = window.__uiFixture.svg; });
+      next.workflow = { stage: "review", page_index: 0 };
+      return response(next);
+    }
+    if (path === "/api/workflow_checkpoint") {
+      const payload = JSON.parse(init.body || "{}");
+      window.__uiFixture.checkpointCalls.push(payload);
+      return response({ ok: true });
+    }
+    if (path === "/api/visual_qc/settings") {
+      return response({ providers: { gemini: { configured: false }, deepseek: { configured: false } } });
+    }
+    if (path === "/api/fonts") return response([{ id: "default", name: "Default" }]);
+    if (path === "/api/chapters") return response([]);
+    if (path.startsWith("/api/chapter/")) return response(clone(window.currentManifest));
+    if (path === "/api/save_excluded_regions") return response(clone(window.currentManifest));
+    return response({});
+  };
+})();
+</script>
+<script src="/static/js/icons.js"></script>
+<script src="/static/js/toast.js"></script>
+<script src="/static/js/api.js"></script>
+<script src="/static/js/upload.js"></script>
+<script src="/static/js/page-navigator.js"></script>
+<script src="/static/js/preview.js"></script>
+<script src="/static/js/review.js"></script>
+<script src="/static/js/review-workspace.js"></script>
+<script src="/static/js/review-stitch-inspector.js"></script>
+<script src="/static/js/chapter-qc.js"></script>
+<script src="/static/js/chapter-ocr.js"></script>
+<script src="/static/js/editor.js"></script>
+<script src="/static/js/editor-box-transform.js"></script>
+<script src="/static/js/ui-shell.js"></script>
+<script src="/static/js/frontend-observer-guard.js"></script>
+<script src="/static/js/frontend-coordinator.js"></script>
+<script src="/static/js/frontend-release.js"></script>
+<script src="/static/js/frontend-release-encoder-guard.js"></script>
+<script>
+(() => {
+  const resultEl = document.getElementById("fixture-result");
+  let heartbeat = 0;
+  let uncaught = null;
+  const startedAt = performance.now();
+  const timer = setInterval(() => { heartbeat += 1; }, 10);
+  window.addEventListener("error", (event) => { uncaught = String(event.error?.stack || event.message || event.error || "error"); });
+  window.addEventListener("unhandledrejection", (event) => { uncaught = String(event.reason?.stack || event.reason || "unhandled rejection"); });
+
+  const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  async function waitFor(fn, timeout = 3500, label = "condition") {
+    const deadline = performance.now() + timeout;
+    while (performance.now() < deadline) {
+      const value = fn();
+      if (value) return value;
+      await delay(20);
+    }
+    throw new Error(`Timed out waiting for ${label}`);
+  }
+
+  async function run() {
+    const metrics = {
+      ok: false,
+      uncaught: null,
+      processCalls: 0,
+      processBatchSizes: [],
+      processClickSyncMs: null,
+      processHeartbeatDelta: null,
+      auxControlResponsiveDuringProcess: false,
+      reviewReached: false,
+      editorClickSyncMs: null,
+      editorHeartbeatDelta: null,
+      editorReached: false,
+      settingsResponsiveAfterEditor: false,
+      elapsedMs: null,
+      stage: document.body.dataset.appStage || null,
+    };
+    try {
+      await delay(30);
+      if (typeof window.renderPreview !== "function") throw new Error("renderPreview missing");
+      window.renderPreview();
+      const processBtn = await waitFor(
+        () => document.querySelector("#preview-toolbar .preview-primary-action"),
+        1500,
+        "process button",
+      );
+
+      const processHeartbeatStart = heartbeat;
+      const processClickStart = performance.now();
+      processBtn.click();
+      metrics.processClickSyncMs = performance.now() - processClickStart;
+
+      setTimeout(() => {
+        const toggle = document.getElementById("toggle-page-panel");
+        if (!toggle) return;
+        const before = toggle.getAttribute("aria-expanded");
+        toggle.click();
+        const after = toggle.getAttribute("aria-expanded");
+        metrics.auxControlResponsiveDuringProcess = before !== after;
+      }, 40);
+
+      const editorOpen = await waitFor(
+        () => [...document.querySelectorAll("button")].find((button) => button.textContent?.trim() === "Mở biên tập"),
+        3500,
+        "review/editor button",
+      );
+      metrics.processHeartbeatDelta = heartbeat - processHeartbeatStart;
+      metrics.reviewReached = true;
+      metrics.processCalls = window.__uiFixture.processCalls;
+      metrics.processBatchSizes = window.__uiFixture.batches.map((batch) => batch.length);
+
+      const editorHeartbeatStart = heartbeat;
+      const editorClickStart = performance.now();
+      editorOpen.click();
+      metrics.editorClickSyncMs = performance.now() - editorClickStart;
+      await waitFor(() => document.body.dataset.appStage === "editor", 2500, "editor stage");
+      await delay(80);
+      metrics.editorHeartbeatDelta = heartbeat - editorHeartbeatStart;
+      metrics.editorReached = true;
+
+      const settings = document.getElementById("settings-toggle");
+      settings?.click();
+      await delay(20);
+      metrics.settingsResponsiveAfterEditor = document.body.classList.contains("settings-open");
+      document.getElementById("settings-close")?.click();
+
+      if (uncaught) throw new Error(`uncaught browser error: ${uncaught}`);
+      if (metrics.processCalls !== 1) throw new Error(`expected one process request, got ${metrics.processCalls}`);
+      if (metrics.processBatchSizes.length !== 1 || metrics.processBatchSizes[0] !== 16) {
+        throw new Error(`processing throughput regressed: ${JSON.stringify(metrics.processBatchSizes)}`);
+      }
+      if (metrics.processClickSyncMs > 250) throw new Error(`process click blocked main thread for ${metrics.processClickSyncMs.toFixed(1)}ms`);
+      if (metrics.processHeartbeatDelta < 5) throw new Error(`event loop stopped during process request: heartbeat=${metrics.processHeartbeatDelta}`);
+      if (!metrics.auxControlResponsiveDuringProcess) throw new Error("auxiliary UI control was not responsive during processing");
+      if (metrics.editorClickSyncMs > 750) throw new Error(`open editor blocked main thread for ${metrics.editorClickSyncMs.toFixed(1)}ms`);
+      if (metrics.editorHeartbeatDelta < 3) throw new Error(`event loop did not recover after editor render: heartbeat=${metrics.editorHeartbeatDelta}`);
+      if (!metrics.settingsResponsiveAfterEditor) throw new Error("settings control did not respond after opening editor");
+
+      metrics.ok = true;
+      metrics.stage = document.body.dataset.appStage || null;
+      metrics.elapsedMs = performance.now() - startedAt;
+      metrics.uncaught = uncaught;
+      resultEl.textContent = JSON.stringify(metrics);
+    } catch (error) {
+      metrics.ok = false;
+      metrics.stage = document.body.dataset.appStage || null;
+      metrics.elapsedMs = performance.now() - startedAt;
+      metrics.uncaught = uncaught || String(error?.stack || error);
+      metrics.processCalls = window.__uiFixture.processCalls;
+      metrics.processBatchSizes = window.__uiFixture.batches.map((batch) => batch.length);
+      resultEl.textContent = JSON.stringify(metrics);
+    } finally {
+      clearInterval(timer);
+    }
+  }
+
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", () => { void run(); }, { once: true });
+  else void run();
+})();
+</script>
+</body>
+</html>
