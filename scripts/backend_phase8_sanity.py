@@ -2,6 +2,7 @@
 """Phase 8 equivalence/ownership/performance checks for MSER base-candidate caching."""
 from __future__ import annotations
 
+import argparse
 from dataclasses import replace
 from pathlib import Path
 import statistics
@@ -10,7 +11,6 @@ import threading
 import time
 import types
 
-import cv2
 import numpy as np
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -18,7 +18,6 @@ sys.path.insert(0, str(ROOT))
 if "onnxruntime" not in sys.modules:
     sys.modules["onnxruntime"] = types.ModuleType("onnxruntime")
 
-from app.detector.bubble_detector import BubbleBox
 from app.detector.recovery import SecondaryTextRecovery
 
 
@@ -76,7 +75,7 @@ def clear_candidate_cache(recovery):
     recovery._candidate_local = threading.local()
 
 
-def main() -> int:
+def run_correctness() -> tuple[np.ndarray, np.ndarray]:
     image = np.full((720, 1024, 3), 245, dtype=np.uint8)
     raw = raw_regions()
     recovery, calls = make_recovery(raw)
@@ -90,14 +89,12 @@ def main() -> int:
     check(signature(second) == signature(first), "cached pass differs from fresh pass")
     check(calls["seed"] == first_seed_calls, "same-image second pass rebuilt seed masks")
 
-    # Returned masks must be clones: caller mutation cannot poison cached evidence.
     masked_index = next((i for i, box in enumerate(first) if box.mask is not None), None)
     check(masked_index is not None, "fixture did not create a cached review mask")
     first[masked_index].mask.fill(0)
     third = recovery.detect(image, existing=[])
     check(np.any(third[masked_index].mask > 0), "caller mutation poisoned cached base mask")
 
-    # Existing-dependent policy must still execute on every invocation.
     blocker = replace(
         third[0],
         safe_to_inpaint=True,
@@ -115,15 +112,14 @@ def main() -> int:
     )
     check(len(fresh_filtered) < len(third), "overlapping verified evidence did not re-filter candidates")
 
-    # Cache ownership is exact ndarray identity, not equal pixels/shape.
     seed_before_copy = calls["seed"]
     image_copy = image.copy()
     recovery.detect(image_copy, existing=[])
     check(calls["seed"] > seed_before_copy, "different image object reused base-candidate cache")
+    return image, raw
 
-    # Microbenchmark the duplicated work targeted by this phase. Fresh runs clear
-    # only the base-candidate cache; raw primitive extraction is already cached by
-    # Phase 4 and is intentionally outside this comparison.
+
+def run_performance(image: np.ndarray, raw: np.ndarray) -> None:
     recovery, _ = make_recovery(raw)
     recovery.detect(image, existing=[])
     cached_times = []
@@ -148,8 +144,19 @@ def main() -> int:
     print(
         "phase8 repeated recovery "
         f"fresh={fresh_ms:.3f}ms cached={cached_ms:.3f}ms "
-        f"speedup={fresh_ms/max(cached_ms, 1e-9):.2f}x candidates={len(first)}"
+        f"speedup={fresh_ms/max(cached_ms, 1e-9):.2f}x"
     )
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--correctness-only", action="store_true")
+    args = parser.parse_args()
+    image, raw = run_correctness()
+    if not args.correctness_only:
+        run_performance(image, raw)
+    else:
+        print("phase8 cross-platform correctness PASS")
     print("backend recovery cache sanity: phase 8 PASS")
     return 0
 
