@@ -26,6 +26,8 @@
       <button id="settings-toggle" type="button" aria-expanded="false">Cài đặt</button>
     </header>
     <section id="landing-view" hidden>
+      <input id="chapter-url" value="">
+      <button id="load-btn" type="button">Tải chương</button>
       <select id="lang-select"><option value="ja" selected>JA</option></select>
       <select id="workers-select"><option value="2" selected>2</option></select>
       <button id="upload-dropzone" type="button"></button>
@@ -130,6 +132,7 @@
 <script src="/static/js/frontend-coordinator.js"></script>
 <script src="/static/js/frontend-release.js"></script>
 <script src="/static/js/frontend-release-encoder-guard.js"></script>
+<script src="/static/js/main.js"></script>
 <script>
 (() => {
   const resultEl = document.getElementById("fixture-result");
@@ -169,7 +172,7 @@
       stage: document.body.dataset.appStage || null,
     };
     try {
-      await delay(30);
+      await delay(50);
       if (typeof window.renderPreview !== "function") throw new Error("renderPreview missing");
       window.renderPreview();
       const processBtn = await waitFor(
