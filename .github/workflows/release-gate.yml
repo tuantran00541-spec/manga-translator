@@ -41,6 +41,9 @@ jobs:
       - name: Run processing freeze regression
         run: node scripts/frontend_processing_freeze_sanity.js
 
+      - name: Run process and editor browser watchdog
+        run: python scripts/frontend_ui_transition_browser_check.py
+
       - name: Run frontend coordinator regression
         run: node scripts/frontend_coordinator_sanity.js
 
