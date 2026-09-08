@@ -6,6 +6,7 @@ import argparse
 from pathlib import Path
 import sys
 import tempfile
+import types
 
 import cv2
 import numpy as np
@@ -16,6 +17,12 @@ if str(REPO_ROOT) not in sys.path:
 SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
+
+# This sanity exercises pure mask math only. Keep it dependency-light instead
+# of requiring the full ONNX Runtime stack just because detector modules import
+# the shared session helper at module load time.
+if "onnxruntime" not in sys.modules:
+    sys.modules["onnxruntime"] = types.ModuleType("onnxruntime")
 
 from research_mask_quality_gate import Sample, evaluate
 
