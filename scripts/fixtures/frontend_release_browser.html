@@ -59,6 +59,7 @@
   const params = new URLSearchParams(location.search);
   const baseline = params.has("baseline");
   const captureOnly = params.has("capture");
+  const resultNode = document.getElementById("fixture-result");
 
   function checksum(data) {
     let hash = 2166136261 >>> 0;
@@ -69,8 +70,20 @@
     return hash >>> 0;
   }
 
+  function publishFailure(error) {
+    const message = error && error.stack ? error.stack : String(error);
+    document.body.dataset.fixtureStatus = "error";
+    resultNode.textContent = JSON.stringify({ fixtureError: message });
+  }
+
+  async function settleLayout() {
+    window.frontendReleaseDebug?.applyResponsivePanels?.();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    window.frontendReleaseDebug?.applyResponsivePanels?.();
+  }
+
   async function runChecks() {
-    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    await settleLayout();
     const root = document.documentElement;
     const canvasHost = document.querySelector(".translation-canvas-host");
     const header = document.getElementById("site-header");
@@ -140,11 +153,16 @@
       && (baseline || innerWidth !== 1366 || result.canvasWidth >= 800)
       && (baseline || captureOnly || result.mask?.exactPixels === true);
     document.body.dataset.fixtureStatus = pass ? "pass" : "fail";
-    document.getElementById("fixture-result").textContent = JSON.stringify(result);
+    resultNode.textContent = JSON.stringify(result);
+  }
+
+  function startChecks() {
+    void runChecks().catch(publishFailure);
   }
 
   if (baseline) {
-    addEventListener("load", () => { void runChecks(); }, { once:true });
+    if (document.readyState === "complete") startChecks();
+    else addEventListener("load", startChecks, { once:true });
     return;
   }
   const releaseCss = document.createElement("link");
@@ -153,7 +171,8 @@
   document.head.appendChild(releaseCss);
   const script = document.createElement("script");
   script.src = "/static/js/frontend-release.js";
-  script.onload = () => { setTimeout(() => { void runChecks(); }, 50); };
+  script.onload = () => { setTimeout(startChecks, 50); };
+  script.onerror = () => publishFailure(new Error("frontend-release.js failed to load"));
   document.body.appendChild(script);
 })();
 </script>
