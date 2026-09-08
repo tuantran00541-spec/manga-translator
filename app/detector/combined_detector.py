@@ -22,6 +22,10 @@ from app.parameters import (
     DETECTOR_TALL_SPLIT_LINE_PADDING_MAX,
     DETECTOR_FINAL_NMS_IOU,
     DETECTOR_FREE_TEXT_GRAYSCALE_FALLBACK,
+    DETECTOR_GRAYSCALE_FALLBACK_MAX_ROIS,
+    DETECTOR_GRAYSCALE_FALLBACK_MAX_SOURCE_SIDE,
+    DETECTOR_GRAYSCALE_FALLBACK_PAD_X,
+    DETECTOR_GRAYSCALE_FALLBACK_PAD_Y,
     DETECTOR_NMS_SCORE_FLOOR,
     FLAT_BUBBLE_BACKGROUND_RATIO_MIN,
     FLAT_BUBBLE_BLACK_MAX,
@@ -242,6 +246,157 @@ class CombinedTextDetector:
             needs_review=False,
         )
 
+    @staticmethod
+    def _plan_grayscale_fallback_rois(
+        image_shape: tuple[int, int],
+        proposals: list[BubbleBox],
+    ) -> tuple[list[tuple[int, int, int, int]], int]:
+        """Bound grayscale retry to compact free-text regions.
+
+        The old fallback re-ran the text model over the entire page, which is
+        especially expensive on tall slices because the adaptive detector may
+        execute several windows plus a full-image pass.  These ROIs are recall
+        insurance only: proposals that do not fit the bounded retry remain
+        review-only through the normal detector path.
+        """
+        h, w = (int(image_shape[0]), int(image_shape[1]))
+        if h <= 0 or w <= 0 or not proposals:
+            return [], 0
+
+        max_side = max(1, int(DETECTOR_GRAYSCALE_FALLBACK_MAX_SOURCE_SIDE))
+        max_rois = max(1, int(DETECTOR_GRAYSCALE_FALLBACK_MAX_ROIS))
+        ranked = sorted(
+            proposals,
+            key=lambda box: (
+                -float(box.confidence),
+                max(1, int(box.x2 - box.x1) * int(box.y2 - box.y1)),
+                int(box.y1),
+                int(box.x1),
+            ),
+        )
+        rois: list[tuple[int, int, int, int]] = []
+        deferred = 0
+
+        def bounded_axis(
+            start: int,
+            end: int,
+            bound: int,
+            pad: int,
+        ) -> tuple[int, int] | None:
+            start = max(0, min(int(start), bound))
+            end = max(start, min(int(end), bound))
+            if end <= start or end - start > max_side:
+                return None
+            padded_start = max(0, start - int(pad))
+            padded_end = min(bound, end + int(pad))
+            if padded_end - padded_start <= max_side:
+                return padded_start, padded_end
+            target = min(max_side, bound)
+            center = (start + end) // 2
+            window_start = max(0, min(bound - target, center - target // 2))
+            if window_start > start:
+                window_start = start
+            if window_start + target < end:
+                window_start = end - target
+            window_start = max(0, min(bound - target, window_start))
+            return window_start, window_start + target
+
+        for proposal in ranked:
+            xs = bounded_axis(
+                proposal.x1,
+                proposal.x2,
+                w,
+                DETECTOR_GRAYSCALE_FALLBACK_PAD_X,
+            )
+            ys = bounded_axis(
+                proposal.y1,
+                proposal.y2,
+                h,
+                DETECTOR_GRAYSCALE_FALLBACK_PAD_Y,
+            )
+            if xs is None or ys is None:
+                deferred += 1
+                continue
+            candidate = (xs[0], ys[0], xs[1], ys[1])
+
+            duplicate = False
+            for index, current in enumerate(rois):
+                ix1, iy1 = max(candidate[0], current[0]), max(candidate[1], current[1])
+                ix2, iy2 = min(candidate[2], current[2]), min(candidate[3], current[3])
+                if ix2 <= ix1 or iy2 <= iy1:
+                    continue
+                inter = (ix2 - ix1) * (iy2 - iy1)
+                candidate_area = max(1, (candidate[2] - candidate[0]) * (candidate[3] - candidate[1]))
+                current_area = max(1, (current[2] - current[0]) * (current[3] - current[1]))
+                if inter / float(min(candidate_area, current_area)) < 0.70:
+                    continue
+                union = (
+                    min(candidate[0], current[0]),
+                    min(candidate[1], current[1]),
+                    max(candidate[2], current[2]),
+                    max(candidate[3], current[3]),
+                )
+                if (
+                    union[2] - union[0] <= max_side
+                    and union[3] - union[1] <= max_side
+                ):
+                    rois[index] = union
+                    duplicate = True
+                    break
+            if duplicate:
+                continue
+            if len(rois) >= max_rois:
+                deferred += 1
+                continue
+            rois.append(candidate)
+
+        return rois, deferred
+
+    def _grayscale_text_retry(
+        self,
+        image: np.ndarray,
+        proposals: list[BubbleBox],
+    ) -> tuple[list[BubbleBox], dict[str, int]]:
+        """Run grayscale text segmentation only inside bounded proposal ROIs."""
+        h, w = image.shape[:2]
+        rois, deferred = self._plan_grayscale_fallback_rois((h, w), proposals)
+        recovered: list[BubbleBox] = []
+        source_pixels = 0
+        for x1, y1, x2, y2 in rois:
+            crop = image[y1:y2, x1:x2]
+            if crop.size == 0:
+                continue
+            source_pixels += int((x2 - x1) * (y2 - y1))
+            gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop
+            gray_bgr = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
+            # The ROI is bounded below the tall-page retry regime. Calling the
+            # detector's single-image path preserves configured TTA while
+            # avoiding adaptive whole-page windows and their redundant full pass.
+            boxes = self.text_detector._detect_single(gray_bgr, x1, y1)
+            boxes = [self.text_detector._with_semantics(box) for box in boxes]
+            boxes = self.text_detector._filter_invalid(boxes, w, h)
+            recovered.extend(self._classify(box) for box in boxes)
+
+        recovered = [
+            text
+            for text in recovered
+            if any(self._is_inside(text, proposal) for proposal in proposals)
+        ]
+        if recovered:
+            recovered = [
+                self._classify(box)
+                for box in YoloDetector._nms_box_group(
+                    recovered,
+                    score_threshold=TEXT_CONF_THRESHOLD,
+                    iou_threshold=DETECTOR_FINAL_NMS_IOU,
+                )
+            ]
+        return recovered, {
+            "calls": len(rois),
+            "source_pixels": source_pixels,
+            "deferred_regions": int(deferred),
+        }
+
     def detect(self, image: np.ndarray, *, parallel: bool = False) -> list[BubbleBox]:
         started_at = time.perf_counter()
         h, w = image.shape[:2]
@@ -271,6 +426,9 @@ class CombinedTextDetector:
             "bubble_proposals": len(bubble_boxes),
             "text_proposals": len(text_boxes),
             "text_grayscale_fallback_runs": 0,
+            "text_grayscale_fallback_calls": 0,
+            "text_grayscale_fallback_source_pixels": 0,
+            "text_grayscale_fallback_deferred_regions": 0,
             "text_grayscale_fallback_ms": 0.0,
             "text_grayscale_fallback_proposals": 0,
             "result_boxes": 0,
@@ -292,21 +450,22 @@ class CombinedTextDetector:
         ]
         if DETECTOR_FREE_TEXT_GRAYSCALE_FALLBACK and unmatched_free_text:
             fallback_started_at = time.perf_counter()
-            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-            gray_bgr = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
-            fallback_boxes = [
-                self._classify(box)
-                for box in self.text_detector.detect(gray_bgr)
-            ]
-            fallback_boxes = [
-                text
-                for text in fallback_boxes
-                if any(
-                    self._is_inside(text, bubble)
-                    for bubble in unmatched_free_text
-                )
-            ]
-            metrics["text_grayscale_fallback_runs"] = 1
+            fallback_boxes, fallback_metrics = self._grayscale_text_retry(
+                image,
+                unmatched_free_text,
+            )
+            metrics["text_grayscale_fallback_runs"] = int(
+                bool(fallback_metrics["calls"])
+            )
+            metrics["text_grayscale_fallback_calls"] = int(
+                fallback_metrics["calls"]
+            )
+            metrics["text_grayscale_fallback_source_pixels"] = int(
+                fallback_metrics["source_pixels"]
+            )
+            metrics["text_grayscale_fallback_deferred_regions"] = int(
+                fallback_metrics["deferred_regions"]
+            )
             metrics["text_grayscale_fallback_ms"] = round(
                 (time.perf_counter() - fallback_started_at) * 1000.0, 3
             )

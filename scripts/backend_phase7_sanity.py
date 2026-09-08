@@ -50,6 +50,25 @@ def main() -> int:
     check(page["page_total_ms"] == 180.0, "page total changed")
     check(page["counts"]["boxes"] == 9, "page counts were not preserved")
 
+    nested = page_stage_breakdown(
+        {
+            "index": 5,
+            "metrics": {
+                "timing_ms": {
+                    "read": 4.0, "detect": 100.0, "auto_inpaint": 30.0,
+                    "write": 6.0, "total": 145.0,
+                },
+                "detector": {"total_ms": 100.0},
+                "auto_inpaint": {"lama_model_ms": 20.0},
+            },
+        }
+    )
+    check(nested["read_decode_ms"] == 4.0, "nested timing read was ignored")
+    check(nested["auto_inpaint"]["total_ms"] == 30.0, "nested inpaint timing was ignored")
+    check(nested["write_encode_ms"] == 6.0, "nested write timing was ignored")
+    check(nested["page_total_ms"] == 145.0, "nested page total was ignored")
+    check(nested["orchestration_other_ms"] == 5.0, "nested residual attribution is wrong")
+
     # Inclusive timer sums must remain a separately labelled diagnostic view.
     report = {
         "source_sha": "abc",

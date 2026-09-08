@@ -76,17 +76,25 @@ def page_stage_breakdown(page: dict[str, Any]) -> dict[str, Any]:
         metrics = {}
     detector = detector_breakdown(metrics)
     auto = _section(metrics, "auto_inpaint")
+    timing = _section(metrics, "timing_ms")
 
-    read_ms = _first_number(metrics.get("read_ms"), metrics.get("read_decode_ms"))
+    read_ms = _first_number(
+        metrics.get("read_ms"), metrics.get("read_decode_ms"), timing.get("read")
+    )
     auto_total = _first_number(
         metrics.get("auto_inpaint_ms"),
         auto.get("total_ms"),
         metrics.get("inpaint_ms"),
+        timing.get("auto_inpaint"),
     )
     lama_model = _num(auto.get("lama_model_ms"))
     inpaint_other = max(0.0, auto_total - lama_model)
-    write_ms = _first_number(metrics.get("write_ms"), metrics.get("write_encode_ms"))
-    page_total = _first_number(metrics.get("total_ms"), metrics.get("wall_ms"))
+    write_ms = _first_number(
+        metrics.get("write_ms"), metrics.get("write_encode_ms"), timing.get("write")
+    )
+    page_total = _first_number(
+        metrics.get("total_ms"), metrics.get("wall_ms"), timing.get("total")
+    )
 
     known_page = read_ms + _num(detector["detector_total_ms"]) + auto_total + write_ms
     orchestration = max(0.0, page_total - known_page)
