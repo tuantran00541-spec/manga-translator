@@ -255,7 +255,39 @@ class Inpainter:
             session, self.lama_model_path, expected_dynamic=False
         )
 
-    def inpaint(self, image: np.ndarray, boxes: list[BubbleBox]) -> np.ndarray:
+    @staticmethod
+    def _subtract_protected_regions(
+        local_mask: np.ndarray,
+        crop_box: tuple[int, int, int, int],
+        protected_regions: list[dict] | None,
+    ) -> np.ndarray:
+        """Remove protected page pixels after all automatic mask dilation."""
+        if local_mask is None or not protected_regions:
+            return local_mask
+        cx1, cy1, cx2, cy2 = (int(value) for value in crop_box)
+        clipped = local_mask.copy()
+        for region in protected_regions:
+            if not isinstance(region, dict):
+                continue
+            try:
+                rx1, rx2 = sorted((int(region.get("x1", 0)), int(region.get("x2", 0))))
+                ry1, ry2 = sorted((int(region.get("y1", 0)), int(region.get("y2", 0))))
+            except (TypeError, ValueError):
+                continue
+            ix1, iy1 = max(cx1, rx1), max(cy1, ry1)
+            ix2, iy2 = min(cx2, rx2), min(cy2, ry2)
+            if ix2 <= ix1 or iy2 <= iy1:
+                continue
+            clipped[iy1 - cy1:iy2 - cy1, ix1 - cx1:ix2 - cx1] = 0
+        return clipped
+
+    def inpaint(
+        self,
+        image: np.ndarray,
+        boxes: list[BubbleBox],
+        *,
+        protected_regions: list[dict] | None = None,
+    ) -> np.ndarray:
         self._begin_metrics(boxes=len(boxes))
         if not boxes:
             return image.copy()
@@ -305,6 +337,11 @@ class Inpainter:
                 local_boxes.append(local_box)
             crop_img = image[cy1:cy2, cx1:cx2]
             local_mask = build_mask((cy2 - cy1, cx2 - cx1), local_boxes, crop_img)
+            local_mask = self._subtract_protected_regions(
+                local_mask,
+                crop_box,
+                protected_regions,
+            )
 
             result = self._smart_paint_region(result, local_mask, crop_box)
 

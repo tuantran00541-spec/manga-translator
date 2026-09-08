@@ -23,7 +23,7 @@ def publication_safety_checks():
     with tempfile.TemporaryDirectory() as t:
         r=Path(t); live=r/'clean.png'; live.write_bytes(b'OLD'); (r/'manifest.json').write_bytes(mb(0)); tx=mu.PageArtifactTransaction(r,0,[live],1); tx.__enter__(); live.write_bytes(b'NEW'); check(mu.recover_page_artifact_transactions(r)==1,'recovery count'); check(live.read_bytes()==b'OLD','precommit crash not restored')
     with tempfile.TemporaryDirectory() as t:
-        r=Path(t); live=r/'clean.png'; live.write_bytes(b'OLD'); (r/'manifest.json').write_bytes(mb(0)); tx=mu.PageArtifactTransaction(r,0,[live],1); tx.__enter__(); n=r/'n.tmp'; n.write_bytes(b'NEW'); mu.atomic_replace(n,live); (r/'manifest.json').write_bytes(mb(1)); check(mu.recover_page_artifact_transactions(r)==1,'commit recovery count'); check(live.read_bytes()==b'NEW','committed artifact rolled back')
+        r=Path(t); live=r/'clean.png'; live.write_bytes(b'OLD'); (r/'manifest.json').write_bytes(mb(0)); tx=mu.PageArtifactTransaction(r,0,[live],1); tx.__enter__(); n=r/'n.tmp'; n.write_bytes(b'NEW'); mu.atomic_replace(n,live); committed=json.loads((r/'manifest.json').read_text()); committed_page=committed['pages'][0]; committed_page['clean_revision']=1; tx.mark_manifest_commit(committed_page); (r/'manifest.json').write_text(json.dumps(committed),encoding='utf-8'); check(mu.recover_page_artifact_transactions(r)==1,'commit recovery count'); check(live.read_bytes()==b'NEW','committed artifact rolled back')
     with tempfile.TemporaryDirectory() as t:
         r=Path(t); src=r/'render.tmp'; dst=r/'page.png'; src.write_bytes(b'NEW'); dst.write_bytes(b'OLD')
         try: mu.publish_then_commit(src,dst,lambda: (_ for _ in ()).throw(RuntimeError('manifest')))

@@ -11,6 +11,7 @@ from app.dependencies import pipeline
 from app.logging_config import logger
 from app.manifest_utils import get_manifest_lock, invalidate_page_render, load_manifest_raw, save_manifest_raw, urlify_manifest
 from app.parameters import PIPELINE_DEFAULT_WORKERS
+from app.pipeline import StaleProcessingStateError
 from app.schemas import (
     ChapterRequest,
     ProcessPagesRequest,
@@ -259,6 +260,14 @@ def process_pages(req: ProcessPagesRequest) -> dict:
     try:
         manifest = pipeline.process_pages(req.chapter_id, req.page_indices, workers=workers)
         return urlify_manifest(manifest)
+    except StaleProcessingStateError as exc:
+        logger.warning(
+            "Chapter {} pages {} operation 'process_pages' discarded stale output: {}",
+            req.chapter_id,
+            req.page_indices,
+            exc,
+        )
+        raise HTTPException(409, str(exc)) from exc
     except RuntimeError as exc:
         logger.opt(exception=True).error(
             "Chapter {} pages {} operation 'process_pages' failed: {}",

@@ -36,6 +36,7 @@ def _normalized_text_object(obj: dict) -> dict:
         },
         "translation": str(obj.get("translation") or ""),
         "style": obj.get("style") or {},
+        "source_missing": bool(obj.get("source_missing", False)),
     }
 
 

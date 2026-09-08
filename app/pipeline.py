@@ -5,6 +5,7 @@ import threading
 import time
 import uuid
 from dataclasses import replace
+from contextlib import ExitStack
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import cv2
@@ -130,6 +131,10 @@ def _normalize_region(region: dict, w: int, h: int) -> tuple[int, int, int, int]
     if y1 > y2:
         y1, y2 = y2, y1
     return x1, y1, x2, y2
+
+
+class StaleProcessingStateError(RuntimeError):
+    """No requested page committed because user state changed during processing."""
 
 
 class ChapterPipeline:
@@ -645,6 +650,7 @@ class ChapterPipeline:
                             target_page.pop(mask_field, None)
 
                     invalidate_page_render(manifest, page_index)
+                    artifact_tx.mark_manifest_commit(target_page)
                     save_manifest_raw(chapter_id, manifest)
                     artifact_tx.commit()
                     self._sync_output_dir(chapter_id, manifest, [page_index])
@@ -714,6 +720,7 @@ class ChapterPipeline:
             self._shared_seam_detections(chapter_id, work_items)
         )
         committed_indices: list[int] = []
+        discarded_stale_indices: list[int] = []
         errors: list[tuple[int, Exception]] = []
         parallel_detectors = max_workers == 1
 
@@ -759,6 +766,8 @@ class ChapterPipeline:
                         snapshot,
                     ):
                         committed_indices.append(page_idx)
+                    else:
+                        discarded_stale_indices.append(page_idx)
                 except Exception as exc:
                     logger.opt(exception=True).error(
                         "Chapter {} page {} operation 'process_page' failed: {}",
@@ -769,6 +778,14 @@ class ChapterPipeline:
                     errors.append((idx, exc))
 
         failed_indices = [item[0] for item in errors]
+        discarded_stale_indices = sorted(set(discarded_stale_indices))
+        if errors:
+            processing_outcome = "partial_failed" if committed_indices else "failed"
+        elif discarded_stale_indices:
+            processing_outcome = "partial_stale" if committed_indices else "stale_only"
+        else:
+            processing_outcome = "completed"
+
         with get_manifest_lock(chapter_id):
             manifest = load_manifest_raw(chapter_id)
             if committed_indices:
@@ -810,6 +827,12 @@ class ChapterPipeline:
                 "requested_page_indices": [item[0] for item in work_items],
                 "committed_page_indices": sorted(committed_indices),
                 "failed_page_indices": failed_indices,
+                "discarded_stale_page_indices": discarded_stale_indices,
+                "discarded_stale_pages": [
+                    {"page_index": page_index, "reason": "processing_state_changed"}
+                    for page_index in discarded_stale_indices
+                ],
+                "outcome": processing_outcome,
                 "workers": max_workers,
                 "wall_ms": round((time.perf_counter() - run_started_at) * 1000.0, 3),
                 "shared_seam": {
@@ -843,12 +866,22 @@ class ChapterPipeline:
                 f"(indices: {failed_indices}). First error: {first_exc}"
             ) from first_exc
 
+        if discarded_stale_indices and not committed_indices:
+            raise StaleProcessingStateError(
+                f"Chapter {chapter_id}: all requested processing output became stale "
+                f"before commit (indices: {discarded_stale_indices})"
+            )
+
         return manifest
 
     def mark_skipped(self, chapter_id: str, page_indices: list[int], skipped: bool) -> dict:
-        with get_manifest_lock(chapter_id):
+        indices = sorted({int(idx) for idx in page_indices if int(idx) >= 0})
+        with ExitStack() as stack:
+            for idx in indices:
+                stack.enter_context(get_page_lock(chapter_id, idx))
+            stack.enter_context(get_manifest_lock(chapter_id))
             manifest = load_manifest_raw(chapter_id)
-            for idx in page_indices:
+            for idx in indices:
                 if 0 <= idx < len(manifest["pages"]):
                     page = manifest["pages"][idx]
                     changed = bool(page.get("skipped", False)) != bool(skipped)
@@ -856,16 +889,13 @@ class ChapterPipeline:
                     if skipped:
                         if page.get("clean") is not None or page.get("boxes"):
                             changed = True
-                        # ``clean`` is always a processed artifact. A skipped page
-                        # intentionally has none, so render/export falls back to
-                        # its raw original without violating managed-path roots.
                         page["clean"] = None
                         page["boxes"] = []
                     if changed:
                         bump_page_revision(page, "clean_revision")
                     invalidate_page_render(manifest, idx)
             save_manifest_raw(chapter_id, manifest)
-            self._sync_output_dir(chapter_id, manifest, page_indices)
+            self._sync_output_dir(chapter_id, manifest, indices)
         return manifest
 
     @staticmethod
@@ -952,6 +982,7 @@ class ChapterPipeline:
                     if clean_revision != target_clean_revision:
                         raise RuntimeError("Page clean revision changed during repaint")
                     invalidate_page_render(manifest, page_index)
+                    artifact_tx.mark_manifest_commit(target_page)
                     save_manifest_raw(chapter_id, manifest)
                     artifact_tx.commit()
                     self._sync_output_dir(chapter_id, manifest, [page_index])
@@ -1058,6 +1089,7 @@ class ChapterPipeline:
                     if clean_revision != target_clean_revision:
                         raise RuntimeError("Page clean revision changed during repaint")
                     invalidate_page_render(manifest, page_index)
+                    artifact_tx.mark_manifest_commit(target_page)
                     save_manifest_raw(chapter_id, manifest)
                     artifact_tx.commit()
                     self._sync_output_dir(chapter_id, manifest, [page_index])
@@ -1113,6 +1145,7 @@ class ChapterPipeline:
                     if clean_revision != target_clean_revision:
                         raise RuntimeError("Page clean revision changed during repaint")
                     invalidate_page_render(manifest, page_index)
+                    artifact_tx.mark_manifest_commit(target_page)
                     save_manifest_raw(chapter_id, manifest)
                     artifact_tx.commit()
                     self._sync_output_dir(chapter_id, manifest, [page_index])
@@ -1163,9 +1196,10 @@ class ChapterPipeline:
                 else None
             )
             if bin_mask is not None and bin_mask.shape[:2] != (img_h, img_w):
-                bin_mask = cv2.resize(bin_mask, (img_w, img_h), interpolation=cv2.INTER_NEAREST)
-                bin_mask = (
-                    (bin_mask > MANUAL_MASK_THRESHOLD).astype(np.uint8) * 255
+                raise ValueError(
+                    "Repaint mask dimensions "
+                    f"{bin_mask.shape[:2]} must exactly match page dimensions "
+                    f"{(img_h, img_w)}"
                 )
 
             target_field = "manual_lama_mask" if force_lama else "manual_mask"
@@ -1267,6 +1301,7 @@ class ChapterPipeline:
                     if clean_revision != target_clean_revision:
                         raise RuntimeError("Page clean revision changed during repaint")
                     invalidate_page_render(manifest, page_index)
+                    artifact_tx.mark_manifest_commit(target_page)
                     save_manifest_raw(chapter_id, manifest)
                     artifact_tx.commit()
                     self._sync_output_dir(chapter_id, manifest, [page_index])
@@ -1332,6 +1367,7 @@ class ChapterPipeline:
                     if clean_revision != target_clean_revision:
                         raise RuntimeError("Page clean revision changed during repaint")
                     invalidate_page_render(manifest, page_index)
+                    artifact_tx.mark_manifest_commit(target_page)
                     save_manifest_raw(chapter_id, manifest)
                     artifact_tx.commit()
                     self._sync_output_dir(chapter_id, manifest, [page_index])
@@ -1720,8 +1756,8 @@ class ChapterPipeline:
                 detected + list(supplemental_detections),
                 iou_threshold=DETECTOR_FINAL_NMS_IOU,
             )
-        if excluded_regions:
-            detected = [b for b in detected if not self._box_in_excluded(b, excluded_regions)]
+        # Exclusion rectangles protect pixels rather than suppressing
+        # detector/OCR evidence. Automatic erase authority is clipped later.
         detect_ms = (time.perf_counter() - detect_started_at) * 1000.0
 
         existing_boxes = copy.deepcopy(existing_boxes or [])
@@ -1817,7 +1853,11 @@ class ChapterPipeline:
             ))
 
         auto_inpaint_started_at = time.perf_counter()
-        clean_image = self.inpainter.inpaint(image, effective_boxes)
+        clean_image = self.inpainter.inpaint(
+            image,
+            effective_boxes,
+            protected_regions=excluded_regions,
+        )
         auto_inpaint_ms = (time.perf_counter() - auto_inpaint_started_at) * 1000.0
         auto_inpaint_metrics = self.inpainter.last_metrics()
 
@@ -1957,16 +1997,3 @@ class ChapterPipeline:
         if manual_lama_mask_posix:
             res["manual_lama_mask"] = manual_lama_mask_posix
         return res
-
-    @staticmethod
-    def _box_in_excluded(box, excluded_regions: list[dict]) -> bool:
-        box_cx = (box.x1 + box.x2) / 2
-        box_cy = (box.y1 + box.y2) / 2
-        for r in excluded_regions:
-            x1 = r.get("x1", 0)
-            y1 = r.get("y1", 0)
-            x2 = r.get("x2", 0)
-            y2 = r.get("y2", 0)
-            if min(x1, x2) <= box_cx <= max(x1, x2) and min(y1, y2) <= box_cy <= max(y1, y2):
-                return True
-        return False

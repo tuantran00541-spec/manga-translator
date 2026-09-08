@@ -134,6 +134,25 @@ def _manifest_page_clean_revision(
     return None
 
 
+def _manifest_page_artifact_state(
+    chapter_dir: Path,
+    page_index: int,
+) -> tuple[bool, int, str | None]:
+    """Read the persisted artifact generation and owning transaction identity."""
+    try:
+        raw = json.loads((chapter_dir / "manifest.json").read_text(encoding="utf-8"))
+        pages = raw.get("pages") if isinstance(raw, dict) else None
+        if isinstance(pages, list) and 0 <= page_index < len(pages):
+            page = pages[page_index]
+            if isinstance(page, dict):
+                generation = int(page.get("artifact_generation") or 0)
+                transaction_id = page.get("artifact_transaction_id")
+                return True, generation, str(transaction_id) if transaction_id else None
+    except (OSError, TypeError, ValueError, json.JSONDecodeError):
+        pass
+    return False, 0, None
+
+
 class PageArtifactTransaction:
     """Keep page artifacts consistent with an atomic manifest revision update."""
 
@@ -159,6 +178,7 @@ class PageArtifactTransaction:
             f".page-{self.page_index:04d}.{self.transaction_id}.artifact-txn.json"
         )
         self.records: list[dict[str, object]] = []
+        self.target_artifact_generation: int | None = None
         self._closed = False
 
     def _cleanup_backups(self) -> None:
@@ -177,10 +197,14 @@ class PageArtifactTransaction:
         tmp_path = self.journal_path.with_name(
             f"{self.journal_path.name}.{uuid.uuid4().hex}.tmp"
         )
+        if self.target_artifact_generation is None:
+            raise RuntimeError("Artifact transaction generation was not initialized")
         payload = {
-            "version": 1,
+            "version": 2,
             "page_index": self.page_index,
             "target_clean_revision": self.target_clean_revision,
+            "transaction_id": self.transaction_id,
+            "target_artifact_generation": self.target_artifact_generation,
             "artifacts": self.records,
         }
         try:
@@ -194,6 +218,14 @@ class PageArtifactTransaction:
 
     def __enter__(self) -> "PageArtifactTransaction":
         self.chapter_dir.mkdir(parents=True, exist_ok=True)
+        readable, current_generation, _current_transaction_id = (
+            _manifest_page_artifact_state(self.chapter_dir, self.page_index)
+        )
+        if not readable:
+            raise RuntimeError(
+                f"Cannot establish artifact generation for page {self.page_index}"
+            )
+        self.target_artifact_generation = current_generation + 1
         try:
             for path in self.paths:
                 if path.is_symlink():
@@ -222,6 +254,25 @@ class PageArtifactTransaction:
             self.journal_path.unlink(missing_ok=True)
             raise
         return self
+
+    def mark_manifest_commit(self, page: dict) -> None:
+        """Bind the manifest page to this exact artifact publication."""
+        if self.target_artifact_generation is None:
+            raise RuntimeError("Artifact transaction generation was not initialized")
+        try:
+            current_generation = int(page.get("artifact_generation") or 0)
+            current_clean_revision = int(page.get("clean_revision") or 0)
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError("Invalid page artifact generation state") from exc
+        expected_previous_generation = self.target_artifact_generation - 1
+        if current_generation != expected_previous_generation:
+            raise RuntimeError("Page artifact generation changed during transaction")
+        if current_clean_revision != self.target_clean_revision:
+            raise RuntimeError(
+                "Page clean revision changed before artifact transaction commit"
+            )
+        page["artifact_generation"] = self.target_artifact_generation
+        page["artifact_transaction_id"] = self.transaction_id
 
     def commit(self) -> None:
         if self._closed:
@@ -263,16 +314,28 @@ class PageArtifactTransaction:
         return True
 
     def __exit__(self, exc_type, exc, traceback) -> None:
-        if not self._closed:
-            current_revision = _manifest_page_clean_revision(
-                self.chapter_dir, self.page_index
-            )
-            if current_revision is None:
-                return
-            if current_revision >= self.target_clean_revision:
-                self.commit()
-            else:
-                self.rollback()
+        if self._closed:
+            return
+        readable, current_generation, current_transaction_id = (
+            _manifest_page_artifact_state(self.chapter_dir, self.page_index)
+        )
+        if not readable or self.target_artifact_generation is None:
+            return
+        if current_generation > self.target_artifact_generation:
+            self.commit()
+            return
+        if (
+            current_generation == self.target_artifact_generation
+            and current_transaction_id == self.transaction_id
+        ):
+            self.commit()
+            return
+        if (
+            current_generation == self.target_artifact_generation
+            and current_transaction_id not in {None, self.transaction_id}
+        ):
+            return
+        self.rollback()
 
 
 def recover_page_artifact_transactions(chapter_dir: Path) -> int:
@@ -286,15 +349,30 @@ def recover_page_artifact_transactions(chapter_dir: Path) -> int:
             payload = json.loads(journal_path.read_text(encoding="utf-8"))
             page_index = int(payload["page_index"])
             target_revision = int(payload["target_clean_revision"])
+            transaction_id = str(payload.get("transaction_id") or "")
+            target_generation = int(payload.get("target_artifact_generation") or 0)
             records = payload["artifacts"]
-            if page_index < 0 or target_revision < 1 or not isinstance(records, list):
+            if (
+                page_index < 0
+                or target_revision < 1
+                or not transaction_id
+                or target_generation < 1
+                or not isinstance(records, list)
+            ):
                 continue
-            current_revision = _manifest_page_clean_revision(
-                chapter_dir, page_index
+            readable, current_generation, current_transaction_id = (
+                _manifest_page_artifact_state(chapter_dir, page_index)
             )
-            if current_revision is None:
+            if not readable:
                 continue
-            committed = current_revision >= target_revision
+            if current_generation > target_generation:
+                committed = True
+            elif current_generation < target_generation:
+                committed = False
+            elif current_transaction_id == transaction_id:
+                committed = True
+            else:
+                continue
             for record in records:
                 if not isinstance(record, dict) or "path" not in record:
                     raise ValueError("Invalid artifact transaction record")
@@ -469,6 +547,9 @@ def normalize_manifest_schema(manifest: dict) -> bool:
             if page.get(key) is None:
                 page[key] = default
                 changed = True
+        if page.get("artifact_generation") is None:
+            page["artifact_generation"] = 0
+            changed = True
 
         source_revision = int(page.get("source_revision") or 0)
         boxes = page.get("boxes") or []

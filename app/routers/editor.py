@@ -17,10 +17,39 @@ from app.schemas import (
     UpdateBoxRequest,
     UpdateTextObjectRequest,
 )
-from app.security import validate_chapter_id
+from app.security import MAX_IMAGE_PIXELS, MAX_REQUEST_BYTES, validate_chapter_id
+from app.upload_utils import read_upload_limited
 from app.text_objects import invalidate_stale_machine_translation
 
 router = APIRouter(prefix="/api", tags=["editor"])
+
+
+def _decode_repaint_mask_payload(mask_bytes: bytes) -> np.ndarray:
+    """Decode one bounded 8-bit mask without running OpenCV on the event loop."""
+    if not mask_bytes:
+        raise ValueError("Empty mask payload")
+    encoded = np.frombuffer(mask_bytes, dtype=np.uint8)
+    decoded = cv2.imdecode(encoded, cv2.IMREAD_UNCHANGED)
+    if decoded is None:
+        raise ValueError("Invalid repaint mask image: failed to decode")
+    if decoded.dtype != np.uint8:
+        raise ValueError("Repaint mask must be an 8-bit image")
+    height, width = decoded.shape[:2]
+    if height <= 0 or width <= 0 or height * width > MAX_IMAGE_PIXELS:
+        raise ValueError(
+            f"Repaint mask dimensions {width}x{height} exceed the decoded pixel limit"
+        )
+    if decoded.ndim == 2:
+        mask_array = decoded
+    elif decoded.ndim == 3 and decoded.shape[2] == 4:
+        mask_array = decoded[:, :, 3]
+    elif decoded.ndim == 3 and decoded.shape[2] == 3:
+        mask_array = cv2.cvtColor(decoded, cv2.COLOR_BGR2GRAY)
+    else:
+        raise ValueError("Repaint mask must be 8-bit grayscale, BGR, or BGRA")
+    if not np.any(mask_array > 0):
+        raise ValueError("Repaint mask is empty")
+    return np.ascontiguousarray(mask_array)
 
 
 def _reconcile_translation_after_ocr_edit(req: UpdateTextObjectRequest) -> dict:
@@ -178,13 +207,9 @@ async def repaint_mask(
         raise HTTPException(404, f"Original page image not found: page_{page_index:03d}")
 
     try:
-        image = read_image(img_path)
-        img_h, img_w = image.shape[:2]
-    except Exception as exc:
-        logger.opt(exception=True).error("Chapter {} page {} operation 'repaint_mask' cannot read base image: {}", chapter_id, page_index, exc)
-        raise HTTPException(500, f"Cannot read base page image: {exc}") from exc
-
-    mask_bytes = await mask.read()
+        mask_bytes = await read_upload_limited(mask, MAX_REQUEST_BYTES)
+    except HTTPException:
+        raise
     if not mask_bytes:
         raise HTTPException(400, "Empty mask payload")
     logger.info(
@@ -195,26 +220,10 @@ async def repaint_mask(
         mode,
     )
 
-    encoded = np.frombuffer(mask_bytes, dtype=np.uint8)
-    decoded = cv2.imdecode(encoded, cv2.IMREAD_UNCHANGED)
-    if decoded is None:
-        raise HTTPException(400, "Invalid repaint mask image: failed to decode")
-
-    if decoded.ndim == 3 and decoded.shape[2] == 4:
-        mask_array = decoded[:, :, 3]
-    elif decoded.ndim == 3:
-        mask_array = cv2.cvtColor(decoded, cv2.COLOR_BGR2GRAY)
-    else:
-        mask_array = decoded
-
-    if mask_array.shape[:2] != (img_h, img_w):
-        try:
-            mask_array = cv2.resize(mask_array, (img_w, img_h), interpolation=cv2.INTER_NEAREST)
-        except Exception as exc:
-            raise HTTPException(400, f"Mask dimensions {mask_array.shape[:2]} cannot be matched to page dimensions {(img_h, img_w)}") from exc
-
-    if not np.any(mask_array > 0):
-        raise HTTPException(400, "Repaint mask is empty")
+    try:
+        mask_array = await run_in_threadpool(_decode_repaint_mask_payload, mask_bytes)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
 
     try:
         manifest = await run_in_threadpool(
@@ -225,6 +234,8 @@ async def repaint_mask(
             force_lama=mode == "lama",
         )
         return urlify_manifest(manifest)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
     except Exception as exc:
         logger.opt(exception=True).error(
             "Chapter {} page {} operation 'repaint_mask' failed: {}",
