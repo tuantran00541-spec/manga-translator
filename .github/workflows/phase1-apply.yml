@@ -1,0 +1,245 @@
+name: Apply backend Phase 1
+
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/phase1-apply.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Apply publication-safety patch
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('app/manifest_utils.py')
+          text = path.read_text(encoding='utf-8')
+          old = '''def atomic_replace(src: Path | str, dst: Path | str, max_retries: int = 8, delay: float = 0.05) -> None:\n    src_path = Path(src)\n    dst_path = Path(dst)\n    for attempt in range(max_retries):\n        try:\n            os.replace(src_path, dst_path)\n            return\n        except PermissionError:\n            if attempt == max_retries - 1:\n                try:\n                    shutil.copyfile(src_path, dst_path)\n                    try:\n                        src_path.unlink()\n                    except OSError:\n                        pass\n                    return\n                except Exception:\n                    raise\n            time.sleep(delay)\n\n\n'''
+          new = '''def atomic_replace(\n    src: Path | str,\n    dst: Path | str,\n    max_retries: int = 8,\n    delay: float = 0.05,\n) -> None:\n    \"\"\"Atomically publish ``src`` at ``dst`` or fail without touching ``dst``.\n\n    ``src`` must already live on the destination filesystem. A previous fallback\n    copied bytes over ``dst`` after an exhausted Windows rename retry. That can\n    expose a partially-written artifact to unlocked readers and, when a rollback\n    snapshot is a hard link, overwrite the rollback bytes as well. Publication is\n    therefore rename-only: exhausted retries leave both files untouched and the\n    caller decides whether to clean the temporary source.\n    \"\"\"\n    if max_retries < 1:\n        raise ValueError(\"max_retries must be >= 1\")\n    if delay < 0:\n        raise ValueError(\"delay must be >= 0\")\n\n    src_path = Path(src)\n    dst_path = Path(dst)\n    last_error: PermissionError | None = None\n    for attempt in range(max_retries):\n        try:\n            os.replace(src_path, dst_path)\n            return\n        except PermissionError as exc:\n            last_error = exc\n            if attempt + 1 < max_retries and delay:\n                time.sleep(delay)\n    assert last_error is not None\n    raise last_error\n\n\ndef _copy_rollback_snapshot(src: Path, dst: Path) -> None:\n    \"\"\"Create a byte-independent rollback snapshot on the chapter filesystem.\n\n    The destination is created exclusively so an old transaction cannot be\n    overwritten. ``fsync`` makes the snapshot durable before its journal is\n    published. We intentionally do not use a hard link: rollback bytes must stay\n    immutable even if a later failure path writes the live artifact in place.\n    \"\"\"\n    try:\n        with src.open(\"rb\") as source, dst.open(\"xb\") as backup:\n            shutil.copyfileobj(source, backup, length=1024 * 1024)\n            backup.flush()\n            os.fsync(backup.fileno())\n        try:\n            shutil.copystat(src, dst, follow_symlinks=False)\n        except OSError:\n            pass\n    except Exception:\n        try:\n            dst.unlink(missing_ok=True)\n        except OSError:\n            pass\n        raise\n\n\n'''
+          if text.count(old) != 1:
+              raise SystemExit('atomic_replace source contract changed; refusing patch')
+          text = text.replace(old, new, 1)
+          old = '''                if existed:\n                    backup = self.chapter_dir / (\n                        f\".{path.name}.{self.transaction_id}.rollback\"\n                    )\n                    try:\n                        os.link(path, backup)\n                    except OSError:\n                        shutil.copy2(path, backup)\n'''
+          new = '''                if existed:\n                    backup = self.chapter_dir / (\n                        f\".{path.name}.{self.transaction_id}.rollback\"\n                    )\n                    _copy_rollback_snapshot(path, backup)\n'''
+          if text.count(old) != 1:
+              raise SystemExit('rollback source contract changed; refusing patch')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+          cat > scripts/backend_foundation_sanity.py <<'PY'
+          """Compact deterministic regression gate for backend foundation phases."""
+          from __future__ import annotations
+
+          import json
+          import tempfile
+          from pathlib import Path
+          from unittest import mock
+
+
+          def _assert(condition: bool, message: str) -> None:
+              if not condition:
+                  raise AssertionError(message)
+
+
+          def _manifest_bytes(revision: int) -> bytes:
+              return json.dumps(
+                  {"schema_version": 3, "chapter_id": "a1b2c3d4", "pages": [{"clean_revision": revision}]},
+                  separators=(",", ":"),
+              ).encode("utf-8")
+
+
+          def publication_safety_checks() -> None:
+              import app.manifest_utils as mu
+
+              with tempfile.TemporaryDirectory() as tmp:
+                  root = Path(tmp)
+                  src, dst = root / "new.tmp", root / "live.bin"
+                  src.write_bytes(b"NEW")
+                  dst.write_bytes(b"OLD")
+                  calls = 0
+
+                  def locked_replace(_src, _dst):
+                      nonlocal calls
+                      calls += 1
+                      raise PermissionError("simulated locked destination")
+
+                  with mock.patch.object(mu.os, "replace", side_effect=locked_replace):
+                      try:
+                          mu.atomic_replace(src, dst, max_retries=3, delay=0)
+                      except PermissionError:
+                          pass
+                      else:
+                          raise AssertionError("locked atomic_replace unexpectedly succeeded")
+                  _assert(calls == 3, f"expected 3 rename attempts, got {calls}")
+                  _assert(dst.read_bytes() == b"OLD", "locked destination bytes changed")
+                  _assert(src.read_bytes() == b"NEW", "temporary source was destroyed")
+
+              with tempfile.TemporaryDirectory() as tmp:
+                  root = Path(tmp)
+                  live = root / "clean.png"
+                  live.write_bytes(b"OLD")
+                  (root / "manifest.json").write_bytes(_manifest_bytes(0))
+                  tx = mu.PageArtifactTransaction(root, 0, [live], 1)
+                  tx.__enter__()
+                  backup = root / str(tx.records[0]["backup"])
+                  _assert(backup.read_bytes() == b"OLD", "rollback snapshot lacks prior bytes")
+                  live.write_bytes(b"NEW")
+                  _assert(backup.read_bytes() == b"OLD", "rollback snapshot shares live data")
+                  _assert(tx.rollback(), "transaction rollback failed")
+                  _assert(live.read_bytes() == b"OLD", "rollback did not restore prior bytes")
+                  _assert(not tx.journal_path.exists(), "rollback journal survived")
+
+              with tempfile.TemporaryDirectory() as tmp:
+                  root = Path(tmp)
+                  live = root / "clean.png"
+                  live.write_bytes(b"OLD")
+                  (root / "manifest.json").write_bytes(_manifest_bytes(0))
+                  tx = mu.PageArtifactTransaction(root, 0, [live], 1)
+                  tx.__enter__()
+                  live.write_bytes(b"NEW")
+                  recovered = mu.recover_page_artifact_transactions(root)
+                  _assert(recovered == 1, f"expected one recovered transaction, got {recovered}")
+                  _assert(live.read_bytes() == b"OLD", "crash recovery did not restore OLD")
+                  _assert(not tx.journal_path.exists(), "recovery journal was not removed")
+
+              with tempfile.TemporaryDirectory() as tmp:
+                  root = Path(tmp)
+                  live = root / "clean.png"
+                  live.write_bytes(b"OLD")
+                  (root / "manifest.json").write_bytes(_manifest_bytes(0))
+                  tx = mu.PageArtifactTransaction(root, 0, [live], 1)
+                  tx.__enter__()
+                  new_tmp = root / "clean.tmp"
+                  new_tmp.write_bytes(b"NEW")
+                  mu.atomic_replace(new_tmp, live)
+                  (root / "manifest.json").write_bytes(_manifest_bytes(1))
+                  recovered = mu.recover_page_artifact_transactions(root)
+                  _assert(recovered == 1, "committed transaction was not resolved")
+                  _assert(live.read_bytes() == b"NEW", "committed artifact was rolled back")
+                  _assert(not tx.journal_path.exists(), "committed recovery journal survived")
+
+              with tempfile.TemporaryDirectory() as tmp:
+                  root = Path(tmp)
+                  chapter = root / "a1b2c3d4"
+                  chapter.mkdir()
+                  final = chapter / "manifest.json"
+                  previous = b'{"sentinel":"OLD-BYTES"}\n'
+                  final.write_bytes(previous)
+                  old_processed = mu.PROCESSED_DIR
+                  mu.PROCESSED_DIR = root
+                  try:
+                      with mock.patch.object(mu, "atomic_replace", side_effect=PermissionError("locked")):
+                          try:
+                              mu.save_manifest_raw("a1b2c3d4", {"chapter_id": "a1b2c3d4", "pages": []})
+                          except PermissionError:
+                              pass
+                          else:
+                              raise AssertionError("manifest save unexpectedly succeeded")
+                  finally:
+                      mu.PROCESSED_DIR = old_processed
+                  _assert(final.read_bytes() == previous, "failed manifest changed prior bytes")
+                  _assert(not list(chapter.glob("manifest.json.*.tmp")), "failed manifest left temp")
+
+
+          def main() -> None:
+              publication_safety_checks()
+              print("backend foundation sanity: publication safety PASS")
+
+
+          if __name__ == "__main__":
+              main()
+          PY
+          cat > .github/workflows/backend-foundation-gate.yml <<'YML'
+          name: Backend foundation gate
+
+          on:
+            push:
+              branches: [main]
+              paths:
+                - app/manifest_utils.py
+                - app/model_contracts.py
+                - app/detector/bubble_detector.py
+                - app/detector/combined_detector.py
+                - app/inpaint/lama_inpainter.py
+                - scripts/backend_foundation_sanity.py
+                - .github/workflows/backend-foundation-gate.yml
+            pull_request:
+              paths:
+                - app/manifest_utils.py
+                - app/model_contracts.py
+                - app/detector/bubble_detector.py
+                - app/detector/combined_detector.py
+                - app/inpaint/lama_inpainter.py
+                - scripts/backend_foundation_sanity.py
+                - .github/workflows/backend-foundation-gate.yml
+            workflow_dispatch:
+
+          permissions:
+            contents: read
+
+          jobs:
+            foundation:
+              strategy:
+                fail-fast: false
+                matrix:
+                  os: [ubuntu-22.04, windows-2025]
+              runs-on: ${{ matrix.os }}
+              timeout-minutes: 10
+              steps:
+                - uses: actions/checkout@v4
+                - uses: actions/setup-python@v5
+                  with:
+                    python-version: "3.12"
+                - name: Install foundation-test runtime
+                  run: >-
+                    python -m pip install
+                    numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84
+                    fastapi==0.115.0 pydantic==2.9.2 filelock==3.16.1 loguru==0.7.2
+                - name: Compile affected backend source
+                  run: python -m py_compile app/manifest_utils.py scripts/backend_foundation_sanity.py
+                - name: Run deterministic backend foundation regressions
+                  run: python scripts/backend_foundation_sanity.py
+          YML
+          python -m py_compile app/manifest_utils.py scripts/backend_foundation_sanity.py
+      - name: Install safety-test runtime
+        run: python -m pip install numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 fastapi==0.115.0 pydantic==2.9.2 filelock==3.16.1 loguru==0.7.2
+      - name: Run Phase 1 regressions before commit
+        run: python scripts/backend_foundation_sanity.py
+      - name: Commit Phase 1
+        shell: bash
+        run: |
+          git config user.name "Manga backend CI"
+          git config user.email "actions@users.noreply.github.com"
+          git rm .github/workflows/phase1-apply.yml
+          git add app/manifest_utils.py scripts/backend_foundation_sanity.py .github/workflows/backend-foundation-gate.yml
+          git commit -m "fix(storage): preserve atomic publication rollback"
+          git push origin HEAD:main
+
+  windows-proof:
+    needs: apply
+    runs-on: windows-2025
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: >-
+          python -m pip install
+          numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84
+          fastapi==0.115.0 pydantic==2.9.2 filelock==3.16.1 loguru==0.7.2
+      - run: python scripts/backend_foundation_sanity.py
