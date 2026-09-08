@@ -17,11 +17,6 @@ path.write_text(text.replace(old, new, 1), encoding="utf-8")
 path = Path("scripts/backend_second_pass_sanity.py")
 text = path.read_text(encoding="utf-8")
 old = '''def stale_outcome_checks() -> None:
-    import types
-    registry = types.ModuleType("app.downloader.registry")
-    registry.download_chapter = lambda *args, **kwargs: []
-    sys.modules.setdefault("app.downloader.registry", registry)
-
     import app.manifest_utils as mu
     import app.pipeline as pipeline_module
 '''
