@@ -634,6 +634,178 @@ class YoloDetector:
 
         return [cls._merge_text_mask_evidence(buckets[index]) for index in kept]
 
+    @staticmethod
+    def _candidate_iou(a: tuple, b: tuple) -> float:
+        ax1, ay1, ax2, ay2 = (float(v) for v in a[:4])
+        bx1, by1, bx2, by2 = (float(v) for v in b[:4])
+        ix1, iy1 = max(ax1, bx1), max(ay1, by1)
+        ix2, iy2 = min(ax2, bx2), min(ay2, by2)
+        if ix2 <= ix1 or iy2 <= iy1:
+            return 0.0
+        inter = (ix2 - ix1) * (iy2 - iy1)
+        aa = max(1.0, (ax2 - ax1) * (ay2 - ay1))
+        bb = max(1.0, (bx2 - bx1) * (by2 - by1))
+        return inter / max(1.0, aa + bb - inter)
+
+    def _plan_candidate_buckets(
+        self,
+        subset: list[tuple],
+    ) -> tuple[list[int], dict[int, list[int]]]:
+        """Plan class-local suppression before allocating any mask pixels."""
+        if not subset:
+            return [], {}
+        rects = [
+            [
+                int(candidate[0]),
+                int(candidate[1]),
+                max(0, int(candidate[2]) - int(candidate[0])),
+                max(0, int(candidate[3]) - int(candidate[1])),
+            ]
+            for candidate in subset
+        ]
+        scores = [
+            max(self.conf_threshold, float(self._candidate_fields(candidate)[0]))
+            for candidate in subset
+        ]
+        raw_indices = cv2.dnn.NMSBoxes(
+            rects,
+            scores,
+            self.conf_threshold,
+            BUBBLE_IOU_THRESHOLD,
+        )
+        kept = [int(index) for index in np.asarray(raw_indices).reshape(-1)]
+        if not kept:
+            return [], {}
+        buckets = {index: [index] for index in kept}
+        kept_set = set(kept)
+        for index, candidate in enumerate(subset):
+            if index in kept_set:
+                continue
+            target = max(
+                kept,
+                key=lambda kept_index: self._candidate_iou(
+                    candidate, subset[kept_index]
+                ),
+            )
+            if self._candidate_iou(candidate, subset[target]) > BUBBLE_IOU_THRESHOLD:
+                buckets[target].append(index)
+        return kept, buckets
+
+    @staticmethod
+    def _prototype_crop_bounds(
+        geometry,
+        prototypes: np.ndarray,
+    ) -> tuple[int, int, int, int] | None:
+        if geometry is None or prototypes is None or prototypes.ndim != 3:
+            return None
+        _num_proto, mh, mw = prototypes.shape
+        if isinstance(geometry, MaskDecodeGeometry):
+            canvas_box = geometry.transform.canvas_box_from_page(geometry.source_box)
+            input_w = geometry.transform.input_w
+            input_h = geometry.transform.input_h
+        else:
+            canvas_box = geometry
+            input_w = INPUT_SIZE
+            input_h = INPUT_SIZE
+        if canvas_box is None:
+            return None
+        cx1, cy1, cx2, cy2 = (float(v) for v in canvas_box)
+        scale_x = mw / float(input_w)
+        scale_y = mh / float(input_h)
+        px1 = max(0, min(mw - 1, int(np.floor(cx1 * scale_x))))
+        py1 = max(0, min(mh - 1, int(np.floor(cy1 * scale_y))))
+        px2 = max(px1 + 1, min(mw, int(np.ceil(cx2 * scale_x))))
+        py2 = max(py1 + 1, min(mh, int(np.ceil(cy2 * scale_y))))
+        return px1, py1, px2, py2
+
+    def _decode_candidate_masks_roi_batch(
+        self,
+        subset: list[tuple],
+        member_indices: list[int],
+        prototypes: np.ndarray,
+        *,
+        batch_size: int = 8,
+    ) -> dict[int, np.ndarray | None]:
+        """Batch coefficient products inside the union prototype ROI only."""
+        decoded: dict[int, np.ndarray | None] = {index: None for index in member_indices}
+        if prototypes is None or prototypes.ndim != 3:
+            return decoded
+        num_proto, _mh, _mw = prototypes.shape
+        prepared = []
+        for index in member_indices:
+            candidate = subset[index]
+            _score, _cid, _classes, geometry, coeffs = self._candidate_fields(candidate)
+            bounds = self._prototype_crop_bounds(geometry, prototypes)
+            if coeffs is None or bounds is None:
+                continue
+            coeffs = np.asarray(coeffs, dtype=np.float32).reshape(-1)
+            if coeffs.size != num_proto:
+                continue
+            prepared.append((index, coeffs, bounds))
+        if not prepared:
+            return decoded
+
+        ux1 = min(item[2][0] for item in prepared)
+        uy1 = min(item[2][1] for item in prepared)
+        ux2 = max(item[2][2] for item in prepared)
+        uy2 = max(item[2][3] for item in prepared)
+        proto_roi = prototypes[:, uy1:uy2, ux1:ux2].reshape(num_proto, -1)
+        if proto_roi.size == 0:
+            return decoded
+
+        batch_size = max(1, int(batch_size))
+        for start in range(0, len(prepared), batch_size):
+            chunk = prepared[start:start + batch_size]
+            coeff_matrix = np.stack([item[1] for item in chunk], axis=0)
+            logits_batch = np.clip(coeff_matrix @ proto_roi, -88.0, 88.0)
+            roi_h, roi_w = uy2 - uy1, ux2 - ux1
+            logits_batch = logits_batch.reshape(len(chunk), roi_h, roi_w)
+            for row, (index, _coeffs, bounds) in enumerate(chunk):
+                px1, py1, px2, py2 = bounds
+                crop_logits = logits_batch[
+                    row,
+                    py1 - uy1:py2 - uy1,
+                    px1 - ux1:px2 - ux1,
+                ]
+                if crop_logits.size == 0:
+                    continue
+                probabilities = 1.0 / (1.0 + np.exp(-crop_logits))
+                x1, y1, x2, y2 = map(int, subset[index][:4])
+                box_w, box_h = x2 - x1, y2 - y1
+                if box_w < 1 or box_h < 1:
+                    continue
+                resized = cv2.resize(
+                    probabilities,
+                    (box_w, box_h),
+                    interpolation=cv2.INTER_LINEAR,
+                )
+                decoded[index] = (
+                    (resized > DETECTOR_MASK_THRESHOLD).astype(np.uint8) * 255
+                )
+        return decoded
+
+    def _candidate_to_box(
+        self,
+        candidate: tuple,
+        mask: np.ndarray | None,
+    ) -> BubbleBox:
+        x1, y1, x2, y2 = map(int, candidate[:4])
+        score, cid, num_classes, _geometry, _coeffs = self._candidate_fields(candidate)
+        class_name = self._class_name(int(cid), int(num_classes))
+        return BubbleBox(
+            x1=x1,
+            y1=y1,
+            x2=x2,
+            y2=y2,
+            confidence=min(float(score), DETECTOR_CONFIDENCE_MAX),
+            mask=mask,
+            source_model=getattr(self, "source_model", "unknown"),
+            class_id=int(cid),
+            class_name=class_name,
+            semantic_type=self._semantic_type(class_name),
+            source_role=self.model_role,
+        )
+
     def _nms(self, candidates: list[tuple], prototypes=None) -> list[BubbleBox]:
         if not candidates:
             return []
@@ -643,37 +815,37 @@ class YoloDetector:
             _, class_id, _, _, _ = self._candidate_fields(candidate)
             by_class.setdefault(class_id, []).append(idx)
 
-        for class_id, member_indices in by_class.items():
-            subset = [candidates[i] for i in member_indices]
-            decoded = []
-            for c in subset:
-                x1, y1, x2, y2 = map(int, c[:4])
-                score, cid, num_classes, decode_geometry, mask_coeffs = self._candidate_fields(c)
-                mask = self._decode_mask(
-                    mask_coeffs, prototypes, decode_geometry, x2 - x1, y2 - y1
-                )
-                class_name = self._class_name(int(cid), int(num_classes))
-                decoded.append(BubbleBox(
-                    x1=x1,
-                    y1=y1,
-                    x2=x2,
-                    y2=y2,
-                    confidence=min(float(score), DETECTOR_CONFIDENCE_MAX),
-                    mask=mask,
-                    source_model=getattr(self, "source_model", "unknown"),
-                    class_id=int(cid),
-                    class_name=class_name,
-                    semantic_type=self._semantic_type(class_name),
-                    source_role=self.model_role,
-                ))
-            result.extend(
-                self._nms_box_group(
-                    decoded,
-                    score_threshold=self.conf_threshold,
-                    iou_threshold=BUBBLE_IOU_THRESHOLD,
-                )
+        for _class_id, member_indices in by_class.items():
+            subset = [candidates[index] for index in member_indices]
+            kept, buckets = self._plan_candidate_buckets(subset)
+            if not kept:
+                continue
+
+            has_mask_model = bool(
+                prototypes is not None
+                and getattr(self, "model_role", "unknown") == "text_segmenter"
             )
-        result.sort(key=lambda b: b.confidence, reverse=True)
+            if not has_mask_model:
+                result.extend(
+                    self._candidate_to_box(subset[index], None)
+                    for index in kept
+                )
+                continue
+
+            for kept_index in kept:
+                contributors = buckets.get(kept_index, [kept_index])
+                masks = self._decode_candidate_masks_roi_batch(
+                    subset,
+                    contributors,
+                    prototypes,
+                )
+                decoded = [
+                    self._candidate_to_box(subset[index], masks.get(index))
+                    for index in contributors
+                ]
+                result.append(self._merge_text_mask_evidence(decoded))
+
+        result.sort(key=lambda box: box.confidence, reverse=True)
         return result
 
     def _nms_boxes(self, boxes: list[BubbleBox]) -> list[BubbleBox]:
