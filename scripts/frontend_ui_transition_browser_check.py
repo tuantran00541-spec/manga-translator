@@ -13,9 +13,11 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse
 
-ROOT = pathlib.Path(__file__).resolve().parents[1]
+DEFAULT_ROOT = pathlib.Path(__file__).resolve().parents[1]
+ROOT = pathlib.Path(os.environ.get("MT_UI_ROOT", str(DEFAULT_ROOT))).resolve()
 STATIC_ROOT = ROOT / "app" / "static"
 FIXTURE = ROOT / "scripts" / "fixtures" / "frontend_ui_transition_browser.html"
+EXPECTED_BATCHES = [16, 16, 16, 16, 12]
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -89,7 +91,7 @@ def main() -> int:
                 "--disable-dev-shm-usage",
                 f"--user-data-dir={profile}",
                 "--window-size=1366,900",
-                "--virtual-time-budget=8000",
+                "--virtual-time-budget=10000",
                 "--dump-dom",
                 url,
             ]
@@ -100,12 +102,16 @@ def main() -> int:
             print(json.dumps(result, ensure_ascii=False, indent=2))
             if not result.get("ok"):
                 raise AssertionError(f"UI transition browser regression failed: {result}")
-            if result.get("processBatchSizes") != [16]:
-                raise AssertionError(f"processing throughput must stay at one 16-page request: {result}")
+            if result.get("processBatchSizes") != EXPECTED_BATCHES:
+                raise AssertionError(f"processing throughput must stay at 16-page batches: {result}")
+            if result.get("manifestBoxes") != 384:
+                raise AssertionError(f"browser fixture did not reach supplied chapter box scale: {result}")
+            if result.get("reviewNavigatorItems") != 76:
+                raise AssertionError(f"review navigator did not represent all non-skipped slices: {result}")
             if not result.get("reviewReached") or not result.get("editorReached"):
                 raise AssertionError(f"preview -> review -> editor transition incomplete: {result}")
             if not result.get("auxControlResponsiveDuringProcess"):
-                raise AssertionError(f"UI was not interactive while process request was in flight: {result}")
+                raise AssertionError(f"UI was not interactive while process requests were in flight: {result}")
             if not result.get("settingsResponsiveAfterEditor"):
                 raise AssertionError(f"UI did not remain clickable after editor transition: {result}")
         return 0
