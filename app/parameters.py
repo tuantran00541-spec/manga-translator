@@ -140,7 +140,7 @@ DETECTOR_GRAYSCALE_FALLBACK_MAX_SOURCE_SIDE = _env_int(
     maximum=4096,
 )
 DETECTOR_FOCUS_MAX_CHIPS = _env_int(
-    "MANGA_DETECTOR_FOCUS_MAX_CHIPS", 1, minimum=1, maximum=4
+    "MANGA_DETECTOR_FOCUS_MAX_CHIPS", 2, minimum=1, maximum=4
 )
 DETECTOR_TTA_SMALL_SCALE = _env_float(
     "MANGA_DETECTOR_TTA_SMALL_SCALE", 0.85, minimum=0.25, maximum=1.0
