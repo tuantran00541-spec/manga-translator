@@ -1,0 +1,210 @@
+/* Final frontend layout owner for completion phases 7-12. */
+
+html,
+body,
+.workbench-shell,
+.workbench-frame,
+.app-workspace,
+.workbench-stage-grid,
+.workbench-canvas-column,
+.translation-canvas-host {
+  min-width: 0;
+  max-width: 100%;
+}
+
+body {
+  overflow-x: clip;
+}
+
+/* Panel width is controlled here; panel visibility remains explicit in JS. */
+.workbench-stage-grid {
+  --nav-width: 176px;
+  --inspector-width: 292px;
+  transition: none !important;
+}
+
+.workbench-stage-grid[data-nav-open="false"] {
+  --nav-width: 0px;
+}
+
+.workbench-stage-grid[data-inspector-open="false"] {
+  --inspector-width: 0px;
+}
+
+.process-commandbar,
+.review-sticky-toolbar,
+.translation-sticky-toolbar {
+  top: var(--app-header-height) !important;
+}
+
+.page-navigator,
+.context-inspector {
+  top: var(--sticky-header-offset);
+  max-height: calc(100dvh - var(--sticky-header-offset) - 8px);
+}
+
+.workbench-canvas-column,
+.translation-canvas-host {
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.release-history-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+.release-history-controls .ui-btn:disabled {
+  opacity: .45;
+}
+
+/* Drawing should own touch gestures only while the corresponding tool is active. */
+.draw-excluded-active .excluded-draw-layer,
+.page-image-wrap.draw-mode,
+.brush-canvas.brush-active,
+.brush-canvas[data-brush-active="true"] {
+  touch-action: none;
+}
+
+.excluded-draw-layer,
+.page-image-wrap,
+.brush-canvas {
+  touch-action: pan-x pan-y;
+}
+
+body[data-layout-mode="wide"] .workbench-stage-grid {
+  --nav-width: 176px;
+  --inspector-width: 292px;
+}
+
+body[data-layout-mode="medium"] .workbench-stage-grid {
+  --nav-width: 176px;
+  --inspector-width: 292px;
+}
+
+body[data-layout-mode="wide"] .workbench-canvas-column,
+body[data-layout-mode="wide"] .translation-canvas-host,
+body[data-layout-mode="medium"] .workbench-canvas-column,
+body[data-layout-mode="medium"] .translation-canvas-host {
+  padding-inline: 12px;
+}
+
+/* 760-999px: non-modal auxiliary drawers; the canvas stays interactive. */
+body[data-layout-mode="drawer"] .workbench-stage-grid,
+body[data-layout-mode="compact"] .workbench-stage-grid {
+  display: block;
+  min-height: calc(100dvh - var(--app-header-height));
+}
+
+body[data-layout-mode="drawer"] .workbench-stage-grid > .workbench-canvas-column,
+body[data-layout-mode="drawer"] .workbench-stage-grid > .translation-canvas-host,
+body[data-layout-mode="compact"] .workbench-stage-grid > .workbench-canvas-column,
+body[data-layout-mode="compact"] .workbench-stage-grid > .translation-canvas-host {
+  width: 100%;
+  min-height: calc(100dvh - var(--app-header-height));
+}
+
+body[data-layout-mode="drawer"] .workbench-stage-grid > .page-navigator,
+body[data-layout-mode="drawer"] .workbench-stage-grid > .context-inspector {
+  position: fixed;
+  z-index: 84;
+  top: var(--app-header-height);
+  bottom: 0;
+  width: min(320px, 42vw);
+  max-height: none;
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-panel);
+  box-shadow: var(--shadow-float);
+}
+
+body[data-layout-mode="drawer"] .workbench-stage-grid > .page-navigator {
+  left: 0;
+  right: auto;
+  border-left: 0;
+}
+
+body[data-layout-mode="drawer"] .workbench-stage-grid > .context-inspector {
+  right: 0;
+  left: auto;
+  border-right: 0;
+}
+
+/* <760px: compact bottom sheet for either pages or tools. */
+body[data-layout-mode="compact"] .workbench-stage-grid > .page-navigator,
+body[data-layout-mode="compact"] .workbench-stage-grid > .context-inspector {
+  position: fixed;
+  z-index: 84;
+  inset: auto 0 0 0;
+  width: 100%;
+  max-width: 100%;
+  max-height: min(58dvh, 520px);
+  overflow: auto;
+  border: 1px solid var(--border-strong);
+  border-width: 1px 0 0;
+  border-radius: 12px 12px 0 0;
+  background: var(--surface-panel);
+  box-shadow: var(--shadow-float);
+}
+
+body[data-layout-mode="compact"] .page-navigator-list {
+  max-height: min(42dvh, 380px);
+}
+
+body[data-layout-mode="compact"] .workbench-topbar-actions {
+  min-width: 0;
+}
+
+body[data-layout-mode="compact"] .workbench-panel-controls {
+  flex-wrap: nowrap;
+}
+
+body[data-layout-mode="compact"] :is(.review-sticky-toolbar, .translation-sticky-toolbar, .process-commandbar) {
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+body[data-layout-mode="compact"] .release-history-controls {
+  order: 20;
+}
+
+/* Preserve selected text visibility when layout widths change. */
+.text-object-overlay.selected {
+  scroll-margin: 24px;
+}
+
+/* Long-page images pan inside the canvas rather than widening the document. */
+:is(.preview-viewport, .review-viewport, .review-stitched-viewport, .translation-canvas-host) {
+  max-width: 100%;
+}
+
+@media (max-width: 759px) {
+  #landing-view {
+    padding-inline: 12px;
+  }
+
+  .landing-start {
+    padding: 14px;
+  }
+
+  #chapter-input.chapter-input-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  #chapter-input.chapter-input-grid > .ui-btn {
+    width: 100%;
+  }
+
+  .settings-drawer {
+    width: 100vw;
+    max-width: 100vw;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workbench-stage-grid,
+  .workbench-stage-grid * {
+    scroll-behavior: auto !important;
+  }
+}

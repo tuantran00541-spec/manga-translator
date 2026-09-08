@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Frontend release harness</title>
+<link rel="stylesheet" href="/static/css/app.css">
+<style>
+  .fixture-page { width:100%; min-height:72vh; display:grid; place-items:center; background:var(--surface-canvas); border:1px solid var(--border-subtle); }
+  .fixture-art { width:min(100%,900px); aspect-ratio:2/3; background:linear-gradient(135deg,var(--surface-raised),var(--surface-panel)); border:1px solid var(--border-strong); }
+  #fixture-result { position:fixed; left:-10000px; top:0; white-space:pre-wrap; }
+</style>
+</head>
+<body data-app-stage="editor">
+<div id="app" class="workbench-shell"><div class="workbench-frame">
+<header id="site-header" class="workbench-topbar">
+  <button id="app-home" class="workbench-brand" type="button">Manga Translator</button>
+  <nav id="workflow-steps" class="workbench-stage-nav" aria-label="Các bước xử lý">
+    <button class="workbench-stage-link complete" type="button" data-stage="preview">Xử lý</button>
+    <button class="workbench-stage-link complete" type="button" data-stage="review">Kiểm tra</button>
+    <button class="workbench-stage-link active" type="button" data-stage="editor">Biên tập</button>
+  </nav>
+  <div class="workbench-title-block"><span id="app-context" class="app-context">Fixture chapter</span></div>
+  <div class="workbench-topbar-actions">
+    <div id="workbench-panel-controls" class="workbench-panel-controls">
+      <button id="toggle-page-panel" class="ui-btn ui-btn-ghost ui-btn-compact" aria-expanded="true">Trang</button>
+      <button id="toggle-inspector-panel" class="ui-btn ui-btn-ghost ui-btn-compact" aria-expanded="true">Công cụ</button>
+      <button id="toggle-focus-mode" class="ui-btn ui-btn-ghost ui-btn-compact" aria-pressed="false">Tập trung</button>
+    </div>
+    <button id="settings-toggle" class="ui-btn ui-btn-ghost ui-btn-compact">Cài đặt</button>
+  </div>
+</header>
+<main id="page-view" class="app-workspace editor-mode">
+  <div class="translation-sticky-toolbar"><strong>Biên tập</strong><button class="ui-btn ui-btn-primary chapter-export-run">Xuất chương</button></div>
+  <div class="workbench-stage-grid editor-workbench-grid" data-nav-open="true" data-inspector-open="true">
+    <aside class="page-navigator" id="editor-page-panel">
+      <div class="page-navigator-header"><strong>Trang biên tập</strong></div>
+      <div class="page-navigator-list">
+        <button class="page-navigator-item active" aria-current="page"><span class="page-navigator-thumb">01</span><span class="page-navigator-item-text"><strong>Trang 1</strong><span>Đang biên tập</span></span></button>
+        <button class="page-navigator-item"><span class="page-navigator-thumb">02</span><span class="page-navigator-item-text"><strong>Trang 2</strong><span>Đang biên tập</span></span></button>
+        <button class="page-navigator-item"><span class="page-navigator-thumb">03</span><span class="page-navigator-item-text"><strong>Trang 3</strong><span>Đang biên tập</span></span></button>
+      </div>
+    </aside>
+    <main class="translation-canvas-host workbench-canvas-column"><div class="fixture-page"><div class="fixture-art"></div></div></main>
+    <aside class="context-inspector editor-inspector" id="editor-inspector-panel"><div class="context-inspector-heading"><strong>Vùng chữ</strong></div><section class="inspector-section"><p>Nội dung gốc / OCR</p><textarea class="ui-textarea">Sample text</textarea><p>Bản dịch</p><textarea class="ui-textarea">Bản dịch</textarea></section></aside>
+  </div>
+</main>
+</div></div>
+<pre id="fixture-result">pending</pre>
+<script>
+(() => {
+  window.currentChapterId = "fixture";
+  window.currentManifest = { chapter_id:"fixture", pages:[{text_objects:[]} ] };
+  window.editorState = { activePageIndex:0, selectedTextObjectId:null };
+  window.showToast = () => {};
+  window.findTextObject = () => null;
+  window.disposePageNavigators = () => {};
+  window.MT_MASK_WORKER_URL = "/static/js/mask-encoder-worker.js";
+  const params = new URLSearchParams(location.search);
+  const baseline = params.has("baseline");
+  const captureOnly = params.has("capture");
+  const resultNode = document.getElementById("fixture-result");
+
+  function checksum(data) {
+    let hash = 2166136261 >>> 0;
+    for (let i = 0; i < data.length; i += 97) {
+      hash ^= data[i];
+      hash = Math.imul(hash, 16777619) >>> 0;
+    }
+    return hash >>> 0;
+  }
+
+  function publishFailure(error) {
+    const message = error && error.stack ? error.stack : String(error);
+    document.body.dataset.fixtureStatus = "error";
+    resultNode.textContent = JSON.stringify({ fixtureError: message });
+  }
+
+  function decodeBlob(blob, timeoutMs = 1800) {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(blob);
+      const image = new Image();
+      const finish = (callback, value) => {
+        clearTimeout(timer);
+        URL.revokeObjectURL(url);
+        callback(value);
+      };
+      const timer = setTimeout(() => finish(reject, new Error(`PNG image decode timed out after ${timeoutMs}ms`)), timeoutMs);
+      image.onload = () => finish(resolve, image);
+      image.onerror = () => finish(reject, new Error("PNG image decode failed"));
+      image.src = url;
+    });
+  }
+
+  async function settleLayout() {
+    window.frontendReleaseDebug?.applyResponsivePanels?.();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    window.frontendReleaseDebug?.applyResponsivePanels?.();
+  }
+
+  async function runChecks() {
+    await settleLayout();
+    const root = document.documentElement;
+    const canvasHost = document.querySelector(".translation-canvas-host");
+    const header = document.getElementById("site-header");
+    const result = {
+      baseline,
+      viewport: { width: innerWidth, height: innerHeight },
+      layoutMode: document.body.dataset.layoutMode || "legacy",
+      headerHeight: Math.round(header.getBoundingClientRect().height),
+      canvasWidth: Math.round(canvasHost.getBoundingClientRect().width),
+      documentWidth: root.scrollWidth,
+      overflowX: root.scrollWidth > root.clientWidth + 1,
+      geometryEquivalent: false,
+      mask: null,
+    };
+
+    const natural = { w:1600, h:2400 };
+    const rect1 = { w:Math.max(1, canvasHost.clientWidth - 24), h:Math.max(1, (canvasHost.clientWidth - 24) * 1.5) };
+    const cssPoint = { x:rect1.w * 0.37, y:rect1.h * 0.61 };
+    const canonical = { x:cssPoint.x * natural.w / rect1.w, y:cssPoint.y * natural.h / rect1.h };
+    const rect2 = { w:Math.max(1, rect1.w * 0.73), h:Math.max(1, rect1.h * 0.73) };
+    const projected = { x:canonical.x * rect2.w / natural.w, y:canonical.y * rect2.h / natural.h };
+    const roundTrip = { x:projected.x * natural.w / rect2.w, y:projected.y * natural.h / rect2.h };
+    result.geometryEquivalent = Math.abs(roundTrip.x - canonical.x) < 1e-7 && Math.abs(roundTrip.y - canonical.y) < 1e-7;
+
+    if (!baseline && !captureOnly && typeof window.frontendReleaseEncodeCanvas === "function") {
+      const mask = document.createElement("canvas");
+      mask.width = 1600;
+      mask.height = 3200;
+      const ctx = mask.getContext("2d");
+      ctx.clearRect(0,0,mask.width,mask.height);
+      ctx.fillStyle = "rgba(220,38,38,.7)";
+      ctx.fillRect(111, 203, 512, 997);
+      ctx.beginPath(); ctx.arc(980, 1820, 233, 0, Math.PI * 2); ctx.fill();
+      const original = ctx.getImageData(0,0,mask.width,mask.height);
+      const beforeHeap = performance.memory?.usedJSHeapSize || null;
+      const syncStart = performance.now();
+      const dataUrl = mask.toDataURL("image/png");
+      const syncMs = performance.now() - syncStart;
+      const encodeStart = performance.now();
+      const pending = window.frontendReleaseEncodeCanvas(mask);
+      const submitMs = performance.now() - encodeStart;
+      const blob = await pending;
+      const totalMs = performance.now() - encodeStart;
+      const decodedImage = await decodeBlob(blob);
+      const decoded = document.createElement("canvas");
+      decoded.width = mask.width; decoded.height = mask.height;
+      decoded.getContext("2d").drawImage(decodedImage,0,0);
+      const restored = decoded.getContext("2d").getImageData(0,0,decoded.width,decoded.height);
+      const afterHeap = performance.memory?.usedJSHeapSize || null;
+      result.mask = {
+        width: mask.width,
+        height: mask.height,
+        baselineSyncMs: Number(syncMs.toFixed(3)),
+        asyncSubmitMs: Number(submitMs.toFixed(3)),
+        asyncTotalMs: Number(totalMs.toFixed(3)),
+        baselineBytesApprox: Math.round(dataUrl.length * .75),
+        blobBytes: blob.size,
+        heapDeltaBytes: beforeHeap != null && afterHeap != null ? afterHeap - beforeHeap : null,
+        exactPixels: checksum(original.data) === checksum(restored.data),
+        encoder: window.frontendReleaseDebug?.encoderMetrics || null,
+        encoderGuard: window.frontendReleaseEncoderGuard ? {
+          timeoutMs: window.frontendReleaseEncoderGuard.timeoutMs,
+          degraded: window.frontendReleaseEncoderGuard.degraded,
+        } : null,
+      };
+    }
+
+    const pass = !result.overflowX
+      && result.geometryEquivalent
+      && (baseline || innerWidth !== 1366 || result.canvasWidth >= 800)
+      && (baseline || captureOnly || result.mask?.exactPixels === true);
+    document.body.dataset.fixtureStatus = pass ? "pass" : "fail";
+    resultNode.textContent = JSON.stringify(result);
+  }
+
+  function startChecks() {
+    void runChecks().catch(publishFailure);
+  }
+
+  if (baseline) {
+    if (document.readyState === "complete") startChecks();
+    else addEventListener("load", startChecks, { once:true });
+    return;
+  }
+  const releaseCss = document.createElement("link");
+  releaseCss.rel = "stylesheet";
+  releaseCss.href = "/static/css/frontend-release.css";
+  document.head.appendChild(releaseCss);
+  const script = document.createElement("script");
+  script.src = "/static/js/frontend-release.js";
+  script.onload = () => {
+    const guard = document.createElement("script");
+    guard.src = "/static/js/frontend-release-encoder-guard.js";
+    guard.onload = () => { setTimeout(startChecks, 50); };
+    guard.onerror = () => publishFailure(new Error("frontend-release-encoder-guard.js failed to load"));
+    document.body.appendChild(guard);
+  };
+  script.onerror = () => publishFailure(new Error("frontend-release.js failed to load"));
+  document.body.appendChild(script);
+})();
+</script>
+</body>
+</html>

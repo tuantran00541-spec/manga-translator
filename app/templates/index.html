@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Manga Translator</title>
 <link rel="stylesheet" href="/static/css/app.css">
+<link rel="stylesheet" href="/static/css/frontend-release.css">
+<link rel="preload" href="/static/js/mask-encoder-worker.js" as="worker">
 </head>
 <body data-app-stage="landing">
 <div id="app" class="workbench-shell">
@@ -23,7 +25,7 @@
         <div id="workbench-panel-controls" class="workbench-panel-controls" role="group" aria-label="Bố cục vùng làm việc" hidden>
           <button id="toggle-page-panel" class="ui-btn ui-btn-ghost ui-btn-compact" type="button" aria-expanded="true">Trang</button>
           <button id="toggle-inspector-panel" class="ui-btn ui-btn-ghost ui-btn-compact" type="button" aria-expanded="true">Công cụ</button>
-          <button id="toggle-focus-mode" class="ui-btn ui-btn-ghost ui-btn-compact" type="button" aria-pressed="false" title="Chế độ tập trung (Phím Tab)">Tập trung</button>
+          <button id="toggle-focus-mode" class="ui-btn ui-btn-ghost ui-btn-compact" type="button" aria-pressed="false" title="Chế độ tập trung">Tập trung</button>
         </div>
         <div id="workbench-status" class="workbench-status" aria-live="polite"></div>
         <button id="settings-toggle" class="ui-btn ui-btn-ghost ui-btn-compact workbench-settings" type="button" aria-haspopup="dialog" aria-controls="settings-drawer" aria-expanded="false">Cài đặt</button>
@@ -85,7 +87,7 @@
   <div class="settings-body">
     <section class="settings-section" aria-labelledby="ai-settings-title">
       <div class="settings-section-heading"><h3 id="ai-settings-title">Kiểm tra chất lượng bằng AI</h3><p>Khóa API được lưu trong kho bí mật của hệ điều hành khi khả dụng.</p></div>
-      <div id="ai-settings-host" class="ai-settings-host"><p class="settings-placeholder">Cấu hình AI sẽ xuất hiện tại đây khi bước kiểm tra chất lượng được mở.</p></div>
+      <div id="ai-settings-host" class="ai-settings-host"><p class="settings-placeholder">Đang tải cấu hình AI…</p></div>
     </section>
   </div>
 </aside>
@@ -105,6 +107,9 @@
 <script src="/static/js/editor.js"></script>
 <script src="/static/js/editor-box-transform.js"></script>
 <script src="/static/js/ui-shell.js"></script>
+<script src="/static/js/frontend-coordinator.js"></script>
+<script src="/static/js/frontend-release.js"></script>
+<script src="/static/js/frontend-release-encoder-guard.js"></script>
 <script src="/static/js/main.js"></script>
 </body>
 </html>

@@ -1,0 +1,110 @@
+{
+  "chapter_id": "frontend-phase-1-6-fixture",
+  "chapter_name": "Frontend phase 1-6 fixture",
+  "source_lang": "ja",
+  "workflow": {
+    "stage": "review",
+    "page_index": 0
+  },
+  "fixture_notes": {
+    "purpose": "Representative structural fixture for frontend workflow regressions; image paths are placeholders and are not inference quality evidence.",
+    "long_chapter_target_items": 120,
+    "cases": [
+      "processed clean page",
+      "stylized lettering with editable text object",
+      "skipped page",
+      "split source page with two slices",
+      "page carrying an automated detection warning"
+    ]
+  },
+  "pages": [
+    {
+      "source_page": 0,
+      "slice_index": 0,
+      "width": 1200,
+      "height": 1800,
+      "original": "/fixtures/page-001.png",
+      "clean": "/fixtures/page-001-clean.png",
+      "detection_issues": [],
+      "text_objects": []
+    },
+    {
+      "source_page": 1,
+      "slice_index": 0,
+      "width": 1200,
+      "height": 1800,
+      "original": "/fixtures/page-002.png",
+      "clean": "/fixtures/page-002-clean.png",
+      "detection_issues": [],
+      "text_objects": [
+        {
+          "id": "stylized-1",
+          "shape": "ellipse",
+          "region": { "x1": 160, "y1": 210, "x2": 640, "y2": 520 },
+          "ocr_text": "テスト",
+          "translation": "Bản dịch thử",
+          "style": {
+            "font": "default",
+            "fontSize": "42",
+            "bold": true,
+            "color": "#ffffff",
+            "strokeWidth": "3",
+            "strokeColor": "#000000",
+            "bgColor": "transparent",
+            "cornerRadius": "0",
+            "horizontalAlign": "center",
+            "verticalAlign": "middle"
+          }
+        }
+      ]
+    },
+    {
+      "source_page": 2,
+      "slice_index": 0,
+      "width": 1200,
+      "height": 1800,
+      "original": "/fixtures/page-003.png",
+      "skipped": true,
+      "detection_issues": [],
+      "text_objects": []
+    },
+    {
+      "source_page": 3,
+      "slice_index": 0,
+      "width": 1200,
+      "height": 1400,
+      "original": "/fixtures/page-004-a.png",
+      "clean": "/fixtures/page-004-a-clean.png",
+      "detection_issues": [],
+      "text_objects": []
+    },
+    {
+      "source_page": 3,
+      "slice_index": 1,
+      "width": 1200,
+      "height": 1400,
+      "original": "/fixtures/page-004-b.png",
+      "clean": "/fixtures/page-004-b-clean.png",
+      "detection_issues": [],
+      "text_objects": []
+    },
+    {
+      "source_page": 4,
+      "slice_index": 0,
+      "width": 1200,
+      "height": 1800,
+      "original": "/fixtures/page-005.png",
+      "clean": "/fixtures/page-005-clean.png",
+      "needs_review": true,
+      "detection_state": "needs_review",
+      "detection_issues": [
+        {
+          "issue_type": "possible_missed_text",
+          "confidence": 0.82,
+          "polygon": [[180, 220], [520, 220], [520, 390], [180, 390]]
+        }
+      ],
+      "text_objects": []
+    }
+  ]
+}

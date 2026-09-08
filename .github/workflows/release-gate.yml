@@ -11,7 +11,7 @@ on:
 jobs:
   source-sanity:
     runs-on: ubuntu-22.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -37,6 +37,24 @@ jobs:
 
       - name: Check browser JavaScript syntax
         run: find app/static/js -type f -name '*.js' -print0 | xargs -0 -n1 node --check
+
+      - name: Run frontend coordinator regression
+        run: node scripts/frontend_coordinator_sanity.js
+
+      - name: Run frontend release regression
+        run: node scripts/frontend_release_sanity.js
+
+      - name: Run frontend browser, geometry, and mask benchmark gate
+        run: python scripts/frontend_release_browser_check.py --artifacts frontend-browser-artifacts
+
+      - name: Upload frontend browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-browser-evidence-${{ github.run_number }}
+          path: frontend-browser-artifacts
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Test-suite location
         run: |
