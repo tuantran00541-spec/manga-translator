@@ -133,6 +133,8 @@ class CombinedTextDetector:
         its interior must be overwhelmingly white or black, and only contrasting
         stroke pixels become the inpaint mask.
         """
+        if box.source_role == "bubble_detector":
+            return None
         if (
             box.semantic_type != "speech_bubble"
             or float(box.confidence) < BUBBLE_DESTRUCTIVE_CONF_THRESHOLD

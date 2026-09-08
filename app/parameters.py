@@ -597,6 +597,9 @@ SMART_FILL_EDGE_DENSITY_MAX = _env_float(
 SMART_FILL_BLACK_EDGE_DENSITY_MAX = _env_float(
     "MANGA_SMART_FILL_BLACK_EDGE_DENSITY_MAX", 0.002, minimum=0.0, maximum=1.0
 )
+SMART_FILL_CHROMA_STD_MAX = _env_float(
+    "MANGA_SMART_FILL_CHROMA_STD_MAX", 12.0, minimum=0.0, maximum=128.0
+)
 SMART_FILL_MIDTONE_MIN = _env_float(
     "MANGA_SMART_FILL_MIDTONE_MIN", 50.0, minimum=0.0, maximum=255.0
 )

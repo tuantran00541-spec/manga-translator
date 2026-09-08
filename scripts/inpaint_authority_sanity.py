@@ -158,7 +158,7 @@ def main() -> None:
         "AUTO_DESTRUCTIVE_MASK_SOURCES = frozenset(",
         '"text_segmenter"',
         '"bubble_flat_contrast"',
-        '"opencv_mser"',
+        "MSER recovery remains review evidence",
         "def is_destructive_box_authorized(box: BubbleBox) -> bool:",
         'getattr(box, "safe_to_inpaint", False)',
         "or _rectangle_fallback_allowed(box)",

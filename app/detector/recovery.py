@@ -451,27 +451,30 @@ class SecondaryTextRecovery:
                 b.safe_to_inpaint for b in existing
             ):
                 continue
-            safe = bool(
+            review_mask_valid = bool(
                 MSER_SAFE_MASK_RATIO_MIN <= ratio <= MSER_SAFE_MASK_RATIO_MAX
                 and not self._mask_component_spans_crop(mask)
                 and page_ratio <= MSER_SAFE_PAGE_AREA_RATIO_MAX
                 and len(cluster) >= MSER_SAFE_CLUSTER_MIN_REGIONS
             )
-            if safe:
+            if review_mask_valid:
                 candidate = replace(
                     candidate,
                     mask=mask,
-                    mask_source="opencv_mser",
-                    safe_to_inpaint=True,
+                    mask_source="opencv_mser_review",
+                    safe_to_inpaint=False,
                     ocr_eligible=True,
-                    needs_review=False,
+                    needs_review=True,
                     confidence=MSER_SAFE_CONFIDENCE,
                 )
             out.append(candidate)
 
+        # Review-only MSER proposals must not suppress additional review
+        # recovery. Residual lines are permitted when independent existing
+        # evidence is already verified; they still never gain erase authority.
         verification_set = existing + out
-        if verification_set and all(
-            box.safe_to_inpaint and not box.needs_review for box in verification_set
+        if existing and all(
+            box.safe_to_inpaint and not box.needs_review for box in existing
         ):
             residual = self._residual_line_candidates(
                 np.asarray(boxes), (h, w), verification_set

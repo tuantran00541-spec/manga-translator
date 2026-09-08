@@ -38,6 +38,7 @@ from app.parameters import (
     SMART_FILL_BLACK_STD_MAX,
     SMART_FILL_CANNY_HIGH,
     SMART_FILL_CANNY_LOW,
+    SMART_FILL_CHROMA_STD_MAX,
     SMART_FILL_CLEAN_RING_MARGIN,
     SMART_FILL_CONTEXT_MARGIN_FACTOR,
     SMART_FILL_EDGE_DENSITY_MAX,
@@ -418,6 +419,22 @@ class Inpainter:
         ring_pixels = crop[ring]
         context_std = float(context_gray.std())
 
+        # Grayscale flatness is not color flatness. Equal-luminance artwork can
+        # have almost zero gray variance while carrying strong chromatic edges.
+        # Smart Fill is allowed only when both the clean ring and wider context
+        # are chromatically stable in CIELAB a/b channels.
+        chroma_safe = True
+        if crop.ndim == 3 and crop.shape[2] == 3:
+            lab = cv2.cvtColor(crop, cv2.COLOR_BGR2LAB)
+            ring_ab = lab[ring, 1:3].astype(np.float32, copy=False)
+            context_ab = lab[context, 1:3].astype(np.float32, copy=False)
+            ring_chroma_std = float(np.max(ring_ab.std(axis=0))) if ring_ab.size else 0.0
+            context_chroma_std = float(np.max(context_ab.std(axis=0))) if context_ab.size else 0.0
+            chroma_safe = bool(
+                ring_chroma_std <= SMART_FILL_CHROMA_STD_MAX
+                and context_chroma_std <= SMART_FILL_CHROMA_STD_MAX
+            )
+
         edges = cv2.Canny(
             gray,
             SMART_FILL_CANNY_LOW,
@@ -432,7 +449,8 @@ class Inpainter:
         median_gray = float(np.median(ring_gray))
 
         if (
-            white_ratio >= SMART_FILL_WHITE_RATIO_MIN
+            chroma_safe
+            and white_ratio >= SMART_FILL_WHITE_RATIO_MIN
             and ring_std <= SMART_FILL_WHITE_STD_MAX
             and context_std <= SMART_FILL_FULL_STD_MAX
             and context_edge_density <= SMART_FILL_EDGE_DENSITY_MAX
@@ -442,7 +460,8 @@ class Inpainter:
                 return np.median(white_pixels, axis=0).astype(np.uint8)
 
         if (
-            black_ratio >= SMART_FILL_BLACK_RATIO_MIN
+            chroma_safe
+            and black_ratio >= SMART_FILL_BLACK_RATIO_MIN
             and ring_std <= SMART_FILL_BLACK_STD_MAX
             and context_std <= SMART_FILL_BLACK_STD_MAX
             and context_edge_density <= SMART_FILL_BLACK_EDGE_DENSITY_MAX
@@ -452,7 +471,8 @@ class Inpainter:
                 return np.median(black_pixels, axis=0).astype(np.uint8)
 
         if (
-            SMART_FILL_MIDTONE_MIN <= median_gray <= SMART_FILL_MIDTONE_MAX
+            chroma_safe
+            and SMART_FILL_MIDTONE_MIN <= median_gray <= SMART_FILL_MIDTONE_MAX
             and ring_std <= SMART_FILL_MIDTONE_STD_MAX
             and context_std <= SMART_FILL_MIDTONE_STD_MAX
             and context_edge_density <= SMART_FILL_BLACK_EDGE_DENSITY_MAX
@@ -514,9 +534,14 @@ class Inpainter:
 
         original_crop = image[cy1:cy2, cx1:cx2]
         if feather:
-            alpha = (local_mask > 127).astype(np.float32)
-            k = MANUAL_FEATHER_RADIUS * 2 + 1
-            alpha = cv2.GaussianBlur(alpha, (k, k), 0)
+            core = local_mask > 127
+            alpha = core.astype(np.float32)
+            if MANUAL_FEATHER_RADIUS > 0:
+                k = MANUAL_FEATHER_RADIUS * 2 + 1
+                feathered = cv2.GaussianBlur(alpha, (k, k), 0)
+                # Feather only the explicit margin; approved glyph support stays
+                # fully opaque so text cannot ghost back through the composite.
+                alpha = np.where(core, 1.0, feathered)
             alpha = np.clip(alpha, 0.0, 1.0)[:, :, None]
             blended = painted.astype(np.float32) * alpha + original_crop.astype(np.float32) * (1.0 - alpha)
             image[cy1:cy2, cx1:cx2] = np.clip(blended, 0, 255).astype(np.uint8)
@@ -524,6 +549,32 @@ class Inpainter:
             mask_3d = (local_mask > 127)[:, :, None]
             image[cy1:cy2, cx1:cx2] = np.where(mask_3d, painted, original_crop)
         return image
+
+    @staticmethod
+    def _resize_mask_preserve_support(
+        mask: np.ndarray,
+        width: int,
+        height: int,
+    ) -> np.ndarray:
+        """Resize a binary mask without dropping thin glyph support.
+
+        Downscaling uses area coverage and promotes any positive contribution;
+        upscaling remains nearest-neighbour so no interpolated authority is
+        invented between disconnected source pixels.
+        """
+        width, height = max(1, int(width)), max(1, int(height))
+        source = (mask > 127).astype(np.uint8) * 255
+        src_h, src_w = source.shape[:2]
+        if (src_w, src_h) == (width, height):
+            return source
+        if width < src_w or height < src_h:
+            coverage = cv2.resize(
+                source.astype(np.float32),
+                (width, height),
+                interpolation=cv2.INTER_AREA,
+            )
+            return (coverage > 0.0).astype(np.uint8) * 255
+        return cv2.resize(source, (width, height), interpolation=cv2.INTER_NEAREST)
 
     def _lama_fill_single(self, crop: np.ndarray, local_mask: np.ndarray) -> np.ndarray:
         if self.dynamic_lama:
@@ -542,7 +593,7 @@ class Inpainter:
 
         if new_h != crop_h or new_w != crop_w:
             crop_resized = cv2.resize(crop, (new_w, new_h), interpolation=cv2.INTER_AREA)
-            mask_resized = cv2.resize(local_mask, (new_w, new_h), interpolation=cv2.INTER_NEAREST)
+            mask_resized = self._resize_mask_preserve_support(local_mask, new_w, new_h)
         else:
             crop_resized = crop
             mask_resized = local_mask
@@ -586,7 +637,7 @@ class Inpainter:
             crop_resized, pad_y, pad_bottom, pad_x, pad_right, cv2.BORDER_REPLICATE
         )
 
-        mask_resized = cv2.resize(local_mask, (new_w, new_h), interpolation=cv2.INTER_NEAREST)
+        mask_resized = self._resize_mask_preserve_support(local_mask, new_w, new_h)
         mask_canvas = np.zeros((INPAINT_SIZE, INPAINT_SIZE), dtype=np.uint8)
         mask_canvas[pad_y:pad_y + new_h, pad_x:pad_x + new_w] = mask_resized
 

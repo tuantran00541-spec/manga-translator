@@ -11,8 +11,10 @@ from app.parameters import (
     MASK_EXPAND,
 )
 
+# MSER recovery remains review evidence until independent text evidence or
+# an explicit user action authorizes cleanup. It is intentionally absent here.
 AUTO_DESTRUCTIVE_MASK_SOURCES = frozenset(
-    {"text_segmenter", "bubble_flat_contrast", "opencv_mser"}
+    {"text_segmenter", "bubble_flat_contrast"}
 )
 
 
