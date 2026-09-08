@@ -277,8 +277,92 @@ def geometry_contract_checks():
     )
 
 
+def evidence_retention_checks():
+    import types
+    import numpy as np
+
+    if "onnxruntime" not in sys.modules:
+        sys.modules["onnxruntime"] = types.ModuleType("onnxruntime")
+
+    from app.detector.bubble_detector import BubbleBox, YoloDetector
+    from app.detector.combined_detector import CombinedTextDetector
+    from app.detector.mask_builder import build_mask
+    from app.inpaint.lama_inpainter import Inpainter
+
+    giant = BubbleBox(
+        0, 100, 980, 120, 0.9,
+        np.full((20, 980), 255, np.uint8),
+        source_model="segmenter.onnx",
+        class_name="text_comic",
+        semantic_type="text",
+        mask_source="text_segmenter",
+        safe_to_inpaint=True,
+        ocr_eligible=True,
+        source_role="text_segmenter",
+    )
+    retained = YoloDetector._filter_invalid([giant], 1000, 1000)
+    check(len(retained) == 1, "giant SFX evidence disappeared")
+    check(
+        retained[0].deferred_reason
+        and "box_width_limit" in retained[0].deferred_reason
+        and retained[0].needs_review
+        and not retained[0].safe_to_inpaint,
+        "giant SFX was not explicitly deferred",
+    )
+    review_mask = build_mask((1000, 1000), retained)
+    check(
+        not np.any(review_mask > 0),
+        "review-only region gained automatic destructive authority",
+    )
+
+    first = BubbleBox(
+        200, 50, 800, 350, 0.9,
+        np.full((300, 600), 255, np.uint8),
+        source_model="segmenter.onnx", class_name="text_comic",
+        semantic_type="text", mask_source="text_segmenter",
+        safe_to_inpaint=True, ocr_eligible=True,
+        source_role="text_segmenter",
+    )
+    second = BubbleBox(
+        200, 350, 800, 650, 0.8,
+        np.full((300, 600), 255, np.uint8),
+        source_model="segmenter.onnx", class_name="text_comic",
+        semantic_type="text", mask_source="text_segmenter",
+        safe_to_inpaint=True, ocr_eligible=True,
+        source_role="text_segmenter",
+    )
+
+    detector = object.__new__(CombinedTextDetector)
+    grouped = detector._cluster_free_text_boxes([first, second], 1000, 1000)
+    check(len(grouped) == 2, "oversized free-text group dropped evidence")
+    check(
+        all(box.mask is not None and np.any(box.mask > 0) for box in grouped),
+        "oversized free-text split lost a child mask",
+    )
+
+    split = Inpainter._split_oversized_cluster_area(
+        [first, second], 1000, 1000
+    )
+    flat = [box for group in split for box in group]
+    check(len(split) == 2 and len(flat) == 2, "two-box inpaint split lost evidence")
+    combined_mask = build_mask((1000, 1000), flat)
+    check(
+        combined_mask[100, 300] > 0 and combined_mask[500, 300] > 0,
+        "two-box reproduction did not retain both masks",
+    )
+
+    pipeline_source = (ROOT / "app/pipeline.py").read_text(encoding="utf-8")
+    check(
+        'target_page["deferred_regions"]' in pipeline_source
+        and '"deferred_reason": b.deferred_reason' in pipeline_source
+        and 'and not record.get("deferred_reason")' in pipeline_source,
+        "saved/deferred decision contract missing",
+    )
+
+
+evidence_retention_checks()
 model_contract_checks()
 geometry_contract_checks()
 publication_safety_checks()
 windows_locked_reader_check()
-print("backend foundation sanity: phases 1-2 PASS")
+print("backend foundation sanity: phases 1-3 PASS")

@@ -124,6 +124,7 @@ class Inpainter:
             "boxes": max(0, int(boxes)),
             "clusters": 0,
             "skipped_clusters": 0,
+            "split_clusters": 0,
             "smart_fill_regions": 0,
             "lama_regions": 0,
             "lama_model_runs": 0,
@@ -260,7 +261,13 @@ class Inpainter:
 
         result = image.copy()
         h, w = image.shape[:2]
-        clusters = self._cluster_boxes(boxes)
+        raw_clusters = self._cluster_boxes(boxes)
+        clusters: list[list[BubbleBox]] = []
+        for cluster in raw_clusters:
+            parts = self._split_oversized_cluster_area(cluster, w, h)
+            if len(parts) > 1:
+                self._metric_add("split_clusters", len(parts) - 1)
+            clusters.extend(parts)
         self._metrics_local.value["clusters"] = len(clusters)
 
         for cluster in clusters:
@@ -268,11 +275,6 @@ class Inpainter:
             y1 = min(b.y1 for b in cluster)
             x2 = max(b.x2 for b in cluster)
             y2 = max(b.y2 for b in cluster)
-
-            if len(cluster) > 1 and (x2 - x1) * (y2 - y1) > w * h * MAX_BOX_AREA_RATIO:
-                self._metric_add("skipped_clusters")
-                logger.warning(f"Skipping multi-box cluster ({len(cluster)} boxes) at ({x1}, {y1}, {x2}, {y2}): area exceeds MAX_BOX_AREA_RATIO")
-                continue
 
             crop_box = self._compute_crop_region(x1, y1, x2, y2, w, h)
 
@@ -295,6 +297,7 @@ class Inpainter:
                     ocr_eligible=bool(b.ocr_eligible),
                     needs_review=bool(b.needs_review),
                     source_role=b.source_role,
+                    deferred_reason=b.deferred_reason,
                 )
                 if bool(getattr(b, "allow_rectangle_fallback", False)):
                     local_box.allow_rectangle_fallback = True
@@ -742,6 +745,52 @@ class Inpainter:
                 final_clusters.append(cluster)
 
         return final_clusters
+
+    @staticmethod
+    def _split_oversized_cluster_area(
+        cluster: list[BubbleBox],
+        img_w: int,
+        img_h: int,
+    ) -> list[list[BubbleBox]]:
+        """Split an oversized group without dropping any child evidence."""
+        if not cluster:
+            return []
+        page_limit = max(1.0, float(img_w * img_h) * MAX_BOX_AREA_RATIO)
+        pending = [list(cluster)]
+        result: list[list[BubbleBox]] = []
+        while pending:
+            group = pending.pop()
+            x1 = min(b.x1 for b in group)
+            y1 = min(b.y1 for b in group)
+            x2 = max(b.x2 for b in group)
+            y2 = max(b.y2 for b in group)
+            area = max(0, x2 - x1) * max(0, y2 - y1)
+            if len(group) <= 1 or area <= page_limit:
+                result.append(group)
+                continue
+
+            span_x = x2 - x1
+            span_y = y2 - y1
+            if span_x >= span_y:
+                ordered = sorted(group, key=lambda b: ((b.x1 + b.x2), b.y1, b.x1))
+            else:
+                ordered = sorted(group, key=lambda b: ((b.y1 + b.y2), b.x1, b.y1))
+            midpoint = max(1, len(ordered) // 2)
+            left = ordered[:midpoint]
+            right = ordered[midpoint:]
+            if not right:
+                result.extend([[b] for b in ordered])
+                continue
+            pending.append(right)
+            pending.append(left)
+
+        result.sort(
+            key=lambda group: (
+                min(b.y1 for b in group),
+                min(b.x1 for b in group),
+            )
+        )
+        return result
 
     @staticmethod
     def _split_cluster_lines(cluster: list[BubbleBox], avg_h: float) -> list[list[BubbleBox]]:

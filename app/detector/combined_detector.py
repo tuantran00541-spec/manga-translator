@@ -80,6 +80,17 @@ class CombinedTextDetector:
         }
 
     def _classify(self, box: BubbleBox) -> BubbleBox:
+        if box.deferred_reason:
+            return replace(
+                box,
+                safe_to_inpaint=False,
+                ocr_eligible=bool(
+                    box.ocr_eligible
+                    or box.source_role == "text_segmenter"
+                    or box.semantic_type == "free_text"
+                ),
+                needs_review=True,
+            )
         if box.verified_mask and box.source_role == "text_segmenter":
             return replace(box, mask_source="text_segmenter", safe_to_inpaint=True,
                            ocr_eligible=True, needs_review=False)
@@ -321,11 +332,23 @@ class CombinedTextDetector:
                 max_y = min(h, max(t.y2 for t in group) + BUBBLE_GROUP_PAD_Y)
                 merged_mask = self._merge_masks(group, min_x, min_y, max_x, max_y)
                 seed = max(group, key=lambda t: t.confidence)
-                safe = merged_mask is not None and bool(np.any(merged_mask > 0))
-                merged = replace(seed, x1=int(min_x), y1=int(min_y), x2=int(max_x), y2=int(max_y),
-                                 mask=merged_mask, semantic_type=b.semantic_type,
-                                 mask_source="text_segmenter" if safe else "none",
-                                 safe_to_inpaint=safe, ocr_eligible=True, needs_review=not safe)
+                deferred_reason = next(
+                    (t.deferred_reason for t in group if t.deferred_reason),
+                    None,
+                )
+                safe = (
+                    deferred_reason is None
+                    and merged_mask is not None
+                    and bool(np.any(merged_mask > 0))
+                )
+                merged = replace(
+                    seed,
+                    x1=int(min_x), y1=int(min_y), x2=int(max_x), y2=int(max_y),
+                    mask=merged_mask, semantic_type=b.semantic_type,
+                    mask_source="text_segmenter" if safe else "none",
+                    safe_to_inpaint=safe, ocr_eligible=True, needs_review=not safe,
+                    deferred_reason=deferred_reason,
+                )
                 result_boxes.append(self._classify(merged))
                 used_text_boxes.update(i for i, _ in inside)
             else:
@@ -588,6 +611,10 @@ class CombinedTextDetector:
                         continue
                     cluster_area = (max_x - min_x) * (max_y - min_y)
                     if cluster_area > img_w * img_h * MAX_BOX_AREA_RATIO:
+                        # Padding is optional layout context. Never lose the
+                        # detector's original mask just because the padded box
+                        # would exceed the broad area heuristic.
+                        final_clusters.append(replace(b))
                         continue
                     merged_mask = self._merge_masks([b], min_x, min_y, max_x, max_y)
                     final_clusters.append(replace(b, x1=min_x, y1=min_y, x2=max_x, y2=max_y, mask=merged_mask))
@@ -600,6 +627,10 @@ class CombinedTextDetector:
                         continue
                     cluster_area = (max_x - min_x) * (max_y - min_y)
                     if cluster_area > img_w * img_h * MAX_BOX_AREA_RATIO:
+                        # Preserve every child mask as an independent region.
+                        # Downstream inpaint can safely split these again; a
+                        # broad grouping heuristic must never erase evidence.
+                        final_clusters.extend(replace(member) for member in sub)
                         continue
                     merged_mask = self._merge_masks(sub, min_x, min_y, max_x, max_y)
                     seed = max(sub, key=lambda t: t.confidence)

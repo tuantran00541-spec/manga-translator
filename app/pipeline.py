@@ -624,6 +624,9 @@ class ChapterPipeline:
                     target_page["unverified_regions"] = list(
                         page_data.get("unverified_regions") or []
                     )
+                    target_page["deferred_regions"] = list(
+                        page_data.get("deferred_regions") or []
+                    )
                     target_page["needs_review"] = bool(page_data.get("needs_review"))
                     target_page["processing_metrics"] = dict(
                         page_data.get("processing_metrics") or {}
@@ -1613,6 +1616,8 @@ class ChapterPipeline:
                 safe_to_inpaint=safe_to_inpaint,
                 ocr_eligible=bool(box.get("ocr_eligible")),
                 needs_review=bool(box.get("needs_review")),
+                source_role=str(box.get("source_role") or "unknown"),
+                deferred_reason=box.get("deferred_reason"),
             )
             if geometry_overridden or explicit_manual:
                 box_object.allow_rectangle_fallback = True
@@ -1728,6 +1733,7 @@ class ChapterPipeline:
                 "class_name": b.class_name, "semantic_type": b.semantic_type,
                 "mask_source": b.mask_source, "safe_to_inpaint": bool(b.safe_to_inpaint),
                 "ocr_eligible": bool(b.ocr_eligible), "needs_review": bool(b.needs_review),
+                "source_role": b.source_role, "deferred_reason": b.deferred_reason,
             }
             for b in detected
         ]
@@ -1772,6 +1778,7 @@ class ChapterPipeline:
             if (
                 not record.get("removed")
                 and not skip_auto_overlap_inpaint
+                and not record.get("deferred_reason")
                 and (record.get("safe_to_inpaint") or record.get("geometry_overridden"))
             ):
                 _effective = BubbleBox(
@@ -1784,6 +1791,8 @@ class ChapterPipeline:
                     mask_source=str(record.get("mask_source") or "none"),
                     safe_to_inpaint=True, ocr_eligible=bool(record.get("ocr_eligible")),
                     needs_review=bool(record.get("needs_review")),
+                    source_role=str(record.get("source_role") or "unknown"),
+                    deferred_reason=record.get("deferred_reason"),
                 )
                 if record.get("geometry_overridden"):
                     _effective.allow_rectangle_fallback = True
@@ -1859,16 +1868,27 @@ class ChapterPipeline:
         write_image(tmp_clean_path, clean_image)
         write_ms = (time.perf_counter() - write_started_at) * 1000.0
 
+        decision_fields = (
+            "x1", "y1", "x2", "y2", "confidence", "source_model",
+            "source_role", "class_name", "semantic_type", "deferred_reason",
+        )
         unverified_regions = [
-            {k: record.get(k) for k in ("x1", "y1", "x2", "y2", "confidence", "source_model", "class_name", "semantic_type")}
+            {k: record.get(k) for k in decision_fields}
             for record in detector_records
             if record.get("needs_review") or not record.get("safe_to_inpaint")
+        ]
+        deferred_regions = [
+            {k: record.get(k) for k in decision_fields}
+            for record in detector_records
+            if record.get("deferred_reason")
         ]
         detection_issues = []
         if seam_context_unavailable:
             detection_issues.append("seam_context_unavailable")
         if unverified_regions:
             detection_issues.append("unverified_regions")
+        if deferred_regions:
+            detection_issues.append("deferred_regions")
         if not detector_records:
             gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
             if float(gray.std()) > DETECTION_CONTENT_STD_MIN:
@@ -1899,6 +1919,7 @@ class ChapterPipeline:
                 "records": len(detector_records),
                 "authorized": len(effective_boxes),
                 "review_only": len(unverified_regions),
+                "deferred": len(deferred_regions),
             },
             "auto_inpaint": auto_inpaint_metrics,
             "manual_inpaint": manual_inpaint_metrics,
@@ -1925,6 +1946,7 @@ class ChapterPipeline:
             "detection_state": detection_state,
             "detection_issues": detection_issues,
             "unverified_regions": unverified_regions,
+            "deferred_regions": deferred_regions,
             "needs_review": bool(detection_issues),
             "processing_metrics": processing_metrics,
         }

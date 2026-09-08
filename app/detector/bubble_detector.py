@@ -132,6 +132,7 @@ class BubbleBox:
     ocr_eligible: bool = False
     needs_review: bool = False
     source_role: str = "unknown"
+    deferred_reason: str | None = None
 
     @property
     def verified_mask(self) -> bool:
@@ -219,25 +220,51 @@ class YoloDetector:
 
             boxes = self._nms_boxes(all_boxes)
 
-        return [self._with_semantics(b) for b in self._filter_invalid(boxes, w, h)]
+        semantic_boxes = [self._with_semantics(b) for b in boxes]
+        return self._filter_invalid(semantic_boxes, w, h)
 
     @staticmethod
-    def _filter_invalid(boxes: list[BubbleBox], img_w: int, img_h: int) -> list[BubbleBox]:
+    def _filter_invalid(
+        boxes: list[BubbleBox], img_w: int, img_h: int
+    ) -> list[BubbleBox]:
+        """Retain oversized/aspect outliers as review evidence instead of dropping them.
+
+        Postprocess already rejects non-positive boxes before this point. Width,
+        page-area and aspect limits are policy heuristics, not proof that model
+        evidence is false. They therefore revoke automatic erase authority but
+        preserve the detected region for review with an explicit reason.
+        """
         result = []
-        page_area = img_w * img_h
+        page_area = max(1, img_w * img_h)
         for b in boxes:
             box_w = b.x2 - b.x1
             box_h = b.y2 - b.y1
             if box_w <= 0 or box_h <= 0:
                 continue
+            reasons: list[str] = []
             if box_w > img_w * MAX_BOX_WIDTH_RATIO:
-                continue
+                reasons.append("box_width_limit")
             if (box_w * box_h) > page_area * MAX_BOX_AREA_RATIO:
-                continue
+                reasons.append("box_area_limit")
             aspect = box_w / box_h
             if aspect > MAX_ASPECT_RATIO or aspect < 1 / MAX_ASPECT_RATIO:
-                continue
-            result.append(b)
+                reasons.append("box_aspect_limit")
+            if reasons:
+                result.append(
+                    replace(
+                        b,
+                        safe_to_inpaint=False,
+                        ocr_eligible=bool(
+                            b.ocr_eligible
+                            or b.source_role == "text_segmenter"
+                            or b.semantic_type == "free_text"
+                        ),
+                        needs_review=True,
+                        deferred_reason="|".join(reasons),
+                    )
+                )
+            else:
+                result.append(b)
         return result
 
     def _detect_single(self, image: np.ndarray, offset_x: int, offset_y: int) -> list[BubbleBox]:
