@@ -329,7 +329,7 @@ def check_browser_state_contracts() -> None:
             "if (maskSnapshots.size > 0)",
         ),
         Path("app/static/js/review.js"): (
-            "card._reviewBusy = true",
+            "activeCard._reviewBusy = true",
             "chapterId !== currentChapterId",
         ),
     }
@@ -360,8 +360,8 @@ def check_workbench_shell_contract() -> None:
     failures: list[str] = []
     source = WORKBENCH_PATH.read_text(encoding="utf-8")
     for marker in (
-        "--nav-width: 168px;",
-        "--inspector-width: 288px;",
+        "--nav-width: var(--studio-rail-width, 250px);",
+        "--inspector-width: var(--studio-inspector-width, 320px);",
         "grid-template-columns: var(--nav-width) minmax(0, 1fr) var(--inspector-width);",
     ):
         if marker not in source:

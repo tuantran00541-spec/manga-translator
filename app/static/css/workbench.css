@@ -335,10 +335,6 @@ body.repaint-mode-open {
 }
 
 @media (max-width: 720px) {
-  :root {
-    --sticky-header-offset: 92px;
-  }
-
   .workbench-topbar {
     min-height: 48px;
     flex-wrap: wrap;

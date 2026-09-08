@@ -74,3 +74,9 @@
   --z-modal: 200;
   --z-toast: 300;
 }
+
+@media (max-width: 720px) {
+  :root {
+    --sticky-header-offset: 92px;
+  }
+}
