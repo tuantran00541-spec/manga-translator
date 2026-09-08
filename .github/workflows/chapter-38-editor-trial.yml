@@ -1,4 +1,4 @@
-name: Chapter 38 editor trial
+name: Chapter 38 clean review checkpoint
 
 on:
   push:
@@ -11,13 +11,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: chapter-38-editor-trial
+  group: chapter-38-human-loop
   cancel-in-progress: false
 
 jobs:
-  extract-clean-ocr:
+  import-detect-clean:
     runs-on: ubuntu-22.04
-    timeout-minutes: 55
+    timeout-minutes: 45
     env:
       PYTHONUNBUFFERED: "1"
       MANGA_USE_DYNAMIC_LAMA: "1"
@@ -28,6 +28,8 @@ jobs:
       MANGA_ORT_OPENVINO_STREAMS: "1"
       MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
       OPENBLAS_NUM_THREADS: "1"
+      CHAPTER_ID: c0380038
+      CHAPTER_URL: https://asurascans.com/comics/to-hell-with-the-status-window-53fc8424/chapter/38
     steps:
       - uses: actions/checkout@v4
 
@@ -35,11 +37,14 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install production runtime
+      - name: Install production clean runtime
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple torch==2.5.1+cpu torchvision==0.20.1+cpu
-          python -m pip install -r requirements.txt
+          python -m pip install \
+            numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 \
+            onnxruntime-openvino==1.24.1 psutil==6.1.1 loguru==0.7.2 \
+            requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 \
+            playwright==1.47.0 fastapi==0.115.0 'uvicorn[standard]==0.30.6' \
+            pydantic==2.9.2 filelock==3.16.1 python-multipart==0.0.12
           python -m playwright install --with-deps chromium
 
       - name: Restore detector and inpaint models
@@ -63,106 +68,117 @@ jobs:
       - name: Provision public-equivalent production models
         if: steps.models.outputs.cache-hit != 'true'
         run: |
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple torch==2.5.1+cpu torchvision==0.20.1+cpu
           python -m pip install --no-deps ultralytics==8.3.221 onnx==1.17.0 onnxslim==0.1.71
           python -m pip install sympy==1.13.1 PyYAML==6.0.2 scipy==1.14.1 tqdm==4.67.1 matplotlib==3.9.2 pandas==2.2.3 py-cpuinfo==9.0.0 ml_dtypes==0.5.3 colorama==0.4.6 polars==1.33.1 ultralytics-thop==2.0.17
           python benchmark-bootstrap/scripts/provision_real_e2e_models.py
           cp benchmark-bootstrap/models/*.onnx models/
           cp benchmark-bootstrap/models/.e2e-provenance.json models/
 
-      - name: Download, clean, create text objects and OCR chapter 38
+      - name: Import chapter and stop at preview checkpoint
         run: |
           python - <<'PY'
-          from __future__ import annotations
-          import json, time
+          import json, os
           from pathlib import Path
-          from app.manifest_utils import load_manifest_raw, save_manifest_raw
+          from app.manifest_utils import load_manifest_raw
           from app.optimized_pipeline import OptimizedChapterPipeline
-          from app.text_objects import ensure_page_text_objects
-          from app.ocr.service import OCRService
-          from app.dependencies import ocr
+          from app.security import validate_chapter_id
 
-          chapter_id = 'chapter38trial'
-          url = 'https://asurascans.com/comics/to-hell-with-the-status-window-53fc8424/chapter/38'
+          chapter_id = os.environ['CHAPTER_ID']
+          url = os.environ['CHAPTER_URL']
+          validate_chapter_id(chapter_id)
           pipeline = OptimizedChapterPipeline()
-          print('Downloading chapter...')
           pipeline.download_chapter(url, chapter_id, workers=2)
           manifest = load_manifest_raw(chapter_id)
-          indices = [i for i,p in enumerate(manifest.get('pages', [])) if not p.get('skipped')]
-          print(json.dumps({'slices': len(manifest.get('pages', [])), 'processable': len(indices)}, indent=2))
-
-          for start in range(0, len(indices), 16):
-              batch = indices[start:start+16]
-              t0 = time.perf_counter()
-              pipeline.process_pages(chapter_id, batch, workers=2)
-              print(f'processed {start+len(batch)}/{len(indices)} in {time.perf_counter()-t0:.1f}s')
-
-          manifest = load_manifest_raw(chapter_id)
-          created = 0
-          for page in manifest.get('pages', []):
-              if page.get('skipped'):
-                  continue
-              n, _changed = ensure_page_text_objects(page)
-              created += n
-          save_manifest_raw(chapter_id, manifest)
-          print(f'created {created} text objects')
-
-          service = OCRService(ocr, pipeline)
-          manifest = load_manifest_raw(chapter_id)
-          ok = failed = 0
-          for pi, page in enumerate(manifest.get('pages', [])):
-              if page.get('skipped'):
-                  continue
-              for obj in list(page.get('text_objects') or []):
-                  oid = obj.get('id')
-                  if not oid:
-                      continue
-                  try:
-                      service.group_text_object(chapter_id, pi, oid, 'en')
-                      ok += 1
-                  except Exception as exc:
-                      failed += 1
-                      print(f'OCR_FAIL page={pi} object={oid}: {exc}')
-          manifest = load_manifest_raw(chapter_id)
+          pages = manifest.get('pages', [])
+          indices = [i for i, p in enumerate(pages) if not p.get('skipped')]
           summary = {
+              'checkpoint': 'imported_preview',
               'chapter_id': chapter_id,
               'source_url': url,
-              'slices': len(manifest.get('pages', [])),
+              'source_images': len(manifest.get('source_pages') or []),
+              'slices': len(pages),
               'processable': len(indices),
-              'text_objects': sum(len(p.get('text_objects') or []) for p in manifest.get('pages', [])),
-              'ocr_ok': ok,
-              'ocr_failed': failed,
+              'skipped': [i for i, p in enumerate(pages) if p.get('skipped')],
+              'next_action': 'human_review_import_then_process',
           }
-          Path('chapter38-summary.json').write_text(json.dumps(summary, indent=2), encoding='utf-8')
+          Path('chapter38-import-summary.json').write_text(json.dumps(summary, indent=2), encoding='utf-8')
+          print(json.dumps(summary, indent=2))
+          if not indices:
+              raise RuntimeError('chapter has no processable pages')
+          PY
+
+      - name: Process detector and inpaint after import checkpoint
+        run: |
+          python - <<'PY'
+          import json, os, time
+          from pathlib import Path
+          from app.manifest_utils import load_manifest_raw
+          from app.optimized_pipeline import OptimizedChapterPipeline
+
+          chapter_id = os.environ['CHAPTER_ID']
+          pipeline = OptimizedChapterPipeline()
+          manifest = load_manifest_raw(chapter_id)
+          indices = [i for i, p in enumerate(manifest.get('pages', [])) if not p.get('skipped')]
+          batches = []
+          for start in range(0, len(indices), 16):
+              batch = indices[start:start + 16]
+              t0 = time.perf_counter()
+              pipeline.process_pages(chapter_id, batch, workers=2)
+              elapsed = time.perf_counter() - t0
+              batches.append({'indices': batch, 'elapsed_s': round(elapsed, 3)})
+              print(f'processed {start + len(batch)}/{len(indices)} in {elapsed:.1f}s')
+
+          manifest = load_manifest_raw(chapter_id)
+          rows = []
+          for i, page in enumerate(manifest.get('pages', [])):
+              boxes = page.get('boxes') or page.get('detections') or []
+              rows.append({
+                  'page_index': i,
+                  'source_page': page.get('source_page'),
+                  'skipped': bool(page.get('skipped')),
+                  'box_count': len(boxes),
+                  'needs_review': bool(page.get('needs_review')),
+                  'detection_state': page.get('detection_state'),
+                  'detection_issues': page.get('detection_issues') or [],
+                  'process_revision': page.get('process_revision'),
+              })
+          summary = {
+              'checkpoint': 'clean_review',
+              'chapter_id': chapter_id,
+              'source_url': os.environ['CHAPTER_URL'],
+              'slices': len(rows),
+              'processable': len(indices),
+              'batches': batches,
+              'needs_review_pages': [r['page_index'] for r in rows if r['needs_review']],
+              'next_action': 'STOP_FOR_HUMAN_INPAINT_REVIEW',
+          }
+          Path('chapter38-clean-summary.json').write_text(json.dumps(summary, indent=2), encoding='utf-8')
+          Path('chapter38-review-index.json').write_text(json.dumps(rows, indent=2), encoding='utf-8')
           print(json.dumps(summary, indent=2))
           PY
 
-      - name: Pack translator/editor handoff
+      - name: Pack clean-review handoff
         if: always()
         run: |
-          mkdir -p chapter38-handoff
-          cp -a data/raw/chapter38trial chapter38-handoff/raw || true
-          cp -a data/processed/chapter38trial chapter38-handoff/processed || true
-          cp -a data/output/chapter38trial chapter38-handoff/output || true
-          cp chapter38-summary.json chapter38-handoff/ 2>/dev/null || true
-          python - <<'PY'
-          import json
-          from pathlib import Path
-          p = Path('data/processed/chapter38trial/manifest.json')
-          if p.exists():
-              m=json.loads(p.read_text(encoding='utf-8'))
-              rows=[]
-              for pi,page in enumerate(m.get('pages', [])):
-                  for o in page.get('text_objects') or []:
-                      rows.append({'page_index':pi,'id':o.get('id'),'source_text':o.get('source_text') or o.get('ocr_text') or o.get('text') or '', 'translation':o.get('translation') or '', 'bbox':o.get('bbox') or o.get('rect')})
-              Path('chapter38-handoff/ocr-text.json').write_text(json.dumps(rows,ensure_ascii=False,indent=2),encoding='utf-8')
-          PY
-          zip -qr chapter38-handoff.zip chapter38-handoff
+          mkdir -p chapter38-clean-review
+          cp -a "data/raw/${CHAPTER_ID}" chapter38-clean-review/raw || true
+          cp -a "data/processed/${CHAPTER_ID}" chapter38-clean-review/processed || true
+          cp chapter38-import-summary.json chapter38-clean-review/ 2>/dev/null || true
+          cp chapter38-clean-summary.json chapter38-clean-review/ 2>/dev/null || true
+          cp chapter38-review-index.json chapter38-clean-review/ 2>/dev/null || true
+          cat > chapter38-clean-review/HUMAN_CHECKPOINT.txt <<'EOF'
+          CHECKPOINT: CLEAN REVIEW
+          Do not continue to OCR/translation/render until raw vs processed/inpaint output has been inspected.
+          Review detector misses, free-text misses, over-mask/over-inpaint, leftover text, seam/context ownership and artwork damage.
+          EOF
+          zip -qr chapter38-clean-review.zip chapter38-clean-review
 
-      - name: Upload translator/editor handoff
+      - name: Upload clean-review handoff
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: chapter38-translator-handoff
-          path: chapter38-handoff.zip
+          name: chapter38-clean-review
+          path: chapter38-clean-review.zip
           if-no-files-found: error
           retention-days: 7
