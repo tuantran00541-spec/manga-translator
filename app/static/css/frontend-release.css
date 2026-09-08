@@ -1,10 +1,4 @@
 /* Final frontend layout owner for completion phases 7-12. */
-:root {
-  --app-header-height: 48px;
-  --release-nav-width: 176px;
-  --release-inspector-width: 292px;
-  --sticky-header-offset: calc(var(--app-header-height) + 8px);
-}
 
 html,
 body,
@@ -24,8 +18,8 @@ body {
 
 /* Panel width is controlled here; panel visibility remains explicit in JS. */
 .workbench-stage-grid {
-  --nav-width: var(--release-nav-width);
-  --inspector-width: var(--release-inspector-width);
+  --nav-width: 176px;
+  --inspector-width: 292px;
   transition: none !important;
 }
 
@@ -81,13 +75,13 @@ body {
 }
 
 body[data-layout-mode="wide"] .workbench-stage-grid {
-  --release-nav-width: 176px;
-  --release-inspector-width: 292px;
+  --nav-width: 176px;
+  --inspector-width: 292px;
 }
 
 body[data-layout-mode="medium"] .workbench-stage-grid {
-  --release-nav-width: 176px;
-  --release-inspector-width: 292px;
+  --nav-width: 176px;
+  --inspector-width: 292px;
 }
 
 body[data-layout-mode="wide"] .workbench-canvas-column,
