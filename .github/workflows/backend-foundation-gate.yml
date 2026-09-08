@@ -8,7 +8,9 @@ on:
       - app/model_contracts.py
       - app/detector/bubble_detector.py
       - app/detector/combined_detector.py
+      - app/detector/mask_builder.py
       - app/inpaint/lama_inpainter.py
+      - app/pipeline.py
       - app/routers/render_commit.py
       - app/routers/export.py
       - scripts/backend_foundation_sanity.py
@@ -39,8 +41,10 @@ jobs:
           fastapi==0.115.0 pydantic==2.9.2 filelock==3.16.1 loguru==0.7.2
       - name: Compile backend foundation source
         run: >-
-          python -m py_compile app/manifest_utils.py app/detector/bubble_detector.py
-          app/inpaint/lama_inpainter.py app/routers/render_commit.py app/routers/export.py
+          python -m py_compile app/manifest_utils.py app/model_contracts.py
+          app/detector/bubble_detector.py app/detector/combined_detector.py
+          app/detector/mask_builder.py app/inpaint/lama_inpainter.py app/pipeline.py
+          app/routers/render_commit.py app/routers/export.py
           scripts/backend_foundation_sanity.py
       - name: Run deterministic backend foundation regressions
         run: python scripts/backend_foundation_sanity.py
