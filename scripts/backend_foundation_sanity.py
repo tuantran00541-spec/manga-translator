@@ -1,3 +1,4 @@
+# Deterministic acceptance gate for backend foundation Phases 1-2.
 from __future__ import annotations
 import json, os, sys, tempfile
 from pathlib import Path
