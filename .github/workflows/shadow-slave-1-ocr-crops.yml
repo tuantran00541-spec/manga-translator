@@ -1,0 +1,128 @@
+name: Shadow Slave Chapter 1 OCR Crop Review Pack
+
+on:
+  push:
+    branches:
+      - trial/shadow-slave-chapter-1
+    paths:
+      - .github/workflows/shadow-slave-1-ocr-crops.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: shadow-slave-1-human-loop
+  cancel-in-progress: false
+
+jobs:
+  crop-review:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    env:
+      OCR_RUN_ID: "34358286040"
+      OCR_ARTIFACT: 03-ocr-review-c0010001
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install lightweight image runtime
+        run: python -m pip install Pillow==10.4.0
+      - name: Restore OCR checkpoint
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p checkpoint/03-ocr-review
+          gh run download "$OCR_RUN_ID" -n "$OCR_ARTIFACT" -D checkpoint/03-ocr-review
+          test -f checkpoint/03-ocr-review/ocr-text.json
+          test -d checkpoint/03-ocr-review/raw/sliced
+      - name: Build object crop review sheets
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import json, math, textwrap
+          from PIL import Image, ImageDraw, ImageFont
+
+          root=Path('checkpoint/03-ocr-review')
+          out=Path('checkpoint/03-ocr-crops')
+          cards_dir=out/'cards'; sheets_dir=out/'sheets'
+          cards_dir.mkdir(parents=True,exist_ok=True); sheets_dir.mkdir(parents=True,exist_ok=True)
+          rows=json.loads((root/'ocr-text.json').read_text(encoding='utf-8'))
+          manifest=json.loads((root/'manifest.json').read_text(encoding='utf-8'))
+          raw_dir=root/'raw'/'sliced'
+          font=ImageFont.load_default()
+          mapping=[]
+
+          CARD_W=1200; CARD_H=360; IMAGE_W=760; META_X=785
+          for idx,row in enumerate(rows):
+              pi=int(row['page_index']); p=manifest['pages'][pi]
+              raw_path=raw_dir/Path(str(p['original'])).name
+              region=row.get('region') or {}
+              x1=int(region.get('x1',0)); y1=int(region.get('y1',0)); x2=int(region.get('x2',0)); y2=int(region.get('y2',0))
+              with Image.open(raw_path) as im0:
+                  im=im0.convert('RGB'); w,h=im.size
+                  pad=max(28,int(max(x2-x1,y2-y1)*0.18))
+                  cx1=max(0,x1-pad); cy1=max(0,y1-pad); cx2=min(w,x2+pad); cy2=min(h,y2+pad)
+                  if cx2<=cx1 or cy2<=cy1:
+                      crop=im.copy()
+                  else:
+                      crop=im.crop((cx1,cy1,cx2,cy2))
+              scale=min(IMAGE_W/max(1,crop.width),300/max(1,crop.height),4.0)
+              shown=crop.resize((max(1,int(crop.width*scale)),max(1,int(crop.height*scale))))
+              card=Image.new('RGB',(CARD_W,CARD_H),'white')
+              ix=(IMAGE_W-shown.width)//2; iy=(CARD_H-shown.height)//2
+              card.paste(shown,(ix,iy))
+              d=ImageDraw.Draw(card)
+              # mark the actual OCR region on the crop after scaling
+              rx1=int((x1-cx1)*scale)+ix; ry1=int((y1-cy1)*scale)+iy
+              rx2=int((x2-cx1)*scale)+ix; ry2=int((y2-cy1)*scale)+iy
+              d.rectangle((rx1,ry1,rx2,ry2),outline='red',width=3)
+              text=str(row.get('source_text') or '')
+              metas=row.get('source_box_meta') or []
+              confs=[m.get('confidence') for m in metas if isinstance(m.get('confidence'),(int,float))]
+              conf=max(confs) if confs else None
+              qualities=sorted(set(str(m.get('quality') or '') for m in metas))
+              core=row.get('stitch_core') or {}
+              core_y1=int(core.get('core_y1') or 0); core_y2=int(core.get('core_y2') or 0)
+              center_y=(y1+y2)//2
+              owner = (core_y2<=core_y1) or (center_y>=core_y1 and center_y<core_y2)
+              info=[
+                  f"#{idx:03d} id={row.get('id')}",
+                  f"slice={pi} src={row.get('source_page')} sl={row.get('slice_index')} owner={owner}",
+                  f"region=({x1},{y1})-({x2},{y2}) core={core_y1}..{core_y2}",
+                  f"conf={conf if conf is not None else 'n/a'} quality={','.join(qualities) or row.get('ocr_quality')}",
+                  "OCR: " + (text if text else '[EMPTY]'),
+              ]
+              ty=16
+              for line in info[:-1]:
+                  d.text((META_X,ty),line,fill='black',font=font); ty+=24
+              for line in textwrap.wrap(info[-1],width=48)[:9]:
+                  d.text((META_X,ty),line,fill='black',font=font); ty+=22
+              d.line((IMAGE_W+10,0,IMAGE_W+10,CARD_H),fill='black',width=1)
+              cp=cards_dir/f'card_{idx:03d}.jpg'; card.save(cp,quality=91,optimize=True)
+              mapping.append({'index':idx,'card':cp.name,'id':row.get('id'),'page_index':pi,'source_page':row.get('source_page'),'slice_index':row.get('slice_index'),'owner':owner,'ocr':text,'region':region})
+
+          per_sheet=10
+          for s in range(math.ceil(len(mapping)/per_sheet)):
+              selected=mapping[s*per_sheet:(s+1)*per_sheet]
+              sheet=Image.new('RGB',(CARD_W,CARD_H*len(selected)),'white')
+              y=0
+              for item in selected:
+                  with Image.open(cards_dir/item['card']) as c0:
+                      c=c0.convert('RGB'); sheet.paste(c,(0,y)); y+=CARD_H
+              sheet.save(sheets_dir/f'sheet_{s+1:02d}.jpg',quality=90,optimize=True)
+          (out/'crop-index.json').write_text(json.dumps(mapping,ensure_ascii=False,indent=2),encoding='utf-8')
+          (out/'ocr-text.json').write_text(json.dumps(rows,ensure_ascii=False,indent=2),encoding='utf-8')
+          (out/'ocr-duplicates.json').write_bytes((root/'ocr-duplicates.json').read_bytes())
+          (out/'ocr-summary.json').write_bytes((root/'ocr-summary.json').read_bytes())
+          print('objects',len(mapping),'sheets',math.ceil(len(mapping)/per_sheet))
+          PY
+      - name: Upload OCR crop review pack
+        uses: actions/upload-artifact@v4
+        with:
+          name: 03-ocr-crops-c0010001
+          path: checkpoint/03-ocr-crops
+          if-no-files-found: error
+          retention-days: 7
