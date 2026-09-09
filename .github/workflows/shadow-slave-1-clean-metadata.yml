@@ -1,0 +1,77 @@
+name: Shadow Slave Chapter 1 Clean Metadata Pack
+
+on:
+  push:
+    branches:
+      - trial/shadow-slave-chapter-1
+    paths:
+      - .github/workflows/shadow-slave-1-clean-metadata.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  metadata:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    env:
+      CLEAN_RUN_ID: "34349975034"
+      CLEAN_ARTIFACT: 02-clean-review-c0010001
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Restore clean checkpoint
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p checkpoint/02-clean-review
+          gh run download "$CLEAN_RUN_ID" -n "$CLEAN_ARTIFACT" -D checkpoint/02-clean-review
+          test -f checkpoint/02-clean-review/processed/manifest.json
+      - name: Export compact box metadata
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import json
+          root=Path('checkpoint/02-clean-review')
+          m=json.loads((root/'processed/manifest.json').read_text(encoding='utf-8'))
+          pages=[]
+          for i,p in enumerate(m.get('pages',[])):
+              boxes=[]
+              for bi,b in enumerate(p.get('boxes') or []):
+                  boxes.append({
+                      'box_index':bi,
+                      'id':b.get('id'),
+                      'x1':b.get('x1'),'y1':b.get('y1'),'x2':b.get('x2'),'y2':b.get('y2'),
+                      'confidence':b.get('confidence',b.get('conf',b.get('score'))),
+                      'type':b.get('type'),'class':b.get('class'),'label':b.get('label'),'kind':b.get('kind'),
+                      'origin':b.get('origin'),'manual':b.get('manual'),
+                      'safe_to_inpaint':b.get('safe_to_inpaint'),
+                      'ocr_eligible':b.get('ocr_eligible'),
+                      'needs_review':b.get('needs_review'),
+                      'detection_state':b.get('detection_state'),
+                      'recovery_reason':b.get('recovery_reason'),
+                      'mask_present':bool(b.get('mask')),
+                  })
+              pages.append({
+                  'page_index':i,
+                  'source_page':p.get('source_page'),'slice_index':p.get('slice_index'),
+                  'original':p.get('original'),'clean':p.get('clean'),
+                  'needs_review':p.get('needs_review'),
+                  'detection_state':p.get('detection_state'),
+                  'stitch_core':p.get('stitch_core'),
+                  'boxes':boxes,
+              })
+          out=Path('checkpoint/02-clean-metadata'); out.mkdir(parents=True,exist_ok=True)
+          (out/'box-metadata.json').write_text(json.dumps({'chapter_id':m.get('chapter_id'),'pages':pages},ensure_ascii=False,indent=2),encoding='utf-8')
+          print(json.dumps({'pages':len(pages),'boxes':sum(len(p['boxes']) for p in pages)},ensure_ascii=False))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: 02-clean-metadata-c0010001
+          path: checkpoint/02-clean-metadata
+          if-no-files-found: error
+          retention-days: 7
