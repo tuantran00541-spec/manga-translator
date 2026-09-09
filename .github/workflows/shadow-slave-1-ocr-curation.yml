@@ -1,0 +1,322 @@
+name: Shadow Slave Chapter 1 OCR Human Curation
+
+on:
+  push:
+    branches:
+      - trial/shadow-slave-chapter-1
+    paths:
+      - .github/workflows/shadow-slave-1-ocr-curation.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: shadow-slave-1-human-loop
+  cancel-in-progress: false
+
+jobs:
+  curate-ocr:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    env:
+      CHAPTER_ID: c0010001
+      OCR_RUN_ID: "34358286040"
+      OCR_ARTIFACT: 03-ocr-review-c0010001
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Restore OCR review checkpoint
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf checkpoint/03-ocr-curated checkpoint/03-ocr-curated-meta
+          mkdir -p checkpoint/03-ocr-curated checkpoint/03-ocr-curated-meta
+          gh run download "$OCR_RUN_ID" -n "$OCR_ARTIFACT" -D checkpoint/03-ocr-curated
+          test -f checkpoint/03-ocr-curated/processed/manifest.json
+          test -f trials/shadow-slave-1/ocr-curation.json
+
+      - name: Apply human OCR curation and persistent tombstones
+        run: |
+          python - <<'PY'
+          import copy
+          import json
+          from pathlib import Path
+          from app.text_objects import DEFAULT_TEXT_OBJECT_STYLE, ensure_page_text_objects
+
+          cid = 'c0010001'
+          root = Path('checkpoint/03-ocr-curated')
+          meta = Path('checkpoint/03-ocr-curated-meta')
+          mp = root / 'processed' / 'manifest.json'
+          manifest = json.loads(mp.read_text(encoding='utf-8'))
+          plan = json.loads(Path('trials/shadow-slave-1/ocr-curation.json').read_text(encoding='utf-8'))
+          pages = manifest.get('pages') or []
+          if manifest.get('chapter_id') != cid:
+              raise SystemExit(f'chapter mismatch: {manifest.get("chapter_id")}')
+          if len(pages) != 135:
+              raise SystemExit(f'expected 135 slices, got {len(pages)}')
+
+          keep_entries = plan.get('keeps') or []
+          manual_entries = plan.get('manual') or []
+          keep_by_ordinal = {}
+          for entry in keep_entries:
+              if not isinstance(entry, list) or len(entry) != 4:
+                  raise SystemExit(f'bad keep entry: {entry!r}')
+              ordinal, text, role, region = entry
+              ordinal = int(ordinal)
+              if ordinal in keep_by_ordinal:
+                  raise SystemExit(f'duplicate keep ordinal: {ordinal}')
+              text = str(text or '').strip()
+              if not text:
+                  raise SystemExit(f'blank keep text ordinal={ordinal}')
+              keep_by_ordinal[ordinal] = {'text': text, 'role': str(role or 'dialogue'), 'region': region}
+
+          ordered = []
+          ids = set()
+          for pi, page in enumerate(pages):
+              for obj in page.get('text_objects') or []:
+                  if not isinstance(obj, dict):
+                      continue
+                  oid = str(obj.get('id') or '')
+                  if not oid:
+                      raise SystemExit(f'object without id on page {pi}')
+                  if oid in ids:
+                      raise SystemExit(f'duplicate object id: {oid}')
+                  ids.add(oid)
+                  ordered.append((pi, obj))
+
+          if len(ordered) != 417:
+              raise SystemExit(f'expected 417 detector objects, got {len(ordered)}')
+          bad_ordinals = sorted(set(keep_by_ordinal) - set(range(len(ordered))))
+          if bad_ordinals:
+              raise SystemExit(f'keep ordinals out of range: {bad_ordinals}')
+          if len(keep_by_ordinal) != 98:
+              raise SystemExit(f'expected 98 kept detector objects, got {len(keep_by_ordinal)}')
+          if len(manual_entries) != 3:
+              raise SystemExit(f'expected 3 manual story objects, got {len(manual_entries)}')
+
+          rows = []
+          keep_count = drop_count = correction_count = region_override_count = 0
+          for ordinal, (pi, obj) in enumerate(ordered):
+              original = str(obj.get('ocr_text') or obj.get('source_text') or '').strip()
+              for key in ('translation_source','translation_model','translation_input_text','auto_translation'):
+                  obj.pop(key, None)
+              obj['translation'] = ''
+
+              spec = keep_by_ordinal.get(ordinal)
+              if spec is None:
+                  reason = 'human_review_nonstory_sfx_false_positive_duplicate_or_fragment'
+                  obj.update({
+                      'human_review': 'drop_duplicate_credit_sfx_or_noise',
+                      'human_review_reason': reason,
+                      'human_review_source_text': original,
+                      'source_missing': True,
+                      'auto_generated': False,
+                      'origin': 'human_review_drop',
+                      'ocr_quality': 'human_dropped',
+                      'ocr_quality_reason': reason,
+                  })
+                  obj.pop('auto_ocr_text', None)
+                  obj.pop('auto_geometry', None)
+                  action = 'drop'
+                  drop_count += 1
+              else:
+                  corrected = spec['text']
+                  if original != corrected:
+                      obj['human_review_original_ocr'] = original
+                      correction_count += 1
+                  obj['ocr_text'] = corrected
+                  obj['source_text'] = corrected
+                  obj['role'] = spec['role']
+                  if spec.get('region') is not None:
+                      region = copy.deepcopy(spec['region'])
+                      if not all(k in region for k in ('x1','y1','x2','y2')):
+                          raise SystemExit(f'bad region ordinal={ordinal}: {region}')
+                      if not (int(region['x1']) < int(region['x2']) and int(region['y1']) < int(region['y2'])):
+                          raise SystemExit(f'invalid region ordinal={ordinal}: {region}')
+                      obj['region'] = region
+                      region_override_count += 1
+                  obj.update({
+                      'human_review': 'keep_story',
+                      'human_review_reason': 'accepted_story_source',
+                      'source_missing': False,
+                      'auto_generated': False,
+                      'origin': 'human_review_story',
+                      'ocr_source': 'human_review',
+                      'ocr_quality': 'human_reviewed',
+                      'ocr_quality_reason': 'accepted_or_corrected_by_human_review',
+                  })
+                  obj.pop('auto_ocr_text', None)
+                  obj.pop('auto_geometry', None)
+                  action = 'keep'
+                  keep_count += 1
+
+              rows.append({
+                  'ordinal': ordinal,
+                  'page_index': pi,
+                  'source_page': pages[pi].get('source_page'),
+                  'slice_index': pages[pi].get('slice_index'),
+                  'id': obj.get('id'),
+                  'action': action,
+                  'role': obj.get('role'),
+                  'source_text': str(obj.get('ocr_text') or ''),
+                  'original_ocr': original,
+                  'region': copy.deepcopy(obj.get('region')),
+                  'source_boxes': copy.deepcopy(obj.get('source_boxes') or []),
+              })
+
+          manual_ids = set()
+          for spec in manual_entries:
+              pi = int(spec['page_index'])
+              if not (0 <= pi < len(pages)):
+                  raise SystemExit(f'manual page out of range: {pi}')
+              oid = str(spec['id'])
+              if oid in ids or oid in manual_ids:
+                  raise SystemExit(f'duplicate manual id: {oid}')
+              manual_ids.add(oid)
+              text = str(spec.get('text') or '').strip()
+              region = copy.deepcopy(spec.get('region') or {})
+              if not text or not all(k in region for k in ('x1','y1','x2','y2')):
+                  raise SystemExit(f'bad manual object: {spec}')
+              obj = {
+                  'id': oid,
+                  'shape': 'rectangle',
+                  'region': region,
+                  'source_boxes': [],
+                  'ocr_text': text,
+                  'source_text': text,
+                  'translation': '',
+                  'style': dict(DEFAULT_TEXT_OBJECT_STYLE),
+                  'role': str(spec.get('role') or 'narration'),
+                  'origin': 'human_review_manual',
+                  'auto_generated': False,
+                  'source_missing': False,
+                  'human_review': 'keep_story',
+                  'human_review_reason': 'manual_story_free_text_missed_or_fragmented_by_detector',
+                  'ocr_source': 'human_review',
+                  'ocr_quality': 'human_reviewed',
+                  'ocr_quality_reason': 'manual_story_object',
+              }
+              pages[pi].setdefault('text_objects', []).append(obj)
+              rows.append({
+                  'ordinal': None,
+                  'page_index': pi,
+                  'source_page': pages[pi].get('source_page'),
+                  'slice_index': pages[pi].get('slice_index'),
+                  'id': oid,
+                  'action': 'manual_keep',
+                  'role': obj['role'],
+                  'source_text': text,
+                  'original_ocr': '',
+                  'region': copy.deepcopy(region),
+                  'source_boxes': [],
+              })
+
+          if (keep_count, drop_count) != (98, 319):
+              raise SystemExit(f'curation count mismatch keep={keep_count} drop={drop_count}')
+
+          created_after_review = 0
+          for page in pages:
+              created, _changed = ensure_page_text_objects(page)
+              created_after_review += int(created)
+          if created_after_review != 0:
+              raise SystemExit(f'ensure_page_text_objects resurrected/created {created_after_review} objects')
+
+          tombstones = active_story = unexpected_active = 0
+          for pi, page in enumerate(pages):
+              for obj in page.get('text_objects') or []:
+                  if obj.get('source_missing'):
+                      if obj.get('origin') != 'human_review_drop' or obj.get('auto_generated'):
+                          raise SystemExit(f'bad tombstone page={pi} id={obj.get("id")}')
+                      tombstones += 1
+                      continue
+                  if obj.get('human_review') != 'keep_story':
+                      unexpected_active += 1
+                      continue
+                  if not str(obj.get('ocr_text') or obj.get('source_text') or '').strip():
+                      raise SystemExit(f'blank active story page={pi} id={obj.get("id")}')
+                  active_story += 1
+
+          if (active_story, tombstones, unexpected_active) != (101, 319, 0):
+              raise SystemExit(f'final mismatch story={active_story} tombstones={tombstones} unexpected={unexpected_active}')
+
+          manifest['human_ocr_review'] = {
+              'status': 'PASS',
+              'reviewed_detector_objects': 417,
+              'kept_detector_story_objects': 98,
+              'manual_story_objects': 3,
+              'active_story_objects': 101,
+              'persistent_tombstones': 319,
+              'corrected_or_reconstructed_story_objects': correction_count,
+              'region_overrides': region_override_count,
+              'reconciliation_created_objects': 0,
+              'active_unreviewed_objects': 0,
+              'next_action': 'TRANSLATION_REVIEW_ALLOWED',
+          }
+          text = json.dumps(manifest, ensure_ascii=False, indent=2)
+          mp.write_text(text, encoding='utf-8')
+          (root / 'manifest.json').write_text(text, encoding='utf-8')
+
+          active_rows = [r for r in rows if r['action'] in {'keep','manual_keep'}]
+          summary = {
+              'checkpoint': '03-ocr-curated',
+              'chapter_id': cid,
+              'reviewed_detector_objects': 417,
+              'active_story_objects': 101,
+              'persistent_tombstones': 319,
+              'manual_story_objects': 3,
+              'corrected_or_reconstructed_story_objects': correction_count,
+              'region_overrides': region_override_count,
+              'reconciliation_created_objects': 0,
+              'active_unreviewed_objects': 0,
+              'status': 'PASS',
+              'next_action': 'TRANSLATION_REVIEW_ALLOWED',
+          }
+          (root / 'ocr-curation-summary.json').write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding='utf-8')
+          (root / 'ocr-text-curated.json').write_text(json.dumps(rows, ensure_ascii=False, indent=2), encoding='utf-8')
+          (meta / 'ocr-curation-summary.json').write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding='utf-8')
+          (meta / 'story-source.json').write_text(json.dumps(active_rows, ensure_ascii=False, indent=2), encoding='utf-8')
+          print(json.dumps(summary, ensure_ascii=False, indent=2))
+          PY
+
+      - name: Validate OCR persistence gate
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root=Path('checkpoint/03-ocr-curated')
+          s=json.loads((root/'ocr-curation-summary.json').read_text(encoding='utf-8'))
+          m=json.loads((root/'processed'/'manifest.json').read_text(encoding='utf-8'))
+          expected={'status':'PASS','active_story_objects':101,'persistent_tombstones':319,'manual_story_objects':3,'reconciliation_created_objects':0,'active_unreviewed_objects':0}
+          for k,v in expected.items():
+              if s.get(k)!=v: raise SystemExit(f'{k}: expected {v}, got {s.get(k)}')
+          story=tombs=0
+          for p in m.get('pages') or []:
+              for o in p.get('text_objects') or []:
+                  if o.get('source_missing'):
+                      if o.get('origin')=='human_review_drop': tombs+=1
+                  elif o.get('human_review')=='keep_story': story+=1
+          if (story,tombs)!=(101,319): raise SystemExit(f'persistence mismatch story={story} tombstones={tombs}')
+          print('OCR HUMAN CURATION PERSISTENCE GATE PASS')
+          PY
+
+      - name: Upload curated full OCR checkpoint
+        uses: actions/upload-artifact@v4
+        with:
+          name: 03-ocr-curated-c0010001
+          path: checkpoint/03-ocr-curated
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload curated OCR metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: 03-ocr-curated-meta-c0010001
+          path: checkpoint/03-ocr-curated-meta
+          if-no-files-found: error
+          retention-days: 7
