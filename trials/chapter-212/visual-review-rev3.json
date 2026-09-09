@@ -1,0 +1,41 @@
+{
+  "chapter_id": "c2120212",
+  "render_revision": 3,
+  "status": "PASS",
+  "primary_dialogue_font": "Mac-dinh-3",
+  "review_mode": "delta_review",
+  "baseline_render_revision": 2,
+  "baseline_source_pages_reviewed": 16,
+  "rev3_font_delta_reviewed": true,
+  "rev3_full_page_direct_review": false,
+  "review_pack_generated": true,
+  "review_pack": {
+    "slice_pdf": "trials/chapter-212/review-rev3-slices.pdf",
+    "slice_pages": 56,
+    "stitched_pdf": "trials/chapter-212/review-rev3-final-pages.pdf",
+    "stitched_pages": 16,
+    "index": "trials/chapter-212/review-rev3-index.json"
+  },
+  "technical_evidence": {
+    "render_run_id": 34331972494,
+    "render_artifact": "05-render-review-c2120212-rev3",
+    "rendered_slices": 56,
+    "skipped_slices": 0,
+    "stitched_source_pages": 16,
+    "active_story_objects": 119,
+    "active_untranslated_story_objects": 0,
+    "persistent_tombstones": 82,
+    "distinct_fonts_used": 1,
+    "font_usage": {
+      "Mac-dinh-3": 119
+    },
+    "forced_font_diversity": false,
+    "vietnamese_glyph_probe": "PASS"
+  },
+  "blocking_overflow_or_clipping": 0,
+  "blocking_stitch_seams": 0,
+  "blocking_vietnamese_glyph_errors": 0,
+  "story_english_leftover_observed": 0,
+  "editorial_rationale": "Rev2 full-chapter layout was visually reviewed. Manga-fonts was rejected as too display-like for normal dialogue. Mac-dinh-3 was selected after direct chapter-output font comparison as the more natural comic dialogue face. Rev3 is a controlled typography-only rerender from the reviewed translation/layout baseline, with all 119 story objects forced to Mac-dinh-3 and Vietnamese glyph coverage hard-gated.",
+  "limitations": "The operator runtime could not directly open the committed rev3 review PDFs during this session, so this approval is explicitly a delta review and does not claim a second full direct crop-by-crop inspection of rev3. The 56-slice and 16-page PDFs remain committed on the trial branch for audit/re-review."
+}
