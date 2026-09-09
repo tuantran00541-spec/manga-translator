@@ -6,6 +6,7 @@ on:
       - trial/chapter-render-212
     paths:
       - .github/workflows/chapter-212-translation-review.yml
+      - trials/chapter-212/translation-vi.json
   workflow_dispatch:
 
 permissions:
@@ -91,9 +92,9 @@ jobs:
               source = str(obj.get('ocr_text') or '').strip()
               obj['translation'] = vi
               obj['translation_lang'] = 'vi'
-              obj['translation_source'] = 'human_review'
+              obj['translation_source'] = 'human_review_rev2'
               obj['translation_input_text'] = source
-              obj['human_translation_review'] = 'accepted'
+              obj['human_translation_review'] = 'accepted_rev2'
               obj.pop('translation_model', None)
               obj.pop('auto_translation', None)
               rows.append({
@@ -136,6 +137,7 @@ jobs:
           )[:20]
           manifest['human_translation_review'] = {
               'status': 'PASS',
+              'revision': 2,
               'target_lang': 'vi',
               'active_story_objects': 119,
               'translated_story_objects': 119,
@@ -151,6 +153,7 @@ jobs:
           )
           summary = {
               'checkpoint': '04-translation-review',
+              'revision': 2,
               'chapter_id': 'c2120212',
               'target_lang': 'vi',
               'active_story_objects': 119,
@@ -181,6 +184,7 @@ jobs:
           )
           expected = {
               'status': 'PASS',
+              'revision': 2,
               'active_story_objects': 119,
               'translated_story_objects': 119,
               'active_untranslated_story_objects': 0,
@@ -189,13 +193,13 @@ jobs:
           for key, value in expected.items():
               if summary.get(key) != value:
                   raise SystemExit(f'{key} expected {value}, got {summary.get(key)}')
-          print('translation review gate PASS')
+          print('translation review gate PASS rev2')
           PY
 
       - name: Upload translation review checkpoint
         uses: actions/upload-artifact@v4
         with:
-          name: 04-translation-review-c2120212
+          name: 04-translation-review-c2120212-rev2
           path: checkpoint/04-translation-review
           if-no-files-found: error
           retention-days: 7
