@@ -1,0 +1,256 @@
+name: Shadow Slave Chapter 1 Checkpoint 03 OCR Review
+
+on:
+  push:
+    branches:
+      - trial/shadow-slave-chapter-1
+    paths:
+      - .github/workflows/shadow-slave-1-ocr-review.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: shadow-slave-1-human-loop
+  cancel-in-progress: false
+
+jobs:
+  ocr-review:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 75
+    env:
+      PYTHONUNBUFFERED: "1"
+      CHAPTER_ID: c0010001
+      CLEAN_RUN_ID: "34357409360"
+      CLEAN_ARTIFACT: 02-clean-review-fixed2-c0010001
+      MANGA_OCR_TARGET_SELECTION: centered
+      MANGA_OCR_JOB_CONCURRENCY_LIMIT: "2"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install production OCR runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple torch==2.5.1+cpu torchvision==0.20.1+cpu
+          python -m pip install -r requirements.txt
+
+      - name: Restore human-reviewed clean checkpoint
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p checkpoint/02-clean-fixed2
+          gh run download "$CLEAN_RUN_ID" -n "$CLEAN_ARTIFACT" -D checkpoint/02-clean-fixed2
+          test -f checkpoint/02-clean-fixed2/processed/manifest.json
+          test -d checkpoint/02-clean-fixed2/raw/sliced
+          test -f checkpoint/02-clean-fixed2/clean-repair2-report.json
+
+      - name: Restore production chapter layout and approve clean visual gate
+        run: |
+          python - <<'PY'
+          import json, shutil
+          from pathlib import Path
+
+          cid='c0010001'
+          root=Path('checkpoint/02-clean-fixed2')
+          raw_dst=Path('data/raw')/cid
+          proc_dst=Path('data/processed')/cid
+          out_dst=Path('data/output')/cid
+          for dst in (raw_dst,proc_dst,out_dst):
+              if dst.exists(): shutil.rmtree(dst)
+              dst.parent.mkdir(parents=True,exist_ok=True)
+          shutil.copytree(root/'raw',raw_dst)
+          shutil.copytree(root/'processed',proc_dst)
+          out_dst.mkdir(parents=True,exist_ok=True)
+
+          mp=proc_dst/'manifest.json'
+          m=json.loads(mp.read_text(encoding='utf-8'))
+          if m.get('chapter_id')!=cid: raise RuntimeError('chapter mismatch')
+          if len(m.get('pages',[]))!=135: raise RuntimeError(f'unexpected slice count: {len(m.get("pages",[]))}')
+          for p in m.get('pages',[]):
+              p['original']=(raw_dst/'sliced'/Path(str(p.get('original'))).name).as_posix()
+              for key in ('clean','manual_mask','manual_lama_mask'):
+                  if p.get(key): p[key]=(proc_dst/Path(str(p[key])).name).as_posix()
+          m['human_clean_review']={
+              'status':'pass_after_repair2',
+              'story_inpaint_blockers':0,
+              'reviewed_slices':135,
+              'reviewed_source_pages':43,
+              'repairs':[1,5,15,6,133,134],
+              'note':'RAW vs CLEAN human visual review passed after two local repair passes; non-story title/credits/end-card preserved.'
+          }
+          mp.write_text(json.dumps(m,ensure_ascii=False,indent=2),encoding='utf-8')
+          print('restored and human-approved',len(m['pages']),'slices')
+          PY
+
+      - name: Run production OCR with production concurrency
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+          import asyncio, json
+          from collections import Counter, defaultdict
+          from pathlib import Path
+
+          from app.dependencies import ocr
+          from app.manifest_utils import load_manifest_raw, save_manifest_raw
+          from app.ocr.jobs import ChapterOCRJobManager
+          from app.ocr.service import OCRService
+          from app.optimized_pipeline import OptimizedChapterPipeline
+          from app.text_objects import ensure_page_text_objects
+
+          cid='c0010001'
+          pipeline=OptimizedChapterPipeline()
+          manifest=load_manifest_raw(cid)
+          review=manifest.get('human_clean_review') or {}
+          if review.get('status')!='pass_after_repair2' or int(review.get('story_inpaint_blockers',-1))!=0:
+              raise RuntimeError(f'clean gate not approved: {review}')
+
+          created=0
+          for page in manifest.get('pages',[]):
+              if page.get('skipped'): continue
+              n,_changed=ensure_page_text_objects(page)
+              created += int(n)
+          save_manifest_raw(cid,manifest)
+
+          service=OCRService(ocr,pipeline)
+          planned=service.plan_chapter(cid)
+          print('OCR planned regions:',len(planned),'created text objects:',created)
+          if not planned: raise RuntimeError('OCR plan is empty')
+
+          async def run_job():
+              manager=ChapterOCRJobManager(service)
+              snap=manager.start(cid,lang='en',concurrency=2,force=False,items=planned)
+              job_id=snap['job_id']
+              last=-1
+              while True:
+                  snap=manager.snapshot(job_id)
+                  if snap['completed']!=last:
+                      last=snap['completed']
+                      print('OCR_PROGRESS',json.dumps(snap,ensure_ascii=False))
+                  if snap['status'] not in {'pending','running'}:
+                      return snap
+                  await asyncio.sleep(1.0)
+
+          final=asyncio.run(run_job())
+          print('OCR_FINAL',json.dumps(final,ensure_ascii=False,indent=2))
+          if final.get('failed') or final.get('stale'):
+              raise RuntimeError(f'OCR incomplete: {final}')
+          if int(final.get('completed') or 0) != len(planned):
+              raise RuntimeError(f'OCR completion mismatch: {final.get("completed")} != {len(planned)}')
+
+          manifest=load_manifest_raw(cid)
+          rows=[]
+          normalized=defaultdict(list)
+          qualities=Counter(); models=Counter(); empty=[]
+          for pi,page in enumerate(manifest.get('pages',[])):
+              if page.get('skipped'): continue
+              boxes_by_id={str(b.get('id')):b for b in (page.get('boxes') or []) if isinstance(b,dict) and b.get('id')}
+              for obj in page.get('text_objects') or []:
+                  text=str(obj.get('ocr_text') or obj.get('source_text') or obj.get('text') or '').strip()
+                  meta=[]
+                  for bid in obj.get('source_boxes') or []:
+                      b=boxes_by_id.get(str(bid),{})
+                      q=str(b.get('ocr_quality') or 'unknown'); model=str(b.get('ocr_model') or '')
+                      qualities[q]+=1
+                      if model: models[model]+=1
+                      meta.append({
+                          'box_id':bid,
+                          'ocr_text':b.get('ocr_text') or '',
+                          'confidence':b.get('ocr_confidence'),
+                          'quality':q,
+                          'quality_reason':b.get('ocr_quality_reason'),
+                          'model':model,
+                          'orientation':b.get('ocr_orientation'),
+                          'region_count':b.get('ocr_region_count'),
+                          'box_region':{k:b.get(k) for k in ('x1','y1','x2','y2')},
+                          'safe_to_inpaint':b.get('safe_to_inpaint'),
+                          'origin':b.get('origin'),
+                      })
+                  row={
+                      'page_index':pi,
+                      'source_page':page.get('source_page'),
+                      'slice_index':page.get('slice_index'),
+                      'stitch_core':page.get('stitch_core'),
+                      'id':obj.get('id'),
+                      'source_text':text,
+                      'translation':obj.get('translation') or '',
+                      'region':obj.get('region') or obj.get('bbox') or obj.get('rect'),
+                      'source_boxes':obj.get('source_boxes') or [],
+                      'source_box_meta':meta,
+                      'ocr_source':obj.get('ocr_source'),
+                      'ocr_lang':obj.get('ocr_lang'),
+                      'ocr_engine':obj.get('ocr_engine'),
+                      'ocr_quality':obj.get('ocr_quality'),
+                      'ocr_quality_reason':obj.get('ocr_quality_reason'),
+                      'auto_generated':obj.get('auto_generated'),
+                      'origin':obj.get('origin'),
+                      'source_missing':obj.get('source_missing',False),
+                  }
+                  rows.append(row)
+                  if not text: empty.append({'page_index':pi,'id':obj.get('id'),'source_page':page.get('source_page')})
+                  key=' '.join(text.lower().split())
+                  if key: normalized[key].append({'page_index':pi,'source_page':page.get('source_page'),'id':obj.get('id'),'text':text})
+
+          duplicates=[{'normalized':k,'occurrences':v} for k,v in normalized.items() if len(v)>1]
+          summary={
+              'checkpoint':'03-ocr-review',
+              'chapter_id':cid,
+              'source_pages':43,
+              'slices':len(manifest.get('pages',[])),
+              'text_objects':len(rows),
+              'created_text_objects':created,
+              'ocr_planned':len(planned),
+              'ocr_completed':final.get('completed'),
+              'ocr_recognized':final.get('recognized'),
+              'ocr_empty':final.get('empty'),
+              'ocr_failed':final.get('failed'),
+              'ocr_stale':final.get('stale'),
+              'empty_objects':len(empty),
+              'duplicate_text_groups':len(duplicates),
+              'box_quality_counts':dict(qualities),
+              'ocr_models':dict(models),
+              'next_action':'STOP_FOR_HUMAN_OCR_REVIEW',
+          }
+          compact=Path('checkpoint/03-ocr-metadata'); compact.mkdir(parents=True,exist_ok=True)
+          (compact/'ocr-summary.json').write_text(json.dumps(summary,ensure_ascii=False,indent=2),encoding='utf-8')
+          (compact/'ocr-text.json').write_text(json.dumps(rows,ensure_ascii=False,indent=2),encoding='utf-8')
+          (compact/'ocr-empty.json').write_text(json.dumps(empty,ensure_ascii=False,indent=2),encoding='utf-8')
+          (compact/'ocr-duplicates.json').write_text(json.dumps(duplicates,ensure_ascii=False,indent=2),encoding='utf-8')
+          (compact/'manifest.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding='utf-8')
+          print(json.dumps(summary,ensure_ascii=False,indent=2))
+          PY
+
+      - name: Pack full OCR human-review checkpoint
+        run: |
+          mkdir -p checkpoint/03-ocr-review
+          rm -rf checkpoint/03-ocr-review/raw checkpoint/03-ocr-review/processed
+          cp -a "data/raw/${CHAPTER_ID}" checkpoint/03-ocr-review/raw
+          cp -a "data/processed/${CHAPTER_ID}" checkpoint/03-ocr-review/processed
+          cp checkpoint/03-ocr-metadata/*.json checkpoint/03-ocr-review/
+          cat > checkpoint/03-ocr-review/HUMAN_CHECKPOINT.txt <<'EOF'
+          CHECKPOINT: OCR REVIEW
+          Technical OCR success is not OCR correctness.
+          Review raw crops, context, duplicates, overlap ownership, credits/watermarks, SFX/noise, hallucinations and missed free text.
+          Persist human drops as tombstones and correct story source text before translation.
+          EOF
+
+      - name: Upload full OCR checkpoint
+        uses: actions/upload-artifact@v4
+        with:
+          name: 03-ocr-review-c0010001
+          path: checkpoint/03-ocr-review
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload compact OCR metadata checkpoint
+        uses: actions/upload-artifact@v4
+        with:
+          name: 03-ocr-metadata-c0010001
+          path: checkpoint/03-ocr-metadata
+          if-no-files-found: error
+          retention-days: 7
