@@ -1,0 +1,145 @@
+name: Shadow Slave Chapter 1 Checkpoint 02 Clean Review
+
+on:
+  push:
+    branches:
+      - trial/shadow-slave-chapter-1
+    paths:
+      - .github/workflows/shadow-slave-1-clean-review.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: shadow-slave-1-human-loop
+  cancel-in-progress: false
+
+jobs:
+  detect-mask-inpaint:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    env:
+      PYTHONUNBUFFERED: "1"
+      MANGA_USE_DYNAMIC_LAMA: "1"
+      MANGA_ORT_PROVIDER: openvino
+      MANGA_ORT_REQUIRE_PROVIDER: "1"
+      MANGA_ORT_OPENVINO_SCOPE: detectors
+      MANGA_ORT_OPENVINO_THREADS: "2"
+      MANGA_ORT_OPENVINO_STREAMS: "1"
+      MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
+      OPENBLAS_NUM_THREADS: "1"
+      CHAPTER_ID: c0010001
+      CHAPTER_URL: https://asurascans.com/comics/shadow-slave-53fc8424/chapter/1
+      IMPORT_RUN_ID: "34348867861"
+      IMPORT_ARTIFACT: 01-import-c0010001
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install production clean runtime
+        run: |
+          python -m pip install numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 onnxruntime-openvino==1.24.1 psutil==6.1.1 loguru==0.7.2 requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 playwright==1.47.0 fastapi==0.115.0 'uvicorn[standard]==0.30.6' pydantic==2.9.2 filelock==3.16.1 python-multipart==0.0.12
+      - name: Restore detector and inpaint models
+        id: models
+        uses: actions/cache@v4
+        with:
+          path: |
+            models/*.onnx
+            models/.e2e-provenance.json
+          key: processing-profile-models-b224548-v1
+      - name: Read pinned model provisioner
+        if: steps.models.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: b22454827f8190655d7070b80eb20c2550beadfa
+          path: benchmark-bootstrap
+          sparse-checkout: scripts/provision_real_e2e_models.py
+          sparse-checkout-cone-mode: false
+      - name: Provision public-equivalent production models
+        if: steps.models.outputs.cache-hit != 'true'
+        run: |
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple torch==2.5.1+cpu torchvision==0.20.1+cpu
+          python -m pip install --no-deps ultralytics==8.3.221 onnx==1.17.0 onnxslim==0.1.71
+          python -m pip install sympy==1.13.1 PyYAML==6.0.2 scipy==1.14.1 tqdm==4.67.1 matplotlib==3.9.2 pandas==2.2.3 py-cpuinfo==9.0.0 ml_dtypes==0.5.3 colorama==0.4.6 polars==1.33.1 ultralytics-thop==2.0.17
+          python benchmark-bootstrap/scripts/provision_real_e2e_models.py
+          cp benchmark-bootstrap/models/*.onnx models/
+          cp benchmark-bootstrap/models/.e2e-provenance.json models/
+      - name: Restore checkpoint 01 artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p checkpoint/01-import
+          gh run download "$IMPORT_RUN_ID" -n "$IMPORT_ARTIFACT" -D checkpoint/01-import
+          test -f checkpoint/01-import/manifest.json
+          test -d checkpoint/01-import/raw/sliced
+      - name: Restore production data layout
+        run: |
+          python - <<'PY'
+          import json, os, shutil
+          from pathlib import Path
+          from app.security import validate_chapter_id
+          cid=validate_chapter_id(os.environ['CHAPTER_ID'])
+          src=Path('checkpoint/01-import'); raw=Path('data/raw')/cid; proc=Path('data/processed')/cid
+          raw.parent.mkdir(parents=True,exist_ok=True); proc.mkdir(parents=True,exist_ok=True)
+          if raw.exists(): shutil.rmtree(raw)
+          shutil.copytree(src/'raw',raw)
+          m=json.loads((src/'manifest.json').read_text(encoding='utf-8'))
+          for p in m['pages']:
+              old=str(p['original']); prefix='checkpoint/01-import/raw/'
+              if not old.startswith(prefix): raise RuntimeError(old)
+              p['original']=(raw/old[len(prefix):]).as_posix()
+          (proc/'manifest.json').write_text(json.dumps(m,ensure_ascii=False,indent=2),encoding='utf-8')
+          PY
+      - name: Production detector mask and inpaint
+        run: |
+          python - <<'PY'
+          import json, os, time
+          from pathlib import Path
+          import cv2, numpy as np
+          from app.manifest_utils import load_manifest_raw
+          from app.mask_store import decode_mask_value
+          from app.optimized_pipeline import OptimizedChapterPipeline
+          cid=os.environ['CHAPTER_ID']; p=OptimizedChapterPipeline(); m=load_manifest_raw(cid)
+          idx=[i for i,x in enumerate(m['pages']) if not x.get('skipped')]
+          batches=[]
+          for start in range(0,len(idx),16):
+              b=idx[start:start+16]; t=time.perf_counter(); p.process_pages(cid,b,workers=2); dt=time.perf_counter()-t
+              batches.append({'indices':b,'elapsed_s':round(dt,3)}); print(f'processed {start+len(b)}/{len(idx)} in {dt:.1f}s')
+          m=load_manifest_raw(cid); rows=[]
+          for i,page in enumerate(m['pages']):
+              boxes=page.get('boxes') or page.get('detections') or []; im=cv2.imread(str(page.get('original')),cv2.IMREAD_COLOR); area=int(im.shape[0]*im.shape[1]) if im is not None else 0
+              mp=0; conf=[]
+              for box in boxes:
+                  try:
+                      v=box.get('confidence',box.get('conf',box.get('score')))
+                      if v is not None: conf.append(float(v))
+                  except Exception: pass
+                  mask=decode_mask_value(box.get('mask'))
+                  if mask is not None: mp += int(np.count_nonzero(mask>127))
+              rows.append({'page_index':i,'source_page':page.get('source_page'),'slice_index':page.get('slice_index'),'original':page.get('original'),'clean':page.get('clean'),'box_count':len(boxes),'min_confidence':round(min(conf),4) if conf else None,'mask_fill_ratio':round(mp/area,6) if area else 0.0,'needs_review':bool(page.get('needs_review')),'detection_issues':page.get('detection_issues') or []})
+          summary={'checkpoint':'02-clean-review','chapter_id':cid,'source_url':os.environ['CHAPTER_URL'],'slices':len(rows),'total_boxes':sum(r['box_count'] for r in rows),'needs_review_pages':[r['page_index'] for r in rows if r['needs_review']],'batches':batches,'next_action':'STOP_FOR_HUMAN_RAW_VS_CLEAN_REVIEW'}
+          Path('clean-review-summary.json').write_text(json.dumps(summary,ensure_ascii=False,indent=2),encoding='utf-8')
+          Path('review-index.json').write_text(json.dumps(rows,ensure_ascii=False,indent=2),encoding='utf-8')
+          print(json.dumps(summary,ensure_ascii=False))
+          PY
+      - name: Pack checkpoint 02
+        if: always()
+        run: |
+          mkdir -p checkpoint/02-clean-review
+          cp -a "data/raw/${CHAPTER_ID}" checkpoint/02-clean-review/raw || true
+          cp -a "data/processed/${CHAPTER_ID}" checkpoint/02-clean-review/processed || true
+          if [ -d "data/processed/${CHAPTER_ID}/masks" ]; then cp -a "data/processed/${CHAPTER_ID}/masks" checkpoint/02-clean-review/masks; else mkdir -p checkpoint/02-clean-review/masks; fi
+          cp clean-review-summary.json checkpoint/02-clean-review/clean-review-summary.json 2>/dev/null || true
+          cp review-index.json checkpoint/02-clean-review/review-index.json 2>/dev/null || true
+          printf 'CHECKPOINT: CLEAN REVIEW\nInspect RAW vs CLEAN before OCR.\n' > checkpoint/02-clean-review/HUMAN_CHECKPOINT.txt
+      - name: Upload checkpoint 02 artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: 02-clean-review-c0010001
+          path: checkpoint/02-clean-review
+          if-no-files-found: error
+          retention-days: 7
