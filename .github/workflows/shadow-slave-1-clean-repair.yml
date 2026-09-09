@@ -1,0 +1,284 @@
+name: Shadow Slave Chapter 1 Clean Repair
+
+on:
+  push:
+    branches:
+      - trial/shadow-slave-chapter-1
+    paths:
+      - .github/workflows/shadow-slave-1-clean-repair.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: shadow-slave-1-human-loop
+  cancel-in-progress: false
+
+jobs:
+  clean-repair:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    env:
+      PYTHONUNBUFFERED: "1"
+      CHAPTER_ID: c0010001
+      CLEAN_RUN_ID: "34349975034"
+      CLEAN_ARTIFACT: 02-clean-review-c0010001
+      MANGA_USE_DYNAMIC_LAMA: "1"
+      MANGA_ORT_PROVIDER: openvino
+      MANGA_ORT_REQUIRE_PROVIDER: "1"
+      MANGA_ORT_OPENVINO_SCOPE: detectors
+      MANGA_ORT_OPENVINO_THREADS: "2"
+      MANGA_ORT_OPENVINO_STREAMS: "1"
+      MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
+      OPENBLAS_NUM_THREADS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install production clean runtime
+        run: |
+          python -m pip install \
+            numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 \
+            onnxruntime-openvino==1.24.1 psutil==6.1.1 loguru==0.7.2 \
+            requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 playwright==1.47.0 \
+            fastapi==0.115.0 'uvicorn[standard]==0.30.6' \
+            pydantic==2.9.2 filelock==3.16.1 python-multipart==0.0.12
+
+      - name: Restore inpaint models
+        id: models
+        uses: actions/cache@v4
+        with:
+          path: |
+            models/*.onnx
+            models/.e2e-provenance.json
+          key: processing-profile-models-b224548-v1
+
+      - name: Fail if model cache unexpectedly missing
+        if: steps.models.outputs.cache-hit != 'true'
+        run: |
+          echo "Expected production model cache for local repair" >&2
+          exit 1
+
+      - name: Restore checkpoint 02
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p checkpoint/02-clean-review
+          gh run download "$CLEAN_RUN_ID" -n "$CLEAN_ARTIFACT" -D checkpoint/02-clean-review
+          test -f checkpoint/02-clean-review/processed/manifest.json
+          test -d checkpoint/02-clean-review/raw/sliced
+
+      - name: Restore production layout
+        run: |
+          python - <<'PY'
+          import json, shutil
+          from pathlib import Path
+          cid='c0010001'
+          root=Path('checkpoint/02-clean-review')
+          raw_dst=Path('data/raw')/cid
+          proc_dst=Path('data/processed')/cid
+          for dst in (raw_dst,proc_dst):
+              if dst.exists(): shutil.rmtree(dst)
+              dst.parent.mkdir(parents=True,exist_ok=True)
+          shutil.copytree(root/'raw',raw_dst)
+          shutil.copytree(root/'processed',proc_dst)
+          m=json.loads((proc_dst/'manifest.json').read_text(encoding='utf-8'))
+          if m.get('chapter_id')!=cid: raise RuntimeError('chapter mismatch')
+          for i,p in enumerate(m.get('pages',[])):
+              p['original']=(raw_dst/'sliced'/Path(str(p.get('original'))).name).as_posix()
+              if p.get('clean'):
+                  p['clean']=(proc_dst/Path(str(p.get('clean'))).name).as_posix()
+          (proc_dst/'manifest.json').write_text(json.dumps(m,ensure_ascii=False,indent=2),encoding='utf-8')
+          print('restored',len(m.get('pages',[])),'slices')
+          PY
+
+      - name: Apply human-guided local clean repairs
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+          import json, shutil
+          from pathlib import Path
+          import cv2, numpy as np
+          from app.optimized_pipeline import OptimizedChapterPipeline
+          from app.manifest_utils import load_manifest_raw, save_manifest_raw, invalidate_page_render
+          from app.pipeline import read_image, write_image
+
+          cid='c0010001'
+          pipe=OptimizedChapterPipeline()
+          manifest=load_manifest_raw(cid)
+          pages=manifest['pages']
+          repair_log=[]
+
+          # Non-story production/title-credit/end-card slices: preserve source artwork exactly.
+          restore_pages=[6,133,134]
+          for pi in restore_pages:
+              p=pages[pi]
+              raw=Path(p['original']); clean=Path(p['clean'])
+              shutil.copyfile(raw,clean)
+              p['clean_revision']=int(p.get('clean_revision') or 0)+1
+              invalidate_page_render(manifest,pi)
+              repair_log.append({'page_index':pi,'action':'restore_full_raw','reason':'non_story_title_credit_or_end_card'})
+          save_manifest_raw(cid,manifest)
+
+          def cyan_mask(pi:int, roi:tuple[int,int,int,int]):
+              p=load_manifest_raw(cid)['pages'][pi]
+              img=read_image(Path(p['original']))
+              h,w=img.shape[:2]
+              x1,y1,x2,y2=roi
+              x1=max(0,min(w,x1)); x2=max(x1,min(w,x2)); y1=max(0,min(h,y1)); y2=max(y1,min(h,y2))
+              hsv=cv2.cvtColor(img,cv2.COLOR_BGR2HSV)
+              sub=hsv[y1:y2,x1:x2]
+              # cyan / aqua / blue text outlines and fills
+              core=((sub[:,:,0]>=75)&(sub[:,:,0]<=110)&(sub[:,:,1]>=55)&(sub[:,:,2]>=80)).astype(np.uint8)*255
+              core=cv2.morphologyEx(core,cv2.MORPH_CLOSE,np.ones((5,5),np.uint8))
+              core=cv2.dilate(core,np.ones((13,13),np.uint8),iterations=1)
+              mask=np.zeros((h,w),np.uint8); mask[y1:y2,x1:x2]=core
+              return mask
+
+          # Core-owner-only masks so overlap context is not treated as a duplicate bug.
+          complex_repairs=[
+              (0,(180,520,930,831),'cyan','opening_DARE'),
+              (2,(20,3500,1580,4320),'cyan','opening_used_to_say'),
+              (4,(20,2950,1580,3399),'cyan','opening_nightmares_owner_a'),
+              (5,(20,768,1580,1500),'cyan','opening_nightmares_owner_b'),
+          ]
+          for pi,roi,kind,reason in complex_repairs:
+              mask=cyan_mask(pi,roi)
+              px=int(np.count_nonzero(mask))
+              if px<50: raise RuntimeError(f'complex repair mask too small page {pi}: {px}')
+              pipe.repaint_mask(cid,pi,mask,force_lama=True)
+              repair_log.append({'page_index':pi,'action':'manual_lama_color_mask','reason':reason,'mask_pixels':px,'roi':roi})
+
+          # Black text with white outline on a textured hood: select black glyphs, then dilate to include outline.
+          pi=15
+          p=load_manifest_raw(cid)['pages'][pi]
+          img=read_image(Path(p['original']))
+          h,w=img.shape[:2]
+          x1,y1,x2,y2=(90,130,1410,610)
+          gray=cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
+          sub=(gray[y1:y2,x1:x2] < 92).astype(np.uint8)*255
+          sub=cv2.morphologyEx(sub,cv2.MORPH_CLOSE,np.ones((3,3),np.uint8))
+          sub=cv2.dilate(sub,np.ones((15,15),np.uint8),iterations=1)
+          mask=np.zeros((h,w),np.uint8); mask[y1:y2,x1:x2]=sub
+          px=int(np.count_nonzero(mask))
+          if px<500: raise RuntimeError(f'hood text mask too small: {px}')
+          pipe.repaint_mask(cid,pi,mask,force_lama=True)
+          repair_log.append({'page_index':pi,'action':'manual_lama_dark_glyph_mask','reason':'hood_free_text_residue','mask_pixels':px})
+
+          # Conservative cleanup of tiny residual glyph components inside already-near-white detector regions.
+          # This avoids wiping bubble/caption borders: only small internal connected components are selected.
+          manifest=load_manifest_raw(cid)
+          standard_by_page={}
+          component_rows=[]
+          excluded=set(restore_pages)
+          for pi,p in enumerate(manifest['pages']):
+              if pi in excluded or not p.get('clean'): continue
+              clean=read_image(Path(p['clean']))
+              gh,gw=clean.shape[:2]
+              page_mask=np.zeros((gh,gw),np.uint8)
+              for bi,b in enumerate(p.get('boxes') or []):
+                  if not b.get('safe_to_inpaint'): continue
+                  try:
+                      x1=max(0,int(b['x1'])); y1=max(0,int(b['y1'])); x2=min(gw,int(b['x2'])); y2=min(gh,int(b['y2']))
+                  except Exception: continue
+                  if x2-x1<20 or y2-y1<20: continue
+                  crop=clean[y1:y2,x1:x2]
+                  g=cv2.cvtColor(crop,cv2.COLOR_BGR2GRAY)
+                  white_ratio=float(np.mean(g>232))
+                  if white_ratio < 0.78 or float(g.mean()) < 215: continue
+                  dark=(g<175).astype(np.uint8)
+                  n,labels,stats,_=cv2.connectedComponentsWithStats(dark,8)
+                  local=np.zeros_like(g,np.uint8)
+                  area_total=g.shape[0]*g.shape[1]
+                  selected=0
+                  for lab in range(1,n):
+                      x,y,ww,hh,area=stats[lab]
+                      touches=x<=1 or y<=1 or x+ww>=g.shape[1]-1 or y+hh>=g.shape[0]-1
+                      if touches: continue
+                      if area<3 or area>max(900,int(area_total*0.015)): continue
+                      # Text remnants are compact; reject long border-like components.
+                      if ww>g.shape[1]*0.72 or hh>g.shape[0]*0.72: continue
+                      local[labels==lab]=255; selected+=1
+                  if selected:
+                      local=cv2.dilate(local,np.ones((7,7),np.uint8),iterations=1)
+                      page_mask[y1:y2,x1:x2]=np.maximum(page_mask[y1:y2,x1:x2],local)
+                      component_rows.append({'page_index':pi,'box_index':bi,'components':selected,'white_ratio':round(white_ratio,3)})
+              if np.any(page_mask): standard_by_page[pi]=page_mask
+
+          for pi,mask in standard_by_page.items():
+              px=int(np.count_nonzero(mask))
+              pipe.repaint_mask(cid,pi,mask,force_lama=False)
+              repair_log.append({'page_index':pi,'action':'standard_residual_component_cleanup','mask_pixels':px})
+
+          manifest=load_manifest_raw(cid)
+          manifest['human_clean_review']={
+              'status':'repaired_pending_visual_review',
+              'story_inpaint_blockers':None,
+              'reviewed_slices':135,
+              'repair_count':len(repair_log),
+              'note':'Human-guided local repair applied; compact fixed visual pack must be reviewed before OCR.'
+          }
+          save_manifest_raw(cid,manifest)
+          out=Path('checkpoint/02-clean-fixed'); out.mkdir(parents=True,exist_ok=True)
+          (out/'clean-repair-report.json').write_text(json.dumps({'chapter_id':cid,'status':'REVIEW_REQUIRED','repairs':repair_log,'component_candidates':component_rows},ensure_ascii=False,indent=2),encoding='utf-8')
+          print(json.dumps({'repairs':len(repair_log),'standard_pages':len(standard_by_page),'component_boxes':len(component_rows)},ensure_ascii=False))
+          PY
+
+      - name: Build fixed compact visual pack
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import json, math
+          from PIL import Image, ImageDraw
+          cid='c0010001'
+          raw=Path('data/raw')/cid/'sliced'; proc=Path('data/processed')/cid
+          m=json.loads((proc/'manifest.json').read_text(encoding='utf-8'))
+          out=Path('checkpoint/02-clean-fixed-visual'); pairs=out/'pairs'; sheets=out/'sheets'
+          pairs.mkdir(parents=True,exist_ok=True); sheets.mkdir(parents=True,exist_ok=True)
+          paths=[]
+          for i,p in enumerate(m['pages']):
+              rp=raw/Path(p['original']).name; cp=proc/Path(p['clean']).name
+              with Image.open(rp) as a0, Image.open(cp) as b0:
+                  a=a0.convert('RGB'); b=b0.convert('RGB'); scale=min(1,720/a.width)
+                  size=(int(a.width*scale),int(a.height*scale)); a=a.resize(size); b=b.resize(size)
+                  c=Image.new('RGB',(size[0]*2,size[1]+42),'white'); c.paste(a,(0,42)); c.paste(b,(size[0],42))
+                  d=ImageDraw.Draw(c); d.text((8,8),f'{i:03d} src={p.get("source_page")} sl={p.get("slice_index")} RAW',fill='black'); d.text((size[0]+8,8),'FIXED CLEAN',fill='black')
+                  pp=pairs/f'pair_{i:03d}.jpg'; c.save(pp,quality=82,optimize=True); paths.append(pp)
+          for s in range(math.ceil(len(paths)/15)):
+              ims=[]
+              for pp in paths[s*15:(s+1)*15]:
+                  with Image.open(pp) as x0:
+                      x=x0.convert('RGB'); sc=900/x.width; ims.append(x.resize((900,int(x.height*sc))))
+              sh=Image.new('RGB',(900,sum(x.height for x in ims)),'white'); y=0
+              for x in ims: sh.paste(x,(0,y)); y+=x.height
+              sh.save(sheets/f'sheet_{s+1:02d}.jpg',quality=82,optimize=True)
+          (out/'manifest.json').write_text(json.dumps(m,ensure_ascii=False,indent=2),encoding='utf-8')
+          (out/'clean-repair-report.json').write_bytes(Path('checkpoint/02-clean-fixed/clean-repair-report.json').read_bytes())
+          print('fixed visual pairs',len(paths))
+          PY
+
+      - name: Pack fixed full checkpoint
+        run: |
+          rm -rf checkpoint/02-clean-fixed/raw checkpoint/02-clean-fixed/processed
+          cp -a "data/raw/${CHAPTER_ID}" checkpoint/02-clean-fixed/raw
+          cp -a "data/processed/${CHAPTER_ID}" checkpoint/02-clean-fixed/processed
+
+      - name: Upload fixed full checkpoint
+        uses: actions/upload-artifact@v4
+        with:
+          name: 02-clean-review-fixed-c0010001
+          path: checkpoint/02-clean-fixed
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload fixed compact visual checkpoint
+        uses: actions/upload-artifact@v4
+        with:
+          name: 02-clean-fixed-visual-c0010001
+          path: checkpoint/02-clean-fixed-visual
+          if-no-files-found: error
+          retention-days: 7
