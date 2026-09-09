@@ -1,0 +1,269 @@
+name: Chapter 212 OCR Human Curation
+
+on:
+  push:
+    branches:
+      - trial/chapter-render-212
+    paths:
+      - .github/workflows/chapter-212-ocr-curation.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: chapter-212-human-loop
+  cancel-in-progress: false
+
+jobs:
+  curate-ocr:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    env:
+      CHAPTER_ID: c2120212
+      OCR_RUN_ID: "34322078869"
+      OCR_ARTIFACT: 03-ocr-review-c2120212
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Restore OCR review checkpoint
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf checkpoint/03-ocr-review-curated
+          mkdir -p checkpoint/03-ocr-review-curated
+          gh run download "$OCR_RUN_ID" -n "$OCR_ARTIFACT" -D checkpoint/03-ocr-review-curated
+          test -f checkpoint/03-ocr-review-curated/processed/manifest.json
+          test -f trials/chapter-212/ocr-curation.json
+
+      - name: Apply human OCR curation and persistent tombstones
+        run: |
+          python - <<'PY'
+          import copy
+          import json
+          from pathlib import Path
+          from app.text_objects import ensure_page_text_objects
+
+          root = Path('checkpoint/03-ocr-review-curated')
+          manifest_path = root / 'processed' / 'manifest.json'
+          manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+          curation = json.loads(Path('trials/chapter-212/ocr-curation.json').read_text(encoding='utf-8'))
+          drop_map = curation['drop']
+          corrections = curation['corrections']
+
+          pages = manifest.get('pages') or []
+          indexed = {}
+          for pi, page in enumerate(pages):
+              for obj in page.get('text_objects') or []:
+                  oid = str(obj.get('id') or '')
+                  if not oid:
+                      continue
+                  if oid in indexed:
+                      raise SystemExit(f'duplicate text object id: {oid}')
+                  indexed[oid] = (pi, obj)
+
+          if len(indexed) != 201:
+              raise SystemExit(f'expected 201 text objects, got {len(indexed)}')
+          missing_drop = sorted(set(drop_map) - set(indexed))
+          missing_corr = sorted(set(corrections) - set(indexed))
+          overlap = sorted(set(drop_map) & set(corrections))
+          if missing_drop or missing_corr or overlap:
+              raise SystemExit(
+                  f'mapping mismatch drop_missing={missing_drop} '
+                  f'corr_missing={missing_corr} overlap={overlap}'
+              )
+          if len(drop_map) != 82 or len(corrections) != 69:
+              raise SystemExit(
+                  f'wrong map sizes drop={len(drop_map)} corrections={len(corrections)}'
+              )
+
+          curated_rows = []
+          keep_count = drop_count = correction_count = 0
+          for oid, (pi, obj) in indexed.items():
+              original_text = str(obj.get('ocr_text') or '')
+              for key in ('translation_source', 'translation_model',
+                          'translation_input_text', 'auto_translation'):
+                  obj.pop(key, None)
+              obj['translation'] = ''
+
+              if oid in drop_map:
+                  reason = drop_map[oid]
+                  obj.update({
+                      'human_review': 'drop_duplicate_credit_sfx_or_noise',
+                      'human_review_reason': reason,
+                      'human_review_source_text': original_text,
+                      'source_missing': True,
+                      'auto_generated': False,
+                      'origin': 'human_review_drop',
+                      'ocr_quality': 'human_dropped',
+                      'ocr_quality_reason': reason,
+                  })
+                  obj.pop('auto_ocr_text', None)
+                  obj.pop('auto_geometry', None)
+                  action = 'drop'
+                  drop_count += 1
+              else:
+                  corrected = corrections.get(oid)
+                  if corrected is not None:
+                      if original_text != corrected:
+                          obj['human_review_original_ocr'] = original_text
+                      obj['ocr_text'] = corrected
+                      correction_count += 1
+                  final_text = str(obj.get('ocr_text') or '').strip()
+                  if not final_text:
+                      raise SystemExit(f'kept story object blank page={pi} id={oid}')
+                  obj.update({
+                      'human_review': 'keep_story',
+                      'human_review_reason': 'accepted_story_source',
+                      'source_missing': False,
+                      'auto_generated': False,
+                      'origin': 'human_review_story',
+                      'ocr_source': 'human_review',
+                      'ocr_quality': 'human_reviewed',
+                      'ocr_quality_reason': 'accepted_or_corrected_by_human_review',
+                  })
+                  obj.pop('auto_ocr_text', None)
+                  obj.pop('auto_geometry', None)
+                  action = 'keep'
+                  keep_count += 1
+
+              curated_rows.append({
+                  'page_index': pi,
+                  'id': oid,
+                  'action': action,
+                  'reason': obj.get('human_review_reason'),
+                  'source_text': str(obj.get('ocr_text') or ''),
+                  'original_ocr': original_text,
+                  'source_boxes': copy.deepcopy(obj.get('source_boxes') or []),
+              })
+
+          if (keep_count, drop_count, correction_count) != (119, 82, 69):
+              raise SystemExit(
+                  f'wrong curation counts keep={keep_count} drop={drop_count} '
+                  f'corrections={correction_count}'
+              )
+
+          created_after_review = 0
+          for page in pages:
+              created, _changed = ensure_page_text_objects(page)
+              created_after_review += int(created)
+          if created_after_review != 0:
+              raise SystemExit(
+                  f'ensure_page_text_objects resurrected/created {created_after_review} objects'
+              )
+
+          indexed_after = {
+              str(obj.get('id') or ''): obj
+              for page in pages
+              for obj in (page.get('text_objects') or [])
+              if isinstance(obj, dict) and obj.get('id')
+          }
+          resurrected = [
+              oid for oid in drop_map
+              if oid not in indexed_after
+              or not indexed_after[oid].get('source_missing')
+              or indexed_after[oid].get('auto_generated')
+              or indexed_after[oid].get('origin') != 'human_review_drop'
+          ]
+          if resurrected:
+              raise SystemExit(f'human tombstones failed: {resurrected[:20]}')
+
+          active_story = []
+          unexpected_active = []
+          for pi, page in enumerate(pages):
+              for obj in page.get('text_objects') or []:
+                  if obj.get('source_missing'):
+                      continue
+                  if obj.get('human_review') != 'keep_story':
+                      unexpected_active.append((pi, obj.get('id')))
+                      continue
+                  if not str(obj.get('ocr_text') or '').strip():
+                      raise SystemExit(f'blank active story page={pi} id={obj.get("id")}')
+                  active_story.append((pi, obj.get('id')))
+          if unexpected_active:
+              raise SystemExit(f'unreviewed active objects remain: {unexpected_active[:20]}')
+          if len(active_story) != 119:
+              raise SystemExit(f'expected 119 active story objects, got {len(active_story)}')
+
+          manifest['human_ocr_review'] = {
+              'status': 'PASS',
+              'reviewed_text_objects': 201,
+              'active_story_objects': 119,
+              'persistent_tombstones': 82,
+              'corrected_story_objects': 69,
+              'reconciliation_created_objects': 0,
+              'active_unreviewed_objects': 0,
+              'next_action': 'TRANSLATION_REVIEW_ALLOWED',
+          }
+          manifest_text = json.dumps(manifest, ensure_ascii=False, indent=2)
+          manifest_path.write_text(manifest_text, encoding='utf-8')
+          (root / 'manifest.json').write_text(manifest_text, encoding='utf-8')
+          (root / 'ocr-text-curated.json').write_text(
+              json.dumps(curated_rows, ensure_ascii=False, indent=2), encoding='utf-8'
+          )
+          summary = {
+              'checkpoint': '03-ocr-review-curated',
+              'chapter_id': 'c2120212',
+              'reviewed_text_objects': 201,
+              'active_story_objects': 119,
+              'persistent_tombstones': 82,
+              'corrected_story_objects': 69,
+              'reconciliation_created_objects': 0,
+              'active_unreviewed_objects': 0,
+              'status': 'PASS',
+              'next_action': 'TRANSLATION_REVIEW_ALLOWED',
+          }
+          (root / 'ocr-curation-summary.json').write_text(
+              json.dumps(summary, ensure_ascii=False, indent=2), encoding='utf-8'
+          )
+          print(json.dumps(summary, ensure_ascii=False, indent=2))
+          PY
+
+      - name: Validate curated OCR checkpoint
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path('checkpoint/03-ocr-review-curated')
+          summary = json.loads((root / 'ocr-curation-summary.json').read_text(encoding='utf-8'))
+          manifest = json.loads((root / 'processed' / 'manifest.json').read_text(encoding='utf-8'))
+          expected = {
+              'status': 'PASS',
+              'active_story_objects': 119,
+              'persistent_tombstones': 82,
+              'corrected_story_objects': 69,
+              'reconciliation_created_objects': 0,
+          }
+          for key, value in expected.items():
+              if summary.get(key) != value:
+                  raise SystemExit(f'{key} expected {value}, got {summary.get(key)}')
+
+          story = tombstones = 0
+          for page in manifest.get('pages') or []:
+              for obj in page.get('text_objects') or []:
+                  if obj.get('source_missing'):
+                      if obj.get('human_review') == 'drop_duplicate_credit_sfx_or_noise':
+                          tombstones += 1
+                          if obj.get('auto_generated'):
+                              raise SystemExit(f'tombstone auto-generated: {obj.get("id")}')
+                      continue
+                  if obj.get('human_review') == 'keep_story':
+                      story += 1
+          if (story, tombstones) != (119, 82):
+              raise SystemExit(f'final mismatch story={story} tombstones={tombstones}')
+          print('OCR human curation persistence gate PASS')
+          PY
+
+      - name: Upload curated OCR checkpoint
+        uses: actions/upload-artifact@v4
+        with:
+          name: 03-ocr-review-curated-c2120212
+          path: checkpoint/03-ocr-review-curated
+          if-no-files-found: error
+          retention-days: 7
