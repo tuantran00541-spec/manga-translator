@@ -1,0 +1,86 @@
+name: Shadow Slave Chapter 1 Checkpoint 01 Import
+
+on:
+  push:
+    branches:
+      - trial/shadow-slave-chapter-1
+    paths:
+      - .github/workflows/shadow-slave-1-import.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: shadow-slave-1-import
+  cancel-in-progress: false
+
+jobs:
+  import-slice:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout trial branch
+        uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install import dependencies only
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install fastapi==0.115.0 requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 playwright==1.47.0 Pillow==10.4.0 numpy==1.26.4 opencv-contrib-python==4.10.0.84
+      - name: Download and production-slice chapter
+        env:
+          CHAPTER_URL: https://asurascans.com/comics/shadow-slave-53fc8424/chapter/1
+          CHAPTER_ID: c0010001
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+          import json, os
+          from concurrent.futures import ThreadPoolExecutor, as_completed
+          from pathlib import Path
+          import cv2
+          from app.downloader.registry import download_chapter
+          from app.downloader.slicer import slice_image
+          from app.parameters import PIPELINE_DEFAULT_WORKERS, PIPELINE_SLICE_WORKER_LIMIT
+          from app.security import validate_chapter_id
+
+          chapter_url = os.environ['CHAPTER_URL']
+          chapter_id = validate_chapter_id(os.environ['CHAPTER_ID'])
+          root = Path('checkpoint/01-import')
+          raw_dir = root/'raw'; sliced_dir = raw_dir/'sliced'
+          raw_dir.mkdir(parents=True, exist_ok=True); sliced_dir.mkdir(parents=True, exist_ok=True)
+          raw_paths = download_chapter(chapter_url, raw_dir)
+          if not raw_paths: raise RuntimeError('Production downloader returned zero source images')
+          workers = max(1, min(int(PIPELINE_DEFAULT_WORKERS), int(PIPELINE_SLICE_WORKER_LIMIT), len(raw_paths)))
+          results = {}
+          def one(item):
+              idx, path = item
+              return idx, slice_image(path, sliced_dir, f'{idx:03d}', return_metadata=True)
+          with ThreadPoolExecutor(max_workers=workers) as pool:
+              futures={pool.submit(one,(i,p)):i for i,p in enumerate(raw_paths)}
+              for f in as_completed(futures):
+                  i, items=f.result(); results[i]=items
+          pages=[]; source_rows=[]
+          for source_index, raw_path in enumerate(raw_paths):
+              im=cv2.imread(str(raw_path), cv2.IMREAD_COLOR)
+              if im is None: raise RuntimeError(f'Could not read {raw_path}')
+              h,w=im.shape[:2]
+              source_rows.append({'source_page':source_index,'filename':raw_path.name,'width':int(w),'height':int(h),'slice_count':len(results[source_index])})
+              for slice_index,item in enumerate(results[source_index]):
+                  pages.append({'original':Path(item['path']).as_posix(),'clean':None,'boxes':[],'skipped':False,'excluded_regions':[],'source_page':source_index,'slice_index':slice_index,'stitch_core':{k:item.get(k) for k in ('source_y1','source_y2','core_y1','core_y2','core_source_y1','core_source_y2','unsafe_before','unsafe_after','source_height')}})
+          manifest={'chapter_id':chapter_id,'source_url':chapter_url,'pages':pages,'workflow':{'stage':'preview','page_index':0}}
+          (root/'manifest.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding='utf-8')
+          summary={'checkpoint':'01-import','chapter_id':chapter_id,'source_url':chapter_url,'source_images':len(raw_paths),'slices':len(pages),'slice_workers':workers,'skipped_pages':[],'source_order':[p.name for p in raw_paths],'source_pages':source_rows,'slice_order':[{'page_index':i,'source_page':p['source_page'],'slice_index':p['slice_index'],'original':p['original']} for i,p in enumerate(pages)]}
+          (root/'import-summary.json').write_text(json.dumps(summary,ensure_ascii=False,indent=2),encoding='utf-8')
+          print(json.dumps({'source_images':len(raw_paths),'slices':len(pages)},ensure_ascii=False))
+          PY
+      - name: Upload checkpoint 01 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: 01-import-c0010001
+          path: checkpoint/01-import
+          if-no-files-found: error
+          retention-days: 7
