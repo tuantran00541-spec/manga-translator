@@ -1,0 +1,359 @@
+name: Chapter 212 Render Review
+
+on:
+  push:
+    branches:
+      - trial/chapter-render-212
+    paths:
+      - .github/workflows/chapter-212-render-review.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: chapter-212-human-loop
+  cancel-in-progress: false
+
+jobs:
+  render-review:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 35
+    env:
+      CHAPTER_ID: c2120212
+      TRANSLATION_RUN_ID: "34326069057"
+      TRANSLATION_ARTIFACT: 04-translation-review-c2120212
+      REVIEW_ZIP: The-Return-of-the-Crazy-Demon-Chapter-212-VI-RENDER-REVIEW.zip
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install production render runtime
+        run: |
+          python -m pip install \
+            Pillow==10.4.0 numpy==1.26.4 opencv-contrib-python==4.10.0.84 \
+            fastapi==0.115.0 pydantic==2.9.2 filelock==3.16.1 loguru==0.7.2 \
+            fonttools==4.59.2
+
+      - name: Restore translation review checkpoint
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf checkpoint/04-translation-review
+          mkdir -p checkpoint/04-translation-review
+          gh run download "$TRANSLATION_RUN_ID" -n "$TRANSLATION_ARTIFACT" -D checkpoint/04-translation-review
+          test -f checkpoint/04-translation-review/processed/manifest.json
+          test -d checkpoint/04-translation-review/raw
+
+      - name: Restore production chapter layout
+        run: |
+          python - <<'PY'
+          import json
+          import shutil
+          from pathlib import Path
+
+          chapter_id = 'c2120212'
+          root = Path('checkpoint/04-translation-review')
+          raw_dst = Path('data/raw') / chapter_id
+          processed_dst = Path('data/processed') / chapter_id
+          output_dst = Path('data/output') / chapter_id
+
+          for dst in (raw_dst, processed_dst, output_dst):
+              if dst.exists():
+                  shutil.rmtree(dst)
+              dst.parent.mkdir(parents=True, exist_ok=True)
+
+          shutil.copytree(root / 'raw', raw_dst)
+          shutil.copytree(root / 'processed', processed_dst)
+          output_dst.mkdir(parents=True, exist_ok=True)
+
+          manifest_path = processed_dst / 'manifest.json'
+          manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+          for page in manifest.get('pages') or []:
+              original = Path(str(page.get('original') or ''))
+              clean = Path(str(page.get('clean') or ''))
+              if original.name:
+                  page['original'] = (raw_dst / 'sliced' / original.name).as_posix()
+              if clean.name:
+                  page['clean'] = str((processed_dst / clean.name).resolve())
+          manifest_path.write_text(
+              json.dumps(manifest, ensure_ascii=False, indent=2), encoding='utf-8'
+          )
+          print(f"restored {len(manifest.get('pages') or [])} slices")
+          PY
+
+      - name: Audit 15 fonts and assign semantic styles
+        run: |
+          python - <<'PY'
+          import json
+          from collections import Counter, defaultdict
+          from pathlib import Path
+          from fontTools.ttLib import TTFont
+
+          chapter_id = 'c2120212'
+          manifest_path = Path('data/processed') / chapter_id / 'manifest.json'
+          manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+          font_dir = Path('app/static/fonts')
+          font_paths = sorted(font_dir.glob('*.ttf'))
+          if len(font_paths) != 15:
+              raise SystemExit(f'expected 15 bundled fonts, got {len(font_paths)}')
+
+          cmaps = {}
+          font_audit = {}
+          vietnamese_probe = set('ăâêôơưđĂÂÊÔƠƯĐáàảãạấầẩẫậắằẳẵặéèẻẽẹếềểễệíìỉĩịóòỏõọốồổỗộớờởỡợúùủũụứừửữựýỳỷỹỵÁÀẢÃẠẤẦẨẪẬẮẰẲẴẶÉÈẺẼẸẾỀỂỄỆÍÌỈĨỊÓÒỎÕỌỐỒỔỖỘỚỜỞỠỢÚÙỦŨỤỨỪỬỮỰÝỲỶỸỴ')
+          for path in font_paths:
+              font = TTFont(path, lazy=True)
+              cmap = set((font.getBestCmap() or {}).keys())
+              font.close()
+              cmaps[path.stem] = cmap
+              missing_probe = ''.join(sorted(ch for ch in vietnamese_probe if ord(ch) not in cmap))
+              font_audit[path.stem] = {
+                  'file': path.name,
+                  'vietnamese_probe_missing': missing_probe,
+                  'vietnamese_probe_ok': not bool(missing_probe),
+              }
+
+          def supports(font_name: str, text: str) -> bool:
+              cmap = cmaps.get(font_name, set())
+              required = {ord(ch) for ch in text if not ch.isspace()}
+              return required.issubset(cmap)
+
+          def category(source: str, vi: str) -> str:
+              s = source.upper()
+              v = vi.lower()
+              if 'YI ZAHA' in s and ('CRAZY DEMON' in s or 'SLEEP' in s):
+                  return 'narrator'
+              if 'HEAVENLY PEARL' in s or 'ABSORPTION TECHNIQUE' in s or 'thiên ngọc' in v:
+                  return 'skill'
+              aggressive_tokens = (
+                  'khốn', 'đánh chết', 'giết', 'địa ngục', 'phế nhân', 'thảm hại',
+                  'ma đạo', 'độc', 'đau', 'sống còn', 'nghiện thuốc', 'sợ giáo chủ'
+              )
+              if any(token in v for token in aggressive_tokens):
+                  return 'shadow'
+              if len(vi) >= 58 or len(source) >= 72:
+                  return 'exposition'
+              if len(vi) <= 24 or vi.endswith('?') or vi.endswith('!'):
+                  return 'emphasis'
+              return 'dialogue'
+
+          preferences = {
+              'dialogue': ['Manga-fonts', 'Mac-dinh-2', 'Mac-dinh-3', 'default'],
+              'exposition': ['Mac-dinh-2', 'Manga-fonts', 'default', 'Mac-dinh-3'],
+              'emphasis': ['Mac-dinh-3', 'Granite', 'Manga-fonts', 'default'],
+              'shadow': ['Shadow-fonts', 'Granite', 'Mac-dinh-3', 'Manga-fonts', 'default'],
+              'skill': ['Skill-fonts-3', 'Skill-fonts-1', 'Skill-fonts-2', 'Skill-fonts-4', 'Skill-fonts-5', 'Granite', 'default'],
+              'narrator': ['Granite', 'Curves-Regular', 'Mac-dinh-2', 'Manga-fonts', 'default'],
+          }
+
+          usage = Counter()
+          category_usage = Counter()
+          assignments = []
+          active = 0
+          for pi, page in enumerate(manifest.get('pages') or []):
+              for obj in page.get('text_objects') or []:
+                  if obj.get('source_missing') or obj.get('human_review') != 'keep_story':
+                      continue
+                  oid = str(obj.get('id') or '')
+                  source = str(obj.get('ocr_text') or '').strip()
+                  vi = str(obj.get('translation') or '').strip()
+                  if not vi:
+                      raise SystemExit(f'active untranslated object page={pi} id={oid}')
+                  kind = category(source, vi)
+                  chosen = next((f for f in preferences[kind] if supports(f, vi)), None)
+                  if chosen is None:
+                      missing = {
+                          f: ''.join(sorted({ch for ch in vi if not ch.isspace() and ord(ch) not in cmaps.get(f, set())}))
+                          for f in preferences[kind]
+                      }
+                      raise SystemExit(f'no font covers object {oid}: {missing}')
+                  style = obj.setdefault('style', {})
+                  style.update({
+                      'font': chosen,
+                      'fontSize': 'auto',
+                      'color': 'auto',
+                      'strokeWidth': 'auto',
+                      'strokeColor': 'auto',
+                      'bgColor': 'transparent',
+                      'cornerRadius': '0',
+                      'horizontalAlign': 'center',
+                      'verticalAlign': 'middle',
+                      'bold': kind in {'skill', 'emphasis'},
+                  })
+                  obj['human_typeset_class'] = kind
+                  obj['human_typeset_font'] = chosen
+                  usage[chosen] += 1
+                  category_usage[kind] += 1
+                  active += 1
+                  assignments.append({
+                      'page_index': pi,
+                      'id': oid,
+                      'class': kind,
+                      'font': chosen,
+                      'translation': vi,
+                  })
+
+          if active != 119:
+              raise SystemExit(f'expected 119 styled active objects, got {active}')
+          if len(usage) < 3:
+              raise SystemExit(f'typesetting collapsed to fewer than 3 fonts: {dict(usage)}')
+
+          manifest['human_typeset_review'] = {
+              'status': 'STYLED_PENDING_RENDER_VISUAL_REVIEW',
+              'bundled_font_count': len(font_paths),
+              'distinct_fonts_used': len(usage),
+              'font_usage': dict(usage),
+              'category_usage': dict(category_usage),
+          }
+          manifest_path.write_text(
+              json.dumps(manifest, ensure_ascii=False, indent=2), encoding='utf-8'
+          )
+          report = {
+              'bundled_font_count': len(font_paths),
+              'fonts': font_audit,
+              'distinct_fonts_used': len(usage),
+              'font_usage': dict(usage),
+              'category_usage': dict(category_usage),
+              'assignments': assignments,
+          }
+          Path('font-audit.json').write_text(
+              json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8'
+          )
+          print(json.dumps({
+              'bundled_font_count': len(font_paths),
+              'distinct_fonts_used': len(usage),
+              'font_usage': dict(usage),
+              'category_usage': dict(category_usage),
+          }, ensure_ascii=False, indent=2))
+          PY
+
+      - name: Render all slices with production renderer and export
+        run: |
+          python - <<'PY'
+          import json
+          import shutil
+          import zipfile
+          from pathlib import Path
+          from PIL import Image
+
+          from app.routers.export import export_chapter, render_chapter
+
+          chapter_id = 'c2120212'
+          result = render_chapter(chapter_id)
+          stats = result.get('chapter_render') or {}
+          if stats.get('total') != 56:
+              raise SystemExit(f'expected 56 render slices, got {stats}')
+          if stats.get('skipped') != 0:
+              raise SystemExit(f'unexpected skipped render slices: {stats}')
+
+          export_chapter(chapter_id)
+          output_dir = Path('data/output') / chapter_id
+          slice_paths = sorted(output_dir.glob('page_*.png'))
+          if len(slice_paths) != 56:
+              raise SystemExit(f'expected 56 rendered slice files, got {len(slice_paths)}')
+
+          export_zip = output_dir / f'chapter_{chapter_id}.zip'
+          if not export_zip.is_file():
+              raise SystemExit('production export zip missing')
+          with zipfile.ZipFile(export_zip) as z:
+              names = [name for name in z.namelist() if name.lower().endswith('.png')]
+              if len(names) != 16:
+                  raise SystemExit(f'expected 16 stitched source pages, got {len(names)}')
+              for name in names:
+                  with z.open(name) as src:
+                      with Image.open(src) as image:
+                          if image.width <= 0 or image.height <= 0:
+                              raise SystemExit(f'invalid exported image dimensions: {name}')
+
+          print(json.dumps({
+              'render_stats': stats,
+              'rendered_slice_files': len(slice_paths),
+              'stitched_source_pages': 16,
+          }, ensure_ascii=False, indent=2))
+          PY
+
+      - name: Pack render-review checkpoint
+        run: |
+          python - <<'PY'
+          import json
+          import shutil
+          import zipfile
+          from pathlib import Path
+          from PIL import Image
+
+          chapter_id = 'c2120212'
+          checkpoint = Path('checkpoint/05-render-review')
+          if checkpoint.exists():
+              shutil.rmtree(checkpoint)
+          checkpoint.mkdir(parents=True)
+
+          processed_src = Path('data/processed') / chapter_id
+          output_src = Path('data/output') / chapter_id
+          shutil.copytree(processed_src, checkpoint / 'processed')
+          shutil.copytree(output_src, checkpoint / 'output')
+          shutil.copy2('font-audit.json', checkpoint / 'font-audit.json')
+
+          export_zip = output_src / f'chapter_{chapter_id}.zip'
+          review_zip = checkpoint / 'The-Return-of-the-Crazy-Demon-Chapter-212-VI-RENDER-REVIEW.zip'
+          shutil.copy2(export_zip, review_zip)
+          final_pages = checkpoint / 'final-pages'
+          final_pages.mkdir()
+          with zipfile.ZipFile(export_zip) as z:
+              z.extractall(final_pages)
+
+          font_report = json.loads(Path('font-audit.json').read_text(encoding='utf-8'))
+          manifest = json.loads((processed_src / 'manifest.json').read_text(encoding='utf-8'))
+          active_untranslated = []
+          tombstones = 0
+          for pi, page in enumerate(manifest.get('pages') or []):
+              for obj in page.get('text_objects') or []:
+                  if obj.get('source_missing'):
+                      if obj.get('human_review') == 'drop_duplicate_credit_sfx_or_noise':
+                          tombstones += 1
+                      continue
+                  if obj.get('human_review') == 'keep_story' and not str(obj.get('translation') or '').strip():
+                      active_untranslated.append((pi, obj.get('id')))
+          if active_untranslated:
+              raise SystemExit(f'active untranslated after render: {active_untranslated[:20]}')
+          if tombstones != 82:
+              raise SystemExit(f'expected 82 tombstones after render, got {tombstones}')
+
+          dims = []
+          for path in sorted(final_pages.glob('*.png')):
+              with Image.open(path) as image:
+                  dims.append({'file': path.name, 'width': image.width, 'height': image.height})
+          summary = {
+              'checkpoint': '05-render-review',
+              'chapter_id': chapter_id,
+              'slices': 56,
+              'source_pages': 16,
+              'active_story_objects': 119,
+              'active_untranslated_story_objects': 0,
+              'persistent_tombstones': 82,
+              'bundled_fonts': font_report['bundled_font_count'],
+              'distinct_fonts_used': font_report['distinct_fonts_used'],
+              'font_usage': font_report['font_usage'],
+              'final_page_dimensions': dims,
+              'status': 'TECHNICAL_PASS_PENDING_HUMAN_VISUAL_REVIEW',
+              'next_action': 'STOP_FOR_HUMAN_VISUAL_REVIEW',
+          }
+          (checkpoint / 'render-review-summary.json').write_text(
+              json.dumps(summary, ensure_ascii=False, indent=2), encoding='utf-8'
+          )
+          print(json.dumps({
+              k: v for k, v in summary.items() if k != 'final_page_dimensions'
+          }, ensure_ascii=False, indent=2))
+          PY
+
+      - name: Upload render-review checkpoint
+        uses: actions/upload-artifact@v4
+        with:
+          name: 05-render-review-c2120212
+          path: checkpoint/05-render-review
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 3
