@@ -1,0 +1,138 @@
+name: Shadow Slave Chapter 1 Clean Visual Review Pack
+
+on:
+  push:
+    branches:
+      - trial/shadow-slave-chapter-1
+    paths:
+      - .github/workflows/shadow-slave-1-clean-visual.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: shadow-slave-1-clean-visual
+  cancel-in-progress: false
+
+jobs:
+  visual-pack:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    env:
+      CLEAN_RUN_ID: "34349975034"
+      CLEAN_ARTIFACT: 02-clean-review-c0010001
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install lightweight image runtime
+        run: python -m pip install Pillow==10.4.0
+
+      - name: Restore clean checkpoint
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p checkpoint/02-clean-review
+          gh run download "$CLEAN_RUN_ID" -n "$CLEAN_ARTIFACT" -D checkpoint/02-clean-review
+          test -f checkpoint/02-clean-review/processed/manifest.json
+          test -d checkpoint/02-clean-review/raw/sliced
+
+      - name: Build compact RAW vs CLEAN visual pack
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import json, math
+          from PIL import Image, ImageDraw, ImageFont, ImageChops, ImageStat
+
+          root = Path('checkpoint/02-clean-review')
+          manifest = json.loads((root/'processed/manifest.json').read_text(encoding='utf-8'))
+          review_index_path = root/'review-index.json'
+          review_index = json.loads(review_index_path.read_text(encoding='utf-8')) if review_index_path.is_file() else []
+          review_by_page = {int(r.get('page_index')): r for r in review_index if r.get('page_index') is not None}
+
+          out = Path('checkpoint/02-clean-visual')
+          pairs_dir = out/'pairs'
+          sheets_dir = out/'sheets'
+          pairs_dir.mkdir(parents=True, exist_ok=True)
+          sheets_dir.mkdir(parents=True, exist_ok=True)
+
+          rows=[]
+          pair_paths=[]
+          max_side_w=720
+          header_h=48
+          for i,page in enumerate(manifest.get('pages',[])):
+              raw_name=Path(str(page.get('original') or '')).name
+              clean_name=Path(str(page.get('clean') or '')).name
+              raw_path=root/'raw'/'sliced'/raw_name
+              clean_candidates=[root/'processed'/clean_name, root/'processed'/f'clean_{i:03d}.png']
+              clean_path=next((p for p in clean_candidates if p.is_file()), None)
+              if not raw_path.is_file() or clean_path is None:
+                  raise RuntimeError(f'missing pair page={i} raw={raw_path} clean={clean_path}')
+              with Image.open(raw_path) as a0, Image.open(clean_path) as b0:
+                  a=a0.convert('RGB'); b=b0.convert('RGB')
+                  if a.size != b.size:
+                      raise RuntimeError(f'size mismatch page {i}: {a.size} vs {b.size}')
+                  scale=min(1.0,max_side_w/a.width)
+                  size=(max(1,int(a.width*scale)),max(1,int(a.height*scale)))
+                  ar=a.resize(size,Image.Resampling.LANCZOS)
+                  br=b.resize(size,Image.Resampling.LANCZOS)
+                  canvas=Image.new('RGB',(size[0]*2,size[1]+header_h),'white')
+                  canvas.paste(ar,(0,header_h)); canvas.paste(br,(size[0],header_h))
+                  d=ImageDraw.Draw(canvas)
+                  meta=review_by_page.get(i,{})
+                  d.text((8,8),f'page {i:03d} | src {page.get("source_page")} slice {page.get("slice_index")} | RAW',fill='black')
+                  d.text((size[0]+8,8),f'CLEAN | boxes={meta.get("box_count","?")} mask={meta.get("mask_fill_ratio","?")} review={meta.get("needs_review","?")}',fill='black')
+                  pair_path=pairs_dir/f'pair_{i:03d}.jpg'
+                  canvas.save(pair_path,quality=82,optimize=True)
+                  pair_paths.append(pair_path)
+
+                  # normalized mean absolute difference for ranking only
+                  diff=ImageChops.difference(a,b).convert('L')
+                  mean=float(ImageStat.Stat(diff).mean[0])/255.0
+                  rows.append({
+                      'page_index':i,
+                      'source_page':page.get('source_page'),
+                      'slice_index':page.get('slice_index'),
+                      'box_count':meta.get('box_count'),
+                      'mask_fill_ratio':meta.get('mask_fill_ratio'),
+                      'needs_review':meta.get('needs_review'),
+                      'mean_abs_diff':round(mean,6),
+                      'pair':pair_path.as_posix(),
+                  })
+
+          per_sheet=15
+          thumb_w=900
+          for s in range(math.ceil(len(pair_paths)/per_sheet)):
+              batch=pair_paths[s*per_sheet:(s+1)*per_sheet]
+              thumbs=[]
+              for p in batch:
+                  with Image.open(p) as im0:
+                      im=im0.convert('RGB')
+                      scale=thumb_w/im.width
+                      thumbs.append(im.resize((thumb_w,max(1,int(im.height*scale))),Image.Resampling.LANCZOS))
+              total_h=sum(im.height for im in thumbs)
+              sheet=Image.new('RGB',(thumb_w,total_h),'white')
+              y=0
+              for im in thumbs:
+                  sheet.paste(im,(0,y)); y+=im.height
+              sheet.save(sheets_dir/f'sheet_{s+1:02d}.jpg',quality=82,optimize=True)
+
+          ranked=sorted(rows,key=lambda r:(not bool(r.get('needs_review')),-float(r.get('mask_fill_ratio') or 0),-float(r.get('mean_abs_diff') or 0)))
+          (out/'visual-index.json').write_text(json.dumps({'pages':rows,'priority':ranked[:40]},ensure_ascii=False,indent=2),encoding='utf-8')
+          if (root/'clean-review-summary.json').is_file():
+              (out/'clean-review-summary.json').write_bytes((root/'clean-review-summary.json').read_bytes())
+          print(json.dumps({'pairs':len(pair_paths),'sheets':math.ceil(len(pair_paths)/per_sheet),'priority':[r['page_index'] for r in ranked[:40]]},ensure_ascii=False))
+          PY
+
+      - name: Upload compact visual review pack
+        uses: actions/upload-artifact@v4
+        with:
+          name: 02-clean-visual-c0010001
+          path: checkpoint/02-clean-visual
+          if-no-files-found: error
+          retention-days: 7
