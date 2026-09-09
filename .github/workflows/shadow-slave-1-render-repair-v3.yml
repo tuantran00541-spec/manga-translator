@@ -1,0 +1,381 @@
+name: Shadow Slave Chapter 1 Render Repair V3
+
+on:
+  push:
+    branches:
+      - trial/shadow-slave-chapter-1
+    paths:
+      - .github/workflows/shadow-slave-1-render-repair-v3.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: shadow-slave-1-human-loop
+  cancel-in-progress: false
+
+jobs:
+  render-repair-v3:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 55
+    env:
+      PYTHONUNBUFFERED: "1"
+      CHAPTER_ID: c0010001
+      TRANSLATION_RUN_ID: "34371649065"
+      TRANSLATION_ARTIFACT: 04-translation-review-c0010001
+      PRIMARY_DIALOGUE_FONT: Mac-dinh-3
+      FREE_TEXT_FONT: Manga-fonts
+      SYSTEM_FONT: Shadow-fonts
+      MANGA_USE_DYNAMIC_LAMA: "1"
+      MANGA_ORT_PROVIDER: openvino
+      MANGA_ORT_REQUIRE_PROVIDER: "1"
+      MANGA_ORT_OPENVINO_SCOPE: detectors
+      MANGA_ORT_OPENVINO_THREADS: "2"
+      MANGA_ORT_OPENVINO_STREAMS: "1"
+      MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
+      OPENBLAS_NUM_THREADS: "1"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install production repair and render runtime
+        run: |
+          python -m pip install \
+            Pillow==10.4.0 numpy==1.26.4 opencv-contrib-python==4.10.0.84 \
+            onnxruntime-openvino==1.24.1 psutil==6.1.1 loguru==0.7.2 \
+            fastapi==0.115.0 pydantic==2.9.2 filelock==3.16.1 \
+            fonttools==4.59.2
+
+      - name: Restore inpaint models
+        id: models
+        uses: actions/cache@v4
+        with:
+          path: |
+            models/*.onnx
+            models/.e2e-provenance.json
+          key: processing-profile-models-b224548-v1
+
+      - name: Fail if model cache unexpectedly missing
+        if: steps.models.outputs.cache-hit != 'true'
+        run: |
+          echo "Expected production model cache for local visual repair" >&2
+          exit 1
+
+      - name: Restore reviewed translation checkpoint
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf checkpoint/04-translation-review
+          mkdir -p checkpoint/04-translation-review
+          gh run download "$TRANSLATION_RUN_ID" -n "$TRANSLATION_ARTIFACT" -D checkpoint/04-translation-review
+          test -f checkpoint/04-translation-review/processed/manifest.json
+          test -f checkpoint/04-translation-review/translation-review-summary.json
+          test -d checkpoint/04-translation-review/raw
+
+      - name: Validate translation gate and restore production layout
+        run: |
+          python - <<'PY'
+          import json, shutil
+          from pathlib import Path
+
+          cid='c0010001'; root=Path('checkpoint/04-translation-review')
+          s=json.loads((root/'translation-review-summary.json').read_text(encoding='utf-8'))
+          expected={'status':'PASS','active_story_objects':101,'translated_story_objects':101,'active_untranslated_story_objects':0,'persistent_tombstones':319}
+          for k,v in expected.items():
+              if s.get(k)!=v: raise SystemExit(f'translation gate {k}: expected {v}, got {s.get(k)}')
+
+          raw_dst=Path('data/raw')/cid; proc_dst=Path('data/processed')/cid; out_dst=Path('data/output')/cid
+          for dst in (raw_dst,proc_dst,out_dst):
+              if dst.exists(): shutil.rmtree(dst)
+              dst.parent.mkdir(parents=True,exist_ok=True)
+          shutil.copytree(root/'raw',raw_dst)
+          shutil.copytree(root/'processed',proc_dst)
+          out_dst.mkdir(parents=True,exist_ok=True)
+          mp=proc_dst/'manifest.json'; m=json.loads(mp.read_text(encoding='utf-8'))
+          if len(m.get('pages') or [])!=135: raise SystemExit(f'expected 135 slices, got {len(m.get("pages") or [])}')
+          for p in m.get('pages') or []:
+              original=Path(str(p.get('original') or '')); clean=Path(str(p.get('clean') or ''))
+              if original.name: p['original']=(raw_dst/'sliced'/original.name).as_posix()
+              if clean.name: p['clean']=str((proc_dst/clean.name).resolve())
+          mp.write_text(json.dumps(m,ensure_ascii=False,indent=2),encoding='utf-8')
+          print('translation checkpoint restored')
+          PY
+
+      - name: Repair 18 human-identified English residue regions
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+          import json
+          from pathlib import Path
+          import cv2, numpy as np
+          from app.inpaint.lama_inpainter import Inpainter
+          from app.pipeline import read_image, write_image
+
+          cid='c0010001'; proc=Path('data/processed')/cid
+          mp=proc/'manifest.json'; m=json.loads(mp.read_text(encoding='utf-8'))
+          inp=Inpainter()
+
+          # These were identified by actual post-render human visual review of all 101 objects.
+          # Two complex-art regions use targeted LaMa masks; the remainder are white bubble/caption residue.
+          white_targets=[
+              (11,'text_07cffd1960484d7d',(522,579,1387,730),'narration_white_E'),
+              (18,'text_54b4cf5d18874dd3',(116,620,1410,1098),'narration_white_S'),
+              (51,'text_41af4e19d86f4044',(250,1500,1350,2200),'caption_PE'),
+              (53,'text_00a883a0049748a0',(242,515,1108,1007),'caption_ETPO'),
+              (57,'text_6264cfe62dd64a59',(492,829,1358,1296),'caption_OD'),
+              (59,'text_531d89e2b2ba4bf4',(350,2250,1550,2800),'caption_I'),
+              (67,'text_dbc92c62a16f4a9e',(342,792,1282,1113),'caption_ME'),
+              (69,'text_6e1a7ef313bb4cf2',(300,820,1400,1450),'caption_multi_letters'),
+              (73,'text_937b830ba05f410b',(350,400,1350,900),'caption_E'),
+              (78,'text_e53bc25185ba4e3d',(180,150,1200,850),'caption_C'),
+              (83,'text_5681af14ed2b4f7d',(350,220,1450,760),'caption_T_O'),
+              (110,'text_381731069ab34453',(292,636,1183,1161),'bubble_CON_CT'),
+              (112,'text_3ef62de2cb044658',(317,610,1233,1134),'bubble_IF_CT'),
+              (116,'text_7dc486e1aa9d4c90',(417,576,1307,1283),'bubble_E'),
+              (117,'text_92e4320dc4184aa4',(292,518,1258,1256),'bubble_ILL_DS_LL'),
+              (125,'text_7bce937a7f684f93',(180,580,1350,1220),'bubble_T'),
+          ]
+          complex_targets=[
+              (14,'text_afc5957581814dd7','art_outline_text'),
+              (48,'text_8a1450aefa0949d2','red_spell_residue'),
+          ]
+
+          def clamp_roi(img, box, pad=145):
+              h,w=img.shape[:2]; x1,y1,x2,y2=box
+              return max(0,x1-pad),max(0,y1-pad),min(w,x2+pad),min(h,y2+pad)
+
+          def white_component_mask(img, box):
+              h,w=img.shape[:2]; x1,y1,x2,y2=clamp_roi(img,box,145)
+              sub=img[y1:y2,x1:x2]
+              g=cv2.cvtColor(sub,cv2.COLOR_BGR2GRAY)
+              dark=(g<185).astype(np.uint8)
+              n,labels,stats,_=cv2.connectedComponentsWithStats(dark,8)
+              local=np.zeros_like(g,np.uint8); selected=[]
+              rh,rw=g.shape
+              for lab in range(1,n):
+                  x,y,ww,hh,area=(int(v) for v in stats[lab])
+                  if area<3 or area>42000: continue
+                  if x<=2 or y<=2 or x+ww>=rw-2 or y+hh>=rh-2: continue
+                  if ww>rw*0.72 or hh>rh*0.72: continue
+                  # Preserve long bubble/caption borders and panel rules.
+                  if (ww>260 and hh<18) or (hh>260 and ww<18): continue
+                  if max(ww,hh)/max(1,min(ww,hh))>22 and min(ww,hh)<24: continue
+                  bx1=max(0,x-14); by1=max(0,y-14); bx2=min(rw,x+ww+14); by2=min(rh,y+hh+14)
+                  ring=np.ones((by2-by1,bx2-bx1),bool)
+                  ix1=x-bx1; iy1=y-by1; ix2=ix1+ww; iy2=iy1+hh
+                  ring[iy1:iy2,ix1:ix2]=False
+                  rg=g[by1:by2,bx1:bx2]
+                  white_ratio=float(np.mean(rg[ring]>215)) if np.any(ring) else 0.0
+                  if white_ratio<0.48: continue
+                  local[labels==lab]=255
+                  selected.append({'bbox':[x,y,ww,hh],'area':area,'white_ring':round(white_ratio,3)})
+              if np.any(local):
+                  local=cv2.dilate(local,np.ones((7,7),np.uint8),iterations=1)
+              mask=np.zeros((h,w),np.uint8); mask[y1:y2,x1:x2]=local
+              return mask,(x1,y1,x2,y2),selected
+
+          log=[]
+          for pi,oid,box,reason in white_targets:
+              p=m['pages'][pi]; cp=Path(p['clean']); img=read_image(cp)
+              mask,roi,components=white_component_mask(img,box)
+              px=int(np.count_nonzero(mask))
+              if px<12:
+                  raise SystemExit(f'white residue mask unexpectedly empty page={pi} id={oid} reason={reason}')
+              fixed=inp.inpaint_mask(img,mask,force_lama=False)
+              write_image(cp,fixed)
+              log.append({'page_index':pi,'id':oid,'method':'smart_fill_dark_components','reason':reason,'roi':list(roi),'mask_pixels':px,'components':components})
+
+          # Source page 2 slice 3: outlined English text on sky/forest. Select dark glyph components
+          # only when a strong bright-fill neighborhood is present, then LaMa the exact glyph mask.
+          pi=14; p=m['pages'][pi]; cp=Path(p['clean']); img=read_image(cp); h,w=img.shape[:2]
+          x1,y1,x2,y2=(20,650,min(w,1580),900); sub=img[y1:y2,x1:x2]
+          g=cv2.cvtColor(sub,cv2.COLOR_BGR2GRAY); dark=(g<105).astype(np.uint8); bright=(g>210).astype(np.uint8)
+          n,labels,stats,_=cv2.connectedComponentsWithStats(dark,8); local=np.zeros_like(g,np.uint8); comps=[]
+          for lab in range(1,n):
+              x,y,ww,hh,area=(int(v) for v in stats[lab])
+              if area<15 or area>30000 or hh>210 or ww>900: continue
+              comp=(labels==lab).astype(np.uint8)*255
+              near=cv2.dilate(comp,np.ones((21,21),np.uint8),iterations=1)>0
+              br=float(np.mean(bright[near]>0)) if np.any(near) else 0.0
+              if br<0.045: continue
+              local[labels==lab]=255; comps.append({'bbox':[x,y,ww,hh],'area':area,'bright_near':round(br,3)})
+          if np.any(local):
+              halo=cv2.dilate(local,np.ones((17,17),np.uint8),iterations=1)>0
+              local=np.maximum(local,(bright*255)*(halo.astype(np.uint8)))
+              local=cv2.dilate(local,np.ones((9,9),np.uint8),iterations=1)
+          mask=np.zeros((h,w),np.uint8); mask[y1:y2,x1:x2]=local
+          px=int(np.count_nonzero(mask))
+          if px<250: raise SystemExit(f'art residue mask too small page14: {px} comps={comps}')
+          write_image(cp,inp.inpaint_mask(img,mask,force_lama=True))
+          log.append({'page_index':pi,'id':'text_afc5957581814dd7','method':'lama_outline_glyph_mask','reason':'art_outline_text','roi':[x1,y1,x2,y2],'mask_pixels':px,'components':comps})
+
+          # Source page 14 slice 3: saturated red SPELL residue on pale texture.
+          pi=48; p=m['pages'][pi]; cp=Path(p['clean']); img=read_image(cp); h,w=img.shape[:2]
+          x1,y1,x2,y2=(250,620,min(w,1350),875); sub=img[y1:y2,x1:x2]
+          hsv=cv2.cvtColor(sub,cv2.COLOR_BGR2HSV)
+          red=((((hsv[:,:,0]<=14)|(hsv[:,:,0]>=168))&(hsv[:,:,1]>=70)&(hsv[:,:,2]>=90))).astype(np.uint8)*255
+          red=cv2.morphologyEx(red,cv2.MORPH_CLOSE,np.ones((5,5),np.uint8))
+          red=cv2.dilate(red,np.ones((15,15),np.uint8),iterations=1)
+          mask=np.zeros((h,w),np.uint8); mask[y1:y2,x1:x2]=red
+          px=int(np.count_nonzero(mask))
+          if px<150: raise SystemExit(f'red SPELL residue mask too small page48: {px}')
+          write_image(cp,inp.inpaint_mask(img,mask,force_lama=True))
+          log.append({'page_index':pi,'id':'text_8a1450aefa0949d2','method':'lama_red_glyph_mask','reason':'red_spell_residue','roi':[x1,y1,x2,y2],'mask_pixels':px})
+
+          m['human_visual_repair']={'revision':3,'status':'REPAIRED_PENDING_RENDER_REVIEW','identified_blockers':18,'repaired_regions':len(log),'source':'human_review_of_render_v2'}
+          mp.write_text(json.dumps(m,ensure_ascii=False,indent=2),encoding='utf-8')
+          Path('visual-repair-report.json').write_text(json.dumps({'chapter_id':cid,'revision':3,'identified_blockers':18,'repairs':log},ensure_ascii=False,indent=2),encoding='utf-8')
+          print(json.dumps({'repaired_regions':len(log),'lama_regions':2,'smart_fill_regions':16},ensure_ascii=False,indent=2))
+          PY
+
+      - name: Apply semantic typography and audit exact Vietnamese glyph coverage
+        run: |
+          python - <<'PY'
+          import json, os
+          from collections import Counter
+          from pathlib import Path
+          from fontTools.ttLib import TTFont
+
+          cid='c0010001'; font_dir=Path('app/static/fonts')
+          primary=os.environ['PRIMARY_DIALOGUE_FONT']; free_font=os.environ['FREE_TEXT_FONT']; system_font=os.environ['SYSTEM_FONT']
+          mp=Path('data/processed')/cid/'manifest.json'; m=json.loads(mp.read_text(encoding='utf-8'))
+          font_files=sorted(font_dir.glob('*.ttf'))
+          if len(font_files)!=15: raise SystemExit(f'expected 15 bundled TTF fonts, got {len(font_files)}')
+          cmaps={}
+          for fp in font_files:
+              f=TTFont(fp,lazy=True); cmaps[fp.stem]=set((f.getBestCmap() or {}).keys()); f.close()
+          def supports(font_name,text): return all(ch.isspace() or ord(ch) in cmaps[font_name] for ch in text)
+          assignments=[]; usage=Counter(); roles=Counter(); fallbacks=[]
+          for pi,p in enumerate(m.get('pages') or []):
+              for obj in p.get('text_objects') or []:
+                  if obj.get('source_missing') or obj.get('human_review')!='keep_story': continue
+                  oid=str(obj.get('id') or ''); vi=str(obj.get('translation') or '').strip(); role=str(obj.get('role') or 'dialogue')
+                  if not vi: raise SystemExit(f'active untranslated page={pi} id={oid}')
+                  preferred=system_font if role=='system' else free_font if role=='free_text' else primary
+                  chosen=preferred
+                  if not supports(chosen,vi):
+                      if not supports(primary,vi):
+                          bad=''.join(sorted({ch for ch in vi if not ch.isspace() and ord(ch) not in cmaps[primary]}))
+                          raise SystemExit(f'primary font missing glyphs id={oid}: {bad}')
+                      chosen=primary; fallbacks.append({'page_index':pi,'id':oid,'preferred':preferred,'fallback':primary})
+                  style=obj.setdefault('style',{})
+                  style.update({'font':chosen,'fontSize':'auto','color':'auto','strokeWidth':'auto','strokeColor':'auto','bgColor':'transparent','cornerRadius':'0','horizontalAlign':'center','verticalAlign':'middle','bold':False})
+                  obj['human_typeset_class']=role; obj['human_typeset_font']=chosen; obj['human_typeset_reason']='semantic_role_consistency' if chosen==preferred else 'glyph_fallback_to_primary'
+                  usage[chosen]+=1; roles[role]+=1
+                  assignments.append({'page_index':pi,'source_page':p.get('source_page'),'slice_index':p.get('slice_index'),'id':oid,'role':role,'font':chosen,'translation':vi,'region':obj.get('region')})
+          if len(assignments)!=101: raise SystemExit(f'expected 101 styled objects, got {len(assignments)}')
+          summary={'status':'PLAN_READY_PENDING_RENDER_VISUAL_REVIEW','active_story_objects':101,'primary_dialogue_font':primary,'semantic_preferences':{'dialogue':primary,'narration':primary,'free_text':free_font,'system':system_font},'font_usage':dict(usage),'distinct_fonts_used':len(usage),'forced_font_diversity':False,'role_counts':dict(roles),'fallbacks':fallbacks}
+          m['human_typeset_review']=summary; mp.write_text(json.dumps(m,ensure_ascii=False,indent=2),encoding='utf-8')
+          Path('typography-plan-v3.json').write_text(json.dumps({'chapter_id':cid,**summary,'assignments':assignments},ensure_ascii=False,indent=2),encoding='utf-8')
+          print(json.dumps({k:v for k,v in summary.items() if k!='fallbacks'},ensure_ascii=False,indent=2))
+          PY
+
+      - name: Production render and validate 43-page export
+        run: |
+          python - <<'PY'
+          import json, zipfile
+          from pathlib import Path
+          from PIL import Image
+          from app.routers.export import export_chapter, render_chapter
+
+          cid='c0010001'; result=render_chapter(cid); stats=result.get('chapter_render') or {}
+          if stats.get('total')!=135: raise SystemExit(f'expected 135 render slices, got {stats}')
+          if stats.get('skipped')!=0: raise SystemExit(f'unexpected skipped slices: {stats}')
+          export_chapter(cid)
+          out=Path('data/output')/cid; zpath=out/f'chapter_{cid}.zip'
+          if not zpath.is_file(): raise SystemExit('production export zip missing')
+          with zipfile.ZipFile(zpath) as z:
+              names=sorted(n for n in z.namelist() if n.lower().endswith('.png'))
+              if len(names)!=43: raise SystemExit(f'expected 43 stitched source pages, got {len(names)}')
+              if z.testzip(): raise SystemExit('zip integrity failure')
+              for n in names:
+                  with z.open(n) as src, Image.open(src) as im:
+                      if im.width<=0 or im.height<=0: raise SystemExit(f'invalid image {n}')
+          print(json.dumps({'render_stats':stats,'source_pages':43},ensure_ascii=False,indent=2))
+          PY
+
+      - name: Build repair checkpoint and compact human visual pack
+        run: |
+          python - <<'PY'
+          import json, shutil, zipfile, math
+          from pathlib import Path
+          from PIL import Image, ImageDraw
+
+          cid='c0010001'; proc=Path('data/processed')/cid; out=Path('data/output')/cid
+          review=Path('checkpoint/05-render-repair-v3'); visual=Path('checkpoint/05-render-repair-v3-visual')
+          for d in (review,visual):
+              if d.exists(): shutil.rmtree(d)
+              d.mkdir(parents=True)
+          zsrc=out/f'chapter_{cid}.zip'; zfinal=review/'Shadow-Slave-Chapter-1-VI-RENDER-REPAIR-V3.zip'; shutil.copy2(zsrc,zfinal)
+          shutil.copy2(proc/'manifest.json',review/'manifest.json'); shutil.copy2('typography-plan-v3.json',review/'typography-plan.json'); shutil.copy2('visual-repair-report.json',review/'visual-repair-report.json')
+
+          tmp=Path('checkpoint/_v3_pages');
+          if tmp.exists(): shutil.rmtree(tmp)
+          tmp.mkdir(parents=True)
+          with zipfile.ZipFile(zsrc) as z: z.extractall(tmp)
+          final_paths=sorted(tmp.glob('*.png'))
+          if len(final_paths)!=43: raise SystemExit(f'expected 43 final pages, got {len(final_paths)}')
+
+          # Full chapter overview, six pages per sheet.
+          overview=visual/'overview'; overview.mkdir()
+          for batch_start in range(0,len(final_paths),6):
+              cards=[]
+              for idx,pth in enumerate(final_paths[batch_start:batch_start+6],batch_start):
+                  with Image.open(pth) as im0:
+                      im=im0.convert('RGB'); scale=min(1.0,300/im.width); im=im.resize((max(1,int(im.width*scale)),max(1,int(im.height*scale))))
+                      card=Image.new('RGB',(im.width,im.height+34),'white'); card.paste(im,(0,34)); ImageDraw.Draw(card).text((7,8),f'source {idx:02d} {pth.name}',fill='black'); cards.append(card)
+              sheet=Image.new('RGB',(sum(c.width for c in cards),max(c.height for c in cards)),'white'); x=0
+              for c in cards: sheet.paste(c,(x,0)); x+=c.width
+              sheet.save(overview/f'overview_{batch_start//6+1:02d}.jpg',quality=86,optimize=True)
+
+          targets=[11,18,51,53,57,59,67,69,73,78,83,110,112,116,117,125,14,48]
+          tmeta=json.loads(Path('visual-repair-report.json').read_text(encoding='utf-8'))['repairs']
+          rendered=sorted(out.glob('page_*.png'))
+          cards=[]
+          for n,row in enumerate(tmeta):
+              pi=int(row['page_index']); pth=rendered[pi]
+              with Image.open(pth) as im0:
+                  im=im0.convert('RGB'); w,h=im.size
+                  # Prefer target object region from typography plan; use repair ROI as fallback.
+                  tp=json.loads(Path('typography-plan-v3.json').read_text(encoding='utf-8'))
+                  match=next((a for a in tp['assignments'] if int(a['page_index'])==pi and a['id']==row['id']),None)
+                  reg=(match or {}).get('region') or {}
+                  if reg:
+                      x1=max(0,int(reg.get('x1',0))-180); y1=max(0,int(reg.get('y1',0))-180); x2=min(w,int(reg.get('x2',w))+180); y2=min(h,int(reg.get('y2',h))+180)
+                  else:
+                      rx=row.get('roi') or [0,0,w,h]; x1=max(0,int(rx[0])-80); y1=max(0,int(rx[1])-80); x2=min(w,int(rx[2])+80); y2=min(h,int(rx[3])+80)
+                  crop=im.crop((x1,y1,x2,y2)); sc=min(1.0,700/crop.width,430/crop.height); crop=crop.resize((max(1,int(crop.width*sc)),max(1,int(crop.height*sc))))
+                  card=Image.new('RGB',(760,520),'white'); card.paste(crop,((760-crop.width)//2,76+(430-crop.height)//2)); d=ImageDraw.Draw(card); d.multiline_text((10,9),f'#{n:02d} p{pi:03d} {row["id"]}\n{row["method"]} / {row["reason"]}',fill='black',spacing=3); cards.append(card)
+          td=visual/'targets'; td.mkdir()
+          for start in range(0,len(cards),6):
+              batch=cards[start:start+6]; sheet=Image.new('RGB',(1520,math.ceil(len(batch)/2)*520),'white')
+              for j,c in enumerate(batch): sheet.paste(c,((j%2)*760,(j//2)*520))
+              sheet.save(td/f'targets_{start//6+1:02d}.jpg',quality=90,optimize=True)
+
+          typography=json.loads(Path('typography-plan-v3.json').read_text(encoding='utf-8'))
+          summary={'checkpoint':'05-render-repair-v3','chapter_id':cid,'slices':135,'source_pages':43,'active_story_objects':101,'active_untranslated_story_objects':0,'persistent_tombstones':319,'repaired_visual_blockers':18,'font_usage':typography.get('font_usage'),'forced_font_diversity':False,'status':'TECHNICAL_PASS_PENDING_HUMAN_VISUAL_REVIEW','next_action':'STOP_FOR_HUMAN_VISUAL_REVIEW'}
+          (review/'render-repair-summary.json').write_text(json.dumps(summary,ensure_ascii=False,indent=2),encoding='utf-8'); (visual/'render-repair-summary.json').write_text(json.dumps(summary,ensure_ascii=False,indent=2),encoding='utf-8'); shutil.copy2('visual-repair-report.json',visual/'visual-repair-report.json'); shutil.copy2('typography-plan-v3.json',visual/'typography-plan.json')
+          print(json.dumps(summary,ensure_ascii=False,indent=2))
+          PY
+
+      - name: Upload repaired render checkpoint
+        uses: actions/upload-artifact@v4
+        with:
+          name: 05-render-repair-v3-c0010001
+          path: checkpoint/05-render-repair-v3
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload compact repaired visual pack
+        uses: actions/upload-artifact@v4
+        with:
+          name: 05-render-repair-v3-visual-c0010001
+          path: checkpoint/05-render-repair-v3-visual
+          if-no-files-found: error
+          retention-days: 7
