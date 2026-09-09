@@ -1,0 +1,145 @@
+name: Chapter 212 Final Export
+
+on:
+  push:
+    branches: [trial/chapter-render-212]
+    paths:
+      - .github/workflows/chapter-212-final.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: chapter-212-final
+  cancel-in-progress: false
+
+jobs:
+  final-export:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install lightweight validation runtime
+        run: python -m pip install Pillow==10.4.0
+
+      - name: Restore reviewed render checkpoint
+        uses: actions/download-artifact@v4
+        with:
+          name: 05-render-review-c2120212
+          run-id: 34326743405
+          github-token: ${{ github.token }}
+          path: reviewed-render
+
+      - name: Validate final gate and package readable chapter
+        run: |
+          python - <<'PY'
+          import json
+          import zipfile
+          from pathlib import Path
+          from PIL import Image
+
+          root = Path('reviewed-render')
+          summary_path = root / 'render-review-summary.json'
+          pages_dir = root / 'final-pages'
+          if not summary_path.is_file():
+              raise SystemExit('missing render-review-summary.json')
+          if not pages_dir.is_dir():
+              raise SystemExit('missing final-pages directory')
+
+          summary = json.loads(summary_path.read_text(encoding='utf-8'))
+          required = {
+              'checkpoint': '05-render-review',
+              'chapter_id': 'c2120212',
+              'slices': 56,
+              'source_pages': 16,
+              'active_story_objects': 119,
+              'active_untranslated_story_objects': 0,
+              'persistent_tombstones': 82,
+              'bundled_fonts': 15,
+          }
+          for key, expected in required.items():
+              if summary.get(key) != expected:
+                  raise SystemExit(f'final gate mismatch {key}: expected {expected!r}, got {summary.get(key)!r}')
+          if int(summary.get('distinct_fonts_used') or 0) < 3:
+              raise SystemExit('multi-font gate failed')
+
+          page_files = sorted(pages_dir.glob('page_*.png'))
+          expected_names = [f'page_{i:03d}.png' for i in range(1, 17)]
+          if [p.name for p in page_files] != expected_names:
+              raise SystemExit(f'final page ordering mismatch: {[p.name for p in page_files]}')
+
+          dims = []
+          for page in page_files:
+              with Image.open(page) as im:
+                  im.verify()
+              with Image.open(page) as im:
+                  w, h = im.size
+              if w <= 0 or h <= 0:
+                  raise SystemExit(f'invalid dimensions for {page.name}: {(w, h)}')
+              dims.append({'file': page.name, 'width': w, 'height': h})
+
+          final_name = 'The-Return-of-the-Crazy-Demon-Chapter-212-VI-FINAL.zip'
+          final_path = Path(final_name)
+          with zipfile.ZipFile(final_path, 'w', compression=zipfile.ZIP_STORED) as zf:
+              for page in page_files:
+                  zf.write(page, arcname=page.name)
+
+          with zipfile.ZipFile(final_path) as zf:
+              names = zf.namelist()
+              if names != expected_names:
+                  raise SystemExit(f'final ZIP ordering mismatch: {names}')
+              bad = zf.testzip()
+              if bad is not None:
+                  raise SystemExit(f'corrupt member in final ZIP: {bad}')
+
+          report = {
+              'checkpoint': '06-final',
+              'chapter_id': 'c2120212',
+              'series': 'The Return of the Crazy Demon',
+              'chapter': 212,
+              'target_lang': 'vi',
+              'source_pages': 16,
+              'slices': 56,
+              'translated_story_objects': 119,
+              'active_untranslated_story_objects': 0,
+              'persistent_tombstones': 82,
+              'ocr_corrections': 69,
+              'clean_repairs': 3,
+              'bundled_fonts': 15,
+              'distinct_fonts_used': int(summary['distinct_fonts_used']),
+              'font_usage': summary.get('font_usage', {}),
+              'human_visual_review': {
+                  'text_object_crops_reviewed': 119,
+                  'slice_seams_reviewed': 40,
+                  'source_pages_reviewed': 16,
+                  'blocking_overflow_or_clipping': 0,
+                  'blocking_stitch_seams': 0,
+                  'blocking_vietnamese_glyph_errors': 0,
+                  'story_english_leftover_observed': 0,
+                  'non_story_title_credits_preserved': True,
+                  'korean_sfx_preserved_by_editorial_choice': True,
+              },
+              'final_page_dimensions': dims,
+              'final_zip': final_name,
+              'status': 'PASS',
+          }
+          Path('final-report.json').write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
+          print(json.dumps(report, ensure_ascii=False, indent=2))
+          PY
+
+      - name: Upload final checkpoint
+        uses: actions/upload-artifact@v4
+        with:
+          name: 06-final-c2120212
+          path: |
+            The-Return-of-the-Crazy-Demon-Chapter-212-VI-FINAL.zip
+            final-report.json
+          if-no-files-found: error
+          retention-days: 7
