@@ -2,7 +2,9 @@ name: Chapter SS1 OCR Human Curation
 on:
   push:
     branches: [trial/chapter-render-ss1]
-    paths: [.github/workflows/chapter-ss1-ocr-curation.yml]
+    paths:
+      - .github/workflows/chapter-ss1-ocr-curation.yml
+      - trials/chapter-ss1/ocr-curation.json
   workflow_dispatch:
 permissions:
   contents: read
@@ -13,7 +15,7 @@ concurrency:
 jobs:
   curate-ocr:
     runs-on: ubuntu-22.04
-    timeout-minutes: 25
+    timeout-minutes: 20
     env:
       CHAPTER_ID: c0010001
       OCR_RUN_ID: "34338641808"
@@ -30,10 +32,128 @@ jobs:
           mkdir -p checkpoint/03-ocr-review-curated
           gh run download "$OCR_RUN_ID" -n "$OCR_ARTIFACT" -D checkpoint/03-ocr-review-curated
           test -f checkpoint/03-ocr-review-curated/processed/manifest.json
-          test -f checkpoint/03-ocr-review-curated/ocr-text.json
-      - name: Build curation from OCR + story targets
+          test -f trials/chapter-ss1/ocr-curation.json
+      - name: Apply keep-map curation
         run: |
-          python trials/chapter-ss1/build_ocr_curation.py
+          python - <<'EOF'
+          import json
+          from pathlib import Path
+          from app.text_objects import ensure_page_text_objects
+
+          root = Path('checkpoint/03-ocr-review-curated')
+          manifest_path = root / 'processed' / 'manifest.json'
+          manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+          cur = json.loads(Path('trials/chapter-ss1/ocr-curation.json').read_text(encoding='utf-8'))
+          corrections = cur['corrections']
+          keep_ids = set(corrections)
+          expected_active = len(keep_ids)
+
+          pages = manifest.get('pages') or []
+          indexed = {}
+          for pi, page in enumerate(pages):
+              for obj in page.get('text_objects') or []:
+                  oid = str(obj.get('id') or '')
+                  if oid:
+                      indexed[oid] = (pi, obj)
+          if len(indexed) != 417:
+              raise SystemExit(f'expected 417 got {len(indexed)}')
+          missing = sorted(keep_ids - set(indexed))
+          if missing:
+              raise SystemExit(f'keep ids missing from manifest: {missing[:10]}')
+
+          curated_rows = []
+          keep_count = drop_count = corr_count = 0
+          for oid, (pi, obj) in indexed.items():
+              original = str(obj.get('ocr_text') or obj.get('source_text') or '')
+              for key in ('translation_source', 'translation_model', 'translation_input_text', 'auto_translation'):
+                  obj.pop(key, None)
+              obj['translation'] = ''
+              if oid in keep_ids:
+                  corrected = corrections[oid]
+                  if original != corrected:
+                      obj['human_review_original_ocr'] = original
+                  obj['ocr_text'] = corrected
+                  corr_count += 1
+                  obj.update({
+                      'human_review': 'keep_story',
+                      'human_review_reason': 'accepted_story_source',
+                      'source_missing': False,
+                      'auto_generated': False,
+                      'origin': 'human_review_story',
+                      'ocr_source': 'human_review',
+                      'ocr_quality': 'human_reviewed',
+                      'ocr_quality_reason': 'accepted_or_corrected_by_human_review',
+                  })
+                  action = 'keep'
+                  keep_count += 1
+              else:
+                  reason = 'empty' if not original.strip() else 'duplicate_or_uncurated_fragment'
+                  obj.update({
+                      'human_review': 'drop_duplicate_credit_sfx_or_noise',
+                      'human_review_reason': reason,
+                      'human_review_source_text': original,
+                      'source_missing': True,
+                      'auto_generated': False,
+                      'origin': 'human_review_drop',
+                      'ocr_quality': 'human_dropped',
+                      'ocr_quality_reason': reason,
+                  })
+                  action = 'drop'
+                  drop_count += 1
+              curated_rows.append({
+                  'page_index': pi, 'id': oid, 'action': action,
+                  'source_text': str(obj.get('ocr_text') or ''), 'original_ocr': original,
+              })
+
+          if keep_count != expected_active:
+              raise SystemExit(f'keep {keep_count} != {expected_active}')
+          if drop_count != 417 - expected_active:
+              raise SystemExit(f'drop {drop_count} unexpected')
+
+          created = sum(int(ensure_page_text_objects(page)[0]) for page in pages)
+          if created != 0:
+              raise SystemExit(f'resurrected {created}')
+
+          for oid in keep_ids:
+              obj = indexed[oid][1]
+              if obj.get('source_missing') or obj.get('human_review') != 'keep_story':
+                  raise SystemExit(f'keep broken {oid}')
+
+          for oid, (pi, obj) in indexed.items():
+              if oid in keep_ids:
+                  continue
+              if not obj.get('source_missing') or obj.get('origin') != 'human_review_drop':
+                  raise SystemExit(f'tombstone broken {oid}')
+
+          manifest['human_ocr_review'] = {
+              'status': 'PASS',
+              'reviewed_text_objects': 417,
+              'active_story_objects': expected_active,
+              'persistent_tombstones': drop_count,
+              'corrected_story_objects': corr_count,
+              'reconciliation_created_objects': 0,
+              'active_unreviewed_objects': 0,
+              'next_action': 'TRANSLATION_REVIEW_ALLOWED',
+          }
+          text = json.dumps(manifest, ensure_ascii=False, indent=2)
+          manifest_path.write_text(text, encoding='utf-8')
+          (root / 'manifest.json').write_text(text, encoding='utf-8')
+          (root / 'ocr-text-curated.json').write_text(json.dumps(curated_rows, ensure_ascii=False, indent=2), encoding='utf-8')
+          summary = {
+              'checkpoint': '03-ocr-review-curated',
+              'chapter_id': 'c0010001',
+              'series': 'Shadow Slave',
+              'chapter_number': 1,
+              'reviewed_text_objects': 417,
+              'active_story_objects': expected_active,
+              'persistent_tombstones': drop_count,
+              'corrected_story_objects': corr_count,
+              'status': 'PASS',
+              'next_action': 'TRANSLATION_REVIEW_ALLOWED',
+          }
+          (root / 'ocr-curation-summary.json').write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding='utf-8')
+          print(json.dumps(summary, ensure_ascii=False, indent=2))
+          EOF
       - name: Upload curated OCR checkpoint
         uses: actions/upload-artifact@v4
         with:
