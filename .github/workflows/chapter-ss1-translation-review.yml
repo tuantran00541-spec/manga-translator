@@ -18,7 +18,7 @@ jobs:
     timeout-minutes: 20
     env:
       CHAPTER_ID: c0010001
-      CURATED_RUN_ID: "34341695392"
+      CURATED_RUN_ID: "34343424099"
       CURATED_ARTIFACT: 03-ocr-review-curated-c0010001
     steps:
       - uses: actions/checkout@v4
@@ -103,9 +103,10 @@ jobs:
           if story != 69:
               raise SystemExit(f'story count {story}')
 
+          rev = int(mapping.get('revision') or 1)
           manifest['human_translation_review'] = {
               'status': 'PASS',
-              'revision': 1,
+              'revision': rev,
               'target_lang': 'vi',
               'active_story_objects': 69,
               'translated_story_objects': 69,
@@ -119,7 +120,7 @@ jobs:
           (root / 'translation-review.json').write_text(json.dumps(rows, ensure_ascii=False, indent=2), encoding='utf-8')
           summary = {
               'checkpoint': '04-translation-review',
-              'revision': 1,
+              'revision': rev,
               'chapter_id': 'c0010001',
               'series': 'Shadow Slave',
               'target_lang': 'vi',
