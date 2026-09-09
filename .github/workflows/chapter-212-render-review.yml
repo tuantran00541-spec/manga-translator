@@ -1,4 +1,4 @@
-name: Chapter 212 Render Review
+name: Chapter 212 Render Review Rev2
 
 on:
   push:
@@ -22,9 +22,10 @@ jobs:
     timeout-minutes: 35
     env:
       CHAPTER_ID: c2120212
-      TRANSLATION_RUN_ID: "34326069057"
-      TRANSLATION_ARTIFACT: 04-translation-review-c2120212
-      REVIEW_ZIP: The-Return-of-the-Crazy-Demon-Chapter-212-VI-RENDER-REVIEW.zip
+      TRANSLATION_RUN_ID: "34330784797"
+      TRANSLATION_ARTIFACT: 04-translation-review-c2120212-rev2
+      PRIMARY_DIALOGUE_FONT: Manga-fonts
+      REVIEW_ZIP: The-Return-of-the-Crazy-Demon-Chapter-212-VI-RENDER-REVIEW-REV2.zip
     steps:
       - uses: actions/checkout@v4
 
@@ -39,7 +40,7 @@ jobs:
             fastapi==0.115.0 pydantic==2.9.2 filelock==3.16.1 loguru==0.7.2 \
             fonttools==4.59.2
 
-      - name: Restore translation review checkpoint
+      - name: Restore translation review rev2 checkpoint
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -47,7 +48,28 @@ jobs:
           mkdir -p checkpoint/04-translation-review
           gh run download "$TRANSLATION_RUN_ID" -n "$TRANSLATION_ARTIFACT" -D checkpoint/04-translation-review
           test -f checkpoint/04-translation-review/processed/manifest.json
+          test -f checkpoint/04-translation-review/translation-review-summary.json
           test -d checkpoint/04-translation-review/raw
+
+      - name: Validate translation rev2 checkpoint
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          summary = json.loads(Path('checkpoint/04-translation-review/translation-review-summary.json').read_text(encoding='utf-8'))
+          expected = {
+              'revision': 2,
+              'status': 'PASS',
+              'active_story_objects': 119,
+              'translated_story_objects': 119,
+              'active_untranslated_story_objects': 0,
+              'persistent_tombstones': 82,
+          }
+          for key, value in expected.items():
+              if summary.get(key) != value:
+                  raise SystemExit(f'translation checkpoint {key}: expected {value}, got {summary.get(key)}')
+          print('translation rev2 checkpoint PASS')
+          PY
 
       - name: Restore production chapter layout
         run: |
@@ -80,100 +102,53 @@ jobs:
                   page['original'] = (raw_dst / 'sliced' / original.name).as_posix()
               if clean.name:
                   page['clean'] = str((processed_dst / clean.name).resolve())
-          manifest_path.write_text(
-              json.dumps(manifest, ensure_ascii=False, indent=2), encoding='utf-8'
-          )
+          manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding='utf-8')
           print(f"restored {len(manifest.get('pages') or [])} slices")
           PY
 
-      - name: Audit 15 fonts and assign semantic styles
+      - name: Build stable typography plan
         run: |
           python - <<'PY'
           import json
-          from collections import Counter, defaultdict
+          import os
           from pathlib import Path
           from fontTools.ttLib import TTFont
 
           chapter_id = 'c2120212'
+          primary = os.environ['PRIMARY_DIALOGUE_FONT']
           manifest_path = Path('data/processed') / chapter_id / 'manifest.json'
           manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
           font_dir = Path('app/static/fonts')
-          font_paths = sorted(font_dir.glob('*.ttf'))
-          if len(font_paths) != 15:
-              raise SystemExit(f'expected 15 bundled fonts, got {len(font_paths)}')
+          primary_path = font_dir / f'{primary}.ttf'
+          if not primary_path.is_file():
+              raise SystemExit(f'primary font missing: {primary_path}')
 
-          cmaps = {}
-          font_audit = {}
-          vietnamese_probe = set('ăâêôơưđĂÂÊÔƠƯĐáàảãạấầẩẫậắằẳẵặéèẻẽẹếềểễệíìỉĩịóòỏõọốồổỗộớờởỡợúùủũụứừửữựýỳỷỹỵÁÀẢÃẠẤẦẨẪẬẮẰẲẴẶÉÈẺẼẸẾỀỂỄỆÍÌỈĨỊÓÒỎÕỌỐỒỔỖỘỚỜỞỠỢÚÙỦŨỤỨỪỬỮỰÝỲỶỸỴ')
-          for path in font_paths:
-              font = TTFont(path, lazy=True)
-              cmap = set((font.getBestCmap() or {}).keys())
-              font.close()
-              cmaps[path.stem] = cmap
-              missing_probe = ''.join(sorted(ch for ch in vietnamese_probe if ord(ch) not in cmap))
-              font_audit[path.stem] = {
-                  'file': path.name,
-                  'vietnamese_probe_missing': missing_probe,
-                  'vietnamese_probe_ok': not bool(missing_probe),
-              }
+          font = TTFont(primary_path, lazy=True)
+          cmap = set((font.getBestCmap() or {}).keys())
+          font.close()
 
-          def supports(font_name: str, text: str) -> bool:
-              cmap = cmaps.get(font_name, set())
-              required = {ord(ch) for ch in text if not ch.isspace()}
-              return required.issubset(cmap)
+          probe = 'ăâêôơưđĂÂÊÔƠƯĐáàảãạấầẩẫậắằẳẵặéèẻẽẹếềểễệíìỉĩịóòỏõọốồổỗộớờởỡợúùủũụứừửữựýỳỷỹỵÁÀẢÃẠẤẦẨẪẬẮẰẲẴẶÉÈẺẼẸẾỀỂỄỆÍÌỈĨỊÓÒỎÕỌỐỒỔỖỘỚỜỞỠỢÚÙỦŨỤỨỪỬỮỰÝỲỶỸỴ'
+          missing_probe = ''.join(ch for ch in probe if ord(ch) not in cmap)
+          if missing_probe:
+              raise SystemExit(f'primary font fails Vietnamese glyph probe: {missing_probe}')
 
-          def category(source: str, vi: str) -> str:
-              s = source.upper()
-              v = vi.lower()
-              if 'YI ZAHA' in s and ('CRAZY DEMON' in s or 'SLEEP' in s):
-                  return 'narrator'
-              if 'HEAVENLY PEARL' in s or 'ABSORPTION TECHNIQUE' in s or 'thiên ngọc' in v:
-                  return 'skill'
-              aggressive_tokens = (
-                  'khốn', 'đánh chết', 'giết', 'địa ngục', 'phế nhân', 'thảm hại',
-                  'ma đạo', 'độc', 'đau', 'sống còn', 'nghiện thuốc', 'sợ giáo chủ'
-              )
-              if any(token in v for token in aggressive_tokens):
-                  return 'shadow'
-              if len(vi) >= 58 or len(source) >= 72:
-                  return 'exposition'
-              if len(vi) <= 24 or vi.endswith('?') or vi.endswith('!'):
-                  return 'emphasis'
-              return 'dialogue'
-
-          preferences = {
-              'dialogue': ['Manga-fonts', 'Mac-dinh-2', 'Mac-dinh-3', 'default'],
-              'exposition': ['Mac-dinh-2', 'Manga-fonts', 'default', 'Mac-dinh-3'],
-              'emphasis': ['Mac-dinh-3', 'Granite', 'Manga-fonts', 'default'],
-              'shadow': ['Shadow-fonts', 'Granite', 'Mac-dinh-3', 'Manga-fonts', 'default'],
-              'skill': ['Skill-fonts-3', 'Skill-fonts-1', 'Skill-fonts-2', 'Skill-fonts-4', 'Skill-fonts-5', 'Granite', 'default'],
-              'narrator': ['Granite', 'Curves-Regular', 'Mac-dinh-2', 'Manga-fonts', 'default'],
-          }
-
-          usage = Counter()
-          category_usage = Counter()
-          assignments = []
+          plan = []
           active = 0
           for pi, page in enumerate(manifest.get('pages') or []):
               for obj in page.get('text_objects') or []:
                   if obj.get('source_missing') or obj.get('human_review') != 'keep_story':
                       continue
                   oid = str(obj.get('id') or '')
-                  source = str(obj.get('ocr_text') or '').strip()
                   vi = str(obj.get('translation') or '').strip()
                   if not vi:
                       raise SystemExit(f'active untranslated object page={pi} id={oid}')
-                  kind = category(source, vi)
-                  chosen = next((f for f in preferences[kind] if supports(f, vi)), None)
-                  if chosen is None:
-                      missing = {
-                          f: ''.join(sorted({ch for ch in vi if not ch.isspace() and ord(ch) not in cmaps.get(f, set())}))
-                          for f in preferences[kind]
-                      }
-                      raise SystemExit(f'no font covers object {oid}: {missing}')
+                  missing = ''.join(sorted({ch for ch in vi if not ch.isspace() and ord(ch) not in cmap}))
+                  if missing:
+                      raise SystemExit(f'primary font missing glyphs for {oid}: {missing}')
+
                   style = obj.setdefault('style', {})
                   style.update({
-                      'font': chosen,
+                      'font': primary,
                       'fontSize': 'auto',
                       'color': 'auto',
                       'strokeWidth': 'auto',
@@ -182,64 +157,56 @@ jobs:
                       'cornerRadius': '0',
                       'horizontalAlign': 'center',
                       'verticalAlign': 'middle',
-                      'bold': kind in {'skill', 'emphasis'},
+                      'bold': False,
                   })
-                  obj['human_typeset_class'] = kind
-                  obj['human_typeset_font'] = chosen
-                  usage[chosen] += 1
-                  category_usage[kind] += 1
-                  active += 1
-                  assignments.append({
+                  obj['human_typeset_class'] = 'dialogue'
+                  obj['human_typeset_font'] = primary
+                  obj['human_typeset_reason'] = 'primary_dialogue_font_consistency'
+                  plan.append({
                       'page_index': pi,
                       'id': oid,
-                      'class': kind,
-                      'font': chosen,
+                      'font': primary,
+                      'fontSize': 'auto',
+                      'bold': False,
+                      'stroke': 'auto',
+                      'color': 'auto',
+                      'alignment': 'center/middle',
+                      'semantic_role': 'dialogue',
+                      'style_reason': 'primary_dialogue_font_consistency',
                       'translation': vi,
                   })
+                  active += 1
 
           if active != 119:
               raise SystemExit(f'expected 119 styled active objects, got {active}')
-          if len(usage) < 3:
-              raise SystemExit(f'typesetting collapsed to fewer than 3 fonts: {dict(usage)}')
 
-          manifest['human_typeset_review'] = {
-              'status': 'STYLED_PENDING_RENDER_VISUAL_REVIEW',
-              'bundled_font_count': len(font_paths),
-              'distinct_fonts_used': len(usage),
-              'font_usage': dict(usage),
-              'category_usage': dict(category_usage),
+          typography_summary = {
+              'status': 'PLAN_READY_PENDING_RENDER_VISUAL_REVIEW',
+              'primary_dialogue_font': primary,
+              'active_story_objects': active,
+              'distinct_fonts_used': 1,
+              'font_usage': {primary: active},
+              'specialized_fonts_used': [],
+              'forced_font_diversity': False,
+              'vietnamese_glyph_probe': 'PASS',
           }
-          manifest_path.write_text(
-              json.dumps(manifest, ensure_ascii=False, indent=2), encoding='utf-8'
-          )
-          report = {
-              'bundled_font_count': len(font_paths),
-              'fonts': font_audit,
-              'distinct_fonts_used': len(usage),
-              'font_usage': dict(usage),
-              'category_usage': dict(category_usage),
-              'assignments': assignments,
-          }
-          Path('font-audit.json').write_text(
-              json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8'
-          )
-          print(json.dumps({
-              'bundled_font_count': len(font_paths),
-              'distinct_fonts_used': len(usage),
-              'font_usage': dict(usage),
-              'category_usage': dict(category_usage),
-          }, ensure_ascii=False, indent=2))
+          manifest['human_typeset_review'] = typography_summary
+          manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding='utf-8')
+          Path('typography-plan.json').write_text(json.dumps({
+              'chapter_id': chapter_id,
+              **typography_summary,
+              'assignments': plan,
+          }, ensure_ascii=False, indent=2), encoding='utf-8')
+          print(json.dumps(typography_summary, ensure_ascii=False, indent=2))
           PY
 
       - name: Render all slices with production renderer and export
         run: |
           python - <<'PY'
           import json
-          import shutil
           import zipfile
           from pathlib import Path
           from PIL import Image
-
           from app.routers.export import export_chapter, render_chapter
 
           chapter_id = 'c2120212'
@@ -268,15 +235,10 @@ jobs:
                       with Image.open(src) as image:
                           if image.width <= 0 or image.height <= 0:
                               raise SystemExit(f'invalid exported image dimensions: {name}')
-
-          print(json.dumps({
-              'render_stats': stats,
-              'rendered_slice_files': len(slice_paths),
-              'stitched_source_pages': 16,
-          }, ensure_ascii=False, indent=2))
+          print(json.dumps({'render_stats': stats, 'rendered_slice_files': len(slice_paths), 'stitched_source_pages': 16}, ensure_ascii=False, indent=2))
           PY
 
-      - name: Pack render-review checkpoint
+      - name: Pack render review checkpoint rev2
         run: |
           python - <<'PY'
           import json
@@ -286,7 +248,7 @@ jobs:
           from PIL import Image
 
           chapter_id = 'c2120212'
-          checkpoint = Path('checkpoint/05-render-review')
+          checkpoint = Path('checkpoint/05-render-review-rev2')
           if checkpoint.exists():
               shutil.rmtree(checkpoint)
           checkpoint.mkdir(parents=True)
@@ -295,17 +257,17 @@ jobs:
           output_src = Path('data/output') / chapter_id
           shutil.copytree(processed_src, checkpoint / 'processed')
           shutil.copytree(output_src, checkpoint / 'output')
-          shutil.copy2('font-audit.json', checkpoint / 'font-audit.json')
+          shutil.copy2('typography-plan.json', checkpoint / 'typography-plan.json')
 
           export_zip = output_src / f'chapter_{chapter_id}.zip'
-          review_zip = checkpoint / 'The-Return-of-the-Crazy-Demon-Chapter-212-VI-RENDER-REVIEW.zip'
+          review_zip = checkpoint / 'The-Return-of-the-Crazy-Demon-Chapter-212-VI-RENDER-REVIEW-REV2.zip'
           shutil.copy2(export_zip, review_zip)
           final_pages = checkpoint / 'final-pages'
           final_pages.mkdir()
           with zipfile.ZipFile(export_zip) as z:
               z.extractall(final_pages)
 
-          font_report = json.loads(Path('font-audit.json').read_text(encoding='utf-8'))
+          typography = json.loads(Path('typography-plan.json').read_text(encoding='utf-8'))
           manifest = json.loads((processed_src / 'manifest.json').read_text(encoding='utf-8'))
           active_untranslated = []
           tombstones = 0
@@ -321,6 +283,8 @@ jobs:
               raise SystemExit(f'active untranslated after render: {active_untranslated[:20]}')
           if tombstones != 82:
               raise SystemExit(f'expected 82 tombstones after render, got {tombstones}')
+          if typography.get('distinct_fonts_used') != 1 or typography.get('font_usage') != {'Manga-fonts': 119}:
+              raise SystemExit(f'unexpected typography usage: {typography.get("font_usage")}')
 
           dims = []
           for path in sorted(final_pages.glob('*.png')):
@@ -328,32 +292,29 @@ jobs:
                   dims.append({'file': path.name, 'width': image.width, 'height': image.height})
           summary = {
               'checkpoint': '05-render-review',
+              'revision': 2,
               'chapter_id': chapter_id,
               'slices': 56,
               'source_pages': 16,
               'active_story_objects': 119,
               'active_untranslated_story_objects': 0,
               'persistent_tombstones': 82,
-              'bundled_fonts': font_report['bundled_font_count'],
-              'distinct_fonts_used': font_report['distinct_fonts_used'],
-              'font_usage': font_report['font_usage'],
+              'primary_dialogue_font': 'Manga-fonts',
+              'distinct_fonts_used': 1,
+              'font_usage': {'Manga-fonts': 119},
+              'forced_font_diversity': False,
               'final_page_dimensions': dims,
               'status': 'TECHNICAL_PASS_PENDING_HUMAN_VISUAL_REVIEW',
               'next_action': 'STOP_FOR_HUMAN_VISUAL_REVIEW',
           }
-          (checkpoint / 'render-review-summary.json').write_text(
-              json.dumps(summary, ensure_ascii=False, indent=2), encoding='utf-8'
-          )
-          print(json.dumps({
-              k: v for k, v in summary.items() if k != 'final_page_dimensions'
-          }, ensure_ascii=False, indent=2))
+          (checkpoint / 'render-review-summary.json').write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding='utf-8')
+          print(json.dumps({k: v for k, v in summary.items() if k != 'final_page_dimensions'}, ensure_ascii=False, indent=2))
           PY
 
-      - name: Upload render-review checkpoint
+      - name: Upload render review checkpoint rev2
         uses: actions/upload-artifact@v4
         with:
-          name: 05-render-review-c2120212
-          path: checkpoint/05-render-review
+          name: 05-render-review-c2120212-rev2
+          path: checkpoint/05-render-review-rev2
           if-no-files-found: error
           retention-days: 7
-          compression-level: 3
