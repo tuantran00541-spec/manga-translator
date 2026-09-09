@@ -5,6 +5,8 @@ on:
     branches: [trial/chapter-render-38]
     paths:
       - .github/workflows/chapter-38-translation-review.yml
+      - scripts/chapter38_human_curation.py
+      - scripts/chapter38_finalize_curation.py
   workflow_dispatch:
     inputs:
       ocr_run_id:
@@ -62,6 +64,9 @@ jobs:
       - name: Apply reviewed Vietnamese translation and deterministic clean repairs
         run: python scripts/chapter38_human_curation.py
 
+      - name: Finalize human drop tombstones and preserve non-story credits
+        run: python scripts/chapter38_finalize_curation.py
+
       - name: Validate translation review checkpoint
         run: |
           python - <<'PY'
@@ -70,15 +75,32 @@ jobs:
 
           root = Path('chapter38-ocr-review')
           summary = json.loads((root / 'chapter38-curation-summary.json').read_text(encoding='utf-8'))
-          rows = json.loads((root / 'chapter38-curated-text.json').read_text(encoding='utf-8'))
+          manifest = json.loads((root / 'processed' / 'manifest.json').read_text(encoding='utf-8'))
           if summary.get('checkpoint') != 'translation_review':
               raise SystemExit(f'wrong checkpoint: {summary}')
           if summary.get('curated_translation_count') != 115:
               raise SystemExit(f"expected 115 curated translations, got {summary.get('curated_translation_count')}")
-          untranslated = [r for r in rows if r.get('source_text') and not r.get('translation_vi')]
-          if untranslated:
-              raise SystemExit(f'untranslated active rows remain: {untranslated[:5]}')
-          print(json.dumps(summary, ensure_ascii=False, indent=2))
+          if not summary.get('end_card_credit_restored_from_raw'):
+              raise SystemExit('end-card credit restoration did not run')
+          active_untranslated = []
+          tombstones = 0
+          for pi, page in enumerate(manifest.get('pages', [])):
+              for obj in page.get('text_objects') or []:
+                  if obj.get('source_missing'):
+                      if obj.get('human_review') == 'drop_duplicate_credit_sfx_or_noise':
+                          tombstones += 1
+                          if obj.get('auto_generated'):
+                              raise SystemExit(f'human drop is still auto-generated: {obj.get("id")}')
+                      continue
+                  src = str(obj.get('ocr_text') or '').strip()
+                  vi = str(obj.get('translation') or '').strip()
+                  if src and not vi:
+                      active_untranslated.append({'page_index': pi, 'id': obj.get('id'), 'source': src})
+          if active_untranslated:
+              raise SystemExit(f'untranslated active rows remain: {active_untranslated[:10]}')
+          if tombstones < 25:
+              raise SystemExit(f'expected reviewed tombstones, got {tombstones}')
+          print(json.dumps({**summary, 'active_untranslated': 0, 'persistent_tombstones': tombstones}, ensure_ascii=False, indent=2))
           PY
 
       - name: Pack translation-review handoff
