@@ -1,0 +1,94 @@
+name: Chapter 38 translation review checkpoint
+
+on:
+  push:
+    branches: [trial/chapter-render-38]
+    paths:
+      - .github/workflows/chapter-38-translation-review.yml
+  workflow_dispatch:
+    inputs:
+      ocr_run_id:
+        description: "Workflow run id that produced chapter38-ocr-review"
+        required: false
+        default: "34299483703"
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: chapter-38-translation-review
+  cancel-in-progress: false
+
+jobs:
+  translation-review:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install lightweight curation runtime
+        run: python -m pip install Pillow==10.4.0
+
+      - name: Download OCR-review artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: chapter38-ocr-review
+          run-id: ${{ inputs.ocr_run_id || '34299483703' }}
+          github-token: ${{ github.token }}
+          path: imported-ocr-review
+
+      - name: Restore OCR-review checkpoint
+        run: |
+          python - <<'PY'
+          import zipfile
+          from pathlib import Path
+
+          outer = Path('imported-ocr-review/chapter38-ocr-review.zip')
+          if not outer.exists():
+              raise SystemExit(f'missing OCR artifact: {outer}')
+          with zipfile.ZipFile(outer) as z:
+              z.extractall('.')
+          root = Path('chapter38-ocr-review')
+          if not (root / 'processed' / 'manifest.json').exists():
+              raise SystemExit('restored OCR artifact has no processed/manifest.json')
+          print('restored OCR review checkpoint')
+          PY
+
+      - name: Apply reviewed Vietnamese translation and deterministic clean repairs
+        run: python scripts/chapter38_human_curation.py
+
+      - name: Validate translation review checkpoint
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path('chapter38-ocr-review')
+          summary = json.loads((root / 'chapter38-curation-summary.json').read_text(encoding='utf-8'))
+          rows = json.loads((root / 'chapter38-curated-text.json').read_text(encoding='utf-8'))
+          if summary.get('checkpoint') != 'translation_review':
+              raise SystemExit(f'wrong checkpoint: {summary}')
+          if summary.get('curated_translation_count') != 115:
+              raise SystemExit(f"expected 115 curated translations, got {summary.get('curated_translation_count')}")
+          untranslated = [r for r in rows if r.get('source_text') and not r.get('translation_vi')]
+          if untranslated:
+              raise SystemExit(f'untranslated active rows remain: {untranslated[:5]}')
+          print(json.dumps(summary, ensure_ascii=False, indent=2))
+          PY
+
+      - name: Pack translation-review handoff
+        run: |
+          zip -qr chapter38-translation-review.zip chapter38-ocr-review
+
+      - name: Upload translation-review handoff
+        uses: actions/upload-artifact@v4
+        with:
+          name: chapter38-translation-review
+          path: chapter38-translation-review.zip
+          if-no-files-found: error
+          retention-days: 7
