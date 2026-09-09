@@ -1,0 +1,218 @@
+name: Shadow Slave Chapter 1 Clean Repair 2
+
+on:
+  push:
+    branches:
+      - trial/shadow-slave-chapter-1
+    paths:
+      - .github/workflows/shadow-slave-1-clean-repair2.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: shadow-slave-1-human-loop
+  cancel-in-progress: false
+
+jobs:
+  clean-repair-2:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 35
+    env:
+      PYTHONUNBUFFERED: "1"
+      CHAPTER_ID: c0010001
+      CLEAN_RUN_ID: "34355264273"
+      CLEAN_ARTIFACT: 02-clean-review-fixed-c0010001
+      MANGA_USE_DYNAMIC_LAMA: "1"
+      MANGA_ORT_PROVIDER: openvino
+      MANGA_ORT_REQUIRE_PROVIDER: "1"
+      MANGA_ORT_OPENVINO_SCOPE: detectors
+      MANGA_ORT_OPENVINO_THREADS: "2"
+      MANGA_ORT_OPENVINO_STREAMS: "1"
+      MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
+      OPENBLAS_NUM_THREADS: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install production clean runtime
+        run: |
+          python -m pip install \
+            numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 \
+            onnxruntime-openvino==1.24.1 psutil==6.1.1 loguru==0.7.2 \
+            requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 playwright==1.47.0 \
+            fastapi==0.115.0 'uvicorn[standard]==0.30.6' \
+            pydantic==2.9.2 filelock==3.16.1 python-multipart==0.0.12
+
+      - name: Restore inpaint models
+        id: models
+        uses: actions/cache@v4
+        with:
+          path: |
+            models/*.onnx
+            models/.e2e-provenance.json
+          key: processing-profile-models-b224548-v1
+
+      - name: Fail if model cache unexpectedly missing
+        if: steps.models.outputs.cache-hit != 'true'
+        run: |
+          echo "Expected production model cache for local repair" >&2
+          exit 1
+
+      - name: Restore fixed checkpoint 02
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p checkpoint/02-clean-fixed1
+          gh run download "$CLEAN_RUN_ID" -n "$CLEAN_ARTIFACT" -D checkpoint/02-clean-fixed1
+          test -f checkpoint/02-clean-fixed1/processed/manifest.json
+          test -d checkpoint/02-clean-fixed1/raw/sliced
+
+      - name: Restore production layout and managed paths
+        run: |
+          python - <<'PY'
+          import json, shutil
+          from pathlib import Path
+          cid='c0010001'
+          root=Path('checkpoint/02-clean-fixed1')
+          raw_dst=Path('data/raw')/cid
+          proc_dst=Path('data/processed')/cid
+          for dst in (raw_dst,proc_dst):
+              if dst.exists(): shutil.rmtree(dst)
+              dst.parent.mkdir(parents=True,exist_ok=True)
+          shutil.copytree(root/'raw',raw_dst)
+          shutil.copytree(root/'processed',proc_dst)
+          mp=proc_dst/'manifest.json'
+          m=json.loads(mp.read_text(encoding='utf-8'))
+          if m.get('chapter_id')!=cid: raise RuntimeError('chapter mismatch')
+          for p in m.get('pages',[]):
+              p['original']=(raw_dst/'sliced'/Path(str(p.get('original'))).name).as_posix()
+              for key in ('clean','manual_mask','manual_lama_mask'):
+                  if p.get(key):
+                      p[key]=(proc_dst/Path(str(p[key])).name).as_posix()
+          mp.write_text(json.dumps(m,ensure_ascii=False,indent=2),encoding='utf-8')
+          print('restored',len(m.get('pages',[])),'slices with managed paths')
+          PY
+
+      - name: Apply owner-core rectangular LaMa repairs
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+          import json
+          from pathlib import Path
+          import numpy as np
+          from app.optimized_pipeline import OptimizedChapterPipeline
+          from app.manifest_utils import load_manifest_raw, save_manifest_raw
+          from app.pipeline import read_image
+
+          cid='c0010001'
+          pipe=OptimizedChapterPipeline()
+          repairs=[
+              # src0 slice1 owns the opening line in stitch_core y=768..1844.
+              (1, (70,790,1530,1035), 'opening_dare_to_dream_owner'),
+              # src0 slice5 owns BEFORE OUR NIGHTMARES... in stitch_core y>=768.
+              (5, (70,790,1310,1285), 'opening_nightmares_owner'),
+              # src3 slice0 owns the hood narration in core y<1944.
+              (15,(70,120,1530,590), 'hood_narration_owner'),
+          ]
+          log=[]
+          for pi,(x1,y1,x2,y2),reason in repairs:
+              m=load_manifest_raw(cid)
+              p=m['pages'][pi]
+              img=read_image(Path(p['original']))
+              h,w=img.shape[:2]
+              core=p.get('stitch_core') or {}
+              cy1=int(core.get('core_y1') or 0); cy2=int(core.get('core_y2') or h)
+              x1=max(0,min(w,x1)); x2=max(x1,min(w,x2))
+              y1=max(cy1,min(h,y1)); y2=min(cy2,max(y1,min(h,y2)))
+              if x2-x1<20 or y2-y1<20:
+                  raise RuntimeError(f'invalid repair rectangle page {pi}: {(x1,y1,x2,y2)} core={(cy1,cy2)}')
+              mask=np.zeros((h,w),np.uint8)
+              mask[y1:y2,x1:x2]=255
+              pipe.repaint_mask(cid,pi,mask,force_lama=True)
+              log.append({'page_index':pi,'action':'manual_lama_owner_rect','reason':reason,'rect':[x1,y1,x2,y2],'mask_pixels':int((x2-x1)*(y2-y1))})
+
+          m=load_manifest_raw(cid)
+          m['human_clean_review']={
+              'status':'repair2_pending_visual_review',
+              'story_inpaint_blockers':None,
+              'reviewed_slices':135,
+              'repair2_owner_pages':[1,5,15],
+              'note':'Second local repair targets only stitch-core owner regions identified by visual review.'
+          }
+          save_manifest_raw(cid,m)
+          out=Path('checkpoint/02-clean-fixed2')
+          out.mkdir(parents=True,exist_ok=True)
+          (out/'clean-repair2-report.json').write_text(json.dumps({'chapter_id':cid,'status':'REVIEW_REQUIRED','repairs':log},ensure_ascii=False,indent=2),encoding='utf-8')
+          print(json.dumps(log,ensure_ascii=False,indent=2))
+          PY
+
+      - name: Build compact repaired-owner visual pack
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import json
+          from PIL import Image, ImageDraw
+          cid='c0010001'
+          raw=Path('data/raw')/cid/'sliced'
+          proc=Path('data/processed')/cid
+          m=json.loads((proc/'manifest.json').read_text(encoding='utf-8'))
+          out=Path('checkpoint/02-clean-fixed2-visual')
+          out.mkdir(parents=True,exist_ok=True)
+          owner_pages=[1,5,15]
+          pair_paths=[]
+          for i in owner_pages:
+              p=m['pages'][i]
+              rp=raw/Path(p['original']).name
+              cp=proc/Path(p['clean']).name
+              with Image.open(rp) as a0, Image.open(cp) as b0:
+                  a=a0.convert('RGB'); b=b0.convert('RGB')
+                  scale=min(1,900/a.width)
+                  size=(int(a.width*scale),int(a.height*scale))
+                  a=a.resize(size); b=b.resize(size)
+                  c=Image.new('RGB',(size[0]*2,size[1]+48),'white')
+                  c.paste(a,(0,48)); c.paste(b,(size[0],48))
+                  d=ImageDraw.Draw(c)
+                  core=p.get('stitch_core') or {}
+                  d.text((8,10),f'{i:03d} RAW src={p.get("source_page")} sl={p.get("slice_index")} core={core.get("core_y1")}..{core.get("core_y2")}',fill='black')
+                  d.text((size[0]+8,10),'REPAIR2 CLEAN',fill='black')
+                  pp=out/f'owner_{i:03d}.jpg'; c.save(pp,quality=88,optimize=True); pair_paths.append(pp)
+          # One vertical sheet for fast human review.
+          ims=[]
+          for pp in pair_paths:
+              with Image.open(pp) as im0:
+                  im=im0.convert('RGB'); sc=min(1,1200/im.width); ims.append(im.resize((int(im.width*sc),int(im.height*sc))))
+          width=max(im.width for im in ims); height=sum(im.height for im in ims)
+          sheet=Image.new('RGB',(width,height),'white'); y=0
+          for im in ims: sheet.paste(im,(0,y)); y+=im.height
+          sheet.save(out/'owner-repair2-sheet.jpg',quality=88,optimize=True)
+          (out/'manifest.json').write_text(json.dumps(m,ensure_ascii=False,indent=2),encoding='utf-8')
+          (out/'clean-repair2-report.json').write_bytes(Path('checkpoint/02-clean-fixed2/clean-repair2-report.json').read_bytes())
+          PY
+
+      - name: Pack fixed2 full checkpoint
+        run: |
+          rm -rf checkpoint/02-clean-fixed2/raw checkpoint/02-clean-fixed2/processed
+          cp -a "data/raw/${CHAPTER_ID}" checkpoint/02-clean-fixed2/raw
+          cp -a "data/processed/${CHAPTER_ID}" checkpoint/02-clean-fixed2/processed
+
+      - name: Upload fixed2 full checkpoint
+        uses: actions/upload-artifact@v4
+        with:
+          name: 02-clean-review-fixed2-c0010001
+          path: checkpoint/02-clean-fixed2
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload fixed2 compact visual checkpoint
+        uses: actions/upload-artifact@v4
+        with:
+          name: 02-clean-fixed2-visual-c0010001
+          path: checkpoint/02-clean-fixed2-visual
+          if-no-files-found: error
+          retention-days: 7
