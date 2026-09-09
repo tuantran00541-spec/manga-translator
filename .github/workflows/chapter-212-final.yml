@@ -24,6 +24,7 @@ jobs:
       RENDER_RUN_ID: "34331972494"
       RENDER_ARTIFACT: 05-render-review-c2120212-rev3
       VISUAL_APPROVAL: trials/chapter-212/visual-review-rev3.json
+      REVIEW_PACK_INDEX: trials/chapter-212/review-rev3-index.json
     steps:
       - uses: actions/checkout@v4
 
@@ -42,7 +43,7 @@ jobs:
             echo "visual approval file present"
           else
             echo "approved=false" >> "$GITHUB_OUTPUT"
-            echo "STOP: rev3 still awaits human visual review; no final artifact will be produced"
+            echo "STOP: rev3 still awaits human/editor delta approval; no final artifact will be produced"
           fi
 
       - name: Restore render checkpoint rev3
@@ -65,17 +66,24 @@ jobs:
 
           root = Path('reviewed-render')
           approval_path = Path('trials/chapter-212/visual-review-rev3.json')
+          review_pack_index_path = Path('trials/chapter-212/review-rev3-index.json')
           summary_path = root / 'render-review-summary.json'
           typography_path = root / 'typography-plan.json'
           pages_dir = root / 'final-pages'
 
-          for required_path in (approval_path, summary_path, typography_path):
+          for required_path in (
+              approval_path,
+              review_pack_index_path,
+              summary_path,
+              typography_path,
+          ):
               if not required_path.is_file():
                   raise SystemExit(f'missing required gate file: {required_path}')
           if not pages_dir.is_dir():
               raise SystemExit('missing final-pages directory')
 
           approval = json.loads(approval_path.read_text(encoding='utf-8'))
+          review_pack = json.loads(review_pack_index_path.read_text(encoding='utf-8'))
           summary = json.loads(summary_path.read_text(encoding='utf-8'))
           typography = json.loads(typography_path.read_text(encoding='utf-8'))
 
@@ -84,7 +92,11 @@ jobs:
               'render_revision': 3,
               'status': 'PASS',
               'primary_dialogue_font': 'Mac-dinh-3',
-              'source_pages_reviewed': 16,
+              'review_mode': 'delta_review',
+              'baseline_render_revision': 2,
+              'baseline_source_pages_reviewed': 16,
+              'rev3_font_delta_reviewed': True,
+              'review_pack_generated': True,
               'blocking_overflow_or_clipping': 0,
               'blocking_stitch_seams': 0,
               'blocking_vietnamese_glyph_errors': 0,
@@ -95,6 +107,26 @@ jobs:
                   raise SystemExit(
                       f'visual approval mismatch {key}: expected {expected!r}, got {approval.get(key)!r}'
                   )
+
+          review_pack_required = {
+              'chapter_id': 'c2120212',
+              'render_revision': 3,
+              'render_run_id': 34331972494,
+              'render_artifact': '05-render-review-c2120212-rev3',
+              'primary_dialogue_font': 'Mac-dinh-3',
+              'status': 'READY_FOR_HUMAN_VISUAL_REVIEW',
+          }
+          for key, expected in review_pack_required.items():
+              if review_pack.get(key) != expected:
+                  raise SystemExit(
+                      f'review-pack mismatch {key}: expected {expected!r}, got {review_pack.get(key)!r}'
+                  )
+          if review_pack.get('font_usage') != {'Mac-dinh-3': 119}:
+              raise SystemExit(f'unexpected review-pack font usage: {review_pack.get("font_usage")}')
+          if int((review_pack.get('slice_pdf') or {}).get('pages') or 0) != 56:
+              raise SystemExit('review-pack slice PDF must contain 56 pages')
+          if int((review_pack.get('final_pages_pdf') or {}).get('pages') or 0) != 16:
+              raise SystemExit('review-pack stitched PDF must contain 16 pages')
 
           summary_required = {
               'checkpoint': '05-render-review',
@@ -180,6 +212,7 @@ jobs:
               'distinct_fonts_used': 1,
               'font_usage': {'Mac-dinh-3': 119},
               'forced_font_diversity': False,
+              'review_pack': review_pack,
               'human_visual_review': approval,
               'final_page_dimensions': dims,
               'final_zip': final_name,
