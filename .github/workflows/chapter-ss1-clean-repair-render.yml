@@ -1,0 +1,255 @@
+name: Chapter SS1 Clean Repair + Render Rev2
+on:
+  push:
+    branches: [trial/chapter-render-ss1]
+    paths:
+      - .github/workflows/chapter-ss1-clean-repair-render.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: chapter-ss1-human-loop
+  cancel-in-progress: false
+jobs:
+  repair-render:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    env:
+      CHAPTER_ID: c0010001
+      TRANSLATION_RUN_ID: "34344111421"
+      TRANSLATION_ARTIFACT: 04-translation-review-c0010001
+      PRIMARY_DIALOGUE_FONT: Mac-dinh-3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install runtime
+        run: |
+          python -m pip install \
+            Pillow==10.4.0 numpy==1.26.4 opencv-contrib-python==4.10.0.84 \
+            fastapi==0.115.0 pydantic==2.9.2 filelock==3.16.1 loguru==0.7.2 \
+            fonttools==4.59.2
+      - name: Restore translation checkpoint
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf checkpoint/04-translation-review
+          mkdir -p checkpoint/04-translation-review
+          gh run download "$TRANSLATION_RUN_ID" -n "$TRANSLATION_ARTIFACT" -D checkpoint/04-translation-review
+          test -f checkpoint/04-translation-review/processed/manifest.json
+          test -d checkpoint/04-translation-review/raw
+      - name: Patch residual EN on clean images
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from PIL import Image, ImageDraw
+          import json
+
+          root = Path('checkpoint/04-translation-review')
+          proc = root / 'processed'
+          repairs = []
+
+          def white_fill(path, boxes, label):
+              img = Image.open(path).convert('RGB')
+              draw = ImageDraw.Draw(img)
+              for box in boxes:
+                  draw.rectangle(box, fill=(255, 255, 255))
+              img.save(path)
+              repairs.append({'file': path.name, 'action': 'white_fill', 'boxes': boxes, 'label': label})
+
+          def dark_fill(path, boxes, label, color=(8, 16, 32)):
+              img = Image.open(path).convert('RGB')
+              draw = ImageDraw.Draw(img)
+              for box in boxes:
+                  draw.rectangle(box, fill=color)
+              img.save(path)
+              repairs.append({'file': path.name, 'action': 'dark_fill', 'boxes': boxes, 'label': label, 'color': list(color)})
+
+          p = proc / 'clean_000_01.png'
+          img = Image.open(p).convert('RGB')
+          px = img.getpixel((800, 650))
+          dark_fill(p, [(40, 700, 700, 900), (1300, 720, 1580, 880)], 'stylized_DARE_residual', color=px)
+
+          white_fill(proc / 'clean_004_00.png', [
+              (1450, 700, 1595, 950),
+              (80, 700, 160, 820),
+          ], 'residual_S_and_speck')
+
+          white_fill(proc / 'clean_020_03.png', [
+              (1280, 820, 1520, 1000),
+              (40, 880, 120, 980),
+          ], 'residual_ME_and_dots')
+
+          report = {
+              'chapter_id': 'c0010001',
+              'status': 'CLEAN_PATCHED',
+              'repairs': repairs,
+              'notes': 'Local white/dark fill on residual EN fragments before render rev2',
+          }
+          (root / 'clean-repair-report.json').write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
+          print(json.dumps(report, ensure_ascii=False, indent=2))
+          PY
+      - name: Restore production chapter layout
+        run: |
+          python - <<'PY'
+          import json, shutil
+          from pathlib import Path
+          chapter_id = 'c0010001'
+          root = Path('checkpoint/04-translation-review')
+          raw_dst = Path('data/raw') / chapter_id
+          processed_dst = Path('data/processed') / chapter_id
+          output_dst = Path('data/output') / chapter_id
+          for dst in (raw_dst, processed_dst, output_dst):
+              if dst.exists():
+                  shutil.rmtree(dst)
+              dst.parent.mkdir(parents=True, exist_ok=True)
+          shutil.copytree(root / 'raw', raw_dst)
+          shutil.copytree(root / 'processed', processed_dst)
+          output_dst.mkdir(parents=True, exist_ok=True)
+          manifest_path = processed_dst / 'manifest.json'
+          manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+          for page in manifest.get('pages') or []:
+              original = Path(str(page.get('original') or ''))
+              clean = Path(str(page.get('clean') or ''))
+              if original.name:
+                  page['original'] = (raw_dst / 'sliced' / original.name).as_posix()
+              if clean.name:
+                  page['clean'] = str((processed_dst / clean.name).resolve())
+          manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding='utf-8')
+          print(f"restored {len(manifest.get('pages') or [])} slices")
+          PY
+      - name: Typography plan + render + export
+        run: |
+          python - <<'PY'
+          import json, os, zipfile
+          from pathlib import Path
+          from fontTools.ttLib import TTFont
+          from PIL import Image
+          from app.routers.export import export_chapter, render_chapter
+
+          chapter_id = 'c0010001'
+          primary = os.environ['PRIMARY_DIALOGUE_FONT']
+          manifest_path = Path('data/processed') / chapter_id / 'manifest.json'
+          manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+          font_dir = Path('app/static/fonts')
+          primary_path = font_dir / f'{primary}.ttf'
+          font = TTFont(primary_path, lazy=True)
+          cmap = set((font.getBestCmap() or {}).keys())
+          font.close()
+
+          active = 0
+          plan = []
+          for pi, page in enumerate(manifest.get('pages') or []):
+              for obj in page.get('text_objects') or []:
+                  if obj.get('source_missing') or obj.get('human_review') != 'keep_story':
+                      continue
+                  oid = str(obj.get('id') or '')
+                  vi = str(obj.get('translation') or '').strip()
+                  if not vi:
+                      raise SystemExit(f'untranslated {oid}')
+                  missing = ''.join(sorted({ch for ch in vi if not ch.isspace() and ord(ch) not in cmap}))
+                  if missing:
+                      raise SystemExit(f'glyph miss {oid}: {missing}')
+                  style = obj.setdefault('style', {})
+                  style.update({
+                      'font': primary, 'fontSize': 'auto', 'color': 'auto',
+                      'strokeWidth': 'auto', 'strokeColor': 'auto',
+                      'bgColor': 'transparent', 'cornerRadius': '0',
+                      'horizontalAlign': 'center', 'verticalAlign': 'middle', 'bold': False,
+                  })
+                  obj['human_typeset_class'] = 'dialogue'
+                  obj['human_typeset_font'] = primary
+                  plan.append({'page_index': pi, 'id': oid, 'font': primary, 'translation': vi})
+                  active += 1
+          if active != 69:
+              raise SystemExit(f'expected 69 active, got {active}')
+
+          typography_summary = {
+              'status': 'PLAN_READY',
+              'typography_revision': 2,
+              'primary_dialogue_font': primary,
+              'active_story_objects': active,
+              'distinct_fonts_used': 1,
+              'font_usage': {primary: active},
+              'forced_font_diversity': False,
+              'vietnamese_glyph_probe': 'PASS',
+              'clean_repair': 'rev2 residual EN patches',
+          }
+          manifest['human_typeset_review'] = typography_summary
+          manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding='utf-8')
+          Path('typography-plan.json').write_text(json.dumps({
+              'chapter_id': chapter_id, **typography_summary, 'assignments': plan,
+          }, ensure_ascii=False, indent=2), encoding='utf-8')
+
+          result = render_chapter(chapter_id)
+          stats = result.get('chapter_render') or {}
+          total = int(stats.get('total') or 0)
+          if total <= 0 or int(stats.get('skipped') or 0) != 0:
+              raise SystemExit(f'render failed: {stats}')
+          export_chapter(chapter_id)
+          output_dir = Path('data/output') / chapter_id
+          export_zip = output_dir / f'chapter_{chapter_id}.zip'
+          if not export_zip.is_file():
+              raise SystemExit('export zip missing')
+          with zipfile.ZipFile(export_zip) as z:
+              names = [n for n in z.namelist() if n.lower().endswith('.png')]
+              if len(names) <= 0:
+                  raise SystemExit('no pages in zip')
+          print(json.dumps({'render_stats': stats, 'stitched_pages': len(names)}, ensure_ascii=False, indent=2))
+          PY
+      - name: Pack render review rev2
+        run: |
+          python - <<'PY'
+          import json, shutil, zipfile
+          from pathlib import Path
+          from PIL import Image
+          chapter_id = 'c0010001'
+          checkpoint = Path('checkpoint/05-render-review-rev2')
+          if checkpoint.exists():
+              shutil.rmtree(checkpoint)
+          checkpoint.mkdir(parents=True)
+          processed_src = Path('data/processed') / chapter_id
+          output_src = Path('data/output') / chapter_id
+          shutil.copytree(processed_src, checkpoint / 'processed')
+          shutil.copytree(output_src, checkpoint / 'output')
+          shutil.copy2('typography-plan.json', checkpoint / 'typography-plan.json')
+          repair_src = Path('checkpoint/04-translation-review/clean-repair-report.json')
+          if repair_src.exists():
+              shutil.copy2(repair_src, checkpoint / 'clean-repair-report.json')
+          export_zip = output_src / f'chapter_{chapter_id}.zip'
+          shutil.copy2(export_zip, checkpoint / 'Shadow-Slave-Chapter-1-VI-RENDER-REVIEW-REV2.zip')
+          final_pages = checkpoint / 'final-pages'
+          final_pages.mkdir()
+          with zipfile.ZipFile(export_zip) as z:
+              z.extractall(final_pages)
+          dims = []
+          for path in sorted(final_pages.glob('*.png')):
+              with Image.open(path) as image:
+                  dims.append({'file': path.name, 'width': image.width, 'height': image.height})
+          summary = {
+              'checkpoint': '05-render-review',
+              'revision': 2,
+              'chapter_id': chapter_id,
+              'series': 'Shadow Slave',
+              'source_pages': len(dims),
+              'active_story_objects': 69,
+              'active_untranslated_story_objects': 0,
+              'primary_dialogue_font': 'Mac-dinh-3',
+              'distinct_fonts_used': 1,
+              'clean_repair': 'residual EN white/dark fill',
+              'final_page_dimensions': dims,
+              'status': 'TECHNICAL_PASS_PENDING_HUMAN_VISUAL_REVIEW',
+              'next_action': 'STOP_FOR_HUMAN_VISUAL_REVIEW',
+          }
+          (checkpoint / 'render-review-summary.json').write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding='utf-8')
+          print(json.dumps({k: v for k, v in summary.items() if k != 'final_page_dimensions'}, ensure_ascii=False, indent=2))
+          PY
+      - name: Upload render review rev2
+        uses: actions/upload-artifact@v4
+        with:
+          name: 05-render-review-c0010001-rev2
+          path: checkpoint/05-render-review-rev2
+          if-no-files-found: error
+          retention-days: 7
