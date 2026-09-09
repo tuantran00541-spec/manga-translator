@@ -1,0 +1,43 @@
+name: Chapter SS1 OCR Human Curation
+on:
+  push:
+    branches: [trial/chapter-render-ss1]
+    paths: [.github/workflows/chapter-ss1-ocr-curation.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: chapter-ss1-human-loop
+  cancel-in-progress: false
+jobs:
+  curate-ocr:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    env:
+      CHAPTER_ID: c0010001
+      OCR_RUN_ID: "34338641808"
+      OCR_ARTIFACT: 03-ocr-review-c0010001
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Restore OCR review checkpoint
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p checkpoint/03-ocr-review-curated
+          gh run download "$OCR_RUN_ID" -n "$OCR_ARTIFACT" -D checkpoint/03-ocr-review-curated
+          test -f checkpoint/03-ocr-review-curated/processed/manifest.json
+          test -f checkpoint/03-ocr-review-curated/ocr-text.json
+      - name: Build curation from OCR + story targets
+        run: |
+          python trials/chapter-ss1/build_ocr_curation.py
+      - name: Upload curated OCR checkpoint
+        uses: actions/upload-artifact@v4
+        with:
+          name: 03-ocr-review-curated-c0010001
+          path: checkpoint/03-ocr-review-curated
+          if-no-files-found: error
+          retention-days: 7
