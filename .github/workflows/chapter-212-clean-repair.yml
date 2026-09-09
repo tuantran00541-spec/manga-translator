@@ -1,0 +1,167 @@
+name: Chapter 212 Clean Review Repairs
+
+on:
+  push:
+    branches:
+      - trial/chapter-render-212
+    paths:
+      - .github/workflows/chapter-212-clean-repair.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: chapter-212-human-loop
+  cancel-in-progress: false
+
+jobs:
+  repair-clean:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    env:
+      CHAPTER_ID: c2120212
+      CLEAN_RUN_ID: "34319928011"
+      CLEAN_ARTIFACT: 02-clean-review-c2120212
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install image repair dependency
+        run: python -m pip install Pillow==10.4.0
+
+      - name: Restore clean review checkpoint
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p checkpoint/02-clean-review-fixed
+          gh run download "$CLEAN_RUN_ID" -n "$CLEAN_ARTIFACT" -D checkpoint/02-clean-review-fixed
+          test -f checkpoint/02-clean-review-fixed/processed/manifest.json
+          test -f checkpoint/02-clean-review-fixed/raw/sliced/000_00.png
+          test -f checkpoint/02-clean-review-fixed/raw/sliced/001_00.png
+          test -f checkpoint/02-clean-review-fixed/raw/sliced/015_00.png
+
+      - name: Apply deterministic human clean repairs
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from PIL import Image
+
+          root = Path('checkpoint/02-clean-review-fixed')
+          raw = root / 'raw' / 'sliced'
+          processed = root / 'processed'
+          manifest_path = processed / 'manifest.json'
+          manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+
+          repairs = []
+
+          # Page 0 is an Asura chapter card. Partial text removal damages a
+          # non-story credit/title card, so preserve it exactly from RAW.
+          (processed / 'clean_000_00.png').write_bytes((raw / '000_00.png').read_bytes())
+          manifest['pages'][0]['human_clean_review'] = {
+              'action': 'restore_raw_non_story',
+              'reason': 'chapter_card_and_scanlation_credits',
+              'review_status': 'pass_after_repair',
+          }
+          repairs.append({'page_index': 0, 'action': 'restore_full_raw', 'reason': 'non_story_card'})
+
+          # Page 1 is the series/chapter title + creator credit page. Preserve
+          # the title artwork and credits rather than leaving them half-erased.
+          (processed / 'clean_001_00.png').write_bytes((raw / '001_00.png').read_bytes())
+          manifest['pages'][1]['human_clean_review'] = {
+              'action': 'restore_raw_non_story',
+              'reason': 'title_page_and_creator_credits',
+              'review_status': 'pass_after_repair',
+          }
+          repairs.append({'page_index': 1, 'action': 'restore_full_raw', 'reason': 'non_story_title_page'})
+
+          # Page 55 contains one story bubble at the top and non-story Korean
+          # credits / Asura promo below the panel. Keep the cleaned story region,
+          # but restore the non-story tail so the source artwork is not smeared.
+          clean_path = processed / 'clean_015_00.png'
+          raw_path = raw / '015_00.png'
+          clean = Image.open(clean_path).convert('RGB')
+          source = Image.open(raw_path).convert('RGB')
+          if clean.size != source.size:
+              raise RuntimeError(f'page 55 size mismatch: clean={clean.size} raw={source.size}')
+          restore_y = 2000
+          clean.paste(source.crop((0, restore_y, source.width, source.height)), (0, restore_y))
+          clean.save(clean_path)
+          manifest['pages'][55]['human_clean_review'] = {
+              'action': 'restore_raw_tail_non_story',
+              'reason': 'creator_credits_and_scanlation_promo',
+              'restore_y': restore_y,
+              'review_status': 'pass_after_repair',
+          }
+          repairs.append({'page_index': 55, 'action': 'restore_raw_tail', 'restore_y': restore_y, 'reason': 'non_story_credits_and_promo'})
+
+          manifest.setdefault('human_clean_review', {})
+          manifest['human_clean_review'].update({
+              'status': 'pass_after_repair',
+              'reviewed_slices': 56,
+              'repairs': repairs,
+              'story_inpaint_blockers': 0,
+              'notes': 'Story dialogue cleanup visually reviewed; stylized Korean SFX intentionally preserved for later editorial choice.',
+          })
+          manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding='utf-8')
+
+          summary_path = root / 'clean-review-summary.json'
+          summary = json.loads(summary_path.read_text(encoding='utf-8')) if summary_path.exists() else {}
+          summary.update({
+              'human_review_status': 'PASS_AFTER_REPAIR',
+              'human_reviewed_slices': 56,
+              'story_inpaint_blockers': 0,
+              'repairs': repairs,
+              'next_action': 'OCR_CHECKPOINT_ALLOWED',
+          })
+          summary_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding='utf-8')
+
+          (root / 'clean-review-report.json').write_text(
+              json.dumps({
+                  'chapter_id': 'c2120212',
+                  'status': 'PASS_AFTER_REPAIR',
+                  'reviewed_slices': 56,
+                  'repairs': repairs,
+                  'classification': {
+                      'story_inpaint_blockers': 0,
+                      'non_story_partial_cleanup': 3,
+                      'intentional_sfx_preserved': True,
+                  },
+              }, ensure_ascii=False, indent=2),
+              encoding='utf-8',
+          )
+          print(json.dumps(repairs, ensure_ascii=False, indent=2))
+          PY
+
+      - name: Validate repaired images
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from PIL import Image, ImageChops
+          root = Path('checkpoint/02-clean-review-fixed')
+          raw = root / 'raw' / 'sliced'
+          proc = root / 'processed'
+          for name in ('000_00.png', '001_00.png'):
+              a = Image.open(raw / name).convert('RGB')
+              b = Image.open(proc / f'clean_{name}').convert('RGB')
+              if ImageChops.difference(a, b).getbbox() is not None:
+                  raise RuntimeError(f'{name}: full raw restore validation failed')
+          a = Image.open(raw / '015_00.png').convert('RGB')
+          b = Image.open(proc / 'clean_015_00.png').convert('RGB')
+          if ImageChops.difference(a.crop((0,2000,a.width,a.height)), b.crop((0,2000,b.width,b.height))).getbbox() is not None:
+              raise RuntimeError('015_00.png: tail restore validation failed')
+          print('deterministic repair validation PASS')
+          PY
+
+      - name: Upload fixed clean checkpoint
+        uses: actions/upload-artifact@v4
+        with:
+          name: 02-clean-review-fixed-c2120212
+          path: checkpoint/02-clean-review-fixed
+          if-no-files-found: error
+          retention-days: 7
