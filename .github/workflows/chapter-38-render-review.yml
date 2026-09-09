@@ -10,7 +10,7 @@ on:
       translation_run_id:
         description: "Workflow run id that produced chapter38-translation-review"
         required: false
-        default: "34308153274"
+        default: "34314702868"
 
 permissions:
   contents: read
@@ -43,7 +43,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: chapter38-translation-review
-          run-id: ${{ inputs.translation_run_id || '34308153274' }}
+          run-id: ${{ inputs.translation_run_id || '34314702868' }}
           github-token: ${{ github.token }}
           path: imported-translation-review
 
@@ -78,7 +78,6 @@ jobs:
               else:
                   dst.mkdir(parents=True, exist_ok=True)
 
-          # Start render output clean; skipped slices are exported from clean/original.
           shutil.rmtree(targets['output'], ignore_errors=True)
           targets['output'].mkdir(parents=True, exist_ok=True)
 
@@ -106,7 +105,7 @@ jobs:
               page.pop('render_output_revision', None)
 
           manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding='utf-8')
-          print('restored curated chapter state and rerooted managed image paths')
+          print('restored finalized curated chapter state and rerooted managed image paths')
           PY
 
       - name: Render Vietnamese chapter with production renderer
@@ -122,10 +121,36 @@ jobs:
           archive = Path('data/output') / chapter_id / f'chapter_{chapter_id}.zip'
           if not archive.is_file():
               raise SystemExit(f'final archive missing: {archive}')
+
+          manifest_path = Path('data/processed') / chapter_id / 'manifest.json'
+          manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+          active_untranslated = []
+          tombstones = 0
+          translated = 0
+          for pi, page in enumerate(manifest.get('pages', [])):
+              for obj in page.get('text_objects') or []:
+                  if obj.get('source_missing'):
+                      if obj.get('human_review') == 'drop_duplicate_credit_sfx_or_noise':
+                          tombstones += 1
+                      continue
+                  src = str(obj.get('ocr_text') or '').strip()
+                  vi = str(obj.get('translation') or '').strip()
+                  if vi:
+                      translated += 1
+                  if src and not vi:
+                      active_untranslated.append({'page_index': pi, 'id': obj.get('id'), 'source': src})
+          if active_untranslated:
+              raise SystemExit(f'production manifest resurrected untranslated rows: {active_untranslated[:10]}')
+          if tombstones < 25:
+              raise SystemExit(f'production manifest lost human drop tombstones: {tombstones}')
+
           summary = {
               'checkpoint': 'render_review',
               'chapter_id': chapter_id,
               'chapter_render': render_result.get('chapter_render', {}),
+              'translated_active_objects': translated,
+              'active_untranslated_objects': 0,
+              'persistent_human_drop_tombstones': tombstones,
               'final_archive': str(archive),
               'final_archive_bytes': archive.stat().st_size,
               'next_action': 'human_visual_review_then_final_approve',
