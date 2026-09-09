@@ -1,0 +1,177 @@
+name: Chapter 38 render review checkpoint
+
+on:
+  push:
+    branches: [trial/chapter-render-38]
+    paths:
+      - .github/workflows/chapter-38-render-review.yml
+  workflow_dispatch:
+    inputs:
+      translation_run_id:
+        description: "Workflow run id that produced chapter38-translation-review"
+        required: false
+        default: "34308153274"
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: chapter-38-render-review
+  cancel-in-progress: false
+
+jobs:
+  render-review:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    env:
+      PYTHONUNBUFFERED: "1"
+      CHAPTER_ID: c0380038
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install lightweight production renderer runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install Pillow==10.4.0 numpy==1.26.4 fastapi==0.115.0 loguru==0.7.2 filelock==3.16.1
+
+      - name: Download translation-review artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: chapter38-translation-review
+          run-id: ${{ inputs.translation_run_id || '34308153274' }}
+          github-token: ${{ github.token }}
+          path: imported-translation-review
+
+      - name: Restore curated chapter state
+        run: |
+          python - <<'PY'
+          import json, shutil, zipfile
+          from pathlib import Path
+
+          chapter_id = 'c0380038'
+          outer = Path('imported-translation-review/chapter38-translation-review.zip')
+          if not outer.exists():
+              raise SystemExit(f'missing translation-review artifact: {outer}')
+          with zipfile.ZipFile(outer) as z:
+              z.extractall('imported-translation-review/unpacked')
+          root = Path('imported-translation-review/unpacked/chapter38-ocr-review')
+          if not (root / 'processed' / 'manifest.json').is_file():
+              raise SystemExit('translation-review artifact has no manifest')
+
+          targets = {
+              'raw': Path('data/raw') / chapter_id,
+              'processed': Path('data/processed') / chapter_id,
+              'output': Path('data/output') / chapter_id,
+          }
+          for sub, dst in targets.items():
+              src = root / sub
+              dst.parent.mkdir(parents=True, exist_ok=True)
+              if dst.exists():
+                  shutil.rmtree(dst)
+              if src.exists():
+                  shutil.copytree(src, dst)
+              else:
+                  dst.mkdir(parents=True, exist_ok=True)
+
+          # Start render output clean; skipped slices are exported from clean/original.
+          shutil.rmtree(targets['output'], ignore_errors=True)
+          targets['output'].mkdir(parents=True, exist_ok=True)
+
+          manifest_path = targets['processed'] / 'manifest.json'
+          manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+
+          def reroot(value, base):
+              if not value:
+                  return value
+              p = Path(str(value))
+              parts = list(p.parts)
+              if chapter_id in parts:
+                  rel = Path(*parts[parts.index(chapter_id) + 1:])
+              else:
+                  rel = Path(p.name)
+              return str((base / rel).resolve())
+
+          for page in manifest.get('pages', []):
+              page['original'] = reroot(page.get('original'), targets['raw'])
+              if page.get('clean'):
+                  page['clean'] = reroot(page.get('clean'), targets['processed'])
+              page.pop('rendered', None)
+              page.pop('render_identity_version', None)
+              page.pop('render_input_signature', None)
+              page.pop('render_output_revision', None)
+
+          manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding='utf-8')
+          print('restored curated chapter state and rerooted managed image paths')
+          PY
+
+      - name: Render Vietnamese chapter with production renderer
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from app.routers.export import render_chapter, export_chapter
+
+          chapter_id = 'c0380038'
+          render_result = render_chapter(chapter_id)
+          export_chapter(chapter_id)
+          archive = Path('data/output') / chapter_id / f'chapter_{chapter_id}.zip'
+          if not archive.is_file():
+              raise SystemExit(f'final archive missing: {archive}')
+          summary = {
+              'checkpoint': 'render_review',
+              'chapter_id': chapter_id,
+              'chapter_render': render_result.get('chapter_render', {}),
+              'final_archive': str(archive),
+              'final_archive_bytes': archive.stat().st_size,
+              'next_action': 'human_visual_review_then_final_approve',
+          }
+          Path('chapter38-render-summary.json').write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding='utf-8')
+          print(json.dumps(summary, ensure_ascii=False, indent=2))
+          PY
+
+      - name: Validate stitched chapter archive
+        run: |
+          python - <<'PY'
+          import json, zipfile
+          from pathlib import Path
+          from PIL import Image
+
+          chapter_id = 'c0380038'
+          archive = Path('data/output') / chapter_id / f'chapter_{chapter_id}.zip'
+          with zipfile.ZipFile(archive) as z:
+              names = sorted(n for n in z.namelist() if n.lower().endswith('.png'))
+              if len(names) != 24:
+                  raise SystemExit(f'expected 24 source pages, got {len(names)}: {names}')
+              extract_dir = Path('chapter38-render-review/pages')
+              extract_dir.mkdir(parents=True, exist_ok=True)
+              z.extractall(extract_dir)
+          dims = []
+          for name in names:
+              p = Path('chapter38-render-review/pages') / name
+              with Image.open(p) as im:
+                  dims.append({'name': name, 'width': im.width, 'height': im.height})
+                  if im.width <= 0 or im.height <= 0:
+                      raise SystemExit(f'invalid image dimensions for {name}')
+          Path('chapter38-render-review/page-dimensions.json').write_text(json.dumps(dims, indent=2), encoding='utf-8')
+          print(f'validated {len(names)} stitched pages')
+          PY
+
+      - name: Pack render-review handoff
+        run: |
+          cp chapter38-render-summary.json chapter38-render-review/
+          cp data/processed/c0380038/manifest.json chapter38-render-review/manifest.json
+          cp data/output/c0380038/chapter_c0380038.zip chapter38-render-review/manga-translator-c0380038.zip
+          zip -qr chapter38-render-review-handoff.zip chapter38-render-review
+
+      - name: Upload render-review handoff
+        uses: actions/upload-artifact@v4
+        with:
+          name: chapter38-render-review
+          path: chapter38-render-review-handoff.zip
+          if-no-files-found: error
+          retention-days: 7
