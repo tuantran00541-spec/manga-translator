@@ -1,0 +1,194 @@
+name: Shadow Slave Chapter 1 Translation Review
+
+on:
+  push:
+    branches:
+      - trial/shadow-slave-chapter-1
+    paths:
+      - .github/workflows/shadow-slave-1-translation-review.yml
+      - trials/shadow-slave-1/translation-vi.json
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: shadow-slave-1-human-loop
+  cancel-in-progress: false
+
+jobs:
+  translation-review:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    env:
+      CHAPTER_ID: c0010001
+      CURATED_RUN_ID: "34369442331"
+      CURATED_ARTIFACT: 03-ocr-curated-c0010001
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Restore curated OCR checkpoint
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf checkpoint/04-translation-review checkpoint/04-translation-meta
+          mkdir -p checkpoint/04-translation-review checkpoint/04-translation-meta
+          gh run download "$CURATED_RUN_ID" -n "$CURATED_ARTIFACT" -D checkpoint/04-translation-review
+          test -f checkpoint/04-translation-review/processed/manifest.json
+          test -f trials/shadow-slave-1/translation-vi.json
+
+      - name: Apply reviewed Vietnamese translation
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          cid='c0010001'
+          root=Path('checkpoint/04-translation-review')
+          meta=Path('checkpoint/04-translation-meta')
+          mp=root/'processed'/'manifest.json'
+          manifest=json.loads(mp.read_text(encoding='utf-8'))
+          mapping=json.loads(Path('trials/shadow-slave-1/translation-vi.json').read_text(encoding='utf-8'))
+          translations=mapping.get('translations') or {}
+          if mapping.get('chapter_id')!=cid or mapping.get('target_lang')!='vi':
+              raise SystemExit(f'bad translation metadata: {mapping.get("chapter_id")} {mapping.get("target_lang")}')
+          if len(translations)!=101:
+              raise SystemExit(f'expected 101 translations, got {len(translations)}')
+
+          ocr_gate=manifest.get('human_ocr_review') or {}
+          if ocr_gate.get('status')!='PASS' or int(ocr_gate.get('active_story_objects',-1))!=101:
+              raise SystemExit(f'OCR gate not PASS: {ocr_gate}')
+
+          active={}
+          tombstones=[]
+          for pi,page in enumerate(manifest.get('pages') or []):
+              for obj in page.get('text_objects') or []:
+                  oid=str(obj.get('id') or '')
+                  if obj.get('source_missing'):
+                      if obj.get('origin')=='human_review_drop':
+                          tombstones.append((pi,oid))
+                      continue
+                  if obj.get('human_review')!='keep_story':
+                      raise SystemExit(f'unreviewed active object page={pi} id={oid}')
+                  source=str(obj.get('source_text') or obj.get('ocr_text') or '').strip()
+                  if not source:
+                      raise SystemExit(f'blank source page={pi} id={oid}')
+                  if oid in active:
+                      raise SystemExit(f'duplicate active id={oid}')
+                  active[oid]=(pi,obj,source)
+
+          if (len(active),len(tombstones))!=(101,319):
+              raise SystemExit(f'checkpoint mismatch active={len(active)} tombstones={len(tombstones)}')
+          missing=sorted(set(active)-set(translations))
+          extra=sorted(set(translations)-set(active))
+          if missing or extra:
+              raise SystemExit(f'translation id mismatch missing={missing} extra={extra}')
+
+          rows=[]
+          for oid,(pi,obj,source) in active.items():
+              vi=str(translations[oid] or '').strip()
+              if not vi:
+                  raise SystemExit(f'blank translation page={pi} id={oid}')
+              obj['translation']=vi
+              obj['translation_lang']='vi'
+              obj['translation_source']='human_review'
+              obj['translation_input_text']=source
+              obj['human_translation_review']='accepted'
+              obj.pop('translation_model',None)
+              obj.pop('auto_translation',None)
+              rows.append({
+                  'page_index':pi,
+                  'source_page':(manifest['pages'][pi].get('source_page')),
+                  'slice_index':(manifest['pages'][pi].get('slice_index')),
+                  'id':oid,
+                  'role':obj.get('role'),
+                  'source_text':source,
+                  'translation':vi,
+                  'source_chars':len(source),
+                  'translation_chars':len(vi),
+              })
+
+          untranslated=[]; story=0; tombs=0
+          for pi,page in enumerate(manifest.get('pages') or []):
+              for obj in page.get('text_objects') or []:
+                  if obj.get('source_missing'):
+                      if obj.get('origin')=='human_review_drop':
+                          tombs+=1
+                          if obj.get('auto_generated'):
+                              raise SystemExit(f'tombstone auto-generated id={obj.get("id")}')
+                      continue
+                  if obj.get('human_review')!='keep_story':
+                      continue
+                  story+=1
+                  if not str(obj.get('translation') or '').strip():
+                      untranslated.append((pi,obj.get('id')))
+          if untranslated:
+              raise SystemExit(f'active untranslated remain: {untranslated[:20]}')
+          if (story,tombs)!=(101,319):
+              raise SystemExit(f'final count mismatch story={story} tombstones={tombs}')
+
+          longest=sorted(rows,key=lambda r:r['translation_chars'],reverse=True)[:25]
+          manifest['human_translation_review']={
+              'status':'PASS',
+              'target_lang':'vi',
+              'active_story_objects':101,
+              'translated_story_objects':101,
+              'active_untranslated_story_objects':0,
+              'persistent_tombstones':319,
+              'glossary':mapping.get('glossary') or {},
+              'next_action':'RENDER_CHECKPOINT_ALLOWED',
+          }
+          text=json.dumps(manifest,ensure_ascii=False,indent=2)
+          mp.write_text(text,encoding='utf-8')
+          (root/'manifest.json').write_text(text,encoding='utf-8')
+          (root/'translation-review.json').write_text(json.dumps(rows,ensure_ascii=False,indent=2),encoding='utf-8')
+          summary={
+              'checkpoint':'04-translation-review',
+              'chapter_id':cid,
+              'target_lang':'vi',
+              'active_story_objects':101,
+              'translated_story_objects':101,
+              'active_untranslated_story_objects':0,
+              'persistent_tombstones':319,
+              'status':'PASS',
+              'longest_translation_objects':longest,
+              'next_action':'RENDER_CHECKPOINT_ALLOWED',
+          }
+          (root/'translation-review-summary.json').write_text(json.dumps(summary,ensure_ascii=False,indent=2),encoding='utf-8')
+          (meta/'translation-review-summary.json').write_text(json.dumps(summary,ensure_ascii=False,indent=2),encoding='utf-8')
+          (meta/'translation-review.json').write_text(json.dumps(rows,ensure_ascii=False,indent=2),encoding='utf-8')
+          print(json.dumps({k:v for k,v in summary.items() if k!='longest_translation_objects'},ensure_ascii=False,indent=2))
+          PY
+
+      - name: Validate translation gate
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          s=json.loads(Path('checkpoint/04-translation-review/translation-review-summary.json').read_text(encoding='utf-8'))
+          expected={'status':'PASS','active_story_objects':101,'translated_story_objects':101,'active_untranslated_story_objects':0,'persistent_tombstones':319}
+          for k,v in expected.items():
+              if s.get(k)!=v: raise SystemExit(f'{k}: expected {v}, got {s.get(k)}')
+          print('TRANSLATION REVIEW GATE PASS')
+          PY
+
+      - name: Upload translation review checkpoint
+        uses: actions/upload-artifact@v4
+        with:
+          name: 04-translation-review-c0010001
+          path: checkpoint/04-translation-review
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload translation metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: 04-translation-meta-c0010001
+          path: checkpoint/04-translation-meta
+          if-no-files-found: error
+          retention-days: 7
