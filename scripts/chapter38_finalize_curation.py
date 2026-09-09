@@ -41,13 +41,47 @@ if raw_end.is_file() and clean_end.is_file():
 else:
     raise SystemExit('missing raw/clean final slice for end-card restoration')
 
+# Localize the one editorial English phrase on the end card while keeping the
+# Korean production credits and Asura scanlation credit intact as credits.
+end_page = manifest['pages'][86]
+manual_end_id = 'text_manual_to_be_continued_vi'
+end_objects = end_page.setdefault('text_objects', [])
+end_objects[:] = [obj for obj in end_objects if obj.get('id') != manual_end_id]
+end_objects.append({
+    'id': manual_end_id,
+    'shape': 'rectangle',
+    'region': {'x1': 380, 'y1': 3160, 'x2': 900, 'y2': 3385},
+    'source_boxes': [],
+    'ocr_text': 'TO BE CONTINUED',
+    'translation': 'CÒN TIẾP...',
+    'auto_translation': 'CÒN TIẾP...',
+    'translation_source': 'human_curated_vi',
+    'ocr_source': 'human_curated',
+    'ocr_quality': 'good',
+    'origin': 'human_review',
+    'auto_generated': False,
+    'style': {
+        'color': '#202020',
+        'font': 'default',
+        'fontSize': 'auto',
+        'bold': True,
+        'strokeWidth': '0',
+        'strokeColor': '#ffffff',
+        'bgColor': '#ffffff',
+        'cornerRadius': '0',
+        'horizontalAlign': 'center',
+        'verticalAlign': 'middle',
+    },
+})
+
 MANIFEST.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding='utf-8')
 
 summary_path = ROOT / 'chapter38-curation-summary.json'
 summary = json.loads(summary_path.read_text(encoding='utf-8'))
 summary['persistent_human_drop_tombstones'] = tombstoned
 summary['end_card_credit_restored_from_raw'] = True
-summary['finalization_note'] = 'all story dialogue/free-text translated; scanlation/production credits preserved as source credits'
+summary['manual_end_card_translation'] = 'CÒN TIẾP...'
+summary['finalization_note'] = 'all story dialogue/free-text and end-card editorial text translated; scanlation/production credits preserved as source credits'
 summary_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding='utf-8')
 
 active_untranslated = []
@@ -67,4 +101,5 @@ print(json.dumps({
     'tombstoned_human_drops': tombstoned,
     'active_untranslated': len(active_untranslated),
     'end_card_restored': True,
+    'end_card_translation': 'CÒN TIẾP...',
 }, ensure_ascii=False, indent=2))
