@@ -1,0 +1,137 @@
+name: Chapter 212 Rev3 Visual Review Pack
+
+on:
+  push:
+    branches: [trial/chapter-render-212]
+    paths:
+      - .github/workflows/chapter-212-visual-review-pack.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: chapter-212-visual-review-pack
+  cancel-in-progress: false
+
+jobs:
+  build-review-pack:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    env:
+      RENDER_RUN_ID: "34331972494"
+      RENDER_ARTIFACT: 05-render-review-c2120212-rev3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: trial/chapter-render-212
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install review-pack runtime
+        run: python -m pip install Pillow==10.4.0
+
+      - name: Restore rev3 render artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf review-source
+          mkdir -p review-source
+          gh run download "$RENDER_RUN_ID" -n "$RENDER_ARTIFACT" -D review-source
+          test -d review-source/output
+          test -d review-source/final-pages
+          test -f review-source/render-review-summary.json
+
+      - name: Build slice and stitched review PDFs
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+          from PIL import Image, ImageDraw
+
+          root = Path('review-source')
+          target = Path('trials/chapter-212')
+          target.mkdir(parents=True, exist_ok=True)
+
+          def page_for_pdf(path: Path, label: str, max_width: int = 1100):
+              with Image.open(path) as src:
+                  im = src.convert('RGB')
+              if im.width > max_width:
+                  h = max(1, round(im.height * max_width / im.width))
+                  im = im.resize((max_width, h), Image.Resampling.LANCZOS)
+              header = 42
+              canvas = Image.new('RGB', (im.width, im.height + header), 'white')
+              canvas.paste(im, (0, header))
+              ImageDraw.Draw(canvas).text((12, 12), label, fill='black')
+              return canvas
+
+          slice_paths = sorted((root / 'output').glob('page_*.png'))
+          final_paths = sorted((root / 'final-pages').glob('page_*.png'))
+          if len(slice_paths) != 56:
+              raise SystemExit(f'expected 56 rendered slices, got {len(slice_paths)}')
+          if len(final_paths) != 16:
+              raise SystemExit(f'expected 16 stitched pages, got {len(final_paths)}')
+
+          slice_pdf = target / 'review-rev3-slices.pdf'
+          slice_pages = [page_for_pdf(p, f'REV3 SLICE {i:02d} — {p.name}') for i, p in enumerate(slice_paths)]
+          slice_pages[0].save(
+              slice_pdf,
+              'PDF',
+              save_all=True,
+              append_images=slice_pages[1:],
+              resolution=110.0,
+              quality=88,
+          )
+
+          final_pdf = target / 'review-rev3-final-pages.pdf'
+          final_pages = [page_for_pdf(p, f'REV3 SOURCE PAGE {i+1:02d} — {p.name}', max_width=900) for i, p in enumerate(final_paths)]
+          final_pages[0].save(
+              final_pdf,
+              'PDF',
+              save_all=True,
+              append_images=final_pages[1:],
+              resolution=100.0,
+              quality=86,
+          )
+
+          summary = json.loads((root / 'render-review-summary.json').read_text(encoding='utf-8'))
+          index = {
+              'chapter_id': 'c2120212',
+              'render_revision': 3,
+              'render_run_id': 34331972494,
+              'render_artifact': '05-render-review-c2120212-rev3',
+              'primary_dialogue_font': summary.get('primary_dialogue_font'),
+              'font_usage': summary.get('font_usage'),
+              'slice_pdf': {
+                  'file': slice_pdf.name,
+                  'pages': len(slice_paths),
+                  'sha256': hashlib.sha256(slice_pdf.read_bytes()).hexdigest(),
+              },
+              'final_pages_pdf': {
+                  'file': final_pdf.name,
+                  'pages': len(final_paths),
+                  'sha256': hashlib.sha256(final_pdf.read_bytes()).hexdigest(),
+              },
+              'status': 'READY_FOR_HUMAN_VISUAL_REVIEW',
+          }
+          (target / 'review-rev3-index.json').write_text(
+              json.dumps(index, ensure_ascii=False, indent=2), encoding='utf-8'
+          )
+          print(json.dumps(index, ensure_ascii=False, indent=2))
+          PY
+
+      - name: Commit review pack to trial branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            trials/chapter-212/review-rev3-slices.pdf \
+            trials/chapter-212/review-rev3-final-pages.pdf \
+            trials/chapter-212/review-rev3-index.json
+          git diff --cached --quiet && exit 0
+          git commit -m "review: add chapter 212 rev3 visual pack"
+          git push origin HEAD:trial/chapter-render-212
