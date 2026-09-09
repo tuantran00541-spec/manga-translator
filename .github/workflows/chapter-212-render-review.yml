@@ -1,4 +1,4 @@
-name: Chapter 212 Render Review Rev2
+name: Chapter 212 Render Review Rev3
 
 on:
   push:
@@ -24,8 +24,8 @@ jobs:
       CHAPTER_ID: c2120212
       TRANSLATION_RUN_ID: "34330784797"
       TRANSLATION_ARTIFACT: 04-translation-review-c2120212-rev2
-      PRIMARY_DIALOGUE_FONT: Manga-fonts
-      REVIEW_ZIP: The-Return-of-the-Crazy-Demon-Chapter-212-VI-RENDER-REVIEW-REV2.zip
+      PRIMARY_DIALOGUE_FONT: Mac-dinh-3
+      REVIEW_ZIP: The-Return-of-the-Crazy-Demon-Chapter-212-VI-RENDER-REVIEW-REV3.zip
     steps:
       - uses: actions/checkout@v4
 
@@ -161,7 +161,7 @@ jobs:
                   })
                   obj['human_typeset_class'] = 'dialogue'
                   obj['human_typeset_font'] = primary
-                  obj['human_typeset_reason'] = 'primary_dialogue_font_consistency'
+                  obj['human_typeset_reason'] = 'primary_dialogue_font_consistency_after_visual_compare'
                   plan.append({
                       'page_index': pi,
                       'id': oid,
@@ -172,7 +172,7 @@ jobs:
                       'color': 'auto',
                       'alignment': 'center/middle',
                       'semantic_role': 'dialogue',
-                      'style_reason': 'primary_dialogue_font_consistency',
+                      'style_reason': 'primary_dialogue_font_consistency_after_visual_compare',
                       'translation': vi,
                   })
                   active += 1
@@ -182,6 +182,7 @@ jobs:
 
           typography_summary = {
               'status': 'PLAN_READY_PENDING_RENDER_VISUAL_REVIEW',
+              'typography_revision': 3,
               'primary_dialogue_font': primary,
               'active_story_objects': active,
               'distinct_fonts_used': 1,
@@ -238,7 +239,7 @@ jobs:
           print(json.dumps({'render_stats': stats, 'rendered_slice_files': len(slice_paths), 'stitched_source_pages': 16}, ensure_ascii=False, indent=2))
           PY
 
-      - name: Pack render review checkpoint rev2
+      - name: Pack render review checkpoint rev3
         run: |
           python - <<'PY'
           import json
@@ -248,7 +249,7 @@ jobs:
           from PIL import Image
 
           chapter_id = 'c2120212'
-          checkpoint = Path('checkpoint/05-render-review-rev2')
+          checkpoint = Path('checkpoint/05-render-review-rev3')
           if checkpoint.exists():
               shutil.rmtree(checkpoint)
           checkpoint.mkdir(parents=True)
@@ -260,7 +261,7 @@ jobs:
           shutil.copy2('typography-plan.json', checkpoint / 'typography-plan.json')
 
           export_zip = output_src / f'chapter_{chapter_id}.zip'
-          review_zip = checkpoint / 'The-Return-of-the-Crazy-Demon-Chapter-212-VI-RENDER-REVIEW-REV2.zip'
+          review_zip = checkpoint / 'The-Return-of-the-Crazy-Demon-Chapter-212-VI-RENDER-REVIEW-REV3.zip'
           shutil.copy2(export_zip, review_zip)
           final_pages = checkpoint / 'final-pages'
           final_pages.mkdir()
@@ -283,7 +284,7 @@ jobs:
               raise SystemExit(f'active untranslated after render: {active_untranslated[:20]}')
           if tombstones != 82:
               raise SystemExit(f'expected 82 tombstones after render, got {tombstones}')
-          if typography.get('distinct_fonts_used') != 1 or typography.get('font_usage') != {'Manga-fonts': 119}:
+          if typography.get('distinct_fonts_used') != 1 or typography.get('font_usage') != {'Mac-dinh-3': 119}:
               raise SystemExit(f'unexpected typography usage: {typography.get("font_usage")}')
 
           dims = []
@@ -292,16 +293,16 @@ jobs:
                   dims.append({'file': path.name, 'width': image.width, 'height': image.height})
           summary = {
               'checkpoint': '05-render-review',
-              'revision': 2,
+              'revision': 3,
               'chapter_id': chapter_id,
               'slices': 56,
               'source_pages': 16,
               'active_story_objects': 119,
               'active_untranslated_story_objects': 0,
               'persistent_tombstones': 82,
-              'primary_dialogue_font': 'Manga-fonts',
+              'primary_dialogue_font': 'Mac-dinh-3',
               'distinct_fonts_used': 1,
-              'font_usage': {'Manga-fonts': 119},
+              'font_usage': {'Mac-dinh-3': 119},
               'forced_font_diversity': False,
               'final_page_dimensions': dims,
               'status': 'TECHNICAL_PASS_PENDING_HUMAN_VISUAL_REVIEW',
@@ -311,10 +312,10 @@ jobs:
           print(json.dumps({k: v for k, v in summary.items() if k != 'final_page_dimensions'}, ensure_ascii=False, indent=2))
           PY
 
-      - name: Upload render review checkpoint rev2
+      - name: Upload render review checkpoint rev3
         uses: actions/upload-artifact@v4
         with:
-          name: 05-render-review-c2120212-rev2
-          path: checkpoint/05-render-review-rev2
+          name: 05-render-review-c2120212-rev3
+          path: checkpoint/05-render-review-rev3
           if-no-files-found: error
           retention-days: 7
