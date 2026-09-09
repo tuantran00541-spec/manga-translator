@@ -1,0 +1,142 @@
+name: Chapter SS1 Translation Review
+on:
+  push:
+    branches: [trial/chapter-render-ss1]
+    paths:
+      - .github/workflows/chapter-ss1-translation-review.yml
+      - trials/chapter-ss1/translation-vi.json
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: chapter-ss1-human-loop
+  cancel-in-progress: false
+jobs:
+  translation-review:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    env:
+      CHAPTER_ID: c0010001
+      CURATED_RUN_ID: "34341695392"
+      CURATED_ARTIFACT: 03-ocr-review-curated-c0010001
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Restore curated OCR checkpoint
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p checkpoint/04-translation-review
+          gh run download "$CURATED_RUN_ID" -n "$CURATED_ARTIFACT" -D checkpoint/04-translation-review
+          test -f checkpoint/04-translation-review/processed/manifest.json
+          test -f trials/chapter-ss1/translation-vi.json
+      - name: Apply Vietnamese translations
+        run: |
+          python - <<'EOF'
+          import json
+          from pathlib import Path
+
+          root = Path('checkpoint/04-translation-review')
+          manifest_path = root / 'processed' / 'manifest.json'
+          manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+          mapping = json.loads(Path('trials/chapter-ss1/translation-vi.json').read_text(encoding='utf-8'))
+          translations = mapping.get('translations') or {}
+          if mapping.get('chapter_id') != 'c0010001' or mapping.get('lang') != 'vi':
+              raise SystemExit(f'bad mapping meta: {mapping.get("chapter_id")} {mapping.get("lang")}')
+          if len(translations) != 69:
+              raise SystemExit(f'expected 69 translations, got {len(translations)}')
+
+          active = {}
+          tombs = 0
+          for pi, page in enumerate(manifest.get('pages') or []):
+              for obj in page.get('text_objects') or []:
+                  oid = str(obj.get('id') or '')
+                  if obj.get('source_missing'):
+                      if obj.get('human_review') == 'drop_duplicate_credit_sfx_or_noise':
+                          tombs += 1
+                      continue
+                  if obj.get('human_review') != 'keep_story':
+                      raise SystemExit(f'unreviewed active page={pi} id={oid}')
+                  active[oid] = (pi, obj)
+
+          if len(active) != 69:
+              raise SystemExit(f'active story {len(active)} != 69')
+          missing = sorted(set(active) - set(translations))
+          extra = sorted(set(translations) - set(active))
+          if missing or extra:
+              raise SystemExit(f'id mismatch missing={missing[:5]} extra={extra[:5]}')
+
+          rows = []
+          for oid, (pi, obj) in active.items():
+              vi = str(translations[oid]).strip()
+              if not vi:
+                  raise SystemExit(f'blank vi page={pi} id={oid}')
+              source = str(obj.get('ocr_text') or '').strip()
+              obj['translation'] = vi
+              obj['translation_lang'] = 'vi'
+              obj['translation_source'] = 'human_review'
+              obj['translation_input_text'] = source
+              obj['human_translation_review'] = 'accepted'
+              obj.pop('translation_model', None)
+              obj.pop('auto_translation', None)
+              rows.append({'page_index': pi, 'id': oid, 'source_text': source, 'translation': vi})
+
+          untranslated = []
+          story = 0
+          persistent = 0
+          for pi, page in enumerate(manifest.get('pages') or []):
+              for obj in page.get('text_objects') or []:
+                  if obj.get('source_missing'):
+                      if obj.get('human_review') == 'drop_duplicate_credit_sfx_or_noise':
+                          persistent += 1
+                      continue
+                  if obj.get('human_review') != 'keep_story':
+                      continue
+                  story += 1
+                  if not str(obj.get('translation') or '').strip():
+                      untranslated.append((pi, obj.get('id')))
+          if untranslated:
+              raise SystemExit(f'untranslated remain: {untranslated[:10]}')
+          if story != 69:
+              raise SystemExit(f'story count {story}')
+
+          manifest['human_translation_review'] = {
+              'status': 'PASS',
+              'revision': 1,
+              'target_lang': 'vi',
+              'active_story_objects': 69,
+              'translated_story_objects': 69,
+              'active_untranslated_story_objects': 0,
+              'persistent_tombstones': persistent,
+              'next_action': 'RENDER_CHECKPOINT_ALLOWED',
+          }
+          text = json.dumps(manifest, ensure_ascii=False, indent=2)
+          manifest_path.write_text(text, encoding='utf-8')
+          (root / 'manifest.json').write_text(text, encoding='utf-8')
+          (root / 'translation-review.json').write_text(json.dumps(rows, ensure_ascii=False, indent=2), encoding='utf-8')
+          summary = {
+              'checkpoint': '04-translation-review',
+              'revision': 1,
+              'chapter_id': 'c0010001',
+              'series': 'Shadow Slave',
+              'target_lang': 'vi',
+              'active_story_objects': 69,
+              'translated_story_objects': 69,
+              'active_untranslated_story_objects': 0,
+              'persistent_tombstones': persistent,
+              'status': 'PASS',
+              'next_action': 'RENDER_CHECKPOINT_ALLOWED',
+          }
+          (root / 'translation-review-summary.json').write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding='utf-8')
+          print(json.dumps(summary, ensure_ascii=False, indent=2))
+          EOF
+      - name: Upload translation review checkpoint
+        uses: actions/upload-artifact@v4
+        with:
+          name: 04-translation-review-c0010001
+          path: checkpoint/04-translation-review
+          if-no-files-found: error
+          retention-days: 7
