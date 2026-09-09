@@ -1,0 +1,201 @@
+name: Chapter 212 Translation Review
+
+on:
+  push:
+    branches:
+      - trial/chapter-render-212
+    paths:
+      - .github/workflows/chapter-212-translation-review.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: chapter-212-human-loop
+  cancel-in-progress: false
+
+jobs:
+  translation-review:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    env:
+      CHAPTER_ID: c2120212
+      CURATED_RUN_ID: "34325232561"
+      CURATED_ARTIFACT: 03-ocr-review-curated-c2120212
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Restore curated OCR checkpoint
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf checkpoint/04-translation-review
+          mkdir -p checkpoint/04-translation-review
+          gh run download "$CURATED_RUN_ID" -n "$CURATED_ARTIFACT" -D checkpoint/04-translation-review
+          test -f checkpoint/04-translation-review/processed/manifest.json
+          test -f trials/chapter-212/translation-vi.json
+
+      - name: Apply reviewed Vietnamese translation
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path('checkpoint/04-translation-review')
+          manifest_path = root / 'processed' / 'manifest.json'
+          manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+          mapping = json.loads(
+              Path('trials/chapter-212/translation-vi.json').read_text(encoding='utf-8')
+          )
+          translations = mapping.get('translations') or {}
+          if mapping.get('chapter_id') != 'c2120212' or mapping.get('lang') != 'vi':
+              raise SystemExit(f'wrong translation mapping metadata: {mapping}')
+          if len(translations) != 119:
+              raise SystemExit(f'expected 119 translations, got {len(translations)}')
+
+          active = {}
+          tombstones = []
+          for pi, page in enumerate(manifest.get('pages') or []):
+              for obj in page.get('text_objects') or []:
+                  oid = str(obj.get('id') or '')
+                  if obj.get('source_missing'):
+                      if obj.get('human_review') == 'drop_duplicate_credit_sfx_or_noise':
+                          tombstones.append((pi, oid))
+                      continue
+                  if obj.get('human_review') != 'keep_story':
+                      raise SystemExit(f'unreviewed active object page={pi} id={oid}')
+                  if not str(obj.get('ocr_text') or '').strip():
+                      raise SystemExit(f'blank active source page={pi} id={oid}')
+                  active[oid] = (pi, obj)
+
+          if len(active) != 119 or len(tombstones) != 82:
+              raise SystemExit(
+                  f'checkpoint mismatch active={len(active)} tombstones={len(tombstones)}'
+              )
+          missing = sorted(set(active) - set(translations))
+          extra = sorted(set(translations) - set(active))
+          if missing or extra:
+              raise SystemExit(f'translation id mismatch missing={missing} extra={extra}')
+
+          rows = []
+          for oid, (pi, obj) in active.items():
+              vi = str(translations[oid]).strip()
+              if not vi:
+                  raise SystemExit(f'blank translation page={pi} id={oid}')
+              source = str(obj.get('ocr_text') or '').strip()
+              obj['translation'] = vi
+              obj['translation_lang'] = 'vi'
+              obj['translation_source'] = 'human_review'
+              obj['translation_input_text'] = source
+              obj['human_translation_review'] = 'accepted'
+              obj.pop('translation_model', None)
+              obj.pop('auto_translation', None)
+              rows.append({
+                  'page_index': pi,
+                  'id': oid,
+                  'source_text': source,
+                  'translation': vi,
+                  'source_chars': len(source),
+                  'translation_chars': len(vi),
+              })
+
+          active_untranslated = []
+          active_story = 0
+          persistent_tombstones = 0
+          for pi, page in enumerate(manifest.get('pages') or []):
+              for obj in page.get('text_objects') or []:
+                  if obj.get('source_missing'):
+                      if obj.get('human_review') == 'drop_duplicate_credit_sfx_or_noise':
+                          persistent_tombstones += 1
+                          if obj.get('auto_generated'):
+                              raise SystemExit(f'tombstone auto-generated: {obj.get("id")}')
+                      continue
+                  if obj.get('human_review') != 'keep_story':
+                      continue
+                  active_story += 1
+                  if not str(obj.get('translation') or '').strip():
+                      active_untranslated.append((pi, obj.get('id')))
+
+          if active_untranslated:
+              raise SystemExit(f'active untranslated remain: {active_untranslated[:20]}')
+          if (active_story, persistent_tombstones) != (119, 82):
+              raise SystemExit(
+                  f'final counts story={active_story} tombstones={persistent_tombstones}'
+              )
+
+          longest = sorted(
+              rows,
+              key=lambda row: row['translation_chars'],
+              reverse=True,
+          )[:20]
+          manifest['human_translation_review'] = {
+              'status': 'PASS',
+              'target_lang': 'vi',
+              'active_story_objects': 119,
+              'translated_story_objects': 119,
+              'active_untranslated_story_objects': 0,
+              'persistent_tombstones': 82,
+              'next_action': 'RENDER_CHECKPOINT_ALLOWED',
+          }
+          manifest_text = json.dumps(manifest, ensure_ascii=False, indent=2)
+          manifest_path.write_text(manifest_text, encoding='utf-8')
+          (root / 'manifest.json').write_text(manifest_text, encoding='utf-8')
+          (root / 'translation-review.json').write_text(
+              json.dumps(rows, ensure_ascii=False, indent=2), encoding='utf-8'
+          )
+          summary = {
+              'checkpoint': '04-translation-review',
+              'chapter_id': 'c2120212',
+              'target_lang': 'vi',
+              'active_story_objects': 119,
+              'translated_story_objects': 119,
+              'active_untranslated_story_objects': 0,
+              'persistent_tombstones': 82,
+              'status': 'PASS',
+              'longest_translation_objects': longest,
+              'next_action': 'RENDER_CHECKPOINT_ALLOWED',
+          }
+          (root / 'translation-review-summary.json').write_text(
+              json.dumps(summary, ensure_ascii=False, indent=2), encoding='utf-8'
+          )
+          print(json.dumps({
+              k: v for k, v in summary.items()
+              if k != 'longest_translation_objects'
+          }, ensure_ascii=False, indent=2))
+          PY
+
+      - name: Validate translation gate
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path('checkpoint/04-translation-review')
+          summary = json.loads(
+              (root / 'translation-review-summary.json').read_text(encoding='utf-8')
+          )
+          expected = {
+              'status': 'PASS',
+              'active_story_objects': 119,
+              'translated_story_objects': 119,
+              'active_untranslated_story_objects': 0,
+              'persistent_tombstones': 82,
+          }
+          for key, value in expected.items():
+              if summary.get(key) != value:
+                  raise SystemExit(f'{key} expected {value}, got {summary.get(key)}')
+          print('translation review gate PASS')
+          PY
+
+      - name: Upload translation review checkpoint
+        uses: actions/upload-artifact@v4
+        with:
+          name: 04-translation-review-c2120212
+          path: checkpoint/04-translation-review
+          if-no-files-found: error
+          retention-days: 7
