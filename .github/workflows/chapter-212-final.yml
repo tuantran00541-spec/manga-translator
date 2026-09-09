@@ -1,10 +1,11 @@
-name: Chapter 212 Final Export
+name: Chapter 212 Final Export Rev3
 
 on:
   push:
     branches: [trial/chapter-render-212]
     paths:
       - .github/workflows/chapter-212-final.yml
+      - trials/chapter-212/visual-review-rev3.json
   workflow_dispatch:
 
 permissions:
@@ -19,6 +20,10 @@ jobs:
   final-export:
     runs-on: ubuntu-22.04
     timeout-minutes: 15
+    env:
+      RENDER_RUN_ID: "34331972494"
+      RENDER_ARTIFACT: 05-render-review-c2120212-rev3
+      VISUAL_APPROVAL: trials/chapter-212/visual-review-rev3.json
     steps:
       - uses: actions/checkout@v4
 
@@ -29,15 +34,28 @@ jobs:
       - name: Install lightweight validation runtime
         run: python -m pip install Pillow==10.4.0
 
-      - name: Restore reviewed render checkpoint
+      - name: Check human visual approval
+        id: approval
+        run: |
+          if [ -f "$VISUAL_APPROVAL" ]; then
+            echo "approved=true" >> "$GITHUB_OUTPUT"
+            echo "visual approval file present"
+          else
+            echo "approved=false" >> "$GITHUB_OUTPUT"
+            echo "STOP: rev3 still awaits human visual review; no final artifact will be produced"
+          fi
+
+      - name: Restore render checkpoint rev3
+        if: steps.approval.outputs.approved == 'true'
         uses: actions/download-artifact@v4
         with:
-          name: 05-render-review-c2120212
-          run-id: 34326743405
+          name: ${{ env.RENDER_ARTIFACT }}
+          run-id: ${{ env.RENDER_RUN_ID }}
           github-token: ${{ github.token }}
           path: reviewed-render
 
       - name: Validate final gate and package readable chapter
+        if: steps.approval.outputs.approved == 'true'
         run: |
           python - <<'PY'
           import json
@@ -46,29 +64,74 @@ jobs:
           from PIL import Image
 
           root = Path('reviewed-render')
+          approval_path = Path('trials/chapter-212/visual-review-rev3.json')
           summary_path = root / 'render-review-summary.json'
+          typography_path = root / 'typography-plan.json'
           pages_dir = root / 'final-pages'
-          if not summary_path.is_file():
-              raise SystemExit('missing render-review-summary.json')
+
+          for required_path in (approval_path, summary_path, typography_path):
+              if not required_path.is_file():
+                  raise SystemExit(f'missing required gate file: {required_path}')
           if not pages_dir.is_dir():
               raise SystemExit('missing final-pages directory')
 
+          approval = json.loads(approval_path.read_text(encoding='utf-8'))
           summary = json.loads(summary_path.read_text(encoding='utf-8'))
-          required = {
+          typography = json.loads(typography_path.read_text(encoding='utf-8'))
+
+          approval_required = {
+              'chapter_id': 'c2120212',
+              'render_revision': 3,
+              'status': 'PASS',
+              'primary_dialogue_font': 'Mac-dinh-3',
+              'source_pages_reviewed': 16,
+              'blocking_overflow_or_clipping': 0,
+              'blocking_stitch_seams': 0,
+              'blocking_vietnamese_glyph_errors': 0,
+              'story_english_leftover_observed': 0,
+          }
+          for key, expected in approval_required.items():
+              if approval.get(key) != expected:
+                  raise SystemExit(
+                      f'visual approval mismatch {key}: expected {expected!r}, got {approval.get(key)!r}'
+                  )
+
+          summary_required = {
               'checkpoint': '05-render-review',
+              'revision': 3,
               'chapter_id': 'c2120212',
               'slices': 56,
               'source_pages': 16,
               'active_story_objects': 119,
               'active_untranslated_story_objects': 0,
               'persistent_tombstones': 82,
-              'bundled_fonts': 15,
+              'primary_dialogue_font': 'Mac-dinh-3',
+              'distinct_fonts_used': 1,
+              'forced_font_diversity': False,
           }
-          for key, expected in required.items():
+          for key, expected in summary_required.items():
               if summary.get(key) != expected:
-                  raise SystemExit(f'final gate mismatch {key}: expected {expected!r}, got {summary.get(key)!r}')
-          if int(summary.get('distinct_fonts_used') or 0) < 3:
-              raise SystemExit('multi-font gate failed')
+                  raise SystemExit(
+                      f'render checkpoint mismatch {key}: expected {expected!r}, got {summary.get(key)!r}'
+                  )
+          if summary.get('font_usage') != {'Mac-dinh-3': 119}:
+              raise SystemExit(f'unexpected render font usage: {summary.get("font_usage")}')
+
+          typography_required = {
+              'typography_revision': 3,
+              'primary_dialogue_font': 'Mac-dinh-3',
+              'active_story_objects': 119,
+              'distinct_fonts_used': 1,
+              'forced_font_diversity': False,
+              'vietnamese_glyph_probe': 'PASS',
+          }
+          for key, expected in typography_required.items():
+              if typography.get(key) != expected:
+                  raise SystemExit(
+                      f'typography gate mismatch {key}: expected {expected!r}, got {typography.get(key)!r}'
+                  )
+          if typography.get('font_usage') != {'Mac-dinh-3': 119}:
+              raise SystemExit(f'unexpected typography font usage: {typography.get("font_usage")}')
 
           page_files = sorted(pages_dir.glob('page_*.png'))
           expected_names = [f'page_{i:03d}.png' for i in range(1, 17)]
@@ -85,7 +148,7 @@ jobs:
                   raise SystemExit(f'invalid dimensions for {page.name}: {(w, h)}')
               dims.append({'file': page.name, 'width': w, 'height': h})
 
-          final_name = 'The-Return-of-the-Crazy-Demon-Chapter-212-VI-FINAL.zip'
+          final_name = 'The-Return-of-the-Crazy-Demon-Chapter-212-VI-FINAL-REV3.zip'
           final_path = Path(final_name)
           with zipfile.ZipFile(final_path, 'w', compression=zipfile.ZIP_STORED) as zf:
               for page in page_files:
@@ -101,6 +164,7 @@ jobs:
 
           report = {
               'checkpoint': '06-final',
+              'revision': 3,
               'chapter_id': 'c2120212',
               'series': 'The Return of the Crazy Demon',
               'chapter': 212,
@@ -112,34 +176,28 @@ jobs:
               'persistent_tombstones': 82,
               'ocr_corrections': 69,
               'clean_repairs': 3,
-              'bundled_fonts': 15,
-              'distinct_fonts_used': int(summary['distinct_fonts_used']),
-              'font_usage': summary.get('font_usage', {}),
-              'human_visual_review': {
-                  'text_object_crops_reviewed': 119,
-                  'slice_seams_reviewed': 40,
-                  'source_pages_reviewed': 16,
-                  'blocking_overflow_or_clipping': 0,
-                  'blocking_stitch_seams': 0,
-                  'blocking_vietnamese_glyph_errors': 0,
-                  'story_english_leftover_observed': 0,
-                  'non_story_title_credits_preserved': True,
-                  'korean_sfx_preserved_by_editorial_choice': True,
-              },
+              'primary_dialogue_font': 'Mac-dinh-3',
+              'distinct_fonts_used': 1,
+              'font_usage': {'Mac-dinh-3': 119},
+              'forced_font_diversity': False,
+              'human_visual_review': approval,
               'final_page_dimensions': dims,
               'final_zip': final_name,
               'status': 'PASS',
           }
-          Path('final-report.json').write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
+          Path('final-report.json').write_text(
+              json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8'
+          )
           print(json.dumps(report, ensure_ascii=False, indent=2))
           PY
 
-      - name: Upload final checkpoint
+      - name: Upload final checkpoint rev3
+        if: steps.approval.outputs.approved == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: 06-final-c2120212
+          name: 06-final-c2120212-rev3
           path: |
-            The-Return-of-the-Crazy-Demon-Chapter-212-VI-FINAL.zip
+            The-Return-of-the-Crazy-Demon-Chapter-212-VI-FINAL-REV3.zip
             final-report.json
           if-no-files-found: error
           retention-days: 7
