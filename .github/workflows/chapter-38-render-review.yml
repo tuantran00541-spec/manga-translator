@@ -10,7 +10,7 @@ on:
       translation_run_id:
         description: "Workflow run id that produced chapter38-translation-review"
         required: false
-        default: "34314702868"
+        default: "34315246988"
 
 permissions:
   contents: read
@@ -43,7 +43,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: chapter38-translation-review
-          run-id: ${{ inputs.translation_run_id || '34314702868' }}
+          run-id: ${{ inputs.translation_run_id || '34315246988' }}
           github-token: ${{ github.token }}
           path: imported-translation-review
 
