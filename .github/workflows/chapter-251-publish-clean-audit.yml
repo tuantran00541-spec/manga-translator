@@ -1,0 +1,71 @@
+name: Chapter 251 Publish Clean Audit Metadata
+
+on:
+  push:
+    branches: [trial/chapter-render-251]
+    paths: [.github/workflows/chapter-251-publish-clean-audit.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    env:
+      CLEAN_RUN_ID: "34428272591"
+      CLEAN_ARTIFACT: 02-clean-review-c2510251
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: trial/chapter-render-251
+      - name: Restore clean checkpoint
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf checkpoint/source
+          mkdir -p checkpoint/source trials/chapter-251
+          gh run download "$CLEAN_RUN_ID" -n "$CLEAN_ARTIFACT" -D checkpoint/source
+          test -f checkpoint/source/processed/manifest.json
+      - name: Write compact audit metadata
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          m=json.loads(Path('checkpoint/source/processed/manifest.json').read_text(encoding='utf-8'))
+          pages=m.get('pages') or []
+          page_rows=[]; box_rows=[]
+          for pi,p in enumerate(pages):
+            issues=p.get('detection_issues') or []
+            boxes=p.get('boxes') or p.get('detections') or []
+            prow={'page_index':pi,'source_page':p.get('source_page'),'slice_index':p.get('slice_index'),'original':Path(str(p.get('original') or '')).name,'clean':Path(str(p.get('clean') or '')).name,'needs_review':bool(p.get('needs_review')),'detection_state':p.get('detection_state'),'detection_issues':issues,'box_count':len(boxes),'free_text_count':0,'safe_free_text_count':0,'suspect_box_count':0}
+            for bi,b0 in enumerate(boxes):
+              b=dict(b0); b.pop('mask',None)
+              sem=str(b.get('semantic_type') or b.get('class_name') or b.get('type') or b.get('label') or '').lower()
+              isfree=('free_text' in sem or 'free text' in sem or ('text' in sem and 'bubble' not in sem))
+              if isfree:
+                prow['free_text_count']+=1
+                if b.get('safe_to_inpaint') is True: prow['safe_free_text_count']+=1
+              blob=json.dumps(b,ensure_ascii=False).lower()
+              suspect=bool(prow['needs_review'] or issues) or any(t in blob for t in ('post_inpaint_text_residue','residue','review_only','unverified','incomplete'))
+              if suspect: prow['suspect_box_count']+=1
+              if isfree or suspect or b.get('safe_to_inpaint') is True:
+                box_rows.append({'page_index':pi,'box_index':bi,'semantic':sem,'safe_to_inpaint':b.get('safe_to_inpaint'),'suspect':suspect,'x1':b.get('x1'),'y1':b.get('y1'),'x2':b.get('x2'),'y2':b.get('y2'),'confidence':b.get('confidence',b.get('score')),'needs_review':b.get('needs_review'),'review_reason':b.get('review_reason'),'detection_issues':b.get('detection_issues'),'ocr_quality':b.get('ocr_quality'),'ocr_quality_reason':b.get('ocr_quality_reason'),'residue_verification':b.get('residue_verification'),'post_inpaint_text_residue':b.get('post_inpaint_text_residue'),'origin':b.get('origin'),'class_name':b.get('class_name'),'semantic_type':b.get('semantic_type')})
+            page_rows.append(prow)
+          summary={'checkpoint':'02-clean-human-audit-metadata','chapter_id':m.get('chapter_id'),'pages':len(pages),'total_boxes':sum(r['box_count'] for r in page_rows),'free_text_boxes':sum(r['free_text_count'] for r in page_rows),'safe_free_text_boxes':sum(r['safe_free_text_count'] for r in page_rows),'needs_review_pages':[r['page_index'] for r in page_rows if r['needs_review']],'issue_pages':[r['page_index'] for r in page_rows if r['detection_issues']],'suspect_pages':[r['page_index'] for r in page_rows if r['suspect_box_count']],'status':'PENDING_HUMAN_VISUAL_REVIEW'}
+          root=Path('trials/chapter-251')
+          (root/'clean-audit-summary.json').write_text(json.dumps(summary,ensure_ascii=False,indent=2),encoding='utf-8')
+          (root/'clean-audit-pages.json').write_text(json.dumps(page_rows,ensure_ascii=False,indent=2),encoding='utf-8')
+          (root/'clean-audit-boxes.json').write_text(json.dumps(box_rows,ensure_ascii=False,indent=2),encoding='utf-8')
+          print(json.dumps(summary,ensure_ascii=False,indent=2))
+          PY
+      - name: Commit audit metadata
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add trials/chapter-251/clean-audit-*.json
+          git diff --cached --quiet && exit 0
+          git commit -m "review: publish chapter 251 clean audit metadata"
+          git push origin HEAD:trial/chapter-render-251
