@@ -1,0 +1,33 @@
+{
+  "chapter_id": "c2510251",
+  "status": "PASS",
+  "reviewed_render_run_id": 34489198122,
+  "font_size_policy": "HUMAN_REVIEWED_FIXED_BUCKETS_NO_AUTO",
+  "reviewed_object_sheets": 6,
+  "reviewed_page_sheets": 7,
+  "reviewed_story_objects": 65,
+  "reviewed_source_pages": 21,
+  "font_size_usage": {
+    "40": 63,
+    "48": 2
+  },
+  "blocking_issues": [],
+  "checks": {
+    "text_readability": "PASS",
+    "overflow_or_clipping": "PASS",
+    "font_consistency": "PASS",
+    "vietnamese_glyphs": "PASS",
+    "source_story_text_residue": "PASS",
+    "credits_and_promo_preserved": "PASS",
+    "art_damage": "PASS",
+    "stitch_and_seams": "PASS",
+    "source_page_count": "PASS"
+  },
+  "notes": [
+    "Reviewed the readable rerender proof directly: 6 rendered-object JPG sheets and 7 stitched-page JPG sheets.",
+    "40px dialogue/reaction sizing is materially more readable than the previous 34/32px proof without clipping.",
+    "Two ominous declaration objects use 48px Shadow-fonts and remain within their reviewed regions.",
+    "Title/logo and end credits/Asura promo are intentionally preserved as non-story material."
+  ],
+  "next_action": "FINAL_EXPORT_ALLOWED"
+}
