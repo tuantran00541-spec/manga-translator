@@ -1,0 +1,158 @@
+[
+  {
+    "seq": 1,
+    "id": "text_f61ce21b9f6d408a",
+    "page_index": 27,
+    "ocr": "1285\n(ID:MET",
+    "region": {
+      "x1": 721,
+      "y1": 1950,
+      "x2": 900,
+      "y2": 2141
+    },
+    "reason": "garbled stylized text; role/content cannot be trusted from OCR alone"
+  },
+  {
+    "seq": 2,
+    "id": "text_a769881e84af4100",
+    "page_index": 32,
+    "ocr": "E\n1\n15.x0A2S",
+    "region": {
+      "x1": 75,
+      "y1": 1139,
+      "x2": 295,
+      "y2": 1232
+    },
+    "reason": "garbled stylized text; likely SFX/decorative/noise but requires source crop"
+  },
+  {
+    "seq": 3,
+    "id": "text_dfd838221fba4795",
+    "page_index": 36,
+    "ocr": "",
+    "region": {
+      "x1": 433,
+      "y1": 2323,
+      "x2": 639,
+      "y2": 2440
+    },
+    "reason": "empty speech-bubble OCR; cannot drop or invent text without source crop"
+  },
+  {
+    "seq": 4,
+    "id": "text_058d64b03f4a4e95",
+    "page_index": 39,
+    "ocr": "OON\nSPOON\nClanid",
+    "region": {
+      "x1": 0,
+      "y1": 1026,
+      "x2": 255,
+      "y2": 1253
+    },
+    "reason": "garbled text candidate; requires source crop"
+  },
+  {
+    "seq": 5,
+    "id": "text_398b10b7be5d47e9",
+    "page_index": 50,
+    "ocr": "...?!!",
+    "region": {
+      "x1": 249,
+      "y1": 3200,
+      "x2": 619,
+      "y2": 3388
+    },
+    "reason": "punctuation-only reaction may be valid story text; requires visual confirmation"
+  },
+  {
+    "seq": 6,
+    "id": "text_334e6d5d7c344547",
+    "page_index": 58,
+    "ocr": "YOUR NAME.\nWILL BE MIMI.",
+    "region": {
+      "x1": 117,
+      "y1": 159,
+      "x2": 537,
+      "y2": 331
+    },
+    "reason": "suspicious punctuation between phrase and continuation; preserve until visual review"
+  },
+  {
+    "seq": 7,
+    "id": "text_27b2c10883c44d75",
+    "page_index": 61,
+    "ocr": "JUST A LITTLE\nMORE... ONCE IT\nGETS A LITTLE\nBIGGER..",
+    "region": {
+      "x1": 342,
+      "y1": 1210,
+      "x2": 730,
+      "y2": 1437
+    },
+    "reason": "ending punctuation uncertain; preserve until visual review"
+  },
+  {
+    "seq": 8,
+    "id": "text_ca2c93a90de24859",
+    "page_index": 63,
+    "ocr": "NO...!",
+    "region": {
+      "x1": 246,
+      "y1": 2109,
+      "x2": 681,
+      "y2": 2286
+    },
+    "reason": "both centers are stitch-core owned; may be two real utterances rather than a seam duplicate"
+  },
+  {
+    "seq": 9,
+    "id": "text_9f3aafe612df43f7",
+    "page_index": 64,
+    "ocr": "NO...!",
+    "region": {
+      "x1": 486,
+      "y1": 2405,
+      "x2": 774,
+      "y2": 2529
+    },
+    "reason": "both centers are stitch-core owned; may be two real utterances rather than a seam duplicate"
+  },
+  {
+    "seq": 10,
+    "id": "text_6129bc0d428148ce",
+    "page_index": 72,
+    "ocr": "SHAMELESS...",
+    "region": {
+      "x1": 126,
+      "y1": 1960,
+      "x2": 553,
+      "y2": 2087
+    },
+    "reason": "after removing detector and non-core duplicates, two core-owned/nearby candidates remain; determine whether one or two story utterances"
+  },
+  {
+    "seq": 11,
+    "id": "text_259914a00d14457d",
+    "page_index": 73,
+    "ocr": "SHAMELLSS...",
+    "region": {
+      "x1": 169,
+      "y1": 768,
+      "x2": 519,
+      "y2": 801
+    },
+    "reason": "after removing detector and non-core duplicates, two core-owned/nearby candidates remain; determine whether one or two story utterances"
+  },
+  {
+    "seq": 12,
+    "id": "text_ccefe7b579fe4f57",
+    "page_index": 74,
+    "ocr": "",
+    "region": {
+      "x1": 613,
+      "y1": 3319,
+      "x2": 749,
+      "y2": 3461
+    },
+    "reason": "empty text detection in story source page; requires visual confirmation before tombstoning"
+  }
+]
