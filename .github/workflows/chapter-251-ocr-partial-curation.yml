@@ -1,0 +1,183 @@
+name: Chapter 251 OCR Partial Curation
+
+on:
+  push:
+    branches: [trial/chapter-render-251]
+    paths:
+      - .github/workflows/chapter-251-ocr-partial-curation.yml
+      - trials/chapter-251/ocr-curation-draft.json
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: chapter-251-human-loop
+  cancel-in-progress: false
+
+jobs:
+  curate:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    env:
+      OCR_RUN_ID: '34469024791'
+      OCR_ARTIFACT: 03-ocr-review-c2510251
+      CHAPTER_ID: c2510251
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: trial/chapter-render-251
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Restore OCR checkpoint
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf checkpoint/03-ocr-partial-curation
+          mkdir -p checkpoint/03-ocr-partial-curation
+          gh run download "$OCR_RUN_ID" -n "$OCR_ARTIFACT" -D checkpoint/03-ocr-partial-curation
+          test -f checkpoint/03-ocr-partial-curation/processed/manifest.json
+          test -f trials/chapter-251/ocr-curation-draft.json
+
+      - name: Apply deterministic curation only
+        run: |
+          python - <<'PY'
+          import copy, json
+          from pathlib import Path
+
+          root=Path('checkpoint/03-ocr-partial-curation')
+          manifest_path=root/'processed'/'manifest.json'
+          manifest=json.loads(manifest_path.read_text(encoding='utf-8'))
+          draft=json.loads(Path('trials/chapter-251/ocr-curation-draft.json').read_text(encoding='utf-8'))
+          if draft.get('status')!='DRAFT_BLOCKED_ON_VISUAL_REVIEW':
+              raise SystemExit('expected blocked draft')
+          if (draft.get('gate') or {}).get('ocr_pass_allowed') is not False:
+              raise SystemExit('draft must not claim OCR PASS')
+
+          indexed={}
+          for pi,page in enumerate(manifest.get('pages') or []):
+              for obj in page.get('text_objects') or []:
+                  oid=str(obj.get('id') or '')
+                  if oid:
+                      if oid in indexed: raise SystemExit(f'duplicate text object id: {oid}')
+                      indexed[oid]=(pi,obj)
+
+          drop=draft.get('drop') or {}
+          corrections=draft.get('corrections') or {}
+          missing=sorted((set(drop)|set(corrections))-set(indexed))
+          if missing: raise SystemExit(f'curation ids missing from OCR artifact: {missing}')
+
+          # Merge geometry/source-box ownership before tombstoning redundant fragments.
+          for merge in draft.get('merge') or []:
+              keep_id=str(merge['keep_id'])
+              pi,obj=indexed[keep_id]
+              obj['source_boxes']=list(merge['source_box_ids'])
+              obj['region']=copy.deepcopy(merge['region_union'])
+              obj['ocr_text']=str(merge['ocr_text'])
+              obj['human_ocr_merge']={
+                  'drop_ids':list(merge['drop_ids']),
+                  'reason':merge['reason'],
+                  'region_union':copy.deepcopy(merge['region_union']),
+              }
+
+          for oid,text in corrections.items():
+              pi,obj=indexed[oid]
+              original=str(obj.get('ocr_text') or '')
+              if original!=text:
+                  obj['human_review_original_ocr']=original
+              obj['ocr_text']=str(text)
+              obj['ocr_source']='human_review_draft'
+              obj['ocr_quality']='human_corrected_draft'
+              obj['ocr_quality_reason']='deterministic_transcription_or_fragment_merge_correction'
+
+          for oid,reason in drop.items():
+              pi,obj=indexed[oid]
+              obj.update({
+                  'human_review':'drop_duplicate_credit_sfx_or_noise',
+                  'human_review_reason':str(reason),
+                  'human_review_source_text':str(obj.get('ocr_text') or ''),
+                  'source_missing':True,
+                  'auto_generated':False,
+                  'origin':'human_review_drop',
+                  'ocr_quality':'human_dropped',
+                  'ocr_quality_reason':str(reason),
+                  'translation':'',
+              })
+              obj.pop('auto_ocr_text',None)
+              obj.pop('auto_geometry',None)
+
+          unresolved_ids=set()
+          for row in draft.get('unresolved_visual_review') or []:
+              ids=row.get('ids') or ([row['id']] if row.get('id') else [])
+              for oid in ids:
+                  unresolved_ids.add(str(oid))
+                  if str(oid) not in indexed: raise SystemExit(f'unresolved id missing: {oid}')
+                  pi,obj=indexed[str(oid)]
+                  if obj.get('source_missing'): continue
+                  obj['human_review']='needs_visual_review'
+                  obj['human_review_reason']=str(row.get('reason') or 'visual_review_required')
+
+          # Preserve every other OCR object without falsely claiming human visual acceptance.
+          untouched=0
+          for oid,(pi,obj) in indexed.items():
+              if obj.get('source_missing') or oid in unresolved_ids:
+                  continue
+              if oid in corrections:
+                  obj['human_review']='provisional_keep_after_text_context_review'
+                  obj['human_review_reason']='deterministic_correction_applied_pending_full_visual_gate'
+              else:
+                  obj['human_review']='provisional_keep_after_text_context_review'
+                  obj['human_review_reason']='ocr_text_and_scene_context_reviewed_pending_source_crop_visual_gate'
+              obj['source_missing']=False
+              obj['auto_generated']=False
+              obj['origin']='human_review_provisional_story'
+              untouched+=1
+
+          # Resurrection test: reconciliation must not recreate tombstoned objects.
+          from app.text_objects import ensure_page_text_objects
+          created=0
+          for page in manifest.get('pages') or []:
+              n,_=ensure_page_text_objects(page)
+              created+=int(n)
+          if created!=0:
+              raise SystemExit(f'reconciliation created/resurrected {created} objects')
+
+          tombstones=sum(1 for _pi,o in indexed.values() if o.get('source_missing'))
+          unresolved_active=[oid for oid,(pi,o) in indexed.items() if not o.get('source_missing') and o.get('human_review')=='needs_visual_review']
+          if tombstones!=len(drop):
+              raise SystemExit(f'tombstone count mismatch {tombstones} != {len(drop)}')
+          if set(unresolved_active)!=unresolved_ids:
+              raise SystemExit(f'unresolved active mismatch: {sorted(set(unresolved_active)^unresolved_ids)}')
+
+          manifest['human_ocr_review']={
+              'status':'PARTIAL_BLOCKED_ON_VISUAL_REVIEW',
+              'source_ocr_run_id':34469024791,
+              'reviewed_text_context_objects':len(indexed),
+              'persistent_tombstones':tombstones,
+              'deterministic_corrections':len(corrections),
+              'merge_groups':len(draft.get('merge') or []),
+              'unresolved_visual_objects':len(unresolved_active),
+              'unresolved_ids':sorted(unresolved_active),
+              'reconciliation_created_objects':created,
+              'ocr_pass_allowed':False,
+              'next_action':'REVIEW_UNRESOLVED_SOURCE_CROPS_THEN_FINALIZE_OCR_CURATION'
+          }
+          text=json.dumps(manifest,ensure_ascii=False,indent=2)
+          manifest_path.write_text(text,encoding='utf-8')
+          (root/'manifest.json').write_text(text,encoding='utf-8')
+          (root/'ocr-partial-curation-summary.json').write_text(json.dumps(manifest['human_ocr_review'],ensure_ascii=False,indent=2),encoding='utf-8')
+          (root/'ocr-curation-draft.json').write_text(json.dumps(draft,ensure_ascii=False,indent=2),encoding='utf-8')
+          print(json.dumps(manifest['human_ocr_review'],ensure_ascii=False,indent=2))
+          PY
+
+      - name: Upload partial curated OCR checkpoint
+        uses: actions/upload-artifact@v4
+        with:
+          name: 03-ocr-partial-curation-c2510251
+          path: checkpoint/03-ocr-partial-curation
+          if-no-files-found: error
+          retention-days: 7
