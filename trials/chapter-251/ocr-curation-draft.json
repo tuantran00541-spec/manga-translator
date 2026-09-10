@@ -1,0 +1,112 @@
+{
+  "chapter_id": "c2510251",
+  "status": "DRAFT_BLOCKED_ON_VISUAL_REVIEW",
+  "source_ocr_run_id": 34469024791,
+  "source_ocr_artifact": "03-ocr-review-c2510251",
+  "principle": "Only deterministic curation is committed here. Visual-dependent objects remain unresolved and prevent OCR PASS.",
+  "drop": {
+    "text_e23cd72c530e4999": "non_story_series_title_card",
+    "text_00c9431e649e4460": "non_story_scanlation_promo_url",
+    "text_ccbcef23566d42ea": "non_story_title_card_decorative_text",
+    "text_5601475d17f94172": "duplicate_detector_object_same_physical_text_as_text_6ce69d12e5094e03",
+    "text_c281d0b9fa4c46ef": "duplicate_detector_object_same_physical_text_as_text_f0e47518e5db4a55",
+    "text_ef3179b89f95458f": "duplicate_detector_object_same_physical_text_as_text_389e2619ec654613",
+    "text_9bf69953b6d8479c": "merged_into_text_d0da59b747e24694",
+    "text_538c3e67b2564b22": "merged_into_text_d0da59b747e24694",
+    "text_f0b006f49b7b4e62": "duplicate_detector_object_same_physical_reaction_as_text_8dfa6bf826734031",
+    "text_6576295baa644a54": "duplicate_detector_object_same_physical_text_as_text_00b5bbac7b9344d3",
+    "text_8fbc26c8655d4727": "slice_overlap_duplicate_non_core_copy_of_text_eb0b92d2133f4561",
+    "text_126438f75aa448fa": "partial_overlap_fragment_of_text_eb0b92d2133f4561",
+    "text_5f1e597ac47a48ab": "duplicate_detector_object_same_physical_text_as_text_6129bc0d428148ce",
+    "text_634348baafc74d8a": "slice_overlap_duplicate_non_core_copy_of_shameless_text",
+    "text_9b041f467ee74840": "slice_overlap_duplicate_non_core_copy_of_text_2f380f5adb9b47f3",
+    "text_2b942f286ebd41f7": "non_story_or_empty_tail_detection_on_credit_area",
+    "text_0030479f5bc341c3": "non_story_creator_credits",
+    "text_5bbec116b66346d1": "non_story_creator_social_handles",
+    "text_2a8a351879c0423b": "non_story_scanlation_promo"
+  },
+  "corrections": {
+    "text_d0da59b747e24694": "...PLEASE FALL\nFOR IT!",
+    "text_5167533b34534937": "YOU'RE\nSO CUTE.",
+    "text_ef58d15244b14460": "IT'LL DIE\nIF IT'S LEFT\nALONE!",
+    "text_259914a00d14457d": "SHAMELESS...",
+    "text_d69d4204fc8b4a36": "I'LL KILL\nYOU ALL... AND\nBLOOM THE BLOOD\nFLOWERS.",
+    "text_2f380f5adb9b47f3": "FOR I AM RED\nDEATH PEONY."
+  },
+  "merge": [
+    {
+      "keep_id": "text_d0da59b747e24694",
+      "drop_ids": ["text_9bf69953b6d8479c", "text_538c3e67b2564b22"],
+      "source_box_ids": ["box_d0da59b747e24694", "box_9bf69953b6d8479c", "box_538c3e67b2564b22"],
+      "region_union": {"x1": 91, "y1": 1171, "x2": 504, "y2": 1342},
+      "ocr_text": "...PLEASE FALL\nFOR IT!",
+      "reason": "three overlapping detector fragments represent one logical speech object"
+    }
+  ],
+  "unresolved_visual_review": [
+    {
+      "id": "text_f61ce21b9f6d408a",
+      "page_index": 27,
+      "ocr": "1285\n(ID:MET",
+      "reason": "garbled stylized text; role/content cannot be trusted from OCR alone"
+    },
+    {
+      "id": "text_a769881e84af4100",
+      "page_index": 32,
+      "ocr": "E\n1\n15.x0A2S",
+      "reason": "garbled stylized text; likely SFX/decorative/noise but requires source crop"
+    },
+    {
+      "id": "text_dfd838221fba4795",
+      "page_index": 36,
+      "ocr": "",
+      "reason": "empty speech-bubble OCR; cannot drop or invent text without source crop"
+    },
+    {
+      "id": "text_058d64b03f4a4e95",
+      "page_index": 39,
+      "ocr": "OON\nSPOON\nClanid",
+      "reason": "garbled text candidate; requires source crop"
+    },
+    {
+      "id": "text_398b10b7be5d47e9",
+      "page_index": 50,
+      "ocr": "...?!!",
+      "reason": "punctuation-only reaction may be valid story text; requires visual confirmation"
+    },
+    {
+      "id": "text_334e6d5d7c344547",
+      "page_index": 58,
+      "ocr": "YOUR NAME.\nWILL BE MIMI.",
+      "reason": "suspicious punctuation between phrase and continuation; preserve until visual review"
+    },
+    {
+      "id": "text_27b2c10883c44d75",
+      "page_index": 61,
+      "ocr": "JUST A LITTLE\nMORE... ONCE IT\nGETS A LITTLE\nBIGGER..",
+      "reason": "ending punctuation uncertain; preserve until visual review"
+    },
+    {
+      "ids": ["text_ca2c93a90de24859", "text_9f3aafe612df43f7"],
+      "pages": [63, 64],
+      "ocr": "NO...!",
+      "reason": "both centers are stitch-core owned; may be two real utterances rather than a seam duplicate"
+    },
+    {
+      "ids": ["text_6129bc0d428148ce", "text_259914a00d14457d"],
+      "pages": [72, 73],
+      "ocr": ["SHAMELESS...", "SHAMELLSS..."],
+      "reason": "after removing detector and non-core duplicates, two core-owned/nearby candidates remain; determine whether one or two story utterances"
+    },
+    {
+      "id": "text_ccefe7b579fe4f57",
+      "page_index": 74,
+      "ocr": "",
+      "reason": "empty text detection in story source page; requires visual confirmation before tombstoning"
+    }
+  ],
+  "gate": {
+    "ocr_pass_allowed": false,
+    "reason": "unresolved_visual_review is non-empty"
+  }
+}
