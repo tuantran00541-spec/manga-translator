@@ -1,0 +1,53 @@
+name: Chapter 251 Source Image URLs
+
+on:
+  push:
+    branches:
+      - trial/chapter-render-251
+    paths:
+      - .github/workflows/chapter-251-source-urls.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  extract:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    env:
+      CHAPTER_URL: https://asurascans.com/comics/villain-to-kill-53fc8424/chapter/251
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: trial/chapter-render-251
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install downloader dependencies
+        run: python -m pip install requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0
+      - name: Extract exact production source URLs
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          from app.downloader.asura import AsuraScansStaticAdapter
+          url=os.environ['CHAPTER_URL']
+          urls=AsuraScansStaticAdapter().extract_image_urls(url)
+          if len(urls)!=21:
+              raise SystemExit(f'expected 21 source URLs, got {len(urls)}')
+          rows=[{'source_page':i,'page_number':i+1,'url':u} for i,u in enumerate(urls)]
+          out=Path('trials/chapter-251/source-image-urls.json')
+          out.parent.mkdir(parents=True,exist_ok=True)
+          out.write_text(json.dumps(rows,ensure_ascii=False,indent=2),encoding='utf-8')
+          print(json.dumps({'source_images':len(rows),'first':rows[0]['url'],'last':rows[-1]['url']},ensure_ascii=False))
+          PY
+      - name: Publish source URL metadata
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add trials/chapter-251/source-image-urls.json
+          if ! git diff --cached --quiet; then
+            git commit -m "review: publish chapter 251 source image URLs"
+            git push origin HEAD:trial/chapter-render-251
+          fi
