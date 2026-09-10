@@ -1,0 +1,139 @@
+name: Chapter 251 Translation Review
+
+on:
+  push:
+    branches:
+      - trial/chapter-render-251
+    paths:
+      - .github/workflows/chapter-251-translation-review.yml
+      - trials/chapter-251/translation-vi.json
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: chapter-251-human-loop
+  cancel-in-progress: false
+
+jobs:
+  translation-review:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    env:
+      CHAPTER_ID: c2510251
+      CURATED_RUN_ID: "34477054431"
+      CURATED_ARTIFACT: 03-ocr-final-c2510251
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: trial/chapter-render-251
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Restore final OCR checkpoint
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf checkpoint/04-translation-review
+          mkdir -p checkpoint/04-translation-review
+          gh run download "$CURATED_RUN_ID" -n "$CURATED_ARTIFACT" -D checkpoint/04-translation-review
+          test -f checkpoint/04-translation-review/processed/manifest.json
+          test -f trials/chapter-251/translation-vi.json
+
+      - name: Apply edited Vietnamese translation
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root=Path('checkpoint/04-translation-review')
+          mp=root/'processed'/'manifest.json'
+          manifest=json.loads(mp.read_text(encoding='utf-8'))
+          mapping=json.loads(Path('trials/chapter-251/translation-vi.json').read_text(encoding='utf-8'))
+          translations=mapping.get('translations') or {}
+          if mapping.get('chapter_id')!='c2510251' or mapping.get('lang')!='vi':
+              raise SystemExit('translation metadata mismatch')
+          review=manifest.get('human_ocr_review') or {}
+          if review.get('status')!='PASS' or not review.get('ocr_pass_allowed'):
+              raise SystemExit(f'OCR gate not PASS: {review}')
+
+          active={}; tombstones=[]
+          for pi,page in enumerate(manifest.get('pages') or []):
+              for obj in page.get('text_objects') or []:
+                  oid=str(obj.get('id') or '')
+                  if obj.get('source_missing'):
+                      tombstones.append(oid); continue
+                  if obj.get('human_review')!='keep_story':
+                      raise SystemExit(f'unreviewed active object {oid}')
+                  if not str(obj.get('ocr_text') or '').strip():
+                      raise SystemExit(f'blank active source {oid}')
+                  active[oid]=(pi,obj)
+          if len(active)!=65 or len(tombstones)!=25:
+              raise SystemExit(f'checkpoint count mismatch active={len(active)} tombstones={len(tombstones)}')
+          missing=sorted(set(active)-set(translations)); extra=sorted(set(translations)-set(active))
+          if missing or extra:
+              raise SystemExit(f'translation id mismatch missing={missing} extra={extra}')
+
+          rows=[]
+          for oid,(pi,obj) in active.items():
+              vi=str(translations[oid]).strip()
+              if not vi: raise SystemExit(f'blank translation {oid}')
+              source=str(obj.get('ocr_text') or '').strip()
+              obj.update({
+                  'translation':vi,
+                  'translation_lang':'vi',
+                  'translation_source':'human_editor_ch251',
+                  'translation_input_text':source,
+                  'human_translation_review':'accepted',
+              })
+              obj.pop('translation_model',None); obj.pop('auto_translation',None)
+              rows.append({'page_index':pi,'id':oid,'source_text':source,'translation':vi,'source_chars':len(source),'translation_chars':len(vi)})
+
+          untranslated=[]; story=0; tomb=0
+          for pi,page in enumerate(manifest.get('pages') or []):
+              for obj in page.get('text_objects') or []:
+                  if obj.get('source_missing'):
+                      tomb+=1
+                      if obj.get('auto_generated') or obj.get('origin')!='human_review_drop':
+                          raise SystemExit(f'invalid tombstone {obj.get("id")}')
+                      continue
+                  story+=1
+                  if not str(obj.get('translation') or '').strip(): untranslated.append(obj.get('id'))
+          if untranslated: raise SystemExit(f'untranslated remain {untranslated}')
+          if (story,tomb)!=(65,25): raise SystemExit(f'count mismatch story={story} tomb={tomb}')
+
+          manifest['human_translation_review']={
+              'status':'PASS','target_lang':'vi','active_story_objects':65,
+              'translated_story_objects':65,'active_untranslated_story_objects':0,
+              'persistent_tombstones':25,'next_action':'RENDER_CHECKPOINT_ALLOWED'
+          }
+          text=json.dumps(manifest,ensure_ascii=False,indent=2)
+          mp.write_text(text,encoding='utf-8'); (root/'manifest.json').write_text(text,encoding='utf-8')
+          longest=sorted(rows,key=lambda r:r['translation_chars'],reverse=True)[:15]
+          summary={'checkpoint':'04-translation-review','chapter_id':'c2510251','target_lang':'vi','active_story_objects':65,'translated_story_objects':65,'active_untranslated_story_objects':0,'persistent_tombstones':25,'status':'PASS','longest_translation_objects':longest,'next_action':'RENDER_CHECKPOINT_ALLOWED'}
+          (root/'translation-review.json').write_text(json.dumps(rows,ensure_ascii=False,indent=2),encoding='utf-8')
+          (root/'translation-review-summary.json').write_text(json.dumps(summary,ensure_ascii=False,indent=2),encoding='utf-8')
+          print(json.dumps({k:v for k,v in summary.items() if k!='longest_translation_objects'},ensure_ascii=False,indent=2))
+          PY
+
+      - name: Publish translation summary
+        run: |
+          cp checkpoint/04-translation-review/translation-review-summary.json trials/chapter-251/translation-review-summary.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add trials/chapter-251/translation-review-summary.json
+          if ! git diff --cached --quiet; then
+            git commit -m "review: pass chapter 251 translation gate"
+            git push origin HEAD:trial/chapter-render-251
+          fi
+
+      - name: Upload translation review checkpoint
+        uses: actions/upload-artifact@v4
+        with:
+          name: 04-translation-review-c2510251
+          path: checkpoint/04-translation-review
+          retention-days: 7
+          if-no-files-found: error
