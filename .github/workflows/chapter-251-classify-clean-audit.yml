@@ -1,0 +1,74 @@
+name: Chapter 251 Classify Clean Audit Findings
+
+on:
+  push:
+    branches: [trial/chapter-render-251]
+    paths: [.github/workflows/chapter-251-classify-clean-audit.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  classify:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    env:
+      CLEAN_RUN_ID: "34428272591"
+      CLEAN_ARTIFACT: 02-clean-review-c2510251
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: trial/chapter-render-251
+      - name: Restore clean checkpoint
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf checkpoint/source
+          mkdir -p checkpoint/source trials/chapter-251
+          gh run download "$CLEAN_RUN_ID" -n "$CLEAN_ARTIFACT" -D checkpoint/source
+          test -f checkpoint/source/processed/manifest.json
+      - name: Classify cleanup findings
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          m=json.loads(Path('checkpoint/source/processed/manifest.json').read_text(encoding='utf-8'))
+          safe=[]; residue=[]; review_only=[]; destructive=[]
+          for pi,p in enumerate(m.get('pages') or []):
+            page_issues=p.get('detection_issues') or []
+            for bi,b0 in enumerate(p.get('boxes') or p.get('detections') or []):
+              b=dict(b0); b.pop('mask',None)
+              sem=str(b.get('semantic_type') or b.get('class_name') or b.get('type') or b.get('label') or '').lower()
+              cls=str(b.get('class_name') or '').lower()
+              row={'page_index':pi,'source_page':p.get('source_page'),'slice_index':p.get('slice_index'),'box_index':bi,'semantic':sem,'class_name':cls,'safe_to_inpaint':b.get('safe_to_inpaint'),'x1':b.get('x1'),'y1':b.get('y1'),'x2':b.get('x2'),'y2':b.get('y2'),'confidence':b.get('confidence',b.get('score')),'needs_review':b.get('needs_review'),'review_reason':b.get('review_reason'),'page_issues':page_issues,'residue_verification':b.get('residue_verification'),'post_inpaint_text_residue':b.get('post_inpaint_text_residue')}
+              is_free=('free_text' in sem or 'free text' in sem or ('text' in sem and 'bubble' not in sem))
+              if is_free and b.get('safe_to_inpaint') is True: safe.append(row)
+              if b.get('safe_to_inpaint') is True: destructive.append(row)
+              blob=json.dumps(b,ensure_ascii=False).lower()
+              if 'residue' in blob or b.get('post_inpaint_text_residue'):
+                residue.append(row)
+              if b.get('safe_to_inpaint') is not True and (b.get('needs_review') or cls in ('text_recovery','focus_deferred') or 'review' in sem):
+                review_only.append(row)
+          root=Path('trials/chapter-251')
+          payloads={
+            'clean-safe-free-text.json':safe,
+            'clean-residue.json':residue,
+            'clean-review-only.json':review_only,
+            'clean-destructive-authority.json':destructive,
+          }
+          for name,data in payloads.items():
+            (root/name).write_text(json.dumps(data,ensure_ascii=False,indent=2),encoding='utf-8')
+          summary={'safe_free_text':len(safe),'residue':len(residue),'review_only':len(review_only),'destructive_authority':len(destructive),'safe_free_text_pages':sorted(set(x['page_index'] for x in safe)),'residue_pages':sorted(set(x['page_index'] for x in residue)),'review_only_pages':sorted(set(x['page_index'] for x in review_only))}
+          (root/'clean-classification-summary.json').write_text(json.dumps(summary,ensure_ascii=False,indent=2),encoding='utf-8')
+          print(json.dumps(summary,ensure_ascii=False,indent=2))
+          PY
+      - name: Commit classification
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add trials/chapter-251/clean-*.json
+          git diff --cached --quiet && exit 0
+          git commit -m "review: classify chapter 251 clean findings"
+          git push origin HEAD:trial/chapter-render-251
