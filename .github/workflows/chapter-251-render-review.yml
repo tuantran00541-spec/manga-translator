@@ -1,4 +1,4 @@
-name: Chapter 251 Render Review
+name: Chapter 251 Render Review Fixed Sizes
 
 on:
   push:
@@ -71,13 +71,16 @@ jobs:
           print(f"restored {len(m.get('pages') or [])} slices")
           PY
 
-      - name: Apply semantic typography plan with Vietnamese glyph fallback
+      - name: Choose fixed readable font-size buckets and validate fit
         run: |
           python - <<'PY'
-          import json, os
+          import json
           from collections import Counter
           from pathlib import Path
+          from PIL import Image, ImageDraw
           from fontTools.ttLib import TTFont
+          from app.render.text_renderer import get_font_object, _wrap_text, _calc_line_height
+
           chapter_id='c2510251'; font_dir=Path('app/static/fonts'); primary='Mac-dinh-3'
           special_sfx={'text_db05c240392f4332','text_3686fc49acd34585','text_cce8c22206f9466c','text_940955579f314c23'}
           special_shadow={'text_d69d4204fc8b4a36','text_2f380f5adb9b47f3'}
@@ -89,27 +92,66 @@ jobs:
                   else:
                       f=TTFont(path,lazy=True); cache[name]=set((f.getBestCmap() or {}).keys()); f.close()
               return cache[name]
-          def supports(name,text): return bool(cmap(name)) and all(ch.isspace() or ord(ch) in cmap(name) for ch in text)
+          def supports(name,text):
+              cm=cmap(name); return bool(cm) and all(ch.isspace() or ord(ch) in cm for ch in text)
           probe='ăâêôơưđĂÂÊÔƠƯĐáàảãạấầẩẫậắằẳẵặéèẻẽẹếềểễệíìỉĩịóòỏõọốồổỗộớờởỡợúùủũụứừửữựýỳỷỹỵ'
           if not supports(primary,probe): raise SystemExit('primary font fails Vietnamese probe')
+
           mp=Path('data/processed')/chapter_id/'manifest.json'; m=json.loads(mp.read_text(encoding='utf-8'))
-          plan=[]; usage=Counter(); fallbacks=[]
+          plan=[]; usage=Counter(); size_usage=Counter(); fallbacks=[]; failures=[]
+          dummy=Image.new('RGB',(8,8),'white'); draw=ImageDraw.Draw(dummy)
+
+          def fit_at(text, font_name, size, region, stroke_w=1):
+              raw_w=max(1,int(region['x2'])-int(region['x1'])); raw_h=max(1,int(region['y2'])-int(region['y1']))
+              pad=max(2,min(16,int(min(raw_w,raw_h)*0.12)))
+              box_w=max(1,raw_w-pad*2); box_h=max(1,raw_h-pad*2)
+              font=get_font_object(str(font_dir/f'{font_name}.ttf'), size)
+              lines=_wrap_text(draw,text,font,box_w)
+              if not lines: return False,[]
+              lh=_calc_line_height(draw,font,stroke_w=stroke_w); total_h=lh*len(lines)
+              max_w=max(draw.textbbox((0,0),line,font=font,stroke_width=stroke_w)[2] for line in lines)
+              return total_h<=box_h and max_w<=box_w, lines
+
           for pi,p in enumerate(m.get('pages') or []):
               for o in p.get('text_objects') or []:
                   if o.get('source_missing') or o.get('human_review')!='keep_story': continue
-                  oid=str(o.get('id')); vi=str(o.get('translation') or '').strip()
+                  oid=str(o.get('id')); vi=str(o.get('translation') or '').strip(); region=o.get('region') or {}
                   if not vi: raise SystemExit(f'untranslated active {oid}')
-                  wanted=primary; role='dialogue'
-                  if oid in special_sfx: wanted='SFX-fonts-1'; role='reaction_sfx'
-                  elif oid in special_shadow: wanted='Shadow-fonts'; role='ominous_declaration'
+                  if not all(k in region for k in ('x1','y1','x2','y2')): raise SystemExit(f'malformed region {oid}')
+
+                  wanted=primary; role='dialogue'; candidates=[34,32,30,28]
+                  if oid in special_sfx:
+                      wanted='SFX-fonts-1'; role='reaction_sfx'; candidates=[32,30,28]
+                  elif oid in special_shadow:
+                      wanted='Shadow-fonts'; role='ominous_declaration'; candidates=[38,34,32,30,28]
+
                   chosen=wanted if supports(wanted,vi) else primary
                   if chosen!=wanted: fallbacks.append({'id':oid,'wanted':wanted,'chosen':chosen,'reason':'missing_vietnamese_glyphs'})
+
+                  selected=None; selected_lines=[]
+                  for size in candidates:
+                      ok, lines=fit_at(vi,chosen,size,region,stroke_w=1)
+                      if ok:
+                          selected=size; selected_lines=lines; break
+                  if selected is None:
+                      failures.append({'page_index':pi,'id':oid,'translation':vi,'region':region,'candidates':candidates})
+                      continue
+
                   style=o.setdefault('style',{})
-                  style.update({'font':chosen,'fontSize':'auto','color':'auto','strokeWidth':'auto','strokeColor':'auto','bgColor':'transparent','cornerRadius':'0','horizontalAlign':'center','verticalAlign':'middle','bold': oid in special_shadow})
-                  o['human_typeset_class']=role; o['human_typeset_font']=chosen; o['human_typeset_reason']='semantic_assignment_with_same-class_glyph_fallback'
-                  usage[chosen]+=1; plan.append({'page_index':pi,'id':oid,'semantic_role':role,'font':chosen,'translation':vi})
+                  style.update({'font':chosen,'fontSize':str(selected),'color':'auto','strokeWidth':'1','strokeColor':'auto','bgColor':'transparent','cornerRadius':'0','horizontalAlign':'center','verticalAlign':'middle','bold': oid in special_shadow})
+                  o['human_typeset_class']=role; o['human_typeset_font']=chosen; o['human_typeset_font_size']=selected
+                  o['human_typeset_reason']='fixed_readable_bucket_preflight_fit_no_renderer_autosize'
+                  usage[chosen]+=1; size_usage[selected]+=1
+                  plan.append({'page_index':pi,'id':oid,'semantic_role':role,'font':chosen,'font_size':selected,'wrapped_lines':selected_lines,'translation':vi})
+
+          if failures:
+              Path('fixed-size-fit-failures.json').write_text(json.dumps(failures,ensure_ascii=False,indent=2),encoding='utf-8')
+              raise SystemExit(f'{len(failures)} objects do not fit at minimum approved size 28; rewrite translation or enlarge region')
           if len(plan)!=65: raise SystemExit(f'expected 65 styled objects got {len(plan)}')
-          summary={'status':'PLAN_READY_PENDING_RENDER_VISUAL_REVIEW','primary_dialogue_font':primary,'active_story_objects':65,'font_usage':dict(usage),'fallbacks':fallbacks,'vietnamese_glyph_probe':'PASS'}
+          if any(str((o.get('style') or {}).get('fontSize')).lower()=='auto' for p in m.get('pages') or [] for o in p.get('text_objects') or [] if not o.get('source_missing') and o.get('human_review')=='keep_story'):
+              raise SystemExit('active story object still uses auto font size')
+
+          summary={'status':'PLAN_READY_PENDING_RENDER_VISUAL_REVIEW','font_size_policy':'FIXED_BUCKETS_NO_AUTO','approved_size_buckets':[38,34,32,30,28],'minimum_font_size':28,'primary_dialogue_font':primary,'active_story_objects':65,'font_usage':dict(usage),'font_size_usage':{str(k):v for k,v in sorted(size_usage.items(),reverse=True)},'fallbacks':fallbacks,'vietnamese_glyph_probe':'PASS'}
           m['human_typeset_review']=summary; mp.write_text(json.dumps(m,ensure_ascii=False,indent=2),encoding='utf-8')
           Path('typography-plan.json').write_text(json.dumps({'chapter_id':chapter_id,**summary,'assignments':plan},ensure_ascii=False,indent=2),encoding='utf-8')
           print(json.dumps(summary,ensure_ascii=False,indent=2))
@@ -142,7 +184,7 @@ jobs:
       - name: Build compact human visual review PDFs
         run: |
           python - <<'PY'
-          import io, json, shutil, zipfile
+          import json, shutil, zipfile
           from pathlib import Path
           from PIL import Image, ImageDraw, ImageFont
           chapter_id='c2510251'; out=Path('data/output')/chapter_id; proc=Path('data/processed')/chapter_id
@@ -150,12 +192,10 @@ jobs:
           shutil.copytree(proc,review/'processed'); shutil.copytree(out,review/'output'); shutil.copy2('typography-plan.json',review/'typography-plan.json')
           zpath=out/f'chapter_{chapter_id}.zip'; final=review/'final-pages'; final.mkdir()
           with zipfile.ZipFile(zpath) as z: z.extractall(final)
-          # Full-page proof PDF, downscaled but phone-readable when zoomed.
           pdf=[]
           for p in sorted(final.glob('*.png')):
               im=Image.open(p).convert('RGB'); w=900; h=max(1,round(im.height*w/im.width)); im=im.resize((w,h),Image.Resampling.LANCZOS); pdf.append(im)
           pdf[0].save(review/'render-final-pages.pdf',save_all=True,append_images=pdf[1:],resolution=120.0,quality=58,optimize=True)
-          # Object crop proof PDF: 4 cards per page.
           m=json.loads((proc/'manifest.json').read_text(encoding='utf-8')); cards=[]; font=ImageFont.load_default()
           for pi,p in enumerate(m.get('pages') or []):
               rp=out/f'page_{pi:03d}.png'
@@ -166,9 +206,8 @@ jobs:
                   r=o.get('region') or {}; x1=int(r.get('x1',0)); y1=int(r.get('y1',0)); x2=int(r.get('x2',rim.width)); y2=int(r.get('y2',rim.height)); pad=90
                   box=(max(0,x1-pad),max(0,y1-pad),min(rim.width,x2+pad),min(rim.height,y2+pad)); crop=rim.crop(box); crop.thumbnail((520,330),Image.Resampling.LANCZOS)
                   card=Image.new('RGB',(560,400),'white'); card.paste(crop,((560-crop.width)//2,8)); d=ImageDraw.Draw(card)
-                  label=f"p{pi:03d} {o.get('id')} font={o.get('human_typeset_font')}"
-                  d.text((8,345),label[:80],fill='black',font=font); d.text((8,362),str(o.get('translation') or '')[:100],fill='black',font=font)
-                  cards.append(card)
+                  label=f"p{pi:03d} {o.get('id')} {o.get('human_typeset_font')} {o.get('human_typeset_font_size')}px"
+                  d.text((8,345),label[:90],fill='black',font=font); d.text((8,362),str(o.get('translation') or '')[:100],fill='black',font=font); cards.append(card)
           sheets=[]
           for start in range(0,len(cards),4):
               page=Image.new('RGB',(1120,800),'white')
@@ -176,7 +215,7 @@ jobs:
               sheets.append(page)
           sheets[0].save(review/'render-object-crops.pdf',save_all=True,append_images=sheets[1:],resolution=120.0,quality=70,optimize=True)
           typography=json.loads(Path('typography-plan.json').read_text(encoding='utf-8'))
-          summary={'checkpoint':'05-render-review','chapter_id':chapter_id,'slices':77,'source_pages':21,'active_story_objects':65,'active_untranslated_story_objects':0,'persistent_tombstones':25,'font_usage':typography.get('font_usage'),'font_fallbacks':typography.get('fallbacks'),'status':'TECHNICAL_PASS_PENDING_HUMAN_VISUAL_REVIEW','next_action':'STOP_FOR_HUMAN_VISUAL_REVIEW'}
+          summary={'checkpoint':'05-render-review','chapter_id':chapter_id,'slices':77,'source_pages':21,'active_story_objects':65,'active_untranslated_story_objects':0,'persistent_tombstones':25,'font_size_policy':'FIXED_BUCKETS_NO_AUTO','minimum_font_size':28,'font_usage':typography.get('font_usage'),'font_size_usage':typography.get('font_size_usage'),'font_fallbacks':typography.get('fallbacks'),'status':'TECHNICAL_PASS_PENDING_HUMAN_VISUAL_REVIEW','next_action':'STOP_FOR_HUMAN_VISUAL_REVIEW'}
           (review/'render-review-summary.json').write_text(json.dumps(summary,ensure_ascii=False,indent=2),encoding='utf-8')
           print(json.dumps(summary,ensure_ascii=False,indent=2))
           PY
@@ -191,14 +230,15 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add trials/chapter-251/render-review-summary.json trials/chapter-251/render-final-pages.pdf trials/chapter-251/render-object-crops.pdf
           if ! git diff --cached --quiet; then
-            git commit -m "review: publish chapter 251 render proof"
+            git commit -m "review: publish chapter 251 fixed-size render proof"
+            git pull --rebase origin trial/chapter-render-251
             git push origin HEAD:trial/chapter-render-251
           fi
 
       - name: Upload render review checkpoint
         uses: actions/upload-artifact@v4
         with:
-          name: 05-render-review-c2510251
+          name: 05-render-review-c2510251-fixed
           path: checkpoint/05-render-review
           retention-days: 7
           if-no-files-found: error
