@@ -1,0 +1,134 @@
+name: Chapter 251 Visual JPG Pack
+
+on:
+  push:
+    branches:
+      - trial/chapter-render-251
+    paths:
+      - .github/workflows/chapter-251-visual-jpg-pack.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: chapter-251-human-loop
+  cancel-in-progress: false
+
+jobs:
+  visual-pack:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    env:
+      RENDER_RUN_ID: "34477400113"
+      RENDER_ARTIFACT: 05-render-review-c2510251
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: trial/chapter-render-251
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install compact review dependency
+        run: python -m pip install Pillow==10.4.0
+
+      - name: Restore render checkpoint
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf checkpoint/05-render-review trials/chapter-251/visual-proof
+          mkdir -p checkpoint/05-render-review
+          gh run download "$RENDER_RUN_ID" -n "$RENDER_ARTIFACT" -D checkpoint/05-render-review
+          test -d checkpoint/05-render-review/output
+          test -d checkpoint/05-render-review/processed
+
+      - name: Build compact rendered-object and full-page JPG sheets
+        run: |
+          python - <<'PY'
+          import json, math
+          from pathlib import Path
+          from PIL import Image, ImageDraw, ImageFont
+
+          root=Path('checkpoint/05-render-review')
+          out=root/'output'; proc=root/'processed'
+          proof=Path('trials/chapter-251/visual-proof'); proof.mkdir(parents=True,exist_ok=True)
+          manifest=json.loads((proc/'manifest.json').read_text(encoding='utf-8'))
+          font=ImageFont.load_default()
+
+          # Object proof: 65 rendered story objects, 12 cards/sheet.
+          cards=[]
+          for pi,page in enumerate(manifest.get('pages') or []):
+              rp=out/f'page_{pi:03d}.png'
+              if not rp.is_file(): continue
+              im=Image.open(rp).convert('RGB')
+              for obj in page.get('text_objects') or []:
+                  if obj.get('source_missing') or obj.get('human_review')!='keep_story': continue
+                  r=obj.get('region') or {}
+                  x1=int(r.get('x1',0)); y1=int(r.get('y1',0)); x2=int(r.get('x2',im.width)); y2=int(r.get('y2',im.height)); pad=120
+                  crop=im.crop((max(0,x1-pad),max(0,y1-pad),min(im.width,x2+pad),min(im.height,y2+pad)))
+                  crop.thumbnail((430,255),Image.Resampling.LANCZOS)
+                  card=Image.new('RGB',(450,315),'white'); card.paste(crop,((450-crop.width)//2,5))
+                  d=ImageDraw.Draw(card)
+                  d.text((6,264),f"p{pi:03d} {obj.get('id')} {obj.get('human_typeset_font')}",fill='black',font=font)
+                  txt=str(obj.get('translation') or '').replace('\n',' ')
+                  d.text((6,281),txt[:78],fill='black',font=font)
+                  cards.append(card)
+          if len(cards)!=65: raise SystemExit(f'expected 65 cards got {len(cards)}')
+          for start in range(0,len(cards),12):
+              sheet=Image.new('RGB',(1350,1260),'white')
+              for j,c in enumerate(cards[start:start+12]): sheet.paste(c,((j%3)*450,(j//3)*315))
+              sheet.save(proof/f'objects-{start//12:02d}.jpg',quality=90,optimize=True)
+
+          # Full-page proof: stitched source pages, 3 thumbnails per sheet.
+          final=root/'final-pages'
+          pages=sorted(final.glob('*.png'))
+          if len(pages)!=21: raise SystemExit(f'expected 21 final pages got {len(pages)}')
+          thumbs=[]
+          for idx,p in enumerate(pages):
+              im=Image.open(p).convert('RGB')
+              target_w=430; target_h=max(1,round(im.height*target_w/im.width))
+              # Keep enough vertical detail while avoiding giant repository images.
+              if target_h>2600:
+                  scale=2600/target_h; target_w=max(1,round(target_w*scale)); target_h=2600
+              thumb=im.resize((target_w,target_h),Image.Resampling.LANCZOS)
+              canvas=Image.new('RGB',(450,target_h+30),'white'); canvas.paste(thumb,((450-target_w)//2,24)); ImageDraw.Draw(canvas).text((6,5),f'source page {idx:02d}  {im.width}x{im.height}',fill='black',font=font)
+              thumbs.append(canvas)
+          for start in range(0,len(thumbs),3):
+              chunk=thumbs[start:start+3]; h=max(x.height for x in chunk)
+              sheet=Image.new('RGB',(450*len(chunk),h),'white')
+              for j,t in enumerate(chunk): sheet.paste(t,(j*450,0))
+              sheet.save(proof/f'pages-{start//3:02d}.jpg',quality=88,optimize=True)
+
+          index={
+              'chapter_id':'c2510251','source_render_run_id':34477400113,
+              'object_count':len(cards),'object_sheets':math.ceil(len(cards)/12),
+              'source_page_count':len(pages),'page_sheets':math.ceil(len(pages)/3),
+              'purpose':'human_visual_review_only'
+          }
+          (proof/'index.json').write_text(json.dumps(index,ensure_ascii=False,indent=2),encoding='utf-8')
+          print(json.dumps(index,indent=2))
+          PY
+
+      - name: Publish compact visual proof
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add trials/chapter-251/visual-proof
+          if ! git diff --cached --quiet; then
+            git commit -m "review: publish chapter 251 compact visual JPG proof"
+            git fetch origin trial/chapter-render-251
+            git rebase origin/trial/chapter-render-251
+            git push origin HEAD:trial/chapter-render-251
+          fi
+
+      - name: Upload compact visual proof
+        uses: actions/upload-artifact@v4
+        with:
+          name: 05-visual-jpg-proof-c2510251
+          path: trials/chapter-251/visual-proof
+          retention-days: 7
+          if-no-files-found: error
