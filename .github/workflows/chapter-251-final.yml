@@ -1,0 +1,115 @@
+name: Chapter 251 Final Export
+
+on:
+  push:
+    branches:
+      - trial/chapter-render-251
+    paths:
+      - trials/chapter-251/visual-review.json
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: chapter-251-human-loop
+  cancel-in-progress: false
+
+jobs:
+  final-export:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    env:
+      CHAPTER_ID: c2510251
+      RENDER_RUN_ID: "34477400113"
+      RENDER_ARTIFACT: 05-render-review-c2510251
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: trial/chapter-render-251
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validate explicit human visual approval
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('trials/chapter-251/visual-review.json')
+          if not p.is_file(): raise SystemExit('visual approval missing')
+          r=json.loads(p.read_text(encoding='utf-8'))
+          if r.get('status')!='PASS' or r.get('chapter_id')!='c2510251': raise SystemExit(f'visual review not PASS: {r}')
+          if r.get('blocking_issues'): raise SystemExit(f'visual blockers remain: {r["blocking_issues"]}')
+          print('explicit human visual gate PASS')
+          PY
+
+      - name: Restore render checkpoint
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf checkpoint/05-render-review checkpoint/06-final
+          mkdir -p checkpoint/05-render-review checkpoint/06-final
+          gh run download "$RENDER_RUN_ID" -n "$RENDER_ARTIFACT" -D checkpoint/05-render-review
+          test -f checkpoint/05-render-review/render-review-summary.json
+          test -f checkpoint/05-render-review/output/chapter_c2510251.zip
+          test -f checkpoint/05-render-review/processed/manifest.json
+
+      - name: Final production integrity gate
+        run: |
+          python - <<'PY'
+          import json, shutil, zipfile
+          from pathlib import Path
+          from PIL import Image
+          root=Path('checkpoint/05-render-review')
+          summary=json.loads((root/'render-review-summary.json').read_text(encoding='utf-8'))
+          if summary.get('status')!='TECHNICAL_PASS_PENDING_HUMAN_VISUAL_REVIEW': raise SystemExit(f'bad render summary {summary}')
+          manifest=json.loads((root/'processed'/'manifest.json').read_text(encoding='utf-8'))
+          if (manifest.get('human_ocr_review') or {}).get('status')!='PASS': raise SystemExit('OCR gate regressed')
+          if (manifest.get('human_translation_review') or {}).get('status')!='PASS': raise SystemExit('translation gate regressed')
+          story=tomb=untranslated=0
+          for p in manifest.get('pages') or []:
+              for o in p.get('text_objects') or []:
+                  if o.get('source_missing'):
+                      tomb+=1
+                      if o.get('auto_generated') or o.get('origin')!='human_review_drop': raise SystemExit(f'invalid tombstone {o.get("id")}')
+                  else:
+                      story+=1
+                      if o.get('human_review')!='keep_story' or not str(o.get('translation') or '').strip(): untranslated+=1
+          if (story,tomb,untranslated)!=(65,25,0): raise SystemExit(f'final object counts {(story,tomb,untranslated)}')
+          src=root/'output'/'chapter_c2510251.zip'; names=[]; dims=[]
+          with zipfile.ZipFile(src) as z:
+              names=[n for n in z.namelist() if n.lower().endswith('.png')]
+              if len(names)!=21: raise SystemExit(f'final source page count {len(names)} != 21')
+              for n in names:
+                  with z.open(n) as f:
+                      with Image.open(f) as im:
+                          if im.width<=0 or im.height<=0: raise SystemExit(f'invalid dimensions {n}')
+                          dims.append({'file':n,'width':im.width,'height':im.height})
+          out=Path('checkpoint/06-final'); out.mkdir(exist_ok=True)
+          final_zip=out/'Villain-To-Kill-Chapter-251-VI-FINAL.zip'; shutil.copy2(src,final_zip)
+          report={'chapter_id':'c2510251','status':'FINAL_PASS','source_pages':21,'active_story_objects':65,'persistent_tombstones':25,'active_untranslated_story_objects':0,'ocr_gate':'PASS','translation_gate':'PASS','visual_gate':'PASS','archive':final_zip.name,'archive_png_count':len(names),'final_page_dimensions':dims}
+          (out/'final-report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
+          print(json.dumps({k:v for k,v in report.items() if k!='final_page_dimensions'},ensure_ascii=False,indent=2))
+          PY
+
+      - name: Publish final report
+        run: |
+          cp checkpoint/06-final/final-report.json trials/chapter-251/final-report.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add trials/chapter-251/final-report.json
+          if ! git diff --cached --quiet; then
+            git commit -m "final: pass chapter 251 export gates"
+            git push origin HEAD:trial/chapter-render-251
+          fi
+
+      - name: Upload FINAL chapter
+        uses: actions/upload-artifact@v4
+        with:
+          name: Villain-To-Kill-Chapter-251-VI-FINAL
+          path: checkpoint/06-final
+          retention-days: 7
+          if-no-files-found: error
