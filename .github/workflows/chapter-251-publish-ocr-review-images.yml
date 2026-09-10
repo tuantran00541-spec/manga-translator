@@ -1,0 +1,34 @@
+name: Chapter 251 Publish OCR Review Images
+on:
+  push:
+    branches: [trial/chapter-render-251]
+    paths: [.github/workflows/chapter-251-publish-ocr-review-images.yml]
+  workflow_dispatch:
+permissions:
+  contents: write
+  actions: read
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      PACK_RUN_ID: "34470768473"
+      PACK_ARTIFACT: 03-ocr-review-pack-c2510251
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: trial/chapter-render-251
+      - name: Restore compact review pack
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf review-pack trials/chapter-251/ocr-review-images
+          mkdir -p review-pack trials/chapter-251/ocr-review-images
+          gh run download "$PACK_RUN_ID" -n "$PACK_ARTIFACT" -D review-pack
+          cp review-pack/suspects-*.jpg trials/chapter-251/ocr-review-images/
+      - name: Publish images
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add trials/chapter-251/ocr-review-images
+          git commit -m "review: publish chapter 251 OCR suspect sheets"
+          git push origin HEAD:trial/chapter-render-251
