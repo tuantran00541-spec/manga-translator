@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import os
 import statistics
 import threading
@@ -12,7 +12,15 @@ import numpy as np
 from app.env_utils import env_enabled
 from app.ocr.quality import classify_ocr_quality
 from app.ocr.reading_order import reconstruct_reading_order, select_centered_target
-from app.parameters import OCR_PADDLE_MAX_UPSCALE, OCR_PADDLE_MIN_SIDE
+from app.parameters import (
+    OCR_COMPLETENESS_EDGE_MARGIN,
+    OCR_PADDLE_MAX_UPSCALE,
+    OCR_PADDLE_MIN_SIDE,
+    OCR_RETRY_CONFIDENCE,
+    OCR_RETRY_MAX_PIXELS,
+    OCR_RETRY_UPSCALE,
+    OCR_SELECTIVE_RETRY,
+)
 
 UNIFIED_LANGS = {"en", "english", "ch", "zh", "ja", "japan"}
 KOREAN_LANGS = {"ko", "korean"}
@@ -27,6 +35,11 @@ class OCRReadResult:
     region_count: int
     quality: str = "unknown"
     quality_reason: str | None = None
+    coverage: float | None = None
+    target_mode: str = "all"
+    retry_applied: bool = False
+    text_bounds: tuple[float, float, float, float] | None = None
+    input_shape: tuple[int, int] | None = None
 
 
 def _payload(result: Any) -> dict[str, Any]:
@@ -80,6 +93,51 @@ def _prepare_rgb_for_paddle(image: np.ndarray) -> np.ndarray:
             interpolation=cv2.INTER_CUBIC,
         )
     return bgr
+
+
+def _enhance_for_selective_retry(bgr: np.ndarray) -> np.ndarray:
+    """Make a single inexpensive comic-font retry candidate.
+
+    CLAHE preserves coloured glyph separation better than binary thresholding;
+    a modest upscale is only applied to reasonably sized crops.  This function
+    is intentionally never used for the normal first OCR pass.
+    """
+    lab = cv2.cvtColor(bgr, cv2.COLOR_BGR2LAB)
+    l_channel, a_channel, b_channel = cv2.split(lab)
+    l_channel = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(l_channel)
+    enhanced = cv2.cvtColor(
+        cv2.merge((l_channel, a_channel, b_channel)), cv2.COLOR_LAB2BGR
+    )
+    h, w = enhanced.shape[:2]
+    if (
+        OCR_RETRY_UPSCALE > 1.0
+        and h * w <= OCR_RETRY_MAX_PIXELS
+    ):
+        enhanced = cv2.resize(
+            enhanced,
+            (
+                max(1, int(round(w * OCR_RETRY_UPSCALE))),
+                max(1, int(round(h * OCR_RETRY_UPSCALE))),
+            ),
+            interpolation=cv2.INTER_CUBIC,
+        )
+    return enhanced
+
+
+def _result_rank(result: OCRReadResult) -> tuple[int, float, int]:
+    quality_rank = {"reject": 0, "unknown": 0, "review": 1, "good": 2}
+    confidence = result.confidence if result.confidence is not None else -1.0
+    return quality_rank.get(result.quality, 0), float(confidence), len(result.text)
+
+
+def _should_selective_retry(result: OCRReadResult, image: np.ndarray) -> bool:
+    if not OCR_SELECTIVE_RETRY or image.size == 0:
+        return False
+    if image.shape[0] * image.shape[1] > OCR_RETRY_MAX_PIXELS:
+        return False
+    if result.quality != "good":
+        return True
+    return result.confidence is not None and result.confidence < OCR_RETRY_CONFIDENCE
 
 
 class PaddleV6OCR:
@@ -145,6 +203,35 @@ class PaddleV6OCR:
             raise ValueError(f"Unsupported OCR language for PaddleOCR v6 backend: {lang!r}")
 
         prepared = _prepare_rgb_for_paddle(image)
+        result = self._read_once(
+            prepared,
+            normalized=normalized,
+            key=key,
+            model_name=model_name,
+            target_mode=target_mode,
+        )
+        if _should_selective_retry(result, prepared):
+            retry = self._read_once(
+                _enhance_for_selective_retry(prepared),
+                normalized=normalized,
+                key=key,
+                model_name=model_name,
+                target_mode=target_mode,
+            )
+            if _result_rank(retry) > _result_rank(result):
+                result = retry
+            result = replace(result, retry_applied=True)
+        return result
+
+    def _read_once(
+        self,
+        prepared: np.ndarray,
+        *,
+        normalized: str,
+        key: str,
+        model_name: str,
+        target_mode: str,
+    ) -> OCRReadResult:
         pipeline = self._get_pipeline(key)
         with self._locks[key]:
             outputs = pipeline.predict(input=prepared)
@@ -175,6 +262,7 @@ class PaddleV6OCR:
             polygons,
             lang=normalized,
         )
+        original_ordered_count = len(ordered["ordered_indices"])
         if target_mode == "centered" and ordered["regions"]:
             ordered = select_centered_target(
                 ordered,
@@ -184,15 +272,34 @@ class PaddleV6OCR:
         if ordered["regions"]:
             text = str(ordered["text"] or "").strip()
             confidence = ordered["confidence"]
-            quality = classify_ocr_quality(text, normalized, confidence=confidence)
+            selected_count = len(ordered["ordered_indices"])
+            selection_coverage = (
+                selected_count / max(1, original_ordered_count)
+            )
+            text_bounds = self._text_bounds(ordered)
+            edge_truncated = self._text_touches_crop_edge(text_bounds, prepared.shape)
+            quality = classify_ocr_quality(
+                text,
+                normalized,
+                confidence=confidence,
+                # Centered mode is intentionally a single-line policy.  Its
+                # selection ratio is retained as metadata but does not alone
+                # mark an explicit single-line target incomplete.
+                coverage=selection_coverage if target_mode == "all" else None,
+                may_be_truncated=edge_truncated,
+            )
             return OCRReadResult(
                 text=text,
                 confidence=confidence,
                 model=model_name,
                 orientation=str(ordered["orientation"]),
-                region_count=len(ordered["ordered_indices"]),
+                region_count=selected_count,
                 quality=quality.status,
                 quality_reason=quality.reason,
+                coverage=selection_coverage,
+                target_mode=target_mode,
+                text_bounds=text_bounds,
+                input_shape=tuple(int(value) for value in prepared.shape[:2]),
             )
 
         # Paddle can occasionally return recognition text without polygons.
@@ -221,6 +328,45 @@ class PaddleV6OCR:
             region_count=len(fallback_texts),
             quality=quality.status,
             quality_reason=quality.reason,
+            coverage=None,
+            target_mode=target_mode,
+            input_shape=tuple(int(value) for value in prepared.shape[:2]),
+        )
+
+    @staticmethod
+    def _text_bounds(
+        ordered: dict[str, Any],
+    ) -> tuple[float, float, float, float] | None:
+        by_index = {int(region["index"]): region for region in ordered["regions"]}
+        selected = [
+            by_index[index]
+            for index in ordered["ordered_indices"]
+            if index in by_index
+        ]
+        if not selected:
+            return None
+        return (
+            min(float(region["box"]["x1"]) for region in selected),
+            min(float(region["box"]["y1"]) for region in selected),
+            max(float(region["box"]["x2"]) for region in selected),
+            max(float(region["box"]["y2"]) for region in selected),
+        )
+
+    @staticmethod
+    def _text_touches_crop_edge(
+        bounds: tuple[float, float, float, float] | None,
+        image_shape: tuple[int, ...],
+    ) -> bool:
+        if bounds is None:
+            return False
+        height, width = image_shape[:2]
+        x1, y1, x2, y2 = bounds
+        margin = float(OCR_COMPLETENESS_EDGE_MARGIN)
+        return (
+            x1 <= margin
+            or y1 <= margin
+            or x2 >= float(width) - margin
+            or y2 >= float(height) - margin
         )
 
     def _get_pipeline(self, key: str) -> Any:

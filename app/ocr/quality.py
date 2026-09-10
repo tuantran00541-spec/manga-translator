@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import unicodedata
 
 from app.parameters import (
+    OCR_COMPLETENESS_MIN_COVERAGE,
     OCR_EN_SCRIPT_MISMATCH_RATIO,
     OCR_REJECT_CONFIDENCE,
     OCR_REVIEW_CONFIDENCE,
@@ -77,6 +78,8 @@ def classify_ocr_quality(
     lang: str,
     *,
     confidence: float | None = None,
+    coverage: float | None = None,
+    may_be_truncated: bool = False,
 ) -> OCRQuality:
     """Classify OCR output conservatively for downstream automation.
 
@@ -106,6 +109,22 @@ def classify_ocr_quality(
             return OCRQuality("reject", "very-low-confidence")
         if conf < OCR_REVIEW_CONFIDENCE:
             return OCRQuality("review", "low-confidence")
+
+    # Recognition confidence measures the characters Paddle did see; it is not
+    # evidence that every line in the target was transcribed.  Coverage is
+    # supplied only when geometry gives us a meaningful expectation, so a
+    # missing value remains deliberately neutral.
+    try:
+        normalized_coverage = None if coverage is None else float(coverage)
+    except (TypeError, ValueError):
+        normalized_coverage = None
+    if (
+        normalized_coverage is not None
+        and normalized_coverage < OCR_COMPLETENESS_MIN_COVERAGE
+    ):
+        return OCRQuality("review", "incomplete-coverage")
+    if may_be_truncated:
+        return OCRQuality("review", "crop-edge-text")
 
     letters = [ch for ch in value if unicodedata.category(ch).startswith("L")]
     latin = sum(_is_latin(ch) for ch in letters)

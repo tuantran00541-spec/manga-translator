@@ -730,6 +730,14 @@ OCR_JOB_ACTIVE_LIMIT = _env_int(
 OCR_MASK_CROP_PADDING = _env_int(
     "MANGA_OCR_MASK_CROP_PADDING", 12, minimum=0, maximum=256
 )
+OCR_MASK_PAGE_CONTEXT_PADDING = _env_int(
+    # Only used when a segmenter mask runs into its detector edge.  This is
+    # OCR-only context; it never changes the destructive inpaint mask.
+    "MANGA_OCR_MASK_PAGE_CONTEXT_PADDING", 20, minimum=0, maximum=256
+)
+OCR_MASK_EDGE_CONTEXT_TRIGGER = _env_int(
+    "MANGA_OCR_MASK_EDGE_CONTEXT_TRIGGER", 3, minimum=0, maximum=64
+)
 OCR_BOX_CROP_PADDING = _env_int(
     "MANGA_OCR_BOX_CROP_PADDING", 20, minimum=0, maximum=256
 )
@@ -753,6 +761,25 @@ OCR_PADDLE_MIN_SIDE = _env_int(
 )
 OCR_PADDLE_MAX_UPSCALE = _env_float(
     "MANGA_OCR_PADDLE_MAX_UPSCALE", 4.0, minimum=1.0, maximum=16.0
+)
+OCR_CENTERED_SINGLE_LINE_ASPECT = _env_float(
+    "MANGA_OCR_CENTERED_SINGLE_LINE_ASPECT", 3.0, minimum=1.0, maximum=30.0
+)
+OCR_COMPLETENESS_MIN_COVERAGE = _env_float(
+    "MANGA_OCR_COMPLETENESS_MIN_COVERAGE", 0.70, minimum=0.1, maximum=1.0
+)
+OCR_COMPLETENESS_EDGE_MARGIN = _env_int(
+    "MANGA_OCR_COMPLETENESS_EDGE_MARGIN", 3, minimum=0, maximum=64
+)
+OCR_SELECTIVE_RETRY = _env_bool("MANGA_OCR_SELECTIVE_RETRY", True)
+OCR_RETRY_CONFIDENCE = _env_float(
+    "MANGA_OCR_RETRY_CONFIDENCE", 0.80, minimum=0.0, maximum=1.0
+)
+OCR_RETRY_MAX_PIXELS = _env_int(
+    "MANGA_OCR_RETRY_MAX_PIXELS", 1_500_000, minimum=1_024, maximum=16_000_000
+)
+OCR_RETRY_UPSCALE = _env_float(
+    "MANGA_OCR_RETRY_UPSCALE", 1.35, minimum=1.0, maximum=3.0
 )
 OCR_CENTER_ANCHOR_DISTANCE_MAX = _env_float(
     "MANGA_OCR_CENTER_ANCHOR_DISTANCE_MAX", 0.22, minimum=0.0, maximum=1.5

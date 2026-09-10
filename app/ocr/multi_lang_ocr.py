@@ -18,17 +18,16 @@ class MultiLangOCR:
     PP-OCRv6; Korean uses the dedicated Korean PP-OCRv5 mobile recognizer behind
     the same PaddleOCR 3.x detector.
 
-    Paddle crops default to centered target selection because production boxes
-    are line-oriented and the chapter-210 A/B removed most neighboring-line
-    contamination without increasing partial or blank results. Set
-    ``MANGA_OCR_TARGET_SELECTION=all`` for an immediate rollback.
+    Paddle defaults to all detected lines.  OCRService may opt into centered
+    selection for an explicitly single-line comic target, but grouped bubbles,
+    narration and free text must never silently lose surrounding lines.
     """
 
     def __init__(self):
         self._paddle = PaddleV6OCR()
         self._paddle_target_mode = env_choice(
             "MANGA_OCR_TARGET_SELECTION",
-            default="centered",
+            default="all",
             allowed={"all", "centered"},
         )
         self._manga_ocr = None

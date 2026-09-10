@@ -23,6 +23,9 @@ OCR_METADATA_FIELDS = (
     "ocr_region_count",
     "ocr_quality",
     "ocr_quality_reason",
+    "ocr_coverage",
+    "ocr_target_mode",
+    "ocr_retry_applied",
 )
 TRANSLATION_MACHINE_FIELDS = (
     "translation_source",

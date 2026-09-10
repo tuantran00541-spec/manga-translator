@@ -10,7 +10,7 @@ from typing import Any
 
 from app.env_utils import env_choice, env_enabled
 
-OCR_PIPELINE_VERSION = "phase44-v4-hybrid"
+OCR_PIPELINE_VERSION = "phase45-v5-complete-ocr"
 OCR_CACHE_FIELDS = (
     "ocr_text",
     "ocr_lang",
@@ -26,6 +26,9 @@ OCR_CACHE_FIELDS = (
     "ocr_region_count",
     "ocr_quality",
     "ocr_quality_reason",
+    "ocr_coverage",
+    "ocr_target_mode",
+    "ocr_retry_applied",
 )
 
 
@@ -51,6 +54,7 @@ def ocr_crop_signature(box: dict) -> str:
         "geometry": geometry_signature(box),
         "mask": mask_value,
         "mask_revision": mask_revision,
+        "crop_policy": "mask-page-context-v2",
     }
     encoded = json.dumps(
         payload,
@@ -85,18 +89,19 @@ def engine_identity(lang: str) -> str:
         ) else "ori-off"
         target_mode = env_choice(
             "MANGA_OCR_TARGET_SELECTION",
-            default="centered",
+            default="all",
             allowed={"all", "centered"},
         )
         if normalized in {"ko", "korean"}:
             backend = (
                 f"paddleocr:{paddle_version}:ppocrv6-{tier}-det:"
-                f"korean-ppocrv5-mobile-rec:{orientation}:target-{target_mode}"
+                f"korean-ppocrv5-mobile-rec:{orientation}:target-{target_mode}:"
+                "complete-v2:retry-selective"
             )
         else:
             backend = (
                 f"paddleocr:{paddle_version}:ppocrv6-{tier}:"
-                f"{orientation}:target-{target_mode}"
+                f"{orientation}:target-{target_mode}:complete-v2:retry-selective"
             )
     return f"{OCR_PIPELINE_VERSION}:{backend}"
 
@@ -202,3 +207,19 @@ def stamp_machine_cache(
         box["ocr_quality_reason"] = reason
     else:
         box.pop("ocr_quality_reason", None)
+
+    coverage = _metadata_value(metadata, "coverage")
+    if coverage is None:
+        box.pop("ocr_coverage", None)
+    else:
+        try:
+            box["ocr_coverage"] = max(0.0, min(1.0, float(coverage)))
+        except (TypeError, ValueError):
+            box.pop("ocr_coverage", None)
+
+    target_mode = str(_metadata_value(metadata, "target_mode", "") or "").strip()
+    if target_mode in {"all", "centered"}:
+        box["ocr_target_mode"] = target_mode
+    else:
+        box.pop("ocr_target_mode", None)
+    box["ocr_retry_applied"] = bool(_metadata_value(metadata, "retry_applied", False))
