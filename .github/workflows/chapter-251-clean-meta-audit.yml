@@ -1,0 +1,61 @@
+name: Chapter 251 Clean Metadata Audit
+
+on:
+  push:
+    branches: [trial/chapter-render-251]
+    paths: [.github/workflows/chapter-251-clean-meta-audit.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  meta-audit:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    env:
+      CLEAN_RUN_ID: "34428272591"
+      CLEAN_ARTIFACT: 02-clean-review-c2510251
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore clean artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p checkpoint/source checkpoint/meta
+          gh run download "$CLEAN_RUN_ID" -n "$CLEAN_ARTIFACT" -D checkpoint/source
+          test -f checkpoint/source/processed/manifest.json
+      - name: Extract lightweight metadata
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          m=json.loads(Path('checkpoint/source/processed/manifest.json').read_text(encoding='utf-8'))
+          pages=m.get('pages') or []
+          out=[]; suspect=[]; free=[]; safe=[]
+          for pi,p in enumerate(pages):
+            boxes=p.get('boxes') or p.get('detections') or []
+            row={'page_index':pi,'source_page':p.get('source_page'),'slice_index':p.get('slice_index'),'needs_review':p.get('needs_review'),'detection_state':p.get('detection_state'),'detection_issues':p.get('detection_issues') or [],'box_count':len(boxes),'boxes':[]}
+            for bi,b0 in enumerate(boxes):
+              b=dict(b0); b.pop('mask',None)
+              sem=str(b.get('semantic_type') or b.get('class_name') or b.get('type') or b.get('label') or '').lower()
+              blob=json.dumps(b,ensure_ascii=False).lower()
+              isfree=('free_text' in sem or 'free text' in sem or ('text' in sem and 'bubble' not in sem))
+              if isfree:
+                free.append([pi,bi]);
+                if b.get('safe_to_inpaint') is True: safe.append([pi,bi])
+              bad=bool(row['needs_review'] or row['detection_issues']) or any(t in blob for t in ('post_inpaint_text_residue','residue','review_only','unverified','incomplete'))
+              if bad: suspect.append([pi,bi])
+              row['boxes'].append({'box_index':bi,'semantic':sem,'safe_to_inpaint':b.get('safe_to_inpaint'),'x1':b.get('x1'),'y1':b.get('y1'),'x2':b.get('x2'),'y2':b.get('y2'),'confidence':b.get('confidence',b.get('score')),'needs_review':b.get('needs_review'),'review_reason':b.get('review_reason'),'detection_issues':b.get('detection_issues'),'residue':b.get('post_inpaint_text_residue'),'raw_meta':b})
+            out.append(row)
+          summary={'chapter_id':m.get('chapter_id'),'pages':len(pages),'total_boxes':sum(x['box_count'] for x in out),'free_text_boxes':len(free),'safe_free_text_boxes':len(safe),'needs_review_pages':[x['page_index'] for x in out if x['needs_review']],'issue_pages':[x['page_index'] for x in out if x['detection_issues']],'suspect_pages':sorted(set(x[0] for x in suspect)),'suspect_boxes':len(suspect)}
+          Path('checkpoint/meta/summary.json').write_text(json.dumps(summary,ensure_ascii=False,indent=2),encoding='utf-8')
+          Path('checkpoint/meta/pages.json').write_text(json.dumps(out,ensure_ascii=False,indent=2),encoding='utf-8')
+          print(json.dumps(summary,ensure_ascii=False,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: 02-clean-meta-c2510251
+          path: checkpoint/meta
+          retention-days: 7
