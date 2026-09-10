@@ -22,6 +22,7 @@ from app.mask_store import decode_mask_value
 from app.parameters import (
     DETECTION_CONTENT_STD_MIN,
     DETECTOR_FINAL_NMS_IOU,
+    DETECTOR_RESIDUE_VERIFY_ENABLED,
     MANUAL_MASK_THRESHOLD,
     PIPELINE_DEFAULT_WORKERS,
     PIPELINE_PROCESS_WORKER_LIMIT,
@@ -631,6 +632,12 @@ class ChapterPipeline:
                     )
                     target_page["deferred_regions"] = list(
                         page_data.get("deferred_regions") or []
+                    )
+                    target_page["residue_regions"] = list(
+                        page_data.get("residue_regions") or []
+                    )
+                    target_page["cleanup_verified"] = bool(
+                        page_data.get("cleanup_verified", False)
                     )
                     target_page["needs_review"] = bool(page_data.get("needs_review"))
                     target_page["processing_metrics"] = dict(
@@ -1903,6 +1910,18 @@ class ChapterPipeline:
             else:
                 manual_lama_mask_posix = mask_path.as_posix()
 
+        residue_started_at = time.perf_counter()
+        residue_boxes: list[BubbleBox] = []
+        if DETECTOR_RESIDUE_VERIFY_ENABLED and effective_boxes:
+            # This is deliberately after every automatic/manual inpaint pass.
+            # A detector mask authorizes deletion; it does not certify that the
+            # resulting pixels no longer look like text.
+            residue_boxes = self.detector.verify_post_inpaint_residue(
+                clean_image,
+                effective_boxes,
+            )
+        residue_verify_ms = (time.perf_counter() - residue_started_at) * 1000.0
+
         tmp_clean_path = processed_dir / f"clean_{img_path.name}.{uuid.uuid4().hex[:12]}.tmp.png"
         write_started_at = time.perf_counter()
         write_image(tmp_clean_path, clean_image)
@@ -1922,6 +1941,10 @@ class ChapterPipeline:
             for record in detector_records
             if record.get("deferred_reason")
         ]
+        residue_regions = [
+            {k: getattr(box, k) for k in decision_fields}
+            for box in residue_boxes
+        ]
         detection_issues = []
         if seam_context_unavailable:
             detection_issues.append("seam_context_unavailable")
@@ -1929,6 +1952,8 @@ class ChapterPipeline:
             detection_issues.append("unverified_regions")
         if deferred_regions:
             detection_issues.append("deferred_regions")
+        if residue_regions:
+            detection_issues.append("post_inpaint_text_residue")
         if not detector_records:
             gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
             if float(gray.std()) > DETECTION_CONTENT_STD_MIN:
@@ -1952,6 +1977,7 @@ class ChapterPipeline:
                 "auto_inpaint": round(auto_inpaint_ms, 3),
                 "manual_inpaint": round(manual_inpaint_ms, 3),
                 "write": round(write_ms, 3),
+                "residue_verify": round(residue_verify_ms, 3),
                 "total": round((time.perf_counter() - started_at) * 1000.0, 3),
             },
             "detector": {
@@ -1960,6 +1986,7 @@ class ChapterPipeline:
                 "authorized": len(effective_boxes),
                 "review_only": len(unverified_regions),
                 "deferred": len(deferred_regions),
+                "post_inpaint_residue": len(residue_regions),
             },
             "auto_inpaint": auto_inpaint_metrics,
             "manual_inpaint": manual_inpaint_metrics,
@@ -1987,6 +2014,8 @@ class ChapterPipeline:
             "detection_issues": detection_issues,
             "unverified_regions": unverified_regions,
             "deferred_regions": deferred_regions,
+            "residue_regions": residue_regions,
+            "cleanup_verified": not bool(detection_issues),
             "needs_review": bool(detection_issues),
             "processing_metrics": processing_metrics,
         }

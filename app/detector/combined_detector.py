@@ -22,11 +22,16 @@ from app.parameters import (
     DETECTOR_TALL_SPLIT_LINE_PADDING_MAX,
     DETECTOR_FINAL_NMS_IOU,
     DETECTOR_FREE_TEXT_GRAYSCALE_FALLBACK,
+    DETECTOR_GRAYSCALE_FALLBACK_HARD_MAX_ROIS,
     DETECTOR_GRAYSCALE_FALLBACK_MAX_ROIS,
     DETECTOR_GRAYSCALE_FALLBACK_MAX_SOURCE_SIDE,
     DETECTOR_GRAYSCALE_FALLBACK_PAD_X,
     DETECTOR_GRAYSCALE_FALLBACK_PAD_Y,
+    DETECTOR_GRAYSCALE_FALLBACK_PROPOSALS_PER_EXTRA_ROI,
     DETECTOR_NMS_SCORE_FLOOR,
+    DETECTOR_RESIDUE_VERIFY_MAX_ROIS,
+    DETECTOR_RESIDUE_VERIFY_MAX_SOURCE_SIDE,
+    DETECTOR_RESIDUE_VERIFY_PAD,
     FLAT_BUBBLE_BACKGROUND_RATIO_MIN,
     FLAT_BUBBLE_BLACK_MAX,
     FLAT_BUBBLE_BLACK_MEDIAN_MAX,
@@ -264,7 +269,11 @@ class CombinedTextDetector:
             return [], 0
 
         max_side = max(1, int(DETECTOR_GRAYSCALE_FALLBACK_MAX_SOURCE_SIDE))
-        max_rois = max(1, int(DETECTOR_GRAYSCALE_FALLBACK_MAX_ROIS))
+        extra = max(0, len(proposals) - 1) // DETECTOR_GRAYSCALE_FALLBACK_PROPOSALS_PER_EXTRA_ROI
+        max_rois = min(
+            DETECTOR_GRAYSCALE_FALLBACK_HARD_MAX_ROIS,
+            max(1, int(DETECTOR_GRAYSCALE_FALLBACK_MAX_ROIS)) + extra,
+        )
         ranked = sorted(
             proposals,
             key=lambda box: (
@@ -352,12 +361,14 @@ class CombinedTextDetector:
 
         return rois, deferred
 
-    def _grayscale_text_retry(
+    def _focused_text_retry(
         self,
         image: np.ndarray,
         proposals: list[BubbleBox],
+        *,
+        grayscale: bool,
     ) -> tuple[list[BubbleBox], dict[str, int]]:
-        """Run grayscale text segmentation only inside bounded proposal ROIs."""
+        """Run a bounded segmenter retry inside unresolved proposal ROIs."""
         h, w = image.shape[:2]
         rois, deferred = self._plan_grayscale_fallback_rois((h, w), proposals)
         recovered: list[BubbleBox] = []
@@ -367,12 +378,15 @@ class CombinedTextDetector:
             if crop.size == 0:
                 continue
             source_pixels += int((x2 - x1) * (y2 - y1))
-            gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop
-            gray_bgr = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
+            if grayscale:
+                gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop
+                detector_image = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
+            else:
+                detector_image = crop
             # The ROI is bounded below the tall-page retry regime. Calling the
             # detector's single-image path preserves configured TTA while
             # avoiding adaptive whole-page windows and their redundant full pass.
-            boxes = self.text_detector._detect_single(gray_bgr, x1, y1)
+            boxes = self.text_detector._detect_single(detector_image, x1, y1)
             boxes = [self.text_detector._with_semantics(box) for box in boxes]
             boxes = self.text_detector._filter_invalid(boxes, w, h)
             recovered.extend(self._classify(box) for box in boxes)
@@ -396,6 +410,90 @@ class CombinedTextDetector:
             "source_pixels": source_pixels,
             "deferred_regions": int(deferred),
         }
+
+    def _grayscale_text_retry(
+        self,
+        image: np.ndarray,
+        proposals: list[BubbleBox],
+    ) -> tuple[list[BubbleBox], dict[str, int]]:
+        return self._focused_text_retry(image, proposals, grayscale=True)
+
+    @staticmethod
+    def _recovery_has_segmenter_evidence(
+        proposal: BubbleBox,
+        text_boxes: list[BubbleBox],
+    ) -> bool:
+        """A raw MSER rectangle is resolved only by an independent mask."""
+        matches = [box for box in text_boxes if CombinedTextDetector._is_inside(box, proposal)]
+        if not matches:
+            return False
+        # MSER provides the *where*, not deletion pixels. Any later inpaint is
+        # restricted to the segmenter's verified mask; post-inpaint verification
+        # remains the final completeness authority.
+        return any(box.verified_mask and box.safe_to_inpaint for box in matches)
+
+    def verify_post_inpaint_residue(
+        self,
+        image: np.ndarray,
+        authorized_boxes: list[BubbleBox],
+    ) -> list[BubbleBox]:
+        """Find text-segmenter evidence that survives inside cleaned regions.
+
+        Verification is deliberately focused and uses one plain segmenter pass
+        per bounded ROI (no TTA, no MSER). It therefore adds CPU work only for
+        regions that were actually changed. A hit is review evidence, never a
+        new destructive mask in the same run.
+        """
+        if image is None or image.size == 0:
+            return []
+        h, w = image.shape[:2]
+        candidates = [box for box in authorized_boxes if box.verified_mask]
+        candidates.sort(key=lambda box: ((box.x2 - box.x1) * (box.y2 - box.y1)), reverse=True)
+        residue: list[BubbleBox] = []
+        for index, source in enumerate(candidates):
+            if index >= DETECTOR_RESIDUE_VERIFY_MAX_ROIS:
+                residue.append(replace(
+                    source,
+                    safe_to_inpaint=False,
+                    ocr_eligible=True,
+                    needs_review=True,
+                    deferred_reason="post_inpaint_verification_budget",
+                ))
+                continue
+            x1 = max(0, int(source.x1) - DETECTOR_RESIDUE_VERIFY_PAD)
+            y1 = max(0, int(source.y1) - DETECTOR_RESIDUE_VERIFY_PAD)
+            x2 = min(w, int(source.x2) + DETECTOR_RESIDUE_VERIFY_PAD)
+            y2 = min(h, int(source.y2) + DETECTOR_RESIDUE_VERIFY_PAD)
+            if x2 <= x1 or y2 <= y1:
+                continue
+            if max(x2 - x1, y2 - y1) > DETECTOR_RESIDUE_VERIFY_MAX_SOURCE_SIDE:
+                residue.append(replace(
+                    source,
+                    safe_to_inpaint=False,
+                    ocr_eligible=True,
+                    needs_review=True,
+                    deferred_reason="post_inpaint_verification_size",
+                ))
+                continue
+            crop = image[y1:y2, x1:x2]
+            for box in self.text_detector._detect_single_plain(crop, x1, y1):
+                verified = self.text_detector._with_semantics(box)
+                center_x = (verified.x1 + verified.x2) * 0.5
+                center_y = (verified.y1 + verified.y2) * 0.5
+                if not (
+                    source.x1 <= center_x <= source.x2
+                    and source.y1 <= center_y <= source.y2
+                    and verified.verified_mask
+                ):
+                    continue
+                residue.append(replace(
+                    verified,
+                    safe_to_inpaint=False,
+                    ocr_eligible=True,
+                    needs_review=True,
+                    deferred_reason="post_inpaint_text_residue",
+                ))
+        return self._apply_final_nms(residue, iou_threshold=DETECTOR_FINAL_NMS_IOU)
 
     def detect(self, image: np.ndarray, *, parallel: bool = False) -> list[BubbleBox]:
         started_at = time.perf_counter()
@@ -431,6 +529,9 @@ class CombinedTextDetector:
             "text_grayscale_fallback_deferred_regions": 0,
             "text_grayscale_fallback_ms": 0.0,
             "text_grayscale_fallback_proposals": 0,
+            "mser_segmenter_promotion_calls": 0,
+            "mser_segmenter_promotions": 0,
+            "mser_segmenter_promotion_deferred_regions": 0,
             "result_boxes": 0,
             "review_boxes": 0,
             "total_ms": 0.0,
@@ -534,7 +635,32 @@ class CombinedTextDetector:
         metrics["mser_ms"] = round(
             (time.perf_counter() - recovery_started_at) * 1000.0, 3
         )
-        result_boxes.extend(recovered)
+        # MSER can now seed a focused colour segmenter pass.  The MSER proposal
+        # itself remains review-only; only the independently decoded segmenter
+        # pixels are authorized for cleanup.
+        mser_text, mser_retry_metrics = self._focused_text_retry(
+            image,
+            recovered,
+            grayscale=False,
+        ) if recovered else ([], {"calls": 0, "source_pixels": 0, "deferred_regions": 0})
+        promoted_recovery = [
+            candidate for candidate in recovered
+            if self._recovery_has_segmenter_evidence(candidate, mser_text)
+        ]
+        if mser_text:
+            mser_text = [
+                replace(box, semantic_type="free_text", source_role="text_segmenter")
+                for box in mser_text
+            ]
+            result_boxes.extend(self._cluster_free_text_boxes(mser_text, w, h))
+        result_boxes.extend(
+            candidate for candidate in recovered if candidate not in promoted_recovery
+        )
+        metrics["mser_segmenter_promotion_calls"] = int(mser_retry_metrics["calls"])
+        metrics["mser_segmenter_promotions"] = len(promoted_recovery)
+        metrics["mser_segmenter_promotion_deferred_regions"] = int(
+            mser_retry_metrics["deferred_regions"]
+        )
         result_boxes = self._refine_and_split_tall_boxes(result_boxes, image)
         result_boxes = self._apply_final_nms(
             result_boxes, iou_threshold=DETECTOR_FINAL_NMS_IOU

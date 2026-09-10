@@ -12,7 +12,9 @@ import numpy as np
 from app.detector.bubble_detector import BubbleBox, YoloDetector
 from app.detector.combined_detector import CombinedTextDetector
 from app.parameters import (
+    DETECTOR_FOCUS_HARD_MAX_CHIPS,
     DETECTOR_FOCUS_MAX_CHIPS,
+    DETECTOR_FOCUS_PROPOSALS_PER_EXTRA_CHIP,
     DETECTOR_INPUT_SIZE,
     DETECTOR_TALL_IMAGE_FACTOR,
     DETECTOR_WINDOW_OVERLAP,
@@ -324,7 +326,21 @@ def _focus_text_detect(
     full_boxes = detector._detect_single_plain(image, 0, 0)
     uncovered = [proposal for proposal in proposals if not _proposal_has_full_text(proposal, full_boxes)]
     fallback_image = image if not proposals and not full_boxes else None
-    chips, deferred = plan_focus_chips(h, w, uncovered, fallback_image=fallback_image)
+    # A text-heavy page needs more than the historic two retries, while a hard
+    # cap still bounds model calls and tensor pixels on CPU. The budget reacts
+    # only to unresolved proposals, never to total page height.
+    extra = max(0, len(uncovered) - 1) // DETECTOR_FOCUS_PROPOSALS_PER_EXTRA_CHIP
+    adaptive_max_chips = min(DETECTOR_FOCUS_HARD_MAX_CHIPS, FOCUS_MAX_CHIPS + extra)
+    scale = adaptive_max_chips / float(max(1, FOCUS_MAX_CHIPS))
+    chips, deferred = plan_focus_chips(
+        h,
+        w,
+        uncovered,
+        max_chips=adaptive_max_chips,
+        source_pixel_budget=int(round(FOCUS_SOURCE_PIXEL_BUDGET * scale)),
+        tensor_pixel_budget=int(round(FOCUS_TENSOR_PIXEL_BUDGET * scale)),
+        fallback_image=fallback_image,
+    )
     all_boxes = list(full_boxes)
     for x1, y1, x2, y2 in chips:
         crop = image[y1:y2, x1:x2]

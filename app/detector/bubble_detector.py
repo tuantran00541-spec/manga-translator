@@ -13,12 +13,15 @@ from app.parameters import (
     DETECTOR_CONFIDENCE_MAX,
     DETECTOR_INPUT_SIZE as INPUT_SIZE,
     DETECTOR_LETTERBOX_VALUE,
+    DETECTOR_MASK_HYSTERESIS_LOW_THRESHOLD,
+    DETECTOR_MASK_HYSTERESIS_MIN_CORE_PIXELS,
     DETECTOR_MASK_THRESHOLD,
     DETECTOR_MAX_ASPECT_RATIO as MAX_ASPECT_RATIO,
     DETECTOR_MAX_BOX_AREA_RATIO as MAX_BOX_AREA_RATIO,
     DETECTOR_MAX_BOX_WIDTH_RATIO as MAX_BOX_WIDTH_RATIO,
     DETECTOR_MIN_BOX_SIDE,
     DETECTOR_TALL_IMAGE_FACTOR,
+    DETECTOR_TEXT_MASK_DECODE_PAD,
     DETECTOR_TTA_ENABLED as ENABLE_TTA,
     DETECTOR_TTA_MIN_SIDE,
     DETECTOR_TTA_SMALL_SCALE,
@@ -440,6 +443,19 @@ class YoloDetector:
             geometry = None
             mask_coeffs = None
             if has_proto and num_mask_coeffs > 0:
+                # Prototype masks are otherwise cropped exactly at the detector
+                # box.  A small text-only decode pad retains outlines, shadows
+                # and glow that the box regressor legitimately clips, without
+                # widening the final mask by global morphology.
+                if self.model_role == "text_segmenter":
+                    pad = DETECTOR_TEXT_MASK_DECODE_PAD
+                    source_box = (
+                        max(transform.offset_x, x1 - pad),
+                        max(transform.offset_y, y1 - pad),
+                        min(transform.offset_x + transform.src_w, x2 + pad),
+                        min(transform.offset_y + transform.src_h, y2 + pad),
+                    )
+                    x1, y1, x2, y2 = source_box
                 geometry = MaskDecodeGeometry(transform, source_box)
                 mask_coeffs = selected[j, coeff_start:coeff_end].copy()
             candidates.append(
@@ -505,7 +521,34 @@ class YoloDetector:
             (box_w, box_h),
             interpolation=cv2.INTER_LINEAR,
         )
-        return (probabilities > DETECTOR_MASK_THRESHOLD).astype(np.uint8) * 255
+        return self._decode_text_mask_hysteresis(probabilities)
+
+    @staticmethod
+    def _decode_text_mask_hysteresis(probabilities: np.ndarray) -> np.ndarray:
+        """Keep only low-confidence support connected to a confident core.
+
+        This preserves a glyph's anti-aliased edge, outline and nearby shadow
+        when the segmenter sees them, but cannot bridge to unrelated artwork as
+        a dilation would. A detection with no confident core has no destructive
+        mask authority and is handled by the normal review path.
+        """
+        if probabilities.size == 0:
+            return np.zeros(probabilities.shape, dtype=np.uint8)
+        core = probabilities >= DETECTOR_MASK_THRESHOLD
+        if int(np.count_nonzero(core)) < DETECTOR_MASK_HYSTERESIS_MIN_CORE_PIXELS:
+            return np.zeros(probabilities.shape, dtype=np.uint8)
+        low = probabilities >= min(
+            DETECTOR_MASK_THRESHOLD,
+            DETECTOR_MASK_HYSTERESIS_LOW_THRESHOLD,
+        )
+        labels_count, labels = cv2.connectedComponents(low.astype(np.uint8), connectivity=8)
+        if labels_count <= 1:
+            return np.zeros(probabilities.shape, dtype=np.uint8)
+        keep = np.unique(labels[core])
+        keep = keep[keep > 0]
+        if keep.size == 0:
+            return np.zeros(probabilities.shape, dtype=np.uint8)
+        return np.isin(labels, keep).astype(np.uint8) * 255
 
     @staticmethod
     def _candidate_fields(candidate: tuple) -> tuple[float, int, int, object, object]:
@@ -779,9 +822,7 @@ class YoloDetector:
                     (box_w, box_h),
                     interpolation=cv2.INTER_LINEAR,
                 )
-                decoded[index] = (
-                    (resized > DETECTOR_MASK_THRESHOLD).astype(np.uint8) * 255
-                )
+                decoded[index] = self._decode_text_mask_hysteresis(resized)
         return decoded
 
     def _candidate_to_box(

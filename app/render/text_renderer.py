@@ -13,7 +13,10 @@ from app.parameters import (
     RENDER_AUTO_TEXT_DARK_BG_THRESHOLD,
     RENDER_DEFAULT_PADDING,
     RENDER_LINE_HEIGHT_FACTOR,
+    RENDER_MIN_READABLE_FONT_SIZE,
     RENDER_PADDING_RATIO_MAX,
+    RENDER_SAFE_CAPTION_EXPANSION,
+    RENDER_SAFE_CAPTION_EXPANSION_RATIO,
     RENDER_STROKE_WIDTH_MAX,
 )
 
@@ -210,19 +213,6 @@ def render_text_in_box(
 
     draw = ImageDraw.Draw(image)
 
-    shape = str(shape or "").lower()
-    if shape not in ("rectangle", "ellipse"):
-        shape = "rectangle"
-
-    if bg_color and bg_color not in ("transparent", "none", ""):
-        box_bg_c = parse_color(bg_color, default=(255, 255, 255))
-        bg_bbox = (x1, y1, x2 - 1, y2 - 1)
-        if shape == "ellipse":
-            draw.ellipse(bg_bbox, fill=box_bg_c)
-        else:
-            r = max(0, min(int(corner_radius), int((min(raw_w, raw_h) - 1) // 2)))
-            draw.rounded_rectangle(bg_bbox, radius=r, fill=box_bg_c)
-
     target_size = None
     if isinstance(font_size, (int, float)) and font_size > 0:
         target_size = int(font_size)
@@ -236,8 +226,55 @@ def render_text_in_box(
         font = get_font_object(font_path_str, actual_size)
         lines = _wrap_text(draw, text, font, box_w)
     else:
-        actual_size, lines = _fit_text(draw, text, box_w, box_h, font_path_str, stroke_w=stroke_w)
+        actual_size, lines, fits_readably = _fit_text(
+            draw,
+            text,
+            box_w,
+            box_h,
+            font_path_str,
+            stroke_w=stroke_w,
+            minimum_size=RENDER_MIN_READABLE_FONT_SIZE,
+        )
+        # Expanding an explicitly opaque caption is safe: the caller already
+        # asked us to paint a caption surface. Transparent dialogue is never
+        # allowed to spill over artwork merely to make it fit.
+        opaque_caption = bool(bg_color and bg_color not in ("transparent", "none", ""))
+        if not fits_readably and opaque_caption and RENDER_SAFE_CAPTION_EXPANSION:
+            grow_x = int(round(raw_w * RENDER_SAFE_CAPTION_EXPANSION_RATIO))
+            grow_y = int(round(raw_h * RENDER_SAFE_CAPTION_EXPANSION_RATIO))
+            image_w, image_h = image.size
+            x1, y1 = max(0, x1 - grow_x), max(0, y1 - grow_y)
+            x2, y2 = min(image_w, x2 + grow_x), min(image_h, y2 + grow_y)
+            raw_w, raw_h = x2 - x1, y2 - y1
+            pad = max(2, min(padding, int(min(raw_w, raw_h) * RENDER_PADDING_RATIO_MAX)))
+            box_w, box_h = raw_w - pad * 2, raw_h - pad * 2
+            actual_size, lines, fits_readably = _fit_text(
+                draw,
+                text,
+                box_w,
+                box_h,
+                font_path_str,
+                stroke_w=stroke_w,
+                minimum_size=RENDER_MIN_READABLE_FONT_SIZE,
+            )
+        if not fits_readably:
+            raise ValueError(
+                "Translation does not fit at the minimum readable font size; "
+                "shorten the translation or enlarge the text region."
+            )
         font = get_font_object(font_path_str, actual_size)
+
+    shape = str(shape or "").lower()
+    if shape not in ("rectangle", "ellipse"):
+        shape = "rectangle"
+    if bg_color and bg_color not in ("transparent", "none", ""):
+        box_bg_c = parse_color(bg_color, default=(255, 255, 255))
+        bg_bbox = (x1, y1, x2 - 1, y2 - 1)
+        if shape == "ellipse":
+            draw.ellipse(bg_bbox, fill=box_bg_c)
+        else:
+            r = max(0, min(int(corner_radius), int((min(raw_w, raw_h) - 1) // 2)))
+            draw.rounded_rectangle(bg_bbox, radius=r, fill=box_bg_c)
 
     line_height = _calc_line_height(draw, font, stroke_w=stroke_w)
     total_h = line_height * len(lines)
@@ -284,9 +321,18 @@ def _fits(draw, text: str, box_w: int, box_h: int, font_path_str: str, size: int
     return total_h <= box_h and max_line_w <= box_w, lines
 
 
-def _fit_text(draw, text: str, box_w: int, box_h: int, font_path_str: str, stroke_w: int = RENDER_AUTO_STROKE_WIDTH) -> tuple[int, list[str]]:
-    lo, hi = MIN_FONT_SIZE, MAX_FONT_SIZE
-    best_size = MIN_FONT_SIZE
+def _fit_text(
+    draw,
+    text: str,
+    box_w: int,
+    box_h: int,
+    font_path_str: str,
+    stroke_w: int = RENDER_AUTO_STROKE_WIDTH,
+    minimum_size: int = MIN_FONT_SIZE,
+) -> tuple[int, list[str], bool]:
+    minimum_size = max(MIN_FONT_SIZE, int(minimum_size))
+    lo, hi = minimum_size, MAX_FONT_SIZE
+    best_size = minimum_size
     best_lines: list[str] = []
 
     while lo <= hi:
@@ -300,10 +346,12 @@ def _fit_text(draw, text: str, box_w: int, box_h: int, font_path_str: str, strok
             hi = mid - 1
 
     if not best_lines:
-        min_font = get_font_object(font_path_str, MIN_FONT_SIZE)
+        min_font = get_font_object(font_path_str, minimum_size)
         best_lines = _wrap_text(draw, text, min_font, box_w)
-
-    return best_size, best_lines
+    fits = bool(best_lines) and _fits(
+        draw, text, box_w, box_h, font_path_str, best_size, stroke_w
+    )[0]
+    return best_size, best_lines, fits
 
 
 def _wrap_text(draw, text: str, font, box_w: int) -> list[str]:

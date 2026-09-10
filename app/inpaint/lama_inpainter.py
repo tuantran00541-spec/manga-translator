@@ -25,6 +25,9 @@ from app.parameters import (
     INPAINT_CLUSTER_SPLIT_HEIGHT_FACTOR,
     INPAINT_CROP_LONG_ASPECT_THRESHOLD,
     INPAINT_CROP_PADDING,
+    INPAINT_NATIVE_TILE_EDGE_DENSITY_MIN,
+    INPAINT_NATIVE_TILE_ENABLED,
+    INPAINT_NATIVE_TILE_MASK_AREA_MIN,
     INPAINT_SIZE,
     MANUAL_CROP_PADDING,
     MANUAL_DILATION_SCALE,
@@ -559,12 +562,26 @@ class Inpainter:
             max_dim > INPAINT_SIZE
             and aspect >= FIXED_LAMA_TILE_ASPECT
         )
+        # A near-square artwork crop used to take the dynamic single-call path
+        # and be downscaled to 512px.  Tile only textured, materially masked
+        # regions; flat bubbles keep the existing fast single-call behaviour.
+        texture_tiling = False
+        if (
+            INPAINT_NATIVE_TILE_ENABLED
+            and max_dim > DYNAMIC_LAMA_MAX_SINGLE_CROP_DIM
+            and int(np.count_nonzero(local_mask > 127)) >= INPAINT_NATIVE_TILE_MASK_AREA_MIN
+        ):
+            gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop
+            edges = cv2.Canny(gray, SMART_FILL_CANNY_LOW, SMART_FILL_CANNY_HIGH)
+            context = local_mask <= 127
+            edge_density = float(np.mean(edges[context] > 0)) if np.any(context) else 0.0
+            texture_tiling = edge_density >= INPAINT_NATIVE_TILE_EDGE_DENSITY_MIN
 
         # Wide/tall free text loses background detail when a dynamic LaMa crop
         # is squeezed to 512px just as it does with the fixed model. Preserve
         # native detail with overlapping tiles for both backends. Small and
         # near-square regions retain the single-call fast path.
-        if long_crop or (feather and max_dim > INPAINT_SIZE):
+        if long_crop or texture_tiling or (feather and max_dim > INPAINT_SIZE):
             painted = self._lama_fill_tiled(crop, local_mask)
         else:
             painted = self._lama_fill_single(crop, local_mask)
