@@ -1,0 +1,204 @@
+name: Chapter 251 Render Review
+
+on:
+  push:
+    branches:
+      - trial/chapter-render-251
+    paths:
+      - .github/workflows/chapter-251-render-review.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: chapter-251-human-loop
+  cancel-in-progress: false
+
+jobs:
+  render-review:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    env:
+      CHAPTER_ID: c2510251
+      TRANSLATION_RUN_ID: "34477258653"
+      TRANSLATION_ARTIFACT: 04-translation-review-c2510251
+      PRIMARY_DIALOGUE_FONT: Mac-dinh-3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: trial/chapter-render-251
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install production render runtime
+        run: |
+          python -m pip install Pillow==10.4.0 numpy==1.26.4 opencv-contrib-python==4.10.0.84 fastapi==0.115.0 pydantic==2.9.2 filelock==3.16.1 loguru==0.7.2 fonttools==4.59.2
+
+      - name: Restore translation checkpoint
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf checkpoint/04-translation-review checkpoint/05-render-review
+          mkdir -p checkpoint/04-translation-review
+          gh run download "$TRANSLATION_RUN_ID" -n "$TRANSLATION_ARTIFACT" -D checkpoint/04-translation-review
+          test -f checkpoint/04-translation-review/processed/manifest.json
+          test -f checkpoint/04-translation-review/translation-review-summary.json
+
+      - name: Validate translation and restore production layout
+        run: |
+          python - <<'PY'
+          import json, shutil
+          from pathlib import Path
+          chapter_id='c2510251'; root=Path('checkpoint/04-translation-review')
+          s=json.loads((root/'translation-review-summary.json').read_text(encoding='utf-8'))
+          for k,v in {'status':'PASS','active_story_objects':65,'translated_story_objects':65,'active_untranslated_story_objects':0,'persistent_tombstones':25}.items():
+              if s.get(k)!=v: raise SystemExit(f'translation gate {k}={s.get(k)} expected {v}')
+          raw_dst=Path('data/raw')/chapter_id; proc_dst=Path('data/processed')/chapter_id; out_dst=Path('data/output')/chapter_id
+          for d in (raw_dst,proc_dst,out_dst):
+              if d.exists(): shutil.rmtree(d)
+              d.parent.mkdir(parents=True,exist_ok=True)
+          shutil.copytree(root/'raw',raw_dst); shutil.copytree(root/'processed',proc_dst); out_dst.mkdir(parents=True)
+          mp=proc_dst/'manifest.json'; m=json.loads(mp.read_text(encoding='utf-8'))
+          for p in m.get('pages') or []:
+              rn=Path(str(p.get('original') or '')).name; cn=Path(str(p.get('clean') or '')).name
+              if rn: p['original']=(raw_dst/'sliced'/rn).as_posix()
+              if cn: p['clean']=str((proc_dst/cn).resolve())
+          mp.write_text(json.dumps(m,ensure_ascii=False,indent=2),encoding='utf-8')
+          print(f"restored {len(m.get('pages') or [])} slices")
+          PY
+
+      - name: Apply semantic typography plan with Vietnamese glyph fallback
+        run: |
+          python - <<'PY'
+          import json, os
+          from collections import Counter
+          from pathlib import Path
+          from fontTools.ttLib import TTFont
+          chapter_id='c2510251'; font_dir=Path('app/static/fonts'); primary='Mac-dinh-3'
+          special_sfx={'text_db05c240392f4332','text_3686fc49acd34585','text_cce8c22206f9466c','text_940955579f314c23'}
+          special_shadow={'text_d69d4204fc8b4a36','text_2f380f5adb9b47f3'}
+          cache={}
+          def cmap(name):
+              if name not in cache:
+                  path=font_dir/f'{name}.ttf'
+                  if not path.is_file(): cache[name]=set()
+                  else:
+                      f=TTFont(path,lazy=True); cache[name]=set((f.getBestCmap() or {}).keys()); f.close()
+              return cache[name]
+          def supports(name,text): return bool(cmap(name)) and all(ch.isspace() or ord(ch) in cmap(name) for ch in text)
+          probe='ăâêôơưđĂÂÊÔƠƯĐáàảãạấầẩẫậắằẳẵặéèẻẽẹếềểễệíìỉĩịóòỏõọốồổỗộớờởỡợúùủũụứừửữựýỳỷỹỵ'
+          if not supports(primary,probe): raise SystemExit('primary font fails Vietnamese probe')
+          mp=Path('data/processed')/chapter_id/'manifest.json'; m=json.loads(mp.read_text(encoding='utf-8'))
+          plan=[]; usage=Counter(); fallbacks=[]
+          for pi,p in enumerate(m.get('pages') or []):
+              for o in p.get('text_objects') or []:
+                  if o.get('source_missing') or o.get('human_review')!='keep_story': continue
+                  oid=str(o.get('id')); vi=str(o.get('translation') or '').strip()
+                  if not vi: raise SystemExit(f'untranslated active {oid}')
+                  wanted=primary; role='dialogue'
+                  if oid in special_sfx: wanted='SFX-fonts-1'; role='reaction_sfx'
+                  elif oid in special_shadow: wanted='Shadow-fonts'; role='ominous_declaration'
+                  chosen=wanted if supports(wanted,vi) else primary
+                  if chosen!=wanted: fallbacks.append({'id':oid,'wanted':wanted,'chosen':chosen,'reason':'missing_vietnamese_glyphs'})
+                  style=o.setdefault('style',{})
+                  style.update({'font':chosen,'fontSize':'auto','color':'auto','strokeWidth':'auto','strokeColor':'auto','bgColor':'transparent','cornerRadius':'0','horizontalAlign':'center','verticalAlign':'middle','bold': oid in special_shadow})
+                  o['human_typeset_class']=role; o['human_typeset_font']=chosen; o['human_typeset_reason']='semantic_assignment_with_same-class_glyph_fallback'
+                  usage[chosen]+=1; plan.append({'page_index':pi,'id':oid,'semantic_role':role,'font':chosen,'translation':vi})
+          if len(plan)!=65: raise SystemExit(f'expected 65 styled objects got {len(plan)}')
+          summary={'status':'PLAN_READY_PENDING_RENDER_VISUAL_REVIEW','primary_dialogue_font':primary,'active_story_objects':65,'font_usage':dict(usage),'fallbacks':fallbacks,'vietnamese_glyph_probe':'PASS'}
+          m['human_typeset_review']=summary; mp.write_text(json.dumps(m,ensure_ascii=False,indent=2),encoding='utf-8')
+          Path('typography-plan.json').write_text(json.dumps({'chapter_id':chapter_id,**summary,'assignments':plan},ensure_ascii=False,indent=2),encoding='utf-8')
+          print(json.dumps(summary,ensure_ascii=False,indent=2))
+          PY
+
+      - name: Render slices and stitch source pages
+        run: |
+          python - <<'PY'
+          import json, zipfile
+          from pathlib import Path
+          from PIL import Image
+          from app.routers.export import export_chapter, render_chapter
+          chapter_id='c2510251'; r=render_chapter(chapter_id); stats=r.get('chapter_render') or {}
+          if stats.get('total')!=77 or stats.get('skipped')!=0: raise SystemExit(f'render stats invalid {stats}')
+          export_chapter(chapter_id)
+          out=Path('data/output')/chapter_id; slices=sorted(out.glob('page_*.png'))
+          if len(slices)!=77: raise SystemExit(f'expected 77 slice files got {len(slices)}')
+          zpath=out/f'chapter_{chapter_id}.zip'
+          if not zpath.is_file(): raise SystemExit('export zip missing')
+          with zipfile.ZipFile(zpath) as z:
+              names=[n for n in z.namelist() if n.lower().endswith('.png')]
+              if len(names)!=21: raise SystemExit(f'expected 21 stitched pages got {len(names)}')
+              for n in names:
+                  with z.open(n) as f:
+                      with Image.open(f) as im:
+                          if im.width<=0 or im.height<=0: raise SystemExit(f'invalid image {n}')
+          print(json.dumps({'render_stats':stats,'slices':77,'source_pages':21},indent=2))
+          PY
+
+      - name: Build compact human visual review PDFs
+        run: |
+          python - <<'PY'
+          import io, json, shutil, zipfile
+          from pathlib import Path
+          from PIL import Image, ImageDraw, ImageFont
+          chapter_id='c2510251'; out=Path('data/output')/chapter_id; proc=Path('data/processed')/chapter_id
+          review=Path('checkpoint/05-render-review'); review.mkdir(parents=True,exist_ok=True)
+          shutil.copytree(proc,review/'processed'); shutil.copytree(out,review/'output'); shutil.copy2('typography-plan.json',review/'typography-plan.json')
+          zpath=out/f'chapter_{chapter_id}.zip'; final=review/'final-pages'; final.mkdir()
+          with zipfile.ZipFile(zpath) as z: z.extractall(final)
+          # Full-page proof PDF, downscaled but phone-readable when zoomed.
+          pdf=[]
+          for p in sorted(final.glob('*.png')):
+              im=Image.open(p).convert('RGB'); w=900; h=max(1,round(im.height*w/im.width)); im=im.resize((w,h),Image.Resampling.LANCZOS); pdf.append(im)
+          pdf[0].save(review/'render-final-pages.pdf',save_all=True,append_images=pdf[1:],resolution=120.0,quality=58,optimize=True)
+          # Object crop proof PDF: 4 cards per page.
+          m=json.loads((proc/'manifest.json').read_text(encoding='utf-8')); cards=[]; font=ImageFont.load_default()
+          for pi,p in enumerate(m.get('pages') or []):
+              rp=out/f'page_{pi:03d}.png'
+              if not rp.is_file(): continue
+              rim=Image.open(rp).convert('RGB')
+              for o in p.get('text_objects') or []:
+                  if o.get('source_missing') or o.get('human_review')!='keep_story': continue
+                  r=o.get('region') or {}; x1=int(r.get('x1',0)); y1=int(r.get('y1',0)); x2=int(r.get('x2',rim.width)); y2=int(r.get('y2',rim.height)); pad=90
+                  box=(max(0,x1-pad),max(0,y1-pad),min(rim.width,x2+pad),min(rim.height,y2+pad)); crop=rim.crop(box); crop.thumbnail((520,330),Image.Resampling.LANCZOS)
+                  card=Image.new('RGB',(560,400),'white'); card.paste(crop,((560-crop.width)//2,8)); d=ImageDraw.Draw(card)
+                  label=f"p{pi:03d} {o.get('id')} font={o.get('human_typeset_font')}"
+                  d.text((8,345),label[:80],fill='black',font=font); d.text((8,362),str(o.get('translation') or '')[:100],fill='black',font=font)
+                  cards.append(card)
+          sheets=[]
+          for start in range(0,len(cards),4):
+              page=Image.new('RGB',(1120,800),'white')
+              for j,c in enumerate(cards[start:start+4]): page.paste(c,((j%2)*560,(j//2)*400))
+              sheets.append(page)
+          sheets[0].save(review/'render-object-crops.pdf',save_all=True,append_images=sheets[1:],resolution=120.0,quality=70,optimize=True)
+          typography=json.loads(Path('typography-plan.json').read_text(encoding='utf-8'))
+          summary={'checkpoint':'05-render-review','chapter_id':chapter_id,'slices':77,'source_pages':21,'active_story_objects':65,'active_untranslated_story_objects':0,'persistent_tombstones':25,'font_usage':typography.get('font_usage'),'font_fallbacks':typography.get('fallbacks'),'status':'TECHNICAL_PASS_PENDING_HUMAN_VISUAL_REVIEW','next_action':'STOP_FOR_HUMAN_VISUAL_REVIEW'}
+          (review/'render-review-summary.json').write_text(json.dumps(summary,ensure_ascii=False,indent=2),encoding='utf-8')
+          print(json.dumps(summary,ensure_ascii=False,indent=2))
+          PY
+
+      - name: Publish compact render proof to trial branch
+        run: |
+          mkdir -p trials/chapter-251
+          cp checkpoint/05-render-review/render-review-summary.json trials/chapter-251/render-review-summary.json
+          cp checkpoint/05-render-review/render-final-pages.pdf trials/chapter-251/render-final-pages.pdf
+          cp checkpoint/05-render-review/render-object-crops.pdf trials/chapter-251/render-object-crops.pdf
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add trials/chapter-251/render-review-summary.json trials/chapter-251/render-final-pages.pdf trials/chapter-251/render-object-crops.pdf
+          if ! git diff --cached --quiet; then
+            git commit -m "review: publish chapter 251 render proof"
+            git push origin HEAD:trial/chapter-render-251
+          fi
+
+      - name: Upload render review checkpoint
+        uses: actions/upload-artifact@v4
+        with:
+          name: 05-render-review-c2510251
+          path: checkpoint/05-render-review
+          retention-days: 7
+          if-no-files-found: error
