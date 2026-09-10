@@ -1,0 +1,107 @@
+name: Chapter 251 OCR Compact Review Pack
+
+on:
+  push:
+    branches:
+      - trial/chapter-render-251
+    paths:
+      - .github/workflows/chapter-251-ocr-review-pack.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: chapter-251-human-loop
+  cancel-in-progress: false
+
+jobs:
+  review-pack:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    env:
+      OCR_RUN_ID: "34469024791"
+      OCR_ARTIFACT: 03-ocr-review-c2510251
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: trial/chapter-render-251
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install review dependency
+        run: python -m pip install Pillow==10.4.0
+
+      - name: Restore OCR checkpoint
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf ocr-checkpoint review-pack
+          mkdir -p ocr-checkpoint review-pack
+          gh run download "$OCR_RUN_ID" -n "$OCR_ARTIFACT" -D ocr-checkpoint
+          test -f ocr-checkpoint/ocr-needs-review.json
+          test -f ocr-checkpoint/manifest.json
+          test -d ocr-checkpoint/raw/sliced
+
+      - name: Build suspect-only ORIGINAL crops
+        run: |
+          python - <<'PY'
+          import json, textwrap
+          from pathlib import Path
+          from PIL import Image, ImageDraw, ImageFont
+
+          root=Path('ocr-checkpoint')
+          out=Path('review-pack')
+          rows=json.loads((root/'ocr-needs-review.json').read_text(encoding='utf-8'))
+          manifest=json.loads((root/'manifest.json').read_text(encoding='utf-8'))
+          font=ImageFont.load_default()
+          index=[]
+          cards=[]
+          for n,row in enumerate(rows):
+              pi=int(row['page_index'])
+              page=manifest['pages'][pi]
+              raw_name=Path(str(page.get('original') or '')).name
+              raw_path=root/'raw'/'sliced'/raw_name
+              if not raw_path.is_file():
+                  raise RuntimeError(f'missing raw {raw_path}')
+              r=row['region']; x1,y1,x2,y2=[int(r[k]) for k in ('x1','y1','x2','y2')]
+              im=Image.open(raw_path).convert('RGB')
+              pad=110
+              cx1=max(0,x1-pad); cy1=max(0,y1-pad); cx2=min(im.width,x2+pad); cy2=min(im.height,y2+pad)
+              crop=im.crop((cx1,cy1,cx2,cy2))
+              # Red rectangle via default RGB tuple without custom palette semantics.
+              d=ImageDraw.Draw(crop)
+              d.rectangle((x1-cx1,y1-cy1,x2-cx1,y2-cy1),outline=(255,0,0),width=3)
+              crop.thumbnail((520,360),Image.Resampling.LANCZOS)
+              card=Image.new('RGB',(560,500),'white')
+              card.paste(crop,((560-crop.width)//2,8))
+              cd=ImageDraw.Draw(card)
+              label=f"#{n:02d} p{pi:03d} src={row.get('source_page')} s={row.get('slice_index')} {row.get('semantic_type')} q={row.get('quality')} reason={row.get('quality_reason')}"
+              cd.text((8,378),label[:100],fill='black',font=font)
+              cd.text((8,396),f"id={row.get('box_id')} regions={row.get('region_count')} cov={row.get('coverage')} conf={row.get('confidence')}",fill='black',font=font)
+              txt=str(row.get('text') or '')
+              cd.multiline_text((8,416),'OCR: '+ '\n'.join(textwrap.wrap(txt,width=68)[:5]),fill='black',font=font,spacing=2)
+              cards.append(card)
+              index.append({**row,'review_number':n,'raw_name':raw_name,'crop':[cx1,cy1,cx2,cy2]})
+
+          per=8
+          for start in range(0,len(cards),per):
+              chunk=cards[start:start+per]
+              sheet=Image.new('RGB',(1120,2000),'white')
+              for j,c in enumerate(chunk):
+                  sheet.paste(c,((j%2)*560,(j//2)*500))
+              sheet.save(out/f'suspects-{start:02d}-{start+len(chunk)-1:02d}.jpg',quality=88,optimize=True)
+          (out/'suspects.json').write_text(json.dumps(index,ensure_ascii=False,indent=2),encoding='utf-8')
+          print(f'packed {len(rows)} suspects into {(len(cards)+per-1)//per} sheets')
+          PY
+
+      - name: Upload compact review pack
+        uses: actions/upload-artifact@v4
+        with:
+          name: 03-ocr-review-pack-c2510251
+          path: review-pack
+          if-no-files-found: error
+          retention-days: 7
