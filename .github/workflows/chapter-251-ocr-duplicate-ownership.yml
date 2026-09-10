@@ -1,0 +1,66 @@
+name: Chapter 251 OCR Duplicate Ownership
+on:
+  push:
+    branches: [trial/chapter-render-251]
+    paths: [.github/workflows/chapter-251-ocr-duplicate-ownership.yml]
+  workflow_dispatch:
+permissions:
+  contents: write
+  actions: read
+jobs:
+  ownership:
+    runs-on: ubuntu-latest
+    env:
+      OCR_RUN_ID: '34469024791'
+      OCR_ARTIFACT: 03-ocr-review-c2510251
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: trial/chapter-render-251
+      - name: Restore OCR checkpoint
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf ocr-checkpoint
+          mkdir -p ocr-checkpoint
+          gh run download "$OCR_RUN_ID" -n "$OCR_ARTIFACT" -D ocr-checkpoint
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compute core ownership
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root=Path('trials/chapter-251')
+          dups=json.loads((root/'ocr-auto-duplicates.json').read_text(encoding='utf-8'))
+          boxes=json.loads((root/'ocr-auto-boxes.json').read_text(encoding='utf-8'))
+          manifest=json.loads(Path('ocr-checkpoint/manifest.json').read_text(encoding='utf-8'))
+          bmap={(int(b['page_index']),str(b['box_id'])):b for b in boxes}
+          out=[]
+          for gi,g in enumerate(dups):
+              members=[]
+              for occ in g['occurrences']:
+                  pi=int(occ['page_index']); bid=str(occ['box_id']); b=bmap[(pi,bid)]
+                  p=manifest['pages'][pi]; core=p.get('stitch_core') or {}
+                  cy=(int(b['region']['y1'])+int(b['region']['y2']))/2
+                  c1=core.get('core_y1'); c2=core.get('core_y2')
+                  owns=(c1 is None or c2 is None or (float(c1)<=cy<float(c2)))
+                  members.append({'page_index':pi,'box_id':bid,'text':occ['text'],'slice_index':p.get('slice_index'),'source_page':p.get('source_page'),'center_y':cy,'core_y1':c1,'core_y2':c2,'owns_center':owns,'semantic_type':b.get('semantic_type')})
+              owners=[m for m in members if m['owns_center']]
+              out.append({'group':gi,'normalized':g['normalized'],'members':members,'core_owners':owners,'unique_core_owner':owners[0] if len(owners)==1 else None})
+          (root/'ocr-duplicate-ownership.json').write_text(json.dumps(out,ensure_ascii=False,indent=2),encoding='utf-8')
+          lines=[]
+          for g in out:
+              lines.append(f"GROUP {g['group']} {g['normalized']} unique={bool(g['unique_core_owner'])}")
+              for m in g['members']:
+                  lines.append(f"  p{m['page_index']} s{m['slice_index']} {m['box_id']} sem={m['semantic_type']} cy={m['center_y']:.1f} core=[{m['core_y1']},{m['core_y2']}) owns={m['owns_center']}")
+          (root/'ocr-duplicate-ownership.txt').write_text('\n'.join(lines)+'\n',encoding='utf-8')
+          PY
+      - name: Publish
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add trials/chapter-251/ocr-duplicate-ownership.*
+          git commit -m "review: publish chapter 251 OCR duplicate ownership"
+          git push origin HEAD:trial/chapter-render-251
