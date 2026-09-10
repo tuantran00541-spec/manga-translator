@@ -1,0 +1,28 @@
+{
+  "chapter_id": "c2510251",
+  "status": "HUMAN_REVIEW_FINAL",
+  "source_partial_run_id": 34472167496,
+  "source_partial_artifact": "03-ocr-partial-curation-c2510251",
+  "additional_drop": {
+    "text_f61ce21b9f6d408a": "garbled_stylized_non_dialogue_or_sfx_not_localized_in_this_pass",
+    "text_a769881e84af4100": "garbled_stylized_sfx_decorative_non_dialogue",
+    "text_dfd838221fba4795": "empty_detector_target_no_readable_source_text",
+    "text_058d64b03f4a4e95": "garbled_edge_detection_non_dialogue",
+    "text_259914a00d14457d": "overlap_fragment_of_core_owned_shameless_utterance_text_6129bc0d428148ce",
+    "text_ccefe7b579fe4f57": "empty_detector_target_no_readable_source_text"
+  },
+  "additional_corrections": {
+    "text_334e6d5d7c344547": "YOUR NAME\nWILL BE MIMI.",
+    "text_27b2c10883c44d75": "JUST A LITTLE\nMORE... ONCE IT\nGETS A LITTLE\nBIGGER..."
+  },
+  "explicit_keep": {
+    "text_398b10b7be5d47e9": "valid_story_reaction_punctuation",
+    "text_ca2c93a90de24859": "distinct_core_owned_story_utterance",
+    "text_9f3aafe612df43f7": "distinct_core_owned_story_utterance",
+    "text_6129bc0d428148ce": "core_owned_shameless_story_utterance"
+  },
+  "gate": {
+    "ocr_pass_allowed": true,
+    "reason": "all unresolved OCR review items resolved; duplicates/fragments tombstoned and story prose normalized"
+  }
+}
