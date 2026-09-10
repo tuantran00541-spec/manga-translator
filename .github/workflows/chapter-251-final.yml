@@ -1,4 +1,4 @@
-name: Chapter 251 Final Export
+name: Chapter 251 Final Export Readable Fixed Sizes
 
 on:
   push:
@@ -22,17 +22,16 @@ jobs:
     timeout-minutes: 25
     env:
       CHAPTER_ID: c2510251
-      RENDER_RUN_ID: "34477400113"
-      RENDER_ARTIFACT: 05-render-review-c2510251
+      READABLE_RUN_ID: "34489198122"
+      READABLE_ARTIFACT: 06-readable-fixed-candidate-c2510251
     steps:
       - uses: actions/checkout@v4
         with:
           ref: trial/chapter-render-251
-
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-
       - name: Validate explicit human visual approval
         run: |
           python - <<'PY'
@@ -41,45 +40,55 @@ jobs:
           p=Path('trials/chapter-251/visual-review.json')
           if not p.is_file(): raise SystemExit('visual approval missing')
           r=json.loads(p.read_text(encoding='utf-8'))
-          if r.get('status')!='PASS' or r.get('chapter_id')!='c2510251': raise SystemExit(f'visual review not PASS: {r}')
+          expected={'status':'PASS','chapter_id':'c2510251','reviewed_render_run_id':34489198122,'font_size_policy':'HUMAN_REVIEWED_FIXED_BUCKETS_NO_AUTO'}
+          for k,v in expected.items():
+              if r.get(k)!=v: raise SystemExit(f'visual review {k}={r.get(k)!r} expected {v!r}')
           if r.get('blocking_issues'): raise SystemExit(f'visual blockers remain: {r["blocking_issues"]}')
-          print('explicit human visual gate PASS')
+          if int(r.get('reviewed_object_sheets') or 0)!=6 or int(r.get('reviewed_page_sheets') or 0)!=7: raise SystemExit('visual proof coverage incomplete')
+          print('explicit human visual gate PASS for readable fixed-size render')
           PY
-
-      - name: Restore render checkpoint
+      - name: Restore readable candidate
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          rm -rf checkpoint/05-render-review checkpoint/06-final
-          mkdir -p checkpoint/05-render-review checkpoint/06-final
-          gh run download "$RENDER_RUN_ID" -n "$RENDER_ARTIFACT" -D checkpoint/05-render-review
-          test -f checkpoint/05-render-review/render-review-summary.json
-          test -f checkpoint/05-render-review/output/chapter_c2510251.zip
-          test -f checkpoint/05-render-review/processed/manifest.json
-
-      - name: Final production integrity gate
+          rm -rf checkpoint/06-readable checkpoint/07-final
+          mkdir -p checkpoint/06-readable checkpoint/07-final
+          gh run download "$READABLE_RUN_ID" -n "$READABLE_ARTIFACT" -D checkpoint/06-readable
+          test -f checkpoint/06-readable/Villain-To-Kill-Chapter-251-VI-CANDIDATE.zip
+          test -f checkpoint/06-readable/manifest.json
+          test -f checkpoint/06-readable/typography-plan.json
+      - name: Final integrity and fixed-size gate
         run: |
           python - <<'PY'
           import json, shutil, zipfile
+          from collections import Counter
           from pathlib import Path
           from PIL import Image
-          root=Path('checkpoint/05-render-review')
-          summary=json.loads((root/'render-review-summary.json').read_text(encoding='utf-8'))
-          if summary.get('status')!='TECHNICAL_PASS_PENDING_HUMAN_VISUAL_REVIEW': raise SystemExit(f'bad render summary {summary}')
-          manifest=json.loads((root/'processed'/'manifest.json').read_text(encoding='utf-8'))
+          root=Path('checkpoint/06-readable')
+          manifest=json.loads((root/'manifest.json').read_text(encoding='utf-8'))
+          typo=json.loads((root/'typography-plan.json').read_text(encoding='utf-8'))
           if (manifest.get('human_ocr_review') or {}).get('status')!='PASS': raise SystemExit('OCR gate regressed')
           if (manifest.get('human_translation_review') or {}).get('status')!='PASS': raise SystemExit('translation gate regressed')
-          story=tomb=untranslated=0
+          if typo.get('status')!='FIXED_SIZE_PLAN_PASS' or typo.get('font_size_policy')!='HUMAN_REVIEWED_FIXED_BUCKETS_NO_AUTO': raise SystemExit(f'bad typography gate {typo.get("status")} {typo.get("font_size_policy")}')
+          story=tomb=untranslated=auto=0; sizes=Counter()
           for p in manifest.get('pages') or []:
               for o in p.get('text_objects') or []:
                   if o.get('source_missing'):
                       tomb+=1
                       if o.get('auto_generated') or o.get('origin')!='human_review_drop': raise SystemExit(f'invalid tombstone {o.get("id")}')
-                  else:
-                      story+=1
-                      if o.get('human_review')!='keep_story' or not str(o.get('translation') or '').strip(): untranslated+=1
-          if (story,tomb,untranslated)!=(65,25,0): raise SystemExit(f'final object counts {(story,tomb,untranslated)}')
-          src=root/'output'/'chapter_c2510251.zip'; names=[]; dims=[]
+                      continue
+                  if o.get('human_review')!='keep_story': continue
+                  story+=1
+                  if not str(o.get('translation') or '').strip(): untranslated+=1
+                  raw=(o.get('style') or {}).get('fontSize')
+                  if str(raw).lower()=='auto': auto+=1
+                  try: size=int(raw)
+                  except Exception: raise SystemExit(f'invalid fixed font size {o.get("id")}: {raw}')
+                  if size<28: raise SystemExit(f'unreadable font size {o.get("id")}: {size}')
+                  sizes[size]+=1
+          if (story,tomb,untranslated,auto)!=(65,25,0,0): raise SystemExit(f'final object counts {(story,tomb,untranslated,auto)}')
+          if dict(sizes)!={40:63,48:2}: raise SystemExit(f'unexpected final size distribution {dict(sizes)}')
+          src=root/'Villain-To-Kill-Chapter-251-VI-CANDIDATE.zip'; dims=[]
           with zipfile.ZipFile(src) as z:
               names=[n for n in z.namelist() if n.lower().endswith('.png')]
               if len(names)!=21: raise SystemExit(f'final source page count {len(names)} != 21')
@@ -88,28 +97,27 @@ jobs:
                       with Image.open(f) as im:
                           if im.width<=0 or im.height<=0: raise SystemExit(f'invalid dimensions {n}')
                           dims.append({'file':n,'width':im.width,'height':im.height})
-          out=Path('checkpoint/06-final'); out.mkdir(exist_ok=True)
-          final_zip=out/'Villain-To-Kill-Chapter-251-VI-FINAL.zip'; shutil.copy2(src,final_zip)
-          report={'chapter_id':'c2510251','status':'FINAL_PASS','source_pages':21,'active_story_objects':65,'persistent_tombstones':25,'active_untranslated_story_objects':0,'ocr_gate':'PASS','translation_gate':'PASS','visual_gate':'PASS','archive':final_zip.name,'archive_png_count':len(names),'final_page_dimensions':dims}
+          out=Path('checkpoint/07-final'); final_zip=out/'Villain-To-Kill-Chapter-251-VI-FINAL.zip'; shutil.copy2(src,final_zip)
+          report={'chapter_id':'c2510251','status':'FINAL_PASS','source_render_run_id':34489198122,'source_pages':21,'active_story_objects':65,'persistent_tombstones':25,'active_untranslated_story_objects':0,'ocr_gate':'PASS','translation_gate':'PASS','visual_gate':'PASS','font_size_policy':'HUMAN_REVIEWED_FIXED_BUCKETS_NO_AUTO','font_size_usage':{'48':2,'40':63},'minimum_font_size':40,'archive':final_zip.name,'archive_png_count':21,'final_page_dimensions':dims}
           (out/'final-report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
           print(json.dumps({k:v for k,v in report.items() if k!='final_page_dimensions'},ensure_ascii=False,indent=2))
           PY
-
       - name: Publish final report
         run: |
-          cp checkpoint/06-final/final-report.json trials/chapter-251/final-report.json
+          cp checkpoint/07-final/final-report.json trials/chapter-251/final-report.json
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add trials/chapter-251/final-report.json
           if ! git diff --cached --quiet; then
-            git commit -m "final: pass chapter 251 export gates"
+            git commit -m "final: pass chapter 251 readable fixed-size export gates"
+            git fetch origin trial/chapter-render-251
+            git rebase origin/trial/chapter-render-251
             git push origin HEAD:trial/chapter-render-251
           fi
-
       - name: Upload FINAL chapter
         uses: actions/upload-artifact@v4
         with:
           name: Villain-To-Kill-Chapter-251-VI-FINAL
-          path: checkpoint/06-final
+          path: checkpoint/07-final
           retention-days: 7
           if-no-files-found: error
