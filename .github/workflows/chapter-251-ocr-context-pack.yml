@@ -1,0 +1,87 @@
+name: Chapter 251 OCR Context Metadata
+
+on:
+  push:
+    branches:
+      - trial/chapter-render-251
+    paths:
+      - .github/workflows/chapter-251-ocr-context-pack.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  context:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: trial/chapter-render-251
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build context metadata
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root=Path('trials/chapter-251')
+          needs=json.loads((root/'ocr-auto-needs-review.json').read_text(encoding='utf-8'))
+          objs=json.loads((root/'ocr-auto-text-objects.json').read_text(encoding='utf-8'))
+          boxes=json.loads((root/'ocr-auto-boxes.json').read_text(encoding='utf-8'))
+          dups=json.loads((root/'ocr-auto-duplicates.json').read_text(encoding='utf-8'))
+          box_by={(int(b['page_index']),str(b['box_id'])):b for b in boxes}
+          obj_by_box={}
+          for o in objs:
+              for bid in o.get('source_boxes') or []:
+                  obj_by_box.setdefault((int(o['page_index']),str(bid)),[]).append(o)
+          by_source={}
+          for o in objs:
+              by_source.setdefault(int(o.get('source_page') or 0),[]).append(o)
+          def key(o):
+              r=o.get('region') or {}
+              return (int(o.get('slice_index') or 0), int(r.get('y1') or 0), int(r.get('x1') or 0))
+          for arr in by_source.values(): arr.sort(key=key)
+          dup_map={}
+          for g in dups:
+              for occ in g.get('occurrences') or []:
+                  dup_map[(int(occ['page_index']),str(occ['box_id']))]=g
+          out=[]
+          for n,r in enumerate(needs):
+              src=int(r.get('source_page') or 0)
+              arr=by_source.get(src,[])
+              owned=obj_by_box.get((int(r['page_index']),str(r['box_id'])),[])
+              positions=[]
+              for o in owned:
+                  try: positions.append(arr.index(o))
+                  except ValueError: pass
+              if positions:
+                  lo=max(0,min(positions)-3); hi=min(len(arr),max(positions)+4)
+              else:
+                  lo=0; hi=min(len(arr),8)
+              context=[]
+              for o in arr[lo:hi]:
+                  context.append({
+                      'page_index':o.get('page_index'),'slice_index':o.get('slice_index'),'id':o.get('id'),
+                      'source_boxes':o.get('source_boxes'),'region':o.get('region'),'ocr_text':o.get('ocr_text'),
+                      'ocr_quality':o.get('ocr_quality'),'ocr_quality_reason':o.get('ocr_quality_reason')
+                  })
+              out.append({
+                  'review_number':n,'suspect':r,
+                  'owner_objects':[{k:o.get(k) for k in ('page_index','slice_index','id','source_boxes','region','ocr_text','ocr_quality','ocr_quality_reason')} for o in owned],
+                  'neighbor_context':context,
+                  'duplicate_group':dup_map.get((int(r['page_index']),str(r['box_id'])))
+              })
+          (root/'ocr-context-review.json').write_text(json.dumps(out,ensure_ascii=False,indent=2),encoding='utf-8')
+          print(f'wrote {len(out)} suspect contexts')
+          PY
+      - name: Publish context metadata
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add trials/chapter-251/ocr-context-review.json
+          if ! git diff --cached --quiet; then
+            git commit -m "review: publish chapter 251 OCR context metadata"
+            git push origin HEAD:trial/chapter-render-251
+          fi
