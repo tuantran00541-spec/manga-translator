@@ -1,0 +1,191 @@
+name: Chapter 251 Compact Clean Audit
+
+on:
+  push:
+    branches:
+      - trial/chapter-render-251
+    paths:
+      - .github/workflows/chapter-251-clean-audit.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: chapter-251-human-loop
+  cancel-in-progress: false
+
+jobs:
+  audit-clean:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    env:
+      CLEAN_RUN_ID: "34428272591"
+      CLEAN_ARTIFACT: 02-clean-review-c2510251
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install lightweight audit runtime
+        run: python -m pip install Pillow==10.4.0
+
+      - name: Restore clean review checkpoint
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf checkpoint/02-clean-source checkpoint/02-clean-audit
+          mkdir -p checkpoint/02-clean-source checkpoint/02-clean-audit
+          gh run download "$CLEAN_RUN_ID" -n "$CLEAN_ARTIFACT" -D checkpoint/02-clean-source
+          test -f checkpoint/02-clean-source/processed/manifest.json
+          test -d checkpoint/02-clean-source/raw/sliced
+
+      - name: Build compact human audit pack
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from PIL import Image, ImageOps, ImageDraw, ImageFont
+
+          src = Path('checkpoint/02-clean-source')
+          out = Path('checkpoint/02-clean-audit')
+          crop_dir = out / 'suspect-crops'
+          crop_dir.mkdir(parents=True, exist_ok=True)
+          manifest = json.loads((src / 'processed' / 'manifest.json').read_text(encoding='utf-8'))
+          pages = manifest.get('pages') or []
+
+          def s(v):
+              try:
+                  return json.dumps(v, ensure_ascii=False).lower()
+              except Exception:
+                  return str(v).lower()
+
+          rows = []
+          suspects = []
+          free_text = []
+          for pi, page in enumerate(pages):
+              boxes = page.get('boxes') or page.get('detections') or []
+              pissues = page.get('detection_issues') or []
+              page_row = {
+                  'page_index': pi,
+                  'source_page': page.get('source_page'),
+                  'slice_index': page.get('slice_index'),
+                  'needs_review': bool(page.get('needs_review')),
+                  'detection_state': page.get('detection_state'),
+                  'detection_issues': pissues,
+                  'box_count': len(boxes),
+                  'free_text_count': 0,
+                  'safe_free_text_count': 0,
+                  'suspect_box_count': 0,
+              }
+              for bi, box in enumerate(boxes):
+                  blob = s(box)
+                  sem = str(box.get('semantic_type') or box.get('class_name') or box.get('type') or box.get('label') or '').lower()
+                  is_free = ('free_text' in sem or 'free text' in sem or ('text' in sem and 'bubble' not in sem))
+                  if is_free:
+                      page_row['free_text_count'] += 1
+                      if box.get('safe_to_inpaint') is True:
+                          page_row['safe_free_text_count'] += 1
+                      free_text.append({'page_index': pi, 'box_index': bi, 'safe_to_inpaint': box.get('safe_to_inpaint'), 'semantic': sem, 'box': box})
+                  bad_tokens = (
+                      'post_inpaint_text_residue', 'residue', 'needs_review',
+                      'review_only', 'unverified', 'unsafe', 'incomplete'
+                  )
+                  is_suspect = any(t in blob for t in bad_tokens) or bool(pissues)
+                  if is_suspect:
+                      page_row['suspect_box_count'] += 1
+                      suspects.append({'page_index': pi, 'box_index': bi, 'semantic': sem, 'box': box})
+              rows.append(page_row)
+
+          # Always audit story/non-story boundaries plus every page flagged by production.
+          audit_pages = sorted(set(
+              [0, 1, max(0, len(pages)-2), max(0, len(pages)-1)] +
+              [r['page_index'] for r in rows if r['needs_review'] or r['detection_issues'] or r['suspect_box_count']]
+          ))
+
+          def resolve_images(page):
+              raw_name = Path(str(page.get('original') or '')).name
+              clean_name = Path(str(page.get('clean') or '')).name
+              raw = src / 'raw' / 'sliced' / raw_name
+              clean = src / 'processed' / clean_name
+              if not clean.is_file() and raw_name:
+                  clean = src / 'processed' / f'clean_{raw_name}'
+              return raw, clean
+
+          def thumb(im, width=540, height=650):
+              x = im.copy().convert('RGB')
+              x.thumbnail((width, height), Image.Resampling.LANCZOS)
+              canvas = Image.new('RGB', (width, height), 'white')
+              canvas.paste(x, ((width-x.width)//2, (height-x.height)//2))
+              return canvas
+
+          font = ImageFont.load_default()
+          # Full chapter RAW/CLEAN sheets, 16 rows per sheet.
+          for start in range(0, len(pages), 16):
+              chunk = list(range(start, min(start+16, len(pages))))
+              sheet = Image.new('RGB', (1120, len(chunk)*700), 'white')
+              d = ImageDraw.Draw(sheet)
+              for ri, pi in enumerate(chunk):
+                  raw_path, clean_path = resolve_images(pages[pi])
+                  y = ri*700
+                  if raw_path.is_file(): sheet.paste(thumb(Image.open(raw_path)), (0, y+30))
+                  if clean_path.is_file(): sheet.paste(thumb(Image.open(clean_path)), (560, y+30))
+                  r = rows[pi]
+                  d.text((8,y+8), f"p{pi:03d} RAW src={r['source_page']} slice={r['slice_index']} boxes={r['box_count']} free={r['free_text_count']} safeFree={r['safe_free_text_count']}", fill='black', font=font)
+                  d.text((568,y+8), f"CLEAN review={r['needs_review']} suspect={r['suspect_box_count']}", fill='black', font=font)
+              sheet.save(out / f'raw-clean-{start:03d}-{chunk[-1]:03d}.jpg', quality=80, optimize=True)
+
+          # Focused suspect crops using generous context around detector geometry.
+          for ci, item in enumerate(suspects):
+              pi = item['page_index']; box = item['box']; page = pages[pi]
+              raw_path, clean_path = resolve_images(page)
+              if not raw_path.is_file() or not clean_path.is_file():
+                  continue
+              raw = Image.open(raw_path).convert('RGB'); clean = Image.open(clean_path).convert('RGB')
+              try:
+                  x1,y1,x2,y2 = [int(float(box.get(k))) for k in ('x1','y1','x2','y2')]
+              except Exception:
+                  continue
+              pad = max(40, int(max(x2-x1,y2-y1)*0.35))
+              x1=max(0,x1-pad); y1=max(0,y1-pad); x2=min(raw.width,x2+pad); y2=min(raw.height,y2+pad)
+              a=raw.crop((x1,y1,x2,y2)); b=clean.crop((x1,y1,x2,y2))
+              w=max(a.width,b.width); h=max(a.height,b.height)
+              canvas=Image.new('RGB',(w*2,h+24),'white'); canvas.paste(a,(0,24)); canvas.paste(b,(w,24))
+              dd=ImageDraw.Draw(canvas); dd.text((4,4),f"p{pi:03d} b{item['box_index']} RAW | CLEAN semantic={item['semantic']}",fill='black',font=font)
+              canvas.thumbnail((1800,1000),Image.Resampling.LANCZOS)
+              canvas.save(crop_dir / f'p{pi:03d}-b{item["box_index"]:03d}.jpg', quality=88, optimize=True)
+
+          summary = {
+              'checkpoint': '02-clean-compact-audit',
+              'chapter_id': manifest.get('chapter_id'),
+              'pages': len(pages),
+              'total_boxes': sum(r['box_count'] for r in rows),
+              'free_text_boxes': len(free_text),
+              'safe_free_text_boxes': sum(1 for x in free_text if x['safe_to_inpaint'] is True),
+              'production_needs_review_pages': [r['page_index'] for r in rows if r['needs_review']],
+              'pages_with_detection_issues': [r['page_index'] for r in rows if r['detection_issues']],
+              'suspect_pages': sorted(set(x['page_index'] for x in suspects)),
+              'audit_pages': audit_pages,
+              'next_action': 'HUMAN_RAW_VS_CLEAN_REVIEW',
+          }
+          (out/'audit-summary.json').write_text(json.dumps(summary,ensure_ascii=False,indent=2),encoding='utf-8')
+          (out/'page-index.json').write_text(json.dumps(rows,ensure_ascii=False,indent=2),encoding='utf-8')
+          # Strip heavy encoded masks from compact box metadata.
+          compact = []
+          for x in suspects:
+              b = dict(x['box']); b.pop('mask',None)
+              compact.append({**{k:v for k,v in x.items() if k!='box'},'box':b})
+          (out/'suspects.json').write_text(json.dumps(compact,ensure_ascii=False,indent=2),encoding='utf-8')
+          print(json.dumps(summary,ensure_ascii=False,indent=2))
+          PY
+
+      - name: Upload compact clean audit
+        uses: actions/upload-artifact@v4
+        with:
+          name: 02-clean-audit-c2510251
+          path: checkpoint/02-clean-audit
+          if-no-files-found: error
+          retention-days: 7
