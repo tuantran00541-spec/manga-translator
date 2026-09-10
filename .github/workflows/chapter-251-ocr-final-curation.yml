@@ -1,0 +1,178 @@
+name: Chapter 251 OCR Final Curation
+
+on:
+  push:
+    branches:
+      - trial/chapter-render-251
+    paths:
+      - .github/workflows/chapter-251-ocr-final-curation.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: chapter-251-human-loop
+  cancel-in-progress: false
+
+jobs:
+  finalize-ocr:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    env:
+      CHAPTER_ID: c2510251
+      PARTIAL_RUN_ID: "34472167496"
+      PARTIAL_ARTIFACT: 03-ocr-partial-curation-c2510251
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: trial/chapter-render-251
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Restore partial OCR curation
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf checkpoint/03-ocr-final
+          mkdir -p checkpoint/03-ocr-final
+          gh run download "$PARTIAL_RUN_ID" -n "$PARTIAL_ARTIFACT" -D checkpoint/03-ocr-final
+          test -f checkpoint/03-ocr-final/processed/manifest.json
+          test -f trials/chapter-251/ocr-curation-final.json
+
+      - name: Resolve visual blockers and close OCR gate
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from app.text_objects import ensure_page_text_objects
+
+          root=Path('checkpoint/03-ocr-final')
+          mp=root/'processed'/'manifest.json'
+          manifest=json.loads(mp.read_text(encoding='utf-8'))
+          decisions=json.loads(Path('trials/chapter-251/ocr-curation-final.json').read_text(encoding='utf-8'))
+          if not (decisions.get('gate') or {}).get('ocr_pass_allowed'):
+              raise SystemExit('final decisions do not authorize OCR PASS')
+
+          indexed={}
+          for pi,page in enumerate(manifest.get('pages') or []):
+              for obj in page.get('text_objects') or []:
+                  oid=str(obj.get('id') or '')
+                  if oid:
+                      if oid in indexed: raise SystemExit(f'duplicate object id {oid}')
+                      indexed[oid]=(pi,obj)
+
+          for oid,reason in (decisions.get('additional_drop') or {}).items():
+              if oid not in indexed: raise SystemExit(f'missing drop id {oid}')
+              _pi,obj=indexed[oid]
+              obj.update({
+                  'human_review':'drop_duplicate_credit_sfx_or_noise',
+                  'human_review_reason':reason,
+                  'human_review_source_text':str(obj.get('ocr_text') or ''),
+                  'source_missing':True,
+                  'auto_generated':False,
+                  'origin':'human_review_drop',
+                  'ocr_quality':'human_dropped',
+                  'ocr_quality_reason':reason,
+                  'translation':'',
+              })
+              obj.pop('auto_ocr_text',None); obj.pop('auto_geometry',None)
+
+          for oid,text in (decisions.get('additional_corrections') or {}).items():
+              if oid not in indexed: raise SystemExit(f'missing correction id {oid}')
+              _pi,obj=indexed[oid]
+              if obj.get('source_missing'): raise SystemExit(f'correction targets tombstone {oid}')
+              old=str(obj.get('ocr_text') or '')
+              if old!=text: obj['human_review_original_ocr']=old
+              obj['ocr_text']=text
+              obj['ocr_source']='human_review'
+              obj['ocr_quality']='human_reviewed'
+              obj['ocr_quality_reason']='final_source_review_correction'
+
+          explicit_keep=set(decisions.get('explicit_keep') or {})
+          for oid in explicit_keep:
+              if oid not in indexed: raise SystemExit(f'missing keep id {oid}')
+              if indexed[oid][1].get('source_missing'): raise SystemExit(f'keep id tombstoned {oid}')
+
+          # Finalize every active object as reviewed story; partial stage already
+          # tombstoned deterministic duplicate/credit/noise objects.
+          active=[]
+          for oid,(pi,obj) in indexed.items():
+              if obj.get('source_missing'):
+                  continue
+              text=str(obj.get('ocr_text') or '').strip()
+              if not text:
+                  raise SystemExit(f'active object blank after final review page={pi} id={oid}')
+              obj.update({
+                  'human_review':'keep_story',
+                  'human_review_reason':(decisions.get('explicit_keep') or {}).get(oid,'accepted_story_source_after_final_review'),
+                  'source_missing':False,
+                  'auto_generated':False,
+                  'origin':'human_review_story',
+                  'ocr_source':'human_review',
+                  'ocr_quality':'human_reviewed',
+                  'ocr_quality_reason':'accepted_or_corrected_by_final_human_review',
+                  'translation':'',
+              })
+              active.append((pi,oid,text))
+
+          created=0
+          for page in manifest.get('pages') or []:
+              n,_=ensure_page_text_objects(page); created+=int(n)
+          if created!=0: raise SystemExit(f'reconciliation created/resurrected {created}')
+
+          tombstones=[]; active2=[]; bad=[]
+          for pi,page in enumerate(manifest.get('pages') or []):
+              for obj in page.get('text_objects') or []:
+                  oid=str(obj.get('id') or '')
+                  if obj.get('source_missing'):
+                      tombstones.append(oid)
+                      if obj.get('auto_generated') or obj.get('origin')!='human_review_drop': bad.append(oid)
+                  else:
+                      if obj.get('human_review')!='keep_story' or not str(obj.get('ocr_text') or '').strip(): bad.append(oid)
+                      active2.append(oid)
+          if bad: raise SystemExit(f'final OCR state invalid {bad[:20]}')
+
+          manifest['human_ocr_review']={
+              'status':'PASS',
+              'source_ocr_run_id':34469024791,
+              'source_partial_curation_run_id':34472167496,
+              'reviewed_text_objects':len(indexed),
+              'active_story_objects':len(active2),
+              'persistent_tombstones':len(tombstones),
+              'reconciliation_created_objects':created,
+              'active_unreviewed_objects':0,
+              'ocr_pass_allowed':True,
+              'next_action':'TRANSLATION_REVIEW_ALLOWED',
+          }
+          text=json.dumps(manifest,ensure_ascii=False,indent=2)
+          mp.write_text(text,encoding='utf-8'); (root/'manifest.json').write_text(text,encoding='utf-8')
+          (root/'ocr-final-summary.json').write_text(json.dumps(manifest['human_ocr_review'],ensure_ascii=False,indent=2),encoding='utf-8')
+          (root/'active-story-source.json').write_text(json.dumps([
+              {'page_index':pi,'id':oid,'source_text':text} for pi,oid,text in active
+          ],ensure_ascii=False,indent=2),encoding='utf-8')
+          print(json.dumps(manifest['human_ocr_review'],ensure_ascii=False,indent=2))
+          PY
+
+      - name: Publish OCR final summary
+        run: |
+          cp checkpoint/03-ocr-final/ocr-final-summary.json trials/chapter-251/ocr-final-summary.json
+          cp checkpoint/03-ocr-final/active-story-source.json trials/chapter-251/active-story-source.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add trials/chapter-251/ocr-final-summary.json trials/chapter-251/active-story-source.json
+          if ! git diff --cached --quiet; then
+            git commit -m "review: pass chapter 251 OCR human gate"
+            git push origin HEAD:trial/chapter-render-251
+          fi
+
+      - name: Upload final OCR checkpoint
+        uses: actions/upload-artifact@v4
+        with:
+          name: 03-ocr-final-c2510251
+          path: checkpoint/03-ocr-final
+          retention-days: 7
+          if-no-files-found: error
