@@ -1,0 +1,49 @@
+name: Chapter 251 OCR All Objects Table
+on:
+  push:
+    branches: [trial/chapter-render-251]
+    paths: [.github/workflows/chapter-251-ocr-all-table.yml]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  table:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: trial/chapter-render-251
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build all-object table
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root=Path('trials/chapter-251')
+          objs=json.loads((root/'ocr-auto-text-objects.json').read_text(encoding='utf-8'))
+          boxes=json.loads((root/'ocr-auto-boxes.json').read_text(encoding='utf-8'))
+          bmap={(int(b['page_index']),str(b['box_id'])):b for b in boxes}
+          def key(o):
+              r=o.get('region') or {}
+              return (int(o.get('source_page') or 0),int(o.get('slice_index') or 0),int(r.get('y1') or 0),int(r.get('x1') or 0))
+          objs.sort(key=key)
+          lines=[]
+          for n,o in enumerate(objs):
+              refs=[str(x) for x in (o.get('source_boxes') or [])]
+              meta=[bmap.get((int(o['page_index']),bid),{}) for bid in refs]
+              sem=','.join(str(m.get('semantic_type') or '') for m in meta)
+              q=','.join(str(m.get('quality') or '') for m in meta)
+              text=str(o.get('ocr_text') or '').replace('\n',' / ')
+              lines.append(f"{n:03d}\tsrc{o.get('source_page')}\tp{o.get('page_index')}\ts{o.get('slice_index')}\t{o.get('id')}\tboxes={','.join(refs)}\tsem={sem}\tq={q}\tOCR={text}")
+          (root/'ocr-all-objects.tsv').write_text('\n'.join(lines)+'\n',encoding='utf-8')
+          print(len(lines))
+          PY
+      - name: Publish
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add trials/chapter-251/ocr-all-objects.tsv
+          git commit -m "review: publish chapter 251 OCR all-object table"
+          git push origin HEAD:trial/chapter-render-251
