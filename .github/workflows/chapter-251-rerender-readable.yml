@@ -1,0 +1,181 @@
+name: Chapter 251 Rerender Readable Fixed Sizes
+
+on:
+  push:
+    branches: [trial/chapter-render-251]
+    paths: [.github/workflows/chapter-251-rerender-readable.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: chapter-251-human-loop
+  cancel-in-progress: false
+
+jobs:
+  rerender-readable:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    env:
+      CHAPTER_ID: c2510251
+      BASE_RENDER_RUN_ID: "34488081180"
+      BASE_RENDER_ARTIFACT: 05-render-review-c2510251-fixed
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: trial/chapter-render-251
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install render runtime
+        run: python -m pip install Pillow==10.4.0 numpy==1.26.4 opencv-contrib-python==4.10.0.84 fastapi==0.115.0 pydantic==2.9.2 filelock==3.16.1 loguru==0.7.2 fonttools==4.59.2
+      - name: Restore fixed-size checkpoint only
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf checkpoint/base checkpoint/readable data/processed/c2510251 data/output/c2510251
+          mkdir -p checkpoint/base checkpoint/readable data/processed data/output
+          gh run download "$BASE_RENDER_RUN_ID" -n "$BASE_RENDER_ARTIFACT" -D checkpoint/base
+          test -f checkpoint/base/processed/manifest.json
+          cp -a checkpoint/base/processed data/processed/c2510251
+          mkdir -p data/output/c2510251
+      - name: Apply larger human-reviewed fixed buckets
+        run: |
+          python - <<'PY'
+          import json
+          from collections import Counter
+          from pathlib import Path
+          from PIL import Image, ImageDraw
+          from app.render.text_renderer import get_font_object, _wrap_text, _calc_line_height
+
+          cid='c2510251'; proc=Path('data/processed')/cid; mp=proc/'manifest.json'
+          m=json.loads(mp.read_text(encoding='utf-8')); font_dir=Path('app/static/fonts')
+          special_sfx={'text_db05c240392f4332','text_3686fc49acd34585','text_cce8c22206f9466c','text_940955579f314c23'}
+          special_shadow={'text_d69d4204fc8b4a36','text_2f380f5adb9b47f3'}
+          draw=ImageDraw.Draw(Image.new('RGB',(8,8),'white')); usage=Counter(); assignments=[]; failures=[]
+
+          def fits(text,font_name,size,r):
+              raw_w=max(1,int(r['x2'])-int(r['x1'])); raw_h=max(1,int(r['y2'])-int(r['y1']))
+              pad=max(2,min(16,int(min(raw_w,raw_h)*0.12))); bw=max(1,raw_w-2*pad); bh=max(1,raw_h-2*pad)
+              font=get_font_object(str(font_dir/f'{font_name}.ttf'),size); lines=_wrap_text(draw,text,font,bw)
+              if not lines: return False,[]
+              lh=_calc_line_height(draw,font,stroke_w=1); maxw=max(draw.textbbox((0,0),line,font=font,stroke_width=1)[2] for line in lines)
+              return lh*len(lines)<=bh and maxw<=bw,lines
+
+          for pi,p in enumerate(m.get('pages') or []):
+              cn=Path(str(p.get('clean') or '')).name
+              if cn: p['clean']=str((proc/cn).resolve())
+              for o in p.get('text_objects') or []:
+                  if o.get('source_missing') or o.get('human_review')!='keep_story': continue
+                  oid=str(o.get('id')); text=str(o.get('translation') or '').strip(); r=o.get('region') or {}
+                  if oid in special_shadow: font='Shadow-fonts'; role='ominous_declaration'; candidates=[48,46,44,42,40,38,36,34,32,30,28]
+                  elif oid in special_sfx: font='SFX-fonts-1'; role='reaction_sfx'; candidates=[40,38,36,34,32,30,28]
+                  else: font='Mac-dinh-3'; role='dialogue'; candidates=[40,38,36,34,32,30,28]
+                  selected=None; lines=[]
+                  for size in candidates:
+                      ok,wrapped=fits(text,font,size,r)
+                      if ok: selected=size; lines=wrapped; break
+                  if selected is None:
+                      failures.append({'page':pi,'id':oid,'text':text,'candidates':candidates}); continue
+                  style=o.setdefault('style',{}); style.update({'font':font,'fontSize':str(selected),'strokeWidth':'1','color':'auto','strokeColor':'auto','bgColor':'transparent','cornerRadius':'0','horizontalAlign':'center','verticalAlign':'middle','bold':oid in special_shadow})
+                  o['human_typeset_font']=font; o['human_typeset_font_size']=selected; o['human_typeset_class']=role; o['human_typeset_reason']='human_visual_review_rev2_larger_fixed_bucket_no_auto'
+                  usage[selected]+=1; assignments.append({'page':pi,'id':oid,'font':font,'size':selected,'lines':lines,'text':text})
+          if failures:
+              Path('checkpoint/readable/fit-failures.json').write_text(json.dumps(failures,ensure_ascii=False,indent=2),encoding='utf-8')
+              raise SystemExit(f'{len(failures)} objects fail readable fixed-size floor 28')
+          if len(assignments)!=65: raise SystemExit(f'expected 65 assignments got {len(assignments)}')
+          auto=[a for p in m.get('pages') or [] for a in p.get('text_objects') or [] if not a.get('source_missing') and a.get('human_review')=='keep_story' and str((a.get('style') or {}).get('fontSize')).lower()=='auto']
+          if auto: raise SystemExit(f'auto fontSize survived: {len(auto)}')
+          summary={'chapter_id':cid,'status':'FIXED_SIZE_PLAN_PASS','font_size_policy':'HUMAN_REVIEWED_FIXED_BUCKETS_NO_AUTO','minimum_font_size':28,'font_size_usage':{str(k):v for k,v in sorted(usage.items(),reverse=True)},'assignments':assignments}
+          m['human_typeset_review']=summary; mp.write_text(json.dumps(m,ensure_ascii=False,indent=2),encoding='utf-8')
+          Path('checkpoint/readable/typography-plan.json').write_text(json.dumps(summary,ensure_ascii=False,indent=2),encoding='utf-8')
+          print(json.dumps({k:v for k,v in summary.items() if k!='assignments'},indent=2))
+          PY
+      - name: Render and stitch readable candidate
+        run: |
+          python - <<'PY'
+          import json, shutil, zipfile
+          from pathlib import Path
+          from PIL import Image
+          from app.routers.export import render_chapter, export_chapter
+          cid='c2510251'; r=render_chapter(cid); stats=r.get('chapter_render') or {}
+          if stats.get('total')!=77 or stats.get('skipped')!=0: raise SystemExit(f'bad render stats {stats}')
+          export_chapter(cid); out=Path('data/output')/cid; z=out/f'chapter_{cid}.zip'
+          with zipfile.ZipFile(z) as f:
+              names=[n for n in f.namelist() if n.lower().endswith('.png')]
+              if len(names)!=21: raise SystemExit(f'expected 21 final pages got {len(names)}')
+              for n in names:
+                  with f.open(n) as src:
+                      with Image.open(src) as im:
+                          if im.width<=0 or im.height<=0: raise SystemExit(f'invalid {n}')
+          shutil.copy2(z,'checkpoint/readable/Villain-To-Kill-Chapter-251-VI-CANDIDATE.zip')
+          shutil.copy2(Path('data/processed')/cid/'manifest.json','checkpoint/readable/manifest.json')
+          print(json.dumps({'render':stats,'final_pages':21},indent=2))
+          PY
+      - name: Build JPG human visual proof
+        run: |
+          python - <<'PY'
+          import json, math, zipfile
+          from pathlib import Path
+          from PIL import Image, ImageDraw, ImageFont
+          cid='c2510251'; proc=Path('data/processed')/cid; out=Path('data/output')/cid
+          proof=Path('checkpoint/readable/visual-proof'); proof.mkdir(parents=True,exist_ok=True); font=ImageFont.load_default()
+          m=json.loads((proc/'manifest.json').read_text(encoding='utf-8')); cards=[]
+          for pi,p in enumerate(m.get('pages') or []):
+              rp=out/f'page_{pi:03d}.png'
+              if not rp.is_file(): continue
+              im=Image.open(rp).convert('RGB')
+              for o in p.get('text_objects') or []:
+                  if o.get('source_missing') or o.get('human_review')!='keep_story': continue
+                  r=o.get('region') or {}; x1=int(r['x1']); y1=int(r['y1']); x2=int(r['x2']); y2=int(r['y2']); pad=120
+                  crop=im.crop((max(0,x1-pad),max(0,y1-pad),min(im.width,x2+pad),min(im.height,y2+pad))); crop.thumbnail((430,255),Image.Resampling.LANCZOS)
+                  card=Image.new('RGB',(450,315),'white'); card.paste(crop,((450-crop.width)//2,5)); d=ImageDraw.Draw(card)
+                  d.text((6,264),f"p{pi:03d} {o.get('id')} {o.get('human_typeset_font_size')}px",fill='black',font=font); d.text((6,281),str(o.get('translation') or '').replace('\n',' ')[:78],fill='black',font=font); cards.append(card)
+          if len(cards)!=65: raise SystemExit(f'cards={len(cards)}')
+          for start in range(0,65,12):
+              sheet=Image.new('RGB',(1350,1260),'white')
+              for j,c in enumerate(cards[start:start+12]): sheet.paste(c,((j%3)*450,(j//3)*315))
+              sheet.save(proof/f'objects-{start//12:02d}.jpg',quality=93,optimize=True)
+          with zipfile.ZipFile(out/f'chapter_{cid}.zip') as z:
+              tmp=Path('checkpoint/readable/final-pages'); tmp.mkdir(exist_ok=True); z.extractall(tmp)
+          pages=sorted(Path('checkpoint/readable/final-pages').glob('*.png')); thumbs=[]
+          for idx,p in enumerate(pages):
+              im=Image.open(p).convert('RGB'); tw=430; th=max(1,round(im.height*tw/im.width))
+              if th>2600: scale=2600/th; tw=max(1,round(tw*scale)); th=2600
+              thumb=im.resize((tw,th),Image.Resampling.LANCZOS); c=Image.new('RGB',(450,th+30),'white'); c.paste(thumb,((450-tw)//2,24)); ImageDraw.Draw(c).text((6,5),f'source page {idx:02d}',fill='black',font=font); thumbs.append(c)
+          for start in range(0,len(thumbs),3):
+              chunk=thumbs[start:start+3]; h=max(x.height for x in chunk); s=Image.new('RGB',(450*len(chunk),h),'white')
+              for j,t in enumerate(chunk): s.paste(t,(j*450,0))
+              s.save(proof/f'pages-{start//3:02d}.jpg',quality=90,optimize=True)
+          idx={'chapter_id':cid,'source_base_render_run_id':34488081180,'font_size_policy':'HUMAN_REVIEWED_FIXED_BUCKETS_NO_AUTO','object_sheets':6,'page_sheets':7,'object_count':65,'source_pages':21}
+          (proof/'index.json').write_text(json.dumps(idx,indent=2),encoding='utf-8')
+          PY
+      - name: Publish readable proof
+        run: |
+          rm -rf trials/chapter-251/readable-visual-proof
+          cp -a checkpoint/readable/visual-proof trials/chapter-251/readable-visual-proof
+          cp checkpoint/readable/typography-plan.json trials/chapter-251/readable-typography-plan.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add trials/chapter-251/readable-visual-proof trials/chapter-251/readable-typography-plan.json
+          git commit -m "review: publish chapter 251 readable fixed-size proof"
+          git fetch origin trial/chapter-render-251
+          git rebase origin/trial/chapter-render-251
+          git push origin HEAD:trial/chapter-render-251
+      - name: Upload readable candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: 06-readable-fixed-candidate-c2510251
+          path: checkpoint/readable
+          retention-days: 7
+          if-no-files-found: error
+      - name: Upload readable visual proof
+        uses: actions/upload-artifact@v4
+        with:
+          name: 06-readable-fixed-proof-c2510251
+          path: checkpoint/readable/visual-proof
+          retention-days: 7
+          if-no-files-found: error
