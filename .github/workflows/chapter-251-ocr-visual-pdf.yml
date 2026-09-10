@@ -1,0 +1,125 @@
+name: Chapter 251 OCR Visual Blocker PDF
+
+on:
+  push:
+    branches:
+      - trial/chapter-render-251
+    paths:
+      - .github/workflows/chapter-251-ocr-visual-pdf.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: chapter-251-human-loop
+  cancel-in-progress: false
+
+jobs:
+  build-pdf:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    env:
+      OCR_RUN_ID: "34469024791"
+      OCR_ARTIFACT: 03-ocr-review-c2510251
+      CHAPTER_ID: c2510251
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: trial/chapter-render-251
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install review dependency
+        run: python -m pip install Pillow==10.4.0
+
+      - name: Restore OCR checkpoint
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf checkpoint/03-ocr-visual-pdf
+          mkdir -p checkpoint/03-ocr-visual-pdf
+          gh run download "$OCR_RUN_ID" -n "$OCR_ARTIFACT" -D checkpoint/03-ocr-visual-pdf
+          test -f checkpoint/03-ocr-visual-pdf/processed/manifest.json
+          test -f trials/chapter-251/ocr-curation-draft.json
+
+      - name: Build visual blocker PDF from ORIGINAL crops
+        run: |
+          python - <<'PY'
+          import json, textwrap
+          from pathlib import Path
+          from PIL import Image, ImageDraw, ImageFont
+
+          root=Path('checkpoint/03-ocr-visual-pdf')
+          manifest=json.loads((root/'processed'/'manifest.json').read_text(encoding='utf-8'))
+          draft=json.loads(Path('trials/chapter-251/ocr-curation-draft.json').read_text(encoding='utf-8'))
+
+          indexed={}
+          for pi,page in enumerate(manifest.get('pages') or []):
+              for obj in page.get('text_objects') or []:
+                  oid=str(obj.get('id') or '')
+                  if oid: indexed[oid]=(pi,page,obj)
+
+          wanted=[]
+          for group in draft.get('unresolved_visual_review') or []:
+              ids=group.get('ids') or ([group['id']] if group.get('id') else [])
+              for oid in ids:
+                  wanted.append((str(oid),group))
+          if len(wanted)!=12:
+              raise SystemExit(f'expected 12 unresolved objects, got {len(wanted)}')
+
+          pages=[]; index=[]
+          font=ImageFont.load_default(size=26)
+          small=ImageFont.load_default(size=20)
+          for seq,(oid,group) in enumerate(wanted,1):
+              if oid not in indexed: raise SystemExit(f'missing object {oid}')
+              pi,page,obj=indexed[oid]
+              raw=Path(str(page.get('original') or ''))
+              if not raw.is_file():
+                  rn=raw.name
+                  alt=root/'raw'/'sliced'/rn
+                  raw=alt if alt.is_file() else raw
+              if not raw.is_file(): raise SystemExit(f'raw missing for {oid}: {raw}')
+              r=obj.get('region') or {}
+              x1,y1,x2,y2=[int(r.get(k) or 0) for k in ('x1','y1','x2','y2')]
+              im=Image.open(raw).convert('RGB')
+              pad_x=max(180,(x2-x1)//2); pad_y=max(220,(y2-y1)//2)
+              cx1=max(0,x1-pad_x); cy1=max(0,y1-pad_y); cx2=min(im.width,x2+pad_x); cy2=min(im.height,y2+pad_y)
+              crop=im.crop((cx1,cy1,cx2,cy2))
+              scale=min(1100/crop.width, 1050/crop.height, 1.8)
+              crop=crop.resize((max(1,int(crop.width*scale)),max(1,int(crop.height*scale))),Image.Resampling.LANCZOS)
+              canvas=Image.new('RGB',(1200,1500),'white')
+              canvas.paste(crop,((1200-crop.width)//2,50))
+              d=ImageDraw.Draw(canvas)
+              y=1130
+              meta=f'#{seq}/12  page={pi}  id={oid}'
+              d.text((40,y),meta,fill='black',font=font); y+=45
+              ocr=' '.join(str(obj.get('ocr_text') or '').splitlines()) or '<EMPTY>'
+              d.text((40,y),'OCR: '+ocr[:100],fill='black',font=small); y+=38
+              reason=str(group.get('reason') or '')
+              for line in textwrap.wrap('Reason: '+reason,width=90)[:4]:
+                  d.text((40,y),line,fill='black',font=small); y+=30
+              d.text((40,1450),f'ORIGINAL crop; target box=({x1},{y1})-({x2},{y2})',fill='black',font=small)
+              pages.append(canvas)
+              index.append({'seq':seq,'id':oid,'page_index':pi,'ocr':obj.get('ocr_text'),'region':r,'reason':reason})
+
+          out=Path('trials/chapter-251')
+          out.mkdir(parents=True,exist_ok=True)
+          pdf=out/'ocr-visual-blockers.pdf'
+          pages[0].save(pdf,save_all=True,append_images=pages[1:],resolution=150.0)
+          (out/'ocr-visual-blockers-index.json').write_text(json.dumps(index,ensure_ascii=False,indent=2),encoding='utf-8')
+          print(f'wrote {pdf} pages={len(pages)} size={pdf.stat().st_size}')
+          PY
+
+      - name: Commit compact visual review PDF
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add trials/chapter-251/ocr-visual-blockers.pdf trials/chapter-251/ocr-visual-blockers-index.json
+          if ! git diff --cached --quiet; then
+            git commit -m "review: publish chapter 251 OCR visual blocker PDF"
+            git push origin HEAD:trial/chapter-render-251
+          fi
