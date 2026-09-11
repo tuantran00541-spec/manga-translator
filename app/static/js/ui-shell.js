@@ -424,7 +424,8 @@
 
   wrapRenderer("renderPreview", "preview");
   wrapRenderer("renderReview", "review");
-  wrapRenderer("renderEditor", "editor");
+  // Editor owns its DOM lifecycle directly.  Wrapping it here used to combine
+  // shell setup with three other render wrappers and caused repeated rebuilds.
 
   document.addEventListener("DOMContentLoaded", () => {
     setupShellEvents();

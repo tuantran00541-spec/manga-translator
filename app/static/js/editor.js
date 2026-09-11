@@ -1545,8 +1545,8 @@ function buildChapterExportButton() {
 function renderEditor() {
   const container = document.getElementById("page-view");
   if (!container) return;
-  cancelTextObjectPersist();
-  if (typeof window.cancelGeomPersist === "function") window.cancelGeomPersist();
+  // Rendering must never discard debounced user edits.  Persistence is flushed
+  // explicitly on navigation and actions instead of being reset per frame.
   if (!currentManifest || !currentManifest.pages || currentManifest.pages.length === 0) return;
 
   if (currentChapterId && editorState.lastChapterId !== currentChapterId) {

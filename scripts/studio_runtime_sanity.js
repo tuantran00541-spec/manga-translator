@@ -1,0 +1,14 @@
+const fs = require('fs');
+const assert = require('assert');
+const html = fs.readFileSync('app/templates/index.html', 'utf8');
+const css = fs.readFileSync('app/static/css/app.css', 'utf8');
+const studio = fs.readFileSync('app/static/css/studio.css', 'utf8');
+const shell = fs.readFileSync('app/static/js/ui-shell.js', 'utf8');
+const editor = fs.readFileSync('app/static/js/editor.js', 'utf8');
+assert(css.includes('./studio.css'), 'studio stylesheet must be the runtime surface');
+for (const legacy of ['frontend-release.css', 'frontend-coordinator.js', 'frontend-release.js', 'frontend-release-encoder-guard.js']) assert(!html.includes(legacy), `${legacy} must not be loaded at runtime`);
+assert(!shell.includes('wrapRenderer("renderEditor"'), 'Editor must not be shell-wrapped');
+assert(!editor.includes('cancelTextObjectPersist();\n  if (typeof window.cancelGeomPersist'), 'Editor render must not cancel pending edits');
+assert(studio.includes('.translation-workspace-body'), 'studio must own editor workspace layout');
+assert(studio.includes('.page-navigator-item[aria-current="page"]'), 'studio must own navigator active state');
+console.log('studio runtime sanity: PASS');

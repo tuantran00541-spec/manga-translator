@@ -9,7 +9,7 @@ HTML_PATHS = sorted(Path("app/templates").rglob("*.html"))
 CSS_PATHS = sorted(Path("app/static/css").rglob("*.css"))
 STATIC_ROOT = Path("app/static")
 TOKENS_PATH = STATIC_ROOT / "css" / "tokens.css"
-WORKBENCH_PATH = STATIC_ROOT / "css" / "workbench.css"
+WORKBENCH_PATH = STATIC_ROOT / "css" / "studio.css"
 CSS_IMPORT_PATTERN = re.compile(
     r"@import\s+url\(\s*(?:['\"])?([^'\")\s]+)(?:['\"])?\s*\)",
     re.IGNORECASE,
@@ -360,9 +360,9 @@ def check_workbench_shell_contract() -> None:
     failures: list[str] = []
     source = WORKBENCH_PATH.read_text(encoding="utf-8")
     for marker in (
-        "--nav-width: var(--studio-rail-width, 250px);",
-        "--inspector-width: var(--studio-inspector-width, 320px);",
-        "grid-template-columns: var(--nav-width) minmax(0, 1fr) var(--inspector-width);",
+        ".translation-workspace-body,.workbench-stage-grid",
+        "grid-template-columns:240px minmax(0,1fr) 336px",
+        "@media(max-width:1000px)",
     ):
         if marker not in source:
             failures.append(f"{WORKBENCH_PATH}: missing shell geometry marker {marker!r}")

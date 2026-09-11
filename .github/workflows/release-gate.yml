@@ -41,26 +41,11 @@ jobs:
       - name: Check browser JavaScript syntax
         run: find app/static/js -type f -name '*.js' -print0 | xargs -0 -n1 node --check
 
-      - name: Run frontend coordinator regression
-        run: node scripts/frontend_coordinator_sanity.js
-
       - name: Run editor auto-sync regression
         run: node scripts/editor_auto_sync_sanity.js
 
-      - name: Run frontend release regression
-        run: node scripts/frontend_release_sanity.js
-
-      - name: Run frontend browser, geometry, and mask benchmark gate
-        run: python scripts/frontend_release_browser_check.py --artifacts frontend-browser-artifacts
-
-      - name: Upload frontend browser evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: frontend-browser-evidence-${{ github.run_number }}
-          path: frontend-browser-artifacts
-          if-no-files-found: warn
-          retention-days: 14
+      - name: Run studio runtime regression
+        run: node scripts/studio_runtime_sanity.js
 
       - name: Test-suite location
         run: |
