@@ -17,6 +17,7 @@ env:
   CHAPTER_ID: c2182180
   TRANSLATION_RUN_ID: "34579240724"
   TRANSLATION_ARTIFACT: 04-translation-reviewed-c2182180
+  PYTHONPATH: .
 
 jobs:
   typeset-preflight:
