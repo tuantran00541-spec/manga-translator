@@ -290,11 +290,19 @@
   }
 
   @media (max-width: 720px) {
-    body { overflow: auto; }
-    .workbench-frame { display: block; min-height: 100dvh; }
-    .workbench-topbar { position: sticky; top: 0; min-height: auto; flex-wrap: wrap; padding: 9px var(--space-3); }
+    /* Keep the canvas in a bounded grid row.  A block frame made the editor's
+       `1fr` row resolve against an indefinite height, so the mobile canvas
+       could collapse after the wrapped command bar. */
+    body { overflow: hidden; }
+    .workbench-frame {
+      display: grid;
+      height: 100dvh;
+      min-height: 100dvh;
+      grid-template-rows: auto minmax(0, 1fr);
+    }
+    .workbench-topbar { position: relative; top: auto; min-height: auto; flex-wrap: wrap; padding: 9px var(--space-3); }
     .workbench-stage-nav { order: 3; width: 100%; overflow-x: auto; } .workbench-title-block { display: none; }
-    .app-workspace { min-height: calc(100dvh - 84px); } .app-stage { min-height: calc(100dvh - 84px); }
+    .app-workspace, .app-stage { height: 100%; min-height: 0; }
     #landing-view { padding: 32px var(--space-3); } .landing-intro { text-align: left; } .landing-source-grid, .chapter-input-grid { grid-template-columns: 1fr; } #upload-divider { min-height: 16px; }
     .translation-sticky-toolbar, .review-sticky-toolbar, .process-commandbar { align-items: stretch; flex-wrap: wrap; padding: var(--space-2) var(--space-3); }
     .editor-save-status { margin-left: 0; }

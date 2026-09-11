@@ -38,6 +38,9 @@ def _exercise_desktop(page: Page) -> None:
 
 def _exercise_mobile(page: Page) -> None:
     _wait_for_editor(page)
+    canvas_box = page.locator(".translation-canvas-host").bounding_box()
+    if not canvas_box or canvas_box["height"] < 160:
+        raise AssertionError(f"mobile editor canvas is not usable: {canvas_box}")
     expect(page.locator("#workbench-panel-controls")).to_be_visible()
     expect(page.locator(".page-navigator")).to_be_hidden()
 
@@ -87,6 +90,7 @@ def main() -> None:
                 )
                 page.goto(target, wait_until="networkidle")
                 exercise(page)
+                page.locator(".translation-canvas-host img").scroll_into_view_if_needed()
                 page.screenshot(path=str(args.artifacts / f"{name}.png"), full_page=True)
                 print(f"{name}: PASS")
                 page.close()
