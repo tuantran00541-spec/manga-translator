@@ -1,0 +1,102 @@
+name: Chapter 218 Add Readable System UI Font
+
+on:
+  push:
+    branches:
+      - trial/chapter-render-218
+    paths:
+      - .github/workflows/chapter-218-add-system-ui-font.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: chapter-218-human-loop
+  cancel-in-progress: false
+
+jobs:
+  add-system-ui-font:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: trial/chapter-render-218
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install font verification runtime
+        run: python -m pip install --disable-pip-version-check --quiet fonttools==4.60.1 Pillow==10.4.0 numpy==1.26.4
+
+      - name: Download pinned Be Vietnam Pro SemiBold and OFL license
+        run: |
+          set -euo pipefail
+          mkdir -p app/static/fonts
+          curl --fail --location --retry 3 \
+            https://raw.githubusercontent.com/google/fonts/main/ofl/bevietnampro/BeVietnamPro-SemiBold.ttf \
+            -o app/static/fonts/BeVietnamPro-SemiBold.ttf
+          curl --fail --location --retry 3 \
+            https://raw.githubusercontent.com/google/fonts/main/ofl/bevietnampro/OFL.txt \
+            -o app/static/fonts/BeVietnamPro-OFL.txt
+
+          test "$(stat -c%s app/static/fonts/BeVietnamPro-SemiBold.ttf)" = "136736"
+          test "$(git hash-object app/static/fonts/BeVietnamPro-SemiBold.ttf)" = "b25bad31fe8984d5db6cbce61a23323bbb68bc97"
+
+      - name: Verify Vietnamese glyph coverage and renderer discovery
+        env:
+          PYTHONPATH: .
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from fontTools.ttLib import TTFont
+          from PIL import ImageFont
+          from app.render.text_renderer import get_font_path, list_available_fonts
+
+          p = Path('app/static/fonts/BeVietnamPro-SemiBold.ttf')
+          font = TTFont(str(p))
+          cmap = font.getBestCmap() or {}
+          sample = (
+              'TẦNG 45 LOẠI NHIỆM VỤ - VẬN CHUYỂN MỤC TIÊU '
+              'THU THẬP TOÀN BỘ CHÌA KHÓA VÀ GIAO CHO NPC ĐẶC BIỆT! '
+              'Ă Â Ê Ô Ơ Ư Đ ă â ê ô ơ ư đ '
+              'Á À Ả Ã Ạ É È Ẻ Ẽ Ẹ Í Ì Ỉ Ĩ Ị Ó Ò Ỏ Õ Ọ '
+              'Ú Ù Ủ Ũ Ụ Ý Ỳ Ỷ Ỹ Ỵ'
+          )
+          missing = sorted({ch for ch in sample if not ch.isspace() and ord(ch) not in cmap})
+          if missing:
+              raise SystemExit(f'missing required Vietnamese glyphs: {missing!r}')
+
+          # The renderer discovers TTF files from DEFAULT_FONT.parent automatically.
+          fonts = {row['id'] for row in list_available_fonts()}
+          if 'BeVietnamPro-SemiBold' not in fonts:
+              raise SystemExit(f'font not discovered by renderer: {sorted(fonts)}')
+          resolved = get_font_path('BeVietnamPro-SemiBold')
+          if resolved.resolve() != p.resolve():
+              raise SystemExit(f'font resolver mismatch: {resolved}')
+          ImageFont.truetype(str(p), 42)
+
+          os2 = font['OS/2']
+          print({
+              'font': 'BeVietnamPro-SemiBold',
+              'weight_class': os2.usWeightClass,
+              'glyphs': len(cmap),
+              'vietnamese_sample_missing': 0,
+              'renderer_discovered': True,
+          })
+          PY
+
+      - name: Commit verified font to trial branch
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/static/fonts/BeVietnamPro-SemiBold.ttf app/static/fonts/BeVietnamPro-OFL.txt
+          git diff --cached --check
+          git commit -m "fonts: add Be Vietnam Pro SemiBold for system UI"
+          git fetch origin trial/chapter-render-218
+          git rebase origin/trial/chapter-render-218
+          git push origin HEAD:trial/chapter-render-218
