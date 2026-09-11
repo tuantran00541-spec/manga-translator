@@ -1,0 +1,31 @@
+{
+  "checkpoint": "02-clean-review-approved",
+  "chapter_id": "c0990099",
+  "status": "PASS_AFTER_REPAIR",
+  "source_pages": 20,
+  "slices": 73,
+  "clean_run_id": 34545913545,
+  "repair_run_id": 34548627218,
+  "approved_run_id": 34549043757,
+  "approved_artifact": "02-clean-review-approved-c0990099",
+  "approved_artifact_id": 10180101888,
+  "visual_review": {
+    "stitched_source_pages_reviewed": 20,
+    "zoom_chunks_reviewed": 108,
+    "focus_before_after_reviewed": true
+  },
+  "classification": {
+    "story_inpaint_blockers": 0,
+    "free_text_residue_blockers": 0,
+    "artwork_damage_blockers": 0,
+    "non_story_overclean_blockers": 0
+  },
+  "repairs": [
+    {"page_index": 0, "source_page": 0, "action": "restore_full_raw", "reason": "non_story_chapter_card_overclean"},
+    {"page_index": 24, "source_page": 6, "action": "masked_lama", "region": [45,3535,135,3715], "reason": "owned_H_residue_from_HELLAS_KUSTORIA"},
+    {"page_index": 63, "source_page": 16, "action": "restore_blank_gutter", "region": [35,1215,870,1345], "reason": "owned_story_narration_residue"},
+    {"page_index": 72, "source_page": 19, "action": "restore_raw_tail", "restore_y": 2500, "reason": "non_story_scanlation_promo_overclean"}
+  ],
+  "sfx_policy": "preserve_unless_editorially_selected_for_translation",
+  "next_action": "OCR_CHECKPOINT_ALLOWED"
+}
