@@ -136,19 +136,19 @@ Privacy text must clearly state when source/clean images or contact sheets are s
 - Hover cannot be the only way to reveal destructive or required actions.
 - Motion is short and functional; respect reduced-motion preferences.
 
-## Source ownership target
+## Source ownership
 
-During migration, legacy files may coexist. Final v0.3 ownership should converge toward:
+The shipped browser surface has one stylesheet entrypoint and one studio layer:
 
-- `tokens.css` — tokens only;
-- `workbench.css` — shell, rail, sidebars, top bar, responsive layout;
-- `components.css` — controls, fields, badges, progress, settings, toast, tooltip;
-- `canvas.css` — canvas and overlay primitives;
-- small stage CSS modules — only stage-specific visual behavior;
-- shared JS workbench/page-navigation components;
-- stage JS modules — domain behavior, not duplicate shell construction.
+- `tokens.css` — design tokens only;
+- `foundation.css` — reset and global accessibility primitives;
+- `studio.css` — shell, controls, responsive panes, canvas, editor, preview and review styles;
+- `page-navigator.js` — shared page navigation;
+- stage JS modules — domain behavior and their own DOM lifecycle.
 
-A migrated component is not complete until the conflicting legacy CSS/DOM it replaces is removed.
+The Editor owns its lifecycle directly. It must not be wrapped by shell or
+compatibility renderers, and overlay transforms must be installed explicitly
+for the current editor canvas rather than by a document-wide observer.
 
 ## Product language
 

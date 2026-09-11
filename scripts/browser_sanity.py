@@ -360,9 +360,9 @@ def check_workbench_shell_contract() -> None:
     failures: list[str] = []
     source = WORKBENCH_PATH.read_text(encoding="utf-8")
     for marker in (
-        ".translation-workspace-body,.workbench-stage-grid",
-        "grid-template-columns:240px minmax(0,1fr) 336px",
-        "@media(max-width:1000px)",
+        ".workbench-stage-grid, .translation-workspace-body",
+        "grid-template-columns: var(--studio-rail-width) minmax(0, 1fr) var(--studio-inspector-width)",
+        "@media (max-width: 1000px)",
     ):
         if marker not in source:
             failures.append(f"{WORKBENCH_PATH}: missing shell geometry marker {marker!r}")

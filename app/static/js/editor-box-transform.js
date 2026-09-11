@@ -461,10 +461,8 @@
     }
   });
 
-  function install() {
-    document.querySelectorAll(
-      ".translation-canvas-host .text-object-overlay, .page-image-wrap .text-object-overlay"
-    ).forEach((overlay) => {
+  function install(scope = document) {
+    scope.querySelectorAll(".text-object-overlay").forEach((overlay) => {
       if (overlay.dataset.transformReady) return;
       overlay.dataset.transformReady = "1";
       overlay.addEventListener("pointermove", (e) => updateCursor(e, overlay));
@@ -475,11 +473,14 @@
     });
   }
 
+  // Editor render creates a small, known set of overlay nodes.  Exposing this
+  // explicit installer avoids a document-wide MutationObserver that woke up
+  // for every inspector and toolbar DOM change.
+  window.installEditorBoxTransforms = install;
+
   document.addEventListener("pointermove", move);
   document.addEventListener("pointerup", end);
   document.addEventListener("pointercancel", end);
 
-  const observer = new MutationObserver(install);
-  observer.observe(document.getElementById("page-view") || document.body, { childList: true, subtree: true });
   install();
 })();

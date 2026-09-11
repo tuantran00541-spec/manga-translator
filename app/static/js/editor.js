@@ -302,6 +302,7 @@ window.editorImageMetrics = editorImageMetrics;
 
 function renderTextObjectOverlays(pageIndex, page) {
   window._editorOverlayResizeObserver?.disconnect();
+  window._editorOverlayResizeObserver = null;
   const wrapper = document.querySelector(".translation-canvas-host .page-block-wrapper");
   if (!wrapper) return;
   const imgWrap = wrapper.querySelector(".page-image-wrap");
@@ -330,6 +331,11 @@ function renderTextObjectOverlays(pageIndex, page) {
       });
       imgWrap.appendChild(overlay);
     });
+    // Transforms are installed only for the overlays we just created.  The
+    // previous runtime scanned the entire editor subtree through a permanent
+    // MutationObserver after every panel update, which made normal clicks
+    // progressively more expensive on long chapters.
+    window.installEditorBoxTransforms?.(imgWrap);
   };
 
   if (img.complete && img.naturalWidth > 0) render();
@@ -1199,42 +1205,22 @@ function buildPageWrapper(page, pageIndex, pages) {
   return wrapper;
 }
 
-let _editorSwitchingPage = false;
-let _editorPendingSwitchIndex = null;
-
-async function switchEditorPage(newIndex) {
-  const chapterId = currentChapterId;
+function switchEditorPage(newIndex) {
   const pages = currentManifest ? currentManifest.pages : null;
   if (!pages || newIndex < 0 || newIndex >= pages.length) return;
+  const target = Math.max(0, Math.min(Number(newIndex) || 0, pages.length - 1));
+  if (target === editorState.activePageIndex) return true;
 
-  if (_editorSwitchingPage) {
-    _editorPendingSwitchIndex = newIndex;
-    return;
-  }
-  _editorSwitchingPage = true;
-  _editorPendingSwitchIndex = null;
-
-  try {
-    try {
-      await Promise.race([
-        flushAllPendingPersists(),
-        new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout lưu dữ liệu")), 3000)),
-      ]);
-    } catch (err) {
-      console.warn("Lưu dữ liệu trước khi chuyển trang bị cảnh báo/lỗi:", err);
-    }
-    if (chapterId !== currentChapterId) return;
-    editorState.activePageIndex = newIndex;
-    editorState.selectedTextObjectId = null;
-    renderEditor();
-  } finally {
-    _editorSwitchingPage = false;
-    if (_editorPendingSwitchIndex !== null && _editorPendingSwitchIndex !== editorState.activePageIndex) {
-      const nextTarget = _editorPendingSwitchIndex;
-      _editorPendingSwitchIndex = null;
-      void switchEditorPage(nextTarget);
-    }
-  }
+  // Never hold a page switch hostage to network persistence.  Drafts are
+  // retained in the in-memory dirty maps, so they can save in the background
+  // while the next image becomes interactive immediately.
+  void flushAllPendingPersists().catch((err) => {
+    console.warn("Không thể lưu bản nháp trước khi chuyển trang:", err);
+  });
+  editorState.activePageIndex = target;
+  editorState.selectedTextObjectId = null;
+  renderEditor();
+  return true;
 }
 
 window.switchEditorPage = switchEditorPage;
@@ -1549,6 +1535,11 @@ function renderEditor() {
   // explicitly on navigation and actions instead of being reset per frame.
   if (!currentManifest || !currentManifest.pages || currentManifest.pages.length === 0) return;
 
+  // The editor now owns its stage lifecycle.  It is deliberately not wrapped
+  // by ui-shell, so a render has exactly one owner for visibility and panel
+  // setup rather than a chain of render wrappers.
+  window.setAppStage?.("editor");
+
   if (currentChapterId && editorState.lastChapterId !== currentChapterId) {
     if (
       editorState.lastChapterId
@@ -1606,6 +1597,8 @@ function renderEditor() {
     window._editorDrawCleanup();
     window._editorDrawCleanup = null;
   }
+  window._editorOverlayResizeObserver?.disconnect();
+  window._editorOverlayResizeObserver = null;
   container.innerHTML = "";
   container.className = "editor-mode";
 
