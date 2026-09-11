@@ -1,0 +1,24 @@
+{
+  "chapter_id": "c0990099",
+  "stage": "IMPORT",
+  "status": "PASS",
+  "review_type": "human_editorial_plus_reconstruction",
+  "source_url": "https://asurascans.com/comics/bad-born-blood-53fc8424/chapter/99",
+  "source_images": 20,
+  "slices": 73,
+  "source_order_reviewed": true,
+  "source_contact_sheet_reviewed": true,
+  "slice_contact_sheet_reviewed": true,
+  "missing_source_images": 0,
+  "duplicate_source_images": 0,
+  "unreadable_source_images": 0,
+  "ownership_issues": 0,
+  "reconstruction": {
+    "pages_checked": 20,
+    "pixel_exact_pages": 20,
+    "max_abs_diff": 0,
+    "shape_mismatches": 0
+  },
+  "editorial_findings": [],
+  "next_action": "DETECT_MASK_INPAINT_THEN_HUMAN_CLEAN_REVIEW"
+}
