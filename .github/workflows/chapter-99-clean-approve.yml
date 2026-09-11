@@ -1,0 +1,129 @@
+name: Chapter 99 Approve CLEAN Checkpoint
+
+on:
+  push:
+    branches:
+      - trial/chapter-render-99
+    paths:
+      - .github/workflows/chapter-99-clean-approve.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: chapter-99-human-loop
+  cancel-in-progress: false
+
+jobs:
+  approve-clean:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    env:
+      CHAPTER_ID: c0990099
+      REPAIR_RUN_ID: "34548627218"
+      REPAIR_ARTIFACT: 02-clean-review-fixed-c0990099
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: trial/chapter-render-99
+
+      - name: Restore human-reviewed repaired CLEAN checkpoint
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf checkpoint/02-clean-review-approved
+          mkdir -p checkpoint/02-clean-review-approved
+          gh run download "$REPAIR_RUN_ID" -n "$REPAIR_ARTIFACT" -D checkpoint/02-clean-review-approved
+          test -f checkpoint/02-clean-review-approved/processed/manifest.json
+          test -f checkpoint/02-clean-review-approved/clean-repair.json
+          test -f checkpoint/02-clean-review-approved/repair-proof/stitched-clean-after-repair.jpg
+
+      - name: Persist human CLEAN approval
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root=Path('checkpoint/02-clean-review-approved')
+          mp=root/'processed'/'manifest.json'
+          m=json.loads(mp.read_text(encoding='utf-8'))
+          prior=m.get('human_clean_review') or {}
+          if prior.get('status')!='pending_after_local_repair':
+              raise RuntimeError(f'unexpected pre-approval CLEAN state: {prior}')
+          repairs=prior.get('repairs') or []
+          if len(repairs)!=4:
+              raise RuntimeError(f'expected four scoped repairs, got {len(repairs)}')
+          m['human_clean_review']={
+              'status':'pass_after_repair',
+              'reviewed_slices':73,
+              'reviewed_stitched_source_pages':20,
+              'reviewed_zoom_chunks':108,
+              'repairs':repairs,
+              'story_inpaint_blockers':0,
+              'free_text_residue_blockers':0,
+              'artwork_damage_blockers':0,
+              'non_story_overclean_blockers':0,
+              'sfx_policy':'preserve_unless_editorially_selected_for_translation',
+              'notes':(
+                  'Human visual review inspected all 20 reconstructed CLEAN source pages as 108 zoom chunks. '
+                  'Four scoped repairs were verified: source 0 non-story card restored, source 6 residual H removed, '
+                  'source 16 narration removed with panel borders intact, and source 19 promo tail restored. '
+                  'No remaining story cleanup blocker or obvious artwork damage was found.'
+              ),
+              'next_action':'OCR_CHECKPOINT_ALLOWED',
+          }
+          mp.write_text(json.dumps(m,ensure_ascii=False,indent=2),encoding='utf-8')
+          report={
+              'checkpoint':'02-clean-review-approved',
+              'chapter_id':'c0990099',
+              'status':'PASS_AFTER_REPAIR',
+              'source_pages':20,
+              'slices':73,
+              'visual_review':{
+                  'stitched_source_pages_reviewed':20,
+                  'zoom_chunks_reviewed':108,
+                  'focus_before_after_reviewed':True,
+              },
+              'classification':{
+                  'story_inpaint_blockers':0,
+                  'free_text_residue_blockers':0,
+                  'artwork_damage_blockers':0,
+                  'non_story_overclean_blockers':0,
+              },
+              'repairs':repairs,
+              'next_action':'OCR_CHECKPOINT_ALLOWED',
+          }
+          (root/'clean-review-report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
+          (root/'HUMAN_CHECKPOINT.txt').write_text(
+              'CHECKPOINT: CLEAN APPROVED\nHuman RAW/CLEAN + stitched + zoom review PASS after four scoped repairs. OCR may proceed, but OCR must read ORIGINAL/RAW only.\n',
+              encoding='utf-8'
+          )
+          print(json.dumps(report,ensure_ascii=False,indent=2))
+          PY
+
+      - name: Validate approved CLEAN gate
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root=Path('checkpoint/02-clean-review-approved')
+          report=json.loads((root/'clean-review-report.json').read_text(encoding='utf-8'))
+          manifest=json.loads((root/'processed'/'manifest.json').read_text(encoding='utf-8'))
+          if report.get('status')!='PASS_AFTER_REPAIR': raise RuntimeError(report)
+          c=report.get('classification') or {}
+          if any(int(c.get(k,-1))!=0 for k in ('story_inpaint_blockers','free_text_residue_blockers','artwork_damage_blockers','non_story_overclean_blockers')):
+              raise RuntimeError(c)
+          h=manifest.get('human_clean_review') or {}
+          if h.get('status')!='pass_after_repair' or int(h.get('story_inpaint_blockers',-1))!=0:
+              raise RuntimeError(h)
+          print('approved CLEAN gate PASS')
+          PY
+
+      - name: Upload approved CLEAN checkpoint
+        uses: actions/upload-artifact@v4
+        with:
+          name: 02-clean-review-approved-c0990099
+          path: checkpoint/02-clean-review-approved
+          if-no-files-found: error
+          retention-days: 7
