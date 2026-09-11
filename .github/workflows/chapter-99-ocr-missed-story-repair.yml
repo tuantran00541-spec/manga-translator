@@ -1,0 +1,297 @@
+name: Chapter 99 OCR Missed Story Repair
+
+on:
+  push:
+    branches:
+      - trial/chapter-render-99
+    paths:
+      - .github/workflows/chapter-99-ocr-missed-story-repair.yml
+      - trials/chapter-99/ocr-missed-story-repair.json
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: chapter-99-human-loop
+  cancel-in-progress: false
+
+jobs:
+  repair-ocr-coverage:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    env:
+      CHAPTER_ID: c0990099
+      OCR_FINAL_RUN_ID: "34551318030"
+      OCR_FINAL_ARTIFACT: 03-ocr-final-c0990099
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: trial/chapter-render-99
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Restore previous OCR final checkpoint
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf checkpoint/03-ocr-final-repaired
+          mkdir -p checkpoint/03-ocr-final-repaired
+          gh run download "$OCR_FINAL_RUN_ID" -n "$OCR_FINAL_ARTIFACT" -D checkpoint/03-ocr-final-repaired
+          test -f checkpoint/03-ocr-final-repaired/processed/manifest.json
+          test -f trials/chapter-99/ocr-missed-story-repair.json
+
+      - name: Apply human missed-story coverage repair
+        run: |
+          python - <<'PY'
+          import copy
+          import json
+          from pathlib import Path
+          from app.text_objects import DEFAULT_TEXT_OBJECT_STYLE, ensure_page_text_objects
+
+          root = Path('checkpoint/03-ocr-final-repaired')
+          mp = root / 'processed' / 'manifest.json'
+          manifest = json.loads(mp.read_text(encoding='utf-8'))
+          decision = json.loads(Path('trials/chapter-99/ocr-missed-story-repair.json').read_text(encoding='utf-8'))
+
+          if decision.get('chapter_id') != 'c0990099':
+              raise SystemExit('repair chapter mismatch')
+          review = manifest.get('human_ocr_review') or {}
+          if review.get('status') != 'PASS' or not review.get('ocr_pass_allowed'):
+              raise SystemExit(f'previous OCR checkpoint was not PASS: {review}')
+
+          pages = manifest.get('pages') or []
+          all_ids = {}
+          active_before = 0
+          tomb_before = 0
+          for pi, page in enumerate(pages):
+              for obj in page.get('text_objects') or []:
+                  oid = str(obj.get('id') or '')
+                  if not oid:
+                      raise SystemExit(f'blank text object id page={pi}')
+                  if oid in all_ids:
+                      raise SystemExit(f'duplicate object id before repair: {oid}')
+                  all_ids[oid] = (pi, obj)
+                  if obj.get('source_missing'):
+                      tomb_before += 1
+                  else:
+                      active_before += 1
+          if (active_before, tomb_before) != (131, 44):
+              raise SystemExit(f'pre-repair counts mismatch active={active_before} tomb={tomb_before}')
+
+          additions = decision.get('manual_additions') or []
+          if len(additions) != 1:
+              raise SystemExit(f'expected exactly one manual addition, got {len(additions)}')
+          add = additions[0]
+          oid = str(add['id'])
+          if oid in all_ids:
+              raise SystemExit(f'manual object already exists: {oid}')
+          pi = int(add['page_index'])
+          if pi < 0 or pi >= len(pages):
+              raise SystemExit(f'bad repair page index {pi}')
+          page = pages[pi]
+          if int(page.get('source_page', -1)) != int(add['source_page']) or int(page.get('slice_index', -1)) != int(add['slice_index']):
+              raise SystemExit('manual repair target page identity mismatch')
+
+          source_box_id = str(add['source_box_id'])
+          source_box = next((b for b in page.get('boxes') or [] if str(b.get('id') or '') == source_box_id), None)
+          if source_box is None:
+              raise SystemExit(f'missing source detector box {source_box_id}')
+          source_text = str(add['source_text']).strip()
+          region = {k: int(add['region'][k]) for k in ('x1','y1','x2','y2')}
+          if not source_text or region['x1'] >= region['x2'] or region['y1'] >= region['y2']:
+              raise SystemExit('invalid manual source text or region')
+
+          # Promote the broad detector region only for OCR/text-object ownership.
+          # It remains unsafe for destructive inpaint; CLEAN was separately approved.
+          source_box.update({
+              'ocr_eligible': True,
+              'needs_review': False,
+              'semantic_type': 'free_text',
+              'ocr_text': source_text,
+              'ocr_source': 'human_review',
+              'ocr_quality': 'human_reviewed',
+              'ocr_quality_reason': 'manual_raw_coverage_repair',
+              'human_coverage_repair': True,
+          })
+
+          obj = {
+              'id': oid,
+              'shape': 'rectangle',
+              'region': region,
+              'source_boxes': [str(v) for v in add.get('source_boxes') or [source_box_id]],
+              'ocr_text': source_text,
+              'translation': '',
+              'style': copy.deepcopy(DEFAULT_TEXT_OBJECT_STYLE),
+              'origin': str(add.get('origin') or 'human_review_story_manual_coverage_repair'),
+              'auto_generated': False,
+              'source_missing': False,
+              'semantic_type': str(add.get('semantic_type') or 'free_text'),
+              'human_review': 'keep_story',
+              'human_review_reason': 'missed_story_found_in_scene_level_raw_coverage_audit',
+              'ocr_source': 'human_review',
+              'ocr_quality': 'human_reviewed',
+              'ocr_quality_reason': 'manual_raw_coverage_repair',
+              'manual_story_addition': True,
+          }
+          page.setdefault('text_objects', []).append(obj)
+
+          # Reconciliation must not create an automatic twin for the promoted box,
+          # and must not resurrect any curated tombstone.
+          created = 0
+          for p in pages:
+              n, _changed = ensure_page_text_objects(p)
+              created += int(n)
+          if created != 0:
+              raise SystemExit(f'reconciliation created/resurrected {created} objects')
+
+          active = []
+          tombstones = []
+          unreviewed = []
+          owner_violations = []
+          source_rects = []
+          for page_index, p in enumerate(pages):
+              stitch = p.get('stitch_core') or {}
+              sy1 = int(stitch.get('source_y1', 0))
+              core1 = int(stitch.get('core_source_y1', sy1))
+              core2 = int(stitch.get('core_source_y2', sy1 + int(p.get('height', 0))))
+              sp = int(p.get('source_page', page_index))
+              si = int(p.get('slice_index', 0))
+              for tobj in p.get('text_objects') or []:
+                  tid = str(tobj.get('id') or '')
+                  if tobj.get('source_missing'):
+                      tombstones.append(tid)
+                      if tobj.get('auto_generated') or tobj.get('origin') != 'human_review_drop':
+                          raise SystemExit(f'invalid tombstone state {tid}')
+                      continue
+                  text = str(tobj.get('ocr_text') or '').strip()
+                  if not text or tobj.get('human_review') != 'keep_story':
+                      unreviewed.append(tid)
+                      continue
+                  rg = tobj.get('region') or {}
+                  x1, y1, x2, y2 = (int(rg.get(k, 0)) for k in ('x1','y1','x2','y2'))
+                  cy_src = sy1 + (y1 + y2) / 2.0
+                  if not (core1 <= cy_src < core2):
+                      owner_violations.append(tid)
+                  source_y1 = sy1 + y1
+                  source_y2 = sy1 + y2
+                  active.append((page_index, sp, si, tid, text, tobj, source_y1, source_y2))
+                  source_rects.append((sp, tid, x1, source_y1, x2, source_y2))
+
+          if unreviewed:
+              raise SystemExit(f'active unreviewed/blank objects: {unreviewed[:20]}')
+          if owner_violations:
+              raise SystemExit(f'owner core violations: {owner_violations[:20]}')
+          if len(active) != 132 or len(tombstones) != 44:
+              raise SystemExit(f'post-repair counts mismatch active={len(active)} tomb={len(tombstones)}')
+
+          def iou(a, b):
+              _, _, ax1, ay1, ax2, ay2 = a
+              _, _, bx1, by1, bx2, by2 = b
+              ix = max(0, min(ax2, bx2) - max(ax1, bx1))
+              iy = max(0, min(ay2, by2) - max(ay1, by1))
+              inter = ix * iy
+              if inter <= 0:
+                  return 0.0
+              aa = max(1, (ax2-ax1)*(ay2-ay1)); bb = max(1, (bx2-bx1)*(by2-by1))
+              return inter / (aa + bb - inter)
+
+          high_iou = []
+          for i, a in enumerate(source_rects):
+              for b in source_rects[i+1:]:
+                  if a[0] != b[0]:
+                      continue
+                  v = iou(a, b)
+                  if v >= 0.65:
+                      high_iou.append((a[1], b[1], round(v, 3)))
+          if high_iou:
+              raise SystemExit(f'high-IoU active duplicate pairs remain: {high_iou[:20]}')
+
+          manifest['human_ocr_review'] = {
+              **review,
+              'status': 'PASS_AFTER_MANUAL_COVERAGE_REPAIR',
+              'reviewed_text_objects': 176,
+              'active_story_objects': 132,
+              'persistent_tombstones': 44,
+              'manual_story_additions': 1,
+              'skipped_review_proposals_reviewed': int((decision.get('coverage_audit') or {}).get('skipped_review_proposals_reviewed', 0)),
+              'active_unreviewed_objects': 0,
+              'owner_core_violations': 0,
+              'high_iou_duplicate_pairs': 0,
+              'reconciliation_created_objects': 0,
+              'ocr_pass_allowed': True,
+              'next_action': 'TRANSLATION_REVIEW_ALLOWED',
+          }
+
+          serialized = json.dumps(manifest, ensure_ascii=False, indent=2)
+          mp.write_text(serialized, encoding='utf-8')
+          (root / 'manifest.json').write_text(serialized, encoding='utf-8')
+
+          # Reload and reconcile once more: the manual object must persist and no
+          # tombstone may resurrect after serialization.
+          reloaded = json.loads(mp.read_text(encoding='utf-8'))
+          reload_created = 0
+          for p in reloaded.get('pages') or []:
+              n, _changed = ensure_page_text_objects(p)
+              reload_created += int(n)
+          if reload_created != 0:
+              raise SystemExit(f'reload resurrection created {reload_created} objects')
+          found = [o for p in reloaded.get('pages') or [] for o in (p.get('text_objects') or []) if o.get('id') == oid and not o.get('source_missing')]
+          if len(found) != 1 or found[0].get('ocr_text') != source_text:
+              raise SystemExit('manual story object did not persist after reload')
+          reloaded['human_ocr_review']['reload_resurrection_created_objects'] = 0
+          serialized = json.dumps(reloaded, ensure_ascii=False, indent=2)
+          mp.write_text(serialized, encoding='utf-8')
+          (root / 'manifest.json').write_text(serialized, encoding='utf-8')
+
+          active_rows = []
+          for page_index, p in enumerate(reloaded.get('pages') or []):
+              sy1 = int((p.get('stitch_core') or {}).get('source_y1', 0))
+              for tobj in p.get('text_objects') or []:
+                  if tobj.get('source_missing'):
+                      continue
+                  rg = tobj.get('region') or {}
+                  active_rows.append({
+                      'page_index': page_index,
+                      'source_page': int(p.get('source_page', page_index)),
+                      'slice_index': int(p.get('slice_index', 0)),
+                      'source_y': sy1 + int(rg.get('y1', 0)),
+                      'id': str(tobj.get('id') or ''),
+                      'semantic_type': str(tobj.get('semantic_type') or 'text'),
+                      'region': rg,
+                      'source_text': str(tobj.get('ocr_text') or '').strip(),
+                  })
+          active_rows.sort(key=lambda r: (r['source_page'], r['source_y'], r['id']))
+          (root / 'active-story-source.json').write_text(json.dumps(active_rows, ensure_ascii=False, indent=2), encoding='utf-8')
+
+          summary = dict(reloaded['human_ocr_review'])
+          summary['source_ocr_final_run_id'] = 34551318030
+          summary['coverage_audit_story_blockers_found'] = 1
+          (root / 'ocr-final-summary.json').write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding='utf-8')
+          (root / 'ocr-skipped-coverage-audit.json').write_text(json.dumps(decision.get('coverage_audit') or {}, ensure_ascii=False, indent=2), encoding='utf-8')
+          print(json.dumps(summary, ensure_ascii=False, indent=2))
+          PY
+
+      - name: Publish repaired OCR gate summary
+        run: |
+          cp checkpoint/03-ocr-final-repaired/ocr-final-summary.json trials/chapter-99/ocr-final-summary.json
+          cp checkpoint/03-ocr-final-repaired/active-story-source.json trials/chapter-99/active-story-source.json
+          cp checkpoint/03-ocr-final-repaired/ocr-skipped-coverage-audit.json trials/chapter-99/ocr-skipped-coverage-audit.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add trials/chapter-99/ocr-final-summary.json trials/chapter-99/active-story-source.json trials/chapter-99/ocr-skipped-coverage-audit.json
+          if ! git diff --cached --quiet; then
+            git commit -m "review: repair chapter 99 missed OCR story coverage"
+            git push origin HEAD:trial/chapter-render-99
+          fi
+
+      - name: Upload repaired OCR final checkpoint
+        uses: actions/upload-artifact@v4
+        with:
+          name: 03-ocr-final-repaired-c0990099
+          path: checkpoint/03-ocr-final-repaired
+          retention-days: 7
+          if-no-files-found: error
