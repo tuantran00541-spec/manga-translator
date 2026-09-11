@@ -1,18 +1,30 @@
 from __future__ import annotations
 
 import math
-from typing import Literal
-
 from pydantic import BaseModel, field_validator
 
+from app.ai_providers import get_provider, validate_model_name
 from app.parameters import VISUAL_QC_JOB_CONCURRENCY, VISUAL_QC_JOB_CONCURRENCY_LIMIT
 
 
 class VisualQCChapterRequest(BaseModel):
     chapter_id: str
     concurrency: int = VISUAL_QC_JOB_CONCURRENCY
-    provider: Literal["gemini", "deepseek"] = "gemini"
+    provider: str = "gemini"
+    model: str | None = None
     budget_usd: float = 0.08
+
+    @field_validator("provider")
+    @classmethod
+    def _known_provider(cls, value: str) -> str:
+        return get_provider(value).id
+
+    @field_validator("model")
+    @classmethod
+    def _model_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return validate_model_name(value, default="")
 
     @field_validator("concurrency")
     @classmethod

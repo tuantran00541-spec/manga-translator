@@ -325,6 +325,11 @@ body.repaint-mode-open {
 .ai-settings-host .gemini-qc-config { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 12px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); }
 .ai-settings-host :is(.gemini-qc-status, .gemini-qc-privacy-note, .gemini-key-input) { grid-column: 1 / -1; }
 .ai-settings-host .gemini-key-input { width: 100%; }
+.ai-settings-host .ai-provider-config { grid-template-columns: 1fr; }
+.ai-settings-host .ai-active-provider { width: 100%; }
+.ai-provider-card { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; padding-top: 12px; border-top: 1px solid var(--border-subtle); }
+.ai-provider-card > :is(strong, .gemini-qc-status, .gemini-key-input, .ai-model-input) { grid-column: 1 / -1; }
+.ai-provider-card .ui-btn { min-width: 0; }
 
 @media (max-width: 980px) {
   .landing-source-grid {

@@ -421,12 +421,30 @@ class VisualQCKeyRequest(BaseModel):
     def _api_key_not_empty(cls, v: str) -> str:
         v = (v or "").strip()
         if not v:
-            raise ValueError("Gemini API key is required")
+            raise ValueError("API key is required")
         if len(v) > 4096:
-            raise ValueError("Gemini API key is unexpectedly long")
+            raise ValueError("API key is unexpectedly long")
         return v
 
 
 class VisualQCInspectRequest(BaseModel):
     chapter_id: str
     page_index: int = Field(ge=0)
+    provider: str = "gemini"
+    model: str | None = None
+
+    @field_validator("provider")
+    @classmethod
+    def _provider(cls, value: str) -> str:
+        from app.ai_providers import get_provider
+
+        return get_provider(value).id
+
+    @field_validator("model")
+    @classmethod
+    def _model(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        from app.ai_providers import validate_model_name
+
+        return validate_model_name(value, default="")

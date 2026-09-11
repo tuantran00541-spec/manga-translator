@@ -85,8 +85,18 @@ def _preflight_cost_usd(items: list[dict]) -> float:
 
 
 class DeepSeekTranslator:
-    def __init__(self, model: str = DEFAULT_TRANSLATION_MODEL):
+    def __init__(
+        self,
+        model: str = DEFAULT_TRANSLATION_MODEL,
+        *,
+        api_url: str = DEEPSEEK_API_URL,
+        provider_id: str = "deepseek",
+        provider_label: str = "DeepSeek",
+    ):
         self.model = model
+        self.api_url = api_url
+        self.provider_id = provider_id
+        self.provider_label = provider_label
 
     def translate(
         self,
@@ -98,14 +108,14 @@ class DeepSeekTranslator:
         budget_usd: float,
     ) -> TranslationResult:
         if not api_key or not api_key.strip():
-            raise ValueError("DeepSeek API key is not configured")
+            raise ValueError(f"{self.provider_label} API key is not configured")
         if not items:
             return TranslationResult({}, {}, 0.0, self.model)
         if budget_usd <= 0:
             raise ValueError("Translation budget must be greater than zero")
 
-        preflight = _preflight_cost_usd(items)
-        if preflight > budget_usd:
+        preflight = _preflight_cost_usd(items) if self.provider_id == "deepseek" else 0.0
+        if self.provider_id == "deepseek" and preflight > budget_usd:
             raise TranslationBudgetExceeded(
                 f"Estimated translation cost ${preflight:.4f} exceeds chapter budget ${budget_usd:.4f}"
             )
@@ -138,22 +148,24 @@ class DeepSeekTranslator:
             separators=(",", ":"),
         )
 
+        request_body = {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            "response_format": {"type": "json_object"},
+            "max_tokens": TRANSLATION_MAX_TOKENS,
+        }
+        if self.provider_id == "deepseek":
+            request_body["thinking"] = {"type": "disabled"}
         response = requests.post(
-            DEEPSEEK_API_URL,
+            self.api_url,
             headers={
                 "Authorization": f"Bearer {api_key.strip()}",
                 "Content-Type": "application/json",
             },
-            json={
-                "model": self.model,
-                "messages": [
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": user},
-                ],
-                "thinking": {"type": "disabled"},
-                "response_format": {"type": "json_object"},
-                "max_tokens": TRANSLATION_MAX_TOKENS,
-            },
+            json=request_body,
             timeout=(
                 TRANSLATION_CONNECT_TIMEOUT_SECONDS,
                 TRANSLATION_READ_TIMEOUT_SECONDS,
@@ -162,7 +174,7 @@ class DeepSeekTranslator:
         try:
             response.raise_for_status()
         except requests.RequestException as exc:
-            raise RuntimeError(f"DeepSeek translation request failed with HTTP {response.status_code}") from exc
+            raise RuntimeError(f"{self.provider_label} translation request failed with HTTP {response.status_code}") from exc
 
         try:
             data = response.json()
@@ -170,9 +182,9 @@ class DeepSeekTranslator:
             parsed = json.loads(content)
             raw_translations = parsed["translations"]
         except (KeyError, IndexError, TypeError, ValueError, json.JSONDecodeError) as exc:
-            raise RuntimeError("DeepSeek returned an invalid translation response") from exc
+            raise RuntimeError(f"{self.provider_label} returned an invalid translation response") from exc
         if not isinstance(raw_translations, dict):
-            raise RuntimeError("DeepSeek translation payload is not an object")
+            raise RuntimeError(f"{self.provider_label} translation payload is not an object")
 
         expected_ids = {str(item["id"]) for item in items}
         translations: dict[str, str] = {}
@@ -182,10 +194,10 @@ class DeepSeekTranslator:
                 translations[item_id] = value.strip()
         missing = expected_ids.difference(translations)
         if missing:
-            raise RuntimeError(f"DeepSeek omitted {len(missing)} translation(s)")
+            raise RuntimeError(f"{self.provider_label} omitted {len(missing)} translation(s)")
 
         usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
-        actual_cost = _usage_cost_usd(usage)
+        actual_cost = _usage_cost_usd(usage) if self.provider_id == "deepseek" else 0.0
         return TranslationResult(
             translations=translations,
             usage=usage,

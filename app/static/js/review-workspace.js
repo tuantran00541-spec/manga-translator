@@ -43,158 +43,118 @@
     observer.observe(source, { childList: true, characterData: true, subtree: true, attributes: true });
   }
 
-  function bindDeepSeekControls(config) {
-    const heading = document.createElement("strong");
-    heading.className = "gemini-qc-privacy-note deepseek-qc-heading";
-    heading.textContent = "DeepSeek Vision · kiểm tra toàn chương";
-
-    const status = document.createElement("span");
-    status.className = "gemini-qc-status deepseek-qc-status";
-    status.textContent = "DeepSeek: Đang kiểm tra cấu hình…";
-
-    const input = document.createElement("input");
-    input.type = "password";
-    input.className = "gemini-key-input deepseek-key-input";
-    input.placeholder = "DeepSeek API key";
-    input.autocomplete = "off";
-    input.spellcheck = false;
-    input.setAttribute("aria-label", "DeepSeek API key");
-
-    const save = document.createElement("button");
-    save.type = "button";
-    save.className = "ui-btn ui-btn-primary gemini-key-save-btn deepseek-key-save-btn";
-    save.textContent = "Lưu khóa DeepSeek";
-
-    const clear = document.createElement("button");
-    clear.type = "button";
-    clear.className = "ui-btn ui-btn-ghost gemini-key-clear-btn deepseek-key-clear-btn";
-    clear.textContent = "Xóa khóa DeepSeek";
-
-    const privacy = document.createElement("span");
-    privacy.className = "gemini-qc-privacy-note deepseek-qc-privacy-note";
-    privacy.textContent = "Chỉ khi chọn DeepSeek cho kiểm tra toàn chương, contact sheet sẽ được gửi đến DeepSeek.";
-
-    config.append(heading, status, input, save, clear, privacy);
-
-    async function refresh() {
-      try {
-        const resp = await fetch("/api/visual_qc/settings");
-        const parse = typeof window.parseApiResponse === "function" ? window.parseApiResponse : async (r) => r.json().catch(() => ({}));
-        const settings = await parse(resp);
-        const provider = settings?.providers?.deepseek || {};
-        window.deepseekVisualQCConfigured = Boolean(provider.configured);
-        if (provider?.configured) {
-          status.textContent = `DeepSeek: Sẵn sàng · ${provider.model || "Vision Exp"}`;
-          status.classList.add("configured");
-        } else if (provider?.source === "unavailable") {
-          status.textContent = "DeepSeek: Kho bí mật chưa sẵn sàng";
-          status.classList.remove("configured");
-        } else {
-          status.textContent = "DeepSeek: Chưa cấu hình";
-          status.classList.remove("configured");
-        }
-        clear.disabled = !provider.configured || provider.source === "environment";
-      } catch (err) {
-        window.deepseekVisualQCConfigured = false;
-        status.textContent = "DeepSeek: Lỗi cấu hình";
-        status.classList.remove("configured");
-        console.warn("DeepSeek QC settings check failed:", err);
-      }
-    }
-
-    save.addEventListener("click", async () => {
-      const apiKey = input.value.trim();
-      if (!apiKey) {
-        window.showToast?.("Nhập DeepSeek API key trước khi lưu.", "error");
-        return;
-      }
-      save.disabled = true;
-      save.textContent = "Đang lưu…";
-      try {
-        const resp = await fetch("/api/visual_qc/deepseek/key", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ api_key: apiKey }),
-        });
-        const parse = typeof window.parseApiResponse === "function" ? window.parseApiResponse : async (r) => r.json().catch(() => ({}));
-        const data = await parse(resp);
-        if (!resp.ok) {
-          const getErr = typeof window.getErrorMessage === "function" ? window.getErrorMessage : (s, d) => d?.detail || `HTTP ${s}`;
-          throw new Error(getErr(resp.status, data));
-        }
-        input.value = "";
-        window.showToast?.("Đã lưu DeepSeek API key trong kho bí mật của hệ điều hành.", "success");
-      } catch (err) {
-        window.showToast?.("Không thể lưu DeepSeek API key: " + err.message, "error");
-      } finally {
-        save.disabled = false;
-        save.textContent = "Lưu khóa DeepSeek";
-        await refresh();
-      }
-    });
-
-    clear.addEventListener("click", async () => {
-      clear.disabled = true;
-      try {
-        const resp = await fetch("/api/visual_qc/deepseek/key", { method: "DELETE" });
-        const parse = typeof window.parseApiResponse === "function" ? window.parseApiResponse : async (r) => r.json().catch(() => ({}));
-        const data = await parse(resp);
-        const message = data?.source === "environment"
-          ? "DeepSeek API key đang đến từ biến môi trường; hãy xóa tại môi trường chạy ứng dụng."
-          : "Đã xóa DeepSeek API key khỏi kho bí mật.";
-        window.showToast?.(message, data?.source === "environment" ? "info" : "success");
-      } catch (err) {
-        window.showToast?.("Không thể xóa DeepSeek API key: " + err.message, "error");
-      } finally {
-        await refresh();
-      }
-    });
-
-    refresh();
-  }
-
   function mountGeminiSettings() {
     const config = document.createElement("div");
-    config.className = "gemini-qc-config";
+    config.className = "gemini-qc-config ai-provider-config";
 
     const status = document.createElement("span");
     status.className = "gemini-qc-status";
     status.textContent = "Kiểm tra AI: Đang kiểm tra cấu hình…";
+    const active = document.createElement("select");
+    active.className = "ui-select ai-active-provider";
+    active.setAttribute("aria-label", "Dịch vụ AI mặc định");
+    const providers = ["gemini", "deepseek", "openai", "openrouter", "experiential"];
+    const labels = { gemini: "Google Gemini", deepseek: "DeepSeek", openai: "OpenAI", openrouter: "OpenRouter", experiential: "Experiential Labs" };
+    providers.forEach((id) => active.add(new Option(labels[id], id)));
+    active.value = localStorage.getItem("manga_ai_active_provider") || "gemini";
+    active.addEventListener("change", () => localStorage.setItem("manga_ai_active_provider", active.value));
+    config.append(status, active);
 
-    const keyInput = document.createElement("input");
-    keyInput.type = "password";
-    keyInput.className = "gemini-key-input";
-    keyInput.placeholder = "Gemini API key";
-    keyInput.autocomplete = "off";
-    keyInput.spellcheck = false;
-    keyInput.setAttribute("aria-label", "Gemini API key");
+    const cards = {};
+    providers.forEach((id) => {
+      const card = document.createElement("section");
+      card.className = "ai-provider-card";
+      const title = document.createElement("strong");
+      title.textContent = labels[id];
+      const providerStatus = document.createElement("span");
+      providerStatus.className = "gemini-qc-status";
+      const key = document.createElement("input");
+      key.type = "password";
+      key.className = "gemini-key-input";
+      key.placeholder = `${labels[id]} API key`;
+      key.autocomplete = "off";
+      const model = document.createElement("input");
+      model.className = "ui-input ai-model-input";
+      model.placeholder = "Tên model";
+      model.value = localStorage.getItem(`manga_ai_model_${id}`) || "";
+      model.addEventListener("change", () => localStorage.setItem(`manga_ai_model_${id}`, model.value.trim()));
+      const listId = `ai-models-${id}`;
+      model.setAttribute("list", listId);
+      const datalist = document.createElement("datalist");
+      datalist.id = listId;
+      const save = document.createElement("button");
+      save.type = "button"; save.className = "ui-btn ui-btn-primary"; save.textContent = "Lưu key";
+      const clear = document.createElement("button");
+      clear.type = "button"; clear.className = "ui-btn ui-btn-ghost"; clear.textContent = "Xóa key";
+      const load = document.createElement("button");
+      load.type = "button"; load.className = "ui-btn ui-btn-ghost"; load.textContent = "Tải model";
+      save.addEventListener("click", async () => {
+        if (!key.value.trim()) return window.showToast?.(`Nhập ${labels[id]} API key trước.`, "error");
+        save.disabled = true;
+        try {
+          const response = await fetch(`/api/visual_qc/providers/${id}/key`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ api_key: key.value.trim() }) });
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(data.detail || `HTTP ${response.status}`);
+          key.value = "";
+          window.showToast?.(`Đã lưu key ${labels[id]}.`, "success");
+          await refresh();
+        } catch (err) { window.showToast?.("Không thể lưu key: " + err.message, "error"); }
+        finally { save.disabled = false; }
+      });
+      clear.addEventListener("click", async () => {
+        clear.disabled = true;
+        try {
+          const response = await fetch(`/api/visual_qc/providers/${id}/key`, { method: "DELETE" });
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(data.detail || `HTTP ${response.status}`);
+          window.showToast?.(data.source === "environment" ? "Key đến từ biến môi trường; hãy xóa ở môi trường chạy." : `Đã xóa key ${labels[id]}.`, "info");
+          await refresh();
+        } catch (err) { window.showToast?.("Không thể xóa key: " + err.message, "error"); }
+        finally { clear.disabled = false; }
+      });
+      load.addEventListener("click", async () => {
+        load.disabled = true; load.textContent = "Đang tải…";
+        try {
+          const response = await fetch(`/api/visual_qc/providers/${id}/models`);
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(data.detail || `HTTP ${response.status}`);
+          datalist.replaceChildren(...(data.models || []).map((name) => { const option = document.createElement("option"); option.value = name; return option; }));
+          if (!model.value && data.models?.length) model.value = data.models[0];
+          window.showToast?.(`Đã tải ${data.models?.length || 0} model từ ${labels[id]}.`, "success");
+        } catch (err) { window.showToast?.("Không thể tải model: " + err.message, "error"); }
+        finally { load.disabled = false; load.textContent = "Tải model"; }
+      });
+      card.append(title, providerStatus, key, model, datalist, save, clear, load);
+      config.append(card);
+      cards[id] = { providerStatus, clear, model };
+    });
 
-    const saveBtn = document.createElement("button");
-    saveBtn.type = "button";
-    saveBtn.className = "ui-btn ui-btn-primary gemini-key-save-btn";
-    saveBtn.textContent = "Lưu khóa API";
-
-    const clearBtn = document.createElement("button");
-    clearBtn.type = "button";
-    clearBtn.className = "ui-btn ui-btn-ghost gemini-key-clear-btn";
-    clearBtn.textContent = "Xóa khóa API";
-
-    const privacyNote = document.createElement("span");
-    privacyNote.className = "gemini-qc-privacy-note";
-    privacyNote.textContent = "Ảnh gốc và ảnh đã xử lý sẽ được gửi đến Gemini để kiểm tra chất lượng.";
-
-    config.append(status, keyInput, saveBtn, clearBtn, privacyNote);
-    if (typeof window.setupGeminiQCSettings === "function") {
-      window.setupGeminiQCSettings(status, keyInput, saveBtn, clearBtn);
-    } else if (typeof setupGeminiQCSettings === "function") {
-      setupGeminiQCSettings(status, keyInput, saveBtn, clearBtn);
+    async function refresh() {
+      try {
+        const response = await fetch("/api/visual_qc/settings");
+        const data = await response.json();
+        window.aiProviderSettings = data.providers || {};
+        let ready = 0;
+        providers.forEach((id) => {
+          const info = data.providers?.[id] || {};
+          const refs = cards[id];
+          if (!refs.model.value) refs.model.value = info.model || "";
+          refs.providerStatus.textContent = info.configured ? `Sẵn sàng · ${info.model || "chọn model"}` : "Chưa cấu hình";
+          refs.providerStatus.classList.toggle("configured", Boolean(info.configured));
+          refs.clear.disabled = !info.configured || info.source === "environment";
+          if (info.configured) ready += 1;
+        });
+        status.textContent = ready ? `Kiểm tra AI: ${ready} dịch vụ sẵn sàng` : "Kiểm tra AI: Chưa cấu hình";
+        status.classList.toggle("configured", ready > 0);
+      } catch (err) { status.textContent = "Kiểm tra AI: Lỗi cấu hình"; }
     }
-    bindDeepSeekControls(config);
+    refresh();
     if (typeof window.mountAISettings === "function") {
       window.mountAISettings(config);
     }
     return status;
   }
+  window.createAIProviderSettings = mountGeminiSettings;
 
   function captureMaskSnapshot(card) {
     if (!card) return;

@@ -3,24 +3,27 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+import requests
+
 from fastapi import APIRouter, HTTPException
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, field_validator
 
+from app.ai_providers import PROVIDERS, get_provider, validate_model_name
 from app.config import PROCESSED_DIR, RAW_DIR
 from app.logging_config import logger
 from app.manifest_utils import load_manifest_raw
 from app.schemas import VisualQCInspectRequest, VisualQCKeyRequest
 from app.secret_store import (
     SecretStoreUnavailable,
-    deepseek_key_status,
     delete_deepseek_api_key,
     delete_gemini_api_key,
-    gemini_key_status,
-    get_deepseek_api_key,
-    get_gemini_api_key,
     set_deepseek_api_key,
     set_gemini_api_key,
+    delete_provider_api_key,
+    get_provider_api_key,
+    provider_key_status,
+    set_provider_api_key,
 )
 from app.security import validate_chapter_id, validate_managed_path
 from app.visual_qc.batch_runner import RegionBatchRunner
@@ -28,19 +31,12 @@ from app.visual_qc.deepseek_region_client import DEFAULT_DEEPSEEK_MODEL, DeepSee
 from app.visual_qc.gemini import DEFAULT_GEMINI_MODEL, GeminiVisualQC, GeminiVisualQCTimeout
 from app.visual_qc.jobs import VisualQCJobManager
 from app.visual_qc.region_client import GeminiRegionQC
+from app.visual_qc.openai_compatible import OpenAICompatibleVisualQC
 from app.visual_qc.schemas import VisualQCChapterRequest
 from app.visual_qc.service import ChapterQCService
 
 router = APIRouter(prefix="/api/visual_qc", tags=["visual-qc"])
-visual_qc = GeminiVisualQC()
-region_qc = GeminiRegionQC()
 chapter_qc_jobs = VisualQCJobManager()
-chapter_qc_service = ChapterQCService(
-    RegionBatchRunner(region_qc),
-    chapter_qc_jobs,
-    model=region_qc.model,
-    provider="gemini",
-)
 _chapter_qc_context: dict[str, dict] = {}
 
 
@@ -96,16 +92,39 @@ def _make_deepseek_service(client: DeepSeekRegionQC) -> ChapterQCService:
     return ChapterQCService(
         RegionBatchRunner(client),
         chapter_qc_jobs,
-        api_key_provider=get_deepseek_api_key,
+        api_key_provider=lambda: get_provider_api_key(client.provider_id),
         model=client.model,
-        provider="deepseek",
+        provider=client.provider_id,
     )
+
+
+def _make_chapter_service(provider_id: str, model: str | None, budget_usd: float):
+    provider = get_provider(provider_id)
+    selected_model = validate_model_name(model, default=provider.default_qc_model)
+    if provider.protocol == "gemini":
+        client = GeminiRegionQC(model=selected_model)
+        service = ChapterQCService(
+            RegionBatchRunner(client),
+            chapter_qc_jobs,
+            api_key_provider=lambda: get_provider_api_key(provider.id),
+            model=selected_model,
+            provider=provider.id,
+        )
+        return service, client
+    client = DeepSeekRegionQC(
+        model=selected_model,
+        budget_usd=budget_usd,
+        provider_id=provider.id,
+        provider_label=provider.label,
+        chat_url=str(provider.chat_url),
+    )
+    return _make_deepseek_service(client), client
 
 
 def _remember_job(job_id: str, *, provider: str, client=None) -> None:
     _chapter_qc_context[job_id] = {
         "provider": provider,
-        "model": client.model if client is not None else region_qc.model,
+        "model": client.model if client is not None else DEFAULT_GEMINI_MODEL,
         "client": client,
     }
     if len(_chapter_qc_context) > 64:
@@ -118,10 +137,7 @@ def _enrich_snapshot(snapshot: dict) -> dict:
     context = _chapter_qc_context.get(str(snapshot.get("job_id"))) or {}
     provider = str(context.get("provider") or "gemini")
     result["provider"] = provider
-    result["model"] = str(
-        context.get("model")
-        or (DEFAULT_DEEPSEEK_MODEL if provider == "deepseek" else DEFAULT_GEMINI_MODEL)
-    )
+    result["model"] = str(context.get("model") or get_provider(provider).default_qc_model)
     client = context.get("client")
     if isinstance(client, DeepSeekRegionQC):
         result["usage"] = client.usage_snapshot()
@@ -130,16 +146,93 @@ def _enrich_snapshot(snapshot: dict) -> dict:
 
 @router.get("/settings")
 def visual_qc_settings() -> dict:
-    gemini = gemini_key_status()
-    deepseek = deepseek_key_status()
+    providers = {}
+    for provider in PROVIDERS.values():
+        status = provider_key_status(provider.id)
+        providers[provider.id] = {
+            **status,
+            "id": provider.id,
+            "label": provider.label,
+            "protocol": provider.protocol,
+            "model": provider.default_qc_model,
+            "translation_model": provider.default_translation_model,
+        }
+    gemini = providers["gemini"]
     return {
         **gemini,
         "model": DEFAULT_GEMINI_MODEL,
-        "providers": {
-            "gemini": {**gemini, "model": DEFAULT_GEMINI_MODEL},
-            "deepseek": {**deepseek, "model": DEFAULT_DEEPSEEK_MODEL},
-        },
+        "providers": providers,
     }
+
+
+@router.post("/providers/{provider_id}/key")
+def save_provider_key(provider_id: str, req: VisualQCKeyRequest) -> dict:
+    try:
+        provider = get_provider(provider_id)
+        set_provider_api_key(provider.id, req.api_key)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except SecretStoreUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc
+    return {"configured": True, "source": "os_secure_storage", "provider": provider.id}
+
+
+@router.delete("/providers/{provider_id}/key")
+def clear_provider_key(provider_id: str) -> dict:
+    try:
+        provider = get_provider(provider_id)
+        if any(os.getenv(name) for name in provider.env_names):
+            return {
+                "configured": True,
+                "source": "environment",
+                "provider": provider.id,
+                "detail": "Environment-provided keys must be removed from the process environment.",
+            }
+        delete_provider_api_key(provider.id)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except SecretStoreUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc
+    return {"configured": False, "source": "none", "provider": provider.id}
+
+
+@router.get("/providers/{provider_id}/models")
+def list_provider_models(provider_id: str) -> dict:
+    try:
+        provider = get_provider(provider_id)
+        api_key = get_provider_api_key(provider.id)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except SecretStoreUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc
+    if not api_key:
+        raise HTTPException(409, f"{provider.label} API key is not configured")
+    headers = {"Accept": "application/json"}
+    if provider.protocol == "gemini":
+        headers["x-goog-api-key"] = api_key
+    else:
+        headers["Authorization"] = f"Bearer {api_key}"
+    try:
+        response = requests.get(provider.models_url, headers=headers, timeout=(10, 30))
+    except requests.RequestException as exc:
+        raise HTTPException(502, f"Could not load {provider.label} models") from exc
+    if not response.ok:
+        raise HTTPException(502, f"{provider.label} models API returned HTTP {response.status_code}")
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        raise HTTPException(502, f"{provider.label} returned an invalid models response") from exc
+    rows = payload.get("models") if provider.protocol == "gemini" else payload.get("data")
+    models = []
+    for row in rows if isinstance(rows, list) else []:
+        if not isinstance(row, dict):
+            continue
+        model_id = str(row.get("name") if provider.protocol == "gemini" else row.get("id") or "")
+        if model_id.startswith("models/"):
+            model_id = model_id[7:]
+        if model_id:
+            models.append(model_id)
+    return {"provider": provider.id, "models": sorted(set(models))[:500]}
 
 
 @router.post("/key")
@@ -230,14 +323,26 @@ async def inspect_visual_qc(req: VisualQCInspectRequest) -> dict:
         raise HTTPException(409, "Page image changed before visual QC could start") from exc
 
     try:
-        api_key = get_gemini_api_key()
+        provider = get_provider(req.provider)
+        model = validate_model_name(req.model, default=provider.default_qc_model)
+        api_key = get_provider_api_key(provider.id)
     except SecretStoreUnavailable as exc:
         raise HTTPException(503, str(exc)) from exc
     if not api_key:
-        raise HTTPException(409, "Gemini API key is not configured")
+        raise HTTPException(409, f"{provider.label} API key is not configured")
+
+    client = (
+        GeminiVisualQC(model=model)
+        if provider.protocol == "gemini"
+        else OpenAICompatibleVisualQC(
+            provider_label=provider.label,
+            chat_url=str(provider.chat_url),
+            model=model,
+        )
+    )
 
     try:
-        issues = await run_in_threadpool(visual_qc.inspect, original_path, cleaned_path, api_key)
+        issues = await run_in_threadpool(client.inspect, original_path, cleaned_path, api_key)
     except ValueError as exc:
         raise HTTPException(400, _redact_secret(exc, api_key)) from exc
     except GeminiVisualQCTimeout as exc:
@@ -263,7 +368,7 @@ async def inspect_visual_qc(req: VisualQCInspectRequest) -> dict:
         latest_manifest = load_manifest_raw(req.chapter_id)
         latest_pages = latest_manifest.get("pages", [])
         if req.page_index >= len(latest_pages):
-            raise HTTPException(409, "Page changed while Gemini was inspecting it; run AI QC again")
+            raise HTTPException(409, "Page changed while AI was inspecting it; run AI QC again")
         latest_original, latest_cleaned = _page_paths(latest_manifest, req.page_index, req.chapter_id)
         if (
             latest_original != original_path
@@ -273,14 +378,15 @@ async def inspect_visual_qc(req: VisualQCInspectRequest) -> dict:
             or _file_revision(latest_original) != original_revision
             or _file_revision(latest_cleaned) != cleaned_revision
         ):
-            raise HTTPException(409, "Page changed while Gemini was inspecting it; run AI QC again")
+            raise HTTPException(409, "Page changed while AI was inspecting it; run AI QC again")
     except HTTPException:
         raise
     except OSError as exc:
-        raise HTTPException(409, "Page changed while Gemini was inspecting it; run AI QC again") from exc
+        raise HTTPException(409, "Page changed while AI was inspecting it; run AI QC again") from exc
 
     return {
-        "model": visual_qc.model,
+        "provider": provider.id,
+        "model": client.model,
         "issues": [
             {
                 "issue_type": issue.issue_type,
@@ -307,11 +413,7 @@ async def inspect_visual_qc(req: VisualQCInspectRequest) -> dict:
 async def start_chapter_visual_qc(req: VisualQCChapterRequest) -> dict:
     validate_chapter_id(req.chapter_id)
     provider = req.provider
-    deepseek_client = None
-    service = chapter_qc_service
-    if provider == "deepseek":
-        deepseek_client = DeepSeekRegionQC(budget_usd=req.budget_usd)
-        service = _make_deepseek_service(deepseek_client)
+    service, client = _make_chapter_service(provider, req.model, req.budget_usd)
     try:
         job = await service.start(req.chapter_id, concurrency=req.concurrency)
     except HTTPException:
@@ -326,7 +428,7 @@ async def start_chapter_visual_qc(req: VisualQCChapterRequest) -> dict:
     except Exception as exc:
         logger.error("Chapter {} visual QC job failed to start: {}", req.chapter_id, exc)
         raise HTTPException(500, "Could not start chapter visual QC") from exc
-    _remember_job(job.job_id, provider=provider, client=deepseek_client)
+    _remember_job(job.job_id, provider=provider, client=client)
     return _enrich_snapshot(chapter_qc_jobs.snapshot(job.job_id))
 
 
@@ -372,11 +474,13 @@ async def retry_failed_chapter_visual_qc(job_id: str) -> dict:
     context = _chapter_qc_context.get(job_id) or {"provider": "gemini"}
     provider = str(context.get("provider") or "gemini")
     client = context.get("client")
-    service = chapter_qc_service
-    if provider == "deepseek":
-        if not isinstance(client, DeepSeekRegionQC):
-            raise HTTPException(409, "DeepSeek QC job context is no longer available")
-        service = _make_deepseek_service(client)
+    if not isinstance(client, (DeepSeekRegionQC, GeminiRegionQC)):
+        raise HTTPException(409, "AI QC job context is no longer available")
+    service = _make_deepseek_service(client) if isinstance(client, DeepSeekRegionQC) else ChapterQCService(
+        RegionBatchRunner(client), chapter_qc_jobs,
+        api_key_provider=lambda: get_provider_api_key(provider),
+        model=client.model, provider=provider,
+    )
     try:
         job = await service.start(
             previous["chapter_id"],

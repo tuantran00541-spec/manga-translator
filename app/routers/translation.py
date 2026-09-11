@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, field_validator
 
+from app.ai_providers import get_provider, validate_model_name
 from app.manifest_utils import (
     get_manifest_lock,
     invalidate_page_render,
@@ -12,7 +13,7 @@ from app.manifest_utils import (
     urlify_manifest,
 )
 from app.ocr.quality import should_block_translation
-from app.secret_store import SecretStoreUnavailable, get_deepseek_api_key
+from app.secret_store import SecretStoreUnavailable, get_provider_api_key
 from app.security import validate_chapter_id
 from app.text_objects import ensure_page_text_objects
 from app.translation import DeepSeekTranslator, TranslationBudgetExceeded
@@ -20,7 +21,6 @@ from app.translation.deepseek import PRICING_VERSION
 
 
 router = APIRouter(prefix="/api/translate", tags=["translation"])
-translator = DeepSeekTranslator()
 MAX_CHAPTER_TRANSLATION_OBJECTS = 300
 
 
@@ -30,6 +30,21 @@ class TranslateChapterRequest(BaseModel):
     target_lang: str = "vi"
     budget_usd: float = 0.02
     force: bool = False
+    provider: str = "deepseek"
+    model: str | None = None
+
+    @field_validator("provider")
+    @classmethod
+    def _provider(cls, value: str) -> str:
+        provider = get_provider(value)
+        if provider.protocol != "openai" or not provider.default_translation_model:
+            raise ValueError(f"{provider.label} is not available for translation")
+        return provider.id
+
+    @field_validator("model")
+    @classmethod
+    def _model(cls, value: str | None) -> str | None:
+        return None if value is None else validate_model_name(value, default="")
 
     @field_validator("source_lang", "target_lang")
     @classmethod
@@ -61,12 +76,20 @@ def _find_object(page: dict, object_id: str) -> dict | None:
 @router.post("/chapter")
 async def translate_chapter(req: TranslateChapterRequest) -> dict:
     validate_chapter_id(req.chapter_id)
+    provider = get_provider(req.provider)
+    model = validate_model_name(req.model, default=str(provider.default_translation_model))
+    translator = DeepSeekTranslator(
+        model=model,
+        api_url=str(provider.chat_url),
+        provider_id=provider.id,
+        provider_label=provider.label,
+    )
     try:
-        api_key = get_deepseek_api_key()
+        api_key = get_provider_api_key(provider.id)
     except SecretStoreUnavailable as exc:
         raise HTTPException(503, str(exc)) from exc
     if not api_key:
-        raise HTTPException(409, "DeepSeek API key is not configured")
+        raise HTTPException(409, f"{provider.label} API key is not configured")
 
     skipped_ocr_reject = 0
     skipped_source_missing = 0
@@ -171,7 +194,7 @@ async def translate_chapter(req: TranslateChapterRequest) -> dict:
                 stale += 1
                 continue
             obj["translation"] = value
-            obj["translation_source"] = "deepseek"
+            obj["translation_source"] = provider.id
             obj["translation_model"] = translated.model
             obj["translation_input_text"] = str(item["text"])
             obj["auto_translation"] = value

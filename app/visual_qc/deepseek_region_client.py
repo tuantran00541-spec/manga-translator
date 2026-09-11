@@ -156,6 +156,9 @@ class DeepSeekRegionQC:
         *,
         budget_usd: float = 0.08,
         max_output_tokens: int = DEFAULT_MAX_OUTPUT_TOKENS,
+        provider_id: str = "deepseek",
+        provider_label: str = "DeepSeek",
+        chat_url: str = DEEPSEEK_CHAT_URL,
     ):
         budget = float(budget_usd)
         if budget <= 0 or budget > 0.15:
@@ -164,6 +167,10 @@ class DeepSeekRegionQC:
         self.timeout_seconds = int(timeout_seconds)
         self.budget_usd = budget
         self.max_output_tokens = max(128, min(1200, int(max_output_tokens)))
+        self.provider_id = provider_id
+        self.provider_label = provider_label
+        self.chat_url = chat_url
+        self._priced = provider_id == "deepseek"
         self._lock = threading.Lock()
         self._reserved_usd = 0.0
         self._estimated_cost_usd = 0.0
@@ -174,6 +181,8 @@ class DeepSeekRegionQC:
         self._completion_tokens = 0
 
     def _reservation_cost(self) -> float:
+        if not self._priced:
+            return 0.0
         return (
             _BUDGET_INPUT_TOKENS * _BUDGET_CACHE_MISS_USD_PER_M
             + self.max_output_tokens * _BUDGET_OUTPUT_USD_PER_M
@@ -181,6 +190,10 @@ class DeepSeekRegionQC:
 
     def _reserve(self) -> float:
         reservation = self._reservation_cost()
+        if not self._priced:
+            with self._lock:
+                self._requests += 1
+            return 0.0
         with self._lock:
             projected = self._estimated_cost_usd + self._reserved_usd + reservation
             if projected > self.budget_usd + 1e-12:
@@ -196,6 +209,8 @@ class DeepSeekRegionQC:
             self._reserved_usd = max(0.0, self._reserved_usd - reservation)
 
     def _charge_unknown(self, reservation: float) -> None:
+        if not self._priced:
+            return
         with self._lock:
             self._reserved_usd = max(0.0, self._reserved_usd - reservation)
             self._estimated_cost_usd += reservation
@@ -222,7 +237,7 @@ class DeepSeekRegionQC:
             hit_tokens * _BUDGET_CACHE_HIT_USD_PER_M
             + miss_tokens * _BUDGET_CACHE_MISS_USD_PER_M
             + completion_tokens * _BUDGET_OUTPUT_USD_PER_M
-        ) / 1_000_000
+        ) / 1_000_000 if self._priced else 0.0
         with self._lock:
             self._reserved_usd = max(0.0, self._reserved_usd - reservation)
             self._estimated_cost_usd += cost
@@ -243,6 +258,7 @@ class DeepSeekRegionQC:
                 "estimated_cost_usd": round(spent, 6),
                 "budget_usd": round(self.budget_usd, 6),
                 "remaining_budget_usd": round(max(0.0, self.budget_usd - spent), 6),
+                "cost_available": self._priced,
             }
 
     def _payload(self, sheet: ContactSheet, mode: str) -> dict:
@@ -286,14 +302,14 @@ class DeepSeekRegionQC:
     ) -> list[RegionBatchDecision]:
         secret = (api_key or "").strip()
         if not secret:
-            raise ValueError("DeepSeek API key is not configured")
+            raise ValueError(f"{self.provider_label} API key is not configured")
         expected_ids = [item.region_id for item in sheet.items]
         if not expected_ids:
             return []
         reservation = self._reserve()
         try:
             response = requests.post(
-                DEEPSEEK_CHAT_URL,
+                self.chat_url,
                 headers={
                     "Authorization": f"Bearer {secret}",
                     "Content-Type": "application/json",
@@ -304,17 +320,17 @@ class DeepSeekRegionQC:
         except requests.Timeout as exc:
             self._charge_unknown(reservation)
             raise DeepSeekRegionQCTimeout(
-                f"DeepSeek did not respond within {self.timeout_seconds}s; retry the QC request"
+                f"{self.provider_label} did not respond within {self.timeout_seconds}s; retry the QC request"
             ) from exc
         except requests.RequestException as exc:
             self._release(reservation)
             raise RuntimeError(
-                f"DeepSeek request failed: {_redact_secret(exc, secret)}"
+                f"{self.provider_label} request failed: {_redact_secret(exc, secret)}"
             ) from exc
         if not response.ok:
             self._release(reservation)
             raise RuntimeError(
-                f"DeepSeek API returned HTTP {response.status_code}: "
+                f"{self.provider_label} API returned HTTP {response.status_code}: "
                 f"{_safe_error_detail(response, secret)}"
             )
         try:

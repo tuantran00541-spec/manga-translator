@@ -15,10 +15,10 @@ The application keeps a human editor in control. Automatic steps create a first 
 - Slice long webtoon images into CPU-friendly segments while preferring safe cut bands; unsafe boundaries keep detector-only overlap context while stitch ownership remains non-overlapping.
 - Detect speech bubbles and free text with local ONNX models while preserving detector/class provenance; secondary OpenCV/MSER recovery surfaces outlined SFX/free text that the segmenter misses.
 - Protect line art during cleanup with verified pixel masks only: proposal-only detections, uncertain recovery, and watermarks remain review-only instead of becoming destructive rectangle inpaint. Fixed-LaMa tiling and page-space mask remapping remain available for compatibility.
-- Review cleaned pages, repaint mistakes manually, and optionally use Gemini or DeepSeek visual QC.
+- Review cleaned pages, repaint mistakes manually, and optionally use Gemini, DeepSeek, OpenAI, OpenRouter, or Experiential Labs visual QC.
 - OCR Japanese with MangaOCR and Chinese/Korean/English with PaddleOCR.
 - Automatically turn detector boxes into editable text objects; re-processing keeps stable box links and does not overwrite user geometry/text edits.
-- Translate OCR text in chapter batches with DeepSeek V4 Flash. Translation is opt-in, uses the DeepSeek key already stored by the app, has a per-run USD budget (UI default `$0.02`), and rejects stale writes if the editor changes text while the request is in flight.
+- Translate OCR text in chapter batches with DeepSeek or another configured OpenAI-compatible provider. Translation is opt-in and rejects stale writes if the editor changes text while the request is in flight. The verified USD preflight cap applies only to direct DeepSeek calls.
 - Edit translation, font, font size, bold, stroke, background, alignment, and text-region geometry.
 - Render every non-skipped page with the revision-safe renderer.
 - Export one ZIP for the chapter. Webtoon slices belonging to the same source page are vertically stitched back together before packaging.
@@ -74,9 +74,11 @@ docker compose up --build
 
 The Docker image expects model files to be supplied through the mounted `./models` directory.
 
-## DeepSeek translation
+## AI providers and translation
 
-Configure a DeepSeek API key through the app's AI settings (or `DEEPSEEK_API_KEY`). Translation uses the current `deepseek-v4-flash` chat-completion API in non-thinking JSON mode. The chapter translator performs a preflight cost check and the UI defaults to a `$0.02` cap per run; increase it only when a larger chapter needs it.
+AI settings keep a separate secret for Google Gemini, DeepSeek, OpenAI, OpenRouter, and Experiential Labs. The corresponding environment variables are `GEMINI_API_KEY`/`GOOGLE_API_KEY`, `DEEPSEEK_API_KEY`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY`, and `EXPLABS_API_KEY`. After saving a key, use **Tải model** to query that provider's `/models` catalog, or enter an exact model id manually.
+
+Chapter translation supports DeepSeek, OpenAI, OpenRouter, and Experiential Labs through their fixed OpenAI-compatible endpoints. Direct DeepSeek translation uses the current `deepseek-v4-flash` non-thinking JSON mode and retains the preflight cost check; the UI defaults to a `$0.02` cap. Other providers report token usage when available but are not charged against DeepSeek's price table.
 
 The provider response is never committed blindly: object identity, OCR source text, and existing translation are checked again after the network call. Concurrent editor changes win and are counted as stale instead of being overwritten.
 
@@ -127,7 +129,7 @@ The provider response is never committed blindly: object identity, OCR source te
 
 ### Visual QC
 
-- `/api/visual_qc/...` — Gemini / DeepSeek quality inspection, chapter jobs, retry/cancel and key settings.
+- `/api/visual_qc/...` — multi-provider quality inspection, model discovery, chapter jobs, retry/cancel and per-provider key settings.
 
 ## Release gate
 
@@ -153,11 +155,11 @@ app/              production application
   downloader/     URL/local ingestion and webtoon slicing
   inpaint/        LaMa cleanup + mask geometry safety
   ocr/            MangaOCR/PaddleOCR service + jobs
-  translation/    DeepSeek chapter translator
+  translation/    OpenAI-compatible chapter translator
   render/         typography + render identity
   routers/        FastAPI endpoints
   static/         browser UI
-  visual_qc/      Gemini/DeepSeek image QC
+  visual_qc/      Gemini/OpenAI-compatible image QC
 tests/            correctness, security and product-release regression tests
 models/           local model files + setup note; binaries are not committed
 data/             runtime chapter data (ignored)

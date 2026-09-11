@@ -56,7 +56,7 @@
   }
 
   function providerLabel(provider) {
-    return provider === "deepseek" ? "DeepSeek" : "Gemini";
+    return ({ gemini: "Gemini", deepseek: "DeepSeek", openai: "OpenAI", openrouter: "OpenRouter", experiential: "Experiential Labs" })[provider] || provider || "AI";
   }
 
   function clearHighlight(workspace) {
@@ -177,9 +177,14 @@
     const select = panel.querySelector(".chapter-qc-provider");
     const budget = panel.querySelector(".chapter-qc-budget-input");
     const budgetWrap = panel.querySelector(".chapter-qc-budget");
+    const model = panel.querySelector(".chapter-qc-model");
     if (!select || !budget || !budgetWrap) return;
     if (running && snapshot?.provider) select.value = snapshot.provider;
     select.disabled = running;
+    if (model) {
+      if (!model.value) model.value = localStorage.getItem(`manga_ai_model_${select.value}`) || "";
+      model.disabled = running;
+    }
     const deepseek = select.value === "deepseek";
     budgetWrap.hidden = !deepseek;
     budget.disabled = running || !deepseek;
@@ -295,7 +300,8 @@
     const provider = panel?.querySelector(".chapter-qc-provider")?.value || "gemini";
     const budgetRaw = Number(panel?.querySelector(".chapter-qc-budget-input")?.value);
     const budget = Number.isFinite(budgetRaw) ? Math.max(0.005, Math.min(0.15, budgetRaw)) : 0.08;
-    return { chapter_id: chapterId, concurrency: 2, provider, budget_usd: budget };
+    const model = panel?.querySelector(".chapter-qc-model")?.value?.trim() || localStorage.getItem(`manga_ai_model_${provider}`) || null;
+    return { chapter_id: chapterId, concurrency: 2, provider, model, budget_usd: budget };
   }
 
   async function startChapterQC(workspace) {
@@ -307,8 +313,8 @@
       return;
     }
     const request = chapterRequest(workspace, chapterId);
-    if (request.provider === "deepseek" && window.deepseekVisualQCConfigured === false) {
-      if (typeof window.showToast === "function") window.showToast("Hãy cấu hình DeepSeek API key trong Cài đặt trước.", "error");
+    if (window.aiProviderSettings?.[request.provider]?.configured === false) {
+      if (typeof window.showToast === "function") window.showToast(`Hãy cấu hình ${providerLabel(request.provider)} API key trong Cài đặt trước.`, "error");
       return;
     }
     const generation = ++state.generation;
@@ -378,7 +384,13 @@
           <select class="ui-select chapter-qc-provider">
             <option value="gemini">Gemini</option>
             <option value="deepseek">DeepSeek Vision Exp</option>
+            <option value="openai">OpenAI</option>
+            <option value="openrouter">OpenRouter</option>
+            <option value="experiential">Experiential Labs</option>
           </select>
+        </label>
+        <label class="ui-field">Model
+          <input class="ui-input chapter-qc-model" type="text" placeholder="Mặc định của provider">
         </label>
         <label class="ui-field chapter-qc-budget" hidden>Giới hạn chi phí
           <span>$<input class="ui-input chapter-qc-budget-input" type="number" min="0.005" max="0.15" step="0.005" value="0.08" inputmode="decimal"></span>
@@ -391,7 +403,14 @@
     panel.querySelector(".chapter-qc-cancel")?.addEventListener("click", cancelChapterQC);
     panel.querySelector(".chapter-qc-retry")?.addEventListener("click", retryChapterQC);
     panel.querySelector(".chapter-qc-provider")?.addEventListener("change", () => {
+      const provider = panel.querySelector(".chapter-qc-provider")?.value || "gemini";
+      const model = panel.querySelector(".chapter-qc-model");
+      if (model) model.value = localStorage.getItem(`manga_ai_model_${provider}`) || "";
       syncProviderControls(panel, state.snapshot, isRunning());
+    });
+    panel.querySelector(".chapter-qc-model")?.addEventListener("change", (event) => {
+      const provider = panel.querySelector(".chapter-qc-provider")?.value || "gemini";
+      localStorage.setItem(`manga_ai_model_${provider}`, event.target.value.trim());
     });
     return panel;
   }

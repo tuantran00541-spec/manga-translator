@@ -411,6 +411,10 @@
   function mountAISettings() {
     const host = document.getElementById("ai-settings-host");
     if (!host || host.querySelector(".gemini-qc-config")) return;
+    if (typeof window.createAIProviderSettings === "function") {
+      window.createAIProviderSettings();
+      return;
+    }
     const root = document.createElement("div"); root.className = "gemini-qc-config frontend-ai-settings";
     const status = document.createElement("span"); status.className = "gemini-qc-status"; status.textContent = "Kiểm tra AI: Đang kiểm tra cấu hình…";
     const input = document.createElement("input"); input.type = "password"; input.className = "gemini-key-input"; input.placeholder = "Gemini API key"; input.autocomplete = "off";

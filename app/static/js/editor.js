@@ -1330,6 +1330,29 @@ function buildChapterTranslateControls() {
   budget.className = "chapter-translate-budget";
   budget.title = "Ngân sách tối đa ước tính cho lần dịch chương (USD)";
   budget.setAttribute("aria-label", "Ngân sách dịch chương bằng USD");
+  const provider = document.createElement("select");
+  provider.className = "chapter-translate-provider";
+  [["deepseek", "DeepSeek"], ["openai", "OpenAI"], ["openrouter", "OpenRouter"], ["experiential", "Experiential Labs"]].forEach(([value, label]) => provider.add(new Option(label, value)));
+  provider.value = localStorage.getItem("manga_translation_provider") || "deepseek";
+  const model = document.createElement("input");
+  model.className = "ui-input chapter-translate-model";
+  model.placeholder = "Model mặc định của provider";
+  const syncModel = () => {
+    model.value = localStorage.getItem(`manga_ai_model_${provider.value}`) || "";
+    localStorage.setItem("manga_translation_provider", provider.value);
+    budget.disabled = provider.value !== "deepseek";
+    budgetLabel.hidden = provider.value !== "deepseek";
+  };
+  provider.addEventListener("change", syncModel);
+  model.addEventListener("change", () => localStorage.setItem(`manga_ai_model_${provider.value}`, model.value.trim()));
+  const providerLabel = document.createElement("label");
+  providerLabel.className = "ui-field";
+  providerLabel.textContent = "Dịch vụ AI";
+  providerLabel.appendChild(provider);
+  const modelLabel = document.createElement("label");
+  modelLabel.className = "ui-field";
+  modelLabel.textContent = "Model";
+  modelLabel.appendChild(model);
   const targetLabel = document.createElement("label");
   targetLabel.className = "ui-field";
   targetLabel.textContent = "Dịch sang";
@@ -1365,6 +1388,8 @@ function buildChapterTranslateControls() {
           chapter_id: chapterId,
           source_lang: document.getElementById("lang-select")?.value || "ja",
           target_lang: target.value,
+          provider: provider.value,
+          model: model.value.trim() || null,
           budget_usd: Number(budget.value || 0.02),
           force: false,
         }),
@@ -1394,7 +1419,8 @@ function buildChapterTranslateControls() {
     }
   });
 
-  options.append(targetLabel, budgetLabel, run);
+  options.append(providerLabel, modelLabel, targetLabel, budgetLabel, run);
+  syncModel();
   controls.append(summary, options);
   return controls;
 }

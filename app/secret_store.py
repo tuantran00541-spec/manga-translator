@@ -2,9 +2,15 @@ from __future__ import annotations
 
 import os
 
+from app.ai_providers import get_provider
+
 _SERVICE_NAME = "manga-translator"
 _GEMINI_ACCOUNT = "gemini-api-key"
 _DEEPSEEK_ACCOUNT = "deepseek-api-key"
+
+
+def _provider_account(provider_id: str) -> str:
+    return f"ai-provider-{provider_id}-api-key"
 
 
 class SecretStoreUnavailable(RuntimeError):
@@ -133,3 +139,41 @@ def deepseek_key_status() -> dict:
         ("DEEPSEEK_API_KEY",),
         "DeepSeek",
     )
+
+
+def get_provider_api_key(provider_id: str) -> str | None:
+    provider = get_provider(provider_id)
+    if provider.id == "gemini":
+        return get_gemini_api_key()
+    if provider.id == "deepseek":
+        return get_deepseek_api_key()
+    account = _provider_account(provider.id)
+    return _get_api_key(account, provider.env_names, provider.label)
+
+
+def set_provider_api_key(provider_id: str, value: str) -> None:
+    provider = get_provider(provider_id)
+    account = {
+        "gemini": _GEMINI_ACCOUNT,
+        "deepseek": _DEEPSEEK_ACCOUNT,
+    }.get(provider.id, _provider_account(provider.id))
+    _set_api_key(account, value, provider.label)
+
+
+def delete_provider_api_key(provider_id: str) -> None:
+    provider = get_provider(provider_id)
+    account = {
+        "gemini": _GEMINI_ACCOUNT,
+        "deepseek": _DEEPSEEK_ACCOUNT,
+    }.get(provider.id, _provider_account(provider.id))
+    _delete_api_key(account, provider.label)
+
+
+def provider_key_status(provider_id: str) -> dict:
+    provider = get_provider(provider_id)
+    if provider.id == "gemini":
+        return gemini_key_status()
+    if provider.id == "deepseek":
+        return deepseek_key_status()
+    account = _provider_account(provider.id)
+    return _key_status(account, provider.env_names, provider.label)
