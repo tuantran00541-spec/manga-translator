@@ -50,8 +50,12 @@ def main() -> None:
                 "slice_index": 0,
                 "width": image.width,
                 "height": image.height,
-                "original": original,
-                "clean": clean,
+                # Production manifests retain managed absolute paths; the API
+                # turns them into stable /api/image URLs for the browser.  Keep
+                # the fixture on that same contract instead of using filenames
+                # that only make sense relative to this script's working dir.
+                "original": str((RAW_DIR / original).resolve()),
+                "clean": str((PROCESSED_DIR / clean).resolve()),
                 "boxes": [],
                 "text_objects": [],
                 "excluded_regions": [],
