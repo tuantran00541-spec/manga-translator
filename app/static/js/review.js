@@ -519,19 +519,15 @@ async function inspectVisualQC(
     const resp = await fetch("/api/visual_qc/inspect", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-<<<<<<< HEAD
+      signal: typeof window.chapterWorkSignal === "function"
+        ? window.chapterWorkSignal()
+        : undefined,
       body: JSON.stringify({
         chapter_id: chapterId,
         page_index: pageIndex,
         provider: localStorage.getItem("manga_ai_active_provider") || "gemini",
         model: localStorage.getItem(`manga_ai_model_${localStorage.getItem("manga_ai_active_provider") || "gemini"}`) || null,
       }),
-=======
-      signal: typeof window.chapterWorkSignal === "function"
-        ? window.chapterWorkSignal()
-        : undefined,
-      body: JSON.stringify({ chapter_id: chapterId, page_index: pageIndex }),
->>>>>>> ebd74d2 (update frontend and schemas)
     });
     const parse = typeof window.parseApiResponse === "function" ? window.parseApiResponse : async (r) => (await r.json().catch(() => ({})));
     const getErr = typeof window.getErrorMessage === "function" ? window.getErrorMessage : (s, d) => d.detail || `Máy chủ trả về ${s}`;
