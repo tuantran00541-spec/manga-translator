@@ -1,0 +1,38 @@
+{
+  "checkpoint": "03-ocr-review",
+  "chapter_id": "c0990099",
+  "slices": 73,
+  "planned_boxes": 175,
+  "ocr_success": 175,
+  "ocr_failures": 0,
+  "skipped_review_only_boxes": 233,
+  "created_text_objects": 175,
+  "active_text_objects": 175,
+  "empty_planned_boxes": 10,
+  "needs_human_review_boxes": 51,
+  "duplicate_text_groups": 18,
+  "target_modes": {
+    "all": 175
+  },
+  "quality_counts": {
+    "good": 125,
+    "reject": 10,
+    "review": 40
+  },
+  "ocr_models": {
+    "PP-OCRv6_small_rec": 175
+  },
+  "region_count_histogram": {
+    "1": 19,
+    "3": 68,
+    "0": 10,
+    "4": 16,
+    "2": 56,
+    "6": 3,
+    "15": 1,
+    "18": 1,
+    "5": 1
+  },
+  "failures": [],
+  "next_action": "STOP_FOR_HUMAN_OCR_REVIEW"
+}
