@@ -4,12 +4,23 @@
   "series": "Bad Born Blood",
   "source_url": "https://asurascans.com/comics/bad-born-blood-53fc8424/chapter/99",
   "branch": "trial/chapter-render-99",
-  "current_stage": "TRANSLATION_PENDING",
-  "last_passed_checkpoint": "OCR_HUMAN_REVIEW",
+  "current_stage": "FINAL_PENDING",
+  "last_passed_checkpoint": "VISUAL_REVIEW",
   "current_artifact": {
-    "run_id": 34551318030,
-    "artifact_name": "03-ocr-final-c0990099",
-    "artifact_id": 10180919067
+    "run_id": 34558247974,
+    "artifact_name": "05-visual-local-repair-pages-c0990099",
+    "artifact_id": 10183386242,
+    "sha256": "f82864b009041156e6aa6b88ccd17252ac7cdbb2ab3cf2bfe2f2ff2624a32216"
+  },
+  "import_review": {
+    "status": "PASS",
+    "source_pages": 20,
+    "slices": 73,
+    "missing_pages": 0,
+    "duplicate_pages": 0,
+    "ownership_issues": 0,
+    "pixel_exact_reconstructed_pages": 20,
+    "max_abs_reconstruction_diff": 0
   },
   "clean_review": {
     "status": "PASS_AFTER_REPAIR",
@@ -21,19 +32,56 @@
     "repairs": 4
   },
   "ocr_review": {
-    "status": "PASS",
-    "reviewed_text_objects": 175,
-    "active_story_objects": 131,
+    "status": "PASS_AFTER_MANUAL_COVERAGE_REPAIR",
+    "reviewed_text_objects": 176,
+    "active_story_objects": 132,
     "persistent_tombstones": 44,
     "human_corrections": 6,
     "geometry_merges": 1,
     "semantic_overrides": 26,
+    "manual_story_additions": 1,
+    "skipped_review_proposals_reviewed": 233,
+    "coverage_audit_story_blockers_found": 1,
     "active_unreviewed_objects": 0,
     "owner_core_violations": 0,
     "high_iou_duplicate_pairs": 0,
     "reconciliation_created_objects": 0,
     "reload_resurrection_created_objects": 0
   },
+  "translation_review": {
+    "status": "PASS",
+    "active_story_objects": 132,
+    "translated_story_objects": 132,
+    "active_untranslated_story_objects": 0,
+    "persistent_tombstones": 44,
+    "free_text_objects": 19,
+    "compactness_blockers": 0,
+    "manual_ocr_story_additions_translated": 1,
+    "latest_run_id": 34557838179
+  },
+  "typeset_render": {
+    "status": "TECHNICAL_PASS_AFTER_LOCAL_VISUAL_REPAIR",
+    "slices": 73,
+    "source_pages": 20,
+    "font_size_policy": "DYNAMIC_SEMANTIC_LARGEST_FIT_NO_AUTO",
+    "minimum_font_size_px": 28,
+    "free_text_max_font_size_px": 96,
+    "semantic_multi_font_hierarchy": true,
+    "local_repairs": 6,
+    "rerendered_slices": 6,
+    "reused_slices": 67,
+    "skipped_slices": 0
+  },
+  "visual_review": {
+    "status": "PASS",
+    "initial_object_proof_sheets_reviewed": 17,
+    "initial_stitched_zoom_proof_sheets_reviewed": 12,
+    "initial_visual_issues_found": 6,
+    "focused_repair_object_proof_sheets_reviewed": 1,
+    "focused_repair_stitched_context_proof_sheets_reviewed": 1,
+    "visual_blockers_total": 0,
+    "final_export_allowed": true
+  },
   "blockers": [],
-  "next_action": "Translate and human-review all 131 active story objects, preserving terminology and scene voice"
+  "next_action": "Build and validate Bad-Born-Blood-Chapter-99-VI-FINAL.zip plus final-report.json from the human-approved repaired chapter artifact"
 }
