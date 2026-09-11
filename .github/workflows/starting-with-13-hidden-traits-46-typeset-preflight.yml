@@ -34,7 +34,11 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install typeset runtime
-        run: python -m pip install --only-binary=:all: numpy==1.26.4 Pillow==10.4.0 fonttools==4.54.1
+        run: |
+          python -m pip install --only-binary=:all: \
+            numpy==1.26.4 \
+            Pillow==10.4.0 \
+            fonttools==4.54.1
       - name: Restore translation checkpoint
         run: |
           rm -rf checkpoint/04-translation-review checkpoint/05-typeset
