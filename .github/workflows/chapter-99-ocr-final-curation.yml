@@ -1,0 +1,304 @@
+name: Chapter 99 OCR Final Curation
+
+on:
+  push:
+    branches:
+      - trial/chapter-render-99
+    paths:
+      - .github/workflows/chapter-99-ocr-final-curation.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: chapter-99-human-loop
+  cancel-in-progress: false
+
+jobs:
+  finalize-ocr:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    env:
+      CHAPTER_ID: c0990099
+      OCR_RUN_ID: "34549198271"
+      OCR_ARTIFACT: 03-ocr-review-c0990099
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: trial/chapter-render-99
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Restore OCR review checkpoint
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf checkpoint/03-ocr-final
+          mkdir -p checkpoint/03-ocr-final
+          gh run download "$OCR_RUN_ID" -n "$OCR_ARTIFACT" -D checkpoint/03-ocr-final
+          test -f checkpoint/03-ocr-final/processed/manifest.json
+          test -f trials/chapter-99/ocr-curation.json
+
+      - name: Apply human OCR curation and persistent tombstones
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from app.text_objects import ensure_page_text_objects
+
+          root = Path('checkpoint/03-ocr-final')
+          manifest_path = root / 'processed' / 'manifest.json'
+          manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+          decisions = json.loads(Path('trials/chapter-99/ocr-curation.json').read_text(encoding='utf-8'))
+          gate = decisions.get('gate') or {}
+          if decisions.get('chapter_id') != 'c0990099' or not gate.get('ocr_pass_allowed'):
+              raise SystemExit('curation file does not authorize chapter 99 OCR PASS')
+
+          pages = manifest.get('pages') or []
+          indexed = {}
+          box_semantics = {}
+          for pi, page in enumerate(pages):
+              for box in page.get('boxes') or []:
+                  bid = str(box.get('id') or '')
+                  if bid:
+                      box_semantics[bid] = str(box.get('semantic_type') or 'text')
+              for obj in page.get('text_objects') or []:
+                  oid = str(obj.get('id') or '')
+                  if not oid:
+                      continue
+                  if oid in indexed:
+                      raise SystemExit(f'duplicate text object id {oid}')
+                  indexed[oid] = (pi, obj)
+
+          expected_reviewed = int((decisions.get('review_scope') or {}).get('ocr_objects_reviewed', -1))
+          if len(indexed) != expected_reviewed:
+              raise SystemExit(f'expected {expected_reviewed} OCR objects, found {len(indexed)}')
+
+          drops = decisions.get('drop') or {}
+          corrections = decisions.get('corrections') or {}
+          geometry = decisions.get('geometry_overrides') or {}
+          semantics = decisions.get('semantic_overrides') or {}
+
+          unknown = (set(drops) | set(corrections) | set(geometry) | set(semantics)) - set(indexed)
+          if unknown:
+              raise SystemExit(f'curation references missing object ids: {sorted(unknown)[:20]}')
+
+          for oid, reason in drops.items():
+              pi, obj = indexed[oid]
+              obj.update({
+                  'human_review': 'drop_duplicate_credit_sfx_or_noise',
+                  'human_review_reason': reason,
+                  'human_review_source_text': str(obj.get('ocr_text') or ''),
+                  'source_missing': True,
+                  'auto_generated': False,
+                  'origin': 'human_review_drop',
+                  'ocr_quality': 'human_dropped',
+                  'ocr_quality_reason': reason,
+                  'translation': '',
+              })
+              obj.pop('auto_ocr_text', None)
+              obj.pop('auto_geometry', None)
+
+          for oid, text in corrections.items():
+              pi, obj = indexed[oid]
+              if obj.get('source_missing'):
+                  raise SystemExit(f'correction targets tombstone {oid}')
+              old = str(obj.get('ocr_text') or '')
+              if old != text:
+                  obj['human_review_original_ocr'] = old
+              obj['ocr_text'] = text
+              obj['ocr_source'] = 'human_review'
+              obj['ocr_quality'] = 'human_reviewed'
+              obj['ocr_quality_reason'] = 'source_visual_correction'
+
+          for oid, spec in geometry.items():
+              pi, obj = indexed[oid]
+              if obj.get('source_missing'):
+                  raise SystemExit(f'geometry override targets tombstone {oid}')
+              old = dict(obj.get('region') or {})
+              new = {key: int(spec[key]) for key in ('x1','y1','x2','y2')}
+              if new['x2'] <= new['x1'] or new['y2'] <= new['y1']:
+                  raise SystemExit(f'invalid geometry override {oid}: {new}')
+              obj['human_review_original_region'] = old
+              obj['region'] = new
+              obj['human_review_geometry_reason'] = str(spec.get('reason') or 'human_fragment_merge')
+              obj['human_merged_source_objects'] = [
+                  'text_b1a161b8ef4640e9',
+                  'text_d8c7d60b2384450e',
+                  'text_6b51c3ccd91c455f',
+              ] if oid == 'text_b1a161b8ef4640e9' else []
+
+          for oid, semantic in semantics.items():
+              pi, obj = indexed[oid]
+              if obj.get('source_missing'):
+                  raise SystemExit(f'semantic override targets tombstone {oid}')
+              obj['semantic_type'] = str(semantic)
+              obj['human_review_semantic'] = True
+
+          active = []
+          tombstones = []
+          for oid, (pi, obj) in indexed.items():
+              if obj.get('source_missing'):
+                  tombstones.append(oid)
+                  continue
+              text = str(obj.get('ocr_text') or '').strip()
+              if not text:
+                  raise SystemExit(f'blank active object after curation page={pi} id={oid}')
+              if not obj.get('semantic_type'):
+                  source_boxes = obj.get('source_boxes') or []
+                  source_sem = box_semantics.get(str(source_boxes[0])) if source_boxes else None
+                  obj['semantic_type'] = source_sem or 'text'
+              obj.update({
+                  'human_review': 'keep_story',
+                  'human_review_reason': 'accepted_story_source_after_full_raw_crop_review',
+                  'source_missing': False,
+                  'auto_generated': False,
+                  'origin': 'human_review_story',
+                  'ocr_source': 'human_review',
+                  'ocr_quality': 'human_reviewed',
+                  'ocr_quality_reason': 'accepted_or_corrected_by_human_review',
+                  'translation': '',
+              })
+              active.append((pi, oid, text))
+
+          expected_active = int(gate.get('expected_active_story_objects', -1))
+          expected_tombstones = int(gate.get('expected_tombstones', -1))
+          if len(active) != expected_active or len(tombstones) != expected_tombstones:
+              raise SystemExit(
+                  f'curated counts mismatch active={len(active)}/{expected_active} '
+                  f'tombstones={len(tombstones)}/{expected_tombstones}'
+              )
+
+          # Ownership gate: every active object center must lie inside the stitch
+          # core of its owning slice. This prevents overlap duplicates surviving.
+          non_owner = []
+          global_regions = []
+          for pi, oid, text in active:
+              page = pages[pi]
+              core = page.get('stitch_core') or {}
+              region = indexed[oid][1].get('region') or {}
+              cy = (float(region['y1']) + float(region['y2'])) / 2.0
+              if not (float(core.get('core_y1', 0)) <= cy < float(core.get('core_y2', page.get('height', 0)))):
+                  non_owner.append(oid)
+              sy = float(core.get('source_y1', 0))
+              global_regions.append((
+                  int(page.get('source_page', pi)), oid,
+                  (float(region['x1']), sy + float(region['y1']), float(region['x2']), sy + float(region['y2']))
+              ))
+          if gate.get('require_owner_core_for_all_active') and non_owner:
+              raise SystemExit(f'active non-owner overlap objects remain: {non_owner[:20]}')
+
+          # High-IoU active pairs on the same source page indicate unresolved
+          # duplicate detector objects. Adjacent/overlapping speech bubbles stay
+          # below this deliberately conservative threshold.
+          def iou(a, b):
+              x1, y1 = max(a[0], b[0]), max(a[1], b[1])
+              x2, y2 = min(a[2], b[2]), min(a[3], b[3])
+              inter = max(0.0, x2-x1) * max(0.0, y2-y1)
+              aa = max(0.0, a[2]-a[0]) * max(0.0, a[3]-a[1])
+              bb = max(0.0, b[2]-b[0]) * max(0.0, b[3]-b[1])
+              den = aa + bb - inter
+              return inter / den if den else 0.0
+
+          overlap_dupes = []
+          for i in range(len(global_regions)):
+              spi, oi, ri = global_regions[i]
+              for j in range(i+1, len(global_regions)):
+                  spj, oj, rj = global_regions[j]
+                  if spj != spi:
+                      continue
+                  score = iou(ri, rj)
+                  if score >= 0.45:
+                      overlap_dupes.append((oi, oj, round(score, 4)))
+          if gate.get('require_no_high_iou_duplicate_active') and overlap_dupes:
+              raise SystemExit(f'high-IoU active duplicates remain: {overlap_dupes[:20]}')
+
+          # Persistent tombstone resurrection test against production reconciliation.
+          created_first = 0
+          for page in pages:
+              created, _ = ensure_page_text_objects(page)
+              created_first += int(created)
+          if created_first != int(gate.get('expected_reconciliation_created_objects', 0)):
+              raise SystemExit(f'reconciliation created/resurrected {created_first} objects')
+
+          manifest['human_ocr_review'] = {
+              'status': 'PASS',
+              'source_ocr_run_id': int(decisions['source_ocr_run_id']),
+              'reviewed_text_objects': len(indexed),
+              'active_story_objects': len(active),
+              'persistent_tombstones': len(tombstones),
+              'human_corrections': len(corrections),
+              'geometry_merges': len(geometry),
+              'semantic_overrides': len(semantics),
+              'reconciliation_created_objects': created_first,
+              'active_unreviewed_objects': 0,
+              'owner_core_violations': len(non_owner),
+              'high_iou_duplicate_pairs': len(overlap_dupes),
+              'ocr_pass_allowed': True,
+              'next_action': 'TRANSLATION_REVIEW_ALLOWED',
+          }
+
+          text = json.dumps(manifest, ensure_ascii=False, indent=2)
+          manifest_path.write_text(text, encoding='utf-8')
+          (root/'manifest.json').write_text(text, encoding='utf-8')
+
+          # Reload from disk and reconcile again: tombstones must still win.
+          reloaded = json.loads(manifest_path.read_text(encoding='utf-8'))
+          created_second = 0
+          for page in reloaded.get('pages') or []:
+              created, _ = ensure_page_text_objects(page)
+              created_second += int(created)
+          if created_second != 0:
+              raise SystemExit(f'reload resurrection test created {created_second} objects')
+          manifest['human_ocr_review']['reload_resurrection_created_objects'] = created_second
+          text = json.dumps(manifest, ensure_ascii=False, indent=2)
+          manifest_path.write_text(text, encoding='utf-8')
+          (root/'manifest.json').write_text(text, encoding='utf-8')
+
+          # Stable source-order pack for translation review.
+          rows = []
+          for pi, oid, _ in active:
+              page = pages[pi]
+              obj = indexed[oid][1]
+              region = obj.get('region') or {}
+              core = page.get('stitch_core') or {}
+              rows.append({
+                  'page_index': pi,
+                  'source_page': int(page.get('source_page', pi)),
+                  'slice_index': int(page.get('slice_index', 0)),
+                  'source_y': int(core.get('source_y1', 0)) + int(region.get('y1', 0)),
+                  'id': oid,
+                  'semantic_type': str(obj.get('semantic_type') or 'text'),
+                  'region': region,
+                  'source_text': str(obj.get('ocr_text') or ''),
+              })
+          rows.sort(key=lambda row: (row['source_page'], row['source_y'], row['region'].get('x1', 0)))
+          (root/'active-story-source.json').write_text(json.dumps(rows, ensure_ascii=False, indent=2), encoding='utf-8')
+          (root/'ocr-final-summary.json').write_text(json.dumps(manifest['human_ocr_review'], ensure_ascii=False, indent=2), encoding='utf-8')
+          (root/'ocr-curation-applied.json').write_text(json.dumps(decisions, ensure_ascii=False, indent=2), encoding='utf-8')
+          print(json.dumps(manifest['human_ocr_review'], ensure_ascii=False, indent=2))
+          PY
+
+      - name: Publish OCR final summary
+        run: |
+          cp checkpoint/03-ocr-final/ocr-final-summary.json trials/chapter-99/ocr-final-summary.json
+          cp checkpoint/03-ocr-final/active-story-source.json trials/chapter-99/active-story-source.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add trials/chapter-99/ocr-final-summary.json trials/chapter-99/active-story-source.json
+          if ! git diff --cached --quiet; then
+            git commit -m "review: pass chapter 99 OCR human gate"
+            git push origin HEAD:trial/chapter-render-99
+          fi
+
+      - name: Upload final OCR checkpoint
+        uses: actions/upload-artifact@v4
+        with:
+          name: 03-ocr-final-c0990099
+          path: checkpoint/03-ocr-final
+          retention-days: 7
+          if-no-files-found: error
