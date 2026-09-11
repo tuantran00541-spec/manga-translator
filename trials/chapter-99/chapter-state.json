@@ -4,8 +4,8 @@
   "series": "Bad Born Blood",
   "source_url": "https://asurascans.com/comics/bad-born-blood-53fc8424/chapter/99",
   "branch": "trial/chapter-render-99",
-  "current_stage": "FINAL_PENDING",
-  "last_passed_checkpoint": "VISUAL_REVIEW",
+  "current_stage": "FINAL_COMPLETE",
+  "last_passed_checkpoint": "FINAL_EXPORT",
   "current_artifact": {
     "run_id": 34558247974,
     "artifact_name": "05-visual-local-repair-pages-c0990099",
@@ -83,5 +83,12 @@
     "final_export_allowed": true
   },
   "blockers": [],
-  "next_action": "Build and validate Bad-Born-Blood-Chapter-99-VI-FINAL.zip plus final-report.json from the human-approved repaired chapter artifact"
+  "next_action": "CHAPTER_COMPLETE_NO_MAIN_MERGE",
+  "final_export": {
+    "status": "FINAL_PASS",
+    "archive": "Bad-Born-Blood-Chapter-99-VI-FINAL.zip",
+    "archive_sha256": "938ec11b2662fb1362211ebb89e9f924f7a41b85fadf2817619f67dd8b2501c3",
+    "source_pages": 20,
+    "run_source_repaired": 34558247974
+  }
 }
