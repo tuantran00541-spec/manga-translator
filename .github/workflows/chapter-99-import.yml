@@ -1,0 +1,216 @@
+name: Chapter 99 Checkpoint 01 Import
+
+on:
+  push:
+    branches:
+      - trial/chapter-render-99
+    paths:
+      - .github/workflows/chapter-99-import.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: chapter-99-import
+  cancel-in-progress: false
+
+jobs:
+  import-slice:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout trial branch
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install import dependencies only
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install \
+            fastapi==0.115.0 \
+            requests==2.32.3 \
+            beautifulsoup4==4.12.3 \
+            lxml==5.3.0 \
+            playwright==1.47.0 \
+            Pillow==10.4.0 \
+            numpy==1.26.4 \
+            opencv-contrib-python==4.10.0.84
+
+      - name: Download and production-slice chapter 99
+        env:
+          CHAPTER_URL: https://asurascans.com/comics/bad-born-blood-53fc8424/chapter/99
+          CHAPTER_ID: c0990099
+          EXPECTED_SOURCE_PAGES: '20'
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+
+          import json
+          import os
+          from concurrent.futures import ThreadPoolExecutor, as_completed
+          from pathlib import Path
+
+          import cv2
+          from PIL import Image, ImageDraw
+
+          from app.downloader.registry import download_chapter
+          from app.downloader.slicer import slice_image
+          from app.parameters import PIPELINE_DEFAULT_WORKERS, PIPELINE_SLICE_WORKER_LIMIT
+          from app.security import validate_chapter_id
+
+          chapter_url = os.environ['CHAPTER_URL']
+          chapter_id = validate_chapter_id(os.environ['CHAPTER_ID'])
+          expected_source_pages = int(os.environ['EXPECTED_SOURCE_PAGES'])
+
+          root = Path('checkpoint/01-import')
+          raw_dir = root / 'raw'
+          sliced_dir = raw_dir / 'sliced'
+          raw_dir.mkdir(parents=True, exist_ok=True)
+          sliced_dir.mkdir(parents=True, exist_ok=True)
+
+          raw_paths = download_chapter(chapter_url, raw_dir)
+          if not raw_paths:
+              raise RuntimeError('Production downloader returned zero source images')
+          if len(raw_paths) != expected_source_pages:
+              raise RuntimeError(f'expected {expected_source_pages} source images, got {len(raw_paths)}')
+
+          max_workers = max(1, min(int(PIPELINE_DEFAULT_WORKERS), int(PIPELINE_SLICE_WORKER_LIMIT), len(raw_paths)))
+          slice_results: dict[int, list[dict]] = {}
+
+          def slice_one(item):
+              idx, raw_path = item
+              return idx, slice_image(raw_path, sliced_dir, f'{idx:03d}', return_metadata=True)
+
+          with ThreadPoolExecutor(max_workers=max_workers) as pool:
+              futures = {pool.submit(slice_one, (idx, path)): idx for idx, path in enumerate(raw_paths)}
+              for future in as_completed(futures):
+                  idx, items = future.result()
+                  slice_results[idx] = items
+
+          pages = []
+          source_rows = []
+          for source_index, raw_path in enumerate(raw_paths):
+              image = cv2.imread(str(raw_path), cv2.IMREAD_COLOR)
+              if image is None:
+                  raise RuntimeError(f'Could not read downloaded source image: {raw_path}')
+              height, width = image.shape[:2]
+              source_rows.append({
+                  'source_page': source_index,
+                  'filename': raw_path.name,
+                  'width': int(width),
+                  'height': int(height),
+                  'slice_count': len(slice_results[source_index]),
+              })
+              for slice_index, item in enumerate(slice_results[source_index]):
+                  slice_path = Path(item['path'])
+                  stitch_core = {key: item.get(key) for key in (
+                      'source_y1', 'source_y2', 'core_y1', 'core_y2',
+                      'core_source_y1', 'core_source_y2', 'unsafe_before',
+                      'unsafe_after', 'source_height'
+                  )}
+                  pages.append({
+                      'original': slice_path.as_posix(),
+                      'clean': None,
+                      'boxes': [],
+                      'skipped': False,
+                      'excluded_regions': [],
+                      'source_page': source_index,
+                      'slice_index': slice_index,
+                      'stitch_core': stitch_core,
+                  })
+
+          manifest = {
+              'chapter_id': chapter_id,
+              'source_url': chapter_url,
+              'pages': pages,
+              'workflow': {'stage': 'preview', 'page_index': 0},
+          }
+          (root / 'manifest.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding='utf-8')
+
+          # Ownership validation: contiguous source core ranges with no gap or backwards overlap.
+          ownership_issues = []
+          for source_index in range(len(raw_paths)):
+              owned = [p for p in pages if p['source_page'] == source_index]
+              owned.sort(key=lambda p: p['slice_index'])
+              prev_end = 0
+              source_h = source_rows[source_index]['height']
+              for page in owned:
+                  core = page['stitch_core']
+                  y1 = int(core.get('core_source_y1') or 0)
+                  y2 = int(core.get('core_source_y2') or 0)
+                  if y1 != prev_end:
+                      ownership_issues.append({'source_page': source_index, 'slice_index': page['slice_index'], 'expected_y1': prev_end, 'actual_y1': y1})
+                  if y2 < y1:
+                      ownership_issues.append({'source_page': source_index, 'slice_index': page['slice_index'], 'invalid_range': [y1, y2]})
+                  prev_end = y2
+              if prev_end != source_h:
+                  ownership_issues.append({'source_page': source_index, 'expected_end': source_h, 'actual_end': prev_end})
+
+          summary = {
+              'checkpoint': '01-import',
+              'chapter_id': chapter_id,
+              'source_url': chapter_url,
+              'expected_source_pages': expected_source_pages,
+              'source_images': len(raw_paths),
+              'source_count_matches_expected': len(raw_paths) == expected_source_pages,
+              'slices': len(pages),
+              'slice_workers': max_workers,
+              'skipped_pages': [],
+              'source_order': [path.name for path in raw_paths],
+              'source_pages': source_rows,
+              'ownership_issues': ownership_issues,
+              'slice_order': [
+                  {'page_index': idx, 'source_page': page['source_page'], 'slice_index': page['slice_index'], 'original': page['original']}
+                  for idx, page in enumerate(pages)
+              ],
+              'next_action': 'STOP_FOR_HUMAN_IMPORT_REVIEW',
+          }
+          (root / 'import-summary.json').write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding='utf-8')
+
+          def contact_sheet(paths, out_path, label_prefix, thumb_w=220, thumb_h=320, cols=5):
+              cards=[]
+              for idx, path in enumerate(paths):
+                  with Image.open(path) as im:
+                      rgb=im.convert('RGB'); rgb.thumbnail((thumb_w, thumb_h))
+                      canvas=Image.new('RGB',(thumb_w+16,thumb_h+42),'white')
+                      x=(canvas.width-rgb.width)//2; y=8+(thumb_h-rgb.height)//2
+                      canvas.paste(rgb,(x,y)); draw=ImageDraw.Draw(canvas)
+                      draw.text((8,thumb_h+14),f'{label_prefix} {idx:03d}: {Path(path).name}',fill='black')
+                      cards.append(canvas)
+              rows=(len(cards)+cols-1)//cols
+              sheet=Image.new('RGB',(cols*(thumb_w+16),rows*(thumb_h+42)),'white')
+              for i,card in enumerate(cards): sheet.paste(card,((i%cols)*card.width,(i//cols)*card.height))
+              sheet.save(out_path,quality=88)
+
+          contact_sheet(raw_paths, root / 'source-contact-sheet.jpg', 'SRC')
+          ordered_slices=[Path(page['original']) for page in pages]
+          contact_sheet(ordered_slices, root / 'slice-contact-sheet.jpg', 'SLICE', thumb_h=260)
+
+          (root / 'HUMAN_CHECKPOINT.txt').write_text(
+              'CHECKPOINT: IMPORT REVIEW\nSTOP here. Inspect source and slice contact sheets, source count/order, slice ownership, overlap and reconstruction metadata before CLEAN.\n',
+              encoding='utf-8')
+
+          print(json.dumps({
+              'chapter_id': chapter_id,
+              'source_images': len(raw_paths),
+              'slices': len(pages),
+              'ownership_issues': len(ownership_issues),
+              'next_action': 'STOP_FOR_HUMAN_IMPORT_REVIEW',
+          }, ensure_ascii=False))
+          if ownership_issues:
+              raise RuntimeError(f'ownership validation failed: {len(ownership_issues)} issue(s)')
+          PY
+
+      - name: Upload checkpoint 01 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: 01-import-c0990099
+          path: checkpoint/01-import
+          if-no-files-found: error
+          retention-days: 7
