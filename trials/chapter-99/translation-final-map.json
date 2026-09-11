@@ -48,6 +48,8 @@
     "internal_monologue_pronoun": "tôi",
     "eva_lukais_addressing": "mẹ/con and ta/con according to speaker",
     "invented_jokes": false,
+    "visual_review_punctuation_normalizations": 4,
+    "punctuation_normalization_reason": "preserve source interruption hyphen and avoid glyph-only font fallback",
     "translation_pass_allowed_after_merge_validation": true
   },
   "translations": {
@@ -57,7 +59,7 @@
     "text_acf31fc897e547cc": "Đi thôi. Chúng ta phải tới tọa độ đã nhập.",
     "text_b6a0ecc347fa42dd": "Nếu muốn giết Kinuan,",
     "text_c863106b54514fbe": "thì hôm nay có lẽ chính là cơ hội.",
-    "text_4a00225aabd3492e": "Ngay lúc này, Kinuan—",
+    "text_4a00225aabd3492e": "Ngay lúc này, Kinuan-",
     "text_5e14794838554248": "Luka,",
     "text_0ca26d0b09224690": "Tin tôi đi. Con đường của một Người Canh Gác là lựa chọn tốt nhất cho cậu.",
     "text_c556950871ee464f": "Những gian nan và bối rối cậu đang trải qua là con đường tôi đã từng đi.",
@@ -143,7 +145,7 @@
     "text_a90fe7a08fe04ade": "NHƯNG CHẮC CHẮN TRONG ĐÓ\nCÓ PHA LẪN TÍNH TOÁN.",
     "text_fb3c56167bdd42be": "Lukais.",
     "text_1782ee531b8b4099": "Ta không muốn nói chuyện đó.",
-    "text_56e3bcaa60bd49dc": "Nhưng với tư cách quyền gia chủ—",
+    "text_56e3bcaa60bd49dc": "Nhưng với tư cách quyền gia chủ-",
     "text_87acccc1127d42a6": "Mẹ, con biết mẹ có nhiều bất mãn với con.",
     "text_437808cfef0b4f50": "Heillas...",
     "text_852b136b30504037": "Ta hỏi vì nghĩ con sẽ biết rõ hơn ta.",
@@ -158,7 +160,7 @@
     "text_31f15637319349d7": "và con cũng đâu coi ta là mẹ.",
     "text_af7f86e3909845f4": "Lukais, chúng ta hãy thành thật với nhau.",
     "text_d2898ae9645c4286": "Dù sao ta cũng không coi con là con trai,",
-    "text_e43e9a4488754cdf": "Ev— không, mẹ.",
+    "text_e43e9a4488754cdf": "Ev- không, mẹ.",
     "text_1e338a5da97347f3": "Vì vậy, xin con hãy bảo vệ chúng.",
     "text_aeb7d476074b484a": "Nhưng vì Heillas tin tưởng con,",
     "text_c6417921478944fd": "con hẳn là người duy nhất có thể bảo vệ các con của ta.",
@@ -180,7 +182,7 @@
     "text_d311557af53549ff": "Tôi phải xem Noel Mulizka sẽ chọn thế nào.",
     "text_4968bc2061b24920": "Giselle,",
     "text_c2a426ff453446a7": "Luka!",
-    "text_d4d1d0a1296a42bd": "Gọi tôi tới có chuyện gì—",
+    "text_d4d1d0a1296a42bd": "Gọi tôi tới có chuyện gì-",
     "text_dcacdb80a5e442c8": "...Tôi cần liên lạc với Barbara.",
     "text_f7baef50b5b04aa5": "Tôi cần cô giúp."
   }
