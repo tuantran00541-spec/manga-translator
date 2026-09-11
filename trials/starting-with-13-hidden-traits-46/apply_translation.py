@@ -33,8 +33,9 @@ def main():
     review = load_json(Path(args.review_json))
 
     failures = []
-    if curation_summary.get("status") != "PASS":
-        failures.append(f"curation status={curation_summary.get('status')!r}")
+    curation_status = curation_summary.get("status") or curation_summary.get("review_status")
+    if curation_status != "PASS":
+        failures.append(f"curation status={curation_status!r}")
     if curation_summary.get("active_story_objects") != EXPECTED_ACTIVE:
         failures.append(f"expected {EXPECTED_ACTIVE} curated active story objects, got {curation_summary.get('active_story_objects')}")
     if curation_summary.get("active_empty_story_objects") != 0:

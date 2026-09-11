@@ -48,7 +48,7 @@ jobs:
           python - <<'PY'
           import json
           s=json.load(open('checkpoint/03b-ocr-curated/ocr-curation-summary.json',encoding='utf-8'))
-          assert s.get('status') == 'PASS', s
+          assert (s.get('status') or s.get('review_status')) == 'PASS', s
           assert s.get('active_story_objects') == 110, s
           assert s.get('active_empty_story_objects') == 0, s
           assert s.get('duplicate_overlaps') == 0, s
