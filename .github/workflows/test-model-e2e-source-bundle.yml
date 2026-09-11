@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - test/model-e2e-ocr-inpaint-20260830
+      - fix/observer-processing-freeze
   workflow_dispatch:
 
 permissions:

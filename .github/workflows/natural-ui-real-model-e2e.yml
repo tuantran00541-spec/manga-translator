@@ -1,0 +1,306 @@
+name: Natural UI real-model E2E
+
+on:
+  push:
+    branches:
+      - fix/observer-processing-freeze
+    paths:
+      - .github/workflows/natural-ui-real-model-e2e.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: natural-ui-real-model-e2e
+  cancel-in-progress: false
+
+jobs:
+  natural-ui-real-model:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 35
+    env:
+      PYTHONUNBUFFERED: "1"
+      MANGA_USE_DYNAMIC_LAMA: "1"
+      MANGA_ORT_PROVIDER: openvino
+      MANGA_ORT_REQUIRE_PROVIDER: "1"
+      MANGA_ORT_OPENVINO_SCOPE: detectors
+      MANGA_ORT_OPENVINO_THREADS: "2"
+      MANGA_ORT_OPENVINO_STREAMS: "1"
+      MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
+      OPENBLAS_NUM_THREADS: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install natural production runtime
+        run: |
+          python -m pip install \
+            numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 \
+            onnxruntime-openvino==1.24.1 psutil==6.1.1 loguru==0.7.2 \
+            requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 \
+            playwright==1.47.0 fastapi==0.115.0 'uvicorn[standard]==0.30.6' \
+            pydantic==2.9.2 filelock==3.16.1 python-multipart==0.0.12
+
+      - name: Restore detector and inpaint models
+        id: models
+        uses: actions/cache@v4
+        with:
+          path: |
+            models/*.onnx
+            models/.e2e-provenance.json
+          key: processing-profile-models-b224548-v1
+
+      - name: Read pinned model provisioner
+        if: steps.models.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: b22454827f8190655d7070b80eb20c2550beadfa
+          path: benchmark-bootstrap
+          sparse-checkout: scripts/provision_real_e2e_models.py
+          sparse-checkout-cone-mode: false
+
+      - name: Provision public-equivalent production models
+        if: steps.models.outputs.cache-hit != 'true'
+        run: |
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple torch==2.5.1+cpu torchvision==0.20.1+cpu
+          python -m pip install --no-deps ultralytics==8.3.221 onnx==1.17.0 onnxslim==0.1.71
+          python -m pip install numpy==1.26.4 sympy==1.13.1 PyYAML==6.0.2 scipy==1.14.1 tqdm==4.67.1 matplotlib==3.9.2 pandas==2.2.3 py-cpuinfo==9.0.0 ml_dtypes==0.5.3 colorama==0.4.6 polars==1.33.1 ultralytics-thop==2.0.17
+          python benchmark-bootstrap/scripts/provision_real_e2e_models.py
+          cp benchmark-bootstrap/models/*.onnx models/
+          cp benchmark-bootstrap/models/.e2e-provenance.json models/
+
+      - name: Prepare exact chapter in preview stage
+        run: |
+          python - <<'PY'
+          import json, shutil
+          from pathlib import Path
+          from app.config import RAW_DIR, PROCESSED_DIR, OUTPUT_DIR
+          from app.manifest_utils import load_manifest_raw, save_manifest_raw
+          from app.optimized_pipeline import OptimizedChapterPipeline
+
+          chapter_id = 'c165fc0b'
+          url = 'https://asurascans.com/comics/player-who-returned-10000-years-later-53fc8424/chapter/159'
+          for root in (RAW_DIR, PROCESSED_DIR, OUTPUT_DIR):
+              shutil.rmtree(root / chapter_id, ignore_errors=True)
+
+          pipeline = OptimizedChapterPipeline()
+          pipeline.download_chapter(url, chapter_id, workers=2)
+          manifest = load_manifest_raw(chapter_id)
+          manifest['workflow'] = {'stage': 'preview', 'page_index': 0}
+          save_manifest_raw(chapter_id, manifest)
+          indices = [i for i, page in enumerate(manifest.get('pages', [])) if not page.get('skipped')]
+          batch_sizes = [len(indices[i:i+16]) for i in range(0, len(indices), 16)]
+          meta = {
+              'chapter_id': chapter_id,
+              'source_url': url,
+              'slices': len(manifest.get('pages', [])),
+              'processable': len(indices),
+              'expected_batch_sizes': batch_sizes,
+          }
+          Path('natural-ui-meta.json').write_text(json.dumps(meta, indent=2), encoding='utf-8')
+          print(json.dumps(meta, indent=2))
+          if len(indices) < 16:
+              raise RuntimeError(f'chapter produced only {len(indices)} processable slices')
+          PY
+
+      - name: Start real app server
+        run: |
+          nohup python -m uvicorn app.main:app --host 127.0.0.1 --port 8765 > natural-ui-server.log 2>&1 &
+          echo $! > natural-ui-server.pid
+          python - <<'PY'
+          import time, requests
+          deadline = time.time() + 30
+          while time.time() < deadline:
+              try:
+                  r = requests.get('http://127.0.0.1:8765/health', timeout=2)
+                  if r.status_code == 200:
+                      print(r.json())
+                      raise SystemExit(0)
+              except Exception:
+                  pass
+              time.sleep(0.5)
+          raise SystemExit('server did not become healthy')
+          PY
+
+      - name: Run natural browser processing and editor flow
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+          import json, shutil, statistics, time
+          from pathlib import Path
+          import requests
+          from playwright.sync_api import sync_playwright
+
+          meta = json.loads(Path('natural-ui-meta.json').read_text())
+          report = {
+              'source_sha': '${{ github.sha }}',
+              **meta,
+              'process_batch_sizes': [],
+              'process_elapsed_s': None,
+              'heartbeat_samples': [],
+              'eval_latency_ms': [],
+              'health_latency_ms': [],
+              'health_rss_mb': [],
+              'aux_clicks_ok': 0,
+              'aux_clicks_failed': 0,
+              'review_reached': False,
+              'editor_reached': False,
+              'settings_responsive_after_editor': False,
+              'editor_click_ms': None,
+          }
+
+          chrome = shutil.which('google-chrome') or shutil.which('google-chrome-stable') or shutil.which('chromium') or shutil.which('chromium-browser')
+          if not chrome:
+              raise RuntimeError('Chrome/Chromium unavailable on runner')
+
+          process_requests = []
+          with sync_playwright() as p:
+              browser = p.chromium.launch(headless=True, executable_path=chrome, args=['--no-sandbox', '--disable-dev-shm-usage'])
+              page = browser.new_page(viewport={'width': 1366, 'height': 900})
+              page.set_default_timeout(10000)
+
+              def on_request(req):
+                  if req.url.endswith('/api/process_pages'):
+                      try:
+                          payload = req.post_data_json or {}
+                          process_requests.append(list(payload.get('page_indices') or []))
+                      except Exception:
+                          process_requests.append([])
+              page.on('request', on_request)
+
+              page.goto('http://127.0.0.1:8765/', wait_until='domcontentloaded', timeout=30000)
+              page.locator('.recent-resume-btn').first.wait_for(state='visible', timeout=20000)
+              page.locator('.recent-resume-btn').first.click()
+              process_btn = page.locator('#preview-toolbar .preview-primary-action')
+              process_btn.wait_for(state='visible', timeout=20000)
+
+              page.evaluate("window.__naturalHeartbeat=0; window.__naturalHeartbeatTimer=setInterval(()=>window.__naturalHeartbeat++,100)")
+              process_started = time.perf_counter()
+              process_btn.click()
+
+              last_aux = 0.0
+              deadline = process_started + 1200
+              last_hb = 0
+              while time.perf_counter() < deadline:
+                  if page.locator('button', has_text='Mở biên tập').count():
+                      report['review_reached'] = True
+                      break
+
+                  t0 = time.perf_counter()
+                  hb = page.evaluate('window.__naturalHeartbeat || 0')
+                  eval_ms = (time.perf_counter() - t0) * 1000.0
+                  report['eval_latency_ms'].append(eval_ms)
+                  report['heartbeat_samples'].append(int(hb))
+                  last_hb = int(hb)
+
+                  h0 = time.perf_counter()
+                  try:
+                      hr = requests.get('http://127.0.0.1:8765/health', timeout=3)
+                      report['health_latency_ms'].append((time.perf_counter() - h0) * 1000.0)
+                      if hr.ok:
+                          rss = ((hr.json().get('runtime') or {}).get('rss_bytes'))
+                          if rss:
+                              report['health_rss_mb'].append(float(rss) / 2**20)
+                  except Exception:
+                      report['health_latency_ms'].append(3000.0)
+
+                  elapsed = time.perf_counter() - process_started
+                  if elapsed - last_aux >= 10.0:
+                      last_aux = elapsed
+                      try:
+                          toggle = page.locator('#toggle-page-panel')
+                          before = toggle.get_attribute('aria-expanded')
+                          toggle.click(timeout=5000)
+                          after = toggle.get_attribute('aria-expanded')
+                          if before != after:
+                              report['aux_clicks_ok'] += 1
+                          else:
+                              report['aux_clicks_failed'] += 1
+                      except Exception:
+                          report['aux_clicks_failed'] += 1
+                  time.sleep(0.5)
+              else:
+                  raise RuntimeError(f'processing did not reach review within 1200s; heartbeat={last_hb}')
+
+              report['process_elapsed_s'] = time.perf_counter() - process_started
+              report['process_batch_sizes'] = [len(x) for x in process_requests]
+
+              editor_btn = page.locator('button', has_text='Mở biên tập').first
+              editor_btn.wait_for(state='visible', timeout=10000)
+              hb_before = page.evaluate('window.__naturalHeartbeat || 0')
+              t0 = time.perf_counter()
+              editor_btn.click()
+              page.wait_for_function("document.body.dataset.appStage === 'editor'", timeout=30000)
+              report['editor_click_ms'] = (time.perf_counter() - t0) * 1000.0
+              time.sleep(1.0)
+              hb_after = page.evaluate('window.__naturalHeartbeat || 0')
+              report['editor_heartbeat_delta'] = int(hb_after) - int(hb_before)
+              report['editor_reached'] = True
+
+              settings = page.locator('#settings-toggle')
+              settings.click(timeout=5000)
+              page.wait_for_timeout(250)
+              report['settings_responsive_after_editor'] = page.locator('body').evaluate("el => el.classList.contains('settings-open')")
+              page.screenshot(path='natural-ui-after-editor.png', full_page=True)
+              browser.close()
+
+          if report['process_batch_sizes'] != meta['expected_batch_sizes']:
+              raise RuntimeError(f"batch sizes {report['process_batch_sizes']} != expected {meta['expected_batch_sizes']}")
+          if not report['review_reached'] or not report['editor_reached']:
+              raise RuntimeError(f'incomplete UI flow: {report}')
+          if not report['settings_responsive_after_editor']:
+              raise RuntimeError('settings did not respond after opening editor')
+          if report['aux_clicks_ok'] < 1:
+              raise RuntimeError(f'no auxiliary UI click succeeded during real processing: {report}')
+          if report['heartbeat_samples'] and report['heartbeat_samples'][-1] < 10:
+              raise RuntimeError(f'browser heartbeat did not advance during processing: {report}')
+
+          for key in ('eval_latency_ms', 'health_latency_ms', 'health_rss_mb'):
+              values = report[key]
+              if values:
+                  report[key + '_summary'] = {
+                      'count': len(values),
+                      'p50': round(statistics.median(values), 3),
+                      'max': round(max(values), 3),
+                  }
+          Path('natural-ui-real-model-report.json').write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
+          print(json.dumps(report, ensure_ascii=False, indent=2))
+          PY
+
+      - name: Capture final manifest metrics
+        if: always()
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from app.manifest_utils import load_manifest_raw
+          try:
+              m = load_manifest_raw('c165fc0b')
+              Path('natural-ui-final-processing.json').write_text(json.dumps(m.get('last_processing_run'), ensure_ascii=False, indent=2), encoding='utf-8')
+              print(json.dumps(m.get('last_processing_run'), ensure_ascii=False, indent=2))
+          except Exception as exc:
+              print('manifest capture failed:', exc)
+          PY
+          tail -200 natural-ui-server.log || true
+
+      - name: Stop real app server
+        if: always()
+        run: |
+          if [ -f natural-ui-server.pid ]; then kill "$(cat natural-ui-server.pid)" || true; fi
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: natural-ui-real-model-${{ github.run_id }}
+          path: |
+            natural-ui-meta.json
+            natural-ui-real-model-report.json
+            natural-ui-final-processing.json
+            natural-ui-after-editor.png
+            natural-ui-server.log
+          if-no-files-found: warn
+          retention-days: 3
