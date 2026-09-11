@@ -1,0 +1,76 @@
+name: Chapter 218 Checkpoint 05 Typeset Preflight
+
+on:
+  push:
+    branches:
+      - trial/chapter-render-218
+    paths:
+      - .github/workflows/chapter-218-typeset-preflight.yml
+      - trials/chapter-218/build_typography_plan.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  CHAPTER_ID: c2182180
+  TRANSLATION_RUN_ID: "34579240724"
+  TRANSLATION_ARTIFACT: 04-translation-reviewed-c2182180
+
+jobs:
+  typeset-preflight:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: trial/chapter-render-218
+
+      - name: Install lightweight typography dependencies
+        run: python -m pip install --disable-pip-version-check --quiet Pillow numpy fonttools
+
+      - name: Restore approved translation checkpoint
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf checkpoint/04-translation-review checkpoint/05-typeset-preflight
+          mkdir -p checkpoint/04-translation-review checkpoint/05-typeset-preflight
+          gh run download "$TRANSLATION_RUN_ID" -n "$TRANSLATION_ARTIFACT" -D checkpoint/04-translation-review
+          test -f checkpoint/04-translation-review/processed-manifest-translated.json
+          test -f checkpoint/04-translation-review/translation-review-summary.json
+
+      - name: Build adaptive fixed typography plan
+        run: |
+          python trials/chapter-218/build_typography_plan.py \
+            --translation-root checkpoint/04-translation-review \
+            --output checkpoint/05-typeset-preflight
+
+      - name: Verify typography gate
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path('checkpoint/05-typeset-preflight')
+          s = json.loads((root / 'typeset-preflight-summary.json').read_text(encoding='utf-8'))
+          p = json.loads((root / 'typography-plan.json').read_text(encoding='utf-8'))
+          assert s.get('status') == 'PASS', s
+          assert s.get('active_story_objects') == 98, s
+          assert s.get('styled_story_objects') == 98, s
+          assert s.get('font_size_auto_count') == 0, s
+          assert s.get('overflow_count') == 0, s
+          assert s.get('missing_glyph_count') == 0, s
+          policy = p.get('policy') or {}
+          assert policy.get('sizing_mode') == 'adaptive_fixed_per_object', policy
+          assert policy.get('font_size_buckets') is None, policy
+          assert policy.get('font_size_auto_allowed') is False, policy
+          print(json.dumps(s, ensure_ascii=False, indent=2))
+          PY
+
+      - name: Upload checkpoint 05 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: 05-typeset-preflight-c2182180
+          path: checkpoint/05-typeset-preflight/
+          retention-days: 7
+          if-no-files-found: error
