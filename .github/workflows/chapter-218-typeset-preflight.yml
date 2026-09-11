@@ -7,6 +7,7 @@ on:
     paths:
       - .github/workflows/chapter-218-typeset-preflight.yml
       - trials/chapter-218/build_typography_plan.py
+      - trials/chapter-218/run_typeset_preflight.py
   workflow_dispatch:
 
 permissions:
@@ -42,7 +43,7 @@ jobs:
 
       - name: Build adaptive fixed typography plan
         run: |
-          python trials/chapter-218/build_typography_plan.py \
+          python trials/chapter-218/run_typeset_preflight.py \
             --translation-root checkpoint/04-translation-review \
             --output checkpoint/05-typeset-preflight
 
@@ -69,9 +70,10 @@ jobs:
           PY
 
       - name: Upload checkpoint 05 artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: 05-typeset-preflight-c2182180
           path: checkpoint/05-typeset-preflight/
           retention-days: 7
-          if-no-files-found: error
+          if-no-files-found: warn
