@@ -1,8 +1,8 @@
 {
-  "status": "PASS",
+  "status": "PASS_AFTER_MANUAL_COVERAGE_REPAIR",
   "source_ocr_run_id": 34549198271,
-  "reviewed_text_objects": 175,
-  "active_story_objects": 131,
+  "reviewed_text_objects": 176,
+  "active_story_objects": 132,
   "persistent_tombstones": 44,
   "human_corrections": 6,
   "geometry_merges": 1,
@@ -13,5 +13,9 @@
   "high_iou_duplicate_pairs": 0,
   "ocr_pass_allowed": true,
   "next_action": "TRANSLATION_REVIEW_ALLOWED",
-  "reload_resurrection_created_objects": 0
+  "reload_resurrection_created_objects": 0,
+  "manual_story_additions": 1,
+  "skipped_review_proposals_reviewed": 233,
+  "source_ocr_final_run_id": 34551318030,
+  "coverage_audit_story_blockers_found": 1
 }
