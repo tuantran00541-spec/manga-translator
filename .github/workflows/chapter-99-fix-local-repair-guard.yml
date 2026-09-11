@@ -1,0 +1,45 @@
+name: Chapter 99 Fix Local Repair Guard
+
+on:
+  push:
+    branches:
+      - trial/chapter-render-99
+    paths:
+      - .github/workflows/chapter-99-fix-local-repair-guard.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch-guard:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: trial/chapter-render-99
+
+      - name: Replace interruption guard with exact source-aligned assertions
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('.github/workflows/chapter-99-visual-local-repair.yml')
+          s=p.read_text(encoding='utf-8')
+          old="""          for oid in interruption_ids:\n              text=str(by_id[oid][2].get('translation') or '')\n              if '—' in text or not text.endswith('-'):\n                  raise SystemExit(f'interruption punctuation normalization failed {oid}: {text}')\n"""
+          new="""          expected_interruptions={\n              'text_4a00225aabd3492e':'Ngay lúc này, Kinuan-',\n              'text_56e3bcaa60bd49dc':'Nhưng với tư cách quyền gia chủ-',\n              'text_e43e9a4488754cdf':'Ev- không, mẹ.',\n              'text_d4d1d0a1296a42bd':'Gọi tôi tới có chuyện gì-',\n          }\n          for oid, expected_text in expected_interruptions.items():\n              text=str(by_id[oid][2].get('translation') or '')\n              if text != expected_text or '—' in text:\n                  raise SystemExit(f'interruption punctuation normalization failed {oid}: {text!r} expected {expected_text!r}')\n"""
+          if old not in s:
+              raise SystemExit('target guard snippet not found; refusing broad workflow rewrite')
+          s2=s.replace(old,new,1)
+          if s2.count('expected_interruptions=')!=1:
+              raise SystemExit('guard replacement count invalid')
+          p.write_text(s2,encoding='utf-8')
+          PY
+
+      - name: Commit guard fix to trial branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/workflows/chapter-99-visual-local-repair.yml
+          git diff --cached --check
+          git commit -m "fix(trial): assert chapter 99 interruption punctuation exactly"
+          git pull --rebase origin trial/chapter-render-99
+          git push origin HEAD:trial/chapter-render-99
