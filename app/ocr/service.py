@@ -115,11 +115,6 @@ def _ocr_crop_bounds(
     )
 
 
-def ocr_crop_from_box(image: np.ndarray, box: dict) -> np.ndarray:
-    x1, y1, x2, y2 = _ocr_crop_bounds(image.shape, box)
-    return image[y1:y2, x1:x2]
-
-
 def ocr_target_mode_for_box(box: dict) -> str:
     """Use centered selection only when the detector target is truly a line."""
     explicit = str(box.get("ocr_target_mode") or "").strip().lower()

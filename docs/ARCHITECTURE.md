@@ -215,7 +215,7 @@ flowchart TD
 flowchart TD
     A["POST /api/ocr_box hoặc chapter OCR job"] --> B["OCRService: snapshot source/file/box geometry<br/>+ kiểm machine cache"]
     B -->|"cache hợp lệ"| C["trả ocr_text + confidence/model/orientation/<br/>region_count/quality metadata"]
-    B -->|"cache miss"| D["ocr_crop_from_box: tight theo segmentation mask + 12px<br/>fallback bbox + 20px"]
+    B -->|"cache miss"| D["_ocr_crop_bounds: page context quanh segmentation mask<br/>fallback bbox + padding"]
     D --> E["MultiLangOCR.read_detailed(image, lang)"]
     E --> F{"lang?"}
     F -->|"ja"| G["MangaOCR primary<br/>lazy load + lock"]
