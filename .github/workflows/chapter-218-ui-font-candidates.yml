@@ -1,0 +1,69 @@
+name: Chapter 218 Checkpoint 06B Status UI Font Candidates
+
+on:
+  push:
+    branches:
+      - trial/chapter-render-218
+    paths:
+      - .github/workflows/chapter-218-ui-font-candidates.yml
+      - trials/chapter-218/build_ui_font_candidates.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: chapter-218-human-loop
+  cancel-in-progress: false
+
+env:
+  CLEAN_RUN_ID: "34569707469"
+  CLEAN_ARTIFACT: 02-clean-review-c2182180
+  TYPESET_RUN_ID: "34580885638"
+  TYPESET_ARTIFACT: 05-typeset-preflight-c2182180
+
+jobs:
+  status-ui-font-candidates:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: trial/chapter-render-218
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install proof dependencies
+        run: python -m pip install --disable-pip-version-check --quiet Pillow==10.4.0 fonttools==4.59.2
+
+      - name: Restore clean and typeset checkpoints
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf checkpoint/02-clean checkpoint/05-typeset checkpoint/06b-ui-font-candidates
+          mkdir -p checkpoint/02-clean checkpoint/05-typeset checkpoint/06b-ui-font-candidates
+          gh run download "$CLEAN_RUN_ID" -n "$CLEAN_ARTIFACT" -D checkpoint/02-clean
+          gh run download "$TYPESET_RUN_ID" -n "$TYPESET_ARTIFACT" -D checkpoint/05-typeset
+          test -f checkpoint/02-clean/processed/clean_014_00.png
+          test -f checkpoint/05-typeset/processed-manifest-typeset.json
+          test -f checkpoint/05-typeset/typography-plan.json
+
+      - name: Build status UI font comparison proof
+        run: |
+          python trials/chapter-218/build_ui_font_candidates.py \
+            --typeset-root checkpoint/05-typeset \
+            --clean-root checkpoint/02-clean \
+            --output checkpoint/06b-ui-font-candidates
+          test -f checkpoint/06b-ui-font-candidates/status-ui-font-candidates.jpg
+          test -f checkpoint/06b-ui-font-candidates/candidate-report.json
+
+      - name: Upload candidate proof
+        uses: actions/upload-artifact@v4
+        with:
+          name: 06b-status-ui-font-candidates-c2182180
+          path: checkpoint/06b-ui-font-candidates/
+          retention-days: 7
+          if-no-files-found: error
