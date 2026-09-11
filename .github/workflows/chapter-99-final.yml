@@ -1,0 +1,265 @@
+name: Chapter 99 FINAL Human Approved Export
+
+on:
+  push:
+    branches:
+      - trial/chapter-render-99
+    paths:
+      - .github/workflows/chapter-99-final.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: chapter-99-human-loop
+  cancel-in-progress: false
+
+jobs:
+  final-export:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    env:
+      CHAPTER_ID: c0990099
+      REPAIRED_RUN_ID: "34558247974"
+      REPAIRED_ARTIFACT: 05-visual-local-repair-pages-c0990099
+      FINAL_NAME: Bad-Born-Blood-Chapter-99-VI-FINAL.zip
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: trial/chapter-render-99
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install final integrity dependency
+        run: python -m pip install Pillow==10.4.0
+
+      - name: Validate every human checkpoint before export
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root=Path('trials/chapter-99')
+          def load(name):
+              p=root/name
+              if not p.is_file(): raise SystemExit(f'missing durable gate {p}')
+              return json.loads(p.read_text(encoding='utf-8'))
+
+          imp=load('import-review.json')
+          if imp.get('status')!='PASS' or imp.get('chapter_id')!='c0990099': raise SystemExit(f'import gate invalid {imp}')
+          expected_import={
+              'source_images':20,'slices':73,'missing_source_images':0,'duplicate_source_images':0,
+              'unreadable_source_images':0,'ownership_issues':0
+          }
+          for k,v in expected_import.items():
+              if imp.get(k)!=v: raise SystemExit(f'import {k}={imp.get(k)} expected {v}')
+          rec=imp.get('reconstruction') or {}
+          if rec.get('pages_checked')!=20 or rec.get('pixel_exact_pages')!=20 or rec.get('max_abs_diff')!=0 or rec.get('shape_mismatches')!=0:
+              raise SystemExit(f'import reconstruction invalid {rec}')
+
+          clean=load('clean-review-report.json')
+          if clean.get('status')!='PASS_AFTER_REPAIR' or clean.get('source_pages')!=20 or clean.get('slices')!=73:
+              raise SystemExit(f'clean gate invalid {clean}')
+          blockers=clean.get('classification') or {}
+          for k in ('story_inpaint_blockers','free_text_residue_blockers','artwork_damage_blockers','non_story_overclean_blockers'):
+              if blockers.get(k)!=0: raise SystemExit(f'clean blocker {k}={blockers.get(k)}')
+          if len(clean.get('repairs') or [])!=4: raise SystemExit('clean repair history incomplete')
+
+          ocr=load('ocr-final-summary.json')
+          if ocr.get('status')!='PASS_AFTER_MANUAL_COVERAGE_REPAIR': raise SystemExit(f'OCR status invalid {ocr.get("status")}')
+          expected_ocr={
+              'active_story_objects':132,'persistent_tombstones':44,'active_unreviewed_objects':0,
+              'owner_core_violations':0,'high_iou_duplicate_pairs':0,'reconciliation_created_objects':0,
+              'reload_resurrection_created_objects':0,'manual_story_additions':1,
+              'skipped_review_proposals_reviewed':233,'coverage_audit_story_blockers_found':1
+          }
+          for k,v in expected_ocr.items():
+              if ocr.get(k)!=v: raise SystemExit(f'OCR {k}={ocr.get(k)} expected {v}')
+          if not ocr.get('ocr_pass_allowed'): raise SystemExit('OCR pass not allowed')
+
+          tr=load('translation-review-summary.json')
+          expected_tr={
+              'status':'PASS','active_story_objects':132,'translated_story_objects':132,
+              'active_untranslated_story_objects':0,'persistent_tombstones':44,'free_text_objects':19,
+              'compactness_blockers':0,'manual_ocr_story_additions_translated':1
+          }
+          for k,v in expected_tr.items():
+              if tr.get(k)!=v: raise SystemExit(f'translation {k}={tr.get(k)!r} expected {v!r}')
+          if not tr.get('translation_pass_allowed'): raise SystemExit('translation pass not allowed')
+
+          render=load('render-review-summary.json')
+          expected_render={
+              'checkpoint':'05-render-review','slices':73,'source_pages':20,'active_story_objects':132,
+              'active_untranslated_story_objects':0,'persistent_tombstones':44,
+              'font_size_policy':'DYNAMIC_SEMANTIC_LARGEST_FIT_NO_AUTO','minimum_font_size':28,
+              'free_text_max_font_size':96
+          }
+          for k,v in expected_render.items():
+              if render.get(k)!=v: raise SystemExit(f'render {k}={render.get(k)!r} expected {v!r}')
+          if len(render.get('font_usage') or {})<3: raise SystemExit('semantic font hierarchy collapsed')
+
+          local=load('visual-local-repair-summary.json')
+          expected_local={
+              'checkpoint':'05-visual-local-repair','issues_found':6,'local_repairs_applied':6,
+              'rerendered_slices':6,'reused_slices':67,'stitched_source_pages':20,
+              'repair_object_proof_sheets':1,'repair_stitched_context_proof_sheets':1
+          }
+          for k,v in expected_local.items():
+              if local.get(k)!=v: raise SystemExit(f'local repair {k}={local.get(k)!r} expected {v!r}')
+
+          visual=load('visual-review.json')
+          expected_visual={
+              'checkpoint':'VISUAL_REVIEW','chapter_id':'c0990099','status':'PASS',
+              'initial_object_proof_sheets_reviewed':17,'initial_stitched_zoom_proof_sheets_reviewed':12,
+              'initial_visual_issues_found':6,'focused_repair_object_proof_sheets_reviewed':1,
+              'focused_repair_stitched_context_proof_sheets_reviewed':1,'local_repairs_applied':6,
+              'rerendered_slices':6,'reused_slices':67,'stitched_source_pages':20,
+              'active_story_objects':132,'persistent_tombstones':44
+          }
+          for k,v in expected_visual.items():
+              if visual.get(k)!=v: raise SystemExit(f'visual {k}={visual.get(k)!r} expected {v!r}')
+          checks=visual.get('checks') or {}
+          if checks.get('visual_blockers_total')!=0: raise SystemExit(f'visual blockers remain {checks}')
+          if not visual.get('visual_pass_allowed') or not visual.get('final_export_allowed'):
+              raise SystemExit('explicit human visual approval missing')
+          typo=visual.get('typography') or {}
+          if not typo.get('semantic_multi_font_hierarchy_accepted') or not typo.get('adaptive_font_sizing_accepted'):
+              raise SystemExit('typography human approval missing')
+          if typo.get('minimum_font_size_px')!=28 or typo.get('free_text_max_font_size_px')!=96 or typo.get('final_font_size_auto_objects')!=0:
+              raise SystemExit(f'typography final gate invalid {typo}')
+
+          state=load('chapter-state.json')
+          if state.get('current_stage')!='FINAL_PENDING' or state.get('last_passed_checkpoint')!='VISUAL_REVIEW' or state.get('blockers')!=[]:
+              raise SystemExit(f'chapter state not final-ready {state}')
+          current=state.get('current_artifact') or {}
+          if current.get('run_id')!=34558247974 or current.get('artifact_id')!=10183386242:
+              raise SystemExit(f'chapter state points at wrong repaired candidate {current}')
+
+          print(json.dumps({
+              'import':'PASS','clean':'PASS_AFTER_REPAIR','ocr':'PASS_AFTER_MANUAL_COVERAGE_REPAIR',
+              'translation':'PASS','render':'TECHNICAL_PASS','visual':'PASS','final_export_allowed':True
+          },indent=2))
+          PY
+
+      - name: Restore human-approved repaired chapter candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf checkpoint/06-repaired checkpoint/07-final
+          mkdir -p checkpoint/06-repaired checkpoint/07-final
+          gh run download "$REPAIRED_RUN_ID" -n "$REPAIRED_ARTIFACT" -D checkpoint/06-repaired
+          test -f checkpoint/06-repaired/Bad-Born-Blood-Chapter-99-VI-visual-repair-candidate.zip
+
+      - name: Verify exact page order dimensions hashes and build FINAL
+        run: |
+          python - <<'PY'
+          import hashlib, json, shutil, zipfile
+          from pathlib import Path
+          from PIL import Image
+
+          root=Path('checkpoint/06-repaired')
+          src=root/'Bad-Born-Blood-Chapter-99-VI-visual-repair-candidate.zip'
+          out=Path('checkpoint/07-final'); out.mkdir(parents=True,exist_ok=True)
+          final_zip=out/'Bad-Born-Blood-Chapter-99-VI-FINAL.zip'
+          expected_names=[f'page_{i:03d}.png' for i in range(1,21)]
+          expected_dims=[
+              (1200,800),(900,16000),(900,3565),(900,16000),(900,611),
+              (900,15698),(900,16000),(900,1857),(900,16000),(900,748),
+              (900,16000),(900,3533),(900,16000),(900,2013),(900,16000),
+              (900,3565),(900,16000),(900,2730),(900,16000),(900,3844),
+          ]
+          page_meta=[]
+          with zipfile.ZipFile(src) as z:
+              file_members=[n for n in z.namelist() if not n.endswith('/')]
+              png_names=[n for n in file_members if n.lower().endswith('.png')]
+              if file_members!=expected_names or png_names!=expected_names:
+                  raise SystemExit(f'archive order/content mismatch: {file_members}')
+              for idx,(name,exp_dim) in enumerate(zip(expected_names,expected_dims)):
+                  data=z.read(name)
+                  if not data: raise SystemExit(f'empty page {name}')
+                  with z.open(name) as f:
+                      with Image.open(f) as im:
+                          im.load()
+                          actual=(im.width,im.height)
+                          if actual!=exp_dim:
+                              raise SystemExit(f'{name} dimensions {actual} expected {exp_dim}')
+                          if im.width<=0 or im.height<=0: raise SystemExit(f'invalid image {name}')
+                  page_meta.append({
+                      'source_page_index':idx,'file':name,'width':exp_dim[0],'height':exp_dim[1],
+                      'bytes':len(data),'sha256':hashlib.sha256(data).hexdigest()
+                  })
+
+          shutil.copy2(src,final_zip)
+          archive_bytes=final_zip.read_bytes()
+          visual=json.loads(Path('trials/chapter-99/visual-review.json').read_text(encoding='utf-8'))
+          render=json.loads(Path('trials/chapter-99/render-review-summary.json').read_text(encoding='utf-8'))
+          report={
+              'chapter_id':'c0990099','series':'Bad Born Blood','chapter_number':99,
+              'status':'FINAL_PASS','branch':'trial/chapter-render-99',
+              'source_url':'https://asurascans.com/comics/bad-born-blood-53fc8424/chapter/99',
+              'source_repaired_render_run_id':34558247974,
+              'source_repaired_artifact':'05-visual-local-repair-pages-c0990099',
+              'source_repaired_artifact_id':10183386242,
+              'source_pages':20,'render_slices':73,'active_story_objects':132,
+              'persistent_tombstones':44,'active_untranslated_story_objects':0,
+              'manual_ocr_story_additions':1,'skipped_ocr_proposals_human_reviewed':233,
+              'import_gate':'PASS','clean_gate':'PASS_AFTER_REPAIR',
+              'ocr_gate':'PASS_AFTER_MANUAL_COVERAGE_REPAIR','translation_gate':'PASS',
+              'typeset_render_gate':'PASS_AFTER_LOCAL_REPAIR','visual_gate':'PASS',
+              'visual_initial_proof_sheets_reviewed':29,'visual_focused_repair_proofs_reviewed':2,
+              'visual_issues_found_and_repaired':6,'visual_blockers_remaining':0,
+              'font_size_policy':'DYNAMIC_SEMANTIC_LARGEST_FIT_NO_AUTO',
+              'minimum_font_size_px':28,'free_text_max_font_size_px':96,
+              'font_usage':render.get('font_usage'),'adaptive_semantic_typography':True,
+              'local_rerendered_slices':6,'local_reused_slices':67,
+              'archive':final_zip.name,'archive_png_count':20,'archive_bytes':len(archive_bytes),
+              'archive_sha256':hashlib.sha256(archive_bytes).hexdigest(),
+              'page_order':expected_names,'final_pages':page_meta,
+              'human_visual_review_artifact_id':visual.get('local_repair_proof_artifact',{}).get('artifact_id'),
+              'final_export_allowed':True
+          }
+          (out/'final-report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
+          print(json.dumps({k:v for k,v in report.items() if k not in ('final_pages','page_order','font_usage')},ensure_ascii=False,indent=2))
+          PY
+
+      - name: Publish final report and close chapter state
+        run: |
+          cp checkpoint/07-final/final-report.json trials/chapter-99/final-report.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('trials/chapter-99/chapter-state.json')
+          s=json.loads(p.read_text(encoding='utf-8'))
+          r=json.loads(Path('trials/chapter-99/final-report.json').read_text(encoding='utf-8'))
+          if r.get('status')!='FINAL_PASS': raise SystemExit('refusing to close state without FINAL_PASS')
+          s['current_stage']='FINAL_COMPLETE'
+          s['last_passed_checkpoint']='FINAL_EXPORT'
+          s['final_export']={
+              'status':'FINAL_PASS','archive':r['archive'],'archive_sha256':r['archive_sha256'],
+              'source_pages':20,'run_source_repaired':34558247974
+          }
+          s['blockers']=[]
+          s['next_action']='CHAPTER_COMPLETE_NO_MAIN_MERGE'
+          p.write_text(json.dumps(s,ensure_ascii=False,indent=2),encoding='utf-8')
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add trials/chapter-99/final-report.json trials/chapter-99/chapter-state.json
+          git diff --cached --check
+          git commit -m "final: pass chapter 99 human-reviewed export gates"
+          git fetch origin trial/chapter-render-99
+          git rebase origin/trial/chapter-render-99
+          git push origin HEAD:trial/chapter-render-99
+
+      - name: Upload FINAL chapter
+        uses: actions/upload-artifact@v4
+        with:
+          name: Bad-Born-Blood-Chapter-99-VI-FINAL
+          path: checkpoint/07-final
+          compression-level: 0
+          retention-days: 7
+          if-no-files-found: error
