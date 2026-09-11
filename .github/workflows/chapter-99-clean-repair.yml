@@ -1,0 +1,296 @@
+name: Chapter 99 Clean Review Local Repairs
+
+on:
+  push:
+    branches:
+      - trial/chapter-render-99
+    paths:
+      - .github/workflows/chapter-99-clean-repair.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: chapter-99-human-loop
+  cancel-in-progress: false
+
+jobs:
+  repair-clean:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 35
+    env:
+      PYTHONUNBUFFERED: "1"
+      MANGA_USE_DYNAMIC_LAMA: "1"
+      MANGA_ORT_PROVIDER: openvino
+      MANGA_ORT_REQUIRE_PROVIDER: "1"
+      MANGA_ORT_OPENVINO_THREADS: "2"
+      MANGA_ORT_OPENVINO_STREAMS: "1"
+      MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
+      OPENBLAS_NUM_THREADS: "1"
+      CHAPTER_ID: c0990099
+      CLEAN_RUN_ID: "34545913545"
+      CLEAN_ARTIFACT: 02-clean-review-c0990099
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: trial/chapter-render-99
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install local repair runtime
+        run: |
+          python -m pip install \
+            numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 \
+            onnxruntime-openvino==1.24.1 psutil==6.1.1 loguru==0.7.2 \
+            requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 playwright==1.47.0 \
+            fastapi==0.115.0 'uvicorn[standard]==0.30.6' \
+            pydantic==2.9.2 filelock==3.16.1 python-multipart==0.0.12
+
+      - name: Restore detector and inpaint models
+        id: models
+        uses: actions/cache@v4
+        with:
+          path: |
+            models/*.onnx
+            models/.e2e-provenance.json
+          key: processing-profile-models-b224548-v1
+
+      - name: Read pinned model provisioner
+        if: steps.models.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: b22454827f8190655d7070b80eb20c2550beadfa
+          path: benchmark-bootstrap
+          sparse-checkout: scripts/provision_real_e2e_models.py
+          sparse-checkout-cone-mode: false
+
+      - name: Provision public-equivalent production models
+        if: steps.models.outputs.cache-hit != 'true'
+        run: |
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple torch==2.5.1+cpu torchvision==0.20.1+cpu
+          python -m pip install --no-deps ultralytics==8.3.221 onnx==1.17.0 onnxslim==0.1.71
+          python -m pip install sympy==1.13.1 PyYAML==6.0.2 scipy==1.14.1 tqdm==4.67.1 matplotlib==3.9.2 pandas==2.2.3 py-cpuinfo==9.0.0 ml_dtypes==0.5.3 colorama==0.4.6 polars==1.33.1 ultralytics-thop==2.0.17
+          python benchmark-bootstrap/scripts/provision_real_e2e_models.py
+          cp benchmark-bootstrap/models/*.onnx models/
+          cp benchmark-bootstrap/models/.e2e-provenance.json models/
+
+      - name: Restore CLEAN review checkpoint
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf checkpoint/02-clean-review-fixed
+          mkdir -p checkpoint/02-clean-review-fixed
+          gh run download "$CLEAN_RUN_ID" -n "$CLEAN_ARTIFACT" -D checkpoint/02-clean-review-fixed
+          test -f checkpoint/02-clean-review-fixed/processed/manifest.json
+          test -d checkpoint/02-clean-review-fixed/raw/sliced
+
+      - name: Apply four human-scoped local repairs
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+          import json
+          from pathlib import Path
+          import cv2
+          import numpy as np
+          from PIL import Image
+          from app.inpaint.lama_inpainter import Inpainter
+
+          root=Path('checkpoint/02-clean-review-fixed')
+          rawdir=root/'raw'/'sliced'
+          proc=root/'processed'
+          mp=proc/'manifest.json'
+          manifest=json.loads(mp.read_text(encoding='utf-8'))
+          pages=manifest.get('pages') or []
+          if len(pages)!=73:
+              raise RuntimeError(f'expected 73 slices, got {len(pages)}')
+
+          before=root/'repair-before'; before.mkdir(exist_ok=True)
+          proof=root/'repair-proof'; proof.mkdir(exist_ok=True)
+
+          def paths(i):
+              p=pages[i]
+              rn=Path(str(p.get('original') or '')).name
+              cn=Path(str(p.get('clean') or '')).name
+              rp=rawdir/rn
+              cp=proc/cn
+              if not cp.is_file(): cp=proc/f'clean_{rn}'
+              if not rp.is_file() or not cp.is_file():
+                  raise RuntimeError(f'missing repair page {i}: raw={rp} clean={cp}')
+              return p,rp,cp
+
+          repairs=[]
+
+          # p000: chapter/scanlation card, not story. Preserve exactly rather than
+          # leave partially erased typography/artwork.
+          page,raw,clean=paths(0)
+          (before/'p000-clean-before.png').write_bytes(clean.read_bytes())
+          clean.write_bytes(raw.read_bytes())
+          repairs.append({'page_index':0,'source_page':0,'action':'restore_full_raw','reason':'non_story_chapter_card_overclean'})
+
+          # p024 / source page 6: the main HELLAS KUSTORIA free-text was cleaned,
+          # but one owned H glyph remained. Mask only that residual glyph and run
+          # production LaMa on the small local support instead of rerunning page.
+          page,raw,clean=paths(24)
+          (before/'p024-clean-before.png').write_bytes(clean.read_bytes())
+          image=cv2.imread(str(clean),cv2.IMREAD_COLOR)
+          if image is None: raise RuntimeError('could not decode p024 clean')
+          h,w=image.shape[:2]
+          mask=np.zeros((h,w),dtype=np.uint8)
+          # Human-reviewed coordinates: residual H plus colored outline only.
+          x1,y1,x2,y2=45,3535,135,3715
+          mask[y1:y2,x1:x2]=255
+          fixed=Inpainter().inpaint_mask(image,mask,force_lama=True)
+          if not cv2.imwrite(str(clean),fixed): raise RuntimeError('failed to write p024 repair')
+          repairs.append({'page_index':24,'source_page':6,'action':'masked_lama','region':[x1,y1,x2,y2],'reason':'owned_H_residue_from_HELLAS_KUSTORIA'})
+
+          # p063 / source page 16: story narration survived because its review-only
+          # proposal lacked destructive authority. Human review confirms the text
+          # sits on a blank white gutter. Replace only that white gutter band;
+          # keep both neighboring panel borders untouched.
+          page,raw,clean=paths(63)
+          (before/'p063-clean-before.png').write_bytes(clean.read_bytes())
+          image=cv2.imread(str(clean),cv2.IMREAD_COLOR)
+          if image is None: raise RuntimeError('could not decode p063 clean')
+          x1,y1,x2,y2=35,1215,870,1345
+          context=np.concatenate([
+              image[1170:1210,x1:x2].reshape(-1,3),
+              image[1348:1382,x1:x2].reshape(-1,3),
+          ],axis=0)
+          fill=np.median(context,axis=0).astype(np.uint8)
+          if int(fill.min()) < 245:
+              raise RuntimeError(f'p063 expected white gutter, got fill={fill.tolist()}')
+          image[y1:y2,x1:x2]=fill
+          if not cv2.imwrite(str(clean),image): raise RuntimeError('failed to write p063 repair')
+          repairs.append({'page_index':63,'source_page':16,'action':'restore_blank_gutter','region':[x1,y1,x2,y2],'fill_bgr':fill.tolist(),'reason':'owned_story_narration_residue'})
+
+          # p072 / final source page: preserve cleaned story bubble, but restore
+          # original scanlation promo/watermark tail so it is not half-erased.
+          page,raw,clean=paths(72)
+          (before/'p072-clean-before.png').write_bytes(clean.read_bytes())
+          a=Image.open(raw).convert('RGB'); b=Image.open(clean).convert('RGB')
+          if a.size!=b.size: raise RuntimeError(f'p072 size mismatch raw={a.size} clean={b.size}')
+          restore_y=2500
+          b.paste(a.crop((0,restore_y,a.width,a.height)),(0,restore_y))
+          b.save(clean)
+          repairs.append({'page_index':72,'source_page':19,'action':'restore_raw_tail','restore_y':restore_y,'reason':'non_story_scanlation_promo_overclean'})
+
+          # Keep gate pending until the resulting stitched pages are actually
+          # inspected by a human/editorial pass outside this workflow.
+          manifest['human_clean_review']={
+              'status':'pending_after_local_repair',
+              'reviewed_slices':73,
+              'repairs':repairs,
+              'story_inpaint_blockers_before_repair':2,
+              'non_story_overclean_before_repair':2,
+              'story_inpaint_blockers':None,
+              'next_action':'STOP_FOR_HUMAN_REVIEW_OF_FIXED_ARTIFACT',
+          }
+          mp.write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding='utf-8')
+          (root/'clean-repair.json').write_text(json.dumps({
+              'checkpoint':'02-clean-review-fixed',
+              'chapter_id':'c0990099',
+              'status':'PENDING_HUMAN_REVIEW',
+              'repairs':repairs,
+              'next_action':'STOP_FOR_HUMAN_REVIEW_OF_FIXED_ARTIFACT',
+          },ensure_ascii=False,indent=2),encoding='utf-8')
+          PY
+
+      - name: Validate deterministic repair boundaries
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          import cv2
+          import numpy as np
+          from PIL import Image,ImageChops
+          root=Path('checkpoint/02-clean-review-fixed'); proc=root/'processed'; rawdir=root/'raw'/'sliced'
+          m=json.loads((proc/'manifest.json').read_text(encoding='utf-8')); pages=m['pages']
+          def paths(i):
+              p=pages[i]; rn=Path(str(p.get('original') or '')).name; cn=Path(str(p.get('clean') or '')).name
+              cp=proc/cn
+              if not cp.is_file(): cp=proc/f'clean_{rn}'
+              return rawdir/rn,cp
+          r,c=paths(0)
+          if ImageChops.difference(Image.open(r).convert('RGB'),Image.open(c).convert('RGB')).getbbox() is not None:
+              raise RuntimeError('p000 RAW restore failed')
+          r,c=paths(72); a=Image.open(r).convert('RGB'); b=Image.open(c).convert('RGB')
+          if ImageChops.difference(a.crop((0,2500,a.width,a.height)),b.crop((0,2500,b.width,b.height))).getbbox() is not None:
+              raise RuntimeError('p072 tail RAW restore failed')
+          _,c=paths(63); im=cv2.imread(str(c)); roi=im[1215:1345,35:870]
+          if int(np.min(roi)) < 240:
+              raise RuntimeError(f'p063 repaired gutter still contains non-white pixels min={int(np.min(roi))}')
+          review=m.get('human_clean_review') or {}
+          if review.get('status')!='pending_after_local_repair':
+              raise RuntimeError(f'workflow must not self-approve CLEAN gate: {review}')
+          print('deterministic boundaries PASS; editorial CLEAN gate remains pending')
+          PY
+
+      - name: Build stitched and local repair proof
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from PIL import Image,ImageDraw
+          root=Path('checkpoint/02-clean-review-fixed'); proc=root/'processed'; rawdir=root/'raw'/'sliced'
+          m=json.loads((proc/'manifest.json').read_text(encoding='utf-8')); pages=m['pages']
+          proof=root/'repair-proof'; stitched=proof/'stitched'; stitched.mkdir(parents=True,exist_ok=True)
+          bysrc={}
+          for i,p in enumerate(pages): bysrc.setdefault(int(p['source_page']),[]).append((i,p))
+          stitched_paths=[]
+          for sp,items in sorted(bysrc.items()):
+              sh=int(items[0][1]['stitch_core']['source_height'])
+              first=Image.open(proc/Path(str(items[0][1]['clean'])).name).convert('RGB')
+              out=Image.new('RGB',(first.width,sh),'white')
+              for i,p in sorted(items,key=lambda t:int(t[1]['slice_index'])):
+                  cp=proc/Path(str(p['clean'])).name
+                  if not cp.is_file(): cp=proc/f"clean_{Path(str(p['original'])).name}"
+                  im=Image.open(cp).convert('RGB'); sc=p['stitch_core']
+                  y1,y2=int(sc['core_y1']),int(sc['core_y2']); sy1,sy2=int(sc['core_source_y1']),int(sc['core_source_y2'])
+                  out.paste(im.crop((0,y1,im.width,y2)),(0,sy1))
+              op=stitched/f'{sp:03d}.jpg'; out.save(op,quality=92); stitched_paths.append(op)
+
+          # 20-page stitched contact sheet for editorial proof.
+          cards=[]
+          for p in stitched_paths:
+              im=Image.open(p).convert('RGB'); im.thumbnail((220,360)); card=Image.new('RGB',(236,392),'white'); card.paste(im,((236-im.width)//2,8)); ImageDraw.Draw(card).text((8,370),p.stem,fill='black'); cards.append(card)
+          cols=5; rows=(len(cards)+cols-1)//cols; sheet=Image.new('RGB',(cols*236,rows*392),'white')
+          for i,c in enumerate(cards): sheet.paste(c,((i%cols)*236,(i//cols)*392))
+          sheet.save(proof/'stitched-clean-after-repair.jpg',quality=90)
+
+          # Focus proof: before/after for affected slices.
+          focus=[]
+          for pi in (0,24,63,72):
+              p=pages[pi]; rn=Path(str(p['original'])).name; cn=Path(str(p['clean'])).name
+              cp=proc/cn
+              if not cp.is_file(): cp=proc/f'clean_{rn}'
+              bp=root/'repair-before'/f'p{pi:03d}-clean-before.png'
+              raw=Image.open(rawdir/rn).convert('RGB'); bef=Image.open(bp).convert('RGB'); aft=Image.open(cp).convert('RGB')
+              for label,im in (('RAW',raw),('BEFORE',bef),('AFTER',aft)):
+                  x=im.copy(); x.thumbnail((260,520)); card=Image.new('RGB',(276,556),'white'); card.paste(x,((276-x.width)//2,8)); ImageDraw.Draw(card).text((8,532),f'p{pi:03d} {label}',fill='black'); focus.append(card)
+          cols=3; rows=(len(focus)+cols-1)//cols; sheet=Image.new('RGB',(cols*276,rows*556),'white')
+          for i,c in enumerate(focus): sheet.paste(c,((i%cols)*276,(i//cols)*556))
+          sheet.save(proof/'repair-focus-before-after.jpg',quality=90)
+          PY
+
+      - name: Mark checkpoint for human review
+        run: |
+          cat > checkpoint/02-clean-review-fixed/HUMAN_CHECKPOINT.txt <<'EOF'
+          CHECKPOINT: CLEAN LOCAL REPAIR — HUMAN REVIEW REQUIRED
+          Four scoped repairs were applied. This workflow intentionally does NOT approve CLEAN.
+          Inspect stitched-clean-after-repair.jpg plus focused before/after proof.
+          Confirm: source 0 non-story card restored; source 6 residual H gone without artwork damage;
+          source 16 story narration gone with panel borders intact; source 19 promo tail restored while story bubble remains clean.
+          Then scan all 20 stitched pages for remaining story residue or over-inpaint before OCR.
+          EOF
+
+      - name: Upload fixed CLEAN checkpoint
+        uses: actions/upload-artifact@v4
+        with:
+          name: 02-clean-review-fixed-c0990099
+          path: checkpoint/02-clean-review-fixed
+          if-no-files-found: error
+          retention-days: 7
