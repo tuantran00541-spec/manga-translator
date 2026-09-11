@@ -1,0 +1,164 @@
+name: Chapter 99 Translation Review Candidate
+
+on:
+  push:
+    branches:
+      - trial/chapter-render-99
+    paths:
+      - .github/workflows/chapter-99-translation-review.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: chapter-99-human-loop
+  cancel-in-progress: false
+
+jobs:
+  translation-candidate:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    env:
+      CHAPTER_ID: c0990099
+      OCR_FINAL_RUN_ID: "34551318030"
+      OCR_FINAL_ARTIFACT: 03-ocr-final-c0990099
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: trial/chapter-render-99
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Restore OCR-final checkpoint
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf checkpoint/04-translation-candidate
+          mkdir -p checkpoint/04-translation-candidate
+          gh run download "$OCR_FINAL_RUN_ID" -n "$OCR_FINAL_ARTIFACT" -D checkpoint/04-translation-candidate
+          test -f checkpoint/04-translation-candidate/processed/manifest.json
+          test -f trials/chapter-99/translation-map.json
+
+      - name: Validate and apply Vietnamese translation candidate
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          root=Path('checkpoint/04-translation-candidate')
+          mp=root/'processed'/'manifest.json'
+          manifest=json.loads(mp.read_text(encoding='utf-8'))
+          mapping=json.loads(Path('trials/chapter-99/translation-map.json').read_text(encoding='utf-8'))
+          if mapping.get('chapter_id')!='c0990099' or mapping.get('language')!='vi':
+              raise SystemExit('translation map metadata mismatch')
+          ocr=manifest.get('human_ocr_review') or {}
+          if ocr.get('status')!='PASS' or not ocr.get('ocr_pass_allowed'):
+              raise SystemExit(f'OCR human gate not PASS: {ocr}')
+
+          active={}; tombstones=[]
+          for pi,page in enumerate(manifest.get('pages') or []):
+              for obj in page.get('text_objects') or []:
+                  oid=str(obj.get('id') or '')
+                  if obj.get('source_missing'):
+                      tombstones.append(oid)
+                      if str(obj.get('translation') or '').strip():
+                          raise SystemExit(f'tombstone already carries translation {oid}')
+                      continue
+                  if obj.get('human_review')!='keep_story':
+                      raise SystemExit(f'unreviewed active object {oid}')
+                  active[oid]=(pi,obj)
+          expected=int(mapping.get('expected_active_story_objects',-1))
+          if len(active)!=expected or len(active)!=131 or len(tombstones)!=44:
+              raise SystemExit(f'checkpoint count mismatch active={len(active)} expected={expected} tombstones={len(tombstones)}')
+
+          translations=mapping.get('translations') or {}
+          missing=sorted(set(active)-set(translations)); extra=sorted(set(translations)-set(active))
+          if missing or extra:
+              raise SystemExit(f'translation id mismatch missing={missing} extra={extra}')
+
+          rows=[]
+          for oid,(pi,obj) in active.items():
+              vi=str(translations[oid]).strip()
+              src=str(obj.get('ocr_text') or '').strip()
+              if not vi or not src:
+                  raise SystemExit(f'blank source/translation {oid}')
+              obj.update({
+                  'translation':vi,
+                  'translation_lang':'vi',
+                  'translation_source':'human_editor_candidate_ch99',
+                  'translation_input_text':src,
+                  'human_translation_review':'pending',
+              })
+              ratio=len(vi)/max(1,len(src))
+              rows.append({
+                  'page_index':pi,
+                  'source_page':int(page.get('source_page',pi)),
+                  'slice_index':int(page.get('slice_index',0)),
+                  'id':oid,
+                  'semantic_type':str(obj.get('semantic_type') or 'text'),
+                  'source_text':src,
+                  'translation':vi,
+                  'source_chars':len(src),
+                  'translation_chars':len(vi),
+                  'length_ratio':round(ratio,3),
+                  'needs_compactness_review':bool(len(vi)>=95 or ratio>=1.55),
+              })
+
+          untranslated=[]
+          for page in manifest.get('pages') or []:
+              for obj in page.get('text_objects') or []:
+                  if obj.get('source_missing'): continue
+                  if not str(obj.get('translation') or '').strip(): untranslated.append(obj.get('id'))
+          if untranslated: raise SystemExit(f'untranslated active story objects: {untranslated}')
+
+          rows.sort(key=lambda r:(r['source_page'],r['page_index'],r['id']))
+          long_rows=sorted(rows,key=lambda r:r['translation_chars'],reverse=True)[:30]
+          ratio_rows=sorted(rows,key=lambda r:r['length_ratio'],reverse=True)[:30]
+          compact=[r for r in rows if r['needs_compactness_review']]
+          free=[r for r in rows if r['semantic_type']=='free_text']
+
+          manifest['human_translation_review']={
+              'status':'PENDING_HUMAN_REVIEW',
+              'target_lang':'vi',
+              'active_story_objects':len(active),
+              'candidate_translated_objects':len(rows),
+              'active_untranslated_story_objects':0,
+              'persistent_tombstones':len(tombstones),
+              'free_text_objects':len(free),
+              'compactness_review_objects':len(compact),
+              'next_action':'HUMAN_TRANSLATION_REVIEW_REQUIRED',
+          }
+          text=json.dumps(manifest,ensure_ascii=False,indent=2)
+          mp.write_text(text,encoding='utf-8'); (root/'manifest.json').write_text(text,encoding='utf-8')
+          (root/'translation-review.json').write_text(json.dumps(rows,ensure_ascii=False,indent=2),encoding='utf-8')
+          (root/'translation-longest.json').write_text(json.dumps(long_rows,ensure_ascii=False,indent=2),encoding='utf-8')
+          (root/'translation-high-ratio.json').write_text(json.dumps(ratio_rows,ensure_ascii=False,indent=2),encoding='utf-8')
+          summary={
+              'checkpoint':'04-translation-candidate',
+              'chapter_id':'c0990099',
+              'target_lang':'vi',
+              'status':'PENDING_HUMAN_REVIEW',
+              'active_story_objects':len(active),
+              'candidate_translated_objects':len(rows),
+              'active_untranslated_story_objects':0,
+              'persistent_tombstones':len(tombstones),
+              'free_text_objects':len(free),
+              'compactness_review_objects':len(compact),
+              'translation_pass_allowed':False,
+              'next_action':'HUMAN_TRANSLATION_REVIEW_REQUIRED',
+          }
+          (root/'translation-review-summary.json').write_text(json.dumps(summary,ensure_ascii=False,indent=2),encoding='utf-8')
+          print(json.dumps(summary,ensure_ascii=False,indent=2))
+          PY
+
+      - name: Upload translation candidate checkpoint
+        uses: actions/upload-artifact@v4
+        with:
+          name: 04-translation-candidate-c0990099
+          path: checkpoint/04-translation-candidate
+          retention-days: 7
+          if-no-files-found: error
