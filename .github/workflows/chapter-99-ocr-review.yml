@@ -1,0 +1,277 @@
+name: Chapter 99 Checkpoint 03 OCR Review
+
+on:
+  push:
+    branches:
+      - trial/chapter-render-99
+    paths:
+      - .github/workflows/chapter-99-ocr-review.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: chapter-99-human-loop
+  cancel-in-progress: false
+
+jobs:
+  ocr-review:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 75
+    env:
+      PYTHONUNBUFFERED: "1"
+      CHAPTER_ID: c0990099
+      CLEAN_RUN_ID: "34549043757"
+      CLEAN_ARTIFACT: 02-clean-review-approved-c0990099
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: trial/chapter-render-99
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install production OCR runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple torch==2.5.1+cpu torchvision==0.20.1+cpu
+          python -m pip install -r requirements.txt
+
+      - name: Restore human-approved CLEAN checkpoint
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf checkpoint/02-clean-review-approved checkpoint/03-ocr-review
+          mkdir -p checkpoint/02-clean-review-approved checkpoint/03-ocr-review
+          gh run download "$CLEAN_RUN_ID" -n "$CLEAN_ARTIFACT" -D checkpoint/02-clean-review-approved
+          test -f checkpoint/02-clean-review-approved/processed/manifest.json
+          test -f checkpoint/02-clean-review-approved/clean-review-report.json
+          test -d checkpoint/02-clean-review-approved/raw/sliced
+
+      - name: Validate CLEAN human gate and restore production layout
+        run: |
+          python - <<'PY'
+          import json, shutil, os
+          from pathlib import Path
+          chapter_id=os.environ['CHAPTER_ID']
+          root=Path('checkpoint/02-clean-review-approved')
+          report=json.loads((root/'clean-review-report.json').read_text(encoding='utf-8'))
+          if report.get('status')!='PASS_AFTER_REPAIR':
+              raise RuntimeError(f'CLEAN checkpoint not approved: {report}')
+          cls=report.get('classification') or {}
+          for key in ('story_inpaint_blockers','free_text_residue_blockers','artwork_damage_blockers','non_story_overclean_blockers'):
+              if int(cls.get(key,-1))!=0:
+                  raise RuntimeError(f'CLEAN blocker {key}: {cls}')
+
+          raw_dst=Path('data/raw')/chapter_id
+          processed_dst=Path('data/processed')/chapter_id
+          output_dst=Path('data/output')/chapter_id
+          for dst in (raw_dst,processed_dst,output_dst):
+              if dst.exists(): shutil.rmtree(dst)
+              dst.parent.mkdir(parents=True,exist_ok=True)
+          shutil.copytree(root/'raw',raw_dst)
+          shutil.copytree(root/'processed',processed_dst)
+          output_dst.mkdir(parents=True,exist_ok=True)
+
+          mp=processed_dst/'manifest.json'
+          manifest=json.loads(mp.read_text(encoding='utf-8'))
+          review=manifest.get('human_clean_review') or {}
+          if review.get('status')!='pass_after_repair' or int(review.get('story_inpaint_blockers',-1))!=0:
+              raise RuntimeError(f'manifest CLEAN gate invalid: {review}')
+          for page in manifest.get('pages') or []:
+              rn=Path(str(page.get('original') or '')).name
+              cn=Path(str(page.get('clean') or '')).name
+              if rn: page['original']=(raw_dst/'sliced'/rn).as_posix()
+              if cn: page['clean']=(processed_dst/cn).as_posix()
+          mp.write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding='utf-8')
+          print(f"restored {len(manifest.get('pages') or [])} CLEAN-approved slices")
+          PY
+
+      - name: Run current production OCR from ORIGINAL images
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+          import json, os
+          from collections import Counter, defaultdict
+          from pathlib import Path
+          from app.dependencies import ocr
+          from app.manifest_utils import load_manifest_raw, save_manifest_raw
+          from app.ocr.service import OCRService, ocr_target_skip_reason
+          from app.optimized_pipeline import OptimizedChapterPipeline
+          from app.text_objects import ensure_page_text_objects
+
+          chapter_id=os.environ['CHAPTER_ID']
+          pipeline=OptimizedChapterPipeline()
+          service=OCRService(ocr,pipeline)
+
+          # Persist production skip policy before planning. Review-only recovery,
+          # promo, and unsupported proposals must not become blank story objects.
+          manifest=load_manifest_raw(chapter_id)
+          skipped=[]
+          for pi,page in enumerate(manifest.get('pages') or []):
+              for bi,box in enumerate(page.get('boxes') or []):
+                  if not isinstance(box,dict) or box.get('removed'): continue
+                  reason=ocr_target_skip_reason(box)
+                  if reason:
+                      box['ocr_eligible']=False
+                      box['ocr_skip_reason']=reason
+                      skipped.append({'page_index':pi,'box_index':bi,'id':box.get('id'),'reason':reason,'semantic_type':box.get('semantic_type'),'class_name':box.get('class_name'),'safe_to_inpaint':box.get('safe_to_inpaint')})
+          save_manifest_raw(chapter_id,manifest)
+
+          plan=service.plan_chapter(chapter_id)
+          if not plan: raise RuntimeError('OCR plan is empty')
+          results=[]; failures=[]
+          for n,(pi,box_id) in enumerate(plan,1):
+              try:
+                  result=service.inspect_box_id(chapter_id,pi,box_id,'en')
+                  results.append(result)
+                  if n%20==0 or n==len(plan): print(f'OCR {n}/{len(plan)}')
+              except Exception as exc:
+                  failures.append({'page_index':pi,'box_id':box_id,'error_type':type(exc).__name__,'error':str(exc)[:500]})
+                  print(f'OCR_FAIL page={pi} box={box_id}: {type(exc).__name__}: {exc}')
+
+          manifest=load_manifest_raw(chapter_id)
+          created=0
+          for page in manifest.get('pages') or []:
+              n,changed=ensure_page_text_objects(page); created+=int(n)
+          save_manifest_raw(chapter_id,manifest)
+          manifest=load_manifest_raw(chapter_id)
+
+          box_rows=[]; object_rows=[]; empty=[]; review=[]
+          normalized=defaultdict(list); modes=Counter(); qualities=Counter(); models=Counter(); regions=Counter()
+          planned_ids={(pi,str(bid)) for pi,bid in plan}
+          for pi,page in enumerate(manifest.get('pages') or []):
+              boxes_by_id={str(b.get('id')):b for b in (page.get('boxes') or []) if isinstance(b,dict) and b.get('id')}
+              for bid,b in boxes_by_id.items():
+                  if (pi,bid) not in planned_ids: continue
+                  text=str(b.get('ocr_text') or '').strip(); quality=str(b.get('ocr_quality') or 'unknown'); mode=str(b.get('ocr_target_mode') or ''); model=str(b.get('ocr_model') or '')
+                  try: rc=int(b.get('ocr_region_count') or 0)
+                  except Exception: rc=0
+                  modes[mode or 'unknown']+=1; qualities[quality]+=1; regions[str(rc)]+=1
+                  if model: models[model]+=1
+                  row={
+                      'page_index':pi,'source_page':page.get('source_page'),'slice_index':page.get('slice_index'),
+                      'box_id':bid,'semantic_type':b.get('semantic_type'),'class_name':b.get('class_name'),
+                      'region':{k:b.get(k) for k in ('x1','y1','x2','y2')},'text':text,
+                      'confidence':b.get('ocr_confidence'),'model':model,'orientation':b.get('ocr_orientation'),
+                      'region_count':rc,'quality':quality,'quality_reason':b.get('ocr_quality_reason'),
+                      'coverage':b.get('ocr_coverage'),'target_mode':mode,'retry_applied':b.get('ocr_retry_applied'),
+                      'safe_to_inpaint':b.get('safe_to_inpaint'),
+                  }
+                  row['needs_human_review']=bool(not text or quality!='good' or b.get('ocr_retry_applied'))
+                  box_rows.append(row)
+                  if not text: empty.append({'page_index':pi,'box_id':bid})
+                  if row['needs_human_review']: review.append(row)
+                  norm=' '.join(text.lower().split())
+                  if norm: normalized[norm].append({'page_index':pi,'box_id':bid,'text':text})
+
+              for obj in page.get('text_objects') or []:
+                  if obj.get('source_missing'): continue
+                  refs=[str(x) for x in (obj.get('source_boxes') or [])]
+                  if not refs or not any((pi,r) in planned_ids for r in refs): continue
+                  object_rows.append({
+                      'page_index':pi,'source_page':page.get('source_page'),'slice_index':page.get('slice_index'),
+                      'id':obj.get('id'),'source_boxes':refs,'region':obj.get('region'),'ocr_text':str(obj.get('ocr_text') or '').strip(),
+                      'ocr_confidence':obj.get('ocr_confidence'),'ocr_model':obj.get('ocr_model'),'ocr_region_count':obj.get('ocr_region_count'),
+                      'ocr_quality':obj.get('ocr_quality'),'ocr_quality_reason':obj.get('ocr_quality_reason'),'ocr_coverage':obj.get('ocr_coverage'),
+                      'ocr_target_mode':obj.get('ocr_target_mode'),'auto_generated':obj.get('auto_generated'),'origin':obj.get('origin'),
+                  })
+
+          duplicates=[{'normalized':k,'occurrences':v} for k,v in normalized.items() if len(v)>1]
+          summary={
+              'checkpoint':'03-ocr-review','chapter_id':chapter_id,'slices':len(manifest.get('pages') or []),
+              'planned_boxes':len(plan),'ocr_success':len(results),'ocr_failures':len(failures),
+              'skipped_review_only_boxes':len(skipped),'created_text_objects':created,'active_text_objects':len(object_rows),
+              'empty_planned_boxes':len(empty),'needs_human_review_boxes':len(review),'duplicate_text_groups':len(duplicates),
+              'target_modes':dict(modes),'quality_counts':dict(qualities),'ocr_models':dict(models),'region_count_histogram':dict(regions),
+              'failures':failures,'next_action':'STOP_FOR_HUMAN_OCR_REVIEW'
+          }
+          out=Path('checkpoint/03-ocr-review'); out.mkdir(parents=True,exist_ok=True)
+          for name,data in (
+              ('ocr-summary.json',summary),('ocr-boxes.json',box_rows),('ocr-text-objects.json',object_rows),
+              ('ocr-skipped-review-only.json',skipped),('ocr-empty.json',empty),('ocr-needs-review.json',review),('ocr-duplicates.json',duplicates),
+          ):
+              (out/name).write_text(json.dumps(data,ensure_ascii=False,indent=2),encoding='utf-8')
+          (out/'manifest.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding='utf-8')
+          print(json.dumps(summary,ensure_ascii=False,indent=2))
+          if failures: raise RuntimeError(f'OCR technical failures: {len(failures)}')
+          PY
+
+      - name: Build ORIGINAL-source OCR review sheets
+        if: always()
+        run: |
+          python - <<'PY'
+          import json, textwrap, os
+          from pathlib import Path
+          from PIL import Image,ImageDraw,ImageFont
+          chapter_id=os.environ['CHAPTER_ID']; out=Path('checkpoint/03-ocr-review')
+          bp=out/'ocr-boxes.json'
+          if not bp.is_file(): raise SystemExit('no OCR metadata')
+          rows=json.loads(bp.read_text(encoding='utf-8'))
+          manifest=json.loads((Path('data/processed')/chapter_id/'manifest.json').read_text(encoding='utf-8'))
+          font=ImageFont.load_default(); cards=[]
+          for row in rows:
+              pi=row['page_index']; page=manifest['pages'][pi]; rp=Path(str(page.get('original')))
+              if not rp.is_file(): continue
+              r=row['region']; x1,y1,x2,y2=[int(r[k]) for k in ('x1','y1','x2','y2')]; pad=70
+              im=Image.open(rp).convert('RGB'); x1=max(0,x1-pad);y1=max(0,y1-pad);x2=min(im.width,x2+pad);y2=min(im.height,y2+pad)
+              crop=im.crop((x1,y1,x2,y2)); crop.thumbnail((430,330),Image.Resampling.LANCZOS)
+              card=Image.new('RGB',(460,440),'white'); card.paste(crop,((460-crop.width)//2,10)); d=ImageDraw.Draw(card)
+              d.text((8,345),f"p{pi:03d} src={row['source_page']} sl={row['slice_index']} {row['box_id']} q={row['quality']} conf={row['confidence']}",fill='black',font=font)
+              d.text((8,362),f"type={row['semantic_type']} mode={row['target_mode']} regions={row['region_count']}",fill='black',font=font)
+              wrapped='\n'.join(textwrap.wrap(str(row.get('text') or ''),width=62)[:4]); d.multiline_text((8,380),wrapped,fill='black',font=font,spacing=2)
+              cards.append(card)
+          per=12
+          for start in range(0,len(cards),per):
+              chunk=cards[start:start+per]; sheet=Image.new('RGB',(460*3,440*4),'white')
+              for j,c in enumerate(chunk): sheet.paste(c,((j%3)*460,(j//3)*440))
+              sheet.save(out/f'ocr-review-{start:03d}-{start+len(chunk)-1:03d}.jpg',quality=84,optimize=True)
+          print(f'generated {(len(cards)+per-1)//per} OCR review sheets for {len(cards)} targets')
+          PY
+
+      - name: Pack durable OCR checkpoint
+        if: always()
+        run: |
+          mkdir -p checkpoint/03-ocr-review
+          rm -rf checkpoint/03-ocr-review/raw checkpoint/03-ocr-review/processed
+          cp -a "data/raw/${CHAPTER_ID}" checkpoint/03-ocr-review/raw || true
+          cp -a "data/processed/${CHAPTER_ID}" checkpoint/03-ocr-review/processed || true
+          cp checkpoint/02-clean-review-approved/clean-review-report.json checkpoint/03-ocr-review/clean-review-report.json || true
+          cat > checkpoint/03-ocr-review/HUMAN_CHECKPOINT.txt <<'EOF'
+          CHECKPOINT: OCR REVIEW
+          OCR ran from ORIGINAL/RAW source images, never CLEAN.
+          STOP here. Review source crop + OCR text + neighboring context.
+          Correct missing lines/words/order, merge logical fragments, resolve stitch-overlap duplicates,
+          and tombstone credit/promo/noise persistently. Confidence is not completeness.
+          Do not translate until active story OCR is human curated and resurrection test passes.
+          EOF
+
+      - name: Publish compact OCR metadata to trial branch
+        if: always()
+        run: |
+          mkdir -p trials/chapter-99
+          cp checkpoint/03-ocr-review/ocr-summary.json trials/chapter-99/ocr-auto-summary.json 2>/dev/null || true
+          cp checkpoint/03-ocr-review/ocr-boxes.json trials/chapter-99/ocr-auto-boxes.json 2>/dev/null || true
+          cp checkpoint/03-ocr-review/ocr-text-objects.json trials/chapter-99/ocr-auto-text-objects.json 2>/dev/null || true
+          cp checkpoint/03-ocr-review/ocr-skipped-review-only.json trials/chapter-99/ocr-auto-skipped.json 2>/dev/null || true
+          cp checkpoint/03-ocr-review/ocr-needs-review.json trials/chapter-99/ocr-auto-needs-review.json 2>/dev/null || true
+          cp checkpoint/03-ocr-review/ocr-duplicates.json trials/chapter-99/ocr-auto-duplicates.json 2>/dev/null || true
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add trials/chapter-99/ocr-auto-*.json || true
+          if ! git diff --cached --quiet; then
+            git commit -m "review: publish chapter 99 OCR metadata"
+            git push origin HEAD:trial/chapter-render-99
+          fi
+
+      - name: Upload checkpoint 03 OCR artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: 03-ocr-review-c0990099
+          path: checkpoint/03-ocr-review
+          if-no-files-found: error
+          retention-days: 7
