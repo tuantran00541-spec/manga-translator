@@ -1,0 +1,79 @@
+{
+  "chapter_id": "c2182180",
+  "series_slug": "pick-me-up-infinite-gacha-53fc8424",
+  "chapter_number": "218",
+  "source_url": "https://asurascans.com/comics/pick-me-up-infinite-gacha-53fc8424/chapter/218",
+  "checkpoint": "03b-ocr-curation",
+  "review_status": "PASS_PENDING_APPLICATION",
+  "review_basis": {
+    "ocr_run_id": 34575737326,
+    "ocr_artifact_id": 10189639878,
+    "ocr_artifact_sha256": "7a09342b2c725c66e8f3159c9d7a48107c9409f588f0cc9bd3933d22bc567047",
+    "ocr_source": "RAW",
+    "ocr_review_sheets_viewed": 6,
+    "empty_candidates_raw_context_reviewed": 94,
+    "quality_review_candidates_viewed": 17,
+    "recognized_story_text_read_in_page_order": true
+  },
+  "seeded_non_story_tombstones": [
+    "box_1e495d071d4b411e",
+    "box_8b46e1802d9e4140",
+    "box_9390965e6221442e",
+    "box_ad0016e700474eca",
+    "box_d11c1f99136a451c",
+    "box_e04ea3a527d14fb3"
+  ],
+  "manual_corrections": [
+    {"box_id":"box_6397b163920e4216","ocr_text":"FLOOR 45\nMISSION TYPE - DELIVERY\nOBJECTIVE\nGATHER ALL THE\nKEYS AND DELIVER THEM TO\nA SPECIAL NPC!"},
+    {"box_id":"box_3aff67346b7f41d4","ocr_text":"SMART. YOU'RE\nUSING THE TERRAIN TO\nYOUR ADVANTAGE."},
+    {"box_id":"box_9161ce0b64f047e7","ocr_text":"...IS SOMEONE\nTRYING TO FLIRT\nWITH MASTER?"},
+    {"box_id":"box_ec45feec6b864e4f","ocr_text":"Is the reason why\nI couldn't reach Master\nfor the last few days\nbecause of this...?"},
+    {"box_id":"box_f04b2b251969409b","ocr_text":"SORRY! BUT\nI'M NOT A PATIENT\nWOMAN."},
+    {"box_id":"box_473d9887641b4026","ocr_text":"HAN (★★★★) HAS\nENTERED AN EXCEED STATE!"},
+    {"box_id":"box_9edf052182db40ad","ocr_text":"<PARTY 1 LEADER: HAN>\nIT'S DANGEROUS IF YOU GET\nTOO CLOSE!!!"},
+    {"box_id":"box_8afdc7f11f1142b0","ocr_text":"<PARTY 1 MEMBER: JENNA>\nYOU'RE ALRIGHT, YEAH?!\nANSWER ME!"},
+    {"box_id":"box_29f55d4796e84bc1","ocr_text":"<PARTY 1 LEADER: HAN>\nI'M FINE. STOP CALLING ME."},
+    {"box_id":"box_09d197990df64742","ocr_text":"THANKS TO THAT, I\nWAS ABLE TO RECALL\nTHE TACTIC I USED ON\nTHE 30TH FLOOR."},
+    {"box_id":"box_7f12d15767f74b1a","ocr_text":"YOU MANAGED\nTO REACH ADVANCED\nLEVEL IN JUST THE\nLAST FEW DAYS?"},
+    {"box_id":"box_2f046a34ada34ff8","ocr_text":"I DON'T NEED\nIT. OLD HAG."},
+    {"box_id":"box_d5b806e496784aac","ocr_text":"SUMMONING\nLV. 6"},
+    {"box_id":"box_64b56e211cab46fb","ocr_text":"ADVANCED MAGIC\nENGINEERING\nLV. 1"},
+    {"box_id":"box_5562636cb2f34195","ocr_text":"FIRE\nLV. 5"},
+    {"box_id":"box_a3771febd50a45ce","ocr_text":"MAGIC RESISTANCE\nLV. 3"},
+    {"box_id":"box_b478707b63c54344","ocr_text":"INTERMEDIATE\nENCHANTMENT\nLV. 4"},
+    {"box_id":"box_6b6e678650b64f71","ocr_text":"INTERMEDIATE\nRESEARCH\nLV. 8"},
+    {"box_id":"box_ca9d8fbd11e94caa","ocr_text":"CALM\nLV. 3"},
+    {"box_id":"box_56e1a72d660e47fe","ocr_text":"EXCLUSIVE SKILL\nTHE HAND THAT TWISTS TIME AND SPACE\nLV. MAX"}
+  ],
+  "merge_decisions": [
+    {
+      "primary_box_id": "box_54b93201c49b4ac7",
+      "source_box_ids": ["box_54b93201c49b4ac7","box_d3faf09d8203461b","box_0b21c5263e6443bb","box_89006ebef99f4b78"],
+      "ocr_text": "MANA TRANSFER\nLV. 6",
+      "region_policy": "union",
+      "reason": "detector split/duplicate around one skill label"
+    }
+  ],
+  "expected": {
+    "new_drop_decisions": 119,
+    "seeded_tombstones": 6,
+    "active_story_objects": 98,
+    "active_empty_story_objects": 0,
+    "duplicate_overlaps": 0,
+    "resurrection_count": 0
+  },
+  "notes": [
+    "All 94 empty review candidates were checked against RAW context; none contains an untranslated story line inside its reviewed detector region.",
+    "Action SFX/recovery proposals are preserved in source artwork and excluded from active typesetting rather than destructively translated.",
+    "System UI duplicate detector boxes on source page 14 are reconciled to one logical text object per visible label.",
+    "Credits, watermarks, title/scanlation pages stay visually preserved but are excluded from story OCR/typeset objects."
+  ],
+  "drop_groups": {
+    "source_preserved_proper_noun": ["box_e0d8063325f04b82"],
+    "preserved_sfx_artwork_or_detector_false_positive": [
+      "box_abe5ae701fb3478c","box_5d12093b79c14947","box_2f25abd5b5de4f90","box_7459919634c140cd","box_c2cd2b1af0394103","box_75725bcca93c4c8d","box_af664747353e4d55","box_a3348c538dd845a1","box_2011fada02084f46","box_e5f703bb7c364a31","box_1e27732083224a1f","box_2c70e01b30a54144","box_912557c5f7a946eb","box_ba08832c3b7245d1","box_48df5ee1ac7c452f","box_4786af4e654f4683","box_1b7fc2a6376f4b83","box_17616c551aa94a3c","box_6ea6924eded34ffe","box_373a5ed3774b4983","box_c99fe773f82b49f0","box_31e5b6e3fd024a9a","box_fc1d5c5e3d694e3c","box_f026c29985e64cb7","box_442b6c06b831410c","box_dbfe884dca9c4f72","box_60550ade4850448b","box_5889498b2d5641d6","box_8346de16050040c2","box_be3acd5c3a4e4627","box_2df59ab285604b42","box_1cdf9fc0519341c7","box_b3a942dd87864d67","box_c50bbcc49213494c","box_bd9f2102db7046f5","box_b58fcc9bec0a4178","box_be708ca73f224019","box_09be7a566c674df0","box_0c55d819939941f8","box_a63ed773217c475d","box_5214b976612e49a9","box_f30d59fcfbf94ef8","box_886e13ab59a040c9","box_2340f408100f48f8","box_e045355b7cb6428b","box_7dc0703b7f9f4421","box_a014ab1707614fef","box_ed680811c0434caf","box_dfa8656261bf45d2","box_0c00b4e32b614676","box_bcfdba1a96264ca5","box_847fa1b857e34a11","box_f6a65878b6c24613","box_a708c32f254e4bc1","box_0005b52ef5be4739","box_076b72415e8847f9","box_3a5c07eec58b4c9f","box_c3eaad335fcd410d","box_ccc78da332824313","box_527c098d5e1041b6","box_5d99357d95d44ad6","box_31d9efa6905d409b","box_525d1ee7fa3049dc","box_b415993d6aee45fb","box_b11661404b6141d3","box_fea46240dd1948d4","box_b96681feada9400b","box_195bde89082b4f0a","box_70452bcea13c4484","box_c297c9bf8e504b79","box_4a75e8af7f264638","box_3cfc321fe4fc41f0","box_174897dc0d1a4a10","box_e0959e3bd14847d8","box_29c30af047284f58","box_9bbc175bbd8c45af","box_8e6eac9f8df74d9f","box_17f4cc8095eb4876","box_b15c80c6426d4bb9","box_c2be9bb135614c6c","box_c05fe82934ad4fef","box_d43ad48d6aac4e39","box_6ded05b40c24497c","box_82402739a91748d5","box_6e30e81f51ce4caa","box_00f887ec9ce24713","box_b1966bacc1084eb6","box_7b51598f5ea745de","box_f6424fff123f497e","box_b0429e0d8f16401e","box_a0b004e67c144a6c","box_c42b707415bb4366","box_2c684436c4c04eda"
+    ],
+    "non_story_title_credit_or_watermark": ["box_8d0f5a12ad994b76","box_912b9a5ac70b4d7b","box_b8feb58477ee4612","box_5007e1bc23c94dfc","box_6cf45bba66ea4fb9","box_db80b4f5d02c42d5","box_b8e77378ef634d3e","box_ece2db91242f4c1a","box_e5099d3174204c0b","box_7c08093923214bea","box_4fcfeb0b32074364"],
+    "duplicate_fragment_or_false_text": ["box_ab70807d29994bd6","box_acea845f0ff649a5","box_f22ecaee47864f71","box_d3faf09d8203461b","box_0b21c5263e6443bb","box_89006ebef99f4b78","box_dda0bc0404b541d9","box_76979f8731ab4569","box_1a08f5f124b243f2","box_01e4fdaf3def481b","box_de6589f71f98402e","box_5031e7a5f2a54973","box_deb6aaac31514dfe","box_0e25ba279c274546"]
+  }
+}
