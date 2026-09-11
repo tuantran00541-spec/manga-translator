@@ -129,10 +129,16 @@ jobs:
                   changed_translation.append(oid); o['translation']=new
           if set(changed_translation)!=interruption_ids:
               raise SystemExit(f'expected exactly four punctuation translation changes, got {changed_translation}')
-          for oid in interruption_ids:
+          expected_interruptions={
+              'text_4a00225aabd3492e':'Ngay lúc này, Kinuan-',
+              'text_56e3bcaa60bd49dc':'Nhưng với tư cách quyền gia chủ-',
+              'text_e43e9a4488754cdf':'Ev- không, mẹ.',
+              'text_d4d1d0a1296a42bd':'Gọi tôi tới có chuyện gì-',
+          }
+          for oid, expected_text in expected_interruptions.items():
               text=str(by_id[oid][2].get('translation') or '')
-              if '—' in text or not text.endswith('-'):
-                  raise SystemExit(f'interruption punctuation normalization failed {oid}: {text}')
+              if text != expected_text or '—' in text:
+                  raise SystemExit(f'interruption punctuation normalization failed {oid}: {text!r} expected {expected_text!r}')
 
           font_dir=Path('app/static/fonts'); cmap_cache={}
           def cmap(name):
