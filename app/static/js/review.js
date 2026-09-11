@@ -155,7 +155,9 @@ function createReviewCard(pageIndex, maskSnapshot = null) {
   if (img.complete && (img.naturalWidth || img.width)) {
     initBrush();
   }
-  img.src = page.clean + "?t=" + Date.now();
+  img.src = typeof window.pageImageUrl === "function"
+    ? window.pageImageUrl(page)
+    : page.clean;
   card._mountReview = initBrush;
   return card;
 }
@@ -517,12 +519,19 @@ async function inspectVisualQC(
     const resp = await fetch("/api/visual_qc/inspect", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+<<<<<<< HEAD
       body: JSON.stringify({
         chapter_id: chapterId,
         page_index: pageIndex,
         provider: localStorage.getItem("manga_ai_active_provider") || "gemini",
         model: localStorage.getItem(`manga_ai_model_${localStorage.getItem("manga_ai_active_provider") || "gemini"}`) || null,
       }),
+=======
+      signal: typeof window.chapterWorkSignal === "function"
+        ? window.chapterWorkSignal()
+        : undefined,
+      body: JSON.stringify({ chapter_id: chapterId, page_index: pageIndex }),
+>>>>>>> ebd74d2 (update frontend and schemas)
     });
     const parse = typeof window.parseApiResponse === "function" ? window.parseApiResponse : async (r) => (await r.json().catch(() => ({})));
     const getErr = typeof window.getErrorMessage === "function" ? window.getErrorMessage : (s, d) => d.detail || `Máy chủ trả về ${s}`;
@@ -580,7 +589,7 @@ async function inspectVisualQC(
       showToast("AI trả về kết quả nhưng không có vùng đánh dấu hợp lệ.", "error");
     }
   } catch (err) {
-    if (chapterId === currentChapterId && canvas.isConnected) {
+    if (!window.isAbortError?.(err) && chapterId === currentChapterId && canvas.isConnected) {
       showToast("Không thể hoàn tất kiểm tra bằng AI: " + err.message, "error");
     }
   } finally {
@@ -764,7 +773,13 @@ async function submitRepaint(pageIndex, canvas, img, ctx, submitBtn, card = null
     formData.append("mode", mode);
     formData.append("mask", maskBlob, "mask.png");
 
-    const resp = await fetch("/api/repaint_mask", { method: "POST", body: formData });
+    const resp = await fetch("/api/repaint_mask", {
+      method: "POST",
+      body: formData,
+      signal: typeof window.chapterWorkSignal === "function"
+        ? window.chapterWorkSignal()
+        : undefined,
+    });
     const parse = typeof window.parseApiResponse === "function" ? window.parseApiResponse : async (r) => (await r.json().catch(() => ({})));
     const getErr = typeof window.getErrorMessage === "function" ? window.getErrorMessage : (s, d) => d.detail || `Server trả về ${s}`;
     const manifest = await parse(resp);
@@ -776,7 +791,12 @@ async function submitRepaint(pageIndex, canvas, img, ctx, submitBtn, card = null
     }
     currentManifest.pages[pageIndex] = manifest.pages[pageIndex];
 
-    img.src = manifest.pages[pageIndex].clean + "?t=" + Date.now();
+    // The repaint bumped clean_revision, so pageImageUrl produces a new URL
+    // here while staying stable for every other render of the same page.
+    const repaintedPage = manifest.pages[pageIndex];
+    img.src = typeof window.pageImageUrl === "function"
+      ? window.pageImageUrl(repaintedPage)
+      : repaintedPage.clean;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     canvas._reviewDirty = false;
     showToast(
@@ -786,7 +806,7 @@ async function submitRepaint(pageIndex, canvas, img, ctx, submitBtn, card = null
       "success"
     );
   } catch (err) {
-    if (chapterId === currentChapterId && canvas.isConnected) {
+    if (!window.isAbortError?.(err) && chapterId === currentChapterId && canvas.isConnected) {
       showToast("Không thể xử lý vùng đánh dấu: " + err.message, "error");
     }
   } finally {

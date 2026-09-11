@@ -4,6 +4,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.parameters import PIPELINE_DEFAULT_WORKERS
 from app.security import (
+    MAX_BULK_TEXT_OBJECT_UPDATES,
     MAX_REMOTE_URL_LENGTH,
     MAX_RENDER_TEXT_LEN,
     MAX_RENDER_TRANSLATIONS,
@@ -383,6 +384,53 @@ class UpdateTextObjectRequest(BaseModel):
         if v is None:
             return v
         return _validate_region_coords(v)
+
+
+class BulkTextObjectUpdateItem(BaseModel):
+    """One text-object patch inside a bulk save.
+
+    Mirrors ``UpdateTextObjectRequest`` without ``chapter_id``; the chapter is
+    carried once by the envelope so a multi-object save cannot span chapters.
+    """
+
+    page_index: int = Field(ge=0)
+    id: str
+    shape: str | None = None
+    region: TextObjectRegion | None = None
+    ocr_text: str | None = None
+    translation: str | None = None
+    style: TextObjectStyle | None = None
+
+    @field_validator("id")
+    @classmethod
+    def _id_not_empty(cls, v: str) -> str:
+        return _validate_text_object_id(v)
+
+    @field_validator("ocr_text", "translation")
+    @classmethod
+    def _text_limit(cls, value: str | None) -> str | None:
+        if value is not None and len(value) > MAX_RENDER_TEXT_LEN:
+            raise ValueError("Text value is too long")
+        return value
+
+    @field_validator("shape")
+    @classmethod
+    def _shape(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        return _validate_text_object_shape(v)
+
+    @field_validator("region")
+    @classmethod
+    def _region(cls, v: TextObjectRegion | None) -> TextObjectRegion | None:
+        if v is None:
+            return v
+        return _validate_region_coords(v)
+
+
+class BulkUpdateTextObjectsRequest(BaseModel):
+    chapter_id: str
+    updates: list[BulkTextObjectUpdateItem] = Field(min_length=1, max_length=MAX_BULK_TEXT_OBJECT_UPDATES)
 
 
 class DeleteTextObjectRequest(BaseModel):

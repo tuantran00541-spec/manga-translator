@@ -41,7 +41,7 @@
 
   const classify = (path) => {
     if (!path || path === "/api/visual_qc/settings" || /\/key$/.test(path)) return null;
-    if (/text_object\/update$/.test(path)) return ["save-object", "save"];
+    if (/text_object\/update(_bulk)?$/.test(path)) return ["save-object", "save"];
     if (/visual_qc|quality|repaint|repair|inpaint_region/i.test(path)) return ["quality-check", "review"];
     if (/ocr/i.test(path)) return ["ocr", document.body?.dataset?.appStage || "app"];
     if (/translate/i.test(path)) return ["translate", "editor"];
@@ -446,7 +446,15 @@
     const focus = document.getElementById("toggle-focus-mode"); if (focus) focus.title = "Chế độ tập trung";
     mountAISettings(); polishEditor();
     const view = document.getElementById("page-view");
-    if (view) new MutationObserver(() => { attachPointerBridges(); normalizeReviewLabels(); polishEditor(); syncReviewBusy(); }).observe(view, { childList: true, subtree: true, attributes: true, attributeFilter: ["class"] });
+    if (view) {
+      // Share frontend-release's rAF-coalesced repair pass instead of running a
+      // separate synchronous scan of #page-view on every mutation.
+      const repair = () => { attachPointerBridges(); normalizeReviewLabels(); polishEditor(); syncReviewBusy(); };
+      if (typeof window.onWorkbenchRepair === "function") window.onWorkbenchRepair(repair);
+      new MutationObserver(() => {
+        if (typeof window.scheduleWorkbenchRepair === "function") window.scheduleWorkbenchRepair();
+      }).observe(view, { childList: true, subtree: true, attributes: true, attributeFilter: ["class"] });
+    }
   }));
   add("click", (event) => { if (event.target?.closest?.("#settings-toggle")) mountAISettings(); }, true);
 

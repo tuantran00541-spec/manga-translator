@@ -965,6 +965,54 @@ function scheduleTextObjectPersist(pageIndex, id) {
 }
 window.scheduleTextObjectPersist = scheduleTextObjectPersist;
 
+async function _persistTextObjectsBulk(chapterId, items) {
+  // One request for the whole batch; the server applies every patch under a
+  // single manifest transaction instead of one full rewrite per object.
+  const resp = await fetch("/api/text_object/update_bulk", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      chapter_id: chapterId,
+      updates: items.map((p) => ({
+        page_index: p.pageIndex,
+        id: p.id,
+        ocr_text: p.ocr_text,
+        translation: p.translation,
+        style: p.style,
+      })),
+    }),
+  });
+  if (!resp.ok) {
+    throw new Error(getErrorMessage(resp.status, await parseApiResponse(resp)));
+  }
+  return "bulk";
+}
+
+async function _persistTextObjectsIndividually(chapterId, items) {
+  const failures = [];
+  await Promise.all(items.map(async (p) => {
+    const obj = findTextObject(p.pageIndex, p.id);
+    if (!obj) return;
+    try {
+      await apiTextObject("update", {
+        chapter_id: chapterId,
+        page_index: p.pageIndex,
+        id: p.id,
+        ocr_text: p.ocr_text,
+        translation: p.translation,
+        style: p.style,
+      });
+    } catch (err) {
+      failures.push(err);
+      if (chapterId === currentChapterId) {
+        _textHasError = true;
+        _textDirty.set(`${p.pageIndex}:${p.id}`, Object.assign({ pageIndex: p.pageIndex, id: p.id }, _captureTextState(obj)));
+      }
+    }
+  }));
+  return failures;
+}
+
 async function flushTextObjectPersist(pageIndex) {
   clearTimeout(_textTimer);
   _textTimer = null;
@@ -979,28 +1027,19 @@ async function flushTextObjectPersist(pageIndex) {
   items.forEach((v) => _textDirty.delete(`${v.pageIndex}:${v.id}`));
   _textSaving += items.length;
   refreshSaveStatus();
-  const failures = [];
+  let failures = [];
   try {
-    await Promise.all(items.map(async (p) => {
-      const obj = findTextObject(p.pageIndex, p.id);
-      if (!obj) return;
+    if (items.length === 1) {
+      failures = await _persistTextObjectsIndividually(chapterId, items);
+    } else {
       try {
-        await apiTextObject("update", {
-          chapter_id: chapterId,
-          page_index: p.pageIndex,
-          id: p.id,
-          ocr_text: p.ocr_text,
-          translation: p.translation,
-          style: p.style,
-        });
-      } catch (err) {
-        failures.push(err);
-        if (chapterId === currentChapterId) {
-          _textHasError = true;
-          _textDirty.set(`${p.pageIndex}:${p.id}`, Object.assign({ pageIndex: p.pageIndex, id: p.id }, _captureTextState(obj)));
-        }
+        await _persistTextObjectsBulk(chapterId, items);
+      } catch (bulkErr) {
+        // Older servers (or a rejected payload) still get a working save.
+        console.warn("Bulk text-object save failed; falling back per object:", bulkErr);
+        failures = await _persistTextObjectsIndividually(chapterId, items);
       }
-    }));
+    }
   } finally {
     _textSaving -= items.length;
     refreshSaveStatus();
@@ -1150,7 +1189,9 @@ function buildPageWrapper(page, pageIndex, pages) {
   const imgWrap = document.createElement("div");
   imgWrap.className = "page-image-wrap";
   const img = document.createElement("img");
-  img.src = (page.clean || page.original) + "?t=" + Date.now();
+  img.src = typeof window.pageImageUrl === "function"
+    ? window.pageImageUrl(page)
+    : (page.clean || page.original);
   img.draggable = false;
   imgWrap.appendChild(img);
   block.appendChild(imgWrap);
@@ -1198,7 +1239,7 @@ async function switchEditorPage(newIndex) {
 
 window.switchEditorPage = switchEditorPage;
 
-function showRenderResult(pageIndex, outputPath) {
+function showRenderResult(pageIndex, outputPath, renderRevision = null) {
   const panelHost = document.querySelector(".translation-panel-host");
   if (!panelHost) return;
   let resultBox = panelHost.querySelector(".render-result");
@@ -1207,7 +1248,11 @@ function showRenderResult(pageIndex, outputPath) {
     resultBox.className = "render-result";
     panelHost.appendChild(resultBox);
   }
-  const cacheBust = "?t=" + Date.now();
+  // Key the preview URL on the committed render revision when the server
+  // reported one; only fall back to a clock bust when it is unavailable.
+  const cacheBust = renderRevision === null || renderRevision === undefined
+    ? "?t=" + Date.now()
+    : `?r=${encodeURIComponent(renderRevision)}`;
   resultBox.innerHTML = "";
 
   const label = document.createElement("div");
@@ -1228,6 +1273,12 @@ function showRenderResult(pageIndex, outputPath) {
 }
 
 const _pendingAutoSync = new Map();
+
+// Guards the one-way auto-sync from renderEditor against re-entry: while a sync is
+// in flight for a page we must not start another from a nested renderEditor call,
+// or a fast local server turns that into an unbounded rebuild cascade that blocks the
+// main thread and makes the tab report "not responding".
+let _autoSyncingPageIndex = null;
 
 function _sourceBoxSet(obj) {
   return new Set(Array.isArray(obj?.source_boxes) ? obj.source_boxes.map(String) : []);
@@ -1500,13 +1551,27 @@ function renderEditor() {
   const pageIndex = editorState.activePageIndex;
   const page = pages[pageIndex];
 
-  if (_pageNeedsAutoSync(page)) {
+  if (_autoSyncingPageIndex !== pageIndex && _pageNeedsAutoSync(page)) {
+    _autoSyncingPageIndex = pageIndex;
     ensureAutoTextObjects(pageIndex)
       .then((manifest) => {
-        if (!manifest || Number(editorState.activePageIndex || 0) !== pageIndex) return;
-        renderEditor();
+        if (Number(editorState.activePageIndex || 0) !== pageIndex) {
+          // User navigated away while the sync was in flight; let the next
+          // renderEditor for the new page pick up its own auto-sync.
+          _autoSyncingPageIndex = null;
+          return;
+        }
+        if (!manifest) { _autoSyncingPageIndex = null; return; }
+        // queueMicrotask lets the current render frame finish (including all
+        // pending DOM mutations) before the re-render, preventing a cascade of
+        // consecutive microtask-chained full DOM rebuilds.
+        queueMicrotask(() => {
+          _autoSyncingPageIndex = null;
+          renderEditor();
+        });
       })
       .catch((err) => {
+        _autoSyncingPageIndex = null;
         if (typeof window.showToast === "function") {
           window.showToast("Không thể đồng bộ vùng chữ từ nhận diện: " + err.message, "error");
         }
