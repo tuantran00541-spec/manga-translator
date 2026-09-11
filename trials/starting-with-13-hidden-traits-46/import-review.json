@@ -1,0 +1,34 @@
+{
+  "checkpoint": "IMPORT",
+  "status": "PASS",
+  "chapter_id": "57d7b970",
+  "series_slug": "starting-with-13-hidden-traits-53fc8424",
+  "chapter_number": 46,
+  "source_url": "https://asurascans.com/comics/starting-with-13-hidden-traits-53fc8424/chapter/46",
+  "artifact": "01-import-57d7b970@34587403083",
+  "reader_page_count": 22,
+  "source_images": 22,
+  "slices": 77,
+  "ownership_issues": 0,
+  "pixel_exact_reconstruction": {
+    "passed_pages": 22,
+    "total_pages": 22,
+    "differing_pixels": 0,
+    "max_channel_diff": 0
+  },
+  "human_review": {
+    "source_contact_sheet_reviewed": true,
+    "slice_contact_sheet_reviewed": true,
+    "source_order_accepted": true,
+    "slice_order_accepted": true,
+    "story_content_complete": true,
+    "notes": [
+      "Source 000 is the chapter title/splash and is intentionally retained.",
+      "Source 021 contains story content followed by To be continued / credit / AsuraScans promo at the bottom; the non-story tail must be preserved and excluded from translation/inpaint decisions.",
+      "System/game UI appearing inside story pages is story content and remains eligible for OCR/translation.",
+      "Artwork/SFX are not to be destructively removed unless explicitly curated as translatable text later."
+    ]
+  },
+  "blockers": [],
+  "next_action": "RUN_CHECKPOINT_02_CLEAN"
+}
