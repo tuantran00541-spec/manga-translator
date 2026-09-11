@@ -1,0 +1,2893 @@
+{
+  "chapter_id": "c0990099",
+  "status": "PLAN_READY_PENDING_RENDER_VISUAL_REVIEW",
+  "font_size_policy": "DYNAMIC_SEMANTIC_LARGEST_FIT_NO_AUTO",
+  "minimum_font_size": 28,
+  "active_story_objects": 132,
+  "free_text_objects": 19,
+  "font_usage": {
+    "Mac-dinh-3": 108,
+    "Manga-fonts": 16,
+    "Curves-Regular": 1,
+    "Shadow-fonts": 3,
+    "Romance-font-1": 3,
+    "SFX-fonts-1": 1
+  },
+  "font_size_usage": {
+    "96": 2,
+    "76": 1,
+    "72": 2,
+    "60": 45,
+    "56": 14,
+    "52": 28,
+    "50": 6,
+    "48": 16,
+    "46": 2,
+    "44": 6,
+    "42": 1,
+    "40": 3,
+    "36": 5,
+    "32": 1
+  },
+  "role_usage": {
+    "dialogue": 112,
+    "free_soft": 1,
+    "free_analytical": 12,
+    "free_dramatic": 3,
+    "free_emotional": 3,
+    "shout": 1
+  },
+  "fallbacks": [
+    {
+      "id": "text_4a00225aabd3492e",
+      "role": "dialogue",
+      "wanted": "Mac-dinh-3",
+      "chosen": "Manga-fonts",
+      "reason": "actual_text_glyph_coverage"
+    },
+    {
+      "id": "text_56e3bcaa60bd49dc",
+      "role": "dialogue",
+      "wanted": "Mac-dinh-3",
+      "chosen": "Manga-fonts",
+      "reason": "actual_text_glyph_coverage"
+    },
+    {
+      "id": "text_e43e9a4488754cdf",
+      "role": "dialogue",
+      "wanted": "Mac-dinh-3",
+      "chosen": "Manga-fonts",
+      "reason": "actual_text_glyph_coverage"
+    },
+    {
+      "id": "text_d4d1d0a1296a42bd",
+      "role": "dialogue",
+      "wanted": "Mac-dinh-3",
+      "chosen": "Manga-fonts",
+      "reason": "actual_text_glyph_coverage"
+    }
+  ],
+  "primary_dialogue_font": "Mac-dinh-3",
+  "free_text_max_font_size": 96,
+  "selected_font_count": 6,
+  "vietnamese_primary_probe": "PASS",
+  "assignments": [
+    {
+      "page_index": 3,
+      "source_page": 1,
+      "slice_index": 2,
+      "id": "text_1740c2d6466e4a18",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 48,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Sau này, nếu tôi",
+        "không còn ở đây, cậu",
+        "sẽ phải tự mình làm",
+        "việc này."
+      ],
+      "translation": "Sau này, nếu tôi không còn ở đây, cậu sẽ phải tự mình làm việc này.",
+      "region": {
+        "x1": 398,
+        "y1": 2515,
+        "x2": 834,
+        "y2": 2743
+      }
+    },
+    {
+      "page_index": 3,
+      "source_page": 1,
+      "slice_index": 2,
+      "id": "text_6914f0757ac649e3",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 40,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Cứ như một chuyện luôn",
+        "xảy ra mỗi mùa bão vậy."
+      ],
+      "translation": "Cứ như một chuyện luôn xảy ra mỗi mùa bão vậy.",
+      "region": {
+        "x1": 103,
+        "y1": 1497,
+        "x2": 507,
+        "y2": 1651
+      }
+    },
+    {
+      "page_index": 3,
+      "source_page": 1,
+      "slice_index": 2,
+      "id": "text_7bf8bf5f770d4051",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 44,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Đây là vụ thông",
+        "đồng theo lệnh của",
+        "Bệ hạ Hoàng đế sao?"
+      ],
+      "translation": "Đây là vụ thông đồng theo lệnh của Bệ hạ Hoàng đế sao?",
+      "region": {
+        "x1": 280,
+        "y1": 157,
+        "x2": 669,
+        "y2": 320
+      }
+    },
+    {
+      "page_index": 4,
+      "source_page": 1,
+      "slice_index": 3,
+      "id": "text_acf31fc897e547cc",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 50,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Đi thôi. Chúng ta",
+        "phải tới tọa độ đã",
+        "nhập."
+      ],
+      "translation": "Đi thôi. Chúng ta phải tới tọa độ đã nhập.",
+      "region": {
+        "x1": 239,
+        "y1": 577,
+        "x2": 667,
+        "y2": 761
+      }
+    },
+    {
+      "page_index": 8,
+      "source_page": 3,
+      "slice_index": 0,
+      "id": "text_b6a0ecc347fa42dd",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 60,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Nếu muốn giết",
+        "Kinuan,"
+      ],
+      "translation": "Nếu muốn giết Kinuan,",
+      "region": {
+        "x1": 373,
+        "y1": 536,
+        "x2": 776,
+        "y2": 697
+      }
+    },
+    {
+      "page_index": 8,
+      "source_page": 3,
+      "slice_index": 0,
+      "id": "text_c863106b54514fbe",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 56,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "thì hôm nay có lẽ",
+        "chính là cơ hội."
+      ],
+      "translation": "thì hôm nay có lẽ chính là cơ hội.",
+      "region": {
+        "x1": 238,
+        "y1": 1750,
+        "x2": 666,
+        "y2": 1890
+      }
+    },
+    {
+      "page_index": 9,
+      "source_page": 3,
+      "slice_index": 1,
+      "id": "text_4a00225aabd3492e",
+      "semantic_role": "dialogue",
+      "font": "Manga-fonts",
+      "font_size": 46,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Ngay lúc này,",
+        "Kinuan—"
+      ],
+      "translation": "Ngay lúc này, Kinuan—",
+      "region": {
+        "x1": 105,
+        "y1": 2304,
+        "x2": 475,
+        "y2": 2470
+      }
+    },
+    {
+      "page_index": 9,
+      "source_page": 3,
+      "slice_index": 1,
+      "id": "text_5e14794838554248",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 60,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Luka,"
+      ],
+      "translation": "Luka,",
+      "region": {
+        "x1": 334,
+        "y1": 2499,
+        "x2": 573,
+        "y2": 2624
+      }
+    },
+    {
+      "page_index": 10,
+      "source_page": 3,
+      "slice_index": 2,
+      "id": "text_0ca26d0b09224690",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 44,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Tin tôi đi. Con đường của",
+        "một Người Canh Gác là lựa",
+        "chọn tốt nhất cho cậu."
+      ],
+      "translation": "Tin tôi đi. Con đường của một Người Canh Gác là lựa chọn tốt nhất cho cậu.",
+      "region": {
+        "x1": 216,
+        "y1": 2259,
+        "x2": 688,
+        "y2": 2445
+      }
+    },
+    {
+      "page_index": 10,
+      "source_page": 3,
+      "slice_index": 2,
+      "id": "text_c556950871ee464f",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 44,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Những gian nan và bối rối",
+        "cậu đang trải qua là con",
+        "đường tôi đã từng đi."
+      ],
+      "translation": "Những gian nan và bối rối cậu đang trải qua là con đường tôi đã từng đi.",
+      "region": {
+        "x1": 358,
+        "y1": 614,
+        "x2": 855,
+        "y2": 773
+      }
+    },
+    {
+      "page_index": 11,
+      "source_page": 3,
+      "slice_index": 3,
+      "id": "text_7dec014ccdae4f15",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 48,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Cho dù quá trình có",
+        "khác với điều cậu",
+        "mong muốn,"
+      ],
+      "translation": "Cho dù quá trình có khác với điều cậu mong muốn,",
+      "region": {
+        "x1": 68,
+        "y1": 568,
+        "x2": 487,
+        "y2": 750
+      }
+    },
+    {
+      "page_index": 11,
+      "source_page": 3,
+      "slice_index": 3,
+      "id": "text_a14271ffe6bd4623",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 48,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "cuối cùng tôi vẫn sẽ",
+        "trở thành một",
+        "Người Canh Gác."
+      ],
+      "translation": "cuối cùng tôi vẫn sẽ trở thành một Người Canh Gác.",
+      "region": {
+        "x1": 451,
+        "y1": 1543,
+        "x2": 849,
+        "y2": 1723
+      }
+    },
+    {
+      "page_index": 11,
+      "source_page": 3,
+      "slice_index": 3,
+      "id": "text_74f15037ab844180",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 60,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Ừm... Cứ cố hết",
+        "sức đi."
+      ],
+      "translation": "Ừm... Cứ cố hết sức đi.",
+      "region": {
+        "x1": 235,
+        "y1": 2204,
+        "x2": 666,
+        "y2": 2352
+      }
+    },
+    {
+      "page_index": 12,
+      "source_page": 3,
+      "slice_index": 4,
+      "id": "text_c30e8c8398964279",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 52,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Nói để cậu biết, tôi trở",
+        "thành Người Canh Gác sau",
+        "khi giết người tiền nhiệm."
+      ],
+      "translation": "Nói để cậu biết, tôi trở thành Người Canh Gác sau khi giết người tiền nhiệm.",
+      "region": {
+        "x1": 171,
+        "y1": 1725,
+        "x2": 736,
+        "y2": 1919
+      }
+    },
+    {
+      "page_index": 13,
+      "source_page": 3,
+      "slice_index": 5,
+      "id": "text_3827e067369940a1",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 52,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Tất nhiên, trường",
+        "hợp của cậu và tôi",
+        "khác nhau."
+      ],
+      "translation": "Tất nhiên, trường hợp của cậu và tôi khác nhau.",
+      "region": {
+        "x1": 369,
+        "y1": 566,
+        "x2": 809,
+        "y2": 754
+      }
+    },
+    {
+      "page_index": 15,
+      "source_page": 5,
+      "slice_index": 0,
+      "id": "text_b7326270c90f4119",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 60,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "thì đó cũng chẳng",
+        "phải tình huống xa lạ",
+        "gì với tôi."
+      ],
+      "translation": "thì đó cũng chẳng phải tình huống xa lạ gì với tôi.",
+      "region": {
+        "x1": 184,
+        "y1": 2594,
+        "x2": 733,
+        "y2": 2825
+      }
+    },
+    {
+      "page_index": 15,
+      "source_page": 5,
+      "slice_index": 0,
+      "id": "text_145cf1f1a2964508",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 60,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Nhưng cho dù cậu",
+        "có nhắm vào tôi,"
+      ],
+      "translation": "Nhưng cho dù cậu có nhắm vào tôi,",
+      "region": {
+        "x1": 215,
+        "y1": 93,
+        "x2": 691,
+        "y2": 356
+      }
+    },
+    {
+      "page_index": 16,
+      "source_page": 5,
+      "slice_index": 1,
+      "id": "text_26051b82908c42df",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 52,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Khi bị quá nhiều tạp",
+        "chất bủa vây, khả năng",
+        "đưa ra quyết định của",
+        "cậu sẽ chậm lại."
+      ],
+      "translation": "Khi bị quá nhiều tạp chất bủa vây, khả năng đưa ra quyết định của cậu sẽ chậm lại.",
+      "region": {
+        "x1": 339,
+        "y1": 1742,
+        "x2": 850,
+        "y2": 1991
+      }
+    },
+    {
+      "page_index": 16,
+      "source_page": 5,
+      "slice_index": 1,
+      "id": "text_971b009930054418",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 60,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Lúc này cậu suy",
+        "nghĩ quá nhiều."
+      ],
+      "translation": "Lúc này cậu suy nghĩ quá nhiều.",
+      "region": {
+        "x1": 59,
+        "y1": 542,
+        "x2": 476,
+        "y2": 739
+      }
+    },
+    {
+      "page_index": 17,
+      "source_page": 5,
+      "slice_index": 2,
+      "id": "text_0d9b7644a4814bc8",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 52,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Có người nói chính những",
+        "tạp chất ấy khiến con",
+        "người mạnh mẽ."
+      ],
+      "translation": "Có người nói chính những tạp chất ấy khiến con người mạnh mẽ.",
+      "region": {
+        "x1": 174,
+        "y1": 308,
+        "x2": 738,
+        "y2": 507
+      }
+    },
+    {
+      "page_index": 18,
+      "source_page": 5,
+      "slice_index": 3,
+      "id": "text_a13f48f237f14675",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 52,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Ai là kẻ hưởng lợi nhiều",
+        "nhất khi cậu phải gánh",
+        "những tạp chất đó?"
+      ],
+      "translation": "Ai là kẻ hưởng lợi nhiều nhất khi cậu phải gánh những tạp chất đó?",
+      "region": {
+        "x1": 362,
+        "y1": 1806,
+        "x2": 859,
+        "y2": 2062
+      }
+    },
+    {
+      "page_index": 18,
+      "source_page": 5,
+      "slice_index": 3,
+      "id": "text_d5ee0d8a1c0e4307",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 56,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Hoàn toàn nhảm",
+        "nhí."
+      ],
+      "translation": "Hoàn toàn nhảm nhí.",
+      "region": {
+        "x1": 54,
+        "y1": 419,
+        "x2": 426,
+        "y2": 558
+      }
+    },
+    {
+      "page_index": 18,
+      "source_page": 5,
+      "slice_index": 3,
+      "id": "text_6e89e2114fec4986",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 60,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Nghĩ thử xem."
+      ],
+      "translation": "Nghĩ thử xem.",
+      "region": {
+        "x1": 268,
+        "y1": 635,
+        "x2": 630,
+        "y2": 735
+      }
+    },
+    {
+      "page_index": 19,
+      "source_page": 5,
+      "slice_index": 4,
+      "id": "text_6f0d776a2fe04982",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 46,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Chẳng phải chính kẻ đã",
+        "đẩy nghĩa vụ và trách",
+        "nhiệm lên vai cậu,"
+      ],
+      "translation": "Chẳng phải chính kẻ đã đẩy nghĩa vụ và trách nhiệm lên vai cậu,",
+      "region": {
+        "x1": 41,
+        "y1": 1049,
+        "x2": 492,
+        "y2": 1259
+      }
+    },
+    {
+      "page_index": 19,
+      "source_page": 5,
+      "slice_index": 4,
+      "id": "text_acb5836f39a948fd",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 48,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "ép cậu phải chấp",
+        "nhận mất mát và hy",
+        "sinh,"
+      ],
+      "translation": "ép cậu phải chấp nhận mất mát và hy sinh,",
+      "region": {
+        "x1": 408,
+        "y1": 2632,
+        "x2": 842,
+        "y2": 2807
+      }
+    },
+    {
+      "page_index": 19,
+      "source_page": 5,
+      "slice_index": 4,
+      "id": "text_41af908d76e84f20",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 56,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "là kẻ đã trói cậu",
+        "bằng chính những tạp",
+        "chất ấy sao?"
+      ],
+      "translation": "là kẻ đã trói cậu bằng chính những tạp chất ấy sao?",
+      "region": {
+        "x1": 199,
+        "y1": 4116,
+        "x2": 706,
+        "y2": 4319
+      }
+    },
+    {
+      "page_index": 20,
+      "source_page": 5,
+      "slice_index": 5,
+      "id": "text_a1813f1dfa6a4e96",
+      "semantic_role": "free_soft",
+      "font": "Curves-Regular",
+      "font_size": 76,
+      "stroke_width": 2,
+      "wrapped_lines": [
+        "Lời lẽ ngọt ngào thật đấy."
+      ],
+      "translation": "Lời lẽ ngọt ngào thật đấy.",
+      "region": {
+        "x1": 83,
+        "y1": 1583,
+        "x2": 791,
+        "y2": 1724
+      }
+    },
+    {
+      "page_index": 21,
+      "source_page": 6,
+      "slice_index": 0,
+      "id": "text_454b97c92b7a4dc7",
+      "semantic_role": "free_analytical",
+      "font": "Manga-fonts",
+      "font_size": 36,
+      "stroke_width": 2,
+      "wrapped_lines": [
+        "NẾU GẠT TIỀN ĐỀ NÀY SANG MỘT",
+        "BÊN,",
+        "MỌI THỨ ĐỀU TRỞ NÊN RÕ RÀNG."
+      ],
+      "translation": "NẾU GẠT TIỀN ĐỀ NÀY SANG MỘT BÊN,\nMỌI THỨ ĐỀU TRỞ NÊN RÕ RÀNG.",
+      "region": {
+        "x1": 287,
+        "y1": 1287,
+        "x2": 885,
+        "y2": 1493
+      }
+    },
+    {
+      "page_index": 21,
+      "source_page": 6,
+      "slice_index": 0,
+      "id": "text_b47d3bfa1fe54962",
+      "semantic_role": "free_analytical",
+      "font": "Manga-fonts",
+      "font_size": 36,
+      "stroke_width": 2,
+      "wrapped_lines": [
+        "BẢO VỆ",
+        "GIA TỘC KUSTORIA."
+      ],
+      "translation": "BẢO VỆ\nGIA TỘC KUSTORIA.",
+      "region": {
+        "x1": 158,
+        "y1": 17,
+        "x2": 748,
+        "y2": 162
+      }
+    },
+    {
+      "page_index": 22,
+      "source_page": 6,
+      "slice_index": 1,
+      "id": "text_c53c10f9d7e842dd",
+      "semantic_role": "free_analytical",
+      "font": "Manga-fonts",
+      "font_size": 32,
+      "stroke_width": 2,
+      "wrapped_lines": [
+        "TÔI CÓ THỂ BÁO CÁO HÀNH VI",
+        "LỆCH HƯỚNG CỦA IVAN",
+        "LÊN BỆ HẠ HOÀNG ĐẾ,"
+      ],
+      "translation": "TÔI CÓ THỂ BÁO CÁO HÀNH VI LỆCH HƯỚNG CỦA IVAN\nLÊN BỆ HẠ HOÀNG ĐẾ,",
+      "region": {
+        "x1": 34,
+        "y1": 1125,
+        "x2": 481,
+        "y2": 1353
+      }
+    },
+    {
+      "page_index": 22,
+      "source_page": 6,
+      "slice_index": 1,
+      "id": "text_289187ba8b3d462d",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 50,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "rồi làm gián điệp cho Hoàng",
+        "tộc ngay trong Kustoria và",
+        "quân đội."
+      ],
+      "translation": "rồi làm gián điệp cho Hoàng tộc ngay trong Kustoria và quân đội.",
+      "region": {
+        "x1": 302,
+        "y1": 1833,
+        "x2": 900,
+        "y2": 2018
+      }
+    },
+    {
+      "page_index": 22,
+      "source_page": 6,
+      "slice_index": 1,
+      "id": "text_13df27518daf4b1b",
+      "semantic_role": "free_analytical",
+      "font": "Manga-fonts",
+      "font_size": 36,
+      "stroke_width": 2,
+      "wrapped_lines": [
+        "TÔI CHỈ CẦN LÀM GIÁN ĐIỆP",
+        "CHO HOÀNG TỘC."
+      ],
+      "translation": "TÔI CHỈ CẦN LÀM GIÁN ĐIỆP\nCHO HOÀNG TỘC.",
+      "region": {
+        "x1": 51,
+        "y1": 2829,
+        "x2": 850,
+        "y2": 2973
+      }
+    },
+    {
+      "page_index": 23,
+      "source_page": 6,
+      "slice_index": 2,
+      "id": "text_fbb280670c0b41da",
+      "semantic_role": "free_analytical",
+      "font": "Manga-fonts",
+      "font_size": 36,
+      "stroke_width": 2,
+      "wrapped_lines": [
+        "TÔI TỪNG SẮC BÉN",
+        "KHI TRONG MÌNH CHƯA CÓ",
+        "NHỮNG THỨ ẤY."
+      ],
+      "translation": "TÔI TỪNG SẮC BÉN\nKHI TRONG MÌNH CHƯA CÓ\nNHỮNG THỨ ẤY.",
+      "region": {
+        "x1": 193,
+        "y1": 2851,
+        "x2": 778,
+        "y2": 3065
+      }
+    },
+    {
+      "page_index": 23,
+      "source_page": 6,
+      "slice_index": 2,
+      "id": "text_fb02ea4968da41c0",
+      "semantic_role": "free_analytical",
+      "font": "Manga-fonts",
+      "font_size": 48,
+      "stroke_width": 2,
+      "wrapped_lines": [
+        "LÀ TÔI",
+        "ĐANG YẾU ĐI."
+      ],
+      "translation": "LÀ TÔI\nĐANG YẾU ĐI.",
+      "region": {
+        "x1": 175,
+        "y1": 1638,
+        "x2": 747,
+        "y2": 1810
+      }
+    },
+    {
+      "page_index": 23,
+      "source_page": 6,
+      "slice_index": 2,
+      "id": "text_f47125e2a405480d",
+      "semantic_role": "free_analytical",
+      "font": "Manga-fonts",
+      "font_size": 36,
+      "stroke_width": 2,
+      "wrapped_lines": [
+        "NHƯNG VẤN ĐỀ",
+        "TÔI LUÔN MANG THEO"
+      ],
+      "translation": "NHƯNG VẤN ĐỀ\nTÔI LUÔN MANG THEO",
+      "region": {
+        "x1": 434,
+        "y1": 838,
+        "x2": 900,
+        "y2": 973
+      }
+    },
+    {
+      "page_index": 23,
+      "source_page": 6,
+      "slice_index": 2,
+      "id": "text_ac47181943fb4047",
+      "semantic_role": "free_analytical",
+      "font": "Manga-fonts",
+      "font_size": 40,
+      "stroke_width": 2,
+      "wrapped_lines": [
+        "TẠP CHẤT CỦA GIA ĐÌNH,",
+        "TẠP CHẤT CỦA TÌNH NGƯỜI,"
+      ],
+      "translation": "TẠP CHẤT CỦA GIA ĐÌNH,\nTẠP CHẤT CỦA TÌNH NGƯỜI,",
+      "region": {
+        "x1": 4,
+        "y1": 2598,
+        "x2": 554,
+        "y2": 2806
+      }
+    },
+    {
+      "page_index": 24,
+      "source_page": 6,
+      "slice_index": 3,
+      "id": "text_262b8ec9af7641c7",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 60,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Kẻ đã đặt tất cả những tạp",
+        "chất này lên vai tôi chính là"
+      ],
+      "translation": "Kẻ đã đặt tất cả những tạp chất này lên vai tôi chính là",
+      "region": {
+        "x1": 96,
+        "y1": 1025,
+        "x2": 810,
+        "y2": 1281
+      }
+    },
+    {
+      "page_index": 24,
+      "source_page": 6,
+      "slice_index": 3,
+      "id": "text_e1436f58ebad4e35",
+      "semantic_role": "free_dramatic",
+      "font": "Shadow-fonts",
+      "font_size": 96,
+      "stroke_width": 3,
+      "wrapped_lines": [
+        "HEILLAS KUSTORIA."
+      ],
+      "translation": "HEILLAS KUSTORIA.",
+      "region": {
+        "x1": 105,
+        "y1": 3264,
+        "x2": 900,
+        "y2": 3912
+      }
+    },
+    {
+      "page_index": 25,
+      "source_page": 6,
+      "slice_index": 4,
+      "id": "text_37338043c32c4f2b",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 60,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Từ đây đi bộ",
+        "thôi."
+      ],
+      "translation": "Từ đây đi bộ thôi.",
+      "region": {
+        "x1": 103,
+        "y1": 873,
+        "x2": 436,
+        "y2": 1031
+      }
+    },
+    {
+      "page_index": 25,
+      "source_page": 6,
+      "slice_index": 4,
+      "id": "text_88d2032e11c7487a",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 50,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Nếu nhận ra cậu, họ sẽ",
+        "bóp cò không chút do dự."
+      ],
+      "translation": "Nếu nhận ra cậu, họ sẽ bóp cò không chút do dự.",
+      "region": {
+        "x1": 195,
+        "y1": 3432,
+        "x2": 704,
+        "y2": 3602
+      }
+    },
+    {
+      "page_index": 25,
+      "source_page": 6,
+      "slice_index": 4,
+      "id": "text_73f6fccca7924e0e",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 56,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "À, che mặt",
+        "cho kỹ."
+      ],
+      "translation": "À, che mặt cho kỹ.",
+      "region": {
+        "x1": 390,
+        "y1": 2430,
+        "x2": 739,
+        "y2": 2571
+      }
+    },
+    {
+      "page_index": 26,
+      "source_page": 6,
+      "slice_index": 5,
+      "id": "text_addaab1831604537",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 50,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Hoàng tộc sẽ mở một",
+        "cuộc càn quét quy mô",
+        "lớn trong mùa bão này."
+      ],
+      "translation": "Hoàng tộc sẽ mở một cuộc càn quét quy mô lớn trong mùa bão này.",
+      "region": {
+        "x1": 48,
+        "y1": 2373,
+        "x2": 519,
+        "y2": 2594
+      }
+    },
+    {
+      "page_index": 26,
+      "source_page": 6,
+      "slice_index": 5,
+      "id": "text_ce9181ff4b4c4a0e",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 48,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Luka, tôi hiểu hoàn cảnh của",
+        "cậu, nhưng tốt nhất cậu nên",
+        "giữ đầu óc tỉnh táo."
+      ],
+      "translation": "Luka, tôi hiểu hoàn cảnh của cậu, nhưng tốt nhất cậu nên giữ đầu óc tỉnh táo.",
+      "region": {
+        "x1": 227,
+        "y1": 581,
+        "x2": 857,
+        "y2": 759
+      }
+    },
+    {
+      "page_index": 27,
+      "source_page": 7,
+      "slice_index": 0,
+      "id": "text_f17657718be54fa7",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 52,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Nhiều nhân vật chủ",
+        "chốt trong quân đội",
+        "sẽ chết."
+      ],
+      "translation": "Nhiều nhân vật chủ chốt trong quân đội sẽ chết.",
+      "region": {
+        "x1": 368,
+        "y1": 559,
+        "x2": 847,
+        "y2": 759
+      }
+    },
+    {
+      "page_index": 27,
+      "source_page": 7,
+      "slice_index": 0,
+      "id": "text_fb465d16e52a4c7e",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 60,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Lo liệu chuyện",
+        "này cho khéo,"
+      ],
+      "translation": "Lo liệu chuyện này cho khéo,",
+      "region": {
+        "x1": 258,
+        "y1": 1565,
+        "x2": 649,
+        "y2": 1765
+      }
+    },
+    {
+      "page_index": 29,
+      "source_page": 8,
+      "slice_index": 1,
+      "id": "text_967e297f5a404eb0",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 60,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Người Canh",
+        "Gác trẻ."
+      ],
+      "translation": "Người Canh Gác trẻ.",
+      "region": {
+        "x1": 273,
+        "y1": 739,
+        "x2": 625,
+        "y2": 935
+      }
+    },
+    {
+      "page_index": 30,
+      "source_page": 8,
+      "slice_index": 2,
+      "id": "text_ffad70aeb2724172",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 52,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Mùa bão đã bắt",
+        "đầu."
+      ],
+      "translation": "Mùa bão đã bắt đầu.",
+      "region": {
+        "x1": 243,
+        "y1": 2295,
+        "x2": 662,
+        "y2": 2429
+      }
+    },
+    {
+      "page_index": 31,
+      "source_page": 8,
+      "slice_index": 3,
+      "id": "text_b3e4357026e64c8f",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 42,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Thời khắc phải đưa ra",
+        "lựa chọn đang đến gần."
+      ],
+      "translation": "Thời khắc phải đưa ra lựa chọn đang đến gần.",
+      "region": {
+        "x1": 82,
+        "y1": 618,
+        "x2": 507,
+        "y2": 753
+      }
+    },
+    {
+      "page_index": 32,
+      "source_page": 8,
+      "slice_index": 4,
+      "id": "text_5838f4b185094a62",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 56,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Sắp xếp lại suy",
+        "nghĩ nào."
+      ],
+      "translation": "Sắp xếp lại suy nghĩ nào.",
+      "region": {
+        "x1": 260,
+        "y1": 309,
+        "x2": 644,
+        "y2": 454
+      }
+    },
+    {
+      "page_index": 33,
+      "source_page": 8,
+      "slice_index": 5,
+      "id": "text_66570cfdc6d84df2",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 60,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Tôi chưa từng có",
+        "cơ hội giết Kinuan."
+      ],
+      "translation": "Tôi chưa từng có cơ hội giết Kinuan.",
+      "region": {
+        "x1": 213,
+        "y1": 944,
+        "x2": 691,
+        "y2": 1154
+      }
+    },
+    {
+      "page_index": 34,
+      "source_page": 8,
+      "slice_index": 6,
+      "id": "text_9dc5436807f04fb6",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 60,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Ivan cũng không tạo",
+        "được cơ hội để tôi ám",
+        "sát Kinuan."
+      ],
+      "translation": "Ivan cũng không tạo được cơ hội để tôi ám sát Kinuan.",
+      "region": {
+        "x1": 126,
+        "y1": 942,
+        "x2": 673,
+        "y2": 1180
+      }
+    },
+    {
+      "page_index": 34,
+      "source_page": 8,
+      "slice_index": 6,
+      "id": "text_0648a7eb144c43c1",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 48,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Tạm thời phải loại phương",
+        "án hợp tác với Ivan."
+      ],
+      "translation": "Tạm thời phải loại phương án hợp tác với Ivan.",
+      "region": {
+        "x1": 323,
+        "y1": 2146,
+        "x2": 821,
+        "y2": 2328
+      }
+    },
+    {
+      "page_index": 34,
+      "source_page": 8,
+      "slice_index": 6,
+      "id": "text_6c8b1d36afa64609",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 52,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Thứ duy nhất còn",
+        "lại với tôi là..."
+      ],
+      "translation": "Thứ duy nhất còn lại với tôi là...",
+      "region": {
+        "x1": 259,
+        "y1": 3597,
+        "x2": 641,
+        "y2": 3770
+      }
+    },
+    {
+      "page_index": 36,
+      "source_page": 10,
+      "slice_index": 0,
+      "id": "text_bb17f5c6bc4d4ce0",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 56,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Từ tuần thứ ba của mùa bão",
+        "tới, Nemesis sẽ kích động",
+        "bạo loạn và khủng bố ở khu",
+        "dân cư thượng lưu."
+      ],
+      "translation": "Từ tuần thứ ba của mùa bão tới, Nemesis sẽ kích động bạo loạn và khủng bố ở khu dân cư thượng lưu.",
+      "region": {
+        "x1": 104,
+        "y1": 216,
+        "x2": 746,
+        "y2": 502
+      }
+    },
+    {
+      "page_index": 36,
+      "source_page": 10,
+      "slice_index": 0,
+      "id": "text_cd0de512b4e44670",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 52,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Nhiều quý tộc sẽ",
+        "chết."
+      ],
+      "translation": "Nhiều quý tộc sẽ chết.",
+      "region": {
+        "x1": 441,
+        "y1": 643,
+        "x2": 835,
+        "y2": 777
+      }
+    },
+    {
+      "page_index": 37,
+      "source_page": 10,
+      "slice_index": 1,
+      "id": "text_eb6676fbd9a24b84",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 44,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Lợi dụng hỗn loạn đó, Hoàng tộc",
+        "cũng sẽ thanh trừng các nhân",
+        "vật chủ chốt trong quân đội"
+      ],
+      "translation": "Lợi dụng hỗn loạn đó, Hoàng tộc cũng sẽ thanh trừng các nhân vật chủ chốt trong quân đội",
+      "region": {
+        "x1": 100,
+        "y1": 749,
+        "x2": 690,
+        "y2": 950
+      }
+    },
+    {
+      "page_index": 37,
+      "source_page": 10,
+      "slice_index": 1,
+      "id": "text_19e88904b93c4e88",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 56,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Họ sẽ nhắm vào gia",
+        "tộc Kustoria sao?"
+      ],
+      "translation": "Họ sẽ nhắm vào gia tộc Kustoria sao?",
+      "region": {
+        "x1": 204,
+        "y1": 3582,
+        "x2": 695,
+        "y2": 3724
+      }
+    },
+    {
+      "page_index": 37,
+      "source_page": 10,
+      "slice_index": 1,
+      "id": "text_a932a2049c294099",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 60,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "bằng lực lượng",
+        "Imperial Shadow."
+      ],
+      "translation": "bằng lực lượng Imperial Shadow.",
+      "region": {
+        "x1": 185,
+        "y1": 1943,
+        "x2": 715,
+        "y2": 2091
+      }
+    },
+    {
+      "page_index": 38,
+      "source_page": 10,
+      "slice_index": 2,
+      "id": "text_d407d84da3784001",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 48,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Không... mà trước hết, ám",
+        "sát ông ấy có khả thi",
+        "không?"
+      ],
+      "translation": "Không... mà trước hết, ám sát ông ấy có khả thi không?",
+      "region": {
+        "x1": 287,
+        "y1": 1615,
+        "x2": 809,
+        "y2": 1787
+      }
+    },
+    {
+      "page_index": 38,
+      "source_page": 10,
+      "slice_index": 2,
+      "id": "text_15602af33223473b",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 44,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Heillas có nằm trong danh",
+        "sách cần loại bỏ không?"
+      ],
+      "translation": "Heillas có nằm trong danh sách cần loại bỏ không?",
+      "region": {
+        "x1": 210,
+        "y1": 663,
+        "x2": 693,
+        "y2": 808
+      }
+    },
+    {
+      "page_index": 39,
+      "source_page": 10,
+      "slice_index": 3,
+      "id": "text_702abd631d79492f",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 60,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Lựa chọn duy nhất",
+        "còn lại là bỏ Heillas."
+      ],
+      "translation": "Lựa chọn duy nhất còn lại là bỏ Heillas.",
+      "region": {
+        "x1": 195,
+        "y1": 229,
+        "x2": 706,
+        "y2": 438
+      }
+    },
+    {
+      "page_index": 40,
+      "source_page": 10,
+      "slice_index": 4,
+      "id": "text_8ce2f4259ad84bf6",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 60,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Heillas trói tôi vào gia",
+        "tộc chỉ để lợi dụng",
+        "tôi sao?"
+      ],
+      "translation": "Heillas trói tôi vào gia tộc chỉ để lợi dụng tôi sao?",
+      "region": {
+        "x1": 111,
+        "y1": 232,
+        "x2": 638,
+        "y2": 451
+      }
+    },
+    {
+      "page_index": 40,
+      "source_page": 10,
+      "slice_index": 4,
+      "id": "text_c631c08bd1e84888",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 48,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Nếu đó là kế hoạch, thì",
+        "bắt đầu từ khi nào?"
+      ],
+      "translation": "Nếu đó là kế hoạch, thì bắt đầu từ khi nào?",
+      "region": {
+        "x1": 328,
+        "y1": 595,
+        "x2": 804,
+        "y2": 757
+      }
+    },
+    {
+      "page_index": 40,
+      "source_page": 10,
+      "slice_index": 4,
+      "id": "text_01ced15111364fde",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 60,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Hay tất cả chỉ là",
+        "trùng hợp?"
+      ],
+      "translation": "Hay tất cả chỉ là trùng hợp?",
+      "region": {
+        "x1": 227,
+        "y1": 1803,
+        "x2": 671,
+        "y2": 1965
+      }
+    },
+    {
+      "page_index": 41,
+      "source_page": 10,
+      "slice_index": 5,
+      "id": "text_8834d115af684008",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 60,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "và nên phản bội ai?"
+      ],
+      "translation": "và nên phản bội ai?",
+      "region": {
+        "x1": 309,
+        "y1": 1974,
+        "x2": 777,
+        "y2": 2195
+      }
+    },
+    {
+      "page_index": 41,
+      "source_page": 10,
+      "slice_index": 5,
+      "id": "text_b1a161b8ef4640e9",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 60,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Tôi nên tin ai,"
+      ],
+      "translation": "Tôi nên tin ai,",
+      "region": {
+        "x1": 97,
+        "y1": 358,
+        "x2": 491,
+        "y2": 502
+      }
+    },
+    {
+      "page_index": 43,
+      "source_page": 11,
+      "slice_index": 0,
+      "id": "text_37b5219b13364797",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 52,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Chúng ta không biết",
+        "lệnh cấm bay sẽ",
+        "được ban ra lúc nào."
+      ],
+      "translation": "Chúng ta không biết lệnh cấm bay sẽ được ban ra lúc nào.",
+      "region": {
+        "x1": 71,
+        "y1": 1413,
+        "x2": 523,
+        "y2": 1676
+      }
+    },
+    {
+      "page_index": 43,
+      "source_page": 11,
+      "slice_index": 0,
+      "id": "text_43565f2396c041b1",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 52,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Có chuyện",
+        "quan trọng",
+        "xảy ra,"
+      ],
+      "translation": "Có chuyện quan trọng xảy ra,",
+      "region": {
+        "x1": 297,
+        "y1": 2541,
+        "x2": 609,
+        "y2": 2739
+      }
+    },
+    {
+      "page_index": 43,
+      "source_page": 11,
+      "slice_index": 0,
+      "id": "text_2a4ab1c43b614e0b",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 56,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "và tôi không",
+        "thể vắng mặt."
+      ],
+      "translation": "và tôi không thể vắng mặt.",
+      "region": {
+        "x1": 470,
+        "y1": 2799,
+        "x2": 845,
+        "y2": 2945
+      }
+    },
+    {
+      "page_index": 43,
+      "source_page": 11,
+      "slice_index": 0,
+      "id": "text_876e5912229e436c",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 52,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Nhất định phải",
+        "đi ngay sao?"
+      ],
+      "translation": "Nhất định phải đi ngay sao?",
+      "region": {
+        "x1": 376,
+        "y1": 1194,
+        "x2": 715,
+        "y2": 1350
+      }
+    },
+    {
+      "page_index": 44,
+      "source_page": 12,
+      "slice_index": 0,
+      "id": "text_6db015c8fc2e4637",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 60,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Lukais Kustoria,"
+      ],
+      "translation": "Lukais Kustoria,",
+      "region": {
+        "x1": 265,
+        "y1": 3430,
+        "x2": 650,
+        "y2": 3654
+      }
+    },
+    {
+      "page_index": 44,
+      "source_page": 12,
+      "slice_index": 0,
+      "id": "text_3b26c2856b9a4c44",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 48,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Tôi đã dặn mọi người ưu",
+        "tiên mệnh lệnh của cậu",
+        "hơn của Eva."
+      ],
+      "translation": "Tôi đã dặn mọi người ưu tiên mệnh lệnh của cậu hơn của Eva.",
+      "region": {
+        "x1": 65,
+        "y1": 506,
+        "x2": 549,
+        "y2": 686
+      }
+    },
+    {
+      "page_index": 44,
+      "source_page": 12,
+      "slice_index": 0,
+      "id": "text_6d72871f1ac64bce",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 52,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Trong lúc tôi vắng mặt,",
+        "cậu sẽ phụ trách dinh",
+        "thự, Luka."
+      ],
+      "translation": "Trong lúc tôi vắng mặt, cậu sẽ phụ trách dinh thự, Luka.",
+      "region": {
+        "x1": 316,
+        "y1": 158,
+        "x2": 841,
+        "y2": 344
+      }
+    },
+    {
+      "page_index": 44,
+      "source_page": 12,
+      "slice_index": 0,
+      "id": "text_2a2d0898435440f1",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 60,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "...Tôi hiểu rồi."
+      ],
+      "translation": "...Tôi hiểu rồi.",
+      "region": {
+        "x1": 100,
+        "y1": 2871,
+        "x2": 480,
+        "y2": 2978
+      }
+    },
+    {
+      "page_index": 45,
+      "source_page": 12,
+      "slice_index": 1,
+      "id": "text_6569b2246674463e",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 60,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Xin hãy nhớ lời",
+        "nhờ cậy của tôi."
+      ],
+      "translation": "Xin hãy nhớ lời nhờ cậy của tôi.",
+      "region": {
+        "x1": 221,
+        "y1": 2041,
+        "x2": 685,
+        "y2": 2207
+      }
+    },
+    {
+      "page_index": 46,
+      "source_page": 12,
+      "slice_index": 2,
+      "id": "text_67f561665e124479",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 60,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Dù ông ấy có tinh",
+        "tường đến đâu,"
+      ],
+      "translation": "Dù ông ấy có tinh tường đến đâu,",
+      "region": {
+        "x1": 349,
+        "y1": 465,
+        "x2": 781,
+        "y2": 671
+      }
+    },
+    {
+      "page_index": 46,
+      "source_page": 12,
+      "slice_index": 2,
+      "id": "text_974b02f0ef574e7f",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 52,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "với ít thông tin như vậy, rất",
+        "khó nhận ra một chức vị kỳ",
+        "quái như Người Canh Gác",
+        "Hoàng gia."
+      ],
+      "translation": "với ít thông tin như vậy, rất khó nhận ra một chức vị kỳ quái như Người Canh Gác Hoàng gia.",
+      "region": {
+        "x1": 149,
+        "y1": 1511,
+        "x2": 762,
+        "y2": 1770
+      }
+    },
+    {
+      "page_index": 46,
+      "source_page": 12,
+      "slice_index": 2,
+      "id": "text_c2a94c2ebeaa4d8f",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 52,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Heillas có lẽ không",
+        "biết tôi là Người",
+        "Canh Gác."
+      ],
+      "translation": "Heillas có lẽ không biết tôi là Người Canh Gác.",
+      "region": {
+        "x1": 118,
+        "y1": 205,
+        "x2": 548,
+        "y2": 391
+      }
+    },
+    {
+      "page_index": 47,
+      "source_page": 12,
+      "slice_index": 3,
+      "id": "text_02e62aa86f2644b0",
+      "semantic_role": "free_analytical",
+      "font": "Manga-fonts",
+      "font_size": 48,
+      "stroke_width": 2,
+      "wrapped_lines": [
+        "VIỆC CHUNG SỐNG KỲ LẠ VỚI KINUAN,",
+        "NHỮNG THÀNH TÍCH VƯỢT XA",
+        "MỘT HỌC VIÊN,"
+      ],
+      "translation": "VIỆC CHUNG SỐNG KỲ LẠ VỚI KINUAN,\nNHỮNG THÀNH TÍCH VƯỢT XA\nMỘT HỌC VIÊN,",
+      "region": {
+        "x1": 0,
+        "y1": 1196,
+        "x2": 900,
+        "y2": 1543
+      }
+    },
+    {
+      "page_index": 47,
+      "source_page": 12,
+      "slice_index": 3,
+      "id": "text_4c76bc19f1754bd9",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 52,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Nhưng Heillas hẳn đã",
+        "cảm nhận được điều gì",
+        "đó từ tôi."
+      ],
+      "translation": "Nhưng Heillas hẳn đã cảm nhận được điều gì đó từ tôi.",
+      "region": {
+        "x1": 199,
+        "y1": 235,
+        "x2": 694,
+        "y2": 428
+      }
+    },
+    {
+      "page_index": 47,
+      "source_page": 12,
+      "slice_index": 3,
+      "id": "text_db2ddda7e39144ab",
+      "semantic_role": "free_analytical",
+      "font": "Manga-fonts",
+      "font_size": 52,
+      "stroke_width": 2,
+      "wrapped_lines": [
+        "TIẾP XÚC VỚI THÁI TỬ ĐỎ FRANSEK,",
+        "THẬM CHÍ CẢ SỰ TIN TƯỞNG",
+        "GẦN NHƯ ÁM ẢNH CỦA ARGATHA..."
+      ],
+      "translation": "TIẾP XÚC VỚI THÁI TỬ ĐỎ FRANSEK,\nTHẬM CHÍ CẢ SỰ TIN TƯỞNG\nGẦN NHƯ ÁM ẢNH CỦA ARGATHA...",
+      "region": {
+        "x1": 0,
+        "y1": 2096,
+        "x2": 889,
+        "y2": 2393
+      }
+    },
+    {
+      "page_index": 48,
+      "source_page": 12,
+      "slice_index": 4,
+      "id": "text_ed584620722f4ffe",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 60,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Tất cả chỉ là",
+        "bằng chứng gián",
+        "tiếp,"
+      ],
+      "translation": "Tất cả chỉ là bằng chứng gián tiếp,",
+      "region": {
+        "x1": 101,
+        "y1": 554,
+        "x2": 550,
+        "y2": 771
+      }
+    },
+    {
+      "page_index": 48,
+      "source_page": 12,
+      "slice_index": 4,
+      "id": "text_2d46e4919ce1477d",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 52,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Ông ấy cho rằng tôi là người",
+        "có thể bảo vệ gia tộc, ngay",
+        "cả khi ông ấy thất bại."
+      ],
+      "translation": "Ông ấy cho rằng tôi là người có thể bảo vệ gia tộc, ngay cả khi ông ấy thất bại.",
+      "region": {
+        "x1": 149,
+        "y1": 1910,
+        "x2": 754,
+        "y2": 2147
+      }
+    },
+    {
+      "page_index": 48,
+      "source_page": 12,
+      "slice_index": 4,
+      "id": "text_11e9d9b8d6d8473d",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 48,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "nhưng Heillas biết tôi",
+        "đang hoạt động trong",
+        "một lĩnh vực ông ấy",
+        "không thể hiểu."
+      ],
+      "translation": "nhưng Heillas biết tôi đang hoạt động trong một lĩnh vực ông ấy không thể hiểu.",
+      "region": {
+        "x1": 292,
+        "y1": 885,
+        "x2": 812,
+        "y2": 1124
+      }
+    },
+    {
+      "page_index": 48,
+      "source_page": 12,
+      "slice_index": 4,
+      "id": "text_7349ca5b0c854342",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 56,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Heillas đã đánh",
+        "một canh bạc."
+      ],
+      "translation": "Heillas đã đánh một canh bạc.",
+      "region": {
+        "x1": 432,
+        "y1": 3147,
+        "x2": 806,
+        "y2": 3303
+      }
+    },
+    {
+      "page_index": 49,
+      "source_page": 12,
+      "slice_index": 5,
+      "id": "text_3b0005423732475a",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 60,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Heillas đang lợi",
+        "dụng tôi."
+      ],
+      "translation": "Heillas đang lợi dụng tôi.",
+      "region": {
+        "x1": 236,
+        "y1": 638,
+        "x2": 666,
+        "y2": 845
+      }
+    },
+    {
+      "page_index": 49,
+      "source_page": 12,
+      "slice_index": 5,
+      "id": "text_b16902fb12fd4fc7",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 60,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Nói như vậy cũng",
+        "không sai."
+      ],
+      "translation": "Nói như vậy cũng không sai.",
+      "region": {
+        "x1": 230,
+        "y1": 1528,
+        "x2": 670,
+        "y2": 1676
+      }
+    },
+    {
+      "page_index": 50,
+      "source_page": 13,
+      "slice_index": 0,
+      "id": "text_3cf525860dfc4d0e",
+      "semantic_role": "free_analytical",
+      "font": "Manga-fonts",
+      "font_size": 44,
+      "stroke_width": 2,
+      "wrapped_lines": [
+        "TÌNH CẢM ÔNG ẤY DÀNH CHO TÔI",
+        "HẲN KHÔNG HOÀN TOÀN LÀ GIẢ,"
+      ],
+      "translation": "TÌNH CẢM ÔNG ẤY DÀNH CHO TÔI\nHẲN KHÔNG HOÀN TOÀN LÀ GIẢ,",
+      "region": {
+        "x1": 0,
+        "y1": 434,
+        "x2": 725,
+        "y2": 672
+      }
+    },
+    {
+      "page_index": 50,
+      "source_page": 13,
+      "slice_index": 0,
+      "id": "text_a90fe7a08fe04ade",
+      "semantic_role": "free_analytical",
+      "font": "Manga-fonts",
+      "font_size": 52,
+      "stroke_width": 2,
+      "wrapped_lines": [
+        "NHƯNG CHẮC CHẮN TRONG ĐÓ",
+        "CÓ PHA LẪN TÍNH TOÁN."
+      ],
+      "translation": "NHƯNG CHẮC CHẮN TRONG ĐÓ\nCÓ PHA LẪN TÍNH TOÁN.",
+      "region": {
+        "x1": 191,
+        "y1": 1006,
+        "x2": 900,
+        "y2": 1195
+      }
+    },
+    {
+      "page_index": 50,
+      "source_page": 13,
+      "slice_index": 0,
+      "id": "text_981a08550de743fe",
+      "semantic_role": "free_dramatic",
+      "font": "Shadow-fonts",
+      "font_size": 96,
+      "stroke_width": 3,
+      "wrapped_lines": [
+        "HEILLAS SẼ ĐƯA RA",
+        "LỰA CHỌN NÀO?"
+      ],
+      "translation": "HEILLAS SẼ ĐƯA RA\nLỰA CHỌN NÀO?",
+      "region": {
+        "x1": 26,
+        "y1": 1639,
+        "x2": 895,
+        "y2": 1870
+      }
+    },
+    {
+      "page_index": 52,
+      "source_page": 14,
+      "slice_index": 1,
+      "id": "text_fb3c56167bdd42be",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 60,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Lukais."
+      ],
+      "translation": "Lukais.",
+      "region": {
+        "x1": 560,
+        "y1": 543,
+        "x2": 831,
+        "y2": 654
+      }
+    },
+    {
+      "page_index": 53,
+      "source_page": 14,
+      "slice_index": 2,
+      "id": "text_87acccc1127d42a6",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 52,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Mẹ, con biết mẹ có",
+        "nhiều bất mãn với con."
+      ],
+      "translation": "Mẹ, con biết mẹ có nhiều bất mãn với con.",
+      "region": {
+        "x1": 48,
+        "y1": 150,
+        "x2": 541,
+        "y2": 348
+      }
+    },
+    {
+      "page_index": 53,
+      "source_page": 14,
+      "slice_index": 2,
+      "id": "text_1782ee531b8b4099",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 60,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Ta không muốn",
+        "nói chuyện đó."
+      ],
+      "translation": "Ta không muốn nói chuyện đó.",
+      "region": {
+        "x1": 456,
+        "y1": 1347,
+        "x2": 865,
+        "y2": 1542
+      }
+    },
+    {
+      "page_index": 53,
+      "source_page": 14,
+      "slice_index": 2,
+      "id": "text_56e3bcaa60bd49dc",
+      "semantic_role": "dialogue",
+      "font": "Manga-fonts",
+      "font_size": 40,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Nhưng với tư cách",
+        "quyền gia chủ—"
+      ],
+      "translation": "Nhưng với tư cách quyền gia chủ—",
+      "region": {
+        "x1": 317,
+        "y1": 471,
+        "x2": 771,
+        "y2": 619
+      }
+    },
+    {
+      "page_index": 54,
+      "source_page": 14,
+      "slice_index": 3,
+      "id": "text_c2f44d42bcf64a5c",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 56,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Ông ấy có thể sống",
+        "sót trở về bên ta",
+        "không?"
+      ],
+      "translation": "Ông ấy có thể sống sót trở về bên ta không?",
+      "region": {
+        "x1": 205,
+        "y1": 324,
+        "x2": 671,
+        "y2": 527
+      }
+    },
+    {
+      "page_index": 54,
+      "source_page": 14,
+      "slice_index": 3,
+      "id": "text_852b136b30504037",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 60,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Ta hỏi vì nghĩ con sẽ",
+        "biết rõ hơn ta."
+      ],
+      "translation": "Ta hỏi vì nghĩ con sẽ biết rõ hơn ta.",
+      "region": {
+        "x1": 342,
+        "y1": 2198,
+        "x2": 833,
+        "y2": 2395
+      }
+    },
+    {
+      "page_index": 54,
+      "source_page": 14,
+      "slice_index": 3,
+      "id": "text_437808cfef0b4f50",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 60,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Heillas..."
+      ],
+      "translation": "Heillas...",
+      "region": {
+        "x1": 54,
+        "y1": 126,
+        "x2": 350,
+        "y2": 234
+      }
+    },
+    {
+      "page_index": 55,
+      "source_page": 14,
+      "slice_index": 4,
+      "id": "text_337202bf31ba420d",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 60,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Là vì họ là vợ",
+        "chồng sao?"
+      ],
+      "translation": "Là vì họ là vợ chồng sao?",
+      "region": {
+        "x1": 358,
+        "y1": 1046,
+        "x2": 795,
+        "y2": 1277
+      }
+    },
+    {
+      "page_index": 55,
+      "source_page": 14,
+      "slice_index": 4,
+      "id": "text_607a90c12b1d488d",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 52,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Nhưng nói một cách",
+        "nghiêm túc, khả",
+        "năng đó rất thấp."
+      ],
+      "translation": "Nhưng nói một cách nghiêm túc, khả năng đó rất thấp.",
+      "region": {
+        "x1": 348,
+        "y1": 2234,
+        "x2": 791,
+        "y2": 2479
+      }
+    },
+    {
+      "page_index": 55,
+      "source_page": 14,
+      "slice_index": 4,
+      "id": "text_9c4ef6a7a6f54956",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 50,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Khả năng phán đoán",
+        "của Eva bình thường",
+        "cũng đâu có xuất sắc..."
+      ],
+      "translation": "Khả năng phán đoán của Eva bình thường cũng đâu có xuất sắc...",
+      "region": {
+        "x1": 112,
+        "y1": 756,
+        "x2": 605,
+        "y2": 944
+      }
+    },
+    {
+      "page_index": 55,
+      "source_page": 14,
+      "slice_index": 4,
+      "id": "text_85b58574efa04eec",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 60,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Con cũng",
+        "không biết."
+      ],
+      "translation": "Con cũng không biết.",
+      "region": {
+        "x1": 115,
+        "y1": 2041,
+        "x2": 504,
+        "y2": 2190
+      }
+    },
+    {
+      "page_index": 56,
+      "source_page": 14,
+      "slice_index": 5,
+      "id": "text_40f94e5a41b54a98",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 60,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Lời nhờ cậy của cha",
+        "cũng bao gồm cả mẹ,"
+      ],
+      "translation": "Lời nhờ cậy của cha cũng bao gồm cả mẹ,",
+      "region": {
+        "x1": 66,
+        "y1": 3205,
+        "x2": 569,
+        "y2": 3431
+      }
+    },
+    {
+      "page_index": 56,
+      "source_page": 14,
+      "slice_index": 5,
+      "id": "text_5587e048e7be4e57",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 48,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Dù sao ta cũng không",
+        "nghĩ mình sống nổi nếu",
+        "thiếu ông ấy."
+      ],
+      "translation": "Dù sao ta cũng không nghĩ mình sống nổi nếu thiếu ông ấy.",
+      "region": {
+        "x1": 302,
+        "y1": 2511,
+        "x2": 759,
+        "y2": 2685
+      }
+    },
+    {
+      "page_index": 56,
+      "source_page": 14,
+      "slice_index": 5,
+      "id": "text_ca874c2e0588486c",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 48,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Nếu chuyện tồi tệ nhất",
+        "xảy ra, đừng lo cho ta.",
+        "Cứ bỏ mặc ta."
+      ],
+      "translation": "Nếu chuyện tồi tệ nhất xảy ra, đừng lo cho ta. Cứ bỏ mặc ta.",
+      "region": {
+        "x1": 47,
+        "y1": 2180,
+        "x2": 517,
+        "y2": 2359
+      }
+    },
+    {
+      "page_index": 57,
+      "source_page": 15,
+      "slice_index": 0,
+      "id": "text_af7f86e3909845f4",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 52,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Lukais, chúng ta",
+        "hãy thành thật với",
+        "nhau."
+      ],
+      "translation": "Lukais, chúng ta hãy thành thật với nhau.",
+      "region": {
+        "x1": 101,
+        "y1": 1352,
+        "x2": 526,
+        "y2": 1552
+      }
+    },
+    {
+      "page_index": 57,
+      "source_page": 15,
+      "slice_index": 0,
+      "id": "text_e43e9a4488754cdf",
+      "semantic_role": "dialogue",
+      "font": "Manga-fonts",
+      "font_size": 50,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Ev— không,",
+        "mẹ."
+      ],
+      "translation": "Ev— không, mẹ.",
+      "region": {
+        "x1": 362,
+        "y1": 542,
+        "x2": 671,
+        "y2": 721
+      }
+    },
+    {
+      "page_index": 57,
+      "source_page": 15,
+      "slice_index": 0,
+      "id": "text_d2898ae9645c4286",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 52,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Dù sao ta cũng",
+        "không coi con là",
+        "con trai,"
+      ],
+      "translation": "Dù sao ta cũng không coi con là con trai,",
+      "region": {
+        "x1": 196,
+        "y1": 2540,
+        "x2": 635,
+        "y2": 2734
+      }
+    },
+    {
+      "page_index": 57,
+      "source_page": 15,
+      "slice_index": 0,
+      "id": "text_31f15637319349d7",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 56,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "và con cũng đâu",
+        "coi ta là mẹ."
+      ],
+      "translation": "và con cũng đâu coi ta là mẹ.",
+      "region": {
+        "x1": 469,
+        "y1": 2806,
+        "x2": 866,
+        "y2": 2980
+      }
+    },
+    {
+      "page_index": 58,
+      "source_page": 16,
+      "slice_index": 0,
+      "id": "text_c6417921478944fd",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 52,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "con hẳn là người duy",
+        "nhất có thể bảo vệ",
+        "các con của ta."
+      ],
+      "translation": "con hẳn là người duy nhất có thể bảo vệ các con của ta.",
+      "region": {
+        "x1": 323,
+        "y1": 892,
+        "x2": 809,
+        "y2": 1090
+      }
+    },
+    {
+      "page_index": 58,
+      "source_page": 16,
+      "slice_index": 0,
+      "id": "text_1e338a5da97347f3",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 52,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Vì vậy, xin con hãy",
+        "bảo vệ chúng."
+      ],
+      "translation": "Vì vậy, xin con hãy bảo vệ chúng.",
+      "region": {
+        "x1": 460,
+        "y1": 1994,
+        "x2": 852,
+        "y2": 2152
+      }
+    },
+    {
+      "page_index": 58,
+      "source_page": 16,
+      "slice_index": 0,
+      "id": "text_aeb7d476074b484a",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 60,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Nhưng vì Heillas",
+        "tin tưởng con,"
+      ],
+      "translation": "Nhưng vì Heillas tin tưởng con,",
+      "region": {
+        "x1": 79,
+        "y1": 600,
+        "x2": 530,
+        "y2": 757
+      }
+    },
+    {
+      "page_index": 59,
+      "source_page": 16,
+      "slice_index": 1,
+      "id": "text_e3c795bac2f6429a",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 60,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Kể cả mẹ",
+        "không nhờ."
+      ],
+      "translation": "Kể cả mẹ không nhờ.",
+      "region": {
+        "x1": 389,
+        "y1": 632,
+        "x2": 761,
+        "y2": 809
+      }
+    },
+    {
+      "page_index": 59,
+      "source_page": 16,
+      "slice_index": 1,
+      "id": "text_e17fdab0aa7e41a0",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 60,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Con vẫn chưa hiểu",
+        "ý ta, Luka."
+      ],
+      "translation": "Con vẫn chưa hiểu ý ta, Luka.",
+      "region": {
+        "x1": 214,
+        "y1": 2533,
+        "x2": 690,
+        "y2": 2724
+      }
+    },
+    {
+      "page_index": 59,
+      "source_page": 16,
+      "slice_index": 1,
+      "id": "text_0a300c9d58104caf",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 60,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Con định làm",
+        "vậy."
+      ],
+      "translation": "Con định làm vậy.",
+      "region": {
+        "x1": 133,
+        "y1": 410,
+        "x2": 506,
+        "y2": 577
+      }
+    },
+    {
+      "page_index": 60,
+      "source_page": 16,
+      "slice_index": 2,
+      "id": "text_ffb8f396310a44b7",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 60,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Ý ta là, ngay cả khi",
+        "gia tộc Kustoria sụp",
+        "đổ,"
+      ],
+      "translation": "Ý ta là, ngay cả khi gia tộc Kustoria sụp đổ,",
+      "region": {
+        "x1": 82,
+        "y1": 636,
+        "x2": 605,
+        "y2": 863
+      }
+    },
+    {
+      "page_index": 61,
+      "source_page": 16,
+      "slice_index": 3,
+      "id": "text_f28d0c5487cf4c53",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 56,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "ngay cả khi con phải vứt",
+        "bỏ bổn phận và nghĩa vụ",
+        "của một quyền gia chủ,"
+      ],
+      "translation": "ngay cả khi con phải vứt bỏ bổn phận và nghĩa vụ của một quyền gia chủ,",
+      "region": {
+        "x1": 75,
+        "y1": 2340,
+        "x2": 638,
+        "y2": 2589
+      }
+    },
+    {
+      "page_index": 61,
+      "source_page": 16,
+      "slice_index": 3,
+      "id": "text_c294c72094144a2c",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 48,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "ngay cả khi người của những",
+        "gia tộc khác phải chết,"
+      ],
+      "translation": "ngay cả khi người của những gia tộc khác phải chết,",
+      "region": {
+        "x1": 286,
+        "y1": 790,
+        "x2": 854,
+        "y2": 944
+      }
+    },
+    {
+      "page_index": 62,
+      "source_page": 16,
+      "slice_index": 4,
+      "id": "text_52bca003e9174c9a",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 60,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "thì ít nhất... hãy",
+        "bảo vệ các con của",
+        "ta."
+      ],
+      "translation": "thì ít nhất... hãy bảo vệ các con của ta.",
+      "region": {
+        "x1": 300,
+        "y1": 910,
+        "x2": 808,
+        "y2": 1162
+      }
+    },
+    {
+      "page_index": 63,
+      "source_page": 16,
+      "slice_index": 5,
+      "id": "text_manual_src16_eva_feels",
+      "semantic_role": "free_emotional",
+      "font": "Romance-font-1",
+      "font_size": 60,
+      "stroke_width": 2,
+      "wrapped_lines": [
+        "Tôi hiểu rất rõ tâm trạng của Eva khi cô ấy hỏi",
+        "vậy."
+      ],
+      "translation": "Tôi hiểu rất rõ tâm trạng của Eva khi cô ấy hỏi vậy.",
+      "region": {
+        "x1": 52,
+        "y1": 1179,
+        "x2": 879,
+        "y2": 1368
+      }
+    },
+    {
+      "page_index": 64,
+      "source_page": 16,
+      "slice_index": 6,
+      "id": "text_8b9b08b3cf9f4a84",
+      "semantic_role": "free_emotional",
+      "font": "Romance-font-1",
+      "font_size": 52,
+      "stroke_width": 2,
+      "wrapped_lines": [
+        "DÙ TÔI CÓ MUỐN",
+        "ĐÁP LẠI LỜI NHỜ ĐÓ,",
+        "THÌ VỚI TÔI,"
+      ],
+      "translation": "DÙ TÔI CÓ MUỐN\nĐÁP LẠI LỜI NHỜ ĐÓ,\nTHÌ VỚI TÔI,",
+      "region": {
+        "x1": 228,
+        "y1": 1925,
+        "x2": 900,
+        "y2": 2173
+      }
+    },
+    {
+      "page_index": 64,
+      "source_page": 16,
+      "slice_index": 6,
+      "id": "text_d64f680724494340",
+      "semantic_role": "free_dramatic",
+      "font": "Shadow-fonts",
+      "font_size": 72,
+      "stroke_width": 3,
+      "wrapped_lines": [
+        "THẾ NHƯNG..."
+      ],
+      "translation": "THẾ NHƯNG...",
+      "region": {
+        "x1": 57,
+        "y1": 1657,
+        "x2": 419,
+        "y2": 1783
+      }
+    },
+    {
+      "page_index": 65,
+      "source_page": 17,
+      "slice_index": 0,
+      "id": "text_810a7bae98f841eb",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 52,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "...Có lẽ tôi chỉ còn",
+        "cách mong ông ấy",
+        "thành công."
+      ],
+      "translation": "...Có lẽ tôi chỉ còn cách mong ông ấy thành công.",
+      "region": {
+        "x1": 230,
+        "y1": 268,
+        "x2": 669,
+        "y2": 465
+      }
+    },
+    {
+      "page_index": 65,
+      "source_page": 17,
+      "slice_index": 0,
+      "id": "text_9c975aee347e41e1",
+      "semantic_role": "free_emotional",
+      "font": "Romance-font-1",
+      "font_size": 72,
+      "stroke_width": 2,
+      "wrapped_lines": [
+        "TÔI KHÔNG CÓ CÁCH NÀO",
+        "ĐỂ LÀM ĐƯỢC ĐIỀU ĐÓ."
+      ],
+      "translation": "TÔI KHÔNG CÓ CÁCH NÀO\nĐỂ LÀM ĐƯỢC ĐIỀU ĐÓ.",
+      "region": {
+        "x1": 84,
+        "y1": 1997,
+        "x2": 808,
+        "y2": 2220
+      }
+    },
+    {
+      "page_index": 68,
+      "source_page": 18,
+      "slice_index": 2,
+      "id": "text_11e64b11e2ca4d3e",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 60,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Hay là vẫn chưa",
+        "muộn..."
+      ],
+      "translation": "Hay là vẫn chưa muộn...",
+      "region": {
+        "x1": 333,
+        "y1": 1688,
+        "x2": 757,
+        "y2": 1875
+      }
+    },
+    {
+      "page_index": 68,
+      "source_page": 18,
+      "slice_index": 2,
+      "id": "text_ea8d2ba708994691",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 60,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Tôi cần thêm lựa",
+        "chọn."
+      ],
+      "translation": "Tôi cần thêm lựa chọn.",
+      "region": {
+        "x1": 228,
+        "y1": 2466,
+        "x2": 664,
+        "y2": 2652
+      }
+    },
+    {
+      "page_index": 68,
+      "source_page": 18,
+      "slice_index": 2,
+      "id": "text_841023fa08de486a",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 48,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Tôi đến muộn",
+        "sao..."
+      ],
+      "translation": "Tôi đến muộn sao...",
+      "region": {
+        "x1": 104,
+        "y1": 256,
+        "x2": 462,
+        "y2": 376
+      }
+    },
+    {
+      "page_index": 69,
+      "source_page": 18,
+      "slice_index": 3,
+      "id": "text_d311557af53549ff",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 60,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Tôi phải xem Noel",
+        "Mulizka sẽ chọn",
+        "thế nào."
+      ],
+      "translation": "Tôi phải xem Noel Mulizka sẽ chọn thế nào.",
+      "region": {
+        "x1": 212,
+        "y1": 1290,
+        "x2": 686,
+        "y2": 1524
+      }
+    },
+    {
+      "page_index": 70,
+      "source_page": 18,
+      "slice_index": 4,
+      "id": "text_d4d1d0a1296a42bd",
+      "semantic_role": "dialogue",
+      "font": "Manga-fonts",
+      "font_size": 60,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Gọi tôi tới có",
+        "chuyện gì—"
+      ],
+      "translation": "Gọi tôi tới có chuyện gì—",
+      "region": {
+        "x1": 256,
+        "y1": 2035,
+        "x2": 772,
+        "y2": 2285
+      }
+    },
+    {
+      "page_index": 70,
+      "source_page": 18,
+      "slice_index": 4,
+      "id": "text_c2a426ff453446a7",
+      "semantic_role": "shout",
+      "font": "SFX-fonts-1",
+      "font_size": 56,
+      "stroke_width": 2,
+      "wrapped_lines": [
+        "Luka!"
+      ],
+      "translation": "Luka!",
+      "region": {
+        "x1": 71,
+        "y1": 482,
+        "x2": 288,
+        "y2": 588
+      }
+    },
+    {
+      "page_index": 70,
+      "source_page": 18,
+      "slice_index": 4,
+      "id": "text_4968bc2061b24920",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 52,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Giselle,"
+      ],
+      "translation": "Giselle,",
+      "region": {
+        "x1": 527,
+        "y1": 2218,
+        "x2": 772,
+        "y2": 2286
+      }
+    },
+    {
+      "page_index": 71,
+      "source_page": 18,
+      "slice_index": 5,
+      "id": "text_dcacdb80a5e442c8",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 56,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "...Tôi cần liên lạc",
+        "với Barbara."
+      ],
+      "translation": "...Tôi cần liên lạc với Barbara.",
+      "region": {
+        "x1": 102,
+        "y1": 482,
+        "x2": 528,
+        "y2": 625
+      }
+    },
+    {
+      "page_index": 72,
+      "source_page": 19,
+      "slice_index": 0,
+      "id": "text_f7baef50b5b04aa5",
+      "semantic_role": "dialogue",
+      "font": "Mac-dinh-3",
+      "font_size": 60,
+      "stroke_width": 1,
+      "wrapped_lines": [
+        "Tôi cần cô giúp."
+      ],
+      "translation": "Tôi cần cô giúp.",
+      "region": {
+        "x1": 240,
+        "y1": 664,
+        "x2": 657,
+        "y2": 884
+      }
+    }
+  ]
+}
