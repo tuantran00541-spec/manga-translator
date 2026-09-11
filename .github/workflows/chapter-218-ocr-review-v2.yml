@@ -1,0 +1,140 @@
+name: Chapter 218 Checkpoint 03 OCR Review v2
+
+on:
+  push:
+    branches:
+      - trial/chapter-render-218
+    paths:
+      - .github/workflows/chapter-218-ocr-review-v2.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: chapter-218-human-loop
+  cancel-in-progress: false
+
+jobs:
+  ocr-from-raw:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    env:
+      PYTHONUNBUFFERED: "1"
+      PYTHONPATH: ${{ github.workspace }}
+      GH_TOKEN: ${{ github.token }}
+      CHAPTER_ID: c2182180
+      IMPORT_RUN_ID: "34569128327"
+      IMPORT_ARTIFACT: 01-import-c2182180
+      CLEAN_RUN_ID: "34569707469"
+      CLEAN_ARTIFACT: 02-clean-review-c2182180
+      REPAIR_RUN_ID: "34572578396"
+      REPAIR_ARTIFACT: 02b-clean-local-repair-c2182180
+      PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK: "True"
+      MANGA_PPOCRV6_TIER: small
+      MANGA_OCR_TARGET_SELECTION: all
+      MANGA_PPOCRV6_TEXTLINE_ORIENTATION: "0"
+      OPENBLAS_NUM_THREADS: "1"
+      OMP_NUM_THREADS: "2"
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: trial/chapter-render-218
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install production OCR runtime
+        run: |
+          python -m pip install --only-binary=:all: \
+            numpy==1.26.4 \
+            Pillow==10.4.0 \
+            opencv-contrib-python==4.10.0.84 \
+            paddlepaddle==3.2.2 \
+            paddleocr==3.7.0 \
+            onnxruntime-openvino==1.24.1 \
+            psutil==6.1.1 \
+            loguru==0.7.2 \
+            requests==2.32.3 \
+            beautifulsoup4==4.12.3 \
+            lxml==5.3.0 \
+            playwright==1.47.0 \
+            fastapi==0.115.0 \
+            pydantic==2.9.2 \
+            filelock==3.16.1 \
+            python-multipart==0.0.12
+
+      - name: Restore Paddle model cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.paddlex
+            ~/.paddleocr
+          key: chapter-trial-ppocrv6-small-en-v1
+
+      - name: Restore reviewed checkpoints
+        run: |
+          rm -rf checkpoint/01-import checkpoint/02-clean checkpoint/02b-repair checkpoint/03-ocr-review
+          mkdir -p checkpoint/01-import checkpoint/02-clean checkpoint/02b-repair checkpoint/03-ocr-review
+          gh run download "$IMPORT_RUN_ID" -n "$IMPORT_ARTIFACT" -D checkpoint/01-import
+          gh run download "$CLEAN_RUN_ID" -n "$CLEAN_ARTIFACT" -D checkpoint/02-clean
+          gh run download "$REPAIR_RUN_ID" -n "$REPAIR_ARTIFACT" -D checkpoint/02b-repair
+          test -f checkpoint/01-import/manifest.json
+          test -d checkpoint/01-import/raw/sliced
+          test -f checkpoint/02-clean/processed/manifest.json
+          test -f checkpoint/02b-repair/clean-repair.json
+          test -f trials/chapter-218/clean-review.json
+          python - <<'PY'
+          import json
+          review=json.load(open('trials/chapter-218/clean-review.json',encoding='utf-8'))
+          if review.get('status')!='PASS':
+              raise SystemExit(f'CLEAN gate not approved: {review.get("status")}')
+          if (review.get('human_review') or {}).get('story_text_blockers')!=0:
+              raise SystemExit('CLEAN story-text blocker count is nonzero')
+          if (review.get('local_repair') or {}).get('raw_vs_repaired_pixel_diff')!=0:
+              raise SystemExit('approved promo repair is not pixel-exact RAW')
+          PY
+
+      - name: Run production OCR from RAW and build review pack
+        run: |
+          python trials/chapter-218/run_ocr_review.py \
+            --chapter-id "$CHAPTER_ID" \
+            --import-root checkpoint/01-import \
+            --clean-root checkpoint/02-clean \
+            --repair-json checkpoint/02b-repair/clean-repair.json \
+            --output checkpoint/03-ocr-review \
+            --lang en
+
+      - name: Verify OCR checkpoint contract
+        if: success()
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root=Path('checkpoint/03-ocr-review')
+          summary=json.loads((root/'ocr-review-summary.json').read_text(encoding='utf-8'))
+          if summary.get('ocr_source')!='RAW' or not summary.get('ocr_source_invariant_verified'):
+              raise SystemExit('OCR did not prove RAW source invariant')
+          if summary.get('failed')!=0:
+              raise SystemExit(f"OCR failures remain: {summary.get('failed')}")
+          if summary.get('resurrection_count')!=0:
+              raise SystemExit(f"tombstone resurrection: {summary.get('resurrection_count')}")
+          if len(summary.get('seeded_non_story_tombstones') or [])!=6:
+              raise SystemExit('expected six p068 non-story tombstones')
+          if summary.get('status')!='REVIEW_REQUIRED':
+              raise SystemExit('checkpoint must stop for human OCR review')
+          print(json.dumps(summary,indent=2))
+          PY
+
+      - name: Upload checkpoint 03 artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: 03-ocr-review-c2182180
+          path: checkpoint/03-ocr-review/
+          retention-days: 7
+          if-no-files-found: warn
