@@ -1,0 +1,283 @@
+name: Starting With 13 Hidden Traits 46 Checkpoint 02 Clean Review
+
+on:
+  push:
+    branches:
+      - trial/starting-with-13-hidden-traits-46
+    paths:
+      - .github/workflows/starting-with-13-hidden-traits-46-clean-review.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: starting-with-13-hidden-traits-46-human-loop
+  cancel-in-progress: false
+
+jobs:
+  detect-mask-inpaint:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    env:
+      PYTHONUNBUFFERED: "1"
+      MANGA_USE_DYNAMIC_LAMA: "1"
+      MANGA_ORT_PROVIDER: openvino
+      MANGA_ORT_REQUIRE_PROVIDER: "1"
+      MANGA_ORT_OPENVINO_SCOPE: detectors
+      MANGA_ORT_OPENVINO_THREADS: "2"
+      MANGA_ORT_OPENVINO_STREAMS: "1"
+      MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
+      OPENBLAS_NUM_THREADS: "1"
+      CHAPTER_ID: 57d7b970
+      CHAPTER_URL: https://asurascans.com/comics/starting-with-13-hidden-traits-53fc8424/chapter/46
+      IMPORT_RUN_ID: "34587403083"
+      IMPORT_ARTIFACT: 01-import-57d7b970
+    steps:
+      - name: Checkout trial branch
+        uses: actions/checkout@v4
+        with:
+          ref: trial/starting-with-13-hidden-traits-46
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install production clean runtime
+        run: |
+          python -m pip install \
+            numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 \
+            onnxruntime-openvino==1.24.1 psutil==6.1.1 loguru==0.7.2 \
+            requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 playwright==1.47.0 \
+            fastapi==0.115.0 'uvicorn[standard]==0.30.6' \
+            pydantic==2.9.2 filelock==3.16.1 python-multipart==0.0.12
+
+      - name: Restore detector and inpaint models
+        id: models
+        uses: actions/cache@v4
+        with:
+          path: |
+            models/*.onnx
+            models/.e2e-provenance.json
+          key: processing-profile-models-b224548-v1
+
+      - name: Read pinned model provisioner
+        if: steps.models.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: b22454827f8190655d7070b80eb20c2550beadfa
+          path: benchmark-bootstrap
+          sparse-checkout: scripts/provision_real_e2e_models.py
+          sparse-checkout-cone-mode: false
+
+      - name: Provision public-equivalent production models
+        if: steps.models.outputs.cache-hit != 'true'
+        run: |
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple torch==2.5.1+cpu torchvision==0.20.1+cpu
+          python -m pip install --no-deps ultralytics==8.3.221 onnx==1.17.0 onnxslim==0.1.71
+          python -m pip install sympy==1.13.1 PyYAML==6.0.2 scipy==1.14.1 tqdm==4.67.1 matplotlib==3.9.2 pandas==2.2.3 py-cpuinfo==9.0.0 ml_dtypes==0.5.3 colorama==0.4.6 polars==1.33.1 ultralytics-thop==2.0.17
+          python benchmark-bootstrap/scripts/provision_real_e2e_models.py
+          cp benchmark-bootstrap/models/*.onnx models/
+          cp benchmark-bootstrap/models/.e2e-provenance.json models/
+
+      - name: Restore reviewed import checkpoint
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf checkpoint/01-import checkpoint/02-clean-review data/raw/${CHAPTER_ID} data/processed/${CHAPTER_ID}
+          mkdir -p checkpoint/01-import checkpoint/02-clean-review
+          gh run download "$IMPORT_RUN_ID" -n "$IMPORT_ARTIFACT" -D checkpoint/01-import
+          test -f checkpoint/01-import/manifest.json
+          test -d checkpoint/01-import/raw/sliced
+          test -f trials/starting-with-13-hidden-traits-46/import-review.json
+          python - <<'PY'
+          import json
+          r=json.load(open('trials/starting-with-13-hidden-traits-46/import-review.json'))
+          recon=r.get('pixel_exact_reconstruction') or {}
+          if r.get('status')!='PASS': raise SystemExit(f'import gate not approved: {r}')
+          if recon.get('passed_pages')!=22 or recon.get('total_pages')!=22 or recon.get('differing_pixels')!=0:
+              raise SystemExit(f'import reconstruction gate failed: {recon}')
+          PY
+
+      - name: Restore production data layout
+        run: |
+          python - <<'PY'
+          import json, os, shutil
+          from pathlib import Path
+          from app.security import validate_chapter_id
+          chapter_id=validate_chapter_id(os.environ['CHAPTER_ID'])
+          source_root=Path('checkpoint/01-import')
+          raw_dst=Path('data/raw')/chapter_id
+          processed_dst=Path('data/processed')/chapter_id
+          raw_dst.parent.mkdir(parents=True,exist_ok=True)
+          processed_dst.mkdir(parents=True,exist_ok=True)
+          if raw_dst.exists(): shutil.rmtree(raw_dst)
+          shutil.copytree(source_root/'raw',raw_dst)
+          manifest=json.loads((source_root/'manifest.json').read_text(encoding='utf-8'))
+          if manifest.get('chapter_id')!=chapter_id: raise RuntimeError('checkpoint chapter_id mismatch')
+          if manifest.get('source_url')!=os.environ['CHAPTER_URL']: raise RuntimeError('checkpoint source URL mismatch')
+          for page in manifest.get('pages',[]):
+              original=str(page.get('original') or '')
+              prefix='checkpoint/01-import/raw/'
+              if not original.startswith(prefix): raise RuntimeError(f'unexpected checkpoint path: {original}')
+              page['original']=(raw_dst/original[len(prefix):]).as_posix()
+          (processed_dst/'manifest.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding='utf-8')
+          print(f"restored {len(manifest.get('pages',[]))} reviewed slices")
+          PY
+
+      - name: Run production detector mask and inpaint
+        run: |
+          python - <<'PY'
+          import json, os, time
+          from pathlib import Path
+          import cv2, numpy as np
+          from app.manifest_utils import load_manifest_raw
+          from app.mask_store import decode_mask_value
+          from app.optimized_pipeline import OptimizedChapterPipeline
+
+          chapter_id=os.environ['CHAPTER_ID']
+          pipeline=OptimizedChapterPipeline()
+          manifest=load_manifest_raw(chapter_id)
+          indices=[i for i,p in enumerate(manifest.get('pages',[])) if not p.get('skipped')]
+          if not indices: raise RuntimeError('checkpoint has no processable pages')
+          batches=[]
+          for start in range(0,len(indices),16):
+              batch=indices[start:start+16]
+              t0=time.perf_counter()
+              pipeline.process_pages(chapter_id,batch,workers=2)
+              elapsed=time.perf_counter()-t0
+              batches.append({'indices':batch,'elapsed_s':round(elapsed,3)})
+              print(f'processed {start+len(batch)}/{len(indices)} in {elapsed:.1f}s')
+
+          manifest=load_manifest_raw(chapter_id)
+          rows=[]; box_rows=[]
+          for i,page in enumerate(manifest.get('pages',[])):
+              boxes=page.get('boxes') or page.get('detections') or []
+              original_path=Path(str(page.get('original')))
+              img=cv2.imread(str(original_path),cv2.IMREAD_COLOR)
+              image_area=int(img.shape[0]*img.shape[1]) if img is not None else 0
+              mask_pixels=0; confidences=[]; free_text_boxes=0; residue_flags=[]
+              for bi,box in enumerate(boxes):
+                  value=box.get('confidence',box.get('conf',box.get('score')))
+                  try:
+                      if value is not None: confidences.append(float(value))
+                  except (TypeError,ValueError): pass
+                  label=' '.join(str(box.get(k) or '') for k in ('type','class','class_name','label','kind','origin','semantic_type')).lower()
+                  if any(token in label for token in ('text','sfx','free')) and 'bubble' not in label:
+                      free_text_boxes+=1
+                  for k,v in box.items():
+                      kl=str(k).lower()
+                      if ('residue' in kl or 'cleanup' in kl or 'verify' in kl) and v not in (None,False,'',[],{}):
+                          residue_flags.append({'box_id':box.get('id'),'key':k,'value':v})
+                  mask=decode_mask_value(box.get('mask'))
+                  if mask is not None: mask_pixels+=int(np.count_nonzero(mask>127))
+                  box_rows.append({
+                      'page_index':i,'source_page':page.get('source_page'),'slice_index':page.get('slice_index'),'box_index':bi,
+                      'box_id':box.get('id'),'semantic_type':box.get('semantic_type'),'class_name':box.get('class_name'),
+                      'safe_to_inpaint':box.get('safe_to_inpaint'),'confidence':value,
+                      'region':{k:box.get(k) for k in ('x1','y1','x2','y2')},
+                  })
+              ratio=(mask_pixels/image_area) if image_area else 0.0
+              rows.append({
+                  'page_index':i,'source_page':page.get('source_page'),'slice_index':page.get('slice_index'),
+                  'original':page.get('original'),'clean':page.get('clean'),'box_count':len(boxes),'free_text_like_boxes':free_text_boxes,
+                  'min_confidence':round(min(confidences),4) if confidences else None,'mask_fill_ratio':round(ratio,6),
+                  'needs_review':bool(page.get('needs_review')),'detection_state':page.get('detection_state'),
+                  'detection_issues':page.get('detection_issues') or [],'residue_flags':residue_flags,
+                  'process_revision':page.get('process_revision')
+              })
+          prioritized=sorted(rows,key=lambda r:(not r['needs_review'],-len(r['residue_flags']),-r['free_text_like_boxes'],-(r['mask_fill_ratio'] or 0),r['min_confidence'] if r['min_confidence'] is not None else 999,-r['box_count']))
+          summary={
+              'checkpoint':'02-clean-review','chapter_id':chapter_id,'source_url':os.environ['CHAPTER_URL'],
+              'slices':len(rows),'processable':len(indices),'batches':batches,
+              'total_boxes':sum(r['box_count'] for r in rows),
+              'free_text_like_boxes':sum(r['free_text_like_boxes'] for r in rows),
+              'needs_review_pages':[r['page_index'] for r in rows if r['needs_review']],
+              'residue_flag_pages':[r['page_index'] for r in rows if r['residue_flags']],
+              'priority_review_pages':[r['page_index'] for r in prioritized[:40]],
+              'next_action':'STOP_FOR_HUMAN_RAW_VS_CLEAN_REVIEW'
+          }
+          out=Path('checkpoint/02-clean-review'); out.mkdir(parents=True,exist_ok=True)
+          (out/'clean-review-summary.json').write_text(json.dumps(summary,ensure_ascii=False,indent=2),encoding='utf-8')
+          (out/'review-index.json').write_text(json.dumps(rows,ensure_ascii=False,indent=2),encoding='utf-8')
+          (out/'box-index.json').write_text(json.dumps(box_rows,ensure_ascii=False,indent=2),encoding='utf-8')
+          print(json.dumps(summary,ensure_ascii=False,indent=2))
+          PY
+
+      - name: Build RAW vs CLEAN review sheets
+        run: |
+          python - <<'PY'
+          import json, math, os
+          from pathlib import Path
+          from PIL import Image, ImageDraw, ImageFont
+          chapter_id=os.environ['CHAPTER_ID']
+          manifest=json.loads((Path('data/processed')/chapter_id/'manifest.json').read_text(encoding='utf-8'))
+          rows=json.loads((Path('checkpoint/02-clean-review')/'review-index.json').read_text(encoding='utf-8'))
+          box_rows=json.loads((Path('checkpoint/02-clean-review')/'box-index.json').read_text(encoding='utf-8'))
+          out=Path('checkpoint/02-clean-review/review-sheets'); out.mkdir(parents=True,exist_ok=True)
+          font=ImageFont.load_default()
+
+          def thumb(path,w,h):
+              with Image.open(path) as im:
+                  x=im.convert('RGB'); x.thumbnail((w,h),Image.Resampling.LANCZOS); return x.copy()
+          def full_card(pi):
+              p=manifest['pages'][pi]; meta=rows[pi]
+              raw=thumb(p['original'],205,300); clean=thumb(p['clean'],205,300)
+              card=Image.new('RGB',(430,340),'white')
+              card.paste(raw,((205-raw.width)//2,20+(300-raw.height)//2))
+              card.paste(clean,(220+(205-clean.width)//2,20+(300-clean.height)//2))
+              d=ImageDraw.Draw(card)
+              d.text((8,4),f"p{pi:03d} src={meta['source_page']} sl={meta['slice_index']} boxes={meta['box_count']} free={meta['free_text_like_boxes']} review={meta['needs_review']}",fill='black',font=font)
+              d.text((55,322),'RAW',fill='black',font=font); d.text((285,322),'CLEAN',fill='black',font=font)
+              return card
+          def save_cards(cards,prefix,cols=2,per=12):
+              if not cards: return
+              for start in range(0,len(cards),per):
+                  chunk=cards[start:start+per]; cw,ch=cards[0].size; rowsn=math.ceil(len(chunk)/cols)
+                  sheet=Image.new('RGB',(cols*cw,rowsn*ch),'white')
+                  for j,c in enumerate(chunk): sheet.paste(c,((j%cols)*cw,(j//cols)*ch))
+                  sheet.save(out/f'{prefix}-{start:03d}-{start+len(chunk)-1:03d}.jpg',quality=90)
+          full=[full_card(i) for i in range(len(manifest['pages']))]
+          save_cards(full,'full',2,12)
+
+          object_cards=[]
+          for r in box_rows:
+              pi=int(r['page_index']); p=manifest['pages'][pi]; reg=r.get('region') or {}
+              vals=[reg.get(k) for k in ('x1','y1','x2','y2')]
+              if any(v is None for v in vals): continue
+              x1,y1,x2,y2=map(int,vals); pad=45
+              with Image.open(p['original']) as imr, Image.open(p['clean']) as imc:
+                  rr=imr.convert('RGB'); cc=imc.convert('RGB')
+                  bx=(max(0,x1-pad),max(0,y1-pad),min(rr.width,x2+pad),min(rr.height,y2+pad))
+                  a=rr.crop(bx); b=cc.crop(bx)
+                  a.thumbnail((300,210),Image.Resampling.LANCZOS); b.thumbnail((300,210),Image.Resampling.LANCZOS)
+              card=Image.new('RGB',(640,260),'white')
+              card.paste(a,((310-a.width)//2,28+(210-a.height)//2)); card.paste(b,(330+(310-b.width)//2,28+(210-b.height)//2))
+              d=ImageDraw.Draw(card)
+              lab=f"p{pi:03d} box={r.get('box_id')} sem={r.get('semantic_type')} cls={r.get('class_name')} safe={r.get('safe_to_inpaint')} conf={r.get('confidence')}"
+              d.text((6,5),lab[:110],fill='black',font=font); d.text((125,242),'RAW',fill='black',font=font); d.text((455,242),'CLEAN',fill='black',font=font)
+              object_cards.append(card)
+          save_cards(object_cards,'objects',2,10)
+          print(f'generated review sheets: full={len(full)} objects={len(object_cards)}')
+          PY
+
+      - name: Pack durable clean checkpoint
+        run: |
+          mkdir -p checkpoint/02-clean-review
+          rm -rf checkpoint/02-clean-review/raw checkpoint/02-clean-review/processed
+          cp -a "data/raw/${CHAPTER_ID}" checkpoint/02-clean-review/raw
+          cp -a "data/processed/${CHAPTER_ID}" checkpoint/02-clean-review/processed
+          cat > checkpoint/02-clean-review/HUMAN_CHECKPOINT.txt <<'EOF'
+          CHECKPOINT: CLEAN REVIEW
+          STOP here. Inspect every full RAW/CLEAN sheet plus object sheets. Preserve artwork/SFX/title cards/credits/promos. Repair only actual blockers before OCR.
+          EOF
+
+      - name: Upload checkpoint 02 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: 02-clean-review-57d7b970
+          path: checkpoint/02-clean-review
+          if-no-files-found: error
+          retention-days: 7
