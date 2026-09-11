@@ -1,0 +1,59 @@
+{
+  "checkpoint": "CLEAN",
+  "status": "PASS",
+  "chapter_id": "c2182180",
+  "series_slug": "pick-me-up-infinite-gacha-53fc8424",
+  "chapter_number": 218,
+  "source_url": "https://asurascans.com/comics/pick-me-up-infinite-gacha-53fc8424/chapter/218",
+  "base_clean": {
+    "run_id": 34569707469,
+    "artifact": "02-clean-review-c2182180",
+    "slices": 69,
+    "detected_boxes": 291,
+    "free_text_like_boxes": 147
+  },
+  "human_review": {
+    "raw_vs_clean_full_sheets_reviewed": true,
+    "object_sheets_reviewed": true,
+    "stitch_core_ownership_checked": true,
+    "story_text_blockers": 0,
+    "artwork_damage_blockers": 0,
+    "source_story_residue_blockers": 0,
+    "overlap_false_blockers_resolved": true,
+    "notes": [
+      "Apparent SEAL SLOT / system-UI miss on page_index 64 is outside that slice stitch-core; the owned copy on page_index 65 is cleaned correctly.",
+      "Deferred owned regions were visually reviewed; retained material is SFX/artwork or intentional proper-name/UI material to be curated at OCR/translation rather than destructively inpainted.",
+      "Base clean incorrectly removed non-story promo/credit on page_index 68 and therefore required one local repair."
+    ]
+  },
+  "local_repair": {
+    "run_id": 34572578396,
+    "artifact": "02b-clean-local-repair-c2182180",
+    "page_index": 68,
+    "source_page": 14,
+    "slice_index": 4,
+    "classification": "non_story_promo_credit",
+    "action": "restore_raw_slice_pixel_exact",
+    "raw_vs_repaired_pixel_diff": 0,
+    "proof": "proof/p068-raw-base-repaired.jpg",
+    "drop_from_story_object_ids": [
+      "box_1e495d071d4b411e",
+      "box_d11c1f99136a451c",
+      "box_8b46e1802d9e4140",
+      "box_9390965e6221442e",
+      "box_e04ea3a527d14fb3",
+      "box_ad0016e700474eca"
+    ],
+    "tombstone_seed": {
+      "source_missing": true,
+      "auto_generated": false,
+      "origin": "human_review_drop",
+      "reason": "non_story_promo_credit"
+    }
+  },
+  "approved_clean_stack": {
+    "base": "02-clean-review-c2182180@34569707469",
+    "overlay": "02b-clean-local-repair-c2182180@34572578396"
+  },
+  "next_action": "RUN_OCR_FROM_RAW_AND_APPLY_NON_STORY_TOMBSTONE_SEED"
+}
