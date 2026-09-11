@@ -27,7 +27,11 @@
     "text_11e64b11e2ca4d3e": "Hay là vẫn chưa muộn...",
     "text_ea8d2ba708994691": "Tôi cần thêm lựa chọn.",
     "text_841023fa08de486a": "Tôi đến muộn sao...",
-    "text_d311557af53549ff": "Tôi phải xem Noel Mulizka sẽ chọn thế nào."
+    "text_d311557af53549ff": "Tôi phải xem Noel Mulizka sẽ chọn thế nào.",
+    "text_4a00225aabd3492e": "Ngay lúc này, Kinuan-",
+    "text_56e3bcaa60bd49dc": "Nhưng với tư cách quyền gia chủ-",
+    "text_e43e9a4488754cdf": "Ev- không, mẹ.",
+    "text_d4d1d0a1296a42bd": "Gọi tôi tới có chuyện gì-"
   },
   "editorial_review": {
     "all_active_source_translation_pairs_reviewed": true,
@@ -38,6 +42,8 @@
     "internal_monologue_pronoun": "tôi",
     "eva_lukais_addressing": "mẹ/con and ta/con according to speaker",
     "invented_jokes": false,
+    "visual_review_punctuation_normalizations": 4,
+    "punctuation_normalization_reason": "preserve source interruption hyphen and avoid glyph-only font fallback",
     "translation_pass_allowed_after_merge_validation": true
   }
 }
