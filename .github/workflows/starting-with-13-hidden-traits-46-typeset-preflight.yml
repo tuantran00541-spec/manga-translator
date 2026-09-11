@@ -1,0 +1,68 @@
+name: Starting With 13 Hidden Traits 46 Checkpoint 05 Typeset Preflight
+
+on:
+  push:
+    branches:
+      - trial/starting-with-13-hidden-traits-46
+    paths:
+      - .github/workflows/starting-with-13-hidden-traits-46-typeset-preflight.yml
+      - trials/starting-with-13-hidden-traits-46/build_typography_plan.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: starting-with-13-hidden-traits-46-human-loop
+  cancel-in-progress: false
+
+jobs:
+  typeset:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PYTHONPATH: ${{ github.workspace }}
+      TRANSLATION_RUN_ID: "34620124499"
+      TRANSLATION_ARTIFACT: 04-translation-reviewed-57d7b970
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: trial/starting-with-13-hidden-traits-46
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install typeset runtime
+        run: python -m pip install --only-binary=:all: numpy==1.26.4 Pillow==10.4.0 fonttools==4.54.1
+      - name: Restore translation checkpoint
+        run: |
+          rm -rf checkpoint/04-translation-review checkpoint/05-typeset
+          mkdir -p checkpoint/04-translation-review checkpoint/05-typeset
+          gh run download "$TRANSLATION_RUN_ID" -n "$TRANSLATION_ARTIFACT" -D checkpoint/04-translation-review
+          test -f checkpoint/04-translation-review/processed-manifest-translated.json
+          test -f checkpoint/04-translation-review/translation-review-summary.json
+      - name: Build adaptive typography plan
+        run: |
+          python trials/starting-with-13-hidden-traits-46/build_typography_plan.py \
+            --translation-root checkpoint/04-translation-review \
+            --output checkpoint/05-typeset
+      - name: Verify typeset hard gate
+        run: |
+          python - <<'PY'
+          import json
+          s=json.load(open('checkpoint/05-typeset/typeset-summary.json',encoding='utf-8'))
+          assert s['status']=='PASS',s
+          assert s['active_story_objects']==110 and s['styled_objects']==110,s
+          assert s['auto_font_size_objects']==0,s
+          assert s['glyph_missing_count']==0,s
+          assert s['overflow_count']==0,s
+          assert s['system_font']=='BeVietnamPro-SemiBold',s
+          print(json.dumps(s,ensure_ascii=False,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: 05-typeset-57d7b970
+          path: checkpoint/05-typeset/
+          retention-days: 7
+          if-no-files-found: error
