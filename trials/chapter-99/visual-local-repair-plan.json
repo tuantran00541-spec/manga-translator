@@ -1,0 +1,155 @@
+{
+  "chapter_id": "c0990099",
+  "status": "PLAN_READY",
+  "repair_count": 6,
+  "expected_rerendered_slices": [
+    9,
+    22,
+    24,
+    53,
+    57,
+    70
+  ],
+  "translation_punctuation_repairs": 4,
+  "semantic_free_text_repairs": 2,
+  "repairs": [
+    {
+      "page_index": 24,
+      "source_page": 6,
+      "slice_index": 3,
+      "id": "text_262b8ec9af7641c7",
+      "old": {
+        "font": "Mac-dinh-3",
+        "font_size": 60,
+        "role": "dialogue",
+        "translation": "Kẻ đã đặt tất cả những tạp chất này lên vai tôi chính là"
+      },
+      "new": {
+        "font": "Manga-fonts",
+        "font_size": 52,
+        "role": "free_analytical",
+        "translation": "Kẻ đã đặt tất cả những tạp chất này lên vai tôi chính là",
+        "wrapped_lines": [
+          "Kẻ đã đặt tất cả những tạp",
+          "chất này lên vai tôi chính là"
+        ]
+      },
+      "reason": "visual_repair_match_source_bold_serif_free_text_hierarchy"
+    },
+    {
+      "page_index": 22,
+      "source_page": 6,
+      "slice_index": 1,
+      "id": "text_289187ba8b3d462d",
+      "old": {
+        "font": "Mac-dinh-3",
+        "font_size": 50,
+        "role": "dialogue",
+        "translation": "rồi làm gián điệp cho Hoàng tộc ngay trong Kustoria và quân đội."
+      },
+      "new": {
+        "font": "Manga-fonts",
+        "font_size": 38,
+        "role": "free_analytical",
+        "translation": "rồi làm gián điệp cho Hoàng tộc ngay trong Kustoria và quân đội.",
+        "wrapped_lines": [
+          "rồi làm gián điệp cho Hoàng tộc",
+          "ngay trong Kustoria và quân đội."
+        ]
+      },
+      "reason": "visual_repair_match_source_bold_serif_free_text_hierarchy"
+    },
+    {
+      "page_index": 9,
+      "source_page": 3,
+      "slice_index": 1,
+      "id": "text_4a00225aabd3492e",
+      "old": {
+        "font": "Manga-fonts",
+        "font_size": 46,
+        "role": "dialogue",
+        "translation": "Ngay lúc này, Kinuan-"
+      },
+      "new": {
+        "font": "Mac-dinh-3",
+        "font_size": 60,
+        "role": "dialogue",
+        "translation": "Ngay lúc này, Kinuan-",
+        "wrapped_lines": [
+          "Ngay lúc này,",
+          "Kinuan-"
+        ]
+      },
+      "reason": "visual_repair_restore_primary_dialogue_font_after_source_hyphen_normalization"
+    },
+    {
+      "page_index": 53,
+      "source_page": 14,
+      "slice_index": 2,
+      "id": "text_56e3bcaa60bd49dc",
+      "old": {
+        "font": "Manga-fonts",
+        "font_size": 40,
+        "role": "dialogue",
+        "translation": "Nhưng với tư cách quyền gia chủ-"
+      },
+      "new": {
+        "font": "Mac-dinh-3",
+        "font_size": 60,
+        "role": "dialogue",
+        "translation": "Nhưng với tư cách quyền gia chủ-",
+        "wrapped_lines": [
+          "Nhưng với tư cách",
+          "quyền gia chủ-"
+        ]
+      },
+      "reason": "visual_repair_restore_primary_dialogue_font_after_source_hyphen_normalization"
+    },
+    {
+      "page_index": 70,
+      "source_page": 18,
+      "slice_index": 4,
+      "id": "text_d4d1d0a1296a42bd",
+      "old": {
+        "font": "Manga-fonts",
+        "font_size": 60,
+        "role": "dialogue",
+        "translation": "Gọi tôi tới có chuyện gì-"
+      },
+      "new": {
+        "font": "Mac-dinh-3",
+        "font_size": 60,
+        "role": "dialogue",
+        "translation": "Gọi tôi tới có chuyện gì-",
+        "wrapped_lines": [
+          "Gọi tôi tới có chuyện",
+          "gì-"
+        ]
+      },
+      "reason": "visual_repair_restore_primary_dialogue_font_after_source_hyphen_normalization"
+    },
+    {
+      "page_index": 57,
+      "source_page": 15,
+      "slice_index": 0,
+      "id": "text_e43e9a4488754cdf",
+      "old": {
+        "font": "Manga-fonts",
+        "font_size": 50,
+        "role": "dialogue",
+        "translation": "Ev- không, mẹ."
+      },
+      "new": {
+        "font": "Mac-dinh-3",
+        "font_size": 60,
+        "role": "dialogue",
+        "translation": "Ev- không, mẹ.",
+        "wrapped_lines": [
+          "Ev- không,",
+          "mẹ."
+        ]
+      },
+      "reason": "visual_repair_restore_primary_dialogue_font_after_source_hyphen_normalization"
+    }
+  ]
+}
