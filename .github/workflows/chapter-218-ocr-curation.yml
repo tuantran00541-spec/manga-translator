@@ -1,0 +1,85 @@
+name: Chapter 218 Checkpoint 03B OCR Curation
+
+on:
+  push:
+    branches:
+      - trial/chapter-render-218
+    paths:
+      - .github/workflows/chapter-218-ocr-curation.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: chapter-218-human-loop
+  cancel-in-progress: false
+
+jobs:
+  curate-ocr:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    env:
+      PYTHONUNBUFFERED: "1"
+      PYTHONPATH: ${{ github.workspace }}
+      GH_TOKEN: ${{ github.token }}
+      OCR_RUN_ID: "34575737326"
+      OCR_ARTIFACT: 03-ocr-review-c2182180
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: trial/chapter-render-218
+
+      - name: Restore OCR checkpoint
+        run: |
+          rm -rf checkpoint/03-ocr-review checkpoint/03b-ocr-curation
+          mkdir -p checkpoint/03-ocr-review checkpoint/03b-ocr-curation
+          gh run download "$OCR_RUN_ID" -n "$OCR_ARTIFACT" -D checkpoint/03-ocr-review
+          test -f checkpoint/03-ocr-review/processed-manifest.json
+          test -f checkpoint/03-ocr-review/ocr-review-summary.json
+          python - <<'PY'
+          import json
+          p='checkpoint/03-ocr-review/ocr-review-summary.json'
+          s=json.load(open(p,encoding='utf-8'))
+          assert s['ocr_source']=='RAW' and s['ocr_source_invariant_verified']
+          assert s['failed']==0 and s['resurrection_count']==0
+          assert s['status']=='REVIEW_REQUIRED'
+          PY
+
+      - name: Apply human OCR curation and resurrection gate
+        run: |
+          python trials/chapter-218/apply_ocr_curation.py \
+            --manifest checkpoint/03-ocr-review/processed-manifest.json \
+            --curation trials/chapter-218/ocr-curation.json \
+            --output checkpoint/03b-ocr-curation
+
+      - name: Verify curated OCR contract
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root=Path('checkpoint/03b-ocr-curation')
+          s=json.loads((root/'ocr-curation-summary.json').read_text(encoding='utf-8'))
+          assert s['status']=='PASS'
+          assert s['ocr_source']=='RAW'
+          assert s['active_story_objects']==98
+          assert s['active_empty_story_objects']==0
+          assert s['tombstones_total']==125
+          assert s['duplicate_overlaps']==0
+          assert s['reconciliation_created_first']==0
+          assert s['reconciliation_created_second']==0
+          assert s['resurrection_count']==0
+          assert s['auto_generated_active_objects']==0
+          assert not s['failures']
+          print(json.dumps(s,indent=2,ensure_ascii=False))
+          PY
+
+      - name: Upload checkpoint 03B artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: 03b-ocr-curated-c2182180
+          path: checkpoint/03b-ocr-curation/
+          retention-days: 7
+          if-no-files-found: error
