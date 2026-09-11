@@ -1,0 +1,50 @@
+{
+  "chapter_id": "c0990099",
+  "source_ocr_final_run_id": 34551318030,
+  "source_ocr_final_artifact": "03-ocr-final-c0990099",
+  "coverage_audit": {
+    "skipped_review_proposals_reviewed": 233,
+    "review_sheets_reviewed": 20,
+    "story_blockers_found": 1,
+    "other_visible_text_regions": "covered by an existing active story object or classified as SFX/decorative/credit/non-story"
+  },
+  "previous_gate": {
+    "active_story_objects": 131,
+    "persistent_tombstones": 44,
+    "status": "REOPENED_AFTER_SCENE_LEVEL_COVERAGE_REVIEW"
+  },
+  "manual_additions": [
+    {
+      "id": "text_manual_src16_eva_feels",
+      "page_index": 63,
+      "source_page": 16,
+      "slice_index": 5,
+      "semantic_type": "free_text",
+      "source_box_id": "box_228e9e53b9a945d4",
+      "source_boxes": [
+        "box_228e9e53b9a945d4",
+        "box_f5038d0c72b34caa",
+        "box_d0d47fd80b7f428a"
+      ],
+      "region": {
+        "x1": 52,
+        "y1": 1179,
+        "x2": 879,
+        "y2": 1368
+      },
+      "source_text": "I KNOW EXACTLY HOW EVA FEELS AS SHE ASKS ME THIS.",
+      "reason": "story narration visibly present on RAW and already removed by CLEAN, but every detector/recovery proposal covering it was ocr_eligible=false",
+      "origin": "human_review_story_manual_coverage_repair"
+    }
+  ],
+  "required_gate_after_repair": {
+    "active_story_objects": 132,
+    "persistent_tombstones": 44,
+    "manual_story_additions": 1,
+    "active_unreviewed_objects": 0,
+    "owner_core_violations": 0,
+    "high_iou_duplicate_pairs": 0,
+    "reconciliation_created_objects": 0,
+    "reload_resurrection_created_objects": 0
+  }
+}
