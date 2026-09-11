@@ -1,0 +1,75 @@
+{
+  "checkpoint": "VISUAL_REVIEW",
+  "chapter_id": "c2182180",
+  "series_slug": "pick-me-up-infinite-gacha-53fc8424",
+  "series_title": "Pick Me Up, Infinite Gacha",
+  "chapter_number": 218,
+  "source_url": "https://asurascans.com/comics/pick-me-up-infinite-gacha-53fc8424/chapter/218",
+  "status": "PASS",
+  "render_run_id": 34584069503,
+  "render_artifact": "06-render-review-c2182180",
+  "render_artifact_id": 10192871978,
+  "render_head_sha": "f2b018a15e4853169fc107c74ba5c05363c7b03a",
+  "source_pages": 15,
+  "render_slices": 69,
+  "active_story_objects": 98,
+  "persistent_tombstones": 125,
+  "proof_review": {
+    "object_proof_sheets_reviewed": 9,
+    "full_page_contact_sheets_reviewed": 1,
+    "focused_status_proofs_reviewed": 3,
+    "all_active_story_objects_covered_by_object_proofs": true,
+    "full_chapter_page_order_reviewed": true
+  },
+  "initial_visual_issues": [
+    {
+      "kind": "status_ui_inter_column_collision",
+      "source_page": 14,
+      "slice_page_index": 64,
+      "description": "Skill/status labels collided across neighboring columns because OCR-derived regions overlapped and the initial semantic font was too decorative/wide."
+    }
+  ],
+  "local_repairs": {
+    "repair_iterations": 2,
+    "final_typeset_run_id": 34583966632,
+    "final_typeset_artifact": "05b-typeset-local-repair-c2182180",
+    "final_typeset_artifact_id": 10192770672,
+    "selected_status_font": "Mac-dinh-3",
+    "status_grid_objects_repositioned": 8,
+    "status_grid_title_preserved": true,
+    "column_geometry": "four_non_overlapping_cells_with_minimum_10px_gap",
+    "font_sizes_remain_content_and_region_adaptive": true,
+    "global_fixed_font_size_policy_used": false
+  },
+  "checks": {
+    "overflow_blockers": 0,
+    "clipping_blockers": 0,
+    "missing_text_blockers": 0,
+    "duplicate_text_blockers": 0,
+    "source_text_residue_blockers": 0,
+    "artwork_damage_blockers": 0,
+    "seam_blockers": 0,
+    "glyph_blockers": 0,
+    "status_grid_collision_blockers": 0,
+    "visual_blockers_total": 0
+  },
+  "typography": {
+    "font_size_auto_objects": 0,
+    "final_font_size_min_px": 22,
+    "final_font_size_max_px": 90,
+    "adaptive_font_sizing_accepted": true,
+    "content_density_and_region_based_sizing_accepted": true,
+    "status_ui_local_font_override_accepted": true
+  },
+  "repair_scope_verification": {
+    "unchanged_source_pages_after_status_repair": 14,
+    "changed_source_pages_after_status_repair": 1,
+    "changed_source_page_index": 14,
+    "changed_region_observed": "status panel only",
+    "unrelated_page_regression_seen": false
+  },
+  "visual_pass_allowed": true,
+  "final_export_allowed": true,
+  "blockers": [],
+  "next_action": "RUN_FINAL_PACKAGE"
+}
