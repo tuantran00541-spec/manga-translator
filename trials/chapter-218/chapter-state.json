@@ -6,9 +6,10 @@
   "source_url": "https://asurascans.com/comics/pick-me-up-infinite-gacha-53fc8424/chapter/218",
   "branch": "trial/chapter-render-218",
   "source_of_truth_sha": "6a6ac244e9c5db87b7f9d0b815416930f2f29033",
-  "current_stage": "CLEAN_PENDING",
-  "last_passed_checkpoint": "IMPORT",
-  "current_artifact": "01-import-c2182180",
+  "last_reviewed_branch_sha": "2f63c768861e9ddedafe097a90b9c6383437619c",
+  "current_stage": "OCR_PENDING",
+  "last_passed_checkpoint": "CLEAN",
+  "current_artifact": "02-clean-review-c2182180@34569707469 + overlay:02b-clean-local-repair-c2182180@34572578396",
   "blockers": [],
-  "next_action": "RUN_CHECKPOINT_02_CLEAN_REVIEW"
+  "next_action": "RUN_CHECKPOINT_03_OCR_FROM_RAW"
 }
