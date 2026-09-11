@@ -4,13 +4,22 @@
   "series": "Bad Born Blood",
   "source_url": "https://asurascans.com/comics/bad-born-blood-53fc8424/chapter/99",
   "branch": "trial/chapter-render-99",
-  "current_stage": "CLEAN_PENDING",
-  "last_passed_checkpoint": "IMPORT",
+  "current_stage": "OCR_PENDING",
+  "last_passed_checkpoint": "CLEAN",
   "current_artifact": {
-    "run_id": 34545550272,
-    "artifact_name": "01-import-c0990099",
-    "artifact_id": 10178871033
+    "run_id": 34549043757,
+    "artifact_name": "02-clean-review-approved-c0990099",
+    "artifact_id": 10180101888
+  },
+  "clean_review": {
+    "status": "PASS_AFTER_REPAIR",
+    "source_pages_reviewed": 20,
+    "zoom_chunks_reviewed": 108,
+    "story_inpaint_blockers": 0,
+    "free_text_residue_blockers": 0,
+    "artwork_damage_blockers": 0,
+    "repairs": 4
   },
   "blockers": [],
-  "next_action": "Run production DETECT/MASK/INPAINT, then stop for RAW vs CLEAN human review"
+  "next_action": "Run OCR from ORIGINAL/RAW only, then stop for human OCR review and curation"
 }
