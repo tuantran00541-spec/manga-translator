@@ -1,0 +1,230 @@
+name: Chapter 99 Translation Final Review
+
+on:
+  push:
+    branches:
+      - trial/chapter-render-99
+    paths:
+      - .github/workflows/chapter-99-translation-final-review.yml
+      - trials/chapter-99/translation-revision.json
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: chapter-99-human-loop
+  cancel-in-progress: false
+
+jobs:
+  translation-final:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    env:
+      CHAPTER_ID: c0990099
+      OCR_FINAL_RUN_ID: "34554517933"
+      OCR_FINAL_ARTIFACT: 03-ocr-final-repaired-c0990099
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: trial/chapter-render-99
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Restore repaired OCR-final checkpoint
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf checkpoint/04-translation-final
+          mkdir -p checkpoint/04-translation-final
+          gh run download "$OCR_FINAL_RUN_ID" -n "$OCR_FINAL_ARTIFACT" -D checkpoint/04-translation-final
+          test -f checkpoint/04-translation-final/processed/manifest.json
+          test -f trials/chapter-99/translation-map.json
+          test -f trials/chapter-99/translation-revision.json
+
+      - name: Merge and apply human-reviewed Vietnamese translation
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path('checkpoint/04-translation-final')
+          mp = root / 'processed' / 'manifest.json'
+          manifest = json.loads(mp.read_text(encoding='utf-8'))
+          base = json.loads(Path('trials/chapter-99/translation-map.json').read_text(encoding='utf-8'))
+          rev = json.loads(Path('trials/chapter-99/translation-revision.json').read_text(encoding='utf-8'))
+
+          if base.get('chapter_id') != 'c0990099' or rev.get('chapter_id') != 'c0990099':
+              raise SystemExit('translation metadata chapter mismatch')
+          if base.get('language') != 'vi' or rev.get('language') != 'vi':
+              raise SystemExit('translation language mismatch')
+          editorial = rev.get('editorial_review') or {}
+          if not editorial.get('all_active_source_translation_pairs_reviewed') or not editorial.get('translation_pass_allowed_after_merge_validation'):
+              raise SystemExit('human translation review has not authorized final merge')
+
+          ocr = manifest.get('human_ocr_review') or {}
+          if not ocr.get('ocr_pass_allowed') or int(ocr.get('active_story_objects', -1)) != 132:
+              raise SystemExit(f'repaired OCR gate not valid: {ocr}')
+          if int(ocr.get('manual_story_additions', 0)) != 1 or int(ocr.get('reload_resurrection_created_objects', -1)) != 0:
+              raise SystemExit(f'repaired OCR coverage invariants missing: {ocr}')
+
+          translations = dict(base.get('translations') or {})
+          translations.update(rev.get('translation_overrides') or {})
+          additions = rev.get('translation_additions') or {}
+          overlap = sorted(set(additions) & set(translations))
+          if overlap:
+              raise SystemExit(f'translation additions collide with base ids: {overlap}')
+          translations.update(additions)
+
+          glossary = dict(base.get('glossary') or {})
+          glossary.update(rev.get('glossary_overrides') or {})
+
+          active = {}
+          tombstones = []
+          for pi, page in enumerate(manifest.get('pages') or []):
+              for obj in page.get('text_objects') or []:
+                  oid = str(obj.get('id') or '')
+                  if obj.get('source_missing'):
+                      tombstones.append(oid)
+                      if str(obj.get('translation') or '').strip():
+                          raise SystemExit(f'tombstone carries translation {oid}')
+                      continue
+                  if obj.get('human_review') != 'keep_story':
+                      raise SystemExit(f'active OCR object not human-reviewed {oid}')
+                  if not str(obj.get('ocr_text') or '').strip():
+                      raise SystemExit(f'blank active OCR source {oid}')
+                  if oid in active:
+                      raise SystemExit(f'duplicate active object id {oid}')
+                  active[oid] = (pi, page, obj)
+
+          expected = int(rev.get('expected_active_story_objects', -1))
+          if len(active) != expected or len(active) != 132 or len(tombstones) != 44:
+              raise SystemExit(f'checkpoint counts mismatch active={len(active)} expected={expected} tombstones={len(tombstones)}')
+          missing = sorted(set(active) - set(translations))
+          extra = sorted(set(translations) - set(active))
+          if missing or extra:
+              raise SystemExit(f'translation ids mismatch missing={missing} extra={extra}')
+
+          rows = []
+          compactness_review = []
+          free_text = []
+          for oid, (pi, page, obj) in active.items():
+              vi = str(translations[oid]).strip()
+              src = str(obj.get('ocr_text') or '').strip()
+              if not vi:
+                  raise SystemExit(f'blank translation {oid}')
+              obj.update({
+                  'translation': vi,
+                  'translation_lang': 'vi',
+                  'translation_source': 'human_editor_final_ch99',
+                  'translation_input_text': src,
+                  'human_translation_review': 'accepted',
+                  'translation_revision_applied': True,
+              })
+              obj.pop('translation_model', None)
+              obj.pop('auto_translation', None)
+              ratio = len(vi) / max(1, len(src))
+              row = {
+                  'page_index': pi,
+                  'source_page': int(page.get('source_page', pi)),
+                  'slice_index': int(page.get('slice_index', 0)),
+                  'id': oid,
+                  'semantic_type': str(obj.get('semantic_type') or 'text'),
+                  'source_text': src,
+                  'translation': vi,
+                  'source_chars': len(src),
+                  'translation_chars': len(vi),
+                  'length_ratio': round(ratio, 3),
+              }
+              rows.append(row)
+              if row['semantic_type'] == 'free_text':
+                  free_text.append(row)
+              if len(vi) >= 95 or ratio >= 1.55:
+                  compactness_review.append(row)
+
+          # These are review prompts, not automatic failures. Every source/VI pair
+          # was manually reviewed before this gate; short Vietnamese labels can
+          # have a high ratio while still typesetting comfortably, and a long
+          # sentence shorter than its English source is not a compactness blocker.
+          compactness_blockers = []
+          for row in compactness_review:
+              if row['translation_chars'] >= 120 and row['length_ratio'] >= 1.20:
+                  compactness_blockers.append(row)
+          if compactness_blockers:
+              raise SystemExit(f'unresolved compactness blockers: {[r["id"] for r in compactness_blockers]}')
+
+          untranslated = [oid for oid, (_pi, _p, obj) in active.items() if not str(obj.get('translation') or '').strip()]
+          if untranslated:
+              raise SystemExit(f'active untranslated story objects remain: {untranslated}')
+
+          rows.sort(key=lambda r: (r['source_page'], r['page_index'], r['id']))
+          manifest['human_translation_review'] = {
+              'status': 'PASS',
+              'target_lang': 'vi',
+              'active_story_objects': 132,
+              'translated_story_objects': 132,
+              'active_untranslated_story_objects': 0,
+              'persistent_tombstones': 44,
+              'free_text_objects': len(free_text),
+              'compactness_reviewed_objects': len(compactness_review),
+              'compactness_blockers': 0,
+              'manual_ocr_story_additions_translated': 1,
+              'translation_pass_allowed': True,
+              'next_action': 'TYPESET_RENDER_ALLOWED',
+          }
+
+          serialized = json.dumps(manifest, ensure_ascii=False, indent=2)
+          mp.write_text(serialized, encoding='utf-8')
+          (root / 'manifest.json').write_text(serialized, encoding='utf-8')
+          (root / 'translation-review.json').write_text(json.dumps(rows, ensure_ascii=False, indent=2), encoding='utf-8')
+          (root / 'translation-compactness-reviewed.json').write_text(json.dumps(compactness_review, ensure_ascii=False, indent=2), encoding='utf-8')
+
+          final_map = {
+              'chapter_id': 'c0990099',
+              'language': 'vi',
+              'source_ocr_run_id': 34549198271,
+              'source_ocr_base_final_run_id': 34551318030,
+              'source_ocr_final_run_id': 34554517933,
+              'source_ocr_final_artifact': '03-ocr-final-repaired-c0990099',
+              'expected_active_story_objects': 132,
+              'glossary': glossary,
+              'style': {**(base.get('style') or {}), 'internal_monologue_pronoun': 'tôi'},
+              'editorial_revision': editorial,
+              'translations': {row['id']: row['translation'] for row in rows},
+          }
+          (root / 'translation-final-map.json').write_text(json.dumps(final_map, ensure_ascii=False, indent=2), encoding='utf-8')
+
+          summary = {
+              'checkpoint': '04-translation-final',
+              'chapter_id': 'c0990099',
+              **manifest['human_translation_review'],
+              'translation_revision_overrides': len(rev.get('translation_overrides') or {}),
+              'translation_revision_additions': len(additions),
+              'glossary_overrides': len(rev.get('glossary_overrides') or {}),
+          }
+          (root / 'translation-review-summary.json').write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding='utf-8')
+          print(json.dumps(summary, ensure_ascii=False, indent=2))
+          PY
+
+      - name: Publish final translation review
+        run: |
+          cp checkpoint/04-translation-final/translation-final-map.json trials/chapter-99/translation-final-map.json
+          cp checkpoint/04-translation-final/translation-review-summary.json trials/chapter-99/translation-review-summary.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add trials/chapter-99/translation-final-map.json trials/chapter-99/translation-review-summary.json
+          if ! git diff --cached --quiet; then
+            git commit -m "review: pass chapter 99 Vietnamese translation gate"
+            git push origin HEAD:trial/chapter-render-99
+          fi
+
+      - name: Upload final translation checkpoint
+        uses: actions/upload-artifact@v4
+        with:
+          name: 04-translation-final-c0990099
+          path: checkpoint/04-translation-final
+          retention-days: 7
+          if-no-files-found: error
