@@ -1,0 +1,88 @@
+name: Chapter 218 Checkpoint 05B Typeset Local Repair
+
+on:
+  push:
+    branches:
+      - trial/chapter-render-218
+    paths:
+      - .github/workflows/chapter-218-typeset-local-repair.yml
+      - trials/chapter-218/apply_status_ui_repair.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: chapter-218-human-loop
+  cancel-in-progress: false
+
+env:
+  TYPESET_RUN_ID: "34580885638"
+  TYPESET_ARTIFACT: 05-typeset-preflight-c2182180
+  CANDIDATE_RUN_ID: "34582722992"
+  CANDIDATE_ARTIFACT: 06b-status-ui-font-candidates-c2182180
+
+jobs:
+  typeset-local-repair:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: trial/chapter-render-218
+
+      - name: Restore approved typeset and candidate proof
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf checkpoint/05-typeset checkpoint/06b-ui-font-candidates checkpoint/05b-typeset-local-repair
+          mkdir -p checkpoint/05-typeset checkpoint/06b-ui-font-candidates checkpoint/05b-typeset-local-repair
+          gh run download "$TYPESET_RUN_ID" -n "$TYPESET_ARTIFACT" -D checkpoint/05-typeset
+          gh run download "$CANDIDATE_RUN_ID" -n "$CANDIDATE_ARTIFACT" -D checkpoint/06b-ui-font-candidates
+          test -f checkpoint/05-typeset/processed-manifest-typeset.json
+          test -f checkpoint/05-typeset/typography-plan.json
+          test -f checkpoint/05-typeset/typeset-preflight-summary.json
+          test -f checkpoint/06b-ui-font-candidates/candidate-report.json
+
+      - name: Apply human-selected local status UI repair
+        run: |
+          python trials/chapter-218/apply_status_ui_repair.py \
+            --typeset-root checkpoint/05-typeset \
+            --candidate-report checkpoint/06b-ui-font-candidates/candidate-report.json \
+            --output checkpoint/05b-typeset-local-repair
+
+      - name: Verify local repair gate
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root=Path('checkpoint/05b-typeset-local-repair')
+          s=json.loads((root/'typeset-preflight-summary.json').read_text(encoding='utf-8'))
+          r=json.loads((root/'typeset-local-repair.json').read_text(encoding='utf-8'))
+          m=json.loads((root/'processed-manifest-typeset.json').read_text(encoding='utf-8'))
+          assert s.get('status') == 'PASS', s
+          assert s.get('active_story_objects') == 98, s
+          assert s.get('styled_story_objects') == 98, s
+          assert s.get('font_size_auto_count') == 0, s
+          assert s.get('overflow_count') == 0, s
+          assert s.get('missing_glyph_count') == 0, s
+          assert s.get('local_repair_object_count') == 9, s
+          assert s.get('local_repair_font') == 'Mac-dinh-3', s
+          assert r.get('status') == 'PASS_PENDING_RENDER_VISUAL_REVIEW', r
+          assert len(r.get('target_object_ids') or []) == 9, r
+          assert len(m.get('pages') or []) == 69, len(m.get('pages') or [])
+          print(json.dumps({
+            'status': s['status'], 'repair_count': s['local_repair_object_count'],
+            'font': s['local_repair_font'], 'min_size': s['minimum_font_size'],
+            'warnings': s['readability_warning_count']
+          }, ensure_ascii=False, indent=2))
+          PY
+
+      - name: Upload local typeset repair
+        uses: actions/upload-artifact@v4
+        with:
+          name: 05b-typeset-local-repair-c2182180
+          path: checkpoint/05b-typeset-local-repair/
+          retention-days: 7
+          if-no-files-found: error
