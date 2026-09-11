@@ -15,6 +15,7 @@ assert(nav.includes('activeButton = buttons[currentIndex]'), 'active update must
 assert(!/updateActiveItem[\s\S]{0,900}querySelectorAll/.test(nav), 'active update must not scan the whole navigator DOM');
 
 assert(release.includes('preserveStageShell'), 'stage shell identity must be preserved');
+assert(release.includes('stageName !== "editor"'), 'editor must not reparent a large cached stage shell on each page switch');
 assert(release.includes('ResizeObserver'), 'header height must be measured, not hard-coded');
 assert(release.includes('frontendReleaseEncodeCanvas'), 'mask encoder must be exported for regression/benchmark use');
 assert(release.includes('createImageBitmap(canvas)'), 'worker path must snapshot canonical canvas pixels');

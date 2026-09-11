@@ -759,7 +759,12 @@ handleChapterChange();
 const restored = stageName === "editor" ? applyStoredDraftsToManifest() : [];
 const context = captureViewContext();
 const oldEntry = shellRegistry.get(stageName);
-const canReuse = oldEntry && oldEntry.chapterId === chapterId();
+// Editor already keeps its page navigator instance.  Reparenting the whole
+// stage shell after every editor render moves a large thumbnail tree again and
+// wakes all editor observers; on large chapters this can block the main thread.
+// Keep shell preservation for Preview/Review, but let Editor replace its own
+// small render tree normally.
+const canReuse = stageName !== "editor" && oldEntry && oldEntry.chapterId === chapterId();
 const result = original(...args);
 const grid = preserveStageShell(stageName, canReuse ? oldEntry.grid : null, context) || currentGrid();
 if (grid) shellRegistry.set(stageName, { chapterId: chapterId(), grid });
