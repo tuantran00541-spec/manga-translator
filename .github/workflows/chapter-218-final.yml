@@ -1,0 +1,275 @@
+name: Chapter 218 FINAL Human Approved Export
+
+on:
+  push:
+    branches:
+      - trial/chapter-render-218
+    paths:
+      - .github/workflows/chapter-218-final.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: chapter-218-human-loop
+  cancel-in-progress: false
+
+jobs:
+  final-export:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    env:
+      CHAPTER_ID: c2182180
+      RENDER_RUN_ID: "34584069503"
+      RENDER_ARTIFACT: 06-render-review-c2182180
+      FINAL_NAME: Pick-Me-Up-Infinite-Gacha-Chapter-218-VI-FINAL.zip
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: trial/chapter-render-218
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install final integrity dependency
+        run: python -m pip install --disable-pip-version-check --quiet Pillow==10.4.0
+
+      - name: Validate durable human gates
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path('trials/chapter-218')
+          def load(name):
+              p = root / name
+              if not p.is_file():
+                  raise SystemExit(f'missing durable gate {p}')
+              return json.loads(p.read_text(encoding='utf-8'))
+
+          imp = load('import-review.json')
+          assert imp.get('status') == 'PASS' and imp.get('chapter_id') == 'c2182180', imp
+          assert imp.get('series_slug') == 'pick-me-up-infinite-gacha-53fc8424', imp
+          assert imp.get('chapter_number') == 218 and imp.get('source_images') == 15 and imp.get('slices') == 69, imp
+          assert imp.get('ownership_issues') == 0 and imp.get('skipped_pages') == 0, imp
+          rec = imp.get('reconstruction') or {}
+          assert rec.get('pixel_exact_pages') == 15 and rec.get('total_pages') == 15, rec
+          assert rec.get('coverage_min') == 1 and rec.get('coverage_max') == 1, rec
+          assert rec.get('diff_pixels_total') == 0 and rec.get('max_channel_diff') == 0, rec
+          assert imp.get('technical_pass') is True and imp.get('editorial_pass') is True, imp
+
+          clean = load('clean-review.json')
+          assert clean.get('status') == 'PASS' and clean.get('chapter_id') == 'c2182180', clean
+          human = clean.get('human_review') or {}
+          assert human.get('story_text_blockers') == 0, human
+          assert human.get('artwork_damage_blockers') == 0, human
+          assert human.get('source_story_residue_blockers') == 0, human
+          local = clean.get('local_repair') or {}
+          assert local.get('action') == 'restore_raw_slice_pixel_exact', local
+          assert local.get('raw_vs_repaired_pixel_diff') == 0 and local.get('page_index') == 68, local
+
+          ocr = load('ocr-curation.json')
+          assert ocr.get('chapter_id') == 'c2182180' and ocr.get('checkpoint') == '03b-ocr-curation', ocr
+          basis = ocr.get('review_basis') or {}
+          assert basis.get('ocr_source') == 'RAW', basis
+          assert basis.get('ocr_review_sheets_viewed') == 6, basis
+          assert basis.get('empty_candidates_raw_context_reviewed') == 94, basis
+          exp = ocr.get('expected') or {}
+          assert exp.get('active_story_objects') == 98, exp
+          assert exp.get('active_empty_story_objects') == 0, exp
+          assert exp.get('duplicate_overlaps') == 0 and exp.get('resurrection_count') == 0, exp
+
+          tr = load('translation-review.json')
+          assert tr.get('status') == 'PASS' and tr.get('chapter_id') == 'c2182180', tr
+          assert tr.get('active_story_objects') == 98 and tr.get('translated_story_objects') == 98, tr
+          assert tr.get('active_untranslated_story_objects') == 0, tr
+          assert tr.get('scene_reviewed') is True and tr.get('source_order_reviewed') is True, tr
+          assert tr.get('terminology_consistent') is True and tr.get('character_voice_reviewed') is True, tr
+
+          visual = load('visual-review.json')
+          assert visual.get('status') == 'PASS' and visual.get('chapter_id') == 'c2182180', visual
+          assert visual.get('render_run_id') == 34584069503 and visual.get('render_artifact_id') == 10192871978, visual
+          assert visual.get('source_pages') == 15 and visual.get('render_slices') == 69, visual
+          assert visual.get('active_story_objects') == 98 and visual.get('persistent_tombstones') == 125, visual
+          assert (visual.get('checks') or {}).get('visual_blockers_total') == 0, visual
+          assert visual.get('visual_pass_allowed') is True and visual.get('final_export_allowed') is True, visual
+          typo = visual.get('typography') or {}
+          assert typo.get('font_size_auto_objects') == 0 and typo.get('adaptive_font_sizing_accepted') is True, typo
+
+          state = load('chapter-state.json')
+          assert state.get('current_stage') == 'FINAL_PENDING', state
+          assert state.get('last_passed_checkpoint') == 'VISUAL_REVIEW' and state.get('blockers') == [], state
+          current = state.get('current_artifact') or {}
+          assert current.get('run_id') == 34584069503 and current.get('artifact_id') == 10192871978, current
+          assert state.get('series_slug') == 'pick-me-up-infinite-gacha-53fc8424', state
+          assert state.get('source_url') == 'https://asurascans.com/comics/pick-me-up-infinite-gacha-53fc8424/chapter/218', state
+          print(json.dumps({'import':'PASS','clean':'PASS','ocr':'PASS','translation':'PASS','visual':'PASS','final_export_allowed':True}, indent=2))
+          PY
+
+      - name: Restore human-approved render candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf checkpoint/06-render checkpoint/07-final
+          mkdir -p checkpoint/06-render checkpoint/07-final
+          gh run download "$RENDER_RUN_ID" -n "$RENDER_ARTIFACT" -D checkpoint/06-render
+          test -f checkpoint/06-render/Pick-Me-Up-Infinite-Gacha-Chapter-218-VI-RENDER-REVIEW.zip
+          test -f checkpoint/06-render/render-review-summary.json
+          test -f checkpoint/06-render/processed-manifest-rendered.json
+
+      - name: Verify rendered manifest and FINAL archive integrity
+        run: |
+          python - <<'PY'
+          import hashlib, json, shutil, zipfile
+          from pathlib import Path
+          from PIL import Image
+
+          src_root = Path('checkpoint/06-render')
+          out = Path('checkpoint/07-final')
+          out.mkdir(parents=True, exist_ok=True)
+          summary = json.loads((src_root/'render-review-summary.json').read_text(encoding='utf-8'))
+          manifest = json.loads((src_root/'processed-manifest-rendered.json').read_text(encoding='utf-8'))
+          visual = json.loads(Path('trials/chapter-218/visual-review.json').read_text(encoding='utf-8'))
+
+          assert summary.get('status') == 'TECHNICAL_PASS_PENDING_HUMAN_VISUAL_REVIEW', summary
+          assert summary.get('slices') == 69 and summary.get('source_pages') == 15, summary
+          assert summary.get('active_story_objects') == 98 and summary.get('persistent_tombstones') == 125, summary
+          assert summary.get('font_size_auto_count') == 0, summary
+          assert (summary.get('render_stats') or {}).get('rendered') == 69, summary
+          assert visual.get('status') == 'PASS' and visual.get('render_run_id') == 34584069503, visual
+
+          active = tombstones = untranslated = auto = 0
+          for page in manifest.get('pages') or []:
+              for obj in page.get('text_objects') or []:
+                  if not isinstance(obj, dict):
+                      continue
+                  if obj.get('source_missing'):
+                      tombstones += 1
+                      continue
+                  active += 1
+                  if not str(obj.get('translation') or '').strip():
+                      untranslated += 1
+                  fs = str((obj.get('style') or {}).get('fontSize') or '').strip().lower()
+                  if fs == 'auto':
+                      auto += 1
+          if (active, tombstones, untranslated, auto) != (98, 125, 0, 0):
+              raise SystemExit(f'manifest gate failed active={active} tombstones={tombstones} untranslated={untranslated} auto={auto}')
+
+          src_zip = src_root/'Pick-Me-Up-Infinite-Gacha-Chapter-218-VI-RENDER-REVIEW.zip'
+          final_zip = out/'Pick-Me-Up-Infinite-Gacha-Chapter-218-VI-FINAL.zip'
+          expected_names = [f'page_{i:03d}.png' for i in range(1, 16)]
+          expected_dims = [
+              (1200,800),(900,16000),(900,16000),(900,1463),(900,16000),
+              (900,16000),(900,4819),(900,16000),(900,16000),(900,5400),
+              (900,16000),(900,16000),(900,4869),(900,16000),(900,14991),
+          ]
+          page_meta = []
+          with zipfile.ZipFile(src_zip) as z:
+              members = [n for n in z.namelist() if not n.endswith('/')]
+              if members != expected_names:
+                  raise SystemExit(f'archive order/content mismatch: {members}')
+              for idx, (name, exp_dim) in enumerate(zip(expected_names, expected_dims)):
+                  data = z.read(name)
+                  if not data:
+                      raise SystemExit(f'empty page {name}')
+                  with z.open(name) as f, Image.open(f) as im:
+                      im.load()
+                      actual = (im.width, im.height)
+                  if actual != exp_dim:
+                      raise SystemExit(f'{name} dimensions {actual} expected {exp_dim}')
+                  page_meta.append({
+                      'source_page_index': idx,
+                      'file': name,
+                      'width': exp_dim[0],
+                      'height': exp_dim[1],
+                      'bytes': len(data),
+                      'sha256': hashlib.sha256(data).hexdigest(),
+                  })
+
+          shutil.copy2(src_zip, final_zip)
+          archive_bytes = final_zip.read_bytes()
+          report = {
+              'chapter_id': 'c2182180',
+              'series': 'Pick Me Up, Infinite Gacha',
+              'series_slug': 'pick-me-up-infinite-gacha-53fc8424',
+              'chapter_number': 218,
+              'status': 'FINAL_PASS',
+              'branch': 'trial/chapter-render-218',
+              'source_url': 'https://asurascans.com/comics/pick-me-up-infinite-gacha-53fc8424/chapter/218',
+              'source_render_run_id': 34584069503,
+              'source_render_artifact': '06-render-review-c2182180',
+              'source_render_artifact_id': 10192871978,
+              'source_pages': 15,
+              'render_slices': 69,
+              'active_story_objects': 98,
+              'persistent_tombstones': 125,
+              'active_untranslated_story_objects': 0,
+              'import_gate': 'PASS',
+              'clean_gate': 'PASS_AFTER_LOCAL_REPAIR',
+              'ocr_gate': 'PASS_AFTER_HUMAN_CURATION',
+              'translation_gate': 'PASS',
+              'typeset_gate': 'PASS_AFTER_LOCAL_STATUS_UI_REPAIR',
+              'visual_gate': 'PASS',
+              'visual_blockers_remaining': 0,
+              'adaptive_content_density_typography': True,
+              'font_size_auto_objects': 0,
+              'font_size_min_px': summary.get('font_size_range',{}).get('min'),
+              'font_size_max_px': summary.get('font_size_range',{}).get('max'),
+              'archive': final_zip.name,
+              'archive_png_count': 15,
+              'archive_bytes': len(archive_bytes),
+              'archive_sha256': hashlib.sha256(archive_bytes).hexdigest(),
+              'page_order': expected_names,
+              'final_pages': page_meta,
+              'final_export_allowed': True,
+          }
+          (out/'final-report.json').write_text(json.dumps(report, ensure_ascii=False, indent=2)+'\n', encoding='utf-8')
+          print(json.dumps({k:v for k,v in report.items() if k not in {'final_pages','page_order'}}, ensure_ascii=False, indent=2))
+          PY
+
+      - name: Publish final report and close chapter state
+        run: |
+          cp checkpoint/07-final/final-report.json trials/chapter-218/final-report.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path('trials/chapter-218')
+          p = root/'chapter-state.json'
+          state = json.loads(p.read_text(encoding='utf-8'))
+          report = json.loads((root/'final-report.json').read_text(encoding='utf-8'))
+          if report.get('status') != 'FINAL_PASS' or report.get('final_export_allowed') is not True:
+              raise SystemExit('refusing to close chapter without FINAL_PASS')
+          state['current_stage'] = 'FINAL_COMPLETE'
+          state['last_passed_checkpoint'] = 'FINAL_EXPORT'
+          state['final_export'] = {
+              'status': 'FINAL_PASS',
+              'archive': report['archive'],
+              'archive_sha256': report['archive_sha256'],
+              'source_pages': 15,
+              'source_render_run_id': 34584069503,
+              'source_render_artifact_id': 10192871978
+          }
+          state['blockers'] = []
+          state['next_action'] = 'CHAPTER_COMPLETE_NO_MAIN_MERGE'
+          p.write_text(json.dumps(state, ensure_ascii=False, indent=2)+'\n', encoding='utf-8')
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add trials/chapter-218/final-report.json trials/chapter-218/chapter-state.json
+          git diff --cached --check
+          git commit -m "final: pass chapter 218 human-reviewed export gates"
+          git fetch origin trial/chapter-render-218
+          git rebase origin/trial/chapter-render-218
+          git push origin HEAD:trial/chapter-render-218
+
+      - name: Upload FINAL chapter
+        uses: actions/upload-artifact@v4
+        with:
+          name: Pick-Me-Up-Infinite-Gacha-Chapter-218-VI-FINAL
+          path: checkpoint/07-final
+          compression-level: 0
+          retention-days: 7
+          if-no-files-found: error
