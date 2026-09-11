@@ -50,6 +50,11 @@ def _exercise_mobile(page: Page) -> None:
 
     page.locator("#toggle-inspector-panel").click()
     expect(page.locator(".translation-panel-host")).to_be_visible()
+    # The inspector is intentionally a modal-sized drawer on a narrow screen,
+    # so close it before exercising a canvas click.  This confirms both the
+    # drawer lifecycle and that the canvas remains responsive once uncovered.
+    page.locator("#toggle-inspector-panel").click()
+    expect(page.locator(".translation-panel-host")).to_be_hidden()
     page.locator(".translation-canvas-host img").click(position={"x": 20, "y": 20})
     expect(page.locator(".translation-canvas-host .page-block")).to_have_attribute(
         "data-page-index", "1"

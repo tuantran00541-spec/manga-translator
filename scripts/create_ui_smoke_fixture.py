@@ -25,7 +25,7 @@ def _page(index: int) -> Image.Image:
     draw.ellipse((155, 350, 850, 780), fill=(252, 252, 250), outline=(33, 38, 48), width=8)
     draw.ellipse((430, 940, 1080, 1320), fill=(252, 252, 250), outline=(33, 38, 48), width=8)
     draw.polygon(((770, 740), (865, 850), (715, 790)), fill=(252, 252, 250), outline=(33, 38, 48))
-    draw.text((100, 70), f"UI smoke fixture — page {index + 1}", fill=(245, 247, 251), font=heading_font)
+    draw.text((100, 70), f"UI smoke fixture - page {index + 1}", fill=(245, 247, 251), font=heading_font)
     draw.text((280, 505), "Sample dialogue", fill=(25, 28, 35), font=dialogue_font)
     draw.text((560, 1090), "Second bubble", fill=(25, 28, 35), font=dialogue_font)
     return image
