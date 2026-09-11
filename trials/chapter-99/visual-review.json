@@ -1,0 +1,86 @@
+{
+  "checkpoint": "VISUAL_REVIEW",
+  "chapter_id": "c0990099",
+  "status": "PASS",
+  "review_method": "human_visual_review_of_object_crops_and_stitched_zoom_proofs",
+  "initial_render_run_id": 34555287674,
+  "initial_proof_run_id": 34555530080,
+  "initial_object_proof_sheets_reviewed": 17,
+  "initial_stitched_zoom_proof_sheets_reviewed": 12,
+  "initial_visual_issues_found": 6,
+  "local_repair_run_id": 34558247974,
+  "local_repair_proof_artifact": {
+    "name": "05-visual-local-repair-proof-c0990099",
+    "artifact_id": 10183385437,
+    "sha256": "fa860764d7c33b427b6e108a80ad6d1015439330eb2ef6a5bb923624d2283fe3"
+  },
+  "repaired_chapter_artifact": {
+    "name": "05-visual-local-repair-pages-c0990099",
+    "artifact_id": 10183386242,
+    "sha256": "f82864b009041156e6aa6b88ccd17252ac7cdbb2ab3cf2bfe2f2ff2624a32216"
+  },
+  "focused_repair_object_proof_sheets_reviewed": 1,
+  "focused_repair_stitched_context_proof_sheets_reviewed": 1,
+  "local_repairs_applied": 6,
+  "rerendered_slices": 6,
+  "reused_slices": 67,
+  "stitched_source_pages": 20,
+  "active_story_objects": 132,
+  "persistent_tombstones": 44,
+  "checks": {
+    "overflow_or_clipping_blockers": 0,
+    "bad_line_break_blockers": 0,
+    "font_or_vietnamese_glyph_blockers": 0,
+    "source_text_residue_blockers": 0,
+    "duplicate_story_text_blockers": 0,
+    "missing_translation_blockers": 0,
+    "reading_order_blockers": 0,
+    "artwork_damage_blockers": 0,
+    "stitch_or_seam_blockers": 0,
+    "credit_or_promo_damage_blockers": 0,
+    "visual_blockers_total": 0
+  },
+  "accepted_repairs": [
+    {
+      "id": "text_4a00225aabd3492e",
+      "decision": "restore primary dialogue font after source-aligned interruption hyphen normalization"
+    },
+    {
+      "id": "text_56e3bcaa60bd49dc",
+      "decision": "restore primary dialogue font after source-aligned interruption hyphen normalization"
+    },
+    {
+      "id": "text_e43e9a4488754cdf",
+      "decision": "restore primary dialogue font after source-aligned interruption hyphen normalization"
+    },
+    {
+      "id": "text_d4d1d0a1296a42bd",
+      "decision": "restore primary dialogue font; text remains inside its bubble without overlapping the neighboring Giselle text"
+    },
+    {
+      "id": "text_289187ba8b3d462d",
+      "decision": "reclassify/typeset as analytical free text with serif manga hierarchy"
+    },
+    {
+      "id": "text_262b8ec9af7641c7",
+      "decision": "reclassify/typeset as analytical free text with serif manga hierarchy"
+    }
+  ],
+  "typography": {
+    "semantic_multi_font_hierarchy_accepted": true,
+    "adaptive_font_sizing_accepted": true,
+    "minimum_font_size_px": 28,
+    "free_text_max_font_size_px": 96,
+    "final_font_size_auto_objects": 0
+  },
+  "editorial_notes": [
+    "All 17 initial object sheets and all 12 stitched zoom sheets were reviewed before local repair.",
+    "The two focused post-repair proofs were reviewed after the six-object local rerender.",
+    "The four interruption bubbles now use the primary dialogue font consistently and preserve the source hyphen interruption convention.",
+    "The two analytical free-text overlays now match the visual hierarchy of the source instead of reading like speech bubbles.",
+    "The final Asura credit/promo material remains preserved."
+  ],
+  "visual_pass_allowed": true,
+  "final_export_allowed": true,
+  "next_action": "FINAL_EXPORT"
+}
