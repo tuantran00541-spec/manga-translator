@@ -4,12 +4,12 @@
   "series": "Bad Born Blood",
   "source_url": "https://asurascans.com/comics/bad-born-blood-53fc8424/chapter/99",
   "branch": "trial/chapter-render-99",
-  "current_stage": "OCR_PENDING",
-  "last_passed_checkpoint": "CLEAN",
+  "current_stage": "TRANSLATION_PENDING",
+  "last_passed_checkpoint": "OCR_HUMAN_REVIEW",
   "current_artifact": {
-    "run_id": 34549043757,
-    "artifact_name": "02-clean-review-approved-c0990099",
-    "artifact_id": 10180101888
+    "run_id": 34551318030,
+    "artifact_name": "03-ocr-final-c0990099",
+    "artifact_id": 10180919067
   },
   "clean_review": {
     "status": "PASS_AFTER_REPAIR",
@@ -20,6 +20,20 @@
     "artwork_damage_blockers": 0,
     "repairs": 4
   },
+  "ocr_review": {
+    "status": "PASS",
+    "reviewed_text_objects": 175,
+    "active_story_objects": 131,
+    "persistent_tombstones": 44,
+    "human_corrections": 6,
+    "geometry_merges": 1,
+    "semantic_overrides": 26,
+    "active_unreviewed_objects": 0,
+    "owner_core_violations": 0,
+    "high_iou_duplicate_pairs": 0,
+    "reconciliation_created_objects": 0,
+    "reload_resurrection_created_objects": 0
+  },
   "blockers": [],
-  "next_action": "Run OCR from ORIGINAL/RAW only, then stop for human OCR review and curation"
+  "next_action": "Translate and human-review all 131 active story objects, preserving terminology and scene voice"
 }
