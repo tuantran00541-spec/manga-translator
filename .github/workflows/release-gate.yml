@@ -44,6 +44,9 @@ jobs:
       - name: Run frontend coordinator regression
         run: node scripts/frontend_coordinator_sanity.js
 
+      - name: Run editor auto-sync regression
+        run: node scripts/editor_auto_sync_sanity.js
+
       - name: Run frontend release regression
         run: node scripts/frontend_release_sanity.js
 

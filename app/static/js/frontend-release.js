@@ -73,8 +73,8 @@ panelPrefs.set(key, state);
 const focus = document.body.classList.contains("focus-mode");
 const navOpen = !focus && Boolean(state.nav);
 const inspectorOpen = !focus && Boolean(state.inspector);
-nav.hidden = !navOpen;
-inspector.hidden = !inspectorOpen;
+  if (nav.hidden !== !navOpen) nav.hidden = !navOpen;
+  if (inspector.hidden !== !inspectorOpen) inspector.hidden = !inspectorOpen;
 grid.dataset.navOpen = String(navOpen);
 grid.dataset.inspectorOpen = String(inspectorOpen);
 grid.dataset.layoutMode = mode;
@@ -732,7 +732,9 @@ ensureHistoryControls();
 applyResponsivePanels();
 maybeClearSavedDrafts();
 });
-viewObserver.observe(view, { childList: true, subtree: true, attributes: true, attributeFilter: ["class", "hidden"] });
+// The callback updates responsive state itself. Watching class/hidden changes
+// would let that maintenance work retrigger the observer indefinitely.
+viewObserver.observe(view, { childList: true, subtree: true });
 }
 function handleChapterChange() {
 const current = chapterId();

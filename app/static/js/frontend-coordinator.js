@@ -447,13 +447,19 @@
     mountAISettings(); polishEditor();
     const view = document.getElementById("page-view");
     if (view) {
-      // Share frontend-release's rAF-coalesced repair pass instead of running a
-      // separate synchronous scan of #page-view on every mutation.
       const repair = () => { attachPointerBridges(); normalizeReviewLabels(); polishEditor(); syncReviewBusy(); };
-      if (typeof window.onWorkbenchRepair === "function") window.onWorkbenchRepair(repair);
-      new MutationObserver(() => {
-        if (typeof window.scheduleWorkbenchRepair === "function") window.scheduleWorkbenchRepair();
-      }).observe(view, { childList: true, subtree: true, attributes: true, attributeFilter: ["class"] });
+      let repairQueued = false;
+      const scheduleRepair = () => {
+        if (repairQueued) return;
+        repairQueued = true;
+        const run = () => { repairQueued = false; repair(); };
+        if (typeof window.requestAnimationFrame === "function") window.requestAnimationFrame(run);
+        else setTimeout(run, 0);
+      };
+      // Observe DOM rebuilds only.  repair() changes classes itself, therefore
+      // observing attributes here creates an observer -> repair -> observer loop.
+      new MutationObserver(scheduleRepair).observe(view, { childList: true, subtree: true });
+      scheduleRepair();
     }
   }));
   add("click", (event) => { if (event.target?.closest?.("#settings-toggle")) mountAISettings(); }, true);

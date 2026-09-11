@@ -1294,7 +1294,9 @@ function _autoObjectNeedsSync(obj, box) {
   const boxText = String(box?.ocr_text || "");
   const objectText = String(obj.ocr_text || "");
   const previousAutoText = String(obj.auto_ocr_text || "");
-  const machineTextCanMove = !objectText || objectText === previousAutoText;
+  // Match the backend ownership rule exactly: an empty value can be a deliberate
+  // user edit, so only the last machine-owned value may be advanced automatically.
+  const machineTextCanMove = objectText === previousAutoText;
   if (machineTextCanMove && boxText !== objectText) return true;
 
   const currentRegion = obj.region || null;
@@ -1303,15 +1305,28 @@ function _autoObjectNeedsSync(obj, box) {
   return machineGeometryCanMove && !_sameRegion(currentRegion, box);
 }
 
+function _isAutoSyncEligibleBox(box) {
+  if (!box || box.removed || !box.id || box.ocr_eligible === false) return false;
+  const [x1, y1, x2, y2] = [box.x1, box.y1, box.x2, box.y2].map(Number);
+  return [x1, y1, x2, y2].every(Number.isFinite) && x1 < x2 && y1 < y2;
+}
+
 function _pageNeedsAutoSync(page) {
   if (!page || page.skipped) return false;
-  const activeBoxes = (page.boxes || []).filter((box) => box && !box.removed && box.id);
+  // Keep this eligibility predicate aligned with ensure_page_text_objects().
+  // A box the server intentionally ignores must never request another ensure.
+  const activeBoxes = (page.boxes || []).filter(_isAutoSyncEligibleBox);
   if (!activeBoxes.length) return false;
   const objects = page.text_objects || [];
   return activeBoxes.some((box) => {
     const linked = objects.find((obj) => _sourceBoxSet(obj).has(String(box.id)));
     return !linked || _autoObjectNeedsSync(linked, box);
   });
+}
+
+function _autoSyncChangedPage(manifest, pageIndex) {
+  return Array.isArray(manifest?.auto_text_objects?.changed_pages)
+    && manifest.auto_text_objects.changed_pages.some((index) => Number(index) === Number(pageIndex));
 }
 
 async function ensureAutoTextObjects(pageIndex) {
@@ -1561,10 +1576,15 @@ function renderEditor() {
           _autoSyncingPageIndex = null;
           return;
         }
-        if (!manifest) { _autoSyncingPageIndex = null; return; }
-        // queueMicrotask lets the current render frame finish (including all
-        // pending DOM mutations) before the re-render, preventing a cascade of
-        // consecutive microtask-chained full DOM rebuilds.
+        // Do not rebuild solely because ensure answered successfully.  If the
+        // backend made no change, rendering again would repeat the same request
+        // forever for an ineligible or deliberately user-edited object.
+        if (!manifest || !_autoSyncChangedPage(manifest, pageIndex)) {
+          _autoSyncingPageIndex = null;
+          return;
+        }
+        // Let the current render finish before applying the one real manifest
+        // change returned by the server.
         queueMicrotask(() => {
           _autoSyncingPageIndex = null;
           renderEditor();

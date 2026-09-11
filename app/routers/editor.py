@@ -9,6 +9,7 @@ from app.manifest_utils import get_manifest_lock, invalidate_page_render, load_m
 from app.pipeline import read_image
 from app.schemas import (
     AddBoxRequest,
+    BulkUpdateTextObjectsRequest,
     CreateTextObjectRequest,
     DeleteTextObjectRequest,
     RemoveBoxRequest,
@@ -320,6 +321,42 @@ def update_text_object(req: UpdateTextObjectRequest) -> dict:
             req.chapter_id, req.page_index, req.id, exc,
         )
         raise HTTPException(500, f"Update text object failed: {exc}") from exc
+
+
+@router.post("/text_object/update_bulk")
+def update_text_objects_bulk(req: BulkUpdateTextObjectsRequest) -> dict:
+    """Apply the editor's debounced object patches through one HTTP request."""
+    validate_chapter_id(req.chapter_id)
+    try:
+        manifest = None
+        for item in req.updates:
+            changes: dict = {}
+            if item.shape is not None:
+                changes["shape"] = item.shape
+            if item.region is not None:
+                changes["region"] = item.region.model_dump()
+            if item.ocr_text is not None:
+                changes["ocr_text"] = item.ocr_text
+            if item.translation is not None:
+                changes["translation"] = item.translation
+            if item.style is not None:
+                changes["style"] = item.style.model_dump()
+            manifest = pipeline.update_text_object(req.chapter_id, item.page_index, item.id, changes)
+            if item.ocr_text is not None and item.translation is None:
+                manifest = _reconcile_translation_after_ocr_edit(item)
+        return urlify_manifest(manifest)
+    except ValueError as exc:
+        logger.opt(exception=True).error(
+            "Chapter {} operation 'update_text_objects_bulk' invalid value: {}",
+            req.chapter_id, exc,
+        )
+        raise HTTPException(400, str(exc)) from exc
+    except Exception as exc:
+        logger.error(
+            "Chapter {} operation 'update_text_objects_bulk' failed: {}",
+            req.chapter_id, exc,
+        )
+        raise HTTPException(500, f"Bulk update text objects failed: {exc}") from exc
 
 
 @router.post("/text_object/delete")
