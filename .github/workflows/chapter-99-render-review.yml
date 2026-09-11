@@ -1,0 +1,330 @@
+name: Chapter 99 Typeset Render Review
+
+on:
+  push:
+    branches:
+      - trial/chapter-render-99
+    paths:
+      - .github/workflows/chapter-99-render-review.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: chapter-99-human-loop
+  cancel-in-progress: false
+
+jobs:
+  render-review:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    env:
+      CHAPTER_ID: c0990099
+      TRANSLATION_RUN_ID: "34554935945"
+      TRANSLATION_ARTIFACT: 04-translation-final-c0990099
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: trial/chapter-render-99
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install production render runtime
+        run: |
+          python -m pip install Pillow==10.4.0 numpy==1.26.4 opencv-contrib-python==4.10.0.84 fastapi==0.115.0 pydantic==2.9.2 filelock==3.16.1 loguru==0.7.2 fonttools==4.59.2
+
+      - name: Restore approved translation checkpoint
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf checkpoint/04-translation-final checkpoint/05-render-review
+          mkdir -p checkpoint/04-translation-final
+          gh run download "$TRANSLATION_RUN_ID" -n "$TRANSLATION_ARTIFACT" -D checkpoint/04-translation-final
+          test -f checkpoint/04-translation-final/processed/manifest.json
+          test -f checkpoint/04-translation-final/translation-review-summary.json
+
+      - name: Validate translation and restore production layout
+        run: |
+          python - <<'PY'
+          import json, shutil
+          from pathlib import Path
+          chapter_id='c0990099'; root=Path('checkpoint/04-translation-final')
+          s=json.loads((root/'translation-review-summary.json').read_text(encoding='utf-8'))
+          expected={'status':'PASS','active_story_objects':132,'translated_story_objects':132,'active_untranslated_story_objects':0,'persistent_tombstones':44,'translation_pass_allowed':True}
+          for k,v in expected.items():
+              if s.get(k)!=v: raise SystemExit(f'translation gate {k}={s.get(k)} expected {v}')
+          raw_dst=Path('data/raw')/chapter_id; proc_dst=Path('data/processed')/chapter_id; out_dst=Path('data/output')/chapter_id
+          for d in (raw_dst,proc_dst,out_dst):
+              if d.exists(): shutil.rmtree(d)
+              d.parent.mkdir(parents=True,exist_ok=True)
+          shutil.copytree(root/'raw',raw_dst); shutil.copytree(root/'processed',proc_dst); out_dst.mkdir(parents=True)
+          mp=proc_dst/'manifest.json'; m=json.loads(mp.read_text(encoding='utf-8'))
+          if len(m.get('pages') or [])!=73: raise SystemExit(f'expected 73 slices got {len(m.get("pages") or [])}')
+          for p in m.get('pages') or []:
+              rn=Path(str(p.get('original') or '')).name; cn=Path(str(p.get('clean') or '')).name
+              if rn: p['original']=(raw_dst/'sliced'/rn).as_posix()
+              if cn: p['clean']=str((proc_dst/cn).resolve())
+          mp.write_text(json.dumps(m,ensure_ascii=False,indent=2),encoding='utf-8')
+          print('translation gate restored: 132 story objects / 73 slices')
+          PY
+
+      - name: Build semantic multi-font dynamic-size typography plan
+        run: |
+          python - <<'PY'
+          import json
+          from collections import Counter
+          from pathlib import Path
+          from PIL import Image, ImageDraw
+          from fontTools.ttLib import TTFont
+          from app.parameters import RENDER_DEFAULT_PADDING, RENDER_PADDING_RATIO_MAX
+          from app.render.text_renderer import get_font_object, _wrap_text, _calc_line_height
+
+          chapter_id='c0990099'; font_dir=Path('app/static/fonts')
+          mp=Path('data/processed')/chapter_id/'manifest.json'; m=json.loads(mp.read_text(encoding='utf-8'))
+          dummy=Image.new('RGB',(8,8),'white'); draw=ImageDraw.Draw(dummy)
+          cmap_cache={}
+
+          def cmap(name):
+              if name not in cmap_cache:
+                  path=font_dir/f'{name}.ttf'
+                  if not path.is_file(): cmap_cache[name]=set()
+                  else:
+                      f=TTFont(path,lazy=True); cmap_cache[name]=set((f.getBestCmap() or {}).keys()); f.close()
+              return cmap_cache[name]
+
+          def supports(name,text):
+              cm=cmap(name)
+              return bool(cm) and all(ch.isspace() or ord(ch) in cm for ch in text)
+
+          required_fonts=['Mac-dinh-3','Mac-dinh-2','Manga-fonts','Granite','Curves-Regular','Romance-font-1','Shadow-fonts','SFX-fonts-1']
+          missing_fonts=[f for f in required_fonts if not (font_dir/f'{f}.ttf').is_file()]
+          if missing_fonts: raise SystemExit(f'missing configured fonts: {missing_fonts}')
+          vi_probe='ăâêôơưđĂÂÊÔƠƯĐáàảãạấầẩẫậắằẳẵặéèẻẽẹếềểễệíìỉĩịóòỏõọốồỗộớờởỡợúùủũụứừửữựýỳỷỹỵ'
+          if not supports('Mac-dinh-3',vi_probe): raise SystemExit('primary dialogue font Mac-dinh-3 lacks full Vietnamese probe')
+
+          dramatic={
+            'text_e1436f58ebad4e35','text_981a08550de743fe','text_d64f680724494340'
+          }
+          emotional={
+            'text_manual_src16_eva_feels','text_8b9b08b3cf9f4a84','text_9c975aee347e41e1'
+          }
+          soft_free={'text_a1813f1dfa6a4e96'}
+          shout={'text_c2a426ff453446a7'}
+
+          role_fonts={
+            'dialogue':['Mac-dinh-3','Mac-dinh-2','Granite','Manga-fonts'],
+            'shout':['SFX-fonts-1','Manga-fonts','Granite','Mac-dinh-3'],
+            'free_analytical':['Manga-fonts','Granite','Mac-dinh-3'],
+            'free_dramatic':['Shadow-fonts','Granite','Manga-fonts','Mac-dinh-3'],
+            'free_emotional':['Romance-font-1','Curves-Regular','Granite','Mac-dinh-3'],
+            'free_soft':['Curves-Regular','Romance-font-1','Granite','Mac-dinh-3'],
+          }
+          role_sizes={
+            'dialogue':[60,56,52,50,48,46,44,42,40,38,36,34,32,30,28],
+            'shout':[76,72,68,64,60,56,52,48,44,40,36,32,30,28],
+            'free_analytical':[80,76,72,68,64,60,56,52,48,44,40,36,32,30,28],
+            'free_dramatic':[96,88,80,76,72,68,64,60,56,52,48,44,40,36,32,30,28],
+            'free_emotional':[76,72,68,64,60,56,52,48,44,40,36,32,30,28],
+            'free_soft':[76,72,68,64,60,56,52,48,44,40,36,32,30,28],
+          }
+
+          def role_for(obj):
+              oid=str(obj.get('id') or '')
+              sem=str(obj.get('semantic_type') or '')
+              if oid in shout: return 'shout'
+              if sem!='free_text': return 'dialogue'
+              if oid in dramatic: return 'free_dramatic'
+              if oid in emotional: return 'free_emotional'
+              if oid in soft_free: return 'free_soft'
+              return 'free_analytical'
+
+          def fit_at(text,font_name,size,region,stroke_w):
+              raw_w=max(1,int(region['x2'])-int(region['x1'])); raw_h=max(1,int(region['y2'])-int(region['y1']))
+              pad=max(2,min(int(RENDER_DEFAULT_PADDING),int(min(raw_w,raw_h)*RENDER_PADDING_RATIO_MAX)))
+              box_w=max(1,raw_w-pad*2); box_h=max(1,raw_h-pad*2)
+              font=get_font_object(str(font_dir/f'{font_name}.ttf'),size)
+              lines=_wrap_text(draw,text,font,box_w)
+              if not lines: return False,[]
+              lh=_calc_line_height(draw,font,stroke_w=stroke_w); total_h=lh*len(lines)
+              max_w=max(draw.textbbox((0,0),line,font=font)[2] for line in lines)
+              return total_h<=box_h and max_w<=box_w,lines
+
+          assignments=[]; font_usage=Counter(); size_usage=Counter(); role_usage=Counter(); fallbacks=[]; failures=[]
+          for pi,p in enumerate(m.get('pages') or []):
+              for o in p.get('text_objects') or []:
+                  if o.get('source_missing') or o.get('human_review')!='keep_story': continue
+                  oid=str(o.get('id') or ''); vi=str(o.get('translation') or '').strip(); region=o.get('region') or {}
+                  if not vi: raise SystemExit(f'untranslated active object {oid}')
+                  if not all(k in region for k in ('x1','y1','x2','y2')): raise SystemExit(f'malformed region {oid}')
+                  role=role_for(o); wanted=role_fonts[role][0]
+                  chosen=next((name for name in role_fonts[role] if supports(name,vi)),None)
+                  if chosen is None: raise SystemExit(f'no configured font supports actual Vietnamese text id={oid}')
+                  if chosen!=wanted: fallbacks.append({'id':oid,'role':role,'wanted':wanted,'chosen':chosen,'reason':'actual_text_glyph_coverage'})
+                  stroke_w=3 if role=='free_dramatic' else (2 if role.startswith('free_') or role=='shout' else 1)
+                  selected=None; lines=[]
+                  for size in role_sizes[role]:
+                      ok,wrapped=fit_at(vi,chosen,size,region,stroke_w)
+                      if ok:
+                          selected=size; lines=wrapped; break
+                  if selected is None:
+                      failures.append({'page_index':pi,'id':oid,'role':role,'translation':vi,'region':region,'minimum_size':28})
+                      continue
+                  style=o.setdefault('style',{})
+                  style.update({
+                    'font':chosen,'fontSize':str(selected),'color':'auto','strokeWidth':str(stroke_w),'strokeColor':'auto',
+                    'bgColor':'transparent','cornerRadius':'0','horizontalAlign':'center','verticalAlign':'middle',
+                    'bold': role in {'free_dramatic','shout'}
+                  })
+                  o['human_typeset_class']=role; o['human_typeset_font']=chosen; o['human_typeset_font_size']=selected
+                  o['human_typeset_reason']='largest_semantic_role_size_that_preflight_fits_fixed_minimum_28_no_auto'
+                  assignments.append({'page_index':pi,'source_page':p.get('source_page'),'slice_index':p.get('slice_index'),'id':oid,'semantic_role':role,'font':chosen,'font_size':selected,'stroke_width':stroke_w,'wrapped_lines':lines,'translation':vi,'region':region})
+                  font_usage[chosen]+=1; size_usage[selected]+=1; role_usage[role]+=1
+
+          if failures:
+              Path('typography-fit-failures.json').write_text(json.dumps(failures,ensure_ascii=False,indent=2),encoding='utf-8')
+              raise SystemExit(f'{len(failures)} objects fail at minimum 28px; translation/region repair required')
+          if len(assignments)!=132: raise SystemExit(f'expected 132 styled story objects got {len(assignments)}')
+          active=[o for p in m.get('pages') or [] for o in p.get('text_objects') or [] if not o.get('source_missing') and o.get('human_review')=='keep_story']
+          if any(str((o.get('style') or {}).get('fontSize','')).lower()=='auto' for o in active): raise SystemExit('active story object still has auto fontSize')
+          if min(int(o['human_typeset_font_size']) for o in active)<28: raise SystemExit('font below hard minimum 28')
+          if len(font_usage)<3: raise SystemExit(f'typography hierarchy collapsed to too few fonts: {dict(font_usage)}')
+          free_assign=[a for a in assignments if a['semantic_role'].startswith('free_')]
+          if not free_assign or max(a['font_size'] for a in free_assign)<=48:
+              raise SystemExit('free-text hierarchy did not produce any intentionally large free text')
+
+          summary={
+            'status':'PLAN_READY_PENDING_RENDER_VISUAL_REVIEW','font_size_policy':'DYNAMIC_SEMANTIC_LARGEST_FIT_NO_AUTO',
+            'minimum_font_size':28,'active_story_objects':132,'free_text_objects':19,
+            'font_usage':dict(font_usage),'font_size_usage':{str(k):v for k,v in sorted(size_usage.items(),reverse=True)},
+            'role_usage':dict(role_usage),'fallbacks':fallbacks,'primary_dialogue_font':'Mac-dinh-3',
+            'free_text_max_font_size':max(a['font_size'] for a in free_assign),'selected_font_count':len(font_usage),
+            'vietnamese_primary_probe':'PASS'
+          }
+          m['human_typeset_review']=summary; mp.write_text(json.dumps(m,ensure_ascii=False,indent=2),encoding='utf-8')
+          Path('typography-plan.json').write_text(json.dumps({'chapter_id':chapter_id,**summary,'assignments':assignments},ensure_ascii=False,indent=2),encoding='utf-8')
+          print(json.dumps(summary,ensure_ascii=False,indent=2))
+          PY
+
+      - name: Render slices and stitch exact source pages
+        run: |
+          python - <<'PY'
+          import json, zipfile
+          from pathlib import Path
+          from PIL import Image
+          from app.routers.export import export_chapter, render_chapter
+          chapter_id='c0990099'; r=render_chapter(chapter_id); stats=r.get('chapter_render') or {}
+          if stats.get('total')!=73 or stats.get('skipped')!=0: raise SystemExit(f'render stats invalid {stats}')
+          export_chapter(chapter_id)
+          out=Path('data/output')/chapter_id; slices=sorted(out.glob('page_*.png'))
+          if len(slices)!=73: raise SystemExit(f'expected 73 rendered slices got {len(slices)}')
+          zpath=out/f'chapter_{chapter_id}.zip'
+          if not zpath.is_file(): raise SystemExit('export zip missing')
+          with zipfile.ZipFile(zpath) as z:
+              names=sorted(n for n in z.namelist() if n.lower().endswith('.png'))
+              if len(names)!=20: raise SystemExit(f'expected 20 stitched source pages got {len(names)}')
+              dims=[]
+              for n in names:
+                  with z.open(n) as f:
+                      with Image.open(f) as im:
+                          if im.width<=0 or im.height<=0: raise SystemExit(f'invalid stitched image {n}')
+                          dims.append({'name':n,'width':im.width,'height':im.height})
+          Path('render-stitch-dimensions.json').write_text(json.dumps(dims,indent=2),encoding='utf-8')
+          print(json.dumps({'render_stats':stats,'rendered_slices':73,'stitched_source_pages':20},indent=2))
+          PY
+
+      - name: Build human visual proof sheets
+        run: |
+          python - <<'PY'
+          import json, shutil, zipfile, math
+          from pathlib import Path
+          from PIL import Image, ImageDraw, ImageFont
+          chapter_id='c0990099'; out=Path('data/output')/chapter_id; proc=Path('data/processed')/chapter_id
+          review=Path('checkpoint/05-render-review'); review.mkdir(parents=True,exist_ok=True)
+          shutil.copytree(Path('data/raw')/chapter_id,review/'raw')
+          shutil.copytree(proc,review/'processed')
+          shutil.copytree(out,review/'output')
+          shutil.copy2('typography-plan.json',review/'typography-plan.json')
+          shutil.copy2('render-stitch-dimensions.json',review/'render-stitch-dimensions.json')
+          final=review/'final-pages'; final.mkdir()
+          with zipfile.ZipFile(out/f'chapter_{chapter_id}.zip') as z: z.extractall(final)
+          font=ImageFont.load_default()
+          m=json.loads((proc/'manifest.json').read_text(encoding='utf-8'))
+
+          # Object-level rendered proof: enough context to judge fit, glyphs,
+          # font personality, stroke/color and nearby artwork.
+          cards=[]
+          for pi,p in enumerate(m.get('pages') or []):
+              rp=out/f'page_{pi:03d}.png'
+              if not rp.is_file(): continue
+              rim=Image.open(rp).convert('RGB')
+              for o in p.get('text_objects') or []:
+                  if o.get('source_missing') or o.get('human_review')!='keep_story': continue
+                  r=o.get('region') or {}; x1=int(r['x1']); y1=int(r['y1']); x2=int(r['x2']); y2=int(r['y2']); pad=100
+                  box=(max(0,x1-pad),max(0,y1-pad),min(rim.width,x2+pad),min(rim.height,y2+pad)); crop=rim.crop(box)
+                  crop.thumbnail((570,400),Image.Resampling.LANCZOS)
+                  card=Image.new('RGB',(600,480),'white'); card.paste(crop,((600-crop.width)//2,8)); d=ImageDraw.Draw(card)
+                  label=f"p{pi:03d} src{p.get('source_page')} {o.get('id')} | {o.get('human_typeset_class')} | {o.get('human_typeset_font')} {o.get('human_typeset_font_size')}px"
+                  d.text((8,414),label[:112],fill='black',font=font)
+                  d.text((8,432),str(o.get('translation') or '').replace('\n',' / ')[:112],fill='black',font=font)
+                  cards.append(card)
+          obj_dir=review/'object-proof'; obj_dir.mkdir()
+          for start in range(0,len(cards),8):
+              sheet=Image.new('RGB',(1200,1920),'white')
+              for j,c in enumerate(cards[start:start+8]): sheet.paste(c,((j%2)*600,(j//2)*480))
+              sheet.save(obj_dir/f'objects-{start:03d}-{min(start+7,len(cards)-1):03d}.jpg',quality=88)
+
+          # Stitched-page zoom proof: inspect reading order and seams at useful scale.
+          chunks=[]
+          for spi,pth in enumerate(sorted(final.glob('*.png'))):
+              im=Image.open(pth).convert('RGB'); step=2200
+              for y1 in range(0,im.height,step):
+                  y2=min(im.height,y1+step); crop=im.crop((0,y1,im.width,y2))
+                  target_w=560; target_h=max(1,round(crop.height*target_w/crop.width)); crop=crop.resize((target_w,target_h),Image.Resampling.LANCZOS)
+                  card=Image.new('RGB',(600,1440),'white'); card.paste(crop,((600-target_w)//2,32)); d=ImageDraw.Draw(card)
+                  d.text((10,8),f'source {spi:02d} y={y1}:{y2}',fill='black',font=font); chunks.append(card)
+          zoom_dir=review/'zoom-proof'; zoom_dir.mkdir()
+          for start in range(0,len(chunks),8):
+              sheet=Image.new('RGB',(1200,5760),'white')
+              for j,c in enumerate(chunks[start:start+8]): sheet.paste(c,((j%2)*600,(j//2)*1440))
+              sheet.save(zoom_dir/f'zoom-{start:03d}-{min(start+7,len(chunks)-1):03d}.jpg',quality=86)
+
+          typography=json.loads(Path('typography-plan.json').read_text(encoding='utf-8'))
+          summary={
+            'checkpoint':'05-render-review','chapter_id':chapter_id,'slices':73,'source_pages':20,
+            'active_story_objects':132,'active_untranslated_story_objects':0,'persistent_tombstones':44,
+            'font_size_policy':typography.get('font_size_policy'),'minimum_font_size':28,
+            'font_usage':typography.get('font_usage'),'font_size_usage':typography.get('font_size_usage'),
+            'role_usage':typography.get('role_usage'),'font_fallbacks':typography.get('fallbacks'),
+            'free_text_max_font_size':typography.get('free_text_max_font_size'),
+            'object_proof_sheets':math.ceil(len(cards)/8),'zoom_chunks':len(chunks),'zoom_proof_sheets':math.ceil(len(chunks)/8),
+            'status':'TECHNICAL_PASS_PENDING_HUMAN_VISUAL_REVIEW','next_action':'STOP_FOR_HUMAN_VISUAL_REVIEW'
+          }
+          (review/'render-review-summary.json').write_text(json.dumps(summary,ensure_ascii=False,indent=2),encoding='utf-8')
+          print(json.dumps(summary,ensure_ascii=False,indent=2))
+          PY
+
+      - name: Publish render metadata only
+        run: |
+          mkdir -p trials/chapter-99
+          cp checkpoint/05-render-review/render-review-summary.json trials/chapter-99/render-review-summary.json
+          cp checkpoint/05-render-review/typography-plan.json trials/chapter-99/typography-plan.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add trials/chapter-99/render-review-summary.json trials/chapter-99/typography-plan.json
+          if ! git diff --cached --quiet; then
+            git commit -m "review: publish chapter 99 semantic typography render metadata"
+            git pull --rebase origin trial/chapter-render-99
+            git push origin HEAD:trial/chapter-render-99
+          fi
+
+      - name: Upload render review checkpoint
+        uses: actions/upload-artifact@v4
+        with:
+          name: 05-render-review-c0990099
+          path: checkpoint/05-render-review
+          retention-days: 7
+          if-no-files-found: error
