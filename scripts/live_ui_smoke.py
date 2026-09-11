@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 
 from playwright.sync_api import Page, expect, sync_playwright
@@ -64,6 +65,28 @@ def _exercise_mobile(page: Page) -> None:
     )
 
 
+def _canvas_metrics(page: Page) -> dict[str, float | int]:
+    return page.evaluate(
+        """() => {
+          const canvas = document.querySelector('.translation-canvas-host');
+          const image = canvas?.querySelector('img');
+          const rect = image?.getBoundingClientRect();
+          return {
+            viewportWidth: window.innerWidth,
+            viewportHeight: window.innerHeight,
+            bodyScrollWidth: document.documentElement.scrollWidth,
+            canvasHeight: Math.round(canvas?.getBoundingClientRect().height || 0),
+            canvasScrollLeft: Math.round(canvas?.scrollLeft || 0),
+            canvasScrollTop: Math.round(canvas?.scrollTop || 0),
+            imageLeft: Math.round(rect?.left || 0),
+            imageTop: Math.round(rect?.top || 0),
+            imageWidth: Math.round(rect?.width || 0),
+            imageHeight: Math.round(rect?.height || 0),
+          };
+        }"""
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--base-url", default="http://127.0.0.1:8000")
@@ -91,6 +114,10 @@ def main() -> None:
                 page.goto(target, wait_until="networkidle")
                 exercise(page)
                 page.locator(".translation-canvas-host img").scroll_into_view_if_needed()
+                metrics = _canvas_metrics(page)
+                print(f"{name} canvas: {json.dumps(metrics, sort_keys=True)}")
+                if metrics["imageWidth"] <= 0 or metrics["imageLeft"] >= metrics["viewportWidth"]:
+                    raise AssertionError(f"{name} image is outside the active canvas: {metrics}")
                 page.screenshot(path=str(args.artifacts / f"{name}.png"), full_page=True)
                 print(f"{name}: PASS")
                 page.close()
