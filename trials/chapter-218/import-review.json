@@ -1,0 +1,39 @@
+{
+  "checkpoint": "IMPORT",
+  "status": "PASS",
+  "chapter_id": "c2182180",
+  "series_slug": "pick-me-up-infinite-gacha-53fc8424",
+  "chapter_number": 218,
+  "source_url": "https://asurascans.com/comics/pick-me-up-infinite-gacha-53fc8424/chapter/218",
+  "source_images": 15,
+  "slices": 69,
+  "source_order_reviewed": true,
+  "source_count_matches_expected": true,
+  "ownership_issues": 0,
+  "skipped_pages": 0,
+  "reconstruction": {
+    "pixel_exact_pages": 15,
+    "total_pages": 15,
+    "coverage_min": 1,
+    "coverage_max": 1,
+    "diff_pixels_total": 0,
+    "max_channel_diff": 0
+  },
+  "human_review": {
+    "source_contact_sheet_reviewed": true,
+    "slice_contact_sheet_reviewed": true,
+    "spot_checked_source_pages": [3, 6, 9, 12, 14],
+    "reading_order_ok": true,
+    "duplicate_or_missing_source_pages": 0,
+    "notes": [
+      "Source 003 is story continuation and contains an ASURASCANS.COM watermark; preserve/classify it as non-story during destructive cleanup.",
+      "Source 009 contains large Korean SFX plus story dialogue; SFX must not be mistaken for ordinary dialogue.",
+      "Source 012 contains English dialogue plus a blue party/system message; system text is story content and must be retained for OCR/translation.",
+      "Source 014 contains story/system text followed by chapter-end promotional/credit material; classify the promo/credit tail as non-story rather than translating or inpainting it blindly."
+    ]
+  },
+  "technical_pass": true,
+  "editorial_pass": true,
+  "blockers": [],
+  "next_action": "RUN_CHECKPOINT_02_CLEAN_REVIEW"
+}
