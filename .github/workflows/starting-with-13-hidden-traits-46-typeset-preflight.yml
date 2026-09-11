@@ -24,7 +24,7 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       PYTHONPATH: ${{ github.workspace }}
-      TRANSLATION_RUN_ID: "34620124499"
+      TRANSLATION_RUN_ID: "34620894737"
       TRANSLATION_ARTIFACT: 04-translation-reviewed-57d7b970
     steps:
       - uses: actions/checkout@v4
