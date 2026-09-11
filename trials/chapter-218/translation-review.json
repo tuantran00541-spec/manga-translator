@@ -1,0 +1,38 @@
+{
+  "chapter_id": "c2182180",
+  "checkpoint": "04-translation-review",
+  "status": "PASS",
+  "source_checkpoint": "03b-ocr-curation",
+  "active_story_objects": 98,
+  "translated_story_objects": 98,
+  "active_untranslated_story_objects": 0,
+  "scene_reviewed": true,
+  "source_order_reviewed": true,
+  "raw_context_consulted": true,
+  "terminology_consistent": true,
+  "character_voice_reviewed": true,
+  "proper_name_policy": "Preserve chapter-source spelling when the chapter itself is internally consistent; do not override with external wiki romanization.",
+  "locked_terms": [
+    "Exceed",
+    "Kiếm Hồn Hủy Diệt",
+    "La Gran Sedus",
+    "Inflare",
+    "Combine",
+    "Inferno",
+    "Capitalism",
+    "Chủ nhân",
+    "Catio Lusani",
+    "Edis",
+    "Fria",
+    "Nước Mắt Hiền Giả",
+    "Bàn Tay Bẻ Cong Thời Không"
+  ],
+  "review_notes": [
+    "System/status UI translated compactly while preserving game hierarchy.",
+    "Han internal monologue uses natural compact Vietnamese and keeps tactical logic intact.",
+    "Peak mage dialogue keeps the teasing/belittling tone without adding memes.",
+    "Jenna/Han address forms preserve the close relationship.",
+    "Intentional unchanged strings are proper names, spell/incantation names, currency/UI abbreviations, or cries."
+  ],
+  "next_action": "TYPESET_PREFLIGHT_AND_TYPOGRAPHY_PLAN"
+}
