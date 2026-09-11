@@ -1,0 +1,104 @@
+name: Chapter 218 Checkpoint 06 Render Review
+
+on:
+  push:
+    branches:
+      - trial/chapter-render-218
+    paths:
+      - .github/workflows/chapter-218-render-review.yml
+      - trials/chapter-218/render_review.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: chapter-218-human-loop
+  cancel-in-progress: false
+
+env:
+  PYTHONPATH: .
+  CHAPTER_ID: c2182180
+  CLEAN_RUN_ID: "34569707469"
+  CLEAN_ARTIFACT: 02-clean-review-c2182180
+  REPAIR_RUN_ID: "34572578396"
+  REPAIR_ARTIFACT: 02b-clean-local-repair-c2182180
+  TYPESET_RUN_ID: "34580885638"
+  TYPESET_ARTIFACT: 05-typeset-preflight-c2182180
+
+jobs:
+  render-review:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: trial/chapter-render-218
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install production render runtime
+        run: |
+          python -m pip install --disable-pip-version-check --quiet \
+            Pillow==10.4.0 numpy==1.26.4 fastapi==0.115.0 pydantic==2.9.2 \
+            filelock==3.16.1 loguru==0.7.2 python-multipart==0.0.12
+
+      - name: Restore approved clean and typeset checkpoints
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf checkpoint/02-clean checkpoint/02b-repair checkpoint/05-typeset checkpoint/06-render-review
+          mkdir -p checkpoint/02-clean checkpoint/02b-repair checkpoint/05-typeset checkpoint/06-render-review
+          gh run download "$CLEAN_RUN_ID" -n "$CLEAN_ARTIFACT" -D checkpoint/02-clean
+          gh run download "$REPAIR_RUN_ID" -n "$REPAIR_ARTIFACT" -D checkpoint/02b-repair
+          gh run download "$TYPESET_RUN_ID" -n "$TYPESET_ARTIFACT" -D checkpoint/05-typeset
+          test -f checkpoint/02-clean/processed/manifest.json
+          test -d checkpoint/02-clean/processed
+          test -d checkpoint/02-clean/raw
+          test -f checkpoint/02b-repair/clean-repair.json
+          test -f checkpoint/02b-repair/overlay/processed/clean_014_04.png
+          test -f checkpoint/05-typeset/processed-manifest-typeset.json
+          test -f checkpoint/05-typeset/typeset-preflight-summary.json
+
+      - name: Render and build visual review proof pack
+        run: |
+          python trials/chapter-218/render_review.py \
+            --clean-root checkpoint/02-clean \
+            --repair-root checkpoint/02b-repair \
+            --typeset-root checkpoint/05-typeset \
+            --clean-review trials/chapter-218/clean-review.json \
+            --output checkpoint/06-render-review
+
+      - name: Verify technical render gate
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path('checkpoint/06-render-review/render-review-summary.json')
+          s = json.loads(p.read_text(encoding='utf-8'))
+          assert s.get('status') == 'TECHNICAL_PASS_PENDING_HUMAN_VISUAL_REVIEW', s
+          assert s.get('slices') == 69, s
+          assert s.get('source_pages') == 15, s
+          assert s.get('active_story_objects') == 98, s
+          assert s.get('persistent_tombstones') == 125, s
+          assert s.get('font_size_auto_count') == 0, s
+          stats = s.get('render_stats') or {}
+          assert stats.get('total') == 69, stats
+          assert stats.get('rendered') == 69, stats
+          assert stats.get('skipped') == 0, stats
+          assert len(s.get('final_page_dimensions') or []) == 15, s
+          assert len(s.get('small_status_review_objects') or []) == 4, s
+          print(json.dumps({k:v for k,v in s.items() if k not in {'font_size_histogram','final_page_dimensions','small_status_review_objects'}}, ensure_ascii=False, indent=2))
+          PY
+
+      - name: Upload render review checkpoint
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: 06-render-review-c2182180
+          path: checkpoint/06-render-review/
+          retention-days: 7
+          if-no-files-found: warn
