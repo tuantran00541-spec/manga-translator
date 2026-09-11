@@ -16,6 +16,9 @@ MAX_REQUEST_BYTES = 50 * 1024 * 1024
 MAX_IMAGE_PIXELS = 50_000_000
 MAX_RENDER_TRANSLATIONS = 100
 MAX_RENDER_TEXT_LEN = 5000
+# A debounced editor flush can contain patches from several pages.  Keep the
+# request bounded without forcing normal chapter-sized saves into fallback mode.
+MAX_BULK_TEXT_OBJECT_UPDATES = 1000
 
 MAX_UPLOAD_FILE_BYTES = 100 * 1024 * 1024
 MAX_UPLOAD_TOTAL_BYTES = 500 * 1024 * 1024
