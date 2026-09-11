@@ -7,8 +7,8 @@
   "branch": "trial/chapter-render-218",
   "source_of_truth_sha": "6a6ac244e9c5db87b7f9d0b815416930f2f29033",
   "last_reviewed_branch_sha": "f2b018a15e4853169fc107c74ba5c05363c7b03a",
-  "current_stage": "FINAL_PENDING",
-  "last_passed_checkpoint": "VISUAL_REVIEW",
+  "current_stage": "FINAL_COMPLETE",
+  "last_passed_checkpoint": "FINAL_EXPORT",
   "current_artifact": {
     "run_id": 34584069503,
     "artifact": "06-render-review-c2182180",
@@ -40,5 +40,13 @@
     "adaptive_content_density_sizing": true
   },
   "blockers": [],
-  "next_action": "RUN_FINAL_PACKAGE"
+  "next_action": "CHAPTER_COMPLETE_NO_MAIN_MERGE",
+  "final_export": {
+    "status": "FINAL_PASS",
+    "archive": "Pick-Me-Up-Infinite-Gacha-Chapter-218-VI-FINAL.zip",
+    "archive_sha256": "e180994192603b5a91cf0ebbcc174616ae69daa5c23b5f1ce71c7441787a5081",
+    "source_pages": 15,
+    "source_render_run_id": 34584069503,
+    "source_render_artifact_id": 10192871978
+  }
 }
