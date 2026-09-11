@@ -1,0 +1,97 @@
+{
+  "checkpoint": "CLEAN",
+  "status": "PASS",
+  "chapter_id": "57d7b970",
+  "series_slug": "starting-with-13-hidden-traits-53fc8424",
+  "chapter_number": 46,
+  "source_url": "https://asurascans.com/comics/starting-with-13-hidden-traits-53fc8424/chapter/46",
+  "reviewed_at_branch_sha": "1855e195f60de7d248239c8e91cb1125068ec117",
+  "human_review": {
+    "full_raw_vs_clean_sheets_reviewed": 7,
+    "detector_object_crops_reviewed": 383,
+    "story_text_blockers": 0,
+    "artwork_damage_blockers": 0,
+    "source_story_residue_blockers": 0,
+    "overlap_or_seam_blockers": 0
+  },
+  "technical_summary": {
+    "slices": 77,
+    "total_boxes": 383,
+    "free_text_like_boxes": 176,
+    "residue_flag_pages": []
+  },
+  "approved_clean_stack": [
+    {
+      "role": "base",
+      "artifact": "02-clean-review-57d7b970",
+      "run_id": 34587852339
+    },
+    {
+      "role": "overlay",
+      "artifact": "02b-clean-local-repair-57d7b970",
+      "run_id": 34591281242,
+      "restored_pages": [0, 76]
+    },
+    {
+      "role": "overlay",
+      "artifact": "02c-clean-title-credit-repair-57d7b970",
+      "run_id": 34591701406,
+      "restored_pages": [15]
+    }
+  ],
+  "local_repairs": [
+    {
+      "page_index": 0,
+      "source_page": 0,
+      "slice_index": 0,
+      "slice": "000_00.png",
+      "classification": "non_story_title_credit",
+      "action": "restore_raw_slice_pixel_exact",
+      "raw_vs_repaired_pixel_diff": 0,
+      "reason": "Base CLEAN removed the series title and damaged scanlation credits."
+    },
+    {
+      "page_index": 15,
+      "source_page": 5,
+      "slice_index": 0,
+      "slice": "005_00.png",
+      "classification": "non_story_title_credit",
+      "action": "restore_raw_slice_pixel_exact",
+      "raw_vs_repaired_pixel_diff": 0,
+      "reason": "Base CLEAN removed ORIGINAL / ADAPTATION / ART credits from the logo page."
+    },
+    {
+      "page_index": 76,
+      "source_page": 21,
+      "slice_index": 4,
+      "slice": "021_04.png",
+      "classification": "non_story_promo_credit",
+      "action": "restore_raw_slice_pixel_exact",
+      "raw_vs_repaired_pixel_diff": 0,
+      "reason": "Base CLEAN removed To be continued and chapter-end credit material."
+    }
+  ],
+  "non_story_tombstone_box_ids": [
+    "box_fb08707c947a48ed",
+    "box_013a88015d0645fb",
+    "box_22e6649f83aa4c37",
+    "box_8331f0c1551742cd",
+    "box_3f9f4691a9ca46e5",
+    "box_991248cedf16476d",
+    "box_6fdf597a4d574ad0",
+    "box_558e7a983a914135",
+    "box_6c9e53d4dba74d86",
+    "box_46003f33a27b480b",
+    "box_dd8da1199c814d03",
+    "box_ef9b3194a5f346ed",
+    "box_aa5853d5a63b40ef"
+  ],
+  "tombstone_policy": {
+    "source_missing": true,
+    "auto_generated": false,
+    "origin": "human_review_drop",
+    "ocr_eligible": false,
+    "reason": "non_story_title_credit_or_promo"
+  },
+  "next_action": "RUN_CHECKPOINT_03_OCR_FROM_RAW"
+}
