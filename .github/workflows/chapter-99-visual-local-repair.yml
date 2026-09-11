@@ -1,0 +1,296 @@
+name: Chapter 99 Visual Local Repair
+
+on:
+  push:
+    branches:
+      - trial/chapter-render-99
+    paths:
+      - .github/workflows/chapter-99-visual-local-repair.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: chapter-99-human-loop
+  cancel-in-progress: false
+
+jobs:
+  visual-local-repair:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    env:
+      CHAPTER_ID: c0990099
+      BASE_RENDER_RUN_ID: "34555287674"
+      BASE_RENDER_ARTIFACT: 05-render-review-c0990099
+      LATEST_TRANSLATION_RUN_ID: "34557838179"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: trial/chapter-render-99
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install production render runtime
+        run: |
+          python -m pip install Pillow==10.4.0 numpy==1.26.4 opencv-contrib-python==4.10.0.84 fastapi==0.115.0 pydantic==2.9.2 filelock==3.16.1 loguru==0.7.2 fonttools==4.59.2
+
+      - name: Restore previously reviewed render snapshot
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf checkpoint/05-render-base checkpoint/05-visual-local-repair data/raw/c0990099 data/processed/c0990099 data/output/c0990099
+          mkdir -p checkpoint/05-render-base
+          gh run download "$BASE_RENDER_RUN_ID" -n "$BASE_RENDER_ARTIFACT" -D checkpoint/05-render-base
+          test -f checkpoint/05-render-base/processed/manifest.json
+          test -d checkpoint/05-render-base/raw/sliced
+          test -d checkpoint/05-render-base/output
+          test -f trials/chapter-99/translation-final-map.json
+          test -f trials/chapter-99/translation-review-summary.json
+
+      - name: Restore snapshot and restamp artifact identity
+        run: |
+          python - <<'PY'
+          import json, shutil
+          from pathlib import Path
+          from app.render.identity import render_input_signature, stamp_render_artifact
+
+          chapter_id='c0990099'; base=Path('checkpoint/05-render-base')
+          raw_dst=Path('data/raw')/chapter_id; proc_dst=Path('data/processed')/chapter_id; out_dst=Path('data/output')/chapter_id
+          for src,dst in ((base/'raw',raw_dst),(base/'processed',proc_dst),(base/'output',out_dst)):
+              dst.parent.mkdir(parents=True,exist_ok=True)
+              shutil.copytree(src,dst)
+          mp=proc_dst/'manifest.json'; m=json.loads(mp.read_text(encoding='utf-8'))
+          if len(m.get('pages') or [])!=73: raise SystemExit('base render snapshot does not contain 73 slices')
+          for i,p in enumerate(m.get('pages') or []):
+              rn=Path(str(p.get('original') or '')).name; cn=Path(str(p.get('clean') or '')).name
+              if rn: p['original']=(raw_dst/'sliced'/rn).as_posix()
+              if cn: p['clean']=str((proc_dst/cn).resolve())
+              op=out_dst/f'page_{i:03d}.png'
+              if not op.is_file(): raise SystemExit(f'base rendered slice missing {op}')
+          # Artifact ZIP extraction changes file metadata. Re-stamp the known-good
+          # snapshot against the restored bytes before making six local edits.
+          for i,p in enumerate(m.get('pages') or []):
+              op=out_dst/f'page_{i:03d}.png'
+              stamp_render_artifact(p,input_signature=render_input_signature(m,i),output_path=op)
+          mp.write_text(json.dumps(m,ensure_ascii=False,indent=2),encoding='utf-8')
+          print('restamped 73 previously reviewed rendered slices')
+          PY
+
+      - name: Apply exactly six human visual repairs and preflight fit
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from PIL import Image, ImageDraw
+          from fontTools.ttLib import TTFont
+          from app.render.identity import render_artifact_is_current
+          from app.render.text_renderer import get_font_object, _wrap_text, _calc_line_height
+          from app.parameters import RENDER_DEFAULT_PADDING, RENDER_PADDING_RATIO_MAX
+
+          chapter_id='c0990099'; proc=Path('data/processed')/chapter_id; out=Path('data/output')/chapter_id
+          mp=proc/'manifest.json'; m=json.loads(mp.read_text(encoding='utf-8'))
+          tr_summary=json.loads(Path('trials/chapter-99/translation-review-summary.json').read_text(encoding='utf-8'))
+          if tr_summary.get('status')!='PASS' or tr_summary.get('active_story_objects')!=132 or tr_summary.get('active_untranslated_story_objects')!=0:
+              raise SystemExit(f'latest translation gate invalid {tr_summary}')
+          final_map=json.loads(Path('trials/chapter-99/translation-final-map.json').read_text(encoding='utf-8'))
+          translations=final_map.get('translations') or {}
+
+          interruption_ids={
+            'text_4a00225aabd3492e',
+            'text_56e3bcaa60bd49dc',
+            'text_e43e9a4488754cdf',
+            'text_d4d1d0a1296a42bd',
+          }
+          free_text_ids={
+            'text_289187ba8b3d462d',
+            'text_262b8ec9af7641c7',
+          }
+          repair_ids=interruption_ids|free_text_ids
+          expected_pages={9,22,24,53,57,70}
+
+          by_id={}
+          for pi,p in enumerate(m.get('pages') or []):
+              for o in p.get('text_objects') or []:
+                  if isinstance(o,dict) and o.get('id'):
+                      by_id[str(o['id'])]=(pi,p,o)
+          missing=sorted(repair_ids-set(by_id))
+          if missing: raise SystemExit(f'repair objects missing {missing}')
+
+          changed_translation=[]
+          for oid,(pi,p,o) in by_id.items():
+              if o.get('source_missing') or o.get('human_review')!='keep_story': continue
+              if oid not in translations: raise SystemExit(f'latest translation map missing active {oid}')
+              new=str(translations[oid]).strip(); old=str(o.get('translation') or '').strip()
+              if new!=old:
+                  changed_translation.append(oid); o['translation']=new
+          if set(changed_translation)!=interruption_ids:
+              raise SystemExit(f'expected exactly four punctuation translation changes, got {changed_translation}')
+          for oid in interruption_ids:
+              text=str(by_id[oid][2].get('translation') or '')
+              if '—' in text or not text.endswith('-'):
+                  raise SystemExit(f'interruption punctuation normalization failed {oid}: {text}')
+
+          font_dir=Path('app/static/fonts'); cmap_cache={}
+          def cmap(name):
+              if name not in cmap_cache:
+                  f=TTFont(font_dir/f'{name}.ttf',lazy=True); cmap_cache[name]=set((f.getBestCmap() or {}).keys()); f.close()
+              return cmap_cache[name]
+          def supports(name,text):
+              cm=cmap(name); return all(ch.isspace() or ord(ch) in cm for ch in text)
+          dummy=Image.new('RGB',(8,8),'white'); draw=ImageDraw.Draw(dummy)
+          def fit_at(text,font_name,size,region,stroke_w=1):
+              raw_w=max(1,int(region['x2'])-int(region['x1'])); raw_h=max(1,int(region['y2'])-int(region['y1']))
+              pad=max(2,min(RENDER_DEFAULT_PADDING,int(min(raw_w,raw_h)*RENDER_PADDING_RATIO_MAX)))
+              bw=max(1,raw_w-pad*2); bh=max(1,raw_h-pad*2)
+              font=get_font_object(str(font_dir/f'{font_name}.ttf'),size); lines=_wrap_text(draw,text,font,bw)
+              if not lines:return False,[]
+              lh=_calc_line_height(draw,font,stroke_w=stroke_w); total=lh*len(lines)
+              mw=max(draw.textbbox((0,0),line,font=font,stroke_width=stroke_w)[2] for line in lines)
+              return total<=bh and mw<=bw,lines
+          dialogue_sizes=[60,56,52,50,48,46,44,42,40,38,36,34,32,30,28]
+          free_sizes=[96,88,80,76,72,68,64,60,56,52,48,46,44,42,40,38,36,34,32,30,28]
+          plan=[]
+          for oid in sorted(repair_ids):
+              pi,p,o=by_id[oid]; text=str(o.get('translation') or '').strip(); r=o.get('region') or {}
+              old={'font':o.get('human_typeset_font'),'font_size':o.get('human_typeset_font_size'),'role':o.get('human_typeset_class'),'translation':text}
+              if oid in interruption_ids:
+                  font='Mac-dinh-3'; role='dialogue'; sizes=dialogue_sizes; reason='visual_repair_restore_primary_dialogue_font_after_source_hyphen_normalization'
+              else:
+                  font='Manga-fonts'; role='free_analytical'; sizes=free_sizes; reason='visual_repair_match_source_bold_serif_free_text_hierarchy'
+              if not supports(font,text): raise SystemExit(f'{font} lacks actual glyphs for {oid}: {text}')
+              selected=None; lines=[]
+              for sz in sizes:
+                  ok,wrapped=fit_at(text,font,sz,r,1)
+                  if ok: selected=sz; lines=wrapped; break
+              if selected is None: raise SystemExit(f'visual repair object cannot fit >=28px {oid}')
+              style=o.setdefault('style',{})
+              style.update({'font':font,'fontSize':str(selected),'color':'auto','strokeWidth':'1','strokeColor':'auto','bgColor':'transparent','cornerRadius':'0','horizontalAlign':'center','verticalAlign':'middle','bold':False})
+              o['human_typeset_class']=role; o['human_typeset_font']=font; o['human_typeset_font_size']=selected; o['human_typeset_reason']=reason
+              plan.append({'page_index':pi,'source_page':p.get('source_page'),'slice_index':p.get('slice_index'),'id':oid,'old':old,'new':{'font':font,'font_size':selected,'role':role,'translation':text,'wrapped_lines':lines},'reason':reason})
+
+          mp.write_text(json.dumps(m,ensure_ascii=False,indent=2),encoding='utf-8')
+          stale={i for i in range(len(m.get('pages') or [])) if not render_artifact_is_current(m,i,out/f'page_{i:03d}.png')}
+          if stale!=expected_pages:
+              raise SystemExit(f'local repair must stale exactly six slices {sorted(expected_pages)}, got {sorted(stale)}')
+          Path('visual-local-repair-plan.json').write_text(json.dumps({'chapter_id':chapter_id,'status':'PLAN_READY','repair_count':6,'expected_rerendered_slices':sorted(expected_pages),'translation_punctuation_repairs':4,'semantic_free_text_repairs':2,'repairs':plan},ensure_ascii=False,indent=2),encoding='utf-8')
+          print(json.dumps({'stale_slices':sorted(stale),'repairs':plan},ensure_ascii=False,indent=2))
+          PY
+
+      - name: Re-render only stale six slices and stitch chapter
+        run: |
+          python - <<'PY'
+          import json, zipfile
+          from pathlib import Path
+          from PIL import Image
+          from app.routers.export import render_chapter, export_chapter
+          chapter_id='c0990099'
+          result=render_chapter(chapter_id); stats=result.get('chapter_render') or {}
+          expected={'total':73,'rendered':6,'reused':67,'skipped':0}
+          for k,v in expected.items():
+              if stats.get(k)!=v: raise SystemExit(f'local render invariant {k}={stats.get(k)} expected {v}; refusing broad rerender')
+          export_chapter(chapter_id)
+          zpath=Path('data/output')/chapter_id/f'chapter_{chapter_id}.zip'
+          with zipfile.ZipFile(zpath) as z:
+              names=sorted(n for n in z.namelist() if n.lower().endswith('.png'))
+              if len(names)!=20: raise SystemExit(f'expected 20 stitched pages got {len(names)}')
+              for n in names:
+                  with z.open(n) as f:
+                      with Image.open(f) as im:
+                          if im.width<=0 or im.height<=0: raise SystemExit(f'invalid stitched page {n}')
+          Path('visual-local-render-stats.json').write_text(json.dumps(stats,indent=2),encoding='utf-8')
+          print(json.dumps(stats,indent=2))
+          PY
+
+      - name: Build focused human repair proof
+        run: |
+          python - <<'PY'
+          import json, shutil, zipfile
+          from pathlib import Path
+          from PIL import Image, ImageDraw, ImageFont
+
+          chapter_id='c0990099'; proc=Path('data/processed')/chapter_id; out=Path('data/output')/chapter_id
+          m=json.loads((proc/'manifest.json').read_text(encoding='utf-8'))
+          plan=json.loads(Path('visual-local-repair-plan.json').read_text(encoding='utf-8'))
+          proof=Path('checkpoint/05-visual-local-repair'); proof.mkdir(parents=True,exist_ok=True)
+          font=ImageFont.load_default(); cards=[]; contexts=[]
+          zpath=out/f'chapter_{chapter_id}.zip'
+          with zipfile.ZipFile(zpath) as z:
+              for repair in plan['repairs']:
+                  pi=int(repair['page_index']); oid=repair['id']; page=m['pages'][pi]
+                  obj=next(o for o in page.get('text_objects') or [] if o.get('id')==oid)
+                  r=obj['region']; x1,y1,x2,y2=map(int,(r['x1'],r['y1'],r['x2'],r['y2']))
+                  rim=Image.open(out/f'page_{pi:03d}.png').convert('RGB'); pad=150
+                  crop=rim.crop((max(0,x1-pad),max(0,y1-pad),min(rim.width,x2+pad),min(rim.height,y2+pad)))
+                  crop.thumbnail((610,430),Image.Resampling.LANCZOS)
+                  card=Image.new('RGB',(640,520),'white'); card.paste(crop,((640-crop.width)//2,8)); d=ImageDraw.Draw(card)
+                  d.text((8,444),f"slice p{pi:03d} src{page.get('source_page')} {oid} | {obj.get('human_typeset_class')} | {obj.get('human_typeset_font')} {obj.get('human_typeset_font_size')}px",fill='black',font=font)
+                  d.text((8,462),str(obj.get('translation') or '')[:110],fill='black',font=font); cards.append(card)
+
+                  core=page.get('stitch_core') or {}; cy=(y1+y2)//2
+                  source_y=int(core.get('core_source_y1',core.get('source_y1',0))) + (cy-int(core.get('core_y1',0)))
+                  source_page=int(page.get('source_page')); fname=f'page_{source_page+1:03d}.png'
+                  with z.open(fname) as f:
+                      sim=Image.open(f).convert('RGB')
+                      sy1=max(0,source_y-520); sy2=min(sim.height,source_y+520); sx1=max(0,x1-120); sx2=min(sim.width,x2+120)
+                      scrop=sim.crop((sx1,sy1,sx2,sy2)); scrop.thumbnail((610,900),Image.Resampling.LANCZOS)
+                  context=Image.new('RGB',(640,980),'white'); context.paste(scrop,((640-scrop.width)//2,28)); dc=ImageDraw.Draw(context)
+                  dc.text((8,8),f'stitched source {source_page:02d} / {oid}',fill='black',font=font); contexts.append(context)
+
+          sheet=Image.new('RGB',(1280,1560),'white')
+          for j,c in enumerate(cards): sheet.paste(c,((j%2)*640,(j//2)*520))
+          sheet.save(proof/'repair-object-proof.jpg',quality=91)
+          ctx=Image.new('RGB',(1280,2940),'white')
+          for j,c in enumerate(contexts): ctx.paste(c,((j%2)*640,(j//2)*980))
+          ctx.save(proof/'repair-stitched-context-proof.jpg',quality=90)
+          shutil.copy2('visual-local-repair-plan.json',proof/'visual-local-repair-plan.json')
+          shutil.copy2('visual-local-render-stats.json',proof/'visual-local-render-stats.json')
+          shutil.copy2(zpath,proof/'Bad-Born-Blood-Chapter-99-VI-visual-repair-candidate.zip')
+          summary={
+            'checkpoint':'05-visual-local-repair','chapter_id':chapter_id,
+            'prior_full_visual_proof_reviewed':True,'prior_object_proof_sheets_reviewed':17,'prior_zoom_proof_sheets_reviewed':12,
+            'issues_found':6,'local_repairs_applied':6,'rerendered_slices':6,'reused_slices':67,'stitched_source_pages':20,
+            'repair_object_proof_sheets':1,'repair_stitched_context_proof_sheets':1,
+            'status':'TECHNICAL_PASS_PENDING_HUMAN_RECHECK','next_action':'HUMAN_REVIEW_TWO_REPAIR_PROOFS_THEN_VISUAL_PASS_OR_REPAIR_AGAIN'
+          }
+          (proof/'visual-local-repair-summary.json').write_text(json.dumps(summary,ensure_ascii=False,indent=2),encoding='utf-8')
+          print(json.dumps(summary,ensure_ascii=False,indent=2))
+          PY
+
+      - name: Publish local repair metadata
+        run: |
+          cp checkpoint/05-visual-local-repair/visual-local-repair-plan.json trials/chapter-99/visual-local-repair-plan.json
+          cp checkpoint/05-visual-local-repair/visual-local-repair-summary.json trials/chapter-99/visual-local-repair-summary.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add trials/chapter-99/visual-local-repair-plan.json trials/chapter-99/visual-local-repair-summary.json
+          if ! git diff --cached --quiet; then
+            git commit -m "review: publish chapter 99 focused visual repair proof metadata"
+            git pull --rebase origin trial/chapter-render-99
+            git push origin HEAD:trial/chapter-render-99
+          fi
+
+      - name: Upload focused visual repair proof
+        uses: actions/upload-artifact@v4
+        with:
+          name: 05-visual-local-repair-proof-c0990099
+          path: |
+            checkpoint/05-visual-local-repair/repair-object-proof.jpg
+            checkpoint/05-visual-local-repair/repair-stitched-context-proof.jpg
+            checkpoint/05-visual-local-repair/visual-local-repair-plan.json
+            checkpoint/05-visual-local-repair/visual-local-render-stats.json
+            checkpoint/05-visual-local-repair/visual-local-repair-summary.json
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Upload repaired chapter candidate separately
+        uses: actions/upload-artifact@v4
+        with:
+          name: 05-visual-local-repair-pages-c0990099
+          path: checkpoint/05-visual-local-repair/Bad-Born-Blood-Chapter-99-VI-visual-repair-candidate.zip
+          compression-level: 0
+          retention-days: 7
+          if-no-files-found: error
