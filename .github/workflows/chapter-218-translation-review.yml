@@ -1,0 +1,88 @@
+name: Chapter 218 Checkpoint 04 Translation Review
+
+on:
+  push:
+    branches:
+      - trial/chapter-render-218
+    paths:
+      - .github/workflows/chapter-218-translation-review.yml
+      - trials/chapter-218/translation-vi.json
+      - trials/chapter-218/translation-review.json
+      - trials/chapter-218/apply_translation.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: chapter-218-human-loop
+  cancel-in-progress: false
+
+jobs:
+  translation-review:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      CHAPTER_ID: c2182180
+      OCR_CURATED_RUN_ID: "34577477761"
+      OCR_CURATED_ARTIFACT: 03b-ocr-curated-c2182180
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: trial/chapter-render-218
+
+      - name: Restore curated OCR checkpoint
+        run: |
+          rm -rf checkpoint/03b-ocr-curated checkpoint/04-translation-review
+          mkdir -p checkpoint/03b-ocr-curated checkpoint/04-translation-review
+          gh run download "$OCR_CURATED_RUN_ID" -n "$OCR_CURATED_ARTIFACT" -D checkpoint/03b-ocr-curated
+          test -f checkpoint/03b-ocr-curated/processed-manifest-curated.json
+          test -f checkpoint/03b-ocr-curated/ocr-curation-summary.json
+          python - <<'PY'
+          import json
+          s=json.load(open('checkpoint/03b-ocr-curated/ocr-curation-summary.json',encoding='utf-8'))
+          assert s.get('status') == 'PASS', s
+          assert s.get('active_story_objects') == 98, s
+          assert s.get('active_empty_story_objects') == 0, s
+          assert s.get('duplicate_overlaps') == 0, s
+          assert s.get('resurrection_count') == 0, s
+          PY
+
+      - name: Apply human-reviewed Vietnamese translation
+        run: |
+          python trials/chapter-218/apply_translation.py \
+            --curated-root checkpoint/03b-ocr-curated \
+            --translation-json trials/chapter-218/translation-vi.json \
+            --review-json trials/chapter-218/translation-review.json \
+            --output checkpoint/04-translation-review
+
+      - name: Verify translation hard gate
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root=Path('checkpoint/04-translation-review')
+          s=json.loads((root/'translation-review-summary.json').read_text(encoding='utf-8'))
+          assert s.get('status') == 'PASS', s
+          assert s.get('active_story_objects') == 98, s
+          assert s.get('translated_story_objects') == 98, s
+          assert s.get('active_untranslated_story_objects') == 0, s
+          assert s.get('tombstone_translations') == 0, s
+          assert not s.get('missing_translation_ids'), s
+          assert not s.get('unknown_translation_ids'), s
+          assert s.get('scene_reviewed') is True, s
+          assert s.get('terminology_consistent') is True, s
+          assert s.get('character_voice_reviewed') is True, s
+          print(json.dumps(s, ensure_ascii=False, indent=2))
+          PY
+
+      - name: Upload checkpoint 04 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: 04-translation-reviewed-c2182180
+          path: checkpoint/04-translation-review/
+          retention-days: 7
+          if-no-files-found: error
