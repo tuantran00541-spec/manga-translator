@@ -1,0 +1,230 @@
+name: Starting With 13 Hidden Traits 46 Checkpoint 03B OCR Curation
+
+on:
+  push:
+    branches:
+      - trial/starting-with-13-hidden-traits-46
+    paths:
+      - .github/workflows/starting-with-13-hidden-traits-46-ocr-curation.yml
+      - trials/starting-with-13-hidden-traits-46/ocr-curation.json
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: chapter-46-human-loop
+  cancel-in-progress: false
+
+jobs:
+  curate-ocr:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    env:
+      PYTHONUNBUFFERED: "1"
+      PYTHONPATH: ${{ github.workspace }}
+      OCR_RUN_ID: "34592517935"
+      OCR_ARTIFACT: 03-ocr-review-57d7b970
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: trial/starting-with-13-hidden-traits-46
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Restore OCR checkpoint
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf checkpoint/03-ocr-review checkpoint/03b-ocr-curated
+          mkdir -p checkpoint/03-ocr-review checkpoint/03b-ocr-curated
+          gh run download "$OCR_RUN_ID" -n "$OCR_ARTIFACT" -D checkpoint/03-ocr-review
+          test -f checkpoint/03-ocr-review/processed-manifest.json
+          test -f checkpoint/03-ocr-review/ocr-table.json
+          test -f checkpoint/03-ocr-review/ocr-review-summary.json
+          python - <<'PY'
+          import json
+          p='checkpoint/03-ocr-review/ocr-review-summary.json'
+          s=json.load(open(p,encoding='utf-8'))
+          assert s['chapter_id']=='57d7b970'
+          assert s['ocr_source']=='RAW' and s['ocr_source_invariant_verified'] is True
+          assert s['planned_ocr_targets']==122 and s['completed_ocr_results']==122
+          assert s['failed']==0 and s['resurrection_count']==0
+          assert len(s['seeded_non_story_tombstones'])==13
+          PY
+
+      - name: Apply human OCR curation and reconciliation gate
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+          import copy, json, re
+          from pathlib import Path
+          from app.text_objects import ensure_page_text_objects
+
+          src=Path('checkpoint/03-ocr-review')
+          out=Path('checkpoint/03b-ocr-curated')
+          manifest=json.loads((src/'processed-manifest.json').read_text(encoding='utf-8'))
+          table=json.loads((src/'ocr-table.json').read_text(encoding='utf-8'))
+          curation=json.loads(Path('trials/starting-with-13-hidden-traits-46/ocr-curation.json').read_text(encoding='utf-8'))
+          if manifest.get('chapter_id')!='57d7b970' or curation.get('chapter_id')!='57d7b970':
+              raise SystemExit('chapter identity mismatch')
+          if curation.get('review_status')!='PASS_PENDING_APPLICATION':
+              raise SystemExit('curation is not approved')
+
+          drop_ids=[]
+          for values in (curation.get('drop_groups') or {}).values():
+              if not isinstance(values,list): raise SystemExit('invalid drop group')
+              drop_ids.extend(str(x) for x in values)
+          if len(drop_ids)!=len(set(drop_ids)): raise SystemExit('duplicate drop id')
+          drops=set(drop_ids)
+          corrections={str(x['box_id']):str(x['ocr_text']) for x in curation.get('manual_corrections') or []}
+          if len(corrections)!=len(curation.get('manual_corrections') or []): raise SystemExit('duplicate correction id')
+          if drops & set(corrections): raise SystemExit('drop/correction collision')
+          seeded=set(str(x) for x in curation.get('seeded_non_story_tombstones') or [])
+          expected=curation.get('expected') or {}
+          if len(drops)!=expected.get('new_drop_decisions'): raise SystemExit('drop count mismatch')
+          if len(seeded)!=expected.get('seeded_tombstones'): raise SystemExit('seed count mismatch')
+
+          def refs(obj):
+              xs=obj.get('source_boxes')
+              return {str(x) for x in xs} if isinstance(xs,list) else set()
+          seen_boxes=set(); seen_drop=set(); seen_corr=set()
+          for page in manifest.get('pages') or []:
+              for box in page.get('boxes') or []:
+                  if not isinstance(box,dict): continue
+                  bid=str(box.get('id') or '')
+                  if not bid: continue
+                  seen_boxes.add(bid)
+                  if bid in drops:
+                      box['ocr_eligible']=False
+                      box['human_review_drop']=True
+                      box['story_role']='human_review_drop'
+                      box['human_review_reason']='ocr_curation'
+                      seen_drop.add(bid)
+                  if bid in corrections:
+                      box['ocr_text']=corrections[bid]
+                      box['ocr_quality']='human_corrected'
+                      box.pop('ocr_quality_reason',None)
+                      box['human_review_corrected']=True
+                      seen_corr.add(bid)
+              for obj in page.get('text_objects') or []:
+                  if not isinstance(obj,dict): continue
+                  r=refs(obj)
+                  if r & drops:
+                      obj['source_missing']=True
+                      obj['auto_generated']=False
+                      obj['origin']='human_review_drop'
+                      obj['human_review_drop_reason']='ocr_curation'
+                      obj['ocr_text']=''
+                      obj['translation']=''
+                      continue
+                  hit=r & set(corrections)
+                  if hit:
+                      bid=sorted(hit)[0]
+                      obj['ocr_text']=corrections[bid]
+                      obj['auto_generated']=False
+                      obj['origin']='human_review_correction'
+                      obj['ocr_quality']='human_corrected'
+                      obj.pop('ocr_quality_reason',None)
+                      obj.pop('source_missing',None)
+          if seen_drop!=drops: raise SystemExit(f'missing drops: {sorted(drops-seen_drop)}')
+          if seen_corr!=set(corrections): raise SystemExit(f'missing corrections: {sorted(set(corrections)-seen_corr)}')
+          if not seeded.issubset(seen_boxes): raise SystemExit('seeded tombstone detector box missing')
+
+          created1=created2=0
+          for page in manifest.get('pages') or []:
+              n,_=ensure_page_text_objects(page); created1+=n
+          for page in manifest.get('pages') or []:
+              n,_=ensure_page_text_objects(page); created2+=n
+
+          active=[]; tombstones=[]; active_by_box={}
+          for pi,page in enumerate(manifest.get('pages') or []):
+              for obj in page.get('text_objects') or []:
+                  if not isinstance(obj,dict): continue
+                  row=copy.deepcopy(obj); row['page_index']=pi
+                  if obj.get('source_missing'):
+                      tombstones.append(row); continue
+                  active.append(row)
+                  for bid in refs(obj): active_by_box[bid]=obj
+          active_empty=[x for x in active if not str(x.get('ocr_text') or '').strip()]
+          resurrected=sorted((drops|seeded)&set(active_by_box))
+
+          table_by_box={str(r.get('box_id')):r for r in table if isinstance(r,dict) and r.get('box_id')}
+          def norm(s): return re.sub(r'\s+',' ',str(s or '').strip().lower())
+          def iou(a,b):
+              try:
+                  ax1,ay1,ax2,ay2=[float(a[k]) for k in ('global_x1','global_y1','global_x2','global_y2')]
+                  bx1,by1,bx2,by2=[float(b[k]) for k in ('global_x1','global_y1','global_x2','global_y2')]
+              except Exception: return 0.0
+              iw=max(0,min(ax2,bx2)-max(ax1,bx1)); ih=max(0,min(ay2,by2)-max(ay1,by1)); inter=iw*ih
+              aa=max(0,ax2-ax1)*max(0,ay2-ay1); bb=max(0,bx2-bx1)*max(0,by2-by1); den=aa+bb-inter
+              return inter/den if den else 0.0
+          duplicate_pairs=[]
+          for i,a in enumerate(active):
+              ar=sorted(refs(a));
+              if not ar or ar[0] not in table_by_box: continue
+              ga=table_by_box[ar[0]]; ta=norm(a.get('ocr_text'))
+              for b in active[i+1:]:
+                  br=sorted(refs(b));
+                  if not br or br[0] not in table_by_box: continue
+                  gb=table_by_box[br[0]]
+                  if ga.get('source_page')!=gb.get('source_page'): continue
+                  tb=norm(b.get('ocr_text')); ov=iou(ga,gb)
+                  same=ta==tb or (len(ta)>3 and ta in tb) or (len(tb)>3 and tb in ta)
+                  if ta and tb and ov>0.25 and same:
+                      duplicate_pairs.append({'a':ar[0],'b':br[0],'iou':round(ov,4),'a_text':ta,'b_text':tb})
+
+          checks={
+              'active_story_objects':len(active),
+              'active_empty_story_objects':len(active_empty),
+              'tombstones':len(tombstones),
+              'created_first_reconciliation':created1,
+              'created_second_reconciliation':created2,
+              'resurrection_count':len(resurrected),
+              'duplicate_overlaps':len(duplicate_pairs),
+          }
+          failures=[]
+          for key in ('active_story_objects','active_empty_story_objects','resurrection_count','duplicate_overlaps'):
+              if checks[key]!=expected.get(key): failures.append(f'{key}: got {checks[key]} expected {expected.get(key)}')
+          if created1 or created2: failures.append(f'reconciliation created objects first={created1} second={created2}')
+          summary={
+              'checkpoint':'03b-ocr-curation','chapter_id':'57d7b970','review_status':'PASS' if not failures else 'FAIL',
+              'manual_corrections':len(corrections),'new_drop_decisions':len(drops),'seeded_tombstones':len(seeded),
+              **checks,'resurrected_box_ids':resurrected,'duplicate_pairs':duplicate_pairs,'failures':failures,
+              'next_action':'TRANSLATION_REVIEW' if not failures else 'STOP_AND_REPAIR_OCR_CURATION'
+          }
+          (out/'processed-manifest.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding='utf-8')
+          (out/'ocr-curation-summary.json').write_text(json.dumps(summary,ensure_ascii=False,indent=2),encoding='utf-8')
+          (out/'ocr-curation.json').write_text(json.dumps(curation,ensure_ascii=False,indent=2),encoding='utf-8')
+          rows=[{'page_index':x['page_index'],'text_object_id':x.get('id'),'source_boxes':x.get('source_boxes') or [],'ocr_text':x.get('ocr_text') or '','origin':x.get('origin')} for x in active]
+          (out/'active-story-objects.json').write_text(json.dumps(rows,ensure_ascii=False,indent=2),encoding='utf-8')
+          (out/'HUMAN_CHECKPOINT.txt').write_text('OCR CURATION PASS\n' if not failures else 'OCR CURATION FAIL\n',encoding='utf-8')
+          print(json.dumps(summary,ensure_ascii=False,indent=2))
+          if failures: raise SystemExit('; '.join(failures))
+          PY
+
+      - name: Verify curated checkpoint contract
+        run: |
+          python - <<'PY'
+          import json
+          s=json.load(open('checkpoint/03b-ocr-curated/ocr-curation-summary.json',encoding='utf-8'))
+          assert s['review_status']=='PASS'
+          assert s['active_story_objects']==110
+          assert s['active_empty_story_objects']==0
+          assert s['resurrection_count']==0
+          assert s['duplicate_overlaps']==0
+          assert s['created_first_reconciliation']==0
+          assert s['created_second_reconciliation']==0
+          assert s['manual_corrections']==21
+          assert s['new_drop_decisions']==134
+          PY
+
+      - name: Upload checkpoint 03B artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: 03b-ocr-curated-57d7b970
+          path: checkpoint/03b-ocr-curated/
+          retention-days: 7
