@@ -118,6 +118,8 @@ def main() -> None:
                 print(f"{name} canvas: {json.dumps(metrics, sort_keys=True)}")
                 if metrics["imageWidth"] <= 0 or metrics["imageLeft"] >= metrics["viewportWidth"]:
                     raise AssertionError(f"{name} image is outside the active canvas: {metrics}")
+                if name == "mobile" and metrics["imageWidth"] < metrics["viewportWidth"] * 0.6:
+                    raise AssertionError(f"mobile image is unexpectedly collapsed: {metrics}")
                 page.screenshot(path=str(args.artifacts / f"{name}.png"), full_page=True)
                 print(f"{name}: PASS")
                 page.close()

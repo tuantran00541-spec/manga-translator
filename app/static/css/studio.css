@@ -274,7 +274,11 @@
 
   @media (max-width: 1000px) {
     .workbench-stage-grid, .translation-workspace-body { grid-template-columns: minmax(0, 1fr); }
-    .workbench-stage-grid[data-nav-open], .workbench-stage-grid[data-inspector-open] { grid-template-columns: minmax(0, 1fr); }
+    /* This needs the same specificity as the wide-mode closed-panel rule.
+       Otherwise an editor with both drawers closed still inherits `0 1fr 0`,
+       while the mobile canvas is explicitly placed in column 1 (zero width). */
+    .workbench-stage-grid[data-nav-open][data-inspector-open],
+    .translation-workspace-body[data-nav-open][data-inspector-open] { grid-template-columns: minmax(0, 1fr); }
     .page-navigator, .context-inspector, .translation-panel-host {
       position: absolute;
       z-index: var(--z-panel);
