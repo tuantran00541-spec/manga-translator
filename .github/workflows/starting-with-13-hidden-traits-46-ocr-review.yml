@@ -47,7 +47,9 @@ jobs:
           cache: pip
 
       - name: Syntax-check OCR checkpoint runner
-        run: python -m py_compile trials/starting-with-13-hidden-traits-46/run_ocr_review.py
+        run: |
+          python -m py_compile trials/starting-with-13-hidden-traits-46/run_ocr_review.py
+          python -m py_compile trials/starting-with-13-hidden-traits-46/run_ocr_review_compat.py
 
       - name: Install production OCR runtime
         run: |
@@ -106,7 +108,7 @@ jobs:
 
       - name: Run production OCR from RAW and build review pack
         run: |
-          python trials/starting-with-13-hidden-traits-46/run_ocr_review.py \
+          python trials/starting-with-13-hidden-traits-46/run_ocr_review_compat.py \
             --chapter-id "$CHAPTER_ID" \
             --import-root checkpoint/01-import \
             --clean-root checkpoint/02-clean \
