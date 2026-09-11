@@ -1,0 +1,180 @@
+name: Chapter 99 Render Proof Only
+
+on:
+  push:
+    branches:
+      - trial/chapter-render-99
+    paths:
+      - .github/workflows/chapter-99-render-proof-only.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: chapter-99-human-loop
+  cancel-in-progress: false
+
+jobs:
+  proof-only:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    env:
+      CHAPTER_ID: c0990099
+      TRANSLATION_RUN_ID: "34554935945"
+      TRANSLATION_ARTIFACT: 04-translation-final-c0990099
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: trial/chapter-render-99
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install production render runtime
+        run: |
+          python -m pip install Pillow==10.4.0 numpy==1.26.4 opencv-contrib-python==4.10.0.84 fastapi==0.115.0 pydantic==2.9.2 filelock==3.16.1 loguru==0.7.2
+
+      - name: Restore approved translation checkpoint
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf checkpoint/proof-only data/raw/c0990099 data/processed/c0990099 data/output/c0990099
+          mkdir -p checkpoint/proof-only checkpoint/translation
+          gh run download "$TRANSLATION_RUN_ID" -n "$TRANSLATION_ARTIFACT" -D checkpoint/translation
+          test -f checkpoint/translation/processed/manifest.json
+          test -f trials/chapter-99/typography-plan.json
+
+      - name: Restore layout and exact approved typography plan
+        run: |
+          python - <<'PY'
+          import json, shutil
+          from pathlib import Path
+          chapter_id='c0990099'; root=Path('checkpoint/translation')
+          raw_dst=Path('data/raw')/chapter_id; proc_dst=Path('data/processed')/chapter_id; out_dst=Path('data/output')/chapter_id
+          for d in (raw_dst,proc_dst,out_dst):
+              if d.exists(): shutil.rmtree(d)
+              d.parent.mkdir(parents=True,exist_ok=True)
+          shutil.copytree(root/'raw',raw_dst); shutil.copytree(root/'processed',proc_dst); out_dst.mkdir(parents=True)
+          mp=proc_dst/'manifest.json'; m=json.loads(mp.read_text(encoding='utf-8'))
+          for p in m.get('pages') or []:
+              rn=Path(str(p.get('original') or '')).name; cn=Path(str(p.get('clean') or '')).name
+              if rn: p['original']=(raw_dst/'sliced'/rn).as_posix()
+              if cn: p['clean']=str((proc_dst/cn).resolve())
+
+          plan=json.loads(Path('trials/chapter-99/typography-plan.json').read_text(encoding='utf-8'))
+          if plan.get('active_story_objects')!=132 or plan.get('minimum_font_size')!=28:
+              raise SystemExit('approved typography plan metadata mismatch')
+          by_id={a['id']:a for a in plan.get('assignments') or []}
+          if len(by_id)!=132: raise SystemExit(f'expected 132 typography assignments got {len(by_id)}')
+          applied=0
+          for p in m.get('pages') or []:
+              for o in p.get('text_objects') or []:
+                  if o.get('source_missing') or o.get('human_review')!='keep_story': continue
+                  oid=str(o.get('id') or ''); a=by_id.get(oid)
+                  if not a: raise SystemExit(f'missing typography assignment {oid}')
+                  style=o.setdefault('style',{})
+                  style.update({
+                    'font':a['font'],'fontSize':str(a['font_size']),'color':'auto','strokeWidth':str(a['stroke_width']),
+                    'strokeColor':'auto','bgColor':'transparent','cornerRadius':'0','horizontalAlign':'center','verticalAlign':'middle',
+                    'bold':a['semantic_role'] in {'free_dramatic','shout'}
+                  })
+                  o['human_typeset_class']=a['semantic_role']; o['human_typeset_font']=a['font']; o['human_typeset_font_size']=int(a['font_size'])
+                  applied+=1
+          if applied!=132: raise SystemExit(f'applied typography to {applied}, expected 132')
+          if any(str((o.get('style') or {}).get('fontSize','')).lower()=='auto' for p in m.get('pages') or [] for o in p.get('text_objects') or [] if not o.get('source_missing') and o.get('human_review')=='keep_story'):
+              raise SystemExit('active story object has auto font size')
+          mp.write_text(json.dumps(m,ensure_ascii=False,indent=2),encoding='utf-8')
+          PY
+
+      - name: Render and export exact 20-page chapter
+        run: |
+          python - <<'PY'
+          import json, zipfile, shutil
+          from pathlib import Path
+          from PIL import Image
+          from app.routers.export import export_chapter, render_chapter
+          chapter_id='c0990099'; out=Path('data/output')/chapter_id
+          r=render_chapter(chapter_id); stats=r.get('chapter_render') or {}
+          if stats.get('total')!=73 or stats.get('skipped')!=0: raise SystemExit(f'render stats invalid {stats}')
+          export_chapter(chapter_id)
+          zpath=out/f'chapter_{chapter_id}.zip'
+          if not zpath.is_file(): raise SystemExit('chapter zip missing')
+          with zipfile.ZipFile(zpath) as z:
+              names=sorted(n for n in z.namelist() if n.lower().endswith('.png'))
+              if len(names)!=20: raise SystemExit(f'expected 20 stitched pages got {len(names)}')
+          shutil.copy2(zpath,Path('checkpoint/proof-only')/'Bad-Born-Blood-Chapter-99-VI-render-candidate.zip')
+          Path('checkpoint/proof-only/render-stats.json').write_text(json.dumps({'render_stats':stats,'source_pages':20,'slices':73},indent=2),encoding='utf-8')
+          PY
+
+      - name: Build downloadable object and stitched zoom proof only
+        run: |
+          python - <<'PY'
+          import json, zipfile, math, shutil
+          from pathlib import Path
+          from PIL import Image, ImageDraw, ImageFont
+          chapter_id='c0990099'; out=Path('data/output')/chapter_id; proc=Path('data/processed')/chapter_id; proof=Path('checkpoint/proof-only')
+          font=ImageFont.load_default(); m=json.loads((proc/'manifest.json').read_text(encoding='utf-8'))
+          obj_dir=proof/'object-proof'; obj_dir.mkdir(parents=True,exist_ok=True)
+          cards=[]
+          for pi,p in enumerate(m.get('pages') or []):
+              rim=Image.open(out/f'page_{pi:03d}.png').convert('RGB')
+              for o in p.get('text_objects') or []:
+                  if o.get('source_missing') or o.get('human_review')!='keep_story': continue
+                  r=o['region']; x1,y1,x2,y2=(int(r[k]) for k in ('x1','y1','x2','y2')); pad=100
+                  crop=rim.crop((max(0,x1-pad),max(0,y1-pad),min(rim.width,x2+pad),min(rim.height,y2+pad)))
+                  crop.thumbnail((570,400),Image.Resampling.LANCZOS)
+                  card=Image.new('RGB',(600,480),'white'); card.paste(crop,((600-crop.width)//2,8)); d=ImageDraw.Draw(card)
+                  label=f"p{pi:03d} src{p.get('source_page')} {o.get('id')} | {o.get('human_typeset_class')} | {o.get('human_typeset_font')} {o.get('human_typeset_font_size')}px"
+                  d.text((8,414),label[:112],fill='black',font=font); d.text((8,432),str(o.get('translation') or '').replace('\n',' / ')[:112],fill='black',font=font)
+                  cards.append(card)
+          for start in range(0,len(cards),8):
+              sheet=Image.new('RGB',(1200,1920),'white')
+              for j,c in enumerate(cards[start:start+8]): sheet.paste(c,((j%2)*600,(j//2)*480))
+              sheet.save(obj_dir/f'objects-{start:03d}-{min(start+7,len(cards)-1):03d}.jpg',quality=86,optimize=True)
+
+          tmp=Path('checkpoint/final-pages-tmp'); tmp.mkdir(parents=True,exist_ok=True)
+          with zipfile.ZipFile(out/f'chapter_{chapter_id}.zip') as z: z.extractall(tmp)
+          zoom_dir=proof/'zoom-proof'; zoom_dir.mkdir(parents=True,exist_ok=True); chunks=[]
+          for spi,pth in enumerate(sorted(tmp.glob('*.png'))):
+              im=Image.open(pth).convert('RGB'); step=2200
+              for y1 in range(0,im.height,step):
+                  y2=min(im.height,y1+step); crop=im.crop((0,y1,im.width,y2)); target_w=560; target_h=max(1,round(crop.height*target_w/crop.width)); crop=crop.resize((target_w,target_h),Image.Resampling.LANCZOS)
+                  card=Image.new('RGB',(600,1440),'white'); card.paste(crop,((600-target_w)//2,32)); d=ImageDraw.Draw(card); d.text((10,8),f'source {spi:02d} y={y1}:{y2}',fill='black',font=font); chunks.append(card)
+          for start in range(0,len(chunks),8):
+              sheet=Image.new('RGB',(1200,5760),'white')
+              for j,c in enumerate(chunks[start:start+8]): sheet.paste(c,((j%2)*600,(j//2)*1440))
+              sheet.save(zoom_dir/f'zoom-{start:03d}-{min(start+7,len(chunks)-1):03d}.jpg',quality=82,optimize=True)
+          shutil.rmtree(tmp)
+          plan=json.loads(Path('trials/chapter-99/typography-plan.json').read_text(encoding='utf-8'))
+          summary={'chapter_id':chapter_id,'status':'PROOF_READY_PENDING_HUMAN_VISUAL_REVIEW','active_story_objects':132,'object_proof_sheets':math.ceil(len(cards)/8),'zoom_chunks':len(chunks),'zoom_proof_sheets':math.ceil(len(chunks)/8),'font_usage':plan.get('font_usage'),'font_size_usage':plan.get('font_size_usage'),'free_text_max_font_size':plan.get('free_text_max_font_size'),'next_action':'HUMAN_VISUAL_REVIEW'}
+          (proof/'proof-summary.json').write_text(json.dumps(summary,ensure_ascii=False,indent=2),encoding='utf-8')
+          Path('checkpoint/proof-metadata').mkdir(parents=True,exist_ok=True)
+          shutil.copy2(proof/'proof-summary.json','checkpoint/proof-metadata/proof-summary.json')
+          shutil.copy2('trials/chapter-99/typography-plan.json','checkpoint/proof-metadata/typography-plan.json')
+          print(json.dumps(summary,ensure_ascii=False,indent=2))
+          PY
+
+      - name: Upload visual proof sheets
+        uses: actions/upload-artifact@v4
+        with:
+          name: 05-render-proof-c0990099
+          path: |
+            checkpoint/proof-only/object-proof
+            checkpoint/proof-only/zoom-proof
+            checkpoint/proof-only/proof-summary.json
+            checkpoint/proof-metadata/typography-plan.json
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Upload rendered chapter candidate separately
+        uses: actions/upload-artifact@v4
+        with:
+          name: 05-render-pages-c0990099
+          path: |
+            checkpoint/proof-only/Bad-Born-Blood-Chapter-99-VI-render-candidate.zip
+            checkpoint/proof-only/render-stats.json
+          retention-days: 7
+          if-no-files-found: error
