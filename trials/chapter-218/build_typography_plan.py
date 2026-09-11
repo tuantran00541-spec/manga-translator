@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from collections import Counter
 from pathlib import Path
 
@@ -16,8 +17,12 @@ from app.parameters import (
 )
 from app.render.text_renderer import _fits
 
-FONT_BUCKETS = [48, 44, 40, 38, 36, 34, 32, 30, 28]
-HARD_MIN_FONT_SIZE = 28
+# Final render sizes are always explicit numbers.  We intentionally do not use
+# a small set of 28/32/40/48 buckets: the size is derived per object from the
+# amount of text and the geometry of its reviewed text region.
+MIN_CANDIDATE_FONT_SIZE = 16
+MAX_CANDIDATE_FONT_SIZE = 96
+SOFT_READABILITY_WARNING_SIZE = 22
 
 SYSTEM_UI_IDS = {
     "text_f8805da6a21c4d26",
@@ -118,7 +123,13 @@ def cmap_codepoints(path: Path) -> set[int]:
         font.close()
 
 
-def choose_global_font(font_dir: Path, candidates: list[str], texts: list[str], *, fallback: Path | None = None):
+def choose_global_font(
+    font_dir: Path,
+    candidates: list[str],
+    texts: list[str],
+    *,
+    fallback: Path | None = None,
+):
     required = visible_codepoints(texts)
     checked = []
     for name in candidates:
@@ -134,7 +145,9 @@ def choose_global_font(font_dir: Path, candidates: list[str], texts: list[str], 
     if fallback is not None and fallback.is_file():
         cmap = cmap_codepoints(fallback)
         missing = required - cmap
-        checked.append({"font": fallback.name, "exists": True, "missing": len(missing), "fallback": True})
+        checked.append(
+            {"font": fallback.name, "exists": True, "missing": len(missing), "fallback": True}
+        )
         if not missing:
             return fallback, checked
     return None, checked
@@ -152,20 +165,104 @@ def semantic_kind(oid: str) -> str:
     return "dialogue"
 
 
-def preferred_size(kind: str) -> int:
-    if kind == "status_ui":
-        return 36
-    if kind == "system_ui":
-        return 40
-    if kind == "skill_attack":
-        return 48
-    if kind == "emphasis":
-        return 48
-    return 40
+def text_load(text: str) -> dict[str, float | int]:
+    words = [w for w in text.replace("\n", " ").split() if w]
+    word_count = len(words)
+    char_count = sum(1 for ch in text if not ch.isspace())
+    longest_word = max((len(w) for w in words), default=0)
+    avg_word_length = (sum(len(w) for w in words) / word_count) if word_count else 0.0
+    return {
+        "word_count": word_count,
+        "char_count": char_count,
+        "longest_word": longest_word,
+        "avg_word_length": round(avg_word_length, 2),
+    }
 
 
-def ladder_for(preferred: int) -> list[int]:
-    return [s for s in FONT_BUCKETS if s <= preferred and s >= HARD_MIN_FONT_SIZE]
+def word_count_height_ratio(word_count: int) -> float:
+    """Comfort ceiling: short text may be large; dense text starts smaller.
+
+    This is not the final size.  The exact font metrics still have to fit the
+    reviewed region, so both word load and bubble geometry participate.
+    """
+    if word_count <= 2:
+        return 0.72
+    if word_count <= 5:
+        return 0.60
+    if word_count <= 9:
+        return 0.50
+    if word_count <= 14:
+        return 0.42
+    if word_count <= 22:
+        return 0.35
+    if word_count <= 32:
+        return 0.30
+    return 0.26
+
+
+def sizing_window(text: str, box_w: int, box_h: int) -> dict[str, float | int]:
+    load = text_load(text)
+    word_count = int(load["word_count"])
+    char_count = int(load["char_count"])
+    aspect = box_w / max(1, box_h)
+    area = max(1, box_w * box_h)
+
+    # Start from a word-count-dependent fraction of bubble height.  Wide speech
+    # balloons can tolerate a slightly larger ceiling because wrapping is cheap;
+    # very narrow balloons get a mild reduction to avoid staircase wrapping.
+    ratio = word_count_height_ratio(word_count)
+    if aspect >= 2.4:
+        ratio *= 1.10
+    elif aspect <= 0.75:
+        ratio *= 0.90
+
+    comfort_ceiling = int(round(box_h * ratio))
+
+    # Area scaling keeps a tiny crop from proposing absurdly large type while
+    # still allowing 50-80px lettering on genuinely large, sparse bubbles.
+    area_ceiling = int(round(math.sqrt(area) * 0.42))
+    ceiling = max(
+        MIN_CANDIDATE_FONT_SIZE,
+        min(MAX_CANDIDATE_FONT_SIZE, comfort_ceiling, max(24, area_ceiling)),
+    )
+
+    # Readability floor is adaptive rather than a fixed 28px rule.  It only
+    # rejects extremely small type; it never forces every object toward 40/48.
+    short_side = min(box_w, box_h)
+    adaptive_floor = int(round(short_side * 0.11))
+    adaptive_floor = max(MIN_CANDIDATE_FONT_SIZE, min(24, adaptive_floor))
+    adaptive_floor = min(adaptive_floor, ceiling)
+
+    density = char_count / math.sqrt(area)
+    return {
+        **load,
+        "box_aspect_ratio": round(aspect, 3),
+        "box_area": area,
+        "text_density": round(density, 4),
+        "comfort_ceiling": ceiling,
+        "adaptive_floor": adaptive_floor,
+    }
+
+
+def choose_fixed_size(
+    draw: ImageDraw.ImageDraw,
+    text: str,
+    box_w: int,
+    box_h: int,
+    font_path: Path,
+    stroke_width: int,
+) -> tuple[int | None, list[str] | None, dict[str, float | int]]:
+    stats = sizing_window(text, box_w, box_h)
+    ceiling = int(stats["comfort_ceiling"])
+    floor = int(stats["adaptive_floor"])
+
+    # Continuous integer search, not coarse buckets.  The chosen numeric size is
+    # written into the manifest, so final rendering never depends on auto-size.
+    for size in range(ceiling, floor - 1, -1):
+        ok, lines = _fits(draw, text, box_w, box_h, str(font_path), size, stroke_width)
+        if ok:
+            return size, lines, stats
+    return None, None, stats
 
 
 def main() -> None:
@@ -247,6 +344,7 @@ def main() -> None:
     plan_objects = {}
     overflow = []
     glyph_missing = []
+    readability_warnings = []
     size_counter: Counter[int] = Counter()
     font_counter: Counter[str] = Counter()
     kind_counter: Counter[str] = Counter()
@@ -278,36 +376,59 @@ def main() -> None:
         else:
             font_path = primary_font
 
-        missing = sorted({ord(ch) for ch in text if not ch.isspace()} - font_cmaps[str(font_path)])
+        missing = sorted(
+            {ord(ch) for ch in text if not ch.isspace()} - font_cmaps[str(font_path)]
+        )
         if missing:
-            glyph_missing.append({"id": oid, "font": font_path.name, "codepoints": missing})
+            glyph_missing.append(
+                {"id": oid, "font": font_path.name, "codepoints": missing}
+            )
             failures.append(f"{oid}: assigned font lacks glyphs")
             continue
 
-        pad = max(2, min(RENDER_DEFAULT_PADDING, int(min(raw_w, raw_h) * RENDER_PADDING_RATIO_MAX)))
+        pad = max(
+            2,
+            min(
+                RENDER_DEFAULT_PADDING,
+                int(min(raw_w, raw_h) * RENDER_PADDING_RATIO_MAX),
+            ),
+        )
         box_w = raw_w - pad * 2
         box_h = raw_h - pad * 2
         stroke_width = 2
-        picked_size = None
-        picked_lines = None
-        for size in ladder_for(preferred_size(kind)):
-            ok, lines = _fits(draw, text, box_w, box_h, str(font_path), size, stroke_width)
-            if ok:
-                picked_size = size
-                picked_lines = lines
-                break
+        picked_size, picked_lines, sizing = choose_fixed_size(
+            draw,
+            text,
+            box_w,
+            box_h,
+            font_path,
+            stroke_width,
+        )
         if picked_size is None:
-            overflow.append({
-                "id": oid,
-                "page_index": page_index,
-                "source_page": page.get("source_page"),
-                "slice_index": page.get("slice_index"),
-                "region": region,
-                "semantic": kind,
-                "text": text,
-                "minimum_size": HARD_MIN_FONT_SIZE,
-            })
+            overflow.append(
+                {
+                    "id": oid,
+                    "page_index": page_index,
+                    "source_page": page.get("source_page"),
+                    "slice_index": page.get("slice_index"),
+                    "region": region,
+                    "semantic": kind,
+                    "text": text,
+                    "sizing": sizing,
+                }
+            )
             continue
+
+        if picked_size < SOFT_READABILITY_WARNING_SIZE:
+            readability_warnings.append(
+                {
+                    "id": oid,
+                    "page_index": page_index,
+                    "font_size": picked_size,
+                    "word_count": sizing["word_count"],
+                    "region": region,
+                }
+            )
 
         horizontal_align = "left" if oid in STATUS_LEFT_ALIGN_IDS else "center"
         vertical_align = "top" if oid in STATUS_LEFT_ALIGN_IDS else "middle"
@@ -334,11 +455,15 @@ def main() -> None:
             "translation": text,
             "style": style,
             "wrapped_lines": picked_lines,
+            "sizing": {
+                **sizing,
+                "selected_font_size": picked_size,
+                "wrapped_line_count": len(picked_lines or []),
+            },
             "fit": {
                 "box_width": box_w,
                 "box_height": box_h,
                 "padding": pad,
-                "hard_min_font_size": HARD_MIN_FONT_SIZE,
                 "passed": True,
             },
         }
@@ -346,21 +471,29 @@ def main() -> None:
         font_counter[font_path.stem] += 1
 
     if overflow:
-        failures.append(f"{len(overflow)} object(s) do not fit at >= {HARD_MIN_FONT_SIZE}px")
+        failures.append(
+            f"{len(overflow)} object(s) cannot fit within their adaptive readability window"
+        )
     if glyph_missing:
         failures.append(f"{len(glyph_missing)} object(s) have missing glyphs")
     if len(plan_objects) != len(active):
         failures.append(f"styled {len(plan_objects)}/{len(active)} active objects")
 
     auto_font_sizes = [
-        oid for oid, item in plan_objects.items()
+        oid
+        for oid, item in plan_objects.items()
         if str((item.get("style") or {}).get("fontSize", "")).lower() == "auto"
     ]
-    min_size = min((int(item["style"]["fontSize"]) for item in plan_objects.values()), default=None)
+    min_size = min(
+        (int(item["style"]["fontSize"]) for item in plan_objects.values()),
+        default=None,
+    )
+    max_size = max(
+        (int(item["style"]["fontSize"]) for item in plan_objects.values()),
+        default=None,
+    )
     if auto_font_sizes:
         failures.append("fontSize:auto remained in active typography plan")
-    if min_size is not None and min_size < HARD_MIN_FONT_SIZE:
-        failures.append(f"minimum planned font size is {min_size}px")
 
     status = "PASS" if not failures else "FAIL"
     manifest["typography_review"] = {
@@ -370,8 +503,11 @@ def main() -> None:
         "styled_story_objects": len(plan_objects),
         "font_size_auto_count": len(auto_font_sizes),
         "minimum_font_size": min_size,
+        "maximum_font_size": max_size,
         "overflow_count": len(overflow),
         "missing_glyph_count": len(glyph_missing),
+        "readability_warning_count": len(readability_warnings),
+        "sizing_policy": "word-count + bubble-geometry adaptive fixed sizing",
     }
 
     typography_plan = {
@@ -379,12 +515,25 @@ def main() -> None:
         "checkpoint": "05-typeset-preflight",
         "status": status,
         "policy": {
-            "font_size_buckets": FONT_BUCKETS,
-            "hard_min_font_size": HARD_MIN_FONT_SIZE,
+            "sizing_mode": "adaptive_fixed_per_object",
+            "sizing_inputs": [
+                "word_count",
+                "character_count",
+                "text_density",
+                "bubble_width",
+                "bubble_height",
+                "bubble_aspect_ratio",
+                "actual_font_metrics",
+            ],
+            "candidate_font_size_range": [
+                MIN_CANDIDATE_FONT_SIZE,
+                MAX_CANDIDATE_FONT_SIZE,
+            ],
+            "font_size_buckets": None,
             "font_size_auto_allowed": False,
             "primary_dialogue_font_stable": True,
             "semantic_font_variants": ["system_ui", "status_ui", "skill_attack"],
-            "overflow_policy": "FAIL; shorten translation / improve line breaks / safely expand region before reducing below 28px",
+            "overflow_policy": "FAIL; shorten/rebreak text or safely expand region rather than silently shrinking below the adaptive readability floor",
         },
         "fonts": {
             "primary_dialogue": primary_font.stem,
@@ -403,15 +552,25 @@ def main() -> None:
             "font_size_auto": len(auto_font_sizes),
             "overflow": len(overflow),
             "missing_glyph": len(glyph_missing),
+            "readability_warnings": len(readability_warnings),
         },
-        "size_histogram": {str(k): v for k, v in sorted(size_counter.items(), reverse=True)},
+        "font_size_range_selected": {
+            "minimum": min_size,
+            "maximum": max_size,
+        },
+        "size_histogram": {
+            str(k): v for k, v in sorted(size_counter.items(), reverse=True)
+        },
         "font_usage": dict(sorted(font_counter.items())),
         "semantic_usage": dict(sorted(kind_counter.items())),
         "overflow_objects": overflow,
+        "readability_warning_objects": readability_warnings,
         "missing_glyph_objects": glyph_missing,
         "objects": plan_objects,
         "failures": failures,
-        "next_action": "RENDER_FROM_APPROVED_CLEAN" if status == "PASS" else "LOCAL_TYPESET_REPAIR",
+        "next_action": (
+            "RENDER_FROM_APPROVED_CLEAN" if status == "PASS" else "LOCAL_TYPESET_REPAIR"
+        ),
     }
 
     dump_json(out / "typography-plan.json", typography_plan)
@@ -428,7 +587,9 @@ def main() -> None:
         "skill_font": skill_font.stem,
         "font_size_auto_count": len(auto_font_sizes),
         "minimum_font_size": min_size,
+        "maximum_font_size": max_size,
         "overflow_count": len(overflow),
+        "readability_warning_count": len(readability_warnings),
         "missing_glyph_count": len(glyph_missing),
         "failures": failures,
         "next_action": typography_plan["next_action"],
