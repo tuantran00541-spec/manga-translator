@@ -6,10 +6,39 @@
   "source_url": "https://asurascans.com/comics/pick-me-up-infinite-gacha-53fc8424/chapter/218",
   "branch": "trial/chapter-render-218",
   "source_of_truth_sha": "6a6ac244e9c5db87b7f9d0b815416930f2f29033",
-  "last_reviewed_branch_sha": "2f63c768861e9ddedafe097a90b9c6383437619c",
-  "current_stage": "OCR_PENDING",
-  "last_passed_checkpoint": "CLEAN",
-  "current_artifact": "02-clean-review-c2182180@34569707469 + overlay:02b-clean-local-repair-c2182180@34572578396",
+  "last_reviewed_branch_sha": "f2b018a15e4853169fc107c74ba5c05363c7b03a",
+  "current_stage": "FINAL_PENDING",
+  "last_passed_checkpoint": "VISUAL_REVIEW",
+  "current_artifact": {
+    "run_id": 34584069503,
+    "artifact": "06-render-review-c2182180",
+    "artifact_id": 10192871978,
+    "head_sha": "f2b018a15e4853169fc107c74ba5c05363c7b03a"
+  },
+  "approved_clean_stack": {
+    "base": "02-clean-review-c2182180@34569707469",
+    "overlay": "02b-clean-local-repair-c2182180@34572578396"
+  },
+  "approved_ocr": {
+    "active_story_objects": 98,
+    "persistent_tombstones": 125,
+    "empty_active_objects": 0,
+    "duplicate_overlap_objects": 0,
+    "resurrection_created_objects": 0
+  },
+  "approved_translation": {
+    "translated_story_objects": 98,
+    "active_untranslated_story_objects": 0
+  },
+  "approved_typeset": {
+    "run_id": 34583966632,
+    "artifact": "05b-typeset-local-repair-c2182180",
+    "artifact_id": 10192770672,
+    "font_size_auto_objects": 0,
+    "font_size_min_px": 22,
+    "font_size_max_px": 90,
+    "adaptive_content_density_sizing": true
+  },
   "blockers": [],
-  "next_action": "RUN_CHECKPOINT_03_OCR_FROM_RAW"
+  "next_action": "RUN_FINAL_PACKAGE"
 }
