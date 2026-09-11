@@ -1,0 +1,106 @@
+name: Starting With 13 Hidden Traits 46 Checkpoint 06 Render Review
+
+on:
+  push:
+    branches:
+      - trial/starting-with-13-hidden-traits-46
+    paths:
+      - .github/workflows/starting-with-13-hidden-traits-46-render-review.yml
+      - trials/starting-with-13-hidden-traits-46/render_review.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: starting-with-13-hidden-traits-46-human-loop
+  cancel-in-progress: false
+
+env:
+  PYTHONPATH: .
+  CHAPTER_ID: 57d7b970
+  CLEAN_RUN_ID: "34587852339"
+  CLEAN_ARTIFACT: 02-clean-review-57d7b970
+  REPAIR_B_RUN_ID: "34591281242"
+  REPAIR_B_ARTIFACT: 02b-clean-local-repair-57d7b970
+  REPAIR_C_RUN_ID: "34591701406"
+  REPAIR_C_ARTIFACT: 02c-clean-title-credit-repair-57d7b970
+  TYPESET_RUN_ID: "34620990362"
+  TYPESET_ARTIFACT: 05-typeset-57d7b970
+
+jobs:
+  render-review:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: trial/starting-with-13-hidden-traits-46
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install production render runtime
+        run: |
+          python -m pip install --disable-pip-version-check --quiet \
+            Pillow==10.4.0 numpy==1.26.4 opencv-contrib-python==4.10.0.84 \
+            fastapi==0.115.0 pydantic==2.9.2 filelock==3.16.1 \
+            loguru==0.7.2 python-multipart==0.0.12
+
+      - name: Restore approved clean stack and typeset checkpoint
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf checkpoint/02-clean checkpoint/02b-repair checkpoint/02c-repair checkpoint/05-typeset checkpoint/06-render-review
+          mkdir -p checkpoint/02-clean checkpoint/02b-repair checkpoint/02c-repair checkpoint/05-typeset checkpoint/06-render-review
+          gh run download "$CLEAN_RUN_ID" -n "$CLEAN_ARTIFACT" -D checkpoint/02-clean
+          gh run download "$REPAIR_B_RUN_ID" -n "$REPAIR_B_ARTIFACT" -D checkpoint/02b-repair
+          gh run download "$REPAIR_C_RUN_ID" -n "$REPAIR_C_ARTIFACT" -D checkpoint/02c-repair
+          gh run download "$TYPESET_RUN_ID" -n "$TYPESET_ARTIFACT" -D checkpoint/05-typeset
+          test -f checkpoint/02-clean/processed/manifest.json
+          test -d checkpoint/02-clean/processed
+          test -d checkpoint/02-clean/raw
+          test -f checkpoint/02b-repair/overlay/processed/clean_000_00.png
+          test -f checkpoint/02b-repair/overlay/processed/clean_021_04.png
+          test -f checkpoint/02c-repair/overlay/processed/clean_005_00.png
+          test -f checkpoint/05-typeset/processed-manifest-typeset.json
+          test -f checkpoint/05-typeset/typeset-summary.json
+
+      - name: Render and build visual review proof pack
+        run: |
+          python trials/starting-with-13-hidden-traits-46/render_review.py \
+            --clean-root checkpoint/02-clean \
+            --repair-b checkpoint/02b-repair \
+            --repair-c checkpoint/02c-repair \
+            --typeset-root checkpoint/05-typeset \
+            --clean-review trials/starting-with-13-hidden-traits-46/clean-review.json \
+            --output checkpoint/06-render-review
+
+      - name: Verify technical render gate
+        run: |
+          python - <<'PY'
+          import json
+          s=json.load(open('checkpoint/06-render-review/render-review-summary.json',encoding='utf-8'))
+          assert s.get('status')=='TECHNICAL_PASS_PENDING_HUMAN_VISUAL_REVIEW',s
+          assert s.get('slices')==77,s
+          assert s.get('source_pages')==22,s
+          assert s.get('active_story_objects')==110,s
+          assert s.get('persistent_tombstones')==147,s
+          assert s.get('font_size_auto_count')==0,s
+          assert s.get('system_font')=='BeVietnamPro-SemiBold',s
+          stats=s.get('render_stats') or {}
+          assert stats.get('total')==77 and stats.get('rendered')==77 and stats.get('skipped')==0,stats
+          assert len(s.get('final_page_dimensions') or [])==22,s
+          print(json.dumps({k:v for k,v in s.items() if k!='final_page_dimensions'},ensure_ascii=False,indent=2))
+          PY
+
+      - name: Upload render review checkpoint
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: 06-render-review-57d7b970
+          path: checkpoint/06-render-review/
+          retention-days: 7
+          if-no-files-found: warn
