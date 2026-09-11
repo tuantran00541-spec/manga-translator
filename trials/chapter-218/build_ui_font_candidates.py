@@ -116,14 +116,25 @@ def main():
     plan = read_json(typeset_root / "typography-plan.json")
     pages = manifest.get("pages") or []
     page = pages[PAGE_INDEX]
+
+    # Semantic classification is durable in typography-plan.json; the render
+    # manifest intentionally stores only render-facing fields. Resolve status
+    # object IDs from the plan, then map them back to the page text objects.
+    plan_objects = plan.get("objects") or {}
+    status_ids = {
+        oid for oid, meta in plan_objects.items()
+        if isinstance(meta, dict)
+        and int(meta.get("page_index", -1)) == PAGE_INDEX
+        and str(meta.get("semantic") or "") == "status_ui"
+    }
     status = [
         obj for obj in (page.get("text_objects") or [])
         if isinstance(obj, dict)
         and not obj.get("source_missing")
-        and str(obj.get("semantic_type") or obj.get("semantic") or "") == "status_ui"
+        and str(obj.get("id") or "") in status_ids
     ]
     if len(status) < 8:
-        raise SystemExit(f"unexpected status_ui count on p{PAGE_INDEX}: {len(status)}")
+        raise SystemExit(f"unexpected status_ui count on p{PAGE_INDEX}: {len(status)} ids={sorted(status_ids)}")
     ids = {str(obj.get("id") or "") for obj in status}
     if not WARNING_IDS.issubset(ids):
         raise SystemExit(f"warning ids missing from status page: {sorted(WARNING_IDS - ids)}")
