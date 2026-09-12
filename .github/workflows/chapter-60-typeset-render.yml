@@ -1,0 +1,391 @@
+name: Chapter 60 Checkpoint 06 Typeset Render Preview
+
+on:
+  push:
+    branches:
+      - trial/chapter-render-60
+    paths:
+      - .github/workflows/chapter-60-typeset-render.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: chapter-60-human-loop
+  cancel-in-progress: false
+
+jobs:
+  typeset-render:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 35
+    env:
+      BASE_RUN_ID: "34681593344"
+      BASE_ARTIFACT: 04d-ocr-final-f1cd0121
+      ROOT: checkpoint/06-render-preview
+      PROOF_PATH: trials/chapter-60/review/06-render-proof.pdf
+      REPORT_PATH: trials/chapter-60/review/06-typeset-report.json
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: trial/chapter-render-60
+          fetch-depth: 1
+
+      - name: Install render runtime
+        run: |
+          python -m pip install --quiet Pillow==10.4.0 numpy==1.26.4 fonttools==4.54.1 loguru==0.7.2
+
+      - name: Restore final OCR checkpoint
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf "$ROOT"
+          mkdir -p "$ROOT"
+          gh run download "$BASE_RUN_ID" -n "$BASE_ARTIFACT" -D "$ROOT"
+          test -f "$ROOT/processed/manifest.json"
+          test -f trials/chapter-60/translation-vi.json
+
+      - name: Apply final punctuation edit before typesetting
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('trials/chapter-60/translation-vi.json')
+          s=p.read_text(encoding='utf-8')
+          old='Cá cược được chính thức cho phép ở giải đấu thương và đấu phép..!!'
+          new='Cá cược được chính thức cho phép ở giải đấu thương và đấu phép..!'
+          if old in s:
+              s=s.replace(old,new,1)
+              p.write_text(s,encoding='utf-8')
+          assert new in p.read_text(encoding='utf-8')
+          print('punctuation editorial fix present')
+          PY
+
+      - name: Resolve explicit typography and render all slices
+        run: |
+          PYTHONPATH=. python - <<'PY'
+          import json, os, math
+          from collections import defaultdict
+          from datetime import datetime, timezone
+          from pathlib import Path
+          from PIL import Image, ImageDraw, ImageFont
+          from fontTools.ttLib import TTFont
+          from app.render.text_renderer import _fits, render_text_in_box
+          from app.parameters import RENDER_DEFAULT_PADDING
+
+          root=Path(os.environ['ROOT']).resolve()
+          mp=root/'processed'/'manifest.json'
+          manifest=json.loads(mp.read_text(encoding='utf-8'))
+          payload=json.loads(Path('trials/chapter-60/translation-vi.json').read_text(encoding='utf-8'))
+          translations=payload['translations']
+          assert manifest.get('chapter_id')=='f1cd0121'
+
+          active=[]
+          for pi,p in enumerate(manifest.get('pages',[])):
+              for o in p.get('text_objects',[]) or []:
+                  if not o.get('source_missing'):
+                      active.append((pi,p,o))
+          active_ids={str(o.get('id')) for _,_,o in active}
+          assert len(active)==110
+          assert active_ids==set(translations), (len(active_ids),len(translations),sorted(active_ids-set(translations)),sorted(set(translations)-active_ids))
+
+          # Final punctuation correction is asserted here so an older translation artifact can never leak forward.
+          assert translations['text_279f6eb5d0fc4d11'].endswith('đấu phép..!')
+
+          font_dir=Path('app/static/fonts')
+          font_paths={
+              'dialogue': font_dir/'Manga-fonts.ttf',
+              'sfx': font_dir/'SFX-fonts-1.ttf',
+              'secondary': font_dir/'BeVietnamPro-SemiBold.ttf',
+              'fallback': font_dir/'BeVietnamPro-SemiBold.ttf',
+          }
+          for p in font_paths.values():
+              assert p.is_file(), p
+
+          cmap_cache={}
+          def supports(path:Path,text:str)->bool:
+              if path not in cmap_cache:
+                  cmap_cache[path]=set(TTFont(str(path),lazy=True).getBestCmap() or {})
+              cmap=cmap_cache[path]
+              return all(ord(ch) in cmap for ch in text if not ch.isspace())
+
+          # Index all extracted files by basename so absolute paths from a prior runner remain reproducible.
+          by_name=defaultdict(list)
+          for p in root.rglob('*'):
+              if p.is_file():
+                  by_name[p.name].append(p)
+
+          def resolve_image(value, prefer_clean=False):
+              raw=str(value or '')
+              if not raw:
+                  raise FileNotFoundError('empty image path')
+              p=Path(raw)
+              candidates=[]
+              if p.is_file(): candidates.append(p)
+              if not p.is_absolute():
+                  for c in (root/p, root/'processed'/p, root/'raw'/p):
+                      if c.is_file(): candidates.append(c)
+              candidates += by_name.get(p.name,[])
+              # de-duplicate while preserving order
+              uniq=[]; seen=set()
+              for c in candidates:
+                  key=str(c.resolve())
+                  if key not in seen:
+                      seen.add(key); uniq.append(c)
+              if not uniq:
+                  raise FileNotFoundError(raw)
+              if prefer_clean:
+                  clean=[c for c in uniq if 'clean' in c.name.lower() or 'clean' in str(c.parent).lower()]
+                  if clean: return clean[0]
+              return uniq[0]
+
+          def box_semantic(page,obj):
+              role=str(obj.get('semantic_role') or '').lower()
+              if role: return role
+              refs=set(str(x) for x in (obj.get('source_boxes') or []))
+              for b in page.get('boxes',[]) or []:
+                  if str(b.get('id')) in refs:
+                      return str(b.get('semantic_type') or b.get('class_name') or '').lower()
+              return ''
+
+          def classify(page,obj,text,source):
+              oid=str(obj.get('id'))
+              sem=box_semantic(page,obj)
+              su=source.upper()
+              if oid=='human_p031_nightmare_note' or 'secondary' in sem:
+                  return 'secondary'
+              if 'SQUEE' in su or 'SQUEAK' in su or text.upper().startswith(('CHÍT','CHÍÍT','CHÍÍÍT')):
+                  return 'sfx'
+              if 'free' in sem or 'narrat' in sem:
+                  return 'free_text'
+              if text in ('!!','......'):
+                  return 'acting'
+              if ('?!' in source or '!!' in source) and len(text)<=65:
+                  return 'shout'
+              return 'dialogue'
+
+          role_policy={
+              'dialogue':  (28,48,0,False),
+              'secondary': (24,34,0,False),
+              'sfx':       (32,68,2,True),
+              'free_text': (28,58,2,True),
+              'acting':    (32,56,0,True),
+              'shout':     (30,56,1,True),
+          }
+
+          def choose_font(role,text):
+              candidates=[]
+              if role=='sfx': candidates=[font_paths['sfx'],font_paths['dialogue'],font_paths['fallback']]
+              elif role in ('free_text','shout','acting'): candidates=[font_paths['dialogue'],font_paths['fallback']]
+              else: candidates=[font_paths['dialogue'],font_paths['fallback']]
+              for f in candidates:
+                  if supports(f,text): return f
+              raise RuntimeError(f'No font covers text: {text!r}')
+
+          def expand_region(reg,img_w,img_h,pad):
+              return {
+                  'x1':max(0,int(reg['x1'])-pad),
+                  'y1':max(0,int(reg['y1'])-pad),
+                  'x2':min(img_w,int(reg['x2'])+pad),
+                  'y2':min(img_h,int(reg['y2'])+pad),
+              }
+
+          def fit_explicit(text,reg,font_path,min_size,max_size,stroke,img_w,img_h):
+              # Detector geometry describes source ink rather than the whole balloon.
+              # Small, recorded expansion is allowed; anything beyond 48px is a hard blocker.
+              for expand in (0,6,12,20,30,40,48):
+                  rr=expand_region(reg,img_w,img_h,expand)
+                  raw_w=rr['x2']-rr['x1']; raw_h=rr['y2']-rr['y1']
+                  pad=max(2,min(RENDER_DEFAULT_PADDING,int(min(raw_w,raw_h)*0.08)))
+                  bw=max(1,raw_w-pad*2); bh=max(1,raw_h-pad*2)
+                  dummy=Image.new('RGB',(max(2,raw_w),max(2,raw_h)),'white')
+                  draw=ImageDraw.Draw(dummy)
+                  for size in range(max_size,min_size-1,-1):
+                      ok,lines=_fits(draw,text,bw,bh,str(font_path),size,stroke)
+                      if ok:
+                          return rr,size,lines,expand
+              return None
+
+          # First pass: resolve image sizes and typography. Rendering is aborted if even one object violates min size.
+          plan=[]; blockers=[]; adjusted=[]; role_counts=defaultdict(int); font_counts=defaultdict(int)
+          base_cache={}
+          for pi,page,obj in active:
+              if pi not in base_cache:
+                  base=resolve_image(page.get('clean') or page.get('original'),prefer_clean=bool(page.get('clean')))
+                  with Image.open(base) as im:
+                      base_cache[pi]=(base,im.size)
+              base,(iw,ih)=base_cache[pi]
+              oid=str(obj.get('id')); text=str(translations[oid]).strip(); source=str(obj.get('ocr_text') or '')
+              role=classify(page,obj,text,source)
+              min_size,max_size,stroke,bold=role_policy[role]
+              font_path=choose_font(role,text)
+              reg=obj.get('region') or {}
+              fitted=fit_explicit(text,reg,font_path,min_size,max_size,stroke,iw,ih)
+              if not fitted:
+                  blockers.append({'page_index':pi,'object_id':oid,'translation':text,'role':role,'region':reg,'min_size':min_size})
+                  continue
+              rr,size,lines,expand=fitted
+              role_counts[role]+=1; font_counts[font_path.name]+=1
+              if expand:
+                  adjusted.append({'page_index':pi,'object_id':oid,'expand_px':expand,'original_region':reg,'render_region':rr})
+              plan.append({'page_index':pi,'object_id':oid,'role':role,'font':font_path.name,'font_size':size,'stroke_width':stroke,'bold':bold,'region':rr,'lines':lines,'translation':text})
+
+          if blockers:
+              print('TYPESET_BLOCKERS='+json.dumps(blockers,ensure_ascii=False,indent=2))
+              raise SystemExit(f'{len(blockers)} object(s) cannot fit at editorial minimum')
+          assert len(plan)==110
+
+          plan_map={(r['page_index'],r['object_id']):r for r in plan}
+          out=root/'rendered_slices'; out.mkdir(parents=True,exist_ok=True)
+          rendered_count=0; per_page=[]
+          for pi,page in enumerate(manifest.get('pages',[])):
+              base=resolve_image(page.get('clean') or page.get('original'),prefer_clean=bool(page.get('clean')))
+              image=Image.open(base).convert('RGB')
+              count=0
+              for obj in page.get('text_objects',[]) or []:
+                  if obj.get('source_missing'): continue
+                  oid=str(obj.get('id'))
+                  p=plan_map[(pi,oid)]
+                  rr=p['region']; coords=(rr['x1'],rr['y1'],rr['x2'],rr['y2'])
+                  role=p['role']; font_path=font_dir/p['font']
+                  image=render_text_in_box(
+                      image,p['translation'],coords,
+                      font_path=font_path,
+                      fill='auto',font_size=int(p['font_size']),
+                      is_bold=bool(p['bold']),font_name=font_path.stem,
+                      stroke_width=int(p['stroke_width']),stroke_color='auto',
+                      bg_color='transparent',corner_radius=0,
+                      shape=str(obj.get('shape') or 'rectangle'),
+                      horizontal_align='center',vertical_align='middle'
+                  )
+                  style=obj.setdefault('style',{})
+                  style.update({
+                      'font':font_path.stem,
+                      'fontSize':str(p['font_size']),
+                      'bold':bool(p['bold']),
+                      'strokeWidth':str(p['stroke_width']),
+                      'strokeColor':'auto','color':'auto','bgColor':'transparent',
+                      'horizontalAlign':'center','verticalAlign':'middle'
+                  })
+                  obj['region']=dict(rr)
+                  obj['translation']=p['translation']
+                  obj['typeset_role']=role
+                  obj['typeset_review_state']='preview'
+                  count+=1; rendered_count+=1
+              target=out/f'page_{pi:03d}.png'
+              image.save(target,format='PNG',optimize=True)
+              per_page.append({'page_index':pi,'source_page':page.get('source_page'),'slice_index':page.get('slice_index'),'rendered_objects':count,'size':list(image.size),'file':target.name})
+
+          assert rendered_count==110
+          assert len(per_page)==len(manifest.get('pages',[]))==65
+          # Hard invariant: all active styles have an explicit numeric font size, never auto.
+          unresolved=[]
+          for pi,p in enumerate(manifest.get('pages',[])):
+              for o in p.get('text_objects',[]) or []:
+                  if o.get('source_missing'): continue
+                  fs=str((o.get('style') or {}).get('fontSize') or '')
+                  if not fs.isdigit(): unresolved.append({'page_index':pi,'object_id':o.get('id'),'fontSize':fs})
+          if unresolved: raise SystemExit('unresolved font sizes '+json.dumps(unresolved,ensure_ascii=False))
+
+          # Keep stitch-relevant metadata explicit for the final export step.
+          stitch=[]
+          for pi,p in enumerate(manifest.get('pages',[])):
+              meta={'page_index':pi,'source_page':p.get('source_page'),'slice_index':p.get('slice_index')}
+              for k,v in p.items():
+                  kl=str(k).lower()
+                  if any(x in kl for x in ('stitch','core','offset','crop','slice_start','slice_end','source_y')):
+                      if k not in meta and isinstance(v,(str,int,float,bool,list,dict,type(None))): meta[k]=v
+              stitch.append(meta)
+
+          report={
+              'checkpoint':'06-typeset-render-preview','chapter_id':'f1cd0121','created_at':datetime.now(timezone.utc).isoformat(),
+              'source_checkpoint':'04d-ocr-final-f1cd0121','active_objects':110,'rendered_objects':rendered_count,'rendered_slices':65,
+              'explicit_numeric_font_sizes':True,'unresolved_font_sizes':0,'minimum_policy':{'dialogue':28,'secondary':24,'sfx':32,'free_text':28,'acting':32,'shout':30},
+              'role_counts':dict(role_counts),'font_counts':dict(font_counts),'region_adjustment_count':len(adjusted),'region_adjustments':adjusted,
+              'status':'PASS','next_action':'HUMAN_VISUAL_REVIEW'
+          }
+          mp.write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding='utf-8')
+          (root/'typeset-report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
+          (root/'typeset-plan.json').write_text(json.dumps(plan,ensure_ascii=False,indent=2),encoding='utf-8')
+          (root/'stitch-index.json').write_text(json.dumps(stitch,ensure_ascii=False,indent=2),encoding='utf-8')
+          print(json.dumps(report,ensure_ascii=False,indent=2))
+          print('=== STITCH META SAMPLE ===')
+          print(json.dumps(stitch[:8],ensure_ascii=False,indent=2))
+          PY
+
+      - name: Build visual proof PDF
+        run: |
+          python - <<'PY'
+          import json, os, math
+          from pathlib import Path
+          from PIL import Image, ImageDraw, ImageFont
+          root=Path(os.environ['ROOT'])
+          out=root/'rendered_slices'
+          files=sorted(out.glob('page_*.png'))
+          assert len(files)==65
+          manifest=json.loads((root/'processed'/'manifest.json').read_text(encoding='utf-8'))
+          font=ImageFont.truetype('app/static/fonts/BeVietnamPro-SemiBold.ttf',24)
+          pages=[]
+          target_w=720
+          for pair_start in range(0,len(files),2):
+              cards=[]
+              for idx in range(pair_start,min(pair_start+2,len(files))):
+                  im=Image.open(files[idx]).convert('RGB')
+                  scale=target_w/im.width
+                  resized=im.resize((target_w,max(1,int(im.height*scale))),Image.Resampling.LANCZOS)
+                  p=manifest['pages'][idx]
+                  header=Image.new('RGB',(target_w,54),'white')
+                  d=ImageDraw.Draw(header)
+                  d.text((10,10),f"slice p{idx:03d} | source {p.get('source_page')} | slice {p.get('slice_index')}",font=font,fill='black')
+                  card=Image.new('RGB',(target_w,header.height+resized.height),'white')
+                  card.paste(header,(0,0)); card.paste(resized,(0,header.height))
+                  cards.append(card)
+              gap=20; max_h=max(c.height for c in cards)
+              sheet=Image.new('RGB',(len(cards)*target_w+(len(cards)+1)*gap,max_h+2*gap),(235,235,235))
+              x=gap
+              for c in cards:
+                  sheet.paste(c,(x,gap)); x+=target_w+gap
+              pages.append(sheet)
+          proof=Path(os.environ['PROOF_PATH'])
+          proof.parent.mkdir(parents=True,exist_ok=True)
+          # PIL embeds JPEG-compressed page rasters into a multipage PDF.
+          pages[0].save(proof,'PDF',save_all=True,append_images=pages[1:],resolution=120.0,quality=72,optimize=True)
+          print(f'proof_pages={len(pages)} proof={proof} bytes={proof.stat().st_size}')
+          PY
+
+      - name: Validate preview and persist proof to trial branch
+        run: |
+          python - <<'PY'
+          import json, os, shutil
+          from pathlib import Path
+          root=Path(os.environ['ROOT'])
+          r=json.loads((root/'typeset-report.json').read_text(encoding='utf-8'))
+          assert r['status']=='PASS' and r['rendered_objects']==110 and r['rendered_slices']==65
+          assert r['explicit_numeric_font_sizes'] is True and r['unresolved_font_sizes']==0
+          dst=Path(os.environ['REPORT_PATH']); dst.parent.mkdir(parents=True,exist_ok=True)
+          shutil.copy2(root/'typeset-report.json',dst)
+          assert Path(os.environ['PROOF_PATH']).is_file()
+          print('TYPESET_RENDER_PREVIEW_PASS')
+          PY
+          git config user.name "chapter-review-bot"
+          git config user.email "chapter-review-bot@users.noreply.github.com"
+          git add trials/chapter-60/translation-vi.json "$PROOF_PATH" "$REPORT_PATH"
+          if ! git diff --cached --quiet; then
+            git commit -m "trial: persist chapter 60 typeset proof"
+            git push origin HEAD:trial/chapter-render-60
+          fi
+
+      - name: Upload compact render preview artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: 06-render-preview-f1cd0121
+          path: |
+            checkpoint/06-render-preview/rendered_slices
+            checkpoint/06-render-preview/processed/manifest.json
+            checkpoint/06-render-preview/typeset-report.json
+            checkpoint/06-render-preview/typeset-plan.json
+            checkpoint/06-render-preview/stitch-index.json
+            trials/chapter-60/review/06-render-proof.pdf
+          if-no-files-found: error
+          retention-days: 7
