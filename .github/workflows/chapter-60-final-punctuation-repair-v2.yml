@@ -1,0 +1,171 @@
+name: Chapter 60 Checkpoint 07B Final Punctuation Repair V2
+
+on:
+  push:
+    branches:
+      - trial/chapter-render-60
+    paths:
+      - .github/workflows/chapter-60-final-punctuation-repair-v2.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: chapter-60-human-loop
+  cancel-in-progress: false
+
+jobs:
+  final-punctuation-repair:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    env:
+      RAW_RUN_ID: "34681593344"
+      RAW_ARTIFACT: 04d-ocr-final-f1cd0121
+      RENDER_RUN_ID: "34687131441"
+      RENDER_ARTIFACT: 06c-render-preview-f1cd0121
+      ROOT: checkpoint/07b-final
+      RAW_ROOT: checkpoint/07b-raw
+      RENDER_DL: checkpoint/07b-render-download
+      OUT_ZIP: A-Cadet-Becomes-a-Prophet-Chapter-60-VI-FINAL.zip
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: trial/chapter-render-60
+          fetch-depth: 1
+
+      - name: Install repair runtime
+        run: python -m pip install --quiet Pillow==10.4.0
+
+      - name: Restore approved render candidate and RAW source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf "$ROOT" "$RAW_ROOT" "$RENDER_DL"
+          mkdir -p "$ROOT" "$RAW_ROOT" "$RENDER_DL"
+          gh run download "$RENDER_RUN_ID" -n "$RENDER_ARTIFACT" -D "$RENDER_DL"
+          test -d "$RENDER_DL/checkpoint/06c-render-preview"
+          cp -a "$RENDER_DL/checkpoint/06c-render-preview/." "$ROOT/"
+          gh run download "$RAW_RUN_ID" -n "$RAW_ARTIFACT" -D "$RAW_ROOT"
+          test -f "$ROOT/rendered_slices/page_029.png"
+          test -f "$ROOT/rendered_slices/page_048.png"
+          test -f "$ROOT/processed/manifest.json"
+          test -f "$RAW_ROOT/raw/sliced/007_04.png"
+          test -f "$RAW_ROOT/raw/sliced/013_03.png"
+
+      - name: Restore acting punctuation and repair lifecycle
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          from PIL import Image, ImageDraw
+
+          root=Path(os.environ['ROOT']); raw_root=Path(os.environ['RAW_ROOT'])
+          mp=root/'processed'/'manifest.json'; manifest=json.loads(mp.read_text(encoding='utf-8'))
+          repairs=[
+              {'page_index':29,'source_page':7,'slice_index':4,'object_id':'drop_072e64626b7945c0','bbox':(526,356,681,453),'raw':raw_root/'raw'/'sliced'/'007_04.png','render':root/'rendered_slices'/'page_029.png','text':'....'},
+              {'page_index':48,'source_page':13,'slice_index':3,'object_id':'drop_c9309c09043f4701','bbox':(464,1852,671,1949),'raw':raw_root/'raw'/'sliced'/'013_03.png','render':root/'rendered_slices'/'page_048.png','text':'.......'},
+          ]
+          cards=[]; rows=[]
+          for r in repairs:
+              dst=Image.open(r['render']).convert('RGB'); src=Image.open(r['raw']).convert('RGB'); before=dst.copy()
+              x1,y1,x2,y2=r['bbox']; dst.paste(src.crop((x1,y1,x2,y2)),(x1,y1)); dst.save(r['render'],format='PNG',optimize=True)
+              after=Image.open(r['render']).convert('RGB')
+              assert after.crop((x1,y1,x2,y2)).tobytes()==src.crop((x1,y1,x2,y2)).tobytes()
+              bo=before.copy(); ao=after.copy(); fill=(17,23,31)
+              ImageDraw.Draw(bo).rectangle((x1,y1,x2-1,y2-1),fill=fill); ImageDraw.Draw(ao).rectangle((x1,y1,x2-1,y2-1),fill=fill)
+              assert bo.tobytes()==ao.tobytes()
+              page=manifest['pages'][r['page_index']]; assert page.get('source_page')==r['source_page'] and page.get('slice_index')==r['slice_index']
+              obj=next(o for o in page.get('text_objects',[]) if str(o.get('id'))==r['object_id']); assert obj.get('source_missing') is True
+              obj.update({'source_missing':False,'auto_generated':False,'origin':'human_review_restore','ocr_text':r['text'],'translation':r['text'],'semantic_role':'acting','typeset_role':'acting','typeset_review_state':'final','preserve_source_punctuation':True,'restored_from_raw':True})
+              pad=30; cx1=max(0,x1-pad); cy1=max(0,y1-pad); cx2=min(after.width,x2+pad); cy2=min(after.height,y2+pad)
+              b=before.crop((cx1,cy1,cx2,cy2)); a=after.crop((cx1,cy1,cx2,cy2)); card=Image.new('RGB',(b.width*2+12,b.height+42),'white'); card.paste(b,(0,42)); card.paste(a,(b.width+12,42))
+              d=ImageDraw.Draw(card); d.text((6,10),f"p{r['page_index']:03d} BEFORE",fill='black'); d.text((b.width+18,10),f"p{r['page_index']:03d} AFTER RAW-exact",fill='black'); cards.append(card)
+              rows.append({'page_index':r['page_index'],'source_page':r['source_page'],'slice_index':r['slice_index'],'object_id':r['object_id'],'bbox':list(r['bbox']),'source_text':r['text'],'operation':'restore_exact_raw_punctuation_pixels','outside_bbox_unchanged':True,'lifecycle':'human_review_restore_active'})
+          mp.write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding='utf-8')
+          tp=Path('trials/chapter-60/translation-vi.json'); trans=json.loads(tp.read_text(encoding='utf-8'))
+          for r in repairs: trans['translations'][r['object_id']]=r['text']
+          tp.write_text(json.dumps(trans,ensure_ascii=False,indent=2),encoding='utf-8')
+          active=[o for p in manifest['pages'] for o in (p.get('text_objects') or []) if not o.get('source_missing')]
+          assert len(active)==112 and all((o.get('ocr_text') or '').strip() for o in active)
+          proof_dir=Path('trials/chapter-60/review'); proof_dir.mkdir(parents=True,exist_ok=True); gap=16; w=max(c.width for c in cards); h=sum(c.height for c in cards)+gap*(len(cards)-1); sheet=Image.new('RGB',(w,h),(235,235,235)); y=0
+          for c in cards: sheet.paste(c,(0,y)); y+=c.height+gap
+          sheet.save(proof_dir/'07b-punctuation-restoration.jpg',quality=92)
+          rr={'checkpoint':'07b-final-punctuation-repair','chapter_id':'f1cd0121','repairs':rows,'active_story_objects':112,'status':'PASS','reason':'Two acting-punctuation balloons were wrongly tombstoned during OCR curation.'}
+          (root/'punctuation-repair.json').write_text(json.dumps(rr,ensure_ascii=False,indent=2),encoding='utf-8'); (proof_dir/'07b-punctuation-repair.json').write_text(json.dumps(rr,ensure_ascii=False,indent=2),encoding='utf-8')
+          print(json.dumps(rr,ensure_ascii=False,indent=2))
+          PY
+
+      - name: Stitch corrected final pages and package
+        run: |
+          python - <<'PY'
+          import json, os, zipfile, hashlib
+          from pathlib import Path
+          from collections import defaultdict
+          from PIL import Image
+          root=Path(os.environ['ROOT']); manifest=json.loads((root/'processed'/'manifest.json').read_text(encoding='utf-8')); rendered=root/'rendered_slices'; final_dir=root/'final_pages'; final_dir.mkdir(exist_ok=True)
+          groups=defaultdict(list)
+          for pi,p in enumerate(manifest['pages']): groups[int(p['source_page'])].append((pi,p))
+          assert sorted(groups)==list(range(18)); seam_count=0
+          for sp in range(18):
+              items=sorted(groups[sp],key=lambda x:int(x[1].get('slice_index') or 0)); parts=[]; expect=0; source_height=None
+              for pi,p in items:
+                  c=p['stitch_core']; y1=int(c['core_y1']); y2=int(c['core_y2']); sy1=int(c['core_source_y1']); sy2=int(c['core_source_y2']); assert sy1==expect,(sp,pi,expect,sy1); expect=sy2; source_height=int(c['source_height']); im=Image.open(rendered/f'page_{pi:03d}.png').convert('RGB'); parts.append(im.crop((0,y1,im.width,y2)))
+              assert expect==source_height; seam_count+=max(0,len(parts)-1); out=Image.new('RGB',(parts[0].width,sum(x.height for x in parts)),'white'); y=0
+              for part in parts: out.paste(part,(0,y)); y+=part.height
+              assert out.height==source_height; out.save(final_dir/f'{sp:03d}.png',format='PNG',optimize=True)
+          assert seam_count==47 and len(list(final_dir.glob('*.png')))==18
+          checks=[(7,(526,10903+356,681,10903+453),Path(os.environ['RAW_ROOT'])/'raw'/'sliced'/'007_04.png',(526,356,681,453),'....'),(13,(464,7723+1852,671,7723+1949),Path(os.environ['RAW_ROOT'])/'raw'/'sliced'/'013_03.png',(464,1852,671,1949),'.......')]; punct=[]
+          for sp,fb,rawp,rb,text in checks:
+              final=Image.open(final_dir/f'{sp:03d}.png').convert('RGB'); raw=Image.open(rawp).convert('RGB'); assert final.crop(fb).tobytes()==raw.crop(rb).tobytes(); punct.append({'source_page':sp,'text':text,'pixel_exact_after_stitch':True})
+          final_report={'chapter_id':'f1cd0121','series_title':'A Cadet Becomes a Prophet','chapter_number':60,'status':'FINAL_PASS_CORRECTED','source_pages':18,'rendered_slices':65,'seams':47,'active_story_objects':112,'untranslated_active_objects':0,'resurrected_tombstones':0,'visual_review':'PASS after focused punctuation restoration','punctuation_restorations':punct,'source_render_artifact':'06c-render-preview-f1cd0121','supersedes_artifact':'07-final-f1cd0121','final_artifact':'07b-final-f1cd0121','blockers':[]}
+          visual={'status':'PASS','review_scope':'65 rendered slices + 18 stitched pages + 47 seams + focused p029/p048 punctuation proof','corrections':['p031 secondary note repositioned in 06C','p029 four-dot acting punctuation restored from RAW','p048 seven-dot acting punctuation restored from RAW'],'remaining_blockers':[]}
+          (root/'final-report.json').write_text(json.dumps(final_report,ensure_ascii=False,indent=2),encoding='utf-8'); (root/'visual-review-final.json').write_text(json.dumps(visual,ensure_ascii=False,indent=2),encoding='utf-8')
+          outzip=root/os.environ['OUT_ZIP']
+          with zipfile.ZipFile(outzip,'w',compression=zipfile.ZIP_DEFLATED,compresslevel=6) as z:
+              for fp in sorted(final_dir.glob('*.png')): z.write(fp,fp.name)
+              z.write(root/'final-report.json','final-report.json'); z.write(root/'visual-review-final.json','visual-review-final.json'); z.write(root/'punctuation-repair.json','punctuation-repair.json')
+          sha=hashlib.sha256(outzip.read_bytes()).hexdigest(); (root/'final-sha256.txt').write_text(f'{sha}  {outzip.name}\n',encoding='utf-8'); print(json.dumps(final_report,ensure_ascii=False,indent=2)); print('sha256='+sha)
+          PY
+
+      - name: Validate corrected FINAL archive
+        run: |
+          python - <<'PY'
+          import os,zipfile,json,hashlib
+          from pathlib import Path
+          root=Path(os.environ['ROOT']); zp=root/os.environ['OUT_ZIP']
+          with zipfile.ZipFile(zp) as z:
+              assert z.testzip() is None; names=z.namelist(); pages=[n for n in names if n.endswith('.png') and n[:3].isdigit()]; assert pages==[f'{i:03d}.png' for i in range(18)]; assert {'final-report.json','visual-review-final.json','punctuation-repair.json'}<=set(names); r=json.loads(z.read('final-report.json')); assert r['status']=='FINAL_PASS_CORRECTED' and r['blockers']==[]
+          sha=hashlib.sha256(zp.read_bytes()).hexdigest(); assert sha==(root/'final-sha256.txt').read_text().split()[0]; print('CORRECTED_FINAL_ZIP_PASS',sha)
+          PY
+
+      - name: Persist corrected final state
+        run: |
+          python - <<'PY'
+          import json, os, shutil
+          from pathlib import Path
+          state=Path('trials/chapter-60/chapter-state.json'); s=json.loads(state.read_text(encoding='utf-8')); s.update({'source_of_truth_sha':os.environ.get('GITHUB_SHA',''),'current_stage':'FINAL','last_passed_checkpoint':'FINAL','current_artifact':'07b-final-f1cd0121','review_evidence_artifact':'07b-punctuation-restoration','blockers':[],'next_action':'COMPLETE','final_correction':'Restored p029/p048 acting punctuation wrongly tombstoned during OCR curation.'}); state.write_text(json.dumps(s,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+          root=Path(os.environ['ROOT']); dst=Path('trials/chapter-60/final'); dst.mkdir(parents=True,exist_ok=True)
+          for name in ('final-report.json','visual-review-final.json','punctuation-repair.json','final-sha256.txt'): shutil.copy2(root/name,dst/name)
+          PY
+          git config user.name "chapter-review-bot"
+          git config user.email "chapter-review-bot@users.noreply.github.com"
+          git add trials/chapter-60/chapter-state.json trials/chapter-60/translation-vi.json trials/chapter-60/review/07b-punctuation-restoration.jpg trials/chapter-60/review/07b-punctuation-repair.json trials/chapter-60/final
+          git commit -m "trial: repair chapter 60 acting punctuation final"
+          git push origin HEAD:trial/chapter-render-60
+
+      - name: Upload corrected FINAL artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: 07b-final-f1cd0121
+          path: |
+            checkpoint/07b-final/A-Cadet-Becomes-a-Prophet-Chapter-60-VI-FINAL.zip
+            checkpoint/07b-final/final-report.json
+            checkpoint/07b-final/visual-review-final.json
+            checkpoint/07b-final/punctuation-repair.json
+            checkpoint/07b-final/final-sha256.txt
+            trials/chapter-60/review/07b-punctuation-restoration.jpg
+          if-no-files-found: error
+          retention-days: 7
