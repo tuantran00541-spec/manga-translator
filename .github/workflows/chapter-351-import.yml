@@ -1,0 +1,213 @@
+name: Chapter 351 Checkpoint 01 Import
+
+on:
+  push:
+    branches:
+      - chapter/logging-10000-years-into-the-future-351
+    paths:
+      - .github/workflows/chapter-351-import.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: chapter-351-import
+  cancel-in-progress: false
+
+jobs:
+  import-slice:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      CHAPTER_URL: https://asurascans.com/comics/logging-10000-years-into-the-future-53fc8424/chapter/351
+      CHAPTER_ID: c3513510
+      SERIES_SLUG: logging-10000-years-into-the-future-53fc8424
+      SERIES_TITLE: Logging 10,000 Years into the Future
+      CHAPTER_NUMBER: '351'
+      EXPECTED_SOURCE_PAGES: '11'
+      STATE_DIR: chapters/logging-10000-years-into-the-future-351
+    steps:
+      - name: Checkout chapter branch
+        uses: actions/checkout@v4
+        with:
+          ref: chapter/logging-10000-years-into-the-future-351
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install import dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install \
+            fastapi==0.115.0 requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 \
+            playwright==1.47.0 Pillow==10.4.0 numpy==1.26.4 opencv-contrib-python==4.10.0.84
+
+      - name: Download, slice, reconstruct and build review evidence
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+
+          import hashlib
+          import json
+          import os
+          from concurrent.futures import ThreadPoolExecutor, as_completed
+          from pathlib import Path
+
+          import cv2
+          import numpy as np
+          from PIL import Image, ImageDraw
+
+          from app.downloader.registry import download_chapter
+          from app.downloader.slicer import slice_image
+          from app.parameters import PIPELINE_DEFAULT_WORKERS, PIPELINE_SLICE_WORKER_LIMIT
+          from app.security import validate_chapter_id
+
+          chapter_url = os.environ['CHAPTER_URL']
+          chapter_id = validate_chapter_id(os.environ['CHAPTER_ID'])
+          expected_source_pages = int(os.environ['EXPECTED_SOURCE_PAGES'])
+          root = Path('checkpoint/01-import')
+          raw_dir = root / 'raw'
+          sliced_dir = raw_dir / 'sliced'
+          recon_dir = root / 'reconstruction'
+          raw_dir.mkdir(parents=True, exist_ok=True)
+          sliced_dir.mkdir(parents=True, exist_ok=True)
+          recon_dir.mkdir(parents=True, exist_ok=True)
+
+          raw_paths = download_chapter(chapter_url, raw_dir)
+          if not raw_paths:
+              raise RuntimeError('Production downloader returned zero source images')
+          if len(raw_paths) != expected_source_pages:
+              raise RuntimeError(f'expected {expected_source_pages} source images, got {len(raw_paths)}')
+
+          source_hashes=[]
+          unreadable=[]
+          for idx,path in enumerate(raw_paths):
+              try:
+                  digest=hashlib.sha256(path.read_bytes()).hexdigest()
+              except Exception as exc:
+                  unreadable.append({'source_page':idx,'path':str(path),'error':repr(exc)})
+                  continue
+              source_hashes.append({'source_page':idx,'filename':path.name,'sha256':digest})
+          dup_groups=[]
+          by_hash={}
+          for row in source_hashes:
+              by_hash.setdefault(row['sha256'],[]).append(row['source_page'])
+          for digest,pages in by_hash.items():
+              if len(pages)>1: dup_groups.append({'sha256':digest,'source_pages':pages})
+          if unreadable:
+              raise RuntimeError(f'unreadable source files: {unreadable}')
+          if dup_groups:
+              raise RuntimeError(f'duplicate source images detected: {dup_groups}')
+
+          max_workers=max(1,min(int(PIPELINE_DEFAULT_WORKERS),int(PIPELINE_SLICE_WORKER_LIMIT),len(raw_paths)))
+          slice_results={}
+          def slice_one(item):
+              idx,raw_path=item
+              return idx,slice_image(raw_path,sliced_dir,f'{idx:03d}',return_metadata=True)
+          with ThreadPoolExecutor(max_workers=max_workers) as pool:
+              futures=[pool.submit(slice_one,(idx,path)) for idx,path in enumerate(raw_paths)]
+              for future in as_completed(futures):
+                  idx,items=future.result(); slice_results[idx]=items
+
+          pages=[]; source_rows=[]; ownership_issues=[]; reconstruction=[]
+          for source_index,raw_path in enumerate(raw_paths):
+              image=cv2.imread(str(raw_path),cv2.IMREAD_COLOR)
+              if image is None: raise RuntimeError(f'Could not read downloaded source image: {raw_path}')
+              height,width=image.shape[:2]
+              items=slice_results[source_index]
+              source_rows.append({'source_page':source_index,'filename':raw_path.name,'width':int(width),'height':int(height),'slice_count':len(items)})
+              owned=[]
+              for slice_index,item in enumerate(items):
+                  stitch_core={key:item.get(key) for key in ('source_y1','source_y2','core_y1','core_y2','core_source_y1','core_source_y2','unsafe_before','unsafe_after','source_height')}
+                  row={'original':Path(item['path']).as_posix(),'clean':None,'boxes':[],'skipped':False,'excluded_regions':[],
+                       'source_page':source_index,'slice_index':slice_index,'stitch_core':stitch_core}
+                  pages.append(row); owned.append(row)
+              owned.sort(key=lambda p:p['slice_index'])
+              prev_end=0; chunks=[]
+              for page in owned:
+                  core=page['stitch_core']; y1=int(core.get('core_source_y1') or 0); y2=int(core.get('core_source_y2') or 0)
+                  if y1!=prev_end: ownership_issues.append({'source_page':source_index,'slice_index':page['slice_index'],'expected_y1':prev_end,'actual_y1':y1})
+                  if y2<y1: ownership_issues.append({'source_page':source_index,'slice_index':page['slice_index'],'invalid_range':[y1,y2]})
+                  sl=cv2.imread(page['original'],cv2.IMREAD_COLOR)
+                  if sl is None: raise RuntimeError(f"Could not read slice {page['original']}")
+                  cy1=int(core.get('core_y1') or 0); cy2=int(core.get('core_y2') or sl.shape[0])
+                  chunks.append(sl[cy1:cy2])
+                  prev_end=y2
+              if prev_end!=height: ownership_issues.append({'source_page':source_index,'expected_end':height,'actual_end':prev_end})
+              rebuilt=np.concatenate(chunks,axis=0) if chunks else np.zeros((0,width,3),dtype=np.uint8)
+              shape_match=rebuilt.shape==image.shape
+              diff_pixels=int(np.count_nonzero(np.any(rebuilt!=image,axis=2))) if shape_match else -1
+              recon_path=recon_dir/f'{source_index:03d}.png'; cv2.imwrite(str(recon_path),rebuilt)
+              reconstruction.append({'source_page':source_index,'shape_match':shape_match,'diff_pixels':diff_pixels,'pixel_exact':shape_match and diff_pixels==0,'reconstruction':recon_path.as_posix()})
+
+          if ownership_issues: raise RuntimeError(f'ownership validation failed: {len(ownership_issues)} issue(s)')
+          if not all(r['pixel_exact'] for r in reconstruction): raise RuntimeError(f'reconstruction mismatch: {reconstruction}')
+
+          manifest={'chapter_id':chapter_id,'series_slug':os.environ['SERIES_SLUG'],'chapter_number':int(os.environ['CHAPTER_NUMBER']),
+                    'source_url':chapter_url,'pages':pages,'workflow':{'stage':'preview','page_index':0}}
+          (root/'manifest.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding='utf-8')
+
+          summary={'checkpoint':'01-import','chapter_id':chapter_id,'series_slug':os.environ['SERIES_SLUG'],'series_title':os.environ['SERIES_TITLE'],
+                   'chapter_number':int(os.environ['CHAPTER_NUMBER']),'source_url':chapter_url,'expected_source_pages':expected_source_pages,
+                   'source_images':len(raw_paths),'source_count_matches_expected':len(raw_paths)==expected_source_pages,'source_hashes':source_hashes,
+                   'duplicate_groups':dup_groups,'slices':len(pages),'slice_workers':max_workers,'source_order':[p.name for p in raw_paths],
+                   'source_pages':source_rows,'ownership_issues':ownership_issues,'reconstruction':reconstruction,
+                   'reconstruction_pixel_exact_pages':sum(1 for r in reconstruction if r['pixel_exact']),
+                   'reconstruction_diff_pixels_total':sum(max(0,r['diff_pixels']) for r in reconstruction),
+                   'slice_order':[{'page_index':idx,'source_page':p['source_page'],'slice_index':p['slice_index'],'original':p['original']} for idx,p in enumerate(pages)],
+                   'next_action':'STOP_FOR_HUMAN_IMPORT_REVIEW'}
+          (root/'import-summary.json').write_text(json.dumps(summary,ensure_ascii=False,indent=2),encoding='utf-8')
+
+          def contact_sheet(paths,out_path,label_prefix,thumb_w=220,thumb_h=320,cols=5):
+              cards=[]
+              for idx,path in enumerate(paths):
+                  with Image.open(path) as im:
+                      rgb=im.convert('RGB'); rgb.thumbnail((thumb_w,thumb_h))
+                      canvas=Image.new('RGB',(thumb_w+16,thumb_h+42),'white')
+                      x=(canvas.width-rgb.width)//2; y=8+(thumb_h-rgb.height)//2
+                      canvas.paste(rgb,(x,y)); d=ImageDraw.Draw(canvas)
+                      d.text((8,thumb_h+14),f'{label_prefix} {idx:03d}: {Path(path).name}',fill='black'); cards.append(canvas)
+              rows=(len(cards)+cols-1)//cols; sheet=Image.new('RGB',(cols*(thumb_w+16),rows*(thumb_h+42)),'white')
+              for i,card in enumerate(cards): sheet.paste(card,((i%cols)*card.width,(i//cols)*card.height))
+              sheet.save(out_path,quality=90)
+          contact_sheet(raw_paths,root/'source-contact-sheet.jpg','SRC')
+          contact_sheet([Path(p['original']) for p in pages],root/'slice-contact-sheet.jpg','SLICE',thumb_h=260)
+          (root/'HUMAN_CHECKPOINT.txt').write_text('CHECKPOINT: IMPORT REVIEW\nSTOP here. Inspect source count/order, source and slice proofs, ownership and pixel-exact reconstruction before CLEAN.\n',encoding='utf-8')
+          print(json.dumps({'source_images':len(raw_paths),'slices':len(pages),'pixel_exact_pages':summary['reconstruction_pixel_exact_pages'],'duplicates':len(dup_groups),'next_action':summary['next_action']},ensure_ascii=False))
+          PY
+
+      - name: Publish compact import review evidence
+        run: |
+          mkdir -p "$STATE_DIR/review/01-import"
+          cp checkpoint/01-import/import-summary.json "$STATE_DIR/review/01-import/"
+          cp checkpoint/01-import/manifest.json "$STATE_DIR/review/01-import/"
+          cp checkpoint/01-import/source-contact-sheet.jpg "$STATE_DIR/review/01-import/"
+          cp checkpoint/01-import/slice-contact-sheet.jpg "$STATE_DIR/review/01-import/"
+          cp checkpoint/01-import/HUMAN_CHECKPOINT.txt "$STATE_DIR/review/01-import/"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          p=Path(os.environ['STATE_DIR'])/'chapter-state.json'
+          state=json.loads(p.read_text(encoding='utf-8'))
+          state.update({'current_stage':'IMPORT_REVIEW','current_artifact':'01-import-c3513510','blockers':[],'next_action':'HUMAN_IMPORT_REVIEW'})
+          p.write_text(json.dumps(state,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$STATE_DIR"
+          if ! git diff --cached --quiet; then
+            git commit -m "review: publish chapter 351 import checkpoint"
+            git push origin HEAD:chapter/logging-10000-years-into-the-future-351
+          fi
+
+      - name: Upload checkpoint 01 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: 01-import-c3513510
+          path: checkpoint/01-import
+          if-no-files-found: error
+          retention-days: 7
