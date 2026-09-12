@@ -18,6 +18,8 @@ PROMOTE = {
 
 # Explicit machine-OCR corrections confirmed against RAW proof.
 CORRECTIONS = {
+    # Acting punctuation is story content even though OCR engines return empty.
+    (2, "box_9f81ea7eb505421e"): "......",
     (56, "box_d900bc50b4374bd9"): "I RECEIVED THE RECORDING ORB YOU SENT.",
     (56, "box_5043cba0cd1a4a5c"): "THAT WAS UNMISTAKABLY ANDROMALIUS. THE 72ND-RANKED DEMON.",
     (57, "box_cfb3d1372e1f4966"): "AND SEEING SAINT ARMIAN AND LUINA BERCHEFF STAND AGAINST HIM..",
@@ -33,6 +35,9 @@ DROP_IDS = {
     (0, "box_ede6b33a00f94745"),
     (0, "box_b21c08e1d96d498a"),
     (0, "box_5bb018a7360241a7"),
+    # empty OCR audit: detector false positives confirmed against RAW proof
+    (29, "box_072e64626b7945c0"),
+    (48, "box_c9309c09043f4701"),
     # p020 production credits, duplicate detector boxes
     (20, "box_cc01706c6ea64712"),
     (20, "box_e9e84335b5d540c2"),
