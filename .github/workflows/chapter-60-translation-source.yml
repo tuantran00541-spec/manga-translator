@@ -1,0 +1,94 @@
+name: Chapter 60 Checkpoint 05A Translation Source
+
+on:
+  push:
+    branches:
+      - trial/chapter-render-60
+    paths:
+      - .github/workflows/chapter-60-translation-source.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: chapter-60-human-loop
+  cancel-in-progress: false
+
+jobs:
+  export-source:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    env:
+      BASE_RUN_ID: "34679646612"
+      BASE_ARTIFACT: 04b-ocr-curated-f1cd0121
+      ROOT: checkpoint/05a-translation-source
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: trial/chapter-render-60
+
+      - name: Restore approved OCR checkpoint
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf "$ROOT"
+          mkdir -p "$ROOT"
+          gh run download "$BASE_RUN_ID" -n "$BASE_ARTIFACT" -D "$ROOT/base"
+          test -f "$ROOT/base/processed/manifest.json"
+
+      - name: Export ordered active translation source
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+
+          root=Path(os.environ['ROOT'])
+          m=json.loads((root/'base/processed/manifest.json').read_text(encoding='utf-8'))
+          rows=[]
+          for pi,page in enumerate(m.get('pages') or []):
+              active=[o for o in (page.get('text_objects') or []) if not o.get('source_missing')]
+              active.sort(key=lambda o:(int((o.get('region') or {}).get('y1',0)),int((o.get('region') or {}).get('x1',0))))
+              for order,obj in enumerate(active,1):
+                  r=obj.get('region') or {}
+                  text=str(obj.get('ocr_text') or '').strip()
+                  if not text:
+                      raise SystemExit(f'empty active OCR p{pi} {obj.get("id")}')
+                  rows.append({
+                      'page_index':pi,
+                      'order_in_page':order,
+                      'object_id':str(obj.get('id')),
+                      'source_boxes':[str(x) for x in (obj.get('source_boxes') or [])],
+                      'semantic_role':obj.get('semantic_role'),
+                      'origin':obj.get('origin'),
+                      'region':{k:int(r.get(k,0)) for k in ('x1','y1','x2','y2')},
+                      'ocr_text':text,
+                      'continuation_group':obj.get('continuation_group'),
+                      'continuation_part':obj.get('continuation_part'),
+                      'continuation_total':obj.get('continuation_total'),
+                      'continuation_full_source':obj.get('continuation_full_source'),
+                  })
+          if len(rows)!=111:
+              raise SystemExit(f'expected 111 active objects, got {len(rows)}')
+          out=root/'translation-source.json'
+          out.write_text(json.dumps({
+              'chapter_id':'f1cd0121',
+              'source_language':'en',
+              'target_language':'vi',
+              'active_object_count':len(rows),
+              'objects':rows,
+          },ensure_ascii=False,indent=2),encoding='utf-8')
+          print('=== TRANSLATION SOURCE BEGIN ===')
+          print(out.read_text(encoding='utf-8'))
+          print('=== TRANSLATION SOURCE END ===')
+          PY
+
+      - name: Upload translation source
+        uses: actions/upload-artifact@v4
+        with:
+          name: 05a-translation-source-f1cd0121
+          path: checkpoint/05a-translation-source/translation-source.json
+          if-no-files-found: error
+          retention-days: 7
