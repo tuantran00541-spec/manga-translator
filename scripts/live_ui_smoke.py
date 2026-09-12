@@ -99,6 +99,17 @@ def _exercise_mobile(page: Page) -> None:
         raise AssertionError(f"mobile editor canvas is not usable: {canvas_box}")
     expect(page.locator("#workbench-panel-controls")).to_be_visible()
     expect(page.locator(".page-navigator")).to_be_hidden()
+    panel_controls_box = page.locator("#workbench-panel-controls").bounding_box()
+    editor_toolbar_box = page.locator(".translation-sticky-toolbar").bounding_box()
+    if (
+        not panel_controls_box
+        or not editor_toolbar_box
+        or panel_controls_box["y"] + panel_controls_box["height"] > editor_toolbar_box["y"]
+    ):
+        raise AssertionError(
+            "mobile panel controls overlap the editor toolbar: "
+            f"controls={panel_controls_box}, toolbar={editor_toolbar_box}"
+        )
 
     _open_stage(page, "preview", mobile=True)
     expect(page.locator(".preview-workspace")).to_be_visible()
