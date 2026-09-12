@@ -7,8 +7,8 @@
   "branch": "trial/starting-with-13-hidden-traits-46",
   "source_of_truth_sha": "07a96bb171dd7c31f86339bbebf6187b47bce1a9",
   "last_reviewed_branch_sha": "6814992a042ea05c1f1156dd5224eae43e20e47c",
-  "current_stage": "FINAL_PENDING",
-  "last_passed_checkpoint": "VISUAL_REVIEW",
+  "current_stage": "FINAL_COMPLETE",
+  "last_passed_checkpoint": "FINAL_EXPORT",
   "current_artifact": {
     "name": "06-render-review-57d7b970",
     "run_id": 34621443926,
@@ -16,5 +16,13 @@
     "head_sha": "6814992a042ea05c1f1156dd5224eae43e20e47c"
   },
   "blockers": [],
-  "next_action": "RUN_FINAL_PACKAGE"
+  "next_action": "CHAPTER_COMPLETE_NO_MAIN_MERGE",
+  "final_export": {
+    "status": "FINAL_PASS",
+    "archive": "Starting-With-13-Hidden-Traits-Chapter-46-VI-FINAL.zip",
+    "archive_sha256": "2df6f1f100b6f4593e2cc5a29951d511b5eb3b0cf3dd255eec6643e2ebe23909",
+    "source_pages": 22,
+    "source_render_run_id": 34621443926,
+    "source_render_artifact_id": 10272452270
+  }
 }
