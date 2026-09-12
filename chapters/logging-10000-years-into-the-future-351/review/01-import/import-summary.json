@@ -1,0 +1,488 @@
+{
+  "checkpoint": "01-import",
+  "chapter_id": "c3513510",
+  "series_slug": "logging-10000-years-into-the-future-53fc8424",
+  "series_title": "Logging 10,000 Years into the Future",
+  "chapter_number": 351,
+  "source_url": "https://asurascans.com/comics/logging-10000-years-into-the-future-53fc8424/chapter/351",
+  "expected_source_pages": 11,
+  "source_images": 11,
+  "source_count_matches_expected": true,
+  "source_hashes": [
+    {
+      "source_page": 0,
+      "filename": "000.webp",
+      "sha256": "4de16abe5a4574de3a9b42d6190d1fa479f3d5589b43d4fbc490f323e9a24880"
+    },
+    {
+      "source_page": 1,
+      "filename": "001.webp",
+      "sha256": "db664213091960ef4508fe478d14f53f42fdaa6f27e60739922355152d513faa"
+    },
+    {
+      "source_page": 2,
+      "filename": "002.webp",
+      "sha256": "2391a5713706b21469c49432997f6fbdb0192be19b404a0b91b63a296ed542b1"
+    },
+    {
+      "source_page": 3,
+      "filename": "003.webp",
+      "sha256": "90bfbbf7c20f5ba013ea288ed1ad27657e0df95f30b5e2f8388307b395cdad3d"
+    },
+    {
+      "source_page": 4,
+      "filename": "004.webp",
+      "sha256": "5451fc17133489ead9c20cbc7c3cd26ffb3b916e0903d8c6a008115c4aa5ddc8"
+    },
+    {
+      "source_page": 5,
+      "filename": "005.webp",
+      "sha256": "211edd60223fdaa0b62c50d27129be4e0812c20a34812bfc0709fbd81258f1e0"
+    },
+    {
+      "source_page": 6,
+      "filename": "006.webp",
+      "sha256": "1a6bd2b3d68baa6cc875224a8efe31cfba1c7a71b833315d0e0422c5abded100"
+    },
+    {
+      "source_page": 7,
+      "filename": "007.webp",
+      "sha256": "46a45a092369f36a0f2525cb6963acee872cdd523342a2441d8fbd13f7b9fad7"
+    },
+    {
+      "source_page": 8,
+      "filename": "008.webp",
+      "sha256": "c92ea17459af0d245a44c5ca8cee112bac935ecc7a629c5d43905d5e3f757c80"
+    },
+    {
+      "source_page": 9,
+      "filename": "009.webp",
+      "sha256": "65dfa75f08766fbf740fe56382549c5117ff7d4552652b1a0bab79ae77ddca6e"
+    },
+    {
+      "source_page": 10,
+      "filename": "010.webp",
+      "sha256": "080b9b90d9975ada951fa7c76f6c1bf993c1549212dac5d5b3a757ea91a63fe1"
+    }
+  ],
+  "duplicate_groups": [],
+  "slices": 40,
+  "slice_workers": 2,
+  "source_order": [
+    "000.webp",
+    "001.webp",
+    "002.webp",
+    "003.webp",
+    "004.webp",
+    "005.webp",
+    "006.webp",
+    "007.webp",
+    "008.webp",
+    "009.webp",
+    "010.webp"
+  ],
+  "source_pages": [
+    {
+      "source_page": 0,
+      "filename": "000.webp",
+      "width": 1200,
+      "height": 800,
+      "slice_count": 1
+    },
+    {
+      "source_page": 1,
+      "filename": "001.webp",
+      "width": 900,
+      "height": 16000,
+      "slice_count": 6
+    },
+    {
+      "source_page": 2,
+      "filename": "002.webp",
+      "width": 900,
+      "height": 875,
+      "slice_count": 1
+    },
+    {
+      "source_page": 3,
+      "filename": "003.webp",
+      "width": 900,
+      "height": 16000,
+      "slice_count": 6
+    },
+    {
+      "source_page": 4,
+      "filename": "004.webp",
+      "width": 900,
+      "height": 875,
+      "slice_count": 1
+    },
+    {
+      "source_page": 5,
+      "filename": "005.webp",
+      "width": 900,
+      "height": 16000,
+      "slice_count": 6
+    },
+    {
+      "source_page": 6,
+      "filename": "006.webp",
+      "width": 900,
+      "height": 448,
+      "slice_count": 1
+    },
+    {
+      "source_page": 7,
+      "filename": "007.webp",
+      "width": 900,
+      "height": 14355,
+      "slice_count": 5
+    },
+    {
+      "source_page": 8,
+      "filename": "008.webp",
+      "width": 900,
+      "height": 15126,
+      "slice_count": 6
+    },
+    {
+      "source_page": 9,
+      "filename": "009.webp",
+      "width": 900,
+      "height": 12639,
+      "slice_count": 5
+    },
+    {
+      "source_page": 10,
+      "filename": "010.webp",
+      "width": 900,
+      "height": 4989,
+      "slice_count": 2
+    }
+  ],
+  "ownership_issues": [],
+  "reconstruction": [
+    {
+      "source_page": 0,
+      "shape_match": true,
+      "diff_pixels": 0,
+      "pixel_exact": true,
+      "reconstruction": "checkpoint/01-import/reconstruction/000.png"
+    },
+    {
+      "source_page": 1,
+      "shape_match": true,
+      "diff_pixels": 0,
+      "pixel_exact": true,
+      "reconstruction": "checkpoint/01-import/reconstruction/001.png"
+    },
+    {
+      "source_page": 2,
+      "shape_match": true,
+      "diff_pixels": 0,
+      "pixel_exact": true,
+      "reconstruction": "checkpoint/01-import/reconstruction/002.png"
+    },
+    {
+      "source_page": 3,
+      "shape_match": true,
+      "diff_pixels": 0,
+      "pixel_exact": true,
+      "reconstruction": "checkpoint/01-import/reconstruction/003.png"
+    },
+    {
+      "source_page": 4,
+      "shape_match": true,
+      "diff_pixels": 0,
+      "pixel_exact": true,
+      "reconstruction": "checkpoint/01-import/reconstruction/004.png"
+    },
+    {
+      "source_page": 5,
+      "shape_match": true,
+      "diff_pixels": 0,
+      "pixel_exact": true,
+      "reconstruction": "checkpoint/01-import/reconstruction/005.png"
+    },
+    {
+      "source_page": 6,
+      "shape_match": true,
+      "diff_pixels": 0,
+      "pixel_exact": true,
+      "reconstruction": "checkpoint/01-import/reconstruction/006.png"
+    },
+    {
+      "source_page": 7,
+      "shape_match": true,
+      "diff_pixels": 0,
+      "pixel_exact": true,
+      "reconstruction": "checkpoint/01-import/reconstruction/007.png"
+    },
+    {
+      "source_page": 8,
+      "shape_match": true,
+      "diff_pixels": 0,
+      "pixel_exact": true,
+      "reconstruction": "checkpoint/01-import/reconstruction/008.png"
+    },
+    {
+      "source_page": 9,
+      "shape_match": true,
+      "diff_pixels": 0,
+      "pixel_exact": true,
+      "reconstruction": "checkpoint/01-import/reconstruction/009.png"
+    },
+    {
+      "source_page": 10,
+      "shape_match": true,
+      "diff_pixels": 0,
+      "pixel_exact": true,
+      "reconstruction": "checkpoint/01-import/reconstruction/010.png"
+    }
+  ],
+  "reconstruction_pixel_exact_pages": 11,
+  "reconstruction_diff_pixels_total": 0,
+  "slice_order": [
+    {
+      "page_index": 0,
+      "source_page": 0,
+      "slice_index": 0,
+      "original": "checkpoint/01-import/raw/sliced/000_00.png"
+    },
+    {
+      "page_index": 1,
+      "source_page": 1,
+      "slice_index": 0,
+      "original": "checkpoint/01-import/raw/sliced/001_00.png"
+    },
+    {
+      "page_index": 2,
+      "source_page": 1,
+      "slice_index": 1,
+      "original": "checkpoint/01-import/raw/sliced/001_01.png"
+    },
+    {
+      "page_index": 3,
+      "source_page": 1,
+      "slice_index": 2,
+      "original": "checkpoint/01-import/raw/sliced/001_02.png"
+    },
+    {
+      "page_index": 4,
+      "source_page": 1,
+      "slice_index": 3,
+      "original": "checkpoint/01-import/raw/sliced/001_03.png"
+    },
+    {
+      "page_index": 5,
+      "source_page": 1,
+      "slice_index": 4,
+      "original": "checkpoint/01-import/raw/sliced/001_04.png"
+    },
+    {
+      "page_index": 6,
+      "source_page": 1,
+      "slice_index": 5,
+      "original": "checkpoint/01-import/raw/sliced/001_05.png"
+    },
+    {
+      "page_index": 7,
+      "source_page": 2,
+      "slice_index": 0,
+      "original": "checkpoint/01-import/raw/sliced/002_00.png"
+    },
+    {
+      "page_index": 8,
+      "source_page": 3,
+      "slice_index": 0,
+      "original": "checkpoint/01-import/raw/sliced/003_00.png"
+    },
+    {
+      "page_index": 9,
+      "source_page": 3,
+      "slice_index": 1,
+      "original": "checkpoint/01-import/raw/sliced/003_01.png"
+    },
+    {
+      "page_index": 10,
+      "source_page": 3,
+      "slice_index": 2,
+      "original": "checkpoint/01-import/raw/sliced/003_02.png"
+    },
+    {
+      "page_index": 11,
+      "source_page": 3,
+      "slice_index": 3,
+      "original": "checkpoint/01-import/raw/sliced/003_03.png"
+    },
+    {
+      "page_index": 12,
+      "source_page": 3,
+      "slice_index": 4,
+      "original": "checkpoint/01-import/raw/sliced/003_04.png"
+    },
+    {
+      "page_index": 13,
+      "source_page": 3,
+      "slice_index": 5,
+      "original": "checkpoint/01-import/raw/sliced/003_05.png"
+    },
+    {
+      "page_index": 14,
+      "source_page": 4,
+      "slice_index": 0,
+      "original": "checkpoint/01-import/raw/sliced/004_00.png"
+    },
+    {
+      "page_index": 15,
+      "source_page": 5,
+      "slice_index": 0,
+      "original": "checkpoint/01-import/raw/sliced/005_00.png"
+    },
+    {
+      "page_index": 16,
+      "source_page": 5,
+      "slice_index": 1,
+      "original": "checkpoint/01-import/raw/sliced/005_01.png"
+    },
+    {
+      "page_index": 17,
+      "source_page": 5,
+      "slice_index": 2,
+      "original": "checkpoint/01-import/raw/sliced/005_02.png"
+    },
+    {
+      "page_index": 18,
+      "source_page": 5,
+      "slice_index": 3,
+      "original": "checkpoint/01-import/raw/sliced/005_03.png"
+    },
+    {
+      "page_index": 19,
+      "source_page": 5,
+      "slice_index": 4,
+      "original": "checkpoint/01-import/raw/sliced/005_04.png"
+    },
+    {
+      "page_index": 20,
+      "source_page": 5,
+      "slice_index": 5,
+      "original": "checkpoint/01-import/raw/sliced/005_05.png"
+    },
+    {
+      "page_index": 21,
+      "source_page": 6,
+      "slice_index": 0,
+      "original": "checkpoint/01-import/raw/sliced/006_00.png"
+    },
+    {
+      "page_index": 22,
+      "source_page": 7,
+      "slice_index": 0,
+      "original": "checkpoint/01-import/raw/sliced/007_00.png"
+    },
+    {
+      "page_index": 23,
+      "source_page": 7,
+      "slice_index": 1,
+      "original": "checkpoint/01-import/raw/sliced/007_01.png"
+    },
+    {
+      "page_index": 24,
+      "source_page": 7,
+      "slice_index": 2,
+      "original": "checkpoint/01-import/raw/sliced/007_02.png"
+    },
+    {
+      "page_index": 25,
+      "source_page": 7,
+      "slice_index": 3,
+      "original": "checkpoint/01-import/raw/sliced/007_03.png"
+    },
+    {
+      "page_index": 26,
+      "source_page": 7,
+      "slice_index": 4,
+      "original": "checkpoint/01-import/raw/sliced/007_04.png"
+    },
+    {
+      "page_index": 27,
+      "source_page": 8,
+      "slice_index": 0,
+      "original": "checkpoint/01-import/raw/sliced/008_00.png"
+    },
+    {
+      "page_index": 28,
+      "source_page": 8,
+      "slice_index": 1,
+      "original": "checkpoint/01-import/raw/sliced/008_01.png"
+    },
+    {
+      "page_index": 29,
+      "source_page": 8,
+      "slice_index": 2,
+      "original": "checkpoint/01-import/raw/sliced/008_02.png"
+    },
+    {
+      "page_index": 30,
+      "source_page": 8,
+      "slice_index": 3,
+      "original": "checkpoint/01-import/raw/sliced/008_03.png"
+    },
+    {
+      "page_index": 31,
+      "source_page": 8,
+      "slice_index": 4,
+      "original": "checkpoint/01-import/raw/sliced/008_04.png"
+    },
+    {
+      "page_index": 32,
+      "source_page": 8,
+      "slice_index": 5,
+      "original": "checkpoint/01-import/raw/sliced/008_05.png"
+    },
+    {
+      "page_index": 33,
+      "source_page": 9,
+      "slice_index": 0,
+      "original": "checkpoint/01-import/raw/sliced/009_00.png"
+    },
+    {
+      "page_index": 34,
+      "source_page": 9,
+      "slice_index": 1,
+      "original": "checkpoint/01-import/raw/sliced/009_01.png"
+    },
+    {
+      "page_index": 35,
+      "source_page": 9,
+      "slice_index": 2,
+      "original": "checkpoint/01-import/raw/sliced/009_02.png"
+    },
+    {
+      "page_index": 36,
+      "source_page": 9,
+      "slice_index": 3,
+      "original": "checkpoint/01-import/raw/sliced/009_03.png"
+    },
+    {
+      "page_index": 37,
+      "source_page": 9,
+      "slice_index": 4,
+      "original": "checkpoint/01-import/raw/sliced/009_04.png"
+    },
+    {
+      "page_index": 38,
+      "source_page": 10,
+      "slice_index": 0,
+      "original": "checkpoint/01-import/raw/sliced/010_00.png"
+    },
+    {
+      "page_index": 39,
+      "source_page": 10,
+      "slice_index": 1,
+      "original": "checkpoint/01-import/raw/sliced/010_01.png"
+    }
+  ],
+  "next_action": "STOP_FOR_HUMAN_IMPORT_REVIEW"
+}
