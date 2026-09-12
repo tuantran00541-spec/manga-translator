@@ -1,0 +1,56 @@
+name: Chapter 60 Checkpoint 04A OCR Curation Audit
+
+on:
+  push:
+    branches:
+      - trial/chapter-render-60
+    paths:
+      - .github/workflows/chapter-60-ocr-curation-audit.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: chapter-60-human-loop
+  cancel-in-progress: false
+
+jobs:
+  audit-ocr-curation:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    env:
+      BASE_RUN_ID: "34673921364"
+      BASE_ARTIFACT: 03d-ocr-clean-f1cd0121
+      ROOT: checkpoint/04a-ocr-curation-audit
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: trial/chapter-render-60
+
+      - name: Restore approved 03D checkpoint
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf "$ROOT"
+          mkdir -p "$ROOT"
+          gh run download "$BASE_RUN_ID" -n "$BASE_ARTIFACT" -D "$ROOT"
+          test -f "$ROOT/processed/manifest.json"
+          test -f "$ROOT/ocr-review/ocr-results.json"
+          test -f "$ROOT/ocr-review/ocr-skipped.json"
+
+      - name: Build compact curation inventory
+        run: |
+          python trials/chapter-60/audit_ocr_curation.py "$ROOT" | tee "$ROOT/ocr-curation-inventory.log"
+
+      - name: Upload curation inventory
+        uses: actions/upload-artifact@v4
+        with:
+          name: 04a-ocr-curation-inventory-f1cd0121
+          path: |
+            checkpoint/04a-ocr-curation-audit/ocr-curation-inventory.json
+            checkpoint/04a-ocr-curation-audit/ocr-curation-inventory.log
+          if-no-files-found: error
+          retention-days: 7
