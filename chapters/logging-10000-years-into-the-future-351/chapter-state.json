@@ -5,14 +5,14 @@
   "chapter_number": 351,
   "source_url": "https://asurascans.com/comics/logging-10000-years-into-the-future-53fc8424/chapter/351",
   "branch": "chapter/logging-10000-years-into-the-future-351",
-  "source_of_truth_sha": "893671a832435e2dcccc61fb100159d38126f595",
-  "current_stage": "OCR_PENDING",
-  "last_passed_checkpoint": "CLEAN",
+  "source_of_truth_sha": "d4cfea39414d248d92d0f29526751628c8965bbb",
+  "current_stage": "TYPOGRAPHY_PENDING",
+  "last_passed_checkpoint": "TRANSLATION_REVIEW",
   "current_artifact": {
-    "run_id": 34702416332,
-    "artifact": "02b-clean-local-repair-c3513510",
-    "artifact_id": 10300835530,
-    "workflow_head_sha": "9abeede1bacf146a2132d038c4e44e732996acf7"
+    "run_id": 34725698624,
+    "artifact": "04-translation-reviewed-c3513510",
+    "artifact_id": 10307977050,
+    "workflow_head_sha": "d4cfea39414d248d92d0f29526751628c8965bbb"
   },
   "approved_import": {
     "source_images": 11,
@@ -24,11 +24,34 @@
   },
   "approved_clean_stack": {
     "base": "02-clean-review-c3513510@34700955145",
-    "overlay": "02b-clean-local-repair-c3513510@34702416332",
+    "overlays": [
+      "02b-clean-local-repair-c3513510@34702416332",
+      "02c-clean-logo-repair-c3513510@34703327058"
+    ],
     "story_text_blockers": 0,
     "artwork_damage_blockers": 0,
-    "source_story_residue_blockers": 0
+    "source_story_residue_blockers": 0,
+    "non_story_preservation_repairs": 3
+  },
+  "approved_ocr": {
+    "artifact": "03b-ocr-curated-c3513510@34725320940",
+    "active_story_objects": 71,
+    "empty_active_story_objects": 0,
+    "duplicate_blockers": 0,
+    "fragment_blockers": 0,
+    "resurrection_count": 0,
+    "ocr_source": "RAW"
+  },
+  "approved_translation": {
+    "artifact": "04-translation-reviewed-c3513510@34725698624",
+    "active_story_objects": 71,
+    "translated_story_objects": 71,
+    "active_untranslated_story_objects": 0,
+    "terminology_locked": true,
+    "english_term_leaks": 0,
+    "tombstone_translation_count": 0,
+    "resurrection_count": 0
   },
   "blockers": [],
-  "next_action": "RUN_OCR_FROM_RAW_AND_APPLY_NON_STORY_TOMBSTONES"
+  "next_action": "RUN_FIXED_SIZE_TYPOGRAPHY_PREFLIGHT_AND_RENDER_CANDIDATE"
 }
