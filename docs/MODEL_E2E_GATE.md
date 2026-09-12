@@ -22,9 +22,10 @@ The script does not make an algorithm change and does not replace the Release/br
 On `main`, `.github/workflows/phase13-final-benchmark.yml` now runs the complete
 dynamic-LaMa chapter gate and a separate fixed-LaMa 16-slice compatibility
 gate whenever production detector/inpaint/pipeline code changes. Both reports
-are tied to `GITHUB_SHA` and include the exact model SHA-256 values. The OCR
-runtime gate also tracks OCR changes on `main`; manual dispatch remains
-available for release revalidation without a source change.
+are tied to `GITHUB_SHA` and include the exact model SHA-256 values. The retired
+OCR workflow depended on expired run artifacts and is intentionally no longer
+presented as a release gate; model-independent OCR routing remains covered by
+the maintained pytest suite until a durable labelled OCR fixture is available.
 
 ## Required external model files
 
