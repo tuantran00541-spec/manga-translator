@@ -1,0 +1,242 @@
+{
+  "checkpoint": "03b-ocr-human-curation",
+  "chapter_id": "c3513510",
+  "base_ocr": {
+    "run_id": 34702864881,
+    "artifact": "03-ocr-review-c3513510",
+    "artifact_id": 10301091101,
+    "ocr_source": "RAW"
+  },
+  "clean_logo_overlay": {
+    "run_id": 34703327058,
+    "artifact": "02c-clean-logo-repair-c3513510",
+    "artifact_id": 10300806349,
+    "human_review": "PASS",
+    "pixel_exact_raw_restore": true,
+    "box_id": "box_b02be5cac5dd4d94"
+  },
+  "human_review": {
+    "review_sheets_inspected": 6,
+    "recognized_machine_text_regions": 76,
+    "recovery_proposals_reviewed": 95,
+    "recovery_proposals_classified_non_story": 95,
+    "manual_text_corrections": 24,
+    "overlap_duplicate_drops": 3,
+    "same_slice_detector_duplicate_drops": 1,
+    "non_story_logo_drops": 1,
+    "expected_active_story_objects_after_curation": 71,
+    "story_ocr_blockers_after_curation": 0
+  },
+  "existing_non_story_tombstones_expected": 8,
+  "drops": {
+    "reviewed_recovery_artwork_sfx_noise": [
+      "box_2913edaa70334c21",
+      "box_b001e94bb7294678",
+      "box_07a57d472a0041ed",
+      "box_cb1232b4b2814da7",
+      "box_f4cdbc67cf3648ff",
+      "box_2235e5839b804ada",
+      "box_2b8d78572b794e2d",
+      "box_da0f5acfe5034603",
+      "box_ac1ab54b992d4803",
+      "box_3cf1c8ec863c4ba8",
+      "box_ef6f43fba185404c",
+      "box_756d87d556704302",
+      "box_9f2b44dc32a44d03",
+      "box_3e864014190b4d08",
+      "box_6ad2aff5f0484b3a",
+      "box_192fd95d4b4c4fb9",
+      "box_4b95b83df61f49d3",
+      "box_a8babb0cd7fe4588",
+      "box_b3287e8bf8ce4f90",
+      "box_d8c053dfe8864670",
+      "box_b887e2b641144d17",
+      "box_29af2c078d02411b",
+      "box_ceb293b1b4754f9f",
+      "box_747e1e738cce4859",
+      "box_800a5cb3df734be4",
+      "box_5116bdd5bae5449c",
+      "box_7ab8dfd9090549e1",
+      "box_337d82e07095463f",
+      "box_a78f07df24174281",
+      "box_439c15f4414b4ff2",
+      "box_7fd667c96dc942c7",
+      "box_750fa217d7534956",
+      "box_79d09f7b599b4d65",
+      "box_8553cbf4a1aa406b",
+      "box_58a826a0f3354654",
+      "box_4c56c060888d4c7b",
+      "box_bea5dc73f68c4237",
+      "box_41cb97d34ef14e68",
+      "box_0771e8f15e6140a0",
+      "box_2cec40ae1f094d91",
+      "box_c261ee317205461f",
+      "box_483d56fc95594fa9",
+      "box_f5fd1cc48efc4126",
+      "box_337cc9bbd6944e70",
+      "box_1530ce8984644dab",
+      "box_e033ca73fc5c4b62",
+      "box_e6ffa7bd6a58492d",
+      "box_f2e5946cc45d4f95",
+      "box_ce24d4ae0eb5480d",
+      "box_43e531e8d7704f83",
+      "box_9592959151e7421e",
+      "box_9d4942d59a3648dc",
+      "box_be679b63fba9471f",
+      "box_f253424376b14f35",
+      "box_ea4309269ae048ee",
+      "box_ce5ab869becd4519",
+      "box_765f77164efd42fa",
+      "box_6a55f36ccafd4d50",
+      "box_f86cdeb225634801",
+      "box_ff33123138c140f8",
+      "box_5cb5203445c4465a",
+      "box_8d292fff61bc4bc4",
+      "box_f5d1727c827f4bd7",
+      "box_d27f5c582172421f",
+      "box_6fb282b47c904b03",
+      "box_bac1f4ea244c4518",
+      "box_0a6e20830b7a4dec",
+      "box_94238f6d75d34cd1",
+      "box_91bf367448d54675",
+      "box_e0cecba0c7974802",
+      "box_fc94d840f3ca47ba",
+      "box_b3204d3d674543e0",
+      "box_3c983436a7c94a5a",
+      "box_3148360e889c4d7d",
+      "box_78e4fe1e10934b95",
+      "box_b608642759ae4242",
+      "box_0faf0100b3274de4",
+      "box_33ac4fbe5df64065",
+      "box_f0af185204c84ece",
+      "box_001a4be998974edd",
+      "box_12d2607eb5eb4ca1",
+      "box_e63fe5c5763141c7",
+      "box_716ce2970fa04e20",
+      "box_9aa6483b7a5344c5",
+      "box_a011b40c69ff433f",
+      "box_8bac6b625dde469e",
+      "box_2e97f6d3ed9942d2",
+      "box_7bf912b6694b4bfd",
+      "box_20f20a851f614c92",
+      "box_f5fb1a60b4794995",
+      "box_abb430299ece4e65",
+      "box_c2b6f03d44f14f31",
+      "box_3a2bc164ccfa4ddd",
+      "box_57f806825aa246d1",
+      "box_8177f19615154137"
+    ],
+    "overlap_duplicates_outside_stitch_core": [
+      "box_f6bb7cf4b73d4436",
+      "box_2335093b83d24035",
+      "box_be968f49976445ca"
+    ],
+    "same_slice_detector_duplicates": [
+      "box_c0da1e3388664c50"
+    ],
+    "non_story_series_logo": [
+      "box_b02be5cac5dd4d94"
+    ]
+  },
+  "corrections": {
+    "box_af2ae200e4af4d23": {
+      "before": "THE MOST BEAUTIFUL,\nMOST EXQUISITE,AND\nLARGEST ARROW LU\nSHENG HAD EVER\nCONDENSED!",
+      "after": "THE MOST BEAUTIFUL,\nMOST EXQUISITE, AND\nLARGEST ARROW LU\nSHENG HAD EVER\nCONDENSED!"
+    },
+    "box_2df38511cc5b44bd": {
+      "before": "THE FLEETING\nMOMENTTHE ARROW\nTOOK AIM AT HIM!",
+      "after": "THE FLEETING\nMOMENT THE ARROW\nTOOK AIM AT HIM!"
+    },
+    "box_e3b6ae51e9be4a2a": {
+      "before": "THIS IS BAD!\nHAVE TO DODGE",
+      "after": "THIS IS BAD!\nI HAVE TO DODGE IT!"
+    },
+    "box_4cb8ab0f6b7f4daa": {
+      "before": "YOU DON'T\nHAVE A SECOND\nLIFE TO WATOH\nIT AGAIN.",
+      "after": "YOU DON'T\nHAVE A SECOND\nLIFE TO WATCH\nIT AGAIN."
+    },
+    "box_ad4ef7f93ab24ab3": {
+      "before": "IT WAS IMPOSSIBLE TO\nDESCRIBETHE SPLENDOR\nAND BEAUTY OF THIS\nARROW.",
+      "after": "IT WAS IMPOSSIBLE TO\nDESCRIBE THE SPLENDOR\nAND BEAUTY OF THIS\nARROW."
+    },
+    "box_ba7f792c09fd4be7": {
+      "before": "IT WAS LIKE SOMETHING\nINTHE UNIVERSE CASUALLY\nSTREAKING ACROSS THE\nSTAR EXPANSE.",
+      "after": "IT WAS LIKE SOMETHING\nIN THE UNIVERSE CASUALLY\nSTREAKING ACROSS THE\nSTAR EXPANSE."
+    },
+    "box_f1b9b9850c574675": {
+      "before": "WITH A TAIL FLAME\nBEARING ALLTHE FINEST\nBEAUTY IN THE WORLD,\nIT CUTTHROUGHTHE\nLAYERED VOID...",
+      "after": "WITH A TAIL FLAME\nBEARING ALL THE FINEST\nBEAUTY IN THE WORLD,\nIT CUT THROUGH THE\nLAYERED VOID..."
+    },
+    "box_bce78c353c904a08": {
+      "before": "A DENSE AURA\nOF DESTRUCTION\nCOMPLETELYWRAPPED\nAROUND THE\nARROW.",
+      "after": "A DENSE AURA\nOF DESTRUCTION\nCOMPLETELY WRAPPED\nAROUND THE\nARROW."
+    },
+    "box_91d53e37e864422b": {
+      "before": "IN A FLEETING MOMENT\nBEAUTYTRANSFORMED\nINTO CRUELTY!",
+      "after": "IN A FLEETING MOMENT,\nBEAUTY TRANSFORMED\nINTO CRUELTY!"
+    },
+    "box_2813109eeb834e27": {
+      "before": "THIS WAS A MYTH\nOF THE STAR EXPANSE\nFROM ONE OFTHE MEMORY\nINHERITANCES LU SHENG\nHAD RECEIVED.",
+      "after": "THIS WAS A MYTH\nOF THE STAR EXPANSE\nFROM ONE OF THE MEMORY\nINHERITANCES LU SHENG\nHAD RECEIVED."
+    },
+    "box_3429a3c243494b89": {
+      "before": "ITS IMAGERY MATCHED\nQUITE WELL WITHTHE CONCEPT\nBEHIND THE ULTIMATE ARCHERY\nMOVE HE HAD JUST\nCREATED.",
+      "after": "ITS IMAGERY MATCHED\nQUITE WELL WITH THE CONCEPT\nBEHIND THE ULTIMATE ARCHERY\nMOVE HE HAD JUST\nCREATED."
+    },
+    "box_8af2f930b0da44f5": {
+      "before": "HE TURNED HIS HEAD\nAND BEGAN PONDERING\nANOTHER QUESTION OF\nEXTREME IMPORTANCE\nTO HIM!-",
+      "after": "HE TURNED HIS HEAD\nAND BEGAN PONDERING\nANOTHER QUESTION OF\nEXTREME IMPORTANCE\nTO HIM!—"
+    },
+    "box_4684fed620a1469c": {
+      "before": "INTRUTH,\nLU SHENG COULD FAINTLY\nHEAR DARIUS'S VOICE BEHIND\nHIM, FURIOUS AND IRRITABLE\nTO THE EXTREME.",
+      "after": "IN TRUTH,\nLU SHENG COULD FAINTLY\nHEAR DARIUS'S VOICE BEHIND\nHIM, FURIOUS AND IRRITABLE\nTO THE EXTREME."
+    },
+    "box_2a0372b752a64600": {
+      "before": "HOW CAN THIS\nBE3! WHY IS THIS\nHAPPENING3!!!",
+      "after": "HOW CAN THIS\nBE?! WHY IS THIS\nHAPPENING?!!!"
+    },
+    "box_d9d1f5823b04452e": {
+      "before": "JUST AS THE THOUGHT\nAROSE IN LU SHENG'S MIND,\nATTHAT FLEETING MOMENT,\nA STREAK OF GOLDEN LIGHT\nSHOT IN FROM OUTER\nSPACE...",
+      "after": "JUST AS THE THOUGHT\nAROSE IN LU SHENG'S MIND,\nAT THAT FLEETING MOMENT,\nA STREAK OF GOLDEN LIGHT\nSHOT IN FROM OUTER\nSPACE..."
+    },
+    "box_7133ff406e6d44a8": {
+      "before": "IMMEDIATELY\nAFTERWARD, DARIUS\nWAS WRAPPED INTHAT\nMASS OF GOLDEN LIGHT\nAND CARRIED\nAWAY.",
+      "after": "IMMEDIATELY\nAFTERWARD, DARIUS\nWAS WRAPPED IN THAT\nMASS OF GOLDEN LIGHT\nAND CARRIED\nAWAY."
+    },
+    "box_d421009df70342bc": {
+      "before": "PRECISELY BECAUSE OF\nTHE DESCENT OFTHAT GOLDEN\nLIGHT,THIS CRUMBLING BATTLE\nSPACE SUDDENLY BECAME\nINCOMPARABLY STABLE.",
+      "after": "PRECISELY BECAUSE OF\nTHE DESCENT OF THAT GOLDEN\nLIGHT, THIS CRUMBLING BATTLE\nSPACE SUDDENLY BECAME\nINCOMPARABLY STABLE."
+    },
+    "box_a6b14daa348e4d91": {
+      "before": "I'VE NEVER\nLIKED ARROGANT\nPEOPLE,\nW",
+      "after": "I'VE NEVER\nLIKED ARROGANT\nPEOPLE,"
+    },
+    "box_a49fff13bd8b4cba": {
+      "before": "ADARIUS KNEW\nHE HAD ALREADY\nESCAPED DANGER.",
+      "after": "DARIUS KNEW\nHE HAD ALREADY\nESCAPED DANGER."
+    },
+    "box_03b760eb31604967": {
+      "before": "LU SHENG DIDN'T CARE IN\nTHE SLIGHTEST. HE HAD NEVER\nCARED ABOUTTHREATS FROM\nDEFEATED OPPONENTS.",
+      "after": "LU SHENG DIDN'T CARE IN\nTHE SLIGHTEST. HE HAD NEVER\nCARED ABOUT THREATS FROM\nDEFEATED OPPONENTS."
+    },
+    "box_66ae76b97f6e4a4f": {
+      "before": "BECAUSE NEVER HAD ANYONE,\nAFTER LOSING ONCE TO LU SHENG,\nSTILL HAD THE CHANCETO STAND\nBEFORE HIM AGAIN.",
+      "after": "BECAUSE NEVER HAD ANYONE,\nAFTER LOSING ONCE TO LU SHENG,\nSTILL HAD THE CHANCE TO STAND\nBEFORE HIM AGAIN."
+    },
+    "box_c3bf92de67b74ed1": {
+      "before": "EVERYONEWONDERED\nWHY LU SHENG COULD\nCOMPREHEND THIS\nSUPREME LAW SO\nNATURALLY.",
+      "after": "EVERYONE WONDERED\nWHY LU SHENG COULD\nCOMPREHEND THIS\nSUPREME LAW SO\nNATURALLY."
+    },
+    "box_03ec12b2cc5b4efb": {
+      "before": "THIS COULD ALMOST NO\nLONGER BE DESCRIBED AS\nTALENT. IT SIMPLYVIOLATED\nTHE COMMON SENSE AND\nLAWS OFTHE UNIVERSE.",
+      "after": "THIS COULD ALMOST NO\nLONGER BE DESCRIBED AS\nTALENT. IT SIMPLY VIOLATED\nTHE COMMON SENSE AND\nLAWS OF THE UNIVERSE."
+    },
+    "box_9585976688394dad": {
+      "before": "HOWEVER,\nONLY LU SHENG\nHIMSELF UNDERSTOOD\nTHE REASON MORE\nCLEARLYTHAN\nANYONE.",
+      "after": "HOWEVER,\nONLY LU SHENG\nHIMSELF UNDERSTOOD\nTHE REASON MORE\nCLEARLY THAN\nANYONE."
+    }
+  },
+  "resurrection_test_required": true,
+  "status": "READY_TO_APPLY",
+  "next_action": "APPLY_CURATED_OCR_TO_MANIFEST_AND_RUN_RESURRECTION_TEST"
+}
