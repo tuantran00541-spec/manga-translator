@@ -6,10 +6,15 @@
   "source_url": "https://asurascans.com/comics/starting-with-13-hidden-traits-53fc8424/chapter/46",
   "branch": "trial/starting-with-13-hidden-traits-46",
   "source_of_truth_sha": "07a96bb171dd7c31f86339bbebf6187b47bce1a9",
-  "last_reviewed_branch_sha": "19d9f85cd3c075d5723b54573602890ea0f6f23e",
-  "current_stage": "TRANSLATION_PENDING",
-  "last_passed_checkpoint": "OCR",
-  "current_artifact": "03b-ocr-curated-57d7b970@34602890986",
+  "last_reviewed_branch_sha": "6814992a042ea05c1f1156dd5224eae43e20e47c",
+  "current_stage": "FINAL_PENDING",
+  "last_passed_checkpoint": "VISUAL_REVIEW",
+  "current_artifact": {
+    "name": "06-render-review-57d7b970",
+    "run_id": 34621443926,
+    "artifact_id": 10272452270,
+    "head_sha": "6814992a042ea05c1f1156dd5224eae43e20e47c"
+  },
   "blockers": [],
-  "next_action": "RUN_CHECKPOINT_04_TRANSLATION_REVIEW"
+  "next_action": "RUN_FINAL_PACKAGE"
 }

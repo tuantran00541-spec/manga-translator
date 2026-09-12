@@ -1,0 +1,300 @@
+name: Starting With 13 Hidden Traits 46 FINAL Human Approved Export
+
+on:
+  push:
+    branches:
+      - trial/starting-with-13-hidden-traits-46
+    paths:
+      - .github/workflows/starting-with-13-hidden-traits-46-final.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: starting-with-13-hidden-traits-46-human-loop
+  cancel-in-progress: false
+
+jobs:
+  final-export:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    env:
+      CHAPTER_ID: 57d7b970
+      RENDER_RUN_ID: "34621443926"
+      RENDER_ARTIFACT: 06-render-review-57d7b970
+      RENDER_ARTIFACT_ID: "10272452270"
+      TYPESET_RUN_ID: "34620990362"
+      TYPESET_ARTIFACT: 05-typeset-57d7b970
+      TYPESET_ARTIFACT_ID: "10272159312"
+      FINAL_NAME: Starting-With-13-Hidden-Traits-Chapter-46-VI-FINAL.zip
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: trial/starting-with-13-hidden-traits-46
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install final integrity dependency
+        run: |
+          python -m pip install --disable-pip-version-check --quiet Pillow==10.4.0
+
+      - name: Validate durable human gates
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path('trials/starting-with-13-hidden-traits-46')
+          def load(name):
+              p = root / name
+              if not p.is_file():
+                  raise SystemExit(f'missing durable gate {p}')
+              return json.loads(p.read_text(encoding='utf-8'))
+
+          imp = load('import-review.json')
+          assert imp.get('status') == 'PASS' and imp.get('chapter_id') == '57d7b970', imp
+          assert imp.get('series_slug') == 'starting-with-13-hidden-traits-53fc8424', imp
+          assert imp.get('chapter_number') == 46 and imp.get('source_images') == 22 and imp.get('slices') == 77, imp
+          assert imp.get('ownership_issues') == 0, imp
+          rec = imp.get('pixel_exact_reconstruction') or {}
+          assert rec.get('passed_pages') == 22 and rec.get('total_pages') == 22, rec
+          assert rec.get('differing_pixels') == 0 and rec.get('max_channel_diff') == 0, rec
+          human_imp = imp.get('human_review') or {}
+          assert human_imp.get('source_order_accepted') is True and human_imp.get('slice_order_accepted') is True, human_imp
+          assert human_imp.get('story_content_complete') is True, human_imp
+
+          clean = load('clean-review.json')
+          assert clean.get('status') == 'PASS' and clean.get('chapter_id') == '57d7b970', clean
+          human = clean.get('human_review') or {}
+          assert human.get('story_text_blockers') == 0, human
+          assert human.get('artwork_damage_blockers') == 0, human
+          assert human.get('source_story_residue_blockers') == 0, human
+          repairs = clean.get('local_repairs') or []
+          assert len(repairs) == 3, repairs
+          assert sorted(x.get('page_index') for x in repairs) == [0, 15, 76], repairs
+          assert all(x.get('action') == 'restore_raw_slice_pixel_exact' and x.get('raw_vs_repaired_pixel_diff') == 0 for x in repairs), repairs
+
+          ocr = load('ocr-curation.json')
+          assert ocr.get('chapter_id') == '57d7b970' and ocr.get('checkpoint') == '03b-ocr-curation', ocr
+          basis = ocr.get('review_basis') or {}
+          assert basis.get('ocr_source') == 'RAW', basis
+          assert basis.get('recognized_story_text_read_in_page_order') is True, basis
+          exp = ocr.get('expected') or {}
+          assert exp.get('active_story_objects') == 110, exp
+          assert exp.get('active_empty_story_objects') == 0, exp
+          assert exp.get('duplicate_overlaps') == 0 and exp.get('resurrection_count') == 0, exp
+          assert exp.get('seeded_tombstones') == 13 and exp.get('new_drop_decisions') == 134, exp
+
+          tr = load('translation-review.json')
+          assert tr.get('status') == 'PASS' and tr.get('chapter_id') == '57d7b970', tr
+          for key in ('scene_reviewed','source_order_reviewed','raw_context_consulted','terminology_consistent','character_voice_reviewed','system_ui_reviewed'):
+              assert tr.get(key) is True, (key, tr)
+
+          visual = load('visual-review.json')
+          assert visual.get('status') == 'PASS' and visual.get('chapter_id') == '57d7b970', visual
+          assert visual.get('render_run_id') == 34621443926 and visual.get('render_artifact_id') == 10272452270, visual
+          assert visual.get('source_pages') == 22 and visual.get('render_slices') == 77, visual
+          assert visual.get('active_story_objects') == 110 and visual.get('persistent_tombstones') == 147, visual
+          assert (visual.get('checks') or {}).get('visual_blockers_total') == 0, visual
+          assert visual.get('visual_pass_allowed') is True and visual.get('final_export_allowed') is True, visual
+          proof = visual.get('proof_review') or {}
+          assert proof.get('object_proof_sheets_reviewed') == 10, proof
+          assert proof.get('full_page_review_chunks_generated_and_reviewed') == 116, proof
+          assert proof.get('stitched_pages_reviewed') == 22 and proof.get('stitched_page_seams_reviewed') is True, proof
+
+          state = load('chapter-state.json')
+          assert state.get('current_stage') == 'FINAL_PENDING', state
+          assert state.get('last_passed_checkpoint') == 'VISUAL_REVIEW' and state.get('blockers') == [], state
+          current = state.get('current_artifact') or {}
+          assert current.get('run_id') == 34621443926 and current.get('artifact_id') == 10272452270, current
+          assert state.get('source_url') == 'https://asurascans.com/comics/starting-with-13-hidden-traits-53fc8424/chapter/46', state
+          print(json.dumps({'import':'PASS','clean':'PASS','ocr':'PASS','translation':'PASS','visual':'PASS','final_export_allowed':True}, indent=2))
+          PY
+
+      - name: Restore approved render and typeset checkpoints
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf checkpoint/05-typeset checkpoint/06-render checkpoint/07-final
+          mkdir -p checkpoint/05-typeset checkpoint/06-render checkpoint/07-final
+          gh run download "$TYPESET_RUN_ID" -n "$TYPESET_ARTIFACT" -D checkpoint/05-typeset
+          gh run download "$RENDER_RUN_ID" -n "$RENDER_ARTIFACT" -D checkpoint/06-render
+          test -f checkpoint/05-typeset/processed-manifest-typeset.json
+          test -f checkpoint/05-typeset/typeset-summary.json
+          test -f checkpoint/06-render/Starting-With-13-Hidden-Traits-Chapter-46-VI-RENDER-REVIEW.zip
+          test -f checkpoint/06-render/render-review-summary.json
+
+      - name: Verify manifest and FINAL archive integrity
+        run: |
+          python - <<'PY'
+          import hashlib, json, shutil, zipfile
+          from pathlib import Path
+          from PIL import Image
+
+          typeset_root = Path('checkpoint/05-typeset')
+          render_root = Path('checkpoint/06-render')
+          out = Path('checkpoint/07-final')
+          out.mkdir(parents=True, exist_ok=True)
+          ts = json.loads((typeset_root/'typeset-summary.json').read_text(encoding='utf-8'))
+          manifest = json.loads((typeset_root/'processed-manifest-typeset.json').read_text(encoding='utf-8'))
+          rs = json.loads((render_root/'render-review-summary.json').read_text(encoding='utf-8'))
+          visual = json.loads(Path('trials/starting-with-13-hidden-traits-46/visual-review.json').read_text(encoding='utf-8'))
+
+          assert ts.get('status') == 'PASS', ts
+          assert ts.get('active_story_objects') == 110 and ts.get('styled_objects') == 110, ts
+          assert ts.get('auto_font_size_objects') == 0 and ts.get('glyph_missing_count') == 0 and ts.get('overflow_count') == 0, ts
+          assert ts.get('system_font') == 'BeVietnamPro-SemiBold', ts
+          assert rs.get('status') == 'TECHNICAL_PASS_PENDING_HUMAN_VISUAL_REVIEW', rs
+          assert rs.get('slices') == 77 and rs.get('source_pages') == 22, rs
+          assert rs.get('active_story_objects') == 110 and rs.get('persistent_tombstones') == 147, rs
+          assert rs.get('font_size_auto_count') == 0, rs
+          stats = rs.get('render_stats') or {}
+          assert stats.get('rendered') == 77 and stats.get('skipped') == 0 and stats.get('total') == 77, stats
+          assert visual.get('status') == 'PASS' and visual.get('render_run_id') == 34621443926, visual
+
+          active = tombstones = untranslated = auto = malformed_size = 0
+          fonts = set()
+          sizes = []
+          for page in manifest.get('pages') or []:
+              for obj in page.get('text_objects') or []:
+                  if not isinstance(obj, dict):
+                      continue
+                  if obj.get('source_missing'):
+                      tombstones += 1
+                      continue
+                  active += 1
+                  if not str(obj.get('translation') or '').strip():
+                      untranslated += 1
+                  style = obj.get('style') or {}
+                  fs = str(style.get('fontSize') or '').strip().lower()
+                  if fs == 'auto':
+                      auto += 1
+                  if not fs.isdigit() or int(fs) <= 0:
+                      malformed_size += 1
+                  else:
+                      sizes.append(int(fs))
+                  fonts.add(str(style.get('font') or ''))
+          if (active, tombstones, untranslated, auto, malformed_size) != (110, 147, 0, 0, 0):
+              raise SystemExit(f'manifest gate failed active={active} tombstones={tombstones} untranslated={untranslated} auto={auto} malformed_size={malformed_size}')
+
+          dims_meta = rs.get('final_page_dimensions') or []
+          assert len(dims_meta) == 22, dims_meta
+          expected_names = [f'page_{i:03d}.png' for i in range(1, 23)]
+          expected_dims = [(int(x['width']), int(x['height'])) for x in dims_meta]
+          src_zip = render_root/'Starting-With-13-Hidden-Traits-Chapter-46-VI-RENDER-REVIEW.zip'
+          final_zip = out/'Starting-With-13-Hidden-Traits-Chapter-46-VI-FINAL.zip'
+          page_meta = []
+          with zipfile.ZipFile(src_zip) as z:
+              members = [n for n in z.namelist() if not n.endswith('/')]
+              if members != expected_names:
+                  raise SystemExit(f'archive order/content mismatch: {members}')
+              for idx, (name, exp_dim) in enumerate(zip(expected_names, expected_dims)):
+                  data = z.read(name)
+                  if not data:
+                      raise SystemExit(f'empty page {name}')
+                  with z.open(name) as f, Image.open(f) as im:
+                      im.load()
+                      actual = (im.width, im.height)
+                  if actual != exp_dim:
+                      raise SystemExit(f'{name} dimensions {actual} expected {exp_dim}')
+                  page_meta.append({
+                      'source_page_index': idx,
+                      'file': name,
+                      'width': exp_dim[0],
+                      'height': exp_dim[1],
+                      'bytes': len(data),
+                      'sha256': hashlib.sha256(data).hexdigest(),
+                  })
+
+          shutil.copy2(src_zip, final_zip)
+          archive_bytes = final_zip.read_bytes()
+          report = {
+              'chapter_id': '57d7b970',
+              'series': 'Starting With 13 Hidden Traits',
+              'series_slug': 'starting-with-13-hidden-traits-53fc8424',
+              'chapter_number': 46,
+              'status': 'FINAL_PASS',
+              'branch': 'trial/starting-with-13-hidden-traits-46',
+              'source_url': 'https://asurascans.com/comics/starting-with-13-hidden-traits-53fc8424/chapter/46',
+              'source_render_run_id': 34621443926,
+              'source_render_artifact': '06-render-review-57d7b970',
+              'source_render_artifact_id': 10272452270,
+              'source_typeset_run_id': 34620990362,
+              'source_typeset_artifact': '05-typeset-57d7b970',
+              'source_typeset_artifact_id': 10272159312,
+              'source_pages': 22,
+              'render_slices': 77,
+              'active_story_objects': 110,
+              'persistent_tombstones': 147,
+              'active_untranslated_story_objects': 0,
+              'import_gate': 'PASS',
+              'clean_gate': 'PASS_AFTER_LOCAL_RAW_RESTORES',
+              'ocr_gate': 'PASS_AFTER_HUMAN_CURATION',
+              'translation_gate': 'PASS',
+              'typeset_gate': 'PASS',
+              'visual_gate': 'PASS',
+              'visual_blockers_remaining': 0,
+              'adaptive_content_density_typography': True,
+              'system_ui_font': ts.get('system_font'),
+              'font_size_auto_objects': 0,
+              'font_size_min_px': min(sizes),
+              'font_size_max_px': max(sizes),
+              'archive': final_zip.name,
+              'archive_png_count': 22,
+              'archive_bytes': len(archive_bytes),
+              'archive_sha256': hashlib.sha256(archive_bytes).hexdigest(),
+              'page_order': expected_names,
+              'final_pages': page_meta,
+              'final_export_allowed': True,
+          }
+          (out/'final-report.json').write_text(json.dumps(report, ensure_ascii=False, indent=2)+'\n', encoding='utf-8')
+          print(json.dumps({k:v for k,v in report.items() if k not in {'final_pages','page_order'}}, ensure_ascii=False, indent=2))
+          PY
+
+      - name: Publish final report and close chapter state
+        run: |
+          cp checkpoint/07-final/final-report.json trials/starting-with-13-hidden-traits-46/final-report.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path('trials/starting-with-13-hidden-traits-46')
+          p = root/'chapter-state.json'
+          state = json.loads(p.read_text(encoding='utf-8'))
+          report = json.loads((root/'final-report.json').read_text(encoding='utf-8'))
+          if report.get('status') != 'FINAL_PASS' or report.get('final_export_allowed') is not True:
+              raise SystemExit('refusing to close chapter without FINAL_PASS')
+          state['current_stage'] = 'FINAL_COMPLETE'
+          state['last_passed_checkpoint'] = 'FINAL_EXPORT'
+          state['final_export'] = {
+              'status': 'FINAL_PASS',
+              'archive': report['archive'],
+              'archive_sha256': report['archive_sha256'],
+              'source_pages': 22,
+              'source_render_run_id': 34621443926,
+              'source_render_artifact_id': 10272452270
+          }
+          state['blockers'] = []
+          state['next_action'] = 'CHAPTER_COMPLETE_NO_MAIN_MERGE'
+          p.write_text(json.dumps(state, ensure_ascii=False, indent=2)+'\n', encoding='utf-8')
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add trials/starting-with-13-hidden-traits-46/final-report.json trials/starting-with-13-hidden-traits-46/chapter-state.json
+          git diff --cached --check
+          git commit -m "final: pass chapter 46 human-reviewed export gates"
+          git fetch origin trial/starting-with-13-hidden-traits-46
+          git rebase origin/trial/starting-with-13-hidden-traits-46
+          git push origin HEAD:trial/starting-with-13-hidden-traits-46
+
+      - name: Upload FINAL chapter
+        uses: actions/upload-artifact@v4
+        with:
+          name: Starting-With-13-Hidden-Traits-Chapter-46-VI-FINAL
+          path: checkpoint/07-final
+          compression-level: 0
+          retention-days: 7
+          if-no-files-found: error

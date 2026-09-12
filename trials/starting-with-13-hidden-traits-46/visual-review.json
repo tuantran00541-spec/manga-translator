@@ -1,0 +1,70 @@
+{
+  "checkpoint": "VISUAL_REVIEW",
+  "chapter_id": "57d7b970",
+  "series_slug": "starting-with-13-hidden-traits-53fc8424",
+  "series_title": "Starting With 13 Hidden Traits",
+  "chapter_number": 46,
+  "source_url": "https://asurascans.com/comics/starting-with-13-hidden-traits-53fc8424/chapter/46",
+  "status": "PASS",
+  "render_run_id": 34621443926,
+  "render_artifact": "06-render-review-57d7b970",
+  "render_artifact_id": 10272452270,
+  "render_head_sha": "6814992a042ea05c1f1156dd5224eae43e20e47c",
+  "source_pages": 22,
+  "render_slices": 77,
+  "active_story_objects": 110,
+  "persistent_tombstones": 147,
+  "proof_review": {
+    "object_proof_sheets_reviewed": 10,
+    "system_ui_proof_sheets_reviewed": 1,
+    "artifact_full_page_contact_sheets_reviewed": 1,
+    "stitched_pages_reviewed": 22,
+    "full_page_review_chunks_generated_and_reviewed": 116,
+    "full_page_review_chunk_height_px": 1800,
+    "all_active_story_objects_covered_by_object_proofs": true,
+    "full_chapter_page_order_reviewed": true,
+    "stitched_page_seams_reviewed": true,
+    "title_credit_promo_preservation_reviewed": true
+  },
+  "pre_render_typography_repairs": [
+    {
+      "kind": "system_ui_font_coverage",
+      "description": "Normalized the battle-result brackets from CJK 《 》 to ASCII [ ] so the reviewed system panel can use BeVietnamPro-SemiBold without fallback glyphs.",
+      "scope": "one system UI object",
+      "translation_checkpoint_rerun": 34620894737,
+      "typeset_checkpoint_rerun": 34620990362
+    }
+  ],
+  "checks": {
+    "overflow_blockers": 0,
+    "clipping_blockers": 0,
+    "missing_text_blockers": 0,
+    "duplicate_text_blockers": 0,
+    "source_text_residue_blockers": 0,
+    "artwork_damage_blockers": 0,
+    "seam_blockers": 0,
+    "glyph_blockers": 0,
+    "system_ui_collision_blockers": 0,
+    "page_order_blockers": 0,
+    "title_credit_promo_preservation_blockers": 0,
+    "visual_blockers_total": 0
+  },
+  "typography": {
+    "font_size_auto_objects": 0,
+    "final_font_size_min_px": 36,
+    "final_font_size_max_px": 96,
+    "adaptive_font_sizing_accepted": true,
+    "content_density_and_region_based_sizing_accepted": true,
+    "system_ui_font": "BeVietnamPro-SemiBold",
+    "primary_dialogue_font": "Mac-dinh-3"
+  },
+  "clean_stack_preservation": {
+    "restored_non_story_pages": [0, 15, 76],
+    "raw_pixel_exact_restores_retained": true,
+    "unrelated_page_regression_seen": false
+  },
+  "visual_pass_allowed": true,
+  "final_export_allowed": true,
+  "blockers": [],
+  "next_action": "RUN_FINAL_PACKAGE"
+}
