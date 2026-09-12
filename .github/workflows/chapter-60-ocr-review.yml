@@ -1,0 +1,114 @@
+name: Chapter 60 Checkpoint 03 OCR Review
+
+on:
+  push:
+    branches:
+      - trial/chapter-render-60
+    paths:
+      - .github/workflows/chapter-60-ocr-review.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: chapter-60-human-loop
+  cancel-in-progress: false
+
+jobs:
+  raw-ocr-review:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 75
+    env:
+      PYTHONUNBUFFERED: "1"
+      PYTHONPATH: "."
+      PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK: "True"
+      MANGA_PPOCRV6_TIER: small
+      MANGA_OCR_TARGET_SELECTION: all
+      MANGA_PPOCRV6_TEXTLINE_ORIENTATION: "0"
+      CLEAN_RUN_ID: "34669170206"
+      CLEAN_ARTIFACT: 02c-clean-repaired-f1cd0121
+      OCR_ROOT: checkpoint/03-ocr-review
+      CHAPTER_ID: f1cd0121
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: trial/chapter-render-60
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install pinned production OCR runtime
+        run: |
+          python -m pip install --only-binary=:all: \
+            numpy==1.26.4 \
+            Pillow==10.4.0 \
+            opencv-contrib-python==4.10.0.84 \
+            paddlepaddle==3.2.2 \
+            paddleocr==3.7.0 \
+            pydantic==2.9.2 \
+            filelock==3.16.1 \
+            loguru==0.7.2
+
+      - name: Restore Paddle OCR model cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.paddlex
+            ~/.paddleocr
+          key: chapter-ocr-ppocrv6-small-v1
+
+      - name: Restore human-approved clean checkpoint
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf "$OCR_ROOT"
+          mkdir -p "$OCR_ROOT"
+          gh run download "$CLEAN_RUN_ID" -n "$CLEAN_ARTIFACT" -D "$OCR_ROOT"
+          test -f "$OCR_ROOT/processed/manifest.json"
+          test -d "$OCR_ROOT/raw/sliced"
+          python - <<'PY'
+          import json
+          r=json.load(open('trials/chapter-60/clean-review.json',encoding='utf-8'))
+          if r.get('status')!='PASS' or r.get('gate',{}).get('story_text_blockers')!=0:
+              raise SystemExit(f'CLEAN gate not approved: {r}')
+          if r.get('technical_run',{}).get('approved_artifact')!='02c-clean-repaired-f1cd0121':
+              raise SystemExit('approved CLEAN artifact mismatch')
+          print('CLEAN human gate approved')
+          PY
+
+      - name: Run production OCR from RAW originals
+        run: |
+          python trials/chapter-60/run_ocr_checkpoint.py \
+            "$OCR_ROOT" \
+            --chapter-id "$CHAPTER_ID" \
+            --lang en
+
+      - name: Validate OCR review checkpoint
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          root=Path(os.environ['OCR_ROOT'])
+          s=json.loads((root/'ocr-review-summary.json').read_text(encoding='utf-8'))
+          if s.get('checkpoint')!='03-ocr-review': raise SystemExit(s)
+          if s.get('source_policy')!='RAW_ORIGINAL_ONLY': raise SystemExit(s)
+          if s.get('planned_targets') != s.get('completed_targets'): raise SystemExit(s)
+          if s.get('errors') != 0: raise SystemExit(s)
+          if not (root/'ocr-review/ocr-suspects.json').is_file(): raise SystemExit('missing OCR suspects')
+          if not (root/'ocr-review/scene-ocr-index.json').is_file(): raise SystemExit('missing scene OCR index')
+          if not (root/'processed/manifest.json').is_file(): raise SystemExit('missing OCR-mutated manifest')
+          print(json.dumps(s,ensure_ascii=False,indent=2))
+          PY
+
+      - name: Upload checkpoint 03 artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: 03-ocr-review-f1cd0121
+          path: checkpoint/03-ocr-review
+          if-no-files-found: error
+          retention-days: 7
