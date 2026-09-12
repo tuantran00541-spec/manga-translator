@@ -1,0 +1,151 @@
+{
+  "chapter_id": "f1cd0121",
+  "series_title": "A Cadet Becomes a Prophet",
+  "chapter_number": 60,
+  "branch": "trial/chapter-render-60",
+  "status": "PASS",
+  "review_kind": "human_ocr_curation_and_scene_review",
+  "content_checkpoint": {
+    "run_id": 34679646612,
+    "artifact_id": 10294061471,
+    "artifact_name": "04b-ocr-curated-f1cd0121",
+    "digest": "sha256:d03a1ad255501843c5c2c5210134b63505c3c4d384b18999c1e9495c21d7f9c0"
+  },
+  "scene_review_evidence": {
+    "run_id": 34680197035,
+    "job_id": 103517349075,
+    "artifact_id": 10293606851,
+    "artifact_name": "04c-curated-ocr-scene-proof-f1cd0121",
+    "digest": "sha256:8e503a7fdaa3cac477015fad8dd3c70640cfdd8a8c0c7f69ece2fdf11c770c44",
+    "proof_cards": 24,
+    "proof_sheets": 4,
+    "focused_scene_pages": 20
+  },
+  "gate_metrics": {
+    "active_story_objects": 111,
+    "tombstones": 191,
+    "resurrected_dropped_count": 0,
+    "second_sync_created": 0,
+    "empty_active_ocr_count": 0,
+    "raw_changed_by_curation": false,
+    "ocr_rerun_required": false
+  },
+  "human_decisions": {
+    "promoted_skipped_story_objects": [
+      {
+        "page_index": 36,
+        "source_box": "box_a5ec1161458544ab",
+        "ocr_text": "SQUEE!"
+      },
+      {
+        "page_index": 38,
+        "source_box": "box_a3c90509c54642f3",
+        "ocr_text": "SQUEEE!"
+      }
+    ],
+    "empty_ocr_adjudication": [
+      {
+        "page_index": 2,
+        "source_box": "box_9f81ea7eb505421e",
+        "decision": "KEEP_STORY",
+        "ocr_text": "......",
+        "reason": "acting punctuation confirmed by human review"
+      },
+      {
+        "page_index": 29,
+        "source_box": "box_072e64626b7945c0",
+        "decision": "DROP_FALSE_POSITIVE"
+      },
+      {
+        "page_index": 48,
+        "source_box": "box_c9309c09043f4701",
+        "decision": "DROP_FALSE_POSITIVE"
+      }
+    ],
+    "manual_ocr_corrections": [
+      "p056: I RECEIVED THE RECORDING ORB YOU SENT.",
+      "p056: THAT WAS UNMISTAKABLY ANDROMALIUS. THE 72ND-RANKED DEMON.",
+      "p057: AND SEEING SAINT ARMIAN AND LUINA BERCHEFF STAND AGAINST HIM..",
+      "p057: SIR AMOD ALSO TOLD ME..",
+      "p060: I HAVE A FAIR IDEA OF WHAT YOU CONCEALED, SO I WON'T ASK.",
+      "p061: AS SOON AS THE BREAK BEGAN, YOU CAME HOME LIKE A MAN BEING PURSUED AND IMMEDIATELY DEVOTED ALL YOUR EFFORTS TO BUILDING A GOLEM."
+    ],
+    "semantic_splits": [
+      {
+        "page_index": 31,
+        "objects": [
+          "human_p031_chancellor_dialogue",
+          "human_p031_nightmare_note"
+        ],
+        "reason": "primary dialogue and smaller explanatory text require independent translation/typesetting roles"
+      },
+      {
+        "page_index": 37,
+        "objects": [
+          "human_p037_dark_horses",
+          "human_p037_squeak"
+        ],
+        "reason": "dialogue and vocalization SFX require independent roles"
+      }
+    ],
+    "semantic_merges": [
+      {
+        "page_index": 52,
+        "object": "human_p052_moonrise_bookstore",
+        "ocr_text": "MOONRISE BOOKSTORE?",
+        "reason": "two detector fragments represent one spoken line"
+      }
+    ],
+    "continuation_groups": [
+      {
+        "id": "cont_p030_p031_just_tell_it",
+        "parts": [
+          "p030: ...JUST TELL IT AS IT",
+          "p031: HAPPENED."
+        ],
+        "full_source": "...JUST TELL IT AS IT HAPPENED.",
+        "reading_order": "PASS"
+      }
+    ],
+    "duplicate_ownership": [
+      {
+        "page_index": 21,
+        "keep": "box_f513c6697c844fd2",
+        "drop": "box_968485f59cb14b5d"
+      },
+      {
+        "page_index": 49,
+        "keep": "box_d809d9a845424212",
+        "drop": "box_39e8ec1471384216"
+      },
+      {
+        "page_index": 63,
+        "keep": "box_9faef21adfdf4b20",
+        "drop": "box_39c2a2f793a24eea"
+      }
+    ]
+  },
+  "p034_ruling": {
+    "object_id": "text_433a772f55ca4707",
+    "ocr_text": "FOR AINT TO OBTAIN\nWHAT THE FIRST EMPEROR\nLEFT BEHIND...",
+    "decision": "KEEP_AS_READ",
+    "reason": "Aint is the canonical character name, not a contraction/OCR corruption. The line is coherent with the immediately adjacent tournament and win-condition dialogue and with the source-story context concerning Aint obtaining the First Emperor's legacy."
+  },
+  "tombstone_policy": {
+    "required": true,
+    "source_missing": true,
+    "auto_generated": false,
+    "origin": "human_review_drop",
+    "resurrection_test": "PASS"
+  },
+  "editorial_findings": [
+    "No active story object remains with empty OCR.",
+    "No human-dropped source box resurrected after a second object sync.",
+    "The p030 to p031 cross-slice sentence continuation is explicit and ordered correctly.",
+    "Curated dialogue/SFX/secondary-text splits preserve semantic roles for translation and later typography.",
+    "Duplicate detector ownership is singular on reviewed overlap cases.",
+    "Credits, promo, noise, decorative/non-story detections remain tombstoned and excluded from translation."
+  ],
+  "blockers": [],
+  "next_action": "RUN_TRANSLATION_DRAFT_AND_CONTEXT_REVIEW"
+}
