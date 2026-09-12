@@ -1,0 +1,53 @@
+{
+  "checkpoint": "06-typeset-render-preview",
+  "chapter_id": "f1cd0121",
+  "created_at": "2026-09-12T08:01:02.508557+00:00",
+  "source_checkpoint": "04d-ocr-final-f1cd0121",
+  "active_objects": 110,
+  "rendered_objects": 110,
+  "rendered_slices": 65,
+  "explicit_numeric_font_sizes": true,
+  "unresolved_font_sizes": 0,
+  "minimum_policy": {
+    "dialogue": 28,
+    "secondary": 24,
+    "sfx": 32,
+    "free_text": 28,
+    "acting": 32,
+    "shout": 30
+  },
+  "role_counts": {
+    "acting": 2,
+    "dialogue": 92,
+    "free_text": 2,
+    "shout": 3,
+    "secondary": 1,
+    "sfx": 10
+  },
+  "font_counts": {
+    "Manga-fonts.ttf": 100,
+    "SFX-fonts-1.ttf": 10
+  },
+  "region_adjustment_count": 1,
+  "region_adjustments": [
+    {
+      "page_index": 7,
+      "object_id": "text_3b315660c35b40cf",
+      "expand_px": 12,
+      "original_region": {
+        "x1": 269,
+        "y1": 1143,
+        "x2": 604,
+        "y2": 1282
+      },
+      "render_region": {
+        "x1": 257,
+        "y1": 1131,
+        "x2": 616,
+        "y2": 1294
+      }
+    }
+  ],
+  "status": "PASS",
+  "next_action": "HUMAN_VISUAL_REVIEW"
+}
