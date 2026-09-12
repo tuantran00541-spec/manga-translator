@@ -1,0 +1,130 @@
+{
+  "chapter_id": "c3513510",
+  "series": {
+    "source_title": "Logging 10,000 Years into the Future",
+    "vi_title": "Cao Võ: Hạ Cánh Đến Một Vạn Năm Sau"
+  },
+  "policy": {
+    "priority": [
+      "established Vietnamese manhua usage",
+      "established Vietnamese novel usage",
+      "original Chinese terminology",
+      "natural Vietnamese readability"
+    ],
+    "note": "Do not copy prose from existing Vietnamese releases. External releases are used only to lock names and terminology."
+  },
+  "entries": [
+    {
+      "source": "LU SHENG",
+      "original_zh": "陆圣",
+      "vi": "Lục Thánh",
+      "type": "character",
+      "confidence": "very_high",
+      "aliases": ["Lu Sheng"],
+      "evidence": [
+        "Vietnamese manhua listings and character references consistently identify the protagonist as Lục Thánh.",
+        "Vietnamese novel translations also use Lục Thánh."
+      ]
+    },
+    {
+      "source": "DARIUS",
+      "original_zh": "帝留厄斯",
+      "vi": "Đế Lưu Ách Tư",
+      "type": "character",
+      "confidence": "high",
+      "aliases": ["Darius", "Tillius"],
+      "evidence": [
+        "Original novel chapter list identifies the three-eyed opponent as 帝留厄斯.",
+        "Vietnamese novel text later renders 帝留厄斯 as Đế Lưu Ách Tư; one older listing uses Tillius, so Đế Lưu Ách Tư is retained as the closer established Sino-Vietnamese form."
+      ]
+    },
+    {
+      "source": "ZENITH SUN POWER",
+      "original_zh": "极阳之力",
+      "vi": "Cực Dương chi lực",
+      "type": "power",
+      "confidence": "high",
+      "aliases": ["Cực Dương lực"],
+      "evidence": [
+        "Vietnamese novel text repeatedly uses Cực Dương chi lực / Cực Dương for the 极阳 power system."
+      ]
+    },
+    {
+      "source": "DESTRUCTION LAW",
+      "original_zh": "毁灭法则",
+      "vi": "Hủy Diệt Pháp Tắc",
+      "type": "law",
+      "confidence": "very_high",
+      "aliases": ["Hủy Diệt pháp tắc"],
+      "evidence": [
+        "Original novel chapter 633 is explicitly titled with 毁灭法则.",
+        "Vietnamese series references use hủy diệt pháp tắc for this ability."
+      ]
+    },
+    {
+      "source": "RULER-GRADE",
+      "original_zh": "主宰级",
+      "vi": "cấp Chúa Tể",
+      "type": "rank",
+      "confidence": "very_high",
+      "aliases": ["Chúa Tể cấp"],
+      "evidence": [
+        "Original novel repeatedly uses 主宰级 for this rank.",
+        "Vietnamese novel chapter listings render 主宰级 as Chúa Tể cấp."
+      ]
+    },
+    {
+      "source": "RULER-GRADE BLOODLINE",
+      "original_zh": "主宰级血脉",
+      "vi": "huyết mạch cấp Chúa Tể",
+      "type": "bloodline_rank",
+      "confidence": "high",
+      "aliases": ["huyết mạch Chúa Tể cấp"],
+      "evidence": [
+        "Composed from the confirmed series rank 主宰级 → cấp Chúa Tể and 血脉 → huyết mạch; this ordering is chosen for natural Vietnamese dialogue."
+      ]
+    },
+    {
+      "source": "ARROW OF THE FALLEN REALM",
+      "original_zh": "堕域之矢",
+      "vi": "Đọa Vực Chi Tiễn",
+      "type": "named_technique",
+      "confidence": "very_high",
+      "aliases": ["Mũi Tên Đọa Vực"],
+      "evidence": [
+        "Original novel chapter 646 is titled 堕域之矢, matching the move named in this manhua scene.",
+        "Use the compact Hán-Việt technique name for consistency with manhua/novel naming conventions."
+      ]
+    },
+    {
+      "source": "STAR EXPANSE",
+      "original_zh": "星空 / 星海",
+      "vi": "tinh không",
+      "type": "setting_term",
+      "confidence": "high",
+      "aliases": ["tinh hải"],
+      "evidence": [
+        "The series' original novel uses 星空 and 星海 in this arc; Vietnamese novel usage strongly favors tinh không for general outer-space narration. Use tinh hải only when the source specifically carries the sea-of-stars image."
+      ]
+    },
+    {
+      "source": "BATTLE SPACE",
+      "vi": "không gian chiến đấu",
+      "type": "setting_term",
+      "confidence": "medium_high"
+    },
+    {
+      "source": "MEMORY INHERITANCE",
+      "vi": "truyền thừa ký ức",
+      "type": "setting_term",
+      "confidence": "medium_high"
+    }
+  ],
+  "web_research": {
+    "checked_vietnamese_manhua_chapters": [349, 350, 351],
+    "manhua_release_group_seen": "Lạc Thiên Nhóm",
+    "original_novel_arc": "chapters 633-646",
+    "notes": "Vietnamese manhua chapter pages are image-based and not text-indexed reliably, so ambiguous arc-specific terms were cross-checked against the original Chinese novel chapter list and Vietnamese novel renderings."
+  },
+  "status": "LOCKED_FOR_CHAPTER_351"
+}
