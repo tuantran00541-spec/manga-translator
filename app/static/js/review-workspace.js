@@ -41,6 +41,7 @@
     if (!source) return;
     const observer = new MutationObserver(() => updateAIStatus(source, target));
     observer.observe(source, { childList: true, characterData: true, subtree: true, attributes: true });
+    return () => observer.disconnect();
   }
 
   function mountGeminiSettings() {
@@ -72,10 +73,12 @@
       key.type = "password";
       key.className = "gemini-key-input";
       key.placeholder = `${labels[id]} API key`;
-      key.autocomplete = "off";
+      key.autocomplete = "new-password";
+      key.setAttribute("aria-label", `${labels[id]} API key`);
       const model = document.createElement("input");
       model.className = "ui-input ai-model-input";
       model.placeholder = "Tên model";
+      model.setAttribute("aria-label", `Model ${labels[id]}`);
       model.value = localStorage.getItem(`manga_ai_model_${id}`) || "";
       model.addEventListener("change", () => localStorage.setItem(`manga_ai_model_${id}`, model.value.trim()));
       const listId = `ai-models-${id}`;
@@ -173,6 +176,7 @@
   }
 
   function setupReviewWorkspace() {
+    window.cleanupReviewWorkspace?.();
     const container = document.getElementById("page-view");
     if (!container) return;
 
@@ -230,7 +234,7 @@
     actions.className = "review-actions-group";
     const aiStatus = document.createElement("span");
     aiStatus.className = "review-ai-status";
-    bindAIStatus(geminiStatus, aiStatus);
+    const cleanupAIStatus = bindAIStatus(geminiStatus, aiStatus);
 
     const help = document.createElement("details");
     help.className = "ui-disclosure review-help";
@@ -272,6 +276,7 @@
         window._reviewKeyDownHandler = null;
       }
       const canonicalIndex = activeCard ? (parseInt(activeCard.dataset.pageIndex, 10) || 0) : 0;
+      window.cleanupReviewWorkspace?.();
       if (window.editorState) window.editorState.activePageIndex = canonicalIndex;
       if (typeof window.setWorkflowCheckpoint === "function") window.setWorkflowCheckpoint("editor", canonicalIndex);
       if (typeof window.renderEditor === "function") window.renderEditor();
@@ -355,6 +360,20 @@
       captureMaskSnapshot(mountedCard);
       cleanupCard(mountedCard);
       mountedCard = null;
+    };
+
+    window.cleanupReviewWorkspace = () => {
+      busyObserver?.disconnect();
+      busyObserver = null;
+      cleanupAIStatus?.();
+      workspace._chapterQcObserver?.disconnect();
+      workspace._chapterQcObserver = null;
+      window._reviewStitchAbort?.abort();
+      restoreMounted();
+      if (window._reviewKeyDownHandler) {
+        window.removeEventListener("keydown", window._reviewKeyDownHandler);
+        window._reviewKeyDownHandler = null;
+      }
     };
 
     const renderActive = () => {
