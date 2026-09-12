@@ -28,23 +28,27 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: trial/chapter-render-60
-      - run: python -m pip install Pillow==10.4.0
+      - name: Install independent audit OCR
+        run: |
+          python -m pip install Pillow==10.4.0
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq tesseract-ocr
       - name: Restore 03D
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           rm -rf "$ROOT"; mkdir -p "$ROOT"
           gh run download "$BASE_RUN_ID" -n "$BASE_ARTIFACT" -D "$ROOT"
-      - name: Build metadata and RAW crop proof
+      - name: Build metadata, RAW crop proof, and audit crops
         run: |
           python - <<'PY'
           import json, os
           from pathlib import Path
-          from PIL import Image,ImageDraw,ImageFont
+          from PIL import Image,ImageDraw,ImageFont,ImageOps,ImageEnhance
           root=Path(os.environ['ROOT'])
           m=json.loads((root/'processed/manifest.json').read_text(encoding='utf-8'))
           targets=[(2,'box_9f81ea7eb505421e'),(29,'box_072e64626b7945c0'),(48,'box_c9309c09043f4701')]
-          rows=[]; cards=[]
+          rows=[]; cards=[]; audit=root/'audit-crops'; audit.mkdir(exist_ok=True)
           for pi,bid in targets:
               page=m['pages'][pi]
               box=next(b for b in page.get('boxes',[]) if str(b.get('id'))==bid)
@@ -52,6 +56,7 @@ jobs:
               raw=root/'raw'/'sliced'/Path(str(page.get('original'))).name
               im=Image.open(raw).convert('RGB')
               x1,y1,x2,y2=[int(box[k]) for k in ('x1','y1','x2','y2')]
+              exact=im.crop((x1,y1,x2,y2))
               pad=80; crop=im.crop((max(0,x1-pad),max(0,y1-pad),min(im.width,x2+pad),min(im.height,y2+pad)))
               crop.thumbnail((700,420),Image.Resampling.LANCZOS)
               card=Image.new('RGB',(740,480),'white'); card.paste(crop,((740-crop.width)//2,45))
@@ -59,17 +64,38 @@ jobs:
               d.text((8,8),f'p{pi:03d} {bid} semantic={box.get("semantic_type")} class={box.get("class_name")}',fill='black',font=f)
               d.text((8,24),f'region=({x1},{y1},{x2},{y2}) quality={box.get("ocr_quality")} conf={box.get("ocr_confidence")}',fill='black',font=f)
               cards.append(card)
+              gray=ImageOps.grayscale(exact).resize((exact.width*4,exact.height*4),Image.Resampling.LANCZOS)
+              gray=ImageEnhance.Contrast(gray).enhance(1.8)
+              gray.save(audit/f'p{pi:03d}-gray.png')
+              bw=gray.point(lambda p: 255 if p>180 else 0)
+              bw.save(audit/f'p{pi:03d}-bw.png')
           (root/'empty-active-boxes.json').write_text(json.dumps(rows,ensure_ascii=False,indent=2),encoding='utf-8')
           sheet=Image.new('RGB',(740,480*len(cards)),'white')
           for i,c in enumerate(cards): sheet.paste(c,(0,i*480))
           sheet.save(root/'empty-active-boxes.jpg',quality=94)
           print(json.dumps(rows,ensure_ascii=False,indent=2))
           PY
+      - name: Independent Tesseract cross-check
+        run: |
+          set +e
+          for p in 002 029 048; do
+            echo "===== p${p} gray psm6 ====="
+            tesseract "$ROOT/audit-crops/p${p}-gray.png" stdout -l eng --psm 6 2>/dev/null
+            echo "===== p${p} gray psm11 ====="
+            tesseract "$ROOT/audit-crops/p${p}-gray.png" stdout -l eng --psm 11 2>/dev/null
+            echo "===== p${p} bw psm6 ====="
+            tesseract "$ROOT/audit-crops/p${p}-bw.png" stdout -l eng --psm 6 2>/dev/null
+            echo "===== p${p} bw psm11 ====="
+            tesseract "$ROOT/audit-crops/p${p}-bw.png" stdout -l eng --psm 11 2>/dev/null
+          done | tee "$ROOT/tesseract-crosscheck.txt"
+          exit 0
       - uses: actions/upload-artifact@v4
         with:
           name: chapter-60-empty-ocr-audit
           path: |
             checkpoint/empty-audit/empty-active-boxes.json
             checkpoint/empty-audit/empty-active-boxes.jpg
+            checkpoint/empty-audit/audit-crops
+            checkpoint/empty-audit/tesseract-crosscheck.txt
           if-no-files-found: error
           retention-days: 7
