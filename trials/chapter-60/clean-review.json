@@ -1,0 +1,65 @@
+{
+  "checkpoint": "CLEAN",
+  "status": "PASS",
+  "chapter_id": "f1cd0121",
+  "series_title": "A Cadet Becomes a Prophet",
+  "chapter_number": 60,
+  "source_url": "https://asurascans.com/comics/a-cadet-becomes-a-prophet-53fc8424/chapter/60",
+  "human_review": true,
+  "technical_run": {
+    "initial_clean_run_id": 34664212904,
+    "initial_artifact": "02-clean-review-f1cd0121",
+    "local_repair_run_id": 34666217728,
+    "local_repair_artifact": "02b-clean-repaired-f1cd0121",
+    "micro_repair_run_id": 34669170206,
+    "approved_artifact": "02c-clean-repaired-f1cd0121"
+  },
+  "review_scope": {
+    "slices": 65,
+    "detected_objects": 300,
+    "free_text_like_objects": 115,
+    "reviewed_evidence": [
+      "RAW vs CLEAN full-slice sheets",
+      "detected-object RAW vs CLEAN sheets",
+      "safe-to-inpaint=false review sheets",
+      "02B focused repair proof",
+      "02B full touched-slice proof",
+      "02C focused p014 proof"
+    ]
+  },
+  "repairs": {
+    "story_free_text_miss": {
+      "page_index": 55,
+      "source_page": 15,
+      "slice_index": 3,
+      "source_text": "I RECEIVED THE RECORDING ORB YOU SENT.",
+      "method": "targeted production LaMa inpaint",
+      "result": "PASS"
+    },
+    "restored_non_story_or_artwork": [
+      "title/scanlation card on p000",
+      "ASURASCANS.COM watermarks on p014/p022/p030/p050/p057/p061",
+      "decorative reaction faces on p043/p044",
+      "decorative bottle label on p044",
+      "StoryZAK/production credits on p063",
+      "end-card promo on p064"
+    ],
+    "micro_repair": {
+      "page_index": 14,
+      "bbox": [645, 1270, 900, 1338],
+      "reason": "02B restored the watermark incompletely",
+      "bbox_pixel_exact_to_raw": true,
+      "outside_bbox_pixel_exact_to_02b": true,
+      "result": "PASS"
+    }
+  },
+  "gate": {
+    "story_text_blockers": 0,
+    "free_text_residue_blockers": 0,
+    "artwork_damage_blockers": 0,
+    "known_over_inpaint_blockers": 0,
+    "source_non_story_material_preserved": true,
+    "editorial_acceptance": "PASS"
+  },
+  "next_action": "RUN_CHECKPOINT_03_OCR_REVIEW"
+}
