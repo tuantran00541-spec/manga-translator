@@ -1,0 +1,126 @@
+name: Chapter 60 Checkpoint 03B Late Clean Repair
+
+on:
+  push:
+    branches:
+      - trial/chapter-render-60
+    paths:
+      - .github/workflows/chapter-60-late-clean-repair.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: chapter-60-human-loop
+  cancel-in-progress: false
+
+jobs:
+  late-clean-repair:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 35
+    env:
+      PYTHONUNBUFFERED: "1"
+      PYTHONPATH: "."
+      MANGA_USE_DYNAMIC_LAMA: "1"
+      MANGA_ORT_PROVIDER: openvino
+      MANGA_ORT_REQUIRE_PROVIDER: "1"
+      MANGA_ORT_OPENVINO_SCOPE: detectors
+      MANGA_ORT_OPENVINO_THREADS: "2"
+      MANGA_ORT_OPENVINO_STREAMS: "1"
+      MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
+      OPENBLAS_NUM_THREADS: "1"
+      OCR_RUN_ID: "34669709152"
+      OCR_ARTIFACT: 03-ocr-review-f1cd0121
+      REPAIR_ROOT: checkpoint/03b-late-clean-repair
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: trial/chapter-render-60
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install focused repair runtime
+        run: |
+          python -m pip install \
+            numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 \
+            onnxruntime-openvino==1.24.1 psutil==6.1.1 loguru==0.7.2 \
+            pydantic==2.9.2 filelock==3.16.1
+
+      - name: Restore inpaint model cache
+        id: models
+        uses: actions/cache@v4
+        with:
+          path: |
+            models/*.onnx
+            models/.e2e-provenance.json
+          key: processing-profile-models-b224548-v1
+
+      - name: Read pinned model provisioner
+        if: steps.models.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: b22454827f8190655d7070b80eb20c2550beadfa
+          path: benchmark-bootstrap
+          sparse-checkout: scripts/provision_real_e2e_models.py
+          sparse-checkout-cone-mode: false
+
+      - name: Provision public-equivalent production models
+        if: steps.models.outputs.cache-hit != 'true'
+        run: |
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple torch==2.5.1+cpu torchvision==0.20.1+cpu
+          python -m pip install --no-deps ultralytics==8.3.221 onnx==1.17.0 onnxslim==0.1.71
+          python -m pip install sympy==1.13.1 PyYAML==6.0.2 scipy==1.14.1 tqdm==4.67.1 matplotlib==3.9.2 pandas==2.2.3 py-cpuinfo==9.0.0 ml_dtypes==0.5.3 colorama==0.4.6 polars==1.33.1 ultralytics-thop==2.0.17
+          python benchmark-bootstrap/scripts/provision_real_e2e_models.py
+          cp benchmark-bootstrap/models/*.onnx models/
+          cp benchmark-bootstrap/models/.e2e-provenance.json models/
+
+      - name: Restore successful RAW OCR checkpoint
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf "$REPAIR_ROOT"
+          mkdir -p "$REPAIR_ROOT"
+          gh run download "$OCR_RUN_ID" -n "$OCR_ARTIFACT" -D "$REPAIR_ROOT"
+          test -f "$REPAIR_ROOT/processed/manifest.json"
+          test -d "$REPAIR_ROOT/raw/sliced"
+          test -f "$REPAIR_ROOT/ocr-review-summary.json"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          root=Path(os.environ['REPAIR_ROOT'])
+          s=json.loads((root/'ocr-review-summary.json').read_text(encoding='utf-8'))
+          if s.get('source_policy')!='RAW_ORIGINAL_ONLY' or s.get('planned_targets')!=135 or s.get('errors')!=0:
+              raise SystemExit(s)
+          print('successful OCR checkpoint restored; RAW will remain unchanged')
+          PY
+
+      - name: Repair only newly confirmed story SFX residue
+        run: python trials/chapter-60/repair_late_story_sfx.py "$REPAIR_ROOT"
+
+      - name: Validate late clean checkpoint
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          root=Path(os.environ['REPAIR_ROOT'])
+          m=json.loads((root/'late-clean-repair.json').read_text(encoding='utf-8'))
+          if m.get('checkpoint')!='03b-late-clean-repair': raise SystemExit(m)
+          if m.get('repair_scope')!='LOCAL_ONLY' or m.get('raw_changed') is not False: raise SystemExit(m)
+          if m.get('ocr_rerun_required') is not False: raise SystemExit(m)
+          if m.get('operation_count')!=2 or m.get('touched_pages')!=[36,38]: raise SystemExit(m)
+          if not (root/'late-clean-proof/focused-late-story-sfx.jpg').is_file(): raise SystemExit('missing proof')
+          print(json.dumps(m,ensure_ascii=False,indent=2))
+          PY
+
+      - name: Upload checkpoint 03B artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: 03b-ocr-late-clean-f1cd0121
+          path: checkpoint/03b-late-clean-repair
+          if-no-files-found: error
+          retention-days: 7
