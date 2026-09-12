@@ -205,11 +205,11 @@ function setupBrush(pageIndex, img, canvas, wrap, brushBtn, clearBtn, submitBtn,
       console.warn("Failed to refresh srcData for flood fill:", e);
     }
   };
-  refreshSrcData();
-
   img.addEventListener("load", () => {
     syncCanvasSize();
-    refreshSrcData();
+    // Flood-fill source pixels are expensive on long manga pages. Load them
+    // only when the user actually double-clicks for connected selection.
+    srcData = null;
   }, { signal });
 
   if (window.ResizeObserver) {
@@ -724,11 +724,12 @@ async function submitRepaint(pageIndex, canvas, img, ctx, submitBtn, card = null
     return;
   }
 
-  const pixelCheckCtx = document.createElement("canvas").getContext("2d");
-  pixelCheckCtx.canvas.width = canvas.width;
-  pixelCheckCtx.canvas.height = canvas.height;
-  pixelCheckCtx.drawImage(canvas, 0, 0);
-  const imgData = pixelCheckCtx.getImageData(0, 0, canvas.width, canvas.height);
+  const pixelCheckCtx = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
+  const scale = Math.min(1, 512 / Math.max(canvas.width, canvas.height));
+  pixelCheckCtx.canvas.width = Math.max(1, Math.ceil(canvas.width * scale));
+  pixelCheckCtx.canvas.height = Math.max(1, Math.ceil(canvas.height * scale));
+  pixelCheckCtx.drawImage(canvas, 0, 0, pixelCheckCtx.canvas.width, pixelCheckCtx.canvas.height);
+  const imgData = pixelCheckCtx.getImageData(0, 0, pixelCheckCtx.canvas.width, pixelCheckCtx.canvas.height);
   let hasPaint = false;
   for (let i = 3; i < imgData.data.length; i += 4) {
     if (imgData.data[i] > 20) {
