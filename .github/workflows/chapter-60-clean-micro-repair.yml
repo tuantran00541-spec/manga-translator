@@ -1,0 +1,156 @@
+name: Chapter 60 Checkpoint 02C Clean Micro Repair
+
+on:
+  push:
+    branches:
+      - trial/chapter-render-60
+    paths:
+      - .github/workflows/chapter-60-clean-micro-repair.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: chapter-60-human-loop
+  cancel-in-progress: false
+
+jobs:
+  micro-clean-repair:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    env:
+      REPAIR_RUN_ID: "34666217728"
+      REPAIR_ARTIFACT: 02b-clean-repaired-f1cd0121
+      ROOT: checkpoint/02c-clean-repaired
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: trial/chapter-render-60
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install proof runtime
+        run: python -m pip install numpy==1.26.4 Pillow==10.4.0
+
+      - name: Restore checkpoint 02B
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf "$ROOT"
+          mkdir -p "$ROOT"
+          gh run download "$REPAIR_RUN_ID" -n "$REPAIR_ARTIFACT" -D "$ROOT"
+          test -f "$ROOT/processed/clean_003_05.png"
+          test -f "$ROOT/raw/sliced/003_05.png"
+          test -f "$ROOT/clean-repair-metadata.json"
+
+      - name: Repair incomplete p014 watermark restoration only
+        run: |
+          python - <<'PY'
+          import hashlib, json, os, shutil
+          from datetime import datetime, timezone
+          from pathlib import Path
+          import numpy as np
+          from PIL import Image, ImageDraw
+
+          root=Path(os.environ['ROOT'])
+          raw_path=root/'raw/sliced/003_05.png'
+          clean_path=root/'processed/clean_003_05.png'
+          backup_dir=root/'pre-repair-02c'
+          proof_dir=root/'repair-proof-02c'
+          backup_dir.mkdir(parents=True,exist_ok=True)
+          proof_dir.mkdir(parents=True,exist_ok=True)
+          before_path=backup_dir/'clean_003_05.png'
+          shutil.copy2(clean_path,before_path)
+
+          raw=Image.open(raw_path).convert('RGB')
+          before=Image.open(before_path).convert('RGB')
+          if raw.size != before.size:
+              raise RuntimeError(f'image size mismatch: raw={raw.size}, before={before.size}')
+
+          # Human review of 02B showed the previous x1=710 crop omitted the
+          # left side of ASURASCANS.COM. Raw-vs-pre-repair diff bounds are
+          # x=652..899, y=1277..1330; use a small verified margin only.
+          bbox=(645,1270,900,1338)
+          after=before.copy()
+          after.paste(raw.crop(bbox),bbox[:2])
+          after.save(clean_path)
+
+          a=np.asarray(after)
+          b=np.asarray(before)
+          r=np.asarray(raw)
+          x1,y1,x2,y2=bbox
+          if not np.array_equal(a[y1:y2,x1:x2],r[y1:y2,x1:x2]):
+              raise RuntimeError('repaired bbox is not pixel-exact to RAW')
+          outside=np.ones(a.shape[:2],dtype=bool)
+          outside[y1:y2,x1:x2]=False
+          if not np.array_equal(a[outside],b[outside]):
+              raise RuntimeError('pixels outside approved bbox changed')
+
+          # Focused RAW / BEFORE / AFTER proof with enough context to see the
+          # whole watermark and verify no story text was reintroduced.
+          context=(580,1180,900,1420)
+          panels=[raw.crop(context),before.crop(context),after.crop(context)]
+          pw,ph=panels[0].size
+          proof=Image.new('RGB',(pw*3,ph+34),'white')
+          for i,panel in enumerate(panels):
+              proof.paste(panel,(i*pw,34))
+          draw=ImageDraw.Draw(proof)
+          for i,label in enumerate(('RAW','02B BEFORE','02C AFTER')):
+              draw.text((i*pw+8,10),label,fill='black')
+          proof.save(proof_dir/'focused-p014.jpg',quality=95)
+
+          def pixels_sha(arr):
+              return hashlib.sha256(np.ascontiguousarray(arr).tobytes()).hexdigest()
+
+          meta={
+              'checkpoint':'02c-clean-repaired',
+              'chapter_id':'f1cd0121',
+              'source_checkpoint':'02b-clean-repaired-f1cd0121',
+              'created_at':datetime.now(timezone.utc).isoformat(),
+              'repair_scope':'LOCAL_ONLY_ONE_REGION',
+              'page_index':14,
+              'source_page':3,
+              'slice_index':5,
+              'file':'clean_003_05.png',
+              'operation':'restore_raw_pixels',
+              'bbox':list(bbox),
+              'reason':'02B human proof showed incomplete ASURASCANS.COM restoration; restore full verified watermark extent only',
+              'bbox_pixel_exact_to_raw':True,
+              'outside_bbox_pixel_exact_to_02b':True,
+              'before_sha256_pixels':pixels_sha(b),
+              'after_sha256_pixels':pixels_sha(a),
+              'next_action':'STOP_FOR_HUMAN_02C_FOCUSED_REVIEW',
+          }
+          (root/'clean-repair-02c-metadata.json').write_text(json.dumps(meta,ensure_ascii=False,indent=2),encoding='utf-8')
+          print(json.dumps(meta,ensure_ascii=False,indent=2))
+          PY
+
+      - name: Validate micro repair checkpoint
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          root=Path(os.environ['ROOT'])
+          m=json.loads((root/'clean-repair-02c-metadata.json').read_text(encoding='utf-8'))
+          assert m['checkpoint']=='02c-clean-repaired'
+          assert m['repair_scope']=='LOCAL_ONLY_ONE_REGION'
+          assert m['page_index']==14
+          assert m['bbox']==[645,1270,900,1338]
+          assert m['bbox_pixel_exact_to_raw'] is True
+          assert m['outside_bbox_pixel_exact_to_02b'] is True
+          assert (root/'repair-proof-02c/focused-p014.jpg').is_file()
+          print('02C micro repair checkpoint valid')
+          PY
+
+      - name: Upload checkpoint 02C artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: 02c-clean-repaired-f1cd0121
+          path: checkpoint/02c-clean-repaired
+          if-no-files-found: error
+          retention-days: 7
