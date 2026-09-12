@@ -1,0 +1,40 @@
+{
+  "checkpoint": "IMPORT",
+  "status": "PASS",
+  "chapter_id": "c3513510",
+  "series_slug": "logging-10000-years-into-the-future-53fc8424",
+  "chapter_number": 351,
+  "source_url": "https://asurascans.com/comics/logging-10000-years-into-the-future-53fc8424/chapter/351",
+  "source_images": 11,
+  "slices": 40,
+  "source_order_reviewed": true,
+  "source_count_matches_expected": true,
+  "duplicate_source_groups": 0,
+  "ownership_issues": 0,
+  "skipped_pages": 0,
+  "reconstruction": {
+    "pixel_exact_pages": 11,
+    "total_pages": 11,
+    "coverage_min": 1,
+    "coverage_max": 1,
+    "diff_pixels_total": 0
+  },
+  "human_review": {
+    "source_contact_sheet_reviewed": true,
+    "slice_contact_sheet_reviewed": true,
+    "reading_order_ok": true,
+    "duplicate_or_missing_source_pages": 0,
+    "notes": [
+      "Source 000 is chapter cover/scanlation credit material; preserve as non-story unless a later editorial decision explicitly localizes title-like text.",
+      "Source 001 begins the story and includes a title/logo-like element near the top; do not let decorative title text contaminate ordinary dialogue OCR.",
+      "Source 002 is a real short story page dominated by a single speech bubble ('THIS IS BAD! I HAVE TO DODGE IT!'); it must not be dropped as low-content/decorative.",
+      "Source 006 is another real short story page dominated by one bubble ('RIGHT, THIS MOVE'S NAME WILL BE...'); it must remain active story content.",
+      "Source 010 contains story dialogue/narration followed by an Asura promotional tail; classify the promo tail as non-story and preserve it rather than translating/inpainting it blindly.",
+      "The 40 production slices preserve panel continuity; ownership is gap-free and reconstruction is pixel-exact for all 11 source images."
+    ]
+  },
+  "technical_pass": true,
+  "editorial_pass": true,
+  "blockers": [],
+  "next_action": "RUN_CHECKPOINT_02_CLEAN_REVIEW"
+}
