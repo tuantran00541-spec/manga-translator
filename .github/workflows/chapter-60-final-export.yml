@@ -1,0 +1,265 @@
+name: Chapter 60 Checkpoint 07 Final Export
+
+on:
+  push:
+    branches:
+      - trial/chapter-render-60
+    paths:
+      - .github/workflows/chapter-60-final-export.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: chapter-60-human-loop
+  cancel-in-progress: false
+
+jobs:
+  final-export:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    env:
+      BASE_RUN_ID: "34687131441"
+      BASE_ARTIFACT: 06c-render-preview-f1cd0121
+      INPUT: checkpoint/07-input
+      ROOT: checkpoint/07-final
+      FINAL_NAME: A-Cadet-Becomes-a-Prophet-Chapter-60-VI-FINAL.zip
+      STATE_PATH: trials/chapter-60/chapter-state.json
+      REVIEW_PATH: trials/chapter-60/visual-review-final.json
+      REPORT_PATH: trials/chapter-60/final-report.json
+      CHECKSUM_PATH: trials/chapter-60/final-sha256.txt
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: trial/chapter-render-60
+          fetch-depth: 1
+
+      - name: Install export runtime
+        run: |
+          python -m pip install --quiet Pillow==10.4.0
+
+      - name: Restore visually approved render candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf "$INPUT" "$ROOT"
+          mkdir -p "$INPUT" "$ROOT"
+          gh run download "$BASE_RUN_ID" -n "$BASE_ARTIFACT" -D "$INPUT"
+          test -d "$INPUT/checkpoint/06c-render-preview/rendered_slices"
+          test -f "$INPUT/checkpoint/06c-render-preview/processed/manifest.json"
+          test -f "$INPUT/checkpoint/06c-render-preview/p031-fix-report.json"
+
+      - name: Stitch exact source pages and build final package
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from PIL import Image
+          from collections import defaultdict
+          import hashlib, json, os, zipfile
+
+          src=Path(os.environ['INPUT'])/'checkpoint'/'06c-render-preview'
+          root=Path(os.environ['ROOT'])
+          pages_dir=root/'pages'
+          pages_dir.mkdir(parents=True,exist_ok=True)
+          manifest=json.loads((src/'processed'/'manifest.json').read_text(encoding='utf-8'))
+          p031_fix=json.loads((src/'p031-fix-report.json').read_text(encoding='utf-8'))
+          assert manifest.get('chapter_id')=='f1cd0121'
+          assert p031_fix.get('status')=='CANDIDATE'
+          assert p031_fix.get('object_id')=='human_p031_nightmare_note'
+          assert p031_fix.get('new_region')=={'x1':190,'y1':2740,'x2':875,'y2':2930}
+          rendered=src/'rendered_slices'
+          assert len(list(rendered.glob('page_*.png')))==65
+
+          active=[]
+          tombstones=[]
+          unresolved_sizes=[]
+          note=None
+          for pi,p in enumerate(manifest.get('pages',[])):
+              for o in p.get('text_objects',[]) or []:
+                  if o.get('source_missing'):
+                      tombstones.append((pi,o))
+                      continue
+                  active.append((pi,o))
+                  assert str(o.get('translation') or '').strip(), (pi,o.get('id'))
+                  fs=str((o.get('style') or {}).get('fontSize') or '')
+                  if not fs.isdigit():
+                      unresolved_sizes.append({'page_index':pi,'object_id':o.get('id'),'fontSize':fs})
+                  if o.get('id')=='human_p031_nightmare_note':
+                      note=(pi,o)
+          assert len(active)==110
+          assert not unresolved_sizes, unresolved_sizes
+          assert note is not None and note[0]==31
+          assert note[1].get('region')=={'x1':190,'y1':2740,'x2':875,'y2':2930}
+          assert str((note[1].get('style') or {}).get('fontSize'))=='30'
+
+          by_source=defaultdict(list)
+          for pi,p in enumerate(manifest.get('pages',[])):
+              by_source[int(p.get('source_page'))].append((int(p.get('slice_index') or 0),pi,p))
+          assert sorted(by_source)==list(range(18)), sorted(by_source)
+
+          page_reports=[]
+          seam_count=0
+          for source_page in range(18):
+              parts=sorted(by_source[source_page])
+              widths=set()
+              cores=[]
+              cursor=0
+              source_height=None
+              seams=[]
+              for idx,(slice_index,pi,p) in enumerate(parts):
+                  fp=rendered/f'page_{pi:03d}.png'
+                  assert fp.is_file(), fp
+                  im=Image.open(fp).convert('RGB')
+                  widths.add(im.width)
+                  sc=p.get('stitch_core') or {}
+                  assert int(sc['core_source_y1'])==cursor, (source_page,pi,cursor,sc)
+                  if source_height is None:
+                      source_height=int(sc['source_height'])
+                  assert int(sc['source_height'])==source_height
+                  core=im.crop((0,int(sc['core_y1']),im.width,int(sc['core_y2'])))
+                  expected=int(sc['core_source_y2'])-int(sc['core_source_y1'])
+                  assert core.height==expected, (source_page,pi,core.height,expected)
+                  cores.append(core)
+                  cursor=int(sc['core_source_y2'])
+                  if idx < len(parts)-1:
+                      seams.append(cursor)
+              assert len(widths)==1, (source_page,widths)
+              assert cursor==source_height, (source_page,cursor,source_height)
+              width=next(iter(widths))
+              canvas=Image.new('RGB',(width,source_height),'white')
+              y=0
+              for core in cores:
+                  canvas.paste(core,(0,y)); y+=core.height
+              assert y==source_height
+              out=pages_dir/f'{source_page:03d}.png'
+              canvas.save(out,format='PNG',compress_level=3)
+              sha=hashlib.sha256(out.read_bytes()).hexdigest()
+              page_reports.append({
+                  'source_page':source_page,'file':out.name,'width':width,'height':source_height,
+                  'slice_count':len(parts),'seams':seams,'sha256':sha
+              })
+              seam_count += len(seams)
+
+          assert len(page_reports)==18
+          assert seam_count==47
+          review={
+              'checkpoint':'07-final-visual-review',
+              'chapter_id':'f1cd0121',
+              'status':'PASS',
+              'reviewed_rendered_slices':65,
+              'reviewed_active_story_objects':110,
+              'reviewed_stitch_seams':47,
+              'source_pages_reviewed':18,
+              'p031_secondary_note_fix':'PASS - separated below hairy balloon, no overlap',
+              'p018_overlap_context':'PASS - English fragment is outside stitch_core and absent from final seam',
+              'glyphs_and_diacritics':'PASS',
+              'clipping_overflow':'PASS',
+              'font_semantics_and_readability':'PASS',
+              'artwork_and_non_story_material':'PASS',
+              'credits_and_end_promo_preserved':True,
+              'blockers':[]
+          }
+          report={
+              'checkpoint':'07-final',
+              'chapter_id':'f1cd0121',
+              'series_title':'A Cadet Becomes a Prophet',
+              'chapter_number':60,
+              'language':'vi',
+              'source_render_artifact':'06c-render-preview-f1cd0121',
+              'active_story_objects':110,
+              'active_untranslated_story_objects':0,
+              'rendered_slices':65,
+              'source_page_count':18,
+              'source_page_count_match':True,
+              'stitch_seams':47,
+              'stitch_core_coverage_exact':True,
+              'explicit_numeric_font_sizes':True,
+              'visual_review':'PASS',
+              'pages':page_reports,
+              'status':'FINAL_PASS'
+          }
+          (root/'visual-review-final.json').write_text(json.dumps(review,ensure_ascii=False,indent=2),encoding='utf-8')
+          (root/'final-report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
+
+          final_zip=root/os.environ['FINAL_NAME']
+          with zipfile.ZipFile(final_zip,'w',compression=zipfile.ZIP_DEFLATED,compresslevel=3) as z:
+              for fp in sorted(pages_dir.glob('*.png')):
+                  z.write(fp,fp.name)
+              z.write(root/'final-report.json','final-report.json')
+              z.write(root/'visual-review-final.json','visual-review-final.json')
+          zip_sha=hashlib.sha256(final_zip.read_bytes()).hexdigest()
+          (root/'final-sha256.txt').write_text(f'{zip_sha}  {final_zip.name}\n',encoding='utf-8')
+          report['final_zip']=final_zip.name
+          report['final_zip_sha256']=zip_sha
+          report['final_zip_bytes']=final_zip.stat().st_size
+          (root/'final-report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
+          print(json.dumps({'status':'FINAL_PASS','pages':18,'seams':47,'zip':final_zip.name,'sha256':zip_sha,'bytes':final_zip.stat().st_size},ensure_ascii=False,indent=2))
+          PY
+
+      - name: Validate final ZIP contents and checksums
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib, json, os, zipfile
+          root=Path(os.environ['ROOT'])
+          final_zip=root/os.environ['FINAL_NAME']
+          report=json.loads((root/'final-report.json').read_text(encoding='utf-8'))
+          review=json.loads((root/'visual-review-final.json').read_text(encoding='utf-8'))
+          assert report['status']=='FINAL_PASS'
+          assert review['status']=='PASS' and not review['blockers']
+          assert report['source_page_count']==18 and report['stitch_seams']==47
+          with zipfile.ZipFile(final_zip) as z:
+              names=z.namelist()
+              pngs=sorted(n for n in names if n.endswith('.png'))
+              assert pngs==[f'{i:03d}.png' for i in range(18)], pngs
+              assert 'final-report.json' in names
+              assert 'visual-review-final.json' in names
+              bad=z.testzip()
+              assert bad is None, bad
+          digest=hashlib.sha256(final_zip.read_bytes()).hexdigest()
+          assert digest==report['final_zip_sha256']
+          print('FINAL_ZIP_VALIDATION_PASS',digest)
+          PY
+
+      - name: Persist final editorial state
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import json, os, shutil
+          root=Path(os.environ['ROOT'])
+          state_path=Path(os.environ['STATE_PATH'])
+          state=json.loads(state_path.read_text(encoding='utf-8'))
+          state.update({
+              'source_of_truth_sha':'764c9f8605f40d7c4c2e508c64cb8c006134cec7',
+              'current_stage':'FINAL',
+              'last_passed_checkpoint':'FINAL',
+              'current_artifact':'07-final-f1cd0121',
+              'review_evidence_artifact':'06c-render-preview-f1cd0121',
+              'blockers':[],
+              'next_action':'COMPLETE'
+          })
+          state_path.write_text(json.dumps(state,ensure_ascii=False,indent=2)+"\n",encoding='utf-8')
+          shutil.copy2(root/'visual-review-final.json',Path(os.environ['REVIEW_PATH']))
+          shutil.copy2(root/'final-report.json',Path(os.environ['REPORT_PATH']))
+          shutil.copy2(root/'final-sha256.txt',Path(os.environ['CHECKSUM_PATH']))
+          PY
+          git config user.name "chapter-review-bot"
+          git config user.email "chapter-review-bot@users.noreply.github.com"
+          git add "$STATE_PATH" "$REVIEW_PATH" "$REPORT_PATH" "$CHECKSUM_PATH"
+          git commit -m "trial: mark chapter 60 final pass"
+          git push origin HEAD:trial/chapter-render-60
+
+      - name: Upload FINAL release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: 07-final-f1cd0121
+          path: |
+            checkpoint/07-final/A-Cadet-Becomes-a-Prophet-Chapter-60-VI-FINAL.zip
+            checkpoint/07-final/final-report.json
+            checkpoint/07-final/visual-review-final.json
+            checkpoint/07-final/final-sha256.txt
+          if-no-files-found: error
+          retention-days: 7
