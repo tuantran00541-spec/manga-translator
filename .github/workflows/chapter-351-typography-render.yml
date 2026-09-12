@@ -40,7 +40,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install lightweight render dependencies
-        run: python -m pip install --only-binary=:all: Pillow==10.4.0 numpy==1.26.4 fonttools==4.59.2
+        run: 'python -m pip install --only-binary=:all: Pillow==10.4.0 numpy==1.26.4 fonttools==4.59.2'
 
       - name: Restore approved checkpoints
         run: |
