@@ -1,0 +1,171 @@
+name: Chapter 60 Checkpoint 05C Translation Review
+
+on:
+  push:
+    branches:
+      - trial/chapter-render-60
+    paths:
+      - .github/workflows/chapter-60-translation-review.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: chapter-60-human-loop
+  cancel-in-progress: false
+
+jobs:
+  translation-review:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    env:
+      BASE_RUN_ID: "34681593344"
+      BASE_ARTIFACT: 04d-ocr-final-f1cd0121
+      ROOT: checkpoint/05c-translation-reviewed
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: trial/chapter-render-60
+
+      - name: Restore final OCR checkpoint
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf "$ROOT"
+          mkdir -p "$ROOT"
+          gh run download "$BASE_RUN_ID" -n "$BASE_ARTIFACT" -D "$ROOT"
+          test -f "$ROOT/processed/manifest.json"
+          test -f trials/chapter-60/translation-vi.json
+
+      - name: Apply human-edited Vietnamese localization
+        run: |
+          python - <<'PY'
+          import json, os, re
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          root=Path(os.environ['ROOT'])
+          mp=root/'processed'/'manifest.json'
+          m=json.loads(mp.read_text(encoding='utf-8'))
+          payload=json.loads(Path('trials/chapter-60/translation-vi.json').read_text(encoding='utf-8'))
+          tr=payload['translations']
+          assert payload['chapter_id']=='f1cd0121'
+
+          active=[]
+          for pi,p in enumerate(m.get('pages',[])):
+              for o in p.get('text_objects',[]) or []:
+                  if not o.get('source_missing'):
+                      active.append((pi,o))
+          active_ids={str(o.get('id')) for _,o in active}
+          map_ids=set(tr)
+          missing=sorted(active_ids-map_ids)
+          extra=sorted(map_ids-active_ids)
+          if missing or extra:
+              raise SystemExit(json.dumps({'missing_translation_ids':missing,'extra_translation_ids':extra},ensure_ascii=False))
+          if len(active)!=110 or len(tr)!=110:
+              raise SystemExit(f'expected 110 active/map, got {len(active)}/{len(tr)}')
+
+          rows=[]
+          for pi,o in active:
+              oid=str(o.get('id'))
+              vi=str(tr[oid]).strip()
+              if not vi:
+                  raise SystemExit(f'empty translation {oid}')
+              o['translation']=vi
+              o['translation_lang']='vi'
+              o['translation_source']='human_editor'
+              o['translation_review_state']='approved'
+              rows.append({
+                  'page_index':pi,
+                  'object_id':oid,
+                  'source':str(o.get('ocr_text') or ''),
+                  'translation':vi,
+                  'semantic_role':o.get('semantic_role'),
+                  'continuation_group':o.get('continuation_group'),
+                  'continuation_part':o.get('continuation_part'),
+                  'region':o.get('region'),
+              })
+
+          # Editorial invariants / glossary lock.
+          glossary=payload['glossary']
+          full='\n'.join(r['translation'] for r in rows)
+          required_terms=['Ác Chủng','tiểu không gian','cầu ghi hình','Andromalius','Wooden']
+          absent=[x for x in required_terms if x not in full]
+          if absent:
+              raise SystemExit(f'glossary terms unexpectedly absent: {absent}')
+
+          # Cross-page continuation must read as one coherent sentence.
+          cont=[r for r in rows if r.get('continuation_group')=='cont_p030_p031_just_tell_it']
+          cont=sorted(cont,key=lambda r:int(r.get('continuation_part') or 0))
+          if [r['object_id'] for r in cont] != ['text_15aed6043c954767','text_355a8dc43c8b40ee']:
+              raise SystemExit(f'bad continuation ownership: {cont}')
+          continuation_vi=' '.join(r['translation'] for r in cont)
+          if continuation_vi != '...Cứ kể đúng như chuyện đã xảy ra.':
+              raise SystemExit(f'bad continuation Vietnamese: {continuation_vi}')
+
+          # Distinct p050 balloons must both survive translation.
+          for oid in ['text_73608fae8cb44827','text_b9b21a83428e4e32']:
+              if oid not in active_ids or not tr.get(oid):
+                  raise SystemExit(f'missing p050 distinct balloon {oid}')
+
+          untranslated=[r for r in rows if not r['translation'].strip()]
+          tombstone_translations=[]
+          for pi,p in enumerate(m.get('pages',[])):
+              for o in p.get('text_objects',[]) or []:
+                  if o.get('source_missing') and str(o.get('translation') or '').strip():
+                      tombstone_translations.append({'page_index':pi,'object_id':o.get('id')})
+          if untranslated or tombstone_translations:
+              raise SystemExit(json.dumps({'untranslated':untranslated,'tombstone_translations':tombstone_translations},ensure_ascii=False))
+
+          # Flag, but do not reject, long copy for the typesetting pass.
+          fit_watch=[r for r in rows if len(r['translation'])>95]
+          review={
+              'checkpoint':'05c-translation-reviewed',
+              'chapter_id':'f1cd0121',
+              'created_at':datetime.now(timezone.utc).isoformat(),
+              'source_checkpoint':'04d-ocr-final-f1cd0121',
+              'active_story_objects':len(rows),
+              'active_untranslated_story_objects':len(untranslated),
+              'tombstone_translation_leaks':len(tombstone_translations),
+              'glossary':glossary,
+              'continuation_vi':continuation_vi,
+              'p050_distinct_balloons_preserved':True,
+              'fit_watch_count':len(fit_watch),
+              'fit_watch':fit_watch,
+              'status':'PASS',
+              'next_action':'TYPESET_RENDER'
+          }
+          mp.write_text(json.dumps(m,ensure_ascii=False,indent=2),encoding='utf-8')
+          (root/'translation-review.json').write_text(json.dumps(review,ensure_ascii=False,indent=2),encoding='utf-8')
+          (root/'translation-final.json').write_text(json.dumps(rows,ensure_ascii=False,indent=2),encoding='utf-8')
+          print(json.dumps(review,ensure_ascii=False,indent=2))
+          print('=== HUMAN TRANSLATION PAIRS ===')
+          for r in rows:
+              print(f"p{r['page_index']:03d}\t{r['object_id']}\t{r['source'].replace(chr(10),' / ')}\t=>\t{r['translation']}")
+          PY
+
+      - name: Validate translation gate
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          root=Path(os.environ['ROOT'])
+          r=json.loads((root/'translation-review.json').read_text(encoding='utf-8'))
+          assert r['status']=='PASS'
+          assert r['active_story_objects']==110
+          assert r['active_untranslated_story_objects']==0
+          assert r['tombstone_translation_leaks']==0
+          assert r['p050_distinct_balloons_preserved'] is True
+          print('TRANSLATION_GATE_PASS active=110 untranslated=0')
+          PY
+
+      - name: Upload checkpoint 05C artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: 05c-translation-reviewed-f1cd0121
+          path: checkpoint/05c-translation-reviewed
+          if-no-files-found: error
+          retention-days: 7
