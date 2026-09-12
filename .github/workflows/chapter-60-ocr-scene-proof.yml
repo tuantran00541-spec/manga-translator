@@ -180,6 +180,20 @@ jobs:
           print(json.dumps({'proof_cards':len(cards),'proof_sheets':(len(cards)+5)//6,'scene_pages':len(seq)},indent=2))
           PY
 
+      - name: Emit curated scene review evidence
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          out=Path(os.environ['ROOT'])/'proof'
+          proof=json.loads((out/'curated-scene-proof.json').read_text(encoding='utf-8'))
+          order=json.loads((out/'scene-order.json').read_text(encoding='utf-8'))
+          print('=== CURATED OBJECT DECISIONS ===')
+          print(json.dumps(proof,ensure_ascii=False,indent=2))
+          print('=== FOCUSED SCENE ORDER ===')
+          print(json.dumps(order,ensure_ascii=False,indent=2))
+          PY
+
       - name: Upload focused scene proof
         uses: actions/upload-artifact@v4
         with:
