@@ -36,6 +36,15 @@ def _exercise_desktop(page: Page) -> None:
         "data-page-index", "1"
     )
 
+    # Repeated stage mounts used to retain Review observers and global input
+    # handlers. Exercise the real renderer repeatedly and require one live
+    # workspace before returning through the product action.
+    page.evaluate("() => { for (let i = 0; i < 8; i += 1) window.renderReview(); }")
+    expect(page.locator(".review-workspace-shell")).to_have_count(1)
+    expect(page.locator(".review-card")).to_be_visible()
+    page.locator(".review-primary-action").click()
+    _wait_for_editor(page)
+
 
 def _exercise_mobile(page: Page) -> None:
     _wait_for_editor(page)
