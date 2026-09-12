@@ -1,0 +1,467 @@
+name: Chapter 351 Checkpoint 05 Typography Render Candidate
+
+on:
+  push:
+    branches:
+      - chapter/logging-10000-years-into-the-future-351
+    paths:
+      - .github/workflows/chapter-351-typography-render.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: chapter-351-human-loop
+  cancel-in-progress: false
+
+jobs:
+  typography-render:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+      CHAPTER_ID: c3513510
+      TRANSLATION_RUN_ID: "34725698624"
+      TRANSLATION_ARTIFACT: 04-translation-reviewed-c3513510
+      CLEAN_RUN_ID: "34700955145"
+      CLEAN_ARTIFACT: 02-clean-review-c3513510
+      REPAIR_RUN_ID: "34702416332"
+      REPAIR_ARTIFACT: 02b-clean-local-repair-c3513510
+      LOGO_RUN_ID: "34703327058"
+      LOGO_ARTIFACT: 02c-clean-logo-repair-c3513510
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chapter/logging-10000-years-into-the-future-351
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install lightweight render dependencies
+        run: python -m pip install --only-binary=:all: Pillow==10.4.0 numpy==1.26.4 fonttools==4.59.2
+
+      - name: Restore approved checkpoints
+        run: |
+          rm -rf checkpoint/04-translation checkpoint/02-clean checkpoint/02b-repair checkpoint/02c-logo checkpoint/05-render data/processed/$CHAPTER_ID
+          mkdir -p checkpoint/04-translation checkpoint/02-clean checkpoint/02b-repair checkpoint/02c-logo checkpoint/05-render
+          gh run download "$TRANSLATION_RUN_ID" -n "$TRANSLATION_ARTIFACT" -D checkpoint/04-translation
+          gh run download "$CLEAN_RUN_ID" -n "$CLEAN_ARTIFACT" -D checkpoint/02-clean
+          gh run download "$REPAIR_RUN_ID" -n "$REPAIR_ARTIFACT" -D checkpoint/02b-repair
+          gh run download "$LOGO_RUN_ID" -n "$LOGO_ARTIFACT" -D checkpoint/02c-logo
+          test -f checkpoint/04-translation/translated-manifest.json
+          test -f checkpoint/04-translation/translation-review-summary.json
+          test -f checkpoint/02-clean/processed/manifest.json
+          test -d checkpoint/02b-repair/overlay/processed
+          test -d checkpoint/02c-logo/overlay/processed
+
+      - name: Fixed-size typography preflight and render candidate
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+          import json, math, shutil, zipfile
+          from collections import Counter, defaultdict
+          from pathlib import Path
+
+          from fontTools.ttLib import TTFont
+          from PIL import Image, ImageDraw
+
+          from app.parameters import RENDER_DEFAULT_PADDING, RENDER_PADDING_RATIO_MAX
+          from app.render.text_renderer import _fits, get_font_path, render_text_in_box
+
+          out = Path("checkpoint/05-render")
+          proof = out / "proof"
+          rendered_slices = out / "rendered_slices"
+          final_pages = out / "final_pages"
+          work = Path("data/processed/c3513510")
+          for d in (proof, rendered_slices, final_pages, work):
+              d.mkdir(parents=True, exist_ok=True)
+
+          tsum = json.loads(Path("checkpoint/04-translation/translation-review-summary.json").read_text(encoding="utf-8"))
+          if tsum.get("status") != "PASS" or not tsum.get("editorial_pass") or tsum.get("active_untranslated_story_objects") != 0:
+              raise SystemExit(f"translation gate is not approved: {tsum}")
+          manifest = json.loads(Path("checkpoint/04-translation/translated-manifest.json").read_text(encoding="utf-8"))
+          if len(manifest.get("pages") or []) != 40:
+              raise SystemExit(f"expected 40 slices, got {len(manifest.get('pages') or [])}")
+
+          base = Path("checkpoint/02-clean/processed")
+          for src in base.iterdir():
+              if src.is_file():
+                  shutil.copy2(src, work / src.name)
+          for overlay_root in (Path("checkpoint/02b-repair/overlay/processed"), Path("checkpoint/02c-logo/overlay/processed")):
+              for src in overlay_root.iterdir():
+                  if src.is_file():
+                      shutil.copy2(src, work / src.name)
+
+          font_name = "BeVietnamPro-SemiBold"
+          font_path = get_font_path(font_name)
+          if not font_path.is_file():
+              raise SystemExit(f"primary Vietnamese font missing: {font_path}")
+          tt = TTFont(str(font_path))
+          cmap = set()
+          for table in tt["cmap"].tables:
+              cmap.update(table.cmap.keys())
+          tt.close()
+          translated_chars = set()
+          for page in manifest.get("pages") or []:
+              for obj in page.get("text_objects") or []:
+                  if isinstance(obj, dict) and not obj.get("source_missing") and str(obj.get("translation") or "").strip():
+                      translated_chars.update(ord(ch) for ch in str(obj["translation"]) if ch not in "\n\r\t")
+          missing_chars = sorted(cp for cp in translated_chars if cp not in cmap)
+          if missing_chars:
+              raise SystemExit("Vietnamese font glyph coverage failure: " + " ".join(f"U+{cp:04X}" for cp in missing_chars))
+
+          emphasis_box_ids = {"box_c58b5b3c29c64385", "box_0dae2a64f2564a43"}
+          default_ladder = [40, 38, 36, 34, 32, 30, 28]
+          emphasis_ladder = [48, 44, 40, 38, 36, 34, 32, 30, 28]
+          plan = []
+          failures = []
+          active_count = 0
+          seam_clamps = []
+
+          for page_index, page in enumerate(manifest.get("pages") or []):
+              source_page = int(page.get("source_page") or 0)
+              slice_index = int(page.get("slice_index") or 0)
+              clean_path = work / f"clean_{source_page:03d}_{slice_index:02d}.png"
+              if not clean_path.is_file():
+                  raise SystemExit(f"approved CLEAN slice missing: {clean_path}")
+              page["clean"] = clean_path.as_posix()
+              with Image.open(clean_path) as im:
+                  img_w, img_h = im.size
+              core = page.get("stitch_core") or {}
+              core_y1 = int(core.get("core_y1") or 0)
+              core_y2 = int(core.get("core_y2") or img_h)
+              for obj in page.get("text_objects") or []:
+                  if not isinstance(obj, dict) or obj.get("source_missing"):
+                      continue
+                  text = str(obj.get("translation") or "").strip()
+                  if not text:
+                      continue
+                  active_count += 1
+                  refs = [str(v) for v in (obj.get("source_boxes") or []) if isinstance(v, str)]
+                  if len(refs) != 1:
+                      raise SystemExit(f"active text object does not have exactly one source box: {obj.get('id')}")
+                  box_id = refs[0]
+                  region = dict(obj.get("region") or {})
+                  try:
+                      x1, y1, x2, y2 = [int(region[k]) for k in ("x1", "y1", "x2", "y2")]
+                  except Exception:
+                      raise SystemExit(f"malformed active text region: {obj.get('id')}")
+                  x1, x2 = max(0, x1), min(img_w, x2)
+                  y1, y2 = max(0, y1), min(img_h, y2)
+                  original_region = {"x1": x1, "y1": y1, "x2": x2, "y2": y2}
+                  # Tiny stitch-core incursions can clip rendered glyphs after reconstruction.
+                  # Clamp typography geometry to the owned core; large crossings are unsafe and fail.
+                  top_cross = max(0, core_y1 - y1)
+                  bottom_cross = max(0, y2 - core_y2)
+                  if top_cross or bottom_cross:
+                      if max(top_cross, bottom_cross) > 32:
+                          failures.append({"box_id": box_id, "reason": "unsafe_large_stitch_core_crossing", "top": top_cross, "bottom": bottom_cross})
+                          continue
+                      y1 = max(y1, core_y1)
+                      y2 = min(y2, core_y2)
+                      seam_clamps.append({"box_id": box_id, "top_px": top_cross, "bottom_px": bottom_cross})
+                  if x2 <= x1 or y2 <= y1:
+                      failures.append({"box_id": box_id, "reason": "empty_render_region_after_clamp"})
+                      continue
+
+                  raw_w, raw_h = x2 - x1, y2 - y1
+                  pad = max(2, min(RENDER_DEFAULT_PADDING, int(min(raw_w, raw_h) * RENDER_PADDING_RATIO_MAX)))
+                  box_w = raw_w - pad * 2
+                  box_h = raw_h - pad * 2
+                  ladder = emphasis_ladder if box_id in emphasis_box_ids else default_ladder
+                  selected = None
+                  selected_lines = None
+                  for size in ladder:
+                      ok, lines = _fits(ImageDraw.Draw(Image.new("RGB", (max(2, raw_w), max(2, raw_h)), "white")), text, box_w, box_h, str(font_path), size, 1)
+                      if ok:
+                          selected, selected_lines = size, lines
+                          break
+                  if selected is None:
+                      failures.append({
+                          "box_id": box_id,
+                          "reason": "does_not_fit_at_28px",
+                          "region": {"x1": x1, "y1": y1, "x2": x2, "y2": y2},
+                          "text": text,
+                      })
+                      continue
+                  obj["source_region_before_typography"] = original_region
+                  obj["region"] = {"x1": x1, "y1": y1, "x2": x2, "y2": y2}
+                  style = dict(obj.get("style") or {})
+                  style.update({
+                      "font": font_name,
+                      "fontSize": selected,
+                      "bold": box_id in emphasis_box_ids,
+                      "color": "auto",
+                      "strokeWidth": 1,
+                      "strokeColor": "auto",
+                      "bgColor": "transparent",
+                      "horizontalAlign": "center",
+                      "verticalAlign": "middle",
+                  })
+                  obj["style"] = style
+                  obj["typography_reviewed"] = True
+                  obj["font_size_fixed"] = True
+                  plan.append({
+                      "object_id": obj.get("id"),
+                      "box_id": box_id,
+                      "page_index": page_index,
+                      "source_page": source_page,
+                      "slice_index": slice_index,
+                      "region": obj["region"],
+                      "font": font_name,
+                      "font_size": selected,
+                      "bold": style["bold"],
+                      "stroke_width": 1,
+                      "wrapped_lines": selected_lines,
+                      "line_count": len(selected_lines or []),
+                      "translation": text,
+                  })
+
+          if active_count != 71:
+              raise SystemExit(f"expected 71 translated active objects, got {active_count}")
+          if failures:
+              (out / "typography-failures.json").write_text(json.dumps(failures, ensure_ascii=False, indent=2), encoding="utf-8")
+              raise SystemExit(f"typography preflight failed for {len(failures)} object(s); see typography-failures.json")
+          if len(plan) != 71:
+              raise SystemExit(f"expected 71 typography plan rows, got {len(plan)}")
+          if any(not isinstance(row["font_size"], int) or row["font_size"] < 28 for row in plan):
+              raise SystemExit("invalid fixed font size in typography plan")
+          if any((obj.get("style") or {}).get("fontSize") == "auto" for page in manifest.get("pages") or [] for obj in page.get("text_objects") or [] if isinstance(obj, dict) and not obj.get("source_missing") and str(obj.get("translation") or "").strip()):
+              raise SystemExit("autosize remains on an active translated object")
+
+          # Render every approved slice from CLEAN, never from RAW.
+          rendered_lookup = {}
+          rendered_objects = 0
+          for page_index, page in enumerate(manifest.get("pages") or []):
+              source_page = int(page.get("source_page") or 0)
+              slice_index = int(page.get("slice_index") or 0)
+              clean_path = Path(page["clean"])
+              image = Image.open(clean_path).convert("RGB")
+              for obj in page.get("text_objects") or []:
+                  if not isinstance(obj, dict) or obj.get("source_missing"):
+                      continue
+                  text = str(obj.get("translation") or "").strip()
+                  if not text:
+                      continue
+                  style = obj.get("style") or {}
+                  fs = style.get("fontSize")
+                  if not isinstance(fs, int) or fs < 28:
+                      raise SystemExit(f"render refused non-fixed/subminimum font for {obj.get('id')}: {fs!r}")
+                  r = obj["region"]
+                  image = render_text_in_box(
+                      image,
+                      text,
+                      (int(r["x1"]), int(r["y1"]), int(r["x2"]), int(r["y2"])),
+                      font_name=style["font"],
+                      font_size=fs,
+                      is_bold=bool(style.get("bold")),
+                      fill=style.get("color", "auto"),
+                      stroke_width=style.get("strokeWidth", 1),
+                      stroke_color=style.get("strokeColor", "auto"),
+                      bg_color=style.get("bgColor", "transparent"),
+                      horizontal_align=style.get("horizontalAlign", "center"),
+                      vertical_align=style.get("verticalAlign", "middle"),
+                  )
+                  rendered_objects += 1
+              render_path = rendered_slices / f"render_{source_page:03d}_{slice_index:02d}.png"
+              image.save(render_path)
+              rendered_lookup[(source_page, slice_index)] = render_path
+              page["rendered"] = render_path.as_posix()
+
+          if rendered_objects != 71:
+              raise SystemExit(f"expected to render 71 objects, rendered {rendered_objects}")
+
+          # Reconstruct the 11 original source pages using stitch-core ownership.
+          grouped = defaultdict(list)
+          for page in manifest.get("pages") or []:
+              grouped[int(page.get("source_page") or 0)].append(page)
+          if sorted(grouped) != list(range(11)):
+              raise SystemExit(f"expected source pages 0..10, got {sorted(grouped)}")
+          stitch_seams = []
+          for source_page in sorted(grouped):
+              pages = sorted(grouped[source_page], key=lambda p: int(p.get("slice_index") or 0))
+              first_img = Image.open(rendered_lookup[(source_page, int(pages[0].get("slice_index") or 0))]).convert("RGB")
+              width = first_img.width
+              source_height = int((pages[0].get("stitch_core") or {}).get("source_height") or 0)
+              if source_height <= 0:
+                  source_height = max(int((p.get("stitch_core") or {}).get("core_source_y2") or 0) for p in pages)
+              canvas = Image.new("RGB", (width, source_height), "white")
+              intervals = []
+              for p in pages:
+                  core = p.get("stitch_core") or {}
+                  cy1, cy2 = int(core.get("core_y1") or 0), int(core.get("core_y2") or 0)
+                  sy1, sy2 = int(core.get("core_source_y1") or 0), int(core.get("core_source_y2") or 0)
+                  if cy2 <= cy1 or sy2 <= sy1 or (cy2-cy1) != (sy2-sy1):
+                      raise SystemExit(f"invalid stitch core on source page {source_page}: {core}")
+                  slice_index = int(p.get("slice_index") or 0)
+                  im = Image.open(rendered_lookup[(source_page, slice_index)]).convert("RGB")
+                  if im.width != width:
+                      raise SystemExit("slice width changed before stitch")
+                  canvas.paste(im.crop((0, cy1, width, cy2)), (0, sy1))
+                  intervals.append((sy1, sy2))
+              intervals.sort()
+              cursor = 0
+              for sy1, sy2 in intervals:
+                  if sy1 != cursor:
+                      raise SystemExit(f"stitch ownership gap/overlap page {source_page}: cursor={cursor}, next={sy1}")
+                  cursor = sy2
+              if cursor != source_height:
+                  raise SystemExit(f"stitch ownership does not reach source height page {source_page}: {cursor}/{source_height}")
+              page_path = final_pages / f"{source_page:03d}.png"
+              canvas.save(page_path)
+              for _, seam_y in intervals[:-1]:
+                  if 0 < seam_y < source_height:
+                      stitch_seams.append({"source_page": source_page, "y": seam_y})
+
+          # Detailed rendered-object proof sheets.
+          plan_by_id = {row["object_id"]: row for row in plan}
+          cells = []
+          for page in manifest.get("pages") or []:
+              source_page = int(page.get("source_page") or 0)
+              slice_index = int(page.get("slice_index") or 0)
+              im = Image.open(rendered_lookup[(source_page, slice_index)]).convert("RGB")
+              for obj in page.get("text_objects") or []:
+                  if not isinstance(obj, dict) or obj.get("id") not in plan_by_id:
+                      continue
+                  row = plan_by_id[obj["id"]]
+                  r = obj["region"]
+                  margin = 45
+                  x1=max(0,int(r["x1"])-margin); y1=max(0,int(r["y1"])-margin)
+                  x2=min(im.width,int(r["x2"])+margin); y2=min(im.height,int(r["y2"])+margin)
+                  crop=im.crop((x1,y1,x2,y2))
+                  cells.append((row, crop))
+
+          cell_w, cell_h = 430, 340
+          per_sheet = 12
+          proof_sheets = []
+          for start in range(0, len(cells), per_sheet):
+              batch=cells[start:start+per_sheet]
+              cols=3; rows_n=math.ceil(len(batch)/cols)
+              sheet=Image.new("RGB",(cols*cell_w,rows_n*cell_h),"white")
+              d=ImageDraw.Draw(sheet)
+              for n,(row,crop) in enumerate(batch):
+                  crop.thumbnail((cell_w-20,250))
+                  x=(n%cols)*cell_w+10; y=(n//cols)*cell_h+10
+                  sheet.paste(crop,(x,y+54))
+                  d.text((x,y),f"{row['box_id']} p{row['source_page']} s{row['slice_index']}",fill="black")
+                  d.text((x,y+20),f"{row['font']} {row['font_size']}px lines={row['line_count']}",fill="black")
+              name=f"object-proof-{start//per_sheet:02d}.jpg"
+              sheet.save(proof/name,quality=92)
+              proof_sheets.append(f"proof/{name}")
+
+          # Full-page overview sheet (artwork/layout, not small-text proof).
+          thumbs=[]
+          for source_page in range(11):
+              im=Image.open(final_pages/f"{source_page:03d}.png").convert("RGB")
+              im.thumbnail((280,1000))
+              thumbs.append((source_page,im.copy()))
+          cols=3; cell_w2=300; cell_h2=1040; rows2=math.ceil(len(thumbs)/cols)
+          overview=Image.new("RGB",(cols*cell_w2,rows2*cell_h2),"white")
+          od=ImageDraw.Draw(overview)
+          for n,(source_page,im) in enumerate(thumbs):
+              x=(n%cols)*cell_w2+10; y=(n//cols)*cell_h2+10
+              od.text((x,y),f"source page {source_page:03d}",fill="black")
+              overview.paste(im,(x,y+24))
+          overview.save(proof/"full-page-overview.jpg",quality=90)
+
+          # Seam proof strips from reconstructed pages.
+          seam_cells=[]
+          for seam in stitch_seams:
+              p=seam["source_page"]; y=seam["y"]
+              im=Image.open(final_pages/f"{p:03d}.png").convert("RGB")
+              crop=im.crop((0,max(0,y-120),im.width,min(im.height,y+120)))
+              seam_cells.append((p,y,crop))
+          if seam_cells:
+              sw, sh = 460, 300; cols=2; rowsn=math.ceil(len(seam_cells)/cols)
+              seam_sheet=Image.new("RGB",(cols*sw,rowsn*sh),"white")
+              sd=ImageDraw.Draw(seam_sheet)
+              for n,(p,y,crop) in enumerate(seam_cells):
+                  crop.thumbnail((sw-20,240))
+                  x=(n%cols)*sw+10; yy=(n//cols)*sh+10
+                  sd.text((x,yy),f"page {p:03d} seam y={y}",fill="black")
+                  seam_sheet.paste(crop,(x,yy+30))
+              seam_sheet.save(proof/"stitch-seams.jpg",quality=92)
+
+          size_counts = Counter(row["font_size"] for row in plan)
+          low_size = [row for row in plan if row["font_size"] <= 30]
+          typography = {
+              "checkpoint":"05-typography-preflight",
+              "chapter_id":"c3513510",
+              "primary_font":font_name,
+              "glyph_coverage":"PASS",
+              "autosize_active_objects":0,
+              "hard_min_font_size":28,
+              "font_size_counts":{str(k):v for k,v in sorted(size_counts.items(),reverse=True)},
+              "objects_at_or_below_30px":len(low_size),
+              "seam_region_clamps":seam_clamps,
+              "active_objects":71,
+              "status":"PASS" if not low_size else "PASS_REVIEW_LOW_SIZE",
+          }
+          render_summary = {
+              "checkpoint":"05-render-candidate",
+              "chapter_id":"c3513510",
+              "status":"REVIEW_REQUIRED",
+              "rendered_story_objects":rendered_objects,
+              "rendered_slices":len(rendered_lookup),
+              "source_pages":11,
+              "expected_source_pages":11,
+              "stitch_seam_count":len(stitch_seams),
+              "proof_sheets":proof_sheets,
+              "full_page_overview":"proof/full-page-overview.jpg",
+              "stitch_seam_proof":"proof/stitch-seams.jpg" if stitch_seams else None,
+              "next_action":"HUMAN_VISUAL_REVIEW",
+          }
+          (out/"typography-plan.json").write_text(json.dumps(plan,ensure_ascii=False,indent=2),encoding="utf-8")
+          (out/"typography-summary.json").write_text(json.dumps(typography,ensure_ascii=False,indent=2),encoding="utf-8")
+          (out/"rendered-manifest.json").write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding="utf-8")
+          (out/"render-summary.json").write_text(json.dumps(render_summary,ensure_ascii=False,indent=2),encoding="utf-8")
+          (out/"HUMAN_CHECKPOINT.txt").write_text(
+              "CHECKPOINT: HUMAN VISUAL REVIEW REQUIRED\nInspect object proof, full pages, and stitch seams. Technical render success is not FINAL.\n",
+              encoding="utf-8"
+          )
+          candidate_zip=out/"Cao-Vo-Ha-Canh-Den-Mot-Van-Nam-Sau-Chapter-351-VI-CANDIDATE.zip"
+          with zipfile.ZipFile(candidate_zip,"w",zipfile.ZIP_DEFLATED) as zf:
+              for p in sorted(final_pages.glob("*.png")):
+                  zf.write(p,p.name)
+          print(json.dumps(typography,indent=2,ensure_ascii=False))
+          print(json.dumps(render_summary,indent=2,ensure_ascii=False))
+          PY
+
+      - name: Verify candidate render contract
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from PIL import Image
+          root=Path("checkpoint/05-render")
+          t=json.loads((root/"typography-summary.json").read_text(encoding="utf-8"))
+          r=json.loads((root/"render-summary.json").read_text(encoding="utf-8"))
+          plan=json.loads((root/"typography-plan.json").read_text(encoding="utf-8"))
+          if t.get("glyph_coverage")!="PASS" or t.get("autosize_active_objects")!=0 or t.get("hard_min_font_size")!=28:
+              raise SystemExit(f"typography contract failed: {t}")
+          if len(plan)!=71 or min(row["font_size"] for row in plan)<28:
+              raise SystemExit("fixed typography plan invalid")
+          if r.get("rendered_story_objects")!=71 or r.get("rendered_slices")!=40 or r.get("source_pages")!=11:
+              raise SystemExit(f"render counts invalid: {r}")
+          pages=sorted((root/"final_pages").glob("*.png"))
+          if len(pages)!=11:
+              raise SystemExit(f"expected 11 final candidate pages, got {len(pages)}")
+          for p in pages:
+              with Image.open(p) as im:
+                  if im.width<=0 or im.height<=0:
+                      raise SystemExit(f"invalid rendered page dimensions: {p} {im.size}")
+          if r.get("status")!="REVIEW_REQUIRED":
+              raise SystemExit("candidate must stop for human visual review")
+          print("candidate render contract PASS; human review still required")
+          PY
+
+      - name: Upload typography and render candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: 05-render-candidate-c3513510
+          path: checkpoint/05-render/
+          retention-days: 7
+          if-no-files-found: error
