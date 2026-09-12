@@ -1,0 +1,41 @@
+{
+  "checkpoint": "07b-final-punctuation-repair",
+  "chapter_id": "f1cd0121",
+  "repairs": [
+    {
+      "page_index": 29,
+      "source_page": 7,
+      "slice_index": 4,
+      "object_id": "drop_072e64626b7945c0",
+      "bbox": [
+        526,
+        356,
+        681,
+        453
+      ],
+      "source_text": "....",
+      "operation": "restore_exact_raw_punctuation_pixels",
+      "outside_bbox_unchanged": true,
+      "lifecycle": "human_review_restore_active"
+    },
+    {
+      "page_index": 48,
+      "source_page": 13,
+      "slice_index": 3,
+      "object_id": "drop_c9309c09043f4701",
+      "bbox": [
+        464,
+        1852,
+        671,
+        1949
+      ],
+      "source_text": ".......",
+      "operation": "restore_exact_raw_punctuation_pixels",
+      "outside_bbox_unchanged": true,
+      "lifecycle": "human_review_restore_active"
+    }
+  ],
+  "active_story_objects": 112,
+  "status": "PASS",
+  "reason": "Two acting-punctuation balloons were wrongly tombstoned during OCR curation."
+}
