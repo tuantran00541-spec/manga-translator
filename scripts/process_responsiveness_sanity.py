@@ -85,8 +85,8 @@ def runtime_checks() -> None:
 def source_checks() -> None:
     main_js = (ROOT / "app/static/js/main.js").read_text(encoding="utf-8")
     check(
-        "RESPONSIVE_PROCESS_BATCH_SIZE = 2" in main_js,
-        "frontend processing batch is not bounded to two pages",
+        "RESPONSIVE_PROCESS_BATCH_SIZE = 16" in main_js,
+        "frontend processing batch is not restored to sixteen pages",
     )
     check(
         "window._processSelectedPagesOnce = async function responsiveProcessSelectedPagesOnce" in main_js,
@@ -96,6 +96,10 @@ def source_checks() -> None:
     check(
         "start + RESPONSIVE_PROCESS_BATCH_SIZE" in main_js,
         "responsive batch slicing contract missing",
+    )
+    check(
+        "workers: getWorkersSetting()" in main_js,
+        "frontend batch size must remain independent from worker concurrency",
     )
     check(
         'btn.setAttribute("aria-busy", "true")' in main_js,
