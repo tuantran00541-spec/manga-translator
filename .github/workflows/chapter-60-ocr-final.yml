@@ -1,0 +1,155 @@
+name: Chapter 60 Checkpoint 04D OCR Final
+
+on:
+  push:
+    branches:
+      - trial/chapter-render-60
+    paths:
+      - .github/workflows/chapter-60-ocr-final.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: chapter-60-human-loop
+  cancel-in-progress: false
+
+jobs:
+  finalize-ocr:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    env:
+      BASE_RUN_ID: "34679646612"
+      BASE_ARTIFACT: 04b-ocr-curated-f1cd0121
+      ROOT: checkpoint/04d-ocr-final
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: trial/chapter-render-60
+
+      - name: Restore curated OCR checkpoint
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf "$ROOT"
+          mkdir -p "$ROOT"
+          gh run download "$BASE_RUN_ID" -n "$BASE_ARTIFACT" -D "$ROOT"
+          test -f "$ROOT/processed/manifest.json"
+
+      - name: Apply final human OCR adjudication
+        run: |
+          PYTHONPATH=. python - <<'PY'
+          import json, os
+          from datetime import datetime, timezone
+          from pathlib import Path
+          from app.text_objects import ensure_page_text_objects
+
+          root=Path(os.environ['ROOT'])
+          mp=root/'processed'/'manifest.json'
+          m=json.loads(mp.read_text(encoding='utf-8'))
+          assert m.get('chapter_id') == 'f1cd0121'
+
+          page=m['pages'][29]
+          bid='box_66079c5d81db4a56'
+          oid='text_66079c5d81db4a56'
+          box=next(b for b in page.get('boxes',[]) if str(b.get('id'))==bid)
+          obj=next(o for o in page.get('text_objects',[]) if str(o.get('id'))==oid)
+
+          # Final human adjudication after RAW geometry + targeted OCR cross-check:
+          # isolated glyph "0" has no corroborated story meaning. Preserve artwork,
+          # but do not translate or render it.
+          box['removed']=True
+          box['ocr_eligible']=False
+          box['needs_review']=False
+          box['human_review_state']='dropped'
+          box['human_review_reason']='final human OCR adjudication: isolated uncorroborated decorative/noise glyph'
+
+          obj['source_missing']=True
+          obj['auto_generated']=False
+          obj['origin']='human_review_drop'
+          obj['translation']=''
+          obj['human_review_state']='dropped'
+          obj['human_review_reason']='final human OCR adjudication: isolated uncorroborated decorative/noise glyph'
+
+          # Lifecycle must remain idempotent after durable drop.
+          second_created=0
+          for p in m.get('pages',[]):
+              n,_=ensure_page_text_objects(p)
+              second_created += n
+
+          active=[]
+          for pi,p in enumerate(m.get('pages',[])):
+              for o in p.get('text_objects',[]) or []:
+                  if not o.get('source_missing'):
+                      active.append((pi,o))
+
+          active_ids={(pi,str(o.get('id'))) for pi,o in active}
+          assert len(active)==110, len(active)
+          assert (29,oid) not in active_ids
+          assert (50,'text_73608fae8cb44827') in active_ids
+          assert (50,'text_b9b21a83428e4e32') in active_ids
+          assert second_created == 0, second_created
+          assert all(str(o.get('ocr_text') or '').strip() for _,o in active)
+
+          report={
+            'checkpoint':'04d-ocr-final',
+            'chapter_id':'f1cd0121',
+            'created_at':datetime.now(timezone.utc).isoformat(),
+            'source_checkpoint':'04b-ocr-curated-f1cd0121',
+            'human_final_drop':{'page_index':29,'object_id':oid,'source_box':bid,'ocr_text':'0'},
+            'p050_distinct_balloon_ids':['text_73608fae8cb44827','text_b9b21a83428e4e32'],
+            'active_story_objects':len(active),
+            'empty_active_ocr_count':0,
+            'resurrected_dropped_count':0,
+            'second_sync_created':second_created,
+            'status':'PASS',
+            'next_action':'TRANSLATION_REVIEW'
+          }
+          mp.write_text(json.dumps(m,ensure_ascii=False,indent=2),encoding='utf-8')
+          (root/'ocr-final-report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
+          # Compact ordered source export for the translation editor.
+          rows=[]
+          for pi,o in active:
+              rows.append({
+                'page_index':pi,
+                'object_id':o.get('id'),
+                'ocr_text':o.get('ocr_text'),
+                'semantic_role':o.get('semantic_role'),
+                'region':o.get('region'),
+                'continuation_group':o.get('continuation_group'),
+                'continuation_part':o.get('continuation_part'),
+              })
+          (root/'translation-source-final.json').write_text(json.dumps(rows,ensure_ascii=False,indent=2),encoding='utf-8')
+          print(json.dumps(report,ensure_ascii=False,indent=2))
+          print('=== TRANSLATION SOURCE BY PAGE ===')
+          for r in rows:
+              print(f"p{r['page_index']:03d}\t{r['object_id']}\t{r['ocr_text'].replace(chr(10),' / ')}")
+          PY
+
+      - name: Validate final OCR gate
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          root=Path(os.environ['ROOT'])
+          r=json.loads((root/'ocr-final-report.json').read_text(encoding='utf-8'))
+          assert r['status']=='PASS'
+          assert r['active_story_objects']==110
+          assert r['empty_active_ocr_count']==0
+          assert r['resurrected_dropped_count']==0
+          assert r['second_sync_created']==0
+          rows=json.loads((root/'translation-source-final.json').read_text(encoding='utf-8'))
+          assert len(rows)==110
+          print('OCR_FINAL_PASS active_story_objects=110')
+          PY
+
+      - name: Upload checkpoint 04D artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: 04d-ocr-final-f1cd0121
+          path: checkpoint/04d-ocr-final
+          if-no-files-found: error
+          retention-days: 7
