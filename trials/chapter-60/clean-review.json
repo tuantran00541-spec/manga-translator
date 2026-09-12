@@ -12,7 +12,12 @@
     "local_repair_run_id": 34666217728,
     "local_repair_artifact": "02b-clean-repaired-f1cd0121",
     "micro_repair_run_id": 34669170206,
-    "approved_artifact": "02c-clean-repaired-f1cd0121"
+    "late_story_sfx_run_id": 34672445541,
+    "late_story_sfx_artifact": "03b-ocr-late-clean-f1cd0121",
+    "late_residue_run_id": 34673439717,
+    "late_residue_artifact": "03c-ocr-late-clean-f1cd0121",
+    "credit_restore_run_id": 34673921364,
+    "approved_artifact": "03d-ocr-clean-f1cd0121"
   },
   "review_scope": {
     "slices": 65,
@@ -24,7 +29,10 @@
       "safe-to-inpaint=false review sheets",
       "02B focused repair proof",
       "02B full touched-slice proof",
-      "02C focused p014 proof"
+      "02C focused p014 proof",
+      "03B p036/p038 late story-SFX proof",
+      "03C p036/p038 ghost-residue proof at full resolution",
+      "03D p020 RAW vs BEFORE vs AFTER production-credit proof"
     ]
   },
   "repairs": {
@@ -36,20 +44,43 @@
       "method": "targeted production LaMa inpaint",
       "result": "PASS"
     },
+    "late_story_sfx": [
+      {
+        "page_index": 36,
+        "source_text": "SQUEE!",
+        "method": "targeted production LaMa plus 03C micro residue reconstruction",
+        "result": "PASS"
+      },
+      {
+        "page_index": 38,
+        "source_text": "SQUEEE!",
+        "method": "targeted production LaMa plus 03C two-pass terminal-residue repair",
+        "result": "PASS"
+      }
+    ],
     "restored_non_story_or_artwork": [
       "title/scanlation card on p000",
       "ASURASCANS.COM watermarks on p014/p022/p030/p050/p057/p061",
       "decorative reaction faces on p043/p044",
       "decorative bottle label on p044",
+      "ADAPTATION MISO / ORIGINAL MIRIP / ILLUSTRATION BYEOLBOM production credits on p020",
       "StoryZAK/production credits on p063",
       "end-card promo on p064"
     ],
-    "micro_repair": {
+    "p014_micro_repair": {
       "page_index": 14,
       "bbox": [645, 1270, 900, 1338],
       "reason": "02B restored the watermark incompletely",
       "bbox_pixel_exact_to_raw": true,
       "outside_bbox_pixel_exact_to_02b": true,
+      "result": "PASS"
+    },
+    "p020_credit_restore": {
+      "page_index": 20,
+      "bbox": [245, 1515, 655, 1675],
+      "reason": "production credits had been over-inpainted",
+      "bbox_pixel_exact_to_raw": true,
+      "outside_bbox_pixel_exact_to_03c": true,
       "result": "PASS"
     }
   },
@@ -61,5 +92,10 @@
     "source_non_story_material_preserved": true,
     "editorial_acceptance": "PASS"
   },
-  "next_action": "RUN_CHECKPOINT_03_OCR_REVIEW"
+  "ocr_validity_after_late_clean_repairs": {
+    "raw_changed": false,
+    "ocr_rerun_required": false,
+    "approved_raw_ocr_run_id": 34669709152
+  },
+  "next_action": "RUN_OCR_CURATION_AND_RESURRECTION_GATE"
 }
