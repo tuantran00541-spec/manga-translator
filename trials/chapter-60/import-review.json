@@ -1,0 +1,40 @@
+{
+  "checkpoint": "IMPORT",
+  "status": "PASS",
+  "chapter_id": "f1cd0121",
+  "series_slug": "a-cadet-becomes-a-prophet-53fc8424",
+  "chapter_number": 60,
+  "source_url": "https://asurascans.com/comics/a-cadet-becomes-a-prophet-53fc8424/chapter/60",
+  "source_images": 18,
+  "slices": 65,
+  "source_order_reviewed": true,
+  "source_sequence": "000.webp..017.webp",
+  "exact_duplicate_groups": 0,
+  "ownership_issues": 0,
+  "reconstruction_issues": 0,
+  "skipped_pages": 0,
+  "reconstruction": {
+    "pixel_exact_pages": 18,
+    "total_pages": 18,
+    "diff_pixels_total": 0,
+    "max_channel_diff": 0
+  },
+  "human_review": {
+    "source_contact_sheet_reviewed": true,
+    "slice_contact_sheet_reviewed": true,
+    "source_boundary_sheet_reviewed": true,
+    "reading_order_ok": true,
+    "duplicate_or_missing_source_pages": 0,
+    "notes": [
+      "Source 000 is a chapter/Asura title card rather than ordinary story dialogue; preserve/classify it deliberately instead of destructive cleanup by default.",
+      "Several action sections contain large stylized Korean SFX; do not let detector rectangles automatically authorize destructive inpaint.",
+      "Source 005 contains the series title treatment inside the chapter flow; classify it as title/decorative text before cleanup.",
+      "Source 017 contains end-of-chapter Asura branding/promo after story content; preserve/classify the promo tail as non-story.",
+      "Adjacent source boundaries were visually checked in order; no repeated overlap or obvious missing transition was found."
+    ]
+  },
+  "technical_pass": true,
+  "editorial_pass": true,
+  "blockers": [],
+  "next_action": "RUN_CHECKPOINT_02_CLEAN_REVIEW"
+}
