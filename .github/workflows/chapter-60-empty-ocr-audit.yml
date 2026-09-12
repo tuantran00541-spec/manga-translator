@@ -1,0 +1,75 @@
+name: Chapter 60 OCR Empty-Box Audit
+
+on:
+  push:
+    branches:
+      - trial/chapter-render-60
+    paths:
+      - .github/workflows/chapter-60-empty-ocr-audit.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: chapter-60-human-loop
+  cancel-in-progress: false
+
+jobs:
+  audit-empty:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    env:
+      BASE_RUN_ID: "34673921364"
+      BASE_ARTIFACT: 03d-ocr-clean-f1cd0121
+      ROOT: checkpoint/empty-audit
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: trial/chapter-render-60
+      - run: python -m pip install Pillow==10.4.0
+      - name: Restore 03D
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf "$ROOT"; mkdir -p "$ROOT"
+          gh run download "$BASE_RUN_ID" -n "$BASE_ARTIFACT" -D "$ROOT"
+      - name: Build metadata and RAW crop proof
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          from PIL import Image,ImageDraw,ImageFont
+          root=Path(os.environ['ROOT'])
+          m=json.loads((root/'processed/manifest.json').read_text(encoding='utf-8'))
+          targets=[(2,'box_9f81ea7eb505421e'),(29,'box_072e64626b7945c0'),(48,'box_c9309c09043f4701')]
+          rows=[]; cards=[]
+          for pi,bid in targets:
+              page=m['pages'][pi]
+              box=next(b for b in page.get('boxes',[]) if str(b.get('id'))==bid)
+              rows.append({'page_index':pi,'source_page':page.get('source_page'),'slice_index':page.get('slice_index'),'box':box})
+              raw=root/'raw'/'sliced'/Path(str(page.get('original'))).name
+              im=Image.open(raw).convert('RGB')
+              x1,y1,x2,y2=[int(box[k]) for k in ('x1','y1','x2','y2')]
+              pad=80; crop=im.crop((max(0,x1-pad),max(0,y1-pad),min(im.width,x2+pad),min(im.height,y2+pad)))
+              crop.thumbnail((700,420),Image.Resampling.LANCZOS)
+              card=Image.new('RGB',(740,480),'white'); card.paste(crop,((740-crop.width)//2,45))
+              d=ImageDraw.Draw(card); f=ImageFont.load_default()
+              d.text((8,8),f'p{pi:03d} {bid} semantic={box.get("semantic_type")} class={box.get("class_name")}',fill='black',font=f)
+              d.text((8,24),f'region=({x1},{y1},{x2},{y2}) quality={box.get("ocr_quality")} conf={box.get("ocr_confidence")}',fill='black',font=f)
+              cards.append(card)
+          (root/'empty-active-boxes.json').write_text(json.dumps(rows,ensure_ascii=False,indent=2),encoding='utf-8')
+          sheet=Image.new('RGB',(740,480*len(cards)),'white')
+          for i,c in enumerate(cards): sheet.paste(c,(0,i*480))
+          sheet.save(root/'empty-active-boxes.jpg',quality=94)
+          print(json.dumps(rows,ensure_ascii=False,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: chapter-60-empty-ocr-audit
+          path: |
+            checkpoint/empty-audit/empty-active-boxes.json
+            checkpoint/empty-audit/empty-active-boxes.jpg
+          if-no-files-found: error
+          retention-days: 7
