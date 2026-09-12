@@ -6,13 +6,13 @@
   "source_url": "https://asurascans.com/comics/logging-10000-years-into-the-future-53fc8424/chapter/351",
   "branch": "chapter/logging-10000-years-into-the-future-351",
   "source_of_truth_sha": "893671a832435e2dcccc61fb100159d38126f595",
-  "current_stage": "CLEAN_PENDING",
-  "last_passed_checkpoint": "IMPORT",
+  "current_stage": "OCR_PENDING",
+  "last_passed_checkpoint": "CLEAN",
   "current_artifact": {
-    "run_id": 34700742617,
-    "artifact": "01-import-c3513510",
-    "artifact_id": 10299978126,
-    "workflow_head_sha": "a6eaa54fd2729da8a47be36a6b303fed1860621d"
+    "run_id": 34702416332,
+    "artifact": "02b-clean-local-repair-c3513510",
+    "artifact_id": 10300835530,
+    "workflow_head_sha": "9abeede1bacf146a2132d038c4e44e732996acf7"
   },
   "approved_import": {
     "source_images": 11,
@@ -22,6 +22,13 @@
     "pixel_exact_pages": 11,
     "diff_pixels_total": 0
   },
+  "approved_clean_stack": {
+    "base": "02-clean-review-c3513510@34700955145",
+    "overlay": "02b-clean-local-repair-c3513510@34702416332",
+    "story_text_blockers": 0,
+    "artwork_damage_blockers": 0,
+    "source_story_residue_blockers": 0
+  },
   "blockers": [],
-  "next_action": "RUN_CHECKPOINT_02_CLEAN_REVIEW"
+  "next_action": "RUN_OCR_FROM_RAW_AND_APPLY_NON_STORY_TOMBSTONES"
 }
