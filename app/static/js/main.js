@@ -1,4 +1,8 @@
-const RESPONSIVE_PROCESS_BATCH_SIZE = 2;
+// Submit a complete 16-page workset to the backend. `workers` controls how
+// many pages run concurrently inside that workset; with the safe default of
+// two workers this keeps both workers fed without eight sequential HTTP
+// round-trips for a 16-page chapter.
+const RESPONSIVE_PROCESS_BATCH_SIZE = 16;
 
 function yieldProcessUi() {
   return new Promise((resolve) => {
