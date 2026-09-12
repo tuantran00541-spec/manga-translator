@@ -9,6 +9,7 @@ const transforms = fs.readFileSync('app/static/js/editor-box-transform.js', 'utf
 const reviewWorkspace = fs.readFileSync('app/static/js/review-workspace.js', 'utf8');
 const stitchInspector = fs.readFileSync('app/static/js/review-stitch-inspector.js', 'utf8');
 const review = fs.readFileSync('app/static/js/review.js', 'utf8');
+const preview = fs.readFileSync('app/static/js/preview.js', 'utf8');
 assert(css.includes('./studio.css'), 'studio stylesheet must be the runtime surface');
 for (const legacy of ['frontend-release.css', 'frontend-coordinator.js', 'frontend-release.js', 'frontend-release-encoder-guard.js']) assert(!html.includes(legacy), `${legacy} must not be loaded at runtime`);
 assert(!shell.includes('wrapRenderer("renderEditor"'), 'Editor must not be shell-wrapped');
@@ -32,4 +33,8 @@ assert(editor.includes('imgWrap.addEventListener("pointerdown"'), 'editor drawin
 assert(shell.includes('window.createAIProviderSettings?.()'), 'AI provider settings must mount before Review is opened');
 assert(!review.includes('  refreshSrcData();\n\n  img.addEventListener("load"'), 'Review must not decode full source pixels on every page mount');
 assert(review.includes('512 / Math.max(canvas.width, canvas.height)'), 'Review paint validation must use a bounded probe');
+assert(!review.includes('setupGeminiQCSettings'), 'legacy Gemini-only settings path must be removed');
+assert(!review.includes('/api/visual_qc/key'), 'Review must use provider-scoped credential endpoints only');
+assert(preview.includes('drawLayer.addEventListener("pointerdown"'), 'preview exclusion drawing must support touch input');
+assert(!preview.includes('window.addEventListener("mousemove", onMouseMove)'), 'preview must not use mouse-only global drawing');
 console.log('studio runtime sanity: PASS');
