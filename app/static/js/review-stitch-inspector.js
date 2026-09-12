@@ -818,6 +818,4 @@
   }
 
   window.mountStitchInspector = scan;
-  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", scan, { once: true });
-  else scan();
 })();

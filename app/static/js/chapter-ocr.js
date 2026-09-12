@@ -291,29 +291,7 @@
   }
 
   window.fetchOcr = safeFetchOcr;
-
-  let scanScheduled = false;
-  function scheduleScan() {
-    if (scanScheduled) return;
-    scanScheduled = true;
-    window.requestAnimationFrame(() => {
-      scanScheduled = false;
-      scan();
-    });
-  }
-
-  function observeWorkspaceRoot() {
-    const root = document.getElementById("page-view");
-    if (!root || root.dataset.chapterOcrObserved === "1") return;
-    root.dataset.chapterOcrObserved = "1";
-    const observer = new MutationObserver(scheduleScan);
-    observer.observe(root, { childList: true, subtree: true });
-  }
-
-  observeWorkspaceRoot();
-  document.addEventListener("DOMContentLoaded", () => {
-    observeWorkspaceRoot();
-    scheduleScan();
-  });
-  scan();
+  // The Review renderer owns mounting. A document-wide observer used to scan
+  // every workspace mutation and could repeatedly traverse the canvas DOM.
+  window.mountChapterOCR = scan;
 })();

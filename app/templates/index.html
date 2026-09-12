@@ -1,111 +1,84 @@
 <!DOCTYPE html>
-<html lang="vi">
+<html lang="vi" data-theme="system">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
 <title>Manga Translator</title>
+<script src="/static/js/theme.js"></script>
 <link rel="stylesheet" href="/static/css/app.css">
 <link rel="preload" href="/static/js/mask-encoder-worker.js" as="worker">
 </head>
-<body data-app-stage="landing">
-<div id="app" class="workbench-shell">
-  <div class="workbench-frame">
-    <header id="site-header" class="workbench-topbar">
-      <button id="app-home" class="workbench-brand" type="button" aria-label="Manga Translator — về trang nhập" title="Về trang nhập">Manga Translator</button>
-      <nav id="workflow-steps" class="workbench-stage-nav" aria-label="Các bước xử lý" hidden>
-        <button class="workbench-stage-link" type="button" data-stage="preview" aria-label="Xử lý ảnh" title="Xử lý ảnh" disabled>Xử lý</button>
-        <button class="workbench-stage-link" type="button" data-stage="review" aria-label="Kiểm tra chất lượng" title="Kiểm tra chất lượng" disabled>Kiểm tra</button>
-        <button class="workbench-stage-link" type="button" data-stage="editor" aria-label="Biên tập bản dịch" title="Biên tập bản dịch" disabled>Biên tập</button>
-      </nav>
-      <div class="workbench-title-block">
-        <span id="app-context" class="app-context" aria-live="polite">Chưa mở chương</span>
-      </div>
-      <div class="workbench-topbar-actions">
+<body data-app-stage="landing" data-landing-mode="home">
+<div id="app" class="app-shell">
+  <button id="sidebar-backdrop" class="sidebar-backdrop" type="button" aria-label="Đóng menu" hidden></button>
+  <aside id="app-sidebar" class="app-sidebar" aria-label="Điều hướng chính">
+    <button id="app-home" class="app-brand" type="button" aria-label="Manga Translator — về trang chủ"><span class="app-brand-mark" aria-hidden="true">M</span><span>Manga Translator</span></button>
+    <div class="sidebar-section-label">Không gian làm việc</div>
+    <nav id="workflow-steps" class="sidebar-nav" aria-label="Các màn hình">
+      <button class="sidebar-link active" type="button" data-route="home" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5v8a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 19.5v-8Z"/><path d="M9 21v-7h6v7"/></svg><span>Trang chủ</span></button>
+      <button class="sidebar-link" type="button" data-route="import"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4M11 8v6m-3-3h6"/></svg><span>Nhập nội dung</span></button>
+      <button class="sidebar-link" type="button" data-stage="preview" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 15 3-3 2 2 3-4 3 5"/></svg><span>Xem cắt lát</span></button>
+      <button class="sidebar-link" type="button" data-stage="review" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 0 1 16 0M7 12a5 5 0 0 1 10 0M10 12a2 2 0 0 1 4 0M4 16h16"/></svg><span>Xem inpaint</span></button>
+      <button class="sidebar-link" type="button" data-stage="editor" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></svg><span>Biên tập</span></button>
+    </nav>
+    <div class="sidebar-footer">
+      <button id="settings-toggle" class="sidebar-link" type="button" aria-haspopup="dialog" aria-controls="settings-drawer" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 1 1-14 0 7 7 0 0 1 14 0ZM12 2v3m0 14v3M2 12h3m14 0h3M5 5l2 2m10 10 2 2M19 5l-2 2M7 17l-2 2"/></svg><span>Cài đặt</span></button>
+    </div>
+  </aside>
+
+  <div class="app-main">
+    <header id="site-header" class="app-header">
+      <button id="sidebar-toggle" class="ui-icon-btn mobile-menu-button" type="button" aria-controls="app-sidebar" aria-expanded="false" aria-label="Mở menu"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+      <div class="app-heading"><strong id="app-page-title">Trang chủ</strong><span id="app-context" aria-live="polite">Chưa mở chương</span></div>
+      <div class="app-header-actions">
         <div id="workbench-panel-controls" class="workbench-panel-controls" role="group" aria-label="Bố cục vùng làm việc" hidden>
           <button id="toggle-page-panel" class="ui-btn ui-btn-ghost ui-btn-compact" type="button" aria-expanded="true">Trang</button>
           <button id="toggle-inspector-panel" class="ui-btn ui-btn-ghost ui-btn-compact" type="button" aria-expanded="true">Công cụ</button>
           <button id="toggle-focus-mode" class="ui-btn ui-btn-ghost ui-btn-compact" type="button" aria-pressed="false" title="Chế độ tập trung">Tập trung</button>
         </div>
         <div id="workbench-status" class="workbench-status" aria-live="polite"></div>
-        <button id="settings-toggle" class="ui-btn ui-btn-ghost ui-btn-compact workbench-settings" type="button" aria-haspopup="dialog" aria-controls="settings-drawer" aria-expanded="false">Cài đặt</button>
+        <label class="theme-control" for="theme-select"><span class="sr-only">Giao diện</span><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4"/></svg><select id="theme-select" aria-label="Giao diện màu"><option value="system">Hệ thống</option><option value="light">Sáng</option><option value="dark">Tối</option></select></label>
+        <button id="start-action" class="ui-btn ui-btn-primary header-primary-action" type="button">Bắt đầu xử lý</button>
       </div>
     </header>
 
-  <section id="landing-view" class="app-stage app-stage-active" data-stage="landing" aria-labelledby="landing-title">
-    <div class="landing-intro">
-      <h1 id="landing-title">Mở một chương</h1>
-      <p>Dán liên kết hoặc nhập ảnh, ZIP, CBZ để bắt đầu.</p>
-    </div>
+    <section id="landing-view" class="app-stage app-stage-active" data-stage="landing" aria-labelledby="landing-title">
+      <div id="home-view" class="landing-page home-view">
+        <div class="home-heading"><div><span class="ui-eyebrow">Không gian làm việc</span><h1 id="landing-title">Xin chào!</h1><p>Chọn một chương gần đây hoặc bắt đầu dự án dịch mới.</p></div></div>
+        <section class="recent-panel" aria-label="Chương đang xử lý" hidden><div id="recent-chapters"></div></section>
+        <section id="home-empty-state" class="home-empty-state"><h2>Chưa có chương gần đây</h2><p>Nhập liên kết, ảnh hoặc tệp truyện để bắt đầu.</p><button class="ui-btn ui-btn-primary" type="button" data-open-import>Bắt đầu dự án đầu tiên</button></section>
+      </div>
 
-    <div class="landing-import-options">
-      <label class="ui-field" for="lang-select"><span>Ngôn ngữ gốc</span><select id="lang-select" title="Áp dụng cho cả liên kết và tệp tải lên"><option value="ja">Tiếng Nhật</option><option value="ch">Tiếng Trung</option><option value="korean">Tiếng Hàn</option><option value="en">Tiếng Anh</option></select></label>
-      <details class="ui-disclosure import-advanced">
-        <summary>Tùy chọn xử lý</summary>
-        <label class="ui-field" id="workers-label" for="workers-select"><span>Tác vụ song song</span><select id="workers-select"><option value="1">1</option><option value="2" selected>2</option><option value="3">3</option><option value="4">4</option><option value="6">6</option><option value="8">8</option></select></label>
-      </details>
-    </div>
-
-    <section class="landing-start" aria-label="Mở chương mới">
-      <div class="landing-source-grid">
-      <section class="landing-panel landing-url-source" aria-labelledby="url-source-title">
-        <h2 id="url-source-title">Mở từ liên kết</h2>
-        <div id="chapter-input" class="chapter-input-grid">
-          <label class="ui-field chapter-url-field" for="chapter-url"><span>Liên kết chương</span><input type="text" id="chapter-url" placeholder="Dán URL chương"></label>
-          <button id="load-btn" class="ui-btn ui-btn-primary" type="button">Tải chương</button>
+      <div id="import-view" class="landing-page import-view" hidden>
+        <div class="page-intro"><span class="ui-eyebrow">Dự án mới</span><h1>Nhập nội dung</h1><p>Dán liên kết chương hoặc tải ảnh, ZIP, CBZ từ máy.</p></div>
+        <div class="landing-import-options">
+          <label class="ui-field" for="lang-select"><span>Ngôn ngữ gốc</span><select id="lang-select" title="Áp dụng cho cả liên kết và tệp tải lên"><option value="ja">Tiếng Nhật</option><option value="ch">Tiếng Trung</option><option value="korean">Tiếng Hàn</option><option value="en">Tiếng Anh</option></select></label>
+          <label class="ui-field" id="workers-label" for="workers-select"><span>Tác vụ song song</span><select id="workers-select"><option value="1">1</option><option value="2" selected>2</option><option value="3">3</option><option value="4">4</option><option value="6">6</option><option value="8">8</option></select></label>
         </div>
-      </section>
-
-      <div id="upload-divider" aria-hidden="true"><span>hoặc</span></div>
-
-      <section class="landing-panel landing-file-source" aria-labelledby="file-source-title">
-        <h2 id="file-source-title">Hoặc nhập tệp</h2>
-        <button id="upload-dropzone" type="button" aria-controls="upload-input">
-          <span class="upload-copy"><strong>Kéo thả tệp vào đây</strong> hoặc <span id="upload-browse-text">chọn tệp từ thiết bị</span></span>
-          <span id="upload-hint">Hỗ trợ PNG, JPG, WEBP, BMP, ZIP và CBZ. Có thể chọn nhiều ảnh cùng lúc.</span>
-        </button>
-        <input type="file" id="upload-input" accept="image/png,image/jpeg,image/webp,image/bmp,.zip,.cbz" multiple hidden>
-      </section>
+        <section class="landing-start" aria-label="Mở chương mới">
+          <section class="landing-panel landing-url-source" aria-labelledby="url-source-title">
+            <span class="source-index">01</span><div class="source-copy"><h2 id="url-source-title">Mở từ liên kết</h2><p>Hỗ trợ liên kết chương từ nguồn truyện.</p></div>
+            <div id="chapter-input" class="chapter-input-grid"><label class="ui-field chapter-url-field" for="chapter-url"><span class="sr-only">Liên kết chương</span><input type="url" id="chapter-url" placeholder="Dán URL chương tại đây" autocomplete="url"></label><button id="load-btn" class="ui-btn ui-btn-primary" type="button">Tải chương</button></div>
+          </section>
+          <section class="landing-panel landing-file-source" aria-labelledby="file-source-title">
+            <span class="source-index">02</span><div class="source-copy"><h2 id="file-source-title">Tải tệp lên</h2><p>PNG, JPG, WEBP, BMP, ZIP hoặc CBZ.</p></div>
+            <button id="upload-dropzone" type="button" aria-controls="upload-input"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0L7 9m5-5 5 5M5 14v5h14v-5"/></svg><span class="upload-copy"><strong>Kéo thả tệp vào đây</strong><span>hoặc <span id="upload-browse-text">chọn từ thiết bị</span></span></span><span id="upload-hint">Có thể chọn nhiều ảnh cùng lúc</span></button>
+            <input type="file" id="upload-input" accept="image/png,image/jpeg,image/webp,image/bmp,.zip,.cbz" multiple hidden>
+          </section>
+        </section>
       </div>
     </section>
-
-    <section class="recent-panel" aria-label="Chương đang xử lý" hidden>
-      <div id="recent-chapters"></div>
-    </section>
-  </section>
-
-  <main id="page-view" class="app-workspace" hidden></main>
+    <main id="page-view" class="app-workspace" hidden></main>
   </div>
 </div>
 
 <div id="settings-backdrop" class="settings-backdrop" hidden></div>
 <aside id="settings-drawer" class="settings-drawer" role="dialog" aria-modal="true" aria-labelledby="settings-title" hidden>
-  <header class="settings-header">
-    <div><span class="ui-eyebrow">Ứng dụng</span><h2 id="settings-title">Cài đặt</h2></div>
-    <button id="settings-close" class="ui-btn ui-btn-ghost" type="button" aria-label="Đóng bảng cài đặt">Đóng</button>
-  </header>
-  <div class="settings-body">
-    <section class="settings-section" aria-labelledby="ai-settings-title">
-      <div class="settings-section-heading"><h3 id="ai-settings-title">Dịch vụ và model AI</h3><p>Lưu key riêng cho từng dịch vụ, tải danh sách model được cấp quyền rồi chọn model dùng cho kiểm tra hoặc dịch. Khóa API được giữ trong kho bí mật của hệ điều hành khi khả dụng.</p></div>
-      <div id="ai-settings-host" class="ai-settings-host"><p class="settings-placeholder">Đang tải cấu hình AI…</p></div>
-    </section>
-  </div>
+  <header class="settings-header"><div><span class="ui-eyebrow">Ứng dụng</span><h2 id="settings-title">Cài đặt</h2></div><button id="settings-close" class="ui-btn ui-btn-ghost" type="button" aria-label="Đóng bảng cài đặt">Đóng</button></header>
+  <div class="settings-body"><section class="settings-section" aria-labelledby="ai-settings-title"><div class="settings-section-heading"><h3 id="ai-settings-title">Dịch vụ và model AI</h3><p>Lưu key riêng cho từng nhà cung cấp, tải model được cấp quyền và chọn model sẽ sử dụng. Khóa API được giữ trong kho bí mật của hệ điều hành khi khả dụng.</p></div><div id="ai-settings-host" class="ai-settings-host"><p class="settings-placeholder">Đang tải cấu hình AI…</p></div></section></div>
 </aside>
-
 <div id="toast-container" aria-live="polite" aria-atomic="true"></div>
-<script src="/static/js/icons.js"></script>
-<script src="/static/js/toast.js"></script>
-<script src="/static/js/api.js"></script>
-<script src="/static/js/upload.js"></script>
-<script src="/static/js/page-navigator.js"></script>
-<script src="/static/js/preview.js"></script>
-<script src="/static/js/review.js"></script>
-<script src="/static/js/review-workspace.js"></script>
-<script src="/static/js/review-stitch-inspector.js"></script>
-<script src="/static/js/chapter-qc.js"></script>
-<script src="/static/js/chapter-ocr.js"></script>
-<script src="/static/js/editor.js"></script>
-<script src="/static/js/editor-box-transform.js"></script>
-<script src="/static/js/ui-shell.js"></script>
-<script src="/static/js/main.js"></script>
+<script src="/static/js/icons.js"></script><script src="/static/js/toast.js"></script><script src="/static/js/api.js"></script><script src="/static/js/upload.js"></script><script src="/static/js/page-navigator.js"></script><script src="/static/js/preview.js"></script><script src="/static/js/review.js"></script><script src="/static/js/review-workspace.js"></script><script src="/static/js/review-stitch-inspector.js"></script><script src="/static/js/chapter-qc.js"></script><script src="/static/js/chapter-ocr.js"></script><script src="/static/js/editor.js"></script><script src="/static/js/editor-box-transform.js"></script><script src="/static/js/ui-shell.js"></script><script src="/static/js/main.js"></script>
 </body>
 </html>

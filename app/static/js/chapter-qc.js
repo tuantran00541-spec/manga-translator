@@ -466,28 +466,7 @@
     workspaceRoot().querySelectorAll(".review-workspace-shell").forEach(bindWorkspace);
   }
 
-  let scanScheduled = false;
-  function scheduleScan() {
-    if (scanScheduled) return;
-    scanScheduled = true;
-    window.requestAnimationFrame(() => {
-      scanScheduled = false;
-      scan();
-    });
-  }
-
-  function observeWorkspaceRoot() {
-    const root = document.getElementById("page-view");
-    if (!root || root.dataset.chapterQcObserved === "1") return;
-    root.dataset.chapterQcObserved = "1";
-    const observer = new MutationObserver(scheduleScan);
-    observer.observe(root, { childList: true, subtree: true });
-  }
-
-  observeWorkspaceRoot();
-  document.addEventListener("DOMContentLoaded", () => {
-    observeWorkspaceRoot();
-    scheduleScan();
-  });
-  scan();
+  // Mount once from the Review lifecycle instead of watching the whole
+  // workspace subtree. The job-specific observer remains scoped and cleaned.
+  window.mountChapterQC = scan;
 })();

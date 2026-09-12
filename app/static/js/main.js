@@ -33,8 +33,7 @@ window._processSelectedPagesOnce = async function responsiveProcessSelectedPages
 
   const chapterId = currentChapterId;
   const total = indices.length;
-  const btn = document.querySelector("#preview-toolbar .preview-primary-action")
-    || document.querySelector("#preview-toolbar button");
+  const btn = document.querySelector(".preview-primary-action");
   let completed = 0;
   let excludedRegionsSaved = false;
 
@@ -164,8 +163,9 @@ document.addEventListener("DOMContentLoaded", () => {
   if (typeof loadFonts === "function") loadFonts();
 
   const urlHash = (window.location.hash || "").replace(/^#/, "").trim();
-  const savedActive = urlHash || sessionStorage.getItem("mt_active_chapter");
-  if (savedActive && typeof resumeChapter === "function") {
-    resumeChapter(savedActive);
+  // Only an explicit deep link resumes immediately. A stale browser session
+  // must not skip the new Home screen on every application launch.
+  if (urlHash && typeof resumeChapter === "function") {
+    resumeChapter(urlHash);
   }
 });

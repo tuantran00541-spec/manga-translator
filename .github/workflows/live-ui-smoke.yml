@@ -47,7 +47,7 @@ jobs:
           cat server.log
           exit 1
 
-      - name: Exercise desktop and mobile editor flows
+      - name: Exercise desktop and mobile application flows
         run: python scripts/live_ui_smoke.py --artifacts artifacts/ui-smoke
 
       - name: Upload browser evidence

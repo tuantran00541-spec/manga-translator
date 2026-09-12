@@ -42,6 +42,7 @@ window.cleanupPreviewDrawListeners = cleanupPreviewDrawListeners;
 function renderPreview() {
   const container = document.getElementById("page-view");
   if (!container || !currentManifest?.pages?.length) return;
+  window.setAppStage?.("preview");
 
   if (window.currentChapterId && previewLastChapterId !== window.currentChapterId) {
     previewLastChapterId = window.currentChapterId;
@@ -76,11 +77,7 @@ function renderPreview() {
   title.textContent = `${pages.filter((item) => !item.skipped).length}/${pages.length} lát được chọn`;
   heading.appendChild(title);
 
-  const processBtn = document.createElement("button");
-  processBtn.className = "ui-btn ui-btn-primary preview-primary-action";
-  processBtn.textContent = "Bắt đầu xử lý";
-  processBtn.addEventListener("click", processSelectedPages);
-  toolbar.append(heading, processBtn);
+  toolbar.appendChild(heading);
   container.appendChild(toolbar);
 
   const layout = document.createElement("div");

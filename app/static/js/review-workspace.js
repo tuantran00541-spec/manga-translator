@@ -4,6 +4,7 @@
   let activeReviewIndex = 0;
   let reviewLastChapterId = null;
   const maskSnapshots = new Map();
+  let aiSettingsInstance = null;
 
   function stopCardBrush(card) {
     if (!card) return;
@@ -44,12 +45,13 @@
     return () => observer.disconnect();
   }
 
-  function mountGeminiSettings() {
+  function createAIProviderSettings() {
+    if (aiSettingsInstance?.config?.isConnected) return aiSettingsInstance.status;
     const config = document.createElement("div");
-    config.className = "gemini-qc-config ai-provider-config";
+    config.className = "ai-provider-config";
 
     const status = document.createElement("span");
-    status.className = "gemini-qc-status";
+    status.className = "ai-provider-status";
     status.textContent = "Kiểm tra AI: Đang kiểm tra cấu hình…";
     const active = document.createElement("select");
     active.className = "ui-select ai-active-provider";
@@ -68,10 +70,10 @@
       const title = document.createElement("strong");
       title.textContent = labels[id];
       const providerStatus = document.createElement("span");
-      providerStatus.className = "gemini-qc-status";
+      providerStatus.className = "ai-provider-status";
       const key = document.createElement("input");
       key.type = "password";
-      key.className = "gemini-key-input";
+      key.className = "api-key-input";
       key.placeholder = `${labels[id]} API key`;
       key.autocomplete = "new-password";
       key.setAttribute("aria-label", `${labels[id]} API key`);
@@ -155,9 +157,10 @@
     if (typeof window.mountAISettings === "function") {
       window.mountAISettings(config);
     }
+    aiSettingsInstance = { config, status };
     return status;
   }
-  window.createAIProviderSettings = mountGeminiSettings;
+  window.createAIProviderSettings = createAIProviderSettings;
 
   function captureMaskSnapshot(card) {
     if (!card) return;
@@ -179,6 +182,7 @@
     window.cleanupReviewWorkspace?.();
     const container = document.getElementById("page-view");
     if (!container) return;
+    window.setAppStage?.("review");
 
     if (window._reviewKeyDownHandler) {
       window.removeEventListener("keydown", window._reviewKeyDownHandler);
@@ -199,7 +203,7 @@
       maskSnapshots.clear();
     }
 
-    const geminiStatus = mountGeminiSettings();
+    const aiSettingsStatus = createAIProviderSettings();
     const pageIndices = (window.currentManifest?.pages || [])
       .map((page, index) => ({ page, index }))
       .filter(({ page }) => !page.skipped)
@@ -234,7 +238,7 @@
     actions.className = "review-actions-group";
     const aiStatus = document.createElement("span");
     aiStatus.className = "review-ai-status";
-    const cleanupAIStatus = bindAIStatus(geminiStatus, aiStatus);
+    const cleanupAIStatus = bindAIStatus(aiSettingsStatus, aiStatus);
 
     const help = document.createElement("details");
     help.className = "ui-disclosure review-help";
@@ -476,6 +480,8 @@
 
     renderActive();
     window.setupWorkbenchPanels?.("review");
+    window.mountChapterOCR?.();
+    window.mountChapterQC?.();
     if (typeof window.mountStitchInspector === "function") {
       window.mountStitchInspector();
     }

@@ -126,8 +126,10 @@ def list_chapters() -> list[dict]:
                 continue
             item = {
                 "chapter_id": manifest.get("chapter_id", d.name),
+                "chapter_name": manifest.get("chapter_name", ""),
                 "source_url": manifest.get("source_url", ""),
                 "total_pages": len(pages),
+                "cover": f"/api/image/{d.name}/0/original",
                 "workflow": manifest.get("workflow", {"stage": "preview", "page_index": 0}),
                 "updated_at": mtime,
             }

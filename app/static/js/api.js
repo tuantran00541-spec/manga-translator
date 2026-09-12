@@ -119,6 +119,8 @@ async function loadRecentChapters() {
   const panel = container.closest(".recent-panel");
   const setPanelVisible = (visible) => {
     if (panel) panel.hidden = !visible;
+    const empty = document.getElementById("home-empty-state");
+    if (empty) empty.hidden = visible;
   };
 
   try {
@@ -143,7 +145,7 @@ async function loadRecentChapters() {
 
     setPanelVisible(true);
     container.replaceChildren();
-    appendText(container, "div", "recent-title", "Chương đang xử lý");
+    appendText(container, "div", "recent-title", "Dự án gần đây");
     const list = document.createElement("div");
     list.className = "recent-list";
     const stageLabels = {
@@ -153,20 +155,50 @@ async function loadRecentChapters() {
     };
 
     chapters.forEach((ch) => {
-      const card = document.createElement("div");
+      const card = document.createElement("button");
       card.className = "recent-card";
+      card.type = "button";
+      const chapterId = String(ch?.chapter_id || "");
+      card.setAttribute("aria-label", `Mở lại chương ${chapterId || "không rõ"}`);
+      card.addEventListener("click", () => resumeChapter(chapterId));
+
+      const coverWrap = document.createElement("div");
+      coverWrap.className = "recent-cover-wrap";
+      if (ch?.cover) {
+        const cover = document.createElement("img");
+        cover.className = "recent-cover";
+        cover.src = String(ch.cover);
+        cover.alt = "";
+        cover.loading = "lazy";
+        cover.decoding = "async";
+        cover.addEventListener("error", () => {
+          cover.remove();
+          appendText(coverWrap, "span", "recent-cover-fallback", "Không có ảnh bìa");
+        }, { once: true });
+        coverWrap.appendChild(cover);
+      } else {
+        appendText(coverWrap, "span", "recent-cover-fallback", "Không có ảnh bìa");
+      }
+      card.appendChild(coverWrap);
+
       const info = document.createElement("div");
       info.className = "recent-info";
-
-      appendText(info, "strong", "", String(ch?.chapter_id || "(không rõ chương)"));
-      info.appendChild(document.createElement("br"));
+      let displayName = String(ch?.chapter_name || "").trim() || chapterId || "Chương chưa đặt tên";
+      const sourceUrl = String(ch?.source_url || "");
+      if (sourceUrl && !ch?.chapter_name) {
+        try {
+          const parsed = new URL(sourceUrl);
+          const pathName = decodeURIComponent(parsed.pathname).split("/").filter(Boolean).pop();
+          if (pathName) displayName = pathName.replace(/[-_]+/g, " ");
+        } catch (_) {}
+      }
+      appendText(info, "strong", "recent-name", displayName);
       appendText(
         info,
         "span",
         "recent-url",
-        String(ch?.source_url || "(không có liên kết nguồn)"),
+        sourceUrl || chapterId,
       );
-      info.appendChild(document.createElement("br"));
 
       const meta = document.createElement("span");
       meta.className = "recent-meta";
@@ -182,13 +214,6 @@ async function loadRecentChapters() {
       );
       info.appendChild(meta);
       card.appendChild(info);
-
-      const btn = document.createElement("button");
-      btn.className = "ui-btn ui-btn-ghost ui-btn-compact recent-resume-btn";
-      btn.type = "button";
-      btn.textContent = "Tiếp tục xử lý";
-      btn.addEventListener("click", () => resumeChapter(String(ch?.chapter_id || "")));
-      card.appendChild(btn);
       list.appendChild(card);
     });
 

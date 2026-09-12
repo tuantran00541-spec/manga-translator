@@ -47,6 +47,9 @@ jobs:
       - name: Run studio runtime regression
         run: node scripts/studio_runtime_sanity.js
 
+      - name: Run theme and application shell regression
+        run: node scripts/theme_runtime_sanity.js
+
       - name: Test-suite location
         run: |
           echo "Runtime main intentionally excludes tests/."

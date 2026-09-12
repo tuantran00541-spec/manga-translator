@@ -22,7 +22,55 @@ def _wait_for_editor(page: Page) -> None:
     expect(page.locator(".text-object-overlay").first).to_be_visible()
 
 
+def _exercise_landing(page: Page, base_url: str, name: str, artifacts: Path) -> None:
+    page.goto(base_url, wait_until="networkidle")
+    expect(page.locator("#home-view")).to_be_visible()
+    expect(page.get_by_role("heading", name="Xin chào!")).to_be_visible()
+    expect(page.locator(".recent-card")).to_have_count(1)
+    expect(page.locator("#theme-select")).to_have_value("system")
+
+    if name == "mobile":
+        page.locator("#sidebar-toggle").click()
+        expect(page.locator("body")).to_have_class("sidebar-open")
+        page.locator('.sidebar-link[data-route="import"]').click()
+    else:
+        page.locator("#start-action").click()
+    expect(page.locator("#import-view")).to_be_visible()
+    expect(page.locator("#home-view")).to_be_hidden()
+    expect(page.locator("#chapter-url")).to_be_focused()
+    page.screenshot(path=str(artifacts / f"{name}-import.png"), full_page=True)
+
+    if name == "mobile":
+        page.locator("#sidebar-toggle").click()
+        page.locator('.sidebar-link[data-route="home"]').click()
+    else:
+        page.locator('.sidebar-link[data-route="home"]').click()
+        page.locator("#theme-select").select_option("dark")
+        expect(page.locator("html")).to_have_attribute("data-resolved-theme", "dark")
+        page.locator("#theme-select").select_option("light")
+        expect(page.locator("html")).to_have_attribute("data-resolved-theme", "light")
+        page.locator("#theme-select").select_option("system")
+    expect(page.locator("#home-view")).to_be_visible()
+    page.screenshot(path=str(artifacts / f"{name}-home.png"), full_page=True)
+
+
+def _open_stage(page: Page, stage: str, mobile: bool = False) -> None:
+    if mobile:
+        page.locator("#sidebar-toggle").click()
+        expect(page.locator("body")).to_have_class("sidebar-open")
+    page.locator(f'.sidebar-link[data-stage="{stage}"]').click()
+    expect(page.locator("body")).to_have_attribute("data-app-stage", stage)
+    expect(page.locator("body")).not_to_have_class("sidebar-open")
+
+
 def _exercise_desktop(page: Page) -> None:
+    _wait_for_editor(page)
+    _open_stage(page, "preview")
+    expect(page.locator(".preview-workspace")).to_be_visible()
+    expect(page.locator("#start-action.preview-primary-action")).to_be_visible()
+    _open_stage(page, "review")
+    expect(page.locator(".review-workspace-shell")).to_be_visible()
+    _open_stage(page, "editor")
     _wait_for_editor(page)
     page.locator(".text-object-overlay").first.click()
     expect(page.locator(".translation-textarea")).to_be_visible()
@@ -53,6 +101,13 @@ def _exercise_mobile(page: Page) -> None:
         raise AssertionError(f"mobile editor canvas is not usable: {canvas_box}")
     expect(page.locator("#workbench-panel-controls")).to_be_visible()
     expect(page.locator(".page-navigator")).to_be_hidden()
+
+    _open_stage(page, "preview", mobile=True)
+    expect(page.locator(".preview-workspace")).to_be_visible()
+    _open_stage(page, "review", mobile=True)
+    expect(page.locator(".review-workspace-shell")).to_be_visible()
+    _open_stage(page, "editor", mobile=True)
+    _wait_for_editor(page)
 
     page.locator("#toggle-page-panel").click()
     expect(page.locator(".page-navigator")).to_be_visible()
@@ -120,6 +175,7 @@ def main() -> None:
                     if message.type == "error"
                     else None,
                 )
+                _exercise_landing(page, args.base_url.rstrip("/"), name, args.artifacts)
                 page.goto(target, wait_until="networkidle")
                 exercise(page)
                 page.locator(".translation-canvas-host img").scroll_into_view_if_needed()
