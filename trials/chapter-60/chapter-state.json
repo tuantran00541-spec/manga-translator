@@ -5,11 +5,11 @@
   "chapter_number": 60,
   "source_url": "https://asurascans.com/comics/a-cadet-becomes-a-prophet-53fc8424/chapter/60",
   "branch": "trial/chapter-render-60",
-  "source_of_truth_sha": "c19e8ebc81c65829e8d9f4d8f56a99be8a107d94",
-  "current_stage": "TRANSLATION_PENDING",
-  "last_passed_checkpoint": "OCR",
-  "current_artifact": "04b-ocr-curated-f1cd0121",
-  "review_evidence_artifact": "04c-curated-ocr-scene-proof-f1cd0121",
+  "source_of_truth_sha": "764c9f8605f40d7c4c2e508c64cb8c006134cec7",
+  "current_stage": "FINAL",
+  "last_passed_checkpoint": "FINAL",
+  "current_artifact": "07-final-f1cd0121",
+  "review_evidence_artifact": "06c-render-preview-f1cd0121",
   "blockers": [],
-  "next_action": "RUN_TRANSLATION_DRAFT_AND_CONTEXT_REVIEW"
+  "next_action": "COMPLETE"
 }
