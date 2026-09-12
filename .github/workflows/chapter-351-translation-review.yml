@@ -1,0 +1,262 @@
+name: Chapter 351 Checkpoint 04 Translation Review
+
+on:
+  push:
+    branches:
+      - chapter/logging-10000-years-into-the-future-351
+    paths:
+      - .github/workflows/chapter-351-translation-review.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: chapter-351-human-loop
+  cancel-in-progress: false
+
+jobs:
+  translation-review:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      CURATED_RUN_ID: "34725320940"
+      CURATED_ARTIFACT: 03b-ocr-curated-c3513510
+      STATE_DIR: chapters/logging-10000-years-into-the-future-351
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chapter/logging-10000-years-into-the-future-351
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Restore approved OCR curation checkpoint
+        run: |
+          rm -rf checkpoint/03b-curated checkpoint/04-translation-review
+          mkdir -p checkpoint/03b-curated checkpoint/04-translation-review
+          gh run download "$CURATED_RUN_ID" -n "$CURATED_ARTIFACT" -D checkpoint/03b-curated
+          test -f checkpoint/03b-curated/processed-manifest.json
+          test -f checkpoint/03b-curated/ocr-curation-summary.json
+          test -f checkpoint/03b-curated/active-source-text.json
+          test -f "$STATE_DIR/translation-map.json"
+          test -f "$STATE_DIR/terminology.json"
+
+      - name: Apply reviewed Vietnamese translation map
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+          import json, re
+          from pathlib import Path
+          from app.text_objects import ensure_page_text_objects
+
+          state = Path("chapters/logging-10000-years-into-the-future-351")
+          curated = Path("checkpoint/03b-curated")
+          out = Path("checkpoint/04-translation-review")
+          manifest = json.loads((curated / "processed-manifest.json").read_text(encoding="utf-8"))
+          csum = json.loads((curated / "ocr-curation-summary.json").read_text(encoding="utf-8"))
+          tmap = json.loads((state / "translation-map.json").read_text(encoding="utf-8"))
+          terminology = json.loads((state / "terminology.json").read_text(encoding="utf-8"))
+
+          if csum.get("status") != "PASS" or not csum.get("editorial_pass"):
+              raise SystemExit("OCR curation checkpoint is not editorial PASS")
+          if csum.get("active_story_objects") != 71 or csum.get("resurrection_count") != 0:
+              raise SystemExit(f"bad OCR curation contract: {csum}")
+          if tmap.get("target_language") != "vi" or len(tmap.get("objects") or []) != 71:
+              raise SystemExit("translation map must contain exactly 71 Vietnamese objects")
+          if terminology.get("status") != "LOCKED_FOR_CHAPTER_351":
+              raise SystemExit("terminology is not locked")
+
+          box_index = {}
+          obj_index = {}
+          tombstone_refs = set()
+          for page in manifest.get("pages") or []:
+              for box in page.get("boxes") or []:
+                  if isinstance(box, dict) and box.get("id"):
+                      box_index[str(box["id"])] = (page, box)
+              for obj in page.get("text_objects") or []:
+                  if not isinstance(obj, dict):
+                      continue
+                  refs = [str(v) for v in (obj.get("source_boxes") or []) if isinstance(v, str)]
+                  for ref in refs:
+                      obj_index.setdefault(ref, []).append(obj)
+                  if obj.get("origin") == "human_review_drop" and obj.get("source_missing") and obj.get("auto_generated") is False:
+                      tombstone_refs.update(refs)
+
+          mapped = set()
+          review_rows = []
+          for item in tmap["objects"]:
+              box_id = str(item.get("box_id") or "")
+              if not box_id or box_id in mapped:
+                  raise SystemExit(f"missing/duplicate translation box id: {box_id!r}")
+              mapped.add(box_id)
+              if box_id in tombstone_refs:
+                  raise SystemExit(f"translation attempts to target tombstone: {box_id}")
+              if box_id not in box_index:
+                  raise SystemExit(f"translation target missing from manifest: {box_id}")
+              page, box = box_index[box_id]
+              if box.get("removed") or box.get("ocr_eligible") is False:
+                  raise SystemExit(f"translation target is inactive: {box_id}")
+              source = str(item.get("source") or "")
+              current_source = str(box.get("ocr_text") or "")
+              if source != current_source:
+                  raise SystemExit(f"source drift for {box_id}: map={source!r}, manifest={current_source!r}")
+              vi = re.sub(r"[ \t]+", " ", str(item.get("translation") or "")).strip()
+              if not vi:
+                  raise SystemExit(f"empty Vietnamese translation: {box_id}")
+              refs = obj_index.get(box_id, [])
+              if len(refs) != 1:
+                  raise SystemExit(f"translation target must map to exactly one logical object: {box_id} -> {len(refs)}")
+              obj = refs[0]
+              if obj.get("source_missing") or obj.get("origin") != "human_ocr_review" or obj.get("auto_generated") is not False:
+                  raise SystemExit(f"translation target is not approved human OCR object: {box_id}")
+              if not obj.get("human_reviewed"):
+                  raise SystemExit(f"translation target lacks OCR human review: {box_id}")
+              obj["translation"] = vi
+              obj["translation_source"] = "human_localization_review"
+              obj["translation_input_text"] = source
+              obj["translation_reviewed"] = True
+              obj["translation_language"] = "vi"
+              review_rows.append({
+                  "box_id": box_id,
+                  "source_page": int(page.get("source_page") or 0),
+                  "slice_index": int(page.get("slice_index") or 0),
+                  "source": source,
+                  "translation": vi,
+                  "source_chars": len(source.replace("\n", " ")),
+                  "translation_chars": len(vi),
+                  "char_ratio": round(len(vi) / max(1, len(source.replace("\n", " "))), 3),
+              })
+
+          active_ids = []
+          untranslated = []
+          for page in manifest.get("pages") or []:
+              for box in page.get("boxes") or []:
+                  if not isinstance(box, dict) or box.get("removed") or box.get("ocr_eligible") is False:
+                      continue
+                  box_id = str(box.get("id") or "")
+                  if not box_id:
+                      continue
+                  refs = obj_index.get(box_id, [])
+                  if len(refs) != 1:
+                      raise SystemExit(f"active box maps to {len(refs)} objects: {box_id}")
+                  obj = refs[0]
+                  active_ids.append(box_id)
+                  if not str(obj.get("translation") or "").strip():
+                      untranslated.append(box_id)
+                  if obj.get("translation_source") != "human_localization_review" or not obj.get("translation_reviewed"):
+                      raise SystemExit(f"active object lacks human translation ownership: {box_id}")
+
+          if len(active_ids) != 71 or len(set(active_ids)) != 71:
+              raise SystemExit(f"expected 71 active story objects, got {len(active_ids)}")
+          if mapped != set(active_ids):
+              raise SystemExit(f"translation map mismatch: missing={sorted(set(active_ids)-mapped)} extra={sorted(mapped-set(active_ids))}")
+          if untranslated:
+              raise SystemExit(f"untranslated active story objects: {untranslated}")
+
+          # Terminology assertions. These are deliberately strict for this chapter.
+          corpus = "\n".join(row["translation"] for row in review_rows)
+          source_corpus = "\n".join(row["source"] for row in review_rows)
+          term_checks = [
+              ("LU SHENG", "Lục Thánh"),
+              ("DARIUS", "Đế Lưu Ách Tư"),
+              ("ZENITH SUN POWER", "Cực Dương chi lực"),
+              ("DESTRUCTION LAW", "Hủy Diệt Pháp Tắc"),
+              ("RULER-GRADE", "cấp Chúa Tể"),
+              ("ARROW OF\nTHE FALLEN\nREALM", "Đọa Vực Chi Tiễn"),
+          ]
+          terminology_results = []
+          for source_term, vi_term in term_checks:
+              source_present = source_term in source_corpus
+              vi_present = vi_term in corpus
+              terminology_results.append({"source": source_term, "vi": vi_term, "source_present": source_present, "vi_present": vi_present})
+              if source_present and not vi_present:
+                  raise SystemExit(f"locked terminology missing from translation corpus: {source_term} -> {vi_term}")
+          forbidden = ["Lu Sheng", "Darius", "Ruler-grade", "Destruction Law", "Arrow of the Fallen Realm"]
+          leaked = [term for term in forbidden if term in corpus]
+          if leaked:
+              raise SystemExit(f"English terminology leaked into Vietnamese translation: {leaked}")
+
+          # Reconciliation must remain safe after translations are attached.
+          for _ in range(2):
+              for page in manifest.get("pages") or []:
+                  ensure_page_text_objects(page)
+          resurrection_count = 0
+          tombstone_translation_count = 0
+          for page in manifest.get("pages") or []:
+              for obj in page.get("text_objects") or []:
+                  if not isinstance(obj, dict):
+                      continue
+                  refs = {str(v) for v in (obj.get("source_boxes") or []) if isinstance(v, str)}
+                  if refs & tombstone_refs:
+                      if obj.get("origin") != "human_review_drop" or obj.get("auto_generated") is not False or not obj.get("source_missing"):
+                          resurrection_count += 1
+                      if str(obj.get("translation") or "").strip():
+                          tombstone_translation_count += 1
+          if resurrection_count or tombstone_translation_count:
+              raise SystemExit(f"post-translation tombstone invariant failed: resurrection={resurrection_count}, translated_tombstones={tombstone_translation_count}")
+
+          review_rows.sort(key=lambda r: (r["source_page"], r["slice_index"], r["box_id"]))
+          long_rows = [r for r in review_rows if r["translation_chars"] >= 75]
+          result = {
+              "checkpoint": "04-translation-review",
+              "chapter_id": tmap["chapter_id"],
+              "status": "PASS",
+              "editorial_pass": True,
+              "active_story_objects": len(active_ids),
+              "translated_story_objects": len(review_rows),
+              "active_untranslated_story_objects": len(untranslated),
+              "terminology_locked": True,
+              "terminology_checks": terminology_results,
+              "english_term_leaks": leaked,
+              "tombstone_translation_count": tombstone_translation_count,
+              "resurrection_count": resurrection_count,
+              "long_translation_candidates": len(long_rows),
+              "fit_policy": "resolve at typography preflight; rewrite before shrinking; hard minimum 28px",
+              "next_action": "TYPOGRAPHY_PREFLIGHT_FIXED_FONT_SIZES"
+          }
+          (out / "translated-manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+          (out / "translation-review-table.json").write_text(json.dumps(review_rows, ensure_ascii=False, indent=2), encoding="utf-8")
+          (out / "long-translation-candidates.json").write_text(json.dumps(long_rows, ensure_ascii=False, indent=2), encoding="utf-8")
+          (out / "translation-review-summary.json").write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+          (out / "HUMAN_CHECKPOINT.txt").write_text(
+              "CHECKPOINT: TRANSLATION REVIEW PASS\n"
+              "71/71 story objects have reviewed Vietnamese localization. Terminology is locked and tombstones remain untranslated/non-resurrected.\n"
+              "Next: fixed-size typography preflight and fit review; do not use autosize.\n",
+              encoding="utf-8"
+          )
+          print(json.dumps(result, indent=2, ensure_ascii=False))
+          PY
+
+      - name: Verify translation checkpoint contract
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          s=json.loads(Path("checkpoint/04-translation-review/translation-review-summary.json").read_text(encoding="utf-8"))
+          required={
+            "status":"PASS",
+            "editorial_pass":True,
+            "active_story_objects":71,
+            "translated_story_objects":71,
+            "active_untranslated_story_objects":0,
+            "terminology_locked":True,
+            "tombstone_translation_count":0,
+            "resurrection_count":0,
+          }
+          for k,v in required.items():
+              if s.get(k)!=v:
+                  raise SystemExit(f"translation gate failed {k}: expected {v!r}, got {s.get(k)!r}")
+          print(json.dumps(s, indent=2, ensure_ascii=False))
+          PY
+
+      - name: Upload translation review checkpoint
+        uses: actions/upload-artifact@v4
+        with:
+          name: 04-translation-reviewed-c3513510
+          path: checkpoint/04-translation-review/
+          retention-days: 7
+          if-no-files-found: error
