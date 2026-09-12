@@ -107,8 +107,37 @@ jobs:
           print('approved CLEAN stack verified')
           PY
 
-      - name: Validate OCR helper syntax
-        run: python -m py_compile "$STATE_DIR/run_ocr_review.py"
+      - name: Adapt review-crop helper to current OCR service API
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          path=Path(os.environ['STATE_DIR'])/'run_ocr_review.py'
+          text=path.read_text(encoding='utf-8')
+          old='from app.ocr.service import OCRService, ocr_crop_from_box, ocr_target_skip_reason'
+          new='from app.ocr.service import OCRService, _ocr_crop_bounds, ocr_target_skip_reason'
+          if old not in text:
+              raise SystemExit('expected legacy review-crop import not found')
+          text=text.replace(old,new,1)
+          marker='EXPECTED_TOMBSTONES = 8\n\n'
+          adapter=(
+              'def ocr_crop_from_box(image, box):\n'
+              '    x1, y1, x2, y2 = _ocr_crop_bounds(image.shape, box)\n'
+              '    return image[y1:y2, x1:x2]\n\n'
+          )
+          if marker not in text:
+              raise SystemExit('OCR helper adapter insertion marker missing')
+          text=text.replace(marker,marker+adapter,1)
+          path.write_text(text,encoding='utf-8')
+          PY
+
+      - name: Validate OCR helper syntax and imports
+        run: |
+          python -m py_compile "$STATE_DIR/run_ocr_review.py"
+          python - <<'PY'
+          from app.ocr.service import OCRService, _ocr_crop_bounds, ocr_target_skip_reason
+          print('current OCR service API imports verified')
+          PY
 
       - name: Run production OCR from RAW and build human review pack
         run: |
