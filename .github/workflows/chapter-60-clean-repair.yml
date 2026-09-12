@@ -1,0 +1,120 @@
+name: Chapter 60 Checkpoint 02B Clean Local Repair
+
+on:
+  push:
+    branches:
+      - trial/chapter-render-60
+    paths:
+      - .github/workflows/chapter-60-clean-repair.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: chapter-60-human-loop
+  cancel-in-progress: false
+
+jobs:
+  local-clean-repair:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 35
+    env:
+      PYTHONUNBUFFERED: "1"
+      MANGA_USE_DYNAMIC_LAMA: "1"
+      MANGA_ORT_PROVIDER: openvino
+      MANGA_ORT_REQUIRE_PROVIDER: "1"
+      MANGA_ORT_OPENVINO_SCOPE: detectors
+      MANGA_ORT_OPENVINO_THREADS: "2"
+      MANGA_ORT_OPENVINO_STREAMS: "1"
+      MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
+      OPENBLAS_NUM_THREADS: "1"
+      CLEAN_RUN_ID: "34664212904"
+      CLEAN_ARTIFACT: 02-clean-review-f1cd0121
+      REPAIR_ROOT: checkpoint/02b-clean-repaired
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: trial/chapter-render-60
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install local repair runtime
+        run: |
+          python -m pip install \
+            numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 \
+            onnxruntime-openvino==1.24.1 psutil==6.1.1 loguru==0.7.2 \
+            pydantic==2.9.2 filelock==3.16.1
+
+      - name: Restore detector and inpaint models
+        id: models
+        uses: actions/cache@v4
+        with:
+          path: |
+            models/*.onnx
+            models/.e2e-provenance.json
+          key: processing-profile-models-b224548-v1
+
+      - name: Read pinned model provisioner
+        if: steps.models.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: b22454827f8190655d7070b80eb20c2550beadfa
+          path: benchmark-bootstrap
+          sparse-checkout: scripts/provision_real_e2e_models.py
+          sparse-checkout-cone-mode: false
+
+      - name: Provision public-equivalent production models
+        if: steps.models.outputs.cache-hit != 'true'
+        run: |
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple torch==2.5.1+cpu torchvision==0.20.1+cpu
+          python -m pip install --no-deps ultralytics==8.3.221 onnx==1.17.0 onnxslim==0.1.71
+          python -m pip install sympy==1.13.1 PyYAML==6.0.2 scipy==1.14.1 tqdm==4.67.1 matplotlib==3.9.2 pandas==2.2.3 py-cpuinfo==9.0.0 ml_dtypes==0.5.3 colorama==0.4.6 polars==1.33.1 ultralytics-thop==2.0.17
+          python benchmark-bootstrap/scripts/provision_real_e2e_models.py
+          cp benchmark-bootstrap/models/*.onnx models/
+          cp benchmark-bootstrap/models/.e2e-provenance.json models/
+
+      - name: Restore reviewed clean checkpoint
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf "$REPAIR_ROOT"
+          mkdir -p "$REPAIR_ROOT"
+          gh run download "$CLEAN_RUN_ID" -n "$CLEAN_ARTIFACT" -D "$REPAIR_ROOT"
+          test -f "$REPAIR_ROOT/processed/manifest.json"
+          test -d "$REPAIR_ROOT/raw/sliced"
+          test -f "$REPAIR_ROOT/clean-review-summary.json"
+
+      - name: Apply human-scoped local repairs
+        run: |
+          python trials/chapter-60/repair_clean.py "$REPAIR_ROOT"
+
+      - name: Validate repair checkpoint
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          root=Path(os.environ['REPAIR_ROOT'])
+          meta=json.loads((root/'clean-repair-metadata.json').read_text(encoding='utf-8'))
+          expected=[0,14,22,30,43,44,50,55,57,61,63,64]
+          if meta.get('checkpoint')!='02b-clean-repaired': raise SystemExit(meta)
+          if meta.get('repair_scope')!='LOCAL_ONLY': raise SystemExit(meta)
+          if meta.get('operation_count')!=13: raise SystemExit(meta)
+          if meta.get('touched_pages')!=expected: raise SystemExit(meta)
+          if meta.get('next_action')!='STOP_FOR_HUMAN_REPAIR_REVIEW': raise SystemExit(meta)
+          if not (root/'repair-proof/focused-repairs.jpg').is_file(): raise SystemExit('missing focused proof')
+          if not (root/'repair-proof/full-touched-slices.jpg').is_file(): raise SystemExit('missing full-slice proof')
+          print(json.dumps({'repair_checkpoint':'valid','operations':13,'touched_pages':expected},indent=2))
+          PY
+
+      - name: Upload checkpoint 02B artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: 02b-clean-repaired-f1cd0121
+          path: checkpoint/02b-clean-repaired
+          if-no-files-found: error
+          retention-days: 7
