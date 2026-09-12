@@ -8,8 +8,6 @@ from pathlib import Path
 
 from playwright.sync_api import Page, expect, sync_playwright
 
-from create_ui_smoke_fixture import CHAPTER_ID
-
 
 def _wait_for_editor(page: Page) -> None:
     page.wait_for_selector(".translation-workspace")
@@ -157,7 +155,6 @@ def main() -> None:
     parser.add_argument("--artifacts", type=Path, default=Path("artifacts/ui-smoke"))
     args = parser.parse_args()
     args.artifacts.mkdir(parents=True, exist_ok=True)
-    target = f"{args.base_url.rstrip('/')}/#{CHAPTER_ID}"
     failures: list[str] = []
 
     with sync_playwright() as playwright:
@@ -176,7 +173,11 @@ def main() -> None:
                     else None,
                 )
                 _exercise_landing(page, args.base_url.rstrip("/"), name, args.artifacts)
-                page.goto(target, wait_until="networkidle")
+                # Exercise the same recent-project control a user clicks.
+                # page.goto("/#chapter") from an already-loaded "/" page is
+                # only a same-document hash change and does not rerun the
+                # DOMContentLoaded deep-link boot.
+                page.locator(".recent-card").click()
                 exercise(page)
                 page.locator(".translation-canvas-host img").scroll_into_view_if_needed()
                 metrics = _canvas_metrics(page)
@@ -186,6 +187,13 @@ def main() -> None:
                 if name == "mobile" and metrics["imageWidth"] < metrics["viewportWidth"] * 0.6:
                     raise AssertionError(f"mobile image is unexpectedly collapsed: {metrics}")
                 page.screenshot(path=str(args.artifacts / f"{name}.png"), full_page=True)
+
+                # A hard reload with the chapter hash must restore the editor.
+                # This covers direct links and browser refreshes as well as
+                # opening a card from the home screen.
+                page.reload(wait_until="networkidle")
+                _wait_for_editor(page)
+                expect(page.locator("body")).to_have_attribute("data-app-stage", "editor")
                 print(f"{name}: PASS")
                 page.close()
         finally:
