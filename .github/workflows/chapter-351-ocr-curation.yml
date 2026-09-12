@@ -1,0 +1,339 @@
+name: Chapter 351 Checkpoint 03B OCR Human Curation
+
+on:
+  push:
+    branches:
+      - chapter/logging-10000-years-into-the-future-351
+    paths:
+      - .github/workflows/chapter-351-ocr-curation.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: chapter-351-human-loop
+  cancel-in-progress: false
+
+jobs:
+  curate-ocr:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      OCR_RUN_ID: "34702864881"
+      OCR_ARTIFACT: 03-ocr-review-c3513510
+      LOGO_RUN_ID: "34703327058"
+      LOGO_ARTIFACT: 02c-clean-logo-repair-c3513510
+      STATE_DIR: chapters/logging-10000-years-into-the-future-351
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chapter/logging-10000-years-into-the-future-351
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Restore reviewed OCR and logo checkpoints
+        run: |
+          rm -rf checkpoint/03-ocr checkpoint/02c-logo checkpoint/03b-curated
+          mkdir -p checkpoint/03-ocr checkpoint/02c-logo checkpoint/03b-curated
+          gh run download "$OCR_RUN_ID" -n "$OCR_ARTIFACT" -D checkpoint/03-ocr
+          gh run download "$LOGO_RUN_ID" -n "$LOGO_ARTIFACT" -D checkpoint/02c-logo
+          test -f checkpoint/03-ocr/processed-manifest.json
+          test -f checkpoint/03-ocr/ocr-review-summary.json
+          test -f checkpoint/03-ocr/scene-reading-order.json
+          test -f checkpoint/02c-logo/clean-logo-repair.json
+          test -f "$STATE_DIR/ocr-curation.json"
+
+      - name: Apply human OCR curation and run resurrection test
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+          import json
+          from pathlib import Path
+          from app.text_objects import DEFAULT_TEXT_OBJECT_STYLE, ensure_page_text_objects
+
+          state_dir = Path("chapters/logging-10000-years-into-the-future-351")
+          ocr_root = Path("checkpoint/03-ocr")
+          logo_root = Path("checkpoint/02c-logo")
+          out = Path("checkpoint/03b-curated")
+          out.mkdir(parents=True, exist_ok=True)
+
+          curation = json.loads((state_dir / "ocr-curation.json").read_text(encoding="utf-8"))
+          summary = json.loads((ocr_root / "ocr-review-summary.json").read_text(encoding="utf-8"))
+          logo = json.loads((logo_root / "clean-logo-repair.json").read_text(encoding="utf-8"))
+          manifest = json.loads((ocr_root / "processed-manifest.json").read_text(encoding="utf-8"))
+
+          if summary.get("ocr_source") != "RAW" or not summary.get("ocr_source_invariant_verified"):
+              raise SystemExit("base OCR did not prove RAW-source invariant")
+          if summary.get("failed") != 0 or summary.get("resurrection_count") != 0:
+              raise SystemExit(f"base OCR technical gate invalid: {summary}")
+          if summary.get("recognized") != 76:
+              raise SystemExit(f"expected 76 machine-recognized regions, got {summary.get('recognized')}")
+          if logo.get("raw_vs_repaired_pixel_diff") != 0 or logo.get("story_detector_boxes_on_slice") != 0:
+              raise SystemExit(f"logo repair is not safe/pixel-exact: {logo}")
+          expected_logo = curation["clean_logo_overlay"]["box_id"]
+          if logo.get("drop_from_story_object_ids") != [expected_logo]:
+              raise SystemExit("logo repair tombstone id mismatch")
+
+          pages = manifest.get("pages") or []
+          box_index = {}
+          object_refs = {}
+          for page in pages:
+              for box in page.get("boxes") or []:
+                  if isinstance(box, dict) and box.get("id"):
+                      box_index[str(box["id"])] = (page, box)
+              for obj in page.get("text_objects") or []:
+                  if not isinstance(obj, dict):
+                      continue
+                  for ref in obj.get("source_boxes") or []:
+                      if isinstance(ref, str):
+                          object_refs.setdefault(ref, []).append(obj)
+
+          existing_tombstone_refs = set()
+          for page in pages:
+              for obj in page.get("text_objects") or []:
+                  if not isinstance(obj, dict):
+                      continue
+                  if obj.get("origin") == "human_review_drop" and obj.get("source_missing") and obj.get("auto_generated") is False:
+                      existing_tombstone_refs.update(str(v) for v in (obj.get("source_boxes") or []) if isinstance(v, str))
+          if len(existing_tombstone_refs) != int(curation["existing_non_story_tombstones_expected"]):
+              raise SystemExit(f"expected {curation['existing_non_story_tombstones_expected']} base tombstones, got {len(existing_tombstone_refs)}")
+
+          reason_by_id = {}
+          category_to_reason = {
+              "reviewed_recovery_artwork_sfx_noise": "human_review_non_story_artwork_sfx_or_noise",
+              "overlap_duplicates_outside_stitch_core": "duplicate_outside_stitch_core",
+              "same_slice_detector_duplicates": "duplicate_detector_box",
+              "non_story_series_logo": "non_story_series_logo",
+          }
+          for category, ids in curation.get("drops", {}).items():
+              reason = category_to_reason[category]
+              for box_id in ids:
+                  if box_id in reason_by_id:
+                      raise SystemExit(f"duplicate curation drop id: {box_id}")
+                  reason_by_id[box_id] = reason
+          if len(reason_by_id) != 100:
+              raise SystemExit(f"expected 100 newly curated drops, got {len(reason_by_id)}")
+
+          def make_tombstone(box_id, box, reason):
+              suffix = box_id[4:] if box_id.startswith("box_") else box_id
+              return {
+                  "id": f"text_{suffix}",
+                  "shape": "rectangle",
+                  "region": {k: int(box[k]) for k in ("x1", "y1", "x2", "y2")},
+                  "source_boxes": [box_id],
+                  "ocr_text": "",
+                  "translation": "",
+                  "style": dict(DEFAULT_TEXT_OBJECT_STYLE),
+                  "origin": "human_review_drop",
+                  "auto_generated": False,
+                  "source_missing": True,
+                  "reason": reason,
+                  "human_reviewed": True,
+              }
+
+          for box_id, reason in reason_by_id.items():
+              if box_id not in box_index:
+                  raise SystemExit(f"curation drop box missing from manifest: {box_id}")
+              page, box = box_index[box_id]
+              before_text = str(box.get("ocr_text") or "")
+              box["ocr_eligible"] = False
+              box["human_review_drop"] = True
+              box["human_review_origin"] = "human_review_drop"
+              box["story_role"] = reason
+              box["human_reviewed"] = True
+              if before_text:
+                  box["machine_ocr_text_before_review"] = before_text
+              refs = object_refs.get(box_id, [])
+              if not refs:
+                  obj = make_tombstone(box_id, box, reason)
+                  page.setdefault("text_objects", []).append(obj)
+                  object_refs.setdefault(box_id, []).append(obj)
+                  refs = [obj]
+              for obj in refs:
+                  old = str(obj.get("ocr_text") or "")
+                  if old:
+                      obj["machine_ocr_text_before_review"] = old
+                  obj["ocr_text"] = ""
+                  obj["translation"] = ""
+                  obj["origin"] = "human_review_drop"
+                  obj["auto_generated"] = False
+                  obj["source_missing"] = True
+                  obj["reason"] = reason
+                  obj["human_reviewed"] = True
+                  obj.pop("auto_ocr_text", None)
+                  obj.pop("auto_geometry", None)
+
+          corrections = curation.get("corrections") or {}
+          if len(corrections) != 24:
+              raise SystemExit(f"expected 24 human OCR corrections, got {len(corrections)}")
+          for box_id, item in corrections.items():
+              if box_id not in box_index:
+                  raise SystemExit(f"correction box missing: {box_id}")
+              page, box = box_index[box_id]
+              before = str(item["before"])
+              after = str(item["after"])
+              if str(box.get("ocr_text") or "") != before:
+                  raise SystemExit(f"machine OCR drift for {box_id}: expected {before!r}, got {box.get('ocr_text')!r}")
+              box["machine_ocr_text_before_review"] = before
+              box["ocr_text"] = after
+              box["ocr_quality"] = "human_reviewed"
+              box["ocr_quality_reason"] = "manual_correction"
+              box["human_reviewed"] = True
+              refs = object_refs.get(box_id, [])
+              if len(refs) != 1:
+                  raise SystemExit(f"expected exactly one logical object for corrected box {box_id}, got {len(refs)}")
+              obj = refs[0]
+              if str(obj.get("ocr_text") or "") != before:
+                  raise SystemExit(f"text-object OCR drift for {box_id}: expected {before!r}, got {obj.get('ocr_text')!r}")
+              obj["machine_ocr_text_before_review"] = before
+              obj["ocr_text"] = after
+              obj["origin"] = "human_ocr_review"
+              obj["auto_generated"] = False
+              obj["source_missing"] = False
+              obj["human_reviewed"] = True
+              obj["ocr_quality"] = "human_reviewed"
+              obj["ocr_quality_reason"] = "manual_correction"
+              obj.pop("auto_ocr_text", None)
+              obj.pop("auto_geometry", None)
+
+          active_ids = []
+          for page in pages:
+              for box in page.get("boxes") or []:
+                  if not isinstance(box, dict) or box.get("removed") or box.get("ocr_eligible") is False:
+                      continue
+                  box_id = str(box.get("id") or "")
+                  if not box_id:
+                      continue
+                  text = str(box.get("ocr_text") or "").strip()
+                  if not text:
+                      raise SystemExit(f"active story OCR is empty after curation: {box_id}")
+                  refs = object_refs.get(box_id, [])
+                  if len(refs) != 1:
+                      raise SystemExit(f"active box must map to one logical text object: {box_id} -> {len(refs)}")
+                  obj = refs[0]
+                  if obj.get("source_missing"):
+                      raise SystemExit(f"active story object marked source_missing: {box_id}")
+                  if box_id not in corrections:
+                      obj["ocr_text"] = str(box.get("ocr_text") or "")
+                      obj["origin"] = "human_ocr_review"
+                      obj["auto_generated"] = False
+                      obj["human_reviewed"] = True
+                      obj.pop("auto_ocr_text", None)
+                      obj.pop("auto_geometry", None)
+                      box["human_reviewed"] = True
+                  active_ids.append(box_id)
+
+          expected_active = int(curation["human_review"]["expected_active_story_objects_after_curation"])
+          if len(active_ids) != expected_active or len(set(active_ids)) != expected_active:
+              raise SystemExit(f"expected {expected_active} active logical story boxes, got {len(active_ids)}")
+
+          for _ in range(2):
+              for page in pages:
+                  ensure_page_text_objects(page)
+
+          resurrection_count = 0
+          all_drop_refs = existing_tombstone_refs | set(reason_by_id)
+          for page in pages:
+              for obj in page.get("text_objects") or []:
+                  if not isinstance(obj, dict):
+                      continue
+                  refs = {str(v) for v in (obj.get("source_boxes") or []) if isinstance(v, str)}
+                  if not (refs & all_drop_refs):
+                      continue
+                  if obj.get("origin") != "human_review_drop" or obj.get("auto_generated") is not False or not obj.get("source_missing"):
+                      resurrection_count += 1
+          if resurrection_count:
+              raise SystemExit(f"tombstone resurrection detected after reconciliation: {resurrection_count}")
+
+          scene_rows = []
+          for page_index, page in enumerate(pages):
+              core = page.get("stitch_core") or {}
+              source_y1 = int(core.get("source_y1") or 0)
+              source_page = int(page.get("source_page") or 0)
+              slice_index = int(page.get("slice_index") or 0)
+              for box in page.get("boxes") or []:
+                  if not isinstance(box, dict) or box.get("removed") or box.get("ocr_eligible") is False:
+                      continue
+                  box_id = str(box["id"])
+                  obj = object_refs[box_id][0]
+                  if obj.get("origin") != "human_ocr_review" or obj.get("auto_generated") is not False:
+                      raise SystemExit(f"active object is not human-owned after curation: {box_id}")
+                  if not obj.get("human_reviewed"):
+                      raise SystemExit(f"active object lacks human_reviewed marker: {box_id}")
+                  if str(obj.get("translation") or "").strip():
+                      raise SystemExit(f"translation unexpectedly present before translation gate: {box_id}")
+                  scene_rows.append({
+                      "page_index": page_index,
+                      "source_page": source_page,
+                      "slice_index": slice_index,
+                      "box_id": box_id,
+                      "global_y1": source_y1 + int(box["y1"]),
+                      "global_x1": int(box["x1"]),
+                      "ocr_text": str(obj.get("ocr_text") or ""),
+                  })
+
+          scene_rows.sort(key=lambda r: (r["source_page"], r["global_y1"], r["global_x1"], r["box_id"]))
+          if len(scene_rows) != expected_active:
+              raise SystemExit("scene reading order count mismatch")
+
+          (out / "processed-manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+          (out / "active-source-text.json").write_text(json.dumps(scene_rows, ensure_ascii=False, indent=2), encoding="utf-8")
+          result = {
+              "checkpoint": "03b-ocr-human-curation",
+              "chapter_id": curation["chapter_id"],
+              "status": "PASS",
+              "editorial_pass": True,
+              "ocr_source": "RAW",
+              "machine_recognized_regions": summary["recognized"],
+              "human_reviewed_recovery_proposals": 95,
+              "new_human_tombstones": len(reason_by_id),
+              "base_tombstones_preserved": len(existing_tombstone_refs),
+              "manual_text_corrections": len(corrections),
+              "active_story_objects": len(scene_rows),
+              "empty_active_story_objects": 0,
+              "duplicate_blockers": 0,
+              "fragment_blockers": 0,
+              "resurrection_count": resurrection_count,
+              "story_ocr_blockers": 0,
+              "next_action": "TERMINOLOGY_RESEARCH_THEN_TRANSLATION"
+          }
+          (out / "ocr-curation-summary.json").write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+          (out / "HUMAN_CHECKPOINT.txt").write_text(
+              "CHECKPOINT: OCR HUMAN CURATION PASS\n"
+              "71 logical story objects remain. All are human-reviewed, non-empty, duplicate-free, and protected against tombstone resurrection.\n"
+              "Next: research established Vietnamese names/terms for this series, then translate by scene.\n",
+              encoding="utf-8"
+          )
+          print(json.dumps(result, indent=2))
+          PY
+
+      - name: Verify curated OCR checkpoint contract
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root=Path("checkpoint/03b-curated")
+          s=json.loads((root/"ocr-curation-summary.json").read_text(encoding="utf-8"))
+          if s.get("status")!="PASS" or not s.get("editorial_pass"):
+              raise SystemExit("OCR curation did not pass editorial gate")
+          if s.get("active_story_objects")!=71 or s.get("empty_active_story_objects")!=0:
+              raise SystemExit(f"bad active story counts: {s}")
+          if s.get("duplicate_blockers")!=0 or s.get("fragment_blockers")!=0:
+              raise SystemExit(f"OCR reconciliation blockers remain: {s}")
+          if s.get("resurrection_count")!=0 or s.get("story_ocr_blockers")!=0:
+              raise SystemExit(f"OCR curation blocker remains: {s}")
+          print(json.dumps(s,indent=2))
+          PY
+
+      - name: Upload curated OCR checkpoint
+        uses: actions/upload-artifact@v4
+        with:
+          name: 03b-ocr-curated-c3513510
+          path: checkpoint/03b-curated/
+          retention-days: 7
+          if-no-files-found: error
