@@ -268,8 +268,9 @@ function renderPreviewPage(card, page, pageIndex, pages, inspector = null) {
   let tempDrawBox = null;
 
   const removeDrawListeners = () => {
-    window.removeEventListener("mousemove", onMouseMove);
-    window.removeEventListener("mouseup", onMouseUp);
+    window.removeEventListener("pointermove", onMouseMove);
+    window.removeEventListener("pointerup", onMouseUp);
+    window.removeEventListener("pointercancel", onMouseUp);
   };
 
   const stopDrawing = () => {
@@ -282,7 +283,8 @@ function renderPreviewPage(card, page, pageIndex, pages, inspector = null) {
     }
   };
 
-  drawLayer.addEventListener("mousedown", (e) => {
+  drawLayer.style.touchAction = "none";
+  drawLayer.addEventListener("pointerdown", (e) => {
     if (!card.classList.contains("draw-excluded-active")) return;
     e.preventDefault();
     stopDrawing();
@@ -297,8 +299,10 @@ function renderPreviewPage(card, page, pageIndex, pages, inspector = null) {
     overlayContainer.appendChild(tempDrawBox);
     updateTempDrawBox(x, y);
 
-    window.addEventListener("mousemove", onMouseMove);
-    window.addEventListener("mouseup", onMouseUp);
+    drawLayer.setPointerCapture?.(e.pointerId);
+    window.addEventListener("pointermove", onMouseMove);
+    window.addEventListener("pointerup", onMouseUp);
+    window.addEventListener("pointercancel", onMouseUp);
     previewDrawCleanup = stopDrawing;
   });
 
