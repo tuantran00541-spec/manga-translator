@@ -1,0 +1,134 @@
+name: Chapter 351 Checkpoint 02C Clean Logo Repair
+
+on:
+  push:
+    branches:
+      - chapter/logging-10000-years-into-the-future-351
+    paths:
+      - .github/workflows/chapter-351-clean-logo-repair.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: chapter-351-human-loop
+  cancel-in-progress: false
+
+jobs:
+  repair-logo:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    env:
+      IMPORT_RUN_ID: "34700742617"
+      IMPORT_ARTIFACT: 01-import-c3513510
+      CLEAN_RUN_ID: "34700955145"
+      CLEAN_ARTIFACT: 02-clean-review-c3513510
+      LOGO_BOX_ID: box_b02be5cac5dd4d94
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chapter/logging-10000-years-into-the-future-351
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install proof dependency
+        run: python -m pip install Pillow==10.4.0
+
+      - name: Restore source and base clean
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf checkpoint repair
+          mkdir -p checkpoint/01-import checkpoint/02-clean repair/overlay/processed repair/proof
+          gh run download "$IMPORT_RUN_ID" -n "$IMPORT_ARTIFACT" -D checkpoint/01-import
+          gh run download "$CLEAN_RUN_ID" -n "$CLEAN_ARTIFACT" -D checkpoint/02-clean
+          test -f checkpoint/01-import/raw/sliced/001_00.png
+          test -f checkpoint/02-clean/processed/clean_001_00.png
+          test -f checkpoint/02-clean/box-index.json
+
+      - name: Restore decorative title slice pixel-exact RAW
+        run: |
+          python - <<'PY'
+          import hashlib, json, os, shutil
+          from pathlib import Path
+          from PIL import Image, ImageChops, ImageDraw
+
+          raw_path=Path('checkpoint/01-import/raw/sliced/001_00.png')
+          base_path=Path('checkpoint/02-clean/processed/clean_001_00.png')
+          repaired_path=Path('repair/overlay/processed/clean_001_00.png')
+          repaired_path.parent.mkdir(parents=True,exist_ok=True)
+          shutil.copy2(raw_path,repaired_path)
+
+          raw=Image.open(raw_path).convert('RGB')
+          base=Image.open(base_path).convert('RGB')
+          repaired=Image.open(repaired_path).convert('RGB')
+          if raw.size != base.size or raw.size != repaired.size:
+              raise SystemExit('logo repair dimensions changed')
+          if ImageChops.difference(raw,repaired).getbbox() is not None:
+              raise SystemExit('logo repair is not pixel-exact RAW')
+
+          boxes=json.loads(Path('checkpoint/02-clean/box-index.json').read_text(encoding='utf-8'))
+          page_boxes=[b for b in boxes if int(b.get('page_index',-1))==1]
+          if len(page_boxes)!=1 or str(page_boxes[0].get('box_id'))!=os.environ['LOGO_BOX_ID']:
+              raise SystemExit(f'expected the logo to be the only detector box on p001, got {page_boxes}')
+
+          def sha(path):
+              h=hashlib.sha256()
+              with open(path,'rb') as f:
+                  for c in iter(lambda:f.read(1024*1024),b''): h.update(c)
+              return h.hexdigest()
+
+          # Focused proof: artwork above plus complete logo; shows why whole-slice RAW restore is safe.
+          crop=(0,800,raw.width,min(raw.height,1750))
+          panels=[]
+          for label,im in [('RAW / PRESERVE',raw.crop(crop)),('BASE CLEAN / REJECT',base.crop(crop)),('REPAIRED / APPROVE',repaired.crop(crop))]:
+              t=im.copy(); t.thumbnail((420,1100)); panels.append((label,t))
+          pad=24; label_h=42
+          canvas=Image.new('RGB',(sum(im.width for _,im in panels)+pad*(len(panels)+1),max(im.height for _,im in panels)+label_h+pad*2),'white')
+          draw=ImageDraw.Draw(canvas); x=pad
+          for label,im in panels:
+              draw.text((x,pad),label,fill='black'); canvas.paste(im,(x,pad+label_h)); x+=im.width+pad
+          canvas.save('repair/proof/p001-logo-raw-base-repaired.jpg',quality=92)
+
+          meta={
+            'checkpoint':'02c-clean-logo-repair',
+            'chapter_id':'c3513510',
+            'base_clean_run_id':34700955145,
+            'base_clean_artifact':'02-clean-review-c3513510',
+            'page_index':1,
+            'source_page':1,
+            'slice_index':0,
+            'classification':'non_story_series_logo',
+            'editorial_issue':'base clean removed the upper half of a decorative series logo',
+            'action':'restore_raw_slice_pixel_exact',
+            'raw_sha256':sha(raw_path),
+            'base_clean_sha256':sha(base_path),
+            'repaired_sha256':sha(repaired_path),
+            'raw_vs_repaired_pixel_diff':0,
+            'story_detector_boxes_on_slice':0,
+            'drop_from_story_object_ids':[os.environ['LOGO_BOX_ID']],
+            'tombstone_seed':{
+              'source_missing':True,
+              'auto_generated':False,
+              'origin':'human_review_drop',
+              'reason':'non_story_series_logo'
+            },
+            'next_action':'STOP_FOR_TARGETED_HUMAN_REVIEW'
+          }
+          Path('repair/clean-logo-repair.json').write_text(json.dumps(meta,ensure_ascii=False,indent=2),encoding='utf-8')
+          Path('repair/HUMAN_CHECKPOINT.txt').write_text(
+            'CHECKPOINT: CLEAN LOGO LOCAL REPAIR\nApprove only if the complete decorative series logo is restored and no story text/artwork regression is introduced.\n',encoding='utf-8')
+          print(json.dumps(meta,indent=2))
+          PY
+
+      - name: Upload logo repair delta
+        uses: actions/upload-artifact@v4
+        with:
+          name: 02c-clean-logo-repair-c3513510
+          path: repair/
+          retention-days: 7
+          if-no-files-found: error
