@@ -261,8 +261,10 @@ def geometry_contract_checks():
     geometry = MaskDecodeGeometry(transform, source_box)
     prototypes = np.full((1, 256, 256), -10.0, np.float32)
     prototypes[0, 96:128, 0:26] = 10.0
-    mask = YoloDetector._decode_mask(
-        None,
+    # Bypass the model-loading constructor while still supplying a real
+    # instance: _decode_mask delegates to the detector's hysteresis helper.
+    detector = object.__new__(YoloDetector)
+    mask = detector._decode_mask(
         np.array([1.0], np.float32),
         prototypes,
         geometry,
