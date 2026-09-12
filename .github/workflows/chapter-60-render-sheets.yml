@@ -1,0 +1,91 @@
+name: Chapter 60 Checkpoint 06B Visual Review Sheets
+
+on:
+  push:
+    branches:
+      - trial/chapter-render-60
+    paths:
+      - .github/workflows/chapter-60-render-sheets.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: chapter-60-human-loop
+  cancel-in-progress: false
+
+jobs:
+  sheets:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    env:
+      BASE_RUN_ID: "34682111800"
+      BASE_ARTIFACT: 06-render-preview-f1cd0121
+      ROOT: checkpoint/06b-visual
+      OUT: trials/chapter-60/review/06-render-sheets
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: trial/chapter-render-60
+      - run: python -m pip install --quiet Pillow==10.4.0
+      - name: Restore rendered slices
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf "$ROOT" "$OUT"
+          mkdir -p "$ROOT" "$OUT"
+          gh run download "$BASE_RUN_ID" -n "$BASE_ARTIFACT" -D "$ROOT"
+      - name: Build four-slice human-review sheets
+        run: |
+          python - <<'PY'
+          import os, json
+          from pathlib import Path
+          from PIL import Image,ImageDraw,ImageFont
+          root=Path(os.environ['ROOT'])
+          candidates=list(root.rglob('rendered_slices'))
+          assert candidates, list(root.rglob('*'))[:20]
+          src=candidates[0]
+          files=sorted(src.glob('page_*.png'))
+          assert len(files)==65, len(files)
+          out=Path(os.environ['OUT']); out.mkdir(parents=True,exist_ok=True)
+          font=ImageFont.truetype('app/static/fonts/BeVietnamPro-SemiBold.ttf',22)
+          target_w=720; gap=18; header_h=48
+          made=[]
+          for start in range(0,len(files),4):
+              cards=[]
+              for idx in range(start,min(start+4,len(files))):
+                  im=Image.open(files[idx]).convert('RGB')
+                  scale=target_w/im.width
+                  im=im.resize((target_w,max(1,int(im.height*scale))),Image.Resampling.LANCZOS)
+                  head=Image.new('RGB',(target_w,header_h),'white')
+                  ImageDraw.Draw(head).text((8,8),f'p{idx:03d}',font=font,fill='black')
+                  card=Image.new('RGB',(target_w,header_h+im.height),'white')
+                  card.paste(head,(0,0)); card.paste(im,(0,header_h)); cards.append((idx,card))
+              rows=[]
+              for r in range(0,len(cards),2):
+                  pair=cards[r:r+2]; h=max(c.height for _,c in pair)
+                  row=Image.new('RGB',(target_w*2+gap,h),(235,235,235))
+                  row.paste(pair[0][1],(0,0))
+                  if len(pair)>1: row.paste(pair[1][1],(target_w+gap,0))
+                  rows.append(row)
+              sheet_h=sum(r.height for r in rows)+gap*(len(rows)-1)
+              sheet=Image.new('RGB',(target_w*2+gap,sheet_h),(220,220,220))
+              y=0
+              for r in rows:
+                  sheet.paste(r,(0,y)); y+=r.height+gap
+              path=out/f'sheet_{start//4:02d}_p{start:03d}-{min(start+3,len(files)-1):03d}.jpg'
+              sheet.save(path,'JPEG',quality=88,subsampling=0,optimize=True)
+              made.append(path.name)
+          assert len(made)==17
+          (out/'index.json').write_text(json.dumps({'sheets':made,'slices':65},indent=2),encoding='utf-8')
+          print('\n'.join(made))
+          PY
+      - name: Commit review sheets
+        run: |
+          git config user.name "chapter-review-bot"
+          git config user.email "chapter-review-bot@users.noreply.github.com"
+          git add "$OUT"
+          git commit -m "trial: persist chapter 60 visual review sheets"
+          git push origin HEAD:trial/chapter-render-60
