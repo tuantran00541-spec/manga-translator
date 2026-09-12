@@ -1,0 +1,73 @@
+name: Chapter 60 Checkpoint 04B OCR Curation
+
+on:
+  push:
+    branches:
+      - trial/chapter-render-60
+    paths:
+      - .github/workflows/chapter-60-ocr-curation.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: chapter-60-human-loop
+  cancel-in-progress: false
+
+jobs:
+  curate-ocr:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    env:
+      BASE_RUN_ID: "34673921364"
+      BASE_ARTIFACT: 03d-ocr-clean-f1cd0121
+      ROOT: checkpoint/04b-ocr-curated
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: trial/chapter-render-60
+
+      - name: Restore approved 03D checkpoint
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf "$ROOT"
+          mkdir -p "$ROOT"
+          gh run download "$BASE_RUN_ID" -n "$BASE_ARTIFACT" -D "$ROOT"
+          test -f "$ROOT/processed/manifest.json"
+          test -f "$ROOT/ocr-review/ocr-skipped.json"
+          test -f "$ROOT/ocr-review-summary.json"
+
+      - name: Apply deterministic human OCR curation
+        run: |
+          PYTHONPATH=. python trials/chapter-60/curate_ocr.py "$ROOT"
+
+      - name: Validate curation and resurrection gate
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          root=Path(os.environ['ROOT'])
+          c=json.loads((root/'ocr-curation.json').read_text(encoding='utf-8'))
+          r=json.loads((root/'resurrection-test.json').read_text(encoding='utf-8'))
+          if c.get('checkpoint')!='04b-ocr-curated' or c.get('status')!='PASS': raise SystemExit(c)
+          if c.get('raw_changed') is not False or c.get('ocr_rerun_required') is not False: raise SystemExit(c)
+          if len(c.get('promoted_skipped_story_objects') or []) != 2: raise SystemExit(c)
+          if c.get('resurrected_dropped_count') != 0: raise SystemExit(c)
+          if c.get('second_sync_created') != 0: raise SystemExit(c)
+          if c.get('empty_active_ocr_count') != 0: raise SystemExit(c)
+          if r.get('pass') is not True or r.get('resurrected_dropped_count') != 0: raise SystemExit(r)
+          if not (root/'curated-scene-index.json').is_file(): raise SystemExit('missing curated scene index')
+          print(json.dumps({'ocr_curation':'technical-pass','active_objects':c.get('active_objects'),'tombstones':c.get('tombstones'),'resurrection':0},indent=2))
+          PY
+
+      - name: Upload checkpoint 04B artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: 04b-ocr-curated-f1cd0121
+          path: checkpoint/04b-ocr-curated
+          if-no-files-found: error
+          retention-days: 7
