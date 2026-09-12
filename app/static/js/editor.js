@@ -949,6 +949,7 @@ window.refreshSaveStatus = refreshSaveStatus;
 
 const _textDirty = new Map();
 let _textTimer = null;
+let _textPersistChain = Promise.resolve();
 
 function _captureTextState(obj) {
   return {
@@ -1019,7 +1020,7 @@ async function _persistTextObjectsIndividually(chapterId, items) {
   return failures;
 }
 
-async function flushTextObjectPersist(pageIndex) {
+async function _flushTextObjectPersistNow(pageIndex) {
   clearTimeout(_textTimer);
   _textTimer = null;
   if (_textDirty.size === 0) return;
@@ -1055,6 +1056,14 @@ async function flushTextObjectPersist(pageIndex) {
     showToast("Không lưu được nội dung: " + failures[0].message, "error");
     throw new Error("Không lưu được nội dung");
   }
+}
+
+function flushTextObjectPersist(pageIndex) {
+  // Keep server writes ordered. A slower earlier request must never arrive
+  // after and overwrite a newer draft for the same text object.
+  const job = _textPersistChain.catch(() => {}).then(() => _flushTextObjectPersistNow(pageIndex));
+  _textPersistChain = job;
+  return job;
 }
 window.flushTextObjectPersist = flushTextObjectPersist;
 
@@ -1169,13 +1178,20 @@ function setupEditorDraw(wrapper, pageIndex) {
     clearSelectedTextObject();
   };
 
-  imgWrap.addEventListener("mousedown", onDown);
-  imgWrap.addEventListener("mousemove", onMove);
-  window.addEventListener("mouseup", onUp);
+  const drawAbort = new AbortController();
+  const signal = drawAbort.signal;
+  imgWrap.style.touchAction = editorState.tool === "select" ? "pan-x pan-y" : "none";
+  imgWrap.addEventListener("pointerdown", (event) => {
+    onDown(event);
+    if (drawing) imgWrap.setPointerCapture?.(event.pointerId);
+  }, { signal });
+  imgWrap.addEventListener("pointermove", onMove, { signal });
+  window.addEventListener("pointerup", onUp, { signal });
+  window.addEventListener("pointercancel", onUp, { signal });
   imgWrap.addEventListener("click", onClick);
 
   window._editorDrawCleanup = function cleanupEditorDraw() {
-    window.removeEventListener("mouseup", onUp);
+    drawAbort.abort();
   };
 }
 
