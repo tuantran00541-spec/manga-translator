@@ -1,0 +1,76 @@
+{
+  "checkpoint": "CLEAN",
+  "status": "PASS",
+  "chapter_id": "c3513510",
+  "series_slug": "logging-10000-years-into-the-future-53fc8424",
+  "chapter_number": 351,
+  "source_url": "https://asurascans.com/comics/logging-10000-years-into-the-future-53fc8424/chapter/351",
+  "base_clean": {
+    "run_id": 34700955145,
+    "artifact": "02-clean-review-c3513510",
+    "artifact_id": 10299539931,
+    "slices": 40,
+    "detected_boxes": 250,
+    "free_text_like_boxes": 124
+  },
+  "human_review": {
+    "raw_vs_clean_full_sheets_reviewed": true,
+    "object_sheets_reviewed": true,
+    "unsafe_speech_bubble_candidates_reviewed": 12,
+    "free_text_recovery_candidates_reviewed": 119,
+    "story_text_blockers": 0,
+    "artwork_damage_blockers": 0,
+    "source_story_residue_blockers": 0,
+    "overlap_false_blockers_resolved": true,
+    "notes": [
+      "Story text visible in overlap context on source page 10 is outside the slice stitch-core; the owner copy is cleaned in the adjacent slice.",
+      "Recovered free-text proposals were visually checked; retained regions are primarily SFX/artwork fragments or unverified recovery evidence, not missed owned English dialogue.",
+      "Base clean destructively removed non-story title/credit material on page_index 0 and the Asura promo tail on page_index 39, so both were repaired locally rather than rerunning the chapter."
+    ]
+  },
+  "local_repair": {
+    "run_id": 34702416332,
+    "artifact": "02b-clean-local-repair-c3513510",
+    "artifact_id": 10300835530,
+    "repairs": [
+      {
+        "page_index": 0,
+        "classification": "non_story_title_credit_cover",
+        "action": "restore_raw_slice_pixel_exact",
+        "raw_vs_repaired_pixel_diff": 0
+      },
+      {
+        "page_index": 39,
+        "classification": "non_story_promo_tail",
+        "action": "restore_raw_rows",
+        "restore_y1": 2600,
+        "raw_tail_pixel_diff": 0,
+        "base_story_area_pixel_diff": 0
+      }
+    ],
+    "drop_from_story_object_ids": [
+      "box_25f17a7f373847d9",
+      "box_e58c088d59324358",
+      "box_d54ca8365f2e441f",
+      "box_3d634a1581014b7a",
+      "box_94f0077fff214b68",
+      "box_e967190dc8854d8c",
+      "box_6ccf1eacdef54783",
+      "box_7d6bab8faea2439f"
+    ],
+    "tombstone_seed": {
+      "source_missing": true,
+      "auto_generated": false,
+      "origin": "human_review_drop",
+      "reason": "non_story_title_credit_or_promo"
+    }
+  },
+  "approved_clean_stack": {
+    "base": "02-clean-review-c3513510@34700955145",
+    "overlay": "02b-clean-local-repair-c3513510@34702416332"
+  },
+  "technical_pass": true,
+  "editorial_pass": true,
+  "blockers": [],
+  "next_action": "RUN_OCR_FROM_RAW_AND_APPLY_NON_STORY_TOMBSTONES"
+}
