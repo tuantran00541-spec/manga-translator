@@ -1,0 +1,179 @@
+name: Chapter 60 Checkpoint 06C P031 Visual Typeset Fix
+
+on:
+  push:
+    branches:
+      - trial/chapter-render-60
+    paths:
+      - .github/workflows/chapter-60-typeset-fix-p031.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: chapter-60-human-loop
+  cancel-in-progress: false
+
+jobs:
+  p031-visual-fix:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    env:
+      RENDER_RUN_ID: "34682111800"
+      RENDER_ARTIFACT: 06-render-preview-f1cd0121
+      OCR_RUN_ID: "34681593344"
+      OCR_ARTIFACT: 04d-ocr-final-f1cd0121
+      WORK: checkpoint/06c-work
+      BASE: checkpoint/06c-base
+      OUT: checkpoint/06c-render-preview
+      PROOF: trials/chapter-60/review/06c-p031-fix.jpg
+      REPORT: trials/chapter-60/review/06c-p031-fix.json
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: trial/chapter-render-60
+          fetch-depth: 1
+
+      - name: Install render runtime
+        run: |
+          python -m pip install --quiet Pillow==10.4.0 numpy==1.26.4 loguru==0.7.2
+
+      - name: Restore approved render candidate and CLEAN base
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf "$WORK" "$BASE" "$OUT"
+          mkdir -p "$WORK" "$BASE"
+          gh run download "$RENDER_RUN_ID" -n "$RENDER_ARTIFACT" -D "$WORK"
+          gh run download "$OCR_RUN_ID" -n "$OCR_ARTIFACT" -D "$BASE"
+          test -d "$WORK/checkpoint/06-render-preview/rendered_slices"
+          test -f "$BASE/processed/clean_008_00.png"
+          cp -a "$WORK/checkpoint/06-render-preview" "$OUT"
+
+      - name: Re-render p031 from CLEAN with separated secondary note
+        run: |
+          PYTHONPATH=. python - <<'PY'
+          import json, os
+          from pathlib import Path
+          from PIL import Image
+          from app.render.text_renderer import render_text_in_box
+
+          out=Path(os.environ['OUT'])
+          base=Path(os.environ['BASE'])
+          mp=out/'processed'/'manifest.json'
+          manifest=json.loads(mp.read_text(encoding='utf-8'))
+          plan=json.loads((out/'typeset-plan.json').read_text(encoding='utf-8'))
+          assert manifest.get('chapter_id')=='f1cd0121'
+          page_index=31
+          page=manifest['pages'][page_index]
+          assert page.get('source_page')==8 and page.get('slice_index')==0
+          clean=base/'processed'/'clean_008_00.png'
+          image=Image.open(clean).convert('RGB')
+          font_dir=Path('app/static/fonts')
+          plan_map={(int(p['page_index']),str(p['object_id'])):p for p in plan}
+          note_id='human_p031_nightmare_note'
+          note_region={'x1':190,'y1':2740,'x2':875,'y2':2930}
+          rendered=[]
+
+          for obj in page.get('text_objects',[]) or []:
+              if obj.get('source_missing'):
+                  continue
+              oid=str(obj.get('id'))
+              p=plan_map[(page_index,oid)]
+              region=dict(p['region'])
+              font_size=int(p['font_size'])
+              if oid==note_id:
+                  region=dict(note_region)
+                  font_size=30
+                  p['region']=dict(region)
+                  p['font_size']=font_size
+                  p['lines']=['Vì thế, thứ chúng tôi gặp được gọi là “ác mộng”,','chứ không phải quỷ.']
+                  p['visual_fix']='move_below_hairy_balloon'
+              coords=(region['x1'],region['y1'],region['x2'],region['y2'])
+              font_path=font_dir/p['font']
+              image=render_text_in_box(
+                  image,p['translation'],coords,
+                  font_path=font_path,
+                  fill='auto',font_size=font_size,
+                  is_bold=bool(p['bold']),font_name=font_path.stem,
+                  stroke_width=int(p['stroke_width']),stroke_color='auto',
+                  bg_color='transparent',corner_radius=0,
+                  shape=str(obj.get('shape') or 'rectangle'),
+                  horizontal_align='center',vertical_align='middle'
+              )
+              if oid==note_id:
+                  obj['region']=dict(region)
+                  style=obj.setdefault('style',{})
+                  style['fontSize']=str(font_size)
+                  style['font']=font_path.stem
+                  obj['typeset_review_state']='visual_fix_candidate'
+              rendered.append(oid)
+
+          assert note_id in rendered and len(rendered)==4, rendered
+          target=out/'rendered_slices'/'page_031.png'
+          image.save(target,format='PNG',optimize=True)
+          mp.write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding='utf-8')
+          (out/'typeset-plan.json').write_text(json.dumps(plan,ensure_ascii=False,indent=2),encoding='utf-8')
+          report={
+              'checkpoint':'06c-p031-visual-typeset-fix',
+              'chapter_id':'f1cd0121',
+              'page_index':31,
+              'source_page':8,
+              'object_id':note_id,
+              'old_issue':'secondary note overlapped the hairy dialogue balloon border',
+              'new_region':note_region,
+              'font':'Manga-fonts.ttf',
+              'font_size':30,
+              'rendered_page_objects':len(rendered),
+              'status':'CANDIDATE',
+              'next_action':'HUMAN_VISUAL_REVIEW'
+          }
+          (out/'p031-fix-report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
+          print(json.dumps(report,ensure_ascii=False,indent=2))
+          PY
+
+      - name: Build focused visual proof
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          from PIL import Image, ImageDraw, ImageFont
+          out=Path(os.environ['OUT'])
+          im=Image.open(out/'rendered_slices'/'page_031.png').convert('RGB')
+          crop=im.crop((0,2100,im.width,3150))
+          scale=1100/crop.width
+          crop=crop.resize((1100,int(crop.height*scale)),Image.Resampling.LANCZOS)
+          proof=Path(os.environ['PROOF']); proof.parent.mkdir(parents=True,exist_ok=True)
+          crop.save(proof,quality=94)
+          report=json.loads((out/'p031-fix-report.json').read_text(encoding='utf-8'))
+          Path(os.environ['REPORT']).write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
+          print(f'proof={proof} bytes={proof.stat().st_size}')
+          PY
+
+      - name: Persist p031 proof to trial branch
+        run: |
+          git config user.name "chapter-review-bot"
+          git config user.email "chapter-review-bot@users.noreply.github.com"
+          git add "$PROOF" "$REPORT"
+          if ! git diff --cached --quiet; then
+            git commit -m "trial: persist chapter 60 p031 visual fix proof"
+            git push origin HEAD:trial/chapter-render-60
+          fi
+
+      - name: Upload corrected render candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: 06c-render-preview-f1cd0121
+          path: |
+            checkpoint/06c-render-preview/rendered_slices
+            checkpoint/06c-render-preview/processed/manifest.json
+            checkpoint/06c-render-preview/typeset-report.json
+            checkpoint/06c-render-preview/typeset-plan.json
+            checkpoint/06c-render-preview/stitch-index.json
+            checkpoint/06c-render-preview/p031-fix-report.json
+            trials/chapter-60/review/06c-p031-fix.jpg
+          if-no-files-found: error
+          retention-days: 7
