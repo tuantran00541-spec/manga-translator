@@ -1,0 +1,189 @@
+name: Chapter 60 Checkpoint 04C Curated OCR Scene Proof
+
+on:
+  push:
+    branches:
+      - trial/chapter-render-60
+    paths:
+      - .github/workflows/chapter-60-ocr-scene-proof.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: chapter-60-human-loop
+  cancel-in-progress: false
+
+jobs:
+  build-proof:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    env:
+      BASE_RUN_ID: "34679646612"
+      BASE_ARTIFACT: 04b-ocr-curated-f1cd0121
+      ROOT: checkpoint/04c-scene-proof
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: trial/chapter-render-60
+
+      - name: Install proof runtime
+        run: python -m pip install Pillow==10.4.0
+
+      - name: Restore curated 04B checkpoint
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf "$ROOT"
+          mkdir -p "$ROOT"
+          gh run download "$BASE_RUN_ID" -n "$BASE_ARTIFACT" -D "$ROOT/base"
+          test -f "$ROOT/base/processed/manifest.json"
+
+      - name: Build focused human scene proof
+        run: |
+          python - <<'PY'
+          import json, os, textwrap
+          from pathlib import Path
+          from PIL import Image, ImageDraw, ImageFont
+
+          root = Path(os.environ['ROOT'])
+          base = root / 'base'
+          out = root / 'proof'
+          out.mkdir(parents=True, exist_ok=True)
+          manifest = json.loads((base/'processed/manifest.json').read_text(encoding='utf-8'))
+
+          # Focus only on curation decisions that can change translation semantics,
+          # ordering, ownership, or typography. Earlier full RAW OCR review remains
+          # the coverage source for unchanged detector-owned objects.
+          items = [
+              (2, 'source', 'box_9f81ea7eb505421e', 'active', 'acting punctuation'),
+              (29, 'source', 'box_072e64626b7945c0', 'drop', 'empty false positive'),
+              (48, 'source', 'box_c9309c09043f4701', 'drop', 'empty false positive'),
+              (36, 'source', 'box_a5ec1161458544ab', 'active', 'promoted vocalization'),
+              (38, 'source', 'box_a3c90509c54642f3', 'active', 'promoted vocalization'),
+              (31, 'object', 'human_p031_chancellor_dialogue', 'active', 'split main dialogue'),
+              (31, 'object', 'human_p031_nightmare_note', 'active', 'split secondary text'),
+              (37, 'object', 'human_p037_dark_horses', 'active', 'split dialogue'),
+              (37, 'object', 'human_p037_squeak', 'active', 'split vocalization'),
+              (52, 'object', 'human_p052_moonrise_bookstore', 'active', 'merged detector fragments'),
+              (56, 'source', 'box_d900bc50b4374bd9', 'active', 'manual OCR correction'),
+              (56, 'source', 'box_5043cba0cd1a4a5c', 'active', 'manual OCR correction'),
+              (57, 'source', 'box_cfb3d1372e1f4966', 'active', 'manual OCR correction'),
+              (57, 'source', 'box_8571f5814b764f0c', 'active', 'manual OCR correction'),
+              (60, 'source', 'box_a684dac5f29045eb', 'active', 'manual OCR correction'),
+              (61, 'source', 'box_22748b6c37534964', 'active', 'manual OCR correction'),
+              (30, 'source', 'box_15aed6043c954767', 'active', 'continuation part 1/2'),
+              (31, 'source', 'box_355a8dc43c8b40ee', 'active', 'continuation part 2/2'),
+              (21, 'source', 'box_f513c6697c844fd2', 'active', 'duplicate owner kept'),
+              (21, 'source', 'box_968485f59cb14b5d', 'drop', 'duplicate owner dropped'),
+              (49, 'source', 'box_d809d9a845424212', 'active', 'duplicate owner kept'),
+              (49, 'source', 'box_39e8ec1471384216', 'drop', 'duplicate owner dropped'),
+              (63, 'source', 'box_9faef21adfdf4b20', 'active', 'duplicate owner kept'),
+              (63, 'source', 'box_39c2a2f793a24eea', 'drop', 'duplicate owner dropped'),
+          ]
+
+          font_path = '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'
+          font = ImageFont.truetype(font_path, 17)
+          small = ImageFont.truetype(font_path, 14)
+          cards = []
+          index = []
+
+          def objects_for(page):
+              return page.get('text_objects') or []
+
+          def find_obj(page, mode, key, expected):
+              cand = []
+              for obj in objects_for(page):
+                  if mode == 'object':
+                      hit = str(obj.get('id')) == key
+                  else:
+                      hit = key in [str(x) for x in (obj.get('source_boxes') or [])]
+                  if not hit:
+                      continue
+                  is_drop = bool(obj.get('source_missing'))
+                  if expected == 'drop' and is_drop:
+                      cand.append(obj)
+                  if expected == 'active' and not is_drop:
+                      cand.append(obj)
+              if not cand:
+                  raise SystemExit(f'missing proof object p{page.get("page_index")} {mode} {key} {expected}')
+              return cand[0]
+
+          for pi, mode, key, expected, label in items:
+              page = manifest['pages'][pi]
+              obj = find_obj(page, mode, key, expected)
+              reg = obj.get('region') or {}
+              x1,y1,x2,y2 = [int(reg[k]) for k in ('x1','y1','x2','y2')]
+              raw_name = Path(str(page.get('original'))).name
+              raw_path = base/'raw'/'sliced'/raw_name
+              if not raw_path.is_file():
+                  raise SystemExit(f'missing RAW {raw_path}')
+              im = Image.open(raw_path).convert('RGB')
+              pad = 110
+              left, top = max(0,x1-pad), max(0,y1-pad)
+              right, bottom = min(im.width,x2+pad), min(im.height,y2+pad)
+              crop = im.crop((left,top,right,bottom))
+              d = ImageDraw.Draw(crop)
+              d.rectangle((x1-left,y1-top,x2-left,y2-top), outline='red', width=4)
+              crop.thumbnail((850,360), Image.Resampling.LANCZOS)
+
+              card = Image.new('RGB',(900,520),'white')
+              cd = ImageDraw.Draw(card)
+              state = 'DROP' if obj.get('source_missing') else 'ACTIVE'
+              header = f'p{pi:03d} | {label} | {state} | {obj.get("id")}'
+              cd.text((12,10), header, fill='black', font=font)
+              ocr = str(obj.get('ocr_text') or '')
+              role = str(obj.get('semantic_role') or '')
+              meta = f'role={role}  source={obj.get("source_boxes")}  OCR={ocr}'
+              lines = textwrap.wrap(meta, width=105)[:3]
+              yy = 34
+              for line in lines:
+                  cd.text((12,yy), line, fill='black', font=small); yy += 18
+              px = (900-crop.width)//2
+              py = 100 + max(0,(400-crop.height)//2)
+              card.paste(crop,(px,py))
+              cards.append(card)
+              index.append({
+                  'page_index': pi, 'label': label, 'state': state,
+                  'object_id': obj.get('id'), 'source_boxes': obj.get('source_boxes'),
+                  'region': reg, 'ocr_text': ocr, 'semantic_role': role,
+                  'continuation_group': obj.get('continuation_group'),
+                  'continuation_part': obj.get('continuation_part'),
+              })
+
+          per_sheet = 6
+          for start in range(0,len(cards),per_sheet):
+              chunk = cards[start:start+per_sheet]
+              sheet = Image.new('RGB',(1800,1560),'white')
+              for j,card in enumerate(chunk):
+                  sheet.paste(card,((j%2)*900,(j//2)*520))
+              sheet.save(out/f'curated-scene-proof-{start//per_sheet+1:02d}.jpg',quality=92)
+
+          (out/'curated-scene-proof.json').write_text(json.dumps(index,ensure_ascii=False,indent=2),encoding='utf-8')
+
+          # Scene sequence around semantic edits; this is used to verify reading
+          # order and the p030->p031 continuation without changing render geometry.
+          focus_pages = set(range(29,40)) | {21,48,49,52,56,57,60,61,63}
+          seq=[]
+          for pi,page in enumerate(manifest['pages']):
+              if pi not in focus_pages: continue
+              active=[o for o in objects_for(page) if not o.get('source_missing')]
+              active.sort(key=lambda o:(int((o.get('region') or {}).get('y1',0)),int((o.get('region') or {}).get('x1',0))))
+              seq.append({'page_index':pi,'objects':[
+                  {'id':o.get('id'),'ocr_text':o.get('ocr_text'),'role':o.get('semantic_role'),
+                   'continuation_group':o.get('continuation_group'),'continuation_part':o.get('continuation_part')}
+                  for o in active]})
+          (out/'scene-order.json').write_text(json.dumps(seq,ensure_ascii=False,indent=2),encoding='utf-8')
+          print(json.dumps({'proof_cards':len(cards),'proof_sheets':(len(cards)+5)//6,'scene_pages':len(seq)},indent=2))
+          PY
+
+      - name: Upload focused scene proof
+        uses: actions/upload-artifact@v4
+        with:
+          name: 04c-curated-ocr-scene-proof-f1cd0121
+          path: checkpoint/04c-scene-proof/proof
+          if-no-files-found: error
+          retention-days: 7
