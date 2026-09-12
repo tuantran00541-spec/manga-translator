@@ -1,0 +1,346 @@
+name: Chapter 60 Checkpoint 01 Import
+
+on:
+  push:
+    branches:
+      - trial/chapter-render-60
+    paths:
+      - .github/workflows/chapter-60-import.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: chapter-60-import
+  cancel-in-progress: false
+
+jobs:
+  import-slice:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout trial branch
+        uses: actions/checkout@v4
+        with:
+          ref: trial/chapter-render-60
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install import dependencies only
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install \
+            fastapi==0.115.0 \
+            requests==2.32.3 \
+            beautifulsoup4==4.12.3 \
+            lxml==5.3.0 \
+            playwright==1.47.0 \
+            Pillow==10.4.0 \
+            numpy==1.26.4 \
+            opencv-contrib-python==4.10.0.84
+
+      - name: Download and production-slice A Cadet Becomes a Prophet chapter 60
+        env:
+          CHAPTER_URL: https://asurascans.com/comics/a-cadet-becomes-a-prophet-53fc8424/chapter/60
+          CHAPTER_ID: f1cd0121
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+
+          import hashlib
+          import json
+          import os
+          import re
+          from concurrent.futures import ThreadPoolExecutor, as_completed
+          from pathlib import Path
+
+          import cv2
+          import numpy as np
+          from PIL import Image, ImageDraw
+
+          from app.downloader.registry import download_chapter
+          from app.downloader.slicer import slice_image
+          from app.parameters import PIPELINE_DEFAULT_WORKERS, PIPELINE_SLICE_WORKER_LIMIT
+          from app.security import validate_chapter_id
+
+          chapter_url = os.environ['CHAPTER_URL']
+          chapter_id = validate_chapter_id(os.environ['CHAPTER_ID'])
+
+          root = Path('checkpoint/01-import')
+          raw_dir = root / 'raw'
+          sliced_dir = raw_dir / 'sliced'
+          raw_dir.mkdir(parents=True, exist_ok=True)
+          sliced_dir.mkdir(parents=True, exist_ok=True)
+
+          raw_paths = list(download_chapter(chapter_url, raw_dir))
+          if not raw_paths:
+              raise RuntimeError('Production downloader returned zero source images')
+
+          source_rows = []
+          digest_to_pages: dict[str, list[int]] = {}
+          numeric_stems = []
+          for source_index, raw_path in enumerate(raw_paths):
+              raw_path = Path(raw_path)
+              image = cv2.imread(str(raw_path), cv2.IMREAD_COLOR)
+              if image is None:
+                  raise RuntimeError(f'Could not read downloaded source image: {raw_path}')
+              height, width = image.shape[:2]
+              if height <= 0 or width <= 0:
+                  raise RuntimeError(f'Invalid dimensions for source image: {raw_path}')
+              digest = hashlib.sha256(raw_path.read_bytes()).hexdigest()
+              digest_to_pages.setdefault(digest, []).append(source_index)
+              match = re.search(r'(\d+)$', raw_path.stem)
+              numeric_stems.append(int(match.group(1)) if match else None)
+              source_rows.append({
+                  'source_page': source_index,
+                  'filename': raw_path.name,
+                  'width': int(width),
+                  'height': int(height),
+                  'sha256': digest,
+              })
+
+          exact_duplicates = [
+              {'sha256': digest, 'source_pages': pages}
+              for digest, pages in digest_to_pages.items() if len(pages) > 1
+          ]
+
+          filename_sequence_issue = None
+          if numeric_stems and all(value is not None for value in numeric_stems):
+              expected = list(range(numeric_stems[0], numeric_stems[0] + len(numeric_stems)))
+              if numeric_stems != expected:
+                  filename_sequence_issue = {
+                      'actual': numeric_stems,
+                      'expected': expected,
+                  }
+
+          max_workers = max(
+              1,
+              min(
+                  int(PIPELINE_DEFAULT_WORKERS),
+                  int(PIPELINE_SLICE_WORKER_LIMIT),
+                  len(raw_paths),
+              ),
+          )
+          slice_results: dict[int, list[dict]] = {}
+
+          def slice_one(item):
+              idx, raw_path = item
+              return idx, slice_image(Path(raw_path), sliced_dir, f'{idx:03d}', return_metadata=True)
+
+          with ThreadPoolExecutor(max_workers=max_workers) as pool:
+              futures = {pool.submit(slice_one, (idx, path)): idx for idx, path in enumerate(raw_paths)}
+              for future in as_completed(futures):
+                  idx, items = future.result()
+                  slice_results[idx] = items
+
+          pages = []
+          ownership_issues = []
+          reconstruction_issues = []
+          for source_index, raw_path in enumerate(raw_paths):
+              source_items = list(slice_results[source_index])
+              source_rows[source_index]['slice_count'] = len(source_items)
+              prev_end = 0
+              core_parts = []
+              for slice_index, item in enumerate(source_items):
+                  slice_path = Path(item['path'])
+                  stitch_core = {key: item.get(key) for key in (
+                      'source_y1', 'source_y2', 'core_y1', 'core_y2',
+                      'core_source_y1', 'core_source_y2', 'unsafe_before',
+                      'unsafe_after', 'source_height'
+                  )}
+                  y1 = int(stitch_core.get('core_source_y1') or 0)
+                  y2 = int(stitch_core.get('core_source_y2') or 0)
+                  if y1 != prev_end:
+                      ownership_issues.append({
+                          'source_page': source_index,
+                          'slice_index': slice_index,
+                          'expected_y1': prev_end,
+                          'actual_y1': y1,
+                      })
+                  if y2 < y1:
+                      ownership_issues.append({
+                          'source_page': source_index,
+                          'slice_index': slice_index,
+                          'invalid_range': [y1, y2],
+                      })
+                  prev_end = y2
+
+                  slice_image_data = cv2.imread(str(slice_path), cv2.IMREAD_COLOR)
+                  if slice_image_data is None:
+                      raise RuntimeError(f'Could not read slice image: {slice_path}')
+                  core_y1 = int(stitch_core.get('core_y1') or 0)
+                  core_y2 = int(stitch_core.get('core_y2') or 0)
+                  core_parts.append(slice_image_data[core_y1:core_y2, :])
+
+                  pages.append({
+                      'original': slice_path.as_posix(),
+                      'clean': None,
+                      'boxes': [],
+                      'skipped': False,
+                      'excluded_regions': [],
+                      'source_page': source_index,
+                      'slice_index': slice_index,
+                      'stitch_core': stitch_core,
+                  })
+
+              source_h = int(source_rows[source_index]['height'])
+              if prev_end != source_h:
+                  ownership_issues.append({
+                      'source_page': source_index,
+                      'expected_end': source_h,
+                      'actual_end': prev_end,
+                  })
+
+              original = cv2.imread(str(raw_path), cv2.IMREAD_COLOR)
+              reconstructed = np.concatenate(core_parts, axis=0) if core_parts else None
+              if reconstructed is None or reconstructed.shape != original.shape:
+                  reconstruction_issues.append({
+                      'source_page': source_index,
+                      'reason': 'shape_mismatch',
+                      'original_shape': list(original.shape),
+                      'reconstructed_shape': None if reconstructed is None else list(reconstructed.shape),
+                  })
+              elif not np.array_equal(original, reconstructed):
+                  delta = cv2.absdiff(original, reconstructed)
+                  reconstruction_issues.append({
+                      'source_page': source_index,
+                      'reason': 'pixel_mismatch',
+                      'max_abs_diff': int(delta.max()),
+                      'changed_values': int(np.count_nonzero(delta)),
+                  })
+
+          manifest = {
+              'chapter_id': chapter_id,
+              'series_slug': 'a-cadet-becomes-a-prophet-53fc8424',
+              'chapter_number': 60,
+              'source_url': chapter_url,
+              'pages': pages,
+              'workflow': {'stage': 'preview', 'page_index': 0},
+          }
+          (root / 'manifest.json').write_text(
+              json.dumps(manifest, ensure_ascii=False, indent=2), encoding='utf-8'
+          )
+
+          summary = {
+              'checkpoint': '01-import',
+              'chapter_id': chapter_id,
+              'series_slug': 'a-cadet-becomes-a-prophet-53fc8424',
+              'chapter_number': 60,
+              'source_url': chapter_url,
+              'source_images': len(raw_paths),
+              'slices': len(pages),
+              'slice_workers': max_workers,
+              'skipped_pages': [],
+              'source_order': [Path(path).name for path in raw_paths],
+              'source_pages': source_rows,
+              'exact_duplicate_groups': exact_duplicates,
+              'filename_sequence_issue': filename_sequence_issue,
+              'ownership_issues': ownership_issues,
+              'reconstruction_issues': reconstruction_issues,
+              'slice_order': [
+                  {
+                      'page_index': idx,
+                      'source_page': page['source_page'],
+                      'slice_index': page['slice_index'],
+                      'original': page['original'],
+                  }
+                  for idx, page in enumerate(pages)
+              ],
+              'technical_pass': not (
+                  exact_duplicates
+                  or filename_sequence_issue
+                  or ownership_issues
+                  or reconstruction_issues
+              ),
+              'next_action': 'STOP_FOR_HUMAN_IMPORT_REVIEW',
+          }
+          (root / 'import-summary.json').write_text(
+              json.dumps(summary, ensure_ascii=False, indent=2), encoding='utf-8'
+          )
+
+          def contact_sheet(paths, out_path, label_prefix, thumb_w=220, thumb_h=320, cols=5):
+              cards = []
+              for idx, path in enumerate(paths):
+                  with Image.open(path) as im:
+                      rgb = im.convert('RGB')
+                      rgb.thumbnail((thumb_w, thumb_h))
+                      canvas = Image.new('RGB', (thumb_w + 16, thumb_h + 42), 'white')
+                      x = (canvas.width - rgb.width) // 2
+                      y = 8 + (thumb_h - rgb.height) // 2
+                      canvas.paste(rgb, (x, y))
+                      draw = ImageDraw.Draw(canvas)
+                      draw.text((8, thumb_h + 14), f'{label_prefix} {idx:03d}: {Path(path).name}', fill='black')
+                      cards.append(canvas)
+              rows = (len(cards) + cols - 1) // cols
+              sheet = Image.new('RGB', (cols * (thumb_w + 16), rows * (thumb_h + 42)), 'white')
+              for i, card in enumerate(cards):
+                  sheet.paste(card, ((i % cols) * card.width, (i // cols) * card.height))
+              sheet.save(out_path, quality=88)
+
+          contact_sheet(raw_paths, root / 'source-contact-sheet.jpg', 'SRC')
+          ordered_slices = [Path(page['original']) for page in pages]
+          contact_sheet(ordered_slices, root / 'slice-contact-sheet.jpg', 'SLICE', thumb_h=260)
+
+          (root / 'HUMAN_CHECKPOINT.txt').write_text(
+              'CHECKPOINT: IMPORT REVIEW\n'
+              'STOP here. Inspect source and slice contact sheets, count/order, duplicates, '
+              'slice ownership, overlap, and reconstruction evidence before CLEAN.\n',
+              encoding='utf-8',
+          )
+
+          print(json.dumps({
+              'chapter_id': chapter_id,
+              'source_images': len(raw_paths),
+              'slices': len(pages),
+              'duplicate_groups': len(exact_duplicates),
+              'ownership_issues': len(ownership_issues),
+              'reconstruction_issues': len(reconstruction_issues),
+              'technical_pass': summary['technical_pass'],
+              'next_action': 'STOP_FOR_HUMAN_IMPORT_REVIEW',
+          }, ensure_ascii=False))
+
+          if not summary['technical_pass']:
+              raise RuntimeError('Import technical validation failed; inspect import-summary.json')
+          PY
+
+      - name: Publish compact import review evidence to trial branch
+        run: |
+          mkdir -p trials/chapter-60/review/01-import
+          cp checkpoint/01-import/import-summary.json trials/chapter-60/review/01-import/
+          cp checkpoint/01-import/manifest.json trials/chapter-60/review/01-import/
+          cp checkpoint/01-import/source-contact-sheet.jpg trials/chapter-60/review/01-import/
+          cp checkpoint/01-import/slice-contact-sheet.jpg trials/chapter-60/review/01-import/
+          cp checkpoint/01-import/HUMAN_CHECKPOINT.txt trials/chapter-60/review/01-import/
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path('trials/chapter-60/chapter-state.json')
+          state = json.loads(p.read_text(encoding='utf-8'))
+          state.update({
+              'current_stage': 'IMPORT_REVIEW',
+              'current_artifact': '01-import-f1cd0121',
+              'blockers': [],
+              'next_action': 'HUMAN_IMPORT_REVIEW',
+          })
+          p.write_text(json.dumps(state, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add trials/chapter-60
+          if ! git diff --cached --quiet; then
+            git commit -m "review: publish chapter 60 import checkpoint"
+            git push origin HEAD:trial/chapter-render-60
+          fi
+
+      - name: Upload checkpoint 01 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: 01-import-f1cd0121
+          path: checkpoint/01-import
+          if-no-files-found: error
+          retention-days: 7
