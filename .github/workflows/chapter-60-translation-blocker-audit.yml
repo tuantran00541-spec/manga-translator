@@ -1,0 +1,82 @@
+name: Chapter 60 Checkpoint 05B Translation Blocker Audit
+
+on:
+  push:
+    branches: [trial/chapter-render-60]
+    paths: [.github/workflows/chapter-60-translation-blocker-audit.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: chapter-60-human-loop
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    env:
+      BASE_RUN_ID: "34679646612"
+      BASE_ARTIFACT: 04b-ocr-curated-f1cd0121
+      ROOT: checkpoint/05b-translation-blocker-audit
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: trial/chapter-render-60
+      - run: python -m pip install Pillow==10.4.0
+      - name: Restore curated OCR checkpoint
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf "$ROOT"; mkdir -p "$ROOT"
+          gh run download "$BASE_RUN_ID" -n "$BASE_ARTIFACT" -D "$ROOT/base"
+      - name: Build RAW proof and metadata
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          from PIL import Image, ImageDraw, ImageFont
+          root=Path(os.environ['ROOT']); base=root/'base'; out=root/'proof'; out.mkdir(parents=True,exist_ok=True)
+          m=json.loads((base/'processed/manifest.json').read_text(encoding='utf-8'))
+          targets={
+            29:['text_66079c5d81db4a56'],
+            50:['text_73608fae8cb44827','text_b9b21a83428e4e32'],
+          }
+          rows=[]; cards=[]
+          font=ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',18)
+          small=ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',14)
+          for pi,ids in targets.items():
+            page=m['pages'][pi]
+            raw=base/'raw'/'sliced'/Path(str(page.get('original'))).name
+            im=Image.open(raw).convert('RGB')
+            active=[o for o in (page.get('text_objects') or []) if not o.get('source_missing')]
+            for oid in ids:
+              obj=next(o for o in active if str(o.get('id'))==oid)
+              r=obj['region']; x1,y1,x2,y2=[int(r[k]) for k in ('x1','y1','x2','y2')]
+              pad=180; L=max(0,x1-pad); T=max(0,y1-pad); R=min(im.width,x2+pad); B=min(im.height,y2+pad)
+              crop=im.crop((L,T,R,B)); d=ImageDraw.Draw(crop); d.rectangle((x1-L,y1-T,x2-L,y2-T),outline='red',width=5)
+              crop.thumbnail((850,560),Image.Resampling.LANCZOS)
+              card=Image.new('RGB',(900,680),'white'); cd=ImageDraw.Draw(card)
+              cd.text((10,10),f'p{pi:03d} {oid}',fill='black',font=font)
+              cd.text((10,38),f'source_page={page.get("source_page")} slice_index={page.get("slice_index")} original={page.get("original")}',fill='black',font=small)
+              cd.text((10,60),f'region={r} OCR={obj.get("ocr_text")!r}',fill='black',font=small)
+              card.paste(crop,((900-crop.width)//2,95)); cards.append(card)
+              rows.append({'page_index':pi,'object_id':oid,'source_page':page.get('source_page'),'slice_index':page.get('slice_index'),'original':page.get('original'),'region':r,'ocr_text':obj.get('ocr_text'),'source_boxes':obj.get('source_boxes')})
+          # p050 pair geometry metrics
+          a,b=[next(o for o in m['pages'][50]['text_objects'] if str(o.get('id'))==x) for x in targets[50]]
+          def area(r): return max(0,r['x2']-r['x1'])*max(0,r['y2']-r['y1'])
+          ar,br=a['region'],b['region']; ix=max(0,min(ar['x2'],br['x2'])-max(ar['x1'],br['x1'])); iy=max(0,min(ar['y2'],br['y2'])-max(ar['y1'],br['y1'])); inter=ix*iy
+          pair={'same_page_index':True,'intersection':inter,'iou': inter/(area(ar)+area(br)-inter) if inter else 0.0,'vertical_gap':max(0,max(ar['y1'],br['y1'])-min(ar['y2'],br['y2'])),'a_region':ar,'b_region':br}
+          (out/'audit.json').write_text(json.dumps({'targets':rows,'p050_pair':pair},ensure_ascii=False,indent=2),encoding='utf-8')
+          for i,c in enumerate(cards,1): c.save(out/f'proof-{i:02d}.jpg',quality=95)
+          print('=== AUDIT ==='); print((out/'audit.json').read_text(encoding='utf-8'))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: 05b-translation-blocker-audit-f1cd0121
+          path: checkpoint/05b-translation-blocker-audit/proof
+          if-no-files-found: error
+          retention-days: 7
