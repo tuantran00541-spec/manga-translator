@@ -7,6 +7,20 @@
   let renderToken = 0;
   const stitchedMaskSnapshots = new Map();
 
+  function regionHasPaint(canvas, x, y, width, height) {
+    const scale = Math.min(1, 512 / Math.max(width, height));
+    const probe = document.createElement("canvas");
+    probe.width = Math.max(1, Math.ceil(width * scale));
+    probe.height = Math.max(1, Math.ceil(height * scale));
+    const ctx = probe.getContext("2d", { willReadFrequently: true });
+    ctx.drawImage(canvas, x, y, width, height, 0, 0, probe.width, probe.height);
+    const pixels = ctx.getImageData(0, 0, probe.width, probe.height).data;
+    for (let index = 3; index < pixels.length; index += 4) {
+      if (pixels[index] > 20) return true;
+    }
+    return false;
+  }
+
   function captureStitchedSnapshot(shell) {
     if (activeSourcePage === null || !shell) return;
     const canvas = shell.querySelector("canvas.stitched-brush-canvas");
@@ -593,19 +607,7 @@
 
       const w = brushCanvas.width;
       const h = brushCanvas.height;
-      const checkCanvas = document.createElement("canvas");
-      checkCanvas.width = Math.min(w, 800);
-      checkCanvas.height = Math.min(h, 800);
-      const checkCtx = checkCanvas.getContext("2d");
-      checkCtx.drawImage(brushCanvas, 0, 0, checkCanvas.width, checkCanvas.height);
-      const checkData = checkCtx.getImageData(0, 0, checkCanvas.width, checkCanvas.height);
-      let hasPaint = false;
-      for (let i = 3; i < checkData.data.length; i += 4) {
-        if (checkData.data[i] > 20) {
-          hasPaint = true;
-          break;
-        }
-      }
+      const hasPaint = regionHasPaint(brushCanvas, 0, 0, w, h);
       if (!hasPaint) {
         brushCanvas._reviewDirty = false;
         showToast("Chưa có vùng nào được đánh dấu để xử lý.", "error");
@@ -638,14 +640,7 @@
             0, 0, w, subH
           );
 
-          const subData = subCtx.getImageData(0, 0, w, subH);
-          let slicePainted = false;
-          for (let i = 3; i < subData.data.length; i += 4) {
-            if (subData.data[i] > 20) {
-              slicePainted = true;
-              break;
-            }
-          }
+          const slicePainted = regionHasPaint(brushCanvas, 0, desc.sourceY1, w, subH);
           if (!slicePainted) continue;
 
           const sliceMaskCanvas = document.createElement("canvas");
