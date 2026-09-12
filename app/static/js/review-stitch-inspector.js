@@ -269,6 +269,12 @@
 
   function mount(workspace) {
     if (!(workspace instanceof HTMLElement) || workspace.dataset.stitchInspectorMounted === "1") return;
+    workspace._stitchAbort?.abort();
+    window._reviewStitchAbort?.abort();
+    const stitchAbort = new AbortController();
+    workspace._stitchAbort = stitchAbort;
+    window._reviewStitchAbort = stitchAbort;
+    const signal = stitchAbort.signal;
     const host = workspace.closest("#page-view.review-mode");
     const toolbar = workspace.querySelector(".review-sticky-toolbar");
     const actions = toolbar?.querySelector(".review-actions-group");
@@ -427,7 +433,7 @@
         adjustBrushRadius(2);
       }
     };
-    document.addEventListener("keydown", onStitchKeyDown);
+    document.addEventListener("keydown", onStitchKeyDown, { signal });
 
     const syncBrushUI = () => {
       imageHost.classList.toggle("brush-mode", brushOn);
@@ -554,9 +560,9 @@
       },
     };
 
-    window.addEventListener("mouseup", stopPainting);
-    window.addEventListener("pointerup", stopPainting);
-    window.addEventListener("blur", () => stopPainting());
+    window.addEventListener("mouseup", stopPainting, { signal });
+    window.addEventListener("pointerup", stopPainting, { signal });
+    window.addEventListener("blur", () => stopPainting(), { signal });
 
     const setStitchedBusy = (busy, label = "Đang xử lý…") => {
       workspace.classList.toggle("review-busy", busy);
