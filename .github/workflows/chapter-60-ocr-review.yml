@@ -48,11 +48,20 @@ jobs:
             Pillow==10.4.0 \
             opencv-contrib-python==4.10.0.84 \
             paddlepaddle==3.2.2 \
-            paddleocr==3.7.0 \
+            paddleocr==3.7.0
+          python -m pip install \
+            onnxruntime-openvino==1.24.1 \
+            psutil==6.1.1 \
+            loguru==0.7.2 \
+            requests==2.32.3 \
+            beautifulsoup4==4.12.3 \
+            lxml==5.3.0 \
+            playwright==1.47.0 \
             fastapi==0.115.0 \
+            'uvicorn[standard]==0.30.6' \
             pydantic==2.9.2 \
             filelock==3.16.1 \
-            loguru==0.7.2
+            python-multipart==0.0.12
 
       - name: Restore Paddle OCR model cache
         uses: actions/cache@v4
