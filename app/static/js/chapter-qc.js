@@ -416,6 +416,7 @@
   }
 
   function observeWorkspaceLocks(workspace) {
+    workspace._chapterQcObserver?.disconnect();
     let lockScheduled = false;
     const observer = new MutationObserver(() => {
       if (!workspace.isConnected) {
@@ -430,6 +431,7 @@
       });
     });
     observer.observe(workspace, { childList: true, subtree: true });
+    workspace._chapterQcObserver = observer;
   }
 
   function bindWorkspace(workspace) {
