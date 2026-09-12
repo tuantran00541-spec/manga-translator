@@ -27,7 +27,7 @@
       focusBtn.classList.toggle("active", focusModeActive);
       focusBtn.classList.toggle("ui-btn-primary", focusModeActive);
       focusBtn.classList.toggle("ui-btn-ghost", !focusModeActive);
-      focusBtn.title = focusModeActive ? "Thoát chế độ tập trung (Phím Tab)" : "Chế độ tập trung (Phím Tab)";
+      focusBtn.title = focusModeActive ? "Thoát chế độ tập trung (Phím F)" : "Chế độ tập trung (Phím F)";
     }
     syncWorkbenchPanels();
   }
@@ -50,7 +50,7 @@
       focusBtn.classList.toggle("active", focusModeActive);
       focusBtn.classList.toggle("ui-btn-primary", focusModeActive);
       focusBtn.classList.toggle("ui-btn-ghost", !focusModeActive);
-      focusBtn.title = focusModeActive ? "Thoát chế độ tập trung (Phím Tab)" : "Chế độ tập trung (Phím Tab)";
+      focusBtn.title = focusModeActive ? "Thoát chế độ tập trung (Phím F)" : "Chế độ tập trung (Phím F)";
     }
 
     if (focusModeActive) {
@@ -249,6 +249,7 @@
       prepareTargetPage(stage, pageIndex);
 
       if (stage === "landing") {
+        window.cleanupReviewWorkspace?.();
         if (typeof window.cleanupPreviewDrawListeners === "function") window.cleanupPreviewDrawListeners();
         if (typeof window._editorDrawCleanup === "function") {
           window._editorDrawCleanup();
@@ -267,6 +268,7 @@
       if (typeof renderer !== "function") {
         throw new Error(`Không tìm thấy trình hiển thị cho bước ${STAGE_LABELS[stage]}.`);
       }
+      if (currentStage === "review" && stage !== "review") window.cleanupReviewWorkspace?.();
       renderer();
       return true;
     } catch (err) {
@@ -390,12 +392,11 @@
           event.preventDefault();
           first?.focus();
         }
-      } else if (event.key === "Tab" && !event.ctrlKey && !event.altKey && !event.metaKey && !document.body.classList.contains("settings-open")) {
+      } else if ((event.key === "f" || event.key === "F") && !event.ctrlKey && !event.altKey && !event.metaKey && !document.body.classList.contains("settings-open")) {
         const tag = event.target?.tagName?.toLowerCase();
         const isEditable = event.target?.isContentEditable || tag === "input" || tag === "textarea" || tag === "select";
         if (!isEditable && activePanels?.grid?.isConnected) {
           event.preventDefault();
-          event.stopImmediatePropagation();
           toggleFocusMode();
         }
       } else if (event.key === "\\" && !document.body.classList.contains("settings-open")) {
@@ -429,6 +430,7 @@
 
   document.addEventListener("DOMContentLoaded", () => {
     setupShellEvents();
+    window.createAIProviderSettings?.();
     if (!window.currentChapterId) setAppStage("landing");
   });
 })();
