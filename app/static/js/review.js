@@ -437,11 +437,16 @@ async function inspectVisualQC(
 ) {
   const chapterId = currentChapterId;
   if (!chapterId) return;
+  const activeCard = wrap?.closest(".review-card") || null;
   const mutableControls = [brushBtn, clearBtn, submitBtn, resetManualBtn, aiQcBtn, brushSize].filter(Boolean);
   const previousDisabled = new Map(mutableControls.map((control) => [control, control.disabled]));
   if (typeof canvas._stopBrush === "function") canvas._stopBrush();
   mutableControls.forEach((control) => { control.disabled = true; });
   if (wrap) wrap.classList.add("ai-qc-running");
+  if (activeCard) {
+    activeCard._reviewBusy = true;
+    activeCard._syncReviewBusy?.();
+  }
 
   const oldText = aiQcBtn.textContent;
   aiQcBtn.textContent = "AI đang kiểm tra…";
@@ -522,6 +527,10 @@ async function inspectVisualQC(
     mutableControls.forEach((control) => { control.disabled = previousDisabled.get(control) || false; });
     if (wrap) wrap.classList.remove("ai-qc-running");
     aiQcBtn.textContent = oldText;
+    if (activeCard) {
+      activeCard._reviewBusy = false;
+      activeCard._syncReviewBusy?.();
+    }
   }
 }
 

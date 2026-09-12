@@ -1,4 +1,8 @@
-# Frontend phases 1–6 implementation baseline — 2026-09-08
+# Historical frontend phases 1–6 implementation baseline — 2026-09-08
+
+> Historical migration record. Branch names, compatibility components and the
+> authorization note below describe that earlier implementation session, not
+> the current `main` runtime.
 
 ## Scope
 

@@ -24,7 +24,7 @@ def _exercise_landing(page: Page, base_url: str, name: str, artifacts: Path) -> 
     page.goto(base_url, wait_until="networkidle")
     expect(page.locator("#home-view")).to_be_visible()
     expect(page.get_by_role("heading", name="Xin chào!")).to_be_visible()
-    expect(page.locator(".recent-card")).to_have_count(1)
+    expect(page.locator('.recent-card[data-chapter-id="f00d0001"]')).to_have_count(1)
     expect(page.locator("#theme-select")).to_have_value("system")
 
     if name == "mobile":
@@ -188,7 +188,7 @@ def main() -> None:
                 # page.goto("/#chapter") from an already-loaded "/" page is
                 # only a same-document hash change and does not rerun the
                 # DOMContentLoaded deep-link boot.
-                page.locator(".recent-card").click()
+                page.locator('.recent-card[data-chapter-id="f00d0001"]').click()
                 exercise(page)
                 page.locator(".translation-canvas-host img").scroll_into_view_if_needed()
                 metrics = _canvas_metrics(page)

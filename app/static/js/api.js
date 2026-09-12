@@ -159,6 +159,7 @@ async function loadRecentChapters() {
       card.className = "recent-card";
       card.type = "button";
       const chapterId = String(ch?.chapter_id || "");
+      card.dataset.chapterId = chapterId;
       card.setAttribute("aria-label", `Mở lại chương ${chapterId || "không rõ"}`);
       card.addEventListener("click", () => resumeChapter(chapterId));
 

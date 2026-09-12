@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Deterministic safety/equivalence checks for Phase 11 ROI grayscale retry."""
+"""Deterministic safety/equivalence checks for detector ROI grayscale retry."""
 from __future__ import annotations
 
 from dataclasses import replace
@@ -115,7 +115,7 @@ def roi_retry_check():
     check((box.x1, box.y1, box.x2, box.y2) == target, "ROI coordinate remap changed geometry")
     check(box.verified_mask, "ROI retry lost the text-segmenter mask")
     check(box.safe_to_inpaint and not box.needs_review, "verified segmenter retry lost erase authority")
-    print("phase11 bounded grayscale ROI recovery PASS")
+    print("bounded grayscale ROI recovery PASS")
 
 
 def budget_and_fail_safe_check():
@@ -149,9 +149,9 @@ def budget_and_fail_safe_check():
     )
     check(not giant_rois and giant_deferred == 1, "oversized proposal bypassed ROI bound")
     check(not giant.safe_to_inpaint and giant.needs_review, "deferred proposal gained destructive authority")
-    print("phase11 ROI budget/fail-safe PASS")
+    print("grayscale ROI budget/fail-safe PASS")
 
 
 roi_retry_check()
 budget_and_fail_safe_check()
-print("backend grayscale ROI sanity: phase 11 PASS")
+print("backend grayscale ROI sanity: PASS")

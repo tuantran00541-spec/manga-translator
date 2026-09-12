@@ -26,8 +26,15 @@ def check_runtime_geometry() -> None:
     for y, color in ((10, (5, 5, 5)), (75, (210, 245, 245)), (140, (5, 5, 5))):
         image[20 + y:36 + y, 50:250] = color
         mask[y:y + 16, 30:230] = 255
-    box = BubbleBox(20, 20, 320, 200, .8, mask,
-                    source_model="text_segmenter.onnx", safe_to_inpaint=True)
+    box = BubbleBox(
+        20, 20, 320, 200, .8, mask,
+        source_model="text_segmenter.onnx",
+        source_role="text_segmenter",
+        mask_source="text_segmenter",
+        safe_to_inpaint=True,
+        ocr_eligible=True,
+        needs_review=False,
+    )
     refined = CombinedTextDetector._refine_and_split_tall_boxes([box], image)
     restored = np.zeros(image.shape[:2], np.uint8)
     for item in refined:
@@ -53,16 +60,26 @@ def check_runtime_geometry() -> None:
     detector._metrics_local = threading.local()
     detector.bubble_detector = SimpleNamespace(detect=lambda _: [proposal])
     detector.recovery = SimpleNamespace(detect=lambda *a, **kw: [])
-    for rgb_boxes, gray_boxes, calls, safe in (
-        ([], [box], 2, True), ([box], [], 1, True), ([], [], 2, False),
+    for rgb_boxes, gray_boxes, fallback_calls, safe in (
+        ([], [box], 1, True), ([box], [], 0, True), ([], [], 1, False),
     ):
         with patch("app.detector.combined_detector.DETECTOR_FREE_TEXT_GRAYSCALE_FALLBACK", True):
             with patch.object(detector, "text_detector", create=True) as text_detector:
-                text_detector.detect.side_effect = [rgb_boxes, gray_boxes]
-                result = detector.detect(image)
-                assert text_detector.detect.call_count == calls
-                assert any(item.safe_to_inpaint for item in result) == safe
-                assert detector.last_metrics()["text_grayscale_fallback_runs"] == calls - 1
+                text_detector.detect.return_value = rgb_boxes
+                with patch.object(
+                    detector,
+                    "_grayscale_text_retry",
+                    return_value=(gray_boxes, {
+                        "calls": fallback_calls,
+                        "source_pixels": image.shape[0] * image.shape[1] if fallback_calls else 0,
+                        "deferred_regions": 0,
+                    }),
+                ) as retry:
+                    result = detector.detect(image)
+                    assert text_detector.detect.call_count == 1
+                    assert retry.call_count == fallback_calls
+                    assert any(item.safe_to_inpaint for item in result) == safe
+                    assert detector.last_metrics()["text_grayscale_fallback_runs"] == fallback_calls
     print("Free-text fallback and lossless mask refinement OK")
 
     height, width = 6200, 120
@@ -140,7 +157,7 @@ def _require(path: str, *needles: str) -> None:
 
 def main() -> None:
     _require(
-        "app/pipeline.py",
+        "app/pipeline_editing.py",
         "Persisted review-only detector masks are evidence, not erase",
         "if overlap_context_only and not geometry_overridden:",
         "if not (safe_to_inpaint or geometry_overridden or explicit_manual):",
@@ -150,7 +167,13 @@ def main() -> None:
         "manual_lama_mask_posix: str | None = None",
         "(manual_mask_path, False)",
         "(manual_lama_mask_path, True)",
+    )
+    _require(
+        "app/page_processing.py",
         'and not record.get("deferred_reason")',
+    )
+    _require(
+        "app/pipeline.py",
         'target_page["deferred_regions"]',
     )
     _require(

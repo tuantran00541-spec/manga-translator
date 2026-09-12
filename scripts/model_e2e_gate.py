@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import argparse
 from contextlib import contextmanager
+import hashlib
 import json
 import os
 from pathlib import Path
 import statistics
+import subprocess
 import sys
 import threading
 import time
@@ -28,7 +30,37 @@ def _source_revision() -> str | None:
         value = path.read_text(encoding="utf-8").strip()
         return value or None
     value = os.getenv("GITHUB_SHA", "").strip()
-    return value or None
+    if value:
+        return value
+    try:
+        return subprocess.check_output(
+            ["git", "rev-parse", "HEAD"],
+            cwd=_REPO_ROOT,
+            text=True,
+            stderr=subprocess.DEVNULL,
+        ).strip() or None
+    except (OSError, subprocess.CalledProcessError):
+        return None
+
+
+def _source_dirty() -> bool | None:
+    if os.getenv("GITHUB_SHA"):
+        return False
+    try:
+        output = subprocess.check_output(
+            ["git", "status", "--porcelain"],
+            cwd=_REPO_ROOT,
+            text=True,
+            stderr=subprocess.DEVNULL,
+        )
+        return bool(output.strip())
+    except (OSError, subprocess.CalledProcessError):
+        return None
+
+
+def _sha256(path: Path) -> str:
+    with path.open("rb") as handle:
+        return hashlib.file_digest(handle, "sha256").hexdigest()
 
 
 class GateFailure(RuntimeError):
@@ -191,7 +223,7 @@ def _check_pixel_safety(
     inpainter,
     tolerance: int,
 ) -> dict:
-    from app.pipeline import read_image
+    from app.image_io import read_image
 
     original_path = Path(str(page.get("original") or ""))
     clean_path = Path(str(page.get("clean") or ""))
@@ -281,9 +313,9 @@ def _run_ocr(chapter_id: str, pipeline, lang: str, max_boxes: int, require: bool
         from app.ocr.service import OCRService
 
         engine = MultiLangOCR()
-        expected_mode = os.getenv("MANGA_OCR_TARGET_SELECTION", "centered").strip().lower() or "centered"
+        expected_mode = os.getenv("MANGA_OCR_TARGET_SELECTION", "all").strip().lower() or "all"
         if expected_mode not in {"centered", "all"}:
-            expected_mode = "centered"
+            expected_mode = "all"
         if getattr(engine, "_paddle_target_mode", expected_mode) != expected_mode:
             failures.append("MultiLangOCR target mode does not match configured OCR target selection")
 
@@ -381,6 +413,10 @@ def run(args: argparse.Namespace) -> dict:
             page_indices = page_indices[:args.max_pages]
         if not page_indices:
             raise GateFailure("No generated slices selected for the gate")
+        if len(page_indices) < args.min_slices:
+            raise GateFailure(
+                f"Selected only {len(page_indices)} slices; gate requires at least {args.min_slices}"
+            )
         process_chunk_ms: list[float] = []
         for chunk in _chunked(page_indices, args.workers):
             t0 = time.perf_counter()
@@ -487,6 +523,8 @@ def run(args: argparse.Namespace) -> dict:
     return {
         "status": "pass" if not all_failures else "fail",
         "source_revision": _source_revision(),
+        "source_dirty": _source_dirty(),
+        "model_sha256": {path.name: _sha256(path) for path in required_models},
         "chapter_id": args.chapter_id,
         "chapter_url": args.chapter_url,
         "source_lang": args.source_lang,
@@ -532,6 +570,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-source-images", type=int, default=0, help="0 means all source images.")
     parser.add_argument("--start-page", type=int, default=0, help="First generated slice index to process.")
     parser.add_argument("--max-pages", type=int, default=0, help="0 means all selected generated slices.")
+    parser.add_argument(
+        "--min-slices",
+        type=int,
+        default=1,
+        help="Fail when fewer selected slices are exercised (use 16 for the release benchmark).",
+    )
     parser.add_argument("--max-ocr-boxes", type=int, default=0, help="0 means all OCR-eligible boxes.")
     parser.add_argument("--require-ocr", action="store_true")
     parser.add_argument("--outside-pixel-tolerance", type=int, default=0)
@@ -552,6 +596,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     args.workers = max(1, min(int(args.workers), 2))
+    args.min_slices = max(1, int(args.min_slices))
     try:
         report = run(args)
     except Exception as exc:

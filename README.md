@@ -135,22 +135,38 @@ The provider response is never committed blindly: object identity, OCR source te
 
 The permanent GitHub Actions workflow is `.github/workflows/release-gate.yml`.
 
-Local equivalent:
+Install the lightweight correctness dependencies once, then run the local equivalent:
 
 ```bash
+python -m pip install -r requirements-test.txt
 make release-check
 ```
 
-The gate compiles source, runs the v0.1 + v0.2 model-independent integration/regression suite (including artwork-safety and geometry-mask tests), then runs Chromium regressions. `tests/test_v01_product_closure.py` specifically validates the connected path:
+The gate compiles source, runs the maintained model-independent pytest suite
+(including artwork-safety, geometry-mask, OCR and provider regressions), and
+runs the static JavaScript/browser runtime checks. The separate `Live UI smoke`
+workflow starts the real FastAPI application and exercises Chromium at desktop
+and mobile widths. `tests/test_v01_product_closure.py` specifically validates
+the connected path:
 
 **processed OCR box → auto text object → translation commit → revision-safe render → strict ZIP export**
 
 The external DeepSeek network call is stubbed in that test; the product state transitions, filesystem render, render identity, and ZIP generation are real.
 
+For a user-reviewed processed ZIP, run `scripts/audit_processed_bundle.py` to
+measure manual-correction rate, review workload, residue state and persisted
+mask geometry. The current real-chapter reference is documented in
+`docs/PROCESSED_CHAPTER_QUALITY_BASELINE_20260912.md`; the completion proxy is
+never presented as detector recall.
+
 ## Project layout
 
 ```text
 app/              production application
+  image_io.py      bounded image/mask file I/O
+  page_processing.py detector/inpaint processing for one page
+  pipeline_editing.py manual repair and text-object mutations
+  pipeline.py      chapter ingestion, scheduling and workflow coordination
   detector/       local bubble/text detection
   downloader/     URL/local ingestion and webtoon slicing
   inpaint/        LaMa cleanup + mask geometry safety
@@ -170,7 +186,11 @@ docs/             maintained architecture/UI/security history
 
 The production branch intentionally does not carry exploratory benchmark generations, one-off debug scripts, frozen benchmark JSON, or stale model hash manifests. The pre-v0.1 benchmark/debug tree is preserved intact on `archive/pre-v0.1-benchmarks` for future archaeology or model experiments.
 
-Release-critical tests use functional names rather than phase numbers. New experiments should live on a feature/benchmark branch and only enter `main` when they become part of the maintained product or release gate.
+New release-critical checks use functional names. A few historical backend
+regression filenames retain their original phase numbers so old run links stay
+traceable; obsolete patch/apply workflows are not shipped on `main`. New
+experiments should live on a feature/benchmark branch and only enter `main`
+when they become part of the maintained product or release gate.
 
 ## Release rule
 

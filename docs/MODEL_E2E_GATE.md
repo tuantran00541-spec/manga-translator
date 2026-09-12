@@ -19,6 +19,13 @@ This gate is a model-dependent acceptance check for the production Manga Transla
 
 The script does not make an algorithm change and does not replace the Release/browser gates. A production candidate is eligible only after the relevant model-E2E runs and the normal Release/browser gates are green.
 
+On `main`, `.github/workflows/phase13-final-benchmark.yml` now runs the complete
+dynamic-LaMa chapter gate and a separate fixed-LaMa 16-slice compatibility
+gate whenever production detector/inpaint/pipeline code changes. Both reports
+are tied to `GITHUB_SHA` and include the exact model SHA-256 values. The OCR
+runtime gate also tracks OCR changes on `main`; manual dispatch remains
+available for release revalidation without a source change.
+
 ## Required external model files
 
 Keep model blobs outside Git. Place the normal production files in `models/` before running:

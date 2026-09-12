@@ -1,4 +1,8 @@
-# Frontend completion phases 7-12 — 2026-09-08
+# Historical frontend completion phases 7-12 — 2026-09-08
+
+> Historical migration record. The compatibility release layer described
+> below has since been removed from the shipped runtime. Current ownership is
+> documented in `UI_GUIDELINES.md` and enforced by `studio_runtime_sanity.js`.
 
 Base for this implementation: `frontend/phases-1-6` at `2fe4efa98b75da821b50e8a61f96291aa887011c`, itself based on `main` `8f8faa9be7fb6133510b1ac06415e5dacabd72ae`.
 

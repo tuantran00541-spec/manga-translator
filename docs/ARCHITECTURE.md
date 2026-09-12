@@ -7,7 +7,7 @@
 ```mermaid
 flowchart TB
     subgraph Client["Trình duyệt (SPA vanilla JS)"]
-        UI["templates/index.html<br/>static/js/*: toast → api → upload → preview → review → editor → main"]
+        UI["templates/index.html<br/>static/js/*: shell + stage modules + editor core/inspector/persistence"]
     end
 
     subgraph Server["FastAPI (app/main.py)"]
@@ -18,6 +18,8 @@ flowchart TB
     subgraph Core["Core business"]
         DEP["dependencies.py — singleton"]
         PL["pipeline.py — ChapterPipeline (orchestrator)"]
+        PAGE["page_processing.py — detection/inpaint per page"]
+        EDIT["pipeline_editing.py — review/editor mutations"]
         OCR["ocr/multi_lang_ocr.py — MultiLangOCR"]
         MAN["manifest_utils.py — manifest.json + file locks"]
         SEC["security.py — SSRF / path traversal / size limits"]
@@ -51,6 +53,8 @@ flowchart TB
     UI -->|HTTP /api/*| MW --> RTR
     RTR --> DEP
     DEP --> PL
+    PL --> PAGE
+    PL --> EDIT
     DEP --> OCR
     PL --> DET --> YOLO
     DET --> MB
@@ -81,7 +85,7 @@ flowchart TD
     D --> E["main.py: lifespan"]
     E --> F["check_models() → log trạng thái"]
     E --> G["mount /static → app/static/"]
-    E --> H["include_router × 4: chapters · editor · render · image"]
+    E --> H["include_router × 10: chapters · automation · translation · OCR · editor · render · image · export · visual QC"]
     E --> I["thêm RequestSizeLimitMiddleware"]
     E --> J["GET /health → {status, models_missing}"]
     E --> K["GET / → app/templates/index.html"]

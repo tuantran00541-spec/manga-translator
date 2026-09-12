@@ -1,6 +1,8 @@
-# v0.3 Workstation UI Audit
+# Historical v0.3 Workstation UI Audit
 
-Status: design/architecture baseline for `feat/v03-workstation-ui`.
+Status: completed migration baseline. Counts and legacy filenames below describe
+the pre-rebuild codebase; they are retained for traceability, not as current
+runtime documentation. See `UI_GUIDELINES.md` for the shipped architecture.
 
 ## Goal
 

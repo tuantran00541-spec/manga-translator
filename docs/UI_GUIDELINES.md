@@ -1,6 +1,6 @@
-# UI System Guidelines — v0.3 Workstation
+# UI System Guidelines — Minimal Workstation
 
-These rules define the target UI architecture for `feat/v03-workstation-ui`. See `docs/UI_V03_WORKSTATION_AUDIT.md` for the migration map and removal list.
+These rules define the UI architecture shipped on `main`.
 
 ## Product model
 
@@ -149,6 +149,12 @@ The shipped browser surface has one stylesheet entrypoint and one studio layer:
 The Editor owns its lifecycle directly. It must not be wrapped by shell or
 compatibility renderers, and overlay transforms must be installed explicitly
 for the current editor canvas rather than by a document-wide observer.
+
+Editor source ownership is split by responsibility: `editor.js` owns canvas
+and stage lifecycle, `editor-inspector.js` owns panel rendering, and
+`editor-persistence.js` owns ordered saves. Review and chapter-QC busy state is
+synchronized explicitly; DOM mutation observers must not be used as a job-state
+or event-binding mechanism.
 
 ## Product language
 

@@ -4,6 +4,14 @@ on:
   push:
     branches: [main]
     paths:
+      - app/detector/**
+      - app/inpaint/**
+      - app/image_io.py
+      - app/page_processing.py
+      - app/pipeline.py
+      - app/pipeline_editing.py
+      - app/parameters.py
+      - scripts/model_e2e_gate.py
       - .github/workflows/phase13-final-benchmark.yml
   workflow_dispatch:
 
@@ -82,7 +90,7 @@ jobs:
           from app.manifest_utils import load_manifest_raw
           from app.optimized_pipeline import OptimizedChapterPipeline
           from app.parameters import DETECTOR_FOCUS_MAX_CHIPS, parameter_snapshot
-          from app.pipeline import read_image
+          from app.image_io import read_image
           from scripts.model_e2e_gate import _authority_mask
 
           OUT = Path('benchmark-results/phase13/report.json')
@@ -217,6 +225,26 @@ jobs:
               OUT.write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
               print(json.dumps(report, ensure_ascii=False), flush=True)
           PY
+      - name: Run fixed-LaMa 16-slice compatibility gate
+        run: |
+          RAW_DIR=$(python - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path('benchmark-results/phase13/report.json').read_text())
+          print(Path('data/raw') / report['chapter_id'] / 'sliced')
+          PY
+          )
+          python scripts/model_e2e_gate.py \
+            --raw-dir "$RAW_DIR" \
+            --chapter-id f17ed013 \
+            --source-lang en \
+            --lama-mode fixed \
+            --workers 2 \
+            --max-source-images 16 \
+            --max-pages 16 \
+            --min-slices 16 \
+            --max-rss-mb 3200 \
+            --report-json
       - name: Publish Phase 13 summary
         if: always()
         run: |
@@ -246,6 +274,8 @@ jobs:
         if: always()
         with:
           name: phase13-final-${{ github.run_id }}
-          path: benchmark-results/phase13/
+          path: |
+            benchmark-results/phase13/
+            benchmark-results/model-e2e-fixed.json
           retention-days: 7
           if-no-files-found: warn

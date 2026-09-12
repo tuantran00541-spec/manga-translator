@@ -415,25 +415,6 @@
     return panel;
   }
 
-  function observeWorkspaceLocks(workspace) {
-    workspace._chapterQcObserver?.disconnect();
-    let lockScheduled = false;
-    const observer = new MutationObserver(() => {
-      if (!workspace.isConnected) {
-        observer.disconnect();
-        return;
-      }
-      if (!isRunning() || lockScheduled) return;
-      lockScheduled = true;
-      window.requestAnimationFrame(() => {
-        lockScheduled = false;
-        if (workspace.isConnected && isRunning()) setLocked(workspace, true);
-      });
-    });
-    observer.observe(workspace, { childList: true, subtree: true });
-    workspace._chapterQcObserver = observer;
-  }
-
   function bindWorkspace(workspace) {
     syncChapterState();
     if (!workspace || workspace.dataset.chapterQcBound === "1") return;
@@ -457,7 +438,6 @@
     panel.querySelector(".chapter-qc-options").after(runBtn);
     disclosure.append(summary, panel);
     actions.prepend(disclosure);
-    observeWorkspaceLocks(workspace);
     renderPanel(workspace);
   }
 
@@ -466,7 +446,7 @@
     workspaceRoot().querySelectorAll(".review-workspace-shell").forEach(bindWorkspace);
   }
 
-  // Mount once from the Review lifecycle instead of watching the whole
-  // workspace subtree. The job-specific observer remains scoped and cleaned.
+  // Mount and synchronize explicitly from the Review lifecycle.
   window.mountChapterQC = scan;
+  window.syncChapterQCWorkspace = renderPanel;
 })();

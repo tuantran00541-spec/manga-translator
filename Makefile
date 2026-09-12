@@ -17,14 +17,19 @@ health:
 
 test:
 	python -m compileall -q app run.py scripts
+	python -m pytest -q
 
 test-browser:
-	@echo "Browser regression tests are archived on archive/main-tests-20260828"
-
-release-check: test
-	python scripts/release_sanity.py
-	python scripts/inpaint_authority_sanity.py
 	python scripts/browser_sanity.py
+	node scripts/editor_auto_sync_sanity.js
+	node scripts/studio_runtime_sanity.js
+	node scripts/theme_runtime_sanity.js
+	@echo "Run scripts/live_ui_smoke.py against a started server for real Chromium coverage."
+
+release-check: test test-browser
+	python scripts/release_sanity.py
+	python scripts/process_responsiveness_sanity.py
+	python scripts/inpaint_authority_sanity.py
 
 clean:
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true

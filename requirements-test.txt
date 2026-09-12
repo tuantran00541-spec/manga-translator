@@ -1,0 +1,19 @@
+# Dependency-light correctness suite. Model blobs and PaddleOCR stay out of
+# ordinary CI; real ONNX/OCR acceptance is owned by model-dependent workflows.
+pytest==8.3.5
+numpy==1.26.4
+Pillow==10.4.0
+opencv-contrib-python-headless==4.10.0.84
+onnxruntime==1.21.0
+psutil==6.1.1
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+pydantic==2.9.2
+python-multipart==0.0.12
+requests==2.32.3
+beautifulsoup4==4.12.3
+lxml==5.3.0
+filelock==3.16.1
+loguru==0.7.2
+keyring==25.6.0
+playwright==1.47.0

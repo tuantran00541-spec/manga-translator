@@ -6,7 +6,7 @@ from fastapi.concurrency import run_in_threadpool
 from app.dependencies import pipeline
 from app.logging_config import logger
 from app.manifest_utils import get_manifest_lock, invalidate_page_render, load_manifest_raw, save_manifest_raw, urlify_manifest
-from app.pipeline import read_image
+from app.image_io import read_image
 from app.schemas import (
     AddBoxRequest,
     BulkUpdateTextObjectsRequest,

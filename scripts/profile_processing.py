@@ -177,7 +177,7 @@ def run(args):
 
     timers = instrument()
     from app.optimized_pipeline import OptimizedChapterPipeline
-    from app.pipeline import read_image
+    from app.image_io import read_image
     from scripts.model_e2e_gate import _authority_mask
 
     raw_paths = sorted(path for path in args.raw_dir.iterdir()

@@ -352,13 +352,7 @@
     container.appendChild(workspace);
 
     let mountedCard = null;
-    let busyObserver = null;
-
     const restoreMounted = () => {
-      if (busyObserver) {
-        busyObserver.disconnect();
-        busyObserver = null;
-      }
       if (!mountedCard) return;
       stopCardBrush(mountedCard);
       captureMaskSnapshot(mountedCard);
@@ -367,11 +361,7 @@
     };
 
     window.cleanupReviewWorkspace = () => {
-      busyObserver?.disconnect();
-      busyObserver = null;
       cleanupAIStatus?.();
-      workspace._chapterQcObserver?.disconnect();
-      workspace._chapterQcObserver = null;
       window._reviewStitchAbort?.abort();
       restoreMounted();
       if (window._reviewKeyDownHandler) {
@@ -413,8 +403,7 @@
         if (isSyncing) return;
         isSyncing = true;
         try {
-          const aiBusy = Boolean(aiQcBtn?.disabled && /đang/i.test(aiQcBtn.textContent));
-          const busy = Boolean(card._reviewBusy || aiBusy);
+          const busy = Boolean(card._reviewBusy);
           if (busy === lastBusy) return;
           lastBusy = busy;
 
@@ -428,15 +417,12 @@
           if (aiQcBtn && aiQcBtn.disabled !== busy) aiQcBtn.disabled = busy;
           navigator.setBusy(busy);
           if (continueBtn && continueBtn.disabled !== busy) continueBtn.disabled = busy;
+          window.syncChapterQCWorkspace?.(workspace);
         } finally {
           isSyncing = false;
         }
       };
       card._syncReviewBusy = syncBusy;
-      if (aiQcBtn) {
-        busyObserver = new MutationObserver(syncBusy);
-        busyObserver.observe(aiQcBtn, { childList: true, characterData: true, subtree: true });
-      }
       syncBusy();
     };
 

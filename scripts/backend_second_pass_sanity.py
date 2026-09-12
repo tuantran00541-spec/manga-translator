@@ -171,7 +171,10 @@ def protected_region_checks() -> None:
     )
     check(not np.any(clipped[:, :20] > 0), "protected pixels retained destructive authority")
     check(np.all(clipped[:, 20:] > 0), "protection removed unrelated mask pixels")
-    source = (ROOT / "app/pipeline.py").read_text(encoding="utf-8")
+    source = "\n".join(
+        (ROOT / name).read_text(encoding="utf-8")
+        for name in ("app/pipeline.py", "app/page_processing.py", "app/pipeline_editing.py")
+    )
     check("_box_in_excluded" not in source, "center-based exclusion predicate remains")
     check("protected_regions=excluded_regions" in source, "auto inpaint does not receive protection")
 
@@ -239,7 +242,10 @@ def repaint_input_checks() -> None:
     decoded = _decode_repaint_mask_payload(encoded.tobytes())
     check(decoded.shape == mask.shape and np.array_equal(decoded, mask), "repaint decode changed pixels")
     editor_source = (ROOT / "app/routers/editor.py").read_text(encoding="utf-8")
-    pipeline_source = (ROOT / "app/pipeline.py").read_text(encoding="utf-8")
+    pipeline_source = "\n".join(
+        (ROOT / name).read_text(encoding="utf-8")
+        for name in ("app/pipeline.py", "app/page_processing.py", "app/pipeline_editing.py")
+    )
     check("await mask.read()" not in editor_source, "repaint route still performs unbounded read")
     check("read_upload_limited(mask, MAX_REQUEST_BYTES)" in editor_source, "repaint upload is not bounded")
     check("_decode_repaint_mask_payload, mask_bytes" in editor_source, "repaint decode is not offloaded")

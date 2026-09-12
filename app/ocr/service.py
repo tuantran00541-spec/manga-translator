@@ -32,7 +32,7 @@ from app.parameters import (
     OCR_MASK_CROP_PADDING,
     OCR_MASK_PAGE_CONTEXT_PADDING,
 )
-from app.pipeline import read_image
+from app.image_io import read_image
 from app.security import validate_chapter_id
 from app.text_objects import (
     invalidate_stale_machine_translation,

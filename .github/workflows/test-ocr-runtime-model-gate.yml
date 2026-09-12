@@ -3,7 +3,7 @@ name: OCR runtime model gate
 on:
   push:
     branches:
-      - test/model-e2e-ocr-inpaint-20260830
+      - main
     paths:
       - .github/workflows/test-ocr-runtime-model-gate.yml
       - scripts/ocr_runtime_model_gate.py
