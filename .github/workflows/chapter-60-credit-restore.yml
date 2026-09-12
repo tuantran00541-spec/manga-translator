@@ -1,0 +1,78 @@
+name: Chapter 60 Checkpoint 03D Credit Restore
+
+on:
+  push:
+    branches:
+      - trial/chapter-render-60
+    paths:
+      - .github/workflows/chapter-60-credit-restore.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: chapter-60-human-loop
+  cancel-in-progress: false
+
+jobs:
+  restore-credit:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    env:
+      PYTHONUNBUFFERED: "1"
+      BASE_RUN_ID: "34673439717"
+      BASE_ARTIFACT: 03c-ocr-late-clean-f1cd0121
+      ROOT: checkpoint/03d-credit-restore
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: trial/chapter-render-60
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install lightweight image runtime
+        run: python -m pip install numpy==1.26.4 Pillow==10.4.0 opencv-python-headless==4.10.0.84
+
+      - name: Restore 03C base
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf "$ROOT"
+          mkdir -p "$ROOT"
+          gh run download "$BASE_RUN_ID" -n "$BASE_ARTIFACT" -D "$ROOT"
+          test -f "$ROOT/processed/manifest.json"
+          test -d "$ROOT/raw/sliced"
+          test -f "$ROOT/late-clean-repair-03c.json"
+
+      - name: Restore p020 production credit pixels
+        run: python trials/chapter-60/restore_p20_credits.py "$ROOT"
+
+      - name: Validate 03D checkpoint
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          root=Path(os.environ['ROOT'])
+          m=json.loads((root/'late-clean-repair-03d.json').read_text(encoding='utf-8'))
+          if m.get('checkpoint')!='03d-credit-restore': raise SystemExit(m)
+          if m.get('repair_scope')!='ONE_RAW_PIXEL_RESTORE': raise SystemExit(m)
+          if m.get('raw_changed') is not False or m.get('ocr_rerun_required') is not False: raise SystemExit(m)
+          if m.get('page_index')!=20: raise SystemExit(m)
+          if m.get('restored_bbox_pixel_exact_with_raw') is not True: raise SystemExit(m)
+          if m.get('outside_bbox_pixel_exact_with_03c') is not True: raise SystemExit(m)
+          if not (root/'late-clean-proof-03d/p020-credit-restore.jpg').is_file(): raise SystemExit('missing proof')
+          print(json.dumps(m,ensure_ascii=False,indent=2))
+          PY
+
+      - name: Upload checkpoint 03D artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: 03d-ocr-clean-f1cd0121
+          path: checkpoint/03d-credit-restore
+          if-no-files-found: error
+          retention-days: 7
