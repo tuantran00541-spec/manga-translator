@@ -4,7 +4,7 @@
 
   /* Canonical application shell */
   .app-shell { display: grid; grid-template-columns: var(--sidebar-width) minmax(0, 1fr); height: 100dvh; min-height: 0; }
-  .app-sidebar { position: relative; z-index: calc(var(--z-toolbar) + 1); display: flex; min-width: 0; min-height: 0; flex-direction: column; padding: 18px 12px 12px; border-right: 1px solid var(--border-subtle); background: var(--surface-panel); }
+  .app-sidebar { position: relative; z-index: calc(var(--z-toolbar) + 4); display: flex; min-width: 0; min-height: 0; flex-direction: column; padding: 18px 12px 12px; border-right: 1px solid var(--border-subtle); background: var(--surface-panel); }
   .app-brand { display: flex; align-items: center; gap: 10px; min-height: 42px; margin: 0 5px 26px; padding: 0 8px; border: 0; background: transparent; color: var(--text-primary); font-size: 15px; font-weight: 760; letter-spacing: -.025em; text-align: left; cursor: pointer; }
   .app-brand-mark { display: grid; width: 28px; height: 28px; flex: 0 0 auto; place-items: center; border-radius: 8px; background: var(--accent); color: var(--accent-contrast); font-size: 13px; }
   .sidebar-section-label, .ui-eyebrow { color: var(--text-muted); font-size: 10px; font-weight: 750; letter-spacing: .09em; text-transform: uppercase; }
@@ -18,7 +18,7 @@
   .sidebar-footer { margin-top: auto; padding-top: 12px; border-top: 1px solid var(--border-subtle); }
 
   .app-main { display: grid; grid-template-rows: var(--app-header-height) minmax(0, 1fr); min-width: 0; min-height: 0; }
-  .app-header { z-index: var(--z-toolbar); display: flex; align-items: center; gap: 16px; min-width: 0; padding: 0 clamp(16px, 3vw, 38px); border-bottom: 1px solid var(--border-subtle); background: color-mix(in srgb, var(--surface-app) 91%, transparent); backdrop-filter: blur(16px); }
+  .app-header { position: relative; z-index: calc(var(--z-toolbar) + 2); display: flex; align-items: center; gap: 16px; min-width: 0; padding: 0 clamp(16px, 3vw, 38px); border-bottom: 1px solid var(--border-subtle); background: color-mix(in srgb, var(--surface-app) 91%, transparent); backdrop-filter: blur(16px); }
   .app-heading { display: grid; min-width: 0; line-height: 1.25; }
   .app-heading strong { overflow: hidden; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
   .app-heading span, .workbench-status { overflow: hidden; color: var(--text-muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
@@ -244,7 +244,7 @@
     .app-shell { grid-template-columns: minmax(0, 1fr); }
     .app-sidebar { position: fixed; inset: 0 auto 0 0; width: min(var(--sidebar-width), 86vw); box-shadow: var(--shadow-float); transform: translateX(-105%); transition: transform var(--motion-normal); }
     body.sidebar-open .app-sidebar { transform: translateX(0); }
-    .sidebar-backdrop { position: fixed; inset: 0; z-index: var(--z-toolbar); display: block; border: 0; background: var(--surface-overlay); }
+    .sidebar-backdrop { position: fixed; inset: 0; z-index: calc(var(--z-toolbar) + 3); display: block; border: 0; background: var(--surface-overlay); }
     .mobile-menu-button { display: inline-grid !important; }
     .app-header { padding: 0 12px; }
     .app-heading span { display: none; }
