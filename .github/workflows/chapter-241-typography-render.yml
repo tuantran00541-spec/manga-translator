@@ -7,6 +7,7 @@ on:
     paths:
       - '.github/workflows/chapter-241-typography-render.yml'
       - 'chapters/doctors-rebirth-241/run_typography_render.py'
+      - 'chapters/doctors-rebirth-241/run_typography_render_safe.py'
       - 'chapters/doctors-rebirth-241/apply_typography_overrides.py'
   workflow_dispatch:
 
@@ -55,8 +56,8 @@ jobs:
       - name: Apply reviewed typography geometry override
         run: PYTHONPATH=. python chapters/doctors-rebirth-241/apply_typography_overrides.py
 
-      - name: Build fixed-size render candidate
-        run: PYTHONPATH=. python chapters/doctors-rebirth-241/run_typography_render.py
+      - name: Build fixed-size render candidate with guarded raster fallback
+        run: PYTHONPATH=. python chapters/doctors-rebirth-241/run_typography_render_safe.py
 
       - name: Verify render candidate contract
         run: |
@@ -64,16 +65,20 @@ jobs:
           import json
           from pathlib import Path
           from PIL import Image
-          summary=json.loads(Path('checkpoint/05-render/render-summary.json').read_text(encoding='utf-8'))
+          root=Path('checkpoint/05-render')
+          summary=json.loads((root/'render-summary.json').read_text(encoding='utf-8'))
           if summary.get('status')!='REVIEW_REQUIRED': raise SystemExit(summary)
           if summary.get('active_story_objects')!=76 or summary.get('rendered_story_objects')!=76: raise SystemExit(summary)
           if summary.get('rendered_slices')!=68 or summary.get('source_pages')!=17: raise SystemExit(summary)
           if summary.get('autosize_active_objects')!=0 or summary.get('font_size_min_px',0)<28: raise SystemExit(summary)
-          pages=sorted(Path('checkpoint/05-render/final_pages').glob('*.png'))
+          fallback=json.loads((root/'raster-fallbacks.json').read_text(encoding='utf-8'))
+          if summary.get('raster_fallback_count')!=len(fallback): raise SystemExit('raster fallback report mismatch')
+          pages=sorted((root/'final_pages').glob('*.png'))
           if len(pages)!=17: raise SystemExit(f'expected 17 pages, got {len(pages)}')
           for page in pages:
               with Image.open(page) as image:
                   if image.width<=0 or image.height<=0: raise SystemExit(f'invalid page {page}')
+          print(json.dumps(summary, ensure_ascii=False, indent=2))
           print('render candidate contract PASS; human visual review required')
           PY
 
