@@ -35,14 +35,29 @@ class FastResidueAdaptiveFocusCombinedTextDetector(AdaptiveFocusCombinedTextDete
     def __init__(self):
         super().__init__()
         self._residue_metrics_local = threading.local()
+        self._residue_metrics_lock = threading.Lock()
+        self._residue_totals: dict[str, int] = {}
 
     def _set_residue_metrics(self, **values: int) -> None:
-        self._residue_metrics_local.value = {
-            str(name): int(value) for name, value in values.items()
-        }
+        snapshot = {str(name): int(value) for name, value in values.items()}
+        self._residue_metrics_local.value = snapshot
+        with self._residue_metrics_lock:
+            self._residue_totals["verification_calls"] = (
+                int(self._residue_totals.get("verification_calls", 0)) + 1
+            )
+            for name, value in snapshot.items():
+                self._residue_totals[name] = int(self._residue_totals.get(name, 0)) + int(value)
 
     def last_residue_metrics(self) -> dict[str, int]:
         return dict(getattr(self._residue_metrics_local, "value", {}) or {})
+
+    def residue_metrics_snapshot(self, *, reset: bool = False) -> dict[str, int]:
+        """Return cross-worker residue counters for profiling/health telemetry."""
+        with self._residue_metrics_lock:
+            snapshot = {str(name): int(value) for name, value in self._residue_totals.items()}
+            if reset:
+                self._residue_totals.clear()
+        return snapshot
 
     @staticmethod
     def _roi_gap(
