@@ -77,7 +77,7 @@ def _key_status(
     env_names: tuple[str, ...],
     provider: str,
 ) -> dict:
-    if any(os.getenv(name) for name in env_names):
+    if any((os.getenv(name) or "").strip() for name in env_names):
         return {"configured": True, "source": "environment"}
     try:
         configured = bool(_get_api_key(account, env_names, provider))
