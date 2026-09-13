@@ -6,12 +6,11 @@ from dataclasses import dataclass
 import requests
 
 from app import parameters as _parameters
+from app.ai_providers import get_translation_provider
 from app.parameters import (
-    DEEPSEEK_API_URL,
     DEEPSEEK_INPUT_CACHE_HIT_USD_PER_M as INPUT_CACHE_HIT_USD_PER_M,
     DEEPSEEK_INPUT_CACHE_MISS_USD_PER_M as INPUT_CACHE_MISS_USD_PER_M,
     DEEPSEEK_OUTPUT_USD_PER_M as OUTPUT_USD_PER_M,
-    DEEPSEEK_TRANSLATION_MODEL as DEFAULT_TRANSLATION_MODEL,
     TRANSLATION_CONNECT_TIMEOUT_SECONDS,
     TRANSLATION_MAX_TOKENS,
     TRANSLATION_PREFLIGHT_MIN_TOKENS,
@@ -84,19 +83,31 @@ def _preflight_cost_usd(items: list[dict]) -> float:
     ) / 1_000_000.0
 
 
-class DeepSeekTranslator:
+class OpenAICompatibleTranslator:
+    """Text translation through the provider contract used by the current UI.
+
+    The browser supplies only provider/model. Endpoint selection and vendor-only
+    request fields are resolved here from ``AIProvider`` so OpenRouter/OpenAI do
+    not accidentally receive DeepSeek-specific parameters.
+    """
+
     def __init__(
         self,
-        model: str = DEFAULT_TRANSLATION_MODEL,
+        model: str | None = None,
         *,
-        api_url: str = DEEPSEEK_API_URL,
+        api_url: str | None = None,
         provider_id: str = "deepseek",
-        provider_label: str = "DeepSeek",
+        provider_label: str | None = None,
     ):
-        self.model = model
-        self.api_url = api_url
-        self.provider_id = provider_id
-        self.provider_label = provider_label
+        provider = get_translation_provider(provider_id)
+        self.model = (model or provider.default_translation_model or "").strip()
+        if not self.model:
+            raise ValueError(f"{provider.label} translation model is not configured")
+        self.api_url = api_url or str(provider.chat_url)
+        self.provider_id = provider.id
+        self.provider_label = provider_label or provider.label
+        self._request_extras = provider.chat_completion_extras()
+        self._priced = provider.tracks_cost
 
     def translate(
         self,
@@ -114,8 +125,8 @@ class DeepSeekTranslator:
         if budget_usd <= 0:
             raise ValueError("Translation budget must be greater than zero")
 
-        preflight = _preflight_cost_usd(items) if self.provider_id == "deepseek" else 0.0
-        if self.provider_id == "deepseek" and preflight > budget_usd:
+        preflight = _preflight_cost_usd(items) if self._priced else 0.0
+        if self._priced and preflight > budget_usd:
             raise TranslationBudgetExceeded(
                 f"Estimated translation cost ${preflight:.4f} exceeds chapter budget ${budget_usd:.4f}"
             )
@@ -157,8 +168,7 @@ class DeepSeekTranslator:
             "response_format": {"type": "json_object"},
             "max_tokens": TRANSLATION_MAX_TOKENS,
         }
-        if self.provider_id == "deepseek":
-            request_body["thinking"] = {"type": "disabled"}
+        request_body.update(self._request_extras)
         response = requests.post(
             self.api_url,
             headers={
@@ -174,7 +184,9 @@ class DeepSeekTranslator:
         try:
             response.raise_for_status()
         except requests.RequestException as exc:
-            raise RuntimeError(f"{self.provider_label} translation request failed with HTTP {response.status_code}") from exc
+            raise RuntimeError(
+                f"{self.provider_label} translation request failed with HTTP {response.status_code}"
+            ) from exc
 
         try:
             data = response.json()
@@ -197,10 +209,15 @@ class DeepSeekTranslator:
             raise RuntimeError(f"{self.provider_label} omitted {len(missing)} translation(s)")
 
         usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
-        actual_cost = _usage_cost_usd(usage) if self.provider_id == "deepseek" else 0.0
+        actual_cost = _usage_cost_usd(usage) if self._priced else 0.0
         return TranslationResult(
             translations=translations,
             usage=usage,
             estimated_cost_usd=actual_cost,
             model=str(data.get("model") or self.model),
         )
+
+
+# Existing imports use this name; keep it as an alias while the implementation
+# is now provider-neutral.
+DeepSeekTranslator = OpenAICompatibleTranslator
