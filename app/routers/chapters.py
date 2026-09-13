@@ -10,6 +10,7 @@ from app.config import OUTPUT_DIR, PROCESSED_DIR, RAW_DIR
 from app.dependencies import pipeline
 from app.logging_config import logger
 from app.manifest_utils import get_manifest_lock, invalidate_page_render, load_manifest_raw, save_manifest_raw, urlify_manifest
+from app.page_processing_jobs import ChapterProcessingJobManager
 from app.parameters import PIPELINE_DEFAULT_WORKERS
 from app.pipeline import StaleProcessingStateError
 from app.schemas import (
@@ -95,6 +96,49 @@ def _manifest_revision(path) -> tuple[tuple[int, int, int], float]:
         (int(stat.st_size), int(stat.st_mtime_ns), int(stat.st_ctime_ns)),
         float(stat.st_mtime),
     )
+
+
+def _validated_process_plan(req: ProcessPagesRequest) -> tuple[list[int], int]:
+    validate_chapter_id(req.chapter_id)
+    manifest_raw = load_manifest_raw(req.chapter_id)
+    total_pages = len(manifest_raw.get("pages", []))
+    if not req.page_indices:
+        raise HTTPException(400, "page_indices cannot be empty")
+    page_indices = list(req.page_indices)
+    for idx in page_indices:
+        if not isinstance(idx, int) or idx < 0 or idx >= total_pages:
+            raise HTTPException(
+                400,
+                f"Invalid page_index {idx} for chapter {req.chapter_id} (total pages: {total_pages})",
+            )
+    return page_indices, _clamp_workers(req.workers)
+
+
+def _process_job_batch(chapter_id: str, page_indices: list[int], workers: int):
+    logger.info(
+        "Chapter {} background job: processing pages {} (workers={})",
+        chapter_id,
+        page_indices,
+        workers,
+    )
+    return pipeline.process_pages(chapter_id, page_indices, workers=workers)
+
+
+def _mark_processing_complete(chapter_id: str) -> None:
+    """Make post-refresh navigation deterministic once the full job finishes."""
+    with get_manifest_lock(chapter_id):
+        manifest = load_manifest_raw(chapter_id)
+        workflow = manifest.get("workflow") or {}
+        if str(workflow.get("stage") or "preview") == "preview":
+            manifest["workflow"] = {"stage": "review", "page_index": 0}
+            save_manifest_raw(chapter_id, manifest)
+    _CHAPTER_LIST_CACHE.pop(chapter_id, None)
+
+
+chapter_processing_jobs = ChapterProcessingJobManager(
+    _process_job_batch,
+    on_completed=_mark_processing_complete,
+)
 
 
 @router.get("/chapters")
@@ -229,18 +273,54 @@ async def create_chapter_from_upload(
         raise HTTPException(500, f"Upload chapter failed: {exc}") from exc
 
 
+@router.post("/process/chapter")
+async def start_chapter_processing(req: ProcessPagesRequest) -> dict:
+    page_indices, workers = _validated_process_plan(req)
+    try:
+        return chapter_processing_jobs.start(
+            req.chapter_id,
+            page_indices=page_indices,
+            workers=workers,
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.get("/process/chapter/{chapter_id}")
+def get_chapter_processing_job(chapter_id: str) -> dict:
+    validate_chapter_id(chapter_id)
+    snapshot = chapter_processing_jobs.latest_for_chapter(chapter_id)
+    if snapshot is not None:
+        return snapshot
+    return {
+        "job_id": None,
+        "chapter_id": chapter_id,
+        "status": "idle",
+        "active": False,
+        "reused": False,
+        "workers": None,
+        "total": 0,
+        "completed": 0,
+        "remaining": 0,
+        "current_batch": [],
+        "errors": [],
+    }
+
+
+@router.get("/process/jobs/{job_id}")
+def get_processing_job(job_id: str) -> dict:
+    value = str(job_id or "").strip().lower()
+    if len(value) != 32 or any(ch not in "0123456789abcdef" for ch in value):
+        raise HTTPException(400, "Invalid processing job id")
+    try:
+        return chapter_processing_jobs.snapshot(value)
+    except KeyError as exc:
+        raise HTTPException(404, "Processing job not found") from exc
+
+
 @router.post("/process_pages")
 def process_pages(req: ProcessPagesRequest) -> dict:
-    validate_chapter_id(req.chapter_id)
-    manifest_raw = load_manifest_raw(req.chapter_id)
-    total_pages = len(manifest_raw.get("pages", []))
-    if not req.page_indices:
-        raise HTTPException(400, "page_indices cannot be empty")
-    for idx in req.page_indices:
-        if not isinstance(idx, int) or idx < 0 or idx >= total_pages:
-            raise HTTPException(400, f"Invalid page_index {idx} for chapter {req.chapter_id} (total pages: {total_pages})")
-
-    workers = _clamp_workers(req.workers)
+    page_indices, workers = _validated_process_plan(req)
     processing_lock = FileLock(
         PROCESSED_DIR / req.chapter_id / "processing.lock"
     )
@@ -250,23 +330,23 @@ def process_pages(req: ProcessPagesRequest) -> dict:
         logger.warning(
             "Chapter {}: rejected overlapping page processing request for {}",
             req.chapter_id,
-            req.page_indices,
+            page_indices,
         )
         raise HTTPException(
             409,
             "This chapter is already being processed. Wait for the active batch to finish.",
         ) from exc
     logger.info(
-        f"Chapter {req.chapter_id}: processing pages {req.page_indices} (workers={workers})"
+        f"Chapter {req.chapter_id}: processing pages {page_indices} (workers={workers})"
     )
     try:
-        manifest = pipeline.process_pages(req.chapter_id, req.page_indices, workers=workers)
+        manifest = pipeline.process_pages(req.chapter_id, page_indices, workers=workers)
         return urlify_manifest(manifest)
     except StaleProcessingStateError as exc:
         logger.warning(
             "Chapter {} pages {} operation 'process_pages' discarded stale output: {}",
             req.chapter_id,
-            req.page_indices,
+            page_indices,
             exc,
         )
         raise HTTPException(409, str(exc)) from exc
@@ -274,7 +354,7 @@ def process_pages(req: ProcessPagesRequest) -> dict:
         logger.opt(exception=True).error(
             "Chapter {} pages {} operation 'process_pages' failed: {}",
             req.chapter_id,
-            req.page_indices,
+            page_indices,
             exc,
         )
         raise HTTPException(500, str(exc)) from exc
@@ -282,7 +362,7 @@ def process_pages(req: ProcessPagesRequest) -> dict:
         logger.opt(exception=True).error(
             "Chapter {} pages {} operation 'process_pages' failed unexpectedly: {}",
             req.chapter_id,
-            req.page_indices,
+            page_indices,
             exc,
         )
         raise HTTPException(500, f"Process pages failed: {exc}") from exc

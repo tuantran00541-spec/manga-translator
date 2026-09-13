@@ -1,145 +1,186 @@
-// Submit a complete 16-page workset to the backend. `workers` controls how
-// many pages run concurrently inside that workset; with the safe default of
-// two workers this keeps both workers fed without eight sequential HTTP
-// round-trips for a 16-page chapter.
-const RESPONSIVE_PROCESS_BATCH_SIZE = 16;
+const PROCESS_JOB_POLL_MS = 700;
 
-function yieldProcessUi() {
-  return new Promise((resolve) => {
-    if (
-      typeof requestAnimationFrame === "function"
-      && document.visibilityState !== "hidden"
-    ) {
-      requestAnimationFrame(() => resolve());
-    } else {
-      setTimeout(resolve, 0);
+function processingButtons() {
+  return Array.from(document.querySelectorAll(".preview-primary-action, #start-action"));
+}
+
+function setProcessingUi(snapshot) {
+  const total = Number(snapshot?.total) || 0;
+  const completed = Number(snapshot?.completed) || 0;
+  const active = snapshot?.status === "pending" || snapshot?.status === "running";
+  processingButtons().forEach((btn) => {
+    if (!btn || !btn.isConnected) return;
+    if (active) {
+      btn.setAttribute("aria-busy", "true");
+      btn.textContent = `Đang xử lý ${completed}/${total}…`;
+      return;
+    }
+    btn.removeAttribute("aria-busy");
+    if (document.body?.dataset?.appStage === "preview") {
+      btn.textContent = completed > 0 ? "Tiếp tục xử lý" : "Bắt đầu xử lý";
     }
   });
 }
 
-// api.js owns the public processing guard. Replace only the inner run so the
-// existing duplicate-click protection stays authoritative while batches stay
-// short enough to keep progress and local UI responsive.
-window._processSelectedPagesOnce = async function responsiveProcessSelectedPagesOnce() {
+async function processingJson(url, options = undefined) {
+  const resp = await fetch(url, options);
+  const data = await parseApiResponse(resp);
+  if (!resp.ok) {
+    throw new Error(getErrorMessage(resp.status, data));
+  }
+  return data;
+}
+
+function sleepProcessingPoll() {
+  return new Promise((resolve) => setTimeout(resolve, PROCESS_JOB_POLL_MS));
+}
+
+async function getCurrentProcessingJob(chapterId) {
+  if (!chapterId) return null;
+  return processingJson(`/api/process/chapter/${encodeURIComponent(chapterId)}`);
+}
+window.getCurrentProcessingJob = getCurrentProcessingJob;
+
+async function finishSuccessfulProcessing(chapterId) {
+  if (chapterId !== currentChapterId) return;
+  await refreshChapterManifest(chapterId);
+  if (chapterId !== currentChapterId) return;
+  if (document.body?.dataset?.appStage === "preview") {
+    renderReview();
+  }
+}
+
+async function finishFailedProcessing(chapterId, snapshot, { reconnect = false } = {}) {
+  if (chapterId !== currentChapterId) return;
+  try {
+    await refreshChapterManifest(chapterId);
+  } catch (err) {
+    console.error("Could not resync chapter after processing failure:", err);
+  }
+  if (chapterId !== currentChapterId) return;
+  setProcessingUi(snapshot);
+  if (!reconnect) {
+    const first = Array.isArray(snapshot?.errors) ? snapshot.errors[0] : null;
+    showToast(first?.message || "Xử lý trang thất bại.", "error");
+  }
+  if (document.body?.dataset?.appStage === "preview") {
+    renderPreview();
+  }
+}
+
+async function monitorProcessingJob(initialSnapshot, chapterId, options = {}) {
+  let snapshot = initialSnapshot;
+  const reconnect = options.reconnect === true;
+
+  while (
+    chapterId === currentChapterId
+    && (snapshot?.status === "pending" || snapshot?.status === "running")
+  ) {
+    setProcessingUi(snapshot);
+    await sleepProcessingPoll();
+    if (chapterId !== currentChapterId) return snapshot;
+    snapshot = await processingJson(
+      `/api/process/jobs/${encodeURIComponent(snapshot.job_id)}`,
+    );
+  }
+
+  if (chapterId !== currentChapterId) return snapshot;
+  setProcessingUi(snapshot);
+  if (snapshot?.status === "completed") {
+    await finishSuccessfulProcessing(chapterId);
+  } else if (snapshot?.status === "failed") {
+    await finishFailedProcessing(chapterId, snapshot, { reconnect });
+  }
+  return snapshot;
+}
+
+// api.js owns duplicate-click protection. The inner run now transfers the
+// complete page plan to one backend job instead of submitting browser-owned
+// 16-page batches. Refreshing/closing the tab therefore cannot truncate the
+// remaining inpaint queue.
+window._processSelectedPagesOnce = async function serverOwnedProcessSelectedPagesOnce() {
   const pages = currentManifest?.pages || [];
   const indices = pages
     .map((page, index) => (page?.skipped ? null : index))
     .filter((index) => index !== null);
 
+  if (!currentChapterId) {
+    showToast("Chưa có chương để xử lý.", "error");
+    return;
+  }
   if (indices.length === 0) {
     showToast("Không có trang nào để xử lý.", "error");
     return;
   }
 
   const chapterId = currentChapterId;
-  const total = indices.length;
-  const btn = document.querySelector(".preview-primary-action");
-  let completed = 0;
-  let excludedRegionsSaved = false;
-
-  if (btn) {
-    // Keep the control focusable/clickable. The outer guard rejects duplicate
-    // starts, while the rest of the application remains interactive.
-    btn.disabled = false;
+  processingButtons().forEach((btn) => {
+    if (!btn || !btn.isConnected) return;
     btn.setAttribute("aria-busy", "true");
-  }
+    btn.textContent = "Đang lưu vùng loại trừ…";
+  });
 
   try {
-    if (btn) btn.textContent = "Đang lưu vùng loại trừ…";
     if (typeof window.flushExcludedRegionSaves === "function") {
       await window.flushExcludedRegionSaves(chapterId);
     }
-    excludedRegionsSaved = true;
     if (chapterId !== currentChapterId) return;
 
-    for (let start = 0; start < total; start += RESPONSIVE_PROCESS_BATCH_SIZE) {
-      const batch = indices.slice(
-        start,
-        start + RESPONSIVE_PROCESS_BATCH_SIZE,
-      );
-      if (btn) btn.textContent = `Đang xử lý ${completed}/${total}…`;
-
-      // Give Chromium/WebView a paint turn before each CPU-heavy request.
-      await yieldProcessUi();
-
-      const resp = await fetch("/api/process_pages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chapter_id: chapterId,
-          page_indices: batch,
-          workers: getWorkersSetting(),
-        }),
-      });
-      const data = await parseApiResponse(resp);
-      if (!resp.ok) {
-        throw new Error(getErrorMessage(resp.status, data));
-      }
-      if (chapterId !== currentChapterId) return;
-
-      currentManifest = data;
-      completed += batch.length;
-      if (btn) btn.textContent = `Đã xử lý ${completed}/${total}…`;
-    }
-
-    if (
-      chapterId === currentChapterId
-      && document.body?.dataset?.appStage === "preview"
-    ) {
-      renderReview();
-    }
+    const snapshot = await processingJson("/api/process/chapter", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chapter_id: chapterId,
+        page_indices: indices,
+        workers: getWorkersSetting(),
+      }),
+    });
+    return await monitorProcessingJob(snapshot, chapterId);
   } catch (err) {
-    if (!excludedRegionsSaved) {
-      showToast(
-        "Không thể bắt đầu xử lý vì vùng loại trừ chưa được lưu: " + err.message,
-        "error",
-      );
-      return;
-    }
-
-    let resynced = false;
     if (chapterId === currentChapterId) {
-      try {
-        await refreshChapterManifest(chapterId);
-        resynced = true;
-      } catch (syncErr) {
-        console.error(
-          "Could not resync chapter after partial process failure:",
-          syncErr,
-        );
-      }
-    }
-
-    const prefix = completed > 0
-      ? `Đã xử lý ít nhất ${completed}/${total} trang. Phần tiếp theo thất bại: `
-      : "Xử lý trang thất bại: ";
-    showToast(prefix + err.message, "error");
-
-    if (
-      resynced
-      && document.body?.dataset?.appStage === "preview"
-    ) {
-      window.previewActivePageIndex = Math.min(
-        Number(window.previewActivePageIndex) || 0,
-        Math.max(0, (currentManifest?.pages?.length || 1) - 1),
-      );
-      renderPreview();
+      showToast("Xử lý trang thất bại: " + err.message, "error");
     }
   } finally {
-    if (btn && btn.isConnected) {
-      btn.disabled = false;
-      btn.removeAttribute("aria-busy");
-      if (
-        chapterId === currentChapterId
-        && document.body?.dataset?.appStage === "preview"
-      ) {
-        btn.textContent = completed > 0
-          ? "Tiếp tục xử lý"
-          : "Bắt đầu xử lý";
+    if (chapterId === currentChapterId && document.body?.dataset?.appStage === "preview") {
+      try {
+        const latest = await getCurrentProcessingJob(chapterId);
+        if (!latest?.active) setProcessingUi(latest);
+      } catch (_) {
+        setProcessingUi({ status: "idle", completed: 0, total: indices.length });
       }
     }
   }
 };
+
+async function reconnectPageProcessingJob(chapterId) {
+  if (!chapterId || chapterId !== currentChapterId) return null;
+  let snapshot;
+  try {
+    snapshot = await getCurrentProcessingJob(chapterId);
+  } catch (err) {
+    console.error("Could not query processing job after resume:", err);
+    return null;
+  }
+  if (!snapshot?.active) {
+    setProcessingUi(snapshot || { status: "idle", completed: 0, total: 0 });
+    return snapshot;
+  }
+  return monitorProcessingJob(snapshot, chapterId, { reconnect: true });
+}
+window.reconnectPageProcessingJob = reconnectPageProcessingJob;
+
+const resumeChapterWithoutProcessingReconnect = window.resumeChapter;
+if (typeof resumeChapterWithoutProcessingReconnect === "function") {
+  window.resumeChapter = async function resumeChapterWithProcessingReconnect(chapterId) {
+    await resumeChapterWithoutProcessingReconnect(chapterId);
+    if (
+      chapterId === currentChapterId
+      && document.body?.dataset?.appStage === "preview"
+    ) {
+      await reconnectPageProcessingJob(chapterId);
+    }
+  };
+}
 
 document.addEventListener("DOMContentLoaded", () => {
   const loadBtn = document.getElementById("load-btn");
@@ -163,8 +204,8 @@ document.addEventListener("DOMContentLoaded", () => {
   if (typeof loadFonts === "function") loadFonts();
 
   const urlHash = (window.location.hash || "").replace(/^#/, "").trim();
-  // Only an explicit deep link resumes immediately. A stale browser session
-  // must not skip the new Home screen on every application launch.
+  // An explicit deep link resumes immediately. resumeChapter is wrapped above,
+  // so F5 also reconnects to an active backend processing job.
   if (urlHash && typeof resumeChapter === "function") {
     resumeChapter(urlHash);
   }
