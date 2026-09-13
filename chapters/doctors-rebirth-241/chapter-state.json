@@ -6,14 +6,14 @@
   "chapter_number": 241,
   "source_url": "https://asurascans.com/comics/doctors-rebirth-53fc8424/chapter/241",
   "branch": "chapter/doctors-rebirth+241",
-  "current_stage": "CLEAN_REVIEW_PASS",
-  "last_passed_checkpoint": "CLEAN",
+  "current_stage": "OCR_REVIEW_PASS",
+  "last_passed_checkpoint": "OCR",
   "current_artifact": {
-    "run_id": 34734740336,
-    "artifact": "02b-clean-local-repair-c241d001",
-    "artifact_id": 10310995735,
-    "artifact_digest": "sha256:70d9329c20c86dcf77dda0ad863037de5bd8683d0d8a1d00f0b2d7c886bd011f",
-    "workflow_head_sha": "095a764752e58fe5bd304d22d5e8b65bc83a08a0"
+    "run_id": 34740118737,
+    "artifact": "03b-ocr-curated-c241d001",
+    "artifact_id": 10312033714,
+    "artifact_digest": "sha256:6682ee41567095ae9c549d7fe9c28d444817d2b64248de243e8d87892c596008",
+    "workflow_head_sha": "1e0fadac8318a83fce8eadf692377d73c168057b"
   },
   "approved_import": {
     "source_images": 17,
@@ -25,18 +25,29 @@
   },
   "approved_clean_stack": {
     "base": "02-clean-review-c241d001@34732864896",
-    "overlays": [
-      "02b-clean-local-repair-c241d001@34734740336"
-    ],
+    "overlays": ["02b-clean-local-repair-c241d001@34734740336"],
     "story_text_residue_blockers": 0,
     "artwork_damage_blockers": 0,
     "non_story_preservation_repairs": 2,
     "decorative_title_repairs": 1,
     "skipped_non_story_slices": [0, 67]
   },
+  "approved_ocr": {
+    "base": "03-ocr-review-c241d001@34734977654",
+    "curated": "03b-ocr-curated-c241d001@34740118737",
+    "ocr_source": "RAW",
+    "machine_active_boxes": 105,
+    "human_tombstones": 29,
+    "manual_text_corrections": 4,
+    "active_story_objects": 76,
+    "empty_active_story_objects": 0,
+    "duplicate_blockers": 0,
+    "fragment_blockers": 0,
+    "resurrection_count": 0
+  },
   "metadata_repairs": [
     "Runtime chapter_id normalized to c241d001 after validator rejected legacy c241dr01. Approved import artifact remains immutable."
   ],
   "blockers": [],
-  "next_action": "RUN_CHECKPOINT_03_OCR_REVIEW"
+  "next_action": "RUN_TRANSLATION_REVIEW"
 }
