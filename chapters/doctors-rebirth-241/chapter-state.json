@@ -6,14 +6,14 @@
   "chapter_number": 241,
   "source_url": "https://asurascans.com/comics/doctors-rebirth-53fc8424/chapter/241",
   "branch": "chapter/doctors-rebirth+241",
-  "current_stage": "VISUAL_REVIEW_PASS",
-  "last_passed_checkpoint": "VISUAL_REVIEW",
+  "current_stage": "FINAL_COMPLETE",
+  "last_passed_checkpoint": "FINAL_EXPORT",
   "current_artifact": {
-    "run_id": 34744936501,
-    "artifact": "05-render-candidate-c241d001",
-    "artifact_id": 10313930879,
-    "artifact_digest": "sha256:3f10c19e602687a6eacecf50beebe5369f9340c9b68db41d77ff62d858604f56",
-    "workflow_head_sha": "d19d9eb51e6fc910aed04adc0c7517bd49b04066"
+    "run_id": 34745669230,
+    "artifact": "Doctors-Rebirth-Chapter-241-VI-FINAL",
+    "artifact_id": 10314181307,
+    "artifact_digest": "sha256:6afa898ea88724343aeeafa8dfe235cf85b0053cfa0c51832174b2a5486fa9b8",
+    "workflow_head_sha": "2b92b6e1bc8647b0e181fdb5860100eb9840f5fa"
   },
   "approved_import": {
     "source_images": 17,
@@ -86,9 +86,24 @@
     "visual_blockers_total": 0,
     "final_export_allowed": true
   },
+  "final_export": {
+    "status": "FINAL_PASS",
+    "workflow_run_id": 34745669230,
+    "workflow_artifact": "Doctors-Rebirth-Chapter-241-VI-FINAL",
+    "workflow_artifact_id": 10314181307,
+    "workflow_artifact_digest": "sha256:6afa898ea88724343aeeafa8dfe235cf85b0053cfa0c51832174b2a5486fa9b8",
+    "archive": "Doctors-Rebirth-Chapter-241-VI-FINAL.zip",
+    "archive_sha256": "779134c485bc3b79110fd3f707ef20f253b267371ecb7aab8978975bc7277639",
+    "archive_bytes": 106957915,
+    "archive_png_count": 17,
+    "source_pages": 17,
+    "source_render_run_id": 34744936501,
+    "source_render_artifact_id": 10313930879,
+    "source_render_artifact_digest": "sha256:3f10c19e602687a6eacecf50beebe5369f9340c9b68db41d77ff62d858604f56"
+  },
   "metadata_repairs": [
     "Runtime chapter_id normalized to c241d001 after validator rejected legacy c241dr01. Approved import artifact remains immutable."
   ],
   "blockers": [],
-  "next_action": "RUN_FINAL_PACKAGE"
+  "next_action": "CHAPTER_COMPLETE_NO_MAIN_MERGE"
 }
