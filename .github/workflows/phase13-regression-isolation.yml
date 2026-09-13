@@ -19,6 +19,7 @@ jobs:
     timeout-minutes: 45
     env:
       PYTHONUNBUFFERED: "1"
+      PYTHONPATH: ${{ github.workspace }}
       MANGA_USE_DYNAMIC_LAMA: "1"
       MANGA_PIPELINE_PROCESS_WORKER_LIMIT: "1"
       MANGA_ORT_PROVIDER: openvino
