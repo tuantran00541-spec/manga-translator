@@ -102,6 +102,19 @@
     select.classList.add("theme-select-native");
     select.tabIndex = -1;
     select.setAttribute("aria-hidden", "true");
+    Object.assign(select.style, {
+      position: "absolute",
+      width: "1px",
+      height: "1px",
+      margin: "-1px",
+      padding: "0",
+      overflow: "hidden",
+      clip: "rect(0 0 0 0)",
+      clipPath: "inset(50%)",
+      border: "0",
+      whiteSpace: "nowrap",
+      pointerEvents: "none",
+    });
 
     picker.appendChild(trigger);
     picker.appendChild(menu);

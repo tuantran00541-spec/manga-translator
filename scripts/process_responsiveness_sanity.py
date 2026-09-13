@@ -84,28 +84,44 @@ def runtime_checks() -> None:
 
 def source_checks() -> None:
     main_js = (ROOT / "app/static/js/main.js").read_text(encoding="utf-8")
+    processing_jobs = (ROOT / "app/page_processing_jobs.py").read_text(encoding="utf-8")
+
     check(
-        "RESPONSIVE_PROCESS_BATCH_SIZE = 16" in main_js,
-        "frontend processing batch is not restored to sixteen pages",
+        "PROCESS_JOB_BATCH_SIZE = 16" in processing_jobs,
+        "backend processing batch is not fixed at sixteen pages",
     )
     check(
-        "window._processSelectedPagesOnce = async function responsiveProcessSelectedPagesOnce" in main_js,
-        "responsive page-processing override missing",
+        "job.page_indices[start : start + self._batch_size]" in processing_jobs,
+        "backend processing batch slicing contract missing",
     )
-    check("await yieldProcessUi();" in main_js, "processing does not yield a paint turn")
     check(
-        "start + RESPONSIVE_PROCESS_BATCH_SIZE" in main_js,
-        "responsive batch slicing contract missing",
+        "window._processSelectedPagesOnce = async function serverOwnedProcessSelectedPagesOnce" in main_js,
+        "server-owned page-processing entrypoint missing",
+    )
+    check(
+        'processingJson("/api/process/chapter"' in main_js,
+        "frontend does not submit one complete chapter processing job",
+    )
+    check(
+        "page_indices: indices" in main_js,
+        "frontend does not transfer the complete page plan to the backend",
     )
     check(
         "workers: getWorkersSetting()" in main_js,
-        "frontend batch size must remain independent from worker concurrency",
+        "page plan must remain independent from worker concurrency",
+    )
+    check(
+        "monitorProcessingJob(snapshot, chapterId)" in main_js,
+        "frontend processing monitor is missing",
+    )
+    check(
+        "reconnectPageProcessingJob" in main_js,
+        "processing reconnect contract is missing",
     )
     check(
         'btn.setAttribute("aria-busy", "true")' in main_js,
         "processing busy state missing",
     )
-    check("btn.disabled = false" in main_js, "preview process control remains hard-disabled")
     check("AbortController" not in main_js, "frontend must not fake-cancel backend CPU work")
 
     dependencies = (ROOT / "app/dependencies.py").read_text(encoding="utf-8")
