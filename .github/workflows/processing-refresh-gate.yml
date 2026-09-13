@@ -1,0 +1,66 @@
+name: Processing Refresh Gate
+
+on:
+  push:
+    branches:
+      - 'fix/ui-processing-refresh'
+    paths:
+      - 'app/page_processing_jobs.py'
+      - 'app/routers/chapters.py'
+      - 'app/static/js/main.js'
+      - 'tests/test_page_processing_jobs.py'
+      - 'tests/test_processing_refresh_ui_contract.py'
+      - '.github/workflows/processing-refresh-gate.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: processing-refresh-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  regression:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install dependency-light test runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-test.txt
+
+      - name: Compile changed backend modules
+        run: |
+          python -m py_compile app/page_processing_jobs.py app/routers/chapters.py
+
+      - name: Check browser entrypoint syntax
+        run: node --check app/static/js/main.js
+
+      - name: Run refresh and processing regressions
+        run: |
+          pytest -q \
+            tests/test_page_processing_jobs.py \
+            tests/test_processing_refresh_ui_contract.py \
+            tests/test_pipeline_module_boundaries.py \
+            tests/test_v01_product_closure.py
+
+      - name: Verify processing routes are registered
+        run: |
+          python - <<'PY'
+          from app.main import app
+          paths = {route.path for route in app.routes}
+          required = {
+              '/api/process/chapter',
+              '/api/process/chapter/{chapter_id}',
+              '/api/process/jobs/{job_id}',
+          }
+          missing = required - paths
+          if missing:
+              raise SystemExit(f'missing processing job routes: {sorted(missing)}')
+          print('processing job routes registered')
+          PY
