@@ -6,6 +6,7 @@ from app.detector.bubble_detector import BubbleBox
 from app.detector.fast_residue_detector import (
     FastResidueAdaptiveFocusCombinedTextDetector,
 )
+from app.parameters import DETECTOR_RESIDUE_VERIFY_MAX_SOURCE_SIDE
 
 
 def _box(x1, y1, x2, y2):
@@ -42,10 +43,13 @@ def test_residue_groups_coalesce_nearby_windows_but_not_distant_ones():
 
 
 def test_residue_groups_refuse_union_that_exceeds_source_side_limit():
-    a = _box(0, 0, 20, 20)
-    b = _box(20, 0, 40, 20)
-    limit = FastResidueAdaptiveFocusCombinedTextDetector._can_merge_roi
-    ok, _ = limit((0, 0, 1300, 30), (1300, 0, 1340, 30))
+    max_side = int(DETECTOR_RESIDUE_VERIFY_MAX_SOURCE_SIDE)
+    method = FastResidueAdaptiveFocusCombinedTextDetector._can_merge_roi
+    ok, union = method(
+        (0, 0, max_side - 10, 30),
+        (max_side - 10, 0, max_side + 20, 30),
+    )
+    assert union[2] - union[0] > max_side
     assert ok is False
 
 
