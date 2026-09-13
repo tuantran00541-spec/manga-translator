@@ -6,14 +6,14 @@
   "chapter_number": 241,
   "source_url": "https://asurascans.com/comics/doctors-rebirth-53fc8424/chapter/241",
   "branch": "chapter/doctors-rebirth+241",
-  "current_stage": "TRANSLATION_REVIEW_PASS",
-  "last_passed_checkpoint": "TRANSLATION",
+  "current_stage": "VISUAL_REVIEW_PASS",
+  "last_passed_checkpoint": "VISUAL_REVIEW",
   "current_artifact": {
-    "run_id": 34740261560,
-    "artifact": "04-translation-reviewed-c241d001",
-    "artifact_id": 10312073784,
-    "artifact_digest": "sha256:198740f0af5bb41f846053390da90c226284bf746c21c54a1e673b410cd9bacc",
-    "workflow_head_sha": "5ac5126b1fcf048ece36304d5ea0299c1cec91e3"
+    "run_id": 34744936501,
+    "artifact": "05-render-candidate-c241d001",
+    "artifact_id": 10313930879,
+    "artifact_digest": "sha256:3f10c19e602687a6eacecf50beebe5369f9340c9b68db41d77ff62d858604f56",
+    "workflow_head_sha": "d19d9eb51e6fc910aed04adc0c7517bd49b04066"
   },
   "approved_import": {
     "source_images": 17,
@@ -25,12 +25,17 @@
   },
   "approved_clean_stack": {
     "base": "02-clean-review-c241d001@34732864896",
-    "overlays": ["02b-clean-local-repair-c241d001@34734740336"],
+    "overlays": [
+      "02b-clean-local-repair-c241d001@34734740336"
+    ],
     "story_text_residue_blockers": 0,
     "artwork_damage_blockers": 0,
     "non_story_preservation_repairs": 2,
     "decorative_title_repairs": 1,
-    "skipped_non_story_slices": [0, 67]
+    "skipped_non_story_slices": [
+      0,
+      67
+    ]
   },
   "approved_ocr": {
     "base": "03-ocr-review-c241d001@34734977654",
@@ -54,9 +59,36 @@
     "tombstone_translation_count": 0,
     "resurrection_count": 0
   },
+  "approved_typography": {
+    "artifact": "05-render-candidate-c241d001@34744936501",
+    "active_story_objects": 76,
+    "rendered_story_objects": 76,
+    "rendered_slices": 68,
+    "source_pages": 17,
+    "normal_dialogue_font": "Mac-dinh-3",
+    "skill_name_font": "Skill-fonts-1",
+    "font_size_auto_objects": 0,
+    "font_size_min_px": 30,
+    "font_size_max_px": 80,
+    "font_fallback_count": 0,
+    "raster_fallback_count": 0,
+    "geometry_repairs": 1,
+    "punctuation_visual_repairs": 8,
+    "reviewed_font_assignments": 3,
+    "optical_size_repairs": 1,
+    "stitch_seams_reviewed": 51
+  },
+  "approved_visual_review": {
+    "status": "PASS",
+    "object_proof_sheets_reviewed": 7,
+    "full_page_overview_reviewed": true,
+    "stitch_seam_proof_reviewed": true,
+    "visual_blockers_total": 0,
+    "final_export_allowed": true
+  },
   "metadata_repairs": [
     "Runtime chapter_id normalized to c241d001 after validator rejected legacy c241dr01. Approved import artifact remains immutable."
   ],
   "blockers": [],
-  "next_action": "RUN_TYPOGRAPHY_RENDER_REVIEW"
+  "next_action": "RUN_FINAL_PACKAGE"
 }
