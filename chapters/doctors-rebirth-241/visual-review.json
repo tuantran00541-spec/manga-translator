@@ -1,0 +1,93 @@
+{
+  "checkpoint": "VISUAL_REVIEW",
+  "chapter_id": "c241d001",
+  "series_slug": "doctors-rebirth-53fc8424",
+  "series_title": "Doctors Rebirth",
+  "chapter_number": 241,
+  "source_url": "https://asurascans.com/comics/doctors-rebirth-53fc8424/chapter/241",
+  "status": "PASS",
+  "render_run_id": 34744936501,
+  "render_artifact": "05-render-candidate-c241d001",
+  "render_artifact_id": 10313930879,
+  "render_artifact_digest": "sha256:3f10c19e602687a6eacecf50beebe5369f9340c9b68db41d77ff62d858604f56",
+  "render_head_sha": "d19d9eb51e6fc910aed04adc0c7517bd49b04066",
+  "source_pages": 17,
+  "render_slices": 68,
+  "active_story_objects": 76,
+  "persistent_tombstones": 29,
+  "proof_review": {
+    "object_proof_sheets_reviewed": 7,
+    "object_proof_sheets_total": 7,
+    "all_active_story_objects_covered_by_object_proofs": true,
+    "full_page_overview_reviewed": true,
+    "stitch_seam_proof_reviewed": true,
+    "stitch_seams_reviewed": 51,
+    "full_chapter_page_order_reviewed": true,
+    "bubble_alignment_and_optical_breathing_reviewed": true
+  },
+  "initial_visual_issues": [
+    {
+      "kind": "bubble_geometry_too_small",
+      "box_id": "box_4f2f668087d845f2",
+      "description": "The OCR/detector box enclosed only the original short glyph line for 'ĐỆ THUA RỒI.' instead of the actual black circular balloon.",
+      "repair": "Replace the text region with the human-reviewed balloon-safe region while preserving the bubble artwork."
+    },
+    {
+      "kind": "unsupported_punctuation_font_jump",
+      "description": "Eight reviewed objects fell to the neutral BeVietnamPro fallback only because semantic manga fonts lacked U+2014/U+2026 punctuation glyphs.",
+      "repair": "Normalize only the unsupported punctuation without changing meaning so dialogue, shout and skill labels remain in their reviewed semantic font families."
+    },
+    {
+      "kind": "semantic_font_not_viable",
+      "description": "Three shout objects could not safely use Granite because required Vietnamese glyphs were absent or Pillow rasterization failed.",
+      "repair": "Assign Mac-dinh-3 explicitly as a human-reviewed font for those three objects instead of treating it as a fallback."
+    },
+    {
+      "kind": "optical_breathing",
+      "box_id": "box_ca2b94c697684b79",
+      "description": "Mac-dinh-3 at 64px mathematically fit the burst balloon but crowded the jagged border.",
+      "repair": "Lock the reviewed size to 56px, retaining shout hierarchy while restoring safe optical breathing."
+    }
+  ],
+  "local_repairs": {
+    "geometry_repairs": 1,
+    "punctuation_visual_repairs": 8,
+    "reviewed_font_assignments": 3,
+    "optical_size_repairs": 1,
+    "unrelated_page_regression_seen": false
+  },
+  "checks": {
+    "active_story_objects": 76,
+    "rendered_story_objects": 76,
+    "untranslated_objects": 0,
+    "overflow_blockers": 0,
+    "clipping_blockers": 0,
+    "alignment_blockers": 0,
+    "bubble_margin_blockers": 0,
+    "missing_text_blockers": 0,
+    "duplicate_text_blockers": 0,
+    "source_text_residue_blockers": 0,
+    "artwork_damage_blockers": 0,
+    "seam_blockers": 0,
+    "glyph_blockers": 0,
+    "font_jump_blockers": 0,
+    "optical_breathing_blockers": 0,
+    "visual_blockers_total": 0
+  },
+  "typography": {
+    "normal_dialogue_font": "Mac-dinh-3",
+    "skill_name_font": "Skill-fonts-1",
+    "shout_default_font": "Granite",
+    "font_size_auto_objects": 0,
+    "final_font_size_min_px": 30,
+    "final_font_size_max_px": 80,
+    "font_fallback_count": 0,
+    "raster_fallback_count": 0,
+    "fixed_size_after_preflight": true,
+    "reviewed_optical_size_override_px": 56
+  },
+  "visual_pass_allowed": true,
+  "final_export_allowed": true,
+  "blockers": [],
+  "next_action": "RUN_FINAL_PACKAGE"
+}
