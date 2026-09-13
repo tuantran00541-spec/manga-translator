@@ -1,0 +1,388 @@
+name: Perf residue coalesce AB
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: perf-residue-coalesce-ab
+  cancel-in-progress: false
+
+jobs:
+  residue-ab:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    env:
+      PYTHONUNBUFFERED: "1"
+      MANGA_USE_DYNAMIC_LAMA: "1"
+      MANGA_ORT_PROVIDER: openvino
+      MANGA_ORT_REQUIRE_PROVIDER: "1"
+      MANGA_ORT_OPENVINO_SCOPE: detectors
+      MANGA_ORT_OPENVINO_THREADS: "2"
+      MANGA_ORT_OPENVINO_STREAMS: "1"
+      MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
+      OPENBLAS_NUM_THREADS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install production processing runtime
+        run: |
+          python -m pip install \
+            numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 \
+            onnxruntime-openvino==1.24.1 psutil==6.1.1 loguru==0.7.2 \
+            requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 \
+            playwright==1.47.0 fastapi==0.115.0 pydantic==2.9.2 \
+            filelock==3.16.1 threadpoolctl==3.6.0
+      - name: Restore detector and inpaint models
+        id: models
+        uses: actions/cache@v4
+        with:
+          path: |
+            models/*.onnx
+            models/.e2e-provenance.json
+          key: processing-profile-models-b224548-v1
+      - name: Read pinned model provisioner
+        if: steps.models.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: b22454827f8190655d7070b80eb20c2550beadfa
+          path: benchmark-bootstrap
+          sparse-checkout: scripts/provision_real_e2e_models.py
+          sparse-checkout-cone-mode: false
+      - name: Provision public-equivalent production models
+        if: steps.models.outputs.cache-hit != 'true'
+        run: |
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple torch==2.5.1+cpu torchvision==0.20.1+cpu
+          python -m pip install --no-deps ultralytics==8.3.221 onnx==1.17.0 onnxslim==0.1.71
+          python -m pip install numpy==1.26.4 sympy==1.13.1 PyYAML==6.0.2 scipy==1.14.1 tqdm==4.67.1 matplotlib==3.9.2 pandas==2.2.3 py-cpuinfo==9.0.0 ml_dtypes==0.5.3 colorama==0.4.6 polars==1.33.1 ultralytics-thop==2.0.17
+          python benchmark-bootstrap/scripts/provision_real_e2e_models.py
+          cp benchmark-bootstrap/models/*.onnx models/
+          cp benchmark-bootstrap/models/.e2e-provenance.json models/
+      - name: Compare original and coalesced residue verifier
+        run: |
+          mkdir -p benchmark-results/residue-coalesce
+          python - <<'PY'
+          from __future__ import annotations
+
+          from collections import Counter
+          import hashlib
+          import json
+          import math
+          import statistics
+          import threading
+          import time
+          from pathlib import Path
+
+          from app.detector.adaptive_focus_detector import AdaptiveFocusCombinedTextDetector
+          from app.detector.bubble_detector import BubbleBox
+          from app.detector.fast_residue_detector import FastResidueAdaptiveFocusCombinedTextDetector
+          from app.image_io import read_image
+          from app.inpaint.fast_lama_inpainter import FastInpainter
+          from app.manifest_utils import load_manifest_raw
+          from app.mask_store import decode_mask_value
+          from app.parameters import (
+              DETECTOR_RESIDUE_VERIFY_MAX_ROIS,
+              DETECTOR_RESIDUE_VERIFY_MAX_SOURCE_SIDE,
+              DETECTOR_RESIDUE_VERIFY_PAD,
+          )
+          from app.pipeline import ChapterPipeline
+
+          URL = 'https://asurascans.com/comics/killer-pietro-08677664/chapter/120'
+          OUT = Path('benchmark-results/residue-coalesce/report.json')
+
+          seed_pipeline = ChapterPipeline()
+          chapter_id = hashlib.sha256(f'residue-ab-{time.time_ns()}'.encode()).hexdigest()[:8]
+          manifest = seed_pipeline.download_chapter(URL, chapter_id, workers=2)
+          total = len(manifest.get('pages', []))
+          if total < 20:
+              raise RuntimeError(f'expected >=20 slices, got {total}')
+          indices = sorted({round(i * (total - 1) / 19) for i in range(20)})
+
+          detector = AdaptiveFocusCombinedTextDetector()
+          pipeline = ChapterPipeline()
+          pipeline._detector = detector
+          pipeline._inpainter = FastInpainter()
+          pipeline.inpainter.preload()
+
+          started = time.perf_counter()
+          pipeline.process_pages(chapter_id, indices, workers=1)
+          baseline_pipeline_wall_ms = (time.perf_counter() - started) * 1000.0
+          current = load_manifest_raw(chapter_id)
+          pages = current.get('pages', [])
+
+          def authorized_boxes(page):
+              result = []
+              for record in page.get('boxes', []):
+                  if not isinstance(record, dict):
+                      continue
+                  if record.get('removed') or record.get('overlap_context_only'):
+                      continue
+                  if record.get('deferred_reason'):
+                      continue
+                  if not (record.get('safe_to_inpaint') or record.get('geometry_overridden')):
+                      continue
+                  x1 = int(record.get('x1', 0))
+                  y1 = int(record.get('y1', 0))
+                  x2 = int(record.get('x2', 0))
+                  y2 = int(record.get('y2', 0))
+                  if x2 <= x1 or y2 <= y1:
+                      continue
+                  mask = decode_mask_value(record.get('mask'))
+                  box = BubbleBox(
+                      x1, y1, x2, y2,
+                      float(record.get('confidence', 1.0)),
+                      mask,
+                      source_model=str(record.get('source_model') or 'unknown'),
+                      class_id=int(record.get('class_id') or 0),
+                      class_name=str(record.get('class_name') or 'unknown'),
+                      semantic_type=str(record.get('semantic_type') or 'unknown'),
+                      mask_source=str(record.get('mask_source') or 'none'),
+                      safe_to_inpaint=True,
+                      ocr_eligible=bool(record.get('ocr_eligible')),
+                      needs_review=bool(record.get('needs_review')),
+                      source_role=str(record.get('source_role') or 'unknown'),
+                      deferred_reason=None,
+                  )
+                  if record.get('geometry_overridden'):
+                      box.allow_rectangle_fallback = True
+                  result.append(box)
+              return result
+
+          def baseline_plan(image, boxes):
+              h, w = image.shape[:2]
+              candidates = [box for box in boxes if box.verified_mask]
+              candidates.sort(
+                  key=lambda box: ((box.x2 - box.x1) * (box.y2 - box.y1)),
+                  reverse=True,
+              )
+              calls = deferred_budget = deferred_size = source_pixels = 0
+              for index, source in enumerate(candidates):
+                  if index >= int(DETECTOR_RESIDUE_VERIFY_MAX_ROIS):
+                      deferred_budget += 1
+                      continue
+                  x1 = max(0, int(source.x1) - int(DETECTOR_RESIDUE_VERIFY_PAD))
+                  y1 = max(0, int(source.y1) - int(DETECTOR_RESIDUE_VERIFY_PAD))
+                  x2 = min(w, int(source.x2) + int(DETECTOR_RESIDUE_VERIFY_PAD))
+                  y2 = min(h, int(source.y2) + int(DETECTOR_RESIDUE_VERIFY_PAD))
+                  if x2 <= x1 or y2 <= y1:
+                      continue
+                  if max(x2 - x1, y2 - y1) > int(DETECTOR_RESIDUE_VERIFY_MAX_SOURCE_SIDE):
+                      deferred_size += 1
+                      continue
+                  calls += 1
+                  source_pixels += (x2 - x1) * (y2 - y1)
+              return {
+                  'source_candidates': len(candidates),
+                  'model_calls': calls,
+                  'deferred_budget': deferred_budget,
+                  'deferred_size': deferred_size,
+                  'source_pixels': source_pixels,
+              }
+
+          decision_fields = (
+              'x1', 'y1', 'x2', 'y2', 'confidence', 'source_model',
+              'source_role', 'class_name', 'semantic_type', 'deferred_reason',
+          )
+
+          baseline_times = []
+          baseline_regions = {}
+          baseline_plan_totals = Counter()
+          clean_inputs = {}
+          source_boxes = {}
+          for idx in indices:
+              page = pages[idx]
+              metrics = page.get('processing_metrics') or {}
+              timing = metrics.get('timing_ms') or {}
+              baseline_times.append(float(timing.get('residue_verify') or 0.0))
+              baseline_regions[str(idx)] = list(page.get('residue_regions') or [])
+              clean = read_image(Path(page['clean']))
+              boxes = authorized_boxes(page)
+              clean_inputs[idx] = clean
+              source_boxes[idx] = boxes
+              baseline_plan_totals.update(baseline_plan(clean, boxes))
+
+          # Reuse the exact text-model/proxy session exercised by the original
+          # verifier above. This makes the candidate timing an isolated verifier
+          # comparison rather than a second model-load or provider comparison.
+          candidate = FastResidueAdaptiveFocusCombinedTextDetector.__new__(
+              FastResidueAdaptiveFocusCombinedTextDetector
+          )
+          candidate.text_detector = detector.text_detector
+          candidate._residue_metrics_local = threading.local()
+          candidate._residue_metrics_lock = threading.Lock()
+          candidate._residue_totals = {}
+
+          candidate_regions = {}
+          candidate_times = []
+          for idx in indices:
+              started = time.perf_counter()
+              result = candidate.verify_post_inpaint_residue(
+                  clean_inputs[idx],
+                  source_boxes[idx],
+              )
+              candidate_times.append((time.perf_counter() - started) * 1000.0)
+              candidate_regions[str(idx)] = [
+                  {field: getattr(box, field) for field in decision_fields}
+                  for box in result
+              ]
+
+          candidate_totals = candidate.residue_metrics_snapshot()
+
+          def reason_counts(regions_by_page):
+              counts = Counter()
+              for regions in regions_by_page.values():
+                  for region in regions:
+                      counts[str(region.get('deferred_reason') or 'none')] += 1
+              return counts
+
+          baseline_reasons = reason_counts(baseline_regions)
+          candidate_reasons = reason_counts(candidate_regions)
+
+          def center(region):
+              return (
+                  (float(region['x1']) + float(region['x2'])) * 0.5,
+                  (float(region['y1']) + float(region['y2'])) * 0.5,
+              )
+
+          def residue_hits(regions):
+              return [
+                  region for region in regions
+                  if region.get('deferred_reason') == 'post_inpaint_text_residue'
+              ]
+
+          unmatched = []
+          for page_key, baseline_page in baseline_regions.items():
+              wanted = residue_hits(baseline_page)
+              available = residue_hits(candidate_regions.get(page_key, []))
+              used = set()
+              for source in wanted:
+                  sx, sy = center(source)
+                  best = None
+                  best_distance = None
+                  for pos, candidate_region in enumerate(available):
+                      if pos in used:
+                          continue
+                      cx, cy = center(candidate_region)
+                      distance = math.hypot(cx - sx, cy - sy)
+                      if best_distance is None or distance < best_distance:
+                          best = pos
+                          best_distance = distance
+                  tolerance = max(
+                      24.0,
+                      0.25 * max(
+                          float(source['x2']) - float(source['x1']),
+                          float(source['y2']) - float(source['y1']),
+                      ),
+                  )
+                  if best is None or best_distance is None or best_distance > tolerance:
+                      unmatched.append({
+                          'page': int(page_key),
+                          'baseline': source,
+                          'nearest_distance': best_distance,
+                          'tolerance': tolerance,
+                      })
+                  else:
+                      used.add(best)
+
+          baseline_total_ms = sum(baseline_times)
+          candidate_total_ms = sum(candidate_times)
+          report = {
+              'chapter_url': URL,
+              'chapter_id': chapter_id,
+              'total_slices': total,
+              'sample_indices': indices,
+              'baseline_pipeline_wall_ms': round(baseline_pipeline_wall_ms, 3),
+              'baseline': {
+                  'residue_verify_total_ms': round(baseline_total_ms, 3),
+                  'residue_verify_mean_ms': round(statistics.mean(baseline_times), 3),
+                  'plan': dict(baseline_plan_totals),
+                  'reasons': dict(baseline_reasons),
+                  'regions': baseline_regions,
+              },
+              'candidate': {
+                  'residue_verify_total_ms': round(candidate_total_ms, 3),
+                  'residue_verify_mean_ms': round(statistics.mean(candidate_times), 3),
+                  'metrics': candidate_totals,
+                  'reasons': dict(candidate_reasons),
+                  'regions': candidate_regions,
+              },
+              'quality': {
+                  'unmatched_baseline_residue_hits': unmatched,
+                  'baseline_hit_count': int(baseline_reasons.get('post_inpaint_text_residue', 0)),
+                  'candidate_hit_count': int(candidate_reasons.get('post_inpaint_text_residue', 0)),
+              },
+              'speedup': {
+                  'residue_verify_pct': round(
+                      (baseline_total_ms / max(1.0, candidate_total_ms) - 1.0) * 100.0,
+                      2,
+                  ),
+                  'model_call_reduction_pct': round(
+                      (1.0 - float(candidate_totals.get('model_calls', 0)) /
+                       max(1.0, float(baseline_plan_totals.get('model_calls', 0)))) * 100.0,
+                      2,
+                  ),
+              },
+          }
+          OUT.write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+          print('RESIDUE_COALESCE_AB=' + json.dumps(report, ensure_ascii=False), flush=True)
+
+          for reason in ('post_inpaint_verification_budget', 'post_inpaint_verification_size'):
+              if int(candidate_reasons.get(reason, 0)) != int(baseline_reasons.get(reason, 0)):
+                  raise RuntimeError(
+                      f'{reason} semantics changed: '
+                      f'{baseline_reasons.get(reason, 0)} -> {candidate_reasons.get(reason, 0)}'
+                  )
+          if int(candidate_reasons.get('post_inpaint_text_residue', 0)) != int(
+              baseline_reasons.get('post_inpaint_text_residue', 0)
+          ):
+              raise RuntimeError(
+                  'residue hit count changed: '
+                  f"{baseline_reasons.get('post_inpaint_text_residue', 0)} -> "
+                  f"{candidate_reasons.get('post_inpaint_text_residue', 0)}"
+              )
+          if unmatched:
+              raise RuntimeError(f'candidate missed {len(unmatched)} baseline residue hit(s)')
+          if int(candidate_totals.get('model_calls', 0)) > int(
+              baseline_plan_totals.get('model_calls', 0)
+          ):
+              raise RuntimeError('candidate increased residue model calls')
+          PY
+      - name: Publish residue A/B summary
+        if: always()
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          path = Path('benchmark-results/residue-coalesce/report.json')
+          if not path.is_file():
+              raise SystemExit(0)
+          report = json.loads(path.read_text())
+          b = report['baseline']
+          c = report['candidate']
+          s = report['speedup']
+          q = report['quality']
+          lines = [
+              '## Residue coalescing A/B', '',
+              f"- baseline mean: {b['residue_verify_mean_ms']} ms/page",
+              f"- candidate mean: {c['residue_verify_mean_ms']} ms/page",
+              f"- residue speedup: {s['residue_verify_pct']}%",
+              f"- model-call reduction: {s['model_call_reduction_pct']}%",
+              f"- hits: {q['baseline_hit_count']} -> {q['candidate_hit_count']}",
+              f"- unmatched baseline hits: {len(q['unmatched_baseline_residue_hits'])}",
+              f"- candidate metrics: `{json.dumps(c['metrics'], sort_keys=True)}`",
+          ]
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as fh:
+              fh.write('\n'.join(lines) + '\n')
+          PY
+      - name: Upload residue A/B report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: residue-coalesce-ab-${{ github.run_id }}
+          path: benchmark-results/residue-coalesce/report.json
+          if-no-files-found: warn
+          retention-days: 7
