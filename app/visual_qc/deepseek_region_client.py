@@ -6,6 +6,7 @@ import threading
 
 import requests
 
+from app.ai_providers import get_provider
 from app.visual_qc.batch_protocol import RegionBatchDecision, parse_region_batch_decisions
 from app.visual_qc.contact_sheet import ContactSheet
 from app.visual_qc.regions import QCRegion
@@ -17,7 +18,7 @@ DEFAULT_DEEPSEEK_MODEL = os.getenv(
     "deepseek-v4-flash-vision-exp",
 )
 DEFAULT_CONNECT_TIMEOUT_SECONDS = 10
-_INVALID_RESPONSE_MESSAGE = "DeepSeek returned an invalid structured response"
+_INVALID_RESPONSE_MESSAGE = "AI provider returned an invalid structured response"
 
 
 def _int_env(name: str, default: int, low: int, high: int) -> int:
@@ -100,15 +101,15 @@ def _safe_error_detail(response: requests.Response, secret: str) -> str:
 def _extract_output_text(body: dict) -> str:
     choices = body.get("choices")
     if not isinstance(choices, list) or not choices:
-        raise ValueError("No DeepSeek completion choice found")
+        raise ValueError("No completion choice found")
     choice = choices[0]
     if not isinstance(choice, dict):
-        raise ValueError("Invalid DeepSeek completion choice")
+        raise ValueError("Invalid completion choice")
     if choice.get("finish_reason") == "length":
-        raise ValueError("DeepSeek structured response was truncated")
+        raise ValueError("Structured response was truncated")
     message = choice.get("message")
     if not isinstance(message, dict):
-        raise ValueError("No DeepSeek completion message found")
+        raise ValueError("No completion message found")
     content = message.get("content")
     if isinstance(content, str) and content.strip():
         return content
@@ -121,7 +122,7 @@ def _extract_output_text(body: dict) -> str:
         text = "".join(parts).strip()
         if text:
             return text
-    raise ValueError("No DeepSeek text output found")
+    raise ValueError("No text output found")
 
 
 def _ordered_decisions(
@@ -148,7 +149,14 @@ def _ordered_decisions(
     return ordered
 
 
-class DeepSeekRegionQC:
+class OpenAICompatibleRegionQC:
+    """Region-batch visual QC for DeepSeek/OpenAI/OpenRouter-compatible APIs.
+
+    Provider-specific body fields come from ``AIProvider``. This is important
+    because fields accepted by DeepSeek (for example ``thinking``) must not leak
+    into requests sent to OpenAI, OpenRouter or Experiential Labs.
+    """
+
     def __init__(
         self,
         model: str = DEFAULT_DEEPSEEK_MODEL,
@@ -157,20 +165,27 @@ class DeepSeekRegionQC:
         budget_usd: float = 0.08,
         max_output_tokens: int = DEFAULT_MAX_OUTPUT_TOKENS,
         provider_id: str = "deepseek",
-        provider_label: str = "DeepSeek",
-        chat_url: str = DEEPSEEK_CHAT_URL,
+        provider_label: str | None = None,
+        chat_url: str | None = None,
     ):
+        provider = get_provider(provider_id)
+        if provider.protocol != "openai" or not provider.supports_visual_qc:
+            raise ValueError(f"{provider.label} is not available for OpenAI-compatible visual QC")
         budget = float(budget_usd)
         if budget <= 0 or budget > 0.15:
-            raise ValueError("DeepSeek visual QC budget must be > 0 and <= $0.15")
+            raise ValueError("Visual QC budget must be > 0 and <= $0.15")
+        if not provider.chat_url and not chat_url:
+            raise ValueError(f"{provider.label} does not expose a chat-completions endpoint")
+
         self.model = model
         self.timeout_seconds = int(timeout_seconds)
         self.budget_usd = budget
         self.max_output_tokens = max(128, min(1200, int(max_output_tokens)))
-        self.provider_id = provider_id
-        self.provider_label = provider_label
-        self.chat_url = chat_url
-        self._priced = provider_id == "deepseek"
+        self.provider_id = provider.id
+        self.provider_label = provider_label or provider.label
+        self.chat_url = chat_url or str(provider.chat_url)
+        self._request_extras = provider.chat_completion_extras()
+        self._priced = provider.tracks_cost
         self._lock = threading.Lock()
         self._reserved_usd = 0.0
         self._estimated_cost_usd = 0.0
@@ -198,7 +213,7 @@ class DeepSeekRegionQC:
             projected = self._estimated_cost_usd + self._reserved_usd + reservation
             if projected > self.budget_usd + 1e-12:
                 raise DeepSeekBudgetExceeded(
-                    f"DeepSeek visual QC budget cap ${self.budget_usd:.3f} reached"
+                    f"{self.provider_label} visual QC budget cap ${self.budget_usd:.3f} reached"
                 )
             self._reserved_usd += reservation
             self._requests += 1
@@ -270,7 +285,7 @@ class DeepSeekRegionQC:
             '{"regions":[{"region_id":"...","status":"pass|flagged|ambiguous","issues":[]}]}. '
             "Every issue must include issue_type, confidence, box_2d, reason, and recommended_action."
         )
-        return {
+        payload = {
             "model": self.model,
             "messages": [
                 {
@@ -287,10 +302,11 @@ class DeepSeekRegionQC:
                 }
             ],
             "response_format": {"type": "json_object"},
-            "thinking": {"type": "disabled"},
             "max_tokens": self.max_output_tokens,
             "stream": False,
         }
+        payload.update(self._request_extras)
+        return payload
 
     def inspect(
         self,
@@ -347,3 +363,8 @@ class DeepSeekRegionQC:
         except (ValueError, TypeError) as exc:
             raise RuntimeError(_INVALID_RESPONSE_MESSAGE) from exc
         return _ordered_decisions(parsed, expected_ids, regions_by_id)
+
+
+# Backwards-compatible name for existing routers/tests. The runtime itself is
+# provider-neutral now.
+DeepSeekRegionQC = OpenAICompatibleRegionQC
