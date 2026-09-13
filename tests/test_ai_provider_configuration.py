@@ -43,6 +43,18 @@ def test_provider_contract_matches_current_ui_capabilities():
         get_translation_provider("gemini")
 
 
+def test_settings_endpoint_exposes_provider_capabilities(monkeypatch):
+    monkeypatch.setattr(
+        visual_qc_router,
+        "provider_key_status",
+        lambda provider_id: {"configured": False, "source": "none"},
+    )
+    data = visual_qc_router.visual_qc_settings()
+    assert data["providers"]["gemini"]["capabilities"]["translation"] is False
+    assert data["providers"]["deepseek"]["capabilities"]["cost_tracking"] is True
+    assert data["providers"]["openrouter"]["capabilities"]["image_transport"] == "data_url"
+
+
 def test_requests_validate_provider_and_model():
     request = VisualQCChapterRequest(
         chapter_id="chapter", provider="openrouter", model="vendor/vision"
