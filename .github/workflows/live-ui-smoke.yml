@@ -7,6 +7,7 @@ on:
       - "app/**"
       - "scripts/create_ui_smoke_fixture.py"
       - "scripts/live_ui_smoke.py"
+      - "tests/test_theme_picker_contract.py"
       - "requirements-test.txt"
       - ".github/workflows/live-ui-smoke.yml"
   workflow_dispatch:
@@ -31,6 +32,11 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements-test.txt
           python -m playwright install --with-deps chromium
+
+      - name: Check theme picker contract
+        run: |
+          node --check app/static/js/theme.js
+          python -m pytest -q tests/test_theme_picker_contract.py
 
       - name: Seed a model-free browser chapter
         run: python scripts/create_ui_smoke_fixture.py
