@@ -84,6 +84,8 @@ def test_coalesced_verifier_uses_one_model_call_and_keeps_residue_evidence():
         FastResidueAdaptiveFocusCombinedTextDetector
     )
     detector._residue_metrics_local = threading.local()
+    detector._residue_metrics_lock = threading.Lock()
+    detector._residue_totals = {}
     detector.text_detector = _FakeTextDetector()
 
     first = _box(10, 10, 50, 35)
@@ -100,3 +102,14 @@ def test_coalesced_verifier_uses_one_model_call_and_keeps_residue_evidence():
     assert metrics["groups"] == 1
     assert metrics["model_calls"] == 1
     assert metrics["merged_sources"] == 1
+
+    totals = detector.residue_metrics_snapshot()
+    assert totals["verification_calls"] == 1
+    assert totals["scheduled_sources"] == 2
+    assert totals["groups"] == 1
+    assert totals["model_calls"] == 1
+    assert totals["merged_sources"] == 1
+
+    reset = detector.residue_metrics_snapshot(reset=True)
+    assert reset == totals
+    assert detector.residue_metrics_snapshot() == {}
