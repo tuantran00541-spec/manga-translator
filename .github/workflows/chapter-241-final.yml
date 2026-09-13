@@ -1,0 +1,135 @@
+name: Chapter 241 FINAL Human Approved Export
+
+on:
+  push:
+    branches:
+      - 'chapter/doctors-rebirth\+241'
+    paths:
+      - '.github/workflows/chapter-241-final.yml'
+      - 'chapters/doctors-rebirth-241/run_final_package.py'
+      - 'chapters/doctors-rebirth-241/visual-review.json'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: chapter-241-human-loop
+  cancel-in-progress: false
+
+jobs:
+  final-export:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    env:
+      RENDER_RUN_ID: '34744936501'
+      RENDER_ARTIFACT: 05-render-candidate-c241d001
+      FINAL_NAME: Doctors-Rebirth-Chapter-241-VI-FINAL.zip
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 'chapter/doctors-rebirth+241'
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install final integrity dependency
+        run: python -m pip install --only-binary=:all: Pillow==10.4.0
+
+      - name: Restore exact human-approved render artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf checkpoint/06-approved-render checkpoint/07-final
+          mkdir -p checkpoint/06-approved-render checkpoint/07-final
+          gh run download "$RENDER_RUN_ID" -n "$RENDER_ARTIFACT" -D checkpoint/06-approved-render
+          test -f checkpoint/06-approved-render/render-summary.json
+          test -f checkpoint/06-approved-render/typography-plan.json
+          test -f checkpoint/06-approved-render/translated-manifest-rendered.json
+          test -f checkpoint/06-approved-render/raster-fallbacks.json
+          test -d checkpoint/06-approved-render/final_pages
+
+      - name: Verify all gates and build deterministic FINAL archive
+        run: PYTHONPATH=. python chapters/doctors-rebirth-241/run_final_package.py
+
+      - name: Verify FINAL outputs
+        run: |
+          python - <<'PY'
+          import json, zipfile
+          from pathlib import Path
+          root = Path('checkpoint/07-final')
+          report = json.loads((root/'final-report.json').read_text(encoding='utf-8'))
+          if report.get('status') != 'FINAL_PASS' or report.get('final_export_allowed') is not True:
+              raise SystemExit(report)
+          if report.get('archive_png_count') != 17:
+              raise SystemExit(report)
+          if report.get('font_fallback_count') != 0 or report.get('raster_fallback_count') != 0:
+              raise SystemExit(report)
+          if report.get('font_size_auto_objects') != 0 or report.get('active_untranslated_story_objects') != 0:
+              raise SystemExit(report)
+          archive = root/report['archive']
+          with zipfile.ZipFile(archive, 'r') as z:
+              expected = [f'page_{i:03d}.png' for i in range(1, 18)]
+              if z.namelist() != expected or z.testzip() is not None:
+                  raise SystemExit('FINAL ZIP verification failed')
+          print(json.dumps({
+              'status': report['status'],
+              'archive': report['archive'],
+              'archive_sha256': report['archive_sha256'],
+              'archive_png_count': report['archive_png_count'],
+              'font_fallback_count': report['font_fallback_count'],
+              'visual_blockers_remaining': report['visual_blockers_remaining'],
+          }, indent=2))
+          PY
+
+      - name: Publish durable FINAL report and close chapter state
+        run: |
+          cp checkpoint/07-final/final-report.json chapters/doctors-rebirth-241/final-report.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path('chapters/doctors-rebirth-241')
+          report = json.loads((root/'final-report.json').read_text(encoding='utf-8'))
+          state_path = root/'chapter-state.json'
+          state = json.loads(state_path.read_text(encoding='utf-8'))
+          if report.get('status') != 'FINAL_PASS' or report.get('final_export_allowed') is not True:
+              raise SystemExit('refusing to close chapter without FINAL_PASS')
+          if state.get('current_stage') != 'VISUAL_REVIEW_PASS' or state.get('blockers') != []:
+              raise SystemExit(f'chapter state is not FINAL-ready: {state}')
+          state['current_stage'] = 'FINAL_COMPLETE'
+          state['last_passed_checkpoint'] = 'FINAL_EXPORT'
+          state['final_export'] = {
+              'status': 'FINAL_PASS',
+              'archive': report['archive'],
+              'archive_sha256': report['archive_sha256'],
+              'archive_bytes': report['archive_bytes'],
+              'archive_png_count': report['archive_png_count'],
+              'source_pages': report['source_pages'],
+              'source_render_run_id': report['source_render_run_id'],
+              'source_render_artifact_id': report['source_render_artifact_id'],
+              'source_render_artifact_digest': report['source_render_artifact_digest']
+          }
+          state['blockers'] = []
+          state['next_action'] = 'CHAPTER_COMPLETE_NO_MAIN_MERGE'
+          state_path.write_text(json.dumps(state, ensure_ascii=False, indent=2)+'\n', encoding='utf-8')
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add chapters/doctors-rebirth-241/final-report.json chapters/doctors-rebirth-241/chapter-state.json
+          git diff --cached --check
+          git commit -m "final: pass chapter 241 human-reviewed export gates"
+          git fetch origin 'chapter/doctors-rebirth+241'
+          git rebase 'origin/chapter/doctors-rebirth+241'
+          git push origin 'HEAD:chapter/doctors-rebirth+241'
+
+      - name: Upload FINAL chapter
+        uses: actions/upload-artifact@v4
+        with:
+          name: Doctors-Rebirth-Chapter-241-VI-FINAL
+          path: checkpoint/07-final/
+          compression-level: 0
+          retention-days: 7
+          if-no-files-found: error
