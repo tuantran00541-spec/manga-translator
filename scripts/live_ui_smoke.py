@@ -20,6 +20,23 @@ def _wait_for_editor(page: Page) -> None:
     expect(page.locator(".text-object-overlay").first).to_be_visible()
 
 
+def _exercise_ai_settings(page: Page, artifacts: Path) -> None:
+    page.locator("#settings-toggle").click()
+    expect(page.locator("#settings-drawer")).to_be_visible()
+    expect(page.locator(".ai-provider-registry")).to_be_visible()
+    expect(page.locator(".ai-active-provider")).to_be_visible()
+    expect(page.locator(".ai-provider-card")).to_have_count(5)
+    expect(page.locator(".ai-provider-card[open]")).to_have_count(0)
+    expect(page.locator(".ai-add-provider-panel")).to_be_hidden()
+    page.get_by_role("button", name="+ Thêm API").click()
+    expect(page.locator(".ai-add-provider-panel")).to_be_visible()
+    expect(page.locator('.ai-add-provider-panel input[placeholder*="https://"]')).to_be_visible()
+    page.screenshot(path=str(artifacts / "desktop-ai-settings.png"), full_page=True)
+    page.get_by_role("button", name="Hủy").click()
+    page.locator("#settings-close").click()
+    expect(page.locator("#settings-drawer")).to_be_hidden()
+
+
 def _exercise_landing(page: Page, base_url: str, name: str, artifacts: Path) -> None:
     page.goto(base_url, wait_until="networkidle")
     expect(page.locator("#home-view")).to_be_visible()
@@ -32,6 +49,7 @@ def _exercise_landing(page: Page, base_url: str, name: str, artifacts: Path) -> 
         expect(page.locator("body")).to_have_class("sidebar-open")
         page.locator('.sidebar-link[data-route="import"]').click()
     else:
+        _exercise_ai_settings(page, artifacts)
         page.locator("#start-action").click()
     expect(page.locator("#import-view")).to_be_visible()
     expect(page.locator("#home-view")).to_be_hidden()
@@ -82,9 +100,6 @@ def _exercise_desktop(page: Page) -> None:
         "data-page-index", "1"
     )
 
-    # Repeated stage mounts used to retain Review observers and global input
-    # handlers. Exercise the real renderer repeatedly and require one live
-    # workspace before returning through the product action.
     page.evaluate("() => { for (let i = 0; i < 8; i += 1) window.renderReview(); }")
     expect(page.locator(".review-workspace-shell")).to_have_count(1)
     expect(page.locator(".review-card")).to_be_visible()
@@ -127,9 +142,6 @@ def _exercise_mobile(page: Page) -> None:
 
     page.locator("#toggle-inspector-panel").click()
     expect(page.locator(".translation-panel-host")).to_be_visible()
-    # The inspector is intentionally a modal-sized drawer on a narrow screen,
-    # so close it before exercising a canvas click.  This confirms both the
-    # drawer lifecycle and that the canvas remains responsive once uncovered.
     page.locator("#toggle-inspector-panel").click()
     expect(page.locator(".translation-panel-host")).to_be_hidden()
     page.locator(".translation-canvas-host img").click(position={"x": 20, "y": 20})
@@ -184,10 +196,6 @@ def main() -> None:
                     else None,
                 )
                 _exercise_landing(page, args.base_url.rstrip("/"), name, args.artifacts)
-                # Exercise the same recent-project control a user clicks.
-                # page.goto("/#chapter") from an already-loaded "/" page is
-                # only a same-document hash change and does not rerun the
-                # DOMContentLoaded deep-link boot.
                 page.locator('.recent-card[data-chapter-id="f00d0001"]').click()
                 exercise(page)
                 page.locator(".translation-canvas-host img").scroll_into_view_if_needed()
@@ -199,9 +207,6 @@ def main() -> None:
                     raise AssertionError(f"mobile image is unexpectedly collapsed: {metrics}")
                 page.screenshot(path=str(args.artifacts / f"{name}.png"), full_page=True)
 
-                # A hard reload with the chapter hash must restore the editor.
-                # This covers direct links and browser refreshes as well as
-                # opening a card from the home screen.
                 page.reload(wait_until="networkidle")
                 _wait_for_editor(page)
                 expect(page.locator("body")).to_have_attribute("data-app-stage", "editor")
