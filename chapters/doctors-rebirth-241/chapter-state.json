@@ -6,14 +6,14 @@
   "chapter_number": 241,
   "source_url": "https://asurascans.com/comics/doctors-rebirth-53fc8424/chapter/241",
   "branch": "chapter/doctors-rebirth+241",
-  "current_stage": "IMPORT_REVIEW_PASS",
-  "last_passed_checkpoint": "IMPORT",
+  "current_stage": "CLEAN_REVIEW_PASS",
+  "last_passed_checkpoint": "CLEAN",
   "current_artifact": {
-    "run_id": 34732495460,
-    "artifact": "01-import-c241dr01",
-    "artifact_id": 10309772417,
-    "artifact_digest": "sha256:88af5631674b2335a0d884dbd6567f5a164df0914531318a6dbd834ba9f39e98",
-    "workflow_head_sha": "ea0b995402542d1af27c4d28981422e397f50f3e"
+    "run_id": 34734740336,
+    "artifact": "02b-clean-local-repair-c241d001",
+    "artifact_id": 10310995735,
+    "artifact_digest": "sha256:70d9329c20c86dcf77dda0ad863037de5bd8683d0d8a1d00f0b2d7c886bd011f",
+    "workflow_head_sha": "095a764752e58fe5bd304d22d5e8b65bc83a08a0"
   },
   "approved_import": {
     "source_images": 17,
@@ -23,9 +23,20 @@
     "pixel_exact_pages": 17,
     "diff_pixels_total": 0
   },
+  "approved_clean_stack": {
+    "base": "02-clean-review-c241d001@34732864896",
+    "overlays": [
+      "02b-clean-local-repair-c241d001@34734740336"
+    ],
+    "story_text_residue_blockers": 0,
+    "artwork_damage_blockers": 0,
+    "non_story_preservation_repairs": 2,
+    "decorative_title_repairs": 1,
+    "skipped_non_story_slices": [0, 67]
+  },
   "metadata_repairs": [
     "Runtime chapter_id normalized to c241d001 after validator rejected legacy c241dr01. Approved import artifact remains immutable."
   ],
   "blockers": [],
-  "next_action": "RUN_CHECKPOINT_02_CLEAN_REVIEW"
+  "next_action": "RUN_CHECKPOINT_03_OCR_REVIEW"
 }
