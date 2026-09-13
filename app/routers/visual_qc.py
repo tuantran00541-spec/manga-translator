@@ -7,7 +7,7 @@ import requests
 
 from fastapi import APIRouter, HTTPException
 from fastapi.concurrency import run_in_threadpool
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, field_validator
 
 from app.ai_providers import (
     PROVIDERS,
@@ -19,7 +19,7 @@ from app.ai_providers import (
 from app.config import PROCESSED_DIR, RAW_DIR
 from app.logging_config import logger
 from app.manifest_utils import load_manifest_raw
-from app.schemas import VisualQCKeyRequest
+from app.schemas import VisualQCInspectRequest, VisualQCKeyRequest
 from app.secret_store import (
     SecretStoreUnavailable,
     delete_deepseek_api_key,
@@ -80,26 +80,15 @@ class ProviderKeyRequest(BaseModel):
         return value
 
 
-class VisualQCInspectRuntimeRequest(BaseModel):
-    chapter_id: str
-    page_index: int = Field(ge=0)
-    provider: str = "gemini"
+class VisualQCInspectRuntimeRequest(VisualQCInspectRequest):
     provider_label: str | None = None
     provider_protocol: str | None = None
     provider_api_base: str | None = None
-    model: str | None = None
 
     @field_validator("provider")
     @classmethod
-    def _provider_id(cls, value: str) -> str:
+    def _provider(cls, value: str) -> str:
         return normalize_provider_id(value)
-
-    @field_validator("model")
-    @classmethod
-    def _model(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        return validate_model_name(value, default="")
 
 
 def _file_revision(path: Path) -> tuple[int, int, int]:
