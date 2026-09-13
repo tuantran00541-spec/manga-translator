@@ -1,0 +1,79 @@
+{
+  "chapter_id": "c241d001",
+  "source_ocr_run_id": 34734977654,
+  "source_ocr_artifact": "03-ocr-review-c241d001",
+  "expected_active_before": 105,
+  "expected_active_after": 76,
+  "drops": {
+    "overlap_duplicates_outside_stitch_core": [
+      "box_f7e231700f4a4a6b",
+      "box_709dd9eec4154c25",
+      "box_93d333fa6af741cc",
+      "box_6e011a2eba4c4629",
+      "box_82ea07c48ef74d26",
+      "box_42e894d37d254148",
+      "box_269ac8dd43bf47d5",
+      "box_fa766227701d4fa0",
+      "box_280289669977448b"
+    ],
+    "same_slice_duplicates_or_fragments": [
+      "box_eafd8f3621d14d85",
+      "box_a99a71946ce54132",
+      "box_5c7356d2be7745e4",
+      "box_203ff9fe1d9b48f2",
+      "box_dff3672cc49d4bca",
+      "box_cdd93f4f9e314ed6",
+      "box_8426a7c07dec484e",
+      "box_53761a91592c4416",
+      "box_48d3a77120164cd5",
+      "box_102bc41ef8b342b3",
+      "box_32827a6658eb4ce5",
+      "box_50c976ee2c4c4efb",
+      "box_55a4202b0a864b17",
+      "box_83ce3452680d4524",
+      "box_7ebaad742cbc4f08"
+    ],
+    "non_story_decorative_title_credit": [
+      "box_a9de97ac37fa402a"
+    ],
+    "artwork_sfx_or_empty_noise": [
+      "box_ce27835b98d44761",
+      "box_8664673573ce4cd7",
+      "box_03c47913bb0844b4",
+      "box_6cdff69630a4421c"
+    ]
+  },
+  "corrections": {
+    "box_f3766e782eaa4479": {
+      "before": "V\nI KNOW IT\nSOUNDS INSANE,\nV\nBUT IT'S TRUE.",
+      "after": "I KNOW IT\nSOUNDS INSANE,\nBUT IT'S TRUE."
+    },
+    "box_0eb41947eb9742b1": {
+      "before": "IS TO SAY,\n\"GIVE UP, EVEN\nNOW.\n11",
+      "after": "IS TO SAY,\n\"GIVE UP, EVEN\nNOW.\""
+    },
+    "box_703644a6bbd4473a": {
+      "before": "BUTI\nWANTED TO\nWIN.\nM",
+      "after": "BUT I\nWANTED TO\nWIN."
+    },
+    "box_1bf8f8b8b4fd4bdf": {
+      "before": "PIERCING\nFINGER STRIKE,\nJIN CHEONHEESTYLE\nAPPLICATION.",
+      "after": "PIERCING\nFINGER STRIKE,\nJIN CHEONHEE-STYLE\nAPPLICATION."
+    }
+  },
+  "human_review": {
+    "proof_sheets_reviewed": 3,
+    "all_68_slices_clean_reviewed": true,
+    "punctuation_only_story_objects_preserved": [
+      "box_ebbb5475e55d4a32",
+      "box_a5b4216f8a584c31"
+    ],
+    "notes": [
+      "Overlap duplicate suspects were resolved by stitch-core ownership: keep the center-owned logical source and tombstone the non-owned copy.",
+      "Detector fragments that repeat part of a larger owned dialogue object were tombstoned rather than translated twice.",
+      "Source 003 decorative title-card credits are non-story and are excluded from dialogue OCR.",
+      "Korean SFX/artwork texture and empty detector proposals are preserved visually and excluded from story OCR.",
+      "Four machine OCR strings were manually corrected from the RAW proof crops before translation."
+    ]
+  }
+}
