@@ -10,6 +10,15 @@ on:
       - "tests/test_theme_picker_contract.py"
       - "requirements-test.txt"
       - ".github/workflows/live-ui-smoke.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "app/**"
+      - "scripts/create_ui_smoke_fixture.py"
+      - "scripts/live_ui_smoke.py"
+      - "tests/test_theme_picker_contract.py"
+      - "requirements-test.txt"
+      - ".github/workflows/live-ui-smoke.yml"
   workflow_dispatch:
 
 concurrency:
