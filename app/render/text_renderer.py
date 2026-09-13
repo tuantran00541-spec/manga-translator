@@ -144,6 +144,24 @@ def _calc_line_height(draw, font, stroke_w: int = 0) -> int:
     return int(max(base_h, 8) * RENDER_LINE_HEIGHT_FACTOR) + stroke_w * 2
 
 
+def _text_ink_bbox(draw, text: str, font, stroke_w: int = 0) -> tuple[int, int, int, int]:
+    """Return visible ink bounds, including stroke, relative to draw origin.
+
+    Pillow text bboxes can have a non-zero/negative left bearing. Treating bbox[2]
+    as width makes centered text drift for some manga fonts, so all layout uses
+    the true x2-x1 ink extent instead.
+    """
+    if not text:
+        return (0, 0, 0, 0)
+    bbox = draw.textbbox((0, 0), text, font=font, stroke_width=max(0, int(stroke_w)))
+    return (int(bbox[0]), int(bbox[1]), int(bbox[2]), int(bbox[3]))
+
+
+def _text_ink_width(draw, text: str, font, stroke_w: int = 0) -> int:
+    x1, _, x2, _ = _text_ink_bbox(draw, text, font, stroke_w=stroke_w)
+    return max(0, x2 - x1)
+
+
 def render_text_in_box(
     image: Image.Image,
     text: str,
@@ -224,7 +242,7 @@ def render_text_in_box(
     if target_size is not None:
         actual_size = target_size
         font = get_font_object(font_path_str, actual_size)
-        lines = _wrap_text(draw, text, font, box_w)
+        lines = _wrap_text(draw, text, font, box_w, stroke_w=stroke_w)
     else:
         actual_size, lines, fits_readably = _fit_text(
             draw,
@@ -287,15 +305,20 @@ def render_text_in_box(
         start_y = y1 + pad + max(0, (box_h - total_h) // 2)
 
     offsets = [(0, 0), (1, 0), (0, 1), (1, 1)] if is_bold else [(0, 0)]
+    bold_extra = 1 if is_bold else 0
 
     for i, line in enumerate(lines):
-        line_w = draw.textbbox((0, 0), line, font=font)[2]
+        ink_left, _, ink_right, _ = _text_ink_bbox(draw, line, font, stroke_w=stroke_w)
+        line_w = max(0, ink_right - ink_left) + bold_extra
         if h_align == "left":
-            start_x = x1 + pad
+            target_ink_x = x1 + pad
         elif h_align == "right":
-            start_x = x1 + pad + max(0, box_w - line_w)
+            target_ink_x = x1 + pad + max(0, box_w - line_w)
         else:
-            start_x = x1 + pad + max(0, (box_w - line_w) // 2)
+            target_ink_x = x1 + pad + max(0, (box_w - line_w) // 2)
+        # Shift the draw origin by the font's left bearing so the visible ink,
+        # not merely the font origin/advance, is what gets aligned.
+        start_x = target_ink_x - ink_left
         cur_y = start_y + i * line_height
         for dx, dy in offsets:
             draw.text(
@@ -312,12 +335,12 @@ def render_text_in_box(
 
 def _fits(draw, text: str, box_w: int, box_h: int, font_path_str: str, size: int, stroke_w: int) -> tuple[bool, list[str]]:
     font = get_font_object(font_path_str, size)
-    lines = _wrap_text(draw, text, font, box_w)
+    lines = _wrap_text(draw, text, font, box_w, stroke_w=stroke_w)
     if not lines:
         return False, []
     line_height = _calc_line_height(draw, font, stroke_w=stroke_w)
     total_h = line_height * len(lines)
-    max_line_w = max(draw.textbbox((0, 0), line, font=font)[2] for line in lines)
+    max_line_w = max(_text_ink_width(draw, line, font, stroke_w=stroke_w) for line in lines)
     return total_h <= box_h and max_line_w <= box_w, lines
 
 
@@ -347,14 +370,14 @@ def _fit_text(
 
     if not best_lines:
         min_font = get_font_object(font_path_str, minimum_size)
-        best_lines = _wrap_text(draw, text, min_font, box_w)
+        best_lines = _wrap_text(draw, text, min_font, box_w, stroke_w=stroke_w)
     fits = bool(best_lines) and _fits(
         draw, text, box_w, box_h, font_path_str, best_size, stroke_w
     )[0]
     return best_size, best_lines, fits
 
 
-def _wrap_text(draw, text: str, font, box_w: int) -> list[str]:
+def _wrap_text(draw, text: str, font, box_w: int, stroke_w: int = 0) -> list[str]:
     raw_lines = text.splitlines()
     all_wrapped = []
     for raw_line in raw_lines:
@@ -364,20 +387,20 @@ def _wrap_text(draw, text: str, font, box_w: int) -> list[str]:
         words = raw_line.split()
         current = ""
         for word in words:
-            if draw.textbbox((0, 0), word, font=font)[2] > box_w:
+            if _text_ink_width(draw, word, font, stroke_w=stroke_w) > box_w:
                 if current:
                     all_wrapped.append(current)
                     current = ""
                 for char in word:
                     candidate = f"{current}{char}"
-                    if draw.textbbox((0, 0), candidate, font=font)[2] <= box_w or not current:
+                    if _text_ink_width(draw, candidate, font, stroke_w=stroke_w) <= box_w or not current:
                         current = candidate
                     else:
                         all_wrapped.append(current)
                         current = char
             else:
                 candidate = f"{current} {word}".strip()
-                w = draw.textbbox((0, 0), candidate, font=font)[2]
+                w = _text_ink_width(draw, candidate, font, stroke_w=stroke_w)
                 if w <= box_w or not current:
                     current = candidate
                 else:

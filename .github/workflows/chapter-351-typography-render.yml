@@ -6,6 +6,8 @@ on:
       - chapter/logging-10000-years-into-the-future-351
     paths:
       - .github/workflows/chapter-351-typography-render.yml
+      - app/render/text_renderer.py
+      - tests/test_text_renderer_alignment.py
       - chapters/logging-10000-years-into-the-future-351/run_typography_render.py
       - chapters/logging-10000-years-into-the-future-351/run_typography_review_repair.py
       - chapters/logging-10000-years-into-the-future-351/typography-review-repair.json
@@ -43,6 +45,9 @@ jobs:
 
       - name: Install lightweight render dependencies
         run: 'python -m pip install --only-binary=:all: Pillow==10.4.0 numpy==1.26.4 fonttools==4.59.2'
+
+      - name: Verify text alignment regression
+        run: PYTHONPATH=. python -m unittest discover -s tests -p 'test_text_renderer_alignment.py'
 
       - name: Restore approved checkpoints
         run: |
