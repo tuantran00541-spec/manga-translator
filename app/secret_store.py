@@ -8,6 +8,7 @@ from app.ai_providers import PROVIDERS, normalize_provider_id, validate_provider
 _SERVICE_NAME = "manga-translator"
 _GEMINI_ACCOUNT = "gemini-api-key"
 _DEEPSEEK_ACCOUNT = "deepseek-api-key"
+_PROVIDER_CONFIG_INDEX_ACCOUNT = "ai-provider-config-index"
 
 
 def _provider_account(provider_id: str) -> str:
@@ -190,6 +191,52 @@ def provider_key_status(provider_id: str, *, provider_label: str | None = None) 
     return _key_status(_provider_account(provider_id), env_names, label)
 
 
+def _custom_provider_ids() -> list[str]:
+    keyring, KeyringError = _keyring_module()
+    try:
+        raw = keyring.get_password(_SERVICE_NAME, _PROVIDER_CONFIG_INDEX_ACCOUNT)
+    except KeyringError as exc:
+        raise SecretStoreUnavailable(
+            f"Cannot read AI provider registry from OS secure storage: {exc}"
+        ) from exc
+    if not raw:
+        return []
+    try:
+        values = json.loads(raw)
+    except (TypeError, ValueError) as exc:
+        raise SecretStoreUnavailable("Stored AI provider registry is invalid") from exc
+    if not isinstance(values, list):
+        raise SecretStoreUnavailable("Stored AI provider registry is invalid")
+    result: list[str] = []
+    for value in values:
+        try:
+            provider_id = normalize_provider_id(str(value))
+        except ValueError:
+            continue
+        if provider_id not in PROVIDERS and provider_id not in result:
+            result.append(provider_id)
+    return result[:100]
+
+
+def _set_custom_provider_ids(values: list[str]) -> None:
+    normalized = []
+    for value in values:
+        provider_id = normalize_provider_id(value)
+        if provider_id not in PROVIDERS and provider_id not in normalized:
+            normalized.append(provider_id)
+    keyring, KeyringError = _keyring_module()
+    try:
+        keyring.set_password(
+            _SERVICE_NAME,
+            _PROVIDER_CONFIG_INDEX_ACCOUNT,
+            json.dumps(normalized[:100], separators=(",", ":")),
+        )
+    except KeyringError as exc:
+        raise SecretStoreUnavailable(
+            f"Cannot save AI provider registry to OS secure storage: {exc}"
+        ) from exc
+
+
 def set_provider_config(
     provider_id: str,
     *,
@@ -198,6 +245,8 @@ def set_provider_config(
     api_base: str,
 ) -> None:
     normalized = normalize_provider_id(provider_id)
+    if normalized in PROVIDERS:
+        return
     payload = json.dumps(
         {
             "id": normalized,
@@ -215,6 +264,10 @@ def set_provider_config(
         raise SecretStoreUnavailable(
             f"Cannot save {label} provider configuration to OS secure storage: {exc}"
         ) from exc
+    ids = _custom_provider_ids()
+    if normalized not in ids:
+        ids.append(normalized)
+        _set_custom_provider_ids(ids)
 
 
 def get_provider_config(provider_id: str) -> dict | None:
@@ -243,6 +296,15 @@ def get_provider_config(provider_id: str) -> dict | None:
     return payload if isinstance(payload, dict) else None
 
 
+def list_provider_configs() -> list[dict]:
+    result: list[dict] = []
+    for provider_id in _custom_provider_ids():
+        config = get_provider_config(provider_id)
+        if isinstance(config, dict):
+            result.append(config)
+    return result
+
+
 def delete_provider_config(provider_id: str) -> None:
     normalized = normalize_provider_id(provider_id)
     if normalized in PROVIDERS:
@@ -256,3 +318,5 @@ def delete_provider_config(provider_id: str) -> None:
             raise SecretStoreUnavailable(
                 f"Cannot delete AI provider configuration: {exc}"
             ) from exc
+    ids = [provider_id for provider_id in _custom_provider_ids() if provider_id != normalized]
+    _set_custom_provider_ids(ids)
