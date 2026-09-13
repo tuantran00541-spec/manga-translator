@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 from app.detector.adaptive_focus_detector import AdaptiveFocusCombinedTextDetector
+from app.inpaint.fast_lama_inpainter import FastInpainter
 from app.parameters import PIPELINE_DEFAULT_WORKERS
 from app.pipeline import ChapterPipeline
 from app.runtime_responsiveness import responsive_process_workers
 
 
 class OptimizedChapterPipeline(ChapterPipeline):
-    """Chapter pipeline using the validated adaptive-focus production detector."""
+    """Chapter pipeline using validated adaptive detector and CPU fast inpaint."""
 
     @property
     def detector(self):
@@ -16,6 +17,14 @@ class OptimizedChapterPipeline(ChapterPipeline):
                 if self._detector is None:
                     self._detector = AdaptiveFocusCombinedTextDetector()
         return self._detector
+
+    @property
+    def inpainter(self):
+        if self._inpainter is None:
+            with self._inpainter_init_lock:
+                if self._inpainter is None:
+                    self._inpainter = FastInpainter()
+        return self._inpainter
 
     def process_pages(
         self,
