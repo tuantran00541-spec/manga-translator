@@ -3,7 +3,7 @@ name: Chapter 241 Import
 on:
   push:
     branches:
-      - 'chapter/doctors-rebirth\+241'
+      - '**'
     paths:
       - '.github/workflows/chapter-241-import.yml'
 
@@ -12,9 +12,10 @@ permissions:
 
 jobs:
   import:
+    if: github.ref == 'refs/heads/chapter/doctors-rebirth+241'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: 'chapter/doctors-rebirth+241'
-      - run: echo "chapter 241 import bootstrap v3"
+      - run: echo "chapter 241 import bootstrap v4"
