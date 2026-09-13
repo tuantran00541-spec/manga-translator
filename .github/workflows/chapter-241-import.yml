@@ -1,21 +1,82 @@
-name: Chapter 241 Import
+name: Chapter 241 Checkpoint 01 Import
 
 on:
   push:
     branches:
-      - '**'
+      - 'chapter/doctors-rebirth\+241'
     paths:
       - '.github/workflows/chapter-241-import.yml'
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: chapter-241-import
+  cancel-in-progress: false
 
 jobs:
-  import:
-    if: github.ref == 'refs/heads/chapter/doctors-rebirth+241'
+  import-slice:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
         with:
           ref: 'chapter/doctors-rebirth+241'
-      - run: echo "chapter 241 import bootstrap v4"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install import dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install fastapi==0.115.0 requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 playwright==1.47.0 Pillow==10.4.0 numpy==1.26.4 opencv-contrib-python==4.10.0.84
+      - name: Download and validate import
+        run: |
+          python - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          import cv2, numpy as np
+          from app.downloader.registry import download_chapter
+          from app.downloader.slicer import slice_image
+
+          url='https://asurascans.com/comics/doctors-rebirth-53fc8424/chapter/241'
+          root=Path('checkpoint/01-import'); raw=root/'raw'; sliced=raw/'sliced'; recon=root/'reconstruction'
+          raw.mkdir(parents=True,exist_ok=True); sliced.mkdir(parents=True,exist_ok=True); recon.mkdir(parents=True,exist_ok=True)
+          sources=download_chapter(url,raw)
+          if len(sources)!=17: raise RuntimeError(f'expected 17 source images, got {len(sources)}')
+          hashes=[hashlib.sha256(p.read_bytes()).hexdigest() for p in sources]
+          if len(set(hashes))!=len(hashes): raise RuntimeError('duplicate source images detected')
+          pages=[]; ownership=[]; rebuilt_rows=[]
+          for si,src in enumerate(sources):
+              image=cv2.imread(str(src),cv2.IMREAD_COLOR)
+              if image is None: raise RuntimeError(f'unreadable source {src}')
+              items=slice_image(src,sliced,f'{si:03d}',return_metadata=True)
+              prev=0; chunks=[]
+              for sj,item in enumerate(items):
+                  core={k:item.get(k) for k in ('source_y1','source_y2','core_y1','core_y2','core_source_y1','core_source_y2','unsafe_before','unsafe_after','source_height')}
+                  y1=int(core.get('core_source_y1') or 0); y2=int(core.get('core_source_y2') or 0)
+                  if y1!=prev: ownership.append({'source_page':si,'slice_index':sj,'expected_y1':prev,'actual_y1':y1})
+                  sl=cv2.imread(str(item['path']),cv2.IMREAD_COLOR)
+                  cy1=int(core.get('core_y1') or 0); cy2=int(core.get('core_y2') or sl.shape[0]); chunks.append(sl[cy1:cy2]); prev=y2
+                  pages.append({'original':Path(item['path']).as_posix(),'clean':None,'boxes':[],'skipped':False,'excluded_regions':[],'source_page':si,'slice_index':sj,'stitch_core':core})
+              if prev!=image.shape[0]: ownership.append({'source_page':si,'expected_end':int(image.shape[0]),'actual_end':prev})
+              rebuilt=np.concatenate(chunks,axis=0)
+              exact=rebuilt.shape==image.shape and not np.any(rebuilt!=image)
+              out=recon/f'{si:03d}.png'; cv2.imwrite(str(out),rebuilt)
+              rebuilt_rows.append({'source_page':si,'width':int(image.shape[1]),'height':int(image.shape[0]),'slice_count':len(items),'pixel_exact':bool(exact)})
+          if ownership: raise RuntimeError(f'ownership issues: {ownership}')
+          if not all(x['pixel_exact'] for x in rebuilt_rows): raise RuntimeError('pixel-exact reconstruction failed')
+          manifest={'chapter_id':'c241dr01','series_slug':'doctors-rebirth-53fc8424','chapter_number':241,'source_url':url,'pages':pages,'workflow':{'stage':'preview','page_index':0}}
+          summary={'checkpoint':'01-import','source_url':url,'source_images':len(sources),'source_hashes':hashes,'duplicate_groups':0,'slices':len(pages),'source_pages':rebuilt_rows,'ownership_issues':ownership,'pixel_exact_pages':sum(x['pixel_exact'] for x in rebuilt_rows),'next_action':'STOP_FOR_HUMAN_IMPORT_REVIEW'}
+          (root/'manifest.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding='utf-8')
+          (root/'import-summary.json').write_text(json.dumps(summary,ensure_ascii=False,indent=2),encoding='utf-8')
+          print(json.dumps(summary,ensure_ascii=False))
+          PY
+      - name: Upload import review artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: 01-import-c241dr01
+          path: checkpoint/01-import
+          if-no-files-found: error
+          retention-days: 7
