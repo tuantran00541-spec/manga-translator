@@ -6,14 +6,14 @@
   "chapter_number": 241,
   "source_url": "https://asurascans.com/comics/doctors-rebirth-53fc8424/chapter/241",
   "branch": "chapter/doctors-rebirth+241",
-  "current_stage": "OCR_REVIEW_PASS",
-  "last_passed_checkpoint": "OCR",
+  "current_stage": "TRANSLATION_REVIEW_PASS",
+  "last_passed_checkpoint": "TRANSLATION",
   "current_artifact": {
-    "run_id": 34740118737,
-    "artifact": "03b-ocr-curated-c241d001",
-    "artifact_id": 10312033714,
-    "artifact_digest": "sha256:6682ee41567095ae9c549d7fe9c28d444817d2b64248de243e8d87892c596008",
-    "workflow_head_sha": "1e0fadac8318a83fce8eadf692377d73c168057b"
+    "run_id": 34740261560,
+    "artifact": "04-translation-reviewed-c241d001",
+    "artifact_id": 10312073784,
+    "artifact_digest": "sha256:198740f0af5bb41f846053390da90c226284bf746c21c54a1e673b410cd9bacc",
+    "workflow_head_sha": "5ac5126b1fcf048ece36304d5ea0299c1cec91e3"
   },
   "approved_import": {
     "source_images": 17,
@@ -45,9 +45,18 @@
     "fragment_blockers": 0,
     "resurrection_count": 0
   },
+  "approved_translation": {
+    "artifact": "04-translation-reviewed-c241d001@34740261560",
+    "active_story_objects": 76,
+    "translated_story_objects": 76,
+    "active_untranslated_story_objects": 0,
+    "terminology_locked": true,
+    "tombstone_translation_count": 0,
+    "resurrection_count": 0
+  },
   "metadata_repairs": [
     "Runtime chapter_id normalized to c241d001 after validator rejected legacy c241dr01. Approved import artifact remains immutable."
   ],
   "blockers": [],
-  "next_action": "RUN_TRANSLATION_REVIEW"
+  "next_action": "RUN_TYPOGRAPHY_RENDER_REVIEW"
 }
