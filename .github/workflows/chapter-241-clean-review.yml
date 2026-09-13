@@ -30,7 +30,7 @@ jobs:
       MANGA_ORT_OPENVINO_STREAMS: '1'
       MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
       OPENBLAS_NUM_THREADS: '1'
-      CHAPTER_ID: c241dr01
+      CHAPTER_ID: c241d001
       CHAPTER_URL: https://asurascans.com/comics/doctors-rebirth-53fc8424/chapter/241
       IMPORT_RUN_ID: '34732495460'
       IMPORT_ARTIFACT: 01-import-c241dr01
@@ -81,26 +81,28 @@ jobs:
           import json
           from pathlib import Path
           r=json.loads(Path('chapters/doctors-rebirth-241/import-review.json').read_text(encoding='utf-8'))
-          if r.get('status')!='PASS' or r.get('reconstruction',{}).get('pixel_exact_pages')!=17:
+          if r.get('status')!='PASS' or r.get('chapter_id')!='c241d001' or r.get('reconstruction',{}).get('pixel_exact_pages')!=17:
               raise SystemExit(f'import review not approved: {r}')
           PY
-      - name: Restore production data layout
+      - name: Restore production data layout and normalize runtime id
         run: |
           python - <<'PY'
           import json, shutil
           from pathlib import Path
-          cid='c241dr01'; src=Path('checkpoint/01-import'); raw=Path('data/raw')/cid; proc=Path('data/processed')/cid
+          cid='c241d001'; legacy='c241dr01'; src=Path('checkpoint/01-import'); raw=Path('data/raw')/cid; proc=Path('data/processed')/cid
           raw.parent.mkdir(parents=True,exist_ok=True); proc.mkdir(parents=True,exist_ok=True)
           if raw.exists(): shutil.rmtree(raw)
           shutil.copytree(src/'raw',raw)
           m=json.loads((src/'manifest.json').read_text(encoding='utf-8'))
-          if m.get('chapter_id')!=cid: raise RuntimeError('chapter id mismatch')
+          if m.get('chapter_id') not in (legacy,cid): raise RuntimeError(f'unexpected artifact chapter id: {m.get("chapter_id")}')
+          if m.get('source_url')!='https://asurascans.com/comics/doctors-rebirth-53fc8424/chapter/241': raise RuntimeError('source URL mismatch')
+          m['legacy_import_chapter_id']=m.get('chapter_id'); m['chapter_id']=cid
           for page in m['pages']:
               old=str(page['original']); prefix='checkpoint/01-import/raw/'
               if not old.startswith(prefix): raise RuntimeError(f'unexpected path {old}')
               page['original']=(raw/old[len(prefix):]).as_posix()
           (proc/'manifest.json').write_text(json.dumps(m,ensure_ascii=False,indent=2),encoding='utf-8')
-          print('restored',len(m['pages']),'slices')
+          print('restored',len(m['pages']),'slices with runtime id',cid)
           PY
       - name: Run production detector mask and inpaint
         run: |
@@ -109,7 +111,7 @@ jobs:
           from pathlib import Path
           from app.manifest_utils import load_manifest_raw
           from app.optimized_pipeline import OptimizedChapterPipeline
-          cid='c241dr01'; pipe=OptimizedChapterPipeline(); m=load_manifest_raw(cid)
+          cid='c241d001'; pipe=OptimizedChapterPipeline(); m=load_manifest_raw(cid)
           indices=[i for i,p in enumerate(m['pages']) if not p.get('skipped')]
           batches=[]
           for start in range(0,len(indices),16):
@@ -120,18 +122,18 @@ jobs:
               boxes=p.get('boxes') or p.get('detections') or []
               rows.append({'page_index':i,'source_page':p.get('source_page'),'slice_index':p.get('slice_index'),'original':p.get('original'),'clean':p.get('clean'),'box_count':len(boxes),'needs_review':bool(p.get('needs_review')),'detection_state':p.get('detection_state'),'detection_issues':p.get('detection_issues') or []})
           out=Path('checkpoint/02-clean-review'); out.mkdir(parents=True,exist_ok=True)
-          summary={'checkpoint':'02-clean-review','chapter_id':cid,'slices':len(rows),'processed':len(indices),'total_boxes':sum(r['box_count'] for r in rows),'needs_review_pages':[r['page_index'] for r in rows if r['needs_review']],'batches':batches,'next_action':'STOP_FOR_HUMAN_RAW_VS_CLEAN_REVIEW'}
+          summary={'checkpoint':'02-clean-review','chapter_id':cid,'legacy_import_chapter_id':'c241dr01','slices':len(rows),'processed':len(indices),'total_boxes':sum(r['box_count'] for r in rows),'needs_review_pages':[r['page_index'] for r in rows if r['needs_review']],'batches':batches,'next_action':'STOP_FOR_HUMAN_RAW_VS_CLEAN_REVIEW'}
           (out/'clean-review-summary.json').write_text(json.dumps(summary,ensure_ascii=False,indent=2),encoding='utf-8')
           (out/'review-index.json').write_text(json.dumps(rows,ensure_ascii=False,indent=2),encoding='utf-8')
           print(json.dumps(summary,ensure_ascii=False,indent=2))
           PY
       - name: Pack clean review checkpoint
         run: |
-          cp -a data/processed/c241dr01 checkpoint/02-clean-review/processed
+          cp -a data/processed/c241d001 checkpoint/02-clean-review/processed
       - name: Upload clean review artifact
         uses: actions/upload-artifact@v4
         with:
-          name: 02-clean-review-c241dr01
+          name: 02-clean-review-c241d001
           path: checkpoint/02-clean-review
           if-no-files-found: error
           retention-days: 7
