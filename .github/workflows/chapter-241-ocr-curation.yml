@@ -121,7 +121,7 @@ jobs:
               sy=int(core.get('source_y1') or 0)
               sp=int(p.get('source_page') or 0); sl=int(p.get('slice_index') or 0)
               for b in p.get('boxes') or []:
-                  if not isinstance(b,dict) or b.get('removed') or b.get('ocr_eligible') is False: continue
+                  if not isinstance(b,dict) or b.get('removed') or b.get('ocr_eligible') is not True: continue
                   bid=str(b.get('id') or '')
                   if not bid: continue
                   text=str(b.get('ocr_text') or '').strip()
