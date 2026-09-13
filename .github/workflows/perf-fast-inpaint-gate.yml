@@ -21,5 +21,10 @@ jobs:
         run: python -m pip install -r requirements-test.txt
       - name: Compile candidate
         run: python -m compileall -q app
-      - name: Run fast inpaint tests
-        run: python -m pytest -q tests/test_fast_inpaint_paths.py tests/test_cleanup_safety_regressions.py tests/test_inpaint_preload.py
+      - name: Run fast inpaint and residue tests
+        run: |
+          python -m pytest -q \
+            tests/test_fast_inpaint_paths.py \
+            tests/test_fast_residue_detector.py \
+            tests/test_cleanup_safety_regressions.py \
+            tests/test_inpaint_preload.py
