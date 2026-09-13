@@ -28,6 +28,7 @@ from app.secret_store import (
     delete_provider_config,
     get_provider_api_key,
     get_provider_config,
+    list_provider_configs,
     provider_key_status,
     set_deepseek_api_key,
     set_gemini_api_key,
@@ -241,8 +242,36 @@ def visual_qc_settings() -> dict:
             "translation_model": provider.default_translation_model,
             "builtin": True,
         }
+
+    registry_detail = None
+    try:
+        custom_configs = list_provider_configs()
+    except SecretStoreUnavailable as exc:
+        custom_configs = []
+        registry_detail = str(exc)
+    for config in custom_configs:
+        try:
+            provider = resolve_provider(
+                str(config.get("id") or ""),
+                label=config.get("label"),
+                protocol=config.get("protocol"),
+                api_base=config.get("api_base"),
+            )
+        except ValueError:
+            continue
+        providers[provider.id] = {
+            **provider_key_status(provider.id, provider_label=provider.label),
+            "id": provider.id,
+            "label": provider.label,
+            "protocol": provider.protocol,
+            "api_base": provider.api_base,
+            "model": "",
+            "translation_model": "",
+            "builtin": False,
+        }
+
     gemini = providers["gemini"]
-    return {
+    result = {
         **gemini,
         "model": DEFAULT_GEMINI_MODEL,
         "providers": providers,
@@ -254,6 +283,9 @@ def visual_qc_settings() -> dict:
             }
         ],
     }
+    if registry_detail:
+        result["registry_detail"] = registry_detail
+    return result
 
 
 @router.post("/providers/{provider_id}/key")
