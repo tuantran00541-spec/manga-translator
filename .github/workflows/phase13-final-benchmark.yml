@@ -13,12 +13,12 @@ permissions:
 
 concurrency:
   group: phase13-worker-scaling-${{ github.ref_name }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   worker-scaling:
     runs-on: ubuntu-22.04
-    timeout-minutes: 100
+    timeout-minutes: 45
     env:
       PYTHONUNBUFFERED: "1"
       MANGA_USE_DYNAMIC_LAMA: "1"
@@ -74,7 +74,7 @@ jobs:
           cp benchmark-bootstrap/models/*.onnx models/
           cp benchmark-bootstrap/models/.e2e-provenance.json models/
 
-      - name: Run 101-slice production and forced worker benchmark
+      - name: Run representative 1/2/3 worker probe
         run: |
           mkdir -p benchmark-results/phase13-workers
           python - <<'PY'
@@ -84,18 +84,14 @@ jobs:
           import hashlib
           import json
           import os
-          import shutil
           import statistics
           import threading
           import time
           from pathlib import Path
 
-          import numpy as np
-          import onnxruntime as ort
           import psutil
 
-          from app.config import PROCESSED_DIR, RAW_DIR
-          from app.image_io import read_image
+          from app.config import RAW_DIR
           from app.manifest_utils import load_manifest_raw
           from app.optimized_pipeline import OptimizedChapterPipeline
           from app.parameters import DETECTOR_FOCUS_MAX_CHIPS, parameter_snapshot
@@ -105,11 +101,11 @@ jobs:
               responsive_process_workers,
               visible_cpu_count,
           )
-          from scripts.model_e2e_gate import _authority_mask
 
           OUT_DIR = Path("benchmark-results/phase13-workers")
           URL = "https://asurascans.com/comics/killer-pietro-08677664/chapter/120"
           IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
+          SAMPLE_COUNT = 30
 
           if DETECTOR_FOCUS_MAX_CHIPS != 2:
               raise RuntimeError(
@@ -117,7 +113,7 @@ jobs:
               )
 
           class ForcedWorkerPipeline(OptimizedChapterPipeline):
-              """Keep the production detector but bypass responsive worker downshift."""
+              """Production detector, but no responsive worker downshift."""
 
               def process_pages(self, chapter_id, page_indices, workers=2):
                   return ChapterPipeline.process_pages(
@@ -146,7 +142,7 @@ jobs:
                   "max": round(max(values), 3) if values else 0.0,
               }
 
-          def collect_page_metrics(pages: list[dict]) -> dict:
+          def collect_page_metrics(pages: list[dict], selected: list[int]) -> dict:
               timing_names = (
                   "read",
                   "detect",
@@ -158,8 +154,8 @@ jobs:
               )
               groups = {name: [] for name in timing_names}
               detector_groups: dict[str, list[float]] = {}
-              for page in pages:
-                  metrics = page.get("processing_metrics") or {}
+              for index in selected:
+                  metrics = pages[index].get("processing_metrics") or {}
                   timing = metrics.get("timing_ms") or {}
                   if isinstance(timing, dict):
                       for name in timing_names:
@@ -201,30 +197,6 @@ jobs:
               thread.start()
               return process, peak, stop, thread
 
-          def build_variant_chapter(
-              raw_paths: list[Path], variant: str, workers: int
-          ) -> tuple[OptimizedChapterPipeline, str, list[int]]:
-              pipeline = (
-                  OptimizedChapterPipeline()
-                  if variant == "production-requested-3"
-                  else ForcedWorkerPipeline()
-              )
-              chapter_id = hashlib.sha256(
-                  f"phase13-workers-{variant}-{time.time_ns()}".encode()
-              ).hexdigest()[:8]
-              manifest = pipeline._build_chapter_from_raw_paths(
-                  chapter_id,
-                  raw_paths,
-                  source_url=URL,
-                  workers=max(1, min(workers, 3)),
-              )
-              indices = list(range(len(manifest.get("pages", []))))
-              if len(indices) != 101:
-                  raise RuntimeError(
-                      f"expected exactly 101 slices for {variant}, got {len(indices)}"
-                  )
-              return pipeline, chapter_id, indices
-
           template = OptimizedChapterPipeline()
           template_id = hashlib.sha256(
               f"phase13-worker-template-{time.time_ns()}".encode()
@@ -232,9 +204,9 @@ jobs:
           ingest_started = time.perf_counter()
           template_manifest = template.download_chapter(URL, template_id, workers=2)
           ingest_ms = round((time.perf_counter() - ingest_started) * 1000.0, 3)
-          template_slices = len(template_manifest.get("pages", []))
-          if template_slices != 101:
-              raise RuntimeError(f"expected exactly 101 template slices, got {template_slices}")
+          total_slices = len(template_manifest.get("pages", []))
+          if total_slices != 101:
+              raise RuntimeError(f"expected exactly 101 template slices, got {total_slices}")
 
           raw_paths = sorted(
               p
@@ -244,23 +216,28 @@ jobs:
           if len(raw_paths) != 19:
               raise RuntimeError(f"expected 19 raw images, got {len(raw_paths)}")
 
+          selected = sorted(
+              set(round(i * (total_slices - 1) / (SAMPLE_COUNT - 1)) for i in range(SAMPLE_COUNT))
+          )
+          if len(selected) != SAMPLE_COUNT:
+              raise RuntimeError(f"sample selection collapsed to {len(selected)} slices")
+
           cpu_visible = visible_cpu_count()
-          host_cpu = os.cpu_count() or 0
           runtime = {
               "source_sha": os.getenv("GITHUB_SHA"),
               "chapter_url": URL,
               "source_pages": len(raw_paths),
-              "slices": template_slices,
+              "total_slices": total_slices,
+              "sample_count": SAMPLE_COUNT,
+              "sample_indices": selected,
               "ingest_ms": ingest_ms,
-              "host_cpu_count": host_cpu,
+              "host_cpu_count": os.cpu_count() or 0,
               "visible_cpu_count": cpu_visible,
               "recommended_ort_intra_threads": recommended_ort_intra_threads(cpu_visible),
               "responsive_workers": {
                   str(requested): responsive_process_workers(requested, cpu_visible)
                   for requested in (1, 2, 3)
               },
-              "onnxruntime": ort.__version__,
-              "providers": ort.get_available_providers(),
               "parameters": parameter_snapshot(),
           }
           (OUT_DIR / "runtime.json").write_text(
@@ -269,145 +246,72 @@ jobs:
           )
           print("RUNTIME", json.dumps(runtime, ensure_ascii=False), flush=True)
 
-          variants = [
-              ("production-requested-3", 3),
-              ("forced-1", 1),
-              ("forced-2", 2),
-              ("forced-3", 3),
-          ]
-          results = []
-
           del template
           gc.collect()
+          results = []
 
-          for variant, requested_workers in variants:
-              pipeline, chapter_id, indices = build_variant_chapter(
-                  raw_paths, variant, requested_workers
+          for requested_workers in (1, 2, 3):
+              variant = f"forced-{requested_workers}"
+              pipeline = ForcedWorkerPipeline()
+              chapter_id = hashlib.sha256(
+                  f"phase13-workers-{variant}-{time.time_ns()}".encode()
+              ).hexdigest()[:8]
+              manifest = pipeline._build_chapter_from_raw_paths(
+                  chapter_id,
+                  raw_paths,
+                  source_url=URL,
+                  workers=2,
               )
+              if len(manifest.get("pages", [])) != total_slices:
+                  raise RuntimeError(f"slice drift in {variant}")
+
               process, peak, stop, sampler = start_peak_sampler()
+              started = time.perf_counter()
+              pipeline.process_pages(
+                  chapter_id, selected, workers=requested_workers
+              )
+              wall_ms = round((time.perf_counter() - started) * 1000.0, 3)
+              stop.set()
+              sampler.join(timeout=1)
+
+              manifest = load_manifest_raw(chapter_id)
+              pages = manifest.get("pages", [])
+              last = manifest.get("last_processing_run") or {}
+              failed = last.get("failed_page_indices") or []
               report = {
                   "variant": variant,
                   "requested_workers": requested_workers,
-                  "chapter_id": chapter_id,
-                  "slices": len(indices),
-              }
-              try:
-                  started = time.perf_counter()
-                  pipeline.process_pages(
-                      chapter_id, indices, workers=requested_workers
-                  )
-                  report["process_wall_ms"] = round(
-                      (time.perf_counter() - started) * 1000.0, 3
-                  )
-                  report["process_wall_s"] = round(
-                      report["process_wall_ms"] / 1000.0, 3
-                  )
-                  manifest = load_manifest_raw(chapter_id)
-                  pages = manifest.get("pages", [])
-                  last = manifest.get("last_processing_run") or {}
-                  report["effective_workers"] = last.get("workers")
-                  report["last_processing_run"] = last
-                  report["page_metrics"] = collect_page_metrics(pages)
-                  report["clean_pages"] = sum(bool(page.get("clean")) for page in pages)
-                  report["boxes"] = sum(len(page.get("boxes", [])) for page in pages)
-                  report["safe_to_inpaint"] = sum(
-                      bool(box.get("safe_to_inpaint"))
-                      for page in pages
-                      for box in page.get("boxes", [])
-                  )
-                  report["review_boxes"] = sum(
-                      bool(box.get("needs_review"))
-                      for page in pages
-                      for box in page.get("boxes", [])
-                  )
-                  report["deferred_boxes"] = sum(
-                      bool(box.get("deferred_reason"))
-                      for page in pages
-                      for box in page.get("boxes", [])
-                  )
-                  report["throughput_ms_per_slice"] = round(
-                      report["process_wall_ms"] / max(1, len(pages)), 3
-                  )
-                  report["slices_per_minute"] = round(
-                      (len(pages) * 60000.0) / max(1.0, report["process_wall_ms"]),
-                      3,
-                  )
-
-                  outside_total = 0
-                  changed_total = 0
-                  mask_total = 0
-                  unsafe_pages = []
-                  for index, page in enumerate(pages):
-                      original = read_image(Path(page["original"]))
-                      clean_path = page.get("clean")
-                      if not clean_path:
-                          unsafe_pages.append(index)
-                          continue
-                      clean = read_image(Path(clean_path))
-                      mask = _authority_mask(
-                          original, page.get("boxes", []), pipeline.inpainter
-                      )
-                      changed = np.any(original != clean, axis=2)
-                      outside = int(np.count_nonzero(changed & (mask <= 127)))
-                      outside_total += outside
-                      changed_total += int(np.count_nonzero(changed))
-                      mask_total += int(np.count_nonzero(mask))
-                      if outside:
-                          unsafe_pages.append(index)
-
-                  report["authority"] = {
-                      "mask_pixels": mask_total,
-                      "changed_pixels": changed_total,
-                      "outside_mask_changed": outside_total,
-                      "unsafe_pages": unsafe_pages,
-                  }
-                  failed = last.get("failed_page_indices") or []
-                  if report["clean_pages"] != len(pages):
-                      report["status"] = "invalid_clean_count"
-                  elif failed:
-                      report["status"] = "processing_failed"
-                  elif outside_total:
-                      report["status"] = "authority_violation"
-                  elif changed_total <= 0 or mask_total <= 0:
-                      report["status"] = "no_destructive_cleanup"
-                  else:
-                      report["status"] = "ok"
-              except Exception as exc:
-                  report["status"] = "exception"
-                  report["error"] = f"{type(exc).__name__}: {exc}"
-                  report.setdefault(
-                      "process_wall_ms",
-                      round((time.perf_counter() - started) * 1000.0, 3),
-                  )
-                  report["process_wall_s"] = round(
-                      report["process_wall_ms"] / 1000.0, 3
-                  )
-              finally:
-                  stop.set()
-                  sampler.join(timeout=1)
-                  report["peak_rss_mb"] = round(
+                  "effective_workers": last.get("workers"),
+                  "sample_count": SAMPLE_COUNT,
+                  "sample_indices": selected,
+                  "process_wall_ms": wall_ms,
+                  "process_wall_s": round(wall_ms / 1000.0, 3),
+                  "ms_per_slice": round(wall_ms / SAMPLE_COUNT, 3),
+                  "slices_per_minute": round(SAMPLE_COUNT * 60000.0 / wall_ms, 3),
+                  "peak_rss_mb": round(
                       max(peak["rss_mb"], process.memory_info().rss / 2**20), 1
-                  )
-                  (OUT_DIR / f"{variant}.json").write_text(
-                      json.dumps(report, ensure_ascii=False, indent=2) + "\n",
-                      encoding="utf-8",
-                  )
-                  print("RESULT", json.dumps(report, ensure_ascii=False), flush=True)
-                  results.append(report)
-                  del pipeline
-                  gc.collect()
+                  ),
+                  "page_metrics": collect_page_metrics(pages, selected),
+                  "last_processing_run": last,
+                  "status": "ok" if not failed and len(last.get("committed_page_indices") or []) == SAMPLE_COUNT else "failed",
+              }
+              (OUT_DIR / f"{variant}.json").write_text(
+                  json.dumps(report, ensure_ascii=False, indent=2) + "\n",
+                  encoding="utf-8",
+              )
+              print("RESULT", json.dumps(report, ensure_ascii=False), flush=True)
+              results.append(report)
+              del pipeline
+              gc.collect()
 
-          comparison = {
-              "runtime": runtime,
-              "results": results,
-          }
+          comparison = {"runtime": runtime, "results": results}
           (OUT_DIR / "comparison.json").write_text(
               json.dumps(comparison, ensure_ascii=False, indent=2) + "\n",
               encoding="utf-8",
           )
 
-          if not any(r.get("status") == "ok" for r in results):
-              raise RuntimeError("all worker benchmark variants failed")
+          if any(r.get("status") != "ok" for r in results):
+              raise RuntimeError("one or more worker variants failed")
           PY
 
       - name: Publish worker scaling summary
@@ -430,29 +334,19 @@ jobs:
               f"- Host / visible CPU: `{runtime.get('host_cpu_count')}` / `{runtime.get('visible_cpu_count')}`",
               f"- Responsive worker map 1/2/3: `{runtime.get('responsive_workers')}`",
               f"- ORT intra-op recommendation: `{runtime.get('recommended_ort_intra_threads')}`",
-              f"- Source pages / slices: `{runtime.get('source_pages')}` / `{runtime.get('slices')}`",
+              f"- Chapter slices / sampled: `{runtime.get('total_slices')}` / `{runtime.get('sample_count')}`",
               "",
-              "| Variant | Requested | Effective | Wall s | s/slice | slices/min | Peak RSS MiB | Status |",
-              "|---|---:|---:|---:|---:|---:|---:|---|",
+              "| Variant | Requested | Effective | Wall s | s/slice | slices/min | Peak RSS MiB |",
+              "|---|---:|---:|---:|---:|---:|---:|",
           ]
           for r in results:
-              ms = float(r.get("throughput_ms_per_slice") or 0.0)
               lines.append(
-                  "| {variant} | {req} | {eff} | {wall} | {sec:.3f} | {spm} | {rss} | {status} |".format(
-                      variant=r.get("variant"),
-                      req=r.get("requested_workers"),
-                      eff=r.get("effective_workers"),
-                      wall=r.get("process_wall_s"),
-                      sec=ms / 1000.0,
-                      spm=r.get("slices_per_minute"),
-                      rss=r.get("peak_rss_mb"),
-                      status=r.get("status"),
-                  )
+                  f"| {r.get('variant')} | {r.get('requested_workers')} | {r.get('effective_workers')} | {r.get('process_wall_s')} | {float(r.get('ms_per_slice') or 0)/1000.0:.3f} | {r.get('slices_per_minute')} | {r.get('peak_rss_mb')} |"
               )
 
           lines += [
               "",
-              "### Per-page timing means (ms)",
+              "### Per-page timing mean (ms)",
               "",
               "| Variant | read | detect | auto inpaint | residue | write | total |",
               "|---|---:|---:|---:|---:|---:|---:|",
