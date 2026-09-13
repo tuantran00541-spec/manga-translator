@@ -24,12 +24,15 @@ from app.secret_store import (
     SecretStoreUnavailable,
     delete_deepseek_api_key,
     delete_gemini_api_key,
+    delete_provider_api_key,
+    delete_provider_config,
+    get_provider_api_key,
+    get_provider_config,
+    provider_key_status,
     set_deepseek_api_key,
     set_gemini_api_key,
-    delete_provider_api_key,
-    get_provider_api_key,
-    provider_key_status,
     set_provider_api_key,
+    set_provider_config,
 )
 from app.security import validate_chapter_id, validate_managed_path, validate_url
 from app.visual_qc.batch_runner import RegionBatchRunner
@@ -63,6 +66,8 @@ class DeepSeekKeyRequest(BaseModel):
 class ProviderKeyRequest(BaseModel):
     api_key: str
     provider_label: str | None = None
+    provider_protocol: str | None = None
+    provider_api_base: str | None = None
 
     @field_validator("api_key")
     @classmethod
@@ -131,12 +136,32 @@ def _raise_job_capacity_error(exc: RuntimeError) -> None:
     raise HTTPException(500, "Could not start chapter visual QC") from exc
 
 
+def _provider_parts(provider_id: str, label=None, protocol=None, api_base=None) -> tuple[str | None, str | None, str | None]:
+    normalized = normalize_provider_id(provider_id)
+    if normalized in PROVIDERS:
+        return label, protocol, api_base
+    if label and protocol and api_base:
+        return label, protocol, api_base
+    stored = get_provider_config(normalized) or {}
+    return (
+        label or stored.get("label"),
+        protocol or stored.get("protocol"),
+        api_base or stored.get("api_base"),
+    )
+
+
 def _resolve_request_provider(req):
+    label, protocol, api_base = _provider_parts(
+        req.provider,
+        getattr(req, "provider_label", None),
+        getattr(req, "provider_protocol", None),
+        getattr(req, "provider_api_base", None),
+    )
     return resolve_provider(
         req.provider,
-        label=getattr(req, "provider_label", None),
-        protocol=getattr(req, "provider_protocol", None),
-        api_base=getattr(req, "provider_api_base", None),
+        label=label,
+        protocol=protocol,
+        api_base=api_base,
     )
 
 
@@ -247,6 +272,20 @@ def save_provider_key(provider_id: str, req: ProviderKeyRequest) -> dict:
     try:
         normalized = normalize_provider_id(provider_id)
         label = validate_provider_label(req.provider_label, default=normalized)
+        if normalized not in PROVIDERS:
+            provider = resolve_provider(
+                normalized,
+                label=label,
+                protocol=req.provider_protocol,
+                api_base=req.provider_api_base,
+            )
+            _validate_custom_remote(provider)
+            set_provider_config(
+                normalized,
+                label=provider.label,
+                protocol=provider.protocol,
+                api_base=provider.api_base,
+            )
         set_provider_api_key(normalized, req.api_key, provider_label=label)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
@@ -256,7 +295,11 @@ def save_provider_key(provider_id: str, req: ProviderKeyRequest) -> dict:
 
 
 @router.delete("/providers/{provider_id}/key")
-def clear_provider_key(provider_id: str, provider_label: str | None = None) -> dict:
+def clear_provider_key(
+    provider_id: str,
+    provider_label: str | None = None,
+    remove_config: bool = False,
+) -> dict:
     try:
         normalized = normalize_provider_id(provider_id)
         builtin = PROVIDERS.get(normalized)
@@ -269,6 +312,8 @@ def clear_provider_key(provider_id: str, provider_label: str | None = None) -> d
             }
         label = validate_provider_label(provider_label, default=(builtin.label if builtin else normalized))
         delete_provider_api_key(normalized, provider_label=label)
+        if remove_config:
+            delete_provider_config(normalized)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     except SecretStoreUnavailable as exc:
@@ -284,11 +329,17 @@ def list_provider_models(
     provider_api_base: str | None = None,
 ) -> dict:
     try:
+        label, protocol, api_base = _provider_parts(
+            provider_id,
+            provider_label,
+            provider_protocol,
+            provider_api_base,
+        )
         provider = resolve_provider(
             provider_id,
-            label=provider_label,
-            protocol=provider_protocol,
-            api_base=provider_api_base,
+            label=label,
+            protocol=protocol,
+            api_base=api_base,
         )
         _validate_custom_remote(provider)
         api_key = get_provider_api_key(provider.id, provider_label=provider.label)
@@ -517,6 +568,8 @@ async def start_chapter_visual_qc(req: VisualQCChapterRequest) -> dict:
         service, client = _make_chapter_service(provider, req.model, req.budget_usd)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
+    except SecretStoreUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc
     try:
         job = await service.start(req.chapter_id, concurrency=req.concurrency)
     except HTTPException:
