@@ -7,6 +7,8 @@ on:
     paths:
       - .github/workflows/chapter-351-typography-render.yml
       - chapters/logging-10000-years-into-the-future-351/run_typography_render.py
+      - chapters/logging-10000-years-into-the-future-351/run_typography_review_repair.py
+      - chapters/logging-10000-years-into-the-future-351/typography-review-repair.json
   workflow_dispatch:
 
 permissions:
@@ -56,8 +58,8 @@ jobs:
           test -d checkpoint/02b-repair/overlay/processed
           test -d checkpoint/02c-logo/overlay/processed
 
-      - name: Scene-aware typography preflight and render
-        run: PYTHONPATH=. python chapters/logging-10000-years-into-the-future-351/run_typography_render.py
+      - name: Apply human typography review repair and rerender
+        run: PYTHONPATH=. python chapters/logging-10000-years-into-the-future-351/run_typography_review_repair.py
 
       - name: Verify candidate contract
         run: |
@@ -69,17 +71,20 @@ jobs:
           root = Path("checkpoint/05-render")
           typography = json.loads((root / "typography-summary.json").read_text(encoding="utf-8"))
           render = json.loads((root / "render-summary.json").read_text(encoding="utf-8"))
+          repair = json.loads((root / "typography-review-repair-applied.json").read_text(encoding="utf-8"))
           plan = json.loads((root / "typography-plan.json").read_text(encoding="utf-8"))
 
           if typography.get("normal_dialogue_font") != "Mac-dinh-3":
               raise SystemExit("normal dialogue font drifted from Mac-dinh-3")
           if typography.get("autosize_active_objects") != 0 or typography.get("hard_min_font_size") != 28:
               raise SystemExit(f"typography contract failed: {typography}")
+          if typography.get("font_fallback_count") != 0:
+              raise SystemExit(f"font fallback remains after human repair: {typography}")
           if len(plan) != 71 or min(row["font_size"] for row in plan) < 28:
               raise SystemExit("fixed typography plan invalid")
           if render.get("rendered_story_objects") != 71 or render.get("rendered_slices") != 40 or render.get("source_pages") != 11:
               raise SystemExit(f"render counts invalid: {render}")
-          if render.get("status") != "REVIEW_REQUIRED":
+          if render.get("status") != "REVIEW_REQUIRED" or repair.get("status") != "RERENDERED_REVIEW_REQUIRED":
               raise SystemExit("candidate must stop for human visual review")
 
           pages = sorted((root / "final_pages").glob("*.png"))
@@ -89,7 +94,7 @@ jobs:
               with Image.open(page) as image:
                   if image.width <= 0 or image.height <= 0:
                       raise SystemExit(f"invalid rendered page dimensions: {page} {image.size}")
-          print("candidate render contract PASS; human visual review still required")
+          print("repaired candidate contract PASS; human visual review still required")
           PY
 
       - name: Upload typography and render candidate

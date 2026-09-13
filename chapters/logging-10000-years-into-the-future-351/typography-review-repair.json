@@ -1,0 +1,58 @@
+{
+  "checkpoint": "05b-human-typography-review-repair",
+  "chapter_id": "c3513510",
+  "reviewed_candidate": {
+    "run_id": 34726710878,
+    "artifact": "05-render-candidate-c3513510",
+    "artifact_id": 10307269738
+  },
+  "human_visual_review": "REPAIR_REQUIRED",
+  "findings": [
+    {
+      "group": "dark_threat",
+      "issue": "Shadow-fonts rendered too thin/outlined and weakened Darius' humiliation-to-hatred threat sequence compared with the source bubble acting.",
+      "repair": "Use Mac-dinh-3 for the full threat run and carry emotion through size/wording rather than an unrelated display face."
+    },
+    {
+      "group": "mythic_and_lyrical",
+      "issue": "Curves-Regular rendered too narrow/decorative, reducing readability and drifting from the source's clean handwritten/bold narration language.",
+      "repair": "Use Mac-dinh-3 for mythic bubble recollection and Mac-dinh-2 for lyrical narration boxes."
+    },
+    {
+      "group": "glyph_fallback",
+      "issue": "Two narration objects switched to BeVietnamPro only because Mac-dinh-2/Mac-dinh-3 did not contain U+2014 EM DASH, causing an obvious font jump.",
+      "repair": "Make two local punctuation edits that preserve scene continuity without the unsupported em dash, keeping the intended chapter font family."
+    },
+    {
+      "group": "cosmic_revelation",
+      "issue": "Shadow-fonts made the final revelation look light and decorative instead of weighty; the source keeps the same dialogue family with stronger emphasis.",
+      "repair": "Use bold Mac-dinh-3 at the largest fitting size."
+    }
+  ],
+  "role_font_overrides": {
+    "dark_threat": "Mac-dinh-3",
+    "mythic": "Mac-dinh-3",
+    "lyrical_narration": "Mac-dinh-2",
+    "cosmic_revelation": "Mac-dinh-3"
+  },
+  "translation_visual_repairs": {
+    "box_bd1ab7f6a5694112": {
+      "before": "Một cảm giác nguy cơ nặng nề, chưa từng có từ khi hắn sinh ra—",
+      "after": "Một cảm giác nguy cơ nặng nề, chưa từng có từ khi hắn sinh ra",
+      "reason": "Remove unsupported editorial em dash; the next narration object continues the thought."
+    },
+    "box_8af2f930b0da44f5": {
+      "before": "Hắn quay đầu, bắt đầu suy nghĩ một vấn đề khác cực kỳ hệ trọng!—",
+      "after": "Hắn quay đầu, bắt đầu suy nghĩ một vấn đề khác cực kỳ hệ trọng!",
+      "reason": "Remove unsupported editorial em dash while preserving the emphatic pause into the next bubble."
+    }
+  },
+  "keep_from_candidate": {
+    "normal_dialogue": "Mac-dinh-3",
+    "normal_narration": "Mac-dinh-2",
+    "panic_shout": "Granite",
+    "dramatic_narration": "Manga-fonts",
+    "skill_name": "Skill-fonts-1"
+  },
+  "next_action": "RERENDER_AND_HUMAN_REVIEW"
+}
