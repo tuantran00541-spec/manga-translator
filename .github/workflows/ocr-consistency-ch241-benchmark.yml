@@ -1,0 +1,113 @@
+name: OCR Consistency Chapter 241 Benchmark
+
+on:
+  push:
+    branches:
+      - fix/ocr-consistency
+    paths:
+      - '.github/workflows/ocr-consistency-ch241-benchmark.yml'
+      - 'scripts/ocr_consistency_ch241_benchmark.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: ocr-consistency-real-benchmark
+  cancel-in-progress: false
+
+jobs:
+  chapter-241-real-ocr:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    env:
+      PYTHONUNBUFFERED: '1'
+      PYTHONPATH: ${{ github.workspace }}
+      GH_TOKEN: ${{ github.token }}
+      IMPORT_RUN_ID: '34732495460'
+      IMPORT_ARTIFACT: 01-import-c241dr01
+      REPAIR_RUN_ID: '34734740336'
+      REPAIR_ARTIFACT: 02b-clean-local-repair-c241d001
+      PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK: 'True'
+      MANGA_PPOCRV6_TIER: small
+      MANGA_OCR_TARGET_SELECTION: all
+      MANGA_PPOCRV6_TEXTLINE_ORIENTATION: '0'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '2'
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/ocr-consistency
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install production OCR runtime
+        run: |
+          python -m pip install --only-binary=:all: \
+            numpy==1.26.4 \
+            Pillow==10.4.0 \
+            opencv-contrib-python==4.10.0.84 \
+            paddlepaddle==3.2.2 \
+            paddleocr==3.7.0 \
+            onnxruntime-openvino==1.24.1 \
+            psutil==6.1.1 \
+            loguru==0.7.2 \
+            requests==2.32.3 \
+            beautifulsoup4==4.12.3 \
+            lxml==5.3.0 \
+            playwright==1.47.0 \
+            fastapi==0.115.0 \
+            pydantic==2.9.2 \
+            filelock==3.16.1 \
+            python-multipart==0.0.12
+
+      - name: Restore Paddle model cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.paddlex
+            ~/.paddleocr
+          key: chapter-trial-ppocrv6-small-en-v1
+
+      - name: Restore immutable chapter 241 RAW and detector geometry
+        run: |
+          rm -rf checkpoint/01-import checkpoint/02b-repair checkpoint/ocr-consistency-benchmark
+          mkdir -p checkpoint/01-import checkpoint/02b-repair checkpoint/ocr-consistency-benchmark
+          gh run download "$IMPORT_RUN_ID" -n "$IMPORT_ARTIFACT" -D checkpoint/01-import
+          gh run download "$REPAIR_RUN_ID" -n "$REPAIR_ARTIFACT" -D checkpoint/02b-repair
+          test -d checkpoint/01-import/raw/sliced
+          test -f checkpoint/02b-repair/processed/manifest.json
+
+      - name: Run consistency OCR against chapter 241 RAW
+        run: |
+          python scripts/ocr_consistency_ch241_benchmark.py \
+            --import-root checkpoint/01-import \
+            --repaired-root checkpoint/02b-repair \
+            --output checkpoint/ocr-consistency-benchmark
+
+      - name: Verify benchmark contract
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          path=Path('checkpoint/ocr-consistency-benchmark/ocr-consistency-benchmark.json')
+          data=json.loads(path.read_text(encoding='utf-8'))
+          if data.get('status')!='PASS' or data.get('failed')!=0:
+              raise SystemExit(data)
+          if data.get('planned')!=105:
+              raise SystemExit(f"plan drift: {data.get('planned')}")
+          print(json.dumps(data, ensure_ascii=False, indent=2))
+          PY
+
+      - name: Upload real OCR benchmark
+        uses: actions/upload-artifact@v4
+        with:
+          name: ocr-consistency-ch241-benchmark
+          path: checkpoint/ocr-consistency-benchmark/
+          retention-days: 7
+          if-no-files-found: error
