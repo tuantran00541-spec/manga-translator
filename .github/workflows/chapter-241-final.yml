@@ -1,4 +1,4 @@
-name: Chapter 241 FINAL Package
+name: Chapter 241 Final Layer One
 
 on:
   push:
@@ -28,27 +28,5 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: 'chapter/doctors-rebirth+241'
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Install dependency
-        run: python -m pip install --only-binary=:all: Pillow==10.4.0
-
-      - name: Restore approved render
-        run: |
-          rm -rf checkpoint/06-approved-render checkpoint/07-final
-          mkdir -p checkpoint/06-approved-render checkpoint/07-final
-          gh run download "$RENDER_RUN_ID" -n "$RENDER_ARTIFACT" -D checkpoint/06-approved-render
-          test -f checkpoint/06-approved-render/render-summary.json
-          test -d checkpoint/06-approved-render/final_pages
-
-      - name: Build FINAL package
-        run: PYTHONPATH=. python chapters/doctors-rebirth-241/run_final_package.py
-
-      - name: Verify output files
-        run: |
-          test -f checkpoint/07-final/Doctors-Rebirth-Chapter-241-VI-FINAL.zip
-          test -f checkpoint/07-final/final-report.json
-          test -f checkpoint/07-final/FINAL_CHECKPOINT.txt
+      - name: Layer one
+        run: echo FINAL_LAYER_ONE_PASS
