@@ -5,9 +5,23 @@
   "chapter_number": 241,
   "source_url": "https://asurascans.com/comics/doctors-rebirth-53fc8424/chapter/241",
   "branch": "chapter/doctors-rebirth+241",
-  "current_stage": "IMPORT_PENDING",
-  "last_passed_checkpoint": null,
-  "current_artifact": null,
+  "current_stage": "IMPORT_REVIEW_PASS",
+  "last_passed_checkpoint": "IMPORT",
+  "current_artifact": {
+    "run_id": 34732495460,
+    "artifact": "01-import-c241dr01",
+    "artifact_id": 10309772417,
+    "artifact_digest": "sha256:88af5631674b2335a0d884dbd6567f5a164df0914531318a6dbd834ba9f39e98",
+    "workflow_head_sha": "ea0b995402542d1af27c4d28981422e397f50f3e"
+  },
+  "approved_import": {
+    "source_images": 17,
+    "slices": 68,
+    "duplicate_source_groups": 0,
+    "ownership_issues": 0,
+    "pixel_exact_pages": 17,
+    "diff_pixels_total": 0
+  },
   "blockers": [],
-  "next_action": "RUN_IMPORT"
+  "next_action": "RUN_CHECKPOINT_02_CLEAN_REVIEW"
 }
