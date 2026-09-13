@@ -2,9 +2,9 @@
   "checkpoint": "05b-human-typography-review-repair",
   "chapter_id": "c3513510",
   "reviewed_candidate": {
-    "run_id": 34726710878,
+    "run_id": 34728400840,
     "artifact": "05-render-candidate-c3513510",
-    "artifact_id": 10307269738
+    "artifact_id": 10308426569
   },
   "human_visual_review": "REPAIR_REQUIRED",
   "findings": [
@@ -27,6 +27,16 @@
       "group": "cosmic_revelation",
       "issue": "Shadow-fonts made the final revelation look light and decorative instead of weighty; the source keeps the same dialogue family with stronger emphasis.",
       "repair": "Use bold Mac-dinh-3 at the largest fitting size."
+    },
+    {
+      "group": "dialogue_alignment",
+      "issue": "Renderer measured line width as bbox[2] instead of bbox[2]-bbox[0], so fonts with non-zero left bearing could occasionally look pushed to one side even when center alignment was requested.",
+      "repair": "Use visible ink bounds for fit/wrap/alignment and compensate font left bearing; retain human bubble-by-bubble visual review for asymmetric bubble geometry."
+    },
+    {
+      "group": "clean_residue",
+      "issue": "The panic bubble on clean_002_00.png still contained source fragments 'I' and 'IT!' outside the detector-owned text region, which became visible beside the Vietnamese render.",
+      "repair": "Apply a local white-bubble cleanup to only the two residual source-text rectangles before rerendering; do not rerun inpaint for the chapter."
     }
   ],
   "role_font_overrides": {
@@ -47,6 +57,17 @@
       "reason": "Remove unsupported editorial em dash while preserving the emphatic pause into the next bubble."
     }
   },
+  "clean_visual_repairs": [
+    {
+      "file": "clean_002_00.png",
+      "rectangles": [
+        [145, 190, 225, 255],
+        [665, 190, 780, 255]
+      ],
+      "fill": [255, 255, 255],
+      "reason": "Remove the two surviving English source fragments inside the already-white panic speech bubble; both rectangles stay well inside the bubble body and away from its border/artwork."
+    }
+  ],
   "keep_from_candidate": {
     "normal_dialogue": "Mac-dinh-3",
     "normal_narration": "Mac-dinh-2",
