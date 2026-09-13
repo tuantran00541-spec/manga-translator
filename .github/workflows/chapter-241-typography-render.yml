@@ -1,0 +1,246 @@
+name: Chapter 241 Checkpoint 05 Typography Render Candidate
+
+on:
+  push:
+    branches:
+      - 'chapter/doctors-rebirth\+241'
+    paths:
+      - '.github/workflows/chapter-241-typography-render.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: chapter-241-human-loop
+  cancel-in-progress: false
+
+jobs:
+  typography-render:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TRANSLATION_RUN_ID: '34740261560'
+      TRANSLATION_ARTIFACT: 04-translation-reviewed-c241d001
+      CLEAN_REPAIR_RUN_ID: '34734740336'
+      CLEAN_REPAIR_ARTIFACT: 02b-clean-local-repair-c241d001
+      CHAPTER_ID: c241d001
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 'chapter/doctors-rebirth+241'
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install render dependencies
+        run: python -m pip install --only-binary=:all: Pillow==10.4.0 numpy==1.26.4 fonttools==4.59.2
+
+      - name: Restore approved translation and clean stack
+        run: |
+          rm -rf checkpoint/04-translation checkpoint/02b-repair checkpoint/05-render data/processed/c241d001
+          mkdir -p checkpoint/04-translation checkpoint/02b-repair checkpoint/05-render data/processed
+          gh run download "$TRANSLATION_RUN_ID" -n "$TRANSLATION_ARTIFACT" -D checkpoint/04-translation
+          gh run download "$CLEAN_REPAIR_RUN_ID" -n "$CLEAN_REPAIR_ARTIFACT" -D checkpoint/02b-repair
+          test -f checkpoint/04-translation/translated-manifest.json
+          test -f checkpoint/04-translation/translation-review-summary.json
+          test -d checkpoint/02b-repair/processed
+          cp -a checkpoint/02b-repair/processed data/processed/c241d001
+
+      - name: Preflight fixed typography, render slices, and stitch source pages
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+          import json, math, shutil
+          from collections import Counter, defaultdict
+          from pathlib import Path
+          import numpy as np
+          from PIL import Image, ImageDraw
+          from fontTools.ttLib import TTFont
+          from app.render.text_renderer import _fits, get_font_path, render_text_in_box
+
+          cid='c241d001'
+          out=Path('checkpoint/05-render'); proof=out/'proof'; rs=out/'rendered_slices'; fp=out/'final_pages'
+          for d in (out,proof,rs,fp): d.mkdir(parents=True,exist_ok=True)
+          tsum=json.loads(Path('checkpoint/04-translation/translation-review-summary.json').read_text(encoding='utf-8'))
+          if tsum.get('status')!='PASS' or not tsum.get('editorial_pass') or tsum.get('active_story_objects')!=76:
+              raise SystemExit(f'translation gate invalid: {tsum}')
+          m=json.loads(Path('checkpoint/04-translation/translated-manifest.json').read_text(encoding='utf-8'))
+          pages=m.get('pages') or []
+          if len(pages)!=68: raise SystemExit(f'expected 68 slices, got {len(pages)}')
+
+          SKILL={
+            'box_a53dc05e63fc4e11','box_b6f5d5d07b01453a','box_a17f4b50bce94125','box_6a040b96ebaf4a22',
+            'box_791027f1066d4b38','box_82028db6e4d14c94','box_69e33a25154f452e','box_670cd228d5b649d2',
+            'box_1bf8f8b8b4fd4bdf','box_05d25fc270f246f7'
+          }
+          SHOUT={'box_de950b2d1fee470f','box_ca2b94c697684b79','box_d496a35c143b462f','box_8722e35a52e94af5','box_57aacdb47d4f41c4','box_c5f930806b2a48ce','box_a5389b0635394c59'}
+          PUNCT={'box_ebbb5475e55d4a32','box_a5b4216f8a584c31'}
+          def role(bid):
+              if bid in SKILL: return 'skill'
+              if bid in SHOUT: return 'shout'
+              if bid in PUNCT: return 'punctuation'
+              return 'dialogue'
+          ROLE_FONT={'dialogue':'Mac-dinh-3','skill':'Skill-fonts-1','shout':'Granite','punctuation':'Mac-dinh-3'}
+          ROLE_SIZES={
+            'dialogue':[64,60,56,52,48,44,40,38,36,34,32,30,28],
+            'skill':[92,84,76,68,60,56,52,48,44,40,36,32,30,28],
+            'shout':[80,72,68,64,60,56,52,48,44,40,36,32,30,28],
+            'punctuation':[80,72,64,56,48,40,36,32,28]
+          }
+          cmap_cache={}
+          def supports(name,text):
+              if name not in cmap_cache:
+                  path=get_font_path(name)
+                  if not path.is_file(): cmap_cache[name]=set()
+                  else:
+                      tt=TTFont(str(path)); cc=set()
+                      for t in tt['cmap'].tables: cc.update(t.cmap.keys())
+                      tt.close(); cmap_cache[name]=cc
+              cc=cmap_cache[name]
+              return bool(cc) and all(ord(ch) in cc for ch in text if ch not in '\n\r\t')
+          def resolve_font(preferred,text):
+              if supports(preferred,text): return preferred,None
+              if supports('Mac-dinh-3',text): return 'Mac-dinh-3',f'{preferred} thiếu glyph Việt'
+              if supports('BeVietnamPro-SemiBold',text): return 'BeVietnamPro-SemiBold',f'{preferred}/Mac-dinh-3 thiếu glyph Việt'
+              raise SystemExit(f'no Vietnamese font coverage for {text!r}')
+          def move_inside_core(region,core,image_h):
+              r={k:int(region[k]) for k in ('x1','y1','x2','y2')}
+              h=r['y2']-r['y1']; cy1=int(core.get('core_y1') or 0); cy2=int(core.get('core_y2') or image_h)
+              if h>cy2-cy1: return r,False
+              dy=0
+              if r['y1']<cy1: dy=cy1-r['y1']
+              if r['y2']+dy>cy2: dy-=r['y2']+dy-cy2
+              before=dict(r); r['y1']+=dy; r['y2']+=dy
+              return r,(r!=before)
+
+          plan=[]; failures=[]; shifted=[]; active=0
+          for pi,p in enumerate(pages):
+              sp=int(p.get('source_page') or 0); si=int(p.get('slice_index') or 0)
+              clean=Path(f'data/processed/{cid}/clean_{sp:03d}_{si:02d}.png')
+              if not clean.is_file(): raise SystemExit(f'missing clean slice {clean}')
+              with Image.open(clean) as im: iw,ih=im.size; dummy=im.convert('RGB'); draw=ImageDraw.Draw(dummy)
+              core=p.get('stitch_core') or {}
+              for obj in p.get('text_objects') or []:
+                  if not isinstance(obj,dict) or not obj.get('translation_reviewed'): continue
+                  refs=[x for x in (obj.get('source_boxes') or []) if isinstance(x,str)]
+                  if len(refs)!=1: raise SystemExit(f'bad source refs {obj.get("id")}')
+                  bid=refs[0]; text=str(obj.get('translation') or '').strip()
+                  if not text: raise SystemExit(f'empty translation {bid}')
+                  active+=1
+                  rr,moved=move_inside_core(obj['region'],core,ih)
+                  if moved: shifted.append({'box_id':bid,'before':obj['region'],'after':rr})
+                  rw=rr['x2']-rr['x1']; rh=rr['y2']-rr['y1']; pad=max(3,min(8,int(min(rw,rh)*0.05)))
+                  bw=rw-2*pad; bh=rh-2*pad
+                  ro=role(bid); preferred=ROLE_FONT[ro]; font,reason=resolve_font(preferred,text); path=str(get_font_path(font))
+                  chosen=None; lines=[]
+                  for size in ROLE_SIZES[ro]:
+                      ok,ll=_fits(draw,text,bw,bh,path,size,2)
+                      if ok: chosen=size; lines=ll; break
+                  if chosen is None:
+                      failures.append({'box_id':bid,'page_index':pi,'source_page':sp,'slice_index':si,'region':rr,'text':text,'reason':'does_not_fit_at_28px'})
+                      continue
+                  obj['region']=rr
+                  obj['style']={'color':'auto','font':font,'fontSize':chosen,'bold':ro in ('skill','shout'),'strokeWidth':2,'strokeColor':'auto','bgColor':'transparent','cornerRadius':'0','horizontalAlign':'center','verticalAlign':'middle'}
+                  plan.append({'object_id':obj.get('id'),'box_id':bid,'page_index':pi,'source_page':sp,'slice_index':si,'role':ro,'font':font,'font_size':chosen,'font_fallback_reason':reason,'line_count':len(lines),'region':rr,'translation':text})
+          if active!=76: raise SystemExit(f'expected 76 translated objects, got {active}')
+          (out/'typography-failures.json').write_text(json.dumps(failures,ensure_ascii=False,indent=2),encoding='utf-8')
+          if failures: raise SystemExit(f'{len(failures)} objects fail fixed 28px typography preflight')
+
+          plan_by_obj={r['object_id']:r for r in plan}
+          rendered_lookup={}
+          for pi,p in enumerate(pages):
+              sp=int(p.get('source_page') or 0); si=int(p.get('slice_index') or 0)
+              clean=Path(f'data/processed/{cid}/clean_{sp:03d}_{si:02d}.png')
+              im=Image.open(clean).convert('RGB')
+              for obj in p.get('text_objects') or []:
+                  row=plan_by_obj.get(obj.get('id'))
+                  if row is None: continue
+                  st=obj['style']; r=obj['region']
+                  im=render_text_in_box(im,obj['translation'],(r['x1'],r['y1'],r['x2'],r['y2']),font_name=st['font'],font_size=st['fontSize'],padding=max(3,min(8,int(min(r['x2']-r['x1'],r['y2']-r['y1'])*0.05))),fill='auto',is_bold=st['bold'],stroke_width=2,stroke_color='auto',bg_color='transparent',horizontal_align='center',vertical_align='middle')
+              rp=rs/f'{sp:03d}_{si:02d}.png'; im.save(rp); rendered_lookup[(sp,si)]=rp
+
+          groups=defaultdict(list)
+          for p in pages: groups[int(p.get('source_page') or 0)].append(p)
+          seams=[]
+          for sp in range(17):
+              owned=sorted(groups[sp],key=lambda p:int(p.get('slice_index') or 0)); chunks=[]; expected=0
+              for p in owned:
+                  si=int(p.get('slice_index') or 0); core=p.get('stitch_core') or {}; y1=int(core.get('core_source_y1') or 0); y2=int(core.get('core_source_y2') or 0)
+                  if y1!=expected: raise SystemExit(f'stitch ownership gap page {sp}: {expected}->{y1}')
+                  im=np.array(Image.open(rendered_lookup[(sp,si)]).convert('RGB')); cy1=int(core.get('core_y1') or 0); cy2=int(core.get('core_y2') or im.shape[0])
+                  chunks.append(im[cy1:cy2]); expected=y2
+                  if y2 and si!=int(owned[-1].get('slice_index') or 0): seams.append({'source_page':sp,'y':y2})
+              arr=np.concatenate(chunks,axis=0); Image.fromarray(arr).save(fp/f'{sp:03d}.png')
+
+          # Object proof sheets.
+          cells=[]
+          for row in plan:
+              im=Image.open(rendered_lookup[(row['source_page'],row['slice_index'])]).convert('RGB'); r=row['region']; margin=45
+              crop=im.crop((max(0,r['x1']-margin),max(0,r['y1']-margin),min(im.width,r['x2']+margin),min(im.height,r['y2']+margin)))
+              cells.append((row,crop))
+          proof_names=[]; cw,ch,per=470,380,12
+          for start in range(0,len(cells),per):
+              batch=cells[start:start+per]; sheet=Image.new('RGB',(3*cw,math.ceil(len(batch)/3)*ch),'white'); d=ImageDraw.Draw(sheet)
+              for n,(row,crop) in enumerate(batch):
+                  crop.thumbnail((cw-20,270)); x=(n%3)*cw+10; y=(n//3)*ch+10
+                  d.text((x,y),f"{row['box_id']} p{row['source_page']} s{row['slice_index']}",fill='black')
+                  d.text((x,y+20),f"{row['role']} | {row['font']} {row['font_size']}px | lines={row['line_count']}",fill='black')
+                  if row.get('font_fallback_reason'): d.text((x,y+40),'fallback: '+row['font_fallback_reason'],fill='black')
+                  sheet.paste(crop,(x,y+78))
+              name=f'object-proof-{start//per:02d}.jpg'; sheet.save(proof/name,quality=92); proof_names.append(f'proof/{name}')
+
+          thumbs=[]
+          for sp in range(17):
+              im=Image.open(fp/f'{sp:03d}.png').convert('RGB'); im.thumbnail((320,1200)); thumbs.append((sp,im.copy()))
+          overview=Image.new('RGB',(4*340,math.ceil(17/4)*1240),'white'); d=ImageDraw.Draw(overview)
+          for n,(sp,im) in enumerate(thumbs):
+              x=(n%4)*340+10; y=(n//4)*1240+10; d.text((x,y),f'source {sp:03d}',fill='black'); overview.paste(im,(x,y+24))
+          overview.save(proof/'full-page-overview.jpg',quality=90)
+
+          seam_cells=[]
+          for s in seams:
+              im=Image.open(fp/f"{s['source_page']:03d}.png").convert('RGB'); y=s['y']; crop=im.crop((0,max(0,y-120),im.width,min(im.height,y+120))); seam_cells.append((s,crop))
+          if seam_cells:
+              sw,sh=500,320; sheet=Image.new('RGB',(2*sw,math.ceil(len(seam_cells)/2)*sh),'white'); d=ImageDraw.Draw(sheet)
+              for n,(s,crop) in enumerate(seam_cells):
+                  crop.thumbnail((sw-20,250)); x=(n%2)*sw+10; y=(n//2)*sh+10; d.text((x,y),f"p{s['source_page']:03d} seam y={s['y']}",fill='black'); sheet.paste(crop,(x,y+30))
+              sheet.save(proof/'stitch-seams.jpg',quality=92)
+
+          font_counts=Counter(r['font'] for r in plan); sizes=[r['font_size'] for r in plan]
+          summary={'checkpoint':'05-typography-render','chapter_id':cid,'status':'REVIEW_REQUIRED','active_story_objects':76,'rendered_story_objects':76,'rendered_slices':68,'source_pages':17,'autosize_active_objects':0,'hard_min_font_size':28,'font_size_min_px':min(sizes),'font_size_max_px':max(sizes),'font_fallback_count':sum(1 for r in plan if r.get('font_fallback_reason')),'font_counts':dict(font_counts),'seam_shift_repairs':len(shifted),'proof_sheets':proof_names,'stitch_seams':len(seams),'next_action':'HUMAN_VISUAL_REVIEW'}
+          (out/'translated-manifest-rendered.json').write_text(json.dumps(m,ensure_ascii=False,indent=2),encoding='utf-8')
+          (out/'typography-plan.json').write_text(json.dumps(plan,ensure_ascii=False,indent=2),encoding='utf-8')
+          (out/'seam-shift-repairs.json').write_text(json.dumps(shifted,ensure_ascii=False,indent=2),encoding='utf-8')
+          (out/'render-summary.json').write_text(json.dumps(summary,ensure_ascii=False,indent=2),encoding='utf-8')
+          (out/'HUMAN_CHECKPOINT.txt').write_text('CHECKPOINT: RENDER CANDIDATE\nSTOP for human visual review of all 17 pages, object proofs and stitch seams before final export.\n',encoding='utf-8')
+          print(json.dumps(summary,ensure_ascii=False,indent=2))
+          PY
+
+      - name: Verify render candidate contract
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from PIL import Image
+          r=json.loads(Path('checkpoint/05-render/render-summary.json').read_text(encoding='utf-8'))
+          if r.get('status')!='REVIEW_REQUIRED' or r.get('active_story_objects')!=76 or r.get('rendered_story_objects')!=76 or r.get('rendered_slices')!=68 or r.get('source_pages')!=17 or r.get('autosize_active_objects')!=0 or r.get('font_size_min_px',0)<28:
+              raise SystemExit(f'render contract failed: {r}')
+          pages=sorted(Path('checkpoint/05-render/final_pages').glob('*.png'))
+          if len(pages)!=17: raise SystemExit(f'expected 17 pages, got {len(pages)}')
+          for p in pages:
+              with Image.open(p) as im:
+                  if im.width<=0 or im.height<=0: raise SystemExit(f'invalid final page {p}')
+          print('render candidate contract PASS; human visual review required')
+          PY
+
+      - name: Upload render candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: 05-render-candidate-c241d001
+          path: checkpoint/05-render
+          if-no-files-found: error
+          retention-days: 7
