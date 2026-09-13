@@ -17,8 +17,12 @@ for page in manifest.get("pages") or []:
         refs = [v for v in (obj.get("source_boxes") or []) if isinstance(v, str)]
         if TARGET not in refs:
             continue
-        if int(page.get("source_page") or -1) != 10 or int(page.get("slice_index") or -1) != 0:
-            raise SystemExit(f"unexpected location for {TARGET}")
+        source_page = page.get("source_page")
+        slice_index = page.get("slice_index")
+        if source_page is None or slice_index is None or int(source_page) != 10 or int(slice_index) != 0:
+            raise SystemExit(
+                f"unexpected location for {TARGET}: source_page={source_page!r} slice_index={slice_index!r}"
+            )
         before = dict(obj.get("region") or {})
         if before != {"x1": 442, "y1": 1510, "x2": 708, "y2": 1544}:
             raise SystemExit(f"geometry drift for {TARGET}: {before}")
