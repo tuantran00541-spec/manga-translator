@@ -1,0 +1,35 @@
+{
+  "checkpoint": "OCR",
+  "status": "PASS",
+  "chapter_id": "c241d001",
+  "source": "RAW",
+  "source_invariant_verified": true,
+  "machine_review": {
+    "run_id": 34734977654,
+    "artifact": "03-ocr-review-c241d001",
+    "artifact_id": 10310866456,
+    "artifact_digest": "sha256:490d2bf6f9b45304bd2e25e51e34eecfb38f7e72c1f8fa2de2a2206ace438845",
+    "detected_boxes": 347,
+    "machine_active_boxes": 105,
+    "recognized": 101,
+    "empty": 4,
+    "failed": 0
+  },
+  "human_curation": {
+    "run_id": 34740118737,
+    "artifact": "03b-ocr-curated-c241d001",
+    "artifact_id": 10312033714,
+    "artifact_digest": "sha256:6682ee41567095ae9c549d7fe9c28d444817d2b64248de243e8d87892c596008",
+    "human_tombstones": 29,
+    "manual_text_corrections": 4,
+    "active_story_objects": 76,
+    "empty_active_story_objects": 0,
+    "duplicate_blockers": 0,
+    "fragment_blockers": 0,
+    "resurrection_count": 0,
+    "story_ocr_blockers": 0
+  },
+  "editorial_pass": true,
+  "blockers": [],
+  "next_action": "TERMINOLOGY_RESEARCH_THEN_TRANSLATION"
+}
