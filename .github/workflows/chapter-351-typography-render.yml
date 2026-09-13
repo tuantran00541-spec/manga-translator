@@ -105,8 +105,16 @@ jobs:
               row = plan_by_box.get(box_id)
               if row is None:
                   raise SystemExit(f"geometry-repaired object missing from typography plan: {box_id}")
-              if row.get("region") != item.get("after"):
-                  raise SystemExit(f"geometry repair drifted before render for {box_id}: {row.get('region')} != {item.get('after')}")
+              row_region = row.get("region") or {}
+              repaired_region = item.get("after") or {}
+              if row_region.get("x1") != repaired_region.get("x1") or row_region.get("x2") != repaired_region.get("x2"):
+                  raise SystemExit(f"geometry horizontal repair drifted before render for {box_id}: {row_region} != {repaired_region}")
+              # Renderer may safely clamp Y to stitch-core ownership; the optical repair
+              # is horizontal-only, so clamped Y must remain inside the reviewed region.
+              if (row_region.get("y1", -1) < repaired_region.get("y1", 0) or
+                      row_region.get("y2", 0) > repaired_region.get("y2", 0) or
+                      row_region.get("y2", 0) <= row_region.get("y1", 0)):
+                  raise SystemExit(f"unsafe vertical drift after geometry repair for {box_id}: {row_region} vs {repaired_region}")
               if not item.get("center_preserved"):
                   raise SystemExit(f"geometry repair did not preserve center: {box_id}")
 

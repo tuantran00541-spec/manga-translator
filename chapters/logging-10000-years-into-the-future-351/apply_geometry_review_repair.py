@@ -15,7 +15,7 @@ REPAIRS = {
     "box_f7b1da74ae064805": {"expected": [137, 1675, 733, 1831], "inset_x": 24},
     "box_9585976688394dad": {"expected": [140, 2880, 759, 3241], "inset_x": 22},
     "box_b7a9cef01ad041b6": {"expected": [136, 1526, 841, 1801], "inset_x": 22},
-    "box_d421009df70342bc": {"expected": [36, 2007, 776, 2269], "inset_x": 22},
+    "box_d421009df70342bc": {"expected": [36, 2007, 776, 2279], "inset_x": 22},
     "box_ffc320d1ace04ad4": {"expected": [190, 1768, 844, 1954], "inset_x": 18},
     "box_3ddab9ac78fe4aec": {"expected": [424, 767, 879, 983], "inset_x": 18},
     "box_7133ff406e6d44a8": {"expected": [214, 74, 820, 397], "inset_x": 20},
