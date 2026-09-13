@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 from pydantic import BaseModel, field_validator
 
-from app.ai_providers import get_provider, validate_model_name
+from app.ai_providers import normalize_provider_id, validate_model_name
 from app.parameters import VISUAL_QC_JOB_CONCURRENCY, VISUAL_QC_JOB_CONCURRENCY_LIMIT
 
 
@@ -11,13 +11,16 @@ class VisualQCChapterRequest(BaseModel):
     chapter_id: str
     concurrency: int = VISUAL_QC_JOB_CONCURRENCY
     provider: str = "gemini"
+    provider_label: str | None = None
+    provider_protocol: str | None = None
+    provider_api_base: str | None = None
     model: str | None = None
     budget_usd: float = 0.08
 
     @field_validator("provider")
     @classmethod
-    def _known_provider(cls, value: str) -> str:
-        return get_provider(value).id
+    def _provider_id(cls, value: str) -> str:
+        return normalize_provider_id(value)
 
     @field_validator("model")
     @classmethod
