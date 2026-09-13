@@ -10,7 +10,7 @@ from typing import Any
 
 from app.env_utils import env_choice, env_enabled
 
-OCR_PIPELINE_VERSION = "phase45-v5-complete-ocr"
+OCR_PIPELINE_VERSION = "phase45-v6-consistency"
 OCR_CACHE_FIELDS = (
     "ocr_text",
     "ocr_lang",
@@ -54,7 +54,7 @@ def ocr_crop_signature(box: dict) -> str:
         "geometry": geometry_signature(box),
         "mask": mask_value,
         "mask_revision": mask_revision,
-        "crop_policy": "mask-page-context-v2",
+        "crop_policy": "detector-context-mask-expand-only-v1",
     }
     encoded = json.dumps(
         payload,
