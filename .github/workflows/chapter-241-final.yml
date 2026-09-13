@@ -1,4 +1,4 @@
-name: Chapter 241 Final Layer One
+name: Chapter 241 Final Layer Two
 
 on:
   push:
@@ -28,5 +28,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: 'chapter/doctors-rebirth+241'
-      - name: Layer one
-        run: echo FINAL_LAYER_ONE_PASS
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependency
+        run: python -m pip install --only-binary=:all: Pillow==10.4.0
+
+      - name: Layer two
+        run: echo FINAL_LAYER_TWO_PASS
