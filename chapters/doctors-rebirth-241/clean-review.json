@@ -1,0 +1,54 @@
+{
+  "checkpoint": "CLEAN",
+  "status": "PASS",
+  "chapter_id": "c241d001",
+  "chapter_number": 241,
+  "source_url": "https://asurascans.com/comics/doctors-rebirth-53fc8424/chapter/241",
+  "base_clean": {
+    "run_id": 34732864896,
+    "artifact": "02-clean-review-c241d001",
+    "artifact_id": 10309429243,
+    "artifact_digest": "sha256:4ed49b87d85916c8560aca90f806b6566c17b5762bf3b47499102b8a0999130a"
+  },
+  "approved_clean": {
+    "run_id": 34734740336,
+    "artifact": "02b-clean-local-repair-c241d001",
+    "artifact_id": 10310995735,
+    "artifact_digest": "sha256:70d9329c20c86dcf77dda0ad863037de5bd8683d0d8a1d00f0b2d7c886bd011f"
+  },
+  "review": {
+    "slices_reviewed": 68,
+    "source_pages_reconstructed": 17,
+    "core_ownership_used_for_residue_judgement": true,
+    "story_text_residue_blockers": 0,
+    "artwork_damage_blockers": 0,
+    "overlap_false_positives_discarded": [14, 20, 59, 63, 64],
+    "local_repairs": [
+      {
+        "source_page": 0,
+        "page_index": 0,
+        "action": "restore entire non-story cover/scanlation splash",
+        "pixel_exact": true,
+        "skipped_for_ocr_and_render_edits": true
+      },
+      {
+        "source_page": 3,
+        "page_index": 11,
+        "action": "restore decorative Doctor's Rebirth title logo region only",
+        "pixel_exact_restore_region": true,
+        "story_dialogue_clean_preserved": true
+      },
+      {
+        "source_page": 16,
+        "page_index": 67,
+        "action": "restore entire credit/promo tail",
+        "pixel_exact": true,
+        "skipped_for_ocr_and_render_edits": true
+      }
+    ]
+  },
+  "technical_pass": true,
+  "editorial_pass": true,
+  "blockers": [],
+  "next_action": "RUN_CHECKPOINT_03_OCR_REVIEW"
+}
