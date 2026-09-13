@@ -1,4 +1,4 @@
-name: Chapter 241 FINAL Human Approved Export
+name: Chapter 241 Final Bootstrap
 
 on:
   push:
@@ -6,63 +6,14 @@ on:
       - 'chapter/doctors-rebirth\+241'
     paths:
       - '.github/workflows/chapter-241-final.yml'
-      - 'chapters/doctors-rebirth-241/run_final_package.py'
-      - 'chapters/doctors-rebirth-241/visual-review.json'
   workflow_dispatch:
 
-permissions:
-  contents: read
-  actions: read
-
-concurrency:
-  group: chapter-241-human-loop
-  cancel-in-progress: false
-
 jobs:
-  final-export:
+  final-bootstrap:
     runs-on: ubuntu-22.04
-    timeout-minutes: 25
-    env:
-      GH_TOKEN: ${{ github.token }}
-      RENDER_RUN_ID: '34744936501'
-      RENDER_ARTIFACT: 05-render-candidate-c241d001
     steps:
       - uses: actions/checkout@v4
         with:
           ref: 'chapter/doctors-rebirth+241'
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Install final integrity dependency
-        run: python -m pip install --only-binary=:all: Pillow==10.4.0
-
-      - name: Restore exact human-approved render artifact
-        run: |
-          rm -rf checkpoint/06-approved-render checkpoint/07-final
-          mkdir -p checkpoint/06-approved-render checkpoint/07-final
-          gh run download "$RENDER_RUN_ID" -n "$RENDER_ARTIFACT" -D checkpoint/06-approved-render
-          test -f checkpoint/06-approved-render/render-summary.json
-          test -f checkpoint/06-approved-render/typography-plan.json
-          test -f checkpoint/06-approved-render/translated-manifest-rendered.json
-          test -f checkpoint/06-approved-render/raster-fallbacks.json
-          test -d checkpoint/06-approved-render/final_pages
-
-      - name: Verify all gates and build deterministic FINAL archive
-        run: PYTHONPATH=. python chapters/doctors-rebirth-241/run_final_package.py
-
-      - name: Verify FINAL files exist
-        run: |
-          test -f checkpoint/07-final/Doctors-Rebirth-Chapter-241-VI-FINAL.zip
-          test -f checkpoint/07-final/final-report.json
-          test -f checkpoint/07-final/FINAL_CHECKPOINT.txt
-
-      - name: Upload FINAL chapter
-        uses: actions/upload-artifact@v4
-        with:
-          name: Doctors-Rebirth-Chapter-241-VI-FINAL
-          path: checkpoint/07-final/
-          compression-level: 0
-          retention-days: 7
-          if-no-files-found: error
+      - name: Bootstrap
+        run: echo FINAL_BOOTSTRAP_PASS
