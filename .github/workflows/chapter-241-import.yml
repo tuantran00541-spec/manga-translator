@@ -3,9 +3,9 @@ name: Chapter 241 Import
 on:
   push:
     branches:
-      - chapter/doctors-rebirth+241
+      - 'chapter/doctors-rebirth+241'
     paths:
-      - .github/workflows/chapter-241-import.yml
+      - '.github/workflows/chapter-241-import.yml'
 
 permissions:
   contents: write
@@ -16,5 +16,5 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: chapter/doctors-rebirth+241
-      - run: echo "chapter 241 import bootstrap"
+          ref: 'chapter/doctors-rebirth+241'
+      - run: echo "chapter 241 import bootstrap v2"
