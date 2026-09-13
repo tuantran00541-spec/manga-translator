@@ -1,6 +1,11 @@
 name: Perf residue coalesce AB
 
 on:
+  push:
+    branches:
+      - perf/bubble-fastpath-roi-lama
+    paths:
+      - .github/workflows/perf-residue-coalesce-ab.yml
   workflow_dispatch:
 
 permissions:
