@@ -12,6 +12,7 @@ from app.routers import visual_qc as visual_qc_router
 from app.routers.translation import TranslateChapterRequest
 from app.translation.deepseek import DeepSeekTranslator, OpenAICompatibleTranslator
 from app.visual_qc.deepseek_region_client import DeepSeekRegionQC
+from app.visual_qc.openai_compatible import OpenAICompatibleVisualQC
 from app.visual_qc.schemas import VisualQCChapterRequest
 
 
@@ -94,6 +95,30 @@ def test_model_listing_normalizes_gemini_names(monkeypatch):
         "provider": "gemini",
         "models": ["gemini-flash", "gemini-pro"],
     }
+
+
+def test_single_page_qc_resolves_fixed_provider_endpoint_and_request_profile():
+    deepseek = OpenAICompatibleVisualQC(
+        provider_label="DeepSeek",
+        chat_url=str(get_provider("deepseek").chat_url),
+        model="deepseek-v4-flash-vision-exp",
+    )
+    openrouter = OpenAICompatibleVisualQC(
+        provider_label="OpenRouter",
+        chat_url=str(get_provider("openrouter").chat_url),
+        model="vendor/vision",
+    )
+
+    assert deepseek.provider_id == "deepseek"
+    assert deepseek._request_extras == {"thinking": {"type": "disabled"}}
+    assert openrouter.provider_id == "openrouter"
+    assert openrouter._request_extras == {}
+    with pytest.raises(ValueError):
+        OpenAICompatibleVisualQC(
+            provider_id="openrouter",
+            chat_url="https://attacker.example/chat/completions",
+            model="vendor/vision",
+        )
 
 
 def test_chapter_qc_keeps_vendor_specific_fields_on_deepseek_only():
