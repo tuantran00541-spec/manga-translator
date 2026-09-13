@@ -1,0 +1,93 @@
+{
+  "checkpoint": "VISUAL_REVIEW",
+  "chapter_id": "c3513510",
+  "series_slug": "logging-10000-years-into-the-future-53fc8424",
+  "series_title": "Logging 10,000 Years into the Future",
+  "chapter_number": 351,
+  "source_url": "https://asurascans.com/comics/logging-10000-years-into-the-future-53fc8424/chapter/351",
+  "status": "PASS",
+  "render_run_id": 34730288869,
+  "render_artifact": "05-render-candidate-c3513510",
+  "render_artifact_id": 10308548237,
+  "render_artifact_digest": "sha256:aa11c01c827746438bc311aed15f6dd4040c630b7cf7bba3df91e78a5510f5eb",
+  "render_head_sha": "0b07311bf8e21d4d57fceb2d685c29a63e457d8c",
+  "source_pages": 11,
+  "render_slices": 40,
+  "active_story_objects": 71,
+  "persistent_tombstones": 108,
+  "proof_review": {
+    "object_proof_sheets_reviewed": 6,
+    "object_proof_sheets_total": 6,
+    "all_active_story_objects_covered_by_object_proofs": true,
+    "full_page_overview_reviewed": true,
+    "stitch_seam_proof_reviewed": true,
+    "stitch_seams_reviewed": 29,
+    "full_chapter_page_order_reviewed": true,
+    "bubble_alignment_and_optical_breathing_reviewed": true
+  },
+  "initial_visual_issues": [
+    {
+      "kind": "emotion_font_mismatch",
+      "description": "Shadow-fonts and Curves-Regular weakened readability/acting in the Darius threat, mythic narration and final cosmic-revelation passages.",
+      "repair": "Restore the approved Mac-dinh font families for those roles while keeping Granite, Manga-fonts and Skill-fonts-1 where the panel emotion supports them."
+    },
+    {
+      "kind": "font_left_bearing_alignment_drift",
+      "description": "The renderer used bbox[2] as line width, so custom fonts with non-zero left bearing could occasionally look pushed to one side despite center alignment.",
+      "repair": "Center visible ink using bbox width x2-x1 and compensate left bearing; add a regression test using repository manga fonts."
+    },
+    {
+      "kind": "source_text_residue",
+      "source_page": 2,
+      "description": "The panic bubble retained two English fragments, 'I' and 'IT!', outside the detector-owned cleaned text region.",
+      "repair": "Apply a local white-bubble cleanup to only those two interior source-text fragments, verify zero dark source pixels, then rerender."
+    },
+    {
+      "kind": "optical_breathing",
+      "description": "A small subset of localized text blocks technically fit but occupied nearly the full detector-owned source-text width, making them feel visually squeezed even while centered.",
+      "repair": "Apply symmetric horizontal insets to 13 reviewed objects, preserve their center, and refit fixed typography without changing semantic font roles."
+    }
+  ],
+  "local_repairs": {
+    "renderer_alignment_regression_test": "PASS",
+    "clean_visual_repairs": 1,
+    "clean_visual_repair_dark_pixels_after": 0,
+    "optical_geometry_repairs": 13,
+    "optical_geometry_center_preserved": true,
+    "font_role_repairs_applied": true,
+    "translation_punctuation_visual_repairs": 2,
+    "unrelated_page_regression_seen": false
+  },
+  "checks": {
+    "overflow_blockers": 0,
+    "clipping_blockers": 0,
+    "missing_text_blockers": 0,
+    "duplicate_text_blockers": 0,
+    "source_text_residue_blockers": 0,
+    "artwork_damage_blockers": 0,
+    "seam_blockers": 0,
+    "glyph_blockers": 0,
+    "font_jump_blockers": 0,
+    "bubble_alignment_blockers": 0,
+    "optical_breathing_blockers": 0,
+    "visual_blockers_total": 0
+  },
+  "typography": {
+    "normal_dialogue_font": "Mac-dinh-3",
+    "normal_narration_font": "Mac-dinh-2",
+    "panic_shout_font": "Granite",
+    "dramatic_narration_font": "Manga-fonts",
+    "skill_name_font": "Skill-fonts-1",
+    "font_size_auto_objects": 0,
+    "final_font_size_min_px": 36,
+    "final_font_size_max_px": 96,
+    "font_fallback_count": 0,
+    "objects_at_or_below_30px": 0,
+    "scene_emotion_context_aware_fonts_accepted": true,
+    "fixed_size_after_preflight": true
+  },
+  "visual_pass_allowed": true,
+  "final_export_allowed": true,
+  "blockers": [],
+  "next_action": "RUN_FINAL_PACKAGE"
+}

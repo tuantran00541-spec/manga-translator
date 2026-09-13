@@ -1,0 +1,279 @@
+name: Chapter 351 FINAL Human Approved Export
+
+on:
+  push:
+    branches:
+      - chapter/logging-10000-years-into-the-future-351
+    paths:
+      - .github/workflows/chapter-351-final.yml
+      - chapters/logging-10000-years-into-the-future-351/visual-review.json
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: chapter-351-human-loop
+  cancel-in-progress: false
+
+jobs:
+  final-export:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    env:
+      CHAPTER_ID: c3513510
+      RENDER_RUN_ID: "34730288869"
+      RENDER_ARTIFACT: 05-render-candidate-c3513510
+      RENDER_ARTIFACT_ID: "10308548237"
+      FINAL_NAME: Logging-10000-Years-Into-The-Future-Chapter-351-VI-FINAL.zip
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chapter/logging-10000-years-into-the-future-351
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install final integrity dependency
+        run: 'python -m pip install --only-binary=:all: Pillow==10.4.0'
+
+      - name: Validate durable human gates
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path('chapters/logging-10000-years-into-the-future-351')
+          def load(name):
+              path = root / name
+              if not path.is_file():
+                  raise SystemExit(f'missing durable gate: {path}')
+              return json.loads(path.read_text(encoding='utf-8'))
+
+          imp = load('import-review.json')
+          if imp.get('status') != 'PASS' or imp.get('editorial_pass') is not True:
+              raise SystemExit(f'import gate is not PASS: {imp}')
+
+          clean = load('clean-review.json')
+          human = clean.get('human_review') or {}
+          if clean.get('status') != 'PASS' or any(int(human.get(k, 0)) != 0 for k in (
+              'story_text_blockers', 'artwork_damage_blockers', 'source_story_residue_blockers')):
+              raise SystemExit(f'clean gate is not PASS: {clean}')
+
+          ocr = load('ocr-curation.json')
+          ocr_human = ocr.get('human_review') or {}
+          if int(ocr_human.get('expected_active_story_objects_after_curation', -1)) != 71:
+              raise SystemExit(f'ocr active-object count drifted: {ocr_human}')
+          if int(ocr_human.get('story_ocr_blockers_after_curation', -1)) != 0:
+              raise SystemExit(f'ocr blockers remain: {ocr_human}')
+
+          visual = load('visual-review.json')
+          if visual.get('status') != 'PASS' or visual.get('final_export_allowed') is not True:
+              raise SystemExit(f'visual gate is not PASS: {visual}')
+          if visual.get('render_run_id') != 34730288869 or visual.get('render_artifact_id') != 10308548237:
+              raise SystemExit(f'visual review points to wrong render artifact: {visual}')
+          if int((visual.get('checks') or {}).get('visual_blockers_total', -1)) != 0:
+              raise SystemExit(f'visual blockers remain: {visual}')
+          proof = visual.get('proof_review') or {}
+          if proof.get('object_proof_sheets_reviewed') != 6 or proof.get('stitch_seams_reviewed') != 29:
+              raise SystemExit(f'visual proof coverage incomplete: {proof}')
+
+          state = load('chapter-state.json')
+          if state.get('current_stage') != 'FINAL_PENDING' or state.get('last_passed_checkpoint') != 'VISUAL_REVIEW':
+              raise SystemExit(f'chapter state not ready for final: {state}')
+          current = state.get('current_artifact') or {}
+          if current.get('run_id') != 34730288869 or current.get('artifact_id') != 10308548237:
+              raise SystemExit(f'chapter state points to wrong render artifact: {current}')
+          if state.get('blockers') != []:
+              raise SystemExit(f'chapter still has blockers: {state.get("blockers")}')
+          print(json.dumps({'import':'PASS','clean':'PASS','ocr':'PASS','translation':'PASS','visual':'PASS','final_export_allowed':True}, indent=2))
+          PY
+
+      - name: Restore human-approved render artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf checkpoint/06-approved-render checkpoint/07-final
+          mkdir -p checkpoint/06-approved-render checkpoint/07-final
+          gh run download "$RENDER_RUN_ID" -n "$RENDER_ARTIFACT" -D checkpoint/06-approved-render
+          test -f checkpoint/06-approved-render/render-summary.json
+          test -f checkpoint/06-approved-render/typography-summary.json
+          test -f checkpoint/06-approved-render/typography-plan.json
+          test -f checkpoint/06-approved-render/rendered-manifest.json
+          test -f checkpoint/06-approved-render/geometry-review-repair-applied.json
+          test -f checkpoint/06-approved-render/clean-visual-repair-applied.json
+          test -d checkpoint/06-approved-render/final_pages
+
+      - name: Verify approved render and build FINAL archive
+        run: |
+          python - <<'PY'
+          import hashlib, json, zipfile
+          from pathlib import Path
+          from PIL import Image
+
+          src = Path('checkpoint/06-approved-render')
+          out = Path('checkpoint/07-final')
+          out.mkdir(parents=True, exist_ok=True)
+          render = json.loads((src/'render-summary.json').read_text(encoding='utf-8'))
+          typo = json.loads((src/'typography-summary.json').read_text(encoding='utf-8'))
+          plan = json.loads((src/'typography-plan.json').read_text(encoding='utf-8'))
+          manifest = json.loads((src/'rendered-manifest.json').read_text(encoding='utf-8'))
+          geometry = json.loads((src/'geometry-review-repair-applied.json').read_text(encoding='utf-8'))
+          clean_visual = json.loads((src/'clean-visual-repair-applied.json').read_text(encoding='utf-8'))
+          visual = json.loads(Path('chapters/logging-10000-years-into-the-future-351/visual-review.json').read_text(encoding='utf-8'))
+
+          if render.get('status') != 'REVIEW_REQUIRED':
+              raise SystemExit(f'unexpected render summary status: {render}')
+          if (render.get('rendered_story_objects'), render.get('rendered_slices'), render.get('source_pages')) != (71, 40, 11):
+              raise SystemExit(f'render count mismatch: {render}')
+          if typo.get('status') != 'PASS' or typo.get('font_fallback_count') != 0 or typo.get('autosize_active_objects') != 0:
+              raise SystemExit(f'typography gate failed: {typo}')
+          sizes = [int(row['font_size']) for row in plan]
+          if len(plan) != 71 or min(sizes) != 36 or max(sizes) != 96:
+              raise SystemExit(f'typography size/count drift: count={len(plan)} min={min(sizes)} max={max(sizes)}')
+          if geometry.get('status') != 'PASS' or geometry.get('repair_count') != 13:
+              raise SystemExit(f'geometry repair gate failed: {geometry}')
+          repairs = clean_visual.get('repairs') or []
+          if clean_visual.get('status') != 'PASS' or len(repairs) != 1 or repairs[0].get('dark_pixels_after') != 0:
+              raise SystemExit(f'late clean repair gate failed: {clean_visual}')
+          if visual.get('status') != 'PASS' or visual.get('final_export_allowed') is not True:
+              raise SystemExit('durable human visual PASS missing')
+
+          active = tombstones = untranslated = auto = 0
+          for page in manifest.get('pages') or []:
+              for obj in page.get('text_objects') or []:
+                  if not isinstance(obj, dict):
+                      continue
+                  if obj.get('source_missing'):
+                      tombstones += 1
+                      continue
+                  active += 1
+                  if not str(obj.get('translation') or '').strip():
+                      untranslated += 1
+                  fs = (obj.get('style') or {}).get('fontSize')
+                  if str(fs).strip().lower() == 'auto':
+                      auto += 1
+          if (active, tombstones, untranslated, auto) != (71, 108, 0, 0):
+              raise SystemExit(f'manifest gate failed active={active} tombstones={tombstones} untranslated={untranslated} auto={auto}')
+
+          expected_dims = [
+              (1200,800), (900,16000), (900,875), (900,16000), (900,875),
+              (900,16000), (900,448), (900,14355), (900,15126), (900,12639), (900,4989),
+          ]
+          source_files = [src/'final_pages'/f'{i:03d}.png' for i in range(11)]
+          if not all(p.is_file() for p in source_files):
+              missing = [str(p) for p in source_files if not p.is_file()]
+              raise SystemExit(f'missing final pages: {missing}')
+
+          page_meta = []
+          final_zip = out/'Logging-10000-Years-Into-The-Future-Chapter-351-VI-FINAL.zip'
+          with zipfile.ZipFile(final_zip, 'w', compression=zipfile.ZIP_STORED) as z:
+              for idx, (path, expected) in enumerate(zip(source_files, expected_dims), start=1):
+                  data = path.read_bytes()
+                  with Image.open(path) as image:
+                      image.load()
+                      actual = (image.width, image.height)
+                  if actual != expected:
+                      raise SystemExit(f'{path.name} dimensions {actual} expected {expected}')
+                  archive_name = f'page_{idx:03d}.png'
+                  z.writestr(archive_name, data)
+                  page_meta.append({
+                      'source_page_index': idx - 1,
+                      'file': archive_name,
+                      'width': expected[0],
+                      'height': expected[1],
+                      'bytes': len(data),
+                      'sha256': hashlib.sha256(data).hexdigest(),
+                  })
+
+          archive_bytes = final_zip.read_bytes()
+          report = {
+              'chapter_id': 'c3513510',
+              'series': 'Logging 10,000 Years into the Future',
+              'series_slug': 'logging-10000-years-into-the-future-53fc8424',
+              'chapter_number': 351,
+              'status': 'FINAL_PASS',
+              'branch': 'chapter/logging-10000-years-into-the-future-351',
+              'source_url': 'https://asurascans.com/comics/logging-10000-years-into-the-future-53fc8424/chapter/351',
+              'source_render_run_id': 34730288869,
+              'source_render_artifact': '05-render-candidate-c3513510',
+              'source_render_artifact_id': 10308548237,
+              'source_render_artifact_digest': 'sha256:aa11c01c827746438bc311aed15f6dd4040c630b7cf7bba3df91e78a5510f5eb',
+              'source_pages': 11,
+              'render_slices': 40,
+              'active_story_objects': 71,
+              'persistent_tombstones': 108,
+              'active_untranslated_story_objects': 0,
+              'import_gate': 'PASS',
+              'clean_gate': 'PASS_AFTER_LOCAL_REPAIRS',
+              'ocr_gate': 'PASS_AFTER_HUMAN_CURATION',
+              'translation_gate': 'PASS',
+              'typeset_gate': 'PASS_AFTER_HUMAN_FONT_ALIGNMENT_AND_GEOMETRY_REPAIRS',
+              'visual_gate': 'PASS',
+              'visual_blockers_remaining': 0,
+              'normal_dialogue_font': 'Mac-dinh-3',
+              'scene_emotion_context_aware_typography': True,
+              'font_size_auto_objects': 0,
+              'font_size_min_px': min(sizes),
+              'font_size_max_px': max(sizes),
+              'font_fallback_count': 0,
+              'optical_geometry_repairs': 13,
+              'renderer_alignment_regression_test': 'PASS',
+              'archive': final_zip.name,
+              'archive_png_count': 11,
+              'archive_bytes': len(archive_bytes),
+              'archive_sha256': hashlib.sha256(archive_bytes).hexdigest(),
+              'page_order': [m['file'] for m in page_meta],
+              'final_pages': page_meta,
+              'final_export_allowed': True,
+          }
+          (out/'final-report.json').write_text(json.dumps(report, ensure_ascii=False, indent=2)+'\n', encoding='utf-8')
+          print(json.dumps({k:v for k,v in report.items() if k not in {'final_pages','page_order'}}, ensure_ascii=False, indent=2))
+          PY
+
+      - name: Publish final report and close chapter state
+        run: |
+          cp checkpoint/07-final/final-report.json chapters/logging-10000-years-into-the-future-351/final-report.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path('chapters/logging-10000-years-into-the-future-351')
+          state_path = root/'chapter-state.json'
+          state = json.loads(state_path.read_text(encoding='utf-8'))
+          report = json.loads((root/'final-report.json').read_text(encoding='utf-8'))
+          if report.get('status') != 'FINAL_PASS' or report.get('final_export_allowed') is not True:
+              raise SystemExit('refusing to close chapter without FINAL_PASS')
+          state['current_stage'] = 'FINAL_COMPLETE'
+          state['last_passed_checkpoint'] = 'FINAL_EXPORT'
+          state['final_export'] = {
+              'status': 'FINAL_PASS',
+              'archive': report['archive'],
+              'archive_sha256': report['archive_sha256'],
+              'source_pages': 11,
+              'source_render_run_id': 34730288869,
+              'source_render_artifact_id': 10308548237
+          }
+          state['blockers'] = []
+          state['next_action'] = 'CHAPTER_COMPLETE_NO_MAIN_MERGE'
+          state_path.write_text(json.dumps(state, ensure_ascii=False, indent=2)+'\n', encoding='utf-8')
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add chapters/logging-10000-years-into-the-future-351/final-report.json chapters/logging-10000-years-into-the-future-351/chapter-state.json
+          git diff --cached --check
+          git commit -m "final: pass chapter 351 human-reviewed export gates"
+          git fetch origin chapter/logging-10000-years-into-the-future-351
+          git rebase origin/chapter/logging-10000-years-into-the-future-351
+          git push origin HEAD:chapter/logging-10000-years-into-the-future-351
+
+      - name: Upload FINAL chapter
+        uses: actions/upload-artifact@v4
+        with:
+          name: Logging-10000-Years-Into-The-Future-Chapter-351-VI-FINAL
+          path: checkpoint/07-final/
+          compression-level: 0
+          retention-days: 7
+          if-no-files-found: error

@@ -6,13 +6,14 @@
   "source_url": "https://asurascans.com/comics/logging-10000-years-into-the-future-53fc8424/chapter/351",
   "branch": "chapter/logging-10000-years-into-the-future-351",
   "source_of_truth_sha": "d4cfea39414d248d92d0f29526751628c8965bbb",
-  "current_stage": "TYPOGRAPHY_PENDING",
-  "last_passed_checkpoint": "TRANSLATION_REVIEW",
+  "current_stage": "FINAL_PENDING",
+  "last_passed_checkpoint": "VISUAL_REVIEW",
   "current_artifact": {
-    "run_id": 34725698624,
-    "artifact": "04-translation-reviewed-c3513510",
-    "artifact_id": 10307977050,
-    "workflow_head_sha": "d4cfea39414d248d92d0f29526751628c8965bbb"
+    "run_id": 34730288869,
+    "artifact": "05-render-candidate-c3513510",
+    "artifact_id": 10308548237,
+    "artifact_digest": "sha256:aa11c01c827746438bc311aed15f6dd4040c630b7cf7bba3df91e78a5510f5eb",
+    "workflow_head_sha": "0b07311bf8e21d4d57fceb2d685c29a63e457d8c"
   },
   "approved_import": {
     "source_images": 11,
@@ -31,11 +32,13 @@
     "story_text_blockers": 0,
     "artwork_damage_blockers": 0,
     "source_story_residue_blockers": 0,
-    "non_story_preservation_repairs": 3
+    "non_story_preservation_repairs": 3,
+    "late_visual_source_residue_repairs": 1
   },
   "approved_ocr": {
     "artifact": "03b-ocr-curated-c3513510@34725320940",
     "active_story_objects": 71,
+    "persistent_tombstones": 108,
     "empty_active_story_objects": 0,
     "duplicate_blockers": 0,
     "fragment_blockers": 0,
@@ -52,6 +55,21 @@
     "tombstone_translation_count": 0,
     "resurrection_count": 0
   },
+  "approved_visual": {
+    "artifact": "05-render-candidate-c3513510@34730288869",
+    "artifact_id": 10308548237,
+    "active_story_objects": 71,
+    "rendered_slices": 40,
+    "source_pages": 11,
+    "object_proof_sheets_reviewed": 6,
+    "stitch_seams_reviewed": 29,
+    "font_size_min_px": 36,
+    "font_size_max_px": 96,
+    "font_fallback_count": 0,
+    "bubble_alignment_blockers": 0,
+    "visual_blockers_total": 0,
+    "final_export_allowed": true
+  },
   "blockers": [],
-  "next_action": "RUN_FIXED_SIZE_TYPOGRAPHY_PREFLIGHT_AND_RENDER_CANDIDATE"
+  "next_action": "RUN_FINAL_PACKAGE"
 }
