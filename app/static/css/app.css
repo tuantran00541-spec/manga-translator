@@ -2,4 +2,171 @@
 @import url("./tokens.css") layer(tokens);
 @import url("./foundation.css") layer(foundation);
 @import url("./studio.css") layer(studio);
-@import url("./theme-picker.css") layer(studio);
+
+@layer studio {
+  .theme-control.theme-picker {
+    position: relative;
+    display: block;
+    height: var(--control-height);
+    padding: 0;
+    border: 0;
+    background: transparent;
+  }
+
+  .theme-picker .theme-select-native {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    margin: -1px !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    clip: rect(0 0 0 0) !important;
+    clip-path: inset(50%) !important;
+    border: 0 !important;
+    white-space: nowrap !important;
+    pointer-events: none !important;
+  }
+
+  .theme-trigger {
+    position: relative;
+    display: flex;
+    min-width: 118px;
+    height: var(--control-height);
+    align-items: center;
+    gap: 7px;
+    padding: 0 30px 0 10px;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    background: var(--surface-panel);
+    color: var(--text-secondary);
+    font: inherit;
+    font-size: 12px;
+    line-height: 1;
+    cursor: pointer;
+    transition:
+      color var(--motion-fast),
+      background var(--motion-fast),
+      border-color var(--motion-fast),
+      box-shadow var(--motion-fast);
+  }
+
+  .theme-trigger:hover {
+    border-color: var(--border-strong);
+    background: var(--surface-hover);
+    color: var(--text-primary);
+  }
+
+  .theme-trigger:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+
+  .theme-trigger svg {
+    width: 16px;
+    height: 16px;
+    flex: 0 0 auto;
+  }
+
+  .theme-trigger-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .theme-trigger::after {
+    position: absolute;
+    right: 11px;
+    top: 50%;
+    width: 6px;
+    height: 6px;
+    border-right: 1.5px solid currentColor;
+    border-bottom: 1.5px solid currentColor;
+    content: "";
+    opacity: .72;
+    transform: translateY(-68%) rotate(45deg);
+    transition: transform var(--motion-fast);
+  }
+
+  .theme-picker.open .theme-trigger {
+    border-color: var(--border-strong);
+    background: var(--surface-raised);
+    color: var(--text-primary);
+  }
+
+  .theme-picker.open .theme-trigger::after {
+    transform: translateY(-28%) rotate(225deg);
+  }
+
+  .theme-menu {
+    position: absolute;
+    z-index: calc(var(--z-toolbar) + 12);
+    top: calc(100% + 7px);
+    right: 0;
+    width: 154px;
+    padding: 6px;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-md);
+    background: var(--surface-panel);
+    box-shadow: var(--shadow-float);
+  }
+
+  .theme-option {
+    position: relative;
+    display: flex;
+    width: 100%;
+    min-height: 34px;
+    align-items: center;
+    padding: 0 32px 0 10px;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-secondary);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 560;
+    text-align: left;
+    cursor: pointer;
+    transition: color var(--motion-fast), background var(--motion-fast);
+  }
+
+  .theme-option:hover,
+  .theme-option:focus-visible {
+    outline: 0;
+    background: var(--surface-hover);
+    color: var(--text-primary);
+  }
+
+  .theme-option[aria-selected="true"] {
+    background: var(--accent-soft);
+    color: var(--text-primary);
+    font-weight: 680;
+  }
+
+  .theme-option::after {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    width: 8px;
+    height: 4px;
+    border-left: 1.7px solid currentColor;
+    border-bottom: 1.7px solid currentColor;
+    content: "";
+    opacity: 0;
+    transform: translateY(-68%) rotate(-45deg);
+  }
+
+  .theme-option[aria-selected="true"]::after {
+    opacity: .9;
+  }
+
+  @media (max-width: 720px) {
+    .theme-trigger {
+      min-width: 104px;
+    }
+
+    .theme-menu {
+      width: 146px;
+    }
+  }
+}
