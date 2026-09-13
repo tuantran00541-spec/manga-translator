@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, field_validator
 
-from app.ai_providers import normalize_provider_id, resolve_provider, validate_model_name
+from app.ai_providers import PROVIDERS, normalize_provider_id, resolve_provider, validate_model_name
 from app.manifest_utils import (
     get_manifest_lock,
     invalidate_page_render,
@@ -13,7 +13,7 @@ from app.manifest_utils import (
     urlify_manifest,
 )
 from app.ocr.quality import should_block_translation
-from app.secret_store import SecretStoreUnavailable, get_provider_api_key
+from app.secret_store import SecretStoreUnavailable, get_provider_api_key, get_provider_config
 from app.security import validate_chapter_id, validate_url
 from app.text_objects import ensure_page_text_objects
 from app.translation import DeepSeekTranslator, TranslationBudgetExceeded
@@ -73,16 +73,28 @@ def _find_object(page: dict, object_id: str) -> dict | None:
     )
 
 
+def _resolve_translation_provider(req: TranslateChapterRequest):
+    label = req.provider_label
+    protocol = req.provider_protocol
+    api_base = req.provider_api_base
+    if req.provider not in PROVIDERS and not (label and protocol and api_base):
+        stored = get_provider_config(req.provider) or {}
+        label = label or stored.get("label")
+        protocol = protocol or stored.get("protocol")
+        api_base = api_base or stored.get("api_base")
+    return resolve_provider(
+        req.provider,
+        label=label,
+        protocol=protocol,
+        api_base=api_base,
+    )
+
+
 @router.post("/chapter")
 async def translate_chapter(req: TranslateChapterRequest) -> dict:
     validate_chapter_id(req.chapter_id)
     try:
-        provider = resolve_provider(
-            req.provider,
-            label=req.provider_label,
-            protocol=req.provider_protocol,
-            api_base=req.provider_api_base,
-        )
+        provider = _resolve_translation_provider(req)
         if provider.protocol != "openai":
             raise ValueError(f"{provider.label} is not available for translation")
         if not provider.builtin:
@@ -93,6 +105,8 @@ async def translate_chapter(req: TranslateChapterRequest) -> dict:
         )
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
+    except SecretStoreUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc
 
     translator = DeepSeekTranslator(
         model=model,
