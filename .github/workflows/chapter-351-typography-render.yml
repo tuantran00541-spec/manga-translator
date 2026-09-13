@@ -10,6 +10,7 @@ on:
       - tests/test_text_renderer_alignment.py
       - chapters/logging-10000-years-into-the-future-351/run_typography_render.py
       - chapters/logging-10000-years-into-the-future-351/run_typography_review_repair.py
+      - chapters/logging-10000-years-into-the-future-351/apply_geometry_review_repair.py
       - chapters/logging-10000-years-into-the-future-351/typography-review-repair.json
   workflow_dispatch:
 
@@ -63,6 +64,9 @@ jobs:
           test -d checkpoint/02b-repair/overlay/processed
           test -d checkpoint/02c-logo/overlay/processed
 
+      - name: Apply optical bubble geometry repair
+        run: PYTHONPATH=. python chapters/logging-10000-years-into-the-future-351/apply_geometry_review_repair.py
+
       - name: Apply human typography review repair and rerender
         run: PYTHONPATH=. python chapters/logging-10000-years-into-the-future-351/run_typography_review_repair.py
 
@@ -77,6 +81,7 @@ jobs:
           typography = json.loads((root / "typography-summary.json").read_text(encoding="utf-8"))
           render = json.loads((root / "render-summary.json").read_text(encoding="utf-8"))
           repair = json.loads((root / "typography-review-repair-applied.json").read_text(encoding="utf-8"))
+          geometry = json.loads((root / "geometry-review-repair-applied.json").read_text(encoding="utf-8"))
           plan = json.loads((root / "typography-plan.json").read_text(encoding="utf-8"))
 
           if typography.get("normal_dialogue_font") != "Mac-dinh-3":
@@ -91,6 +96,19 @@ jobs:
               raise SystemExit(f"render counts invalid: {render}")
           if render.get("status") != "REVIEW_REQUIRED" or repair.get("status") != "RERENDERED_REVIEW_REQUIRED":
               raise SystemExit("candidate must stop for human visual review")
+          if geometry.get("status") != "PASS" or geometry.get("repair_count") != 13:
+              raise SystemExit(f"geometry review repair contract failed: {geometry}")
+
+          plan_by_box = {row["box_id"]: row for row in plan}
+          for item in geometry.get("repairs") or []:
+              box_id = item["box_id"]
+              row = plan_by_box.get(box_id)
+              if row is None:
+                  raise SystemExit(f"geometry-repaired object missing from typography plan: {box_id}")
+              if row.get("region") != item.get("after"):
+                  raise SystemExit(f"geometry repair drifted before render for {box_id}: {row.get('region')} != {item.get('after')}")
+              if not item.get("center_preserved"):
+                  raise SystemExit(f"geometry repair did not preserve center: {box_id}")
 
           pages = sorted((root / "final_pages").glob("*.png"))
           if len(pages) != 11:
