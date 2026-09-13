@@ -7,6 +7,7 @@ on:
     paths:
       - '.github/workflows/chapter-241-typography-render.yml'
       - 'chapters/doctors-rebirth-241/run_typography_render.py'
+      - 'chapters/doctors-rebirth-241/apply_typography_overrides.py'
   workflow_dispatch:
 
 permissions:
@@ -50,6 +51,9 @@ jobs:
           test -f checkpoint/04-translation/translation-review-summary.json
           test -d checkpoint/02b-repair/processed
           cp -a checkpoint/02b-repair/processed data/processed/c241d001
+
+      - name: Apply reviewed typography geometry override
+        run: PYTHONPATH=. python chapters/doctors-rebirth-241/apply_typography_overrides.py
 
       - name: Build fixed-size render candidate
         run: PYTHONPATH=. python chapters/doctors-rebirth-241/run_typography_render.py
