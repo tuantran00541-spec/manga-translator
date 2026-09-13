@@ -58,6 +58,12 @@ Optional preferred inpaint model:
 
 - `lama-manga-dynamic.onnx` — used automatically when present; `lama.onnx` remains the fallback.
 
+The shared inpaint session is prepared once during server startup, before the
+web app accepts work, so the first processing request does not appear to freeze
+while ONNX builds the graph. The console and `GET /health` report the measured
+load time. Set `MANGA_INPAINT_PRELOAD=0` only when the process should retain the
+old fully-lazy, lower-idle-memory behavior.
+
 Start:
 
 ```bash

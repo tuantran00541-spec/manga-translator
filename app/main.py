@@ -25,6 +25,7 @@ from app.manifest_utils import (
 )
 from app.parameters import (
     FIXED_LAMA_CONCURRENT_INFERENCE,
+    INPAINT_PRELOAD_ENABLED,
     STALE_TEMP_MAX_AGE_SECONDS,
     USE_DYNAMIC_LAMA,
 )
@@ -93,6 +94,14 @@ async def lifespan(app: FastAPI):
         )
     else:
         logger.info("ONNX models OK")
+        if INPAINT_PRELOAD_ENABLED:
+            try:
+                pipeline.inpainter.preload()
+            except Exception:
+                logger.exception(
+                    "Startup inpaint model preparation failed; "
+                    "page processing will report the same model error"
+                )
     yield
 
 
@@ -235,6 +244,15 @@ def _runtime_state() -> dict:
     active_inpaint_model = None
     inpaint_dynamic = None
     inpaint_serialized = None
+    inpaint_load_status = {
+        "state": "idle",
+        "load_ms": None,
+        "failed": False,
+    }
+    if inpainter is not None:
+        status_provider = getattr(inpainter, "session_load_status", None)
+        if callable(status_provider):
+            inpaint_load_status = status_provider()
     if inpaint_session_loaded:
         model_path = getattr(inpainter, "lama_model_path", None)
         active_inpaint_model = Path(model_path).name if model_path else None
@@ -267,6 +285,10 @@ def _runtime_state() -> dict:
             "inpaint": {
                 "object_created": inpainter is not None,
                 "session_loaded": inpaint_session_loaded,
+                "load_state": inpaint_load_status["state"],
+                "load_ms": inpaint_load_status["load_ms"],
+                "load_failed": inpaint_load_status["failed"],
+                "preload_enabled": INPAINT_PRELOAD_ENABLED,
                 "preferred_model": preferred_inpaint_model,
                 "active_model": active_inpaint_model,
                 "dynamic": inpaint_dynamic,
@@ -292,11 +314,15 @@ def _runtime_state() -> dict:
 @app.get("/health")
 def health():
     missing = check_models()
+    runtime = _runtime_state()
+    inpaint_failed = bool(
+        runtime.get("models", {}).get("inpaint", {}).get("load_failed", False)
+    )
     return {
-        "status": "ok" if not missing else "degraded",
+        "status": "ok" if not missing and not inpaint_failed else "degraded",
         "models_missing": missing,
         "version": app.version,
-        "runtime": _runtime_state(),
+        "runtime": runtime,
     }
 
 

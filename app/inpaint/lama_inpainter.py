@@ -111,8 +111,12 @@ class Inpainter:
     def __init__(self):
         self._prefer_dynamic = USE_DYNAMIC_LAMA and LAMA_DYNAMIC_MODEL.is_file()
         self._session_lock = threading.RLock()
+        self._session_state_lock = threading.Lock()
         self._metrics_local = threading.local()
         self._session_run_count = 0
+        self._session_load_state = "idle"
+        self._session_load_ms = None
+        self._session_load_error = None
         self.session = None
         self.image_input = None
         self.mask_input = None
@@ -162,6 +166,19 @@ class Inpainter:
             )
         return bool(not self.dynamic_lama and self._serialize_fixed_inference)
 
+    def session_load_status(self) -> dict:
+        """Return a small thread-safe snapshot for health/debug reporting."""
+        with self._session_state_lock:
+            return {
+                "state": self._session_load_state,
+                "load_ms": self._session_load_ms,
+                "failed": self._session_load_error is not None,
+            }
+
+    def preload(self) -> None:
+        """Build the shared LaMa session before the first page needs it."""
+        self._ensure_session()
+
     def _configure_loaded_session(
         self,
         session,
@@ -198,36 +215,63 @@ class Inpainter:
 
             prefer_dynamic = self._prefer_dynamic
             model_path = LAMA_DYNAMIC_MODEL if prefer_dynamic else LAMA_MODEL
+            load_started_at = time.perf_counter()
+            with self._session_state_lock:
+                self._session_load_state = "loading"
+                self._session_load_ms = None
+                self._session_load_error = None
+            logger.info("Preparing inpaint model {}", model_path)
             try:
-                session = make_session(
-                    model_path,
-                    serialize_inference=(
-                        not prefer_dynamic
-                        and not FIXED_LAMA_CONCURRENT_INFERENCE
-                    ),
-                )
-            except Exception:
-                if not prefer_dynamic:
-                    raise
-                logger.exception(
-                    "Failed to load dynamic LaMa model {}; falling back to {}",
-                    LAMA_DYNAMIC_MODEL,
-                    LAMA_MODEL,
-                )
-                model_path = LAMA_MODEL
-                session = make_session(
-                    model_path,
-                    serialize_inference=not FIXED_LAMA_CONCURRENT_INFERENCE,
-                )
+                try:
+                    session = make_session(
+                        model_path,
+                        serialize_inference=(
+                            not prefer_dynamic
+                            and not FIXED_LAMA_CONCURRENT_INFERENCE
+                        ),
+                    )
+                except Exception:
+                    if not prefer_dynamic:
+                        raise
+                    logger.exception(
+                        "Failed to load dynamic LaMa model {}; falling back to {}",
+                        LAMA_DYNAMIC_MODEL,
+                        LAMA_MODEL,
+                    )
+                    model_path = LAMA_MODEL
+                    session = make_session(
+                        model_path,
+                        serialize_inference=not FIXED_LAMA_CONCURRENT_INFERENCE,
+                    )
 
-            self._configure_loaded_session(
-                session,
-                model_path,
-                expected_dynamic=(model_path == LAMA_DYNAMIC_MODEL),
+                self._configure_loaded_session(
+                    session,
+                    model_path,
+                    expected_dynamic=(model_path == LAMA_DYNAMIC_MODEL),
+                )
+            except Exception as exc:
+                load_ms = round(
+                    (time.perf_counter() - load_started_at) * 1000.0,
+                    1,
+                )
+                with self._session_state_lock:
+                    self._session_load_state = "failed"
+                    self._session_load_ms = load_ms
+                    self._session_load_error = type(exc).__name__
+                raise
+
+            load_ms = round(
+                (time.perf_counter() - load_started_at) * 1000.0,
+                1,
             )
+            with self._session_state_lock:
+                self._session_load_state = "ready"
+                self._session_load_ms = load_ms
+                self._session_load_error = None
             logger.info(
-                "Loaded inpaint model {} lazily (dynamic={})",
+                "Inpaint model {} ready in {:.1f} ms (dynamic={})",
                 self.lama_model_path,
+                load_ms,
                 self.dynamic_lama,
             )
 
