@@ -5,6 +5,7 @@ from pathlib import Path
 
 import requests
 
+from app.ai_providers import get_provider
 from app.visual_qc.deepseek_region_client import _extract_output_text, _safe_error_detail
 from app.visual_qc.gemini import (
     DEFAULT_CONNECT_TIMEOUT_SECONDS,
@@ -17,18 +18,32 @@ from app.visual_qc.gemini import (
 
 
 class OpenAICompatibleVisualQC:
+    """Single-page visual QC for OpenAI-compatible providers.
+
+    Endpoint/auth selection remains server-owned and provider-specific request
+    fields are sourced from ``AIProvider`` just like chapter QC and translation.
+    """
+
     def __init__(
         self,
         *,
-        provider_label: str,
-        chat_url: str,
+        provider_id: str,
+        provider_label: str | None = None,
+        chat_url: str | None = None,
         model: str,
         timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
     ):
-        self.provider_label = provider_label
-        self.chat_url = chat_url
+        provider = get_provider(provider_id)
+        if provider.protocol != "openai" or not provider.supports_visual_qc:
+            raise ValueError(f"{provider.label} is not available for OpenAI-compatible visual QC")
+        if not provider.chat_url and not chat_url:
+            raise ValueError(f"{provider.label} does not expose a chat-completions endpoint")
+        self.provider_id = provider.id
+        self.provider_label = provider_label or provider.label
+        self.chat_url = chat_url or str(provider.chat_url)
         self.model = model
         self.timeout_seconds = timeout_seconds
+        self._request_extras = provider.chat_completion_extras()
 
     def inspect(self, original_path: Path, cleaned_path: Path, api_key: str):
         secret = (api_key or "").strip()
@@ -56,6 +71,7 @@ class OpenAICompatibleVisualQC:
             "max_tokens": 1200,
             "stream": False,
         }
+        payload.update(self._request_extras)
         try:
             response = requests.post(
                 self.chat_url,
