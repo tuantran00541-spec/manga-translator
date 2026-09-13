@@ -6,8 +6,8 @@
   "source_url": "https://asurascans.com/comics/logging-10000-years-into-the-future-53fc8424/chapter/351",
   "branch": "chapter/logging-10000-years-into-the-future-351",
   "source_of_truth_sha": "d4cfea39414d248d92d0f29526751628c8965bbb",
-  "current_stage": "FINAL_PENDING",
-  "last_passed_checkpoint": "VISUAL_REVIEW",
+  "current_stage": "FINAL_COMPLETE",
+  "last_passed_checkpoint": "FINAL_EXPORT",
   "current_artifact": {
     "run_id": 34730288869,
     "artifact": "05-render-candidate-c3513510",
@@ -71,5 +71,13 @@
     "final_export_allowed": true
   },
   "blockers": [],
-  "next_action": "RUN_FINAL_PACKAGE"
+  "next_action": "CHAPTER_COMPLETE_NO_MAIN_MERGE",
+  "final_export": {
+    "status": "FINAL_PASS",
+    "archive": "Logging-10000-Years-Into-The-Future-Chapter-351-VI-FINAL.zip",
+    "archive_sha256": "628de26cb72673ce85bc68e5a13b4a13318177529e66ac095ae35c89a196832a",
+    "source_pages": 11,
+    "source_render_run_id": 34730288869,
+    "source_render_artifact_id": 10308548237
+  }
 }
