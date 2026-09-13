@@ -1,0 +1,221 @@
+name: Phase 13 regression isolation
+
+on:
+  push:
+    branches: [benchmark/phase13-regression-isolation]
+    paths:
+      - .github/workflows/phase13-regression-isolation.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: phase13-regression-isolation
+  cancel-in-progress: true
+
+jobs:
+  isolate:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    env:
+      PYTHONUNBUFFERED: "1"
+      MANGA_USE_DYNAMIC_LAMA: "1"
+      MANGA_PIPELINE_PROCESS_WORKER_LIMIT: "1"
+      MANGA_ORT_PROVIDER: openvino
+      MANGA_ORT_REQUIRE_PROVIDER: "1"
+      MANGA_ORT_OPENVINO_SCOPE: detectors
+      MANGA_ORT_OPENVINO_THREADS: "2"
+      MANGA_ORT_OPENVINO_STREAMS: "1"
+      MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
+      OPENBLAS_NUM_THREADS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install production processing runtime
+        run: |
+          python -m pip install \
+            numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 \
+            onnxruntime-openvino==1.24.1 psutil==6.1.1 loguru==0.7.2 \
+            requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 \
+            playwright==1.47.0 fastapi==0.115.0 pydantic==2.9.2 \
+            filelock==3.16.1 threadpoolctl==3.6.0
+      - name: Restore detector and inpaint models
+        id: models
+        uses: actions/cache@v4
+        with:
+          path: |
+            models/*.onnx
+            models/.e2e-provenance.json
+          key: processing-profile-models-b224548-v1
+      - name: Read pinned model provisioner
+        if: steps.models.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: b22454827f8190655d7070b80eb20c2550beadfa
+          path: benchmark-bootstrap
+          sparse-checkout: scripts/provision_real_e2e_models.py
+          sparse-checkout-cone-mode: false
+      - name: Provision public-equivalent production models
+        if: steps.models.outputs.cache-hit != 'true'
+        run: |
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple torch==2.5.1+cpu torchvision==0.20.1+cpu
+          python -m pip install --no-deps ultralytics==8.3.221 onnx==1.17.0 onnxslim==0.1.71
+          python -m pip install numpy==1.26.4 sympy==1.13.1 PyYAML==6.0.2 scipy==1.14.1 tqdm==4.67.1 matplotlib==3.9.2 pandas==2.2.3 py-cpuinfo==9.0.0 ml_dtypes==0.5.3 colorama==0.4.6 polars==1.33.1 ultralytics-thop==2.0.17
+          python benchmark-bootstrap/scripts/provision_real_e2e_models.py
+          cp benchmark-bootstrap/models/*.onnx models/
+          cp benchmark-bootstrap/models/.e2e-provenance.json models/
+      - name: Prepare one shared real chapter
+        run: |
+          mkdir -p benchmark-results/regression-isolation
+          python - <<'PY'
+          import hashlib, json, time
+          from pathlib import Path
+          from app.config import RAW_DIR
+          from app.optimized_pipeline import OptimizedChapterPipeline
+
+          URL = 'https://asurascans.com/comics/killer-pietro-08677664/chapter/120'
+          SAMPLE_COUNT = 20
+          pipeline = OptimizedChapterPipeline()
+          chapter_id = hashlib.sha256(f'isolation-template-{time.time_ns()}'.encode()).hexdigest()[:8]
+          manifest = pipeline.download_chapter(URL, chapter_id, workers=2)
+          total = len(manifest.get('pages', []))
+          if total != 101:
+              raise RuntimeError(f'expected 101 slices, got {total}')
+          selected = sorted(set(round(i * (total - 1) / (SAMPLE_COUNT - 1)) for i in range(SAMPLE_COUNT)))
+          raw_paths = sorted(str(p) for p in (RAW_DIR / chapter_id).iterdir() if p.is_file() and p.suffix.lower() in {'.png','.jpg','.jpeg','.webp','.bmp'})
+          spec = {'url': URL, 'total_slices': total, 'selected': selected, 'raw_paths': raw_paths}
+          Path('/tmp/isolation-spec.json').write_text(json.dumps(spec), encoding='utf-8')
+          print('ISOLATION_SPEC=' + json.dumps(spec))
+          PY
+      - name: Write profiler
+        run: |
+          cat > /tmp/profile_variant.py <<'PY'
+          from __future__ import annotations
+          import hashlib, json, os, statistics, time
+          from pathlib import Path
+          import psutil
+
+          from app.manifest_utils import load_manifest_raw
+          from app.optimized_pipeline import OptimizedChapterPipeline
+          from app.parameters import parameter_snapshot
+
+          label = os.environ['PROFILE_LABEL']
+          spec = json.loads(Path('/tmp/isolation-spec.json').read_text(encoding='utf-8'))
+          selected = list(spec['selected'])
+          raw_paths = [Path(p) for p in spec['raw_paths']]
+          pipeline = OptimizedChapterPipeline()
+          chapter_id = hashlib.sha256(f'{label}-{time.time_ns()}'.encode()).hexdigest()[:8]
+          manifest = pipeline._build_chapter_from_raw_paths(chapter_id, raw_paths, source_url=spec['url'], workers=2)
+          if len(manifest.get('pages', [])) != spec['total_slices']:
+              raise RuntimeError(f'{label}: slice drift')
+
+          process = psutil.Process()
+          rss_before = process.memory_info().rss / 2**20
+          started = time.perf_counter()
+          pipeline.process_pages(chapter_id, selected, workers=1)
+          wall_ms = (time.perf_counter() - started) * 1000.0
+          rss_after = process.memory_info().rss / 2**20
+
+          manifest = load_manifest_raw(chapter_id)
+          pages = manifest.get('pages', [])
+          last = manifest.get('last_processing_run') or {}
+          failed = last.get('failed_page_indices') or []
+          if failed:
+              raise RuntimeError(f'{label}: failed pages {failed}')
+
+          timing_names = ('read','detect','auto_inpaint','manual_inpaint','residue_verify','write','total')
+          timing_values = {name: [] for name in timing_names}
+          detector_values = {}
+          boxes = safe = review = deferred = residue = cleanup_verified = 0
+          for index in selected:
+              page = pages[index]
+              metrics = page.get('processing_metrics') or {}
+              timing = metrics.get('timing_ms') or {}
+              for name in timing_names:
+                  value = timing.get(name)
+                  if isinstance(value, (int,float)) and not isinstance(value,bool):
+                      timing_values[name].append(float(value))
+              detector = metrics.get('detector') or {}
+              for name, value in detector.items():
+                  if isinstance(value, (int,float)) and not isinstance(value,bool) and name.endswith('_ms'):
+                      detector_values.setdefault(name, []).append(float(value))
+              page_boxes = page.get('boxes') or []
+              boxes += len(page_boxes)
+              safe += sum(bool(b.get('safe_to_inpaint')) for b in page_boxes)
+              review += sum(bool(b.get('needs_review')) for b in page_boxes)
+              deferred += sum(bool(b.get('deferred_reason')) for b in page_boxes)
+              residue += len(page.get('residue_regions') or [])
+              cleanup_verified += int(bool(page.get('cleanup_verified')))
+
+          def mean(values):
+              return round(statistics.mean(values), 3) if values else 0.0
+          def total(values):
+              return round(sum(values), 3) if values else 0.0
+
+          report = {
+              'label': label,
+              'sample_count': len(selected),
+              'sample_indices': selected,
+              'wall_ms': round(wall_ms, 3),
+              'ms_per_slice': round(wall_ms / len(selected), 3),
+              'slices_per_minute': round(len(selected) * 60000.0 / wall_ms, 3),
+              'rss_before_mb': round(rss_before, 1),
+              'rss_after_mb': round(rss_after, 1),
+              'quality_proxy': {
+                  'boxes': boxes,
+                  'safe_to_inpaint': safe,
+                  'needs_review': review,
+                  'deferred': deferred,
+                  'residue_regions': residue,
+                  'cleanup_verified_pages': cleanup_verified,
+              },
+              'timing_mean_ms': {name: mean(values) for name, values in timing_values.items()},
+              'timing_sum_ms': {name: total(values) for name, values in timing_values.items()},
+              'detector_mean_ms': {name: mean(values) for name, values in sorted(detector_values.items())},
+              'last_processing_run': last,
+              'parameters': {
+                  k:v for k,v in parameter_snapshot().items()
+                  if k.startswith('DETECTOR_RESIDUE_') or k in {
+                      'DETECTOR_FOCUS_MAX_CHIPS','DETECTOR_FOCUS_HARD_MAX_CHIPS',
+                      'DETECTOR_GRAYSCALE_FALLBACK_MAX_ROIS','DETECTOR_GRAYSCALE_FALLBACK_HARD_MAX_ROIS'
+                  }
+              },
+          }
+          out = Path('benchmark-results/regression-isolation') / f'{label}.json'
+          out.write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+          print('ISOLATION_RESULT=' + json.dumps(report, ensure_ascii=False), flush=True)
+          PY
+      - name: Run isolation matrix sequentially
+        run: |
+          PROFILE_LABEL=baseline python /tmp/profile_variant.py
+          PROFILE_LABEL=residue2 MANGA_DETECTOR_RESIDUE_VERIFY_MAX_ROIS=2 python /tmp/profile_variant.py
+          PROFILE_LABEL=no_residue MANGA_DETECTOR_RESIDUE_VERIFY_ENABLED=0 python /tmp/profile_variant.py
+          PROFILE_LABEL=legacy_retries MANGA_DETECTOR_FOCUS_HARD_MAX_CHIPS=2 MANGA_DETECTOR_GRAYSCALE_FALLBACK_HARD_MAX_ROIS=2 python /tmp/profile_variant.py
+          PROFILE_LABEL=legacy_no_residue MANGA_DETECTOR_RESIDUE_VERIFY_ENABLED=0 MANGA_DETECTOR_FOCUS_HARD_MAX_CHIPS=2 MANGA_DETECTOR_GRAYSCALE_FALLBACK_HARD_MAX_ROIS=2 python /tmp/profile_variant.py
+      - name: Publish isolation summary
+        if: always()
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          rows=[]
+          for label in ('baseline','residue2','no_residue','legacy_retries','legacy_no_residue'):
+              p=Path('benchmark-results/regression-isolation')/f'{label}.json'
+              if p.is_file(): rows.append(json.loads(p.read_text(encoding='utf-8')))
+          lines=['## Phase 13 regression isolation','', '| mode | slices/min | s/slice | detect ms | residue ms | inpaint ms | boxes | safe | review | deferred | residue hits |', '|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|']
+          for r in rows:
+              t=r.get('timing_mean_ms') or {}; q=r.get('quality_proxy') or {}
+              lines.append(f"| {r['label']} | {r['slices_per_minute']} | {r['ms_per_slice']/1000:.3f} | {t.get('detect')} | {t.get('residue_verify')} | {t.get('auto_inpaint')} | {q.get('boxes')} | {q.get('safe_to_inpaint')} | {q.get('needs_review')} | {q.get('deferred')} | {q.get('residue_regions')} |")
+          text='\n'.join(lines)+'\n'
+          print(text)
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a',encoding='utf-8') as f: f.write(text)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: phase13-regression-isolation-${{ github.run_id }}
+          path: benchmark-results/regression-isolation/
+          retention-days: 7
+          if-no-files-found: warn
