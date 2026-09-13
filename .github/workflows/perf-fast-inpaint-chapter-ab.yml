@@ -1,0 +1,193 @@
+name: Perf fast inpaint chapter AB
+
+on:
+  push:
+    branches:
+      - perf/bubble-fastpath-roi-lama
+    paths:
+      - app/inpaint/fast_lama_inpainter.py
+      - app/optimized_pipeline.py
+      - .github/workflows/perf-fast-inpaint-chapter-ab.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: perf-fast-inpaint-chapter-ab
+  cancel-in-progress: true
+
+jobs:
+  chapter-ab:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 35
+    env:
+      PYTHONUNBUFFERED: "1"
+      MANGA_USE_DYNAMIC_LAMA: "1"
+      MANGA_ORT_PROVIDER: openvino
+      MANGA_ORT_REQUIRE_PROVIDER: "1"
+      MANGA_ORT_OPENVINO_SCOPE: detectors
+      MANGA_ORT_OPENVINO_THREADS: "2"
+      MANGA_ORT_OPENVINO_STREAMS: "1"
+      MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
+      OPENBLAS_NUM_THREADS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install production processing runtime
+        run: |
+          python -m pip install \
+            numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 \
+            onnxruntime-openvino==1.24.1 psutil==6.1.1 loguru==0.7.2 \
+            requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 \
+            playwright==1.47.0 fastapi==0.115.0 pydantic==2.9.2 \
+            filelock==3.16.1 threadpoolctl==3.6.0
+      - name: Restore detector and inpaint models
+        id: models
+        uses: actions/cache@v4
+        with:
+          path: |
+            models/*.onnx
+            models/.e2e-provenance.json
+          key: processing-profile-models-b224548-v1
+      - name: Read pinned model provisioner
+        if: steps.models.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: b22454827f8190655d7070b80eb20c2550beadfa
+          path: benchmark-bootstrap
+          sparse-checkout: scripts/provision_real_e2e_models.py
+          sparse-checkout-cone-mode: false
+      - name: Provision public-equivalent production models
+        if: steps.models.outputs.cache-hit != 'true'
+        run: |
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple torch==2.5.1+cpu torchvision==0.20.1+cpu
+          python -m pip install --no-deps ultralytics==8.3.221 onnx==1.17.0 onnxslim==0.1.71
+          python -m pip install numpy==1.26.4 sympy==1.13.1 PyYAML==6.0.2 scipy==1.14.1 tqdm==4.67.1 matplotlib==3.9.2 pandas==2.2.3 py-cpuinfo==9.0.0 ml_dtypes==0.5.3 colorama==0.4.6 polars==1.33.1 ultralytics-thop==2.0.17
+          python benchmark-bootstrap/scripts/provision_real_e2e_models.py
+          cp benchmark-bootstrap/models/*.onnx models/
+          cp benchmark-bootstrap/models/.e2e-provenance.json models/
+      - name: Run baseline versus fast inpainter on representative slices
+        run: |
+          mkdir -p benchmark-results/fast-inpaint
+          python - <<'PY'
+          from __future__ import annotations
+          import copy, hashlib, json, statistics, time
+          from pathlib import Path
+          import numpy as np
+
+          from app.image_io import read_image
+          from app.inpaint.fast_lama_inpainter import FastInpainter
+          from app.inpaint.lama_inpainter import Inpainter
+          from app.manifest_utils import load_manifest_raw
+          from app.optimized_pipeline import OptimizedChapterPipeline
+          from scripts.model_e2e_gate import _authority_mask
+
+          URL = 'https://asurascans.com/comics/killer-pietro-08677664/chapter/120'
+          OUT = Path('benchmark-results/fast-inpaint/report.json')
+          pipeline = OptimizedChapterPipeline()
+          chapter_id = hashlib.sha256(f'fast-inpaint-{time.time_ns()}'.encode()).hexdigest()[:8]
+          manifest = pipeline.download_chapter(URL, chapter_id, workers=2)
+          total = len(manifest.get('pages', []))
+          if total < 20:
+              raise RuntimeError(f'expected >=20 slices, got {total}')
+
+          # Spread samples across the chapter so bubbles, free text and textured
+          # artwork all contribute instead of benchmarking one contiguous scene.
+          indices = sorted({round(i * (total - 1) / 19) for i in range(20)})
+
+          def snapshot(label: str, inpainter):
+              pipeline._inpainter = inpainter
+              started = time.perf_counter()
+              pipeline.process_pages(chapter_id, indices, workers=1)
+              wall_ms = (time.perf_counter() - started) * 1000.0
+              current = load_manifest_raw(chapter_id)
+              pages = current.get('pages', [])
+              timing = []
+              inpaint_metrics = {}
+              authority_outside = 0
+              residue = 0
+              clean_hashes = {}
+              boxes = safe = review = deferred = 0
+              for idx in indices:
+                  page = pages[idx]
+                  metrics = page.get('processing_metrics') or {}
+                  timing.append(copy.deepcopy(metrics.get('timing_ms') or {}))
+                  for key, value in (metrics.get('auto_inpaint') or {}).items():
+                      if isinstance(value, (int, float)) and not isinstance(value, bool):
+                          inpaint_metrics[key] = inpaint_metrics.get(key, 0) + float(value)
+                  det = metrics.get('detector') or {}
+                  residue += int(det.get('post_inpaint_residue') or 0)
+                  page_boxes = page.get('boxes', [])
+                  boxes += len(page_boxes)
+                  safe += sum(bool(b.get('safe_to_inpaint')) for b in page_boxes)
+                  review += sum(bool(b.get('needs_review')) for b in page_boxes)
+                  deferred += sum(bool(b.get('deferred_reason')) for b in page_boxes)
+                  original = read_image(Path(page['original']))
+                  clean = read_image(Path(page['clean']))
+                  mask = _authority_mask(original, page_boxes, inpainter)
+                  changed = np.any(original != clean, axis=2)
+                  authority_outside += int(np.count_nonzero(changed & (mask <= 127)))
+                  clean_hashes[str(idx)] = hashlib.sha256(clean.tobytes()).hexdigest()
+
+              def mean_timing(name):
+                  vals = [float(row.get(name) or 0.0) for row in timing]
+                  return round(statistics.mean(vals), 3) if vals else 0.0
+
+              return {
+                  'label': label,
+                  'wall_ms': round(wall_ms, 3),
+                  'slices_per_min': round(len(indices) * 60000.0 / max(1.0, wall_ms), 3),
+                  'timing_mean_ms': {
+                      key: mean_timing(key)
+                      for key in ('detect', 'auto_inpaint', 'residue_verify', 'total')
+                  },
+                  'inpaint_metrics': {k: round(v, 3) for k, v in sorted(inpaint_metrics.items())},
+                  'post_inpaint_residue': residue,
+                  'authority_outside_changed': authority_outside,
+                  'boxes': boxes,
+                  'safe': safe,
+                  'review': review,
+                  'deferred': deferred,
+                  'clean_hashes': clean_hashes,
+              }
+
+          baseline = snapshot('baseline', Inpainter())
+          candidate = snapshot('candidate', FastInpainter())
+          report = {
+              'chapter_url': URL,
+              'chapter_id': chapter_id,
+              'total_slices': total,
+              'sample_indices': indices,
+              'baseline': baseline,
+              'candidate': candidate,
+          }
+          report['speedup'] = {
+              'wall_pct': round((baseline['wall_ms'] / candidate['wall_ms'] - 1.0) * 100.0, 2),
+              'auto_inpaint_pct': round(
+                  (baseline['timing_mean_ms']['auto_inpaint'] / max(1.0, candidate['timing_mean_ms']['auto_inpaint']) - 1.0) * 100.0,
+                  2,
+              ),
+          }
+          OUT.write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+          print('FAST_INPAINT_AB=' + json.dumps(report, ensure_ascii=False), flush=True)
+
+          if baseline['authority_outside_changed'] or candidate['authority_outside_changed']:
+              raise RuntimeError('changed pixels escaped destructive authority mask')
+          if candidate['boxes'] != baseline['boxes'] or candidate['safe'] != baseline['safe']:
+              raise RuntimeError('inpaint candidate unexpectedly changed detector decisions')
+          if candidate['post_inpaint_residue'] > baseline['post_inpaint_residue']:
+              raise RuntimeError(
+                  f"candidate residue regressed {baseline['post_inpaint_residue']} -> {candidate['post_inpaint_residue']}"
+              )
+          PY
+      - name: Upload A/B report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fast-inpaint-ab-${{ github.run_id }}
+          path: benchmark-results/fast-inpaint/report.json
+          if-no-files-found: warn
+          retention-days: 7
