@@ -1,0 +1,56 @@
+name: OCR Consistency Gate
+
+on:
+  push:
+    branches:
+      - fix/ocr-consistency
+    paths:
+      - 'app/ocr/**'
+      - 'app/routers/ocr.py'
+      - 'tests/test_ocr_consistency.py'
+      - 'tests/test_ocr_pipeline_regressions.py'
+      - '.github/workflows/ocr-consistency-gate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ocr-consistency-gate
+  cancel-in-progress: false
+
+jobs:
+  unit-regression:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    env:
+      PYTHONPATH: ${{ github.workspace }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/ocr-consistency
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install focused OCR test dependencies
+        run: |
+          python -m pip install --only-binary=:all: \
+            numpy==1.26.4 \
+            Pillow==10.4.0 \
+            opencv-contrib-python==4.10.0.84 \
+            fastapi==0.115.0 \
+            pydantic==2.9.2 \
+            filelock==3.16.1 \
+            loguru==0.7.2 \
+            pytest==8.3.5
+
+      - name: Compile OCR modules
+        run: |
+          python -m py_compile app/ocr/consistency.py app/ocr/service.py app/ocr/paddle_v6.py app/ocr/quality.py
+
+      - name: Run OCR consistency and production regression tests
+        run: |
+          pytest -q tests/test_ocr_consistency.py tests/test_ocr_pipeline_regressions.py
