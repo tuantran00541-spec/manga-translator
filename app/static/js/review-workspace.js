@@ -8,7 +8,6 @@
   let aiProviderRegistry = new Map();
   let aiSelectSyncQueued = false;
 
-  const CUSTOM_PROVIDER_STORAGE = "manga_ai_custom_providers_v1";
   const ACTIVE_PROVIDER_STORAGE = "manga_ai_active_provider";
 
   function stopCardBrush(card) {
@@ -50,44 +49,6 @@
     return () => observer.disconnect();
   }
 
-  function readCustomProviders() {
-    try {
-      const raw = JSON.parse(localStorage.getItem(CUSTOM_PROVIDER_STORAGE) || "[]");
-      if (!Array.isArray(raw)) return [];
-      return raw.filter((item) => {
-        if (!item || typeof item !== "object") return false;
-        if (!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(String(item.id || ""))) return false;
-        if (item.protocol !== "openai") return false;
-        return /^https:\/\//i.test(String(item.api_base || ""));
-      }).map((item) => ({
-        id: String(item.id),
-        label: String(item.label || item.id).slice(0, 80),
-        protocol: "openai",
-        api_base: String(item.api_base).replace(/\/+$/, ""),
-        builtin: false,
-        configured: Boolean(item.configured),
-        source: item.configured ? "os_secure_storage" : "none",
-        model: String(item.model || ""),
-        translation_model: String(item.translation_model || item.model || ""),
-      }));
-    } catch (_) {
-      return [];
-    }
-  }
-
-  function writeCustomProviders(items) {
-    localStorage.setItem(CUSTOM_PROVIDER_STORAGE, JSON.stringify(items));
-  }
-
-  function updateCustomProvider(id, patch) {
-    const items = readCustomProviders();
-    const index = items.findIndex((item) => item.id === id);
-    if (index < 0) return null;
-    items[index] = { ...items[index], ...patch };
-    writeCustomProviders(items);
-    return items[index];
-  }
-
   function providerModel(provider) {
     return localStorage.getItem(`manga_ai_model_${provider.id}`)
       || provider.model
@@ -98,7 +59,6 @@
   function setProviderModel(provider, value) {
     const model = String(value || "").trim();
     localStorage.setItem(`manga_ai_model_${provider.id}`, model);
-    if (!provider.builtin) updateCustomProvider(provider.id, { model, translation_model: model });
     provider.model = model;
     return model;
   }
@@ -109,13 +69,23 @@
     return rows;
   }
 
+  function optionSignature(rows) {
+    return rows.map((provider) => `${provider.id}\u0000${provider.label}`).join("\u0001");
+  }
+
+  function currentOptionSignature(select) {
+    return [...select.options].map((option) => `${option.value}\u0000${option.textContent || ""}`).join("\u0001");
+  }
+
   function syncProviderSelect(select, task) {
     if (!select || !aiProviderRegistry.size) return;
     const rows = providerRowsFor(task);
     const storageKey = task === "translation" ? "manga_translation_provider" : ACTIVE_PROVIDER_STORAGE;
     const requested = localStorage.getItem(storageKey) || select.value;
     const previous = select.value;
-    select.replaceChildren(...rows.map((provider) => new Option(provider.label, provider.id)));
+    if (currentOptionSignature(select) !== optionSignature(rows)) {
+      select.replaceChildren(...rows.map((provider) => new Option(provider.label, provider.id)));
+    }
     const fallback = rows.find((item) => item.configured)?.id || rows[0]?.id || "";
     select.value = rows.some((item) => item.id === requested) ? requested : fallback;
     if (select.value) localStorage.setItem(storageKey, select.value);
@@ -157,6 +127,12 @@
 
   function makeCustomProviderId() {
     return `custom-${Date.now().toString(36)}`.slice(0, 64);
+  }
+
+  async function readJsonResponse(response) {
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.detail || `HTTP ${response.status}`);
+    return data;
   }
 
   function createAIProviderSettings() {
@@ -205,64 +181,101 @@
     addBase.placeholder = "https://api.example.com/v1";
     addBase.autocomplete = "url";
     addBase.setAttribute("aria-label", "OpenAI-compatible API root");
+    const addKey = document.createElement("input");
+    addKey.className = "api-key-input";
+    addKey.type = "password";
+    addKey.placeholder = "API key";
+    addKey.autocomplete = "new-password";
+    addKey.setAttribute("aria-label", "API key của dịch vụ tùy chỉnh");
     const addModel = document.createElement("input");
     addModel.className = "ui-input";
-    addModel.placeholder = "Model mặc định (có thể nhập sau)";
+    addModel.placeholder = "Model (để trống để chọn model đầu tiên)";
     addModel.setAttribute("aria-label", "Model mặc định của API tùy chỉnh");
     const addActions = document.createElement("div");
     addActions.className = "ai-provider-actions";
     const addConfirm = document.createElement("button");
     addConfirm.type = "button";
     addConfirm.className = "ui-btn ui-btn-primary";
-    addConfirm.textContent = "Thêm dịch vụ";
+    addConfirm.textContent = "Kiểm tra & thêm";
     const addCancel = document.createElement("button");
     addCancel.type = "button";
     addCancel.className = "ui-btn ui-btn-ghost";
     addCancel.textContent = "Hủy";
     addActions.append(addConfirm, addCancel);
-    addPanel.append(addHint, addName, addBase, addModel, addActions);
+    addPanel.append(addHint, addName, addBase, addKey, addModel, addActions);
 
     const list = document.createElement("div");
     list.className = "ai-provider-list";
     config.append(top, defaultField, addPanel, list);
 
+    function clearAddPanel() {
+      addPanel.hidden = true;
+      addName.value = "";
+      addBase.value = "";
+      addKey.value = "";
+      addModel.value = "";
+    }
+
     addToggle.addEventListener("click", () => {
       addPanel.hidden = !addPanel.hidden;
       if (!addPanel.hidden) addName.focus();
     });
-    addCancel.addEventListener("click", () => {
-      addPanel.hidden = true;
-      addName.value = "";
-      addBase.value = "";
-      addModel.value = "";
-    });
-    addConfirm.addEventListener("click", () => {
+    addCancel.addEventListener("click", clearAddPanel);
+    addConfirm.addEventListener("click", async () => {
       const label = addName.value.trim();
       const apiBase = addBase.value.trim().replace(/\/+$/, "");
-      const model = addModel.value.trim();
+      const apiKey = addKey.value.trim();
+      const requestedModel = addModel.value.trim();
       if (!label) return window.showToast?.("Nhập tên dịch vụ.", "error");
       if (!/^https:\/\/[^\s]+$/i.test(apiBase)) return window.showToast?.("API root phải là URL HTTPS hợp lệ.", "error");
-      const items = readCustomProviders();
-      const provider = {
-        id: makeCustomProviderId(),
-        label,
-        protocol: "openai",
-        api_base: apiBase,
-        builtin: false,
-        configured: false,
-        source: "none",
-        model,
-        translation_model: model,
-      };
-      items.push(provider);
-      writeCustomProviders(items);
-      if (model) localStorage.setItem(`manga_ai_model_${provider.id}`, model);
-      localStorage.setItem(ACTIVE_PROVIDER_STORAGE, provider.id);
-      addPanel.hidden = true;
-      addName.value = "";
-      addBase.value = "";
-      addModel.value = "";
-      refresh();
+      if (!apiKey) return window.showToast?.("Nhập API key để kiểm tra kết nối.", "error");
+
+      const providerId = makeCustomProviderId();
+      addConfirm.disabled = true;
+      addConfirm.textContent = "Đang kiểm tra…";
+      let saved = false;
+      try {
+        await readJsonResponse(await fetch(`/api/visual_qc/providers/${encodeURIComponent(providerId)}/key`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            api_key: apiKey,
+            provider_label: label,
+            provider_protocol: "openai",
+            provider_api_base: apiBase,
+          }),
+        }));
+        saved = true;
+        const query = new URLSearchParams({
+          provider_label: label,
+          provider_protocol: "openai",
+          provider_api_base: apiBase,
+        });
+        const modelData = await readJsonResponse(await fetch(
+          `/api/visual_qc/providers/${encodeURIComponent(providerId)}/models?${query}`,
+        ));
+        const models = Array.isArray(modelData.models) ? modelData.models : [];
+        if (requestedModel && models.length && !models.includes(requestedModel)) {
+          throw new Error(`Model “${requestedModel}” không có trong danh sách model mà API trả về.`);
+        }
+        const selectedModel = requestedModel || models[0] || "";
+        if (!selectedModel) throw new Error("API kết nối được nhưng không trả model. Hãy nhập tên model thủ công.");
+        localStorage.setItem(`manga_ai_model_${providerId}`, selectedModel);
+        localStorage.setItem(ACTIVE_PROVIDER_STORAGE, providerId);
+        clearAddPanel();
+        await refresh();
+        window.showToast?.(`Đã thêm ${label} · ${selectedModel}.`, "success");
+      } catch (err) {
+        if (saved) {
+          const cleanup = new URLSearchParams({ provider_label: label, remove_config: "true" });
+          await fetch(`/api/visual_qc/providers/${encodeURIComponent(providerId)}/key?${cleanup}`, { method: "DELETE" }).catch(() => null);
+        }
+        localStorage.removeItem(`manga_ai_model_${providerId}`);
+        window.showToast?.("Không thể thêm API: " + err.message, "error");
+      } finally {
+        addConfirm.disabled = false;
+        addConfirm.textContent = "Kiểm tra & thêm";
+      }
     });
 
     function makeProviderCard(provider) {
@@ -354,14 +367,16 @@
           remove.disabled = true;
           try {
             const query = new URLSearchParams({ provider_label: provider.label, remove_config: "true" });
-            await fetch(`/api/visual_qc/providers/${encodeURIComponent(provider.id)}/key?${query}`, { method: "DELETE" });
-          } catch (_) {}
-          const remaining = readCustomProviders().filter((item) => item.id !== provider.id);
-          writeCustomProviders(remaining);
-          localStorage.removeItem(`manga_ai_model_${provider.id}`);
-          if (localStorage.getItem(ACTIVE_PROVIDER_STORAGE) === provider.id) localStorage.removeItem(ACTIVE_PROVIDER_STORAGE);
-          if (localStorage.getItem("manga_translation_provider") === provider.id) localStorage.removeItem("manga_translation_provider");
-          refresh();
+            const response = await fetch(`/api/visual_qc/providers/${encodeURIComponent(provider.id)}/key?${query}`, { method: "DELETE" });
+            await readJsonResponse(response);
+            localStorage.removeItem(`manga_ai_model_${provider.id}`);
+            if (localStorage.getItem(ACTIVE_PROVIDER_STORAGE) === provider.id) localStorage.removeItem(ACTIVE_PROVIDER_STORAGE);
+            if (localStorage.getItem("manga_translation_provider") === provider.id) localStorage.removeItem("manga_translation_provider");
+            await refresh();
+          } catch (err) {
+            window.showToast?.("Không thể xóa dịch vụ: " + err.message, "error");
+            remove.disabled = false;
+          }
         });
         actions.appendChild(remove);
       }
@@ -375,15 +390,12 @@
             payload.provider_protocol = provider.protocol;
             payload.provider_api_base = provider.api_base;
           }
-          const response = await fetch(`/api/visual_qc/providers/${encodeURIComponent(provider.id)}/key`, {
+          await readJsonResponse(await fetch(`/api/visual_qc/providers/${encodeURIComponent(provider.id)}/key`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),
-          });
-          const data = await response.json().catch(() => ({}));
-          if (!response.ok) throw new Error(data.detail || `HTTP ${response.status}`);
+          }));
           key.value = "";
-          if (!provider.builtin) updateCustomProvider(provider.id, { configured: true });
           window.showToast?.(`Đã lưu key ${provider.label}.`, "success");
           await refresh();
         } catch (err) {
@@ -397,10 +409,10 @@
         clear.disabled = true;
         try {
           const query = new URLSearchParams({ provider_label: provider.label });
-          const response = await fetch(`/api/visual_qc/providers/${encodeURIComponent(provider.id)}/key?${query}`, { method: "DELETE" });
-          const data = await response.json().catch(() => ({}));
-          if (!response.ok) throw new Error(data.detail || `HTTP ${response.status}`);
-          if (!provider.builtin) updateCustomProvider(provider.id, { configured: false });
+          const data = await readJsonResponse(await fetch(
+            `/api/visual_qc/providers/${encodeURIComponent(provider.id)}/key?${query}`,
+            { method: "DELETE" },
+          ));
           window.showToast?.(data.source === "environment" ? "Key đến từ biến môi trường; hãy xóa ở môi trường chạy." : `Đã xóa key ${provider.label}.`, "info");
           await refresh();
         } catch (err) {
@@ -414,9 +426,9 @@
         load.disabled = true;
         load.textContent = "Đang kiểm tra…";
         try {
-          const response = await fetch(`/api/visual_qc/providers/${encodeURIComponent(provider.id)}/models${customProviderQuery(provider)}`);
-          const data = await response.json().catch(() => ({}));
-          if (!response.ok) throw new Error(data.detail || `HTTP ${response.status}`);
+          const data = await readJsonResponse(await fetch(
+            `/api/visual_qc/providers/${encodeURIComponent(provider.id)}/models${customProviderQuery(provider)}`,
+          ));
           const models = Array.isArray(data.models) ? data.models : [];
           datalist.replaceChildren(...models.map((modelName) => {
             const option = document.createElement("option");
@@ -427,11 +439,9 @@
             model.value = models[0];
             setProviderModel(provider, model.value);
           }
-          if (!provider.builtin) updateCustomProvider(provider.id, { configured: true });
           window.showToast?.(`Kết nối ${provider.label} hợp lệ · ${models.length} model.`, "success");
           await refresh();
         } catch (err) {
-          if (!provider.builtin && /API key|409/i.test(err.message)) updateCustomProvider(provider.id, { configured: false });
           window.showToast?.("Không thể tải model: " + err.message, "error");
         } finally {
           load.disabled = false;
@@ -446,19 +456,15 @@
 
     async function refresh() {
       try {
-        const response = await fetch("/api/visual_qc/settings");
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(data.detail || `HTTP ${response.status}`);
-        const merged = new Map();
+        const data = await readJsonResponse(await fetch("/api/visual_qc/settings"));
+        aiProviderRegistry = new Map();
         Object.values(data.providers || {}).forEach((provider) => {
           if (!provider?.id) return;
-          merged.set(provider.id, { ...provider, builtin: true });
+          aiProviderRegistry.set(provider.id, { ...provider });
         });
-        readCustomProviders().forEach((provider) => merged.set(provider.id, provider));
-        aiProviderRegistry = merged;
         publishProviderRegistry();
 
-        const rows = [...merged.values()];
+        const rows = [...aiProviderRegistry.values()];
         active.replaceChildren(...rows.map((provider) => new Option(provider.label, provider.id)));
         const requested = localStorage.getItem(ACTIVE_PROVIDER_STORAGE);
         const fallback = rows.find((provider) => provider.configured)?.id || rows[0]?.id || "";
