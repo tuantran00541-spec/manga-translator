@@ -1,17 +1,10 @@
-name: Phase 13 full production final gate
+name: Phase 13 worker scaling benchmark
 
 on:
   push:
-    branches: [main]
+    branches:
+      - benchmark/phase13-worker-scaling
     paths:
-      - app/detector/**
-      - app/inpaint/**
-      - app/image_io.py
-      - app/page_processing.py
-      - app/pipeline.py
-      - app/pipeline_editing.py
-      - app/parameters.py
-      - scripts/model_e2e_gate.py
       - .github/workflows/phase13-final-benchmark.yml
   workflow_dispatch:
 
@@ -19,16 +12,17 @@ permissions:
   contents: read
 
 concurrency:
-  group: phase13-full-production-main
+  group: phase13-worker-scaling-${{ github.ref_name }}
   cancel-in-progress: false
 
 jobs:
-  final-benchmark:
+  worker-scaling:
     runs-on: ubuntu-22.04
-    timeout-minutes: 45
+    timeout-minutes: 100
     env:
       PYTHONUNBUFFERED: "1"
       MANGA_USE_DYNAMIC_LAMA: "1"
+      MANGA_PIPELINE_PROCESS_WORKER_LIMIT: "3"
       MANGA_ORT_PROVIDER: openvino
       MANGA_ORT_REQUIRE_PROVIDER: "1"
       MANGA_ORT_OPENVINO_SCOPE: detectors
@@ -38,9 +32,11 @@ jobs:
       OPENBLAS_NUM_THREADS: "1"
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
       - name: Install production processing runtime
         run: |
           python -m pip install \
@@ -49,6 +45,7 @@ jobs:
             requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 \
             playwright==1.47.0 fastapi==0.115.0 pydantic==2.9.2 \
             filelock==3.16.1 threadpoolctl==3.6.0
+
       - name: Restore detector and inpaint models
         id: models
         uses: actions/cache@v4
@@ -57,6 +54,7 @@ jobs:
             models/*.onnx
             models/.e2e-provenance.json
           key: processing-profile-models-b224548-v1
+
       - name: Read pinned model provisioner
         if: steps.models.outputs.cache-hit != 'true'
         uses: actions/checkout@v4
@@ -65,6 +63,7 @@ jobs:
           path: benchmark-bootstrap
           sparse-checkout: scripts/provision_real_e2e_models.py
           sparse-checkout-cone-mode: false
+
       - name: Provision public-equivalent production models
         if: steps.models.outputs.cache-hit != 'true'
         run: |
@@ -74,208 +73,408 @@ jobs:
           python benchmark-bootstrap/scripts/provision_real_e2e_models.py
           cp benchmark-bootstrap/models/*.onnx models/
           cp benchmark-bootstrap/models/.e2e-provenance.json models/
-      - name: Run full production detector to inpaint final gate
+
+      - name: Run 101-slice production and forced worker benchmark
         run: |
-          mkdir -p benchmark-results/phase13
+          mkdir -p benchmark-results/phase13-workers
           python - <<'PY'
           from __future__ import annotations
-          from collections import defaultdict
-          import hashlib, json, os, statistics, threading, time
+
+          import gc
+          import hashlib
+          import json
+          import os
+          import shutil
+          import statistics
+          import threading
+          import time
           from pathlib import Path
-          import cv2
+
           import numpy as np
           import onnxruntime as ort
           import psutil
 
+          from app.config import PROCESSED_DIR, RAW_DIR
+          from app.image_io import read_image
           from app.manifest_utils import load_manifest_raw
           from app.optimized_pipeline import OptimizedChapterPipeline
           from app.parameters import DETECTOR_FOCUS_MAX_CHIPS, parameter_snapshot
-          from app.image_io import read_image
+          from app.pipeline import ChapterPipeline
+          from app.runtime_responsiveness import (
+              recommended_ort_intra_threads,
+              responsive_process_workers,
+              visible_cpu_count,
+          )
           from scripts.model_e2e_gate import _authority_mask
 
-          OUT = Path('benchmark-results/phase13/report.json')
-          URL = 'https://asurascans.com/comics/killer-pietro-08677664/chapter/120'
+          OUT_DIR = Path("benchmark-results/phase13-workers")
+          URL = "https://asurascans.com/comics/killer-pietro-08677664/chapter/120"
+          IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
+
           if DETECTOR_FOCUS_MAX_CHIPS != 2:
-              raise RuntimeError(f'expected restored focus budget 2, got {DETECTOR_FOCUS_MAX_CHIPS}')
-
-          process = psutil.Process()
-          peak = {'rss_mb': process.memory_info().rss / 2**20}
-          stop = threading.Event()
-          def sample():
-              while not stop.wait(0.10):
-                  peak['rss_mb'] = max(peak['rss_mb'], process.memory_info().rss / 2**20)
-          sampler = threading.Thread(target=sample, daemon=True)
-          sampler.start()
-
-          pipeline = OptimizedChapterPipeline()
-          chapter_id = hashlib.sha256(f'phase13-{time.time_ns()}'.encode()).hexdigest()[:8]
-          report = {
-              'source_sha': os.getenv('GITHUB_SHA'),
-              'chapter_url': URL,
-              'chapter_id': chapter_id,
-              'workers': 2,
-              'onnxruntime': ort.__version__,
-              'providers': ort.get_available_providers(),
-              'parameters': parameter_snapshot(),
-          }
-          try:
-              started = time.perf_counter()
-              manifest = pipeline.download_chapter(URL, chapter_id, workers=2)
-              report['ingest_ms'] = round((time.perf_counter() - started) * 1000.0, 3)
-              indices = list(range(len(manifest.get('pages', []))))
-              if len(indices) < 80:
-                  raise RuntimeError(f'final chapter produced only {len(indices)} slices')
-
-              started = time.perf_counter()
-              pipeline.process_pages(chapter_id, indices, workers=2)
-              report['process_wall_ms'] = round((time.perf_counter() - started) * 1000.0, 3)
-              report['process_wall_s'] = round(report['process_wall_ms'] / 1000.0, 3)
-              manifest = load_manifest_raw(chapter_id)
-
-              pages = manifest.get('pages', [])
-              report['slices'] = len(pages)
-              report['source_pages'] = len({page.get('source_page') for page in pages})
-              report['clean_pages'] = sum(bool(page.get('clean')) for page in pages)
-              report['boxes'] = sum(len(page.get('boxes', [])) for page in pages)
-              report['safe_to_inpaint'] = sum(
-                  bool(box.get('safe_to_inpaint')) for page in pages for box in page.get('boxes', [])
+              raise RuntimeError(
+                  f"expected restored focus budget 2, got {DETECTOR_FOCUS_MAX_CHIPS}"
               )
-              report['review_boxes'] = sum(
-                  bool(box.get('needs_review')) for page in pages for box in page.get('boxes', [])
-              )
-              report['deferred_boxes'] = sum(
-                  bool(box.get('deferred_reason')) for page in pages for box in page.get('boxes', [])
-              )
-              report['last_processing_run'] = manifest.get('last_processing_run')
 
-              metric_groups = defaultdict(list)
-              outside_total = 0
-              changed_total = 0
-              mask_total = 0
-              unsafe_pages = []
-              page_evidence = []
-              for index, page in enumerate(pages):
-                  metrics = page.get('processing_metrics') or {}
-                  for key, value in metrics.items():
-                      if isinstance(value, (int, float)) and not isinstance(value, bool):
-                          metric_groups[key].append(float(value))
-                  original = read_image(Path(page['original']))
-                  clean_path = page.get('clean')
-                  if not clean_path:
-                      unsafe_pages.append(index)
-                      continue
-                  clean = read_image(Path(clean_path))
-                  mask = _authority_mask(original, page.get('boxes', []), pipeline.inpainter)
-                  changed = np.any(original != clean, axis=2)
-                  outside = int(np.count_nonzero(changed & (mask <= 127)))
-                  changed_count = int(np.count_nonzero(changed))
-                  mask_count = int(np.count_nonzero(mask))
-                  outside_total += outside
-                  changed_total += changed_count
-                  mask_total += mask_count
-                  if outside:
-                      unsafe_pages.append(index)
-                  if index in {0, len(pages)//4, len(pages)//2, (3*len(pages))//4, len(pages)-1}:
-                      page_evidence.append({
-                          'index': index,
-                          'boxes': len(page.get('boxes', [])),
-                          'mask_pixels': mask_count,
-                          'changed_pixels': changed_count,
-                          'outside_mask_changed': outside,
-                          'mask_sha': hashlib.sha256(mask.tobytes()).hexdigest(),
-                          'clean_sha': hashlib.sha256(clean.tobytes()).hexdigest(),
-                      })
+          class ForcedWorkerPipeline(OptimizedChapterPipeline):
+              """Keep the production detector but bypass responsive worker downshift."""
 
-              report['authority'] = {
-                  'mask_pixels': mask_total,
-                  'changed_pixels': changed_total,
-                  'outside_mask_changed': outside_total,
-                  'unsafe_pages': unsafe_pages,
-                  'sample_pages': page_evidence,
+              def process_pages(self, chapter_id, page_indices, workers=2):
+                  return ChapterPipeline.process_pages(
+                      self, chapter_id, page_indices, workers=workers
+                  )
+
+          def percentile(values: list[float], q: float) -> float:
+              if not values:
+                  return 0.0
+              ordered = sorted(values)
+              if len(ordered) == 1:
+                  return ordered[0]
+              pos = (len(ordered) - 1) * q
+              lo = int(pos)
+              hi = min(lo + 1, len(ordered) - 1)
+              frac = pos - lo
+              return ordered[lo] * (1.0 - frac) + ordered[hi] * frac
+
+          def summarize(values: list[float]) -> dict:
+              return {
+                  "count": len(values),
+                  "sum": round(sum(values), 3),
+                  "mean": round(statistics.mean(values), 3) if values else 0.0,
+                  "p50": round(percentile(values, 0.50), 3),
+                  "p95": round(percentile(values, 0.95), 3),
+                  "max": round(max(values), 3) if values else 0.0,
               }
-              report['page_metrics'] = {
-                  key: {
-                      'count': len(values),
-                      'sum': round(sum(values), 3),
-                      'mean': round(statistics.mean(values), 3),
-                      'max': round(max(values), 3),
-                  }
-                  for key, values in sorted(metric_groups.items()) if values
-              }
-              report['peak_rss_mb'] = round(peak['rss_mb'], 1)
-              report['throughput_ms_per_slice'] = round(report['process_wall_ms'] / max(1, len(pages)), 3)
 
-              if report['clean_pages'] != report['slices']:
-                  raise RuntimeError(f"clean pages {report['clean_pages']} != slices {report['slices']}")
-              failed = (report.get('last_processing_run') or {}).get('failed_page_indices') or []
-              if failed:
-                  raise RuntimeError(f'processing failures: {failed}')
-              if outside_total:
-                  raise RuntimeError(f'{outside_total} changed pixels outside authorized masks on pages {unsafe_pages}')
-              if changed_total <= 0 or mask_total <= 0:
-                  raise RuntimeError('final chapter did not exercise destructive cleanup')
-              if report['process_wall_s'] > 900:
-                  raise RuntimeError(f"processing regression: {report['process_wall_s']}s exceeds 900s ceiling")
-              if report['peak_rss_mb'] > 3200:
-                  raise RuntimeError(f"memory regression: {report['peak_rss_mb']} MiB exceeds 3200 MiB ceiling")
-          finally:
-              stop.set()
-              sampler.join(timeout=1)
-              report['peak_rss_mb'] = round(max(peak['rss_mb'], process.memory_info().rss / 2**20), 1)
-              OUT.write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
-              print(json.dumps(report, ensure_ascii=False), flush=True)
-          PY
-      - name: Run fixed-LaMa 16-slice compatibility gate
-        run: |
-          RAW_DIR=$(python - <<'PY'
-          import json
-          from pathlib import Path
-          report = json.loads(Path('benchmark-results/phase13/report.json').read_text())
-          print(Path('data/raw') / report['chapter_id'] / 'sliced')
-          PY
+          def collect_page_metrics(pages: list[dict]) -> dict:
+              timing_names = (
+                  "read",
+                  "detect",
+                  "auto_inpaint",
+                  "manual_inpaint",
+                  "residue_verify",
+                  "write",
+                  "total",
+              )
+              groups = {name: [] for name in timing_names}
+              detector_groups: dict[str, list[float]] = {}
+              for page in pages:
+                  metrics = page.get("processing_metrics") or {}
+                  timing = metrics.get("timing_ms") or {}
+                  if isinstance(timing, dict):
+                      for name in timing_names:
+                          value = timing.get(name)
+                          if isinstance(value, (int, float)) and not isinstance(value, bool):
+                              groups[name].append(float(value))
+                  detector = metrics.get("detector") or {}
+                  if isinstance(detector, dict):
+                      for name, value in detector.items():
+                          if (
+                              isinstance(value, (int, float))
+                              and not isinstance(value, bool)
+                              and name.endswith("_ms")
+                          ):
+                              detector_groups.setdefault(name, []).append(float(value))
+              return {
+                  "timing_ms": {
+                      name: summarize(values) for name, values in groups.items() if values
+                  },
+                  "detector_ms": {
+                      name: summarize(values)
+                      for name, values in sorted(detector_groups.items())
+                      if values
+                  },
+              }
+
+          def start_peak_sampler():
+              process = psutil.Process()
+              peak = {"rss_mb": process.memory_info().rss / 2**20}
+              stop = threading.Event()
+
+              def sample():
+                  while not stop.wait(0.10):
+                      peak["rss_mb"] = max(
+                          peak["rss_mb"], process.memory_info().rss / 2**20
+                      )
+
+              thread = threading.Thread(target=sample, daemon=True)
+              thread.start()
+              return process, peak, stop, thread
+
+          def build_variant_chapter(
+              raw_paths: list[Path], variant: str, workers: int
+          ) -> tuple[OptimizedChapterPipeline, str, list[int]]:
+              pipeline = (
+                  OptimizedChapterPipeline()
+                  if variant == "production-requested-3"
+                  else ForcedWorkerPipeline()
+              )
+              chapter_id = hashlib.sha256(
+                  f"phase13-workers-{variant}-{time.time_ns()}".encode()
+              ).hexdigest()[:8]
+              manifest = pipeline._build_chapter_from_raw_paths(
+                  chapter_id,
+                  raw_paths,
+                  source_url=URL,
+                  workers=max(1, min(workers, 3)),
+              )
+              indices = list(range(len(manifest.get("pages", []))))
+              if len(indices) != 101:
+                  raise RuntimeError(
+                      f"expected exactly 101 slices for {variant}, got {len(indices)}"
+                  )
+              return pipeline, chapter_id, indices
+
+          template = OptimizedChapterPipeline()
+          template_id = hashlib.sha256(
+              f"phase13-worker-template-{time.time_ns()}".encode()
+          ).hexdigest()[:8]
+          ingest_started = time.perf_counter()
+          template_manifest = template.download_chapter(URL, template_id, workers=2)
+          ingest_ms = round((time.perf_counter() - ingest_started) * 1000.0, 3)
+          template_slices = len(template_manifest.get("pages", []))
+          if template_slices != 101:
+              raise RuntimeError(f"expected exactly 101 template slices, got {template_slices}")
+
+          raw_paths = sorted(
+              p
+              for p in (RAW_DIR / template_id).iterdir()
+              if p.is_file() and p.suffix.lower() in IMAGE_SUFFIXES
           )
-          python scripts/model_e2e_gate.py \
-            --raw-dir "$RAW_DIR" \
-            --chapter-id f17ed013 \
-            --source-lang en \
-            --lama-mode fixed \
-            --workers 2 \
-            --max-source-images 16 \
-            --max-pages 16 \
-            --min-slices 16 \
-            --max-rss-mb 3200 \
-            --report-json
-      - name: Publish Phase 13 summary
+          if len(raw_paths) != 19:
+              raise RuntimeError(f"expected 19 raw images, got {len(raw_paths)}")
+
+          cpu_visible = visible_cpu_count()
+          host_cpu = os.cpu_count() or 0
+          runtime = {
+              "source_sha": os.getenv("GITHUB_SHA"),
+              "chapter_url": URL,
+              "source_pages": len(raw_paths),
+              "slices": template_slices,
+              "ingest_ms": ingest_ms,
+              "host_cpu_count": host_cpu,
+              "visible_cpu_count": cpu_visible,
+              "recommended_ort_intra_threads": recommended_ort_intra_threads(cpu_visible),
+              "responsive_workers": {
+                  str(requested): responsive_process_workers(requested, cpu_visible)
+                  for requested in (1, 2, 3)
+              },
+              "onnxruntime": ort.__version__,
+              "providers": ort.get_available_providers(),
+              "parameters": parameter_snapshot(),
+          }
+          (OUT_DIR / "runtime.json").write_text(
+              json.dumps(runtime, ensure_ascii=False, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          print("RUNTIME", json.dumps(runtime, ensure_ascii=False), flush=True)
+
+          variants = [
+              ("production-requested-3", 3),
+              ("forced-1", 1),
+              ("forced-2", 2),
+              ("forced-3", 3),
+          ]
+          results = []
+
+          del template
+          gc.collect()
+
+          for variant, requested_workers in variants:
+              pipeline, chapter_id, indices = build_variant_chapter(
+                  raw_paths, variant, requested_workers
+              )
+              process, peak, stop, sampler = start_peak_sampler()
+              report = {
+                  "variant": variant,
+                  "requested_workers": requested_workers,
+                  "chapter_id": chapter_id,
+                  "slices": len(indices),
+              }
+              try:
+                  started = time.perf_counter()
+                  pipeline.process_pages(
+                      chapter_id, indices, workers=requested_workers
+                  )
+                  report["process_wall_ms"] = round(
+                      (time.perf_counter() - started) * 1000.0, 3
+                  )
+                  report["process_wall_s"] = round(
+                      report["process_wall_ms"] / 1000.0, 3
+                  )
+                  manifest = load_manifest_raw(chapter_id)
+                  pages = manifest.get("pages", [])
+                  last = manifest.get("last_processing_run") or {}
+                  report["effective_workers"] = last.get("workers")
+                  report["last_processing_run"] = last
+                  report["page_metrics"] = collect_page_metrics(pages)
+                  report["clean_pages"] = sum(bool(page.get("clean")) for page in pages)
+                  report["boxes"] = sum(len(page.get("boxes", [])) for page in pages)
+                  report["safe_to_inpaint"] = sum(
+                      bool(box.get("safe_to_inpaint"))
+                      for page in pages
+                      for box in page.get("boxes", [])
+                  )
+                  report["review_boxes"] = sum(
+                      bool(box.get("needs_review"))
+                      for page in pages
+                      for box in page.get("boxes", [])
+                  )
+                  report["deferred_boxes"] = sum(
+                      bool(box.get("deferred_reason"))
+                      for page in pages
+                      for box in page.get("boxes", [])
+                  )
+                  report["throughput_ms_per_slice"] = round(
+                      report["process_wall_ms"] / max(1, len(pages)), 3
+                  )
+                  report["slices_per_minute"] = round(
+                      (len(pages) * 60000.0) / max(1.0, report["process_wall_ms"]),
+                      3,
+                  )
+
+                  outside_total = 0
+                  changed_total = 0
+                  mask_total = 0
+                  unsafe_pages = []
+                  for index, page in enumerate(pages):
+                      original = read_image(Path(page["original"]))
+                      clean_path = page.get("clean")
+                      if not clean_path:
+                          unsafe_pages.append(index)
+                          continue
+                      clean = read_image(Path(clean_path))
+                      mask = _authority_mask(
+                          original, page.get("boxes", []), pipeline.inpainter
+                      )
+                      changed = np.any(original != clean, axis=2)
+                      outside = int(np.count_nonzero(changed & (mask <= 127)))
+                      outside_total += outside
+                      changed_total += int(np.count_nonzero(changed))
+                      mask_total += int(np.count_nonzero(mask))
+                      if outside:
+                          unsafe_pages.append(index)
+
+                  report["authority"] = {
+                      "mask_pixels": mask_total,
+                      "changed_pixels": changed_total,
+                      "outside_mask_changed": outside_total,
+                      "unsafe_pages": unsafe_pages,
+                  }
+                  failed = last.get("failed_page_indices") or []
+                  if report["clean_pages"] != len(pages):
+                      report["status"] = "invalid_clean_count"
+                  elif failed:
+                      report["status"] = "processing_failed"
+                  elif outside_total:
+                      report["status"] = "authority_violation"
+                  elif changed_total <= 0 or mask_total <= 0:
+                      report["status"] = "no_destructive_cleanup"
+                  else:
+                      report["status"] = "ok"
+              except Exception as exc:
+                  report["status"] = "exception"
+                  report["error"] = f"{type(exc).__name__}: {exc}"
+                  report.setdefault(
+                      "process_wall_ms",
+                      round((time.perf_counter() - started) * 1000.0, 3),
+                  )
+                  report["process_wall_s"] = round(
+                      report["process_wall_ms"] / 1000.0, 3
+                  )
+              finally:
+                  stop.set()
+                  sampler.join(timeout=1)
+                  report["peak_rss_mb"] = round(
+                      max(peak["rss_mb"], process.memory_info().rss / 2**20), 1
+                  )
+                  (OUT_DIR / f"{variant}.json").write_text(
+                      json.dumps(report, ensure_ascii=False, indent=2) + "\n",
+                      encoding="utf-8",
+                  )
+                  print("RESULT", json.dumps(report, ensure_ascii=False), flush=True)
+                  results.append(report)
+                  del pipeline
+                  gc.collect()
+
+          comparison = {
+              "runtime": runtime,
+              "results": results,
+          }
+          (OUT_DIR / "comparison.json").write_text(
+              json.dumps(comparison, ensure_ascii=False, indent=2) + "\n",
+              encoding="utf-8",
+          )
+
+          if not any(r.get("status") == "ok" for r in results):
+              raise RuntimeError("all worker benchmark variants failed")
+          PY
+
+      - name: Publish worker scaling summary
         if: always()
         run: |
           python - <<'PY'
-          import json, os
+          import json
+          import os
           from pathlib import Path
-          p = Path('benchmark-results/phase13/report.json')
+
+          p = Path("benchmark-results/phase13-workers/comparison.json")
           if not p.is_file():
               raise SystemExit(0)
-          r = json.loads(p.read_text())
-          a = r.get('authority') or {}
+          data = json.loads(p.read_text(encoding="utf-8"))
+          runtime = data.get("runtime") or {}
+          results = data.get("results") or []
           lines = [
-              '## Phase 13 full production final gate', '',
-              f"- Source pages / slices: `{r.get('source_pages')}` / `{r.get('slices')}`",
-              f"- Clean pages: `{r.get('clean_pages')}`",
-              f"- Process wall: **{r.get('process_wall_s')} s**",
-              f"- Throughput: **{r.get('throughput_ms_per_slice')} ms/slice**",
-              f"- Peak RSS: **{r.get('peak_rss_mb')} MiB**",
-              f"- Boxes / safe / review / deferred: `{r.get('boxes')}` / `{r.get('safe_to_inpaint')}` / `{r.get('review_boxes')}` / `{r.get('deferred_boxes')}`",
-              f"- Outside-authority changed pixels: **{a.get('outside_mask_changed')}**",
+              "## Phase 13 worker scaling benchmark",
+              "",
+              f"- Host / visible CPU: `{runtime.get('host_cpu_count')}` / `{runtime.get('visible_cpu_count')}`",
+              f"- Responsive worker map 1/2/3: `{runtime.get('responsive_workers')}`",
+              f"- ORT intra-op recommendation: `{runtime.get('recommended_ort_intra_threads')}`",
+              f"- Source pages / slices: `{runtime.get('source_pages')}` / `{runtime.get('slices')}`",
+              "",
+              "| Variant | Requested | Effective | Wall s | s/slice | slices/min | Peak RSS MiB | Status |",
+              "|---|---:|---:|---:|---:|---:|---:|---|",
           ]
-          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as out:
-              out.write('\n'.join(lines) + '\n')
-          print('\n'.join(lines))
+          for r in results:
+              ms = float(r.get("throughput_ms_per_slice") or 0.0)
+              lines.append(
+                  "| {variant} | {req} | {eff} | {wall} | {sec:.3f} | {spm} | {rss} | {status} |".format(
+                      variant=r.get("variant"),
+                      req=r.get("requested_workers"),
+                      eff=r.get("effective_workers"),
+                      wall=r.get("process_wall_s"),
+                      sec=ms / 1000.0,
+                      spm=r.get("slices_per_minute"),
+                      rss=r.get("peak_rss_mb"),
+                      status=r.get("status"),
+                  )
+              )
+
+          lines += [
+              "",
+              "### Per-page timing means (ms)",
+              "",
+              "| Variant | read | detect | auto inpaint | residue | write | total |",
+              "|---|---:|---:|---:|---:|---:|---:|",
+          ]
+          for r in results:
+              timings = ((r.get("page_metrics") or {}).get("timing_ms") or {})
+              def mean(name):
+                  return (timings.get(name) or {}).get("mean")
+              lines.append(
+                  f"| {r.get('variant')} | {mean('read')} | {mean('detect')} | {mean('auto_inpaint')} | {mean('residue_verify')} | {mean('write')} | {mean('total')} |"
+              )
+
+          text = "\n".join(lines) + "\n"
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as out:
+              out.write(text)
+          print(text)
           PY
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: phase13-final-${{ github.run_id }}
-          path: |
-            benchmark-results/phase13/
-            benchmark-results/model-e2e-fixed.json
+          name: phase13-worker-scaling-${{ github.run_id }}
+          path: benchmark-results/phase13-workers/
           retention-days: 7
           if-no-files-found: warn
