@@ -1,5 +1,6 @@
 {
-  "chapter_id": "c241dr01",
+  "chapter_id": "c241d001",
+  "legacy_import_chapter_id": "c241dr01",
   "series_slug": "doctors-rebirth-53fc8424",
   "series_title": "Doctors Rebirth",
   "chapter_number": 241,
@@ -22,6 +23,9 @@
     "pixel_exact_pages": 17,
     "diff_pixels_total": 0
   },
+  "metadata_repairs": [
+    "Runtime chapter_id normalized to c241d001 after validator rejected legacy c241dr01. Approved import artifact remains immutable."
+  ],
   "blockers": [],
   "next_action": "RUN_CHECKPOINT_02_CLEAN_REVIEW"
 }
