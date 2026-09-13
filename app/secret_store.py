@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 
 from app.ai_providers import PROVIDERS, normalize_provider_id, validate_provider_label
@@ -11,6 +12,10 @@ _DEEPSEEK_ACCOUNT = "deepseek-api-key"
 
 def _provider_account(provider_id: str) -> str:
     return f"ai-provider-{normalize_provider_id(provider_id)}-api-key"
+
+
+def _provider_config_account(provider_id: str) -> str:
+    return f"ai-provider-{normalize_provider_id(provider_id)}-config"
 
 
 def _provider_meta(provider_id: str, provider_label: str | None = None) -> tuple[str, tuple[str, ...], str]:
@@ -183,3 +188,71 @@ def provider_key_status(provider_id: str, *, provider_label: str | None = None) 
     if provider_id == "deepseek":
         return deepseek_key_status()
     return _key_status(_provider_account(provider_id), env_names, label)
+
+
+def set_provider_config(
+    provider_id: str,
+    *,
+    label: str,
+    protocol: str,
+    api_base: str,
+) -> None:
+    normalized = normalize_provider_id(provider_id)
+    payload = json.dumps(
+        {
+            "id": normalized,
+            "label": validate_provider_label(label, default=normalized),
+            "protocol": str(protocol or "").strip().lower(),
+            "api_base": str(api_base or "").strip(),
+        },
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+    keyring, KeyringError = _keyring_module()
+    try:
+        keyring.set_password(_SERVICE_NAME, _provider_config_account(normalized), payload)
+    except KeyringError as exc:
+        raise SecretStoreUnavailable(
+            f"Cannot save {label} provider configuration to OS secure storage: {exc}"
+        ) from exc
+
+
+def get_provider_config(provider_id: str) -> dict | None:
+    normalized = normalize_provider_id(provider_id)
+    if normalized in PROVIDERS:
+        provider = PROVIDERS[normalized]
+        return {
+            "id": provider.id,
+            "label": provider.label,
+            "protocol": provider.protocol,
+            "api_base": provider.api_base,
+        }
+    keyring, KeyringError = _keyring_module()
+    try:
+        raw = keyring.get_password(_SERVICE_NAME, _provider_config_account(normalized))
+    except KeyringError as exc:
+        raise SecretStoreUnavailable(
+            f"Cannot read provider configuration from OS secure storage: {exc}"
+        ) from exc
+    if not raw:
+        return None
+    try:
+        payload = json.loads(raw)
+    except (TypeError, ValueError) as exc:
+        raise SecretStoreUnavailable("Stored AI provider configuration is invalid") from exc
+    return payload if isinstance(payload, dict) else None
+
+
+def delete_provider_config(provider_id: str) -> None:
+    normalized = normalize_provider_id(provider_id)
+    if normalized in PROVIDERS:
+        return
+    keyring, KeyringError = _keyring_module()
+    try:
+        keyring.delete_password(_SERVICE_NAME, _provider_config_account(normalized))
+    except KeyringError as exc:
+        detail = str(exc).lower()
+        if "not found" not in detail and "no password" not in detail:
+            raise SecretStoreUnavailable(
+                f"Cannot delete AI provider configuration: {exc}"
+            ) from exc
