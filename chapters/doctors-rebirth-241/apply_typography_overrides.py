@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 MANIFEST = Path("checkpoint/04-translation/translated-manifest.json")
+RUNNER = Path("chapters/doctors-rebirth-241/run_typography_render.py")
 TARGET = "box_4f2f668087d845f2"
 # The detector/OCR bbox only enclosed the original short glyph line (34 px high),
 # not the actual black circular speech balloon. Human visual review of source page
@@ -24,6 +25,16 @@ TEXT_OVERRIDES = {
     "box_c5f930806b2a48ce": ("RA NGOÀI VÕ ĐÀI—\nXỬ THUA...!", "RA NGOÀI VÕ ĐÀI,\nXỬ THUA...!"),
     "box_1bf8f8b8b4fd4bdf": ("ĐẠN CHỈ\nTHẦN THÔNG—\nBIẾN THỨC\nJIN CHEONHEE.", "ĐẠN CHỈ\nTHẦN THÔNG\nBIẾN THỨC\nJIN CHEONHEE."),
     "box_f0e75aca70d0444b": ("A—", "A-"),
+}
+
+# FINAL requires fallback_count == 0. These three shout objects were already
+# visually reviewed in Mac-dinh-3 because Granite either lacks required Vietnamese
+# glyphs or fails Pillow rasterization. Treat Mac-dinh-3 as the explicit reviewed
+# font assignment, not as an emergency fallback.
+REVIEWED_FONT_OVERRIDES = {
+    "box_de950b2d1fee470f": "Mac-dinh-3",
+    "box_ca2b94c697684b79": "Mac-dinh-3",
+    "box_c5f930806b2a48ce": "Mac-dinh-3",
 }
 
 manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
@@ -79,12 +90,34 @@ missing = sorted(set(TEXT_OVERRIDES) - text_found)
 if missing:
     raise SystemExit(f"missing typography text targets: {missing}")
 
+# Patch only the checked-out chapter runner for this Action invocation. The exact
+# source line is guarded so upstream runner drift cannot silently change behavior.
+runner_source = RUNNER.read_text(encoding="utf-8")
+font_anchor = '            font, fallback_reason = resolve_font(ROLE_FONT[role], text)\n'
+font_replacement = (
+    '            reviewed_font_overrides = {\n'
+    '                "box_de950b2d1fee470f": "Mac-dinh-3",\n'
+    '                "box_ca2b94c697684b79": "Mac-dinh-3",\n'
+    '                "box_c5f930806b2a48ce": "Mac-dinh-3",\n'
+    '            }\n'
+    '            preferred_font = reviewed_font_overrides.get(box_id, ROLE_FONT[role])\n'
+    '            font, fallback_reason = resolve_font(preferred_font, text)\n'
+)
+if runner_source.count(font_anchor) != 1:
+    raise SystemExit("chapter 241 render runner drifted at reviewed font assignment anchor")
+RUNNER.write_text(runner_source.replace(font_anchor, font_replacement), encoding="utf-8")
+
 MANIFEST.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
 report = {
     "status": "PASS",
     "geometry_override": {"box_id": TARGET, "region": REVIEWED_REGION},
     "punctuation_normalization_count": len(text_repairs),
     "punctuation_normalizations": text_repairs,
+    "reviewed_font_assignment_count": len(REVIEWED_FONT_OVERRIDES),
+    "reviewed_font_assignments": [
+        {"box_id": box_id, "font": font, "reason": "human_visual_review"}
+        for box_id, font in REVIEWED_FONT_OVERRIDES.items()
+    ],
 }
 Path("checkpoint/04-translation/typography-overrides-applied.json").write_text(
     json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
