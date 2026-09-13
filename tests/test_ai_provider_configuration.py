@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from app import secret_store
 from app.ai_providers import PROVIDERS, get_provider, resolve_provider, validate_model_name
 from app.routers import visual_qc as visual_qc_router
 from app.routers.translation import TranslateChapterRequest
@@ -54,6 +55,16 @@ def test_requests_accept_runtime_provider_id_and_validate_model():
     )
     assert request.provider == "custom-lab"
     assert request.model == "vendor/vision"
+    inspect = visual_qc_router.VisualQCInspectRuntimeRequest(
+        chapter_id="chapter",
+        page_index=0,
+        provider="custom-lab",
+        provider_label="Custom Lab",
+        provider_protocol="openai",
+        provider_api_base="https://ai.example.com/v1",
+        model="vendor/vision",
+    )
+    assert inspect.provider == "custom-lab"
     translation = TranslateChapterRequest(
         chapter_id="chapter",
         provider="custom-lab",
@@ -67,6 +78,74 @@ def test_requests_accept_runtime_provider_id_and_validate_model():
         VisualQCChapterRequest(chapter_id="chapter", provider="Bad Provider")
     with pytest.raises(ValueError):
         validate_model_name("bad\nmodel", default="fallback")
+
+
+def test_custom_provider_registry_round_trips_without_exposing_key(monkeypatch):
+    store = {}
+
+    class FakeKeyringError(Exception):
+        pass
+
+    class FakeKeyring:
+        @staticmethod
+        def get_password(service, account):
+            return store.get((service, account))
+
+        @staticmethod
+        def set_password(service, account, value):
+            store[(service, account)] = value
+
+        @staticmethod
+        def delete_password(service, account):
+            key = (service, account)
+            if key not in store:
+                raise FakeKeyringError("not found")
+            del store[key]
+
+    monkeypatch.setattr(
+        secret_store,
+        "_keyring_module",
+        lambda: (FakeKeyring, FakeKeyringError),
+    )
+    monkeypatch.setattr(
+        visual_qc_router,
+        "list_provider_configs",
+        secret_store.list_provider_configs,
+    )
+    monkeypatch.setattr(
+        visual_qc_router,
+        "provider_key_status",
+        secret_store.provider_key_status,
+    )
+
+    secret_store.set_provider_config(
+        "custom-lab",
+        label="Custom Lab",
+        protocol="openai",
+        api_base="https://ai.example.com/v1",
+    )
+    secret_store.set_provider_api_key(
+        "custom-lab",
+        "super-secret",
+        provider_label="Custom Lab",
+    )
+
+    configs = secret_store.list_provider_configs()
+    assert configs == [{
+        "id": "custom-lab",
+        "label": "Custom Lab",
+        "protocol": "openai",
+        "api_base": "https://ai.example.com/v1",
+    }]
+    snapshot = visual_qc_router.visual_qc_settings()
+    assert snapshot["providers"]["custom-lab"]["configured"] is True
+    assert snapshot["providers"]["custom-lab"]["builtin"] is False
+    assert snapshot["providers"]["custom-lab"]["api_base"] == "https://ai.example.com/v1"
+    assert "super-secret" not in repr(snapshot)
+
+    secret_store.delete_provider_api_key("custom-lab", provider_label="Custom Lab")
+    secret_store.delete_provider_config("custom-lab")
+    assert secret_store.list_provider_configs() == []
 
 
 def test_model_listing_normalizes_gemini_names(monkeypatch):
