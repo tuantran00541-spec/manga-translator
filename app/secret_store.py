@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 
-from app.ai_providers import get_provider
+from app.ai_providers import PROVIDERS, normalize_provider_id, validate_provider_label
 
 _SERVICE_NAME = "manga-translator"
 _GEMINI_ACCOUNT = "gemini-api-key"
@@ -10,7 +10,15 @@ _DEEPSEEK_ACCOUNT = "deepseek-api-key"
 
 
 def _provider_account(provider_id: str) -> str:
-    return f"ai-provider-{provider_id}-api-key"
+    return f"ai-provider-{normalize_provider_id(provider_id)}-api-key"
+
+
+def _provider_meta(provider_id: str, provider_label: str | None = None) -> tuple[str, tuple[str, ...], str]:
+    normalized = normalize_provider_id(provider_id)
+    provider = PROVIDERS.get(normalized)
+    if provider is not None:
+        return provider.id, provider.env_names, provider.label
+    return normalized, (), validate_provider_label(provider_label, default=normalized)
 
 
 class SecretStoreUnavailable(RuntimeError):
@@ -141,39 +149,37 @@ def deepseek_key_status() -> dict:
     )
 
 
-def get_provider_api_key(provider_id: str) -> str | None:
-    provider = get_provider(provider_id)
-    if provider.id == "gemini":
+def get_provider_api_key(provider_id: str, *, provider_label: str | None = None) -> str | None:
+    provider_id, env_names, label = _provider_meta(provider_id, provider_label)
+    if provider_id == "gemini":
         return get_gemini_api_key()
-    if provider.id == "deepseek":
+    if provider_id == "deepseek":
         return get_deepseek_api_key()
-    account = _provider_account(provider.id)
-    return _get_api_key(account, provider.env_names, provider.label)
+    return _get_api_key(_provider_account(provider_id), env_names, label)
 
 
-def set_provider_api_key(provider_id: str, value: str) -> None:
-    provider = get_provider(provider_id)
+def set_provider_api_key(provider_id: str, value: str, *, provider_label: str | None = None) -> None:
+    provider_id, _env_names, label = _provider_meta(provider_id, provider_label)
     account = {
         "gemini": _GEMINI_ACCOUNT,
         "deepseek": _DEEPSEEK_ACCOUNT,
-    }.get(provider.id, _provider_account(provider.id))
-    _set_api_key(account, value, provider.label)
+    }.get(provider_id, _provider_account(provider_id))
+    _set_api_key(account, value, label)
 
 
-def delete_provider_api_key(provider_id: str) -> None:
-    provider = get_provider(provider_id)
+def delete_provider_api_key(provider_id: str, *, provider_label: str | None = None) -> None:
+    provider_id, _env_names, label = _provider_meta(provider_id, provider_label)
     account = {
         "gemini": _GEMINI_ACCOUNT,
         "deepseek": _DEEPSEEK_ACCOUNT,
-    }.get(provider.id, _provider_account(provider.id))
-    _delete_api_key(account, provider.label)
+    }.get(provider_id, _provider_account(provider_id))
+    _delete_api_key(account, label)
 
 
-def provider_key_status(provider_id: str) -> dict:
-    provider = get_provider(provider_id)
-    if provider.id == "gemini":
+def provider_key_status(provider_id: str, *, provider_label: str | None = None) -> dict:
+    provider_id, env_names, label = _provider_meta(provider_id, provider_label)
+    if provider_id == "gemini":
         return gemini_key_status()
-    if provider.id == "deepseek":
+    if provider_id == "deepseek":
         return deepseek_key_status()
-    account = _provider_account(provider.id)
-    return _key_status(account, provider.env_names, provider.label)
+    return _key_status(_provider_account(provider_id), env_names, label)
