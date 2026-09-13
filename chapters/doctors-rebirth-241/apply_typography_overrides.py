@@ -37,6 +37,13 @@ REVIEWED_FONT_OVERRIDES = {
     "box_c5f930806b2a48ce": "Mac-dinh-3",
 }
 
+# Object-level optical breathing review: 64px technically fit the burst balloon
+# but visually crowded its jagged border. 56px preserves shout hierarchy while
+# restoring a comfortable safe margin. This is a fixed human-reviewed size.
+REVIEWED_SIZE_OVERRIDES = {
+    "box_ca2b94c697684b79": 56,
+}
+
 manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
 geometry_found = 0
 text_found: set[str] = set()
@@ -90,8 +97,8 @@ missing = sorted(set(TEXT_OVERRIDES) - text_found)
 if missing:
     raise SystemExit(f"missing typography text targets: {missing}")
 
-# Patch only the checked-out chapter runner for this Action invocation. The exact
-# source line is guarded so upstream runner drift cannot silently change behavior.
+# Patch only the checked-out chapter runner for this Action invocation. Exact
+# anchors are guarded so upstream runner drift cannot silently change behavior.
 runner_source = RUNNER.read_text(encoding="utf-8")
 font_anchor = '            font, fallback_reason = resolve_font(ROLE_FONT[role], text)\n'
 font_replacement = (
@@ -105,7 +112,24 @@ font_replacement = (
 )
 if runner_source.count(font_anchor) != 1:
     raise SystemExit("chapter 241 render runner drifted at reviewed font assignment anchor")
-RUNNER.write_text(runner_source.replace(font_anchor, font_replacement), encoding="utf-8")
+runner_source = runner_source.replace(font_anchor, font_replacement)
+
+size_anchor = '                continue\n            obj["region"] = region\n'
+size_replacement = (
+    '                continue\n'
+    '            reviewed_size_overrides = {"box_ca2b94c697684b79": 56}\n'
+    '            if box_id in reviewed_size_overrides:\n'
+    '                reviewed_size = reviewed_size_overrides[box_id]\n'
+    '                ok, reviewed_lines = _fits(draw, text, box_w, box_h, font_path, reviewed_size, 2)\n'
+    '                if not ok:\n'
+    '                    raise SystemExit(f"reviewed size {reviewed_size}px no longer fits {box_id}")\n'
+    '                chosen = reviewed_size\n'
+    '                lines = reviewed_lines\n'
+    '            obj["region"] = region\n'
+)
+if runner_source.count(size_anchor) != 1:
+    raise SystemExit("chapter 241 render runner drifted at reviewed size assignment anchor")
+RUNNER.write_text(runner_source.replace(size_anchor, size_replacement), encoding="utf-8")
 
 MANIFEST.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
 report = {
@@ -117,6 +141,11 @@ report = {
     "reviewed_font_assignments": [
         {"box_id": box_id, "font": font, "reason": "human_visual_review"}
         for box_id, font in REVIEWED_FONT_OVERRIDES.items()
+    ],
+    "reviewed_size_assignment_count": len(REVIEWED_SIZE_OVERRIDES),
+    "reviewed_size_assignments": [
+        {"box_id": box_id, "font_size": size, "reason": "optical_breathing_review"}
+        for box_id, size in REVIEWED_SIZE_OVERRIDES.items()
     ],
 }
 Path("checkpoint/04-translation/typography-overrides-applied.json").write_text(
