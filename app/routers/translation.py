@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, field_validator
 
-from app.ai_providers import get_provider, validate_model_name
+from app.ai_providers import normalize_provider_id, resolve_provider, validate_model_name
 from app.manifest_utils import (
     get_manifest_lock,
     invalidate_page_render,
@@ -14,7 +14,7 @@ from app.manifest_utils import (
 )
 from app.ocr.quality import should_block_translation
 from app.secret_store import SecretStoreUnavailable, get_provider_api_key
-from app.security import validate_chapter_id
+from app.security import validate_chapter_id, validate_url
 from app.text_objects import ensure_page_text_objects
 from app.translation import DeepSeekTranslator, TranslationBudgetExceeded
 from app.translation.deepseek import PRICING_VERSION
@@ -31,15 +31,15 @@ class TranslateChapterRequest(BaseModel):
     budget_usd: float = 0.02
     force: bool = False
     provider: str = "deepseek"
+    provider_label: str | None = None
+    provider_protocol: str | None = None
+    provider_api_base: str | None = None
     model: str | None = None
 
     @field_validator("provider")
     @classmethod
     def _provider(cls, value: str) -> str:
-        provider = get_provider(value)
-        if provider.protocol != "openai" or not provider.default_translation_model:
-            raise ValueError(f"{provider.label} is not available for translation")
-        return provider.id
+        return normalize_provider_id(value)
 
     @field_validator("model")
     @classmethod
@@ -76,8 +76,24 @@ def _find_object(page: dict, object_id: str) -> dict | None:
 @router.post("/chapter")
 async def translate_chapter(req: TranslateChapterRequest) -> dict:
     validate_chapter_id(req.chapter_id)
-    provider = get_provider(req.provider)
-    model = validate_model_name(req.model, default=str(provider.default_translation_model))
+    try:
+        provider = resolve_provider(
+            req.provider,
+            label=req.provider_label,
+            protocol=req.provider_protocol,
+            api_base=req.provider_api_base,
+        )
+        if provider.protocol != "openai":
+            raise ValueError(f"{provider.label} is not available for translation")
+        if not provider.builtin:
+            validate_url(str(provider.chat_url))
+        model = validate_model_name(
+            req.model,
+            default=str(provider.default_translation_model or ""),
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
     translator = DeepSeekTranslator(
         model=model,
         api_url=str(provider.chat_url),
@@ -85,7 +101,7 @@ async def translate_chapter(req: TranslateChapterRequest) -> dict:
         provider_label=provider.label,
     )
     try:
-        api_key = get_provider_api_key(provider.id)
+        api_key = get_provider_api_key(provider.id, provider_label=provider.label)
     except SecretStoreUnavailable as exc:
         raise HTTPException(503, str(exc)) from exc
     if not api_key:
@@ -142,6 +158,8 @@ async def translate_chapter(req: TranslateChapterRequest) -> dict:
             "skipped_ocr_reject": skipped_ocr_reject,
             "skipped_source_missing": skipped_source_missing,
             "model": translator.model,
+            "provider": provider.id,
+            "provider_label": provider.label,
             "estimated_cost_usd": 0.0,
             "budget_usd": req.budget_usd,
             "pricing_version": PRICING_VERSION,
@@ -212,6 +230,8 @@ async def translate_chapter(req: TranslateChapterRequest) -> dict:
         "stale": stale,
         "skipped_ocr_reject": skipped_ocr_reject,
         "skipped_source_missing": skipped_source_missing,
+        "provider": provider.id,
+        "provider_label": provider.label,
         "model": translated.model,
         "usage": translated.usage,
         "estimated_cost_usd": round(translated.estimated_cost_usd, 6),
