@@ -41,6 +41,7 @@ jobs:
           gh run download "$OCR_RUN_ID" -n "$OCR_ARTIFACT" -D checkpoint/03-ocr
           test -f checkpoint/03-ocr/processed-manifest.json
           test -f checkpoint/03-ocr/ocr-review-summary.json
+          test -f checkpoint/03-ocr/ocr-table.json
           test -f "$STATE_DIR/ocr-curation.json"
 
       - name: Apply human OCR curation
@@ -56,11 +57,18 @@ jobs:
           out=Path('checkpoint/03b-curated')
           c=json.loads((state_dir/'ocr-curation.json').read_text(encoding='utf-8'))
           s=json.loads((root/'ocr-review-summary.json').read_text(encoding='utf-8'))
+          table=json.loads((root/'ocr-table.json').read_text(encoding='utf-8'))
+          rows=table if isinstance(table,list) else (table.get('rows') or [])
           m=json.loads((root/'processed-manifest.json').read_text(encoding='utf-8'))
           if s.get('ocr_source')!='RAW' or not s.get('ocr_source_invariant_verified'):
               raise SystemExit('RAW-source OCR invariant missing')
           if s.get('failed')!=0 or s.get('active_ocr_boxes')!=int(c['expected_active_before']):
               raise SystemExit(f'base OCR gate mismatch: {s}')
+
+          verdict={str(r['box_id']):r for r in rows if isinstance(r,dict) and r.get('box_id')}
+          base_active={bid for bid,r in verdict.items() if r.get('ocr_eligible') is True}
+          if len(base_active)!=int(c['expected_active_before']):
+              raise SystemExit(f'OCR table active count mismatch: {len(base_active)}')
 
           pages=m.get('pages') or []
           boxes={}
@@ -74,10 +82,25 @@ jobs:
                   for r in o.get('source_boxes') or []:
                       if isinstance(r,str): refs.setdefault(r,[]).append(o)
 
+          # The machine OCR table is the eligibility source of truth. The manifest
+          # intentionally retains detector proposals, so synchronize the reviewed
+          # OCR verdict before applying human curation.
+          for bid,(_p,b) in boxes.items():
+              row=verdict.get(bid)
+              eligible=bool(row and row.get('ocr_eligible') is True)
+              b['ocr_eligible']=eligible
+              if row is not None:
+                  b['ocr_review_skip_reason']=row.get('skip_reason')
+                  b['ocr_quality']=row.get('quality')
+                  b['ocr_quality_reason']=row.get('quality_reason')
+                  if eligible:
+                      b['ocr_text']=str(row.get('text') or '')
+
           reason_map={}
           for cat,ids in (c.get('drops') or {}).items():
               for bid in ids:
                   if bid in reason_map: raise SystemExit(f'duplicate drop id {bid}')
+                  if bid not in base_active: raise SystemExit(f'human drop not machine-active: {bid}')
                   reason_map[bid]=cat
 
           for bid,reason in reason_map.items():
@@ -99,7 +122,7 @@ jobs:
 
           corrections=c.get('corrections') or {}
           for bid,item in corrections.items():
-              if bid not in boxes: raise SystemExit(f'missing correction box {bid}')
+              if bid not in boxes or bid not in base_active: raise SystemExit(f'missing active correction box {bid}')
               _p,b=boxes[bid]
               before=str(item['before']); after=str(item['after'])
               if str(b.get('ocr_text') or '')!=before:
@@ -109,7 +132,7 @@ jobs:
               rr=refs.get(bid,[])
               if len(rr)!=1: raise SystemExit(f'correction ref count {bid}: {len(rr)}')
               o=rr[0]
-              if str(o.get('ocr_text') or '')!=before: raise SystemExit(f'object OCR drift {bid}')
+              # The OCR table is canonical; align the logical object before correction.
               o['machine_ocr_text_before_review']=before; o['ocr_text']=after
               o['origin']='human_ocr_review'; o['auto_generated']=False; o['source_missing']=False
               o['human_reviewed']=True; o['ocr_quality']='human_reviewed'; o['ocr_quality_reason']='manual_correction'
@@ -131,6 +154,7 @@ jobs:
                   o=rr[0]
                   if bid not in corrections:
                       o['ocr_text']=str(b.get('ocr_text') or '')
+                      o['translation']=''
                       o['origin']='human_ocr_review'; o['auto_generated']=False; o['source_missing']=False; o['human_reviewed']=True
                       o.pop('auto_ocr_text',None); o.pop('auto_geometry',None)
                       b['human_reviewed']=True
