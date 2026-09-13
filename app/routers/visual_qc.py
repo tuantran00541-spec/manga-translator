@@ -7,13 +7,19 @@ import requests
 
 from fastapi import APIRouter, HTTPException
 from fastapi.concurrency import run_in_threadpool
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
-from app.ai_providers import PROVIDERS, get_provider, validate_model_name
+from app.ai_providers import (
+    PROVIDERS,
+    normalize_provider_id,
+    resolve_provider,
+    validate_model_name,
+    validate_provider_label,
+)
 from app.config import PROCESSED_DIR, RAW_DIR
 from app.logging_config import logger
 from app.manifest_utils import load_manifest_raw
-from app.schemas import VisualQCInspectRequest, VisualQCKeyRequest
+from app.schemas import VisualQCKeyRequest
 from app.secret_store import (
     SecretStoreUnavailable,
     delete_deepseek_api_key,
@@ -25,7 +31,7 @@ from app.secret_store import (
     provider_key_status,
     set_provider_api_key,
 )
-from app.security import validate_chapter_id, validate_managed_path
+from app.security import validate_chapter_id, validate_managed_path, validate_url
 from app.visual_qc.batch_runner import RegionBatchRunner
 from app.visual_qc.deepseek_region_client import DEFAULT_DEEPSEEK_MODEL, DeepSeekRegionQC
 from app.visual_qc.gemini import DEFAULT_GEMINI_MODEL, GeminiVisualQC, GeminiVisualQCTimeout
@@ -52,6 +58,43 @@ class DeepSeekKeyRequest(BaseModel):
         if len(value) > 4096:
             raise ValueError("DeepSeek API key is unexpectedly long")
         return value
+
+
+class ProviderKeyRequest(BaseModel):
+    api_key: str
+    provider_label: str | None = None
+
+    @field_validator("api_key")
+    @classmethod
+    def _api_key_not_empty(cls, value: str) -> str:
+        value = (value or "").strip()
+        if not value:
+            raise ValueError("API key is required")
+        if len(value) > 4096:
+            raise ValueError("API key is unexpectedly long")
+        return value
+
+
+class VisualQCInspectRuntimeRequest(BaseModel):
+    chapter_id: str
+    page_index: int = Field(ge=0)
+    provider: str = "gemini"
+    provider_label: str | None = None
+    provider_protocol: str | None = None
+    provider_api_base: str | None = None
+    model: str | None = None
+
+    @field_validator("provider")
+    @classmethod
+    def _provider_id(cls, value: str) -> str:
+        return normalize_provider_id(value)
+
+    @field_validator("model")
+    @classmethod
+    def _model(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return validate_model_name(value, default="")
 
 
 def _file_revision(path: Path) -> tuple[int, int, int]:
@@ -88,18 +131,38 @@ def _raise_job_capacity_error(exc: RuntimeError) -> None:
     raise HTTPException(500, "Could not start chapter visual QC") from exc
 
 
+def _resolve_request_provider(req):
+    return resolve_provider(
+        req.provider,
+        label=getattr(req, "provider_label", None),
+        protocol=getattr(req, "provider_protocol", None),
+        api_base=getattr(req, "provider_api_base", None),
+    )
+
+
+def _validate_custom_remote(provider) -> None:
+    if provider.builtin:
+        return
+    if provider.chat_url is None:
+        raise HTTPException(400, "Custom provider does not expose an OpenAI-compatible chat endpoint")
+    validate_url(provider.chat_url)
+    validate_url(provider.models_url)
+
+
 def _make_deepseek_service(client: DeepSeekRegionQC) -> ChapterQCService:
     return ChapterQCService(
         RegionBatchRunner(client),
         chapter_qc_jobs,
-        api_key_provider=lambda: get_provider_api_key(client.provider_id),
+        api_key_provider=lambda: get_provider_api_key(
+            client.provider_id,
+            provider_label=client.provider_label,
+        ),
         model=client.model,
         provider=client.provider_id,
     )
 
 
-def _make_chapter_service(provider_id: str, model: str | None, budget_usd: float):
-    provider = get_provider(provider_id)
+def _make_chapter_service(provider, model: str | None, budget_usd: float):
     selected_model = validate_model_name(model, default=provider.default_qc_model)
     if provider.protocol == "gemini":
         client = GeminiRegionQC(model=selected_model)
@@ -121,9 +184,12 @@ def _make_chapter_service(provider_id: str, model: str | None, budget_usd: float
     return _make_deepseek_service(client), client
 
 
-def _remember_job(job_id: str, *, provider: str, client=None) -> None:
+def _remember_job(job_id: str, *, provider, client=None) -> None:
     _chapter_qc_context[job_id] = {
-        "provider": provider,
+        "provider": provider.id,
+        "provider_label": provider.label,
+        "provider_protocol": provider.protocol,
+        "provider_api_base": provider.api_base,
         "model": client.model if client is not None else DEFAULT_GEMINI_MODEL,
         "client": client,
     }
@@ -135,9 +201,11 @@ def _remember_job(job_id: str, *, provider: str, client=None) -> None:
 def _enrich_snapshot(snapshot: dict) -> dict:
     result = dict(snapshot)
     context = _chapter_qc_context.get(str(snapshot.get("job_id"))) or {}
-    provider = str(context.get("provider") or "gemini")
-    result["provider"] = provider
-    result["model"] = str(context.get("model") or get_provider(provider).default_qc_model)
+    provider_id = str(context.get("provider") or "gemini")
+    provider_label = str(context.get("provider_label") or provider_id)
+    result["provider"] = provider_id
+    result["provider_label"] = provider_label
+    result["model"] = str(context.get("model") or DEFAULT_GEMINI_MODEL)
     client = context.get("client")
     if isinstance(client, DeepSeekRegionQC):
         result["usage"] = client.usage_snapshot()
@@ -154,53 +222,76 @@ def visual_qc_settings() -> dict:
             "id": provider.id,
             "label": provider.label,
             "protocol": provider.protocol,
+            "api_base": provider.api_base,
             "model": provider.default_qc_model,
             "translation_model": provider.default_translation_model,
+            "builtin": True,
         }
     gemini = providers["gemini"]
     return {
         **gemini,
         "model": DEFAULT_GEMINI_MODEL,
         "providers": providers,
+        "custom_protocols": [
+            {
+                "id": "openai",
+                "label": "OpenAI-compatible",
+                "description": "HTTPS API root exposing /models and /chat/completions",
+            }
+        ],
     }
 
 
 @router.post("/providers/{provider_id}/key")
-def save_provider_key(provider_id: str, req: VisualQCKeyRequest) -> dict:
+def save_provider_key(provider_id: str, req: ProviderKeyRequest) -> dict:
     try:
-        provider = get_provider(provider_id)
-        set_provider_api_key(provider.id, req.api_key)
+        normalized = normalize_provider_id(provider_id)
+        label = validate_provider_label(req.provider_label, default=normalized)
+        set_provider_api_key(normalized, req.api_key, provider_label=label)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     except SecretStoreUnavailable as exc:
         raise HTTPException(503, str(exc)) from exc
-    return {"configured": True, "source": "os_secure_storage", "provider": provider.id}
+    return {"configured": True, "source": "os_secure_storage", "provider": normalized}
 
 
 @router.delete("/providers/{provider_id}/key")
-def clear_provider_key(provider_id: str) -> dict:
+def clear_provider_key(provider_id: str, provider_label: str | None = None) -> dict:
     try:
-        provider = get_provider(provider_id)
-        if any(os.getenv(name) for name in provider.env_names):
+        normalized = normalize_provider_id(provider_id)
+        builtin = PROVIDERS.get(normalized)
+        if builtin is not None and any(os.getenv(name) for name in builtin.env_names):
             return {
                 "configured": True,
                 "source": "environment",
-                "provider": provider.id,
+                "provider": normalized,
                 "detail": "Environment-provided keys must be removed from the process environment.",
             }
-        delete_provider_api_key(provider.id)
+        label = validate_provider_label(provider_label, default=(builtin.label if builtin else normalized))
+        delete_provider_api_key(normalized, provider_label=label)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     except SecretStoreUnavailable as exc:
         raise HTTPException(503, str(exc)) from exc
-    return {"configured": False, "source": "none", "provider": provider.id}
+    return {"configured": False, "source": "none", "provider": normalized}
 
 
 @router.get("/providers/{provider_id}/models")
-def list_provider_models(provider_id: str) -> dict:
+def list_provider_models(
+    provider_id: str,
+    provider_label: str | None = None,
+    provider_protocol: str | None = None,
+    provider_api_base: str | None = None,
+) -> dict:
     try:
-        provider = get_provider(provider_id)
-        api_key = get_provider_api_key(provider.id)
+        provider = resolve_provider(
+            provider_id,
+            label=provider_label,
+            protocol=provider_protocol,
+            api_base=provider_api_base,
+        )
+        _validate_custom_remote(provider)
+        api_key = get_provider_api_key(provider.id, provider_label=provider.label)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     except SecretStoreUnavailable as exc:
@@ -232,7 +323,11 @@ def list_provider_models(provider_id: str) -> dict:
             model_id = model_id[7:]
         if model_id:
             models.append(model_id)
-    return {"provider": provider.id, "models": sorted(set(models))[:500]}
+    return {
+        "provider": provider.id,
+        "provider_label": provider.label,
+        "models": sorted(set(models))[:500],
+    }
 
 
 @router.post("/key")
@@ -303,7 +398,7 @@ def clear_deepseek_visual_qc_key() -> dict:
 
 
 @router.post("/inspect")
-async def inspect_visual_qc(req: VisualQCInspectRequest) -> dict:
+async def inspect_visual_qc(req: VisualQCInspectRuntimeRequest) -> dict:
     validate_chapter_id(req.chapter_id)
     manifest = load_manifest_raw(req.chapter_id)
     pages = manifest.get("pages", [])
@@ -323,9 +418,12 @@ async def inspect_visual_qc(req: VisualQCInspectRequest) -> dict:
         raise HTTPException(409, "Page image changed before visual QC could start") from exc
 
     try:
-        provider = get_provider(req.provider)
+        provider = _resolve_request_provider(req)
+        _validate_custom_remote(provider)
         model = validate_model_name(req.model, default=provider.default_qc_model)
-        api_key = get_provider_api_key(provider.id)
+        api_key = get_provider_api_key(provider.id, provider_label=provider.label)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
     except SecretStoreUnavailable as exc:
         raise HTTPException(503, str(exc)) from exc
     if not api_key:
@@ -357,7 +455,7 @@ async def inspect_visual_qc(req: VisualQCInspectRequest) -> dict:
     except Exception as exc:
         detail = _redact_secret(exc, api_key)
         logger.error(
-            "Chapter {} page {} Gemini visual QC failed: {}",
+            "Chapter {} page {} AI visual QC failed: {}",
             req.chapter_id,
             req.page_index,
             detail,
@@ -386,6 +484,7 @@ async def inspect_visual_qc(req: VisualQCInspectRequest) -> dict:
 
     return {
         "provider": provider.id,
+        "provider_label": provider.label,
         "model": client.model,
         "issues": [
             {
@@ -412,8 +511,12 @@ async def inspect_visual_qc(req: VisualQCInspectRequest) -> dict:
 )
 async def start_chapter_visual_qc(req: VisualQCChapterRequest) -> dict:
     validate_chapter_id(req.chapter_id)
-    provider = req.provider
-    service, client = _make_chapter_service(provider, req.model, req.budget_usd)
+    try:
+        provider = _resolve_request_provider(req)
+        _validate_custom_remote(provider)
+        service, client = _make_chapter_service(provider, req.model, req.budget_usd)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
     try:
         job = await service.start(req.chapter_id, concurrency=req.concurrency)
     except HTTPException:
@@ -471,15 +574,16 @@ async def retry_failed_chapter_visual_qc(job_id: str) -> dict:
     if int(previous.get("failed") or 0) <= 0:
         raise HTTPException(409, "Visual QC job has no failed regions to retry")
 
-    context = _chapter_qc_context.get(job_id) or {"provider": "gemini"}
-    provider = str(context.get("provider") or "gemini")
+    context = _chapter_qc_context.get(job_id) or {"provider": "gemini", "provider_label": "Google Gemini"}
+    provider_id = str(context.get("provider") or "gemini")
+    provider_label = str(context.get("provider_label") or provider_id)
     client = context.get("client")
     if not isinstance(client, (DeepSeekRegionQC, GeminiRegionQC)):
         raise HTTPException(409, "AI QC job context is no longer available")
     service = _make_deepseek_service(client) if isinstance(client, DeepSeekRegionQC) else ChapterQCService(
         RegionBatchRunner(client), chapter_qc_jobs,
-        api_key_provider=lambda: get_provider_api_key(provider),
-        model=client.model, provider=provider,
+        api_key_provider=lambda: get_provider_api_key(provider_id, provider_label=provider_label),
+        model=client.model, provider=provider_id,
     )
     try:
         job = await service.start(
@@ -495,5 +599,11 @@ async def retry_failed_chapter_visual_qc(job_id: str) -> dict:
         raise HTTPException(status, str(exc)) from exc
     except RuntimeError as exc:
         _raise_job_capacity_error(exc)
+    provider = resolve_provider(
+        provider_id,
+        label=provider_label,
+        protocol=context.get("provider_protocol"),
+        api_base=context.get("provider_api_base"),
+    )
     _remember_job(job.job_id, provider=provider, client=client)
     return _enrich_snapshot(chapter_qc_jobs.snapshot(job.job_id))
