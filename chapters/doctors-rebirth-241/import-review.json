@@ -1,7 +1,8 @@
 {
   "checkpoint": "IMPORT",
   "status": "PASS",
-  "chapter_id": "c241dr01",
+  "chapter_id": "c241d001",
+  "legacy_import_chapter_id": "c241dr01",
   "series_slug": "doctors-rebirth-53fc8424",
   "chapter_number": 241,
   "source_url": "https://asurascans.com/comics/doctors-rebirth-53fc8424/chapter/241",
@@ -25,6 +26,9 @@
     "artifact_id": 10309772417,
     "artifact_digest": "sha256:88af5631674b2335a0d884dbd6567f5a164df0914531318a6dbd834ba9f39e98"
   },
+  "metadata_repairs": [
+    "Operational chapter_id normalized from legacy c241dr01 to validator-compliant c241d001; import pixels, hashes, ordering, slice geometry and reconstruction evidence are unchanged."
+  ],
   "human_review": {
     "source_overview_reviewed": true,
     "slice_contact_sheets_reviewed": true,
