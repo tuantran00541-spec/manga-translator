@@ -7,6 +7,7 @@ on:
     paths:
       - scripts/benchmark_focus_atlas.py
       - scripts/benchmark_focus_atlas_v2.py
+      - scripts/benchmark_focus_atlas_v3.py
       - .github/workflows/perf-focus-atlas-ab.yml
   workflow_dispatch:
 
@@ -69,16 +70,16 @@ jobs:
           cp benchmark-bootstrap/models/*.onnx models/
           cp benchmark-bootstrap/models/.e2e-provenance.json models/
       - name: Compile atlas benchmark
-        run: python -m compileall -q app scripts/benchmark_focus_atlas.py scripts/benchmark_focus_atlas_v2.py
-      - name: Run focus ROI atlas A/B
+        run: python -m compileall -q app scripts/benchmark_focus_atlas.py scripts/benchmark_focus_atlas_v3.py
+      - name: Run scale-aware focus ROI atlas sweep
         run: |
-          mkdir -p benchmark-results/focus-atlas-v2
-          PYTHONPATH=. python scripts/benchmark_focus_atlas_v2.py
+          mkdir -p benchmark-results/focus-atlas-v3
+          PYTHONPATH=. python scripts/benchmark_focus_atlas_v3.py
       - name: Upload atlas report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: focus-atlas-v2-${{ github.run_id }}
-          path: benchmark-results/focus-atlas-v2/report.json
+          name: focus-atlas-v3-${{ github.run_id }}
+          path: benchmark-results/focus-atlas-v3/report.json
           if-no-files-found: warn
           retention-days: 7
