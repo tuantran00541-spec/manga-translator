@@ -1,12 +1,14 @@
-name: Perf fast inpaint chapter AB
+name: Perf adaptive LaMa full chapter AB
 
 on:
   push:
     branches:
       - perf/bubble-fastpath-roi-lama
     paths:
-      - app/inpaint/fast_lama_inpainter.py
+      - app/inpaint/lama_runtime_policy.py
+      - app/inpaint/adaptive_fast_inpainter.py
       - app/optimized_pipeline.py
+      - tests/test_adaptive_lama_runtime.py
       - .github/workflows/perf-fast-inpaint-chapter-ab.yml
   workflow_dispatch:
 
@@ -18,9 +20,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  chapter-ab:
+  full-chapter-ab:
     runs-on: ubuntu-22.04
-    timeout-minutes: 35
+    timeout-minutes: 90
     env:
       PYTHONUNBUFFERED: "1"
       MANGA_USE_DYNAMIC_LAMA: "1"
@@ -69,48 +71,119 @@ jobs:
           python benchmark-bootstrap/scripts/provision_real_e2e_models.py
           cp benchmark-bootstrap/models/*.onnx models/
           cp benchmark-bootstrap/models/.e2e-provenance.json models/
-      - name: Run baseline versus fast inpainter on representative slices
+      - name: Run full chapter control versus adaptive runtime
         run: |
-          mkdir -p benchmark-results/fast-inpaint
+          mkdir -p benchmark-results/adaptive-lama-full
           python - <<'PY'
           from __future__ import annotations
-          import copy, hashlib, json, statistics, time
+          import copy
+          import ctypes
+          import gc
+          import hashlib
+          import json
+          import statistics
+          import threading
+          import time
           from pathlib import Path
+
           import numpy as np
+          import psutil
 
           from app.image_io import read_image
+          from app.inpaint.adaptive_fast_inpainter import AdaptiveFastInpainter
           from app.inpaint.fast_lama_inpainter import FastInpainter
-          from app.inpaint.lama_inpainter import Inpainter
           from app.manifest_utils import load_manifest_raw
           from app.optimized_pipeline import OptimizedChapterPipeline
+          from app.runtime_responsiveness import responsive_process_workers, visible_cpu_count
           from scripts.model_e2e_gate import _authority_mask
 
           URL = 'https://asurascans.com/comics/killer-pietro-08677664/chapter/120'
-          OUT = Path('benchmark-results/fast-inpaint/report.json')
+          REQUESTED_WORKERS = 2
+          OUT = Path('benchmark-results/adaptive-lama-full/report.json')
+          process = psutil.Process()
+
+          def trim_heap():
+              gc.collect()
+              try:
+                  libc = ctypes.CDLL(None)
+                  trim = getattr(libc, 'malloc_trim', None)
+                  if trim is not None:
+                      trim(0)
+              except Exception:
+                  pass
+
+          class RssMonitor:
+              def __init__(self):
+                  self.start = int(process.memory_info().rss)
+                  self.peak = self.start
+                  self.stop_event = threading.Event()
+                  self.thread = threading.Thread(target=self._run, daemon=True)
+
+              def _run(self):
+                  while not self.stop_event.wait(0.05):
+                      try:
+                          self.peak = max(self.peak, int(process.memory_info().rss))
+                      except Exception:
+                          pass
+
+              def __enter__(self):
+                  self.thread.start()
+                  return self
+
+              def __exit__(self, *_):
+                  self.stop_event.set()
+                  self.thread.join(timeout=2.0)
+                  try:
+                      self.peak = max(self.peak, int(process.memory_info().rss))
+                  except Exception:
+                      pass
+
           pipeline = OptimizedChapterPipeline()
-          chapter_id = hashlib.sha256(f'fast-inpaint-{time.time_ns()}'.encode()).hexdigest()[:8]
+          chapter_id = hashlib.sha256(f'adaptive-full-{time.time_ns()}'.encode()).hexdigest()[:8]
           manifest = pipeline.download_chapter(URL, chapter_id, workers=2)
           total = len(manifest.get('pages', []))
           if total < 20:
               raise RuntimeError(f'expected >=20 slices, got {total}')
+          indices = list(range(total))
+          effective_workers = responsive_process_workers(REQUESTED_WORKERS)
 
-          # Spread samples across the chapter so bubbles, free text and textured
-          # artwork all contribute instead of benchmarking one contiguous scene.
-          indices = sorted({round(i * (total - 1) / 19) for i in range(20)})
+          # Warm detector/OpenVINO caches once, but discard the temporary LaMa
+          # session so both measured arms start with a fresh, preloaded inpainter.
+          warm = FastInpainter()
+          pipeline._inpainter = warm
+          pipeline.process_pages(chapter_id, [total // 2], workers=1)
+          pipeline._inpainter = None
+          del warm
+          trim_heap()
 
-          def snapshot(label: str, inpainter):
+          def snapshot(label, inpainter, baseline_hashes=None):
               pipeline._inpainter = inpainter
-              started = time.perf_counter()
-              pipeline.process_pages(chapter_id, indices, workers=1)
-              wall_ms = (time.perf_counter() - started) * 1000.0
+              prepare = getattr(inpainter, 'prepare_for_page_workers', None)
+              if callable(prepare):
+                  prepare(effective_workers)
+              inpainter.preload()
+              profile = (
+                  inpainter.runtime_profile_status()
+                  if hasattr(inpainter, 'runtime_profile_status')
+                  else None
+              )
+              trim_heap()
+              rss_start = int(process.memory_info().rss)
+              with RssMonitor() as rss:
+                  started = time.perf_counter()
+                  pipeline.process_pages(chapter_id, indices, workers=REQUESTED_WORKERS)
+                  wall_ms = (time.perf_counter() - started) * 1000.0
+              rss_end = int(process.memory_info().rss)
+
               current = load_manifest_raw(chapter_id)
               pages = current.get('pages', [])
               timing = []
               inpaint_metrics = {}
               authority_outside = 0
               residue = 0
-              clean_hashes = {}
               boxes = safe = review = deferred = 0
+              clean_hashes = {}
+              hash_mismatches = []
               for idx in indices:
                   page = pages[idx]
                   metrics = page.get('processing_metrics') or {}
@@ -118,8 +191,7 @@ jobs:
                   for key, value in (metrics.get('auto_inpaint') or {}).items():
                       if isinstance(value, (int, float)) and not isinstance(value, bool):
                           inpaint_metrics[key] = inpaint_metrics.get(key, 0) + float(value)
-                  det = metrics.get('detector') or {}
-                  residue += int(det.get('post_inpaint_residue') or 0)
+                  residue += int((metrics.get('detector') or {}).get('post_inpaint_residue') or 0)
                   page_boxes = page.get('boxes', [])
                   boxes += len(page_boxes)
                   safe += sum(bool(b.get('safe_to_inpaint')) for b in page_boxes)
@@ -127,10 +199,13 @@ jobs:
                   deferred += sum(bool(b.get('deferred_reason')) for b in page_boxes)
                   original = read_image(Path(page['original']))
                   clean = read_image(Path(page['clean']))
-                  mask = _authority_mask(original, page_boxes, inpainter)
+                  authority = _authority_mask(original, page_boxes, inpainter)
                   changed = np.any(original != clean, axis=2)
-                  authority_outside += int(np.count_nonzero(changed & (mask <= 127)))
-                  clean_hashes[str(idx)] = hashlib.sha256(clean.tobytes()).hexdigest()
+                  authority_outside += int(np.count_nonzero(changed & (authority <= 127)))
+                  digest = hashlib.sha256(clean.tobytes()).hexdigest()
+                  clean_hashes[str(idx)] = digest
+                  if baseline_hashes is not None and baseline_hashes.get(str(idx)) != digest:
+                      hash_mismatches.append(idx)
 
               def mean_timing(name):
                   vals = [float(row.get(name) or 0.0) for row in timing]
@@ -139,7 +214,10 @@ jobs:
               return {
                   'label': label,
                   'wall_ms': round(wall_ms, 3),
-                  'slices_per_min': round(len(indices) * 60000.0 / max(1.0, wall_ms), 3),
+                  'slices_per_min': round(total * 60000.0 / max(1.0, wall_ms), 3),
+                  'requested_workers': REQUESTED_WORKERS,
+                  'effective_workers': effective_workers,
+                  'runtime_profile': profile,
                   'timing_mean_ms': {
                       key: mean_timing(key)
                       for key in ('detect', 'auto_inpaint', 'residue_verify', 'total')
@@ -151,43 +229,67 @@ jobs:
                   'safe': safe,
                   'review': review,
                   'deferred': deferred,
+                  'rss': {
+                      'start_bytes': rss_start,
+                      'peak_bytes': int(rss.peak),
+                      'end_bytes': rss_end,
+                      'peak_growth_bytes': max(0, int(rss.peak) - rss_start),
+                      'retained_growth_bytes': max(0, rss_end - rss_start),
+                  },
                   'clean_hashes': clean_hashes,
+                  'hash_mismatches_vs_control': hash_mismatches,
               }
 
-          baseline = snapshot('baseline', Inpainter())
-          candidate = snapshot('candidate', FastInpainter())
+          control = FastInpainter()
+          baseline = snapshot('control_fast_inpainter', control)
+          baseline_hashes = baseline['clean_hashes']
+          pipeline._inpainter = None
+          del control
+          trim_heap()
+
+          candidate = AdaptiveFastInpainter()
+          adaptive = snapshot('adaptive_runtime', candidate, baseline_hashes)
+
           report = {
               'chapter_url': URL,
               'chapter_id': chapter_id,
               'total_slices': total,
-              'sample_indices': indices,
-              'baseline': baseline,
-              'candidate': candidate,
-          }
-          report['speedup'] = {
-              'wall_pct': round((baseline['wall_ms'] / candidate['wall_ms'] - 1.0) * 100.0, 2),
-              'auto_inpaint_pct': round(
-                  (baseline['timing_mean_ms']['auto_inpaint'] / max(1.0, candidate['timing_mean_ms']['auto_inpaint']) - 1.0) * 100.0,
-                  2,
-              ),
+              'cpu_count': visible_cpu_count(),
+              'requested_workers': REQUESTED_WORKERS,
+              'effective_workers': effective_workers,
+              'control': baseline,
+              'candidate': adaptive,
+              'speedup': {
+                  'wall_pct': round((baseline['wall_ms'] / adaptive['wall_ms'] - 1.0) * 100.0, 2),
+                  'throughput_pct': round((adaptive['slices_per_min'] / baseline['slices_per_min'] - 1.0) * 100.0, 2),
+                  'auto_inpaint_pct': round(
+                      (baseline['timing_mean_ms']['auto_inpaint'] / max(1.0, adaptive['timing_mean_ms']['auto_inpaint']) - 1.0) * 100.0,
+                      2,
+                  ),
+              },
           }
           OUT.write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
-          print('FAST_INPAINT_AB=' + json.dumps(report, ensure_ascii=False), flush=True)
+          print('ADAPTIVE_LAMA_FULL_AB=' + json.dumps(report, ensure_ascii=False), flush=True)
 
-          if baseline['authority_outside_changed'] or candidate['authority_outside_changed']:
+          if baseline['authority_outside_changed'] or adaptive['authority_outside_changed']:
               raise RuntimeError('changed pixels escaped destructive authority mask')
-          if candidate['boxes'] != baseline['boxes'] or candidate['safe'] != baseline['safe']:
-              raise RuntimeError('inpaint candidate unexpectedly changed detector decisions')
-          if candidate['post_inpaint_residue'] > baseline['post_inpaint_residue']:
+          if adaptive['boxes'] != baseline['boxes'] or adaptive['safe'] != baseline['safe']:
+              raise RuntimeError('adaptive runtime changed detector decisions')
+          if adaptive['post_inpaint_residue'] > baseline['post_inpaint_residue']:
               raise RuntimeError(
-                  f"candidate residue regressed {baseline['post_inpaint_residue']} -> {candidate['post_inpaint_residue']}"
+                  f"adaptive residue regressed {baseline['post_inpaint_residue']} -> {adaptive['post_inpaint_residue']}"
+              )
+          if adaptive['hash_mismatches_vs_control']:
+              raise RuntimeError(
+                  f"adaptive runtime changed clean pixels on {len(adaptive['hash_mismatches_vs_control'])} pages: "
+                  f"{adaptive['hash_mismatches_vs_control'][:12]}"
               )
           PY
-      - name: Upload A/B report
+      - name: Upload full chapter A/B report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: fast-inpaint-ab-${{ github.run_id }}
-          path: benchmark-results/fast-inpaint/report.json
+          name: adaptive-lama-full-ab-${{ github.run_id }}
+          path: benchmark-results/adaptive-lama-full/report.json
           if-no-files-found: warn
           retention-days: 7

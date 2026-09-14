@@ -28,4 +28,5 @@ jobs:
             tests/test_fast_residue_detector.py \
             tests/test_parallel_focus_detector.py \
             tests/test_cleanup_safety_regressions.py \
-            tests/test_inpaint_preload.py
+            tests/test_inpaint_preload.py \
+            tests/test_adaptive_lama_runtime.py
