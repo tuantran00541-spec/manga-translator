@@ -218,7 +218,6 @@ class ProbeSinglePassBubbleDetector(SequentialFastResidueAdaptiveFocusCombinedTe
             image.shape[0] > DETECTOR_INPUT_SIZE * DETECTOR_TALL_IMAGE_FACTOR
         )
         metrics["total_ms"] = round((time.perf_counter() - started_at) * 1000.0, 3)
-        metrics["audit_features"] = audit
         self._metrics_local.value = metrics
         return result
 
@@ -343,7 +342,6 @@ class GatedBubbleDetector(SequentialFastResidueAdaptiveFocusCombinedTextDetector
         metrics["audit_ms"] = round(audit_ms, 3)
         metrics["bubble_gate_fallback"] = int(fallback)
         metrics["bubble_gate_fastpath"] = int(tall and not fallback)
-        metrics["audit_features"] = audit
         metrics["total_ms"] = round((time.perf_counter() - started_at) * 1000.0, 3)
         self._metrics_local.value = metrics
         return result
@@ -433,7 +431,11 @@ def main() -> None:
     probe_quality = _mismatch(control, probe)
     strict_unsafe = set(probe_quality["authority"]) | set(probe_quality["review"]) | set(probe_quality["counts"])
     features = {
-        key: dict(row.get("audit_features") or {})
+        key: {
+            str(name)[6:]: value
+            for name, value in row.items()
+            if str(name).startswith("audit_") and str(name) != "audit_ms"
+        }
         for key, row in probe["rows"].items()
     }
     rule = _select_rule(features, strict_unsafe)
