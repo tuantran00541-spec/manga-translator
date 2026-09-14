@@ -6,6 +6,9 @@ from app.detector.bubble_detector import BubbleBox
 from app.detector.fast_residue_detector import (
     FastResidueAdaptiveFocusCombinedTextDetector,
 )
+from app.detector.parallel_focus_detector import (
+    ParallelAdaptiveFocusCombinedTextDetector,
+)
 from app.parameters import DETECTOR_RESIDUE_VERIFY_MAX_SOURCE_SIDE
 
 
@@ -23,6 +26,25 @@ def _box(x1, y1, x2, y2):
         mask_source="text_segmenter",
         safe_to_inpaint=True,
         ocr_eligible=True,
+    )
+
+
+def _detector_with_fake_text():
+    detector = FastResidueAdaptiveFocusCombinedTextDetector.__new__(
+        FastResidueAdaptiveFocusCombinedTextDetector
+    )
+    detector._residue_metrics_local = threading.local()
+    detector._residue_metrics_lock = threading.Lock()
+    detector._residue_totals = {}
+    detector._residue_flat_gate_enabled = True
+    detector.text_detector = _FakeTextDetector()
+    return detector
+
+
+def test_fast_residue_detector_inherits_parallel_focus_path():
+    assert issubclass(
+        FastResidueAdaptiveFocusCombinedTextDetector,
+        ParallelAdaptiveFocusCombinedTextDetector,
     )
 
 
@@ -79,18 +101,46 @@ class _FakeTextDetector:
         return box
 
 
+def test_flat_clean_source_skips_neural_residue_verifier():
+    detector = _detector_with_fake_text()
+    source = _box(10, 10, 60, 40)
+    image = np.full((100, 120, 3), 248, dtype=np.uint8)
+
+    residue = detector.verify_post_inpaint_residue(image, [source])
+
+    assert residue == []
+    assert detector.text_detector.calls == 0
+    metrics = detector.last_residue_metrics()
+    assert metrics["flat_negative_sources"] == 1
+    assert metrics["neural_sources"] == 0
+    assert metrics["model_calls"] == 0
+
+
+def test_single_contrasting_residual_forces_neural_verifier():
+    detector = _detector_with_fake_text()
+    source = _box(10, 10, 60, 40)
+    image = np.full((100, 120, 3), 248, dtype=np.uint8)
+    image[20, 30] = 0
+
+    detector.verify_post_inpaint_residue(image, [source])
+
+    assert detector.text_detector.calls == 1
+    metrics = detector.last_residue_metrics()
+    assert metrics["flat_negative_sources"] == 0
+    assert metrics["neural_sources"] == 1
+    assert metrics["model_calls"] == 1
+
+
 def test_coalesced_verifier_uses_one_model_call_and_keeps_residue_evidence():
-    detector = FastResidueAdaptiveFocusCombinedTextDetector.__new__(
-        FastResidueAdaptiveFocusCombinedTextDetector
-    )
-    detector._residue_metrics_local = threading.local()
-    detector._residue_metrics_lock = threading.Lock()
-    detector._residue_totals = {}
-    detector.text_detector = _FakeTextDetector()
+    detector = _detector_with_fake_text()
 
     first = _box(10, 10, 50, 35)
     second = _box(48, 12, 88, 37)
     image = np.full((120, 140, 3), 255, dtype=np.uint8)
+    # Force both sources through the neural path so the coalescing contract is
+    # exercised independently of the flat-negative gate.
+    image[18:26, 22:34] = 0
+    image[18:28, 58:72] = 0
 
     residue = detector.verify_post_inpaint_residue(image, [first, second])
 
@@ -99,6 +149,7 @@ def test_coalesced_verifier_uses_one_model_call_and_keeps_residue_evidence():
     assert residue[0].deferred_reason == "post_inpaint_text_residue"
     metrics = detector.last_residue_metrics()
     assert metrics["scheduled_sources"] == 2
+    assert metrics["flat_negative_sources"] == 0
     assert metrics["groups"] == 1
     assert metrics["model_calls"] == 1
     assert metrics["merged_sources"] == 1

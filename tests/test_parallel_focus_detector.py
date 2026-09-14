@@ -11,6 +11,7 @@ from app.detector.parallel_focus_detector import (
     ParallelAdaptiveFocusCombinedTextDetector,
     _finish_focus_from_full,
 )
+from app.detector.recovery import SecondaryTextRecovery
 
 
 def _box(x1, y1, x2, y2, *, semantic_type="speech_bubble"):
@@ -166,3 +167,28 @@ def test_parallel_true_overlaps_independent_prefetch_and_reuses_downstream_path(
     assert metrics["parallel_prefetch_wall_ms"] >= 0.0
     assert metrics["parallel_prefetch_overlap_ms"] >= 0.0
     assert metrics["focus_chip_calls"] == 0
+
+
+class _FakeMser:
+    def __init__(self):
+        self.calls = 0
+
+    def detectRegions(self, gray):
+        self.calls += 1
+        return [], np.empty((0, 4), dtype=np.int32)
+
+
+def test_secondary_recovery_reuses_mser_primitives_for_same_image_object():
+    recovery = SecondaryTextRecovery()
+    fake_mser = _FakeMser()
+    recovery._mser = fake_mser
+    image = np.zeros((96, 128, 3), dtype=np.uint8)
+
+    assert recovery.detect(image, existing=[]) == []
+    assert recovery.detect(image, existing=[_box(4, 4, 24, 20)]) == []
+    assert fake_mser.calls == 1
+
+    # The cache is deliberately image-object scoped; a new source object must
+    # run MSER again rather than reusing stale coordinates.
+    assert recovery.detect(image.copy(), existing=[]) == []
+    assert fake_mser.calls == 2
