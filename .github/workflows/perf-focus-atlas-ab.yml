@@ -6,6 +6,7 @@ on:
       - perf/bubble-fastpath-roi-lama
     paths:
       - scripts/benchmark_focus_atlas.py
+      - scripts/benchmark_focus_atlas_v2.py
       - .github/workflows/perf-focus-atlas-ab.yml
   workflow_dispatch:
 
@@ -68,16 +69,16 @@ jobs:
           cp benchmark-bootstrap/models/*.onnx models/
           cp benchmark-bootstrap/models/.e2e-provenance.json models/
       - name: Compile atlas benchmark
-        run: python -m compileall -q app scripts/benchmark_focus_atlas.py
+        run: python -m compileall -q app scripts/benchmark_focus_atlas.py scripts/benchmark_focus_atlas_v2.py
       - name: Run focus ROI atlas A/B
         run: |
-          mkdir -p benchmark-results/focus-atlas
-          PYTHONPATH=. python scripts/benchmark_focus_atlas.py
+          mkdir -p benchmark-results/focus-atlas-v2
+          PYTHONPATH=. python scripts/benchmark_focus_atlas_v2.py
       - name: Upload atlas report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: focus-atlas-ab-${{ github.run_id }}
-          path: benchmark-results/focus-atlas/report.json
+          name: focus-atlas-v2-${{ github.run_id }}
+          path: benchmark-results/focus-atlas-v2/report.json
           if-no-files-found: warn
           retention-days: 7
