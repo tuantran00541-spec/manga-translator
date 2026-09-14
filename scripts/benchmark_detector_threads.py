@@ -24,8 +24,9 @@ SAMPLE_COUNT = 10
 THREAD_PROFILES = (
     ("threads_2_current", 2, False),
     ("threads_4", 4, False),
-    ("threads_1", 1, False),
     ("latency_auto", None, True),
+    ("threads_1", 1, False),
+    ("threads_2_repeat", 2, False),
 )
 
 
@@ -46,21 +47,12 @@ def _box_signature(boxes) -> list[tuple]:
     for box in boxes:
         values.append(
             (
-                int(box.x1),
-                int(box.y1),
-                int(box.x2),
-                int(box.y2),
+                int(box.x1), int(box.y1), int(box.x2), int(box.y2),
                 round(float(box.confidence), 8),
-                str(box.source_model),
-                str(box.source_role),
-                int(box.class_id),
-                str(box.class_name),
-                str(box.semantic_type),
-                str(box.mask_source),
-                bool(box.safe_to_inpaint),
-                bool(box.ocr_eligible),
-                bool(box.needs_review),
-                box.deferred_reason,
+                str(box.source_model), str(box.source_role), int(box.class_id),
+                str(box.class_name), str(box.semantic_type), str(box.mask_source),
+                bool(box.safe_to_inpaint), bool(box.ocr_eligible),
+                bool(box.needs_review), box.deferred_reason,
                 _mask_hash(box.mask),
             )
         )
@@ -68,10 +60,6 @@ def _box_signature(boxes) -> list[tuple]:
 
 
 def _auto_openvino_provider_options() -> dict[str, str]:
-    # OpenVINO LATENCY mode already chooses one stream and an appropriate number
-    # of CPU inference threads. Leave both low-level knobs unset so the plugin can
-    # size itself to the runner instead of inheriting Manga Translator's current
-    # conservative 2-thread cap.
     config: dict[str, dict[str, str]] = {
         "CPU": {
             "PERFORMANCE_HINT": "LATENCY",
@@ -95,14 +83,19 @@ def _run_profile(
     paths: dict[int, Path],
     indices: list[int],
     warmup_path: Path,
+    base_cache_dir: str,
 ) -> dict:
     original_provider_options = ort_utils._openvino_provider_options
+    original_cache = os.environ.get("MANGA_ORT_OPENVINO_CACHE_DIR")
+    profile_cache = Path(base_cache_dir or "/tmp/manga-openvino-cache") / label
+    profile_cache.mkdir(parents=True, exist_ok=True)
+    os.environ["MANGA_ORT_OPENVINO_CACHE_DIR"] = str(profile_cache)
+
     if auto:
         ort_utils._openvino_provider_options = _auto_openvino_provider_options
         os.environ.pop("MANGA_ORT_OPENVINO_THREADS", None)
         os.environ.pop("MANGA_ORT_OPENVINO_STREAMS", None)
     else:
-        ort_utils._openvino_provider_options = original_provider_options
         os.environ["MANGA_ORT_OPENVINO_THREADS"] = str(int(threads))
         os.environ["MANGA_ORT_OPENVINO_STREAMS"] = "1"
 
@@ -150,19 +143,17 @@ def _run_profile(
                     "total_ms",
                 )
             },
-            "focus_chip_calls": int(
-                sum(int(row.get("focus_chip_calls") or 0) for row in rows)
-            ),
-            "result_boxes": int(
-                sum(int(row.get("result_boxes") or 0) for row in rows)
-            ),
-            "review_boxes": int(
-                sum(int(row.get("review_boxes") or 0) for row in rows)
-            ),
+            "focus_chip_calls": int(sum(int(row.get("focus_chip_calls") or 0) for row in rows)),
+            "result_boxes": int(sum(int(row.get("result_boxes") or 0) for row in rows)),
+            "review_boxes": int(sum(int(row.get("review_boxes") or 0) for row in rows)),
             "box_signatures": signatures,
         }
     finally:
         ort_utils._openvino_provider_options = original_provider_options
+        if original_cache is None:
+            os.environ.pop("MANGA_ORT_OPENVINO_CACHE_DIR", None)
+        else:
+            os.environ["MANGA_ORT_OPENVINO_CACHE_DIR"] = original_cache
         if detector is not None:
             del detector
         gc.collect()
@@ -185,40 +176,26 @@ def _speedup_pct(control_ms: float, candidate_ms: float) -> float:
 def main() -> None:
     OUT.parent.mkdir(parents=True, exist_ok=True)
     pipeline = ChapterPipeline()
-    chapter_id = hashlib.sha256(
-        f"detector-thread-sweep-{time.time_ns()}".encode()
-    ).hexdigest()[:8]
+    chapter_id = hashlib.sha256(f"detector-thread-sweep-{time.time_ns()}".encode()).hexdigest()[:8]
     manifest = pipeline.download_chapter(CHAPTER_URL, chapter_id, workers=2)
     pages = manifest.get("pages", [])
     total = len(pages)
     if total < SAMPLE_COUNT + 1:
         raise RuntimeError(f"expected >= {SAMPLE_COUNT + 1} slices, got {total}")
 
-    indices = sorted(
-        {
-            round(i * (total - 1) / (SAMPLE_COUNT - 1))
-            for i in range(SAMPLE_COUNT)
-        }
-    )
+    indices = sorted({round(i * (total - 1) / (SAMPLE_COUNT - 1)) for i in range(SAMPLE_COUNT)})
     paths = {index: Path(pages[index]["original"]) for index in indices}
     warmup_index = next(index for index in range(total) if index not in set(indices))
     warmup_path = Path(pages[warmup_index]["original"])
+    base_cache_dir = os.environ.get("MANGA_ORT_OPENVINO_CACHE_DIR", "/tmp/manga-openvino-cache")
 
     profiles: dict[str, dict] = {}
     for label, threads, auto in THREAD_PROFILES:
         print(f"THREAD_SWEEP_START={label}", flush=True)
         profiles[label] = _run_profile(
-            label,
-            threads,
-            auto,
-            paths,
-            indices,
-            warmup_path,
+            label, threads, auto, paths, indices, warmup_path, base_cache_dir
         )
-        print(
-            "THREAD_SWEEP_RESULT=" + json.dumps(profiles[label], ensure_ascii=False),
-            flush=True,
-        )
+        print("THREAD_SWEEP_RESULT=" + json.dumps(profiles[label], ensure_ascii=False), flush=True)
 
     control = profiles["threads_2_current"]
     quality = {
@@ -228,21 +205,22 @@ def main() -> None:
     }
     speedup = {
         label: {
-            "detector_wall_reduction_pct": _speedup_pct(
-                control["detector_wall_ms"], result["detector_wall_ms"]
-            ),
+            "detector_wall_reduction_pct": _speedup_pct(control["detector_wall_ms"], result["detector_wall_ms"]),
             "bubble_model_reduction_pct": _speedup_pct(
-                control["metrics_mean_ms"]["bubble_model_ms"],
-                result["metrics_mean_ms"]["bubble_model_ms"],
+                control["metrics_mean_ms"]["bubble_model_ms"], result["metrics_mean_ms"]["bubble_model_ms"]
             ),
             "text_model_reduction_pct": _speedup_pct(
-                control["metrics_mean_ms"]["text_model_ms"],
-                result["metrics_mean_ms"]["text_model_ms"],
+                control["metrics_mean_ms"]["text_model_ms"], result["metrics_mean_ms"]["text_model_ms"]
             ),
         }
         for label, result in profiles.items()
-        if label != "threads_2_current"
+        if label not in {"threads_2_current", "threads_2_repeat"}
     }
+    repeat = profiles["threads_2_repeat"]
+    control_drift_pct = round(
+        (repeat["detector_wall_ms"] / max(1.0, control["detector_wall_ms"]) - 1.0) * 100.0,
+        2,
+    )
 
     report = {
         "chapter_url": CHAPTER_URL,
@@ -253,11 +231,9 @@ def main() -> None:
         "profiles": profiles,
         "quality": quality,
         "speedup": speedup,
+        "control_repeat_drift_pct": control_drift_pct,
     }
-    OUT.write_text(
-        json.dumps(report, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-    )
+    OUT.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print("DETECTOR_THREAD_SWEEP=" + json.dumps(report, ensure_ascii=False), flush=True)
 
     mismatches = {
