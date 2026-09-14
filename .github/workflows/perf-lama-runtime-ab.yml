@@ -75,7 +75,7 @@ jobs:
           cp benchmark-bootstrap/models/*.onnx models/
           cp benchmark-bootstrap/models/.e2e-provenance.json models/
       - name: Benchmark literature-guided runtime candidates
-        run: python scripts/benchmark_lama_runtime_recheck.py
+        run: PYTHONPATH=. python scripts/benchmark_lama_runtime_recheck.py
       - name: Upload runtime recheck report
         if: always()
         uses: actions/upload-artifact@v4
