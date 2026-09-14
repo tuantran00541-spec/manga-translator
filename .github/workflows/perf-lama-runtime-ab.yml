@@ -1,4 +1,4 @@
-name: Perf LaMa runtime AB
+name: Perf LaMa runtime recheck
 
 on:
   push:
@@ -7,6 +7,7 @@ on:
     paths:
       - app/inpaint/runtime_tuned_inpainter.py
       - tests/test_lama_runtime_tuning.py
+      - scripts/benchmark_lama_runtime_recheck.py
       - .github/workflows/perf-lama-runtime-ab.yml
   workflow_dispatch:
 
@@ -18,9 +19,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  runtime-ab:
+  runtime-recheck:
     runs-on: ubuntu-22.04
-    timeout-minutes: 35
+    timeout-minutes: 45
     env:
       PYTHONUNBUFFERED: "1"
       MANGA_USE_DYNAMIC_LAMA: "1"
@@ -44,6 +45,8 @@ jobs:
             requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 \
             playwright==1.47.0 fastapi==0.115.0 pydantic==2.9.2 \
             filelock==3.16.1 threadpoolctl==3.6.0 pytest==8.3.5
+      - name: Compile recheck candidate
+        run: python -m compileall -q app scripts/benchmark_lama_runtime_recheck.py
       - name: Run runtime helper tests
         run: python -m pytest -q tests/test_lama_runtime_tuning.py
       - name: Restore detector and inpaint models
@@ -71,240 +74,13 @@ jobs:
           python benchmark-bootstrap/scripts/provision_real_e2e_models.py
           cp benchmark-bootstrap/models/*.onnx models/
           cp benchmark-bootstrap/models/.e2e-provenance.json models/
-      - name: Benchmark current runtime versus lossless candidates
-        run: |
-          mkdir -p benchmark-results/lama-runtime
-          python - <<'PY'
-          from __future__ import annotations
-          import copy
-          import gc
-          import hashlib
-          import json
-          import os
-          import statistics
-          import time
-          from pathlib import Path
-
-          import numpy as np
-
-          from app.image_io import read_image
-          from app.inpaint.fast_lama_inpainter import FastInpainter
-          from app.inpaint.runtime_tuned_inpainter import RuntimeTunedFastInpainter
-          from app.manifest_utils import load_manifest_raw
-          from app.optimized_pipeline import OptimizedChapterPipeline
-          from scripts.model_e2e_gate import _authority_mask
-
-          URL = 'https://asurascans.com/comics/killer-pietro-08677664/chapter/120'
-          OUT = Path('benchmark-results/lama-runtime/report.json')
-          RUNTIME_KEYS = (
-              'MANGA_LAMA_RUNTIME_ARENA',
-              'MANGA_LAMA_RUNTIME_MEM_PATTERN',
-              'MANGA_LAMA_RUNTIME_THREADS',
-              'MANGA_LAMA_RUNTIME_DYNAMIC_BLOCK_BASE',
-              'MANGA_LAMA_RUNTIME_TENSOR_POOL',
-              'MANGA_LAMA_RUNTIME_TENSOR_POOL_CAPACITY',
-          )
-
-          pipeline = OptimizedChapterPipeline()
-          chapter_id = hashlib.sha256(f'lama-runtime-{time.time_ns()}'.encode()).hexdigest()[:8]
-          manifest = pipeline.download_chapter(URL, chapter_id, workers=2)
-          total = len(manifest.get('pages', []))
-          if total < 8:
-              raise RuntimeError(f'expected >=8 slices, got {total}')
-          indices = sorted({round(i * (total - 1) / 7) for i in range(8)})
-
-          def clear_runtime_env():
-              for key in RUNTIME_KEYS:
-                  os.environ.pop(key, None)
-
-          def make_runtime(**settings):
-              clear_runtime_env()
-              for key, value in settings.items():
-                  os.environ[key] = str(value)
-              return RuntimeTunedFastInpainter()
-
-          def snapshot(label, inpainter, baseline_images=None):
-              pipeline._inpainter = inpainter
-              inpainter.preload()
-              if hasattr(inpainter, 'runtime_config'):
-                  config = inpainter.runtime_config()
-                  if not config.get('runtime_session_active'):
-                      raise RuntimeError(f'{label}: tuned dynamic session did not activate')
-              else:
-                  config = {'runtime_session_active': False}
-
-              started = time.perf_counter()
-              pipeline.process_pages(chapter_id, indices, workers=1)
-              wall_ms = (time.perf_counter() - started) * 1000.0
-              current = load_manifest_raw(chapter_id)
-              pages = current.get('pages', [])
-              timing = []
-              inpaint_metrics = {}
-              authority_outside = 0
-              residue = 0
-              boxes = safe = review = deferred = 0
-              clean_images = {}
-              max_abs_diff = 0
-              diff_sum = 0
-              diff_values = 0
-              changed_values = 0
-
-              for idx in indices:
-                  page = pages[idx]
-                  metrics = page.get('processing_metrics') or {}
-                  timing.append(copy.deepcopy(metrics.get('timing_ms') or {}))
-                  for key, value in (metrics.get('auto_inpaint') or {}).items():
-                      if isinstance(value, (int, float)) and not isinstance(value, bool):
-                          inpaint_metrics[key] = inpaint_metrics.get(key, 0) + float(value)
-                  residue += int((metrics.get('detector') or {}).get('post_inpaint_residue') or 0)
-                  page_boxes = page.get('boxes', [])
-                  boxes += len(page_boxes)
-                  safe += sum(bool(b.get('safe_to_inpaint')) for b in page_boxes)
-                  review += sum(bool(b.get('needs_review')) for b in page_boxes)
-                  deferred += sum(bool(b.get('deferred_reason')) for b in page_boxes)
-                  original = read_image(Path(page['original']))
-                  clean = read_image(Path(page['clean']))
-                  clean_images[idx] = clean.copy()
-                  authority = _authority_mask(original, page_boxes, inpainter)
-                  changed = np.any(original != clean, axis=2)
-                  authority_outside += int(np.count_nonzero(changed & (authority <= 127)))
-                  if baseline_images is not None:
-                      diff = np.abs(clean.astype(np.int16) - baseline_images[idx].astype(np.int16))
-                      max_abs_diff = max(max_abs_diff, int(diff.max(initial=0)))
-                      diff_sum += int(diff.sum())
-                      diff_values += int(diff.size)
-                      changed_values += int(np.count_nonzero(diff))
-
-              def mean_timing(name):
-                  vals = [float(row.get(name) or 0.0) for row in timing]
-                  return round(statistics.mean(vals), 3) if vals else 0.0
-
-              result = {
-                  'label': label,
-                  'config': config,
-                  'wall_ms': round(wall_ms, 3),
-                  'timing_mean_ms': {
-                      key: mean_timing(key)
-                      for key in ('detect', 'auto_inpaint', 'residue_verify', 'total')
-                  },
-                  'inpaint_metrics': {k: round(v, 3) for k, v in sorted(inpaint_metrics.items())},
-                  'post_inpaint_residue': residue,
-                  'authority_outside_changed': authority_outside,
-                  'boxes': boxes,
-                  'safe': safe,
-                  'review': review,
-                  'deferred': deferred,
-                  'quality_vs_current': {
-                      'max_abs_channel_diff': max_abs_diff,
-                      'mean_abs_channel_diff': round(diff_sum / max(1, diff_values), 8),
-                      'changed_channel_values': changed_values,
-                  } if baseline_images is not None else None,
-              }
-              return result, clean_images
-
-          variants = []
-          clear_runtime_env()
-          current_before = FastInpainter()
-          before, baseline_images = snapshot('current_before', current_before)
-          variants.append(before)
-          pipeline._inpainter = None
-          del current_before
-          gc.collect()
-
-          specs = [
-              ('arena_mem', dict(
-                  MANGA_LAMA_RUNTIME_ARENA=1,
-                  MANGA_LAMA_RUNTIME_MEM_PATTERN=1,
-                  MANGA_LAMA_RUNTIME_THREADS=0,
-                  MANGA_LAMA_RUNTIME_DYNAMIC_BLOCK_BASE=0,
-                  MANGA_LAMA_RUNTIME_TENSOR_POOL=0,
-              )),
-              ('arena_mem_block_t2', dict(
-                  MANGA_LAMA_RUNTIME_ARENA=1,
-                  MANGA_LAMA_RUNTIME_MEM_PATTERN=1,
-                  MANGA_LAMA_RUNTIME_THREADS=2,
-                  MANGA_LAMA_RUNTIME_DYNAMIC_BLOCK_BASE=4,
-                  MANGA_LAMA_RUNTIME_TENSOR_POOL=0,
-              )),
-              ('arena_mem_block_t4', dict(
-                  MANGA_LAMA_RUNTIME_ARENA=1,
-                  MANGA_LAMA_RUNTIME_MEM_PATTERN=1,
-                  MANGA_LAMA_RUNTIME_THREADS=4,
-                  MANGA_LAMA_RUNTIME_DYNAMIC_BLOCK_BASE=4,
-                  MANGA_LAMA_RUNTIME_TENSOR_POOL=0,
-              )),
-              ('arena_mem_block_t2_pool', dict(
-                  MANGA_LAMA_RUNTIME_ARENA=1,
-                  MANGA_LAMA_RUNTIME_MEM_PATTERN=1,
-                  MANGA_LAMA_RUNTIME_THREADS=2,
-                  MANGA_LAMA_RUNTIME_DYNAMIC_BLOCK_BASE=4,
-                  MANGA_LAMA_RUNTIME_TENSOR_POOL=1,
-                  MANGA_LAMA_RUNTIME_TENSOR_POOL_CAPACITY=4,
-              )),
-              ('arena_mem_block_t4_pool', dict(
-                  MANGA_LAMA_RUNTIME_ARENA=1,
-                  MANGA_LAMA_RUNTIME_MEM_PATTERN=1,
-                  MANGA_LAMA_RUNTIME_THREADS=4,
-                  MANGA_LAMA_RUNTIME_DYNAMIC_BLOCK_BASE=4,
-                  MANGA_LAMA_RUNTIME_TENSOR_POOL=1,
-                  MANGA_LAMA_RUNTIME_TENSOR_POOL_CAPACITY=4,
-              )),
-          ]
-
-          for label, settings in specs:
-              candidate = make_runtime(**settings)
-              row, _ = snapshot(label, candidate, baseline_images)
-              variants.append(row)
-              pipeline._inpainter = None
-              del candidate
-              gc.collect()
-
-          clear_runtime_env()
-          current_after = FastInpainter()
-          after, _ = snapshot('current_after', current_after, baseline_images)
-          variants.append(after)
-
-          controls = [
-              before['timing_mean_ms']['auto_inpaint'],
-              after['timing_mean_ms']['auto_inpaint'],
-          ]
-          current_auto_ms = statistics.median(controls)
-          for row in variants:
-              auto = max(1.0, row['timing_mean_ms']['auto_inpaint'])
-              row['auto_inpaint_speedup_vs_control_pct'] = round((current_auto_ms / auto - 1.0) * 100.0, 2)
-
-          candidates = [row for row in variants if row['label'] not in {'current_before', 'current_after'}]
-          winner = min(candidates, key=lambda row: row['timing_mean_ms']['auto_inpaint'])
-          report = {
-              'chapter_url': URL,
-              'chapter_id': chapter_id,
-              'total_slices': total,
-              'sample_indices': indices,
-              'control_auto_inpaint_median_ms': round(current_auto_ms, 3),
-              'variants': variants,
-              'winner': winner['label'],
-          }
-          OUT.write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
-          print('LAMA_RUNTIME_AB=' + json.dumps(report, ensure_ascii=False), flush=True)
-
-          for row in candidates:
-              if row['authority_outside_changed']:
-                  raise RuntimeError(f"{row['label']}: changed pixels escaped authority mask")
-              if row['boxes'] != before['boxes'] or row['safe'] != before['safe']:
-                  raise RuntimeError(f"{row['label']}: detector decisions changed")
-              if row['post_inpaint_residue'] > before['post_inpaint_residue']:
-                  raise RuntimeError(f"{row['label']}: residue regressed")
-              quality = row['quality_vs_current'] or {}
-              if quality.get('max_abs_channel_diff', 0) > 2:
-                  raise RuntimeError(f"{row['label']}: pixel delta exceeds lossless tolerance: {quality}")
-              if quality.get('mean_abs_channel_diff', 0.0) > 0.02:
-                  raise RuntimeError(f"{row['label']}: mean pixel delta exceeds tolerance: {quality}")
-          PY
-      - name: Upload runtime A/B report
+      - name: Benchmark literature-guided runtime candidates
+        run: python scripts/benchmark_lama_runtime_recheck.py
+      - name: Upload runtime recheck report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: lama-runtime-ab-${{ github.run_id }}
-          path: benchmark-results/lama-runtime/report.json
+          name: lama-runtime-recheck-${{ github.run_id }}
+          path: benchmark-results/lama-runtime-recheck/report.json
           if-no-files-found: warn
           retention-days: 7
