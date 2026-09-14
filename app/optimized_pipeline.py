@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from app.detector.fast_residue_detector import (
-    FastResidueAdaptiveFocusCombinedTextDetector,
+from app.detector.sequential_fast_residue_detector import (
+    SequentialFastResidueAdaptiveFocusCombinedTextDetector,
 )
 from app.inpaint.adaptive_fast_inpainter import AdaptiveFastInpainter
 from app.parameters import PIPELINE_DEFAULT_WORKERS
@@ -10,14 +10,16 @@ from app.runtime_responsiveness import responsive_process_workers
 
 
 class OptimizedChapterPipeline(ChapterPipeline):
-    """Chapter pipeline using adaptive detector and CPU fast cleanup candidates."""
+    """Chapter pipeline using validated CPU detector and cleanup candidates."""
 
     @property
     def detector(self):
         if self._detector is None:
             with self._detector_init_lock:
                 if self._detector is None:
-                    self._detector = FastResidueAdaptiveFocusCombinedTextDetector()
+                    self._detector = (
+                        SequentialFastResidueAdaptiveFocusCombinedTextDetector()
+                    )
         return self._detector
 
     @property
