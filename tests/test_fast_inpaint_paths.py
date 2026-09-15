@@ -52,9 +52,11 @@ def test_smooth_gradient_bubble_uses_reconstruction_without_telea():
     background[..., 2] = np.clip(238 + xx * 0.020 + yy * 0.015, 0, 255)
     image = background.copy()
 
+    # Keep synthetic glyph support below the real safety occupancy gate even
+    # after automatic mask dilation. Dense masks intentionally fall back to LaMa.
     mask = np.zeros((60, 120), dtype=np.uint8)
-    mask[15:21, 18:102] = 255
-    mask[31:37, 26:94] = 255
+    mask[14:18, 18:102] = 255
+    mask[34:38, 26:94] = 255
     box = _speech_box(60, 55, 180, 115, mask)
     image[55:115, 60:180][mask > 127] = 18
 
