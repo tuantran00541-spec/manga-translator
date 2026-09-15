@@ -1,0 +1,265 @@
+name: Apply perf AI repair controls
+
+on:
+  push:
+    branches:
+      - perf/bubble-fastpath-roi-lama
+    paths:
+      - .github/workflows/apply-perf-ai-repair-controls.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  apply-ai-repair-controls:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: perf/bubble-fastpath-roi-lama
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-test.txt
+
+      - name: Install correctness-test runtime
+        run: python -m pip install -r requirements-test.txt
+
+      - name: Apply AI repair safety patch
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              p = Path(path)
+              text = p.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != 1:
+                  raise RuntimeError(f"{path}: expected 1 anchor, found {count}: {old[:80]!r}")
+              p.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          Path("app/region_policy.py").write_text('''from __future__ import annotations
+
+
+def geometry_center_in_regions(
+    geometry: dict | None,
+    regions: list[dict] | tuple[dict, ...] | None,
+) -> bool:
+    """Return True when geometry ownership belongs to a protected page region.
+
+    Center ownership is deliberate: an exclusion rectangle that merely touches a
+    neighbouring dialogue box must not suppress that dialogue. Invalid geometry
+    or invalid regions fail open so review data is never silently discarded.
+    """
+    if not isinstance(geometry, dict) or not regions:
+        return False
+    try:
+        x1 = float(geometry["x1"])
+        y1 = float(geometry["y1"])
+        x2 = float(geometry["x2"])
+        y2 = float(geometry["y2"])
+    except (KeyError, TypeError, ValueError):
+        return False
+    if x2 <= x1 or y2 <= y1:
+        return False
+    cx = (x1 + x2) / 2.0
+    cy = (y1 + y2) / 2.0
+    for region in regions:
+        if not isinstance(region, dict):
+            continue
+        try:
+            rx1 = float(region["x1"])
+            ry1 = float(region["y1"])
+            rx2 = float(region["x2"])
+            ry2 = float(region["y2"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if rx2 <= rx1 or ry2 <= ry1:
+            continue
+        if rx1 <= cx <= rx2 and ry1 <= cy <= ry2:
+            return True
+    return False
+
+
+def text_object_in_excluded_region(page: dict, obj: dict) -> bool:
+    region = obj.get("region") if isinstance(obj, dict) else None
+    return geometry_center_in_regions(region, page.get("excluded_regions") or [])
+''', encoding="utf-8")
+
+          replace_once(
+              "app/text_objects.py",
+              "import copy\n",
+              "import copy\n\nfrom app.region_policy import geometry_center_in_regions\n",
+          )
+          replace_once(
+              "app/text_objects.py",
+              "    boxes = page.get(\"boxes\") or []\n    active_box_ids: set[str] = set()\n",
+              "    boxes = page.get(\"boxes\") or []\n    excluded_regions = page.get(\"excluded_regions\") or []\n    active_box_ids: set[str] = set()\n",
+          )
+          replace_once(
+              "app/text_objects.py",
+              "        region = _region_from_box(box)\n        if region is None:\n            continue\n        active_box_ids.add(box_id)\n",
+              "        region = _region_from_box(box)\n        if region is None:\n            continue\n        if geometry_center_in_regions(region, excluded_regions):\n            continue\n        active_box_ids.add(box_id)\n",
+          )
+
+          replace_once(
+              "app/ocr/service.py",
+              "from app.image_io import read_image\n",
+              "from app.image_io import read_image\nfrom app.region_policy import geometry_center_in_regions\n",
+          )
+          replace_once(
+              "app/ocr/service.py",
+              "            for page_index, page in enumerate(manifest.get(\"pages\", [])):\n                if page.get(\"skipped\"):\n                    continue\n                for box in page.get(\"boxes\", []) or []:\n",
+              "            for page_index, page in enumerate(manifest.get(\"pages\", [])):\n                if page.get(\"skipped\"):\n                    continue\n                excluded_regions = page.get(\"excluded_regions\") or []\n                for box in page.get(\"boxes\", []) or []:\n",
+          )
+          replace_once(
+              "app/ocr/service.py",
+              "                    if box.get(\"ocr_eligible\") is False:\n                        continue\n                    if ocr_target_skip_reason(box):\n",
+              "                    if box.get(\"ocr_eligible\") is False:\n                        continue\n                    if geometry_center_in_regions(box, excluded_regions):\n                        continue\n                    if ocr_target_skip_reason(box):\n",
+          )
+          replace_once(
+              "app/ocr/service.py",
+              "            if box.get(\"ocr_eligible\") is False:\n                raise ValueError(f\"OCR target box is not eligible: {box_id}\")\n            original_value = page.get(\"original\")\n",
+              "            if box.get(\"ocr_eligible\") is False:\n                raise ValueError(f\"OCR target box is not eligible: {box_id}\")\n            if geometry_center_in_regions(box, page.get(\"excluded_regions\") or []):\n                raise ValueError(f\"OCR target box is inside an excluded region: {box_id}\")\n            original_value = page.get(\"original\")\n",
+          )
+
+          replace_once(
+              "app/routers/translation.py",
+              "from app.text_objects import ensure_page_text_objects\n",
+              "from app.text_objects import ensure_page_text_objects\nfrom app.region_policy import text_object_in_excluded_region\n",
+          )
+          replace_once(
+              "app/routers/translation.py",
+              "    skipped_ocr_reject = 0\n    skipped_source_missing = 0\n",
+              "    skipped_ocr_reject = 0\n    skipped_source_missing = 0\n    skipped_excluded_region = 0\n",
+          )
+          replace_once(
+              "app/routers/translation.py",
+              "                if obj.get(\"source_missing\"):\n                    skipped_source_missing += 1\n                    continue\n                source = str(obj.get(\"ocr_text\") or \"\").strip()\n",
+              "                if obj.get(\"source_missing\"):\n                    skipped_source_missing += 1\n                    continue\n                if text_object_in_excluded_region(page, obj):\n                    skipped_excluded_region += 1\n                    continue\n                source = str(obj.get(\"ocr_text\") or \"\").strip()\n",
+          )
+          text = Path("app/routers/translation.py").read_text(encoding="utf-8")
+          text = text.replace(
+              '            "skipped_source_missing": skipped_source_missing,\n',
+              '            "skipped_source_missing": skipped_source_missing,\n            "skipped_excluded_region": skipped_excluded_region,\n',
+          )
+          if text.count('"skipped_excluded_region"') != 2:
+              raise RuntimeError("translation.py: expected excluded-region counter in both responses")
+          Path("app/routers/translation.py").write_text(text, encoding="utf-8")
+
+          replace_once(
+              "app/routers/render_commit.py",
+              "from app.security import validate_chapter_id\n",
+              "from app.security import validate_chapter_id\nfrom app.region_policy import text_object_in_excluded_region\n",
+          )
+          replace_once(
+              "app/routers/render_commit.py",
+              "            if isinstance(obj, dict) and not obj.get(\"source_missing\")\n",
+              "            if (\n                isinstance(obj, dict)\n                and not obj.get(\"source_missing\")\n                and not text_object_in_excluded_region(page, obj)\n            )\n",
+          )
+          replace_once(
+              "app/routers/render_commit.py",
+              "    for obj in page.get(\"text_objects\") or []:\n        if not isinstance(obj, dict) or obj.get(\"source_missing\"):\n            continue\n",
+              "    for obj in page.get(\"text_objects\") or []:\n        if (\n            not isinstance(obj, dict)\n            or obj.get(\"source_missing\")\n            or text_object_in_excluded_region(page, obj)\n        ):\n            continue\n",
+          )
+          replace_once(
+              "app/routers/render_commit.py",
+              "        page = copy.deepcopy(pages[req.page_index])\n        drafts = copy.deepcopy(manifest.get(\"drafts\", {}))\n",
+              "        page = copy.deepcopy(pages[req.page_index])\n        if page.get(\"skipped\"):\n            raise HTTPException(409, \"Cannot render a skipped page; unskip it first\")\n        drafts = copy.deepcopy(manifest.get(\"drafts\", {}))\n",
+          )
+
+          replace_once(
+              "app/pipeline_editing.py",
+              "                page = manifest[\"pages\"][page_index]\n                img_path = Path(page[\"original\"])\n                boxes_snapshot = copy.deepcopy(page.get(\"boxes\", []))\n                target_clean_revision = int(page.get(\"clean_revision\") or 0) + 1\n                manual_mask_posix = page.get(\"manual_mask\")\n",
+              "                page = manifest[\"pages\"][page_index]\n                if page.get(\"skipped\"):\n                    raise ValueError(\"Cannot repaint a skipped page; unskip it first\")\n                img_path = Path(page[\"original\"])\n                boxes_snapshot = copy.deepcopy(page.get(\"boxes\", []))\n                target_clean_revision = int(page.get(\"clean_revision\") or 0) + 1\n                manual_mask_posix = page.get(\"manual_mask\")\n",
+          )
+          replace_once(
+              "app/pipeline_editing.py",
+              "                page = manifest[\"pages\"][page_index]\n                img_path = Path(page[\"original\"])\n                boxes_snapshot = copy.deepcopy(page.get(\"boxes\", []))\n                target_clean_revision = int(page.get(\"clean_revision\") or 0) + 1\n\n            manual_mask_path = (\n",
+              "                page = manifest[\"pages\"][page_index]\n                if page.get(\"skipped\"):\n                    raise ValueError(\"Cannot reset repaint state on a skipped page; unskip it first\")\n                img_path = Path(page[\"original\"])\n                boxes_snapshot = copy.deepcopy(page.get(\"boxes\", []))\n                target_clean_revision = int(page.get(\"clean_revision\") or 0) + 1\n\n            manual_mask_path = (\n",
+          )
+
+          replace_once(
+              "app/schemas.py",
+              "class ResetManualMaskRequest(BaseModel):\n    chapter_id: str\n    page_index: int = Field(ge=0)\n",
+              "class RepaintRegionsRequest(BaseModel):\n    chapter_id: str\n    page_index: int = Field(ge=0)\n    regions: list[RegionModel]\n    mode: Literal[\"standard\", \"lama\"] = \"standard\"\n\n    @field_validator(\"regions\")\n    @classmethod\n    def _regions(cls, value: list[RegionModel]) -> list[RegionModel]:\n        if not value:\n            raise ValueError(\"At least one repaint region is required\")\n        if len(value) > MAX_RENDER_TRANSLATIONS:\n            raise ValueError(\"Too many repaint regions\")\n        return value\n\n\nclass ResetManualMaskRequest(BaseModel):\n    chapter_id: str\n    page_index: int = Field(ge=0)\n",
+          )
+
+          replace_once(
+              "app/routers/editor.py",
+              "    RemoveBoxRequest,\n    ResetManualMaskRequest,\n",
+              "    RemoveBoxRequest,\n    RepaintRegionsRequest,\n    ResetManualMaskRequest,\n",
+          )
+          replace_once(
+              "app/routers/editor.py",
+              "def _reconcile_translation_after_ocr_edit(req: UpdateTextObjectRequest) -> dict:\n",
+              "def _regions_to_repaint_mask(image_shape: tuple[int, ...], regions) -> np.ndarray:\n    height, width = image_shape[:2]\n    mask = np.zeros((height, width), dtype=np.uint8)\n    for region in regions:\n        item = region.model_dump() if hasattr(region, \"model_dump\") else dict(region)\n        x1, y1, x2, y2 = (int(item[k]) for k in (\"x1\", \"y1\", \"x2\", \"y2\"))\n        if x1 < 0 or y1 < 0 or x2 > width or y2 > height or x2 <= x1 or y2 <= y1:\n            raise ValueError(\n                f\"Repaint region ({x1},{y1})-({x2},{y2}) exceeds page dimensions ({width}x{height})\"\n            )\n        mask[y1:y2, x1:x2] = 255\n    if not np.any(mask):\n        raise ValueError(\"Repaint regions produced an empty mask\")\n    return mask\n\n\ndef _reconcile_translation_after_ocr_edit(req: UpdateTextObjectRequest) -> dict:\n",
+          )
+          replace_once(
+              "app/routers/editor.py",
+              "@router.post(\"/repaint_mask\")\nasync def repaint_mask(\n",
+              "@router.post(\"/repaint_regions\")\nasync def repaint_regions(req: RepaintRegionsRequest) -> dict:\n    \"\"\"AI-friendly repaint action using bounded page-space rectangles.\"\"\"\n    validate_chapter_id(req.chapter_id)\n    manifest_raw = load_manifest_raw(req.chapter_id)\n    pages = manifest_raw.get(\"pages\", [])\n    if req.page_index < 0 or req.page_index >= len(pages):\n        raise HTTPException(400, f\"Invalid page_index: {req.page_index}\")\n    page = pages[req.page_index]\n    if page.get(\"skipped\"):\n        raise HTTPException(409, \"Cannot repaint a skipped page; unskip it first\")\n    img_path = Path(page[\"original\"])\n    if not img_path.is_file():\n        raise HTTPException(404, f\"Original page image not found: page_{req.page_index:03d}\")\n    try:\n        image = await run_in_threadpool(read_image, img_path)\n        mask_array = _regions_to_repaint_mask(image.shape, req.regions)\n        manifest = await run_in_threadpool(\n            pipeline.repaint_mask,\n            req.chapter_id,\n            req.page_index,\n            mask_array,\n            force_lama=req.mode == \"lama\",\n        )\n        return urlify_manifest(manifest)\n    except ValueError as exc:\n        raise HTTPException(400, str(exc)) from exc\n    except Exception as exc:\n        logger.opt(exception=True).error(\n            \"Chapter {} page {} operation 'repaint_regions' failed: {}\",\n            req.chapter_id, req.page_index, exc,\n        )\n        raise HTTPException(500, f\"Repaint regions failed: {exc}\") from exc\n\n\n@router.post(\"/repaint_mask\")\nasync def repaint_mask(\n",
+          )
+          replace_once(
+              "app/routers/editor.py",
+              "    if page_index < 0 or page_index >= len(pages):\n        raise HTTPException(400, f\"Invalid page_index: {page_index}\")\n\n    img_path = Path(pages[page_index][\"original\"])\n",
+              "    if page_index < 0 or page_index >= len(pages):\n        raise HTTPException(400, f\"Invalid page_index: {page_index}\")\n    if pages[page_index].get(\"skipped\"):\n        raise HTTPException(409, \"Cannot repaint a skipped page; unskip it first\")\n\n    img_path = Path(pages[page_index][\"original\"])\n",
+          )
+
+          # Make the existing exclusion UI describe its now end-to-end preserve semantics.
+          text = Path("app/static/js/preview.js").read_text(encoding="utf-8")
+          text = text.replace("vùng loại trừ", "vùng giữ nguyên")
+          text = text.replace("Xóa vùng cấm này", "Xóa vùng giữ nguyên này")
+          Path("app/static/js/preview.js").write_text(text, encoding="utf-8")
+
+          test_path = Path("tests/test_cleanup_safety_regressions.py")
+          tests = test_path.read_text(encoding="utf-8")
+          tests = tests.replace(
+              "import numpy as np\nimport pytest\nimport cv2\n",
+              "from contextlib import nullcontext\n\nimport numpy as np\nimport pytest\nimport cv2\n",
+              1,
+          )
+          tests = tests.replace(
+              "from app.pipeline import ChapterPipeline\n",
+              "from app.pipeline import ChapterPipeline\nfrom app.ocr.service import OCRService\nfrom app.region_policy import geometry_center_in_regions\nfrom app.text_objects import ensure_page_text_objects\nfrom app.routers.editor import _regions_to_repaint_mask\nfrom app.routers.render_commit import _render_snapshot, _request_style_maps\nfrom app.schemas import RenderRequest\n",
+              1,
+          )
+          tests += '''\n\ndef test_excluded_region_uses_center_ownership_not_any_overlap():\n    regions = [{"x1": 100, "y1": 100, "x2": 200, "y2": 200}]\n    assert geometry_center_in_regions({"x1": 120, "y1": 120, "x2": 180, "y2": 180}, regions)\n    # This object touches the protected region but its center belongs outside.\n    assert not geometry_center_in_regions({"x1": 80, "y1": 120, "x2": 110, "y2": 180}, regions)\n\n\ndef test_excluded_box_does_not_create_active_auto_text_object():\n    page = {\n        "excluded_regions": [{"x1": 0, "y1": 0, "x2": 60, "y2": 60}],\n        "boxes": [\n            {"id": "box_keep", "x1": 10, "y1": 10, "x2": 40, "y2": 40, "ocr_eligible": True},\n            {"id": "box_story", "x1": 100, "y1": 100, "x2": 160, "y2": 150, "ocr_eligible": True},\n        ],\n        "text_objects": [],\n    }\n    created, changed = ensure_page_text_objects(page)\n    assert changed is True\n    assert created == 1\n    assert [obj["source_boxes"] for obj in page["text_objects"]] == [["box_story"]]\n\n\ndef test_ocr_plan_skips_page_excluded_box(monkeypatch):\n    import app.ocr.service as service_module\n\n    manifest = {\n        "pages": [{\n            "skipped": False,\n            "excluded_regions": [{"x1": 0, "y1": 0, "x2": 60, "y2": 60}],\n            "boxes": [\n                {"id": "box_keep", "x1": 10, "y1": 10, "x2": 40, "y2": 40, "ocr_eligible": True},\n                {"id": "box_story", "x1": 100, "y1": 100, "x2": 160, "y2": 150, "ocr_eligible": True},\n            ],\n        }]\n    }\n    monkeypatch.setattr(service_module, "get_manifest_lock", lambda _chapter: nullcontext())\n    monkeypatch.setattr(service_module, "load_manifest_raw", lambda _chapter: manifest)\n    service = OCRService(object(), object())\n    assert service.plan_chapter("abcd1234") == [(0, "box_story")]\n\n\ndef test_render_snapshot_suppresses_existing_translation_inside_excluded_region(monkeypatch):\n    import app.routers.render_commit as render_module\n\n    seen = []\n    def fake_render(_image, _req, objects, *_args):\n        seen.extend(str(obj["id"]) for obj in objects)\n        return len(objects)\n\n    monkeypatch.setattr(render_module, "render_text_objects", fake_render)\n    page = {\n        "excluded_regions": [{"x1": 0, "y1": 0, "x2": 70, "y2": 70}],\n        "text_objects": [\n            {"id": "protected", "region": {"x1": 10, "y1": 10, "x2": 50, "y2": 50}, "translation": "DO NOT RENDER"},\n            {"id": "story", "region": {"x1": 100, "y1": 100, "x2": 160, "y2": 150}, "translation": "OK"},\n        ],\n    }\n    req = RenderRequest(chapter_id="abcd1234", page_index=0, translations={"protected": "NO", "story": "OK"})\n    count = _render_snapshot(Image.new("RGB", (200, 200), "white"), req, page, {}, _request_style_maps(req))\n    assert count == 1\n    assert seen == ["story"]\n\n\ndef test_ai_rectangle_repaint_mask_is_bounded_and_exact():\n    mask = _regions_to_repaint_mask(\n        (100, 120, 3),\n        [{"x1": 10, "y1": 20, "x2": 30, "y2": 40}, {"x1": 50, "y1": 60, "x2": 70, "y2": 90}],\n    )\n    assert mask.shape == (100, 120)\n    assert np.all(mask[20:40, 10:30] == 255)\n    assert np.all(mask[60:90, 50:70] == 255)\n    assert int(np.count_nonzero(mask)) == (20 * 20) + (20 * 30)\n    with pytest.raises(ValueError, match="exceeds page dimensions"):\n        _regions_to_repaint_mask((100, 120, 3), [{"x1": 0, "y1": 0, "x2": 121, "y2": 10}])\n\n\ndef test_repaint_refuses_skipped_page(monkeypatch):\n    import app.pipeline_editing as editing_module\n\n    manifest = {"pages": [{"skipped": True, "original": "unused.png", "boxes": []}]}\n    monkeypatch.setattr(editing_module, "get_page_lock", lambda *_args: nullcontext())\n    monkeypatch.setattr(editing_module, "get_manifest_lock", lambda *_args: nullcontext())\n    monkeypatch.setattr(editing_module, "load_manifest_raw", lambda _chapter: manifest)\n    pipeline = ChapterPipeline.__new__(ChapterPipeline)\n    with pytest.raises(ValueError, match="Cannot repaint a skipped page"):\n        pipeline.repaint_mask("abcd1234", 0, np.ones((10, 10), dtype=np.uint8) * 255)\n\n\ndef test_skip_slice_preserves_repair_metadata_but_forces_raw_state(monkeypatch):\n    import app.pipeline as pipeline_module\n\n    page = {\n        "skipped": False,\n        "clean": "clean.png",\n        "boxes": [{"id": "box_1"}],\n        "excluded_regions": [{"x1": 1, "y1": 2, "x2": 3, "y2": 4}],\n        "manual_mask": "manual.png",\n        "text_objects": [{"id": "text_1", "ocr_text": "keep state"}],\n        "clean_revision": 4,\n    }\n    manifest = {"pages": [page]}\n    monkeypatch.setattr(pipeline_module, "get_page_lock", lambda *_args: nullcontext())\n    monkeypatch.setattr(pipeline_module, "get_manifest_lock", lambda *_args: nullcontext())\n    monkeypatch.setattr(pipeline_module, "load_manifest_raw", lambda _chapter: manifest)\n    monkeypatch.setattr(pipeline_module, "save_manifest_raw", lambda *_args, **_kwargs: None)\n    monkeypatch.setattr(pipeline_module, "invalidate_page_render", lambda *_args, **_kwargs: None)\n    pipeline = ChapterPipeline.__new__(ChapterPipeline)\n    pipeline._sync_output_dir = lambda *_args, **_kwargs: None\n\n    result = pipeline.mark_skipped("abcd1234", [0], True)\n    current = result["pages"][0]\n    assert current["skipped"] is True\n    assert current["clean"] is None\n    assert current["boxes"] == []\n    assert current["excluded_regions"] == page["excluded_regions"]\n    assert current["manual_mask"] == "manual.png"\n    assert current["text_objects"][0]["ocr_text"] == "keep state"\n'''
+          test_path.write_text(tests, encoding="utf-8")
+          PY
+
+      - name: Compile candidate
+        run: python -m compileall -q app
+
+      - name: Run repair-control regression suite
+        run: |
+          python -m pytest -q \
+            tests/test_cleanup_safety_regressions.py \
+            tests/test_ocr_pipeline_regressions.py
+
+      - name: Commit source candidate
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git status --short
+          git add \
+            app/region_policy.py \
+            app/text_objects.py \
+            app/ocr/service.py \
+            app/routers/translation.py \
+            app/routers/render_commit.py \
+            app/pipeline_editing.py \
+            app/schemas.py \
+            app/routers/editor.py \
+            app/static/js/preview.js \
+            tests/test_cleanup_safety_regressions.py
+          git commit -m "fix(editor): harden AI repair controls"
+          git push origin HEAD:perf/bubble-fastpath-roi-lama
