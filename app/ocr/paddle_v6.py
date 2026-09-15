@@ -24,6 +24,7 @@ from app.parameters import (
 
 UNIFIED_LANGS = {"en", "english", "ch", "zh", "ja", "japan"}
 KOREAN_LANGS = {"ko", "korean"}
+_COMPLETENESS_REASONS = {"crop-edge-text", "incomplete-coverage"}
 
 
 @dataclass(frozen=True)
@@ -95,39 +96,64 @@ def _prepare_rgb_for_paddle(image: np.ndarray) -> np.ndarray:
     return bgr
 
 
-def _enhance_for_selective_retry(bgr: np.ndarray) -> np.ndarray:
-    """Make a single inexpensive comic-font retry candidate.
+def _retry_upscale(image: np.ndarray) -> np.ndarray:
+    h, w = image.shape[:2]
+    if OCR_RETRY_UPSCALE <= 1.0 or h * w > OCR_RETRY_MAX_PIXELS:
+        return image
+    return cv2.resize(
+        image,
+        (
+            max(1, int(round(w * OCR_RETRY_UPSCALE))),
+            max(1, int(round(h * OCR_RETRY_UPSCALE))),
+        ),
+        interpolation=cv2.INTER_CUBIC,
+    )
 
-    CLAHE preserves coloured glyph separation better than binary thresholding;
-    a modest upscale is only applied to reasonably sized crops.  This function
-    is intentionally never used for the normal first OCR pass.
-    """
+
+def _enhance_for_selective_retry(bgr: np.ndarray) -> np.ndarray:
+    """Make an inexpensive colour-preserving comic-font retry candidate."""
     lab = cv2.cvtColor(bgr, cv2.COLOR_BGR2LAB)
     l_channel, a_channel, b_channel = cv2.split(lab)
     l_channel = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(l_channel)
     enhanced = cv2.cvtColor(
         cv2.merge((l_channel, a_channel, b_channel)), cv2.COLOR_LAB2BGR
     )
-    h, w = enhanced.shape[:2]
-    if (
-        OCR_RETRY_UPSCALE > 1.0
-        and h * w <= OCR_RETRY_MAX_PIXELS
-    ):
-        enhanced = cv2.resize(
-            enhanced,
-            (
-                max(1, int(round(w * OCR_RETRY_UPSCALE))),
-                max(1, int(round(h * OCR_RETRY_UPSCALE))),
-            ),
-            interpolation=cv2.INTER_CUBIC,
-        )
-    return enhanced
+    return _retry_upscale(enhanced)
 
 
-def _result_rank(result: OCRReadResult) -> tuple[int, float, int]:
+def _enhance_grayscale_retry(bgr: np.ndarray) -> np.ndarray:
+    """Make a second, contrast-focused view only for still-suspicious crops.
+
+    Manga dialogue is often near-monochrome even when the surrounding artwork
+    is not.  A grayscale CLAHE view removes distracting chroma while preserving
+    anti-aliased glyph edges.  It deliberately avoids hard thresholding, which
+    is too destructive for thin punctuation and coloured free text.
+    """
+    gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
+    gray = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(gray)
+    enhanced = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
+    return _retry_upscale(enhanced)
+
+
+def _result_rank(result: OCRReadResult) -> tuple[int, int, float, float, int]:
+    """Rank retry candidates by safety/completeness before raw confidence.
+
+    OCR confidence measures characters the recognizer *did* see.  It does not
+    prove that the crop contained every line.  A complete review candidate is
+    therefore preferable to a crop-edge/incomplete candidate with spectacular
+    confidence (a real failure mode in comic bubbles).
+    """
     quality_rank = {"reject": 0, "unknown": 0, "review": 1, "good": 2}
+    completeness_rank = 0 if result.quality_reason in _COMPLETENESS_REASONS else 1
+    coverage = result.coverage if result.coverage is not None else -1.0
     confidence = result.confidence if result.confidence is not None else -1.0
-    return quality_rank.get(result.quality, 0), float(confidence), len(result.text)
+    return (
+        quality_rank.get(result.quality, 0),
+        completeness_rank,
+        float(coverage),
+        float(confidence),
+        len(result.text),
+    )
 
 
 def _should_selective_retry(result: OCRReadResult, image: np.ndarray) -> bool:
@@ -211,15 +237,29 @@ class PaddleV6OCR:
             target_mode=target_mode,
         )
         if _should_selective_retry(result, prepared):
-            retry = self._read_once(
+            colour_retry = self._read_once(
                 _enhance_for_selective_retry(prepared),
                 normalized=normalized,
                 key=key,
                 model_name=model_name,
                 target_mode=target_mode,
             )
-            if _result_rank(retry) > _result_rank(result):
-                result = retry
+            if _result_rank(colour_retry) > _result_rank(result):
+                result = colour_retry
+
+            # Do not pay for a third inference when the first retry already
+            # produced a normal high-quality result.  The second view exists
+            # only for difficult crops and leaves the fast path untouched.
+            if _should_selective_retry(result, prepared):
+                grayscale_retry = self._read_once(
+                    _enhance_grayscale_retry(prepared),
+                    normalized=normalized,
+                    key=key,
+                    model_name=model_name,
+                    target_mode=target_mode,
+                )
+                if _result_rank(grayscale_retry) > _result_rank(result):
+                    result = grayscale_retry
             result = replace(result, retry_applied=True)
         return result
 
