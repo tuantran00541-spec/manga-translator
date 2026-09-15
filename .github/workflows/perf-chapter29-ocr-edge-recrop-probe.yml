@@ -77,11 +77,13 @@ jobs:
           from app.ocr.service import OCRService, _ocr_crop_bounds, ocr_target_mode_for_box
 
           chapter_id = os.environ['CHAPTER_ID']
-          candidate_path = Path(
-              'candidate/benchmark-results/chapter29-ocr-v2-ab/candidate-results.json'
-          )
-          if not candidate_path.is_file():
-              raise RuntimeError(f'missing candidate results: {candidate_path}')
+          candidate_paths = list(Path('candidate').rglob('candidate-results.json'))
+          if len(candidate_paths) != 1:
+              raise RuntimeError(
+                  f'expected one candidate-results.json, found: {candidate_paths}'
+              )
+          candidate_path = candidate_paths[0]
+          print(f'CANDIDATE_RESULTS={candidate_path}')
           candidate = json.loads(candidate_path.read_text(encoding='utf-8'))
           edge = [
               row for row in candidate
@@ -195,9 +197,10 @@ jobs:
           PY
 
       - name: Upload edge recrop probe
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: chapter29-ocr-edge-recrop-${{ github.run_id }}
           path: benchmark-results/chapter29-ocr-edge-recrop/
           retention-days: 7
-          if-no-files-found: error
+          if-no-files-found: warn
