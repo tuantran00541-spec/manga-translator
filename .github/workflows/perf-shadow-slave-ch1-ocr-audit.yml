@@ -1,0 +1,314 @@
+name: Perf Shadow Slave chapter 1 OCR audit
+
+on:
+  push:
+    branches:
+      - perf/bubble-fastpath-roi-lama
+    paths:
+      - .github/workflows/perf-shadow-slave-ch1-ocr-audit.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHONUNBUFFERED: "1"
+  MANGA_ORT_PROVIDER: openvino
+  MANGA_ORT_REQUIRE_PROVIDER: "1"
+  MANGA_ORT_OPENVINO_SCOPE: detectors
+  MANGA_ORT_OPENVINO_THREADS: "2"
+  MANGA_ORT_OPENVINO_STREAMS: "1"
+  MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
+  OPENBLAS_NUM_THREADS: "1"
+  PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK: "True"
+  MANGA_PPOCRV6_TIER: small
+  MANGA_OCR_TARGET_SELECTION: all
+  CHAPTER_ID: 5e8ce7e3
+  CHAPTER_URL: https://asurascans.com/comics/shadow-slave-6f7fe6eb/chapter/1
+  SERIES_SLUG: shadow-slave-6f7fe6eb
+  CHAPTER_NUMBER: "1"
+
+jobs:
+  shadow-slave-ch1-audit:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: perf/bubble-fastpath-roi-lama
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install production clean and OCR runtimes
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install \
+            numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 \
+            onnxruntime-openvino==1.24.1 \
+            paddleocr==3.7.0 paddlepaddle==3.2.2 \
+            psutil==6.1.1 loguru==0.7.2 requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 \
+            playwright==1.47.0 fastapi==0.115.0 'uvicorn[standard]==0.30.6' \
+            pydantic==2.9.2 filelock==3.16.1 python-multipart==0.0.12 chardet==5.2.0
+
+      - name: Restore detector and inpaint models
+        id: models
+        uses: actions/cache@v4
+        with:
+          path: |
+            models/*.onnx
+            models/.e2e-provenance.json
+          key: processing-profile-models-b224548-v1
+
+      - name: Read pinned model provisioner
+        if: steps.models.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: b22454827f8190655d7070b80eb20c2550beadfa
+          path: benchmark-bootstrap
+          sparse-checkout: scripts/provision_real_e2e_models.py
+          sparse-checkout-cone-mode: false
+
+      - name: Provision public-equivalent production models
+        if: steps.models.outputs.cache-hit != 'true'
+        run: |
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple torch==2.5.1+cpu torchvision==0.20.1+cpu
+          python -m pip install --no-deps ultralytics==8.3.221 onnx==1.17.0 onnxslim==0.1.71
+          python -m pip install sympy==1.13.1 PyYAML==6.0.2 scipy==1.14.1 tqdm==4.67.1 matplotlib==3.9.2 pandas==2.2.3 py-cpuinfo==9.0.0 ml_dtypes==0.5.3 colorama==0.4.6 polars==1.33.1 ultralytics-thop==2.0.17
+          python benchmark-bootstrap/scripts/provision_real_e2e_models.py
+          cp benchmark-bootstrap/models/*.onnx models/
+          cp benchmark-bootstrap/models/.e2e-provenance.json models/
+
+      - name: Download slice clean OCR and build audit evidence
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+          import json, math, os, shutil, textwrap, time
+          from collections import Counter
+          from concurrent.futures import ThreadPoolExecutor, as_completed
+          from pathlib import Path
+
+          import numpy as np
+          from PIL import Image, ImageDraw, ImageFont
+
+          from app.downloader.registry import download_chapter
+          from app.downloader.slicer import slice_image
+          from app.manifest_utils import load_manifest_raw
+          from app.ocr.multi_lang_ocr import MultiLangOCR
+          from app.ocr.service import OCRService, _ocr_crop_bounds
+          from app.optimized_pipeline import OptimizedChapterPipeline
+          from app.parameters import PIPELINE_DEFAULT_WORKERS, PIPELINE_SLICE_WORKER_LIMIT
+          from app.security import validate_chapter_id
+          from app.image_io import read_image
+
+          class AuditPipeline:
+              @staticmethod
+              def _sync_output_dir(chapter_id, manifest, page_indices=None):
+                  return None
+
+          chapter_id = validate_chapter_id(os.environ['CHAPTER_ID'])
+          chapter_url = os.environ['CHAPTER_URL']
+          raw_root = Path('data/raw') / chapter_id
+          source_dir = raw_root / 'source'
+          sliced_dir = raw_root / 'sliced'
+          processed_dir = Path('data/processed') / chapter_id
+          out = Path('benchmark-results/shadow-slave-ch1')
+          sheets = out / 'ocr-crops'
+          for p in (raw_root, processed_dir, out):
+              if p.exists():
+                  shutil.rmtree(p)
+          source_dir.mkdir(parents=True, exist_ok=True)
+          sliced_dir.mkdir(parents=True, exist_ok=True)
+          processed_dir.mkdir(parents=True, exist_ok=True)
+          sheets.mkdir(parents=True, exist_ok=True)
+
+          raw_paths = download_chapter(chapter_url, source_dir)
+          if not raw_paths:
+              raise RuntimeError('fresh downloader returned zero source images')
+
+          workers = max(1, min(int(PIPELINE_DEFAULT_WORKERS), int(PIPELINE_SLICE_WORKER_LIMIT), len(raw_paths)))
+          results = {}
+          def one(item):
+              i, path = item
+              return i, slice_image(path, sliced_dir, f'{i:03d}', return_metadata=True)
+          with ThreadPoolExecutor(max_workers=workers) as pool:
+              futures = [pool.submit(one, (i, p)) for i, p in enumerate(raw_paths)]
+              for future in as_completed(futures):
+                  i, items = future.result()
+                  results[i] = items
+
+          pages = []
+          for source_index in range(len(raw_paths)):
+              for slice_index, item in enumerate(results[source_index]):
+                  core = {k: item.get(k) for k in (
+                      'source_y1','source_y2','core_y1','core_y2','core_source_y1','core_source_y2',
+                      'unsafe_before','unsafe_after','source_height'
+                  )}
+                  pages.append({
+                      'original': Path(item['path']).as_posix(), 'clean': None, 'boxes': [], 'skipped': False,
+                      'excluded_regions': [], 'source_page': source_index, 'slice_index': slice_index,
+                      'stitch_core': core,
+                  })
+
+          manifest = {
+              'chapter_id': chapter_id,
+              'series_slug': os.environ['SERIES_SLUG'],
+              'chapter_number': int(os.environ['CHAPTER_NUMBER']),
+              'source_url': chapter_url,
+              'pages': pages,
+              'workflow': {'stage': 'preview', 'page_index': 0},
+          }
+          (processed_dir / 'manifest.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding='utf-8')
+
+          pipeline = OptimizedChapterPipeline()
+          indices = list(range(len(pages)))
+          clean_t0 = time.perf_counter()
+          for start in range(0, len(indices), 16):
+              batch = indices[start:start+16]
+              t0 = time.perf_counter()
+              pipeline.process_pages(chapter_id, batch, workers=2)
+              print(f'clean {start+len(batch)}/{len(indices)} in {time.perf_counter()-t0:.1f}s')
+          clean_wall = time.perf_counter() - clean_t0
+
+          manifest = load_manifest_raw(chapter_id)
+          safe = sum(bool(b.get('safe_to_inpaint')) for p in manifest.get('pages', []) for b in (p.get('boxes') or []))
+          review = sum(not bool(b.get('safe_to_inpaint')) for p in manifest.get('pages', []) for b in (p.get('boxes') or []))
+
+          service = OCRService(MultiLangOCR(), AuditPipeline())
+          plan = service.plan_chapter(chapter_id)
+          if not plan:
+              raise RuntimeError('OCR plan is empty')
+          print(f'OCR plan targets: {len(plan)}')
+
+          ocr_t0 = time.perf_counter()
+          ocr_results = []
+          errors = []
+          for n, (page_index, box_id) in enumerate(plan, start=1):
+              t0 = time.perf_counter()
+              try:
+                  result = service.inspect_box_id(chapter_id, page_index, box_id, 'en', force=True)
+                  result['page_index'] = page_index
+                  result['elapsed_ms'] = round((time.perf_counter() - t0) * 1000.0, 3)
+                  ocr_results.append(result)
+              except Exception as exc:
+                  errors.append({'page_index': page_index, 'box_id': box_id, 'error': f'{type(exc).__name__}: {exc}'})
+              if n == 1 or n % 10 == 0 or n == len(plan):
+                  print(f'ocr {n}/{len(plan)} results={len(ocr_results)} errors={len(errors)}')
+          ocr_wall = time.perf_counter() - ocr_t0
+
+          quality = Counter(str(r.get('quality') or 'unknown') for r in ocr_results)
+          reasons = Counter(str(r.get('quality_reason') or 'none') for r in ocr_results)
+          weak = [r for r in ocr_results if str(r.get('quality')) in {'review', 'reject'}]
+          empty = sum(not str(r.get('text') or '').strip() for r in ocr_results)
+          low = sum(r.get('confidence') is not None and float(r['confidence']) < 0.80 for r in ocr_results)
+          retry = sum(bool(r.get('retry_applied')) for r in ocr_results)
+
+          report = {
+              'benchmark': 'shadow-slave-ch1-fresh-clean-ocr-v2',
+              'chapter_id': chapter_id,
+              'chapter_url': chapter_url,
+              'source_images': len(raw_paths),
+              'slices': len(pages),
+              'clean': {
+                  'wall_s': round(clean_wall, 3),
+                  'slices_per_min': round(60.0 * len(pages) / max(clean_wall, 0.001), 3),
+                  'safe_boxes': int(safe),
+                  'review_boxes': int(review),
+              },
+              'ocr': {
+                  'planned': len(plan),
+                  'completed': len(ocr_results),
+                  'errors': errors,
+                  'quality': dict(quality),
+                  'quality_reasons': dict(reasons),
+                  'empty': int(empty),
+                  'low_conf_lt_0_80': int(low),
+                  'review_or_reject': len(weak),
+                  'retry': int(retry),
+                  'wall_s': round(ocr_wall, 3),
+                  'mean_ms_per_target': round(sum(float(r['elapsed_ms']) for r in ocr_results) / max(1, len(ocr_results)), 3),
+              },
+              'results': ocr_results,
+          }
+          (out / 'report.json').write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
+          (out / 'weak-cases.json').write_text(json.dumps(weak, ensure_ascii=False, indent=2), encoding='utf-8')
+
+          manifest = load_manifest_raw(chapter_id)
+          by_id = {}
+          for pi, page in enumerate(manifest.get('pages', [])):
+              for bi, box in enumerate(page.get('boxes') or []):
+                  if isinstance(box, dict) and box.get('id'):
+                      by_id[str(box['id'])] = (pi, bi, page, box)
+
+          font = ImageFont.load_default()
+          def wrap_lines(text, width=46, max_lines=7):
+              lines = []
+              for paragraph in str(text or '').replace('\r', '').split('\n'):
+                  lines.extend(textwrap.wrap(paragraph, width=width) or [''])
+              return lines[:max_lines]
+
+          cards = []
+          for result in ocr_results:
+              info = by_id.get(str(result.get('box_id')))
+              if info is None:
+                  continue
+              pi, bi, page, box = info
+              image = read_image(Path(page['original']))
+              x1, y1, x2, y2 = _ocr_crop_bounds(image.shape, box)
+              if x2 <= x1 or y2 <= y1:
+                  continue
+              crop = Image.fromarray(image[y1:y2, x1:x2, ::-1]).convert('RGB')
+              crop.thumbnail((480, 240), Image.Resampling.LANCZOS)
+              lines = [
+                  f'p{pi:03d} b{bi} {box.get("semantic_type")} {result.get("box_id")}',
+                  f'q={result.get("quality")} reason={result.get("quality_reason")} conf={result.get("confidence")}',
+                  f'retry={result.get("retry_applied")}',
+                  'OCR:', *wrap_lines(result.get('text')),
+              ]
+              h = crop.height + 18 * len(lines) + 20
+              card = Image.new('RGB', (max(560, crop.width + 20), h), 'white')
+              card.paste(crop, (10, 8))
+              d = ImageDraw.Draw(card)
+              y = crop.height + 14
+              for line in lines:
+                  d.text((10, y), line, fill='black', font=font)
+                  y += 18
+              cards.append(card)
+
+          for start in range(0, len(cards), 9):
+              group = cards[start:start+9]
+              cols = 3
+              rows = math.ceil(len(group) / cols)
+              cw = max(c.width for c in group)
+              ch = max(c.height for c in group)
+              sheet = Image.new('RGB', (cols*cw, rows*ch), 'white')
+              for j, card in enumerate(group):
+                  sheet.paste(card, ((j % cols) * cw, (j // cols) * ch))
+              sheet.save(sheets / f'ocr-{start:03d}-{start+len(group)-1:03d}.jpg', quality=92)
+
+          print('SHADOW_SLAVE_CH1=' + json.dumps({
+              'source_images': len(raw_paths), 'slices': len(pages),
+              'safe': int(safe), 'review': int(review),
+              'ocr_targets': len(plan), 'quality': dict(quality),
+              'weak': len(weak), 'errors': len(errors),
+              'clean_slices_per_min': report['clean']['slices_per_min'],
+              'ocr_wall_s': report['ocr']['wall_s'],
+          }, ensure_ascii=False))
+          if errors:
+              raise RuntimeError(f'OCR audit had {len(errors)} runtime errors')
+          PY
+
+      - name: Upload Shadow Slave chapter 1 audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: shadow-slave-ch1-ocr-audit-${{ github.run_id }}
+          path: |
+            benchmark-results/shadow-slave-ch1/
+            data/raw/5e8ce7e3/sliced/*.png
+            data/processed/5e8ce7e3/manifest.json
+            data/processed/5e8ce7e3/clean_*.png
+          retention-days: 7
+          compression-level: 6
+          if-no-files-found: error
