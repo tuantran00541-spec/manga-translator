@@ -1,0 +1,187 @@
+name: Perf Shadow Slave chapter 1 OCR adaptive recrop retest
+
+on:
+  push:
+    branches:
+      - perf/bubble-fastpath-roi-lama
+    paths:
+      - .github/workflows/perf-shadow-slave-ch1-ocr-retest.yml
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  PYTHONUNBUFFERED: "1"
+  PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK: "True"
+  MANGA_PPOCRV6_TIER: small
+  MANGA_OCR_TARGET_SELECTION: all
+  CHAPTER_ID: 5e8ce7e3
+  SOURCE_RUN_ID: "34950467604"
+  SOURCE_ARTIFACT: shadow-slave-ch1-ocr-audit-34950467604
+
+jobs:
+  ocr-retest:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: perf/bubble-fastpath-roi-lama
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install production English OCR runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install \
+            numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 \
+            paddleocr==3.7.0 paddlepaddle==3.2.2 \
+            pydantic==2.9.2 filelock==3.16.1 loguru==0.7.2 psutil==6.1.1 \
+            fastapi==0.115.0 requests==2.32.3 chardet==5.2.0
+
+      - name: Download original Shadow Slave audit artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.SOURCE_ARTIFACT }}
+          run-id: ${{ env.SOURCE_RUN_ID }}
+          github-token: ${{ github.token }}
+          path: source
+
+      - name: Restore identical OCR inputs
+        run: |
+          mkdir -p data/raw/${CHAPTER_ID} data/processed/${CHAPTER_ID}
+          cp -R source/data/raw/${CHAPTER_ID}/sliced data/raw/${CHAPTER_ID}/sliced
+          cp source/data/processed/${CHAPTER_ID}/manifest.json data/processed/${CHAPTER_ID}/manifest.json
+
+      - name: Re-run all OCR targets and compare baseline
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+          import json, os, time
+          from collections import Counter
+          from pathlib import Path
+
+          from app.ocr.multi_lang_ocr import MultiLangOCR
+          from app.ocr.service import OCRService
+
+          class AuditPipeline:
+              @staticmethod
+              def _sync_output_dir(chapter_id, manifest, page_indices=None):
+                  return None
+
+          chapter_id = os.environ['CHAPTER_ID']
+          baseline_path = Path('source/benchmark-results/shadow-slave-ch1/report.json')
+          baseline = json.loads(baseline_path.read_text(encoding='utf-8'))
+          baseline_results = {str(r['box_id']): r for r in baseline['results']}
+
+          service = OCRService(MultiLangOCR(), AuditPipeline())
+          plan = service.plan_chapter(chapter_id)
+          print('OCR plan targets:', len(plan))
+          if len(plan) != int(baseline['ocr']['planned']):
+              raise RuntimeError(f'plan drift: current={len(plan)} baseline={baseline["ocr"]["planned"]}')
+
+          started = time.perf_counter()
+          current = []
+          errors = []
+          for n, (page_index, box_id) in enumerate(plan, start=1):
+              t0 = time.perf_counter()
+              try:
+                  result = service.inspect_box_id(chapter_id, page_index, box_id, 'en', force=True)
+                  result['elapsed_ms'] = round((time.perf_counter() - t0) * 1000.0, 3)
+                  current.append(result)
+              except Exception as exc:
+                  errors.append({'page_index': page_index, 'box_id': box_id, 'error': f'{type(exc).__name__}: {exc}'})
+              if n == 1 or n % 10 == 0 or n == len(plan):
+                  print(f'ocr {n}/{len(plan)} results={len(current)} errors={len(errors)}')
+          wall_s = time.perf_counter() - started
+          if errors:
+              raise RuntimeError(f'OCR retest had {len(errors)} runtime errors: {errors[:3]}')
+
+          current_by_id = {str(r['box_id']): r for r in current}
+          quality = Counter(str(r.get('quality') or 'unknown') for r in current)
+          reasons = Counter(str(r.get('quality_reason') or 'none') for r in current)
+
+          baseline_edge_ids = {
+              box_id for box_id, r in baseline_results.items()
+              if str(r.get('quality_reason') or '') == 'crop-edge-text'
+          }
+          edge_transition = Counter()
+          edge_examples = []
+          for box_id in sorted(baseline_edge_ids):
+              before = baseline_results[box_id]
+              after = current_by_id[box_id]
+              key = f"crop-edge-text->{after.get('quality_reason') or 'good'}"
+              edge_transition[key] += 1
+              if str(before.get('text') or '') != str(after.get('text') or ''):
+                  edge_examples.append({
+                      'page_index': after.get('page_index'),
+                      'box_id': box_id,
+                      'before': before.get('text'),
+                      'after': after.get('text'),
+                      'before_quality': before.get('quality'),
+                      'after_quality': after.get('quality'),
+                      'after_reason': after.get('quality_reason'),
+                      'after_confidence': after.get('confidence'),
+                  })
+
+          regressions = []
+          improvements = []
+          rank = {'reject': 0, 'unknown': 0, 'review': 1, 'good': 2}
+          for box_id, after in current_by_id.items():
+              before = baseline_results[box_id]
+              br = rank.get(str(before.get('quality') or 'unknown'), 0)
+              ar = rank.get(str(after.get('quality') or 'unknown'), 0)
+              row = {
+                  'page_index': after.get('page_index'),
+                  'box_id': box_id,
+                  'before_text': before.get('text'),
+                  'after_text': after.get('text'),
+                  'before_quality': before.get('quality'),
+                  'after_quality': after.get('quality'),
+                  'before_reason': before.get('quality_reason'),
+                  'after_reason': after.get('quality_reason'),
+              }
+              if ar < br:
+                  regressions.append(row)
+              elif ar > br:
+                  improvements.append(row)
+
+          summary = {
+              'baseline_quality': baseline['ocr']['quality'],
+              'current_quality': dict(quality),
+              'baseline_weak': baseline['ocr']['review_or_reject'],
+              'current_weak': int(quality.get('review', 0) + quality.get('reject', 0)),
+              'baseline_edge': len(baseline_edge_ids),
+              'current_edge': int(reasons.get('crop-edge-text', 0)),
+              'edge_transitions': dict(edge_transition),
+              'quality_improvements': len(improvements),
+              'quality_regressions': len(regressions),
+              'changed_edge_texts': len(edge_examples),
+              'wall_s': round(wall_s, 3),
+              'mean_ms_per_target': round(sum(float(r['elapsed_ms']) for r in current) / max(1, len(current)), 3),
+          }
+          out = Path('benchmark-results/shadow-slave-ch1-retest')
+          out.mkdir(parents=True, exist_ok=True)
+          (out / 'summary.json').write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding='utf-8')
+          (out / 'edge-examples.json').write_text(json.dumps(edge_examples, ensure_ascii=False, indent=2), encoding='utf-8')
+          (out / 'improvements.json').write_text(json.dumps(improvements, ensure_ascii=False, indent=2), encoding='utf-8')
+          (out / 'regressions.json').write_text(json.dumps(regressions, ensure_ascii=False, indent=2), encoding='utf-8')
+          (out / 'current-results.json').write_text(json.dumps(current, ensure_ascii=False, indent=2), encoding='utf-8')
+          print('SHADOW_SLAVE_OCR_AB=' + json.dumps(summary, ensure_ascii=False))
+          for row in edge_examples[:20]:
+              print('EDGE_CHANGE=' + json.dumps(row, ensure_ascii=False))
+          if regressions:
+              print('QUALITY_REGRESSIONS=' + json.dumps(regressions[:20], ensure_ascii=False))
+          PY
+
+      - name: Upload compact A/B results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: shadow-slave-ch1-ocr-retest-${{ github.run_id }}
+          path: benchmark-results/shadow-slave-ch1-retest/
+          retention-days: 7
+          compression-level: 6
+          if-no-files-found: error
