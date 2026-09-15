@@ -1,0 +1,66 @@
+name: Perf Shadow Slave chapter 1 report extract
+
+on:
+  push:
+    branches:
+      - perf/bubble-fastpath-roi-lama
+    paths:
+      - .github/workflows/perf-shadow-slave-ch1-report-extract.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  extract-report:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: perf/bubble-fastpath-roi-lama
+
+      - name: Download full audit artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: shadow-slave-ch1-ocr-audit-34950467604
+          run-id: 34950467604
+          github-token: ${{ github.token }}
+          path: source
+
+      - name: Build compact evidence bundle
+        run: |
+          set -euo pipefail
+          mkdir -p compact
+          cp source/benchmark-results/shadow-slave-ch1/report.json compact/report.json
+          cp source/benchmark-results/shadow-slave-ch1/weak-cases.json compact/weak-cases.json
+          cp -R source/benchmark-results/shadow-slave-ch1/ocr-crops compact/ocr-crops
+          python - <<'PY'
+          import json
+          from collections import Counter
+          from pathlib import Path
+          weak = json.loads(Path('compact/weak-cases.json').read_text(encoding='utf-8'))
+          print('WEAK_COUNT', len(weak))
+          print('QUALITY', dict(Counter(str(x.get('quality')) for x in weak)))
+          print('REASONS', dict(Counter(str(x.get('quality_reason')) for x in weak)))
+          for row in weak:
+              print('WEAK', json.dumps({
+                  'page_index': row.get('page_index'),
+                  'box_id': row.get('box_id'),
+                  'text': row.get('text'),
+                  'quality': row.get('quality'),
+                  'reason': row.get('quality_reason'),
+                  'confidence': row.get('confidence'),
+                  'retry': row.get('retry_applied'),
+              }, ensure_ascii=False))
+          PY
+
+      - name: Upload compact audit evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: shadow-slave-ch1-compact-${{ github.run_id }}
+          path: compact/
+          retention-days: 7
+          compression-level: 6
+          if-no-files-found: error
