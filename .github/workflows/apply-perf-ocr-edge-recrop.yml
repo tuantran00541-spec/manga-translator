@@ -1,0 +1,101 @@
+name: Apply perf OCR edge recrop candidate
+
+on:
+  push:
+    branches:
+      - perf/bubble-fastpath-roi-lama
+    paths:
+      - .github/workflows/apply-perf-ocr-edge-recrop.yml
+
+permissions:
+  contents: write
+
+env:
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  apply-candidate:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: perf/bubble-fastpath-roi-lama
+          fetch-depth: 0
+
+      - name: Refuse stale branch mutation
+        run: |
+          remote_head="$(git ls-remote origin refs/heads/perf/bubble-fastpath-roi-lama | cut -f1)"
+          test "$remote_head" = "$GITHUB_SHA"
+
+      - name: Apply selective edge recrop
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          service_path = Path('app/ocr/service.py')
+          service = service_path.read_text(encoding='utf-8')
+
+          service = service.replace(
+              'from collections import OrderedDict\nimport copy\n',
+              'from collections import OrderedDict\nimport copy\nfrom difflib import SequenceMatcher\n',
+              1,
+          )
+
+          marker = '''def _check_cancelled(cancel_event: threading.Event | None) -> None:\n    if cancel_event is not None and cancel_event.is_set():\n        raise OCRCancelled(OCR_CANCELLED_MESSAGE)\n\n\nclass OCRService:\n'''
+          helper = '''def _check_cancelled(cancel_event: threading.Event | None) -> None:\n    if cancel_event is not None and cancel_event.is_set():\n        raise OCRCancelled(OCR_CANCELLED_MESSAGE)\n\n\nOCR_EDGE_RECROP_EXTRA_PADDING = 24\n\n\ndef _expand_ocr_crop_bounds(\n    image_shape: tuple[int, ...],\n    crop_bounds: tuple[int, int, int, int],\n    extra_padding: int = OCR_EDGE_RECROP_EXTRA_PADDING,\n) -> tuple[int, int, int, int]:\n    h, w = image_shape[:2]\n    x1, y1, x2, y2 = crop_bounds\n    pad = max(0, int(extra_padding))\n    return (\n        max(0, int(x1) - pad),\n        max(0, int(y1) - pad),\n        min(w, int(x2) + pad),\n        min(h, int(y2) + pad),\n    )\n\n\ndef _normalized_ocr_lines(text: str) -> tuple[str, ...]:\n    lines = [\n        " ".join(part.upper().split())\n        for part in str(text or "").splitlines()\n        if part.strip()\n    ]\n    return tuple(sorted(lines))\n\n\ndef _compact_ocr_text(text: str) -> str:\n    return "".join(ch for ch in str(text or "").upper() if ch.isalnum())\n\n\ndef _prefer_edge_recrop(\n    *,\n    base_text: str,\n    base_quality: str,\n    base_reason: str | None,\n    base_confidence: float | None,\n    base_region_count: int,\n    expanded_text: str,\n    expanded_quality: str,\n    expanded_reason: str | None,\n    expanded_confidence: float | None,\n    expanded_region_count: int,\n) -> bool:\n    if str(base_reason or "") != "crop-edge-text":\n        return False\n    if not str(expanded_text or "").strip():\n        return False\n\n    base_regions = max(0, int(base_region_count or 0))\n    expanded_regions = max(0, int(expanded_region_count or 0))\n    if base_regions and expanded_regions > base_regions:\n        return False\n\n    rank = {"reject": 0, "unknown": 0, "review": 1, "good": 2}\n    base_rank = rank.get(str(base_quality or "unknown"), 0)\n    expanded_rank = rank.get(str(expanded_quality or "unknown"), 0)\n    base_compact = _compact_ocr_text(base_text)\n    expanded_compact = _compact_ocr_text(expanded_text)\n    similarity = SequenceMatcher(None, base_compact, expanded_compact).ratio()\n\n    # A quality upgrade is useful only when it still resembles the original\n    # read and does not discover extra text regions. This blocks an expanded\n    # crop from winning merely because it swallowed a neighbouring bubble.\n    if expanded_rank > base_rank:\n        return similarity >= 0.45\n\n    # If both passes remain edge-limited, allow the wider crop to repair\n    # reading order only when it contains exactly the same recognized lines.\n    if (\n        expanded_rank == base_rank\n        and str(expanded_reason or "") == "crop-edge-text"\n        and _normalized_ocr_lines(base_text) == _normalized_ocr_lines(expanded_text)\n        and str(base_text or "").strip() != str(expanded_text or "").strip()\n    ):\n        try:\n            base_conf = float(base_confidence) if base_confidence is not None else 0.0\n            expanded_conf = (\n                float(expanded_confidence) if expanded_confidence is not None else 0.0\n            )\n        except (TypeError, ValueError):\n            return False\n        return expanded_conf + 0.05 >= base_conf\n\n    return False\n\n\nclass OCRService:\n'''
+          if marker not in service:
+              raise RuntimeError('service helper insertion point not found')
+          service = service.replace(marker, helper, 1)
+
+          old = '''            quality, quality_reason = self._conservative_quality(\n                base_quality, base_reason, checked_quality.status, checked_quality.reason\n            )\n            self._result_local.metadata = {\n                "confidence": getattr(result, "confidence", None),\n                "model": str(getattr(result, "model", "") or ""),\n                "orientation": str(\n                    getattr(result, "orientation", "unknown") or "unknown"\n                ),\n                "region_count": int(getattr(result, "region_count", 0) or 0),\n                "quality": quality,\n                "quality_reason": quality_reason,\n                "coverage": coverage if coverage is not None else getattr(result, "coverage", None),\n                "target_mode": str(getattr(result, "target_mode", target_mode) or target_mode),\n                "retry_applied": bool(getattr(result, "retry_applied", False)),\n            }\n            return text\n'''
+          new = '''            quality, quality_reason = self._conservative_quality(\n                base_quality, base_reason, checked_quality.status, checked_quality.reason\n            )\n\n            recrop_attempted = False\n            if quality_reason == "crop-edge-text":\n                expanded_bounds = _expand_ocr_crop_bounds(image.shape, crop_bounds)\n                if expanded_bounds != crop_bounds:\n                    ex1, ey1, ex2, ey2 = expanded_bounds\n                    expanded_crop = image[ey1:ey2, ex1:ex2]\n                    if expanded_crop.size:\n                        recrop_attempted = True\n                        expanded_rgb = cv2.cvtColor(expanded_crop, cv2.COLOR_BGR2RGB)\n                        try:\n                            expanded_result = detailed_reader(\n                                expanded_rgb, lang, target_mode=target_mode\n                            )\n                        except TypeError:\n                            expanded_result = detailed_reader(expanded_rgb, lang)\n                        expanded_text = str(\n                            getattr(expanded_result, "text", "") or ""\n                        ).strip()\n                        expanded_coverage = self._mask_text_coverage(\n                            box_snapshot, expanded_bounds, expanded_result\n                        )\n                        expanded_checked = classify_ocr_quality(\n                            expanded_text,\n                            lang,\n                            confidence=getattr(expanded_result, "confidence", None),\n                            coverage=expanded_coverage,\n                        )\n                        expanded_quality, expanded_reason = self._conservative_quality(\n                            str(\n                                getattr(expanded_result, "quality", "unknown")\n                                or "unknown"\n                            ),\n                            getattr(expanded_result, "quality_reason", None),\n                            expanded_checked.status,\n                            expanded_checked.reason,\n                        )\n                        if _prefer_edge_recrop(\n                            base_text=text,\n                            base_quality=quality,\n                            base_reason=quality_reason,\n                            base_confidence=getattr(result, "confidence", None),\n                            base_region_count=int(\n                                getattr(result, "region_count", 0) or 0\n                            ),\n                            expanded_text=expanded_text,\n                            expanded_quality=expanded_quality,\n                            expanded_reason=expanded_reason,\n                            expanded_confidence=getattr(\n                                expanded_result, "confidence", None\n                            ),\n                            expanded_region_count=int(\n                                getattr(expanded_result, "region_count", 0) or 0\n                            ),\n                        ):\n                            result = expanded_result\n                            text = expanded_text\n                            crop_bounds = expanded_bounds\n                            coverage = expanded_coverage\n                            quality = expanded_quality\n                            quality_reason = expanded_reason\n\n            self._result_local.metadata = {\n                "confidence": getattr(result, "confidence", None),\n                "model": str(getattr(result, "model", "") or ""),\n                "orientation": str(\n                    getattr(result, "orientation", "unknown") or "unknown"\n                ),\n                "region_count": int(getattr(result, "region_count", 0) or 0),\n                "quality": quality,\n                "quality_reason": quality_reason,\n                "coverage": coverage if coverage is not None else getattr(result, "coverage", None),\n                "target_mode": str(getattr(result, "target_mode", target_mode) or target_mode),\n                "retry_applied": bool(\n                    getattr(result, "retry_applied", False) or recrop_attempted\n                ),\n            }\n            return text\n'''
+          if old not in service:
+              raise RuntimeError('service OCR result block not found')
+          service = service.replace(old, new, 1)
+          service_path.write_text(service, encoding='utf-8')
+
+          identity_path = Path('app/ocr/identity.py')
+          identity = identity_path.read_text(encoding='utf-8')
+          old_version = 'OCR_PIPELINE_VERSION = "phase45-v5-complete-ocr"'
+          new_version = 'OCR_PIPELINE_VERSION = "phase45-v6-edge-recrop"'
+          if old_version not in identity:
+              raise RuntimeError('OCR pipeline version marker not found')
+          identity_path.write_text(
+              identity.replace(old_version, new_version, 1), encoding='utf-8'
+          )
+
+          tests_path = Path('tests/test_ocr_pipeline_regressions.py')
+          tests = tests_path.read_text(encoding='utf-8')
+          import_old = '''from app.ocr.service import (\n    OCRService,\n'''
+          import_new = '''from app.ocr.service import (\n    OCRService,\n    _expand_ocr_crop_bounds,\n    _prefer_edge_recrop,\n'''
+          if import_old not in tests:
+              raise RuntimeError('OCR service test import marker not found')
+          tests = tests.replace(import_old, import_new, 1)
+          tests += '''\n\ndef test_edge_recrop_bounds_add_only_bounded_context():\n    assert _expand_ocr_crop_bounds((100, 120, 3), (10, 20, 80, 90)) == (0, 0, 104, 100)\n\n\ndef test_edge_recrop_prefers_quality_upgrade_without_extra_regions():\n    assert _prefer_edge_recrop(\n        base_text="(..H?",\n        base_quality="review",\n        base_reason="crop-edge-text",\n        base_confidence=0.84,\n        base_region_count=1,\n        expanded_text="...HUH?",\n        expanded_quality="good",\n        expanded_reason=None,\n        expanded_confidence=0.95,\n        expanded_region_count=1,\n    )\n    assert not _prefer_edge_recrop(\n        base_text="(..H?",\n        base_quality="review",\n        base_reason="crop-edge-text",\n        base_confidence=0.84,\n        base_region_count=1,\n        expanded_text="NEIGHBOUR TEXT ...HUH?",\n        expanded_quality="good",\n        expanded_reason=None,\n        expanded_confidence=0.99,\n        expanded_region_count=2,\n    )\n\n\ndef test_edge_recrop_can_repair_order_but_not_add_lines():\n    assert _prefer_edge_recrop(\n        base_text="CHILD\\nSAVETHIS",\n        base_quality="review",\n        base_reason="crop-edge-text",\n        base_confidence=0.9994,\n        base_region_count=2,\n        expanded_text="SAVETHIS\\nCHILD",\n        expanded_quality="review",\n        expanded_reason="crop-edge-text",\n        expanded_confidence=0.9992,\n        expanded_region_count=2,\n    )\n    assert not _prefer_edge_recrop(\n        base_text="CHILD\\nSAVETHIS",\n        base_quality="review",\n        base_reason="crop-edge-text",\n        base_confidence=0.9994,\n        base_region_count=2,\n        expanded_text="SAVETHIS\\nCHILD\\nNEXT",\n        expanded_quality="review",\n        expanded_reason="crop-edge-text",\n        expanded_confidence=0.9999,\n        expanded_region_count=3,\n    )\n'''
+          tests_path.write_text(tests, encoding='utf-8')
+
+          ab_path = Path('.github/workflows/perf-chapter29-ocr-v2-ab.yml')
+          ab = ab_path.read_text(encoding='utf-8')
+          ab = ab.replace(
+              '      - .github/workflows/perf-chapter29-ocr-v2-ab.yml\n',
+              '      - .github/workflows/perf-chapter29-ocr-v2-ab.yml\n      - app/ocr/**\n      - tests/test_ocr_pipeline_regressions.py\n',
+              1,
+          )
+          ab = ab.replace('  MANGA_OCR_BOX_CROP_PADDING: "44"\n', '', 1)
+          ab_path.write_text(ab, encoding='utf-8')
+
+          Path('.github/workflows/apply-perf-ocr-edge-recrop.yml').unlink()
+          PY
+
+      - name: Validate patched source
+        run: |
+          git diff --check
+          python -m compileall -q app/ocr/service.py app/ocr/identity.py tests/test_ocr_pipeline_regressions.py
+
+      - name: Commit candidate
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/ocr/service.py app/ocr/identity.py tests/test_ocr_pipeline_regressions.py .github/workflows/perf-chapter29-ocr-v2-ab.yml .github/workflows/apply-perf-ocr-edge-recrop.yml
+          git commit -m "perf(ocr): selectively recrop edge-limited text"
+          git push origin HEAD:perf/bubble-fastpath-roi-lama
