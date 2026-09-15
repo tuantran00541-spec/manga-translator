@@ -4,7 +4,7 @@ from app.detector.sequential_fast_residue_detector import (
     SequentialFastResidueAdaptiveFocusCombinedTextDetector,
 )
 from app.inpaint.adaptive_fast_inpainter import AdaptiveFastInpainter
-from app.parameters import PIPELINE_DEFAULT_WORKERS
+from app.parameters import INPAINT_PRELOAD_ENABLED, PIPELINE_DEFAULT_WORKERS
 from app.pipeline import ChapterPipeline
 from app.runtime_responsiveness import responsive_process_workers
 
@@ -42,6 +42,15 @@ class OptimizedChapterPipeline(ChapterPipeline):
         prepare = getattr(inpainter, "prepare_for_page_workers", None)
         if callable(prepare):
             prepare(effective_workers)
+        # A session-affecting runtime profile must be selected before loading
+        # LaMa.  Loading lazily from the first page worker otherwise makes that
+        # worker pay the cold-start cost and can race with its sibling.  Keep
+        # the existing opt-out for installations that deliberately disable
+        # preload to conserve memory.
+        if INPAINT_PRELOAD_ENABLED:
+            preload = getattr(inpainter, "preload", None)
+            if callable(preload):
+                preload()
         return super().process_pages(
             chapter_id,
             page_indices,

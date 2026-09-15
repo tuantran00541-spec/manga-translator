@@ -1,8 +1,10 @@
 import numpy as np
+from unittest.mock import patch
 
 from app.detector.bubble_detector import BubbleBox
 from app.inpaint.fast_lama_inpainter import FastInpainter
 from app.optimized_pipeline import OptimizedChapterPipeline
+from app.pipeline import ChapterPipeline
 
 
 def test_verified_flat_bubble_skips_lama():
@@ -72,3 +74,34 @@ def test_dynamic_lama_tightens_mask_roi_before_model_call():
 def test_optimized_pipeline_uses_fast_inpainter():
     pipeline = OptimizedChapterPipeline()
     assert isinstance(pipeline.inpainter, FastInpainter)
+
+
+def test_optimized_pipeline_preloads_after_selecting_worker_profile():
+    events = []
+
+    class FakeInpainter:
+        def prepare_for_page_workers(self, workers):
+            events.append(("prepare", workers))
+
+        def preload(self):
+            events.append(("preload",))
+
+    pipeline = OptimizedChapterPipeline.__new__(OptimizedChapterPipeline)
+    pipeline._inpainter = FakeInpainter()
+
+    def fake_process(self, chapter_id, page_indices, workers):
+        events.append(("process", chapter_id, page_indices, workers))
+        return {"ok": True}
+
+    with patch(
+        "app.optimized_pipeline.responsive_process_workers",
+        return_value=2,
+    ), patch.object(ChapterPipeline, "process_pages", fake_process):
+        result = pipeline.process_pages("deadbeef", [0, 1], workers=4)
+
+    assert result == {"ok": True}
+    assert events == [
+        ("prepare", 2),
+        ("preload",),
+        ("process", "deadbeef", [0, 1], 2),
+    ]

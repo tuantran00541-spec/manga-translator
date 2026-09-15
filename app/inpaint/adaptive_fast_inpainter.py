@@ -14,7 +14,11 @@ from app.inpaint.lama_runtime_policy import (
 )
 from app.logging_config import logger
 from app.ort_utils import _drop_model_file_cache_hint, make_session
-from app.parameters import FIXED_LAMA_CONCURRENT_INFERENCE, ORT_INTER_OP_THREADS
+from app.parameters import (
+    FIXED_LAMA_CONCURRENT_INFERENCE,
+    ORT_INTER_OP_THREADS,
+    PIPELINE_DEFAULT_WORKERS,
+)
 
 
 class AdaptiveFastInpainter(FastInpainter):
@@ -27,7 +31,13 @@ class AdaptiveFastInpainter(FastInpainter):
 
     def __init__(self):
         super().__init__()
-        self._runtime_profile: LamaRuntimeProfile = select_lama_runtime_profile(1)
+        # The application default is two page workers.  Matching that profile
+        # here avoids startup loading a one-worker session which
+        # ``OptimizedChapterPipeline.process_pages`` would immediately discard
+        # before the normal two-worker request.
+        self._runtime_profile: LamaRuntimeProfile = select_lama_runtime_profile(
+            PIPELINE_DEFAULT_WORKERS
+        )
         self._loaded_runtime_signature: tuple[int, int, bool, bool] | None = None
 
     def runtime_profile_status(self) -> dict:

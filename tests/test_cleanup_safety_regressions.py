@@ -72,6 +72,55 @@ def test_mser_proposal_requires_independent_segmenter_mask_for_promotion():
     assert CombinedTextDetector._recovery_has_segmenter_evidence(proposal, [verified_segmenter])
 
 
+def test_final_nms_coalesces_exact_verified_cross_semantic_duplicates():
+    mask = np.zeros((12, 18), dtype=np.uint8)
+    mask[3:9, 4:14] = 255
+    speech = BubbleBox(
+        20, 30, 38, 42, 0.92, mask.copy(),
+        source_model="text_segmenter.onnx", source_role="text_segmenter",
+        semantic_type="speech_bubble", mask_source="text_segmenter",
+        safe_to_inpaint=True, ocr_eligible=True,
+    )
+    free_text = BubbleBox(
+        20, 30, 38, 42, 0.90, mask.copy(),
+        source_model="text_segmenter.onnx", source_role="text_segmenter",
+        semantic_type="free_text", mask_source="text_segmenter",
+        safe_to_inpaint=True, ocr_eligible=True,
+    )
+
+    result = CombinedTextDetector._apply_final_nms([free_text, speech])
+
+    assert len(result) == 1
+    assert result[0].semantic_type == "speech_bubble"
+    assert result[0].safe_to_inpaint is True
+    assert np.array_equal(result[0].mask > 127, mask > 127)
+
+
+def test_final_nms_keeps_same_geometry_when_verified_masks_disagree():
+    first_mask = np.zeros((12, 18), dtype=np.uint8)
+    first_mask[3:9, 4:14] = 255
+    second_mask = first_mask.copy()
+    second_mask[1:3, 1:3] = 255
+    boxes = [
+        BubbleBox(
+            20, 30, 38, 42, 0.92, first_mask,
+            source_model="text_segmenter.onnx", source_role="text_segmenter",
+            semantic_type="speech_bubble", mask_source="text_segmenter",
+            safe_to_inpaint=True,
+        ),
+        BubbleBox(
+            20, 30, 38, 42, 0.90, second_mask,
+            source_model="text_segmenter.onnx", source_role="text_segmenter",
+            semantic_type="free_text", mask_source="text_segmenter",
+            safe_to_inpaint=True,
+        ),
+    ]
+
+    result = CombinedTextDetector._apply_final_nms(boxes)
+
+    assert len(result) == 2
+
+
 class _ResidueTextDetector:
     def _detect_single_plain(self, image, offset_x, offset_y):
         return [BubbleBox(

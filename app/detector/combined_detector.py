@@ -694,7 +694,71 @@ class CombinedTextDetector:
                     iou_threshold=iou_threshold,
                 )
             )
-        return sorted(result, key=lambda b: b.confidence, reverse=True)
+        ordered = sorted(result, key=lambda b: b.confidence, reverse=True)
+        return CombinedTextDetector._coalesce_exact_verified_duplicates(ordered)
+
+    @staticmethod
+    def _coalesce_exact_verified_duplicates(
+        boxes: list[BubbleBox],
+    ) -> list[BubbleBox]:
+        """Collapse duplicate authorized masks without changing erase pixels.
+
+        Final NMS intentionally groups by source model and semantic type because
+        those labels carry review/OCR meaning.  A text-segmenter result can,
+        however, be emitted once as a speech-bubble child and once as free text
+        with the same page geometry.  Keeping both causes duplicate OCR targets
+        and repeats inpaint work.  Only exact geometry + exact binary mask
+        matches are coalesced; review-only boxes and any mask disagreement stay
+        as independent evidence.
+        """
+        if not boxes:
+            return []
+
+        result: list[BubbleBox] = []
+        eligible_index: dict[tuple[str, int, int, int, int], int] = {}
+        for box in boxes:
+            key = (
+                str(box.source_model),
+                int(box.x1),
+                int(box.y1),
+                int(box.x2),
+                int(box.y2),
+            )
+            previous_index = eligible_index.get(key)
+            if previous_index is None:
+                result.append(box)
+                if box.safe_to_inpaint and box.verified_mask:
+                    eligible_index[key] = len(result) - 1
+                continue
+
+            previous = result[previous_index]
+            same_mask = (
+                previous.mask is not None
+                and box.mask is not None
+                and previous.mask.shape == box.mask.shape
+                and np.array_equal(previous.mask > 127, box.mask > 127)
+            )
+            if not (
+                previous.safe_to_inpaint
+                and box.safe_to_inpaint
+                and previous.verified_mask
+                and box.verified_mask
+                and same_mask
+            ):
+                result.append(box)
+                continue
+
+            winner = box if float(box.confidence) > float(previous.confidence) else previous
+            result[previous_index] = replace(
+                winner,
+                # Preserve the most conservative review/OCR state while the
+                # authorized mask remains byte-for-byte the winner's mask.
+                safe_to_inpaint=True,
+                ocr_eligible=bool(previous.ocr_eligible or box.ocr_eligible),
+                needs_review=bool(previous.needs_review or box.needs_review),
+            )
+
+        return result
 
     @staticmethod
     def _refine_and_split_tall_boxes(boxes: list[BubbleBox], img: np.ndarray) -> list[BubbleBox]:
