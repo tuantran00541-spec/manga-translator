@@ -41,7 +41,7 @@ jobs:
             numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 \
             paddleocr==3.7.0 paddlepaddle==3.2.2 \
             pydantic==2.9.2 filelock==3.16.1 loguru==0.7.2 psutil==6.1.1 \
-            fastapi==0.115.0 requests==2.32.3
+            fastapi==0.115.0 requests==2.32.3 chardet==5.2.0
 
       - name: Download fresh chapter 29 clean artifact
         uses: actions/download-artifact@v4
@@ -66,6 +66,13 @@ jobs:
           from app.ocr.service import OCRService, _ocr_crop_bounds, ocr_target_skip_reason
           from app.image_io import read_image
 
+          class AuditPipeline:
+              @staticmethod
+              def _sync_output_dir(chapter_id, manifest, page_indices=None):
+                  # OCRService calls the production output sync after committing
+                  # metadata. The audit has no rendered output directory to sync.
+                  return None
+
           chapter_id = os.environ['CHAPTER_ID']
           out = Path('benchmark-results/chapter29-ocr')
           crops_dir = out / 'ocr-crops'
@@ -77,7 +84,7 @@ jobs:
           if not manifest_path.is_file():
               raise RuntimeError(f'missing source manifest: {manifest_path}')
 
-          service = OCRService(MultiLangOCR(), None)
+          service = OCRService(MultiLangOCR(), AuditPipeline())
           plan = service.plan_chapter(chapter_id)
           print(f'OCR plan targets: {len(plan)}')
           if not plan:
@@ -178,7 +185,6 @@ jobs:
                   lines.extend(textwrap.wrap(paragraph, width=width) or [''])
               return lines[:max_lines]
 
-          # OCR crop cards: actual raw crop + machine transcription/quality.
           cards = []
           for r in results:
               box_id = str(r['box_id'])
@@ -188,7 +194,6 @@ jobs:
               pi, bi, page, box = info
               image = read_image(Path(page['original']))
               x1, y1, x2, y2 = _ocr_crop_bounds(image.shape, box)
-              # read_image is BGR; PIL expects RGB.
               crop = Image.fromarray(image[y1:y2, x1:x2, ::-1]).convert('RGB')
               crop.thumbnail((520, 260), Image.Resampling.LANCZOS)
               text_lines = wrap_lines(r.get('text') or '')
@@ -222,8 +227,6 @@ jobs:
                   sheet.paste(card, ((j % cols) * cw, (j // cols) * ch))
               sheet.save(crops_dir / f'ocr-{start:03d}-{start+len(group)-1:03d}.jpg', quality=92)
 
-          # Full-page target overlays. Green-ish distinction is not important;
-          # use two line widths instead of relying on color for interpretation.
           overlay_cards = []
           planned_ids = set(result_by_id)
           for pi, page in enumerate(manifest.get('pages', [])):
@@ -262,7 +265,6 @@ jobs:
                   sheet.paste(card, ((j % cols) * cw, (j // cols) * ch))
               sheet.save(overlay_dir / f'targets-{start:03d}-{start+len(group)-1:03d}.jpg', quality=92)
 
-          # Separate shortlist for machine-flagged weak cases.
           shortlist = sorted(
               review_or_reject,
               key=lambda r: (
@@ -287,6 +289,7 @@ jobs:
           PY
 
       - name: Upload OCR audit evidence
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: chapter29-ocr-audit-${{ github.run_id }}
