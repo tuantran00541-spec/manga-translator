@@ -554,7 +554,7 @@ INPAINT_SIZE = _env_int(
     "MANGA_INPAINT_SIZE", 512, minimum=128, maximum=4096
 )
 DYNAMIC_LAMA_MAX_SINGLE_CROP_DIM = _env_int(
-    "MANGA_DYNAMIC_LAMA_MAX_SINGLE_CROP_DIM", 512, minimum=128, maximum=4096
+    "MANGA_DYNAMIC_LAMA_MAX_SINGLE_CROP_DIM", 768, minimum=128, maximum=4096
 )
 INPAINT_NATIVE_TILE_ENABLED = _env_bool("MANGA_INPAINT_NATIVE_TILE_ENABLED", True)
 INPAINT_NATIVE_TILE_EDGE_DENSITY_MIN = _env_float(
@@ -607,7 +607,7 @@ MANUAL_TILE_OVERLAP = _env_int(
 )
 # Elongated crops use this on both backends; retain the historical env name.
 FIXED_LAMA_TILE_ASPECT = _env_float(
-    "MANGA_FIXED_LAMA_TILE_ASPECT", 1.6, minimum=1.0, maximum=20.0
+    "MANGA_FIXED_LAMA_TILE_ASPECT", 2.0, minimum=1.0, maximum=20.0
 )
 FIXED_LAMA_CONCURRENT_INFERENCE = _env_bool(
     "MANGA_FIXED_LAMA_CONCURRENT_INFERENCE", False

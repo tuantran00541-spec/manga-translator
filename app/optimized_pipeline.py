@@ -1,20 +1,24 @@
 from __future__ import annotations
 
+import time
 import uuid
 from pathlib import Path
 
 import cv2
 import numpy as np
 
+from app.detector.bubble_detector import BubbleBox
+from app.detector.mask_builder import build_mask
 from app.detector.sequential_fast_residue_detector import (
     SequentialFastResidueAdaptiveFocusCombinedTextDetector,
 )
 from app.image_io import read_image, write_image
 from app.inpaint.adaptive_fast_inpainter import AdaptiveFastInpainter
 from app.manifest_utils import atomic_replace
+from app.mask_store import decode_mask_value
 from app.parameters import MANUAL_MASK_THRESHOLD, PIPELINE_DEFAULT_WORKERS
 from app.pipeline import ChapterPipeline
-from app.region_policy import subtract_regions_from_mask
+from app.region_policy import geometry_center_in_regions, subtract_regions_from_mask
 from app.runtime_responsiveness import responsive_process_workers
 
 
@@ -152,6 +156,272 @@ class OptimizedChapterPipeline(ChapterPipeline):
             }
 
         return result
+
+    @staticmethod
+    def _residue_repair_effective_boxes(records: list[dict] | None) -> list[BubbleBox]:
+        """Rebuild destructive detector authorities persisted by _process_page."""
+        boxes: list[BubbleBox] = []
+        for record in records or []:
+            if (
+                not isinstance(record, dict)
+                or record.get("removed")
+                or record.get("deferred_reason")
+            ):
+                continue
+            geometry_overridden = bool(record.get("geometry_overridden"))
+            if not (record.get("safe_to_inpaint") or geometry_overridden):
+                continue
+            try:
+                x1, y1 = int(record["x1"]), int(record["y1"])
+                x2, y2 = int(record["x2"]), int(record["y2"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            box_w, box_h = x2 - x1, y2 - y1
+            if box_w <= 0 or box_h <= 0:
+                continue
+            mask = decode_mask_value(record.get("mask"))
+            if mask is not None and mask.shape != (box_h, box_w):
+                mask = cv2.resize(
+                    mask,
+                    (box_w, box_h),
+                    interpolation=cv2.INTER_NEAREST,
+                )
+            box = BubbleBox(
+                x1,
+                y1,
+                x2,
+                y2,
+                float(record.get("confidence", 1.0)),
+                mask,
+                source_model=str(record.get("source_model") or "unknown"),
+                class_id=int(record.get("class_id") or 0),
+                class_name=str(record.get("class_name") or "unknown"),
+                semantic_type=str(record.get("semantic_type") or "unknown"),
+                mask_source=str(record.get("mask_source") or "none"),
+                safe_to_inpaint=True,
+                ocr_eligible=bool(record.get("ocr_eligible")),
+                needs_review=bool(record.get("needs_review")),
+                source_role=str(record.get("source_role") or "unknown"),
+                deferred_reason=None,
+            )
+            if geometry_overridden:
+                box.allow_rectangle_fallback = True
+            boxes.append(box)
+        return boxes
+
+    def _repair_post_inpaint_result(
+        self,
+        img_path: Path,
+        result: dict,
+        preserve_regions: list[dict] | None,
+    ) -> dict:
+        """Repair verified residue without inventing new destructive authority.
+
+        The residue detector only selects pixels already owned by the original
+        automatic erase mask. LaMa may use its normal hidden dilation internally,
+        but final writes are clipped to that pre-existing authority and preserve
+        rectangles remain hard-locked.
+        """
+        initial_regions = list(result.get("residue_regions") or [])
+        actual_hits = [
+            region
+            for region in initial_regions
+            if isinstance(region, dict)
+            and region.get("deferred_reason") == "post_inpaint_text_residue"
+        ]
+        metrics = result.setdefault("processing_metrics", {})
+        repair_metrics = {
+            "attempted": 0,
+            "initial_regions": len(initial_regions),
+            "initial_text_hits": len(actual_hits),
+            "repair_mask_pixels": 0,
+            "outside_authority_changed_channel_values": 0,
+            "final_regions": len(initial_regions),
+            "skipped_manual_state": 0,
+        }
+        metrics["residue_repair"] = repair_metrics
+        if not actual_hits:
+            return result
+        if result.get("manual_mask") or result.get("manual_lama_mask"):
+            repair_metrics["skipped_manual_state"] = 1
+            return result
+
+        tmp_clean_value = result.get("tmp_clean")
+        if not tmp_clean_value:
+            return result
+        tmp_clean_path = Path(tmp_clean_value)
+        if not tmp_clean_path.exists():
+            return result
+
+        authorized_boxes = self._residue_repair_effective_boxes(result.get("boxes"))
+        if not authorized_boxes:
+            return result
+
+        started_at = time.perf_counter()
+        original = read_image(img_path)
+        clean_before = read_image(tmp_clean_path)
+        full_authority = build_mask(
+            clean_before.shape[:2],
+            authorized_boxes,
+            original,
+        )
+        full_authority = subtract_regions_from_mask(
+            full_authority,
+            preserve_regions,
+        )
+        if full_authority is None or not np.any(
+            full_authority > MANUAL_MASK_THRESHOLD
+        ):
+            return result
+
+        h, w = clean_before.shape[:2]
+        scope = np.zeros((h, w), dtype=np.uint8)
+        pad = 6
+        for region in actual_hits:
+            try:
+                x1 = max(0, int(region["x1"]) - pad)
+                y1 = max(0, int(region["y1"]) - pad)
+                x2 = min(w, int(region["x2"]) + pad)
+                y2 = min(h, int(region["y2"]) + pad)
+            except (KeyError, TypeError, ValueError):
+                continue
+            if x2 > x1 and y2 > y1:
+                scope[y1:y2, x1:x2] = 255
+
+        repair_mask = cv2.bitwise_and(full_authority, scope)
+        repair_pixels = int(
+            np.count_nonzero(repair_mask > MANUAL_MASK_THRESHOLD)
+        )
+        repair_metrics["repair_mask_pixels"] = repair_pixels
+        if repair_pixels <= 0:
+            return result
+
+        candidate = self.inpainter.inpaint_mask(
+            clean_before.copy(),
+            repair_mask,
+            force_lama=True,
+        )
+        model_metrics = self.inpainter.last_metrics()
+        authority = repair_mask > MANUAL_MASK_THRESHOLD
+        repaired = clean_before.copy()
+        repaired[authority] = candidate[authority]
+        outside = ~authority
+        repair_metrics["outside_authority_changed_channel_values"] = int(
+            np.count_nonzero(repaired[outside] != clean_before[outside])
+        )
+        self._restore_preserve_pixels(repaired, original, preserve_regions)
+
+        write_image(tmp_clean_path, repaired)
+        tmp_auto_value = result.get("tmp_auto_clean")
+        if tmp_auto_value:
+            tmp_auto_path = Path(tmp_auto_value)
+            if tmp_auto_path.exists():
+                write_image(tmp_auto_path, repaired)
+
+        final_boxes = self.detector.verify_post_inpaint_residue(
+            repaired,
+            authorized_boxes,
+        )
+        final_boxes = [
+            box
+            for box in final_boxes
+            if not geometry_center_in_regions(
+                {
+                    "x1": box.x1,
+                    "y1": box.y1,
+                    "x2": box.x2,
+                    "y2": box.y2,
+                },
+                preserve_regions,
+            )
+        ]
+        decision_fields = (
+            "x1",
+            "y1",
+            "x2",
+            "y2",
+            "confidence",
+            "source_model",
+            "source_role",
+            "class_name",
+            "semantic_type",
+            "deferred_reason",
+        )
+        final_regions = [
+            {key: getattr(box, key) for key in decision_fields}
+            for box in final_boxes
+        ]
+        result["residue_regions"] = final_regions
+        issues = [
+            issue
+            for issue in list(result.get("detection_issues") or [])
+            if issue != "post_inpaint_text_residue"
+        ]
+        if final_regions:
+            issues.append("post_inpaint_text_residue")
+        result["detection_issues"] = issues
+        result["detection_state"] = "needs_review" if issues else "verified"
+        result["cleanup_verified"] = not bool(issues)
+        result["needs_review"] = bool(issues)
+
+        detector_metrics = metrics.setdefault("detector", {})
+        detector_metrics["post_inpaint_residue_initial"] = int(
+            detector_metrics.get(
+                "post_inpaint_residue",
+                len(initial_regions),
+            )
+            or 0
+        )
+        detector_metrics["post_inpaint_residue"] = len(final_regions)
+        repair_metrics.update(
+            {
+                "attempted": 1,
+                "final_regions": len(final_regions),
+                "lama_model_runs": int(
+                    model_metrics.get("lama_model_runs", 0) or 0
+                ),
+                "lama_model_ms": int(
+                    model_metrics.get("lama_model_ms", 0) or 0
+                ),
+                "final_verify": self.detector.last_residue_metrics(),
+            }
+        )
+        repair_ms = (time.perf_counter() - started_at) * 1000.0
+        timing = metrics.setdefault("timing_ms", {})
+        timing["residue_repair"] = round(repair_ms, 3)
+        timing["total"] = round(
+            float(timing.get("total", 0.0)) + repair_ms,
+            3,
+        )
+        return result
+
+    def _process_page(
+        self,
+        img_path: Path,
+        processed_dir: Path,
+        preserve_regions: list[dict] | None = None,
+        existing_boxes: list[dict] | None = None,
+        stitch_core: dict | None = None,
+        supplemental_detections: list[BubbleBox] | None = None,
+        seam_context_unavailable: bool = False,
+        *,
+        parallel_detectors: bool = False,
+    ) -> dict:
+        result = super()._process_page(
+            img_path,
+            processed_dir,
+            preserve_regions=preserve_regions,
+            existing_boxes=existing_boxes,
+            stitch_core=stitch_core,
+            supplemental_detections=supplemental_detections,
+            seam_context_unavailable=seam_context_unavailable,
+            parallel_detectors=parallel_detectors,
+        )
+        return self._repair_post_inpaint_result(
+            img_path,
+            result,
+            preserve_regions,
+        )
 
     def _do_reinpaint(
         self,
