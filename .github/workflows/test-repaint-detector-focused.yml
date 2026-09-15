@@ -22,7 +22,7 @@ env:
   MANGA_ORT_OPENVINO_STREAMS: "1"
   MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
   OPENBLAS_NUM_THREADS: "1"
-  CHAPTER_ID: c0292902
+  CHAPTER_ID: c0292903
   CHAPTER_URL: https://asurascans.com/comics/immortals-way-of-life-6f7fe6eb/chapter/29
 
 jobs:
@@ -139,10 +139,15 @@ jobs:
           after = read_image(Path(after_page["clean"])).copy()
           stats = dict(getattr(pipeline, "_last_repaint_detector_stats", {}) or {})
 
-          if stats.get("detector_source") != "text_segmenter":
-              raise RuntimeError(f"focused text segmenter was not used: {stats}")
-          if int(stats.get("detector_boxes_used", 0)) < 1:
-              raise RuntimeError(f"text segmenter produced no usable repaint mask: {stats}")
+          if stats.get("detector_source") not in {
+              "persisted_text_segmenter", "text_segmenter_full"
+          }:
+              raise RuntimeError(f"unexpected detector source: {stats}")
+          used = int(stats.get("persisted_boxes_used", 0)) + int(
+              stats.get("fallback_boxes_used", 0)
+          )
+          if used < 1:
+              raise RuntimeError(f"no usable detector mask for repaint: {stats}")
           if int(stats.get("detector_added_pixels", 0)) <= 0:
               raise RuntimeError(f"detector did not expand LaMa inference mask: {stats}")
 

@@ -13,13 +13,13 @@ from app.image_io import read_image, write_image
 from app.inpaint.adaptive_fast_inpainter import AdaptiveFastInpainter
 from app.logging_config import logger
 from app.manifest_utils import atomic_replace
+from app.mask_store import decode_mask_value
 from app.parameters import MANUAL_MASK_THRESHOLD, PIPELINE_DEFAULT_WORKERS
 from app.pipeline import ChapterPipeline
 from app.region_policy import subtract_regions_from_mask
 from app.runtime_responsiveness import responsive_process_workers
 
 
-REPAINT_DETECTOR_CONTEXT_PAD = 96
 REPAINT_DETECTOR_NEAR_PAD = 24
 
 
@@ -86,25 +86,84 @@ class OptimizedChapterPipeline(ChapterPipeline):
                 continue
             clean_image[y1:y2, x1:x2] = original_image[y1:y2, x1:x2]
 
+    @staticmethod
+    def _near_repaint(
+        x1: int,
+        y1: int,
+        x2: int,
+        y2: int,
+        user_bbox: tuple[int, int, int, int],
+    ) -> bool:
+        ux1, uy1, ux2, uy2 = user_bbox
+        pad = REPAINT_DETECTOR_NEAR_PAD
+        return not (
+            x2 <= ux1 - pad
+            or x1 >= ux2 + pad
+            or y2 <= uy1 - pad
+            or y1 >= uy2 + pad
+        )
+
+    @staticmethod
+    def _union_local_mask(
+        inference_mask: np.ndarray,
+        local_mask: np.ndarray | None,
+        x1: int,
+        y1: int,
+        x2: int,
+        y2: int,
+    ) -> bool:
+        h, w = inference_mask.shape[:2]
+        x1 = max(0, min(w, int(x1)))
+        x2 = max(0, min(w, int(x2)))
+        y1 = max(0, min(h, int(y1)))
+        y2 = max(0, min(h, int(y2)))
+        if x2 <= x1 or y2 <= y1 or local_mask is None:
+            return False
+        expected = (y2 - y1, x2 - x1)
+        if local_mask.shape[:2] != expected:
+            try:
+                local_mask = cv2.resize(
+                    local_mask,
+                    (expected[1], expected[0]),
+                    interpolation=cv2.INTER_NEAREST,
+                )
+            except Exception:
+                return False
+        local_mask = (
+            (local_mask > MANUAL_MASK_THRESHOLD).astype(np.uint8) * 255
+        )
+        if not np.any(local_mask):
+            return False
+        target = inference_mask[y1:y2, x1:x2]
+        before = int(np.count_nonzero(target > MANUAL_MASK_THRESHOLD))
+        np.maximum(target, local_mask, out=target)
+        after = int(np.count_nonzero(target > MANUAL_MASK_THRESHOLD))
+        return after > before
+
     def _detector_assisted_lama_mask(
         self,
         image: np.ndarray,
         user_mask: np.ndarray,
         preserve_regions: list[dict] | None,
+        boxes: list[dict] | None = None,
     ) -> np.ndarray:
-        """Expand only LaMa inference mask with nearby text-segmenter masks.
+        """Expand only LaMa inference mask using text-segmenter evidence.
 
-        The user's mask remains the only output/composite authority. The focused
-        text segmenter is run on a small RAW crop so adjacent source glyphs are
-        hidden from LaMa instead of becoming reconstruction context.
+        First reuse persisted detector masks from the processed page. This keeps
+        repaint cheap and preserves the detector geometry that already succeeded
+        at page-processing scale. If no persisted segmenter mask adds context,
+        fall back to a full-slice text-segmenter pass; tight crops are avoided
+        because the detector can become scale/context sensitive on them.
         """
         base = (user_mask > MANUAL_MASK_THRESHOLD).astype(np.uint8) * 255
         base = subtract_regions_from_mask(base, preserve_regions)
         if base is None or not np.any(base):
             self._last_repaint_detector_stats = {
                 "detector_source": "none",
-                "detector_boxes_total": 0,
-                "detector_boxes_used": 0,
+                "persisted_boxes_total": 0,
+                "persisted_boxes_used": 0,
+                "fallback_boxes_total": 0,
+                "fallback_boxes_used": 0,
                 "user_mask_pixels": 0,
                 "inference_mask_pixels": 0,
                 "detector_added_pixels": 0,
@@ -112,96 +171,107 @@ class OptimizedChapterPipeline(ChapterPipeline):
             return base
 
         ys, xs = np.nonzero(base > MANUAL_MASK_THRESHOLD)
-        h, w = image.shape[:2]
-        ux1 = int(xs.min())
-        uy1 = int(ys.min())
-        ux2 = int(xs.max()) + 1
-        uy2 = int(ys.max()) + 1
-
-        cx1 = max(0, ux1 - REPAINT_DETECTOR_CONTEXT_PAD)
-        cy1 = max(0, uy1 - REPAINT_DETECTOR_CONTEXT_PAD)
-        cx2 = min(w, ux2 + REPAINT_DETECTOR_CONTEXT_PAD)
-        cy2 = min(h, uy2 + REPAINT_DETECTOR_CONTEXT_PAD)
-        crop = image[cy1:cy2, cx1:cx2]
-
-        near_x1 = max(0, ux1 - cx1 - REPAINT_DETECTOR_NEAR_PAD)
-        near_y1 = max(0, uy1 - cy1 - REPAINT_DETECTOR_NEAR_PAD)
-        near_x2 = min(cx2 - cx1, ux2 - cx1 + REPAINT_DETECTOR_NEAR_PAD)
-        near_y2 = min(cy2 - cy1, uy2 - cy1 + REPAINT_DETECTOR_NEAR_PAD)
-
+        user_bbox = (
+            int(xs.min()),
+            int(ys.min()),
+            int(xs.max()) + 1,
+            int(ys.max()) + 1,
+        )
         inference_mask = base.copy()
-        detected = []
-        error = None
-        detector_source = "combined"
-        try:
-            detector = self.detector
-            focused = getattr(detector, "text_detector", None)
-            if focused is not None and callable(getattr(focused, "detect", None)):
-                detector_source = "text_segmenter"
-                detected = focused.detect(crop)
-            else:
-                detected = detector.detect(crop)
-        except Exception as exc:
-            error = str(exc)
-            logger.warning("Detector-assisted repaint fallback to user mask: {}", exc)
+        user_pixels = int(np.count_nonzero(base > MANUAL_MASK_THRESHOLD))
 
-        used = 0
-        for box in detected:
-            if not bool(getattr(box, "verified_mask", False)):
+        persisted_total = 0
+        persisted_used = 0
+        for box in boxes or []:
+            if not isinstance(box, dict) or box.get("removed"):
                 continue
-            if not bool(getattr(box, "safe_to_inpaint", False)):
+            segmenter_evidence = bool(
+                box.get("source_role") == "text_segmenter"
+                or box.get("mask_source") == "text_segmenter"
+                or str(box.get("source_model") or "") == "text_segmenter.onnx"
+            )
+            if not segmenter_evidence or not bool(box.get("safe_to_inpaint")):
                 continue
-
-            bx1 = max(0, min(crop.shape[1], int(box.x1)))
-            by1 = max(0, min(crop.shape[0], int(box.y1)))
-            bx2 = max(0, min(crop.shape[1], int(box.x2)))
-            by2 = max(0, min(crop.shape[0], int(box.y2)))
-            if bx2 <= bx1 or by2 <= by1:
+            try:
+                x1, y1, x2, y2 = (
+                    int(box["x1"]),
+                    int(box["y1"]),
+                    int(box["x2"]),
+                    int(box["y2"]),
+                )
+            except (KeyError, TypeError, ValueError):
                 continue
-            if (
-                bx2 <= near_x1
-                or bx1 >= near_x2
-                or by2 <= near_y1
-                or by1 >= near_y2
+            if not self._near_repaint(x1, y1, x2, y2, user_bbox):
+                continue
+            persisted_total += 1
+            local_mask = decode_mask_value(box.get("mask"))
+            if self._union_local_mask(
+                inference_mask, local_mask, x1, y1, x2, y2
             ):
-                continue
-
-            local = getattr(box, "mask", None)
-            expected = (by2 - by1, bx2 - bx1)
-            if local is None:
-                continue
-            if local.shape[:2] != expected:
-                try:
-                    local = cv2.resize(
-                        local,
-                        (expected[1], expected[0]),
-                        interpolation=cv2.INTER_NEAREST,
-                    )
-                except Exception:
-                    continue
-            local = (local > MANUAL_MASK_THRESHOLD).astype(np.uint8) * 255
-            if not np.any(local):
-                continue
-
-            gy1, gy2 = cy1 + by1, cy1 + by2
-            gx1, gx2 = cx1 + bx1, cx1 + bx2
-            target = inference_mask[gy1:gy2, gx1:gx2]
-            np.maximum(target, local, out=target)
-            used += 1
+                persisted_used += 1
 
         inference_mask = subtract_regions_from_mask(inference_mask, preserve_regions)
-        user_pixels = int(np.count_nonzero(base > MANUAL_MASK_THRESHOLD))
+        after_persisted = int(
+            np.count_nonzero(inference_mask > MANUAL_MASK_THRESHOLD)
+        )
+
+        detector_source = "persisted_text_segmenter"
+        fallback_total = 0
+        fallback_used = 0
+        error = None
+        if after_persisted <= user_pixels:
+            detector_source = "text_segmenter_full"
+            detected = []
+            try:
+                detector = self.detector
+                focused = getattr(detector, "text_detector", None)
+                if focused is not None and callable(getattr(focused, "detect", None)):
+                    detected = focused.detect(image)
+                else:
+                    detected = detector.detect(image)
+            except Exception as exc:
+                error = str(exc)
+                logger.warning(
+                    "Detector-assisted repaint fallback kept user mask: {}", exc
+                )
+
+            fallback_total = int(len(detected))
+            for box in detected:
+                if not bool(getattr(box, "verified_mask", False)):
+                    continue
+                if not bool(getattr(box, "safe_to_inpaint", False)):
+                    continue
+                x1, y1, x2, y2 = (
+                    int(box.x1), int(box.y1), int(box.x2), int(box.y2)
+                )
+                if not self._near_repaint(x1, y1, x2, y2, user_bbox):
+                    continue
+                if self._union_local_mask(
+                    inference_mask,
+                    getattr(box, "mask", None),
+                    x1,
+                    y1,
+                    x2,
+                    y2,
+                ):
+                    fallback_used += 1
+            inference_mask = subtract_regions_from_mask(
+                inference_mask, preserve_regions
+            )
+
         inference_pixels = int(
             np.count_nonzero(inference_mask > MANUAL_MASK_THRESHOLD)
         )
         stats = {
             "detector_source": detector_source,
-            "detector_boxes_total": int(len(detected)),
-            "detector_boxes_used": int(used),
+            "persisted_boxes_total": int(persisted_total),
+            "persisted_boxes_used": int(persisted_used),
+            "fallback_boxes_total": int(fallback_total),
+            "fallback_boxes_used": int(fallback_used),
             "user_mask_pixels": user_pixels,
             "inference_mask_pixels": inference_pixels,
             "detector_added_pixels": max(0, inference_pixels - user_pixels),
-            "crop": [int(cx1), int(cy1), int(cx2), int(cy2)],
+            "user_bbox": [int(v) for v in user_bbox],
         }
         if error is not None:
             stats["detector_error"] = error
@@ -222,15 +292,7 @@ class OptimizedChapterPipeline(ChapterPipeline):
         apply_manual_mask: bool = True,
         preserve_regions: list[dict] | None = None,
     ) -> str:
-        """Use detector-assisted original context, then commit only user authority.
-
-        Automatic cleanup and standard repaint keep the existing production path.
-        Explicit LaMa repaint uses the raw/original slice as model context. The
-        detector may expand only the LaMa inference mask around the user's region
-        to hide nearby source text. The candidate is copied back only where the
-        persisted manual LaMa mask grants user authority. Preserve rectangles are
-        finally restored exactly as drawn and are never grown or feathered.
-        """
+        """Use detector-assisted original context, then commit only user authority."""
         if not apply_manual_mask:
             return super()._do_reinpaint(
                 processed_dir,
@@ -252,9 +314,8 @@ class OptimizedChapterPipeline(ChapterPipeline):
         lama_mask = self._read_manual_mask(lama_mask_path, image.shape[:2])
         lama_mask = subtract_regions_from_mask(lama_mask, preserve_regions)
 
-        # The parent implementation discovers a default manual-LaMa sidecar when
-        # None is supplied. Point it at a guaranteed-nonexistent path so this
-        # subclass can run the LaMa pass exactly once from original context.
+        # Suppress the parent's manual-LaMa pass so it runs exactly once below
+        # with RAW context and the detector-assisted inference mask.
         suppressed_lama_path = processed_dir / (
             f".original-context-lama-{uuid.uuid4().hex}.png"
         )
@@ -278,12 +339,15 @@ class OptimizedChapterPipeline(ChapterPipeline):
                 image,
                 lama_mask,
                 preserve_regions,
+                boxes,
             )
             lama_candidate = self.inpainter.inpaint_mask(
                 image.copy(),
                 inference_mask,
                 force_lama=True,
             )
+            # User mask is the hard output authority. Detector-only pixels affect
+            # model context/inference but never get committed to the clean page.
             authority = lama_mask > MANUAL_MASK_THRESHOLD
             clean_image[authority] = lama_candidate[authority]
             needs_rewrite = True
