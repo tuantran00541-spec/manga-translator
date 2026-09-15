@@ -219,13 +219,13 @@ def _check_cancelled(cancel_event: threading.Event | None) -> None:
         raise OCRCancelled(OCR_CANCELLED_MESSAGE)
 
 
-OCR_EDGE_RECROP_EXTRA_PADDING = 24
+OCR_EDGE_RECROP_EXTRA_PADDINGS = (24, 48, 96)
 
 
 def _expand_ocr_crop_bounds(
     image_shape: tuple[int, ...],
     crop_bounds: tuple[int, int, int, int],
-    extra_padding: int = OCR_EDGE_RECROP_EXTRA_PADDING,
+    extra_padding: int = OCR_EDGE_RECROP_EXTRA_PADDINGS[0],
 ) -> tuple[int, int, int, int]:
     h, w = image_shape[:2]
     x1, y1, x2, y2 = crop_bounds
@@ -236,6 +236,25 @@ def _expand_ocr_crop_bounds(
         min(w, int(x2) + pad),
         min(h, int(y2) + pad),
     )
+
+
+def _edge_recrop_bounds_sequence(
+    image_shape: tuple[int, ...],
+    crop_bounds: tuple[int, int, int, int],
+) -> tuple[tuple[int, int, int, int], ...]:
+    # Grow only after an edge-truncation signal; each retry stays anchored
+    # to the original crop so padding never compounds accidentally.
+    seen = {tuple(int(v) for v in crop_bounds)}
+    bounds = []
+    for extra_padding in OCR_EDGE_RECROP_EXTRA_PADDINGS:
+        expanded = _expand_ocr_crop_bounds(
+            image_shape, crop_bounds, extra_padding=extra_padding
+        )
+        if expanded in seen:
+            continue
+        seen.add(expanded)
+        bounds.append(expanded)
+    return tuple(bounds)
 
 
 def _normalized_ocr_lines(text: str) -> tuple[str, ...]:
@@ -567,64 +586,61 @@ class OCRService:
 
             recrop_attempted = False
             if quality_reason == "crop-edge-text":
-                expanded_bounds = _expand_ocr_crop_bounds(image.shape, crop_bounds)
-                if expanded_bounds != crop_bounds:
+                initial_crop_bounds = crop_bounds
+                for expanded_bounds in _edge_recrop_bounds_sequence(
+                    image.shape, initial_crop_bounds
+                ):
                     ex1, ey1, ex2, ey2 = expanded_bounds
                     expanded_crop = image[ey1:ey2, ex1:ex2]
-                    if expanded_crop.size:
-                        recrop_attempted = True
-                        expanded_rgb = cv2.cvtColor(expanded_crop, cv2.COLOR_BGR2RGB)
-                        try:
-                            expanded_result = detailed_reader(
-                                expanded_rgb, lang, target_mode=target_mode
-                            )
-                        except TypeError:
-                            expanded_result = detailed_reader(expanded_rgb, lang)
-                        expanded_text = str(
-                            getattr(expanded_result, "text", "") or ""
-                        ).strip()
-                        expanded_coverage = self._mask_text_coverage(
-                            box_snapshot, expanded_bounds, expanded_result
+                    if not expanded_crop.size:
+                        continue
+                    recrop_attempted = True
+                    expanded_rgb = cv2.cvtColor(expanded_crop, cv2.COLOR_BGR2RGB)
+                    try:
+                        expanded_result = detailed_reader(
+                            expanded_rgb, lang, target_mode=target_mode
                         )
-                        expanded_checked = classify_ocr_quality(
-                            expanded_text,
-                            lang,
-                            confidence=getattr(expanded_result, "confidence", None),
-                            coverage=expanded_coverage,
-                        )
-                        expanded_quality, expanded_reason = self._conservative_quality(
-                            str(
-                                getattr(expanded_result, "quality", "unknown")
-                                or "unknown"
-                            ),
-                            getattr(expanded_result, "quality_reason", None),
-                            expanded_checked.status,
-                            expanded_checked.reason,
-                        )
-                        if _prefer_edge_recrop(
-                            base_text=text,
-                            base_quality=quality,
-                            base_reason=quality_reason,
-                            base_confidence=getattr(result, "confidence", None),
-                            base_region_count=int(
-                                getattr(result, "region_count", 0) or 0
-                            ),
-                            expanded_text=expanded_text,
-                            expanded_quality=expanded_quality,
-                            expanded_reason=expanded_reason,
-                            expanded_confidence=getattr(
-                                expanded_result, "confidence", None
-                            ),
-                            expanded_region_count=int(
-                                getattr(expanded_result, "region_count", 0) or 0
-                            ),
-                        ):
-                            result = expanded_result
-                            text = expanded_text
-                            crop_bounds = expanded_bounds
-                            coverage = expanded_coverage
-                            quality = expanded_quality
-                            quality_reason = expanded_reason
+                    except TypeError:
+                        expanded_result = detailed_reader(expanded_rgb, lang)
+                    expanded_text = str(
+                        getattr(expanded_result, "text", "") or ""
+                    ).strip()
+                    expanded_coverage = self._mask_text_coverage(
+                        box_snapshot, expanded_bounds, expanded_result
+                    )
+                    expanded_checked = classify_ocr_quality(
+                        expanded_text,
+                        lang,
+                        confidence=getattr(expanded_result, "confidence", None),
+                        coverage=expanded_coverage,
+                    )
+                    expanded_quality, expanded_reason = self._conservative_quality(
+                        str(getattr(expanded_result, "quality", "unknown") or "unknown"),
+                        getattr(expanded_result, "quality_reason", None),
+                        expanded_checked.status,
+                        expanded_checked.reason,
+                    )
+                    if not _prefer_edge_recrop(
+                        base_text=text,
+                        base_quality=quality,
+                        base_reason=quality_reason,
+                        base_confidence=getattr(result, "confidence", None),
+                        base_region_count=int(getattr(result, "region_count", 0) or 0),
+                        expanded_text=expanded_text,
+                        expanded_quality=expanded_quality,
+                        expanded_reason=expanded_reason,
+                        expanded_confidence=getattr(expanded_result, "confidence", None),
+                        expanded_region_count=int(getattr(expanded_result, "region_count", 0) or 0),
+                    ):
+                        continue
+                    result = expanded_result
+                    text = expanded_text
+                    crop_bounds = expanded_bounds
+                    coverage = expanded_coverage
+                    quality = expanded_quality
+                    quality_reason = expanded_reason
+                    if quality_reason != "crop-edge-text":
+                        break
 
             self._result_local.metadata = {
                 "confidence": getattr(result, "confidence", None),

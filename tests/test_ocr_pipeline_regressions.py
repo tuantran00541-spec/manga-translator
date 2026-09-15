@@ -9,6 +9,7 @@ from app.ocr.paddle_v6 import (
 from app.ocr.quality import classify_ocr_quality
 from app.ocr.service import (
     OCRService,
+    _edge_recrop_bounds_sequence,
     _expand_ocr_crop_bounds,
     _prefer_edge_recrop,
     _ocr_crop_bounds,
@@ -214,6 +215,18 @@ def test_grayscale_retry_runs_only_when_first_retry_remains_suspicious():
 
 def test_edge_recrop_bounds_add_only_bounded_context():
     assert _expand_ocr_crop_bounds((100, 120, 3), (10, 20, 80, 90)) == (0, 0, 104, 100)
+
+
+def test_edge_recrop_bounds_sequence_grows_from_original_crop_without_cumulative_drift():
+    assert _edge_recrop_bounds_sequence((400, 500, 3), (100, 100, 200, 200)) == (
+        (76, 76, 224, 224),
+        (52, 52, 248, 248),
+        (4, 4, 296, 296),
+    )
+
+
+def test_edge_recrop_bounds_sequence_deduplicates_page_clamped_retries():
+    assert _edge_recrop_bounds_sequence((100, 120, 3), (0, 0, 120, 100)) == ()
 
 
 def test_edge_recrop_prefers_quality_upgrade_without_extra_regions():
