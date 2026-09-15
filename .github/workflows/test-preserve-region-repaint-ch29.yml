@@ -1,0 +1,312 @@
+name: Test chapter 29 preserve and repaint controls
+
+on:
+  push:
+    branches:
+      - test/preserve-region-repaint
+    paths:
+      - .github/workflows/test-preserve-region-repaint-ch29.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHONUNBUFFERED: "1"
+  MANGA_ORT_PROVIDER: openvino
+  MANGA_ORT_REQUIRE_PROVIDER: "1"
+  MANGA_ORT_OPENVINO_SCOPE: detectors
+  MANGA_ORT_OPENVINO_THREADS: "2"
+  MANGA_ORT_OPENVINO_STREAMS: "1"
+  MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
+  OPENBLAS_NUM_THREADS: "1"
+  CHAPTER_ID: c0292901
+  CHAPTER_URL: https://asurascans.com/comics/immortals-way-of-life-6f7fe6eb/chapter/29
+
+jobs:
+  controls-real-chapter:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: test/preserve-region-repaint
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install production runtime
+        run: |
+          python -m pip install \
+            numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 \
+            onnxruntime-openvino==1.24.1 psutil==6.1.1 loguru==0.7.2 \
+            requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 playwright==1.47.0 \
+            fastapi==0.115.0 'uvicorn[standard]==0.30.6' \
+            pydantic==2.9.2 filelock==3.16.1 python-multipart==0.0.12
+
+      - name: Restore detector and inpaint models
+        id: models
+        uses: actions/cache@v4
+        with:
+          path: |
+            models/*.onnx
+            models/.e2e-provenance.json
+          key: processing-profile-models-b224548-v1
+
+      - name: Read pinned model provisioner
+        if: steps.models.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: b22454827f8190655d7070b80eb20c2550beadfa
+          path: benchmark-bootstrap
+          sparse-checkout: scripts/provision_real_e2e_models.py
+          sparse-checkout-cone-mode: false
+
+      - name: Provision public-equivalent production models
+        if: steps.models.outputs.cache-hit != 'true'
+        run: |
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple torch==2.5.1+cpu torchvision==0.20.1+cpu
+          python -m pip install --no-deps ultralytics==8.3.221 onnx==1.17.0 onnxslim==0.1.71
+          python -m pip install sympy==1.13.1 PyYAML==6.0.2 scipy==1.14.1 tqdm==4.67.1 matplotlib==3.9.2 pandas==2.2.3 py-cpuinfo==9.0.0 ml_dtypes==0.5.3 colorama==0.4.6 polars==1.33.1 ultralytics-thop==2.0.17
+          python benchmark-bootstrap/scripts/provision_real_e2e_models.py
+          cp benchmark-bootstrap/models/*.onnx models/
+          cp benchmark-bootstrap/models/.e2e-provenance.json models/
+
+      - name: Run skip preserve and repaint test
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+
+          import asyncio
+          import json
+          import os
+          import shutil
+          from pathlib import Path
+
+          import cv2
+          import numpy as np
+          from PIL import Image, ImageDraw, ImageFont
+
+          from app.dependencies import pipeline
+          from app.image_io import read_image
+          from app.manifest_utils import load_manifest_raw
+          from app.routers.chapters import save_preserve_regions, skip_pages
+          from app.routers.editor import repaint_regions
+          from app.schemas import (
+              RegionModel,
+              RepaintRegionsRequest,
+              SavePreserveRegionsRequest,
+              SkipPagesRequest,
+          )
+
+          chapter_id = os.environ["CHAPTER_ID"]
+          chapter_url = os.environ["CHAPTER_URL"]
+          out = Path("benchmark-results/ch29-controls")
+          if out.exists():
+              shutil.rmtree(out)
+          out.mkdir(parents=True, exist_ok=True)
+
+          manifest = pipeline.download_chapter(chapter_url, chapter_id, workers=2)
+          pages = manifest.get("pages", [])
+          if not pages:
+              raise RuntimeError("download produced zero slices")
+
+          def locate(source_page: int, slice_index: int) -> int:
+              matches = [
+                  i for i, page in enumerate(pages)
+                  if int(page.get("source_page", -1)) == source_page
+                  and int(page.get("slice_index", -1)) == slice_index
+              ]
+              if len(matches) != 1:
+                  raise RuntimeError(
+                      f"expected one slice for source={source_page} slice={slice_index}, got {matches}"
+                  )
+              return matches[0]
+
+          intro_credit = locate(0, 0)
+          repaint_page = locate(1, 5)
+          logo_page = locate(2, 0)
+          end_credit = locate(18, 6)
+
+          preserve = RegionModel(x1=70, y1=1530, x2=855, y2=2120)
+          repaint = RegionModel(x1=225, y1=205, x2=585, y2=385)
+
+          # Exercise the public request contracts, not direct manifest edits.
+          skip_pages(
+              SkipPagesRequest(
+                  chapter_id=chapter_id,
+                  page_indices=[intro_credit, end_credit],
+                  skipped=True,
+              )
+          )
+          save_preserve_regions(
+              SavePreserveRegionsRequest(
+                  chapter_id=chapter_id,
+                  page_index=logo_page,
+                  preserve_regions=[preserve],
+              )
+          )
+
+          state = load_manifest_raw(chapter_id)
+          active = [i for i, page in enumerate(state["pages"]) if not page.get("skipped")]
+          for start in range(0, len(active), 16):
+              batch = active[start:start + 16]
+              pipeline.process_pages(chapter_id, batch, workers=2)
+              print(f"processed {start + len(batch)}/{len(active)} active slices")
+
+          state = load_manifest_raw(chapter_id)
+          intro = state["pages"][intro_credit]
+          end = state["pages"][end_credit]
+          logo = state["pages"][logo_page]
+          rp = state["pages"][repaint_page]
+
+          if not intro.get("skipped") or not end.get("skipped"):
+              raise RuntimeError("credit skip state was not retained")
+          if logo.get("process_required"):
+              raise RuntimeError("logo page still requires processing")
+          if logo.get("preserve_regions") != [preserve.model_dump()]:
+              raise RuntimeError(f"preserve region mismatch: {logo.get('preserve_regions')}")
+          if rp.get("process_required") or rp.get("skipped"):
+              raise RuntimeError("repaint target is not in a repaintable state")
+
+          logo_raw = read_image(Path(logo["original"]))
+          logo_clean = read_image(Path(logo["clean"]))
+          p = preserve.model_dump()
+          raw_region = logo_raw[p["y1"]:p["y2"], p["x1"]:p["x2"]]
+          clean_region = logo_clean[p["y1"]:p["y2"], p["x1"]:p["x2"]]
+          preserve_diff = cv2.absdiff(raw_region, clean_region)
+          preserve_changed = int(np.count_nonzero(preserve_diff))
+          preserve_max_diff = int(preserve_diff.max(initial=0))
+          if preserve_changed != 0:
+              raise RuntimeError(
+                  f"preserve region changed after processing: {preserve_changed} channel values"
+              )
+
+          repaint_before = read_image(Path(rp["clean"])).copy()
+          cv2.imwrite(str(out / "p006-before-repaint.png"), repaint_before)
+
+          asyncio.run(
+              repaint_regions(
+                  RepaintRegionsRequest(
+                      chapter_id=chapter_id,
+                      page_index=repaint_page,
+                      regions=[repaint],
+                      mode="lama",
+                  )
+              )
+          )
+          state = load_manifest_raw(chapter_id)
+          rp_after = state["pages"][repaint_page]
+          repaint_after = read_image(Path(rp_after["clean"]))
+          cv2.imwrite(str(out / "p006-after-repaint.png"), repaint_after)
+
+          r = repaint.model_dump()
+          before_roi = repaint_before[r["y1"]:r["y2"], r["x1"]:r["x2"]]
+          after_roi = repaint_after[r["y1"]:r["y2"], r["x1"]:r["x2"]]
+          repaint_diff = cv2.absdiff(before_roi, after_roi)
+          repaint_changed = int(np.count_nonzero(repaint_diff))
+          repaint_max_diff = int(repaint_diff.max(initial=0))
+          repaint_mean_diff = float(repaint_diff.mean())
+          if repaint_changed == 0:
+              raise RuntimeError("LaMa repaint made no pixel changes in requested region")
+
+          # Export compact human-review evidence.
+          font = ImageFont.load_default()
+
+          def panel_pair(a: np.ndarray, b: np.ndarray, title_a: str, title_b: str, path: Path):
+              aa = Image.fromarray(cv2.cvtColor(a, cv2.COLOR_BGR2RGB))
+              bb = Image.fromarray(cv2.cvtColor(b, cv2.COLOR_BGR2RGB))
+              max_w, max_h = 720, 620
+              aa.thumbnail((max_w, max_h), Image.Resampling.LANCZOS)
+              bb.thumbnail((max_w, max_h), Image.Resampling.LANCZOS)
+              header = 34
+              gap = 12
+              canvas = Image.new(
+                  "RGB",
+                  (aa.width + bb.width + gap, max(aa.height, bb.height) + header),
+                  "white",
+              )
+              draw = ImageDraw.Draw(canvas)
+              draw.text((4, 8), title_a, fill="black", font=font)
+              draw.text((aa.width + gap + 4, 8), title_b, fill="black", font=font)
+              canvas.paste(aa, (0, header))
+              canvas.paste(bb, (aa.width + gap, header))
+              canvas.save(path, quality=94)
+
+          logo_crop = (55, 1470, 870, 2160)
+          x1, y1, x2, y2 = logo_crop
+          panel_pair(
+              logo_raw[y1:y2, x1:x2],
+              logo_clean[y1:y2, x1:x2],
+              "LOGO RAW",
+              "LOGO CLEAN + PRESERVE",
+              out / "logo-preserve-review.jpg",
+          )
+
+          rx1, ry1, rx2, ry2 = 150, 120, 650, 470
+          panel_pair(
+              repaint_before[ry1:ry2, rx1:rx2],
+              repaint_after[ry1:ry2, rx1:rx2],
+              "BEFORE REPAINT",
+              "AFTER LAMA REPAINT",
+              out / "repaint-review.jpg",
+          )
+
+          # Save selected full slices and the final manifest for independent audit.
+          shutil.copy2(logo["original"], out / "p007-logo-raw.png")
+          shutil.copy2(logo["clean"], out / "p007-logo-clean.png")
+          shutil.copy2(intro["original"], out / "p000-credit-raw.png")
+          shutil.copy2(end["original"], out / "p075-credit-raw.png")
+          shutil.copy2(
+              Path("data/processed") / chapter_id / "manifest.json",
+              out / "manifest.json",
+          )
+
+          report = {
+              "chapter_url": chapter_url,
+              "chapter_id": chapter_id,
+              "total_slices": len(state["pages"]),
+              "targets": {
+                  "intro_credit": intro_credit,
+                  "end_credit": end_credit,
+                  "logo_page": logo_page,
+                  "repaint_page": repaint_page,
+              },
+              "skip": {
+                  "intro_skipped": bool(intro.get("skipped")),
+                  "end_skipped": bool(end.get("skipped")),
+                  "intro_clean": intro.get("clean"),
+                  "end_clean": end.get("clean"),
+              },
+              "preserve": {
+                  "region": preserve.model_dump(),
+                  "stored_regions": logo.get("preserve_regions"),
+                  "legacy_excluded_regions_present": "excluded_regions" in logo,
+                  "changed_channel_values": preserve_changed,
+                  "max_abs_channel_diff": preserve_max_diff,
+              },
+              "repaint": {
+                  "region": repaint.model_dump(),
+                  "mode": "lama",
+                  "changed_channel_values": repaint_changed,
+                  "max_abs_channel_diff": repaint_max_diff,
+                  "mean_abs_channel_diff": round(repaint_mean_diff, 6),
+                  "clean_revision": rp_after.get("clean_revision"),
+                  "manual_lama_mask": rp_after.get("manual_lama_mask"),
+              },
+          }
+          (out / "report.json").write_text(
+              json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
+          )
+          print("CONTROL_TEST=" + json.dumps(report, ensure_ascii=False))
+          PY
+
+      - name: Upload control test evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: ch29-preserve-repaint-${{ github.run_id }}
+          path: benchmark-results/ch29-controls/
+          retention-days: 7
+          compression-level: 6
+          if-no-files-found: error
