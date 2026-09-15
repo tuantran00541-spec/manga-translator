@@ -10,7 +10,7 @@ from typing import Any
 
 from app.env_utils import env_choice, env_enabled
 
-OCR_PIPELINE_VERSION = "phase45-v5-complete-ocr"
+OCR_PIPELINE_VERSION = "phase45-v6-edge-recrop"
 OCR_CACHE_FIELDS = (
     "ocr_text",
     "ocr_lang",

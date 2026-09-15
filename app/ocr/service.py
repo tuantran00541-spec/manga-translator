@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import OrderedDict
 import copy
+from difflib import SequenceMatcher
 import threading
 from pathlib import Path
 
@@ -216,6 +217,89 @@ def _find_text_object(page: dict, text_object_id: str) -> dict | None:
 def _check_cancelled(cancel_event: threading.Event | None) -> None:
     if cancel_event is not None and cancel_event.is_set():
         raise OCRCancelled(OCR_CANCELLED_MESSAGE)
+
+
+OCR_EDGE_RECROP_EXTRA_PADDING = 24
+
+
+def _expand_ocr_crop_bounds(
+    image_shape: tuple[int, ...],
+    crop_bounds: tuple[int, int, int, int],
+    extra_padding: int = OCR_EDGE_RECROP_EXTRA_PADDING,
+) -> tuple[int, int, int, int]:
+    h, w = image_shape[:2]
+    x1, y1, x2, y2 = crop_bounds
+    pad = max(0, int(extra_padding))
+    return (
+        max(0, int(x1) - pad),
+        max(0, int(y1) - pad),
+        min(w, int(x2) + pad),
+        min(h, int(y2) + pad),
+    )
+
+
+def _normalized_ocr_lines(text: str) -> tuple[str, ...]:
+    lines = [
+        " ".join(part.upper().split())
+        for part in str(text or "").splitlines()
+        if part.strip()
+    ]
+    return tuple(sorted(lines))
+
+
+def _compact_ocr_text(text: str) -> str:
+    return "".join(ch for ch in str(text or "").upper() if ch.isalnum())
+
+
+def _prefer_edge_recrop(
+    *,
+    base_text: str,
+    base_quality: str,
+    base_reason: str | None,
+    base_confidence: float | None,
+    base_region_count: int,
+    expanded_text: str,
+    expanded_quality: str,
+    expanded_reason: str | None,
+    expanded_confidence: float | None,
+    expanded_region_count: int,
+) -> bool:
+    if str(base_reason or "") != "crop-edge-text":
+        return False
+    if not str(expanded_text or "").strip():
+        return False
+
+    base_regions = max(0, int(base_region_count or 0))
+    expanded_regions = max(0, int(expanded_region_count or 0))
+    if base_regions and expanded_regions > base_regions:
+        return False
+
+    rank = {"reject": 0, "unknown": 0, "review": 1, "good": 2}
+    base_rank = rank.get(str(base_quality or "unknown"), 0)
+    expanded_rank = rank.get(str(expanded_quality or "unknown"), 0)
+    base_compact = _compact_ocr_text(base_text)
+    expanded_compact = _compact_ocr_text(expanded_text)
+    similarity = SequenceMatcher(None, base_compact, expanded_compact).ratio()
+
+    if expanded_rank > base_rank:
+        return similarity >= 0.45
+
+    if (
+        expanded_rank == base_rank
+        and str(expanded_reason or "") == "crop-edge-text"
+        and _normalized_ocr_lines(base_text) == _normalized_ocr_lines(expanded_text)
+        and str(base_text or "").strip() != str(expanded_text or "").strip()
+    ):
+        try:
+            base_conf = float(base_confidence) if base_confidence is not None else 0.0
+            expanded_conf = (
+                float(expanded_confidence) if expanded_confidence is not None else 0.0
+            )
+        except (TypeError, ValueError):
+            return False
+        return expanded_conf + 0.05 >= base_conf
+
+    return False
 
 
 class OCRService:
@@ -480,6 +564,68 @@ class OCRService:
             quality, quality_reason = self._conservative_quality(
                 base_quality, base_reason, checked_quality.status, checked_quality.reason
             )
+
+            recrop_attempted = False
+            if quality_reason == "crop-edge-text":
+                expanded_bounds = _expand_ocr_crop_bounds(image.shape, crop_bounds)
+                if expanded_bounds != crop_bounds:
+                    ex1, ey1, ex2, ey2 = expanded_bounds
+                    expanded_crop = image[ey1:ey2, ex1:ex2]
+                    if expanded_crop.size:
+                        recrop_attempted = True
+                        expanded_rgb = cv2.cvtColor(expanded_crop, cv2.COLOR_BGR2RGB)
+                        try:
+                            expanded_result = detailed_reader(
+                                expanded_rgb, lang, target_mode=target_mode
+                            )
+                        except TypeError:
+                            expanded_result = detailed_reader(expanded_rgb, lang)
+                        expanded_text = str(
+                            getattr(expanded_result, "text", "") or ""
+                        ).strip()
+                        expanded_coverage = self._mask_text_coverage(
+                            box_snapshot, expanded_bounds, expanded_result
+                        )
+                        expanded_checked = classify_ocr_quality(
+                            expanded_text,
+                            lang,
+                            confidence=getattr(expanded_result, "confidence", None),
+                            coverage=expanded_coverage,
+                        )
+                        expanded_quality, expanded_reason = self._conservative_quality(
+                            str(
+                                getattr(expanded_result, "quality", "unknown")
+                                or "unknown"
+                            ),
+                            getattr(expanded_result, "quality_reason", None),
+                            expanded_checked.status,
+                            expanded_checked.reason,
+                        )
+                        if _prefer_edge_recrop(
+                            base_text=text,
+                            base_quality=quality,
+                            base_reason=quality_reason,
+                            base_confidence=getattr(result, "confidence", None),
+                            base_region_count=int(
+                                getattr(result, "region_count", 0) or 0
+                            ),
+                            expanded_text=expanded_text,
+                            expanded_quality=expanded_quality,
+                            expanded_reason=expanded_reason,
+                            expanded_confidence=getattr(
+                                expanded_result, "confidence", None
+                            ),
+                            expanded_region_count=int(
+                                getattr(expanded_result, "region_count", 0) or 0
+                            ),
+                        ):
+                            result = expanded_result
+                            text = expanded_text
+                            crop_bounds = expanded_bounds
+                            coverage = expanded_coverage
+                            quality = expanded_quality
+                            quality_reason = expanded_reason
+
             self._result_local.metadata = {
                 "confidence": getattr(result, "confidence", None),
                 "model": str(getattr(result, "model", "") or ""),
@@ -491,7 +637,9 @@ class OCRService:
                 "quality_reason": quality_reason,
                 "coverage": coverage if coverage is not None else getattr(result, "coverage", None),
                 "target_mode": str(getattr(result, "target_mode", target_mode) or target_mode),
-                "retry_applied": bool(getattr(result, "retry_applied", False)),
+                "retry_applied": bool(
+                    getattr(result, "retry_applied", False) or recrop_attempted
+                ),
             }
             return text
 

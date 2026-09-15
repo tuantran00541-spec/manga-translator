@@ -9,6 +9,8 @@ from app.ocr.paddle_v6 import (
 from app.ocr.quality import classify_ocr_quality
 from app.ocr.service import (
     OCRService,
+    _expand_ocr_crop_bounds,
+    _prefer_edge_recrop,
     _ocr_crop_bounds,
     ocr_target_mode_for_box,
     ocr_target_skip_reason,
@@ -208,3 +210,61 @@ def test_grayscale_retry_runs_only_when_first_retry_remains_suspicious():
     assert result.quality == "good"
     assert result.confidence == 0.99
     assert result.retry_applied
+
+
+def test_edge_recrop_bounds_add_only_bounded_context():
+    assert _expand_ocr_crop_bounds((100, 120, 3), (10, 20, 80, 90)) == (0, 0, 104, 100)
+
+
+def test_edge_recrop_prefers_quality_upgrade_without_extra_regions():
+    assert _prefer_edge_recrop(
+        base_text="(..H?",
+        base_quality="review",
+        base_reason="crop-edge-text",
+        base_confidence=0.84,
+        base_region_count=1,
+        expanded_text="...HUH?",
+        expanded_quality="good",
+        expanded_reason=None,
+        expanded_confidence=0.95,
+        expanded_region_count=1,
+    )
+    assert not _prefer_edge_recrop(
+        base_text="(..H?",
+        base_quality="review",
+        base_reason="crop-edge-text",
+        base_confidence=0.84,
+        base_region_count=1,
+        expanded_text="NEIGHBOUR TEXT ...HUH?",
+        expanded_quality="good",
+        expanded_reason=None,
+        expanded_confidence=0.99,
+        expanded_region_count=2,
+    )
+
+
+def test_edge_recrop_can_repair_order_but_not_add_lines():
+    assert _prefer_edge_recrop(
+        base_text="CHILD\nSAVETHIS",
+        base_quality="review",
+        base_reason="crop-edge-text",
+        base_confidence=0.9994,
+        base_region_count=2,
+        expanded_text="SAVETHIS\nCHILD",
+        expanded_quality="review",
+        expanded_reason="crop-edge-text",
+        expanded_confidence=0.9992,
+        expanded_region_count=2,
+    )
+    assert not _prefer_edge_recrop(
+        base_text="CHILD\nSAVETHIS",
+        base_quality="review",
+        base_reason="crop-edge-text",
+        base_confidence=0.9994,
+        base_region_count=2,
+        expanded_text="SAVETHIS\nCHILD\nNEXT",
+        expanded_quality="review",
+        expanded_reason="crop-edge-text",
+        expanded_confidence=0.9999,
+        expanded_region_count=3,
+    )
