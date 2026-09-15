@@ -1,0 +1,215 @@
+name: Perf Shadow Slave chapter 1 wide OCR recrop probe
+
+on:
+  push:
+    branches:
+      - perf/bubble-fastpath-roi-lama
+    paths:
+      - .github/workflows/perf-shadow-slave-ch1-wide-recrop-probe.yml
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+env:
+  PYTHONUNBUFFERED: "1"
+  PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK: "True"
+  MANGA_PPOCRV6_TIER: small
+  MANGA_OCR_TARGET_SELECTION: all
+
+jobs:
+  wide-recrop-probe:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: perf/bubble-fastpath-roi-lama
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install production English OCR runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install \
+            numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 \
+            paddleocr==3.7.0 paddlepaddle==3.2.2 \
+            pydantic==2.9.2 filelock==3.16.1 loguru==0.7.2 psutil==6.1.1 \
+            fastapi==0.115.0 requests==2.32.3 chardet==5.2.0
+
+      - name: Download original Shadow Slave audit artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: shadow-slave-ch1-ocr-audit-34950467604
+          run-id: 34950467604
+          github-token: ${{ github.token }}
+          path: source
+
+      - name: Download adaptive recrop retest artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: shadow-slave-ch1-ocr-retest-34953470778
+          run-id: 34953470778
+          github-token: ${{ github.token }}
+          path: retest
+
+      - name: Probe wider edge-only recrops
+        run: |
+          mkdir -p benchmark-results/shadow-slave-ch1-wide-recrop
+          python - <<'PY'
+          from __future__ import annotations
+          import json, time
+          from collections import Counter
+          from pathlib import Path
+
+          import cv2
+
+          from app.image_io import read_image
+          from app.ocr.multi_lang_ocr import MultiLangOCR
+          from app.ocr.quality import classify_ocr_quality
+          from app.ocr.service import (
+              OCRService,
+              _expand_ocr_crop_bounds,
+              _ocr_crop_bounds,
+              _prefer_edge_recrop,
+              ocr_target_mode_for_box,
+          )
+
+          class NoopPipeline:
+              @staticmethod
+              def _sync_output_dir(chapter_id, manifest, page_indices=None):
+                  return None
+
+          manifest = json.loads(Path('source/data/processed/5e8ce7e3/manifest.json').read_text(encoding='utf-8'))
+          current = json.loads(Path('retest/current-results.json').read_text(encoding='utf-8'))
+          edge = [r for r in current if str(r.get('quality_reason') or '') == 'crop-edge-text']
+          by_id = {}
+          for pi, page in enumerate(manifest.get('pages', [])):
+              for box in page.get('boxes') or []:
+                  if isinstance(box, dict) and box.get('id'):
+                      by_id[str(box['id'])] = (pi, page, box)
+
+          engine = MultiLangOCR()
+          service = OCRService(engine, NoopPipeline())
+          detailed = engine.read_detailed
+          rows = []
+          quality_counts = Counter()
+          current_accept_counts = Counter()
+          started = time.perf_counter()
+
+          for n, base in enumerate(edge, start=1):
+              box_id = str(base['box_id'])
+              pi, page, box = by_id[box_id]
+              original = Path('source') / str(page['original'])
+              image = read_image(original)
+              crop_bounds = _ocr_crop_bounds(image.shape, box)
+              target_mode = ocr_target_mode_for_box(box)
+              bw = max(1, int(box['x2']) - int(box['x1']))
+              bh = max(1, int(box['y2']) - int(box['y1']))
+              adaptive = min(512, max(192, int(round(max(bw, bh) * 0.55))))
+              paddings = []
+              for pad in (192, 320, adaptive, 512):
+                  if pad not in paddings:
+                      paddings.append(pad)
+
+              for pad in paddings:
+                  bounds = _expand_ocr_crop_bounds(image.shape, crop_bounds, extra_padding=pad)
+                  x1, y1, x2, y2 = bounds
+                  crop = image[y1:y2, x1:x2]
+                  t0 = time.perf_counter()
+                  result = detailed(cv2.cvtColor(crop, cv2.COLOR_BGR2RGB), 'en', target_mode=target_mode)
+                  elapsed = time.perf_counter() - t0
+                  text = str(getattr(result, 'text', '') or '').strip()
+                  coverage = service._mask_text_coverage(box, bounds, result)
+                  checked = classify_ocr_quality(
+                      text,
+                      'en',
+                      confidence=getattr(result, 'confidence', None),
+                      coverage=coverage,
+                  )
+                  quality, reason = service._conservative_quality(
+                      str(getattr(result, 'quality', 'unknown') or 'unknown'),
+                      getattr(result, 'quality_reason', None),
+                      checked.status,
+                      checked.reason,
+                  )
+                  regions = int(getattr(result, 'region_count', 0) or 0)
+                  accepted = _prefer_edge_recrop(
+                      base_text=str(base.get('text') or ''),
+                      base_quality=str(base.get('quality') or 'unknown'),
+                      base_reason=base.get('quality_reason'),
+                      base_confidence=base.get('confidence'),
+                      base_region_count=int(base.get('region_count') or 0),
+                      expanded_text=text,
+                      expanded_quality=quality,
+                      expanded_reason=reason,
+                      expanded_confidence=getattr(result, 'confidence', None),
+                      expanded_region_count=regions,
+                  )
+                  row = {
+                      'page_index': pi,
+                      'box_id': box_id,
+                      'padding': pad,
+                      'base_text': base.get('text'),
+                      'base_regions': int(base.get('region_count') or 0),
+                      'text': text,
+                      'quality': quality,
+                      'reason': reason,
+                      'confidence': getattr(result, 'confidence', None),
+                      'region_count': regions,
+                      'coverage': coverage,
+                      'current_prefer_accepts': bool(accepted),
+                      'elapsed_ms': round(elapsed * 1000.0, 3),
+                      'bounds': bounds,
+                  }
+                  rows.append(row)
+                  quality_counts[f'{pad}:{quality}:{reason or "good"}'] += 1
+                  if accepted:
+                      current_accept_counts[str(pad)] += 1
+              print(f'probe {n}/{len(edge)} p{pi} {box_id} base={base.get("text")!r}')
+
+          best = []
+          rank = {'reject': 0, 'unknown': 0, 'review': 1, 'good': 2}
+          for base in edge:
+              options = [r for r in rows if r['box_id'] == str(base['box_id'])]
+              options.sort(
+                  key=lambda r: (
+                      rank.get(str(r['quality']), 0),
+                      1 if r['reason'] is None else 0,
+                      float(r['confidence'] or 0.0),
+                      len(str(r['text'] or '')),
+                  ),
+                  reverse=True,
+              )
+              best.append(options[0])
+
+          summary = {
+              'edge_targets': len(edge),
+              'candidate_rows': len(rows),
+              'best_good': sum(r['quality'] == 'good' for r in best),
+              'best_still_edge': sum(r['reason'] == 'crop-edge-text' for r in best),
+              'best_regions_increased': sum(r['region_count'] > r['base_regions'] for r in best),
+              'current_prefer_accepts_by_padding': dict(current_accept_counts),
+              'wall_s': round(time.perf_counter() - started, 3),
+              'quality_counts': dict(quality_counts),
+          }
+          out = Path('benchmark-results/shadow-slave-ch1-wide-recrop')
+          (out / 'rows.json').write_text(json.dumps(rows, ensure_ascii=False, indent=2), encoding='utf-8')
+          (out / 'best.json').write_text(json.dumps(best, ensure_ascii=False, indent=2), encoding='utf-8')
+          (out / 'summary.json').write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding='utf-8')
+          print('WIDE_RECROP_PROBE=' + json.dumps(summary, ensure_ascii=False))
+          for row in best:
+              print('BEST=' + json.dumps(row, ensure_ascii=False))
+          PY
+
+      - name: Upload wide recrop probe
+        uses: actions/upload-artifact@v4
+        with:
+          name: shadow-slave-ch1-wide-recrop-${{ github.run_id }}
+          path: benchmark-results/shadow-slave-ch1-wide-recrop/
+          retention-days: 7
+          compression-level: 6
+          if-no-files-found: error
