@@ -1,0 +1,232 @@
+name: Focused detector-assisted repaint p006
+
+on:
+  push:
+    branches:
+      - test/preserve-region-repaint
+    paths:
+      - .github/workflows/test-repaint-detector-focused.yml
+      - app/optimized_pipeline.py
+      - tests/test_repaint_original_context.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHONUNBUFFERED: "1"
+  MANGA_ORT_PROVIDER: openvino
+  MANGA_ORT_REQUIRE_PROVIDER: "1"
+  MANGA_ORT_OPENVINO_SCOPE: detectors
+  MANGA_ORT_OPENVINO_THREADS: "2"
+  MANGA_ORT_OPENVINO_STREAMS: "1"
+  MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
+  OPENBLAS_NUM_THREADS: "1"
+  CHAPTER_ID: c0292902
+  CHAPTER_URL: https://asurascans.com/comics/immortals-way-of-life-6f7fe6eb/chapter/29
+
+jobs:
+  focused-repaint:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: test/preserve-region-repaint
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install runtime
+        run: |
+          python -m pip install \
+            numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 \
+            onnxruntime-openvino==1.24.1 psutil==6.1.1 loguru==0.7.2 \
+            requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 playwright==1.47.0 \
+            fastapi==0.115.0 'uvicorn[standard]==0.30.6' \
+            pydantic==2.9.2 filelock==3.16.1 python-multipart==0.0.12 pytest==8.3.5
+
+      - name: Run repaint policy unit tests
+        run: python -m pytest tests/test_repaint_original_context.py -q
+
+      - name: Restore detector and inpaint models
+        id: models
+        uses: actions/cache@v4
+        with:
+          path: |
+            models/*.onnx
+            models/.e2e-provenance.json
+          key: processing-profile-models-b224548-v1
+
+      - name: Read pinned model provisioner
+        if: steps.models.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: b22454827f8190655d7070b80eb20c2550beadfa
+          path: benchmark-bootstrap
+          sparse-checkout: scripts/provision_real_e2e_models.py
+          sparse-checkout-cone-mode: false
+
+      - name: Provision public-equivalent production models
+        if: steps.models.outputs.cache-hit != 'true'
+        run: |
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple torch==2.5.1+cpu torchvision==0.20.1+cpu
+          python -m pip install --no-deps ultralytics==8.3.221 onnx==1.17.0 onnxslim==0.1.71
+          python -m pip install sympy==1.13.1 PyYAML==6.0.2 scipy==1.14.1 tqdm==4.67.1 matplotlib==3.9.2 pandas==2.2.3 py-cpuinfo==9.0.0 ml_dtypes==0.5.3 colorama==0.4.6 polars==1.33.1 ultralytics-thop==2.0.17
+          python benchmark-bootstrap/scripts/provision_real_e2e_models.py
+          cp benchmark-bootstrap/models/*.onnx models/
+          cp benchmark-bootstrap/models/.e2e-provenance.json models/
+
+      - name: Process only p006 and repaint
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+
+          import asyncio
+          import json
+          import os
+          import shutil
+          from pathlib import Path
+
+          import cv2
+          import numpy as np
+          from PIL import Image, ImageDraw, ImageFont
+
+          from app.dependencies import pipeline
+          from app.image_io import read_image
+          from app.manifest_utils import load_manifest_raw
+          from app.routers.editor import repaint_regions
+          from app.schemas import RegionModel, RepaintRegionsRequest
+
+          chapter_id = os.environ["CHAPTER_ID"]
+          chapter_url = os.environ["CHAPTER_URL"]
+          out = Path("benchmark-results/repaint-detector-focused")
+          if out.exists():
+              shutil.rmtree(out)
+          out.mkdir(parents=True, exist_ok=True)
+
+          manifest = pipeline.download_chapter(chapter_url, chapter_id, workers=1)
+          pages = manifest.get("pages", [])
+          matches = [
+              i for i, page in enumerate(pages)
+              if int(page.get("source_page", -1)) == 1
+              and int(page.get("slice_index", -1)) == 5
+          ]
+          if len(matches) != 1:
+              raise RuntimeError(f"p006 lookup failed: {matches}")
+          page_index = matches[0]
+
+          pipeline.process_pages(chapter_id, [page_index], workers=1)
+          state = load_manifest_raw(chapter_id)
+          page = state["pages"][page_index]
+          raw = read_image(Path(page["original"])).copy()
+          before = read_image(Path(page["clean"])).copy()
+
+          repaint = RegionModel(x1=225, y1=205, x2=585, y2=385)
+          asyncio.run(
+              repaint_regions(
+                  RepaintRegionsRequest(
+                      chapter_id=chapter_id,
+                      page_index=page_index,
+                      regions=[repaint],
+                      mode="lama",
+                  )
+              )
+          )
+          state = load_manifest_raw(chapter_id)
+          after_page = state["pages"][page_index]
+          after = read_image(Path(after_page["clean"])).copy()
+          stats = dict(getattr(pipeline, "_last_repaint_detector_stats", {}) or {})
+
+          if stats.get("detector_source") != "text_segmenter":
+              raise RuntimeError(f"focused text segmenter was not used: {stats}")
+          if int(stats.get("detector_boxes_used", 0)) < 1:
+              raise RuntimeError(f"text segmenter produced no usable repaint mask: {stats}")
+          if int(stats.get("detector_added_pixels", 0)) <= 0:
+              raise RuntimeError(f"detector did not expand LaMa inference mask: {stats}")
+
+          r = repaint.model_dump()
+          authority = np.zeros(before.shape[:2], dtype=np.uint8)
+          authority[r["y1"]:r["y2"], r["x1"]:r["x2"]] = 255
+          full_diff = cv2.absdiff(before, after)
+          outside_changed = int(np.count_nonzero(full_diff[authority == 0]))
+          if outside_changed != 0:
+              raise RuntimeError(
+                  f"repaint changed {outside_changed} channel values outside user authority"
+              )
+
+          before_roi = before[r["y1"]:r["y2"], r["x1"]:r["x2"]]
+          after_roi = after[r["y1"]:r["y2"], r["x1"]:r["x2"]]
+          repaint_diff = cv2.absdiff(before_roi, after_roi)
+
+          def band_metrics(roi: np.ndarray) -> dict:
+              gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY).astype(np.float32)
+              row_mean = gray.mean(axis=1)
+              first = np.diff(row_mean)
+              second = np.diff(row_mean, n=2)
+              return {
+                  "row_diff_std": round(float(first.std()) if first.size else 0.0, 6),
+                  "row_second_abs_mean": round(
+                      float(np.abs(second).mean()) if second.size else 0.0,
+                      6,
+                  ),
+              }
+
+          report = {
+              "chapter_id": chapter_id,
+              "page_index": page_index,
+              "region": r,
+              "detector": stats,
+              "outside_authority_changed_channel_values": outside_changed,
+              "changed_channel_values": int(np.count_nonzero(repaint_diff)),
+              "max_abs_channel_diff": int(repaint_diff.max(initial=0)),
+              "mean_abs_channel_diff": round(float(repaint_diff.mean()), 6),
+              "banding_before": band_metrics(before_roi),
+              "banding_after": band_metrics(after_roi),
+          }
+
+          cv2.imwrite(str(out / "p006-raw.png"), raw)
+          cv2.imwrite(str(out / "p006-before.png"), before)
+          cv2.imwrite(str(out / "p006-after-detector-assisted.png"), after)
+
+          rx1, ry1, rx2, ry2 = 150, 120, 650, 470
+          panels = []
+          for image, title in (
+              (raw[ry1:ry2, rx1:rx2], "RAW"),
+              (before[ry1:ry2, rx1:rx2], "BEFORE"),
+              (after[ry1:ry2, rx1:rx2], "DETECTOR + RAW LAMA"),
+          ):
+              pil = Image.fromarray(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
+              panels.append((pil, title))
+          font = ImageFont.load_default()
+          header = 34
+          gap = 10
+          canvas = Image.new(
+              "RGB",
+              (sum(p.width for p, _ in panels) + gap * (len(panels) - 1),
+               max(p.height for p, _ in panels) + header),
+              "white",
+          )
+          draw = ImageDraw.Draw(canvas)
+          x = 0
+          for panel, title in panels:
+              draw.text((x + 4, 8), title, fill="black", font=font)
+              canvas.paste(panel, (x, header))
+              x += panel.width + gap
+          canvas.save(out / "repaint-detector-review.jpg", quality=95)
+
+          (out / "report.json").write_text(
+              json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
+          )
+          print("FOCUSED_REPAINT=" + json.dumps(report, ensure_ascii=False))
+          PY
+
+      - name: Upload focused evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: repaint-detector-focused-${{ github.run_id }}
+          path: benchmark-results/repaint-detector-focused/
+          retention-days: 7
+          compression-level: 6
+          if-no-files-found: error

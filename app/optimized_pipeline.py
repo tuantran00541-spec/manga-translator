@@ -92,16 +92,17 @@ class OptimizedChapterPipeline(ChapterPipeline):
         user_mask: np.ndarray,
         preserve_regions: list[dict] | None,
     ) -> np.ndarray:
-        """Expand LaMa inference authority with detector text masks, not geometry.
+        """Expand only LaMa inference mask with nearby text-segmenter masks.
 
-        The user's mask remains the only output/composite authority. This helper
-        only gives LaMa a wider *inference* mask so source text adjacent to the
-        repaint request is hidden from the model instead of becoming context.
+        The user's mask remains the only output/composite authority. The focused
+        text segmenter is run on a small RAW crop so adjacent source glyphs are
+        hidden from LaMa instead of becoming reconstruction context.
         """
         base = (user_mask > MANUAL_MASK_THRESHOLD).astype(np.uint8) * 255
         base = subtract_regions_from_mask(base, preserve_regions)
         if base is None or not np.any(base):
             self._last_repaint_detector_stats = {
+                "detector_source": "none",
                 "detector_boxes_total": 0,
                 "detector_boxes_used": 0,
                 "user_mask_pixels": 0,
@@ -131,8 +132,15 @@ class OptimizedChapterPipeline(ChapterPipeline):
         inference_mask = base.copy()
         detected = []
         error = None
+        detector_source = "combined"
         try:
-            detected = self.detector.detect(crop)
+            detector = self.detector
+            focused = getattr(detector, "text_detector", None)
+            if focused is not None and callable(getattr(focused, "detect", None)):
+                detector_source = "text_segmenter"
+                detected = focused.detect(crop)
+            else:
+                detected = detector.detect(crop)
         except Exception as exc:
             error = str(exc)
             logger.warning("Detector-assisted repaint fallback to user mask: {}", exc)
@@ -187,6 +195,7 @@ class OptimizedChapterPipeline(ChapterPipeline):
             np.count_nonzero(inference_mask > MANUAL_MASK_THRESHOLD)
         )
         stats = {
+            "detector_source": detector_source,
             "detector_boxes_total": int(len(detected)),
             "detector_boxes_used": int(used),
             "user_mask_pixels": user_pixels,
