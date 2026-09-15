@@ -29,168 +29,141 @@ jobs:
 
       - name: Apply adaptive edge recrop
         run: |
-          python - <<'PY'
+          cat > /tmp/apply_adaptive_recrop.py <<'PY'
           from pathlib import Path
 
-          service_path = Path('app/ocr/service.py')
-          service = service_path.read_text(encoding='utf-8')
-          old = '''OCR_EDGE_RECROP_EXTRA_PADDING = 24
-
-
-def _expand_ocr_crop_bounds(
-    image_shape: tuple[int, ...],
-    crop_bounds: tuple[int, int, int, int],
-    extra_padding: int = OCR_EDGE_RECROP_EXTRA_PADDING,
-) -> tuple[int, int, int, int]:
-'''
-          new = '''OCR_EDGE_RECROP_EXTRA_PADDINGS = (24, 48, 96)
-
-
-def _expand_ocr_crop_bounds(
-    image_shape: tuple[int, ...],
-    crop_bounds: tuple[int, int, int, int],
-    extra_padding: int = OCR_EDGE_RECROP_EXTRA_PADDINGS[0],
-) -> tuple[int, int, int, int]:
-'''
-          if old not in service:
-              raise SystemExit('edge padding constant block not found')
-          service = service.replace(old, new, 1)
-
-          anchor = '''def _normalized_ocr_lines(text: str) -> tuple[str, ...]:
-'''
-          helper = '''def _edge_recrop_bounds_sequence(
-    image_shape: tuple[int, ...],
-    crop_bounds: tuple[int, int, int, int],
-) -> tuple[tuple[int, int, int, int], ...]:
-    """Return distinct, bounded OCR-only retries from the original crop.
-
-    The schedule grows only after a crop-edge quality signal. Keeping every
-    retry anchored to the original crop prevents accidental cumulative growth.
-    """
-    seen = {tuple(int(v) for v in crop_bounds)}
-    bounds = []
-    for extra_padding in OCR_EDGE_RECROP_EXTRA_PADDINGS:
-        expanded = _expand_ocr_crop_bounds(
-            image_shape, crop_bounds, extra_padding=extra_padding
-        )
-        if expanded in seen:
-            continue
-        seen.add(expanded)
-        bounds.append(expanded)
-    return tuple(bounds)
-
-
-'''
-          if anchor not in service:
-              raise SystemExit('normalized lines anchor not found')
-          service = service.replace(anchor, helper + anchor, 1)
-
-          start = service.index('            recrop_attempted = False\n            if quality_reason == "crop-edge-text":\n')
-          end = service.index('\n            self._result_local.metadata = {', start)
-          replacement = '''            recrop_attempted = False
-            if quality_reason == "crop-edge-text":
-                initial_crop_bounds = crop_bounds
-                for expanded_bounds in _edge_recrop_bounds_sequence(
-                    image.shape, initial_crop_bounds
-                ):
-                    ex1, ey1, ex2, ey2 = expanded_bounds
-                    expanded_crop = image[ey1:ey2, ex1:ex2]
-                    if not expanded_crop.size:
-                        continue
-                    recrop_attempted = True
-                    expanded_rgb = cv2.cvtColor(expanded_crop, cv2.COLOR_BGR2RGB)
-                    try:
-                        expanded_result = detailed_reader(
-                            expanded_rgb, lang, target_mode=target_mode
-                        )
-                    except TypeError:
-                        expanded_result = detailed_reader(expanded_rgb, lang)
-                    expanded_text = str(
-                        getattr(expanded_result, "text", "") or ""
-                    ).strip()
-                    expanded_coverage = self._mask_text_coverage(
-                        box_snapshot, expanded_bounds, expanded_result
-                    )
-                    expanded_checked = classify_ocr_quality(
-                        expanded_text,
-                        lang,
-                        confidence=getattr(expanded_result, "confidence", None),
-                        coverage=expanded_coverage,
-                    )
-                    expanded_quality, expanded_reason = self._conservative_quality(
-                        str(
-                            getattr(expanded_result, "quality", "unknown")
-                            or "unknown"
-                        ),
-                        getattr(expanded_result, "quality_reason", None),
-                        expanded_checked.status,
-                        expanded_checked.reason,
-                    )
-                    if not _prefer_edge_recrop(
-                        base_text=text,
-                        base_quality=quality,
-                        base_reason=quality_reason,
-                        base_confidence=getattr(result, "confidence", None),
-                        base_region_count=int(
-                            getattr(result, "region_count", 0) or 0
-                        ),
-                        expanded_text=expanded_text,
-                        expanded_quality=expanded_quality,
-                        expanded_reason=expanded_reason,
-                        expanded_confidence=getattr(
-                            expanded_result, "confidence", None
-                        ),
-                        expanded_region_count=int(
-                            getattr(expanded_result, "region_count", 0) or 0
-                        ),
-                    ):
-                        continue
-                    result = expanded_result
-                    text = expanded_text
-                    crop_bounds = expanded_bounds
-                    coverage = expanded_coverage
-                    quality = expanded_quality
-                    quality_reason = expanded_reason
-                    if quality_reason != "crop-edge-text":
-                        break
-'''
-          service = service[:start] + replacement + service[end:]
-          service_path.write_text(service, encoding='utf-8')
-
-          test_path = Path('tests/test_ocr_pipeline_regressions.py')
-          tests = test_path.read_text(encoding='utf-8')
-          tests = tests.replace(
-              '    _expand_ocr_crop_bounds,\n',
-              '    _edge_recrop_bounds_sequence,\n    _expand_ocr_crop_bounds,\n',
+          service_path = Path("app/ocr/service.py")
+          service = service_path.read_text(encoding="utf-8")
+          service = service.replace(
+              "OCR_EDGE_RECROP_EXTRA_PADDING = 24\n",
+              "OCR_EDGE_RECROP_EXTRA_PADDINGS = (24, 48, 96)\n",
               1,
           )
-          test_anchor = '''def test_edge_recrop_bounds_add_only_bounded_context():
-    assert _expand_ocr_crop_bounds((100, 120, 3), (10, 20, 80, 90)) == (0, 0, 104, 100)
+          service = service.replace(
+              "extra_padding: int = OCR_EDGE_RECROP_EXTRA_PADDING,",
+              "extra_padding: int = OCR_EDGE_RECROP_EXTRA_PADDINGS[0],",
+              1,
+          )
 
+          anchor = "def _normalized_ocr_lines(text: str) -> tuple[str, ...]:\n"
+          helper = (
+              "def _edge_recrop_bounds_sequence(\n"
+              "    image_shape: tuple[int, ...],\n"
+              "    crop_bounds: tuple[int, int, int, int],\n"
+              ") -> tuple[tuple[int, int, int, int], ...]:\n"
+              "    # Grow only after an edge-truncation signal; each retry stays anchored\n"
+              "    # to the original crop so padding never compounds accidentally.\n"
+              "    seen = {tuple(int(v) for v in crop_bounds)}\n"
+              "    bounds = []\n"
+              "    for extra_padding in OCR_EDGE_RECROP_EXTRA_PADDINGS:\n"
+              "        expanded = _expand_ocr_crop_bounds(\n"
+              "            image_shape, crop_bounds, extra_padding=extra_padding\n"
+              "        )\n"
+              "        if expanded in seen:\n"
+              "            continue\n"
+              "        seen.add(expanded)\n"
+              "        bounds.append(expanded)\n"
+              "    return tuple(bounds)\n\n\n"
+          )
+          if anchor not in service:
+              raise SystemExit("normalized-lines anchor not found")
+          if "def _edge_recrop_bounds_sequence(" not in service:
+              service = service.replace(anchor, helper + anchor, 1)
 
-'''
-          test_extra = '''def test_edge_recrop_bounds_sequence_grows_from_original_crop_without_cumulative_drift():
-    assert _edge_recrop_bounds_sequence(
-        (400, 500, 3), (100, 100, 200, 200)
-    ) == (
-        (76, 76, 224, 224),
-        (52, 52, 248, 248),
-        (4, 4, 296, 296),
-    )
+          start_token = "            recrop_attempted = False\n            if quality_reason == \"crop-edge-text\":\n"
+          start = service.index(start_token)
+          end = service.index("\n            self._result_local.metadata = {", start)
+          replacement = (
+              "            recrop_attempted = False\n"
+              "            if quality_reason == \"crop-edge-text\":\n"
+              "                initial_crop_bounds = crop_bounds\n"
+              "                for expanded_bounds in _edge_recrop_bounds_sequence(\n"
+              "                    image.shape, initial_crop_bounds\n"
+              "                ):\n"
+              "                    ex1, ey1, ex2, ey2 = expanded_bounds\n"
+              "                    expanded_crop = image[ey1:ey2, ex1:ex2]\n"
+              "                    if not expanded_crop.size:\n"
+              "                        continue\n"
+              "                    recrop_attempted = True\n"
+              "                    expanded_rgb = cv2.cvtColor(expanded_crop, cv2.COLOR_BGR2RGB)\n"
+              "                    try:\n"
+              "                        expanded_result = detailed_reader(\n"
+              "                            expanded_rgb, lang, target_mode=target_mode\n"
+              "                        )\n"
+              "                    except TypeError:\n"
+              "                        expanded_result = detailed_reader(expanded_rgb, lang)\n"
+              "                    expanded_text = str(\n"
+              "                        getattr(expanded_result, \"text\", \"\") or \"\"\n"
+              "                    ).strip()\n"
+              "                    expanded_coverage = self._mask_text_coverage(\n"
+              "                        box_snapshot, expanded_bounds, expanded_result\n"
+              "                    )\n"
+              "                    expanded_checked = classify_ocr_quality(\n"
+              "                        expanded_text,\n"
+              "                        lang,\n"
+              "                        confidence=getattr(expanded_result, \"confidence\", None),\n"
+              "                        coverage=expanded_coverage,\n"
+              "                    )\n"
+              "                    expanded_quality, expanded_reason = self._conservative_quality(\n"
+              "                        str(getattr(expanded_result, \"quality\", \"unknown\") or \"unknown\"),\n"
+              "                        getattr(expanded_result, \"quality_reason\", None),\n"
+              "                        expanded_checked.status,\n"
+              "                        expanded_checked.reason,\n"
+              "                    )\n"
+              "                    if not _prefer_edge_recrop(\n"
+              "                        base_text=text,\n"
+              "                        base_quality=quality,\n"
+              "                        base_reason=quality_reason,\n"
+              "                        base_confidence=getattr(result, \"confidence\", None),\n"
+              "                        base_region_count=int(getattr(result, \"region_count\", 0) or 0),\n"
+              "                        expanded_text=expanded_text,\n"
+              "                        expanded_quality=expanded_quality,\n"
+              "                        expanded_reason=expanded_reason,\n"
+              "                        expanded_confidence=getattr(expanded_result, \"confidence\", None),\n"
+              "                        expanded_region_count=int(getattr(expanded_result, \"region_count\", 0) or 0),\n"
+              "                    ):\n"
+              "                        continue\n"
+              "                    result = expanded_result\n"
+              "                    text = expanded_text\n"
+              "                    crop_bounds = expanded_bounds\n"
+              "                    coverage = expanded_coverage\n"
+              "                    quality = expanded_quality\n"
+              "                    quality_reason = expanded_reason\n"
+              "                    if quality_reason != \"crop-edge-text\":\n"
+              "                        break\n"
+          )
+          service = service[:start] + replacement + service[end:]
+          service_path.write_text(service, encoding="utf-8")
 
-
-def test_edge_recrop_bounds_sequence_deduplicates_page_clamped_retries():
-    assert _edge_recrop_bounds_sequence(
-        (100, 120, 3), (0, 0, 120, 100)
-    ) == ()
-
-
-'''
-          if test_anchor not in tests:
-              raise SystemExit('test anchor not found')
-          tests = tests.replace(test_anchor, test_anchor + test_extra, 1)
-          test_path.write_text(tests, encoding='utf-8')
+          test_path = Path("tests/test_ocr_pipeline_regressions.py")
+          tests = test_path.read_text(encoding="utf-8")
+          if "    _edge_recrop_bounds_sequence,\n" not in tests:
+              tests = tests.replace(
+                  "    _expand_ocr_crop_bounds,\n",
+                  "    _edge_recrop_bounds_sequence,\n    _expand_ocr_crop_bounds,\n",
+                  1,
+              )
+          test_anchor = (
+              "def test_edge_recrop_bounds_add_only_bounded_context():\n"
+              "    assert _expand_ocr_crop_bounds((100, 120, 3), (10, 20, 80, 90)) == (0, 0, 104, 100)\n\n\n"
+          )
+          test_extra = (
+              "def test_edge_recrop_bounds_sequence_grows_from_original_crop_without_cumulative_drift():\n"
+              "    assert _edge_recrop_bounds_sequence((400, 500, 3), (100, 100, 200, 200)) == (\n"
+              "        (76, 76, 224, 224),\n"
+              "        (52, 52, 248, 248),\n"
+              "        (4, 4, 296, 296),\n"
+              "    )\n\n\n"
+              "def test_edge_recrop_bounds_sequence_deduplicates_page_clamped_retries():\n"
+              "    assert _edge_recrop_bounds_sequence((100, 120, 3), (0, 0, 120, 100)) == ()\n\n\n"
+          )
+          if "test_edge_recrop_bounds_sequence_grows_from_original_crop" not in tests:
+              if test_anchor not in tests:
+                  raise SystemExit("edge recrop test anchor not found")
+              tests = tests.replace(test_anchor, test_anchor + test_extra, 1)
+          test_path.write_text(tests, encoding="utf-8")
           PY
+          python /tmp/apply_adaptive_recrop.py
 
       - name: Compile and run OCR regressions
         run: |
