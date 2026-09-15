@@ -119,7 +119,7 @@ class FastInpainter(Inpainter):
     @staticmethod
     def _bubble_candidate(box: BubbleBox) -> bool:
         return bool(
-            box.semantic_type == "speech_bubble"
+            box.semantic_type in {"speech_bubble", "free_text"}
             and box.safe_to_inpaint
             and not box.needs_review
             and box.verified_mask

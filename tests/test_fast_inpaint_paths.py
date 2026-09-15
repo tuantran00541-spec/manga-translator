@@ -141,7 +141,7 @@ def test_overlapping_authorities_skip_per_box_bubble_fast_fill():
     metrics = inpainter.last_metrics()
 
     assert output.shape == image.shape
-    assert metrics["bubble_fast_fill_overlap_skips"] == 1
+    assert metrics["bubble_fast_fill_overlap_skips"] == 2
     assert "speech_bubble" not in fast_attempts
     assert len(paint_calls) == 1
 
@@ -311,3 +311,39 @@ def test_residue_second_pass_is_clipped_to_existing_authority(tmp_path):
         ["outside_authority_changed_channel_values"]
         == 0
     )
+
+
+
+def test_smooth_gradient_free_text_uses_reconstruction_without_lama():
+    h, w = 180, 240
+    yy, xx = np.mgrid[:h, :w]
+    background = np.empty((h, w, 3), dtype=np.uint8)
+    background[..., 0] = np.clip(225 + xx * 0.025 + yy * 0.018, 0, 255)
+    background[..., 1] = np.clip(229 + xx * 0.022 + yy * 0.016, 0, 255)
+    background[..., 2] = np.clip(234 + xx * 0.018 + yy * 0.013, 0, 255)
+    image = background.copy()
+
+    mask = np.zeros((70, 130), dtype=np.uint8)
+    mask[16:20, 18:112] = 255
+    mask[36:40, 30:100] = 255
+    box = _speech_box(55, 50, 185, 120, mask)
+    box.semantic_type = "free_text"
+    image[50:120, 55:185][mask > 127] = 15
+
+    expected_authority = build_mask(image.shape[:2], [box], image)
+    inpainter = FastInpainter()
+    inpainter._smart_fill_color = lambda crop, local_mask: None
+    output = inpainter.inpaint(image, [box])
+    metrics = inpainter.last_metrics()
+
+    changed = np.any(output != image, axis=2)
+    assert not np.any(changed & (expected_authority <= 127))
+    assert metrics["bubble_fast_fill_gradient_regions"] == 1
+    assert metrics["bubble_fast_fill_telea_regions"] == 0
+    assert metrics["lama_model_runs"] == 0
+
+    authority = expected_authority > 127
+    mae = float(
+        np.abs(output.astype(np.int16) - background.astype(np.int16))[authority].mean()
+    )
+    assert mae < 5.0
