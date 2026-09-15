@@ -4,7 +4,7 @@ import hashlib
 import json
 from pathlib import Path
 
-RENDER_IDENTITY_VERSION = "phase45-v1"
+RENDER_IDENTITY_VERSION = "phase45-v2"
 
 
 def file_revision(path: Path) -> tuple[int, int, int]:
@@ -88,6 +88,11 @@ def render_input_signature(manifest: dict, page_index: int) -> str:
         "process_revision": int(page.get("process_revision") or 0),
         "clean_revision": int(page.get("clean_revision") or 0),
         "skipped": bool(page.get("skipped", False)),
+        "process_required": bool(page.get("process_required", False)),
+        "preserve_regions": [
+            {k: int(region.get(k, 0)) for k in ("x1", "y1", "x2", "y2")}
+            for region in (page.get("preserve_regions") or []) if isinstance(region, dict)
+        ],
         "content": render_content,
     }
     encoded = json.dumps(

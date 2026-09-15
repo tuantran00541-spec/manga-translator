@@ -15,6 +15,7 @@ from app.routers.render_commit import render_page
 from app.schemas import RenderRequest
 from app.security import validate_chapter_id, validate_image_size
 from app.text_objects import ensure_page_text_objects
+from app.region_policy import text_object_in_preserve_region
 
 
 router = APIRouter(prefix="/api", tags=["export"])
@@ -50,6 +51,7 @@ def _render_request_from_page(chapter_id: str, page_index: int, page: dict) -> R
             not isinstance(obj, dict)
             or not obj.get("id")
             or obj.get("source_missing")
+            or text_object_in_preserve_region(page, obj)
         ):
             continue
         oid = str(obj["id"])

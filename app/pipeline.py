@@ -252,7 +252,8 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
                     "clean": None,
                     "boxes": [],
                     "skipped": False,
-                    "excluded_regions": [],
+                    "process_required": True,
+                    "preserve_regions": [],
                     "source_page": source_index,
                     "slice_index": slice_index,
                 }
@@ -549,6 +550,7 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
                     target_page["processing_metrics"] = dict(
                         page_data.get("processing_metrics") or {}
                     )
+                    target_page["process_required"] = False
                     bump_page_revision(target_page, "process_revision")
                     clean_revision = bump_page_revision(
                         target_page, "clean_revision"
@@ -608,7 +610,7 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
                         (
                             idx,
                             Path(page["original"]),
-                            copy.deepcopy(page.get("excluded_regions", [])),
+                            copy.deepcopy(page.get("preserve_regions", [])),
                             copy.deepcopy(page.get("boxes", [])),
                             stitch_core,
                             state_snapshot,
@@ -641,7 +643,7 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
             (
                 idx,
                 img_path,
-                excluded,
+                preserve_regions,
                 existing_boxes,
                 stitch_core,
                 snapshot,
@@ -651,7 +653,7 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
                 self._process_page(
                     img_path,
                     processed_dir,
-                    excluded_regions=excluded,
+                    preserve_regions=preserve_regions,
                     existing_boxes=existing_boxes,
                     stitch_core=stitch_core,
                     supplemental_detections=shared_seam_detections.get(idx),
@@ -804,6 +806,9 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
                             changed = True
                         page["clean"] = None
                         page["boxes"] = []
+                        page["process_required"] = False
+                    else:
+                        page["process_required"] = True
                     if changed:
                         bump_page_revision(page, "clean_revision")
                     invalidate_page_render(manifest, idx)

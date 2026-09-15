@@ -1,9 +1,17 @@
 import numpy as np
 
-from app.ocr.paddle_v6 import OCRReadResult, PaddleV6OCR, _should_selective_retry
+from app.ocr.paddle_v6 import (
+    OCRReadResult,
+    PaddleV6OCR,
+    _result_rank,
+    _should_selective_retry,
+)
 from app.ocr.quality import classify_ocr_quality
 from app.ocr.service import (
     OCRService,
+    _edge_recrop_bounds_sequence,
+    _expand_ocr_crop_bounds,
+    _prefer_edge_recrop,
     _ocr_crop_bounds,
     ocr_target_mode_for_box,
     ocr_target_skip_reason,
@@ -66,6 +74,34 @@ def test_high_confidence_partial_mask_coverage_is_review_not_good():
     assert (quality.status, quality.reason) == ("review", "incomplete-coverage")
 
 
+def test_punctuation_only_dialogue_is_preserved_when_confident_and_complete():
+    for text in ("?!", "!!!!", "…….", "…!", "..."):
+        quality = classify_ocr_quality(
+            text,
+            "en",
+            confidence=0.90,
+            coverage=1.0,
+        )
+        assert (quality.status, quality.reason) == ("good", None)
+
+
+def test_punctuation_only_still_respects_confidence_and_completeness_gates():
+    low_conf = classify_ocr_quality("?!", "en", confidence=0.20, coverage=1.0)
+    clipped = classify_ocr_quality(
+        "!!!!", "en", confidence=0.99, coverage=1.0, may_be_truncated=True
+    )
+    unknown_conf = classify_ocr_quality("……", "en", confidence=None, coverage=1.0)
+
+    assert (low_conf.status, low_conf.reason) == ("reject", "very-low-confidence")
+    assert (clipped.status, clipped.reason) == ("review", "crop-edge-text")
+    assert (unknown_conf.status, unknown_conf.reason) == ("review", "punctuation-only")
+
+
+def test_lone_decorative_punctuation_remains_noise():
+    assert classify_ocr_quality("”", "en", confidence=0.99).status == "reject"
+    assert classify_ocr_quality(".", "en", confidence=0.99).status == "reject"
+
+
 def test_mask_coverage_compares_detected_span_to_segmented_multiline_support():
     mask = np.zeros((80, 100), np.uint8)
     mask[0:70, 10:90] = 255
@@ -120,3 +156,128 @@ def test_selective_retry_only_runs_for_suspicious_results_and_is_bounded_by_crop
     assert not _should_selective_retry(good, np.zeros((80, 160, 3), np.uint8))
     assert _should_selective_retry(review, np.zeros((80, 160, 3), np.uint8))
     assert not _should_selective_retry(review, np.zeros((2000, 2000, 3), np.uint8))
+
+
+def test_retry_rank_prefers_complete_review_over_crop_edge_high_confidence():
+    clipped = OCRReadResult(
+        "CHILD\nSAVETHIS",
+        0.9995,
+        "fake",
+        "horizontal",
+        2,
+        "review",
+        "crop-edge-text",
+        1.0,
+    )
+    complete = OCRReadResult(
+        "SAVE THIS CHILD",
+        0.61,
+        "fake",
+        "horizontal",
+        1,
+        "review",
+        "low-confidence",
+        1.0,
+    )
+    assert _result_rank(complete) > _result_rank(clipped)
+
+
+class _SequencePipeline:
+    def __init__(self):
+        self.calls = 0
+
+    def predict(self, *, input):
+        scores = [0.40, 0.45, 0.99]
+        score = scores[min(self.calls, len(scores) - 1)]
+        self.calls += 1
+        return [{
+            "rec_texts": ["retry target"],
+            "rec_scores": [score],
+            "rec_polys": [
+                [[25, 45], [190, 45], [190, 70], [25, 70]],
+            ],
+        }]
+
+
+def test_grayscale_retry_runs_only_when_first_retry_remains_suspicious():
+    ocr = PaddleV6OCR()
+    pipeline = _SequencePipeline()
+    ocr._get_pipeline = lambda _key: pipeline
+    image = np.full((120, 220, 3), 255, np.uint8)
+
+    result = ocr.read(image, "en", target_mode="all")
+
+    assert pipeline.calls == 3
+    assert result.quality == "good"
+    assert result.confidence == 0.99
+    assert result.retry_applied
+
+
+def test_edge_recrop_bounds_add_only_bounded_context():
+    assert _expand_ocr_crop_bounds((100, 120, 3), (10, 20, 80, 90)) == (0, 0, 104, 100)
+
+
+def test_edge_recrop_bounds_sequence_grows_from_original_crop_without_cumulative_drift():
+    assert _edge_recrop_bounds_sequence((400, 500, 3), (100, 100, 200, 200)) == (
+        (76, 76, 224, 224),
+        (52, 52, 248, 248),
+        (4, 4, 296, 296),
+    )
+
+
+def test_edge_recrop_bounds_sequence_deduplicates_page_clamped_retries():
+    assert _edge_recrop_bounds_sequence((100, 120, 3), (0, 0, 120, 100)) == ()
+
+
+def test_edge_recrop_prefers_quality_upgrade_without_extra_regions():
+    assert _prefer_edge_recrop(
+        base_text="(..H?",
+        base_quality="review",
+        base_reason="crop-edge-text",
+        base_confidence=0.84,
+        base_region_count=1,
+        expanded_text="...HUH?",
+        expanded_quality="good",
+        expanded_reason=None,
+        expanded_confidence=0.95,
+        expanded_region_count=1,
+    )
+    assert not _prefer_edge_recrop(
+        base_text="(..H?",
+        base_quality="review",
+        base_reason="crop-edge-text",
+        base_confidence=0.84,
+        base_region_count=1,
+        expanded_text="NEIGHBOUR TEXT ...HUH?",
+        expanded_quality="good",
+        expanded_reason=None,
+        expanded_confidence=0.99,
+        expanded_region_count=2,
+    )
+
+
+def test_edge_recrop_can_repair_order_but_not_add_lines():
+    assert _prefer_edge_recrop(
+        base_text="CHILD\nSAVETHIS",
+        base_quality="review",
+        base_reason="crop-edge-text",
+        base_confidence=0.9994,
+        base_region_count=2,
+        expanded_text="SAVETHIS\nCHILD",
+        expanded_quality="review",
+        expanded_reason="crop-edge-text",
+        expanded_confidence=0.9992,
+        expanded_region_count=2,
+    )
+    assert not _prefer_edge_recrop(
+        base_text="CHILD\nSAVETHIS",
+        base_quality="review",
+        base_reason="crop-edge-text",
+        base_confidence=0.9994,
+        base_region_count=2,
+        expanded_text="SAVETHIS\nCHILD\nNEXT",
+        expanded_quality="review",
+        expanded_reason="crop-edge-text",
+        expanded_confidence=0.9999,
+        expanded_region_count=3,
+    )

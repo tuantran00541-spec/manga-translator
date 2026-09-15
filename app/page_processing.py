@@ -11,6 +11,7 @@ from app.detector.bubble_detector import BubbleBox
 from app.detector.combined_detector import CombinedTextDetector
 from app.image_io import encode_mask, read_image, write_image
 from app.manifest_utils import assign_stable_detector_box_ids
+from app.region_policy import geometry_center_in_regions, subtract_regions_from_mask
 from app.mask_store import decode_mask_value
 from app.parameters import (
     DETECTION_CONTENT_STD_MIN,
@@ -24,7 +25,7 @@ class PageProcessingMixin:
         self,
         img_path: Path,
         processed_dir: Path,
-        excluded_regions: list[dict] | None = None,
+        preserve_regions: list[dict] | None = None,
         existing_boxes: list[dict] | None = None,
         stitch_core: dict | None = None,
         supplemental_detections: list[BubbleBox] | None = None,
@@ -169,7 +170,7 @@ class PageProcessingMixin:
         clean_image = self.inpainter.inpaint(
             image,
             effective_boxes,
-            protected_regions=excluded_regions,
+            protected_regions=preserve_regions,
         )
         auto_inpaint_ms = (time.perf_counter() - auto_inpaint_started_at) * 1000.0
         auto_inpaint_metrics = self.inpainter.last_metrics()
@@ -198,7 +199,8 @@ class PageProcessingMixin:
         )
         for mask_field, mask_path, force_lama in manual_passes:
             manual_mask = self._read_manual_mask(mask_path, clean_image.shape[:2])
-            if manual_mask is None:
+            manual_mask = subtract_regions_from_mask(manual_mask, preserve_regions)
+            if manual_mask is None or not cv2.countNonZero(manual_mask):
                 continue
             manual_inpaint_started_at = time.perf_counter()
             clean_image = self.inpainter.inpaint_mask(
@@ -226,6 +228,13 @@ class PageProcessingMixin:
                 clean_image,
                 effective_boxes,
             )
+            residue_boxes = [
+                box for box in residue_boxes
+                if not geometry_center_in_regions(
+                    {"x1": box.x1, "y1": box.y1, "x2": box.x2, "y2": box.y2},
+                    preserve_regions,
+                )
+            ]
         residue_verify_ms = (time.perf_counter() - residue_started_at) * 1000.0
 
         tmp_clean_path = processed_dir / f"clean_{img_path.name}.{uuid.uuid4().hex[:12]}.tmp.png"
@@ -240,12 +249,14 @@ class PageProcessingMixin:
         unverified_regions = [
             {k: record.get(k) for k in decision_fields}
             for record in detector_records
-            if record.get("needs_review") or not record.get("safe_to_inpaint")
+            if (record.get("needs_review") or not record.get("safe_to_inpaint"))
+            and not geometry_center_in_regions(record, preserve_regions)
         ]
         deferred_regions = [
             {k: record.get(k) for k in decision_fields}
             for record in detector_records
             if record.get("deferred_reason")
+            and not geometry_center_in_regions(record, preserve_regions)
         ]
         residue_regions = [
             {k: getattr(box, k) for k in decision_fields}

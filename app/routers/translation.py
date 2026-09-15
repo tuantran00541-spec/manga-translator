@@ -16,6 +16,7 @@ from app.ocr.quality import should_block_translation
 from app.secret_store import SecretStoreUnavailable, get_provider_api_key
 from app.security import validate_chapter_id
 from app.text_objects import ensure_page_text_objects
+from app.region_policy import text_object_in_preserve_region
 from app.translation import DeepSeekTranslator, TranslationBudgetExceeded
 from app.translation.deepseek import PRICING_VERSION
 
@@ -93,12 +94,13 @@ async def translate_chapter(req: TranslateChapterRequest) -> dict:
 
     skipped_ocr_reject = 0
     skipped_source_missing = 0
+    skipped_preserve_region = 0
     with get_manifest_lock(req.chapter_id):
         manifest = load_manifest_raw(req.chapter_id)
         ensured_pages: set[int] = set()
         candidates: list[dict] = []
         for page_index, page in enumerate(manifest.get("pages", [])):
-            if page.get("skipped"):
+            if page.get("skipped") or page.get("process_required"):
                 continue
             _, changed = ensure_page_text_objects(page)
             if changed:
@@ -108,6 +110,9 @@ async def translate_chapter(req: TranslateChapterRequest) -> dict:
                     continue
                 if obj.get("source_missing"):
                     skipped_source_missing += 1
+                    continue
+                if text_object_in_preserve_region(page, obj):
+                    skipped_preserve_region += 1
                     continue
                 source = str(obj.get("ocr_text") or "").strip()
                 current_translation = str(obj.get("translation") or "")
@@ -141,6 +146,7 @@ async def translate_chapter(req: TranslateChapterRequest) -> dict:
             "stale": 0,
             "skipped_ocr_reject": skipped_ocr_reject,
             "skipped_source_missing": skipped_source_missing,
+            "skipped_preserve_region": skipped_preserve_region,
             "model": translator.model,
             "estimated_cost_usd": 0.0,
             "budget_usd": req.budget_usd,
@@ -176,11 +182,14 @@ async def translate_chapter(req: TranslateChapterRequest) -> dict:
                 stale += 1
                 continue
             page = pages[page_index]
-            if page.get("skipped"):
+            if page.get("skipped") or page.get("process_required"):
                 stale += 1
                 continue
             obj = _find_object(page, str(item["id"]))
             if obj is None or obj.get("source_missing"):
+                stale += 1
+                continue
+            if text_object_in_preserve_region(page, obj):
                 stale += 1
                 continue
             if str(obj.get("ocr_text") or "").strip() != str(item["text"]).strip():

@@ -13,6 +13,7 @@ from app.schemas import (
     CreateTextObjectRequest,
     DeleteTextObjectRequest,
     RemoveBoxRequest,
+    RepaintRegionsRequest,
     ResetManualMaskRequest,
     SaveDraftRequest,
     UpdateBoxRequest,
@@ -51,6 +52,20 @@ def _decode_repaint_mask_payload(mask_bytes: bytes) -> np.ndarray:
     if not np.any(mask_array > 0):
         raise ValueError("Repaint mask is empty")
     return np.ascontiguousarray(mask_array)
+
+
+def _regions_to_repaint_mask(image_shape: tuple[int, ...], regions) -> np.ndarray:
+    height, width = image_shape[:2]
+    mask = np.zeros((height, width), dtype=np.uint8)
+    for region in regions:
+        item = region.model_dump() if hasattr(region, "model_dump") else dict(region)
+        x1, y1, x2, y2 = (int(item[k]) for k in ("x1", "y1", "x2", "y2"))
+        if x1 < 0 or y1 < 0 or x2 > width or y2 > height or x2 <= x1 or y2 <= y1:
+            raise ValueError(f"Repaint region ({x1},{y1})-({x2},{y2}) exceeds page dimensions ({width}x{height})")
+        mask[y1:y2, x1:x2] = 255
+    if not np.any(mask):
+        raise ValueError("Repaint regions produced an empty mask")
+    return mask
 
 
 def _reconcile_translation_after_ocr_edit(req: UpdateTextObjectRequest) -> dict:
@@ -187,6 +202,31 @@ def remove_box(req: RemoveBoxRequest) -> dict:
         raise HTTPException(500, f"Remove box failed: {exc}") from exc
 
 
+@router.post("/repaint_regions")
+async def repaint_regions(req: RepaintRegionsRequest) -> dict:
+    validate_chapter_id(req.chapter_id)
+    manifest = load_manifest_raw(req.chapter_id)
+    pages = manifest.get("pages", [])
+    if req.page_index < 0 or req.page_index >= len(pages):
+        raise HTTPException(400, f"Invalid page_index: {req.page_index}")
+    page = pages[req.page_index]
+    if page.get("skipped") or page.get("process_required"):
+        raise HTTPException(409, "Page must be active and processed before repaint")
+    img_path = Path(page["original"])
+    if not img_path.is_file():
+        raise HTTPException(404, f"Original page image not found: page_{req.page_index:03d}")
+    try:
+        image = await run_in_threadpool(read_image, img_path)
+        mask_array = _regions_to_repaint_mask(image.shape, req.regions)
+        result = await run_in_threadpool(
+            pipeline.repaint_mask, req.chapter_id, req.page_index, mask_array,
+            force_lama=req.mode == "lama",
+        )
+        return urlify_manifest(result)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
 @router.post("/repaint_mask")
 async def repaint_mask(
     chapter_id: str = Form(...),
@@ -202,6 +242,8 @@ async def repaint_mask(
     pages = manifest_raw.get("pages", [])
     if page_index < 0 or page_index >= len(pages):
         raise HTTPException(400, f"Invalid page_index: {page_index}")
+    if pages[page_index].get("skipped") or pages[page_index].get("process_required"):
+        raise HTTPException(409, "Page must be active and processed before repaint")
 
     img_path = Path(pages[page_index]["original"])
     if not img_path.is_file():

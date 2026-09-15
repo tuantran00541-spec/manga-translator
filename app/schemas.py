@@ -253,16 +253,39 @@ class RegionModel(BaseModel):
         return value
 
 
+class SavePreserveRegionsRequest(BaseModel):
+    chapter_id: str
+    page_index: int = Field(ge=0)
+    preserve_regions: list[RegionModel]
+
+    @field_validator("preserve_regions")
+    @classmethod
+    def _region_count(cls, value: list[RegionModel]) -> list[RegionModel]:
+        if len(value) > MAX_RENDER_TRANSLATIONS:
+            raise ValueError("Too many preserve regions")
+        return value
+
+
 class SaveExcludedRegionsRequest(BaseModel):
+    """Deprecated wire alias for pre-v4 clients."""
     chapter_id: str
     page_index: int = Field(ge=0)
     excluded_regions: list[RegionModel]
 
-    @field_validator("excluded_regions")
+
+class RepaintRegionsRequest(BaseModel):
+    chapter_id: str
+    page_index: int = Field(ge=0)
+    regions: list[RegionModel]
+    mode: Literal["standard", "lama"] = "standard"
+
+    @field_validator("regions")
     @classmethod
-    def _region_count(cls, value: list[RegionModel]) -> list[RegionModel]:
+    def _regions(cls, value: list[RegionModel]) -> list[RegionModel]:
+        if not value:
+            raise ValueError("At least one repaint region is required")
         if len(value) > MAX_RENDER_TRANSLATIONS:
-            raise ValueError("Too many excluded regions")
+            raise ValueError("Too many repaint regions")
         return value
 
 

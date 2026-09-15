@@ -63,7 +63,7 @@ function renderPreview() {
   container.className = "preview-workspace process-workspace";
 
   pages.forEach((page) => {
-    if (!page.excluded_regions) page.excluded_regions = [];
+    if (!page.preserve_regions) page.preserve_regions = [];
   });
 
   const toolbar = document.createElement("div");
@@ -87,8 +87,8 @@ function renderPreview() {
     key: index,
     label: pageLabel(pages, index),
     image: item.original,
-    state: item.skipped ? "skipped" : (item.excluded_regions?.length ? "review" : "ready"),
-    stateLabel: item.skipped ? "Bỏ qua" : (item.excluded_regions?.length ? `${item.excluded_regions.length} vùng loại trừ` : "Sẵn sàng"),
+    state: item.skipped ? "skipped" : (item.process_required || item.preserve_regions?.length ? "review" : "ready"),
+    stateLabel: item.skipped ? "Bỏ qua" : (item.process_required ? "Cần xử lý" : (item.preserve_regions?.length ? `${item.preserve_regions.length} vùng giữ nguyên` : "Sẵn sàng")),
   }));
   const navigator = window.createPageNavigator({
     items: navItems,
@@ -144,7 +144,7 @@ function renderPreviewPage(card, page, pageIndex, pages, inspector = null) {
   label.textContent = pageLabel(pages, pageIndex);
   const status = document.createElement("span");
   status.className = "preview-page-status";
-  status.textContent = page.skipped ? "Đã bỏ qua" : "Sẵn sàng xử lý";
+  status.textContent = page.skipped ? "Đã bỏ qua" : (page.process_required ? "Cần xử lý" : "Đã xử lý");
   labelWrap.appendChild(label);
   labelWrap.appendChild(status);
   header.appendChild(labelWrap);
@@ -210,7 +210,7 @@ function renderPreviewPage(card, page, pageIndex, pages, inspector = null) {
     if (!img.naturalWidth || !img.clientWidth) return;
     const scaleX = img.clientWidth / img.naturalWidth;
     const scaleY = img.clientHeight / img.naturalHeight;
-    (page.excluded_regions || []).forEach((region, rIdx) => {
+    (page.preserve_regions || []).forEach((region, rIdx) => {
       const boxEl = document.createElement("div");
       boxEl.className = "excluded-region-box";
       boxEl.style.left = region.x1 * scaleX + "px";
@@ -221,12 +221,12 @@ function renderPreviewPage(card, page, pageIndex, pages, inspector = null) {
       const delBtn = document.createElement("button");
       delBtn.className = "ui-icon-btn ui-btn-compact ui-btn-danger excluded-region-del";
       delBtn.append(window.createUiIcon("trash"));
-      delBtn.title = "Xóa vùng cấm này";
-      delBtn.setAttribute("aria-label", "Xóa vùng cấm này");
+      delBtn.title = "Xóa vùng giữ nguyên này";
+      delBtn.setAttribute("aria-label", "Xóa vùng giữ nguyên này");
       delBtn.addEventListener("click", (e) => {
         e.stopPropagation();
-        page.excluded_regions.splice(rIdx, 1);
-        void saveExcludedRegions(pageIndex, page.excluded_regions);
+        page.preserve_regions.splice(rIdx, 1);
+        void savePreserveRegions(pageIndex, page.preserve_regions);
         renderExcludedBoxes();
       });
       boxEl.appendChild(delBtn);
@@ -240,21 +240,21 @@ function renderPreviewPage(card, page, pageIndex, pages, inspector = null) {
   tools.className = "preview-tools";
   const drawToggleBtn = document.createElement("button");
   drawToggleBtn.className = "ui-btn ui-btn-ghost excluded-toggle-btn";
-  drawToggleBtn.textContent = "Đánh dấu vùng loại trừ";
+  drawToggleBtn.textContent = "Đánh dấu vùng giữ nguyên";
   const clearBtn = document.createElement("button");
   clearBtn.className = "ui-btn ui-btn-ghost excluded-clear-btn";
-  clearBtn.textContent = "Xóa vùng loại trừ";
-  clearBtn.title = "Xóa toàn bộ vùng loại trừ của lát ảnh này";
+  clearBtn.textContent = "Xóa vùng giữ nguyên";
+  clearBtn.title = "Xóa toàn bộ vùng giữ nguyên của lát ảnh này";
 
   drawToggleBtn.addEventListener("click", () => {
     const active = card.classList.toggle("draw-excluded-active");
-    drawToggleBtn.textContent = active ? "Đang đánh dấu · Chọn để kết thúc" : "Đánh dấu vùng loại trừ";
+    drawToggleBtn.textContent = active ? "Đang đánh dấu · Chọn để kết thúc" : "Đánh dấu vùng giữ nguyên";
     drawToggleBtn.classList.toggle("active", active);
     drawToggleBtn.classList.toggle("ui-btn-danger", active);
   });
   clearBtn.addEventListener("click", () => {
-    page.excluded_regions = [];
-    void saveExcludedRegions(pageIndex, page.excluded_regions);
+    page.preserve_regions = [];
+    void savePreserveRegions(pageIndex, page.preserve_regions);
     renderExcludedBoxes();
   });
   tools.append(drawToggleBtn, clearBtn);
@@ -342,13 +342,13 @@ function renderPreviewPage(card, page, pageIndex, pages, inspector = null) {
 
     const scaleX = img.naturalWidth / img.clientWidth;
     const scaleY = img.naturalHeight / img.clientHeight;
-    page.excluded_regions.push({
+    page.preserve_regions.push({
       x1: Math.round(left * scaleX),
       y1: Math.round(top * scaleY),
       x2: Math.round((left + w) * scaleX),
       y2: Math.round((top + h) * scaleY)
     });
-    void saveExcludedRegions(pageIndex, page.excluded_regions);
+    void savePreserveRegions(pageIndex, page.preserve_regions);
     renderExcludedBoxes();
   };
 
@@ -373,7 +373,7 @@ function renderPreviewPage(card, page, pageIndex, pages, inspector = null) {
   skipBtn.textContent = page.skipped ? "Đã bỏ qua · Chọn để khôi phục" : "Bỏ qua lát ảnh";
   skipBtn.addEventListener("click", async () => {
     await toggleSkip(pageIndex, card, skipBtn);
-    status.textContent = page.skipped ? "Đã bỏ qua" : "Sẵn sàng xử lý";
+    status.textContent = page.skipped ? "Đã bỏ qua" : (page.process_required ? "Cần xử lý" : "Đã xử lý");
     renderPreview();
   });
   footer.appendChild(skipBtn);

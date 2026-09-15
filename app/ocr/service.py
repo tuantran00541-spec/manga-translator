@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import OrderedDict
 import copy
+from difflib import SequenceMatcher
 import threading
 from pathlib import Path
 
@@ -33,6 +34,7 @@ from app.parameters import (
     OCR_MASK_PAGE_CONTEXT_PADDING,
 )
 from app.image_io import read_image
+from app.region_policy import geometry_center_in_regions, page_preserve_regions, text_object_in_preserve_region
 from app.security import validate_chapter_id
 from app.text_objects import (
     invalidate_stale_machine_translation,
@@ -171,10 +173,13 @@ def _active_overlap_signatures(
     page: dict, region: dict
 ) -> list[tuple[str, str]]:
     matches: list[tuple[int, int, str, str]] = []
+    preserve_regions = page_preserve_regions(page)
     for box in page.get("boxes", []) or []:
         if not isinstance(box, dict) or box.get("removed"):
             continue
         if box.get("ocr_eligible") is False:
+            continue
+        if geometry_center_in_regions(box, preserve_regions):
             continue
         box_id = box.get("id")
         if not box_id or not _region_overlaps_box(region, box):
@@ -218,6 +223,108 @@ def _check_cancelled(cancel_event: threading.Event | None) -> None:
         raise OCRCancelled(OCR_CANCELLED_MESSAGE)
 
 
+OCR_EDGE_RECROP_EXTRA_PADDINGS = (24, 48, 96)
+
+
+def _expand_ocr_crop_bounds(
+    image_shape: tuple[int, ...],
+    crop_bounds: tuple[int, int, int, int],
+    extra_padding: int = OCR_EDGE_RECROP_EXTRA_PADDINGS[0],
+) -> tuple[int, int, int, int]:
+    h, w = image_shape[:2]
+    x1, y1, x2, y2 = crop_bounds
+    pad = max(0, int(extra_padding))
+    return (
+        max(0, int(x1) - pad),
+        max(0, int(y1) - pad),
+        min(w, int(x2) + pad),
+        min(h, int(y2) + pad),
+    )
+
+
+def _edge_recrop_bounds_sequence(
+    image_shape: tuple[int, ...],
+    crop_bounds: tuple[int, int, int, int],
+) -> tuple[tuple[int, int, int, int], ...]:
+    # Grow only after an edge-truncation signal; each retry stays anchored
+    # to the original crop so padding never compounds accidentally.
+    seen = {tuple(int(v) for v in crop_bounds)}
+    bounds = []
+    for extra_padding in OCR_EDGE_RECROP_EXTRA_PADDINGS:
+        expanded = _expand_ocr_crop_bounds(
+            image_shape, crop_bounds, extra_padding=extra_padding
+        )
+        if expanded in seen:
+            continue
+        seen.add(expanded)
+        bounds.append(expanded)
+    return tuple(bounds)
+
+
+def _normalized_ocr_lines(text: str) -> tuple[str, ...]:
+    lines = [
+        " ".join(part.upper().split())
+        for part in str(text or "").splitlines()
+        if part.strip()
+    ]
+    return tuple(sorted(lines))
+
+
+def _compact_ocr_text(text: str) -> str:
+    return "".join(ch for ch in str(text or "").upper() if ch.isalnum())
+
+
+def _prefer_edge_recrop(
+    *,
+    base_text: str,
+    base_quality: str,
+    base_reason: str | None,
+    base_confidence: float | None,
+    base_region_count: int,
+    expanded_text: str,
+    expanded_quality: str,
+    expanded_reason: str | None,
+    expanded_confidence: float | None,
+    expanded_region_count: int,
+) -> bool:
+    if str(base_reason or "") != "crop-edge-text":
+        return False
+    if not str(expanded_text or "").strip():
+        return False
+
+    base_regions = max(0, int(base_region_count or 0))
+    expanded_regions = max(0, int(expanded_region_count or 0))
+    if base_regions and expanded_regions > base_regions:
+        return False
+
+    rank = {"reject": 0, "unknown": 0, "review": 1, "good": 2}
+    base_rank = rank.get(str(base_quality or "unknown"), 0)
+    expanded_rank = rank.get(str(expanded_quality or "unknown"), 0)
+    base_compact = _compact_ocr_text(base_text)
+    expanded_compact = _compact_ocr_text(expanded_text)
+    similarity = SequenceMatcher(None, base_compact, expanded_compact).ratio()
+
+    if expanded_rank > base_rank:
+        return similarity >= 0.45
+
+    if (
+        expanded_rank == base_rank
+        and str(expanded_reason or "") == "crop-edge-text"
+        and _normalized_ocr_lines(base_text) == _normalized_ocr_lines(expanded_text)
+        and str(base_text or "").strip() != str(expanded_text or "").strip()
+    ):
+        try:
+            base_conf = float(base_confidence) if base_confidence is not None else 0.0
+            expanded_conf = (
+                float(expanded_confidence) if expanded_confidence is not None else 0.0
+            )
+        except (TypeError, ValueError):
+            return False
+        return expanded_conf + 0.05 >= base_conf
+
+    return False
+
+
 class OCRService:
     def __init__(self, ocr_engine, pipeline):
         self.ocr = ocr_engine
@@ -238,12 +345,15 @@ class OCRService:
             manifest = load_manifest_raw(chapter_id)
             items: list[tuple[int, str]] = []
             for page_index, page in enumerate(manifest.get("pages", [])):
-                if page.get("skipped"):
+                if page.get("skipped") or page.get("process_required"):
                     continue
+                preserve_regions = page_preserve_regions(page)
                 for box in page.get("boxes", []) or []:
                     if not isinstance(box, dict) or box.get("removed"):
                         continue
                     if box.get("ocr_eligible") is False:
+                        continue
+                    if geometry_center_in_regions(box, preserve_regions):
                         continue
                     if ocr_target_skip_reason(box):
                         continue
@@ -361,11 +471,15 @@ class OCRService:
             page = pages[page_index]
             if page.get("skipped"):
                 raise ValueError("Cannot OCR a skipped page")
+            if page.get("process_required"):
+                raise ValueError("Cannot OCR a page that requires processing")
             box = _find_box(page, box_id)
             if box is None or box.get("removed"):
                 raise ValueError(f"OCR target box not found: {box_id}")
             if box.get("ocr_eligible") is False:
                 raise ValueError(f"OCR target box is not eligible: {box_id}")
+            if geometry_center_in_regions(box, page_preserve_regions(page)):
+                raise ValueError(f"OCR target box is inside a preserve region: {box_id}")
             original_value = page.get("original")
             if not original_value:
                 raise FileNotFoundError("Original page image is not configured")
@@ -480,6 +594,65 @@ class OCRService:
             quality, quality_reason = self._conservative_quality(
                 base_quality, base_reason, checked_quality.status, checked_quality.reason
             )
+
+            recrop_attempted = False
+            if quality_reason == "crop-edge-text":
+                initial_crop_bounds = crop_bounds
+                for expanded_bounds in _edge_recrop_bounds_sequence(
+                    image.shape, initial_crop_bounds
+                ):
+                    ex1, ey1, ex2, ey2 = expanded_bounds
+                    expanded_crop = image[ey1:ey2, ex1:ex2]
+                    if not expanded_crop.size:
+                        continue
+                    recrop_attempted = True
+                    expanded_rgb = cv2.cvtColor(expanded_crop, cv2.COLOR_BGR2RGB)
+                    try:
+                        expanded_result = detailed_reader(
+                            expanded_rgb, lang, target_mode=target_mode
+                        )
+                    except TypeError:
+                        expanded_result = detailed_reader(expanded_rgb, lang)
+                    expanded_text = str(
+                        getattr(expanded_result, "text", "") or ""
+                    ).strip()
+                    expanded_coverage = self._mask_text_coverage(
+                        box_snapshot, expanded_bounds, expanded_result
+                    )
+                    expanded_checked = classify_ocr_quality(
+                        expanded_text,
+                        lang,
+                        confidence=getattr(expanded_result, "confidence", None),
+                        coverage=expanded_coverage,
+                    )
+                    expanded_quality, expanded_reason = self._conservative_quality(
+                        str(getattr(expanded_result, "quality", "unknown") or "unknown"),
+                        getattr(expanded_result, "quality_reason", None),
+                        expanded_checked.status,
+                        expanded_checked.reason,
+                    )
+                    if not _prefer_edge_recrop(
+                        base_text=text,
+                        base_quality=quality,
+                        base_reason=quality_reason,
+                        base_confidence=getattr(result, "confidence", None),
+                        base_region_count=int(getattr(result, "region_count", 0) or 0),
+                        expanded_text=expanded_text,
+                        expanded_quality=expanded_quality,
+                        expanded_reason=expanded_reason,
+                        expanded_confidence=getattr(expanded_result, "confidence", None),
+                        expanded_region_count=int(getattr(expanded_result, "region_count", 0) or 0),
+                    ):
+                        continue
+                    result = expanded_result
+                    text = expanded_text
+                    crop_bounds = expanded_bounds
+                    coverage = expanded_coverage
+                    quality = expanded_quality
+                    quality_reason = expanded_reason
+                    if quality_reason != "crop-edge-text":
+                        break
+
             self._result_local.metadata = {
                 "confidence": getattr(result, "confidence", None),
                 "model": str(getattr(result, "model", "") or ""),
@@ -491,7 +664,9 @@ class OCRService:
                 "quality_reason": quality_reason,
                 "coverage": coverage if coverage is not None else getattr(result, "coverage", None),
                 "target_mode": str(getattr(result, "target_mode", target_mode) or target_mode),
-                "retry_applied": bool(getattr(result, "retry_applied", False)),
+                "retry_applied": bool(
+                    getattr(result, "retry_applied", False) or recrop_attempted
+                ),
             }
             return text
 
@@ -604,7 +779,11 @@ class OCRService:
                 source_revision=source_revision,
                 original_revision=original_revision,
             )
+            if page.get("skipped") or page.get("process_required"):
+                raise OCRResultStale("Page became unavailable while OCR was running")
             target = _find_box(page, box_id)
+            if target is not None and geometry_center_in_regions(target, page_preserve_regions(page)):
+                raise OCRResultStale("OCR target entered a preserve region while OCR was running")
             if self._box_changed(target, box_snapshot):
                 raise OCRResultStale("OCR target box changed while OCR was running")
             _check_cancelled(cancel_event)
@@ -715,6 +894,10 @@ class OCRService:
             obj = _find_text_object(page, text_object_id)
             if obj is None:
                 raise ValueError(f"Text object not found {text_object_id!r}")
+            if page.get("skipped") or page.get("process_required"):
+                raise ValueError("Cannot OCR this page before processing")
+            if text_object_in_preserve_region(page, obj):
+                raise ValueError("Cannot OCR a text object inside a preserve region")
             original_value = page.get("original")
             if not original_value:
                 raise FileNotFoundError("Original page image is not configured")
@@ -780,6 +963,8 @@ class OCRService:
             page = pages[page_index]
             obj = _find_text_object(page, text_object_id)
             if obj is None:
+                return manifest
+            if page.get("skipped") or page.get("process_required") or text_object_in_preserve_region(page, obj):
                 return manifest
             if self._group_result_stale(page, obj, snapshot, original_revision):
                 logger.warning(

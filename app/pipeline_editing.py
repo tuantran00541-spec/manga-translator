@@ -24,6 +24,7 @@ from app.manifest_utils import (
 )
 from app.mask_store import decode_mask_value
 from app.parameters import MANUAL_MASK_THRESHOLD
+from app.region_policy import subtract_regions_from_mask
 
 
 _TEXT_OBJECT_STYLE_KEYS = {
@@ -95,6 +96,7 @@ class PipelineEditingMixin:
                 if page_index < 0 or page_index >= len(manifest.get("pages", [])):
                     raise ValueError(f"Chapter {chapter_id}: Invalid page_index {page_index}")
                 target_page = manifest["pages"][page_index]
+                preserve_regions = copy.deepcopy(target_page.get("preserve_regions", []))
                 boxes_snapshot = copy.deepcopy(target_page.get("boxes", []))
                 boxes_snapshot.append(copy.deepcopy(new_box))
                 manual_mask_posix = target_page.get("manual_mask")
@@ -113,6 +115,7 @@ class PipelineEditingMixin:
                     boxes_snapshot,
                     manual_mask_posix=manual_mask_posix,
                     manual_lama_mask_posix=manual_lama_mask_posix,
+                    preserve_regions=preserve_regions,
                 )
 
                 with get_manifest_lock(chapter_id):
@@ -194,6 +197,7 @@ class PipelineEditingMixin:
 
                 boxes_snapshot = copy.deepcopy(target_boxes)
                 self._apply_box_geometry(boxes_snapshot[box_index], new_geometry)
+                preserve_regions = copy.deepcopy(target_page.get("preserve_regions", []))
                 manual_mask_posix = target_page.get("manual_mask")
                 manual_lama_mask_posix = target_page.get("manual_lama_mask")
                 target_clean_revision = int(
@@ -210,6 +214,7 @@ class PipelineEditingMixin:
                     boxes_snapshot,
                     manual_mask_posix=manual_mask_posix,
                     manual_lama_mask_posix=manual_lama_mask_posix,
+                    preserve_regions=preserve_regions,
                 )
 
                 with get_manifest_lock(chapter_id):
@@ -255,6 +260,7 @@ class PipelineEditingMixin:
                     raise ValueError("Invalid box index")
 
                 img_path = Path(page["original"])
+                preserve_regions = copy.deepcopy(page.get("preserve_regions", []))
                 manual_mask_posix = page.get("manual_mask")
                 manual_lama_mask_posix = page.get("manual_lama_mask")
                 boxes_snapshot = copy.deepcopy(boxes)
@@ -272,6 +278,7 @@ class PipelineEditingMixin:
                     boxes_snapshot,
                     manual_mask_posix=manual_mask_posix,
                     manual_lama_mask_posix=manual_lama_mask_posix,
+                    preserve_regions=preserve_regions,
                 )
 
                 with get_manifest_lock(chapter_id):
@@ -313,8 +320,13 @@ class PipelineEditingMixin:
                 if page_index < 0 or page_index >= len(manifest.get("pages", [])):
                     raise ValueError(f"Chapter {chapter_id}: Invalid page index {page_index}")
                 page = manifest["pages"][page_index]
+                if page.get("skipped"):
+                    raise ValueError("Cannot repaint a skipped page; unskip it first")
+                if page.get("process_required"):
+                    raise ValueError("Cannot repaint a page that requires processing")
                 img_path = Path(page["original"])
                 boxes_snapshot = copy.deepcopy(page.get("boxes", []))
+                preserve_regions = copy.deepcopy(page.get("preserve_regions", []))
                 target_clean_revision = int(page.get("clean_revision") or 0) + 1
                 manual_mask_posix = page.get("manual_mask")
                 manual_lama_mask_posix = page.get("manual_lama_mask")
@@ -353,6 +365,10 @@ class PipelineEditingMixin:
             target_prefix = "manual_lama_mask" if force_lama else "manual_mask"
             existing_mask = self._read_manual_mask(target_path, (img_h, img_w))
 
+            existing_mask = subtract_regions_from_mask(existing_mask, preserve_regions)
+            bin_mask = subtract_regions_from_mask(bin_mask, preserve_regions)
+            if bin_mask is not None and not np.any(bin_mask):
+                raise ValueError("Repaint mask falls entirely inside a preserve region")
             if existing_mask is not None and bin_mask is not None:
                 accumulated_mask = np.maximum(existing_mask, bin_mask)
             elif bin_mask is not None:
@@ -418,6 +434,7 @@ class PipelineEditingMixin:
                         manual_mask_posix=standard_mask_for_repaint,
                         manual_lama_mask_posix=lama_mask_for_repaint,
                         reuse_auto_clean=True,
+                        preserve_regions=preserve_regions,
                     )
                     if accumulated_mask is not None:
                         atomic_replace(tmp_mask_path, final_mask_path)
@@ -462,8 +479,13 @@ class PipelineEditingMixin:
                 if page_index < 0 or page_index >= len(manifest.get("pages", [])):
                     raise ValueError("Invalid page index")
                 page = manifest["pages"][page_index]
+                if page.get("skipped"):
+                    raise ValueError("Cannot reset repaint state on a skipped page; unskip it first")
+                if page.get("process_required"):
+                    raise ValueError("Cannot reset repaint state before processing")
                 img_path = Path(page["original"])
                 boxes_snapshot = copy.deepcopy(page.get("boxes", []))
+                preserve_regions = copy.deepcopy(page.get("preserve_regions", []))
                 target_clean_revision = int(page.get("clean_revision") or 0) + 1
 
             manual_mask_path = self._manual_mask_path(processed_dir, img_path)
@@ -488,6 +510,7 @@ class PipelineEditingMixin:
                     manual_lama_mask_posix=None,
                     reuse_auto_clean=True,
                     apply_manual_mask=False,
+                    preserve_regions=preserve_regions,
                 )
 
                 for mask_path in (manual_mask_path, manual_lama_mask_path):
@@ -744,6 +767,7 @@ class PipelineEditingMixin:
         *,
         reuse_auto_clean: bool = False,
         apply_manual_mask: bool = True,
+        preserve_regions: list[dict] | None = None,
     ) -> str:
         """Repaint using masks stored inline or in managed PNG sidecars."""
         boxes_objects = []
@@ -812,7 +836,7 @@ class PipelineEditingMixin:
             )
 
         if clean_image is None:
-            clean_image = self.inpainter.inpaint(image, boxes_objects)
+            clean_image = self.inpainter.inpaint(image, boxes_objects, protected_regions=preserve_regions)
             self._write_auto_clean_cache(processed_dir, img_path, clean_image)
         else:
             clean_image = clean_image.copy()
@@ -839,7 +863,8 @@ class PipelineEditingMixin:
                 manual_mask = self._read_manual_mask(
                     mask_path, clean_image.shape[:2]
                 )
-                if manual_mask is not None:
+                manual_mask = subtract_regions_from_mask(manual_mask, preserve_regions)
+                if manual_mask is not None and np.any(manual_mask):
                     clean_image = self.inpainter.inpaint_mask(
                         clean_image, manual_mask, force_lama=force_lama
                     )

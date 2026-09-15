@@ -117,12 +117,12 @@ window._processSelectedPagesOnce = async function serverOwnedProcessSelectedPage
   processingButtons().forEach((btn) => {
     if (!btn || !btn.isConnected) return;
     btn.setAttribute("aria-busy", "true");
-    btn.textContent = "Đang lưu vùng loại trừ…";
+    btn.textContent = "Đang lưu vùng giữ nguyên…";
   });
 
   try {
-    if (typeof window.flushExcludedRegionSaves === "function") {
-      await window.flushExcludedRegionSaves(chapterId);
+    if (typeof window.flushPreserveRegionSaves === "function") {
+      await window.flushPreserveRegionSaves(chapterId);
     }
     if (chapterId !== currentChapterId) return;
 

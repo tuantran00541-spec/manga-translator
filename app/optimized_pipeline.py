@@ -1,21 +1,34 @@
 from __future__ import annotations
 
-from app.detector.adaptive_focus_detector import AdaptiveFocusCombinedTextDetector
+from app.detector.sequential_fast_residue_detector import (
+    SequentialFastResidueAdaptiveFocusCombinedTextDetector,
+)
+from app.inpaint.adaptive_fast_inpainter import AdaptiveFastInpainter
 from app.parameters import PIPELINE_DEFAULT_WORKERS
 from app.pipeline import ChapterPipeline
 from app.runtime_responsiveness import responsive_process_workers
 
 
 class OptimizedChapterPipeline(ChapterPipeline):
-    """Chapter pipeline using the validated adaptive-focus production detector."""
+    """Chapter pipeline using validated CPU detector and cleanup candidates."""
 
     @property
     def detector(self):
         if self._detector is None:
             with self._detector_init_lock:
                 if self._detector is None:
-                    self._detector = AdaptiveFocusCombinedTextDetector()
+                    self._detector = (
+                        SequentialFastResidueAdaptiveFocusCombinedTextDetector()
+                    )
         return self._detector
+
+    @property
+    def inpainter(self):
+        if self._inpainter is None:
+            with self._inpainter_init_lock:
+                if self._inpainter is None:
+                    self._inpainter = AdaptiveFastInpainter()
+        return self._inpainter
 
     def process_pages(
         self,
@@ -23,9 +36,14 @@ class OptimizedChapterPipeline(ChapterPipeline):
         page_indices: list[int],
         workers: int = PIPELINE_DEFAULT_WORKERS,
     ) -> dict:
-        """Process pages without starving the local browser of CPU time."""
+        """Process pages without oversubscribing LaMa or starving the browser."""
+        effective_workers = responsive_process_workers(workers)
+        inpainter = self.inpainter
+        prepare = getattr(inpainter, "prepare_for_page_workers", None)
+        if callable(prepare):
+            prepare(effective_workers)
         return super().process_pages(
             chapter_id,
             page_indices,
-            workers=responsive_process_workers(workers),
+            workers=effective_workers,
         )
