@@ -20,7 +20,7 @@ env:
   MANGA_ORT_OPENVINO_STREAMS: "1"
   MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
   OPENBLAS_NUM_THREADS: "1"
-  CHAPTER_ID: c159smear01
+  CHAPTER_ID: c159aa01
   CHAPTER_URL: https://asurascans.com/comics/player-who-returned-10000-years-later-53fc8424/chapter/159
 
 jobs:
@@ -98,9 +98,6 @@ jobs:
               shutil.rmtree(out)
           out.mkdir(parents=True, exist_ok=True)
 
-          # These were visually confirmed to show ghost/smear in an older
-          # processed chapter. Coordinates are only review windows; current
-          # detector geometry remains fully live.
           targets = [
               {"source_page": 1, "slice_index": 6, "name": "p007", "roi": [180, 105, 725, 440]},
               {"source_page": 8, "slice_index": 1, "name": "p035", "roi": [105, 1005, 815, 1455]},
