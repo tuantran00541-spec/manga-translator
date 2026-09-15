@@ -17,6 +17,7 @@ from app.render.identity import render_input_signature, stamp_render_artifact
 from app.render.page_renderer import cleanup_tmp, render_boxes_legacy, render_text_objects, style_get
 from app.schemas import RenderRequest
 from app.security import validate_chapter_id
+from app.region_policy import geometry_center_in_regions, page_preserve_regions, text_object_in_preserve_region
 
 router = APIRouter(prefix="/api", tags=["render"])
 
@@ -42,7 +43,11 @@ def _render_snapshot(image: Image.Image, req: RenderRequest, page: dict, drafts:
         active_text_objects = [
             obj
             for obj in text_objects
-            if isinstance(obj, dict) and not obj.get("source_missing")
+            if (
+                isinstance(obj, dict)
+                and not obj.get("source_missing")
+                and not text_object_in_preserve_region(page, obj)
+            )
         ]
         if not active_text_objects:
             return 0
@@ -61,10 +66,15 @@ def _render_snapshot(image: Image.Image, req: RenderRequest, page: dict, drafts:
             styles["horizontal_aligns"],
             styles["vertical_aligns"],
         )
+    legacy_page = copy.deepcopy(page)
+    preserve_regions = page_preserve_regions(page)
+    for box in legacy_page.get("boxes") or []:
+        if isinstance(box, dict) and geometry_center_in_regions(box, preserve_regions):
+            box["removed"] = True
     return render_boxes_legacy(
         image,
         req,
-        page,
+        legacy_page,
         drafts,
         styles["colors"],
         styles["fonts"],
@@ -85,7 +95,11 @@ def _set_style_value(style: dict, field: str, value, *, stringify: bool = False)
 
 def _persist_text_object_state(page: dict, req: RenderRequest, styles: dict[str, dict]) -> None:
     for obj in page.get("text_objects") or []:
-        if not isinstance(obj, dict) or obj.get("source_missing"):
+        if (
+            not isinstance(obj, dict)
+            or obj.get("source_missing")
+            or text_object_in_preserve_region(page, obj)
+        ):
             continue
         oid = obj.get("id")
         if not oid:
@@ -137,6 +151,10 @@ def _load_render_snapshot(req: RenderRequest) -> tuple[dict, dict, str]:
         if req.page_index < 0 or req.page_index >= len(pages):
             raise HTTPException(400, f"Invalid page_index: {req.page_index}")
         page = copy.deepcopy(pages[req.page_index])
+        if page.get("skipped"):
+            raise HTTPException(409, "Cannot render a skipped page; unskip it first")
+        if page.get("process_required"):
+            raise HTTPException(409, "Cannot render this page before processing")
         drafts = copy.deepcopy(manifest.get("drafts", {}))
         try:
             signature = render_input_signature(manifest, req.page_index)

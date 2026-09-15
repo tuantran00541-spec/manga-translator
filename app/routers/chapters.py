@@ -9,7 +9,7 @@ from filelock import FileLock, Timeout
 from app.config import OUTPUT_DIR, PROCESSED_DIR, RAW_DIR
 from app.dependencies import pipeline
 from app.logging_config import logger
-from app.manifest_utils import get_manifest_lock, invalidate_page_render, load_manifest_raw, save_manifest_raw, urlify_manifest
+from app.manifest_utils import bump_page_revision, get_manifest_lock, get_page_lock, invalidate_page_render, load_manifest_raw, save_manifest_raw, urlify_manifest
 from app.page_processing_jobs import ChapterProcessingJobManager
 from app.parameters import PIPELINE_DEFAULT_WORKERS
 from app.pipeline import StaleProcessingStateError
@@ -18,6 +18,7 @@ from app.schemas import (
     ProcessPagesRequest,
     RegionModel,
     SaveExcludedRegionsRequest,
+    SavePreserveRegionsRequest,
     SkipPagesRequest,
     WorkflowCheckpointRequest,
 )
@@ -29,6 +30,7 @@ from app.security import (
     validate_url,
 )
 from app.upload_utils import read_upload_limited
+from app.text_objects import ensure_page_text_objects
 
 router = APIRouter(prefix="/api", tags=["chapters"])
 _CHAPTER_LIST_CACHE: dict[str, tuple[tuple[int, int, int], dict]] = {}
@@ -86,7 +88,7 @@ def _clamp_workers(n: int | None) -> int:
 
 def _region_payload(regions: list[RegionModel]) -> list[dict]:
     if len(regions) > MAX_RENDER_TRANSLATIONS:
-        raise HTTPException(400, "Too many excluded regions")
+        raise HTTPException(400, "Too many preserve regions")
     return [region.model_dump() for region in regions]
 
 
@@ -396,60 +398,47 @@ def get_chapter(chapter_id: str) -> dict:
     return urlify_manifest(load_manifest_raw(chapter_id))
 
 
-@router.post("/save_excluded_regions")
-def save_excluded_regions(req: SaveExcludedRegionsRequest) -> dict:
-    validate_chapter_id(req.chapter_id)
-    try:
-        with get_manifest_lock(req.chapter_id):
-            manifest = load_manifest_raw(req.chapter_id)
-            pages = manifest.get("pages", [])
-            if req.page_index < 0 or req.page_index >= len(pages):
-                raise HTTPException(400, f"Invalid page_index: {req.page_index}")
-            pages[req.page_index]["excluded_regions"] = _region_payload(req.excluded_regions)
-            invalidate_page_render(manifest, req.page_index)
-            save_manifest_raw(req.chapter_id, manifest)
-            pipeline._sync_output_dir(req.chapter_id, manifest, [req.page_index])
-        return urlify_manifest(manifest)
-    except HTTPException:
-        raise
-    except Exception as exc:
-        logger.opt(exception=True).error(
-            "Chapter {} page {} operation 'save_excluded_regions' failed: {}",
-            req.chapter_id,
-            req.page_index,
-            exc,
-        )
-        raise HTTPException(500, f"Save excluded regions failed: {exc}") from exc
-
-
-@router.post("/chapters/{chapter_id}/pages/{page_index}/excluded-regions")
-def set_page_excluded_regions(
-    chapter_id: str,
-    page_index: int,
-    regions: list[RegionModel],
-) -> dict:
+def _set_page_preserve_regions(chapter_id: str, page_index: int, regions: list[RegionModel]) -> dict:
     validate_chapter_id(chapter_id)
     if page_index < 0:
         raise HTTPException(400, f"Invalid page_index: {page_index}")
-    try:
-        payload = _region_payload(regions)
-        with get_manifest_lock(chapter_id):
-            manifest = load_manifest_raw(chapter_id)
-            pages = manifest.get("pages", [])
-            if page_index >= len(pages):
-                raise HTTPException(400, f"Invalid page_index: {page_index}")
-            pages[page_index]["excluded_regions"] = payload
+    payload = _region_payload(regions)
+    with get_page_lock(chapter_id, page_index), get_manifest_lock(chapter_id):
+        manifest = load_manifest_raw(chapter_id)
+        pages = manifest.get("pages", [])
+        if page_index >= len(pages):
+            raise HTTPException(400, f"Invalid page_index: {page_index}")
+        page = pages[page_index]
+        changed = page.get("preserve_regions", []) != payload
+        page["preserve_regions"] = payload
+        if changed:
+            ensure_page_text_objects(page)
+            if not page.get("skipped"):
+                page["process_required"] = True
+                if page.get("clean") is not None:
+                    page["clean"] = None
+                    bump_page_revision(page, "clean_revision")
             invalidate_page_render(manifest, page_index)
             save_manifest_raw(chapter_id, manifest)
             pipeline._sync_output_dir(chapter_id, manifest, [page_index])
-        return urlify_manifest(manifest)
-    except HTTPException:
-        raise
-    except Exception as exc:
-        logger.opt(exception=True).error(
-            "Chapter {} page {} operation 'set_page_excluded_regions' failed: {}",
-            chapter_id,
-            page_index,
-            exc,
-        )
-        raise HTTPException(500, f"Set page excluded regions failed: {exc}") from exc
+    return urlify_manifest(manifest)
+
+
+@router.post("/save_preserve_regions")
+def save_preserve_regions(req: SavePreserveRegionsRequest) -> dict:
+    return _set_page_preserve_regions(req.chapter_id, req.page_index, req.preserve_regions)
+
+
+@router.post("/chapters/{chapter_id}/pages/{page_index}/preserve-regions")
+def set_page_preserve_regions(chapter_id: str, page_index: int, regions: list[RegionModel]) -> dict:
+    return _set_page_preserve_regions(chapter_id, page_index, regions)
+
+
+@router.post("/save_excluded_regions", deprecated=True)
+def save_excluded_regions(req: SaveExcludedRegionsRequest) -> dict:
+    return _set_page_preserve_regions(req.chapter_id, req.page_index, req.excluded_regions)
+
+
+@router.post("/chapters/{chapter_id}/pages/{page_index}/excluded-regions", deprecated=True)
+def set_page_excluded_regions(chapter_id: str, page_index: int, regions: list[RegionModel]) -> dict:
+    return _set_page_preserve_regions(chapter_id, page_index, regions)

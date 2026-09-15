@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import copy
 
+from app.region_policy import geometry_center_in_regions, page_preserve_regions
+
 
 DEFAULT_TEXT_OBJECT_STYLE = {
     "color": "auto",
@@ -166,6 +168,7 @@ def ensure_page_text_objects(page: dict) -> tuple[int, bool]:
         page["text_objects"] = objects
 
     boxes = page.get("boxes") or []
+    preserve_regions = page_preserve_regions(page)
     active_box_ids: set[str] = set()
     covered: dict[str, dict] = {}
     for obj in objects:
@@ -186,6 +189,8 @@ def ensure_page_text_objects(page: dict) -> tuple[int, bool]:
             continue
         region = _region_from_box(box)
         if region is None:
+            continue
+        if geometry_center_in_regions(region, preserve_regions):
             continue
         active_box_ids.add(box_id)
 

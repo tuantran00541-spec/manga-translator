@@ -34,6 +34,7 @@ from app.parameters import (
     OCR_MASK_PAGE_CONTEXT_PADDING,
 )
 from app.image_io import read_image
+from app.region_policy import geometry_center_in_regions, page_preserve_regions, text_object_in_preserve_region
 from app.security import validate_chapter_id
 from app.text_objects import (
     invalidate_stale_machine_translation,
@@ -172,10 +173,13 @@ def _active_overlap_signatures(
     page: dict, region: dict
 ) -> list[tuple[str, str]]:
     matches: list[tuple[int, int, str, str]] = []
+    preserve_regions = page_preserve_regions(page)
     for box in page.get("boxes", []) or []:
         if not isinstance(box, dict) or box.get("removed"):
             continue
         if box.get("ocr_eligible") is False:
+            continue
+        if geometry_center_in_regions(box, preserve_regions):
             continue
         box_id = box.get("id")
         if not box_id or not _region_overlaps_box(region, box):
@@ -341,12 +345,15 @@ class OCRService:
             manifest = load_manifest_raw(chapter_id)
             items: list[tuple[int, str]] = []
             for page_index, page in enumerate(manifest.get("pages", [])):
-                if page.get("skipped"):
+                if page.get("skipped") or page.get("process_required"):
                     continue
+                preserve_regions = page_preserve_regions(page)
                 for box in page.get("boxes", []) or []:
                     if not isinstance(box, dict) or box.get("removed"):
                         continue
                     if box.get("ocr_eligible") is False:
+                        continue
+                    if geometry_center_in_regions(box, preserve_regions):
                         continue
                     if ocr_target_skip_reason(box):
                         continue
@@ -464,11 +471,15 @@ class OCRService:
             page = pages[page_index]
             if page.get("skipped"):
                 raise ValueError("Cannot OCR a skipped page")
+            if page.get("process_required"):
+                raise ValueError("Cannot OCR a page that requires processing")
             box = _find_box(page, box_id)
             if box is None or box.get("removed"):
                 raise ValueError(f"OCR target box not found: {box_id}")
             if box.get("ocr_eligible") is False:
                 raise ValueError(f"OCR target box is not eligible: {box_id}")
+            if geometry_center_in_regions(box, page_preserve_regions(page)):
+                raise ValueError(f"OCR target box is inside a preserve region: {box_id}")
             original_value = page.get("original")
             if not original_value:
                 raise FileNotFoundError("Original page image is not configured")
@@ -768,7 +779,11 @@ class OCRService:
                 source_revision=source_revision,
                 original_revision=original_revision,
             )
+            if page.get("skipped") or page.get("process_required"):
+                raise OCRResultStale("Page became unavailable while OCR was running")
             target = _find_box(page, box_id)
+            if target is not None and geometry_center_in_regions(target, page_preserve_regions(page)):
+                raise OCRResultStale("OCR target entered a preserve region while OCR was running")
             if self._box_changed(target, box_snapshot):
                 raise OCRResultStale("OCR target box changed while OCR was running")
             _check_cancelled(cancel_event)
@@ -879,6 +894,10 @@ class OCRService:
             obj = _find_text_object(page, text_object_id)
             if obj is None:
                 raise ValueError(f"Text object not found {text_object_id!r}")
+            if page.get("skipped") or page.get("process_required"):
+                raise ValueError("Cannot OCR this page before processing")
+            if text_object_in_preserve_region(page, obj):
+                raise ValueError("Cannot OCR a text object inside a preserve region")
             original_value = page.get("original")
             if not original_value:
                 raise FileNotFoundError("Original page image is not configured")
@@ -944,6 +963,8 @@ class OCRService:
             page = pages[page_index]
             obj = _find_text_object(page, text_object_id)
             if obj is None:
+                return manifest
+            if page.get("skipped") or page.get("process_required") or text_object_in_preserve_region(page, obj):
                 return manifest
             if self._group_result_stale(page, obj, snapshot, original_revision):
                 logger.warning(

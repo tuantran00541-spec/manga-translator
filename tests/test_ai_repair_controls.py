@@ -1,27 +1,4 @@
-from pathlib import Path
-
-
-def rep(path, old, new, count=1):
-    p = Path(path)
-    text = p.read_text(encoding="utf-8")
-    found = text.count(old)
-    if found != count:
-        raise RuntimeError(f"{path}: expected {count} x {old[:90]!r}, found {found}")
-    p.write_text(text.replace(old, new, count), encoding="utf-8")
-
-
-def splice(path, start_marker, end_marker, replacement):
-    p = Path(path)
-    text = p.read_text(encoding="utf-8")
-    start = text.find(start_marker)
-    if start < 0:
-        raise RuntimeError(f"{path}: missing start marker {start_marker!r}")
-    end = text.find(end_marker, start)
-    if end < 0:
-        raise RuntimeError(f"{path}: missing end marker {end_marker!r}")
-    p.write_text(text[:start] + replacement + text[end:], encoding="utf-8")
-# Focused synthetic contract tests.
-Path("tests/test_ai_repair_controls.py").write_text(r'''from contextlib import nullcontext
+from contextlib import nullcontext
 
 import numpy as np
 import pytest
@@ -152,6 +129,3 @@ def test_preserve_change_requires_reprocessing(monkeypatch):
     monkeypatch.setattr(module.pipeline, "_sync_output_dir", lambda *_a, **_k: None)
     current = module._set_page_preserve_regions("abcd1234", 0, [RegionModel(x1=1, y1=1, x2=10, y2=10)])["pages"][0]
     assert current["process_required"] is True and current["clean"] is None
-''', encoding="utf-8")
-
-print("preserve-region design patch applied")

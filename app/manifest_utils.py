@@ -28,7 +28,7 @@ from app.parameters import (
 )
 from app.security import validate_chapter_id
 
-MANIFEST_SCHEMA_VERSION = 3
+MANIFEST_SCHEMA_VERSION = 4
 
 _STALE_TEMP_PATTERNS = (
     "manifest.json.*.tmp",
@@ -512,6 +512,22 @@ def normalize_manifest_schema(manifest: dict) -> bool:
         if not isinstance(page, dict):
             continue
 
+        legacy_regions = page.pop("excluded_regions", None)
+        preserve_regions = page.get("preserve_regions")
+        if not isinstance(preserve_regions, list):
+            page["preserve_regions"] = (
+                copy.deepcopy(legacy_regions) if isinstance(legacy_regions, list) else []
+            )
+            changed = True
+        elif isinstance(legacy_regions, list) and legacy_regions and not preserve_regions:
+            page["preserve_regions"] = copy.deepcopy(legacy_regions)
+            changed = True
+        elif legacy_regions is not None:
+            changed = True
+        if page.get("process_required") is None:
+            page["process_required"] = bool(not page.get("skipped") and not page.get("clean"))
+            changed = True
+
         if page.get("width") is None or page.get("height") is None:
             dims = _try_image_dimensions(page.get("original"))
             if dims is not None:
@@ -775,7 +791,8 @@ def capture_processing_state(manifest: dict, page_index: int, processed_dir: Pat
     return {
         "original": page.get("original"),
         "skipped": page.get("skipped", False),
-        "excluded_regions": copy.deepcopy(page.get("excluded_regions", [])),
+        "process_required": bool(page.get("process_required", False)),
+        "preserve_regions": copy.deepcopy(page.get("preserve_regions", [])),
         "boxes": copy.deepcopy(page.get("boxes", [])),
         "manual_mask": page.get("manual_mask"),
         "manual_lama_mask": page.get("manual_lama_mask"),

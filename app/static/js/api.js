@@ -346,8 +346,8 @@ async function toggleSkip(pageIndex, card, btn) {
   const newSkipped = !page.skipped;
 
   try {
-    if (typeof window.flushExcludedRegionSaves === "function") {
-      await window.flushExcludedRegionSaves(chapterId, pageIndex);
+    if (typeof window.flushPreserveRegionSaves === "function") {
+      await window.flushPreserveRegionSaves(chapterId, pageIndex);
     }
     if (chapterId !== currentChapterId) return;
     const resp = await fetch("/api/skip_pages", {
@@ -423,13 +423,13 @@ async function _processSelectedPagesOnce() {
   if (btn) btn.disabled = true;
 
   try {
-    if (btn) btn.textContent = "Đang lưu vùng loại trừ…";
-    if (typeof window.flushExcludedRegionSaves === "function") {
-      await window.flushExcludedRegionSaves(chapterId);
+    if (btn) btn.textContent = "Đang lưu vùng giữ nguyên…";
+    if (typeof window.flushPreserveRegionSaves === "function") {
+      await window.flushPreserveRegionSaves(chapterId);
     }
   } catch (err) {
     showToast(
-      "Không thể bắt đầu xử lý vì vùng loại trừ chưa được lưu: " + err.message,
+      "Không thể bắt đầu xử lý vì vùng giữ nguyên chưa được lưu: " + err.message,
       "error",
     );
     if (btn) {
@@ -689,11 +689,11 @@ async function loadFonts() {
   }
 }
 
-const _excludedRegionSaveStates = new Map();
+const _preserveRegionSaveStates = new Map();
 
-function _cloneExcludedRegions(excludedRegions) {
-  if (!Array.isArray(excludedRegions)) return [];
-  return excludedRegions.map((region) => ({
+function _clonePreserveRegions(preserveRegions) {
+  if (!Array.isArray(preserveRegions)) return [];
+  return preserveRegions.map((region) => ({
     x1: Number(region.x1),
     y1: Number(region.y1),
     x2: Number(region.x2),
@@ -701,21 +701,21 @@ function _cloneExcludedRegions(excludedRegions) {
   }));
 }
 
-function _excludedRegionSaveKey(chapterId, pageIndex) {
+function _preserveRegionSaveKey(chapterId, pageIndex) {
   return `${chapterId}:${pageIndex}`;
 }
 
-async function _drainExcludedRegionSaves(state) {
+async function _drainPreserveRegionSaves(state) {
   while (state.persistedVersion < state.version) {
     const requestVersion = state.version;
-    const regions = _cloneExcludedRegions(state.regions);
-    const resp = await fetch("/api/save_excluded_regions", {
+    const regions = _clonePreserveRegions(state.regions);
+    const resp = await fetch("/api/save_preserve_regions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         chapter_id: state.chapterId,
         page_index: state.pageIndex,
-        excluded_regions: regions,
+        preserve_regions: regions,
       }),
     });
     const data = await parseApiResponse(resp);
@@ -729,29 +729,33 @@ async function _drainExcludedRegionSaves(state) {
       && state.chapterId === currentChapterId
       && currentManifest?.pages?.[state.pageIndex]
     ) {
-      const serverRegions = data?.pages?.[state.pageIndex]?.excluded_regions;
-      currentManifest.pages[state.pageIndex].excluded_regions =
-        _cloneExcludedRegions(Array.isArray(serverRegions) ? serverRegions : regions);
+      const serverPage = data?.pages?.[state.pageIndex];
+      if (serverPage && typeof serverPage === "object") {
+        Object.assign(currentManifest.pages[state.pageIndex], serverPage);
+      }
+      const serverRegions = serverPage?.preserve_regions;
+      currentManifest.pages[state.pageIndex].preserve_regions =
+        _clonePreserveRegions(Array.isArray(serverRegions) ? serverRegions : regions);
     }
   }
 }
 
-function _ensureExcludedRegionSave(state) {
+function _ensurePreserveRegionSave(state) {
   if (state.promise) return state.promise;
-  const key = _excludedRegionSaveKey(state.chapterId, state.pageIndex);
-  state.promise = _drainExcludedRegionSaves(state).finally(() => {
+  const key = _preserveRegionSaveKey(state.chapterId, state.pageIndex);
+  state.promise = _drainPreserveRegionSaves(state).finally(() => {
     state.promise = null;
     if (state.persistedVersion >= state.version) {
-      _excludedRegionSaveStates.delete(key);
+      _preserveRegionSaveStates.delete(key);
     }
   });
   return state.promise;
 }
 
-function saveExcludedRegions(pageIndex, excludedRegions) {
+function savePreserveRegions(pageIndex, preserveRegions) {
   const chapterId = currentChapterId;
-  const key = _excludedRegionSaveKey(chapterId, pageIndex);
-  let state = _excludedRegionSaveStates.get(key);
+  const key = _preserveRegionSaveKey(chapterId, pageIndex);
+  let state = _preserveRegionSaveStates.get(key);
   if (!state) {
     state = {
       chapterId,
@@ -762,31 +766,31 @@ function saveExcludedRegions(pageIndex, excludedRegions) {
       notifiedVersion: 0,
       promise: null,
     };
-    _excludedRegionSaveStates.set(key, state);
+    _preserveRegionSaveStates.set(key, state);
   }
-  state.regions = _cloneExcludedRegions(excludedRegions);
+  state.regions = _clonePreserveRegions(preserveRegions);
   state.version += 1;
   const requestedVersion = state.version;
-  return _ensureExcludedRegionSave(state).catch((err) => {
+  return _ensurePreserveRegionSave(state).catch((err) => {
     if (state.notifiedVersion < requestedVersion) {
       state.notifiedVersion = state.version;
-      showToast("Không lưu được vùng loại trừ: " + err.message, "error");
+      showToast("Không lưu được vùng giữ nguyên: " + err.message, "error");
     }
   });
 }
 
-async function flushExcludedRegionSaves(chapterId = currentChapterId, pageIndex) {
+async function flushPreserveRegionSaves(chapterId = currentChapterId, pageIndex) {
   const jobs = [];
-  for (const state of _excludedRegionSaveStates.values()) {
+  for (const state of _preserveRegionSaveStates.values()) {
     if (state.chapterId !== chapterId) continue;
     if (pageIndex !== undefined && state.pageIndex !== pageIndex) continue;
     if (state.persistedVersion < state.version || state.promise) {
-      jobs.push(_ensureExcludedRegionSave(state));
+      jobs.push(_ensurePreserveRegionSave(state));
     }
   }
   await Promise.all(jobs);
 }
-window.flushExcludedRegionSaves = flushExcludedRegionSaves;
+window.flushPreserveRegionSaves = flushPreserveRegionSaves;
 
 async function resetManualMask(pageIndex, img, canvas, ctx, resetBtn) {
   const chapterId = currentChapterId;

@@ -117,7 +117,7 @@ window._processSelectedPagesOnce = async function serverOwnedProcessSelectedPage
   processingButtons().forEach((btn) => {
     if (!btn || !btn.isConnected) return;
     btn.setAttribute("aria-busy", "true");
-    btn.textContent = "Đang lưu vùng loại trừ…";
+    btn.textContent = "Đang lưu vùng giữ nguyên…";
   });
 
   try {
