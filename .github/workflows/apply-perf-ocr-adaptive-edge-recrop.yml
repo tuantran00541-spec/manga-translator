@@ -169,7 +169,7 @@ jobs:
         run: |
           python -m compileall -q app/ocr/service.py tests/test_ocr_pipeline_regressions.py
           python -m pip install -q numpy==1.26.4 opencv-python-headless==4.10.0.84 pytest==8.3.5 pydantic==2.9.2 filelock==3.16.1
-          pytest -q tests/test_ocr_pipeline_regressions.py
+          PYTHONPATH=. pytest -q tests/test_ocr_pipeline_regressions.py
 
       - name: Commit source only
         run: |
