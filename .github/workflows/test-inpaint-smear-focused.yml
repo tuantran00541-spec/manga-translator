@@ -7,6 +7,8 @@ on:
     paths:
       - .github/workflows/test-inpaint-smear-focused.yml
       - app/inpaint/fast_lama_inpainter.py
+      - app/optimized_pipeline.py
+      - app/parameters.py
       - tests/test_fast_inpaint_paths.py
   workflow_dispatch:
 
@@ -139,12 +141,18 @@ jobs:
               page = state["pages"][page_index]
               raw = read_image(Path(page["original"]))
               clean = read_image(Path(page["clean"]))
+              metrics = page.get("processing_metrics") or {}
+              repair = metrics.get("residue_repair") or {}
+              if int(repair.get("outside_authority_changed_channel_values", 0) or 0) != 0:
+                  raise RuntimeError(
+                      f"page {page_index}: residue repair changed pixels outside authority: {repair}"
+                  )
               report["pages"].setdefault(str(page_index), {
                   "source_page": key[0],
                   "slice_index": key[1],
                   "detection_state": page.get("detection_state"),
                   "detection_issues": page.get("detection_issues"),
-                  "processing_metrics": page.get("processing_metrics"),
+                  "processing_metrics": metrics,
               })
 
               x1, y1, x2, y2 = target["roi"]
