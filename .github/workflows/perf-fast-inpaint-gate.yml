@@ -30,4 +30,5 @@ jobs:
             tests/test_cleanup_safety_regressions.py \
             tests/test_inpaint_preload.py \
             tests/test_adaptive_lama_runtime.py \
-            tests/test_ocr_pipeline_regressions.py
+            tests/test_ocr_pipeline_regressions.py \
+            tests/test_ai_repair_controls.py
