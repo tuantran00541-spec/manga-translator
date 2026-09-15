@@ -1,0 +1,298 @@
+name: Perf fresh chapter 29 OCR audit
+
+on:
+  push:
+    branches:
+      - perf/bubble-fastpath-roi-lama
+    paths:
+      - .github/workflows/perf-chapter29-ocr-audit.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  PYTHONUNBUFFERED: "1"
+  CHAPTER_ID: c0292900
+  SOURCE_RUN_ID: "34931429777"
+  SOURCE_ARTIFACT: chapter29-fresh-clean-34931429777
+  PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK: "True"
+  MANGA_PPOCRV6_TIER: small
+  MANGA_OCR_TARGET_SELECTION: all
+
+jobs:
+  ocr-audit:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: perf/bubble-fastpath-roi-lama
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install production English OCR runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install \
+            numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 \
+            paddleocr==3.7.0 paddlepaddle==3.2.2 \
+            pydantic==2.9.2 filelock==3.16.1 loguru==0.7.2 psutil==6.1.1 \
+            fastapi==0.115.0 requests==2.32.3
+
+      - name: Download fresh chapter 29 clean artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.SOURCE_ARTIFACT }}
+          run-id: ${{ env.SOURCE_RUN_ID }}
+          github-token: ${{ github.token }}
+          path: .
+
+      - name: Run production OCR and build audit evidence
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+          import json, math, os, textwrap, time
+          from collections import Counter
+          from pathlib import Path
+
+          from PIL import Image, ImageDraw, ImageFont
+
+          from app.manifest_utils import load_manifest_raw
+          from app.ocr.multi_lang_ocr import MultiLangOCR
+          from app.ocr.service import OCRService, _ocr_crop_bounds, ocr_target_skip_reason
+          from app.image_io import read_image
+
+          chapter_id = os.environ['CHAPTER_ID']
+          out = Path('benchmark-results/chapter29-ocr')
+          crops_dir = out / 'ocr-crops'
+          overlay_dir = out / 'target-overlays'
+          crops_dir.mkdir(parents=True, exist_ok=True)
+          overlay_dir.mkdir(parents=True, exist_ok=True)
+
+          manifest_path = Path('data/processed') / chapter_id / 'manifest.json'
+          if not manifest_path.is_file():
+              raise RuntimeError(f'missing source manifest: {manifest_path}')
+
+          service = OCRService(MultiLangOCR(), None)
+          plan = service.plan_chapter(chapter_id)
+          print(f'OCR plan targets: {len(plan)}')
+          if not plan:
+              raise RuntimeError('OCR plan is empty')
+
+          started = time.perf_counter()
+          results = []
+          errors = []
+          for n, (page_index, box_id) in enumerate(plan, start=1):
+              t0 = time.perf_counter()
+              try:
+                  result = service.inspect_box_id(
+                      chapter_id, page_index, box_id, 'en', force=True
+                  )
+                  result['elapsed_ms'] = round((time.perf_counter() - t0) * 1000.0, 3)
+                  results.append(result)
+              except Exception as exc:
+                  errors.append({
+                      'page_index': page_index,
+                      'box_id': box_id,
+                      'error': f'{type(exc).__name__}: {exc}',
+                  })
+              if n == 1 or n % 10 == 0 or n == len(plan):
+                  print(f'ocr {n}/{len(plan)} results={len(results)} errors={len(errors)}')
+          wall_s = time.perf_counter() - started
+
+          manifest = load_manifest_raw(chapter_id)
+          by_id = {}
+          for pi, page in enumerate(manifest.get('pages', [])):
+              for bi, box in enumerate(page.get('boxes') or []):
+                  if isinstance(box, dict) and box.get('id'):
+                      by_id[str(box['id'])] = (pi, bi, page, box)
+
+          result_by_id = {str(r['box_id']): r for r in results}
+          quality_counts = Counter(str(r.get('quality') or 'unknown') for r in results)
+          reason_counts = Counter(str(r.get('quality_reason') or 'none') for r in results)
+          target_mode_counts = Counter(str(r.get('target_mode') or 'unknown') for r in results)
+          empty = [r for r in results if not str(r.get('text') or '').strip()]
+          low_conf = [
+              r for r in results
+              if r.get('confidence') is not None and float(r['confidence']) < 0.80
+          ]
+          review_or_reject = [r for r in results if str(r.get('quality')) in {'review', 'reject'}]
+          retried = [r for r in results if bool(r.get('retry_applied'))]
+
+          skipped_reason_counts = Counter()
+          all_candidate_boxes = 0
+          ocr_eligible_boxes = 0
+          safe_boxes = 0
+          for page in manifest.get('pages', []):
+              for box in page.get('boxes') or []:
+                  if not isinstance(box, dict) or box.get('removed'):
+                      continue
+                  all_candidate_boxes += 1
+                  if bool(box.get('safe_to_inpaint')):
+                      safe_boxes += 1
+                  if box.get('ocr_eligible') is False:
+                      skipped_reason_counts['ocr_eligible_false'] += 1
+                      continue
+                  ocr_eligible_boxes += 1
+                  reason = ocr_target_skip_reason(box)
+                  if reason:
+                      skipped_reason_counts[reason] += 1
+
+          report = {
+              'benchmark': 'fresh-real-chapter-ocr-audit',
+              'chapter_id': chapter_id,
+              'source_run_id': int(os.environ['SOURCE_RUN_ID']),
+              'source_artifact': os.environ['SOURCE_ARTIFACT'],
+              'lang': 'en',
+              'planned_targets': len(plan),
+              'completed_targets': len(results),
+              'errors': errors,
+              'wall_s': round(wall_s, 3),
+              'mean_ms_per_target': round(sum(float(r['elapsed_ms']) for r in results) / max(1, len(results)), 3),
+              'quality_counts': dict(quality_counts),
+              'quality_reason_counts': dict(reason_counts),
+              'target_mode_counts': dict(target_mode_counts),
+              'empty_count': len(empty),
+              'low_conf_lt_0_80_count': len(low_conf),
+              'review_or_reject_count': len(review_or_reject),
+              'retry_applied_count': len(retried),
+              'candidate_boxes': all_candidate_boxes,
+              'safe_boxes': safe_boxes,
+              'ocr_eligible_boxes': ocr_eligible_boxes,
+              'batch_skip_reasons': dict(skipped_reason_counts),
+              'results': results,
+          }
+          (out / 'report.json').write_text(
+              json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8'
+          )
+
+          font = ImageFont.load_default()
+          def wrap_lines(text, width=54, max_lines=8):
+              text = str(text or '').replace('\r', '')
+              lines = []
+              for paragraph in text.split('\n') or ['']:
+                  lines.extend(textwrap.wrap(paragraph, width=width) or [''])
+              return lines[:max_lines]
+
+          # OCR crop cards: actual raw crop + machine transcription/quality.
+          cards = []
+          for r in results:
+              box_id = str(r['box_id'])
+              info = by_id.get(box_id)
+              if info is None:
+                  continue
+              pi, bi, page, box = info
+              image = read_image(Path(page['original']))
+              x1, y1, x2, y2 = _ocr_crop_bounds(image.shape, box)
+              # read_image is BGR; PIL expects RGB.
+              crop = Image.fromarray(image[y1:y2, x1:x2, ::-1]).convert('RGB')
+              crop.thumbnail((520, 260), Image.Resampling.LANCZOS)
+              text_lines = wrap_lines(r.get('text') or '')
+              info_lines = [
+                  f"p{pi:03d} b{bi} {box.get('semantic_type')} {box_id}",
+                  f"q={r.get('quality')} reason={r.get('quality_reason')} conf={r.get('confidence')}",
+                  f"mode={r.get('target_mode')} regions={r.get('region_count')} coverage={r.get('coverage')} retry={r.get('retry_applied')}",
+                  'OCR:',
+                  *text_lines,
+              ]
+              text_h = 16 * len(info_lines) + 12
+              card_w = max(620, crop.width + 20)
+              card_h = crop.height + text_h + 12
+              card = Image.new('RGB', (card_w, card_h), 'white')
+              card.paste(crop, (10, 8))
+              d = ImageDraw.Draw(card)
+              y = crop.height + 14
+              for line in info_lines:
+                  d.text((10, y), line, fill='black', font=font)
+                  y += 16
+              cards.append(card)
+
+          for start in range(0, len(cards), 9):
+              group = cards[start:start+9]
+              cols = 3
+              rows = math.ceil(len(group) / cols)
+              cw = max(c.width for c in group)
+              ch = max(c.height for c in group)
+              sheet = Image.new('RGB', (cols*cw, rows*ch), 'white')
+              for j, card in enumerate(group):
+                  sheet.paste(card, ((j % cols) * cw, (j // cols) * ch))
+              sheet.save(crops_dir / f'ocr-{start:03d}-{start+len(group)-1:03d}.jpg', quality=92)
+
+          # Full-page target overlays. Green-ish distinction is not important;
+          # use two line widths instead of relying on color for interpretation.
+          overlay_cards = []
+          planned_ids = set(result_by_id)
+          for pi, page in enumerate(manifest.get('pages', [])):
+              with Image.open(page['original']) as im:
+                  raw = im.convert('RGB')
+              draw = ImageDraw.Draw(raw)
+              planned_count = 0
+              skipped_count = 0
+              for box in page.get('boxes') or []:
+                  if not isinstance(box, dict) or box.get('removed') or not box.get('id'):
+                      continue
+                  coords = [int(box.get(k) or 0) for k in ('x1','y1','x2','y2')]
+                  if str(box['id']) in planned_ids:
+                      planned_count += 1
+                      draw.rectangle(coords, outline='red', width=5)
+                  elif box.get('ocr_eligible') is not False:
+                      skipped_count += 1
+                      draw.rectangle(coords, outline='blue', width=2)
+              raw.thumbnail((500, 720), Image.Resampling.LANCZOS)
+              header = 44
+              card = Image.new('RGB', (raw.width, raw.height + header), 'white')
+              d = ImageDraw.Draw(card)
+              d.text((5, 5), f'p{pi:03d} OCR targets={planned_count} review/skip={skipped_count}', fill='black', font=font)
+              d.text((5, 21), 'thick red=OCR target, thin blue=detected but batch-skipped', fill='black', font=font)
+              card.paste(raw, (0, header))
+              overlay_cards.append(card)
+
+          for start in range(0, len(overlay_cards), 8):
+              group = overlay_cards[start:start+8]
+              cols = 2
+              rows = math.ceil(len(group) / cols)
+              cw = max(c.width for c in group)
+              ch = max(c.height for c in group)
+              sheet = Image.new('RGB', (cols*cw, rows*ch), 'white')
+              for j, card in enumerate(group):
+                  sheet.paste(card, ((j % cols) * cw, (j // cols) * ch))
+              sheet.save(overlay_dir / f'targets-{start:03d}-{start+len(group)-1:03d}.jpg', quality=92)
+
+          # Separate shortlist for machine-flagged weak cases.
+          shortlist = sorted(
+              review_or_reject,
+              key=lambda r: (
+                  0 if str(r.get('quality')) == 'reject' else 1,
+                  float(r.get('confidence')) if r.get('confidence') is not None else -1.0,
+              ),
+          )
+          (out / 'weak-cases.json').write_text(
+              json.dumps(shortlist, ensure_ascii=False, indent=2), encoding='utf-8'
+          )
+          print('OCR_AUDIT=' + json.dumps({
+              'planned': len(plan),
+              'completed': len(results),
+              'errors': len(errors),
+              'quality': dict(quality_counts),
+              'empty': len(empty),
+              'low_conf_lt_0_80': len(low_conf),
+              'review_or_reject': len(review_or_reject),
+              'retry': len(retried),
+              'wall_s': round(wall_s, 3),
+          }))
+          PY
+
+      - name: Upload OCR audit evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: chapter29-ocr-audit-${{ github.run_id }}
+          path: |
+            benchmark-results/chapter29-ocr/
+            data/processed/c0292900/manifest.json
+          retention-days: 7
+          compression-level: 6
+          if-no-files-found: error
