@@ -121,8 +121,8 @@ window._processSelectedPagesOnce = async function serverOwnedProcessSelectedPage
   });
 
   try {
-    if (typeof window.flushExcludedRegionSaves === "function") {
-      await window.flushExcludedRegionSaves(chapterId);
+    if (typeof window.flushPreserveRegionSaves === "function") {
+      await window.flushPreserveRegionSaves(chapterId);
     }
     if (chapterId !== currentChapterId) return;
 
