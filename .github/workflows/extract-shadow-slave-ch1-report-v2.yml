@@ -170,7 +170,7 @@ jobs:
           crops = sorted(root.rglob("ocr-crops/*.jpg"))
           crop_out = out / "ocr-crops"
           crop_out.mkdir(parents=True, exist_ok=True)
-          for source in crops[:12]:
+          for source in crops:
               shutil.copy2(source, crop_out / source.name)
 
           print("COMPACT_REPORT=" + json.dumps({
@@ -181,7 +181,7 @@ jobs:
               "boxes": compact["boxes"],
               "ocr": compact["ocr"],
               "weak_ocr_count": compact["weak_ocr_count"],
-              "copied_ocr_sheets": len(crops[:12]),
+              "copied_ocr_sheets": len(crops),
           }, ensure_ascii=False))
           PY
 
