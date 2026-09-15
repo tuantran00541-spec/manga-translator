@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   extract:
-    if: github.event.head_commit.message == 'ci(perf): extract Shadow Slave chapter 1 report'
+    if: github.event.head_commit.message == 'ci(perf)'
     runs-on: ubuntu-22.04
     timeout-minutes: 20
     steps:
