@@ -12,6 +12,13 @@ fast_path.write_text(text.replace(old, new, 1), encoding="utf-8")
 
 tests = Path("tests/test_fast_inpaint_paths.py")
 text = tests.read_text(encoding="utf-8")
+overlap_old = '    assert metrics["bubble_fast_fill_overlap_skips"] == 1\n'
+overlap_new = '    assert metrics["bubble_fast_fill_overlap_skips"] == 2\n'
+if text.count(overlap_old) != 1:
+    raise RuntimeError(
+        f"overlap expectation marker count={text.count(overlap_old)}"
+    )
+text = text.replace(overlap_old, overlap_new, 1)
 if "test_smooth_gradient_free_text_uses_reconstruction_without_lama" in text:
     raise RuntimeError("free-text test already exists")
 text += r'''
