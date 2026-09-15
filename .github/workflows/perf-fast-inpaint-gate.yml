@@ -21,7 +21,7 @@ jobs:
         run: python -m pip install -r requirements-test.txt
       - name: Compile candidate
         run: python -m compileall -q app
-      - name: Run fast processing candidate tests
+      - name: Run fast processing and OCR candidate tests
         run: |
           python -m pytest -q \
             tests/test_fast_inpaint_paths.py \
@@ -29,4 +29,5 @@ jobs:
             tests/test_parallel_focus_detector.py \
             tests/test_cleanup_safety_regressions.py \
             tests/test_inpaint_preload.py \
-            tests/test_adaptive_lama_runtime.py
+            tests/test_adaptive_lama_runtime.py \
+            tests/test_ocr_pipeline_regressions.py
