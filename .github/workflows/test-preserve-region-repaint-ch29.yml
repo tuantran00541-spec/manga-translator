@@ -6,6 +6,8 @@ on:
       - test/preserve-region-repaint
     paths:
       - .github/workflows/test-preserve-region-repaint-ch29.yml
+      - app/optimized_pipeline.py
+      - tests/test_repaint_original_context.py
   workflow_dispatch:
 
 permissions:
@@ -43,7 +45,10 @@ jobs:
             onnxruntime-openvino==1.24.1 psutil==6.1.1 loguru==0.7.2 \
             requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 playwright==1.47.0 \
             fastapi==0.115.0 'uvicorn[standard]==0.30.6' \
-            pydantic==2.9.2 filelock==3.16.1 python-multipart==0.0.12
+            pydantic==2.9.2 filelock==3.16.1 python-multipart==0.0.12 pytest==8.3.5
+
+      - name: Run repaint policy unit tests
+        run: python -m pytest tests/test_repaint_original_context.py -q
 
       - name: Restore detector and inpaint models
         id: models
@@ -183,7 +188,9 @@ jobs:
                   f"preserve region changed after processing: {preserve_changed} channel values"
               )
 
+          repaint_raw = read_image(Path(rp["original"])).copy()
           repaint_before = read_image(Path(rp["clean"])).copy()
+          cv2.imwrite(str(out / "p006-raw.png"), repaint_raw)
           cv2.imwrite(str(out / "p006-before-repaint.png"), repaint_before)
 
           asyncio.run(
@@ -210,6 +217,32 @@ jobs:
           repaint_mean_diff = float(repaint_diff.mean())
           if repaint_changed == 0:
               raise RuntimeError("LaMa repaint made no pixel changes in requested region")
+
+          authority = np.zeros(repaint_before.shape[:2], dtype=np.uint8)
+          authority[r["y1"]:r["y2"], r["x1"]:r["x2"]] = 255
+          full_diff = cv2.absdiff(repaint_before, repaint_after)
+          repaint_outside_changed = int(np.count_nonzero(full_diff[authority == 0]))
+          if repaint_outside_changed != 0:
+              raise RuntimeError(
+                  "LaMa repaint changed pixels outside the explicit user repaint mask: "
+                  f"{repaint_outside_changed} channel values"
+              )
+
+          def row_band_metrics(roi: np.ndarray) -> dict:
+              gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY).astype(np.float32)
+              row_mean = gray.mean(axis=1)
+              first = np.diff(row_mean)
+              second = np.diff(row_mean, n=2)
+              return {
+                  "row_diff_std": round(float(first.std()) if first.size else 0.0, 6),
+                  "row_second_abs_mean": round(
+                      float(np.abs(second).mean()) if second.size else 0.0,
+                      6,
+                  ),
+              }
+
+          banding_before = row_band_metrics(before_roi)
+          banding_after = row_band_metrics(after_roi)
 
           # Export compact human-review evidence.
           font = ImageFont.load_default()
@@ -249,8 +282,15 @@ jobs:
               repaint_before[ry1:ry2, rx1:rx2],
               repaint_after[ry1:ry2, rx1:rx2],
               "BEFORE REPAINT",
-              "AFTER LAMA REPAINT",
+              "AFTER ORIGINAL-CONTEXT LAMA",
               out / "repaint-review.jpg",
+          )
+          panel_pair(
+              repaint_raw[ry1:ry2, rx1:rx2],
+              repaint_after[ry1:ry2, rx1:rx2],
+              "RAW SOURCE",
+              "AFTER ORIGINAL-CONTEXT LAMA",
+              out / "repaint-source-review.jpg",
           )
 
           # Save selected full slices and the final manifest for independent audit.
@@ -288,10 +328,13 @@ jobs:
               },
               "repaint": {
                   "region": repaint.model_dump(),
-                  "mode": "lama",
+                  "mode": "lama-original-context",
                   "changed_channel_values": repaint_changed,
+                  "outside_authority_changed_channel_values": repaint_outside_changed,
                   "max_abs_channel_diff": repaint_max_diff,
                   "mean_abs_channel_diff": round(repaint_mean_diff, 6),
+                  "banding_before": banding_before,
+                  "banding_after": banding_after,
                   "clean_revision": rp_after.get("clean_revision"),
                   "manual_lama_mask": rp_after.get("manual_lama_mask"),
               },
