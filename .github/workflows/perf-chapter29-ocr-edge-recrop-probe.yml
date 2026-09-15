@@ -1,0 +1,203 @@
+name: Perf chapter 29 OCR edge recrop probe
+
+on:
+  push:
+    branches:
+      - perf/bubble-fastpath-roi-lama
+    paths:
+      - .github/workflows/perf-chapter29-ocr-edge-recrop-probe.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  PYTHONUNBUFFERED: "1"
+  CHAPTER_ID: c0292900
+  SOURCE_RUN_ID: "34931429777"
+  SOURCE_ARTIFACT: chapter29-fresh-clean-34931429777
+  CANDIDATE_RUN_ID: "34941991640"
+  CANDIDATE_ARTIFACT: chapter29-ocr-v2-ab-34941991640
+  PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK: "True"
+  MANGA_PPOCRV6_TIER: small
+  MANGA_OCR_TARGET_SELECTION: all
+
+jobs:
+  edge-recrop-probe:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: perf/bubble-fastpath-roi-lama
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install production OCR runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install \
+            numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 \
+            paddleocr==3.7.0 paddlepaddle==3.2.2 \
+            pydantic==2.9.2 filelock==3.16.1 loguru==0.7.2 psutil==6.1.1 \
+            fastapi==0.115.0 requests==2.32.3 chardet==5.2.0
+
+      - name: Download fresh chapter 29 source artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.SOURCE_ARTIFACT }}
+          run-id: ${{ env.SOURCE_RUN_ID }}
+          github-token: ${{ github.token }}
+          path: .
+
+      - name: Download current OCR candidate artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.CANDIDATE_ARTIFACT }}
+          run-id: ${{ env.CANDIDATE_RUN_ID }}
+          github-token: ${{ github.token }}
+          path: candidate
+
+      - name: Probe expanded OCR-only crops
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+          import json, os, re, time
+          from pathlib import Path
+
+          import cv2
+
+          from app.image_io import read_image
+          from app.manifest_utils import load_manifest_raw
+          from app.ocr.multi_lang_ocr import MultiLangOCR
+          from app.ocr.quality import classify_ocr_quality
+          from app.ocr.service import OCRService, _ocr_crop_bounds, ocr_target_mode_for_box
+
+          chapter_id = os.environ['CHAPTER_ID']
+          candidate_path = Path(
+              'candidate/benchmark-results/chapter29-ocr-v2-ab/candidate-results.json'
+          )
+          if not candidate_path.is_file():
+              raise RuntimeError(f'missing candidate results: {candidate_path}')
+          candidate = json.loads(candidate_path.read_text(encoding='utf-8'))
+          edge = [
+              row for row in candidate
+              if str(row.get('quality_reason') or '') == 'crop-edge-text'
+          ]
+          print('EDGE_TARGETS=' + json.dumps([
+              [r.get('page_index'), r.get('box_id'), r.get('text')] for r in edge
+          ], ensure_ascii=False))
+          if not edge:
+              raise RuntimeError('no crop-edge targets found')
+
+          expected = {
+              'box_381010714d0a467b': 'SAVE THIS CHILD',
+              'box_f8921f81c2b74c75': '…HUH?',
+          }
+          manifest = load_manifest_raw(chapter_id)
+          engine = MultiLangOCR()
+          paddings = (16, 24, 32, 48, 64)
+          probes = []
+
+          def normalize(text):
+              text = str(text or '').upper().replace('⋯', '…')
+              text = text.replace('...', '…')
+              return re.sub(r'\s+', ' ', text).strip()
+
+          def similarity(a, b):
+              from difflib import SequenceMatcher
+              return round(SequenceMatcher(None, normalize(a), normalize(b)).ratio(), 4)
+
+          for base in edge:
+              page_index = int(base['page_index'])
+              box_id = str(base['box_id'])
+              page = manifest['pages'][page_index]
+              box = next(
+                  b for b in page.get('boxes', [])
+                  if str(b.get('id')) == box_id
+              )
+              image = read_image(Path(page['original']))
+              h, w = image.shape[:2]
+              bx1, by1, bx2, by2 = _ocr_crop_bounds(image.shape, box)
+              target_mode = ocr_target_mode_for_box(box)
+              truth = expected.get(box_id)
+              target_result = {
+                  'page_index': page_index,
+                  'box_id': box_id,
+                  'expected': truth,
+                  'base': {
+                      'bounds': [bx1, by1, bx2, by2],
+                      'text': base.get('text'),
+                      'quality': base.get('quality'),
+                      'quality_reason': base.get('quality_reason'),
+                      'confidence': base.get('confidence'),
+                      'similarity': similarity(base.get('text'), truth) if truth else None,
+                  },
+                  'variants': [],
+              }
+              for pad in paddings:
+                  x1 = max(0, bx1 - pad)
+                  y1 = max(0, by1 - pad)
+                  x2 = min(w, bx2 + pad)
+                  y2 = min(h, by2 + pad)
+                  if (x1, y1, x2, y2) == (bx1, by1, bx2, by2):
+                      continue
+                  crop = image[y1:y2, x1:x2]
+                  rgb = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
+                  started = time.perf_counter()
+                  result = engine.read_detailed(rgb, 'en', target_mode=target_mode)
+                  elapsed_ms = round((time.perf_counter() - started) * 1000.0, 3)
+                  text = str(getattr(result, 'text', '') or '').strip()
+                  coverage = OCRService._mask_text_coverage(
+                      box, (x1, y1, x2, y2), result
+                  )
+                  checked = classify_ocr_quality(
+                      text,
+                      'en',
+                      confidence=getattr(result, 'confidence', None),
+                      coverage=coverage,
+                  )
+                  quality, reason = OCRService._conservative_quality(
+                      str(getattr(result, 'quality', 'unknown') or 'unknown'),
+                      getattr(result, 'quality_reason', None),
+                      checked.status,
+                      checked.reason,
+                  )
+                  row = {
+                      'padding': pad,
+                      'bounds': [x1, y1, x2, y2],
+                      'text': text,
+                      'quality': quality,
+                      'quality_reason': reason,
+                      'confidence': getattr(result, 'confidence', None),
+                      'coverage': coverage,
+                      'region_count': getattr(result, 'region_count', None),
+                      'retry_applied': bool(getattr(result, 'retry_applied', False)),
+                      'elapsed_ms': elapsed_ms,
+                      'similarity': similarity(text, truth) if truth else None,
+                  }
+                  target_result['variants'].append(row)
+                  print('PROBE=' + json.dumps({
+                      'page': page_index,
+                      'box': box_id,
+                      **row,
+                  }, ensure_ascii=False))
+              probes.append(target_result)
+
+          out = Path('benchmark-results/chapter29-ocr-edge-recrop')
+          out.mkdir(parents=True, exist_ok=True)
+          (out / 'probe.json').write_text(
+              json.dumps(probes, ensure_ascii=False, indent=2), encoding='utf-8'
+          )
+          PY
+
+      - name: Upload edge recrop probe
+        uses: actions/upload-artifact@v4
+        with:
+          name: chapter29-ocr-edge-recrop-${{ github.run_id }}
+          path: benchmark-results/chapter29-ocr-edge-recrop/
+          retention-days: 7
+          if-no-files-found: error
