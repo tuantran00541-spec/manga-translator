@@ -1,0 +1,453 @@
+name: Apply native LaMa residue candidate
+
+on:
+  push:
+    branches:
+      - test/preserve-region-repaint
+    paths:
+      - .github/workflows/apply-native-residue-repair.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: test/preserve-region-repaint
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Apply candidate patch
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != 1:
+                  raise RuntimeError(f"{path}: expected one replacement, found {count}: {old[:80]!r}")
+              p.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          replace_once(
+              "app/parameters.py",
+              '    "MANGA_DYNAMIC_LAMA_MAX_SINGLE_CROP_DIM", 512, minimum=128, maximum=4096\n',
+              '    "MANGA_DYNAMIC_LAMA_MAX_SINGLE_CROP_DIM", 768, minimum=128, maximum=4096\n',
+          )
+          replace_once(
+              "app/parameters.py",
+              '    "MANGA_FIXED_LAMA_TILE_ASPECT", 1.6, minimum=1.0, maximum=20.0\n',
+              '    "MANGA_FIXED_LAMA_TILE_ASPECT", 2.0, minimum=1.0, maximum=20.0\n',
+          )
+
+          replace_once(
+              "app/optimized_pipeline.py",
+              "import uuid\nfrom pathlib import Path\n",
+              "import time\nimport uuid\nfrom pathlib import Path\n",
+          )
+          replace_once(
+              "app/optimized_pipeline.py",
+              "import cv2\nimport numpy as np\n\nfrom app.detector.sequential_fast_residue_detector import (\n",
+              "import cv2\nimport numpy as np\n\nfrom app.detector.bubble_detector import BubbleBox\nfrom app.detector.mask_builder import build_mask\nfrom app.detector.sequential_fast_residue_detector import (\n",
+          )
+          replace_once(
+              "app/optimized_pipeline.py",
+              "from app.manifest_utils import atomic_replace\n",
+              "from app.manifest_utils import atomic_replace\nfrom app.mask_store import decode_mask_value\n",
+          )
+          replace_once(
+              "app/optimized_pipeline.py",
+              "from app.region_policy import subtract_regions_from_mask\n",
+              "from app.region_policy import geometry_center_in_regions, subtract_regions_from_mask\n",
+          )
+
+          marker = "    def _do_reinpaint(\n"
+          helper = r'''    @staticmethod
+    def _residue_repair_effective_boxes(records: list[dict] | None) -> list[BubbleBox]:
+        """Rebuild the destructive detector authorities persisted by _process_page."""
+        boxes: list[BubbleBox] = []
+        for record in records or []:
+            if not isinstance(record, dict) or record.get("removed") or record.get("deferred_reason"):
+                continue
+            geometry_overridden = bool(record.get("geometry_overridden"))
+            if not (record.get("safe_to_inpaint") or geometry_overridden):
+                continue
+            try:
+                x1, y1 = int(record["x1"]), int(record["y1"])
+                x2, y2 = int(record["x2"]), int(record["y2"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            box_w, box_h = x2 - x1, y2 - y1
+            if box_w <= 0 or box_h <= 0:
+                continue
+            mask = decode_mask_value(record.get("mask"))
+            if mask is not None and mask.shape != (box_h, box_w):
+                mask = cv2.resize(mask, (box_w, box_h), interpolation=cv2.INTER_NEAREST)
+            box = BubbleBox(
+                x1,
+                y1,
+                x2,
+                y2,
+                float(record.get("confidence", 1.0)),
+                mask,
+                source_model=str(record.get("source_model") or "unknown"),
+                class_id=int(record.get("class_id") or 0),
+                class_name=str(record.get("class_name") or "unknown"),
+                semantic_type=str(record.get("semantic_type") or "unknown"),
+                mask_source=str(record.get("mask_source") or "none"),
+                safe_to_inpaint=True,
+                ocr_eligible=bool(record.get("ocr_eligible")),
+                needs_review=bool(record.get("needs_review")),
+                source_role=str(record.get("source_role") or "unknown"),
+                deferred_reason=None,
+            )
+            if geometry_overridden:
+                box.allow_rectangle_fallback = True
+            boxes.append(box)
+        return boxes
+
+    def _repair_post_inpaint_result(
+        self,
+        img_path: Path,
+        result: dict,
+        preserve_regions: list[dict] | None,
+    ) -> dict:
+        """Run one LaMa repair only where verified residue overlaps old authority.
+
+        The residue detector is evidence, never new destructive authority. Its
+        bbox only selects pixels from the original automatic erase mask. LaMa may
+        use its normal hidden dilation internally, but final writes are clipped to
+        that pre-existing authority and preserve rectangles remain hard-locked.
+        """
+        initial_regions = list(result.get("residue_regions") or [])
+        actual_hits = [
+            region
+            for region in initial_regions
+            if isinstance(region, dict)
+            and region.get("deferred_reason") == "post_inpaint_text_residue"
+        ]
+        metrics = result.setdefault("processing_metrics", {})
+        repair_metrics = {
+            "attempted": 0,
+            "initial_regions": len(initial_regions),
+            "initial_text_hits": len(actual_hits),
+            "repair_mask_pixels": 0,
+            "outside_authority_changed_channel_values": 0,
+            "final_regions": len(initial_regions),
+            "skipped_manual_state": 0,
+        }
+        metrics["residue_repair"] = repair_metrics
+        if not actual_hits:
+            return result
+        if result.get("manual_mask") or result.get("manual_lama_mask"):
+            repair_metrics["skipped_manual_state"] = 1
+            return result
+
+        tmp_clean_value = result.get("tmp_clean")
+        if not tmp_clean_value:
+            return result
+        tmp_clean_path = Path(tmp_clean_value)
+        if not tmp_clean_path.exists():
+            return result
+
+        authorized_boxes = self._residue_repair_effective_boxes(result.get("boxes"))
+        if not authorized_boxes:
+            return result
+
+        started_at = time.perf_counter()
+        original = read_image(img_path)
+        clean_before = read_image(tmp_clean_path)
+        full_authority = build_mask(
+            clean_before.shape[:2],
+            authorized_boxes,
+            original,
+        )
+        full_authority = subtract_regions_from_mask(full_authority, preserve_regions)
+        if full_authority is None or not np.any(full_authority > MANUAL_MASK_THRESHOLD):
+            return result
+
+        h, w = clean_before.shape[:2]
+        scope = np.zeros((h, w), dtype=np.uint8)
+        pad = 6
+        for region in actual_hits:
+            try:
+                x1 = max(0, int(region["x1"]) - pad)
+                y1 = max(0, int(region["y1"]) - pad)
+                x2 = min(w, int(region["x2"]) + pad)
+                y2 = min(h, int(region["y2"]) + pad)
+            except (KeyError, TypeError, ValueError):
+                continue
+            if x2 > x1 and y2 > y1:
+                scope[y1:y2, x1:x2] = 255
+
+        repair_mask = cv2.bitwise_and(full_authority, scope)
+        repair_pixels = int(np.count_nonzero(repair_mask > MANUAL_MASK_THRESHOLD))
+        repair_metrics["repair_mask_pixels"] = repair_pixels
+        if repair_pixels <= 0:
+            return result
+
+        candidate = self.inpainter.inpaint_mask(
+            clean_before.copy(),
+            repair_mask,
+            force_lama=True,
+        )
+        model_metrics = self.inpainter.last_metrics()
+        authority = repair_mask > MANUAL_MASK_THRESHOLD
+        repaired = clean_before.copy()
+        repaired[authority] = candidate[authority]
+        outside = ~authority
+        repair_metrics["outside_authority_changed_channel_values"] = int(
+            np.count_nonzero(repaired[outside] != clean_before[outside])
+        )
+        self._restore_preserve_pixels(repaired, original, preserve_regions)
+
+        write_image(tmp_clean_path, repaired)
+        tmp_auto_value = result.get("tmp_auto_clean")
+        if tmp_auto_value:
+            tmp_auto_path = Path(tmp_auto_value)
+            if tmp_auto_path.exists():
+                write_image(tmp_auto_path, repaired)
+
+        final_boxes = self.detector.verify_post_inpaint_residue(
+            repaired,
+            authorized_boxes,
+        )
+        final_boxes = [
+            box
+            for box in final_boxes
+            if not geometry_center_in_regions(
+                {"x1": box.x1, "y1": box.y1, "x2": box.x2, "y2": box.y2},
+                preserve_regions,
+            )
+        ]
+        decision_fields = (
+            "x1", "y1", "x2", "y2", "confidence", "source_model",
+            "source_role", "class_name", "semantic_type", "deferred_reason",
+        )
+        final_regions = [
+            {key: getattr(box, key) for key in decision_fields}
+            for box in final_boxes
+        ]
+        result["residue_regions"] = final_regions
+        issues = [
+            issue
+            for issue in list(result.get("detection_issues") or [])
+            if issue != "post_inpaint_text_residue"
+        ]
+        if final_regions:
+            issues.append("post_inpaint_text_residue")
+        result["detection_issues"] = issues
+        result["detection_state"] = "needs_review" if issues else "verified"
+        result["cleanup_verified"] = not bool(issues)
+        result["needs_review"] = bool(issues)
+
+        detector_metrics = metrics.setdefault("detector", {})
+        detector_metrics["post_inpaint_residue_initial"] = int(
+            detector_metrics.get("post_inpaint_residue", len(initial_regions)) or 0
+        )
+        detector_metrics["post_inpaint_residue"] = len(final_regions)
+        repair_metrics.update(
+            {
+                "attempted": 1,
+                "final_regions": len(final_regions),
+                "lama_model_runs": int(model_metrics.get("lama_model_runs", 0) or 0),
+                "lama_model_ms": int(model_metrics.get("lama_model_ms", 0) or 0),
+                "final_verify": self.detector.last_residue_metrics(),
+            }
+        )
+        repair_ms = (time.perf_counter() - started_at) * 1000.0
+        timing = metrics.setdefault("timing_ms", {})
+        timing["residue_repair"] = round(repair_ms, 3)
+        timing["total"] = round(float(timing.get("total", 0.0)) + repair_ms, 3)
+        return result
+
+    def _process_page(
+        self,
+        img_path: Path,
+        processed_dir: Path,
+        preserve_regions: list[dict] | None = None,
+        existing_boxes: list[dict] | None = None,
+        stitch_core: dict | None = None,
+        supplemental_detections: list[BubbleBox] | None = None,
+        seam_context_unavailable: bool = False,
+        *,
+        parallel_detectors: bool = False,
+    ) -> dict:
+        result = super()._process_page(
+            img_path,
+            processed_dir,
+            preserve_regions=preserve_regions,
+            existing_boxes=existing_boxes,
+            stitch_core=stitch_core,
+            supplemental_detections=supplemental_detections,
+            seam_context_unavailable=seam_context_unavailable,
+            parallel_detectors=parallel_detectors,
+        )
+        return self._repair_post_inpaint_result(
+            img_path,
+            result,
+            preserve_regions,
+        )
+
+'''
+          p = Path("app/optimized_pipeline.py")
+          text = p.read_text(encoding="utf-8")
+          if marker not in text:
+              raise RuntimeError("optimized_pipeline insertion marker missing")
+          p.write_text(text.replace(marker, helper + marker, 1), encoding="utf-8")
+
+          replace_once(
+              "tests/test_fast_inpaint_paths.py",
+              "from app.inpaint.fast_lama_inpainter import FastInpainter\nfrom app.optimized_pipeline import OptimizedChapterPipeline\n",
+              "from app.image_io import encode_mask, read_image, write_image\nfrom app.inpaint.fast_lama_inpainter import FastInpainter\nfrom app.optimized_pipeline import OptimizedChapterPipeline\n",
+          )
+          test_append = r'''
+
+
+def test_medium_dynamic_lama_keeps_native_resolution_single_call():
+    image = np.full((600, 700, 3), 127, dtype=np.uint8)
+    mask = np.zeros((600, 700), dtype=np.uint8)
+    mask[80:520, 80:620] = 255
+
+    inpainter = FastInpainter()
+    inpainter._begin_metrics()
+    inpainter.dynamic_lama = True
+    inpainter._ensure_session = lambda: None
+    model_shapes = []
+
+    def fake_run_lama(canvas, mask_canvas):
+        model_shapes.append(canvas.shape[:2])
+        return canvas.copy()
+
+    inpainter._run_lama = fake_run_lama
+    output = inpainter._lama_fill(
+        image.copy(),
+        image.copy(),
+        mask,
+        (0, 0, 700, 600),
+    )
+
+    assert output.shape == image.shape
+    assert len(model_shapes) == 1
+    assert model_shapes[0][0] >= 600
+    assert model_shapes[0][1] >= 700
+
+
+def test_residue_second_pass_is_clipped_to_existing_authority(tmp_path):
+    original = np.full((120, 160, 3), 230, dtype=np.uint8)
+    clean = original.copy()
+    local_mask = np.zeros((50, 80), dtype=np.uint8)
+    local_mask[18:24, 14:66] = 255
+    local_mask[31:37, 24:58] = 255
+    clean[35:85, 40:120][local_mask > 127] = 120
+
+    raw_path = tmp_path / "raw.png"
+    clean_path = tmp_path / "clean.png"
+    write_image(raw_path, original)
+    write_image(clean_path, clean)
+
+    record = {
+        "x1": 40, "y1": 35, "x2": 120, "y2": 85,
+        "confidence": 0.95,
+        "mask": encode_mask(local_mask),
+        "source_model": "text_segmenter.onnx",
+        "class_id": 0,
+        "class_name": "text_comic",
+        "semantic_type": "free_text",
+        "mask_source": "text_segmenter",
+        "safe_to_inpaint": True,
+        "ocr_eligible": True,
+        "needs_review": False,
+        "source_role": "text_segmenter",
+    }
+    result = {
+        "tmp_clean": clean_path.as_posix(),
+        "boxes": [record],
+        "residue_regions": [{
+            "x1": 52, "y1": 47, "x2": 108, "y2": 75,
+            "confidence": 0.9,
+            "source_model": "text_segmenter.onnx",
+            "source_role": "text_segmenter",
+            "class_name": "text_comic",
+            "semantic_type": "free_text",
+            "deferred_reason": "post_inpaint_text_residue",
+        }],
+        "detection_issues": ["post_inpaint_text_residue"],
+        "processing_metrics": {
+            "timing_ms": {"total": 10.0},
+            "detector": {"post_inpaint_residue": 1},
+        },
+    }
+
+    class FakeInpainter:
+        def __init__(self):
+            self.mask = None
+
+        def inpaint_mask(self, image, mask, force_lama=False):
+            assert force_lama is True
+            self.mask = mask.copy()
+            candidate = np.zeros_like(image)
+            candidate[:] = 17
+            return candidate
+
+        def last_metrics(self):
+            return {"lama_model_runs": 1, "lama_model_ms": 3}
+
+    class FakeDetector:
+        def verify_post_inpaint_residue(self, image, boxes):
+            return []
+
+        def last_residue_metrics(self):
+            return {"residue_hits": 0, "model_calls": 1}
+
+    pipeline = OptimizedChapterPipeline()
+    fake_inpainter = FakeInpainter()
+    pipeline._inpainter = fake_inpainter
+    pipeline._detector = FakeDetector()
+    updated = pipeline._repair_post_inpaint_result(raw_path, result, None)
+    repaired = read_image(clean_path)
+
+    authority = fake_inpainter.mask > 10
+    assert np.any(authority)
+    assert np.array_equal(repaired[~authority], clean[~authority])
+    assert np.all(repaired[authority] == 17)
+    assert updated["residue_regions"] == []
+    assert "post_inpaint_text_residue" not in updated["detection_issues"]
+    assert updated["processing_metrics"]["residue_repair"]["attempted"] == 1
+    assert updated["processing_metrics"]["residue_repair"]["outside_authority_changed_channel_values"] == 0
+'''
+          p = Path("tests/test_fast_inpaint_paths.py")
+          text = p.read_text(encoding="utf-8")
+          if "test_medium_dynamic_lama_keeps_native_resolution_single_call" in text:
+              raise RuntimeError("tests already patched")
+          p.write_text(text + test_append, encoding="utf-8")
+          PY
+
+      - name: Install unit-test runtime
+        run: |
+          python -m pip install \
+            numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 \
+            onnxruntime-openvino==1.24.1 psutil==6.1.1 loguru==0.7.2 \
+            requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 playwright==1.47.0 \
+            fastapi==0.115.0 'uvicorn[standard]==0.30.6' \
+            pydantic==2.9.2 filelock==3.16.1 python-multipart==0.0.12 pytest==8.3.5
+
+      - name: Unit gate
+        run: python -m pytest tests/test_fast_inpaint_paths.py -q
+
+      - name: Commit candidate
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/parameters.py app/optimized_pipeline.py tests/test_fast_inpaint_paths.py
+          git diff --cached --check
+          git commit -m "test(inpaint): native medium LaMa and residue repair"
+          git push origin HEAD:test/preserve-region-repaint
