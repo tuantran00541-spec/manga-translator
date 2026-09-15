@@ -1,5 +1,6 @@
 name: Apply smooth free-text candidate
 
+# One-shot candidate gate; remove after the branch commit is validated.
 on:
   push:
     branches:
