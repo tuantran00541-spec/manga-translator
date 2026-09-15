@@ -4,7 +4,7 @@ from pathlib import Path
 
 import numpy as np
 
-from app.image_io import encode_mask, read_image, write_image
+from app.image_io import read_image, write_image
 from app.optimized_pipeline import OptimizedChapterPipeline
 from app.region_policy import subtract_regions_from_mask
 
@@ -19,20 +19,36 @@ class _FakeInpainter:
         return np.full_like(image, 100)
 
     def inpaint_mask(self, image, mask, *, force_lama=False):
-        self.manual_inputs.append((bool(force_lama), image.copy(), mask.copy()))
+        raise AssertionError("optimized manual repaint must bypass dilating inpaint_mask")
+
+    @staticmethod
+    def _compute_manual_crop_region(x1, y1, x2, y2, w, h):
+        # Full-image crop makes it easy for the test to inspect the exact mask
+        # passed into the manual paint operation.
+        return (0, 0, w, h)
+
+    def _smart_paint_region(
+        self,
+        image,
+        local_mask,
+        crop_box,
+        feather=False,
+        force_lama=False,
+    ):
+        assert feather is False
+        self.manual_inputs.append(
+            (bool(force_lama), image.copy(), local_mask.copy())
+        )
+        out = image.copy()
+        cx1, cy1, cx2, cy2 = crop_box
+        authority = local_mask > 0
         value = 220 if force_lama else 180
-        return np.full_like(image, value)
+        target = out[cy1:cy2, cx1:cx2]
+        target[authority] = value
+        return out
 
 
-class _NoFallbackDetector:
-    @property
-    def text_detector(self):
-        raise AssertionError("persisted detector mask should avoid detector rerun")
-
-
-def test_lama_repaint_reuses_persisted_segmenter_mask_for_inference_only(
-    tmp_path: Path,
-):
+def test_lama_repaint_uses_exact_user_mask_without_growth(tmp_path: Path):
     processed_dir = tmp_path / "processed"
     processed_dir.mkdir()
     img_path = tmp_path / "page.png"
@@ -46,7 +62,8 @@ def test_lama_repaint_reuses_persisted_segmenter_mask_for_inference_only(
     user_mask_path = processed_dir / "manual_lama_mask_page.png"
     write_image(user_mask_path, user_mask)
 
-    detector_mask = np.full((24, 38), 255, dtype=np.uint8)
+    # Even with detector evidence wider than the user region, exact repaint must
+    # never expand the model mask or output authority.
     boxes = [
         {
             "id": "segmenter_box",
@@ -55,28 +72,18 @@ def test_lama_repaint_reuses_persisted_segmenter_mask_for_inference_only(
             "x2": 42,
             "y2": 31,
             "confidence": 0.95,
-            "mask": encode_mask(detector_mask),
             "source_model": "text_segmenter.onnx",
-            "class_name": "text_comic",
-            "semantic_type": "text",
             "mask_source": "text_segmenter",
             "safe_to_inpaint": True,
-            "ocr_eligible": True,
-            "needs_review": False,
-            "source_role": "text_segmenter",
         }
     ]
 
     preserve = [{"x1": 12, "y1": 12, "x2": 18, "y2": 20}]
     effective_user_mask = subtract_regions_from_mask(user_mask, preserve)
-    expected_inference = effective_user_mask.copy()
-    expected_inference[7:31, 4:42] = 255
-    expected_inference = subtract_regions_from_mask(expected_inference, preserve)
 
     pipeline = OptimizedChapterPipeline.__new__(OptimizedChapterPipeline)
     fake_inpainter = _FakeInpainter()
     pipeline._inpainter = fake_inpainter
-    pipeline._detector = _NoFallbackDetector()
 
     clean_path = pipeline._do_reinpaint(
         processed_dir,
@@ -92,20 +99,20 @@ def test_lama_repaint_reuses_persisted_segmenter_mask_for_inference_only(
     force_lama, model_input, model_mask = fake_inpainter.manual_inputs[0]
     assert force_lama is True
     assert np.array_equal(model_input, original)
-    assert np.array_equal(model_mask, expected_inference)
+    assert np.array_equal(model_mask, effective_user_mask)
 
     stats = pipeline._last_repaint_detector_stats
-    assert stats["detector_source"] == "persisted_text_segmenter"
-    assert stats["persisted_boxes_used"] == 1
-    assert stats["fallback_boxes_total"] == 0
-    assert stats["detector_added_pixels"] > 0
+    expected_pixels = int(np.count_nonzero(effective_user_mask > 0))
+    assert stats["mask_mode"] == "exact_user_mask"
+    assert stats["detector_source"] == "not_used"
+    assert stats["user_mask_pixels"] == expected_pixels
+    assert stats["inference_mask_pixels"] == expected_pixels
+    assert stats["detector_added_pixels"] == 0
+    assert stats["dilation_pixels"] == 0
+    assert stats["feather_outside_mask"] is False
 
-    # Detector-expanded pixels influence LaMa inference, but only the user's
-    # explicit mask owns the final composite.
     authority = effective_user_mask > 0
-    detector_only = (expected_inference > 0) & ~authority
     assert np.all(clean[authority] == 220)
-    assert np.all(clean[detector_only] == 100)
 
     p = preserve[0]
     assert np.array_equal(
@@ -114,7 +121,7 @@ def test_lama_repaint_reuses_persisted_segmenter_mask_for_inference_only(
     )
 
 
-def test_standard_repaint_cannot_modify_preserve_pixels(tmp_path: Path):
+def test_standard_repaint_uses_exact_user_mask_and_preserve(tmp_path: Path):
     processed_dir = tmp_path / "processed"
     processed_dir.mkdir()
     img_path = tmp_path / "page.png"
@@ -128,6 +135,7 @@ def test_standard_repaint_cannot_modify_preserve_pixels(tmp_path: Path):
     write_image(standard_mask_path, standard_mask)
 
     preserve = [{"x1": 10, "y1": 10, "x2": 16, "y2": 18}]
+    effective_mask = subtract_regions_from_mask(standard_mask, preserve)
 
     pipeline = OptimizedChapterPipeline.__new__(OptimizedChapterPipeline)
     fake = _FakeInpainter()
@@ -142,6 +150,15 @@ def test_standard_repaint_cannot_modify_preserve_pixels(tmp_path: Path):
         preserve_regions=preserve,
     )
     clean = read_image(Path(clean_path))
+
+    assert len(fake.manual_inputs) == 1
+    force_lama, model_input, model_mask = fake.manual_inputs[0]
+    assert force_lama is False
+    assert np.all(model_input == 100)
+    assert np.array_equal(model_mask, effective_mask)
+
+    authority = effective_mask > 0
+    assert np.all(clean[authority] == 180)
 
     p = preserve[0]
     assert np.array_equal(

@@ -1,4 +1,4 @@
-name: Focused detector-assisted repaint p006
+name: Focused exact-mask repaint p006
 
 on:
   push:
@@ -22,7 +22,7 @@ env:
   MANGA_ORT_OPENVINO_STREAMS: "1"
   MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
   OPENBLAS_NUM_THREADS: "1"
-  CHAPTER_ID: c0292903
+  CHAPTER_ID: c0292904
   CHAPTER_URL: https://asurascans.com/comics/immortals-way-of-life-6f7fe6eb/chapter/29
 
 jobs:
@@ -101,7 +101,7 @@ jobs:
 
           chapter_id = os.environ["CHAPTER_ID"]
           chapter_url = os.environ["CHAPTER_URL"]
-          out = Path("benchmark-results/repaint-detector-focused")
+          out = Path("benchmark-results/repaint-exact-focused")
           if out.exists():
               shutil.rmtree(out)
           out.mkdir(parents=True, exist_ok=True)
@@ -139,17 +139,20 @@ jobs:
           after = read_image(Path(after_page["clean"])).copy()
           stats = dict(getattr(pipeline, "_last_repaint_detector_stats", {}) or {})
 
-          if stats.get("detector_source") not in {
-              "persisted_text_segmenter", "text_segmenter_full"
-          }:
-              raise RuntimeError(f"unexpected detector source: {stats}")
-          used = int(stats.get("persisted_boxes_used", 0)) + int(
-              stats.get("fallback_boxes_used", 0)
-          )
-          if used < 1:
-              raise RuntimeError(f"no usable detector mask for repaint: {stats}")
-          if int(stats.get("detector_added_pixels", 0)) <= 0:
-              raise RuntimeError(f"detector did not expand LaMa inference mask: {stats}")
+          if stats.get("mask_mode") != "exact_user_mask":
+              raise RuntimeError(f"manual repaint did not use exact user mask: {stats}")
+          if stats.get("detector_source") != "not_used":
+              raise RuntimeError(f"detector unexpectedly expanded repaint mask: {stats}")
+          if int(stats.get("detector_added_pixels", -1)) != 0:
+              raise RuntimeError(f"detector added repaint pixels: {stats}")
+          if int(stats.get("dilation_pixels", -1)) != 0:
+              raise RuntimeError(f"manual repaint mask was dilated: {stats}")
+          if bool(stats.get("feather_outside_mask", True)):
+              raise RuntimeError(f"manual repaint feathered outside user mask: {stats}")
+          if int(stats.get("inference_mask_pixels", -1)) != int(
+              stats.get("user_mask_pixels", -2)
+          ):
+              raise RuntimeError(f"inference mask differs from user mask: {stats}")
 
           r = repaint.model_dump()
           authority = np.zeros(before.shape[:2], dtype=np.uint8)
@@ -182,7 +185,7 @@ jobs:
               "chapter_id": chapter_id,
               "page_index": page_index,
               "region": r,
-              "detector": stats,
+              "mask_policy": stats,
               "outside_authority_changed_channel_values": outside_changed,
               "changed_channel_values": int(np.count_nonzero(repaint_diff)),
               "max_abs_channel_diff": int(repaint_diff.max(initial=0)),
@@ -193,14 +196,14 @@ jobs:
 
           cv2.imwrite(str(out / "p006-raw.png"), raw)
           cv2.imwrite(str(out / "p006-before.png"), before)
-          cv2.imwrite(str(out / "p006-after-detector-assisted.png"), after)
+          cv2.imwrite(str(out / "p006-after-exact-mask.png"), after)
 
           rx1, ry1, rx2, ry2 = 150, 120, 650, 470
           panels = []
           for image, title in (
               (raw[ry1:ry2, rx1:rx2], "RAW"),
               (before[ry1:ry2, rx1:rx2], "BEFORE"),
-              (after[ry1:ry2, rx1:rx2], "DETECTOR + RAW LAMA"),
+              (after[ry1:ry2, rx1:rx2], "EXACT USER MASK + RAW LAMA"),
           ):
               pil = Image.fromarray(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
               panels.append((pil, title))
@@ -219,7 +222,7 @@ jobs:
               draw.text((x + 4, 8), title, fill="black", font=font)
               canvas.paste(panel, (x, header))
               x += panel.width + gap
-          canvas.save(out / "repaint-detector-review.jpg", quality=95)
+          canvas.save(out / "repaint-exact-review.jpg", quality=95)
 
           (out / "report.json").write_text(
               json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
@@ -230,8 +233,8 @@ jobs:
       - name: Upload focused evidence
         uses: actions/upload-artifact@v4
         with:
-          name: repaint-detector-focused-${{ github.run_id }}
-          path: benchmark-results/repaint-detector-focused/
+          name: repaint-exact-focused-${{ github.run_id }}
+          path: benchmark-results/repaint-exact-focused/
           retention-days: 7
           compression-level: 6
           if-no-files-found: error
