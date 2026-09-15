@@ -1,0 +1,234 @@
+name: Perf chapter 29 OCR v2 AB
+
+on:
+  push:
+    branches:
+      - perf/bubble-fastpath-roi-lama
+    paths:
+      - .github/workflows/perf-chapter29-ocr-v2-ab.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  PYTHONUNBUFFERED: "1"
+  CHAPTER_ID: c0292900
+  SOURCE_RUN_ID: "34931429777"
+  SOURCE_ARTIFACT: chapter29-fresh-clean-34931429777
+  BASELINE_RUN_ID: "34938506779"
+  BASELINE_ARTIFACT: chapter29-ocr-audit-34938506779
+  PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK: "True"
+  MANGA_PPOCRV6_TIER: small
+  MANGA_OCR_TARGET_SELECTION: all
+
+jobs:
+  chapter29-ocr-v2-ab:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: perf/bubble-fastpath-roi-lama
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install production OCR runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install \
+            numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 \
+            paddleocr==3.7.0 paddlepaddle==3.2.2 \
+            pydantic==2.9.2 filelock==3.16.1 loguru==0.7.2 psutil==6.1.1 \
+            fastapi==0.115.0 requests==2.32.3 chardet==5.2.0
+
+      - name: Download fresh chapter 29 source artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.SOURCE_ARTIFACT }}
+          run-id: ${{ env.SOURCE_RUN_ID }}
+          github-token: ${{ github.token }}
+          path: .
+
+      - name: Download OCR baseline artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.BASELINE_ARTIFACT }}
+          run-id: ${{ env.BASELINE_RUN_ID }}
+          github-token: ${{ github.token }}
+          path: baseline
+
+      - name: Run current OCR and compare with baseline
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+          import json, os, time
+          from collections import Counter
+          from pathlib import Path
+
+          from app.ocr.multi_lang_ocr import MultiLangOCR
+          from app.ocr.service import OCRService
+
+          class AuditPipeline:
+              @staticmethod
+              def _sync_output_dir(chapter_id, manifest, page_indices=None):
+                  return None
+
+          chapter_id = os.environ['CHAPTER_ID']
+          baseline_path = Path('baseline/benchmark-results/chapter29-ocr/report.json')
+          if not baseline_path.is_file():
+              raise RuntimeError(f'missing baseline report: {baseline_path}')
+          baseline = json.loads(baseline_path.read_text(encoding='utf-8'))
+
+          service = OCRService(MultiLangOCR(), AuditPipeline())
+          plan = service.plan_chapter(chapter_id)
+          if len(plan) != int(baseline.get('planned_targets') or 0):
+              raise RuntimeError(
+                  f'target count drift: candidate={len(plan)} baseline={baseline.get("planned_targets")}'
+              )
+
+          started = time.perf_counter()
+          results = []
+          errors = []
+          for n, (page_index, box_id) in enumerate(plan, start=1):
+              t0 = time.perf_counter()
+              try:
+                  result = service.inspect_box_id(
+                      chapter_id, page_index, box_id, 'en', force=True
+                  )
+                  result['page_index'] = page_index
+                  result['elapsed_ms'] = round((time.perf_counter() - t0) * 1000.0, 3)
+                  results.append(result)
+              except Exception as exc:
+                  errors.append({
+                      'page_index': page_index,
+                      'box_id': box_id,
+                      'error': f'{type(exc).__name__}: {exc}',
+                  })
+              if n == 1 or n % 10 == 0 or n == len(plan):
+                  print(f'ocr {n}/{len(plan)} results={len(results)} errors={len(errors)}')
+          wall_s = time.perf_counter() - started
+
+          quality_rank = {'reject': 0, 'unknown': 0, 'review': 1, 'good': 2}
+          baseline_map = {
+              (int(r.get('page_index')), str(r.get('box_id'))): r
+              for r in baseline.get('results', [])
+          }
+          candidate_map = {
+              (int(r.get('page_index')), str(r.get('box_id'))): r
+              for r in results
+          }
+
+          changes = []
+          improved = []
+          regressed = []
+          for key, cand in candidate_map.items():
+              base = baseline_map.get(key)
+              if base is None:
+                  continue
+              fields = ('text', 'quality', 'quality_reason', 'confidence', 'retry_applied')
+              if any(base.get(field) != cand.get(field) for field in fields):
+                  item = {
+                      'page_index': key[0],
+                      'box_id': key[1],
+                      'baseline': {field: base.get(field) for field in fields},
+                      'candidate': {field: cand.get(field) for field in fields},
+                  }
+                  changes.append(item)
+                  bq = quality_rank.get(str(base.get('quality') or 'unknown'), 0)
+                  cq = quality_rank.get(str(cand.get('quality') or 'unknown'), 0)
+                  if cq > bq:
+                      improved.append(item)
+                  elif cq < bq:
+                      regressed.append(item)
+
+          quality = Counter(str(r.get('quality') or 'unknown') for r in results)
+          reasons = Counter(str(r.get('quality_reason') or 'none') for r in results)
+          candidate_summary = {
+              'planned': len(plan),
+              'completed': len(results),
+              'errors': len(errors),
+              'quality': dict(quality),
+              'quality_reasons': dict(reasons),
+              'empty': sum(not str(r.get('text') or '').strip() for r in results),
+              'low_conf_lt_0_80': sum(
+                  r.get('confidence') is not None and float(r['confidence']) < 0.80
+                  for r in results
+              ),
+              'review_or_reject': sum(
+                  str(r.get('quality')) in {'review', 'reject'} for r in results
+              ),
+              'retry': sum(bool(r.get('retry_applied')) for r in results),
+              'wall_s': round(wall_s, 3),
+              'mean_ms_per_target': round(
+                  sum(float(r['elapsed_ms']) for r in results) / max(1, len(results)), 3
+              ),
+          }
+          baseline_summary = {
+              'quality': baseline.get('quality_counts'),
+              'empty': baseline.get('empty_count'),
+              'low_conf_lt_0_80': baseline.get('low_conf_lt_0_80_count'),
+              'review_or_reject': baseline.get('review_or_reject_count'),
+              'retry': baseline.get('retry_applied_count'),
+              'wall_s': baseline.get('wall_s'),
+              'mean_ms_per_target': baseline.get('mean_ms_per_target'),
+          }
+          focus_pages = {6, 22, 36, 45, 55, 58, 60, 62, 63, 68, 75}
+          focus = [
+              {
+                  'page_index': int(r['page_index']),
+                  'box_id': r.get('box_id'),
+                  'text': r.get('text'),
+                  'quality': r.get('quality'),
+                  'quality_reason': r.get('quality_reason'),
+                  'confidence': r.get('confidence'),
+                  'retry_applied': r.get('retry_applied'),
+              }
+              for r in results
+              if int(r['page_index']) in focus_pages
+          ]
+
+          comparison = {
+              'baseline_run_id': int(os.environ['BASELINE_RUN_ID']),
+              'candidate_head': os.environ.get('GITHUB_SHA'),
+              'baseline': baseline_summary,
+              'candidate': candidate_summary,
+              'changed_box_count': len(changes),
+              'improved_quality_count': len(improved),
+              'regressed_quality_count': len(regressed),
+              'changes': changes,
+              'focus_pages': focus,
+              'errors': errors,
+          }
+          out = Path('benchmark-results/chapter29-ocr-v2-ab')
+          out.mkdir(parents=True, exist_ok=True)
+          (out / 'comparison.json').write_text(
+              json.dumps(comparison, ensure_ascii=False, indent=2), encoding='utf-8'
+          )
+          (out / 'candidate-results.json').write_text(
+              json.dumps(results, ensure_ascii=False, indent=2), encoding='utf-8'
+          )
+          print('OCR_V2_AB=' + json.dumps({
+              'baseline': baseline_summary,
+              'candidate': candidate_summary,
+              'changed': len(changes),
+              'improved': len(improved),
+              'regressed': len(regressed),
+          }, ensure_ascii=False))
+          print('FOCUS=' + json.dumps(focus, ensure_ascii=False))
+          if errors:
+              raise RuntimeError(f'OCR candidate had {len(errors)} runtime errors')
+          PY
+
+      - name: Upload comparison
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chapter29-ocr-v2-ab-${{ github.run_id }}
+          path: benchmark-results/chapter29-ocr-v2-ab/
+          retention-days: 7
+          compression-level: 6
+          if-no-files-found: error
