@@ -36,6 +36,7 @@ jobs:
       - name: Apply preserve-region design
         run: |
           sed -i 's/rep("app\/page_processing.py", "excluded_regions", "preserve_regions", 3)/rep("app\/page_processing.py", "excluded_regions", "preserve_regions", 2)/' scripts/preserve_patch_core.py
+          sed -i 's/, 2)$/, 1)/' scripts/preserve_patch_core.py
           python scripts/preserve_patch_core.py
           python scripts/preserve_patch_editing.py
           python scripts/preserve_patch_api_ui.py
