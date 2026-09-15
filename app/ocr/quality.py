@@ -23,6 +23,8 @@ _JA_ALIASES = {"ja", "japan"}
 _ZH_ALIASES = {"ch", "zh", "chinese"}
 _KO_ALIASES = {"ko", "korean"}
 _EN_ALIASES = {"en", "english"}
+_STRONG_DIALOGUE_PUNCTUATION = {"!", "?", "！", "？"}
+_ELLIPSIS_PUNCTUATION = {".", "…", "⋯"}
 
 
 def _normalized_lang(lang: str) -> str:
@@ -73,6 +75,27 @@ def _is_hangul(ch: str) -> bool:
     )
 
 
+def _is_meaningful_punctuation_only(value: str) -> bool:
+    """Recognize common punctuation-only comic utterances conservatively.
+
+    A confirmed OCR target containing ``?!``, emphatic exclamation marks or an
+    ellipsis is valid dialogue content.  A lone quote/period remains noise.  The
+    quality classifier still applies confidence and completeness checks before
+    accepting these strings.
+    """
+
+    visible = [ch for ch in value if not ch.isspace()]
+    if not visible or len(visible) > 16:
+        return False
+    if any(ch.isalnum() for ch in visible):
+        return False
+    if any(not unicodedata.category(ch).startswith("P") for ch in visible):
+        return False
+    if any(ch in _STRONG_DIALOGUE_PUNCTUATION for ch in visible):
+        return True
+    return sum(ch in _ELLIPSIS_PUNCTUATION for ch in visible) >= 2
+
+
 def classify_ocr_quality(
     text: str,
     lang: str,
@@ -96,10 +119,6 @@ def classify_ocr_quality(
         if unicodedata.category(ch) in {"Cc", "Cs"} and ch not in "\n\t":
             return OCRQuality("reject", "control-character")
 
-    content = [ch for ch in value if ch.isalnum()]
-    if not content:
-        return OCRQuality("reject", "no-content")
-
     try:
         conf = None if confidence is None else float(confidence)
     except (TypeError, ValueError):
@@ -111,7 +130,7 @@ def classify_ocr_quality(
             return OCRQuality("review", "low-confidence")
 
     # Recognition confidence measures the characters Paddle did see; it is not
-    # evidence that every line in the target was transcribed.  Coverage is
+    # evidence that every line in the target was transcribed. Coverage is
     # supplied only when geometry gives us a meaningful expectation, so a
     # missing value remains deliberately neutral.
     try:
@@ -125,6 +144,16 @@ def classify_ocr_quality(
         return OCRQuality("review", "incomplete-coverage")
     if may_be_truncated:
         return OCRQuality("review", "crop-edge-text")
+
+    content = [ch for ch in value if ch.isalnum()]
+    if not content:
+        if _is_meaningful_punctuation_only(value):
+            # Paddle supplies confidence for normal EN/ZH/KO paths. Backends
+            # without confidence keep punctuation visible but ask for review.
+            if conf is None:
+                return OCRQuality("review", "punctuation-only")
+            return OCRQuality("good", None)
+        return OCRQuality("reject", "no-content")
 
     letters = [ch for ch in value if unicodedata.category(ch).startswith("L")]
     latin = sum(_is_latin(ch) for ch in letters)
