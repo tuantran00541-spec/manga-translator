@@ -1,4 +1,5 @@
 from contextlib import nullcontext
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -129,3 +130,11 @@ def test_preserve_change_requires_reprocessing(monkeypatch):
     monkeypatch.setattr(module.pipeline, "_sync_output_dir", lambda *_a, **_k: None)
     current = module._set_page_preserve_regions("abcd1234", 0, [RegionModel(x1=1, y1=1, x2=10, y2=10)])["pages"][0]
     assert current["process_required"] is True and current["clean"] is None
+
+
+def test_processing_entrypoint_flushes_canonical_preserve_region_queue():
+    main_js = Path("app/static/js/main.js").read_text(encoding="utf-8")
+    api_js = Path("app/static/js/api.js").read_text(encoding="utf-8")
+    assert 'window.flushPreserveRegionSaves = flushPreserveRegionSaves;' in api_js
+    assert 'window.flushPreserveRegionSaves(chapterId)' in main_js
+    assert 'flushExcludedRegionSaves' not in main_js
