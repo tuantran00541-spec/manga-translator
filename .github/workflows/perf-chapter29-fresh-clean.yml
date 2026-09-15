@@ -20,7 +20,7 @@ env:
   MANGA_ORT_OPENVINO_STREAMS: "1"
   MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
   OPENBLAS_NUM_THREADS: "1"
-  CHAPTER_ID: c2929
+  CHAPTER_ID: c0292900
   CHAPTER_URL: https://asurascans.com/comics/immortals-way-of-life-6f7fe6eb/chapter/29
   SERIES_SLUG: immortals-way-of-life-6f7fe6eb
   CHAPTER_NUMBER: "29"
@@ -188,7 +188,6 @@ jobs:
               for j,c in enumerate(cards): sheet.paste(c,((j%cols)*cw,(j//cols)*ch))
               sheet.save(sheets/f'full-{start:03d}-{start+len(cards)-1:03d}.jpg',quality=90)
 
-          # Larger first/last evidence for cover/logo/credits/promo inspection.
           edge_indices=sorted(set(list(range(min(4,len(pages))))+list(range(max(0,len(pages)-4),len(pages)))))
           for pi in edge_indices:
               c=pair_card(pi); c.save(sheets/f'edge-p{pi:03d}.jpg',quality=94)
@@ -221,9 +220,9 @@ jobs:
           name: chapter29-fresh-clean-${{ github.run_id }}
           path: |
             benchmark-results/chapter29-fresh/
-            data/raw/c2929/sliced/*.png
-            data/processed/c2929/manifest.json
-            data/processed/c2929/clean_*.png
+            data/raw/c0292900/sliced/*.png
+            data/processed/c0292900/manifest.json
+            data/processed/c0292900/clean_*.png
           retention-days: 7
           compression-level: 6
           if-no-files-found: error
