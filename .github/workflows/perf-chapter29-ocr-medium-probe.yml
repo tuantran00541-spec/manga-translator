@@ -1,0 +1,130 @@
+name: Perf chapter 29 OCR medium probe
+
+on:
+  push:
+    branches:
+      - perf/bubble-fastpath-roi-lama
+    paths:
+      - .github/workflows/perf-chapter29-ocr-medium-probe.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  PYTHONUNBUFFERED: "1"
+  CHAPTER_ID: c0292900
+  SOURCE_RUN_ID: "34931429777"
+  SOURCE_ARTIFACT: chapter29-fresh-clean-34931429777
+  PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK: "True"
+  MANGA_PPOCRV6_TIER: medium
+  MANGA_OCR_TARGET_SELECTION: all
+
+jobs:
+  medium-probe:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: perf/bubble-fastpath-roi-lama
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install production OCR runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install \
+            numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 \
+            paddleocr==3.7.0 paddlepaddle==3.2.2 \
+            pydantic==2.9.2 filelock==3.16.1 loguru==0.7.2 psutil==6.1.1 \
+            fastapi==0.115.0 requests==2.32.3 chardet==5.2.0
+
+      - name: Download fresh chapter 29 source artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.SOURCE_ARTIFACT }}
+          run-id: ${{ env.SOURCE_RUN_ID }}
+          github-token: ${{ github.token }}
+          path: .
+
+      - name: Probe medium on hard OCR crops
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+          import json, re, time
+          from difflib import SequenceMatcher
+          from pathlib import Path
+
+          import cv2
+
+          from app.image_io import read_image
+          from app.manifest_utils import load_manifest_raw
+          from app.ocr.multi_lang_ocr import MultiLangOCR
+          from app.ocr.service import _ocr_crop_bounds, ocr_target_mode_for_box
+
+          chapter_id = 'c0292900'
+          targets = {
+              (6, 'box_381010714d0a467b'): 'SAVE THIS CHILD',
+              (63, 'box_f8921f81c2b74c75'): '…HUH?',
+          }
+          manifest = load_manifest_raw(chapter_id)
+          engine = MultiLangOCR()
+          rows = []
+
+          def norm(value):
+              value = str(value or '').upper().replace('⋯', '…').replace('...', '…')
+              return re.sub(r'\s+', ' ', value).strip()
+
+          for (page_index, box_id), expected in targets.items():
+              page = manifest['pages'][page_index]
+              box = next(b for b in page.get('boxes', []) if str(b.get('id')) == box_id)
+              image = read_image(Path(page['original']))
+              h, w = image.shape[:2]
+              bx1, by1, bx2, by2 = _ocr_crop_bounds(image.shape, box)
+              mode = ocr_target_mode_for_box(box)
+              for pad in (0, 24, 32):
+                  x1 = max(0, bx1 - pad)
+                  y1 = max(0, by1 - pad)
+                  x2 = min(w, bx2 + pad)
+                  y2 = min(h, by2 + pad)
+                  rgb = cv2.cvtColor(image[y1:y2, x1:x2], cv2.COLOR_BGR2RGB)
+                  started = time.perf_counter()
+                  result = engine.read_detailed(rgb, 'en', target_mode=mode)
+                  elapsed_ms = round((time.perf_counter() - started) * 1000.0, 3)
+                  text = str(result.text or '').strip()
+                  row = {
+                      'page_index': page_index,
+                      'box_id': box_id,
+                      'padding': pad,
+                      'text': text,
+                      'expected': expected,
+                      'similarity': round(SequenceMatcher(None, norm(text), norm(expected)).ratio(), 4),
+                      'quality': result.quality,
+                      'quality_reason': result.quality_reason,
+                      'confidence': result.confidence,
+                      'region_count': result.region_count,
+                      'retry_applied': result.retry_applied,
+                      'elapsed_ms': elapsed_ms,
+                  }
+                  rows.append(row)
+                  print('MEDIUM_PROBE=' + json.dumps(row, ensure_ascii=False))
+
+          out = Path('benchmark-results/chapter29-ocr-medium-probe')
+          out.mkdir(parents=True, exist_ok=True)
+          (out / 'probe.json').write_text(
+              json.dumps(rows, ensure_ascii=False, indent=2), encoding='utf-8'
+          )
+          PY
+
+      - name: Upload medium probe
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chapter29-ocr-medium-probe-${{ github.run_id }}
+          path: benchmark-results/chapter29-ocr-medium-probe/
+          retention-days: 7
+          if-no-files-found: warn
