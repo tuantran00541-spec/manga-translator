@@ -1,6 +1,11 @@
 import numpy as np
 
-from app.ocr.paddle_v6 import OCRReadResult, PaddleV6OCR, _should_selective_retry
+from app.ocr.paddle_v6 import (
+    OCRReadResult,
+    PaddleV6OCR,
+    _result_rank,
+    _should_selective_retry,
+)
 from app.ocr.quality import classify_ocr_quality
 from app.ocr.service import (
     OCRService,
@@ -148,3 +153,58 @@ def test_selective_retry_only_runs_for_suspicious_results_and_is_bounded_by_crop
     assert not _should_selective_retry(good, np.zeros((80, 160, 3), np.uint8))
     assert _should_selective_retry(review, np.zeros((80, 160, 3), np.uint8))
     assert not _should_selective_retry(review, np.zeros((2000, 2000, 3), np.uint8))
+
+
+def test_retry_rank_prefers_complete_review_over_crop_edge_high_confidence():
+    clipped = OCRReadResult(
+        "CHILD\nSAVETHIS",
+        0.9995,
+        "fake",
+        "horizontal",
+        2,
+        "review",
+        "crop-edge-text",
+        1.0,
+    )
+    complete = OCRReadResult(
+        "SAVE THIS CHILD",
+        0.61,
+        "fake",
+        "horizontal",
+        1,
+        "review",
+        "low-confidence",
+        1.0,
+    )
+    assert _result_rank(complete) > _result_rank(clipped)
+
+
+class _SequencePipeline:
+    def __init__(self):
+        self.calls = 0
+
+    def predict(self, *, input):
+        scores = [0.40, 0.45, 0.99]
+        score = scores[min(self.calls, len(scores) - 1)]
+        self.calls += 1
+        return [{
+            "rec_texts": ["retry target"],
+            "rec_scores": [score],
+            "rec_polys": [
+                [[25, 45], [190, 45], [190, 70], [25, 70]],
+            ],
+        }]
+
+
+def test_grayscale_retry_runs_only_when_first_retry_remains_suspicious():
+    ocr = PaddleV6OCR()
+    pipeline = _SequencePipeline()
+    ocr._get_pipeline = lambda _key: pipeline
+    image = np.full((120, 220, 3), 255, np.uint8)
+
+    result = ocr.read(image, "en", target_mode="all")
+
+    assert pipeline.calls == 3
+    assert result.quality == "good"
+    assert result.confidence == 0.99
+    assert result.retry_applied
