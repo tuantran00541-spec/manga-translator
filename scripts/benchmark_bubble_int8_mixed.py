@@ -9,6 +9,7 @@ import time
 
 import nncf
 import onnx
+from onnx import version_converter
 
 from app.config import BUBBLE_DETECTOR_MODEL
 from app.detector.bubble_detector import YoloDetector
@@ -20,13 +21,43 @@ import scripts.benchmark_bubble_uncertainty as audit_base
 
 CHAPTER_URL = "https://asurascans.com/comics/killer-pietro-08677664/chapter/120"
 OUT = Path("benchmark-results/bubble-int8-mixed/report.json")
+OPSET13_MODEL = Path("benchmark-results/bubble-int8-mixed/bubble_yolo_opset13.onnx")
 INT8_MODEL = Path("benchmark-results/bubble-int8-mixed/bubble_yolo_int8_mixed.onnx")
 SAMPLE_COUNT = 16
 CALIBRATION_COUNT = 32
+TARGET_OPSET = 13
+
+
+def _default_opset(model: onnx.ModelProto) -> int:
+    for item in model.opset_import:
+        if item.domain in ("", "ai.onnx"):
+            return int(item.version)
+    return 0
+
+
+def _upgrade_opset() -> dict:
+    source = Path(BUBBLE_DETECTOR_MODEL)
+    model = onnx.load_model(str(source))
+    source_opset = _default_opset(model)
+    started = time.perf_counter()
+    if source_opset == TARGET_OPSET:
+        upgraded = model
+    else:
+        upgraded = version_converter.convert_version(model, TARGET_OPSET)
+    onnx.checker.check_model(upgraded)
+    OPSET13_MODEL.parent.mkdir(parents=True, exist_ok=True)
+    onnx.save_model(upgraded, str(OPSET13_MODEL))
+    return {
+        "source_opset": source_opset,
+        "target_opset": _default_opset(upgraded),
+        "conversion_ms": round((time.perf_counter() - started) * 1000.0, 3),
+        "source_bytes": source.stat().st_size,
+        "converted_bytes": OPSET13_MODEL.stat().st_size,
+    }
 
 
 def _quantize(calibration_paths: list[Path]) -> dict:
-    source = Path(BUBBLE_DETECTOR_MODEL)
+    source = OPSET13_MODEL
     model = onnx.load_model(str(source))
     input_name = model.graph.input[0].name
     dataset = nncf.Dataset(
@@ -47,12 +78,15 @@ def _quantize(calibration_paths: list[Path]) -> dict:
     return {
         "quantization_ms": round((time.perf_counter() - started) * 1000.0, 3),
         "calibration_count": len(calibration_paths),
+        "source_opset": _default_opset(model),
+        "quantized_opset": _default_opset(quantized),
         "source_bytes": source.stat().st_size,
         "int8_bytes": INT8_MODEL.stat().st_size,
         "size_reduction_pct": round((1.0 - INT8_MODEL.stat().st_size / float(max(1, source.stat().st_size))) * 100.0, 2),
         "preset": "mixed",
         "target_device": "cpu",
         "fast_bias_correction": False,
+        "expected_weight_granularity": "per_channel_for_opset_ge_13",
     }
 
 
@@ -186,7 +220,7 @@ def _proposal_diagnostics(sample_paths: dict[int, Path]) -> dict:
 def main() -> None:
     OUT.parent.mkdir(parents=True, exist_ok=True)
     pipeline = ChapterPipeline()
-    chapter_id = hashlib.sha256(f"bubble-int8-mixed-{time.time_ns()}".encode()).hexdigest()[:8]
+    chapter_id = hashlib.sha256(f"bubble-int8-opset13-{time.time_ns()}".encode()).hexdigest()[:8]
     manifest = pipeline.download_chapter(CHAPTER_URL, chapter_id, workers=2)
     pages = manifest.get("pages", [])
     total = len(pages)
@@ -198,6 +232,7 @@ def main() -> None:
     warmup_path = Path(pages[warmup_index]["original"])
 
     try:
+        opset_conversion = _upgrade_opset()
         quantization = _quantize(calibration_paths)
     except Exception as exc:
         report = {
@@ -211,27 +246,36 @@ def main() -> None:
         print("BUBBLE_INT8_MIXED=" + json.dumps(report, ensure_ascii=False), flush=True)
         return
 
-    proposal_diagnostics = _proposal_diagnostics(sample_paths)
     control = base._run(sample_paths, sample_indices, warmup_path, Path(BUBBLE_DETECTOR_MODEL), "control_fp32_bubble")
     gc.collect()
-    candidate = base._run(sample_paths, sample_indices, warmup_path, INT8_MODEL, "candidate_mixed_int8_bubble")
+    converted = base._run(sample_paths, sample_indices, warmup_path, OPSET13_MODEL, "control_fp32_opset13")
+    converted_quality = base._quality(control, converted)
+    gc.collect()
+    proposal_diagnostics = _proposal_diagnostics(sample_paths)
+    candidate = base._run(sample_paths, sample_indices, warmup_path, INT8_MODEL, "candidate_opset13_perchannel_int8_bubble")
     quality = base._quality(control, candidate)
     report = {
         "chapter_url": CHAPTER_URL,
         "chapter_id": chapter_id,
         "sample_indices": sample_indices,
         "calibration_indices": calibration_indices,
+        "opset_conversion": opset_conversion,
         "quantization": quantization,
+        "converted_fp32": converted,
+        "converted_fp32_quality": converted_quality,
         "proposal_diagnostics": proposal_diagnostics,
         "control": control,
         "candidate": candidate,
         "quality": quality,
         "speedup": {
+            "converted_wall_reduction_pct": audit_base._pct(control["wall_ms"], converted["wall_ms"]),
             "wall_reduction_pct": audit_base._pct(control["wall_ms"], candidate["wall_ms"]),
             "bubble_model_reduction_pct": audit_base._pct(control["bubble_model_mean_ms"], candidate["bubble_model_mean_ms"]),
             "text_model_reduction_pct": audit_base._pct(control["text_model_mean_ms"], candidate["text_model_mean_ms"]),
         },
-        "promotion_eligible": bool(quality["exact"] and candidate["wall_ms"] < control["wall_ms"]),
+        "promotion_eligible": bool(
+            converted_quality["exact"] and quality["exact"] and candidate["wall_ms"] < control["wall_ms"]
+        ),
     }
     OUT.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print("BUBBLE_INT8_MIXED=" + json.dumps(report, ensure_ascii=False), flush=True)
