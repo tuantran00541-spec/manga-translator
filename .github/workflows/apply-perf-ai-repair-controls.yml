@@ -41,6 +41,7 @@ jobs:
           python scripts/preserve_patch_editing.py
           python scripts/preserve_patch_api_ui.py
           python scripts/preserve_patch_tests.py
+          sed -i 's/Đang lưu vùng loại trừ…/Đang lưu vùng giữ nguyên…/' app/static/js/main.js
       - name: Compile candidate
         run: python -m compileall -q app tests/test_ai_repair_controls.py
       - name: Run repair-control regression suite
