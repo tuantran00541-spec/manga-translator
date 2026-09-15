@@ -1,0 +1,198 @@
+name: Perf Shadow Slave chapter 1 weak OCR visual audit
+
+on:
+  push:
+    branches:
+      - perf/bubble-fastpath-roi-lama
+    paths:
+      - .github/workflows/perf-shadow-slave-ch1-weak-visual-audit.yml
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  weak-visual-audit:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: perf/bubble-fastpath-roi-lama
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install lightweight image runtime
+        run: python -m pip install -q Pillow==10.4.0
+
+      - name: Download original Shadow Slave audit artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: shadow-slave-ch1-ocr-audit-34950467604
+          run-id: 34950467604
+          github-token: ${{ github.token }}
+          path: source
+
+      - name: Download adaptive recrop retest artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: shadow-slave-ch1-ocr-retest-34953470778
+          run-id: 34953470778
+          github-token: ${{ github.token }}
+          path: retest
+
+      - name: Build weak-case visual sheets
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+          import json, math, textwrap
+          from pathlib import Path
+          from PIL import Image, ImageDraw, ImageFont
+
+          chapter_id = '5e8ce7e3'
+          manifest_path = Path('source/data/processed') / chapter_id / 'manifest.json'
+          current_path = Path('retest/current-results.json')
+          manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+          current = json.loads(current_path.read_text(encoding='utf-8'))
+          weak = [r for r in current if str(r.get('quality')) in {'review', 'reject'}]
+          weak_ids = {str(r['box_id']) for r in weak}
+
+          def bbox_of(box):
+              for key in ('bbox', 'box', 'rect'):
+                  v = box.get(key)
+                  if isinstance(v, (list, tuple)) and len(v) >= 4:
+                      return tuple(float(x) for x in v[:4])
+                  if isinstance(v, dict):
+                      keys = ('x1', 'y1', 'x2', 'y2')
+                      if all(k in v for k in keys):
+                          return tuple(float(v[k]) for k in keys)
+              keys = ('x1', 'y1', 'x2', 'y2')
+              if all(k in box for k in keys):
+                  return tuple(float(box[k]) for k in keys)
+              for key in ('polygon', 'points', 'quad'):
+                  pts = box.get(key)
+                  if isinstance(pts, list) and pts:
+                      xy = []
+                      for p in pts:
+                          if isinstance(p, (list, tuple)) and len(p) >= 2:
+                              xy.append((float(p[0]), float(p[1])))
+                          elif isinstance(p, dict) and 'x' in p and 'y' in p:
+                              xy.append((float(p['x']), float(p['y'])))
+                      if xy:
+                          xs = [p[0] for p in xy]
+                          ys = [p[1] for p in xy]
+                          return (min(xs), min(ys), max(xs), max(ys))
+              return None
+
+          by_id = {}
+          for pi, page in enumerate(manifest.get('pages', [])):
+              for bi, box in enumerate(page.get('boxes') or []):
+                  if isinstance(box, dict) and str(box.get('id') or '') in weak_ids:
+                      by_id[str(box['id'])] = (pi, bi, page, box)
+
+          out = Path('benchmark-results/shadow-slave-ch1-weak-visual')
+          cards_dir = out / 'cards'
+          sheets_dir = out / 'sheets'
+          cards_dir.mkdir(parents=True, exist_ok=True)
+          sheets_dir.mkdir(parents=True, exist_ok=True)
+          font = ImageFont.load_default()
+          cards = []
+          metadata = []
+
+          for result in sorted(weak, key=lambda r: (int(r.get('page_index', 0)), str(r.get('box_id')))):
+              box_id = str(result['box_id'])
+              info = by_id.get(box_id)
+              if info is None:
+                  metadata.append({'box_id': box_id, 'error': 'box-not-found', 'result': result})
+                  continue
+              pi, bi, page, box = info
+              bbox = bbox_of(box)
+              if bbox is None:
+                  metadata.append({'box_id': box_id, 'error': 'bbox-not-found', 'box': box, 'result': result})
+                  continue
+              rel = Path(str(page['original']))
+              image_path = Path('source') / rel
+              if not image_path.exists():
+                  matches = list(Path('source/data/raw').rglob(rel.name))
+                  if not matches:
+                      metadata.append({'box_id': box_id, 'error': 'image-not-found', 'original': str(rel), 'box': box, 'result': result})
+                      continue
+                  image_path = matches[0]
+
+              image = Image.open(image_path).convert('RGB')
+              x1, y1, x2, y2 = bbox
+              x1, x2 = sorted((int(round(x1)), int(round(x2))))
+              y1, y2 = sorted((int(round(y1)), int(round(y2))))
+              x1 = max(0, min(image.width - 1, x1)); x2 = max(x1 + 1, min(image.width, x2))
+              y1 = max(0, min(image.height - 1, y1)); y2 = max(y1 + 1, min(image.height, y2))
+              pad = max(120, int(round(max(x2-x1, y2-y1) * 0.8)))
+              cx1, cy1 = max(0, x1-pad), max(0, y1-pad)
+              cx2, cy2 = min(image.width, x2+pad), min(image.height, y2+pad)
+              crop = image.crop((cx1, cy1, cx2, cy2))
+              d = ImageDraw.Draw(crop)
+              d.rectangle((x1-cx1, y1-cy1, x2-cx1, y2-cy1), outline='red', width=5)
+              crop.thumbnail((720, 480), Image.Resampling.LANCZOS)
+
+              semantic = box.get('semantic_type') or box.get('type') or box.get('text_role')
+              lines = [
+                  f'p{pi:03d} b{bi} {box_id}',
+                  f'q={result.get("quality")} reason={result.get("quality_reason")} conf={result.get("confidence")}',
+                  f'semantic={semantic} safe={box.get("safe_to_inpaint")} retry={result.get("retry_applied")}',
+                  f'bbox={bbox}',
+                  'OCR:',
+              ]
+              for paragraph in str(result.get('text') or '').split('\n'):
+                  lines.extend(textwrap.wrap(paragraph, width=68) or [''])
+              lines = lines[:11]
+              card_w = 760
+              card_h = crop.height + 24 + 20 * len(lines)
+              card = Image.new('RGB', (card_w, card_h), 'white')
+              card.paste(crop, ((card_w-crop.width)//2, 8))
+              td = ImageDraw.Draw(card)
+              ty = crop.height + 18
+              for line in lines:
+                  td.text((12, ty), line, fill='black', font=font)
+                  ty += 20
+              card_path = cards_dir / f'p{pi:03d}_{box_id}.jpg'
+              card.save(card_path, quality=92)
+              cards.append((pi, box_id, card))
+              metadata.append({
+                  'page_index': pi,
+                  'box_index': bi,
+                  'box_id': box_id,
+                  'bbox': bbox,
+                  'semantic_type': semantic,
+                  'safe_to_inpaint': box.get('safe_to_inpaint'),
+                  'box': box,
+                  'result': result,
+                  'image': str(image_path),
+              })
+
+          for start in range(0, len(cards), 6):
+              group = cards[start:start+6]
+              cols = 2
+              rows = math.ceil(len(group) / cols)
+              cw = max(c[2].width for c in group)
+              ch = max(c[2].height for c in group)
+              sheet = Image.new('RGB', (cols*cw, rows*ch), 'white')
+              for j, (_, _, card) in enumerate(group):
+                  sheet.paste(card, ((j % cols)*cw, (j // cols)*ch))
+              sheet.save(sheets_dir / f'weak-{start:02d}-{start+len(group)-1:02d}.jpg', quality=90)
+
+          (out / 'metadata.json').write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding='utf-8')
+          print(json.dumps({'weak': len(weak), 'matched': len(cards), 'sheets': math.ceil(len(cards)/6)}, ensure_ascii=False))
+          if len(cards) != len(weak):
+              raise RuntimeError(f'weak visual audit matched {len(cards)}/{len(weak)}')
+          PY
+
+      - name: Upload compact weak visual audit
+        uses: actions/upload-artifact@v4
+        with:
+          name: shadow-slave-ch1-weak-visual-${{ github.run_id }}
+          path: benchmark-results/shadow-slave-ch1-weak-visual/
+          retention-days: 7
+          compression-level: 6
+          if-no-files-found: error
