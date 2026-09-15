@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 from pathlib import Path
 
+import cv2
 import numpy as np
 
 from app.detector.sequential_fast_residue_detector import (
@@ -10,11 +11,16 @@ from app.detector.sequential_fast_residue_detector import (
 )
 from app.image_io import read_image, write_image
 from app.inpaint.adaptive_fast_inpainter import AdaptiveFastInpainter
+from app.logging_config import logger
 from app.manifest_utils import atomic_replace
 from app.parameters import MANUAL_MASK_THRESHOLD, PIPELINE_DEFAULT_WORKERS
 from app.pipeline import ChapterPipeline
 from app.region_policy import subtract_regions_from_mask
 from app.runtime_responsiveness import responsive_process_workers
+
+
+REPAINT_DETECTOR_CONTEXT_PAD = 96
+REPAINT_DETECTOR_NEAR_PAD = 24
 
 
 class OptimizedChapterPipeline(ChapterPipeline):
@@ -80,6 +86,120 @@ class OptimizedChapterPipeline(ChapterPipeline):
                 continue
             clean_image[y1:y2, x1:x2] = original_image[y1:y2, x1:x2]
 
+    def _detector_assisted_lama_mask(
+        self,
+        image: np.ndarray,
+        user_mask: np.ndarray,
+        preserve_regions: list[dict] | None,
+    ) -> np.ndarray:
+        """Expand LaMa inference authority with detector text masks, not geometry.
+
+        The user's mask remains the only output/composite authority. This helper
+        only gives LaMa a wider *inference* mask so source text adjacent to the
+        repaint request is hidden from the model instead of becoming context.
+        """
+        base = (user_mask > MANUAL_MASK_THRESHOLD).astype(np.uint8) * 255
+        base = subtract_regions_from_mask(base, preserve_regions)
+        if base is None or not np.any(base):
+            self._last_repaint_detector_stats = {
+                "detector_boxes_total": 0,
+                "detector_boxes_used": 0,
+                "user_mask_pixels": 0,
+                "inference_mask_pixels": 0,
+                "detector_added_pixels": 0,
+            }
+            return base
+
+        ys, xs = np.nonzero(base > MANUAL_MASK_THRESHOLD)
+        h, w = image.shape[:2]
+        ux1 = int(xs.min())
+        uy1 = int(ys.min())
+        ux2 = int(xs.max()) + 1
+        uy2 = int(ys.max()) + 1
+
+        cx1 = max(0, ux1 - REPAINT_DETECTOR_CONTEXT_PAD)
+        cy1 = max(0, uy1 - REPAINT_DETECTOR_CONTEXT_PAD)
+        cx2 = min(w, ux2 + REPAINT_DETECTOR_CONTEXT_PAD)
+        cy2 = min(h, uy2 + REPAINT_DETECTOR_CONTEXT_PAD)
+        crop = image[cy1:cy2, cx1:cx2]
+
+        near_x1 = max(0, ux1 - cx1 - REPAINT_DETECTOR_NEAR_PAD)
+        near_y1 = max(0, uy1 - cy1 - REPAINT_DETECTOR_NEAR_PAD)
+        near_x2 = min(cx2 - cx1, ux2 - cx1 + REPAINT_DETECTOR_NEAR_PAD)
+        near_y2 = min(cy2 - cy1, uy2 - cy1 + REPAINT_DETECTOR_NEAR_PAD)
+
+        inference_mask = base.copy()
+        detected = []
+        error = None
+        try:
+            detected = self.detector.detect(crop)
+        except Exception as exc:
+            error = str(exc)
+            logger.warning("Detector-assisted repaint fallback to user mask: {}", exc)
+
+        used = 0
+        for box in detected:
+            if not bool(getattr(box, "verified_mask", False)):
+                continue
+            if not bool(getattr(box, "safe_to_inpaint", False)):
+                continue
+
+            bx1 = max(0, min(crop.shape[1], int(box.x1)))
+            by1 = max(0, min(crop.shape[0], int(box.y1)))
+            bx2 = max(0, min(crop.shape[1], int(box.x2)))
+            by2 = max(0, min(crop.shape[0], int(box.y2)))
+            if bx2 <= bx1 or by2 <= by1:
+                continue
+            if (
+                bx2 <= near_x1
+                or bx1 >= near_x2
+                or by2 <= near_y1
+                or by1 >= near_y2
+            ):
+                continue
+
+            local = getattr(box, "mask", None)
+            expected = (by2 - by1, bx2 - bx1)
+            if local is None:
+                continue
+            if local.shape[:2] != expected:
+                try:
+                    local = cv2.resize(
+                        local,
+                        (expected[1], expected[0]),
+                        interpolation=cv2.INTER_NEAREST,
+                    )
+                except Exception:
+                    continue
+            local = (local > MANUAL_MASK_THRESHOLD).astype(np.uint8) * 255
+            if not np.any(local):
+                continue
+
+            gy1, gy2 = cy1 + by1, cy1 + by2
+            gx1, gx2 = cx1 + bx1, cx1 + bx2
+            target = inference_mask[gy1:gy2, gx1:gx2]
+            np.maximum(target, local, out=target)
+            used += 1
+
+        inference_mask = subtract_regions_from_mask(inference_mask, preserve_regions)
+        user_pixels = int(np.count_nonzero(base > MANUAL_MASK_THRESHOLD))
+        inference_pixels = int(
+            np.count_nonzero(inference_mask > MANUAL_MASK_THRESHOLD)
+        )
+        stats = {
+            "detector_boxes_total": int(len(detected)),
+            "detector_boxes_used": int(used),
+            "user_mask_pixels": user_pixels,
+            "inference_mask_pixels": inference_pixels,
+            "detector_added_pixels": max(0, inference_pixels - user_pixels),
+            "crop": [int(cx1), int(cy1), int(cx2), int(cy2)],
+        }
+        if error is not None:
+            stats["detector_error"] = error
+        self._last_repaint_detector_stats = stats
+        logger.info("Detector-assisted repaint stats: {}", stats)
+        return inference_mask
+
     def _do_reinpaint(
         self,
         processed_dir: Path,
@@ -93,14 +213,14 @@ class OptimizedChapterPipeline(ChapterPipeline):
         apply_manual_mask: bool = True,
         preserve_regions: list[dict] | None = None,
     ) -> str:
-        """Use original pixels as LaMa context, then commit only user authority.
+        """Use detector-assisted original context, then commit only user authority.
 
         Automatic cleanup and standard repaint keep the existing production path.
-        Explicit LaMa repaint is evaluated from the raw/original slice so an
-        already-damaged clean result cannot become model context.  The LaMa
-        candidate is copied back only where the persisted manual LaMa mask grants
-        authority. Preserve rectangles are finally restored from the original
-        image exactly as drawn; they are never dilated or feathered.
+        Explicit LaMa repaint uses the raw/original slice as model context. The
+        detector may expand only the LaMa inference mask around the user's region
+        to hide nearby source text. The candidate is copied back only where the
+        persisted manual LaMa mask grants user authority. Preserve rectangles are
+        finally restored exactly as drawn and are never grown or feathered.
         """
         if not apply_manual_mask:
             return super()._do_reinpaint(
@@ -145,9 +265,14 @@ class OptimizedChapterPipeline(ChapterPipeline):
         clean_image = None
         if lama_mask is not None and np.any(lama_mask > MANUAL_MASK_THRESHOLD):
             clean_image = read_image(Path(clean_path_posix))
+            inference_mask = self._detector_assisted_lama_mask(
+                image,
+                lama_mask,
+                preserve_regions,
+            )
             lama_candidate = self.inpainter.inpaint_mask(
                 image.copy(),
-                lama_mask,
+                inference_mask,
                 force_lama=True,
             )
             authority = lama_mask > MANUAL_MASK_THRESHOLD
