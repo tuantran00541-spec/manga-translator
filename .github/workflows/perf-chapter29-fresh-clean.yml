@@ -1,0 +1,229 @@
+name: Perf fresh chapter 29 clean audit
+
+on:
+  push:
+    branches:
+      - perf/bubble-fastpath-roi-lama
+    paths:
+      - .github/workflows/perf-chapter29-fresh-clean.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHONUNBUFFERED: "1"
+  MANGA_ORT_PROVIDER: openvino
+  MANGA_ORT_REQUIRE_PROVIDER: "1"
+  MANGA_ORT_OPENVINO_SCOPE: detectors
+  MANGA_ORT_OPENVINO_THREADS: "2"
+  MANGA_ORT_OPENVINO_STREAMS: "1"
+  MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
+  OPENBLAS_NUM_THREADS: "1"
+  CHAPTER_ID: c2929
+  CHAPTER_URL: https://asurascans.com/comics/immortals-way-of-life-6f7fe6eb/chapter/29
+  SERIES_SLUG: immortals-way-of-life-6f7fe6eb
+  CHAPTER_NUMBER: "29"
+
+jobs:
+  fresh-clean-audit:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: perf/bubble-fastpath-roi-lama
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install production clean runtime
+        run: |
+          python -m pip install \
+            numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 \
+            onnxruntime-openvino==1.24.1 psutil==6.1.1 loguru==0.7.2 \
+            requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 playwright==1.47.0 \
+            fastapi==0.115.0 'uvicorn[standard]==0.30.6' \
+            pydantic==2.9.2 filelock==3.16.1 python-multipart==0.0.12
+
+      - name: Restore detector and inpaint models
+        id: models
+        uses: actions/cache@v4
+        with:
+          path: |
+            models/*.onnx
+            models/.e2e-provenance.json
+          key: processing-profile-models-b224548-v1
+
+      - name: Read pinned model provisioner
+        if: steps.models.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: b22454827f8190655d7070b80eb20c2550beadfa
+          path: benchmark-bootstrap
+          sparse-checkout: scripts/provision_real_e2e_models.py
+          sparse-checkout-cone-mode: false
+
+      - name: Provision public-equivalent production models
+        if: steps.models.outputs.cache-hit != 'true'
+        run: |
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple torch==2.5.1+cpu torchvision==0.20.1+cpu
+          python -m pip install --no-deps ultralytics==8.3.221 onnx==1.17.0 onnxslim==0.1.71
+          python -m pip install sympy==1.13.1 PyYAML==6.0.2 scipy==1.14.1 tqdm==4.67.1 matplotlib==3.9.2 pandas==2.2.3 py-cpuinfo==9.0.0 ml_dtypes==0.5.3 colorama==0.4.6 polars==1.33.1 ultralytics-thop==2.0.17
+          python benchmark-bootstrap/scripts/provision_real_e2e_models.py
+          cp benchmark-bootstrap/models/*.onnx models/
+          cp benchmark-bootstrap/models/.e2e-provenance.json models/
+
+      - name: Download, slice, clean and build audit evidence
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+          import json, os, shutil, time
+          from concurrent.futures import ThreadPoolExecutor, as_completed
+          from pathlib import Path
+
+          import cv2
+          import numpy as np
+          from PIL import Image, ImageDraw, ImageFont
+
+          from app.downloader.registry import download_chapter
+          from app.downloader.slicer import slice_image
+          from app.manifest_utils import load_manifest_raw
+          from app.optimized_pipeline import OptimizedChapterPipeline
+          from app.parameters import PIPELINE_DEFAULT_WORKERS, PIPELINE_SLICE_WORKER_LIMIT
+          from app.security import validate_chapter_id
+
+          chapter_id=validate_chapter_id(os.environ['CHAPTER_ID'])
+          chapter_url=os.environ['CHAPTER_URL']
+          raw_root=Path('data/raw')/chapter_id
+          source_dir=raw_root/'source'
+          sliced_dir=raw_root/'sliced'
+          processed_dir=Path('data/processed')/chapter_id
+          out=Path('benchmark-results/chapter29-fresh')
+          sheets=out/'review-sheets'
+          objects=out/'destructive-objects'
+          for p in (raw_root, processed_dir, out):
+              if p.exists(): shutil.rmtree(p)
+          source_dir.mkdir(parents=True,exist_ok=True)
+          sliced_dir.mkdir(parents=True,exist_ok=True)
+          processed_dir.mkdir(parents=True,exist_ok=True)
+          sheets.mkdir(parents=True,exist_ok=True)
+          objects.mkdir(parents=True,exist_ok=True)
+
+          raw_paths=download_chapter(chapter_url,source_dir)
+          if not raw_paths: raise RuntimeError('fresh downloader returned zero source images')
+          workers=max(1,min(int(PIPELINE_DEFAULT_WORKERS),int(PIPELINE_SLICE_WORKER_LIMIT),len(raw_paths)))
+          results={}
+          def one(item):
+              i,p=item
+              return i,slice_image(p,sliced_dir,f'{i:03d}',return_metadata=True)
+          with ThreadPoolExecutor(max_workers=workers) as pool:
+              futures=[pool.submit(one,(i,p)) for i,p in enumerate(raw_paths)]
+              for f in as_completed(futures):
+                  i,items=f.result(); results[i]=items
+
+          pages=[]
+          for source_index in range(len(raw_paths)):
+              for slice_index,item in enumerate(results[source_index]):
+                  core={k:item.get(k) for k in ('source_y1','source_y2','core_y1','core_y2','core_source_y1','core_source_y2','unsafe_before','unsafe_after','source_height')}
+                  pages.append({'original':Path(item['path']).as_posix(),'clean':None,'boxes':[],'skipped':False,'excluded_regions':[],
+                                'source_page':source_index,'slice_index':slice_index,'stitch_core':core})
+          manifest={'chapter_id':chapter_id,'series_slug':os.environ['SERIES_SLUG'],'chapter_number':int(os.environ['CHAPTER_NUMBER']),
+                    'source_url':chapter_url,'pages':pages,'workflow':{'stage':'preview','page_index':0}}
+          (processed_dir/'manifest.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding='utf-8')
+
+          pipeline=OptimizedChapterPipeline()
+          indices=list(range(len(pages)))
+          batches=[]
+          loop_t0=time.perf_counter()
+          for start in range(0,len(indices),16):
+              batch=indices[start:start+16]
+              t0=time.perf_counter(); pipeline.process_pages(chapter_id,batch,workers=2); elapsed=time.perf_counter()-t0
+              batches.append({'indices':batch,'elapsed_s':round(elapsed,3)})
+              print(f'processed {start+len(batch)}/{len(indices)} in {elapsed:.1f}s')
+          loop_wall=time.perf_counter()-loop_t0
+          manifest=load_manifest_raw(chapter_id)
+
+          page_rows=[]; total_safe=0; total_review=0; timing={'detect':[],'auto_inpaint':[],'residue_verify':[],'total':[]}
+          for pi,page in enumerate(manifest.get('pages',[])):
+              boxes=page.get('boxes') or page.get('detections') or []
+              safe=[b for b in boxes if bool(b.get('safe_to_inpaint'))]
+              review=[b for b in boxes if not bool(b.get('safe_to_inpaint'))]
+              total_safe+=len(safe); total_review+=len(review)
+              tm=((page.get('processing_metrics') or {}).get('timing_ms') or {})
+              for key in timing:
+                  if tm.get(key) is not None: timing[key].append(float(tm[key]))
+              page_rows.append({'page_index':pi,'source_page':page.get('source_page'),'slice_index':page.get('slice_index'),
+                                'original':page.get('original'),'clean':page.get('clean'),'safe_boxes':len(safe),'review_boxes':len(review),
+                                'needs_review':bool(page.get('needs_review')),'detection_state':page.get('detection_state'),
+                                'boxes':[{k:b.get(k) for k in ('id','x1','y1','x2','y2','confidence','semantic_type','class_name','safe_to_inpaint','origin')} for b in boxes]})
+
+          def mean(xs): return round(float(np.mean(xs)),3) if xs else None
+          report={'benchmark':'fresh-real-chapter-clean-audit','chapter_id':chapter_id,'chapter_url':chapter_url,
+                  'source_images':len(raw_paths),'slices':len(pages),'slice_workers':workers,
+                  'timing':{'batch_wall_s':round(sum(b['elapsed_s'] for b in batches),3),'loop_wall_s':round(loop_wall,3),
+                            's_per_slice':round(loop_wall/max(1,len(pages)),3),'slices_per_min':round(60*len(pages)/max(.001,loop_wall),3),
+                            'mean_detector_ms':mean(timing['detect']),'mean_auto_inpaint_ms':mean(timing['auto_inpaint']),
+                            'mean_residue_verify_ms':mean(timing['residue_verify']),'mean_page_total_ms':mean(timing['total']),'batches':batches},
+                  'boxes':{'safe':total_safe,'review':total_review,'total':total_safe+total_review},'pages':page_rows}
+          (out/'report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
+
+          font=ImageFont.load_default()
+          def thumb(path,w=300,h=430):
+              with Image.open(path) as im:
+                  x=im.convert('RGB'); x.thumbnail((w,h),Image.Resampling.LANCZOS); return x.copy()
+          def pair_card(pi):
+              page=manifest['pages'][pi]; row=page_rows[pi]
+              raw=thumb(page['original']); clean=thumb(page['clean'])
+              header=42; gap=12
+              card=Image.new('RGB',(raw.width+clean.width+gap,max(raw.height,clean.height)+header),'white')
+              d=ImageDraw.Draw(card); d.text((4,4),f"p{pi:03d} src={row['source_page']} sl={row['slice_index']} safe={row['safe_boxes']} review={row['review_boxes']}",fill='black',font=font)
+              d.text((4,20),'RAW',fill='black',font=font); d.text((raw.width+gap+4,20),'CLEAN',fill='black',font=font)
+              card.paste(raw,(0,header)); card.paste(clean,(raw.width+gap,header)); return card
+          for start in range(0,len(pages),8):
+              cards=[pair_card(i) for i in range(start,min(start+8,len(pages)))]
+              cols=2; rows=(len(cards)+cols-1)//cols; cw=max(c.width for c in cards); ch=max(c.height for c in cards)
+              sheet=Image.new('RGB',(cols*cw,rows*ch),'white')
+              for j,c in enumerate(cards): sheet.paste(c,((j%cols)*cw,(j//cols)*ch))
+              sheet.save(sheets/f'full-{start:03d}-{start+len(cards)-1:03d}.jpg',quality=90)
+
+          # Larger first/last evidence for cover/logo/credits/promo inspection.
+          edge_indices=sorted(set(list(range(min(4,len(pages))))+list(range(max(0,len(pages)-4),len(pages)))))
+          for pi in edge_indices:
+              c=pair_card(pi); c.save(sheets/f'edge-p{pi:03d}.jpg',quality=94)
+
+          obj_cards=[]
+          for pi,page in enumerate(manifest.get('pages',[])):
+              raw=Image.open(page['original']).convert('RGB'); clean=Image.open(page['clean']).convert('RGB')
+              for bi,b in enumerate(page.get('boxes') or []):
+                  if not bool(b.get('safe_to_inpaint')): continue
+                  x1,y1,x2,y2=[int(b.get(k) or 0) for k in ('x1','y1','x2','y2')]
+                  pad=28; box=(max(0,x1-pad),max(0,y1-pad),min(raw.width,x2+pad),min(raw.height,y2+pad))
+                  rr=raw.crop(box); cc=clean.crop(box); rr.thumbnail((250,190)); cc.thumbnail((250,190))
+                  w=rr.width+cc.width+10; h=max(rr.height,cc.height)+48
+                  card=Image.new('RGB',(w,h),'white'); d=ImageDraw.Draw(card)
+                  conf=b.get('confidence',b.get('conf',b.get('score')))
+                  d.text((4,4),f"p{pi:03d} b{bi} {b.get('semantic_type')} conf={conf}",fill='black',font=font)
+                  d.text((4,20),f"[{x1},{y1},{x2},{y2}] RAW -> CLEAN",fill='black',font=font)
+                  card.paste(rr,(0,48)); card.paste(cc,(rr.width+10,48)); obj_cards.append(card)
+          for start in range(0,len(obj_cards),12):
+              cards=obj_cards[start:start+12]; cols=3; rows=(len(cards)+cols-1)//cols; cw=max(c.width for c in cards); ch=max(c.height for c in cards)
+              sheet=Image.new('RGB',(cols*cw,rows*ch),'white')
+              for j,c in enumerate(cards): sheet.paste(c,((j%cols)*cw,(j//cols)*ch))
+              sheet.save(objects/f'safe-{start:03d}-{start+len(cards)-1:03d}.jpg',quality=92)
+          print('FRESH_CH29='+json.dumps({'source_images':len(raw_paths),'slices':len(pages),'safe':total_safe,'review':total_review,'slices_per_min':report['timing']['slices_per_min']}))
+          PY
+
+      - name: Upload fresh chapter audit evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: chapter29-fresh-clean-${{ github.run_id }}
+          path: |
+            benchmark-results/chapter29-fresh/
+            data/raw/c2929/sliced/*.png
+            data/processed/c2929/manifest.json
+            data/processed/c2929/clean_*.png
+          retention-days: 7
+          compression-level: 6
+          if-no-files-found: error
