@@ -53,8 +53,25 @@ _BUBBLE_FASTPATH_CHROMA_STD_MAX = _env_float(
 _BUBBLE_FASTPATH_EDGE_DENSITY_MAX = _env_float(
     "MANGA_BUBBLE_FASTPATH_EDGE_DENSITY_MAX", 0.020, 0.0, 0.25
 )
+# Telea is retained only as an opt-in benchmark fallback. Real chapter auditing
+# showed large polygon/facet artifacts even when its low-texture ring gate passed.
+_BUBBLE_FASTPATH_TELEA_ENABLED = _env_bool(
+    "MANGA_BUBBLE_FASTPATH_TELEA_ENABLED", False
+)
 _BUBBLE_FASTPATH_TELEA_RADIUS = _env_int(
     "MANGA_BUBBLE_FASTPATH_TELEA_RADIUS", 3, 1, 9
+)
+_BUBBLE_FASTPATH_GRADIENT_ENABLED = _env_bool(
+    "MANGA_BUBBLE_FASTPATH_GRADIENT_ENABLED", True
+)
+_BUBBLE_FASTPATH_GRADIENT_MAX_MASK_FRACTION = _env_float(
+    "MANGA_BUBBLE_FASTPATH_GRADIENT_MAX_MASK_FRACTION", 0.76, 0.20, 0.95
+)
+_BUBBLE_FASTPATH_GRADIENT_RMSE_MAX = _env_float(
+    "MANGA_BUBBLE_FASTPATH_GRADIENT_RMSE_MAX", 12.0, 2.0, 40.0
+)
+_BUBBLE_FASTPATH_OVERLAP_RATIO = _env_float(
+    "MANGA_BUBBLE_FASTPATH_OVERLAP_RATIO", 0.80, 0.50, 1.0
 )
 
 _ROI_LAMA_ENABLED = _env_bool("MANGA_DYNAMIC_LAMA_TIGHT_ROI_ENABLED", True)
@@ -71,16 +88,15 @@ _ROI_MIN_SAVINGS = _env_float(
 class FastInpainter(Inpainter):
     """CPU-oriented inpainting candidate layered on top of production LaMa.
 
-    Two optimizations are deliberately conservative:
+    Verified speech-bubble masks first try cheap, artwork-safe background
+    reconstruction. Flat interiors keep the existing solid smart-fill; smooth
+    bubble gradients use a robust quadratic surface fitted only from clean ring
+    pixels. Complex or ambiguous regions fall back to LaMa. Telea is disabled by
+    default because real-page auditing found visible polygon/facet artifacts.
 
-    * Verified speech-bubble masks first try a cheap fill path. Existing solid
-      smart-fill remains the first choice; mildly varying but low-texture bubble
-      interiors may use OpenCV Telea rather than loading/running LaMa.
-    * Dynamic LaMa receives a tight mask-derived ROI with bounded context instead
-      of the wider detector-cluster crop when doing so removes meaningful pixels.
-
-    Every fallback remains the production Inpainter implementation, and final
-    compositing is still restricted to the authorized destructive mask.
+    Dynamic LaMa also receives a tight mask-derived ROI with bounded context
+    instead of the wider detector-cluster crop when doing so removes meaningful
+    pixels. Final compositing remains restricted to the authorized mask.
     """
 
     def _begin_metrics(self, *, boxes: int = 0) -> None:
@@ -89,7 +105,9 @@ class FastInpainter(Inpainter):
             {
                 "bubble_fast_fill_regions": 0,
                 "bubble_fast_fill_solid_regions": 0,
+                "bubble_fast_fill_gradient_regions": 0,
                 "bubble_fast_fill_telea_regions": 0,
+                "bubble_fast_fill_overlap_skips": 0,
                 "bubble_fast_fill_pixels": 0,
                 "roi_lama_regions": 0,
                 "roi_lama_source_pixels": 0,
@@ -140,6 +158,62 @@ class FastInpainter(Inpainter):
         )
         return (cv2.dilate(mask.astype(np.uint8), kernel) > 0) & (~mask)
 
+    @staticmethod
+    def _quadratic_design(
+        xs: np.ndarray,
+        ys: np.ndarray,
+        width: int,
+        height: int,
+    ) -> np.ndarray:
+        """Return a numerically stable degree-2 spatial design matrix."""
+        x = (xs.astype(np.float32) + 0.5) / max(1.0, float(width))
+        y = (ys.astype(np.float32) + 0.5) / max(1.0, float(height))
+        x = x * 2.0 - 1.0
+        y = y * 2.0 - 1.0
+        return np.stack(
+            (
+                np.ones_like(x),
+                x,
+                y,
+                x * x,
+                x * y,
+                y * y,
+            ),
+            axis=1,
+        )
+
+    @staticmethod
+    def _strong_authority_overlap(box: BubbleBox, boxes: list[BubbleBox]) -> bool:
+        """Detect duplicate destructive authorities before per-box fast fill.
+
+        A common failure mode is one segmenter result represented as both a
+        speech-bubble and a free-text record. Fast-filling the first and then
+        sending the overlapping second record through LaMa paints the same pixels
+        twice and amplifies blur. Strongly overlapping authorities are therefore
+        left together for the clustered path, which unions their masks once.
+        """
+        area = max(0, int(box.x2 - box.x1)) * max(0, int(box.y2 - box.y1))
+        if area <= 0:
+            return False
+        for other in boxes:
+            if other is box or not bool(other.safe_to_inpaint):
+                continue
+            other_area = max(0, int(other.x2 - other.x1)) * max(
+                0, int(other.y2 - other.y1)
+            )
+            if other_area <= 0:
+                continue
+            ix1 = max(int(box.x1), int(other.x1))
+            iy1 = max(int(box.y1), int(other.y1))
+            ix2 = min(int(box.x2), int(other.x2))
+            iy2 = min(int(box.y2), int(other.y2))
+            if ix2 <= ix1 or iy2 <= iy1:
+                continue
+            intersection = (ix2 - ix1) * (iy2 - iy1)
+            if intersection / float(min(area, other_area)) >= _BUBBLE_FASTPATH_OVERLAP_RATIO:
+                return True
+        return False
+
     def _bubble_telea_safe(self, crop: np.ndarray, local_mask: np.ndarray) -> bool:
         ring = self._mask_ring(local_mask, _BUBBLE_FASTPATH_RING)
         if int(np.count_nonzero(ring)) < 64:
@@ -161,6 +235,102 @@ class FastInpainter(Inpainter):
                 return False
 
         return True
+
+    def _bubble_gradient_fill(
+        self,
+        crop: np.ndarray,
+        local_mask: np.ndarray,
+    ) -> np.ndarray | None:
+        """Reconstruct a smooth bubble background from a clean surrounding ring.
+
+        The fit is deliberately conservative: extremely dense masks are likely
+        stylized SFX or a bad semantic classification rather than glyph support;
+        edge-heavy/chromatically complex rings fall back to LaMa. Dark outlines
+        or residual glyph pixels in the ring are rejected by robust residual
+        trimming before the quadratic surface is accepted.
+        """
+        if not _BUBBLE_FASTPATH_GRADIENT_ENABLED:
+            return None
+        mask = local_mask > 127
+        ys, xs = np.nonzero(mask)
+        if xs.size < 16:
+            return None
+
+        bx1, bx2 = int(xs.min()), int(xs.max()) + 1
+        by1, by2 = int(ys.min()), int(ys.max()) + 1
+        tight_area = max(1, (bx2 - bx1) * (by2 - by1))
+        occupancy = float(xs.size) / float(tight_area)
+        if occupancy > _BUBBLE_FASTPATH_GRADIENT_MAX_MASK_FRACTION:
+            return None
+
+        ring = self._mask_ring(local_mask, _BUBBLE_FASTPATH_RING)
+        if int(np.count_nonzero(ring)) < 96:
+            return None
+
+        gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop
+        edges = cv2.Canny(gray, 64, 128, L2gradient=True) > 0
+        # Remove edge-adjacent samples from the fit rather than letting a bubble
+        # outline or missed glyph fringe bend the reconstructed background.
+        edge_kernel = np.ones((3, 3), dtype=np.uint8)
+        edge_margin = cv2.dilate(edges.astype(np.uint8), edge_kernel) > 0
+        clean_ring = ring & (~edge_margin)
+        if int(np.count_nonzero(clean_ring)) < 96:
+            return None
+        if float(edges[ring].mean()) > max(0.035, _BUBBLE_FASTPATH_EDGE_DENSITY_MAX * 2.0):
+            return None
+
+        if crop.ndim == 3 and crop.shape[2] == 3:
+            lab = cv2.cvtColor(crop, cv2.COLOR_BGR2LAB)
+            ring_ab = lab[clean_ring, 1:3].astype(np.float32, copy=False)
+            if ring_ab.size and float(np.max(ring_ab.std(axis=0))) > max(
+                18.0, _BUBBLE_FASTPATH_CHROMA_STD_MAX * 1.5
+            ):
+                return None
+
+        sample_y, sample_x = np.nonzero(clean_ring)
+        design = self._quadratic_design(sample_x, sample_y, crop.shape[1], crop.shape[0])
+        values = crop[sample_y, sample_x].astype(np.float32)
+        if values.ndim == 1:
+            values = values[:, None]
+
+        keep = np.ones(len(sample_x), dtype=bool)
+        coeff = None
+        for _ in range(3):
+            if int(np.count_nonzero(keep)) < 64:
+                return None
+            coeff, *_ = np.linalg.lstsq(design[keep], values[keep], rcond=None)
+            predicted = design @ coeff
+            residual = np.sqrt(np.mean((predicted - values) ** 2, axis=1))
+            active = residual[keep]
+            median = float(np.median(active))
+            mad = float(np.median(np.abs(active - median)))
+            limit = median + max(2.0, 3.0 * 1.4826 * mad)
+            next_keep = residual <= limit
+            if int(np.count_nonzero(next_keep)) < 64:
+                break
+            if np.array_equal(next_keep, keep):
+                keep = next_keep
+                break
+            keep = next_keep
+
+        if coeff is None or int(np.count_nonzero(keep)) < 64:
+            return None
+        fitted = design[keep] @ coeff
+        rmse = float(np.sqrt(np.mean((fitted - values[keep]) ** 2)))
+        if not np.isfinite(rmse) or rmse > _BUBBLE_FASTPATH_GRADIENT_RMSE_MAX:
+            return None
+
+        target_y, target_x = np.nonzero(mask)
+        target_design = self._quadratic_design(
+            target_x, target_y, crop.shape[1], crop.shape[0]
+        )
+        target_values = np.clip(target_design @ coeff, 0.0, 255.0).astype(np.uint8)
+        painted = crop.copy()
+        if painted.ndim == 2:
+            painted[target_y, target_x] = target_values[:, 0]
+        else:
+            painted[target_y, target_x] = target_values
+        return painted
 
     def _try_bubble_fast_fill(
         self,
@@ -199,19 +369,22 @@ class FastInpainter(Inpainter):
             painted[mask_bool] = fill_color
             self._metric_add("smart_fill_regions")
             self._metric_add("bubble_fast_fill_solid_regions")
-        elif self._bubble_telea_safe(crop, local_mask):
-            # Telea is intentionally restricted to low-texture verified bubble
-            # interiors. Only authorized mask pixels are copied back, so its
-            # neighbourhood sampling cannot alter surrounding artwork.
-            painted = cv2.inpaint(
-                crop,
-                local_mask,
-                float(_BUBBLE_FASTPATH_TELEA_RADIUS),
-                cv2.INPAINT_TELEA,
-            )
-            self._metric_add("bubble_fast_fill_telea_regions")
         else:
-            return False
+            painted = self._bubble_gradient_fill(crop, local_mask)
+            if painted is not None:
+                self._metric_add("bubble_fast_fill_gradient_regions")
+            elif _BUBBLE_FASTPATH_TELEA_ENABLED and self._bubble_telea_safe(
+                crop, local_mask
+            ):
+                painted = cv2.inpaint(
+                    crop,
+                    local_mask,
+                    float(_BUBBLE_FASTPATH_TELEA_RADIUS),
+                    cv2.INPAINT_TELEA,
+                )
+                self._metric_add("bubble_fast_fill_telea_regions")
+            else:
+                return False
 
         target = image[y1:y2, x1:x2]
         image[y1:y2, x1:x2] = np.where(mask_bool[:, :, None], painted, target)
@@ -233,6 +406,10 @@ class FastInpainter(Inpainter):
         result = image.copy()
         remaining: list[BubbleBox] = []
         for box in boxes:
+            if self._bubble_candidate(box) and self._strong_authority_overlap(box, boxes):
+                self._metric_add("bubble_fast_fill_overlap_skips")
+                remaining.append(box)
+                continue
             if self._try_bubble_fast_fill(result, box, protected_regions):
                 continue
             remaining.append(box)
