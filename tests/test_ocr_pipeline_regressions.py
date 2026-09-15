@@ -66,6 +66,34 @@ def test_high_confidence_partial_mask_coverage_is_review_not_good():
     assert (quality.status, quality.reason) == ("review", "incomplete-coverage")
 
 
+def test_punctuation_only_dialogue_is_preserved_when_confident_and_complete():
+    for text in ("?!", "!!!!", "…….", "…!", "..."):
+        quality = classify_ocr_quality(
+            text,
+            "en",
+            confidence=0.90,
+            coverage=1.0,
+        )
+        assert (quality.status, quality.reason) == ("good", None)
+
+
+def test_punctuation_only_still_respects_confidence_and_completeness_gates():
+    low_conf = classify_ocr_quality("?!", "en", confidence=0.20, coverage=1.0)
+    clipped = classify_ocr_quality(
+        "!!!!", "en", confidence=0.99, coverage=1.0, may_be_truncated=True
+    )
+    unknown_conf = classify_ocr_quality("……", "en", confidence=None, coverage=1.0)
+
+    assert (low_conf.status, low_conf.reason) == ("reject", "very-low-confidence")
+    assert (clipped.status, clipped.reason) == ("review", "crop-edge-text")
+    assert (unknown_conf.status, unknown_conf.reason) == ("review", "punctuation-only")
+
+
+def test_lone_decorative_punctuation_remains_noise():
+    assert classify_ocr_quality("”", "en", confidence=0.99).status == "reject"
+    assert classify_ocr_quality(".", "en", confidence=0.99).status == "reject"
+
+
 def test_mask_coverage_compares_detected_span_to_segmented_multiline_support():
     mask = np.zeros((80, 100), np.uint8)
     mask[0:70, 10:90] = 255
