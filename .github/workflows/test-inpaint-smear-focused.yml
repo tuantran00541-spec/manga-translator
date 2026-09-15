@@ -1,5 +1,6 @@
 name: Focused inpaint smear audit
 
+# Triggered explicitly after bot-authored candidate commits because GITHUB_TOKEN pushes do not chain workflows.
 on:
   push:
     branches:
