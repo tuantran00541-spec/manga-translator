@@ -1,0 +1,213 @@
+name: Diagnose p025 inpaint routes
+
+on:
+  push:
+    branches:
+      - test/preserve-region-repaint
+    paths:
+      - .github/workflows/diagnose-p025-inpaint-route.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHONUNBUFFERED: "1"
+  MANGA_ORT_PROVIDER: openvino
+  MANGA_ORT_REQUIRE_PROVIDER: "1"
+  MANGA_ORT_OPENVINO_SCOPE: detectors
+  MANGA_ORT_OPENVINO_THREADS: "2"
+  MANGA_ORT_OPENVINO_STREAMS: "1"
+  MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
+  OPENBLAS_NUM_THREADS: "1"
+  CHAPTER_ID: c159p025diag
+  CHAPTER_URL: https://asurascans.com/comics/player-who-returned-10000-years-later-53fc8424/chapter/159
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: test/preserve-region-repaint
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install runtime
+        run: |
+          python -m pip install \
+            numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 \
+            onnxruntime-openvino==1.24.1 psutil==6.1.1 loguru==0.7.2 \
+            requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 playwright==1.47.0 \
+            fastapi==0.115.0 'uvicorn[standard]==0.30.6' \
+            pydantic==2.9.2 filelock==3.16.1 python-multipart==0.0.12
+
+      - name: Restore detector and inpaint models
+        id: models
+        uses: actions/cache@v4
+        with:
+          path: |
+            models/*.onnx
+            models/.e2e-provenance.json
+          key: processing-profile-models-b224548-v1
+
+      - name: Read pinned model provisioner
+        if: steps.models.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: b22454827f8190655d7070b80eb20c2550beadfa
+          path: benchmark-bootstrap
+          sparse-checkout: scripts/provision_real_e2e_models.py
+          sparse-checkout-cone-mode: false
+
+      - name: Provision models
+        if: steps.models.outputs.cache-hit != 'true'
+        run: |
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple torch==2.5.1+cpu torchvision==0.20.1+cpu
+          python -m pip install --no-deps ultralytics==8.3.221 onnx==1.17.0 onnxslim==0.1.71
+          python -m pip install sympy==1.13.1 PyYAML==6.0.2 scipy==1.14.1 tqdm==4.67.1 matplotlib==3.9.2 pandas==2.2.3 py-cpuinfo==9.0.0 ml_dtypes==0.5.3 colorama==0.4.6 polars==1.33.1 ultralytics-thop==2.0.17
+          python benchmark-bootstrap/scripts/provision_real_e2e_models.py
+          cp benchmark-bootstrap/models/*.onnx models/
+          cp benchmark-bootstrap/models/.e2e-provenance.json models/
+
+      - name: Trace p025 paint routes
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+          import json
+          import os
+          import shutil
+          import types
+          from pathlib import Path
+          import cv2
+          import numpy as np
+          from app.dependencies import pipeline
+          from app.image_io import read_image
+          from app.manifest_utils import load_manifest_raw
+          from app.mask_store import decode_mask_value
+
+          out = Path("benchmark-results/p025-route")
+          if out.exists():
+              shutil.rmtree(out)
+          out.mkdir(parents=True)
+          roi = (315, 2120, 845, 2425)
+          trace = []
+          seq = {"n": 0}
+
+          def meta(box):
+              m = decode_mask_value(getattr(box, "mask", None))
+              return {
+                  "geometry": [int(box.x1), int(box.y1), int(box.x2), int(box.y2)],
+                  "semantic_type": getattr(box, "semantic_type", None),
+                  "source_role": getattr(box, "source_role", None),
+                  "mask_source": getattr(box, "mask_source", None),
+                  "verified_mask": bool(getattr(box, "verified_mask", False)),
+                  "safe_to_inpaint": bool(getattr(box, "safe_to_inpaint", False)),
+                  "mask_pixels": int(np.count_nonzero(m > 127)) if m is not None else 0,
+              }
+
+          def changed_record(route, before, after, extra):
+              changed = np.any(after != before, axis=2)
+              ys, xs = np.nonzero(changed)
+              rec = {"route": route, **extra, "changed_pixels": int(xs.size)}
+              if xs.size:
+                  rec["changed_bbox"] = [int(xs.min()), int(ys.min()), int(xs.max()) + 1, int(ys.max()) + 1]
+                  x1,y1,x2,y2 = roi
+                  roi_changed = changed[y1:y2, x1:x2]
+                  rec["changed_pixels_in_target_roi"] = int(np.count_nonzero(roi_changed))
+                  seq["n"] += 1
+                  vis = after[y1:y2, x1:x2].copy()
+                  mask = roi_changed
+                  if np.any(mask):
+                      overlay = vis.copy()
+                      overlay[mask] = (0, 0, 255)
+                      vis = cv2.addWeighted(vis, 0.72, overlay, 0.28, 0)
+                  cv2.imwrite(str(out / f"route-{seq['n']:02d}-{route}.png"), vis)
+              else:
+                  rec["changed_pixels_in_target_roi"] = 0
+              trace.append(rec)
+
+          chapter_id = os.environ["CHAPTER_ID"]
+          manifest = pipeline.download_chapter(os.environ["CHAPTER_URL"], chapter_id, workers=1)
+          matches = [
+              i for i,p in enumerate(manifest["pages"])
+              if int(p.get("source_page",-1)) == 5 and int(p.get("slice_index",-1)) == 4
+          ]
+          if len(matches) != 1:
+              raise RuntimeError(f"p025 lookup failed: {matches}")
+          page_index = matches[0]
+          inp = pipeline.inpainter
+
+          orig_stroke = inp._try_stroke_authority_fill
+          def wrapped_stroke(self, image, box, protected_regions):
+              before = image.copy()
+              accepted = orig_stroke(image, box, protected_regions)
+              if accepted:
+                  changed_record("stroke_authority", before, image, {"box": meta(box)})
+              return accepted
+          inp._try_stroke_authority_fill = types.MethodType(wrapped_stroke, inp)
+
+          orig_fast = inp._try_bubble_fast_fill
+          def wrapped_fast(self, image, box, protected_regions):
+              before = image.copy()
+              accepted = orig_fast(image, box, protected_regions)
+              if accepted:
+                  changed_record("bubble_fast", before, image, {"box": meta(box)})
+              return accepted
+          inp._try_bubble_fast_fill = types.MethodType(wrapped_fast, inp)
+
+          orig_smart = inp._smart_paint_region
+          def wrapped_smart(self, image, local_mask, crop_box, feather=False, force_lama=False):
+              before = image.copy()
+              result = orig_smart(image, local_mask, crop_box, feather=feather, force_lama=force_lama)
+              changed_record("cluster_smart_lama", before, result, {
+                  "crop_box": [int(v) for v in crop_box],
+                  "mask_pixels": int(np.count_nonzero(local_mask > 127)),
+                  "force_lama": bool(force_lama),
+              })
+              return result
+          inp._smart_paint_region = types.MethodType(wrapped_smart, inp)
+
+          pipeline.process_pages(chapter_id, [page_index], workers=1)
+          state = load_manifest_raw(chapter_id)
+          page = state["pages"][page_index]
+          raw = read_image(Path(page["original"]))
+          clean = read_image(Path(page["clean"]))
+          x1,y1,x2,y2 = roi
+          cv2.imwrite(str(out / "p025-raw.png"), raw[y1:y2,x1:x2])
+          cv2.imwrite(str(out / "p025-clean.png"), clean[y1:y2,x1:x2])
+
+          boxes = []
+          for b in page.get("boxes", []):
+              if not isinstance(b, dict) or b.get("removed"):
+                  continue
+              m = decode_mask_value(b.get("mask"))
+              boxes.append({
+                  "geometry": [b.get("x1"),b.get("y1"),b.get("x2"),b.get("y2")],
+                  "semantic_type": b.get("semantic_type"),
+                  "source_role": b.get("source_role"),
+                  "mask_source": b.get("mask_source"),
+                  "safe_to_inpaint": b.get("safe_to_inpaint"),
+                  "needs_review": b.get("needs_review"),
+                  "mask_pixels": int(np.count_nonzero(m > 127)) if m is not None else 0,
+              })
+          report = {
+              "page_index": page_index,
+              "boxes": boxes,
+              "trace": trace,
+              "auto_inpaint": (page.get("processing_metrics") or {}).get("auto_inpaint"),
+          }
+          (out / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+          print("P025_ROUTE=" + json.dumps(report, ensure_ascii=False))
+          PY
+
+      - name: Upload evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: p025-route-${{ github.run_id }}
+          path: benchmark-results/p025-route/
+          retention-days: 7
+          if-no-files-found: error
