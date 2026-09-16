@@ -8,10 +8,12 @@ on:
       - .github/workflows/validate-shadow-slave-mask-recall-fix.yml
       - app/dependencies.py
       - app/detector/tiled_independent_residue_detector.py
+      - app/inpaint/overlap_aware_adaptive_inpainter.py
       - app/mask_recall_pipeline.py
       - app/mask_recall_envelope_pipeline.py
       - app/mask_recall_envelope_v2_pipeline.py
       - app/optimized_pipeline.py
+      - tests/test_adaptive_mask_recall_followup.py
       - tests/test_mask_recall_pipeline.py
       - tests/test_mask_recall_envelope_pipeline.py
       - tests/test_tiled_residue_detector.py
@@ -63,6 +65,7 @@ jobs:
       - name: Focused unit tests
         run: |
           python -m pytest -q \
+            tests/test_adaptive_mask_recall_followup.py \
             tests/test_mask_recall_pipeline.py \
             tests/test_mask_recall_envelope_pipeline.py \
             tests/test_tiled_residue_detector.py \
@@ -170,6 +173,7 @@ jobs:
                   "overlap_safe": v["overlap_safe_records"],
                   "repair_pixels": v["repair"].get("repair_mask_pixels", 0),
                   "outside": v["repair"].get("outside_authority_changed_channel_values", 0),
+                  "repair_passes": v["mask_recall_repair"].get("repair_passes", 0),
               }
               for p, v in report["targets"].items()
           }))
