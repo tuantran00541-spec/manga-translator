@@ -135,9 +135,14 @@ def test_verified_residue_can_extend_beyond_original_mask_but_not_preserve(tmp_p
     repaired = read_image(clean_path)
 
     repair_authority = fake_inpainter.mask > 127
+    preserve_authority = np.zeros(repair_authority.shape, dtype=bool)
+    preserve_authority[50:76, 101:114] = True
+    untouched = ~(repair_authority | preserve_authority)
+
     assert np.any(repair_authority[ry1:ry2, rx1:101])
     assert not np.any(repair_authority[ry1:ry2, 101:rx2])
-    assert np.array_equal(repaired[~repair_authority], clean[~repair_authority])
+    assert np.array_equal(repaired[untouched], clean[untouched])
+    assert np.array_equal(repaired[preserve_authority], original[preserve_authority])
     assert np.all(repaired[repair_authority] == 17)
     assert updated["residue_regions"] == []
     assert "post_inpaint_text_residue" not in updated["detection_issues"]
