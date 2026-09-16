@@ -74,9 +74,11 @@ _BUBBLE_FASTPATH_OVERLAP_RATIO = _env_float(
     "MANGA_BUBBLE_FASTPATH_OVERLAP_RATIO", 0.80, 0.50, 1.0
 )
 
-# Dense detector masks are erase authority, not necessarily glyph support.
-# Refine them only on smooth, high-contrast text backgrounds and always keep
-# the model mask as a strict subset of the original authority.
+# Dense segmenter masks are erase authority, not necessarily glyph support.
+# On isolated smooth speech regions we derive a tighter stroke mask, but we
+# reconstruct its pixels from the *outside of the full authority* rather than
+# feeding the stroke silhouette to LaMa. This avoids the white-glyph ghosting
+# observed when LaMa is asked to inpaint only the foreground strokes.
 _STROKE_REFINE_ENABLED = _env_bool("MANGA_STROKE_REFINE_ENABLED", True)
 _STROKE_REFINE_DENSE_FRACTION_MIN = _env_float(
     "MANGA_STROKE_REFINE_DENSE_FRACTION_MIN", 0.55, 0.25, 0.95
@@ -135,7 +137,8 @@ class FastInpainter(Inpainter):
                 "stroke_refined_regions": 0,
                 "stroke_refined_authority_pixels": 0,
                 "stroke_refined_model_pixels": 0,
-                "stroke_refined_lama_fallback_regions": 0,
+                "stroke_authority_gradient_regions": 0,
+                "stroke_authority_gradient_pixels": 0,
                 "roi_lama_regions": 0,
                 "roi_lama_source_pixels": 0,
                 "roi_lama_input_pixels": 0,
@@ -174,57 +177,7 @@ class FastInpainter(Inpainter):
         )
         if bool(getattr(box, "allow_rectangle_fallback", False)):
             local.allow_rectangle_fallback = True
-        if bool(getattr(box, "stroke_refined_model_mask", False)):
-            local.stroke_refined_model_mask = True
         return local
-
-    @staticmethod
-    def _build_model_mask(
-        image_shape: tuple[int, int],
-        boxes: list[BubbleBox],
-        crop_img: np.ndarray | None = None,
-    ) -> np.ndarray:
-        """Build the model mask while keeping refined strokes exact.
-
-        Ordinary detector masks retain the production adaptive dilation. A mask
-        already refined from dense erase authority to glyph support must not be
-        dilated a second time because that can escape the authority we just
-        proved safe.
-        """
-        h, w = image_shape
-        refined = [
-            box for box in boxes
-            if bool(getattr(box, "stroke_refined_model_mask", False))
-        ]
-        ordinary = [
-            box for box in boxes
-            if not bool(getattr(box, "stroke_refined_model_mask", False))
-        ]
-        if ordinary:
-            mask = build_mask(image_shape, ordinary, crop_img)
-        else:
-            mask = np.zeros((h, w), dtype=np.uint8)
-
-        for box in refined:
-            if not bool(box.safe_to_inpaint) or box.mask is None:
-                continue
-            box_w = int(box.x2 - box.x1)
-            box_h = int(box.y2 - box.y1)
-            if box_w <= 0 or box_h <= 0 or box.mask.shape != (box_h, box_w):
-                continue
-            x1 = max(0, int(box.x1))
-            y1 = max(0, int(box.y1))
-            x2 = min(w, int(box.x2))
-            y2 = min(h, int(box.y2))
-            if x2 <= x1 or y2 <= y1:
-                continue
-            src = box.mask[
-                y1 - int(box.y1):y2 - int(box.y1),
-                x1 - int(box.x1):x2 - int(box.x1),
-            ]
-            dest = mask[y1:y2, x1:x2]
-            mask[y1:y2, x1:x2] = np.maximum(dest, src)
-        return mask
 
     @staticmethod
     def _mask_ring(local_mask: np.ndarray, radius: int) -> np.ndarray:
@@ -414,7 +367,7 @@ class FastInpainter(Inpainter):
         crop: np.ndarray,
         authority_mask: np.ndarray,
     ) -> np.ndarray | None:
-        """Derive conservative glyph support from a dense erase-authority mask."""
+        """Derive conservative glyph support from a dense erase authority."""
         if not _STROKE_REFINE_ENABLED:
             return None
         authority = authority_mask > 127
@@ -440,8 +393,6 @@ class FastInpainter(Inpainter):
         if not np.isfinite(ring_std) or ring_std > _STROKE_REFINE_RING_STD_MAX:
             return None
 
-        # Reject textured or colorful artwork. The refinement is for bubble-like
-        # smooth backgrounds only; complex free text stays on the LaMa path.
         edges = cv2.Canny(gray, 64, 128, L2gradient=True) > 0
         if float(edges[ring].mean()) > 0.06:
             return None
@@ -489,7 +440,6 @@ class FastInpainter(Inpainter):
         if model_pixels / float(authority_pixels) > _STROKE_REFINE_MAX_AUTHORITY_FRACTION:
             return None
 
-        # Recover a tiny anti-alias fringe, clipped strictly to authority.
         fringe = cv2.dilate(keep, np.ones((3, 3), dtype=np.uint8), iterations=1)
         refined = np.where(authority, fringe, 0).astype(np.uint8)
         refined_pixels = int(np.count_nonzero(refined))
@@ -499,24 +449,113 @@ class FastInpainter(Inpainter):
             return None
         return refined
 
-    def _stroke_model_box(
+    def _bubble_gradient_fill_from_authority_ring(
+        self,
+        crop: np.ndarray,
+        model_mask: np.ndarray,
+        authority_mask: np.ndarray,
+    ) -> np.ndarray | None:
+        """Fit smooth background outside authority; paint only model strokes."""
+        if not _BUBBLE_FASTPATH_GRADIENT_ENABLED:
+            return None
+        target = model_mask > 127
+        if int(np.count_nonzero(target)) < 16:
+            return None
+
+        ring = self._mask_ring(authority_mask, _BUBBLE_FASTPATH_RING)
+        if int(np.count_nonzero(ring)) < 96:
+            return None
+
+        gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop
+        ring_gray = gray[ring].astype(np.float32, copy=False)
+        if ring_gray.size < 96:
+            return None
+        ring_std = float(ring_gray.std())
+        if not np.isfinite(ring_std) or ring_std > _STROKE_REFINE_RING_STD_MAX:
+            return None
+
+        edges = cv2.Canny(gray, 64, 128, L2gradient=True) > 0
+        edge_margin = cv2.dilate(
+            edges.astype(np.uint8), np.ones((3, 3), dtype=np.uint8)
+        ) > 0
+        clean_ring = ring & (~edge_margin)
+        if int(np.count_nonzero(clean_ring)) < 96:
+            return None
+        if float(edges[ring].mean()) > max(
+            0.035, _BUBBLE_FASTPATH_EDGE_DENSITY_MAX * 2.0
+        ):
+            return None
+
+        if crop.ndim == 3 and crop.shape[2] == 3:
+            lab = cv2.cvtColor(crop, cv2.COLOR_BGR2LAB)
+            ring_ab = lab[clean_ring, 1:3].astype(np.float32, copy=False)
+            if ring_ab.size and float(np.max(ring_ab.std(axis=0))) > max(
+                18.0, _BUBBLE_FASTPATH_CHROMA_STD_MAX * 1.5
+            ):
+                return None
+
+        sample_y, sample_x = np.nonzero(clean_ring)
+        design = self._quadratic_design(
+            sample_x, sample_y, crop.shape[1], crop.shape[0]
+        )
+        values = crop[sample_y, sample_x].astype(np.float32)
+        if values.ndim == 1:
+            values = values[:, None]
+
+        keep = np.ones(len(sample_x), dtype=bool)
+        coeff = None
+        for _ in range(3):
+            if int(np.count_nonzero(keep)) < 64:
+                return None
+            coeff, *_ = np.linalg.lstsq(design[keep], values[keep], rcond=None)
+            predicted = design @ coeff
+            residual = np.sqrt(np.mean((predicted - values) ** 2, axis=1))
+            active = residual[keep]
+            median = float(np.median(active))
+            mad = float(np.median(np.abs(active - median)))
+            limit = median + max(2.0, 3.0 * 1.4826 * mad)
+            next_keep = residual <= limit
+            if int(np.count_nonzero(next_keep)) < 64:
+                break
+            if np.array_equal(next_keep, keep):
+                keep = next_keep
+                break
+            keep = next_keep
+
+        if coeff is None or int(np.count_nonzero(keep)) < 64:
+            return None
+        fitted = design[keep] @ coeff
+        rmse = float(np.sqrt(np.mean((fitted - values[keep]) ** 2)))
+        if not np.isfinite(rmse) or rmse > _BUBBLE_FASTPATH_GRADIENT_RMSE_MAX:
+            return None
+
+        target_y, target_x = np.nonzero(target)
+        target_design = self._quadratic_design(
+            target_x, target_y, crop.shape[1], crop.shape[0]
+        )
+        target_values = np.clip(target_design @ coeff, 0.0, 255.0).astype(np.uint8)
+        painted = crop.copy()
+        if painted.ndim == 2:
+            painted[target_y, target_x] = target_values[:, 0]
+        else:
+            painted[target_y, target_x] = target_values
+        return painted
+
+    def _try_stroke_authority_fill(
         self,
         image: np.ndarray,
         box: BubbleBox,
         protected_regions: list[dict] | None,
-    ) -> BubbleBox:
-        """Return a box whose model mask may be tighter than erase authority.
-
-        The original detector mask remains the authority source. Refinement is
-        derived against a padded context crop, clipped by preserve regions, then
-        stored as an exact bbox-local model mask. If any safety gate fails the
-        original box is returned unchanged.
-        """
+    ) -> bool:
+        # Keep this path narrow. Free text and overlapping detector authorities
+        # are intentionally left to the established clustered LaMa path.
         if (
-            not self._bubble_candidate(box)
+            not _STROKE_REFINE_ENABLED
+            or not self._bubble_candidate(box)
+            or box.semantic_type != "speech_bubble"
             or box.source_role != "text_segmenter"
         ):
-            return box
+            return False
 
         h, w = image.shape[:2]
         x1 = max(0, int(box.x1) - _BUBBLE_FASTPATH_PAD)
@@ -524,7 +563,7 @@ class FastInpainter(Inpainter):
         x2 = min(w, int(box.x2) + _BUBBLE_FASTPATH_PAD)
         y2 = min(h, int(box.y2) + _BUBBLE_FASTPATH_PAD)
         if x2 - x1 < 4 or y2 - y1 < 4:
-            return box
+            return False
 
         crop_box = (x1, y1, x2, y2)
         crop = image[y1:y2, x1:x2]
@@ -539,29 +578,39 @@ class FastInpainter(Inpainter):
         )
         authority_pixels = int(np.count_nonzero(authority_mask > 127))
         if authority_pixels <= 0:
-            return box
+            return False
 
-        refined = self._refine_dense_smooth_stroke_mask(crop, authority_mask)
-        if refined is None:
-            return box
-
-        bx1 = int(box.x1) - x1
-        by1 = int(box.y1) - y1
-        bx2 = bx1 + int(box.x2 - box.x1)
-        by2 = by1 + int(box.y2 - box.y1)
-        model_mask = refined[by1:by2, bx1:bx2].copy()
-        expected_shape = (int(box.y2 - box.y1), int(box.x2 - box.x1))
+        model_mask = self._refine_dense_smooth_stroke_mask(crop, authority_mask)
+        if model_mask is None:
+            return False
         model_pixels = int(np.count_nonzero(model_mask > 127))
-        if model_mask.shape != expected_shape or model_pixels <= 0:
-            return box
+        if model_pixels <= 0:
+            return False
 
-        model_box = self._local_box(box, 0, 0)
-        model_box.mask = model_mask
-        model_box.stroke_refined_model_mask = True
+        painted = self._bubble_gradient_fill_from_authority_ring(
+            crop,
+            model_mask,
+            authority_mask,
+        )
+        if painted is None:
+            # Critical safety behavior: do not pass the stroke silhouette to
+            # LaMa. The caller will continue with the original dense authority.
+            return False
+
+        target = image[y1:y2, x1:x2]
+        model_bool = model_mask > 127
+        image[y1:y2, x1:x2] = np.where(
+            model_bool[:, :, None], painted, target
+        )
         self._metric_add("stroke_refined_regions")
         self._metric_add("stroke_refined_authority_pixels", authority_pixels)
         self._metric_add("stroke_refined_model_pixels", model_pixels)
-        return model_box
+        self._metric_add("stroke_authority_gradient_regions")
+        self._metric_add("stroke_authority_gradient_pixels", model_pixels)
+        self._metric_add("bubble_fast_fill_regions")
+        self._metric_add("bubble_fast_fill_gradient_regions")
+        self._metric_add("bubble_fast_fill_pixels", model_pixels)
+        return True
 
     def _try_bubble_fast_fill(
         self,
@@ -583,55 +632,39 @@ class FastInpainter(Inpainter):
         crop_box = (x1, y1, x2, y2)
         crop = image[y1:y2, x1:x2]
         local_box = self._local_box(box, x1, y1)
-        local_mask = self._build_model_mask(
-            (y2 - y1, x2 - x1), [local_box], crop
-        )
+        local_mask = build_mask((y2 - y1, x2 - x1), [local_box], crop)
         local_mask = self._subtract_protected_regions(
             local_mask,
             crop_box,
             protected_regions,
         )
-        authority_pixels = int(np.count_nonzero(local_mask > 127))
-        if authority_pixels <= 0:
-            return False
-
-        stroke_refined = bool(getattr(box, "stroke_refined_model_mask", False))
         mask_bool = local_mask > 127
         mask_pixels = int(np.count_nonzero(mask_bool))
         if mask_pixels <= 0:
             return False
 
-        painted = None
-        if stroke_refined:
-            # Preserve a smooth spatial gradient instead of flattening the whole
-            # lettering block. This path changes only the refined stroke pixels.
+        fill_color = self._smart_fill_color(crop, local_mask)
+        if fill_color is not None:
+            painted = crop.copy()
+            painted[mask_bool] = fill_color
+            self._metric_add("smart_fill_regions")
+            self._metric_add("bubble_fast_fill_solid_regions")
+        else:
             painted = self._bubble_gradient_fill(crop, local_mask)
             if painted is not None:
                 self._metric_add("bubble_fast_fill_gradient_regions")
-
-        if painted is None:
-            fill_color = self._smart_fill_color(crop, local_mask)
-            if fill_color is not None:
-                painted = crop.copy()
-                painted[mask_bool] = fill_color
-                self._metric_add("smart_fill_regions")
-                self._metric_add("bubble_fast_fill_solid_regions")
+            elif _BUBBLE_FASTPATH_TELEA_ENABLED and self._bubble_telea_safe(
+                crop, local_mask
+            ):
+                painted = cv2.inpaint(
+                    crop,
+                    local_mask,
+                    float(_BUBBLE_FASTPATH_TELEA_RADIUS),
+                    cv2.INPAINT_TELEA,
+                )
+                self._metric_add("bubble_fast_fill_telea_regions")
             else:
-                painted = self._bubble_gradient_fill(crop, local_mask)
-                if painted is not None:
-                    self._metric_add("bubble_fast_fill_gradient_regions")
-                elif _BUBBLE_FASTPATH_TELEA_ENABLED and self._bubble_telea_safe(
-                    crop, local_mask
-                ):
-                    painted = cv2.inpaint(
-                        crop,
-                        local_mask,
-                        float(_BUBBLE_FASTPATH_TELEA_RADIUS),
-                        cv2.INPAINT_TELEA,
-                    )
-                    self._metric_add("bubble_fast_fill_telea_regions")
-                else:
-                    return False
+                return False
 
         target = image[y1:y2, x1:x2]
         image[y1:y2, x1:x2] = np.where(mask_bool[:, :, None], painted, target)
@@ -653,21 +686,17 @@ class FastInpainter(Inpainter):
         result = image.copy()
         remaining: list[BubbleBox] = []
         for box in boxes:
-            model_box = self._stroke_model_box(result, box, protected_regions)
-            stroke_refined = bool(
-                getattr(model_box, "stroke_refined_model_mask", False)
-            )
+            # Strongly overlapping authorities are ambiguous duplicate evidence.
+            # Keep their original masks together; never shrink either one.
             if self._bubble_candidate(box) and self._strong_authority_overlap(box, boxes):
                 self._metric_add("bubble_fast_fill_overlap_skips")
-                if stroke_refined:
-                    self._metric_add("stroke_refined_lama_fallback_regions")
-                remaining.append(model_box)
+                remaining.append(box)
                 continue
-            if self._try_bubble_fast_fill(result, model_box, protected_regions):
+            if self._try_stroke_authority_fill(result, box, protected_regions):
                 continue
-            if stroke_refined:
-                self._metric_add("stroke_refined_lama_fallback_regions")
-            remaining.append(model_box)
+            if self._try_bubble_fast_fill(result, box, protected_regions):
+                continue
+            remaining.append(box)
 
         if not remaining:
             self._metrics_local.value["clusters"] = 0
@@ -692,9 +721,7 @@ class FastInpainter(Inpainter):
             cx1, cy1, cx2, cy2 = crop_box
             crop_img = result[cy1:cy2, cx1:cx2]
             local_boxes = [self._local_box(box, cx1, cy1) for box in cluster]
-            local_mask = self._build_model_mask(
-                (cy2 - cy1, cx2 - cx1), local_boxes, crop_img
-            )
+            local_mask = build_mask((cy2 - cy1, cx2 - cx1), local_boxes, crop_img)
             local_mask = self._subtract_protected_regions(
                 local_mask,
                 crop_box,

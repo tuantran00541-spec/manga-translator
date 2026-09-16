@@ -417,56 +417,7 @@ def test_dynamic_long_crop_uses_native_single_call_within_pixel_budget():
 
 
 
-def test_dense_smooth_authority_is_refined_to_strokes():
-    h, w = 220, 320
-    yy, xx = np.mgrid[:h, :w]
-    background = np.empty((h, w, 3), dtype=np.uint8)
-    background[..., 0] = np.clip(218 + xx * 0.035 + yy * 0.020, 0, 255)
-    background[..., 1] = np.clip(222 + xx * 0.032 + yy * 0.018, 0, 255)
-    background[..., 2] = np.clip(228 + xx * 0.028 + yy * 0.015, 0, 255)
-    image = background.copy()
-
-    mask = np.zeros((120, 220), dtype=np.uint8)
-    mask[8:112, 8:212] = 255
-    box = _speech_box(50, 45, 270, 165, mask)
-    image[75:86, 85:235] = 5
-    image[105:117, 100:220] = 8
-    image[134:146, 125:200] = 3
-
-    authority = build_mask(image.shape[:2], [box], image) > 127
-    inpainter = FastInpainter()
-    output = inpainter.inpaint(image.copy(), [box])
-    metrics = inpainter.last_metrics()
-
-    changed = np.any(output != image, axis=2)
-    assert metrics["stroke_refined_regions"] == 1
-    assert metrics["stroke_refined_model_pixels"] < metrics["stroke_refined_authority_pixels"] // 2
-    assert metrics["bubble_fast_fill_gradient_regions"] == 1
-    assert metrics["lama_model_runs"] == 0
-    assert not np.any(changed & (~authority))
-    assert int(np.count_nonzero(changed)) < int(np.count_nonzero(authority)) // 2
-
-    glyphs = np.zeros((h, w), dtype=bool)
-    glyphs[75:86, 85:235] = True
-    glyphs[105:117, 100:220] = True
-    glyphs[134:146, 125:200] = True
-    mae = float(
-        np.abs(output.astype(np.int16) - background.astype(np.int16))[glyphs].mean()
-    )
-    assert mae < 8.0
-
-
-def test_dense_textured_authority_rejects_stroke_refinement():
-    rng = np.random.default_rng(123)
-    crop = rng.integers(40, 220, size=(160, 260, 3), dtype=np.uint8)
-    authority = np.zeros((160, 260), dtype=np.uint8)
-    authority[20:140, 20:240] = 255
-    inpainter = FastInpainter()
-    assert inpainter._refine_dense_smooth_stroke_mask(crop, authority) is None
-
-
-
-def test_refined_stroke_mask_survives_fast_fill_fallback():
+def test_authority_ring_reconstruction_erases_dense_smooth_text():
     h, w = 220, 320
     yy, xx = np.mgrid[:h, :w]
     background = np.empty((h, w, 3), dtype=np.uint8)
@@ -484,27 +435,58 @@ def test_refined_stroke_mask_survives_fast_fill_fallback():
 
     authority = build_mask(image.shape[:2], [box], image) > 127
     inpainter = FastInpainter()
-    # Force the refined candidate past the cheap renderer so the clustered LaMa
-    # path is exercised without loading a real model.
-    inpainter._try_bubble_fast_fill = lambda image, box, protected: False
-    captured = {}
-
-    def fake_smart_paint(image_arg, local_mask, crop_box):
-        captured["mask"] = local_mask.copy()
-        captured["crop_box"] = tuple(int(v) for v in crop_box)
-        return image_arg
-
-    inpainter._smart_paint_region = fake_smart_paint
-    inpainter.inpaint(image.copy(), [box])
+    output = inpainter.inpaint(image.copy(), [box])
     metrics = inpainter.last_metrics()
 
+    changed = np.any(output != image, axis=2)
     assert metrics["stroke_refined_regions"] == 1
-    assert metrics["stroke_refined_lama_fallback_regions"] == 1
+    assert metrics["stroke_authority_gradient_regions"] == 1
     assert metrics["stroke_refined_model_pixels"] < metrics["stroke_refined_authority_pixels"] // 2
-    assert "mask" in captured
-    assert int(np.count_nonzero(captured["mask"] > 127)) == metrics["stroke_refined_model_pixels"]
+    assert metrics["lama_model_runs"] == 0
+    assert not np.any(changed & (~authority))
+    assert int(np.count_nonzero(changed)) < int(np.count_nonzero(authority)) // 2
 
-    global_model = np.zeros((h, w), dtype=np.uint8)
-    x1, y1, x2, y2 = captured["crop_box"]
-    global_model[y1:y2, x1:x2] = captured["mask"]
-    assert not np.any((global_model > 127) & (~authority))
+    glyphs = np.zeros((h, w), dtype=bool)
+    glyphs[75:86, 85:235] = True
+    glyphs[105:117, 100:220] = True
+    glyphs[134:146, 125:200] = True
+    mae = float(
+        np.abs(output.astype(np.int16) - background.astype(np.int16))[glyphs].mean()
+    )
+    assert mae < 8.0
+
+
+def test_authority_ring_reconstruction_rejects_textured_region():
+    rng = np.random.default_rng(123)
+    image = rng.integers(40, 220, size=(220, 320, 3), dtype=np.uint8)
+    dense = np.zeros((120, 220), dtype=np.uint8)
+    dense[8:112, 8:212] = 255
+    box = _speech_box(50, 45, 270, 165, dense)
+
+    inpainter = FastInpainter()
+    inpainter._begin_metrics()
+    assert inpainter._try_stroke_authority_fill(image.copy(), box, None) is False
+    assert inpainter.last_metrics()["stroke_authority_gradient_regions"] == 0
+
+
+def test_overlapping_authorities_never_enter_stroke_refinement():
+    image = np.full((220, 320, 3), 230, dtype=np.uint8)
+    mask_a = np.full((100, 180), 255, dtype=np.uint8)
+    mask_b = np.full((80, 160), 255, dtype=np.uint8)
+    a = _speech_box(60, 55, 240, 155, mask_a)
+    b = _speech_box(70, 65, 230, 145, mask_b)
+
+    inpainter = FastInpainter()
+    calls = []
+    inpainter._try_stroke_authority_fill = (
+        lambda image_arg, box_arg, protected: calls.append(box_arg) or False
+    )
+    inpainter._smart_paint_region = (
+        lambda image_arg, local_mask, crop_box: image_arg
+    )
+    inpainter.inpaint(image.copy(), [a, b])
+    metrics = inpainter.last_metrics()
+
+    assert calls == []
+    assert metrics["bubble_fast_fill_overlap_skips"] == 2
+    assert metrics["stroke_refined_regions"] == 0
