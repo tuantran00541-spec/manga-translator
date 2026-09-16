@@ -135,6 +135,7 @@ class FastInpainter(Inpainter):
                 "stroke_refined_regions": 0,
                 "stroke_refined_authority_pixels": 0,
                 "stroke_refined_model_pixels": 0,
+                "stroke_refined_lama_fallback_regions": 0,
                 "roi_lama_regions": 0,
                 "roi_lama_source_pixels": 0,
                 "roi_lama_input_pixels": 0,
@@ -173,7 +174,57 @@ class FastInpainter(Inpainter):
         )
         if bool(getattr(box, "allow_rectangle_fallback", False)):
             local.allow_rectangle_fallback = True
+        if bool(getattr(box, "stroke_refined_model_mask", False)):
+            local.stroke_refined_model_mask = True
         return local
+
+    @staticmethod
+    def _build_model_mask(
+        image_shape: tuple[int, int],
+        boxes: list[BubbleBox],
+        crop_img: np.ndarray | None = None,
+    ) -> np.ndarray:
+        """Build the model mask while keeping refined strokes exact.
+
+        Ordinary detector masks retain the production adaptive dilation. A mask
+        already refined from dense erase authority to glyph support must not be
+        dilated a second time because that can escape the authority we just
+        proved safe.
+        """
+        h, w = image_shape
+        refined = [
+            box for box in boxes
+            if bool(getattr(box, "stroke_refined_model_mask", False))
+        ]
+        ordinary = [
+            box for box in boxes
+            if not bool(getattr(box, "stroke_refined_model_mask", False))
+        ]
+        if ordinary:
+            mask = build_mask(image_shape, ordinary, crop_img)
+        else:
+            mask = np.zeros((h, w), dtype=np.uint8)
+
+        for box in refined:
+            if not bool(box.safe_to_inpaint) or box.mask is None:
+                continue
+            box_w = int(box.x2 - box.x1)
+            box_h = int(box.y2 - box.y1)
+            if box_w <= 0 or box_h <= 0 or box.mask.shape != (box_h, box_w):
+                continue
+            x1 = max(0, int(box.x1))
+            y1 = max(0, int(box.y1))
+            x2 = min(w, int(box.x2))
+            y2 = min(h, int(box.y2))
+            if x2 <= x1 or y2 <= y1:
+                continue
+            src = box.mask[
+                y1 - int(box.y1):y2 - int(box.y1),
+                x1 - int(box.x1):x2 - int(box.x1),
+            ]
+            dest = mask[y1:y2, x1:x2]
+            mask[y1:y2, x1:x2] = np.maximum(dest, src)
+        return mask
 
     @staticmethod
     def _mask_ring(local_mask: np.ndarray, radius: int) -> np.ndarray:
@@ -448,6 +499,70 @@ class FastInpainter(Inpainter):
             return None
         return refined
 
+    def _stroke_model_box(
+        self,
+        image: np.ndarray,
+        box: BubbleBox,
+        protected_regions: list[dict] | None,
+    ) -> BubbleBox:
+        """Return a box whose model mask may be tighter than erase authority.
+
+        The original detector mask remains the authority source. Refinement is
+        derived against a padded context crop, clipped by preserve regions, then
+        stored as an exact bbox-local model mask. If any safety gate fails the
+        original box is returned unchanged.
+        """
+        if (
+            not self._bubble_candidate(box)
+            or box.source_role != "text_segmenter"
+        ):
+            return box
+
+        h, w = image.shape[:2]
+        x1 = max(0, int(box.x1) - _BUBBLE_FASTPATH_PAD)
+        y1 = max(0, int(box.y1) - _BUBBLE_FASTPATH_PAD)
+        x2 = min(w, int(box.x2) + _BUBBLE_FASTPATH_PAD)
+        y2 = min(h, int(box.y2) + _BUBBLE_FASTPATH_PAD)
+        if x2 - x1 < 4 or y2 - y1 < 4:
+            return box
+
+        crop_box = (x1, y1, x2, y2)
+        crop = image[y1:y2, x1:x2]
+        local_box = self._local_box(box, x1, y1)
+        authority_mask = build_mask(
+            (y2 - y1, x2 - x1), [local_box], crop
+        )
+        authority_mask = self._subtract_protected_regions(
+            authority_mask,
+            crop_box,
+            protected_regions,
+        )
+        authority_pixels = int(np.count_nonzero(authority_mask > 127))
+        if authority_pixels <= 0:
+            return box
+
+        refined = self._refine_dense_smooth_stroke_mask(crop, authority_mask)
+        if refined is None:
+            return box
+
+        bx1 = int(box.x1) - x1
+        by1 = int(box.y1) - y1
+        bx2 = bx1 + int(box.x2 - box.x1)
+        by2 = by1 + int(box.y2 - box.y1)
+        model_mask = refined[by1:by2, bx1:bx2].copy()
+        expected_shape = (int(box.y2 - box.y1), int(box.x2 - box.x1))
+        model_pixels = int(np.count_nonzero(model_mask > 127))
+        if model_mask.shape != expected_shape or model_pixels <= 0:
+            return box
+
+        model_box = self._local_box(box, 0, 0)
+        model_box.mask = model_mask
+        model_box.stroke_refined_model_mask = True
+        self._metric_add("stroke_refined_regions")
+        self._metric_add("stroke_refined_authority_pixels", authority_pixels)
+        self._metric_add("stroke_refined_model_pixels", model_pixels)
+        return model_box
+
     def _try_bubble_fast_fill(
         self,
         image: np.ndarray,
@@ -468,7 +583,9 @@ class FastInpainter(Inpainter):
         crop_box = (x1, y1, x2, y2)
         crop = image[y1:y2, x1:x2]
         local_box = self._local_box(box, x1, y1)
-        local_mask = build_mask((y2 - y1, x2 - x1), [local_box], crop)
+        local_mask = self._build_model_mask(
+            (y2 - y1, x2 - x1), [local_box], crop
+        )
         local_mask = self._subtract_protected_regions(
             local_mask,
             crop_box,
@@ -478,18 +595,7 @@ class FastInpainter(Inpainter):
         if authority_pixels <= 0:
             return False
 
-        refined = None
-        if box.source_role == "text_segmenter":
-            refined = self._refine_dense_smooth_stroke_mask(crop, local_mask)
-        stroke_refined = refined is not None
-        if stroke_refined:
-            local_mask = refined
-            self._metric_add("stroke_refined_regions")
-            self._metric_add("stroke_refined_authority_pixels", authority_pixels)
-            self._metric_add(
-                "stroke_refined_model_pixels", int(np.count_nonzero(local_mask > 127))
-            )
-
+        stroke_refined = bool(getattr(box, "stroke_refined_model_mask", False))
         mask_bool = local_mask > 127
         mask_pixels = int(np.count_nonzero(mask_bool))
         if mask_pixels <= 0:
@@ -547,13 +653,21 @@ class FastInpainter(Inpainter):
         result = image.copy()
         remaining: list[BubbleBox] = []
         for box in boxes:
+            model_box = self._stroke_model_box(result, box, protected_regions)
+            stroke_refined = bool(
+                getattr(model_box, "stroke_refined_model_mask", False)
+            )
             if self._bubble_candidate(box) and self._strong_authority_overlap(box, boxes):
                 self._metric_add("bubble_fast_fill_overlap_skips")
-                remaining.append(box)
+                if stroke_refined:
+                    self._metric_add("stroke_refined_lama_fallback_regions")
+                remaining.append(model_box)
                 continue
-            if self._try_bubble_fast_fill(result, box, protected_regions):
+            if self._try_bubble_fast_fill(result, model_box, protected_regions):
                 continue
-            remaining.append(box)
+            if stroke_refined:
+                self._metric_add("stroke_refined_lama_fallback_regions")
+            remaining.append(model_box)
 
         if not remaining:
             self._metrics_local.value["clusters"] = 0
@@ -578,7 +692,9 @@ class FastInpainter(Inpainter):
             cx1, cy1, cx2, cy2 = crop_box
             crop_img = result[cy1:cy2, cx1:cx2]
             local_boxes = [self._local_box(box, cx1, cy1) for box in cluster]
-            local_mask = build_mask((cy2 - cy1, cx2 - cx1), local_boxes, crop_img)
+            local_mask = self._build_model_mask(
+                (cy2 - cy1, cx2 - cx1), local_boxes, crop_img
+            )
             local_mask = self._subtract_protected_regions(
                 local_mask,
                 crop_box,
