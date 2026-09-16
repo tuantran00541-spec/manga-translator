@@ -6,6 +6,10 @@ on:
       - test/preserve-region-repaint
     paths:
       - .github/workflows/validate-shadow-slave-mask-recall-fix.yml
+      - app/mask_recall_pipeline.py
+      - app/optimized_pipeline.py
+      - tests/test_mask_recall_pipeline.py
+      - tests/test_fast_inpaint_paths.py
   workflow_dispatch:
 
 permissions:
