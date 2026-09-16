@@ -28,6 +28,8 @@ env:
   CHAPTER_URL: https://asurascans.com/comics/shadow-slave-6f7fe6eb/chapter/1
   SERIES_SLUG: shadow-slave-6f7fe6eb
   CHAPTER_NUMBER: "1"
+  # Pin the edge-glyph decode margin used by this reproducible perf run.
+  MANGA_DETECTOR_TEXT_MASK_DECODE_PAD: "16"
 
 jobs:
   shadow-slave-ch1-audit:
