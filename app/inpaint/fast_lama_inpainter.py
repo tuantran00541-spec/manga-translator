@@ -107,6 +107,21 @@ _STROKE_REFINE_HALO_DELTA_MIN = _env_float(
 _STROKE_REFINE_HALO_STD_SCALE = _env_float(
     "MANGA_STROKE_REFINE_HALO_STD_SCALE", 1.25, 0.5, 4.0
 )
+# A global median misses pale outlines on gradient bubbles. Fit the local smooth
+# background from the authority ring and recover only residual pixels connected
+# to the already-confirmed glyph support. This remains bounded and authority-only.
+_STROKE_REFINE_SURFACE_HALO_RADIUS = _env_int(
+    "MANGA_STROKE_REFINE_SURFACE_HALO_RADIUS", 6, 1, 12
+)
+_STROKE_REFINE_SURFACE_DELTA_MIN = _env_float(
+    "MANGA_STROKE_REFINE_SURFACE_DELTA_MIN", 2.5, 1.0, 16.0
+)
+_STROKE_REFINE_SURFACE_RMSE_SCALE = _env_float(
+    "MANGA_STROKE_REFINE_SURFACE_RMSE_SCALE", 2.5, 1.0, 8.0
+)
+_STROKE_REFINE_SURFACE_RMSE_MAX = _env_float(
+    "MANGA_STROKE_REFINE_SURFACE_RMSE_MAX", 4.0, 1.0, 12.0
+)
 _STROKE_REFINE_MAX_AUTHORITY_FRACTION = _env_float(
     "MANGA_STROKE_REFINE_MAX_AUTHORITY_FRACTION", 0.60, 0.10, 0.90
 )
@@ -470,6 +485,85 @@ class FastInpainter(Inpainter):
             if np.array_equal(next_grown, grown):
                 break
             grown = next_grown
+
+        # Refine the low-contrast tail against a local quadratic background, not
+        # the global ring median. This is the important gradient-background case:
+        # a white anti-alias pixel may be only +3 locally while being almost equal
+        # to the median sampled elsewhere. Fit robustly from clean ring samples,
+        # then allow bounded connectivity growth only through pixels whose color
+        # residual exceeds the ring noise floor.
+        edge_margin = cv2.dilate(
+            edges.astype(np.uint8), np.ones((3, 3), dtype=np.uint8), iterations=1
+        ) > 0
+        surface_ring = ring & (~edge_margin)
+        if int(np.count_nonzero(surface_ring)) >= 96:
+            sample_y, sample_x = np.nonzero(surface_ring)
+            design = self._quadratic_design(
+                sample_x, sample_y, crop.shape[1], crop.shape[0]
+            )
+            values = crop[sample_y, sample_x].astype(np.float32)
+            if values.ndim == 1:
+                values = values[:, None]
+
+            fit_keep = np.ones(len(sample_x), dtype=bool)
+            coeff = None
+            for _ in range(3):
+                if int(np.count_nonzero(fit_keep)) < 64:
+                    coeff = None
+                    break
+                coeff, *_ = np.linalg.lstsq(
+                    design[fit_keep], values[fit_keep], rcond=None
+                )
+                predicted = design @ coeff
+                residual = np.sqrt(np.mean((predicted - values) ** 2, axis=1))
+                active = residual[fit_keep]
+                median_residual = float(np.median(active))
+                mad = float(np.median(np.abs(active - median_residual)))
+                limit = median_residual + max(1.5, 3.0 * 1.4826 * mad)
+                next_keep = residual <= limit
+                if int(np.count_nonzero(next_keep)) < 64:
+                    break
+                if np.array_equal(next_keep, fit_keep):
+                    fit_keep = next_keep
+                    break
+                fit_keep = next_keep
+
+            if coeff is not None and int(np.count_nonzero(fit_keep)) >= 64:
+                fitted = design[fit_keep] @ coeff
+                fit_rmse = float(
+                    np.sqrt(np.mean((fitted - values[fit_keep]) ** 2))
+                )
+                if np.isfinite(fit_rmse) and fit_rmse <= _STROKE_REFINE_SURFACE_RMSE_MAX:
+                    target_y, target_x = np.nonzero(authority)
+                    target_design = self._quadratic_design(
+                        target_x, target_y, crop.shape[1], crop.shape[0]
+                    )
+                    target_expected = target_design @ coeff
+                    target_actual = crop[target_y, target_x].astype(np.float32)
+                    if target_actual.ndim == 1:
+                        target_actual = target_actual[:, None]
+                    target_residual = np.sqrt(
+                        np.mean((target_actual - target_expected) ** 2, axis=1)
+                    )
+                    surface_delta = max(
+                        _STROKE_REFINE_SURFACE_DELTA_MIN,
+                        fit_rmse * _STROKE_REFINE_SURFACE_RMSE_SCALE,
+                    )
+                    surface_candidate = np.zeros_like(authority, dtype=bool)
+                    surface_candidate[target_y, target_x] = (
+                        target_residual >= surface_delta
+                    )
+                    for _ in range(_STROKE_REFINE_SURFACE_HALO_RADIUS):
+                        adjacent = (
+                            cv2.dilate(
+                                grown.astype(np.uint8), halo_kernel, iterations=1
+                            )
+                            > 0
+                        )
+                        next_grown = grown | (surface_candidate & adjacent)
+                        if np.array_equal(next_grown, grown):
+                            break
+                        grown = next_grown
 
         # One final one-pixel support fringe catches outer anti-alias values that
         # are intentionally close to the fitted background. There is no unbounded

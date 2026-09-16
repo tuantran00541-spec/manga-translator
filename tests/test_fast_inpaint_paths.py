@@ -504,6 +504,54 @@ def test_dual_polarity_halo_recovers_bright_outline_around_dark_strokes():
     assert mae < 6.0
 
 
+def test_surface_residual_halo_recovers_subtle_outline_on_gradient():
+    h, w = 220, 320
+    yy, xx = np.mgrid[:h, :w]
+    background = np.empty((h, w, 3), dtype=np.uint8)
+    background[..., 0] = np.clip(188 + xx * 0.16 + yy * 0.025, 0, 255)
+    background[..., 1] = np.clip(194 + xx * 0.15 + yy * 0.022, 0, 255)
+    background[..., 2] = np.clip(202 + xx * 0.13 + yy * 0.018, 0, 255)
+    image = background.copy()
+
+    dense = np.zeros((120, 220), dtype=np.uint8)
+    dense[8:112, 8:212] = 255
+    box = _speech_box(50, 45, 270, 165, dense)
+
+    core = np.zeros((h, w), dtype=np.uint8)
+    core[77:84, 86:234] = 255
+    core[107:114, 104:218] = 255
+    core[137:144, 128:200] = 255
+    outline = cv2.dilate(
+        core,
+        cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9)),
+        iterations=1,
+    )
+    outline_only = (outline > 0) & (core == 0)
+    # Deliberately subtle: only +4 over the *local* gradient. A single global
+    # median plus the old 2px halo cannot reliably recover the full 4px outline.
+    lifted = np.clip(background.astype(np.int16) + 4, 0, 255).astype(np.uint8)
+    image[outline_only] = lifted[outline_only]
+    image[core > 0] = 4
+
+    authority = build_mask(image.shape[:2], [box], image) > 127
+    inpainter = FastInpainter()
+    output = inpainter.inpaint(image.copy(), [box])
+    metrics = inpainter.last_metrics()
+
+    changed = np.any(output != image, axis=2)
+    assert metrics["stroke_refined_regions"] == 1
+    assert metrics["stroke_authority_gradient_regions"] == 1
+    assert metrics["lama_model_runs"] == 0
+    assert not np.any(changed & (~authority))
+    assert float(changed[outline_only].mean()) > 0.97
+
+    text_support = outline > 0
+    mae = float(
+        np.abs(output.astype(np.int16) - background.astype(np.int16))[text_support].mean()
+    )
+    assert mae < 4.0
+
+
 def test_authority_ring_reconstruction_rejects_textured_region():
     rng = np.random.default_rng(123)
     image = rng.integers(40, 220, size=(220, 320, 3), dtype=np.uint8)
