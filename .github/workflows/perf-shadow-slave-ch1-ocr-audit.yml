@@ -300,6 +300,146 @@ jobs:
               raise RuntimeError(f'OCR audit had {len(errors)} runtime errors')
           PY
 
+      - name: Build compact inpaint audit
+        if: always()
+        run: |
+          if [ ! -f data/processed/5e8ce7e3/manifest.json ]; then exit 0; fi
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from PIL import Image, ImageDraw, ImageFont
+
+          root = Path('.')
+          manifest = json.loads(
+              (root / 'data/processed/5e8ce7e3/manifest.json').read_text(encoding='utf-8')
+          )
+          pages = manifest.get('pages') or []
+          out = root / 'benchmark-results/shadow-slave-ch1/compact'
+          out.mkdir(parents=True, exist_ok=True)
+
+          def metric(page, section, key):
+              return float(
+                  (((page.get('processing_metrics') or {}).get(section) or {}).get(key)) or 0.0
+              )
+
+          def aggregate(section, key):
+              values = [metric(page, section, key) for page in pages]
+              values = [value for value in values if value > 0.0]
+              return {
+                  'count': len(values),
+                  'sum_ms': round(sum(values), 3),
+                  'mean_ms': round(sum(values) / max(1, len(values)), 3),
+                  'max_ms': round(max(values), 3) if values else 0.0,
+              }
+
+          detector_totals = {}
+          inpaint_totals = {}
+          for page in pages:
+              for section, target in (
+                  ('detector', detector_totals),
+                  ('auto_inpaint', inpaint_totals),
+              ):
+                  values = (page.get('processing_metrics') or {}).get(section) or {}
+                  for key, value in values.items():
+                      if isinstance(value, (int, float)) and not isinstance(value, bool):
+                          target[key] = target.get(key, 0) + value
+
+          report_path = root / 'benchmark-results/shadow-slave-ch1/report.json'
+          report = json.loads(report_path.read_text(encoding='utf-8')) if report_path.exists() else {}
+          compact = {
+              'run_id': __import__('os').environ.get('GITHUB_RUN_ID'),
+              'chapter_id': manifest.get('chapter_id'),
+              'source_url': manifest.get('source_url'),
+              'source_images': len({page.get('source_page') for page in pages}),
+              'slices': len(pages),
+              'clean': report.get('clean'),
+              'ocr': report.get('ocr'),
+              'processing': {
+                  'timing_ms': {
+                      key: aggregate('timing_ms', key)
+                      for key in ('read', 'detect', 'auto_inpaint', 'residue_verify', 'write', 'total')
+                  },
+                  'detector_totals': detector_totals,
+                  'auto_inpaint_totals': inpaint_totals,
+                  'last_processing_run': manifest.get('last_processing_run'),
+              },
+              'samples': [],
+          }
+
+          def timing(page, key):
+              return metric(page, 'timing_ms', key)
+
+          ranked = sorted(range(len(pages)), key=lambda i: timing(pages[i], 'auto_inpaint'), reverse=True)
+          residue = [
+              i for i, page in enumerate(pages)
+              if int((((page.get('processing_metrics') or {}).get('detector') or {}).get('post_inpaint_residue') or 0)) > 0
+          ]
+          selected = []
+          for page_index in ranked + residue + [0, len(pages) // 2, max(0, len(pages) - 1)]:
+              if not 0 <= page_index < len(pages) or page_index in {item[0] for item in selected}:
+                  continue
+              page = pages[page_index]
+              boxes = [box for box in (page.get('boxes') or []) if box.get('safe_to_inpaint')]
+              if boxes:
+                  selected.append((page_index, max(boxes, key=lambda box: float(box.get('confidence') or 0.0))))
+              if len(selected) >= 12:
+                  break
+
+          font = ImageFont.load_default()
+          for sample_index, (page_index, box) in enumerate(selected):
+              page = pages[page_index]
+              original_value = page.get('original')
+              clean_value = page.get('clean')
+              if not original_value or not clean_value:
+                  continue
+              original_path = root / str(original_value)
+              clean_path = root / str(clean_value)
+              if not original_path.is_file() or not clean_path.is_file():
+                  continue
+              before = Image.open(original_path).convert('RGB')
+              after = Image.open(clean_path).convert('RGB')
+              x1 = max(0, int(box['x1']) - 48)
+              y1 = max(0, int(box['y1']) - 48)
+              x2 = min(before.width, int(box['x2']) + 48)
+              y2 = min(before.height, int(box['y2']) + 48)
+              if x2 <= x1 or y2 <= y1:
+                  continue
+              before = before.crop((x1, y1, x2, y2))
+              after = after.crop((x1, y1, x2, y2))
+              before.thumbnail((720, 480), Image.Resampling.LANCZOS)
+              after = after.resize(before.size, Image.Resampling.LANCZOS)
+              label_h = 28
+              card = Image.new('RGB', (before.width * 2, before.height + label_h), 'white')
+              card.paste(before, (0, label_h))
+              card.paste(after, (before.width, label_h))
+              draw = ImageDraw.Draw(card)
+              draw.text((8, 7), f'p{page_index:03d} BEFORE', fill='black', font=font)
+              draw.text((before.width + 8, 7), f'AFTER  inpaint={timing(page, "auto_inpaint"):.1f}ms', fill='black', font=font)
+              sample_path = out / f'inpaint-{sample_index:03d}-p{page_index:03d}.jpg'
+              card.save(sample_path, quality=92)
+              compact['samples'].append({
+                  'page_index': page_index,
+                  'box': {key: box.get(key) for key in ('id', 'x1', 'y1', 'x2', 'y2', 'confidence', 'semantic_type')},
+                  'timing_ms': (page.get('processing_metrics') or {}).get('timing_ms'),
+                  'detector': (page.get('processing_metrics') or {}).get('detector'),
+                  'auto_inpaint': (page.get('processing_metrics') or {}).get('auto_inpaint'),
+                  'sample': sample_path.as_posix(),
+              })
+
+          (out / 'report.json').write_text(json.dumps(compact, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+          print(json.dumps({'compact_report': (out / 'report.json').as_posix(), 'samples': len(compact['samples'])}))
+          PY
+
+      - name: Upload compact Shadow Slave audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: shadow-slave-ch1-compact-${{ github.run_id }}
+          path: benchmark-results/shadow-slave-ch1/compact/
+          retention-days: 7
+          compression-level: 6
+          if-no-files-found: ignore
+
       - name: Upload Shadow Slave chapter 1 audit
         if: always()
         uses: actions/upload-artifact@v4
@@ -313,4 +453,4 @@ jobs:
           retention-days: 7
           compression-level: 6
           if-no-files-found: error
-# benchmark rerun after dfece15: profile-preload and exact-mask dedup
+# benchmark rerun after 1b9d886: compact inpaint visual audit
