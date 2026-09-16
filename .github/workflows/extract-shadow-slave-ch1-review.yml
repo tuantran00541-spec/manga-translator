@@ -1,0 +1,44 @@
+name: Extract Shadow Slave Ch1 review evidence
+
+on:
+  push:
+    branches:
+      - test/preserve-region-repaint
+    paths:
+      - .github/workflows/extract-shadow-slave-ch1-review.yml
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  extract-review:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - name: Download full audit artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: shadow-slave-ch1-current-35072103151
+          path: full
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: tuantran00541-spec/manga-translator
+          run-id: 35072103151
+
+      - name: Keep review evidence only
+        run: |
+          mkdir -p slim
+          cp full/review-*.jpg slim/
+          cp full/summary.json slim/
+          cp full/review-index.json slim/
+          ls -lh slim
+
+      - name: Upload slim review evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: shadow-slave-ch1-review-slim-${{ github.run_id }}
+          path: slim/
+          retention-days: 7
+          compression-level: 6
+          if-no-files-found: error
