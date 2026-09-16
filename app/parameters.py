@@ -175,7 +175,10 @@ DETECTOR_MASK_HYSTERESIS_LOW_THRESHOLD = _env_float(
     "MANGA_DETECTOR_MASK_HYSTERESIS_LOW_THRESHOLD", 0.32, minimum=0.0, maximum=1.0
 )
 DETECTOR_TEXT_MASK_DECODE_PAD = _env_int(
-    "MANGA_DETECTOR_TEXT_MASK_DECODE_PAD", 8, minimum=0, maximum=64
+    # Decode a modest margin around the detector box. The extra pixels still
+    # need model probability support and hysteresis connectivity; this only
+    # prevents edge glyphs from being clipped at the proto crop boundary.
+    "MANGA_DETECTOR_TEXT_MASK_DECODE_PAD", 16, minimum=0, maximum=64
 )
 DETECTOR_MASK_HYSTERESIS_MIN_CORE_PIXELS = _env_int(
     "MANGA_DETECTOR_MASK_HYSTERESIS_MIN_CORE_PIXELS", 2, minimum=1, maximum=4096
