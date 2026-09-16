@@ -85,6 +85,7 @@ def test_yolo_plain_path_reuses_cached_postprocess_result(monkeypatch):
     first = detector._detect_single_plain(image, 4, 5)
     second = detector._detect_single_plain(image.copy(), 4, 5)
     assert calls == {"run": 1, "post": 1}
+    assert detector.inference_call_count == 1
     assert second[0] is not first[0]
     second[0].mask[0, 0] = 77
     assert first[0].mask[0, 0] == 1

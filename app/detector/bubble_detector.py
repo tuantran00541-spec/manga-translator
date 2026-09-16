@@ -173,6 +173,7 @@ class YoloDetector:
         self.input_name = self.contract.input_name
         self.conf_threshold = conf_threshold
         self.use_tta = ENABLE_TTA if use_tta is None else use_tta
+        self._inference_calls = 0
         self._inference_cache = DetectorInferenceCache(
             mode=DETECTOR_INFERENCE_CACHE_MODE,
             max_entries=DETECTOR_INFERENCE_CACHE_MAX_ENTRIES,
@@ -209,6 +210,14 @@ class YoloDetector:
 
     def clear_inference_cache(self) -> None:
         self._inference_cache.clear()
+
+    @property
+    def inference_call_count(self) -> int:
+        """Number of model ``session.run`` calls since construction/reset."""
+        return int(getattr(self, "_inference_calls", 0))
+
+    def reset_inference_call_count(self) -> None:
+        self._inference_calls = 0
 
     def _class_name(self, class_id: int, num_classes: int) -> str:
         if num_classes != len(self.contract.class_names):
@@ -338,6 +347,7 @@ class YoloDetector:
         )
         if blob is None or transform is None:
             return []
+        self._inference_calls = int(getattr(self, "_inference_calls", 0)) + 1
         outputs = self.session.run(None, {self.input_name: blob})
         boxes = self._postprocess(outputs, transform)
         if cached is not None and self._box_lists_differ(cached, boxes):

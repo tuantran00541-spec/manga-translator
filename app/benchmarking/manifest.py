@@ -12,7 +12,6 @@ import hashlib
 import json
 import platform
 import socket
-import sys
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
