@@ -95,6 +95,18 @@ _STROKE_REFINE_CORE_DELTA_MIN = _env_float(
 _STROKE_REFINE_WEAK_DELTA_MIN = _env_float(
     "MANGA_STROKE_REFINE_WEAK_DELTA_MIN", 14.0, 4.0, 64.0
 )
+# Recover outlined/anti-aliased glyph halos from either side of the local
+# background luminance. Growth is connectivity-limited, spatially bounded,
+# clipped to erase authority, and still subject to the authority-fraction gate.
+_STROKE_REFINE_HALO_RADIUS = _env_int(
+    "MANGA_STROKE_REFINE_HALO_RADIUS", 2, 1, 4
+)
+_STROKE_REFINE_HALO_DELTA_MIN = _env_float(
+    "MANGA_STROKE_REFINE_HALO_DELTA_MIN", 8.0, 2.0, 48.0
+)
+_STROKE_REFINE_HALO_STD_SCALE = _env_float(
+    "MANGA_STROKE_REFINE_HALO_STD_SCALE", 1.25, 0.5, 4.0
+)
 _STROKE_REFINE_MAX_AUTHORITY_FRACTION = _env_float(
     "MANGA_STROKE_REFINE_MAX_AUTHORITY_FRACTION", 0.60, 0.10, 0.90
 )
@@ -440,9 +452,38 @@ class FastInpainter(Inpainter):
         if model_pixels / float(authority_pixels) > _STROKE_REFINE_MAX_AUTHORITY_FRACTION:
             return None
 
-        fringe = cv2.dilate(keep, np.ones((3, 3), dtype=np.uint8), iterations=1)
+        # The dominant-polarity component pass above finds the glyph core, but
+        # manga/manhwa lettering often has an opposite-polarity outline (e.g.
+        # black glyph + white stroke) plus a low-contrast anti-alias fringe.
+        # Grow only through contrast-bearing pixels connected to the confirmed
+        # core; using absolute contrast recovers both bright and dark halos.
+        halo_delta = max(
+            _STROKE_REFINE_HALO_DELTA_MIN,
+            ring_std * _STROKE_REFINE_HALO_STD_SCALE,
+        )
+        halo_candidate = authority & (np.abs(gray_f - background) >= halo_delta)
+        grown = keep > 127
+        halo_kernel = np.ones((3, 3), dtype=np.uint8)
+        for _ in range(_STROKE_REFINE_HALO_RADIUS):
+            adjacent = cv2.dilate(grown.astype(np.uint8), halo_kernel, iterations=1) > 0
+            next_grown = grown | (halo_candidate & adjacent)
+            if np.array_equal(next_grown, grown):
+                break
+            grown = next_grown
+
+        # One final one-pixel support fringe catches outer anti-alias values that
+        # are intentionally close to the fitted background. There is no unbounded
+        # morphology: the candidate can advance at most HALO_RADIUS pixels from
+        # verified support, then one final anti-alias pixel, and never outside the
+        # detector authority. Emit a canonical 0/255 mask because downstream mask
+        # consumers use the project-wide >127 foreground convention.
+        fringe = cv2.dilate(
+            grown.astype(np.uint8) * 255,
+            halo_kernel,
+            iterations=1,
+        )
         refined = np.where(authority, fringe, 0).astype(np.uint8)
-        refined_pixels = int(np.count_nonzero(refined))
+        refined_pixels = int(np.count_nonzero(refined > 127))
         if refined_pixels <= 0:
             return None
         if refined_pixels / float(authority_pixels) > _STROKE_REFINE_MAX_AUTHORITY_FRACTION:

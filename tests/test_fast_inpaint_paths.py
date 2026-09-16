@@ -456,6 +456,54 @@ def test_authority_ring_reconstruction_erases_dense_smooth_text():
     assert mae < 8.0
 
 
+def test_dual_polarity_halo_recovers_bright_outline_around_dark_strokes():
+    h, w = 220, 320
+    yy, xx = np.mgrid[:h, :w]
+    background = np.empty((h, w, 3), dtype=np.uint8)
+    background[..., 0] = np.clip(210 + xx * 0.040 + yy * 0.022, 0, 255)
+    background[..., 1] = np.clip(216 + xx * 0.036 + yy * 0.020, 0, 255)
+    background[..., 2] = np.clip(224 + xx * 0.030 + yy * 0.017, 0, 255)
+    image = background.copy()
+
+    dense = np.zeros((120, 220), dtype=np.uint8)
+    dense[8:112, 8:212] = 255
+    box = _speech_box(50, 45, 270, 165, dense)
+
+    core = np.zeros((h, w), dtype=np.uint8)
+    core[76:84, 84:236] = 255
+    core[106:114, 102:220] = 255
+    core[136:144, 126:202] = 255
+    outline = cv2.dilate(
+        core,
+        cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5)),
+        iterations=1,
+    )
+    outline_only = (outline > 0) & (core == 0)
+    image[outline_only] = 252
+    image[core > 0] = 4
+
+    authority = build_mask(image.shape[:2], [box], image) > 127
+    inpainter = FastInpainter()
+    output = inpainter.inpaint(image.copy(), [box])
+    metrics = inpainter.last_metrics()
+
+    changed = np.any(output != image, axis=2)
+    assert metrics["stroke_refined_regions"] == 1
+    assert metrics["stroke_authority_gradient_regions"] == 1
+    assert metrics["lama_model_runs"] == 0
+    assert not np.any(changed & (~authority))
+    # Regression for the real p045 failure: a one-pixel same-polarity fringe
+    # leaves the outer white outline visible. The dual-polarity halo must cover
+    # almost all of the 2px bright outline before background reconstruction.
+    assert float(changed[outline_only].mean()) > 0.95
+
+    text_support = outline > 0
+    mae = float(
+        np.abs(output.astype(np.int16) - background.astype(np.int16))[text_support].mean()
+    )
+    assert mae < 6.0
+
+
 def test_authority_ring_reconstruction_rejects_textured_region():
     rng = np.random.default_rng(123)
     image = rng.integers(40, 220, size=(220, 320, 3), dtype=np.uint8)
