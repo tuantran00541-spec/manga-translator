@@ -276,17 +276,40 @@ class OptimizedChapterPipeline(ChapterPipeline):
 
         h, w = clean_before.shape[:2]
         scope = np.zeros((h, w), dtype=np.uint8)
-        pad = 6
+        fallback_pad = 6
         for region in actual_hits:
             try:
-                x1 = max(0, int(region["x1"]) - pad)
-                y1 = max(0, int(region["y1"]) - pad)
-                x2 = min(w, int(region["x2"]) + pad)
-                y2 = min(h, int(region["y2"]) + pad)
+                raw_x1, raw_y1 = int(region["x1"]), int(region["y1"])
+                raw_x2, raw_y2 = int(region["x2"]), int(region["y2"])
             except (KeyError, TypeError, ValueError):
                 continue
-            if x2 > x1 and y2 > y1:
-                scope[y1:y2, x1:x2] = 255
+            x1, y1 = max(0, raw_x1), max(0, raw_y1)
+            x2, y2 = min(w, raw_x2), min(h, raw_y2)
+            if x2 <= x1 or y2 <= y1:
+                continue
+
+            residue_mask = decode_mask_value(region.get("mask"))
+            if residue_mask is not None:
+                target_w, target_h = x2 - x1, y2 - y1
+                if residue_mask.shape[:2] != (target_h, target_w):
+                    residue_mask = cv2.resize(
+                        residue_mask,
+                        (target_w, target_h),
+                        interpolation=cv2.INTER_NEAREST,
+                    )
+                local_scope = scope[y1:y2, x1:x2]
+                local_scope[residue_mask > MANUAL_MASK_THRESHOLD] = 255
+                continue
+
+            # Backward-compatible fallback for old manifests that did not retain
+            # the verifier mask. New processing results should take the branch
+            # above and stay stroke-shaped.
+            px1 = max(0, raw_x1 - fallback_pad)
+            py1 = max(0, raw_y1 - fallback_pad)
+            px2 = min(w, raw_x2 + fallback_pad)
+            py2 = min(h, raw_y2 + fallback_pad)
+            if px2 > px1 and py2 > py1:
+                scope[py1:py2, px1:px2] = 255
 
         repair_mask = cv2.bitwise_and(full_authority, scope)
         repair_pixels = int(

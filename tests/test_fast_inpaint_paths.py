@@ -347,3 +347,34 @@ def test_smooth_gradient_free_text_uses_reconstruction_without_lama():
         np.abs(output.astype(np.int16) - background.astype(np.int16))[authority].mean()
     )
     assert mae < 5.0
+
+
+
+def test_textured_medium_dynamic_lama_stays_one_native_call():
+    rng = np.random.default_rng(42)
+    image = rng.integers(0, 256, size=(900, 920, 3), dtype=np.uint8)
+    mask = np.zeros((900, 920), dtype=np.uint8)
+    mask[70:830, 70:850] = 255
+
+    inpainter = FastInpainter()
+    inpainter._begin_metrics()
+    inpainter.dynamic_lama = True
+    inpainter._ensure_session = lambda: None
+    model_shapes = []
+
+    def fake_run_lama(canvas, mask_canvas):
+        model_shapes.append(canvas.shape[:2])
+        return canvas.copy()
+
+    inpainter._run_lama = fake_run_lama
+    output = inpainter._lama_fill(
+        image.copy(),
+        image.copy(),
+        mask,
+        (0, 0, 920, 900),
+    )
+
+    assert output.shape == image.shape
+    assert len(model_shapes) == 1
+    assert model_shapes[0][0] >= 900
+    assert model_shapes[0][1] >= 920
