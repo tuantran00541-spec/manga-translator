@@ -156,10 +156,16 @@ def _evaluate_router(
     }
 
 
-def _record_holdout_failures(
+def _record_quality_failures(
     registry: FailureRegistry,
     manifest: dict,
-    evaluation: dict,
+    quality: dict,
+    *,
+    metrics: dict,
+    candidate: str,
+    partition: str,
+    stage: str,
+    note: str,
 ) -> int:
     pages = list(manifest.get("pages") or [])
     cases = 0
@@ -168,7 +174,7 @@ def _record_holdout_failures(
         "review": "detector_fp",
         "counts": "detector_fp",
     }
-    for field, indices in evaluation["quality"].items():
+    for field, indices in quality.items():
         taxonomy = taxonomy_by_field.get(field, "other")
         for index_text in indices:
             index = int(index_text)
@@ -180,14 +186,14 @@ def _record_holdout_failures(
                     source_sha256=sha256_file(source_path),
                     source_page=pages[index].get("source_page"),
                     slice_index=pages[index].get("slice_index", index),
-                    stage="router_holdout",
+                    stage=stage,
                     taxonomy=taxonomy,
-                    partition="holdout",
-                    candidate="combined-safe-stack-v1",
+                    partition=partition,
+                    candidate=candidate,
                     baseline={"field": field, "slice_index": index},
                     observed={"field": field, "slice_index": index},
-                    metrics=evaluation["speedup"],
-                    notes="Cross-chapter router rule changed the frozen holdout signature; do not promote.",
+                    metrics=metrics,
+                    notes=note,
                 )
             )
             cases += 1
@@ -217,7 +223,39 @@ def main() -> int:
     )
 
     registry = FailureRegistry(OUT.parent / "failure-registry.jsonl")
-    failure_cases = _record_holdout_failures(registry, holdout_manifest, evaluation)
+    train_failure_cases = (
+        _record_quality_failures(
+            registry,
+            train_manifest,
+            train["bubble_probe_quality"],
+            metrics={"wall_ms": train["bubble_probe"]["wall_ms"]},
+            candidate="bubble-fastpath-probe-v1",
+            partition="calibration",
+            stage="router_train_bubble_probe",
+            note="Bubble fastpath changed the calibration signature; keep this as a hard example for router fitting.",
+        )
+        + _record_quality_failures(
+            registry,
+            train_manifest,
+            train["text_probe_quality"],
+            metrics={"wall_ms": train["text_probe"]["wall_ms"]},
+            candidate="text-fullpass-probe-v1",
+            partition="calibration",
+            stage="router_train_text_probe",
+            note="Text full-pass elision changed the calibration signature; keep this as a hard example for router fitting.",
+        )
+    )
+    holdout_failure_cases = _record_quality_failures(
+        registry,
+        holdout_manifest,
+        evaluation["quality"],
+        metrics=evaluation["speedup"],
+        candidate="combined-safe-stack-v1",
+        partition="holdout",
+        stage="router_holdout",
+        note="Cross-chapter router rule changed the frozen holdout signature; do not promote.",
+    )
+    failure_cases = train_failure_cases + holdout_failure_cases
     report = {
         "benchmark": "router-cross-chapter-holdout",
         "train_url": TRAIN_URL,
