@@ -2,8 +2,8 @@ from app.runtime_responsiveness import configure_local_cpu_headroom
 
 configure_local_cpu_headroom()
 
-from app.mask_recall_pipeline import MaskRecallOptimizedChapterPipeline
+from app.mask_recall_envelope_pipeline import FlatEnvelopeMaskRecallPipeline
 from app.ocr.multi_lang_ocr import MultiLangOCR
 
-pipeline = MaskRecallOptimizedChapterPipeline()
+pipeline = FlatEnvelopeMaskRecallPipeline()
 ocr = MultiLangOCR()
