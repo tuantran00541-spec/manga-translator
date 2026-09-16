@@ -1,0 +1,225 @@
+name: Probe Shadow Slave mask recall
+
+on:
+  push:
+    branches:
+      - test/preserve-region-repaint
+    paths:
+      - .github/workflows/probe-shadow-slave-mask-recall.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: probe-shadow-slave-mask-recall
+  cancel-in-progress: false
+
+env:
+  PYTHONUNBUFFERED: "1"
+  MANGA_USE_DYNAMIC_LAMA: "1"
+  MANGA_ORT_PROVIDER: openvino
+  MANGA_ORT_REQUIRE_PROVIDER: "1"
+  MANGA_ORT_OPENVINO_SCOPE: detectors
+  MANGA_ORT_OPENVINO_THREADS: "2"
+  MANGA_ORT_OPENVINO_STREAMS: "1"
+  MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
+  OPENBLAS_NUM_THREADS: "1"
+  CHAPTER_ID: c0010016
+  CHAPTER_URL: https://asurascans.com/comics/shadow-slave-6f7fe6eb/chapter/1
+
+jobs:
+  probe:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: test/preserve-region-repaint
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install production runtime
+        run: |
+          python -m pip install \
+            numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 \
+            onnxruntime-openvino==1.24.1 psutil==6.1.1 loguru==0.7.2 \
+            requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 playwright==1.47.0 \
+            fastapi==0.115.0 'uvicorn[standard]==0.30.6' \
+            pydantic==2.9.2 filelock==3.16.1 python-multipart==0.0.12 pytest==8.3.5
+
+      - name: Restore detector and inpaint models
+        id: models
+        uses: actions/cache@v4
+        with:
+          path: |
+            models/*.onnx
+            models/.e2e-provenance.json
+          key: processing-profile-models-b224548-v1
+
+      - name: Read pinned model provisioner
+        if: steps.models.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: b22454827f8190655d7070b80eb20c2550beadfa
+          path: benchmark-bootstrap
+          sparse-checkout: scripts/provision_real_e2e_models.py
+          sparse-checkout-cone-mode: false
+
+      - name: Provision public-equivalent production models
+        if: steps.models.outputs.cache-hit != 'true'
+        run: |
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple torch==2.5.1+cpu torchvision==0.20.1+cpu
+          python -m pip install --no-deps ultralytics==8.3.221 onnx==1.17.0 onnxslim==0.1.71
+          python -m pip install sympy==1.13.1 PyYAML==6.0.2 scipy==1.14.1 tqdm==4.67.1 matplotlib==3.9.2 pandas==2.2.3 py-cpuinfo==9.0.0 ml_dtypes==0.5.3 colorama==0.4.6 polars==1.33.1 ultralytics-thop==2.0.17
+          python benchmark-bootstrap/scripts/provision_real_e2e_models.py
+          cp benchmark-bootstrap/models/*.onnx models/
+          cp benchmark-bootstrap/models/.e2e-provenance.json models/
+
+      - name: Probe targeted missed-glyph slices
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+          import json, os, shutil
+          from pathlib import Path
+          import cv2
+          import numpy as np
+
+          from app.dependencies import pipeline
+          from app.detector.mask_builder import build_mask
+          from app.image_io import read_image
+          from app.manifest_utils import load_manifest_raw
+          from app.mask_store import decode_mask_value
+
+          cid = os.environ["CHAPTER_ID"]
+          url = os.environ["CHAPTER_URL"]
+          targets = [0, 5, 14, 51, 69, 95, 117, 121]
+          out = Path("benchmark-results/shadow-slave-mask-recall-probe")
+          if out.exists():
+              shutil.rmtree(out)
+          out.mkdir(parents=True)
+
+          manifest = pipeline.download_chapter(url, cid, workers=2)
+          pages = manifest.get("pages") or []
+          if len(pages) <= max(targets):
+              raise RuntimeError(f"expected > {max(targets)} slices, got {len(pages)}")
+
+          pipeline.process_pages(cid, targets, workers=2)
+          state = load_manifest_raw(cid)
+          report = {"head_sha": os.environ.get("GITHUB_SHA"), "targets": {}, "total_slices": len(state.get("pages") or [])}
+
+          def global_mask_for_records(shape, records):
+              h, w = shape
+              result = np.zeros((h, w), dtype=np.uint8)
+              rows = []
+              for n, record in enumerate(records or []):
+                  try:
+                      x1, y1, x2, y2 = [int(record[k]) for k in ("x1", "y1", "x2", "y2")]
+                  except Exception:
+                      continue
+                  bw, bh = x2 - x1, y2 - y1
+                  mask = decode_mask_value(record.get("mask"))
+                  mask_pixels = 0
+                  if mask is not None and bw > 0 and bh > 0:
+                      if mask.shape != (bh, bw):
+                          mask = cv2.resize(mask, (bw, bh), interpolation=cv2.INTER_NEAREST)
+                      gx1, gy1, gx2, gy2 = max(0,x1), max(0,y1), min(w,x2), min(h,y2)
+                      if gx2 > gx1 and gy2 > gy1:
+                          src = mask[gy1-y1:gy2-y1, gx1-x1:gx2-x1]
+                          dst = result[gy1:gy2, gx1:gx2]
+                          result[gy1:gy2, gx1:gx2] = np.maximum(dst, src)
+                      mask_pixels = int(np.count_nonzero(mask > 127))
+                  rows.append({
+                      "index": n,
+                      "id": record.get("id"),
+                      "bbox": [x1,y1,x2,y2],
+                      "bbox_area": max(0,bw)*max(0,bh),
+                      "confidence": record.get("confidence"),
+                      "source_model": record.get("source_model"),
+                      "source_role": record.get("source_role"),
+                      "class_name": record.get("class_name"),
+                      "semantic_type": record.get("semantic_type"),
+                      "mask_source": record.get("mask_source"),
+                      "safe_to_inpaint": bool(record.get("safe_to_inpaint")),
+                      "needs_review": bool(record.get("needs_review")),
+                      "deferred_reason": record.get("deferred_reason"),
+                      "mask_pixels": mask_pixels,
+                      "mask_fill_ratio": round(mask_pixels / float(max(1,bw*bh)), 6),
+                  })
+              return result, rows
+
+          def overlay_page(image, model_mask, authority, records, residue_boxes):
+              canvas = image.copy()
+              # Green = raw detector mask, amber = dilation/combined destructive authority.
+              green = np.zeros_like(canvas); green[:,:,1] = 255
+              amber = np.zeros_like(canvas); amber[:,:,1] = 180; amber[:,:,2] = 255
+              raw_sel = model_mask > 127
+              auth_only = (authority > 127) & ~raw_sel
+              canvas[raw_sel] = cv2.addWeighted(canvas[raw_sel], 0.45, green[raw_sel], 0.55, 0)
+              canvas[auth_only] = cv2.addWeighted(canvas[auth_only], 0.45, amber[auth_only], 0.55, 0)
+              for n, r in enumerate(records):
+                  x1,y1,x2,y2 = r["bbox"]
+                  color = (0,255,0) if r["safe_to_inpaint"] else (0,0,255)
+                  cv2.rectangle(canvas, (x1,y1), (x2,y2), color, 2)
+                  cv2.putText(canvas, str(n), (x1, max(12,y1-4)), cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1, cv2.LINE_AA)
+              for box in residue_boxes:
+                  cv2.rectangle(canvas, (int(box.x1),int(box.y1)), (int(box.x2),int(box.y2)), (255,0,255), 2)
+              return canvas
+
+          for idx in targets:
+              page = state["pages"][idx]
+              raw = read_image(Path(page["original"]))
+              clean = read_image(Path(page["clean"]))
+              records = page.get("boxes") or []
+              model_mask, rows = global_mask_for_records(raw.shape[:2], records)
+              authorized = pipeline._residue_repair_effective_boxes(records)
+              authority = build_mask(raw.shape[:2], authorized, raw)
+              residue_boxes = pipeline.detector.verify_post_inpaint_residue(clean, authorized) if authorized else []
+
+              prefix = out / f"p{idx:03d}"
+              cv2.imwrite(str(prefix.with_name(prefix.name + "-raw.png")), raw)
+              cv2.imwrite(str(prefix.with_name(prefix.name + "-clean.png")), clean)
+              cv2.imwrite(str(prefix.with_name(prefix.name + "-model-mask.png")), model_mask)
+              cv2.imwrite(str(prefix.with_name(prefix.name + "-authority-mask.png")), authority)
+              overlay = overlay_page(raw, model_mask, authority, rows, residue_boxes)
+              cv2.imwrite(str(prefix.with_name(prefix.name + "-overlay.png")), overlay)
+
+              report["targets"][str(idx)] = {
+                  "source_page": page.get("source_page"),
+                  "slice_index": page.get("slice_index"),
+                  "shape": [int(raw.shape[0]), int(raw.shape[1])],
+                  "detection_state": page.get("detection_state"),
+                  "detection_issues": page.get("detection_issues") or [],
+                  "records": rows,
+                  "authorized_boxes": len(authorized),
+                  "raw_model_mask_pixels": int(np.count_nonzero(model_mask > 127)),
+                  "authority_pixels": int(np.count_nonzero(authority > 127)),
+                  "authority_growth_pixels": int(np.count_nonzero((authority > 127) & (model_mask <= 127))),
+                  "post_clean_residue_boxes": [
+                      {
+                          "bbox": [int(b.x1),int(b.y1),int(b.x2),int(b.y2)],
+                          "confidence": float(b.confidence),
+                          "deferred_reason": b.deferred_reason,
+                          "source_role": b.source_role,
+                          "mask_pixels": int(np.count_nonzero(b.mask > 127)) if b.mask is not None else 0,
+                      }
+                      for b in residue_boxes
+                  ],
+                  "processing_metrics": page.get("processing_metrics") or {},
+              }
+
+          (out / "probe.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+          print("MASK_RECALL_PROBE=" + json.dumps({k: {"issues": v["detection_issues"], "records": len(v["records"]), "residue": len(v["post_clean_residue_boxes"])} for k,v in report["targets"].items()}))
+          PY
+
+      - name: Upload targeted probe
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: shadow-slave-mask-recall-probe-${{ github.run_id }}
+          path: benchmark-results/shadow-slave-mask-recall-probe/
+          retention-days: 7
+          compression-level: 6
+          if-no-files-found: error
