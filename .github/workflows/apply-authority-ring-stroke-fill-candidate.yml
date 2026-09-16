@@ -1,4 +1,4 @@
-name: Apply authority-ring stroke-fill candidate
+name: Apply dual-polarity halo candidate
 
 on:
   push:
@@ -25,7 +25,7 @@ jobs:
           python-version: "3.12"
 
       - name: Apply candidate patch
-        run: python scripts/apply_authority_ring_stroke_fill_candidate.py
+        run: python scripts/apply_dual_polarity_halo_candidate.py
 
       - name: Install unit-test runtime
         run: |
@@ -45,5 +45,5 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add app/inpaint/fast_lama_inpainter.py tests/test_fast_inpaint_paths.py
           git diff --cached --check
-          git commit -m "test(inpaint): reconstruct refined strokes from authority ring"
+          git commit -m "test(inpaint): recover dual-polarity text halos"
           git push origin HEAD:test/preserve-region-repaint
