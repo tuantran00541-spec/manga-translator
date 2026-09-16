@@ -1,0 +1,260 @@
+name: Shadow Slave Ch1 current inpaint audit
+
+on:
+  push:
+    branches:
+      - test/preserve-region-repaint
+    paths:
+      - .github/workflows/test-shadow-slave-ch1-current-inpaint.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: shadow-slave-ch1-current-inpaint-audit
+  cancel-in-progress: false
+
+env:
+  PYTHONUNBUFFERED: "1"
+  MANGA_USE_DYNAMIC_LAMA: "1"
+  MANGA_ORT_PROVIDER: openvino
+  MANGA_ORT_REQUIRE_PROVIDER: "1"
+  MANGA_ORT_OPENVINO_SCOPE: detectors
+  MANGA_ORT_OPENVINO_THREADS: "2"
+  MANGA_ORT_OPENVINO_STREAMS: "1"
+  MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
+  OPENBLAS_NUM_THREADS: "1"
+  CHAPTER_ID: c001ss16
+  CHAPTER_URL: https://asurascans.com/comics/shadow-slave-6f7fe6eb/chapter/1
+
+jobs:
+  clean-review:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: test/preserve-region-repaint
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install production runtime
+        run: |
+          python -m pip install \
+            numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 \
+            onnxruntime-openvino==1.24.1 psutil==6.1.1 loguru==0.7.2 \
+            requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 playwright==1.47.0 \
+            fastapi==0.115.0 'uvicorn[standard]==0.30.6' \
+            pydantic==2.9.2 filelock==3.16.1 python-multipart==0.0.12 pytest==8.3.5
+
+      - name: Run inpaint regression tests
+        run: |
+          python -m pytest -q \
+            tests/test_fast_inpaint_paths.py \
+            tests/test_dense_authority_surface.py \
+            tests/test_repaint_original_context.py
+
+      - name: Restore detector and inpaint models
+        id: models
+        uses: actions/cache@v4
+        with:
+          path: |
+            models/*.onnx
+            models/.e2e-provenance.json
+          key: processing-profile-models-b224548-v1
+
+      - name: Read pinned model provisioner
+        if: steps.models.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: b22454827f8190655d7070b80eb20c2550beadfa
+          path: benchmark-bootstrap
+          sparse-checkout: scripts/provision_real_e2e_models.py
+          sparse-checkout-cone-mode: false
+
+      - name: Provision public-equivalent production models
+        if: steps.models.outputs.cache-hit != 'true'
+        run: |
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple torch==2.5.1+cpu torchvision==0.20.1+cpu
+          python -m pip install --no-deps ultralytics==8.3.221 onnx==1.17.0 onnxslim==0.1.71
+          python -m pip install sympy==1.13.1 PyYAML==6.0.2 scipy==1.14.1 tqdm==4.67.1 matplotlib==3.9.2 pandas==2.2.3 py-cpuinfo==9.0.0 ml_dtypes==0.5.3 colorama==0.4.6 polars==1.33.1 ultralytics-thop==2.0.17
+          python benchmark-bootstrap/scripts/provision_real_e2e_models.py
+          cp benchmark-bootstrap/models/*.onnx models/
+          cp benchmark-bootstrap/models/.e2e-provenance.json models/
+
+      - name: Process full chapter and build clean review
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+
+          import json
+          import os
+          import shutil
+          import time
+          from pathlib import Path
+
+          import cv2
+          import numpy as np
+          from PIL import Image, ImageDraw, ImageFont
+
+          from app.dependencies import pipeline
+          from app.image_io import read_image
+          from app.manifest_utils import load_manifest_raw
+
+          chapter_id = os.environ["CHAPTER_ID"]
+          chapter_url = os.environ["CHAPTER_URL"]
+          out = Path("benchmark-results/shadow-slave-ch1-current")
+          if out.exists():
+              shutil.rmtree(out)
+          (out / "raw").mkdir(parents=True, exist_ok=True)
+          (out / "clean").mkdir(parents=True, exist_ok=True)
+
+          manifest = pipeline.download_chapter(chapter_url, chapter_id, workers=2)
+          pages = manifest.get("pages", [])
+          if not pages:
+              raise RuntimeError("Shadow Slave chapter 1 import produced zero slices")
+
+          active = [i for i, page in enumerate(pages) if not page.get("skipped")]
+          batches = []
+          for start in range(0, len(active), 12):
+              batch = active[start:start + 12]
+              t0 = time.perf_counter()
+              pipeline.process_pages(chapter_id, batch, workers=2)
+              elapsed = time.perf_counter() - t0
+              batches.append({
+                  "indices": batch,
+                  "elapsed_s": round(elapsed, 3),
+                  "slices_per_min": round((len(batch) * 60.0 / elapsed), 3) if elapsed else None,
+              })
+              print(f"processed {start + len(batch)}/{len(active)} active slices in {elapsed:.1f}s")
+
+          state = load_manifest_raw(chapter_id)
+          rows = []
+          aggregate = {
+              "boxes": 0,
+              "lama_model_runs": 0,
+              "lama_model_ms": 0,
+              "lama_native_single_regions": 0,
+              "lama_tiled_regions": 0,
+              "bubble_fast_fill_regions": 0,
+              "stroke_refined_regions": 0,
+              "stroke_authority_gradient_regions": 0,
+              "dense_authority_gradient_regions": 0,
+              "dense_authority_contrast_rejects": 0,
+              "residue_repair_attempted": 0,
+              "residue_initial_regions": 0,
+              "residue_final_regions": 0,
+              "outside_authority_changed_channel_values": 0,
+          }
+
+          font = ImageFont.load_default()
+          panels = []
+          review_width = 430
+
+          for i, page in enumerate(state["pages"]):
+              raw = read_image(Path(page["original"]))
+              clean = read_image(Path(page["clean"])) if page.get("clean") else raw.copy()
+              cv2.imwrite(str(out / "raw" / f"p{i:03d}.png"), raw)
+              cv2.imwrite(str(out / "clean" / f"p{i:03d}.png"), clean)
+
+              metrics = page.get("processing_metrics") or {}
+              auto = metrics.get("auto_inpaint") or {}
+              repair = metrics.get("residue_repair") or {}
+              outside = int(repair.get("outside_authority_changed_channel_values", 0) or 0)
+              if outside != 0:
+                  raise RuntimeError(f"page {i}: residue repair changed {outside} channel values outside authority")
+
+              for key in (
+                  "boxes", "lama_model_runs", "lama_model_ms", "lama_native_single_regions",
+                  "lama_tiled_regions", "bubble_fast_fill_regions", "stroke_refined_regions",
+                  "stroke_authority_gradient_regions", "dense_authority_gradient_regions",
+                  "dense_authority_contrast_rejects",
+              ):
+                  aggregate[key] += int(auto.get(key, 0) or 0)
+              aggregate["residue_repair_attempted"] += int(repair.get("attempted", 0) or 0)
+              aggregate["residue_initial_regions"] += int(repair.get("initial_regions", 0) or 0)
+              aggregate["residue_final_regions"] += int(repair.get("final_regions", 0) or 0)
+              aggregate["outside_authority_changed_channel_values"] += outside
+
+              diff = cv2.absdiff(raw, clean)
+              rows.append({
+                  "page_index": i,
+                  "source_page": page.get("source_page"),
+                  "slice_index": page.get("slice_index"),
+                  "shape": [int(raw.shape[0]), int(raw.shape[1])],
+                  "detection_state": page.get("detection_state"),
+                  "detection_issues": page.get("detection_issues") or [],
+                  "changed_channel_values": int(np.count_nonzero(diff)),
+                  "max_abs_channel_diff": int(diff.max(initial=0)),
+                  "mean_abs_channel_diff": round(float(diff.mean()), 6),
+                  "auto_inpaint": auto,
+                  "residue_repair": repair,
+              })
+
+              def thumb(arr: np.ndarray) -> Image.Image:
+                  pil = Image.fromarray(cv2.cvtColor(arr, cv2.COLOR_BGR2RGB))
+                  h = max(1, int(round(pil.height * review_width / pil.width)))
+                  return pil.resize((review_width, h), Image.Resampling.LANCZOS)
+
+              left = thumb(raw)
+              right = thumb(clean)
+              header = 34
+              gap = 10
+              panel = Image.new("RGB", (left.width + right.width + gap, max(left.height, right.height) + header), "white")
+              draw = ImageDraw.Draw(panel)
+              label = f"p{i:03d} src={page.get('source_page')} slice={page.get('slice_index')}"
+              draw.text((4, 5), label + " RAW", fill="black", font=font)
+              draw.text((left.width + gap + 4, 5), "CURRENT CLEAN", fill="black", font=font)
+              panel.paste(left, (0, header))
+              panel.paste(right, (left.width + gap, header))
+              panels.append(panel)
+
+          # Split contact sheets so each image stays easy to inspect.
+          sheet_paths = []
+          for start in range(0, len(panels), 8):
+              chunk = panels[start:start + 8]
+              width = max(p.width for p in chunk)
+              height = sum(p.height for p in chunk) + 8 * (len(chunk) - 1)
+              sheet = Image.new("RGB", (width, height), "#dddddd")
+              y = 0
+              for panel in chunk:
+                  sheet.paste(panel, (0, y))
+                  y += panel.height + 8
+              path = out / f"review-{start:03d}-{start + len(chunk) - 1:03d}.jpg"
+              sheet.save(path, quality=94)
+              sheet_paths.append(path.name)
+
+          issues = {}
+          for row in rows:
+              for issue in row["detection_issues"]:
+                  issues[issue] = issues.get(issue, 0) + 1
+
+          summary = {
+              "chapter_id": chapter_id,
+              "chapter_url": chapter_url,
+              "total_slices": len(rows),
+              "active_slices": len(active),
+              "needs_review_slices": sum(1 for r in rows if r["detection_state"] == "needs_review"),
+              "issue_counts": issues,
+              "aggregate_auto_inpaint": aggregate,
+              "batches": batches,
+              "contact_sheets": sheet_paths,
+              "head_sha": os.environ.get("GITHUB_SHA"),
+          }
+          (out / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
+          (out / "review-index.json").write_text(json.dumps(rows, ensure_ascii=False, indent=2), encoding="utf-8")
+          shutil.copy2(Path("data/processed") / chapter_id / "manifest.json", out / "manifest.json")
+          print("SHADOW_SLAVE_CH1_AUDIT=" + json.dumps(summary, ensure_ascii=False))
+          PY
+
+      - name: Upload Shadow Slave clean review evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: shadow-slave-ch1-current-${{ github.run_id }}
+          path: benchmark-results/shadow-slave-ch1-current/
+          retention-days: 7
+          compression-level: 6
+          if-no-files-found: error
