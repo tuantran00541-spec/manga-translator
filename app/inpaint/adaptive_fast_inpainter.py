@@ -4,9 +4,13 @@ import ctypes
 import gc
 import time
 
+import numpy as np
 import onnxruntime as ort
 
 from app.config import LAMA_DYNAMIC_MODEL, LAMA_MODEL
+from app.detector.bubble_detector import BubbleBox
+from app.detector.mask_builder import build_mask
+import app.inpaint.fast_lama_inpainter as fast_lama
 from app.inpaint.fast_lama_inpainter import FastInpainter
 from app.inpaint.lama_runtime_policy import (
     LamaRuntimeProfile,
@@ -29,6 +33,86 @@ class AdaptiveFastInpainter(FastInpainter):
         super().__init__()
         self._runtime_profile: LamaRuntimeProfile = select_lama_runtime_profile(1)
         self._loaded_runtime_signature: tuple[int, int, bool, bool] | None = None
+
+    def _try_stroke_authority_fill(
+        self,
+        image: np.ndarray,
+        box: BubbleBox,
+        protected_regions: list[dict] | None,
+    ) -> bool:
+        """Use a validated smooth surface when dense stroke refinement is too wide.
+
+        FastInpainter first attempts the normal stroke-only authority-ring route.
+        Some outlined lettering legitimately occupies more than the conservative
+        stroke-fraction cap, even though the surrounding bubble is an extremely
+        clean smooth gradient. Sending that dense detector authority to LaMa can
+        create a visible block/facet. For that narrow case, fit the same robust
+        quadratic surface from *outside* the full authority and paint only pixels
+        already owned by that authority. Complex/edge-heavy rings are rejected by
+        the existing surface validator and continue to the established LaMa path.
+        """
+        if super()._try_stroke_authority_fill(image, box, protected_regions):
+            return True
+
+        if (
+            not fast_lama._STROKE_REFINE_ENABLED
+            or not self._bubble_candidate(box)
+            or box.semantic_type != "speech_bubble"
+            or box.source_role != "text_segmenter"
+        ):
+            return False
+
+        h, w = image.shape[:2]
+        pad = int(fast_lama._BUBBLE_FASTPATH_PAD)
+        x1 = max(0, int(box.x1) - pad)
+        y1 = max(0, int(box.y1) - pad)
+        x2 = min(w, int(box.x2) + pad)
+        y2 = min(h, int(box.y2) + pad)
+        if x2 - x1 < 4 or y2 - y1 < 4:
+            return False
+
+        crop_box = (x1, y1, x2, y2)
+        crop = image[y1:y2, x1:x2]
+        local_box = self._local_box(box, x1, y1)
+        authority_mask = build_mask((y2 - y1, x2 - x1), [local_box], crop)
+        authority_mask = self._subtract_protected_regions(
+            authority_mask,
+            crop_box,
+            protected_regions,
+        )
+        authority = authority_mask > 127
+        ys, xs = np.nonzero(authority)
+        authority_pixels = int(xs.size)
+        if authority_pixels < 64:
+            return False
+
+        bx1, bx2 = int(xs.min()), int(xs.max()) + 1
+        by1, by2 = int(ys.min()), int(ys.max()) + 1
+        tight_area = max(1, (bx2 - bx1) * (by2 - by1))
+        occupancy = authority_pixels / float(tight_area)
+        if occupancy < fast_lama._STROKE_REFINE_DENSE_FRACTION_MIN:
+            return False
+
+        painted = self._bubble_gradient_fill_from_authority_ring(
+            crop,
+            authority_mask,
+            authority_mask,
+        )
+        if painted is None:
+            return False
+
+        target = image[y1:y2, x1:x2]
+        image[y1:y2, x1:x2] = np.where(
+            authority[:, :, None],
+            painted,
+            target,
+        )
+        self._metric_add("dense_authority_gradient_regions")
+        self._metric_add("dense_authority_gradient_pixels", authority_pixels)
+        self._metric_add("bubble_fast_fill_regions")
+        self._metric_add("bubble_fast_fill_gradient_regions")
+        self._metric_add("bubble_fast_fill_pixels", authority_pixels)
+        return True
 
     def runtime_profile_status(self) -> dict:
         status = self._runtime_profile.as_dict()
