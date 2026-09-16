@@ -1,5 +1,6 @@
 name: Apply dual-polarity halo candidate
 
+# v2: growth guard is measured against the validated 1px fringe baseline.
 on:
   push:
     branches:
