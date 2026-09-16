@@ -1,4 +1,4 @@
-name: Test p025 dense surface production fallback
+name: Test dense surface contrast gate
 
 on:
   push:
@@ -20,7 +20,7 @@ env:
   MANGA_ORT_OPENVINO_STREAMS: "1"
   MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
   OPENBLAS_NUM_THREADS: "1"
-  CHAPTER_ID: c159aa11
+  CHAPTER_ID: c159aa13
   CHAPTER_URL: https://asurascans.com/comics/player-who-returned-10000-years-later-53fc8424/chapter/159
 
 jobs:
@@ -77,7 +77,7 @@ jobs:
           cp benchmark-bootstrap/models/*.onnx models/
           cp benchmark-bootstrap/models/.e2e-provenance.json models/
 
-      - name: Run production p025 gate
+      - name: Run real p025 p035 contrast gate
         run: |
           python - <<'PY'
           from __future__ import annotations
@@ -90,50 +90,73 @@ jobs:
           from app.image_io import read_image
           from app.manifest_utils import load_manifest_raw
 
-          out = Path("benchmark-results/p025-dense-production")
+          out = Path("benchmark-results/dense-contrast-gate")
           out.mkdir(parents=True, exist_ok=True)
           chapter_id = os.environ["CHAPTER_ID"]
           manifest = pipeline.download_chapter(os.environ["CHAPTER_URL"], chapter_id, workers=1)
-          matches = [
-              i for i,p in enumerate(manifest["pages"])
-              if int(p.get("source_page",-1)) == 5 and int(p.get("slice_index",-1)) == 4
-          ]
-          if len(matches) != 1:
-              raise RuntimeError(f"p025 lookup failed: {matches}")
-          page_index = matches[0]
-          pipeline.process_pages(chapter_id, [page_index], workers=1)
-          state = load_manifest_raw(chapter_id)
-          page = state["pages"][page_index]
-          metrics = (page.get("processing_metrics") or {}).get("auto_inpaint") or {}
-          if int(metrics.get("dense_authority_gradient_regions", 0)) < 1:
-              raise AssertionError(f"dense surface fallback not used: {metrics}")
-          if int(metrics.get("lama_model_runs", 0)) != 0:
-              raise AssertionError(f"p025 unexpectedly used LaMa: {metrics}")
-
-          raw = read_image(Path(page["original"]))
-          clean = read_image(Path(page["clean"]))
-          roi = (315, 2120, 845, 2425)
-          x1,y1,x2,y2 = roi
-          raw_roi = raw[y1:y2,x1:x2]
-          clean_roi = clean[y1:y2,x1:x2]
-          cv2.imwrite(str(out / "p025-raw.png"), raw_roi)
-          cv2.imwrite(str(out / "p025-production-clean.png"), clean_roi)
-          diff = np.abs(clean_roi.astype(np.int16) - raw_roi.astype(np.int16))
-          report = {
-              "page_index": page_index,
-              "auto_inpaint": metrics,
-              "roi_changed_channel_values": int(np.count_nonzero(diff)),
-              "roi_max_diff": int(diff.max()) if diff.size else 0,
-              "roi_mean_diff": float(diff.mean()) if diff.size else 0.0,
+          targets = {
+              "p025": ((5, 4), (315, 2120, 845, 2425)),
+              "p035": ((8, 1), (105, 1005, 815, 1455)),
           }
+          located = {}
+          for name, (key, roi) in targets.items():
+              matches = [
+                  i for i,p in enumerate(manifest["pages"])
+                  if int(p.get("source_page",-1)) == key[0]
+                  and int(p.get("slice_index",-1)) == key[1]
+              ]
+              if len(matches) != 1:
+                  raise RuntimeError(f"{name} lookup failed: {matches}")
+              located[name] = (matches[0], roi)
+
+          pipeline.process_pages(
+              chapter_id,
+              [located["p025"][0], located["p035"][0]],
+              workers=1,
+          )
+          state = load_manifest_raw(chapter_id)
+          report = {}
+          for name, (page_index, roi) in located.items():
+              page = state["pages"][page_index]
+              metrics = (page.get("processing_metrics") or {}).get("auto_inpaint") or {}
+              raw = read_image(Path(page["original"]))
+              clean = read_image(Path(page["clean"]))
+              x1,y1,x2,y2 = roi
+              raw_roi = raw[y1:y2,x1:x2]
+              clean_roi = clean[y1:y2,x1:x2]
+              cv2.imwrite(str(out / f"{name}-raw.png"), raw_roi)
+              cv2.imwrite(str(out / f"{name}-clean.png"), clean_roi)
+              diff = np.abs(clean_roi.astype(np.int16) - raw_roi.astype(np.int16))
+              report[name] = {
+                  "page_index": page_index,
+                  "auto_inpaint": metrics,
+                  "roi_changed_channel_values": int(np.count_nonzero(diff)),
+                  "roi_max_diff": int(diff.max()) if diff.size else 0,
+                  "roi_mean_diff": float(diff.mean()) if diff.size else 0.0,
+              }
+
+          p025 = report["p025"]["auto_inpaint"]
+          if int(p025.get("dense_authority_gradient_regions", 0)) < 1:
+              raise AssertionError(f"p025 dense surface fallback not used: {p025}")
+          if int(p025.get("lama_model_runs", 0)) != 0:
+              raise AssertionError(f"p025 unexpectedly used LaMa: {p025}")
+
+          p035 = report["p035"]["auto_inpaint"]
+          if int(p035.get("dense_authority_gradient_regions", 0)) != 0:
+              raise AssertionError(f"p035 incorrectly used dense surface: {p035}")
+          if int(p035.get("dense_authority_contrast_rejects", 0)) < 1:
+              raise AssertionError(f"p035 did not hit contrast gate: {p035}")
+          if int(p035.get("lama_model_runs", 0)) < 1:
+              raise AssertionError(f"p035 did not fall back to LaMa: {p035}")
+
           (out / "report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
-          print("P025_PRODUCTION=" + json.dumps(report))
+          print("DENSE_CONTRAST_GATE=" + json.dumps(report))
           PY
 
       - name: Upload evidence
         uses: actions/upload-artifact@v4
         with:
-          name: p025-dense-production-${{ github.run_id }}
-          path: benchmark-results/p025-dense-production/
+          name: dense-contrast-gate-${{ github.run_id }}
+          path: benchmark-results/dense-contrast-gate/
           retention-days: 7
           if-no-files-found: error
