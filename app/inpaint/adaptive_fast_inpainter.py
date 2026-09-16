@@ -57,9 +57,9 @@ class AdaptiveFastInpainter(FastInpainter):
         already owned by that authority.
 
         The full-authority fallback is additionally restricted to genuinely high-
-        contrast lettering. Real-page auditing showed that muted/colored SFX can
-        have an equally smooth ring but still expose the dense authority boundary
-        when reconstructed wholesale; those cases must stay on LaMa.
+        contrast lettering. Muted or colored SFX can have an equally smooth ring
+        while still exposing the dense authority boundary when reconstructed
+        wholesale; those cases stay on the established LaMa path.
         """
         if super()._try_stroke_authority_fill(image, box, protected_regions):
             return True
@@ -103,10 +103,6 @@ class AdaptiveFastInpainter(FastInpainter):
         if occupancy < fast_lama._STROKE_REFINE_DENSE_FRACTION_MIN:
             return False
 
-        # A smooth ring alone is not enough to justify repainting the whole dense
-        # authority: muted/colored SFX can pass the surface validator but leave a
-        # visible authority-shaped patch. Require the detector-owned region to
-        # contain a strong luminance separation from its immediate background.
         ring = self._mask_ring(authority_mask, fast_lama._BUBBLE_FASTPATH_RING)
         if int(np.count_nonzero(ring)) < 96:
             return False
@@ -206,68 +202,87 @@ class AdaptiveFastInpainter(FastInpainter):
     def _session_options(profile: LamaRuntimeProfile) -> ort.SessionOptions:
         opts = ort.SessionOptions()
         opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-        opts.intra_op_num_threads = max(1, int(profile.intra_op_threads))
-        opts.inter_op_num_threads = max(1, int(ORT_INTER_OP_THREADS))
         opts.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
         opts.enable_cpu_mem_arena = bool(profile.enable_cpu_mem_arena)
         opts.enable_mem_pattern = bool(profile.enable_mem_pattern)
+        opts.intra_op_num_threads = max(1, int(profile.intra_op_threads))
+        opts.inter_op_num_threads = max(1, int(ORT_INTER_OP_THREADS))
+        if int(profile.dynamic_block_base) > 0:
+            opts.add_session_config_entry(
+                "session.dynamic_block_base",
+                str(int(profile.dynamic_block_base)),
+            )
         return opts
 
     def _ensure_session(self) -> None:
         if self.session is not None:
             return
-        model_path = self.model_path
-        if not model_path.exists():
-            raise RuntimeError(f"LaMa model not found: {model_path}")
+        if not self._prefer_dynamic or not LAMA_DYNAMIC_MODEL.is_file():
+            return super()._ensure_session()
 
         with self._session_lock:
             if self.session is not None:
                 return
+
             profile = self._runtime_profile
+            load_started_at = time.perf_counter()
+            with self._session_state_lock:
+                self._session_load_state = "loading"
+                self._session_load_ms = None
+                self._session_load_error = None
+
             logger.info(
                 "Preparing adaptive LaMa {} profile={}",
-                model_path,
+                LAMA_DYNAMIC_MODEL,
                 profile.as_dict(),
             )
-            started = time.perf_counter()
-            self.session = make_session(
-                model_path,
-                providers=["CPUExecutionProvider"],
-                session_options=self._session_options(profile),
-            )
-            self._loaded_runtime_signature = profile.session_signature()
-            self._session_run_count = 0
-            self._inspect_model_contract()
+            try:
+                try:
+                    session = ort.InferenceSession(
+                        str(LAMA_DYNAMIC_MODEL),
+                        sess_options=self._session_options(profile),
+                        providers=["CPUExecutionProvider"],
+                    )
+                    _drop_model_file_cache_hint(LAMA_DYNAMIC_MODEL)
+                    self._configure_loaded_session(
+                        session,
+                        LAMA_DYNAMIC_MODEL,
+                        expected_dynamic=True,
+                    )
+                    self._loaded_runtime_signature = profile.session_signature()
+                except Exception:
+                    logger.exception(
+                        "Failed adaptive dynamic LaMa {}; falling back to {}",
+                        LAMA_DYNAMIC_MODEL,
+                        LAMA_MODEL,
+                    )
+                    session = make_session(
+                        LAMA_MODEL,
+                        serialize_inference=not FIXED_LAMA_CONCURRENT_INFERENCE,
+                    )
+                    self._configure_loaded_session(
+                        session,
+                        LAMA_MODEL,
+                        expected_dynamic=False,
+                    )
+                    self._loaded_runtime_signature = None
+            except Exception as exc:
+                load_ms = round((time.perf_counter() - load_started_at) * 1000.0, 1)
+                with self._session_state_lock:
+                    self._session_load_state = "failed"
+                    self._session_load_ms = load_ms
+                    self._session_load_error = type(exc).__name__
+                raise
+
+            load_ms = round((time.perf_counter() - load_started_at) * 1000.0, 1)
+            with self._session_state_lock:
+                self._session_load_state = "ready"
+                self._session_load_ms = load_ms
+                self._session_load_error = None
             logger.info(
                 "Adaptive inpaint model {} ready in {:.1f} ms (dynamic={}, profile={})",
-                model_path,
-                (time.perf_counter() - started) * 1000.0,
+                self.lama_model_path,
+                load_ms,
                 self.dynamic_lama,
                 self.runtime_profile_status(),
             )
-
-    def release_session(self) -> None:
-        with self._session_lock:
-            self._release_dynamic_session_locked()
-
-    def close(self) -> None:
-        self.release_session()
-
-    def _run_session(self, feeds: dict) -> list:
-        self._ensure_session()
-        assert self.session is not None
-        if not self.dynamic_lama:
-            return super()._run_session(feeds)
-        return self.session.run([self.output_name], feeds)
-
-    def _fixed_model_concurrency_limit(self) -> int:
-        return max(1, int(FIXED_LAMA_CONCURRENT_INFERENCE))
-
-    def _dynamic_model_path(self):
-        return LAMA_DYNAMIC_MODEL
-
-    def _fixed_model_path(self):
-        return LAMA_MODEL
-
-    def _drop_model_cache_hint(self) -> None:
-        _drop_model_file_cache_hint(self.model_path)
