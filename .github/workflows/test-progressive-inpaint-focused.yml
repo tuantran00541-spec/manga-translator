@@ -1,0 +1,212 @@
+name: Progressive inpaint p045 p047 gate
+
+on:
+  push:
+    branches:
+      - test/preserve-region-repaint
+    paths:
+      - .github/workflows/test-progressive-inpaint-focused.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHONUNBUFFERED: "1"
+  MANGA_ORT_PROVIDER: openvino
+  MANGA_ORT_REQUIRE_PROVIDER: "1"
+  MANGA_ORT_OPENVINO_SCOPE: detectors
+  MANGA_ORT_OPENVINO_THREADS: "2"
+  MANGA_ORT_OPENVINO_STREAMS: "1"
+  MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
+  OPENBLAS_NUM_THREADS: "1"
+  CHAPTER_ID: c159aa02
+  CHAPTER_URL: https://asurascans.com/comics/player-who-returned-10000-years-later-53fc8424/chapter/159
+
+jobs:
+  progressive-gate:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: test/preserve-region-repaint
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install runtime
+        run: |
+          python -m pip install \
+            numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 \
+            onnxruntime-openvino==1.24.1 psutil==6.1.1 loguru==0.7.2 \
+            requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 playwright==1.47.0 \
+            fastapi==0.115.0 'uvicorn[standard]==0.30.6' \
+            pydantic==2.9.2 filelock==3.16.1 python-multipart==0.0.12 pytest==8.3.5
+
+      - name: Unit gate
+        run: python -m pytest tests/test_fast_inpaint_paths.py tests/test_fast_residue_detector.py -q
+
+      - name: Restore detector and inpaint models
+        id: models
+        uses: actions/cache@v4
+        with:
+          path: |
+            models/*.onnx
+            models/.e2e-provenance.json
+          key: processing-profile-models-b224548-v1
+
+      - name: Read pinned model provisioner
+        if: steps.models.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: b22454827f8190655d7070b80eb20c2550beadfa
+          path: benchmark-bootstrap
+          sparse-checkout: scripts/provision_real_e2e_models.py
+          sparse-checkout-cone-mode: false
+
+      - name: Provision public-equivalent production models
+        if: steps.models.outputs.cache-hit != 'true'
+        run: |
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple torch==2.5.1+cpu torchvision==0.20.1+cpu
+          python -m pip install --no-deps ultralytics==8.3.221 onnx==1.17.0 onnxslim==0.1.71
+          python -m pip install sympy==1.13.1 PyYAML==6.0.2 scipy==1.14.1 tqdm==4.67.1 matplotlib==3.9.2 pandas==2.2.3 py-cpuinfo==9.0.0 ml_dtypes==0.5.3 colorama==0.4.6 polars==1.33.1 ultralytics-thop==2.0.17
+          python benchmark-bootstrap/scripts/provision_real_e2e_models.py
+          cp benchmark-bootstrap/models/*.onnx models/
+          cp benchmark-bootstrap/models/.e2e-provenance.json models/
+
+      - name: Process p045 and p047
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+          import json
+          import os
+          import shutil
+          from pathlib import Path
+          import cv2
+          import numpy as np
+          from PIL import Image, ImageDraw, ImageFont
+          from app.dependencies import pipeline
+          from app.image_io import read_image
+          from app.manifest_utils import load_manifest_raw
+          from app.mask_store import decode_mask_value
+
+          chapter_id = os.environ["CHAPTER_ID"]
+          url = os.environ["CHAPTER_URL"]
+          out = Path("benchmark-results/progressive-inpaint-focused")
+          if out.exists():
+              shutil.rmtree(out)
+          out.mkdir(parents=True, exist_ok=True)
+
+          targets = [
+              {"source_page": 10, "slice_index": 4, "name": "p045", "roi": [165, 3160, 735, 3575]},
+              {"source_page": 11, "slice_index": 0, "name": "p047a", "roi": [75, 1920, 815, 2355]},
+              {"source_page": 11, "slice_index": 0, "name": "p047b", "roi": [275, 2550, 850, 2835]},
+          ]
+          manifest = pipeline.download_chapter(url, chapter_id, workers=1)
+          pages = manifest["pages"]
+          located = {}
+          for target in targets:
+              key = (target["source_page"], target["slice_index"])
+              matches = [i for i, p in enumerate(pages) if int(p.get("source_page", -1)) == key[0] and int(p.get("slice_index", -1)) == key[1]]
+              if len(matches) != 1:
+                  raise RuntimeError(f"target lookup failed {key}: {matches}")
+              located[key] = matches[0]
+
+          pipeline.process_pages(chapter_id, list(dict.fromkeys(located.values())), workers=1)
+          state = load_manifest_raw(chapter_id)
+          report = {"chapter_id": chapter_id, "pages": {}, "targets": []}
+          panels = []
+          font = ImageFont.load_default()
+
+          for target in targets:
+              key = (target["source_page"], target["slice_index"])
+              page_index = located[key]
+              page = state["pages"][page_index]
+              raw = read_image(Path(page["original"]))
+              clean = read_image(Path(page["clean"]))
+              metrics = page.get("processing_metrics") or {}
+              repair = metrics.get("residue_repair") or {}
+              if int(repair.get("outside_authority_changed_channel_values", 0) or 0) != 0:
+                  raise RuntimeError(f"page {page_index}: repair escaped authority: {repair}")
+
+              box_summary = []
+              for box in page.get("boxes", []):
+                  if not isinstance(box, dict) or box.get("removed"):
+                      continue
+                  mask = decode_mask_value(box.get("mask"))
+                  box_summary.append({
+                      "geometry": [box.get("x1"), box.get("y1"), box.get("x2"), box.get("y2")],
+                      "semantic_type": box.get("semantic_type"),
+                      "safe_to_inpaint": box.get("safe_to_inpaint"),
+                      "needs_review": box.get("needs_review"),
+                      "deferred_reason": box.get("deferred_reason"),
+                      "mask_pixels": int(np.count_nonzero(mask > 127)) if mask is not None else 0,
+                  })
+              residue_summary = [
+                  {
+                      "geometry": [r.get("x1"), r.get("y1"), r.get("x2"), r.get("y2")],
+                      "semantic_type": r.get("semantic_type"),
+                      "deferred_reason": r.get("deferred_reason"),
+                      "has_mask": bool(r.get("mask")),
+                  }
+                  for r in page.get("residue_regions", []) if isinstance(r, dict)
+              ]
+              report["pages"].setdefault(str(page_index), {
+                  "source_page": key[0],
+                  "slice_index": key[1],
+                  "detection_state": page.get("detection_state"),
+                  "detection_issues": page.get("detection_issues"),
+                  "residue_regions": residue_summary,
+                  "boxes": box_summary,
+                  "processing_metrics": metrics,
+              })
+
+              x1, y1, x2, y2 = target["roi"]
+              x1, x2 = max(0, x1), min(raw.shape[1], x2)
+              y1, y2 = max(0, y1), min(raw.shape[0], y2)
+              raw_roi = raw[y1:y2, x1:x2]
+              clean_roi = clean[y1:y2, x1:x2]
+              cv2.imwrite(str(out / f"{target['name']}-raw.png"), raw_roi)
+              cv2.imwrite(str(out / f"{target['name']}-clean.png"), clean_roi)
+              diff = cv2.absdiff(raw_roi, clean_roi)
+              report["targets"].append({
+                  **target,
+                  "page_index": page_index,
+                  "changed_channel_values": int(np.count_nonzero(diff)),
+                  "max_abs_channel_diff": int(diff.max(initial=0)),
+                  "mean_abs_channel_diff": round(float(diff.mean()), 6),
+              })
+
+              def thumb(arr, width=430):
+                  pil = Image.fromarray(cv2.cvtColor(arr, cv2.COLOR_BGR2RGB))
+                  height = max(1, int(round(pil.height * width / pil.width)))
+                  return pil.resize((width, height), Image.Resampling.LANCZOS)
+              left, right = thumb(raw_roi), thumb(clean_roi)
+              canvas = Image.new("RGB", (870, max(left.height, right.height) + 32), "white")
+              draw = ImageDraw.Draw(canvas)
+              draw.text((4, 7), f"{target['name']} RAW", fill="black", font=font)
+              draw.text((444, 7), "PROGRESSIVE CLEAN", fill="black", font=font)
+              canvas.paste(left, (0, 32))
+              canvas.paste(right, (440, 32))
+              panels.append(canvas)
+
+          review = Image.new("RGB", (870, sum(p.height for p in panels) + 10 * (len(panels) - 1)), "#eeeeee")
+          y = 0
+          for panel in panels:
+              review.paste(panel, (0, y))
+              y += panel.height + 10
+          review.save(out / "progressive-review.jpg", quality=95)
+          (out / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+          print("PROGRESSIVE_AUDIT=" + json.dumps(report, ensure_ascii=False))
+          PY
+
+      - name: Upload evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: progressive-inpaint-focused-${{ github.run_id }}
+          path: benchmark-results/progressive-inpaint-focused/
+          retention-days: 7
+          compression-level: 6
+          if-no-files-found: error
