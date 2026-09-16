@@ -36,6 +36,40 @@ class MultiLangOCR:
     def read(self, image: np.ndarray, lang: str) -> str:
         return self.read_detailed(image, lang).text
 
+    def read_batch(
+        self,
+        images: list[np.ndarray] | tuple[np.ndarray, ...],
+        lang: str,
+        *,
+        target_mode: str | None = None,
+    ) -> list[OCRReadResult]:
+        """Batch OCR candidate with language-preserving fallbacks.
+
+        MangaOCR remains sequential for Japanese.  PP-OCR languages use its
+        guarded batch API; backend incompatibility falls back per image there.
+        """
+        image_list = list(images)
+        normalized = (lang or "").strip().lower()
+        if normalized in {"ja", "japan"}:
+            return [
+                self.read_detailed(
+                    image,
+                    lang,
+                    target_mode=target_mode,
+                )
+                for image in image_list
+            ]
+        effective_target_mode = target_mode or self._paddle_target_mode
+        return self._paddle.read_batch(
+            image_list,
+            lang,
+            target_mode=effective_target_mode,
+        )
+
+    def batch_metrics(self) -> dict[str, int]:
+        """Return guarded PP-OCR batch counters for benchmark reports."""
+        return self._paddle.batch_metrics()
+
     def read_detailed(
         self,
         image: np.ndarray,

@@ -193,6 +193,10 @@ class PaddleV6OCR:
             "korean": threading.RLock(),
         }
         self._creation_lock = threading.RLock()
+        self._batch_metrics_lock = threading.Lock()
+        self._batch_inference_calls = 0
+        self._batch_items = 0
+        self._batch_fallbacks = 0
 
     @property
     def unified_model_name(self) -> str:
@@ -263,6 +267,121 @@ class PaddleV6OCR:
             result = replace(result, retry_applied=True)
         return result
 
+    def read_batch(
+        self,
+        images: list[np.ndarray] | tuple[np.ndarray, ...],
+        lang: str,
+        *,
+        target_mode: str = "all",
+    ) -> list[OCRReadResult]:
+        """Read a same-language batch with a safe sequential fallback.
+
+        PaddleOCR versions differ in whether ``predict(input=...)`` accepts a
+        list and in how they represent a batch result.  The candidate path
+        therefore requires one unambiguous result per input; any unsupported
+        or malformed batch response is retried through the established
+        single-image path rather than being silently misaligned.
+        """
+        image_list = list(images)
+        if target_mode not in {"all", "centered"}:
+            raise ValueError(f"Unsupported OCR target mode: {target_mode!r}")
+        if not image_list:
+            return []
+
+        normalized = _normalize_lang(lang)
+        if normalized in {"en", "ch", "ja"}:
+            key = "unified"
+            model_name = self.unified_model_name
+        elif normalized == "korean":
+            key = "korean"
+            model_name = self.korean_model_name()
+        else:
+            raise ValueError(f"Unsupported OCR language for PaddleOCR v6 backend: {lang!r}")
+
+        results: list[OCRReadResult | None] = [None] * len(image_list)
+        valid_indices: list[int] = []
+        prepared: list[np.ndarray | None] = [None] * len(image_list)
+        for index, image in enumerate(image_list):
+            if image is None or getattr(image, "size", 0) == 0:
+                results[index] = OCRReadResult(
+                    "", None, "none", "unknown", 0, "reject", "empty"
+                )
+                continue
+            prepared[index] = _prepare_rgb_for_paddle(image)
+            valid_indices.append(index)
+
+        if not valid_indices:
+            return [result for result in results if result is not None]
+
+        try:
+            pipeline = self._get_pipeline(key)
+            with self._locks[key]:
+                outputs = pipeline.predict(
+                    input=[prepared[index] for index in valid_indices]
+                )
+            split_outputs = self._split_batch_outputs(
+                outputs, expected=len(valid_indices)
+            )
+            if split_outputs is None:
+                raise ValueError("PaddleOCR batch output is not one-result-per-input")
+            decoded = [
+                self._decode_outputs(
+                    output_group,
+                    prepared[index],
+                    normalized=normalized,
+                    model_name=model_name,
+                    target_mode=target_mode,
+                )
+                for index, output_group in zip(valid_indices, split_outputs)
+            ]
+        except Exception:
+            # This is an experimental performance seam. Preserve correctness
+            # when a backend rejects list input, changes its result shape, or
+            # fails a batch-specific code path.
+            with self._batch_metrics_lock:
+                self._batch_fallbacks += 1
+            return [
+                self.read(image, lang, target_mode=target_mode)
+                for image in image_list
+            ]
+
+        with self._batch_metrics_lock:
+            self._batch_inference_calls += 1
+            self._batch_items += len(valid_indices)
+
+        for index, result in zip(valid_indices, decoded):
+            # Selective retries remain per crop so an uncertain result cannot
+            # shift batch ordering or hide the raw fallback provenance.
+            if _should_selective_retry(result, prepared[index]):
+                result = self.read(
+                    image_list[index], lang, target_mode=target_mode
+                )
+            results[index] = result
+        return [result for result in results if result is not None]
+
+    @staticmethod
+    def _split_batch_outputs(outputs: Any, *, expected: int) -> list[list[Any]] | None:
+        if isinstance(outputs, (str, bytes, dict)):
+            return None
+        try:
+            rows = list(outputs)
+        except TypeError:
+            return None
+        if len(rows) != int(expected):
+            return None
+        return [
+            list(row) if isinstance(row, (list, tuple)) else [row]
+            for row in rows
+        ]
+
+    def batch_metrics(self) -> dict[str, int]:
+        with self._batch_metrics_lock:
+            return {
+                "batch_inference_calls": int(self._batch_inference_calls),
+                "batch_items": int(self._batch_items),
+                "batch_fallbacks": int(self._batch_fallbacks),
+            }
+
     def _read_once(
         self,
         prepared: np.ndarray,
@@ -275,6 +394,24 @@ class PaddleV6OCR:
         pipeline = self._get_pipeline(key)
         with self._locks[key]:
             outputs = pipeline.predict(input=prepared)
+
+        return self._decode_outputs(
+            outputs,
+            prepared,
+            normalized=normalized,
+            model_name=model_name,
+            target_mode=target_mode,
+        )
+
+    def _decode_outputs(
+        self,
+        outputs: Any,
+        prepared: np.ndarray,
+        *,
+        normalized: str,
+        model_name: str,
+        target_mode: str,
+    ) -> OCRReadResult:
 
         texts: list[Any] = []
         scores: list[Any] = []

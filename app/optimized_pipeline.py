@@ -4,7 +4,15 @@ from app.detector.sequential_fast_residue_detector import (
     SequentialFastResidueAdaptiveFocusCombinedTextDetector,
 )
 from app.inpaint.adaptive_fast_inpainter import AdaptiveFastInpainter
-from app.parameters import INPAINT_PRELOAD_ENABLED, PIPELINE_DEFAULT_WORKERS
+from app.inpaint.risk_aware_inpainter import (
+    CoalescingRiskAwareInpainter,
+    RiskAwareFastInpainter,
+)
+from app.parameters import (
+    INPAINT_EXPERIMENTAL_PROFILE,
+    INPAINT_PRELOAD_ENABLED,
+    PIPELINE_DEFAULT_WORKERS,
+)
 from app.pipeline import ChapterPipeline
 from app.runtime_responsiveness import responsive_process_workers
 
@@ -27,7 +35,12 @@ class OptimizedChapterPipeline(ChapterPipeline):
         if self._inpainter is None:
             with self._inpainter_init_lock:
                 if self._inpainter is None:
-                    self._inpainter = AdaptiveFastInpainter()
+                    if INPAINT_EXPERIMENTAL_PROFILE == "coalesce":
+                        self._inpainter = CoalescingRiskAwareInpainter()
+                    elif INPAINT_EXPERIMENTAL_PROFILE == "risk":
+                        self._inpainter = RiskAwareFastInpainter()
+                    else:
+                        self._inpainter = AdaptiveFastInpainter()
         return self._inpainter
 
     def process_pages(

@@ -162,6 +162,20 @@ class FastInpainter(Inpainter):
 
         return True
 
+    def _allow_bubble_fast_fill(
+        self,
+        crop: np.ndarray,
+        local_mask: np.ndarray,
+    ) -> bool:
+        """Hook for a candidate to reject cheap fill on risky backgrounds.
+
+        The default keeps the validated FastInpainter behavior unchanged.  A
+        subclass may return ``False`` after inspecting the already-authorized
+        mask and page-space context; rejection falls through to the normal
+        LaMa path and never changes destructive authority.
+        """
+        return True
+
     def _try_bubble_fast_fill(
         self,
         image: np.ndarray,
@@ -191,6 +205,8 @@ class FastInpainter(Inpainter):
         mask_bool = local_mask > 127
         mask_pixels = int(np.count_nonzero(mask_bool))
         if mask_pixels <= 0:
+            return False
+        if not self._allow_bubble_fast_fill(crop, local_mask):
             return False
 
         fill_color = self._smart_fill_color(crop, local_mask)
@@ -295,6 +311,45 @@ class FastInpainter(Inpainter):
             min(crop_h, my2 + context),
         )
 
+    def _dynamic_roi_region(
+        self,
+        crop: np.ndarray,
+        local_mask: np.ndarray,
+        crop_box: tuple,
+    ) -> tuple[np.ndarray, np.ndarray, tuple[int, int, int, int], int, int] | None:
+        """Return the validated dynamic ROI without running the model.
+
+        E6 uses this helper to prepare several independent ROI inputs for one
+        batch.  Keeping the calculation here prevents the batch candidate from
+        silently discarding the ROI optimization already measured for E5.
+        """
+        if not _ROI_LAMA_ENABLED or not self.dynamic_lama:
+            return None
+        crop_h, crop_w = crop.shape[:2]
+        source_pixels = max(1, int(crop_h * crop_w))
+        roi = self._tight_roi(local_mask, crop_w, crop_h)
+        if roi is None:
+            return None
+        rx1, ry1, rx2, ry2 = roi
+        roi_pixels = max(1, int((rx2 - rx1) * (ry2 - ry1)))
+        savings = 1.0 - (roi_pixels / float(source_pixels))
+        if savings < _ROI_MIN_SAVINGS:
+            return None
+        cx1, cy1, _, _ = (int(v) for v in crop_box)
+        global_box = (
+            cx1 + rx1,
+            cy1 + ry1,
+            cx1 + rx2,
+            cy1 + ry2,
+        )
+        return (
+            crop[ry1:ry2, rx1:rx2],
+            local_mask[ry1:ry2, rx1:rx2],
+            global_box,
+            source_pixels,
+            roi_pixels,
+        )
+
     def _lama_fill(
         self,
         image: np.ndarray,
@@ -324,15 +379,8 @@ class FastInpainter(Inpainter):
                 feather=feather,
             )
 
-        crop_h, crop_w = crop.shape[:2]
-        source_pixels = max(1, int(crop_h * crop_w))
-        roi = self._tight_roi(local_mask, crop_w, crop_h)
-        if roi is None:
-            return image
-        rx1, ry1, rx2, ry2 = roi
-        roi_pixels = max(1, int((rx2 - rx1) * (ry2 - ry1)))
-        savings = 1.0 - (roi_pixels / float(source_pixels))
-        if savings < _ROI_MIN_SAVINGS:
+        region = self._dynamic_roi_region(crop, local_mask, crop_box)
+        if region is None:
             return super()._lama_fill(
                 image,
                 crop,
@@ -341,15 +389,7 @@ class FastInpainter(Inpainter):
                 feather=feather,
             )
 
-        cx1, cy1, _, _ = (int(v) for v in crop_box)
-        global_box = (
-            cx1 + rx1,
-            cy1 + ry1,
-            cx1 + rx2,
-            cy1 + ry2,
-        )
-        roi_crop = image[global_box[1]:global_box[3], global_box[0]:global_box[2]]
-        roi_mask = local_mask[ry1:ry2, rx1:rx2]
+        roi_crop, roi_mask, global_box, source_pixels, roi_pixels = region
         self._metric_add("roi_lama_regions")
         self._metric_add("roi_lama_source_pixels", source_pixels)
         self._metric_add("roi_lama_input_pixels", roi_pixels)

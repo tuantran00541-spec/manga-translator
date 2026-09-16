@@ -33,4 +33,11 @@ jobs:
             tests/test_ocr_pipeline_regressions.py \
             tests/test_ai_repair_controls.py \
             tests/test_benchmark_registry.py \
-            tests/test_detector_inference_cache.py
+            tests/test_detector_inference_cache.py \
+            tests/test_inpaint_risk_router.py \
+            tests/test_ocr_batch_and_metrics.py \
+            tests/test_distillation.py \
+            tests/test_student_detector_gate.py \
+            tests/test_shared_detector_contract.py \
+            tests/test_precision_gate.py \
+            tests/test_perf_release_gate.py

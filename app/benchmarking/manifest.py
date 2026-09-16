@@ -17,7 +17,11 @@ from typing import Any, Iterable, Mapping
 
 
 BENCHMARK_MANIFEST_SCHEMA = "manga-translator.benchmark-manifest.v1"
-PARTITIONS = frozenset({"smoke", "hard", "chapter", "holdout"})
+# Distillation manifests also need explicit training/calibration partitions;
+# the original benchmark partitions remain unchanged for runtime gates.
+PARTITIONS = frozenset(
+    {"smoke", "hard", "chapter", "holdout", "train", "calibration"}
+)
 
 
 def _jsonable(value: Any) -> Any:

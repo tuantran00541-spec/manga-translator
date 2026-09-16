@@ -800,6 +800,114 @@ class Inpainter:
         painted_rgb = decode_lama_output(output, self.lama_contract)
         return cv2.cvtColor(painted_rgb, cv2.COLOR_RGB2BGR)
 
+    def _run_lama_batch(
+        self,
+        canvases: list[np.ndarray],
+        masks: list[np.ndarray],
+    ) -> list[np.ndarray]:
+        """Run compatible LaMa canvases as one bounded batch.
+
+        The regular inpaint path remains single-item and unchanged.  This seam
+        is for the E6 candidate: every item is already padded and its output is
+        cropped by the caller before strict mask-only compositing.  Extra
+        bottom/right padding is replicated artwork, never destructive
+        authority, and is bounded by the caller's padding policy.
+        """
+        if len(canvases) != len(masks) or not canvases:
+            raise ValueError("LaMa batch requires matching non-empty canvases and masks")
+
+        shapes = []
+        for canvas, mask in zip(canvases, masks):
+            if canvas.ndim != 3 or canvas.shape[2] != 3:
+                raise ValueError(f"LaMa batch canvas must be HxWx3; got {canvas.shape}")
+            if mask.ndim != 2 or mask.shape != canvas.shape[:2]:
+                raise ValueError(
+                    "LaMa batch mask shape must match canvas; "
+                    f"got canvas={canvas.shape} mask={mask.shape}"
+                )
+            shapes.append(canvas.shape[:2])
+
+        batch_h = max(int(shape[0]) for shape in shapes)
+        batch_w = max(int(shape[1]) for shape in shapes)
+        image_batch = np.empty(
+            (len(canvases), batch_h, batch_w, 3), dtype=np.uint8
+        )
+        mask_batch = np.zeros(
+            (len(masks), batch_h, batch_w), dtype=np.uint8
+        )
+        for index, (canvas, mask) in enumerate(zip(canvases, masks)):
+            height, width = canvas.shape[:2]
+            image_batch[index] = cv2.copyMakeBorder(
+                canvas,
+                0,
+                batch_h - height,
+                0,
+                batch_w - width,
+                cv2.BORDER_REPLICATE,
+            )
+            mask_batch[index, :height, :width] = mask
+
+        self._ensure_session()
+        crop_rgb = cv2.cvtColor(image_batch.reshape(-1, batch_w, 3), cv2.COLOR_BGR2RGB)
+        crop_rgb = crop_rgb.reshape(len(canvases), batch_h, batch_w, 3)
+        img_blob = np.ascontiguousarray(
+            (crop_rgb.astype(np.float32) / 255.0).transpose(0, 3, 1, 2)
+        )
+        mask_blob = np.ascontiguousarray(
+            (mask_batch > 127).astype(np.float32)[:, None]
+        )
+        feed = {self.image_input: img_blob, self.mask_input: mask_blob}
+
+        if self.dynamic_lama or not self._serialize_fixed_inference:
+            model_started_at = time.perf_counter()
+            output = self.session.run([self.output_name], feed)[0]
+            model_ms = (time.perf_counter() - model_started_at) * 1000.0
+        else:
+            lock_started_at = time.perf_counter()
+            with self._session_lock:
+                lock_wait_ms = (time.perf_counter() - lock_started_at) * 1000.0
+                self._recycle_fixed_session_if_needed()
+                model_started_at = time.perf_counter()
+                output = self.session.run([self.output_name], feed)[0]
+                measured_model_ms = (time.perf_counter() - model_started_at) * 1000.0
+                timing_provider = getattr(self.session, "last_run_timing", None)
+                run_timing = (
+                    timing_provider()
+                    if callable(timing_provider)
+                    else {
+                        "global_lock_wait_ms": 0.0,
+                        "model_run_ms": measured_model_ms,
+                    }
+                )
+                self._metric_add(
+                    "session_lock_wait_ms", round(lock_wait_ms)
+                )
+                self._metric_add(
+                    "ort_global_lock_wait_ms",
+                    round(run_timing["global_lock_wait_ms"]),
+                )
+                model_ms = float(run_timing["model_run_ms"])
+
+        output_array = np.asarray(output)
+        if output_array.ndim != 4 or output_array.shape[0] != len(canvases):
+            raise ValueError(
+                "LaMa batch output must preserve batch size; "
+                f"got {output_array.shape} for {len(canvases)} items"
+            )
+        self._metric_add("lama_model_runs")
+        self._metric_add("lama_model_ms", round(model_ms))
+        if not self.dynamic_lama:
+            self._session_run_count += 1
+
+        painted: list[np.ndarray] = []
+        for index, (height, width) in enumerate(shapes):
+            decoded = decode_lama_output(
+                output_array[index:index + 1, :, :height, :width],
+                self.lama_contract,
+            )
+            painted.append(cv2.cvtColor(decoded, cv2.COLOR_RGB2BGR))
+        return painted
+
     def _lama_fill_tiled(self, crop: np.ndarray, local_mask: np.ndarray) -> np.ndarray:
         h, w = crop.shape[:2]
         tile = INPAINT_SIZE

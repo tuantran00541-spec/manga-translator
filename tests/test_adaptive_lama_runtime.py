@@ -1,6 +1,12 @@
 from __future__ import annotations
 
+from app.inpaint.adaptive_fast_inpainter import AdaptiveFastInpainter
+from app.inpaint.risk_aware_inpainter import (
+    CoalescingRiskAwareInpainter,
+    RiskAwareFastInpainter,
+)
 from app.inpaint.lama_runtime_policy import select_lama_runtime_profile
+from app.optimized_pipeline import OptimizedChapterPipeline
 
 
 GIB = 1024 ** 3
@@ -77,3 +83,19 @@ def test_runtime_env_overrides_are_respected(monkeypatch):
     assert profile.enable_cpu_mem_arena is True
     assert profile.enable_mem_pattern is False
     assert profile.arena_reason == "env_override"
+
+
+def test_experimental_inpaint_profile_is_explicit_and_default_is_unchanged(monkeypatch):
+    import app.optimized_pipeline as optimized_pipeline
+
+    pipeline = OptimizedChapterPipeline()
+    monkeypatch.setattr(optimized_pipeline, "INPAINT_EXPERIMENTAL_PROFILE", "adaptive")
+    assert isinstance(pipeline.inpainter, AdaptiveFastInpainter)
+
+    pipeline = OptimizedChapterPipeline()
+    monkeypatch.setattr(optimized_pipeline, "INPAINT_EXPERIMENTAL_PROFILE", "risk")
+    assert isinstance(pipeline.inpainter, RiskAwareFastInpainter)
+
+    pipeline = OptimizedChapterPipeline()
+    monkeypatch.setattr(optimized_pipeline, "INPAINT_EXPERIMENTAL_PROFILE", "coalesce")
+    assert isinstance(pipeline.inpainter, CoalescingRiskAwareInpainter)

@@ -681,6 +681,90 @@ SMART_FILL_MIDTONE_MIN = _env_float(
 SMART_FILL_MIDTONE_MAX = _env_float(
     "MANGA_SMART_FILL_MIDTONE_MAX", 205.0, minimum=0.0, maximum=255.0
 )
+
+# E5 risk-aware inpaint routing.  These values are used only by the isolated
+# risk-aware candidate until its chapter/hard-set gate passes.  The router is
+# intentionally one-sided: uncertain texture, gradients, chroma changes or
+# edge density send a region to LaMa; they never grant a cheaper destructive
+# path.
+INPAINT_RISK_ROUTER_ENABLED = _env_bool(
+    "MANGA_INPAINT_RISK_ROUTER_ENABLED", True
+)
+INPAINT_RISK_CONTEXT_RADIUS = _env_int(
+    "MANGA_INPAINT_RISK_CONTEXT_RADIUS", 24, minimum=4, maximum=128
+)
+INPAINT_RISK_MIN_CONTEXT_PIXELS = _env_int(
+    "MANGA_INPAINT_RISK_MIN_CONTEXT_PIXELS", 256, minimum=16, maximum=100000
+)
+INPAINT_RISK_VARIATION_MEDIUM = _env_float(
+    "MANGA_INPAINT_RISK_VARIATION_MEDIUM", 12.0, minimum=0.0, maximum=255.0
+)
+INPAINT_RISK_VARIATION_HIGH = _env_float(
+    "MANGA_INPAINT_RISK_VARIATION_HIGH", 24.0, minimum=0.0, maximum=255.0
+)
+INPAINT_RISK_EDGE_DENSITY_MEDIUM = _env_float(
+    "MANGA_INPAINT_RISK_EDGE_DENSITY_MEDIUM", 0.0015, minimum=0.0, maximum=1.0
+)
+INPAINT_RISK_EDGE_DENSITY_HIGH = _env_float(
+    "MANGA_INPAINT_RISK_EDGE_DENSITY_HIGH", 0.004, minimum=0.0, maximum=1.0
+)
+INPAINT_RISK_GRADIENT_MEDIUM = _env_float(
+    "MANGA_INPAINT_RISK_GRADIENT_MEDIUM", 1.0, minimum=0.0, maximum=255.0
+)
+INPAINT_RISK_GRADIENT_HIGH = _env_float(
+    "MANGA_INPAINT_RISK_GRADIENT_HIGH", 2.5, minimum=0.0, maximum=255.0
+)
+INPAINT_RISK_CHROMA_MEDIUM = _env_float(
+    "MANGA_INPAINT_RISK_CHROMA_MEDIUM", 6.0, minimum=0.0, maximum=128.0
+)
+INPAINT_RISK_CHROMA_HIGH = _env_float(
+    "MANGA_INPAINT_RISK_CHROMA_HIGH", 10.0, minimum=0.0, maximum=128.0
+)
+INPAINT_RISK_LONG_ASPECT = _env_float(
+    "MANGA_INPAINT_RISK_LONG_ASPECT", 4.0, minimum=1.0, maximum=32.0
+)
+INPAINT_RISK_MEDIUM_SCORE = _env_float(
+    "MANGA_INPAINT_RISK_MEDIUM_SCORE", 0.50, minimum=0.0, maximum=10.0
+)
+INPAINT_RISK_HIGH_SCORE = _env_float(
+    "MANGA_INPAINT_RISK_HIGH_SCORE", 1.00, minimum=0.0, maximum=10.0
+)
+
+# E6 bounded LaMa coalescing.  The candidate may combine only compatible,
+# nearby authorized boxes whose union remains within the existing crop budget.
+# It never changes masks or export ownership; the A/B gate decides whether the
+# changed model context is acceptable for production.
+INPAINT_COALESCE_ENABLED = _env_bool(
+    "MANGA_INPAINT_COALESCE_ENABLED", True
+)
+INPAINT_COALESCE_MAX_GAP = _env_int(
+    "MANGA_INPAINT_COALESCE_MAX_GAP", 48, minimum=0, maximum=256
+)
+INPAINT_COALESCE_MAX_DIM = _env_int(
+    "MANGA_INPAINT_COALESCE_MAX_DIM", 600, minimum=64, maximum=4096
+)
+INPAINT_COALESCE_UNION_SLACK_RATIO = _env_float(
+    "MANGA_INPAINT_COALESCE_UNION_SLACK_RATIO", 0.35, minimum=0.0, maximum=4.0
+)
+INPAINT_COALESCE_UNION_SLACK_PIXELS = _env_int(
+    "MANGA_INPAINT_COALESCE_UNION_SLACK_PIXELS", 4096, minimum=0, maximum=1000000
+)
+INPAINT_COALESCE_MAX_BOXES = _env_int(
+    "MANGA_INPAINT_COALESCE_MAX_BOXES", 8, minimum=2, maximum=64
+)
+INPAINT_COALESCE_MAX_BATCH_SIZE = _env_int(
+    "MANGA_INPAINT_COALESCE_MAX_BATCH_SIZE", 4, minimum=2, maximum=16
+)
+INPAINT_COALESCE_MAX_PADDING_RATIO = _env_float(
+    "MANGA_INPAINT_COALESCE_MAX_PADDING_RATIO", 0.25, minimum=0.0, maximum=4.0
+)
+# Candidate-only selector. The default remains the validated adaptive path;
+# experimental profiles require an explicit A/B opt-in.
+INPAINT_EXPERIMENTAL_PROFILE = _env_choice(
+    "MANGA_INPAINT_EXPERIMENTAL_PROFILE",
+    "adaptive",
+    {"adaptive", "risk", "coalesce"},
+)
 FIXED_LAMA_SESSION_MAX_RUNS = _env_int(
     "MANGA_FIXED_LAMA_SESSION_MAX_RUNS", 4, minimum=1, maximum=10000
 )
@@ -1023,6 +1107,21 @@ FLAT_BUBBLE_TEXT_RATIO_MIN = min(
     FLAT_BUBBLE_TEXT_RATIO_MIN, FLAT_BUBBLE_TEXT_RATIO_MAX
 )
 SMART_FILL_MIDTONE_MIN = min(SMART_FILL_MIDTONE_MIN, SMART_FILL_MIDTONE_MAX)
+INPAINT_RISK_VARIATION_MEDIUM = min(
+    INPAINT_RISK_VARIATION_MEDIUM, INPAINT_RISK_VARIATION_HIGH
+)
+INPAINT_RISK_EDGE_DENSITY_MEDIUM = min(
+    INPAINT_RISK_EDGE_DENSITY_MEDIUM, INPAINT_RISK_EDGE_DENSITY_HIGH
+)
+INPAINT_RISK_GRADIENT_MEDIUM = min(
+    INPAINT_RISK_GRADIENT_MEDIUM, INPAINT_RISK_GRADIENT_HIGH
+)
+INPAINT_RISK_CHROMA_MEDIUM = min(
+    INPAINT_RISK_CHROMA_MEDIUM, INPAINT_RISK_CHROMA_HIGH
+)
+INPAINT_RISK_MEDIUM_SCORE = min(
+    INPAINT_RISK_MEDIUM_SCORE, INPAINT_RISK_HIGH_SCORE
+)
 OCR_REJECT_CONFIDENCE = min(OCR_REJECT_CONFIDENCE, OCR_REVIEW_CONFIDENCE)
 OCR_RUBY_DISTANCE_MIN_FACTOR = min(
     OCR_RUBY_DISTANCE_MIN_FACTOR,

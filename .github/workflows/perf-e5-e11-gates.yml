@@ -1,0 +1,107 @@
+name: Perf E5-E11 candidate gates
+
+on:
+  push:
+    branches:
+      - perf/bubble-fastpath-roi-lama
+    paths:
+      - app/benchmarking/**
+      - app/inpaint/**
+      - app/ocr/**
+      - app/optimized_pipeline.py
+      - app/parameters.py
+      - scripts/benchmark_inpaint_*.py
+      - scripts/benchmark_ocr_batch.py
+      - scripts/benchmark_student_detector.py
+      - scripts/build_distillation_manifest.py
+      - scripts/perf_release_gate.py
+      - scripts/precision_gate.py
+      - scripts/validate_shared_detector.py
+      - tests/**
+      - docs/PERF_E5_E11_STATUS_20260916.md
+      - .github/workflows/perf-e5-e11-gates.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: perf-e5-e11-gates
+  cancel-in-progress: true
+
+jobs:
+  candidate-gates:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    env:
+      PYTHONUNBUFFERED: "1"
+      MANGA_USE_DYNAMIC_LAMA: "1"
+      MANGA_LAMA_INTRA_OP_THREADS: "2"
+      OPENBLAS_NUM_THREADS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-test.txt
+      - name: Install benchmark runtime
+        run: python -m pip install -r requirements-test.txt
+      - name: Restore LaMa models
+        id: models
+        uses: actions/cache@v4
+        with:
+          path: |
+            models/*.onnx
+            models/.e2e-provenance.json
+          key: processing-profile-models-b224548-v1
+      - name: Read pinned model provisioner
+        if: steps.models.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: b22454827f8190655d7070b80eb20c2550beadfa
+          path: benchmark-bootstrap
+          sparse-checkout: scripts/provision_real_e2e_models.py
+          sparse-checkout-cone-mode: false
+      - name: Provision public-equivalent models
+        if: steps.models.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p models
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple torch==2.5.1+cpu torchvision==0.20.1+cpu
+          python -m pip install --no-deps ultralytics==8.3.221 onnx==1.17.0 onnxslim==0.1.71
+          python -m pip install numpy==1.26.4 sympy==1.13.1 PyYAML==6.0.2 scipy==1.14.1 tqdm==4.67.1 matplotlib==3.9.2 pandas==2.2.3 py-cpuinfo==9.0.0 ml_dtypes==0.5.3 colorama==0.4.6 polars==1.33.1 ultralytics-thop==2.0.17
+          python benchmark-bootstrap/scripts/provision_real_e2e_models.py
+          cp benchmark-bootstrap/models/*.onnx models/
+          cp benchmark-bootstrap/models/.e2e-provenance.json models/
+      - name: Compile and run candidate unit gates
+        run: |
+          python -m compileall -q app scripts tests
+          python -m pytest -q
+      - name: Run E5 risk router gate
+        run: python scripts/benchmark_inpaint_risk_router.py --out benchmark-results/e5-risk-router/report.json
+      - name: Run E6 bounded coalescing gate
+        run: python scripts/benchmark_inpaint_coalescing.py --out benchmark-results/e6-coalescing/report.json
+      - name: Record fail-closed E7-E11 readiness probes
+        run: |
+          run_blocked() {
+            local code=0
+            if "$@"; then
+              code=0
+            else
+              code=$?
+            fi
+            if [ "$code" -ne 2 ]; then
+              echo "Expected a fail-closed blocked result (exit 2), got $code"
+              return 1
+            fi
+          }
+          run_blocked python scripts/build_distillation_manifest.py --failure-registry benchmark-results/missing-failures.jsonl --out benchmark-results/e7-distillation/report.json
+          run_blocked python scripts/benchmark_ocr_batch.py --ground-truth benchmark-results/missing-ocr-ground-truth.json --out benchmark-results/e10-ocr/report.json
+          run_blocked python scripts/perf_release_gate.py --out benchmark-results/e11-release/report.json
+      - name: Upload candidate reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-e5-e11-candidate-reports
+          path: benchmark-results/
+          if-no-files-found: warn
