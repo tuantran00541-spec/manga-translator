@@ -31,6 +31,6 @@ jobs:
             tests/test_inpaint_preload.py \
             tests/test_adaptive_lama_runtime.py \
             tests/test_ocr_pipeline_regressions.py \
-            tests/test_ai_repair_controls.py
-            tests/test_benchmark_registry.py
+            tests/test_ai_repair_controls.py \
+            tests/test_benchmark_registry.py \
             tests/test_detector_inference_cache.py
