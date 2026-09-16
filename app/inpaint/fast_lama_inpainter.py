@@ -74,6 +74,29 @@ _BUBBLE_FASTPATH_OVERLAP_RATIO = _env_float(
     "MANGA_BUBBLE_FASTPATH_OVERLAP_RATIO", 0.80, 0.50, 1.0
 )
 
+# Dense detector masks are erase authority, not necessarily glyph support.
+# Refine them only on smooth, high-contrast text backgrounds and always keep
+# the model mask as a strict subset of the original authority.
+_STROKE_REFINE_ENABLED = _env_bool("MANGA_STROKE_REFINE_ENABLED", True)
+_STROKE_REFINE_DENSE_FRACTION_MIN = _env_float(
+    "MANGA_STROKE_REFINE_DENSE_FRACTION_MIN", 0.55, 0.25, 0.95
+)
+_STROKE_REFINE_RING_STD_MAX = _env_float(
+    "MANGA_STROKE_REFINE_RING_STD_MAX", 18.0, 2.0, 48.0
+)
+_STROKE_REFINE_MIN_CONTRAST = _env_float(
+    "MANGA_STROKE_REFINE_MIN_CONTRAST", 36.0, 8.0, 96.0
+)
+_STROKE_REFINE_CORE_DELTA_MIN = _env_float(
+    "MANGA_STROKE_REFINE_CORE_DELTA_MIN", 30.0, 8.0, 96.0
+)
+_STROKE_REFINE_WEAK_DELTA_MIN = _env_float(
+    "MANGA_STROKE_REFINE_WEAK_DELTA_MIN", 14.0, 4.0, 64.0
+)
+_STROKE_REFINE_MAX_AUTHORITY_FRACTION = _env_float(
+    "MANGA_STROKE_REFINE_MAX_AUTHORITY_FRACTION", 0.60, 0.10, 0.90
+)
+
 _ROI_LAMA_ENABLED = _env_bool("MANGA_DYNAMIC_LAMA_TIGHT_ROI_ENABLED", True)
 _ROI_CONTEXT_MIN = _env_int("MANGA_DYNAMIC_LAMA_ROI_CONTEXT_MIN", 64, 16, 256)
 _ROI_CONTEXT_MAX = _env_int("MANGA_DYNAMIC_LAMA_ROI_CONTEXT_MAX", 192, 32, 512)
@@ -109,6 +132,9 @@ class FastInpainter(Inpainter):
                 "bubble_fast_fill_telea_regions": 0,
                 "bubble_fast_fill_overlap_skips": 0,
                 "bubble_fast_fill_pixels": 0,
+                "stroke_refined_regions": 0,
+                "stroke_refined_authority_pixels": 0,
+                "stroke_refined_model_pixels": 0,
                 "roi_lama_regions": 0,
                 "roi_lama_source_pixels": 0,
                 "roi_lama_input_pixels": 0,
@@ -332,6 +358,96 @@ class FastInpainter(Inpainter):
             painted[target_y, target_x] = target_values
         return painted
 
+    def _refine_dense_smooth_stroke_mask(
+        self,
+        crop: np.ndarray,
+        authority_mask: np.ndarray,
+    ) -> np.ndarray | None:
+        """Derive conservative glyph support from a dense erase-authority mask."""
+        if not _STROKE_REFINE_ENABLED:
+            return None
+        authority = authority_mask > 127
+        ys, xs = np.nonzero(authority)
+        if xs.size < 64:
+            return None
+
+        bx1, bx2 = int(xs.min()), int(xs.max()) + 1
+        by1, by2 = int(ys.min()), int(ys.max()) + 1
+        tight_area = max(1, (bx2 - bx1) * (by2 - by1))
+        occupancy = float(xs.size) / float(tight_area)
+        if occupancy < _STROKE_REFINE_DENSE_FRACTION_MIN:
+            return None
+
+        ring = self._mask_ring(authority_mask, _BUBBLE_FASTPATH_RING)
+        if int(np.count_nonzero(ring)) < 96:
+            return None
+
+        gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop
+        gray_f = gray.astype(np.float32, copy=False)
+        ring_gray = gray_f[ring]
+        ring_std = float(ring_gray.std())
+        if not np.isfinite(ring_std) or ring_std > _STROKE_REFINE_RING_STD_MAX:
+            return None
+
+        # Reject textured or colorful artwork. The refinement is for bubble-like
+        # smooth backgrounds only; complex free text stays on the LaMa path.
+        edges = cv2.Canny(gray, 64, 128, L2gradient=True) > 0
+        if float(edges[ring].mean()) > 0.06:
+            return None
+        if crop.ndim == 3 and crop.shape[2] == 3:
+            lab = cv2.cvtColor(crop, cv2.COLOR_BGR2LAB)
+            ring_ab = lab[ring, 1:3].astype(np.float32, copy=False)
+            if ring_ab.size and float(np.max(ring_ab.std(axis=0))) > 18.0:
+                return None
+
+        background = float(np.median(ring_gray))
+        inside = gray_f[authority]
+        low = float(np.percentile(inside, 10.0))
+        high = float(np.percentile(inside, 90.0))
+        dark_contrast = background - low
+        light_contrast = high - background
+        if max(dark_contrast, light_contrast) < _STROKE_REFINE_MIN_CONTRAST:
+            return None
+
+        core_delta = max(_STROKE_REFINE_CORE_DELTA_MIN, ring_std * 3.0)
+        weak_delta = max(_STROKE_REFINE_WEAK_DELTA_MIN, ring_std * 1.5)
+        if dark_contrast >= light_contrast:
+            strong = authority & (gray_f <= background - core_delta)
+            weak = authority & (gray_f <= background - weak_delta)
+        else:
+            strong = authority & (gray_f >= background + core_delta)
+            weak = authority & (gray_f >= background + weak_delta)
+
+        if int(np.count_nonzero(strong)) < 24:
+            return None
+        count, labels, stats, _ = cv2.connectedComponentsWithStats(
+            weak.astype(np.uint8), 8
+        )
+        keep = np.zeros_like(authority_mask, dtype=np.uint8)
+        for label in range(1, count):
+            if int(stats[label, cv2.CC_STAT_AREA]) < 2:
+                continue
+            component = labels == label
+            if np.any(strong & component):
+                keep[component] = 255
+
+        authority_pixels = int(np.count_nonzero(authority))
+        model_pixels = int(np.count_nonzero(keep))
+        if authority_pixels <= 0 or model_pixels < 24:
+            return None
+        if model_pixels / float(authority_pixels) > _STROKE_REFINE_MAX_AUTHORITY_FRACTION:
+            return None
+
+        # Recover a tiny anti-alias fringe, clipped strictly to authority.
+        fringe = cv2.dilate(keep, np.ones((3, 3), dtype=np.uint8), iterations=1)
+        refined = np.where(authority, fringe, 0).astype(np.uint8)
+        refined_pixels = int(np.count_nonzero(refined))
+        if refined_pixels <= 0:
+            return None
+        if refined_pixels / float(authority_pixels) > _STROKE_REFINE_MAX_AUTHORITY_FRACTION:
+            return None
+        return refined
+
     def _try_bubble_fast_fill(
         self,
         image: np.ndarray,
@@ -358,33 +474,58 @@ class FastInpainter(Inpainter):
             crop_box,
             protected_regions,
         )
+        authority_pixels = int(np.count_nonzero(local_mask > 127))
+        if authority_pixels <= 0:
+            return False
+
+        refined = None
+        if box.source_role == "text_segmenter":
+            refined = self._refine_dense_smooth_stroke_mask(crop, local_mask)
+        stroke_refined = refined is not None
+        if stroke_refined:
+            local_mask = refined
+            self._metric_add("stroke_refined_regions")
+            self._metric_add("stroke_refined_authority_pixels", authority_pixels)
+            self._metric_add(
+                "stroke_refined_model_pixels", int(np.count_nonzero(local_mask > 127))
+            )
+
         mask_bool = local_mask > 127
         mask_pixels = int(np.count_nonzero(mask_bool))
         if mask_pixels <= 0:
             return False
 
-        fill_color = self._smart_fill_color(crop, local_mask)
-        if fill_color is not None:
-            painted = crop.copy()
-            painted[mask_bool] = fill_color
-            self._metric_add("smart_fill_regions")
-            self._metric_add("bubble_fast_fill_solid_regions")
-        else:
+        painted = None
+        if stroke_refined:
+            # Preserve a smooth spatial gradient instead of flattening the whole
+            # lettering block. This path changes only the refined stroke pixels.
             painted = self._bubble_gradient_fill(crop, local_mask)
             if painted is not None:
                 self._metric_add("bubble_fast_fill_gradient_regions")
-            elif _BUBBLE_FASTPATH_TELEA_ENABLED and self._bubble_telea_safe(
-                crop, local_mask
-            ):
-                painted = cv2.inpaint(
-                    crop,
-                    local_mask,
-                    float(_BUBBLE_FASTPATH_TELEA_RADIUS),
-                    cv2.INPAINT_TELEA,
-                )
-                self._metric_add("bubble_fast_fill_telea_regions")
+
+        if painted is None:
+            fill_color = self._smart_fill_color(crop, local_mask)
+            if fill_color is not None:
+                painted = crop.copy()
+                painted[mask_bool] = fill_color
+                self._metric_add("smart_fill_regions")
+                self._metric_add("bubble_fast_fill_solid_regions")
             else:
-                return False
+                painted = self._bubble_gradient_fill(crop, local_mask)
+                if painted is not None:
+                    self._metric_add("bubble_fast_fill_gradient_regions")
+                elif _BUBBLE_FASTPATH_TELEA_ENABLED and self._bubble_telea_safe(
+                    crop, local_mask
+                ):
+                    painted = cv2.inpaint(
+                        crop,
+                        local_mask,
+                        float(_BUBBLE_FASTPATH_TELEA_RADIUS),
+                        cv2.INPAINT_TELEA,
+                    )
+                    self._metric_add("bubble_fast_fill_telea_regions")
+                else:
+                    return False
 
         target = image[y1:y2, x1:x2]
         image[y1:y2, x1:x2] = np.where(mask_bool[:, :, None], painted, target)

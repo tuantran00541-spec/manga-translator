@@ -414,3 +414,52 @@ def test_dynamic_long_crop_uses_native_single_call_within_pixel_budget():
     assert shapes[0][1] >= 900
     assert metrics["lama_native_single_regions"] == 1
     assert metrics["lama_tiled_regions"] == 0
+
+
+
+def test_dense_smooth_authority_is_refined_to_strokes():
+    h, w = 220, 320
+    yy, xx = np.mgrid[:h, :w]
+    background = np.empty((h, w, 3), dtype=np.uint8)
+    background[..., 0] = np.clip(218 + xx * 0.035 + yy * 0.020, 0, 255)
+    background[..., 1] = np.clip(222 + xx * 0.032 + yy * 0.018, 0, 255)
+    background[..., 2] = np.clip(228 + xx * 0.028 + yy * 0.015, 0, 255)
+    image = background.copy()
+
+    mask = np.zeros((120, 220), dtype=np.uint8)
+    mask[8:112, 8:212] = 255
+    box = _speech_box(50, 45, 270, 165, mask)
+    image[75:86, 85:235] = 5
+    image[105:117, 100:220] = 8
+    image[134:146, 125:200] = 3
+
+    authority = build_mask(image.shape[:2], [box], image) > 127
+    inpainter = FastInpainter()
+    output = inpainter.inpaint(image.copy(), [box])
+    metrics = inpainter.last_metrics()
+
+    changed = np.any(output != image, axis=2)
+    assert metrics["stroke_refined_regions"] == 1
+    assert metrics["stroke_refined_model_pixels"] < metrics["stroke_refined_authority_pixels"] // 2
+    assert metrics["bubble_fast_fill_gradient_regions"] == 1
+    assert metrics["lama_model_runs"] == 0
+    assert not np.any(changed & (~authority))
+    assert int(np.count_nonzero(changed)) < int(np.count_nonzero(authority)) // 2
+
+    glyphs = np.zeros((h, w), dtype=bool)
+    glyphs[75:86, 85:235] = True
+    glyphs[105:117, 100:220] = True
+    glyphs[134:146, 125:200] = True
+    mae = float(
+        np.abs(output.astype(np.int16) - background.astype(np.int16))[glyphs].mean()
+    )
+    assert mae < 8.0
+
+
+def test_dense_textured_authority_rejects_stroke_refinement():
+    rng = np.random.default_rng(123)
+    crop = rng.integers(40, 220, size=(160, 260, 3), dtype=np.uint8)
+    authority = np.zeros((160, 260), dtype=np.uint8)
+    authority[20:140, 20:240] = 255
+    inpainter = FastInpainter()
+    assert inpainter._refine_dense_smooth_stroke_mask(crop, authority) is None
