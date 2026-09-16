@@ -7,12 +7,14 @@ on:
     paths:
       - .github/workflows/validate-shadow-slave-mask-recall-fix.yml
       - app/dependencies.py
+      - app/detector/tiled_independent_residue_detector.py
       - app/mask_recall_pipeline.py
       - app/mask_recall_envelope_pipeline.py
       - app/mask_recall_envelope_v2_pipeline.py
       - app/optimized_pipeline.py
       - tests/test_mask_recall_pipeline.py
       - tests/test_mask_recall_envelope_pipeline.py
+      - tests/test_tiled_residue_detector.py
       - tests/test_fast_inpaint_paths.py
   workflow_dispatch:
 
@@ -63,6 +65,7 @@ jobs:
           python -m pytest -q \
             tests/test_mask_recall_pipeline.py \
             tests/test_mask_recall_envelope_pipeline.py \
+            tests/test_tiled_residue_detector.py \
             tests/test_fast_inpaint_paths.py \
             -k 'residue'
 
