@@ -34,7 +34,6 @@ class MaskRecallOptimizedChapterPipeline(OptimizedChapterPipeline):
     _INK_MIN_COMPONENT_AREA = 3
     _INK_MAX_COMPONENT_SPAN_FRACTION = 0.65
     _INK_GROW_STEPS = 3
-    _INK_BORDER_MARGIN = 2
 
     @staticmethod
     def _residue_repair_effective_boxes(records: list[dict] | None):
@@ -69,9 +68,9 @@ class MaskRecallOptimizedChapterPipeline(OptimizedChapterPipeline):
         """Return residual ink support only for an overwhelmingly flat crop.
 
         The gate is intentionally one-sided: uncertain/textured crops return None
-        and fall back to the neural residue mask. Long border/frame components and
-        components touching the detector-box perimeter are rejected before weak
-        anti-aliased pixels are connectivity-grown from strong ink seeds.
+        and fall back to the neural residue mask. Components are allowed to touch
+        the detector-box edge because the real failure mode is clipped first/last
+        glyphs there. Long frame/box strokes are still rejected by their span.
         """
         if crop is None or crop.size == 0:
             return None
@@ -107,21 +106,13 @@ class MaskRecallOptimizedChapterPipeline(OptimizedChapterPipeline):
             connectivity=8,
         )
         seeds = np.zeros((height, width), dtype=np.uint8)
-        border = max(1, int(cls._INK_BORDER_MARGIN))
         max_w = max(1, int(round(width * cls._INK_MAX_COMPONENT_SPAN_FRACTION)))
         max_h = max(1, int(round(height * cls._INK_MAX_COMPONENT_SPAN_FRACTION)))
         for label in range(1, count):
-            x, y, comp_w, comp_h, area = (int(v) for v in stats[label])
+            _, _, comp_w, comp_h, area = (int(v) for v in stats[label])
             if area < cls._INK_MIN_COMPONENT_AREA:
                 continue
             if comp_w > max_w or comp_h > max_h:
-                continue
-            if (
-                x < border
-                or y < border
-                or x + comp_w > width - border
-                or y + comp_h > height - border
-            ):
                 continue
             seeds[labels == label] = 255
 
@@ -139,10 +130,6 @@ class MaskRecallOptimizedChapterPipeline(OptimizedChapterPipeline):
         # a larger hidden inference mask internally, while final writes remain
         # clipped to this bounded support by the parent repair path.
         support = cv2.dilate(support.astype(np.uint8), kernel) > 0
-        support[:border, :] = False
-        support[-border:, :] = False
-        support[:, :border] = False
-        support[:, -border:] = False
         return support.astype(np.uint8) * 255
 
     @staticmethod
