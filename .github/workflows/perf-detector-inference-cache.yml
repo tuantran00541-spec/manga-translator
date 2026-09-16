@@ -5,7 +5,8 @@ on:
     branches:
       - perf/bubble-fastpath-roi-lama
     paths:
-      - app/benchmarking/**
+      - app/benchmarking/manifest.py
+      - app/benchmarking/failure_registry.py
       - app/detector/inference_cache.py
       - app/detector/bubble_detector.py
       - app/detector/combined_detector.py

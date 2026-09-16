@@ -112,6 +112,54 @@ def _signature(boxes: list[BubbleBox], *, y_offset: int = 0) -> list[tuple]:
     return sorted(rows, key=repr)
 
 
+def _geometry_key(box: BubbleBox) -> tuple:
+    return (
+        int(box.x1),
+        int(box.y1),
+        int(box.x2),
+        int(box.y2),
+        int(box.class_id),
+        str(box.source_role),
+        str(box.semantic_type),
+    )
+
+
+def _mask_area(box: BubbleBox) -> int:
+    return int(np.count_nonzero(box.mask > 0)) if box.mask is not None else 0
+
+
+def _mismatch_taxonomies(
+    baseline: list[BubbleBox],
+    candidate: list[BubbleBox],
+) -> list[str]:
+    """Turn one projection mismatch into actionable hard-set labels."""
+    baseline_keys = {_geometry_key(box) for box in baseline}
+    candidate_keys = {_geometry_key(box) for box in candidate}
+    taxonomies: set[str] = set()
+    if baseline_keys - candidate_keys:
+        taxonomies.add("detector_fn")
+    if candidate_keys - baseline_keys:
+        taxonomies.add("detector_fp")
+
+    for key in sorted(baseline_keys & candidate_keys, key=repr):
+        left = next(box for box in baseline if _geometry_key(box) == key)
+        right = next(box for box in candidate if _geometry_key(box) == key)
+        left_hash = None if left.mask is None else hashlib.sha256(left.mask.tobytes()).digest()
+        right_hash = None if right.mask is None else hashlib.sha256(right.mask.tobytes()).digest()
+        if left_hash == right_hash:
+            continue
+        if _mask_area(right) < _mask_area(left):
+            taxonomies.add("mask_undercoverage")
+        else:
+            taxonomies.add("mask_overreach")
+
+    # Confidence-only or provenance-only changes still need a detector case;
+    # do not silently treat them as exact just because the rectangles overlap.
+    if not taxonomies and baseline != candidate:
+        taxonomies.add("detector_fn")
+    return sorted(taxonomies)
+
+
 def _detector_counts(detector) -> dict[str, int]:
     counts = {}
     for label, model in (
@@ -214,6 +262,7 @@ def _run_source(
         baseline_signature = _signature(baseline)
         candidate_signature = _signature(candidate)
         mismatch = baseline_signature != candidate_signature
+        taxonomies = _mismatch_taxonomies(baseline, candidate) if mismatch else []
         if mismatch:
             mismatches.append(slice_index)
         comparison_rows.append(
@@ -226,6 +275,9 @@ def _run_source(
                 "baseline_boxes": len(baseline),
                 "source_projected_boxes": len(candidate),
                 "exact": not mismatch,
+                "taxonomies": taxonomies,
+                "baseline_signature": baseline_signature,
+                "source_projected_signature": candidate_signature,
             }
         )
 
@@ -311,25 +363,28 @@ def main() -> int:
     mismatch_cases = 0
     for row in rows:
         for slice_index in row["mismatched_slices"]:
-            mismatch_cases += 1
-            registry.append(
-                build_failure_case(
-                    source_sha256=row["source_sha256"],
-                    source_page=row["source_page"],
-                    slice_index=int(slice_index),
-                    stage="source_coordinate_reuse",
-                    taxonomy="detector_fn",
-                    partition="hard",
-                    candidate="source-page-adaptive-v1",
-                    baseline={"comparison": row["comparisons"][slice_index]},
-                    observed={"comparison": row["comparisons"][slice_index]},
-                    metrics={
-                        "baseline_wall_ms": row["baseline"]["wall_ms"],
-                        "source_page_wall_ms": row["source_page_pass"]["wall_ms"],
-                    },
-                    notes="Source-page projection differs from owned per-slice core; keep per-slice fallback.",
+            comparison = row["comparisons"][slice_index]
+            taxonomies = comparison.get("taxonomies") or ["other"]
+            mismatch_cases += len(taxonomies)
+            for taxonomy in taxonomies:
+                registry.append(
+                    build_failure_case(
+                        source_sha256=row["source_sha256"],
+                        source_page=row["source_page"],
+                        slice_index=int(slice_index),
+                        stage="source_coordinate_reuse",
+                        taxonomy=taxonomy,
+                        partition="hard",
+                        candidate="source-page-adaptive-v1",
+                        baseline={"comparison": comparison},
+                        observed={"comparison": comparison},
+                        metrics={
+                            "baseline_wall_ms": row["baseline"]["wall_ms"],
+                            "source_page_wall_ms": row["source_page_pass"]["wall_ms"],
+                        },
+                        notes="Source-page projection differs from owned per-slice core; keep per-slice fallback.",
+                    )
                 )
-            )
 
     report = {
         "benchmark": "source-coordinate-reuse-shadow",
@@ -361,9 +416,8 @@ def main() -> int:
     # The probe is evidence gathering.  Any mismatch is intentionally recorded
     # and keeps the workflow green; production reuse remains opt-in until a
     # later gate proves exactness on smoke, hard and holdout partitions.
-    return 0 if mismatch_cases >= 0 else 1
+    return 0
 
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

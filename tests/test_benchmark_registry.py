@@ -23,6 +23,7 @@ from app.benchmarking.source_coordinate_ledger import (
     source_overlap_pixels,
 )
 from app.detector.bubble_detector import BubbleBox
+from scripts.benchmark_source_coordinate_reuse import _mismatch_taxonomies
 
 
 def test_manifest_is_reproducible_and_validates(tmp_path):
@@ -134,3 +135,17 @@ def test_source_coordinate_ledger_shadow_and_overlap_metrics():
     hit[0].x1 = 99  # defensive copy must not mutate the stored result
     assert ledger.snapshot()["shadow_hits"] == 1
     assert source_overlap_pixels([(0, 0, 10, 10), (0, 5, 10, 15)]) == (200, 150)
+
+
+def test_source_projection_mismatch_is_distilled_into_fn_fp_and_mask_labels():
+    baseline = [
+        BubbleBox(0, 0, 4, 4, 0.8, np.ones((4, 4), dtype=np.uint8), source_role="text_segmenter")
+    ]
+    candidate = [
+        BubbleBox(0, 0, 4, 4, 0.8, np.zeros((4, 4), dtype=np.uint8), source_role="text_segmenter"),
+        BubbleBox(8, 8, 12, 12, 0.8, source_role="text_segmenter"),
+    ]
+    assert _mismatch_taxonomies(baseline, candidate) == [
+        "detector_fp",
+        "mask_undercoverage",
+    ]
