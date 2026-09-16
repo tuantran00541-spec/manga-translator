@@ -181,7 +181,7 @@ def _record_quality_failures(
             if not (0 <= index < len(pages)):
                 continue
             source_path = Path(pages[index]["original"])
-            registry.append(
+            added = registry.append(
                 build_failure_case(
                     source_sha256=sha256_file(source_path),
                     source_page=pages[index].get("source_page"),
@@ -196,7 +196,7 @@ def _record_quality_failures(
                     notes=note,
                 )
             )
-            cases += 1
+            cases += int(added)
     return cases
 
 
