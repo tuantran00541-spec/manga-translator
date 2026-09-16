@@ -63,6 +63,38 @@ def test_dense_smooth_authority_uses_surface_without_lama():
     assert mae < 5.0
 
 
+def test_dense_muted_contrast_authority_rejects_surface_fallback():
+    h, w = 210, 300
+    yy, xx = np.mgrid[:h, :w]
+    background = np.empty((h, w, 3), dtype=np.uint8)
+    background[..., 0] = np.clip(226 + xx * 0.035 + yy * 0.020, 0, 255)
+    background[..., 1] = np.clip(231 + xx * 0.030 + yy * 0.018, 0, 255)
+    background[..., 2] = np.clip(238 + xx * 0.022 + yy * 0.014, 0, 255)
+    image = background.copy()
+
+    mask = np.full((92, 166), 255, dtype=np.uint8)
+    box = _speech_box(67, 58, 233, 150, mask)
+    # Muted lettering deliberately stays well below the real p025 contrast while
+    # keeping the surrounding gradient just as smooth. This mirrors the p035 SFX
+    # regression that should remain on LaMa rather than repaint full authority.
+    image[78:88, 96:204] = 118
+    image[104:114, 86:214] = 126
+    image[130:140, 105:195] = 122
+
+    inpainter = AdaptiveFastInpainter()
+    inpainter._begin_metrics()
+    inpainter._refine_dense_smooth_stroke_mask = lambda crop, authority: None
+    before = image.copy()
+
+    used = inpainter._try_stroke_authority_fill(image, box, None)
+    metrics = inpainter.last_metrics()
+
+    assert used is False
+    assert metrics.get("dense_authority_gradient_regions", 0) == 0
+    assert metrics.get("dense_authority_contrast_rejects", 0) == 1
+    assert np.array_equal(image, before)
+
+
 def test_dense_textured_authority_rejects_surface_fallback():
     h, w = 210, 300
     yy, xx = np.mgrid[:h, :w]
