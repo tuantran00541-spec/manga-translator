@@ -1,6 +1,6 @@
 name: Apply dual-polarity halo candidate
 
-# v4: instrument every refine stage before changing any more thresholds.
+# v5: candidate now emits canonical 0/255 refined masks.
 on:
   push:
     branches:
