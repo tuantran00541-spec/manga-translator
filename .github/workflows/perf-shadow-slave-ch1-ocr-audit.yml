@@ -300,6 +300,13 @@ jobs:
               raise RuntimeError(f'OCR audit had {len(errors)} runtime errors')
           PY
 
+      - name: Benchmark inpaint accuracy with ground truth and real audit
+        if: success()
+        run: |
+          python scripts/benchmark_inpaint_accuracy.py \
+            --chapter-id 5e8ce7e3 \
+            --out benchmark-results/shadow-slave-ch1/inpaint-accuracy.json
+
       - name: Build compact inpaint audit
         if: always()
         run: |
@@ -346,6 +353,8 @@ jobs:
 
           report_path = root / 'benchmark-results/shadow-slave-ch1/report.json'
           report = json.loads(report_path.read_text(encoding='utf-8')) if report_path.exists() else {}
+          accuracy_path = root / 'benchmark-results/shadow-slave-ch1/inpaint-accuracy.json'
+          accuracy = json.loads(accuracy_path.read_text(encoding='utf-8')) if accuracy_path.exists() else None
           compact = {
               'run_id': __import__('os').environ.get('GITHUB_RUN_ID'),
               'chapter_id': manifest.get('chapter_id'),
@@ -354,6 +363,7 @@ jobs:
               'slices': len(pages),
               'clean': report.get('clean'),
               'ocr': report.get('ocr'),
+              'inpaint_accuracy': accuracy,
               'processing': {
                   'timing_ms': {
                       key: aggregate('timing_ms', key)
