@@ -1,6 +1,5 @@
-name: Apply dual-polarity halo candidate
+name: Apply surface-residual halo candidate
 
-# v5: candidate now emits canonical 0/255 refined masks.
 on:
   push:
     branches:
@@ -26,7 +25,7 @@ jobs:
           python-version: "3.12"
 
       - name: Apply candidate patch
-        run: python scripts/apply_dual_polarity_halo_candidate.py
+        run: python scripts/apply_surface_residual_halo_candidate.py
 
       - name: Install unit-test runtime
         run: |
@@ -37,9 +36,6 @@ jobs:
             fastapi==0.115.0 'uvicorn[standard]==0.30.6' \
             pydantic==2.9.2 filelock==3.16.1 python-multipart==0.0.12 pytest==8.3.5
 
-      - name: Diagnose halo refinement
-        run: PYTHONPATH=. python scripts/diagnose_dual_polarity_halo.py
-
       - name: Unit gate
         run: python -m pytest tests/test_fast_inpaint_paths.py tests/test_fast_residue_detector.py -q
 
@@ -49,5 +45,5 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add app/inpaint/fast_lama_inpainter.py tests/test_fast_inpaint_paths.py
           git diff --cached --check
-          git commit -m "test(inpaint): recover dual-polarity text halos"
+          git commit -m "test(inpaint): recover gradient text halos"
           git push origin HEAD:test/preserve-region-repaint
