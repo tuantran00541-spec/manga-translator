@@ -52,7 +52,7 @@ jobs:
 
       - name: Focused unit tests
         run: |
-          pytest -q tests/test_mask_recall_pipeline.py tests/test_fast_inpaint_paths.py -k 'residue'
+          python -m pytest -q tests/test_mask_recall_pipeline.py tests/test_fast_inpaint_paths.py -k 'residue'
 
       - name: Restore detector and inpaint models
         id: models
