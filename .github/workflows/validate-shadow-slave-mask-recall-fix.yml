@@ -6,9 +6,13 @@ on:
       - test/preserve-region-repaint
     paths:
       - .github/workflows/validate-shadow-slave-mask-recall-fix.yml
+      - app/dependencies.py
       - app/mask_recall_pipeline.py
+      - app/mask_recall_envelope_pipeline.py
+      - app/mask_recall_envelope_v2_pipeline.py
       - app/optimized_pipeline.py
       - tests/test_mask_recall_pipeline.py
+      - tests/test_mask_recall_envelope_pipeline.py
       - tests/test_fast_inpaint_paths.py
   workflow_dispatch:
 
@@ -56,7 +60,11 @@ jobs:
 
       - name: Focused unit tests
         run: |
-          python -m pytest -q tests/test_mask_recall_pipeline.py tests/test_fast_inpaint_paths.py -k 'residue'
+          python -m pytest -q \
+            tests/test_mask_recall_pipeline.py \
+            tests/test_mask_recall_envelope_pipeline.py \
+            tests/test_fast_inpaint_paths.py \
+            -k 'residue'
 
       - name: Restore detector and inpaint models
         id: models
@@ -90,21 +98,21 @@ jobs:
         run: |
           python - <<'PY'
           from __future__ import annotations
-          import json, os, shutil
+          import json, os, shutil, subprocess
           from pathlib import Path
           import cv2
 
           from app.dependencies import pipeline
           from app.image_io import read_image
           from app.manifest_utils import load_manifest_raw
-          from app.mask_recall_pipeline import MaskRecallOptimizedChapterPipeline
+          from app.mask_recall_envelope_v2_pipeline import CompleteFlatEnvelopeMaskRecallPipeline
 
-          if not isinstance(pipeline, MaskRecallOptimizedChapterPipeline):
+          if not isinstance(pipeline, CompleteFlatEnvelopeMaskRecallPipeline):
               raise RuntimeError(type(pipeline).__name__)
 
           cid = os.environ["CHAPTER_ID"]
           url = os.environ["CHAPTER_URL"]
-          targets = [51, 69, 95, 117, 121]
+          targets = [14, 51, 69, 83, 95, 112, 117, 118, 121]
           out = Path("benchmark-results/shadow-slave-mask-recall-fix")
           if out.exists():
               shutil.rmtree(out)
@@ -116,7 +124,11 @@ jobs:
 
           pipeline.process_pages(cid, targets, workers=2)
           state = load_manifest_raw(cid)
-          report = {"head_sha": os.environ.get("GITHUB_SHA"), "targets": {}}
+          actual_head = subprocess.check_output(
+              ["git", "rev-parse", "HEAD"],
+              text=True,
+          ).strip()
+          report = {"head_sha": actual_head, "targets": {}}
 
           for idx in targets:
               page = state["pages"][idx]
@@ -141,6 +153,7 @@ jobs:
                   "repair": repair,
                   "timing_ms": metrics.get("timing_ms") or {},
                   "auto_inpaint": metrics.get("auto_inpaint") or {},
+                  "mask_recall_repair": metrics.get("mask_recall_repair") or {},
               }
 
           (out / "candidate.json").write_text(
