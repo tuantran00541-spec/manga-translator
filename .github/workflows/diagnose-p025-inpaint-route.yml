@@ -97,8 +97,13 @@ jobs:
           trace = []
           seq = {"n": 0}
 
+          def runtime_mask(value):
+              if isinstance(value, np.ndarray):
+                  return value
+              return decode_mask_value(value)
+
           def meta(box):
-              m = decode_mask_value(getattr(box, "mask", None))
+              m = runtime_mask(getattr(box, "mask", None))
               return {
                   "geometry": [int(box.x1), int(box.y1), int(box.x2), int(box.y2)],
                   "semantic_type": getattr(box, "semantic_type", None),
@@ -184,7 +189,7 @@ jobs:
           for b in page.get("boxes", []):
               if not isinstance(b, dict) or b.get("removed"):
                   continue
-              m = decode_mask_value(b.get("mask"))
+              m = runtime_mask(b.get("mask"))
               boxes.append({
                   "geometry": [b.get("x1"),b.get("y1"),b.get("x2"),b.get("y2")],
                   "semantic_type": b.get("semantic_type"),
