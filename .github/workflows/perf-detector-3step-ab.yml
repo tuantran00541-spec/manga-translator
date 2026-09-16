@@ -8,6 +8,7 @@ on:
       - app/detector/fast_residue_detector.py
       - app/detector/parallel_focus_detector.py
       - app/detector/recovery.py
+      - app/benchmarking/failure_registry.py
       - scripts/benchmark_detector_3step.py
       - .github/workflows/perf-detector-3step-ab.yml
   workflow_dispatch:
@@ -83,6 +84,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: detector-3step-ab-${{ github.run_id }}
-          path: benchmark-results/detector-3step/report.json
+          path: |
+            benchmark-results/detector-3step/report.json
+            benchmark-results/detector-3step/failure-registry.jsonl
           if-no-files-found: warn
           retention-days: 7

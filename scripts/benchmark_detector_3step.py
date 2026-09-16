@@ -4,12 +4,15 @@ import copy
 import gc
 import hashlib
 import json
+import os
 import shutil
 import statistics
 import time
 from pathlib import Path
 
-from app.config import PROCESSED_DIR
+from app.benchmarking.failure_registry import FailureRegistry, build_failure_case
+from app.benchmarking.manifest import build_manifest, sha256_file
+from app.config import BUBBLE_DETECTOR_MODEL, PROCESSED_DIR, TEXT_SEGMENTER_MODEL
 from app.detector.adaptive_focus_detector import AdaptiveFocusCombinedTextDetector
 from app.detector.fast_residue_detector import (
     FastResidueAdaptiveFocusCombinedTextDetector,
@@ -215,6 +218,70 @@ def _quality_diff(reference: dict, candidate: dict) -> dict:
     }
 
 
+def _failure_source_sha(base_manifest: dict, chapter_id: str, page_index: int) -> str:
+    """Use immutable slice bytes when available, with a deterministic fallback."""
+    pages = base_manifest.get("pages") or []
+    page = pages[page_index] if 0 <= page_index < len(pages) else {}
+    source = page.get("original") if isinstance(page, dict) else None
+    digest = sha256_file(source) if source else None
+    if digest:
+        return digest
+    return hashlib.sha256(f"{chapter_id}:page:{page_index}".encode("utf-8")).hexdigest()
+
+
+def _record_quality_failures(
+    registry: FailureRegistry,
+    *,
+    base_manifest: dict,
+    chapter_id: str,
+    reference: dict,
+    candidate: dict,
+    quality: dict,
+    candidate_name: str,
+) -> int:
+    """Distil a quality diff into stable, reviewable registry cases."""
+    added = 0
+    categories = (
+        ("box_mismatch_pages", "detector", "detector_fp"),
+        ("residue_mismatch_pages", "residue_verify", "residue"),
+        ("clean_hash_mismatch_pages", "inpaint", "inpaint_texture_damage"),
+    )
+    pages = base_manifest.get("pages") or []
+    for field, stage, default_taxonomy in categories:
+        for raw_index in quality.get(field, []):
+            page_index = int(raw_index)
+            key = str(page_index)
+            baseline_count = len(reference.get("box_signatures", {}).get(key, []))
+            observed_count = len(candidate.get("box_signatures", {}).get(key, []))
+            taxonomy = default_taxonomy
+            if field == "box_mismatch_pages" and observed_count < baseline_count:
+                taxonomy = "detector_fn"
+            page = pages[page_index] if 0 <= page_index < len(pages) else {}
+            case = build_failure_case(
+                source_sha256=_failure_source_sha(base_manifest, chapter_id, page_index),
+                source_page=page.get("source_page") if isinstance(page, dict) else None,
+                slice_index=page_index,
+                stage=stage,
+                taxonomy=taxonomy,
+                partition="hard",
+                candidate=candidate_name,
+                baseline={
+                    "box_count": baseline_count,
+                    "residue_count": len(reference.get("residue_signatures", {}).get(key, [])),
+                    "clean_hash": reference.get("clean_hashes", {}).get(key),
+                },
+                observed={
+                    "box_count": observed_count,
+                    "residue_count": len(candidate.get("residue_signatures", {}).get(key, [])),
+                    "clean_hash": candidate.get("clean_hashes", {}).get(key),
+                },
+                evidence={"quality_field": field, "page_index": page_index},
+                notes="Optimization changed the frozen 3-step signature; keep as hard evidence and do not promote.",
+            )
+            added += int(registry.append(case))
+    return added
+
+
 def main() -> None:
     OUT.parent.mkdir(parents=True, exist_ok=True)
     pipeline = OptimizedChapterPipeline()
@@ -314,6 +381,37 @@ def main() -> None:
             candidate["timing_mean_ms"]["total"],
         ),
     }
+    registry = FailureRegistry(OUT.parent / "failure-registry.jsonl")
+    failure_cases_added = 0
+    for label, result in (
+        ("parallel-prefetch-v1", report["quality"]["parallel_vs_control"]),
+        ("flat-gate-v1", report["quality"]["candidate_vs_control"]),
+    ):
+        failure_cases_added += _record_quality_failures(
+            registry,
+            base_manifest=base_manifest,
+            chapter_id=chapter_id,
+            reference=control,
+            candidate=parallel if label.startswith("parallel") else candidate,
+            quality=result,
+            candidate_name=label,
+        )
+    report["failure_cases_added"] = failure_cases_added
+    report["failure_registry"] = registry.summary()
+    report["manifest"] = build_manifest(
+        benchmark="detector-3step-ab",
+        dataset=CHAPTER_URL,
+        repo_sha=os.getenv("GITHUB_SHA", "unknown"),
+        model_paths={
+            "bubble_detector": BUBBLE_DETECTOR_MODEL,
+            "text_segmenter": TEXT_SEGMENTER_MODEL,
+        },
+        parameters={
+            "sample_count": SAMPLE_COUNT,
+            "candidate": "parallel_prefetch_plus_flat_gate",
+        },
+        cases=registry.read(),
+    )
 
     OUT.write_text(
         json.dumps(report, ensure_ascii=False, indent=2) + "\n",
