@@ -1,10 +1,14 @@
 import numpy as np
 
 from app.detector.bubble_detector import BubbleBox
+from app.detector.independent_residue_detector import (
+    IndependentRegionResidueSequentialTextDetector,
+)
 from app.detector.mask_builder import build_mask
 from app.image_io import encode_mask, read_image, write_image
 from app.mask_recall_pipeline import MaskRecallOptimizedChapterPipeline
 from app.mask_store import decode_mask_value
+from app.parameters import DETECTOR_RESIDUE_VERIFY_PAD
 
 
 def _record(mask, *, overlap=False, semantic_type="free_text"):
@@ -26,6 +30,33 @@ def _record(mask, *, overlap=False, semantic_type="free_text"):
         "source_role": "text_segmenter",
         "overlap_context_only": overlap,
     }
+
+
+def test_residue_verifier_uses_full_detector_region_not_sparse_mask():
+    sparse = np.zeros((50, 80), dtype=np.uint8)
+    sparse[20:25, 30:35] = 255
+    source = BubbleBox(
+        40,
+        35,
+        120,
+        85,
+        0.95,
+        sparse,
+        source_model="text_segmenter.onnx",
+        semantic_type="free_text",
+        mask_source="text_segmenter",
+        safe_to_inpaint=True,
+        ocr_eligible=True,
+        needs_review=False,
+        source_role="text_segmenter",
+    )
+
+    roi = IndependentRegionResidueSequentialTextDetector._tight_verified_mask_roi(
+        (120, 160, 3),
+        source,
+    )
+    pad = int(DETECTOR_RESIDUE_VERIFY_PAD)
+    assert roi == (40 - pad, 35 - pad, 120 + pad, 85 + pad)
 
 
 def test_residue_sources_skip_overlap_context_and_complete_segmenter_envelope():
@@ -69,6 +100,30 @@ def test_flat_residual_ink_rejects_textured_source():
     assert MaskRecallOptimizedChapterPipeline._flat_residual_ink_mask(textured) is None
 
 
+def test_flat_residue_augmentation_runs_without_neural_hit():
+    clean = np.full((120, 160, 3), 230, dtype=np.uint8)
+    source_mask = np.zeros((50, 80), dtype=np.uint8)
+    source_mask[20:25, 30:35] = 255
+    clean[55:62, 40:46] = 20
+
+    result = {
+        "boxes": [_record(source_mask, semantic_type="free_text")],
+        "residue_regions": [],
+    }
+    augmented = MaskRecallOptimizedChapterPipeline._augment_flat_residue_regions(
+        clean,
+        result,
+    )
+
+    assert augmented == 1
+    region = result["residue_regions"][0]
+    assert region["deferred_reason"] == "post_inpaint_text_residue"
+    assert region["repair_scope_source"] == "flat_independent_ink"
+    mask = decode_mask_value(region["mask"])
+    assert mask is not None
+    assert np.any(mask[18:31, 0:12] > 127)
+
+
 def test_flat_residue_augmentation_recovers_missed_glyph_at_source_edge():
     clean = np.full((120, 160, 3), 230, dtype=np.uint8)
     source_mask = np.zeros((50, 80), dtype=np.uint8)
@@ -105,7 +160,7 @@ def test_flat_residue_augmentation_recovers_missed_glyph_at_source_edge():
     assert mask is not None
     assert np.any(mask[30:38, 0:7] > 127)
     assert np.any(mask[18:28, 28:38] > 127)
-    assert region["repair_scope_source"] == "flat_residual_ink"
+    assert region["repair_scope_source"] == "flat_independent_ink"
 
 
 def test_verified_residue_can_extend_beyond_original_mask_but_not_preserve(tmp_path):
@@ -158,8 +213,7 @@ def test_verified_residue_can_extend_beyond_original_mask_but_not_preserve(tmp_p
         def inpaint_mask(self, image, mask, force_lama=False):
             assert force_lama is True
             self.mask = mask.copy()
-            candidate = np.full_like(image, 17)
-            return candidate
+            return np.full_like(image, 230)
 
         def last_metrics(self):
             return {"lama_model_runs": 1, "lama_model_ms": 3}
@@ -209,11 +263,16 @@ def test_verified_residue_can_extend_beyond_original_mask_but_not_preserve(tmp_p
     assert not np.any(repair_authority[ry1:ry2, 101:rx2])
     assert np.array_equal(repaired[untouched], clean[untouched])
     assert np.array_equal(repaired[preserve_authority], original[preserve_authority])
-    assert np.all(repaired[repair_authority] == 17)
+    assert np.all(repaired[repair_authority] == 230)
     assert updated["residue_regions"] == []
     assert "post_inpaint_text_residue" not in updated["detection_issues"]
     assert (
         updated["processing_metrics"]["residue_repair"]
         ["outside_authority_changed_channel_values"]
+        == 0
+    )
+    assert (
+        updated["processing_metrics"]["mask_recall_repair"]
+        ["final_flat_residue_regions"]
         == 0
     )
