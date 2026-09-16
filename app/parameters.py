@@ -20,6 +20,7 @@ from typing import Final
 
 _TRUE = {"1", "true", "yes", "on"}
 _FALSE = {"0", "false", "no", "off"}
+_CACHE_MODES = {"off", "shadow", "reuse"}
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -77,6 +78,11 @@ def _env_float(
     return float(value)
 
 
+def _env_choice(name: str, default: str, choices: set[str]) -> str:
+    raw = os.getenv(name, "").strip().lower()
+    return raw if raw in choices else str(default)
+
+
 # ---------------------------------------------------------------------------
 # Detector / segmentation
 # ---------------------------------------------------------------------------
@@ -103,6 +109,12 @@ DETECTOR_STABLE_ID_IOU_MIN = _env_float(
 )
 DETECTOR_INPUT_SIZE = _env_int(
     "MANGA_DETECTOR_INPUT_SIZE", 1024, minimum=256, maximum=4096
+)
+DETECTOR_INFERENCE_CACHE_MODE = _env_choice(
+    "MANGA_DETECTOR_INFERENCE_CACHE", "off", _CACHE_MODES
+)
+DETECTOR_INFERENCE_CACHE_MAX_ENTRIES = _env_int(
+    "MANGA_DETECTOR_INFERENCE_CACHE_MAX_ENTRIES", 64, minimum=1, maximum=4096
 )
 DETECTOR_WINDOW_OVERLAP = _env_int(
     "MANGA_DETECTOR_WINDOW_OVERLAP", 200, minimum=0, maximum=2048

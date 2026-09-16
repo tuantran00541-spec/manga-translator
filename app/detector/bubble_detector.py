@@ -25,8 +25,11 @@ from app.parameters import (
     DETECTOR_TTA_ENABLED as ENABLE_TTA,
     DETECTOR_TTA_MIN_SIDE,
     DETECTOR_TTA_SMALL_SCALE,
+    DETECTOR_INFERENCE_CACHE_MAX_ENTRIES,
+    DETECTOR_INFERENCE_CACHE_MODE,
     DETECTOR_WINDOW_OVERLAP as SLICE_OVERLAP,
 )
+from app.detector.inference_cache import DetectorInferenceCache
 
 
 @dataclass(frozen=True)
@@ -170,6 +173,42 @@ class YoloDetector:
         self.input_name = self.contract.input_name
         self.conf_threshold = conf_threshold
         self.use_tta = ENABLE_TTA if use_tta is None else use_tta
+        self._inference_cache = DetectorInferenceCache(
+            mode=DETECTOR_INFERENCE_CACHE_MODE,
+            max_entries=DETECTOR_INFERENCE_CACHE_MAX_ENTRIES,
+            namespace=self._cache_namespace(),
+        )
+
+    def _cache_namespace(self) -> str:
+        """Include preprocessing knobs that affect decoded boxes/masks."""
+        return "|".join(
+            (
+                str(self.model_role),
+                str(self.source_model),
+                str(self._model_file_signature()),
+                str(self.contract.input_name),
+                str(INPUT_SIZE),
+                str(self.conf_threshold),
+                str(DETECTOR_LETTERBOX_VALUE),
+                str(DETECTOR_MASK_THRESHOLD),
+                str(DETECTOR_MASK_HYSTERESIS_LOW_THRESHOLD),
+                str(DETECTOR_MASK_HYSTERESIS_MIN_CORE_PIXELS),
+                str(DETECTOR_TEXT_MASK_DECODE_PAD),
+            )
+        )
+
+    def _model_file_signature(self) -> tuple[int, int] | None:
+        try:
+            stat = Path(self.model_path).stat()
+        except OSError:
+            return None
+        return int(stat.st_size), int(stat.st_mtime_ns)
+
+    def inference_cache_metrics(self) -> dict[str, int | str]:
+        return self._inference_cache.snapshot()
+
+    def clear_inference_cache(self) -> None:
+        self._inference_cache.clear()
 
     def _class_name(self, class_id: int, num_classes: int) -> str:
         if num_classes != len(self.contract.class_names):
@@ -281,13 +320,53 @@ class YoloDetector:
         offset_x: int,
         offset_y: int,
     ) -> list[BubbleBox]:
+        cache_key = None
+        cached = None
+        if self._inference_cache.mode != "off":
+            cache_key = self._inference_cache.key(
+                image,
+                offset_x=offset_x,
+                offset_y=offset_y,
+                variant="plain",
+            )
+            cached = self._inference_cache.lookup(cache_key)
+        if cached is not None and self._inference_cache.mode == "reuse":
+            return cached
+
         blob, transform = self._preprocess(
             image, offset_x=offset_x, offset_y=offset_y
         )
         if blob is None or transform is None:
             return []
         outputs = self.session.run(None, {self.input_name: blob})
-        return self._postprocess(outputs, transform)
+        boxes = self._postprocess(outputs, transform)
+        if cached is not None and self._box_lists_differ(cached, boxes):
+            self._inference_cache.record_shadow_mismatch()
+        if cache_key is not None:
+            self._inference_cache.store(cache_key, boxes)
+        return boxes
+
+    @staticmethod
+    def _box_lists_differ(left: list[BubbleBox], right: list[BubbleBox]) -> bool:
+        if len(left) != len(right):
+            return True
+        for first, second in zip(left, right):
+            if (
+                (int(first.x1), int(first.y1), int(first.x2), int(first.y2))
+                != (int(second.x1), int(second.y1), int(second.x2), int(second.y2))
+                or float(first.confidence) != float(second.confidence)
+                or int(first.class_id) != int(second.class_id)
+            ):
+                return True
+            if first.mask is None or second.mask is None:
+                if first.mask is not second.mask:
+                    return True
+            elif (
+                first.mask.shape != second.mask.shape
+                or not np.array_equal(first.mask, second.mask)
+            ):
+                return True
+        return False
 
     def _detect_single_tta(self, image: np.ndarray, offset_x: int, offset_y: int) -> list[BubbleBox]:
         h, w = image.shape[:2]

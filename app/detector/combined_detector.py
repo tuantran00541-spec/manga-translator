@@ -671,6 +671,14 @@ class CombinedTextDetector:
         ]
         metrics["result_boxes"] = len(result)
         metrics["review_boxes"] = sum(bool(box.needs_review) for box in result)
+        for prefix, detector in (
+            ("bubble", self.bubble_detector),
+            ("text", self.text_detector),
+        ):
+            model = getattr(detector, "_detector", detector)
+            snapshot = getattr(model, "inference_cache_metrics", lambda: {})()
+            for name in ("lookups", "hits", "shadow_hits", "shadow_mismatches", "stores", "evictions"):
+                metrics[f"{prefix}_inference_cache_{name}"] = int(snapshot.get(name, 0) or 0)
         metrics["total_ms"] = round((time.perf_counter() - started_at) * 1000.0, 3)
         self._metrics_local.value = metrics
         return result
