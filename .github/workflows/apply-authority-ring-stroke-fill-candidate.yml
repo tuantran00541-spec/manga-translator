@@ -1,6 +1,6 @@
 name: Apply dual-polarity halo candidate
 
-# v3: instrument every refine stage before changing any more thresholds.
+# v4: instrument every refine stage before changing any more thresholds.
 on:
   push:
     branches:
@@ -38,7 +38,7 @@ jobs:
             pydantic==2.9.2 filelock==3.16.1 python-multipart==0.0.12 pytest==8.3.5
 
       - name: Diagnose halo refinement
-        run: python scripts/diagnose_dual_polarity_halo.py
+        run: PYTHONPATH=. python scripts/diagnose_dual_polarity_halo.py
 
       - name: Unit gate
         run: python -m pytest tests/test_fast_inpaint_paths.py tests/test_fast_residue_detector.py -q
