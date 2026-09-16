@@ -378,3 +378,39 @@ def test_textured_medium_dynamic_lama_stays_one_native_call():
     assert len(model_shapes) == 1
     assert model_shapes[0][0] >= 900
     assert model_shapes[0][1] >= 920
+
+
+
+def test_dynamic_long_crop_uses_native_single_call_within_pixel_budget():
+    # Old policy tiled this crop solely because 900/400 >= 2 and max_dim > 512.
+    # Dynamic LaMa should preserve one global-context call when the area is safe.
+    rng = np.random.default_rng(7)
+    image = rng.integers(0, 256, size=(400, 900, 3), dtype=np.uint8)
+    mask = np.zeros((400, 900), dtype=np.uint8)
+    mask[30:370, 40:860] = 255
+
+    inpainter = FastInpainter()
+    inpainter._begin_metrics()
+    inpainter.dynamic_lama = True
+    inpainter._ensure_session = lambda: None
+    shapes = []
+
+    def fake_run_lama(canvas, mask_canvas):
+        shapes.append(canvas.shape[:2])
+        return canvas.copy()
+
+    inpainter._run_lama = fake_run_lama
+    output = inpainter._lama_fill(
+        image.copy(),
+        image.copy(),
+        mask,
+        (0, 0, 900, 400),
+    )
+    metrics = inpainter.last_metrics()
+
+    assert output.shape == image.shape
+    assert len(shapes) == 1
+    assert shapes[0][0] >= 400
+    assert shapes[0][1] >= 900
+    assert metrics["lama_native_single_regions"] == 1
+    assert metrics["lama_tiled_regions"] == 0
