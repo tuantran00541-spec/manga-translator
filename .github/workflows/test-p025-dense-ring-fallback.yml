@@ -1,4 +1,4 @@
-name: Test p025 dense ring fallback
+name: Test p025 dense surface production fallback
 
 on:
   push:
@@ -20,7 +20,7 @@ env:
   MANGA_ORT_OPENVINO_STREAMS: "1"
   MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
   OPENBLAS_NUM_THREADS: "1"
-  CHAPTER_ID: c159aa10
+  CHAPTER_ID: c159aa11
   CHAPTER_URL: https://asurascans.com/comics/player-who-returned-10000-years-later-53fc8424/chapter/159
 
 jobs:
@@ -39,11 +39,15 @@ jobs:
       - name: Install runtime
         run: |
           python -m pip install \
-            numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 \
+            pytest==8.3.3 numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 \
             onnxruntime-openvino==1.24.1 psutil==6.1.1 loguru==0.7.2 \
             requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 playwright==1.47.0 \
             fastapi==0.115.0 'uvicorn[standard]==0.30.6' \
             pydantic==2.9.2 filelock==3.16.1 python-multipart==0.0.12
+
+      - name: Unit regression gate
+        run: |
+          python -m pytest -q tests/test_dense_authority_surface.py tests/test_fast_inpaint_paths.py
 
       - name: Restore detector and inpaint models
         id: models
@@ -73,13 +77,12 @@ jobs:
           cp benchmark-bootstrap/models/*.onnx models/
           cp benchmark-bootstrap/models/.e2e-provenance.json models/
 
-      - name: Run dense ring fallback probe
+      - name: Run production p025 gate
         run: |
           python - <<'PY'
           from __future__ import annotations
           import json
           import os
-          import types
           from pathlib import Path
           import cv2
           import numpy as np
@@ -87,9 +90,8 @@ jobs:
           from app.image_io import read_image
           from app.manifest_utils import load_manifest_raw
 
-          out = Path("benchmark-results/p025-dense-ring")
+          out = Path("benchmark-results/p025-dense-production")
           out.mkdir(parents=True, exist_ok=True)
-          fallback_trace = []
           chapter_id = os.environ["CHAPTER_ID"]
           manifest = pipeline.download_chapter(os.environ["CHAPTER_URL"], chapter_id, workers=1)
           matches = [
@@ -99,35 +101,15 @@ jobs:
           if len(matches) != 1:
               raise RuntimeError(f"p025 lookup failed: {matches}")
           page_index = matches[0]
-          inp = pipeline.inpainter
-
-          orig_refine = inp._refine_dense_smooth_stroke_mask
-          def wrapped_refine(self, crop, authority_mask):
-              refined = orig_refine(crop, authority_mask)
-              if refined is not None:
-                  return refined
-              authority_pixels = int(np.count_nonzero(authority_mask > 127))
-              probe = self._bubble_gradient_fill_from_authority_ring(
-                  crop,
-                  authority_mask,
-                  authority_mask,
-              )
-              accepted = probe is not None
-              fallback_trace.append({
-                  "crop_shape": [int(v) for v in crop.shape[:2]],
-                  "authority_pixels": authority_pixels,
-                  "surface_accepts_full_authority": bool(accepted),
-              })
-              # This is a diagnostic A/B only. Returning the authority lets the
-              # existing authority-ring compositor paint the same fitted surface
-              # over the whole detector-authorized region. Production remains
-              # unchanged until the real artifact is reviewed.
-              return authority_mask.copy() if accepted else None
-          inp._refine_dense_smooth_stroke_mask = types.MethodType(wrapped_refine, inp)
-
           pipeline.process_pages(chapter_id, [page_index], workers=1)
           state = load_manifest_raw(chapter_id)
           page = state["pages"][page_index]
+          metrics = (page.get("processing_metrics") or {}).get("auto_inpaint") or {}
+          if int(metrics.get("dense_authority_gradient_regions", 0)) < 1:
+              raise AssertionError(f"dense surface fallback not used: {metrics}")
+          if int(metrics.get("lama_model_runs", 0)) != 0:
+              raise AssertionError(f"p025 unexpectedly used LaMa: {metrics}")
+
           raw = read_image(Path(page["original"]))
           clean = read_image(Path(page["clean"]))
           roi = (315, 2120, 845, 2425)
@@ -135,24 +117,23 @@ jobs:
           raw_roi = raw[y1:y2,x1:x2]
           clean_roi = clean[y1:y2,x1:x2]
           cv2.imwrite(str(out / "p025-raw.png"), raw_roi)
-          cv2.imwrite(str(out / "p025-dense-ring-clean.png"), clean_roi)
+          cv2.imwrite(str(out / "p025-production-clean.png"), clean_roi)
           diff = np.abs(clean_roi.astype(np.int16) - raw_roi.astype(np.int16))
           report = {
               "page_index": page_index,
-              "fallback_trace": fallback_trace,
-              "auto_inpaint": (page.get("processing_metrics") or {}).get("auto_inpaint"),
+              "auto_inpaint": metrics,
               "roi_changed_channel_values": int(np.count_nonzero(diff)),
               "roi_max_diff": int(diff.max()) if diff.size else 0,
               "roi_mean_diff": float(diff.mean()) if diff.size else 0.0,
           }
           (out / "report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
-          print("P025_DENSE_RING=" + json.dumps(report))
+          print("P025_PRODUCTION=" + json.dumps(report))
           PY
 
       - name: Upload evidence
         uses: actions/upload-artifact@v4
         with:
-          name: p025-dense-ring-${{ github.run_id }}
-          path: benchmark-results/p025-dense-ring/
+          name: p025-dense-production-${{ github.run_id }}
+          path: benchmark-results/p025-dense-production/
           retention-days: 7
           if-no-files-found: error
