@@ -25,7 +25,7 @@ jobs:
           python-version: "3.12"
 
       - name: Apply candidate patch
-        run: python scripts/apply_stroke_mask_refinement_candidate.py
+        run: python scripts/apply_stroke_mask_refinement_candidate_v2.py
 
       - name: Install unit-test runtime
         run: |
