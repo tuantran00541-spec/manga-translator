@@ -1,4 +1,4 @@
-name: Diagnose p025 stroke refine gates
+name: Diagnose dense authority candidates
 
 on:
   push:
@@ -20,7 +20,7 @@ env:
   MANGA_ORT_OPENVINO_STREAMS: "1"
   MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
   OPENBLAS_NUM_THREADS: "1"
-  CHAPTER_ID: c159aa09
+  CHAPTER_ID: c159aa12
   CHAPTER_URL: https://asurascans.com/comics/player-who-returned-10000-years-later-53fc8424/chapter/159
 
 jobs:
@@ -73,7 +73,7 @@ jobs:
           cp benchmark-bootstrap/models/*.onnx models/
           cp benchmark-bootstrap/models/.e2e-provenance.json models/
 
-      - name: Trace refine gates
+      - name: Compare p025 and p035 dense gates
         run: |
           python - <<'PY'
           from __future__ import annotations
@@ -87,27 +87,54 @@ jobs:
           from app.dependencies import pipeline
           from app.manifest_utils import load_manifest_raw
 
-          out = Path("benchmark-results/p025-refine")
+          out = Path("benchmark-results/dense-candidate-compare")
           out.mkdir(parents=True, exist_ok=True)
-          refine_trace = []
-          gradient_trace = []
+          targets = {
+              (5, 4): "p025",
+              (8, 1): "p035",
+          }
+          trace = []
+          context = {"box": None}
 
           chapter_id = os.environ["CHAPTER_ID"]
           manifest = pipeline.download_chapter(os.environ["CHAPTER_URL"], chapter_id, workers=1)
-          matches = [
-              i for i,p in enumerate(manifest["pages"])
-              if int(p.get("source_page",-1)) == 5 and int(p.get("slice_index",-1)) == 4
-          ]
-          if len(matches) != 1:
-              raise RuntimeError(f"p025 lookup failed: {matches}")
-          page_index = matches[0]
+          located = {}
+          for key, name in targets.items():
+              matches = [
+                  i for i,p in enumerate(manifest["pages"])
+                  if int(p.get("source_page",-1)) == key[0]
+                  and int(p.get("slice_index",-1)) == key[1]
+              ]
+              if len(matches) != 1:
+                  raise RuntimeError(f"{name} lookup failed: {matches}")
+              located[matches[0]] = name
+
           inp = pipeline.inpainter
+          orig_try = inp._try_stroke_authority_fill
+          def wrapped_try(self, image, box, protected_regions):
+              context["box"] = {
+                  "geometry": [int(box.x1), int(box.y1), int(box.x2), int(box.y2)],
+                  "semantic_type": getattr(box, "semantic_type", None),
+                  "source_role": getattr(box, "source_role", None),
+                  "source_model": getattr(box, "source_model", None),
+                  "class_id": getattr(box, "class_id", None),
+                  "class_name": getattr(box, "class_name", None),
+                  "mask_source": getattr(box, "mask_source", None),
+                  "verified_mask": bool(getattr(box, "verified_mask", False)),
+                  "safe_to_inpaint": bool(getattr(box, "safe_to_inpaint", False)),
+              }
+              try:
+                  return orig_try(image, box, protected_regions)
+              finally:
+                  context["box"] = None
+          inp._try_stroke_authority_fill = types.MethodType(wrapped_try, inp)
 
           orig_refine = inp._refine_dense_smooth_stroke_mask
           def wrapped_refine(self, crop, authority_mask):
               authority = authority_mask > 127
               ys, xs = np.nonzero(authority)
               rec = {
+                  "box": dict(context["box"] or {}),
                   "crop_shape": [int(v) for v in crop.shape[:2]],
                   "authority_pixels": int(xs.size),
               }
@@ -116,6 +143,7 @@ jobs:
                   by1, by2 = int(ys.min()), int(ys.max()) + 1
                   tight_area = max(1, (bx2 - bx1) * (by2 - by1))
                   rec["tight_bbox"] = [bx1, by1, bx2, by2]
+                  rec["tight_area"] = int(tight_area)
                   rec["occupancy"] = float(xs.size) / float(tight_area)
                   ring = self._mask_ring(authority_mask, fast_mod._BUBBLE_FASTPATH_RING)
                   rec["ring_pixels"] = int(np.count_nonzero(ring))
@@ -134,49 +162,40 @@ jobs:
                       inside = gray_f[authority]
                       low = float(np.percentile(inside, 10.0))
                       high = float(np.percentile(inside, 90.0))
+                      rec["inside_std"] = float(inside.std())
                       rec["inside_low_p10"] = low
                       rec["inside_high_p90"] = high
                       rec["dark_contrast"] = rec["background"] - low
                       rec["light_contrast"] = high - rec["background"]
               result = orig_refine(crop, authority_mask)
-              rec["accepted"] = result is not None
+              rec["stroke_refine_accepted"] = result is not None
               rec["model_pixels"] = int(np.count_nonzero(result > 127)) if result is not None else 0
-              rec["model_fraction"] = (
-                  rec["model_pixels"] / float(max(1, rec["authority_pixels"]))
+              rec["model_fraction"] = rec["model_pixels"] / float(max(1, rec["authority_pixels"]))
+              surface = self._bubble_gradient_fill_from_authority_ring(
+                  crop, authority_mask, authority_mask
               )
-              refine_trace.append(rec)
+              rec["full_authority_surface_accepted"] = surface is not None
+              trace.append(rec)
               return result
           inp._refine_dense_smooth_stroke_mask = types.MethodType(wrapped_refine, inp)
 
-          orig_gradient = inp._bubble_gradient_fill_from_authority_ring
-          def wrapped_gradient(self, crop, model_mask, authority_mask):
-              result = orig_gradient(crop, model_mask, authority_mask)
-              gradient_trace.append({
-                  "crop_shape": [int(v) for v in crop.shape[:2]],
-                  "model_pixels": int(np.count_nonzero(model_mask > 127)),
-                  "authority_pixels": int(np.count_nonzero(authority_mask > 127)),
-                  "accepted": result is not None,
-              })
-              return result
-          inp._bubble_gradient_fill_from_authority_ring = types.MethodType(wrapped_gradient, inp)
-
-          pipeline.process_pages(chapter_id, [page_index], workers=1)
+          pipeline.process_pages(chapter_id, list(located.keys()), workers=1)
           state = load_manifest_raw(chapter_id)
-          page = state["pages"][page_index]
-          report = {
-              "page_index": page_index,
-              "refine_trace": refine_trace,
-              "gradient_trace": gradient_trace,
-              "auto_inpaint": (page.get("processing_metrics") or {}).get("auto_inpaint"),
-          }
+          report = {"trace": trace, "pages": {}}
+          for idx, name in located.items():
+              page = state["pages"][idx]
+              report["pages"][name] = {
+                  "page_index": idx,
+                  "auto_inpaint": (page.get("processing_metrics") or {}).get("auto_inpaint"),
+              }
           (out / "report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
-          print("P025_REFINE=" + json.dumps(report))
+          print("DENSE_COMPARE=" + json.dumps(report))
           PY
 
       - name: Upload evidence
         uses: actions/upload-artifact@v4
         with:
-          name: p025-refine-${{ github.run_id }}
-          path: benchmark-results/p025-refine/
+          name: dense-candidate-compare-${{ github.run_id }}
+          path: benchmark-results/dense-candidate-compare/
           retention-days: 7
           if-no-files-found: error
