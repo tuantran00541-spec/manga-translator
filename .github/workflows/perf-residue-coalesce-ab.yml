@@ -312,6 +312,12 @@ jobs:
               blocked_reasons.append(
                   'sample contains no baseline residue hit; recall is unmeasured'
               )
+          if blocked_reasons:
+              acceptance_status = 'blocked'
+          elif unmatched or candidate_hit_count != baseline_hit_count:
+              acceptance_status = 'fail'
+          else:
+              acceptance_status = 'pass'
           report = {
               'chapter_url': URL,
               'chapter_id': chapter_id,
@@ -333,12 +339,12 @@ jobs:
                   'regions': candidate_regions,
               },
               'quality': {
-                  'status': 'blocked' if blocked_reasons else 'pass',
+                  'status': acceptance_status,
                   'blocked_reasons': blocked_reasons,
                   'unmatched_baseline_residue_hits': unmatched,
                   'baseline_hit_count': baseline_hit_count,
                   'candidate_hit_count': candidate_hit_count,
-                  'promotion_eligible': not blocked_reasons and not unmatched,
+                  'promotion_eligible': acceptance_status == 'pass',
               },
               'speedup': {
                   'residue_verify_pct': round(

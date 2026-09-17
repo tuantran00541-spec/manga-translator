@@ -45,20 +45,22 @@ class FastResidueAdaptiveFocusCombinedTextDetector(
     _UNION_SLACK_RATIO = 0.20
     _UNION_SLACK_PIXELS = 4096
 
-    # Extremely conservative negative gate. It is intentionally much stricter
-    # than a general "looks clean" classifier: one clearly contrasting residual
-    # stroke is enough to force the neural verifier.
+    # Extremely conservative negative gate. It remains disabled by default
+    # until a residue-positive hard set proves that it does not skip real text.
+    # When explicitly enabled, one clearly contrasting residual stroke is
+    # enough to force the neural verifier.
     _FLAT_NEGATIVE_MIN_PIXELS = 64
     _FLAT_NEGATIVE_CHANNEL_SPAN_MAX = 12
     _FLAT_NEGATIVE_GRAY_STD_MAX = 3.5
     _FLAT_NEGATIVE_EDGE_DENSITY_MAX = 0.0015
+    _FLAT_NEGATIVE_GATE_DEFAULT = False
 
     def __init__(self):
         super().__init__()
         self._residue_metrics_local = threading.local()
         self._residue_metrics_lock = threading.Lock()
         self._residue_totals: dict[str, int] = {}
-        self._residue_flat_gate_enabled = True
+        self._residue_flat_gate_enabled = self._FLAT_NEGATIVE_GATE_DEFAULT
 
     def _set_residue_metrics(self, **values: int) -> None:
         snapshot = {str(name): int(value) for name, value in values.items()}
@@ -176,7 +178,7 @@ class FastResidueAdaptiveFocusCombinedTextDetector(
         glyph, outline, colour edge, gradient or artwork texture keeps the old
         verification path.
         """
-        if not bool(getattr(self, "_residue_flat_gate_enabled", True)):
+        if not bool(getattr(self, "_residue_flat_gate_enabled", False)):
             return False
         if image is None or image.size == 0:
             return False
