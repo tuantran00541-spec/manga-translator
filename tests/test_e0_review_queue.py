@@ -64,6 +64,8 @@ def test_e0_queue_preserves_source_provenance_and_remains_unreviewed(tmp_path):
         },
     )
     ocr_report = tmp_path / "ocr.json"
+    crop = tmp_path / "crop.png"
+    crop.write_bytes(b"exact-ocr-crop")
     _write_json(
         ocr_report,
         {
@@ -74,6 +76,11 @@ def test_e0_queue_preserves_source_provenance_and_remains_unreviewed(tmp_path):
                     "quality_reason": "crop-edge-text",
                     "text": "partial",
                     "confidence": 0.61,
+                    "audit_crop": {
+                        "path": "crop.png",
+                        "sha256": _sha256(b"exact-ocr-crop"),
+                        "bounds": [1, 2, 10, 12],
+                    },
                 }
             ]
         },
@@ -96,6 +103,10 @@ def test_e0_queue_preserves_source_provenance_and_remains_unreviewed(tmp_path):
     assert {row["partition"] for row in rows} == {"unassigned"}
     assert {row["source_sha256"] for row in rows} == {_sha256(b"source-image")}
     assert load_manifest(tmp_path / "e0" / "benchmark-manifest.json")["cases"][0]["partition"] == "chapter"
+    samples = json.loads((tmp_path / "e0" / "ocr-review-samples.json").read_text())["rows"]
+    assert len(samples) == 1
+    assert samples[0]["image"] == "../crop.png"
+    assert samples[0]["image_sha256"] == _sha256(b"exact-ocr-crop")
 
 
 def test_e0_queue_rejects_page_without_indexed_source_hash(tmp_path):

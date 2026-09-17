@@ -20,7 +20,11 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from app.benchmarking.failure_registry import FailureRegistry, build_failure_case
+from app.benchmarking.failure_registry import (
+    FailureRegistry,
+    build_failure_case,
+    stable_case_id,
+)
 from app.benchmarking.manifest import build_manifest, sha256_file, write_manifest
 
 
@@ -125,6 +129,32 @@ def _parse_models(items: list[str]) -> dict[str, str]:
             raise ValueError(f"invalid --model {item!r}; use name=path")
         result[name.strip()] = value.strip()
     return result
+
+
+def _audit_crop(
+    result: Mapping[str, Any], ocr_report_path: Path
+) -> dict[str, Any] | None:
+    """Return a hash-verified OCR crop recorded by the audit, when available."""
+    raw = result.get("audit_crop")
+    if not isinstance(raw, Mapping):
+        return None
+    relative = str(raw.get("path") or "").strip()
+    expected = str(raw.get("sha256") or "").lower()
+    if not relative or len(expected) != 64:
+        return None
+    candidate = Path(relative)
+    crop_path = candidate if candidate.is_absolute() else ocr_report_path.parent / candidate
+    actual = sha256_file(crop_path)
+    if actual != expected:
+        raise ValueError(
+            f"OCR audit crop is missing or hash-mismatched for box {result.get('box_id')!r}"
+        )
+    bounds = raw.get("bounds")
+    return {
+        "path": relative,
+        "sha256": actual,
+        "bounds": list(bounds) if isinstance(bounds, (list, tuple)) else None,
+    }
 
 
 def build_review_queue(
@@ -277,17 +307,65 @@ def build_review_queue(
     results = ocr_report.get("results")
     if not isinstance(results, list):
         raise ValueError("OCR report must contain a results array")
+    ocr_samples: list[dict[str, Any]] = []
+    reviewable_crop_count = 0
     for result_index, result in enumerate(results):
         if not isinstance(result, Mapping):
             raise ValueError(f"OCR report results[{result_index}] must be an object")
-        if str(result.get("quality") or "").lower() not in {"review", "reject"}:
-            continue
         box_id = str(result.get("box_id") or "").strip()
         mapping = box_by_id.get(box_id)
         if mapping is None:
             raise ValueError(f"OCR result {result_index} has no mapped box_id: {box_id!r}")
         page_index, box = mapping
         page = page_metadata[page_index]
+        crop = _audit_crop(result, ocr_report_path)
+        if crop is not None:
+            reviewable_crop_count += 1
+        sample_id = stable_case_id(
+            source_sha256=page["source_sha256"],
+            source_page=page["source_page"],
+            slice_index=page["slice_index"],
+            stage="ocr_ground_truth_sample",
+            taxonomy="other",
+            geometry={"page_index": page_index, "box": _box_snapshot(box)},
+            candidate="e0-ocr-sample-v1",
+        )
+        ocr_samples.append(
+            {
+                "sample_id": sample_id,
+                "source_sha256": page["source_sha256"],
+                "source_page": page["source_page"],
+                "slice_index": page["slice_index"],
+                "page_index": page_index,
+                "box_id": box_id,
+                "box": _box_snapshot(box),
+                "image": (
+                    f"../{crop['path']}" if crop is not None else None
+                ),
+                "image_sha256": crop["sha256"] if crop is not None else None,
+                "crop_bounds": crop["bounds"] if crop is not None else None,
+                "lang": str(result.get("lang") or "en"),
+                "target_mode": str(
+                    box.get("ocr_target_mode") or box.get("target_mode") or "all"
+                ),
+                "prediction": {
+                    key: result.get(key)
+                    for key in (
+                        "text", "quality", "quality_reason", "confidence", "model",
+                        "retry_applied", "elapsed_ms",
+                    )
+                    if key in result
+                },
+                "priority": (
+                    "high"
+                    if str(result.get("quality") or "").lower() in {"review", "reject"}
+                    else "normal"
+                ),
+                "required_decision": "transcribe_exact|dismiss|needs_more_evidence",
+            }
+        )
+        if str(result.get("quality") or "").lower() not in {"review", "reject"}:
+            continue
         taxonomy = _ocr_taxonomy(result)
         case = build_failure_case(
             source_sha256=page["source_sha256"],
@@ -331,6 +409,18 @@ def build_review_queue(
             }
         )
 
+    ocr_samples_path = out_dir / "ocr-review-samples.json"
+    ocr_samples_payload = {
+        "schema": "manga-translator.e0-ocr-review-samples.v1",
+        "chapter_id": chapter_id,
+        "source_url": source_url,
+        "rows": ocr_samples,
+    }
+    ocr_samples_path.write_text(
+        json.dumps(ocr_samples_payload, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
     summary = registry.summary()
     readiness = {
         "status": "review_required",
@@ -341,6 +431,8 @@ def build_review_queue(
             "Residue candidates need visual confirmation and geometry before hard/holdout assignment.",
         ],
         "queue_cases": len(review_rows),
+        "ocr_review_samples": len(ocr_samples),
+        "ocr_samples_with_hash_verified_crops": reviewable_crop_count,
         "confirmed_cases": 0,
         "registry": summary,
     }
@@ -350,6 +442,7 @@ def build_review_queue(
         "source_url": source_url,
         "benchmark_manifest": manifest_path.name,
         "failure_registry": registry.path.name,
+        "ocr_review_samples": ocr_samples_path.name,
         "rows": review_rows,
         "readiness": readiness,
     }
@@ -362,6 +455,7 @@ def build_review_queue(
         "manifest": benchmark_manifest,
         "manifest_path": manifest_path,
         "failure_registry": summary,
+        "ocr_review_samples": ocr_samples_payload,
         "review_queue": queue,
         "readiness": readiness,
     }

@@ -119,7 +119,8 @@ jobs:
           sliced_dir = raw_root / 'sliced'
           processed_dir = Path('data/processed') / chapter_id
           out = Path('benchmark-results/shadow-slave-ch1')
-          sheets = out / 'ocr-crops'
+          sheets = out / 'ocr-cards'
+          audit_crops = out / 'ocr-crops'
           for p in (raw_root, processed_dir, out):
               if p.exists():
                   shutil.rmtree(p)
@@ -127,6 +128,7 @@ jobs:
           sliced_dir.mkdir(parents=True, exist_ok=True)
           processed_dir.mkdir(parents=True, exist_ok=True)
           sheets.mkdir(parents=True, exist_ok=True)
+          audit_crops.mkdir(parents=True, exist_ok=True)
 
           raw_paths = download_chapter(chapter_url, source_dir)
           if not raw_paths:
@@ -261,9 +263,6 @@ jobs:
               },
               'results': ocr_results,
           }
-          (out / 'report.json').write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
-          (out / 'weak-cases.json').write_text(json.dumps(weak, ensure_ascii=False, indent=2), encoding='utf-8')
-
           manifest = load_manifest_raw(chapter_id)
           by_id = {}
           for pi, page in enumerate(manifest.get('pages', [])):
@@ -289,6 +288,14 @@ jobs:
               if x2 <= x1 or y2 <= y1:
                   continue
               crop = Image.fromarray(image[y1:y2, x1:x2, ::-1]).convert('RGB')
+              crop_name = f'p{pi:03d}-b{bi:03d}-{hashlib.sha256(str(result.get("box_id")).encode()).hexdigest()[:12]}.png'
+              crop_path = audit_crops / crop_name
+              crop.save(crop_path, compress_level=6)
+              result['audit_crop'] = {
+                  'path': crop_path.relative_to(out).as_posix(),
+                  'sha256': sha256_file(crop_path),
+                  'bounds': [int(x1), int(y1), int(x2), int(y2)],
+              }
               crop.thumbnail((480, 240), Image.Resampling.LANCZOS)
               lines = [
                   f'p{pi:03d} b{bi} {box.get("semantic_type")} {result.get("box_id")}',
@@ -317,6 +324,9 @@ jobs:
                   sheet.paste(card, ((j % cols) * cw, (j // cols) * ch))
               sheet.save(sheets / f'ocr-{start:03d}-{start+len(group)-1:03d}.jpg', quality=92)
 
+          (out / 'report.json').write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
+          (out / 'weak-cases.json').write_text(json.dumps(weak, ensure_ascii=False, indent=2), encoding='utf-8')
+
           print('SHADOW_SLAVE_CH1=' + json.dumps({
               'source_images': len(raw_paths), 'slices': len(pages),
               'safe': int(safe), 'review': int(review),
@@ -342,6 +352,15 @@ jobs:
             --model bubble=models/bubble_yolo.onnx \
             --model text=models/text_segmenter.onnx \
             --model lama_dynamic=models/lama-manga-dynamic.onnx
+
+      - name: Write E0 reviewer decision template
+        if: success()
+        run: |
+          python scripts/apply_e0_review_decisions.py \
+            --review-queue benchmark-results/shadow-slave-ch1/e0/review-queue.json \
+            --failure-registry benchmark-results/shadow-slave-ch1/e0/failure-registry.jsonl \
+            --ocr-samples benchmark-results/shadow-slave-ch1/e0/ocr-review-samples.json \
+            --template-out benchmark-results/shadow-slave-ch1/e0/review-decisions.template.json
 
       - name: Benchmark inpaint accuracy with ground truth and real audit
         if: success()
@@ -492,6 +511,20 @@ jobs:
           retention-days: 7
           compression-level: 6
           if-no-files-found: ignore
+
+      - name: Upload E0 review evidence
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: shadow-slave-ch1-e0-review-${{ github.run_id }}
+          path: |
+            benchmark-results/shadow-slave-ch1/e0/
+            benchmark-results/shadow-slave-ch1/ocr-crops/*.png
+            data/raw/5e8ce7e3/source-index.json
+            data/processed/5e8ce7e3/manifest.json
+          retention-days: 7
+          compression-level: 6
+          if-no-files-found: error
 
       - name: Upload Shadow Slave chapter 1 audit
         if: always()

@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from app.benchmarking.distillation import (
     assign_source_partitions,
     build_distillation_cases,
+    confirmed_failure_cases,
     validate_distillation_cases,
 )
 from app.benchmarking.failure_registry import FailureRegistry, build_failure_case
@@ -32,6 +33,13 @@ def test_distillation_keeps_one_source_in_one_partition():
     assert assignments["source-a"] == cases[0]["partition"]
     assert cases[0]["partition"] == cases[1]["partition"]
     assert validate_distillation_cases(cases) == []
+
+
+def test_distillation_excludes_unreviewed_e0_candidates():
+    rows = [_case("confirmed", "source-a"), _case("candidate", "source-b")]
+    rows[1]["status"] = "unreviewed"
+
+    assert [row["case_id"] for row in confirmed_failure_cases(rows)] == ["confirmed"]
 
 
 def test_conflicting_explicit_source_partitions_are_blocked():
@@ -71,4 +79,31 @@ def test_distillation_manifest_success_recomputes_extended_hash(tmp_path):
         )
     )
     assert report["status"] == "pass"
+    assert report["excluded_unreviewed_or_dismissed_cases"] == 0
     assert validate_manifest(report) == []
+
+
+def test_distillation_manifest_blocks_unreviewed_registry(tmp_path):
+    registry_path = tmp_path / "failures.jsonl"
+    registry = FailureRegistry(registry_path)
+    registry.append(
+        build_failure_case(
+            source_sha256="b" * 64,
+            source_page=1,
+            stage="detector",
+            taxonomy="detector_fn",
+            status="unreviewed",
+        )
+    )
+
+    report = run(
+        SimpleNamespace(
+            failure_registry=registry_path,
+            dataset="fixture",
+            repo_sha="abc",
+            model=[],
+        )
+    )
+
+    assert report["status"] == "blocked"
+    assert "reviewer-confirmed" in report["blockers"][0]

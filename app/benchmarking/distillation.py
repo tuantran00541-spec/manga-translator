@@ -15,6 +15,22 @@ from typing import Any
 
 DISTILLATION_PARTITIONS = frozenset({"train", "calibration", "hard", "holdout"})
 _EXPLICIT_PARTITIONS = DISTILLATION_PARTITIONS
+CONFIRMED_LABEL_STATUS = "confirmed"
+
+
+def confirmed_failure_cases(rows: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """Return only reviewer-confirmed evidence eligible for training manifests.
+
+    A verifier signal, OCR confidence warning, or an automated mismatch is a
+    *candidate*, not a label.  Keeping that distinction here prevents callers
+    from accidentally turning a freshly generated E0 JSONL file into training
+    or holdout data simply because it has a source hash.
+    """
+    return [
+        dict(row)
+        for row in rows
+        if str(row.get("status") or "").strip().lower() == CONFIRMED_LABEL_STATUS
+    ]
 
 
 def source_group(row: Mapping[str, Any]) -> str:
@@ -145,9 +161,11 @@ def summarize_distillation_cases(cases: Iterable[Mapping[str, Any]]) -> dict[str
 
 
 __all__ = [
+    "CONFIRMED_LABEL_STATUS",
     "DISTILLATION_PARTITIONS",
     "assign_source_partitions",
     "build_distillation_cases",
+    "confirmed_failure_cases",
     "source_group",
     "summarize_distillation_cases",
     "validate_distillation_cases",

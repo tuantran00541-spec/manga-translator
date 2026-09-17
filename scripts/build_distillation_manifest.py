@@ -14,6 +14,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from app.benchmarking.distillation import (
     build_distillation_cases,
+    confirmed_failure_cases,
     summarize_distillation_cases,
     validate_distillation_cases,
 )
@@ -44,8 +45,20 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "benchmark": "detector-distillation-manifest-v1",
             "blockers": ["failure registry has no valid JSONL cases"],
         }
+    confirmed_rows = confirmed_failure_cases(rows)
+    if not confirmed_rows:
+        return {
+            "status": "blocked",
+            "benchmark": "detector-distillation-manifest-v1",
+            "blockers": [
+                "failure registry has no reviewer-confirmed cases; "
+                "unreviewed candidates are not eligible for distillation"
+            ],
+            "registry_cases": len(rows),
+            "confirmed_cases": 0,
+        }
     try:
-        cases = build_distillation_cases(rows)
+        cases = build_distillation_cases(confirmed_rows)
     except Exception as exc:
         return {
             "status": "blocked",
@@ -82,6 +95,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     )
     manifest["status"] = "pass"
     manifest["distillation_summary"] = summarize_distillation_cases(cases)
+    manifest["registry_cases"] = len(rows)
+    manifest["excluded_unreviewed_or_dismissed_cases"] = len(rows) - len(confirmed_rows)
     manifest["manifest_sha256"] = sha256_json(
         {key: value for key, value in manifest.items() if key != "manifest_sha256"}
     )
