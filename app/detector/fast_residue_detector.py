@@ -40,10 +40,13 @@ class FastResidueAdaptiveFocusCombinedTextDetector(
     distinct filtering semantics.
     """
 
-    # Shared-ROI coalescing validated by the earlier residue A/B lane.
+    # Shared-ROI coalescing is experimental. A real chapter probe found it can
+    # change residue evidence at ROI boundaries, so it stays disabled until it
+    # passes the confirmed hard/holdout set.
     _MERGE_GAP = max(4, int(DETECTOR_RESIDUE_VERIFY_PAD))
     _UNION_SLACK_RATIO = 0.20
     _UNION_SLACK_PIXELS = 4096
+    _RESIDUE_COALESCING_DEFAULT = False
 
     # Extremely conservative negative gate. It remains disabled by default
     # until a residue-positive hard set proves that it does not skip real text.
@@ -61,6 +64,7 @@ class FastResidueAdaptiveFocusCombinedTextDetector(
         self._residue_metrics_lock = threading.Lock()
         self._residue_totals: dict[str, int] = {}
         self._residue_flat_gate_enabled = self._FLAT_NEGATIVE_GATE_DEFAULT
+        self._residue_coalescing_enabled = self._RESIDUE_COALESCING_DEFAULT
 
     def _set_residue_metrics(self, **values: int) -> None:
         snapshot = {str(name): int(value) for name, value in values.items()}
@@ -302,7 +306,13 @@ class FastResidueAdaptiveFocusCombinedTextDetector(
             source_pixels += (x2 - x1) * (y2 - y1)
             scheduled.append((source, roi))
 
-        groups = self._plan_residue_groups(scheduled)
+        if bool(getattr(self, "_residue_coalescing_enabled", False)):
+            groups = self._plan_residue_groups(scheduled)
+        else:
+            groups = [
+                {"roi": roi, "sources": [source]}
+                for source, roi in scheduled
+            ]
         grouped_pixels = sum(
             max(0, group["roi"][2] - group["roi"][0])
             * max(0, group["roi"][3] - group["roi"][1])

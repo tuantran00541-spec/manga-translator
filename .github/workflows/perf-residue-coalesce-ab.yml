@@ -312,6 +312,10 @@ jobs:
               blocked_reasons.append(
                   'sample contains no baseline residue hit; recall is unmeasured'
               )
+          promotion_blockers = [
+              'detector evidence is not confirmed residue ground truth',
+              'single chapter sample does not satisfy hard-set and holdout gates',
+          ]
           if blocked_reasons:
               acceptance_status = 'blocked'
           elif unmatched or candidate_hit_count != baseline_hit_count:
@@ -344,7 +348,10 @@ jobs:
                   'unmatched_baseline_residue_hits': unmatched,
                   'baseline_hit_count': baseline_hit_count,
                   'candidate_hit_count': candidate_hit_count,
-                  'promotion_eligible': acceptance_status == 'pass',
+                  'promotion_eligible': (
+                      acceptance_status == 'pass' and not promotion_blockers
+                  ),
+                  'promotion_blockers': promotion_blockers,
               },
               'speedup': {
                   'residue_verify_pct': round(
@@ -411,6 +418,7 @@ jobs:
               f"- acceptance status: {q['status']}",
               f"- promotion eligible: {q['promotion_eligible']}",
               f"- blockers: {', '.join(q['blocked_reasons']) or 'none'}",
+              f"- promotion blockers: {', '.join(q['promotion_blockers'])}",
               f"- candidate metrics: `{json.dumps(c['metrics'], sort_keys=True)}`",
           ]
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as fh:
