@@ -6,6 +6,12 @@ on:
       - perf/bubble-fastpath-roi-lama
     paths:
       - .github/workflows/perf-residue-coalesce-ab.yml
+      - app/detector/**
+      - app/inpaint/fast_lama_inpainter.py
+      - app/image_io.py
+      - app/mask_store.py
+      - app/parameters.py
+      - app/pipeline.py
   workflow_dispatch:
 
 permissions:
@@ -295,6 +301,17 @@ jobs:
 
           baseline_total_ms = sum(baseline_times)
           candidate_total_ms = sum(candidate_times)
+          baseline_hit_count = int(
+              baseline_reasons.get('post_inpaint_text_residue', 0)
+          )
+          candidate_hit_count = int(
+              candidate_reasons.get('post_inpaint_text_residue', 0)
+          )
+          blocked_reasons = []
+          if baseline_hit_count == 0:
+              blocked_reasons.append(
+                  'sample contains no baseline residue hit; recall is unmeasured'
+              )
           report = {
               'chapter_url': URL,
               'chapter_id': chapter_id,
@@ -316,9 +333,12 @@ jobs:
                   'regions': candidate_regions,
               },
               'quality': {
+                  'status': 'blocked' if blocked_reasons else 'pass',
+                  'blocked_reasons': blocked_reasons,
                   'unmatched_baseline_residue_hits': unmatched,
-                  'baseline_hit_count': int(baseline_reasons.get('post_inpaint_text_residue', 0)),
-                  'candidate_hit_count': int(candidate_reasons.get('post_inpaint_text_residue', 0)),
+                  'baseline_hit_count': baseline_hit_count,
+                  'candidate_hit_count': candidate_hit_count,
+                  'promotion_eligible': not blocked_reasons and not unmatched,
               },
               'speedup': {
                   'residue_verify_pct': round(
@@ -351,6 +371,10 @@ jobs:
               )
           if unmatched:
               raise RuntimeError(f'candidate missed {len(unmatched)} baseline residue hit(s)')
+          if blocked_reasons:
+              raise RuntimeError(
+                  'E4 residue cascade gate blocked: ' + '; '.join(blocked_reasons)
+              )
           if int(candidate_totals.get('model_calls', 0)) > int(
               baseline_plan_totals.get('model_calls', 0)
           ):
@@ -378,6 +402,9 @@ jobs:
               f"- model-call reduction: {s['model_call_reduction_pct']}%",
               f"- hits: {q['baseline_hit_count']} -> {q['candidate_hit_count']}",
               f"- unmatched baseline hits: {len(q['unmatched_baseline_residue_hits'])}",
+              f"- acceptance status: {q['status']}",
+              f"- promotion eligible: {q['promotion_eligible']}",
+              f"- blockers: {', '.join(q['blocked_reasons']) or 'none'}",
               f"- candidate metrics: `{json.dumps(c['metrics'], sort_keys=True)}`",
           ]
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as fh:
