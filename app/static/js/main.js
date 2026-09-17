@@ -327,12 +327,58 @@ if (typeof renderUnifiedReview === "function") {
     workspace.querySelectorAll(".review-render-text-btn,.chapter-translate-controls button,.review-inline-translation").forEach((control) => setQcDisabled(control, locked));
   }
 
+  function restoreReviewWorkspaceState(workspace) {
+    const state = workspace?._reviewRestoreState;
+    if (!state) return;
+    if (state.chapterId !== (window.currentChapterId || "")) {
+      delete workspace._reviewRestoreState;
+      return;
+    }
+    const shell = workspace.querySelector(".review-document-shell");
+    const viewport = workspace.querySelector(".review-document-viewport");
+    const ready = Boolean(shell?._descriptors?.length && viewport?.isConnected);
+    if (!ready) {
+      state._adapterAttempts = Number(state._adapterAttempts || 0) + 1;
+      if (state._adapterAttempts < 20) window.setTimeout(scheduleRefresh, 50);
+      else delete workspace._reviewRestoreState;
+      return;
+    }
+    if (!state._scrollRestored) {
+      viewport.scrollLeft = Math.max(0, Number(state.scrollLeft || 0));
+      viewport.scrollTop = Math.max(0, Number(state.scrollTop || 0));
+      state._scrollRestored = true;
+    }
+    const draft = state.draft;
+    if (!draft) {
+      delete workspace._reviewRestoreState;
+      return;
+    }
+    const overlay = [...workspace.querySelectorAll(".review-text-object-overlay")].find((node) =>
+      Number(node.dataset.pageIndex) === Number(draft.pageIndex)
+      && String(node.dataset.objectId || "") === String(draft.objectId || "")
+    );
+    const editor = overlay?.querySelector(".review-inline-translation");
+    if (!editor) {
+      state._adapterAttempts = Number(state._adapterAttempts || 0) + 1;
+      if (state._adapterAttempts < 20) window.setTimeout(scheduleRefresh, 50);
+      else delete workspace._reviewRestoreState;
+      return;
+    }
+    try { editor.focus({ preventScroll: true }); } catch (_) { editor.focus(); }
+    const length = editor.value.length;
+    const start = Math.max(0, Math.min(length, Number(draft.selectionStart ?? length)));
+    const end = Math.max(start, Math.min(length, Number(draft.selectionEnd ?? start)));
+    try { editor.setSelectionRange(start, end); } catch (_) {}
+    delete workspace._reviewRestoreState;
+  }
+
   function refreshReviewAdapters() {
     const workspace = document.querySelector("#page-view.review-mode .review-workspace-shell");
     if (!workspace) return;
     ensureQcCompatibility(workspace);
     rewriteQcLabels(workspace);
     syncQcLock(workspace);
+    restoreReviewWorkspaceState(workspace);
   }
 
   let refreshQueued = false;
