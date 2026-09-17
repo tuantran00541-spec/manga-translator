@@ -68,6 +68,7 @@ def test_distillation_manifest_success_recomputes_extended_hash(tmp_path):
             stage="detector",
             taxonomy="detector_fn",
             partition="holdout",
+            status="confirmed",
         )
     )
     report = run(
