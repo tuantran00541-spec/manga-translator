@@ -303,7 +303,8 @@ if (typeof renderUnifiedReview === "function") {
       const canonical = Number(label.dataset.qcCanonicalPage);
       const page = window.currentManifest?.pages?.[canonical];
       if (!page) return;
-      label.textContent = `Trang ${sourcePageOf(page, canonical) + 1}`;
+      const next = `Trang ${sourcePageOf(page, canonical) + 1}`;
+      if (label.textContent !== next) label.textContent = next;
     });
   }
 
