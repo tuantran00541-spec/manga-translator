@@ -78,7 +78,7 @@ def test_flat_residual_ink_keeps_boundary_glyphs_and_rejects_long_frame():
     crop = np.full((100, 200, 3), 230, dtype=np.uint8)
     crop[24:31, 0:6] = 20
     crop[50:57, 194:200] = 20
-    crop[82:84, 10:190] = 20
+    crop[82:83, 10:190] = 20
 
     mask = MaskRecallOptimizedChapterPipeline._flat_residual_ink_mask(crop)
 

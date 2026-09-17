@@ -48,11 +48,16 @@ def _optional_env_flag(name: str) -> bool | None:
     raw = os.getenv(name, "").strip().lower()
     if not raw:
         return None
-    if raw in {"1", "true", "yes", "on"}:
-        return True
-    if raw in {"0", "false", "no", "off"}:
-        return False
-    return None
+    return {
+        "1": True,
+        "true": True,
+        "yes": True,
+        "on": True,
+        "0": False,
+        "false": False,
+        "no": False,
+        "off": False,
+    }.get(raw)
 
 
 def _env_int(name: str, default: int, minimum: int = 0) -> int:
