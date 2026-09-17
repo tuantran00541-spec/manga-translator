@@ -259,7 +259,10 @@ class PageProcessingMixin:
             and not geometry_center_in_regions(record, preserve_regions)
         ]
         residue_regions = [
-            {k: getattr(box, k) for k in decision_fields}
+            {
+                **{k: getattr(box, k) for k in decision_fields},
+                "mask": encode_mask(box.mask),
+            }
             for box in residue_boxes
         ]
         detection_issues = []

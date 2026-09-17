@@ -216,6 +216,49 @@ class FastResidueAdaptiveFocusCombinedTextDetector(
         edge_density = float(np.count_nonzero(edges)) / float(max(1, gray.size))
         return edge_density <= self._FLAT_NEGATIVE_EDGE_DENSITY_MAX
 
+    @staticmethod
+    def _tight_verified_mask_roi(
+        image_shape: tuple[int, ...],
+        source: BubbleBox,
+    ) -> tuple[int, int, int, int] | None:
+        """Return the smallest padded page ROI containing verified mask support.
+
+        Detector bboxes can be much larger than the glyphs they authorize. Using
+        the whole bbox for residue verification wastes the source-side budget and
+        can defer exactly the large free-text cases that need a second look.
+        """
+        h, w = int(image_shape[0]), int(image_shape[1])
+        box_w = max(0, int(source.x2) - int(source.x1))
+        box_h = max(0, int(source.y2) - int(source.y1))
+        if box_w <= 0 or box_h <= 0:
+            return None
+
+        mask = source.mask
+        if mask is not None and getattr(mask, "ndim", 0) >= 2:
+            support = mask
+            if support.shape[:2] != (box_h, box_w):
+                support = cv2.resize(
+                    support,
+                    (box_w, box_h),
+                    interpolation=cv2.INTER_NEAREST,
+                )
+            ys, xs = np.nonzero(support > 127)
+            if xs.size and ys.size:
+                pad = int(DETECTOR_RESIDUE_VERIFY_PAD)
+                x1 = max(0, int(source.x1) + int(xs.min()) - pad)
+                y1 = max(0, int(source.y1) + int(ys.min()) - pad)
+                x2 = min(w, int(source.x1) + int(xs.max()) + 1 + pad)
+                y2 = min(h, int(source.y1) + int(ys.max()) + 1 + pad)
+                if x2 > x1 and y2 > y1:
+                    return x1, y1, x2, y2
+
+        pad = int(DETECTOR_RESIDUE_VERIFY_PAD)
+        x1 = max(0, int(source.x1) - pad)
+        y1 = max(0, int(source.y1) - pad)
+        x2 = min(w, int(source.x2) + pad)
+        y2 = min(h, int(source.y2) + pad)
+        return (x1, y1, x2, y2) if x2 > x1 and y2 > y1 else None
+
     def verify_post_inpaint_residue(
         self,
         image,
@@ -254,29 +297,12 @@ class FastResidueAdaptiveFocusCombinedTextDetector(
         flat_negative_sources = 0
         source_pixels = 0
 
-        for index, source in enumerate(candidates):
-            # Preserve the historical source-budget/order semantics. A cheap
-            # negative inside the first N candidates does not silently make a
-            # later source eligible when it used to be review-deferred.
-            if index >= int(DETECTOR_RESIDUE_VERIFY_MAX_ROIS):
-                deferred_budget += 1
-                residue.append(
-                    replace(
-                        source,
-                        safe_to_inpaint=False,
-                        ocr_eligible=True,
-                        needs_review=True,
-                        deferred_reason="post_inpaint_verification_budget",
-                    )
-                )
+        neural_budget_used = 0
+        for source in candidates:
+            roi = self._tight_verified_mask_roi(image.shape, source)
+            if roi is None:
                 continue
-
-            x1 = max(0, int(source.x1) - int(DETECTOR_RESIDUE_VERIFY_PAD))
-            y1 = max(0, int(source.y1) - int(DETECTOR_RESIDUE_VERIFY_PAD))
-            x2 = min(w, int(source.x2) + int(DETECTOR_RESIDUE_VERIFY_PAD))
-            y2 = min(h, int(source.y2) + int(DETECTOR_RESIDUE_VERIFY_PAD))
-            if x2 <= x1 or y2 <= y1:
-                continue
+            x1, y1, x2, y2 = roi
             if max(x2 - x1, y2 - y1) > int(
                 DETECTOR_RESIDUE_VERIFY_MAX_SOURCE_SIDE
             ):
@@ -292,11 +318,27 @@ class FastResidueAdaptiveFocusCombinedTextDetector(
                 )
                 continue
 
+            # Cheap clean negatives should not consume the neural verification
+            # budget. This preserves CPU while letting later uncertain glyphs be
+            # verified instead of becoming false "text residue" review flags.
             if self._is_flat_negative_residue_source(image, source):
                 flat_negative_sources += 1
                 continue
 
-            roi = (x1, y1, x2, y2)
+            if neural_budget_used >= int(DETECTOR_RESIDUE_VERIFY_MAX_ROIS):
+                deferred_budget += 1
+                residue.append(
+                    replace(
+                        source,
+                        safe_to_inpaint=False,
+                        ocr_eligible=True,
+                        needs_review=True,
+                        deferred_reason="post_inpaint_verification_budget",
+                    )
+                )
+                continue
+
+            neural_budget_used += 1
             source_pixels += (x2 - x1) * (y2 - y1)
             scheduled.append((source, roi))
 

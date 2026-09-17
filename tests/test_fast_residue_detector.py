@@ -164,3 +164,51 @@ def test_coalesced_verifier_uses_one_model_call_and_keeps_residue_evidence():
     reset = detector.residue_metrics_snapshot(reset=True)
     assert reset == totals
     assert detector.residue_metrics_snapshot() == {}
+
+
+
+def test_large_detector_box_uses_tight_verified_mask_roi():
+    detector = _detector_with_fake_text()
+    max_side = int(DETECTOR_RESIDUE_VERIFY_MAX_SOURCE_SIDE)
+    width = max_side + 300
+    height = 120
+    mask = np.zeros((height, width), dtype=np.uint8)
+    mask[35:55, 100:160] = 255
+    source = BubbleBox(
+        0,
+        0,
+        width,
+        height,
+        0.9,
+        mask,
+        source_model="text_segmenter.onnx",
+        source_role="text_segmenter",
+        semantic_type="free_text",
+        mask_source="text_segmenter",
+        safe_to_inpaint=True,
+        ocr_eligible=True,
+    )
+    image = np.full((height + 20, width + 20, 3), 248, dtype=np.uint8)
+    image[40:48, 110:135] = 0
+
+    detector.verify_post_inpaint_residue(image, [source])
+    metrics = detector.last_residue_metrics()
+
+    assert metrics["deferred_size"] == 0
+    assert metrics["neural_sources"] == 1
+    assert metrics["model_calls"] == 1
+    assert detector.text_detector.calls == 1
+
+
+def test_flat_negative_sources_do_not_consume_neural_budget():
+    detector = _detector_with_fake_text()
+    image = np.full((160, 500, 3), 248, dtype=np.uint8)
+    sources = [_box(i * 80 + 5, 20, i * 80 + 55, 55) for i in range(5)]
+
+    residue = detector.verify_post_inpaint_residue(image, sources)
+    metrics = detector.last_residue_metrics()
+
+    assert residue == []
+    assert metrics["flat_negative_sources"] == 5
+    assert metrics["deferred_budget"] == 0
+    assert metrics["model_calls"] == 0

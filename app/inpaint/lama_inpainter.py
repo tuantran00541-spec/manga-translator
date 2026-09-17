@@ -13,6 +13,7 @@ from app.model_contracts import decode_lama_output, validate_lama_session
 from app.ort_utils import make_session
 from app.parameters import (
     DYNAMIC_LAMA_MAX_SINGLE_CROP_DIM,
+    DYNAMIC_LAMA_MAX_SINGLE_CROP_PIXELS,
     FIXED_LAMA_RECYCLE_MEMORY_LIMIT_BYTES,
     FIXED_LAMA_CONCURRENT_INFERENCE,
     FIXED_LAMA_SESSION_MAX_RUNS,
@@ -137,6 +138,8 @@ class Inpainter:
             "lama_regions": 0,
             "lama_model_runs": 0,
             "lama_model_ms": 0,
+            "lama_native_single_regions": 0,
+            "lama_tiled_regions": 0,
             "session_lock_wait_ms": 0,
             "ort_global_lock_wait_ms": 0,
             "mask_components": 0,
@@ -621,11 +624,23 @@ class Inpainter:
             edge_density = float(np.mean(edges[context] > 0)) if np.any(context) else 0.0
             texture_tiling = edge_density >= INPAINT_NATIVE_TILE_EDGE_DENSITY_MIN
 
-        # Wide/tall free text loses background detail when a dynamic LaMa crop
-        # is squeezed to 512px just as it does with the fixed model. Preserve
-        # native detail with overlapping tiles for both backends. Small and
-        # near-square regions retain the single-call fast path.
-        if long_crop or texture_tiling or (feather and max_dim > INPAINT_SIZE):
+        # Dynamic LaMa accepts arbitrary native dimensions. Do not split a
+        # medium elongated text ROI merely because its aspect ratio is large:
+        # grid tiling destroys the global context LaMa's Fourier path is meant
+        # to use and is a known source of polygon/facet seams. A pixel budget
+        # keeps this safe on CPU; genuinely large crops still use tiles.
+        crop_pixels = int(crop_h * crop_w)
+        dynamic_native_ok = bool(
+            self.dynamic_lama
+            and not feather
+            and max_dim <= DYNAMIC_LAMA_MAX_SINGLE_CROP_DIM
+            and crop_pixels <= DYNAMIC_LAMA_MAX_SINGLE_CROP_PIXELS
+        )
+        if dynamic_native_ok:
+            self._metric_add("lama_native_single_regions")
+            painted = self._lama_fill_single(crop, local_mask)
+        elif long_crop or texture_tiling or (feather and max_dim > INPAINT_SIZE):
+            self._metric_add("lama_tiled_regions")
             painted = self._lama_fill_tiled(crop, local_mask)
         else:
             painted = self._lama_fill_single(crop, local_mask)
