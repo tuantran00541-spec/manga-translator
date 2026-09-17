@@ -182,6 +182,31 @@ if (typeof resumeChapterWithoutProcessingReconnect === "function") {
   };
 }
 
+// The old Editor screen is now a compatibility route only. Lettering tools live
+// inside the stitched Review document, so old checkpoints and stale callers are
+// redirected to that unified workspace instead of mounting a second editor UI.
+const legacyRenderEditor = window.renderEditor;
+window.renderEditor = function renderUnifiedReviewFromLegacyEditor() {
+  const pages = window.currentManifest?.pages || [];
+  const rawIndex = Number(window.editorState?.activePageIndex ?? window.currentManifest?.workflow?.page_index ?? 0);
+  const pageIndex = Math.max(0, Math.min(Number.isFinite(rawIndex) ? rawIndex : 0, Math.max(0, pages.length - 1)));
+  window.initialReviewCanonicalPageIndex = pageIndex;
+  window.setWorkflowCheckpoint?.("review", pageIndex);
+  return window.renderReview?.();
+};
+window.legacyRenderEditor = legacyRenderEditor;
+
+const renderUnifiedReview = window.renderReview;
+if (typeof renderUnifiedReview === "function") {
+  window.renderReview = function renderReviewWithoutEditorHandoff(...args) {
+    const result = renderUnifiedReview(...args);
+    queueMicrotask(() => {
+      document.querySelectorAll(".review-primary-action").forEach((button) => button.remove());
+    });
+    return result;
+  };
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   const loadBtn = document.getElementById("load-btn");
   if (loadBtn && typeof loadChapter === "function") {
