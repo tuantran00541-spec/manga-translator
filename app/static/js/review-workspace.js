@@ -202,7 +202,50 @@
   }
   window.createAIProviderSettings = createAIProviderSettings;
 
+  function captureReviewWorkspaceState() {
+    const workspace = document.querySelector("#page-view .review-workspace-shell");
+    if (!workspace) return null;
+    const viewport = workspace.querySelector(".review-document-viewport");
+    const rawSource = Number.parseInt(workspace.dataset.pendingSourcePage || "", 10);
+    const active = document.activeElement;
+    let draft = null;
+    if (active instanceof HTMLTextAreaElement) {
+      const overlay = active.closest?.(".review-text-object-overlay");
+      const objectId = overlay?.dataset?.objectId || active.dataset?.textObjectId || window.editorState?.selectedTextObjectId || null;
+      const pageIndex = Number.parseInt(overlay?.dataset?.pageIndex || active.dataset?.pageIndex || window.editorState?.activePageIndex, 10);
+      if (objectId && Number.isInteger(pageIndex)) {
+        draft = {
+          pageIndex,
+          objectId: String(objectId),
+          value: active.value,
+          selectionStart: active.selectionStart,
+          selectionEnd: active.selectionEnd,
+        };
+      }
+    }
+    return {
+      chapterId: window.currentChapterId || "",
+      sourcePage: Number.isInteger(rawSource) ? rawSource : null,
+      scrollLeft: viewport?.scrollLeft || 0,
+      scrollTop: viewport?.scrollTop || 0,
+      selectedTextObjectId: window.editorState?.selectedTextObjectId || null,
+      activePageIndex: Number(window.editorState?.activePageIndex || 0),
+      draft,
+    };
+  }
+
+  function reapplyFocusedDraft(state) {
+    const draft = state?.draft;
+    if (!draft || state.chapterId !== (window.currentChapterId || "")) return;
+    const page = window.currentManifest?.pages?.[draft.pageIndex];
+    const obj = (page?.text_objects || []).find((item) => String(item?.id) === draft.objectId);
+    if (!obj || obj.translation === draft.value) return;
+    obj.translation = draft.value;
+    window.scheduleTextObjectPersist?.(draft.pageIndex, draft.objectId);
+  }
+
   function setupReviewWorkspace() {
+    const previousState = captureReviewWorkspaceState();
     window.cleanupReviewWorkspace?.();
     const container = document.getElementById("page-view");
     if (!container) return;
@@ -230,12 +273,19 @@
     const requestedSource = requestedPage
       ? cleanSourcePage(requestedPage, Number(requestedCanonical))
       : sourcePages[0];
-    const activeSource = sourcePages.includes(requestedSource) ? requestedSource : sourcePages[0];
+    const previousSource = previousState?.chapterId === chapterId ? previousState.sourcePage : null;
+    const activeSource = sourcePages.includes(previousSource)
+      ? previousSource
+      : sourcePages.includes(requestedSource)
+        ? requestedSource
+        : sourcePages[0];
     window.initialReviewCanonicalPageIndex = null;
+    reapplyFocusedDraft(previousState);
 
     const workspace = document.createElement("div");
     workspace.className = "review-workspace-shell";
     workspace.dataset.pendingSourcePage = String(activeSource);
+    if (previousState?.chapterId === chapterId) workspace._reviewRestoreState = previousState;
 
     const toolbar = document.createElement("div");
     toolbar.className = "review-sticky-toolbar";
@@ -330,9 +380,11 @@
     };
 
     window.setupWorkbenchPanels?.("review");
+    // The document canvas owns the base toolbar. Mount it first so OCR/QC can
+    // append their commands instead of being erased by the canvas action mount.
+    window.mountStitchInspector?.();
     window.mountChapterOCR?.();
     window.mountChapterQC?.();
-    window.mountStitchInspector?.();
   }
 
   window.renderReview = setupReviewWorkspace;
