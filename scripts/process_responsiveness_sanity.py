@@ -135,7 +135,8 @@ def source_checks() -> None:
 
     optimized = (ROOT / "app/optimized_pipeline.py").read_text(encoding="utf-8")
     check(
-        "workers=responsive_process_workers(workers)" in optimized,
+        "effective_workers = responsive_process_workers(workers)" in optimized
+        and "workers=effective_workers" in optimized,
         "optimized pipeline does not apply responsive worker cap",
     )
 
