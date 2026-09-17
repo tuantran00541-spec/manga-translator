@@ -6,9 +6,22 @@
   "source_url": "https://asurascans.com/comics/war-of-extinction-6f7fe6eb/chapter/1",
   "branch": "chapter/war-of-extinction-1",
   "source_of_truth_sha": "c99f82dff322747870ed8c75ece5d27d61633fc8",
-  "current_stage": "IMPORT_REVIEW",
-  "last_passed_checkpoint": null,
-  "current_artifact": "01-import-05efce51",
+  "current_stage": "CLEAN_PENDING",
+  "last_passed_checkpoint": "IMPORT",
+  "current_artifact": {
+    "run_id": 35286090041,
+    "artifact": "01-import-05efce51",
+    "artifact_id": 10524466424,
+    "digest": "sha256:2b85c22c6aed498578003c7304faa889bdcd296eec0c3107236ee10d8ba40b54"
+  },
   "blockers": [],
-  "next_action": "HUMAN_IMPORT_REVIEW"
+  "next_action": "RUN_CHECKPOINT_02_CLEAN_REVIEW",
+  "approved_import": {
+    "source_images": 40,
+    "slices": 139,
+    "duplicate_source_groups": 0,
+    "ownership_issues": 0,
+    "pixel_exact_pages": 40,
+    "diff_pixels_total": 0
+  }
 }
