@@ -51,6 +51,38 @@ def test_padded_free_text_mask_is_not_a_rectangle_fallback():
     assert page_mask[0:10, :].sum() == 0
 
 
+
+def test_validation_max_dilation_covers_both_runtime_dilation_branches():
+    local_mask = np.zeros((21, 29), dtype=np.uint8)
+    local_mask[10, 14] = 255
+    box = BubbleBox(
+        20, 15, 49, 36, 0.9, local_mask,
+        source_role="text_segmenter",
+        source_model="text_segmenter.onnx",
+        semantic_type="free_text",
+        safe_to_inpaint=True,
+    )
+
+    smooth = np.full((60, 80, 3), 230, dtype=np.uint8)
+    checker = smooth.copy()
+    yy, xx = np.indices(checker.shape[:2])
+    checker[(xx + yy) % 2 == 0] = 20
+
+    normal = build_mask((60, 80), [box], smooth)
+    adaptive = build_mask((60, 80), [box], checker)
+    validation = build_mask(
+        (60, 80),
+        [box],
+        smooth,
+        force_max_dilation=True,
+    )
+
+    assert np.all(validation[normal > 127] > 127)
+    assert np.all(validation[adaptive > 127] > 127)
+    assert np.count_nonzero(validation) > np.count_nonzero(normal)
+    assert np.array_equal(validation, adaptive)
+
+
 def test_mser_proposal_requires_independent_segmenter_mask_for_promotion():
     proposal = BubbleBox(
         20, 20, 100, 55, 0.4, None,

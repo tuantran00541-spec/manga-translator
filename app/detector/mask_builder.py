@@ -18,13 +18,25 @@ AUTO_DESTRUCTIVE_MASK_SOURCES = frozenset(
 )
 
 
-def adaptive_dilate_mask(mask: np.ndarray, crop_img: np.ndarray | None = None) -> np.ndarray:
+def adaptive_dilate_mask(
+    mask: np.ndarray,
+    crop_img: np.ndarray | None = None,
+    *,
+    force_max_dilation: bool = False,
+) -> np.ndarray:
     if not np.any(mask > 127):
         return mask
 
-    initial_k = MASK_DILATE_KERNEL_SIZE
+    initial_k = (
+        MASK_ADAPTIVE_DILATE_KERNEL_SIZE
+        if force_max_dilation
+        else MASK_DILATE_KERNEL_SIZE
+    )
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (initial_k, initial_k))
     dilated = cv2.dilate(mask, kernel, iterations=1)
+
+    if force_max_dilation:
+        return dilated
 
     if crop_img is not None and crop_img.ndim >= 2:
         gray = cv2.cvtColor(crop_img, cv2.COLOR_BGR2GRAY) if crop_img.ndim == 3 else crop_img
@@ -74,7 +86,13 @@ def is_destructive_box_authorized(box: BubbleBox) -> bool:
     )
 
 
-def build_mask(image_shape: tuple[int, int], boxes: list[BubbleBox], crop_img: np.ndarray | None = None) -> np.ndarray:
+def build_mask(
+    image_shape: tuple[int, int],
+    boxes: list[BubbleBox],
+    crop_img: np.ndarray | None = None,
+    *,
+    force_max_dilation: bool = False,
+) -> np.ndarray:
     h, w = image_shape
     mask = np.zeros((h, w), dtype=np.uint8)
 
@@ -145,4 +163,8 @@ def build_mask(image_shape: tuple[int, int], boxes: list[BubbleBox], crop_img: n
             y2 = min(h, box.y2 + MASK_EXPAND)
             cv2.rectangle(mask, (x1, y1), (x2, y2), 255, -1)
 
-    return adaptive_dilate_mask(mask, crop_img)
+    return adaptive_dilate_mask(
+        mask,
+        crop_img,
+        force_max_dilation=force_max_dilation,
+    )

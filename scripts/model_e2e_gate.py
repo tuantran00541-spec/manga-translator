@@ -148,7 +148,7 @@ def _box_from_record(record: dict):
 
 
 def _authority_mask(image: np.ndarray, records: list[dict], inpainter) -> np.ndarray:
-    """Reconstruct the exact automatic mask path used by Inpainter.inpaint."""
+    """Reconstruct the maximum configured automatic cleanup authority.\n\n    Runtime may choose the normal or adaptive dilation kernel from local image\n    texture. Validation must use the configured maximum so sequential cleanup\n    cannot create a false safety failure merely because the RAW replay chooses\n    the smaller kernel. Production write paths remain clipped to their runtime\n    mask; this is only the conservative upper bound used by the gate.\n    """
     from app.detector.bubble_detector import BubbleBox
     from app.detector.mask_builder import build_mask
 
@@ -187,7 +187,12 @@ def _authority_mask(image: np.ndarray, records: list[dict], inpainter) -> np.nda
                 local.allow_rectangle_fallback = True
             local_boxes.append(local)
         crop = image[cy1:cy2, cx1:cx2]
-        local_mask = build_mask(crop.shape[:2], local_boxes, crop)
+        local_mask = build_mask(
+            crop.shape[:2],
+            local_boxes,
+            crop,
+            force_max_dilation=True,
+        )
         full_mask[cy1:cy2, cx1:cx2] = np.maximum(
             full_mask[cy1:cy2, cx1:cx2], local_mask
         )
