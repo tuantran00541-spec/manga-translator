@@ -357,7 +357,16 @@ if (typeof renderUnifiedReview === "function") {
       Number(node.dataset.pageIndex) === Number(draft.pageIndex)
       && String(node.dataset.objectId || "") === String(draft.objectId || "")
     );
-    const editor = overlay?.querySelector(".review-inline-translation");
+    let editor = null;
+    if (draft.surface === "inline") {
+      editor = overlay?.querySelector(".review-inline-translation") || null;
+    } else {
+      const className = draft.field === "ocr_text" ? "ocr-textarea" : "translation-textarea";
+      editor = [...workspace.querySelectorAll(`.translation-panel-host textarea.${className}`)].find((node) =>
+        String(node.dataset.textObjectId || "") === String(draft.objectId || "")
+        && Number(node.dataset.pageIndex ?? draft.pageIndex) === Number(draft.pageIndex)
+      ) || null;
+    }
     if (!editor) {
       state._adapterAttempts = Number(state._adapterAttempts || 0) + 1;
       if (state._adapterAttempts < 20) window.setTimeout(scheduleRefresh, 50);
