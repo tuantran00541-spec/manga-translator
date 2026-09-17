@@ -208,6 +208,12 @@ if (typeof renderUnifiedReview === "function") {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
+  // Lettering is part of the stitched Review workspace now. Keep the legacy
+  // renderer only for old checkpoints, but do not expose a second Editor stage.
+  document.querySelector('.sidebar-link[data-stage="editor"]')?.remove();
+  const reviewLabel = document.querySelector('.sidebar-link[data-stage="review"] span');
+  if (reviewLabel) reviewLabel.textContent = "Xử lý & Biên tập";
+
   const loadBtn = document.getElementById("load-btn");
   if (loadBtn && typeof loadChapter === "function") {
     loadBtn.addEventListener("click", loadChapter);
