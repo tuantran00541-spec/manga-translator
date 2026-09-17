@@ -6,6 +6,8 @@ on:
       - perf/bubble-fastpath-roi-lama
     paths:
       - .github/workflows/perf-shadow-slave-ch1-ocr-audit.yml
+      - scripts/build_e0_review_queue.py
+      - app/benchmarking/**
   workflow_dispatch:
   # fresh chapter benchmark trigger: 2026-09-15
 
@@ -87,7 +89,7 @@ jobs:
         run: |
           python - <<'PY'
           from __future__ import annotations
-          import json, math, os, shutil, textwrap, time
+          import hashlib, json, math, os, shutil, textwrap, time
           from collections import Counter
           from concurrent.futures import ThreadPoolExecutor, as_completed
           from pathlib import Path
@@ -129,6 +131,31 @@ jobs:
           raw_paths = download_chapter(chapter_url, source_dir)
           if not raw_paths:
               raise RuntimeError('fresh downloader returned zero source images')
+
+          def sha256_file(path):
+              digest = hashlib.sha256()
+              with Path(path).open('rb') as handle:
+                  for chunk in iter(lambda: handle.read(1024 * 1024), b''):
+                      digest.update(chunk)
+              return digest.hexdigest()
+
+          source_index = {
+              'schema': 'manga-translator.source-index.v1',
+              'chapter_id': chapter_id,
+              'source_url': chapter_url,
+              'sources': [
+                  {
+                      'source_page': index,
+                      'path': Path(path).as_posix(),
+                      'sha256': sha256_file(path),
+                  }
+                  for index, path in enumerate(raw_paths)
+              ],
+          }
+          (raw_root / 'source-index.json').write_text(
+              json.dumps(source_index, ensure_ascii=False, indent=2) + '\n',
+              encoding='utf-8',
+          )
 
           workers = max(1, min(int(PIPELINE_DEFAULT_WORKERS), int(PIPELINE_SLICE_WORKER_LIMIT), len(raw_paths)))
           results = {}
@@ -302,6 +329,20 @@ jobs:
               raise RuntimeError(f'OCR audit had {len(errors)} runtime errors')
           PY
 
+      - name: Build E0 source-hashed failure review queue
+        if: success()
+        run: |
+          python scripts/build_e0_review_queue.py \
+            --processing-manifest data/processed/${CHAPTER_ID}/manifest.json \
+            --source-index data/raw/${CHAPTER_ID}/source-index.json \
+            --ocr-report benchmark-results/shadow-slave-ch1/report.json \
+            --out-dir benchmark-results/shadow-slave-ch1/e0 \
+            --repo-sha "${GITHUB_SHA}" \
+            --evidence-ref "github-actions:${GITHUB_RUN_ID}:shadow-slave-ch1-ocr-audit" \
+            --model bubble=models/bubble_yolo.onnx \
+            --model text=models/text_segmenter.onnx \
+            --model lama_dynamic=models/lama-manga-dynamic.onnx
+
       - name: Benchmark inpaint accuracy with ground truth and real audit
         if: success()
         run: |
@@ -459,6 +500,7 @@ jobs:
           name: shadow-slave-ch1-ocr-audit-${{ github.run_id }}
           path: |
             benchmark-results/shadow-slave-ch1/
+            data/raw/5e8ce7e3/source-index.json
             data/raw/5e8ce7e3/sliced/*.png
             data/processed/5e8ce7e3/manifest.json
             data/processed/5e8ce7e3/clean_*.png
