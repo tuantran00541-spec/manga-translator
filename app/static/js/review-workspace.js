@@ -214,9 +214,17 @@
       const objectId = overlay?.dataset?.objectId || active.dataset?.textObjectId || window.editorState?.selectedTextObjectId || null;
       const pageIndex = Number.parseInt(overlay?.dataset?.pageIndex || active.dataset?.pageIndex || window.editorState?.activePageIndex, 10);
       if (objectId && Number.isInteger(pageIndex)) {
+        const field = active.classList.contains("ocr-textarea") ? "ocr_text" : "translation";
+        const surface = active.classList.contains("review-inline-translation")
+          ? "inline"
+          : active.classList.contains("ocr-textarea")
+            ? "panel-ocr"
+            : "panel-translation";
         draft = {
           pageIndex,
           objectId: String(objectId),
+          field,
+          surface,
           value: active.value,
           selectionStart: active.selectionStart,
           selectionEnd: active.selectionEnd,
@@ -239,8 +247,10 @@
     if (!draft || state.chapterId !== (window.currentChapterId || "")) return;
     const page = window.currentManifest?.pages?.[draft.pageIndex];
     const obj = (page?.text_objects || []).find((item) => String(item?.id) === draft.objectId);
-    if (!obj || obj.translation === draft.value) return;
-    obj.translation = draft.value;
+    if (!obj) return;
+    const field = draft.field === "ocr_text" ? "ocr_text" : "translation";
+    if (obj[field] === draft.value) return;
+    obj[field] = draft.value;
     window.scheduleTextObjectPersist?.(draft.pageIndex, draft.objectId);
   }
 
