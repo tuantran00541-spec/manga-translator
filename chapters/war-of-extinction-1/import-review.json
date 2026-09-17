@@ -1,0 +1,44 @@
+{
+  "checkpoint": "IMPORT",
+  "status": "PASS",
+  "chapter_id": "05efce51",
+  "series_slug": "war-of-extinction-6f7fe6eb",
+  "chapter_number": 1,
+  "source_url": "https://asurascans.com/comics/war-of-extinction-6f7fe6eb/chapter/1",
+  "source_images": 40,
+  "slices": 139,
+  "source_order_reviewed": true,
+  "source_count_matches_expected": true,
+  "duplicate_source_groups": 0,
+  "ownership_issues": 0,
+  "skipped_pages": 0,
+  "reconstruction": {
+    "pixel_exact_pages": 40,
+    "total_pages": 40,
+    "coverage_min": 1,
+    "coverage_max": 1,
+    "diff_pixels_total": 0
+  },
+  "human_review": {
+    "source_contact_sheet_reviewed": true,
+    "slice_contact_sheet_reviewed": true,
+    "reading_order_ok": true,
+    "duplicate_or_missing_source_pages": 0,
+    "notes": [
+      "Source 000 is scanlation/reader promotional material; preserve as non-story and do not translate or inpaint blindly.",
+      "Source 039 is scanlation credit/promo tail; preserve as non-story.",
+      "Short source images interleaved with 900x16000 strips are genuine story continuations, not duplicate/low-content junk; keep them in reading order.",
+      "Large dramatic/free text such as 'BEGINS NOW!!' and 'THE PRESENT' is story content and must remain first-class through detection, OCR, translation and typesetting.",
+      "All 40 sources reconstruct pixel-exactly from 139 production slices with gap-free ownership."
+    ]
+  },
+  "technical_pass": true,
+  "editorial_pass": true,
+  "blockers": [],
+  "import_run_id": 35286090041,
+  "import_artifact": "01-import-05efce51",
+  "import_artifact_id": 10524466424,
+  "proof_run_id": 35286350367,
+  "proof_artifact_id": 10524287171,
+  "next_action": "RUN_CHECKPOINT_02_CLEAN_REVIEW"
+}
