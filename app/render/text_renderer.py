@@ -321,6 +321,78 @@ def _fits(draw, text: str, box_w: int, box_h: int, font_path_str: str, size: int
     return total_h <= box_h and max_line_w <= box_w, lines
 
 
+def explicit_text_layout_fits(
+    text: str,
+    region: dict,
+    style: dict | None,
+) -> bool:
+    """Check fixed-size lettering with the same wrapping rules as rendering.
+
+    Auto-sized text is already protected by render_text_in_box: it raises
+    when the minimum readable font cannot fit. This helper intentionally checks
+    only explicit positive font sizes, which otherwise render without a fit
+    guard and can overflow the approved text region.
+    """
+    style = style if isinstance(style, dict) else {}
+    raw_size = style.get("fontSize")
+    try:
+        if isinstance(raw_size, str) and not raw_size.strip().isdigit():
+            return True
+        font_size = int(raw_size)
+    except (TypeError, ValueError):
+        return True
+    if font_size <= 0:
+        return True
+
+    try:
+        x1, y1, x2, y2 = (
+            int(region[key]) for key in ("x1", "y1", "x2", "y2")
+        )
+    except (KeyError, TypeError, ValueError):
+        return True
+    raw_w = abs(x2 - x1)
+    raw_h = abs(y2 - y1)
+    if raw_w <= 0 or raw_h <= 0:
+        return True
+
+    pad = max(
+        2,
+        min(
+            RENDER_DEFAULT_PADDING,
+            int(min(raw_w, raw_h) * RENDER_PADDING_RATIO_MAX),
+        ),
+    )
+    box_w = raw_w - pad * 2
+    box_h = raw_h - pad * 2
+    if box_w <= 0 or box_h <= 0:
+        return False
+
+    font_path = get_font_path(str(style.get("font") or "default"))
+    raw_stroke = style.get("strokeWidth")
+    if raw_stroke is None or raw_stroke in {"", "auto"}:
+        stroke_w = RENDER_AUTO_STROKE_WIDTH
+    else:
+        try:
+            stroke_w = max(
+                0,
+                min(RENDER_STROKE_WIDTH_MAX, int(raw_stroke)),
+            )
+        except (TypeError, ValueError):
+            stroke_w = RENDER_AUTO_STROKE_WIDTH
+
+    probe = Image.new("RGB", (1, 1), (255, 255, 255))
+    draw = ImageDraw.Draw(probe)
+    fits, _lines = _fits(
+        draw,
+        str(text or "").strip(),
+        box_w,
+        box_h,
+        str(font_path),
+        font_size,
+        stroke_w,
+    )
+    return bool(fits)
+
 def _fit_text(
     draw,
     text: str,
