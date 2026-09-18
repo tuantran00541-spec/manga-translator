@@ -32,7 +32,6 @@ from app.parameters import (
     INPAINT_SIZE,
     MANUAL_CROP_PADDING,
     MANUAL_DILATION_SCALE,
-    MANUAL_FEATHER_RADIUS,
     MANUAL_MAX_DILATION,
     MANUAL_MIN_DILATION,
     MANUAL_TILE_OVERLAP,
@@ -647,17 +646,16 @@ class Inpainter:
 
         original_crop = image[cy1:cy2, cx1:cx2]
         if feather:
+            # inpaint_mask already expands an explicit manual mask before
+            # reaching this method. Do not blur the composite beyond that
+            # approved authority envelope: artwork safety requires exact writes.
             core = local_mask > 127
-            alpha = core.astype(np.float32)
-            if MANUAL_FEATHER_RADIUS > 0:
-                k = MANUAL_FEATHER_RADIUS * 2 + 1
-                feathered = cv2.GaussianBlur(alpha, (k, k), 0)
-                # Feather only the explicit margin; approved glyph support stays
-                # fully opaque so text cannot ghost back through the composite.
-                alpha = np.where(core, 1.0, feathered)
-            alpha = np.clip(alpha, 0.0, 1.0)[:, :, None]
-            blended = painted.astype(np.float32) * alpha + original_crop.astype(np.float32) * (1.0 - alpha)
-            image[cy1:cy2, cx1:cx2] = np.clip(blended, 0, 255).astype(np.uint8)
+            mask_3d = core[:, :, None]
+            image[cy1:cy2, cx1:cx2] = np.where(
+                mask_3d,
+                painted,
+                original_crop,
+            )
         else:
             mask_3d = (local_mask > 127)[:, :, None]
             image[cy1:cy2, cx1:cx2] = np.where(mask_3d, painted, original_crop)
