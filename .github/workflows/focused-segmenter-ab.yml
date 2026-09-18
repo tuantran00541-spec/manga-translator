@@ -21,16 +21,25 @@ permissions:
 jobs:
   build-specialized-model:
     runs-on: ubuntu-22.04
-    timeout-minutes: 20
+    timeout-minutes: 30
+    env:
+      PYTHONUNBUFFERED: "1"
+      MANGA_USE_DYNAMIC_LAMA: "1"
+      MANGA_ORT_PROVIDER: openvino
+      MANGA_ORT_REQUIRE_PROVIDER: "1"
+      MANGA_ORT_OPENVINO_SCOPE: detectors
+      MANGA_ORT_OPENVINO_THREADS: "2"
+      MANGA_ORT_OPENVINO_STREAMS: "1"
+      MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-focused-cache
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - name: Install model surgery runtime
+      - name: Install model surgery and production profile runtime
         run: |
-          python -m pip install numpy==1.26.4 onnx==1.17.0 onnxruntime-openvino==1.24.1
+          python -m pip install numpy==1.26.4 onnx==1.17.0 onnxruntime-openvino==1.24.1 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 psutil==6.1.1 loguru==0.7.2 requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 playwright==1.47.0 fastapi==0.115.0 pydantic==2.9.2 filelock==3.16.1 threadpoolctl==3.6.0
 
       - name: Restore benchmark models
         id: models
@@ -102,3 +111,103 @@ jobs:
               "first_run_ms": round(elapsed_ms, 3),
           }))
           PY
+
+
+      - name: Fetch identical production profile inputs
+        run: |
+          python scripts/profile_processing.py --prepare \
+            --raw-dir benchmark-results/focused-ab-input
+
+      - name: Baseline profile with 1024 retry segmenter
+        env:
+          MANGA_DETECTOR_RETRY_SEGMENTER_ENABLED: "0"
+        run: |
+          python scripts/profile_processing.py \
+            --raw-dir benchmark-results/focused-ab-input \
+            --profile retry1024 \
+            --workers 1 \
+            --repeats 2 \
+            --output benchmark-results/focused-ab/retry1024.json
+
+      - name: Candidate profile with 640 retry segmenter
+        env:
+          MANGA_DETECTOR_RETRY_SEGMENTER_ENABLED: "1"
+        run: |
+          python scripts/profile_processing.py \
+            --raw-dir benchmark-results/focused-ab-input \
+            --profile retry640 \
+            --workers 1 \
+            --repeats 2 \
+            --output benchmark-results/focused-ab/retry640.json
+
+      - name: Compare warm detector evidence
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          import cv2
+          import numpy as np
+
+          root = Path("benchmark-results/focused-ab")
+          base = json.loads((root / "retry1024.json").read_text())
+          cand = json.loads((root / "retry640.json").read_text())
+          b = base["runs"][-1]
+          c = cand["runs"][-1]
+
+          def detector_sum(run):
+              total = 0.0
+              for page in run.get("pages", []):
+                  metrics = page.get("metrics") or {}
+                  det = metrics.get("detector") or {}
+                  total += float(det.get("total_ms") or metrics.get("detect_ms") or 0.0)
+              return total
+
+          masks = []
+          for page in b.get("pages", []):
+              index = int(page["index"])
+              bp = root / "retry1024" / f"{index}-mask.png"
+              cp = root / "retry640" / f"{index}-mask.png"
+              bm = cv2.imread(str(bp), cv2.IMREAD_GRAYSCALE)
+              cm = cv2.imread(str(cp), cv2.IMREAD_GRAYSCALE)
+              if bm is None or cm is None or bm.shape != cm.shape:
+                  raise RuntimeError(f"missing/mismatched authority mask for page {index}")
+              bb = bm > 127
+              cc = cm > 127
+              inter = int(np.count_nonzero(bb & cc))
+              bpix = int(np.count_nonzero(bb))
+              cpix = int(np.count_nonzero(cc))
+              masks.append({
+                  "index": index,
+                  "baseline_pixels": bpix,
+                  "candidate_pixels": cpix,
+                  "intersection": inter,
+                  "recall_vs_baseline": inter / float(max(1, bpix)),
+                  "precision_vs_baseline": inter / float(max(1, cpix)),
+              })
+
+          report = {
+              "baseline_warm_wall_ms": float(b["wall_ms"]),
+              "candidate_warm_wall_ms": float(c["wall_ms"]),
+              "baseline_detector_sum_ms": detector_sum(b),
+              "candidate_detector_sum_ms": detector_sum(c),
+              "wall_speedup": float(b["wall_ms"]) / max(1e-9, float(c["wall_ms"])),
+              "detector_speedup": detector_sum(b) / max(1e-9, detector_sum(c)),
+              "baseline_passes": b.get("detector_passes"),
+              "candidate_passes": c.get("detector_passes"),
+              "authority_masks": masks,
+          }
+          (root / "comparison.json").write_text(json.dumps(report, indent=2) + "\n")
+          print(json.dumps(report, indent=2))
+          if any(page.get("outside_mask_changed") for page in c.get("pages", [])):
+              raise RuntimeError("candidate changed pixels outside its authority mask")
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: focused-segmenter-ab-${{ github.run_id }}
+          path: |
+            benchmark-results/focused-ab/
+            benchmark-results/focused-ab-input/
+          retention-days: 7
+          if-no-files-found: error
