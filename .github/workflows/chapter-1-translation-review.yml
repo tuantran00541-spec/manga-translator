@@ -22,7 +22,7 @@ jobs:
     timeout-minutes: 20
     env:
       GH_TOKEN: ${{ github.token }}
-      CURATED_RUN_ID: "35298347677"
+      CURATED_RUN_ID: "35318363735"
       CURATED_ARTIFACT: 03b-ocr-curated-05efce51
       STATE_DIR: chapters/war-of-extinction-1
     steps:
@@ -58,17 +58,17 @@ jobs:
           osum=json.loads((src/"ocr-curation-summary.json").read_text(encoding="utf-8"))
           tmap=json.loads((state/"translation-map.json").read_text(encoding="utf-8"))
 
-          if osum.get("status")!="PASS" or not osum.get("editorial_pass") or osum.get("active_story_objects")!=167:
+          if osum.get("status")!="PASS" or not osum.get("editorial_pass") or osum.get("active_story_objects")!=168:
               raise SystemExit(f"OCR curation gate invalid: {osum}")
           if tmap.get("status")!="READY_TO_APPLY" or tmap.get("target_language")!="vi":
               raise SystemExit("translation map not ready")
           entries=tmap.get("entries") or []
-          if len(entries)!=167 or tmap.get("active_untranslated_story_objects")!=0:
+          if len(entries)!=168 or tmap.get("active_untranslated_story_objects")!=0:
               raise SystemExit("translation map count/untranslated contract invalid")
 
           active_by_id={str(r["object_id"]):r for r in active}
           map_by_id={str(r["object_id"]):r for r in entries}
-          if len(active_by_id)!=167 or len(map_by_id)!=167 or set(active_by_id)!=set(map_by_id):
+          if len(active_by_id)!=168 or len(map_by_id)!=168 or set(active_by_id)!=set(map_by_id):
               raise SystemExit(f"translation/active id mismatch missing={sorted(set(active_by_id)-set(map_by_id))[:10]} extra={sorted(set(map_by_id)-set(active_by_id))[:10]}")
 
           obj_by_id={}
@@ -147,8 +147,8 @@ jobs:
             "chapter_id":"05efce51",
             "status":"PASS",
             "editorial_pass":True,
-            "active_story_objects":167,
-            "translated_story_objects":167,
+            "active_story_objects":168,
+            "translated_story_objects":168,
             "active_untranslated_story_objects":0,
             "tombstone_translation_count":translated_tombstones,
             "resurrection_count":resurrected,
@@ -163,7 +163,7 @@ jobs:
           (out/"long-translation-candidates.json").write_text(json.dumps(long_rows,ensure_ascii=False,indent=2),encoding="utf-8")
           (out/"translation-review-summary.json").write_text(json.dumps(result,ensure_ascii=False,indent=2),encoding="utf-8")
           (out/"HUMAN_CHECKPOINT.txt").write_text(
-            "CHECKPOINT: TRANSLATION REVIEW PASS\n167/167 active story objects translated and human-owned. Next: typography preflight.\n",
+            "CHECKPOINT: TRANSLATION REVIEW PASS\n168/168 active story objects translated and human-owned. Next: typography preflight.\n",
             encoding="utf-8"
           )
           print(json.dumps(result,ensure_ascii=False,indent=2))
@@ -175,8 +175,8 @@ jobs:
           from pathlib import Path
           s=json.loads(Path("checkpoint/04-translation/translation-review-summary.json").read_text(encoding="utf-8"))
           required={
-            "status":"PASS","editorial_pass":True,"active_story_objects":167,
-            "translated_story_objects":167,"active_untranslated_story_objects":0,
+            "status":"PASS","editorial_pass":True,"active_story_objects":168,
+            "translated_story_objects":168,"active_untranslated_story_objects":0,
             "tombstone_translation_count":0,"resurrection_count":0,"terminology_locked":True
           }
           for k,v in required.items():
