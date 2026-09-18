@@ -1,0 +1,274 @@
+name: Chapter 1 Checkpoint 02G Tiny LaMa Finish
+on:
+  push:
+    branches:
+      - chapter/war-of-extinction-1
+    paths:
+      - .github/workflows/chapter-1-tiny-lama-finish.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: chapter-1-human-loop
+  cancel-in-progress: false
+
+jobs:
+  tiny-finish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CHAPTER_ID: 05efce51
+      BASE_RUN_ID: "35286501171"
+      BASE_ARTIFACT: 02-clean-review-05efce51
+      R1_RUN_ID: "35292862313"
+      R1_ARTIFACT: 02b-manual-clean-repair-05efce51
+      R2_RUN_ID: "35293371743"
+      R2_ARTIFACT: 02c-manual-clean-repair-05efce51
+      R3_RUN_ID: "35293898170"
+      R3_ARTIFACT: 02d-manual-clean-repair-05efce51
+      R4_RUN_ID: "35294172340"
+      R4_ARTIFACT: 02e-manual-clean-repair-05efce51
+      R5_RUN_ID: "35294489102"
+      R5_ARTIFACT: 02f-manual-clean-repair-05efce51
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chapter/war-of-extinction-1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install editor repair runtime
+        run: |
+          python -m pip install \
+            numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 \
+            onnxruntime-openvino==1.24.1 psutil==6.1.1 loguru==0.7.2 \
+            requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 playwright==1.47.0 \
+            fastapi==0.115.0 'uvicorn[standard]==0.30.6' \
+            pydantic==2.9.2 filelock==3.16.1 python-multipart==0.0.12
+
+      - name: Restore detector and inpaint models
+        id: models
+        uses: actions/cache@v4
+        with:
+          path: |
+            models/*.onnx
+            models/.e2e-provenance.json
+          key: processing-profile-models-b224548-v1
+
+      - name: Restore desired base state
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf checkpoint repair6 data/raw/"$CHAPTER_ID" data/processed/"$CHAPTER_ID"
+          mkdir -p checkpoint/base checkpoint/r1 checkpoint/r2 checkpoint/r3 checkpoint/r4 checkpoint/r5 repair6/proof repair6/overlay/processed data/raw data/processed
+
+          gh run download "$BASE_RUN_ID" -n "$BASE_ARTIFACT" -D checkpoint/base
+          gh run download "$R1_RUN_ID" -n "$R1_ARTIFACT" -D checkpoint/r1
+          gh run download "$R2_RUN_ID" -n "$R2_ARTIFACT" -D checkpoint/r2
+          gh run download "$R3_RUN_ID" -n "$R3_ARTIFACT" -D checkpoint/r3
+          gh run download "$R4_RUN_ID" -n "$R4_ARTIFACT" -D checkpoint/r4
+          gh run download "$R5_RUN_ID" -n "$R5_ARTIFACT" -D checkpoint/r5
+
+          cp -a checkpoint/base/raw "data/raw/$CHAPTER_ID"
+          cp -a checkpoint/base/processed "data/processed/$CHAPTER_ID"
+
+          cp checkpoint/r1/manifest.json "data/processed/$CHAPTER_ID/manifest.json"
+          cp -a checkpoint/r1/overlay/processed/. "data/processed/$CHAPTER_ID/"
+
+          cp checkpoint/r2/manifest.json "data/processed/$CHAPTER_ID/manifest.json"
+          cp -a checkpoint/r2/overlay/processed/. "data/processed/$CHAPTER_ID/"
+
+          cp checkpoint/r3/manifest.json "data/processed/$CHAPTER_ID/manifest.json"
+          cp -a checkpoint/r3/overlay/processed/. "data/processed/$CHAPTER_ID/"
+
+          # PASS4 is the desired p103 base.
+          cp checkpoint/r4/manifest.json "data/processed/$CHAPTER_ID/manifest.json"
+          cp -a checkpoint/r4/overlay/processed/. "data/processed/$CHAPTER_ID/"
+
+          # Merge only p121 from PASS5; intentionally reject PASS5 p103 regression.
+          python - <<'PY'
+          import json, shutil
+          from pathlib import Path
+          current=Path('data/processed/05efce51/manifest.json')
+          m=json.loads(current.read_text(encoding='utf-8'))
+          r5=json.loads(Path('checkpoint/r5/manifest.json').read_text(encoding='utf-8'))
+          m['pages'][121]=r5['pages'][121]
+          current.write_text(json.dumps(m,ensure_ascii=False,indent=2),encoding='utf-8')
+          for f in Path('checkpoint/r5/overlay/processed').glob('*'):
+              if f.name in {'clean_033_04.png','manual_mask_033_04.png','manual_lama_mask_033_04.png'}:
+                  shutil.copy2(f,Path('data/processed/05efce51')/f.name)
+          PY
+
+          test -f "data/processed/$CHAPTER_ID/manifest.json"
+
+      - name: Snapshot PASS4 p103 and apply tiny LaMa brush
+        run: |
+          python - <<'PY'
+          import cv2, json, hashlib, shutil
+          import numpy as np
+          from pathlib import Path
+          from app.dependencies import pipeline
+          from app.manifest_utils import load_manifest_raw
+
+          chapter='05efce51'
+          m=load_manifest_raw(chapter)
+          old=Path('repair6/pass4'); old.mkdir(parents=True,exist_ok=True)
+          shutil.copy2(m['pages'][103]['clean'],old/'p103.png')
+
+          page=m['pages'][103]
+          img=cv2.imread(page['clean'],cv2.IMREAD_COLOR)
+          if img is None:
+              raise SystemExit('cannot read p103 clean')
+          h,w=img.shape[:2]
+          mask=np.zeros((h,w),np.uint8)
+
+          # Tiny exact brush over the surviving white outline from "STEP".
+          x1,y1,x2,y2=265,2420,330,2580
+          mask[y1:y2,x1:x2]=255
+
+          path=Path('repair6/p103-mask.png')
+          cv2.imwrite(str(path),mask)
+          pipeline.repaint_mask(chapter,103,mask,force_lama=True)
+
+          op={
+            'page_index':103,
+            'mode':'lama',
+            'rects':[(x1,y1,x2,y2)],
+            'mask_pixels':int(np.count_nonzero(mask)),
+            'mask_sha256':hashlib.sha256(path.read_bytes()).hexdigest(),
+          }
+          Path('repair6/repaint-operations.json').write_text(json.dumps([op],indent=2),encoding='utf-8')
+          PY
+
+      - name: Verify p121 preserve and chapter invariants
+        run: |
+          python - <<'PY'
+          import cv2, json, numpy as np
+          from pathlib import Path
+          from app.manifest_utils import load_manifest_raw
+
+          m=load_manifest_raw('05efce51')
+
+          for p in [0,138]:
+              page=m['pages'][p]
+              if not page.get('skipped') or page.get('clean') is not None:
+                  raise SystemExit(f'skip drift p{p:03d}')
+
+          preserve={
+            40:[(0,2180,300,2320)],
+            102:[(500,2700,900,2950)],
+            121:[(620,1180,900,1320)],
+          }
+          for p,rs in preserve.items():
+              raw=cv2.imread(m['pages'][p]['original'])
+              clean=cv2.imread(m['pages'][p]['clean'])
+              if raw is None or clean is None:
+                  raise SystemExit(f'missing image p{p:03d}')
+              for x1,y1,x2,y2 in rs:
+                  if not np.array_equal(raw[y1:y2,x1:x2],clean[y1:y2,x1:x2]):
+                      raise SystemExit(f'preserve drift p{p:03d}')
+
+          Path('repair6/manifest.json').write_text(json.dumps(m,ensure_ascii=False,indent=2),encoding='utf-8')
+          PY
+
+      - name: Build tiny-finish proof
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from PIL import Image, ImageDraw, ImageFont
+          from app.manifest_utils import load_manifest_raw
+
+          chapter='05efce51'
+          m=load_manifest_raw(chapter)
+          proof=Path('repair6/proof'); proof.mkdir(parents=True,exist_ok=True)
+          font=ImageFont.load_default()
+
+          # p103: raw vs PASS4 vs PASS6
+          raw=Image.open(m['pages'][103]['original']).convert('RGB')
+          before=Image.open('repair6/pass4/p103.png').convert('RGB')
+          after=Image.open(m['pages'][103]['clean']).convert('RGB')
+          box=(150,2150,500,2800)
+          ims=[]
+          for im in (raw,before,after):
+              c=im.crop(box); c.thumbnail((360,360),Image.Resampling.LANCZOS); ims.append(c)
+          card=Image.new('RGB',(1140,410),'white')
+          for i,im in enumerate(ims): card.paste(im,(10+i*380,28))
+          d=ImageDraw.Draw(card)
+          d.text((8,5),'p103 tiny LaMa finish',fill='black',font=font)
+          for i,s in enumerate(('RAW','PASS4','PASS6')): d.text((145+i*380,390),s,fill='black',font=font)
+          card.save(proof/'p103.jpg',quality=94)
+          raw.close(); before.close(); after.close()
+
+          # p121 final state proof.
+          raw=Image.open(m['pages'][121]['original']).convert('RGB')
+          after=Image.open(m['pages'][121]['clean']).convert('RGB')
+          ims=[]
+          for im in (raw,after):
+              c=im.crop((0,850,900,1350)); c.thumbnail((480,360),Image.Resampling.LANCZOS); ims.append(c)
+          card2=Image.new('RGB',(1000,410),'white')
+          card2.paste(ims[0],(10,28)); card2.paste(ims[1],(510,28))
+          d2=ImageDraw.Draw(card2)
+          d2.text((8,5),'p121 final preserve+clean state',fill='black',font=font)
+          d2.text((205,390),'RAW',fill='black',font=font); d2.text((700,390),'FINAL',fill='black',font=font)
+          card2.save(proof/'p121.jpg',quality=94)
+          PY
+
+      - name: Pack tiny-finish delta
+        if: always()
+        run: |
+          python - <<'PY'
+          import json, shutil
+          from pathlib import Path
+          from app.manifest_utils import load_manifest_raw
+
+          chapter='05efce51'
+          m=load_manifest_raw(chapter)
+          out=Path('repair6/overlay/processed'); out.mkdir(parents=True,exist_ok=True)
+
+          for p in [103,121]:
+              page=m['pages'][p]
+              for field in ('clean','manual_mask','manual_lama_mask'):
+                  v=page.get(field)
+                  if v and Path(v).is_file():
+                      shutil.copy2(v,out/Path(v).name)
+
+          meta={
+            'checkpoint':'02g-tiny-lama-finish',
+            'chapter_id':chapter,
+            'accepted_base':{'p103':'PASS4','p121':'PASS5'},
+            'page_103_finish':'tiny_lama_exact_mask',
+            'page_121_preserve':[620,1180,900,1320],
+            'next_action':'HUMAN_REVIEW_TINY_FINISH',
+          }
+          Path('repair6/manual-clean-repair-6.json').write_text(json.dumps(meta,indent=2),encoding='utf-8')
+          PY
+
+      - name: Upload tiny-finish delta
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: 02g-manual-clean-repair-05efce51
+          path: |
+            repair6/manifest.json
+            repair6/manual-clean-repair-6.json
+            repair6/repaint-operations.json
+            repair6/p103-mask.png
+            repair6/overlay/
+          compression-level: 0
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Upload tiny-finish proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: 02g-manual-clean-proof-05efce51
+          path: repair6/proof/
+          retention-days: 7
+          if-no-files-found: error
