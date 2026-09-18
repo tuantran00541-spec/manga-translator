@@ -1,9 +1,9 @@
 {
   "checkpoint": "CLEAN_REVIEW",
-  "status": "FAIL_REPAIR_REQUIRED",
+  "status": "PASS",
   "chapter_id": "05efce51",
   "technical_pass": true,
-  "editorial_pass": false,
+  "editorial_pass": true,
   "base_clean_run_id": 35286501171,
   "accepted_repair_chain": [
     {
@@ -29,20 +29,28 @@
     {
       "run_id": 35294489102,
       "checkpoint": "02F",
-      "role": "p121 preserve fix; p103 output rejected"
+      "role": "accepted p121 preserve fix only; p103 output rejected"
     },
+    {
+      "run_id": 35295206661,
+      "checkpoint": "02H",
+      "role": "accepted current-clean exact p103 repair with zero outside-authority changes"
+    }
+  ],
+  "rejected_repair_runs": [
     {
       "run_id": 35294842139,
       "checkpoint": "02G",
-      "role": "accepted p103 tiny LaMa finish + accepted p121 PASS5 state"
+      "reason": "full-resolution p103 artwork corruption"
     }
   ],
   "human_review": {
     "initial_full_slice_proof_sheets_reviewed": 12,
     "total_slices_reviewed": 139,
     "focused_repair_proofs_reviewed": true,
+    "full_resolution_p103_proof_reviewed": true,
     "final_story_text_blockers": 0,
-    "final_artwork_damage_blockers": 1,
+    "final_artwork_damage_blockers": 0,
     "source_residue_blockers": 0,
     "skip_pages": [
       0,
@@ -76,20 +84,21 @@
     },
     "notes": [
       "p000 and p138 are non-story promo/credit slices and intentionally export from RAW via skipped state.",
-      "p103 final accepted state is PASS4 plus one tiny exact LaMa brush from run 35294842139; PASS5 p103 was rejected due visual regression.",
-      "p121 final accepted state uses corrected tight preserve geometry for the ASURASCANS watermark and clean story-text band.",
-      "Automated residue verifier missed several visually obvious free-text/display residues in the original candidate; human proof review remained authoritative.",
-      "02G was rejected after full-resolution inspection: p103 contains a large visibly corrupted inpaint block despite the focused crop appearing acceptable."
+      "p121 uses the corrected tight preserve rectangle around the ASURASCANS watermark; story text is fully removed.",
+      "02G p103 was explicitly rejected after full-resolution inspection despite its focused proof crop.",
+      "Final p103 repair is 02H: stroke-aware exact brush applied on CURRENT CLEAN instead of replaying auto-clean.",
+      "02H verified outside_authority_changed_pixels == 0 and full-res proof shows no remaining text residue or artwork blocker.",
+      "Automated residue verifier missed several visually obvious free-text/display residues in the original candidate; human proof review remained authoritative."
     ]
   },
-  "blockers": [
-    "P103_02G_ARTWORK_DAMAGE"
-  ],
-  "ocr_allowed": false,
-  "final_repair_run_id": null,
-  "final_repair_artifact": null,
-  "final_repair_artifact_id": null,
-  "final_proof_artifact": null,
-  "final_proof_artifact_id": null,
-  "next_action": "REPAIR_P103_FROM_PASS4_CURRENT_CLEAN"
+  "blockers": [],
+  "ocr_allowed": true,
+  "final_repair_run_id": 35295206661,
+  "final_repair_artifact": "02h-manual-clean-repair-05efce51",
+  "final_repair_artifact_id": 10527651324,
+  "final_repair_artifact_digest": "sha256:fba0cbea05ee81bef452fc8baca7752f88ba6ccea3d187b4a63489232cf8644f",
+  "final_proof_artifact": "02h-manual-clean-proof-05efce51",
+  "final_proof_artifact_id": 10528030957,
+  "final_proof_artifact_digest": "sha256:df17005350fb3f6b87975a713e29e66fae00776fe92406884b3c12cff1be0b63",
+  "next_action": "BUILD_FINAL_CLEAN_CHECKPOINT"
 }
