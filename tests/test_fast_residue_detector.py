@@ -29,14 +29,17 @@ def _box(x1, y1, x2, y2):
     )
 
 
-def _detector_with_fake_text():
+def _detector_with_fake_text(*, flat_gate=True, coalescing=None):
     detector = FastResidueAdaptiveFocusCombinedTextDetector.__new__(
         FastResidueAdaptiveFocusCombinedTextDetector
     )
     detector._residue_metrics_local = threading.local()
     detector._residue_metrics_lock = threading.Lock()
     detector._residue_totals = {}
-    detector._residue_flat_gate_enabled = True
+    if flat_gate is not None:
+        detector._residue_flat_gate_enabled = flat_gate
+    if coalescing is not None:
+        detector._residue_coalescing_enabled = coalescing
     detector.text_detector = _FakeTextDetector()
     return detector
 
@@ -116,6 +119,21 @@ def test_flat_clean_source_skips_neural_residue_verifier():
     assert metrics["model_calls"] == 0
 
 
+def test_flat_negative_skip_requires_explicit_opt_in():
+    detector = _detector_with_fake_text(flat_gate=None, coalescing=False)
+    source = _box(10, 10, 60, 40)
+    image = np.full((100, 120, 3), 248, dtype=np.uint8)
+
+    detector.verify_post_inpaint_residue(image, [source])
+
+    assert FastResidueAdaptiveFocusCombinedTextDetector._FLAT_NEGATIVE_GATE_DEFAULT is False
+    assert detector.text_detector.calls == 1
+    metrics = detector.last_residue_metrics()
+    assert metrics["flat_negative_sources"] == 0
+    assert metrics["neural_sources"] == 1
+    assert metrics["model_calls"] == 1
+
+
 def test_single_contrasting_residual_forces_neural_verifier():
     detector = _detector_with_fake_text()
     source = _box(10, 10, 60, 40)
@@ -132,7 +150,7 @@ def test_single_contrasting_residual_forces_neural_verifier():
 
 
 def test_coalesced_verifier_uses_one_model_call_and_keeps_residue_evidence():
-    detector = _detector_with_fake_text()
+    detector = _detector_with_fake_text(coalescing=True)
 
     first = _box(10, 10, 50, 35)
     second = _box(48, 12, 88, 37)
