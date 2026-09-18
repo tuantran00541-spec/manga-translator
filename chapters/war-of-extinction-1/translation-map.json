@@ -1,0 +1,1709 @@
+{
+  "checkpoint": "04-translation-human-review",
+  "chapter_id": "05efce51",
+  "series_title": "War of Extinction",
+  "chapter_number": 1,
+  "source_language": "en",
+  "target_language": "vi",
+  "status": "READY_TO_APPLY",
+  "editorial_principles": {
+    "scene_based": true,
+    "natural_vietnamese": true,
+    "concise_for_lettering": true,
+    "preserve_character_voice": true,
+    "preserve_punctuation_acting": true,
+    "no_unfounded_jokes": true
+  },
+  "glossary": {
+    "Tournament of the Worlds' Strongest": "Giải Đấu Cường Giả Vạn Giới",
+    "Heavenly Demon": "Thiên Ma",
+    "Murim": "Võ Lâm",
+    "Creation": "“tạo vật”",
+    "Supreme God": "Tối Cao Thần",
+    "Ordinary World": "Thế Giới Bình Thường",
+    "Fantasy World": "Thế Giới Huyền Ảo",
+    "Future World": "Thế Giới Tương Lai",
+    "Hunter World": "Thế Giới Thợ Săn",
+    "Magic World": "Thế Giới Ma Pháp",
+    "Mutant World": "Thế Giới Dị Nhân",
+    "Sentai World": "Thế Giới Sentai",
+    "Heavenly Demon's Heaven-Opening Form": "Thiên Ma Khai Thiên Thức",
+    "Heavenly Demon's God-Slaying Slash": "Thiên Ma Thí Thần Trảm",
+    "Heavenly Demonic Footwork": "Thiên Ma Bộ Pháp",
+    "Heaven-Reaching Shadowless Step": "Thông Thiên Vô Ảnh Bộ"
+  },
+  "active_story_objects": 167,
+  "active_untranslated_story_objects": 0,
+  "entries": [
+    {
+      "index": 0,
+      "object_id": "text_85f32a65a30d4acf",
+      "page_index": 1,
+      "source_page": 1,
+      "semantic_type": "free_text",
+      "source": "THE DAY OF THE\nTOURNAMENT OF THE\nWORLDS' STRONGEST",
+      "translation": "NGÀY DIỄN RA\nGIẢI ĐẤU CƯỜNG GIẢ\nVẠN GIỚI",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 1,
+      "object_id": "text_16569944b97a44bc",
+      "page_index": 5,
+      "source_page": 1,
+      "semantic_type": "speech_bubble",
+      "source": "TOURNAMENT\nOF THE WORLDS'\nSTRONGEST STADIUM",
+      "translation": "ĐẤU TRƯỜNG\nGIẢI ĐẤU CƯỜNG GIẢ\nVẠN GIỚI",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 2,
+      "object_id": "text_f758e161349b45ce",
+      "page_index": 6,
+      "source_page": 1,
+      "semantic_type": "speech_bubble",
+      "source": "THE STRONGEST\nFIGHTERS FROM OTHER\nWORLDS...",
+      "translation": "NHỮNG KẺ MẠNH NHẤT\nTỪ CÁC THẾ GIỚI KHÁC...",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 3,
+      "object_id": "text_159cc4d5832a499e",
+      "page_index": 6,
+      "source_page": 1,
+      "semantic_type": "speech_bubble",
+      "source": "IT'S BEEN\nA LONG TIME SINCE\nI'VE HAD SOMETHING\nTO ENJOY.",
+      "translation": "LÂU LẮM RỒI\nTA MỚI CÓ THỨ\nĐÁNG ĐỂ MONG CHỜ.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 4,
+      "object_id": "text_a501467988a743b3",
+      "page_index": 6,
+      "source_page": 1,
+      "semantic_type": "speech_bubble",
+      "source": "WORLD 1\nFANTASY WORLD\nREPRESENTATIVE\nDEMON KING\nASMODEUS",
+      "translation": "THẾ GIỚI 1\nTHẾ GIỚI HUYỀN ẢO\nĐẠI DIỆN\nMA VƯƠNG\nASMODEUS",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 5,
+      "object_id": "text_fee46e6dd3c342a7",
+      "page_index": 7,
+      "source_page": 1,
+      "semantic_type": "speech_bubble",
+      "source": "WORLD 4\nFUTURE WORLD\nREPRESENTATIVE\nCT1000",
+      "translation": "THẾ GIỚI 4\nTHẾ GIỚI TƯƠNG LAI\nĐẠI DIỆN\nCT1000",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 6,
+      "object_id": "text_c70a892b53984ef5",
+      "page_index": 8,
+      "source_page": 2,
+      "semantic_type": "speech_bubble",
+      "source": "THE FATE\nOF THE MURIM\nRESTS ON YOUR\nSHOULDERS.",
+      "translation": "VẬN MỆNH\nVÕ LÂM\nTRÔNG CẢ VÀO\nNGƯƠI.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 7,
+      "object_id": "text_1d38c452b7784324",
+      "page_index": 8,
+      "source_page": 2,
+      "semantic_type": "free_text",
+      "source": "PLEASE... SEE\nTHIS THROUGH...!",
+      "translation": "XIN NGƯƠI...\nHÃY LÀM ĐẾN CÙNG...!",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 8,
+      "object_id": "text_a3afca228c184081",
+      "page_index": 9,
+      "source_page": 3,
+      "semantic_type": "speech_bubble",
+      "source": "GO, MARTIAL\nWORLD!! I'VE BET\nBIG ON YOU!!",
+      "translation": "CỐ LÊN, VÕ LÂM!!\nTA CƯỢC ĐẬM VÀO\nNGƯƠI ĐẤY!!",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 9,
+      "object_id": "text_0d4d1d009a604a21",
+      "page_index": 9,
+      "source_page": 3,
+      "semantic_type": "speech_bubble",
+      "source": "GIVE 'EM A\nGOOD FIGHT!!",
+      "translation": "CHO CHÚNG\nBIẾT TAY ĐI!!",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 10,
+      "object_id": "text_bee363a569c843e1",
+      "page_index": 9,
+      "source_page": 3,
+      "semantic_type": "speech_bubble",
+      "source": "I BET\nEVERYTHING I\nOWN, TOO!!",
+      "translation": "TA CŨNG CƯỢC\nTẤT CẢ GIA SẢN RỒI!!",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 11,
+      "object_id": "text_a29b0ef72fa84478",
+      "page_index": 11,
+      "source_page": 3,
+      "semantic_type": "speech_bubble",
+      "source": "HOW DARE\nYOU TREAT ME LIKE\nA CLOWN.",
+      "translation": "DÁM XEM TA\nNHƯ TÊN HỀ.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 12,
+      "object_id": "text_c59c6354d0ad41cb",
+      "page_index": 12,
+      "source_page": 3,
+      "semantic_type": "speech_bubble",
+      "source": "DISGUSTING.",
+      "translation": "GHÊ TỞM.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 13,
+      "object_id": "text_0c0d993f1ac64eb6",
+      "page_index": 12,
+      "source_page": 3,
+      "semantic_type": "speech_bubble",
+      "source": "WORLD 7\n<MARTIAL WORLD\nREPRESENTATIVE>\nHEAVENLY DEMON\nCHEON SOHYEOP",
+      "translation": "THẾ GIỚI 7\n<ĐẠI DIỆN VÕ LÂM>\nTHIÊN MA\nCHEON SOHYEOP",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 14,
+      "object_id": "text_82f73fdab9be4de2",
+      "page_index": 15,
+      "source_page": 5,
+      "semantic_type": "speech_bubble",
+      "source": "HE'S QUITE\nA FORMIDABLE\nFIGHTER, TOO.",
+      "translation": "GÃ NÀY CŨNG\nKHÁ ĐÁNG GỜM.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 15,
+      "object_id": "text_3f26fbe896a94907",
+      "page_index": 15,
+      "source_page": 5,
+      "semantic_type": "free_text",
+      "source": "AT LEAST\nS-RANK... NO,",
+      "translation": "ÍT NHẤT\nHẠNG S... KHÔNG,",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 16,
+      "object_id": "text_993a1bb446414996",
+      "page_index": 15,
+      "source_page": 5,
+      "semantic_type": "speech_bubble",
+      "source": "I'D PUT HIM\nON PAR WITH AN\nSS-RANK HUNTER\nOR HIGHER.",
+      "translation": "TA XẾP HẮN\nNGANG THỢ SĂN HẠNG SS,\nTHẬM CHÍ CAO HƠN.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 17,
+      "object_id": "text_3699bf35be724b56",
+      "page_index": 16,
+      "source_page": 5,
+      "semantic_type": "speech_bubble",
+      "source": "SO THEY'RE\nALL THE STRONGEST\nIN THEIR OWN\nWORLDS...",
+      "translation": "VẬY TẤT CẢ\nĐỀU LÀ KẺ MẠNH NHẤT\nỞ THẾ GIỚI CỦA MÌNH...",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 18,
+      "object_id": "text_a72928f656e84d7b",
+      "page_index": 16,
+      "source_page": 5,
+      "semantic_type": "speech_bubble",
+      "source": "NOW THIS...",
+      "translation": "GIỜ THÌ...",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 19,
+      "object_id": "text_5a948c3e6c6f4132",
+      "page_index": 17,
+      "source_page": 5,
+      "semantic_type": "speech_bubble",
+      "source": "THIS IS\nSOMETHING TO LOOK\nFORWARD TO!",
+      "translation": "ĐÁNG MONG\nCHỜ ĐÂY!",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 20,
+      "object_id": "text_775a916983d240f4",
+      "page_index": 17,
+      "source_page": 5,
+      "semantic_type": "speech_bubble",
+      "source": "WORLD 7\n<HUNTER WORLD\nREPRESENTATIVE>\nSSS-RANK HUNTER\nKAMIYA SHIN",
+      "translation": "THẾ GIỚI 7\n<ĐẠI DIỆN THẾ GIỚI THỢ SĂN>\nTHỢ SĂN HẠNG SSS\nKAMIYA SHIN",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 21,
+      "object_id": "text_4f05d727a97149fa",
+      "page_index": 18,
+      "source_page": 5,
+      "semantic_type": "speech_bubble",
+      "source": "THINGS ARE\nHEATING UP IN THE\nARENA!!",
+      "translation": "ĐẤU TRƯỜNG\nNÓNG LÊN RỒI!!",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 22,
+      "object_id": "text_0d589a169f004c8f",
+      "page_index": 18,
+      "source_page": 5,
+      "semantic_type": "speech_bubble",
+      "source": "TOURNAMENT\nOF THE WORLDS'\nSTRONGEST\nREFEREE",
+      "translation": "TRỌNG TÀI\nGIẢI ĐẤU CƯỜNG GIẢ\nVẠN GIỚI",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 23,
+      "object_id": "text_7041a3527a084488",
+      "page_index": 19,
+      "source_page": 5,
+      "semantic_type": "speech_bubble",
+      "source": "LET'S KEEP\nTHAT EXCITEMENT\nGOING!!",
+      "translation": "HÃY GIỮ\nNGUYÊN KHÍ THẾ\nĐÓ NÀO!!",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 24,
+      "object_id": "text_30eaa646b03f4d06",
+      "page_index": 19,
+      "source_page": 5,
+      "semantic_type": "speech_bubble",
+      "source": "THE TOURNAMENT\nOF THE WORLDS'\nSTRONGEST-",
+      "translation": "GIẢI ĐẤU\nCƯỜNG GIẢ VẠN GIỚI—",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 25,
+      "object_id": "text_2ba20e5d637846f5",
+      "page_index": 21,
+      "source_page": 6,
+      "semantic_type": "text",
+      "source": "BEGINS NOW!!!",
+      "translation": "CHÍNH THỨC\nBẮT ĐẦU!!!",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 26,
+      "object_id": "text_6db132d805a3484d",
+      "page_index": 22,
+      "source_page": 7,
+      "semantic_type": "text",
+      "source": "24 HOURS\nEARLIER",
+      "translation": "24 GIỜ\nTRƯỚC",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 27,
+      "object_id": "text_154b29619197423a",
+      "page_index": 23,
+      "source_page": 7,
+      "semantic_type": "text",
+      "source": "SIXTEEN\nWORLDS.",
+      "translation": "MƯỜI SÁU\nTHẾ GIỚI.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 28,
+      "object_id": "text_c90950c9a0f34586",
+      "page_index": 23,
+      "source_page": 7,
+      "semantic_type": "text",
+      "source": "THE GODS\nWHO PRESIDED OVER\nTHEM GATHERED.",
+      "translation": "CÁC VỊ THẦN\nCAI QUẢN CHÚNG\nĐÃ TỤ HỌP.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 29,
+      "object_id": "text_2eefe341dc5749d3",
+      "page_index": 25,
+      "source_page": 7,
+      "semantic_type": "text",
+      "source": "PATHETIC FOOLS.\nI WILL BE THE NEXT\nSUPREME GOD.",
+      "translation": "LŨ NGU XUẨN.\nTA SẼ LÀ\nTỐI CAO THẦN TIẾP THEO.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 30,
+      "object_id": "text_48956fc28d074865",
+      "page_index": 25,
+      "source_page": 7,
+      "semantic_type": "speech_bubble",
+      "source": "<GOD OF THE\nFANTASY WORLD>\nALKAREON",
+      "translation": "<THẦN\nTHẾ GIỚI HUYỀN ẢO>\nALKAREON",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 31,
+      "object_id": "text_ca427115d40d49c4",
+      "page_index": 26,
+      "source_page": 7,
+      "semantic_type": "speech_bubble",
+      "source": "NONSENSE.\nI VALUE RIGHTEOUSNESS\nAND CHIVALRY. IT IS ONLY\nFITTING THAT I SHOULD\nTAKE THE POSITION.",
+      "translation": "VỚ VẨN.\nTA COI TRỌNG CHÍNH NGHĨA\nVÀ HIỆP NGHĨA.\nVỊ TRÍ ẤY ĐƯƠNG NHIÊN\nPHẢI THUỘC VỀ TA.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 32,
+      "object_id": "text_8a0daa223fed4602",
+      "page_index": 27,
+      "source_page": 7,
+      "semantic_type": "speech_bubble",
+      "source": "<GOD OF THE\nMARTIAL WORLD>\nMUWONGUN",
+      "translation": "<THẦN VÕ LÂM>\nMUWONGUN",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 33,
+      "object_id": "text_a64a9adf053d4ed4",
+      "page_index": 28,
+      "source_page": 8,
+      "semantic_type": "speech_bubble",
+      "source": "AMUSING.",
+      "translation": "THÚ VỊ.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 34,
+      "object_id": "text_05b5521bc8c64776",
+      "page_index": 28,
+      "source_page": 8,
+      "semantic_type": "speech_bubble",
+      "source": "ARGUMENTS\nBETWEEN BEINGS OF\nINFERIOR INTELLIGENCE\nARE ALWAYS AMUSING.",
+      "translation": "TRANH CÃI\nGIỮA NHỮNG KẺ\nTRÍ TUỆ HẠ ĐẲNG\nLÚC NÀO CŨNG THÚ VỊ.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 35,
+      "object_id": "text_0f637ab3ea414798",
+      "page_index": 29,
+      "source_page": 9,
+      "semantic_type": "speech_bubble",
+      "source": "I WILL USHER IN THE\nNEW ERA. YOU INFERIOR\nBEINGS SHOULD STAY\nOUT OF IT.",
+      "translation": "KỶ NGUYÊN MỚI\nSẼ DO TA MỞ RA.\nCÁC SINH VẬT HẠ ĐẲNG\nCÁC NGƯƠI TRÁNH RA.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 36,
+      "object_id": "text_e6a7a8d2e7b94ec6",
+      "page_index": 29,
+      "source_page": 9,
+      "semantic_type": "speech_bubble",
+      "source": "<GOD OF THE\nFUTURE WORLD>\nSKYNET",
+      "translation": "<THẦN\nTHẾ GIỚI TƯƠNG LAI>\nSKYNET",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 37,
+      "object_id": "text_72f2a631b5b24ffb",
+      "page_index": 30,
+      "source_page": 9,
+      "semantic_type": "speech_bubble",
+      "source": "GOD OF THE\nORDINARY WORLD>\nJADE EMPEROR",
+      "translation": "<THẦN\nTHẾ GIỚI BÌNH THƯỜNG>\nNGỌC HOÀNG",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 38,
+      "object_id": "text_957bf2e05eea4598",
+      "page_index": 31,
+      "source_page": 9,
+      "semantic_type": "speech_bubble",
+      "source": "THAT IS A\nDEEPLY OFFENSIVE\nREMARK.",
+      "translation": "LỜI ĐÓ\nTHẬT SỰ RẤT\nXÚC PHẠM.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 39,
+      "object_id": "text_160c2c05003d4381",
+      "page_index": 31,
+      "source_page": 9,
+      "semantic_type": "speech_bubble",
+      "source": "<GOD OF THE\nMAGIC WORLD>\nARKIEL",
+      "translation": "<THẦN\nTHẾ GIỚI MA PHÁP>\nARKIEL",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 40,
+      "object_id": "text_ac0b1671e8e8484e",
+      "page_index": 31,
+      "source_page": 9,
+      "semantic_type": "speech_bubble",
+      "source": "<GOD OF THE\nSENTAI WORLD>\nOMEGA",
+      "translation": "<THẦN\nTHẾ GIỚI SENTAI>\nOMEGA",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 41,
+      "object_id": "text_e688fd752dfa4f7b",
+      "page_index": 31,
+      "source_page": 9,
+      "semantic_type": "speech_bubble",
+      "source": "<GOD OF THE\nMUTANT WORLD>\nMETA",
+      "translation": "<THẦN\nTHẾ GIỚI DỊ NHÂN>\nMETA",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 42,
+      "object_id": "text_2653cb77285a4101",
+      "page_index": 31,
+      "source_page": 9,
+      "semantic_type": "speech_bubble",
+      "source": "ARE YOU\nDISMISSING EVERY WORLD\nBUT YOUR OWN?",
+      "translation": "NGƯƠI COI THƯỜNG\nMỌI THẾ GIỚI NGOÀI\nTHẾ GIỚI CỦA MÌNH SAO?",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 43,
+      "object_id": "text_9a39e1ce36694c81",
+      "page_index": 31,
+      "source_page": 9,
+      "semantic_type": "speech_bubble",
+      "source": "SUCH\nARROGANCE!!",
+      "translation": "NGẠO MẠN!!",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 44,
+      "object_id": "text_c72ce9ba80124766",
+      "page_index": 32,
+      "source_page": 9,
+      "semantic_type": "speech_bubble",
+      "source": "WHY DON'T WE\nSETTLE THIS WITH A\nGOOD FIGHT?",
+      "translation": "HAY LÀ\nGIẢI QUYẾT BẰNG\nMỘT TRẬN ĐẤU?",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 45,
+      "object_id": "text_faa7da10f06d4178",
+      "page_index": 33,
+      "source_page": 9,
+      "semantic_type": "speech_bubble",
+      "source": "WE ULTIMATELY\nWANT TO DETERMINE\nWHICH GOD IS SUPERIOR,\nDON'T WE?",
+      "translation": "RỐT CUỘC,\nCHÚNG TA MUỐN PHÂN ĐỊNH\nVỊ THẦN NÀO ƯU VIỆT HƠN,\nĐÚNG CHỨ?",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 46,
+      "object_id": "text_3ed972e6d5d54487",
+      "page_index": 33,
+      "source_page": 9,
+      "semantic_type": "speech_bubble",
+      "source": "SINCE WE CAN'T\nFIGHT ONE ANOTHER\nOURSELVES.",
+      "translation": "VÌ BẢN THÂN\nCHÚNG TA KHÔNG THỂ\nGIAO CHIẾN VỚI NHAU.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 47,
+      "object_id": "text_df7a3d0d607044b9",
+      "page_index": 34,
+      "source_page": 9,
+      "semantic_type": "speech_bubble",
+      "source": "HOW ABOUT PITTING\nEACH WORLD'S STRONGEST\nCREATION AGAINST THE\nOTHERS?",
+      "translation": "VẬY CHO\n“TẠO VẬT” MẠNH NHẤT\nCỦA MỖI THẾ GIỚI\nĐẤU VỚI NHAU THÌ SAO?",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 48,
+      "object_id": "text_47ed1d3dba46454e",
+      "page_index": 36,
+      "source_page": 11,
+      "semantic_type": "speech_bubble",
+      "source": "ONLY THE VICTORIOUS\nWORLD'S CREATIONS\nWILL SURVIVE.",
+      "translation": "CHỈ “TẠO VẬT”\nCỦA THẾ GIỚI CHIẾN THẮNG\nMỚI ĐƯỢC SỐNG SÓT.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 49,
+      "object_id": "text_9b014649f94844e6",
+      "page_index": 36,
+      "source_page": 11,
+      "semantic_type": "speech_bubble",
+      "source": "LET US STAKE\nEACH WORLD'S VERY\nEXISTENCE ON IT.",
+      "translation": "HÃY CƯỢC\nCẢ SỰ TỒN VONG\nCỦA MỖI THẾ GIỚI\nVÀO TRẬN NÀY.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 50,
+      "object_id": "text_6118381355474a04",
+      "page_index": 37,
+      "source_page": 11,
+      "semantic_type": "speech_bubble",
+      "source": "WITH THOSE\nWORDS FROM THE\nSUPREME GOD,",
+      "translation": "VỪA DỨT LỜI\nCỦA TỐI CAO THẦN,",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 51,
+      "object_id": "text_90d5ac22d7d5458c",
+      "page_index": 38,
+      "source_page": 11,
+      "semantic_type": "speech_bubble",
+      "source": "THE GODS OF\nEVERY WORLD TOOK\nINTEREST.",
+      "translation": "CÁC VỊ THẦN\nCỦA MỌI THẾ GIỚI\nĐỀU HỨNG THÚ.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 52,
+      "object_id": "text_732c160643c34b6c",
+      "page_index": 38,
+      "source_page": 11,
+      "semantic_type": "text",
+      "source": "A CREATOR'S",
+      "translation": "SỰ TÒ MÒ",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 53,
+      "object_id": "text_9c07b34f7d084c1f",
+      "page_index": 38,
+      "source_page": 11,
+      "semantic_type": "text",
+      "source": "CURIOSITY.",
+      "translation": "CỦA ĐẤNG\nSÁNG TẠO.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 54,
+      "object_id": "text_ef8f186fd0ed4a4e",
+      "page_index": 39,
+      "source_page": 11,
+      "semantic_type": "speech_bubble",
+      "source": "WHICH WORLD'S\nCREATION WOULD BE\nTHE STRONGEST?",
+      "translation": "“TẠO VẬT”\nCỦA THẾ GIỚI NÀO\nSẼ MẠNH NHẤT?",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 55,
+      "object_id": "text_99a3c9ce7ad644e3",
+      "page_index": 40,
+      "source_page": 11,
+      "semantic_type": "text",
+      "source": "WHOSE CREATION...",
+      "translation": "“TẠO VẬT”\nCỦA AI...",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 56,
+      "object_id": "text_75518add9f524cd2",
+      "page_index": 41,
+      "source_page": 11,
+      "semantic_type": "free_text",
+      "source": "WOULD PROVE\nSUPERIOR TO ALL\nOTHERS?",
+      "translation": "SẼ VƯỢT TRỘI\nHƠN TẤT CẢ?",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 57,
+      "object_id": "text_ccbcd3971e364ac6",
+      "page_index": 43,
+      "source_page": 13,
+      "semantic_type": "speech_bubble",
+      "source": "BWAHAHAHA!!",
+      "translation": "BWAHAHAHA!!",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 58,
+      "object_id": "text_749f6671d5064e48",
+      "page_index": 43,
+      "source_page": 13,
+      "semantic_type": "speech_bubble",
+      "source": "I LIKE IT!!",
+      "translation": "TA THÍCH ĐẤY!!",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 59,
+      "object_id": "text_19556be06ec545bf",
+      "page_index": 44,
+      "source_page": 13,
+      "semantic_type": "speech_bubble",
+      "source": "I WILL\nPARTICIPATE.",
+      "translation": "TA THAM GIA.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 60,
+      "object_id": "text_bd501f315d8b4fd3",
+      "page_index": 44,
+      "source_page": 13,
+      "semantic_type": "speech_bubble",
+      "source": "ANY WORLD THAT\nLACKS CONFIDENCE\nCAN SIT THIS OUT.",
+      "translation": "THẾ GIỚI NÀO\nKHÔNG TỰ TIN\nTHÌ CỨ ĐỨNG NGOÀI.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 61,
+      "object_id": "text_5704be0bc89e4370",
+      "page_index": 45,
+      "source_page": 13,
+      "semantic_type": "free_text",
+      "source": "THE RESULT:\nUNANIMOUS APPROVAL.",
+      "translation": "KẾT QUẢ:\nĐỒNG THUẬN TUYỆT ĐỐI.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 62,
+      "object_id": "text_01090bfbdc8d4016",
+      "page_index": 47,
+      "source_page": 13,
+      "semantic_type": "speech_bubble",
+      "source": "IT'S DECIDED,\nTHEN. IN THAT\nCASE...",
+      "translation": "VẬY QUYẾT ĐỊNH\nTHẾ ĐI.\nTRONG TRƯỜNG HỢP ĐÓ...",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 63,
+      "object_id": "text_3eb0ae1a9fb4488e",
+      "page_index": 48,
+      "source_page": 13,
+      "semantic_type": "text",
+      "source": "THE TOURNAMENT\nOF THE WORLDS'\nSTRONGEST",
+      "translation": "GIẢI ĐẤU\nCƯỜNG GIẢ\nVẠN GIỚI",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 64,
+      "object_id": "text_95f796481f2d4a0e",
+      "page_index": 49,
+      "source_page": 13,
+      "semantic_type": "free_text",
+      "source": "SHALL BE HELD!!",
+      "translation": "SẼ ĐƯỢC\nTỔ CHỨC!!",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 65,
+      "object_id": "text_924d7e0d76c6445b",
+      "page_index": 50,
+      "source_page": 14,
+      "semantic_type": "text",
+      "source": "THE PRESENT",
+      "translation": "HIỆN TẠI",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 66,
+      "object_id": "text_d0ec656084194005",
+      "page_index": 51,
+      "source_page": 15,
+      "semantic_type": "speech_bubble",
+      "source": "STRANGE.",
+      "translation": "LẠ THẬT.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 67,
+      "object_id": "text_31b4668ad79c4f44",
+      "page_index": 51,
+      "source_page": 15,
+      "semantic_type": "speech_bubble",
+      "source": "WHAT IS?",
+      "translation": "CHUYỆN GÌ?",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 68,
+      "object_id": "text_cbc4128af13141ba",
+      "page_index": 52,
+      "source_page": 15,
+      "semantic_type": "speech_bubble",
+      "source": "I SENSE\nPOWERFUL ENERGY\nFROM ALL OF THEM,\nBUT NOTHING FROM\nTHAT ONE.",
+      "translation": "TA CẢM NHẬN ĐƯỢC\nNĂNG LƯỢNG RẤT MẠNH\nTỪ TẤT CẢ BỌN HỌ,\nNHƯNG TÊN KIA THÌ KHÔNG.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 69,
+      "object_id": "text_aee41808b6be4149",
+      "page_index": 52,
+      "source_page": 15,
+      "semantic_type": "speech_bubble",
+      "source": "WORLD 9\n<MUTANT REPRESENTATIVE>\nULTRA BYTE",
+      "translation": "THẾ GIỚI 9\n<ĐẠI DIỆN DỊ NHÂN>\nULTRA BYTE",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 70,
+      "object_id": "text_d27343bc57e240f2",
+      "page_index": 53,
+      "source_page": 15,
+      "semantic_type": "speech_bubble",
+      "source": "WHO'S THAT\nPATHETIC-LOOKING\nWRETCH?",
+      "translation": "TÊN THẢM HẠI\nKIA LÀ AI VẬY?",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 71,
+      "object_id": "text_19468e82a60b45ac",
+      "page_index": 54,
+      "source_page": 15,
+      "semantic_type": "speech_bubble",
+      "source": "WORLD 9\n<ORDINARY WORLD\nREPRESENTATIVE>\nSHIN JAHYEON",
+      "translation": "THẾ GIỚI 9\n<ĐẠI DIỆN\nTHẾ GIỚI BÌNH THƯỜNG>\nSHIN JAHYEON",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 72,
+      "object_id": "text_93aa086ba605490a",
+      "page_index": 55,
+      "source_page": 15,
+      "semantic_type": "speech_bubble",
+      "source": "I CAN'T\nSENSE ANY MANA\nFROM HIM AT ALL.",
+      "translation": "TA HOÀN TOÀN\nKHÔNG CẢM NHẬN ĐƯỢC\nMANA TỪ HẮN.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 73,
+      "object_id": "text_5967bf7e482145e1",
+      "page_index": 56,
+      "source_page": 15,
+      "semantic_type": "speech_bubble",
+      "source": "HE'S\nNOT WORTH MY\nATTENTION.",
+      "translation": "HẮN KHÔNG ĐÁNG\nĐỂ TA BẬN TÂM.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 74,
+      "object_id": "text_1aa61677eb544b14",
+      "page_index": 57,
+      "source_page": 15,
+      "semantic_type": "speech_bubble",
+      "source": "NOW, FOR OUR\nFIRST MATCH!!",
+      "translation": "VÀ GIỜ LÀ\nTRẬN ĐẦU TIÊN!!",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 75,
+      "object_id": "text_cd9a74d423d3475f",
+      "page_index": 57,
+      "source_page": 15,
+      "semantic_type": "speech_bubble",
+      "source": "INTRODUCING!!",
+      "translation": "XIN GIỚI THIỆU!!",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 76,
+      "object_id": "text_d641fb6daa444702",
+      "page_index": 58,
+      "source_page": 16,
+      "semantic_type": "speech_bubble",
+      "source": "THE MARTIAL WORLD'S\nREPRESENTATIVE!!",
+      "translation": "ĐẠI DIỆN\nVÕ LÂM!!",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 77,
+      "object_id": "text_629f955eaab14897",
+      "page_index": 58,
+      "source_page": 16,
+      "semantic_type": "speech_bubble",
+      "source": "HEAVENLY DEMON\nCHEON SOHYEOP!!",
+      "translation": "THIÊN MA\nCHEON SOHYEOP!!",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 78,
+      "object_id": "text_c7137b4254eb4c0f",
+      "page_index": 59,
+      "source_page": 17,
+      "semantic_type": "speech_bubble",
+      "source": "AND HIS\nOPPONENT!!",
+      "translation": "VÀ ĐỐI THỦ\nCỦA ANH TA!!",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 79,
+      "object_id": "text_5e23826bef30450e",
+      "page_index": 59,
+      "source_page": 17,
+      "semantic_type": "speech_bubble",
+      "source": "THE ORDINARY\nWORLD'S REPRESENTATIVE,\nSHIN JAHYEON!!",
+      "translation": "ĐẠI DIỆN\nTHẾ GIỚI BÌNH THƯỜNG,\nSHIN JAHYEON!!",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 80,
+      "object_id": "text_3faf2c3a9d2b4df7",
+      "page_index": 60,
+      "source_page": 17,
+      "semantic_type": "speech_bubble",
+      "source": "<TOURNAMENT OF THE\nWORLDS' STRONGEST>\nTHE WORLD THAT\nLOSES A ONE-ON-ONE MATCH\nWILL BE DESTROYED.",
+      "translation": "<GIẢI ĐẤU CƯỜNG GIẢ VẠN GIỚI>\nTHẾ GIỚI THUA TRONG\nTRẬN 1 ĐẤU 1\nSẼ BỊ HỦY DIỆT.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 81,
+      "object_id": "text_938033bbf71740c9",
+      "page_index": 60,
+      "source_page": 17,
+      "semantic_type": "text",
+      "source": "VICTORY CONDITIONS\nOPPONENT'S DEATH OR\nDECLARATION OF DEFEAT",
+      "translation": "ĐIỀU KIỆN CHIẾN THẮNG\nĐỐI THỦ CHẾT HOẶC\nTUYÊN BỐ ĐẦU HÀNG",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 82,
+      "object_id": "text_7d650a5906fc4213",
+      "page_index": 64,
+      "source_page": 17,
+      "semantic_type": "speech_bubble",
+      "source": "THE BLUE CORNER\nNEEDS NO INTRODUCTION!!\nTHE MURIM ALLIANCE'S\nGREATEST NEMESIS!!",
+      "translation": "GÓC XANH\nCHẲNG CẦN GIỚI THIỆU!!\nĐẠI ĐỊCH SỐ MỘT\nCỦA VÕ LÂM MINH!!",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 83,
+      "object_id": "text_80a42b49311d47c0",
+      "page_index": 64,
+      "source_page": 17,
+      "semantic_type": "speech_bubble",
+      "source": "THE\nHEAVENLY DEMON!!\nCHEON SOHYEOP!!",
+      "translation": "THIÊN MA!!\nCHEON SOHYEOP!!",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 84,
+      "object_id": "text_21cee06ce17f4220",
+      "page_index": 66,
+      "source_page": 19,
+      "semantic_type": "speech_bubble",
+      "source": "DRIVEN BY MY\nOWN AMBITION, I WALKED\nTHE PATH OF CONQUEST,",
+      "translation": "VÌ DÃ TÂM\nCỦA BẢN THÂN,\nTA ĐÃ BƯỚC TRÊN\nCON ĐƯỜNG CHINH PHỤC,",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 85,
+      "object_id": "text_88743aa6e64f47a2",
+      "page_index": 66,
+      "source_page": 19,
+      "semantic_type": "text",
+      "source": "AND AT ITS END,\nI TOOK THE MURIM\nFOR MYSELF.",
+      "translation": "VÀ Ở CUỐI\nCON ĐƯỜNG ẤY,\nTA ĐÃ ĐOẠT LẤY VÕ LÂM.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 86,
+      "object_id": "text_1fcf05ec34e3434b",
+      "page_index": 66,
+      "source_page": 19,
+      "semantic_type": "text",
+      "source": "IT IS A PATH\nI HAVE WALKED BEFORE.\nI ALREADY KNOW WHAT\nBLOOD STAINS IT.",
+      "translation": "CON ĐƯỜNG NÀY\nTA TỪNG ĐI RỒI.\nTA BIẾT RÕ\nNÓ NHUỐM BAO NHIÊU MÁU.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 87,
+      "object_id": "text_6c5d1f675e9d4a9c",
+      "page_index": 67,
+      "source_page": 19,
+      "semantic_type": "free_text",
+      "source": "THERE IS NO\nREASON TO HESITATE.",
+      "translation": "KHÔNG CÓ\nLÝ DO GÌ ĐỂ\nDO DỰ.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 88,
+      "object_id": "text_e405d1c35e3842b0",
+      "page_index": 67,
+      "source_page": 19,
+      "semantic_type": "free_text",
+      "source": "FOR THE SAKE\nOF MY FAMILY,",
+      "translation": "VÌ GIA ĐÌNH TA,",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 89,
+      "object_id": "text_manual_p067_conquest",
+      "page_index": 67,
+      "source_page": 19,
+      "semantic_type": "free_text",
+      "source": "I WOULD WALK THAT MERE\nPATH OF CONQUEST.",
+      "translation": "TA VẪN SẼ BƯỚC LẠI\nCON ĐƯỜNG CHINH PHỤC ẤY...",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 90,
+      "object_id": "text_manual_p068_hundred_times",
+      "page_index": 68,
+      "source_page": 19,
+      "semantic_type": "free_text",
+      "source": "...A HUNDRED\nMORE TIMES.",
+      "translation": "...THÊM CẢ\nTRĂM LẦN.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 91,
+      "object_id": "text_933e933d97424ea9",
+      "page_index": 69,
+      "source_page": 19,
+      "semantic_type": "speech_bubble",
+      "source": "A HEAVENLY DEMON\nWHO HAS REACHED THE\nPROFOUND REALM!",
+      "translation": "MỘT THIÊN MA\nĐÃ ĐẠT TỚI\nCẢNH GIỚI THÂM SÂU!",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 92,
+      "object_id": "text_5fd1dbd16fda4d0e",
+      "page_index": 70,
+      "source_page": 19,
+      "semantic_type": "speech_bubble",
+      "source": "you\nSUMMONED ME FOR\nTHIS FARCE.",
+      "translation": "CÁC NGƯƠI\nTRIỆU TA ĐẾN\nCHỈ VÌ TRÒ HỀ NÀY.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 93,
+      "object_id": "text_f00c1ea583ee4605",
+      "page_index": 70,
+      "source_page": 19,
+      "semantic_type": "speech_bubble",
+      "source": "PREPARE\nYOURSELVES.",
+      "translation": "CHUẨN BỊ ĐI.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 94,
+      "object_id": "text_05f0f3640ef3416f",
+      "page_index": 72,
+      "source_page": 21,
+      "semantic_type": "speech_bubble",
+      "source": "I, THE HEAVENLY\nDEMON, WILL COME\nFOR YOUR HEADS.",
+      "translation": "TA, THIÊN MA,\nSẼ LẤY ĐẦU\nCÁC NGƯƠI.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 95,
+      "object_id": "text_7aecba7bc857451e",
+      "page_index": 73,
+      "source_page": 21,
+      "semantic_type": "speech_bubble",
+      "source": "JUST AS\nI'D EXPECT... FROM\nMY CREATION.",
+      "translation": "QUẢ NHIÊN...\nĐÚNG LÀ “TẠO VẬT”\nCỦA TA.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 96,
+      "object_id": "text_64fbcd2df4b74e37",
+      "page_index": 74,
+      "source_page": 21,
+      "semantic_type": "speech_bubble",
+      "source": "YOU MAKE\nYOUR MOTHER\nPROUD.",
+      "translation": "CON LÀM MẸ\nTỰ HÀO LẮM.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 97,
+      "object_id": "text_5ee02c92f7ed45a3",
+      "page_index": 75,
+      "source_page": 21,
+      "semantic_type": "speech_bubble",
+      "source": "OOOH!! AN\nOUTRIGHT CHALLENGE\nTO THE GODS!!",
+      "translation": "ỒỒ!!\nTHẲNG THỪNG KHIÊU CHIẾN\nCÁC VỊ THẦN!!",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 98,
+      "object_id": "text_2a91d34416b64e82",
+      "page_index": 75,
+      "source_page": 21,
+      "semantic_type": "speech_bubble",
+      "source": "I LOVE THAT\nBOLDNESS!",
+      "translation": "TA THÍCH\nSỰ NGẠO NGHỄ ĐÓ!",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 99,
+      "object_id": "text_ac11bc24039d4ce6",
+      "page_index": 76,
+      "source_page": 21,
+      "semantic_type": "speech_bubble",
+      "source": "NEXT, IN THE\nRED CORNER!!",
+      "translation": "TIẾP THEO,\nGÓC ĐỎ!!",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 100,
+      "object_id": "text_8fc2f3f6c6214727",
+      "page_index": 76,
+      "source_page": 21,
+      "semantic_type": "speech_bubble",
+      "source": "THE\nPRIDE OF MODERN\nHUMANITY!!",
+      "translation": "NIỀM KIÊU HÃNH\nCỦA NHÂN LOẠI\nHIỆN ĐẠI!!",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 101,
+      "object_id": "text_4c9c26a085c34d1e",
+      "page_index": 77,
+      "source_page": 21,
+      "semantic_type": "speech_bubble",
+      "source": "AN UNEMPLOYED\nSHUT-IN GAMER OF\nMANY YEARS...",
+      "translation": "MỘT GAME THỦ\nTHẤT NGHIỆP,\nRU RÚ TRONG NHÀ\nSUỐT BAO NĂM...",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 102,
+      "object_id": "text_c25c91fc791b4f75",
+      "page_index": 77,
+      "source_page": 21,
+      "semantic_type": "speech_bubble",
+      "source": "UH...",
+      "translation": "ỜM...",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 103,
+      "object_id": "text_e5a225f187fd49d0",
+      "page_index": 78,
+      "source_page": 22,
+      "semantic_type": "speech_bubble",
+      "source": "IS THIS...\nCORRECT?",
+      "translation": "THÔNG TIN NÀY...\nĐÚNG CHỨ?",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 104,
+      "object_id": "text_127e8747f3ff48a4",
+      "page_index": 80,
+      "source_page": 23,
+      "semantic_type": "speech_bubble",
+      "source": "THERE GOES\nALL THE EXCITEMENT\nTHAT WAS BUILT UP.",
+      "translation": "BAO NHIÊU\nKHÍ THẾ NÃY GIỜ\nBAY SẠCH RỒI.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 105,
+      "object_id": "text_e6b0a802102a4293",
+      "page_index": 80,
+      "source_page": 23,
+      "semantic_type": "speech_bubble",
+      "source": "PUTTING SUCH A\nPATHETIC WRETCH ON\nA STAGE LIKE THIS,",
+      "translation": "ĐƯA MỘT TÊN\nTHẢM HẠI THẾ NÀY\nLÊN SÂN KHẤU,",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 106,
+      "object_id": "text_d0d56ae85fbb4091",
+      "page_index": 81,
+      "source_page": 23,
+      "semantic_type": "speech_bubble",
+      "source": "JUST WHAT\nYOU'D EXPECT FROM\nTHE ORDINARY\nWORLD...",
+      "translation": "ĐÚNG LÀ THỨ\nCHỈ THẾ GIỚI BÌNH THƯỜNG\nMỚI LÀM...",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 107,
+      "object_id": "text_797d52033b214867",
+      "page_index": 81,
+      "source_page": 23,
+      "semantic_type": "speech_bubble",
+      "source": "THE NERVE\nOF THEM TO ENTER\nTHE TOURNAMENT\nOF THE WORLDS'\nSTRONGEST.",
+      "translation": "CŨNG DÁM\nMÒ VÀO GIẢI ĐẤU\nCƯỜNG GIẢ VẠN GIỚI.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 108,
+      "object_id": "text_6f19ae8c374b41b0",
+      "page_index": 81,
+      "source_page": 23,
+      "semantic_type": "speech_bubble",
+      "source": "THIS MATCH\nIS GOING TO BE\nBORING.",
+      "translation": "TRẬN NÀY\nCHÁN CHẮC RỒI.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 109,
+      "object_id": "text_c789a27bd73847a5",
+      "page_index": 82,
+      "source_page": 23,
+      "semantic_type": "speech_bubble",
+      "source": "THAT\nPOOR HUMAN.",
+      "translation": "TỘI NGHIỆP\nTÊN NGƯỜI KIA.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 110,
+      "object_id": "text_fd3a3abf1e5e4e82",
+      "page_index": 82,
+      "source_page": 23,
+      "semantic_type": "speech_bubble",
+      "source": "THAT GUY\nWILL KILL HIM\nWITH EASE.",
+      "translation": "TÊN ĐÓ\nSẼ GIẾT HẮN\nDỄ NHƯ CHƠI.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 111,
+      "object_id": "text_0d3cf8c036114e7e",
+      "page_index": 82,
+      "source_page": 23,
+      "semantic_type": "speech_bubble",
+      "source": "WELL, WHAT\nCAN YOU DO?",
+      "translation": "BIẾT SAO ĐƯỢC?",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 112,
+      "object_id": "text_493b35f93feb4aa9",
+      "page_index": 83,
+      "source_page": 23,
+      "semantic_type": "speech_bubble",
+      "source": "HE\nHAS ONLY HIMSELF\nTO BLAME FOR HAVING\nSUCH A WORTHLESS\nCREATOR.",
+      "translation": "CÓ TRÁCH\nTHÌ TRÁCH HẮN CÓ\nMỘT ĐẤNG SÁNG TẠO\nVÔ DỤNG NHƯ THẾ.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 113,
+      "object_id": "text_0d2297aae21649b4",
+      "page_index": 84,
+      "source_page": 23,
+      "semantic_type": "speech_bubble",
+      "source": "HURRY UP\nAND START. THE\nOUTCOME IS OBVIOUS\nANYWAY.",
+      "translation": "MAU BẮT ĐẦU ĐI.\nKẾT QUẢ RÕ\nNHƯ BAN NGÀY RỒI.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 114,
+      "object_id": "text_545aa4048a494db7",
+      "page_index": 85,
+      "source_page": 24,
+      "semantic_type": "speech_bubble",
+      "source": "...F-",
+      "translation": "...Đ-",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 115,
+      "object_id": "text_7c38ecd9830e496f",
+      "page_index": 85,
+      "source_page": 24,
+      "semantic_type": "speech_bubble",
+      "source": "FIGHT!!",
+      "translation": "ĐẤU!!",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 116,
+      "object_id": "text_fc2019f421784cd5",
+      "page_index": 86,
+      "source_page": 25,
+      "semantic_type": "text",
+      "source": "HEAVENLY DEMON'S\nHEAVEN-OPENING FORM",
+      "translation": "THIÊN MA\nKHAI THIÊN THỨC",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 117,
+      "object_id": "text_c291bdc565eb4954",
+      "page_index": 88,
+      "source_page": 25,
+      "semantic_type": "text",
+      "source": "HEAVENLY DEMON'S\nGOD-SLAYING SLASH",
+      "translation": "THIÊN MA\nTHÍ THẦN TRẢM",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 118,
+      "object_id": "text_25d31762d4ac4eb9",
+      "page_index": 90,
+      "source_page": 25,
+      "semantic_type": "speech_bubble",
+      "source": "THE STANDS,\nCUT IN TWO WITH A\nSINGLE STROKE!! WHAT\nAN EXPLOSIVE START!",
+      "translation": "KHÁN ĐÀI BỊ CHẺ ĐÔI\nCHỈ BẰNG MỘT NHÁT!!\nKHỞI ĐẦU QUÁ DỮ DỘI!",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 119,
+      "object_id": "text_7085ab81c7c84ed2",
+      "page_index": 94,
+      "source_page": 26,
+      "semantic_type": "speech_bubble",
+      "source": "HE'S\nMORE AGILE THAN\nHE LOOKS.",
+      "translation": "NHANH NHẸN HƠN\nVẺ NGOÀI ĐẤY.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 120,
+      "object_id": "text_f3fcdf2816754cad",
+      "page_index": 95,
+      "source_page": 26,
+      "semantic_type": "speech_bubble",
+      "source": "THAT'S\nALL HE HAS.",
+      "translation": "HẮN CHỈ\nCÓ THẾ THÔI.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 121,
+      "object_id": "text_69b9b06e733b4efa",
+      "page_index": 95,
+      "source_page": 26,
+      "semantic_type": "speech_bubble",
+      "source": "IN THE END, HE'S\nJUST AN ORDINARY\nHUMAN.",
+      "translation": "CUỐI CÙNG\nCŨNG CHỈ LÀ\nNGƯỜI BÌNH THƯỜNG.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 122,
+      "object_id": "text_manual_p102_footwork",
+      "page_index": 102,
+      "source_page": 28,
+      "semantic_type": "skill_name",
+      "source": "HEAVENLY\nDEMONIC FOOTWORK",
+      "translation": "THIÊN MA\nBỘ PHÁP",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 123,
+      "object_id": "text_e26baccf78af4e33",
+      "page_index": 103,
+      "source_page": 29,
+      "semantic_type": "text",
+      "source": "HEAVEN-REACHING\nSHADOWLESS STEP",
+      "translation": "THÔNG THIÊN\nVÔ ẢNH BỘ",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 124,
+      "object_id": "text_b8a5dacc6c2d412e",
+      "page_index": 108,
+      "source_page": 29,
+      "semantic_type": "speech_bubble",
+      "source": "IT'S AN\nEXPECTED RESULT,\nI SUPPOSE...",
+      "translation": "QUẢ NHIÊN LÀ\nKẾT QUẢ ĐÃ ĐOÁN TRƯỚC...",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 125,
+      "object_id": "text_cda41d47c0b44d87",
+      "page_index": 108,
+      "source_page": 29,
+      "semantic_type": "text",
+      "source": "THIS MUST\nBE THE ORDINARY\nWORLD'S LIMIT.",
+      "translation": "ĐÂY HẲN LÀ\nGIỚI HẠN CỦA\nTHẾ GIỚI BÌNH THƯỜNG.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 126,
+      "object_id": "text_3b6fbccda909456b",
+      "page_index": 109,
+      "source_page": 30,
+      "semantic_type": "speech_bubble",
+      "source": "IT IS THE\nWEAKEST OF ALL\nOUR WORLDS,\nAFTER ALL.",
+      "translation": "DÙ SAO\nCŨNG LÀ THẾ GIỚI\nYẾU NHẤT TRONG SỐ CHÚNG TA.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 127,
+      "object_id": "text_1205209161b545ef",
+      "page_index": 110,
+      "source_page": 31,
+      "semantic_type": "free_text",
+      "source": "BLAME MY\nINCOMPETENCE.",
+      "translation": "HÃY TRÁCH\nSỰ BẤT TÀI CỦA TA.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 128,
+      "object_id": "text_37f29f0ed34647fa",
+      "page_index": 111,
+      "source_page": 31,
+      "semantic_type": "speech_bubble",
+      "source": "TO BE\nHONEST... THE\nHUMANITY I CREATED\nHAS NO CHANCE OF\nWINNING.",
+      "translation": "NÓI THẬT...\nNHÂN LOẠI DO TA TẠO RA\nKHÔNG CÓ CƠ HỘI\nCHIẾN THẮNG.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 129,
+      "object_id": "text_04baf38eca0a47c9",
+      "page_index": 111,
+      "source_page": 31,
+      "semantic_type": "speech_bubble",
+      "source": "AT THIS RATE...",
+      "translation": "CỨ THẾ NÀY...",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 130,
+      "object_id": "text_16cecc9cda554e12",
+      "page_index": 112,
+      "source_page": 31,
+      "semantic_type": "speech_bubble",
+      "source": "YOUR ENTIRE\nHUMAN RACE WILL\nPERISH.",
+      "translation": "TOÀN BỘ\nNHÂN LOẠI CỦA NGÀI\nSẼ DIỆT VONG.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 131,
+      "object_id": "text_1ce939b49d8548d6",
+      "page_index": 113,
+      "source_page": 31,
+      "semantic_type": "speech_bubble",
+      "source": "YOU MUST\nHAVE CALLED ME\nHERE BECAUSE YOU\nHAVE A SOLUTION.",
+      "translation": "NGÀI GỌI TÔI\nĐẾN ĐÂY HẲN VÌ\nĐÃ CÓ CÁCH.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 132,
+      "object_id": "text_f9d538e9c3a34ebc",
+      "page_index": 113,
+      "source_page": 31,
+      "semantic_type": "speech_bubble",
+      "source": "PLEASE\nGET TO THE\nPOINT.",
+      "translation": "XIN HÃY\nVÀO THẲNG\nVẤN ĐỀ.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 133,
+      "object_id": "text_5e3872accfe1407d",
+      "page_index": 113,
+      "source_page": 31,
+      "semantic_type": "speech_bubble",
+      "source": "YES.\nYOU'RE RIGHT.",
+      "translation": "PHẢI.\nNGƯƠI NÓI ĐÚNG.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 134,
+      "object_id": "text_e79ff2680a464a65",
+      "page_index": 114,
+      "source_page": 31,
+      "semantic_type": "text",
+      "source": "I HAVE\nAN IDEA.",
+      "translation": "TA CÓ\nMỘT Ý.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 135,
+      "object_id": "text_ef5ce3f18c764743",
+      "page_index": 115,
+      "source_page": 31,
+      "semantic_type": "free_text",
+      "source": "A CONTEST WHERE A\nREPRESENTATIVE \"CREATION\"\nFROM EVERY WORLD COMPETES\nFOR SUPREMACY...",
+      "translation": "MỘT CUỘC ĐẤU\nNƠI “TẠO VẬT” ĐẠI DIỆN\nCỦA MỖI THẾ GIỚI\nTRANH NGÔI TỐI CƯỜNG...",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 136,
+      "object_id": "text_9bd27f1988274aa2",
+      "page_index": 115,
+      "source_page": 31,
+      "semantic_type": "speech_bubble",
+      "source": "THE TOURNAMENT\nOF THE WORLDS'\nSTRONGEST.",
+      "translation": "GIẢI ĐẤU\nCƯỜNG GIẢ VẠN GIỚI.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 137,
+      "object_id": "text_9a6cedb1b0434ff3",
+      "page_index": 115,
+      "source_page": 31,
+      "semantic_type": "speech_bubble",
+      "source": "WHAT IF THE\nDEFINITION OF A\n\"CREATION\"...",
+      "translation": "NẾU ĐỊNH NGHĨA\n“TẠO VẬT”...",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 138,
+      "object_id": "text_cb75688b866446ef",
+      "page_index": 116,
+      "source_page": 32,
+      "semantic_type": "speech_bubble",
+      "source": "EXTENDED\nBEYOND THE\nHUMANS I'VE\nCREATED...",
+      "translation": "...KHÔNG CHỈ\nGIỚI HẠN Ở LOÀI NGƯỜI\nTA TẠO RA...",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 139,
+      "object_id": "text_32cd22e922bb492e",
+      "page_index": 116,
+      "source_page": 32,
+      "semantic_type": "speech_bubble",
+      "source": "TO THE\n\"CREATIONS\" HUMANS\nHAVE MADE?",
+      "translation": "MÀ BAO GỒM CẢ\nNHỮNG “TẠO VẬT”\nDO CON NGƯỜI TẠO NÊN\nTHÌ SAO?",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 140,
+      "object_id": "text_87faa953a5ec45bc",
+      "page_index": 117,
+      "source_page": 33,
+      "semantic_type": "speech_bubble",
+      "source": "WOULDN'T\nTHOSE ALSO BE MY\n\"CREATIONS\"?",
+      "translation": "CHẲNG PHẢI\nCHÚNG CŨNG LÀ\n“TẠO VẬT” CỦA TA SAO?",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 141,
+      "object_id": "text_febe29e6dfd647b5",
+      "page_index": 118,
+      "source_page": 33,
+      "semantic_type": "speech_bubble",
+      "source": "I DID NOT\nSUMMON THE\nHUMAN SHIN\nJAHYEON.",
+      "translation": "TA KHÔNG\nTRIỆU HỒI CON NGƯỜI\nSHIN JAHYEON.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 142,
+      "object_id": "text_4d6ef1c119584300",
+      "page_index": 119,
+      "source_page": 33,
+      "semantic_type": "speech_bubble",
+      "source": "I WILL\nSUMMON THE\nVIRTUAL WORLD\nYOU HUMANS\nCREATED.",
+      "translation": "TA SẼ TRIỆU HỒI\nTHẾ GIỚI ẢO\nDO CON NGƯỜI CÁC NGƯƠI\nTẠO RA.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 143,
+      "object_id": "text_abff2b4ca78c4f0c",
+      "page_index": 120,
+      "source_page": 33,
+      "semantic_type": "speech_bubble",
+      "source": "YOU'LL SUMMON\nMY CHARACTER FROM\nA GAME.",
+      "translation": "NGÀI SẼ TRIỆU HỒI\nNHÂN VẬT GAME\nCỦA TÔI?",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 144,
+      "object_id": "text_f62ebb5b84d94089",
+      "page_index": 121,
+      "source_page": 33,
+      "semantic_type": "text",
+      "source": "A CREATION BORN\nOF HUMAN HANDS.",
+      "translation": "MỘT “TẠO VẬT”\nSINH RA TỪ\nBÀN TAY CON NGƯỜI.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 145,
+      "object_id": "text_0409eadecfd44070",
+      "page_index": 122,
+      "source_page": 33,
+      "semantic_type": "text",
+      "source": "A CHARACTER.",
+      "translation": "MỘT NHÂN VẬT.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 146,
+      "object_id": "text_37324dad6c604b78",
+      "page_index": 123,
+      "source_page": 34,
+      "semantic_type": "speech_bubble",
+      "source": "A CHARACTER\nHAS NO PHYSICAL\nBODY.",
+      "translation": "NHÂN VẬT\nKHÔNG CÓ\nTHÂN THỂ VẬT LÝ.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 147,
+      "object_id": "text_564c21f02ec3444b",
+      "page_index": 124,
+      "source_page": 35,
+      "semantic_type": "speech_bubble",
+      "source": "IT SEEMS THAT'S\nWHY YOU, THE PLAYER,\nSHIN JAHYEON, WERE\nSUMMONED.",
+      "translation": "CÓ LẼ VÌ THẾ\nMÀ NGƯƠI,\nNGƯỜI CHƠI SHIN JAHYEON,\nCŨNG ĐƯỢC TRIỆU HỒI.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 148,
+      "object_id": "text_50d9f415eb3141b9",
+      "page_index": 124,
+      "source_page": 35,
+      "semantic_type": "speech_bubble",
+      "source": "BUT\nI CAN CLEARLY\nSENSE IT.",
+      "translation": "NHƯNG\nTA CẢM NHẬN ĐƯỢC\nRẤT RÕ.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 149,
+      "object_id": "text_e8930ad3d2ed4e8a",
+      "page_index": 125,
+      "source_page": 35,
+      "semantic_type": "text",
+      "source": "WITHIN\nYOUR BODY, SHIN\nJAHYEON...",
+      "translation": "BÊN TRONG\nCƠ THỂ NGƯƠI,\nSHIN JAHYEON...",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 150,
+      "object_id": "text_625817daf752448f",
+      "page_index": 125,
+      "source_page": 35,
+      "semantic_type": "speech_bubble",
+      "source": "LV.120\nSHIN JAHYEON",
+      "translation": "LV.120\nSHIN JAHYEON",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 151,
+      "object_id": "text_c33c8c03889c4e98",
+      "page_index": 126,
+      "source_page": 35,
+      "semantic_type": "speech_bubble",
+      "source": "THE\nPRESENCE OF YOUR\nCHARACTER.",
+      "translation": "SỰ HIỆN DIỆN\nCỦA NHÂN VẬT\nCỦA NGƯƠI.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 152,
+      "object_id": "text_c00f9f4c471a40ac",
+      "page_index": 126,
+      "source_page": 35,
+      "semantic_type": "free_text",
+      "source": "LV.120\nSHIN JAHYEON",
+      "translation": "LV.120\nSHIN JAHYEON",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 153,
+      "object_id": "text_b411bc37503949ea",
+      "page_index": 127,
+      "source_page": 35,
+      "semantic_type": "speech_bubble",
+      "source": "INDEED.\nA \"CREATION\" MADE\nBY HUMAN HANDS, ONCE\nNOTHING MORE\nTHAN DATA...",
+      "translation": "ĐÚNG VẬY.\nMỘT “TẠO VẬT”\nDO BÀN TAY CON NGƯỜI\nTẠO NÊN,\nVỐN CHỈ LÀ DỮ LIỆU...",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 154,
+      "object_id": "text_ac31f2d214594ef5",
+      "page_index": 128,
+      "source_page": 35,
+      "semantic_type": "text",
+      "source": "YOUR FAMILIAR\nFULLY RESTORES ITS\nMASTER!",
+      "translation": "SỬ MA CỦA BẠN\nHỒI PHỤC HOÀN TOÀN\nCHO CHỦ NHÂN!",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 155,
+      "object_id": "text_a0b98deebac14333",
+      "page_index": 129,
+      "source_page": 35,
+      "semantic_type": "free_text",
+      "source": "...THIS VERY\nTOURNAMENT!",
+      "translation": "...CHÍNH LÀ\nGIẢI ĐẤU NÀY!",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 156,
+      "object_id": "text_c87d29ebfe2e4a15",
+      "page_index": 130,
+      "source_page": 36,
+      "semantic_type": "speech_bubble",
+      "source": "REVEAL\nYOUR TRUE FORM,\nNEFER.",
+      "translation": "HÃY HIỆN\nNGUYÊN HÌNH ĐI,\nNEFER.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 157,
+      "object_id": "text_032863d770744536",
+      "page_index": 132,
+      "source_page": 37,
+      "semantic_type": "speech_bubble",
+      "source": "YES.\nMASTER",
+      "translation": "VÂNG.\nCHỦ NHÂN.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 158,
+      "object_id": "text_4dfd22e0864c4b8b",
+      "page_index": 133,
+      "source_page": 37,
+      "semantic_type": "speech_bubble",
+      "source": "OUR GOD'S\nPRETTY CLEVER.",
+      "translation": "VỊ THẦN CỦA TA\nCŨNG CAO TAY ĐẤY.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 159,
+      "object_id": "text_d53ad2dcf3af45ae",
+      "page_index": 133,
+      "source_page": 37,
+      "semantic_type": "speech_bubble",
+      "source": "IMPLANTING\nINTANGIBLE DATA\nINTO MY BODY...",
+      "translation": "CẤY DỮ LIỆU\nVÔ HÌNH VÀO\nCƠ THỂ TA...",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 160,
+      "object_id": "text_e0349f23484b4e73",
+      "page_index": 133,
+      "source_page": 37,
+      "semantic_type": "speech_bubble",
+      "source": "SO THE\nPLAYER AND THE\nCHARACTER ARE ONE\nAND THE SAME?",
+      "translation": "VẬY NGƯỜI CHƠI\nVÀ NHÂN VẬT\nLÀ MỘT SAO?",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 161,
+      "object_id": "text_ebae8806bdde4e29",
+      "page_index": 134,
+      "source_page": 37,
+      "semantic_type": "speech_bubble",
+      "source": "NEFER.",
+      "translation": "NEFER.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 162,
+      "object_id": "text_a8c24e13d4504fc4",
+      "page_index": 136,
+      "source_page": 37,
+      "semantic_type": "speech_bubble",
+      "source": "BUFF ME...\nWITH EVERYTHING\nYOU'VE GOT.",
+      "translation": "BUFF CHO TA...\nHẾT MỨC\nCÓ THỂ.",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 163,
+      "object_id": "text_362e954e060a48b3",
+      "page_index": 137,
+      "source_page": 38,
+      "semantic_type": "speech_bubble",
+      "source": "DUNGEON &\nWEAPON ONLINE",
+      "translation": "DUNGEON &\nWEAPON ONLINE",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 164,
+      "object_id": "text_62e76a34a9c14eb2",
+      "page_index": 137,
+      "source_page": 38,
+      "semantic_type": "text",
+      "source": "CLASS: WARLOCK\nSHIN JAHYEON",
+      "translation": "LỚP: WARLOCK\nSHIN JAHYEON",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 165,
+      "object_id": "text_ef46039d99f84f19",
+      "page_index": 137,
+      "source_page": 38,
+      "semantic_type": "free_text",
+      "source": "ALL-SERVER\nRANKING",
+      "translation": "XẾP HẠNG\nTOÀN SERVER",
+      "human_reviewed_translation": true
+    },
+    {
+      "index": 166,
+      "object_id": "text_manual_p137_rank",
+      "page_index": 137,
+      "source_page": 38,
+      "semantic_type": "system_ui",
+      "source": "NO. 1",
+      "translation": "HẠNG 1",
+      "human_reviewed_translation": true
+    }
+  ]
+}
