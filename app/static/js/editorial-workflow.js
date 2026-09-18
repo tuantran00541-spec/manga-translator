@@ -463,6 +463,7 @@
       untranslated_story_object: "Thiếu bản dịch",
       script_unreviewed: "Bản dịch chưa soát",
       script_review_stale: "Review bản dịch đã stale",
+      text_overflow: "Chữ tràn khỏi vùng typeset",
       final_review_stale: "Final approval chưa khớp render hiện tại",
     };
     return labels[kind] || kind || "Vấn đề cần kiểm tra";
