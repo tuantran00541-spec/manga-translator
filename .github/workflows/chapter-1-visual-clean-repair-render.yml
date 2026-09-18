@@ -1,4 +1,4 @@
-name: Chapter 1 Checkpoint 05A Visual Clean Repair Render
+name: Chapter 1 Checkpoint 05B Missed Caption Repair Render
 
 on:
   push:
@@ -23,7 +23,7 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       CHAPTER_ID: 05efce51
-      TRANSLATION_RUN_ID: "35302234477"
+      TRANSLATION_RUN_ID: "35318525262"
       TRANSLATION_ARTIFACT: 04-translation-reviewed-05efce51
       CLEAN_RUN_ID: "35295557014"
       CLEAN_ARTIFACT: 02-final-clean-05efce51
@@ -186,6 +186,128 @@ jobs:
           print(json.dumps(op,indent=2))
           PY
 
+      - name: Apply exact current-clean brush to p004 missed world-fighters caption
+        run: |
+          python - <<'PY'
+          import cv2, hashlib, json
+          import numpy as np
+          from pathlib import Path
+
+          from app.dependencies import pipeline
+          from app.image_io import read_image, write_image
+          from app.manifest_utils import (
+              atomic_replace, bump_page_revision, get_manifest_lock,
+              invalidate_page_render, load_manifest_raw, save_manifest_raw,
+          )
+
+          chapter='05efce51'
+          page_index=4
+          manifest=load_manifest_raw(chapter)
+          page=manifest['pages'][page_index]
+          if int(page.get('source_page') or -1)!=1 or int(page.get('slice_index') or -1)!=3:
+              raise SystemExit(f'unexpected p004 ownership: source={page.get("source_page")} slice={page.get("slice_index")}')
+
+          clean_path=Path(page['clean'])
+          current=read_image(clean_path)
+          before=current.copy()
+          h,w=current.shape[:2]
+
+          # Human review + detector metadata:
+          # box_5232e98aed3a4e1b owns
+          # THE STRONGEST / FIGHTERS FROM SIXTEEN / WORLDS ARRIVE.
+          x1,y1,x2,y2=0,4193,min(900,w),min(4537,h)
+          roi=current[y1:y2,x1:x2]
+          gray=cv2.cvtColor(roi,cv2.COLOR_BGR2GRAY)
+
+          seed=(gray<165).astype(np.uint8)*255
+          n,labels,stats,_=cv2.connectedComponentsWithStats(seed,8)
+          local=np.zeros_like(seed)
+          kept=[]
+          for i in range(1,n):
+              area=int(stats[i,cv2.CC_STAT_AREA])
+              bx=int(stats[i,cv2.CC_STAT_LEFT])
+              by=int(stats[i,cv2.CC_STAT_TOP])
+              bw=int(stats[i,cv2.CC_STAT_WIDTH])
+              bh=int(stats[i,cv2.CC_STAT_HEIGHT])
+              # Bold caption glyphs; reject tiny specks and any very long line.
+              if area>=16 and bh>=12 and bh<=110 and bw>=3 and bw<=260:
+                  local[labels==i]=255
+                  kept.append([bx,by,bw,bh,area])
+
+          if len(kept)<12 or not np.any(local):
+              raise SystemExit(f'p004 caption brush unexpectedly sparse: {kept}')
+
+          local=cv2.dilate(
+              local,
+              cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(9,9)),
+              iterations=1,
+          )
+          mask=np.zeros((h,w),np.uint8)
+          mask[y1:y2,x1:x2]=local
+          authority=mask>0
+          mask_pixels=int(np.count_nonzero(authority))
+          if mask_pixels<5000 or mask_pixels>180000:
+              raise SystemExit(f'p004 caption mask pixels outside expected range: {mask_pixels}')
+
+          candidate=pipeline._exact_manual_repaint_candidate(
+              current.copy(), mask, force_lama=False
+          )
+          repaired=current.copy()
+          repaired[authority]=candidate[authority]
+
+          outside=~authority
+          outside_diff=int(np.count_nonzero(np.any(repaired[outside] != before[outside],axis=1)))
+          if outside_diff!=0:
+              raise SystemExit(f'p004 exact brush changed {outside_diff} pixels outside authority')
+
+          before_gray=cv2.cvtColor(before[y1:y2,x1:x2],cv2.COLOR_BGR2GRAY)
+          after_gray=cv2.cvtColor(repaired[y1:y2,x1:x2],cv2.COLOR_BGR2GRAY)
+          dark_before=int(np.count_nonzero(before_gray<165))
+          dark_after=int(np.count_nonzero(after_gray<165))
+          if dark_after >= dark_before*0.35:
+              raise SystemExit(f'p004 caption residue reduction too small: dark {dark_before}->{dark_after}')
+
+          mask_path=Path('repair05a/p004-missed-caption-mask.png')
+          cv2.imwrite(str(mask_path),mask)
+          Path('repair05a/p004-old-clean.png').write_bytes(clean_path.read_bytes())
+
+          tmp=clean_path.with_name(clean_path.name+'.caption-fix.tmp.png')
+          write_image(tmp,repaired)
+          atomic_replace(tmp,clean_path)
+
+          with get_manifest_lock(chapter):
+              manifest=load_manifest_raw(chapter)
+              p=manifest['pages'][page_index]
+              p['clean']=clean_path.as_posix()
+              p['visual_review_clean_repair_caption']={
+                  'mode':'standard_current_clean_exact',
+                  'reason':'missed story free-text caption: THE STRONGEST FIGHTERS FROM SIXTEEN WORLDS ARRIVE.',
+                  'box_id':'box_5232e98aed3a4e1b',
+                  'mask_pixels':mask_pixels,
+                  'mask_sha256':hashlib.sha256(mask_path.read_bytes()).hexdigest(),
+                  'outside_authority_changed_pixels':outside_diff,
+                  'dark_pixels_before':dark_before,
+                  'dark_pixels_after':dark_after,
+              }
+              bump_page_revision(p,'clean_revision')
+              invalidate_page_render(manifest,page_index)
+              save_manifest_raw(chapter,manifest)
+
+          op=json.loads(Path('repair05a/operation.json').read_text(encoding='utf-8'))
+          op['p004_caption_repair']={
+              'page_index':4,'source_page':1,'slice_index':3,
+              'object_id':'text_5232e98aed3a4e1b',
+              'box_id':'box_5232e98aed3a4e1b',
+              'roi':[x1,y1,x2,y2],
+              'mask_pixels':mask_pixels,
+              'outside_authority_changed_pixels':outside_diff,
+              'dark_pixels_before':dark_before,
+              'dark_pixels_after':dark_after,
+          }
+          Path('repair05a/operation.json').write_text(json.dumps(op,indent=2),encoding='utf-8')
+          print(json.dumps(op['p004_caption_repair'],indent=2))
+          PY
+
       - name: Save local CLEAN repair delta
         run: |
           python - <<'PY'
@@ -193,11 +315,12 @@ jobs:
           from pathlib import Path
           from app.manifest_utils import load_manifest_raw
           m=load_manifest_raw('05efce51')
-          p=m['pages'][67]
           out=Path('repair05a/overlay/processed')
           out.mkdir(parents=True,exist_ok=True)
-          clean=Path(p['clean'])
-          shutil.copy2(clean,out/clean.name)
+          for idx in (4,67):
+              p=m['pages'][idx]
+              clean=Path(p['clean'])
+              shutil.copy2(clean,out/clean.name)
           Path('repair05a/manifest.json').write_text(json.dumps(m,ensure_ascii=False,indent=2),encoding='utf-8')
           PY
 
@@ -294,6 +417,59 @@ jobs:
               card.paste(im,(x,28))
               d.text((x+150,330),label,fill='black',font=ImageFont.load_default())
           card.save('repair05a/proof/p067-focused.jpg',quality=95)
+
+          # p004/source-page-002 missed caption proof.
+          p4=m['pages'][4]
+          raw4=Image.open(p4['original']).convert('RGB')
+          old4=Image.open('repair05a/p004-old-clean.png').convert('RGB')
+          repaired4=Image.open(p4['clean']).convert('RGB')
+          rendered4=Image.open('checkpoint/05-render/rendered_slices/slice_004.png').convert('RGB')
+          box4=(0,4080,900,4540)
+          labels4=('RAW','OLD CLEAN','REPAIRED CLEAN','RENDERED VI')
+          ims4=[]
+          for im in (raw4,old4,repaired4,rendered4):
+              c=im.crop(box4)
+              c.thumbnail((400,300),Image.Resampling.LANCZOS)
+              ims4.append(c)
+          card4=Image.new('RGB',(1680,350),'white')
+          d4=ImageDraw.Draw(card4)
+          d4.text((8,5),'p004 missed caption repair: world fighters arrive',fill='black',font=ImageFont.load_default())
+          for i,(label,im) in enumerate(zip(labels4,ims4)):
+              x=10+i*415
+              card4.paste(im,(x,28))
+              d4.text((x+145,330),label,fill='black',font=ImageFont.load_default())
+          card4.save('repair05a/proof/p004-caption-focused.jpg',quality=95)
+          PY
+
+      - name: Build corrected 40-page INPAINT ZIP
+        run: |
+          python - <<'PY'
+          import zipfile
+          from collections import defaultdict
+          from pathlib import Path
+          from app.manifest_utils import load_manifest_raw
+          from app.routers.export import _core_range, _source_core_metadata, _validate_stitch_group, _stitch_png_to_file
+
+          m=load_manifest_raw('05efce51')
+          out=Path('repair05a/inpaint-pages'); out.mkdir(parents=True,exist_ok=True)
+          groups=defaultdict(list)
+          for i,p in enumerate(m.get('pages') or []):
+              source=int(p.get('source_page',i))
+              sr,sh=_source_core_metadata(p)
+              groups[source].append({
+                  'page_index':i,'slice_index':int(p.get('slice_index',0)),
+                  'core_range':_core_range(p),'source_core_range':sr,'source_height':sh,
+                  'path':Path(p['original']) if p.get('skipped') else Path(p['clean']),
+              })
+          if len(groups)!=40: raise SystemExit(f'expected 40 source groups, got {len(groups)}')
+          for source in sorted(groups):
+              items=sorted(groups[source],key=lambda x:(x['slice_index'],x['page_index']))
+              _validate_stitch_group(source,[{k:x[k] for k in ('slice_index','core_range','source_core_range','source_height')} for x in items])
+              _stitch_png_to_file([x['path'] for x in items],out/f'page_{source+1:03d}.png',[x['core_range'] for x in items])
+          zpath=Path('repair05a/War-of-Extinction-Chapter-1-INPAINT-CORRECTED.zip')
+          with zipfile.ZipFile(zpath,'w',compression=zipfile.ZIP_STORED) as z:
+              for p in sorted(out.glob('page_*.png')): z.write(p,arcname=p.name)
+          if len(list(out.glob('page_*.png')))!=40: raise SystemExit('corrected INPAINT page count mismatch')
           PY
 
       - name: Verify repaired render contract
@@ -304,12 +480,12 @@ jobs:
           t=json.loads(Path('checkpoint/05-render/typography-summary.json').read_text(encoding='utf-8'))
           r=json.loads(Path('checkpoint/05-render/render-summary.json').read_text(encoding='utf-8'))
           seam=json.loads(Path('repair05a/seam-ink-safety.json').read_text(encoding='utf-8'))
-          if t.get('status')!='PASS' or t.get('active_story_objects')!=167:
+          if t.get('status')!='PASS' or t.get('active_story_objects')!=168:
               raise SystemExit(t)
           for k in ('font_size_auto_objects','font_fallback_count','horizontal_compression_objects','overflow_blockers','clipping_blockers','bubble_margin_blockers','glyph_blockers'):
               if int(t.get(k) or 0)!=0: raise SystemExit(f'{k}={t.get(k)}')
           if int(t.get('font_size_min_px') or 0)<28: raise SystemExit(t)
-          if (r.get('rendered_story_objects'),r.get('rendered_slices'),r.get('source_pages'))!=(167,139,40):
+          if (r.get('rendered_story_objects'),r.get('rendered_slices'),r.get('source_pages'))!=(168,139,40):
               raise SystemExit(r)
           if seam.get('seam_blockers')!=0: raise SystemExit(seam)
           PY
@@ -317,11 +493,13 @@ jobs:
       - name: Upload visual CLEAN repair delta
         uses: actions/upload-artifact@v4
         with:
-          name: 05a-clean-visual-repair-05efce51
+          name: 05b-clean-visual-repair-05efce51
           path: |
             repair05a/manifest.json
             repair05a/operation.json
             repair05a/p067-source-residue-mask.png
+            repair05a/p004-missed-caption-mask.png
+            repair05a/War-of-Extinction-Chapter-1-INPAINT-CORRECTED.zip
             repair05a/overlay/
             repair05a/seam-ink-safety.json
             repair05a/proof/
@@ -332,7 +510,7 @@ jobs:
       - name: Upload repaired render candidate
         uses: actions/upload-artifact@v4
         with:
-          name: 05a-render-candidate-05efce51
+          name: 05b-render-candidate-05efce51
           path: |
             checkpoint/05-render/final_pages/
             checkpoint/05-render/typography-plan.json
@@ -347,7 +525,7 @@ jobs:
       - name: Upload repaired visual proof
         uses: actions/upload-artifact@v4
         with:
-          name: 05a-render-proof-05efce51
+          name: 05b-render-proof-05efce51
           path: |
             checkpoint/05-render/proof/
             repair05a/proof/
