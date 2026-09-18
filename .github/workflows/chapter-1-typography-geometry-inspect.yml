@@ -1,0 +1,87 @@
+name: Chapter 1 Typography Geometry Inspect
+on:
+  push:
+    branches:
+      - chapter/war-of-extinction-1
+    paths:
+      - .github/workflows/chapter-1-typography-geometry-inspect.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TRANSLATION_RUN_ID: "35302032957"
+      TRANSLATION_ARTIFACT: 04-translation-reviewed-05efce51
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chapter/war-of-extinction-1
+      - name: Restore translated manifest
+        run: |
+          rm -rf checkpoint/04 checkpoint/inspect
+          mkdir -p checkpoint/04 checkpoint/inspect
+          gh run download "$TRANSLATION_RUN_ID" -n "$TRANSLATION_ARTIFACT" -D checkpoint/04
+          test -f checkpoint/04/translated-manifest.json
+      - name: Inspect typography geometry metadata
+        run: |
+          python - <<'PY'
+          import json
+          from collections import Counter
+          from pathlib import Path
+          m=json.loads(Path('checkpoint/04/translated-manifest.json').read_text(encoding='utf-8'))
+          active=[]
+          box_keys=Counter(); obj_keys=Counter(); geometry_fields=Counter(); semantic=Counter()
+          samples=[]
+          for pi,p in enumerate(m.get('pages') or []):
+              boxes={str(b.get('id')):b for b in (p.get('boxes') or []) if isinstance(b,dict) and b.get('id')}
+              for obj in p.get('text_objects') or []:
+                  if not isinstance(obj,dict) or obj.get('source_missing') or not str(obj.get('translation') or '').strip():
+                      continue
+                  active.append(obj)
+                  obj_keys.update(obj.keys())
+                  semantic[str(obj.get('semantic_type') or '')]+=1
+                  for key in ('bubble_region','bubble_safe_region','source_text_region','bubble','safe_region','balloon_region','bubble_box'):
+                      if obj.get(key) is not None: geometry_fields['obj.'+key]+=1
+                  refs=[str(x) for x in (obj.get('source_boxes') or []) if isinstance(x,str)]
+                  for ref in refs:
+                      b=boxes.get(ref)
+                      if not b: continue
+                      box_keys.update(b.keys())
+                      for key in ('bubble_region','bubble_safe_region','source_text_region','bubble','safe_region','balloon_region','bubble_box','bubble_bbox','bubble_rect'):
+                          if b.get(key) is not None: geometry_fields['box.'+key]+=1
+                  if len(samples)<12:
+                      samples.append({
+                        'page_index':pi,
+                        'object_id':obj.get('id'),
+                        'semantic_type':obj.get('semantic_type'),
+                        'region':obj.get('region'),
+                        'object_geometry':{k:obj.get(k) for k in obj.keys() if 'bubble' in k.lower() or 'safe' in k.lower() or 'region' in k.lower()},
+                        'box_samples':[{
+                          'id':boxes[r].get('id'),
+                          'region':{k:boxes[r].get(k) for k in ('x1','y1','x2','y2')},
+                          'geometry':{k:v for k,v in boxes[r].items() if 'bubble' in k.lower() or 'safe' in k.lower() or 'region' in k.lower()}
+                        } for r in refs if r in boxes],
+                      })
+          out={
+            'active_objects':len(active),
+            'semantic_type_counts':dict(semantic),
+            'geometry_field_counts':dict(geometry_fields),
+            'object_keys':sorted(obj_keys),
+            'box_keys':sorted(box_keys),
+            'samples':samples,
+          }
+          Path('checkpoint/inspect/typography-geometry-inspect.json').write_text(json.dumps(out,ensure_ascii=False,indent=2),encoding='utf-8')
+          print(json.dumps(out,ensure_ascii=False,indent=2))
+          PY
+      - name: Upload inspect
+        uses: actions/upload-artifact@v4
+        with:
+          name: typography-geometry-inspect-05efce51
+          path: checkpoint/inspect/
+          retention-days: 7
