@@ -119,6 +119,20 @@ jobs:
               print(size, target, target.stat().st_size)
           PY
 
+      - name: Restore production OpenVINO runtime after exporter
+        run: |
+          python -m pip install --force-reinstall --no-deps onnxruntime-openvino==1.24.1
+          python - <<'PY'
+          import onnxruntime as ort
+          providers = ort.get_available_providers()
+          print("providers=", providers)
+          if "OpenVINOExecutionProvider" not in providers:
+              raise RuntimeError(
+                  "OpenVINOExecutionProvider missing after exporter cleanup: "
+                  + repr(providers)
+              )
+          PY
+
       - name: Run residue ROI resolution A/B
         run: |
           mkdir -p benchmark-results/segmenter-roi-resolution
