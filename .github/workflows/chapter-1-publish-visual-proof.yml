@@ -33,17 +33,20 @@ jobs:
           rm -rf checkpoint/visual-proof
           mkdir -p checkpoint/visual-proof
           gh run download "$PROOF_RUN_ID" -n "$PROOF_ARTIFACT" -D checkpoint/visual-proof
-          for i in 00 01 02 03 04 05 06 07 08; do
-            test -f "checkpoint/visual-proof/seam-proof-$i.jpg"
-          done
-          test -f checkpoint/visual-proof/p067-focused.jpg
+          find checkpoint/visual-proof -type f | sort
+          test "$(find checkpoint/visual-proof -type f -name 'seam-proof-*.jpg' | wc -l)" -eq 9
+          test "$(find checkpoint/visual-proof -type f -name 'p067-focused.jpg' | wc -l)" -eq 1
       - name: Build durable visual proof PDF
         run: |
           python - <<'PY'
           from pathlib import Path
           from PIL import Image, ImageOps, ImageDraw
           root=Path('checkpoint/visual-proof')
-          paths=[root/f'seam-proof-{i:02d}.jpg' for i in range(9)]+[root/'p067-focused.jpg']
+          seam=sorted(root.rglob('seam-proof-*.jpg'))
+          focused=list(root.rglob('p067-focused.jpg'))
+          if len(seam)!=9 or len(focused)!=1:
+              raise SystemExit(f'proof file mismatch seam={len(seam)} focused={len(focused)}')
+          paths=seam+focused
           pages=[]
           for idx,p in enumerate(paths):
               im=Image.open(p).convert('RGB')
