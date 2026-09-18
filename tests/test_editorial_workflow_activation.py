@@ -57,3 +57,12 @@ def test_editorial_workflow_activates_current_backend_review_gates():
     assert "window.renderScript" in source
     assert "window.renderFinalQC" in source
     assert "window.flushScriptPendingSaves" in source
+
+
+def test_rendered_page_refreshes_final_qc_navigation_reachability():
+    shell = _read("app/static/js/ui-shell.js")
+    main = _read("app/static/js/main.js")
+
+    assert "window.refreshWorkflowNavigation" in shell
+    assert "maxReachedIndex = Math.max(maxReachedIndex, inferredReachedIndex(activeStage));" in shell
+    assert "window.refreshWorkflowNavigation?.();" in main
