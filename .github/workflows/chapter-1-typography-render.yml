@@ -1,0 +1,111 @@
+name: Chapter 1 Checkpoint 05 Typography Render Candidate
+on:
+  push:
+    branches:
+      - chapter/war-of-extinction-1
+    paths:
+      - .github/workflows/chapter-1-typography-render.yml
+      - chapters/war-of-extinction-1/run_typography_render.py
+      - chapters/war-of-extinction-1/translation-map.json
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: chapter-1-human-loop
+  cancel-in-progress: false
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TRANSLATION_RUN_ID: "35302234477"
+      TRANSLATION_ARTIFACT: 04-translation-reviewed-05efce51
+      CLEAN_RUN_ID: "35295557014"
+      CLEAN_ARTIFACT: 02-final-clean-05efce51
+      CHAPTER_ID: 05efce51
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chapter/war-of-extinction-1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install typography runtime
+        run: |
+          python -m pip install --only-binary=:all: Pillow==10.4.0 numpy==1.26.4 fonttools==4.59.2
+          python -m pip install fastapi==0.115.0 loguru==0.7.2 pydantic==2.9.2 filelock==3.16.1
+      - name: Restore approved translation and CLEAN checkpoints
+        run: |
+          rm -rf checkpoint/04-translation checkpoint/02-final-clean checkpoint/05-render "data/raw/$CHAPTER_ID" "data/processed/$CHAPTER_ID"
+          mkdir -p checkpoint/04-translation checkpoint/02-final-clean data/raw data/processed
+          gh run download "$TRANSLATION_RUN_ID" -n "$TRANSLATION_ARTIFACT" -D checkpoint/04-translation
+          gh run download "$CLEAN_RUN_ID" -n "$CLEAN_ARTIFACT" -D checkpoint/02-final-clean
+          test -f checkpoint/04-translation/translated-manifest.json
+          test -f checkpoint/04-translation/translation-review-summary.json
+          test -d checkpoint/02-final-clean/raw
+          test -d checkpoint/02-final-clean/processed
+          cp -a checkpoint/02-final-clean/raw "data/raw/$CHAPTER_ID"
+          cp -a checkpoint/02-final-clean/processed "data/processed/$CHAPTER_ID"
+          test -f "data/processed/$CHAPTER_ID/manifest.json"
+      - name: Run fixed-size optical typography candidate
+        run: PYTHONPATH=. python chapters/war-of-extinction-1/run_typography_render.py
+      - name: Verify typography and render contract
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from PIL import Image
+          root=Path("checkpoint/05-render")
+          t=json.loads((root/"typography-summary.json").read_text(encoding="utf-8"))
+          r=json.loads((root/"render-summary.json").read_text(encoding="utf-8"))
+          plan=json.loads((root/"typography-plan.json").read_text(encoding="utf-8"))
+          if t.get("status")!="PASS" or t.get("active_story_objects")!=167 or len(plan)!=167:
+              raise SystemExit(f"typography count/status invalid: {t}")
+          required_zero=[
+            "font_size_auto_objects","font_fallback_count","horizontal_compression_objects",
+            "overflow_blockers","clipping_blockers","bubble_margin_blockers","glyph_blockers"
+          ]
+          bad={k:t.get(k) for k in required_zero if int(t.get(k) or 0)!=0}
+          if bad: raise SystemExit(f"typography blockers: {bad}")
+          if int(t.get("font_size_min_px") or 0)<28:
+              raise SystemExit(f"subminimum font size: {t}")
+          if t.get("normal_dialogue_font")!="Mac-dinh-3" or t.get("normal_narration_font")!="Mac-dinh-2":
+              raise SystemExit(f"default font contract drift: {t}")
+          if r.get("status")!="REVIEW_REQUIRED" or (r.get("rendered_story_objects"),r.get("rendered_slices"),r.get("source_pages"))!=(167,139,40):
+              raise SystemExit(f"render counts invalid: {r}")
+          pages=sorted((root/"final_pages").glob("page_*.png"))
+          if len(pages)!=40: raise SystemExit(f"expected 40 final pages, got {len(pages)}")
+          for p in pages:
+              with Image.open(p) as im:
+                  if im.width<=0 or im.height<=0: raise SystemExit(f"invalid page {p} {im.size}")
+          proof=json.loads((root/"proof"/"proof-index.json").read_text(encoding="utf-8"))
+          if proof.get("object_count")!=167 or proof.get("source_pages")!=40:
+              raise SystemExit(f"proof coverage invalid: {proof}")
+          print(json.dumps({"typography":"PASS","render":"REVIEW_REQUIRED","proof":proof},ensure_ascii=False,indent=2))
+          PY
+      - name: Upload render candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: 05-render-candidate-05efce51
+          path: |
+            checkpoint/05-render/final_pages/
+            checkpoint/05-render/typography-plan.json
+            checkpoint/05-render/typography-summary.json
+            checkpoint/05-render/render-summary.json
+            checkpoint/05-render/rendered-manifest.json
+            checkpoint/05-render/HUMAN_CHECKPOINT.txt
+          compression-level: 0
+          retention-days: 7
+          if-no-files-found: error
+      - name: Upload compact visual proof
+        uses: actions/upload-artifact@v4
+        with:
+          name: 05-render-proof-05efce51
+          path: checkpoint/05-render/proof/
+          retention-days: 7
+          if-no-files-found: error
