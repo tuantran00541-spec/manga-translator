@@ -1,9 +1,9 @@
 {
   "checkpoint": "CLEAN_REVIEW",
-  "status": "PASS",
+  "status": "FAIL_REPAIR_REQUIRED",
   "chapter_id": "05efce51",
   "technical_pass": true,
-  "editorial_pass": true,
+  "editorial_pass": false,
   "base_clean_run_id": 35286501171,
   "accepted_repair_chain": [
     {
@@ -42,7 +42,7 @@
     "total_slices_reviewed": 139,
     "focused_repair_proofs_reviewed": true,
     "final_story_text_blockers": 0,
-    "final_artwork_damage_blockers": 0,
+    "final_artwork_damage_blockers": 1,
     "source_residue_blockers": 0,
     "skip_pages": [
       0,
@@ -78,15 +78,18 @@
       "p000 and p138 are non-story promo/credit slices and intentionally export from RAW via skipped state.",
       "p103 final accepted state is PASS4 plus one tiny exact LaMa brush from run 35294842139; PASS5 p103 was rejected due visual regression.",
       "p121 final accepted state uses corrected tight preserve geometry for the ASURASCANS watermark and clean story-text band.",
-      "Automated residue verifier missed several visually obvious free-text/display residues in the original candidate; human proof review remained authoritative."
+      "Automated residue verifier missed several visually obvious free-text/display residues in the original candidate; human proof review remained authoritative.",
+      "02G was rejected after full-resolution inspection: p103 contains a large visibly corrupted inpaint block despite the focused crop appearing acceptable."
     ]
   },
-  "blockers": [],
-  "ocr_allowed": true,
-  "final_repair_run_id": 35294842139,
-  "final_repair_artifact": "02g-manual-clean-repair-05efce51",
-  "final_repair_artifact_id": 10528495358,
-  "final_proof_artifact": "02g-manual-clean-proof-05efce51",
-  "final_proof_artifact_id": 10527676448,
-  "next_action": "BUILD_FINAL_CLEAN_CHECKPOINT"
+  "blockers": [
+    "P103_02G_ARTWORK_DAMAGE"
+  ],
+  "ocr_allowed": false,
+  "final_repair_run_id": null,
+  "final_repair_artifact": null,
+  "final_repair_artifact_id": null,
+  "final_proof_artifact": null,
+  "final_proof_artifact_id": null,
+  "next_action": "REPAIR_P103_FROM_PASS4_CURRENT_CLEAN"
 }
