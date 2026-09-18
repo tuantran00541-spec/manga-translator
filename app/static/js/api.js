@@ -151,7 +151,9 @@ async function loadRecentChapters() {
     const stageLabels = {
       preview: "Xử lý ảnh",
       review: "Kiểm tra chất lượng",
-      editor: "Biên tập bản dịch",
+      script: "Soát bản dịch",
+      editor: "Kiểm tra chất lượng",
+      final_qc: "Kiểm tra cuối",
     };
 
     chapters.forEach((ch) => {
@@ -265,7 +267,9 @@ async function resumeChapter(chapterId) {
     let workflow = currentManifest.workflow;
     if (!workflow || !workflow.stage) {
       if (pages.some((p) => p.rendered)) {
-        workflow = { stage: "editor", page_index: 0 };
+        workflow = { stage: "final_qc", page_index: 0 };
+      } else if (pages.some((p) => (p.text_objects || []).length)) {
+        workflow = { stage: "script", page_index: 0 };
       } else if (pages.some((p) => p.clean)) {
         workflow = { stage: "review", page_index: 0 };
       } else {
@@ -273,7 +277,7 @@ async function resumeChapter(chapterId) {
       }
     }
 
-    const stage = workflow.stage;
+    const stage = workflow.stage === "editor" ? "review" : workflow.stage;
     const rawIndex = parseInt(workflow.page_index, 10) || 0;
     const pageIndex = Math.max(0, Math.min(rawIndex, Math.max(0, pages.length - 1)));
 
@@ -283,11 +287,15 @@ async function resumeChapter(chapterId) {
     } else if (stage === "review") {
       window.initialReviewCanonicalPageIndex = pageIndex;
       renderReview();
+    } else if (stage === "script") {
+      window.initialScriptCanonicalPageIndex = pageIndex;
+      window.renderScript?.();
+    } else if (stage === "final_qc") {
+      window.initialFinalQCCanonicalPageIndex = pageIndex;
+      window.renderFinalQC?.();
     } else {
-      if (window.editorState) {
-        window.editorState.activePageIndex = pageIndex;
-      }
-      renderEditor();
+      window.initialReviewCanonicalPageIndex = pageIndex;
+      renderReview();
     }
   } catch (err) {
     if (navigationSeq === _chapterNavigationSeq) {
