@@ -83,7 +83,7 @@ class OcrBoxRequest(BaseModel):
 
 class WorkflowCheckpointRequest(BaseModel):
     chapter_id: str
-    stage: Literal["preview", "review", "editor"]
+    stage: Literal["preview", "review", "script", "editor", "final_qc"]
     page_index: int = Field(ge=0)
 
 
