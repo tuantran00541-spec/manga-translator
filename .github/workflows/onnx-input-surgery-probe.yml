@@ -8,6 +8,7 @@ on:
       - scripts/onnx_input_surgery_probe.py
       - scripts/onnx_head_shape_probe.py
       - scripts/onnx_head_patch_probe.py
+      - scripts/onnx_head_patch_debug.py
       - .github/workflows/onnx-input-surgery-probe.yml
   workflow_dispatch:
 
@@ -68,6 +69,10 @@ jobs:
         run: |
           python scripts/onnx_head_patch_probe.py --sizes 640 512 --repeats 3
 
+      - name: Diagnose specialized head shape metadata
+        run: |
+          python scripts/onnx_head_patch_debug.py --sizes 640 512
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -76,5 +81,6 @@ jobs:
             benchmark-results/onnx-surgery/report.json
             benchmark-results/onnx-surgery/head-shapes.json
             benchmark-results/onnx-surgery/head-patch-report.json
+            benchmark-results/onnx-surgery/head-patch-debug.json
           retention-days: 3
           if-no-files-found: error
