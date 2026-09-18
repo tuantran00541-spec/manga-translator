@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+
+import numpy as np
 import pytest
 
 from app.ai_providers import (
@@ -250,3 +253,177 @@ def test_custom_provider_private_remote_is_rejected_before_use():
     )
     with pytest.raises(Exception):
         visual_qc_router._validate_custom_remote(provider)
+
+
+def _install_provider_fake_keyring(monkeypatch):
+    from app import secret_store
+
+    storage = {}
+
+    class FakeKeyringError(Exception):
+        pass
+
+    class FakeKeyring:
+        @staticmethod
+        def get_password(service, account):
+            return storage.get((service, account))
+
+        @staticmethod
+        def set_password(service, account, value):
+            storage[(service, account)] = value
+
+        @staticmethod
+        def delete_password(service, account):
+            storage.pop((service, account), None)
+
+    monkeypatch.setattr(
+        secret_store,
+        "_keyring_module",
+        lambda: (FakeKeyring, FakeKeyringError),
+    )
+    return secret_store, storage
+
+
+def test_whitespace_environment_key_does_not_shadow_secure_storage(monkeypatch):
+    secret_store, _storage = _install_provider_fake_keyring(monkeypatch)
+    secret_store.set_provider_api_key("openrouter", "secure-key")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "   ")
+
+    assert secret_store.get_provider_api_key("openrouter") == "secure-key"
+    assert secret_store.provider_key_status("openrouter") == {
+        "configured": True,
+        "source": "os_secure_storage",
+    }
+
+
+def test_real_environment_key_has_precedence_over_secure_storage(monkeypatch):
+    secret_store, _storage = _install_provider_fake_keyring(monkeypatch)
+    secret_store.set_provider_api_key("openrouter", "secure-key")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "env-key")
+
+    assert secret_store.get_provider_api_key("openrouter") == "env-key"
+    assert secret_store.provider_key_status("openrouter") == {
+        "configured": True,
+        "source": "environment",
+    }
+
+
+def test_model_listing_uses_bearer_header_without_exposing_key(monkeypatch):
+    captured = {}
+
+    class Response:
+        status_code = 200
+        ok = True
+
+        @staticmethod
+        def json():
+            return {"data": [{"id": "vendor/vision-model"}]}
+
+        @staticmethod
+        def close():
+            return None
+
+    monkeypatch.setattr(
+        visual_qc_router,
+        "get_provider_api_key",
+        lambda provider_id, **kwargs: "transport-secret",
+    )
+
+    def fake_safe_get(url, **kwargs):
+        captured.update(url=url, **kwargs)
+        return Response()
+
+    monkeypatch.setattr(visual_qc_router, "safe_get", fake_safe_get)
+
+    models = visual_qc_router.list_provider_models("openrouter")
+
+    assert models["models"] == ["vendor/vision-model"]
+    assert captured["headers"]["Authorization"] == "Bearer transport-secret"
+    assert "transport-secret" not in json.dumps(models)
+
+
+def test_openai_compatible_visual_qc_refuses_redirects_and_keeps_key_out_of_body(monkeypatch):
+    from app.visual_qc import openai_compatible as visual_qc_client
+
+    captured = {}
+
+    class Response:
+        status_code = 200
+        ok = True
+
+        @staticmethod
+        def json():
+            return {"choices": [{"message": {"content": '{"issues":[]}'}}]}
+
+    def fake_post(url, **kwargs):
+        captured.update(url=url, **kwargs)
+        return Response()
+
+    monkeypatch.setattr(
+        visual_qc_client,
+        "_read_image",
+        lambda _path: np.zeros((8, 8, 3), dtype=np.uint8),
+    )
+    monkeypatch.setattr(
+        visual_qc_client,
+        "_encode_for_gemini",
+        lambda _image: "ZmFrZS1qcGVn",
+    )
+    monkeypatch.setattr(visual_qc_client.requests, "post", fake_post)
+
+    qc = visual_qc_client.OpenAICompatibleVisualQC(
+        provider_id="openrouter",
+        model="vendor/vision-model",
+    )
+    assert qc.inspect("original.jpg", "clean.jpg", "transport-secret") == []
+
+    assert captured["allow_redirects"] is False
+    assert captured["headers"]["Authorization"] == "Bearer transport-secret"
+    assert "transport-secret" not in json.dumps(captured["json"])
+    assert "thinking" not in captured["json"]
+
+
+def test_openai_compatible_translation_refuses_redirects_and_keeps_key_out_of_body(monkeypatch):
+    captured = {}
+
+    class Response:
+        status_code = 200
+
+        @staticmethod
+        def raise_for_status():
+            return None
+
+        @staticmethod
+        def json():
+            return {
+                "model": "vendor/text-model",
+                "choices": [{
+                    "message": {
+                        "content": '{"translations":{"box-1":"Xin chào"}}'
+                    }
+                }],
+                "usage": {"prompt_tokens": 8, "completion_tokens": 4},
+            }
+
+    def fake_post(url, **kwargs):
+        captured.update(url=url, **kwargs)
+        return Response()
+
+    monkeypatch.setattr("app.translation.deepseek.requests.post", fake_post)
+    translator = DeepSeekTranslator(
+        "vendor/text-model",
+        provider_id="openrouter",
+    )
+    result = translator.translate(
+        [{"id": "box-1", "page_index": 0, "text": "Hello"}],
+        api_key="transport-secret",
+        source_lang="en",
+        target_lang="vi",
+        budget_usd=0.01,
+    )
+
+    assert result.translations == {"box-1": "Xin chào"}
+    assert captured["allow_redirects"] is False
+    assert captured["headers"]["Authorization"] == "Bearer transport-secret"
+    assert "transport-secret" not in json.dumps(captured["json"])
+    assert "thinking" not in captured["json"]
