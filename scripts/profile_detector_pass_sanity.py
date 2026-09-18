@@ -2,6 +2,12 @@
 """Deterministic contract for detector pass attribution in the CPU profiler."""
 from __future__ import annotations
 
+from pathlib import Path
+import sys
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
 from scripts.profile_processing import summarize_detector_passes
 
 
