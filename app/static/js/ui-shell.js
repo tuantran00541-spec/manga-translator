@@ -55,6 +55,9 @@
   }
 
   function syncSidebar(activeStage) {
+    if (window.currentChapterId) {
+      maxReachedIndex = Math.max(maxReachedIndex, inferredReachedIndex(activeStage));
+    }
     const mode = document.body.dataset.landingMode || "home";
     document.querySelectorAll(".sidebar-link[data-route]").forEach((button) => {
       const active = activeStage === "landing" && button.dataset.route === mode;
@@ -424,6 +427,11 @@
   window.closeAppSettings = closeSettings;
   window.setupWorkbenchPanels = setupWorkbenchPanels;
   window.syncWorkbenchPanels = syncWorkbenchPanels;
+  window.refreshWorkflowNavigation = () => {
+    const activeStage = document.body.dataset.appStage || "landing";
+    maxReachedIndex = Math.max(maxReachedIndex, inferredReachedIndex(activeStage));
+    syncSidebar(activeStage);
+  };
   window.showWorkbenchInspector = () => setPanelOpen("inspector", true);
   window.toggleFocusMode = toggleFocusMode;
 
