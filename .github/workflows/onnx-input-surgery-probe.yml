@@ -7,6 +7,7 @@ on:
     paths:
       - scripts/onnx_input_surgery_probe.py
       - scripts/onnx_head_shape_probe.py
+      - scripts/onnx_head_patch_probe.py
       - .github/workflows/onnx-input-surgery-probe.yml
   workflow_dispatch:
 
@@ -63,6 +64,10 @@ jobs:
         run: |
           python scripts/onnx_input_surgery_probe.py --sizes 1024 640 512 --repeats 2
 
+      - name: Probe regenerated YOLO head at 640 and 512
+        run: |
+          python scripts/onnx_head_patch_probe.py --sizes 640 512 --repeats 3
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -70,5 +75,6 @@ jobs:
           path: |
             benchmark-results/onnx-surgery/report.json
             benchmark-results/onnx-surgery/head-shapes.json
+            benchmark-results/onnx-surgery/head-patch-report.json
           retention-days: 3
           if-no-files-found: error
