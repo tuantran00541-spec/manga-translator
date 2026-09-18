@@ -209,6 +209,13 @@ class OptimizedChapterPipeline(ChapterPipeline):
             boxes.append(box)
         return boxes
 
+    @classmethod
+    def _residue_verification_boxes(cls, records: list[dict] | None) -> list[BubbleBox]:
+        """Return destructive authorities plus review-only verification sources."""
+        boxes = list(cls._residue_repair_effective_boxes(records))
+        boxes.extend(cls._review_only_residue_sources(records))
+        return boxes
+
     def _repair_post_inpaint_result(
         self,
         img_path: Path,
@@ -341,9 +348,10 @@ class OptimizedChapterPipeline(ChapterPipeline):
             if tmp_auto_path.exists():
                 write_image(tmp_auto_path, repaired)
 
+        verification_boxes = self._residue_verification_boxes(result.get("boxes"))
         final_boxes = self.detector.verify_post_inpaint_residue(
             repaired,
-            authorized_boxes,
+            verification_boxes,
         )
         final_boxes = [
             box

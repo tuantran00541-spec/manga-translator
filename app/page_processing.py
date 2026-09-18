@@ -21,6 +21,66 @@ from app.parameters import (
 
 
 class PageProcessingMixin:
+    @staticmethod
+    def _review_only_residue_sources(records: list[dict] | None) -> list[BubbleBox]:
+        """Build non-destructive verifier sources for deferred segmenter text.
+
+        These boxes are intentionally NOT erase authority. They only make the
+        post-inpaint verifier inspect story-like text evidence that policy held
+        back from automatic cleanup (for example a full-width free-text bbox).
+        """
+        boxes: list[BubbleBox] = []
+        for record in records or []:
+            if not isinstance(record, dict) or record.get("removed"):
+                continue
+            if record.get("overlap_context_only"):
+                continue
+            if str(record.get("source_role") or "") != "text_segmenter":
+                continue
+            if not record.get("deferred_reason"):
+                continue
+            if record.get("ocr_eligible") is False:
+                continue
+            try:
+                x1, y1 = int(record["x1"]), int(record["y1"])
+                x2, y2 = int(record["x2"]), int(record["y2"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            box_w, box_h = x2 - x1, y2 - y1
+            if box_w <= 0 or box_h <= 0:
+                continue
+            mask = record.get("_mask_array")
+            if mask is None:
+                mask = decode_mask_value(record.get("mask"))
+            if mask is not None and mask.shape != (box_h, box_w):
+                try:
+                    mask = cv2.resize(
+                        mask,
+                        (box_w, box_h),
+                        interpolation=cv2.INTER_NEAREST,
+                    )
+                except Exception:
+                    mask = None
+            boxes.append(
+                BubbleBox(
+                    x1, y1, x2, y2,
+                    float(record.get("confidence", 1.0)),
+                    mask,
+                    source_model=str(record.get("source_model") or "unknown"),
+                    class_id=int(record.get("class_id") or 0),
+                    class_name=str(record.get("class_name") or "unknown"),
+                    semantic_type=str(record.get("semantic_type") or "unknown"),
+                    mask_source=str(record.get("mask_source") or "none"),
+                    safe_to_inpaint=False,
+                    ocr_eligible=True,
+                    needs_review=True,
+                    source_role="text_segmenter",
+                    deferred_reason=str(record.get("deferred_reason") or ""),
+                    verify_region_only=True,
+                )
+            )
+        return boxes
+
     def _process_page(
         self,
         img_path: Path,
@@ -148,6 +208,8 @@ class PageProcessingMixin:
                     _effective.allow_rectangle_fallback = True
                 effective_boxes.append(_effective)
 
+        verification_only_boxes = self._review_only_residue_sources(detector_records)
+
         for old in existing_boxes:
             if not isinstance(old, dict) or not old.get("manual") or old.get("removed"):
                 continue
@@ -220,13 +282,16 @@ class PageProcessingMixin:
 
         residue_started_at = time.perf_counter()
         residue_boxes: list[BubbleBox] = []
-        if DETECTOR_RESIDUE_VERIFY_ENABLED and effective_boxes:
+        verification_boxes = effective_boxes + verification_only_boxes
+        if DETECTOR_RESIDUE_VERIFY_ENABLED and verification_boxes:
             # This is deliberately after every automatic/manual inpaint pass.
             # A detector mask authorizes deletion; it does not certify that the
-            # resulting pixels no longer look like text.
+            # resulting pixels no longer look like text. Review-only deferred
+            # text-segmenter regions are also verified here, but they never gain
+            # destructive authority from this check.
             residue_boxes = self.detector.verify_post_inpaint_residue(
                 clean_image,
-                effective_boxes,
+                verification_boxes,
             )
             residue_boxes = [
                 box for box in residue_boxes
@@ -306,6 +371,7 @@ class PageProcessingMixin:
                 "authorized": len(effective_boxes),
                 "review_only": len(unverified_regions),
                 "deferred": len(deferred_regions),
+                "review_only_verification_sources": len(verification_only_boxes),
                 "post_inpaint_residue": len(residue_regions),
             },
             "auto_inpaint": auto_inpaint_metrics,

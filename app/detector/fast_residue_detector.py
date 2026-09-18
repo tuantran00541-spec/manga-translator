@@ -282,7 +282,11 @@ class FastResidueAdaptiveFocusCombinedTextDetector(
             return []
 
         h, w = image.shape[:2]
-        candidates = [box for box in authorized_boxes if box.verified_mask]
+        candidates = [
+            box
+            for box in authorized_boxes
+            if box.verified_mask or bool(getattr(box, "verify_region_only", False))
+        ]
         candidates.sort(
             key=lambda box: (
                 (box.x2 - box.x1) * (box.y2 - box.y1)

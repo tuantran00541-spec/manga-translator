@@ -370,10 +370,76 @@
     helpPanel.innerHTML = "<p>Dùng thanh công cụ bên trái để chọn vùng chữ, inpaint, pan và zoom. Rectangle/Ellipse tạo vùng OCR trực tiếp trên trang.</p>";
     help.append(helpSummary, helpPanel);
 
+    const editorialSection = document.createElement("section");
+    editorialSection.className = "inspector-section review-editorial-preflight";
+    const editorialTitle = document.createElement("strong");
+    editorialTitle.textContent = "HIGH-RISK DEFERRED";
+    const editorialSummary = document.createElement("span");
+    editorialSummary.className = "review-editorial-preflight-summary";
+    editorialSummary.textContent = "Đang kiểm tra story-text coverage…";
+    const editorialList = document.createElement("div");
+    editorialList.className = "review-editorial-preflight-list";
+    const editorialRefresh = document.createElement("button");
+    editorialRefresh.type = "button";
+    editorialRefresh.className = "ui-btn ui-btn-ghost";
+    editorialRefresh.textContent = "Kiểm tra lại";
+
+    const openEditorialPage = (pageIndex) => {
+      const page = window.currentManifest?.pages?.[Number(pageIndex)];
+      if (!page) return;
+      const sourcePage = cleanSourcePage(page, Number(pageIndex));
+      workspace.dataset.pendingSourcePage = String(sourcePage);
+      if (typeof window.selectReviewSourcePage === "function") {
+        void window.selectReviewSourcePage(sourcePage);
+      }
+    };
+
+    const refreshEditorialPreflight = async () => {
+      editorialRefresh.disabled = true;
+      try {
+        const response = await fetch("/api/export/" + encodeURIComponent(chapterId) + "/preflight");
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.detail || ("HTTP " + response.status));
+        const blockers = Array.isArray(data.blockers) ? data.blockers : [];
+        const highRisk = Array.isArray(data.high_risk_regions) ? data.high_risk_regions : [];
+        const unresolvedRisk = highRisk.filter((item) => !item?.cleanup_resolved);
+        editorialSummary.textContent = data.ok
+          ? ("PASS · " + (data.story_candidate_count || 0) + " story candidates đã account")
+          : ("BLOCKED · " + (data.blocker_count || blockers.length) + " blocker · " + unresolvedRisk.length + " high-risk chưa xử lý");
+        editorialSummary.classList.toggle("ready", Boolean(data.ok));
+
+        editorialList.replaceChildren();
+        const rows = blockers.slice(0, 12);
+        rows.forEach((item) => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "ui-btn ui-btn-ghost review-editorial-blocker";
+          const target = item.box_id || item.object_id || "region";
+          button.textContent = "p" + (Number(item.page_index || 0) + 1) + " · " + (item.kind || "review") + " · " + target;
+          button.title = item.reason || item.deferred_reason || "Mở vùng cần kiểm tra";
+          button.addEventListener("click", () => openEditorialPage(item.page_index));
+          editorialList.appendChild(button);
+        });
+        if (blockers.length > rows.length) {
+          const more = document.createElement("span");
+          more.textContent = "+" + (blockers.length - rows.length) + " blocker khác";
+          editorialList.appendChild(more);
+        }
+      } catch (err) {
+        editorialSummary.textContent = "Không đọc được preflight: " + err.message;
+        editorialSummary.classList.remove("ready");
+      } finally {
+        editorialRefresh.disabled = false;
+      }
+    };
+    editorialRefresh.addEventListener("click", () => void refreshEditorialPreflight());
+    editorialSection.append(editorialTitle, editorialSummary, editorialList, editorialRefresh);
+    void refreshEditorialPreflight();
+
     const helpSection = document.createElement("section");
     helpSection.className = "inspector-section review-help-section";
     helpSection.append(aiStatus, help);
-    inspector.append(inspectorHeading, gestureSection, helpSection);
+    inspector.append(inspectorHeading, gestureSection, editorialSection, helpSection);
 
     layout.append(navigator.element, canvasHost, inspector);
     workspace.append(toolbar, layout);

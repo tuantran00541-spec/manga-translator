@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import uuid
 import zipfile
 from pathlib import Path
@@ -9,6 +10,7 @@ from fastapi.responses import FileResponse
 from PIL import Image
 
 from app.config import OUTPUT_DIR
+from app.editorial_gate import editorial_preflight
 from app.manifest_utils import atomic_replace, get_manifest_lock, load_manifest_raw, save_manifest_raw, urlify_manifest
 from app.routers.image import _current_rendered_path, _fallback_page_path
 from app.routers.render_commit import render_page
@@ -19,6 +21,34 @@ from app.region_policy import text_object_in_preserve_region
 
 
 router = APIRouter(prefix="/api", tags=["export"])
+
+
+def _editorial_gate_or_409(manifest: dict) -> dict:
+    preflight = editorial_preflight(manifest)
+    if preflight["ok"]:
+        return preflight
+    samples = []
+    for blocker in preflight["blockers"][:5]:
+        target = blocker.get("box_id") or blocker.get("object_id") or "region"
+        samples.append(
+            f"{blocker['kind']}@p{int(blocker['page_index']) + 1}:{target}"
+        )
+    detail = ", ".join(samples)
+    if preflight["blocker_count"] > len(samples):
+        detail += f", +{preflight['blocker_count'] - len(samples)} more"
+    raise HTTPException(
+        409,
+        "Editorial preflight blocked final render/export: "
+        f"{preflight['blocker_count']} unresolved story-text blocker(s): {detail}",
+    )
+
+
+def _preflight_copy(manifest: dict) -> dict:
+    working = copy.deepcopy(manifest)
+    for page in working.get("pages", []):
+        if isinstance(page, dict) and not page.get("skipped"):
+            ensure_page_text_objects(page)
+    return editorial_preflight(working)
 
 
 def _safe_int(value, fallback: int) -> int:
@@ -273,6 +303,15 @@ def _snapshot_export_inputs(chapter_id: str) -> list[dict]:
     """Capture canonical export inputs while holding the manifest lock briefly."""
     with get_manifest_lock(chapter_id):
         manifest = load_manifest_raw(chapter_id)
+        changed = False
+        for page in manifest.get("pages", []):
+            if not isinstance(page, dict) or page.get("skipped"):
+                continue
+            _, page_changed = ensure_page_text_objects(page)
+            changed = changed or page_changed
+        if changed:
+            save_manifest_raw(chapter_id, manifest)
+        _editorial_gate_or_409(manifest)
         snapshot: list[dict] = []
         for page_index, page in enumerate(manifest.get("pages", [])):
             path = _export_path_for_page(chapter_id, page_index, page, manifest)
@@ -326,6 +365,14 @@ def _export_snapshot_is_current(chapter_id: str, snapshot: list[dict]) -> bool:
     return True
 
 
+@router.get("/export/{chapter_id}/preflight")
+def export_preflight(chapter_id: str) -> dict:
+    validate_chapter_id(chapter_id)
+    with get_manifest_lock(chapter_id):
+        manifest = load_manifest_raw(chapter_id)
+        return _preflight_copy(manifest)
+
+
 @router.post("/render/chapter")
 def render_chapter(chapter_id: str) -> dict:
     validate_chapter_id(chapter_id)
@@ -339,6 +386,7 @@ def render_chapter(chapter_id: str) -> dict:
             changed = changed or page_changed
         if changed:
             save_manifest_raw(chapter_id, manifest)
+        preflight = _editorial_gate_or_409(manifest)
         total = len(manifest.get("pages", []))
 
     rendered = 0
@@ -373,6 +421,7 @@ def render_chapter(chapter_id: str) -> dict:
         "skipped": skipped,
         "total": len(latest.get("pages", [])),
         "download_url": f"/api/export/{chapter_id}.zip",
+        "editorial_preflight": preflight,
     }
     return result
 
@@ -426,6 +475,7 @@ def export_chapter(chapter_id: str):
                     409,
                     "Chapter changed while export was running. Export again to include the latest edits.",
                 )
+            _editorial_gate_or_409(load_manifest_raw(chapter_id))
             atomic_replace(tmp_archive, final_archive)
     finally:
         if tmp_archive.exists():

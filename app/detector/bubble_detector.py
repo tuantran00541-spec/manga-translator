@@ -136,6 +136,9 @@ class BubbleBox:
     needs_review: bool = False
     source_role: str = "unknown"
     deferred_reason: str | None = None
+    # Non-destructive residue verification may inspect a review-only detector
+    # region even when that region has no erase-authority mask.
+    verify_region_only: bool = False
 
     @property
     def verified_mask(self) -> bool:
@@ -233,9 +236,10 @@ class YoloDetector:
         """Retain oversized/aspect outliers as review evidence instead of dropping them.
 
         Postprocess already rejects non-positive boxes before this point. Width,
-        page-area and aspect limits are policy heuristics, not proof that model
-        evidence is false. They therefore revoke automatic erase authority but
-        preserve the detected region for review with an explicit reason.
+        page-area and aspect limits are bbox heuristics, not proof that text-mask
+        evidence is unsafe. A verified text-segmenter mask is already stroke-level
+        destructive authority, so bbox geometry must not revoke that authority.
+        Geometry outliers without verified mask authority remain review-only.
         """
         result = []
         page_area = max(1, img_w * img_h)
@@ -252,6 +256,16 @@ class YoloDetector:
             aspect = box_w / box_h
             if aspect > MAX_ASPECT_RATIO or aspect < 1 / MAX_ASPECT_RATIO:
                 reasons.append("box_aspect_limit")
+            if reasons and (
+                b.source_role == "text_segmenter"
+                and b.safe_to_inpaint
+                and b.verified_mask
+            ):
+                # The bbox may span the page, while the actual write authority is
+                # still only the verified stroke mask. Do not turn a safe mask
+                # into a silent CLEAN miss merely because its envelope is wide.
+                result.append(b)
+                continue
             if reasons:
                 result.append(
                     replace(

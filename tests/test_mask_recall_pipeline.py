@@ -276,3 +276,33 @@ def test_verified_residue_can_extend_beyond_original_mask_but_not_preserve(tmp_p
         ["final_flat_residue_regions"]
         == 0
     )
+
+
+def test_deferred_segmenter_region_is_verified_but_never_repair_authority():
+    record = {
+        "x1": 0,
+        "y1": 20,
+        "x2": 900,
+        "y2": 180,
+        "confidence": 0.93,
+        "mask": None,
+        "source_model": "text_segmenter.onnx",
+        "class_id": 0,
+        "class_name": "text_comic",
+        "semantic_type": "free_text",
+        "mask_source": "none",
+        "safe_to_inpaint": False,
+        "ocr_eligible": True,
+        "needs_review": True,
+        "source_role": "text_segmenter",
+        "deferred_reason": "box_width_limit",
+    }
+
+    repair = MaskRecallOptimizedChapterPipeline._residue_repair_effective_boxes([record])
+    verify = MaskRecallOptimizedChapterPipeline._residue_verification_boxes([record])
+
+    assert repair == []
+    assert len(verify) == 1
+    assert verify[0].safe_to_inpaint is False
+    assert verify[0].verify_region_only is True
+    assert verify[0].deferred_reason == "box_width_limit"

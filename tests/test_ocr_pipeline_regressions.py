@@ -123,6 +123,30 @@ def test_raw_recovery_and_explicit_non_dialogue_targets_are_not_planned_for_batc
     assert ocr_target_skip_reason(_box()) is None
 
 
+def test_geometry_deferred_text_segmenter_still_runs_batch_ocr():
+    wide = _box(
+        id="box_5232e98aed3a4e1b",
+        x1=0,
+        y1=4193,
+        x2=900,
+        y2=4537,
+        confidence=0.9258392453193665,
+        semantic_type="free_text",
+        source_model="text_segmenter.onnx",
+        source_role="text_segmenter",
+        safe_to_inpaint=False,
+        needs_review=True,
+        deferred_reason="box_width_limit",
+    )
+    assert ocr_target_skip_reason(wide) is None
+
+    scheduler = _box(
+        source_role="scheduler",
+        deferred_reason="focus_budget_exhausted",
+    )
+    assert ocr_target_skip_reason(scheduler) == "deferred-review-region"
+
+
 class _FakePipeline:
     def predict(self, *, input):
         return [{

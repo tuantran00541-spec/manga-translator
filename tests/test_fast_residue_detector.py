@@ -212,3 +212,28 @@ def test_flat_negative_sources_do_not_consume_neural_budget():
     assert metrics["flat_negative_sources"] == 5
     assert metrics["deferred_budget"] == 0
     assert metrics["model_calls"] == 0
+
+
+def test_review_only_maskless_segmenter_region_gets_non_destructive_verification():
+    detector = _detector_with_fake_text()
+    source = BubbleBox(
+        10, 10, 80, 50, 0.93, None,
+        source_model="text_segmenter.onnx",
+        source_role="text_segmenter",
+        semantic_type="free_text",
+        mask_source="none",
+        safe_to_inpaint=False,
+        ocr_eligible=True,
+        needs_review=True,
+        deferred_reason="box_width_limit",
+        verify_region_only=True,
+    )
+    image = np.full((100, 120, 3), 248, dtype=np.uint8)
+    image[20:28, 30:42] = 0
+
+    residue = detector.verify_post_inpaint_residue(image, [source])
+
+    assert detector.text_detector.calls == 1
+    assert residue
+    assert residue[0].deferred_reason == "post_inpaint_text_residue"
+    assert residue[0].safe_to_inpaint is False

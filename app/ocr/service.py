@@ -152,7 +152,12 @@ def ocr_target_skip_reason(box: dict) -> str | None:
     source_role = str(box.get("source_role") or "").strip().lower()
     class_name = str(box.get("class_name") or "").strip().lower()
     deferred_reason = str(box.get("deferred_reason") or "").strip()
-    if deferred_reason or source_role == "scheduler":
+    if source_role == "scheduler":
+        return "deferred-review-region"
+    # Geometry/safety deferral controls destructive cleanup, not OCR. A
+    # text-segmenter target remains a valid non-destructive OCR target even when
+    # its bbox is too wide/large/aspect-outlying for automatic erase.
+    if deferred_reason and source_role != "text_segmenter":
         return "deferred-review-region"
     # Raw MSER proposals are review evidence, not OCR authority. A proposal
     # promoted through focused segmentation changes source_role to

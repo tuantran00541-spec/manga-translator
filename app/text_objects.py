@@ -55,7 +55,7 @@ def _auto_object_id(box_id: str) -> str:
     return f"text_{suffix}"
 
 
-def _source_box_ids(obj: dict) -> set[str]:
+def source_box_ids(obj: dict) -> set[str]:
     refs = obj.get("source_boxes")
     if not isinstance(refs, list):
         return set()
@@ -149,7 +149,7 @@ def sync_existing_auto_text_object(page: dict, box: dict) -> bool:
     for obj in page.get("text_objects") or []:
         if not isinstance(obj, dict) or not obj.get("auto_generated"):
             continue
-        if box_id not in _source_box_ids(obj):
+        if box_id not in source_box_ids(obj):
             continue
         changed = _sync_existing_auto_object(obj, box, region) or changed
     return changed
@@ -174,7 +174,7 @@ def ensure_page_text_objects(page: dict) -> tuple[int, bool]:
     for obj in objects:
         if not isinstance(obj, dict):
             continue
-        for box_id in _source_box_ids(obj):
+        for box_id in source_box_ids(obj):
             covered.setdefault(box_id, obj)
 
     created = 0
@@ -225,7 +225,7 @@ def ensure_page_text_objects(page: dict) -> tuple[int, bool]:
     for obj in objects:
         if not isinstance(obj, dict) or not obj.get("auto_generated"):
             continue
-        refs = _source_box_ids(obj)
+        refs = source_box_ids(obj)
         missing = bool(refs) and refs.isdisjoint(active_box_ids)
         if bool(obj.get("source_missing")) != missing:
             if missing:

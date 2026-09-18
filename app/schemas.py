@@ -230,6 +230,27 @@ class RemoveBoxRequest(BaseModel):
     box_index: int = Field(ge=0)
 
 
+class ReviewDispositionRequest(BaseModel):
+    chapter_id: str
+    page_index: int = Field(ge=0)
+    box_id: str
+    editorial_disposition: Literal[
+        "promote", "duplicate", "non_story", "noise", "preserve", "unresolved"
+    ] | None = None
+    cleanup_disposition: Literal[
+        "manual_cleaned", "preserve_source", "false_positive",
+        "covered_by_duplicate", "unresolved"
+    ] | None = None
+
+    @field_validator("box_id")
+    @classmethod
+    def _box_id(cls, value: str) -> str:
+        value = str(value or "").strip()
+        if not value or len(value) > MAX_TEXT_OBJECT_ID_LEN:
+            raise ValueError("Invalid detector box id")
+        return value
+
+
 class RegionModel(BaseModel):
     x1: int = Field(ge=0)
     y1: int = Field(ge=0)
