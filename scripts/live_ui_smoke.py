@@ -138,14 +138,10 @@ def _exercise_mobile(page: Page) -> None:
     expect(page.locator(".page-navigator")).to_be_hidden()
 
     _wait_for_text_overlay(page)
-    page.locator(".review-text-object-overlay .review-inline-ocr").first.click()
-    if page.locator(".translation-panel-host").is_hidden():
-        page.locator("#toggle-inspector-panel").click()
-    expect(page.locator(".translation-panel-host")).to_be_visible()
-    expect(page.locator(".translation-panel-host .translation-textarea")).to_be_visible()
-    if page.locator(".translation-panel-host").is_visible():
-        page.locator("#toggle-inspector-panel").click()
-    expect(page.locator(".translation-panel-host")).to_be_hidden()
+    inline = page.locator(".review-text-object-overlay .review-inline-translation").first
+    inline.click()
+    expect(inline).to_be_focused()
+    expect(inline).to_have_value("Bong bóng thứ hai")
 
     expect(page.locator(".review-tool-rail")).to_be_visible()
     expect(page.locator('.sidebar-link[data-stage="preview"]')).to_be_hidden()
