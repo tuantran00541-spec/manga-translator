@@ -13,6 +13,7 @@ LOGS_DIR = BASE_DIR / "logs"
 
 BUBBLE_DETECTOR_MODEL = MODELS_DIR / "bubble_yolo.onnx"
 TEXT_SEGMENTER_MODEL = MODELS_DIR / "text_segmenter.onnx"
+TEXT_SEGMENTER_RETRY_MODEL = MODELS_DIR / "text_segmenter_640.onnx"
 LAMA_MODEL = MODELS_DIR / "lama.onnx"
 LAMA_DYNAMIC_MODEL = MODELS_DIR / "lama-manga-dynamic.onnx"
 
