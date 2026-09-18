@@ -273,3 +273,29 @@ def test_final_review_is_bound_to_render_revision_and_only_blocks_export_stage()
         manifest, require_final_approval=True
     )
     assert "final_review_stale" in _kinds(preflight)
+
+
+def test_explicit_typography_overflow_blocks_final_preflight():
+    box = _root_box(
+        x1=100,
+        y1=100,
+        x2=170,
+        y2=128,
+        safe_to_inpaint=True,
+        needs_review=False,
+        deferred_reason=None,
+    )
+    obj = _object(
+        region={"x1": 100, "y1": 100, "x2": 170, "y2": 128},
+        translation="This is deliberately far too much text for a tiny manga balloon",
+        style={
+            "font": "default",
+            "fontSize": 48,
+            "strokeWidth": 2,
+        },
+    )
+    manifest = _manifest(box, [obj])
+
+    preflight = editorial_preflight(manifest)
+
+    assert "text_overflow" in _kinds(preflight)
