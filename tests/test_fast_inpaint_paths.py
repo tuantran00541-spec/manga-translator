@@ -5,6 +5,7 @@ from app.detector.bubble_detector import BubbleBox
 from app.detector.mask_builder import build_mask
 from app.image_io import encode_mask, read_image, write_image
 from app.inpaint.fast_lama_inpainter import FastInpainter
+from app.inpaint.lama_inpainter import Inpainter
 from app.optimized_pipeline import OptimizedChapterPipeline
 
 
@@ -181,6 +182,31 @@ def test_dynamic_lama_tightens_mask_roi_before_model_call():
 def test_optimized_pipeline_uses_fast_inpainter():
     pipeline = OptimizedChapterPipeline()
     assert isinstance(pipeline.inpainter, FastInpainter)
+
+
+def test_manual_feather_path_preserves_pixels_outside_authority_mask():
+    image = np.full((30, 40, 3), 100, dtype=np.uint8)
+    local_mask = np.zeros((12, 16), dtype=np.uint8)
+    local_mask[4:8, 6:10] = 255
+    painted = np.full((12, 16, 3), 220, dtype=np.uint8)
+
+    inpainter = Inpainter()
+    inpainter._begin_metrics()
+    inpainter._ensure_session = lambda: None
+    inpainter._lama_fill_single = lambda *_args, **_kwargs: painted.copy()
+
+    result = inpainter._lama_fill(
+        image.copy(),
+        image[6:18, 8:24],
+        local_mask,
+        (8, 6, 24, 18),
+        feather=True,
+    )
+
+    authority = np.zeros(image.shape[:2], dtype=bool)
+    authority[6:18, 8:24] = local_mask > 127
+    assert np.array_equal(result[~authority], image[~authority])
+    assert np.all(result[authority] == 220)
 
 
 
