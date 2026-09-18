@@ -1,0 +1,74 @@
+name: Chapter 1 Manual Clean Repair Pack
+on:
+  push:
+    branches:
+      - chapter/war-of-extinction-1
+    paths:
+      - .github/workflows/chapter-1-manual-clean-pack.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chapter/war-of-extinction-1
+      - name: Restore clean checkpoint
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf checkpoint pack
+          mkdir -p checkpoint pack/raw pack/clean
+          gh run download "35286501171" -n "02-clean-review-05efce51" -D checkpoint
+          test -f checkpoint/review-index.json
+          test -d checkpoint/raw/sliced
+          test -d checkpoint/processed
+      - name: Extract manual-edit slices
+        run: |
+          python - <<'PY'
+          import json, shutil
+          from pathlib import Path
+          selected={0,20,21,23,24,40,41,45,49,67,68,86,87,88,102,103,115,121,122,129,137,138}
+          root=Path("checkpoint")
+          pack=Path("pack")
+          rows=json.loads((root/"review-index.json").read_text(encoding="utf-8"))
+          chosen=[]
+          for i in sorted(selected):
+              row=rows[i]
+              src=Path(str(row["original"]))
+              raw_name=src.name
+              raw_src=root/"raw"/"sliced"/raw_name
+              clean_name="clean_"+raw_name
+              clean_src=root/"processed"/clean_name
+              if not raw_src.is_file():
+                  raise SystemExit(f"missing raw {raw_src}")
+              if not clean_src.is_file():
+                  raise SystemExit(f"missing clean {clean_src}")
+              shutil.copy2(raw_src,pack/"raw"/raw_name)
+              shutil.copy2(clean_src,pack/"clean"/clean_name)
+              chosen.append({
+                  "page_index":i,
+                  "source_page":row.get("source_page"),
+                  "slice_index":row.get("slice_index"),
+                  "raw":f"raw/{raw_name}",
+                  "clean":f"clean/{clean_name}",
+                  "boxes":row.get("box_count"),
+                  "free_text_like_boxes":row.get("free_text_like_boxes")
+              })
+          (pack/"selected.json").write_text(json.dumps(chosen,indent=2),encoding="utf-8")
+          shutil.copy2(root/"box-index.json",pack/"box-index.json")
+          shutil.copy2(root/"processed"/"manifest.json",pack/"manifest.json")
+          print(json.dumps(chosen,indent=2))
+          PY
+      - name: Upload manual-edit pack
+        uses: actions/upload-artifact@v4
+        with:
+          name: 02-manual-clean-pack-05efce51
+          path: pack/
+          compression-level: 0
+          retention-days: 7
+          if-no-files-found: error
