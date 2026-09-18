@@ -237,3 +237,65 @@ def test_review_only_maskless_segmenter_region_gets_non_destructive_verification
     assert residue
     assert residue[0].deferred_reason == "post_inpaint_text_residue"
     assert residue[0].safe_to_inpaint is False
+
+class _RetryRouteDetector:
+    def __init__(self):
+        self.calls = 0
+
+    def _detect_single(self, image, x1, y1):
+        self.calls += 1
+        return []
+
+    @staticmethod
+    def _with_semantics(box):
+        return box
+
+    @staticmethod
+    def _filter_invalid(boxes, _width, _height):
+        return list(boxes)
+
+
+def test_mser_focused_retry_uses_secondary_segmenter_but_grayscale_keeps_primary():
+    detector = _detector_with_fake_text()
+    primary = _RetryRouteDetector()
+    secondary = _RetryRouteDetector()
+    detector.text_detector = primary
+    detector._secondary_text_detector = secondary
+    detector._secondary_text_detector_failed = False
+
+    proposal = BubbleBox(
+        20, 20, 80, 60, 0.9, None,
+        source_model="opencv_mser",
+        source_role="recovery",
+        semantic_type="free_text",
+        needs_review=True,
+    )
+    image = np.full((120, 140, 3), 220, dtype=np.uint8)
+
+    detector._focused_text_retry(image, [proposal], grayscale=False)
+
+    assert secondary.calls == 1
+    assert primary.calls == 0
+
+    detector._focused_text_retry(image, [proposal], grayscale=True)
+
+    assert secondary.calls == 1
+    assert primary.calls == 1
+
+
+def test_residue_verifier_uses_secondary_segmenter_when_available():
+    detector = _detector_with_fake_text()
+    primary = detector.text_detector
+    secondary = _FakeTextDetector()
+    detector._secondary_text_detector = secondary
+    detector._secondary_text_detector_failed = False
+
+    source = _box(10, 10, 60, 40)
+    image = np.full((100, 120, 3), 248, dtype=np.uint8)
+    image[20, 30] = 0
+
+    detector.verify_post_inpaint_residue(image, [source])
+
+    assert secondary.calls == 1
+    assert primary.calls == 0
+
