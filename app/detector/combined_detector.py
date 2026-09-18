@@ -371,6 +371,7 @@ class CombinedTextDetector:
         """Run a bounded segmenter retry inside unresolved proposal ROIs."""
         h, w = image.shape[:2]
         rois, deferred = self._plan_grayscale_fallback_rois((h, w), proposals)
+        retry_detector = getattr(self, "_retry_text_detector", None) or self.text_detector
         recovered: list[BubbleBox] = []
         source_pixels = 0
         for x1, y1, x2, y2 in rois:
@@ -386,9 +387,9 @@ class CombinedTextDetector:
             # The ROI is bounded below the tall-page retry regime. Calling the
             # detector's single-image path preserves configured TTA while
             # avoiding adaptive whole-page windows and their redundant full pass.
-            boxes = self.text_detector._detect_single(detector_image, x1, y1)
-            boxes = [self.text_detector._with_semantics(box) for box in boxes]
-            boxes = self.text_detector._filter_invalid(boxes, w, h)
+            boxes = retry_detector._detect_single(detector_image, x1, y1)
+            boxes = [retry_detector._with_semantics(box) for box in boxes]
+            boxes = retry_detector._filter_invalid(boxes, w, h)
             recovered.extend(self._classify(box) for box in boxes)
 
         recovered = [
