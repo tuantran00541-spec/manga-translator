@@ -469,7 +469,7 @@ def main():
     manifest=json.loads(Path("checkpoint/04-translation/translated-manifest.json").read_text(encoding="utf-8"))
     tmap=json.loads((ROOT/"translation-map.json").read_text(encoding="utf-8"))
     entry={str(e["object_id"]):e for e in tmap.get("entries") or []}
-    if len(entry)!=167 or len(manifest.get("pages") or [])!=139:
+    if len(entry)!=168 or len(manifest.get("pages") or [])!=139:
         raise SystemExit(f"unexpected manifest/map counts pages={len(manifest.get('pages') or [])} entries={len(entry)}")
 
     plan=[]
@@ -623,8 +623,8 @@ def main():
     if failures:
         (OUT/"typography-failures.json").write_text(json.dumps(failures,ensure_ascii=False,indent=2),encoding="utf-8")
         raise SystemExit(f"typography preflight failed for {len(failures)} object(s)")
-    if len(plan)!=167:
-        raise SystemExit(f"expected 167 typography rows, got {len(plan)}")
+    if len(plan)!=168:
+        raise SystemExit(f"expected 168 typography rows, got {len(plan)}")
     if min(r["font_size"] for r in plan)<28:
         raise SystemExit("subminimum font size detected")
     if any(r["font_fallback_reason"] for r in plan):
@@ -647,8 +647,8 @@ def main():
         image.save(p)
         rendered_lookup[pi]=p
         page["rendered"]=p.as_posix()
-    if rendered_objects!=167:
-        raise SystemExit(f"rendered object count {rendered_objects} != 167")
+    if rendered_objects!=168:
+        raise SystemExit(f"rendered object count {rendered_objects} != 168")
 
     groups=defaultdict(list)
     for pi,page in enumerate(manifest.get("pages") or []):
@@ -677,7 +677,7 @@ def main():
     proof=proof_sheets(manifest,plan,rendered_lookup,base_lookup,seam_rows)
     typography={
         "checkpoint":"05-typography-preflight","chapter_id":CHAPTER_ID,"status":"PASS",
-        "active_story_objects":167,"fixed_size_objects":167,"font_size_auto_objects":0,
+        "active_story_objects":168,"fixed_size_objects":168,"font_size_auto_objects":0,
         "font_fallback_count":0,"horizontal_compression_objects":0,"hard_min_font_size":28,
         "font_size_min_px":min(r["font_size"] for r in plan),"font_size_max_px":max(r["font_size"] for r in plan),
         "font_size_counts":{str(k):v for k,v in sorted(size_counts.items(),reverse=True)},
@@ -691,7 +691,7 @@ def main():
     }
     render={
         "checkpoint":"05-render-candidate","chapter_id":CHAPTER_ID,"status":"REVIEW_REQUIRED",
-        "rendered_story_objects":167,"rendered_slices":139,"source_pages":40,
+        "rendered_story_objects":168,"rendered_slices":139,"source_pages":40,
         "stitch_seam_count":len(seam_rows),"proof":proof,
         "next_action":"OBJECT_FULL_PAGE_SEAM_VISUAL_REVIEW"
     }
