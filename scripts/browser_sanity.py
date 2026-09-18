@@ -309,8 +309,8 @@ def check_unsafe_html_sinks() -> None:
 def check_browser_state_contracts() -> None:
     contracts = {
         Path("app/static/js/api.js"): (
-            "async function flushExcludedRegionSaves(",
-            "await window.flushExcludedRegionSaves(chapterId);",
+            "async function flushPreserveRegionSaves(",
+            "await window.flushPreserveRegionSaves(chapterId);",
             "state.persistedVersion < state.version",
         ),
         Path("app/static/js/editor-box-transform.js"): (
@@ -324,9 +324,11 @@ def check_browser_state_contracts() -> None:
             "const rect = img.getBoundingClientRect();",
             "if (!point || !point.inside) return;",
         ),
-        Path("app/static/js/review-workspace.js"): (
-            "container.querySelectorAll(\".review-card\").forEach(captureMaskSnapshot);",
-            "if (maskSnapshots.size > 0)",
+        Path("app/static/js/review-stitch-inspector.js"): (
+            "function captureSnapshot(shell)",
+            "function restoreSnapshot(shell, page)",
+            "window.hasUnsavedStitchedMarks = () =>",
+            "captureSnapshot(shell);",
         ),
         Path("app/static/js/review.js"): (
             "activeCard._reviewBusy = true",

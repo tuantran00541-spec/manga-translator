@@ -82,7 +82,7 @@ def _select_source_page(page: Page, source_page: int) -> None:
             && Number(image?.dataset?.sourceWidth || 0) > 0
             && image?.querySelector('canvas');
         }""",
-        source_page,
+        arg=source_page,
     )
 
 
