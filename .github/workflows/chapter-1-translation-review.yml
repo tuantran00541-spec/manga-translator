@@ -5,6 +5,7 @@ on:
       - chapter/war-of-extinction-1
     paths:
       - .github/workflows/chapter-1-translation-review.yml
+      - chapters/war-of-extinction-1/translation-map.json
   workflow_dispatch:
 
 permissions:
