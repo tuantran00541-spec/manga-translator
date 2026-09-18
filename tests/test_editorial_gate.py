@@ -1,5 +1,7 @@
 from app.editorial_gate import (
+    apply_final_review,
     apply_review_disposition,
+    apply_script_review,
     editorial_preflight,
     is_story_candidate,
 )
@@ -190,3 +192,84 @@ def test_promote_repairs_missing_object_even_when_disposition_was_already_saved(
     assert changed is True
     assert len(page["text_objects"]) == 1
     assert page["text_objects"][0]["source_boxes"] == [ROOT_BOX_ID]
+
+
+def test_manual_cleanup_resolution_expires_when_clean_revision_changes():
+    box = _root_box()
+    manifest = _manifest(box, [_object()])
+    page = manifest["pages"][0]
+    page["clean_revision"] = 3
+
+    apply_review_disposition(
+        page, ROOT_BOX_ID, cleanup_disposition="manual_cleaned"
+    )
+    assert editorial_preflight(manifest)["status"] == "PASS"
+
+    page["clean_revision"] = 4
+    preflight = editorial_preflight(manifest)
+    assert "unresolved_cleanup_review" in _kinds(preflight)
+
+
+def test_script_review_fingerprint_expires_after_translation_edit():
+    box = _root_box(
+        safe_to_inpaint=True,
+        needs_review=False,
+        deferred_reason=None,
+    )
+    manifest = _manifest(box, [_object()])
+    manifest["script_review_required"] = True
+    page = manifest["pages"][0]
+
+    apply_script_review(
+        page,
+        "text_5232e98aed3a4e1b",
+        reviewed=True,
+    )
+    assert editorial_preflight(manifest)["status"] == "PASS"
+
+    page["text_objects"][0]["translation"] += "!"
+    preflight = editorial_preflight(manifest)
+    assert "script_review_stale" in _kinds(preflight)
+
+
+def test_script_review_required_blocks_unreviewed_story_translation():
+    box = _root_box(
+        safe_to_inpaint=True,
+        needs_review=False,
+        deferred_reason=None,
+    )
+    manifest = _manifest(box, [_object()])
+    manifest["script_review_required"] = True
+
+    preflight = editorial_preflight(manifest)
+
+    assert "script_unreviewed" in _kinds(preflight)
+
+
+def test_final_review_is_bound_to_render_revision_and_only_blocks_export_stage():
+    box = _root_box(
+        safe_to_inpaint=True,
+        needs_review=False,
+        deferred_reason=None,
+    )
+    manifest = _manifest(box, [_object()])
+    manifest["final_review_required"] = True
+    page = manifest["pages"][0]
+    page["rendered"] = True
+    page["render_revision"] = 2
+
+    assert editorial_preflight(manifest)["status"] == "PASS"
+    assert "final_review_stale" in _kinds(
+        editorial_preflight(manifest, require_final_approval=True)
+    )
+
+    apply_final_review(page, approved=True)
+    assert editorial_preflight(
+        manifest, require_final_approval=True
+    )["status"] == "PASS"
+
+    page["render_revision"] = 3
+    preflight = editorial_preflight(
+        manifest, require_final_approval=True
+    )
+    assert "final_review_stale" in _kinds(preflight)

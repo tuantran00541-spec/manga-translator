@@ -23,8 +23,15 @@ from app.region_policy import text_object_in_preserve_region
 router = APIRouter(prefix="/api", tags=["export"])
 
 
-def _editorial_gate_or_409(manifest: dict) -> dict:
-    preflight = editorial_preflight(manifest)
+def _editorial_gate_or_409(
+    manifest: dict,
+    *,
+    require_final_approval: bool = False,
+) -> dict:
+    preflight = editorial_preflight(
+        manifest,
+        require_final_approval=require_final_approval,
+    )
     if preflight["ok"]:
         return preflight
     samples = []
@@ -43,12 +50,19 @@ def _editorial_gate_or_409(manifest: dict) -> dict:
     )
 
 
-def _preflight_copy(manifest: dict) -> dict:
+def _preflight_copy(
+    manifest: dict,
+    *,
+    require_final_approval: bool = True,
+) -> dict:
     working = copy.deepcopy(manifest)
     for page in working.get("pages", []):
         if isinstance(page, dict) and not page.get("skipped"):
             ensure_page_text_objects(page)
-    return editorial_preflight(working)
+    return editorial_preflight(
+        working,
+        require_final_approval=require_final_approval,
+    )
 
 
 def _safe_int(value, fallback: int) -> int:
@@ -311,7 +325,10 @@ def _snapshot_export_inputs(chapter_id: str) -> list[dict]:
             changed = changed or page_changed
         if changed:
             save_manifest_raw(chapter_id, manifest)
-        _editorial_gate_or_409(manifest)
+        _editorial_gate_or_409(
+            manifest,
+            require_final_approval=True,
+        )
         snapshot: list[dict] = []
         for page_index, page in enumerate(manifest.get("pages", [])):
             path = _export_path_for_page(chapter_id, page_index, page, manifest)
@@ -475,7 +492,10 @@ def export_chapter(chapter_id: str):
                     409,
                     "Chapter changed while export was running. Export again to include the latest edits.",
                 )
-            _editorial_gate_or_409(load_manifest_raw(chapter_id))
+            _editorial_gate_or_409(
+                load_manifest_raw(chapter_id),
+                require_final_approval=True,
+            )
             atomic_replace(tmp_archive, final_archive)
     finally:
         if tmp_archive.exists():

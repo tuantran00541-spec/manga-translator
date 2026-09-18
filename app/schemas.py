@@ -230,6 +230,24 @@ class RemoveBoxRequest(BaseModel):
     box_index: int = Field(ge=0)
 
 
+class ScriptReviewRequest(BaseModel):
+    chapter_id: str
+    page_index: int = Field(ge=0)
+    object_id: str
+    reviewed: bool = True
+
+    @field_validator("object_id")
+    @classmethod
+    def _object_id(cls, value: str) -> str:
+        return _validate_text_object_id(value)
+
+
+class FinalReviewPageRequest(BaseModel):
+    chapter_id: str
+    page_index: int = Field(ge=0)
+    approved: bool = True
+
+
 class ReviewDispositionRequest(BaseModel):
     chapter_id: str
     page_index: int = Field(ge=0)

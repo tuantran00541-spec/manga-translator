@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+
 from app.parameters import EDITORIAL_STORY_CANDIDATE_CONFIDENCE
 from app.region_policy import (
     geometry_center_in_regions,
@@ -45,6 +47,63 @@ def _confidence(value) -> float:
         return float(value)
     except (TypeError, ValueError):
         return 0.0
+
+
+def script_review_fingerprint(obj: dict) -> str:
+    source = str(obj.get("ocr_text") or "")
+    translation = str(obj.get("translation") or "")
+    payload = f"{source}\0{translation}".encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def script_review_is_current(obj: dict) -> bool:
+    return bool(
+        obj.get("script_reviewed")
+        and str(obj.get("script_review_fingerprint") or "")
+        == script_review_fingerprint(obj)
+    )
+
+
+def apply_script_review(page: dict, object_id: str, *, reviewed: bool) -> bool:
+    obj = next(
+        (
+            item
+            for item in (page.get("text_objects") or [])
+            if isinstance(item, dict) and str(item.get("id") or "") == str(object_id)
+        ),
+        None,
+    )
+    if obj is None or obj.get("source_missing"):
+        raise ValueError(f"Active text object not found: {object_id}")
+    if reviewed:
+        fingerprint = script_review_fingerprint(obj)
+        changed = bool(
+            obj.get("script_reviewed") is not True
+            or obj.get("script_review_fingerprint") != fingerprint
+        )
+        obj["script_reviewed"] = True
+        obj["script_review_fingerprint"] = fingerprint
+        return changed
+    changed = False
+    if obj.pop("script_reviewed", None) is not None:
+        changed = True
+    if obj.pop("script_review_fingerprint", None) is not None:
+        changed = True
+    return changed
+
+
+def apply_final_review(page: dict, *, approved: bool) -> bool:
+    if approved:
+        render_revision = int(page.get("render_revision") or 0)
+        if render_revision <= 0 or not page.get("rendered"):
+            raise ValueError("Page must be rendered before final approval")
+        changed = (
+            int(page.get("final_review_approved_render_revision") or 0)
+            != render_revision
+        )
+        page["final_review_approved_render_revision"] = render_revision
+        return changed
+    return page.pop("final_review_approved_render_revision", None) is not None
 
 
 def is_story_candidate(box: dict | None) -> bool:
@@ -255,6 +314,8 @@ def apply_review_disposition(
                 if box.get("cleanup_disposition") != implied_cleanup:
                     box["cleanup_disposition"] = implied_cleanup
                     changed = True
+                if box.pop("cleanup_review_clean_revision", None) is not None:
+                    changed = True
                 box["cleanup_reviewed"] = True
 
     if cleanup_disposition is not None:
@@ -265,6 +326,8 @@ def apply_review_disposition(
                     changed = True
                 if item.pop("cleanup_reviewed", None) is not None:
                     changed = True
+                if item.pop("cleanup_review_clean_revision", None) is not None:
+                    changed = True
         elif disposition not in CLEANUP_DISPOSITIONS:
             raise ValueError(f"Invalid cleanup disposition: {cleanup_disposition}")
         else:
@@ -274,17 +337,30 @@ def apply_review_disposition(
             if box.get("cleanup_reviewed") is not True:
                 box["cleanup_reviewed"] = True
                 changed = True
+            if disposition == "manual_cleaned":
+                clean_revision = int(page.get("clean_revision") or 0)
+                if box.get("cleanup_review_clean_revision") != clean_revision:
+                    box["cleanup_review_clean_revision"] = clean_revision
+                    changed = True
+            elif box.pop("cleanup_review_clean_revision", None) is not None:
+                changed = True
 
     return changed
 
 
-def editorial_preflight(manifest: dict) -> dict:
+def editorial_preflight(
+    manifest: dict,
+    *,
+    require_final_approval: bool = False,
+) -> dict:
     """Fail-closed final/export coverage for story detector evidence."""
     blockers: list[dict] = []
     blocker_keys: set[tuple] = set()
     high_risk_regions: list[dict] = []
     story_candidate_count = 0
     resolved_candidate_count = 0
+    script_review_required = bool(manifest.get("script_review_required"))
+    final_review_required = bool(manifest.get("final_review_required"))
 
     for page_index, page in enumerate(manifest.get("pages") or []):
         if not isinstance(page, dict) or page.get("skipped"):
@@ -347,6 +423,23 @@ def editorial_preflight(manifest: dict) -> dict:
                 or disposition in EDITORIAL_DROP_DISPOSITIONS
                 or cleanup in CLEANUP_DISPOSITIONS
             )
+            if cleanup == "manual_cleaned":
+                current_clean_revision = int(page.get("clean_revision") or 0)
+                reviewed_clean_revision = box.get("cleanup_review_clean_revision")
+                cleanup_ok = bool(
+                    cleanup_ok
+                    and (
+                        (
+                            current_clean_revision <= 0
+                            and reviewed_clean_revision is None
+                        )
+                        or (
+                            reviewed_clean_revision is not None
+                            and int(reviewed_clean_revision)
+                            == current_clean_revision
+                        )
+                    )
+                )
             if box_id:
                 cleanup_resolved[box_id] = cleanup_ok
 
@@ -420,6 +513,50 @@ def editorial_preflight(manifest: dict) -> dict:
                         reason="active story object has source text but no translation",
                     ),
                 )
+            elif source_text and translation:
+                has_script_marker = bool(
+                    obj.get("script_reviewed")
+                    or obj.get("script_review_fingerprint")
+                )
+                if script_review_required or has_script_marker:
+                    if not obj.get("script_reviewed"):
+                        _append_blocker(
+                            blockers,
+                            blocker_keys,
+                            _blocker(
+                                "script_unreviewed",
+                                page_index,
+                                obj=obj,
+                                reason="story translation has not been explicitly reviewed",
+                            ),
+                        )
+                    elif not script_review_is_current(obj):
+                        _append_blocker(
+                            blockers,
+                            blocker_keys,
+                            _blocker(
+                                "script_review_stale",
+                                page_index,
+                                obj=obj,
+                                reason="OCR source or translation changed after script review",
+                            ),
+                        )
+
+        if require_final_approval and final_review_required:
+            render_revision = int(page.get("render_revision") or 0)
+            approved_revision = int(
+                page.get("final_review_approved_render_revision") or 0
+            )
+            if render_revision <= 0 or approved_revision != render_revision:
+                _append_blocker(
+                    blockers,
+                    blocker_keys,
+                    _blocker(
+                        "final_review_stale",
+                        page_index,
+                        reason="final approval is missing or does not match the current render revision",
+                    ),
+                )
 
         for region in page.get("residue_regions") or []:
             if not isinstance(region, dict) or not is_story_candidate(region):
@@ -478,5 +615,7 @@ def editorial_preflight(manifest: dict) -> dict:
         ),
         "high_risk_region_count": len(high_risk_regions),
         "high_risk_regions": high_risk_regions,
+        "script_review_required": script_review_required,
+        "final_review_required": final_review_required,
         "blockers": blockers,
     }

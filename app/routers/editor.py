@@ -12,10 +12,12 @@ from app.schemas import (
     BulkUpdateTextObjectsRequest,
     CreateTextObjectRequest,
     DeleteTextObjectRequest,
+    FinalReviewPageRequest,
     RemoveBoxRequest,
     RepaintRegionsRequest,
     ResetManualMaskRequest,
     ReviewDispositionRequest,
+    ScriptReviewRequest,
     SaveDraftRequest,
     UpdateBoxRequest,
     UpdateTextObjectRequest,
@@ -23,7 +25,11 @@ from app.schemas import (
 from app.security import MAX_IMAGE_PIXELS, MAX_REQUEST_BYTES, validate_chapter_id
 from app.upload_utils import read_upload_limited
 from app.text_objects import invalidate_stale_machine_translation
-from app.editorial_gate import apply_review_disposition
+from app.editorial_gate import (
+    apply_final_review,
+    apply_review_disposition,
+    apply_script_review,
+)
 
 router = APIRouter(prefix="/api", tags=["editor"])
 
@@ -202,6 +208,59 @@ def remove_box(req: RemoveBoxRequest) -> dict:
     except Exception as exc:
         logger.opt(exception=True).error("Chapter {} page {} box {} operation 'remove_box' failed: {}", req.chapter_id, req.page_index, req.box_index, exc)
         raise HTTPException(500, f"Remove box failed: {exc}") from exc
+
+
+@router.post("/review/script")
+def set_script_review(req: ScriptReviewRequest) -> dict:
+    validate_chapter_id(req.chapter_id)
+    try:
+        with get_page_lock(req.chapter_id, req.page_index), get_manifest_lock(req.chapter_id):
+            manifest = load_manifest_raw(req.chapter_id)
+            pages = manifest.get("pages", [])
+            if req.page_index < 0 or req.page_index >= len(pages):
+                raise HTTPException(400, f"Invalid page_index: {req.page_index}")
+            changed = apply_script_review(
+                pages[req.page_index],
+                req.object_id,
+                reviewed=req.reviewed,
+            )
+            if manifest.get("script_review_required") is not True:
+                manifest["script_review_required"] = True
+                changed = True
+            if changed:
+                save_manifest_raw(req.chapter_id, manifest)
+                pipeline._sync_output_dir(req.chapter_id, manifest, [req.page_index])
+        return urlify_manifest(manifest)
+    except HTTPException:
+        raise
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.post("/review/final")
+def set_final_review(req: FinalReviewPageRequest) -> dict:
+    validate_chapter_id(req.chapter_id)
+    try:
+        with get_page_lock(req.chapter_id, req.page_index), get_manifest_lock(req.chapter_id):
+            manifest = load_manifest_raw(req.chapter_id)
+            pages = manifest.get("pages", [])
+            if req.page_index < 0 or req.page_index >= len(pages):
+                raise HTTPException(400, f"Invalid page_index: {req.page_index}")
+            changed = apply_final_review(
+                pages[req.page_index],
+                approved=req.approved,
+            )
+            if manifest.get("final_review_required") is not True:
+                manifest["final_review_required"] = True
+                changed = True
+            if changed:
+                save_manifest_raw(req.chapter_id, manifest)
+                pipeline._sync_output_dir(req.chapter_id, manifest, [req.page_index])
+        return urlify_manifest(manifest)
+    except HTTPException:
+        raise
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
 
 
 @router.post("/review/disposition")
