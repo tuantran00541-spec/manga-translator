@@ -61,15 +61,6 @@ def _exercise_landing(page: Page, base_url: str, name: str, artifacts: Path) -> 
     page.screenshot(path=str(artifacts / f"{name}-home.png"), full_page=True)
 
 
-def _open_stage(page: Page, stage: str, mobile: bool = False) -> None:
-    if mobile:
-        page.locator("#sidebar-toggle").click()
-        expect(page.locator("body")).to_have_class("sidebar-open")
-    page.locator(f'.sidebar-link[data-stage="{stage}"]').click()
-    expect(page.locator("body")).to_have_attribute("data-app-stage", stage)
-    expect(page.locator("body")).not_to_have_class("sidebar-open")
-
-
 def _select_source_page(page: Page, source_page: int) -> None:
     select = page.locator(".review-stitched-select")
     select.select_option(str(source_page))
@@ -118,11 +109,8 @@ def _exercise_desktop(page: Page) -> None:
     page.get_by_role("button", name="100%", exact=True).click()
     expect(page.locator(".review-zoom-value")).to_have_text("100%")
 
-    _open_stage(page, "preview")
-    expect(page.locator(".preview-workspace")).to_be_visible()
-    expect(page.locator("#start-action.preview-primary-action")).to_be_visible()
-    _open_stage(page, "review")
-    _wait_for_review(page)
+    expect(page.locator(".review-tool-rail")).to_be_visible()
+    expect(page.locator('.sidebar-link[data-stage="preview"]')).to_be_hidden()
 
     # Repeated mounts must not retain duplicate observers/workspaces.
     page.evaluate("() => { for (let i = 0; i < 8; i += 1) window.renderReview(); }")
@@ -159,10 +147,8 @@ def _exercise_mobile(page: Page) -> None:
         page.locator("#toggle-inspector-panel").click()
     expect(page.locator(".translation-panel-host")).to_be_hidden()
 
-    _open_stage(page, "preview", mobile=True)
-    expect(page.locator(".preview-workspace")).to_be_visible()
-    _open_stage(page, "review", mobile=True)
-    _wait_for_review(page)
+    expect(page.locator(".review-tool-rail")).to_be_visible()
+    expect(page.locator('.sidebar-link[data-stage="preview"]')).to_be_hidden()
 
 
 def _canvas_metrics(page: Page) -> dict[str, float | int]:
