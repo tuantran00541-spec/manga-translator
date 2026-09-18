@@ -8,7 +8,7 @@ import sys
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from scripts.profile_processing import summarize_detector_passes
+from scripts.profile_processing import detector_phase_specs, summarize_detector_passes
 
 
 def check(condition, message):
@@ -58,6 +58,13 @@ events = [
         "input_shape": [1, 3, 1024, 1024],
     },
 ]
+
+phase_specs = detector_phase_specs()
+check(
+    ("FastResidueAdaptiveFocusCombinedTextDetector", "verify_post_inpaint_residue", "residue_verify")
+    in phase_specs,
+    "production fast-residue override must be attributed as residue_verify",
+)
 
 summary = summarize_detector_passes(events)
 
