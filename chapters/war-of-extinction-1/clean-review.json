@@ -1,73 +1,92 @@
 {
   "checkpoint": "CLEAN_REVIEW",
-  "status": "FAIL_REPAIR_REQUIRED",
+  "status": "PASS",
   "chapter_id": "05efce51",
-  "clean_run_id": 35286501171,
-  "clean_artifact": "02-clean-review-05efce51",
-  "clean_artifact_id": 10525561906,
-  "clean_artifact_digest": "sha256:e5f0d11ec25743e3226e53a1631611714e055a52eb1d6ddc274619f2f8ce44b3",
-  "proof_artifact": "02-clean-proof-05efce51",
-  "proof_artifact_id": 10525517036,
-  "slices": 139,
-  "total_boxes": 676,
-  "free_text_like_boxes": 323,
-  "automated_residue_flag_pages": [],
-  "automated_needs_review_pages": 131,
   "technical_pass": true,
-  "editorial_pass": false,
-  "human_review": {
-    "full_slice_proof_sheets_reviewed": 12,
-    "review_scope": "all 139 slices via RAW vs CLEAN full-slice sheets",
-    "story_text_blocker_pages_observed": [
-      0,
-      1,
-      4,
-      20,
-      21,
-      23,
-      24,
-      40,
-      41,
-      45,
-      49,
-      67,
-      68,
-      86,
-      87,
-      88,
-      102,
-      103,
-      115,
-      121,
-      122,
-      129,
-      137,
-      138
-    ],
-    "story_text_blockers_observed_at_least": 24,
-    "artwork_or_non_story_preservation_blockers": [
-      0,
-      138
-    ],
-    "pattern": "systematic recall gap on display/free-text/narration/skill/ranking text outside ordinary speech bubbles; ordinary bubble dialogue is substantially cleaner",
-    "examples": [
-      "p020: 'THE TOURNAMENT OF THE WORLDS STRONGEST-' remains",
-      "p021: 'BEGINS NOW!!!' only partially removed; 'NOW!!!' remains",
-      "p045: 'THE RESULT: UNANIMOUS APPROVAL.' remains",
-      "p049: 'SHALL BE HELD!!' remains",
-      "p067-p068: narrative/free text remains",
-      "p102-p103: skill/display text remains or is only partially removed",
-      "p129: 'THIS VERY TOURNAMENT!!!' remains",
-      "p137: ranking/display text remains partially including 'NO.1'",
-      "p000 and p138: non-story promo/credit material was modified and should be preserved"
-    ],
-    "verifier_gap": "automated residue_flag_pages is empty despite multiple visually obvious source-text blockers"
-  },
-  "blockers": [
-    "SYSTEMATIC_FREE_TEXT_DISPLAY_RECALL_MISS",
-    "SOURCE_STORY_TEXT_RESIDUE",
-    "NON_STORY_PROMO_CREDIT_PRESERVATION"
+  "editorial_pass": true,
+  "base_clean_run_id": 35286501171,
+  "accepted_repair_chain": [
+    {
+      "run_id": 35292862313,
+      "checkpoint": "02B",
+      "role": "manual editor repair"
+    },
+    {
+      "run_id": 35293371743,
+      "checkpoint": "02C",
+      "role": "second brush refinement"
+    },
+    {
+      "run_id": 35293898170,
+      "checkpoint": "02D",
+      "role": "fine brush cleanup"
+    },
+    {
+      "run_id": 35294172340,
+      "checkpoint": "02E",
+      "role": "final fine brush"
+    },
+    {
+      "run_id": 35294489102,
+      "checkpoint": "02F",
+      "role": "p121 preserve fix; p103 output rejected"
+    },
+    {
+      "run_id": 35294842139,
+      "checkpoint": "02G",
+      "role": "accepted p103 tiny LaMa finish + accepted p121 PASS5 state"
+    }
   ],
-  "ocr_allowed": false,
-  "next_action": "REPAIR_FREE_TEXT_DISPLAY_RECALL_AND_PRESERVE_NON_STORY"
+  "human_review": {
+    "initial_full_slice_proof_sheets_reviewed": 12,
+    "total_slices_reviewed": 139,
+    "focused_repair_proofs_reviewed": true,
+    "final_story_text_blockers": 0,
+    "final_artwork_damage_blockers": 0,
+    "source_residue_blockers": 0,
+    "skip_pages": [
+      0,
+      138
+    ],
+    "preserve_regions": {
+      "40": [
+        {
+          "x1": 0,
+          "y1": 2180,
+          "x2": 300,
+          "y2": 2320
+        }
+      ],
+      "102": [
+        {
+          "x1": 500,
+          "y1": 2700,
+          "x2": 900,
+          "y2": 2950
+        }
+      ],
+      "121": [
+        {
+          "x1": 620,
+          "y1": 1180,
+          "x2": 900,
+          "y2": 1320
+        }
+      ]
+    },
+    "notes": [
+      "p000 and p138 are non-story promo/credit slices and intentionally export from RAW via skipped state.",
+      "p103 final accepted state is PASS4 plus one tiny exact LaMa brush from run 35294842139; PASS5 p103 was rejected due visual regression.",
+      "p121 final accepted state uses corrected tight preserve geometry for the ASURASCANS watermark and clean story-text band.",
+      "Automated residue verifier missed several visually obvious free-text/display residues in the original candidate; human proof review remained authoritative."
+    ]
+  },
+  "blockers": [],
+  "ocr_allowed": true,
+  "final_repair_run_id": 35294842139,
+  "final_repair_artifact": "02g-manual-clean-repair-05efce51",
+  "final_repair_artifact_id": 10528495358,
+  "final_proof_artifact": "02g-manual-clean-proof-05efce51",
+  "final_proof_artifact_id": 10527676448,
+  "next_action": "BUILD_FINAL_CLEAN_CHECKPOINT"
 }
