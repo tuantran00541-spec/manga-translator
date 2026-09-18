@@ -1,0 +1,47 @@
+name: Chapter 1 Publish OCR Curated Text
+on:
+  push:
+    branches:
+      - chapter/war-of-extinction-1
+    paths:
+      - .github/workflows/chapter-1-publish-ocr-curated.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      OCR_RUN_ID: "35298347677"
+      OCR_ARTIFACT: 03b-ocr-curated-05efce51
+      STATE_DIR: chapters/war-of-extinction-1
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chapter/war-of-extinction-1
+          fetch-depth: 0
+      - name: Restore curated OCR artifact
+        run: |
+          rm -rf checkpoint/03b
+          mkdir -p checkpoint/03b
+          gh run download "$OCR_RUN_ID" -n "$OCR_ARTIFACT" -D checkpoint/03b
+          test -f checkpoint/03b/active-source-text.json
+          test -f checkpoint/03b/ocr-curation-summary.json
+      - name: Publish durable OCR checkpoint
+        run: |
+          cp checkpoint/03b/active-source-text.json "$STATE_DIR/active-source-text.json"
+          cp checkpoint/03b/ocr-curation-summary.json "$STATE_DIR/ocr-curation-summary.json"
+          cp checkpoint/03b/processed-manifest.json "$STATE_DIR/ocr-curated-manifest.json"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$STATE_DIR/active-source-text.json" "$STATE_DIR/ocr-curation-summary.json" "$STATE_DIR/ocr-curated-manifest.json"
+          if git diff --cached --quiet; then
+            echo "No OCR checkpoint changes"
+          else
+            git commit -m "chapter: publish curated OCR checkpoint"
+            git push origin HEAD:chapter/war-of-extinction-1
+          fi
