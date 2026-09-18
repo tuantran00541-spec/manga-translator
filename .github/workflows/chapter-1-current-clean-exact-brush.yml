@@ -1,0 +1,360 @@
+name: Chapter 1 Checkpoint 02H Current-Clean Exact Brush
+on:
+  push:
+    branches:
+      - chapter/war-of-extinction-1
+    paths:
+      - .github/workflows/chapter-1-current-clean-exact-brush.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: chapter-1-human-loop
+  cancel-in-progress: false
+
+jobs:
+  current-clean-brush:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CHAPTER_ID: 05efce51
+      BASE_RUN_ID: "35286501171"
+      BASE_ARTIFACT: 02-clean-review-05efce51
+      R1_RUN_ID: "35292862313"
+      R1_ARTIFACT: 02b-manual-clean-repair-05efce51
+      R2_RUN_ID: "35293371743"
+      R2_ARTIFACT: 02c-manual-clean-repair-05efce51
+      R3_RUN_ID: "35293898170"
+      R3_ARTIFACT: 02d-manual-clean-repair-05efce51
+      R4_RUN_ID: "35294172340"
+      R4_ARTIFACT: 02e-manual-clean-repair-05efce51
+      R5_RUN_ID: "35294489102"
+      R5_ARTIFACT: 02f-manual-clean-repair-05efce51
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chapter/war-of-extinction-1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install editor repair runtime
+        run: |
+          python -m pip install \
+            numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 \
+            onnxruntime-openvino==1.24.1 psutil==6.1.1 loguru==0.7.2 \
+            requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 playwright==1.47.0 \
+            fastapi==0.115.0 'uvicorn[standard]==0.30.6' \
+            pydantic==2.9.2 filelock==3.16.1 python-multipart==0.0.12
+
+      - name: Restore detector and inpaint models
+        id: models
+        uses: actions/cache@v4
+        with:
+          path: |
+            models/*.onnx
+            models/.e2e-provenance.json
+          key: processing-profile-models-b224548-v1
+
+      - name: Restore accepted base state
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf checkpoint repair7 data/raw/"$CHAPTER_ID" data/processed/"$CHAPTER_ID"
+          mkdir -p checkpoint/base checkpoint/r1 checkpoint/r2 checkpoint/r3 checkpoint/r4 checkpoint/r5 repair7/proof repair7/overlay/processed data/raw data/processed
+
+          gh run download "$BASE_RUN_ID" -n "$BASE_ARTIFACT" -D checkpoint/base
+          gh run download "$R1_RUN_ID" -n "$R1_ARTIFACT" -D checkpoint/r1
+          gh run download "$R2_RUN_ID" -n "$R2_ARTIFACT" -D checkpoint/r2
+          gh run download "$R3_RUN_ID" -n "$R3_ARTIFACT" -D checkpoint/r3
+          gh run download "$R4_RUN_ID" -n "$R4_ARTIFACT" -D checkpoint/r4
+          gh run download "$R5_RUN_ID" -n "$R5_ARTIFACT" -D checkpoint/r5
+
+          cp -a checkpoint/base/raw "data/raw/$CHAPTER_ID"
+          cp -a checkpoint/base/processed "data/processed/$CHAPTER_ID"
+
+          cp checkpoint/r1/manifest.json "data/processed/$CHAPTER_ID/manifest.json"
+          cp -a checkpoint/r1/overlay/processed/. "data/processed/$CHAPTER_ID/"
+
+          cp checkpoint/r2/manifest.json "data/processed/$CHAPTER_ID/manifest.json"
+          cp -a checkpoint/r2/overlay/processed/. "data/processed/$CHAPTER_ID/"
+
+          cp checkpoint/r3/manifest.json "data/processed/$CHAPTER_ID/manifest.json"
+          cp -a checkpoint/r3/overlay/processed/. "data/processed/$CHAPTER_ID/"
+
+          # PASS4 is the desired p103 base.
+          cp checkpoint/r4/manifest.json "data/processed/$CHAPTER_ID/manifest.json"
+          cp -a checkpoint/r4/overlay/processed/. "data/processed/$CHAPTER_ID/"
+
+          # Merge only the accepted p121 result from PASS5.
+          python - <<'PY'
+          import json, shutil
+          from pathlib import Path
+
+          dst=Path('data/processed/05efce51')
+          current=dst/'manifest.json'
+          m=json.loads(current.read_text(encoding='utf-8'))
+          r5=json.loads(Path('checkpoint/r5/manifest.json').read_text(encoding='utf-8'))
+          m['pages'][121]=r5['pages'][121]
+          current.write_text(json.dumps(m,ensure_ascii=False,indent=2),encoding='utf-8')
+
+          for f in Path('checkpoint/r5/overlay/processed').glob('*'):
+              if f.name in {'clean_033_04.png','manual_mask_033_04.png','manual_lama_mask_033_04.png'}:
+                  shutil.copy2(f,dst/f.name)
+          PY
+
+          test -f "data/processed/$CHAPTER_ID/manifest.json"
+
+      - name: Apply exact current-clean standard brush on p103
+        run: |
+          python - <<'PY'
+          import cv2, json, hashlib
+          import numpy as np
+          from pathlib import Path
+
+          from app.dependencies import pipeline
+          from app.image_io import read_image, write_image
+          from app.manifest_utils import (
+              atomic_replace,
+              bump_page_revision,
+              get_manifest_lock,
+              invalidate_page_render,
+              load_manifest_raw,
+              save_manifest_raw,
+          )
+
+          chapter='05efce51'
+          manifest=load_manifest_raw(chapter)
+          page=manifest['pages'][103]
+          clean_path=Path(page['clean'])
+          current=read_image(clean_path)
+          before=current.copy()
+          h,w=current.shape[:2]
+
+          # Review-derived tiny ROI containing only the final surviving white outline.
+          x1,y1,x2,y2=250,2400,350,2600
+          roi=current[y1:y2,x1:x2]
+          gray=cv2.cvtColor(roi,cv2.COLOR_BGR2GRAY)
+
+          # Build a stroke-aware brush from the visible bright residue only.
+          seed=(gray>125).astype(np.uint8)*255
+          n,labels,stats,_=cv2.connectedComponentsWithStats(seed,8)
+          local=np.zeros_like(seed)
+          for i in range(1,n):
+              area=int(stats[i,cv2.CC_STAT_AREA])
+              bx=int(stats[i,cv2.CC_STAT_LEFT])
+              by=int(stats[i,cv2.CC_STAT_TOP])
+              bw=int(stats[i,cv2.CC_STAT_WIDTH])
+              bh=int(stats[i,cv2.CC_STAT_HEIGHT])
+              # Keep the narrow curved residue, reject tiny noise.
+              if area>=12 and bw>=3 and bh>=8:
+                  local[labels==i]=255
+
+          if not np.any(local):
+              raise SystemExit('p103 current-clean residue brush is empty')
+
+          local=cv2.dilate(
+              local,
+              cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(7,7)),
+              iterations=1,
+          )
+
+          mask=np.zeros((h,w),np.uint8)
+          mask[y1:y2,x1:x2]=local
+
+          # Exact user-mask semantics, but critically use CURRENT CLEAN as context.
+          candidate=pipeline._exact_manual_repaint_candidate(
+              current.copy(),
+              mask,
+              force_lama=False,
+          )
+          authority=mask>0
+          repaired=current.copy()
+          repaired[authority]=candidate[authority]
+
+          outside=~authority
+          outside_diff=int(np.count_nonzero(np.any(repaired[outside] != before[outside],axis=1)))
+          if outside_diff!=0:
+              raise SystemExit(f'current-clean exact brush changed {outside_diff} pixels outside authority')
+
+          mask_path=Path('repair7/p103-current-clean-mask.png')
+          cv2.imwrite(str(mask_path),mask)
+
+          tmp=clean_path.with_name(clean_path.name+'.current-clean.tmp.png')
+          write_image(tmp,repaired)
+          atomic_replace(tmp,clean_path)
+
+          with get_manifest_lock(chapter):
+              manifest=load_manifest_raw(chapter)
+              page=manifest['pages'][103]
+              page['clean']=clean_path.as_posix()
+              page['manual_current_clean_repair']={
+                  'mode':'standard_exact_mask',
+                  'mask_pixels':int(np.count_nonzero(authority)),
+                  'mask_sha256':hashlib.sha256(mask_path.read_bytes()).hexdigest(),
+                  'source_checkpoint':'PASS4',
+                  'replay_from_auto_clean':False,
+              }
+              bump_page_revision(page,'clean_revision')
+              invalidate_page_render(manifest,103)
+              save_manifest_raw(chapter,manifest)
+
+          Path('repair7/operation.json').write_text(json.dumps({
+              'page_index':103,
+              'mode':'standard_current_clean_exact',
+              'roi':[x1,y1,x2,y2],
+              'mask_pixels':int(np.count_nonzero(authority)),
+              'outside_authority_changed_pixels':outside_diff,
+          },indent=2),encoding='utf-8')
+          PY
+
+      - name: Verify accepted chapter invariants
+        run: |
+          python - <<'PY'
+          import cv2, json, numpy as np
+          from pathlib import Path
+          from app.manifest_utils import load_manifest_raw
+
+          m=load_manifest_raw('05efce51')
+
+          for p in [0,138]:
+              page=m['pages'][p]
+              if not page.get('skipped') or page.get('clean') is not None:
+                  raise SystemExit(f'skip drift p{p:03d}')
+
+          preserve={
+            40:[(0,2180,300,2320)],
+            102:[(500,2700,900,2950)],
+            121:[(620,1180,900,1320)],
+          }
+          for p,rs in preserve.items():
+              raw=cv2.imread(m['pages'][p]['original'])
+              clean=cv2.imread(m['pages'][p]['clean'])
+              if raw is None or clean is None:
+                  raise SystemExit(f'missing image p{p:03d}')
+              for x1,y1,x2,y2 in rs:
+                  if not np.array_equal(raw[y1:y2,x1:x2],clean[y1:y2,x1:x2]):
+                      raise SystemExit(f'preserve drift p{p:03d}')
+
+          Path('repair7/manifest.json').write_text(json.dumps(m,ensure_ascii=False,indent=2),encoding='utf-8')
+          PY
+
+      - name: Build full-res current-clean proof
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from PIL import Image, ImageDraw, ImageFont
+          from app.manifest_utils import load_manifest_raw
+
+          m=load_manifest_raw('05efce51')
+          proof=Path('repair7/proof'); proof.mkdir(parents=True,exist_ok=True)
+          font=ImageFont.load_default()
+
+          # p103: RAW vs PASS4-reference vs repaired current-clean.
+          raw=Image.open(m['pages'][103]['original']).convert('RGB')
+          pass4=Image.open('checkpoint/r4/overlay/processed/clean_029_00.png').convert('RGB')
+          final=Image.open(m['pages'][103]['clean']).convert('RGB')
+
+          box=(0,1900,900,2900)
+          ims=[]
+          for im in (raw,pass4,final):
+              c=im.crop(box)
+              c.thumbnail((360,400),Image.Resampling.LANCZOS)
+              ims.append(c)
+
+          card=Image.new('RGB',(1140,450),'white')
+          for i,im in enumerate(ims):
+              card.paste(im,(10+i*380,28))
+          d=ImageDraw.Draw(card)
+          d.text((8,5),'p103 current-clean exact brush',fill='black',font=font)
+          for i,s in enumerate(('RAW','PASS4','FINAL')):
+              d.text((145+i*380,430),s,fill='black',font=font)
+          card.save(proof/'p103-full.jpg',quality=95)
+
+          # Tight proof around the actual brush.
+          tight=(200,2350,420,2650)
+          ims=[]
+          for im in (raw,pass4,final):
+              c=im.crop(tight)
+              c.thumbnail((360,360),Image.Resampling.LANCZOS)
+              ims.append(c)
+          card2=Image.new('RGB',(1140,410),'white')
+          for i,im in enumerate(ims):
+              card2.paste(im,(10+i*380,28))
+          d2=ImageDraw.Draw(card2)
+          d2.text((8,5),'p103 exact authority close-up',fill='black',font=font)
+          for i,s in enumerate(('RAW','PASS4','FINAL')):
+              d2.text((145+i*380,390),s,fill='black',font=font)
+          card2.save(proof/'p103-tight.jpg',quality=95)
+
+          # p121 accepted final proof remains included.
+          raw121=Image.open(m['pages'][121]['original']).convert('RGB')
+          clean121=Image.open(m['pages'][121]['clean']).convert('RGB')
+          c1=raw121.crop((0,700,900,1400)); c1.thumbnail((480,360),Image.Resampling.LANCZOS)
+          c2=clean121.crop((0,700,900,1400)); c2.thumbnail((480,360),Image.Resampling.LANCZOS)
+          card3=Image.new('RGB',(1000,410),'white')
+          card3.paste(c1,(10,28)); card3.paste(c2,(510,28))
+          d3=ImageDraw.Draw(card3)
+          d3.text((8,5),'p121 accepted preserve+clean state',fill='black',font=font)
+          d3.text((205,390),'RAW',fill='black',font=font)
+          d3.text((700,390),'FINAL',fill='black',font=font)
+          card3.save(proof/'p121.jpg',quality=95)
+          PY
+
+      - name: Pack current-clean final delta
+        if: always()
+        run: |
+          python - <<'PY'
+          import json, shutil
+          from pathlib import Path
+          from app.manifest_utils import load_manifest_raw
+
+          m=load_manifest_raw('05efce51')
+          out=Path('repair7/overlay/processed'); out.mkdir(parents=True,exist_ok=True)
+
+          for p in [103,121]:
+              page=m['pages'][p]
+              clean=page.get('clean')
+              if clean and Path(clean).is_file():
+                  shutil.copy2(clean,out/Path(clean).name)
+
+          meta={
+            'checkpoint':'02h-current-clean-exact-brush',
+            'chapter_id':'05efce51',
+            'accepted_base':{'p103':'PASS4','p121':'PASS5'},
+            'rejected_runs':[35294842139],
+            'current_clean_repair_page':103,
+            'outside_authority_changed_pixels':0,
+            'next_action':'HUMAN_REVIEW_02H',
+          }
+          Path('repair7/manual-clean-repair-7.json').write_text(json.dumps(meta,indent=2),encoding='utf-8')
+          PY
+
+      - name: Upload current-clean final delta
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: 02h-manual-clean-repair-05efce51
+          path: |
+            repair7/manifest.json
+            repair7/manual-clean-repair-7.json
+            repair7/operation.json
+            repair7/p103-current-clean-mask.png
+            repair7/overlay/
+          compression-level: 0
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Upload current-clean proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: 02h-manual-clean-proof-05efce51
+          path: repair7/proof/
+          retention-days: 7
+          if-no-files-found: error
