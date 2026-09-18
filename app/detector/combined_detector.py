@@ -5,7 +5,13 @@ from concurrent.futures import ThreadPoolExecutor
 import threading
 import time
 
-from app.config import BUBBLE_DETECTOR_MODEL, TEXT_SEGMENTER_MODEL
+from loguru import logger
+
+from app.config import (
+    BUBBLE_DETECTOR_MODEL,
+    TEXT_SEGMENTER_MODEL,
+    TEXT_SEGMENTER_RETRY_MODEL,
+)
 from app.detector.bubble_detector import YoloDetector, BubbleBox, MAX_BOX_AREA_RATIO
 from app.detector.recovery import SecondaryTextRecovery
 from app.parameters import (
@@ -29,6 +35,8 @@ from app.parameters import (
     DETECTOR_GRAYSCALE_FALLBACK_PAD_Y,
     DETECTOR_GRAYSCALE_FALLBACK_PROPOSALS_PER_EXTRA_ROI,
     DETECTOR_NMS_SCORE_FLOOR,
+    DETECTOR_RETRY_INPUT_SIZE,
+    DETECTOR_RETRY_SEGMENTER_ENABLED,
     DETECTOR_RESIDUE_VERIFY_MAX_ROIS,
     DETECTOR_RESIDUE_VERIFY_MAX_SOURCE_SIDE,
     DETECTOR_RESIDUE_VERIFY_PAD,
@@ -78,7 +86,52 @@ class CombinedTextDetector:
             model_role="text_segmenter",
         )
         self.recovery = SecondaryTextRecovery()
+        self._retry_text_detector: YoloDetector | None = None
+        self._retry_text_detector_resolved = False
+        self._retry_text_detector_lock = threading.Lock()
         self._metrics_local = threading.local()
+
+    @property
+    def retry_text_detector(self) -> YoloDetector:
+        """Return the optional lower-resolution segmenter for bounded retries.
+
+        The specialized model is deliberately lazy and optional. Primary text
+        detection always keeps the validated 1024 model. Missing/invalid retry
+        artifacts fail open to that primary model so cleanup correctness does
+        not depend on an optimization artifact being present.
+        """
+        if self._retry_text_detector is not None:
+            return self._retry_text_detector
+        if self._retry_text_detector_resolved:
+            return self.text_detector
+
+        with self._retry_text_detector_lock:
+            if self._retry_text_detector is not None:
+                return self._retry_text_detector
+            if self._retry_text_detector_resolved:
+                return self.text_detector
+
+            self._retry_text_detector_resolved = True
+            if not DETECTOR_RETRY_SEGMENTER_ENABLED:
+                return self.text_detector
+            if not TEXT_SEGMENTER_RETRY_MODEL.is_file():
+                return self.text_detector
+
+            try:
+                self._retry_text_detector = YoloDetector(
+                    TEXT_SEGMENTER_RETRY_MODEL,
+                    TEXT_CONF_THRESHOLD,
+                    model_role="text_segmenter",
+                    input_size=DETECTOR_RETRY_INPUT_SIZE,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Focused retry segmenter unavailable ({}); falling back to {}",
+                    exc,
+                    self.text_detector.source_model,
+                )
+                self._retry_text_detector = None
+            return self._retry_text_detector or self.text_detector
 
     def last_metrics(self) -> dict[str, float | int]:
         """Return detector counters from the current page-processing thread."""
@@ -371,7 +424,7 @@ class CombinedTextDetector:
         """Run a bounded segmenter retry inside unresolved proposal ROIs."""
         h, w = image.shape[:2]
         rois, deferred = self._plan_grayscale_fallback_rois((h, w), proposals)
-        retry_detector = getattr(self, "_retry_text_detector", None) or self.text_detector
+        retry_detector = self.retry_text_detector
         recovered: list[BubbleBox] = []
         source_pixels = 0
         for x1, y1, x2, y2 in rois:
