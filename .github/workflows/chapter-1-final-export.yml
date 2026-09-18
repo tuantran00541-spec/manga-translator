@@ -1,0 +1,219 @@
+name: Chapter 1 FINAL Export
+
+on:
+  push:
+    branches:
+      - chapter/war-of-extinction-1
+    paths:
+      - .github/workflows/chapter-1-final-export.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: chapter-1-human-loop
+  cancel-in-progress: false
+
+jobs:
+  final:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RENDER_RUN_ID: "35306773202"
+      RENDER_ARTIFACT: 05a-render-candidate-05efce51
+      RAW_INPAINT_ARTIFACT_ID: "10527403141"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chapter/war-of-extinction-1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install final verification runtime
+        run: python -m pip install Pillow==10.4.0
+
+      - name: Restore approved repaired render candidate
+        run: |
+          rm -rf checkpoint/05a checkpoint/final
+          mkdir -p checkpoint/05a checkpoint/final
+          gh run download "$RENDER_RUN_ID" -n "$RENDER_ARTIFACT" -D checkpoint/05a
+          test -d checkpoint/05a/final_pages
+          test -f checkpoint/05a/typography-summary.json
+          test -f checkpoint/05a/render-summary.json
+          test -f checkpoint/05a/typography-plan.json
+          test -f chapters/war-of-extinction-1/visual-review.json
+          test -f chapters/war-of-extinction-1/translation-map.json
+
+      - name: Verify final editorial gate
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from PIL import Image
+
+          root=Path('checkpoint/05a')
+          visual=json.loads(Path('chapters/war-of-extinction-1/visual-review.json').read_text(encoding='utf-8'))
+          typo=json.loads((root/'typography-summary.json').read_text(encoding='utf-8'))
+          render=json.loads((root/'render-summary.json').read_text(encoding='utf-8'))
+          tmap=json.loads(Path('chapters/war-of-extinction-1/translation-map.json').read_text(encoding='utf-8'))
+          plan=json.loads((root/'typography-plan.json').read_text(encoding='utf-8'))
+
+          if visual.get('status')!='PASS' or not visual.get('editorial_pass'):
+              raise SystemExit(f'visual editorial review is not PASS: {visual}')
+          vg=visual.get('typography_gate') or {}
+          required={
+            'active_story_objects':167,
+            'rendered_story_objects':167,
+            'untranslated_objects':0,
+            'font_fallback_count':0,
+            'font_size_auto_objects':0,
+            'horizontal_compression_objects':0,
+            'overflow_blockers':0,
+            'clipping_blockers':0,
+            'alignment_blockers':0,
+            'bubble_margin_blockers':0,
+            'glyph_blockers':0,
+            'source_residue_blockers':0,
+            'seam_blockers':0,
+            'visual_blockers_total':0,
+          }
+          for k,v in required.items():
+              if vg.get(k)!=v:
+                  raise SystemExit(f'final visual gate {k}: expected {v!r}, got {vg.get(k)!r}')
+
+          if len(plan)!=167 or typo.get('active_story_objects')!=167:
+              raise SystemExit('typography object count drift')
+          for k in ('font_fallback_count','font_size_auto_objects','horizontal_compression_objects',
+                    'overflow_blockers','clipping_blockers','bubble_margin_blockers','glyph_blockers'):
+              if int(typo.get(k) or 0)!=0:
+                  raise SystemExit(f'typography blocker {k}={typo.get(k)}')
+          if int(typo.get('font_size_min_px') or 0)<28:
+              raise SystemExit(f'subminimum font size: {typo.get("font_size_min_px")}')
+          if typo.get('normal_dialogue_font')!='Mac-dinh-3' or typo.get('normal_narration_font')!='Mac-dinh-2':
+              raise SystemExit('default font contract drift')
+          if tmap.get('active_story_objects')!=167 or tmap.get('active_untranslated_story_objects')!=0:
+              raise SystemExit('translation gate drift')
+          if render.get('rendered_story_objects')!=167 or render.get('source_pages')!=40:
+              raise SystemExit('render summary drift')
+
+          pages=sorted((root/'final_pages').glob('page_*.png'))
+          if len(pages)!=40:
+              raise SystemExit(f'expected 40 final pages, got {len(pages)}')
+          dims=[]
+          for p in pages:
+              with Image.open(p) as im:
+                  im.verify()
+              with Image.open(p) as im:
+                  if im.width<=0 or im.height<=0:
+                      raise SystemExit(f'invalid final page {p}: {im.size}')
+                  dims.append([p.name,im.width,im.height])
+
+          Path('checkpoint/final/final-page-dimensions.json').write_text(json.dumps(dims,indent=2),encoding='utf-8')
+          print(json.dumps({'gate':'PASS','pages':len(pages),'objects':167},indent=2))
+          PY
+
+      - name: Build FINAL Vietnamese ZIP and report
+        run: |
+          python - <<'PY'
+          import hashlib, json, zipfile
+          from pathlib import Path
+
+          source=Path('checkpoint/05a/final_pages')
+          out=Path('checkpoint/final')
+          final_zip=out/'War-of-Extinction-Chapter-1-VI-FINAL.zip'
+
+          with zipfile.ZipFile(final_zip,'w',compression=zipfile.ZIP_STORED) as z:
+              for p in sorted(source.glob('page_*.png')):
+                  z.write(p,arcname=p.name)
+
+          digest=hashlib.sha256(final_zip.read_bytes()).hexdigest()
+          visual=json.loads(Path('chapters/war-of-extinction-1/visual-review.json').read_text(encoding='utf-8'))
+          typo=json.loads(Path('checkpoint/05a/typography-summary.json').read_text(encoding='utf-8'))
+          report={
+            'chapter_id':'05efce51',
+            'series_title':'War of Extinction',
+            'chapter_number':1,
+            'branch':'chapter/war-of-extinction-1',
+            'status':'FINAL_PASS',
+            'editorial_pass':True,
+            'source_pages':40,
+            'slices':139,
+            'active_story_objects':167,
+            'rendered_story_objects':167,
+            'untranslated_objects':0,
+            'font_fallback_count':0,
+            'font_size_auto_objects':0,
+            'font_size_min_px':typo.get('font_size_min_px'),
+            'font_size_max_px':typo.get('font_size_max_px'),
+            'overflow_blockers':0,
+            'clipping_blockers':0,
+            'alignment_blockers':0,
+            'bubble_margin_blockers':0,
+            'glyph_blockers':0,
+            'source_residue_blockers':0,
+            'seam_blockers':0,
+            'visual_blockers_total':0,
+            'visual_review':visual,
+            'provenance':{
+              'import_run_id':35286090041,
+              'final_clean_run_id':35295557014,
+              'ocr_curated_run_id':35298347677,
+              'translation_run_id':35302234477,
+              'final_render_run_id':35306773202,
+              'raw_inpaint_evidence_artifact_id':10527403141,
+              'raw_inpaint_evidence_artifact':'War-of-Extinction-Chapter-1-RAW-INPAINT',
+            },
+            'final_file':{
+              'name':final_zip.name,
+              'sha256':digest,
+              'size_bytes':final_zip.stat().st_size,
+              'page_count':40,
+            },
+          }
+          (out/'final-report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
+          (out/'HUMAN_CHECKPOINT.txt').write_text(
+            'FINAL PASS\nObject proof, full-page review, seam review and optical breathing review completed. visual_blockers_total=0.\n',
+            encoding='utf-8'
+          )
+          print(json.dumps(report['final_file'],indent=2))
+          PY
+
+      - name: Copy audit metadata
+        run: |
+          cp chapters/war-of-extinction-1/visual-review.json checkpoint/final/visual-review.json
+          cp chapters/war-of-extinction-1/translation-map.json checkpoint/final/translation-map.json
+          cp checkpoint/05a/typography-summary.json checkpoint/final/typography-summary.json
+          cp checkpoint/05a/typography-plan.json checkpoint/final/typography-plan.json
+          cp checkpoint/05a/render-summary.json checkpoint/final/render-summary.json
+
+      - name: Upload FINAL chapter
+        uses: actions/upload-artifact@v4
+        with:
+          name: War-of-Extinction-Chapter-1-VI-FINAL
+          path: |
+            checkpoint/final/War-of-Extinction-Chapter-1-VI-FINAL.zip
+            checkpoint/final/final-report.json
+            checkpoint/final/HUMAN_CHECKPOINT.txt
+          compression-level: 0
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Upload FINAL audit metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: War-of-Extinction-Chapter-1-FINAL-AUDIT
+          path: |
+            checkpoint/final/final-report.json
+            checkpoint/final/visual-review.json
+            checkpoint/final/translation-map.json
+            checkpoint/final/typography-summary.json
+            checkpoint/final/typography-plan.json
+            checkpoint/final/render-summary.json
+            checkpoint/final/final-page-dimensions.json
+          retention-days: 14
+          if-no-files-found: error
