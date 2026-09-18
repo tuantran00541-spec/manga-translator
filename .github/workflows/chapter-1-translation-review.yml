@@ -1,0 +1,191 @@
+name: Chapter 1 Checkpoint 04 Translation Review
+on:
+  push:
+    branches:
+      - chapter/war-of-extinction-1
+    paths:
+      - .github/workflows/chapter-1-translation-review.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: chapter-1-human-loop
+  cancel-in-progress: false
+
+jobs:
+  translation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      CURATED_RUN_ID: "35298347677"
+      CURATED_ARTIFACT: 03b-ocr-curated-05efce51
+      STATE_DIR: chapters/war-of-extinction-1
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chapter/war-of-extinction-1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install review runtime
+        run: python -m pip install numpy==1.26.4
+      - name: Restore approved OCR curation
+        run: |
+          rm -rf checkpoint/03b checkpoint/04-translation
+          mkdir -p checkpoint/03b checkpoint/04-translation
+          gh run download "$CURATED_RUN_ID" -n "$CURATED_ARTIFACT" -D checkpoint/03b
+          test -f checkpoint/03b/processed-manifest.json
+          test -f checkpoint/03b/active-source-text.json
+          test -f checkpoint/03b/ocr-curation-summary.json
+          test -f "$STATE_DIR/translation-map.json"
+      - name: Apply human-reviewed Vietnamese translations
+        run: |
+          python - <<'PY'
+          import json, re
+          from pathlib import Path
+          from app.text_objects import ensure_page_text_objects
+
+          state=Path("chapters/war-of-extinction-1")
+          src=Path("checkpoint/03b")
+          out=Path("checkpoint/04-translation")
+          manifest=json.loads((src/"processed-manifest.json").read_text(encoding="utf-8"))
+          active=json.loads((src/"active-source-text.json").read_text(encoding="utf-8"))
+          osum=json.loads((src/"ocr-curation-summary.json").read_text(encoding="utf-8"))
+          tmap=json.loads((state/"translation-map.json").read_text(encoding="utf-8"))
+
+          if osum.get("status")!="PASS" or not osum.get("editorial_pass") or osum.get("active_story_objects")!=167:
+              raise SystemExit(f"OCR curation gate invalid: {osum}")
+          if tmap.get("status")!="READY_TO_APPLY" or tmap.get("target_language")!="vi":
+              raise SystemExit("translation map not ready")
+          entries=tmap.get("entries") or []
+          if len(entries)!=167 or tmap.get("active_untranslated_story_objects")!=0:
+              raise SystemExit("translation map count/untranslated contract invalid")
+
+          active_by_id={str(r["object_id"]):r for r in active}
+          map_by_id={str(r["object_id"]):r for r in entries}
+          if len(active_by_id)!=167 or len(map_by_id)!=167 or set(active_by_id)!=set(map_by_id):
+              raise SystemExit(f"translation/active id mismatch missing={sorted(set(active_by_id)-set(map_by_id))[:10]} extra={sorted(set(map_by_id)-set(active_by_id))[:10]}")
+
+          obj_by_id={}
+          tombstones=0
+          for page in manifest.get("pages") or []:
+              for obj in page.get("text_objects") or []:
+                  if not isinstance(obj,dict) or not obj.get("id"): continue
+                  oid=str(obj["id"])
+                  if oid in obj_by_id: raise SystemExit(f"duplicate text object id {oid}")
+                  obj_by_id[oid]=obj
+                  if obj.get("source_missing"): tombstones+=1
+
+          review=[]
+          for oid,row in active_by_id.items():
+              if oid not in obj_by_id: raise SystemExit(f"active object missing in manifest: {oid}")
+              obj=obj_by_id[oid]
+              if obj.get("source_missing"): raise SystemExit(f"translation targets tombstone: {oid}")
+              item=map_by_id[oid]
+              source=str(item.get("source") or "")
+              if source!=str(row.get("ocr_text") or "") or source!=str(obj.get("ocr_text") or ""):
+                  raise SystemExit(f"source drift {oid}: map={source!r} active={row.get('ocr_text')!r} obj={obj.get('ocr_text')!r}")
+              vi=str(item.get("translation") or "").strip()
+              if not vi: raise SystemExit(f"empty translation {oid}")
+              obj["translation"]=vi
+              obj["translation_source"]="human_localization_review"
+              obj["translation_input_text"]=source
+              obj["translation_reviewed"]=True
+              obj["translation_language"]="vi"
+              review.append({
+                "object_id":oid,
+                "page_index":row["page_index"],
+                "source_page":row["source_page"],
+                "semantic_type":row.get("semantic_type"),
+                "source":source,
+                "translation":vi,
+                "source_chars":len(source.replace("\n"," ")),
+                "translation_chars":len(vi.replace("\n"," ")),
+                "char_ratio":round(len(vi.replace("\n"," "))/max(1,len(source.replace("\n"," "))),3),
+              })
+
+          # Reconcile twice; human translations and tombstones must survive.
+          for _ in range(2):
+              for page in manifest.get("pages") or []: ensure_page_text_objects(page)
+
+          untranslated=[]
+          ownership_errors=[]
+          resurrected=0
+          translated_tombstones=0
+          live_ids=set()
+          for page in manifest.get("pages") or []:
+              for obj in page.get("text_objects") or []:
+                  if not isinstance(obj,dict): continue
+                  if obj.get("source_missing"):
+                      if str(obj.get("translation") or "").strip(): translated_tombstones+=1
+                      if obj.get("origin")!="human_review_drop" or obj.get("auto_generated") is not False: resurrected+=1
+                      continue
+                  oid=str(obj.get("id") or "")
+                  if oid in active_by_id:
+                      live_ids.add(oid)
+                      if not str(obj.get("translation") or "").strip(): untranslated.append(oid)
+                      if obj.get("translation_source")!="human_localization_review" or not obj.get("translation_reviewed"): ownership_errors.append(oid)
+
+          if live_ids!=set(active_by_id): raise SystemExit("active object set drifted after reconciliation")
+          if untranslated or ownership_errors or resurrected or translated_tombstones:
+              raise SystemExit(f"translation invariants failed untranslated={untranslated} ownership={ownership_errors} resurrection={resurrected} translated_tombstones={translated_tombstones}")
+
+          corpus="\n".join(r["translation"] for r in review)
+          forbidden=["Tournament of the Worlds' Strongest","Heavenly Demon","Murim","Heavenly Demon's","Heaven-Reaching Shadowless Step"]
+          leaks=[x for x in forbidden if x in corpus]
+          if leaks: raise SystemExit(f"locked terminology leaked in English: {leaks}")
+
+          long_rows=[r for r in review if r["translation_chars"]>=70]
+          review.sort(key=lambda r:(r["source_page"],r["page_index"],r["object_id"]))
+          result={
+            "checkpoint":"04-translation-review",
+            "chapter_id":"05efce51",
+            "status":"PASS",
+            "editorial_pass":True,
+            "active_story_objects":167,
+            "translated_story_objects":167,
+            "active_untranslated_story_objects":0,
+            "tombstone_translation_count":translated_tombstones,
+            "resurrection_count":resurrected,
+            "terminology_locked":True,
+            "english_term_leaks":leaks,
+            "long_translation_candidates":len(long_rows),
+            "fit_policy":"Largest Beautiful Fit; rewrite before shrinking; hard min 28px",
+            "next_action":"TYPOGRAPHY_PREFLIGHT"
+          }
+          (out/"translated-manifest.json").write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding="utf-8")
+          (out/"translation-review-table.json").write_text(json.dumps(review,ensure_ascii=False,indent=2),encoding="utf-8")
+          (out/"long-translation-candidates.json").write_text(json.dumps(long_rows,ensure_ascii=False,indent=2),encoding="utf-8")
+          (out/"translation-review-summary.json").write_text(json.dumps(result,ensure_ascii=False,indent=2),encoding="utf-8")
+          (out/"HUMAN_CHECKPOINT.txt").write_text(
+            "CHECKPOINT: TRANSLATION REVIEW PASS\n167/167 active story objects translated and human-owned. Next: typography preflight.\n",
+            encoding="utf-8"
+          )
+          print(json.dumps(result,ensure_ascii=False,indent=2))
+          PY
+      - name: Verify translation gate
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          s=json.loads(Path("checkpoint/04-translation/translation-review-summary.json").read_text(encoding="utf-8"))
+          required={
+            "status":"PASS","editorial_pass":True,"active_story_objects":167,
+            "translated_story_objects":167,"active_untranslated_story_objects":0,
+            "tombstone_translation_count":0,"resurrection_count":0,"terminology_locked":True
+          }
+          for k,v in required.items():
+              if s.get(k)!=v: raise SystemExit(f"{k}: expected {v!r}, got {s.get(k)!r}")
+          print(json.dumps(s,ensure_ascii=False,indent=2))
+          PY
+      - name: Upload translation checkpoint
+        uses: actions/upload-artifact@v4
+        with:
+          name: 04-translation-reviewed-05efce51
+          path: checkpoint/04-translation/
+          retention-days: 7
+          if-no-files-found: error
