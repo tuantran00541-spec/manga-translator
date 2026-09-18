@@ -167,7 +167,7 @@ def compare_one(image, teacher_boxes, candidate_boxes):
     }
 
 
-def capture_real_rois(pipeline, raw_paths, workers: int):
+def capture_real_rois(pipeline, raw_paths, workers: int, process_all_slices: bool = False):
     phase = contextvars.ContextVar("quality_probe_phase", default="primary")
     captured = []
     original_forward = YoloDetector._detect_single_plain
@@ -219,12 +219,15 @@ def capture_real_rois(pipeline, raw_paths, workers: int):
             workers=workers,
         )
         count = len(manifest["pages"])
-        indices = sorted(set([
-            min(1, count - 1),
-            min(2, count - 1),
-            count // 2,
-            max(0, count - 2),
-        ]))
+        if process_all_slices:
+            indices = list(range(count))
+        else:
+            indices = sorted(set([
+                min(1, count - 1),
+                min(2, count - 1),
+                count // 2,
+                max(0, count - 2),
+            ]))
         pipeline.process_pages(chapter_id, indices, workers=workers)
         return captured, indices, count
     finally:
@@ -242,12 +245,15 @@ def main() -> int:
     p.add_argument("--output-dir", type=Path,
         default=Path("benchmark-results/onnx-quality"))
     p.add_argument("--workers", type=int, default=1)
+    p.add_argument("--all-slices", action="store_true")
     args=p.parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
     raw_paths=prepare_inputs(args.chapter_url,args.raw_dir)
     pipeline=OptimizedChapterPipeline()
-    crops, indices, slice_count=capture_real_rois(pipeline, raw_paths, args.workers)
+    crops, indices, slice_count=capture_real_rois(
+        pipeline, raw_paths, args.workers, process_all_slices=args.all_slices
+    )
     if not crops:
         raise RuntimeError("no retry/residue ROI crops captured")
 
