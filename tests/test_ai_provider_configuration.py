@@ -21,23 +21,35 @@ def test_provider_registry_uses_fixed_https_endpoints():
     assert get_provider("experiential").models_url == "https://api.experientiallabs.ai/v1/models"
 
 
-def test_requests_validate_provider_and_model():
+def test_requests_validate_provider_id_shape_and_model():
     request = VisualQCChapterRequest(
         chapter_id="chapter", provider="openrouter", model="vendor/vision"
     )
     assert request.provider == "openrouter"
     assert request.model == "vendor/vision"
+
+    custom = VisualQCChapterRequest(
+        chapter_id="chapter", provider="custom-lab", model="vendor/vision"
+    )
+    assert custom.provider == "custom-lab"
+
+    # Capability/configuration checks happen server-side after a dynamic provider
+    # ID is resolved from the secure registry.
+    assert TranslateChapterRequest(
+        chapter_id="chapter", provider="gemini"
+    ).provider == "gemini"
+
     with pytest.raises(ValueError):
-        VisualQCChapterRequest(chapter_id="chapter", provider="unknown")
-    with pytest.raises(ValueError):
-        TranslateChapterRequest(chapter_id="chapter", provider="gemini")
+        VisualQCChapterRequest(chapter_id="chapter", provider="Bad Provider!")
     with pytest.raises(ValueError):
         validate_model_name("bad\nmodel", default="fallback")
 
 
 def test_model_listing_normalizes_gemini_names(monkeypatch):
     monkeypatch.setattr(
-        visual_qc_router, "get_provider_api_key", lambda provider_id: "secret"
+        visual_qc_router,
+        "get_provider_api_key",
+        lambda provider_id, **kwargs: "secret",
     )
 
     class Response:
@@ -62,6 +74,7 @@ def test_model_listing_normalizes_gemini_names(monkeypatch):
     )
     assert visual_qc_router.list_provider_models("gemini") == {
         "provider": "gemini",
+        "provider_label": "Google Gemini",
         "models": ["gemini-flash", "gemini-pro"],
     }
 
