@@ -22,8 +22,8 @@ jobs:
     timeout-minutes: 25
     env:
       GH_TOKEN: ${{ github.token }}
-      RENDER_RUN_ID: "35306773202"
-      RENDER_ARTIFACT: 05a-render-candidate-05efce51
+      RENDER_RUN_ID: "35318736374"
+      RENDER_ARTIFACT: 05b-render-candidate-05efce51
       RAW_INPAINT_ARTIFACT_ID: "10527403141"
     steps:
       - uses: actions/checkout@v4
@@ -39,13 +39,13 @@ jobs:
 
       - name: Restore approved repaired render candidate
         run: |
-          rm -rf checkpoint/05a checkpoint/final
-          mkdir -p checkpoint/05a checkpoint/final
-          gh run download "$RENDER_RUN_ID" -n "$RENDER_ARTIFACT" -D checkpoint/05a
-          test -d checkpoint/05a/final_pages
-          test -f checkpoint/05a/typography-summary.json
-          test -f checkpoint/05a/render-summary.json
-          test -f checkpoint/05a/typography-plan.json
+          rm -rf checkpoint/05b checkpoint/final
+          mkdir -p checkpoint/05b checkpoint/final
+          gh run download "$RENDER_RUN_ID" -n "$RENDER_ARTIFACT" -D checkpoint/05b
+          test -d checkpoint/05b/final_pages
+          test -f checkpoint/05b/typography-summary.json
+          test -f checkpoint/05b/render-summary.json
+          test -f checkpoint/05b/typography-plan.json
           test -f chapters/war-of-extinction-1/visual-review.json
           test -f chapters/war-of-extinction-1/translation-map.json
 
@@ -56,7 +56,7 @@ jobs:
           from pathlib import Path
           from PIL import Image
 
-          root=Path('checkpoint/05a')
+          root=Path('checkpoint/05b')
           visual=json.loads(Path('chapters/war-of-extinction-1/visual-review.json').read_text(encoding='utf-8'))
           typo=json.loads((root/'typography-summary.json').read_text(encoding='utf-8'))
           render=json.loads((root/'render-summary.json').read_text(encoding='utf-8'))
@@ -67,8 +67,8 @@ jobs:
               raise SystemExit(f'visual editorial review is not PASS: {visual}')
           vg=visual.get('typography_gate') or {}
           required={
-            'active_story_objects':167,
-            'rendered_story_objects':167,
+            'active_story_objects':168,
+            'rendered_story_objects':168,
             'untranslated_objects':0,
             'font_fallback_count':0,
             'font_size_auto_objects':0,
@@ -86,7 +86,7 @@ jobs:
               if vg.get(k)!=v:
                   raise SystemExit(f'final visual gate {k}: expected {v!r}, got {vg.get(k)!r}')
 
-          if len(plan)!=167 or typo.get('active_story_objects')!=167:
+          if len(plan)!=168 or typo.get('active_story_objects')!=168:
               raise SystemExit('typography object count drift')
           for k in ('font_fallback_count','font_size_auto_objects','horizontal_compression_objects',
                     'overflow_blockers','clipping_blockers','bubble_margin_blockers','glyph_blockers'):
@@ -96,9 +96,9 @@ jobs:
               raise SystemExit(f'subminimum font size: {typo.get("font_size_min_px")}')
           if typo.get('normal_dialogue_font')!='Mac-dinh-3' or typo.get('normal_narration_font')!='Mac-dinh-2':
               raise SystemExit('default font contract drift')
-          if tmap.get('active_story_objects')!=167 or tmap.get('active_untranslated_story_objects')!=0:
+          if tmap.get('active_story_objects')!=168 or tmap.get('active_untranslated_story_objects')!=0:
               raise SystemExit('translation gate drift')
-          if render.get('rendered_story_objects')!=167 or render.get('source_pages')!=40:
+          if render.get('rendered_story_objects')!=168 or render.get('source_pages')!=40:
               raise SystemExit('render summary drift')
 
           pages=sorted((root/'final_pages').glob('page_*.png'))
@@ -114,7 +114,7 @@ jobs:
                   dims.append([p.name,im.width,im.height])
 
           Path('checkpoint/final/final-page-dimensions.json').write_text(json.dumps(dims,indent=2),encoding='utf-8')
-          print(json.dumps({'gate':'PASS','pages':len(pages),'objects':167},indent=2))
+          print(json.dumps({'gate':'PASS','pages':len(pages),'objects':168},indent=2))
           PY
 
       - name: Build FINAL Vietnamese ZIP and report
@@ -123,7 +123,7 @@ jobs:
           import hashlib, json, zipfile
           from pathlib import Path
 
-          source=Path('checkpoint/05a/final_pages')
+          source=Path('checkpoint/05b/final_pages')
           out=Path('checkpoint/final')
           final_zip=out/'War-of-Extinction-Chapter-1-VI-FINAL.zip'
 
@@ -133,7 +133,7 @@ jobs:
 
           digest=hashlib.sha256(final_zip.read_bytes()).hexdigest()
           visual=json.loads(Path('chapters/war-of-extinction-1/visual-review.json').read_text(encoding='utf-8'))
-          typo=json.loads(Path('checkpoint/05a/typography-summary.json').read_text(encoding='utf-8'))
+          typo=json.loads(Path('checkpoint/05b/typography-summary.json').read_text(encoding='utf-8'))
           report={
             'chapter_id':'05efce51',
             'series_title':'War of Extinction',
@@ -143,8 +143,8 @@ jobs:
             'editorial_pass':True,
             'source_pages':40,
             'slices':139,
-            'active_story_objects':167,
-            'rendered_story_objects':167,
+            'active_story_objects':168,
+            'rendered_story_objects':168,
             'untranslated_objects':0,
             'font_fallback_count':0,
             'font_size_auto_objects':0,
@@ -162,10 +162,13 @@ jobs:
             'provenance':{
               'import_run_id':35286090041,
               'final_clean_run_id':35295557014,
+              'corrected_clean_render_run_id':35318736374,
               'ocr_curated_run_id':35298347677,
               'translation_run_id':35302234477,
-              'final_render_run_id':35306773202,
+              'final_render_run_id':35318736374,
               'raw_inpaint_evidence_artifact_id':10527403141,
+              'corrected_inpaint_artifact':'05b-clean-visual-repair-05efce51',
+              'corrected_inpaint_artifact_id':10535594543,
               'raw_inpaint_evidence_artifact':'War-of-Extinction-Chapter-1-RAW-INPAINT',
             },
             'final_file':{
@@ -187,9 +190,9 @@ jobs:
         run: |
           cp chapters/war-of-extinction-1/visual-review.json checkpoint/final/visual-review.json
           cp chapters/war-of-extinction-1/translation-map.json checkpoint/final/translation-map.json
-          cp checkpoint/05a/typography-summary.json checkpoint/final/typography-summary.json
-          cp checkpoint/05a/typography-plan.json checkpoint/final/typography-plan.json
-          cp checkpoint/05a/render-summary.json checkpoint/final/render-summary.json
+          cp checkpoint/05b/typography-summary.json checkpoint/final/typography-summary.json
+          cp checkpoint/05b/typography-plan.json checkpoint/final/typography-plan.json
+          cp checkpoint/05b/render-summary.json checkpoint/final/render-summary.json
 
       - name: Upload FINAL chapter
         uses: actions/upload-artifact@v4
