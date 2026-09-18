@@ -89,9 +89,9 @@ def lazy_optional_specialized_detector_check():
     primary = FakeDetector()
     specialized = FakeDetector()
     detector.text_detector = primary
-    detector._retry_text_detector = None
-    detector._retry_text_detector_resolved = False
-    detector._retry_text_detector_lock = threading.Lock()
+    detector._residue_text_detector = None
+    detector._residue_text_detector_resolved = False
+    detector._residue_text_detector_lock = threading.Lock()
 
     calls = []
 
@@ -128,11 +128,11 @@ def lazy_optional_specialized_detector_check():
             ),
         ):
             check(
-                detector.retry_text_detector is specialized,
+                detector.residue_text_detector is specialized,
                 "available specialized model was not lazy-loaded",
             )
             check(
-                detector.retry_text_detector is specialized,
+                detector.residue_text_detector is specialized,
                 "specialized detector was not cached",
             )
 
@@ -148,9 +148,9 @@ def residue_verify_routes_to_specialized_detector_check():
     primary = FakeDetector()
     specialized = FakeDetector()
     detector.text_detector = primary
-    detector._retry_text_detector = specialized
-    detector._retry_text_detector_resolved = True
-    detector._retry_text_detector_lock = threading.Lock()
+    detector._residue_text_detector = specialized
+    detector._residue_text_detector_resolved = True
+    detector._residue_text_detector_lock = threading.Lock()
     detector._residue_flat_gate_enabled = False
     detector._residue_metrics_local = threading.local()
     detector._residue_metrics_lock = threading.Lock()
@@ -174,13 +174,13 @@ def residue_verify_routes_to_specialized_detector_check():
     check(specialized.calls == 1, "residue verifier did not use specialized segmenter")
     check(primary.calls == 0, "residue verifier unexpectedly used primary 1024 segmenter")
 
-def focused_retry_routes_to_specialized_detector_check():
+def focused_retry_stays_on_primary_detector_check():
     detector = CombinedTextDetector.__new__(CombinedTextDetector)
     primary = FakeDetector()
     specialized = FakeDetector()
     detector.text_detector = primary
-    detector._retry_text_detector = specialized
-    detector._retry_text_detector_resolved = True
+    detector._residue_text_detector = specialized
+    detector._residue_text_detector_resolved = True
 
     proposal = BubbleBox(
         40, 50, 220, 140, 0.9, None,
@@ -195,12 +195,12 @@ def focused_retry_routes_to_specialized_detector_check():
         [proposal],
         grayscale=False,
     )
-    check(specialized.calls == 1, "focused retry did not use specialized segmenter")
-    check(primary.calls == 0, "focused retry unexpectedly used primary 1024 segmenter")
+    check(primary.calls == 1, "focused retry left the validated primary 1024 segmenter")
+    check(specialized.calls == 0, "residue-only 640 segmenter leaked into destructive retry")
 
 
 per_model_input_size_check()
-focused_retry_routes_to_specialized_detector_check()
+focused_retry_stays_on_primary_detector_check()
 lazy_optional_specialized_detector_check()
 residue_verify_routes_to_specialized_detector_check()
 print("focused segmenter 640 sanity PASS")
