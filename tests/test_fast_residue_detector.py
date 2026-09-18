@@ -185,6 +185,25 @@ def test_coalesced_verifier_uses_one_model_call_and_keeps_residue_evidence():
 
 
 
+def test_residue_coalescing_requires_explicit_opt_in():
+    detector = _detector_with_fake_text(flat_gate=False, coalescing=None)
+    first = _box(10, 10, 50, 35)
+    second = _box(48, 12, 88, 37)
+    image = np.full((120, 140, 3), 255, dtype=np.uint8)
+    image[18:26, 22:34] = 0
+    image[18:28, 58:72] = 0
+
+    residue = detector.verify_post_inpaint_residue(image, [first, second])
+
+    assert FastResidueAdaptiveFocusCombinedTextDetector._RESIDUE_COALESCING_DEFAULT is False
+    assert detector.text_detector.calls == 2
+    assert len(residue) == 2
+    metrics = detector.last_residue_metrics()
+    assert metrics["groups"] == 2
+    assert metrics["model_calls"] == 2
+    assert metrics["merged_sources"] == 0
+
+
 def test_large_detector_box_uses_tight_verified_mask_roi():
     detector = _detector_with_fake_text()
     max_side = int(DETECTOR_RESIDUE_VERIFY_MAX_SOURCE_SIDE)
