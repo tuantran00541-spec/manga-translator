@@ -360,9 +360,10 @@ class FastResidueAdaptiveFocusCombinedTextDetector(
             if crop.size == 0:
                 continue
             model_calls += 1
+            retry_detector = self.retry_text_detector
             verified_boxes = [
-                self.text_detector._with_semantics(box)
-                for box in self.text_detector._detect_single_plain(crop, x1, y1)
+                retry_detector._with_semantics(box)
+                for box in retry_detector._detect_single_plain(crop, x1, y1)
             ]
             for verified in verified_boxes:
                 if not verified.verified_mask:
