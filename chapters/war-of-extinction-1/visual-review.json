@@ -1,0 +1,74 @@
+{
+  "checkpoint": "05b-human-visual-review",
+  "chapter_id": "05efce51",
+  "series_title": "War of Extinction",
+  "chapter_number": 1,
+  "reviewed_candidate": {
+    "run_id": 35306773202,
+    "render_artifact": "05a-render-candidate-05efce51",
+    "render_artifact_id": 10531976352,
+    "render_digest": "sha256:df7e6191bc3bd4d6e89121a857def0b4e882d2701501632a716d64c341c17477",
+    "proof_artifact": "05a-render-proof-05efce51",
+    "proof_artifact_id": 10532210930,
+    "proof_digest": "sha256:2e132278fd4f541ec92745bc61a2cd381f0c56d99af27c25fde24cfc9caf4c0"
+  },
+  "review_coverage": {
+    "object_proof_sheets": 14,
+    "active_story_objects": 167,
+    "full_page_overview_sheets": 4,
+    "source_pages": 40,
+    "seam_proof_sheets": 9,
+    "stitch_seams": 99,
+    "focused_local_repair_proofs": [
+      "p067-focused.jpg"
+    ]
+  },
+  "findings": [
+    {
+      "object_id": "text_6c5d1f675e9d4a9c",
+      "page_index": 67,
+      "source_page": 19,
+      "issue": "source English free-text residue remained visible below the Vietnamese rendering",
+      "repair": "exact current-clean standard brush limited to the visible source-letter strokes, followed by rerender",
+      "status": "REPAIRED_AND_REVIEWED"
+    }
+  ],
+  "typography_gate": {
+    "active_story_objects": 167,
+    "rendered_story_objects": 167,
+    "untranslated_objects": 0,
+    "font_fallback_count": 0,
+    "font_size_auto_objects": 0,
+    "min_font_size_px": 42,
+    "max_font_size_px": 96,
+    "horizontal_compression_objects": 0,
+    "overflow_blockers": 0,
+    "clipping_blockers": 0,
+    "alignment_blockers": 0,
+    "bubble_margin_blockers": 0,
+    "glyph_blockers": 0,
+    "source_residue_blockers": 0,
+    "seam_blockers": 0,
+    "visual_blockers_total": 0
+  },
+  "seam_gate": {
+    "status": "PASS",
+    "stitch_seams": 99,
+    "ink_crossing_seam_objects": 0,
+    "objects_with_ink_within_8px_of_seam": 0,
+    "seam_blockers": 0
+  },
+  "editorial_review": {
+    "object_visual_review": "PASS",
+    "full_page_review": "PASS",
+    "seam_review": "PASS",
+    "optical_breathing_pass": "PASS",
+    "free_text_hierarchy": "PASS",
+    "source_hierarchy": "PASS",
+    "font_consistency": "PASS",
+    "artwork_preservation": "PASS"
+  },
+  "status": "PASS",
+  "editorial_pass": true,
+  "next_action": "FINAL_EXPORT"
+}
