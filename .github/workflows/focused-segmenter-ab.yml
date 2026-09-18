@@ -185,6 +185,10 @@ jobs:
                   "precision_vs_baseline": inter / float(max(1, cpix)),
               })
 
+          baseline_passes = b.get("detector_passes") or {}
+          candidate_passes = c.get("detector_passes") or {}
+          baseline_phases = baseline_passes.get("by_phase") or {}
+          candidate_phases = candidate_passes.get("by_phase") or {}
           report = {
               "baseline_warm_wall_ms": float(b["wall_ms"]),
               "candidate_warm_wall_ms": float(c["wall_ms"]),
@@ -192,14 +196,42 @@ jobs:
               "candidate_detector_sum_ms": detector_sum(c),
               "wall_speedup": float(b["wall_ms"]) / max(1e-9, float(c["wall_ms"])),
               "detector_speedup": detector_sum(b) / max(1e-9, detector_sum(c)),
-              "baseline_passes": b.get("detector_passes"),
-              "candidate_passes": c.get("detector_passes"),
+              "baseline_passes": baseline_passes,
+              "candidate_passes": candidate_passes,
               "authority_masks": masks,
           }
           (root / "comparison.json").write_text(json.dumps(report, indent=2) + "\n")
           print(json.dumps(report, indent=2))
           if any(page.get("outside_mask_changed") for page in c.get("pages", [])):
               raise RuntimeError("candidate changed pixels outside its authority mask")
+
+          if any(
+              row["baseline_pixels"] != row["candidate_pixels"]
+              or row["intersection"] != row["baseline_pixels"]
+              for row in masks
+          ):
+              raise RuntimeError("residue-only candidate changed destructive authority masks")
+
+          if baseline_passes.get("total_forward_calls") != candidate_passes.get("total_forward_calls"):
+              raise RuntimeError("residue-only candidate changed detector forward-call count")
+
+          for phase in ("primary", "grayscale_retry", "mser_promotion"):
+              base_phase = baseline_phases.get(phase) or {}
+              cand_phase = candidate_phases.get(phase) or {}
+              if base_phase.get("calls") != cand_phase.get("calls"):
+                  raise RuntimeError(f"{phase} call count changed under residue-only specialization")
+              if base_phase.get("model_pixels") != cand_phase.get("model_pixels"):
+                  raise RuntimeError(f"{phase} resolution changed under residue-only specialization")
+
+          base_residue = baseline_phases.get("residue_verify") or {}
+          cand_residue = candidate_phases.get("residue_verify") or {}
+          if base_residue.get("calls") != cand_residue.get("calls"):
+              raise RuntimeError("residue verification call count changed")
+          if not (
+              int(cand_residue.get("model_pixels") or 0)
+              < int(base_residue.get("model_pixels") or 0)
+          ):
+              raise RuntimeError("residue specialization did not reduce model pixels")
           PY
 
       - uses: actions/upload-artifact@v4
