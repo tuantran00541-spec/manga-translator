@@ -6,6 +6,7 @@ on:
       - release/onnx-input-surgery-probe
     paths:
       - scripts/onnx_input_surgery_probe.py
+      - scripts/onnx_head_shape_probe.py
       - .github/workflows/onnx-input-surgery-probe.yml
   workflow_dispatch:
 
@@ -54,6 +55,10 @@ jobs:
           python benchmark-bootstrap/scripts/provision_real_e2e_models.py
           cp benchmark-bootstrap/models/text_segmenter.onnx models/
 
+      - name: Inspect baked detector-head shapes
+        run: |
+          python scripts/onnx_head_shape_probe.py
+
       - name: Probe declared 1024 to 640 and 512 surgery
         run: |
           python scripts/onnx_input_surgery_probe.py --sizes 1024 640 512 --repeats 2
@@ -62,6 +67,8 @@ jobs:
         if: always()
         with:
           name: onnx-input-surgery-${{ github.run_id }}
-          path: benchmark-results/onnx-surgery/report.json
+          path: |
+            benchmark-results/onnx-surgery/report.json
+            benchmark-results/onnx-surgery/head-shapes.json
           retention-days: 3
           if-no-files-found: error
