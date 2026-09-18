@@ -11,6 +11,7 @@ from app.ocr.service import (
     OCRService,
     _edge_recrop_bounds_sequence,
     _expand_ocr_crop_bounds,
+    _expanded_context_crop_bounds,
     _prefer_edge_recrop,
     _ocr_crop_bounds,
     ocr_target_mode_for_box,
@@ -52,16 +53,40 @@ def test_centered_selection_is_reserved_for_explicit_horizontal_single_line_text
     assert ocr_target_mode_for_box(_box(semantic_type="text", source_role="bubble_detector")) == "all"
 
 
-def test_mask_crop_gets_bounded_page_context_only_at_detector_edge():
+def test_mask_crop_may_expand_but_never_contract_detector_context():
     image = np.zeros((180, 240, 3), np.uint8)
     mask = np.zeros((80, 100), np.uint8)
     mask[20:45, 0:30] = 255  # text support meets detector's left edge
     x1, y1, x2, y2 = _ocr_crop_bounds(image.shape, _box(mask=mask))
 
-    assert x1 < 30  # former implementation clamped this to detector x1
-    assert y1 > 30  # untouched sides still use the normal local padding
-    assert x2 < 130
-    assert y2 < 110
+    assert x1 == 0
+    assert y1 <= 10
+    assert x2 >= 150
+    assert y2 >= 130
+
+
+def test_inner_stroke_mask_never_shrinks_recognition_below_detector_context():
+    image = np.zeros((180, 240, 3), np.uint8)
+    mask = np.zeros((80, 100), np.uint8)
+    mask[25:45, 35:65] = 255
+
+    bounds = _ocr_crop_bounds(image.shape, _box(mask=mask))
+
+    assert bounds[0] <= 10
+    assert bounds[1] <= 10
+    assert bounds[2] >= 150
+    assert bounds[3] >= 130
+
+
+def test_expanded_context_retry_is_strictly_larger_when_page_space_allows():
+    image = np.zeros((240, 320, 3), np.uint8)
+    base = _ocr_crop_bounds(image.shape, _box())
+    retry = _expanded_context_crop_bounds(image.shape, _box())
+
+    assert retry[0] < base[0]
+    assert retry[1] < base[1]
+    assert retry[2] > base[2]
+    assert retry[3] > base[3]
 
 
 def test_high_confidence_partial_mask_coverage_is_review_not_good():
@@ -305,3 +330,91 @@ def test_edge_recrop_can_repair_order_but_not_add_lines():
         expanded_confidence=0.9999,
         expanded_region_count=3,
     )
+
+
+class _DetailedSequenceOCR:
+    def __init__(self, results):
+        self.results = list(results)
+        self.calls = 0
+
+    def read_detailed(self, _rgb, _lang, *, target_mode="all"):
+        result = self.results[self.calls]
+        self.calls += 1
+        return result
+
+
+class _NoopOCRPipeline:
+    pass
+
+
+def _ocr_service_with_image(results):
+    service = OCRService(_DetailedSequenceOCR(results), _NoopOCRPipeline())
+    image = np.full((240, 320, 3), 255, np.uint8)
+    service._cached_source_image = lambda _path: image
+    return service
+
+
+def test_empty_story_candidate_recovers_only_when_expanded_text_is_target_anchored():
+    empty = OCRReadResult(
+        "",
+        None,
+        "fake",
+        "horizontal",
+        0,
+        quality="reject",
+        quality_reason="empty",
+        text_bounds=None,
+        input_shape=(120, 180),
+    )
+    recovered = OCRReadResult(
+        "H-HE'S USING THAT?",
+        0.94,
+        "fake",
+        "horizontal",
+        1,
+        quality="good",
+        quality_reason=None,
+        text_bounds=(55, 45, 150, 85),
+        input_shape=(160, 220),
+    )
+    service = _ocr_service_with_image([empty, recovered])
+
+    text = service._read_box_text("unused.png", _box(), "en")
+
+    assert service.ocr.calls == 2
+    assert text == "H-HE'S USING THAT?"
+    assert service._result_local.metadata["context_retry_applied"] is True
+
+
+def test_incomplete_coverage_retry_cannot_replace_target_with_neighbour_text():
+    base = OCRReadResult(
+        "STRIKE!",
+        0.96,
+        "fake",
+        "horizontal",
+        1,
+        quality="review",
+        quality_reason="incomplete-coverage",
+        coverage=0.40,
+        text_bounds=(30, 25, 100, 55),
+        input_shape=(120, 180),
+    )
+    neighbour = OCRReadResult(
+        "UNRELATED BUBBLE",
+        0.99,
+        "fake",
+        "horizontal",
+        1,
+        quality="good",
+        quality_reason=None,
+        coverage=1.0,
+        text_bounds=(190, 120, 218, 150),
+        input_shape=(160, 220),
+    )
+    service = _ocr_service_with_image([base, neighbour])
+
+    text = service._read_box_text("unused.png", _box(), "en")
+
+    assert service.ocr.calls == 2
+    assert text == "STRIKE!"
+    assert service._result_local.metadata["quality_reason"] == "incomplete-coverage"
