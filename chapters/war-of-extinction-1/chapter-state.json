@@ -9,10 +9,10 @@
   "current_stage": "FINAL",
   "last_passed_checkpoint": "FINAL",
   "current_artifact": {
-    "run_id": 35315080391,
+    "run_id": 35321596318,
     "artifact": "War-of-Extinction-Chapter-1-VI-FINAL",
-    "artifact_id": 10534499735,
-    "digest": "sha256:a2c9f268f98effacc46372a98738e1aff3bff24a63437daa4fe43835a1a0b3fc"
+    "artifact_id": 10537311892,
+    "digest": "sha256:f09c36d1bdd77fd1601846aec6cd38aed1cd219fd588b5b2b05a39920e2a3f81"
   },
   "blockers": [],
   "next_action": "COMPLETE",
@@ -43,44 +43,58 @@
     "status": "PASS",
     "editorial_pass": true,
     "ocr_source": "RAW",
-    "active_story_objects": 167,
+    "active_story_objects": 168,
     "empty_active_story_objects": 0,
     "duplicate_blockers": 0,
     "fragment_blockers": 0,
     "resurrection_count": 0,
-    "story_ocr_blockers": 0
+    "story_ocr_blockers": 0,
+    "corrected_run_id": 35318363735
   },
   "translation_review": {
     "status": "PASS",
     "editorial_pass": true,
-    "active_story_objects": 167,
-    "translated_story_objects": 167,
+    "active_story_objects": 168,
+    "translated_story_objects": 168,
     "active_untranslated_story_objects": 0,
-    "terminology_locked": true
+    "terminology_locked": true,
+    "corrected_run_id": 35318525262
   },
   "visual_review": {
     "status": "PASS",
     "editorial_pass": true,
-    "reviewed_render_run_id": 35306773202,
-    "active_story_objects": 167,
-    "rendered_story_objects": 167,
+    "reviewed_render_run_id": 35318736374,
+    "active_story_objects": 168,
+    "rendered_story_objects": 168,
     "stitch_seams": 99,
     "source_residue_blockers": 0,
     "seam_blockers": 0,
-    "visual_blockers_total": 0
+    "visual_blockers_total": 0,
+    "corrected_missed_caption_object": "text_5232e98aed3a4e1b"
   },
   "final_export": {
     "status": "FINAL_PASS",
-    "run_id": 35315080391,
+    "run_id": 35321596318,
     "final_artifact": "War-of-Extinction-Chapter-1-VI-FINAL",
-    "final_artifact_id": 10534499735,
-    "final_artifact_digest": "sha256:a2c9f268f98effacc46372a98738e1aff3bff24a63437daa4fe43835a1a0b3fc",
+    "final_artifact_id": 10537311892,
+    "final_artifact_digest": "sha256:f09c36d1bdd77fd1601846aec6cd38aed1cd219fd588b5b2b05a39920e2a3f81",
     "audit_artifact": "War-of-Extinction-Chapter-1-FINAL-AUDIT",
-    "audit_artifact_id": 10533949404,
-    "audit_artifact_digest": "sha256:a5f3c7037899d48b3f8e3c9fdbaa255ec6cd25f0158bee0fed872f41c8a62132",
+    "audit_artifact_id": 10537601267,
+    "audit_artifact_digest": "sha256:ba8e34a287b4b5e97f2741f2d9157f8f07302604185906d6831a97d5a13fd05f",
     "final_file": "War-of-Extinction-Chapter-1-VI-FINAL.zip",
-    "final_file_sha256": "823aedf1c6d1e8dd1c89989b7af5951da78035580ed63eaa9625cac8f7b44993",
-    "final_file_size_bytes": 201301466,
+    "final_file_sha256": "cce1e30b18175aef4d68b7412522dcde2c8dc10cd9d5745fd9aa7ff0a35a7ec8",
+    "final_file_size_bytes": 201292953,
+    "active_story_objects": 168,
+    "source_pages": 40
+  },
+  "corrected_inpaint": {
+    "status": "PASS",
+    "run_id": 35318736374,
+    "artifact": "05b-clean-visual-repair-05efce51",
+    "artifact_id": 10535594543,
+    "artifact_digest": "sha256:8b0064062950f7ba5f78a568af4add858b217c9225aed624482ec4cd907fce9f",
+    "file": "War-of-Extinction-Chapter-1-INPAINT-CORRECTED.zip",
+    "file_sha256": "ba3464f9b426d9e7ad2e6250aa95f29205086a6a3fe8f7fe05a252b562391858",
     "source_pages": 40
   }
 }
