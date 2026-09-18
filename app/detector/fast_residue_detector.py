@@ -360,7 +360,7 @@ class FastResidueAdaptiveFocusCombinedTextDetector(
             if crop.size == 0:
                 continue
             model_calls += 1
-            retry_detector = self.retry_text_detector
+            retry_detector = self.residue_text_detector
             verified_boxes = [
                 retry_detector._with_semantics(box)
                 for box in retry_detector._detect_single_plain(crop, x1, y1)
