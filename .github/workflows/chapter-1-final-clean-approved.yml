@@ -1,0 +1,309 @@
+name: Chapter 1 Checkpoint 02I Final Clean Approved
+on:
+  push:
+    branches:
+      - chapter/war-of-extinction-1
+    paths:
+      - .github/workflows/chapter-1-final-clean-approved.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: chapter-1-human-loop
+  cancel-in-progress: false
+
+jobs:
+  consolidate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CHAPTER_ID: 05efce51
+      BASE_RUN_ID: "35286501171"
+      BASE_ARTIFACT: 02-clean-review-05efce51
+      R1_RUN_ID: "35292862313"
+      R1_ARTIFACT: 02b-manual-clean-repair-05efce51
+      R2_RUN_ID: "35293371743"
+      R2_ARTIFACT: 02c-manual-clean-repair-05efce51
+      R3_RUN_ID: "35293898170"
+      R3_ARTIFACT: 02d-manual-clean-repair-05efce51
+      R4_RUN_ID: "35294172340"
+      R4_ARTIFACT: 02e-manual-clean-repair-05efce51
+      R5_RUN_ID: "35294489102"
+      R5_ARTIFACT: 02f-manual-clean-repair-05efce51
+      R7_RUN_ID: "35295206661"
+      R7_ARTIFACT: 02h-manual-clean-repair-05efce51
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chapter/war-of-extinction-1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install checkpoint runtime
+        run: |
+          python -m pip install Pillow==10.4.0 numpy==1.26.4 opencv-contrib-python==4.10.0.84 fastapi==0.115.0 loguru==0.7.2 pydantic==2.9.2 filelock==3.16.1
+
+      - name: Restore accepted clean chain
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf checkpoint/final "data/raw/$CHAPTER_ID" "data/processed/$CHAPTER_ID"
+          mkdir -p checkpoint/base checkpoint/r1 checkpoint/r2 checkpoint/r3 checkpoint/r4 checkpoint/r5 checkpoint/r7 checkpoint/final data/raw data/processed
+
+          gh run download "$BASE_RUN_ID" -n "$BASE_ARTIFACT" -D checkpoint/base
+          gh run download "$R1_RUN_ID" -n "$R1_ARTIFACT" -D checkpoint/r1
+          gh run download "$R2_RUN_ID" -n "$R2_ARTIFACT" -D checkpoint/r2
+          gh run download "$R3_RUN_ID" -n "$R3_ARTIFACT" -D checkpoint/r3
+          gh run download "$R4_RUN_ID" -n "$R4_ARTIFACT" -D checkpoint/r4
+          gh run download "$R5_RUN_ID" -n "$R5_ARTIFACT" -D checkpoint/r5
+          gh run download "$R7_RUN_ID" -n "$R7_ARTIFACT" -D checkpoint/r7
+
+          cp -a checkpoint/base/raw "data/raw/$CHAPTER_ID"
+          cp -a checkpoint/base/processed "data/processed/$CHAPTER_ID"
+
+          cp checkpoint/r1/manifest.json "data/processed/$CHAPTER_ID/manifest.json"
+          cp -a checkpoint/r1/overlay/processed/. "data/processed/$CHAPTER_ID/"
+
+          cp checkpoint/r2/manifest.json "data/processed/$CHAPTER_ID/manifest.json"
+          cp -a checkpoint/r2/overlay/processed/. "data/processed/$CHAPTER_ID/"
+
+          cp checkpoint/r3/manifest.json "data/processed/$CHAPTER_ID/manifest.json"
+          cp -a checkpoint/r3/overlay/processed/. "data/processed/$CHAPTER_ID/"
+
+          cp checkpoint/r4/manifest.json "data/processed/$CHAPTER_ID/manifest.json"
+          cp -a checkpoint/r4/overlay/processed/. "data/processed/$CHAPTER_ID/"
+
+          # Final manifest comes from accepted 02H.
+          cp checkpoint/r7/manifest.json "data/processed/$CHAPTER_ID/manifest.json"
+          cp -a checkpoint/r7/overlay/processed/. "data/processed/$CHAPTER_ID/"
+
+          # p121 accepted preserve/manual sidecars originate from 02F.
+          python - <<'PY'
+          import json, shutil
+          from pathlib import Path
+
+          dst=Path('data/processed/05efce51')
+          m=json.loads((dst/'manifest.json').read_text(encoding='utf-8'))
+          p=m['pages'][121]
+          source=Path('checkpoint/r5/overlay/processed')
+          for field in ('manual_mask','manual_lama_mask'):
+              value=p.get(field)
+              if not value:
+                  continue
+              name=Path(value).name
+              src=source/name
+              if not src.is_file():
+                  raise SystemExit(f'missing accepted p121 sidecar {name}')
+              shutil.copy2(src,dst/name)
+          PY
+
+          test -f "data/processed/$CHAPTER_ID/manifest.json"
+
+      - name: Verify approved clean state
+        run: |
+          python - <<'PY'
+          import cv2, json, numpy as np
+          from pathlib import Path
+          from app.manifest_utils import load_manifest_raw
+
+          chapter='05efce51'
+          review=json.loads(Path('chapters/war-of-extinction-1/clean-review.json').read_text(encoding='utf-8'))
+          if review.get('status')!='PASS' or not review.get('editorial_pass') or not review.get('ocr_allowed'):
+              raise SystemExit(f'clean review not approved: {review}')
+          if int(review.get('final_repair_run_id') or 0)!=35295206661:
+              raise SystemExit(f'unexpected final repair provenance: {review.get("final_repair_run_id")}')
+
+          m=load_manifest_raw(chapter)
+          pages=m.get('pages') or []
+          if len(pages)!=139:
+              raise SystemExit(f'expected 139 slices, got {len(pages)}')
+
+          skipped=[]
+          active=[]
+          for i,p in enumerate(pages):
+              raw=Path(p['original'])
+              if not raw.is_file():
+                  raise SystemExit(f'missing raw slice p{i:03d}')
+              if p.get('skipped'):
+                  skipped.append(i)
+                  if p.get('clean') is not None:
+                      raise SystemExit(f'skipped page has clean p{i:03d}')
+                  continue
+              clean=Path(str(p.get('clean') or ''))
+              if not clean.is_file():
+                  raise SystemExit(f'missing approved clean p{i:03d}: {clean}')
+              a=cv2.imread(str(raw),cv2.IMREAD_COLOR)
+              b=cv2.imread(str(clean),cv2.IMREAD_COLOR)
+              if a is None or b is None or a.shape!=b.shape:
+                  raise SystemExit(f'dimension mismatch p{i:03d}')
+              for field in ('manual_mask','manual_lama_mask'):
+                  v=p.get(field)
+                  if v and not Path(v).is_file():
+                      raise SystemExit(f'missing sidecar p{i:03d} {field}: {v}')
+              active.append(i)
+
+          if skipped!=[0,138]:
+              raise SystemExit(f'unexpected skipped pages: {skipped}')
+          if len(active)!=137:
+              raise SystemExit(f'expected 137 active pages, got {len(active)}')
+
+          preserve={
+            40:[(0,2180,300,2320)],
+            102:[(500,2700,900,2950)],
+            121:[(620,1180,900,1320)],
+          }
+          for p,rects in preserve.items():
+              raw=cv2.imread(pages[p]['original'],cv2.IMREAD_COLOR)
+              clean=cv2.imread(pages[p]['clean'],cv2.IMREAD_COLOR)
+              for x1,y1,x2,y2 in rects:
+                  if not np.array_equal(raw[y1:y2,x1:x2],clean[y1:y2,x1:x2]):
+                      raise SystemExit(f'preserve drift p{p:03d}')
+
+          if int((pages[103].get('manual_current_clean_repair') or {}).get('mask_pixels') or 0)<=0:
+              raise SystemExit('p103 accepted current-clean repair metadata missing')
+
+          summary={
+            'checkpoint':'02i-final-clean-approved',
+            'chapter_id':chapter,
+            'source_pages':40,
+            'slices':139,
+            'active_clean_slices':137,
+            'skipped_slices':[0,138],
+            'story_text_blockers':0,
+            'artwork_damage_blockers':0,
+            'final_repair_run_id':35295206661,
+            'ocr_allowed':True,
+            'next_action':'OCR_REVIEW',
+          }
+          Path('checkpoint/final/final-clean-summary.json').write_text(json.dumps(summary,indent=2),encoding='utf-8')
+          PY
+
+      - name: Stitch 40 RAW and INPAINT pages
+        run: |
+          python - <<'PY'
+          import zipfile
+          from pathlib import Path
+          from app.manifest_utils import load_manifest_raw
+          from app.routers.export import _core_range, _source_core_metadata, _validate_stitch_group, _stitch_png_to_file
+
+          m=load_manifest_raw('05efce51')
+          raw_out=Path('checkpoint/final/raw-pages')
+          clean_out=Path('checkpoint/final/inpaint-pages')
+          raw_out.mkdir(parents=True,exist_ok=True)
+          clean_out.mkdir(parents=True,exist_ok=True)
+
+          groups={}
+          for i,p in enumerate(m['pages']):
+              source=int(p.get('source_page',i))
+              source_range,source_height=_source_core_metadata(p)
+              groups.setdefault(source,[]).append({
+                  'page_index':i,
+                  'slice_index':int(p.get('slice_index',0)),
+                  'core_range':_core_range(p),
+                  'source_core_range':source_range,
+                  'source_height':source_height,
+                  'raw':Path(p['original']),
+                  'clean':Path(p['original']) if p.get('skipped') else Path(p['clean']),
+              })
+
+          if len(groups)!=40:
+              raise SystemExit(f'expected 40 groups, got {len(groups)}')
+
+          for out_i,source in enumerate(sorted(groups),start=1):
+              items=sorted(groups[source],key=lambda x:(x['slice_index'],x['page_index']))
+              validate=[{
+                'slice_index':x['slice_index'],
+                'core_range':x['core_range'],
+                'source_core_range':x['source_core_range'],
+                'source_height':x['source_height'],
+              } for x in items]
+              _validate_stitch_group(source,validate)
+              cores=[x['core_range'] for x in items]
+              _stitch_png_to_file([x['raw'] for x in items],raw_out/f'page_{out_i:03d}.png',cores)
+              _stitch_png_to_file([x['clean'] for x in items],clean_out/f'page_{out_i:03d}.png',cores)
+
+          def pack(folder,path):
+              with zipfile.ZipFile(path,'w',compression=zipfile.ZIP_STORED) as z:
+                  for f in sorted(folder.glob('page_*.png')):
+                      z.write(f,arcname=f.name)
+
+          pack(raw_out,Path('checkpoint/final/War-of-Extinction-Chapter-1-RAW.zip'))
+          pack(clean_out,Path('checkpoint/final/War-of-Extinction-Chapter-1-INPAINT.zip'))
+
+          if len(list(raw_out.glob('page_*.png')))!=40:
+              raise SystemExit('RAW page count mismatch')
+          if len(list(clean_out.glob('page_*.png')))!=40:
+              raise SystemExit('INPAINT page count mismatch')
+          PY
+
+      - name: Build RAW vs INPAINT contact sheet
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from PIL import Image,ImageDraw,ImageFont
+          import math
+
+          raw=Path('checkpoint/final/raw-pages')
+          clean=Path('checkpoint/final/inpaint-pages')
+          font=ImageFont.load_default()
+          cards=[]
+          for i in range(1,41):
+              with Image.open(raw/f'page_{i:03d}.png') as r, Image.open(clean/f'page_{i:03d}.png') as c:
+                  a=r.convert('RGB'); b=c.convert('RGB')
+                  a.thumbnail((180,320),Image.Resampling.LANCZOS)
+                  b.thumbnail((180,320),Image.Resampling.LANCZOS)
+                  card=Image.new('RGB',(380,350),'white')
+                  card.paste(a,((180-a.width)//2,18+(320-a.height)//2))
+                  card.paste(b,(200+(180-b.width)//2,18+(320-b.height)//2))
+                  d=ImageDraw.Draw(card)
+                  d.text((5,4),f'source {i:02d}',fill='black',font=font)
+                  d.text((60,334),'RAW',fill='black',font=font)
+                  d.text((250,334),'INPAINT',fill='black',font=font)
+                  cards.append(card)
+          sheet=Image.new('RGB',(1520,350*math.ceil(len(cards)/4)),'white')
+          for i,c in enumerate(cards):
+              sheet.paste(c,((i%4)*380,(i//4)*350))
+          sheet.save('checkpoint/final/final-clean-contact-sheet.jpg',quality=90)
+          PY
+
+      - name: Pack full final clean checkpoint
+        run: |
+          mkdir -p checkpoint/final/raw checkpoint/final/processed
+          cp -a "data/raw/$CHAPTER_ID/." checkpoint/final/raw/
+          cp -a "data/processed/$CHAPTER_ID/." checkpoint/final/processed/
+          cp chapters/war-of-extinction-1/clean-review.json checkpoint/final/clean-review.json
+          cat > checkpoint/final/HUMAN_CHECKPOINT.txt <<'EOF'
+          CHECKPOINT: FINAL CLEAN APPROVED
+          Editorial CLEAN PASS after full-resolution proof.
+          OCR must read ORIGINAL/RAW, never CLEAN.
+          Story-text blockers: 0.
+          Artwork-damage blockers: 0.
+          EOF
+
+      - name: Upload final clean checkpoint
+        uses: actions/upload-artifact@v4
+        with:
+          name: 02-final-clean-05efce51
+          path: checkpoint/final
+          compression-level: 0
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Upload MiniRouter RAW and INPAINT evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: War-of-Extinction-Chapter-1-RAW-INPAINT
+          path: |
+            checkpoint/final/War-of-Extinction-Chapter-1-RAW.zip
+            checkpoint/final/War-of-Extinction-Chapter-1-INPAINT.zip
+            checkpoint/final/final-clean-summary.json
+            checkpoint/final/final-clean-contact-sheet.jpg
+          compression-level: 0
+          retention-days: 14
+          if-no-files-found: error
