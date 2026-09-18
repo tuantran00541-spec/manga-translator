@@ -176,7 +176,10 @@ def protected_region_checks() -> None:
         for name in ("app/pipeline.py", "app/page_processing.py", "app/pipeline_editing.py")
     )
     check("_box_in_excluded" not in source, "center-based exclusion predicate remains")
-    check("protected_regions=excluded_regions" in source, "auto inpaint does not receive protection")
+    check(
+        "protected_regions=preserve_regions" in source,
+        "auto inpaint does not receive preserve-region protection",
+    )
 
 
 def recovery_cache_checks() -> None:

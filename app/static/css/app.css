@@ -19,8 +19,6 @@
   .theme-option[aria-selected="true"]::after { position: absolute; right: 11px; content: "✓"; }
 
   /* Reuse the existing shell as an image-editor workspace. No parallel UI owner. */
-  :root { --ps-tool-rail: 52px; --ps-dock-width: 310px; --ps-topbar: 44px; }
-  body:not([data-app-stage="landing"]) { --app-header-height: var(--ps-topbar); --sticky-header-offset: var(--ps-topbar); }
   .app-shell { grid-template-columns: var(--ps-tool-rail) minmax(0, 1fr); }
   .app-sidebar { z-index: calc(var(--z-toolbar) + 4); width: var(--ps-tool-rail); padding: 6px 4px; border-right: 1px solid var(--border-strong); background: color-mix(in srgb, var(--surface-panel) 90%, #111); overflow: visible; }
   .app-brand { width: 44px; min-height: 44px; margin: 0 0 9px; padding: 0; justify-content: center; border-radius: 3px; }
@@ -112,14 +110,12 @@
   .review-single-document .review-zoom-value { min-width: 78px; }
 
   @media (max-width: 1000px) {
-    :root { --ps-dock-width: min(330px, 86vw); }
     .workbench-stage-grid, .translation-workspace-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); grid-template-areas: "canvas"; }
     .page-navigator, .context-inspector, .translation-panel-host { position: absolute; top: 0; bottom: 0; z-index: var(--z-panel); width: var(--ps-dock-width); }
     .page-navigator { left: auto; right: 0; border-left: 1px solid var(--border-strong); border-right: 0; }
     .context-inspector, .translation-panel-host { right: 0; }
   }
   @media (max-width: 720px) {
-    :root { --ps-tool-rail: 46px; }
     .app-sidebar { width: var(--ps-tool-rail); }
     .app-brand, .sidebar-link { width: 38px; }
     .app-header { padding: 0 6px; }

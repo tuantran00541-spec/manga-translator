@@ -1,4 +1,4 @@
-"""Exercise the real FastAPI server and browser runtime at desktop and mobile widths."""
+"""Exercise the real FastAPI server and unified Review browser runtime."""
 
 from __future__ import annotations
 
@@ -9,15 +9,24 @@ from pathlib import Path
 from playwright.sync_api import Page, expect, sync_playwright
 
 
-def _wait_for_editor(page: Page) -> None:
-    page.wait_for_selector(".translation-workspace")
+def _wait_for_review(page: Page) -> None:
+    page.wait_for_selector(".review-workspace-shell.review-single-document")
+    page.wait_for_selector(".review-document-shell")
     page.wait_for_function(
         """() => {
-          const image = document.querySelector('.translation-canvas-host img');
-          return image && image.naturalWidth > 0 && image.naturalHeight > 0;
+          const image = document.querySelector('.review-stitched-image');
+          return image
+            && Number(image.dataset.sourceWidth || 0) > 0
+            && Number(image.dataset.sourceHeight || 0) > 0
+            && image.querySelector('canvas');
         }"""
     )
-    expect(page.locator(".text-object-overlay").first).to_be_visible()
+    expect(page.locator("body")).to_have_attribute("data-app-stage", "review")
+
+
+def _wait_for_text_overlay(page: Page) -> None:
+    page.wait_for_selector(".review-text-object-overlay")
+    expect(page.locator(".review-text-object-overlay").first).to_be_visible()
 
 
 def _exercise_landing(page: Page, base_url: str, name: str, artifacts: Path) -> None:
@@ -61,96 +70,114 @@ def _open_stage(page: Page, stage: str, mobile: bool = False) -> None:
     expect(page.locator("body")).not_to_have_class("sidebar-open")
 
 
+def _select_source_page(page: Page, source_page: int) -> None:
+    select = page.locator(".review-stitched-select")
+    select.select_option(str(source_page))
+    expect(select).to_have_value(str(source_page))
+    page.wait_for_function(
+        """expected => {
+          const meta = document.querySelector('.review-stitched-meta');
+          const image = document.querySelector('.review-stitched-image');
+          return meta?.textContent?.includes(`Trang ${expected + 1}`)
+            && Number(image?.dataset?.sourceWidth || 0) > 0
+            && image?.querySelector('canvas');
+        }""",
+        source_page,
+    )
+
+
+def _select_text_object(page: Page) -> None:
+    _wait_for_text_overlay(page)
+    page.locator(".review-text-object-overlay .review-inline-ocr").first.click()
+    expect(page.locator(".translation-panel-host .translation-textarea")).to_be_visible()
+
+
 def _exercise_desktop(page: Page) -> None:
-    _wait_for_editor(page)
+    _wait_for_review(page)
+    # The fixture intentionally stores the legacy "editor" checkpoint. Opening
+    # it must migrate into the single Review/lettering workspace.
+    expect(page.locator('.sidebar-link[data-stage="editor"]')).to_have_count(0)
+    _select_text_object(page)
+
+    _select_source_page(page, 1)
+    _wait_for_text_overlay(page)
+    expect(page.locator(".review-text-object-overlay").first).to_have_attribute(
+        "data-page-index", "1"
+    )
+
+    page.get_by_role("button", name="Original", exact=True).click()
+    page.wait_for_function(
+        "() => document.querySelector('.review-workspace-shell')?.classList.contains('review-readonly-document')"
+    )
+    page.get_by_role("button", name="Clean", exact=True).click()
+    page.wait_for_function(
+        "() => !document.querySelector('.review-workspace-shell')?.classList.contains('review-readonly-document')"
+    )
+    _wait_for_text_overlay(page)
+
+    page.get_by_role("button", name="100%", exact=True).click()
+    expect(page.locator(".review-zoom-value")).to_have_text("100%")
+
     _open_stage(page, "preview")
     expect(page.locator(".preview-workspace")).to_be_visible()
     expect(page.locator("#start-action.preview-primary-action")).to_be_visible()
     _open_stage(page, "review")
-    expect(page.locator(".review-workspace-shell")).to_be_visible()
-    _open_stage(page, "editor")
-    _wait_for_editor(page)
-    page.locator(".text-object-overlay").first.click()
-    expect(page.locator(".translation-textarea")).to_be_visible()
+    _wait_for_review(page)
 
-    page.locator(".page-navigator-item").nth(1).click()
-    page.wait_for_function(
-        """() => document.querySelector('.translation-canvas-host .page-block')?.dataset.pageIndex === '1'"""
-    )
-    page.locator(".translation-canvas-host img").click(position={"x": 20, "y": 20})
-    expect(page.locator(".translation-canvas-host .page-block")).to_have_attribute(
-        "data-page-index", "1"
-    )
-
-    # Repeated stage mounts used to retain Review observers and global input
-    # handlers. Exercise the real renderer repeatedly and require one live
-    # workspace before returning through the product action.
+    # Repeated mounts must not retain duplicate observers/workspaces.
     page.evaluate("() => { for (let i = 0; i < 8; i += 1) window.renderReview(); }")
+    _wait_for_review(page)
     expect(page.locator(".review-workspace-shell")).to_have_count(1)
-    expect(page.locator(".review-card")).to_be_visible()
-    page.locator(".review-primary-action").click()
-    _wait_for_editor(page)
+    expect(page.locator(".review-document-shell")).to_have_count(1)
+    expect(page.locator(".review-primary-action")).to_have_count(0)
 
 
 def _exercise_mobile(page: Page) -> None:
-    _wait_for_editor(page)
-    canvas_box = page.locator(".translation-canvas-host").bounding_box()
-    if not canvas_box or canvas_box["height"] < 160:
-        raise AssertionError(f"mobile editor canvas is not usable: {canvas_box}")
+    _wait_for_review(page)
+    viewport_box = page.locator(".review-document-viewport").bounding_box()
+    if not viewport_box or viewport_box["height"] < 160:
+        raise AssertionError(f"mobile Review canvas is not usable: {viewport_box}")
+
     expect(page.locator("#workbench-panel-controls")).to_be_visible()
     expect(page.locator(".page-navigator")).to_be_hidden()
-    panel_controls_box = page.locator("#workbench-panel-controls").bounding_box()
-    editor_toolbar_box = page.locator(".translation-sticky-toolbar").bounding_box()
-    if (
-        not panel_controls_box
-        or not editor_toolbar_box
-        or panel_controls_box["y"] + panel_controls_box["height"] > editor_toolbar_box["y"]
-    ):
-        raise AssertionError(
-            "mobile panel controls overlap the editor toolbar: "
-            f"controls={panel_controls_box}, toolbar={editor_toolbar_box}"
-        )
-
-    _open_stage(page, "preview", mobile=True)
-    expect(page.locator(".preview-workspace")).to_be_visible()
-    _open_stage(page, "review", mobile=True)
-    expect(page.locator(".review-workspace-shell")).to_be_visible()
-    _open_stage(page, "editor", mobile=True)
-    _wait_for_editor(page)
 
     page.locator("#toggle-page-panel").click()
     expect(page.locator(".page-navigator")).to_be_visible()
     page.locator(".page-navigator-item").nth(1).click()
-    page.wait_for_function(
-        """() => document.querySelector('.translation-canvas-host .page-block')?.dataset.pageIndex === '1'"""
-    )
+    expect(page.locator(".review-stitched-select")).to_have_value("1")
+    if page.locator(".page-navigator").is_visible():
+        page.locator("#toggle-page-panel").click()
+    expect(page.locator(".page-navigator")).to_be_hidden()
 
-    page.locator("#toggle-inspector-panel").click()
+    _wait_for_text_overlay(page)
+    page.locator(".review-text-object-overlay .review-inline-ocr").first.click()
+    if page.locator(".translation-panel-host").is_hidden():
+        page.locator("#toggle-inspector-panel").click()
     expect(page.locator(".translation-panel-host")).to_be_visible()
-    # The inspector is intentionally a modal-sized drawer on a narrow screen,
-    # so close it before exercising a canvas click.  This confirms both the
-    # drawer lifecycle and that the canvas remains responsive once uncovered.
-    page.locator("#toggle-inspector-panel").click()
+    expect(page.locator(".translation-panel-host .translation-textarea")).to_be_visible()
+    if page.locator(".translation-panel-host").is_visible():
+        page.locator("#toggle-inspector-panel").click()
     expect(page.locator(".translation-panel-host")).to_be_hidden()
-    page.locator(".translation-canvas-host img").click(position={"x": 20, "y": 20})
-    expect(page.locator(".translation-canvas-host .page-block")).to_have_attribute(
-        "data-page-index", "1"
-    )
+
+    _open_stage(page, "preview", mobile=True)
+    expect(page.locator(".preview-workspace")).to_be_visible()
+    _open_stage(page, "review", mobile=True)
+    _wait_for_review(page)
 
 
 def _canvas_metrics(page: Page) -> dict[str, float | int]:
     return page.evaluate(
         """() => {
-          const canvas = document.querySelector('.translation-canvas-host');
-          const image = canvas?.querySelector('img');
+          const viewport = document.querySelector('.review-document-viewport');
+          const image = document.querySelector('.review-stitched-image');
           const rect = image?.getBoundingClientRect();
           return {
             viewportWidth: window.innerWidth,
             viewportHeight: window.innerHeight,
             bodyScrollWidth: document.documentElement.scrollWidth,
-            canvasHeight: Math.round(canvas?.getBoundingClientRect().height || 0),
-            canvasScrollLeft: Math.round(canvas?.scrollLeft || 0),
-            canvasScrollTop: Math.round(canvas?.scrollTop || 0),
+            canvasHeight: Math.round(viewport?.getBoundingClientRect().height || 0),
+            canvasScrollLeft: Math.round(viewport?.scrollLeft || 0),
+            canvasScrollTop: Math.round(viewport?.scrollTop || 0),
             imageLeft: Math.round(rect?.left || 0),
             imageTop: Math.round(rect?.top || 0),
             imageWidth: Math.round(rect?.width || 0),
@@ -184,13 +211,9 @@ def main() -> None:
                     else None,
                 )
                 _exercise_landing(page, args.base_url.rstrip("/"), name, args.artifacts)
-                # Exercise the same recent-project control a user clicks.
-                # page.goto("/#chapter") from an already-loaded "/" page is
-                # only a same-document hash change and does not rerun the
-                # DOMContentLoaded deep-link boot.
                 page.locator('.recent-card[data-chapter-id="f00d0001"]').click()
+                _wait_for_review(page)
                 exercise(page)
-                page.locator(".translation-canvas-host img").scroll_into_view_if_needed()
                 metrics = _canvas_metrics(page)
                 print(f"{name} canvas: {json.dumps(metrics, sort_keys=True)}")
                 if metrics["imageWidth"] <= 0 or metrics["imageLeft"] >= metrics["viewportWidth"]:
@@ -199,12 +222,10 @@ def main() -> None:
                     raise AssertionError(f"mobile image is unexpectedly collapsed: {metrics}")
                 page.screenshot(path=str(args.artifacts / f"{name}.png"), full_page=True)
 
-                # A hard reload with the chapter hash must restore the editor.
-                # This covers direct links and browser refreshes as well as
-                # opening a card from the home screen.
+                # Hard reload of the chapter hash must restore the unified Review.
                 page.reload(wait_until="networkidle")
-                _wait_for_editor(page)
-                expect(page.locator("body")).to_have_attribute("data-app-stage", "editor")
+                _wait_for_review(page)
+                expect(page.locator("body")).to_have_attribute("data-app-stage", "review")
                 print(f"{name}: PASS")
                 page.close()
         finally:
