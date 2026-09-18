@@ -1,10 +1,11 @@
 (() => {
-  const STAGES = ["landing", "preview", "review", "editor"];
+  const STAGES = ["landing", "preview", "review", "script", "final_qc"];
   const STAGE_LABELS = {
     landing: "Trang chủ",
     preview: "Xem cắt lát",
     review: "Xem inpaint",
-    editor: "Biên tập",
+    script: "Soát bản dịch",
+    final_qc: "Kiểm tra cuối",
   };
   const PANEL_QUERY = "(max-width: 1000px)";
 
@@ -18,10 +19,12 @@
 
   function inferredReachedIndex(activeStage) {
     const pages = window.currentManifest?.pages || [];
-    const workflowStage = window.currentManifest?.workflow?.stage;
+    const rawWorkflowStage = window.currentManifest?.workflow?.stage;
+    const workflowStage = rawWorkflowStage === "editor" ? "review" : rawWorkflowStage;
     let reached = Math.max(1, STAGES.indexOf(activeStage), STAGES.indexOf(workflowStage));
     if (pages.some((page) => page?.clean)) reached = Math.max(reached, STAGES.indexOf("review"));
-    if (pages.some((page) => page?.rendered || (page?.text_objects || []).length)) reached = Math.max(reached, STAGES.indexOf("editor"));
+    if (pages.some((page) => (page?.text_objects || []).length)) reached = Math.max(reached, STAGES.indexOf("script"));
+    if (pages.some((page) => page?.rendered)) reached = Math.max(reached, STAGES.indexOf("final_qc"));
     return Math.min(STAGES.length - 1, reached);
   }
 
@@ -211,7 +214,8 @@
 
   function currentCanonicalPageIndex() {
     const stage = document.body.dataset.appStage;
-    if (stage === "editor" && window.editorState) return Math.max(0, parseInt(window.editorState.activePageIndex, 10) || 0);
+    if (stage === "script") return Math.max(0, parseInt(window.editorialWorkflowState?.scriptPageIndex, 10) || 0);
+    if (stage === "final_qc") return Math.max(0, parseInt(window.editorialWorkflowState?.finalPageIndex, 10) || 0);
     if (stage === "review") {
       const card = document.querySelector(".review-canvas-host .review-card");
       if (card) return Math.max(0, parseInt(card.dataset.pageIndex, 10) || 0);
@@ -228,7 +232,8 @@
     const canonicalIndex = Math.max(0, Math.min(parseInt(pageIndex, 10) || 0, lastIndex));
     if (stage === "preview") window.initialPreviewCanonicalPageIndex = canonicalIndex;
     else if (stage === "review") window.initialReviewCanonicalPageIndex = canonicalIndex;
-    else if (stage === "editor" && window.editorState) window.editorState.activePageIndex = canonicalIndex;
+    else if (stage === "script") window.initialScriptCanonicalPageIndex = canonicalIndex;
+    else if (stage === "final_qc") window.initialFinalQCCanonicalPageIndex = canonicalIndex;
   }
 
   function showNavigationMessage(message, type = "info") {
@@ -237,7 +242,7 @@
 
   async function leaveActiveWorkspace(targetStage) {
     const currentStage = document.body.dataset.appStage || "landing";
-    if (currentStage === "editor" && targetStage !== "editor" && typeof window.flushAllPendingPersists === "function") await window.flushAllPendingPersists();
+    if (currentStage === "script" && targetStage !== "script" && typeof window.flushScriptPendingSaves === "function") await window.flushScriptPendingSaves();
     if (currentStage === "review" && targetStage !== "review") window.cleanupReviewWorkspace?.();
     if (currentStage === "preview" && targetStage !== "preview") window.cleanupPreviewDrawListeners?.();
     if (currentStage === "editor" && targetStage !== "editor" && typeof window._editorDrawCleanup === "function") {
@@ -282,7 +287,12 @@
         setAppStage("landing");
         return true;
       }
-      const renderer = window[{ preview: "renderPreview", review: "renderReview", editor: "renderEditor" }[stage]];
+      const renderer = window[{
+        preview: "renderPreview",
+        review: "renderReview",
+        script: "renderScript",
+        final_qc: "renderFinalQC",
+      }[stage]];
       if (typeof renderer !== "function") throw new Error(`Không tìm thấy màn hình ${STAGE_LABELS[stage]}.`);
       renderer();
       return true;
