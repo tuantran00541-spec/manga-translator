@@ -6,16 +6,16 @@
   "source_url": "https://asurascans.com/comics/war-of-extinction-6f7fe6eb/chapter/1",
   "branch": "chapter/war-of-extinction-1",
   "source_of_truth_sha": "c99f82dff322747870ed8c75ece5d27d61633fc8",
-  "current_stage": "CLEAN_APPROVED_PACK_PENDING",
+  "current_stage": "OCR_PENDING",
   "last_passed_checkpoint": "CLEAN",
   "current_artifact": {
-    "run_id": 35295206661,
-    "artifact": "02h-manual-clean-repair-05efce51",
-    "artifact_id": 10527651324,
-    "digest": "sha256:fba0cbea05ee81bef452fc8baca7752f88ba6ccea3d187b4a63489232cf8644f"
+    "run_id": 35295557014,
+    "artifact": "02-final-clean-05efce51",
+    "artifact_id": 10527328508,
+    "digest": "sha256:90c73a78950647824ac3c72a5e4dbbc82f21dbb691ce252da3073b8a646deef7"
   },
   "blockers": [],
-  "next_action": "BUILD_FINAL_CLEAN_CHECKPOINT",
+  "next_action": "RUN_CHECKPOINT_03_OCR_REVIEW",
   "approved_import": {
     "source_images": 40,
     "slices": 139,
@@ -32,5 +32,11 @@
     "rejected_run_id": 35294842139,
     "accepted_run_id": 35295206661,
     "outside_authority_changed_pixels": 0
+  },
+  "evidence_artifact": {
+    "artifact": "War-of-Extinction-Chapter-1-RAW-INPAINT",
+    "artifact_id": 10527403141,
+    "digest": "sha256:687acdb0b5c7b297e82e95ec98c54b18a9ebb97db05a635ba2152767869f017e",
+    "source_pages": 40
   }
 }
