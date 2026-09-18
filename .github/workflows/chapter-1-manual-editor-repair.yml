@@ -1,0 +1,406 @@
+name: Chapter 1 Checkpoint 02B Manual Editor Repair
+on:
+  push:
+    branches:
+      - chapter/war-of-extinction-1
+    paths:
+      - .github/workflows/chapter-1-manual-editor-repair.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: chapter-1-human-loop
+  cancel-in-progress: false
+
+jobs:
+  manual-repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      CHAPTER_ID: 05efce51
+      CLEAN_RUN_ID: "35286501171"
+      CLEAN_ARTIFACT: 02-clean-review-05efce51
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chapter/war-of-extinction-1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install editor repair runtime
+        run: |
+          python -m pip install \
+            numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 \
+            onnxruntime-openvino==1.24.1 psutil==6.1.1 loguru==0.7.2 \
+            requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 playwright==1.47.0 \
+            fastapi==0.115.0 'uvicorn[standard]==0.30.6' \
+            pydantic==2.9.2 filelock==3.16.1 python-multipart==0.0.12
+
+      - name: Restore detector and inpaint models
+        id: models
+        uses: actions/cache@v4
+        with:
+          path: |
+            models/*.onnx
+            models/.e2e-provenance.json
+          key: processing-profile-models-b224548-v1
+
+      - name: Read pinned model provisioner
+        if: steps.models.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: b22454827f8190655d7070b80eb20c2550beadfa
+          path: benchmark-bootstrap
+          sparse-checkout: scripts/provision_real_e2e_models.py
+          sparse-checkout-cone-mode: false
+
+      - name: Provision public-equivalent production models
+        if: steps.models.outputs.cache-hit != 'true'
+        run: |
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple torch==2.5.1+cpu torchvision==0.20.1+cpu
+          python -m pip install --no-deps ultralytics==8.3.221 onnx==1.17.0 onnxslim==0.1.71
+          python -m pip install sympy==1.13.1 PyYAML==6.0.2 scipy==1.14.1 tqdm==4.67.1 matplotlib==3.9.2 pandas==2.2.3 py-cpuinfo==9.0.0 ml_dtypes==0.5.3 colorama==0.4.6 polars==1.33.1 ultralytics-thop==2.0.17
+          python benchmark-bootstrap/scripts/provision_real_e2e_models.py
+          cp benchmark-bootstrap/models/*.onnx models/
+          cp benchmark-bootstrap/models/.e2e-provenance.json models/
+
+      - name: Restore rejected clean checkpoint
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf checkpoint repair data/raw/"$CHAPTER_ID" data/processed/"$CHAPTER_ID"
+          mkdir -p checkpoint repair/proof repair/overlay/processed data/raw data/processed
+          gh run download "$CLEAN_RUN_ID" -n "$CLEAN_ARTIFACT" -D checkpoint
+          test -d checkpoint/raw
+          test -d checkpoint/processed
+          cp -a checkpoint/raw "data/raw/$CHAPTER_ID"
+          cp -a checkpoint/processed "data/processed/$CHAPTER_ID"
+          test -f "data/processed/$CHAPTER_ID/manifest.json"
+          test -f chapters/war-of-extinction-1/clean-review.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          review=json.loads(Path('chapters/war-of-extinction-1/clean-review.json').read_text(encoding='utf-8'))
+          if review.get('status')!='FAIL_REPAIR_REQUIRED' or review.get('ocr_allowed') is not False:
+              raise SystemExit(f'clean gate is not in repair-required state: {review}')
+          PY
+
+      - name: Snapshot old clean for proof
+        run: |
+          python - <<'PY'
+          import json, shutil
+          from pathlib import Path
+          chapter='05efce51'
+          root=Path('data/processed')/chapter
+          manifest=json.loads((root/'manifest.json').read_text(encoding='utf-8'))
+          pages=[0,20,21,24,40,41,45,49,67,68,86,87,88,102,103,115,121,122,129,137,138]
+          out=Path('repair/old-clean'); out.mkdir(parents=True,exist_ok=True)
+          for p in pages:
+              page=manifest['pages'][p]
+              clean=page.get('clean')
+              if clean and Path(clean).is_file():
+                  shutil.copy2(clean,out/f'p{p:03d}.png')
+          PY
+
+      - name: Apply skip and preserve editor operations
+        run: |
+          python - <<'PY'
+          from app.dependencies import pipeline
+          from app.routers.chapters import _set_page_preserve_regions
+          from app.schemas import RegionModel
+
+          chapter='05efce51'
+
+          # UI primitive: "Bỏ qua lát ảnh" -> export falls back to RAW.
+          pipeline.mark_skipped(chapter,[0,138],True)
+
+          # UI primitive: "Vùng giữ nguyên".
+          preserve={
+            40:[(0,2180,300,2320)],
+            102:[(500,2700,900,2950)],
+            121:[(300,1100,900,1320)],
+          }
+          for page_index, rects in preserve.items():
+              regions=[RegionModel(x1=x1,y1=y1,x2=x2,y2=y2) for x1,y1,x2,y2 in rects]
+              _set_page_preserve_regions(chapter,page_index,regions)
+
+          # Preserve edits intentionally mark only these slices process_required.
+          pipeline.process_pages(chapter,[40,102,121],workers=1)
+          PY
+
+      - name: Build exact brush masks and repaint
+        run: |
+          python - <<'PY'
+          import cv2, json, hashlib
+          import numpy as np
+          from pathlib import Path
+          from app.dependencies import pipeline
+          from app.manifest_utils import load_manifest_raw
+
+          chapter='05efce51'
+          recipes={
+            20:[('dark',(120,420,790,810),185,250,7,False)],
+            21:[('dark',(500,110,850,390),185,120,7,False)],
+            24:[('bright',(15,350,885,760),175,140,8,False)],
+            40:[('bright',(110,2320,830,2650),180,180,7,False)],
+            41:[('dark',(190,540,820,710),90,120,6,False)],
+            45:[('rect',(100,430,830,680),0,0,0,False),('rect',(30,930,890,1335),0,0,0,False)],
+            49:[('rect',(150,420,790,870),0,0,0,False)],
+            67:[('dark',(50,420,860,760),100,150,6,False),('rect',(50,2320,860,2787),0,0,0,False)],
+            68:[('dark',(70,2050,850,2635),120,180,6,False)],
+            86:[('dark',(360,2100,895,2470),160,160,7,False)],
+            87:[('dark',(0,500,895,850),160,160,7,False)],
+            88:[('rect',(110,1800,300,2100),0,0,0,False),('rect',(480,2020,870,2260),0,0,0,False)],
+            102:[('rect',(50,3060,870,3496),0,0,0,False)],
+            103:[('bright',(0,2100,380,2650),180,45,7,True),('bright',(450,2050,900,2650),180,45,7,True)],
+            115:[('bright',(30,430,870,790),180,180,6,False)],
+            122:[('rect',(50,20,260,300),0,0,0,False)],
+            129:[('bright',(0,560,900,980),180,160,8,False)],
+            137:[('rect',(30,1450,870,1950),0,0,0,False),('rect',(80,2420,850,3050),0,0,0,False)],
+          }
+          lama={88,102,103,137}
+
+          def comp_filter(bin_img,min_area):
+              n, labels, stats, _ = cv2.connectedComponentsWithStats(bin_img,8)
+              out=np.zeros_like(bin_img)
+              for i in range(1,n):
+                  if stats[i,cv2.CC_STAT_AREA] >= min_area:
+                      out[labels==i]=255
+              return out
+
+          def make_mask(img, items):
+              h,w=img.shape[:2]
+              out=np.zeros((h,w),np.uint8)
+              for mode,(x1,y1,x2,y2),thr,min_area,dil,fill in items:
+                  x1=max(0,x1); y1=max(0,y1); x2=min(w,x2); y2=min(h,y2)
+                  roi=img[y1:y2,x1:x2]
+                  gray=cv2.cvtColor(roi,cv2.COLOR_BGR2GRAY)
+                  if mode=='rect':
+                      b=np.full(gray.shape,255,np.uint8)
+                  elif mode=='dark':
+                      b=(gray<thr).astype(np.uint8)*255
+                      b=comp_filter(b,min_area)
+                  else:
+                      b=(gray>thr).astype(np.uint8)*255
+                      b=comp_filter(b,min_area)
+                  if fill:
+                      contours,_=cv2.findContours(b,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
+                      filled=np.zeros_like(b)
+                      for c in contours:
+                          if cv2.contourArea(c)>=min_area:
+                              cv2.drawContours(filled,[c],-1,255,-1)
+                      b=filled
+                  if dil:
+                      k=cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(dil*2+1,dil*2+1))
+                      b=cv2.dilate(b,k,iterations=1)
+                  out[y1:y2,x1:x2]=cv2.bitwise_or(out[y1:y2,x1:x2],b)
+              return out
+
+          mask_dir=Path('repair/masks'); mask_dir.mkdir(parents=True,exist_ok=True)
+          rows=[]
+          for page_index in sorted(recipes):
+              manifest=load_manifest_raw(chapter)
+              page=manifest['pages'][page_index]
+              clean=Path(page['clean'])
+              image=cv2.imread(str(clean),cv2.IMREAD_COLOR)
+              if image is None:
+                  raise SystemExit(f'could not read clean page {page_index}: {clean}')
+              mask=make_mask(image,recipes[page_index])
+              if not np.any(mask):
+                  raise SystemExit(f'empty brush mask for page {page_index}')
+              mask_path=mask_dir/f'p{page_index:03d}.png'
+              cv2.imwrite(str(mask_path),mask)
+              mode='lama' if page_index in lama else 'standard'
+              pipeline.repaint_mask(chapter,page_index,mask,force_lama=(mode=='lama'))
+              rows.append({
+                'page_index':page_index,
+                'mode':mode,
+                'mask_pixels':int(np.count_nonzero(mask)),
+                'mask_sha256':hashlib.sha256(mask_path.read_bytes()).hexdigest(),
+              })
+          Path('repair/repaint-operations.json').write_text(json.dumps(rows,indent=2),encoding='utf-8')
+          PY
+
+      - name: Verify preserve skip and exact manual state
+        run: |
+          python - <<'PY'
+          import cv2, json, numpy as np
+          from pathlib import Path
+          from app.manifest_utils import load_manifest_raw
+
+          chapter='05efce51'
+          manifest=load_manifest_raw(chapter)
+          raw_root=Path('data/raw')/chapter
+
+          for p in [0,138]:
+              page=manifest['pages'][p]
+              if not page.get('skipped') or page.get('clean') is not None or page.get('boxes'):
+                  raise SystemExit(f'skip invariant failed p{p:03d}: {page}')
+
+          preserve={
+            40:[(0,2180,300,2320)],
+            102:[(500,2700,900,2950)],
+            121:[(300,1100,900,1320)],
+          }
+          for p, rects in preserve.items():
+              page=manifest['pages'][p]
+              raw=cv2.imread(page['original'],cv2.IMREAD_COLOR)
+              clean=cv2.imread(page['clean'],cv2.IMREAD_COLOR)
+              if raw is None or clean is None:
+                  raise SystemExit(f'missing proof image p{p:03d}')
+              for x1,y1,x2,y2 in rects:
+                  if not np.array_equal(raw[y1:y2,x1:x2],clean[y1:y2,x1:x2]):
+                      raise SystemExit(f'preserve pixels drifted p{p:03d} {(x1,y1,x2,y2)}')
+
+          repaint=json.loads(Path('repair/repaint-operations.json').read_text(encoding='utf-8'))
+          if len(repaint)!=18:
+              raise SystemExit(f'expected 18 repaint ops, got {len(repaint)}')
+          if sum(1 for r in repaint if r['mode']=='lama')!=4:
+              raise SystemExit('expected exactly four LaMa brush repaint pages')
+
+          Path('repair/manifest.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding='utf-8')
+          PY
+
+      - name: Build RAW OLD CLEAN REPAIRED proof
+        run: |
+          python - <<'PY'
+          import cv2, json, math, shutil
+          import numpy as np
+          from pathlib import Path
+          from PIL import Image, ImageDraw, ImageFont
+          from app.manifest_utils import load_manifest_raw
+
+          chapter='05efce51'
+          manifest=load_manifest_raw(chapter)
+          proof=Path('repair/proof'); proof.mkdir(parents=True,exist_ok=True)
+          old_root=Path('repair/old-clean')
+          masks=Path('repair/masks')
+          font=ImageFont.load_default()
+          pages=[0,20,21,24,40,41,45,49,67,68,86,87,88,102,103,115,121,122,129,137,138]
+
+          def pil(path):
+              return Image.open(path).convert('RGB')
+
+          cards=[]
+          crop_cards=[]
+          for p in pages:
+              page=manifest['pages'][p]
+              raw_path=Path(page['original'])
+              old_path=old_root/f'p{p:03d}.png'
+              repaired_path=raw_path if page.get('skipped') else Path(page['clean'])
+              if not old_path.is_file():
+                  raise SystemExit(f'missing old clean p{p:03d}')
+              with pil(raw_path) as raw, pil(old_path) as old, pil(repaired_path) as repaired:
+                  ims=[]
+                  for im in (raw,old,repaired):
+                      t=im.copy(); t.thumbnail((280,420),Image.Resampling.LANCZOS); ims.append(t)
+                  ch=max(x.height for x in ims)+42
+                  card=Image.new('RGB',(900,ch),'white')
+                  for i,x in enumerate(ims): card.paste(x,(10+i*300,24))
+                  d=ImageDraw.Draw(card)
+                  label='SKIP->RAW' if page.get('skipped') else ('PRESERVE' if p==121 else 'REPAINT')
+                  d.text((8,5),f'p{p:03d} {label}',fill='black',font=font)
+                  for i,s in enumerate(('RAW','OLD CLEAN','REPAIRED')): d.text((105+i*300,ch-16),s,fill='black',font=font)
+                  cards.append(card)
+
+                  mask_path=masks/f'p{p:03d}.png'
+                  if mask_path.is_file():
+                      mask=cv2.imread(str(mask_path),cv2.IMREAD_GRAYSCALE)
+                      ys,xs=np.where(mask>0)
+                      x1=max(0,int(xs.min())-80); x2=min(raw.width,int(xs.max())+81)
+                      y1=max(0,int(ys.min())-80); y2=min(raw.height,int(ys.max())+81)
+                  elif p==121:
+                      x1,y1,x2,y2=220,1020,900,1400
+                  else:
+                      x1,y1,x2,y2=0,0,raw.width,raw.height
+                  cims=[]
+                  for im in (raw,old,repaired):
+                      x=im.crop((x1,y1,x2,y2)); x.thumbnail((360,300),Image.Resampling.LANCZOS); cims.append(x)
+                  ccard=Image.new('RGB',(1140,350),'white')
+                  for i,x in enumerate(cims): ccard.paste(x,(10+i*380,28))
+                  dd=ImageDraw.Draw(ccard); dd.text((8,5),f'p{p:03d} crop',fill='black',font=font)
+                  for i,s in enumerate(('RAW','OLD CLEAN','REPAIRED')): dd.text((145+i*380,330),s,fill='black',font=font)
+                  ccard.save(proof/f'p{p:03d}-crop.jpg',quality=92)
+                  crop_cards.append(ccard)
+
+          def sheets(cards,prefix,per=6):
+              for start in range(0,len(cards),per):
+                  chunk=cards[start:start+per]
+                  w=max(c.width for c in chunk); h=max(c.height for c in chunk)
+                  sheet=Image.new('RGB',(w, h*len(chunk)),'white')
+                  y=0
+                  for c in chunk: sheet.paste(c,(0,y)); y+=h
+                  sheet.save(proof/f'{prefix}-{start:03d}-{start+len(chunk)-1:03d}.jpg',quality=90)
+          sheets(cards,'full-proof',4)
+          sheets(crop_cards,'crop-proof',5)
+          PY
+
+      - name: Pack durable manual repair delta
+        if: always()
+        run: |
+          python - <<'PY'
+          import json, shutil
+          from pathlib import Path
+          from app.manifest_utils import load_manifest_raw
+
+          chapter='05efce51'
+          manifest=load_manifest_raw(chapter)
+          changed=[20,21,24,40,41,45,49,67,68,86,87,88,102,103,115,121,122,129,137]
+          overlay=Path('repair/overlay/processed'); overlay.mkdir(parents=True,exist_ok=True)
+          for p in changed:
+              page=manifest['pages'][p]
+              for field in ('clean','manual_mask','manual_lama_mask'):
+                  value=page.get(field)
+                  if value and Path(value).is_file():
+                      shutil.copy2(value,overlay/Path(value).name)
+          operations=json.loads(Path('repair/repaint-operations.json').read_text(encoding='utf-8'))
+          meta={
+            'checkpoint':'02b-manual-editor-repair',
+            'chapter_id':chapter,
+            'base_clean_run_id':35286501171,
+            'base_clean_artifact':'02-clean-review-05efce51',
+            'skip_pages':[0,138],
+            'preserve_pages':[40,102,121],
+            'repaint_operations':operations,
+            'standard_repaint_pages':[20,21,24,40,41,45,49,67,68,86,87,115,122,129],
+            'lama_repaint_pages':[88,102,103,137],
+            'production_code_changes':0,
+            'next_action':'STOP_FOR_HUMAN_REPAIRED_CLEAN_REVIEW',
+          }
+          Path('repair/manual-clean-repair.json').write_text(json.dumps(meta,indent=2),encoding='utf-8')
+          Path('repair/HUMAN_CHECKPOINT.txt').write_text(
+            'CHECKPOINT: MANUAL CLEAN REPAIR\nReview RAW vs OLD CLEAN vs REPAIRED. OCR remains blocked until editorial CLEAN PASS.\n',
+            encoding='utf-8'
+          )
+          PY
+
+      - name: Upload durable manual repair delta
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: 02b-manual-clean-repair-05efce51
+          path: |
+            repair/manifest.json
+            repair/manual-clean-repair.json
+            repair/repaint-operations.json
+            repair/masks/
+            repair/overlay/
+            repair/HUMAN_CHECKPOINT.txt
+          compression-level: 0
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Upload compact manual repair proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: 02b-manual-clean-proof-05efce51
+          path: repair/proof/
+          retention-days: 7
+          if-no-files-found: error
