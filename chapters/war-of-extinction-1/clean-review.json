@@ -1,0 +1,73 @@
+{
+  "checkpoint": "CLEAN_REVIEW",
+  "status": "FAIL_REPAIR_REQUIRED",
+  "chapter_id": "05efce51",
+  "clean_run_id": 35286501171,
+  "clean_artifact": "02-clean-review-05efce51",
+  "clean_artifact_id": 10525561906,
+  "clean_artifact_digest": "sha256:e5f0d11ec25743e3226e53a1631611714e055a52eb1d6ddc274619f2f8ce44b3",
+  "proof_artifact": "02-clean-proof-05efce51",
+  "proof_artifact_id": 10525517036,
+  "slices": 139,
+  "total_boxes": 676,
+  "free_text_like_boxes": 323,
+  "automated_residue_flag_pages": [],
+  "automated_needs_review_pages": 131,
+  "technical_pass": true,
+  "editorial_pass": false,
+  "human_review": {
+    "full_slice_proof_sheets_reviewed": 12,
+    "review_scope": "all 139 slices via RAW vs CLEAN full-slice sheets",
+    "story_text_blocker_pages_observed": [
+      0,
+      1,
+      4,
+      20,
+      21,
+      23,
+      24,
+      40,
+      41,
+      45,
+      49,
+      67,
+      68,
+      86,
+      87,
+      88,
+      102,
+      103,
+      115,
+      121,
+      122,
+      129,
+      137,
+      138
+    ],
+    "story_text_blockers_observed_at_least": 24,
+    "artwork_or_non_story_preservation_blockers": [
+      0,
+      138
+    ],
+    "pattern": "systematic recall gap on display/free-text/narration/skill/ranking text outside ordinary speech bubbles; ordinary bubble dialogue is substantially cleaner",
+    "examples": [
+      "p020: 'THE TOURNAMENT OF THE WORLDS STRONGEST-' remains",
+      "p021: 'BEGINS NOW!!!' only partially removed; 'NOW!!!' remains",
+      "p045: 'THE RESULT: UNANIMOUS APPROVAL.' remains",
+      "p049: 'SHALL BE HELD!!' remains",
+      "p067-p068: narrative/free text remains",
+      "p102-p103: skill/display text remains or is only partially removed",
+      "p129: 'THIS VERY TOURNAMENT!!!' remains",
+      "p137: ranking/display text remains partially including 'NO.1'",
+      "p000 and p138: non-story promo/credit material was modified and should be preserved"
+    ],
+    "verifier_gap": "automated residue_flag_pages is empty despite multiple visually obvious source-text blockers"
+  },
+  "blockers": [
+    "SYSTEMATIC_FREE_TEXT_DISPLAY_RECALL_MISS",
+    "SOURCE_STORY_TEXT_RESIDUE",
+    "NON_STORY_PROMO_CREDIT_PRESERVATION"
+  ],
+  "ocr_allowed": false,
+  "next_action": "REPAIR_FREE_TEXT_DISPLAY_RECALL_AND_PRESERVE_NON_STORY"
+}
