@@ -1,0 +1,276 @@
+name: Chapter 1 Checkpoint 02C Manual Brush Refinement
+on:
+  push:
+    branches:
+      - chapter/war-of-extinction-1
+    paths:
+      - .github/workflows/chapter-1-manual-brush-refine.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: chapter-1-human-loop
+  cancel-in-progress: false
+
+jobs:
+  refine:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      CHAPTER_ID: 05efce51
+      BASE_CLEAN_RUN_ID: "35286501171"
+      BASE_CLEAN_ARTIFACT: 02-clean-review-05efce51
+      REPAIR1_RUN_ID: "35292862313"
+      REPAIR1_ARTIFACT: 02b-manual-clean-repair-05efce51
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chapter/war-of-extinction-1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install editor repair runtime
+        run: |
+          python -m pip install \
+            numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 \
+            onnxruntime-openvino==1.24.1 psutil==6.1.1 loguru==0.7.2 \
+            requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 playwright==1.47.0 \
+            fastapi==0.115.0 'uvicorn[standard]==0.30.6' \
+            pydantic==2.9.2 filelock==3.16.1 python-multipart==0.0.12
+
+      - name: Restore detector and inpaint models
+        id: models
+        uses: actions/cache@v4
+        with:
+          path: |
+            models/*.onnx
+            models/.e2e-provenance.json
+          key: processing-profile-models-b224548-v1
+
+      - name: Restore repaired state
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf checkpoint repair2 data/raw/"$CHAPTER_ID" data/processed/"$CHAPTER_ID"
+          mkdir -p checkpoint/base checkpoint/r1 repair2/proof repair2/overlay/processed data/raw data/processed
+          gh run download "$BASE_CLEAN_RUN_ID" -n "$BASE_CLEAN_ARTIFACT" -D checkpoint/base
+          gh run download "$REPAIR1_RUN_ID" -n "$REPAIR1_ARTIFACT" -D checkpoint/r1
+          cp -a checkpoint/base/raw "data/raw/$CHAPTER_ID"
+          cp -a checkpoint/base/processed "data/processed/$CHAPTER_ID"
+          cp checkpoint/r1/manifest.json "data/processed/$CHAPTER_ID/manifest.json"
+          cp -a checkpoint/r1/overlay/processed/. "data/processed/$CHAPTER_ID/"
+          test -f "data/processed/$CHAPTER_ID/manifest.json"
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          m=json.loads(Path('data/processed/05efce51/manifest.json').read_text(encoding='utf-8'))
+          for p in [0,138]:
+              if not m['pages'][p].get('skipped'):
+                  raise SystemExit(f'repaired-state skip missing p{p:03d}')
+          PY
+
+      - name: Snapshot first repair
+        run: |
+          python - <<'PY'
+          import json, shutil
+          from pathlib import Path
+          root=Path('data/processed/05efce51')
+          m=json.loads((root/'manifest.json').read_text(encoding='utf-8'))
+          pages=[20,21,24,40,67,86,87,88,102,103,115,121,129]
+          out=Path('repair2/old-repaired'); out.mkdir(parents=True,exist_ok=True)
+          for p in pages:
+              clean=Path(m['pages'][p]['clean'])
+              shutil.copy2(clean,out/f'p{p:03d}.png')
+          PY
+
+      - name: Reset failed brush state and repaint larger local masks
+        run: |
+          python - <<'PY'
+          import cv2, json, hashlib
+          import numpy as np
+          from pathlib import Path
+          from app.dependencies import pipeline
+          from app.manifest_utils import load_manifest_raw
+
+          chapter='05efce51'
+          pages=[20,21,24,40,67,86,87,88,102,103,115,121,129]
+
+          # UI primitive: Reset manual repaint before a corrected second brush pass.
+          for p in pages:
+              page=load_manifest_raw(chapter)['pages'][p]
+              if page.get('manual_mask') or page.get('manual_lama_mask'):
+                  pipeline.reset_manual_mask(chapter,p)
+
+          rects={
+            20:[(90,360,820,850)],
+            21:[(450,60,900,440)],
+            24:[(0,300,900,830)],
+            40:[(70,2320,860,2700)],
+            67:[(20,2250,880,2810)],
+            86:[(250,1980,900,2540)],
+            87:[(0,420,900,920)],
+            88:[(70,1720,350,2170),(420,1950,900,2320)],
+            102:[(0,3000,900,3540)],
+            103:[(0,1980,410,2700),(420,1920,900,2700)],
+            115:[(0,350,900,900)],
+            121:[(0,900,900,1100)],
+            129:[(0,500,900,1080)],
+          }
+          lama={24,88,103,129}
+          maskdir=Path('repair2/masks'); maskdir.mkdir(parents=True,exist_ok=True)
+          ops=[]
+          for p in pages:
+              page=load_manifest_raw(chapter)['pages'][p]
+              image=cv2.imread(page['clean'],cv2.IMREAD_COLOR)
+              if image is None:
+                  raise SystemExit(f'cannot read p{p:03d} clean')
+              h,w=image.shape[:2]
+              mask=np.zeros((h,w),np.uint8)
+              for x1,y1,x2,y2 in rects[p]:
+                  x1=max(0,x1); y1=max(0,y1); x2=min(w,x2); y2=min(h,y2)
+                  mask[y1:y2,x1:x2]=255
+              path=maskdir/f'p{p:03d}.png'
+              cv2.imwrite(str(path),mask)
+              mode='lama' if p in lama else 'standard'
+              pipeline.repaint_mask(chapter,p,mask,force_lama=(mode=='lama'))
+              ops.append({
+                'page_index':p,
+                'mode':mode,
+                'rects':rects[p],
+                'mask_pixels':int(np.count_nonzero(mask)),
+                'mask_sha256':hashlib.sha256(path.read_bytes()).hexdigest(),
+              })
+          Path('repair2/repaint-operations.json').write_text(json.dumps(ops,indent=2),encoding='utf-8')
+          PY
+
+      - name: Verify editor invariants
+        run: |
+          python - <<'PY'
+          import cv2, json, numpy as np
+          from pathlib import Path
+          from app.manifest_utils import load_manifest_raw
+          m=load_manifest_raw('05efce51')
+          for p in [0,138]:
+              page=m['pages'][p]
+              if not page.get('skipped') or page.get('clean') is not None:
+                  raise SystemExit(f'skip drift p{p:03d}')
+          preserve={
+            40:[(0,2180,300,2320)],
+            102:[(500,2700,900,2950)],
+            121:[(300,1100,900,1320)],
+          }
+          for p,rs in preserve.items():
+              page=m['pages'][p]
+              raw=cv2.imread(page['original']); clean=cv2.imread(page['clean'])
+              for x1,y1,x2,y2 in rs:
+                  if not np.array_equal(raw[y1:y2,x1:x2],clean[y1:y2,x1:x2]):
+                      raise SystemExit(f'preserve drift p{p:03d}')
+          ops=json.loads(Path('repair2/repaint-operations.json').read_text())
+          if len(ops)!=13 or sum(x['mode']=='lama' for x in ops)!=4:
+              raise SystemExit(f'operation contract drift: {ops}')
+          Path('repair2/manifest.json').write_text(json.dumps(m,ensure_ascii=False,indent=2),encoding='utf-8')
+          PY
+
+      - name: Build second pass proof
+        run: |
+          python - <<'PY'
+          import cv2, math, json
+          import numpy as np
+          from pathlib import Path
+          from PIL import Image, ImageDraw, ImageFont
+          from app.manifest_utils import load_manifest_raw
+
+          chapter='05efce51'
+          pages=[20,21,24,40,67,86,87,88,102,103,115,121,129]
+          m=load_manifest_raw(chapter)
+          old=Path('repair2/old-repaired')
+          masks=Path('repair2/masks')
+          proof=Path('repair2/proof'); proof.mkdir(parents=True,exist_ok=True)
+          font=ImageFont.load_default()
+          cards=[]
+
+          for p in pages:
+              page=m['pages'][p]
+              raw=Image.open(page['original']).convert('RGB')
+              before=Image.open(old/f'p{p:03d}.png').convert('RGB')
+              after=Image.open(page['clean']).convert('RGB')
+              mask=cv2.imread(str(masks/f'p{p:03d}.png'),cv2.IMREAD_GRAYSCALE)
+              ys,xs=np.where(mask>0)
+              x1=max(0,int(xs.min())-80); x2=min(raw.width,int(xs.max())+81)
+              y1=max(0,int(ys.min())-80); y2=min(raw.height,int(ys.max())+81)
+              ims=[]
+              for im in (raw,before,after):
+                  c=im.crop((x1,y1,x2,y2)); c.thumbnail((360,300),Image.Resampling.LANCZOS); ims.append(c)
+              card=Image.new('RGB',(1140,350),'white')
+              for i,im in enumerate(ims): card.paste(im,(10+i*380,28))
+              d=ImageDraw.Draw(card)
+              d.text((8,5),f'p{p:03d} second brush',fill='black',font=font)
+              for i,s in enumerate(('RAW','PASS1','PASS2')): d.text((145+i*380,330),s,fill='black',font=font)
+              card.save(proof/f'p{p:03d}.jpg',quality=92)
+              cards.append(card)
+              raw.close(); before.close(); after.close()
+
+          for start in range(0,len(cards),5):
+              chunk=cards[start:start+5]
+              sheet=Image.new('RGB',(1140,350*len(chunk)),'white')
+              for i,c in enumerate(chunk): sheet.paste(c,(0,350*i))
+              sheet.save(proof/f'sheet-{start:03d}-{start+len(chunk)-1:03d}.jpg',quality=90)
+          PY
+
+      - name: Pack second repair delta
+        if: always()
+        run: |
+          python - <<'PY'
+          import json, shutil
+          from pathlib import Path
+          from app.manifest_utils import load_manifest_raw
+          chapter='05efce51'
+          m=load_manifest_raw(chapter)
+          pages=[20,21,24,40,67,86,87,88,102,103,115,121,129]
+          out=Path('repair2/overlay/processed'); out.mkdir(parents=True,exist_ok=True)
+          for p in pages:
+              page=m['pages'][p]
+              for field in ('clean','manual_mask','manual_lama_mask'):
+                  v=page.get(field)
+                  if v and Path(v).is_file():
+                      shutil.copy2(v,out/Path(v).name)
+          meta={
+            'checkpoint':'02c-manual-brush-refinement',
+            'chapter_id':chapter,
+            'base_repair_run_id':35292862313,
+            'second_pass_pages':pages,
+            'review_status':'STOP_FOR_HUMAN_REVIEW',
+            'next_action':'HUMAN_REVIEW_PASS2_PROOF',
+          }
+          Path('repair2/manual-clean-repair-2.json').write_text(json.dumps(meta,indent=2),encoding='utf-8')
+          PY
+
+      - name: Upload second repair delta
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: 02c-manual-clean-repair-05efce51
+          path: |
+            repair2/manifest.json
+            repair2/manual-clean-repair-2.json
+            repair2/repaint-operations.json
+            repair2/masks/
+            repair2/overlay/
+          compression-level: 0
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Upload second repair proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: 02c-manual-clean-proof-05efce51
+          path: repair2/proof/
+          retention-days: 7
+          if-no-files-found: error
