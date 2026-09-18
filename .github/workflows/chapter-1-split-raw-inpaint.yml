@@ -1,0 +1,49 @@
+name: Chapter 1 Split RAW INPAINT Downloads
+on:
+  push:
+    branches:
+      - chapter/war-of-extinction-1
+    paths:
+      - .github/workflows/chapter-1-split-raw-inpaint.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  split:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      EVIDENCE_RUN_ID: "35295557014"
+      EVIDENCE_ARTIFACT: War-of-Extinction-Chapter-1-RAW-INPAINT
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chapter/war-of-extinction-1
+      - name: Restore combined evidence artifact
+        run: |
+          rm -rf checkpoint/evidence
+          mkdir -p checkpoint/evidence
+          gh run download "$EVIDENCE_RUN_ID" -n "$EVIDENCE_ARTIFACT" -D checkpoint/evidence
+          test -f checkpoint/evidence/War-of-Extinction-Chapter-1-RAW.zip
+          test -f checkpoint/evidence/War-of-Extinction-Chapter-1-INPAINT.zip
+          ls -lh checkpoint/evidence
+      - name: Upload RAW ZIP separately
+        uses: actions/upload-artifact@v4
+        with:
+          name: War-of-Extinction-Chapter-1-RAW
+          path: checkpoint/evidence/War-of-Extinction-Chapter-1-RAW.zip
+          compression-level: 0
+          retention-days: 14
+          if-no-files-found: error
+      - name: Upload INPAINT ZIP separately
+        uses: actions/upload-artifact@v4
+        with:
+          name: War-of-Extinction-Chapter-1-INPAINT
+          path: checkpoint/evidence/War-of-Extinction-Chapter-1-INPAINT.zip
+          compression-level: 0
+          retention-days: 14
+          if-no-files-found: error
