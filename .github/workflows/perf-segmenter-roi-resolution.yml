@@ -1,0 +1,158 @@
+name: Perf segmenter ROI resolution
+
+on:
+  push:
+    branches:
+      - perf/segmenter-roi-resolution
+    paths:
+      - .github/workflows/perf-segmenter-roi-resolution.yml
+      - scripts/benchmark_segmenter_roi_resolution.py
+      - scripts/benchmark_segmenter_roi_resolution_sanity.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: perf-segmenter-roi-resolution
+  cancel-in-progress: false
+
+jobs:
+  roi-resolution:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+    env:
+      PYTHONUNBUFFERED: "1"
+      MANGA_USE_DYNAMIC_LAMA: "1"
+      MANGA_ORT_PROVIDER: openvino
+      MANGA_ORT_REQUIRE_PROVIDER: "1"
+      MANGA_ORT_OPENVINO_SCOPE: detectors
+      MANGA_ORT_OPENVINO_THREADS: "2"
+      MANGA_ORT_OPENVINO_STREAMS: "1"
+      MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
+      OPENBLAS_NUM_THREADS: "1"
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run ROI resolution benchmark harness sanity
+        run: python scripts/benchmark_segmenter_roi_resolution_sanity.py
+
+      - name: Install production processing and export runtime
+        run: |
+          python -m pip install             numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84             onnxruntime-openvino==1.24.1 psutil==6.1.1 loguru==0.7.2             requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0             playwright==1.47.0 fastapi==0.115.0 pydantic==2.9.2             filelock==3.16.1 threadpoolctl==3.6.0
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu             --extra-index-url https://pypi.org/simple             torch==2.5.1+cpu torchvision==0.20.1+cpu
+          python -m pip install --no-deps             ultralytics==8.3.221 onnx==1.17.0 onnxslim==0.1.71
+          python -m pip install             sympy==1.13.1 PyYAML==6.0.2 scipy==1.14.1 tqdm==4.67.1             matplotlib==3.9.2 pandas==2.2.3 py-cpuinfo==9.0.0             ml_dtypes==0.5.3 colorama==0.4.6 polars==1.33.1             ultralytics-thop==2.0.17
+
+      - name: Restore production models
+        id: models
+        uses: actions/cache@v4
+        with:
+          path: |
+            models/*.onnx
+            models/.e2e-provenance.json
+          key: processing-profile-models-b224548-v1
+
+      - name: Read pinned model provisioner
+        if: steps.models.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: b22454827f8190655d7070b80eb20c2550beadfa
+          path: benchmark-bootstrap
+          sparse-checkout: scripts/provision_real_e2e_models.py
+          sparse-checkout-cone-mode: false
+
+      - name: Provision public-equivalent production models
+        if: steps.models.outputs.cache-hit != 'true'
+        run: |
+          python benchmark-bootstrap/scripts/provision_real_e2e_models.py
+          cp benchmark-bootstrap/models/*.onnx models/
+          cp benchmark-bootstrap/models/.e2e-provenance.json models/
+
+      - name: Restore ROI resolution variants
+        id: roi-models
+        uses: actions/cache@v4
+        with:
+          path: benchmark-models/text_segmenter_*.onnx
+          key: text-segmenter-roi-resolution-f2dded0-v1
+
+      - name: Export 768/640/512 text segmenters
+        if: steps.roi-models.outputs.cache-hit != 'true'
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib
+          import shutil
+          import urllib.request
+          from ultralytics import YOLO
+
+          url = "https://huggingface.co/ogkalu/comic-text-segmenter-yolov8m/resolve/main/comic-text-segmenter.pt"
+          expected = "f2dded0d2f5aaa25eed49f1c34a4720f1c1cd40da8bc3138fde1abb202de625e"
+          root = Path("benchmark-models")
+          root.mkdir(parents=True, exist_ok=True)
+          pt = root / "comic-text-segmenter.pt"
+          if not pt.is_file():
+              urllib.request.urlretrieve(url, pt)
+          actual = hashlib.sha256(pt.read_bytes()).hexdigest()
+          if actual != expected:
+              raise RuntimeError(f"text PT SHA mismatch: {actual}")
+
+          model = YOLO(str(pt))
+          for size in (768, 640, 512):
+              exported = Path(str(model.export(
+                  format="onnx",
+                  imgsz=size,
+                  opset=12,
+                  simplify=True,
+                  dynamic=False,
+                  nms=False,
+                  device="cpu",
+                  verbose=False,
+              )))
+              target = root / f"text_segmenter_{size}.onnx"
+              if exported.resolve() != target.resolve():
+                  shutil.move(str(exported), target)
+              print(size, target, target.stat().st_size)
+          PY
+
+      - name: Run residue ROI resolution A/B
+        run: |
+          mkdir -p benchmark-results/segmenter-roi-resolution
+          PYTHONPATH=. python scripts/benchmark_segmenter_roi_resolution.py             --output benchmark-results/segmenter-roi-resolution/report.json             --variant 768=benchmark-models/text_segmenter_768.onnx             --variant 640=benchmark-models/text_segmenter_640.onnx             --variant 512=benchmark-models/text_segmenter_512.onnx
+
+      - name: Publish ROI resolution summary
+        if: always()
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          path = Path("benchmark-results/segmenter-roi-resolution/report.json")
+          if not path.is_file():
+              raise SystemExit(0)
+          report = json.loads(path.read_text())
+          lines = ["## Text segmenter ROI resolution A/B", ""]
+          for name, row in report.get("variants", {}).items():
+              q = row["quality"]
+              lines.append(
+                  f"- {name}: {row['total_ms']:.1f} ms, "
+                  f"{row['speedup_pct']:+.1f}% vs 1024, "
+                  f"hits {q['baseline_hit_count']} -> {q['candidate_hit_count']}, "
+                  f"unmatched={len(q['unmatched_baseline_hits'])}, "
+                  f"tensor/source={row['model_to_source_pixel_ratio']:.2f}x"
+              )
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as fh:
+              fh.write("\n".join(lines) + "\n")
+          PY
+
+      - name: Upload ROI resolution report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: segmenter-roi-resolution-${{ github.run_id }}
+          path: benchmark-results/segmenter-roi-resolution/report.json
+          if-no-files-found: warn
+          retention-days: 7
