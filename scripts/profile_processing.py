@@ -40,6 +40,20 @@ def write_json(path, value):
     path.write_text(json.dumps(value, indent=2, ensure_ascii=False) + "\n")
 
 
+def detector_phase_specs():
+    """Return profiler phase owners without importing model runtime at module load."""
+
+    return (
+        ("CombinedTextDetector", "_grayscale_text_retry", "grayscale_retry"),
+        ("CombinedTextDetector", "_focused_text_retry", "mser_promotion"),
+        (
+            "FastResidueAdaptiveFocusCombinedTextDetector",
+            "verify_post_inpaint_residue",
+            "residue_verify",
+        ),
+    )
+
+
 def summarize_detector_passes(events):
     """Aggregate non-overlapping YOLO forward calls by phase and model."""
 
@@ -147,6 +161,9 @@ def instrument():
     import app.detector.bubble_detector as yolo
     import app.inpaint.lama_inpainter as lama
     from app.detector.combined_detector import CombinedTextDetector
+    from app.detector.fast_residue_detector import (
+        FastResidueAdaptiveFocusCombinedTextDetector,
+    )
     from app.detector.recovery import SecondaryTextRecovery
 
     timers = Timers()
@@ -225,9 +242,14 @@ def instrument():
     for method in ("detect", "_flat_bubble_text_fallback", "_merge_masks",
                    "_refine_and_split_tall_boxes", "_apply_final_nms"):
         timers.wrap(CombinedTextDetector, method, "combined." + method)
-    wrap_phase(CombinedTextDetector, "_grayscale_text_retry", "grayscale_retry")
-    wrap_phase(CombinedTextDetector, "_focused_text_retry", "mser_promotion")
-    wrap_phase(CombinedTextDetector, "verify_post_inpaint_residue", "residue_verify")
+    phase_owners = {
+        "CombinedTextDetector": CombinedTextDetector,
+        "FastResidueAdaptiveFocusCombinedTextDetector": (
+            FastResidueAdaptiveFocusCombinedTextDetector
+        ),
+    }
+    for owner_name, method, phase_name in detector_phase_specs():
+        wrap_phase(phase_owners[owner_name], method, phase_name)
     timers.wrap(SecondaryTextRecovery, "detect", "recovery.detect")
     for method in ("_cluster_boxes", "_smart_fill_color", "_smart_paint_region",
                    "_lama_fill_single_dynamic", "_lama_fill_single", "_lama_fill_tiled",
