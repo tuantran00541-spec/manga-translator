@@ -36,7 +36,11 @@ assert(
     && stitchInspector.includes('    }, { signal });\n    window.addEventListener("keyup"'),
   'stitched Review key listener must be abortable'
 );
-assert(stitchInspector.includes('function regionHasPaint('), 'stitched mask scans must use a bounded probe canvas');
+assert(
+  stitchInspector.includes('function chunkHasPaint(')
+    && stitchInspector.includes('512 / Math.max(width, h)'),
+  'stitched mask scans must use a bounded probe canvas'
+);
 assert(!stitchInspector.includes('subCtx.getImageData(0, 0, w, subH)'), 'stitched slice detection must not scan full-resolution pixel buffers');
 assert(!editor.includes('function renderEditorPanel'), 'editor core must not retain inspector rendering');
 assert(editorInspector.includes('function renderEditorPanel'), 'editor inspector must own panel rendering');
