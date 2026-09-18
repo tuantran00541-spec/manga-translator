@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 
 from app.parameters import EDITORIAL_STORY_CANDIDATE_CONFIDENCE
+from app.render.text_renderer import explicit_text_layout_fits
 from app.region_policy import (
     geometry_center_in_regions,
     page_preserve_regions,
@@ -514,6 +515,26 @@ def editorial_preflight(
                     ),
                 )
             elif source_text and translation:
+                try:
+                    fits_explicit_layout = explicit_text_layout_fits(
+                        translation,
+                        obj.get("region") or {},
+                        obj.get("style"),
+                    )
+                except OSError:
+                    fits_explicit_layout = True
+                if not fits_explicit_layout:
+                    _append_blocker(
+                        blockers,
+                        blocker_keys,
+                        _blocker(
+                            "text_overflow",
+                            page_index,
+                            obj=obj,
+                            reason="explicit typography does not fit inside the text region",
+                        ),
+                    )
+
                 has_script_marker = bool(
                     obj.get("script_reviewed")
                     or obj.get("script_review_fingerprint")
