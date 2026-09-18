@@ -31,7 +31,11 @@ assert(shell.includes('event.key === "f" || event.key === "F"'), 'focus mode mus
 assert(reviewWorkspace.includes('window.cleanupReviewWorkspace = () =>'), 'Review must expose one lifecycle cleanup');
 assert(reviewWorkspace.includes('cleanupAIStatus?.()'), 'Review must disconnect its AI status observer');
 assert(stitchInspector.includes('new AbortController()'), 'stitched Review interactions must have abortable ownership');
-assert(stitchInspector.includes('document.addEventListener("keydown", onStitchKeyDown, { signal })'), 'stitched Review key listener must be abortable');
+assert(
+  stitchInspector.includes('window.addEventListener("keydown", (e) => {')
+    && stitchInspector.includes('    }, { signal });\n    window.addEventListener("keyup"'),
+  'stitched Review key listener must be abortable'
+);
 assert(stitchInspector.includes('function regionHasPaint('), 'stitched mask scans must use a bounded probe canvas');
 assert(!stitchInspector.includes('subCtx.getImageData(0, 0, w, subH)'), 'stitched slice detection must not scan full-resolution pixel buffers');
 assert(!editor.includes('function renderEditorPanel'), 'editor core must not retain inspector rendering');
