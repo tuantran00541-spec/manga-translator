@@ -438,7 +438,11 @@
       })
       .catch((error) => {
         if (generation !== state.generation) return;
-        container.innerHTML = `<div class="editorial-loading editorial-error">Không chuẩn bị được Script: ${error.message}</div>`;
+        container.replaceChildren();
+        const failure = document.createElement("div");
+        failure.className = "editorial-loading editorial-error";
+        failure.textContent = "Không chuẩn bị được Script: " + error.message;
+        container.appendChild(failure);
       });
   }
 
@@ -571,7 +575,12 @@
     host.replaceChildren();
     const heading = document.createElement("div");
     heading.className = "context-inspector-heading";
-    heading.innerHTML = `<span class="ui-eyebrow">Final QC</span><strong>${pageLabel(pageIndex)}</strong>`;
+    const eyebrow = document.createElement("span");
+    eyebrow.className = "ui-eyebrow";
+    eyebrow.textContent = "Final QC";
+    const headingTitle = document.createElement("strong");
+    headingTitle.textContent = pageLabel(pageIndex);
+    heading.append(eyebrow, headingTitle);
     host.appendChild(heading);
 
     if (page?.skipped) {
@@ -644,7 +653,14 @@
     toolbar.className = "editorial-workflow-toolbar";
     const title = document.createElement("div");
     title.className = "editorial-workflow-title";
-    title.innerHTML = `<span class="ui-eyebrow">Final QC</span><strong>Duyệt render trước khi xuất</strong><span>${state.preflight?.blocker_count || 0} blocker · ${pages.filter((page) => pageApproved(page)).length}/${pages.filter((page) => !page?.skipped).length} trang đã duyệt</span>`;
+    const eyebrow = document.createElement("span");
+    eyebrow.className = "ui-eyebrow";
+    eyebrow.textContent = "Final QC";
+    const titleText = document.createElement("strong");
+    titleText.textContent = "Duyệt render trước khi xuất";
+    const summary = document.createElement("span");
+    summary.textContent = `${state.preflight?.blocker_count || 0} blocker · ${pages.filter((page) => pageApproved(page)).length}/${pages.filter((page) => !page?.skipped).length} trang đã duyệt`;
+    title.append(eyebrow, titleText, summary);
     const controls = document.createElement("div");
     controls.className = "editorial-workflow-actions";
     const rerender = document.createElement("button");
@@ -735,7 +751,11 @@
       })
       .catch((error) => {
         if (generation !== state.generation) return;
-        container.innerHTML = `<div class="editorial-loading editorial-error">Không tải được Final QC: ${error.message}</div>`;
+        container.replaceChildren();
+        const failure = document.createElement("div");
+        failure.className = "editorial-loading editorial-error";
+        failure.textContent = "Không tải được Final QC: " + error.message;
+        container.appendChild(failure);
       });
   }
 
