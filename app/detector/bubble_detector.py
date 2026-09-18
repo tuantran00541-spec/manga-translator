@@ -160,15 +160,19 @@ class YoloDetector:
         use_tta: bool | None = None,
         *,
         model_role: str,
+        input_size: int | None = None,
     ):
         self.model_path = str(model_path)
         self.source_model = Path(model_path).name
         self.model_role = str(model_role)
+        self.input_size = int(INPUT_SIZE if input_size is None else input_size)
+        if self.input_size <= 0:
+            raise ValueError("Detector input_size must be positive")
         self.session = make_session(model_path)
         self.contract = validate_detector_session(
             self.session,
             role=self.model_role,
-            configured_input_size=INPUT_SIZE,
+            configured_input_size=self.input_size,
         )
         self.input_name = self.contract.input_name
         self.conf_threshold = conf_threshold
@@ -206,14 +210,15 @@ class YoloDetector:
 
     def detect(self, image: np.ndarray) -> list[BubbleBox]:
         h, w = image.shape[:2]
-        if h <= INPUT_SIZE * DETECTOR_TALL_IMAGE_FACTOR:
+        if h <= self.input_size * DETECTOR_TALL_IMAGE_FACTOR:
             boxes = self._detect_single(image, 0, 0)
         else:
             all_boxes = []
-            step = INPUT_SIZE - SLICE_OVERLAP
+            overlap = min(int(SLICE_OVERLAP), max(0, self.input_size - 1))
+            step = max(1, self.input_size - overlap)
             y = 0
             while y < h:
-                slice_h = min(INPUT_SIZE, h - y)
+                slice_h = min(self.input_size, h - y)
                 slice_img = image[y:y + slice_h, :]
                 boxes = self._detect_single(slice_img, 0, y)
                 all_boxes.extend(boxes)
@@ -375,8 +380,8 @@ class YoloDetector:
         transform = LetterboxTransform.create(
             w,
             h,
-            INPUT_SIZE,
-            INPUT_SIZE,
+            self.input_size,
+            self.input_size,
             offset_x=offset_x,
             offset_y=offset_y,
         )
