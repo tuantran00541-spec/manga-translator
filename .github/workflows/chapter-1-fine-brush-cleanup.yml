@@ -1,0 +1,248 @@
+name: Chapter 1 Checkpoint 02D Fine Brush Cleanup
+on:
+  push:
+    branches:
+      - chapter/war-of-extinction-1
+    paths:
+      - .github/workflows/chapter-1-fine-brush-cleanup.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: chapter-1-human-loop
+  cancel-in-progress: false
+
+jobs:
+  fine-brush:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CHAPTER_ID: 05efce51
+      BASE_RUN_ID: "35286501171"
+      BASE_ARTIFACT: 02-clean-review-05efce51
+      R1_RUN_ID: "35292862313"
+      R1_ARTIFACT: 02b-manual-clean-repair-05efce51
+      R2_RUN_ID: "35293371743"
+      R2_ARTIFACT: 02c-manual-clean-repair-05efce51
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chapter/war-of-extinction-1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install editor repair runtime
+        run: |
+          python -m pip install \
+            numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 \
+            onnxruntime-openvino==1.24.1 psutil==6.1.1 loguru==0.7.2 \
+            requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 playwright==1.47.0 \
+            fastapi==0.115.0 'uvicorn[standard]==0.30.6' \
+            pydantic==2.9.2 filelock==3.16.1 python-multipart==0.0.12
+
+      - name: Restore detector and inpaint models
+        id: models
+        uses: actions/cache@v4
+        with:
+          path: |
+            models/*.onnx
+            models/.e2e-provenance.json
+          key: processing-profile-models-b224548-v1
+
+      - name: Restore pass2 state
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf checkpoint repair3 data/raw/"$CHAPTER_ID" data/processed/"$CHAPTER_ID"
+          mkdir -p checkpoint/base checkpoint/r1 checkpoint/r2 repair3/proof repair3/overlay/processed data/raw data/processed
+          gh run download "$BASE_RUN_ID" -n "$BASE_ARTIFACT" -D checkpoint/base
+          gh run download "$R1_RUN_ID" -n "$R1_ARTIFACT" -D checkpoint/r1
+          gh run download "$R2_RUN_ID" -n "$R2_ARTIFACT" -D checkpoint/r2
+          cp -a checkpoint/base/raw "data/raw/$CHAPTER_ID"
+          cp -a checkpoint/base/processed "data/processed/$CHAPTER_ID"
+          cp checkpoint/r1/manifest.json "data/processed/$CHAPTER_ID/manifest.json"
+          cp -a checkpoint/r1/overlay/processed/. "data/processed/$CHAPTER_ID/"
+          cp checkpoint/r2/manifest.json "data/processed/$CHAPTER_ID/manifest.json"
+          cp -a checkpoint/r2/overlay/processed/. "data/processed/$CHAPTER_ID/"
+          test -f "data/processed/$CHAPTER_ID/manifest.json"
+
+      - name: Snapshot pass2 and apply fine standard brushes
+        run: |
+          python - <<'PY'
+          import cv2, json, hashlib, shutil
+          import numpy as np
+          from pathlib import Path
+          from app.dependencies import pipeline
+          from app.manifest_utils import load_manifest_raw
+
+          chapter='05efce51'
+          pages=[86,87,88,103,121]
+          old=Path('repair3/pass2'); old.mkdir(parents=True,exist_ok=True)
+
+          m=load_manifest_raw(chapter)
+          for p in pages:
+              shutil.copy2(m['pages'][p]['clean'],old/f'p{p:03d}.png')
+
+          # Reset the previous brush attempt back to the stable auto-clean base.
+          for p in pages:
+              page=load_manifest_raw(chapter)['pages'][p]
+              if page.get('manual_mask') or page.get('manual_lama_mask'):
+                  pipeline.reset_manual_mask(chapter,p)
+
+          rects={
+            86:[(40,2130,860,2390)],
+            87:[(30,490,870,750)],
+            88:[(100,1700,285,2010),(500,1950,870,2200)],
+            103:[(0,2180,170,2500),(650,2020,900,2280)],
+            121:[(30,820,870,1090)],
+          }
+
+          maskdir=Path('repair3/masks'); maskdir.mkdir(parents=True,exist_ok=True)
+          ops=[]
+          for p in pages:
+              page=load_manifest_raw(chapter)['pages'][p]
+              img=cv2.imread(page['clean'],cv2.IMREAD_COLOR)
+              if img is None:
+                  raise SystemExit(f'cannot read clean p{p:03d}')
+              h,w=img.shape[:2]
+              mask=np.zeros((h,w),np.uint8)
+              for x1,y1,x2,y2 in rects[p]:
+                  mask[max(0,y1):min(h,y2),max(0,x1):min(w,x2)]=255
+              path=maskdir/f'p{p:03d}.png'
+              cv2.imwrite(str(path),mask)
+              pipeline.repaint_mask(chapter,p,mask,force_lama=False)
+              ops.append({
+                'page_index':p,
+                'mode':'standard',
+                'rects':rects[p],
+                'mask_pixels':int(np.count_nonzero(mask)),
+                'mask_sha256':hashlib.sha256(path.read_bytes()).hexdigest(),
+              })
+          Path('repair3/repaint-operations.json').write_text(json.dumps(ops,indent=2),encoding='utf-8')
+          PY
+
+      - name: Verify skip preserve and fine brush state
+        run: |
+          python - <<'PY'
+          import cv2, json, numpy as np
+          from pathlib import Path
+          from app.manifest_utils import load_manifest_raw
+          m=load_manifest_raw('05efce51')
+          for p in [0,138]:
+              page=m['pages'][p]
+              if not page.get('skipped') or page.get('clean') is not None:
+                  raise SystemExit(f'skip drift p{p:03d}')
+          preserve={
+            40:[(0,2180,300,2320)],
+            102:[(500,2700,900,2950)],
+            121:[(300,1100,900,1320)],
+          }
+          for p,rs in preserve.items():
+              raw=cv2.imread(m['pages'][p]['original'])
+              clean=cv2.imread(m['pages'][p]['clean'])
+              for x1,y1,x2,y2 in rs:
+                  if not np.array_equal(raw[y1:y2,x1:x2],clean[y1:y2,x1:x2]):
+                      raise SystemExit(f'preserve drift p{p:03d}')
+          Path('repair3/manifest.json').write_text(json.dumps(m,ensure_ascii=False,indent=2),encoding='utf-8')
+          PY
+
+      - name: Build fine brush proof
+        run: |
+          python - <<'PY'
+          import cv2
+          import numpy as np
+          from pathlib import Path
+          from PIL import Image, ImageDraw, ImageFont
+          from app.manifest_utils import load_manifest_raw
+
+          chapter='05efce51'
+          pages=[86,87,88,103,121]
+          m=load_manifest_raw(chapter)
+          old=Path('repair3/pass2')
+          masks=Path('repair3/masks')
+          proof=Path('repair3/proof'); proof.mkdir(parents=True,exist_ok=True)
+          font=ImageFont.load_default()
+          cards=[]
+
+          for p in pages:
+              page=m['pages'][p]
+              raw=Image.open(page['original']).convert('RGB')
+              before=Image.open(old/f'p{p:03d}.png').convert('RGB')
+              after=Image.open(page['clean']).convert('RGB')
+              mask=cv2.imread(str(masks/f'p{p:03d}.png'),cv2.IMREAD_GRAYSCALE)
+              ys,xs=np.where(mask>0)
+              x1=max(0,int(xs.min())-70); x2=min(raw.width,int(xs.max())+71)
+              y1=max(0,int(ys.min())-70); y2=min(raw.height,int(ys.max())+71)
+              ims=[]
+              for im in (raw,before,after):
+                  c=im.crop((x1,y1,x2,y2)); c.thumbnail((360,320),Image.Resampling.LANCZOS); ims.append(c)
+              card=Image.new('RGB',(1140,370),'white')
+              for i,im in enumerate(ims): card.paste(im,(10+i*380,28))
+              d=ImageDraw.Draw(card); d.text((8,5),f'p{p:03d} fine brush',fill='black',font=font)
+              for i,s in enumerate(('RAW','PASS2','PASS3')): d.text((145+i*380,350),s,fill='black',font=font)
+              card.save(proof/f'p{p:03d}.jpg',quality=92)
+              cards.append(card)
+              raw.close(); before.close(); after.close()
+
+          sheet=Image.new('RGB',(1140,370*len(cards)),'white')
+          for i,c in enumerate(cards): sheet.paste(c,(0,370*i))
+          sheet.save(proof/'sheet.jpg',quality=90)
+          PY
+
+      - name: Pack fine repair delta
+        if: always()
+        run: |
+          python - <<'PY'
+          import json, shutil
+          from pathlib import Path
+          from app.manifest_utils import load_manifest_raw
+          chapter='05efce51'
+          pages=[86,87,88,103,121]
+          m=load_manifest_raw(chapter)
+          out=Path('repair3/overlay/processed'); out.mkdir(parents=True,exist_ok=True)
+          for p in pages:
+              page=m['pages'][p]
+              for field in ('clean','manual_mask','manual_lama_mask'):
+                  v=page.get(field)
+                  if v and Path(v).is_file():
+                      shutil.copy2(v,out/Path(v).name)
+          meta={
+            'checkpoint':'02d-fine-brush-cleanup',
+            'chapter_id':chapter,
+            'base_repair_run_id':35293371743,
+            'pages':pages,
+            'mode':'standard-only',
+            'next_action':'HUMAN_REVIEW_FINE_BRUSH_PROOF',
+          }
+          Path('repair3/manual-clean-repair-3.json').write_text(json.dumps(meta,indent=2),encoding='utf-8')
+          PY
+
+      - name: Upload fine repair delta
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: 02d-manual-clean-repair-05efce51
+          path: |
+            repair3/manifest.json
+            repair3/manual-clean-repair-3.json
+            repair3/repaint-operations.json
+            repair3/masks/
+            repair3/overlay/
+          compression-level: 0
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Upload fine repair proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: 02d-manual-clean-proof-05efce51
+          path: repair3/proof/
+          retention-days: 7
+          if-no-files-found: error
