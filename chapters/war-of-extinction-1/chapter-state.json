@@ -6,16 +6,16 @@
   "source_url": "https://asurascans.com/comics/war-of-extinction-6f7fe6eb/chapter/1",
   "branch": "chapter/war-of-extinction-1",
   "source_of_truth_sha": "c99f82dff322747870ed8c75ece5d27d61633fc8",
-  "current_stage": "TRANSLATION_PENDING",
-  "last_passed_checkpoint": "OCR",
+  "current_stage": "TYPOGRAPHY_PENDING",
+  "last_passed_checkpoint": "TRANSLATION",
   "current_artifact": {
-    "run_id": 35298347677,
-    "artifact": "03b-ocr-curated-05efce51",
-    "artifact_id": 10528842119,
-    "digest": "sha256:3ce4d32b17029e42ba7e5611ab50303e6a29090634b73f5dfb8e8adfbd81e573"
+    "run_id": 35302234477,
+    "artifact": "04-translation-reviewed-05efce51",
+    "artifact_id": 10530233113,
+    "digest": "sha256:3736d10b1793feddf5905050b360dd9690f1737d3e5228eecab32a29c8fab9ba"
   },
   "blockers": [],
-  "next_action": "RUN_TRANSLATION_REVIEW",
+  "next_action": "RUN_TYPOGRAPHY_PREFLIGHT_AND_RENDER_CANDIDATE",
   "approved_import": {
     "source_images": 40,
     "slices": 139,
@@ -49,5 +49,13 @@
     "fragment_blockers": 0,
     "resurrection_count": 0,
     "story_ocr_blockers": 0
+  },
+  "translation_review": {
+    "status": "PASS",
+    "editorial_pass": true,
+    "active_story_objects": 167,
+    "translated_story_objects": 167,
+    "active_untranslated_story_objects": 0,
+    "terminology_locked": true
   }
 }
