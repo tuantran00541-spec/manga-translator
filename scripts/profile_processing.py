@@ -12,6 +12,7 @@ production inpaint metrics.
 from __future__ import annotations
 
 import argparse
+import contextvars
 from collections import defaultdict
 from contextlib import contextmanager
 import functools
@@ -37,6 +38,70 @@ def digest(path):
 def write_json(path, value):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(value, indent=2, ensure_ascii=False) + "\n")
+
+
+def summarize_detector_passes(events):
+    """Aggregate non-overlapping YOLO forward calls by phase and model."""
+
+    def new_bucket():
+        return {
+            "calls": 0,
+            "sum_ms": 0.0,
+            "source_pixels": 0,
+            "model_pixels": 0,
+        }
+
+    by_phase = defaultdict(new_bucket)
+    by_model = defaultdict(new_bucket)
+    total_calls = 0
+
+    for event in events:
+        if not isinstance(event, dict) or event.get("name") != "yolo.forward":
+            continue
+        phase = str(event.get("phase") or "primary")
+        model = str(event.get("model") or "unknown")
+        source_shape = event.get("source_shape") or ()
+        input_shape = event.get("input_shape") or ()
+        source_pixels = (
+            int(source_shape[-2]) * int(source_shape[-1])
+            if len(source_shape) >= 2
+            else 0
+        )
+        model_pixels = (
+            int(input_shape[-2]) * int(input_shape[-1])
+            if len(input_shape) >= 2
+            else 0
+        )
+        elapsed_ms = max(0.0, float(event.get("ms") or 0.0))
+
+        for bucket in (by_phase[phase], by_model[model]):
+            bucket["calls"] += 1
+            bucket["sum_ms"] += elapsed_ms
+            bucket["source_pixels"] += source_pixels
+            bucket["model_pixels"] += model_pixels
+        total_calls += 1
+
+    def finalize(groups):
+        out = {}
+        for name, bucket in sorted(groups.items()):
+            source_pixels = int(bucket["source_pixels"])
+            model_pixels = int(bucket["model_pixels"])
+            out[name] = {
+                "calls": int(bucket["calls"]),
+                "sum_ms": round(float(bucket["sum_ms"]), 3),
+                "source_pixels": source_pixels,
+                "model_pixels": model_pixels,
+                "model_to_source_pixel_ratio": round(
+                    model_pixels / float(max(1, source_pixels)), 3
+                ),
+            }
+        return out
+
+    return {
+        "total_forward_calls": total_calls,
+        "by_phase": finalize(by_phase),
+        "by_model": finalize(by_model),
+    }
 
 
 class Timers:
@@ -86,6 +151,47 @@ def instrument():
 
     timers = Timers()
     make_session = ort_utils.make_session
+    detector_phase = contextvars.ContextVar("profile_detector_phase", default="primary")
+
+    def wrap_phase(owner, method, phase_name):
+        original = getattr(owner, method)
+
+        @functools.wraps(original)
+        def measured(*args, **kwargs):
+            current = detector_phase.get()
+            token = None
+            if current == "primary":
+                token = detector_phase.set(phase_name)
+            try:
+                return original(*args, **kwargs)
+            finally:
+                if token is not None:
+                    detector_phase.reset(token)
+
+        setattr(owner, method, measured)
+
+    original_forward = yolo.YoloDetector._detect_single_plain
+
+    @functools.wraps(original_forward)
+    def measured_forward(self, image, offset_x, offset_y):
+        height, width = image.shape[:2]
+        input_shape = [
+            1,
+            3,
+            int(self.contract.input_height),
+            int(self.contract.input_width),
+        ]
+        with timers.span(
+            "yolo.forward",
+            model=Path(self.model_path).name,
+            role=self.model_role,
+            phase=detector_phase.get(),
+            source_shape=[int(height), int(width)],
+            input_shape=input_shape,
+        ):
+            return original_forward(self, image, offset_x, offset_y)
+
+    yolo.YoloDetector._detect_single_plain = measured_forward
 
     class Session:
         """Detector-only timing proxy; attribute access remains transparent."""
@@ -95,7 +201,11 @@ def instrument():
 
         def run(self, outputs, feed, *args, **kwargs):
             shapes = {key: list(value.shape) for key, value in feed.items()}
-            with timers.span("onnx." + self.name, inputs=shapes):
+            with timers.span(
+                "onnx." + self.name,
+                inputs=shapes,
+                phase=detector_phase.get(),
+            ):
                 return self.session.run(outputs, feed, *args, **kwargs)
 
         def __getattr__(self, name):
@@ -115,6 +225,9 @@ def instrument():
     for method in ("detect", "_flat_bubble_text_fallback", "_merge_masks",
                    "_refine_and_split_tall_boxes", "_apply_final_nms"):
         timers.wrap(CombinedTextDetector, method, "combined." + method)
+    wrap_phase(CombinedTextDetector, "_grayscale_text_retry", "grayscale_retry")
+    wrap_phase(CombinedTextDetector, "_focused_text_retry", "mser_promotion")
+    wrap_phase(CombinedTextDetector, "verify_post_inpaint_residue", "residue_verify")
     timers.wrap(SecondaryTextRecovery, "detect", "recovery.detect")
     for method in ("_cluster_boxes", "_smart_fill_color", "_smart_paint_region",
                    "_lama_fill_single_dynamic", "_lama_fill_single", "_lama_fill_tiled",
@@ -233,7 +346,9 @@ def run(args):
                        "serialized_inference": bool(getattr(inpainter, "serialized_inference", False)),
                        "session_type": type(getattr(inpainter, "session", None)).__name__,
                    },
-                   "timers": timers.summary(), "events": list(timers.rows),
+                   "timers": timers.summary(),
+                   "detector_passes": summarize_detector_passes(timers.rows),
+                   "events": list(timers.rows),
                    "last_processing_run": manifest.get("last_processing_run"), "pages": []}
             for index in indices:
                 page = manifest["pages"][index]
@@ -262,6 +377,7 @@ def run(args):
             print(json.dumps({"profile": args.profile, "repeat": repeat, "wall_ms": wall_ms,
                               "provider_placement": row["provider_placement"],
                               "inpaint_runtime": row["inpaint_runtime"],
+                              "detector_passes": row["detector_passes"],
                               "timers": row["timers"], **memory}), flush=True)
         if not any(page["changed_pixels"] for row in report["runs"] for page in row["pages"]):
             raise RuntimeError("Sample did not exercise cleanup")
