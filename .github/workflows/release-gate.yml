@@ -43,6 +43,9 @@ jobs:
       - name: Run processing responsiveness regression
         run: python scripts/process_responsiveness_sanity.py
 
+      - name: Run focused segmenter 640 contract
+        run: python scripts/focused_segmenter_640_sanity.py
+
       - name: Run detector pass telemetry contract
         run: python scripts/profile_detector_pass_sanity.py
 
