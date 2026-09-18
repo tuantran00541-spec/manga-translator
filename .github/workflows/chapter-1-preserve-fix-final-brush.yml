@@ -1,0 +1,288 @@
+name: Chapter 1 Checkpoint 02F Preserve Fix and Final Brush
+on:
+  push:
+    branches:
+      - chapter/war-of-extinction-1
+    paths:
+      - .github/workflows/chapter-1-preserve-fix-final-brush.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: chapter-1-human-loop
+  cancel-in-progress: false
+
+jobs:
+  final-two:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CHAPTER_ID: 05efce51
+      BASE_RUN_ID: "35286501171"
+      BASE_ARTIFACT: 02-clean-review-05efce51
+      R1_RUN_ID: "35292862313"
+      R1_ARTIFACT: 02b-manual-clean-repair-05efce51
+      R2_RUN_ID: "35293371743"
+      R2_ARTIFACT: 02c-manual-clean-repair-05efce51
+      R3_RUN_ID: "35293898170"
+      R3_ARTIFACT: 02d-manual-clean-repair-05efce51
+      R4_RUN_ID: "35294172340"
+      R4_ARTIFACT: 02e-manual-clean-repair-05efce51
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chapter/war-of-extinction-1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install editor repair runtime
+        run: |
+          python -m pip install \
+            numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 \
+            onnxruntime-openvino==1.24.1 psutil==6.1.1 loguru==0.7.2 \
+            requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 playwright==1.47.0 \
+            fastapi==0.115.0 'uvicorn[standard]==0.30.6' \
+            pydantic==2.9.2 filelock==3.16.1 python-multipart==0.0.12
+
+      - name: Restore detector and inpaint models
+        id: models
+        uses: actions/cache@v4
+        with:
+          path: |
+            models/*.onnx
+            models/.e2e-provenance.json
+          key: processing-profile-models-b224548-v1
+
+      - name: Restore pass4 state
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf checkpoint repair5 data/raw/"$CHAPTER_ID" data/processed/"$CHAPTER_ID"
+          mkdir -p checkpoint/base checkpoint/r1 checkpoint/r2 checkpoint/r3 checkpoint/r4 repair5/proof repair5/overlay/processed data/raw data/processed
+          gh run download "$BASE_RUN_ID" -n "$BASE_ARTIFACT" -D checkpoint/base
+          gh run download "$R1_RUN_ID" -n "$R1_ARTIFACT" -D checkpoint/r1
+          gh run download "$R2_RUN_ID" -n "$R2_ARTIFACT" -D checkpoint/r2
+          gh run download "$R3_RUN_ID" -n "$R3_ARTIFACT" -D checkpoint/r3
+          gh run download "$R4_RUN_ID" -n "$R4_ARTIFACT" -D checkpoint/r4
+
+          cp -a checkpoint/base/raw "data/raw/$CHAPTER_ID"
+          cp -a checkpoint/base/processed "data/processed/$CHAPTER_ID"
+
+          cp checkpoint/r1/manifest.json "data/processed/$CHAPTER_ID/manifest.json"
+          cp -a checkpoint/r1/overlay/processed/. "data/processed/$CHAPTER_ID/"
+
+          cp checkpoint/r2/manifest.json "data/processed/$CHAPTER_ID/manifest.json"
+          cp -a checkpoint/r2/overlay/processed/. "data/processed/$CHAPTER_ID/"
+
+          cp checkpoint/r3/manifest.json "data/processed/$CHAPTER_ID/manifest.json"
+          cp -a checkpoint/r3/overlay/processed/. "data/processed/$CHAPTER_ID/"
+
+          cp checkpoint/r4/manifest.json "data/processed/$CHAPTER_ID/manifest.json"
+          cp -a checkpoint/r4/overlay/processed/. "data/processed/$CHAPTER_ID/"
+          test -f "data/processed/$CHAPTER_ID/manifest.json"
+
+      - name: Correct preserve geometry and apply final two brushes
+        run: |
+          python - <<'PY'
+          import cv2, json, shutil, hashlib
+          import numpy as np
+          from pathlib import Path
+          from app.dependencies import pipeline
+          from app.routers.chapters import _set_page_preserve_regions
+          from app.schemas import RegionModel
+          from app.manifest_utils import load_manifest_raw
+
+          chapter='05efce51'
+          old=Path('repair5/pass4'); old.mkdir(parents=True,exist_ok=True)
+          m=load_manifest_raw(chapter)
+          for p in [103,121]:
+              shutil.copy2(m['pages'][p]['clean'],old/f'p{p:03d}.png')
+
+          # p121 preserve was too wide and locked part of story text.
+          # Keep only the ASURASCANS watermark strip.
+          _set_page_preserve_regions(
+              chapter,
+              121,
+              [RegionModel(x1=620,y1=1180,x2=900,y2=1320)],
+          )
+          pipeline.process_pages(chapter,[121],workers=1)
+
+          ops=[]
+
+          # p121: repaint the complete story-text band, now outside preserve.
+          m=load_manifest_raw(chapter)
+          page=m['pages'][121]
+          img=cv2.imread(page['clean'],cv2.IMREAD_COLOR)
+          h,w=img.shape[:2]
+          mask=np.zeros((h,w),np.uint8)
+          mask[760:min(h,1160),0:w]=255
+          path=Path('repair5/p121-mask.png')
+          cv2.imwrite(str(path),mask)
+          pipeline.repaint_mask(chapter,121,mask,force_lama=False)
+          ops.append({
+              'page_index':121,
+              'mode':'standard',
+              'rects':[(0,760,w,1160)],
+              'mask_pixels':int(np.count_nonzero(mask)),
+              'mask_sha256':hashlib.sha256(path.read_bytes()).hexdigest(),
+          })
+
+          # p103: add one small brush over the final surviving outline fragment.
+          m=load_manifest_raw(chapter)
+          page=m['pages'][103]
+          img=cv2.imread(page['clean'],cv2.IMREAD_COLOR)
+          h,w=img.shape[:2]
+          mask=np.zeros((h,w),np.uint8)
+          mask[max(0,2280):min(h,2670),max(0,240):min(w,390)]=255
+          path=Path('repair5/p103-mask.png')
+          cv2.imwrite(str(path),mask)
+          pipeline.repaint_mask(chapter,103,mask,force_lama=False)
+          ops.append({
+              'page_index':103,
+              'mode':'standard',
+              'rects':[(240,2280,390,2670)],
+              'mask_pixels':int(np.count_nonzero(mask)),
+              'mask_sha256':hashlib.sha256(path.read_bytes()).hexdigest(),
+          })
+
+          Path('repair5/repaint-operations.json').write_text(json.dumps(ops,indent=2),encoding='utf-8')
+          PY
+
+      - name: Verify corrected preserve and chapter invariants
+        run: |
+          python - <<'PY'
+          import cv2, json, numpy as np
+          from pathlib import Path
+          from app.manifest_utils import load_manifest_raw
+
+          m=load_manifest_raw('05efce51')
+
+          for p in [0,138]:
+              page=m['pages'][p]
+              if not page.get('skipped') or page.get('clean') is not None:
+                  raise SystemExit(f'skip drift p{p:03d}')
+
+          preserve={
+            40:[(0,2180,300,2320)],
+            102:[(500,2700,900,2950)],
+            121:[(620,1180,900,1320)],
+          }
+          for p,rs in preserve.items():
+              raw=cv2.imread(m['pages'][p]['original'])
+              clean=cv2.imread(m['pages'][p]['clean'])
+              if raw is None or clean is None:
+                  raise SystemExit(f'missing image p{p:03d}')
+              for x1,y1,x2,y2 in rs:
+                  if not np.array_equal(raw[y1:y2,x1:x2],clean[y1:y2,x1:x2]):
+                      raise SystemExit(f'preserve drift p{p:03d}')
+
+          Path('repair5/manifest.json').write_text(json.dumps(m,ensure_ascii=False,indent=2),encoding='utf-8')
+          PY
+
+      - name: Build final two-slice proof
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from PIL import Image, ImageDraw, ImageFont
+          from app.manifest_utils import load_manifest_raw
+
+          chapter='05efce51'
+          m=load_manifest_raw(chapter)
+          old=Path('repair5/pass4')
+          proof=Path('repair5/proof'); proof.mkdir(parents=True,exist_ok=True)
+          font=ImageFont.load_default()
+          cards=[]
+
+          crop_regions={
+            103:(180,1950,900,2850),
+            121:(0,650,900,1400),
+          }
+
+          for p in [103,121]:
+              page=m['pages'][p]
+              raw=Image.open(page['original']).convert('RGB')
+              before=Image.open(old/f'p{p:03d}.png').convert('RGB')
+              after=Image.open(page['clean']).convert('RGB')
+              box=crop_regions[p]
+              ims=[]
+              for im in (raw,before,after):
+                  c=im.crop(box)
+                  c.thumbnail((360,360),Image.Resampling.LANCZOS)
+                  ims.append(c)
+              card=Image.new('RGB',(1140,410),'white')
+              for i,im in enumerate(ims):
+                  card.paste(im,(10+i*380,28))
+              d=ImageDraw.Draw(card)
+              d.text((8,5),f'p{p:03d} final correction',fill='black',font=font)
+              for i,s in enumerate(('RAW','PASS4','PASS5')):
+                  d.text((145+i*380,390),s,fill='black',font=font)
+              card.save(proof/f'p{p:03d}.jpg',quality=93)
+              cards.append(card)
+              raw.close(); before.close(); after.close()
+
+          sheet=Image.new('RGB',(1140,410*len(cards)),'white')
+          for i,c in enumerate(cards):
+              sheet.paste(c,(0,410*i))
+          sheet.save(proof/'sheet.jpg',quality=92)
+          PY
+
+      - name: Pack final clean delta
+        if: always()
+        run: |
+          python - <<'PY'
+          import json, shutil
+          from pathlib import Path
+          from app.manifest_utils import load_manifest_raw
+
+          chapter='05efce51'
+          m=load_manifest_raw(chapter)
+          out=Path('repair5/overlay/processed'); out.mkdir(parents=True,exist_ok=True)
+
+          for p in [103,121]:
+              page=m['pages'][p]
+              for field in ('clean','manual_mask','manual_lama_mask'):
+                  v=page.get(field)
+                  if v and Path(v).is_file():
+                      shutil.copy2(v,out/Path(v).name)
+
+          meta={
+            'checkpoint':'02f-preserve-fix-final-brush',
+            'chapter_id':chapter,
+            'base_repair_run_id':35294172340,
+            'pages':[103,121],
+            'corrected_preserve':{'121':[[620,1180,900,1320]]},
+            'next_action':'HUMAN_REVIEW_FINAL_TWO_SLICE_PROOF',
+          }
+          Path('repair5/manual-clean-repair-5.json').write_text(json.dumps(meta,indent=2),encoding='utf-8')
+          PY
+
+      - name: Upload final clean delta
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: 02f-manual-clean-repair-05efce51
+          path: |
+            repair5/manifest.json
+            repair5/manual-clean-repair-5.json
+            repair5/repaint-operations.json
+            repair5/p103-mask.png
+            repair5/p121-mask.png
+            repair5/overlay/
+          compression-level: 0
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Upload final two-slice proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: 02f-manual-clean-proof-05efce51
+          path: repair5/proof/
+          retention-days: 7
+          if-no-files-found: error
