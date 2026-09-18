@@ -6,16 +6,20 @@
   "source_url": "https://asurascans.com/comics/war-of-extinction-6f7fe6eb/chapter/1",
   "branch": "chapter/war-of-extinction-1",
   "source_of_truth_sha": "c99f82dff322747870ed8c75ece5d27d61633fc8",
-  "current_stage": "CLEAN_PENDING",
+  "current_stage": "CLEAN_REPAIR_REQUIRED",
   "last_passed_checkpoint": "IMPORT",
   "current_artifact": {
-    "run_id": 35286090041,
-    "artifact": "01-import-05efce51",
-    "artifact_id": 10524466424,
-    "digest": "sha256:2b85c22c6aed498578003c7304faa889bdcd296eec0c3107236ee10d8ba40b54"
+    "run_id": 35286501171,
+    "artifact": "02-clean-review-05efce51",
+    "artifact_id": 10525561906,
+    "digest": "sha256:e5f0d11ec25743e3226e53a1631611714e055a52eb1d6ddc274619f2f8ce44b3"
   },
-  "blockers": [],
-  "next_action": "RUN_CHECKPOINT_02_CLEAN_REVIEW",
+  "blockers": [
+    "SYSTEMATIC_FREE_TEXT_DISPLAY_RECALL_MISS",
+    "SOURCE_STORY_TEXT_RESIDUE",
+    "NON_STORY_PROMO_CREDIT_PRESERVATION"
+  ],
+  "next_action": "REPAIR_FREE_TEXT_DISPLAY_RECALL_AND_PRESERVE_NON_STORY",
   "approved_import": {
     "source_images": 40,
     "slices": 139,
@@ -23,5 +27,37 @@
     "ownership_issues": 0,
     "pixel_exact_pages": 40,
     "diff_pixels_total": 0
+  },
+  "clean_review": {
+    "status": "FAIL_REPAIR_REQUIRED",
+    "proof_artifact_id": 10525517036,
+    "story_text_blocker_pages_observed": [
+      0,
+      1,
+      4,
+      20,
+      21,
+      23,
+      24,
+      40,
+      41,
+      45,
+      49,
+      67,
+      68,
+      86,
+      87,
+      88,
+      102,
+      103,
+      115,
+      121,
+      122,
+      129,
+      137,
+      138
+    ],
+    "automated_residue_flag_pages": [],
+    "editorial_pass": false
   }
 }
