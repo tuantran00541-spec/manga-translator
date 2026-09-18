@@ -86,45 +86,45 @@ class CombinedTextDetector:
             model_role="text_segmenter",
         )
         self.recovery = SecondaryTextRecovery()
-        self._retry_text_detector: YoloDetector | None = None
-        self._retry_text_detector_resolved = False
-        self._retry_text_detector_lock = threading.Lock()
+        self._residue_text_detector: YoloDetector | None = None
+        self._residue_text_detector_resolved = False
+        self._residue_text_detector_lock = threading.Lock()
         self._metrics_local = threading.local()
 
     @property
-    def retry_text_detector(self) -> YoloDetector:
-        """Return the optional lower-resolution segmenter for bounded retries.
+    def residue_text_detector(self) -> YoloDetector:
+        """Return the optional lower-resolution segmenter for residue verification.
 
-        The specialized model is deliberately lazy and optional. Primary text
-        detection always keeps the validated 1024 model. Missing/invalid retry
-        artifacts fail open to that primary model so cleanup correctness does
-        not depend on an optimization artifact being present.
+        The specialized model is deliberately lazy and optional. All destructive
+        detection/retry paths keep the validated 1024 model. Missing or invalid
+        specialized artifacts fail open to that primary model, so correctness
+        never depends on the optimization artifact being present.
         """
-        retry_detector = getattr(self, "_retry_text_detector", None)
+        retry_detector = getattr(self, "_residue_text_detector", None)
         if retry_detector is not None:
             return retry_detector
-        if not hasattr(self, "_retry_text_detector_resolved"):
+        if not hasattr(self, "_residue_text_detector_resolved"):
             return self.text_detector
-        if self._retry_text_detector_resolved:
+        if self._residue_text_detector_resolved:
             return self.text_detector
-        retry_lock = getattr(self, "_retry_text_detector_lock", None)
+        retry_lock = getattr(self, "_residue_text_detector_lock", None)
         if retry_lock is None:
             return self.text_detector
 
         with retry_lock:
-            if self._retry_text_detector is not None:
-                return self._retry_text_detector
-            if self._retry_text_detector_resolved:
+            if self._residue_text_detector is not None:
+                return self._residue_text_detector
+            if self._residue_text_detector_resolved:
                 return self.text_detector
 
-            self._retry_text_detector_resolved = True
+            self._residue_text_detector_resolved = True
             if not DETECTOR_RETRY_SEGMENTER_ENABLED:
                 return self.text_detector
             if not TEXT_SEGMENTER_RETRY_MODEL.is_file():
                 return self.text_detector
 
             try:
-                self._retry_text_detector = YoloDetector(
+                self._residue_text_detector = YoloDetector(
                     TEXT_SEGMENTER_RETRY_MODEL,
                     TEXT_CONF_THRESHOLD,
                     model_role="text_segmenter",
@@ -132,12 +132,12 @@ class CombinedTextDetector:
                 )
             except Exception as exc:
                 logger.warning(
-                    "Focused retry segmenter unavailable ({}); falling back to {}",
+                    "Residue segmenter unavailable ({}); falling back to {}",
                     exc,
                     self.text_detector.source_model,
                 )
-                self._retry_text_detector = None
-            return self._retry_text_detector or self.text_detector
+                self._residue_text_detector = None
+            return self._residue_text_detector or self.text_detector
 
     def last_metrics(self) -> dict[str, float | int]:
         """Return detector counters from the current page-processing thread."""
@@ -430,7 +430,7 @@ class CombinedTextDetector:
         """Run a bounded segmenter retry inside unresolved proposal ROIs."""
         h, w = image.shape[:2]
         rois, deferred = self._plan_grayscale_fallback_rois((h, w), proposals)
-        retry_detector = self.retry_text_detector
+        retry_detector = self.text_detector
         recovered: list[BubbleBox] = []
         source_pixels = 0
         for x1, y1, x2, y2 in rois:
