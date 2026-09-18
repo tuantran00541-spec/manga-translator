@@ -28,7 +28,7 @@ jobs:
       MANGA_ORT_OPENVINO_THREADS: "2"
       MANGA_ORT_OPENVINO_STREAMS: "1"
       MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
-    timeout-minutes: 20
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
 
@@ -84,9 +84,23 @@ jobs:
         run: |
           python scripts/onnx_head_patch_debug.py --sizes 640 512
 
-      - name: Compare specialized segmenters on real retry/residue ROIs
+      - name: Compare specialized segmenters on all sampled Killer Pietro slices
         run: |
-          python scripts/onnx_resolution_quality_probe.py --workers 1
+          python scripts/onnx_resolution_quality_probe.py \
+            --workers 1 \
+            --all-slices \
+            --raw-dir benchmark-results/onnx-quality-input-killer \
+            --output-dir benchmark-results/onnx-quality-killer
+
+      - name: Compare specialized segmenters on all sampled Shadow Slave slices
+        continue-on-error: true
+        run: |
+          python scripts/onnx_resolution_quality_probe.py \
+            --workers 1 \
+            --all-slices \
+            --chapter-url "https://asurascans.com/comics/shadow-slave-6f7fe6eb/chapter/1" \
+            --raw-dir benchmark-results/onnx-quality-input-shadow \
+            --output-dir benchmark-results/onnx-quality-shadow
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -97,6 +111,7 @@ jobs:
             benchmark-results/onnx-surgery/head-shapes.json
             benchmark-results/onnx-surgery/head-patch-report.json
             benchmark-results/onnx-surgery/head-patch-debug.json
-            benchmark-results/onnx-quality/report.json
+            benchmark-results/onnx-quality-killer/report.json
+            benchmark-results/onnx-quality-shadow/report.json
           retention-days: 3
           if-no-files-found: error
