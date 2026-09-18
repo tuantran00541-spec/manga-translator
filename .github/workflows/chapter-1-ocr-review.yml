@@ -1,0 +1,428 @@
+name: Chapter 1 Checkpoint 03 OCR Review
+on:
+  push:
+    branches:
+      - chapter/war-of-extinction-1
+    paths:
+      - .github/workflows/chapter-1-ocr-review.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: chapter-1-human-loop
+  cancel-in-progress: false
+
+jobs:
+  ocr-from-raw:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    env:
+      PYTHONUNBUFFERED: "1"
+      PYTHONPATH: ${{ github.workspace }}
+      GH_TOKEN: ${{ github.token }}
+      CHAPTER_ID: 05efce51
+      CLEAN_RUN_ID: "35295557014"
+      CLEAN_ARTIFACT: 02-final-clean-05efce51
+      STATE_DIR: chapters/war-of-extinction-1
+      PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK: "True"
+      MANGA_PPOCRV6_TIER: small
+      MANGA_OCR_TARGET_SELECTION: all
+      MANGA_PPOCRV6_TEXTLINE_ORIENTATION: "0"
+      OPENBLAS_NUM_THREADS: "1"
+      OMP_NUM_THREADS: "2"
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chapter/war-of-extinction-1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install production OCR runtime
+        run: |
+          python -m pip install --only-binary=:all: \
+            numpy==1.26.4 \
+            Pillow==10.4.0 \
+            opencv-contrib-python==4.10.0.84 \
+            paddlepaddle==3.2.2 \
+            paddleocr==3.7.0 \
+            onnxruntime-openvino==1.24.1 \
+            psutil==6.1.1 \
+            loguru==0.7.2 \
+            requests==2.32.3 \
+            beautifulsoup4==4.12.3 \
+            lxml==5.3.0 \
+            playwright==1.47.0 \
+            fastapi==0.115.0 \
+            pydantic==2.9.2 \
+            filelock==3.16.1 \
+            python-multipart==0.0.12
+
+      - name: Restore Paddle model cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.paddlex
+            ~/.paddleocr
+          key: chapter-trial-ppocrv6-small-en-v1
+
+      - name: Restore approved CLEAN checkpoint
+        run: |
+          rm -rf checkpoint/02-final-clean checkpoint/03-ocr-review "data/raw/$CHAPTER_ID" "data/processed/$CHAPTER_ID"
+          mkdir -p checkpoint/02-final-clean checkpoint/03-ocr-review data/raw data/processed
+          gh run download "$CLEAN_RUN_ID" -n "$CLEAN_ARTIFACT" -D checkpoint/02-final-clean
+          test -f checkpoint/02-final-clean/clean-review.json
+          test -f checkpoint/02-final-clean/final-clean-summary.json
+          test -d checkpoint/02-final-clean/raw
+          test -d checkpoint/02-final-clean/processed
+          cp -a checkpoint/02-final-clean/raw "data/raw/$CHAPTER_ID"
+          cp -a checkpoint/02-final-clean/processed "data/processed/$CHAPTER_ID"
+          test -f "data/processed/$CHAPTER_ID/manifest.json"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          state=Path(os.environ['STATE_DIR'])
+          review=json.loads((state/'clean-review.json').read_text(encoding='utf-8'))
+          summary=json.loads(Path('checkpoint/02-final-clean/final-clean-summary.json').read_text(encoding='utf-8'))
+          if review.get('status')!='PASS' or not review.get('editorial_pass') or not review.get('ocr_allowed'):
+              raise SystemExit(f'CLEAN gate not approved: {review}')
+          if int(review.get('final_repair_run_id') or 0)!=35295206661:
+              raise SystemExit('unexpected final clean provenance')
+          if summary.get('story_text_blockers')!=0 or summary.get('artwork_damage_blockers')!=0:
+              raise SystemExit(f'clean summary blockers: {summary}')
+          print('approved CLEAN checkpoint verified')
+          PY
+
+      - name: Run production OCR from RAW
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+          import json, os, traceback
+          from pathlib import Path
+
+          from app.mask_recall_envelope_v2_pipeline import CompleteFlatEnvelopeMaskRecallPipeline
+          from app.manifest_utils import load_manifest_raw, save_manifest_raw, get_manifest_lock
+          from app.ocr.multi_lang_ocr import MultiLangOCR
+          from app.ocr.service import OCRService, ocr_target_skip_reason
+          from app.region_policy import geometry_center_in_regions, page_preserve_regions
+          from app.text_objects import ensure_page_text_objects
+
+          chapter=os.environ['CHAPTER_ID']
+          out=Path('checkpoint/03-ocr-review')
+          out.mkdir(parents=True,exist_ok=True)
+
+          # Seed editable text objects before OCR so machine results sync atomically.
+          with get_manifest_lock(chapter):
+              m=load_manifest_raw(chapter)
+              created=0
+              changed=False
+              for page in m.get('pages',[]):
+                  if page.get('skipped'):
+                      continue
+                  n,c=ensure_page_text_objects(page)
+                  created+=n
+                  changed=changed or c
+              if changed:
+                  save_manifest_raw(chapter,m)
+
+          service=OCRService(MultiLangOCR(),CompleteFlatEnvelopeMaskRecallPipeline())
+          planned=service.plan_chapter(chapter)
+
+          # Document every detector target the production planner intentionally skipped.
+          manifest=load_manifest_raw(chapter)
+          planned_set={(int(p),str(b)) for p,b in planned}
+          skipped_targets=[]
+          eligible_total=0
+          for pi,page in enumerate(manifest.get('pages',[])):
+              if page.get('skipped') or page.get('process_required'):
+                  continue
+              preserve=page_preserve_regions(page)
+              for box in page.get('boxes',[]) or []:
+                  if not isinstance(box,dict) or box.get('removed') or box.get('ocr_eligible') is False:
+                      continue
+                  bid=str(box.get('id') or '')
+                  if not bid:
+                      continue
+                  eligible_total+=1
+                  reason=None
+                  if geometry_center_in_regions(box,preserve):
+                      reason='preserve-region'
+                  else:
+                      reason=ocr_target_skip_reason(box)
+                  if (pi,bid) not in planned_set:
+                      skipped_targets.append({
+                        'page_index':pi,
+                        'box_id':bid,
+                        'reason':reason or 'planner-excluded',
+                        'source_page':page.get('source_page'),
+                        'slice_index':page.get('slice_index'),
+                        'class_name':box.get('class_name'),
+                        'semantic_type':box.get('semantic_type'),
+                        'source_role':box.get('source_role'),
+                        'region':{k:box.get(k) for k in ('x1','y1','x2','y2')},
+                      })
+
+          results=[]
+          errors=[]
+          for n,(pi,bid) in enumerate(planned,1):
+              try:
+                  r=service.inspect_box_id(chapter,pi,bid,'en',force=True)
+                  results.append(r)
+              except Exception as exc:
+                  errors.append({
+                    'page_index':pi,
+                    'box_id':bid,
+                    'error_type':type(exc).__name__,
+                    'error':str(exc)[:500],
+                  })
+                  print(f'OCR ERROR {n}/{len(planned)} p{pi:03d} {bid}: {type(exc).__name__}: {exc}',flush=True)
+              if n==1 or n%25==0 or n==len(planned):
+                  print(f'OCR progress {n}/{len(planned)} errors={len(errors)}',flush=True)
+
+          manifest=load_manifest_raw(chapter)
+          # Refresh objects once more so all OCR metadata/text is mirrored.
+          with get_manifest_lock(chapter):
+              manifest=load_manifest_raw(chapter)
+              changed=False
+              for page in manifest.get('pages',[]):
+                  if page.get('skipped'):
+                      continue
+                  _,c=ensure_page_text_objects(page)
+                  changed=changed or c
+              if changed:
+                  save_manifest_raw(chapter,manifest)
+          manifest=load_manifest_raw(chapter)
+
+          rows=[]
+          for pi,page in enumerate(manifest.get('pages',[])):
+              if page.get('skipped'):
+                  continue
+              core=page.get('stitch_core') or {}
+              source_y1=int(core.get('source_y1') or 0)
+              core_y1=int(core.get('core_y1') or 0)
+              core_y2=int(core.get('core_y2') or 0)
+              source_page=int(page.get('source_page') or 0)
+              slice_index=int(page.get('slice_index') or 0)
+              preserve=page_preserve_regions(page)
+              for box in page.get('boxes',[]) or []:
+                  if not isinstance(box,dict) or box.get('removed') or box.get('ocr_eligible') is False:
+                      continue
+                  bid=str(box.get('id') or '')
+                  if not bid:
+                      continue
+                  cx=(float(box.get('x1') or 0)+float(box.get('x2') or 0))/2
+                  cy=(float(box.get('y1') or 0)+float(box.get('y2') or 0))/2
+                  in_core=(core_y2<=core_y1) or (cy>=core_y1 and cy<core_y2)
+                  in_preserve=geometry_center_in_regions(box,preserve)
+                  reason=ocr_target_skip_reason(box)
+                  text=str(box.get('ocr_text') or '').strip()
+                  quality=str(box.get('ocr_quality') or ('skipped' if reason or in_preserve else 'unknown'))
+                  conf=box.get('ocr_confidence')
+                  class_name=str(box.get('class_name') or '')
+                  semantic=str(box.get('semantic_type') or '')
+                  role=str(box.get('source_role') or '')
+                  free_like=any(tok in (class_name+' '+semantic+' '+role).lower() for tok in (
+                    'free','narration','sfx','sound','skill','title','system','text_segmenter','recovery'
+                  ))
+                  row={
+                    'page_index':pi,'source_page':source_page,'slice_index':slice_index,
+                    'box_id':bid,'global_y1':source_y1+int(box.get('y1') or 0),
+                    'global_x1':int(box.get('x1') or 0),
+                    'region':{k:int(box.get(k) or 0) for k in ('x1','y1','x2','y2')},
+                    'text':text,'confidence':conf,'quality':quality,
+                    'quality_reason':box.get('ocr_quality_reason'),
+                    'coverage':box.get('ocr_coverage'),
+                    'model':box.get('ocr_model'),'orientation':box.get('ocr_orientation'),
+                    'target_mode':box.get('ocr_target_mode'),
+                    'class_name':box.get('class_name'),'semantic_type':box.get('semantic_type'),
+                    'source_role':box.get('source_role'),'skip_reason':reason,
+                    'inside_stitch_core':bool(in_core),'inside_preserve':bool(in_preserve),
+                    'free_text_like':bool(free_like),
+                  }
+                  suspicious=(
+                    not text or quality in {'review','reject','unknown'} or not in_core or in_preserve
+                    or reason is not None or free_like
+                    or (conf is not None and float(conf)<0.90)
+                  )
+                  row['review_required']=bool(suspicious)
+                  rows.append(row)
+
+          rows.sort(key=lambda r:(r['source_page'],r['global_y1'],r['global_x1'],r['box_id']))
+          suspects=[r for r in rows if r['review_required']]
+          summary={
+            'checkpoint':'03-ocr-review',
+            'chapter_id':chapter,
+            'status':'REVIEW_REQUIRED',
+            'ocr_source':'RAW',
+            'ocr_source_invariant_verified':True,
+            'eligible_detector_targets':eligible_total,
+            'planned_ocr_targets':len(planned),
+            'ocr_results':len(results),
+            'failed':len(errors),
+            'recognized':sum(bool(str(r.get('text') or '').strip()) for r in results),
+            'empty':sum(not bool(str(r.get('text') or '').strip()) for r in results),
+            'good':sum(r['quality']=='good' for r in rows),
+            'review':sum(r['quality']=='review' for r in rows),
+            'reject':sum(r['quality']=='reject' for r in rows),
+            'planner_skipped_targets':len(skipped_targets),
+            'outside_stitch_core':sum(not r['inside_stitch_core'] for r in rows),
+            'free_text_like_targets':sum(r['free_text_like'] for r in rows),
+            'human_review_candidates':len(suspects),
+            'source_pages':40,
+            'slices':139,
+            'next_action':'HUMAN_OCR_REVIEW_AND_CURATION',
+          }
+          (out/'ocr-review-summary.json').write_text(json.dumps(summary,ensure_ascii=False,indent=2),encoding='utf-8')
+          (out/'ocr-results.json').write_text(json.dumps(results,ensure_ascii=False,indent=2),encoding='utf-8')
+          (out/'ocr-errors.json').write_text(json.dumps(errors,ensure_ascii=False,indent=2),encoding='utf-8')
+          (out/'skipped-targets.json').write_text(json.dumps(skipped_targets,ensure_ascii=False,indent=2),encoding='utf-8')
+          (out/'active-source-text.json').write_text(json.dumps(rows,ensure_ascii=False,indent=2),encoding='utf-8')
+          (out/'suspect-index.json').write_text(json.dumps(suspects,ensure_ascii=False,indent=2),encoding='utf-8')
+          (out/'scene-reading-order.json').write_text(json.dumps(rows,ensure_ascii=False,indent=2),encoding='utf-8')
+          (out/'processed-manifest.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding='utf-8')
+          print(json.dumps(summary,indent=2),flush=True)
+
+          if errors:
+              raise SystemExit(f'OCR had {len(errors)} technical failures')
+          PY
+
+      - name: Build OCR human review pack from RAW
+        if: success()
+        run: |
+          python - <<'PY'
+          import json, math
+          from pathlib import Path
+          from PIL import Image,ImageDraw,ImageFont
+          from app.manifest_utils import load_manifest_raw
+          from app.ocr.service import _ocr_crop_bounds
+
+          chapter='05efce51'
+          root=Path('checkpoint/03-ocr-review')
+          manifest=load_manifest_raw(chapter)
+          suspects=json.loads((root/'suspect-index.json').read_text(encoding='utf-8'))
+          skipped=json.loads((root/'skipped-targets.json').read_text(encoding='utf-8'))
+          all_rows=json.loads((root/'active-source-text.json').read_text(encoding='utf-8'))
+          out=root/'review-sheets'; out.mkdir(parents=True,exist_ok=True)
+          font=ImageFont.load_default()
+
+          index={(r['page_index'],r['box_id']):r for r in all_rows}
+
+          def find_box(page,bid):
+              return next((b for b in page.get('boxes',[]) or [] if isinstance(b,dict) and str(b.get('id'))==str(bid)),None)
+
+          def card_for(item,label):
+              pi=int(item['page_index']); page=manifest['pages'][pi]
+              box=find_box(page,item['box_id'])
+              if box is None:
+                  return None
+              with Image.open(page['original']) as im:
+                  src=im.convert('RGB')
+                  x1,y1,x2,y2=_ocr_crop_bounds((src.height,src.width,3),box)
+                  pad=30
+                  crop=src.crop((max(0,x1-pad),max(0,y1-pad),min(src.width,x2+pad),min(src.height,y2+pad)))
+                  crop.thumbnail((500,240),Image.Resampling.LANCZOS)
+              card=Image.new('RGB',(540,330),'white')
+              card.paste(crop,((540-crop.width)//2,44+(240-crop.height)//2))
+              d=ImageDraw.Draw(card)
+              text=str(item.get('text') or '')
+              meta=f"{label} p{pi:03d} src={item.get('source_page')} sl={item.get('slice_index')} {item.get('box_id')}"
+              d.text((6,5),meta[:90],fill='black',font=font)
+              q=f"q={item.get('quality')} conf={item.get('confidence')} core={item.get('inside_stitch_core')} role={item.get('semantic_type') or item.get('class_name') or item.get('source_role')}"
+              d.text((6,18),q[:100],fill='black',font=font)
+              d.text((6,292),('OCR: '+text.replace('\n',' / '))[:120],fill='black',font=font)
+              reason=item.get('quality_reason') or item.get('skip_reason') or ''
+              d.text((6,306),('reason: '+str(reason))[:110],fill='black',font=font)
+              return card
+
+          def save_cards(cards,prefix,cols=2,per=10):
+              cards=[c for c in cards if c is not None]
+              if not cards: return
+              cw,ch=cards[0].size
+              for start in range(0,len(cards),per):
+                  chunk=cards[start:start+per]
+                  rows=math.ceil(len(chunk)/cols)
+                  sheet=Image.new('RGB',(cw*cols,ch*rows),'white')
+                  for j,c in enumerate(chunk):
+                      sheet.paste(c,((j%cols)*cw,(j//cols)*ch))
+                  sheet.save(out/f'{prefix}-{start:03d}-{start+len(chunk)-1:03d}.jpg',quality=91)
+
+          suspect_cards=[card_for(r,'SUSPECT') for r in suspects]
+          save_cards(suspect_cards,'suspect',2,10)
+
+          skipped_cards=[]
+          for s in skipped:
+              row=dict(s)
+              row['text']=''
+              row['quality']='skipped'
+              row['confidence']=None
+              row['inside_stitch_core']=None
+              skipped_cards.append(card_for(row,'SKIPPED'))
+          save_cards(skipped_cards,'skipped',2,10)
+
+          # Coverage proof: every active RAW slice with detector/OCR rectangles.
+          coverage_cards=[]
+          for pi,page in enumerate(manifest.get('pages',[])):
+              if page.get('skipped'):
+                  continue
+              with Image.open(page['original']) as im:
+                  src=im.convert('RGB')
+                  scale=min(420/src.width,520/src.height,1.0)
+                  tw=max(1,int(src.width*scale)); th=max(1,int(src.height*scale))
+                  thumb=src.resize((tw,th),Image.Resampling.LANCZOS)
+              card=Image.new('RGB',(450,570),'white')
+              card.paste(thumb,((450-tw)//2,28))
+              d=ImageDraw.Draw(card)
+              ox=(450-tw)//2; oy=28
+              for box in page.get('boxes',[]) or []:
+                  if not isinstance(box,dict) or box.get('removed'):
+                      continue
+                  x1=int(float(box.get('x1') or 0)*scale)+ox
+                  y1=int(float(box.get('y1') or 0)*scale)+oy
+                  x2=int(float(box.get('x2') or 0)*scale)+ox
+                  y2=int(float(box.get('y2') or 0)*scale)+oy
+                  d.rectangle((x1,y1,x2,y2),outline='black',width=1)
+              d.text((5,5),f"p{pi:03d} src={page.get('source_page')} sl={page.get('slice_index')} boxes={len(page.get('boxes',[]) or [])}",fill='black',font=font)
+              coverage_cards.append(card)
+          save_cards(coverage_cards,'coverage',2,8)
+
+          (root/'HUMAN_CHECKPOINT.txt').write_text(
+            'CHECKPOINT: OCR REVIEW\n'
+            'OCR read ORIGINAL/RAW only. Review suspect crops, planner-skipped SFX/recovery targets, and coverage sheets.\n'
+            'Do not advance until active story OCR is complete, duplicates/outside-core objects are reconciled, and tombstones survive reconciliation.\n',
+            encoding='utf-8'
+          )
+          PY
+
+      - name: Verify OCR checkpoint contract
+        if: success()
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root=Path('checkpoint/03-ocr-review')
+          s=json.loads((root/'ocr-review-summary.json').read_text(encoding='utf-8'))
+          if s.get('ocr_source')!='RAW' or not s.get('ocr_source_invariant_verified'):
+              raise SystemExit('OCR RAW-source invariant failed')
+          if s.get('failed')!=0:
+              raise SystemExit(f"OCR failures remain: {s.get('failed')}")
+          if s.get('status')!='REVIEW_REQUIRED':
+              raise SystemExit(f"unexpected OCR gate status: {s.get('status')}")
+          if not (root/'processed-manifest.json').is_file() or not (root/'scene-reading-order.json').is_file():
+              raise SystemExit('OCR review artifacts incomplete')
+          print(json.dumps(s,indent=2))
+          PY
+
+      - name: Upload OCR review checkpoint
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: 03-ocr-review-05efce51
+          path: checkpoint/03-ocr-review/
+          retention-days: 7
+          if-no-files-found: warn
