@@ -222,6 +222,7 @@ if (typeof renderUnifiedReview === "function") {
         const url = `/api/download/${encodeURIComponent(window.currentChapterId)}/${Number(pageIndex)}`;
         page.rendered = url;
         page._reviewRenderedUrl = url;
+        window.refreshWorkflowNavigation?.();
       }
       return result;
     };
