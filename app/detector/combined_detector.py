@@ -100,12 +100,18 @@ class CombinedTextDetector:
         artifacts fail open to that primary model so cleanup correctness does
         not depend on an optimization artifact being present.
         """
-        if self._retry_text_detector is not None:
-            return self._retry_text_detector
+        retry_detector = getattr(self, "_retry_text_detector", None)
+        if retry_detector is not None:
+            return retry_detector
+        if not hasattr(self, "_retry_text_detector_resolved"):
+            return self.text_detector
         if self._retry_text_detector_resolved:
             return self.text_detector
+        retry_lock = getattr(self, "_retry_text_detector_lock", None)
+        if retry_lock is None:
+            return self.text_detector
 
-        with self._retry_text_detector_lock:
+        with retry_lock:
             if self._retry_text_detector is not None:
                 return self._retry_text_detector
             if self._retry_text_detector_resolved:
