@@ -6,16 +6,16 @@
   "source_url": "https://asurascans.com/comics/war-of-extinction-6f7fe6eb/chapter/1",
   "branch": "chapter/war-of-extinction-1",
   "source_of_truth_sha": "c99f82dff322747870ed8c75ece5d27d61633fc8",
-  "current_stage": "TYPOGRAPHY_PENDING",
-  "last_passed_checkpoint": "TRANSLATION",
+  "current_stage": "FINAL",
+  "last_passed_checkpoint": "FINAL",
   "current_artifact": {
-    "run_id": 35302234477,
-    "artifact": "04-translation-reviewed-05efce51",
-    "artifact_id": 10530233113,
-    "digest": "sha256:3736d10b1793feddf5905050b360dd9690f1737d3e5228eecab32a29c8fab9ba"
+    "run_id": 35315080391,
+    "artifact": "War-of-Extinction-Chapter-1-VI-FINAL",
+    "artifact_id": 10534499735,
+    "digest": "sha256:a2c9f268f98effacc46372a98738e1aff3bff24a63437daa4fe43835a1a0b3fc"
   },
   "blockers": [],
-  "next_action": "RUN_TYPOGRAPHY_PREFLIGHT_AND_RENDER_CANDIDATE",
+  "next_action": "COMPLETE",
   "approved_import": {
     "source_images": 40,
     "slices": 139,
@@ -57,5 +57,30 @@
     "translated_story_objects": 167,
     "active_untranslated_story_objects": 0,
     "terminology_locked": true
+  },
+  "visual_review": {
+    "status": "PASS",
+    "editorial_pass": true,
+    "reviewed_render_run_id": 35306773202,
+    "active_story_objects": 167,
+    "rendered_story_objects": 167,
+    "stitch_seams": 99,
+    "source_residue_blockers": 0,
+    "seam_blockers": 0,
+    "visual_blockers_total": 0
+  },
+  "final_export": {
+    "status": "FINAL_PASS",
+    "run_id": 35315080391,
+    "final_artifact": "War-of-Extinction-Chapter-1-VI-FINAL",
+    "final_artifact_id": 10534499735,
+    "final_artifact_digest": "sha256:a2c9f268f98effacc46372a98738e1aff3bff24a63437daa4fe43835a1a0b3fc",
+    "audit_artifact": "War-of-Extinction-Chapter-1-FINAL-AUDIT",
+    "audit_artifact_id": 10533949404,
+    "audit_artifact_digest": "sha256:a5f3c7037899d48b3f8e3c9fdbaa255ec6cd25f0158bee0fed872f41c8a62132",
+    "final_file": "War-of-Extinction-Chapter-1-VI-FINAL.zip",
+    "final_file_sha256": "823aedf1c6d1e8dd1c89989b7af5951da78035580ed63eaa9625cac8f7b44993",
+    "final_file_size_bytes": 201301466,
+    "source_pages": 40
   }
 }
