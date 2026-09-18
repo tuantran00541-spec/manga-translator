@@ -2,7 +2,7 @@ name: Phase 13 full production final gate
 
 on:
   push:
-    branches: [main]
+    branches: [main, release/focused-segmenter-640]
     paths:
       - app/detector/**
       - app/inpaint/**
@@ -12,6 +12,7 @@ on:
       - app/pipeline_editing.py
       - app/parameters.py
       - scripts/model_e2e_gate.py
+      - scripts/specialize_text_segmenter.py
       - .github/workflows/phase13-final-benchmark.yml
   workflow_dispatch:
 
@@ -45,7 +46,7 @@ jobs:
         run: |
           python -m pip install \
             numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 \
-            onnxruntime-openvino==1.24.1 psutil==6.1.1 loguru==0.7.2 \
+            onnx==1.17.0 onnxruntime-openvino==1.24.1 psutil==6.1.1 loguru==0.7.2 \
             requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 \
             playwright==1.47.0 fastapi==0.115.0 pydantic==2.9.2 \
             filelock==3.16.1 threadpoolctl==3.6.0
@@ -74,6 +75,12 @@ jobs:
           python benchmark-bootstrap/scripts/provision_real_e2e_models.py
           cp benchmark-bootstrap/models/*.onnx models/
           cp benchmark-bootstrap/models/.e2e-provenance.json models/
+      - name: Build residue-only 640 text segmenter
+        run: |
+          python scripts/specialize_text_segmenter.py \
+            --source models/text_segmenter.onnx \
+            --output models/text_segmenter_640.onnx \
+            --size 640
       - name: Run full production detector to inpaint final gate
         run: |
           mkdir -p benchmark-results/phase13
