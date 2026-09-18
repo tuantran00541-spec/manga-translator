@@ -1,0 +1,196 @@
+{
+  "checkpoint": "03b-ocr-human-curation",
+  "chapter_id": "05efce51",
+  "base_ocr": {
+    "run_id": 35296030515,
+    "artifact": "03-ocr-review-05efce51",
+    "artifact_id": 10527309570,
+    "ocr_source": "RAW"
+  },
+  "human_review": {
+    "coverage_sheets_reviewed": 18,
+    "recognized_machine_regions": 197,
+    "recognized_nonempty": 192,
+    "machine_empty": 5,
+    "scene_coherence_reviewed": true,
+    "manual_corrections": 27,
+    "manual_promotions": 5,
+    "manual_additions": 4,
+    "watermark_drops": 19,
+    "planner_skipped_reviewed": 233
+  },
+  "drops": {
+    "planner_skipped_non_story_or_duplicate": [
+      "box_7af2a5a5a9454e12","box_6da634b8934a47d6","box_5232e98aed3a4e1b","box_fc4f026b08fb4505","box_ede54cd3f72342c2","box_96ff07aad2af4b03","box_f21859f7543e4ca0","box_f51e637fd55d47ce","box_0580aa906f4d4d25","box_783e618cc91c4cc3","box_a365ab7395dc474a","box_a9a1652572b54251","box_f9cdb76d1d0641a2","box_6ae8745531df428e","box_596ab5761b8e4083","box_8a02f0a634ed4d57","box_d896628cc706481e","box_9337b43522f74047","box_b88ae3aeb4dc48dd","box_23c53cfce31a4f96","box_4e3f333122914d40","box_bed1ef3a1e1c4adf","box_bca49851fe6a407c","box_119193011a824af7","box_9febea95b8564e50","box_0031ac2057594656","box_066a40068f61427d","box_c7490a769cf74d83","box_228c8d24c8b544d3","box_43e235d8c7364b53","box_425c6ca85eb24295","box_8d05e1493ef54d9a","box_d67e2052d83a447d","box_88b51e4d22cd482c","box_79683c75b40e431f","box_782ebd431f684b2c","box_4ca4ab58fb3849dd","box_d69631cff74b40be","box_2498666f8c894a06","box_f0767fd16aba4f59","box_1e9449a1bc9c4ddc","box_ef7ff7ef2d254eb8","box_59e5cfcc240c42d2","box_234fb3cbc7c24d49","box_6ea8f3e5af6b4a87","box_d7a1039a209c4bf5","box_0706f01f52eb45a9","box_b2bcab5558704650","box_083cb62a42934c35","box_837b62b78e494a13","box_22085d1336be4269","box_cc28ec1f844f4787","box_3cdb167bd7f64962","box_a4e594614ec844b0","box_81df46b1bd8f4a9b","box_d2777d4c5d85450a","box_bb0daa6cfc6a4766","box_8dc04c0de3f04d5f","box_285b3f816a384ba3","box_9b3c0f745012454e","box_03cc85bab758435d","box_1cee635f515b4841","box_0649d98984414ec2","box_57cd2b32fd264b69","box_a658840aa8d44a6a","box_84f9a6ef059743da","box_ea54c6def85840c2","box_22f05fa161054f48","box_8fea2cb9fb324129","box_d5610f38ee82481c","box_e617381b98524421","box_7b7788d963544b8c","box_d3e7e78ad3004ba7","box_793b8d0a15b74c34","box_6b16238ffd664408","box_8461ba50ec34430a","box_bdc63c6c1b3d4faa","box_6ae1c2dd734c424e","box_97399d94dea04b40","box_b91449293d594bf9","box_bec8c8a9011c4fef","box_3ec4bc0866804393","box_2033ec780f744b9e","box_76e832be82444375","box_4626b5529c984a08","box_3324cdb6a8294806","box_1810244408a5450a","box_be08ece4ecd440d1","box_12d9ee2daea94801","box_c41777b983a94f03","box_1812bfcc3d754c56","box_a34639be66f04d41","box_7f77d2f577fa4a65","box_07a16bd2c42e4eac","box_0a43fae96afe4e6b","box_bc84904f9ea1477a","box_7718654bb44f4793","box_188b93dad741482e","box_bc5e675565e942f6","box_4b4d0114d7cb4d86","box_a6262620539a4fb6","box_c1b259355eb640d5","box_a2952591e6224816","box_d3282cd1377644ad","box_23d2a78aae184ef7","box_b82446da6e744dcc","box_76dca1ac060a4563","box_96f11fe01d464ea8","box_02026aa3320c4a71","box_a35a391f2ba84769","box_55a4805b096a407b","box_995c1a67db1b458e","box_036449df2c314d6a","box_87d9eb9ec6814e53","box_16b55c64ed5247da","box_213e349e96f3408a","box_7a11e1493332411e","box_36256199d2004402","box_3af52d712c3940c5","box_0120a6f6bd418c","box_83d2cf5e46014c6b","box_b2ee56050e0d4927","box_a2bc49f31aee4eae","box_8d361c543a1f49eb","box_f27a2bc761e145ba","box_c798397c92c0470e","box_b96b77a0960b4c31","box_6130e0eb16f24cf0","box_574a4513161c45dd","box_f57d45e6ed9746a3","box_e8970dfaefaf4e9a","box_1b3915af93964a40","box_0142aa9d9f0e4d81","box_55866c296afc4783","box_5c4a4e537bed425b","box_bb33f77605af4b9a","box_14258e77b4ab44be","box_b4229ddbfcca4560","box_2cf6316ab1dc4517","box_e3b8f3ed769946f7","box_896fbc2c9dbf43df","box_748f832e8c454d4b","box_8d1076280b9f49be","box_df94b1d074b14d99","box_92e984ca5ecf482c","box_52f73b90245c447d","box_cb4b3027b3b54c0b","box_e93025a1517a47f7","box_5027c934dcc64ab8","box_923553ab138944dd","box_2a0a382479ae418a","box_2a02eb83a7584db1","box_409c2394dddb42a3","box_18e2356c0c4f43bb","box_0c2ba10313be4026","box_432420f0fe354421","box_a76284d148b548ec","box_f828eda8a3034320","box_74e4be21b969401f","box_b0730eb241824cdf","box_65e6b49fad1c4e7e","box_f338cc292c7e4dfb","box_62ba7426d8b6441e","box_0aff32b52eea475b","box_38bf70a27add465f","box_1a05ff7cef6141a1","box_77ab6233803e4f5b","box_ab6f8274eed14288","box_0af0b1cd18b945ce","box_163dc2eece9d45d4","box_3339ed2480114dc0","box_c062cb946ac64122","box_9494049a57b1483c","box_2920c82732fd4174","box_b9d2928543724dba","box_d5c4de777f1541f9","box_e176ec8f13d540b8","box_512f74a51dd8469e","box_14852d61d6e54a8f","box_ecd720e216474699","box_b8bb199712fd4c57","box_a36687cd9f074255","box_891d6b3a674b4fc7","box_5cd0600df634463a","box_4339a2c95c3c4346","box_6527b40b60334247","box_d85e836cd58d46ad","box_cd3272c0a6d4408f","box_100d2206155f4fca","box_f7adb1f1a2834c66","box_f6791fa4956643b8","box_14474749f7b148e0","box_bd994bce421f4213","box_0055867fa4954c5e","box_3ff66c763dd44fa8","box_08faf9d21619419b","box_5ffb7cf204d74286","box_004887c7cfd24073","box_79bde47cf3fc407b","box_af06d83533ff4ba0","box_b817e27f9d164f23","box_bbc6826c4efc4e12","box_ff29eafdda92492e","box_ab047fa4cf64472b","box_fc014c78fc0d4076","box_f55a19daec0847e1","box_4f774b02aaad40fa","box_a17c67e1e3274ac6","box_cfb6952243b242b9","box_554c1fc799464b84","box_5f89f84118e2408e","box_4dbcca96426f437e","box_a70ab9a86c2144dc","box_17f1feae84694120","box_0be25a48d0ef44e2","box_8d64897fe2bf4729","box_8476740367144819","box_c160392236244c1c","box_cdf427a7f9954b25","box_f2c398ffefc642ea","box_d93fb288bfa84dbf","box_32cd550436e04b4a","box_d810b183579c4b95","box_caf5d822431548f2","box_767996e7002b48e1","box_10fd4674a2444fba","box_6482d297e7f64496","box_763875c0b5004b4c"
+    ],
+    "non_story_watermarks": ["box_3b0180d4dd974140","box_7df364613722439b","box_3dcb22283f4549b0","box_c8a492301c9b4869","box_4943d97d0435424f","box_b466e3a5067c4f10","box_1a124d92e89a45d9","box_b4403cb66520464b","box_13c7330cf40e4e0c","box_bb1ca4a988814e2d","box_b8ef80aab39544da","box_0656f70fc7824a2d","box_7858eed9131545b2","box_a5174fa39b9c4b75","box_6db106a3be70423f","box_64d1086f4f704994","box_0a1fda5438ff4e44","box_a9dad2aa536d46c1","box_4f5f4fa277fa4627"],
+    "same_slice_duplicates": ["box_a77913c348b44b67","box_54215f613aa94d42","box_580ec00312e04d62","box_af4bef6689fc4d18","box_014b0812e4af4921","box_61f24fdff4fe45a2","box_54130dbe92b04a21","box_3c570dd268b746a9","box_23eaaf1bbcf24e15","box_fcdd2e97f9594822","box_4792c8191dad4e57"],
+    "overlap_duplicates_outside_stitch_core": ["box_c2ca4baad68546cc","box_93d7967db96d405b"],
+    "noise_or_empty": ["box_37b45697367743f1","box_3f8763fcd8814c0a","box_8a455359a289428e","box_96475342fe7b4520","box_ab1f5d221f304f87","box_dde3172660ba4ce6","box_e64d4fa4e9904f7f"]
+  },
+  "corrections": {
+    "box_2ba20e5d637846f5":{"before":"BEGINS","after":"BEGINS NOW!!!"},
+    "box_99a3c9ce7ad644e3":{"before":"WHOSE CREATION.","after":"WHOSE CREATION..."},
+    "box_3eb0ae1a9fb4488e":{"before":"TE TOURNAMEXT
+DF THE WORLIS
+STRONGEST","after":"THE TOURNAMENT
+OF THE WORLDS'
+STRONGEST"},
+    "box_3faf2c3a9d2b4df7":{"before":"<TOURNAMENT OF THE
+WORLDS' STRONGESTY
+THE WORLD THAT
+LOSES A ONE-ON-ONE MATCH
+WILL BE DESTROYED.","after":"<TOURNAMENT OF THE
+WORLDS' STRONGEST>
+THE WORLD THAT
+LOSES A ONE-ON-ONE MATCH
+WILL BE DESTROYED."},
+    "box_933e933d97424ea9":{"before":"A HEAVENLY DEMON
+WHO HAS REACHED THE
+PROFOUND BEALM!","after":"A HEAVENLY DEMON
+WHO HAS REACHED THE
+PROFOUND REALM!"},
+    "box_05f0f3640ef3416f":{"before":"1, THE HEAVENLY
+DEMON, WILL COME
+FOR YOUR HEADS.","after":"I, THE HEAVENLY
+DEMON, WILL COME
+FOR YOUR HEADS."},
+    "box_5ee02c92f7ed45a3":{"before":"000H!! AN
+OUTRIGHT CHALLENGE
+TO THE GODS!!","after":"OOOH!! AN
+OUTRIGHT CHALLENGE
+TO THE GODS!!"},
+    "box_fc2019f421784cd5":{"before":"HEAVENLY DEMON'S
+HEAVEN-OPENINGFORM","after":"HEAVENLY DEMON'S
+HEAVEN-OPENING FORM"},
+    "box_c291bdc565eb4954":{"before":"CHEAVENLY
+DEMON'SS
+OD-SLAYING
+SLASHI","after":"HEAVENLY DEMON'S
+GOD-SLAYING SLASH"},
+    "box_e26baccf78af4e33":{"before":"HEAVEN
+ww
+REACHING
+CTED
+SHADOWLE","after":"HEAVEN-REACHING
+SHADOWLESS STEP"},
+    "box_32cd22e922bb492e":{"before":"TO THE
+"CREATIONS"HUMANS
+HAVE MADE?","after":"TO THE
+"CREATIONS" HUMANS
+HAVE MADE?"},
+    "box_0409eadecfd44070":{"before":"CHARACTER.","after":"A CHARACTER."},
+    "box_c33c8c03889c4e98":{"before":"THE
+PRESENCE OFYOUR
+CHARACTER.","after":"THE
+PRESENCE OF YOUR
+CHARACTER."},
+    "box_b411bc37503949ea":{"before":"INDEED.
+A"CREATION" MADE
+BY HUMAN HANDS, ONCE
+NOTHINGMORE
+THANDATA...","after":"INDEED.
+A "CREATION" MADE
+BY HUMAN HANDS, ONCE
+NOTHING MORE
+THAN DATA..."},
+    "box_c72ce9ba80124766":{"before":"WHYDON'TWE
+SETTLETHIS WITH A
+GOOD FIGHT?","after":"WHY DON'T WE
+SETTLE THIS WITH A
+GOOD FIGHT?"},
+    "box_faa7da10f06d4178":{"before":"WEULTIMATELY
+WANT TO DETERMINE
+WHICH GOD IS SUPERIOR,
+DON TWE?","after":"WE ULTIMATELY
+WANT TO DETERMINE
+WHICH GOD IS SUPERIOR,
+DON'T WE?"},
+    "box_3ed972e6d5d54487":{"before":"SINCEWECAN'T
+FIGHT ONE ANOTHER
+OURSELVES.","after":"SINCE WE CAN'T
+FIGHT ONE ANOTHER
+OURSELVES."},
+    "box_df7a3d0d607044b9":{"before":"HOW ABOUT PITTING
+EACHWORLD'S STRONGEST
+CREATION AGAINST THE
+OTHERS?","after":"HOW ABOUT PITTING
+EACH WORLD'S STRONGEST
+CREATION AGAINST THE
+OTHERS?"},
+    "box_47ed1d3dba46454e":{"before":"ONLY THEVICTORIOUS
+WORLD'S CREATIONS
+WILLSURVIVE.","after":"ONLY THE VICTORIOUS
+WORLD'S CREATIONS
+WILL SURVIVE."},
+    "box_9b014649f94844e6":{"before":"LET US STAKE
+EACHWORLD'SVERY
+EXISTENCEON IT.","after":"LET US STAKE
+EACH WORLD'S VERY
+EXISTENCE ON IT."},
+    "box_01090bfbdc8d4016":{"before":"IT'S DECIDED,
+THEN.INTHAT
+CASE...","after":"IT'S DECIDED,
+THEN. IN THAT
+CASE..."},
+    "box_8a0daa223fed4602":{"before":"<GOD OF THE
+MÀRTIAL WORLD>
+MUWONGUN","after":"<GOD OF THE
+MARTIAL WORLD>
+MUWONGUN"},
+    "box_e6a7a8d2e7b94ec6":{"before":"<GOD OF THE
+FÚTURE WORLD>
+SKYNET","after":"<GOD OF THE
+FUTURE WORLD>
+SKYNET"},
+    "box_ac0b1671e8e8484e":{"before":"<GOD OF THE
+SÈNTAI WORLD>
+OMEGA","after":"<GOD OF THE
+SENTAI WORLD>
+OMEGA"},
+    "box_0f637ab3ea414798":{"before":"I WILL USHER IN THE
+NEW ERA. YOU INFERIOR
+BEINGS SHOULD STAY
+OUT OF IT.","after":"I WILL USHER IN THE
+NEW ERA. YOU INFERIOR
+BEINGS SHOULD STAY
+OUT OF IT.","region":{"x1":127,"y1":192,"x2":764,"y2":457}},
+    "box_7085ab81c7c84ed2":{"before":"HE'S
+MORE AGILE THAN
+HE LOOKS.","after":"HE'S
+MORE AGILE THAN
+HE LOOKS.","region":{"x1":358,"y1":1518,"x2":857,"y2":1730}},
+    "box_d0d56ae85fbb4091":{"before":"JUST WHAT
+YOU'D EXPECT FROM
+THE ORDINARY","after":"JUST WHAT
+YOU'D EXPECT FROM
+THE ORDINARY
+WORLD...","region":{"x1":64,"y1":522,"x2":632,"y2":787}}
+  },
+  "promotions": {
+    "box_5704be0bc89e4370":{"page_index":45,"text":"THE RESULT:
+UNANIMOUS APPROVAL.","region":{"x1":30,"y1":430,"x2":890,"y2":1335},"semantic_type":"free_text"},
+    "box_95f796481f2d4a0e":{"page_index":49,"text":"SHALL BE HELD!!","region":{"x1":150,"y1":420,"x2":790,"y2":870},"semantic_type":"free_text"},
+    "box_6c5d1f675e9d4a9c":{"page_index":67,"text":"THERE IS NO
+REASON TO HESITATE.","region":{"x1":0,"y1":441,"x2":900,"y2":728},"semantic_type":"free_text"},
+    "box_ef5ce3f18c764743":{"page_index":115,"text":"A CONTEST WHERE A
+REPRESENTATIVE "CREATION"
+FROM EVERY WORLD COMPETES
+FOR SUPREMACY...","region":{"x1":30,"y1":430,"x2":870,"y2":790},"semantic_type":"free_text"},
+    "box_a0b98deebac14333":{"page_index":129,"text":"...THIS VERY
+TOURNAMENT!","region":{"x1":0,"y1":560,"x2":900,"y2":980},"semantic_type":"free_text"}
+  },
+  "manual_additions": [
+    {"id":"text_manual_p067_conquest","page_index":67,"text":"I WOULD WALK THAT MERE
+PATH OF CONQUEST.","region":{"x1":50,"y1":2320,"x2":860,"y2":2787},"semantic_type":"free_text","source_boxes":[]},
+    {"id":"text_manual_p068_hundred_times","page_index":68,"text":"...A HUNDRED
+MORE TIMES.","region":{"x1":70,"y1":2050,"x2":850,"y2":2635},"semantic_type":"free_text","source_boxes":[]},
+    {"id":"text_manual_p102_footwork","page_index":102,"text":"HEAVENLY
+DEMONIC FOOTWORK","region":{"x1":50,"y1":3060,"x2":870,"y2":3496},"semantic_type":"skill_name","source_boxes":[]},
+    {"id":"text_manual_p137_rank","page_index":137,"text":"NO. 1","region":{"x1":80,"y1":2420,"x2":850,"y2":3050},"semantic_type":"system_ui","source_boxes":[]}
+  ],
+  "resurrection_test_required": true,
+  "status": "READY_TO_APPLY",
+  "next_action": "APPLY_CURATED_OCR_AND_REVIEW_ACTIVE_STORY_ORDER"
+}
+
