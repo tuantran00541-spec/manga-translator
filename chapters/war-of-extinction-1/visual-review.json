@@ -4,23 +4,24 @@
   "series_title": "War of Extinction",
   "chapter_number": 1,
   "reviewed_candidate": {
-    "run_id": 35306773202,
-    "render_artifact": "05a-render-candidate-05efce51",
-    "render_artifact_id": 10531976352,
-    "render_digest": "sha256:df7e6191bc3bd4d6e89121a857def0b4e882d2701501632a716d64c341c17477",
-    "proof_artifact": "05a-render-proof-05efce51",
-    "proof_artifact_id": 10532210930,
-    "proof_digest": "sha256:2e132278fd4f541ec92745bc61a2cd381f0c56d99af27c25fde24cfc9caf4c0"
+    "run_id": 35318736374,
+    "render_artifact": "05b-render-candidate-05efce51",
+    "render_artifact_id": 10535089890,
+    "render_digest": "sha256:6d632f0f5db978dc6dea7101be48bcf4e48f8047408420a1692e68548bfd09bf",
+    "proof_artifact": "05b-render-proof-05efce51",
+    "proof_artifact_id": 10535379652,
+    "proof_digest": "sha256:525afc1219205f7fba27cfb0be1fbfe271c891fbd01eed574c1f32d76e6911a1"
   },
   "review_coverage": {
     "object_proof_sheets": 14,
-    "active_story_objects": 167,
+    "active_story_objects": 168,
     "full_page_overview_sheets": 4,
     "source_pages": 40,
     "seam_proof_sheets": 9,
     "stitch_seams": 99,
     "focused_local_repair_proofs": [
-      "p067-focused.jpg"
+      "p067-focused.jpg",
+      "p004-caption-focused.jpg"
     ]
   },
   "findings": [
@@ -31,11 +32,22 @@
       "issue": "source English free-text residue remained visible below the Vietnamese rendering",
       "repair": "exact current-clean standard brush limited to the visible source-letter strokes, followed by rerender",
       "status": "REPAIRED_AND_REVIEWED"
+    },
+    {
+      "object_id": "text_5232e98aed3a4e1b",
+      "box_id": "box_5232e98aed3a4e1b",
+      "page_index": 4,
+      "source_page": 1,
+      "issue": "story free-text caption 'THE STRONGEST FIGHTERS FROM SIXTEEN WORLDS ARRIVE.' was detector-found but planner-skipped and incorrectly dropped during curation; it therefore survived into INPAINT and FINAL",
+      "root_cause": "drop_all_planner_skipped curation rule omitted a real story free-text object",
+      "repair": "promoted object into OCR curation, added human Vietnamese translation, exact current-clean brush on owning slice p004, rerendered chapter",
+      "translation": "NHỮNG CƯỜNG GIẢ MẠNH NHẤT / TỪ MƯỜI SÁU THẾ GIỚI / TỤ HỘI.",
+      "status": "REPAIRED_AND_REVIEWED"
     }
   ],
   "typography_gate": {
-    "active_story_objects": 167,
-    "rendered_story_objects": 167,
+    "active_story_objects": 168,
+    "rendered_story_objects": 168,
     "untranslated_objects": 0,
     "font_fallback_count": 0,
     "font_size_auto_objects": 0,
@@ -70,5 +82,5 @@
   },
   "status": "PASS",
   "editorial_pass": true,
-  "next_action": "FINAL_EXPORT"
+  "next_action": "FINAL_EXPORT_CORRECTED"
 }
