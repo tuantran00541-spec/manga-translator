@@ -305,13 +305,40 @@ def evidence_retention_checks():
     retained = YoloDetector._filter_invalid([giant], 1000, 1000)
     check(len(retained) == 1, "giant SFX evidence disappeared")
     check(
-        retained[0].deferred_reason
-        and "box_width_limit" in retained[0].deferred_reason
-        and retained[0].needs_review
-        and not retained[0].safe_to_inpaint,
-        "giant SFX was not explicitly deferred",
+        retained[0].deferred_reason is None
+        and retained[0].safe_to_inpaint
+        and retained[0].verified_mask,
+        "verified text-segmenter mask lost destructive authority to bbox heuristics",
     )
-    review_mask = build_mask((1000, 1000), retained)
+    authorized_mask = build_mask((1000, 1000), retained)
+    check(
+        np.any(authorized_mask > 0),
+        "verified text-segmenter stroke mask was not authorized for cleanup",
+    )
+
+    giant_review_only = BubbleBox(
+        0, 140, 980, 160, 0.9,
+        None,
+        source_model="segmenter.onnx",
+        class_name="text_comic",
+        semantic_type="text",
+        mask_source="text_segmenter",
+        safe_to_inpaint=False,
+        ocr_eligible=True,
+        source_role="text_segmenter",
+    )
+    review_only = YoloDetector._filter_invalid(
+        [giant_review_only], 1000, 1000
+    )
+    check(len(review_only) == 1, "wide review evidence disappeared")
+    check(
+        review_only[0].deferred_reason
+        and "box_width_limit" in review_only[0].deferred_reason
+        and review_only[0].needs_review
+        and not review_only[0].safe_to_inpaint,
+        "geometry outlier without verified mask escaped review-only deferral",
+    )
+    review_mask = build_mask((1000, 1000), review_only)
     check(
         not np.any(review_mask > 0),
         "review-only region gained automatic destructive authority",
