@@ -211,7 +211,7 @@ def capture_real_rois(pipeline, raw_paths, workers: int):
 
     YoloDetector._detect_single_plain = capture_forward
     try:
-        chapter_id = "onnxq" + hashlib.sha256(str(time.time_ns()).encode()).hexdigest()[:8]
+        chapter_id = hashlib.sha256(("onnxq-" + str(time.time_ns())).encode()).hexdigest()[:8]
         manifest = pipeline._build_chapter_from_raw_paths(
             chapter_id,
             raw_paths,
