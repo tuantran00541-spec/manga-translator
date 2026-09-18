@@ -6,7 +6,8 @@ import threading
 
 import requests
 
-from app.ai_providers import get_provider
+from app.ai_providers import AIProvider, get_provider
+from app.security import validate_url
 from app.visual_qc.batch_protocol import RegionBatchDecision, parse_region_batch_decisions
 from app.visual_qc.contact_sheet import ContactSheet
 from app.visual_qc.regions import QCRegion
@@ -167,8 +168,9 @@ class OpenAICompatibleRegionQC:
         provider_id: str = "deepseek",
         provider_label: str | None = None,
         chat_url: str | None = None,
+        provider: AIProvider | None = None,
     ):
-        provider = get_provider(provider_id)
+        provider = provider or get_provider(provider_id)
         if provider.protocol != "openai" or not provider.supports_visual_qc:
             raise ValueError(f"{provider.label} is not available for OpenAI-compatible visual QC")
         budget = float(budget_usd)
@@ -186,6 +188,7 @@ class OpenAICompatibleRegionQC:
         self.chat_url = chat_url or str(provider.chat_url)
         self._request_extras = provider.chat_completion_extras()
         self._priced = provider.tracks_cost
+        self._validate_remote = not provider.builtin
         self._lock = threading.Lock()
         self._reserved_usd = 0.0
         self._estimated_cost_usd = 0.0
@@ -324,6 +327,8 @@ class OpenAICompatibleRegionQC:
             return []
         reservation = self._reserve()
         try:
+            if self._validate_remote:
+                validate_url(self.chat_url)
             response = requests.post(
                 self.chat_url,
                 headers={
@@ -332,7 +337,12 @@ class OpenAICompatibleRegionQC:
                 },
                 json=self._payload(sheet, mode),
                 timeout=(DEFAULT_CONNECT_TIMEOUT_SECONDS, self.timeout_seconds),
+                allow_redirects=False,
             )
+            if 300 <= response.status_code < 400:
+                raise RuntimeError(
+                    f"{self.provider_label} API redirect was refused"
+                )
         except requests.Timeout as exc:
             self._charge_unknown(reservation)
             raise DeepSeekRegionQCTimeout(

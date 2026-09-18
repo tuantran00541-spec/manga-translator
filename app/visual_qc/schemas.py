@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 from pydantic import BaseModel, field_validator
 
-from app.ai_providers import get_provider, validate_model_name
+from app.ai_providers import normalize_provider_id, validate_model_name
 from app.parameters import VISUAL_QC_JOB_CONCURRENCY, VISUAL_QC_JOB_CONCURRENCY_LIMIT
 
 
@@ -17,7 +17,7 @@ class VisualQCChapterRequest(BaseModel):
     @field_validator("provider")
     @classmethod
     def _known_provider(cls, value: str) -> str:
-        return get_provider(value).id
+        return normalize_provider_id(value)
 
     @field_validator("model")
     @classmethod

@@ -6,7 +6,8 @@ from dataclasses import dataclass
 import requests
 
 from app import parameters as _parameters
-from app.ai_providers import get_translation_provider
+from app.ai_providers import AIProvider, get_translation_provider
+from app.security import validate_url
 from app.parameters import (
     DEEPSEEK_INPUT_CACHE_HIT_USD_PER_M as INPUT_CACHE_HIT_USD_PER_M,
     DEEPSEEK_INPUT_CACHE_MISS_USD_PER_M as INPUT_CACHE_MISS_USD_PER_M,
@@ -98,8 +99,13 @@ class OpenAICompatibleTranslator:
         api_url: str | None = None,
         provider_id: str = "deepseek",
         provider_label: str | None = None,
+        provider: AIProvider | None = None,
     ):
-        provider = get_translation_provider(provider_id)
+        provider = provider or get_translation_provider(provider_id)
+        if provider.protocol != "openai" or not provider.supports_translation:
+            raise ValueError(
+                f"{provider.label} is not available for translation"
+            )
         self.model = (model or provider.default_translation_model or "").strip()
         if not self.model:
             raise ValueError(f"{provider.label} translation model is not configured")
@@ -108,6 +114,7 @@ class OpenAICompatibleTranslator:
         self.provider_label = provider_label or provider.label
         self._request_extras = provider.chat_completion_extras()
         self._priced = provider.tracks_cost
+        self._validate_remote = not provider.builtin
 
     def translate(
         self,
@@ -169,6 +176,8 @@ class OpenAICompatibleTranslator:
             "max_tokens": TRANSLATION_MAX_TOKENS,
         }
         request_body.update(self._request_extras)
+        if self._validate_remote:
+            validate_url(self.api_url)
         response = requests.post(
             self.api_url,
             headers={
@@ -180,7 +189,12 @@ class OpenAICompatibleTranslator:
                 TRANSLATION_CONNECT_TIMEOUT_SECONDS,
                 TRANSLATION_READ_TIMEOUT_SECONDS,
             ),
+            allow_redirects=False,
         )
+        if 300 <= response.status_code < 400:
+            raise RuntimeError(
+                f"{self.provider_label} translation API redirect was refused"
+            )
         try:
             response.raise_for_status()
         except requests.RequestException as exc:

@@ -525,6 +525,9 @@ class OcrTextObjectRequest(BaseModel):
 
 class VisualQCKeyRequest(BaseModel):
     api_key: str
+    provider_label: str | None = None
+    provider_protocol: str | None = None
+    provider_api_base: str | None = None
 
     @field_validator("api_key")
     @classmethod
@@ -546,9 +549,9 @@ class VisualQCInspectRequest(BaseModel):
     @field_validator("provider")
     @classmethod
     def _provider(cls, value: str) -> str:
-        from app.ai_providers import get_provider
+        from app.ai_providers import normalize_provider_id
 
-        return get_provider(value).id
+        return normalize_provider_id(value)
 
     @field_validator("model")
     @classmethod

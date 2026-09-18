@@ -5,7 +5,8 @@ from pathlib import Path
 
 import requests
 
-from app.ai_providers import PROVIDERS, get_provider
+from app.ai_providers import AIProvider, PROVIDERS, get_provider
+from app.security import validate_url
 from app.visual_qc.deepseek_region_client import _extract_output_text, _safe_error_detail
 from app.visual_qc.gemini import (
     DEFAULT_CONNECT_TIMEOUT_SECONDS,
@@ -45,8 +46,11 @@ class OpenAICompatibleVisualQC:
         chat_url: str | None = None,
         model: str,
         timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
+        provider: AIProvider | None = None,
     ):
-        provider = get_provider(_resolve_provider_id(provider_id, chat_url))
+        provider = provider or get_provider(
+            _resolve_provider_id(provider_id, chat_url)
+        )
         if provider.protocol != "openai" or not provider.supports_visual_qc:
             raise ValueError(f"{provider.label} is not available for OpenAI-compatible visual QC")
         if not provider.chat_url:
@@ -59,6 +63,7 @@ class OpenAICompatibleVisualQC:
         self.model = model
         self.timeout_seconds = timeout_seconds
         self._request_extras = provider.chat_completion_extras()
+        self._validate_remote = not provider.builtin
 
     def inspect(self, original_path: Path, cleaned_path: Path, api_key: str):
         secret = (api_key or "").strip()
@@ -88,12 +93,19 @@ class OpenAICompatibleVisualQC:
         }
         payload.update(self._request_extras)
         try:
+            if self._validate_remote:
+                validate_url(self.chat_url)
             response = requests.post(
                 self.chat_url,
                 headers={"Authorization": f"Bearer {secret}", "Content-Type": "application/json"},
                 json=payload,
                 timeout=(DEFAULT_CONNECT_TIMEOUT_SECONDS, self.timeout_seconds),
+                allow_redirects=False,
             )
+            if 300 <= response.status_code < 400:
+                raise RuntimeError(
+                    f"{self.provider_label} API redirect was refused"
+                )
         except requests.Timeout as exc:
             raise RuntimeError(f"{self.provider_label} visual QC timed out") from exc
         except requests.RequestException as exc:
