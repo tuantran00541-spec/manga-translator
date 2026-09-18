@@ -31,7 +31,7 @@ from app.detector.recovery import SecondaryTextRecovery
 from app.downloader.registry import ASURA_STATIC_ADAPTER
 from app.model_contracts import validate_detector_session
 from app.ort_utils import make_session
-from app.parameters import TEXT_CONF
+from app.parameters import TEXT_CONF_THRESHOLD
 from app.optimized_pipeline import OptimizedChapterPipeline
 from scripts.onnx_head_patch_probe import specialize
 
@@ -79,7 +79,7 @@ def detector_for(path: Path, size: int):
         configured_input_size=size,
     )
     detector.input_name = detector.contract.input_name
-    detector.conf_threshold = TEXT_CONF
+    detector.conf_threshold = TEXT_CONF_THRESHOLD
     detector.use_tta = False
     return detector
 
