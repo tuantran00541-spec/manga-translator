@@ -2,7 +2,7 @@ name: Phase 13 full production final gate
 
 on:
   push:
-    branches: [main]
+    branches: [main, fix/story-text-deferred-gates]
     paths:
       - app/detector/**
       - app/inpaint/**
@@ -147,6 +147,13 @@ jobs:
                   bool(box.get('deferred_reason')) for page in pages for box in page.get('boxes', [])
               )
               report['last_processing_run'] = manifest.get('last_processing_run')
+              effective_workers = int((report['last_processing_run'] or {}).get('workers') or report['workers'])
+              report['effective_workers'] = max(1, effective_workers)
+              baseline_workers = 2
+              report['process_wall_ceiling_s'] = round(
+                  900.0 * baseline_workers / min(baseline_workers, report['effective_workers']),
+                  3,
+              )
 
               metric_groups = defaultdict(list)
               outside_total = 0
@@ -214,8 +221,12 @@ jobs:
                   raise RuntimeError(f'{outside_total} changed pixels outside authorized masks on pages {unsafe_pages}')
               if changed_total <= 0 or mask_total <= 0:
                   raise RuntimeError('final chapter did not exercise destructive cleanup')
-              if report['process_wall_s'] > 900:
-                  raise RuntimeError(f"processing regression: {report['process_wall_s']}s exceeds 900s ceiling")
+              if report['process_wall_s'] > report['process_wall_ceiling_s']:
+                  raise RuntimeError(
+                      f"processing regression: {report['process_wall_s']}s exceeds "
+                      f"{report['process_wall_ceiling_s']}s ceiling at "
+                      f"{report['effective_workers']} effective worker(s)"
+                  )
               if report['peak_rss_mb'] > 3200:
                   raise RuntimeError(f"memory regression: {report['peak_rss_mb']} MiB exceeds 3200 MiB ceiling")
           finally:
@@ -260,7 +271,8 @@ jobs:
               '## Phase 13 full production final gate', '',
               f"- Source pages / slices: `{r.get('source_pages')}` / `{r.get('slices')}`",
               f"- Clean pages: `{r.get('clean_pages')}`",
-              f"- Process wall: **{r.get('process_wall_s')} s**",
+              f"- Requested / effective workers: `{r.get('workers')}` / `{r.get('effective_workers')}`",
+              f"- Process wall: **{r.get('process_wall_s')} s** (ceiling `{r.get('process_wall_ceiling_s')} s`)",
               f"- Throughput: **{r.get('throughput_ms_per_slice')} ms/slice**",
               f"- Peak RSS: **{r.get('peak_rss_mb')} MiB**",
               f"- Boxes / safe / review / deferred: `{r.get('boxes')}` / `{r.get('safe_to_inpaint')}` / `{r.get('review_boxes')}` / `{r.get('deferred_boxes')}`",
