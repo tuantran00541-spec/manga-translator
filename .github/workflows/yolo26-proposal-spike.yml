@@ -1,0 +1,279 @@
+name: YOLO26 manga proposal spike
+
+on:
+  push:
+    branches:
+      - release/focused-segmenter-640
+    paths:
+      - scripts/yolo26_proposal_spike.py
+      - tests/test_yolo26_proposal_spike.py
+      - .github/workflows/yolo26-proposal-spike.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: yolo26-proposal-spike-release-focused-segmenter-640
+  cancel-in-progress: false
+
+jobs:
+  proposal-spike:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 55
+    env:
+      PYTHONUNBUFFERED: "1"
+      YOLO_AUTOINSTALL: "False"
+      MANGA_ORT_PROVIDER: openvino
+      MANGA_ORT_REQUIRE_PROVIDER: "1"
+      MANGA_ORT_OPENVINO_SCOPE: all
+      MANGA_ORT_OPENVINO_THREADS: "2"
+      MANGA_ORT_OPENVINO_STREAMS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      OMP_NUM_THREADS: "1"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install benchmark runtime
+        run: |
+          python -m pip install \
+            numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 \
+            onnx==1.17.0 onnxruntime-openvino==1.24.1 loguru==0.7.2 \
+            requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 \
+            playwright==1.47.0 fastapi==0.115.0 pydantic==2.9.2 \
+            filelock==3.16.1 threadpoolctl==3.6.0
+
+      - name: Restore production-equivalent benchmark models
+        id: models
+        uses: actions/cache@v4
+        with:
+          path: |
+            models/*.onnx
+            models/.e2e-provenance.json
+          key: processing-profile-models-b224548-v1
+
+      - name: Read pinned production model provisioner
+        if: steps.models.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: b22454827f8190655d7070b80eb20c2550beadfa
+          path: benchmark-bootstrap
+          sparse-checkout: scripts/provision_real_e2e_models.py
+          sparse-checkout-cone-mode: false
+
+      - name: Provision production-equivalent models
+        if: steps.models.outputs.cache-hit != 'true'
+        run: |
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple torch==2.5.1+cpu torchvision==0.20.1+cpu
+          python -m pip install --no-deps ultralytics==8.3.221 onnxslim==0.1.71
+          python -m pip install sympy==1.13.1 PyYAML==6.0.2 scipy==1.14.1 tqdm==4.67.1 matplotlib==3.9.2 pandas==2.2.3 py-cpuinfo==9.0.0 ml_dtypes==0.5.3 colorama==0.4.6 polars==1.33.1 ultralytics-thop==2.0.17
+          python benchmark-bootstrap/scripts/provision_real_e2e_models.py
+          cp benchmark-bootstrap/models/*.onnx models/
+          cp benchmark-bootstrap/models/.e2e-provenance.json models/
+
+      - name: Fetch identical full-chapter input
+        run: |
+          python scripts/profile_processing.py \
+            --prepare --prepare-all \
+            --raw-dir benchmark-results/yolo26-input
+
+      - name: Materialize production slices
+        run: |
+          python - <<'PY'
+          import json
+          import shutil
+          from pathlib import Path
+
+          from app.pipeline import ChapterPipeline
+
+          raw_dir = Path("benchmark-results/yolo26-input")
+          raw_paths = sorted(
+              path for path in raw_dir.iterdir()
+              if path.is_file() and path.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"}
+          )
+          manifest = ChapterPipeline()._build_chapter_from_raw_paths(
+              "yolo26-proposal-slices",
+              raw_paths,
+              source_url=None,
+              workers=2,
+          )
+          pages = manifest.get("pages") or []
+          if len(pages) < 32:
+              raise RuntimeError(f"need at least 32 production slices, got {len(pages)}")
+          out = Path("benchmark-results/yolo26-slices")
+          out.mkdir(parents=True, exist_ok=True)
+          rows = []
+          for index, page in enumerate(pages):
+              source = Path(page["original"])
+              target = out / f"{index:04d}{source.suffix.lower()}"
+              shutil.copy2(source, target)
+              rows.append({
+                  "index": index,
+                  "source_page": page.get("source_page"),
+                  "slice_index": page.get("slice_index"),
+                  "file": target.name,
+              })
+          (out / "manifest.json").write_text(
+              json.dumps(rows, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps({"production_slices": len(rows), "benchmark_window": [0, 31]}))
+          PY
+
+      - name: Fetch pinned YOLO26 manga checkpoint
+        run: |
+          mkdir -p benchmark-models
+          python - <<'PY'
+          import hashlib
+          from pathlib import Path
+          import urllib.request
+
+          url = "https://huggingface.co/leoxs22/manga-panel-detector-yolo26n/resolve/main/manga_panel_detector_fp32.pt"
+          expected = "73e0fb587ea3afe0d17aa9f0c3b1f5a8001b3ecbc3c77091e0730654b0da9146"
+          path = Path("benchmark-models/manga_panel_detector_fp32.pt")
+          request = urllib.request.Request(url, headers={"User-Agent": "manga-translator-yolo26-spike/1.0"})
+          with urllib.request.urlopen(request, timeout=60) as response, path.open("wb") as output:
+              while True:
+                  chunk = response.read(1024 * 1024)
+                  if not chunk:
+                      break
+                  output.write(chunk)
+          actual = hashlib.sha256(path.read_bytes()).hexdigest()
+          if actual != expected:
+              path.unlink(missing_ok=True)
+              raise RuntimeError(f"YOLO26 checkpoint SHA mismatch: {actual}")
+          print({"path": str(path), "sha256": actual, "bytes": path.stat().st_size})
+          PY
+
+      - name: Export raw one-to-many YOLO26 ONNX at 640 and 1024
+        run: |
+          python -m venv /tmp/yolo26-export
+          /tmp/yolo26-export/bin/python -m pip install --upgrade pip
+          /tmp/yolo26-export/bin/python -m pip install \
+            --index-url https://download.pytorch.org/whl/cpu \
+            torch==2.7.1+cpu torchvision==0.22.1+cpu
+          /tmp/yolo26-export/bin/python -m pip install \
+            ultralytics==8.4.117 onnx==1.22.0 onnxslim
+          /tmp/yolo26-export/bin/python - <<'PY'
+          from pathlib import Path
+          import shutil
+          from ultralytics import YOLO
+
+          checkpoint = Path("benchmark-models/manga_panel_detector_fp32.pt")
+          for size in (640, 1024):
+              model = YOLO(str(checkpoint))
+              exported = Path(model.export(
+                  format="onnx",
+                  imgsz=size,
+                  opset=17,
+                  simplify=True,
+                  dynamic=False,
+                  nms=None,
+                  device="cpu",
+                  verbose=False,
+              ))
+              target = Path(f"models/yolo26_manga_proposal_{size}.onnx")
+              target.parent.mkdir(parents=True, exist_ok=True)
+              if exported.resolve() != target.resolve():
+                  shutil.move(str(exported), target)
+              if not target.is_file():
+                  raise RuntimeError(f"missing YOLO26 export: {target}")
+              print({"size": size, "path": str(target), "bytes": target.stat().st_size})
+          PY
+
+      - name: Verify raw detector contracts
+        run: |
+          python - <<'PY'
+          import onnxruntime as ort
+
+          for size in (640, 1024):
+              path = f"models/yolo26_manga_proposal_{size}.onnx"
+              session = ort.InferenceSession(path, providers=["CPUExecutionProvider"])
+              inputs = session.get_inputs()
+              outputs = session.get_outputs()
+              if len(inputs) != 1 or inputs[0].name != "images":
+                  raise RuntimeError(f"{path}: unexpected input contract")
+              if list(inputs[0].shape) != [1, 3, size, size]:
+                  raise RuntimeError(f"{path}: unexpected input shape {inputs[0].shape}")
+              if len(outputs) != 1 or outputs[0].name != "output0":
+                  raise RuntimeError(f"{path}: unexpected outputs {[item.name for item in outputs]}")
+              shape = list(outputs[0].shape)
+              if len(shape) != 3 or shape[0] != 1 or shape[1] != 6:
+                  raise RuntimeError(f"{path}: expected raw [1,6,N], got {shape}")
+              print({"path": path, "input": inputs[0].shape, "output": shape})
+          PY
+
+      - name: Benchmark proposal coverage against production authority
+        run: |
+          python scripts/yolo26_proposal_spike.py \
+            --raw-dir benchmark-results/yolo26-slices \
+            --candidate-640 models/yolo26_manga_proposal_640.onnx \
+            --candidate-1024 models/yolo26_manga_proposal_1024.onnx \
+            --text-class-id 1 \
+            --max-pages 32 \
+            --thresholds 0.01,0.03,0.05,0.10,0.20 \
+            --pads 0,16,32,64,96 \
+            --provider openvino \
+            --output benchmark-results/yolo26-proposal/report.json
+
+      - name: Publish YOLO26 proposal decision matrix
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          report = json.loads(Path("benchmark-results/yolo26-proposal/report.json").read_text())
+          rows = sorted(
+              report["rows"],
+              key=lambda row: (
+                  -row["authority_pixel_coverage"],
+                  -row["center_recall"],
+                  row["proposal_area_ratio"],
+                  row["candidate_to_baseline_latency"],
+              ),
+          )
+          lines = [
+              "## YOLO26 proposal-only manga spike",
+              "",
+              f"- reference: {report['reference']['mean_ms']:.2f} ms/page, "
+              f"boxes={report['reference']['reference_boxes']}, "
+              f"authority_pixels={report['reference']['authority_pixels']}",
+          ]
+          for size, row in report["candidates"].items():
+              lines.append(
+                  f"- YOLO26 {size}: {row['mean_ms']:.2f} ms/page "
+                  f"({row['mean_ms']/max(1e-9, report['reference']['mean_ms']):.3f}x reference)"
+              )
+          lines.extend(["", "|size|conf|pad|authority_pixel_coverage|center_recall|proposal_area_ratio|latency_ratio|strict|",
+                        "|---:|---:|---:|---:|---:|---:|---:|:---:|"])
+          for row in rows[:15]:
+              lines.append(
+                  f"|{row['size']}|{row['threshold']:.2f}|{row['pad']}|"
+                  f"{row['authority_pixel_coverage']:.6f}|{row['center_recall']:.6f}|"
+                  f"{row['proposal_area_ratio']:.4f}|{row['candidate_to_baseline_latency']:.3f}|"
+                  f"{row['strict_promising']}|"
+              )
+          lines.append("")
+          lines.append(f"- strict promising rows: {len(report['strict_promising_rows'])}")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as out:
+              out.write("\n".join(lines) + "\n")
+          print("\n".join(lines))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: yolo26-proposal-${{ github.run_id }}
+          path: |
+            benchmark-results/yolo26-proposal/
+            benchmark-results/yolo26-slices/manifest.json
+            models/yolo26_manga_proposal_640.onnx
+            models/yolo26_manga_proposal_1024.onnx
+          retention-days: 7
+          if-no-files-found: warn
