@@ -143,6 +143,8 @@ class Inpainter:
             "session_lock_wait_ms": 0,
             "ort_global_lock_wait_ms": 0,
             "mask_components": 0,
+            "mask_cc_input_pixels": 0,
+            "mask_cc_saved_pixels": 0,
         }
 
     def _metric_add(self, name: str, amount: int = 1) -> None:
@@ -409,14 +411,35 @@ class Inpainter:
             return image.copy()
 
         binary_mask = (mask > 127).astype(np.uint8) * 255
-        num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(binary_mask, connectivity=8)
+        mask_x, mask_y, mask_w, mask_h = cv2.boundingRect(binary_mask)
+        if mask_w <= 0 or mask_h <= 0:
+            return image.copy()
+
+        component_source = binary_mask[
+            mask_y:mask_y + mask_h,
+            mask_x:mask_x + mask_w,
+        ]
+        num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(
+            component_source,
+            connectivity=8,
+        )
         self._metrics_local.value["mask_components"] = max(0, int(num_labels) - 1)
+        cc_pixels = int(mask_w * mask_h)
+        self._metrics_local.value["mask_cc_input_pixels"] = cc_pixels
+        self._metrics_local.value["mask_cc_saved_pixels"] = max(
+            0,
+            int(binary_mask.size) - cc_pixels,
+        )
 
         result = image.copy()
         h, w = image.shape[:2]
 
         for label in range(1, num_labels):
-            x, y, bbox_w, bbox_h, area = (int(v) for v in stats[label])
+            local_x, local_y, bbox_w, bbox_h, area = (
+                int(v) for v in stats[label]
+            )
+            x = mask_x + local_x
+            y = mask_y + local_y
             if area <= 0 or bbox_w <= 0 or bbox_h <= 0:
                 continue
 
@@ -437,7 +460,22 @@ class Inpainter:
             ry1 = max(0, y - radius)
             rx2 = min(w, x + bbox_w + radius)
             ry2 = min(h, y + bbox_h + radius)
-            component_roi = (labels[ry1:ry2, rx1:rx2] == label).astype(np.uint8) * 255
+            component_roi = np.zeros((ry2 - ry1, rx2 - rx1), dtype=np.uint8)
+            sx1 = max(rx1, mask_x)
+            sy1 = max(ry1, mask_y)
+            sx2 = min(rx2, mask_x + mask_w)
+            sy2 = min(ry2, mask_y + mask_h)
+            if sx2 <= sx1 or sy2 <= sy1:
+                continue
+            component_roi[
+                sy1 - ry1:sy2 - ry1,
+                sx1 - rx1:sx2 - rx1,
+            ] = (
+                labels[
+                    sy1 - mask_y:sy2 - mask_y,
+                    sx1 - mask_x:sx2 - mask_x,
+                ] == label
+            ).astype(np.uint8) * 255
             if not np.any(component_roi > 127):
                 continue
             dilated_roi = cv2.dilate(component_roi, kernel, iterations=1)
@@ -739,11 +777,14 @@ class Inpainter:
         pad_y = (INPAINT_SIZE - new_h) // 2
         pad_x = (INPAINT_SIZE - new_w) // 2
 
-        crop_resized = cv2.resize(
-            crop,
-            (new_w, new_h),
-            interpolation=cv2.INTER_AREA if scale < 1.0 else cv2.INTER_CUBIC,
-        )
+        if (new_w, new_h) == (crop_w, crop_h):
+            crop_resized = crop
+        else:
+            crop_resized = cv2.resize(
+                crop,
+                (new_w, new_h),
+                interpolation=cv2.INTER_AREA if scale < 1.0 else cv2.INTER_CUBIC,
+            )
         pad_bottom = INPAINT_SIZE - new_h - pad_y
         pad_right = INPAINT_SIZE - new_w - pad_x
         canvas = cv2.copyMakeBorder(
@@ -757,6 +798,8 @@ class Inpainter:
         painted_full = self._run_lama(canvas, mask_canvas)
         painted_crop = painted_full[pad_y:pad_y + new_h, pad_x:pad_x + new_w]
 
+        if (new_w, new_h) == (crop_w, crop_h):
+            return painted_crop
         interpolation = cv2.INTER_AREA if scale > 1.0 else cv2.INTER_CUBIC
         return cv2.resize(painted_crop, (crop_w, crop_h), interpolation=interpolation)
 
