@@ -57,6 +57,43 @@ jobs:
             models/*.onnx
             models/.e2e-provenance.json
           key: processing-profile-models-b224548-v1
+      - name: Restore fixed LaMa compatibility model
+        id: fixed_lama
+        uses: actions/cache@v4
+        with:
+          path: models/lama.onnx
+          key: fixed-lama-carve-a3ee2fc-fp32-v1
+      - name: Provision pinned fixed LaMa compatibility model
+        if: steps.fixed_lama.outputs.cache-hit != 'true'
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+          import hashlib
+          from pathlib import Path
+          import urllib.request
+
+          url = (
+              "https://huggingface.co/Carve/LaMa-ONNX/resolve/"
+              "a3ee2fca54baebec351b8fa7786154ffa7555aa6/lama_fp32.onnx"
+          )
+          expected = "1faef5301d78db7dda502fe59966957ec4b79dd64e16f03ed96913c7a4eb68d6"
+          target = Path("models/lama.onnx")
+          target.parent.mkdir(parents=True, exist_ok=True)
+          tmp = target.with_suffix(".onnx.part")
+          try:
+              with urllib.request.urlopen(url, timeout=60) as src, tmp.open("wb") as dst:
+                  while chunk := src.read(1024 * 1024):
+                      dst.write(chunk)
+              actual = hashlib.sha256(tmp.read_bytes()).hexdigest()
+              if actual != expected:
+                  raise RuntimeError(
+                      f"fixed LaMa SHA256 mismatch: expected {expected}, got {actual}"
+                  )
+              tmp.replace(target)
+          finally:
+              tmp.unlink(missing_ok=True)
+          print(f"fixed LaMa ready: {target} sha256={expected}")
+          PY
       - name: Read pinned model provisioner
         if: steps.models.outputs.cache-hit != 'true'
         uses: actions/checkout@v4
