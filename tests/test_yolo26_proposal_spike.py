@@ -46,6 +46,17 @@ def test_center_recall_uses_padded_proposal_geometry():
     assert spike.center_recall(references, proposals, pad=1) == 1.0
 
 
+def test_merge_proposal_sets_deduplicates_exact_geometry():
+    spike = _load_spike()
+
+    merged = spike.merge_proposal_sets(
+        [(1, 1, 3, 3), (5, 5, 7, 7)],
+        [(1, 1, 3, 3), (9, 9, 10, 10)],
+    )
+
+    assert merged == [(1, 1, 3, 3), (5, 5, 7, 7), (9, 9, 10, 10)]
+
+
 def test_direct_script_execution_bootstraps_repo_imports(tmp_path):
     empty = tmp_path / "empty"
     empty.mkdir()
@@ -102,3 +113,15 @@ def test_yolo26_export_uses_explicit_non_end2end_raw_head_for_pinned_exporter():
     assert "nms=None" not in text
     assert 'format="onnx"' in text
     assert "end2end=False" in text
+
+
+def test_yolo26_spike_benchmarks_existing_cheap_proposal_stack():
+    script = SCRIPT.read_text(encoding="utf-8")
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+
+    assert "BUBBLE_DETECTOR_MODEL" in script
+    assert "SecondaryTextRecovery" in script
+    assert '"bubble+yolo26"' in script
+    assert '"bubble+yolo26+mser"' in script
+    assert '"source_stack"' in script
+    assert "source_stack" in workflow
