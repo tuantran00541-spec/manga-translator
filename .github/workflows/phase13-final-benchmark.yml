@@ -75,6 +75,59 @@ jobs:
           python benchmark-bootstrap/scripts/provision_real_e2e_models.py
           cp benchmark-bootstrap/models/*.onnx models/
           cp benchmark-bootstrap/models/.e2e-provenance.json models/
+      - name: Restore fixed LaMa compatibility model
+        id: fixed_lama
+        uses: actions/cache@v4
+        with:
+          path: models/lama.onnx
+          key: fixed-lama-carve-fp32-1faef530-v1
+      - name: Ensure fixed LaMa compatibility model
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+          import hashlib
+          import os
+          from pathlib import Path
+          import urllib.request
+
+          url = "https://huggingface.co/Carve/LaMa-ONNX/resolve/main/lama_fp32.onnx"
+          expected = "1faef5301d78db7dda502fe59966957ec4b79dd64e16f03ed96913c7a4eb68d6"
+          path = Path("models/lama.onnx")
+
+          def sha256(target: Path) -> str:
+              digest = hashlib.sha256()
+              with target.open("rb") as handle:
+                  for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                      digest.update(chunk)
+              return digest.hexdigest()
+
+          if path.is_file() and sha256(path) == expected:
+              print(f"fixed LaMa already verified: {path}")
+              raise SystemExit(0)
+
+          path.parent.mkdir(parents=True, exist_ok=True)
+          tmp = path.with_suffix(".onnx.part")
+          request = urllib.request.Request(
+              url,
+              headers={"User-Agent": "manga-translator-phase13/1.0", "Accept": "*/*"},
+          )
+          try:
+              with urllib.request.urlopen(request, timeout=60) as response, tmp.open("wb") as output:
+                  while True:
+                      chunk = response.read(1024 * 1024)
+                      if not chunk:
+                          break
+                      output.write(chunk)
+              actual = sha256(tmp)
+              if actual != expected:
+                  raise RuntimeError(
+                      f"fixed LaMa SHA256 mismatch: expected {expected}, got {actual}"
+                  )
+              os.replace(tmp, path)
+          finally:
+              tmp.unlink(missing_ok=True)
+          print(f"fixed LaMa verified: {path} sha256={expected}")
+          PY
       - name: Build residue-only 640 text segmenter
         run: |
           python scripts/specialize_text_segmenter.py \
