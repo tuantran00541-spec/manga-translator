@@ -121,3 +121,46 @@ def test_tile_tail_start_is_coverage_not_an_exact_duplicate():
     starts = Inpainter._tile_starts(1024, 512, 448)
     assert starts == [0, 448, 512]
     assert len(starts) == len(set(starts))
+
+
+def test_recovery_reuses_caller_grayscale(monkeypatch):
+    image = np.full((80, 120, 3), 180, dtype=np.uint8)
+    gray = np.full((80, 120), 180, dtype=np.uint8)
+    recovery = SecondaryTextRecovery.__new__(SecondaryTextRecovery)
+    seen = {}
+
+    def fake_extract(image_arg, gray_arg):
+        seen["gray"] = gray_arg
+        return np.empty((0, 4), dtype=np.int32)
+
+    recovery._extract_primitives = fake_extract
+
+    def forbidden_cvt_color(*args, **kwargs):
+        raise AssertionError("provided grayscale page must be reused")
+
+    monkeypatch.setattr(recovery_module.cv2, "cvtColor", forbidden_cvt_color)
+
+    assert recovery.detect(image, gray=gray) == []
+    assert seen["gray"] is gray
+
+
+def test_tall_box_refinement_reuses_caller_grayscale(monkeypatch):
+    import app.detector.combined_detector as combined_module
+    from app.detector.bubble_detector import BubbleBox
+
+    image = np.full((100, 140, 3), 200, dtype=np.uint8)
+    gray = np.full((100, 140), 200, dtype=np.uint8)
+    box = BubbleBox(10, 10, 50, 30, 0.9)
+
+    def forbidden_cvt_color(*args, **kwargs):
+        raise AssertionError("provided grayscale page must be reused")
+
+    monkeypatch.setattr(combined_module.cv2, "cvtColor", forbidden_cvt_color)
+    out = combined_module.CombinedTextDetector._refine_and_split_tall_boxes(
+        [box],
+        image,
+        gray=gray,
+    )
+
+    assert len(out) == 1
+    assert (out[0].x1, out[0].y1, out[0].x2, out[0].y2) == (10, 10, 50, 30)
