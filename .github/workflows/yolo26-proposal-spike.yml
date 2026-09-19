@@ -244,19 +244,21 @@ jobs:
               f"- reference: {report['reference']['mean_ms']:.2f} ms/page, "
               f"boxes={report['reference']['reference_boxes']}, "
               f"authority_pixels={report['reference']['authority_pixels']}",
+              f"- bubble proposals: {report['proposal_sources']['bubble']['mean_ms']:.2f} ms/page",
+              f"- MSER proposals: {report['proposal_sources']['mser']['mean_ms']:.2f} ms/page",
           ]
           for size, row in report["candidates"].items():
               lines.append(
                   f"- YOLO26 {size}: {row['mean_ms']:.2f} ms/page "
                   f"({row['mean_ms']/max(1e-9, report['reference']['mean_ms']):.3f}x reference)"
               )
-          lines.extend(["", "|size|conf|pad|authority_pixel_coverage|center_recall|proposal_area_ratio|latency_ratio|strict|",
-                        "|---:|---:|---:|---:|---:|---:|---:|:---:|"])
-          for row in rows[:15]:
+          lines.extend(["", "|source_stack|size|conf|pad|authority_pixel_coverage|center_recall|proposal_area_ratio|stack_latency_ratio|strict|",
+                        "|:---|---:|---:|---:|---:|---:|---:|---:|:---:|"])
+          for row in rows[:20]:
               lines.append(
-                  f"|{row['size']}|{row['threshold']:.2f}|{row['pad']}|"
+                  f"|{row['source_stack']}|{row['size']}|{row['threshold']:.2f}|{row['pad']}|"
                   f"{row['authority_pixel_coverage']:.6f}|{row['center_recall']:.6f}|"
-                  f"{row['proposal_area_ratio']:.4f}|{row['candidate_to_baseline_latency']:.3f}|"
+                  f"{row['proposal_area_ratio']:.4f}|{row['stack_to_baseline_latency']:.3f}|"
                   f"{row['strict_promising']}|"
               )
           lines.append("")
