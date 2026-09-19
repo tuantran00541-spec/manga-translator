@@ -173,6 +173,7 @@ jobs:
                   opset=17,
                   simplify=True,
                   dynamic=False,
+                  end2end=False,
                   device="cpu",
                   verbose=False,
               ))
