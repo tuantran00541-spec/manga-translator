@@ -226,7 +226,7 @@ def run(args) -> dict:
     total_authority_pixels = 0
     total_reference_boxes = 0
     total_page_pixels = 0
-    source_stacks = ("yolo26", "bubble+yolo26", "bubble+yolo26+mser")
+    source_stacks = ("yolo26", "yolo26+mser", "bubble+yolo26", "bubble+yolo26+mser")
     aggregates = {
         (source_stack, size, threshold, pad): {
             "covered_authority_pixels": 0,
@@ -300,6 +300,10 @@ def run(args) -> dict:
                 yolo26_geometry = _boxes(selected)
                 stack_geometry = {
                     "yolo26": yolo26_geometry,
+                    "yolo26+mser": merge_proposal_sets(
+                        yolo26_geometry,
+                        mser_geometry,
+                    ),
                     "bubble+yolo26": merge_proposal_sets(
                         bubble_geometry,
                         yolo26_geometry,
