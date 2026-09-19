@@ -252,10 +252,22 @@ def instrument():
         wrap_phase(phase_owners[owner_name], method, phase_name)
     timers.wrap(SecondaryTextRecovery, "detect", "recovery.detect")
     for method in ("_cluster_boxes", "_smart_fill_color", "_smart_paint_region",
-                   "_lama_fill_single_dynamic", "_lama_fill_single", "_lama_fill_tiled",
-                   "_run_lama"):
+                   "_lama_fill_single_dynamic", "_lama_fill_single", "_lama_fill_tiled"):
         if method in vars(lama.Inpainter):
             timers.wrap(lama.Inpainter, method, "inpaint." + method)
+
+    original_lama_run = lama.Inpainter._run_lama
+
+    @functools.wraps(original_lama_run)
+    def measured_lama_run(self, canvas, mask_canvas):
+        with timers.span(
+            "inpaint._run_lama",
+            canvas_shape=[int(canvas.shape[0]), int(canvas.shape[1])],
+            mask_pixels=int((mask_canvas > 127).sum()),
+        ):
+            return original_lama_run(self, canvas, mask_canvas)
+
+    lama.Inpainter._run_lama = measured_lama_run
     original_mask = lama.build_mask
 
     def measured_mask(*args, **kwargs):
