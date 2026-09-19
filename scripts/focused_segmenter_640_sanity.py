@@ -95,11 +95,20 @@ def lazy_optional_specialized_detector_check():
 
     calls = []
 
-    def factory(model_path, conf_threshold, use_tta=None, *, model_role, input_size=None):
+    def factory(
+        model_path,
+        conf_threshold,
+        use_tta=None,
+        *,
+        model_role,
+        input_size=None,
+        provider_override=None,
+    ):
         calls.append({
             "model_path": str(model_path),
             "model_role": model_role,
             "input_size": input_size,
+            "provider_override": provider_override,
         })
         return specialized
 
@@ -139,6 +148,10 @@ def lazy_optional_specialized_detector_check():
     check(len(calls) == 1, "specialized segmenter was loaded more than once")
     check(calls[0]["input_size"] == 640, "specialized detector did not use 640 input")
     check(calls[0]["model_role"] == "text_segmenter", "specialized detector role changed")
+    check(
+        calls[0]["provider_override"] is None,
+        "default specialized detector provider should inherit the global detector provider",
+    )
 
 
 def residue_verify_routes_to_specialized_detector_check():
