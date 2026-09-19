@@ -502,11 +502,18 @@ class SecondaryTextRecovery:
             mask=mask.copy() if mask is not None else None,
         )
 
-    def detect(self, image: np.ndarray, existing: list[BubbleBox] | None = None) -> list[BubbleBox]:
+    def detect(
+        self,
+        image: np.ndarray,
+        existing: list[BubbleBox] | None = None,
+        *,
+        gray: np.ndarray | None = None,
+    ) -> list[BubbleBox]:
         if image is None or image.size == 0:
             return []
         h, w = image.shape[:2]
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if image.ndim == 3 else image
+        if gray is None:
+            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if image.ndim == 3 else image
         boxes = self._extract_primitives(image, gray)
         if boxes.size == 0:
             return []
