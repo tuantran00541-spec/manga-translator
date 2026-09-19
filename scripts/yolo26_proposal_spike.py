@@ -86,6 +86,22 @@ def center_recall(
     return _center_hits(references, proposals, pad=pad) / float(len(references))
 
 
+def merge_proposal_sets(
+    *proposal_sets: list[tuple[int, int, int, int]],
+) -> list[tuple[int, int, int, int]]:
+    """Merge proposal geometry while preserving first-seen order."""
+    merged: list[tuple[int, int, int, int]] = []
+    seen: set[tuple[int, int, int, int]] = set()
+    for proposal_set in proposal_sets:
+        for proposal in proposal_set:
+            geometry = tuple(int(value) for value in proposal)
+            if len(geometry) != 4 or geometry in seen:
+                continue
+            seen.add(geometry)
+            merged.append(geometry)
+    return merged
+
+
 def _authority_mask(shape: tuple[int, ...], boxes) -> np.ndarray:
     height, width = int(shape[0]), int(shape[1])
     result = np.zeros((height, width), dtype=np.uint8)
@@ -155,9 +171,10 @@ def _parse_floats(raw: str) -> tuple[float, ...]:
 
 
 def run(args) -> dict:
-    from app.config import TEXT_SEGMENTER_MODEL
+    from app.config import BUBBLE_DETECTOR_MODEL, TEXT_SEGMENTER_MODEL
     from app.detector.bubble_detector import YoloDetector
-    from app.parameters import TEXT_CONF_THRESHOLD
+    from app.detector.recovery import SecondaryTextRecovery
+    from app.parameters import BUBBLE_PROPOSAL_CONF_THRESHOLD, TEXT_CONF_THRESHOLD
 
     images = _read_images(args.raw_dir, args.max_pages)
     thresholds = _parse_floats(args.thresholds)
@@ -170,6 +187,13 @@ def run(args) -> dict:
         model_role="text_segmenter",
         provider_override=args.provider,
     )
+    bubble_detector = YoloDetector(
+        BUBBLE_DETECTOR_MODEL,
+        BUBBLE_PROPOSAL_CONF_THRESHOLD,
+        model_role="bubble_detector",
+        provider_override=args.provider,
+    )
+    recovery = SecondaryTextRecovery()
     candidate_paths = {
         640: args.candidate_640,
         1024: args.candidate_1024,
@@ -190,21 +214,27 @@ def run(args) -> dict:
     # steady-state detector comparison.
     warmup = images[0][1]
     baseline.detect(warmup)
+    bubble_detector.detect(warmup)
+    recovery.detect(warmup, existing=[])
     for detector in candidates.values():
         detector.detect(warmup)
 
     baseline_ms = 0.0
+    bubble_ms = 0.0
+    mser_ms = 0.0
     candidate_ms = {size: 0.0 for size in candidates}
     total_authority_pixels = 0
     total_reference_boxes = 0
     total_page_pixels = 0
+    source_stacks = ("yolo26", "bubble+yolo26", "bubble+yolo26+mser")
     aggregates = {
-        (size, threshold, pad): {
+        (source_stack, size, threshold, pad): {
             "covered_authority_pixels": 0,
             "covered_centers": 0,
             "proposal_union_pixels": 0,
             "proposal_count": 0,
         }
+        for source_stack in source_stacks
         for size in candidates
         for threshold in thresholds
         for pad in pads
@@ -228,11 +258,23 @@ def run(args) -> dict:
         total_reference_boxes += len(reference_geometry)
         total_page_pixels += page_pixels
 
+        bubble_started = time.perf_counter()
+        bubble_boxes = bubble_detector.detect(image)
+        bubble_ms += (time.perf_counter() - bubble_started) * 1000.0
+        bubble_geometry = _boxes(bubble_boxes)
+
+        mser_started = time.perf_counter()
+        mser_boxes = recovery.detect(image, existing=[])
+        mser_ms += (time.perf_counter() - mser_started) * 1000.0
+        mser_geometry = _boxes(mser_boxes)
+
         page_row = {
             "index": index,
             "file": path.name,
             "reference_boxes": len(reference_geometry),
             "authority_pixels": authority_pixels,
+            "bubble_proposals": len(bubble_geometry),
+            "mser_proposals": len(mser_geometry),
             "candidates": {},
         }
 
@@ -255,35 +297,51 @@ def run(args) -> dict:
                     box for box in text_boxes
                     if float(box.confidence) >= float(threshold)
                 ]
-                proposal_geometry = _boxes(selected)
-                for pad in pads:
-                    union = build_proposal_union(
-                        image.shape,
-                        proposal_geometry,
-                        pad=pad,
-                    )
-                    key = (size, threshold, pad)
-                    aggregate = aggregates[key]
-                    aggregate["covered_authority_pixels"] += int(
-                        np.count_nonzero(
-                            (reference_mask > 0) & (union > 0)
+                yolo26_geometry = _boxes(selected)
+                stack_geometry = {
+                    "yolo26": yolo26_geometry,
+                    "bubble+yolo26": merge_proposal_sets(
+                        bubble_geometry,
+                        yolo26_geometry,
+                    ),
+                    "bubble+yolo26+mser": merge_proposal_sets(
+                        bubble_geometry,
+                        yolo26_geometry,
+                        mser_geometry,
+                    ),
+                }
+                for source_stack, proposal_geometry in stack_geometry.items():
+                    for pad in pads:
+                        union = build_proposal_union(
+                            image.shape,
+                            proposal_geometry,
+                            pad=pad,
                         )
-                    )
-                    aggregate["covered_centers"] += _center_hits(
-                        reference_geometry,
-                        proposal_geometry,
-                        pad=pad,
-                    )
-                    aggregate["proposal_union_pixels"] += int(
-                        np.count_nonzero(union > 0)
-                    )
-                    aggregate["proposal_count"] += len(proposal_geometry)
+                        key = (source_stack, size, threshold, pad)
+                        aggregate = aggregates[key]
+                        aggregate["covered_authority_pixels"] += int(
+                            np.count_nonzero(
+                                (reference_mask > 0) & (union > 0)
+                            )
+                        )
+                        aggregate["covered_centers"] += _center_hits(
+                            reference_geometry,
+                            proposal_geometry,
+                            pad=pad,
+                        )
+                        aggregate["proposal_union_pixels"] += int(
+                            np.count_nonzero(union > 0)
+                        )
+                        aggregate["proposal_count"] += len(proposal_geometry)
 
         per_page.append(page_row)
 
     rows = []
-    baseline_mean_ms = baseline_ms / max(1, len(images))
-    for (size, threshold, pad), aggregate in sorted(aggregates.items()):
+    page_count = max(1, len(images))
+    baseline_mean_ms = baseline_ms / page_count
+    bubble_mean_ms = bubble_ms / page_count
+    mser_mean_ms = mser_ms / page_count
+    for (source_stack, size, threshold, pad), aggregate in sorted(aggregates.items()):
         authority_pixel_coverage = (
             aggregate["covered_authority_pixels"] / float(total_authority_pixels)
             if total_authority_pixels
@@ -299,21 +357,29 @@ def run(args) -> dict:
             if total_page_pixels
             else 0.0
         )
-        candidate_mean_ms = candidate_ms[size] / max(1, len(images))
+        candidate_mean_ms = candidate_ms[size] / page_count
+        stack_mean_ms = candidate_mean_ms
+        if "bubble" in source_stack:
+            stack_mean_ms += bubble_mean_ms
+        if "mser" in source_stack:
+            stack_mean_ms += mser_mean_ms
         rows.append({
+            "source_stack": source_stack,
             "size": size,
             "threshold": threshold,
             "pad": pad,
             "authority_pixel_coverage": authority_pixel_coverage,
             "center_recall": recall,
             "proposal_area_ratio": area_ratio,
-            "mean_proposals_per_page": aggregate["proposal_count"] / max(1, len(images)),
+            "mean_proposals_per_page": aggregate["proposal_count"] / page_count,
             "candidate_mean_ms": candidate_mean_ms,
             "candidate_to_baseline_latency": candidate_mean_ms / max(1e-9, baseline_mean_ms),
+            "stack_mean_ms": stack_mean_ms,
+            "stack_to_baseline_latency": stack_mean_ms / max(1e-9, baseline_mean_ms),
             "strict_promising": bool(
                 authority_pixel_coverage >= 1.0
                 and recall >= 1.0
-                and candidate_mean_ms <= baseline_mean_ms * 0.30
+                and stack_mean_ms <= baseline_mean_ms * 0.30
             ),
         })
 
@@ -330,12 +396,25 @@ def run(args) -> dict:
             "reference_boxes": total_reference_boxes,
             "authority_pixels": total_authority_pixels,
         },
+        "proposal_sources": {
+            "bubble": {
+                "model": Path(BUBBLE_DETECTOR_MODEL).name,
+                "providers": list(bubble_detector.session.get_providers()),
+                "total_ms": bubble_ms,
+                "mean_ms": bubble_mean_ms,
+            },
+            "mser": {
+                "model": "opencv_mser",
+                "total_ms": mser_ms,
+                "mean_ms": mser_mean_ms,
+            },
+        },
         "candidates": {
             str(size): {
                 "model": Path(candidate_paths[size]).name,
                 "providers": list(candidates[size].session.get_providers()),
                 "total_ms": candidate_ms[size],
-                "mean_ms": candidate_ms[size] / max(1, len(images)),
+                "mean_ms": candidate_ms[size] / page_count,
             }
             for size in candidates
         },
@@ -370,6 +449,7 @@ def main() -> int:
     print(json.dumps({
         "pages": report["pages"],
         "reference": report["reference"],
+        "proposal_sources": report["proposal_sources"],
         "candidates": report["candidates"],
         "strict_promising_rows": report["strict_promising_rows"],
     }, indent=2))
