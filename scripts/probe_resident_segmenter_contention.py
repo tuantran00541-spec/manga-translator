@@ -7,9 +7,13 @@ import json
 import os
 from pathlib import Path
 import statistics
+import sys
 import time
 
 import numpy as np
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
 
 from app.ort_utils import make_session
 
