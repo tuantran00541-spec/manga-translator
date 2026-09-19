@@ -2,7 +2,7 @@ name: Phase 13 full production final gate
 
 on:
   push:
-    branches: [main, release/focused-segmenter-640]
+    branches: [main, release/focused-segmenter-640, release/focused-segmenter-640-control]
     paths:
       - app/detector/**
       - app/inpaint/**
@@ -37,6 +37,7 @@ jobs:
       MANGA_ORT_OPENVINO_STREAMS: "1"
       MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
       OPENBLAS_NUM_THREADS: "1"
+      MANGA_DETECTOR_RETRY_SEGMENTER_ENABLED: "0"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
