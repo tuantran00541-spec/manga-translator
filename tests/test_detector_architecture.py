@@ -80,3 +80,43 @@ def test_planner_requests_full_page_fallback_when_budget_defers_proposal():
     assert len(plan.deferred) == 1
     assert plan.needs_full_page_fallback is True
     assert plan.reason == "proposal_geometry_or_budget"
+
+
+def test_legacy_bridge_preserves_decoder_source_role_gate():
+    from dataclasses import dataclass
+
+    @dataclass
+    class LegacyBox:
+        x1: int = 0
+        y1: int = 0
+        x2: int = 4
+        y2: int = 4
+        confidence: float = 0.9
+        mask: np.ndarray | None = None
+        class_id: int = 0
+        class_name: str = "text_comic"
+        semantic_type: str = "text"
+        mask_source: str = "none"
+        safe_to_inpaint: bool = False
+        ocr_eligible: bool = False
+        needs_review: bool = False
+        source_role: str = "unknown"
+
+        @property
+        def verified_mask(self):
+            return self.mask is not None and self.mask.shape == (4, 4) and bool(np.any(self.mask))
+
+    mask = np.ones((4, 4), dtype=np.uint8)
+    policy = AuthorityPolicy()
+
+    untrusted = policy.apply_legacy_yolov8_box(
+        LegacyBox(mask=mask, source_role="unknown"),
+        producer_role="text_segmenter",
+    )
+    assert untrusted.safe_to_inpaint is False
+
+    trusted = policy.apply_legacy_yolov8_box(
+        LegacyBox(mask=mask, source_role="text_segmenter"),
+        producer_role="text_segmenter",
+    )
+    assert trusted.safe_to_inpaint is True

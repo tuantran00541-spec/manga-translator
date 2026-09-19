@@ -121,10 +121,11 @@ class AuthorityPolicy:
         """
 
         verified = bool(getattr(box, "verified_mask", False))
+        observed_role = str(getattr(box, "source_role", "unknown"))
         source = (
             "yolov8_text_segmenter"
-            if producer_role == "text_segmenter"
-            else f"legacy_yolov8_{producer_role}"
+            if observed_role == "text_segmenter"
+            else f"legacy_yolov8_{observed_role}"
         )
         evidence = DetectionEvidence(
             bbox=(int(box.x1), int(box.y1), int(box.x2), int(box.y2)),

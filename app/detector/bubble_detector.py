@@ -8,6 +8,7 @@ import numpy as np
 
 from app.ort_utils import make_session
 from app.model_contracts import validate_detector_session
+from app.detector.evidence import DEFAULT_AUTHORITY_POLICY
 from app.parameters import (
     BUBBLE_IOU_THRESHOLD,
     DETECTOR_CONFIDENCE_MAX,
@@ -201,16 +202,9 @@ class YoloDetector:
         return class_name or "unknown"
 
     def _with_semantics(self, box: BubbleBox) -> BubbleBox:
-        verified = box.verified_mask
-        segmenter_evidence = box.source_role == "text_segmenter"
-        safe = bool(verified and segmenter_evidence)
-        return replace(
+        return DEFAULT_AUTHORITY_POLICY.apply_legacy_yolov8_box(
             box,
-            mask_source="text_segmenter" if safe else ("model" if verified else "none"),
-            safe_to_inpaint=safe,
-            ocr_eligible=safe,
-            needs_review=not safe,
-            source_role=self.model_role,
+            producer_role=self.model_role,
         )
 
     def detect(self, image: np.ndarray) -> list[BubbleBox]:

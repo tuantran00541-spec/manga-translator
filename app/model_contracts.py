@@ -22,14 +22,106 @@ def _check_float(meta, label: str) -> None:
 
 
 @dataclass(frozen=True)
+class DetectorTensorContract:
+    input_name: str
+    input_height: int
+    input_width: int
+    detection_output_name: str
+    detection_shape: tuple
+    output_names: tuple[str, ...]
+    prototype_output_name: str | None = None
+    prototype_shape: tuple | None = None
+
+
+@dataclass(frozen=True)
 class DetectorModelContract:
+    """Legacy production schema layered on top of a tensor-only contract."""
+
     role: str
     input_name: str
     input_height: int
     input_width: int
     class_names: tuple[str, ...]
     provides_prototypes: bool
-    destructive_text_mask: bool
+
+
+def validate_detector_tensor_session(
+    session,
+    *,
+    configured_input_size: int,
+    expected_feature_count: int,
+    prototype_channels: int | None = None,
+) -> DetectorTensorContract:
+    """Validate ONNX tensor geometry without assigning cleanup authority."""
+
+    inputs = list(session.get_inputs())
+    outputs = list(session.get_outputs())
+    if len(inputs) != 1:
+        raise ValueError(f"detector requires exactly one input; got {len(inputs)}")
+
+    inp = inputs[0]
+    if inp.name != "images":
+        raise ValueError(f"detector input must be named 'images'; got {inp.name!r}")
+    _check_float(inp, "detector input")
+    shape = _shape(inp)
+    if len(shape) != 4 or shape[0] != 1 or shape[1] != 3:
+        raise ValueError(f"detector input must be NCHW [1,3,H,W]; got {shape}")
+    if not all(isinstance(v, int) and v > 0 for v in shape[2:4]):
+        raise ValueError(f"detector spatial shape must be static; got {shape}")
+
+    height, width = int(shape[2]), int(shape[3])
+    if height != width or height != int(configured_input_size):
+        raise ValueError(
+            f"detector model is {width}x{height}, incompatible with "
+            f"configured input size {configured_input_size}"
+        )
+
+    output_by_name = {item.name: item for item in outputs}
+    output0 = output_by_name.get("output0")
+    if output0 is None:
+        raise ValueError("detector is missing output0")
+    _check_float(output0, "detector output0")
+    detection_shape = _shape(output0)
+    if len(detection_shape) != 3 or detection_shape[0] != 1:
+        raise ValueError(
+            f"detector output0 must be rank-3 with batch 1; got {detection_shape}"
+        )
+    if detection_shape[1] != int(expected_feature_count):
+        raise ValueError(
+            f"detector output0 feature count must be {expected_feature_count}; "
+            f"got {detection_shape}"
+        )
+
+    prototype_name = None
+    prototype_shape = None
+    if prototype_channels is not None:
+        proto = output_by_name.get("output1")
+        if proto is None:
+            raise ValueError("segmentation detector is missing output1 prototypes")
+        _check_float(proto, "detector output1")
+        prototype_shape = _shape(proto)
+        if (
+            len(prototype_shape) != 4
+            or prototype_shape[0] != 1
+            or prototype_shape[1] != int(prototype_channels)
+            or not all(isinstance(v, int) and v > 0 for v in prototype_shape[2:4])
+        ):
+            raise ValueError(
+                "detector prototype shape must be static "
+                f"[1,{prototype_channels},H,W]; got {prototype_shape}"
+            )
+        prototype_name = "output1"
+
+    return DetectorTensorContract(
+        input_name=inp.name,
+        input_height=height,
+        input_width=width,
+        detection_output_name="output0",
+        detection_shape=detection_shape,
+        output_names=tuple(item.name for item in outputs),
+        prototype_output_name=prototype_name,
+        prototype_shape=prototype_shape,
+    )
 
 
 def validate_detector_session(
@@ -38,87 +130,38 @@ def validate_detector_session(
     role: str,
     configured_input_size: int,
 ) -> DetectorModelContract:
+    """Compatibility validator for the two current production YOLOv8 models."""
+
     specs = {
-        "bubble_detector": (("text_bubble", "text_free"), False, False),
-        "text_segmenter": (("text_comic",), True, True),
+        "bubble_detector": (("text_bubble", "text_free"), False),
+        "text_segmenter": (("text_comic",), True),
     }
     if role not in specs:
         raise ValueError(f"Unknown detector model role: {role!r}")
 
-    inputs = list(session.get_inputs())
-    outputs = list(session.get_outputs())
-    if len(inputs) != 1:
-        raise ValueError(f"{role} requires exactly one input; got {len(inputs)}")
-
-    inp = inputs[0]
-    if inp.name != "images":
-        raise ValueError(f"{role} input must be named 'images'; got {inp.name!r}")
-    _check_float(inp, f"{role} input")
-    shape = _shape(inp)
-    if len(shape) != 4 or shape[0] != 1 or shape[1] != 3:
-        raise ValueError(f"{role} input must be NCHW [1,3,H,W]; got {shape}")
-    if not all(isinstance(v, int) and v > 0 for v in shape[2:4]):
-        raise ValueError(f"{role} detector spatial shape must be static; got {shape}")
-
-    height, width = int(shape[2]), int(shape[3])
-    if height != width or height != int(configured_input_size):
-        raise ValueError(
-            f"{role} model is {width}x{height}, incompatible with "
-            f"DETECTOR_INPUT_SIZE={configured_input_size}"
-        )
-
-    output_by_name = {item.name: item for item in outputs}
-    output0 = output_by_name.get("output0")
-    if output0 is None:
-        raise ValueError(f"{role} is missing output0")
-    _check_float(output0, f"{role} output0")
-    detection_shape = _shape(output0)
-    if len(detection_shape) != 3 or detection_shape[0] != 1:
-        raise ValueError(
-            f"{role} output0 must be rank-3 with batch 1; got {detection_shape}"
-        )
-
-    class_names, needs_proto, destructive = specs[role]
+    class_names, needs_proto = specs[role]
     expected_features = 4 + len(class_names) + (32 if needs_proto else 0)
-    if detection_shape[1] != expected_features:
-        raise ValueError(
-            f"{role} output0 feature count must be {expected_features}; "
-            f"got {detection_shape}"
-        )
+    tensor = validate_detector_tensor_session(
+        session,
+        configured_input_size=configured_input_size,
+        expected_feature_count=expected_features,
+        prototype_channels=32 if needs_proto else None,
+    )
 
-    if needs_proto:
-        if set(output_by_name) != {"output0", "output1"}:
-            raise ValueError(
-                "text_segmenter outputs must be exactly output0/output1; "
-                f"got {sorted(output_by_name)}"
-            )
-        proto = output_by_name["output1"]
-        _check_float(proto, "text_segmenter output1")
-        proto_shape = _shape(proto)
-        if (
-            len(proto_shape) != 4
-            or proto_shape[0] != 1
-            or proto_shape[1] != 32
-            or not all(isinstance(v, int) and v > 0 for v in proto_shape[2:4])
-        ):
-            raise ValueError(
-                "text_segmenter prototype shape must be static [1,32,H,W]; "
-                f"got {proto_shape}"
-            )
-    elif set(output_by_name) != {"output0"}:
+    expected_outputs = {"output0", "output1"} if needs_proto else {"output0"}
+    if set(tensor.output_names) != expected_outputs:
         raise ValueError(
-            "bubble_detector contract is detection-only and must not expose "
-            "implicit mask authority"
+            f"{role} outputs must be exactly {sorted(expected_outputs)}; "
+            f"got {sorted(tensor.output_names)}"
         )
 
     return DetectorModelContract(
         role=role,
-        input_name=inp.name,
-        input_height=height,
-        input_width=width,
+        input_name=tensor.input_name,
+        input_height=tensor.input_height,
+        input_width=tensor.input_width,
         class_names=class_names,
         provides_prototypes=needs_proto,
-        destructive_text_mask=destructive,
     )
 
 
