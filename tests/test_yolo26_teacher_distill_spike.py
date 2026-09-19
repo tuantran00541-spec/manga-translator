@@ -106,3 +106,12 @@ def test_teacher_distill_workflow_verifies_one_class_segmentation_contract():
 
     assert "expected raw [1,37,N]" in text
     assert "expected prototypes [1,32,H,W]" in text
+
+
+def test_teacher_distill_workflow_persists_actual_ultralytics_train_save_dir():
+    text = WORKFLOW.read_text(encoding="utf-8")
+
+    assert 'Path("benchmark-results/yolo26-teacher-distill").resolve()' in text
+    assert "model.trainer.save_dir" in text
+    assert "train-save-dir.txt" in text
+    assert '.read_text(encoding="utf-8").strip()' in text
