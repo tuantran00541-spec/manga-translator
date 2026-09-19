@@ -697,8 +697,17 @@ class CombinedTextDetector:
         standalone = [t for i, t in enumerate(text_boxes) if i not in used_text_boxes]
         result_boxes.extend(self._cluster_free_text_boxes(standalone, w, h))
 
+        full_gray = (
+            cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+            if image.ndim == 3
+            else image
+        )
         recovery_started_at = time.perf_counter()
-        recovered = self.recovery.detect(image, existing=result_boxes)
+        recovered = self.recovery.detect(
+            image,
+            existing=result_boxes,
+            gray=full_gray,
+        )
         metrics["mser_ms"] = round(
             (time.perf_counter() - recovery_started_at) * 1000.0, 3
         )
@@ -728,7 +737,11 @@ class CombinedTextDetector:
         metrics["mser_segmenter_promotion_deferred_regions"] = int(
             mser_retry_metrics["deferred_regions"]
         )
-        result_boxes = self._refine_and_split_tall_boxes(result_boxes, image)
+        result_boxes = self._refine_and_split_tall_boxes(
+            result_boxes,
+            image,
+            gray=full_gray,
+        )
         result_boxes = self._apply_final_nms(
             result_boxes, iou_threshold=DETECTOR_FINAL_NMS_IOU
         )
@@ -764,7 +777,12 @@ class CombinedTextDetector:
         return sorted(result, key=lambda b: b.confidence, reverse=True)
 
     @staticmethod
-    def _refine_and_split_tall_boxes(boxes: list[BubbleBox], img: np.ndarray) -> list[BubbleBox]:
+    def _refine_and_split_tall_boxes(
+        boxes: list[BubbleBox],
+        img: np.ndarray,
+        *,
+        gray: np.ndarray | None = None,
+    ) -> list[BubbleBox]:
         """Refine geometry without inventing segmentation pixels.
 
         Detector masks are evidence. A missing mask must stay missing all the way
@@ -772,7 +790,11 @@ class CombinedTextDetector:
         here would bypass the downstream safety policy and erase artwork.
         """
         img_h, img_w = img.shape[:2]
-        full_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if img.ndim == 3 else img
+        full_gray = (
+            gray
+            if gray is not None
+            else (cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if img.ndim == 3 else img)
+        )
 
         refined_boxes = []
 
