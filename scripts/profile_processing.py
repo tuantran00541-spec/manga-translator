@@ -413,6 +413,32 @@ def run(args):
                 changed = np.any(original != clean, axis=2)
                 outside = int(np.count_nonzero(changed & (mask <= 127)))
                 boxes = page.get("boxes", [])
+                box_signature_rows = sorted(
+                    (
+                        int(box.get("x1", 0)),
+                        int(box.get("y1", 0)),
+                        int(box.get("x2", 0)),
+                        int(box.get("y2", 0)),
+                        str(box.get("source_model") or ""),
+                        str(box.get("source_role") or ""),
+                        str(box.get("class_name") or ""),
+                        str(box.get("semantic_type") or ""),
+                        str(box.get("mask_source") or ""),
+                        bool(box.get("safe_to_inpaint")),
+                        bool(box.get("ocr_eligible")),
+                        bool(box.get("needs_review")),
+                        str(box.get("deferred_reason") or ""),
+                    )
+                    for box in boxes
+                    if isinstance(box, dict)
+                )
+                box_signature_sha = hashlib.sha256(
+                    json.dumps(
+                        box_signature_rows,
+                        ensure_ascii=False,
+                        separators=(",", ":"),
+                    ).encode("utf-8")
+                ).hexdigest()
                 item = {"index": index, "size": [page["width"], page["height"]],
                         "metrics": page.get("processing_metrics"), "boxes": len(boxes),
                         "safe_to_inpaint": sum(bool(box.get("safe_to_inpaint")) for box in boxes),
@@ -421,7 +447,8 @@ def run(args):
                         "mask_pixels": int(np.count_nonzero(mask)), "changed_pixels": int(changed.sum()),
                         "outside_mask_changed": outside, "original_sha": digest(page["original"]),
                         "clean_sha": hashlib.sha256(clean.tobytes()).hexdigest(),
-                        "mask_sha": hashlib.sha256(mask.tobytes()).hexdigest()}
+                        "mask_sha": hashlib.sha256(mask.tobytes()).hexdigest(),
+                        "box_signature_sha": box_signature_sha}
                 row["pages"].append(item)
                 if repeat == args.repeats - 1:
                     evidence = args.output.parent / args.profile
