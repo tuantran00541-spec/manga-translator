@@ -2,7 +2,7 @@ name: Phase 13 full production final gate
 
 on:
   push:
-    branches: [main]
+    branches: [main, release/current-main-phase13-baseline]
     paths:
       - app/detector/**
       - app/inpaint/**
