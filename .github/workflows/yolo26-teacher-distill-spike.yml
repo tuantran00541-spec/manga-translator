@@ -241,12 +241,15 @@ jobs:
           MKL_NUM_THREADS: "2"
         run: |
           /tmp/yolo26-distill/bin/python - <<'PY'
+          from pathlib import Path
           import torch
           from ultralytics import YOLO
 
           torch.set_num_threads(2)
           torch.set_num_interop_threads(1)
 
+          project = Path("benchmark-results/yolo26-teacher-distill").resolve()
+          project.mkdir(parents=True, exist_ok=True)
           model = YOLO("benchmark-models/yolo26s_manga_best.pt")
           model.train(
               data="benchmark-results/teacher-dataset/dataset.yaml",
@@ -259,7 +262,7 @@ jobs:
               amp=False,
               seed=0,
               deterministic=True,
-              project="benchmark-results/yolo26-teacher-distill",
+              project=str(project),
               name="train",
               exist_ok=True,
               plots=False,
@@ -268,6 +271,12 @@ jobs:
               mixup=0.0,
               copy_paste=0.0,
           )
+          if model.trainer is None:
+              raise RuntimeError("Ultralytics training finished without trainer state")
+          save_dir = Path(model.trainer.save_dir).resolve()
+          marker = project / "train-save-dir.txt"
+          marker.write_text(str(save_dir) + "\n", encoding="utf-8")
+          print({"train_save_dir": str(save_dir), "marker": str(marker)})
           PY
 
       - name: Export tuned one-class YOLO26s 768 ONNX
@@ -278,11 +287,17 @@ jobs:
           import shutil
           from ultralytics import YOLO
 
-          checkpoint = Path("benchmark-results/yolo26-teacher-distill/train/weights/best.pt")
+          marker = Path("benchmark-results/yolo26-teacher-distill/train-save-dir.txt")
+          if not marker.is_file():
+              raise RuntimeError(f"missing Ultralytics save-dir marker: {marker}")
+          save_dir = Path(marker.read_text(encoding="utf-8").strip())
+          checkpoint = save_dir / "weights" / "best.pt"
           if not checkpoint.is_file():
-              checkpoint = Path("benchmark-results/yolo26-teacher-distill/train/weights/last.pt")
+              checkpoint = save_dir / "weights" / "last.pt"
           if not checkpoint.is_file():
-              raise RuntimeError("training produced no best.pt or last.pt")
+              raise RuntimeError(
+                  f"training produced no best.pt or last.pt under {save_dir / 'weights'}"
+              )
 
           model = YOLO(str(checkpoint))
           exported = Path(model.export(
@@ -416,6 +431,7 @@ jobs:
             benchmark-results/yolo26-teacher-distill/baseline.json
             benchmark-results/yolo26-teacher-distill/tuned.json
             benchmark-results/yolo26-teacher-distill/decision.json
+            benchmark-results/yolo26-teacher-distill/train-save-dir.txt
             benchmark-results/yolo26-teacher-distill/train/results.csv
             benchmark-results/yolo26-teacher-distill/train/weights/best.pt
             benchmark-models/tuned/yolo26s_manga_seg_768.onnx
