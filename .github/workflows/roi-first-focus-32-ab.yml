@@ -1,0 +1,256 @@
+name: ROI-first authority 32-slice A/B
+
+on:
+  push:
+    branches:
+      - release/focused-segmenter-640
+    paths:
+      - app/parameters.py
+      - app/detector/adaptive_focus_detector.py
+      - app/detector/proposal_planner.py
+      - app/detector/model_adapter.py
+      - scripts/profile_processing.py
+      - .github/workflows/roi-first-focus-32-ab.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: roi-first-focus-32-release-focused-segmenter-640
+  cancel-in-progress: false
+
+jobs:
+  roi-first-ab:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+    env:
+      PYTHONUNBUFFERED: "1"
+      MANGA_USE_DYNAMIC_LAMA: "1"
+      MANGA_ORT_PROVIDER: openvino
+      MANGA_ORT_REQUIRE_PROVIDER: "1"
+      MANGA_ORT_OPENVINO_SCOPE: detectors
+      MANGA_ORT_OPENVINO_THREADS: "2"
+      MANGA_ORT_OPENVINO_STREAMS: "1"
+      MANGA_DETECTOR_RETRY_SEGMENTER_ENABLED: "0"
+      OPENBLAS_NUM_THREADS: "1"
+      OMP_NUM_THREADS: "1"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install production profile runtime
+        run: |
+          python -m pip install \
+            numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 \
+            onnx==1.17.0 onnxruntime-openvino==1.24.1 psutil==6.1.1 loguru==0.7.2 \
+            requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 \
+            playwright==1.47.0 fastapi==0.115.0 pydantic==2.9.2 \
+            filelock==3.16.1 threadpoolctl==3.6.0
+
+      - name: Restore benchmark models
+        id: models
+        uses: actions/cache@v4
+        with:
+          path: |
+            models/*.onnx
+            models/.e2e-provenance.json
+          key: processing-profile-models-b224548-v1
+
+      - name: Read pinned model provisioner
+        if: steps.models.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: b22454827f8190655d7070b80eb20c2550beadfa
+          path: benchmark-bootstrap
+          sparse-checkout: scripts/provision_real_e2e_models.py
+          sparse-checkout-cone-mode: false
+
+      - name: Provision production-equivalent models
+        if: steps.models.outputs.cache-hit != 'true'
+        run: |
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu \
+            --extra-index-url https://pypi.org/simple \
+            torch==2.5.1+cpu torchvision==0.20.1+cpu
+          python -m pip install --no-deps \
+            ultralytics==8.3.221 onnxslim==0.1.71
+          python -m pip install \
+            sympy==1.13.1 PyYAML==6.0.2 scipy==1.14.1 tqdm==4.67.1 \
+            matplotlib==3.9.2 pandas==2.2.3 py-cpuinfo==9.0.0 \
+            ml_dtypes==0.5.3 colorama==0.4.6 polars==1.33.1 \
+            ultralytics-thop==2.0.17
+          cp benchmark-bootstrap/models/*.onnx models/
+          cp benchmark-bootstrap/models/.e2e-provenance.json models/
+
+      - name: Fetch identical full-chapter input once
+        run: |
+          python scripts/profile_processing.py \
+            --prepare --prepare-all \
+            --raw-dir benchmark-results/roi-first-input
+
+      - name: A - current full-first schedule
+        env:
+          MANGA_DETECTOR_FOCUS_ROI_FIRST_ENABLED: "0"
+          MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-roi-first-a
+        run: |
+          python scripts/profile_processing.py \
+            --raw-dir benchmark-results/roi-first-input \
+            --profile full-first \
+            --workers 2 --repeats 1 --max-pages 32 \
+            --output benchmark-results/roi-first/full-first.json
+
+      - name: B - ROI-first with conservative full-page fallback
+        env:
+          MANGA_DETECTOR_FOCUS_ROI_FIRST_ENABLED: "1"
+          MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-roi-first-b
+        run: |
+          python scripts/profile_processing.py \
+            --raw-dir benchmark-results/roi-first-input \
+            --profile roi-first \
+            --workers 2 --repeats 1 --max-pages 32 \
+            --output benchmark-results/roi-first/roi-first.json
+
+      - name: Compare exact authority, semantics, calls, and fallback rate
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path("benchmark-results/roi-first")
+          base = json.loads((root / "full-first.json").read_text())["runs"][-1]
+          cand = json.loads((root / "roi-first.json").read_text())["runs"][-1]
+
+          def summarize(run):
+              pages = run["pages"]
+              by_model = (run.get("detector_passes") or {}).get("by_model") or {}
+              text = by_model.get("text_segmenter.onnx") or {}
+              roi_pages = 0
+              roi_fallbacks = 0
+              fallback_reasons = {
+                  "no_proposals": 0,
+                  "deferred": 0,
+                  "unresolved": 0,
+                  "boundary": 0,
+              }
+              for page in pages:
+                  metrics = (page.get("metrics") or {}).get("detector") or {}
+                  if int(metrics.get("focus_roi_first_page") or 0):
+                      roi_pages += 1
+                      roi_fallbacks += int(metrics.get("focus_full_page_calls") or 0)
+                      fallback_reasons["no_proposals"] += int(
+                          metrics.get("focus_fallback_no_proposals") or 0
+                      )
+                      fallback_reasons["deferred"] += int(
+                          metrics.get("focus_fallback_deferred") or 0
+                      )
+                      fallback_reasons["unresolved"] += int(
+                          metrics.get("focus_fallback_unresolved") or 0
+                      )
+                      fallback_reasons["boundary"] += int(
+                          metrics.get("focus_fallback_boundary") or 0
+                      )
+
+              return {
+                  "wall_ms": float(run.get("wall_ms") or 0.0),
+                  "text_calls": int(text.get("calls") or 0),
+                  "text_ms": float(text.get("sum_ms") or 0.0),
+                  "outside": sum(int(p.get("outside_mask_changed") or 0) for p in pages),
+                  "boxes": sum(int(p.get("boxes") or 0) for p in pages),
+                  "safe": sum(int(p.get("safe_to_inpaint") or 0) for p in pages),
+                  "review": sum(int(p.get("review_boxes") or 0) for p in pages),
+                  "deferred": sum(int(p.get("deferred_boxes") or 0) for p in pages),
+                  "mask_shas": [p.get("mask_sha") for p in pages],
+                  "box_shas": [p.get("box_signature_sha") for p in pages],
+                  "indices": list(run.get("indices") or []),
+                  "roi_first_pages": roi_pages,
+                  "roi_full_page_fallbacks": roi_fallbacks,
+                  "fallback_reasons": fallback_reasons,
+              }
+
+          a = summarize(base)
+          b = summarize(cand)
+          if len(a["indices"]) != 32 or a["indices"] != b["indices"]:
+              raise RuntimeError("A/B did not process the same 32 slices")
+          if a["outside"] or b["outside"]:
+              raise RuntimeError("changed pixels outside destructive authority")
+          if b["roi_first_pages"] <= 0:
+              raise RuntimeError("candidate did not exercise any tall ROI-first pages")
+
+          parity = {
+              "authority_masks": a["mask_shas"] == b["mask_shas"],
+              "box_semantics": a["box_shas"] == b["box_shas"],
+              "aggregate_counts": (
+                  a["boxes"], a["safe"], a["review"], a["deferred"]
+              ) == (
+                  b["boxes"], b["safe"], b["review"], b["deferred"]
+              ),
+          }
+          reduced_calls = b["text_calls"] < a["text_calls"]
+          faster = b["wall_ms"] < a["wall_ms"]
+          fallback_rate = (
+              b["roi_full_page_fallbacks"] / float(b["roi_first_pages"])
+          )
+          promotion_eligible = all(parity.values()) and reduced_calls and faster
+
+          result = {
+              "baseline": a,
+              "candidate": b,
+              "parity": parity,
+              "text_call_ratio": b["text_calls"] / max(1, a["text_calls"]),
+              "text_time_ratio": b["text_ms"] / max(1e-9, a["text_ms"]),
+              "wall_ratio": b["wall_ms"] / max(1e-9, a["wall_ms"]),
+              "roi_first_fallback_rate": fallback_rate,
+              "promotion_eligible": promotion_eligible,
+          }
+          (root / "comparison.json").write_text(
+              json.dumps(result, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(result, indent=2))
+          PY
+
+      - name: Publish A/B summary
+        if: always()
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          path = Path("benchmark-results/roi-first/comparison.json")
+          if not path.is_file():
+              raise SystemExit(0)
+          data = json.loads(path.read_text())
+          a = data["baseline"]
+          b = data["candidate"]
+          parity = data["parity"]
+          verdict = "ELIGIBLE" if data["promotion_eligible"] else "NOT ELIGIBLE"
+          lines = [
+              "## ROI-first authority A/B",
+              "",
+              f"- full-first: wall={a['wall_ms']/1000:.2f}s, text calls={a['text_calls']}, text={a['text_ms']/1000:.2f}s",
+              f"- ROI-first: wall={b['wall_ms']/1000:.2f}s, text calls={b['text_calls']}, text={b['text_ms']/1000:.2f}s",
+              f"- ratios: wall={data['wall_ratio']:.3f}x, text-time={data['text_time_ratio']:.3f}x, calls={data['text_call_ratio']:.3f}x",
+              f"- ROI-first tall pages={b['roi_first_pages']}, full-page fallbacks={b['roi_full_page_fallbacks']}, fallback rate={data['roi_first_fallback_rate']:.1%}",
+              f"- fallback reasons={b['fallback_reasons']}",
+              f"- parity: authority={parity['authority_masks']}, boxes={parity['box_semantics']}, counts={parity['aggregate_counts']}",
+              f"- promotion: **{verdict}**",
+          ]
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as out:
+              out.write("\n".join(lines) + "\n")
+          print("\n".join(lines))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: roi-first-focus-32-${{ github.run_id }}
+          path: |
+            benchmark-results/roi-first/
+            benchmark-results/roi-first-input/sources.json
+          retention-days: 7
+          if-no-files-found: warn
