@@ -131,7 +131,7 @@ jobs:
           from scripts.model_e2e_gate import _authority_mask
 
           OUT = Path('benchmark-results/phase13/report.json')
-          URL = 'https://asurascans.com/comics/killer-pietro-08677664/chapter/120'
+          URL = 'https://asurascans.com/comics/shadow-slave-6f7fe6eb/chapter/1'
           if DETECTOR_FOCUS_MAX_CHIPS != 2:
               raise RuntimeError(f'expected restored focus budget 2, got {DETECTOR_FOCUS_MAX_CHIPS}')
 
