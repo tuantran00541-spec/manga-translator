@@ -1,0 +1,344 @@
+name: Residue 640 INT8 PTQ A/B/A
+
+on:
+  push:
+    branches:
+      - release/focused-segmenter-640
+    paths:
+      - scripts/quantize_text_segmenter_int8.py
+      - tests/test_residue_int8_quantization.py
+      - .github/workflows/residue-640-int8-ab.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: residue-640-int8-ab-release-focused-segmenter-640
+  cancel-in-progress: false
+
+jobs:
+  residue-int8-ab:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    env:
+      PYTHONUNBUFFERED: "1"
+      MANGA_USE_DYNAMIC_LAMA: "1"
+      MANGA_ORT_PROVIDER: openvino
+      MANGA_ORT_REQUIRE_PROVIDER: "1"
+      MANGA_ORT_OPENVINO_SCOPE: detectors
+      MANGA_ORT_OPENVINO_THREADS: "2"
+      MANGA_ORT_OPENVINO_STREAMS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      OMP_NUM_THREADS: "1"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install production profile runtime
+        run: |
+          python -m pip install \
+            numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 \
+            onnx==1.17.0 onnxruntime-openvino==1.24.1 psutil==6.1.1 loguru==0.7.2 \
+            requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 \
+            playwright==1.47.0 fastapi==0.115.0 pydantic==2.9.2 \
+            filelock==3.16.1 threadpoolctl==3.6.0
+
+      - name: Restore benchmark models
+        id: models
+        uses: actions/cache@v4
+        with:
+          path: |
+            models/*.onnx
+            models/.e2e-provenance.json
+          key: processing-profile-models-b224548-v1
+
+      - name: Read pinned model provisioner
+        if: steps.models.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: b22454827f8190655d7070b80eb20c2550beadfa
+          path: benchmark-bootstrap
+          sparse-checkout: scripts/provision_real_e2e_models.py
+          sparse-checkout-cone-mode: false
+
+      - name: Provision production-equivalent models
+        if: steps.models.outputs.cache-hit != 'true'
+        run: |
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple torch==2.5.1+cpu torchvision==0.20.1+cpu
+          python -m pip install --no-deps ultralytics==8.3.221 onnxslim==0.1.71
+          python -m pip install sympy==1.13.1 PyYAML==6.0.2 scipy==1.14.1 tqdm==4.67.1 matplotlib==3.9.2 pandas==2.2.3 py-cpuinfo==9.0.0 ml_dtypes==0.5.3 colorama==0.4.6 polars==1.33.1 ultralytics-thop==2.0.17
+          python benchmark-bootstrap/scripts/provision_real_e2e_models.py
+          cp benchmark-bootstrap/models/*.onnx models/
+          cp benchmark-bootstrap/models/.e2e-provenance.json models/
+
+      - name: Build FP32 residue-only 640 segmenter
+        run: |
+          python scripts/specialize_text_segmenter.py \
+            --source models/text_segmenter.onnx \
+            --output models/text_segmenter_640.onnx \
+            --size 640
+          cp models/text_segmenter_640.onnx models/text_segmenter_640_fp32.onnx
+
+      - name: Fetch identical full-chapter input once
+        run: |
+          python scripts/profile_processing.py \
+            --prepare --prepare-all \
+            --raw-dir benchmark-results/residue-int8-input
+
+      - name: Materialize deterministic production slices for calibration
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import json
+          import shutil
+
+          from app.pipeline import ChapterPipeline
+
+          raw_dir = Path("benchmark-results/residue-int8-input")
+          raw_paths = sorted(
+              path for path in raw_dir.iterdir()
+              if path.is_file() and path.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"}
+          )
+          pipeline = ChapterPipeline()
+          manifest = pipeline._build_chapter_from_raw_paths(
+              "residue-int8-calibration",
+              raw_paths,
+              source_url=None,
+              workers=2,
+          )
+          pages = manifest.get("pages") or []
+          if len(pages) < 96:
+              raise RuntimeError(f"need at least 96 production slices, got {len(pages)}")
+
+          out = Path("benchmark-results/residue-int8-calibration-slices")
+          out.mkdir(parents=True, exist_ok=True)
+          records = []
+          for index, page in enumerate(pages):
+              source = Path(page["original"])
+              target = out / f"{index:04d}{source.suffix.lower()}"
+              shutil.copy2(source, target)
+              records.append({
+                  "index": index,
+                  "source_page": page.get("source_page"),
+                  "slice_index": page.get("slice_index"),
+                  "file": target.name,
+              })
+          (out / "manifest.json").write_text(
+              json.dumps(records, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps({"slices": len(records), "validation": [0, 31], "calibration": [32, 95]}))
+          PY
+
+      - name: A1 - FP32 residue 640 OpenVINO
+        env:
+          MANGA_DETECTOR_RETRY_SEGMENTER_ENABLED: "1"
+          MANGA_DETECTOR_RETRY_PROVIDER: openvino
+          MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-residue-int8-a1
+        run: |
+          python scripts/profile_processing.py \
+            --raw-dir benchmark-results/residue-int8-input \
+            --profile residue640-fp32-a1 \
+            --workers 2 --repeats 1 --max-pages 32 \
+            --output benchmark-results/residue-int8/residue640-fp32-a1.json
+
+      - name: Build INT8 QDQ residue model in isolated NNCF environment
+        run: |
+          python -m venv /tmp/nncf-int8
+          /tmp/nncf-int8/bin/python -m pip install --upgrade pip
+          /tmp/nncf-int8/bin/python -m pip install \
+            numpy==1.26.4 opencv-python-headless==4.10.0.84 \
+            onnx==1.22.0 onnxruntime==1.24.3 nncf==3.4.0
+          /tmp/nncf-int8/bin/python scripts/quantize_text_segmenter_int8.py \
+            --source models/text_segmenter_640_fp32.onnx \
+            --output models/text_segmenter_640_int8.onnx \
+            --raw-dir benchmark-results/residue-int8-calibration-slices \
+            --input-size 640 \
+            --start-index 32 \
+            --subset-size 64
+          test -s models/text_segmenter_640_int8.onnx
+
+      - name: B - INT8 residue 640 OpenVINO
+        env:
+          MANGA_DETECTOR_RETRY_SEGMENTER_ENABLED: "1"
+          MANGA_DETECTOR_RETRY_PROVIDER: openvino
+          MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-residue-int8-b
+        run: |
+          cp models/text_segmenter_640_int8.onnx models/text_segmenter_640.onnx
+          python scripts/profile_processing.py \
+            --raw-dir benchmark-results/residue-int8-input \
+            --profile residue640-int8-b \
+            --workers 2 --repeats 1 --max-pages 32 \
+            --output benchmark-results/residue-int8/residue640-int8-b.json
+
+      - name: A2 - restore FP32 residue 640 OpenVINO
+        env:
+          MANGA_DETECTOR_RETRY_SEGMENTER_ENABLED: "1"
+          MANGA_DETECTOR_RETRY_PROVIDER: openvino
+          MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-residue-int8-a2
+        run: |
+          cp models/text_segmenter_640_fp32.onnx models/text_segmenter_640.onnx
+          python scripts/profile_processing.py \
+            --raw-dir benchmark-results/residue-int8-input \
+            --profile residue640-fp32-a2 \
+            --workers 2 --repeats 1 --max-pages 32 \
+            --output benchmark-results/residue-int8/residue640-fp32-a2.json
+
+      - name: Compare safety, parity, latency and memory
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path("benchmark-results/residue-int8")
+          names = ("residue640-fp32-a1", "residue640-int8-b", "residue640-fp32-a2")
+          reports = {name: json.loads((root / f"{name}.json").read_text()) for name in names}
+
+          def summarize(name):
+              report = reports[name]
+              run = report["runs"][-1]
+              pages = run["pages"]
+              phases = ((run.get("detector_passes") or {}).get("by_phase") or {})
+              return {
+                  "wall_ms": float(run["wall_ms"]),
+                  "peak_rss_mb": float(report.get("peak_rss_mb") or 0.0),
+                  "residue_ms": float((phases.get("residue_verify") or {}).get("sum_ms") or 0.0),
+                  "provider_placement": run.get("provider_placement") or {},
+                  "indices": run.get("indices") or [],
+                  "pages": [
+                      {
+                          "index": int(page["index"]),
+                          "boxes": int(page.get("boxes") or 0),
+                          "safe": int(page.get("safe_to_inpaint") or 0),
+                          "review": int(page.get("review_boxes") or 0),
+                          "deferred": int(page.get("deferred_boxes") or 0),
+                          "outside": int(page.get("outside_mask_changed") or 0),
+                          "mask_sha": page.get("mask_sha"),
+                          "clean_sha": page.get("clean_sha"),
+                      }
+                      for page in pages
+                  ],
+                  "models": report.get("models") or {},
+              }
+
+          rows = {name: summarize(name) for name in names}
+          a1 = rows["residue640-fp32-a1"]
+          b = rows["residue640-int8-b"]
+          a2 = rows["residue640-fp32-a2"]
+
+          for name, row in rows.items():
+              if len(row["indices"]) != 32:
+                  raise RuntimeError(f"{name}: expected exactly 32 slices, got {len(row['indices'])}")
+              if any(page["outside"] for page in row["pages"]):
+                  raise RuntimeError(f"{name}: changed pixels outside authority")
+
+          def parity_signature(row):
+              return [
+                  (
+                      page["index"], page["boxes"], page["safe"], page["review"],
+                      page["deferred"], page["mask_sha"], page["clean_sha"],
+                  )
+                  for page in row["pages"]
+              ]
+
+          if parity_signature(a1) != parity_signature(a2):
+              raise RuntimeError("FP32 A1/A2 parity changed on the same runner")
+
+          if [page["mask_sha"] for page in b["pages"]] != [page["mask_sha"] for page in a1["pages"]]:
+              raise RuntimeError("INT8 candidate: authority masks changed")
+          for key in ("boxes", "safe", "review", "deferred", "clean_sha"):
+              if [page[key] for page in b["pages"]] != [page[key] for page in a1["pages"]]:
+                  raise RuntimeError(f"INT8 candidate: page-level {key} parity changed")
+
+          providers = b["provider_placement"].get("text_segmenter_640.onnx") or []
+          if "OpenVINOExecutionProvider" not in providers:
+              raise RuntimeError(f"INT8 candidate did not use OpenVINO: {providers}")
+
+          baseline_wall = (a1["wall_ms"] + a2["wall_ms"]) / 2.0
+          baseline_rss = (a1["peak_rss_mb"] + a2["peak_rss_mb"]) / 2.0
+          baseline_residue = (a1["residue_ms"] + a2["residue_ms"]) / 2.0
+          drift = abs(a2["wall_ms"] - a1["wall_ms"]) / max(1.0, baseline_wall)
+          if drift > 0.05:
+              raise RuntimeError(f"runner drift too high for decision: {drift:.3%}")
+
+          comparison = {
+              "rows": rows,
+              "baseline_mean": {
+                  "wall_ms": baseline_wall,
+                  "peak_rss_mb": baseline_rss,
+                  "residue_ms": baseline_residue,
+              },
+              "runner_drift": drift,
+              "int8_ratios": {
+                  "wall": b["wall_ms"] / max(1.0, baseline_wall),
+                  "rss": b["peak_rss_mb"] / max(1e-9, baseline_rss),
+                  "residue": b["residue_ms"] / max(1.0, baseline_residue),
+              },
+              "decision_inputs": {
+                  "exact_authority_parity": True,
+                  "exact_page_state_parity": True,
+                  "outside_authority": 0,
+                  "wall_gate_0_90": b["wall_ms"] <= baseline_wall * 0.90,
+                  "rss_gate_1_00": b["peak_rss_mb"] <= baseline_rss,
+              },
+          }
+          (root / "comparison.json").write_text(
+              json.dumps(comparison, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(comparison, indent=2))
+          PY
+
+      - name: Publish INT8 A/B/A summary
+        if: always()
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          path = Path("benchmark-results/residue-int8/comparison.json")
+          if not path.is_file():
+              raise SystemExit(0)
+          data = json.loads(path.read_text())
+          rows = data["rows"]
+          ratios = data["int8_ratios"]
+          gates = data["decision_inputs"]
+          lines = [
+              "## Residue 640 INT8 PTQ A/B/A", "",
+              f"- FP32 A1 wall/RSS/residue: {rows['residue640-fp32-a1']['wall_ms']/1000:.2f}s / "
+              f"{rows['residue640-fp32-a1']['peak_rss_mb']:.1f}MiB / "
+              f"{rows['residue640-fp32-a1']['residue_ms']/1000:.2f}s",
+              f"- INT8 B wall/RSS/residue: {rows['residue640-int8-b']['wall_ms']/1000:.2f}s / "
+              f"{rows['residue640-int8-b']['peak_rss_mb']:.1f}MiB / "
+              f"{rows['residue640-int8-b']['residue_ms']/1000:.2f}s",
+              f"- FP32 A2 wall/RSS/residue: {rows['residue640-fp32-a2']['wall_ms']/1000:.2f}s / "
+              f"{rows['residue640-fp32-a2']['peak_rss_mb']:.1f}MiB / "
+              f"{rows['residue640-fp32-a2']['residue_ms']/1000:.2f}s",
+              f"- INT8 ratios vs FP32 mean: wall={ratios['wall']:.3f}x, "
+              f"RSS={ratios['rss']:.3f}x, residue={ratios['residue']:.3f}x",
+              f"- Exact authority/page parity: {gates['exact_authority_parity']} / "
+              f"{gates['exact_page_state_parity']}",
+              f"- Performance gates wall<=0.90 / RSS<=1.00: "
+              f"{gates['wall_gate_0_90']} / {gates['rss_gate_1_00']}",
+          ]
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as out:
+              out.write("\n".join(lines) + "\n")
+          print("\n".join(lines))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: residue-640-int8-\${{ github.run_id }}
+          path: |
+            benchmark-results/residue-int8/
+            benchmark-results/residue-int8-calibration-slices/manifest.json
+            models/text_segmenter_640_int8.onnx
+          retention-days: 7
+          if-no-files-found: warn
