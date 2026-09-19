@@ -1,0 +1,230 @@
+name: Cross-ref runtime A/B/A
+
+on:
+  push:
+    branches:
+      - release/focused-segmenter-640
+    paths:
+      - .github/workflows/cross-ref-runtime-ab.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cross-ref-runtime-release-focused-segmenter-640
+  cancel-in-progress: false
+
+jobs:
+  cross-ref:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 50
+    env:
+      PYTHONUNBUFFERED: "1"
+      MANGA_USE_DYNAMIC_LAMA: "1"
+      MANGA_ORT_PROVIDER: openvino
+      MANGA_ORT_REQUIRE_PROVIDER: "1"
+      MANGA_ORT_OPENVINO_SCOPE: detectors
+      MANGA_ORT_OPENVINO_THREADS: "2"
+      MANGA_ORT_OPENVINO_STREAMS: "1"
+      MANGA_DETECTOR_RETRY_SEGMENTER_ENABLED: "0"
+      OPENBLAS_NUM_THREADS: "1"
+      OMP_NUM_THREADS: "1"
+      BASELINE_SHA: 881cdafe8c31accdd9ea6cf82b676878c17c5c53
+    steps:
+      - name: Checkout current branch
+        uses: actions/checkout@v4
+
+      - name: Checkout merge-base code
+        uses: actions/checkout@v4
+        with:
+          ref: 881cdafe8c31accdd9ea6cf82b676878c17c5c53
+          path: baseline-code
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Record runner CPU
+        run: |
+          mkdir -p benchmark-results/cross-ref
+          {
+            uname -a
+            lscpu
+            python - <<'PY'
+          import json, os, platform
+          from pathlib import Path
+          Path("benchmark-results/cross-ref/runner.json").write_text(json.dumps({
+              "cpu_count": os.cpu_count(),
+              "platform": platform.platform(),
+              "processor": platform.processor(),
+          }, indent=2) + "\n")
+          PY
+          } | tee benchmark-results/cross-ref/runner.txt
+
+      - name: Install production profile runtime
+        run: |
+          python -m pip install             numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84             onnx==1.17.0 onnxruntime-openvino==1.24.1 psutil==6.1.1 loguru==0.7.2             requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0             playwright==1.47.0 fastapi==0.115.0 pydantic==2.9.2             filelock==3.16.1 threadpoolctl==3.6.0
+
+      - name: Restore benchmark models
+        id: models
+        uses: actions/cache@v4
+        with:
+          path: |
+            models/*.onnx
+            models/.e2e-provenance.json
+          key: processing-profile-models-b224548-v1
+
+      - name: Read pinned model provisioner
+        if: steps.models.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: b22454827f8190655d7070b80eb20c2550beadfa
+          path: benchmark-bootstrap
+          sparse-checkout: scripts/provision_real_e2e_models.py
+          sparse-checkout-cone-mode: false
+
+      - name: Provision production-equivalent models
+        if: steps.models.outputs.cache-hit != 'true'
+        run: |
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple torch==2.5.1+cpu torchvision==0.20.1+cpu
+          python -m pip install --no-deps ultralytics==8.3.221 onnxslim==0.1.71
+          python -m pip install sympy==1.13.1 PyYAML==6.0.2 scipy==1.14.1 tqdm==4.67.1 matplotlib==3.9.2 pandas==2.2.3 py-cpuinfo==9.0.0 ml_dtypes==0.5.3 colorama==0.4.6 polars==1.33.1 ultralytics-thop==2.0.17
+          python benchmark-bootstrap/scripts/provision_real_e2e_models.py
+          cp benchmark-bootstrap/models/*.onnx models/
+          cp benchmark-bootstrap/models/.e2e-provenance.json models/
+
+      - name: Prepare shared full-chapter input once
+        run: |
+          python scripts/profile_processing.py             --prepare --prepare-all             --raw-dir benchmark-results/cross-ref-input
+
+      - name: Prepare baseline checkout harness
+        run: |
+          rm -rf baseline-code/models
+          ln -s ../models baseline-code/models
+          cp scripts/profile_processing.py baseline-code/scripts/profile_processing.py
+
+      - name: A1 - merge-base code, 32 slices
+        working-directory: baseline-code
+        env:
+          MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-crossref-a1
+        run: |
+          python scripts/profile_processing.py             --raw-dir "$GITHUB_WORKSPACE/benchmark-results/cross-ref-input"             --profile baseline-a1 --workers 2 --repeats 1 --max-pages 32             --output "$GITHUB_WORKSPACE/benchmark-results/cross-ref/baseline-a1.json"
+
+      - name: B - current code, 32 slices
+        env:
+          MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-crossref-b
+        run: |
+          python scripts/profile_processing.py             --raw-dir benchmark-results/cross-ref-input             --profile current-b --workers 2 --repeats 1 --max-pages 32             --output benchmark-results/cross-ref/current-b.json
+
+      - name: A2 - merge-base code repeat, 32 slices
+        working-directory: baseline-code
+        env:
+          MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-crossref-a2
+        run: |
+          python scripts/profile_processing.py             --raw-dir "$GITHUB_WORKSPACE/benchmark-results/cross-ref-input"             --profile baseline-a2 --workers 2 --repeats 1 --max-pages 32             --output "$GITHUB_WORKSPACE/benchmark-results/cross-ref/baseline-a2.json"
+
+      - name: Compare same-runner code refs
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path("benchmark-results/cross-ref")
+          names = ("baseline-a1", "current-b", "baseline-a2")
+          reports = {name: json.loads((root / f"{name}.json").read_text()) for name in names}
+
+          def summarize(report):
+              run = report["runs"][-1]
+              phases = (run.get("detector_passes") or {}).get("by_phase") or {}
+              timers = run.get("timers") or {}
+              pages = run.get("pages") or []
+              return {
+                  "wall_ms": float(run["wall_ms"]),
+                  "peak_rss_mb": float(report.get("peak_rss_mb") or 0.0),
+                  "primary_ms": float((phases.get("primary") or {}).get("sum_ms") or 0.0),
+                  "residue_ms": float((phases.get("residue_verify") or {}).get("sum_ms") or 0.0),
+                  "lama_ms": float((timers.get("inpaint._run_lama") or {}).get("sum_ms") or 0.0),
+                  "boxes": sum(int(p.get("boxes") or 0) for p in pages),
+                  "safe": sum(int(p.get("safe_to_inpaint") or 0) for p in pages),
+                  "review": sum(int(p.get("review_boxes") or 0) for p in pages),
+                  "deferred": sum(int(p.get("deferred_boxes") or 0) for p in pages),
+                  "mask_shas": [p.get("mask_sha") for p in pages],
+                  "outside": sum(int(p.get("outside_mask_changed") or 0) for p in pages),
+                  "workers": (run.get("last_processing_run") or {}).get("workers"),
+              }
+
+          rows = {name: summarize(report) for name, report in reports.items()}
+          a_mean = (rows["baseline-a1"]["wall_ms"] + rows["baseline-a2"]["wall_ms"]) / 2.0
+          if any(row["outside"] for row in rows.values()):
+              raise RuntimeError("cross-ref run changed pixels outside authority")
+          if rows["baseline-a1"]["mask_shas"] != rows["baseline-a2"]["mask_shas"]:
+              raise RuntimeError("baseline repeat authority masks changed")
+          if rows["current-b"]["mask_shas"] != rows["baseline-a1"]["mask_shas"]:
+              raise RuntimeError("current ref changed destructive authority masks")
+
+          comparison = {
+              "baseline_sha": "881cdafe8c31accdd9ea6cf82b676878c17c5c53",
+              "current_sha": "${{ github.sha }}",
+              "rows": rows,
+              "current_vs_baseline_mean": {
+                  "wall": rows["current-b"]["wall_ms"] / a_mean,
+                  "primary": rows["current-b"]["primary_ms"] / max(
+                      1e-9,
+                      (rows["baseline-a1"]["primary_ms"] + rows["baseline-a2"]["primary_ms"]) / 2.0,
+                  ),
+                  "residue": rows["current-b"]["residue_ms"] / max(
+                      1e-9,
+                      (rows["baseline-a1"]["residue_ms"] + rows["baseline-a2"]["residue_ms"]) / 2.0,
+                  ),
+                  "lama": rows["current-b"]["lama_ms"] / max(
+                      1e-9,
+                      (rows["baseline-a1"]["lama_ms"] + rows["baseline-a2"]["lama_ms"]) / 2.0,
+                  ),
+              },
+              "baseline_drift": rows["baseline-a2"]["wall_ms"] / rows["baseline-a1"]["wall_ms"],
+          }
+          (root / "comparison.json").write_text(json.dumps(comparison, indent=2) + "\n")
+          print(json.dumps(comparison, indent=2))
+          PY
+
+      - name: Publish cross-ref summary
+        if: always()
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          p = Path("benchmark-results/cross-ref/comparison.json")
+          if not p.is_file():
+              raise SystemExit(0)
+          d = json.loads(p.read_text())
+          rows = d["rows"]
+          ratio = d["current_vs_baseline_mean"]
+          lines = ["## Same-runner cross-ref A/B/A", ""]
+          for name in ("baseline-a1", "current-b", "baseline-a2"):
+              r = rows[name]
+              lines.append(
+                  f"- {name}: wall={r['wall_ms']/1000:.2f}s, "
+                  f"primary={r['primary_ms']/1000:.2f}s, residue={r['residue_ms']/1000:.2f}s, "
+                  f"LaMa={r['lama_ms']/1000:.2f}s, RSS={r['peak_rss_mb']:.1f}MiB, workers={r['workers']}"
+              )
+          lines += [
+              "",
+              f"- current / baseline-mean wall: **{ratio['wall']:.3f}x**",
+              f"- primary: **{ratio['primary']:.3f}x**; residue: **{ratio['residue']:.3f}x**; LaMa: **{ratio['lama']:.3f}x**",
+              f"- baseline A2/A1 drift: **{d['baseline_drift']:.3f}x**",
+          ]
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as out:
+              out.write("\n".join(lines) + "\n")
+          print("\n".join(lines))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cross-ref-runtime-${{ github.run_id }}
+          path: |
+            benchmark-results/cross-ref/
+            benchmark-results/cross-ref-input/sources.json
+          retention-days: 7
+          if-no-files-found: warn
