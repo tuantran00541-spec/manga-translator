@@ -65,22 +65,13 @@ def test_shadow_yolo26s_workflow_is_pinned_and_benchmark_only():
     assert "cp " not in text or "models/text_segmenter.onnx" not in text
 
 
-def test_shadow_yolo26s_spike_reuses_production_mask_decoder_without_relaxing_contracts():
-    spike = _load_spike()
+def test_shadow_yolo26s_spike_uses_real_adapter_without_contract_bypass():
+    _load_spike()
     text = SCRIPT.read_text(encoding="utf-8")
-    seen = {}
 
-    class Decoder:
-        def detect(self, image):
-            seen["image"] = image
-            return ["decoded"]
-
-    detector = object.__new__(spike.BenchmarkSegmentationDetector)
-    detector._decoder = Decoder()
-    image = np.zeros((2, 3, 3), dtype=np.uint8)
-
-    assert detector.detect(image) == ["decoded"]
-    assert seen["image"] is image
-    assert "YoloDetector" in text
-    assert "SimpleNamespace" in text
+    assert "Yolo26SegAdapter" in text
+    assert "PageContext" in text
+    assert "object.__new__(YoloDetector)" not in text
+    assert "SimpleNamespace" not in text
+    assert "BenchmarkSegmentationDetector" not in text
     assert "validate_detector_session" not in text

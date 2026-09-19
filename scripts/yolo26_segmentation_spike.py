@@ -2,9 +2,9 @@
 """Shadow-benchmark a manga-specific YOLO26s segmentation model.
 
 The candidate is never installed as a production model and never receives
-destructive authority. It reuses the production YoloDetector mask decoder,
-geometry, NMS, and hysteresis while bypassing the production one-class contract
-only inside this benchmark because the candidate has frame/text/balloon classes.
+destructive authority. It runs through the real YOLO26 segmentation adapter,
+which validates the model's own three-class tensor contract and emits evidence
+without borrowing the production YOLOv8 role or cleanup policy.
 """
 from __future__ import annotations
 
@@ -13,7 +13,6 @@ import json
 from pathlib import Path
 import sys
 import time
-from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -69,6 +68,18 @@ def mask_metrics(reference_mask: np.ndarray, candidate_mask: np.ndarray) -> dict
     }
 
 
+def _bbox(item) -> tuple[int, int, int, int]:
+    bbox = getattr(item, "bbox", None)
+    if bbox is not None:
+        return tuple(int(value) for value in bbox)
+    return (
+        int(item.x1),
+        int(item.y1),
+        int(item.x2),
+        int(item.y2),
+    )
+
+
 def candidate_mask_union(shape: tuple[int, ...], boxes) -> np.ndarray:
     height, width = int(shape[0]), int(shape[1])
     result = np.zeros((height, width), dtype=np.uint8)
@@ -76,9 +87,7 @@ def candidate_mask_union(shape: tuple[int, ...], boxes) -> np.ndarray:
         mask = getattr(box, "mask", None)
         if mask is None or getattr(mask, "ndim", 0) != 2:
             continue
-        x1, y1, x2, y2 = (
-            int(box.x1), int(box.y1), int(box.x2), int(box.y2)
-        )
+        x1, y1, x2, y2 = _bbox(box)
         dst_x1 = max(0, min(width, x1))
         dst_y1 = max(0, min(height, y1))
         dst_x2 = max(dst_x1, min(width, x2))
@@ -136,76 +145,23 @@ def _parse_floats(raw: str) -> tuple[float, ...]:
 def _center_hits(reference_boxes, candidate_boxes) -> int:
     hits = 0
     for reference in reference_boxes:
-        cx = (float(reference.x1) + float(reference.x2)) * 0.5
-        cy = (float(reference.y1) + float(reference.y2)) * 0.5
+        rx1, ry1, rx2, ry2 = _bbox(reference)
+        cx = (float(rx1) + float(rx2)) * 0.5
+        cy = (float(ry1) + float(ry2)) * 0.5
         if any(
-            float(candidate.x1) <= cx <= float(candidate.x2)
-            and float(candidate.y1) <= cy <= float(candidate.y2)
+            float(_bbox(candidate)[0]) <= cx <= float(_bbox(candidate)[2])
+            and float(_bbox(candidate)[1]) <= cy <= float(_bbox(candidate)[3])
             for candidate in candidate_boxes
         ):
             hits += 1
     return hits
 
 
-class BenchmarkSegmentationDetector:
-    """Use production decode semantics without relaxing production contracts."""
-
-    def __init__(
-        self,
-        model_path: Path,
-        *,
-        conf_threshold: float,
-        input_size: int,
-        provider_override: str,
-    ) -> None:
-        from app.detector.bubble_detector import YoloDetector
-        from app.ort_utils import make_session
-
-        self._decoder = object.__new__(YoloDetector)
-        decoder = self._decoder
-        decoder.model_path = str(model_path)
-        decoder.source_model = model_path.name
-        decoder.model_role = "text_segmenter"
-        decoder.input_size = int(input_size)
-        decoder.session = make_session(
-            model_path,
-            provider_override=provider_override,
-        )
-        inputs = decoder.session.get_inputs()
-        outputs = decoder.session.get_outputs()
-        if len(inputs) != 1:
-            raise RuntimeError(f"{model_path}: expected one input, got {len(inputs)}")
-        input_shape = list(inputs[0].shape)
-        if input_shape != [1, 3, int(input_size), int(input_size)]:
-            raise RuntimeError(
-                f"{model_path}: expected static [1,3,{input_size},{input_size}], "
-                f"got {input_shape}"
-            )
-        if len(outputs) < 2 or len(outputs[1].shape) != 4:
-            raise RuntimeError(
-                f"{model_path}: expected YOLO segmentation output + prototypes, "
-                f"got {[list(item.shape) for item in outputs]}"
-            )
-
-        decoder.contract = SimpleNamespace(
-            input_name=inputs[0].name,
-            class_names=CANDIDATE_CLASS_NAMES,
-        )
-        decoder.input_name = inputs[0].name
-        decoder.conf_threshold = float(conf_threshold)
-        decoder.use_tta = False
-
-    @property
-    def session(self):
-        return self._decoder.session
-
-    def detect(self, image: np.ndarray):
-        return self._decoder.detect(image)
-
-
 def run(args) -> dict:
     from app.config import TEXT_SEGMENTER_MODEL
     from app.detector.bubble_detector import YoloDetector
+    from app.detector.model_adapter import Yolo26SegAdapter
+    from app.detector.page_context import PageContext
     from app.parameters import TEXT_CONF_THRESHOLD
 
     images = _read_images(args.raw_dir, args.max_pages)
@@ -220,10 +176,11 @@ def run(args) -> dict:
         provider_override=args.provider,
     )
     candidates = {
-        size: BenchmarkSegmentationDetector(
+        size: Yolo26SegAdapter(
             args.candidate_dir / f"yolo26s_manga_seg_{size}.onnx",
             conf_threshold=min_threshold,
             input_size=size,
+            class_names=CANDIDATE_CLASS_NAMES,
             provider_override=args.provider,
         )
         for size in sizes
@@ -231,8 +188,9 @@ def run(args) -> dict:
 
     warmup = images[0][1]
     baseline.detect(warmup)
+    warmup_context = PageContext(warmup)
     for candidate in candidates.values():
-        candidate.detect(warmup)
+        candidate.detect(warmup_context)
 
     baseline_ms = 0.0
     candidate_ms = {size: 0.0 for size in sizes}
@@ -275,9 +233,10 @@ def run(args) -> dict:
             "candidates": {},
         }
 
+        candidate_context = PageContext(image)
         for size, candidate in candidates.items():
             started = time.perf_counter()
-            detected = candidate.detect(image)
+            detected = candidate.detect(candidate_context)
             elapsed_ms = (time.perf_counter() - started) * 1000.0
             candidate_ms[size] += elapsed_ms
             text_boxes = [
