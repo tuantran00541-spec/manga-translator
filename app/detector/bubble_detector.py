@@ -22,6 +22,7 @@ from app.parameters import (
     DETECTOR_MIN_BOX_SIDE,
     DETECTOR_TALL_IMAGE_FACTOR,
     DETECTOR_TEXT_MASK_DECODE_PAD,
+    DETECTOR_TEXT_FULLPAGE_PASS_ENABLED,
     DETECTOR_TTA_ENABLED as ENABLE_TTA,
     DETECTOR_TTA_MIN_SIDE,
     DETECTOR_TTA_SMALL_SCALE,
@@ -230,7 +231,10 @@ class YoloDetector:
                     break
                 y += step
 
-            if self.model_role == "text_segmenter":
+            if (
+                self.model_role == "text_segmenter"
+                and DETECTOR_TEXT_FULLPAGE_PASS_ENABLED
+            ):
                 all_boxes.extend(self._detect_single_plain(image, 0, 0))
 
             boxes = self._nms_boxes(all_boxes)
