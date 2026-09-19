@@ -36,6 +36,7 @@ from app.parameters import (
     DETECTOR_GRAYSCALE_FALLBACK_PROPOSALS_PER_EXTRA_ROI,
     DETECTOR_NMS_SCORE_FLOOR,
     DETECTOR_RETRY_INPUT_SIZE,
+    DETECTOR_RETRY_PROVIDER,
     DETECTOR_RETRY_SEGMENTER_ENABLED,
     DETECTOR_RESIDUE_VERIFY_MAX_ROIS,
     DETECTOR_RESIDUE_VERIFY_MAX_SOURCE_SIDE,
@@ -124,11 +125,17 @@ class CombinedTextDetector:
                 return self.text_detector
 
             try:
+                provider_override = (
+                    None
+                    if DETECTOR_RETRY_PROVIDER == "inherit"
+                    else DETECTOR_RETRY_PROVIDER
+                )
                 self._residue_text_detector = YoloDetector(
                     TEXT_SEGMENTER_RETRY_MODEL,
                     TEXT_CONF_THRESHOLD,
                     model_role="text_segmenter",
                     input_size=DETECTOR_RETRY_INPUT_SIZE,
+                    provider_override=provider_override,
                 )
             except Exception as exc:
                 logger.warning(

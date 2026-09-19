@@ -110,6 +110,20 @@ DETECTOR_RETRY_SEGMENTER_ENABLED = _env_bool(
 DETECTOR_RETRY_INPUT_SIZE = _env_int(
     "MANGA_DETECTOR_RETRY_INPUT_SIZE", 640, minimum=256, maximum=1024
 )
+DETECTOR_RETRY_PROVIDER = (
+    os.getenv("MANGA_DETECTOR_RETRY_PROVIDER", "inherit").strip().lower()
+    or "inherit"
+)
+if DETECTOR_RETRY_PROVIDER not in {
+    "inherit",
+    "auto",
+    "openvino",
+    "ov",
+    "cpu",
+    "ort",
+    "onnxruntime",
+}:
+    DETECTOR_RETRY_PROVIDER = "inherit"
 DETECTOR_WINDOW_OVERLAP = _env_int(
     "MANGA_DETECTOR_WINDOW_OVERLAP", 200, minimum=0, maximum=2048
 )

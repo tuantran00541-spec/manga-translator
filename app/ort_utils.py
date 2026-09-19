@@ -100,9 +100,13 @@ def _is_detector_model(model_path) -> bool:
     return "bubble" in name or "text_segmenter" in name
 
 
-def _openvino_selected(model_path) -> bool:
+def _openvino_selected(model_path, *, provider_override: str | None = None) -> bool:
     """Use OpenVINO for detector models by default when the EP is installed."""
-    provider = os.environ.get(_PROVIDER_ENV, "auto").strip().lower()
+    provider = (
+        str(provider_override).strip().lower()
+        if provider_override is not None
+        else os.environ.get(_PROVIDER_ENV, "auto").strip().lower()
+    )
     if provider in {"cpu", "ort", "onnxruntime"}:
         return False
     if provider not in {"auto", "openvino", "ov"}:
@@ -140,14 +144,22 @@ def _openvino_provider_options() -> dict[str, str]:
     }
 
 
-def _provider_stack(model_path):
-    use_openvino = _openvino_selected(model_path)
+def _provider_stack(model_path, *, provider_override: str | None = None):
+    use_openvino = _openvino_selected(
+        model_path,
+        provider_override=provider_override,
+    )
     if not use_openvino:
         return ["CPUExecutionProvider"], False
 
     available = set(ort.get_available_providers())
     if "OpenVINOExecutionProvider" not in available:
-        explicit = os.environ.get(_PROVIDER_ENV, "auto").strip().lower() in {
+        selected_provider = (
+            str(provider_override).strip().lower()
+            if provider_override is not None
+            else os.environ.get(_PROVIDER_ENV, "auto").strip().lower()
+        )
+        explicit = selected_provider in {
             "openvino",
             "ov",
         }
@@ -203,6 +215,7 @@ def make_session(
     enable_cpu_mem_arena: bool | None = None,
     enable_mem_pattern: bool | None = None,
     serialize_inference: bool | None = None,
+    provider_override: str | None = None,
 ):
     """Create an ONNX Runtime session with the validated detector turbo path.
 
@@ -212,7 +225,10 @@ def make_session(
     Set MANGA_ORT_PROVIDER=cpu to disable OpenVINO globally.
     """
 
-    providers, use_openvino = _provider_stack(model_path)
+    providers, use_openvino = _provider_stack(
+        model_path,
+        provider_override=provider_override,
+    )
 
     opts = ort.SessionOptions()
     opts.graph_optimization_level = (

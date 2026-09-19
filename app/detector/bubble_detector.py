@@ -161,6 +161,7 @@ class YoloDetector:
         *,
         model_role: str,
         input_size: int | None = None,
+        provider_override: str | None = None,
     ):
         self.model_path = str(model_path)
         self.source_model = Path(model_path).name
@@ -168,7 +169,10 @@ class YoloDetector:
         self.input_size = int(INPUT_SIZE if input_size is None else input_size)
         if self.input_size <= 0:
             raise ValueError("Detector input_size must be positive")
-        self.session = make_session(model_path)
+        self.session = make_session(
+            model_path,
+            provider_override=provider_override,
+        )
         self.contract = validate_detector_session(
             self.session,
             role=self.model_role,

@@ -273,8 +273,14 @@ def prepare(args):
     urls = ASURA_STATIC_ADAPTER.extract_image_urls(args.chapter_url)
     if len(urls) < 4:
         raise RuntimeError("Expected several original chapter images; refusing a blank benchmark")
-    # Distributed originals, excluding the first/last cover or credit image.
-    chosen = sorted(set([1, len(urls) // 2, len(urls) - 2]))
+    # Distributed originals remain the cheap default. Controlled contention
+    # benchmarks can opt into the full chapter so sustained resource pressure is
+    # measured on a deterministic contiguous slice window.
+    chosen = (
+        list(range(len(urls)))
+        if bool(getattr(args, "prepare_all", False))
+        else sorted(set([1, len(urls) // 2, len(urls) - 2]))
+    )
     selected = [urls[index] for index in chosen]
     paths = ASURA_STATIC_ADAPTER.download_urls(selected, args.raw_dir, referer=args.chapter_url)
     if len(paths) != len(selected):
@@ -294,6 +300,11 @@ def _provider_snapshot(pipeline):
         "bubble_yolo.onnx": list(detector.bubble_detector.session.get_providers()),
         "text_segmenter.onnx": list(detector.text_detector.session.get_providers()),
     }
+    residue_detector = getattr(detector, "_residue_text_detector", None)
+    if residue_detector is not None:
+        result[Path(residue_detector.model_path).name] = list(
+            residue_detector.session.get_providers()
+        )
     inpainter = pipeline.inpainter
     if bool(getattr(inpainter, "session_loaded", False)) and inpainter.session is not None:
         result[Path(inpainter.lama_model_path).name] = list(inpainter.session.get_providers())
@@ -319,7 +330,10 @@ def run(args):
                        if path.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"})
     if not raw_paths:
         raise RuntimeError("No original images")
+    pipeline_started = time.perf_counter()
     pipeline = OptimizedChapterPipeline()
+    pipeline_init_ms = (time.perf_counter() - pipeline_started) * 1000
+    startup_timers = timers.summary()
     process = psutil.Process()
     memory = {"peak_rss_mb": 0.0}
     stop = threading.Event()
@@ -352,7 +366,14 @@ def run(args):
             ingest_ms = (time.perf_counter() - started) * 1000
             count = len(manifest["pages"])
             # Include adjacent slices, with coverage across the three originals.
-            indices = sorted(set([min(1, count - 1), min(2, count - 1), count // 2, max(0, count - 2)]))
+            max_pages = int(getattr(args, "max_pages", 0) or 0)
+            if max_pages > 0:
+                indices = list(range(min(count, max_pages)))
+            else:
+                indices = sorted(set([min(1, count - 1), min(2, count - 1), count // 2, max(0, count - 2)]))
+            residue_snapshot = getattr(pipeline.detector, "residue_metrics_snapshot", None)
+            if callable(residue_snapshot):
+                residue_snapshot(reset=True)
             timers.rows.clear()
             started = time.perf_counter()
             pipeline.process_pages(chapter_id, indices, workers=args.workers)
@@ -361,13 +382,25 @@ def run(args):
             inpainter = pipeline.inpainter
             row = {"repeat": repeat, "cold": repeat == 0, "ingest_ms": ingest_ms,
                    "wall_ms": wall_ms, "indices": indices, "slice_count": count,
+                   "pipeline_init_ms": pipeline_init_ms,
+                   "startup_timers": startup_timers,
                    "provider_placement": _provider_snapshot(pipeline),
                    "inpaint_runtime": {
                        "model": Path(getattr(inpainter, "lama_model_path", "")).name or None,
                        "dynamic": bool(getattr(inpainter, "dynamic_lama", False)),
                        "serialized_inference": bool(getattr(inpainter, "serialized_inference", False)),
                        "session_type": type(getattr(inpainter, "session", None)).__name__,
+                       "session_load": (
+                           inpainter.session_load_status()
+                           if hasattr(inpainter, "session_load_status")
+                           else None
+                       ),
                    },
+                   "residue_metrics": (
+                       residue_snapshot()
+                       if callable(residue_snapshot)
+                       else {}
+                   ),
                    "timers": timers.summary(),
                    "detector_passes": summarize_detector_passes(timers.rows),
                    "events": list(timers.rows),
@@ -379,8 +412,12 @@ def run(args):
                 mask = _authority_mask(original, page.get("boxes", []), pipeline.inpainter)
                 changed = np.any(original != clean, axis=2)
                 outside = int(np.count_nonzero(changed & (mask <= 127)))
+                boxes = page.get("boxes", [])
                 item = {"index": index, "size": [page["width"], page["height"]],
-                        "metrics": page.get("processing_metrics"), "boxes": len(page.get("boxes", [])),
+                        "metrics": page.get("processing_metrics"), "boxes": len(boxes),
+                        "safe_to_inpaint": sum(bool(box.get("safe_to_inpaint")) for box in boxes),
+                        "review_boxes": sum(bool(box.get("needs_review")) for box in boxes),
+                        "deferred_boxes": sum(bool(box.get("deferred_reason")) for box in boxes),
                         "mask_pixels": int(np.count_nonzero(mask)), "changed_pixels": int(changed.sum()),
                         "outside_mask_changed": outside, "original_sha": digest(page["original"]),
                         "clean_sha": hashlib.sha256(clean.tobytes()).hexdigest(),
@@ -416,11 +453,13 @@ def run(args):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--prepare", action="store_true")
+    parser.add_argument("--prepare-all", action="store_true")
     parser.add_argument("--chapter-url", default="https://asurascans.com/comics/killer-pietro-08677664/chapter/120")
     parser.add_argument("--raw-dir", type=Path, default=ROOT / "benchmark-results/profile-input")
     parser.add_argument("--profile", default="baseline")
     parser.add_argument("--workers", type=int, choices=[1, 2], default=2)
     parser.add_argument("--repeats", type=int, choices=[1, 2, 3], default=2)
+    parser.add_argument("--max-pages", type=int, default=0)
     parser.add_argument("--output", type=Path, default=ROOT / "benchmark-results/profile/baseline.json")
     args = parser.parse_args()
     prepare(args) if args.prepare else run(args)

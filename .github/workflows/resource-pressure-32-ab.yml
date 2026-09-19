@@ -1,0 +1,257 @@
+name: Controlled 32-slice resource-pressure A/B
+
+on:
+  push:
+    branches:
+      - release/focused-segmenter-640
+    paths:
+      - app/ort_utils.py
+      - app/parameters.py
+      - app/detector/bubble_detector.py
+      - app/detector/combined_detector.py
+      - scripts/profile_processing.py
+      - scripts/specialize_text_segmenter.py
+      - .github/workflows/resource-pressure-32-ab.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: resource-pressure-32-release-focused-segmenter-640
+  cancel-in-progress: false
+
+jobs:
+  controlled-ab:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 50
+    env:
+      PYTHONUNBUFFERED: "1"
+      MANGA_USE_DYNAMIC_LAMA: "1"
+      MANGA_ORT_PROVIDER: openvino
+      MANGA_ORT_REQUIRE_PROVIDER: "1"
+      MANGA_ORT_OPENVINO_SCOPE: detectors
+      MANGA_ORT_OPENVINO_THREADS: "2"
+      MANGA_ORT_OPENVINO_STREAMS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      OMP_NUM_THREADS: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install production profile runtime
+        run: |
+          python -m pip install             numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84             onnx==1.17.0 onnxruntime-openvino==1.24.1 psutil==6.1.1 loguru==0.7.2             requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0             playwright==1.47.0 fastapi==0.115.0 pydantic==2.9.2             filelock==3.16.1 threadpoolctl==3.6.0
+
+      - name: Restore benchmark models
+        id: models
+        uses: actions/cache@v4
+        with:
+          path: |
+            models/*.onnx
+            models/.e2e-provenance.json
+          key: processing-profile-models-b224548-v1
+
+      - name: Read pinned model provisioner
+        if: steps.models.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: b22454827f8190655d7070b80eb20c2550beadfa
+          path: benchmark-bootstrap
+          sparse-checkout: scripts/provision_real_e2e_models.py
+          sparse-checkout-cone-mode: false
+
+      - name: Provision production-equivalent models
+        if: steps.models.outputs.cache-hit != 'true'
+        run: |
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple torch==2.5.1+cpu torchvision==0.20.1+cpu
+          python -m pip install --no-deps ultralytics==8.3.221 onnxslim==0.1.71
+          python -m pip install sympy==1.13.1 PyYAML==6.0.2 scipy==1.14.1 tqdm==4.67.1 matplotlib==3.9.2 pandas==2.2.3 py-cpuinfo==9.0.0 ml_dtypes==0.5.3 colorama==0.4.6 polars==1.33.1 ultralytics-thop==2.0.17
+          python benchmark-bootstrap/scripts/provision_real_e2e_models.py
+          cp benchmark-bootstrap/models/*.onnx models/
+          cp benchmark-bootstrap/models/.e2e-provenance.json models/
+
+      - name: Build residue-only 640 segmenter
+        run: |
+          python scripts/specialize_text_segmenter.py             --source models/text_segmenter.onnx             --output models/text_segmenter_640.onnx             --size 640
+
+      - name: Fetch identical full-chapter input once
+        run: |
+          python scripts/profile_processing.py             --prepare --prepare-all             --raw-dir benchmark-results/resource-pressure-input
+
+      - name: A - baseline 1024 residue verifier
+        env:
+          MANGA_DETECTOR_RETRY_SEGMENTER_ENABLED: "0"
+          MANGA_DETECTOR_RETRY_PROVIDER: inherit
+          MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-resource-pressure-a
+        run: |
+          python scripts/profile_processing.py             --raw-dir benchmark-results/resource-pressure-input             --profile baseline1024             --workers 2 --repeats 1 --max-pages 32             --output benchmark-results/resource-pressure/baseline1024.json
+
+      - name: B - residue 640 on OpenVINO
+        env:
+          MANGA_DETECTOR_RETRY_SEGMENTER_ENABLED: "1"
+          MANGA_DETECTOR_RETRY_PROVIDER: openvino
+          MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-resource-pressure-b
+        run: |
+          python scripts/profile_processing.py             --raw-dir benchmark-results/resource-pressure-input             --profile residue640-openvino             --workers 2 --repeats 1 --max-pages 32             --output benchmark-results/resource-pressure/residue640-openvino.json
+
+      - name: C - residue 640 on CPU EP only
+        env:
+          MANGA_DETECTOR_RETRY_SEGMENTER_ENABLED: "1"
+          MANGA_DETECTOR_RETRY_PROVIDER: cpu
+          MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-resource-pressure-c
+        run: |
+          python scripts/profile_processing.py             --raw-dir benchmark-results/resource-pressure-input             --profile residue640-cpu             --workers 2 --repeats 1 --max-pages 32             --output benchmark-results/resource-pressure/residue640-cpu.json
+
+      - name: Compare phase timing, safety, logic and memory
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path("benchmark-results/resource-pressure")
+          names = ("baseline1024", "residue640-openvino", "residue640-cpu")
+          reports = {name: json.loads((root / f"{name}.json").read_text()) for name in names}
+
+          def summarize(name):
+              report = reports[name]
+              run = report["runs"][-1]
+              pages = run["pages"]
+              passes = run.get("detector_passes") or {}
+              phases = passes.get("by_phase") or {}
+              timers = run.get("timers") or {}
+
+              def timer_sum(key):
+                  return float((timers.get(key) or {}).get("sum_ms") or 0.0)
+
+              session_load_ms = {}
+              for source in (run.get("startup_timers") or {}, timers):
+                  for key, value in source.items():
+                      if key.startswith("load."):
+                          session_load_ms[key] = (
+                              session_load_ms.get(key, 0.0)
+                              + float(value.get("sum_ms") or 0.0)
+                          )
+
+              return {
+                  "wall_ms": float(run["wall_ms"]),
+                  "peak_rss_mb": float(report.get("peak_rss_mb") or 0.0),
+                  "pipeline_init_ms": float(run.get("pipeline_init_ms") or 0.0),
+                  "session_load_ms": session_load_ms,
+                  "lama_session_load": (run.get("inpaint_runtime") or {}).get("session_load"),
+                  "provider_placement": run.get("provider_placement") or {},
+                  "primary_ms": float((phases.get("primary") or {}).get("sum_ms") or 0.0),
+                  "grayscale_ms": float((phases.get("grayscale_retry") or {}).get("sum_ms") or 0.0),
+                  "mser_promotion_ms": float((phases.get("mser_promotion") or {}).get("sum_ms") or 0.0),
+                  "mser_recovery_ms": timer_sum("recovery.detect"),
+                  "residue_ms": float((phases.get("residue_verify") or {}).get("sum_ms") or 0.0),
+                  "lama_ms": timer_sum("inpaint._run_lama"),
+                  "residue_metrics": run.get("residue_metrics") or {},
+                  "detector_passes": passes,
+                  "boxes": sum(int(page.get("boxes") or 0) for page in pages),
+                  "safe": sum(int(page.get("safe_to_inpaint") or 0) for page in pages),
+                  "review": sum(int(page.get("review_boxes") or 0) for page in pages),
+                  "deferred": sum(int(page.get("deferred_boxes") or 0) for page in pages),
+                  "outside_authority_changed": sum(int(page.get("outside_mask_changed") or 0) for page in pages),
+                  "mask_shas": [page["mask_sha"] for page in pages],
+                  "indices": run.get("indices") or [],
+              }
+
+          rows = {name: summarize(name) for name in names}
+          base = rows["baseline1024"]
+
+          for name, row in rows.items():
+              if len(row["indices"]) != 32:
+                  raise RuntimeError(f"{name}: expected exactly 32 slices, got {len(row['indices'])}")
+              if row["outside_authority_changed"]:
+                  raise RuntimeError(f"{name}: changed pixels outside authority mask")
+
+          base_phases = (base["detector_passes"].get("by_phase") or {})
+          for name in ("residue640-openvino", "residue640-cpu"):
+              row = rows[name]
+              phases = row["detector_passes"].get("by_phase") or {}
+              if row["mask_shas"] != base["mask_shas"]:
+                  raise RuntimeError(f"{name}: destructive authority masks changed")
+              if (row["boxes"], row["safe"]) != (base["boxes"], base["safe"]):
+                  raise RuntimeError(f"{name}: destructive detector semantics changed")
+              for phase in ("primary", "grayscale_retry", "mser_promotion"):
+                  if int((phases.get(phase) or {}).get("model_pixels") or 0) != int(
+                      (base_phases.get(phase) or {}).get("model_pixels") or 0
+                  ):
+                      raise RuntimeError(f"{name}: {phase} resolution changed")
+              if int((phases.get("residue_verify") or {}).get("model_pixels") or 0) >= int(
+                  (base_phases.get("residue_verify") or {}).get("model_pixels") or 0
+              ):
+                  raise RuntimeError(f"{name}: residue specialization did not reduce model pixels")
+
+          ov_providers = rows["residue640-openvino"]["provider_placement"].get("text_segmenter_640.onnx") or []
+          cpu_providers = rows["residue640-cpu"]["provider_placement"].get("text_segmenter_640.onnx") or []
+          if "OpenVINOExecutionProvider" not in ov_providers:
+              raise RuntimeError(f"640 OpenVINO lane did not use OpenVINO: {ov_providers}")
+          if cpu_providers != ["CPUExecutionProvider"]:
+              raise RuntimeError(f"640 CPU lane did not stay on CPU EP: {cpu_providers}")
+
+          comparison = {
+              "rows": rows,
+              "ratios_vs_baseline": {
+                  name: {
+                      "wall": rows[name]["wall_ms"] / base["wall_ms"],
+                      "rss": rows[name]["peak_rss_mb"] / max(1e-9, base["peak_rss_mb"]),
+                      "primary": rows[name]["primary_ms"] / max(1e-9, base["primary_ms"]),
+                      "residue": rows[name]["residue_ms"] / max(1e-9, base["residue_ms"]),
+                      "lama": rows[name]["lama_ms"] / max(1e-9, base["lama_ms"]),
+                  }
+                  for name in ("residue640-openvino", "residue640-cpu")
+              },
+          }
+          (root / "comparison.json").write_text(json.dumps(comparison, indent=2) + "\n")
+          print(json.dumps(comparison, indent=2))
+          PY
+
+      - name: Publish controlled A/B summary
+        if: always()
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          path = Path("benchmark-results/resource-pressure/comparison.json")
+          if not path.is_file():
+              raise SystemExit(0)
+          data = json.loads(path.read_text())
+          rows = data["rows"]
+          ratios = data["ratios_vs_baseline"]
+          lines = ["## Controlled 32-slice resource-pressure A/B", ""]
+          for name in ("baseline1024", "residue640-openvino", "residue640-cpu"):
+              row = rows[name]
+              lines.append(
+                  f"- **{name}**: wall={row['wall_ms']/1000:.2f}s, "
+                  f"RSS={row['peak_rss_mb']:.1f}MiB, primary={row['primary_ms']/1000:.2f}s, "
+                  f"grayscale={row['grayscale_ms']/1000:.2f}s, "
+                  f"MSER-recovery={row['mser_recovery_ms']/1000:.2f}s, "
+                  f"residue={row['residue_ms']/1000:.2f}s, LaMa={row['lama_ms']/1000:.2f}s, "
+                  f"boxes/safe/review/deferred={row['boxes']}/{row['safe']}/{row['review']}/{row['deferred']}"
+              )
+          lines.append("")
+          for name, ratio in ratios.items():
+              lines.append(
+                  f"- {name} vs baseline: wall={ratio['wall']:.3f}x, "
+                  f"RSS={ratio['rss']:.3f}x, primary={ratio['primary']:.3f}x, "
+                  f"residue={ratio['residue']:.3f}x, LaMa={ratio['lama']:.3f}x"
+              )
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as out:
+              out.write("\n".join(lines) + "\n")
+          print("\n".join(lines))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: resource-pressure-32-${{ github.run_id }}
+          path: |
+            benchmark-results/resource-pressure/
+            benchmark-results/resource-pressure-input/sources.json
+          retention-days: 7
+          if-no-files-found: warn
