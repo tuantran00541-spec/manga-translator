@@ -125,3 +125,9 @@ def test_yolo26_spike_benchmarks_existing_cheap_proposal_stack():
     assert '"bubble+yolo26+mser"' in script
     assert '"source_stack"' in script
     assert "source_stack" in workflow
+
+
+def test_yolo26_spike_benchmarks_bubble_free_yolo26_mser_stack():
+    script = SCRIPT.read_text(encoding="utf-8")
+
+    assert '"yolo26+mser"' in script
