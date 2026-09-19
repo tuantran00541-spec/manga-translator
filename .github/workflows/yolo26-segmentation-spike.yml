@@ -1,0 +1,271 @@
+name: YOLO26 manga segmentation shadow spike
+
+on:
+  push:
+    branches:
+      - release/focused-segmenter-640
+    paths:
+      - scripts/yolo26_segmentation_spike.py
+      - tests/test_yolo26_segmentation_spike.py
+      - .github/workflows/yolo26-segmentation-spike.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: yolo26-segmentation-spike-release-focused-segmenter-640
+  cancel-in-progress: false
+
+jobs:
+  segmentation-spike:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 55
+    env:
+      PYTHONUNBUFFERED: "1"
+      YOLO_AUTOINSTALL: "False"
+      MANGA_ORT_PROVIDER: openvino
+      MANGA_ORT_REQUIRE_PROVIDER: "1"
+      MANGA_ORT_OPENVINO_SCOPE: all
+      MANGA_ORT_OPENVINO_THREADS: "2"
+      MANGA_ORT_OPENVINO_STREAMS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      OMP_NUM_THREADS: "1"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install benchmark runtime
+        run: |
+          python -m pip install \
+            numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 \
+            onnx==1.17.0 onnxruntime-openvino==1.24.1 loguru==0.7.2 \
+            requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 \
+            playwright==1.47.0 fastapi==0.115.0 pydantic==2.9.2 \
+            filelock==3.16.1 threadpoolctl==3.6.0
+
+      - name: Restore production-equivalent benchmark models
+        id: models
+        uses: actions/cache@v4
+        with:
+          path: |
+            models/*.onnx
+            models/.e2e-provenance.json
+          key: processing-profile-models-b224548-v1
+
+      - name: Read pinned production model provisioner
+        if: steps.models.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: b22454827f8190655d7070b80eb20c2550beadfa
+          path: benchmark-bootstrap
+          sparse-checkout: scripts/provision_real_e2e_models.py
+          sparse-checkout-cone-mode: false
+
+      - name: Provision production-equivalent models
+        if: steps.models.outputs.cache-hit != 'true'
+        run: |
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple torch==2.5.1+cpu torchvision==0.20.1+cpu
+          python -m pip install --no-deps ultralytics==8.3.221 onnxslim==0.1.71
+          python -m pip install sympy==1.13.1 PyYAML==6.0.2 scipy==1.14.1 tqdm==4.67.1 matplotlib==3.9.2 pandas==2.2.3 py-cpuinfo==9.0.0 ml_dtypes==0.5.3 colorama==0.4.6 polars==1.33.1 ultralytics-thop==2.0.17
+          python benchmark-bootstrap/scripts/provision_real_e2e_models.py
+          cp benchmark-bootstrap/models/*.onnx models/
+          cp benchmark-bootstrap/models/.e2e-provenance.json models/
+
+      - name: Fetch identical full-chapter input
+        run: |
+          python scripts/profile_processing.py \
+            --prepare --prepare-all \
+            --raw-dir benchmark-results/yolo26-seg-input
+
+      - name: Materialize production slices
+        run: |
+          python - <<'PY'
+          import json
+          import shutil
+          from pathlib import Path
+
+          from app.pipeline import ChapterPipeline
+
+          raw_dir = Path("benchmark-results/yolo26-seg-input")
+          raw_paths = sorted(
+              path for path in raw_dir.iterdir()
+              if path.is_file() and path.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"}
+          )
+          manifest = ChapterPipeline()._build_chapter_from_raw_paths(
+              "yolo26-segmentation-slices",
+              raw_paths,
+              source_url=None,
+              workers=2,
+          )
+          pages = manifest.get("pages") or []
+          if len(pages) < 32:
+              raise RuntimeError(f"need at least 32 production slices, got {len(pages)}")
+          out = Path("benchmark-results/yolo26-seg-slices")
+          out.mkdir(parents=True, exist_ok=True)
+          rows = []
+          for index, page in enumerate(pages):
+              source = Path(page["original"])
+              target = out / f"{index:04d}{source.suffix.lower()}"
+              shutil.copy2(source, target)
+              rows.append({
+                  "index": index,
+                  "source_page": page.get("source_page"),
+                  "slice_index": page.get("slice_index"),
+                  "file": target.name,
+              })
+          (out / "manifest.json").write_text(
+              json.dumps(rows, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps({"production_slices": len(rows), "benchmark_window": [0, 31]}))
+          PY
+
+      - name: Fetch pinned ShadowB YOLO26s manga segmentation checkpoint
+        run: |
+          mkdir -p benchmark-models
+          python - <<'PY'
+          import hashlib
+          from pathlib import Path
+          import urllib.request
+
+          repo = "ShadowB/Manga109-panel-balloon-text-yolov26-segmentation"
+          url = f"https://huggingface.co/{repo}/resolve/main/best.pt"
+          expected = "0b4376e426fa96af3976afa6a2602421dacf2dec96ef87b4a44f5e8d4971cb6f"
+          path = Path("benchmark-models/yolo26s_manga_best.pt")
+          request = urllib.request.Request(
+              url,
+              headers={"User-Agent": "manga-translator-yolo26-seg-spike/1.0"},
+          )
+          with urllib.request.urlopen(request, timeout=90) as response, path.open("wb") as output:
+              while True:
+                  chunk = response.read(1024 * 1024)
+                  if not chunk:
+                      break
+                  output.write(chunk)
+          actual = hashlib.sha256(path.read_bytes()).hexdigest()
+          if actual != expected:
+              path.unlink(missing_ok=True)
+              raise RuntimeError(f"YOLO26s checkpoint SHA mismatch: {actual}")
+          print({
+              "repo": repo,
+              "path": str(path),
+              "sha256": actual,
+              "bytes": path.stat().st_size,
+          })
+          PY
+
+      - name: Export raw YOLO26s segmentation ONNX at 640 768 and 1024
+        run: |
+          python -m venv /tmp/yolo26-seg-export
+          /tmp/yolo26-seg-export/bin/python -m pip install --upgrade pip
+          /tmp/yolo26-seg-export/bin/python -m pip install \
+            --index-url https://download.pytorch.org/whl/cpu \
+            torch==2.7.1+cpu torchvision==0.22.1+cpu
+          /tmp/yolo26-seg-export/bin/python -m pip install \
+            ultralytics==8.4.117 onnx==1.22.0 onnxslim
+          /tmp/yolo26-seg-export/bin/python - <<'PY'
+          from pathlib import Path
+          import shutil
+          from ultralytics import YOLO
+
+          checkpoint = Path("benchmark-models/yolo26s_manga_best.pt")
+          for size in (640, 768, 1024):
+              model = YOLO(str(checkpoint))
+              exported = Path(model.export(
+                  format="onnx",
+                  imgsz=size,
+                  opset=17,
+                  simplify=True,
+                  dynamic=False,
+                  end2end=False,
+                  device="cpu",
+                  verbose=False,
+              ))
+              target = Path(f"benchmark-models/yolo26s_manga_seg_{size}.onnx")
+              if exported.resolve() != target.resolve():
+                  shutil.move(str(exported), target)
+              if not target.is_file():
+                  raise RuntimeError(f"missing YOLO26s segmentation export: {target}")
+              print({"size": size, "path": str(target), "bytes": target.stat().st_size})
+          PY
+
+      - name: Benchmark shadow segmentation against production authority
+        run: |
+          python scripts/yolo26_segmentation_spike.py \
+            --raw-dir benchmark-results/yolo26-seg-slices \
+            --candidate-dir benchmark-models \
+            --text-class-id 1 \
+            --max-pages 32 \
+            --sizes 640,768,1024 \
+            --thresholds 0.05,0.10,0.20,0.30 \
+            --provider openvino \
+            --output benchmark-results/yolo26-segmentation/report.json
+
+      - name: Publish YOLO26 segmentation decision matrix
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          report = json.loads(
+              Path("benchmark-results/yolo26-segmentation/report.json").read_text()
+          )
+          rows = sorted(
+              report["rows"],
+              key=lambda row: (
+                  -row["pixel_recall"],
+                  -row["pixel_precision"],
+                  -row["center_recall"],
+                  row["candidate_to_baseline_latency"],
+              ),
+          )
+          lines = [
+              "## YOLO26s manga segmentation shadow spike",
+              "",
+              f"- reference: {report['reference']['mean_ms']:.2f} ms/page, "
+              f"boxes={report['reference']['reference_boxes']}, "
+              f"authority_pixels={report['reference']['authority_pixels']}",
+              "- safety: benchmark-only; production model unchanged; destructive authority disabled",
+          ]
+          for size, row in report["candidates"].items():
+              lines.append(
+                  f"- YOLO26s-seg {size}: {row['mean_ms']:.2f} ms/page "
+                  f"({row['mean_ms']/max(1e-9, report['reference']['mean_ms']):.3f}x reference)"
+              )
+          lines.extend([
+              "",
+              "|size|conf|pixel_recall|pixel_precision|pixel_iou|center_recall|candidate_area_ratio|latency_ratio|false_positive_pixels_vs_reference|",
+              "|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+          ])
+          for row in rows:
+              lines.append(
+                  f"|{row['size']}|{row['threshold']:.2f}|"
+                  f"{row['pixel_recall']:.6f}|{row['pixel_precision']:.6f}|"
+                  f"{row['pixel_iou']:.6f}|{row['center_recall']:.6f}|"
+                  f"{row['candidate_area_ratio']:.4f}|"
+                  f"{row['candidate_to_baseline_latency']:.3f}|"
+                  f"{row['false_positive_pixels_vs_reference']}|"
+              )
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as out:
+              out.write("\n".join(lines) + "\n")
+          print("\n".join(lines))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: yolo26-segmentation-${{ github.run_id }}
+          path: |
+            benchmark-results/yolo26-segmentation/
+            benchmark-results/yolo26-seg-slices/manifest.json
+            benchmark-models/yolo26s_manga_seg_640.onnx
+            benchmark-models/yolo26s_manga_seg_768.onnx
+            benchmark-models/yolo26s_manga_seg_1024.onnx
+          retention-days: 7
+          if-no-files-found: warn
