@@ -55,31 +55,62 @@ class ProposalPlanner:
         area_b = max(1, (b[2] - b[0]) * (b[3] - b[1]))
         return inter / float(min(area_a, area_b))
 
-    def plan(
+    def _bounded_axis(
+        self,
+        start: int,
+        end: int,
+        bound: int,
+        pad: int,
+    ) -> tuple[int, int] | None:
+        start = max(0, min(int(start), bound))
+        end = max(start, min(int(end), bound))
+        if end <= start or end - start > self.max_source_side:
+            return None
+        padded_start = max(0, start - int(pad))
+        padded_end = min(bound, end + int(pad))
+        if padded_end - padded_start <= self.max_source_side:
+            return padded_start, padded_end
+
+        target = min(self.max_source_side, bound)
+        center = (start + end) // 2
+        window_start = max(0, min(bound - target, center - target // 2))
+        if window_start > start:
+            window_start = start
+        if window_start + target < end:
+            window_start = end - target
+        window_start = max(0, min(bound - target, window_start))
+        return window_start, window_start + target
+
+    def plan_shape(
         self,
         *,
-        page: PageContext,
+        image_shape: tuple[int, int],
         proposals: list[DetectionEvidence],
     ) -> DetectionPlan:
+        height, width = int(image_shape[0]), int(image_shape[1])
+        if height <= 0 or width <= 0 or not proposals:
+            return DetectionPlan((), (), False, None)
+
+        ranked = sorted(
+            proposals,
+            key=lambda item: (
+                -float(item.confidence),
+                max(1, int(item.width) * int(item.height)),
+                int(item.bbox[1]),
+                int(item.bbox[0]),
+            ),
+        )
         rois: list[tuple[int, int, int, int]] = []
         deferred: list[DetectionEvidence] = []
 
-        ranked = sorted(proposals, key=lambda item: item.confidence, reverse=True)
         for proposal in ranked:
             x1, y1, x2, y2 = proposal.bbox
-            x1 = max(0, x1 - self.pad_x)
-            y1 = max(0, y1 - self.pad_y)
-            x2 = min(page.width, x2 + self.pad_x)
-            y2 = min(page.height, y2 + self.pad_y)
-            candidate = (x1, y1, x2, y2)
-            if (
-                x2 <= x1
-                or y2 <= y1
-                or (x2 - x1) > self.max_source_side
-                or (y2 - y1) > self.max_source_side
-            ):
+            xs = self._bounded_axis(x1, x2, width, self.pad_x)
+            ys = self._bounded_axis(y1, y2, height, self.pad_y)
+            if xs is None or ys is None:
                 deferred.append(proposal)
                 continue
+            candidate = (xs[0], ys[0], xs[1], ys[1])
 
             merged = False
             for index, current in enumerate(rois):
@@ -92,8 +123,8 @@ class ProposalPlanner:
                     max(candidate[3], current[3]),
                 )
                 if (
-                    (union[2] - union[0]) <= self.max_source_side
-                    and (union[3] - union[1]) <= self.max_source_side
+                    union[2] - union[0] <= self.max_source_side
+                    and union[3] - union[1] <= self.max_source_side
                 ):
                     rois[index] = union
                     merged = True
@@ -112,4 +143,15 @@ class ProposalPlanner:
             deferred=tuple(deferred),
             needs_full_page_fallback=needs_fallback,
             reason="proposal_geometry_or_budget" if needs_fallback else None,
+        )
+
+    def plan(
+        self,
+        *,
+        page: PageContext,
+        proposals: list[DetectionEvidence],
+    ) -> DetectionPlan:
+        return self.plan_shape(
+            image_shape=(page.height, page.width),
+            proposals=proposals,
         )

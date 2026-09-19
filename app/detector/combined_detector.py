@@ -13,6 +13,9 @@ from app.config import (
     TEXT_SEGMENTER_RETRY_MODEL,
 )
 from app.detector.bubble_detector import YoloDetector, BubbleBox, MAX_BOX_AREA_RATIO
+from app.detector.evidence import DetectionEvidence, EvidenceKind
+from app.detector.model_adapter import YoloV8Adapter
+from app.detector.proposal_planner import ProposalPlanner
 from app.detector.recovery import SecondaryTextRecovery
 from app.parameters import (
     BUBBLE_DESTRUCTIVE_CONF_THRESHOLD,
@@ -86,6 +89,11 @@ class CombinedTextDetector:
             TEXT_CONF_THRESHOLD,
             model_role="text_segmenter",
         )
+        # Compatibility adapters expose model capability/evidence without
+        # changing the current production execution path. They are the bridge
+        # for progressively moving orchestration out of YoloDetector.
+        self.bubble_adapter = YoloV8Adapter(self.bubble_detector)
+        self.text_adapter = YoloV8Adapter(self.text_detector)
         self.recovery = SecondaryTextRecovery()
         self._residue_text_detector: YoloDetector | None = None
         self._residue_text_detector_resolved = False
@@ -322,110 +330,50 @@ class CombinedTextDetector:
         image_shape: tuple[int, int],
         proposals: list[BubbleBox],
     ) -> tuple[list[tuple[int, int, int, int]], int]:
-        """Bound grayscale retry to compact free-text regions.
+        """Plan the existing bounded retry through the model-agnostic planner.
 
-        The old fallback re-ran the text model over the entire page, which is
-        especially expensive on tall slices because the adaptive detector may
-        execute several windows plus a full-image pass.  These ROIs are recall
-        insurance only: proposals that do not fit the bounded retry remain
-        review-only through the normal detector path.
+        Parameters and ordering intentionally match the previous inline
+        implementation so this refactor is output-neutral.
         """
         h, w = (int(image_shape[0]), int(image_shape[1]))
         if h <= 0 or w <= 0 or not proposals:
             return [], 0
 
-        max_side = max(1, int(DETECTOR_GRAYSCALE_FALLBACK_MAX_SOURCE_SIDE))
-        extra = max(0, len(proposals) - 1) // DETECTOR_GRAYSCALE_FALLBACK_PROPOSALS_PER_EXTRA_ROI
+        extra = (
+            max(0, len(proposals) - 1)
+            // DETECTOR_GRAYSCALE_FALLBACK_PROPOSALS_PER_EXTRA_ROI
+        )
         max_rois = min(
             DETECTOR_GRAYSCALE_FALLBACK_HARD_MAX_ROIS,
             max(1, int(DETECTOR_GRAYSCALE_FALLBACK_MAX_ROIS)) + extra,
         )
-        ranked = sorted(
-            proposals,
-            key=lambda box: (
-                -float(box.confidence),
-                max(1, int(box.x2 - box.x1) * int(box.y2 - box.y1)),
-                int(box.y1),
-                int(box.x1),
+        planner = ProposalPlanner(
+            pad_x=DETECTOR_GRAYSCALE_FALLBACK_PAD_X,
+            pad_y=DETECTOR_GRAYSCALE_FALLBACK_PAD_Y,
+            max_rois=max_rois,
+            max_source_side=max(
+                1,
+                int(DETECTOR_GRAYSCALE_FALLBACK_MAX_SOURCE_SIDE),
             ),
+            merge_overlap=0.70,
         )
-        rois: list[tuple[int, int, int, int]] = []
-        deferred = 0
-
-        def bounded_axis(
-            start: int,
-            end: int,
-            bound: int,
-            pad: int,
-        ) -> tuple[int, int] | None:
-            start = max(0, min(int(start), bound))
-            end = max(start, min(int(end), bound))
-            if end <= start or end - start > max_side:
-                return None
-            padded_start = max(0, start - int(pad))
-            padded_end = min(bound, end + int(pad))
-            if padded_end - padded_start <= max_side:
-                return padded_start, padded_end
-            target = min(max_side, bound)
-            center = (start + end) // 2
-            window_start = max(0, min(bound - target, center - target // 2))
-            if window_start > start:
-                window_start = start
-            if window_start + target < end:
-                window_start = end - target
-            window_start = max(0, min(bound - target, window_start))
-            return window_start, window_start + target
-
-        for proposal in ranked:
-            xs = bounded_axis(
-                proposal.x1,
-                proposal.x2,
-                w,
-                DETECTOR_GRAYSCALE_FALLBACK_PAD_X,
+        evidence = [
+            DetectionEvidence(
+                bbox=(int(box.x1), int(box.y1), int(box.x2), int(box.y2)),
+                confidence=float(box.confidence),
+                semantic=str(box.semantic_type),
+                source=str(box.source_model),
+                evidence_kind=EvidenceKind.BOX,
+                class_id=int(box.class_id),
+                class_name=str(box.class_name),
             )
-            ys = bounded_axis(
-                proposal.y1,
-                proposal.y2,
-                h,
-                DETECTOR_GRAYSCALE_FALLBACK_PAD_Y,
-            )
-            if xs is None or ys is None:
-                deferred += 1
-                continue
-            candidate = (xs[0], ys[0], xs[1], ys[1])
-
-            duplicate = False
-            for index, current in enumerate(rois):
-                ix1, iy1 = max(candidate[0], current[0]), max(candidate[1], current[1])
-                ix2, iy2 = min(candidate[2], current[2]), min(candidate[3], current[3])
-                if ix2 <= ix1 or iy2 <= iy1:
-                    continue
-                inter = (ix2 - ix1) * (iy2 - iy1)
-                candidate_area = max(1, (candidate[2] - candidate[0]) * (candidate[3] - candidate[1]))
-                current_area = max(1, (current[2] - current[0]) * (current[3] - current[1]))
-                if inter / float(min(candidate_area, current_area)) < 0.70:
-                    continue
-                union = (
-                    min(candidate[0], current[0]),
-                    min(candidate[1], current[1]),
-                    max(candidate[2], current[2]),
-                    max(candidate[3], current[3]),
-                )
-                if (
-                    union[2] - union[0] <= max_side
-                    and union[3] - union[1] <= max_side
-                ):
-                    rois[index] = union
-                    duplicate = True
-                    break
-            if duplicate:
-                continue
-            if len(rois) >= max_rois:
-                deferred += 1
-                continue
-            rois.append(candidate)
-
-        return rois, deferred
+            for box in proposals
+        ]
+        plan = planner.plan_shape(
+            image_shape=(h, w),
+            proposals=evidence,
+        )
+        return list(plan.rois), len(plan.deferred)
 
     def _focused_text_retry(
         self,
