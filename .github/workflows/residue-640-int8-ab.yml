@@ -7,7 +7,6 @@ on:
     paths:
       - scripts/quantize_text_segmenter_int8.py
       - tests/test_residue_int8_quantization.py
-      - .github/workflows/residue-640-int8-ab.yml
   workflow_dispatch:
 
 permissions:
@@ -335,7 +334,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: residue-640-int8-\${{ github.run_id }}
+          name: residue-640-int8-${{ github.run_id }}
           path: |
             benchmark-results/residue-int8/
             benchmark-results/residue-int8-calibration-slices/manifest.json
