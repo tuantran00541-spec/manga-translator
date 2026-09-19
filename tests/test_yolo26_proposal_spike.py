@@ -61,8 +61,9 @@ def test_yolo26_workflow_is_pinned_proposal_only_and_non_destructive():
     assert "cp models/yolo26_manga_proposal_1024.onnx models/text_segmenter.onnx" not in text
 
 
-def test_yolo26_export_uses_implicit_raw_one_to_many_default():
+def test_yolo26_export_uses_explicit_non_end2end_raw_head_for_pinned_exporter():
     text = WORKFLOW.read_text(encoding="utf-8")
 
     assert "nms=None" not in text
     assert 'format="onnx"' in text
+    assert "end2end=False" in text
