@@ -15,6 +15,7 @@ from app.parameters import (
     DETECTOR_FOCUS_HARD_MAX_CHIPS,
     DETECTOR_FOCUS_MAX_CHIPS,
     DETECTOR_FOCUS_PROPOSALS_PER_EXTRA_CHIP,
+    DETECTOR_FOCUS_ROI_FIRST_ENABLED,
     DETECTOR_INPUT_SIZE,
     DETECTOR_TALL_IMAGE_FACTOR,
     DETECTOR_WINDOW_OVERLAP,
@@ -306,6 +307,156 @@ def _adaptive_detect(
     ]
 
 
+def _proposal_resolved_by_roi(
+    proposal: BubbleBox,
+    text_boxes: list[BubbleBox],
+) -> bool:
+    """Require verified segmenter evidence before an ROI can close a proposal."""
+    matched = [
+        box
+        for box in _matching_text_boxes(proposal, text_boxes)
+        if box.verified_mask and box.source_role == "text_segmenter"
+    ]
+    if not matched:
+        return False
+    if _proposal_is_free_text(proposal):
+        return True
+    return _proposal_has_full_text(proposal, matched)
+
+
+def _chip_has_internal_boundary_text(
+    chip: tuple[int, int, int, int],
+    boxes: list[BubbleBox],
+    *,
+    page_width: int,
+    page_height: int,
+) -> bool:
+    """Treat text touching an internal ROI edge as incomplete evidence."""
+    x1, y1, x2, y2 = chip
+    width, height = x2 - x1, y2 - y1
+    if width <= 0 or height <= 0:
+        return True
+    boundary = max(
+        4,
+        int(round(min(width, height) * FOCUS_BOUNDARY_RATIO)),
+    )
+    for box in boxes:
+        if (
+            (x1 > 0 and int(box.x1) <= x1 + boundary)
+            or (y1 > 0 and int(box.y1) <= y1 + boundary)
+            or (x2 < page_width and int(box.x2) >= x2 - boundary)
+            or (y2 < page_height and int(box.y2) >= y2 - boundary)
+        ):
+            return True
+    return False
+
+
+def _focus_text_detect_roi_first(
+    detector: YoloDetector,
+    image: np.ndarray,
+    proposals: list[BubbleBox],
+) -> tuple[list[BubbleBox], dict[str, int], list[BubbleBox]]:
+    """Run bounded authority ROIs first and pay for full-frame only on doubt."""
+    h, w = image.shape[:2]
+    extra = (
+        max(0, len(proposals) - 1)
+        // DETECTOR_FOCUS_PROPOSALS_PER_EXTRA_CHIP
+    )
+    adaptive_max_chips = min(
+        DETECTOR_FOCUS_HARD_MAX_CHIPS,
+        FOCUS_MAX_CHIPS + extra,
+    )
+    scale = adaptive_max_chips / float(max(1, FOCUS_MAX_CHIPS))
+    chips, deferred = plan_focus_chips(
+        h,
+        w,
+        proposals,
+        max_chips=adaptive_max_chips,
+        source_pixel_budget=int(round(FOCUS_SOURCE_PIXEL_BUDGET * scale)),
+        tensor_pixel_budget=int(round(FOCUS_TENSOR_PIXEL_BUDGET * scale)),
+        fallback_image=None,
+    )
+
+    roi_raw: list[BubbleBox] = []
+    boundary_ambiguous = False
+    for chip in chips:
+        x1, y1, x2, y2 = chip
+        crop = image[y1:y2, x1:x2]
+        if not crop.size:
+            continue
+        chip_boxes = detector._detect_single_plain(crop, x1, y1)
+        roi_raw.extend(chip_boxes)
+        if _chip_has_internal_boundary_text(
+            chip,
+            chip_boxes,
+            page_width=w,
+            page_height=h,
+        ):
+            boundary_ambiguous = True
+
+    roi_nms = detector._nms_boxes(roi_raw)
+    roi_semantic = [
+        detector._with_semantics(box)
+        for box in detector._filter_invalid(roi_nms, w, h)
+    ]
+    unresolved = [
+        proposal
+        for proposal in proposals
+        if not _proposal_resolved_by_roi(proposal, roi_semantic)
+    ]
+
+    fallback_no_proposals = not proposals
+    fallback_deferred = bool(deferred)
+    fallback_unresolved = bool(unresolved)
+    needs_full_page = bool(
+        fallback_no_proposals
+        or fallback_deferred
+        or fallback_unresolved
+        or boundary_ambiguous
+    )
+
+    all_raw = list(roi_raw)
+    if needs_full_page:
+        all_raw.extend(detector._detect_single_plain(image, 0, 0))
+
+    boxes = detector._nms_boxes(all_raw)
+    result = [
+        detector._with_semantics(box)
+        for box in detector._filter_invalid(boxes, w, h)
+    ]
+    deferred_boxes = [
+        BubbleBox(
+            x1, y1, x2, y2, 0.0, None,
+            source_model="adaptive_scheduler", class_name="focus_deferred",
+            semantic_type="review_region", mask_source="none",
+            safe_to_inpaint=False, ocr_eligible=False, needs_review=True,
+            source_role="scheduler", deferred_reason="focus_budget_exhausted",
+        )
+        for x1, y1, x2, y2 in deferred
+    ]
+    return result, {
+        "focus_roi_first_page": 1,
+        "focus_proposals": len(proposals),
+        "focus_uncovered_proposals": len(unresolved),
+        "focus_chip_calls": len(chips),
+        "focus_source_pixels": sum(
+            (x2 - x1) * (y2 - y1)
+            for x1, y1, x2, y2 in chips
+        ),
+        "focus_tensor_pixels": (
+            len(chips) * DETECTOR_INPUT_SIZE * DETECTOR_INPUT_SIZE
+        ),
+        "focus_deferred_regions": len(deferred_boxes),
+        "focus_fallback_calls": 0,
+        "focus_full_page_calls": int(needs_full_page),
+        "focus_full_page_skipped": int(not needs_full_page),
+        "focus_fallback_no_proposals": int(fallback_no_proposals),
+        "focus_fallback_deferred": int(fallback_deferred),
+        "focus_fallback_unresolved": int(fallback_unresolved),
+        "focus_fallback_boundary": int(boundary_ambiguous),
+    }, deferred_boxes
+
+
 def _focus_text_detect(
     detector: YoloDetector,
     image: np.ndarray,
@@ -317,11 +468,20 @@ def _focus_text_detect(
         boxes = detector._detect_single(image, 0, 0)
         result = [detector._with_semantics(box) for box in detector._filter_invalid(boxes, w, h)]
         return result, {
+            "focus_roi_first_page": 0,
             "focus_proposals": len(proposals), "focus_uncovered_proposals": 0,
             "focus_chip_calls": 0, "focus_source_pixels": 0,
             "focus_tensor_pixels": 0, "focus_deferred_regions": 0,
-            "focus_fallback_calls": 0,
+            "focus_fallback_calls": 0, "focus_full_page_calls": 1,
+            "focus_full_page_skipped": 0,
+            "focus_fallback_no_proposals": 0,
+            "focus_fallback_deferred": 0,
+            "focus_fallback_unresolved": 0,
+            "focus_fallback_boundary": 0,
         }, []
+
+    if DETECTOR_FOCUS_ROI_FIRST_ENABLED:
+        return _focus_text_detect_roi_first(detector, image, proposals)
 
     full_boxes = detector._detect_single_plain(image, 0, 0)
     uncovered = [proposal for proposal in proposals if not _proposal_has_full_text(proposal, full_boxes)]
@@ -359,6 +519,7 @@ def _focus_text_detect(
         for x1, y1, x2, y2 in deferred
     ]
     return result, {
+        "focus_roi_first_page": 0,
         "focus_proposals": len(proposals),
         "focus_uncovered_proposals": len(uncovered),
         "focus_chip_calls": len(chips),
@@ -366,6 +527,12 @@ def _focus_text_detect(
         "focus_tensor_pixels": len(chips) * DETECTOR_INPUT_SIZE * DETECTOR_INPUT_SIZE,
         "focus_deferred_regions": len(deferred_boxes),
         "focus_fallback_calls": int(bool(fallback_image is not None and chips)),
+        "focus_full_page_calls": 1,
+        "focus_full_page_skipped": 0,
+        "focus_fallback_no_proposals": 0,
+        "focus_fallback_deferred": 0,
+        "focus_fallback_unresolved": 0,
+        "focus_fallback_boundary": 0,
     }, deferred_boxes
 
 

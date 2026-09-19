@@ -75,3 +75,116 @@ def test_full_width_segmenter_without_verified_mask_stays_review_only():
     assert result[0].ocr_eligible is True
     assert result[0].needs_review is True
     assert "box_width_limit" in str(result[0].deferred_reason)
+
+
+def test_roi_first_focus_skips_full_page_when_verified_roi_resolves_proposal():
+    from dataclasses import replace
+
+    from app.detector.adaptive_focus_detector import _focus_text_detect_roi_first
+
+    image = np.zeros((1800, 900, 3), dtype=np.uint8)
+    proposal = BubbleBox(
+        200, 500, 400, 760, 0.9, None,
+        semantic_type="speech_bubble",
+        source_model="bubble_yolo.onnx",
+        source_role="bubble_detector",
+    )
+
+    class Detector:
+        model_role = "text_segmenter"
+
+        def __init__(self):
+            self.calls = []
+
+        def _detect_single_plain(self, crop, offset_x, offset_y):
+            self.calls.append((crop.shape[:2], offset_x, offset_y))
+            mask = np.full((80, 100), 255, dtype=np.uint8)
+            return [
+                BubbleBox(
+                    250, 580, 350, 660, 0.95, mask,
+                    source_model="text_segmenter.onnx",
+                    class_name="text_comic",
+                    semantic_type="text",
+                    source_role="text_segmenter",
+                )
+            ]
+
+        @staticmethod
+        def _nms_boxes(boxes):
+            return list(boxes)
+
+        @staticmethod
+        def _filter_invalid(boxes, _w, _h):
+            return list(boxes)
+
+        @staticmethod
+        def _with_semantics(box):
+            return replace(
+                box,
+                mask_source="text_segmenter",
+                safe_to_inpaint=box.verified_mask,
+                ocr_eligible=box.verified_mask,
+                needs_review=not box.verified_mask,
+            )
+
+    detector = Detector()
+    _boxes, metrics, deferred = _focus_text_detect_roi_first(
+        detector,
+        image,
+        [proposal],
+    )
+
+    assert deferred == []
+    assert metrics["focus_roi_first_page"] == 1
+    assert metrics["focus_full_page_calls"] == 0
+    assert metrics["focus_full_page_skipped"] == 1
+    assert len(detector.calls) == metrics["focus_chip_calls"]
+    assert all(shape != image.shape[:2] for shape, _x, _y in detector.calls)
+
+
+def test_roi_first_focus_falls_back_when_proposal_is_unresolved():
+    from app.detector.adaptive_focus_detector import _focus_text_detect_roi_first
+
+    image = np.zeros((1800, 900, 3), dtype=np.uint8)
+    proposal = BubbleBox(
+        200, 500, 400, 760, 0.9, None,
+        semantic_type="free_text",
+        source_model="opencv_mser",
+        source_role="recovery",
+    )
+
+    class Detector:
+        model_role = "text_segmenter"
+
+        def __init__(self):
+            self.calls = []
+
+        def _detect_single_plain(self, crop, offset_x, offset_y):
+            self.calls.append((crop.shape[:2], offset_x, offset_y))
+            return []
+
+        @staticmethod
+        def _nms_boxes(boxes):
+            return list(boxes)
+
+        @staticmethod
+        def _filter_invalid(boxes, _w, _h):
+            return list(boxes)
+
+        @staticmethod
+        def _with_semantics(box):
+            return box
+
+    detector = Detector()
+    _boxes, metrics, _deferred = _focus_text_detect_roi_first(
+        detector,
+        image,
+        [proposal],
+    )
+
+    assert metrics["focus_full_page_calls"] == 1
+    assert metrics["focus_fallback_unresolved"] == 1
+    assert any(
+        shape == image.shape[:2] and x == 0 and y == 0
+        for shape, x, y in detector.calls
+    )
