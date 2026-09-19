@@ -86,6 +86,24 @@ def center_recall(
     return _center_hits(references, proposals, pad=pad) / float(len(references))
 
 
+def proposal_stack_mean_ms(
+    source_stack: str,
+    *,
+    candidate_mean_ms: float,
+    bubble_mean_ms: float,
+    mser_mean_ms: float,
+) -> float:
+    sources = {item.strip() for item in source_stack.split("+") if item.strip()}
+    total = 0.0
+    if "yolo26" in sources:
+        total += float(candidate_mean_ms)
+    if "bubble" in sources:
+        total += float(bubble_mean_ms)
+    if "mser" in sources:
+        total += float(mser_mean_ms)
+    return total
+
+
 def merge_proposal_sets(
     *proposal_sets: list[tuple[int, int, int, int]],
 ) -> list[tuple[int, int, int, int]]:
@@ -226,7 +244,7 @@ def run(args) -> dict:
     total_authority_pixels = 0
     total_reference_boxes = 0
     total_page_pixels = 0
-    source_stacks = ("yolo26", "yolo26+mser", "bubble+yolo26", "bubble+yolo26+mser")
+    source_stacks = ("mser", "yolo26", "yolo26+mser", "bubble+yolo26", "bubble+yolo26+mser")
     aggregates = {
         (source_stack, size, threshold, pad): {
             "covered_authority_pixels": 0,
@@ -299,6 +317,7 @@ def run(args) -> dict:
                 ]
                 yolo26_geometry = _boxes(selected)
                 stack_geometry = {
+                    "mser": mser_geometry,
                     "yolo26": yolo26_geometry,
                     "yolo26+mser": merge_proposal_sets(
                         yolo26_geometry,
@@ -362,11 +381,12 @@ def run(args) -> dict:
             else 0.0
         )
         candidate_mean_ms = candidate_ms[size] / page_count
-        stack_mean_ms = candidate_mean_ms
-        if "bubble" in source_stack:
-            stack_mean_ms += bubble_mean_ms
-        if "mser" in source_stack:
-            stack_mean_ms += mser_mean_ms
+        stack_mean_ms = proposal_stack_mean_ms(
+            source_stack,
+            candidate_mean_ms=candidate_mean_ms,
+            bubble_mean_ms=bubble_mean_ms,
+            mser_mean_ms=mser_mean_ms,
+        )
         rows.append({
             "source_stack": source_stack,
             "size": size,
