@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 from pathlib import Path
+import subprocess
+import sys
 
 import numpy as np
 
@@ -41,6 +44,38 @@ def test_center_recall_uses_padded_proposal_geometry():
 
     assert spike.center_recall(references, proposals, pad=0) == 0.5
     assert spike.center_recall(references, proposals, pad=1) == 1.0
+
+
+def test_direct_script_execution_bootstraps_repo_imports(tmp_path):
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    env = os.environ.copy()
+    env.pop("PYTHONPATH", None)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPT),
+            "--raw-dir",
+            str(empty),
+            "--candidate-640",
+            str(tmp_path / "missing-640.onnx"),
+            "--candidate-1024",
+            str(tmp_path / "missing-1024.onnx"),
+            "--output",
+            str(tmp_path / "report.json"),
+        ],
+        cwd=tmp_path,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    combined = result.stdout + result.stderr
+
+    assert result.returncode != 0
+    assert "No module named 'app'" not in combined
+    assert "No benchmark images" in combined
 
 
 def test_yolo26_workflow_is_pinned_proposal_only_and_non_destructive():
