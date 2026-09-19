@@ -66,9 +66,21 @@ def test_shadow_yolo26s_workflow_is_pinned_and_benchmark_only():
 
 
 def test_shadow_yolo26s_spike_reuses_production_mask_decoder_without_relaxing_contracts():
+    spike = _load_spike()
     text = SCRIPT.read_text(encoding="utf-8")
+    seen = {}
 
+    class Decoder:
+        def detect(self, image):
+            seen["image"] = image
+            return ["decoded"]
+
+    detector = object.__new__(spike.BenchmarkSegmentationDetector)
+    detector._decoder = Decoder()
+    image = np.zeros((2, 3, 3), dtype=np.uint8)
+
+    assert detector.detect(image) == ["decoded"]
+    assert seen["image"] is image
     assert "YoloDetector" in text
-    assert "_detect_single_plain" in text
     assert "SimpleNamespace" in text
     assert "validate_detector_session" not in text
