@@ -69,3 +69,10 @@ def test_int8_workflow_is_retry_only_and_has_hard_parity_gate():
     assert "outside authority" in text.lower()
     assert "models/bubble_yolo.onnx" not in text
     assert "cp models/text_segmenter_640_int8.onnx models/text_segmenter.onnx" not in text
+
+
+def test_int8_artifact_name_does_not_escape_github_expression():
+    text = WORKFLOW.read_text(encoding="utf-8")
+
+    assert "\\${{ github.run_id }}" not in text
+    assert "name: residue-640-int8-${{ github.run_id }}" in text
