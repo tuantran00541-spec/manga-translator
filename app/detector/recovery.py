@@ -87,6 +87,56 @@ class SecondaryTextRecovery:
         return inter / float(aa + bb - inter)
 
     @staticmethod
+    def _cluster_rects(
+        rects: list[tuple[int, int, int, int]],
+    ) -> list[list[tuple[int, int, int, int]]]:
+        """Cluster MSER rectangles with the historical grow-by-pass semantics.
+
+        The previous implementation scanned every remaining rectangle in Python
+        for every growth pass. This keeps the same seed order, fixed cluster bbox
+        per pass, and stable remaining order while evaluating near-x/near-y in
+        NumPy.
+        """
+        if not rects:
+            return []
+
+        remaining = np.asarray(rects, dtype=np.int32).reshape(-1, 4)
+        clusters: list[list[tuple[int, int, int, int]]] = []
+        while len(remaining):
+            seed = tuple(int(value) for value in remaining[-1])
+            cluster = [seed]
+            remaining = remaining[:-1]
+
+            while len(remaining):
+                cluster_arr = np.asarray(cluster, dtype=np.int32)
+                cx1 = int(cluster_arr[:, 0].min())
+                cy1 = int(cluster_arr[:, 1].min())
+                cx2 = int(cluster_arr[:, 2].max())
+                cy2 = int(cluster_arr[:, 3].max())
+                ch = max(8, cy2 - cy1)
+
+                near_x = ~(
+                    (remaining[:, 0] > cx2 + ch * MSER_CLUSTER_NEAR_X_FACTOR)
+                    | (remaining[:, 2] < cx1 - ch * MSER_CLUSTER_NEAR_X_FACTOR)
+                )
+                near_y = ~(
+                    (remaining[:, 1] > cy2 + ch * MSER_CLUSTER_NEAR_Y_FACTOR)
+                    | (remaining[:, 3] < cy1 - ch * MSER_CLUSTER_NEAR_Y_FACTOR)
+                )
+                take = near_x & near_y
+                if not bool(np.any(take)):
+                    break
+
+                cluster.extend(
+                    tuple(int(value) for value in row)
+                    for row in remaining[take]
+                )
+                remaining = remaining[~take]
+
+            clusters.append(cluster)
+        return clusters
+
+    @staticmethod
     def _seed_mask(gray_crop: np.ndarray) -> np.ndarray:
         if gray_crop.size == 0:
             return np.zeros_like(gray_crop, dtype=np.uint8)
@@ -385,36 +435,7 @@ class SecondaryTextRecovery:
                 continue
             rects.append((x, y, x + bw, y + bh))
 
-        remaining = rects[:]
-        clusters: list[list[tuple[int, int, int, int]]] = []
-        while remaining:
-            cluster = [remaining.pop()]
-            changed = True
-            while changed:
-                changed = False
-                keep = []
-                cx1 = min(r[0] for r in cluster)
-                cy1 = min(r[1] for r in cluster)
-                cx2 = max(r[2] for r in cluster)
-                cy2 = max(r[3] for r in cluster)
-                ch = max(8, cy2 - cy1)
-                for r in remaining:
-                    rx1, ry1, rx2, ry2 = r
-                    near_x = not (
-                        rx1 > cx2 + ch * MSER_CLUSTER_NEAR_X_FACTOR
-                        or rx2 < cx1 - ch * MSER_CLUSTER_NEAR_X_FACTOR
-                    )
-                    near_y = not (
-                        ry1 > cy2 + ch * MSER_CLUSTER_NEAR_Y_FACTOR
-                        or ry2 < cy1 - ch * MSER_CLUSTER_NEAR_Y_FACTOR
-                    )
-                    if near_x and near_y:
-                        cluster.append(r)
-                        changed = True
-                    else:
-                        keep.append(r)
-                remaining = keep
-            clusters.append(cluster)
+        clusters = self._cluster_rects(rects)
 
         base: list[tuple[BubbleBox, float]] = []
         for cluster in clusters:
