@@ -131,3 +131,32 @@ def test_yolo26_spike_benchmarks_bubble_free_yolo26_mser_stack():
     script = SCRIPT.read_text(encoding="utf-8")
 
     assert '"yolo26+mser"' in script
+
+
+def test_proposal_stack_latency_only_charges_sources_in_stack():
+    spike = _load_spike()
+
+    assert spike.proposal_stack_mean_ms(
+        "mser",
+        candidate_mean_ms=10.0,
+        bubble_mean_ms=20.0,
+        mser_mean_ms=3.0,
+    ) == 3.0
+    assert spike.proposal_stack_mean_ms(
+        "yolo26+mser",
+        candidate_mean_ms=10.0,
+        bubble_mean_ms=20.0,
+        mser_mean_ms=3.0,
+    ) == 13.0
+    assert spike.proposal_stack_mean_ms(
+        "bubble+yolo26+mser",
+        candidate_mean_ms=10.0,
+        bubble_mean_ms=20.0,
+        mser_mean_ms=3.0,
+    ) == 33.0
+
+
+def test_yolo26_spike_reports_mser_only_counterfactual():
+    script = SCRIPT.read_text(encoding="utf-8")
+
+    assert '"mser": mser_geometry' in script
