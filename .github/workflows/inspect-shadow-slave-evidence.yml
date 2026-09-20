@@ -1,0 +1,105 @@
+name: Inspect Shadow Slave hybrid evidence
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["experiment/one-shot-cleanup"]
+    paths:
+      - .github/workflows/inspect-shadow-slave-evidence.yml
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download completed chapter artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: shadow-slave-ch1-hybrid-only
+          path: evidence
+          github-token: ${{ github.token }}
+          repository: tuantran00541-spec/manga-translator
+          run-id: 35505363725
+
+      - name: Build lightweight contact sheets
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from PIL import Image, ImageOps, ImageDraw
+          import json
+
+          root = Path("evidence")
+          hybrid = root / "hybrid"
+          report = json.loads((root / "hybrid.json").read_text())
+          pages = report["pages"]
+
+          # Full-resolution evidence is intentionally saved every 10 slices.
+          indices = []
+          for row in pages:
+              idx = int(row["index"])
+              if (hybrid / f"{idx:02d}-original.png").exists() and (hybrid / f"{idx:02d}-clean.png").exists():
+                  indices.append(idx)
+
+          def thumb(path, size=(320, 520)):
+              im = Image.open(path).convert("RGB")
+              im.thumbnail(size)
+              canvas = Image.new("RGB", size, "white")
+              x = (size[0] - im.width) // 2
+              y = (size[1] - im.height) // 2
+              canvas.paste(im, (x, y))
+              return canvas
+
+          out = Path("inspection")
+          out.mkdir(exist_ok=True)
+
+          tiles = []
+          for idx in indices:
+              orig = thumb(hybrid / f"{idx:02d}-original.png")
+              clean = thumb(hybrid / f"{idx:02d}-clean.png")
+              mask = thumb(hybrid / f"{idx:02d}-mask.png")
+              row = Image.new("RGB", (960, 560), "white")
+              row.paste(orig, (0, 40))
+              row.paste(clean, (320, 40))
+              row.paste(mask, (640, 40))
+              d = ImageDraw.Draw(row)
+              d.text((8, 10), f"slice {idx:03d} | original", fill="black")
+              d.text((328, 10), "clean", fill="black")
+              d.text((648, 10), "mask", fill="black")
+              row.save(out / f"slice-{idx:03d}.jpg", quality=88)
+              tiles.append(row)
+
+          if not tiles:
+              raise RuntimeError("No sparse original/clean evidence found")
+
+          # Split sheets so each image stays modest in size.
+          per_sheet = 5
+          for start in range(0, len(tiles), per_sheet):
+              batch = tiles[start:start+per_sheet]
+              sheet = Image.new("RGB", (960, 560 * len(batch)), "white")
+              for j, tile in enumerate(batch):
+                  sheet.paste(tile, (0, 560*j))
+              sheet.save(out / f"contact-{start//per_sheet:02d}.jpg", quality=88)
+
+          # Also rank slices by LaMa usage and wall time, so review can target hard cases.
+          ranked = sorted(
+              pages,
+              key=lambda r: (int(r.get("lama_model_runs", 0)), float(r.get("wall_ms", 0))),
+              reverse=True,
+          )
+          (out / "hardest.json").write_text(
+              json.dumps(ranked[:30], indent=2) + "\n"
+          )
+          print("evidence_indices", indices)
+          print("contact_sheets", len(list(out.glob("contact-*.jpg"))))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: shadow-slave-ch1-visual-inspection
+          path: inspection/
+          retention-days: 7
