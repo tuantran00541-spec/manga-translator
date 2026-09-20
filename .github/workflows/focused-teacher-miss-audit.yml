@@ -1,0 +1,103 @@
+name: Focused teacher-miss audit
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["experiment/one-shot-cleanup"]
+    paths:
+      - .github/workflows/focused-teacher-miss-audit.yml
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install OCR
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq tesseract-ocr
+          python -m pip install Pillow==10.4.0 opencv-python-headless==4.10.0.84 pytesseract==0.3.13 numpy==1.26.4
+      - name: Download complete hybrid artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: shadow-slave-ch1-hybrid-only
+          path: hybrid
+          github-token: ${{ github.token }}
+          repository: tuantran00541-spec/manga-translator
+          run-id: 35505363725
+      - name: OCR exact teacher-only regions
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import cv2, json, re
+          import pytesseract
+          from pytesseract import Output
+
+          slices=Path("hybrid/slices")
+          cases={
+            0:  {"file":"000_00.png","bbox":None},
+            22: {"file":"005_01.png","bbox":[1173,0,396,158]},
+            33: {"file":"010_01.png","bbox":[565,961,620,385]},
+            35: {"file":"011_00.png","bbox":[1262,1509,56,274]},
+            37: {"file":"011_02.png","bbox":[611,235,257,244]},
+            86: {"file":"026_01.png","bbox":[1323,2343,236,74]},
+            94: {"file":"029_01.png","bbox":[460,1619,68,22]},
+          }
+
+          def tokens(img, psm):
+              d=pytesseract.image_to_data(img,config=f"--oem 1 --psm {psm}",output_type=Output.DICT)
+              out=[]
+              for i,t in enumerate(d["text"]):
+                  s=str(t).strip()
+                  if not s: continue
+                  try: conf=float(d["conf"][i])
+                  except: conf=-1
+                  if conf>=15:
+                      out.append({"text":s,"conf":round(conf,1)})
+              return out
+
+          result={}
+          outdir=Path("focused-crops");outdir.mkdir(exist_ok=True)
+          for idx,c in cases.items():
+              img=cv2.imread(str(slices/c["file"]))
+              if img is None: raise RuntimeError(c["file"])
+              if c["bbox"]:
+                  x,y,w,h=c["bbox"]
+                  pad=25
+                  x0=max(0,x-pad);y0=max(0,y-pad)
+                  x1=min(img.shape[1],x+w+pad);y1=min(img.shape[0],y+h+pad)
+                  crop=img[y0:y1,x0:x1]
+              else:
+                  crop=img
+              # upscale small teacher-only regions; slice 0 stays bounded.
+              h,w=crop.shape[:2]
+              scale=min(3.0,max(1.0,1200.0/max(1,w)))
+              work=cv2.resize(crop,None,fx=scale,fy=scale,interpolation=cv2.INTER_CUBIC)
+              gray=cv2.cvtColor(work,cv2.COLOR_BGR2GRAY)
+              _,otsu=cv2.threshold(gray,0,255,cv2.THRESH_BINARY+cv2.THRESH_OTSU)
+              variants={"color":work,"gray":gray,"otsu":otsu,"invert":255-otsu}
+              scans=[]
+              for vname,v in variants.items():
+                  for psm in (6,11,12):
+                      ts=tokens(v,psm)
+                      if ts:
+                          scans.append({"variant":vname,"psm":psm,"tokens":ts})
+              cv2.imwrite(str(outdir/f"{idx:03d}.png"),crop)
+              result[str(idx)]={"file":c["file"],"bbox":c["bbox"],"scans":scans}
+              print(json.dumps({str(idx):result[str(idx)]}),flush=True)
+          Path("focused-teacher-miss-ocr.json").write_text(json.dumps(result,indent=2)+"\n")
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: focused-teacher-miss-audit
+          path: |
+            focused-teacher-miss-ocr.json
+            focused-crops/
+          retention-days: 7
