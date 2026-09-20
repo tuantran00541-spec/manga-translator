@@ -22,25 +22,6 @@
     return new Map([...groups.entries()].sort((a, b) => a[0] - b[0]));
   }
 
-  function updateAIStatus(source, target) {
-    if (!target) return;
-    const raw = source?.textContent || "";
-    target.classList.toggle("ready", /sẵn sàng/i.test(raw));
-    if (/sẵn sàng/i.test(raw)) target.textContent = raw.replace(/^(?:Gemini QC|Kiểm tra AI):\s*/i, "AI ");
-    else if (/chưa (?:có key|cấu hình)/i.test(raw)) target.textContent = "AI chưa cấu hình";
-    else if (/(?:secure storage|kho bí mật)/i.test(raw)) target.textContent = "Kho bí mật chưa sẵn sàng";
-    else if (/lỗi cấu hình/i.test(raw)) target.textContent = "Lỗi cấu hình AI";
-    else target.textContent = "Đang kiểm tra cấu hình AI…";
-  }
-
-  function bindAIStatus(source, target) {
-    updateAIStatus(source, target);
-    if (!source) return null;
-    const observer = new MutationObserver(() => updateAIStatus(source, target));
-    observer.observe(source, { childList: true, characterData: true, subtree: true, attributes: true });
-    return () => observer.disconnect();
-  }
-
   function createAIProviderSettings() {
     if (aiSettingsInstance?.config?.isConnected) return aiSettingsInstance.status;
 
