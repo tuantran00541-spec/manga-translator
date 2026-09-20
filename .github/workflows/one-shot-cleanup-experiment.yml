@@ -1,4 +1,4 @@
-name: Shadow Slave Ch1 dumb-detector benchmark
+name: Shadow Slave Ch1 hybrid-only benchmark
 
 on:
   workflow_dispatch:
@@ -20,7 +20,7 @@ concurrency:
 jobs:
   benchmark:
     runs-on: ubuntu-22.04
-    timeout-minutes: 90
+    timeout-minutes: 45
     env:
       PYTHONUNBUFFERED: "1"
       CHAPTER_URL: "https://asurascans.com/comics/shadow-slave-6f7fe6eb/chapter/1"
@@ -88,33 +88,26 @@ jobs:
 
           chapter_url = os.environ["CHAPTER_URL"]
           raw_dir = Path(os.environ["RAW_DIR"])
+          result_dir = Path(os.environ["RESULT_DIR"])
           raw_dir.mkdir(parents=True, exist_ok=True)
+          result_dir.mkdir(parents=True, exist_ok=True)
+
           paths = download_chapter(chapter_url, raw_dir)
           if len(paths) < 4:
               raise RuntimeError(
                   f"Expected a full chapter, downloaded only {len(paths)} images"
               )
+
           manifest = {
               "chapter_url": chapter_url,
               "downloaded_images": len(paths),
               "files": [path.name for path in paths],
           }
-          (Path(os.environ["RESULT_DIR"]) / "chapter-source.json").write_text(
+          (result_dir / "chapter-source.json").write_text(
               json.dumps(manifest, indent=2) + "\n"
           )
           print(json.dumps(manifest), flush=True)
           PY
-
-      - name: Benchmark current cleanup on full chapter
-        run: |
-          python scripts/benchmark_one_shot_cleanup.py \
-            --mode current \
-            --raw-dir "$RAW_DIR" \
-            --slice-dir "$SLICE_DIR" \
-            --limit 0 \
-            --evidence-stride 10 \
-            --output "$RESULT_DIR/current.json" \
-            --evidence-dir "$RESULT_DIR/current"
 
       - name: Benchmark dumb detector with normal inpaint on full chapter
         run: |
@@ -127,121 +120,90 @@ jobs:
             --output "$RESULT_DIR/hybrid.json" \
             --evidence-dir "$RESULT_DIR/hybrid"
 
-      - name: Compare full chapter
+      - name: Summarize full chapter hybrid
         run: |
           python - <<'PY'
           import json
           import os
           from pathlib import Path
 
-          import cv2
-          import numpy as np
-
           root = Path(os.environ["RESULT_DIR"])
-          current = json.loads((root / "current.json").read_text())
           hybrid = json.loads((root / "hybrid.json").read_text())
 
-          if current["files"] != hybrid["files"]:
-              raise RuntimeError("Current and hybrid did not benchmark identical slices")
+          pages = hybrid["pages"]
+          slice_count = int(hybrid["sample_count"])
+          wall_ms = float(hybrid["sum_page_wall_ms"])
+          detector_ms = float(hybrid["sum_detector_ms"])
+          inpaint_ms = float(hybrid["sum_inpaint_ms"])
+          detector_calls = int(hybrid["detector_forward_calls"])
+          lama_runs = int(hybrid["lama_model_runs"])
+          smart_fill_regions = sum(
+              int(row.get("smart_fill_regions", 0)) for row in pages
+          )
+          bubble_fast_fill_regions = sum(
+              int(row.get("bubble_fast_fill_regions", 0)) for row in pages
+          )
+          clusters = sum(int(row.get("clusters", 0)) for row in pages)
+          outside = int(hybrid["outside_mask_changed"])
 
-          intersection = 0
-          current_pixels = 0
-          hybrid_pixels = 0
-          per_page = []
-          for row in current["pages"]:
-              index = int(row["index"])
-              current_mask = cv2.imread(
-                  str(root / "current" / f"{index:02d}-mask.png"),
-                  cv2.IMREAD_GRAYSCALE,
-              )
-              hybrid_mask = cv2.imread(
-                  str(root / "hybrid" / f"{index:02d}-mask.png"),
-                  cv2.IMREAD_GRAYSCALE,
-              )
-              if current_mask is None or hybrid_mask is None:
-                  raise RuntimeError(f"Missing evidence mask for slice {index}")
-              a = current_mask > 127
-              b = hybrid_mask > 127
-              inter = int(np.count_nonzero(a & b))
-              a_pixels = int(np.count_nonzero(a))
-              b_pixels = int(np.count_nonzero(b))
-              intersection += inter
-              current_pixels += a_pixels
-              hybrid_pixels += b_pixels
-              per_page.append({
-                  "index": index,
-                  "current_pixels": a_pixels,
-                  "hybrid_pixels": b_pixels,
-                  "intersection": inter,
-                  "hybrid_coverage_of_current": inter / max(1, a_pixels),
-              })
-
-          current_ms = float(current["sum_page_wall_ms"])
-          hybrid_ms = float(hybrid["sum_page_wall_ms"])
-          comparison = {
+          summary = {
               "chapter_url": os.environ["CHAPTER_URL"],
-              "slice_count": int(hybrid["sample_count"]),
-              "current_ms": round(current_ms, 3),
-              "hybrid_ms": round(hybrid_ms, 3),
-              "speedup_x": round(current_ms / max(1e-9, hybrid_ms), 3),
-              "current_detector_ms": current["sum_detector_ms"],
-              "hybrid_detector_ms": hybrid["sum_detector_ms"],
-              "current_inpaint_ms": current["sum_inpaint_ms"],
-              "hybrid_inpaint_ms": hybrid["sum_inpaint_ms"],
-              "current_detector_forward_calls": current["detector_forward_calls"],
-              "hybrid_detector_forward_calls": hybrid["detector_forward_calls"],
-              "current_lama_model_runs": current["lama_model_runs"],
-              "hybrid_lama_model_runs": hybrid["lama_model_runs"],
-              "current_mask_pixels": current_pixels,
-              "hybrid_mask_pixels": hybrid_pixels,
-              "intersection_pixels": intersection,
-              "hybrid_coverage_of_current_mask": round(
-                  intersection / max(1, current_pixels), 5
+              "slice_count": slice_count,
+              "wall_ms": round(wall_ms, 3),
+              "wall_seconds": round(wall_ms / 1000.0, 3),
+              "seconds_per_slice": round(wall_ms / max(1, slice_count) / 1000.0, 3),
+              "slices_per_minute": round(
+                  slice_count / max(1e-9, wall_ms / 60000.0), 3
               ),
-              "current_coverage_of_hybrid_mask": round(
-                  intersection / max(1, hybrid_pixels), 5
-              ),
-              "hybrid_outside_mask_changed": hybrid["outside_mask_changed"],
-              "worst_mask_coverage_slices": sorted(
-                  per_page,
-                  key=lambda row: row["hybrid_coverage_of_current"],
-              )[:10],
+              "detector_ms": round(detector_ms, 3),
+              "inpaint_ms": round(inpaint_ms, 3),
+              "detector_forward_calls": detector_calls,
+              "expected_one_forward_per_slice": detector_calls == slice_count,
+              "lama_model_runs": lama_runs,
+              "smart_fill_regions": smart_fill_regions,
+              "bubble_fast_fill_regions": bubble_fast_fill_regions,
+              "clusters": clusters,
+              "mask_pixels": int(hybrid["mask_pixels"]),
+              "changed_pixels": int(hybrid["changed_pixels"]),
+              "outside_mask_changed": outside,
           }
-          (root / "comparison.json").write_text(
-              json.dumps(comparison, indent=2) + "\n"
+          (root / "hybrid-summary.json").write_text(
+              json.dumps(summary, indent=2) + "\n"
           )
 
+          if detector_calls != slice_count:
+              raise RuntimeError(
+                  f"Expected exactly one detector forward per slice: "
+                  f"{detector_calls} calls / {slice_count} slices"
+              )
+          if outside:
+              raise RuntimeError(
+                  f"Hybrid changed {outside} pixels outside detector authority"
+              )
+
           lines = [
-              "## Shadow Slave Chapter 1 — dumb detector + normal inpaint",
+              "## Shadow Slave Chapter 1 — hybrid only",
               "",
-              f"**Slices:** {comparison['slice_count']}",
-              "",
-              "| Metric | Current core | Hybrid |",
-              "|---|---:|---:|",
-              f"| Wall time | {current_ms/1000:.2f}s | {hybrid_ms/1000:.2f}s |",
-              f"| Detector time | {current['sum_detector_ms']/1000:.2f}s | {hybrid['sum_detector_ms']/1000:.2f}s |",
-              f"| Inpaint time | {current['sum_inpaint_ms']/1000:.2f}s | {hybrid['sum_inpaint_ms']/1000:.2f}s |",
-              f"| Detector forwards | {current['detector_forward_calls']} | {hybrid['detector_forward_calls']} |",
-              f"| LaMa forwards | {current['lama_model_runs']} | {hybrid['lama_model_runs']} |",
-              "",
-              f"**Hybrid speed ratio:** {comparison['speedup_x']:.2f}×",
-              "",
-              f"Hybrid mask covers **{comparison['hybrid_coverage_of_current_mask']*100:.2f}%** of current destructive-mask pixels.",
-              f"Current mask covers **{comparison['current_coverage_of_hybrid_mask']*100:.2f}%** of hybrid-mask pixels.",
-              f"Hybrid changed **{comparison['hybrid_outside_mask_changed']} pixels** outside its authority mask.",
-              "",
-              "The artifact includes JSON for every slice and sparse original/clean visual evidence.",
+              f"**Slices:** {slice_count}",
+              f"**Wall time:** {wall_ms/1000:.2f}s",
+              f"**Throughput:** {summary['slices_per_minute']:.2f} slices/min",
+              f"**Detector:** {detector_ms/1000:.2f}s",
+              f"**Inpaint:** {inpaint_ms/1000:.2f}s",
+              f"**Detector forwards:** {detector_calls} (exactly 1/slice)",
+              f"**LaMa forwards:** {lama_runs}",
+              f"**Smart-fill regions:** {smart_fill_regions}",
+              f"**Pixels changed outside authority:** {outside}",
           ]
-          summary = "\n".join(lines)
-          print(summary)
+          rendered = "\n".join(lines)
+          print(rendered)
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as handle:
-              handle.write(summary + "\n")
+              handle.write(rendered + "\n")
           PY
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: shadow-slave-ch1-dumb-detector-normal-inpaint
+          name: shadow-slave-ch1-hybrid-only
           path: benchmark-results/shadow-slave-ch1/
           retention-days: 7
           if-no-files-found: warn
