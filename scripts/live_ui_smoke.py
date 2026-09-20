@@ -79,8 +79,10 @@ def _select_source_page(page: Page, source_page: int) -> None:
 
 def _select_text_object(page: Page) -> None:
     _wait_for_text_overlay(page)
-    page.locator(".review-text-object-overlay .review-inline-ocr").first.click()
-    expect(page.locator(".translation-panel-host .translation-textarea")).to_be_visible()
+    inline = page.locator(".review-text-object-overlay .review-inline-translation").first
+    expect(inline).to_be_visible()
+    inline.click()
+    expect(inline).to_be_focused()
 
 
 def _exercise_desktop(page: Page) -> None:
@@ -126,16 +128,12 @@ def _exercise_mobile(page: Page) -> None:
     if not viewport_box or viewport_box["height"] < 160:
         raise AssertionError(f"mobile Review canvas is not usable: {viewport_box}")
 
-    expect(page.locator("#workbench-panel-controls")).to_be_visible()
-    expect(page.locator(".page-navigator")).to_be_hidden()
+    expect(page.locator("#workbench-panel-controls")).to_be_hidden()
+    expect(page.locator(".page-navigator")).to_have_count(0)
 
-    page.locator("#toggle-page-panel").click()
-    expect(page.locator(".page-navigator")).to_be_visible()
-    page.locator(".page-navigator-item").nth(1).click()
-    expect(page.locator(".review-stitched-select")).to_have_value("1")
-    if page.locator(".page-navigator").is_visible():
-        page.locator("#toggle-page-panel").click()
-    expect(page.locator(".page-navigator")).to_be_hidden()
+    # Mobile uses the same document dropdown as desktop; the old slide-out
+    # thumbnail navigator no longer exists.
+    _select_source_page(page, 1)
 
     _wait_for_text_overlay(page)
     inline = page.locator(".review-text-object-overlay .review-inline-translation").first
