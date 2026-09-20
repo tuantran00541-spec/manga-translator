@@ -494,10 +494,16 @@ def _focus_text_detect_roi_first(
 
     chips = list(plan.rois)
     deferred = list(plan.deferred)
+    # If the geometry planner already knows that at least one proposal cannot
+    # be covered by the bounded budget, the ROI result cannot be authoritative:
+    # the canonical full-first fallback will replace it below.  Do not pay for
+    # those ROI forwards only to discard them.
+    skip_roi_inference = bool(not proposals or deferred)
+    executed_chips = [] if skip_roi_inference else chips
 
     roi_raw: list[BubbleBox] = []
     boundary_ambiguous = False
-    for chip in chips:
+    for chip in executed_chips:
         x1, y1, x2, y2 = chip
         crop = image[y1:y2, x1:x2]
         if not crop.size:
@@ -568,13 +574,14 @@ def _focus_text_detect_roi_first(
         "focus_roi_first_page": 1,
         "focus_proposals": len(proposals),
         "focus_uncovered_proposals": len(unresolved),
-        "focus_chip_calls": len(chips),
+        "focus_planned_chip_calls": len(chips),
+        "focus_chip_calls": len(executed_chips),
         "focus_source_pixels": sum(
             (x2 - x1) * (y2 - y1)
-            for x1, y1, x2, y2 in chips
+            for x1, y1, x2, y2 in executed_chips
         ),
         "focus_tensor_pixels": (
-            len(chips) * DETECTOR_INPUT_SIZE * DETECTOR_INPUT_SIZE
+            len(executed_chips) * DETECTOR_INPUT_SIZE * DETECTOR_INPUT_SIZE
         ),
         "focus_deferred_regions": len(deferred),
         "focus_fallback_calls": int(

@@ -269,3 +269,54 @@ def test_roi_first_clusters_nearby_proposals_into_one_authority_crop():
     assert metrics["focus_clustered_covered_proposals"] == 2
     assert metrics["focus_full_page_calls"] == 0
     assert len(detector.calls) == 1
+
+
+def test_roi_first_skips_roi_inference_when_planner_defers_proposals():
+    from app.detector.adaptive_focus_detector import _focus_text_detect_roi_first
+
+    image = np.zeros((4096, 900, 3), dtype=np.uint8)
+    proposals = [
+        BubbleBox(
+            100, 100 + index * 180, 220, 200 + index * 180, 0.9,
+            semantic_type="speech_bubble",
+            source_model="bubble_yolo.onnx",
+            source_role="bubble_detector",
+        )
+        for index in range(20)
+    ]
+
+    class Detector:
+        model_role = "text_segmenter"
+
+        def __init__(self):
+            self.calls = []
+
+        def _detect_single_plain(self, crop, offset_x, offset_y):
+            self.calls.append((crop.shape[:2], offset_x, offset_y))
+            return []
+
+        @staticmethod
+        def _nms_boxes(boxes):
+            return list(boxes)
+
+        @staticmethod
+        def _filter_invalid(boxes, _w, _h):
+            return list(boxes)
+
+        @staticmethod
+        def _with_semantics(box):
+            return box
+
+    detector = Detector()
+    _boxes, metrics, deferred = _focus_text_detect_roi_first(
+        detector,
+        image,
+        proposals,
+    )
+
+    assert deferred
+    assert metrics["focus_full_page_calls"] == 1
+    assert metrics["focus_clustered_deferred_proposals"] > 0
+    assert metrics["focus_planned_chip_calls"] > 0
+    assert metrics["focus_chip_calls"] == 0
+    assert detector.calls[0] == (image.shape[:2], 0, 0)
