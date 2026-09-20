@@ -8,7 +8,7 @@ on:
       - app/one_shot_cleanup.py
       - scripts/benchmark_one_shot_cleanup.py
       - tests/test_one_shot_cleanup.py
-      - .github/workflows/dumb-detector-normal-inpaint.yml
+      - .github/workflows/one-shot-cleanup-experiment.yml
 
 permissions:
   contents: read
