@@ -21,16 +21,43 @@ def _box(x1, y1, x2, y2, mask):
     )
 
 
+class _FakeSession:
+    def __init__(self, owner):
+        self.owner = owner
+        self.calls = 0
+
+    def run(self, output_names, feeds):
+        assert output_names is None
+        assert "images" in feeds
+        self.calls += 1
+        return ["captured-outputs"]
+
+
 class FakeUnderlyingDetector:
     def __init__(self, boxes):
         self.boxes = boxes
-        self.calls = 0
+        self.conf_threshold = 0.20
+        self.input_name = "images"
+        self.session = _FakeSession(self)
+        self.postprocess_calls = 0
 
-    def _detect_single(self, image, offset_x, offset_y):
+    @property
+    def calls(self):
+        return self.session.calls
+
+    def _preprocess(self, image, *, offset_x=0, offset_y=0):
         assert offset_x == 0
         assert offset_y == 0
-        self.calls += 1
-        return list(self.boxes)
+        blob = np.zeros((1, 3, 8, 8), dtype=np.float32)
+        return blob, object()
+
+    def _postprocess(self, outputs, transform):
+        assert outputs == ["captured-outputs"]
+        self.postprocess_calls += 1
+        return [
+            box for box in self.boxes
+            if float(box.confidence) >= float(self.conf_threshold)
+        ]
 
 
 class FakeAcceptedDetector:
@@ -102,6 +129,7 @@ def test_one_shot_detector_runs_once_and_accepts_only_verified_text_masks():
     boxes, metrics = detector.detect(image)
 
     assert underlying.calls == 1
+    assert underlying.postprocess_calls == 1
     assert metrics["detector_forward_calls"] == 1
     assert metrics["detector_boxes"] == 3
     assert metrics["accepted_mask_boxes"] == 2
@@ -165,19 +193,8 @@ def test_hybrid_cleanup_passes_empty_detection_to_normal_inpainter():
 
 
 
-class FakeRescueThresholdDetector:
-    def __init__(self, boxes):
-        self.boxes = boxes
-        self.calls = 0
-        self.conf_threshold = 0.20
-
-    def _detect_single(self, image, offset_x, offset_y):
-        assert offset_x == 0 and offset_y == 0
-        self.calls += 1
-        return [
-            box for box in self.boxes
-            if float(box.confidence) >= float(self.conf_threshold)
-        ]
+class FakeRescueThresholdDetector(FakeUnderlyingDetector):
+    pass
 
 
 def test_zero_box_tail_is_rescued_in_same_forward():
@@ -191,6 +208,7 @@ def test_zero_box_tail_is_rescued_in_same_forward():
     boxes, metrics = detector.detect(image)
 
     assert underlying.calls == 1
+    assert underlying.postprocess_calls == 2
     assert underlying.conf_threshold == 0.20
     assert metrics["detector_forward_calls"] == 1
     assert metrics["low_conf_rescue"] == 1
@@ -212,6 +230,7 @@ def test_normal_confidence_masks_suppress_low_confidence_candidates():
     boxes, metrics = detector.detect(image)
 
     assert underlying.calls == 1
+    assert underlying.postprocess_calls == 1
     assert metrics["low_conf_rescue"] == 0
     assert metrics["normal_conf_boxes"] == 1
     assert len(boxes) == 1
