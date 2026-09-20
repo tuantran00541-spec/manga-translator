@@ -77,4 +77,7 @@ assert((reviewWorkspace.match(/new MutationObserver/g) || []).length === 0, 'Rev
 assert(!reviewWorkspace.includes('busyObserver'), 'Review busy state must not infer lifecycle from DOM mutations');
 assert(!reviewWorkspace.includes('createPageNavigator({'), 'Review must not recreate the old thumbnail page navigator');
 assert(!reviewWorkspace.includes('context-inspector review-inspector'), 'Review must not recreate the old right-hand inspector');
+assert(!reviewWorkspace.includes('review-sticky-toolbar'), 'Review must not create a second outer toolbar');
+assert(stitchInspector.includes('review-document-toolbar-compact'), 'Review must use one compact document toolbar');
+assert(stitchInspector.includes('review-floating-inspector'), 'Review text properties must use an on-demand floating inspector');
 console.log('studio runtime sanity: PASS');

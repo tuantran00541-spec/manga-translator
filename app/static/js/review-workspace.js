@@ -279,32 +279,12 @@
     window.initialReviewCanonicalPageIndex = null;
     reapplyFocusedDraft(previousState);
 
-    // Review is now a document canvas, not a slice dashboard. Slices stay an
-    // internal processing detail and are stitched into one source-page image.
     const workspace = document.createElement("div");
-    workspace.className = "review-workspace-shell review-canvas-only";
+    workspace.className = "review-workspace-shell review-canvas-only review-canvas-fullbleed";
     workspace.dataset.pendingSourcePage = String(activeSource);
     if (previousState?.chapterId === chapterId) {
       workspace._reviewRestoreState = previousState;
     }
-
-    const toolbar = document.createElement("div");
-    toolbar.className = "review-sticky-toolbar review-canvas-commandbar";
-
-    const title = document.createElement("div");
-    title.className = "review-toolbar-title";
-    title.textContent = `Sau inpaint · Trang ${sourcePages.indexOf(activeSource) + 1} / ${sourcePages.length}`;
-
-    // Keep only compact document actions. The old thumbnail navigator,
-    // right-hand inspector, QC dashboard and slice cards are intentionally gone.
-    const controlsSlot = document.createElement("div");
-    controlsSlot.className = "review-stitched-controls-slot review-canvas-controls";
-    workspace._stitchedControlsSlot = controlsSlot;
-
-    const actions = document.createElement("div");
-    actions.className = "review-actions-group";
-
-    toolbar.append(title, controlsSlot, actions);
 
     const layout = document.createElement("div");
     layout.className = "review-workbench-grid review-canvas-only-layout";
@@ -313,11 +293,9 @@
     canvasHost.className = "review-canvas-host review-canvas-only-host";
     layout.appendChild(canvasHost);
 
-    workspace.append(toolbar, layout);
+    workspace.appendChild(layout);
     container.appendChild(workspace);
 
-    // Settings remain globally available, but no settings/QC panel is mounted
-    // beside the image.
     createAIProviderSettings();
 
     window.cleanupReviewWorkspace = () => {
@@ -328,11 +306,7 @@
       }
     };
 
-    // Explicitly clear the old three-panel workbench controls in the app header.
     window.setupWorkbenchPanels?.("review");
-
-    // The stitch inspector owns the single document: stitch, pan, zoom, tools
-    // and page switching all happen inside the central canvas.
     window.mountStitchInspector?.();
   }
 

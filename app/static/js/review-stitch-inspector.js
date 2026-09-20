@@ -315,15 +315,24 @@
     window.editorState.activePageIndex = Number(pageIndex);
     window.editorState.selectedTextObjectId = id;
     shell.querySelectorAll(".review-text-object-overlay").forEach((el) => el.classList.toggle("selected", Number(el.dataset.pageIndex) === Number(pageIndex) && el.dataset.objectId === String(id)));
+    const floating = shell._floatingInspector || shell.querySelector(".review-floating-inspector");
+    if (floating) {
+      floating.hidden = false;
+      floating.classList.add("is-open");
+    }
     window.renderEditorPanel?.(Number(pageIndex));
-    window.showWorkbenchInspector?.();
   }
 
   function clearSelection(shell) {
     if (window.editorState) window.editorState.selectedTextObjectId = null;
     shell.querySelectorAll(".review-text-object-overlay").forEach((el) => el.classList.remove("selected"));
-    const panel = document.querySelector(".review-inspector .translation-panel-host");
-    if (panel) panel.innerHTML = '<div class="ui-empty-state">Chọn một vùng chữ trên trang để chỉnh OCR, bản dịch và typography.</div>';
+    const floating = shell._floatingInspector || shell.querySelector(".review-floating-inspector");
+    if (floating) {
+      floating.classList.remove("is-open");
+      floating.hidden = true;
+    }
+    const panel = shell.querySelector(".translation-panel-host");
+    if (panel) panel.innerHTML = '<div class="ui-empty-state">Chọn một vùng chữ trên trang để chỉnh sửa.</div>';
   }
 
   function overlayMode(event, overlay) {
@@ -519,14 +528,47 @@
   }
 
   function mountTextInspector(workspace, shell, signal) {
-    const inspector = workspace.querySelector(".review-inspector"); if (!inspector) return;
-    let host = inspector.querySelector(".translation-panel-host");
-    if (!host) { host = document.createElement("section"); host.className = "translation-panel-host review-text-inspector-host"; host.setAttribute("aria-label", "Chỉnh OCR, bản dịch và typography"); inspector.appendChild(host); }
-    host.innerHTML = '<div class="ui-empty-state">Chọn một vùng chữ trên trang để chỉnh OCR, bản dịch và typography.</div>';
+    const floating = document.createElement("aside");
+    floating.className = "review-floating-inspector";
+    floating.hidden = true;
+    floating.setAttribute("aria-label", "Thuộc tính vùng chữ");
+
+    const header = document.createElement("div");
+    header.className = "review-floating-inspector-header";
+    const title = document.createElement("strong");
+    title.textContent = "Text";
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "ui-icon-btn ui-btn-ghost ui-btn-compact";
+    close.setAttribute("aria-label", "Đóng thuộc tính");
+    close.append(window.createUiIcon("close"));
+    header.append(title, close);
+
+    const host = document.createElement("section");
+    host.className = "translation-panel-host review-text-inspector-host";
+    host.setAttribute("aria-label", "Chỉnh OCR, bản dịch và typography");
+    host.innerHTML = '<div class="ui-empty-state">Chọn một vùng chữ trên trang để chỉnh sửa.</div>';
+
+    floating.append(header, host);
+    shell.appendChild(floating);
+    shell._floatingInspector = floating;
+
+    close.addEventListener("click", () => clearSelection(shell), { signal });
+
     host.addEventListener("input", (e) => {
-      const pageIndex = Number(window.editorState?.activePageIndex || 0), id = window.editorState?.selectedTextObjectId; if (!id) return;
-      if (e.target.classList?.contains("translation-textarea")) { const inline = shell.querySelector(`.review-text-object-overlay[data-page-index="${pageIndex}"][data-object-id="${CSS.escape(String(id))}"] .review-inline-translation`); if (inline && inline !== document.activeElement) { inline.value = e.target.value; grow(inline); } }
-      else if (e.target.classList?.contains("ocr-textarea")) { const bar = shell.querySelector(`.review-text-object-overlay[data-page-index="${pageIndex}"][data-object-id="${CSS.escape(String(id))}"] .review-inline-ocr`); if (bar) bar.textContent = e.target.value.trim() || "OCR nguồn"; }
+      const pageIndex = Number(window.editorState?.activePageIndex || 0);
+      const id = window.editorState?.selectedTextObjectId;
+      if (!id) return;
+      if (e.target.classList?.contains("translation-textarea")) {
+        const inline = shell.querySelector(`.review-text-object-overlay[data-page-index="${pageIndex}"][data-object-id="${CSS.escape(String(id))}"] .review-inline-translation`);
+        if (inline && inline !== document.activeElement) {
+          inline.value = e.target.value;
+          grow(inline);
+        }
+      } else if (e.target.classList?.contains("ocr-textarea")) {
+        const bar = shell.querySelector(`.review-text-object-overlay[data-page-index="${pageIndex}"][data-object-id="${CSS.escape(String(id))}"] .review-inline-ocr`);
+        if (bar) bar.textContent = e.target.value.trim() || "OCR nguồn";
+      }
     }, { signal });
   }
 
@@ -564,20 +606,51 @@
     rail.append(main, bottom); sidebar.appendChild(rail); signal.addEventListener("abort", () => { rail.remove(); document.body.classList.remove("review-tool-rail-active"); }, { once: true }); syncToolButtons();
   }
 
-  function mountActions(workspace, shell, signal, rerender) {
-    const actions = workspace.querySelector(".review-actions-group"); if (!actions) return;
+  function mountActions(shell, signal, rerender) {
+    const actions = shell.querySelector(".review-docbar-actions");
+    if (!actions) return;
     actions.replaceChildren();
-    const render = document.createElement("button"); render.type = "button"; render.className = "ui-btn ui-btn-primary review-render-text-btn"; render.textContent = "Render chữ";
+
+    const render = document.createElement("button");
+    render.type = "button";
+    render.className = "ui-btn ui-btn-ghost ui-btn-compact review-render-text-btn";
+    render.textContent = "Render";
+    render.title = "Render chữ lên trang";
+
     render.addEventListener("click", async () => {
-      const indices = [...new Set((shell._descriptors || []).map((d) => Number(d.item.canonicalIndex)))]; if (!indices.length || typeof window.renderTranslations !== "function") return;
-      render.disabled = true; render.textContent = "Đang render…";
-      try { let count = 0; for (const pageIndex of indices) { await window.renderTranslations(pageIndex); const page = window.currentManifest?.pages?.[pageIndex]; if (page?.rendered) { page._reviewRenderedUrl = page.rendered; count++; } } if (!count) return window.showToast?.("Không có vùng chữ nào được render trên trang này.", "info"); variant = "rendered"; window.showToast?.(`Đã render lettering cho trang ${sourcePage + 1}.`, "success"); rerender(); }
-      catch (err) { window.showToast?.("Không thể render lettering: " + err.message, "error"); }
-      finally { render.disabled = false; render.textContent = "Render chữ"; }
+      const indices = [...new Set((shell._descriptors || []).map((d) => Number(d.item.canonicalIndex)))];
+      if (!indices.length || typeof window.renderTranslations !== "function") return;
+      render.disabled = true;
+      render.textContent = "Rendering…";
+      try {
+        let count = 0;
+        for (const pageIndex of indices) {
+          await window.renderTranslations(pageIndex);
+          const page = window.currentManifest?.pages?.[pageIndex];
+          if (page?.rendered) {
+            page._reviewRenderedUrl = page.rendered;
+            count++;
+          }
+        }
+        if (!count) return window.showToast?.("Không có vùng chữ nào được render trên trang này.", "info");
+        variant = "rendered";
+        window.showToast?.(`Đã render lettering cho trang ${sourcePage + 1}.`, "success");
+        rerender();
+      } catch (err) {
+        window.showToast?.("Không thể render lettering: " + err.message, "error");
+      } finally {
+        render.disabled = false;
+        render.textContent = "Render";
+      }
     }, { signal });
+
     actions.appendChild(render);
-    if (typeof window.buildChapterTranslateControls === "function") actions.appendChild(window.buildChapterTranslateControls());
-    if (typeof window.buildChapterExportButton === "function") actions.appendChild(window.buildChapterExportButton());
+    if (typeof window.buildChapterTranslateControls === "function") {
+      actions.appendChild(window.buildChapterTranslateControls());
+    }
+    if (typeof window.buildChapterExportButton === "function") {
+      actions.appendChild(window.buildChapterExportButton());
+    }
   }
 
   function paintPoint(shell, x, y, radius, erase) {
@@ -600,48 +673,153 @@
 
   function mount(workspace) {
     if (!(workspace instanceof HTMLElement) || workspace.dataset.stitchInspectorMounted === "1") return;
-    resetChapterState(); ensureStyles(); workspace._stitchAbort?.abort(); window._reviewStitchAbort?.abort();
-    const aborter = new AbortController(), { signal } = aborter; workspace._stitchAbort = aborter; window._reviewStitchAbort = aborter;
-    const toolbar = workspace.querySelector(".review-sticky-toolbar"), layout = workspace.querySelector(".review-workbench-grid"), canvasHost = layout?.querySelector(".review-canvas-host"), controlsSlot = workspace._stitchedControlsSlot;
-    if (!toolbar || !layout || !canvasHost || !controlsSlot) return;
-    workspace.dataset.stitchInspectorMounted = "1"; workspace.classList.add("review-single-document", "review-lettering-workspace");
-    const map = groups(), pages = [...map.keys()]; if (!pages.length) return;
-    const pending = Number.parseInt(workspace.dataset.pendingSourcePage || "", 10); sourcePage = Number.isInteger(pending) && pages.includes(pending) ? pending : pages.includes(sourcePage) ? sourcePage : pages[0];
+    resetChapterState();
+    ensureStyles();
+    workspace._stitchAbort?.abort();
+    window._reviewStitchAbort?.abort();
+
+    const aborter = new AbortController();
+    const { signal } = aborter;
+    workspace._stitchAbort = aborter;
+    window._reviewStitchAbort = aborter;
+
+    const layout = workspace.querySelector(".review-workbench-grid");
+    const canvasHost = layout?.querySelector(".review-canvas-host");
+    if (!layout || !canvasHost) return;
+
+    workspace.dataset.stitchInspectorMounted = "1";
+    workspace.classList.add("review-single-document", "review-lettering-workspace");
+
+    const map = groups();
+    const pages = [...map.keys()];
+    if (!pages.length) return;
+    const pending = Number.parseInt(workspace.dataset.pendingSourcePage || "", 10);
+    sourcePage = Number.isInteger(pending) && pages.includes(pending)
+      ? pending
+      : pages.includes(sourcePage)
+        ? sourcePage
+        : pages[0];
 
     canvasHost.replaceChildren();
-    const compatibility = document.createElement("div"); compatibility.className = "review-card review-card-compat"; compatibility.hidden = true; canvasHost.appendChild(compatibility);
-    const shell = document.createElement("section"); shell.className = "review-stitched-shell review-document-shell";
-    const docbar = document.createElement("div"); docbar.className = "review-stitched-toolbar review-document-toolbar";
-    const button = (icon, label) => { const b = document.createElement("button"); b.type = "button"; b.className = "ui-btn ui-btn-ghost ui-btn-compact"; b.setAttribute("aria-label", label); if (icon) b.append(window.createUiIcon(icon)); else b.textContent = label; return b; };
-    const prev = button("chevron-left", "Trang trước"), select = document.createElement("select"), next = button("chevron-right", "Trang sau"); select.className = "ui-select review-stitched-select"; select.setAttribute("aria-label", "Chọn trang gốc"); pages.forEach((p) => select.add(new Option(`Trang ${p + 1}`, String(p))));
-    const clean = button(null, "Clean"), rendered = button(null, "Rendered"), original = button(null, "Original"), zoomOut = button("minus", "Thu nhỏ"), zoomValue = button(null, "Fit"), zoomIn = button("plus", "Phóng to"), one = button(null, "100%"); zoomValue.classList.add("review-zoom-value");
-    docbar.append(prev, select, next, clean, rendered, original, zoomOut, zoomValue, zoomIn, one);
-    const meta = document.createElement("div"); meta.className = "review-stitched-meta"; const warning = document.createElement("div"); warning.className = "review-stitched-warning"; warning.hidden = true;
-    const viewport = document.createElement("div"); viewport.className = "review-stitched-viewport review-document-viewport"; const stage = document.createElement("div"); stage.className = "review-stitched-zoom-stage"; const image = document.createElement("div"); image.className = "review-stitched-image"; stage.appendChild(image); viewport.appendChild(stage); shell.append(docbar, meta, warning, viewport); canvasHost.appendChild(shell);
 
-    const controls = document.createElement("div"); controls.className = "review-controls review-stitched-controls";
-    const submit = document.createElement("button"); submit.type = "button"; submit.className = "ui-btn ui-btn-primary repaint-btn"; submit.textContent = "Inpaint vùng chọn";
-    const clearMask = document.createElement("button"); clearMask.type = "button"; clearMask.className = "ui-btn ui-btn-ghost clear-brush-btn"; clearMask.textContent = "Xóa toàn bộ mask";
-    const sizeWrap = document.createElement("label"); sizeWrap.className = "ui-range-field brush-size-control"; sizeWrap.textContent = "Cỡ cọ "; const sizeOut = document.createElement("output"); sizeOut.textContent = "48px"; const size = document.createElement("input"); size.type = "range"; size.min = "4"; size.max = "100"; size.step = "1"; size.value = "24"; size.className = "brush-size-slider"; sizeWrap.append(size, sizeOut); controls.append(submit, clearMask, sizeWrap); controlsSlot.replaceChildren(controls);
+    const compatibility = document.createElement("div");
+    compatibility.className = "review-card review-card-compat";
+    compatibility.hidden = true;
+    canvasHost.appendChild(compatibility);
 
-    installOverlaySync(); mountTextInspector(workspace, shell, signal); mountToolRail(shell, signal); installTextDrawing(shell, signal);
+    const shell = document.createElement("section");
+    shell.className = "review-stitched-shell review-document-shell";
+
+    const docbar = document.createElement("div");
+    docbar.className = "review-stitched-toolbar review-document-toolbar review-document-toolbar-compact";
+
+    const button = (icon, label) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "ui-btn ui-btn-ghost ui-btn-compact";
+      b.setAttribute("aria-label", label);
+      if (icon) b.append(window.createUiIcon(icon));
+      else b.textContent = label;
+      return b;
+    };
+
+    const left = document.createElement("div");
+    left.className = "review-docbar-group review-docbar-left";
+    const center = document.createElement("div");
+    center.className = "review-docbar-group review-docbar-center";
+    const right = document.createElement("div");
+    right.className = "review-docbar-group review-docbar-right";
+
+    const prev = button("chevron-left", "Trang trước");
+    const select = document.createElement("select");
+    select.className = "ui-select review-stitched-select";
+    select.setAttribute("aria-label", "Chọn trang gốc");
+    pages.forEach((p) => select.add(new Option(`Trang ${p + 1}`, String(p))));
+    const next = button("chevron-right", "Trang sau");
+
+    const pageMeta = document.createElement("span");
+    pageMeta.className = "review-docbar-mini-meta";
+
+    const clean = button(null, "Clean");
+    const rendered = button(null, "Rendered");
+    const original = button(null, "Original");
+
+    const zoomOut = button("minus", "Thu nhỏ");
+    const zoomValue = button(null, "Fit");
+    zoomValue.classList.add("review-zoom-value");
+    const zoomIn = button("plus", "Phóng to");
+    const one = button(null, "100%");
+
+    const submit = document.createElement("button");
+    submit.type = "button";
+    submit.className = "ui-btn ui-btn-primary ui-btn-compact repaint-btn";
+    submit.textContent = "Inpaint";
+
+    const clearMask = document.createElement("button");
+    clearMask.type = "button";
+    clearMask.className = "ui-btn ui-btn-ghost ui-btn-compact clear-brush-btn";
+    clearMask.textContent = "Clear";
+
+    const sizeWrap = document.createElement("label");
+    sizeWrap.className = "ui-range-field brush-size-control review-docbar-brush-size";
+    sizeWrap.textContent = "Cọ ";
+    const sizeOut = document.createElement("output");
+    sizeOut.textContent = "48px";
+    const size = document.createElement("input");
+    size.type = "range";
+    size.min = "4";
+    size.max = "100";
+    size.step = "1";
+    size.value = "24";
+    size.className = "brush-size-slider";
+    sizeWrap.append(size, sizeOut);
+
+    const actionsHost = document.createElement("div");
+    actionsHost.className = "review-docbar-actions";
+
+    left.append(prev, select, next, pageMeta);
+    center.append(clean, rendered, original, zoomOut, zoomValue, zoomIn, one);
+    right.append(submit, clearMask, sizeWrap, actionsHost);
+    docbar.append(left, center, right);
+
+    const meta = document.createElement("div");
+    meta.className = "review-stitched-meta";
+    meta.hidden = true;
+
+    const warning = document.createElement("div");
+    warning.className = "review-stitched-warning";
+    warning.hidden = true;
+
+    const viewport = document.createElement("div");
+    viewport.className = "review-stitched-viewport review-document-viewport";
+    const stage = document.createElement("div");
+    stage.className = "review-stitched-zoom-stage";
+    const image = document.createElement("div");
+    image.className = "review-stitched-image";
+    stage.appendChild(image);
+    viewport.appendChild(stage);
+
+    shell.append(docbar, meta, warning, viewport);
+    canvasHost.appendChild(shell);
+
+    installOverlaySync();
+    mountTextInspector(workspace, shell, signal);
+    mountToolRail(shell, signal);
+    installTextDrawing(shell, signal);
+    mountActions(shell, signal, () => shell._rerender?.());
+
     let painting = false, radius = 24, last = null, panning = false, pan = null, space = false;
 
     const syncVariant = () => { clean.classList.toggle("ui-btn-primary", variant === "clean"); rendered.classList.toggle("ui-btn-primary", variant === "rendered"); original.classList.toggle("ui-btn-primary", variant === "original"); const readonly = variant !== "clean"; submit.disabled = readonly; clearMask.disabled = readonly; size.disabled = readonly; workspace.classList.toggle("review-readonly-document", readonly); syncTool(shell); };
     shell._syncVariantUI = syncVariant;
-    const busy = (on, text = "Đang xử lý…") => { workspace.classList.toggle("review-busy", on); [submit, clearMask, size, prev, next, select, clean, rendered, original, zoomOut, zoomIn, one, zoomValue].forEach((el) => el.disabled = on); submit.textContent = on ? text : "Inpaint vùng chọn"; workspace._pageNavigator?.setBusy(on); document.querySelectorAll(".review-rail-tool").forEach((b) => b.disabled = on); if (!on) syncVariant(); };
+    const busy = (on, text = "Đang xử lý…") => { workspace.classList.toggle("review-busy", on); [submit, clearMask, size, prev, next, select, clean, rendered, original, zoomOut, zoomIn, one, zoomValue].forEach((el) => el.disabled = on); submit.textContent = on ? text : "Inpaint"; workspace._pageNavigator?.setBusy(on); document.querySelectorAll(".review-rail-tool").forEach((b) => b.disabled = on); if (!on) syncVariant(); };
     const updateCompat = () => { const items = groups().get(sourcePage) || []; const canonical = Number(items[0]?.canonicalIndex ?? 0); compatibility.dataset.pageIndex = String(canonical); workspace.dataset.reviewCanonicalIndex = String(canonical); window.setWorkflowCheckpoint?.("review", canonical); };
-    const rerender = () => { const items = groups().get(sourcePage); if (!items) return; captureSnapshot(shell); workspace.dataset.pendingSourcePage = String(sourcePage); select.value = String(sourcePage); const pos = pages.indexOf(sourcePage); prev.disabled = pos <= 0; next.disabled = pos >= pages.length - 1; updateCompat(); const title = toolbar.querySelector(".review-toolbar-title"); if (title) title.textContent = `Sau inpaint · Trang ${pos + 1} / ${pages.length}`; syncVariant(); void renderPage(shell, sourcePage, items, signal); };
+    const rerender = () => { const items = groups().get(sourcePage); if (!items) return; captureSnapshot(shell); workspace.dataset.pendingSourcePage = String(sourcePage); select.value = String(sourcePage); const pos = pages.indexOf(sourcePage); prev.disabled = pos <= 0; next.disabled = pos >= pages.length - 1; pageMeta.textContent = `Trang ${pos + 1}/${pages.length}`; updateCompat(); syncVariant(); void renderPage(shell, sourcePage, items, signal); };
     shell._rerender = rerender;
     const selectSource = (nextPage) => { nextPage = Number(nextPage); if (!pages.includes(nextPage) || nextPage === sourcePage) return true; captureSnapshot(shell); clearSelection(shell); sourcePage = nextPage; rerender(); return true; };
     window.selectReviewSourcePage = selectSource; signal.addEventListener("abort", () => { captureSnapshot(shell); if (window.selectReviewSourcePage === selectSource) delete window.selectReviewSourcePage; }, { once: true });
 
-    const navigator = workspace._pageNavigator;
-    if (navigator) {
-      navigator.reconfigure({ items: pages.map((p) => { const ps = (map.get(p) || []).map(livePage).filter(Boolean); const review = ps.some((x) => x.needs_review || x.detection_state === "needs_review" || (x.detection_issues || []).length), count = ps.reduce((n, x) => n + (x.text_objects?.length || 0), 0); return { key: p, label: `Trang ${p + 1}`, image: ps[0]?.clean || ps[0]?.original || "", meta: count ? `${count} vùng chữ` : "Chưa có vùng chữ", state: review ? "review" : "ready", stateLabel: review ? "Cần kiểm tra" : "Sẵn sàng" }; }), activeIndex: pages.indexOf(sourcePage), title: "Trang", ariaLabel: "Điều hướng trang gốc", onSelect: (i) => selectSource(pages[i]) });
-      navigator.selectByKey = (canonical) => { const p = window.currentManifest?.pages?.[Number(canonical)]; if (!p) return Promise.resolve(false); const s = sourceOf(p, Number(canonical)), i = pages.indexOf(s); return i < 0 ? Promise.resolve(false) : navigator.select(i); };
-    }
-    mountActions(workspace, shell, signal, rerender);
+    const navigator = null;
 
     image.addEventListener("pointerdown", (e) => { if (variant !== "clean" || !["brush", "eraser"].includes(tool) || e.button !== 0) return; const p = sourcePoint(image, e); if (!p) return; e.preventDefault(); painting = true; last = p; image.setPointerCapture?.(e.pointerId); paintPoint(shell, p.x, p.y, radius, tool === "eraser"); }, { signal });
     image.addEventListener("pointermove", (e) => { if (!painting || !last || !["brush", "eraser"].includes(tool)) return; const p = sourcePoint(image, e); if (!p) return; paintStroke(shell, last, p, radius, tool === "eraser"); last = p; }, { signal });

@@ -91,6 +91,8 @@ def _exercise_desktop(page: Page) -> None:
     # it must migrate into the single Review/lettering workspace.
     expect(page.locator('.sidebar-link[data-stage="editor"]')).to_have_count(0)
     _select_text_object(page)
+    expect(page.locator(".review-floating-inspector")).to_be_visible()
+    expect(page.locator("#site-header")).to_be_hidden()
 
     _select_source_page(page, 1)
     _wait_for_text_overlay(page)
@@ -129,6 +131,7 @@ def _exercise_mobile(page: Page) -> None:
         raise AssertionError(f"mobile Review canvas is not usable: {viewport_box}")
 
     expect(page.locator("#workbench-panel-controls")).to_be_hidden()
+    expect(page.locator("#site-header")).to_be_hidden()
     expect(page.locator(".page-navigator")).to_have_count(0)
 
     # Mobile uses the same document dropdown as desktop; the old slide-out
