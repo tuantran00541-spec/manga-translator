@@ -109,6 +109,34 @@ jobs:
           print(json.dumps(manifest), flush=True)
           PY
 
+      - name: Probe known zero-box miss on slice 000
+        run: |
+          python scripts/benchmark_one_shot_cleanup.py \
+            --mode simple \
+            --raw-dir "$RAW_DIR" \
+            --slice-dir "$RESULT_DIR/probe-slices" \
+            --limit 1 \
+            --evidence-stride 1 \
+            --output "$RESULT_DIR/probe.json" \
+            --evidence-dir "$RESULT_DIR/probe"
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path(os.environ["RESULT_DIR"])
+          probe = json.loads((root / "probe.json").read_text())
+          page = probe["pages"][0]
+          print(json.dumps(page, indent=2))
+
+          if int(page.get("fallback_triggered", 0)) != 1:
+              raise RuntimeError("Known slice 000 did not exercise zero-box fallback")
+          if int(page.get("fallback_forward_calls", 0)) != 4:
+              raise RuntimeError("Known slice 000 did not spend exactly four fallback forwards")
+          if int(page.get("mask_pixels", 0)) <= 0:
+              raise RuntimeError("Fallback still missed known text on slice 000")
+          PY
+
       - name: Benchmark one-pass detector with zero-box fallback
         run: |
           python scripts/benchmark_one_shot_cleanup.py \
