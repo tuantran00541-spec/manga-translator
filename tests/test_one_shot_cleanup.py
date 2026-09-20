@@ -159,3 +159,53 @@ def test_hybrid_cleanup_passes_empty_detection_to_normal_inpainter():
     assert result.metrics["lama_model_runs"] == 0
     assert not np.any(result.mask)
     assert np.array_equal(result.image, image)
+
+
+class FakeFallbackDetector:
+    def __init__(self, fallback_box):
+        self.fallback_box = fallback_box
+        self.calls = []
+
+    def _detect_single(self, image, offset_x, offset_y):
+        self.calls.append((offset_x, offset_y, image.shape[:2]))
+        if offset_x == 0 and offset_y == 0 and image.shape[:2] == (100, 100):
+            return []
+        if offset_x > 0 and offset_y > 0:
+            return [self.fallback_box]
+        return []
+
+    def _nms_boxes(self, boxes):
+        return list(boxes)
+
+
+def test_zero_box_full_pass_triggers_only_bounded_2x2_fallback():
+    image = np.zeros((100, 100, 3), dtype=np.uint8)
+    mask = np.full((12, 18), 255, dtype=np.uint8)
+    fallback_box = _box(72, 72, 90, 84, mask)
+    underlying = FakeFallbackDetector(fallback_box)
+    detector = OneShotTextMaskDetector(detector=underlying)
+
+    boxes, metrics = detector.detect(image)
+
+    assert len(underlying.calls) == 5
+    assert metrics["detector_forward_calls"] == 5
+    assert metrics["fallback_triggered"] == 1
+    assert metrics["fallback_forward_calls"] == 4
+    assert metrics["fallback_boxes"] == 1
+    assert metrics["accepted_mask_boxes"] == 1
+    assert len(boxes) == 1
+    assert boxes[0].safe_to_inpaint
+
+
+def test_nonempty_full_pass_never_spends_fallback_budget():
+    image = np.zeros((100, 100, 3), dtype=np.uint8)
+    mask = np.full((12, 18), 255, dtype=np.uint8)
+    underlying = FakeUnderlyingDetector([_box(10, 10, 28, 22, mask)])
+    detector = OneShotTextMaskDetector(detector=underlying)
+
+    _, metrics = detector.detect(image)
+
+    assert underlying.calls == 1
+    assert metrics["fallback_triggered"] == 0
+    assert metrics["fallback_forward_calls"] == 0
+    assert metrics["detector_forward_calls"] == 1
