@@ -14,7 +14,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: shadow-slave-ch1-dumb-detector
+  group: shadow-slave-ch1-hybrid-only
   cancel-in-progress: true
 
 jobs:
