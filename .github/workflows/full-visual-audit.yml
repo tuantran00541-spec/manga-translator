@@ -1,0 +1,171 @@
+name: Full visual audit Shadow Slave Ch1
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["experiment/one-shot-cleanup"]
+    paths:
+      - .github/workflows/full-visual-audit.yml
+
+permissions:
+  contents: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    env:
+      PYTHONUNBUFFERED: "1"
+      CHAPTER_URL: "https://asurascans.com/comics/shadow-slave-6f7fe6eb/chapter/1"
+      RAW_DIR: "benchmark-results/full-audit/input"
+      SLICE_DIR: "benchmark-results/full-audit/slices"
+      RESULT_DIR: "benchmark-results/full-audit"
+      MANGA_USE_DYNAMIC_LAMA: "1"
+      MANGA_ORT_PROVIDER: openvino
+      MANGA_ORT_REQUIRE_PROVIDER: "1"
+      MANGA_ORT_OPENVINO_SCOPE: detectors
+      MANGA_ORT_OPENVINO_THREADS: "2"
+      MANGA_ORT_OPENVINO_STREAMS: "1"
+      MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install audit dependencies
+        run: |
+          python -m pip install numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 onnxruntime-openvino==1.24.1 psutil==6.1.1 loguru==0.7.2 requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 playwright==1.47.0 fastapi==0.115.0 pydantic==2.9.2 filelock==3.16.1 threadpoolctl==3.6.0
+
+      - name: Restore benchmark models
+        id: models
+        uses: actions/cache@v4
+        with:
+          path: |
+            models/*.onnx
+            models/.e2e-provenance.json
+          key: processing-profile-models-b224548-v1
+
+      - name: Read pinned existing model provisioner
+        if: ${{ steps.models.outputs.cache-hit != 'true' }}
+        uses: actions/checkout@v4
+        with:
+          ref: b22454827f8190655d7070b80eb20c2550beadfa
+          path: benchmark-bootstrap
+          sparse-checkout: scripts/provision_real_e2e_models.py
+          sparse-checkout-cone-mode: false
+
+      - name: Provision public models with recorded hashes
+        if: ${{ steps.models.outputs.cache-hit != 'true' }}
+        run: |
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple torch==2.5.1+cpu torchvision==0.20.1+cpu
+          python -m pip install --no-deps ultralytics==8.3.221 onnx==1.17.0 onnxslim==0.1.71
+          python -m pip install numpy==1.26.4 sympy==1.13.1 PyYAML==6.0.2 scipy==1.14.1 tqdm==4.67.1 matplotlib==3.9.2 pandas==2.2.3 py-cpuinfo==9.0.0 ml_dtypes==0.5.3 colorama==0.4.6 polars==1.33.1 ultralytics-thop==2.0.17
+          python benchmark-bootstrap/scripts/provision_real_e2e_models.py
+          cp benchmark-bootstrap/models/*.onnx models/
+          cp benchmark-bootstrap/models/.e2e-provenance.json models/
+
+      - name: Download Shadow Slave Chapter 1
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from app.downloader.registry import download_chapter
+          raw = Path(os.environ["RAW_DIR"])
+          raw.mkdir(parents=True, exist_ok=True)
+          paths = download_chapter(os.environ["CHAPTER_URL"], raw)
+          print("downloaded_images", len(paths))
+          if len(paths) < 4:
+              raise RuntimeError("chapter download incomplete")
+          PY
+
+      - name: Run hybrid and save every clean image
+        run: |
+          python scripts/benchmark_one_shot_cleanup.py             --mode simple             --raw-dir "$RAW_DIR"             --slice-dir "$SLICE_DIR"             --limit 0             --evidence-stride 1             --output "$RESULT_DIR/hybrid.json"             --evidence-dir "$RESULT_DIR/hybrid"
+
+      - name: Build all-slice contact sheets and audit index
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from PIL import Image, ImageDraw
+
+          root = Path("benchmark-results/full-audit")
+          ev = root / "hybrid"
+          report = json.loads((root / "hybrid.json").read_text())
+          pages = report["pages"]
+
+          out = Path("bench/visual-inspection/shadow-slave-ch1-full")
+          out.mkdir(parents=True, exist_ok=True)
+
+          def thumb(path, size=(360, 620)):
+              im = Image.open(path).convert("RGB")
+              im.thumbnail(size)
+              canvas = Image.new("RGB", size, "white")
+              canvas.paste(im, ((size[0]-im.width)//2, (size[1]-im.height)//2))
+              return canvas
+
+          rows = []
+          audit = []
+          for page in pages:
+              idx = int(page["index"])
+              original_path = ev / f"{idx:02d}-original.png"
+              clean_path = ev / f"{idx:02d}-clean.png"
+              mask_path = ev / f"{idx:02d}-mask.png"
+              if not (original_path.exists() and clean_path.exists() and mask_path.exists()):
+                  raise RuntimeError(f"missing evidence for slice {idx}")
+
+              original = thumb(original_path)
+              clean = thumb(clean_path)
+              mask = thumb(mask_path)
+              row = Image.new("RGB", (1080, 660), "white")
+              row.paste(original, (0, 40))
+              row.paste(clean, (360, 40))
+              row.paste(mask, (720, 40))
+              d = ImageDraw.Draw(row)
+              d.text((8, 10), f"slice {idx:03d} original", fill="black")
+              d.text((368, 10), "clean", fill="black")
+              d.text((728, 10), "mask", fill="black")
+              rows.append(row)
+
+              audit.append({
+                  "index": idx,
+                  "file": page["file"],
+                  "detector_boxes": int(page.get("detector_boxes", 0)),
+                  "accepted_mask_boxes": int(page.get("accepted_mask_boxes", 0)),
+                  "mask_pixels": int(page.get("mask_pixels", 0)),
+                  "changed_pixels": int(page.get("changed_pixels", 0)),
+                  "lama_model_runs": int(page.get("lama_model_runs", 0)),
+                  "wall_ms": float(page.get("wall_ms", 0.0)),
+              })
+
+          per_sheet = 5
+          for start in range(0, len(rows), per_sheet):
+              batch = rows[start:start+per_sheet]
+              sheet = Image.new("RGB", (1080, 660*len(batch)), "white")
+              for j, row in enumerate(batch):
+                  sheet.paste(row, (0, 660*j))
+              sheet.save(out / f"contact-{start//per_sheet:02d}.jpg", quality=90)
+
+          (out / "audit-index.json").write_text(json.dumps(audit, indent=2) + "\n")
+          print("slices", len(rows), "sheets", len(list(out.glob("contact-*.jpg"))))
+          PY
+
+      - name: Publish full visual audit sheets
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f bench/visual-inspection/shadow-slave-ch1-full
+          git commit -m "bench: publish full Shadow Slave visual audit"
+          git push origin HEAD:experiment/one-shot-cleanup
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: shadow-slave-ch1-full-visual-audit
+          path: |
+            benchmark-results/full-audit/hybrid.json
+            bench/visual-inspection/shadow-slave-ch1-full/
+          retention-days: 7
