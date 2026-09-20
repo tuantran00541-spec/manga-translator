@@ -120,3 +120,65 @@ def test_legacy_bridge_preserves_decoder_source_role_gate():
         producer_role="text_segmenter",
     )
     assert trusted.safe_to_inpaint is True
+
+def test_clustered_planner_merges_nearby_proposals_and_tracks_real_coverage():
+    page = PageContext(np.zeros((2400, 800, 3), dtype=np.uint8))
+    planner = ProposalPlanner(
+        pad_x=80,
+        pad_y=80,
+        max_rois=3,
+        max_source_side=1344,
+        merge_overlap=0.10,
+        merge_gap=64,
+    )
+    proposals = [
+        _evidence(source="bubble", mask=False, bbox=(100, 400, 260, 560), confidence=0.9),
+        _evidence(source="bubble", mask=False, bbox=(280, 430, 440, 590), confidence=0.8),
+        _evidence(source="opencv_mser", mask=False, bbox=(120, 1500, 500, 1650), confidence=0.7),
+    ]
+
+    plan = planner.plan_clustered_shape(
+        image_shape=(page.height, page.width),
+        proposals=proposals,
+        source_pixel_budget=3 * 1344 * 1344,
+        tensor_pixel_budget=3 * 1024 * 1024,
+        tensor_pixels_per_roi=1024 * 1024,
+        tile_overlap=96,
+        span_short_axis=True,
+    )
+
+    assert plan.group_count == 2
+    assert len(plan.rois) == 2
+    assert len(plan.covered) == 3
+    assert plan.deferred == ()
+    assert plan.deferred_roi_count == 0
+    assert all(x1 == 0 and x2 == 800 for x1, _y1, x2, _y2 in plan.rois)
+
+
+def test_clustered_planner_reports_deferred_proposals_not_merely_deferred_tiles():
+    planner = ProposalPlanner(
+        pad_x=0,
+        pad_y=0,
+        max_rois=1,
+        max_source_side=100,
+        merge_overlap=0.10,
+        merge_gap=0,
+    )
+    first = _evidence(source="bubble", mask=False, bbox=(0, 0, 80, 80), confidence=0.9)
+    second = _evidence(source="bubble", mask=False, bbox=(0, 160, 80, 240), confidence=0.8)
+
+    plan = planner.plan_clustered_shape(
+        image_shape=(300, 80),
+        proposals=[first, second],
+        source_pixel_budget=100 * 100,
+        tensor_pixel_budget=1024 * 1024,
+        tensor_pixels_per_roi=1024 * 1024,
+        tile_overlap=0,
+        span_short_axis=True,
+    )
+
+    assert len(plan.rois) == 1
+    assert len(plan.covered) == 1
+    assert len(plan.deferred) == 1
+    assert plan.needs_full_page_fallback is True
+

@@ -11,6 +11,8 @@ import numpy as np
 
 from app.detector.bubble_detector import BubbleBox, YoloDetector
 from app.detector.combined_detector import CombinedTextDetector
+from app.detector.evidence import DetectionEvidence, EvidenceKind
+from app.detector.proposal_planner import ProposalPlanner
 from app.parameters import (
     DETECTOR_FOCUS_HARD_MAX_CHIPS,
     DETECTOR_FOCUS_MAX_CHIPS,
@@ -367,6 +369,49 @@ def _focus_text_detect_roi_first(
         FOCUS_MAX_CHIPS + extra,
     )
     scale = adaptive_max_chips / float(max(1, FOCUS_MAX_CHIPS))
+
+    # Shadow planner: geometry-only clustered proposal coverage. It does not
+    # affect inference or authority yet; benchmark metrics decide promotion.
+    shadow_evidence = [
+        DetectionEvidence(
+            bbox=(int(box.x1), int(box.y1), int(box.x2), int(box.y2)),
+            confidence=float(box.confidence),
+            semantic=str(getattr(box, "semantic_type", "unknown")),
+            source=str(getattr(box, "source_model", "unknown")),
+            evidence_kind=(
+                EvidenceKind.RECOVERY
+                if str(getattr(box, "source_model", "")) == "opencv_mser"
+                else EvidenceKind.BOX
+            ),
+            metadata={
+                "pad_x": FOCUS_FREE_PAD_X if _proposal_is_free_text(box) else FOCUS_PAD_X,
+                "pad_y": FOCUS_FREE_PAD_Y if _proposal_is_free_text(box) else FOCUS_PAD_Y,
+                # Structured detector proposals get first scheduling priority;
+                # review/recovery evidence remains represented but cannot starve
+                # every bounded authority ROI on dense pages.
+                "priority": 1 if _proposal_is_free_text(box) else 0,
+            },
+        )
+        for box in proposals
+    ]
+    shadow_planner = ProposalPlanner(
+        pad_x=FOCUS_PAD_X,
+        pad_y=FOCUS_PAD_Y,
+        max_rois=adaptive_max_chips,
+        max_source_side=FOCUS_MAX_SOURCE_SIDE,
+        merge_overlap=0.10,
+        merge_gap=FOCUS_MERGE_GAP,
+    )
+    shadow_plan = shadow_planner.plan_clustered_shape(
+        image_shape=(h, w),
+        proposals=shadow_evidence,
+        source_pixel_budget=int(round(FOCUS_SOURCE_PIXEL_BUDGET * scale)),
+        tensor_pixel_budget=int(round(FOCUS_TENSOR_PIXEL_BUDGET * scale)),
+        tensor_pixels_per_roi=DETECTOR_INPUT_SIZE * DETECTOR_INPUT_SIZE,
+        tile_overlap=FOCUS_TILE_OVERLAP,
+        span_short_axis=True,
+    )
+
     chips, deferred = plan_focus_chips(
         h,
         w,
@@ -405,6 +450,9 @@ def _focus_text_detect_roi_first(
         if not _proposal_resolved_by_roi(proposal, roi_semantic)
     ]
 
+    unresolved_free = [box for box in unresolved if _proposal_is_free_text(box)]
+    unresolved_structured = [box for box in unresolved if not _proposal_is_free_text(box)]
+
     fallback_no_proposals = not proposals
     fallback_deferred = bool(deferred)
     fallback_unresolved = bool(unresolved)
@@ -415,9 +463,30 @@ def _focus_text_detect_roi_first(
         or boundary_ambiguous
     )
 
+    roi_verified = [
+        box for box in roi_semantic
+        if box.verified_mask and box.source_role == "text_segmenter"
+    ]
+    full_verified: list[BubbleBox] = []
+    full_unique_verified: list[BubbleBox] = []
+
     all_raw = list(roi_raw)
     if needs_full_page:
-        all_raw.extend(detector._detect_single_plain(image, 0, 0))
+        full_raw = detector._detect_single_plain(image, 0, 0)
+        all_raw.extend(full_raw)
+        full_nms = detector._nms_boxes(full_raw)
+        full_semantic = [
+            detector._with_semantics(box)
+            for box in detector._filter_invalid(full_nms, w, h)
+        ]
+        full_verified = [
+            box for box in full_semantic
+            if box.verified_mask and box.source_role == "text_segmenter"
+        ]
+        full_unique_verified = [
+            box for box in full_verified
+            if not _matching_text_boxes(box, roi_verified)
+        ]
 
     boxes = detector._nms_boxes(all_raw)
     result = [
@@ -454,6 +523,17 @@ def _focus_text_detect_roi_first(
         "focus_fallback_deferred": int(fallback_deferred),
         "focus_fallback_unresolved": int(fallback_unresolved),
         "focus_fallback_boundary": int(boundary_ambiguous),
+        "focus_unresolved_free_text": len(unresolved_free),
+        "focus_unresolved_structured": len(unresolved_structured),
+        "focus_roi_verified_boxes": len(roi_verified),
+        "focus_full_verified_boxes": len(full_verified),
+        "focus_full_unique_verified_boxes": len(full_unique_verified),
+        "focus_shadow_clustered_rois": len(shadow_plan.rois),
+        "focus_shadow_clustered_candidate_rois": shadow_plan.candidate_roi_count,
+        "focus_shadow_clustered_deferred_rois": shadow_plan.deferred_roi_count,
+        "focus_shadow_clustered_covered_proposals": len(shadow_plan.covered),
+        "focus_shadow_clustered_deferred_proposals": len(shadow_plan.deferred),
+        "focus_shadow_clustered_groups": shadow_plan.group_count,
     }, deferred_boxes
 
 
