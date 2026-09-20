@@ -1,0 +1,212 @@
+name: Residual OCR audit Shadow Slave Ch1
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["experiment/one-shot-cleanup"]
+    paths:
+      - .github/workflows/residual-ocr-audit.yml
+
+permissions:
+  contents: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 35
+    env:
+      PYTHONUNBUFFERED: "1"
+      CHAPTER_URL: "https://asurascans.com/comics/shadow-slave-6f7fe6eb/chapter/1"
+      RAW_DIR: "benchmark-results/residual-audit/input"
+      SLICE_DIR: "benchmark-results/residual-audit/slices"
+      RESULT_DIR: "benchmark-results/residual-audit"
+      MANGA_USE_DYNAMIC_LAMA: "1"
+      MANGA_ORT_PROVIDER: openvino
+      MANGA_ORT_REQUIRE_PROVIDER: "1"
+      MANGA_ORT_OPENVINO_SCOPE: detectors
+      MANGA_ORT_OPENVINO_THREADS: "2"
+      MANGA_ORT_OPENVINO_STREAMS: "1"
+      MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install benchmark and OCR dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq tesseract-ocr
+          python -m pip install numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 onnxruntime-openvino==1.24.1 psutil==6.1.1 loguru==0.7.2 requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 playwright==1.47.0 fastapi==0.115.0 pydantic==2.9.2 filelock==3.16.1 threadpoolctl==3.6.0 pytesseract==0.3.13
+
+      - name: Restore benchmark models
+        id: models
+        uses: actions/cache@v4
+        with:
+          path: |
+            models/*.onnx
+            models/.e2e-provenance.json
+          key: processing-profile-models-b224548-v1
+
+      - name: Read pinned existing model provisioner
+        if: ${{ steps.models.outputs.cache-hit != 'true' }}
+        uses: actions/checkout@v4
+        with:
+          ref: b22454827f8190655d7070b80eb20c2550beadfa
+          path: benchmark-bootstrap
+          sparse-checkout: scripts/provision_real_e2e_models.py
+          sparse-checkout-cone-mode: false
+
+      - name: Provision public models with recorded hashes
+        if: ${{ steps.models.outputs.cache-hit != 'true' }}
+        run: |
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple torch==2.5.1+cpu torchvision==0.20.1+cpu
+          python -m pip install --no-deps ultralytics==8.3.221 onnx==1.17.0 onnxslim==0.1.71
+          python -m pip install numpy==1.26.4 sympy==1.13.1 PyYAML==6.0.2 scipy==1.14.1 tqdm==4.67.1 matplotlib==3.9.2 pandas==2.2.3 py-cpuinfo==9.0.0 ml_dtypes==0.5.3 colorama==0.4.6 polars==1.33.1 ultralytics-thop==2.0.17
+          python benchmark-bootstrap/scripts/provision_real_e2e_models.py
+          cp benchmark-bootstrap/models/*.onnx models/
+          cp benchmark-bootstrap/models/.e2e-provenance.json models/
+
+      - name: Download chapter
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from app.downloader.registry import download_chapter
+          raw = Path(os.environ["RAW_DIR"])
+          raw.mkdir(parents=True, exist_ok=True)
+          paths = download_chapter(os.environ["CHAPTER_URL"], raw)
+          print("downloaded_images", len(paths))
+          if len(paths) < 4:
+              raise RuntimeError("chapter download incomplete")
+          PY
+
+      - name: Run hybrid with full evidence
+        run: |
+          python scripts/benchmark_one_shot_cleanup.py             --mode simple             --raw-dir "$RAW_DIR"             --slice-dir "$SLICE_DIR"             --limit 0             --evidence-stride 1             --output "$RESULT_DIR/hybrid.json"             --evidence-dir "$RESULT_DIR/hybrid"
+
+      - name: OCR persistent text after cleanup
+        run: |
+          python - <<'PY'
+          import json, math, re
+          from pathlib import Path
+          import cv2
+          import pytesseract
+          from pytesseract import Output
+
+          root = Path("benchmark-results/residual-audit")
+          ev = root / "hybrid"
+          report = json.loads((root / "hybrid.json").read_text())
+          pages = report["pages"]
+
+          def norm(s):
+              return re.sub(r"[^A-Z0-9]+", "", str(s).upper())
+
+          def ocr(path):
+              img = cv2.imread(str(path))
+              if img is None:
+                  return []
+              h, w = img.shape[:2]
+              scale = min(1.0, 1800.0 / max(h, w))
+              if scale < 1.0:
+                  img = cv2.resize(img, (round(w*scale), round(h*scale)), interpolation=cv2.INTER_AREA)
+              data = pytesseract.image_to_data(
+                  img,
+                  config="--oem 1 --psm 11",
+                  output_type=Output.DICT,
+              )
+              out = []
+              for i, raw in enumerate(data["text"]):
+                  token = norm(raw)
+                  try:
+                      conf = float(data["conf"][i])
+                  except Exception:
+                      conf = -1
+                  if len(token) < 2 or conf < 25:
+                      continue
+                  x = int(data["left"][i]); y = int(data["top"][i])
+                  ww = int(data["width"][i]); hh = int(data["height"][i])
+                  out.append({
+                      "text": raw,
+                      "token": token,
+                      "conf": round(conf, 1),
+                      "cx": x + ww/2,
+                      "cy": y + hh/2,
+                      "w": ww,
+                      "h": hh,
+                      "scale": scale,
+                  })
+              return out
+
+          def match_persistent(a, b):
+              matches = []
+              used = set()
+              for x in a:
+                  candidates = []
+                  for j, y in enumerate(b):
+                      if j in used or x["token"] != y["token"]:
+                          continue
+                      radius = max(35.0, 1.5 * max(x["w"], x["h"], y["w"], y["h"]))
+                      dist = math.hypot(x["cx"]-y["cx"], x["cy"]-y["cy"])
+                      if dist <= radius:
+                          candidates.append((dist, j, y))
+                  if candidates:
+                      _, j, y = min(candidates, key=lambda z: z[0])
+                      used.add(j)
+                      matches.append({
+                          "token": x["token"],
+                          "original_text": x["text"],
+                          "clean_text": y["text"],
+                          "original_conf": x["conf"],
+                          "clean_conf": y["conf"],
+                          "cx": round(y["cx"], 1),
+                          "cy": round(y["cy"], 1),
+                      })
+              return matches
+
+          rows = []
+          for page in pages:
+              idx = int(page["index"])
+              orig = ev / f"{idx:02d}-original.png"
+              clean = ev / f"{idx:02d}-clean.png"
+              a = ocr(orig)
+              b = ocr(clean)
+              persistent = match_persistent(a, b)
+              row = {
+                  "index": idx,
+                  "file": page["file"],
+                  "mask_pixels": int(page.get("mask_pixels", 0)),
+                  "changed_pixels": int(page.get("changed_pixels", 0)),
+                  "detector_boxes": int(page.get("detector_boxes", 0)),
+                  "persistent_tokens": persistent,
+                  "persistent_count": len(persistent),
+              }
+              rows.append(row)
+              if persistent:
+                  print(json.dumps(row), flush=True)
+
+          flagged = [r for r in rows if r["persistent_count"] > 0]
+          summary = {
+              "slice_count": len(rows),
+              "flagged_slice_count": len(flagged),
+              "flagged_rate": len(flagged) / max(1, len(rows)),
+              "zero_mask_slices": [r["index"] for r in rows if r["mask_pixels"] == 0],
+              "flagged_slices": [r["index"] for r in flagged],
+              "rows": rows,
+          }
+          out = Path("bench/visual-inspection/shadow-slave-ch1-full")
+          out.mkdir(parents=True, exist_ok=True)
+          (out / "residual-ocr-audit.json").write_text(json.dumps(summary, indent=2) + "\n")
+          print(json.dumps({k:v for k,v in summary.items() if k!="rows"}, indent=2))
+          PY
+
+      - name: Publish residual audit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git pull --rebase origin experiment/one-shot-cleanup
+          git add -f bench/visual-inspection/shadow-slave-ch1-full/residual-ocr-audit.json
+          git commit -m "bench: publish Shadow Slave residual OCR audit"
+          git push origin HEAD:experiment/one-shot-cleanup
