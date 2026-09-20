@@ -22,7 +22,15 @@ class OneShotCleanupResult:
 
 
 class OneShotTextMaskDetector:
-    """One text-segmenter forward, no detector recovery or second opinion."""
+    """One cheap full-slice pass with a bounded zero-box fallback.
+
+    Normal slices still cost exactly one text-segmenter forward. Only when the
+    verified full-slice pass returns no usable text mask do we spend four more
+    forwards on an overlapping 2x2 grid. The fallback uses the same segmenter,
+    the same confidence threshold and the same verified-mask authority contract.
+    """
+
+    FALLBACK_TILE_RATIO = 0.60
 
     def __init__(self, detector: YoloDetector | None = None):
         self.detector = detector or YoloDetector(
@@ -36,9 +44,6 @@ class OneShotTextMaskDetector:
     def _accept(box: BubbleBox) -> BubbleBox | None:
         if box.source_role != "text_segmenter" or not box.verified_mask:
             return None
-        # The dumb detector does not try to distinguish speech-bubble text from
-        # free text. Treat all verified text as one cleanup class and let the
-        # existing inpainter decide whether a cheap fill is safe or LaMa is needed.
         return replace(
             box,
             semantic_type="free_text",
@@ -49,27 +54,73 @@ class OneShotTextMaskDetector:
             deferred_reason=None,
         )
 
+    @classmethod
+    def _fallback_windows(
+        cls,
+        image: np.ndarray,
+    ) -> list[tuple[int, int, int, int]]:
+        h, w = image.shape[:2]
+        if h <= 0 or w <= 0:
+            return []
+
+        tile_w = min(w, max(1, int(round(w * cls.FALLBACK_TILE_RATIO))))
+        tile_h = min(h, max(1, int(round(h * cls.FALLBACK_TILE_RATIO))))
+
+        x_starts = sorted({0, max(0, w - tile_w)})
+        y_starts = sorted({0, max(0, h - tile_h)})
+        return [
+            (x, y, min(w, x + tile_w), min(h, y + tile_h))
+            for y in y_starts
+            for x in x_starts
+        ]
+
+    def _accept_many(self, raw_boxes: list[BubbleBox]) -> list[BubbleBox]:
+        accepted: list[BubbleBox] = []
+        for raw in raw_boxes:
+            box = self._accept(raw)
+            if box is not None:
+                accepted.append(box)
+        return accepted
+
     def detect(self, image: np.ndarray) -> tuple[list[BubbleBox], dict[str, float | int]]:
         started = time.perf_counter()
 
-        # Intentionally bypass YoloDetector.detect(): no tall slicing, no TTA,
-        # no retry. One slice enters the ONNX text segmenter exactly once.
+        # Fast path: exactly one whole-slice forward.
         raw_boxes = self.detector._detect_single(image, 0, 0)
-        boxes: list[BubbleBox] = []
-        for raw in raw_boxes:
-            accepted = self._accept(raw)
-            if accepted is not None:
-                boxes.append(accepted)
+        boxes = self._accept_many(raw_boxes)
 
+        fallback_triggered = not boxes
+        fallback_raw_boxes: list[BubbleBox] = []
+        fallback_forward_calls = 0
+
+        if fallback_triggered:
+            for x1, y1, x2, y2 in self._fallback_windows(image):
+                tile = image[y1:y2, x1:x2]
+                if tile.size == 0:
+                    continue
+                fallback_forward_calls += 1
+                fallback_raw_boxes.extend(
+                    self.detector._detect_single(tile, x1, y1)
+                )
+
+            if fallback_raw_boxes:
+                # The detector's existing NMS understands global page geometry
+                # because every tile was decoded with page offsets.
+                fallback_raw_boxes = self.detector._nms_boxes(fallback_raw_boxes)
+                boxes = self._accept_many(fallback_raw_boxes)
+
+        total_forwards = 1 + fallback_forward_calls
         return boxes, {
             "detector_ms": round((time.perf_counter() - started) * 1000.0, 3),
-            "detector_forward_calls": 1,
-            "detector_boxes": int(len(raw_boxes)),
+            "detector_forward_calls": total_forwards,
+            "detector_boxes": int(len(raw_boxes) + len(fallback_raw_boxes)),
             "accepted_mask_boxes": int(len(boxes)),
+            "fallback_triggered": int(fallback_triggered),
+            "fallback_forward_calls": int(fallback_forward_calls),
+            "fallback_boxes": int(len(fallback_raw_boxes)),
         }
 
     def detect_mask(self, image: np.ndarray) -> tuple[np.ndarray, dict[str, float | int]]:
-        """Compatibility helper used by focused detector tests."""
         boxes, metrics = self.detect(image)
         mask = (
             build_mask(image.shape[:2], boxes, image)
@@ -83,7 +134,7 @@ class OneShotTextMaskDetector:
 
 
 class OneShotCleanupPipeline:
-    """Dumb detector + the normal production AdaptiveFastInpainter."""
+    """Cheap detector with zero-box fallback + production AdaptiveFastInpainter."""
 
     def __init__(
         self,
@@ -94,7 +145,6 @@ class OneShotCleanupPipeline:
     ):
         self.detector = detector or OneShotTextMaskDetector()
         self.inpainter = inpainter or AdaptiveFastInpainter()
-        # Compatibility only; hybrid mode deliberately has no detector ROI knob.
         self.padding = int(padding)
 
     def clean(self, image: np.ndarray) -> OneShotCleanupResult:
