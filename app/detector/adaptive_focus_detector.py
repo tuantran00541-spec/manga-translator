@@ -487,7 +487,9 @@ def _focus_text_detect_roi_first(
         tensor_pixel_budget=int(round(FOCUS_TENSOR_PIXEL_BUDGET * scale)),
         tensor_pixels_per_roi=DETECTOR_INPUT_SIZE * DETECTOR_INPUT_SIZE,
         tile_overlap=FOCUS_TILE_OVERLAP,
-        span_short_axis=True,
+        # Keep crops local. Expanding every group to full page width reduced
+        # effective text resolution and recreated page stripes.
+        span_short_axis=False,
     )
 
     chips = list(plan.rois)

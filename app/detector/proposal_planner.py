@@ -233,7 +233,12 @@ class ProposalPlanner:
             return ClusteredDetectionPlan((), (), tuple(proposals), 0, 0, 0)
 
         entries: list[
-            tuple[DetectionEvidence, tuple[int, int, int, int], float]
+            tuple[
+                DetectionEvidence,
+                tuple[int, int, int, int],
+                tuple[int, int, int, int],
+                float,
+            ]
         ] = []
         for proposal in proposals:
             x1, y1, x2, y2 = map(int, proposal.bbox)
@@ -246,22 +251,24 @@ class ProposalPlanner:
             meta = dict(proposal.metadata or {})
             pad_x = max(0, int(meta.get("pad_x", self.pad_x)))
             pad_y = max(0, int(meta.get("pad_y", self.pad_y)))
-            rect = (
+            cluster_rect = (x1, y1, x2, y2)
+            roi_rect = (
                 max(0, x1 - pad_x),
                 max(0, y1 - pad_y),
                 min(width, x2 + pad_x),
                 min(height, y2 + pad_y),
             )
             priority = float(meta.get("priority", 1.0))
-            entries.append((proposal, rect, priority))
+            entries.append((proposal, cluster_rect, roi_rect, priority))
 
         if not entries:
             return ClusteredDetectionPlan(
                 (), (), tuple(proposals), 0, 0, 0
             )
 
-        # Connected spatial groups. Grouping is intentionally geometry-only:
-        # semantics/authority stay in the scheduler and policy layers.
+        # Cluster on the original proposal geometry. Padding belongs to the
+        # resulting authority crop, not to connectivity: clustering padded boxes
+        # can create a transitive chain that turns an entire page into one ROI.
         pending = list(range(len(entries)))
         groups: list[list[int]] = []
         while pending:
@@ -273,7 +280,13 @@ class ProposalPlanner:
                 group_rect = self._union_rects([entries[i][1] for i in group])
                 keep: list[int] = []
                 for idx in pending:
-                    if self._clusterable(group_rect, entries[idx][1]):
+                    candidate = entries[idx][1]
+                    union = self._union_rects([group_rect, candidate])
+                    bounded_union = (
+                        union[2] - union[0] <= self.max_source_side
+                        and union[3] - union[1] <= self.max_source_side
+                    )
+                    if self._clusterable(group_rect, candidate) and bounded_union:
                         group.append(idx)
                         changed = True
                     else:
@@ -286,7 +299,7 @@ class ProposalPlanner:
         ] = []
         serial = 0
         for group in groups:
-            group_rect = self._union_rects([entries[i][1] for i in group])
+            group_rect = self._union_rects([entries[i][2] for i in group])
             gx1, gy1, gx2, gy2 = group_rect
             if span_short_axis and height >= width and width <= self.max_source_side:
                 gx1, gx2 = 0, width
@@ -307,7 +320,7 @@ class ProposalPlanner:
                 limit=self.max_source_side,
                 overlap=tile_overlap,
             )
-            group_priority = min(entries[i][2] for i in group)
+            group_priority = min(entries[i][3] for i in group)
             group_area = max(1, (gx2 - gx1) * (gy2 - gy1))
             for ay, by in ys:
                 for ax, bx in xs:

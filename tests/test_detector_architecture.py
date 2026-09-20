@@ -182,3 +182,41 @@ def test_clustered_planner_reports_deferred_proposals_not_merely_deferred_tiles(
     assert len(plan.deferred) == 1
     assert plan.needs_full_page_fallback is True
 
+
+
+def test_clustered_planner_padding_does_not_chain_distant_proposals():
+    planner = ProposalPlanner(
+        pad_x=80,
+        pad_y=80,
+        max_rois=4,
+        max_source_side=1344,
+        merge_overlap=0.10,
+        merge_gap=64,
+    )
+    first = _evidence(
+        source="bubble",
+        mask=False,
+        bbox=(100, 100, 200, 200),
+        confidence=0.9,
+    )
+    second = _evidence(
+        source="bubble",
+        mask=False,
+        bbox=(100, 300, 200, 400),
+        confidence=0.8,
+    )
+
+    plan = planner.plan_clustered_shape(
+        image_shape=(800, 600),
+        proposals=[first, second],
+        source_pixel_budget=4 * 1344 * 1344,
+        tensor_pixel_budget=4 * 1024 * 1024,
+        tensor_pixels_per_roi=1024 * 1024,
+        tile_overlap=96,
+        span_short_axis=False,
+    )
+
+    assert plan.group_count == 2
+    assert len(plan.rois) == 2
+    assert len(plan.covered) == 2
+    assert plan.deferred == ()
