@@ -161,36 +161,35 @@ def test_hybrid_cleanup_passes_empty_detection_to_normal_inpainter():
     assert np.array_equal(result.image, image)
 
 
-class FakeFallbackDetector:
+
+
+class FakeLowConfidenceRetryDetector:
     def __init__(self, fallback_box):
         self.fallback_box = fallback_box
-        self.calls = []
+        self.calls = 0
+        self.conf_threshold = 0.20
 
     def _detect_single(self, image, offset_x, offset_y):
-        self.calls.append((offset_x, offset_y, image.shape[:2]))
-        if offset_x == 0 and offset_y == 0 and image.shape[:2] == (100, 100):
+        assert offset_x == 0 and offset_y == 0
+        self.calls += 1
+        if self.conf_threshold >= 0.20:
             return []
-        if offset_x > 0 and offset_y > 0:
-            return [self.fallback_box]
-        return []
-
-    def _nms_boxes(self, boxes):
-        return list(boxes)
+        return [self.fallback_box]
 
 
-def test_zero_box_full_pass_triggers_only_bounded_2x2_fallback():
+def test_zero_box_full_pass_gets_one_low_confidence_retry():
     image = np.zeros((100, 100, 3), dtype=np.uint8)
     mask = np.full((12, 18), 255, dtype=np.uint8)
-    fallback_box = _box(72, 72, 90, 84, mask)
-    underlying = FakeFallbackDetector(fallback_box)
+    underlying = FakeLowConfidenceRetryDetector(_box(10, 10, 28, 22, mask))
     detector = OneShotTextMaskDetector(detector=underlying)
 
     boxes, metrics = detector.detect(image)
 
-    assert len(underlying.calls) == 5
-    assert metrics["detector_forward_calls"] == 5
+    assert underlying.calls == 2
+    assert underlying.conf_threshold == 0.20
+    assert metrics["detector_forward_calls"] == 2
     assert metrics["fallback_triggered"] == 1
-    assert metrics["fallback_forward_calls"] == 4
+    assert metrics["fallback_forward_calls"] == 1
     assert metrics["fallback_boxes"] == 1
     assert metrics["accepted_mask_boxes"] == 1
     assert len(boxes) == 1
