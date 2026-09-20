@@ -1,0 +1,52 @@
+name: Diagnose Shadow Slave slice zero
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["experiment/one-shot-cleanup"]
+    paths:
+      - .github/workflows/diagnose-slice-zero.yml
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Pillow
+        run: python -m pip install Pillow==10.4.0
+      - name: Inspect exact slice-zero evidence
+        run: |
+          python - <<'PY'
+          import base64, hashlib, io, json
+          from pathlib import Path
+          from PIL import Image
+
+          root = Path("bench/visual-inspection/shadow-slave-ch1")
+          def read_b64(name):
+              return base64.b64decode((root / name).read_text())
+
+          original = read_b64("00-original.png.b64")
+          clean = read_b64("00-clean.png.b64")
+          mask_bytes = read_b64("00-mask.png.b64")
+          mask = Image.open(io.BytesIO(mask_bytes)).convert("L")
+          hist = mask.histogram()
+          nonzero = int(sum(hist[1:]))
+          total = int(mask.width * mask.height)
+          report = {
+              "original_sha256": hashlib.sha256(original).hexdigest(),
+              "clean_sha256": hashlib.sha256(clean).hexdigest(),
+              "clean_identical_to_original": original == clean,
+              "mask_size": [mask.width, mask.height],
+              "mask_extrema": list(mask.getextrema()),
+              "mask_nonzero_pixels": nonzero,
+              "mask_total_pixels": total,
+              "mask_coverage": nonzero / max(1, total),
+          }
+          print(json.dumps(report, indent=2))
+          PY
