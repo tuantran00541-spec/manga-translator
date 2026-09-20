@@ -220,9 +220,9 @@ jobs:
           model = YOLO("yolo26n-seg.pt")
           result = model.train(
               data=str(data),
-              epochs=3,
-              imgsz=640,
-              batch=4,
+              epochs=10,
+              imgsz=1024,
+              batch=2,
               device="cpu",
               workers=2,
               freeze=10,
@@ -288,7 +288,7 @@ jobs:
           print("exported", target, target.stat().st_size)
           PY
 
-      - name: Compare held-out teacher masks and student speed
+      - name: Calibrate YOLO26 threshold against held-out teacher masks
         run: |
           python - <<'PY'
           import json
@@ -297,7 +297,6 @@ jobs:
           import time
           from pathlib import Path
 
-          import cv2
           import numpy as np
 
           from app.detector.bubble_detector import YoloDetector
@@ -311,93 +310,176 @@ jobs:
           student_path = root / "yolo26-text-seg.onnx"
 
           teacher = OneShotTextMaskDetector()
-          student_raw = YoloDetector(
+          student = YoloDetector(
               student_path,
-              TEXT_CONF_THRESHOLD,
+              0.01,
               use_tta=False,
               model_role="text_segmenter",
           )
 
-          def accept(box):
-              return box.source_role == "text_segmenter" and box.verified_mask
-
+          thresholds = [0.01, 0.015, 0.02, 0.03, 0.05, 0.08, 0.12, 0.20]
+          agg = {
+              str(t): {
+                  "teacher_pixels": 0,
+                  "student_pixels": 0,
+                  "intersection": 0,
+                  "union": 0,
+                  "teacher_boxes": 0,
+                  "student_boxes": 0,
+                  "verified_boxes": 0,
+                  "student_nonempty_slices": 0,
+              }
+              for t in thresholds
+          }
           rows = []
           teacher_times = []
-          student_times = []
-          teacher_pixels_total = 0
-          student_pixels_total = 0
-          inter_total = 0
-          union_total = 0
+          student_infer_times = []
 
           val_paths = sorted((dataset / "images" / "val").glob("*.png"))
-          for idx, path in enumerate(val_paths):
+          for path in val_paths:
               image = read_image(path)
 
               t0 = time.perf_counter()
               tboxes, tmetrics = teacher.detect(image)
               teacher_times.append((time.perf_counter() - t0) * 1000.0)
-              tmask = build_mask(image.shape[:2], tboxes, image) if tboxes else np.zeros(image.shape[:2], np.uint8)
-
-              t0 = time.perf_counter()
-              sraw = student_raw._detect_single(image, 0, 0)
-              student_times.append((time.perf_counter() - t0) * 1000.0)
-              sboxes = [b for b in sraw if accept(b)]
-              smask = build_mask(image.shape[:2], sboxes, image) if sboxes else np.zeros(image.shape[:2], np.uint8)
-
+              tmask = (
+                  build_mask(image.shape[:2], tboxes, image)
+                  if tboxes
+                  else np.zeros(image.shape[:2], np.uint8)
+              )
               ta = tmask > 127
-              sa = smask > 127
-              tp = int(np.count_nonzero(ta))
-              sp = int(np.count_nonzero(sa))
-              inter = int(np.count_nonzero(ta & sa))
-              union = int(np.count_nonzero(ta | sa))
-              teacher_pixels_total += tp
-              student_pixels_total += sp
-              inter_total += inter
-              union_total += union
+              teacher_pixels = int(np.count_nonzero(ta))
 
-              rows.append({
+              blob, transform = student._preprocess(image, offset_x=0, offset_y=0)
+              t0 = time.perf_counter()
+              outputs = student.session.run(None, {student.input_name: blob})
+              student_infer_times.append((time.perf_counter() - t0) * 1000.0)
+
+              row = {
                   "file": path.name,
                   "teacher_boxes": len(tboxes),
-                  "student_boxes": len(sboxes),
-                  "teacher_pixels": tp,
-                  "student_pixels": sp,
-                  "intersection": inter,
-                  "union": union,
-                  "teacher_pixel_recall": inter / max(1, tp),
-                  "student_pixel_precision": inter / max(1, sp),
-                  "iou": inter / max(1, union),
+                  "teacher_pixels": teacher_pixels,
                   "teacher_rescue": int(tmetrics.get("low_conf_rescue", 0)),
-              })
+                  "thresholds": {},
+              }
+
+              for threshold in thresholds:
+                  old = student.conf_threshold
+                  student.conf_threshold = threshold
+                  try:
+                      raw = student._postprocess(outputs, transform)
+                  finally:
+                      student.conf_threshold = old
+
+                  boxes = [
+                      b for b in raw
+                      if b.source_role == "text_segmenter" and b.verified_mask
+                  ]
+                  smask = (
+                      build_mask(image.shape[:2], boxes, image)
+                      if boxes
+                      else np.zeros(image.shape[:2], np.uint8)
+                  )
+                  sa = smask > 127
+                  student_pixels = int(np.count_nonzero(sa))
+                  inter = int(np.count_nonzero(ta & sa))
+                  union = int(np.count_nonzero(ta | sa))
+
+                  a = agg[str(threshold)]
+                  a["teacher_pixels"] += teacher_pixels
+                  a["student_pixels"] += student_pixels
+                  a["intersection"] += inter
+                  a["union"] += union
+                  a["teacher_boxes"] += len(tboxes)
+                  a["student_boxes"] += len(raw)
+                  a["verified_boxes"] += len(boxes)
+                  a["student_nonempty_slices"] += int(bool(boxes))
+
+                  row["thresholds"][str(threshold)] = {
+                      "raw_boxes": len(raw),
+                      "verified_boxes": len(boxes),
+                      "student_pixels": student_pixels,
+                      "intersection": inter,
+                      "recall": inter / max(1, teacher_pixels),
+                      "precision": inter / max(1, student_pixels),
+                      "iou": inter / max(1, union),
+                  }
+
+              rows.append(row)
+
+          calibration = {}
+          for threshold in thresholds:
+              a = agg[str(threshold)]
+              recall = a["intersection"] / max(1, a["teacher_pixels"])
+              precision = a["intersection"] / max(1, a["student_pixels"])
+              iou = a["intersection"] / max(1, a["union"])
+              f1 = (
+                  2.0 * recall * precision / max(1e-12, recall + precision)
+              )
+              calibration[str(threshold)] = {
+                  **a,
+                  "pixel_recall": recall,
+                  "pixel_precision": precision,
+                  "pixel_iou": iou,
+                  "pixel_f1": f1,
+              }
+
+          eligible = [
+              (float(t), m)
+              for t, m in calibration.items()
+              if m["pixel_precision"] >= 0.90
+          ]
+          if eligible:
+              chosen_t, chosen = max(
+                  eligible,
+                  key=lambda item: (
+                      item[1]["pixel_recall"],
+                      item[1]["pixel_iou"],
+                  ),
+              )
+          else:
+              chosen_t, chosen = max(
+                  ((float(t), m) for t, m in calibration.items()),
+                  key=lambda item: item[1]["pixel_f1"],
+              )
 
           report = {
               "val_slices": len(val_paths),
               "teacher_median_ms": statistics.median(teacher_times),
-              "student_median_ms": statistics.median(student_times),
-              "speedup": statistics.median(teacher_times) / max(1e-9, statistics.median(student_times)),
-              "teacher_pixels": teacher_pixels_total,
-              "student_pixels": student_pixels_total,
-              "intersection_pixels": inter_total,
-              "union_pixels": union_total,
-              "pixel_recall_vs_teacher": inter_total / max(1, teacher_pixels_total),
-              "pixel_precision_vs_teacher": inter_total / max(1, student_pixels_total),
-              "pixel_iou_vs_teacher": inter_total / max(1, union_total),
+              "student_inference_median_ms": statistics.median(student_infer_times),
+              "inference_speedup": statistics.median(teacher_times)
+                  / max(1e-9, statistics.median(student_infer_times)),
               "student_bytes": student_path.stat().st_size,
+              "chosen_threshold": chosen_t,
+              "chosen_metrics": chosen,
+              "calibration": calibration,
               "rows": rows,
           }
           (root / "student-report.json").write_text(
               json.dumps(report, indent=2) + "\n"
           )
-          print(json.dumps({k:v for k,v in report.items() if k != "rows"}, indent=2))
+          print(json.dumps({
+              "val_slices": report["val_slices"],
+              "teacher_median_ms": report["teacher_median_ms"],
+              "student_inference_median_ms": report["student_inference_median_ms"],
+              "inference_speedup": report["inference_speedup"],
+              "student_bytes": report["student_bytes"],
+              "chosen_threshold": report["chosen_threshold"],
+              "chosen_metrics": report["chosen_metrics"],
+              "calibration": report["calibration"],
+          }, indent=2))
 
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as f:
-              f.write("## YOLO26 text student probe\n\n")
+              f.write("## YOLO26 text student calibration\n\n")
               f.write(f"- val slices: {report['val_slices']}\n")
               f.write(f"- teacher median: {report['teacher_median_ms']:.2f} ms\n")
-              f.write(f"- student median: {report['student_median_ms']:.2f} ms\n")
-              f.write(f"- speedup: {report['speedup']:.2f}x\n")
-              f.write(f"- teacher pixel recall: {report['pixel_recall_vs_teacher']:.3f}\n")
-              f.write(f"- student pixel precision: {report['pixel_precision_vs_teacher']:.3f}\n")
-              f.write(f"- pixel IoU: {report['pixel_iou_vs_teacher']:.3f}\n")
+              f.write(f"- student raw inference median: {report['student_inference_median_ms']:.2f} ms\n")
+              f.write(f"- inference speedup: {report['inference_speedup']:.2f}x\n")
+              f.write(f"- chosen threshold: {report['chosen_threshold']:.3f}\n")
+              f.write(f"- pixel recall: {chosen['pixel_recall']:.3f}\n")
+              f.write(f"- pixel precision: {chosen['pixel_precision']:.3f}\n")
+              f.write(f"- pixel IoU: {chosen['pixel_iou']:.3f}\n")
+              f.write(f"- pixel F1: {chosen['pixel_f1']:.3f}\n")
           PY
 
       - uses: actions/upload-artifact@v4
