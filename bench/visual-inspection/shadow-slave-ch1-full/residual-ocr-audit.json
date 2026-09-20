@@ -1,0 +1,2257 @@
+{
+  "slice_count": 135,
+  "flagged_slice_count": 40,
+  "flagged_rate": 0.2962962962962963,
+  "zero_mask_slices": [
+    0,
+    8,
+    9,
+    10,
+    12,
+    17,
+    19,
+    20,
+    24,
+    25,
+    26,
+    27,
+    34,
+    36,
+    37,
+    46,
+    58,
+    64,
+    70,
+    80,
+    85,
+    97,
+    129,
+    130
+  ],
+  "flagged_slices": [
+    0,
+    6,
+    9,
+    10,
+    12,
+    17,
+    19,
+    20,
+    24,
+    25,
+    26,
+    27,
+    29,
+    30,
+    31,
+    33,
+    36,
+    37,
+    38,
+    46,
+    52,
+    56,
+    58,
+    60,
+    61,
+    64,
+    70,
+    71,
+    72,
+    80,
+    81,
+    88,
+    93,
+    97,
+    98,
+    104,
+    106,
+    130,
+    133,
+    134
+  ],
+  "rows": [
+    {
+      "index": 0,
+      "file": "000_00.png",
+      "mask_pixels": 0,
+      "changed_pixels": 0,
+      "detector_boxes": 0,
+      "persistent_tokens": [
+        {
+          "token": "AE",
+          "original_text": "ae)",
+          "clean_text": "ae)",
+          "original_conf": 30.0,
+          "clean_conf": 30.0,
+          "cx": 399.5,
+          "cy": 1465.0
+        }
+      ],
+      "persistent_count": 1
+    },
+    {
+      "index": 1,
+      "file": "000_01.png",
+      "mask_pixels": 433582,
+      "changed_pixels": 431458,
+      "detector_boxes": 1,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 2,
+      "file": "000_02.png",
+      "mask_pixels": 819947,
+      "changed_pixels": 818952,
+      "detector_boxes": 1,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 3,
+      "file": "000_03.png",
+      "mask_pixels": 945036,
+      "changed_pixels": 944857,
+      "detector_boxes": 1,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 4,
+      "file": "000_04.png",
+      "mask_pixels": 957604,
+      "changed_pixels": 955847,
+      "detector_boxes": 1,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 5,
+      "file": "000_05.png",
+      "mask_pixels": 950256,
+      "changed_pixels": 948676,
+      "detector_boxes": 1,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 6,
+      "file": "001_00.png",
+      "mask_pixels": 397139,
+      "changed_pixels": 122220,
+      "detector_boxes": 1,
+      "persistent_tokens": [
+        {
+          "token": "AY",
+          "original_text": "AY",
+          "clean_text": "AY",
+          "original_conf": 63.0,
+          "clean_conf": 63.0,
+          "cx": 522.5,
+          "cy": 913.5
+        },
+        {
+          "token": "NSM",
+          "original_text": "NSM",
+          "clean_text": "NSM",
+          "original_conf": 47.0,
+          "clean_conf": 47.0,
+          "cx": 194.5,
+          "cy": 1168.0
+        }
+      ],
+      "persistent_count": 2
+    },
+    {
+      "index": 7,
+      "file": "001_01.png",
+      "mask_pixels": 137829,
+      "changed_pixels": 25946,
+      "detector_boxes": 1,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 8,
+      "file": "001_02.png",
+      "mask_pixels": 0,
+      "changed_pixels": 0,
+      "detector_boxes": 0,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 9,
+      "file": "001_03.png",
+      "mask_pixels": 0,
+      "changed_pixels": 0,
+      "detector_boxes": 0,
+      "persistent_tokens": [
+        {
+          "token": "AE",
+          "original_text": "ae",
+          "clean_text": "ae",
+          "original_conf": 35.0,
+          "clean_conf": 35.0,
+          "cx": 446.5,
+          "cy": 1548.0
+        }
+      ],
+      "persistent_count": 1
+    },
+    {
+      "index": 10,
+      "file": "001_04.png",
+      "mask_pixels": 0,
+      "changed_pixels": 0,
+      "detector_boxes": 0,
+      "persistent_tokens": [
+        {
+          "token": "IE",
+          "original_text": "ie",
+          "clean_text": "ie",
+          "original_conf": 31.0,
+          "clean_conf": 31.0,
+          "cx": 115.5,
+          "cy": 1150.5
+        },
+        {
+          "token": "OTE",
+          "original_text": "ote",
+          "clean_text": "ote",
+          "original_conf": 37.0,
+          "clean_conf": 37.0,
+          "cx": 519.5,
+          "cy": 1257.5
+        },
+        {
+          "token": "WE",
+          "original_text": "we",
+          "clean_text": "we",
+          "original_conf": 37.0,
+          "clean_conf": 37.0,
+          "cx": 112.5,
+          "cy": 1339.0
+        }
+      ],
+      "persistent_count": 3
+    },
+    {
+      "index": 11,
+      "file": "002_00.png",
+      "mask_pixels": 216376,
+      "changed_pixels": 208590,
+      "detector_boxes": 1,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 12,
+      "file": "002_01.png",
+      "mask_pixels": 0,
+      "changed_pixels": 0,
+      "detector_boxes": 0,
+      "persistent_tokens": [
+        {
+          "token": "SE",
+          "original_text": "Se.",
+          "clean_text": "Se.",
+          "original_conf": 53.0,
+          "clean_conf": 53.0,
+          "cx": 961.0,
+          "cy": 1401.5
+        },
+        {
+          "token": "AY",
+          "original_text": "Ay",
+          "clean_text": "Ay",
+          "original_conf": 36.0,
+          "clean_conf": 36.0,
+          "cx": 882.5,
+          "cy": 1455.5
+        }
+      ],
+      "persistent_count": 2
+    },
+    {
+      "index": 13,
+      "file": "002_02.png",
+      "mask_pixels": 997025,
+      "changed_pixels": 996951,
+      "detector_boxes": 1,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 14,
+      "file": "002_03.png",
+      "mask_pixels": 1014873,
+      "changed_pixels": 1014816,
+      "detector_boxes": 1,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 15,
+      "file": "003_00.png",
+      "mask_pixels": 474552,
+      "changed_pixels": 474534,
+      "detector_boxes": 1,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 16,
+      "file": "003_01.png",
+      "mask_pixels": 465828,
+      "changed_pixels": 465765,
+      "detector_boxes": 1,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 17,
+      "file": "003_02.png",
+      "mask_pixels": 0,
+      "changed_pixels": 0,
+      "detector_boxes": 0,
+      "persistent_tokens": [
+        {
+          "token": "WE",
+          "original_text": "we",
+          "clean_text": "we",
+          "original_conf": 50.0,
+          "clean_conf": 50.0,
+          "cx": 377.5,
+          "cy": 56.0
+        },
+        {
+          "token": "EE",
+          "original_text": "ee",
+          "clean_text": "ee",
+          "original_conf": 27.0,
+          "clean_conf": 27.0,
+          "cx": 428.0,
+          "cy": 907.0
+        }
+      ],
+      "persistent_count": 2
+    },
+    {
+      "index": 18,
+      "file": "004_00.png",
+      "mask_pixels": 547068,
+      "changed_pixels": 540453,
+      "detector_boxes": 1,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 19,
+      "file": "004_01.png",
+      "mask_pixels": 0,
+      "changed_pixels": 0,
+      "detector_boxes": 0,
+      "persistent_tokens": [
+        {
+          "token": "SS",
+          "original_text": "Ss",
+          "clean_text": "Ss",
+          "original_conf": 30.0,
+          "clean_conf": 30.0,
+          "cx": 863.0,
+          "cy": 224.5
+        },
+        {
+          "token": "IL",
+          "original_text": "il",
+          "clean_text": "il",
+          "original_conf": 52.0,
+          "clean_conf": 52.0,
+          "cx": 482.0,
+          "cy": 762.5
+        },
+        {
+          "token": "AES",
+          "original_text": "Aes",
+          "clean_text": "Aes",
+          "original_conf": 34.0,
+          "clean_conf": 34.0,
+          "cx": 311.5,
+          "cy": 820.0
+        }
+      ],
+      "persistent_count": 3
+    },
+    {
+      "index": 20,
+      "file": "004_02.png",
+      "mask_pixels": 0,
+      "changed_pixels": 0,
+      "detector_boxes": 0,
+      "persistent_tokens": [
+        {
+          "token": "UE",
+          "original_text": "Ue",
+          "clean_text": "Ue",
+          "original_conf": 34.0,
+          "clean_conf": 34.0,
+          "cx": 853.5,
+          "cy": 738.5
+        }
+      ],
+      "persistent_count": 1
+    },
+    {
+      "index": 21,
+      "file": "005_00.png",
+      "mask_pixels": 515603,
+      "changed_pixels": 163850,
+      "detector_boxes": 2,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 22,
+      "file": "005_01.png",
+      "mask_pixels": 343001,
+      "changed_pixels": 105428,
+      "detector_boxes": 2,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 23,
+      "file": "006_00.png",
+      "mask_pixels": 296955,
+      "changed_pixels": 89540,
+      "detector_boxes": 1,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 24,
+      "file": "006_01.png",
+      "mask_pixels": 0,
+      "changed_pixels": 0,
+      "detector_boxes": 0,
+      "persistent_tokens": [
+        {
+          "token": "TH",
+          "original_text": "Th",
+          "clean_text": "Th",
+          "original_conf": 69.0,
+          "clean_conf": 69.0,
+          "cx": 859.0,
+          "cy": 640.0
+        }
+      ],
+      "persistent_count": 1
+    },
+    {
+      "index": 25,
+      "file": "007_00.png",
+      "mask_pixels": 0,
+      "changed_pixels": 0,
+      "detector_boxes": 0,
+      "persistent_tokens": [
+        {
+          "token": "IIL",
+          "original_text": "iil",
+          "clean_text": "iil",
+          "original_conf": 53.0,
+          "clean_conf": 53.0,
+          "cx": 808.5,
+          "cy": 537.0
+        },
+        {
+          "token": "AL",
+          "original_text": "Al",
+          "clean_text": "Al",
+          "original_conf": 47.0,
+          "clean_conf": 47.0,
+          "cx": 507.5,
+          "cy": 897.5
+        }
+      ],
+      "persistent_count": 2
+    },
+    {
+      "index": 26,
+      "file": "007_01.png",
+      "mask_pixels": 0,
+      "changed_pixels": 0,
+      "detector_boxes": 0,
+      "persistent_tokens": [
+        {
+          "token": "IFS",
+          "original_text": "ifs",
+          "clean_text": "ifs",
+          "original_conf": 30.0,
+          "clean_conf": 30.0,
+          "cx": 197.0,
+          "cy": 1531.5
+        }
+      ],
+      "persistent_count": 1
+    },
+    {
+      "index": 27,
+      "file": "007_02.png",
+      "mask_pixels": 0,
+      "changed_pixels": 0,
+      "detector_boxes": 0,
+      "persistent_tokens": [
+        {
+          "token": "SS",
+          "original_text": "Ss",
+          "clean_text": "Ss",
+          "original_conf": 34.0,
+          "clean_conf": 34.0,
+          "cx": 651.5,
+          "cy": 705.0
+        },
+        {
+          "token": "SS",
+          "original_text": "SS",
+          "clean_text": "SS",
+          "original_conf": 26.0,
+          "clean_conf": 26.0,
+          "cx": 415.0,
+          "cy": 835.0
+        },
+        {
+          "token": "EG",
+          "original_text": "eg",
+          "clean_text": "eg",
+          "original_conf": 28.0,
+          "clean_conf": 28.0,
+          "cx": 773.0,
+          "cy": 931.5
+        },
+        {
+          "token": "IN",
+          "original_text": "in",
+          "clean_text": "in",
+          "original_conf": 48.0,
+          "clean_conf": 48.0,
+          "cx": 959.5,
+          "cy": 1395.5
+        }
+      ],
+      "persistent_count": 4
+    },
+    {
+      "index": 28,
+      "file": "008_00.png",
+      "mask_pixels": 255039,
+      "changed_pixels": 86381,
+      "detector_boxes": 1,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 29,
+      "file": "008_01.png",
+      "mask_pixels": 278460,
+      "changed_pixels": 84693,
+      "detector_boxes": 2,
+      "persistent_tokens": [
+        {
+          "token": "NY",
+          "original_text": "NY",
+          "clean_text": "NY",
+          "original_conf": 26.0,
+          "clean_conf": 26.0,
+          "cx": 485.0,
+          "cy": 743.5
+        }
+      ],
+      "persistent_count": 1
+    },
+    {
+      "index": 30,
+      "file": "009_00.png",
+      "mask_pixels": 92351,
+      "changed_pixels": 21863,
+      "detector_boxes": 1,
+      "persistent_tokens": [
+        {
+          "token": "TT",
+          "original_text": "TT)",
+          "clean_text": "TT)",
+          "original_conf": 50.0,
+          "clean_conf": 50.0,
+          "cx": 460.0,
+          "cy": 526.5
+        },
+        {
+          "token": "RA",
+          "original_text": "ra",
+          "clean_text": "ra",
+          "original_conf": 42.0,
+          "clean_conf": 42.0,
+          "cx": 202.0,
+          "cy": 663.0
+        },
+        {
+          "token": "IP",
+          "original_text": "ip",
+          "clean_text": "ip",
+          "original_conf": 56.0,
+          "clean_conf": 56.0,
+          "cx": 182.5,
+          "cy": 832.0
+        },
+        {
+          "token": "IG",
+          "original_text": "ig",
+          "clean_text": "ig",
+          "original_conf": 75.0,
+          "clean_conf": 75.0,
+          "cx": 445.0,
+          "cy": 880.5
+        },
+        {
+          "token": "IE",
+          "original_text": "ie",
+          "clean_text": "ie",
+          "original_conf": 28.0,
+          "clean_conf": 28.0,
+          "cx": 588.0,
+          "cy": 870.5
+        },
+        {
+          "token": "BE",
+          "original_text": "be",
+          "clean_text": "be",
+          "original_conf": 46.0,
+          "clean_conf": 46.0,
+          "cx": 70.5,
+          "cy": 891.5
+        },
+        {
+          "token": "NM",
+          "original_text": "nm",
+          "clean_text": "nm",
+          "original_conf": 38.0,
+          "clean_conf": 38.0,
+          "cx": 137.0,
+          "cy": 1370.0
+        },
+        {
+          "token": "NIN",
+          "original_text": "NIN",
+          "clean_text": "NIN",
+          "original_conf": 51.0,
+          "clean_conf": 51.0,
+          "cx": 361.0,
+          "cy": 1396.5
+        },
+        {
+          "token": "AT",
+          "original_text": "at",
+          "clean_text": "at",
+          "original_conf": 56.0,
+          "clean_conf": 56.0,
+          "cx": 163.5,
+          "cy": 1781.5
+        },
+        {
+          "token": "DE",
+          "original_text": "De",
+          "clean_text": "De",
+          "original_conf": 54.0,
+          "clean_conf": 54.0,
+          "cx": 271.5,
+          "cy": 1764.5
+        }
+      ],
+      "persistent_count": 10
+    },
+    {
+      "index": 31,
+      "file": "009_01.png",
+      "mask_pixels": 117362,
+      "changed_pixels": 117280,
+      "detector_boxes": 1,
+      "persistent_tokens": [
+        {
+          "token": "AY",
+          "original_text": "ay",
+          "clean_text": "ay",
+          "original_conf": 60.0,
+          "clean_conf": 60.0,
+          "cx": 450.5,
+          "cy": 1125.0
+        },
+        {
+          "token": "IHE",
+          "original_text": "ihe",
+          "clean_text": "ihe",
+          "original_conf": 35.0,
+          "clean_conf": 35.0,
+          "cx": 536.5,
+          "cy": 1682.0
+        }
+      ],
+      "persistent_count": 2
+    },
+    {
+      "index": 32,
+      "file": "010_00.png",
+      "mask_pixels": 211473,
+      "changed_pixels": 60393,
+      "detector_boxes": 1,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 33,
+      "file": "010_01.png",
+      "mask_pixels": 223791,
+      "changed_pixels": 60628,
+      "detector_boxes": 1,
+      "persistent_tokens": [
+        {
+          "token": "TE",
+          "original_text": "Te",
+          "clean_text": "Te",
+          "original_conf": 27.0,
+          "clean_conf": 27.0,
+          "cx": 668.0,
+          "cy": 133.5
+        },
+        {
+          "token": "RY",
+          "original_text": "ry",
+          "clean_text": "ry",
+          "original_conf": 45.0,
+          "clean_conf": 45.0,
+          "cx": 177.5,
+          "cy": 104.5
+        },
+        {
+          "token": "AES",
+          "original_text": "aes",
+          "clean_text": "aes",
+          "original_conf": 30.0,
+          "clean_conf": 30.0,
+          "cx": 439.0,
+          "cy": 357.0
+        },
+        {
+          "token": "NK",
+          "original_text": "NK",
+          "clean_text": "NK",
+          "original_conf": 39.0,
+          "clean_conf": 39.0,
+          "cx": 592.0,
+          "cy": 554.0
+        }
+      ],
+      "persistent_count": 4
+    },
+    {
+      "index": 34,
+      "file": "010_02.png",
+      "mask_pixels": 0,
+      "changed_pixels": 0,
+      "detector_boxes": 0,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 35,
+      "file": "011_00.png",
+      "mask_pixels": 278287,
+      "changed_pixels": 119261,
+      "detector_boxes": 2,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 36,
+      "file": "011_01.png",
+      "mask_pixels": 0,
+      "changed_pixels": 0,
+      "detector_boxes": 0,
+      "persistent_tokens": [
+        {
+          "token": "II",
+          "original_text": "ii",
+          "clean_text": "ii",
+          "original_conf": 61.0,
+          "clean_conf": 61.0,
+          "cx": 606.0,
+          "cy": 548.0
+        },
+        {
+          "token": "IL",
+          "original_text": "IL",
+          "clean_text": "IL",
+          "original_conf": 51.0,
+          "clean_conf": 51.0,
+          "cx": 1007.5,
+          "cy": 578.5
+        },
+        {
+          "token": "AL",
+          "original_text": "[al",
+          "clean_text": "[al",
+          "original_conf": 29.0,
+          "clean_conf": 29.0,
+          "cx": 693.0,
+          "cy": 671.5
+        },
+        {
+          "token": "REN",
+          "original_text": "ren",
+          "clean_text": "ren",
+          "original_conf": 28.0,
+          "clean_conf": 28.0,
+          "cx": 304.0,
+          "cy": 683.0
+        },
+        {
+          "token": "PIE",
+          "original_text": "Pie",
+          "clean_text": "Pie",
+          "original_conf": 29.0,
+          "clean_conf": 29.0,
+          "cx": 437.0,
+          "cy": 772.5
+        },
+        {
+          "token": "EE",
+          "original_text": "ee",
+          "clean_text": "ee",
+          "original_conf": 25.0,
+          "clean_conf": 25.0,
+          "cx": 592.5,
+          "cy": 817.5
+        },
+        {
+          "token": "LEE",
+          "original_text": "lee",
+          "clean_text": "lee",
+          "original_conf": 39.0,
+          "clean_conf": 39.0,
+          "cx": 723.0,
+          "cy": 883.0
+        },
+        {
+          "token": "IR",
+          "original_text": "ir",
+          "clean_text": "ir",
+          "original_conf": 35.0,
+          "clean_conf": 35.0,
+          "cx": 1005.0,
+          "cy": 873.5
+        }
+      ],
+      "persistent_count": 8
+    },
+    {
+      "index": 37,
+      "file": "011_02.png",
+      "mask_pixels": 0,
+      "changed_pixels": 0,
+      "detector_boxes": 0,
+      "persistent_tokens": [
+        {
+          "token": "VU",
+          "original_text": "VU",
+          "clean_text": "VU",
+          "original_conf": 27.0,
+          "clean_conf": 27.0,
+          "cx": 595.5,
+          "cy": 244.5
+        }
+      ],
+      "persistent_count": 1
+    },
+    {
+      "index": 38,
+      "file": "012_00.png",
+      "mask_pixels": 228142,
+      "changed_pixels": 57135,
+      "detector_boxes": 2,
+      "persistent_tokens": [
+        {
+          "token": "AU",
+          "original_text": "au",
+          "clean_text": "au",
+          "original_conf": 61.0,
+          "clean_conf": 61.0,
+          "cx": 624.0,
+          "cy": 807.5
+        },
+        {
+          "token": "AL",
+          "original_text": "al",
+          "clean_text": "al",
+          "original_conf": 42.0,
+          "clean_conf": 42.0,
+          "cx": 682.0,
+          "cy": 1080.0
+        }
+      ],
+      "persistent_count": 2
+    },
+    {
+      "index": 39,
+      "file": "012_01.png",
+      "mask_pixels": 291210,
+      "changed_pixels": 95656,
+      "detector_boxes": 1,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 40,
+      "file": "012_02.png",
+      "mask_pixels": 292472,
+      "changed_pixels": 95656,
+      "detector_boxes": 1,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 41,
+      "file": "012_03.png",
+      "mask_pixels": 464712,
+      "changed_pixels": 159784,
+      "detector_boxes": 1,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 42,
+      "file": "013_00.png",
+      "mask_pixels": 84600,
+      "changed_pixels": 30014,
+      "detector_boxes": 1,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 43,
+      "file": "013_01.png",
+      "mask_pixels": 90353,
+      "changed_pixels": 30014,
+      "detector_boxes": 1,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 44,
+      "file": "013_02.png",
+      "mask_pixels": 543088,
+      "changed_pixels": 179919,
+      "detector_boxes": 2,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 45,
+      "file": "014_00.png",
+      "mask_pixels": 721910,
+      "changed_pixels": 400950,
+      "detector_boxes": 1,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 46,
+      "file": "014_01.png",
+      "mask_pixels": 0,
+      "changed_pixels": 0,
+      "detector_boxes": 0,
+      "persistent_tokens": [
+        {
+          "token": "CI",
+          "original_text": "Ci",
+          "clean_text": "Ci",
+          "original_conf": 32.0,
+          "clean_conf": 32.0,
+          "cx": 246.5,
+          "cy": 427.0
+        },
+        {
+          "token": "AAY",
+          "original_text": "aay",
+          "clean_text": "aay",
+          "original_conf": 36.0,
+          "clean_conf": 36.0,
+          "cx": 310.5,
+          "cy": 1436.0
+        }
+      ],
+      "persistent_count": 2
+    },
+    {
+      "index": 47,
+      "file": "014_02.png",
+      "mask_pixels": 931409,
+      "changed_pixels": 931290,
+      "detector_boxes": 1,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 48,
+      "file": "014_03.png",
+      "mask_pixels": 851601,
+      "changed_pixels": 851492,
+      "detector_boxes": 1,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 49,
+      "file": "015_00.png",
+      "mask_pixels": 150786,
+      "changed_pixels": 141248,
+      "detector_boxes": 1,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 50,
+      "file": "015_01.png",
+      "mask_pixels": 1296300,
+      "changed_pixels": 469655,
+      "detector_boxes": 3,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 51,
+      "file": "015_02.png",
+      "mask_pixels": 1013830,
+      "changed_pixels": 359592,
+      "detector_boxes": 3,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 52,
+      "file": "015_03.png",
+      "mask_pixels": 827577,
+      "changed_pixels": 275479,
+      "detector_boxes": 2,
+      "persistent_tokens": [
+        {
+          "token": "ON",
+          "original_text": "ON",
+          "clean_text": "oN",
+          "original_conf": 52.0,
+          "clean_conf": 27.0,
+          "cx": 196.5,
+          "cy": 1005.5
+        }
+      ],
+      "persistent_count": 1
+    },
+    {
+      "index": 53,
+      "file": "016_00.png",
+      "mask_pixels": 382583,
+      "changed_pixels": 358212,
+      "detector_boxes": 1,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 54,
+      "file": "016_01.png",
+      "mask_pixels": 286327,
+      "changed_pixels": 105091,
+      "detector_boxes": 1,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 55,
+      "file": "016_02.png",
+      "mask_pixels": 269088,
+      "changed_pixels": 105091,
+      "detector_boxes": 1,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 56,
+      "file": "017_00.png",
+      "mask_pixels": 371188,
+      "changed_pixels": 134433,
+      "detector_boxes": 1,
+      "persistent_tokens": [
+        {
+          "token": "YJ",
+          "original_text": "yj",
+          "clean_text": "yj",
+          "original_conf": 43.0,
+          "clean_conf": 34.0,
+          "cx": 38.0,
+          "cy": 952.5
+        }
+      ],
+      "persistent_count": 1
+    },
+    {
+      "index": 57,
+      "file": "017_01.png",
+      "mask_pixels": 372107,
+      "changed_pixels": 134433,
+      "detector_boxes": 1,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 58,
+      "file": "018_00.png",
+      "mask_pixels": 0,
+      "changed_pixels": 0,
+      "detector_boxes": 0,
+      "persistent_tokens": [
+        {
+          "token": "SS",
+          "original_text": "SS",
+          "clean_text": "SS",
+          "original_conf": 48.0,
+          "clean_conf": 48.0,
+          "cx": 1271.5,
+          "cy": 937.5
+        },
+        {
+          "token": "OW",
+          "original_text": "ow",
+          "clean_text": "ow",
+          "original_conf": 26.0,
+          "clean_conf": 26.0,
+          "cx": 846.5,
+          "cy": 1067.0
+        },
+        {
+          "token": "WS",
+          "original_text": "ws",
+          "clean_text": "ws",
+          "original_conf": 36.0,
+          "clean_conf": 36.0,
+          "cx": 952.0,
+          "cy": 1167.5
+        },
+        {
+          "token": "AE",
+          "original_text": "ae",
+          "clean_text": "ae",
+          "original_conf": 35.0,
+          "clean_conf": 35.0,
+          "cx": 184.5,
+          "cy": 1490.0
+        },
+        {
+          "token": "AX",
+          "original_text": "ax\u201d",
+          "clean_text": "ax\u201d",
+          "original_conf": 31.0,
+          "clean_conf": 31.0,
+          "cx": 330.0,
+          "cy": 1500.5
+        },
+        {
+          "token": "NV",
+          "original_text": "NV",
+          "clean_text": "NV",
+          "original_conf": 30.0,
+          "clean_conf": 30.0,
+          "cx": 33.5,
+          "cy": 1589.0
+        }
+      ],
+      "persistent_count": 6
+    },
+    {
+      "index": 59,
+      "file": "018_01.png",
+      "mask_pixels": 337956,
+      "changed_pixels": 337956,
+      "detector_boxes": 1,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 60,
+      "file": "018_02.png",
+      "mask_pixels": 354772,
+      "changed_pixels": 354772,
+      "detector_boxes": 1,
+      "persistent_tokens": [
+        {
+          "token": "DF",
+          "original_text": "df",
+          "clean_text": "df",
+          "original_conf": 46.0,
+          "clean_conf": 46.0,
+          "cx": 503.5,
+          "cy": 657.0
+        }
+      ],
+      "persistent_count": 1
+    },
+    {
+      "index": 61,
+      "file": "019_00.png",
+      "mask_pixels": 497001,
+      "changed_pixels": 172898,
+      "detector_boxes": 1,
+      "persistent_tokens": [
+        {
+          "token": "HY",
+          "original_text": "hy",
+          "clean_text": "hy",
+          "original_conf": 36.0,
+          "clean_conf": 37.0,
+          "cx": 320.0,
+          "cy": 1444.0
+        }
+      ],
+      "persistent_count": 1
+    },
+    {
+      "index": 62,
+      "file": "019_01.png",
+      "mask_pixels": 155309,
+      "changed_pixels": 36087,
+      "detector_boxes": 1,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 63,
+      "file": "019_02.png",
+      "mask_pixels": 432755,
+      "changed_pixels": 133100,
+      "detector_boxes": 1,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 64,
+      "file": "020_00.png",
+      "mask_pixels": 0,
+      "changed_pixels": 0,
+      "detector_boxes": 0,
+      "persistent_tokens": [
+        {
+          "token": "VV",
+          "original_text": "Vv",
+          "clean_text": "Vv",
+          "original_conf": 34.0,
+          "clean_conf": 34.0,
+          "cx": 658.0,
+          "cy": 792.0
+        }
+      ],
+      "persistent_count": 1
+    },
+    {
+      "index": 65,
+      "file": "020_01.png",
+      "mask_pixels": 381130,
+      "changed_pixels": 121455,
+      "detector_boxes": 1,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 66,
+      "file": "020_02.png",
+      "mask_pixels": 734806,
+      "changed_pixels": 218442,
+      "detector_boxes": 2,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 67,
+      "file": "020_03.png",
+      "mask_pixels": 309990,
+      "changed_pixels": 296054,
+      "detector_boxes": 1,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 68,
+      "file": "020_04.png",
+      "mask_pixels": 506494,
+      "changed_pixels": 180162,
+      "detector_boxes": 1,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 69,
+      "file": "020_05.png",
+      "mask_pixels": 412664,
+      "changed_pixels": 392509,
+      "detector_boxes": 1,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 70,
+      "file": "021_00.png",
+      "mask_pixels": 0,
+      "changed_pixels": 0,
+      "detector_boxes": 0,
+      "persistent_tokens": [
+        {
+          "token": "YN",
+          "original_text": "YN",
+          "clean_text": "YN",
+          "original_conf": 48.0,
+          "clean_conf": 48.0,
+          "cx": 343.5,
+          "cy": 1213.5
+        },
+        {
+          "token": "ZE",
+          "original_text": "Ze",
+          "clean_text": "Ze",
+          "original_conf": 34.0,
+          "clean_conf": 34.0,
+          "cx": 244.5,
+          "cy": 1571.0
+        },
+        {
+          "token": "AE",
+          "original_text": "ae",
+          "clean_text": "ae",
+          "original_conf": 40.0,
+          "clean_conf": 40.0,
+          "cx": 237.5,
+          "cy": 1597.0
+        },
+        {
+          "token": "IS",
+          "original_text": "is",
+          "clean_text": "is",
+          "original_conf": 47.0,
+          "clean_conf": 47.0,
+          "cx": 817.5,
+          "cy": 1612.0
+        },
+        {
+          "token": "SP",
+          "original_text": "Sp",
+          "clean_text": "Sp",
+          "original_conf": 47.0,
+          "clean_conf": 47.0,
+          "cx": 236.0,
+          "cy": 1620.0
+        },
+        {
+          "token": "AYE",
+          "original_text": "aye",
+          "clean_text": "aye",
+          "original_conf": 32.0,
+          "clean_conf": 32.0,
+          "cx": 647.0,
+          "cy": 1700.5
+        }
+      ],
+      "persistent_count": 6
+    },
+    {
+      "index": 71,
+      "file": "021_01.png",
+      "mask_pixels": 444343,
+      "changed_pixels": 150128,
+      "detector_boxes": 1,
+      "persistent_tokens": [
+        {
+          "token": "YY",
+          "original_text": "yy",
+          "clean_text": "yy",
+          "original_conf": 52.0,
+          "clean_conf": 47.0,
+          "cx": 79.0,
+          "cy": 111.5
+        },
+        {
+          "token": "AMNY",
+          "original_text": "amNY",
+          "clean_text": "amNY",
+          "original_conf": 30.0,
+          "clean_conf": 30.0,
+          "cx": 334.0,
+          "cy": 469.0
+        },
+        {
+          "token": "AW",
+          "original_text": "AW",
+          "clean_text": "AW",
+          "original_conf": 69.0,
+          "clean_conf": 69.0,
+          "cx": 452.0,
+          "cy": 634.5
+        }
+      ],
+      "persistent_count": 3
+    },
+    {
+      "index": 72,
+      "file": "021_02.png",
+      "mask_pixels": 384772,
+      "changed_pixels": 360923,
+      "detector_boxes": 1,
+      "persistent_tokens": [
+        {
+          "token": "IL",
+          "original_text": "il",
+          "clean_text": "il",
+          "original_conf": 51.0,
+          "clean_conf": 51.0,
+          "cx": 863.5,
+          "cy": 81.5
+        }
+      ],
+      "persistent_count": 1
+    },
+    {
+      "index": 73,
+      "file": "022_00.png",
+      "mask_pixels": 295012,
+      "changed_pixels": 281347,
+      "detector_boxes": 1,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 74,
+      "file": "022_01.png",
+      "mask_pixels": 322710,
+      "changed_pixels": 105532,
+      "detector_boxes": 1,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 75,
+      "file": "023_00.png",
+      "mask_pixels": 838625,
+      "changed_pixels": 302502,
+      "detector_boxes": 2,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 76,
+      "file": "023_01.png",
+      "mask_pixels": 440915,
+      "changed_pixels": 153725,
+      "detector_boxes": 1,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 77,
+      "file": "023_02.png",
+      "mask_pixels": 330931,
+      "changed_pixels": 115587,
+      "detector_boxes": 1,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 78,
+      "file": "023_03.png",
+      "mask_pixels": 449245,
+      "changed_pixels": 424763,
+      "detector_boxes": 1,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 79,
+      "file": "024_00.png",
+      "mask_pixels": 411680,
+      "changed_pixels": 152966,
+      "detector_boxes": 1,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 80,
+      "file": "024_01.png",
+      "mask_pixels": 0,
+      "changed_pixels": 0,
+      "detector_boxes": 0,
+      "persistent_tokens": [
+        {
+          "token": "SI",
+          "original_text": "Si\u201c",
+          "clean_text": "Si\u201c",
+          "original_conf": 45.0,
+          "clean_conf": 45.0,
+          "cx": 920.5,
+          "cy": 707.5
+        },
+        {
+          "token": "NAE",
+          "original_text": "Nae",
+          "clean_text": "Nae",
+          "original_conf": 35.0,
+          "clean_conf": 35.0,
+          "cx": 258.0,
+          "cy": 1025.5
+        },
+        {
+          "token": "CE",
+          "original_text": "CE",
+          "clean_text": "CE",
+          "original_conf": 41.0,
+          "clean_conf": 41.0,
+          "cx": 482.5,
+          "cy": 1141.0
+        },
+        {
+          "token": "AE",
+          "original_text": "ae",
+          "clean_text": "ae",
+          "original_conf": 27.0,
+          "clean_conf": 27.0,
+          "cx": 873.5,
+          "cy": 1189.0
+        },
+        {
+          "token": "RY",
+          "original_text": "ry",
+          "clean_text": "ry",
+          "original_conf": 55.0,
+          "clean_conf": 55.0,
+          "cx": 242.0,
+          "cy": 1408.0
+        },
+        {
+          "token": "DI",
+          "original_text": "Di",
+          "clean_text": "Di",
+          "original_conf": 29.0,
+          "clean_conf": 29.0,
+          "cx": 220.5,
+          "cy": 1612.0
+        }
+      ],
+      "persistent_count": 6
+    },
+    {
+      "index": 81,
+      "file": "024_02.png",
+      "mask_pixels": 470962,
+      "changed_pixels": 178561,
+      "detector_boxes": 1,
+      "persistent_tokens": [
+        {
+          "token": "NA",
+          "original_text": "Na",
+          "clean_text": "Na",
+          "original_conf": 35.0,
+          "clean_conf": 35.0,
+          "cx": 125.5,
+          "cy": 152.0
+        }
+      ],
+      "persistent_count": 1
+    },
+    {
+      "index": 82,
+      "file": "025_00.png",
+      "mask_pixels": 46248,
+      "changed_pixels": 12434,
+      "detector_boxes": 1,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 83,
+      "file": "025_01.png",
+      "mask_pixels": 342010,
+      "changed_pixels": 322708,
+      "detector_boxes": 1,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 84,
+      "file": "025_02.png",
+      "mask_pixels": 496026,
+      "changed_pixels": 165430,
+      "detector_boxes": 1,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 85,
+      "file": "026_00.png",
+      "mask_pixels": 0,
+      "changed_pixels": 0,
+      "detector_boxes": 0,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 86,
+      "file": "026_01.png",
+      "mask_pixels": 289578,
+      "changed_pixels": 120851,
+      "detector_boxes": 2,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 87,
+      "file": "027_00.png",
+      "mask_pixels": 387388,
+      "changed_pixels": 134877,
+      "detector_boxes": 2,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 88,
+      "file": "027_01.png",
+      "mask_pixels": 150030,
+      "changed_pixels": 50058,
+      "detector_boxes": 1,
+      "persistent_tokens": [
+        {
+          "token": "EE",
+          "original_text": "ee",
+          "clean_text": "ee",
+          "original_conf": 28.0,
+          "clean_conf": 28.0,
+          "cx": 169.5,
+          "cy": 1323.0
+        },
+        {
+          "token": "EE",
+          "original_text": "ee:",
+          "clean_text": "ee:",
+          "original_conf": 27.0,
+          "clean_conf": 27.0,
+          "cx": 308.0,
+          "cy": 1323.0
+        }
+      ],
+      "persistent_count": 2
+    },
+    {
+      "index": 89,
+      "file": "027_02.png",
+      "mask_pixels": 247654,
+      "changed_pixels": 76799,
+      "detector_boxes": 1,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 90,
+      "file": "028_00.png",
+      "mask_pixels": 754650,
+      "changed_pixels": 230447,
+      "detector_boxes": 3,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 91,
+      "file": "028_01.png",
+      "mask_pixels": 623090,
+      "changed_pixels": 183801,
+      "detector_boxes": 2,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 92,
+      "file": "028_02.png",
+      "mask_pixels": 650669,
+      "changed_pixels": 203246,
+      "detector_boxes": 3,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 93,
+      "file": "029_00.png",
+      "mask_pixels": 552749,
+      "changed_pixels": 169575,
+      "detector_boxes": 3,
+      "persistent_tokens": [
+        {
+          "token": "WAY",
+          "original_text": "WAY",
+          "clean_text": "WAY",
+          "original_conf": 49.0,
+          "clean_conf": 49.0,
+          "cx": 685.5,
+          "cy": 860.5
+        }
+      ],
+      "persistent_count": 1
+    },
+    {
+      "index": 94,
+      "file": "029_01.png",
+      "mask_pixels": 557497,
+      "changed_pixels": 175095,
+      "detector_boxes": 2,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 95,
+      "file": "029_02.png",
+      "mask_pixels": 971465,
+      "changed_pixels": 315879,
+      "detector_boxes": 3,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 96,
+      "file": "030_00.png",
+      "mask_pixels": 388416,
+      "changed_pixels": 117975,
+      "detector_boxes": 1,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 97,
+      "file": "030_01.png",
+      "mask_pixels": 0,
+      "changed_pixels": 0,
+      "detector_boxes": 0,
+      "persistent_tokens": [
+        {
+          "token": "NE",
+          "original_text": "Ne.",
+          "clean_text": "Ne.",
+          "original_conf": 36.0,
+          "clean_conf": 36.0,
+          "cx": 224.0,
+          "cy": 843.0
+        },
+        {
+          "token": "MY",
+          "original_text": "my",
+          "clean_text": "my",
+          "original_conf": 33.0,
+          "clean_conf": 33.0,
+          "cx": 777.5,
+          "cy": 1638.5
+        }
+      ],
+      "persistent_count": 2
+    },
+    {
+      "index": 98,
+      "file": "030_02.png",
+      "mask_pixels": 204358,
+      "changed_pixels": 60204,
+      "detector_boxes": 1,
+      "persistent_tokens": [
+        {
+          "token": "RAN",
+          "original_text": "RAN",
+          "clean_text": "RAN",
+          "original_conf": 64.0,
+          "clean_conf": 64.0,
+          "cx": 96.0,
+          "cy": 20.0
+        },
+        {
+          "token": "AS",
+          "original_text": "AS",
+          "clean_text": "AS",
+          "original_conf": 34.0,
+          "clean_conf": 34.0,
+          "cx": 326.0,
+          "cy": 119.5
+        }
+      ],
+      "persistent_count": 2
+    },
+    {
+      "index": 99,
+      "file": "031_00.png",
+      "mask_pixels": 325308,
+      "changed_pixels": 117986,
+      "detector_boxes": 1,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 100,
+      "file": "031_01.png",
+      "mask_pixels": 395940,
+      "changed_pixels": 132248,
+      "detector_boxes": 2,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 101,
+      "file": "031_02.png",
+      "mask_pixels": 207927,
+      "changed_pixels": 61900,
+      "detector_boxes": 2,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 102,
+      "file": "032_00.png",
+      "mask_pixels": 867351,
+      "changed_pixels": 313247,
+      "detector_boxes": 2,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 103,
+      "file": "032_01.png",
+      "mask_pixels": 254385,
+      "changed_pixels": 74457,
+      "detector_boxes": 1,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 104,
+      "file": "032_02.png",
+      "mask_pixels": 622064,
+      "changed_pixels": 205771,
+      "detector_boxes": 2,
+      "persistent_tokens": [
+        {
+          "token": "NS",
+          "original_text": "NS",
+          "clean_text": "NS",
+          "original_conf": 45.0,
+          "clean_conf": 35.0,
+          "cx": 491.0,
+          "cy": 664.0
+        }
+      ],
+      "persistent_count": 1
+    },
+    {
+      "index": 105,
+      "file": "033_00.png",
+      "mask_pixels": 715564,
+      "changed_pixels": 242837,
+      "detector_boxes": 2,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 106,
+      "file": "033_01.png",
+      "mask_pixels": 803763,
+      "changed_pixels": 249727,
+      "detector_boxes": 3,
+      "persistent_tokens": [
+        {
+          "token": "IM",
+          "original_text": "iM",
+          "clean_text": "iM",
+          "original_conf": 51.0,
+          "clean_conf": 51.0,
+          "cx": 382.0,
+          "cy": 1159.0
+        }
+      ],
+      "persistent_count": 1
+    },
+    {
+      "index": 107,
+      "file": "033_02.png",
+      "mask_pixels": 329650,
+      "changed_pixels": 107694,
+      "detector_boxes": 1,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 108,
+      "file": "033_03.png",
+      "mask_pixels": 685831,
+      "changed_pixels": 218559,
+      "detector_boxes": 2,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 109,
+      "file": "033_04.png",
+      "mask_pixels": 331557,
+      "changed_pixels": 110858,
+      "detector_boxes": 1,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 110,
+      "file": "034_00.png",
+      "mask_pixels": 450616,
+      "changed_pixels": 423121,
+      "detector_boxes": 1,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 111,
+      "file": "034_01.png",
+      "mask_pixels": 813423,
+      "changed_pixels": 252080,
+      "detector_boxes": 2,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 112,
+      "file": "035_00.png",
+      "mask_pixels": 451145,
+      "changed_pixels": 423950,
+      "detector_boxes": 1,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 113,
+      "file": "035_01.png",
+      "mask_pixels": 798609,
+      "changed_pixels": 249703,
+      "detector_boxes": 3,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 114,
+      "file": "035_02.png",
+      "mask_pixels": 263331,
+      "changed_pixels": 81549,
+      "detector_boxes": 1,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 115,
+      "file": "036_00.png",
+      "mask_pixels": 937909,
+      "changed_pixels": 305985,
+      "detector_boxes": 2,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 116,
+      "file": "036_01.png",
+      "mask_pixels": 554414,
+      "changed_pixels": 189159,
+      "detector_boxes": 1,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 117,
+      "file": "037_00.png",
+      "mask_pixels": 611123,
+      "changed_pixels": 439908,
+      "detector_boxes": 1,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 118,
+      "file": "037_01.png",
+      "mask_pixels": 676413,
+      "changed_pixels": 258807,
+      "detector_boxes": 1,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 119,
+      "file": "038_00.png",
+      "mask_pixels": 270974,
+      "changed_pixels": 61982,
+      "detector_boxes": 1,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 120,
+      "file": "038_01.png",
+      "mask_pixels": 769513,
+      "changed_pixels": 219381,
+      "detector_boxes": 2,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 121,
+      "file": "038_02.png",
+      "mask_pixels": 489731,
+      "changed_pixels": 157399,
+      "detector_boxes": 1,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 122,
+      "file": "039_00.png",
+      "mask_pixels": 437134,
+      "changed_pixels": 137045,
+      "detector_boxes": 1,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 123,
+      "file": "039_01.png",
+      "mask_pixels": 74987,
+      "changed_pixels": 18293,
+      "detector_boxes": 1,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 124,
+      "file": "039_02.png",
+      "mask_pixels": 277199,
+      "changed_pixels": 104497,
+      "detector_boxes": 1,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 125,
+      "file": "040_00.png",
+      "mask_pixels": 418918,
+      "changed_pixels": 178658,
+      "detector_boxes": 1,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 126,
+      "file": "040_01.png",
+      "mask_pixels": 826445,
+      "changed_pixels": 378451,
+      "detector_boxes": 2,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 127,
+      "file": "040_02.png",
+      "mask_pixels": 552287,
+      "changed_pixels": 336026,
+      "detector_boxes": 1,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 128,
+      "file": "041_00.png",
+      "mask_pixels": 108750,
+      "changed_pixels": 30705,
+      "detector_boxes": 1,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 129,
+      "file": "041_01.png",
+      "mask_pixels": 0,
+      "changed_pixels": 0,
+      "detector_boxes": 0,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 130,
+      "file": "041_02.png",
+      "mask_pixels": 0,
+      "changed_pixels": 0,
+      "detector_boxes": 0,
+      "persistent_tokens": [
+        {
+          "token": "PD",
+          "original_text": "Pd",
+          "clean_text": "Pd",
+          "original_conf": 29.0,
+          "clean_conf": 29.0,
+          "cx": 1196.0,
+          "cy": 375.5
+        },
+        {
+          "token": "PE",
+          "original_text": "Pe,",
+          "clean_text": "Pe,",
+          "original_conf": 51.0,
+          "clean_conf": 51.0,
+          "cx": 954.5,
+          "cy": 455.5
+        }
+      ],
+      "persistent_count": 2
+    },
+    {
+      "index": 131,
+      "file": "041_03.png",
+      "mask_pixels": 344067,
+      "changed_pixels": 233065,
+      "detector_boxes": 1,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 132,
+      "file": "041_04.png",
+      "mask_pixels": 335892,
+      "changed_pixels": 333332,
+      "detector_boxes": 1,
+      "persistent_tokens": [],
+      "persistent_count": 0
+    },
+    {
+      "index": 133,
+      "file": "042_00.png",
+      "mask_pixels": 322016,
+      "changed_pixels": 271730,
+      "detector_boxes": 1,
+      "persistent_tokens": [
+        {
+          "token": "SPECIAL",
+          "original_text": "Special",
+          "clean_text": "Special",
+          "original_conf": 96.0,
+          "clean_conf": 96.0,
+          "cx": 417.0,
+          "cy": 664.5
+        },
+        {
+          "token": "THANKS",
+          "original_text": "thanks",
+          "clean_text": "thanks",
+          "original_conf": 96.0,
+          "clean_conf": 96.0,
+          "cx": 594.0,
+          "cy": 656.0
+        },
+        {
+          "token": "TO",
+          "original_text": "to",
+          "clean_text": "to",
+          "original_conf": 96.0,
+          "clean_conf": 96.0,
+          "cx": 711.5,
+          "cy": 663.0
+        },
+        {
+          "token": "THE",
+          "original_text": "the",
+          "clean_text": "the",
+          "original_conf": 96.0,
+          "clean_conf": 96.0,
+          "cx": 788.5,
+          "cy": 656.0
+        },
+        {
+          "token": "PRODUCTION",
+          "original_text": "Production",
+          "clean_text": "Production",
+          "original_conf": 95.0,
+          "clean_conf": 95.0,
+          "cx": 974.0,
+          "cy": 656.5
+        },
+        {
+          "token": "TEAM",
+          "original_text": "Team,",
+          "clean_text": "Team,",
+          "original_conf": 96.0,
+          "clean_conf": 96.0,
+          "cx": 1195.0,
+          "cy": 658.0
+        },
+        {
+          "token": "PRODUCERS",
+          "original_text": "Producers,",
+          "clean_text": "Producers,",
+          "original_conf": 96.0,
+          "clean_conf": 96.0,
+          "cx": 414.5,
+          "cy": 736.0
+        },
+        {
+          "token": "AND",
+          "original_text": "and",
+          "clean_text": "and",
+          "original_conf": 96.0,
+          "clean_conf": 96.0,
+          "cx": 595.0,
+          "cy": 734.5
+        },
+        {
+          "token": "POSTPRODUCTION",
+          "original_text": "Post-Production",
+          "clean_text": "Post-Production",
+          "original_conf": 96.0,
+          "clean_conf": 96.0,
+          "cx": 845.0,
+          "cy": 734.0
+        },
+        {
+          "token": "ASSISTANTS",
+          "original_text": "Assistants!",
+          "clean_text": "Assistants!",
+          "original_conf": 96.0,
+          "clean_conf": 96.0,
+          "cx": 1182.5,
+          "cy": 734.0
+        }
+      ],
+      "persistent_count": 10
+    },
+    {
+      "index": 134,
+      "file": "042_01.png",
+      "mask_pixels": 496265,
+      "changed_pixels": 493020,
+      "detector_boxes": 3,
+      "persistent_tokens": [
+        {
+          "token": "LO",
+          "original_text": "Lo,",
+          "clean_text": "Lo,",
+          "original_conf": 47.0,
+          "clean_conf": 47.0,
+          "cx": 693.5,
+          "cy": 1701.5
+        }
+      ],
+      "persistent_count": 1
+    }
+  ]
+}
