@@ -63,9 +63,10 @@ def _prepare_slices(raw_dir: Path, slice_dir: Path, limit: int) -> list[Path]:
     if not all_slices:
         raise RuntimeError("Production slicer produced no benchmark slices")
 
-    limit = max(1, min(int(limit), len(all_slices)))
-    if limit == len(all_slices):
+    limit = int(limit)
+    if limit <= 0 or limit >= len(all_slices):
         return all_slices
+    limit = max(1, limit)
 
     # Evenly spread the sample instead of accidentally measuring only one page.
     positions = np.linspace(0, len(all_slices) - 1, num=limit)
@@ -116,11 +117,17 @@ def _save_evidence(
     original: np.ndarray,
     clean: np.ndarray,
     mask: np.ndarray,
+    *,
+    stride: int,
 ) -> None:
     evidence_dir.mkdir(parents=True, exist_ok=True)
-    cv2.imwrite(str(evidence_dir / f"{index:02d}-original.png"), original)
-    cv2.imwrite(str(evidence_dir / f"{index:02d}-clean.png"), clean)
+    # Masks are always retained because the chapter comparison needs every slice.
     cv2.imwrite(str(evidence_dir / f"{index:02d}-mask.png"), mask)
+    # Full-resolution original/clean pairs are only visual evidence. Keep them
+    # sparse on chapter-scale runs so the artifact stays reasonably bounded.
+    if stride <= 1 or index % stride == 0:
+        cv2.imwrite(str(evidence_dir / f"{index:02d}-original.png"), original)
+        cv2.imwrite(str(evidence_dir / f"{index:02d}-clean.png"), clean)
 
 
 def _page_safety(original: np.ndarray, clean: np.ndarray, mask: np.ndarray) -> dict[str, int]:
@@ -133,7 +140,13 @@ def _page_safety(original: np.ndarray, clean: np.ndarray, mask: np.ndarray) -> d
     }
 
 
-def _run_simple(paths: list[Path], evidence_dir: Path, padding: int, counter: ForwardCounter) -> dict:
+def _run_simple(
+    paths: list[Path],
+    evidence_dir: Path,
+    padding: int,
+    counter: ForwardCounter,
+    evidence_stride: int,
+) -> dict:
     from app.one_shot_cleanup import OneShotCleanupPipeline
 
     pipeline = OneShotCleanupPipeline(padding=padding)
@@ -183,7 +196,14 @@ def _run_simple(paths: list[Path], evidence_dir: Path, padding: int, counter: Fo
             **safety,
         }
         rows.append(row)
-        _save_evidence(evidence_dir, index, image, result.image, result.mask)
+        _save_evidence(
+            evidence_dir,
+            index,
+            image,
+            result.image,
+            result.mask,
+            stride=evidence_stride,
+        )
         print(json.dumps(row), flush=True)
 
     return {
@@ -194,7 +214,12 @@ def _run_simple(paths: list[Path], evidence_dir: Path, padding: int, counter: Fo
     }
 
 
-def _run_current(paths: list[Path], evidence_dir: Path, counter: ForwardCounter) -> dict:
+def _run_current(
+    paths: list[Path],
+    evidence_dir: Path,
+    counter: ForwardCounter,
+    evidence_stride: int,
+) -> dict:
     from app.detector.mask_builder import build_mask
     from app.detector.sequential_fast_residue_detector import (
         SequentialFastResidueAdaptiveFocusCombinedTextDetector,
@@ -253,7 +278,14 @@ def _run_current(paths: list[Path], evidence_dir: Path, counter: ForwardCounter)
             **safety,
         }
         rows.append(row)
-        _save_evidence(evidence_dir, index, image, clean, mask)
+        _save_evidence(
+            evidence_dir,
+            index,
+            image,
+            clean,
+            mask,
+            stride=evidence_stride,
+        )
         print(json.dumps(row), flush=True)
 
     return {
@@ -311,8 +343,19 @@ def main() -> None:
         type=Path,
         required=True,
     )
-    parser.add_argument("--limit", type=int, default=6)
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=6,
+        help="Maximum slices to benchmark; 0 means the full chapter.",
+    )
     parser.add_argument("--padding", type=int, default=64)
+    parser.add_argument(
+        "--evidence-stride",
+        type=int,
+        default=1,
+        help="Save original/clean PNGs every N slices; masks are always saved.",
+    )
     args = parser.parse_args()
 
     paths = _prepare_slices(args.raw_dir, args.slice_dir, args.limit)
@@ -324,9 +367,20 @@ def main() -> None:
     counter.install()
 
     if args.mode == "simple":
-        report = _run_simple(paths, evidence_dir, args.padding, counter)
+        report = _run_simple(
+            paths,
+            evidence_dir,
+            args.padding,
+            counter,
+            max(1, int(args.evidence_stride)),
+        )
     else:
-        report = _run_current(paths, evidence_dir, counter)
+        report = _run_current(
+            paths,
+            evidence_dir,
+            counter,
+            max(1, int(args.evidence_stride)),
+        )
 
     report = _finalize(report, paths, args.padding)
     _write_json(args.output, report)
