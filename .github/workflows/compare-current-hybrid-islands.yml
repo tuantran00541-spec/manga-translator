@@ -1,0 +1,96 @@
+name: Compare current vs hybrid isolated mask islands
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["experiment/one-shot-cleanup"]
+    paths:
+      - .github/workflows/compare-current-hybrid-islands.yml
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  compare:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install numpy==1.26.4 opencv-python-headless==4.10.0.84
+      - uses: actions/download-artifact@v4
+        with:
+          name: shadow-slave-ch1-dumb-detector-normal-inpaint
+          path: teacher
+          github-token: ${{ github.token }}
+          repository: tuantran00541-spec/manga-translator
+          run-id: 35504039971
+      - uses: actions/download-artifact@v4
+        with:
+          name: shadow-slave-ch1-hybrid-only
+          path: hybrid
+          github-token: ${{ github.token }}
+          repository: tuantran00541-spec/manga-translator
+          run-id: 35505363725
+      - name: Find isolated teacher-only islands
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import cv2, json, numpy as np
+          teacher=Path("teacher/current")
+          hybrid=Path("hybrid/hybrid")
+          rows=[]
+          for cp in sorted(teacher.glob("*-mask.png"),key=lambda p:int(p.name.split("-",1)[0])):
+              idx=int(cp.name.split("-",1)[0])
+              hp=hybrid/f"{idx:02d}-mask.png"
+              a=cv2.imread(str(cp),0)>127
+              b=cv2.imread(str(hp),0)>127
+              only=(a & ~b).astype(np.uint8)
+              n, labels, stats, _=cv2.connectedComponentsWithStats(only,8)
+
+              if np.any(b):
+                  distance=cv2.distanceTransform((~b).astype(np.uint8),cv2.DIST_L2,5)
+              else:
+                  distance=np.full(a.shape,9999.0,np.float32)
+
+              islands=[]
+              for j in range(1,n):
+                  x,y,w,h,area=map(int,stats[j])
+                  if area<500:
+                      continue
+                  comp=(labels==j)
+                  min_dist=float(distance[comp].min())
+                  islands.append({
+                      "x":x,"y":y,"w":w,"h":h,"area":area,
+                      "min_distance_to_hybrid":round(min_dist,2),
+                      "isolated_15px":bool(min_dist>15.0),
+                      "isolated_30px":bool(min_dist>30.0),
+                  })
+              islands.sort(key=lambda z:z["area"],reverse=True)
+              serious=[z for z in islands if z["area"]>=1000 and z["min_distance_to_hybrid"]>15]
+              rows.append({
+                  "index":idx,
+                  "current_pixels":int(a.sum()),
+                  "hybrid_pixels":int(b.sum()),
+                  "serious_island_count":len(serious),
+                  "serious_islands":serious,
+                  "largest_islands":islands[:5],
+              })
+
+          flagged=[r for r in rows if r["serious_island_count"]]
+          out={
+              "compared_slices":len(rows),
+              "isolated_miss_slice_count":len(flagged),
+              "isolated_miss_slices":[r["index"] for r in flagged],
+              "flagged":flagged,
+          }
+          print(json.dumps(out,indent=2))
+          Path("isolated-mask-islands.json").write_text(json.dumps(out,indent=2)+"\n")
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: isolated-mask-islands
+          path: isolated-mask-islands.json
+          retention-days: 7
