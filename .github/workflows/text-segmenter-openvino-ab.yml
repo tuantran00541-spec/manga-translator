@@ -1,0 +1,223 @@
+name: Text segmenter OpenVINO A/B
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["experiment/one-shot-yolo26"]
+    paths:
+      - .github/workflows/text-segmenter-openvino-ab.yml
+
+permissions:
+  contents: read
+
+jobs:
+  ab:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    env:
+      PYTHONUNBUFFERED: "1"
+      CHAPTER_URL: "https://asurascans.com/comics/shadow-slave-6f7fe6eb/chapter/1"
+      RAW_DIR: "benchmark-results/text-seg-openvino/raw"
+      SLICE_DIR: "benchmark-results/text-seg-openvino/slices"
+      OUT_DIR: "benchmark-results/text-seg-openvino"
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install runtime dependencies
+        run: |
+          python -m pip install numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 onnxruntime==1.24.1 openvino psutil==6.1.1 loguru==0.7.2 requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 playwright==1.47.0 fastapi==0.115.0 pydantic==2.9.2 filelock==3.16.1 threadpoolctl==3.6.0
+
+      - name: Restore text segmenter model
+        id: models
+        uses: actions/cache@v4
+        with:
+          path: |
+            models/*.onnx
+            models/.e2e-provenance.json
+          key: processing-profile-models-b224548-v1
+
+      - name: Read pinned model provisioner
+        if: ${{ steps.models.outputs.cache-hit != 'true' }}
+        uses: actions/checkout@v4
+        with:
+          ref: b22454827f8190655d7070b80eb20c2550beadfa
+          path: benchmark-bootstrap
+          sparse-checkout: scripts/provision_real_e2e_models.py
+          sparse-checkout-cone-mode: false
+
+      - name: Provision model on cache miss
+        if: ${{ steps.models.outputs.cache-hit != 'true' }}
+        run: |
+          python benchmark-bootstrap/scripts/provision_real_e2e_models.py
+          cp benchmark-bootstrap/models/*.onnx models/
+          cp benchmark-bootstrap/models/.e2e-provenance.json models/
+
+      - name: Download and prepare 32 slices
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from app.downloader.registry import download_chapter
+          from app.downloader.slicer import slice_image
+
+          raw = Path(os.environ["RAW_DIR"])
+          slc = Path(os.environ["SLICE_DIR"])
+          raw.mkdir(parents=True, exist_ok=True)
+          slc.mkdir(parents=True, exist_ok=True)
+
+          paths = download_chapter(os.environ["CHAPTER_URL"], raw)
+          slices = []
+          for i, path in enumerate(sorted(paths)):
+              recs = slice_image(path, slc, f"{i:03d}", return_metadata=True)
+              slices.extend(Path(r["path"]) for r in recs)
+              if len(slices) >= 32:
+                  break
+          keep = sorted(slices)[:32]
+          Path(os.environ["OUT_DIR"]).mkdir(parents=True, exist_ok=True)
+          (Path(os.environ["OUT_DIR"]) / "paths.txt").write_text(
+              "\n".join(str(p) for p in keep) + "\n"
+          )
+          print("probe_slices", len(keep))
+          PY
+
+      - name: Benchmark same ONNX in ORT CPU vs OpenVINO CPU
+        run: |
+          python - <<'PY'
+          import json, os, statistics, time
+          from pathlib import Path
+
+          import cv2
+          import numpy as np
+          import onnxruntime as ort
+          import openvino as ov
+
+          model_path = Path("models/text_segmenter.onnx")
+          paths = [
+              Path(x) for x in
+              (Path(os.environ["OUT_DIR"]) / "paths.txt").read_text().splitlines()
+              if x.strip()
+          ]
+
+          def preprocess(path):
+              img = cv2.imread(str(path), cv2.IMREAD_COLOR)
+              if img is None:
+                  raise RuntimeError(f"cannot read {path}")
+              h, w = img.shape[:2]
+              scale = min(1024 / w, 1024 / h)
+              rw, rh = max(1, round(w * scale)), max(1, round(h * scale))
+              resized = cv2.resize(img, (rw, rh), interpolation=cv2.INTER_LINEAR)
+              canvas = np.full((1024, 1024, 3), 114, dtype=np.uint8)
+              x = (1024 - rw) // 2
+              y = (1024 - rh) // 2
+              canvas[y:y+rh, x:x+rw] = resized
+              rgb = cv2.cvtColor(canvas, cv2.COLOR_BGR2RGB)
+              return np.ascontiguousarray(
+                  (rgb.astype(np.float32) / 255.0).transpose(2,0,1)[None]
+              )
+
+          blobs = [preprocess(p) for p in paths]
+
+          so = ort.SessionOptions()
+          so.intra_op_num_threads = 2
+          so.inter_op_num_threads = 1
+          so.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+          so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+          ort_sess = ort.InferenceSession(
+              str(model_path),
+              sess_options=so,
+              providers=["CPUExecutionProvider"],
+          )
+          ort_name = ort_sess.get_inputs()[0].name
+
+          core = ov.Core()
+          ov_model = core.read_model(str(model_path))
+          compiled = core.compile_model(
+              ov_model,
+              "CPU",
+              {
+                  "PERFORMANCE_HINT": "LATENCY",
+                  "INFERENCE_NUM_THREADS": "2",
+                  "NUM_STREAMS": "1",
+              },
+          )
+          ov_input = compiled.input(0)
+
+          def bench_ort():
+              for i in range(3):
+                  ort_sess.run(None, {ort_name: blobs[i % len(blobs)]})
+              times=[]
+              shapes=None
+              for blob in blobs:
+                  t0=time.perf_counter()
+                  out=ort_sess.run(None, {ort_name: blob})
+                  times.append((time.perf_counter()-t0)*1000.0)
+                  if shapes is None:
+                      shapes=[list(np.asarray(x).shape) for x in out]
+              return times, shapes
+
+          def bench_ov():
+              req = compiled.create_infer_request()
+              for i in range(3):
+                  req.infer({ov_input: blobs[i % len(blobs)]})
+              times=[]
+              shapes=None
+              for blob in blobs:
+                  t0=time.perf_counter()
+                  result=req.infer({ov_input: blob})
+                  times.append((time.perf_counter()-t0)*1000.0)
+                  if shapes is None:
+                      shapes=[list(np.asarray(v).shape) for v in result.values()]
+              return times, shapes
+
+          ort_times, ort_shapes = bench_ort()
+          ov_times, ov_shapes = bench_ov()
+
+          if sorted(ort_shapes) != sorted(ov_shapes):
+              raise RuntimeError(f"output shape mismatch ORT={ort_shapes} OV={ov_shapes}")
+
+          def stats(xs):
+              ordered=sorted(xs)
+              return {
+                  "mean_ms": statistics.fmean(xs),
+                  "median_ms": statistics.median(xs),
+                  "p95_ms": ordered[int(0.95*(len(ordered)-1))],
+                  "min_ms": min(xs),
+                  "max_ms": max(xs),
+              }
+
+          a=stats(ort_times)
+          b=stats(ov_times)
+          report={
+              "slice_count": len(blobs),
+              "model_bytes": model_path.stat().st_size,
+              "ort_cpu": a,
+              "openvino_cpu": b,
+              "median_speedup_openvino_over_ort": a["median_ms"]/max(1e-9,b["median_ms"]),
+              "median_reduction_pct": (1.0-b["median_ms"]/a["median_ms"])*100.0,
+              "output_shapes": ort_shapes,
+              "openvino_version": ov.__version__,
+              "ort_version": ort.__version__,
+          }
+          out=Path(os.environ["OUT_DIR"])/"openvino-ab.json"
+          out.write_text(json.dumps(report,indent=2)+"\n")
+          print(json.dumps(report,indent=2))
+
+          with open(os.environ["GITHUB_STEP_SUMMARY"],"a",encoding="utf-8") as f:
+              f.write("## Same-model OpenVINO A/B\n\n")
+              f.write(f"- slices: {len(blobs)}\n")
+              f.write(f"- ORT CPU median: {a['median_ms']:.2f} ms\n")
+              f.write(f"- OpenVINO CPU median: {b['median_ms']:.2f} ms\n")
+              f.write(f"- speedup: {report['median_speedup_openvino_over_ort']:.3f}x\n")
+              f.write(f"- latency reduction: {report['median_reduction_pct']:.1f}%\n")
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: text-segmenter-openvino-ab
+          path: benchmark-results/text-seg-openvino/openvino-ab.json
+          retention-days: 7
