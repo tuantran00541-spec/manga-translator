@@ -1,0 +1,233 @@
+name: YOLO26 parser diagnostic
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["experiment/one-shot-yolo26"]
+    paths:
+      - .github/workflows/yolo26-parser-diagnostic.yml
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    env:
+      PYTHONUNBUFFERED: "1"
+      CHAPTER_URL: "https://asurascans.com/comics/shadow-slave-6f7fe6eb/chapter/1"
+      ROOT: "benchmark-results/yolo26-parser"
+      RAW_DIR: "benchmark-results/yolo26-parser/raw"
+      SLICE_DIR: "benchmark-results/yolo26-parser/slices"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install diagnostic runtime
+        run: |
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple torch==2.8.0+cpu torchvision==0.23.0+cpu
+          python -m pip install ultralytics==8.4.156 onnx==1.17.0 onnxruntime==1.24.1
+          python -m pip install numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 psutil==6.1.1 loguru==0.7.2 requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 playwright==1.47.0 fastapi==0.115.0 pydantic==2.9.2 filelock==3.16.1 threadpoolctl==3.6.0 PyYAML==6.0.2
+
+      - name: Download trained YOLO26 student artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p "$ROOT/student"
+          gh run download 35516657301             --repo "${{ github.repository }}"             --name yolo26-text-distill             --dir "$ROOT/student"
+          find "$ROOT/student" -maxdepth 2 -type f -printf '%p %s bytes\n' | sort
+
+      - name: Download and slice chapter
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from app.downloader.registry import download_chapter
+          from app.downloader.slicer import slice_image
+
+          raw = Path(os.environ["RAW_DIR"])
+          slc = Path(os.environ["SLICE_DIR"])
+          raw.mkdir(parents=True, exist_ok=True)
+          slc.mkdir(parents=True, exist_ok=True)
+
+          paths = download_chapter(os.environ["CHAPTER_URL"], raw)
+          slices = []
+          for i, path in enumerate(sorted(paths)):
+              recs = slice_image(path, slc, f"{i:03d}", return_metadata=True)
+              slices.extend(Path(r["path"]) for r in recs)
+
+          # Match the previous held-out split (every fifth slice).
+          heldout = [p for i, p in enumerate(slices) if i % 5 == 0]
+          Path(os.environ["ROOT"], "heldout.txt").write_text(
+              "\n".join(str(p) for p in heldout[:8]) + "\n"
+          )
+          print("heldout_probe", len(heldout[:8]))
+          PY
+
+      - name: Compare Ultralytics vs repo parser
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          import numpy as np
+          import onnxruntime as ort
+          from ultralytics import YOLO
+
+          from app.detector.bubble_detector import YoloDetector
+          from app.image_io import read_image
+          from app.parameters import TEXT_CONF_THRESHOLD
+
+          root = Path(os.environ["ROOT"])
+          student_dir = root / "student"
+          onnx_path = next(student_dir.rglob("yolo26-text-seg.onnx"))
+          pt_path = next(student_dir.rglob("yolo26-text-seg.pt"))
+          image_paths = [
+              Path(line.strip())
+              for line in (root / "heldout.txt").read_text().splitlines()
+              if line.strip()
+          ]
+
+          sess = ort.InferenceSession(str(onnx_path), providers=["CPUExecutionProvider"])
+          input_name = sess.get_inputs()[0].name
+
+          repo_detector = YoloDetector(
+              onnx_path,
+              TEXT_CONF_THRESHOLD,
+              use_tta=False,
+              model_role="text_segmenter",
+          )
+          ultra_pt = YOLO(str(pt_path))
+          ultra_onnx = YOLO(str(onnx_path))
+
+          def raw_stats(image):
+              blob, transform = repo_detector._preprocess(image, offset_x=0, offset_y=0)
+              outputs = sess.run(None, {input_name: blob})
+              out0 = np.asarray(outputs[0])
+              row = np.squeeze(out0)
+              if row.ndim == 2 and row.shape[0] < row.shape[1]:
+                  row = row.T
+              # Existing parser assumes [xywh, classes..., 32 mask coeffs].
+              assumed_num_classes = max(1, row.shape[1] - 4 - 32)
+              class_scores = row[:, 4:4 + assumed_num_classes]
+              assumed_conf = (
+                  class_scores[:, 0]
+                  if assumed_num_classes == 1
+                  else class_scores.max(axis=1)
+              )
+              return outputs, transform, {
+                  "out_shapes": [list(np.asarray(x).shape) for x in outputs],
+                  "out0_min": float(out0.min()),
+                  "out0_max": float(out0.max()),
+                  "assumed_num_classes": int(assumed_num_classes),
+                  "assumed_conf_min": float(assumed_conf.min()),
+                  "assumed_conf_max": float(assumed_conf.max()),
+                  "assumed_conf_q50": float(np.quantile(assumed_conf, 0.50)),
+                  "assumed_conf_q90": float(np.quantile(assumed_conf, 0.90)),
+                  "assumed_conf_q99": float(np.quantile(assumed_conf, 0.99)),
+                  "assumed_ge_020": int(np.count_nonzero(assumed_conf >= 0.20)),
+                  "assumed_ge_012": int(np.count_nonzero(assumed_conf >= 0.12)),
+                  "assumed_ge_001": int(np.count_nonzero(assumed_conf >= 0.01)),
+              }
+
+          rows = []
+          for path in image_paths:
+              image = read_image(path)
+              outputs, transform, stats = raw_stats(image)
+
+              threshold_rows = {}
+              for threshold in (0.20, 0.12, 0.05, 0.01):
+                  old = repo_detector.conf_threshold
+                  repo_detector.conf_threshold = threshold
+                  try:
+                      parsed = repo_detector._postprocess(outputs, transform)
+                  finally:
+                      repo_detector.conf_threshold = old
+                  threshold_rows[str(threshold)] = {
+                      "boxes": len(parsed),
+                      "verified": sum(int(b.verified_mask) for b in parsed),
+                      "confidences": [round(float(b.confidence), 5) for b in parsed[:10]],
+                      "mask_pixels": [
+                          int(np.count_nonzero(b.mask > 127)) if b.mask is not None else 0
+                          for b in parsed[:10]
+                      ],
+                  }
+
+              pt_result = ultra_pt.predict(
+                  source=image,
+                  imgsz=1024,
+                  conf=0.01,
+                  iou=0.7,
+                  device="cpu",
+                  verbose=False,
+              )[0]
+              onnx_result = ultra_onnx.predict(
+                  source=image,
+                  imgsz=1024,
+                  conf=0.01,
+                  iou=0.7,
+                  device="cpu",
+                  verbose=False,
+              )[0]
+
+              def ultra_summary(result):
+                  boxes = result.boxes
+                  masks = result.masks
+                  return {
+                      "boxes": 0 if boxes is None else len(boxes),
+                      "conf": [] if boxes is None else [
+                          round(float(x), 5)
+                          for x in boxes.conf.detach().cpu().numpy()[:10]
+                      ],
+                      "classes": [] if boxes is None else [
+                          int(x)
+                          for x in boxes.cls.detach().cpu().numpy()[:10]
+                      ],
+                      "mask_count": 0 if masks is None else len(masks.data),
+                      "mask_pixels": [] if masks is None else [
+                          int(np.count_nonzero(x.detach().cpu().numpy() > 0.5))
+                          for x in masks.data[:10]
+                      ],
+                  }
+
+              row = {
+                  "file": path.name,
+                  "raw": stats,
+                  "repo": threshold_rows,
+                  "ultralytics_pt": ultra_summary(pt_result),
+                  "ultralytics_onnx": ultra_summary(onnx_result),
+              }
+              rows.append(row)
+              print(json.dumps(row, indent=2), flush=True)
+
+          report = {
+              "onnx": str(onnx_path),
+              "pt": str(pt_path),
+              "onnx_inputs": [
+                  {"name": x.name, "shape": x.shape, "type": x.type}
+                  for x in sess.get_inputs()
+              ],
+              "onnx_outputs": [
+                  {"name": x.name, "shape": x.shape, "type": x.type}
+                  for x in sess.get_outputs()
+              ],
+              "rows": rows,
+          }
+          (root / "parser-diagnostic.json").write_text(
+              json.dumps(report, indent=2) + "\n"
+          )
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: yolo26-parser-diagnostic
+          path: benchmark-results/yolo26-parser/parser-diagnostic.json
+          retention-days: 7
