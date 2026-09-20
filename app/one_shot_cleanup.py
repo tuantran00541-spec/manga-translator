@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import time
 
 import cv2
@@ -8,7 +8,8 @@ import numpy as np
 
 from app.config import TEXT_SEGMENTER_MODEL
 from app.detector.bubble_detector import BubbleBox, YoloDetector
-from app.inpaint.lama_inpainter import Inpainter
+from app.detector.mask_builder import build_mask
+from app.inpaint.adaptive_fast_inpainter import AdaptiveFastInpainter
 from app.parameters import TEXT_CONF_THRESHOLD
 
 
@@ -16,18 +17,12 @@ from app.parameters import TEXT_CONF_THRESHOLD
 class OneShotCleanupResult:
     image: np.ndarray
     mask: np.ndarray
-    roi: tuple[int, int, int, int] | None
-    metrics: dict[str, float | int | list[int]]
+    boxes: list[BubbleBox]
+    metrics: dict[str, float | int]
 
 
 class OneShotTextMaskDetector:
-    """Deliberately dumb detector path: one text-segmenter forward per image.
-
-    There is no bubble detector, TTA, tall-image windowing, recovery, grayscale
-    retry, residue verification, semantic promotion, or review path here.
-    The text segmenter is asked one question only: which pixels look like manga
-    text? That includes text inside speech bubbles and free text.
-    """
+    """One text-segmenter forward, no detector recovery or second opinion."""
 
     def __init__(self, detector: YoloDetector | None = None):
         self.detector = detector or YoloDetector(
@@ -38,135 +33,95 @@ class OneShotTextMaskDetector:
         )
 
     @staticmethod
-    def _union_verified_masks(
-        image_shape: tuple[int, int],
-        boxes: list[BubbleBox],
-    ) -> tuple[np.ndarray, int]:
-        height, width = (int(v) for v in image_shape)
-        page_mask = np.zeros((height, width), dtype=np.uint8)
-        accepted = 0
+    def _accept(box: BubbleBox) -> BubbleBox | None:
+        if box.source_role != "text_segmenter" or not box.verified_mask:
+            return None
+        # The dumb detector does not try to distinguish speech-bubble text from
+        # free text. Treat all verified text as one cleanup class and let the
+        # existing inpainter decide whether a cheap fill is safe or LaMa is needed.
+        return replace(
+            box,
+            semantic_type="free_text",
+            mask_source="text_segmenter",
+            safe_to_inpaint=True,
+            ocr_eligible=True,
+            needs_review=False,
+            deferred_reason=None,
+        )
 
-        for box in boxes:
-            if box.source_role != "text_segmenter" or not box.verified_mask:
-                continue
-
-            x1 = max(0, min(width, int(box.x1)))
-            y1 = max(0, min(height, int(box.y1)))
-            x2 = max(0, min(width, int(box.x2)))
-            y2 = max(0, min(height, int(box.y2)))
-            if x2 <= x1 or y2 <= y1:
-                continue
-
-            box_w = max(1, int(box.x2) - int(box.x1))
-            box_h = max(1, int(box.y2) - int(box.y1))
-            local_mask = box.mask
-            if local_mask is None:
-                continue
-            if local_mask.shape != (box_h, box_w):
-                local_mask = cv2.resize(
-                    local_mask,
-                    (box_w, box_h),
-                    interpolation=cv2.INTER_NEAREST,
-                )
-
-            src_x1 = x1 - int(box.x1)
-            src_y1 = y1 - int(box.y1)
-            src_x2 = src_x1 + (x2 - x1)
-            src_y2 = src_y1 + (y2 - y1)
-            clipped = local_mask[src_y1:src_y2, src_x1:src_x2]
-            if clipped.shape != (y2 - y1, x2 - x1):
-                continue
-            if not np.any(clipped > 127):
-                continue
-
-            target = page_mask[y1:y2, x1:x2]
-            page_mask[y1:y2, x1:x2] = np.maximum(
-                target,
-                (clipped > 127).astype(np.uint8) * 255,
-            )
-            accepted += 1
-
-        return page_mask, accepted
-
-    def detect_mask(self, image: np.ndarray) -> tuple[np.ndarray, dict[str, float | int]]:
+    def detect(self, image: np.ndarray) -> tuple[list[BubbleBox], dict[str, float | int]]:
         started = time.perf_counter()
 
-        # Intentionally bypass YoloDetector.detect(). That production method may
-        # split tall images, add a full-image retry and run TTA. The experiment
-        # requires exactly one detector forward for the entire slice.
-        boxes = self.detector._detect_single(image, 0, 0)
-        mask, accepted = self._union_verified_masks(image.shape[:2], boxes)
+        # Intentionally bypass YoloDetector.detect(): no tall slicing, no TTA,
+        # no retry. One slice enters the ONNX text segmenter exactly once.
+        raw_boxes = self.detector._detect_single(image, 0, 0)
+        boxes: list[BubbleBox] = []
+        for raw in raw_boxes:
+            accepted = self._accept(raw)
+            if accepted is not None:
+                boxes.append(accepted)
 
-        return mask, {
+        return boxes, {
             "detector_ms": round((time.perf_counter() - started) * 1000.0, 3),
             "detector_forward_calls": 1,
-            "detector_boxes": int(len(boxes)),
-            "accepted_mask_boxes": int(accepted),
+            "detector_boxes": int(len(raw_boxes)),
+            "accepted_mask_boxes": int(len(boxes)),
+        }
+
+    def detect_mask(self, image: np.ndarray) -> tuple[np.ndarray, dict[str, float | int]]:
+        """Compatibility helper used by focused detector tests."""
+        boxes, metrics = self.detect(image)
+        mask = (
+            build_mask(image.shape[:2], boxes, image)
+            if boxes
+            else np.zeros(image.shape[:2], dtype=np.uint8)
+        )
+        return mask, {
+            **metrics,
             "mask_pixels": int(np.count_nonzero(mask > 127)),
         }
 
 
 class OneShotCleanupPipeline:
-    """The dumbest cleanup path: detector mask -> whole image -> one LaMa call."""
+    """Dumb detector + the normal production AdaptiveFastInpainter."""
 
     def __init__(
         self,
         *,
         detector: OneShotTextMaskDetector | None = None,
-        inpainter: Inpainter | None = None,
+        inpainter: AdaptiveFastInpainter | None = None,
         padding: int = 0,
     ):
         self.detector = detector or OneShotTextMaskDetector()
-        self.inpainter = inpainter or Inpainter()
-        # Kept only so the existing benchmark CLI stays compatible. Deliberately
-        # unused: this experiment does not crop, cluster, pad, or plan regions.
+        self.inpainter = inpainter or AdaptiveFastInpainter()
+        # Compatibility only; hybrid mode deliberately has no detector ROI knob.
         self.padding = int(padding)
 
     def clean(self, image: np.ndarray) -> OneShotCleanupResult:
         total_started = time.perf_counter()
-        mask, detector_metrics = self.detector.detect_mask(image)
+        boxes, detector_metrics = self.detector.detect(image)
 
-        if not np.any(mask > 127):
-            metrics = {
-                **detector_metrics,
-                "inpaint_ms": 0.0,
-                "lama_model_runs": 0,
-                "roi_pixels": 0,
-                "total_ms": round((time.perf_counter() - total_started) * 1000.0, 3),
-            }
-            return OneShotCleanupResult(image.copy(), mask, None, metrics)
-
-        begin_metrics = getattr(self.inpainter, "_begin_metrics", None)
-        if callable(begin_metrics):
-            begin_metrics()
+        authority = (
+            build_mask(image.shape[:2], boxes, image)
+            if boxes
+            else np.zeros(image.shape[:2], dtype=np.uint8)
+        )
 
         inpaint_started = time.perf_counter()
-        # No ROI, no components, no merge, no SmartFill, no tile planner.
-        # Give the whole slice and the union text mask to LaMa once.
-        painted = self.inpainter._lama_fill_single(image, mask)
+        cleaned = self.inpainter.inpaint(image, boxes)
         inpaint_ms = (time.perf_counter() - inpaint_started) * 1000.0
 
-        if painted.shape != image.shape:
-            raise ValueError(
-                f"One-shot LaMa returned {painted.shape}; expected {image.shape}"
-            )
-
-        output = image.copy()
-        authority = mask > 127
-        output[authority] = painted[authority]
-
-        last_metrics = getattr(self.inpainter, "last_metrics", None)
-        lama_metrics = last_metrics() if callable(last_metrics) else {}
-        lama_runs = int(lama_metrics.get("lama_model_runs", 1))
-
-        height, width = image.shape[:2]
-        full_frame = (0, 0, int(width), int(height))
+        inpaint_metrics = self.inpainter.last_metrics()
         metrics = {
             **detector_metrics,
+            "mask_pixels": int(np.count_nonzero(authority > 127)),
             "inpaint_ms": round(inpaint_ms, 3),
-            "lama_model_runs": lama_runs,
-            "roi_pixels": int(width * height),
-            "roi_shape": [int(height), int(width)],
+            "lama_model_runs": int(inpaint_metrics.get("lama_model_runs", 0)),
+            "smart_fill_regions": int(inpaint_metrics.get("smart_fill_regions", 0)),
+            "bubble_fast_fill_regions": int(
+                inpaint_metrics.get("bubble_fast_fill_regions", 0)
+            ),
+            "clusters": int(inpaint_metrics.get("clusters", 0)),
             "total_ms": round((time.perf_counter() - total_started) * 1000.0, 3),
         }
-        return OneShotCleanupResult(output, mask, full_frame, metrics)
+        return OneShotCleanupResult(cleaned, authority, boxes, metrics)
