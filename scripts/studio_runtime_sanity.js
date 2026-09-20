@@ -29,7 +29,7 @@ assert(!transforms.includes('new MutationObserver'), 'box transforms must not ke
 assert(!shell.includes('event.key === "Tab" && !event.ctrlKey'), 'shell must preserve native Tab navigation');
 assert(shell.includes('event.key === "f" || event.key === "F"'), 'focus mode must use the dedicated F shortcut');
 assert(reviewWorkspace.includes('window.cleanupReviewWorkspace = () =>'), 'Review must expose one lifecycle cleanup');
-assert(reviewWorkspace.includes('cleanupAIStatus?.()'), 'Review must disconnect its AI status observer');
+assert(reviewWorkspace.includes('review-canvas-only'), 'Review must mount the single-document canvas layout');
 assert(stitchInspector.includes('new AbortController()'), 'stitched Review interactions must have abortable ownership');
 assert(
   stitchInspector.includes('window.addEventListener("keydown", (e) => {')
@@ -73,8 +73,8 @@ assert(!chapterOcr.includes('observeWorkspaceRoot'), 'OCR must not scan the whol
 assert(!chapterQc.includes('observeWorkspaceRoot'), 'chapter QC must not scan the whole workspace with an observer');
 assert(!chapterQc.includes('new MutationObserver'), 'chapter QC must use explicit lifecycle synchronization');
 assert(chapterQc.includes('window.syncChapterQCWorkspace = renderPanel'), 'chapter QC must expose explicit workspace synchronization');
-assert((reviewWorkspace.match(/new MutationObserver/g) || []).length === 1, 'Review must keep only its scoped AI status observer');
+assert((reviewWorkspace.match(/new MutationObserver/g) || []).length === 0, 'Review canvas must not keep DOM observers');
 assert(!reviewWorkspace.includes('busyObserver'), 'Review busy state must not infer lifecycle from DOM mutations');
-assert(reviewWorkspace.includes('window.mountChapterOCR?.()'), 'Review must explicitly mount OCR controls');
-assert(reviewWorkspace.includes('window.mountChapterQC?.()'), 'Review must explicitly mount QC controls');
+assert(!reviewWorkspace.includes('createPageNavigator({'), 'Review must not recreate the old thumbnail page navigator');
+assert(!reviewWorkspace.includes('context-inspector review-inspector'), 'Review must not recreate the old right-hand inspector');
 console.log('studio runtime sanity: PASS');
