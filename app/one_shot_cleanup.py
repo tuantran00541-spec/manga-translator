@@ -63,15 +63,19 @@ class OneShotTextMaskDetector:
                 accepted.append(box)
         return accepted
 
+    def _run_session(self, blob):
+        """Small seam so benchmarks/tests can count the real ONNX call."""
+        return self.detector.session.run(
+            None,
+            {self.detector.input_name: blob},
+        )
+
     def _single_forward_outputs(self, image: np.ndarray):
         """Run preprocess + ONNX once and return raw outputs + geometry."""
         blob, transform = self.detector._preprocess(image, offset_x=0, offset_y=0)
         if blob is None or transform is None:
             return None, None
-        outputs = self.detector.session.run(
-            None,
-            {self.detector.input_name: blob},
-        )
+        outputs = self._run_session(blob)
         return outputs, transform
 
     def _postprocess_at_threshold(
