@@ -8,7 +8,7 @@ on:
       - .github/workflows/inspect-shadow-slave-evidence.yml
 
 permissions:
-  contents: read
+  contents: write
   actions: read
 
 jobs:
@@ -104,6 +104,18 @@ jobs:
           print("evidence_indices", indices)
           print("contact_sheets", len(list(out.glob("contact-*.jpg"))))
           PY
+
+      - name: Publish contact sheets to benchmark branch
+        run: |
+          rm -rf bench/visual-inspection/shadow-slave-ch1
+          mkdir -p bench/visual-inspection/shadow-slave-ch1
+          cp inspection/contact-*.jpg bench/visual-inspection/shadow-slave-ch1/
+          cp inspection/hardest.json bench/visual-inspection/shadow-slave-ch1/
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add bench/visual-inspection/shadow-slave-ch1
+          git commit -m "bench: publish Shadow Slave hybrid contact sheets"
+          git push origin HEAD:experiment/one-shot-cleanup
 
       - uses: actions/upload-artifact@v4
         with:
