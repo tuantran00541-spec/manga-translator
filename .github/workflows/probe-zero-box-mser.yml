@@ -1,0 +1,153 @@
+name: Probe zero-box MSER fallback
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["experiment/one-shot-cleanup"]
+    paths:
+      - .github/workflows/probe-zero-box-mser.yml
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    env:
+      PYTHONUNBUFFERED: "1"
+      CHAPTER_URL: "https://asurascans.com/comics/shadow-slave-6f7fe6eb/chapter/1"
+      MANGA_ORT_PROVIDER: openvino
+      MANGA_ORT_REQUIRE_PROVIDER: "1"
+      MANGA_ORT_OPENVINO_SCOPE: detectors
+      MANGA_ORT_OPENVINO_THREADS: "2"
+      MANGA_ORT_OPENVINO_STREAMS: "1"
+      MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install probe dependencies
+        run: |
+          python -m pip install numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 onnxruntime-openvino==1.24.1 psutil==6.1.1 loguru==0.7.2 requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 playwright==1.47.0 fastapi==0.115.0 pydantic==2.9.2 filelock==3.16.1 threadpoolctl==3.6.0
+
+      - name: Restore benchmark models
+        uses: actions/cache@v4
+        with:
+          path: |
+            models/*.onnx
+            models/.e2e-provenance.json
+          key: processing-profile-models-b224548-v1
+
+      - name: Prepare slice zero
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from app.downloader.registry import download_chapter
+          from app.downloader.slicer import slice_image
+
+          raw = Path("probe/raw")
+          slices = Path("probe/slices")
+          raw.mkdir(parents=True, exist_ok=True)
+          slices.mkdir(parents=True, exist_ok=True)
+          paths = download_chapter(os.environ["CHAPTER_URL"], raw)
+          all_slices = []
+          for i, path in enumerate(sorted(paths)):
+              records = slice_image(path, slices, f"{i:03d}", return_metadata=True)
+              all_slices.extend(Path(r["path"]) for r in records)
+          first = all_slices[0]
+          Path("probe/slice0.txt").write_text(str(first))
+          print("slice0", first)
+          PY
+
+      - name: Probe MSER proposal then focused segmenter
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          import cv2
+          import numpy as np
+
+          from app.config import TEXT_SEGMENTER_MODEL
+          from app.detector.bubble_detector import YoloDetector
+          from app.detector.recovery import SecondaryTextRecovery
+          from app.image_io import read_image
+          from app.parameters import TEXT_CONF_THRESHOLD
+
+          path = Path(Path("probe/slice0.txt").read_text().strip())
+          image = read_image(path)
+          h, w = image.shape[:2]
+          gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+          recovery = SecondaryTextRecovery()
+          raw = recovery._extract_primitives(image, gray)
+          base = recovery.detect(image, existing=[])
+          residual = recovery._residual_line_candidates(
+              np.asarray(raw), (h, w), []
+          )
+
+          proposals = []
+          seen = set()
+          for box in [*base, *residual]:
+              key = (box.x1, box.y1, box.x2, box.y2)
+              if key in seen:
+                  continue
+              seen.add(key)
+              proposals.append(box)
+
+          print("raw_mser_regions", len(raw))
+          print("base_candidates", len(base))
+          print("residual_candidates", len(residual))
+          print("unique_proposals", len(proposals))
+
+          segmenter = YoloDetector(
+              TEXT_SEGMENTER_MODEL,
+              TEXT_CONF_THRESHOLD,
+              use_tta=False,
+              model_role="text_segmenter",
+          )
+
+          focused = []
+          max_proposals = 24
+          for box in proposals[:max_proposals]:
+              bw = max(1, box.x2 - box.x1)
+              bh = max(1, box.y2 - box.y1)
+              px = max(40, int(round(bw * 0.30)))
+              py = max(40, int(round(bh * 0.50)))
+              x1 = max(0, box.x1 - px)
+              y1 = max(0, box.y1 - py)
+              x2 = min(w, box.x2 + px)
+              y2 = min(h, box.y2 + py)
+              crop = image[y1:y2, x1:x2]
+              focused.extend(segmenter._detect_single(crop, x1, y1))
+
+          verified = [
+              b for b in focused
+              if b.source_role == "text_segmenter" and b.verified_mask
+          ]
+          report = {
+              "slice": path.name,
+              "shape": [h, w],
+              "raw_mser_regions": len(raw),
+              "base_candidates": len(base),
+              "residual_candidates": len(residual),
+              "tested_proposals": min(len(proposals), max_proposals),
+              "focused_boxes": len(focused),
+              "verified_boxes": len(verified),
+              "verified": [
+                  {
+                      "xyxy": [b.x1, b.y1, b.x2, b.y2],
+                      "confidence": b.confidence,
+                      "mask_pixels": int((b.mask > 127).sum()) if b.mask is not None else 0,
+                  }
+                  for b in verified
+              ],
+          }
+          print(json.dumps(report, indent=2))
+          if not verified:
+              raise RuntimeError("MSER-focused fallback still failed slice 000")
+          PY
