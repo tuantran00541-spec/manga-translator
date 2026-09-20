@@ -1,0 +1,72 @@
+name: Check image resolution metadata
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["experiment/one-shot-cleanup"]
+    paths:
+      - .github/workflows/check-image-resolution-metadata.yml
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    env:
+      CHAPTER_URL: "https://asurascans.com/comics/shadow-slave-6f7fe6eb/chapter/1"
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install minimal deps
+        run: python -m pip install Pillow==10.4.0 requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 playwright==1.47.0
+
+      - name: Download and inspect metadata
+        run: |
+          python - <<'PY'
+          import os, json
+          from pathlib import Path
+          from PIL import Image
+          from app.downloader.registry import download_chapter
+          from app.downloader.slicer import slice_image
+
+          raw = Path("probe-resolution/raw")
+          slc = Path("probe-resolution/slices")
+          raw.mkdir(parents=True, exist_ok=True)
+          slc.mkdir(parents=True, exist_ok=True)
+
+          paths = download_chapter(os.environ["CHAPTER_URL"], raw)
+          rows = []
+
+          def inspect(path, kind):
+              with Image.open(path) as im:
+                  info = dict(im.info)
+                  exif = im.getexif()
+                  rows.append({
+                      "kind": kind,
+                      "file": Path(path).name,
+                      "format": im.format,
+                      "size": list(im.size),
+                      "dpi": info.get("dpi"),
+                      "jfif_density": info.get("jfif_density"),
+                      "jfif_unit": info.get("jfif_unit"),
+                      "exif_x_resolution": exif.get(282),
+                      "exif_y_resolution": exif.get(283),
+                      "exif_resolution_unit": exif.get(296),
+                  })
+
+          for p in paths[:3]:
+              inspect(p, "raw")
+
+          if paths:
+              recs = slice_image(paths[0], slc, "000", return_metadata=True)
+              for rec in recs[:3]:
+                  inspect(Path(rec["path"]), "slice")
+
+          print(json.dumps(rows, indent=2, default=str))
+          PY
