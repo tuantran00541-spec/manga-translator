@@ -1,0 +1,120 @@
+name: Verify slice zero rescue
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["experiment/one-shot-cleanup"]
+    paths:
+      - .github/workflows/verify-slice-zero-rescue.yml
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    env:
+      PYTHONUNBUFFERED: "1"
+      CHAPTER_URL: "https://asurascans.com/comics/shadow-slave-6f7fe6eb/chapter/1"
+      MANGA_ORT_PROVIDER: openvino
+      MANGA_ORT_REQUIRE_PROVIDER: "1"
+      MANGA_ORT_OPENVINO_SCOPE: detectors
+      MANGA_ORT_OPENVINO_THREADS: "2"
+      MANGA_ORT_OPENVINO_STREAMS: "1"
+      MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install verify dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq tesseract-ocr
+          python -m pip install pytest==8.3.5 numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 onnxruntime-openvino==1.24.1 psutil==6.1.1 loguru==0.7.2 requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 playwright==1.47.0 fastapi==0.115.0 pydantic==2.9.2 filelock==3.16.1 threadpoolctl==3.6.0 pytesseract==0.3.13
+
+      - name: Restore benchmark models
+        uses: actions/cache@v4
+        with:
+          path: |
+            models/*.onnx
+            models/.e2e-provenance.json
+          key: processing-profile-models-b224548-v1
+
+      - name: Prepare slice zero and verify rescue crop
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          import cv2
+          import numpy as np
+          import pytesseract
+
+          from app.downloader.registry import download_chapter
+          from app.downloader.slicer import slice_image
+          from app.image_io import read_image
+          from app.one_shot_cleanup import OneShotCleanupPipeline
+
+          raw = Path("verify/raw")
+          slices = Path("verify/slices")
+          out = Path("verify/out")
+          raw.mkdir(parents=True, exist_ok=True)
+          slices.mkdir(parents=True, exist_ok=True)
+          out.mkdir(parents=True, exist_ok=True)
+
+          paths = download_chapter(os.environ["CHAPTER_URL"], raw)
+          all_slices = []
+          for i, path in enumerate(sorted(paths)):
+              records = slice_image(path, slices, f"{i:03d}", return_metadata=True)
+              all_slices.extend(Path(r["path"]) for r in records)
+
+          image = read_image(all_slices[0])
+          pipeline = OneShotCleanupPipeline()
+          prepare = getattr(pipeline.inpainter, "prepare_for_page_workers", None)
+          if callable(prepare):
+              prepare(1)
+          pipeline.inpainter.preload()
+          result = pipeline.clean(image)
+
+          ys, xs = np.where(result.mask > 127)
+          if xs.size == 0:
+              raise RuntimeError("slice 000 rescue produced empty mask")
+          x1, x2 = int(xs.min()), int(xs.max()) + 1
+          y1, y2 = int(ys.min()), int(ys.max()) + 1
+          pad = 48
+          x1=max(0,x1-pad); y1=max(0,y1-pad)
+          x2=min(image.shape[1],x2+pad); y2=min(image.shape[0],y2+pad)
+
+          original_crop = image[y1:y2, x1:x2]
+          clean_crop = result.image[y1:y2, x1:x2]
+          mask_crop = result.mask[y1:y2, x1:x2]
+
+          cv2.imwrite(str(out/"slice0-original-crop.png"), original_crop)
+          cv2.imwrite(str(out/"slice0-clean-crop.png"), clean_crop)
+          cv2.imwrite(str(out/"slice0-mask-crop.png"), mask_crop)
+
+          def ocr(img):
+              gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+              up = cv2.resize(gray, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
+              return pytesseract.image_to_string(up, config="--oem 1 --psm 6").strip()
+
+          report = {
+              "metrics": result.metrics,
+              "authority_bbox": [x1,y1,x2,y2],
+              "original_ocr": ocr(original_crop),
+              "clean_ocr": ocr(clean_crop),
+          }
+          print(json.dumps(report, indent=2, ensure_ascii=False))
+          (out/"report.json").write_text(json.dumps(report, indent=2, ensure_ascii=False)+"\n")
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: slice-zero-rescue-verification
+          path: verify/out/
+          retention-days: 7
