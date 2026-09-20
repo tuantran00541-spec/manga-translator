@@ -1,0 +1,50 @@
+name: Inspect partial current baseline
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["experiment/one-shot-cleanup"]
+    paths:
+      - .github/workflows/inspect-partial-current.yml
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download cancelled full-chapter artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: shadow-slave-ch1-dumb-detector-normal-inpaint
+          path: evidence
+          github-token: ${{ github.token }}
+          repository: tuantran00541-spec/manga-translator
+          run-id: 35504039971
+      - name: Inspect retained current evidence
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import json
+          root=Path("evidence")
+          print("top", sorted(str(p.relative_to(root)) for p in root.iterdir()))
+          current=root/"current"
+          masks=sorted(current.glob("*-mask.png")) if current.exists() else []
+          originals=sorted(current.glob("*-original.png")) if current.exists() else []
+          cleans=sorted(current.glob("*-clean.png")) if current.exists() else []
+          print(json.dumps({
+              "current_json_exists": (root/"current.json").exists(),
+              "hybrid_json_exists": (root/"hybrid.json").exists(),
+              "current_mask_count": len(masks),
+              "current_original_count": len(originals),
+              "current_clean_count": len(cleans),
+              "first_masks": [p.name for p in masks[:10]],
+              "last_masks": [p.name for p in masks[-10:]],
+          }, indent=2))
+          if (root/"current.json").exists():
+              d=json.loads((root/"current.json").read_text())
+              print("current_sample_count",d.get("sample_count"))
+          PY
