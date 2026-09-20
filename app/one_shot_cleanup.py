@@ -31,6 +31,7 @@ class OneShotTextMaskDetector:
     """
 
     FALLBACK_TILE_RATIO = 0.60
+    FALLBACK_CONF_THRESHOLD = 0.12
 
     def __init__(self, detector: YoloDetector | None = None):
         self.detector = detector or YoloDetector(
@@ -94,14 +95,24 @@ class OneShotTextMaskDetector:
         fallback_forward_calls = 0
 
         if fallback_triggered:
-            for x1, y1, x2, y2 in self._fallback_windows(image):
-                tile = image[y1:y2, x1:x2]
-                if tile.size == 0:
-                    continue
-                fallback_forward_calls += 1
-                fallback_raw_boxes.extend(
-                    self.detector._detect_single(tile, x1, y1)
-                )
+            original_conf = getattr(self.detector, "conf_threshold", None)
+            try:
+                if original_conf is not None:
+                    self.detector.conf_threshold = min(
+                        float(original_conf),
+                        self.FALLBACK_CONF_THRESHOLD,
+                    )
+                for x1, y1, x2, y2 in self._fallback_windows(image):
+                    tile = image[y1:y2, x1:x2]
+                    if tile.size == 0:
+                        continue
+                    fallback_forward_calls += 1
+                    fallback_raw_boxes.extend(
+                        self.detector._detect_single(tile, x1, y1)
+                    )
+            finally:
+                if original_conf is not None:
+                    self.detector.conf_threshold = original_conf
 
             if fallback_raw_boxes:
                 # The detector's existing NMS understands global page geometry
@@ -118,6 +129,7 @@ class OneShotTextMaskDetector:
             "fallback_triggered": int(fallback_triggered),
             "fallback_forward_calls": int(fallback_forward_calls),
             "fallback_boxes": int(len(fallback_raw_boxes)),
+            "fallback_conf_threshold": float(self.FALLBACK_CONF_THRESHOLD),
         }
 
     def detect_mask(self, image: np.ndarray) -> tuple[np.ndarray, dict[str, float | int]]:
