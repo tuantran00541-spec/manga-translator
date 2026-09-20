@@ -1,4 +1,4 @@
-name: One-shot cleanup experiment
+name: Dumb detector normal inpaint experiment
 
 on:
   workflow_dispatch:
@@ -8,13 +8,13 @@ on:
       - app/one_shot_cleanup.py
       - scripts/benchmark_one_shot_cleanup.py
       - tests/test_one_shot_cleanup.py
-      - .github/workflows/one-shot-cleanup-experiment.yml
+      - .github/workflows/dumb-detector-normal-inpaint.yml
 
 permissions:
   contents: read
 
 concurrency:
-  group: one-shot-cleanup-experiment
+  group: dumb-detector-normal-inpaint
   cancel-in-progress: true
 
 jobs:
@@ -80,7 +80,7 @@ jobs:
         run: |
           python scripts/benchmark_one_shot_cleanup.py             --mode current             --limit 6             --output benchmark-results/one-shot/current.json             --evidence-dir benchmark-results/one-shot/current
 
-      - name: Benchmark one-shot cleanup
+      - name: Benchmark dumb detector with normal inpaint
         run: |
           python scripts/benchmark_one_shot_cleanup.py             --mode simple             --limit 6             --padding 64             --output benchmark-results/one-shot/simple.json             --evidence-dir benchmark-results/one-shot/simple
 
@@ -150,9 +150,9 @@ jobs:
           )
 
           lines = [
-              "## One-shot detector → LaMa experiment",
+              "## Dumb detector → normal production inpaint",
               "",
-              "| Metric | Current core | One-shot |",
+              "| Metric | Current core | Hybrid |",
               "|---|---:|---:|",
               f"| Wall time, 6 slices | {current_ms/1000:.2f}s | {simple_ms/1000:.2f}s |",
               f"| Detector time | {current['sum_detector_ms']/1000:.2f}s | {simple['sum_detector_ms']/1000:.2f}s |",
@@ -160,7 +160,7 @@ jobs:
               f"| Detector forwards | {current['detector_forward_calls']} | {simple['detector_forward_calls']} |",
               f"| LaMa forwards | {current['lama_model_runs']} | {simple['lama_model_runs']} |",
               "",
-              f"**One-shot speed ratio:** {comparison['speedup_x']:.2f}×",
+              f"**Hybrid speed ratio:** {comparison['speedup_x']:.2f}×",
               "",
               f"Simple mask covers **{comparison['simple_coverage_of_current_mask']*100:.1f}%** of current destructive-mask pixels.",
               f"Current mask covers **{comparison['current_coverage_of_simple_mask']*100:.1f}%** of simple-mask pixels.",
@@ -175,7 +175,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: one-shot-cleanup-experiment
+          name: dumb-detector-normal-inpaint
           path: benchmark-results/one-shot/
           retention-days: 7
           if-no-files-found: warn
