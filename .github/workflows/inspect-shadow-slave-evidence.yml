@@ -92,6 +92,15 @@ jobs:
                   sheet.paste(tile, (0, 560*j))
               sheet.save(out / f"contact-{start//per_sheet:02d}.jpg", quality=88)
 
+          # Export exact slice-000 evidence as base64 text so downstream
+          # review can reconstruct the PNG bytes through text-only GitHub APIs.
+          import base64
+          for name in ("00-original.png", "00-clean.png", "00-mask.png"):
+              payload = (hybrid / name).read_bytes()
+              (out / f"{name}.b64").write_text(
+                  base64.b64encode(payload).decode("ascii")
+              )
+
           # Save the contact sheets as a small multi-page PDF so it can be
           # rendered directly by review tooling without downloading the big ZIP.
           contact_paths = sorted(out.glob("contact-*.jpg"))
@@ -123,6 +132,7 @@ jobs:
           cp inspection/contact-*.jpg bench/visual-inspection/shadow-slave-ch1/
           cp inspection/hardest.json bench/visual-inspection/shadow-slave-ch1/
           cp inspection/contact-sheets.pdf bench/visual-inspection/shadow-slave-ch1/
+          cp inspection/00-*.png.b64 bench/visual-inspection/shadow-slave-ch1/
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -f bench/visual-inspection/shadow-slave-ch1
