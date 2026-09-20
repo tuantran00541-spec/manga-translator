@@ -145,25 +145,18 @@ jobs:
 
           providers = ort.get_available_providers()
           print("providers", providers)
-          if "OpenVINOExecutionProvider" not in providers:
-              raise RuntimeError("OpenVINOExecutionProvider unavailable")
-
-          provider_options = [{
-              "device_type": "CPU",
-              "num_of_threads": "2",
-              "num_streams": "1",
-              "cache_dir": "/tmp/manga-openvino-cache",
-          }]
+          if "CPUExecutionProvider" not in providers:
+              raise RuntimeError("CPUExecutionProvider unavailable")
 
           def session(path):
               opts = ort.SessionOptions()
               opts.intra_op_num_threads = 2
               opts.inter_op_num_threads = 1
+              opts.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
               return ort.InferenceSession(
                   str(path),
                   sess_options=opts,
-                  providers=["OpenVINOExecutionProvider"],
-                  provider_options=provider_options,
+                  providers=["CPUExecutionProvider"],
               )
 
           cur = session(current)
@@ -234,7 +227,7 @@ jobs:
 
           report = {
               "slices": len(paths),
-              "provider": "OpenVINOExecutionProvider",
+              "provider": "CPUExecutionProvider",
               "input_size": 1024,
               "current": {
                   **model_info(cur, current),
