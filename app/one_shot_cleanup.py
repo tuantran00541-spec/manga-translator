@@ -22,15 +22,14 @@ class OneShotCleanupResult:
 
 
 class OneShotTextMaskDetector:
-    """One cheap full-slice pass with a bounded zero-box fallback.
+    """One cheap full-slice pass with one bounded low-confidence retry.
 
-    Normal slices still cost exactly one text-segmenter forward. Only when the
-    verified full-slice pass returns no usable text mask do we spend four more
-    forwards on an overlapping 2x2 grid. The fallback uses the same segmenter,
-    the same confidence threshold and the same verified-mask authority contract.
+    Normal slices cost exactly one text-segmenter forward. Only when that pass
+    returns no verified mask do we retry the same full slice once at a lower
+    detector confidence. Destructive authority still requires a verified
+    text-segmenter mask.
     """
 
-    FALLBACK_TILE_RATIO = 0.60
     FALLBACK_CONF_THRESHOLD = 0.12
 
     def __init__(self, detector: YoloDetector | None = None):
@@ -54,26 +53,6 @@ class OneShotTextMaskDetector:
             needs_review=False,
             deferred_reason=None,
         )
-
-    @classmethod
-    def _fallback_windows(
-        cls,
-        image: np.ndarray,
-    ) -> list[tuple[int, int, int, int]]:
-        h, w = image.shape[:2]
-        if h <= 0 or w <= 0:
-            return []
-
-        tile_w = min(w, max(1, int(round(w * cls.FALLBACK_TILE_RATIO))))
-        tile_h = min(h, max(1, int(round(h * cls.FALLBACK_TILE_RATIO))))
-
-        x_starts = sorted({0, max(0, w - tile_w)})
-        y_starts = sorted({0, max(0, h - tile_h)})
-        return [
-            (x, y, min(w, x + tile_w), min(h, y + tile_h))
-            for y in y_starts
-            for x in x_starts
-        ]
 
     def _accept_many(self, raw_boxes: list[BubbleBox]) -> list[BubbleBox]:
         accepted: list[BubbleBox] = []
@@ -102,23 +81,13 @@ class OneShotTextMaskDetector:
                         float(original_conf),
                         self.FALLBACK_CONF_THRESHOLD,
                     )
-                for x1, y1, x2, y2 in self._fallback_windows(image):
-                    tile = image[y1:y2, x1:x2]
-                    if tile.size == 0:
-                        continue
-                    fallback_forward_calls += 1
-                    fallback_raw_boxes.extend(
-                        self.detector._detect_single(tile, x1, y1)
-                    )
+                fallback_forward_calls = 1
+                fallback_raw_boxes = self.detector._detect_single(image, 0, 0)
             finally:
                 if original_conf is not None:
                     self.detector.conf_threshold = original_conf
 
-            if fallback_raw_boxes:
-                # The detector's existing NMS understands global page geometry
-                # because every tile was decoded with page offsets.
-                fallback_raw_boxes = self.detector._nms_boxes(fallback_raw_boxes)
-                boxes = self._accept_many(fallback_raw_boxes)
+            boxes = self._accept_many(fallback_raw_boxes)
 
         total_forwards = 1 + fallback_forward_calls
         return boxes, {
