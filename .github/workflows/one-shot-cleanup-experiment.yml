@@ -1,4 +1,4 @@
-name: Shadow Slave Ch1 zero-box fallback benchmark
+name: Shadow Slave Ch1 single-forward rescue benchmark
 
 on:
   workflow_dispatch:
@@ -109,7 +109,7 @@ jobs:
           print(json.dumps(manifest), flush=True)
           PY
 
-      - name: Probe known zero-box miss on slice 000
+      - name: Probe known low-confidence miss on slice 000
         run: |
           python scripts/benchmark_one_shot_cleanup.py \
             --mode simple \
@@ -129,15 +129,15 @@ jobs:
           page = probe["pages"][0]
           print(json.dumps(page, indent=2))
 
-          if int(page.get("fallback_triggered", 0)) != 1:
-              raise RuntimeError("Known slice 000 did not exercise zero-box fallback")
-          if int(page.get("fallback_forward_calls", 0)) != 1:
-              raise RuntimeError("Known slice 000 did not spend exactly one fallback retry")
+          if int(page.get("low_conf_rescue", 0)) != 1:
+              raise RuntimeError("Known slice 000 did not exercise low-confidence rescue")
+          if int(page.get("detector_forward_calls", 0)) != 1:
+              raise RuntimeError("Known slice 000 used more than one detector forward")
           if int(page.get("mask_pixels", 0)) <= 0:
               raise RuntimeError("Fallback still missed known text on slice 000")
           PY
 
-      - name: Benchmark one-pass detector with one low-conf retry
+      - name: Benchmark single-forward detector with low-conf rescue
         run: |
           python scripts/benchmark_one_shot_cleanup.py \
             --mode simple \
@@ -164,8 +164,8 @@ jobs:
           detector_ms = float(hybrid["sum_detector_ms"])
           inpaint_ms = float(hybrid["sum_inpaint_ms"])
           detector_calls = int(hybrid["detector_forward_calls"])
-          fallback_slices = int(hybrid.get("fallback_triggered_slices", 0))
-          fallback_calls = int(hybrid.get("fallback_forward_calls", 0))
+          rescue_slices = int(hybrid.get("low_conf_rescue_slices", 0))
+          rescue_boxes = int(hybrid.get("low_conf_rescue_boxes", 0))
           lama_runs = int(hybrid["lama_model_runs"])
           smart_fill_regions = sum(
               int(row.get("smart_fill_regions", 0)) for row in pages
@@ -188,9 +188,8 @@ jobs:
               "detector_ms": round(detector_ms, 3),
               "inpaint_ms": round(inpaint_ms, 3),
               "detector_forward_calls": detector_calls,
-              "fallback_triggered_slices": fallback_slices,
-              "fallback_forward_calls": fallback_calls,
-              "base_forward_calls": slice_count,
+              "low_conf_rescue_slices": rescue_slices,
+              "low_conf_rescue_boxes": rescue_boxes,
               "lama_model_runs": lama_runs,
               "smart_fill_regions": smart_fill_regions,
               "bubble_fast_fill_regions": bubble_fast_fill_regions,
@@ -203,16 +202,10 @@ jobs:
               json.dumps(summary, indent=2) + "\n"
           )
 
-          expected_calls = slice_count + fallback_calls
-          if detector_calls != expected_calls:
+          if detector_calls != slice_count:
               raise RuntimeError(
-                  f"Forward accounting mismatch: {detector_calls} observed, "
-                  f"{expected_calls} expected"
-              )
-          if fallback_calls != fallback_slices:
-              raise RuntimeError(
-                  f"Fallback budget drift: {fallback_calls} calls for "
-                  f"{fallback_slices} slices"
+                  f"Expected one detector forward per slice: "
+                  f"{detector_calls} calls / {slice_count} slices"
               )
           if outside:
               raise RuntimeError(
@@ -227,9 +220,9 @@ jobs:
               f"**Throughput:** {summary['slices_per_minute']:.2f} slices/min",
               f"**Detector:** {detector_ms/1000:.2f}s",
               f"**Inpaint:** {inpaint_ms/1000:.2f}s",
-              f"**Detector forwards:** {detector_calls}",
-              f"**Fallback slices:** {fallback_slices}",
-              f"**Fallback forwards:** {fallback_calls}",
+              f"**Detector forwards:** {detector_calls} (exactly 1/slice)",
+              f"**Low-conf rescue slices:** {rescue_slices}",
+              f"**Low-conf rescue boxes:** {rescue_boxes}",
               f"**LaMa forwards:** {lama_runs}",
               f"**Smart-fill regions:** {smart_fill_regions}",
               f"**Pixels changed outside authority:** {outside}",
