@@ -21,12 +21,14 @@ class OneShotCleanupResult:
 
 
 class OneShotTextMaskDetector:
-    """One text-segmenter forward with a zero-box low-confidence rescue.
+    """One ONNX forward; decode normal first, then rescue from the same outputs.
 
-    The ONNX forward is executed once at RESCUE_CONF_THRESHOLD. If any verified
-    mask meets the normal TEXT_CONF_THRESHOLD, only normal-confidence masks are
-    used. Low-confidence masks are admitted only when the slice would otherwise
-    have zero verified cleanup authority.
+    The expensive model forward always happens exactly once. We first postprocess
+    the captured ONNX outputs at the normal text threshold. Only if that yields
+    no verified cleanup authority do we re-run postprocess on the *same tensors*
+    at the lower rescue threshold. This keeps the fast path identical to the
+    original one-shot detector while rescuing known low-confidence text without
+    another inference.
     """
 
     RESCUE_CONF_THRESHOLD = 0.12
@@ -34,7 +36,7 @@ class OneShotTextMaskDetector:
     def __init__(self, detector: YoloDetector | None = None):
         self.detector = detector or YoloDetector(
             TEXT_SEGMENTER_MODEL,
-            min(TEXT_CONF_THRESHOLD, self.RESCUE_CONF_THRESHOLD),
+            TEXT_CONF_THRESHOLD,
             use_tta=False,
             model_role="text_segmenter",
         )
@@ -61,33 +63,76 @@ class OneShotTextMaskDetector:
                 accepted.append(box)
         return accepted
 
+    def _single_forward_outputs(self, image: np.ndarray):
+        """Run preprocess + ONNX once and return raw outputs + geometry."""
+        blob, transform = self.detector._preprocess(image, offset_x=0, offset_y=0)
+        if blob is None or transform is None:
+            return None, None
+        outputs = self.detector.session.run(
+            None,
+            {self.detector.input_name: blob},
+        )
+        return outputs, transform
+
+    def _postprocess_at_threshold(
+        self,
+        outputs,
+        transform,
+        threshold: float,
+    ) -> list[BubbleBox]:
+        original_conf = self.detector.conf_threshold
+        try:
+            self.detector.conf_threshold = float(threshold)
+            return self.detector._postprocess(outputs, transform)
+        finally:
+            self.detector.conf_threshold = original_conf
+
     def detect(self, image: np.ndarray) -> tuple[list[BubbleBox], dict[str, float | int]]:
         started = time.perf_counter()
 
-        original_conf = getattr(self.detector, "conf_threshold", None)
-        try:
-            if original_conf is not None:
-                self.detector.conf_threshold = min(
-                    float(original_conf),
-                    self.RESCUE_CONF_THRESHOLD,
-                )
-            raw_boxes = self.detector._detect_single(image, 0, 0)
-        finally:
-            if original_conf is not None:
-                self.detector.conf_threshold = original_conf
+        outputs, transform = self._single_forward_outputs(image)
+        if outputs is None or transform is None:
+            return [], {
+                "detector_ms": round((time.perf_counter() - started) * 1000.0, 3),
+                "detector_forward_calls": 0,
+                "detector_boxes": 0,
+                "accepted_mask_boxes": 0,
+                "normal_conf_boxes": 0,
+                "low_conf_rescue": 0,
+                "low_conf_rescue_boxes": 0,
+                "rescue_conf_threshold": float(self.RESCUE_CONF_THRESHOLD),
+            }
 
-        accepted = self._accept_many(raw_boxes)
-        normal_boxes = [
-            box for box in accepted if float(box.confidence) >= TEXT_CONF_THRESHOLD
-        ]
+        # Fast path: preserve the original one-shot behavior and cost.
+        normal_raw = self._postprocess_at_threshold(
+            outputs,
+            transform,
+            TEXT_CONF_THRESHOLD,
+        )
+        normal_boxes = self._accept_many(normal_raw)
 
-        low_conf_rescue = not normal_boxes and bool(accepted)
-        boxes = normal_boxes if normal_boxes else accepted
+        low_conf_rescue = False
+        rescue_raw: list[BubbleBox] = []
+        boxes = normal_boxes
 
+        # Tail path: no second inference. Decode the already-captured tensors
+        # again at a lower threshold only when normal authority is empty.
+        if not normal_boxes:
+            rescue_raw = self._postprocess_at_threshold(
+                outputs,
+                transform,
+                min(TEXT_CONF_THRESHOLD, self.RESCUE_CONF_THRESHOLD),
+            )
+            rescue_boxes = self._accept_many(rescue_raw)
+            if rescue_boxes:
+                boxes = rescue_boxes
+                low_conf_rescue = True
+
+        raw_count = len(normal_raw) if normal_boxes else len(rescue_raw)
         return boxes, {
             "detector_ms": round((time.perf_counter() - started) * 1000.0, 3),
             "detector_forward_calls": 1,
-            "detector_boxes": int(len(raw_boxes)),
+            "detector_boxes": int(raw_count),
             "accepted_mask_boxes": int(len(boxes)),
             "normal_conf_boxes": int(len(normal_boxes)),
             "low_conf_rescue": int(low_conf_rescue),
@@ -109,7 +154,7 @@ class OneShotTextMaskDetector:
 
 
 class OneShotCleanupPipeline:
-    """Single-pass detector with low-confidence rescue + production inpainter."""
+    """Single-forward detector with same-output rescue + production inpainter."""
 
     def __init__(
         self,
