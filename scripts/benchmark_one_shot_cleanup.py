@@ -7,11 +7,11 @@ current
 
 simple
     One text-segmenter forward over the whole slice. If and only if that pass
-    produces no verified mask, spend four extra forwards on an overlapping
-    2x2 grid. Then use the existing AdaptiveFastInpainter unchanged.
+    produces no verified mask, retry the same full slice once at lower
+    confidence. Then use the existing AdaptiveFastInpainter unchanged.
 
 The simple mode still avoids bubble detector, recovery, residue verification
-and TTA. The bounded fallback exists only to recover zero-box tail misses.
+and TTA. The bounded retry exists only to recover zero-box tail misses.
 """
 from __future__ import annotations
 
@@ -215,7 +215,7 @@ def _run_simple(
 
     return {
         "mode": "simple",
-        "pipeline": "OnePassZeroBoxFallbackAdaptiveFastInpainter",
+        "pipeline": "OnePassLowConfRetryAdaptiveFastInpainter",
         "pages": rows,
         "total_wall_ms": round((time.perf_counter() - total_started) * 1000.0, 3),
     }
