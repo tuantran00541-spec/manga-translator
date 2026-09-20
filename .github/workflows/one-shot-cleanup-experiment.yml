@@ -131,13 +131,13 @@ jobs:
 
           if int(page.get("fallback_triggered", 0)) != 1:
               raise RuntimeError("Known slice 000 did not exercise zero-box fallback")
-          if int(page.get("fallback_forward_calls", 0)) != 4:
-              raise RuntimeError("Known slice 000 did not spend exactly four fallback forwards")
+          if int(page.get("fallback_forward_calls", 0)) != 1:
+              raise RuntimeError("Known slice 000 did not spend exactly one fallback retry")
           if int(page.get("mask_pixels", 0)) <= 0:
               raise RuntimeError("Fallback still missed known text on slice 000")
           PY
 
-      - name: Benchmark one-pass detector with zero-box fallback
+      - name: Benchmark one-pass detector with one low-conf retry
         run: |
           python scripts/benchmark_one_shot_cleanup.py \
             --mode simple \
@@ -209,7 +209,7 @@ jobs:
                   f"Forward accounting mismatch: {detector_calls} observed, "
                   f"{expected_calls} expected"
               )
-          if fallback_calls != fallback_slices * 4:
+          if fallback_calls != fallback_slices:
               raise RuntimeError(
                   f"Fallback budget drift: {fallback_calls} calls for "
                   f"{fallback_slices} slices"
