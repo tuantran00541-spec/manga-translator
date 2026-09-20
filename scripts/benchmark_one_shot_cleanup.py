@@ -6,12 +6,12 @@ current
     Current main detector core + current adaptive inpainter.
 
 simple
-    One text-segmenter forward over the whole slice, union verified masks,
-    one padded ROI, and at most one LaMa forward.
+    One text-segmenter forward over the whole slice, then the existing
+    AdaptiveFastInpainter unchanged.
 
-The simple mode intentionally omits recovery, residue verification, TTA,
-windowing, smart fill, clustering and tile planning. It exists to answer one
-question: how much time is complexity itself costing us?
+The simple mode intentionally removes detector complexity only: no bubble
+detector, recovery, residue verification, TTA or detector window retries.
+Inpaint keeps its production smart-fill, clustering, ROI and LaMa behavior.
 """
 from __future__ import annotations
 
@@ -137,6 +137,9 @@ def _run_simple(paths: list[Path], evidence_dir: Path, padding: int, counter: Fo
     from app.one_shot_cleanup import OneShotCleanupPipeline
 
     pipeline = OneShotCleanupPipeline(padding=padding)
+    prepare = getattr(pipeline.inpainter, "prepare_for_page_workers", None)
+    if callable(prepare):
+        prepare(1)
     pipeline.inpainter.preload()
 
     rows = []
@@ -160,11 +163,6 @@ def _run_simple(paths: list[Path], evidence_dir: Path, padding: int, counter: Fo
             raise RuntimeError(
                 f"simple mode promised one detector forward, observed {forward_total}: {forwards}"
             )
-        if int(result.metrics.get("lama_model_runs", 0)) > 1:
-            raise RuntimeError(
-                f"simple mode promised <=1 LaMa run, got {result.metrics.get('lama_model_runs')}"
-            )
-
         row = {
             "index": index,
             "file": path.name,
@@ -177,7 +175,11 @@ def _run_simple(paths: list[Path], evidence_dir: Path, padding: int, counter: Fo
             "lama_model_runs": int(result.metrics.get("lama_model_runs", 0)),
             "detector_boxes": int(result.metrics.get("detector_boxes", 0)),
             "accepted_mask_boxes": int(result.metrics.get("accepted_mask_boxes", 0)),
-            "roi_shape": result.metrics.get("roi_shape"),
+            "smart_fill_regions": int(result.metrics.get("smart_fill_regions", 0)),
+            "bubble_fast_fill_regions": int(
+                result.metrics.get("bubble_fast_fill_regions", 0)
+            ),
+            "clusters": int(result.metrics.get("clusters", 0)),
             **safety,
         }
         rows.append(row)
@@ -186,7 +188,7 @@ def _run_simple(paths: list[Path], evidence_dir: Path, padding: int, counter: Fo
 
     return {
         "mode": "simple",
-        "pipeline": "OneShotCleanupPipeline",
+        "pipeline": "OnePassDetectorAdaptiveFastInpainter",
         "pages": rows,
         "total_wall_ms": round((time.perf_counter() - total_started) * 1000.0, 3),
     }
