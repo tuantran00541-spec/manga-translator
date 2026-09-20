@@ -107,41 +107,26 @@ class OneShotTextMaskDetector:
 
 
 class OneShotCleanupPipeline:
-    """One detector forward -> one union mask -> at most one LaMa forward."""
+    """The dumbest cleanup path: detector mask -> whole image -> one LaMa call."""
 
     def __init__(
         self,
         *,
         detector: OneShotTextMaskDetector | None = None,
         inpainter: Inpainter | None = None,
-        padding: int = 64,
+        padding: int = 0,
     ):
         self.detector = detector or OneShotTextMaskDetector()
         self.inpainter = inpainter or Inpainter()
-        self.padding = max(0, int(padding))
-
-    @staticmethod
-    def _mask_roi(
-        mask: np.ndarray,
-        padding: int,
-    ) -> tuple[int, int, int, int] | None:
-        ys, xs = np.nonzero(mask > 127)
-        if xs.size == 0 or ys.size == 0:
-            return None
-        height, width = mask.shape[:2]
-        return (
-            max(0, int(xs.min()) - padding),
-            max(0, int(ys.min()) - padding),
-            min(width, int(xs.max()) + 1 + padding),
-            min(height, int(ys.max()) + 1 + padding),
-        )
+        # Kept only so the existing benchmark CLI stays compatible. Deliberately
+        # unused: this experiment does not crop, cluster, pad, or plan regions.
+        self.padding = int(padding)
 
     def clean(self, image: np.ndarray) -> OneShotCleanupResult:
         total_started = time.perf_counter()
         mask, detector_metrics = self.detector.detect_mask(image)
-        roi = self._mask_roi(mask, self.padding)
 
-        if roi is None:
+        if not np.any(mask > 127):
             metrics = {
                 **detector_metrics,
                 "inpaint_ms": 0.0,
@@ -151,40 +136,37 @@ class OneShotCleanupPipeline:
             }
             return OneShotCleanupResult(image.copy(), mask, None, metrics)
 
-        x1, y1, x2, y2 = roi
-        crop = image[y1:y2, x1:x2].copy()
-        crop_mask = mask[y1:y2, x1:x2].copy()
-
         begin_metrics = getattr(self.inpainter, "_begin_metrics", None)
         if callable(begin_metrics):
             begin_metrics()
 
         inpaint_started = time.perf_counter()
-        # Deliberately call the one-shot primitive directly. No SmartFill,
-        # clusters, connected-component loop, tile planner, or second pass.
-        painted = self.inpainter._lama_fill_single(crop, crop_mask)
+        # No ROI, no components, no merge, no SmartFill, no tile planner.
+        # Give the whole slice and the union text mask to LaMa once.
+        painted = self.inpainter._lama_fill_single(image, mask)
         inpaint_ms = (time.perf_counter() - inpaint_started) * 1000.0
 
-        if painted.shape != crop.shape:
+        if painted.shape != image.shape:
             raise ValueError(
-                f"One-shot LaMa returned {painted.shape}; expected {crop.shape}"
+                f"One-shot LaMa returned {painted.shape}; expected {image.shape}"
             )
 
         output = image.copy()
-        target = output[y1:y2, x1:x2]
-        authority = crop_mask > 127
-        target[authority] = painted[authority]
+        authority = mask > 127
+        output[authority] = painted[authority]
 
         last_metrics = getattr(self.inpainter, "last_metrics", None)
         lama_metrics = last_metrics() if callable(last_metrics) else {}
         lama_runs = int(lama_metrics.get("lama_model_runs", 1))
 
+        height, width = image.shape[:2]
+        full_frame = (0, 0, int(width), int(height))
         metrics = {
             **detector_metrics,
             "inpaint_ms": round(inpaint_ms, 3),
             "lama_model_runs": lama_runs,
-            "roi_pixels": int((x2 - x1) * (y2 - y1)),
-            "roi_shape": [int(y2 - y1), int(x2 - x1)],
+            "roi_pixels": int(width * height),
+            "roi_shape": [int(height), int(width)],
             "total_ms": round((time.perf_counter() - total_started) * 1000.0, 3),
         }
-        return OneShotCleanupResult(output, mask, roi, metrics)
+        return OneShotCleanupResult(output, mask, full_frame, metrics)
