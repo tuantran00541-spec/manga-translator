@@ -1,0 +1,181 @@
+name: One-shot cleanup experiment
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["experiment/one-shot-cleanup"]
+    paths:
+      - app/one_shot_cleanup.py
+      - scripts/benchmark_one_shot_cleanup.py
+      - tests/test_one_shot_cleanup.py
+      - .github/workflows/one-shot-cleanup-experiment.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: one-shot-cleanup-experiment
+  cancel-in-progress: true
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    env:
+      PYTHONUNBUFFERED: "1"
+      MANGA_USE_DYNAMIC_LAMA: "1"
+      MANGA_ORT_PROVIDER: openvino
+      MANGA_ORT_REQUIRE_PROVIDER: "1"
+      MANGA_ORT_OPENVINO_SCOPE: detectors
+      MANGA_ORT_OPENVINO_THREADS: "2"
+      MANGA_ORT_OPENVINO_STREAMS: "1"
+      MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install bounded benchmark dependencies
+        run: |
+          python -m pip install pytest==8.3.5 numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 onnxruntime-openvino==1.24.1 psutil==6.1.1 loguru==0.7.2 requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 playwright==1.47.0 fastapi==0.115.0 pydantic==2.9.2 filelock==3.16.1 threadpoolctl==3.6.0
+
+      - name: Lock the deliberately dumb contract
+        run: python -m pytest -q tests/test_one_shot_cleanup.py
+
+      - name: Restore benchmark models
+        id: models
+        uses: actions/cache@v4
+        with:
+          path: |
+            models/*.onnx
+            models/.e2e-provenance.json
+          key: processing-profile-models-b224548-v1
+
+      - name: Read pinned existing model provisioner
+        if: ${{ steps.models.outputs.cache-hit != 'true' }}
+        uses: actions/checkout@v4
+        with:
+          ref: b22454827f8190655d7070b80eb20c2550beadfa
+          path: benchmark-bootstrap
+          sparse-checkout: scripts/provision_real_e2e_models.py
+          sparse-checkout-cone-mode: false
+
+      - name: Provision public models with recorded hashes
+        if: ${{ steps.models.outputs.cache-hit != 'true' }}
+        run: |
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple torch==2.5.1+cpu torchvision==0.20.1+cpu
+          python -m pip install --no-deps ultralytics==8.3.221 onnx==1.17.0 onnxslim==0.1.71
+          python -m pip install numpy==1.26.4 sympy==1.13.1 PyYAML==6.0.2 scipy==1.14.1 tqdm==4.67.1 matplotlib==3.9.2 pandas==2.2.3 py-cpuinfo==9.0.0 ml_dtypes==0.5.3 colorama==0.4.6 polars==1.33.1 ultralytics-thop==2.0.17
+          python benchmark-bootstrap/scripts/provision_real_e2e_models.py
+          cp benchmark-bootstrap/models/*.onnx models/
+          cp benchmark-bootstrap/models/.e2e-provenance.json models/
+
+      - name: Fetch real chapter inputs
+        run: python scripts/profile_processing.py --prepare
+
+      - name: Benchmark current cleanup core
+        run: |
+          python scripts/benchmark_one_shot_cleanup.py             --mode current             --limit 6             --output benchmark-results/one-shot/current.json             --evidence-dir benchmark-results/one-shot/current
+
+      - name: Benchmark one-shot cleanup
+        run: |
+          python scripts/benchmark_one_shot_cleanup.py             --mode simple             --limit 6             --padding 64             --output benchmark-results/one-shot/simple.json             --evidence-dir benchmark-results/one-shot/simple
+
+      - name: Compare speed and detector-mask overlap
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          import cv2
+          import numpy as np
+
+          root = Path("benchmark-results/one-shot")
+          current = json.loads((root / "current.json").read_text())
+          simple = json.loads((root / "simple.json").read_text())
+
+          intersection = 0
+          current_pixels = 0
+          simple_pixels = 0
+          for row in current["pages"]:
+              index = int(row["index"])
+              current_mask = cv2.imread(
+                  str(root / "current" / f"{index:02d}-mask.png"),
+                  cv2.IMREAD_GRAYSCALE,
+              )
+              simple_mask = cv2.imread(
+                  str(root / "simple" / f"{index:02d}-mask.png"),
+                  cv2.IMREAD_GRAYSCALE,
+              )
+              if current_mask is None or simple_mask is None:
+                  raise RuntimeError(f"Missing evidence mask for page {index}")
+              a = current_mask > 127
+              b = simple_mask > 127
+              intersection += int(np.count_nonzero(a & b))
+              current_pixels += int(np.count_nonzero(a))
+              simple_pixels += int(np.count_nonzero(b))
+
+          current_ms = float(current["sum_page_wall_ms"])
+          simple_ms = float(simple["sum_page_wall_ms"])
+          comparison = {
+              "sample_count": int(simple["sample_count"]),
+              "current_ms": round(current_ms, 3),
+              "simple_ms": round(simple_ms, 3),
+              "speedup_x": round(current_ms / max(1e-9, simple_ms), 3),
+              "current_detector_ms": current["sum_detector_ms"],
+              "simple_detector_ms": simple["sum_detector_ms"],
+              "current_inpaint_ms": current["sum_inpaint_ms"],
+              "simple_inpaint_ms": simple["sum_inpaint_ms"],
+              "current_detector_forward_calls": current["detector_forward_calls"],
+              "simple_detector_forward_calls": simple["detector_forward_calls"],
+              "current_lama_model_runs": current["lama_model_runs"],
+              "simple_lama_model_runs": simple["lama_model_runs"],
+              "current_mask_pixels": current_pixels,
+              "simple_mask_pixels": simple_pixels,
+              "intersection_pixels": intersection,
+              "simple_coverage_of_current_mask": round(
+                  intersection / max(1, current_pixels), 4
+              ),
+              "current_coverage_of_simple_mask": round(
+                  intersection / max(1, simple_pixels), 4
+              ),
+              "simple_outside_mask_changed": simple["outside_mask_changed"],
+          }
+          (root / "comparison.json").write_text(
+              json.dumps(comparison, indent=2) + "\n"
+          )
+
+          lines = [
+              "## One-shot detector → LaMa experiment",
+              "",
+              "| Metric | Current core | One-shot |",
+              "|---|---:|---:|",
+              f"| Wall time, 6 slices | {current_ms/1000:.2f}s | {simple_ms/1000:.2f}s |",
+              f"| Detector time | {current['sum_detector_ms']/1000:.2f}s | {simple['sum_detector_ms']/1000:.2f}s |",
+              f"| Inpaint time | {current['sum_inpaint_ms']/1000:.2f}s | {simple['sum_inpaint_ms']/1000:.2f}s |",
+              f"| Detector forwards | {current['detector_forward_calls']} | {simple['detector_forward_calls']} |",
+              f"| LaMa forwards | {current['lama_model_runs']} | {simple['lama_model_runs']} |",
+              "",
+              f"**One-shot speed ratio:** {comparison['speedup_x']:.2f}×",
+              "",
+              f"Simple mask covers **{comparison['simple_coverage_of_current_mask']*100:.1f}%** of current destructive-mask pixels.",
+              f"Current mask covers **{comparison['current_coverage_of_simple_mask']*100:.1f}%** of simple-mask pixels.",
+              "",
+              "Mask overlap is a regression proxy, not ground-truth text recall. PNG evidence is uploaded for visual inspection.",
+          ]
+          print("\n".join(lines))
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as handle:
+              handle.write("\n".join(lines) + "\n")
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: one-shot-cleanup-experiment
+          path: benchmark-results/one-shot/
+          retention-days: 7
+          if-no-files-found: warn
