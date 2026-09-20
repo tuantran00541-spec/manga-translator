@@ -1,0 +1,280 @@
+name: YOLO26-seg speed probe
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["experiment/one-shot-yolo26"]
+    paths:
+      - .github/workflows/yolo26-seg-speed-probe.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: yolo26-seg-speed-probe
+  cancel-in-progress: true
+
+jobs:
+  probe:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 35
+    env:
+      PYTHONUNBUFFERED: "1"
+      CHAPTER_URL: "https://asurascans.com/comics/shadow-slave-6f7fe6eb/chapter/1"
+      RAW_DIR: "benchmark-results/yolo26-probe/raw"
+      SLICE_DIR: "benchmark-results/yolo26-probe/slices"
+      OUT_DIR: "benchmark-results/yolo26-probe"
+      MANGA_ORT_PROVIDER: openvino
+      MANGA_ORT_REQUIRE_PROVIDER: "1"
+      MANGA_ORT_OPENVINO_SCOPE: detectors
+      MANGA_ORT_OPENVINO_THREADS: "2"
+      MANGA_ORT_OPENVINO_STREAMS: "1"
+      MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install runtime and YOLO26 exporter
+        run: |
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple torch==2.8.0+cpu torchvision==0.23.0+cpu
+          python -m pip install ultralytics==8.4.156 onnx==1.17.0 onnxslim==0.1.71 onnxruntime-openvino==1.24.1
+          python -m pip install numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 psutil==6.1.1 loguru==0.7.2 requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 playwright==1.47.0 fastapi==0.115.0 pydantic==2.9.2 filelock==3.16.1 threadpoolctl==3.6.0
+
+      - name: Restore current production models
+        id: models
+        uses: actions/cache@v4
+        with:
+          path: |
+            models/*.onnx
+            models/.e2e-provenance.json
+          key: processing-profile-models-b224548-v1
+
+      - name: Read pinned existing model provisioner
+        if: ${{ steps.models.outputs.cache-hit != 'true' }}
+        uses: actions/checkout@v4
+        with:
+          ref: b22454827f8190655d7070b80eb20c2550beadfa
+          path: benchmark-bootstrap
+          sparse-checkout: scripts/provision_real_e2e_models.py
+          sparse-checkout-cone-mode: false
+
+      - name: Provision current models on cache miss
+        if: ${{ steps.models.outputs.cache-hit != 'true' }}
+        run: |
+          python benchmark-bootstrap/scripts/provision_real_e2e_models.py
+          cp benchmark-bootstrap/models/*.onnx models/
+          cp benchmark-bootstrap/models/.e2e-provenance.json models/
+
+      - name: Export YOLO26n-seg ONNX 1024
+        run: |
+          mkdir -p "$OUT_DIR"
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          import ultralytics
+          from ultralytics import YOLO
+
+          print("ultralytics", ultralytics.__version__)
+          model = YOLO("yolo26n-seg.pt")
+          exported = model.export(
+              format="onnx",
+              imgsz=1024,
+              opset=17,
+              simplify=True,
+              dynamic=False,
+              device="cpu",
+          )
+          exported = Path(exported)
+          target = Path("benchmark-results/yolo26-probe/yolo26n-seg-1024.onnx")
+          target.write_bytes(exported.read_bytes())
+          print(json.dumps({
+              "exported": str(target),
+              "bytes": target.stat().st_size,
+          }, indent=2))
+          PY
+
+      - name: Download and slice Shadow Slave Chapter 1
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from app.downloader.registry import download_chapter
+          from app.downloader.slicer import slice_image
+
+          raw = Path(os.environ["RAW_DIR"])
+          slc = Path(os.environ["SLICE_DIR"])
+          raw.mkdir(parents=True, exist_ok=True)
+          slc.mkdir(parents=True, exist_ok=True)
+
+          paths = download_chapter(os.environ["CHAPTER_URL"], raw)
+          slices = []
+          for i, path in enumerate(sorted(paths)):
+              recs = slice_image(path, slc, f"{i:03d}", return_metadata=True)
+              slices.extend(Path(r["path"]) for r in recs)
+          print("raw_images", len(paths))
+          print("slices", len(slices))
+          if len(slices) < 32:
+              raise RuntimeError("not enough slices for controlled probe")
+          PY
+
+      - name: Benchmark current text segmenter vs YOLO26n-seg
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import statistics
+          import time
+          from pathlib import Path
+
+          import cv2
+          import numpy as np
+          import onnxruntime as ort
+
+          current = Path("models/text_segmenter.onnx")
+          candidate = Path("benchmark-results/yolo26-probe/yolo26n-seg-1024.onnx")
+          paths = sorted(Path(os.environ["SLICE_DIR"]).glob("*.png"))[:32]
+          if not current.exists():
+              raise RuntimeError(f"missing {current}")
+          if not candidate.exists():
+              raise RuntimeError(f"missing {candidate}")
+
+          providers = ort.get_available_providers()
+          print("providers", providers)
+          if "OpenVINOExecutionProvider" not in providers:
+              raise RuntimeError("OpenVINOExecutionProvider unavailable")
+
+          provider_options = [{
+              "device_type": "CPU",
+              "num_of_threads": "2",
+              "num_streams": "1",
+              "cache_dir": "/tmp/manga-openvino-cache",
+          }]
+
+          def session(path):
+              opts = ort.SessionOptions()
+              opts.intra_op_num_threads = 2
+              opts.inter_op_num_threads = 1
+              return ort.InferenceSession(
+                  str(path),
+                  sess_options=opts,
+                  providers=["OpenVINOExecutionProvider"],
+                  provider_options=provider_options,
+              )
+
+          cur = session(current)
+          y26 = session(candidate)
+
+          def model_info(sess, path):
+              return {
+                  "path": str(path),
+                  "bytes": path.stat().st_size,
+                  "inputs": [
+                      {"name": x.name, "shape": x.shape, "type": x.type}
+                      for x in sess.get_inputs()
+                  ],
+                  "outputs": [
+                      {"name": x.name, "shape": x.shape, "type": x.type}
+                      for x in sess.get_outputs()
+                  ],
+              }
+
+          print("current_info", json.dumps(model_info(cur, current), indent=2))
+          print("yolo26_info", json.dumps(model_info(y26, candidate), indent=2))
+
+          def preprocess(path):
+              img = cv2.imread(str(path), cv2.IMREAD_COLOR)
+              if img is None:
+                  raise RuntimeError(f"cannot read {path}")
+              h, w = img.shape[:2]
+              scale = min(1024 / w, 1024 / h)
+              rw, rh = max(1, round(w * scale)), max(1, round(h * scale))
+              resized = cv2.resize(img, (rw, rh), interpolation=cv2.INTER_LINEAR)
+              canvas = np.full((1024, 1024, 3), 114, dtype=np.uint8)
+              x = (1024 - rw) // 2
+              y = (1024 - rh) // 2
+              canvas[y:y+rh, x:x+rw] = resized
+              rgb = cv2.cvtColor(canvas, cv2.COLOR_BGR2RGB)
+              return (rgb.astype(np.float32) / 255.0).transpose(2, 0, 1)[None]
+
+          blobs = [preprocess(p) for p in paths]
+
+          def bench(sess, blobs, warmup=3):
+              name = sess.get_inputs()[0].name
+              for i in range(warmup):
+                  sess.run(None, {name: blobs[i % len(blobs)]})
+              times = []
+              shapes = None
+              for blob in blobs:
+                  t0 = time.perf_counter()
+                  out = sess.run(None, {name: blob})
+                  times.append((time.perf_counter() - t0) * 1000.0)
+                  if shapes is None:
+                      shapes = [list(np.asarray(x).shape) for x in out]
+              ordered = sorted(times)
+              p95 = ordered[min(len(ordered)-1, int(round(0.95*(len(ordered)-1))))]
+              return {
+                  "calls": len(times),
+                  "mean_ms": statistics.fmean(times),
+                  "median_ms": statistics.median(times),
+                  "p95_ms": p95,
+                  "min_ms": min(times),
+                  "max_ms": max(times),
+                  "output_shapes": shapes,
+                  "samples_ms": times,
+              }
+
+          current_bench = bench(cur, blobs)
+          yolo26_bench = bench(y26, blobs)
+          speedup = current_bench["median_ms"] / max(1e-9, yolo26_bench["median_ms"])
+
+          report = {
+              "slices": len(paths),
+              "provider": "OpenVINOExecutionProvider",
+              "input_size": 1024,
+              "current": {
+                  **model_info(cur, current),
+                  **current_bench,
+              },
+              "yolo26n_seg": {
+                  **model_info(y26, candidate),
+                  **yolo26_bench,
+              },
+              "median_speedup_current_over_yolo26": speedup,
+              "yolo26_median_reduction_pct": (
+                  1.0 - yolo26_bench["median_ms"] / current_bench["median_ms"]
+              ) * 100.0,
+          }
+          out = Path(os.environ["OUT_DIR"]) / "speed-report.json"
+          out.write_text(json.dumps(report, indent=2) + "\n")
+          print(json.dumps({
+              "current_median_ms": round(current_bench["median_ms"], 3),
+              "yolo26_median_ms": round(yolo26_bench["median_ms"], 3),
+              "speedup": round(speedup, 3),
+              "yolo26_reduction_pct": round(report["yolo26_median_reduction_pct"], 2),
+              "current_bytes": current.stat().st_size,
+              "yolo26_bytes": candidate.stat().st_size,
+              "current_outputs": current_bench["output_shapes"],
+              "yolo26_outputs": yolo26_bench["output_shapes"],
+          }, indent=2))
+
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as f:
+              f.write("## YOLO26 segmentation model-only probe\n\n")
+              f.write(f"- slices: {len(paths)}\n")
+              f.write(f"- current median: {current_bench['median_ms']:.2f} ms\n")
+              f.write(f"- YOLO26n-seg median: {yolo26_bench['median_ms']:.2f} ms\n")
+              f.write(f"- speedup: {speedup:.2f}x\n")
+              f.write(f"- YOLO26 latency reduction: {report['yolo26_median_reduction_pct']:.1f}%\n")
+              f.write(f"- current bytes: {current.stat().st_size}\n")
+              f.write(f"- YOLO26 bytes: {candidate.stat().st_size}\n")
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: yolo26-seg-speed-probe
+          path: benchmark-results/yolo26-probe/
+          retention-days: 7
