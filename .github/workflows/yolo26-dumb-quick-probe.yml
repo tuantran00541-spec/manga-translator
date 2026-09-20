@@ -1,0 +1,209 @@
+name: YOLO26 dumb quick probe
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["experiment/one-shot-yolo26"]
+    paths:
+      - .github/workflows/yolo26-dumb-quick-probe.yml
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    env:
+      PYTHONUNBUFFERED: "1"
+      CHAPTER_URL: "https://asurascans.com/comics/shadow-slave-6f7fe6eb/chapter/1"
+      ROOT: "benchmark-results/yolo26-quick"
+      RAW_DIR: "benchmark-results/yolo26-quick/raw"
+      SLICE_DIR: "benchmark-results/yolo26-quick/slices"
+      STUDENT_DIR: "benchmark-results/yolo26-quick/student"
+      MANGA_ORT_PROVIDER: cpu
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install runtime only
+        run: |
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple torch==2.8.0+cpu torchvision==0.23.0+cpu
+          python -m pip install ultralytics==8.4.156 onnxruntime==1.24.1
+          python -m pip install numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 psutil==6.1.1 loguru==0.7.2 requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 playwright==1.47.0 fastapi==0.115.0 pydantic==2.9.2 filelock==3.16.1 threadpoolctl==3.6.0
+
+      - name: Restore teacher model
+        id: models
+        uses: actions/cache@v4
+        with:
+          path: |
+            models/*.onnx
+            models/.e2e-provenance.json
+          key: processing-profile-models-b224548-v1
+
+      - name: Read pinned teacher provisioner
+        if: ${{ steps.models.outputs.cache-hit != 'true' }}
+        uses: actions/checkout@v4
+        with:
+          ref: b22454827f8190655d7070b80eb20c2550beadfa
+          path: benchmark-bootstrap
+          sparse-checkout: scripts/provision_real_e2e_models.py
+          sparse-checkout-cone-mode: false
+
+      - name: Provision teacher on cache miss
+        if: ${{ steps.models.outputs.cache-hit != 'true' }}
+        run: |
+          python benchmark-bootstrap/scripts/provision_real_e2e_models.py
+          cp benchmark-bootstrap/models/*.onnx models/
+          cp benchmark-bootstrap/models/.e2e-provenance.json models/
+
+      - name: Download frozen YOLO26 checkpoint
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p "$STUDENT_DIR"
+          gh run download 35516657301             --repo "$GITHUB_REPOSITORY"             --name yolo26-text-distill             --dir "$STUDENT_DIR"
+          test -f "$STUDENT_DIR/yolo26-text-seg.onnx"
+
+      - name: Download chapter and keep first 32 slices
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from app.downloader.registry import download_chapter
+          from app.downloader.slicer import slice_image
+
+          raw = Path(os.environ["RAW_DIR"])
+          slc = Path(os.environ["SLICE_DIR"])
+          raw.mkdir(parents=True, exist_ok=True)
+          slc.mkdir(parents=True, exist_ok=True)
+
+          paths = download_chapter(os.environ["CHAPTER_URL"], raw)
+          slices = []
+          for i, path in enumerate(sorted(paths)):
+              recs = slice_image(path, slc, f"{i:03d}", return_metadata=True)
+              slices.extend(Path(r["path"]) for r in recs)
+              if len(slices) >= 32:
+                  break
+          keep = sorted(slices)[:32]
+          (Path(os.environ["ROOT"]) / "paths.txt").write_text("\n".join(str(p) for p in keep))
+          print("probe_slices", len(keep))
+          PY
+
+      - name: One threshold 0.01, official parser only
+        run: |
+          python - <<'PY'
+          import json, os, statistics, time
+          from pathlib import Path
+          import cv2
+          import numpy as np
+          from ultralytics import YOLO
+
+          from app.detector.mask_builder import build_mask
+          from app.image_io import read_image
+          from app.one_shot_cleanup import OneShotTextMaskDetector
+
+          root = Path(os.environ["ROOT"])
+          paths = [Path(x) for x in (root / "paths.txt").read_text().splitlines() if x.strip()]
+          model_path = Path(os.environ["STUDENT_DIR"]) / "yolo26-text-seg.onnx"
+          student = YOLO(str(model_path), task="segment")
+          teacher = OneShotTextMaskDetector()
+          conf = 0.01
+
+          teacher_pixels = student_pixels = inter_total = union_total = 0
+          teacher_times = []
+          student_times = []
+          rows = []
+
+          for idx, path in enumerate(paths):
+              image = read_image(path)
+              h, w = image.shape[:2]
+
+              t0 = time.perf_counter()
+              tboxes, _ = teacher.detect(image)
+              teacher_times.append((time.perf_counter() - t0) * 1000.0)
+              tmask = build_mask(image.shape[:2], tboxes, image) if tboxes else np.zeros((h,w), np.uint8)
+              ta = tmask > 127
+
+              t0 = time.perf_counter()
+              result = student.predict(
+                  source=str(path),
+                  imgsz=1024,
+                  conf=conf,
+                  iou=0.7,
+                  device="cpu",
+                  verbose=False,
+                  retina_masks=True,
+                  max_det=300,
+              )[0]
+              student_times.append((time.perf_counter() - t0) * 1000.0)
+
+              smask = np.zeros((h,w), np.uint8)
+              if result.masks is not None and len(result.masks.data):
+                  arr = result.masks.data.detach().cpu().numpy()
+                  union = np.any(arr > 0.5, axis=0).astype(np.uint8) * 255
+                  if union.shape != (h,w):
+                      union = cv2.resize(union, (w,h), interpolation=cv2.INTER_NEAREST)
+                  smask = union
+              sa = smask > 127
+
+              tp = int(np.count_nonzero(ta))
+              sp = int(np.count_nonzero(sa))
+              inter = int(np.count_nonzero(ta & sa))
+              un = int(np.count_nonzero(ta | sa))
+              teacher_pixels += tp
+              student_pixels += sp
+              inter_total += inter
+              union_total += un
+              rows.append({
+                  "index": idx,
+                  "file": path.name,
+                  "teacher_pixels": tp,
+                  "student_pixels": sp,
+                  "intersection": inter,
+                  "recall": inter / max(1,tp),
+                  "precision": inter / max(1,sp),
+                  "iou": inter / max(1,un),
+                  "detections": 0 if result.boxes is None else len(result.boxes),
+              })
+
+          report = {
+              "conf": conf,
+              "slice_count": len(paths),
+              "weights_frozen": True,
+              "training_this_run": False,
+              "parser": "Ultralytics official ONNX parser",
+              "teacher_median_ms": statistics.median(teacher_times),
+              "student_median_ms": statistics.median(student_times),
+              "pixel_recall_vs_teacher": inter_total / max(1, teacher_pixels),
+              "pixel_precision_vs_teacher": inter_total / max(1, student_pixels),
+              "pixel_iou_vs_teacher": inter_total / max(1, union_total),
+              "slice_000": rows[0],
+              "rows": rows,
+          }
+          (root / "quick-report.json").write_text(json.dumps(report, indent=2) + "\n")
+          print(json.dumps({k:v for k,v in report.items() if k!="rows"}, indent=2))
+
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as f:
+              f.write("## YOLO26 dumb quick probe\n\n")
+              f.write(f"- conf: {conf}\n")
+              f.write(f"- slices: {len(paths)}\n")
+              f.write(f"- teacher median: {report['teacher_median_ms']:.2f} ms\n")
+              f.write(f"- student median: {report['student_median_ms']:.2f} ms\n")
+              f.write(f"- recall: {report['pixel_recall_vs_teacher']:.4f}\n")
+              f.write(f"- precision: {report['pixel_precision_vs_teacher']:.4f}\n")
+              f.write(f"- IoU: {report['pixel_iou_vs_teacher']:.4f}\n")
+              f.write(f"- slice 000 student pixels: {rows[0]['student_pixels']}\n")
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: yolo26-dumb-quick-probe
+          path: benchmark-results/yolo26-quick/quick-report.json
+          retention-days: 7
