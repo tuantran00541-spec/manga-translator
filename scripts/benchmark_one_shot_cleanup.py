@@ -190,11 +190,10 @@ def _run_simple(
             "lama_model_runs": int(result.metrics.get("lama_model_runs", 0)),
             "detector_boxes": int(result.metrics.get("detector_boxes", 0)),
             "accepted_mask_boxes": int(result.metrics.get("accepted_mask_boxes", 0)),
-            "fallback_triggered": int(result.metrics.get("fallback_triggered", 0)),
-            "fallback_forward_calls": int(
-                result.metrics.get("fallback_forward_calls", 0)
+            "low_conf_rescue": int(result.metrics.get("low_conf_rescue", 0)),
+            "low_conf_rescue_boxes": int(
+                result.metrics.get("low_conf_rescue_boxes", 0)
             ),
-            "fallback_boxes": int(result.metrics.get("fallback_boxes", 0)),
             "smart_fill_regions": int(result.metrics.get("smart_fill_regions", 0)),
             "bubble_fast_fill_regions": int(
                 result.metrics.get("bubble_fast_fill_regions", 0)
@@ -215,7 +214,7 @@ def _run_simple(
 
     return {
         "mode": "simple",
-        "pipeline": "OnePassLowConfRetryAdaptiveFastInpainter",
+        "pipeline": "SingleForwardLowConfRescueAdaptiveFastInpainter",
         "pages": rows,
         "total_wall_ms": round((time.perf_counter() - total_started) * 1000.0, 3),
     }
@@ -317,11 +316,11 @@ def _finalize(report: dict, paths: list[Path], padding: int) -> dict:
                 sum(int(row["detector_forward_calls"]) for row in pages)
             ),
             "lama_model_runs": int(sum(int(row["lama_model_runs"]) for row in pages)),
-            "fallback_triggered_slices": int(
-                sum(int(row.get("fallback_triggered", 0)) for row in pages)
+            "low_conf_rescue_slices": int(
+                sum(int(row.get("low_conf_rescue", 0)) for row in pages)
             ),
-            "fallback_forward_calls": int(
-                sum(int(row.get("fallback_forward_calls", 0)) for row in pages)
+            "low_conf_rescue_boxes": int(
+                sum(int(row.get("low_conf_rescue_boxes", 0)) for row in pages)
             ),
             "mask_pixels": int(sum(int(row["mask_pixels"]) for row in pages)),
             "changed_pixels": int(sum(int(row["changed_pixels"]) for row in pages)),
