@@ -9,9 +9,7 @@ import numpy as np
 
 from app.detector.bubble_detector import BubbleBox
 from app.detector.mask_builder import build_mask
-from app.detector.sequential_fast_residue_detector import (
-    SequentialFastResidueAdaptiveFocusCombinedTextDetector,
-)
+from app.one_shot_cleanup import OneShotProductionDetector
 from app.image_io import read_image, write_image
 from app.inpaint.adaptive_fast_inpainter import AdaptiveFastInpainter
 from app.manifest_utils import atomic_replace
@@ -30,9 +28,7 @@ class OptimizedChapterPipeline(ChapterPipeline):
         if self._detector is None:
             with self._detector_init_lock:
                 if self._detector is None:
-                    self._detector = (
-                        SequentialFastResidueAdaptiveFocusCombinedTextDetector()
-                    )
+                    self._detector = OneShotProductionDetector()
         return self._detector
 
     @property
