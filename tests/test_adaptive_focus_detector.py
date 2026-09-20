@@ -188,3 +188,84 @@ def test_roi_first_focus_falls_back_when_proposal_is_unresolved():
         shape == image.shape[:2] and x == 0 and y == 0
         for shape, x, y in detector.calls
     )
+
+
+def test_roi_first_clusters_nearby_proposals_into_one_authority_crop():
+    from dataclasses import replace
+
+    from app.detector.adaptive_focus_detector import _focus_text_detect_roi_first
+
+    image = np.zeros((1800, 900, 3), dtype=np.uint8)
+    proposals = [
+        BubbleBox(
+            200, 500, 400, 760, 0.90, None,
+            semantic_type="speech_bubble",
+            source_model="bubble_yolo.onnx",
+            source_role="bubble_detector",
+        ),
+        BubbleBox(
+            430, 520, 630, 780, 0.88, None,
+            semantic_type="speech_bubble",
+            source_model="bubble_yolo.onnx",
+            source_role="bubble_detector",
+        ),
+    ]
+
+    class Detector:
+        model_role = "text_segmenter"
+
+        def __init__(self):
+            self.calls = []
+
+        def _detect_single_plain(self, crop, offset_x, offset_y):
+            self.calls.append((crop.shape[:2], offset_x, offset_y))
+            first_mask = np.full((80, 100), 255, dtype=np.uint8)
+            second_mask = np.full((80, 100), 255, dtype=np.uint8)
+            return [
+                BubbleBox(
+                    250, 580, 350, 660, 0.95, first_mask,
+                    source_model="text_segmenter.onnx",
+                    class_name="text_comic",
+                    semantic_type="text",
+                    source_role="text_segmenter",
+                ),
+                BubbleBox(
+                    480, 600, 580, 680, 0.94, second_mask,
+                    source_model="text_segmenter.onnx",
+                    class_name="text_comic",
+                    semantic_type="text",
+                    source_role="text_segmenter",
+                ),
+            ]
+
+        @staticmethod
+        def _nms_boxes(boxes):
+            return list(boxes)
+
+        @staticmethod
+        def _filter_invalid(boxes, _w, _h):
+            return list(boxes)
+
+        @staticmethod
+        def _with_semantics(box):
+            return replace(
+                box,
+                mask_source="text_segmenter",
+                safe_to_inpaint=box.verified_mask,
+                ocr_eligible=box.verified_mask,
+                needs_review=not box.verified_mask,
+            )
+
+    detector = Detector()
+    _boxes, metrics, deferred = _focus_text_detect_roi_first(
+        detector,
+        image,
+        proposals,
+    )
+
+    assert deferred == []
+    assert metrics["focus_chip_calls"] == 1
+    assert metrics["focus_clustered_groups"] == 1
+    assert metrics["focus_clustered_covered_proposals"] == 2
+    assert metrics["focus_full_page_calls"] == 0
+    assert len(detector.calls) == 1

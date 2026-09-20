@@ -16,7 +16,7 @@ class DetectionPlan:
 
 @dataclass(frozen=True)
 class ClusteredDetectionPlan:
-    """Shadow/experimental ROI plan with explicit proposal coverage."""
+    """Geometry-only ROI plan with explicit proposal coverage."""
 
     rois: tuple[tuple[int, int, int, int], ...]
     covered: tuple[DetectionEvidence, ...]

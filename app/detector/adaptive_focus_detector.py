@@ -370,9 +370,10 @@ def _focus_text_detect_roi_first(
     )
     scale = adaptive_max_chips / float(max(1, FOCUS_MAX_CHIPS))
 
-    # Shadow planner: geometry-only clustered proposal coverage. It does not
-    # affect inference or authority yet; benchmark metrics decide promotion.
-    shadow_evidence = [
+    # Geometry-only clustered coverage is the active ROI scheduler in the
+    # experimental ROI-first path. Authority and fallback decisions remain
+    # separate below: this planner only decides which bounded crops to run.
+    proposal_evidence = [
         DetectionEvidence(
             bbox=(int(box.x1), int(box.y1), int(box.x2), int(box.y2)),
             confidence=float(box.confidence),
@@ -394,7 +395,7 @@ def _focus_text_detect_roi_first(
         )
         for box in proposals
     ]
-    shadow_planner = ProposalPlanner(
+    planner = ProposalPlanner(
         pad_x=FOCUS_PAD_X,
         pad_y=FOCUS_PAD_Y,
         max_rois=adaptive_max_chips,
@@ -402,9 +403,9 @@ def _focus_text_detect_roi_first(
         merge_overlap=0.10,
         merge_gap=FOCUS_MERGE_GAP,
     )
-    shadow_plan = shadow_planner.plan_clustered_shape(
+    plan = planner.plan_clustered_shape(
         image_shape=(h, w),
-        proposals=shadow_evidence,
+        proposals=proposal_evidence,
         source_pixel_budget=int(round(FOCUS_SOURCE_PIXEL_BUDGET * scale)),
         tensor_pixel_budget=int(round(FOCUS_TENSOR_PIXEL_BUDGET * scale)),
         tensor_pixels_per_roi=DETECTOR_INPUT_SIZE * DETECTOR_INPUT_SIZE,
@@ -412,15 +413,8 @@ def _focus_text_detect_roi_first(
         span_short_axis=True,
     )
 
-    chips, deferred = plan_focus_chips(
-        h,
-        w,
-        proposals,
-        max_chips=adaptive_max_chips,
-        source_pixel_budget=int(round(FOCUS_SOURCE_PIXEL_BUDGET * scale)),
-        tensor_pixel_budget=int(round(FOCUS_TENSOR_PIXEL_BUDGET * scale)),
-        fallback_image=None,
-    )
+    chips = list(plan.rois)
+    deferred = list(plan.deferred)
 
     roi_raw: list[BubbleBox] = []
     boundary_ambiguous = False
@@ -501,7 +495,7 @@ def _focus_text_detect_roi_first(
             safe_to_inpaint=False, ocr_eligible=False, needs_review=True,
             source_role="scheduler", deferred_reason="focus_budget_exhausted",
         )
-        for x1, y1, x2, y2 in deferred
+        for x1, y1, x2, y2 in (evidence.bbox for evidence in deferred)
     ]
     return result, {
         "focus_roi_first_page": 1,
@@ -528,12 +522,12 @@ def _focus_text_detect_roi_first(
         "focus_roi_verified_boxes": len(roi_verified),
         "focus_full_verified_boxes": len(full_verified),
         "focus_full_unique_verified_boxes": len(full_unique_verified),
-        "focus_shadow_clustered_rois": len(shadow_plan.rois),
-        "focus_shadow_clustered_candidate_rois": shadow_plan.candidate_roi_count,
-        "focus_shadow_clustered_deferred_rois": shadow_plan.deferred_roi_count,
-        "focus_shadow_clustered_covered_proposals": len(shadow_plan.covered),
-        "focus_shadow_clustered_deferred_proposals": len(shadow_plan.deferred),
-        "focus_shadow_clustered_groups": shadow_plan.group_count,
+        "focus_clustered_rois": len(plan.rois),
+        "focus_clustered_candidate_rois": plan.candidate_roi_count,
+        "focus_clustered_deferred_rois": plan.deferred_roi_count,
+        "focus_clustered_covered_proposals": len(plan.covered),
+        "focus_clustered_deferred_proposals": len(plan.deferred),
+        "focus_clustered_groups": plan.group_count,
     }, deferred_boxes
 
 
