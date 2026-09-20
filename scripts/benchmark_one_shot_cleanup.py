@@ -156,8 +156,12 @@ def _run_simple(
     padding: int,
     counter: ForwardCounter,
     evidence_stride: int,
+    rescue_conf_threshold: float | None,
 ) -> dict:
-    from app.one_shot_cleanup import OneShotCleanupPipeline
+    from app.one_shot_cleanup import OneShotCleanupPipeline, OneShotTextMaskDetector
+
+    if rescue_conf_threshold is not None:
+        OneShotTextMaskDetector.RESCUE_CONF_THRESHOLD = float(rescue_conf_threshold)
 
     pipeline = OneShotCleanupPipeline(padding=padding)
     prepare = getattr(pipeline.inpainter, "prepare_for_page_workers", None)
@@ -378,6 +382,15 @@ def main() -> None:
         default=1,
         help="Save original/clean PNGs every N slices; masks are always saved.",
     )
+    parser.add_argument(
+        "--rescue-conf-threshold",
+        type=float,
+        default=None,
+        help=(
+            "Benchmark-only override for OneShotTextMaskDetector rescue threshold. "
+            "Use the normal text threshold to emulate the no-rescue baseline."
+        ),
+    )
     args = parser.parse_args()
 
     paths = _prepare_slices(args.raw_dir, args.slice_dir, args.limit)
@@ -395,6 +408,7 @@ def main() -> None:
             args.padding,
             counter,
             max(1, int(args.evidence_stride)),
+            args.rescue_conf_threshold,
         )
     else:
         report = _run_current(
