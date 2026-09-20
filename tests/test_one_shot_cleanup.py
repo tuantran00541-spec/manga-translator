@@ -163,48 +163,56 @@ def test_hybrid_cleanup_passes_empty_detection_to_normal_inpainter():
 
 
 
-class FakeLowConfidenceRetryDetector:
-    def __init__(self, fallback_box):
-        self.fallback_box = fallback_box
+
+
+class FakeRescueThresholdDetector:
+    def __init__(self, boxes):
+        self.boxes = boxes
         self.calls = 0
         self.conf_threshold = 0.20
 
     def _detect_single(self, image, offset_x, offset_y):
         assert offset_x == 0 and offset_y == 0
         self.calls += 1
-        if self.conf_threshold >= 0.20:
-            return []
-        return [self.fallback_box]
+        return [
+            box for box in self.boxes
+            if float(box.confidence) >= float(self.conf_threshold)
+        ]
 
 
-def test_zero_box_full_pass_gets_one_low_confidence_retry():
+def test_zero_box_tail_is_rescued_in_same_forward():
     image = np.zeros((100, 100, 3), dtype=np.uint8)
     mask = np.full((12, 18), 255, dtype=np.uint8)
-    underlying = FakeLowConfidenceRetryDetector(_box(10, 10, 28, 22, mask))
+    low = _box(10, 10, 28, 22, mask)
+    low.confidence = 0.154
+    underlying = FakeRescueThresholdDetector([low])
     detector = OneShotTextMaskDetector(detector=underlying)
 
     boxes, metrics = detector.detect(image)
 
-    assert underlying.calls == 2
+    assert underlying.calls == 1
     assert underlying.conf_threshold == 0.20
-    assert metrics["detector_forward_calls"] == 2
-    assert metrics["fallback_triggered"] == 1
-    assert metrics["fallback_forward_calls"] == 1
-    assert metrics["fallback_boxes"] == 1
-    assert metrics["accepted_mask_boxes"] == 1
+    assert metrics["detector_forward_calls"] == 1
+    assert metrics["low_conf_rescue"] == 1
+    assert metrics["low_conf_rescue_boxes"] == 1
     assert len(boxes) == 1
     assert boxes[0].safe_to_inpaint
 
 
-def test_nonempty_full_pass_never_spends_fallback_budget():
+def test_normal_confidence_masks_suppress_low_confidence_candidates():
     image = np.zeros((100, 100, 3), dtype=np.uint8)
     mask = np.full((12, 18), 255, dtype=np.uint8)
-    underlying = FakeUnderlyingDetector([_box(10, 10, 28, 22, mask)])
+    high = _box(10, 10, 28, 22, mask)
+    high.confidence = 0.90
+    low = _box(50, 50, 68, 62, mask)
+    low.confidence = 0.154
+    underlying = FakeRescueThresholdDetector([high, low])
     detector = OneShotTextMaskDetector(detector=underlying)
 
-    _, metrics = detector.detect(image)
+    boxes, metrics = detector.detect(image)
 
     assert underlying.calls == 1
-    assert metrics["fallback_triggered"] == 0
-    assert metrics["fallback_forward_calls"] == 0
-    assert metrics["detector_forward_calls"] == 1
+    assert metrics["low_conf_rescue"] == 0
+    assert metrics["normal_conf_boxes"] == 1
+    assert len(boxes) == 1
+    assert boxes[0].confidence == 0.90
