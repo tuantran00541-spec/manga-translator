@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 import time
 
-import cv2
 import numpy as np
 
 from app.config import TEXT_SEGMENTER_MODEL
@@ -22,20 +21,20 @@ class OneShotCleanupResult:
 
 
 class OneShotTextMaskDetector:
-    """One cheap full-slice pass with one bounded low-confidence retry.
+    """One text-segmenter forward with a zero-box low-confidence rescue.
 
-    Normal slices cost exactly one text-segmenter forward. Only when that pass
-    returns no verified mask do we retry the same full slice once at a lower
-    detector confidence. Destructive authority still requires a verified
-    text-segmenter mask.
+    The ONNX forward is executed once at RESCUE_CONF_THRESHOLD. If any verified
+    mask meets the normal TEXT_CONF_THRESHOLD, only normal-confidence masks are
+    used. Low-confidence masks are admitted only when the slice would otherwise
+    have zero verified cleanup authority.
     """
 
-    FALLBACK_CONF_THRESHOLD = 0.12
+    RESCUE_CONF_THRESHOLD = 0.12
 
     def __init__(self, detector: YoloDetector | None = None):
         self.detector = detector or YoloDetector(
             TEXT_SEGMENTER_MODEL,
-            TEXT_CONF_THRESHOLD,
+            min(TEXT_CONF_THRESHOLD, self.RESCUE_CONF_THRESHOLD),
             use_tta=False,
             model_role="text_segmenter",
         )
@@ -65,40 +64,35 @@ class OneShotTextMaskDetector:
     def detect(self, image: np.ndarray) -> tuple[list[BubbleBox], dict[str, float | int]]:
         started = time.perf_counter()
 
-        # Fast path: exactly one whole-slice forward.
-        raw_boxes = self.detector._detect_single(image, 0, 0)
-        boxes = self._accept_many(raw_boxes)
+        original_conf = getattr(self.detector, "conf_threshold", None)
+        try:
+            if original_conf is not None:
+                self.detector.conf_threshold = min(
+                    float(original_conf),
+                    self.RESCUE_CONF_THRESHOLD,
+                )
+            raw_boxes = self.detector._detect_single(image, 0, 0)
+        finally:
+            if original_conf is not None:
+                self.detector.conf_threshold = original_conf
 
-        fallback_triggered = not boxes
-        fallback_raw_boxes: list[BubbleBox] = []
-        fallback_forward_calls = 0
+        accepted = self._accept_many(raw_boxes)
+        normal_boxes = [
+            box for box in accepted if float(box.confidence) >= TEXT_CONF_THRESHOLD
+        ]
 
-        if fallback_triggered:
-            original_conf = getattr(self.detector, "conf_threshold", None)
-            try:
-                if original_conf is not None:
-                    self.detector.conf_threshold = min(
-                        float(original_conf),
-                        self.FALLBACK_CONF_THRESHOLD,
-                    )
-                fallback_forward_calls = 1
-                fallback_raw_boxes = self.detector._detect_single(image, 0, 0)
-            finally:
-                if original_conf is not None:
-                    self.detector.conf_threshold = original_conf
+        low_conf_rescue = not normal_boxes and bool(accepted)
+        boxes = normal_boxes if normal_boxes else accepted
 
-            boxes = self._accept_many(fallback_raw_boxes)
-
-        total_forwards = 1 + fallback_forward_calls
         return boxes, {
             "detector_ms": round((time.perf_counter() - started) * 1000.0, 3),
-            "detector_forward_calls": total_forwards,
-            "detector_boxes": int(len(raw_boxes) + len(fallback_raw_boxes)),
+            "detector_forward_calls": 1,
+            "detector_boxes": int(len(raw_boxes)),
             "accepted_mask_boxes": int(len(boxes)),
-            "fallback_triggered": int(fallback_triggered),
-            "fallback_forward_calls": int(fallback_forward_calls),
-            "fallback_boxes": int(len(fallback_raw_boxes)),
-            "fallback_conf_threshold": float(self.FALLBACK_CONF_THRESHOLD),
+            "normal_conf_boxes": int(len(normal_boxes)),
+            "low_conf_rescue": int(low_conf_rescue),
+            "low_conf_rescue_boxes": int(len(boxes) if low_conf_rescue else 0),
+            "rescue_conf_threshold": float(self.RESCUE_CONF_THRESHOLD),
         }
 
     def detect_mask(self, image: np.ndarray) -> tuple[np.ndarray, dict[str, float | int]]:
@@ -115,7 +109,7 @@ class OneShotTextMaskDetector:
 
 
 class OneShotCleanupPipeline:
-    """Cheap detector with zero-box fallback + production AdaptiveFastInpainter."""
+    """Single-pass detector with low-confidence rescue + production inpainter."""
 
     def __init__(
         self,
