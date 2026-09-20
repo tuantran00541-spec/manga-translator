@@ -1,0 +1,393 @@
+name: YOLO26 text-seg distillation probe
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["experiment/one-shot-yolo26"]
+    paths:
+      - .github/workflows/yolo26-text-distill.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: yolo26-text-distill
+  cancel-in-progress: true
+
+jobs:
+  distill:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    env:
+      PYTHONUNBUFFERED: "1"
+      CHAPTER_URL: "https://asurascans.com/comics/shadow-slave-6f7fe6eb/chapter/1"
+      ROOT: "benchmark-results/yolo26-distill"
+      RAW_DIR: "benchmark-results/yolo26-distill/raw"
+      SLICE_DIR: "benchmark-results/yolo26-distill/slices"
+      DATASET_DIR: "benchmark-results/yolo26-distill/dataset"
+      MANGA_ORT_PROVIDER: cpu
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install training and runtime dependencies
+        run: |
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple torch==2.8.0+cpu torchvision==0.23.0+cpu
+          python -m pip install ultralytics==8.4.156 onnx==1.17.0 onnxslim==0.1.71 onnxruntime==1.24.1
+          python -m pip install numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 psutil==6.1.1 loguru==0.7.2 requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 playwright==1.47.0 fastapi==0.115.0 pydantic==2.9.2 filelock==3.16.1 threadpoolctl==3.6.0 PyYAML==6.0.2
+
+      - name: Restore teacher model
+        id: models
+        uses: actions/cache@v4
+        with:
+          path: |
+            models/*.onnx
+            models/.e2e-provenance.json
+          key: processing-profile-models-b224548-v1
+
+      - name: Read pinned model provisioner
+        if: ${{ steps.models.outputs.cache-hit != 'true' }}
+        uses: actions/checkout@v4
+        with:
+          ref: b22454827f8190655d7070b80eb20c2550beadfa
+          path: benchmark-bootstrap
+          sparse-checkout: scripts/provision_real_e2e_models.py
+          sparse-checkout-cone-mode: false
+
+      - name: Provision teacher on cache miss
+        if: ${{ steps.models.outputs.cache-hit != 'true' }}
+        run: |
+          python benchmark-bootstrap/scripts/provision_real_e2e_models.py
+          cp benchmark-bootstrap/models/*.onnx models/
+          cp benchmark-bootstrap/models/.e2e-provenance.json models/
+
+      - name: Download and slice chapter
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from app.downloader.registry import download_chapter
+          from app.downloader.slicer import slice_image
+
+          raw = Path(os.environ["RAW_DIR"])
+          slc = Path(os.environ["SLICE_DIR"])
+          raw.mkdir(parents=True, exist_ok=True)
+          slc.mkdir(parents=True, exist_ok=True)
+          paths = download_chapter(os.environ["CHAPTER_URL"], raw)
+          slices = []
+          for i, path in enumerate(sorted(paths)):
+              recs = slice_image(path, slc, f"{i:03d}", return_metadata=True)
+              slices.extend(Path(r["path"]) for r in recs)
+          print("raw_images", len(paths))
+          print("slices", len(slices))
+          if len(slices) < 100:
+              raise RuntimeError(f"expected chapter-sized slice set, got {len(slices)}")
+          PY
+
+      - name: Generate teacher segmentation pseudo-labels
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import shutil
+          from pathlib import Path
+
+          import cv2
+          import numpy as np
+
+          from app.image_io import read_image
+          from app.one_shot_cleanup import OneShotTextMaskDetector
+
+          slices = sorted(Path(os.environ["SLICE_DIR"]).glob("*.png"))
+          dataset = Path(os.environ["DATASET_DIR"])
+          for split in ("train", "val"):
+              (dataset / "images" / split).mkdir(parents=True, exist_ok=True)
+              (dataset / "labels" / split).mkdir(parents=True, exist_ok=True)
+
+          teacher = OneShotTextMaskDetector()
+          stats = {
+              "slices": len(slices),
+              "train": 0,
+              "val": 0,
+              "teacher_boxes": 0,
+              "teacher_mask_pixels": 0,
+              "rescue_slices": 0,
+              "empty_slices": 0,
+              "polygons": 0,
+          }
+
+          def polygon_lines(box, page_h, page_w):
+              mask = box.mask
+              if mask is None or mask.size == 0:
+                  return []
+              binary = (mask > 127).astype(np.uint8)
+              contours, _ = cv2.findContours(
+                  binary,
+                  cv2.RETR_EXTERNAL,
+                  cv2.CHAIN_APPROX_SIMPLE,
+              )
+              lines = []
+              for contour in contours:
+                  if contour.shape[0] < 3 or cv2.contourArea(contour) < 4.0:
+                      continue
+                  perimeter = cv2.arcLength(contour, True)
+                  approx = cv2.approxPolyDP(
+                      contour,
+                      max(0.75, perimeter * 0.002),
+                      True,
+                  )
+                  pts = approx.reshape(-1, 2)
+                  if len(pts) < 3:
+                      continue
+                  coords = []
+                  for x, y in pts:
+                      px = min(page_w - 1, max(0, int(box.x1) + int(x)))
+                      py = min(page_h - 1, max(0, int(box.y1) + int(y)))
+                      coords.extend((px / page_w, py / page_h))
+                  if len(coords) >= 6:
+                      lines.append(
+                          "0 " + " ".join(f"{v:.6f}" for v in coords)
+                      )
+              return lines
+
+          records = []
+          for idx, path in enumerate(slices):
+              image = read_image(path)
+              boxes, metrics = teacher.detect(image)
+              h, w = image.shape[:2]
+              split = "val" if idx % 5 == 0 else "train"
+              stats[split] += 1
+              stats["teacher_boxes"] += len(boxes)
+              stats["rescue_slices"] += int(metrics.get("low_conf_rescue", 0))
+              lines = []
+              for box in boxes:
+                  if box.mask is not None:
+                      stats["teacher_mask_pixels"] += int(
+                          np.count_nonzero(box.mask > 127)
+                      )
+                  lines.extend(polygon_lines(box, h, w))
+              stats["polygons"] += len(lines)
+              if not lines:
+                  stats["empty_slices"] += 1
+
+              target_img = dataset / "images" / split / path.name
+              target_lbl = dataset / "labels" / split / (path.stem + ".txt")
+              shutil.copy2(path, target_img)
+              target_lbl.write_text("\n".join(lines) + ("\n" if lines else ""))
+
+              records.append({
+                  "index": idx,
+                  "file": path.name,
+                  "split": split,
+                  "boxes": len(boxes),
+                  "polygons": len(lines),
+                  "low_conf_rescue": int(metrics.get("low_conf_rescue", 0)),
+              })
+              if idx % 20 == 0:
+                  print("teacher", idx, json.dumps(records[-1]), flush=True)
+
+          yaml = dataset / "data.yaml"
+          yaml.write_text(
+              "\n".join([
+                  f"path: {dataset.resolve()}",
+                  "train: images/train",
+                  "val: images/val",
+                  "names:",
+                  "  0: text_comic",
+                  "",
+              ])
+          )
+          report = {"stats": stats, "records": records}
+          (Path(os.environ["ROOT"]) / "teacher-labels.json").write_text(
+              json.dumps(report, indent=2) + "\n"
+          )
+          print(json.dumps(stats, indent=2))
+          PY
+
+      - name: Fine-tune YOLO26n-seg student
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from ultralytics import YOLO
+
+          root = Path(os.environ["ROOT"])
+          data = Path(os.environ["DATASET_DIR"]) / "data.yaml"
+          model = YOLO("yolo26n-seg.pt")
+          result = model.train(
+              data=str(data),
+              epochs=3,
+              imgsz=640,
+              batch=4,
+              device="cpu",
+              workers=2,
+              freeze=10,
+              cache=True,
+              patience=0,
+              plots=False,
+              project=str(root / "runs"),
+              name="student",
+              exist_ok=True,
+              verbose=True,
+          )
+          best = root / "runs" / "student" / "weights" / "best.pt"
+          last = root / "runs" / "student" / "weights" / "last.pt"
+          selected = best if best.exists() else last
+          if not selected.exists():
+              raise RuntimeError("training did not produce student weights")
+          print("student_weights", selected, selected.stat().st_size)
+          PY
+
+      - name: Export student ONNX 1024
+        run: |
+          python - <<'PY'
+          import os
+          import shutil
+          from pathlib import Path
+          from ultralytics import YOLO
+
+          root = Path(os.environ["ROOT"])
+          best = root / "runs" / "student" / "weights" / "best.pt"
+          last = root / "runs" / "student" / "weights" / "last.pt"
+          selected = best if best.exists() else last
+          model = YOLO(str(selected))
+          exported = Path(model.export(
+              format="onnx",
+              imgsz=1024,
+              opset=17,
+              simplify=True,
+              dynamic=False,
+              device="cpu",
+          ))
+          target = root / "yolo26-text-seg.onnx"
+          if exported.resolve() != target.resolve():
+              shutil.copy2(exported, target)
+          print("exported", target, target.stat().st_size)
+          PY
+
+      - name: Compare held-out teacher masks and student speed
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import statistics
+          import time
+          from pathlib import Path
+
+          import cv2
+          import numpy as np
+
+          from app.detector.bubble_detector import YoloDetector
+          from app.detector.mask_builder import build_mask
+          from app.image_io import read_image
+          from app.one_shot_cleanup import OneShotTextMaskDetector
+          from app.parameters import TEXT_CONF_THRESHOLD
+
+          root = Path(os.environ["ROOT"])
+          dataset = Path(os.environ["DATASET_DIR"])
+          student_path = root / "yolo26-text-seg.onnx"
+
+          teacher = OneShotTextMaskDetector()
+          student_raw = YoloDetector(
+              student_path,
+              TEXT_CONF_THRESHOLD,
+              use_tta=False,
+              model_role="text_segmenter",
+          )
+
+          def accept(box):
+              return box.source_role == "text_segmenter" and box.verified_mask
+
+          rows = []
+          teacher_times = []
+          student_times = []
+          teacher_pixels_total = 0
+          student_pixels_total = 0
+          inter_total = 0
+          union_total = 0
+
+          val_paths = sorted((dataset / "images" / "val").glob("*.png"))
+          for idx, path in enumerate(val_paths):
+              image = read_image(path)
+
+              t0 = time.perf_counter()
+              tboxes, tmetrics = teacher.detect(image)
+              teacher_times.append((time.perf_counter() - t0) * 1000.0)
+              tmask = build_mask(image.shape[:2], tboxes, image) if tboxes else np.zeros(image.shape[:2], np.uint8)
+
+              t0 = time.perf_counter()
+              sraw = student_raw._detect_single(image, 0, 0)
+              student_times.append((time.perf_counter() - t0) * 1000.0)
+              sboxes = [b for b in sraw if accept(b)]
+              smask = build_mask(image.shape[:2], sboxes, image) if sboxes else np.zeros(image.shape[:2], np.uint8)
+
+              ta = tmask > 127
+              sa = smask > 127
+              tp = int(np.count_nonzero(ta))
+              sp = int(np.count_nonzero(sa))
+              inter = int(np.count_nonzero(ta & sa))
+              union = int(np.count_nonzero(ta | sa))
+              teacher_pixels_total += tp
+              student_pixels_total += sp
+              inter_total += inter
+              union_total += union
+
+              rows.append({
+                  "file": path.name,
+                  "teacher_boxes": len(tboxes),
+                  "student_boxes": len(sboxes),
+                  "teacher_pixels": tp,
+                  "student_pixels": sp,
+                  "intersection": inter,
+                  "union": union,
+                  "teacher_pixel_recall": inter / max(1, tp),
+                  "student_pixel_precision": inter / max(1, sp),
+                  "iou": inter / max(1, union),
+                  "teacher_rescue": int(tmetrics.get("low_conf_rescue", 0)),
+              })
+
+          report = {
+              "val_slices": len(val_paths),
+              "teacher_median_ms": statistics.median(teacher_times),
+              "student_median_ms": statistics.median(student_times),
+              "speedup": statistics.median(teacher_times) / max(1e-9, statistics.median(student_times)),
+              "teacher_pixels": teacher_pixels_total,
+              "student_pixels": student_pixels_total,
+              "intersection_pixels": inter_total,
+              "union_pixels": union_total,
+              "pixel_recall_vs_teacher": inter_total / max(1, teacher_pixels_total),
+              "pixel_precision_vs_teacher": inter_total / max(1, student_pixels_total),
+              "pixel_iou_vs_teacher": inter_total / max(1, union_total),
+              "student_bytes": student_path.stat().st_size,
+              "rows": rows,
+          }
+          (root / "student-report.json").write_text(
+              json.dumps(report, indent=2) + "\n"
+          )
+          print(json.dumps({k:v for k,v in report.items() if k != "rows"}, indent=2))
+
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as f:
+              f.write("## YOLO26 text student probe\n\n")
+              f.write(f"- val slices: {report['val_slices']}\n")
+              f.write(f"- teacher median: {report['teacher_median_ms']:.2f} ms\n")
+              f.write(f"- student median: {report['student_median_ms']:.2f} ms\n")
+              f.write(f"- speedup: {report['speedup']:.2f}x\n")
+              f.write(f"- teacher pixel recall: {report['pixel_recall_vs_teacher']:.3f}\n")
+              f.write(f"- student pixel precision: {report['pixel_precision_vs_teacher']:.3f}\n")
+              f.write(f"- pixel IoU: {report['pixel_iou_vs_teacher']:.3f}\n")
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: yolo26-text-distill
+          path: |
+            benchmark-results/yolo26-distill/teacher-labels.json
+            benchmark-results/yolo26-distill/student-report.json
+            benchmark-results/yolo26-distill/yolo26-text-seg.onnx
+            benchmark-results/yolo26-distill/runs/student/results.csv
+          retention-days: 7
