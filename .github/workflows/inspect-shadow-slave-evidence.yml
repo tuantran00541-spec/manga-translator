@@ -113,7 +113,7 @@ jobs:
           cp inspection/hardest.json bench/visual-inspection/shadow-slave-ch1/
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add bench/visual-inspection/shadow-slave-ch1
+          git add -f bench/visual-inspection/shadow-slave-ch1
           git commit -m "bench: publish Shadow Slave hybrid contact sheets"
           git push origin HEAD:experiment/one-shot-cleanup
 
