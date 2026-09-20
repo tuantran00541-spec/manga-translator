@@ -65,11 +65,12 @@ jobs:
           print("slice0", first)
           PY
 
-      - name: Probe bubble proposal then focused segmenter
+      - name: Inspect raw detector scores on slice zero
         run: |
           python - <<'PY'
           import json
           from pathlib import Path
+          import numpy as np
 
           from app.config import BUBBLE_DETECTOR_MODEL, TEXT_SEGMENTER_MODEL
           from app.detector.bubble_detector import YoloDetector
@@ -80,62 +81,70 @@ jobs:
           image = read_image(path)
           h, w = image.shape[:2]
 
-          proposal = YoloDetector(
-              BUBBLE_DETECTOR_MODEL,
-              BUBBLE_PROPOSAL_CONF_THRESHOLD,
-              use_tta=False,
-              model_role="bubble_detector",
-          )
+          def raw_scores(detector, crop, ox=0, oy=0):
+              blob, transform = detector._preprocess(crop, offset_x=ox, offset_y=oy)
+              outputs = detector.session.run(None, {detector.input_name: blob})
+              arr = np.squeeze(outputs[0])
+              if arr.ndim == 1:
+                  arr = arr[np.newaxis, :]
+              if arr.ndim == 2 and arr.shape[0] < arr.shape[1]:
+                  arr = arr.T
+              num_mask = outputs[1].shape[1] if len(outputs) > 1 and outputs[1].ndim == 4 else 0
+              num_classes = max(1, arr.shape[1] - 4 - num_mask)
+              scores = arr[:, 4:4+num_classes]
+              conf = scores[:, 0] if num_classes == 1 else scores.max(axis=1)
+              top = np.sort(conf)[-10:][::-1]
+              return [round(float(v), 6) for v in top]
+
           segmenter = YoloDetector(
               TEXT_SEGMENTER_MODEL,
               TEXT_CONF_THRESHOLD,
               use_tta=False,
               model_role="text_segmenter",
           )
+          bubble = YoloDetector(
+              BUBBLE_DETECTOR_MODEL,
+              BUBBLE_PROPOSAL_CONF_THRESHOLD,
+              use_tta=False,
+              model_role="bubble_detector",
+          )
 
-          proposals = proposal._detect_single(image, 0, 0)
-          print("proposal_count", len(proposals))
-          for i, box in enumerate(proposals):
-              print("proposal", i, {
-                  "xyxy": [box.x1, box.y1, box.x2, box.y2],
-                  "confidence": box.confidence,
-                  "class_name": box.class_name,
-                  "semantic_type": box.semantic_type,
-              })
-
-          focused = []
-          for box in proposals:
-              bw = max(1, box.x2 - box.x1)
-              bh = max(1, box.y2 - box.y1)
-              px = max(32, int(round(bw * 0.20)))
-              py = max(32, int(round(bh * 0.20)))
-              x1 = max(0, box.x1 - px)
-              y1 = max(0, box.y1 - py)
-              x2 = min(w, box.x2 + px)
-              y2 = min(h, box.y2 + py)
-              crop = image[y1:y2, x1:x2]
-              focused.extend(segmenter._detect_single(crop, x1, y1))
-
-          verified = [
-              b for b in focused
-              if b.source_role == "text_segmenter" and b.verified_mask
-          ]
           report = {
               "slice": path.name,
               "shape": [h, w],
-              "proposal_count": len(proposals),
-              "focused_segmenter_boxes": len(focused),
-              "verified_boxes": len(verified),
-              "verified": [
-                  {
-                      "xyxy": [b.x1, b.y1, b.x2, b.y2],
-                      "confidence": b.confidence,
-                      "mask_pixels": int((b.mask > 127).sum()) if b.mask is not None else 0,
-                  }
-                  for b in verified
-              ],
+              "segmenter_full_top": raw_scores(segmenter, image),
+              "bubble_full_top": raw_scores(bubble, image),
+              "segmenter_tiles": [],
           }
+
+          ratio = 0.60
+          tw, th = int(round(w*ratio)), int(round(h*ratio))
+          for y in sorted({0, h-th}):
+              for x in sorted({0, w-tw}):
+                  crop = image[y:y+th, x:x+tw]
+                  report["segmenter_tiles"].append({
+                      "xyxy": [x,y,x+tw,y+th],
+                      "top": raw_scores(segmenter, crop, x, y),
+                  })
+
+          # Also test the lowest confidence worth considering. Destructive
+          # authority still requires a verified text-segmenter mask.
+          segmenter.conf_threshold = 0.01
+          low_conf_verified = []
+          for item in report["segmenter_tiles"]:
+              x1,y1,x2,y2 = item["xyxy"]
+              boxes = segmenter._detect_single(image[y1:y2, x1:x2], x1, y1)
+              low_conf_verified.extend([
+                  b for b in boxes
+                  if b.source_role == "text_segmenter" and b.verified_mask
+              ])
+          report["verified_at_0_01"] = [
+              {
+                  "xyxy":[b.x1,b.y1,b.x2,b.y2],
+                  "confidence":round(float(b.confidence),6),
+                  "mask_pixels":int((b.mask>127).sum()) if b.mask is not None else 0,
+              }
+              for b in low_conf_verified
+          ]
           print(json.dumps(report, indent=2))
-          if not verified:
-              raise RuntimeError("proposal-focused fallback still failed slice 000")
           PY
