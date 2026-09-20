@@ -1,0 +1,245 @@
+name: Text segmenter OpenVINO direct vs EP
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["experiment/one-shot-yolo26"]
+    paths:
+      - .github/workflows/text-segmenter-openvino-direct-vs-ep.yml
+
+permissions:
+  contents: read
+
+jobs:
+  ab:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    env:
+      PYTHONUNBUFFERED: "1"
+      CHAPTER_URL: "https://asurascans.com/comics/shadow-slave-6f7fe6eb/chapter/1"
+      RAW_DIR: "benchmark-results/text-seg-openvino-direct/raw"
+      SLICE_DIR: "benchmark-results/text-seg-openvino-direct/slices"
+      OUT_DIR: "benchmark-results/text-seg-openvino-direct"
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install runtimes
+        run: |
+          python -m pip install numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 psutil==6.1.1 loguru==0.7.2 requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 playwright==1.47.0 fastapi==0.115.0 pydantic==2.9.2 filelock==3.16.1 threadpoolctl==3.6.0
+          python -m pip install --force-reinstall --no-deps onnxruntime-openvino==1.24.1
+          python -m pip install openvino==2026.4.0
+
+      - name: Restore text segmenter model
+        id: models
+        uses: actions/cache@v4
+        with:
+          path: |
+            models/*.onnx
+            models/.e2e-provenance.json
+          key: processing-profile-models-b224548-v1
+
+      - name: Read pinned model provisioner
+        if: ${{ steps.models.outputs.cache-hit != 'true' }}
+        uses: actions/checkout@v4
+        with:
+          ref: b22454827f8190655d7070b80eb20c2550beadfa
+          path: benchmark-bootstrap
+          sparse-checkout: scripts/provision_real_e2e_models.py
+          sparse-checkout-cone-mode: false
+
+      - name: Provision model on cache miss
+        if: ${{ steps.models.outputs.cache-hit != 'true' }}
+        run: |
+          python benchmark-bootstrap/scripts/provision_real_e2e_models.py
+          cp benchmark-bootstrap/models/*.onnx models/
+          cp benchmark-bootstrap/models/.e2e-provenance.json models/
+
+      - name: Download and prepare 32 slices
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from app.downloader.registry import download_chapter
+          from app.downloader.slicer import slice_image
+
+          raw = Path(os.environ["RAW_DIR"])
+          slc = Path(os.environ["SLICE_DIR"])
+          raw.mkdir(parents=True, exist_ok=True)
+          slc.mkdir(parents=True, exist_ok=True)
+
+          paths = download_chapter(os.environ["CHAPTER_URL"], raw)
+          slices = []
+          for i, path in enumerate(sorted(paths)):
+              recs = slice_image(path, slc, f"{i:03d}", return_metadata=True)
+              slices.extend(Path(r["path"]) for r in recs)
+              if len(slices) >= 32:
+                  break
+          keep = sorted(slices)[:32]
+          out = Path(os.environ["OUT_DIR"])
+          out.mkdir(parents=True, exist_ok=True)
+          (out / "paths.txt").write_text("\n".join(str(p) for p in keep) + "\n")
+          print("probe_slices", len(keep))
+          PY
+
+      - name: Benchmark ORT OpenVINO EP vs direct OpenVINO
+        run: |
+          python - <<'PY'
+          import json, os, statistics, time
+          from pathlib import Path
+
+          import cv2
+          import numpy as np
+          import onnxruntime as ort
+          import openvino as ov
+
+          model_path = Path("models/text_segmenter.onnx")
+          paths = [
+              Path(x) for x in
+              (Path(os.environ["OUT_DIR"]) / "paths.txt").read_text().splitlines()
+              if x.strip()
+          ]
+
+          print("ORT providers", ort.get_available_providers())
+          if "OpenVINOExecutionProvider" not in ort.get_available_providers():
+              raise RuntimeError("OpenVINOExecutionProvider unavailable")
+
+          def preprocess(path):
+              img = cv2.imread(str(path), cv2.IMREAD_COLOR)
+              if img is None:
+                  raise RuntimeError(f"cannot read {path}")
+              h, w = img.shape[:2]
+              scale = min(1024 / w, 1024 / h)
+              rw, rh = max(1, round(w * scale)), max(1, round(h * scale))
+              resized = cv2.resize(img, (rw, rh), interpolation=cv2.INTER_LINEAR)
+              canvas = np.full((1024, 1024, 3), 114, dtype=np.uint8)
+              x = (1024 - rw) // 2
+              y = (1024 - rh) // 2
+              canvas[y:y+rh, x:x+rw] = resized
+              rgb = cv2.cvtColor(canvas, cv2.COLOR_BGR2RGB)
+              return np.ascontiguousarray(
+                  (rgb.astype(np.float32) / 255.0).transpose(2,0,1)[None]
+              )
+
+          blobs = [preprocess(p) for p in paths]
+
+          so = ort.SessionOptions()
+          so.intra_op_num_threads = 2
+          so.inter_op_num_threads = 1
+          so.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+          ep = ort.InferenceSession(
+              str(model_path),
+              sess_options=so,
+              providers=["OpenVINOExecutionProvider"],
+              provider_options=[{
+                  "device_type": "CPU",
+                  "num_of_threads": "2",
+                  "num_streams": "1",
+                  "cache_dir": "/tmp/manga-openvino-cache",
+              }],
+          )
+          ep_name = ep.get_inputs()[0].name
+
+          core = ov.Core()
+          ov_model = core.read_model(str(model_path))
+          direct = core.compile_model(
+              ov_model,
+              "CPU",
+              {
+                  "PERFORMANCE_HINT": "LATENCY",
+                  "INFERENCE_NUM_THREADS": "2",
+                  "NUM_STREAMS": "1",
+              },
+          )
+          direct_input = direct.input(0)
+          req = direct.create_infer_request()
+
+          def bench_ep():
+              for i in range(3):
+                  ep.run(None, {ep_name: blobs[i % len(blobs)]})
+              times=[]
+              first=None
+              for blob in blobs:
+                  t0=time.perf_counter()
+                  out=ep.run(None, {ep_name: blob})
+                  times.append((time.perf_counter()-t0)*1000.0)
+                  if first is None:
+                      first=[np.asarray(x) for x in out]
+              return times, first
+
+          def bench_direct():
+              for i in range(3):
+                  req.infer({direct_input: blobs[i % len(blobs)]})
+              times=[]
+              first=None
+              for blob in blobs:
+                  t0=time.perf_counter()
+                  result=req.infer({direct_input: blob})
+                  times.append((time.perf_counter()-t0)*1000.0)
+                  if first is None:
+                      first=[np.asarray(v) for v in result.values()]
+              return times, first
+
+          ep_times, ep_first = bench_ep()
+          direct_times, direct_first = bench_direct()
+
+          if sorted([x.shape for x in ep_first]) != sorted([x.shape for x in direct_first]):
+              raise RuntimeError("output shape mismatch")
+
+          # Order direct outputs by shape so numeric comparison matches output0/output1.
+          ep_by_shape = {tuple(x.shape): x for x in ep_first}
+          direct_by_shape = {tuple(x.shape): x for x in direct_first}
+          max_abs = {}
+          mean_abs = {}
+          for shape, a in ep_by_shape.items():
+              b = direct_by_shape[shape]
+              diff=np.abs(a.astype(np.float32)-b.astype(np.float32))
+              max_abs[str(shape)] = float(diff.max())
+              mean_abs[str(shape)] = float(diff.mean())
+
+          def stats(xs):
+              ordered=sorted(xs)
+              return {
+                  "mean_ms": statistics.fmean(xs),
+                  "median_ms": statistics.median(xs),
+                  "p95_ms": ordered[int(0.95*(len(ordered)-1))],
+                  "min_ms": min(xs),
+                  "max_ms": max(xs),
+              }
+
+          a=stats(ep_times)
+          b=stats(direct_times)
+          report={
+              "slice_count": len(blobs),
+              "ort_openvino_ep": a,
+              "direct_openvino": b,
+              "median_speedup_direct_over_ep": a["median_ms"]/max(1e-9,b["median_ms"]),
+              "median_reduction_pct": (1.0-b["median_ms"]/a["median_ms"])*100.0,
+              "max_abs_output_diff_first_slice": max_abs,
+              "mean_abs_output_diff_first_slice": mean_abs,
+              "openvino_version": ov.__version__,
+              "ort_version": ort.__version__,
+          }
+          out=Path(os.environ["OUT_DIR"])/"direct-vs-ep.json"
+          out.write_text(json.dumps(report,indent=2)+"\n")
+          print(json.dumps(report,indent=2))
+
+          with open(os.environ["GITHUB_STEP_SUMMARY"],"a",encoding="utf-8") as f:
+              f.write("## OpenVINO direct vs ORT OpenVINO EP\n\n")
+              f.write(f"- slices: {len(blobs)}\n")
+              f.write(f"- ORT OpenVINO EP median: {a['median_ms']:.2f} ms\n")
+              f.write(f"- direct OpenVINO median: {b['median_ms']:.2f} ms\n")
+              f.write(f"- direct speedup: {report['median_speedup_direct_over_ep']:.3f}x\n")
+              f.write(f"- latency reduction: {report['median_reduction_pct']:.1f}%\n")
+              f.write(f"- max output diff: {max(max_abs.values()):.6f}\n")
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: text-segmenter-openvino-direct-vs-ep
+          path: benchmark-results/text-seg-openvino-direct/direct-vs-ep.json
+          retention-days: 7
