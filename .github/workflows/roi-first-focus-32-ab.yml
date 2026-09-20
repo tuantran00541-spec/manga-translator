@@ -18,7 +18,9 @@ permissions:
 
 concurrency:
   group: roi-first-focus-32-release-focused-segmenter-640
-  cancel-in-progress: false
+  # This is an experimental A/B lane. Once a newer detector commit exists,
+  # spending CPU on an older candidate cannot produce a promotable result.
+  cancel-in-progress: true
 
 jobs:
   roi-first-ab:
