@@ -1,0 +1,722 @@
+[
+  {
+    "index": 2,
+    "file": "000_02.png",
+    "shape": [
+      5088,
+      1600
+    ],
+    "wall_ms": 16403.716,
+    "detector_ms": 938.941,
+    "inpaint_ms": 15436.841,
+    "detector_forward_calls": 1,
+    "detector_forwards_by_model": {
+      "text_segmenter.onnx": 1
+    },
+    "lama_model_runs": 8,
+    "detector_boxes": 1,
+    "accepted_mask_boxes": 1,
+    "smart_fill_regions": 0,
+    "bubble_fast_fill_regions": 0,
+    "clusters": 1,
+    "mask_pixels": 819947,
+    "changed_pixels": 818952,
+    "outside_mask_changed": 0
+  },
+  {
+    "index": 18,
+    "file": "004_00.png",
+    "shape": [
+      1934,
+      1600
+    ],
+    "wall_ms": 12289.531,
+    "detector_ms": 750.459,
+    "inpaint_ms": 11528.806,
+    "detector_forward_calls": 1,
+    "detector_forwards_by_model": {
+      "text_segmenter.onnx": 1
+    },
+    "lama_model_runs": 6,
+    "detector_boxes": 1,
+    "accepted_mask_boxes": 1,
+    "smart_fill_regions": 0,
+    "bubble_fast_fill_regions": 0,
+    "clusters": 1,
+    "mask_pixels": 547068,
+    "changed_pixels": 540449,
+    "outside_mask_changed": 0
+  },
+  {
+    "index": 72,
+    "file": "021_02.png",
+    "shape": [
+      1895,
+      1600
+    ],
+    "wall_ms": 12061.946,
+    "detector_ms": 732.463,
+    "inpaint_ms": 11319.764,
+    "detector_forward_calls": 1,
+    "detector_forwards_by_model": {
+      "text_segmenter.onnx": 1
+    },
+    "lama_model_runs": 6,
+    "detector_boxes": 1,
+    "accepted_mask_boxes": 1,
+    "smart_fill_regions": 0,
+    "bubble_fast_fill_regions": 0,
+    "clusters": 1,
+    "mask_pixels": 384772,
+    "changed_pixels": 360929,
+    "outside_mask_changed": 0
+  },
+  {
+    "index": 15,
+    "file": "003_00.png",
+    "shape": [
+      2712,
+      1600
+    ],
+    "wall_ms": 7970.169,
+    "detector_ms": 918.559,
+    "inpaint_ms": 7036.978,
+    "detector_forward_calls": 1,
+    "detector_forwards_by_model": {
+      "text_segmenter.onnx": 1
+    },
+    "lama_model_runs": 4,
+    "detector_boxes": 1,
+    "accepted_mask_boxes": 1,
+    "smart_fill_regions": 0,
+    "bubble_fast_fill_regions": 0,
+    "clusters": 1,
+    "mask_pixels": 474552,
+    "changed_pixels": 474534,
+    "outside_mask_changed": 0
+  },
+  {
+    "index": 134,
+    "file": "042_01.png",
+    "shape": [
+      3897,
+      1600
+    ],
+    "wall_ms": 5739.695,
+    "detector_ms": 921.045,
+    "inpaint_ms": 4796.074,
+    "detector_forward_calls": 1,
+    "detector_forwards_by_model": {
+      "text_segmenter.onnx": 1
+    },
+    "lama_model_runs": 4,
+    "detector_boxes": 3,
+    "accepted_mask_boxes": 3,
+    "smart_fill_regions": 0,
+    "bubble_fast_fill_regions": 1,
+    "clusters": 2,
+    "mask_pixels": 496265,
+    "changed_pixels": 493020,
+    "outside_mask_changed": 0
+  },
+  {
+    "index": 1,
+    "file": "000_01.png",
+    "shape": [
+      2612,
+      1600
+    ],
+    "wall_ms": 6004.307,
+    "detector_ms": 761.658,
+    "inpaint_ms": 5229.089,
+    "detector_forward_calls": 1,
+    "detector_forwards_by_model": {
+      "text_segmenter.onnx": 1
+    },
+    "lama_model_runs": 3,
+    "detector_boxes": 1,
+    "accepted_mask_boxes": 1,
+    "smart_fill_regions": 0,
+    "bubble_fast_fill_regions": 0,
+    "clusters": 1,
+    "mask_pixels": 433582,
+    "changed_pixels": 431458,
+    "outside_mask_changed": 0
+  },
+  {
+    "index": 67,
+    "file": "020_03.png",
+    "shape": [
+      2154,
+      1600
+    ],
+    "wall_ms": 5096.674,
+    "detector_ms": 727.392,
+    "inpaint_ms": 4358.187,
+    "detector_forward_calls": 1,
+    "detector_forwards_by_model": {
+      "text_segmenter.onnx": 1
+    },
+    "lama_model_runs": 3,
+    "detector_boxes": 1,
+    "accepted_mask_boxes": 1,
+    "smart_fill_regions": 0,
+    "bubble_fast_fill_regions": 0,
+    "clusters": 1,
+    "mask_pixels": 309990,
+    "changed_pixels": 296046,
+    "outside_mask_changed": 0
+  },
+  {
+    "index": 133,
+    "file": "042_00.png",
+    "shape": [
+      1637,
+      1600
+    ],
+    "wall_ms": 4886.563,
+    "detector_ms": 889.009,
+    "inpaint_ms": 3987.168,
+    "detector_forward_calls": 1,
+    "detector_forwards_by_model": {
+      "text_segmenter.onnx": 1
+    },
+    "lama_model_runs": 3,
+    "detector_boxes": 1,
+    "accepted_mask_boxes": 1,
+    "smart_fill_regions": 0,
+    "bubble_fast_fill_regions": 0,
+    "clusters": 1,
+    "mask_pixels": 322016,
+    "changed_pixels": 271729,
+    "outside_mask_changed": 0
+  },
+  {
+    "index": 13,
+    "file": "002_02.png",
+    "shape": [
+      3020,
+      1600
+    ],
+    "wall_ms": 8840.539,
+    "detector_ms": 796.508,
+    "inpaint_ms": 8028.62,
+    "detector_forward_calls": 1,
+    "detector_forwards_by_model": {
+      "text_segmenter.onnx": 1
+    },
+    "lama_model_runs": 1,
+    "detector_boxes": 1,
+    "accepted_mask_boxes": 1,
+    "smart_fill_regions": 0,
+    "bubble_fast_fill_regions": 0,
+    "clusters": 1,
+    "mask_pixels": 997025,
+    "changed_pixels": 996951,
+    "outside_mask_changed": 0
+  },
+  {
+    "index": 47,
+    "file": "014_02.png",
+    "shape": [
+      4476,
+      1600
+    ],
+    "wall_ms": 8678.099,
+    "detector_ms": 779.585,
+    "inpaint_ms": 7874.951,
+    "detector_forward_calls": 1,
+    "detector_forwards_by_model": {
+      "text_segmenter.onnx": 1
+    },
+    "lama_model_runs": 1,
+    "detector_boxes": 1,
+    "accepted_mask_boxes": 1,
+    "smart_fill_regions": 0,
+    "bubble_fast_fill_regions": 0,
+    "clusters": 1,
+    "mask_pixels": 931409,
+    "changed_pixels": 931290,
+    "outside_mask_changed": 0
+  },
+  {
+    "index": 117,
+    "file": "037_00.png",
+    "shape": [
+      1761,
+      1600
+    ],
+    "wall_ms": 8644.608,
+    "detector_ms": 752.829,
+    "inpaint_ms": 7883.514,
+    "detector_forward_calls": 1,
+    "detector_forwards_by_model": {
+      "text_segmenter.onnx": 1
+    },
+    "lama_model_runs": 1,
+    "detector_boxes": 1,
+    "accepted_mask_boxes": 1,
+    "smart_fill_regions": 0,
+    "bubble_fast_fill_regions": 0,
+    "clusters": 1,
+    "mask_pixels": 611123,
+    "changed_pixels": 439910,
+    "outside_mask_changed": 0
+  },
+  {
+    "index": 5,
+    "file": "000_05.png",
+    "shape": [
+      2857,
+      1600
+    ],
+    "wall_ms": 7750.401,
+    "detector_ms": 851.142,
+    "inpaint_ms": 6884.484,
+    "detector_forward_calls": 1,
+    "detector_forwards_by_model": {
+      "text_segmenter.onnx": 1
+    },
+    "lama_model_runs": 1,
+    "detector_boxes": 1,
+    "accepted_mask_boxes": 1,
+    "smart_fill_regions": 0,
+    "bubble_fast_fill_regions": 0,
+    "clusters": 1,
+    "mask_pixels": 950256,
+    "changed_pixels": 948676,
+    "outside_mask_changed": 0
+  },
+  {
+    "index": 14,
+    "file": "002_03.png",
+    "shape": [
+      4154,
+      1600
+    ],
+    "wall_ms": 7693.319,
+    "detector_ms": 955.262,
+    "inpaint_ms": 6715.352,
+    "detector_forward_calls": 1,
+    "detector_forwards_by_model": {
+      "text_segmenter.onnx": 1
+    },
+    "lama_model_runs": 1,
+    "detector_boxes": 1,
+    "accepted_mask_boxes": 1,
+    "smart_fill_regions": 0,
+    "bubble_fast_fill_regions": 0,
+    "clusters": 1,
+    "mask_pixels": 1014873,
+    "changed_pixels": 1014816,
+    "outside_mask_changed": 0
+  },
+  {
+    "index": 132,
+    "file": "041_04.png",
+    "shape": [
+      2806,
+      1600
+    ],
+    "wall_ms": 7238.892,
+    "detector_ms": 718.731,
+    "inpaint_ms": 6509.734,
+    "detector_forward_calls": 1,
+    "detector_forwards_by_model": {
+      "text_segmenter.onnx": 1
+    },
+    "lama_model_runs": 1,
+    "detector_boxes": 1,
+    "accepted_mask_boxes": 1,
+    "smart_fill_regions": 0,
+    "bubble_fast_fill_regions": 0,
+    "clusters": 1,
+    "mask_pixels": 335892,
+    "changed_pixels": 333332,
+    "outside_mask_changed": 0
+  },
+  {
+    "index": 48,
+    "file": "014_03.png",
+    "shape": [
+      4071,
+      1600
+    ],
+    "wall_ms": 7029.17,
+    "detector_ms": 885.106,
+    "inpaint_ms": 6121.856,
+    "detector_forward_calls": 1,
+    "detector_forwards_by_model": {
+      "text_segmenter.onnx": 1
+    },
+    "lama_model_runs": 1,
+    "detector_boxes": 1,
+    "accepted_mask_boxes": 1,
+    "smart_fill_regions": 0,
+    "bubble_fast_fill_regions": 0,
+    "clusters": 1,
+    "mask_pixels": 851601,
+    "changed_pixels": 851492,
+    "outside_mask_changed": 0
+  },
+  {
+    "index": 53,
+    "file": "016_00.png",
+    "shape": [
+      1336,
+      1600
+    ],
+    "wall_ms": 6907.479,
+    "detector_ms": 737.783,
+    "inpaint_ms": 6160.958,
+    "detector_forward_calls": 1,
+    "detector_forwards_by_model": {
+      "text_segmenter.onnx": 1
+    },
+    "lama_model_runs": 1,
+    "detector_boxes": 1,
+    "accepted_mask_boxes": 1,
+    "smart_fill_regions": 0,
+    "bubble_fast_fill_regions": 0,
+    "clusters": 1,
+    "mask_pixels": 382583,
+    "changed_pixels": 358212,
+    "outside_mask_changed": 0
+  },
+  {
+    "index": 78,
+    "file": "023_03.png",
+    "shape": [
+      1421,
+      1600
+    ],
+    "wall_ms": 6804.381,
+    "detector_ms": 731.276,
+    "inpaint_ms": 6065.7,
+    "detector_forward_calls": 1,
+    "detector_forwards_by_model": {
+      "text_segmenter.onnx": 1
+    },
+    "lama_model_runs": 1,
+    "detector_boxes": 1,
+    "accepted_mask_boxes": 1,
+    "smart_fill_regions": 0,
+    "bubble_fast_fill_regions": 0,
+    "clusters": 1,
+    "mask_pixels": 449245,
+    "changed_pixels": 424763,
+    "outside_mask_changed": 0
+  },
+  {
+    "index": 4,
+    "file": "000_04.png",
+    "shape": [
+      4167,
+      1600
+    ],
+    "wall_ms": 5151.408,
+    "detector_ms": 788.606,
+    "inpaint_ms": 4326.928,
+    "detector_forward_calls": 1,
+    "detector_forwards_by_model": {
+      "text_segmenter.onnx": 1
+    },
+    "lama_model_runs": 1,
+    "detector_boxes": 1,
+    "accepted_mask_boxes": 1,
+    "smart_fill_regions": 0,
+    "bubble_fast_fill_regions": 0,
+    "clusters": 1,
+    "mask_pixels": 957604,
+    "changed_pixels": 955844,
+    "outside_mask_changed": 0
+  },
+  {
+    "index": 110,
+    "file": "034_00.png",
+    "shape": [
+      1948,
+      1600
+    ],
+    "wall_ms": 5000.36,
+    "detector_ms": 731.887,
+    "inpaint_ms": 4261.221,
+    "detector_forward_calls": 1,
+    "detector_forwards_by_model": {
+      "text_segmenter.onnx": 1
+    },
+    "lama_model_runs": 1,
+    "detector_boxes": 1,
+    "accepted_mask_boxes": 1,
+    "smart_fill_regions": 0,
+    "bubble_fast_fill_regions": 0,
+    "clusters": 1,
+    "mask_pixels": 450616,
+    "changed_pixels": 423097,
+    "outside_mask_changed": 0
+  },
+  {
+    "index": 16,
+    "file": "003_01.png",
+    "shape": [
+      4574,
+      1600
+    ],
+    "wall_ms": 4885.354,
+    "detector_ms": 905.131,
+    "inpaint_ms": 3953.968,
+    "detector_forward_calls": 1,
+    "detector_forwards_by_model": {
+      "text_segmenter.onnx": 1
+    },
+    "lama_model_runs": 1,
+    "detector_boxes": 1,
+    "accepted_mask_boxes": 1,
+    "smart_fill_regions": 0,
+    "bubble_fast_fill_regions": 0,
+    "clusters": 1,
+    "mask_pixels": 465828,
+    "changed_pixels": 465765,
+    "outside_mask_changed": 0
+  },
+  {
+    "index": 112,
+    "file": "035_00.png",
+    "shape": [
+      2009,
+      1600
+    ],
+    "wall_ms": 4798.038,
+    "detector_ms": 731.599,
+    "inpaint_ms": 4055.843,
+    "detector_forward_calls": 1,
+    "detector_forwards_by_model": {
+      "text_segmenter.onnx": 1
+    },
+    "lama_model_runs": 1,
+    "detector_boxes": 1,
+    "accepted_mask_boxes": 1,
+    "smart_fill_regions": 0,
+    "bubble_fast_fill_regions": 0,
+    "clusters": 1,
+    "mask_pixels": 451145,
+    "changed_pixels": 423950,
+    "outside_mask_changed": 0
+  },
+  {
+    "index": 69,
+    "file": "020_05.png",
+    "shape": [
+      1769,
+      1600
+    ],
+    "wall_ms": 4635.909,
+    "detector_ms": 716.785,
+    "inpaint_ms": 3909.688,
+    "detector_forward_calls": 1,
+    "detector_forwards_by_model": {
+      "text_segmenter.onnx": 1
+    },
+    "lama_model_runs": 1,
+    "detector_boxes": 1,
+    "accepted_mask_boxes": 1,
+    "smart_fill_regions": 0,
+    "bubble_fast_fill_regions": 0,
+    "clusters": 1,
+    "mask_pixels": 412664,
+    "changed_pixels": 392498,
+    "outside_mask_changed": 0
+  },
+  {
+    "index": 83,
+    "file": "025_01.png",
+    "shape": [
+      1342,
+      1600
+    ],
+    "wall_ms": 4125.89,
+    "detector_ms": 722.097,
+    "inpaint_ms": 3395.196,
+    "detector_forward_calls": 1,
+    "detector_forwards_by_model": {
+      "text_segmenter.onnx": 1
+    },
+    "lama_model_runs": 1,
+    "detector_boxes": 1,
+    "accepted_mask_boxes": 1,
+    "smart_fill_regions": 0,
+    "bubble_fast_fill_regions": 0,
+    "clusters": 1,
+    "mask_pixels": 342010,
+    "changed_pixels": 322709,
+    "outside_mask_changed": 0
+  },
+  {
+    "index": 73,
+    "file": "022_00.png",
+    "shape": [
+      1030,
+      1600
+    ],
+    "wall_ms": 3893.314,
+    "detector_ms": 962.962,
+    "inpaint_ms": 2924.472,
+    "detector_forward_calls": 1,
+    "detector_forwards_by_model": {
+      "text_segmenter.onnx": 1
+    },
+    "lama_model_runs": 1,
+    "detector_boxes": 1,
+    "accepted_mask_boxes": 1,
+    "smart_fill_regions": 0,
+    "bubble_fast_fill_regions": 0,
+    "clusters": 1,
+    "mask_pixels": 295012,
+    "changed_pixels": 281349,
+    "outside_mask_changed": 0
+  },
+  {
+    "index": 11,
+    "file": "002_00.png",
+    "shape": [
+      854,
+      1600
+    ],
+    "wall_ms": 2851.207,
+    "detector_ms": 703.569,
+    "inpaint_ms": 2143.102,
+    "detector_forward_calls": 1,
+    "detector_forwards_by_model": {
+      "text_segmenter.onnx": 1
+    },
+    "lama_model_runs": 1,
+    "detector_boxes": 1,
+    "accepted_mask_boxes": 1,
+    "smart_fill_regions": 0,
+    "bubble_fast_fill_regions": 0,
+    "clusters": 1,
+    "mask_pixels": 216376,
+    "changed_pixels": 208607,
+    "outside_mask_changed": 0
+  },
+  {
+    "index": 49,
+    "file": "015_00.png",
+    "shape": [
+      1680,
+      1600
+    ],
+    "wall_ms": 2644.416,
+    "detector_ms": 906.73,
+    "inpaint_ms": 1729.475,
+    "detector_forward_calls": 1,
+    "detector_forwards_by_model": {
+      "text_segmenter.onnx": 1
+    },
+    "lama_model_runs": 1,
+    "detector_boxes": 1,
+    "accepted_mask_boxes": 1,
+    "smart_fill_regions": 0,
+    "bubble_fast_fill_regions": 0,
+    "clusters": 1,
+    "mask_pixels": 150786,
+    "changed_pixels": 141237,
+    "outside_mask_changed": 0
+  },
+  {
+    "index": 31,
+    "file": "009_01.png",
+    "shape": [
+      4176,
+      1600
+    ],
+    "wall_ms": 2265.058,
+    "detector_ms": 701.917,
+    "inpaint_ms": 1544.833,
+    "detector_forward_calls": 1,
+    "detector_forwards_by_model": {
+      "text_segmenter.onnx": 1
+    },
+    "lama_model_runs": 1,
+    "detector_boxes": 1,
+    "accepted_mask_boxes": 1,
+    "smart_fill_regions": 0,
+    "bubble_fast_fill_regions": 0,
+    "clusters": 1,
+    "mask_pixels": 117362,
+    "changed_pixels": 117280,
+    "outside_mask_changed": 0
+  },
+  {
+    "index": 86,
+    "file": "026_01.png",
+    "shape": [
+      4076,
+      1600
+    ],
+    "wall_ms": 1515.065,
+    "detector_ms": 720.009,
+    "inpaint_ms": 773.656,
+    "detector_forward_calls": 1,
+    "detector_forwards_by_model": {
+      "text_segmenter.onnx": 1
+    },
+    "lama_model_runs": 1,
+    "detector_boxes": 2,
+    "accepted_mask_boxes": 2,
+    "smart_fill_regions": 1,
+    "bubble_fast_fill_regions": 1,
+    "clusters": 1,
+    "mask_pixels": 289578,
+    "changed_pixels": 120851,
+    "outside_mask_changed": 0
+  },
+  {
+    "index": 35,
+    "file": "011_00.png",
+    "shape": [
+      2592,
+      1600
+    ],
+    "wall_ms": 1473.393,
+    "detector_ms": 724.293,
+    "inpaint_ms": 735.481,
+    "detector_forward_calls": 1,
+    "detector_forwards_by_model": {
+      "text_segmenter.onnx": 1
+    },
+    "lama_model_runs": 1,
+    "detector_boxes": 2,
+    "accepted_mask_boxes": 2,
+    "smart_fill_regions": 1,
+    "bubble_fast_fill_regions": 1,
+    "clusters": 1,
+    "mask_pixels": 278287,
+    "changed_pixels": 119261,
+    "outside_mask_changed": 0
+  },
+  {
+    "index": 50,
+    "file": "015_01.png",
+    "shape": [
+      4860,
+      1600
+    ],
+    "wall_ms": 1148.078,
+    "detector_ms": 1006.017,
+    "inpaint_ms": 122.722,
+    "detector_forward_calls": 1,
+    "detector_forwards_by_model": {
+      "text_segmenter.onnx": 1
+    },
+    "lama_model_runs": 0,
+    "detector_boxes": 3,
+    "accepted_mask_boxes": 3,
+    "smart_fill_regions": 3,
+    "bubble_fast_fill_regions": 3,
+    "clusters": 0,
+    "mask_pixels": 1296300,
+    "changed_pixels": 469655,
+    "outside_mask_changed": 0
+  }
+]
