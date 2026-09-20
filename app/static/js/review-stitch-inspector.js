@@ -54,7 +54,7 @@
     const style = document.createElement("style");
     style.id = "review-photopea-tool-styles";
     style.textContent = `
-      body.review-tool-rail-active .app-sidebar > :not(.review-tool-rail){display:none!important}
+      body.review-tool-rail-active{--sidebar-width:52px}\n      body.review-tool-rail-active .app-sidebar > :not(.review-tool-rail){display:none!important}
       .review-tool-rail{display:flex;width:100%;height:100%;min-height:0;flex-direction:column;align-items:center;justify-content:space-between;padding:3px 0}
       .review-tool-group{display:flex;width:100%;flex-direction:column;align-items:center;gap:2px}
       .review-tool-group-bottom{margin-top:auto;padding-top:5px;border-top:1px solid var(--border-subtle)}
@@ -232,6 +232,8 @@
     image.dataset.zoomScale = String(scale);
     stage.style.width = `${Math.max(1, Math.round(width * scale))}px`;
     stage.style.height = `${Math.max(1, Math.round(height * scale))}px`;
+    stage.style.marginTop = `${Math.max(24, Math.round((viewport.clientHeight - height * scale) / 2))}px`;
+    stage.style.marginBottom = "24px";
     if (src) {
       viewport.scrollLeft = Math.max(0, src.x * scale - focus.x);
       viewport.scrollTop = Math.max(0, src.y * scale - focus.y);
@@ -629,7 +631,7 @@
     shell._syncVariantUI = syncVariant;
     const busy = (on, text = "Đang xử lý…") => { workspace.classList.toggle("review-busy", on); [submit, clearMask, size, prev, next, select, clean, rendered, original, zoomOut, zoomIn, one, zoomValue].forEach((el) => el.disabled = on); submit.textContent = on ? text : "Inpaint vùng chọn"; workspace._pageNavigator?.setBusy(on); document.querySelectorAll(".review-rail-tool").forEach((b) => b.disabled = on); if (!on) syncVariant(); };
     const updateCompat = () => { const items = groups().get(sourcePage) || []; const canonical = Number(items[0]?.canonicalIndex ?? 0); compatibility.dataset.pageIndex = String(canonical); workspace.dataset.reviewCanonicalIndex = String(canonical); window.setWorkflowCheckpoint?.("review", canonical); };
-    const rerender = () => { const items = groups().get(sourcePage); if (!items) return; captureSnapshot(shell); workspace.dataset.pendingSourcePage = String(sourcePage); select.value = String(sourcePage); const pos = pages.indexOf(sourcePage); prev.disabled = pos <= 0; next.disabled = pos >= pages.length - 1; updateCompat(); const title = toolbar.querySelector(".review-toolbar-title"); if (title) title.textContent = `Trang ${pos + 1} / ${pages.length} · Xử lý & Biên tập`; syncVariant(); void renderPage(shell, sourcePage, items, signal); };
+    const rerender = () => { const items = groups().get(sourcePage); if (!items) return; captureSnapshot(shell); workspace.dataset.pendingSourcePage = String(sourcePage); select.value = String(sourcePage); const pos = pages.indexOf(sourcePage); prev.disabled = pos <= 0; next.disabled = pos >= pages.length - 1; updateCompat(); const title = toolbar.querySelector(".review-toolbar-title"); if (title) title.textContent = `Sau inpaint · Trang ${pos + 1} / ${pages.length}`; syncVariant(); void renderPage(shell, sourcePage, items, signal); };
     shell._rerender = rerender;
     const selectSource = (nextPage) => { nextPage = Number(nextPage); if (!pages.includes(nextPage) || nextPage === sourcePage) return true; captureSnapshot(shell); clearSelection(shell); sourcePage = nextPage; rerender(); return true; };
     window.selectReviewSourcePage = selectSource; signal.addEventListener("abort", () => { captureSnapshot(shell); if (window.selectReviewSourcePage === selectSource) delete window.selectReviewSourcePage; }, { once: true });

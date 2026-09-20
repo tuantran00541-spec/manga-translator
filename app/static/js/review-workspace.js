@@ -257,6 +257,7 @@
   function setupReviewWorkspace() {
     const previousState = captureReviewWorkspaceState();
     window.cleanupReviewWorkspace?.();
+
     const container = document.getElementById("page-view");
     if (!container) return;
     window.setAppStage?.("review");
@@ -267,7 +268,7 @@
     }
 
     container.replaceChildren();
-    container.className = "review-mode";
+    container.className = "review-mode review-canvas-mode";
 
     const chapterId = window.currentChapterId || "";
     if (reviewLastChapterId !== chapterId) reviewLastChapterId = chapterId;
@@ -276,191 +277,82 @@
     const sourcePages = [...groups.keys()];
     if (!sourcePages.length) return;
 
-    const requestedCanonical = window.initialReviewCanonicalPageIndex ?? window.currentManifest?.workflow?.page_index ?? null;
+    const requestedCanonical = window.initialReviewCanonicalPageIndex
+      ?? window.currentManifest?.workflow?.page_index
+      ?? null;
     const requestedPage = Number.isFinite(Number(requestedCanonical))
       ? window.currentManifest?.pages?.[Number(requestedCanonical)]
       : null;
     const requestedSource = requestedPage
       ? cleanSourcePage(requestedPage, Number(requestedCanonical))
       : sourcePages[0];
-    const previousSource = previousState?.chapterId === chapterId ? previousState.sourcePage : null;
+    const previousSource = previousState?.chapterId === chapterId
+      ? previousState.sourcePage
+      : null;
     const activeSource = sourcePages.includes(previousSource)
       ? previousSource
       : sourcePages.includes(requestedSource)
         ? requestedSource
         : sourcePages[0];
+
     window.initialReviewCanonicalPageIndex = null;
     reapplyFocusedDraft(previousState);
 
+    // Review is now a document canvas, not a slice dashboard. Slices stay an
+    // internal processing detail and are stitched into one source-page image.
     const workspace = document.createElement("div");
-    workspace.className = "review-workspace-shell";
+    workspace.className = "review-workspace-shell review-canvas-only";
     workspace.dataset.pendingSourcePage = String(activeSource);
-    if (previousState?.chapterId === chapterId) workspace._reviewRestoreState = previousState;
+    if (previousState?.chapterId === chapterId) {
+      workspace._reviewRestoreState = previousState;
+    }
 
     const toolbar = document.createElement("div");
-    toolbar.className = "review-sticky-toolbar";
+    toolbar.className = "review-sticky-toolbar review-canvas-commandbar";
+
     const title = document.createElement("div");
     title.className = "review-toolbar-title";
-    title.textContent = `Trang ${sourcePages.indexOf(activeSource) + 1} / ${sourcePages.length} · Xử lý & Biên tập`;
-    const actions = document.createElement("div");
-    actions.className = "review-actions-group";
-    toolbar.append(title, actions);
+    title.textContent = `Sau inpaint · Trang ${sourcePages.indexOf(activeSource) + 1} / ${sourcePages.length}`;
 
-    const layout = document.createElement("div");
-    layout.className = "workbench-stage-grid review-workbench-grid";
-
-    const navItems = sourcePages.map((sourcePage) => {
-      const items = groups.get(sourcePage) || [];
-      const pages = items.map(({ page }) => page).filter(Boolean);
-      const needsReview = pages.some((page) => page.needs_review || page.detection_state === "needs_review" || (page.detection_issues || []).length);
-      const textCount = pages.reduce((sum, page) => sum + (page.text_objects?.length || 0), 0);
-      return {
-        key: sourcePage,
-        label: `Trang ${sourcePage + 1}`,
-        image: pages[0]?.clean || pages[0]?.original || "",
-        meta: textCount ? `${textCount} vùng chữ` : "Chưa có vùng chữ",
-        state: needsReview ? "review" : "ready",
-        stateLabel: needsReview ? "Cần kiểm tra" : "Sẵn sàng",
-      };
-    });
-
-    const navigator = window.createPageNavigator({
-      items: navItems,
-      activeIndex: Math.max(0, sourcePages.indexOf(activeSource)),
-      title: "Trang",
-      ariaLabel: "Điều hướng trang gốc",
-      onSelect: (index) => {
-        const sourcePage = sourcePages[index];
-        workspace.dataset.pendingSourcePage = String(sourcePage);
-        if (typeof window.selectReviewSourcePage === "function") return window.selectReviewSourcePage(sourcePage);
-        return true;
-      },
-    });
-    workspace._pageNavigator = navigator;
-
-    const canvasHost = document.createElement("div");
-    canvasHost.className = "review-canvas-host workbench-canvas-column";
-
-    const inspector = document.createElement("aside");
-    inspector.className = "context-inspector review-inspector";
-    inspector.setAttribute("aria-label", "Công cụ, OCR, typography và kiểm tra chất lượng");
-    const inspectorHeading = document.createElement("div");
-    inspectorHeading.className = "context-inspector-heading";
-    inspectorHeading.innerHTML = "<strong>Công cụ & Thuộc tính</strong>";
-
-    const gestureSection = document.createElement("section");
-    gestureSection.className = "inspector-section review-gesture-section";
+    // Keep only compact document actions. The old thumbnail navigator,
+    // right-hand inspector, QC dashboard and slice cards are intentionally gone.
     const controlsSlot = document.createElement("div");
-    controlsSlot.className = "review-stitched-controls-slot";
-    gestureSection.appendChild(controlsSlot);
+    controlsSlot.className = "review-stitched-controls-slot review-canvas-controls";
     workspace._stitchedControlsSlot = controlsSlot;
 
-    const aiSettingsStatus = createAIProviderSettings();
-    const aiStatus = document.createElement("span");
-    aiStatus.className = "review-ai-status";
-    const cleanupAIStatus = bindAIStatus(aiSettingsStatus, aiStatus);
+    const actions = document.createElement("div");
+    actions.className = "review-actions-group";
 
-    const help = document.createElement("details");
-    help.className = "ui-disclosure review-help";
-    const helpSummary = document.createElement("summary");
-    helpSummary.className = "ui-btn ui-btn-ghost";
-    helpSummary.textContent = "Hướng dẫn";
-    const helpPanel = document.createElement("div");
-    helpPanel.className = "review-help-panel";
-    helpPanel.innerHTML = "<p>Dùng thanh công cụ bên trái để chọn vùng chữ, inpaint, pan và zoom. Rectangle/Ellipse tạo vùng OCR trực tiếp trên trang.</p>";
-    help.append(helpSummary, helpPanel);
+    toolbar.append(title, controlsSlot, actions);
 
-    const editorialSection = document.createElement("section");
-    editorialSection.className = "inspector-section review-editorial-preflight";
-    const editorialTitle = document.createElement("strong");
-    editorialTitle.textContent = "HIGH-RISK DEFERRED";
-    const editorialSummary = document.createElement("span");
-    editorialSummary.className = "review-editorial-preflight-summary";
-    editorialSummary.textContent = "Đang kiểm tra story-text coverage…";
-    const editorialList = document.createElement("div");
-    editorialList.className = "review-editorial-preflight-list";
-    const editorialRefresh = document.createElement("button");
-    editorialRefresh.type = "button";
-    editorialRefresh.className = "ui-btn ui-btn-ghost";
-    editorialRefresh.textContent = "Kiểm tra lại";
+    const layout = document.createElement("div");
+    layout.className = "review-workbench-grid review-canvas-only-layout";
 
-    const openEditorialPage = (pageIndex) => {
-      const page = window.currentManifest?.pages?.[Number(pageIndex)];
-      if (!page) return;
-      const sourcePage = cleanSourcePage(page, Number(pageIndex));
-      workspace.dataset.pendingSourcePage = String(sourcePage);
-      if (typeof window.selectReviewSourcePage === "function") {
-        void window.selectReviewSourcePage(sourcePage);
-      }
-    };
+    const canvasHost = document.createElement("div");
+    canvasHost.className = "review-canvas-host review-canvas-only-host";
+    layout.appendChild(canvasHost);
 
-    const refreshEditorialPreflight = async () => {
-      editorialRefresh.disabled = true;
-      try {
-        const response = await fetch("/api/export/" + encodeURIComponent(chapterId) + "/preflight");
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(data.detail || ("HTTP " + response.status));
-        const blockers = Array.isArray(data.blockers) ? data.blockers : [];
-        const highRisk = Array.isArray(data.high_risk_regions) ? data.high_risk_regions : [];
-        const unresolvedRisk = highRisk.filter((item) => !item?.cleanup_resolved);
-        editorialSummary.textContent = data.ok
-          ? ("PASS · " + (data.story_candidate_count || 0) + " story candidates đã account")
-          : ("BLOCKED · " + (data.blocker_count || blockers.length) + " blocker · " + unresolvedRisk.length + " high-risk chưa xử lý");
-        editorialSummary.classList.toggle("ready", Boolean(data.ok));
-
-        editorialList.replaceChildren();
-        const rows = blockers.slice(0, 12);
-        rows.forEach((item) => {
-          const button = document.createElement("button");
-          button.type = "button";
-          button.className = "ui-btn ui-btn-ghost review-editorial-blocker";
-          const target = item.box_id || item.object_id || "region";
-          button.textContent = "p" + (Number(item.page_index || 0) + 1) + " · " + (item.kind || "review") + " · " + target;
-          button.title = item.reason || item.deferred_reason || "Mở vùng cần kiểm tra";
-          button.addEventListener("click", () => openEditorialPage(item.page_index));
-          editorialList.appendChild(button);
-        });
-        if (blockers.length > rows.length) {
-          const more = document.createElement("span");
-          more.textContent = "+" + (blockers.length - rows.length) + " blocker khác";
-          editorialList.appendChild(more);
-        }
-      } catch (err) {
-        editorialSummary.textContent = "Không đọc được preflight: " + err.message;
-        editorialSummary.classList.remove("ready");
-      } finally {
-        editorialRefresh.disabled = false;
-      }
-    };
-    editorialRefresh.addEventListener("click", () => void refreshEditorialPreflight());
-    editorialSection.append(editorialTitle, editorialSummary, editorialList, editorialRefresh);
-    void refreshEditorialPreflight();
-
-    const helpSection = document.createElement("section");
-    helpSection.className = "inspector-section review-help-section";
-    helpSection.append(aiStatus, help);
-    inspector.append(inspectorHeading, gestureSection, editorialSection, helpSection);
-
-    layout.append(navigator.element, canvasHost, inspector);
     workspace.append(toolbar, layout);
     container.appendChild(workspace);
 
+    // Settings remain globally available, but no settings/QC panel is mounted
+    // beside the image.
+    createAIProviderSettings();
+
     window.cleanupReviewWorkspace = () => {
-      cleanupAIStatus?.();
       window._reviewStitchAbort?.abort();
-      navigator?.setBusy(false);
       if (window._reviewKeyDownHandler) {
         window.removeEventListener("keydown", window._reviewKeyDownHandler);
         window._reviewKeyDownHandler = null;
       }
     };
 
+    // Explicitly clear the old three-panel workbench controls in the app header.
     window.setupWorkbenchPanels?.("review");
-    // The document canvas owns the base toolbar. Mount it first so OCR/QC can
-    // append their commands instead of being erased by the canvas action mount.
+
+    // The stitch inspector owns the single document: stitch, pan, zoom, tools
+    // and page switching all happen inside the central canvas.
     window.mountStitchInspector?.();
-    window.mountChapterOCR?.();
-    window.mountChapterQC?.();
   }
 
   window.renderReview = setupReviewWorkspace;

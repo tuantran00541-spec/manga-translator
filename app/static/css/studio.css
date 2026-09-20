@@ -274,3 +274,123 @@
     #toast-container { right: 8px; bottom: 8px; width: calc(100vw - 16px); }
   }
 }
+
+
+  /* Review canvas-only document mode */
+  .review-canvas-only {
+    grid-template-rows: auto minmax(0, 1fr);
+    min-width: 0;
+    min-height: 0;
+    height: 100%;
+    background: var(--surface-canvas-deep);
+  }
+  .review-canvas-commandbar {
+    min-height: 44px;
+    justify-content: flex-start;
+    gap: 10px;
+    padding: 6px 10px;
+  }
+  .review-canvas-commandbar .review-toolbar-title {
+    flex: 0 0 auto;
+    padding-right: 4px;
+    white-space: nowrap;
+  }
+  .review-canvas-controls {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 6px;
+  }
+  .review-canvas-commandbar .review-actions-group {
+    margin-left: auto;
+  }
+  .review-canvas-only-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    min-width: 0;
+    min-height: 0;
+    height: 100%;
+    overflow: hidden;
+    background: var(--surface-canvas-deep);
+  }
+  .review-canvas-only-host {
+    display: grid !important;
+    min-width: 0;
+    min-height: 0;
+    height: 100%;
+    overflow: hidden !important;
+    padding: 0 !important;
+    place-items: stretch !important;
+    background: var(--surface-canvas-deep);
+  }
+  .review-canvas-only .review-card-compat {
+    display: none !important;
+  }
+  .review-canvas-only .review-document-shell {
+    display: grid;
+    grid-template-rows: auto auto auto minmax(0, 1fr);
+    width: 100%;
+    max-width: none;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+    border: 0;
+    border-radius: 0;
+    background: var(--surface-canvas-deep);
+    box-shadow: none;
+  }
+  .review-canvas-only .review-document-toolbar {
+    min-height: 40px;
+    padding: 5px 8px;
+    border-bottom: 1px solid var(--border-subtle);
+    background: var(--surface-panel);
+  }
+  .review-canvas-only .review-stitched-meta,
+  .review-canvas-only .review-stitched-warning {
+    padding: 5px 10px;
+    border-bottom: 1px solid var(--border-subtle);
+    background: var(--surface-panel);
+    color: var(--text-muted);
+    font-size: 10px;
+  }
+  .review-canvas-only .review-document-viewport {
+    min-width: 0;
+    min-height: 0;
+    height: 100%;
+    overflow: auto;
+    padding: 24px;
+    background: var(--surface-canvas-deep);
+    text-align: initial;
+    overscroll-behavior: contain;
+  }
+  .review-canvas-only .review-stitched-zoom-stage {
+    position: relative;
+    margin-right: auto;
+    margin-left: auto;
+  }
+  .review-canvas-only .review-stitched-image {
+    transform-origin: top left;
+    background: #fff;
+    box-shadow: 0 14px 40px rgba(0, 0, 0, .28);
+  }
+  .review-canvas-only .review-stitched-controls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .review-canvas-only .review-stitched-controls .brush-size-control {
+    min-width: 150px;
+  }
+
+  @media (max-width: 820px) {
+    .review-canvas-commandbar {
+      flex-wrap: wrap;
+    }
+    .review-canvas-controls {
+      order: 3;
+      width: 100%;
+    }
+    .review-canvas-only .review-document-viewport {
+      padding: 12px;
+    }
+  }
