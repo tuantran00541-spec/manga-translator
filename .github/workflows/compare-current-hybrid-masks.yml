@@ -1,0 +1,125 @@
+name: Compare current vs hybrid full masks
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["experiment/one-shot-cleanup"]
+    paths:
+      - .github/workflows/compare-current-hybrid-masks.yml
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  compare:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install mask compare dependencies
+        run: python -m pip install numpy==1.26.4 Pillow==10.4.0 opencv-python-headless==4.10.0.84
+
+      - name: Download partial current artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: shadow-slave-ch1-dumb-detector-normal-inpaint
+          path: teacher
+          github-token: ${{ github.token }}
+          repository: tuantran00541-spec/manga-translator
+          run-id: 35504039971
+
+      - name: Download complete hybrid artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: shadow-slave-ch1-hybrid-only
+          path: hybrid
+          github-token: ${{ github.token }}
+          repository: tuantran00541-spec/manga-translator
+          run-id: 35505363725
+
+      - name: Compare retained masks
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import cv2, json, numpy as np
+
+          teacher = Path("teacher/current")
+          hybrid = Path("hybrid/hybrid")
+          current_paths = sorted(
+              teacher.glob("*-mask.png"),
+              key=lambda p: int(p.name.split("-",1)[0]),
+          )
+          rows=[]
+          for cp in current_paths:
+              idx=int(cp.name.split("-",1)[0])
+              hp=hybrid/f"{idx:02d}-mask.png"
+              if not hp.exists():
+                  raise RuntimeError(f"missing hybrid mask {idx}")
+              a=cv2.imread(str(cp), cv2.IMREAD_GRAYSCALE)>127
+              b=cv2.imread(str(hp), cv2.IMREAD_GRAYSCALE)>127
+              if a.shape != b.shape:
+                  raise RuntimeError(f"shape mismatch {idx}: {a.shape} {b.shape}")
+              cur=int(np.count_nonzero(a))
+              hyb=int(np.count_nonzero(b))
+              inter=int(np.count_nonzero(a & b))
+              current_only=(a & ~b).astype(np.uint8)
+              n, labels, stats, cents=cv2.connectedComponentsWithStats(current_only, 8)
+              comps=[]
+              for j in range(1,n):
+                  x,y,w,h,area=map(int,stats[j])
+                  if area>=25:
+                      comps.append({"x":x,"y":y,"w":w,"h":h,"area":area})
+              comps.sort(key=lambda c:c["area"], reverse=True)
+              row={
+                  "index":idx,
+                  "current_pixels":cur,
+                  "hybrid_pixels":hyb,
+                  "intersection":inter,
+                  "hybrid_coverage_of_current": inter/max(1,cur),
+                  "current_coverage_of_hybrid": inter/max(1,hyb),
+                  "current_only_pixels":cur-inter,
+                  "largest_current_only_component": comps[0] if comps else None,
+                  "current_only_component_count":len(comps),
+              }
+              rows.append(row)
+
+          zero_miss=[r for r in rows if r["current_pixels"]>0 and r["hybrid_pixels"]==0]
+          strong=[
+              r for r in rows
+              if r["current_pixels"]>0
+              and (
+                  r["hybrid_coverage_of_current"]<0.80
+                  or ((r["largest_current_only_component"] or {}).get("area",0)>=5000)
+              )
+          ]
+          ranked=sorted(
+              rows,
+              key=lambda r: (
+                  r["hybrid_coverage_of_current"],
+                  -((r["largest_current_only_component"] or {}).get("area",0)),
+              )
+          )
+          summary={
+              "compared_slices":len(rows),
+              "indices":[r["index"] for r in rows],
+              "zero_mask_miss_count":len(zero_miss),
+              "zero_mask_miss_slices":[r["index"] for r in zero_miss],
+              "strong_mismatch_count":len(strong),
+              "strong_mismatch_slices":[r["index"] for r in strong],
+              "mean_hybrid_coverage_of_current":sum(r["hybrid_coverage_of_current"] for r in rows)/max(1,len(rows)),
+              "worst_30":ranked[:30],
+          }
+          print(json.dumps(summary, indent=2))
+          Path("mask-compare.json").write_text(json.dumps({"summary":summary,"rows":rows}, indent=2)+"\n")
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: current-vs-hybrid-mask-compare
+          path: mask-compare.json
+          retention-days: 7
