@@ -229,17 +229,36 @@ jobs:
               cache=True,
               patience=0,
               plots=False,
-              project=str(root / "runs"),
+              project=str((root / "runs").resolve()),
               name="student",
               exist_ok=True,
               verbose=True,
           )
-          best = root / "runs" / "student" / "weights" / "best.pt"
-          last = root / "runs" / "student" / "weights" / "last.pt"
+          import json
+          import shutil
+
+          save_dir = Path(model.trainer.save_dir)
+          best = save_dir / "weights" / "best.pt"
+          last = save_dir / "weights" / "last.pt"
           selected = best if best.exists() else last
           if not selected.exists():
-              raise RuntimeError("training did not produce student weights")
-          print("student_weights", selected, selected.stat().st_size)
+              raise RuntimeError(
+                  f"training did not produce student weights under {save_dir}"
+              )
+          target = root / "yolo26-text-seg.pt"
+          shutil.copy2(selected, target)
+          results_csv = save_dir / "results.csv"
+          if results_csv.exists():
+              shutil.copy2(results_csv, root / "training-results.csv")
+          (root / "training-meta.json").write_text(
+              json.dumps({
+                  "save_dir": str(save_dir),
+                  "selected": str(selected),
+                  "target": str(target),
+                  "bytes": target.stat().st_size,
+              }, indent=2) + "\n"
+          )
+          print("student_weights", target, target.stat().st_size)
           PY
 
       - name: Export student ONNX 1024
@@ -251,9 +270,9 @@ jobs:
           from ultralytics import YOLO
 
           root = Path(os.environ["ROOT"])
-          best = root / "runs" / "student" / "weights" / "best.pt"
-          last = root / "runs" / "student" / "weights" / "last.pt"
-          selected = best if best.exists() else last
+          selected = root / "yolo26-text-seg.pt"
+          if not selected.exists():
+              raise RuntimeError(f"missing trained student {selected}")
           model = YOLO(str(selected))
           exported = Path(model.export(
               format="onnx",
@@ -389,5 +408,7 @@ jobs:
             benchmark-results/yolo26-distill/teacher-labels.json
             benchmark-results/yolo26-distill/student-report.json
             benchmark-results/yolo26-distill/yolo26-text-seg.onnx
-            benchmark-results/yolo26-distill/runs/student/results.csv
+            benchmark-results/yolo26-distill/yolo26-text-seg.pt
+            benchmark-results/yolo26-distill/training-results.csv
+            benchmark-results/yolo26-distill/training-meta.json
           retention-days: 7
