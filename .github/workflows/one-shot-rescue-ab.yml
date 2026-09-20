@@ -1,0 +1,164 @@
+name: One-shot rescue A/B benchmark
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["experiment/one-shot-cleanup"]
+    paths:
+      - scripts/benchmark_one_shot_cleanup.py
+      - app/one_shot_cleanup.py
+      - .github/workflows/one-shot-rescue-ab.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: one-shot-rescue-ab
+  cancel-in-progress: true
+
+jobs:
+  ab:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 35
+    env:
+      PYTHONUNBUFFERED: "1"
+      CHAPTER_URL: "https://asurascans.com/comics/shadow-slave-6f7fe6eb/chapter/1"
+      RAW_DIR: "benchmark-results/rescue-ab/input"
+      SLICE_DIR: "benchmark-results/rescue-ab/slices"
+      RESULT_DIR: "benchmark-results/rescue-ab"
+      MANGA_USE_DYNAMIC_LAMA: "1"
+      MANGA_ORT_PROVIDER: openvino
+      MANGA_ORT_REQUIRE_PROVIDER: "1"
+      MANGA_ORT_OPENVINO_SCOPE: detectors
+      MANGA_ORT_OPENVINO_THREADS: "2"
+      MANGA_ORT_OPENVINO_STREAMS: "1"
+      MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install bounded benchmark dependencies
+        run: |
+          python -m pip install numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 onnxruntime-openvino==1.24.1 psutil==6.1.1 loguru==0.7.2 requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 playwright==1.47.0 fastapi==0.115.0 pydantic==2.9.2 filelock==3.16.1 threadpoolctl==3.6.0
+
+      - name: Restore benchmark models
+        id: models
+        uses: actions/cache@v4
+        with:
+          path: |
+            models/*.onnx
+            models/.e2e-provenance.json
+          key: processing-profile-models-b224548-v1
+
+      - name: Read pinned existing model provisioner
+        if: ${{ steps.models.outputs.cache-hit != 'true' }}
+        uses: actions/checkout@v4
+        with:
+          ref: b22454827f8190655d7070b80eb20c2550beadfa
+          path: benchmark-bootstrap
+          sparse-checkout: scripts/provision_real_e2e_models.py
+          sparse-checkout-cone-mode: false
+
+      - name: Provision public models with recorded hashes
+        if: ${{ steps.models.outputs.cache-hit != 'true' }}
+        run: |
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple torch==2.5.1+cpu torchvision==0.20.1+cpu
+          python -m pip install --no-deps ultralytics==8.3.221 onnx==1.17.0 onnxslim==0.1.71
+          python -m pip install numpy==1.26.4 sympy==1.13.1 PyYAML==6.0.2 scipy==1.14.1 tqdm==4.67.1 matplotlib==3.9.2 pandas==2.2.3 py-cpuinfo==9.0.0 ml_dtypes==0.5.3 colorama==0.4.6 polars==1.33.1 ultralytics-thop==2.0.17
+          python benchmark-bootstrap/scripts/provision_real_e2e_models.py
+          cp benchmark-bootstrap/models/*.onnx models/
+          cp benchmark-bootstrap/models/.e2e-provenance.json models/
+
+      - name: Download chapter once
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from app.downloader.registry import download_chapter
+
+          raw = Path(os.environ["RAW_DIR"])
+          raw.mkdir(parents=True, exist_ok=True)
+          paths = download_chapter(os.environ["CHAPTER_URL"], raw)
+          if len(paths) < 4:
+              raise RuntimeError(f"downloaded only {len(paths)} images")
+          print("downloaded_images", len(paths))
+          PY
+
+      - name: Base one-shot — 32 slices
+        run: |
+          python scripts/benchmark_one_shot_cleanup.py             --mode simple             --raw-dir "$RAW_DIR"             --slice-dir "$SLICE_DIR"             --limit 32             --evidence-stride 32             --rescue-conf-threshold 0.20             --output "$RESULT_DIR/base.json"             --evidence-dir "$RESULT_DIR/base"
+
+      - name: Same-output rescue — same 32 slices
+        run: |
+          python scripts/benchmark_one_shot_cleanup.py             --mode simple             --raw-dir "$RAW_DIR"             --slice-dir "$SLICE_DIR"             --limit 32             --evidence-stride 32             --rescue-conf-threshold 0.12             --output "$RESULT_DIR/rescue.json"             --evidence-dir "$RESULT_DIR/rescue"
+
+      - name: Compare controlled A/B
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+
+          root = Path(os.environ["RESULT_DIR"])
+          base = json.loads((root / "base.json").read_text())
+          rescue = json.loads((root / "rescue.json").read_text())
+
+          assert base["files"] == rescue["files"]
+          assert int(base["detector_forward_calls"]) == int(base["sample_count"])
+          assert int(rescue["detector_forward_calls"]) == int(rescue["sample_count"])
+          assert int(base["outside_mask_changed"]) == 0
+          assert int(rescue["outside_mask_changed"]) == 0
+
+          def ms(obj, key):
+              return float(obj[key])
+
+          result = {
+              "slice_count": int(base["sample_count"]),
+              "base_wall_s": round(ms(base, "sum_page_wall_ms") / 1000.0, 3),
+              "rescue_wall_s": round(ms(rescue, "sum_page_wall_ms") / 1000.0, 3),
+              "wall_overhead_pct": round(
+                  (ms(rescue, "sum_page_wall_ms") / max(1.0, ms(base, "sum_page_wall_ms")) - 1.0) * 100.0,
+                  3,
+              ),
+              "base_detector_s": round(ms(base, "sum_detector_ms") / 1000.0, 3),
+              "rescue_detector_s": round(ms(rescue, "sum_detector_ms") / 1000.0, 3),
+              "base_inpaint_s": round(ms(base, "sum_inpaint_ms") / 1000.0, 3),
+              "rescue_inpaint_s": round(ms(rescue, "sum_inpaint_ms") / 1000.0, 3),
+              "base_lama_runs": int(base["lama_model_runs"]),
+              "rescue_lama_runs": int(rescue["lama_model_runs"]),
+              "base_rescue_slices": int(base.get("low_conf_rescue_slices", 0)),
+              "rescue_rescue_slices": int(rescue.get("low_conf_rescue_slices", 0)),
+              "mask_pixels_delta": int(rescue["mask_pixels"]) - int(base["mask_pixels"]),
+              "changed_pixels_delta": int(rescue["changed_pixels"]) - int(base["changed_pixels"]),
+          }
+          (root / "comparison.json").write_text(json.dumps(result, indent=2) + "\n")
+          print(json.dumps(result, indent=2))
+
+          lines = [
+              "## Controlled one-shot rescue A/B",
+              "",
+              f"**Slices:** {result['slice_count']}",
+              f"**Base wall:** {result['base_wall_s']:.2f}s",
+              f"**Rescue wall:** {result['rescue_wall_s']:.2f}s",
+              f"**Overhead:** {result['wall_overhead_pct']:+.2f}%",
+              f"**Base detector:** {result['base_detector_s']:.2f}s",
+              f"**Rescue detector:** {result['rescue_detector_s']:.2f}s",
+              f"**Base inpaint:** {result['base_inpaint_s']:.2f}s",
+              f"**Rescue inpaint:** {result['rescue_inpaint_s']:.2f}s",
+              f"**Rescue slices:** {result['rescue_rescue_slices']}",
+              f"**LaMa:** {result['base_lama_runs']} → {result['rescue_lama_runs']}",
+              f"**Mask delta:** {result['mask_pixels_delta']}",
+          ]
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as f:
+              f.write("\n".join(lines) + "\n")
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: one-shot-rescue-ab
+          path: benchmark-results/rescue-ab/
+          retention-days: 7
