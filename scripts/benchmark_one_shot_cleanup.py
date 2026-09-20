@@ -6,12 +6,13 @@ current
     Current main detector core + current adaptive inpainter.
 
 simple
-    One text-segmenter forward over the whole slice. If and only if that pass
-    produces no verified mask, retry the same full slice once at lower
-    confidence. Then use the existing AdaptiveFastInpainter unchanged.
+    One text-segmenter ONNX forward over the whole slice. The captured outputs
+    are decoded first at the normal confidence threshold; only when that yields
+    no verified mask are the same tensors decoded again at the lower rescue
+    threshold. Then the existing AdaptiveFastInpainter runs unchanged.
 
 The simple mode still avoids bubble detector, recovery, residue verification
-and TTA. The bounded retry exists only to recover zero-box tail misses.
+and TTA. Rescue adds no second model inference.
 """
 from __future__ import annotations
 
