@@ -30,6 +30,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from app.detector.bubble_detector import YoloDetector
+from app.one_shot_cleanup import OneShotTextMaskDetector
 from app.downloader.slicer import slice_image
 from app.image_io import read_image
 
@@ -84,18 +85,27 @@ class ForwardCounter:
     def __init__(self):
         self.counts = Counter()
         self.lock = threading.Lock()
-        self.original = YoloDetector._detect_single_plain
+        self.original_yolo = YoloDetector._detect_single_plain
+        self.original_one_shot = OneShotTextMaskDetector._run_session
 
     def install(self) -> None:
         counter = self
-        original = self.original
+        original_yolo = self.original_yolo
+        original_one_shot = self.original_one_shot
 
-        def counted(detector, image, offset_x, offset_y):
+        def counted_yolo(detector, image, offset_x, offset_y):
             with counter.lock:
                 counter.counts[str(getattr(detector, "source_model", "unknown"))] += 1
-            return original(detector, image, offset_x, offset_y)
+            return original_yolo(detector, image, offset_x, offset_y)
 
-        YoloDetector._detect_single_plain = counted
+        def counted_one_shot(one_shot, blob):
+            with counter.lock:
+                source = str(getattr(one_shot.detector, "source_model", "text_segmenter.onnx"))
+                counter.counts[source] += 1
+            return original_one_shot(one_shot, blob)
+
+        YoloDetector._detect_single_plain = counted_yolo
+        OneShotTextMaskDetector._run_session = counted_one_shot
 
     def snapshot(self) -> Counter:
         with self.lock:
