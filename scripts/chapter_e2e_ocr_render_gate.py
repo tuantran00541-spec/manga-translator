@@ -247,7 +247,7 @@ def run(url: str, output: Path, *, workers: int, max_render_pages: int) -> dict:
     pipeline = OptimizedChapterPipeline()
     chapter_id = hashlib.sha256(
         f"chapter-e2e:{url}:{os.getenv('GITHUB_RUN_ID', time.time_ns())}".encode()
-    ).hexdigest()[:10]
+    ).hexdigest()[:8]
     report: dict = {
         "source_sha": os.getenv("GITHUB_SHA"),
         "run_id": os.getenv("GITHUB_RUN_ID"),
