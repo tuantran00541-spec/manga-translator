@@ -150,6 +150,39 @@ def _exercise_desktop(page: Page) -> None:
     page.locator('.sidebar-link[data-route="home"]').click()
     expect(page.locator("#home-view")).to_be_visible()
     page.locator('.sidebar-link[data-stage="review"]').click()
+    nav_state = page.evaluate(
+        """() => {
+          const pv = document.getElementById('page-view');
+          const landing = document.getElementById('landing-view');
+          const ws = document.querySelector('.review-workspace-shell');
+          const chain = [];
+          let node = ws;
+          while (node && chain.length < 6) {
+            const style = getComputedStyle(node);
+            chain.push({
+              tag: node.tagName,
+              id: node.id || '',
+              cls: node.className || '',
+              hidden: !!node.hidden,
+              display: style.display,
+              visibility: style.visibility,
+              width: node.getBoundingClientRect().width,
+              height: node.getBoundingClientRect().height,
+            });
+            node = node.parentElement;
+          }
+          return {
+            stage: document.body.dataset.appStage || '',
+            hash: location.hash,
+            pageViewHidden: !!pv?.hidden,
+            pageViewDisplay: pv ? getComputedStyle(pv).display : null,
+            landingHidden: !!landing?.hidden,
+            workspaceConnected: !!ws?.isConnected,
+            chain,
+          };
+        }"""
+    )
+    print("desktop navigation:", json.dumps(nav_state, sort_keys=True))
     _wait_for_review(page)
 
     # Repeated mounts must not retain duplicate observers/workspaces.
