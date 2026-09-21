@@ -98,6 +98,190 @@ def _clamped_detector_bounds(
     )
 
 
+def _box_region(box: dict) -> dict | None:
+    try:
+        x1, y1, x2, y2 = (
+            int(box["x1"]),
+            int(box["y1"]),
+            int(box["x2"]),
+            int(box["y2"]),
+        )
+    except (KeyError, TypeError, ValueError):
+        return None
+    if x1 >= x2 or y1 >= y2:
+        return None
+    return {"x1": x1, "y1": y1, "x2": x2, "y2": y2}
+
+
+def _ocr_text_region(
+    image_shape: tuple[int, ...],
+    crop_bounds: tuple[int, int, int, int],
+    result: object | None,
+    box: dict,
+) -> dict | None:
+    h, w = image_shape[:2]
+    text_bounds = getattr(result, "text_bounds", None) if result is not None else None
+    input_shape = getattr(result, "input_shape", None) if result is not None else None
+    if text_bounds and input_shape:
+        try:
+            prepared_h = max(1.0, float(input_shape[0]))
+            prepared_w = max(1.0, float(input_shape[1]))
+            tx1, ty1, tx2, ty2 = (float(value) for value in text_bounds)
+            cx1, cy1, cx2, cy2 = crop_bounds
+            crop_w = max(1.0, float(cx2 - cx1))
+            crop_h = max(1.0, float(cy2 - cy1))
+            x1 = int(round(cx1 + tx1 * crop_w / prepared_w))
+            y1 = int(round(cy1 + ty1 * crop_h / prepared_h))
+            x2 = int(round(cx1 + tx2 * crop_w / prepared_w))
+            y2 = int(round(cy1 + ty2 * crop_h / prepared_h))
+            x1, y1 = max(0, min(w, x1)), max(0, min(h, y1))
+            x2, y2 = max(x1, min(w, x2)), max(y1, min(h, y2))
+            if x1 < x2 and y1 < y2:
+                return {"x1": x1, "y1": y1, "x2": x2, "y2": y2}
+        except (TypeError, ValueError, IndexError):
+            pass
+    region = _box_region(box)
+    if region is None:
+        return None
+    region["x1"] = max(0, min(w, region["x1"]))
+    region["y1"] = max(0, min(h, region["y1"]))
+    region["x2"] = max(region["x1"], min(w, region["x2"]))
+    region["y2"] = max(region["y1"], min(h, region["y2"]))
+    return region if region["x1"] < region["x2"] and region["y1"] < region["y2"] else None
+
+
+def _rgb_hex_from_bgr(values: np.ndarray) -> str | None:
+    if values.size == 0:
+        return None
+    median = np.median(values.reshape(-1, 3), axis=0)
+    b, g, r = (int(np.clip(round(float(value)), 0, 255)) for value in median)
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
+def _sample_source_text_color(
+    image: np.ndarray,
+    box: dict,
+    text_region: dict | None,
+) -> str | None:
+    if image is None or image.size == 0:
+        return None
+
+    # Verified text-segmenter masks are the strongest colour authority because
+    # they isolate glyph pixels instead of bubble/background pixels.
+    if str(box.get("source_role") or "").strip().lower() == "text_segmenter":
+        region = _box_region(box)
+        raw_mask = box.get("mask")
+        mask = raw_mask if isinstance(raw_mask, np.ndarray) else decode_mask_value(raw_mask)
+        if region is not None and mask is not None:
+            expected = (region["y2"] - region["y1"], region["x2"] - region["x1"])
+            if mask.shape == expected:
+                patch = image[
+                    region["y1"]:region["y2"],
+                    region["x1"]:region["x2"],
+                ]
+                pixels = patch[mask > 127]
+                if pixels.ndim == 2 and pixels.shape[0] >= 8:
+                    sampled = _rgb_hex_from_bgr(pixels)
+                    if sampled:
+                        return sampled
+
+    if not isinstance(text_region, dict):
+        return None
+    x1, y1, x2, y2 = (
+        int(text_region["x1"]),
+        int(text_region["y1"]),
+        int(text_region["x2"]),
+        int(text_region["y2"]),
+    )
+    roi = image[y1:y2, x1:x2]
+    if roi.size == 0 or min(roi.shape[:2]) < 2:
+        return None
+
+    # Fallback for OCR engines without a glyph mask: estimate the surrounding
+    # background from the region edge, then keep pixels most different from it.
+    lab = cv2.cvtColor(roi, cv2.COLOR_BGR2LAB).astype(np.float32)
+    edge = max(1, min(roi.shape[:2]) // 8)
+    border = np.concatenate(
+        [
+            lab[:edge].reshape(-1, 3),
+            lab[-edge:].reshape(-1, 3),
+            lab[:, :edge].reshape(-1, 3),
+            lab[:, -edge:].reshape(-1, 3),
+        ],
+        axis=0,
+    )
+    background = np.median(border, axis=0)
+    distance = np.linalg.norm(lab - background, axis=2)
+    percentile = float(np.percentile(distance, 70.0))
+    threshold = max(12.0, percentile)
+    foreground = roi[distance >= threshold]
+    if foreground.ndim != 2 or foreground.shape[0] < 8:
+        flat = distance.reshape(-1)
+        count = min(flat.size, max(8, flat.size // 4))
+        if count <= 0:
+            return None
+        indices = np.argpartition(flat, -count)[-count:]
+        foreground = roi.reshape(-1, 3)[indices]
+    return _rgb_hex_from_bgr(foreground)
+
+
+def _source_font_size(
+    crop_bounds: tuple[int, int, int, int],
+    result: object | None,
+    text_region: dict | None,
+    region_count: int,
+) -> int | None:
+    if result is not None:
+        hint = getattr(result, "font_size_hint", None)
+        input_shape = getattr(result, "input_shape", None)
+        if hint is not None and input_shape:
+            try:
+                cx1, cy1, cx2, cy2 = crop_bounds
+                prepared_h = max(1.0, float(input_shape[0]))
+                prepared_w = max(1.0, float(input_shape[1]))
+                orientation = str(getattr(result, "orientation", "horizontal") or "horizontal").lower()
+                scale = (
+                    max(1.0, float(cx2 - cx1)) / prepared_w
+                    if orientation == "vertical"
+                    else max(1.0, float(cy2 - cy1)) / prepared_h
+                )
+                size = int(round(float(hint) * scale))
+                if size > 0:
+                    return max(4, min(512, size))
+            except (TypeError, ValueError, IndexError):
+                pass
+
+    if isinstance(text_region, dict):
+        height = max(1, int(text_region["y2"]) - int(text_region["y1"]))
+        lines = max(1, int(region_count or 1))
+        return max(4, min(512, int(round(height / lines))))
+    return None
+
+
+def _visual_text_metadata(
+    image: np.ndarray,
+    box: dict,
+    crop_bounds: tuple[int, int, int, int],
+    result: object | None,
+    *,
+    text: str,
+    region_count: int,
+) -> dict:
+    if not str(text or "").strip():
+        return {}
+    text_region = _ocr_text_region(image.shape, crop_bounds, result, box)
+    color = _sample_source_text_color(image, box, text_region)
+    font_size = _source_font_size(crop_bounds, result, text_region, region_count)
+    metadata: dict = {}
+    if text_region is not None:
+        metadata["text_region"] = text_region
+    if color:
+        metadata["text_color"] = color
+    if font_size is not None:
+        metadata["font_size"] = font_size
+    return metadata
+
+
 def _ocr_crop_bounds(
     image_shape: tuple[int, ...], box: dict
 ) -> tuple[int, int, int, int]:
@@ -705,6 +889,9 @@ class OCRService:
             "coverage": box_snapshot.get("ocr_coverage"),
             "target_mode": str(box_snapshot.get("ocr_target_mode") or "all"),
             "retry_applied": bool(box_snapshot.get("ocr_retry_applied")),
+            "text_color": box_snapshot.get("ocr_text_color"),
+            "font_size": box_snapshot.get("ocr_font_size"),
+            "text_region": copy.deepcopy(box_snapshot.get("ocr_text_region")),
         }
 
     def _cached_source_image(self, original_path: Path) -> np.ndarray:
@@ -911,12 +1098,22 @@ class OCRService:
                 reader_retry_applied or recrop_attempted
             )
             metadata["context_retry_applied"] = context_retry_applied
+            metadata.update(
+                _visual_text_metadata(
+                    image,
+                    box_snapshot,
+                    crop_bounds,
+                    result,
+                    text=text,
+                    region_count=int(metadata.get("region_count") or 0),
+                )
+            )
             self._result_local.metadata = metadata
             return text
 
         text = str(self.ocr.read(rgb, lang) or "").strip()
         quality = classify_ocr_quality(text, lang, confidence=None)
-        self._result_local.metadata = {
+        metadata = {
             "confidence": None,
             "model": "legacy-reader",
             "orientation": "unknown",
@@ -925,6 +1122,17 @@ class OCRService:
             "quality_reason": quality.reason,
             "context_retry_applied": False,
         }
+        metadata.update(
+            _visual_text_metadata(
+                image,
+                box_snapshot,
+                crop_bounds,
+                None,
+                text=text,
+                region_count=1 if text else 0,
+            )
+        )
+        self._result_local.metadata = metadata
         return text
 
     @staticmethod
