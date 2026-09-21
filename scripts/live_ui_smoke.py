@@ -18,7 +18,7 @@ def _wait_for_review(page: Page) -> None:
           return image
             && Number(image.dataset.sourceWidth || 0) > 0
             && Number(image.dataset.sourceHeight || 0) > 0
-            && image.querySelector('canvas');
+            && image.querySelector('.review-strip-slice');
         }"""
     )
     expect(page.locator("body")).to_have_attribute("data-app-stage", "review")
