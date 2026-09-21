@@ -10,6 +10,7 @@ on:
       - app/detector/bubble_detector.py
       - app/detector/extreme_yolo26_detector.py
       - app/optimized_pipeline.py
+      - app/inpaint/extreme_authority_inpainter.py
       - .github/workflows/extreme-yolo26-direct-chapter.yml
 
 permissions:
@@ -136,7 +137,7 @@ jobs:
           from app.detector.extreme_yolo26_detector import ExtremeYolo26TextDetector
           from app.detector.mask_builder import build_mask
           from app.image_io import read_image
-          from app.inpaint.adaptive_fast_inpainter import AdaptiveFastInpainter
+          from app.inpaint.extreme_authority_inpainter import ExtremeAuthorityInpainter
 
           root = Path(os.environ["ROOT"])
           sample_dir = Path(os.environ["SAMPLE_DIR"])
@@ -144,7 +145,7 @@ jobs:
           paths = sorted(Path(os.environ["SLICE_DIR"]).glob("*.png"))
 
           detector = ExtremeYolo26TextDetector()
-          inpainter = AdaptiveFastInpainter()
+          inpainter = ExtremeAuthorityInpainter()
 
           started = time.perf_counter()
           rows = []
@@ -257,7 +258,7 @@ jobs:
               f.write(f"- slices/min: {report['slices_per_minute']:.2f}\n")
               f.write(f"- outside-authority changed channel values: {outside_changed_channel_values}\n")
 
-          if outside_authority_changed_channel_values != 0:
+          if outside_changed_channel_values != 0:
               raise RuntimeError(
                   f"authority violation: {outside_authority_changed_channel_values} changed channel values"
               )
