@@ -1,9 +1,17 @@
 from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+import time
+
+from loguru import logger
+import requests
 
 from app.downloader.http import safe_download_file
-from app.parameters import DOWNLOAD_WORKER_LIMIT
+from app.parameters import (
+    DOWNLOAD_RETRY_ATTEMPTS,
+    DOWNLOAD_RETRY_BACKOFF_SECONDS,
+    DOWNLOAD_WORKER_LIMIT,
+)
 
 
 class BaseAdapter(ABC):
@@ -65,7 +73,26 @@ class BaseAdapter(ABC):
     def _download_file(self, url: str, out_path: Path, referer: str) -> None:
         headers = dict(self.headers)
         headers["Referer"] = referer
-        safe_download_file(url, out_path, headers=headers)
+        attempts = max(1, int(DOWNLOAD_RETRY_ATTEMPTS))
+
+        for attempt in range(1, attempts + 1):
+            try:
+                safe_download_file(url, out_path, headers=headers)
+                return
+            except requests.RequestException as exc:
+                if attempt >= attempts:
+                    raise
+                delay = float(DOWNLOAD_RETRY_BACKOFF_SECONDS) * attempt
+                logger.warning(
+                    "Image download attempt {}/{} failed for {}: {}. Retrying in {:.1f}s",
+                    attempt,
+                    attempts,
+                    url,
+                    exc,
+                    delay,
+                )
+                if delay > 0:
+                    time.sleep(delay)
 
     @staticmethod
     def _dedupe(urls: list[str]) -> list[str]:
