@@ -290,10 +290,13 @@ def prepare(args):
 
 def _provider_snapshot(pipeline):
     detector = pipeline.detector
-    result = {
-        "bubble_yolo.onnx": list(detector.bubble_detector.session.get_providers()),
-        "text_segmenter.onnx": list(detector.text_detector.session.get_providers()),
-    }
+    result = {}
+    bubble_detector = getattr(detector, "bubble_detector", None)
+    if bubble_detector is not None and getattr(bubble_detector, "session", None) is not None:
+        result["bubble_yolo.onnx"] = list(bubble_detector.session.get_providers())
+    text_detector = getattr(detector, "text_detector", None)
+    if text_detector is not None and getattr(text_detector, "session", None) is not None:
+        result["text_segmenter.onnx"] = list(text_detector.session.get_providers())
     inpainter = pipeline.inpainter
     if bool(getattr(inpainter, "session_loaded", False)) and inpainter.session is not None:
         result[Path(inpainter.lama_model_path).name] = list(inpainter.session.get_providers())
@@ -311,7 +314,7 @@ def run(args):
     from app.parameters import parameter_snapshot
 
     timers = instrument()
-    from app.optimized_pipeline import OptimizedChapterPipeline
+    from app.processing_pipeline_factory import build_processing_pipeline
     from app.image_io import read_image
     from scripts.model_e2e_gate import _authority_mask
 
@@ -319,7 +322,7 @@ def run(args):
                        if path.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"})
     if not raw_paths:
         raise RuntimeError("No original images")
-    pipeline = OptimizedChapterPipeline()
+    pipeline = build_processing_pipeline()
     process = psutil.Process()
     memory = {"peak_rss_mb": 0.0}
     stop = threading.Event()
@@ -331,7 +334,7 @@ def run(args):
     sampler = threading.Thread(target=sample, daemon=True)
     sampler.start()
     report = {"source_sha": os.getenv("GITHUB_SHA"), "profile": args.profile,
-              "pipeline": "OptimizedChapterPipeline", "workers": args.workers,
+              "pipeline": type(pipeline).__name__, "workers": args.workers,
               "python": sys.version, "platform": platform.platform(),
               "cpu_count": os.cpu_count(), "effective_cpu_count": _cpu_count(),
               "ort_threads": _configured_intra_op_threads(), "opencv_threads": cv2.getNumThreads(),
