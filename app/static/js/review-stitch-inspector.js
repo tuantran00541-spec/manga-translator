@@ -668,6 +668,7 @@
     b.addEventListener("click", () => action ? action() : setTool(shell, name), { signal }); return b;
   }
   function mountToolRail(shell, signal) {
+    document.body.classList.remove("review-tool-rail-active");
     shell.querySelector(".review-tool-rail")?.remove();
     const rail = document.createElement("div");
     rail.className = "review-tool-rail";
