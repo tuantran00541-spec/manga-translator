@@ -258,6 +258,38 @@ class PaddleV6OCR:
             input_shape=tuple(int(value) for value in prepared.shape[:2]),
         )
 
+    def read_single_pass(
+        self,
+        image: np.ndarray,
+        lang: str,
+        *,
+        target_mode: str = "all",
+    ) -> OCRReadResult:
+        """Run one normal Paddle detection+recognition pass with no retries."""
+        if image is None or image.size == 0:
+            return OCRReadResult("", None, "none", "unknown", 0, "reject", "empty")
+        if target_mode not in {"all", "centered"}:
+            raise ValueError(f"Unsupported OCR target mode: {target_mode!r}")
+
+        normalized = _normalize_lang(lang)
+        if normalized in {"en", "ch", "ja"}:
+            key = "unified"
+            model_name = self.unified_model_name
+        elif normalized == "korean":
+            key = "korean"
+            model_name = self.korean_model_name()
+        else:
+            raise ValueError(f"Unsupported OCR language for PaddleOCR v6 backend: {lang!r}")
+
+        prepared = _prepare_rgb_for_paddle(image)
+        return self._read_once(
+            prepared,
+            normalized=normalized,
+            key=key,
+            model_name=model_name,
+            target_mode=target_mode,
+        )
+
     def read(
         self,
         image: np.ndarray,
