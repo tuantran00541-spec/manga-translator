@@ -79,10 +79,11 @@ def _select_source_page(page: Page, source_page: int) -> None:
 
 def _select_text_object(page: Page) -> None:
     _wait_for_text_overlay(page)
-    inline = page.locator(".review-text-object-overlay .review-inline-translation").first
-    expect(inline).to_be_visible()
-    inline.click()
-    expect(inline).to_be_focused()
+    overlay = page.locator(".review-text-object-overlay").first
+    expect(overlay).to_be_visible()
+    expect(page.locator(".review-inline-translation")).to_have_count(0)
+    expect(page.locator(".review-inline-ocr")).to_have_count(0)
+    overlay.click()
 
 
 def _exercise_desktop(page: Page) -> None:
@@ -92,6 +93,7 @@ def _exercise_desktop(page: Page) -> None:
     expect(page.locator('.sidebar-link[data-stage="editor"]')).to_have_count(0)
     _select_text_object(page)
     expect(page.locator(".review-floating-inspector")).to_be_visible()
+    expect(page.get_by_role("button", name="OCR toàn chương", exact=True)).to_be_visible()
     expect(page.locator("#site-header")).to_be_hidden()
 
     _select_source_page(page, 1)
@@ -138,11 +140,12 @@ def _exercise_mobile(page: Page) -> None:
     # thumbnail navigator no longer exists.
     _select_source_page(page, 1)
 
-    _wait_for_text_overlay(page)
-    inline = page.locator(".review-text-object-overlay .review-inline-translation").first
-    inline.click()
-    expect(inline).to_be_focused()
-    expect(inline).to_have_value("Bong bóng thứ hai")
+    _select_text_object(page)
+    expect(page.locator(".review-floating-inspector")).to_be_visible()
+    translation = page.locator(".review-floating-inspector .translation-textarea").first
+    expect(translation).to_be_visible()
+    expect(translation).to_have_value("Bong bóng thứ hai")
+    expect(page.get_by_role("button", name="OCR toàn chương", exact=True)).to_be_visible()
 
     expect(page.locator(".review-tool-rail")).to_be_visible()
     expect(page.locator('.sidebar-link[data-stage="preview"]')).to_be_hidden()
