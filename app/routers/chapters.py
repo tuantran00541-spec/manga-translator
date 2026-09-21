@@ -116,14 +116,24 @@ def _validated_process_plan(req: ProcessPagesRequest) -> tuple[list[int], int]:
     return page_indices, _clamp_workers(req.workers)
 
 
-def _process_job_batch(chapter_id: str, page_indices: list[int], workers: int):
+def _process_job_plan(
+    chapter_id: str,
+    page_indices: list[int],
+    workers: int,
+    progress_callback,
+):
     logger.info(
-        "Chapter {} background job: processing pages {} (workers={})",
+        "Chapter {} background job: processing {} pages in one queue (workers={})",
         chapter_id,
-        page_indices,
+        len(page_indices),
         workers,
     )
-    return pipeline.process_pages(chapter_id, page_indices, workers=workers)
+    return pipeline.process_pages(
+        chapter_id,
+        page_indices,
+        workers=workers,
+        progress_callback=progress_callback,
+    )
 
 
 def _mark_processing_complete(chapter_id: str) -> None:
@@ -138,7 +148,7 @@ def _mark_processing_complete(chapter_id: str) -> None:
 
 
 chapter_processing_jobs = ChapterProcessingJobManager(
-    _process_job_batch,
+    _process_job_plan,
     on_completed=_mark_processing_complete,
 )
 
