@@ -125,3 +125,137 @@
     .review-single-document .review-document-viewport { padding: 10px; }
   }
 }
+
+
+@layer studio {
+  /* Three theme modes only: native System / Light / Dark selector. */
+  .theme-control {
+    display: flex;
+    height: 30px;
+    align-items: center;
+    gap: 5px;
+    padding: 0 6px;
+    border: 1px solid var(--border-strong);
+    border-radius: 3px;
+    background: var(--surface-panel);
+    color: var(--text-primary);
+  }
+  .theme-control > svg { width: 14px; height: 14px; flex: 0 0 auto; }
+  .theme-control > select {
+    width: auto;
+    min-width: 82px;
+    height: 28px;
+    padding: 0 4px;
+    border: 0;
+    outline: 0;
+    background: var(--surface-panel);
+    color: var(--text-primary);
+  }
+
+  /* Monochrome shell: no mixed canvas pattern, blur, colored active state or shadows. */
+  .app-sidebar,
+  .app-header,
+  .translation-canvas-host,
+  .review-canvas-host,
+  .preview-canvas-host,
+  .workbench-canvas-column,
+  .review-single-document .review-canvas-host,
+  .review-single-document .review-document-shell,
+  .review-single-document .review-document-viewport,
+  .review-canvas-only,
+  .review-canvas-fullbleed,
+  .review-canvas-only-layout,
+  .review-canvas-only-host {
+    background: var(--surface-app);
+    background-image: none;
+    box-shadow: none;
+    backdrop-filter: none;
+  }
+  .sidebar-link.active,
+  .page-navigator-item.active {
+    border-color: var(--border-strong);
+    background: var(--surface-panel);
+    color: var(--text-primary);
+  }
+  .preview-canvas-surface,
+  .review-card,
+  .review-stitched-shell,
+  .page-block,
+  .review-single-document .review-stitched-image,
+  .review-floating-inspector {
+    box-shadow: none;
+  }
+  .review-floating-inspector {
+    background: var(--surface-panel);
+    backdrop-filter: none;
+  }
+
+  /* Review/Inpaint toolbar always stays inside its own frame. */
+  .review-canvas-only .review-document-shell,
+  .review-single-document .review-document-shell {
+    grid-template-rows: auto 0 auto minmax(0, 1fr);
+  }
+  .review-document-toolbar-compact {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas:
+      "left center"
+      "right right";
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    min-height: 0;
+    gap: 3px 6px;
+    padding: 4px 6px;
+    overflow: hidden;
+    border-bottom: 1px solid var(--border-strong);
+    background: var(--surface-panel);
+  }
+  .review-docbar-left { grid-area: left; }
+  .review-docbar-center { grid-area: center; justify-content: flex-end; }
+  .review-docbar-right {
+    grid-area: right;
+    display: flex;
+    width: 100%;
+    min-width: 0;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    gap: 4px;
+    overflow: hidden;
+  }
+  .review-docbar-actions {
+    display: flex;
+    min-width: 0;
+    flex: 1 1 280px;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .review-document-toolbar-compact :is(button, select, label) {
+    max-width: 100%;
+  }
+  .review-docbar-brush-size {
+    width: min(118px, 100%);
+    min-width: 96px;
+    flex: 0 1 118px;
+  }
+
+  @media (max-width: 720px) {
+    .review-document-toolbar-compact {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-areas:
+        "left"
+        "center"
+        "right";
+    }
+    .review-docbar-left,
+    .review-docbar-center,
+    .review-docbar-right {
+      width: 100%;
+      max-width: 100%;
+      justify-content: flex-start;
+      overflow: hidden;
+      flex-wrap: wrap;
+    }
+    .review-docbar-actions { flex-basis: 100%; }
+  }
+}
