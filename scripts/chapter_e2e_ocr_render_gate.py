@@ -468,6 +468,7 @@ def run(url: str, output: Path, *, workers: int, max_render_pages: int) -> dict:
         "run_id": os.getenv("GITHUB_RUN_ID"),
         "chapter_url": url,
         "chapter_id": chapter_id,
+        "pipeline": type(pipeline).__name__,
         "workers": workers,
     }
     output.parent.mkdir(parents=True, exist_ok=True)
