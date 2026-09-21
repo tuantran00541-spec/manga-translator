@@ -193,11 +193,10 @@ class YoloDetector:
 
     def _with_semantics(self, box: BubbleBox) -> BubbleBox:
         verified = box.verified_mask
-        segmenter_evidence = box.source_role == "text_segmenter"
-        safe = bool(verified and segmenter_evidence)
+        safe = bool(verified and self.contract.destructive_text_mask)
         return replace(
             box,
-            mask_source="text_segmenter" if safe else ("model" if verified else "none"),
+            mask_source=self.model_role if safe else ("model" if verified else "none"),
             safe_to_inpaint=safe,
             ocr_eligible=safe,
             needs_review=not safe,
@@ -257,7 +256,7 @@ class YoloDetector:
             if aspect > MAX_ASPECT_RATIO or aspect < 1 / MAX_ASPECT_RATIO:
                 reasons.append("box_aspect_limit")
             if reasons and (
-                b.source_role == "text_segmenter"
+                b.source_role in {"text_segmenter", "manga109_yolo26_seg"}
                 and b.safe_to_inpaint
                 and b.verified_mask
             ):
@@ -672,7 +671,10 @@ class YoloDetector:
         if not kept:
             return []
 
-        if members[kept[0]].source_role != "text_segmenter":
+        if members[kept[0]].source_role not in {
+            "text_segmenter",
+            "manga109_yolo26_seg",
+        }:
             return [members[i] for i in kept]
 
         buckets = {index: [members[index]] for index in kept}
@@ -878,7 +880,7 @@ class YoloDetector:
 
             has_mask_model = bool(
                 prototypes is not None
-                and getattr(self, "model_role", "unknown") == "text_segmenter"
+                and self.contract.provides_prototypes
             )
             if not has_mask_model:
                 result.extend(
