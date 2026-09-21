@@ -164,6 +164,7 @@ class FastInpainter(Inpainter):
                 "stroke_refined_regions": 0,
                 "stroke_refined_authority_pixels": 0,
                 "stroke_refined_model_pixels": 0,
+                "stroke_refined_residual_rejects": 0,
                 "stroke_authority_gradient_regions": 0,
                 "stroke_authority_gradient_pixels": 0,
                 "roi_lama_regions": 0,
@@ -676,6 +677,75 @@ class FastInpainter(Inpainter):
             painted[target_y, target_x] = target_values
         return painted
 
+    def _stroke_refine_has_unpainted_residue(
+        self,
+        crop: np.ndarray,
+        model_mask: np.ndarray,
+        authority_mask: np.ndarray,
+    ) -> bool:
+        """Reject a stroke-only fast fill when adjacent glyph evidence remains.
+
+        The detector authority is intentionally wider than the refined model mask.
+        Most of that difference is clean bubble background and should stay untouched.
+        A missed bright/dark outline, however, is both close to the confirmed glyph
+        support and meaningfully different from the smooth surface reconstructed from
+        outside the full authority. Such a region must fall through to the full
+        authority path instead of being declared clean after a partial repaint.
+        """
+        authority = authority_mask > 127
+        model = model_mask > 127
+        if not np.any(authority) or not np.any(model):
+            return False
+
+        unpainted = authority & (~model)
+        if not np.any(unpainted):
+            return False
+
+        halo_kernel = np.ones((3, 3), dtype=np.uint8)
+        near_model = cv2.dilate(
+            model.astype(np.uint8),
+            halo_kernel,
+            iterations=max(1, int(_STROKE_REFINE_HALO_RADIUS)),
+        ) > 0
+        probe = unpainted & near_model
+        if int(np.count_nonzero(probe)) < 16:
+            return False
+
+        probe_mask = probe.astype(np.uint8) * 255
+        expected = self._bubble_gradient_fill_from_authority_ring(
+            crop,
+            probe_mask,
+            authority_mask,
+        )
+        if expected is None:
+            return True
+
+        actual_f = crop.astype(np.float32, copy=False)
+        expected_f = expected.astype(np.float32, copy=False)
+        delta = actual_f - expected_f
+        if delta.ndim == 3:
+            residual = np.sqrt(np.mean(delta * delta, axis=2))
+        else:
+            residual = np.abs(delta)
+
+        residual_threshold = max(
+            float(_STROKE_REFINE_HALO_DELTA_MIN),
+            float(_STROKE_REFINE_SURFACE_DELTA_MIN) * 2.0,
+        )
+        suspicious = probe & (residual >= residual_threshold)
+        if int(np.count_nonzero(suspicious)) < 2:
+            return False
+
+        count, _labels, stats, _ = cv2.connectedComponentsWithStats(
+            suspicious.astype(np.uint8),
+            8,
+        )
+        for label in range(1, count):
+            if int(stats[label, cv2.CC_STAT_AREA]) >= 2:
+                return True
+        return False
+
+
     def _try_stroke_authority_fill(
         self,
         image: np.ndarray,
@@ -730,6 +800,16 @@ class FastInpainter(Inpainter):
         if painted is None:
             # Critical safety behavior: do not pass the stroke silhouette to
             # LaMa. The caller will continue with the original dense authority.
+            return False
+        if self._stroke_refine_has_unpainted_residue(
+            crop,
+            model_mask,
+            authority_mask,
+        ):
+            self._metric_add("stroke_refined_residual_rejects")
+            # A nearby high-contrast remainder is likely an outline/halo omitted
+            # by the refined model mask. Keep the original authority intact and
+            # let the caller use full-authority reconstruction or LaMa.
             return False
 
         target = image[y1:y2, x1:x2]
