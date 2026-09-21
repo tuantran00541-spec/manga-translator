@@ -13,6 +13,7 @@ LOGS_DIR = BASE_DIR / "logs"
 
 BUBBLE_DETECTOR_MODEL = MODELS_DIR / "bubble_yolo.onnx"
 TEXT_SEGMENTER_MODEL = MODELS_DIR / "text_segmenter.onnx"
+MANGA109_YOLO26_SEG_MODEL = MODELS_DIR / "manga109-yolo26s-seg.onnx"
 YOLO26_SEG_MODEL = Path(
     os.getenv(
         "MANGA_YOLO26_SEG_MODEL",
