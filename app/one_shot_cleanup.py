@@ -16,11 +16,10 @@ class OneShotTextMaskDetector:
     """One ONNX forward; decode normal first, then rescue from the same outputs.
 
     The expensive model forward always happens exactly once. We first postprocess
-    the captured ONNX outputs at the normal text threshold. Only if that yields
-    no verified cleanup authority do we re-run postprocess on the *same tensors*
-    at the lower rescue threshold. This keeps the fast path identical to the
-    original one-shot detector while rescuing known low-confidence text without
-    another inference.
+    the captured ONNX outputs at the normal text threshold, then decode the same
+    tensors at the lower rescue threshold and append only genuinely low-confidence
+    verified masks. This recovers weak free text even on pages that already contain
+    normal-confidence dialogue without paying for another model inference.
     """
 
     RESCUE_CONF_THRESHOLD = 0.12
@@ -109,24 +108,25 @@ class OneShotTextMaskDetector:
         )
         normal_boxes = self._accept_many(normal_raw)
 
-        low_conf_rescue = False
-        rescue_raw: list[BubbleBox] = []
-        boxes = normal_boxes
+        # Tail decode: no second inference. Always inspect the already-captured
+        # tensors at the rescue threshold. Keeping only boxes below the normal
+        # threshold avoids duplicating the normal-confidence detections returned
+        # by the same NMS pass while recovering weak text on mixed-confidence pages.
+        rescue_raw = self._postprocess_at_threshold(
+            outputs,
+            transform,
+            min(TEXT_CONF_THRESHOLD, self.RESCUE_CONF_THRESHOLD),
+        )
+        rescue_boxes = self._accept_many(rescue_raw)
+        low_conf_boxes = [
+            box
+            for box in rescue_boxes
+            if float(box.confidence) < float(TEXT_CONF_THRESHOLD)
+        ]
+        boxes = [*normal_boxes, *low_conf_boxes]
+        low_conf_rescue = bool(low_conf_boxes)
 
-        # Tail path: no second inference. Decode the already-captured tensors
-        # again at a lower threshold only when normal authority is empty.
-        if not normal_boxes:
-            rescue_raw = self._postprocess_at_threshold(
-                outputs,
-                transform,
-                min(TEXT_CONF_THRESHOLD, self.RESCUE_CONF_THRESHOLD),
-            )
-            rescue_boxes = self._accept_many(rescue_raw)
-            if rescue_boxes:
-                boxes = rescue_boxes
-                low_conf_rescue = True
-
-        raw_count = len(normal_raw) if normal_boxes else len(rescue_raw)
+        raw_count = len(rescue_raw)
         return boxes, {
             "detector_ms": round((time.perf_counter() - started) * 1000.0, 3),
             "detector_forward_calls": 1,
@@ -134,7 +134,7 @@ class OneShotTextMaskDetector:
             "accepted_mask_boxes": int(len(boxes)),
             "normal_conf_boxes": int(len(normal_boxes)),
             "low_conf_rescue": int(low_conf_rescue),
-            "low_conf_rescue_boxes": int(len(boxes) if low_conf_rescue else 0),
+            "low_conf_rescue_boxes": int(len(low_conf_boxes)),
             "rescue_conf_threshold": float(self.RESCUE_CONF_THRESHOLD),
         }
 
