@@ -224,6 +224,22 @@
     flex: 0 1 118px;
   }
 
+  @media (max-width: 820px) {
+    body[data-app-stage="review"] .app-shell {
+      grid-template-columns: var(--ps-tool-rail) minmax(0, 1fr);
+    }
+    body[data-app-stage="review"] .app-sidebar {
+      position: relative;
+      inset: auto;
+      width: var(--ps-tool-rail);
+      transform: none;
+      box-shadow: none;
+    }
+    body[data-app-stage="review"] .app-main {
+      margin-left: 0;
+    }
+  }
+
   @media (max-width: 720px) {
     .review-document-toolbar-compact {
       grid-template-columns: minmax(0, 1fr);
