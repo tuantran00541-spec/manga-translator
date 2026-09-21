@@ -149,6 +149,10 @@ def _render_samples(
     max_pages: int,
 ) -> tuple[int, int, list[dict]]:
     output_dir.mkdir(parents=True, exist_ok=True)
+    original_dir = output_dir.parent / "original"
+    clean_dir = output_dir.parent / "clean"
+    original_dir.mkdir(parents=True, exist_ok=True)
+    clean_dir.mkdir(parents=True, exist_ok=True)
     rendered_pages = 0
     rendered_objects = 0
     evidence: list[dict] = []
@@ -206,15 +210,23 @@ def _render_samples(
         if count <= 0:
             continue
 
-        out_path = output_dir / f"page_{page_index:03d}.png"
+        out_path = output_dir / f"page_{page_index:03d}_rendered.png"
+        original_out = original_dir / f"page_{page_index:03d}_original.png"
+        clean_out = clean_dir / f"page_{page_index:03d}_clean.png"
         image.save(out_path, format="PNG")
+        with Image.open(Path(str(page.get("original") or ""))) as source:
+            source.convert("RGB").save(original_out, format="PNG")
+        with Image.open(clean_path) as clean_source:
+            clean_source.convert("RGB").save(clean_out, format="PNG")
         rendered_pages += 1
         rendered_objects += count
         evidence.append(
             {
                 "page_index": page_index,
                 "rendered_objects": count,
-                "path": out_path.as_posix(),
+                "rendered_path": out_path.as_posix(),
+                "original_path": original_out.as_posix(),
+                "clean_path": clean_out.as_posix(),
                 "objects": [
                     {
                         "id": str(obj.get("id") or ""),
