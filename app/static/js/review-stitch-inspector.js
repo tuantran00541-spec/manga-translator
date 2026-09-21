@@ -6,7 +6,6 @@
   const MIN_BOX = 10;
   const SHORTCUTS = { v: "select", r: "rectangle", o: "ellipse", b: "brush", e: "eraser", h: "hand", z: "zoom" };
 
-  let sourcePage = null;
   let variant = "clean";
   let tool = "select";
   let zoom = 100;
@@ -18,15 +17,12 @@
 
   const chapterKey = () => String(window.currentChapterId || "");
   const snapshotKey = () => `${chapterKey()}:strip`;
-  const sourceOf = (page, fallback) => Number.isInteger(page?.source_page) ? page.source_page : fallback;
-  const sliceOf = (page) => Number.isInteger(page?.slice_index) ? page.slice_index : 0;
   const livePage = (item) => window.currentManifest?.pages?.[Number(item?.canonicalIndex)] || null;
 
   function resetChapterState() {
     const key = chapterKey();
     if (chapter === key) return;
     chapter = key;
-    sourcePage = null;
     variant = "clean";
     tool = "select";
     zoom = 100;
@@ -171,15 +167,15 @@
   }
 
   function captureSnapshot(shell) {
-    if (sourcePage === null || !shell || variant !== "clean") return;
+    if (!shell || variant !== "clean") return;
     const dirty = (shell._brushChunks || []).filter((chunk) => chunk.dirty && chunkHasPaint(chunk));
-    const key = snapshotKey(sourcePage);
+    const key = snapshotKey();
     if (!dirty.length) return void snapshots.delete(key);
     snapshots.set(key, dirty.map((chunk) => ({ y1: chunk.y1, dataUrl: chunk.canvas.toDataURL("image/png") })));
   }
 
-  function restoreSnapshot(shell, page) {
-    const saved = snapshots.get(snapshotKey(page));
+  function restoreSnapshot(shell) {
+    const saved = snapshots.get(snapshotKey());
     if (!Array.isArray(saved)) return;
     const byY = new Map((shell._brushChunks || []).map((chunk) => [chunk.y1, chunk]));
     for (const item of saved) {
@@ -755,7 +751,6 @@
 
     const items = orderedSlices();
     if (!items.length) return;
-    sourcePage = 0;
 
     canvasHost.replaceChildren();
 
