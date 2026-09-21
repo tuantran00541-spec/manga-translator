@@ -14,7 +14,7 @@ class _FakeInpainter:
 def test_optimized_pipeline_preserves_requested_workers(monkeypatch):
     seen = {}
 
-    def fake_process_pages(self, chapter_id, page_indices, workers=2):
+    def fake_process_pages(self, chapter_id, page_indices, workers=2, progress_callback=None):
         seen["chapter_id"] = chapter_id
         seen["page_indices"] = list(page_indices)
         seen["workers"] = workers
@@ -36,7 +36,7 @@ def test_optimized_pipeline_preserves_requested_workers(monkeypatch):
 def test_optimized_pipeline_clamps_only_to_public_worker_contract(monkeypatch):
     seen = {}
 
-    def fake_process_pages(self, chapter_id, page_indices, workers=2):
+    def fake_process_pages(self, chapter_id, page_indices, workers=2, progress_callback=None):
         seen["workers"] = workers
         return {"workers": workers}
 
