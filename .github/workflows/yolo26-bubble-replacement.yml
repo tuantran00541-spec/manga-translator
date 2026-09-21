@@ -204,6 +204,7 @@ jobs:
         run: |
           python - <<'PY'
           import os
+          from pathlib import Path
           from ultralytics import YOLO
 
           model = YOLO("yolo26n.pt")
@@ -219,7 +220,7 @@ jobs:
               optimizer="AdamW",
               lr0=0.001,
               patience=5,
-              project=os.environ["RUNS_DIR"],
+              project=str(Path(os.environ["RUNS_DIR"]).resolve()),
               name="bubble-yolo26n",
               exist_ok=True,
               verbose=True,
