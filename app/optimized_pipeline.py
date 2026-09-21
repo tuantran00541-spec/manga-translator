@@ -3,6 +3,7 @@ from __future__ import annotations
 import time
 import uuid
 from pathlib import Path
+from typing import Callable
 
 import cv2
 import numpy as np
@@ -43,6 +44,7 @@ class OptimizedChapterPipeline(ChapterPipeline):
         chapter_id: str,
         page_indices: list[int],
         workers: int = PIPELINE_DEFAULT_WORKERS,
+        progress_callback: Callable[[int], None] | None = None,
     ) -> dict:
         """Process pages with exactly the user-requested page concurrency.
 
@@ -59,6 +61,7 @@ class OptimizedChapterPipeline(ChapterPipeline):
             chapter_id,
             page_indices,
             workers=requested_workers,
+            progress_callback=progress_callback,
         )
 
     @staticmethod
