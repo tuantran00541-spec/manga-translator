@@ -61,22 +61,6 @@ def _exercise_landing(page: Page, base_url: str, name: str, artifacts: Path) -> 
     page.screenshot(path=str(artifacts / f"{name}-home.png"), full_page=True)
 
 
-def _select_source_page(page: Page, source_page: int) -> None:
-    select = page.locator(".review-stitched-select")
-    select.select_option(str(source_page))
-    expect(select).to_have_value(str(source_page))
-    page.wait_for_function(
-        """expected => {
-          const meta = document.querySelector('.review-stitched-meta');
-          const image = document.querySelector('.review-stitched-image');
-          return meta?.textContent?.includes(`Trang ${expected + 1}`)
-            && Number(image?.dataset?.sourceWidth || 0) > 0
-            && image?.querySelector('canvas');
-        }""",
-        arg=source_page,
-    )
-
-
 def _select_text_object(page: Page) -> None:
     _wait_for_text_overlay(page)
     overlay = page.locator(".review-text-object-overlay").first
@@ -91,16 +75,22 @@ def _exercise_desktop(page: Page) -> None:
     # The fixture intentionally stores the legacy "editor" checkpoint. Opening
     # it must migrate into the single Review/lettering workspace.
     expect(page.locator('.sidebar-link[data-stage="editor"]')).to_have_count(0)
+    expect(page.locator(".review-stitched-select")).to_have_count(0)
+    image = page.locator(".review-stitched-image")
+    expect(image).to_have_attribute("data-strip-slices", "3")
+    expect(image).to_have_attribute("data-source-height", "4800")
+    expect(page.locator('.review-text-object-overlay[data-page-index="0"]')).to_be_visible()
+    expect(page.locator('.review-text-object-overlay[data-page-index="1"]')).to_be_visible()
+
     _select_text_object(page)
     expect(page.locator(".review-floating-inspector")).to_be_visible()
     expect(page.get_by_role("button", name="OCR toàn chương", exact=True)).to_be_visible()
     expect(page.locator("#site-header")).to_be_hidden()
 
-    _select_source_page(page, 1)
-    _wait_for_text_overlay(page)
-    expect(page.locator(".review-text-object-overlay").first).to_have_attribute(
-        "data-page-index", "1"
-    )
+    second = page.locator('.review-text-object-overlay[data-page-index="1"]').first
+    second.click()
+    translation = page.locator(".review-floating-inspector .translation-textarea").first
+    expect(translation).to_have_value("Bong bóng thứ hai")
 
     page.get_by_role("button", name="Original", exact=True).click()
     page.wait_for_function(
@@ -135,12 +125,14 @@ def _exercise_mobile(page: Page) -> None:
     expect(page.locator("#workbench-panel-controls")).to_be_hidden()
     expect(page.locator("#site-header")).to_be_hidden()
     expect(page.locator(".page-navigator")).to_have_count(0)
+    expect(page.locator(".review-stitched-select")).to_have_count(0)
+    image = page.locator(".review-stitched-image")
+    expect(image).to_have_attribute("data-strip-slices", "3")
+    expect(image).to_have_attribute("data-source-height", "4800")
 
-    # Mobile uses the same document dropdown as desktop; the old slide-out
-    # thumbnail navigator no longer exists.
-    _select_source_page(page, 1)
-
-    _select_text_object(page)
+    second = page.locator('.review-text-object-overlay[data-page-index="1"]').first
+    expect(second).to_be_visible()
+    second.click()
     expect(page.locator(".review-floating-inspector")).to_be_visible()
     translation = page.locator(".review-floating-inspector .translation-textarea").first
     expect(translation).to_be_visible()
