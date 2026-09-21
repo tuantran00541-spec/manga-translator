@@ -10,7 +10,6 @@ sys.path.insert(0, str(ROOT))
 from app.runtime_responsiveness import (  # noqa: E402
     configure_local_cpu_headroom,
     recommended_ort_intra_threads,
-    responsive_process_workers,
 )
 
 
@@ -34,26 +33,6 @@ def runtime_checks() -> None:
         check(
             recommended_ort_intra_threads(cpu) == expected,
             f"unexpected ORT thread recommendation for {cpu} CPUs",
-        )
-
-    expected_workers = {
-        2: 1,
-        4: 1,
-        5: 1,
-        6: 2,
-        7: 1,
-        8: 2,
-        10: 2,
-        16: 2,
-    }
-    for cpu, expected in expected_workers.items():
-        workers = responsive_process_workers(8, cpu)
-        check(workers == expected, f"unexpected page worker cap for {cpu} CPUs")
-        reserve = 2 if cpu >= 6 else 1
-        used = workers * recommended_ort_intra_threads(cpu)
-        check(
-            used <= max(1, cpu - reserve),
-            f"CPU headroom contract violated for {cpu} CPUs",
         )
 
     key = "MANGA_ORT_INTRA_OP_THREADS"
@@ -87,12 +66,13 @@ def source_checks() -> None:
     processing_jobs = (ROOT / "app/page_processing_jobs.py").read_text(encoding="utf-8")
 
     check(
-        "PROCESS_JOB_BATCH_SIZE = 16" in processing_jobs,
-        "backend processing batch is not fixed at sixteen pages",
+        "PROCESS_JOB_BATCH_SIZE" not in processing_jobs,
+        "legacy fixed-size processing batch still exists",
     )
     check(
-        "job.page_indices[start : start + self._batch_size]" in processing_jobs,
-        "backend processing batch slicing contract missing",
+        "self._process_plan(" in processing_jobs
+        and "list(job.page_indices)" in processing_jobs,
+        "backend does not dispatch the complete page queue once",
     )
     check(
         "window._processSelectedPagesOnce = async function serverOwnedProcessSelectedPagesOnce" in main_js,
@@ -135,9 +115,20 @@ def source_checks() -> None:
 
     optimized = (ROOT / "app/optimized_pipeline.py").read_text(encoding="utf-8")
     check(
-        "effective_workers = responsive_process_workers(workers)" in optimized
-        and "workers=effective_workers" in optimized,
-        "optimized pipeline does not apply responsive worker cap",
+        "requested_workers = max(1, min(8" in optimized
+        and "workers=requested_workers" in optimized,
+        "optimized pipeline does not preserve the public 1..8 worker contract",
+    )
+
+    pipeline = (ROOT / "app/pipeline.py").read_text(encoding="utf-8")
+    check(
+        "ThreadPoolExecutor(" in pipeline
+        and "max_workers=max_workers" in pipeline,
+        "pipeline worker pool contract missing",
+    )
+    check(
+        "progress_callback(idx)" in pipeline,
+        "full-queue processing does not report per-page progress",
     )
 
 
