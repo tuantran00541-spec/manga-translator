@@ -34,6 +34,10 @@ jobs:
       MANGA_ORT_PROVIDER: cpu
       MANGA_ORT_REQUIRE_PROVIDER: "0"
       MANGA_YOLO26_TEXT_CONF: "0.01"
+      MANGA_YOLO26_FOCUS_TEXT_CONF: "0.006"
+      MANGA_YOLO26_CONTEXT_MAX_REGIONS: "2"
+      MANGA_YOLO26_CONTEXT_PAD_RATIO: "0.16"
+      MANGA_YOLO26_CONTEXT_MAX_AREA_RATIO: "0.72"
 
     steps:
       - uses: actions/checkout@v4
@@ -160,6 +164,10 @@ jobs:
           total_mask_pixels = 0
           slices_with_mask = 0
           outside_changed_values = 0
+          total_frame_contexts = 0
+          total_balloon_contexts = 0
+          total_focus_calls = 0
+          total_recovered_text = 0
           rows = []
 
           for idx, path in enumerate(paths):
@@ -191,6 +199,10 @@ jobs:
               outside_changed_values += changed_outside
 
               metrics = detector.last_metrics()
+              total_frame_contexts += int(metrics.get("frame_contexts", 0) or 0)
+              total_balloon_contexts += int(metrics.get("balloon_contexts", 0) or 0)
+              total_focus_calls += int(metrics.get("context_focus_calls", 0) or 0)
+              total_recovered_text += int(metrics.get("context_recovered_text", 0) or 0)
               if any(int(metrics.get(k, 0) or 0) != 0 for k in (
                   "text_segmenter_calls",
                   "bubble_yolo_calls",
@@ -207,6 +219,10 @@ jobs:
                   "detector_ms": round(dms, 3),
                   "inpaint_ms": round(ims, 3),
                   "outside_authority_changed_channel_values": changed_outside,
+                  "frame_contexts": int(metrics.get("frame_contexts", 0) or 0),
+                  "balloon_contexts": int(metrics.get("balloon_contexts", 0) or 0),
+                  "context_focus_calls": int(metrics.get("context_focus_calls", 0) or 0),
+                  "context_recovered_text": int(metrics.get("context_recovered_text", 0) or 0),
               })
 
               if idx % 10 == 0:
@@ -227,6 +243,10 @@ jobs:
               "inpaint_total_s": sum(inpaint_ms) / 1000.0,
               "wall_s": wall_s,
               "outside_authority_changed_channel_values": outside_changed_values,
+              "frame_contexts": total_frame_contexts,
+              "balloon_contexts": total_balloon_contexts,
+              "context_focus_calls": total_focus_calls,
+              "context_recovered_text": total_recovered_text,
               "legacy_model_calls": {
                   "text_segmenter": 0,
                   "bubble_yolo": 0,
@@ -257,6 +277,10 @@ jobs:
               f.write(f"- detector total: {report['detector_total_s']:.2f} s\n")
               f.write(f"- inpaint total: {report['inpaint_total_s']:.2f} s\n")
               f.write(f"- wall: {wall_s:.2f} s\n")
+              f.write(f"- frame contexts: {total_frame_contexts}\n")
+              f.write(f"- balloon contexts: {total_balloon_contexts}\n")
+              f.write(f"- context focus calls: {total_focus_calls}\n")
+              f.write(f"- context recovered text: {total_recovered_text}\n")
               f.write(f"- outside-authority changes: {outside_changed_values}\n")
               f.write("- legacy detector/model calls: 0\n")
           PY
