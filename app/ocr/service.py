@@ -1091,9 +1091,12 @@ class OCRService:
             text, metadata, result = read_candidate(crop_bounds)
             recrop_attempted = False
             context_retry_applied = False
-            recognition_only = metadata.get("target_mode") == "recognition-only"
+            no_recrop = metadata.get("target_mode") in {
+                "recognition-only",
+                "hybrid-fallback",
+            }
 
-            if not recognition_only and metadata["quality_reason"] == "crop-edge-text":
+            if not no_recrop and metadata["quality_reason"] == "crop-edge-text":
                 initial_crop_bounds = crop_bounds
                 for expanded_bounds in _edge_recrop_bounds_sequence(
                     image.shape, initial_crop_bounds
@@ -1123,7 +1126,7 @@ class OCRService:
                     crop_bounds = expanded_bounds
                     if metadata["quality_reason"] != "crop-edge-text":
                         break
-            elif not recognition_only and (
+            elif not no_recrop and (
                 metadata["quality_reason"] == "incomplete-coverage"
                 or (
                     not text
