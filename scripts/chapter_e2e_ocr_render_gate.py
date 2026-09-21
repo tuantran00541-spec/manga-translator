@@ -16,6 +16,7 @@ from app.manifest_utils import get_manifest_lock, load_manifest_raw, save_manife
 from app.ocr.multi_lang_ocr import MultiLangOCR
 from app.ocr.service import OCRService
 from app.optimized_pipeline import OptimizedChapterPipeline
+from app.processing_pipeline_factory import build_processing_pipeline
 from app.routers.export import _core_range, _source_core_metadata, _stitch_png_to_file, _validate_stitch_group
 from app.render.page_renderer import render_text_objects
 from app.schemas import RenderRequest
@@ -458,7 +459,7 @@ def _build_complete_chapter(
 
 
 def run(url: str, output: Path, *, workers: int, max_render_pages: int) -> dict:
-    pipeline = OptimizedChapterPipeline()
+    pipeline = build_processing_pipeline()
     chapter_id = hashlib.sha256(
         f"chapter-e2e:{url}:{os.getenv('GITHUB_RUN_ID', time.time_ns())}".encode()
     ).hexdigest()[:8]
