@@ -11,7 +11,7 @@ permissions:
 
 concurrency:
   group: chapter-e2e-ocr-render
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   chapter-e2e:
