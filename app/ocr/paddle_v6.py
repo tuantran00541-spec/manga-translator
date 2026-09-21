@@ -41,6 +41,7 @@ class OCRReadResult:
     retry_applied: bool = False
     text_bounds: tuple[float, float, float, float] | None = None
     input_shape: tuple[int, int] | None = None
+    font_size_hint: float | None = None
 
 
 def _payload(result: Any) -> dict[str, Any]:
@@ -317,6 +318,7 @@ class PaddleV6OCR:
                 selected_count / max(1, original_ordered_count)
             )
             text_bounds = self._text_bounds(ordered)
+            font_size_hint = self._font_size_hint(ordered)
             edge_truncated = self._text_touches_crop_edge(text_bounds, prepared.shape)
             quality = classify_ocr_quality(
                 text,
@@ -340,6 +342,7 @@ class PaddleV6OCR:
                 target_mode=target_mode,
                 text_bounds=text_bounds,
                 input_shape=tuple(int(value) for value in prepared.shape[:2]),
+                font_size_hint=font_size_hint,
             )
 
         # Paddle can occasionally return recognition text without polygons.
@@ -372,6 +375,30 @@ class PaddleV6OCR:
             target_mode=target_mode,
             input_shape=tuple(int(value) for value in prepared.shape[:2]),
         )
+
+    @staticmethod
+    def _font_size_hint(ordered: dict[str, Any]) -> float | None:
+        by_index = {int(region["index"]): region for region in ordered["regions"]}
+        selected = [
+            by_index[index]
+            for index in ordered["ordered_indices"]
+            if index in by_index
+        ]
+        if not selected:
+            return None
+        orientation = str(ordered.get("orientation") or "horizontal").lower()
+        spans: list[float] = []
+        for region in selected:
+            box = region.get("box") or {}
+            try:
+                width = max(1.0, float(box["x2"]) - float(box["x1"]))
+                height = max(1.0, float(box["y2"]) - float(box["y1"]))
+            except (KeyError, TypeError, ValueError):
+                continue
+            spans.append(width if orientation == "vertical" else height)
+        if not spans:
+            return None
+        return float(statistics.median(spans))
 
     @staticmethod
     def _text_bounds(
