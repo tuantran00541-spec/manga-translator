@@ -20,6 +20,7 @@ jobs:
     env:
       PYTHONPATH: ${{ github.workspace }}
       PYTHONUNBUFFERED: "1"
+      MANGA_PROCESSING_PIPELINE: fast
       MANGA_USE_DYNAMIC_LAMA: "1"
       MANGA_ORT_PROVIDER: openvino
       MANGA_ORT_REQUIRE_PROVIDER: "1"
