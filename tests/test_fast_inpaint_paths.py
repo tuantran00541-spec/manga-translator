@@ -417,6 +417,45 @@ def test_dynamic_long_crop_uses_native_single_call_within_pixel_budget():
 
 
 
+def test_stroke_refine_rejects_adjacent_unpainted_bright_halo():
+    h, w = 160, 240
+    yy, xx = np.mgrid[:h, :w]
+    background = np.empty((h, w, 3), dtype=np.uint8)
+    background[..., 0] = np.clip(214 + xx * 0.025 + yy * 0.018, 0, 255)
+    background[..., 1] = np.clip(220 + xx * 0.022 + yy * 0.016, 0, 255)
+    background[..., 2] = np.clip(228 + xx * 0.018 + yy * 0.014, 0, 255)
+
+    authority = np.zeros((h, w), dtype=np.uint8)
+    authority[24:136, 28:212] = 255
+
+    model = np.zeros((h, w), dtype=np.uint8)
+    model[72:80, 72:168] = 255
+    halo = cv2.dilate(
+        model,
+        cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5)),
+        iterations=1,
+    )
+    halo_only = (halo > 0) & (model == 0)
+
+    clean = background.copy()
+    clean[model > 0] = 4
+
+    ghosted = clean.copy()
+    ghosted[halo_only] = 255
+
+    inpainter = FastInpainter()
+    assert not inpainter._stroke_refine_has_unpainted_residue(
+        clean,
+        model,
+        authority,
+    )
+    assert inpainter._stroke_refine_has_unpainted_residue(
+        ghosted,
+        model,
+        authority,
+    )
+
+
 def test_authority_ring_reconstruction_erases_dense_smooth_text():
     h, w = 220, 320
     yy, xx = np.mgrid[:h, :w]
