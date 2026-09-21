@@ -5,6 +5,10 @@ on:
   push:
     branches: [main]
     paths:
+      - app/processing_pipeline_factory.py
+      - app/dependencies.py
+      - app/optimized_pipeline.py
+      - app/one_shot_cleanup.py
       - app/detector/adaptive_focus_detector.py
       - app/detector/combined_detector.py
       - app/parameters.py
@@ -26,6 +30,7 @@ jobs:
     timeout-minutes: 45
     env:
       PYTHONUNBUFFERED: "1"
+      MANGA_PROCESSING_PIPELINE: fast
       MANGA_USE_DYNAMIC_LAMA: "1"
       MANGA_ORT_PROVIDER: openvino
       MANGA_ORT_REQUIRE_PROVIDER: "1"
