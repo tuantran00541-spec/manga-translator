@@ -61,7 +61,30 @@ class MultiLangOCR:
             )
 
         if normalized in {"en", "english"}:
-            return self._paddle.read_recognition_only(image, lang)
+            fast = self._paddle.read_recognition_only(image, lang)
+            if fast.text.strip():
+                return fast
+            effective_target_mode = target_mode or self._paddle_target_mode
+            fallback = self._paddle.read_single_pass(
+                image,
+                lang,
+                target_mode=effective_target_mode,
+            )
+            return OCRReadResult(
+                text=fallback.text,
+                confidence=fallback.confidence,
+                model=f"{fallback.model}:empty-fast-fallback",
+                orientation=fallback.orientation,
+                region_count=fallback.region_count,
+                quality=fallback.quality,
+                quality_reason=fallback.quality_reason,
+                coverage=fallback.coverage,
+                target_mode="hybrid-fallback",
+                retry_applied=True,
+                text_bounds=fallback.text_bounds,
+                input_shape=fallback.input_shape,
+                font_size_hint=fallback.font_size_hint,
+            )
 
         effective_target_mode = target_mode or self._paddle_target_mode
         return self._paddle.read(
