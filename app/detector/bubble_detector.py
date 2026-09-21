@@ -430,11 +430,10 @@ class YoloDetector:
 
         keep_mask = confidences >= self.conf_threshold
         if self.model_role == "manga109_yolo26_seg":
-            # Extreme branch: the model has frame/text/balloon classes, but
-            # only class=text (id 1) is part of the automatic cleanup path.
-            # Filter before NMS/mask decode so frame/balloon prototypes never
-            # consume postprocess work.
-            keep_mask &= class_ids == 1
+            # Keep all three Manga109 classes as cheap geometry context.  Only
+            # class=text is allowed to carry segmentation authority below;
+            # frame/balloon remain bbox-only evidence for focused text retries.
+            keep_mask &= np.isin(class_ids, (0, 1, 2))
         keep = np.flatnonzero(keep_mask)
         if keep.size == 0:
             return []
@@ -462,12 +461,19 @@ class YoloDetector:
                 continue
             geometry = None
             mask_coeffs = None
-            if has_proto and num_mask_coeffs > 0:
+            class_id = int(class_selected[j])
+            manga_context_only = (
+                self.model_role == "manga109_yolo26_seg" and class_id != 1
+            )
+            if has_proto and num_mask_coeffs > 0 and not manga_context_only:
                 # Prototype masks are otherwise cropped exactly at the detector
-                # box.  A small text-only decode pad retains outlines, shadows
-                # and glow that the box regressor legitimately clips, without
-                # widening the final mask by global morphology.
-                if self.model_role == "text_segmenter":
+                # box.  Text gets a small decode pad to preserve outline/shadow
+                # support. Manga109 frame/balloon deliberately stay bbox-only:
+                # they may guide a focused retry but can never erase pixels.
+                if (
+                    self.model_role == "text_segmenter"
+                    or (self.model_role == "manga109_yolo26_seg" and class_id == 1)
+                ):
                     pad = DETECTOR_TEXT_MASK_DECODE_PAD
                     source_box = (
                         max(transform.offset_x, x1 - pad),
