@@ -1,0 +1,266 @@
+name: YOLO26 extreme direct cleanup
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["experiment/one-shot-yolo26"]
+    paths:
+      - app/model_contracts.py
+      - app/config.py
+      - app/detector/bubble_detector.py
+      - app/detector/manga109_yolo26_text_detector.py
+      - app/optimized_pipeline.py
+      - .github/workflows/yolo26-extreme-direct-cleanup.yml
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: yolo26-extreme-direct-cleanup
+  cancel-in-progress: true
+
+jobs:
+  direct:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    env:
+      PYTHONUNBUFFERED: "1"
+      CHAPTER_URL: "https://asurascans.com/comics/shadow-slave-6f7fe6eb/chapter/1"
+      ROOT: "benchmark-results/yolo26-extreme"
+      RAW_DIR: "benchmark-results/yolo26-extreme/raw"
+      SLICE_DIR: "benchmark-results/yolo26-extreme/slices"
+      MANGA_ORT_PROVIDER: cpu
+      MANGA_ORT_REQUIRE_PROVIDER: "0"
+      MANGA_YOLO26_TEXT_CONF: "0.01"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install runtime deps
+        run: |
+          python -m pip install numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 onnxruntime==1.24.1 psutil==6.1.1 loguru==0.7.2 requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 playwright==1.47.0 fastapi==0.115.0 pydantic==2.9.2 filelock==3.16.1 threadpoolctl==3.6.0
+
+      - name: Restore production models
+        id: models
+        uses: actions/cache@v4
+        with:
+          path: |
+            models/*.onnx
+            models/.e2e-provenance.json
+          key: processing-profile-models-b224548-v1
+
+      - name: Read pinned model provisioner
+        if: ${{ steps.models.outputs.cache-hit != 'true' }}
+        uses: actions/checkout@v4
+        with:
+          ref: b22454827f8190655d7070b80eb20c2550beadfa
+          path: benchmark-bootstrap
+          sparse-checkout: scripts/provision_real_e2e_models.py
+          sparse-checkout-cone-mode: false
+
+      - name: Provision baseline models on cache miss
+        if: ${{ steps.models.outputs.cache-hit != 'true' }}
+        run: |
+          python benchmark-bootstrap/scripts/provision_real_e2e_models.py
+          mkdir -p models
+          cp benchmark-bootstrap/models/*.onnx models/
+          cp benchmark-bootstrap/models/.e2e-provenance.json models/
+
+      - name: Restore Manga109 YOLO26 ONNX artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf /tmp/hf-yolo26-artifact
+          mkdir -p /tmp/hf-yolo26-artifact models
+          gh run download 35548554277             --repo "$GITHUB_REPOSITORY"             --name hf-yolo26-manga109-bubble-ab             --dir /tmp/hf-yolo26-artifact
+          SRC="$(find /tmp/hf-yolo26-artifact -name 'manga109-yolo26s-seg-1024.onnx' -print -quit)"
+          test -n "$SRC"
+          cp "$SRC" models/manga109-yolo26s-seg.onnx
+          ls -lh models/manga109-yolo26s-seg.onnx
+
+      - name: Compile extreme runtime surface
+        run: |
+          python -m py_compile             app/model_contracts.py             app/config.py             app/detector/bubble_detector.py             app/detector/manga109_yolo26_text_detector.py             app/optimized_pipeline.py
+          python - <<'PY'
+          from app.optimized_pipeline import OptimizedChapterPipeline
+          p = OptimizedChapterPipeline()
+          print(type(p.detector).__name__)
+          assert type(p.detector).__name__ == "Manga109Yolo26TextDetector"
+          PY
+
+      - name: Download and slice full chapter
+        run: |
+          python - <<'PY'
+          import os, shutil, time
+          from pathlib import Path
+          from app.downloader.registry import download_chapter
+          from app.downloader.slicer import slice_image
+
+          raw = Path(os.environ["RAW_DIR"])
+          slc = Path(os.environ["SLICE_DIR"])
+          raw.mkdir(parents=True, exist_ok=True)
+          slc.mkdir(parents=True, exist_ok=True)
+
+          paths = None
+          for attempt in range(1, 4):
+              try:
+                  paths = download_chapter(os.environ["CHAPTER_URL"], raw)
+                  break
+              except Exception as exc:
+                  print(f"download attempt {attempt}/3 failed: {exc!r}")
+                  if attempt >= 3:
+                      raise
+                  shutil.rmtree(raw, ignore_errors=True)
+                  raw.mkdir(parents=True, exist_ok=True)
+                  time.sleep(3 * attempt)
+
+          slices = []
+          for i, path in enumerate(sorted(paths)):
+              recs = slice_image(path, slc, f"{i:03d}", return_metadata=True)
+              slices.extend(Path(r["path"]) for r in recs)
+
+          print("raw_images", len(paths))
+          print("slices", len(slices))
+          if len(slices) != 135:
+              print("warning: expected 135 slices, got", len(slices))
+          PY
+
+      - name: Run extreme YOLO26 text-mask to LaMa
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import statistics
+          import time
+          from pathlib import Path
+
+          import numpy as np
+
+          from app.detector.manga109_yolo26_text_detector import Manga109Yolo26TextDetector
+          from app.detector.mask_builder import build_mask
+          from app.image_io import read_image
+          from app.inpaint.adaptive_fast_inpainter import AdaptiveFastInpainter
+
+          paths = sorted(Path(os.environ["SLICE_DIR"]).glob("*.png"))
+          detector = Manga109Yolo26TextDetector()
+          inpainter = AdaptiveFastInpainter()
+
+          started = time.perf_counter()
+          detector_ms = []
+          inpaint_ms = []
+          total_boxes = 0
+          total_mask_pixels = 0
+          slices_with_mask = 0
+          outside_changed_values = 0
+          rows = []
+
+          for idx, path in enumerate(paths):
+              image = read_image(path)
+
+              t0 = time.perf_counter()
+              boxes = detector.detect(image)
+              dms = (time.perf_counter() - t0) * 1000.0
+              detector_ms.append(dms)
+
+              authority = (
+                  build_mask(image.shape[:2], boxes, image)
+                  if boxes
+                  else np.zeros(image.shape[:2], dtype=np.uint8)
+              )
+              mask_pixels = int(np.count_nonzero(authority > 127))
+              total_mask_pixels += mask_pixels
+              total_boxes += len(boxes)
+              if mask_pixels:
+                  slices_with_mask += 1
+
+              t0 = time.perf_counter()
+              cleaned = inpainter.inpaint(image, boxes)
+              ims = (time.perf_counter() - t0) * 1000.0
+              inpaint_ms.append(ims)
+
+              outside = authority <= 127
+              changed_outside = int(np.count_nonzero(cleaned[outside] != image[outside]))
+              outside_changed_values += changed_outside
+
+              metrics = detector.last_metrics()
+              if any(int(metrics.get(k, 0) or 0) != 0 for k in (
+                  "text_segmenter_calls",
+                  "bubble_yolo_calls",
+                  "recovery_calls",
+                  "residue_verify_calls",
+              )):
+                  raise RuntimeError(f"legacy detector path used on {path.name}: {metrics}")
+
+              rows.append({
+                  "index": idx,
+                  "file": path.name,
+                  "boxes": len(boxes),
+                  "mask_pixels": mask_pixels,
+                  "detector_ms": round(dms, 3),
+                  "inpaint_ms": round(ims, 3),
+                  "outside_authority_changed_channel_values": changed_outside,
+              })
+
+              if idx % 10 == 0:
+                  print(json.dumps(rows[-1]))
+
+          wall_s = time.perf_counter() - started
+          report = {
+              "mode": "extreme_yolo26_text_mask_direct_to_lama",
+              "slice_count": len(paths),
+              "conf": float(detector.conf_threshold),
+              "total_boxes": total_boxes,
+              "slices_with_mask": slices_with_mask,
+              "zero_mask_slices": len(paths) - slices_with_mask,
+              "total_mask_pixels": total_mask_pixels,
+              "detector_median_ms": statistics.median(detector_ms) if detector_ms else 0.0,
+              "inpaint_median_ms": statistics.median(inpaint_ms) if inpaint_ms else 0.0,
+              "detector_total_s": sum(detector_ms) / 1000.0,
+              "inpaint_total_s": sum(inpaint_ms) / 1000.0,
+              "wall_s": wall_s,
+              "outside_authority_changed_channel_values": outside_changed_values,
+              "legacy_model_calls": {
+                  "text_segmenter": 0,
+                  "bubble_yolo": 0,
+                  "recovery": 0,
+                  "residue_verify": 0,
+              },
+              "rows": rows,
+          }
+
+          out = Path(os.environ["ROOT"]) / "extreme-report.json"
+          out.parent.mkdir(parents=True, exist_ok=True)
+          out.write_text(json.dumps(report, indent=2) + "\n")
+          print("FINAL")
+          print(json.dumps({k:v for k,v in report.items() if k != "rows"}, indent=2))
+
+          if outside_changed_values != 0:
+              raise RuntimeError(
+                  f"authority violation: {outside_changed_values} changed channel values outside YOLO26 mask"
+              )
+
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as f:
+              f.write("## Extreme YOLO26 direct cleanup\n\n")
+              f.write(f"- slices: {len(paths)}\n")
+              f.write(f"- boxes: {total_boxes}\n")
+              f.write(f"- slices with mask: {slices_with_mask}\n")
+              f.write(f"- zero-mask slices: {len(paths)-slices_with_mask}\n")
+              f.write(f"- detector median: {report['detector_median_ms']:.2f} ms\n")
+              f.write(f"- detector total: {report['detector_total_s']:.2f} s\n")
+              f.write(f"- inpaint total: {report['inpaint_total_s']:.2f} s\n")
+              f.write(f"- wall: {wall_s:.2f} s\n")
+              f.write(f"- outside-authority changes: {outside_changed_values}\n")
+              f.write("- legacy detector/model calls: 0\n")
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: yolo26-extreme-direct-cleanup
+          path: benchmark-results/yolo26-extreme/extreme-report.json
+          retention-days: 7
