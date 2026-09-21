@@ -8,7 +8,8 @@ on:
       - app/model_contracts.py
       - app/config.py
       - app/detector/bubble_detector.py
-      - app/detector/manga109_yolo26_text_detector.py
+      - app/detector/extreme_yolo26_detector.py
+      - app/inpaint/extreme_authority_inpainter.py
       - app/optimized_pipeline.py
       - .github/workflows/yolo26-extreme-direct-cleanup.yml
 
@@ -80,17 +81,19 @@ jobs:
           gh run download 35548554277             --repo "$GITHUB_REPOSITORY"             --name hf-yolo26-manga109-bubble-ab             --dir /tmp/hf-yolo26-artifact
           SRC="$(find /tmp/hf-yolo26-artifact -name 'manga109-yolo26s-seg-1024.onnx' -print -quit)"
           test -n "$SRC"
-          cp "$SRC" models/manga109-yolo26s-seg.onnx
-          ls -lh models/manga109-yolo26s-seg.onnx
+          cp "$SRC" models/manga109-yolo26s-seg-1024.onnx
+          ls -lh models/manga109-yolo26s-seg-1024.onnx
 
       - name: Compile extreme runtime surface
         run: |
-          python -m py_compile             app/model_contracts.py             app/config.py             app/detector/bubble_detector.py             app/detector/manga109_yolo26_text_detector.py             app/optimized_pipeline.py
+          python -m py_compile             app/model_contracts.py             app/config.py             app/detector/bubble_detector.py             app/detector/extreme_yolo26_detector.py             app/inpaint/extreme_authority_inpainter.py             app/optimized_pipeline.py
           python - <<'PY'
           from app.optimized_pipeline import OptimizedChapterPipeline
           p = OptimizedChapterPipeline()
           print(type(p.detector).__name__)
-          assert type(p.detector).__name__ == "Manga109Yolo26TextDetector"
+          print(type(p.inpainter).__name__)
+          assert type(p.detector).__name__ == "ExtremeYolo26TextDetector"
+          assert type(p.inpainter).__name__ == "ExtremeAuthorityInpainter"
           PY
 
       - name: Download and slice full chapter
@@ -141,14 +144,14 @@ jobs:
 
           import numpy as np
 
-          from app.detector.manga109_yolo26_text_detector import Manga109Yolo26TextDetector
+          from app.detector.extreme_yolo26_detector import ExtremeYolo26TextDetector
           from app.detector.mask_builder import build_mask
           from app.image_io import read_image
-          from app.inpaint.adaptive_fast_inpainter import AdaptiveFastInpainter
+          from app.inpaint.extreme_authority_inpainter import ExtremeAuthorityInpainter
 
           paths = sorted(Path(os.environ["SLICE_DIR"]).glob("*.png"))
-          detector = Manga109Yolo26TextDetector()
-          inpainter = AdaptiveFastInpainter()
+          detector = ExtremeYolo26TextDetector()
+          inpainter = ExtremeAuthorityInpainter()
 
           started = time.perf_counter()
           detector_ms = []
