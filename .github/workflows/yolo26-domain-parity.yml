@@ -140,7 +140,8 @@ jobs:
 
       - name: Run ONNX vs native vs comic-domain parity
         run: |
-          python scripts/benchmark_yolo26_domain_parity.py \
+          set -o pipefail
+          PYTHONPATH=. python scripts/benchmark_yolo26_domain_parity.py \
             --slice-dir "$SLICE_DIR" \
             --onnx "$MODEL_DIR/manga109-yolo26s-seg-1024.onnx" \
             --manga-pt "$MODEL_DIR/manga109-best.pt" \
