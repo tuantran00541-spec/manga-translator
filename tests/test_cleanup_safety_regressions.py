@@ -9,7 +9,47 @@ from app.detector.combined_detector import CombinedTextDetector
 from app.detector.mask_builder import build_mask
 from app.render.text_renderer import _fit_text, render_text_in_box
 from app.pipeline import ChapterPipeline
+from app.one_shot_cleanup import OneShotTextMaskDetector
+from app.parameters import TEXT_CONF_THRESHOLD
 
+
+
+
+
+def test_one_shot_rescue_keeps_weak_text_on_mixed_confidence_page():
+    detector = OneShotTextMaskDetector.__new__(OneShotTextMaskDetector)
+    detector.RESCUE_CONF_THRESHOLD = 0.12
+
+    normal = BubbleBox(
+        10, 10, 30, 20, 0.82, np.full((10, 20), 255, np.uint8),
+        source_role="text_segmenter",
+        source_model="text_segmenter.onnx",
+    )
+    weak = BubbleBox(
+        60, 12, 84, 24, 0.15, np.full((12, 24), 255, np.uint8),
+        source_role="text_segmenter",
+        source_model="text_segmenter.onnx",
+    )
+
+    detector._single_forward_outputs = lambda _image: (object(), object())
+    thresholds = []
+
+    def fake_postprocess(_outputs, _transform, threshold):
+        thresholds.append(float(threshold))
+        if float(threshold) >= float(TEXT_CONF_THRESHOLD):
+            return [normal]
+        return [normal, weak]
+
+    detector._postprocess_at_threshold = fake_postprocess
+
+    boxes, metrics = detector.detect(np.zeros((40, 100, 3), dtype=np.uint8))
+
+    assert [round(float(box.confidence), 2) for box in boxes] == [0.82, 0.15]
+    assert thresholds == [float(TEXT_CONF_THRESHOLD), 0.12]
+    assert metrics["detector_forward_calls"] == 1
+    assert metrics["normal_conf_boxes"] == 1
+    assert metrics["low_conf_rescue"] == 1
+    assert metrics["low_conf_rescue_boxes"] == 1
 
 def _probability_canvas() -> np.ndarray:
     """Core glyph with anti-aliased outline, coloured edge and glow support."""
