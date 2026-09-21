@@ -21,7 +21,6 @@ from app.mask_store import decode_mask_value
 from app.parameters import (
     DETECTOR_FINAL_NMS_IOU,
     PIPELINE_DEFAULT_WORKERS,
-    PIPELINE_PROCESS_WORKER_LIMIT,
     PIPELINE_SLICE_WORKER_LIMIT,
 )
 from app.manifest_utils import (
@@ -627,7 +626,7 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
             1,
             min(
                 int(workers or PIPELINE_DEFAULT_WORKERS),
-                PIPELINE_PROCESS_WORKER_LIMIT,
+                8,
                 len(work_items),
             ),
         )
