@@ -4,6 +4,7 @@ import time
 from dataclasses import replace
 from contextlib import ExitStack
 from pathlib import Path
+from typing import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import numpy as np
 from app.downloader.registry import download_chapter as fetch_chapter_images
@@ -582,6 +583,7 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
         chapter_id: str,
         page_indices: list[int],
         workers: int = PIPELINE_DEFAULT_WORKERS,
+        progress_callback: Callable[[int], None] | None = None,
     ) -> dict:
         """Process pages with shared seams and durable per-page progress."""
         run_started_at = time.perf_counter()
@@ -690,6 +692,9 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
                         exc,
                     )
                     errors.append((idx, exc))
+                finally:
+                    if progress_callback is not None:
+                        progress_callback(idx)
 
         failed_indices = [item[0] for item in errors]
         discarded_stale_indices = sorted(set(discarded_stale_indices))
