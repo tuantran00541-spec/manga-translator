@@ -1,0 +1,198 @@
+name: YOLO26 domain parity benchmark
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["experiment/one-shot-yolo26"]
+    paths:
+      - scripts/benchmark_yolo26_domain_parity.py
+      - .github/workflows/yolo26-domain-parity.yml
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: yolo26-domain-parity
+  cancel-in-progress: true
+
+jobs:
+  parity:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    env:
+      PYTHONUNBUFFERED: "1"
+      CHAPTER_URL: "https://asurascans.com/comics/shadow-slave-6f7fe6eb/chapter/1"
+      ROOT: "benchmark-results/yolo26-domain-parity"
+      RAW_DIR: "benchmark-results/yolo26-domain-parity/raw"
+      SLICE_DIR: "benchmark-results/yolo26-domain-parity/slices"
+      MODEL_DIR: "benchmark-results/yolo26-domain-parity/models"
+      MANGA_ORT_PROVIDER: cpu
+      MANGA_ORT_REQUIRE_PROVIDER: "0"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install benchmark deps
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install \
+            numpy==1.26.4 \
+            Pillow==10.4.0 \
+            opencv-contrib-python==4.10.0.84 \
+            onnxruntime==1.24.1 \
+            psutil==6.1.1 \
+            loguru==0.7.2 \
+            requests==2.32.3 \
+            beautifulsoup4==4.12.3 \
+            lxml==5.3.0 \
+            playwright==1.47.0 \
+            fastapi==0.115.0 \
+            pydantic==2.9.2 \
+            filelock==3.16.1 \
+            threadpoolctl==3.6.0 \
+            huggingface_hub \
+            ultralytics
+
+      - name: Restore Manga109 YOLO26 ONNX artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf /tmp/hf-yolo26-artifact
+          mkdir -p /tmp/hf-yolo26-artifact "$MODEL_DIR"
+          gh run download 35548554277 \
+            --repo "$GITHUB_REPOSITORY" \
+            --name hf-yolo26-manga109-bubble-ab \
+            --dir /tmp/hf-yolo26-artifact
+          SRC="$(find /tmp/hf-yolo26-artifact -name 'manga109-yolo26s-seg-1024.onnx' -print -quit)"
+          test -n "$SRC"
+          cp "$SRC" "$MODEL_DIR/manga109-yolo26s-seg-1024.onnx"
+          ls -lh "$MODEL_DIR/manga109-yolo26s-seg-1024.onnx"
+
+      - name: Download native checkpoints
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from huggingface_hub import hf_hub_download
+
+          root = Path("benchmark-results/yolo26-domain-parity/models")
+          root.mkdir(parents=True, exist_ok=True)
+
+          manga = hf_hub_download(
+              repo_id="ShadowB/Manga109-panel-balloon-text-yolov26-segmentation",
+              filename="best.pt",
+          )
+          comic = hf_hub_download(
+              repo_id="Oliverdsfdsf/comic-panels-text-detect",
+              filename="comic-panels-and-text-detect.safetensors",
+          )
+
+          (root / "manga109-best.pt").write_bytes(Path(manga).read_bytes())
+          (root / "comic-panels-and-text-detect.safetensors").write_bytes(Path(comic).read_bytes())
+          print("manga", root / "manga109-best.pt")
+          print("comic", root / "comic-panels-and-text-detect.safetensors")
+          PY
+          ls -lh "$MODEL_DIR"
+
+      - name: Download and slice Shadow Slave chapter 1
+        run: |
+          python - <<'PY'
+          import os
+          import shutil
+          import time
+          from pathlib import Path
+
+          from app.downloader.registry import download_chapter
+          from app.downloader.slicer import slice_image
+
+          raw = Path(os.environ["RAW_DIR"])
+          slc = Path(os.environ["SLICE_DIR"])
+          raw.mkdir(parents=True, exist_ok=True)
+          slc.mkdir(parents=True, exist_ok=True)
+
+          paths = None
+          for attempt in range(1, 4):
+              try:
+                  paths = download_chapter(os.environ["CHAPTER_URL"], raw)
+                  break
+              except Exception as exc:
+                  print(f"download attempt {attempt}/3 failed: {exc!r}")
+                  if attempt >= 3:
+                      raise
+                  shutil.rmtree(raw, ignore_errors=True)
+                  raw.mkdir(parents=True, exist_ok=True)
+                  time.sleep(3 * attempt)
+
+          slices = []
+          for i, path in enumerate(sorted(paths)):
+              recs = slice_image(path, slc, f"{i:03d}", return_metadata=True)
+              slices.extend(Path(r["path"]) for r in recs)
+
+          print("raw_images", len(paths))
+          print("slices", len(slices))
+          if len(slices) != 135:
+              print("warning: expected 135 slices, got", len(slices))
+          PY
+
+      - name: Run ONNX vs native vs comic-domain parity
+        run: |
+          python scripts/benchmark_yolo26_domain_parity.py \
+            --slice-dir "$SLICE_DIR" \
+            --onnx "$MODEL_DIR/manga109-yolo26s-seg-1024.onnx" \
+            --manga-pt "$MODEL_DIR/manga109-best.pt" \
+            --comic-model "$MODEL_DIR/comic-panels-and-text-detect.safetensors" \
+            --conf 0.01 \
+            --sample-size 20 \
+            --out "$ROOT/report.json" | tee "$ROOT/run.log"
+
+      - name: Publish summary
+        if: always()
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          path = Path(os.environ["ROOT"]) / "report.json"
+          summary_file = Path(os.environ["GITHUB_STEP_SUMMARY"])
+          if not path.exists():
+              summary_file.write_text("## YOLO26 domain parity\n\nBenchmark did not produce report.json.\n", encoding="utf-8")
+              raise SystemExit(0)
+
+          report = json.loads(path.read_text(encoding="utf-8"))
+          s = report["summary"]
+          o = s["onnx_all"]
+          q = s["sample"]
+          lines = [
+              "## YOLO26 domain parity",
+              "",
+              f"- slices: {s['slice_count']}",
+              f"- ONNX positive / zero-mask: {o['positive_slices']} / {o['zero_mask_slices']}",
+              f"- zero-mask with raw text candidates: {o['zero_mask_with_raw_text_candidates']}",
+              f"- zero-mask with post-NMS text boxes: {o['zero_mask_with_post_nms_text_boxes']}",
+              f"- raw text candidates >= conf: {o['total_raw_text_candidates_ge_conf']}",
+              f"- post-NMS text boxes: {o['total_post_nms_text_boxes']}",
+              f"- verified mask instances: {o['total_verified_mask_instances']}",
+              f"- sample ONNX-zero slices: {q['onnx_zero_count']}",
+              f"- Manga PT 1280 recovered: {q['manga_pt_1280_recovers_onnx_zero']}",
+              f"- Manga PT 1024 recovered: {q['manga_pt_1024_recovers_onnx_zero']}",
+              f"- Comic PT 1280 recovered: {q['comic_pt_1280_recovers_onnx_zero']}",
+              f"- Ultralytics: {s['ultralytics_version']}",
+              f"- comic load error: {s['comic_model_load_error']}",
+          ]
+          summary_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+          print("\n".join(lines))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: yolo26-domain-parity
+          path: |
+            benchmark-results/yolo26-domain-parity/report.json
+            benchmark-results/yolo26-domain-parity/run.log
+          retention-days: 7
