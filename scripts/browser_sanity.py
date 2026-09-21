@@ -327,7 +327,7 @@ def check_browser_state_contracts() -> None:
         Path("app/static/js/review-stitch-inspector.js"): (
             "function captureSnapshot(shell)",
             "function restoreSnapshot(shell)",
-            "const snapshotKey = () => \`${chapterKey()}:strip\`;",
+            'const snapshotKey = () => `${chapterKey()}:strip`;',
             "window.hasUnsavedStitchedMarks = () =>",
             "captureSnapshot(shell);",
         ),
