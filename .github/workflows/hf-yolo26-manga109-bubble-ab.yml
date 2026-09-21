@@ -1,0 +1,440 @@
+name: HF YOLO26 Manga109 bubble A/B
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["experiment/one-shot-yolo26"]
+    paths:
+      - .github/workflows/hf-yolo26-manga109-bubble-ab.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hf-yolo26-manga109-bubble-ab
+  cancel-in-progress: true
+
+jobs:
+  ab:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 35
+    env:
+      PYTHONUNBUFFERED: "1"
+      CHAPTER_URL: "https://asurascans.com/comics/shadow-slave-6f7fe6eb/chapter/1"
+      HF_MODEL_ID: "ShadowB/Manga109-panel-balloon-text-yolov26-segmentation"
+      ROOT: "benchmark-results/hf-yolo26-bubble"
+      RAW_DIR: "benchmark-results/hf-yolo26-bubble/raw"
+      SLICE_DIR: "benchmark-results/hf-yolo26-bubble/slices"
+      MODEL_DIR: "benchmark-results/hf-yolo26-bubble/model"
+      MANGA_ORT_PROVIDER: openvino
+      MANGA_ORT_REQUIRE_PROVIDER: "1"
+      MANGA_ORT_OPENVINO_SCOPE: detectors
+      MANGA_ORT_OPENVINO_THREADS: "2"
+      MANGA_ORT_OPENVINO_STREAMS: "1"
+      MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install runtime/export deps
+        run: |
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple torch==2.8.0+cpu torchvision==0.23.0+cpu
+          python -m pip install ultralytics==8.4.156 huggingface_hub==0.35.1 onnx==1.17.0 onnxslim==0.1.71
+          python -m pip install numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 psutil==6.1.1 loguru==0.7.2 requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 playwright==1.47.0 fastapi==0.115.0 pydantic==2.9.2 filelock==3.16.1 threadpoolctl==3.6.0
+          python -m pip install --force-reinstall --no-deps onnxruntime-openvino==1.24.1
+
+      - name: Restore production models
+        id: models
+        uses: actions/cache@v4
+        with:
+          path: |
+            models/*.onnx
+            models/.e2e-provenance.json
+          key: processing-profile-models-b224548-v1
+
+      - name: Read pinned model provisioner
+        if: ${{ steps.models.outputs.cache-hit != 'true' }}
+        uses: actions/checkout@v4
+        with:
+          ref: b22454827f8190655d7070b80eb20c2550beadfa
+          path: benchmark-bootstrap
+          sparse-checkout: scripts/provision_real_e2e_models.py
+          sparse-checkout-cone-mode: false
+
+      - name: Provision production models on cache miss
+        if: ${{ steps.models.outputs.cache-hit != 'true' }}
+        run: |
+          python benchmark-bootstrap/scripts/provision_real_e2e_models.py
+          cp benchmark-bootstrap/models/*.onnx models/
+          cp benchmark-bootstrap/models/.e2e-provenance.json models/
+
+      - name: Download HF best.pt and inspect checkpoint
+        run: |
+          python - <<'PY'
+          import json, os, shutil
+          from pathlib import Path
+          from huggingface_hub import hf_hub_download
+          from ultralytics import YOLO
+
+          out = Path(os.environ["MODEL_DIR"])
+          out.mkdir(parents=True, exist_ok=True)
+
+          src = Path(hf_hub_download(
+              repo_id=os.environ["HF_MODEL_ID"],
+              filename="best.pt",
+          ))
+          dst = out / "best.pt"
+          shutil.copy2(src, dst)
+
+          model = YOLO(str(dst))
+          names = model.names
+          info = {
+              "model_id": os.environ["HF_MODEL_ID"],
+              "checkpoint": str(dst),
+              "bytes": dst.stat().st_size,
+              "task": getattr(model, "task", None),
+              "names": names,
+          }
+          (out / "checkpoint-info.json").write_text(json.dumps(info, indent=2) + "\n")
+          print(json.dumps(info, indent=2))
+
+          expected = {0: "frame", 1: "text", 2: "balloon"}
+          normalized = {int(k): str(v) for k, v in dict(names).items()}
+          if normalized != expected:
+              raise RuntimeError(f"unexpected class map: {normalized}")
+          PY
+
+      - name: Export HF YOLO26s-seg to ONNX 1024
+        run: |
+          python - <<'PY'
+          import os, shutil
+          from pathlib import Path
+          from ultralytics import YOLO
+
+          root = Path(os.environ["MODEL_DIR"])
+          model = YOLO(str(root / "best.pt"))
+          exported = Path(model.export(
+              format="onnx",
+              imgsz=1024,
+              opset=17,
+              simplify=True,
+              dynamic=False,
+              device="cpu",
+          ))
+          target = root / "manga109-yolo26s-seg-1024.onnx"
+          if exported.resolve() != target.resolve():
+              shutil.copy2(exported, target)
+          print("onnx", target, target.stat().st_size)
+          PY
+
+      - name: Download and slice Shadow Slave Chapter 1
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from app.downloader.registry import download_chapter
+          from app.downloader.slicer import slice_image
+
+          raw = Path(os.environ["RAW_DIR"])
+          slc = Path(os.environ["SLICE_DIR"])
+          raw.mkdir(parents=True, exist_ok=True)
+          slc.mkdir(parents=True, exist_ok=True)
+
+          paths = download_chapter(os.environ["CHAPTER_URL"], raw)
+          slices = []
+          for i, path in enumerate(sorted(paths)):
+              recs = slice_image(path, slc, f"{i:03d}", return_metadata=True)
+              slices.extend(Path(r["path"]) for r in recs)
+
+          print("raw_images", len(paths))
+          print("slices", len(slices))
+          if len(slices) != 135:
+              print("warning: expected 135 slices, got", len(slices))
+          PY
+
+      - name: Raw ONNX speed A/B on same 32 slices
+        run: |
+          python - <<'PY'
+          import json, os, statistics, time
+          from pathlib import Path
+          import cv2
+          import numpy as np
+          import onnxruntime as ort
+
+          paths = sorted(Path(os.environ["SLICE_DIR"]).glob("*.png"))[:32]
+          baseline = Path("models/bubble_yolo.onnx")
+          candidate = Path(os.environ["MODEL_DIR"]) / "manga109-yolo26s-seg-1024.onnx"
+
+          providers = ort.get_available_providers()
+          print("providers", providers)
+          if "OpenVINOExecutionProvider" not in providers:
+              raise RuntimeError("OpenVINOExecutionProvider unavailable")
+
+          def session(path):
+              so = ort.SessionOptions()
+              so.intra_op_num_threads = 2
+              so.inter_op_num_threads = 1
+              return ort.InferenceSession(
+                  str(path),
+                  sess_options=so,
+                  providers=["OpenVINOExecutionProvider"],
+                  provider_options=[{
+                      "device_type": "CPU",
+                      "num_of_threads": "2",
+                      "num_streams": "1",
+                      "cache_dir": "/tmp/manga-openvino-cache",
+                  }],
+              )
+
+          def preprocess(path):
+              img = cv2.imread(str(path), cv2.IMREAD_COLOR)
+              if img is None:
+                  raise RuntimeError(f"cannot read {path}")
+              h, w = img.shape[:2]
+              scale = min(1024 / w, 1024 / h)
+              rw, rh = max(1, int(w * scale)), max(1, int(h * scale))
+              resized = cv2.resize(img, (rw, rh), interpolation=cv2.INTER_LINEAR)
+              canvas = np.full((1024, 1024, 3), 114, dtype=np.uint8)
+              x=(1024-rw)//2
+              y=(1024-rh)//2
+              canvas[y:y+rh, x:x+rw]=resized
+              rgb=cv2.cvtColor(canvas, cv2.COLOR_BGR2RGB)
+              return np.ascontiguousarray(
+                  (rgb.astype(np.float32)/255.0).transpose(2,0,1)[None]
+              )
+
+          blobs=[preprocess(p) for p in paths]
+          a=session(baseline)
+          b=session(candidate)
+
+          def bench(sess):
+              name=sess.get_inputs()[0].name
+              for i in range(3):
+                  sess.run(None,{name:blobs[i % len(blobs)]})
+              xs=[]
+              shapes=None
+              for blob in blobs:
+                  t0=time.perf_counter()
+                  out=sess.run(None,{name:blob})
+                  xs.append((time.perf_counter()-t0)*1000.0)
+                  if shapes is None:
+                      shapes=[list(np.asarray(x).shape) for x in out]
+              ordered=sorted(xs)
+              return {
+                  "mean_ms":statistics.fmean(xs),
+                  "median_ms":statistics.median(xs),
+                  "p95_ms":ordered[int(0.95*(len(ordered)-1))],
+                  "min_ms":min(xs),
+                  "max_ms":max(xs),
+                  "output_shapes":shapes,
+              }
+
+          base=bench(a)
+          cand=bench(b)
+          report={
+              "slice_count":len(paths),
+              "baseline_model":"bubble_yolo.onnx",
+              "candidate_model":"ShadowB Manga109 YOLO26s-seg",
+              "baseline":base,
+              "candidate":cand,
+              "baseline_bytes":baseline.stat().st_size,
+              "candidate_bytes":candidate.stat().st_size,
+              "median_speedup":base["median_ms"]/max(1e-9,cand["median_ms"]),
+              "candidate_latency_reduction_pct":(
+                  1-cand["median_ms"]/base["median_ms"]
+              )*100.0,
+          }
+          out=Path(os.environ["ROOT"])/"speed.json"
+          out.write_text(json.dumps(report,indent=2)+"\n")
+          print(json.dumps(report,indent=2))
+          PY
+
+      - name: Full-chapter class-aware box agreement
+        run: |
+          python - <<'PY'
+          import json, os, statistics, time
+          from pathlib import Path
+          import cv2
+          from ultralytics import YOLO
+
+          from app.config import BUBBLE_DETECTOR_MODEL
+          from app.detector.bubble_detector import YoloDetector
+          from app.parameters import BUBBLE_PROPOSAL_CONF_THRESHOLD
+
+          paths=sorted(Path(os.environ["SLICE_DIR"]).glob("*.png"))
+          teacher=YoloDetector(
+              BUBBLE_DETECTOR_MODEL,
+              BUBBLE_PROPOSAL_CONF_THRESHOLD,
+              use_tta=False,
+              model_role="bubble_detector",
+          )
+          candidate=YOLO(
+              str(Path(os.environ["MODEL_DIR"]) / "manga109-yolo26s-seg-1024.onnx"),
+              task="segment",
+          )
+
+          # Candidate -> current bubble detector class map:
+          # HF class 2 balloon -> current class 0 text_bubble
+          # HF class 1 text    -> current class 1 text_free
+          # HF class 0 frame   -> ignored
+          map_cls={2:0,1:1}
+
+          def iou(a,b):
+              ix1=max(a[0],b[0]); iy1=max(a[1],b[1])
+              ix2=min(a[2],b[2]); iy2=min(a[3],b[3])
+              iw=max(0.0,ix2-ix1); ih=max(0.0,iy2-iy1)
+              inter=iw*ih
+              aa=max(0.0,a[2]-a[0])*max(0.0,a[3]-a[1])
+              bb=max(0.0,b[2]-b[0])*max(0.0,b[3]-b[1])
+              return inter/max(1e-9,aa+bb-inter)
+
+          teacher_rows=[]
+          for path in paths:
+              img=cv2.imread(str(path),cv2.IMREAD_COLOR)
+              boxes=teacher.detect(img)
+              teacher_rows.append([
+                  (float(b.x1),float(b.y1),float(b.x2),float(b.y2),
+                   int(b.class_id),float(b.confidence))
+                  for b in boxes if int(b.class_id) in (0,1)
+              ])
+
+          thresholds=[0.10,0.15,0.20,0.25,0.30]
+          summaries=[]
+
+          for conf in thresholds:
+              tp=fp=fn=0
+              teacher_total=student_total=0
+              zero_candidate=0
+              teacher_positive_candidate_zero=0
+              frame_total=0
+              per_slice=[]
+              times=[]
+
+              for idx,path in enumerate(paths):
+                  t0=time.perf_counter()
+                  r=candidate.predict(
+                      source=str(path),
+                      imgsz=1024,
+                      conf=conf,
+                      iou=0.7,
+                      device="cpu",
+                      verbose=False,
+                      max_det=300,
+                      retina_masks=False,
+                  )[0]
+                  times.append((time.perf_counter()-t0)*1000.0)
+
+                  s=[]
+                  if r.boxes is not None:
+                      xyxy=r.boxes.xyxy.detach().cpu().numpy()
+                      cls=r.boxes.cls.detach().cpu().numpy().astype(int)
+                      cf=r.boxes.conf.detach().cpu().numpy()
+                      for box,c,k in zip(xyxy,cls,cf):
+                          c=int(c)
+                          if c==0:
+                              frame_total += 1
+                              continue
+                          if c not in map_cls:
+                              continue
+                          s.append((
+                              float(box[0]),float(box[1]),float(box[2]),float(box[3]),
+                              map_cls[c],float(k)
+                          ))
+
+                  t=teacher_rows[idx]
+                  teacher_total += len(t)
+                  student_total += len(s)
+                  if not s:
+                      zero_candidate += 1
+                      if t:
+                          teacher_positive_candidate_zero += 1
+
+                  matched_t=set()
+                  matched_s=set()
+                  pairs=[]
+                  for ti,tb in enumerate(t):
+                      for si,sb in enumerate(s):
+                          if tb[4] != sb[4]:
+                              continue
+                          ov=iou(tb[:4],sb[:4])
+                          if ov>=0.5:
+                              pairs.append((ov,ti,si))
+                  pairs.sort(reverse=True)
+                  for ov,ti,si in pairs:
+                      if ti in matched_t or si in matched_s:
+                          continue
+                      matched_t.add(ti)
+                      matched_s.add(si)
+
+                  stp=len(matched_t)
+                  sfp=len(s)-len(matched_s)
+                  sfn=len(t)-len(matched_t)
+                  tp += stp
+                  fp += sfp
+                  fn += sfn
+
+                  per_slice.append({
+                      "index":idx,
+                      "file":path.name,
+                      "teacher_boxes":len(t),
+                      "candidate_boxes":len(s),
+                      "tp":stp,
+                      "fp":sfp,
+                      "fn":sfn,
+                  })
+
+              precision=tp/max(1,tp+fp)
+              recall=tp/max(1,tp+fn)
+              f1=2*precision*recall/max(1e-9,precision+recall)
+              summaries.append({
+                  "conf":conf,
+                  "teacher_boxes":teacher_total,
+                  "candidate_boxes":student_total,
+                  "tp":tp,"fp":fp,"fn":fn,
+                  "precision_vs_teacher":precision,
+                  "recall_vs_teacher":recall,
+                  "f1_vs_teacher":f1,
+                  "zero_candidate_slices":zero_candidate,
+                  "teacher_positive_candidate_zero_slices":teacher_positive_candidate_zero,
+                  "ignored_frame_predictions":frame_total,
+                  "median_predict_ms":statistics.median(times),
+                  "per_slice":per_slice,
+              })
+
+          best=max(summaries,key=lambda x:(x["f1_vs_teacher"],x["recall_vs_teacher"]))
+          report={"thresholds":summaries,"best":best}
+          out=Path(os.environ["ROOT"])/"agreement.json"
+          out.write_text(json.dumps(report,indent=2)+"\n")
+
+          compact={
+              "thresholds":[
+                  {k:v for k,v in row.items() if k!="per_slice"}
+                  for row in summaries
+              ],
+              "best":{k:v for k,v in best.items() if k!="per_slice"},
+          }
+          print(json.dumps(compact,indent=2))
+
+          with open(os.environ["GITHUB_STEP_SUMMARY"],"a",encoding="utf-8") as f:
+              f.write("## HF Manga109 YOLO26s-seg vs bubble_yolo\n\n")
+              f.write(f"- best conf: {best['conf']}\n")
+              f.write(f"- precision vs teacher: {best['precision_vs_teacher']:.4f}\n")
+              f.write(f"- recall vs teacher: {best['recall_vs_teacher']:.4f}\n")
+              f.write(f"- F1 vs teacher: {best['f1_vs_teacher']:.4f}\n")
+              f.write(f"- teacher-positive candidate-zero slices: {best['teacher_positive_candidate_zero_slices']}\n")
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hf-yolo26-manga109-bubble-ab
+          path: |
+            benchmark-results/hf-yolo26-bubble/model/checkpoint-info.json
+            benchmark-results/hf-yolo26-bubble/model/manga109-yolo26s-seg-1024.onnx
+            benchmark-results/hf-yolo26-bubble/speed.json
+            benchmark-results/hf-yolo26-bubble/agreement.json
+          retention-days: 7
