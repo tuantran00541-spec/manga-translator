@@ -4,24 +4,6 @@
   let reviewLastChapterId = null;
   let aiSettingsInstance = null;
 
-  function cleanSourcePage(page, fallbackIndex) {
-    return Number.isInteger(page?.source_page) ? page.source_page : fallbackIndex;
-  }
-
-  function sourceGroups() {
-    const groups = new Map();
-    (window.currentManifest?.pages || []).forEach((page, canonicalIndex) => {
-      if (!page) return;
-      const sourcePage = cleanSourcePage(page, canonicalIndex);
-      if (!groups.has(sourcePage)) groups.set(sourcePage, []);
-      groups.get(sourcePage).push({ page, canonicalIndex });
-    });
-    for (const items of groups.values()) {
-      items.sort((a, b) => Number(a.page?.slice_index || 0) - Number(b.page?.slice_index || 0));
-    }
-    return new Map([...groups.entries()].sort((a, b) => a[0] - b[0]));
-  }
-
   function createAIProviderSettings() {
     if (aiSettingsInstance?.config?.isConnected) return aiSettingsInstance.status;
 
@@ -187,7 +169,6 @@
     const workspace = document.querySelector("#page-view .review-workspace-shell");
     if (!workspace) return null;
     const viewport = workspace.querySelector(".review-document-viewport");
-    const rawSource = Number.parseInt(workspace.dataset.pendingSourcePage || "", 10);
     const active = document.activeElement;
     let draft = null;
     if (active instanceof HTMLTextAreaElement) {
@@ -214,7 +195,6 @@
     }
     return {
       chapterId: window.currentChapterId || "",
-      sourcePage: Number.isInteger(rawSource) ? rawSource : null,
       scrollLeft: viewport?.scrollLeft || 0,
       scrollTop: viewport?.scrollTop || 0,
       selectedTextObjectId: window.editorState?.selectedTextObjectId || null,
@@ -254,34 +234,14 @@
     const chapterId = window.currentChapterId || "";
     if (reviewLastChapterId !== chapterId) reviewLastChapterId = chapterId;
 
-    const groups = sourceGroups();
-    const sourcePages = [...groups.keys()];
-    if (!sourcePages.length) return;
-
-    const requestedCanonical = window.initialReviewCanonicalPageIndex
-      ?? window.currentManifest?.workflow?.page_index
-      ?? null;
-    const requestedPage = Number.isFinite(Number(requestedCanonical))
-      ? window.currentManifest?.pages?.[Number(requestedCanonical)]
-      : null;
-    const requestedSource = requestedPage
-      ? cleanSourcePage(requestedPage, Number(requestedCanonical))
-      : sourcePages[0];
-    const previousSource = previousState?.chapterId === chapterId
-      ? previousState.sourcePage
-      : null;
-    const activeSource = sourcePages.includes(previousSource)
-      ? previousSource
-      : sourcePages.includes(requestedSource)
-        ? requestedSource
-        : sourcePages[0];
+    const slices = (window.currentManifest?.pages || []).filter(Boolean);
+    if (!slices.length) return;
 
     window.initialReviewCanonicalPageIndex = null;
     reapplyFocusedDraft(previousState);
 
     const workspace = document.createElement("div");
     workspace.className = "review-workspace-shell review-canvas-only review-canvas-fullbleed";
-    workspace.dataset.pendingSourcePage = String(activeSource);
     if (previousState?.chapterId === chapterId) {
       workspace._reviewRestoreState = previousState;
     }
