@@ -11,7 +11,7 @@ from app.detector.bubble_detector import BubbleBox
 from app.detector.mask_builder import build_mask
 from app.detector.extreme_yolo26_detector import ExtremeYolo26TextDetector
 from app.image_io import read_image, write_image
-from app.inpaint.adaptive_fast_inpainter import AdaptiveFastInpainter
+from app.inpaint.extreme_authority_inpainter import ExtremeAuthorityInpainter
 from app.manifest_utils import atomic_replace
 from app.mask_store import decode_mask_value
 from app.parameters import MANUAL_MASK_THRESHOLD, PIPELINE_DEFAULT_WORKERS
@@ -36,7 +36,7 @@ class OptimizedChapterPipeline(ChapterPipeline):
         if self._inpainter is None:
             with self._inpainter_init_lock:
                 if self._inpainter is None:
-                    self._inpainter = AdaptiveFastInpainter()
+                    self._inpainter = ExtremeAuthorityInpainter()
         return self._inpainter
 
     def process_pages(
