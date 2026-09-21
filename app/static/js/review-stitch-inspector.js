@@ -773,6 +773,7 @@
     mountToolRail(shell, signal);
     installTextDrawing(shell, signal);
     mountActions(shell, signal, () => shell._rerender?.());
+    window.mountChapterOCR?.();
 
     let painting = false, radius = 24, last = null, panning = false, pan = null, space = false;
 
