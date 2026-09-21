@@ -60,6 +60,9 @@ class MultiLangOCR:
                 quality_reason=quality.reason,
             )
 
+        if normalized in {"en", "english"}:
+            return self._paddle.read_recognition_only(image, lang)
+
         effective_target_mode = target_mode or self._paddle_target_mode
         return self._paddle.read(
             image,
