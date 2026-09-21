@@ -339,7 +339,7 @@
     let drag = null;
     const image = shell.querySelector(".review-stitched-image");
     overlay.addEventListener("pointerdown", (event) => {
-      if (variant !== "clean" || tool !== "select" || event.button !== 0 || event.target.closest(".review-inline-ocr,.review-inline-translation")) return;
+      if (variant !== "clean" || tool !== "select" || event.button !== 0) return;
       event.preventDefault(); event.stopPropagation(); selectObject(shell, pageIndex, obj.id);
       const rect = image.getBoundingClientRect(), W = Number(image.dataset.sourceWidth || 0), H = Number(image.dataset.sourceHeight || 0);
       if (!rect.width || !rect.height || !W || !H) return;
