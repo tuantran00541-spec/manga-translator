@@ -497,6 +497,7 @@ def run(url: str, output: Path, *, workers: int, max_render_pages: int) -> dict:
             raise RuntimeError("processed chapter produced zero OCR targets")
 
         ocr_errors: list[dict] = []
+        ocr_fallback_targets = 0
         started = time.perf_counter()
         for ordinal, (page_index, box_id) in enumerate(targets, start=1):
             try:
@@ -507,6 +508,8 @@ def run(url: str, output: Path, *, workers: int, max_render_pages: int) -> dict:
                     "en",
                     force=True,
                 )
+                if str(result.get("target_mode") or "") == "hybrid-fallback":
+                    ocr_fallback_targets += 1
                 if ordinal % 20 == 0 or ordinal == len(targets):
                     print(
                         f"OCR {ordinal}/{len(targets)} page={page_index} box={box_id} "
@@ -523,6 +526,7 @@ def run(url: str, output: Path, *, workers: int, max_render_pages: int) -> dict:
                 )
         report["ocr_s"] = round(time.perf_counter() - started, 3)
         report["ocr_errors"] = ocr_errors
+        report["ocr_fallback_targets"] = ocr_fallback_targets
 
         manifest = load_manifest_raw(chapter_id)
         recognized, missing, object_missing = _validate_metadata(manifest)
