@@ -43,15 +43,12 @@
     const style = document.createElement("style");
     style.id = "review-photopea-tool-styles";
     style.textContent = `
-      body.review-tool-rail-active{--sidebar-width:52px}\n      body.review-tool-rail-active .app-sidebar > :not(.review-tool-rail){display:none!important}
-      .review-tool-rail{display:flex;width:100%;height:100%;min-height:0;flex-direction:column;align-items:center;justify-content:space-between;padding:3px 0}
+      .review-tool-rail{position:absolute;z-index:calc(var(--z-toolbar) + 4);top:52px;left:8px;display:flex;width:44px;max-height:calc(100% - 68px);flex-direction:column;align-items:center;padding:3px;border:1px solid var(--border-strong);background:var(--surface-panel);overflow-y:auto}
       .review-tool-group{display:flex;width:100%;flex-direction:column;align-items:center;gap:2px}
-      .review-tool-group-bottom{margin-top:auto;padding-top:5px;border-top:1px solid var(--border-subtle)}
-      .review-rail-tool{position:relative;display:grid;width:42px;height:42px;place-items:center;padding:0;border:1px solid transparent;border-radius:3px;background:transparent;color:var(--text-secondary);cursor:pointer}
-      .review-rail-tool:hover,.review-rail-tool:focus-visible{outline:0;border-color:var(--border-subtle);background:var(--surface-hover);color:var(--text-primary)}
-      .review-rail-tool.active{border-color:var(--border-strong);background:color-mix(in srgb,var(--accent) 24%,var(--surface-raised));color:var(--text-primary)}
-      .review-rail-tool:disabled{opacity:.45;cursor:default}.review-rail-tool>.ui-icon{width:21px;height:21px}
-      .review-tool-tooltip{position:absolute;z-index:calc(var(--z-toolbar) + 40);left:48px;top:50%;display:none;width:230px;padding:7px 9px;border:1px solid var(--border-strong);border-radius:4px;background:var(--surface-panel);box-shadow:var(--shadow-float);color:var(--text-secondary);text-align:left;transform:translateY(-50%);pointer-events:none}
+      .review-rail-tool{position:relative;display:grid;width:36px;height:36px;flex:0 0 36px;place-items:center;padding:0;border:1px solid transparent;border-radius:3px;background:transparent;color:var(--text-primary);cursor:pointer}
+      .review-rail-tool:hover,.review-rail-tool:focus-visible,.review-rail-tool.active{outline:0;border-color:var(--border-strong);background:var(--surface-panel);color:var(--text-primary)}
+      .review-rail-tool:disabled{opacity:.45;cursor:default}.review-rail-tool>.ui-icon{width:19px;height:19px}
+      .review-tool-tooltip{position:absolute;z-index:calc(var(--z-toolbar) + 40);left:42px;top:50%;display:none;width:220px;padding:7px 9px;border:1px solid var(--border-strong);border-radius:3px;background:var(--surface-panel);color:var(--text-primary);text-align:left;transform:translateY(-50%);pointer-events:none}
       .review-tool-tooltip strong{display:block;margin-bottom:2px;color:var(--text-primary);font-size:11px;line-height:1.25}.review-tool-tooltip span{display:block;font-size:10px;line-height:1.35}
       .review-rail-tool:hover .review-tool-tooltip,.review-rail-tool:focus-visible .review-tool-tooltip{display:block}
       .review-single-document .review-stitched-image>.review-image-chunk{position:relative;z-index:1;display:block;width:100%;height:auto}
@@ -59,13 +56,13 @@
       .review-strip-slice{position:absolute;z-index:1;left:0;width:100%;overflow:hidden;pointer-events:none}
       .review-strip-slice>img{position:absolute;left:0;display:block;width:100%;max-width:none;height:auto;pointer-events:none;user-select:none}
       .review-single-document .review-stitched-image>.stitched-brush-chunk{position:absolute;z-index:5;left:0;display:block;width:100%;height:auto;pointer-events:none}
-      .review-text-object-overlay{z-index:12;overflow:visible!important;border:1.5px solid rgba(55,155,255,.95);background:rgba(55,155,255,.045)}
-      .review-text-object-overlay.ellipse{border-radius:999px}.review-text-object-overlay.selected{border-color:#57a8ff;box-shadow:0 0 0 1px rgba(87,168,255,.45)}
+      .review-text-object-overlay{z-index:12;overflow:visible!important;border:1.5px solid var(--text-primary);background:transparent}
+      .review-text-object-overlay.ellipse{border-radius:999px}.review-text-object-overlay.selected{border-width:2px}
       .review-text-object-overlay.tool-muted{opacity:.42;pointer-events:none!important}
-      .review-text-drawing{position:absolute;z-index:20;border:1.5px dashed #57a8ff;background:rgba(87,168,255,.08);pointer-events:none}.review-text-drawing.ellipse{border-radius:999px}
+      .review-text-drawing{position:absolute;z-index:20;border:1.5px dashed var(--text-primary);background:transparent;pointer-events:none}.review-text-drawing.ellipse{border-radius:999px}
       .review-document-viewport[data-active-tool="hand"]{cursor:grab}.review-document-viewport[data-active-tool="hand"].is-panning{cursor:grabbing}.review-document-viewport[data-active-tool="zoom"]{cursor:zoom-in}
       .review-stitched-image[data-active-tool="rectangle"],.review-stitched-image[data-active-tool="ellipse"],.review-stitched-image[data-active-tool="brush"],.review-stitched-image[data-active-tool="eraser"]{cursor:crosshair}
-      @media(max-width:720px){.review-rail-tool{width:38px;height:38px}.review-tool-tooltip{display:none!important}}
+      @media(max-width:720px){.review-tool-rail{top:48px;left:4px;width:40px;max-height:calc(100% - 58px)}.review-rail-tool{width:32px;height:32px;flex-basis:32px}.review-tool-tooltip{display:none!important}}
     `;
     document.head.appendChild(style);
   }
@@ -671,13 +668,28 @@
     b.addEventListener("click", () => action ? action() : setTool(shell, name), { signal }); return b;
   }
   function mountToolRail(shell, signal) {
-    const sidebar = document.getElementById("app-sidebar"); if (!sidebar) return;
-    sidebar.querySelector(".review-tool-rail")?.remove(); document.body.classList.add("review-tool-rail-active");
-    const rail = document.createElement("div"); rail.className = "review-tool-rail"; rail.setAttribute("role", "toolbar"); rail.setAttribute("aria-label", "Công cụ chỉnh sửa ảnh và lettering");
-    const main = document.createElement("div"); main.className = "review-tool-group";
-    [["select","cursor","Chọn","Chọn, kéo và thay đổi kích thước vùng chữ."],["rectangle","rect-select","Vùng chữ nhật","Kéo quanh bong bóng để tạo vùng OCR."],["ellipse","ellipse-select","Vùng elip","Kéo quanh bong bóng tròn để tạo vùng OCR."],["brush","brush","Cọ Inpaint","Tô vùng cần xóa rồi chạy Inpaint."],["eraser","eraser","Tẩy mask","Xóa phần mask inpaint đã tô nhầm."],["hand","hand","Bàn tay","Kéo trang tự do theo mọi hướng."],["zoom","zoom","Thu phóng","Nhấp để phóng to, Alt + nhấp để thu nhỏ."]].forEach((x) => main.appendChild(toolButton(shell, signal, ...x)));
-    const bottom = document.createElement("div"); bottom.className = "review-tool-group review-tool-group-bottom"; bottom.appendChild(toolButton(shell, signal, "settings", "settings", "Cài đặt", "Mở cài đặt ứng dụng và dịch vụ AI.", () => window.openAppSettings?.()));
-    rail.append(main, bottom); sidebar.appendChild(rail); signal.addEventListener("abort", () => { rail.remove(); document.body.classList.remove("review-tool-rail-active"); }, { once: true }); syncToolButtons();
+    shell.querySelector(".review-tool-rail")?.remove();
+    const rail = document.createElement("div");
+    rail.className = "review-tool-rail";
+    rail.setAttribute("role", "toolbar");
+    rail.setAttribute("aria-label", "Công cụ chỉnh sửa ảnh và lettering");
+
+    const main = document.createElement("div");
+    main.className = "review-tool-group";
+    [
+      ["select","cursor","Chọn","Chọn, kéo và thay đổi kích thước vùng chữ."],
+      ["rectangle","rect-select","Vùng chữ nhật","Kéo quanh bong bóng để tạo vùng OCR."],
+      ["ellipse","ellipse-select","Vùng elip","Kéo quanh bong bóng tròn để tạo vùng OCR."],
+      ["brush","brush","Cọ Inpaint","Tô vùng cần xóa rồi chạy Inpaint."],
+      ["eraser","eraser","Tẩy mask","Xóa phần mask inpaint đã tô nhầm."],
+      ["hand","hand","Bàn tay","Kéo trang tự do theo mọi hướng."],
+      ["zoom","zoom","Thu phóng","Nhấp để phóng to, Alt + nhấp để thu nhỏ."],
+    ].forEach((x) => main.appendChild(toolButton(shell, signal, ...x)));
+
+    rail.appendChild(main);
+    shell.appendChild(rail);
+    signal.addEventListener("abort", () => rail.remove(), { once: true });
+    syncToolButtons();
   }
 
   function mountActions(shell, signal, rerender) {
@@ -731,7 +743,7 @@
     for (const chunk of shell._brushChunks || []) {
       if (y + radius < chunk.y1 || y - radius >= chunk.y2) continue;
       ensureBrushCanvas(chunk);
-      const ctx = chunk.ctx; ctx.save(); ctx.globalCompositeOperation = erase ? "destination-out" : "source-over"; ctx.fillStyle = "rgba(220,38,38,.72)"; ctx.beginPath(); ctx.arc(x, y - chunk.y1, radius, 0, Math.PI * 2); ctx.fill(); ctx.restore(); chunk.dirty = true;
+      const ctx = chunk.ctx; ctx.save(); ctx.globalCompositeOperation = erase ? "destination-out" : "source-over"; ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--text-primary").trim() || "#000000"; ctx.beginPath(); ctx.arc(x, y - chunk.y1, radius, 0, Math.PI * 2); ctx.fill(); ctx.restore(); chunk.dirty = true;
     }
   }
   function paintStroke(shell, a, b, radius, erase) {
