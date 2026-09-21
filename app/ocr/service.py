@@ -587,6 +587,61 @@ def _find_box(page: dict, box_id: str) -> dict | None:
     )
 
 
+def _sync_group_visual_metadata(
+    obj: dict,
+    page: dict,
+    source_box_ids: list[str],
+) -> None:
+    source_ids = {str(value) for value in source_box_ids}
+    source_boxes = [
+        box
+        for box in (page.get("boxes") or [])
+        if isinstance(box, dict) and str(box.get("id") or "") in source_ids
+    ]
+
+    colors = [
+        str(box.get("ocr_text_color") or "")
+        for box in source_boxes
+        if str(box.get("ocr_text_color") or "")
+    ]
+    if colors:
+        counts: dict[str, int] = {}
+        for color in colors:
+            counts[color] = counts.get(color, 0) + 1
+        obj["ocr_text_color"] = max(counts, key=counts.get)
+    else:
+        obj.pop("ocr_text_color", None)
+
+    sizes: list[int] = []
+    for box in source_boxes:
+        try:
+            size = int(box.get("ocr_font_size") or 0)
+        except (TypeError, ValueError):
+            continue
+        if size > 0:
+            sizes.append(size)
+    if sizes:
+        obj["ocr_font_size"] = int(round(float(np.median(sizes))))
+    else:
+        obj.pop("ocr_font_size", None)
+
+    regions = [
+        box.get("ocr_text_region")
+        for box in source_boxes
+        if isinstance(box.get("ocr_text_region"), dict)
+    ]
+    valid_regions = [region for region in regions if _box_region(region) is not None]
+    if valid_regions:
+        obj["ocr_text_region"] = {
+            "x1": min(int(region["x1"]) for region in valid_regions),
+            "y1": min(int(region["y1"]) for region in valid_regions),
+            "x2": max(int(region["x2"]) for region in valid_regions),
+            "y2": max(int(region["y2"]) for region in valid_regions),
+        }
+    else:
+        obj.pop("ocr_text_region", None)
+
+
 def _find_text_object(page: dict, text_object_id: str) -> dict | None:
     return next(
         (
@@ -1453,6 +1508,7 @@ class OCRService:
                 original_revision=original_revision,
                 region=snapshot["region"],
             )
+            _sync_group_visual_metadata(obj, page, source_box_ids)
             invalidate_page_render(manifest, page_index)
             save_manifest_raw(chapter_id, manifest)
             self.pipeline._sync_output_dir(chapter_id, manifest, [page_index])
