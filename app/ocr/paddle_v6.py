@@ -194,6 +194,7 @@ class PaddleV6OCR:
             "korean": threading.RLock(),
         }
         self._creation_lock = threading.RLock()
+        self._recognizers: dict[str, Any] = {}
 
     @property
     def unified_model_name(self) -> str:
@@ -206,6 +207,56 @@ class PaddleV6OCR:
     @staticmethod
     def korean_model_name() -> str:
         return "korean_PP-OCRv5_mobile_rec"
+
+    def read_recognition_only(
+        self,
+        image: np.ndarray,
+        lang: str,
+    ) -> OCRReadResult:
+        """Single-pass recognizer-only path for detector-authorized text crops.
+
+        This intentionally does not run Paddle text detection, colour retry, or
+        grayscale retry. The manga detector already supplied the crop geometry.
+        """
+        if image is None or image.size == 0:
+            return OCRReadResult("", None, "none", "unknown", 0, "reject", "empty")
+
+        normalized = _normalize_lang(lang)
+        if normalized not in {"en", "ch"}:
+            return self.read(image, lang, target_mode="all")
+
+        prepared = _prepare_rgb_for_paddle(image)
+        key = f"rec:{normalized}"
+        recognizer = self._get_recognizer(key)
+        with self._locks["unified"]:
+            outputs = recognizer.predict(input=prepared, batch_size=1)
+
+        text = ""
+        confidence: float | None = None
+        for output in outputs:
+            data = _payload(output)
+            candidate = str(data.get("rec_text") or "").strip()
+            if candidate:
+                text = candidate
+                try:
+                    confidence = float(data.get("rec_score"))
+                except (TypeError, ValueError):
+                    confidence = None
+                break
+
+        quality = classify_ocr_quality(text, normalized, confidence=confidence)
+        return OCRReadResult(
+            text=text,
+            confidence=confidence,
+            model=f"{self.unified_model_name}:recognition-only",
+            orientation="horizontal",
+            region_count=1 if text else 0,
+            quality=quality.status,
+            quality_reason=quality.reason,
+            coverage=1.0 if text else 0.0,
+            target_mode="recognition-only",
+            input_shape=tuple(int(value) for value in prepared.shape[:2]),
+        )
 
     def read(
         self,
@@ -435,6 +486,22 @@ class PaddleV6OCR:
             or x2 >= float(width) - margin
             or y2 >= float(height) - margin
         )
+
+    def _get_recognizer(self, key: str) -> Any:
+        existing = self._recognizers.get(key)
+        if existing is not None:
+            return existing
+        with self._creation_lock:
+            existing = self._recognizers.get(key)
+            if existing is not None:
+                return existing
+            from paddleocr import TextRecognition
+            recognizer = TextRecognition(
+                model_name=self.unified_model_name,
+                device="cpu",
+            )
+            self._recognizers[key] = recognizer
+            return recognizer
 
     def _get_pipeline(self, key: str) -> Any:
         existing = self._pipelines.get(key)
