@@ -12,7 +12,6 @@ from filelock import FileLock, Timeout
 from app.config import PROCESSED_DIR
 from app.logging_config import logger
 
-PROCESS_JOB_BATCH_SIZE = 16
 MAX_RETAINED_PROCESS_JOBS = 32
 MAX_PROCESS_JOB_ERRORS = 10
 _ACTIVE_STATUSES = {"pending", "running"}
@@ -36,23 +35,24 @@ class ChapterProcessingJob:
 class ChapterProcessingJobManager:
     """Own chapter processing independently from the browser request lifetime.
 
-    The old UI submitted one 16-page request at a time. Refreshing the tab
-    destroyed the JavaScript loop, so the server finished only the batch it
-    had already received. This manager keeps the complete page plan on the
-    server and runs bounded batches in a background task. Browser tabs only
-    start or observe the job; disconnecting them cannot truncate the queue.
+    The server owns the complete page plan and dispatches it to the pipeline
+    once. The pipeline's worker pool controls true concurrency, so a 100-page
+    chapter can live in one queue while only the user-selected number of pages
+    run at the same time. Browser tabs only start or observe the job;
+    disconnecting them cannot truncate the queue.
     """
 
     def __init__(
         self,
-        process_batch: Callable[[str, list[int], int], object],
+        process_plan: Callable[
+            [str, list[int], int, Callable[[int], None]],
+            object,
+        ],
         *,
         on_completed: Callable[[str], None] | None = None,
-        batch_size: int = PROCESS_JOB_BATCH_SIZE,
     ) -> None:
-        self._process_batch = process_batch
+        self._process_plan = process_plan
         self._on_completed = on_completed
-        self._batch_size = max(1, int(batch_size))
         self._jobs: dict[str, ChapterProcessingJob] = {}
         self._latest_by_chapter: dict[str, str] = {}
         self._active_by_chapter: dict[str, str] = {}
@@ -128,16 +128,31 @@ class ChapterProcessingJobManager:
         try:
             self._set_running(job)
             total = len(job.page_indices)
-            for start in range(0, total, self._batch_size):
-                batch = job.page_indices[start : start + self._batch_size]
+            with self._lock:
+                job.current_batch = list(job.page_indices)
+                job.updated_at = time.time()
+
+            completed_indices: set[int] = set()
+
+            def on_page_done(page_index: int) -> None:
                 with self._lock:
-                    job.current_batch = list(batch)
+                    index = int(page_index)
+                    if index in completed_indices:
+                        return
+                    completed_indices.add(index)
+                    job.completed = min(len(completed_indices), total)
                     job.updated_at = time.time()
-                self._process_batch(job.chapter_id, batch, job.workers)
-                with self._lock:
-                    job.completed += len(batch)
-                    job.current_batch = []
-                    job.updated_at = time.time()
+
+            self._process_plan(
+                job.chapter_id,
+                list(job.page_indices),
+                job.workers,
+                on_page_done,
+            )
+            with self._lock:
+                job.completed = total
+                job.current_batch = []
+                job.updated_at = time.time()
 
             if self._on_completed is not None:
                 self._on_completed(job.chapter_id)
