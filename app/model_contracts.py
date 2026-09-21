@@ -41,6 +41,7 @@ def validate_detector_session(
     specs = {
         "bubble_detector": (("text_bubble", "text_free"), False, False),
         "text_segmenter": (("text_comic",), True, True),
+        "manga109_yolo26_seg": (("frame", "text", "balloon"), True, True),
     }
     if role not in specs:
         raise ValueError(f"Unknown detector model role: {role!r}")
@@ -89,11 +90,11 @@ def validate_detector_session(
     if needs_proto:
         if set(output_by_name) != {"output0", "output1"}:
             raise ValueError(
-                "text_segmenter outputs must be exactly output0/output1; "
+                f"{role} outputs must be exactly output0/output1; "
                 f"got {sorted(output_by_name)}"
             )
         proto = output_by_name["output1"]
-        _check_float(proto, "text_segmenter output1")
+        _check_float(proto, f"{role} output1")
         proto_shape = _shape(proto)
         if (
             len(proto_shape) != 4
@@ -102,7 +103,7 @@ def validate_detector_session(
             or not all(isinstance(v, int) and v > 0 for v in proto_shape[2:4])
         ):
             raise ValueError(
-                "text_segmenter prototype shape must be static [1,32,H,W]; "
+                f"{role} prototype shape must be static [1,32,H,W]; "
                 f"got {proto_shape}"
             )
     elif set(output_by_name) != {"output0"}:
