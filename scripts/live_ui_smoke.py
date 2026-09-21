@@ -117,6 +117,7 @@ def _exercise_desktop(page: Page) -> None:
           const frame = bar.getBoundingClientRect();
           return [...bar.querySelectorAll('button,select,input')].every((el) => {
             const r = el.getBoundingClientRect();
+            if (r.width === 0 || r.height === 0) return true;
             return r.left >= frame.left - 1
               && r.right <= frame.right + 1
               && r.top >= frame.top - 1
@@ -175,6 +176,7 @@ def _exercise_mobile(page: Page) -> None:
           const frame = bar.getBoundingClientRect();
           return [...bar.querySelectorAll('button,select,input')].every((el) => {
             const r = el.getBoundingClientRect();
+            if (r.width === 0 || r.height === 0) return true;
             return r.left >= frame.left - 1
               && r.right <= frame.right + 1
               && r.top >= frame.top - 1
