@@ -654,7 +654,6 @@
     const image = shell?.querySelector(".review-stitched-image"), viewport = shell?.querySelector(".review-document-viewport"); if (!image || !viewport) return;
     image.dataset.activeTool = tool; viewport.dataset.activeTool = tool;
     const paint = ["brush", "eraser"].includes(tool), text = ["rectangle", "ellipse"].includes(tool);
-    for (const chunk of shell._brushChunks || []) chunk.canvas.style.pointerEvents = paint && variant === "clean" ? "auto" : "none";
     shell.querySelectorAll(".review-text-object-overlay").forEach((el) => { el.style.pointerEvents = tool === "select" && variant === "clean" ? "auto" : "none"; el.classList.toggle("tool-muted", variant === "clean" && tool !== "select"); });
     image.classList.toggle("text-draw-mode", text && variant === "clean"); image.classList.toggle("brush-mode", paint && variant === "clean"); syncToolButtons();
   }
