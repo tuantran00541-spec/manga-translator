@@ -13,12 +13,19 @@ LOGS_DIR = BASE_DIR / "logs"
 
 BUBBLE_DETECTOR_MODEL = MODELS_DIR / "bubble_yolo.onnx"
 TEXT_SEGMENTER_MODEL = MODELS_DIR / "text_segmenter.onnx"
+YOLO26_SEG_MODEL = Path(
+    os.getenv(
+        "MANGA_YOLO26_SEG_MODEL",
+        str(MODELS_DIR / "manga109-yolo26s-seg-1024.onnx"),
+    )
+)
 LAMA_MODEL = MODELS_DIR / "lama.onnx"
 LAMA_DYNAMIC_MODEL = MODELS_DIR / "lama-manga-dynamic.onnx"
 
+# Extreme experiment branch: one segmentation model owns automatic text cleanup.
+# Legacy detector paths remain import-compatible but are no longer required.
 REQUIRED_MODELS = [
-    BUBBLE_DETECTOR_MODEL,
-    TEXT_SEGMENTER_MODEL,
+    YOLO26_SEG_MODEL,
 ]
 
 # Compatibility aliases for modules/third-party code that historically imported
