@@ -321,6 +321,37 @@ jobs:
           thresholds=[0.10,0.15,0.20,0.25,0.30]
           summaries=[]
 
+          # Run candidate exactly once per slice at the lowest threshold.
+          # Higher thresholds are pure offline filters over the same detections.
+          candidate_rows=[]
+          candidate_times=[]
+          base_conf=min(thresholds)
+          for idx,path in enumerate(paths):
+              t0=time.perf_counter()
+              r=candidate.predict(
+                  source=str(path),
+                  imgsz=1024,
+                  conf=base_conf,
+                  iou=0.7,
+                  device="cpu",
+                  verbose=False,
+                  max_det=300,
+                  retina_masks=False,
+              )[0]
+              candidate_times.append((time.perf_counter()-t0)*1000.0)
+
+              preds=[]
+              if r.boxes is not None:
+                  xyxy=r.boxes.xyxy.detach().cpu().numpy()
+                  cls=r.boxes.cls.detach().cpu().numpy().astype(int)
+                  cf=r.boxes.conf.detach().cpu().numpy()
+                  for box,c,k in zip(xyxy,cls,cf):
+                      preds.append((
+                          float(box[0]),float(box[1]),float(box[2]),float(box[3]),
+                          int(c),float(k)
+                      ))
+              candidate_rows.append(preds)
+
           for conf in thresholds:
               tp=fp=fn=0
               teacher_total=student_total=0
@@ -328,40 +359,20 @@ jobs:
               teacher_positive_candidate_zero=0
               frame_total=0
               per_slice=[]
-              times=[]
 
-              for idx,path in enumerate(paths):
-                  t0=time.perf_counter()
-                  r=candidate.predict(
-                      source=str(path),
-                      imgsz=1024,
-                      conf=conf,
-                      iou=0.7,
-                      device="cpu",
-                      verbose=False,
-                      max_det=300,
-                      retina_masks=False,
-                  )[0]
-                  times.append((time.perf_counter()-t0)*1000.0)
-
+              for idx,(t,preds) in enumerate(zip(teacher_rows,candidate_rows)):
                   s=[]
-                  if r.boxes is not None:
-                      xyxy=r.boxes.xyxy.detach().cpu().numpy()
-                      cls=r.boxes.cls.detach().cpu().numpy().astype(int)
-                      cf=r.boxes.conf.detach().cpu().numpy()
-                      for box,c,k in zip(xyxy,cls,cf):
-                          c=int(c)
-                          if c==0:
-                              frame_total += 1
-                              continue
-                          if c not in map_cls:
-                              continue
-                          s.append((
-                              float(box[0]),float(box[1]),float(box[2]),float(box[3]),
-                              map_cls[c],float(k)
-                          ))
+                  for box in preds:
+                      x1,y1,x2,y2,c,k=box
+                      if k < conf:
+                          continue
+                      if c==0:
+                          frame_total += 1
+                          continue
+                      if c not in map_cls:
+                          continue
+                      s.append((x1,y1,x2,y2,map_cls[c],k))
 
-                  t=teacher_rows[idx]
                   teacher_total += len(t)
                   student_total += len(s)
                   if not s:
@@ -395,7 +406,7 @@ jobs:
 
                   per_slice.append({
                       "index":idx,
-                      "file":path.name,
+                      "file":paths[idx].name,
                       "teacher_boxes":len(t),
                       "candidate_boxes":len(s),
                       "tp":stp,
@@ -417,7 +428,7 @@ jobs:
                   "zero_candidate_slices":zero_candidate,
                   "teacher_positive_candidate_zero_slices":teacher_positive_candidate_zero,
                   "ignored_frame_predictions":frame_total,
-                  "median_predict_ms":statistics.median(times),
+                  "median_predict_ms":statistics.median(candidate_times),
                   "per_slice":per_slice,
               })
 
