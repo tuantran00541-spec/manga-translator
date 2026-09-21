@@ -19,6 +19,45 @@ def style_get(d: dict, idx: int, default=None):
     return default
 
 
+def _is_auto_style(value) -> bool:
+    return value is None or value == "" or (
+        isinstance(value, str) and value.strip().lower() == "auto"
+    )
+
+
+def _resolve_ocr_style(requested, stored, ocr_value, fallback):
+    value = requested if requested is not None else stored
+    if _is_auto_style(value) and ocr_value not in (None, ""):
+        return ocr_value
+    return fallback if value is None else value
+
+
+def _valid_region(region: object) -> bool:
+    if not isinstance(region, dict):
+        return False
+    try:
+        return (
+            int(region["x1"]) < int(region["x2"])
+            and int(region["y1"]) < int(region["y2"])
+        )
+    except (KeyError, TypeError, ValueError):
+        return False
+
+
+def _render_region_for_text_object(obj: dict) -> dict:
+    region = obj.get("region") or {}
+    ocr_region = obj.get("ocr_text_region")
+    # Machine-created objects use the OCR glyph bounds only while their
+    # geometry is still machine-owned. A user drag/resize immediately wins.
+    if (
+        obj.get("auto_generated")
+        and region == obj.get("auto_geometry")
+        and _valid_region(ocr_region)
+    ):
+        return ocr_region
+    return region
+
+
 def cleanup_tmp(path: Path) -> None:
     try:
         if path.exists():
@@ -193,7 +232,7 @@ def render_text_objects(
         if not (translation or "").strip():
             continue
 
-        region = obj.get("region") or {}
+        region = _render_region_for_text_object(obj)
         try:
             coords_raw = (
                 int(region["x1"]), int(region["y1"]),
@@ -220,15 +259,21 @@ def render_text_objects(
         coords = (x1, y1, x2, y2)
 
         obj_style = obj.get("style") or {}
-        box_color = style_get(colors_dict, oid)
-        if box_color is None:
-            box_color = obj_style.get("color", "auto")
+        box_color = _resolve_ocr_style(
+            style_get(colors_dict, oid),
+            obj_style.get("color", "auto"),
+            obj.get("ocr_text_color"),
+            "auto",
+        )
         box_font = style_get(fonts_dict, oid)
         if box_font is None:
             box_font = obj_style.get("font", "default")
-        box_size = style_get(font_sizes_dict, oid)
-        if box_size is None:
-            box_size = obj_style.get("fontSize", "auto")
+        box_size = _resolve_ocr_style(
+            style_get(font_sizes_dict, oid),
+            obj_style.get("fontSize", "auto"),
+            obj.get("ocr_font_size"),
+            "auto",
+        )
         bold_val = style_get(bolds_dict, oid)
         if bold_val is None:
             bold_val = obj_style.get("bold", False)
