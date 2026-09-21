@@ -298,6 +298,7 @@
       const renderer = window[{ preview: "renderPreview", review: "renderReview", editor: "renderEditor" }[stage]];
       if (typeof renderer !== "function") throw new Error(`Không tìm thấy màn hình ${STAGE_LABELS[stage]}.`);
       syncChapterHash(chapterId);
+      setAppStage(stage);
       renderer();
       return true;
     } catch (error) {
