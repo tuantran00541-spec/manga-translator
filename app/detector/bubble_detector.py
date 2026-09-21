@@ -428,7 +428,14 @@ class YoloDetector:
             class_ids = np.argmax(class_scores, axis=1).astype(np.int32, copy=False)
             confidences = class_scores[np.arange(class_scores.shape[0]), class_ids]
 
-        keep = np.flatnonzero(confidences >= self.conf_threshold)
+        keep_mask = confidences >= self.conf_threshold
+        if self.model_role == "manga109_yolo26_seg":
+            # Extreme branch: the model has frame/text/balloon classes, but
+            # only class=text (id 1) is part of the automatic cleanup path.
+            # Filter before NMS/mask decode so frame/balloon prototypes never
+            # consume postprocess work.
+            keep_mask &= class_ids == 1
+        keep = np.flatnonzero(keep_mask)
         if keep.size == 0:
             return []
 
