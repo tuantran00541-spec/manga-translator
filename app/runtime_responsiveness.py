@@ -52,27 +52,6 @@ def recommended_ort_intra_threads(cpu_count: int | None = None) -> int:
     return 4
 
 
-def responsive_process_workers(
-    requested: int | None,
-    cpu_count: int | None = None,
-) -> int:
-    """Cap parallel page work so model workers cannot consume every CPU."""
-    cpu = max(1, int(cpu_count or visible_cpu_count()))
-    try:
-        wanted = int(requested) if requested is not None else 2
-    except (TypeError, ValueError):
-        wanted = 2
-    wanted = max(1, wanted)
-    if cpu <= 5:
-        return 1
-
-    reserve = 2
-    model_threads = recommended_ort_intra_threads(cpu)
-    compute_budget = max(1, cpu - reserve)
-    safe_workers = max(1, compute_budget // model_threads)
-    return max(1, min(wanted, 2, safe_workers))
-
-
 def configure_local_cpu_headroom(cpu_count: int | None = None) -> int:
     """Set a responsive ORT default while preserving a valid explicit override."""
     recommended = recommended_ort_intra_threads(cpu_count)
