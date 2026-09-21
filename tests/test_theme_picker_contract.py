@@ -27,3 +27,21 @@ def test_theme_control_is_native_and_has_exactly_three_modes():
     assert ".theme-control.theme-picker" not in app_css
     assert ".theme-select-native" not in app_css
     assert ".theme-menu" not in app_css
+
+
+def test_layout_palette_is_monochrome():
+    tokens = (ROOT / "app/static/css/tokens.css").read_text(encoding="utf-8")
+    for css_name in ("app.css", "foundation.css", "studio.css"):
+        css = (ROOT / "app/static/css" / css_name).read_text(encoding="utf-8")
+        assert "color-mix(" not in css
+        assert "rgba(" not in css
+        assert "rgb(" not in css
+        assert "#" not in css
+
+    allowed_hex = {"#ffffff", "#000000"}
+    token_hex = {
+        part.lower()
+        for part in tokens.replace(";", " ").replace("\n", " ").split()
+        if part.startswith("#")
+    }
+    assert token_hex == allowed_hex
