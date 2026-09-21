@@ -17,7 +17,6 @@ from app.mask_store import decode_mask_value
 from app.parameters import MANUAL_MASK_THRESHOLD, PIPELINE_DEFAULT_WORKERS
 from app.pipeline import ChapterPipeline
 from app.region_policy import geometry_center_in_regions, subtract_regions_from_mask
-from app.runtime_responsiveness import responsive_process_workers
 
 
 class OptimizedChapterPipeline(ChapterPipeline):
@@ -45,16 +44,21 @@ class OptimizedChapterPipeline(ChapterPipeline):
         page_indices: list[int],
         workers: int = PIPELINE_DEFAULT_WORKERS,
     ) -> dict:
-        """Process pages without oversubscribing LaMa or starving the browser."""
-        effective_workers = responsive_process_workers(workers)
+        """Process pages with exactly the user-requested page concurrency.
+
+        The UI/API contract is 1..8 workers. Runtime tuning belongs inside the
+        detector/inpainter sessions; it must not silently rewrite page
+        concurrency behind the user's back.
+        """
+        requested_workers = max(1, min(8, int(workers or PIPELINE_DEFAULT_WORKERS)))
         inpainter = self.inpainter
         prepare = getattr(inpainter, "prepare_for_page_workers", None)
         if callable(prepare):
-            prepare(effective_workers)
+            prepare(requested_workers)
         return super().process_pages(
             chapter_id,
             page_indices,
-            workers=effective_workers,
+            workers=requested_workers,
         )
 
     @staticmethod
