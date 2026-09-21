@@ -275,10 +275,15 @@ def main():
         row["manga_pt_1024_parity"] = ultra_probe(
             manga_model, image, imgsz=1024, conf=args.conf, iou=0.30
         )
-        if comic_model is not None:
-            row["comic_pt_1280"] = ultra_probe(
-                comic_model, image, imgsz=1280, conf=args.conf, iou=0.7
-            )
+        if comic_model is not None and comic_load_error is None:
+            try:
+                row["comic_pt_1280"] = ultra_probe(
+                    comic_model, image, imgsz=1280, conf=args.conf, iou=0.7
+                )
+            except Exception as exc:
+                comic_load_error = repr(exc)
+                print("COMIC_MODEL_PREDICT_ERROR", comic_load_error)
+                row["comic_pt_1280"] = {"error": comic_load_error}
         else:
             row["comic_pt_1280"] = {"error": comic_load_error}
         sampled_rows.append(row)
