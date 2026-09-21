@@ -39,33 +39,70 @@ def _normalize_output0(output0: np.ndarray) -> np.ndarray:
     return arr
 
 
-def onnx_probe(detector: YoloDetector, image: np.ndarray, conf: float) -> dict:
-    started = time.perf_counter()
-    blob, transform = detector._preprocess(image, offset_x=0, offset_y=0)
-    outputs = detector.session.run(None, {detector.input_name: blob})
-    infer_ms = (time.perf_counter() - started) * 1000.0
-
+def _raw_text_stats(outputs, conf: float) -> tuple[int, int, float]:
     arr = _normalize_output0(outputs[0])
     proto_coeffs = int(outputs[1].shape[1]) if len(outputs) > 1 and outputs[1].ndim == 4 else 0
     num_classes = max(1, int(arr.shape[1] - 4 - proto_coeffs)) if arr.ndim == 2 else 0
+    if arr.ndim != 2 or not arr.shape[0] or num_classes <= 1:
+        return 0, 0, 0.0
+    scores = arr[:, 4 : 4 + num_classes].astype(np.float32, copy=False)
+    class_ids = np.argmax(scores, axis=1)
+    confs = scores[np.arange(scores.shape[0]), class_ids]
+    raw_text_scores = confs[class_ids == 1]
+    if not raw_text_scores.size:
+        return 0, 0, 0.0
+    return (
+        int(np.count_nonzero(raw_text_scores >= conf)),
+        int(np.count_nonzero(raw_text_scores >= 0.25)),
+        float(raw_text_scores.max()),
+    )
 
-    raw_text_scores = np.zeros((0,), dtype=np.float32)
-    if arr.ndim == 2 and arr.shape[0] and num_classes > 1:
-        scores = arr[:, 4 : 4 + num_classes].astype(np.float32, copy=False)
-        class_ids = np.argmax(scores, axis=1)
-        confs = scores[np.arange(scores.shape[0]), class_ids]
-        raw_text_scores = confs[class_ids == 1]
 
-    raw_ge_conf = int(np.count_nonzero(raw_text_scores >= conf))
-    raw_ge_025 = int(np.count_nonzero(raw_text_scores >= 0.25))
-    raw_max = float(raw_text_scores.max()) if raw_text_scores.size else 0.0
+def onnx_probe(detector: YoloDetector, image: np.ndarray, conf: float) -> dict:
+    from app.parameters import DETECTOR_TALL_IMAGE_FACTOR, DETECTOR_WINDOW_OVERLAP
 
-    post_started = time.perf_counter()
-    post = detector._postprocess(outputs, transform)
-    semantic = [detector._with_semantics(box) for box in post]
     h, w = image.shape[:2]
+    input_size = int(detector.contract.input_height)
+    windows: list[tuple[np.ndarray, int]] = []
+    if h <= input_size * DETECTOR_TALL_IMAGE_FACTOR:
+        windows.append((image, 0))
+    else:
+        step = input_size - DETECTOR_WINDOW_OVERLAP
+        y = 0
+        while y < h:
+            slice_h = min(input_size, h - y)
+            windows.append((image[y : y + slice_h, :], y))
+            if y + slice_h >= h:
+                break
+            y += step
+
+    infer_ms = 0.0
+    post_ms = 0.0
+    raw_ge_conf = 0
+    raw_ge_025 = 0
+    raw_max = 0.0
+    window_boxes = []
+
+    for window, offset_y in windows:
+        blob, transform = detector._preprocess(window, offset_x=0, offset_y=offset_y)
+        started = time.perf_counter()
+        outputs = detector.session.run(None, {detector.input_name: blob})
+        infer_ms += (time.perf_counter() - started) * 1000.0
+
+        count_conf, count_025, max_conf = _raw_text_stats(outputs, conf)
+        raw_ge_conf += count_conf
+        raw_ge_025 += count_025
+        raw_max = max(raw_max, max_conf)
+
+        started = time.perf_counter()
+        window_boxes.extend(detector._postprocess(outputs, transform))
+        post_ms += (time.perf_counter() - started) * 1000.0
+
+    started = time.perf_counter()
+    post = detector._nms_boxes(window_boxes) if len(windows) > 1 else window_boxes
+    semantic = [detector._with_semantics(box) for box in post]
     boxes = detector._filter_invalid(semantic, w, h)
-    post_ms = (time.perf_counter() - post_started) * 1000.0
+    post_ms += (time.perf_counter() - started) * 1000.0
 
     text_boxes = [box for box in boxes if box.class_name == "text"]
     verified = [box for box in text_boxes if box.verified_mask]
@@ -74,16 +111,16 @@ def onnx_probe(detector: YoloDetector, image: np.ndarray, conf: float) -> dict:
     )
 
     return {
-        "raw_text_candidates_ge_conf": raw_ge_conf,
-        "raw_text_candidates_ge_025": raw_ge_025,
-        "raw_text_max_conf": round(raw_max, 6),
+        "window_calls": int(len(windows)),
+        "raw_text_candidates_ge_conf": int(raw_ge_conf),
+        "raw_text_candidates_ge_025": int(raw_ge_025),
+        "raw_text_max_conf": round(float(raw_max), 6),
         "post_nms_text_boxes": int(len(text_boxes)),
         "verified_mask_instances": int(len(verified)),
         "mask_pixels": mask_pixels,
         "infer_ms": round(infer_ms, 3),
         "postprocess_ms": round(post_ms, 3),
     }
-
 
 def pick_evenly(items: list[dict], count: int) -> list[dict]:
     if count <= 0 or not items:
