@@ -106,7 +106,31 @@ def _exercise_desktop(page: Page) -> None:
     expect(page.locator(".review-zoom-value")).to_have_text("100%")
 
     expect(page.locator(".review-tool-rail")).to_be_visible()
-    expect(page.locator('.sidebar-link[data-stage="preview"]')).to_be_hidden()
+    expect(page.locator('.sidebar-link[data-route="home"]')).to_be_visible()
+    expect(page.locator('.sidebar-link[data-stage="preview"]')).to_be_visible()
+    expect(page.locator('.sidebar-link[data-stage="preview"]')).to_be_enabled()
+
+    toolbar_ok = page.evaluate(
+        """() => {
+          const bar = document.querySelector('.review-document-toolbar-compact');
+          if (!bar) return false;
+          const frame = bar.getBoundingClientRect();
+          return [...bar.querySelectorAll('button,select,input')].every((el) => {
+            const r = el.getBoundingClientRect();
+            return r.left >= frame.left - 1
+              && r.right <= frame.right + 1
+              && r.top >= frame.top - 1
+              && r.bottom <= frame.bottom + 1;
+          });
+        }"""
+    )
+    if not toolbar_ok:
+        raise AssertionError("desktop Review toolbar controls overflow their frame")
+
+    page.locator('.sidebar-link[data-route="home"]').click()
+    expect(page.locator("#home-view")).to_be_visible()
+    page.locator('.sidebar-link[data-stage="review"]').click()
+    _wait_for_review(page)
 
     # Repeated mounts must not retain duplicate observers/workspaces.
     page.evaluate("() => { for (let i = 0; i < 8; i += 1) window.renderReview(); }")
@@ -140,7 +164,26 @@ def _exercise_mobile(page: Page) -> None:
     expect(page.get_by_role("button", name="OCR toàn chương", exact=True)).to_be_visible()
 
     expect(page.locator(".review-tool-rail")).to_be_visible()
-    expect(page.locator('.sidebar-link[data-stage="preview"]')).to_be_hidden()
+    expect(page.locator('.sidebar-link[data-route="home"]')).to_be_visible()
+    expect(page.locator('.sidebar-link[data-stage="preview"]')).to_be_visible()
+    expect(page.locator('.sidebar-link[data-stage="preview"]')).to_be_enabled()
+
+    toolbar_ok = page.evaluate(
+        """() => {
+          const bar = document.querySelector('.review-document-toolbar-compact');
+          if (!bar) return false;
+          const frame = bar.getBoundingClientRect();
+          return [...bar.querySelectorAll('button,select,input')].every((el) => {
+            const r = el.getBoundingClientRect();
+            return r.left >= frame.left - 1
+              && r.right <= frame.right + 1
+              && r.top >= frame.top - 1
+              && r.bottom <= frame.bottom + 1;
+          });
+        }"""
+    )
+    if not toolbar_ok:
+        raise AssertionError("mobile Review toolbar controls overflow their frame")
 
 
 def _canvas_metrics(page: Page) -> dict[str, float | int]:
