@@ -9,9 +9,7 @@ import numpy as np
 
 from app.detector.bubble_detector import BubbleBox
 from app.detector.mask_builder import build_mask
-from app.detector.sequential_fast_residue_detector import (
-    SequentialFastResidueAdaptiveFocusCombinedTextDetector,
-)
+from app.detector.extreme_yolo26_detector import ExtremeYolo26TextDetector
 from app.image_io import read_image, write_image
 from app.inpaint.adaptive_fast_inpainter import AdaptiveFastInpainter
 from app.manifest_utils import atomic_replace
@@ -23,16 +21,14 @@ from app.runtime_responsiveness import responsive_process_workers
 
 
 class OptimizedChapterPipeline(ChapterPipeline):
-    """Chapter pipeline using validated CPU detector and cleanup candidates."""
+    """Extreme experiment: YOLO26 text segmentation masks go straight to inpaint."""
 
     @property
     def detector(self):
         if self._detector is None:
             with self._detector_init_lock:
                 if self._detector is None:
-                    self._detector = (
-                        SequentialFastResidueAdaptiveFocusCombinedTextDetector()
-                    )
+                    self._detector = ExtremeYolo26TextDetector()
         return self._detector
 
     @property
