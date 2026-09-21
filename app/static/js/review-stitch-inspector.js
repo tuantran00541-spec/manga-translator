@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const MAX_CHUNK_H = 12000;
+  const BRUSH_CHUNK_H = 4096;
   const ZOOM_STEPS = [25, 50, 75, 100, 125, 150, 200, 300, 400];
   const MIN_BOX = 10;
   const SHORTCUTS = { v: "select", r: "rectangle", o: "ellipse", b: "brush", e: "eraser", h: "hand", z: "zoom" };
@@ -55,6 +55,9 @@
       .review-tool-tooltip strong{display:block;margin-bottom:2px;color:var(--text-primary);font-size:11px;line-height:1.25}.review-tool-tooltip span{display:block;font-size:10px;line-height:1.35}
       .review-rail-tool:hover .review-tool-tooltip,.review-rail-tool:focus-visible .review-tool-tooltip{display:block}
       .review-single-document .review-stitched-image>.review-image-chunk{position:relative;z-index:1;display:block;width:100%;height:auto}
+      .review-single-document .review-stitched-image{position:relative}
+      .review-strip-slice{position:absolute;z-index:1;left:0;width:100%;overflow:hidden;pointer-events:none}
+      .review-strip-slice>img{position:absolute;left:0;display:block;width:100%;max-width:none;height:auto;pointer-events:none;user-select:none}
       .review-single-document .review-stitched-image>.stitched-brush-chunk{position:absolute;z-index:5;left:0;display:block;width:100%;height:auto;pointer-events:none}
       .review-text-object-overlay{z-index:12;overflow:visible!important;border:1.5px solid rgba(55,155,255,.95);background:rgba(55,155,255,.045)}
       .review-text-object-overlay.ellipse{border-radius:999px}.review-text-object-overlay.selected{border-color:#57a8ff;box-shadow:0 0 0 1px rgba(87,168,255,.45)}
@@ -107,52 +110,38 @@
     return { localY1, localY2, sourceY1, sourceY2, sourceHeight };
   }
 
-  function makeImageChunks(host, width, height) {
-    const chunks = [];
-    for (let y = 0; y < height; y += MAX_CHUNK_H) {
-      const h = Math.min(MAX_CHUNK_H, height - y);
-      const canvas = document.createElement("canvas");
-      canvas.className = "review-image-chunk";
-      canvas.width = width;
-      canvas.height = h;
-      canvas.dataset.sourceY = String(y);
-      const ctx = canvas.getContext("2d", { alpha: false });
-      ctx.fillStyle = "white";
-      ctx.fillRect(0, 0, width, h);
-      host.appendChild(canvas);
-      chunks.push({ canvas, ctx, y1: y, y2: y + h });
-    }
-    return chunks;
-  }
-
-  function drawIntoChunks(chunks, img, sx, sy, sw, sh, targetY) {
-    const end = targetY + sh;
-    for (const chunk of chunks) {
-      const y1 = Math.max(targetY, chunk.y1), y2 = Math.min(end, chunk.y2);
-      if (y2 <= y1) continue;
-      const off = y1 - targetY, h = y2 - y1;
-      chunk.ctx.drawImage(img, sx, sy + off, sw, h, 0, y1 - chunk.y1, sw, h);
-    }
-  }
-
   function makeBrushChunks(host, width, height) {
     const chunks = [];
-    for (let y = 0; y < height; y += MAX_CHUNK_H) {
-      const h = Math.min(MAX_CHUNK_H, height - y);
-      const canvas = document.createElement("canvas");
-      canvas.className = "stitched-brush-chunk";
-      canvas.width = width;
-      canvas.height = h;
-      canvas.dataset.sourceY = String(y);
-      canvas.style.top = `${y}px`;
-      host.appendChild(canvas);
-      chunks.push({ canvas, ctx: canvas.getContext("2d", { willReadFrequently: true }), y1: y, y2: y + h, dirty: false });
+    for (let y = 0; y < height; y += BRUSH_CHUNK_H) {
+      chunks.push({
+        host,
+        width,
+        y1: y,
+        y2: Math.min(height, y + BRUSH_CHUNK_H),
+        canvas: null,
+        ctx: null,
+        dirty: false,
+      });
     }
     return chunks;
+  }
+
+  function ensureBrushCanvas(chunk) {
+    if (chunk.canvas && chunk.ctx) return chunk;
+    const canvas = document.createElement("canvas");
+    canvas.className = "stitched-brush-chunk";
+    canvas.width = chunk.width;
+    canvas.height = chunk.y2 - chunk.y1;
+    canvas.dataset.sourceY = String(chunk.y1);
+    canvas.style.top = `${chunk.y1}px`;
+    chunk.host.appendChild(canvas);
+    chunk.canvas = canvas;
+    chunk.ctx = canvas.getContext("2d", { willReadFrequently: true });
+    return chunk;
   }
 
   function chunkHasPaint(chunk, y1 = chunk.y1, y2 = chunk.y2) {
-    if (!chunk?.dirty) return false;
+    if (!chunk?.dirty || !chunk.canvas) return false;
     const iy1 = Math.max(chunk.y1, y1), iy2 = Math.min(chunk.y2, y2);
     if (iy2 <= iy1) return false;
     const h = iy2 - iy1, width = chunk.canvas.width, scale = Math.min(1, 512 / Math.max(width, h));
@@ -181,9 +170,10 @@
     for (const item of saved) {
       const chunk = byY.get(Number(item.y1));
       if (!chunk) continue;
+      ensureBrushCanvas(chunk);
       const img = new Image();
       img.onload = () => {
-        if (!chunk.canvas.isConnected) return;
+        if (!chunk.canvas?.isConnected) return;
         chunk.ctx.drawImage(img, 0, 0);
         chunk.dirty = true;
       };
@@ -566,26 +556,27 @@
       image.dataset.sourceHeight = String(stripHeight);
       image.dataset.stripSlices = String(descriptors.length);
 
-      const chunks = makeImageChunks(image, stripWidth, stripHeight);
       for (const desc of descriptors) {
-        const img = desc.preloaded || await loadImage(desc.url);
-        if (token !== renderToken) return;
-        if (img.naturalWidth !== stripWidth) {
-          throw new Error("Chiều rộng lát thay đổi khi tải ảnh.");
-        }
-        drawIntoChunks(
-          chunks,
-          img,
-          0,
-          desc.localY1,
-          stripWidth,
-          desc.localY2 - desc.localY1,
-          desc.sourceY1,
-        );
-        desc.img = {
-          naturalWidth: img.naturalWidth,
-          naturalHeight: img.naturalHeight,
-        };
+        const slice = document.createElement("div");
+        slice.className = "review-strip-slice";
+        slice.dataset.pageIndex = String(desc.item.canonicalIndex);
+        Object.assign(slice.style, {
+          top: `${desc.sourceY1}px`,
+          height: `${desc.sourceY2 - desc.sourceY1}px`,
+        });
+
+        const img = desc.preloaded || new Image();
+        img.className = "review-strip-slice-image";
+        img.alt = "";
+        img.decoding = "async";
+        img.loading = "lazy";
+        Object.assign(img.style, {
+          top: `-${desc.localY1}px`,
+        });
+        if (!desc.preloaded) img.src = desc.url;
+        slice.appendChild(img);
+        image.appendChild(slice);
+
         delete desc.preloaded;
         delete desc.url;
       }
@@ -740,6 +731,7 @@
   function paintPoint(shell, x, y, radius, erase) {
     for (const chunk of shell._brushChunks || []) {
       if (y + radius < chunk.y1 || y - radius >= chunk.y2) continue;
+      ensureBrushCanvas(chunk);
       const ctx = chunk.ctx; ctx.save(); ctx.globalCompositeOperation = erase ? "destination-out" : "source-over"; ctx.fillStyle = "rgba(220,38,38,.72)"; ctx.beginPath(); ctx.arc(x, y - chunk.y1, radius, 0, Math.PI * 2); ctx.fill(); ctx.restore(); chunk.dirty = true;
     }
   }
@@ -748,7 +740,23 @@
     for (let i = 0; i <= count; i++) { const t = i / count; paintPoint(shell, a.x + dx * t, a.y + dy * t, radius, erase); }
   }
   function drawBrushMask(ctx, chunks, desc, width) {
-    for (const chunk of chunks || []) { const y1 = Math.max(chunk.y1, desc.sourceY1), y2 = Math.min(chunk.y2, desc.sourceY2); if (y2 <= y1) continue; const h = y2 - y1; ctx.drawImage(chunk.canvas, 0, y1 - chunk.y1, width, h, 0, desc.localY1 + y1 - desc.sourceY1, width, h); }
+    for (const chunk of chunks || []) {
+      if (!chunk.dirty || !chunk.canvas) continue;
+      const y1 = Math.max(chunk.y1, desc.sourceY1), y2 = Math.min(chunk.y2, desc.sourceY2);
+      if (y2 <= y1) continue;
+      const h = y2 - y1;
+      ctx.drawImage(
+        chunk.canvas,
+        0,
+        y1 - chunk.y1,
+        width,
+        h,
+        0,
+        desc.localY1 + y1 - desc.sourceY1,
+        width,
+        h,
+      );
+    }
   }
   function canvasBlob(canvas) {
     if (typeof window.canvasToBlob === "function") return window.canvasToBlob(canvas);
@@ -923,7 +931,7 @@
     viewport.addEventListener("wheel", (e) => { if (!(e.ctrlKey || e.metaKey)) return; e.preventDefault(); const r = viewport.getBoundingClientRect(); stepZoom(e.deltaY < 0 ? 1 : -1); applyZoom(shell, { x: e.clientX - r.left, y: e.clientY - r.top }); }, { passive: false, signal });
 
     size.addEventListener("input", () => { radius = Number(size.value); sizeOut.textContent = `${radius * 2}px`; }, { signal });
-    clearMask.addEventListener("click", () => { for (const c of shell._brushChunks || []) { c.ctx.clearRect(0, 0, c.canvas.width, c.canvas.height); c.dirty = false; } snapshots.delete(snapshotKey()); }, { signal });
+    clearMask.addEventListener("click", () => { for (const c of shell._brushChunks || []) { if (c.canvas && c.ctx) c.ctx.clearRect(0, 0, c.canvas.width, c.canvas.height); c.dirty = false; } snapshots.delete(snapshotKey()); }, { signal });
     clean.addEventListener("click", () => { if (variant !== "clean") { variant = "clean"; rerender(); } }, { signal }); rendered.addEventListener("click", () => { if (variant !== "rendered") { captureSnapshot(shell); variant = "rendered"; rerender(); } }, { signal }); original.addEventListener("click", () => { if (variant !== "original") { captureSnapshot(shell); variant = "original"; rerender(); } }, { signal });
     zoomOut.addEventListener("click", () => { stepZoom(-1); applyZoom(shell); }, { signal }); zoomIn.addEventListener("click", () => { stepZoom(1); applyZoom(shell); }, { signal }); zoomValue.addEventListener("click", () => { fitWidth = true; applyZoom(shell); }, { signal }); one.addEventListener("click", () => { fitWidth = false; zoom = 100; applyZoom(shell); }, { signal });
     window.addEventListener("resize", () => { if (fitWidth) applyZoom(shell); }, { signal });
@@ -940,7 +948,7 @@
           const response = await fetch("/api/repaint_mask", { method: "POST", body: form }), parse = window.parseApiResponse || (async (r) => r.json().catch(() => ({}))), data = await parse(response); if (!response.ok) throw new Error(window.getErrorMessage?.(response.status, data) || data.detail || `HTTP ${response.status}`);
           if (window.currentManifest?.pages?.[desc.item.canonicalIndex] && data.pages?.[desc.item.canonicalIndex]) window.currentManifest.pages[desc.item.canonicalIndex] = data.pages[desc.item.canonicalIndex]; affected++;
         }
-        for (const c of chunks) { c.ctx.clearRect(0, 0, c.canvas.width, c.canvas.height); c.dirty = false; } snapshots.delete(snapshotKey()); window.showToast?.(`Đã xử lý ${affected} lát trên strip.`, affected ? "success" : "info"); rerender();
+        for (const c of chunks) { if (c.canvas && c.ctx) c.ctx.clearRect(0, 0, c.canvas.width, c.canvas.height); c.dirty = false; } snapshots.delete(snapshotKey()); window.showToast?.(`Đã xử lý ${affected} lát trên strip.`, affected ? "success" : "info"); rerender();
       } catch (err) { window.showToast?.("Không thể xử lý vùng đánh dấu: " + err.message, "error"); } finally { busy(false); }
     }, { signal });
 
