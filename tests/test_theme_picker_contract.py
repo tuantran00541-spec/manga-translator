@@ -37,11 +37,11 @@ def test_layout_palette_is_monochrome():
         assert "color-mix(" not in css
         assert "rgba(" not in css
         assert "rgb(" not in css
-        assert not re.findall(r"#[0-9a-fA-F]{3,8}\\b", css)
+        assert not re.findall(r"#[0-9a-fA-F]{3,8}\b", css)
 
     allowed_hex = {"#ffffff", "#000000"}
     token_hex = {
         value.lower()
-        for value in re.findall(r"#[0-9a-fA-F]{6}\\b", tokens)
+        for value in re.findall(r"#[0-9a-fA-F]{6}\b", tokens)
     }
     assert token_hex == allowed_hex
