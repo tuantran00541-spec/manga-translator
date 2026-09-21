@@ -388,6 +388,30 @@
     syncTool(shell);
   }
 
+  function restoreWorkspaceState(shell) {
+    if (shell._restoreApplied) return;
+    const workspace = shell.closest(".review-workspace-shell");
+    const state = workspace?._reviewRestoreState;
+    if (!state || state.chapterId !== chapterKey()) return;
+    shell._restoreApplied = true;
+    workspace._reviewRestoreState = null;
+
+    const viewport = shell.querySelector(".review-document-viewport");
+    if (viewport) {
+      viewport.scrollLeft = Math.max(0, Number(state.scrollLeft || 0));
+      viewport.scrollTop = Math.max(0, Number(state.scrollTop || 0));
+    }
+
+    const pageIndex = Number(state.activePageIndex);
+    const id = state.selectedTextObjectId;
+    if (variant === "clean" && Number.isInteger(pageIndex) && id) {
+      const overlay = shell.querySelector(
+        `.review-text-object-overlay[data-page-index="${pageIndex}"][data-object-id="${CSS.escape(String(id))}"]`,
+      );
+      if (overlay) selectObject(shell, pageIndex, id);
+    }
+  }
+
   async function waitForOcr(shell, pageIndex, id, signal) {
     const start = Date.now();
     while (!signal.aborted && Date.now() - start < 8000) {
@@ -589,6 +613,7 @@
       if (token !== renderToken) return;
       renderOverlays(shell, signal);
       syncTool(shell);
+      restoreWorkspaceState(shell);
     } catch (err) {
       if (token !== renderToken) return;
       image.replaceChildren();
