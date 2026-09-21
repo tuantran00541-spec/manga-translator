@@ -5,7 +5,9 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import time
+import zipfile
 from pathlib import Path
 
 from PIL import Image
@@ -14,6 +16,7 @@ from app.manifest_utils import get_manifest_lock, load_manifest_raw, save_manife
 from app.ocr.multi_lang_ocr import MultiLangOCR
 from app.ocr.service import OCRService
 from app.optimized_pipeline import OptimizedChapterPipeline
+from app.routers.export import _core_range, _source_core_metadata, _stitch_png_to_file, _validate_stitch_group
 from app.render.page_renderer import render_text_objects
 from app.schemas import RenderRequest
 from app.text_objects import ensure_page_text_objects
@@ -243,6 +246,217 @@ def _render_samples(
     return rendered_pages, rendered_objects, evidence
 
 
+def _complete_text_objects(page: dict) -> list[dict]:
+    return [
+        obj
+        for obj in (page.get("text_objects") or [])
+        if isinstance(obj, dict)
+        and obj.get("id")
+        and not obj.get("source_missing")
+        and str(obj.get("ocr_text") or "").strip()
+        and obj.get("ocr_text_color")
+        and obj.get("ocr_font_size")
+        and isinstance(obj.get("ocr_text_region"), dict)
+    ]
+
+
+def _render_complete_slice(
+    page: dict,
+    *,
+    chapter_id: str,
+    page_index: int,
+    output_path: Path,
+) -> int:
+    clean_path = Path(str(page.get("clean") or ""))
+    if not clean_path.is_file():
+        raise FileNotFoundError(f"clean slice missing for page {page_index}")
+    objects = _complete_text_objects(page)
+    if not objects:
+        shutil.copyfile(clean_path, output_path)
+        return 0
+
+    with Image.open(clean_path) as source:
+        image = source.convert("RGB")
+    translations = {
+        str(obj["id"]): str(obj.get("ocr_text") or "").strip()
+        for obj in objects
+    }
+    req = RenderRequest(
+        chapter_id=chapter_id,
+        page_index=page_index,
+        translations=translations,
+    )
+    count = render_text_objects(
+        image,
+        req,
+        objects,
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+    )
+    image.save(output_path, format="PNG")
+    return int(count)
+
+
+def _write_zip_from_directory(directory: Path, output_path: Path) -> None:
+    with zipfile.ZipFile(output_path, "w", compression=zipfile.ZIP_STORED) as archive:
+        for path in sorted(directory.rglob("*")):
+            if path.is_file():
+                archive.write(path, arcname=path.relative_to(directory).as_posix())
+
+
+def _build_complete_chapter(
+    manifest: dict,
+    chapter_id: str,
+    artifact_root: Path,
+) -> dict:
+    complete_root = artifact_root / "complete"
+    rendered_slice_dir = complete_root / "_rendered_slices"
+    clean_pages_dir = complete_root / "clean"
+    rendered_pages_dir = complete_root / "rendered-source-text"
+    metadata_dir = complete_root / "metadata"
+    for directory in (
+        rendered_slice_dir,
+        clean_pages_dir,
+        rendered_pages_dir,
+        metadata_dir,
+    ):
+        directory.mkdir(parents=True, exist_ok=True)
+
+    groups: dict[int, list[dict]] = {}
+    rendered_objects = 0
+    metadata_records: list[dict] = []
+    translation_template: list[dict] = []
+
+    for page_index, page in enumerate(manifest.get("pages", [])):
+        if page.get("skipped"):
+            continue
+        clean_path = Path(str(page.get("clean") or ""))
+        if not clean_path.is_file():
+            raise FileNotFoundError(f"clean slice missing for page {page_index}")
+
+        rendered_slice = rendered_slice_dir / f"slice_{page_index:03d}.png"
+        rendered_objects += _render_complete_slice(
+            page,
+            chapter_id=chapter_id,
+            page_index=page_index,
+            output_path=rendered_slice,
+        )
+
+        source_page = int(page.get("source_page", page_index))
+        source_range, source_height = _source_core_metadata(page)
+        item = {
+            "page_index": page_index,
+            "source_page": source_page,
+            "slice_index": int(page.get("slice_index", 0)),
+            "clean_path": clean_path,
+            "rendered_path": rendered_slice,
+            "core_range": _core_range(page),
+            "source_core_range": source_range,
+            "source_height": source_height,
+        }
+        groups.setdefault(source_page, []).append(item)
+
+        for obj in _complete_text_objects(page):
+            record = {
+                "page_index": page_index,
+                "source_page": source_page,
+                "slice_index": int(page.get("slice_index", 0)),
+                "object_id": str(obj.get("id") or ""),
+                "source_boxes": [str(value) for value in (obj.get("source_boxes") or [])],
+                "ocr_text": str(obj.get("ocr_text") or ""),
+                "ocr_text_color": obj.get("ocr_text_color"),
+                "ocr_font_size": obj.get("ocr_font_size"),
+                "ocr_text_region": obj.get("ocr_text_region"),
+                "ocr_quality": obj.get("ocr_quality"),
+                "ocr_confidence": obj.get("ocr_confidence"),
+            }
+            metadata_records.append(record)
+            translation_template.append(
+                {
+                    "object_id": record["object_id"],
+                    "page_index": page_index,
+                    "source_text": record["ocr_text"],
+                    "translation": "",
+                    "style": {
+                        "color": record["ocr_text_color"],
+                        "font_size": record["ocr_font_size"],
+                        "region": record["ocr_text_region"],
+                    },
+                }
+            )
+
+    stitched_pages = 0
+    for output_index, source_page in enumerate(sorted(groups), start=1):
+        items = sorted(
+            groups[source_page],
+            key=lambda item: (int(item["slice_index"]), int(item["page_index"])),
+        )
+        _validate_stitch_group(source_page, items)
+        core_ranges = [item["core_range"] for item in items]
+        _stitch_png_to_file(
+            [Path(item["clean_path"]) for item in items],
+            clean_pages_dir / f"page_{output_index:03d}.png",
+            core_ranges,
+        )
+        _stitch_png_to_file(
+            [Path(item["rendered_path"]) for item in items],
+            rendered_pages_dir / f"page_{output_index:03d}.png",
+            core_ranges,
+        )
+        stitched_pages += 1
+
+    (metadata_dir / "ocr_metadata.json").write_text(
+        json.dumps(metadata_records, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    (metadata_dir / "translations-template.json").write_text(
+        json.dumps(translation_template, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    manifest_copy = json.loads(json.dumps(manifest, default=str))
+    (metadata_dir / "manifest.json").write_text(
+        json.dumps(manifest_copy, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+    clean_zip = complete_root / "war-of-extinction-ch1-clean.zip"
+    rendered_zip = complete_root / "war-of-extinction-ch1-rendered-source-text.zip"
+    _write_zip_from_directory(clean_pages_dir, clean_zip)
+    _write_zip_from_directory(rendered_pages_dir, rendered_zip)
+
+    package_zip = complete_root / "war-of-extinction-ch1-complete-package.zip"
+    with zipfile.ZipFile(package_zip, "w", compression=zipfile.ZIP_STORED) as archive:
+        for directory, prefix in (
+            (clean_pages_dir, "clean"),
+            (rendered_pages_dir, "rendered-source-text"),
+            (metadata_dir, "metadata"),
+        ):
+            for path in sorted(directory.rglob("*")):
+                if path.is_file():
+                    archive.write(
+                        path,
+                        arcname=f"{prefix}/{path.relative_to(directory).as_posix()}",
+                    )
+
+    shutil.rmtree(rendered_slice_dir, ignore_errors=True)
+    return {
+        "stitched_source_pages": stitched_pages,
+        "rendered_objects_full_chapter": rendered_objects,
+        "metadata_objects": len(metadata_records),
+        "clean_zip": clean_zip.as_posix(),
+        "rendered_zip": rendered_zip.as_posix(),
+        "package_zip": package_zip.as_posix(),
+    }
+
+
 def run(url: str, output: Path, *, workers: int, max_render_pages: int) -> dict:
     pipeline = OptimizedChapterPipeline()
     chapter_id = hashlib.sha256(
@@ -331,11 +545,20 @@ def run(url: str, output: Path, *, workers: int, max_render_pages: int) -> dict:
         report["rendered_objects"] = rendered_objects
         report["render_evidence"] = evidence
 
+        complete_started = time.perf_counter()
+        report["complete_build"] = _build_complete_chapter(
+            manifest,
+            chapter_id,
+            output.parent,
+        )
+        report["complete_build_s"] = round(time.perf_counter() - complete_started, 3)
+
         report["total_s"] = round(
             report["download_and_slice_s"]
             + report["process_s"]
             + report["ocr_s"]
-            + report["render_s"],
+            + report["render_s"]
+            + report["complete_build_s"],
             3,
         )
 
@@ -354,6 +577,11 @@ def run(url: str, output: Path, *, workers: int, max_render_pages: int) -> dict:
             )
         if rendered_objects <= 0:
             failures.append("renderer produced no metadata-driven sample text")
+        complete = report.get("complete_build") or {}
+        if int(complete.get("stitched_source_pages") or 0) != int(report.get("source_pages") or 0):
+            failures.append("complete chapter stitch did not reproduce every source page")
+        if int(complete.get("metadata_objects") or 0) != len(recognized):
+            failures.append("complete chapter metadata object count does not match recognized OCR")
         report["failures"] = failures
         report["passed"] = not failures
         if failures:
