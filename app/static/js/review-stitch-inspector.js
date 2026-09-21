@@ -17,7 +17,7 @@
   const autoSynced = new Set();
 
   const chapterKey = () => String(window.currentChapterId || "");
-  const snapshotKey = (page) => `${chapterKey()}:${Number(page)}`;
+  const snapshotKey = () => `${chapterKey()}:strip`;
   const sourceOf = (page, fallback) => Number.isInteger(page?.source_page) ? page.source_page : fallback;
   const sliceOf = (page) => Number.isInteger(page?.slice_index) ? page.slice_index : 0;
   const livePage = (item) => window.currentManifest?.pages?.[Number(item?.canonicalIndex)] || null;
@@ -35,18 +35,11 @@
     autoSynced.clear();
   }
 
-  function groups() {
-    const map = new Map();
-    (window.currentManifest?.pages || []).forEach((page, canonicalIndex) => {
-      if (!page) return;
-      const source = sourceOf(page, canonicalIndex);
-      if (!map.has(source)) map.set(source, []);
-      map.get(source).push({ canonicalIndex });
-    });
-    for (const list of map.values()) {
-      list.sort((a, b) => sliceOf(livePage(a)) - sliceOf(livePage(b)));
-    }
-    return new Map([...map.entries()].sort((a, b) => a[0] - b[0]));
+  function orderedSlices() {
+    return (window.currentManifest?.pages || [])
+      .map((page, canonicalIndex) => ({ page, canonicalIndex }))
+      .filter(({ page }) => Boolean(page))
+      .map(({ canonicalIndex }) => ({ canonicalIndex }));
   }
 
   function ensureStyles() {
@@ -476,34 +469,138 @@
     image.addEventListener("click", (e) => { if (tool === "select" && !e.target.closest(".review-text-object-overlay")) clearSelection(shell); }, { signal });
   }
 
-  async function renderPage(shell, page, items, signal) {
-    const token = ++renderToken, stage = shell.querySelector(".review-stitched-zoom-stage"), image = shell.querySelector(".review-stitched-image"), meta = shell.querySelector(".review-stitched-meta"), warning = shell.querySelector(".review-stitched-warning");
-    image.replaceChildren(); stage.style.width = "auto"; stage.style.height = "auto"; warning.hidden = true;
-    const loading = document.createElement("div"); loading.className = "ui-state review-stitched-loading"; loading.textContent = variant === "original" ? "Đang dựng ảnh gốc…" : variant === "rendered" ? "Đang dựng bản lettering…" : "Đang dựng ảnh đã inpaint…"; image.appendChild(loading);
+  async function renderStrip(shell, items, signal) {
+    const token = ++renderToken;
+    const stage = shell.querySelector(".review-stitched-zoom-stage");
+    const image = shell.querySelector(".review-stitched-image");
+    const meta = shell.querySelector(".review-stitched-meta");
+    const warning = shell.querySelector(".review-stitched-warning");
+    image.replaceChildren();
+    stage.style.width = "auto";
+    stage.style.height = "auto";
+    warning.hidden = true;
+
+    const loading = document.createElement("div");
+    loading.className = "ui-state review-stitched-loading";
+    loading.textContent = variant === "original"
+      ? "Đang dựng strip ảnh gốc…"
+      : variant === "rendered"
+        ? "Đang dựng strip lettering…"
+        : "Đang dựng strip sau inpaint…";
+    image.appendChild(loading);
+
     try {
-      const firstPage = livePage(items[0]), firstUrl = imageUrl(firstPage); if (!firstUrl) throw new Error("Trang không có ảnh để hiển thị.");
-      const first = await loadImage(firstUrl); if (token !== renderToken) return;
-      const firstCore = coreMeta(firstPage, first.naturalHeight); let sourceHeight = firstCore?.sourceHeight || first.naturalHeight, width = first.naturalWidth, valid = Boolean(firstCore) || items.length === 1, expected = 0, fallback = 0;
       const descriptors = [];
-      for (let i = 0; i < items.length; i++) {
-        const item = items[i], live = livePage(item); if (!live) throw new Error(`Vùng ảnh ${i + 1} không còn trong manifest.`);
-        const url = imageUrl(live); if (!url) throw new Error(`Vùng ảnh ${i + 1} không có dữ liệu.`);
-        const img = i === 0 ? first : await loadImage(url); if (token !== renderToken) return; if (img.naturalWidth !== width) throw new Error("Các vùng ảnh trong cùng trang không cùng chiều rộng.");
-        const core = coreMeta(live, img.naturalHeight);
-        if (core) { sourceHeight = core.sourceHeight; if (core.sourceY1 !== expected) valid = false; expected = core.sourceY2; descriptors.push({ item: { canonicalIndex: item.canonicalIndex }, img, localY1: core.localY1, localY2: core.localY2, sourceY1: core.sourceY1, sourceY2: core.sourceY2 }); }
-        else { valid = false; descriptors.push({ item: { canonicalIndex: item.canonicalIndex }, img, localY1: 0, localY2: img.naturalHeight, sourceY1: fallback, sourceY2: fallback + img.naturalHeight }); fallback += img.naturalHeight; }
+      let stripWidth = 0;
+      let stripHeight = 0;
+      let fallbackSlices = 0;
+
+      for (const item of items) {
+        const live = livePage(item);
+        if (!live) continue;
+        const url = imageUrl(live);
+        if (!url) throw new Error(`Lát ${item.canonicalIndex + 1} không có dữ liệu ảnh.`);
+
+        let width = Number(live.width || 0);
+        let height = Number(live.height || 0);
+        let preloaded = null;
+        if (!(width > 0 && height > 0)) {
+          preloaded = await loadImage(url);
+          if (token !== renderToken) return;
+          width = preloaded.naturalWidth;
+          height = preloaded.naturalHeight;
+        }
+        if (!stripWidth) stripWidth = width;
+        if (width !== stripWidth) {
+          throw new Error("Các lát trong chapter không cùng chiều rộng.");
+        }
+
+        const core = coreMeta(live, height);
+        const localY1 = core ? core.localY1 : 0;
+        const localY2 = core ? core.localY2 : height;
+        if (!core) fallbackSlices += 1;
+        const ownedHeight = localY2 - localY1;
+        descriptors.push({
+          item: { canonicalIndex: item.canonicalIndex },
+          img: { naturalWidth: width, naturalHeight: height },
+          localY1,
+          localY2,
+          sourceY1: stripHeight,
+          sourceY2: stripHeight + ownedHeight,
+          url,
+          preloaded,
+        });
+        stripHeight += ownedHeight;
       }
-      if (!valid) {
-        let y = 0; for (const d of descriptors) { d.sourceY1 = y; d.sourceY2 = y + d.localY2 - d.localY1; y = d.sourceY2; } sourceHeight = y;
-        warning.hidden = false; warning.textContent = "Metadata ghép trang không liên tục; đang dùng nối tuần tự để kiểm tra hình ảnh.";
+
+      if (!descriptors.length || !stripWidth || !stripHeight) {
+        throw new Error("Chapter không có lát ảnh hợp lệ để hiển thị.");
       }
-      image.replaceChildren(); Object.assign(image.style, { width: `${width}px`, height: `${sourceHeight}px` }); image.dataset.sourceWidth = String(width); image.dataset.sourceHeight = String(sourceHeight);
-      const chunks = makeImageChunks(image, width, sourceHeight); for (const d of descriptors) drawIntoChunks(chunks, d.img, 0, d.localY1, width, d.localY2 - d.localY1, d.sourceY1); shell._descriptors = descriptors;
-      shell._brushChunks = variant === "clean" ? makeBrushChunks(image, width, sourceHeight) : []; if (variant === "clean") restoreSnapshot(shell, page);
-      meta.textContent = `Trang ${page + 1} · ${width} × ${sourceHeight}px · ${variant === "original" ? "Ảnh gốc" : variant === "rendered" ? "Bản lettering" : "Sau inpaint"}`;
-      applyZoom(shell); await ensureObjects(shell); if (token !== renderToken) return; renderOverlays(shell, signal); syncTool(shell);
+
+      image.replaceChildren();
+      Object.assign(image.style, {
+        width: `${stripWidth}px`,
+        height: `${stripHeight}px`,
+      });
+      image.dataset.sourceWidth = String(stripWidth);
+      image.dataset.sourceHeight = String(stripHeight);
+      image.dataset.stripSlices = String(descriptors.length);
+
+      const chunks = makeImageChunks(image, stripWidth, stripHeight);
+      for (const desc of descriptors) {
+        const img = desc.preloaded || await loadImage(desc.url);
+        if (token !== renderToken) return;
+        if (img.naturalWidth !== stripWidth) {
+          throw new Error("Chiều rộng lát thay đổi khi tải ảnh.");
+        }
+        drawIntoChunks(
+          chunks,
+          img,
+          0,
+          desc.localY1,
+          stripWidth,
+          desc.localY2 - desc.localY1,
+          desc.sourceY1,
+        );
+        desc.img = {
+          naturalWidth: img.naturalWidth,
+          naturalHeight: img.naturalHeight,
+        };
+        delete desc.preloaded;
+        delete desc.url;
+      }
+
+      shell._descriptors = descriptors;
+      shell._brushChunks = variant === "clean"
+        ? makeBrushChunks(image, stripWidth, stripHeight)
+        : [];
+      if (variant === "clean") restoreSnapshot(shell);
+
+      meta.textContent = `1 strip · ${descriptors.length} lát · ${stripWidth} × ${stripHeight}px · ${
+        variant === "original"
+          ? "Ảnh gốc"
+          : variant === "rendered"
+            ? "Bản lettering"
+            : "Sau inpaint"
+      }`;
+      if (fallbackSlices) {
+        warning.hidden = false;
+        warning.textContent = `${fallbackSlices} lát thiếu ownership metadata; đang nối toàn bộ lát theo thứ tự.`;
+      }
+
+      applyZoom(shell);
+      await ensureObjects(shell);
+      if (token !== renderToken) return;
+      renderOverlays(shell, signal);
+      syncTool(shell);
     } catch (err) {
-      if (token !== renderToken) return; image.replaceChildren(); shell._brushChunks = []; const error = document.createElement("div"); error.className = "ui-state ui-state-error review-stitched-error"; error.textContent = `Không dựng được trang: ${err.message}`; image.appendChild(error);
+      if (token !== renderToken) return;
+      image.replaceChildren();
+      shell._brushChunks = [];
+      const error = document.createElement("div");
+      error.className = "ui-state ui-state-error review-stitched-error";
+      error.textContent = `Không dựng được strip: ${err.message}`;
+      image.appendChild(error);
     }
   }
 
@@ -600,7 +697,7 @@
         }
         if (!count) return window.showToast?.("Không có vùng chữ nào được render trên trang này.", "info");
         variant = "rendered";
-        window.showToast?.(`Đã render lettering cho trang ${sourcePage + 1}.`, "success");
+        window.showToast?.(`Đã render lettering cho ${count} lát.`, "success");
         rerender();
       } catch (err) {
         window.showToast?.("Không thể render lettering: " + err.message, "error");
@@ -656,15 +753,9 @@
     workspace.dataset.stitchInspectorMounted = "1";
     workspace.classList.add("review-single-document", "review-lettering-workspace");
 
-    const map = groups();
-    const pages = [...map.keys()];
-    if (!pages.length) return;
-    const pending = Number.parseInt(workspace.dataset.pendingSourcePage || "", 10);
-    sourcePage = Number.isInteger(pending) && pages.includes(pending)
-      ? pending
-      : pages.includes(sourcePage)
-        ? sourcePage
-        : pages[0];
+    const items = orderedSlices();
+    if (!items.length) return;
+    sourcePage = 0;
 
     canvasHost.replaceChildren();
 
@@ -696,15 +787,9 @@
     const right = document.createElement("div");
     right.className = "review-docbar-group review-docbar-right";
 
-    const prev = button("chevron-left", "Trang trước");
-    const select = document.createElement("select");
-    select.className = "ui-select review-stitched-select";
-    select.setAttribute("aria-label", "Chọn trang gốc");
-    pages.forEach((p) => select.add(new Option(`Trang ${p + 1}`, String(p))));
-    const next = button("chevron-right", "Trang sau");
-
-    const pageMeta = document.createElement("span");
-    pageMeta.className = "review-docbar-mini-meta";
+    const stripMeta = document.createElement("span");
+    stripMeta.className = "review-docbar-mini-meta review-strip-meta";
+    stripMeta.textContent = `1 strip · ${items.length} lát`;
 
     const clean = button(null, "Clean");
     const rendered = button(null, "Rendered");
@@ -743,7 +828,7 @@
     const actionsHost = document.createElement("div");
     actionsHost.className = "review-docbar-actions";
 
-    left.append(prev, select, next, pageMeta);
+    left.append(stripMeta);
     center.append(clean, rendered, original, zoomOut, zoomValue, zoomIn, one);
     right.append(submit, clearMask, sizeWrap, actionsHost);
     docbar.append(left, center, right);
@@ -779,14 +864,21 @@
 
     const syncVariant = () => { clean.classList.toggle("ui-btn-primary", variant === "clean"); rendered.classList.toggle("ui-btn-primary", variant === "rendered"); original.classList.toggle("ui-btn-primary", variant === "original"); const readonly = variant !== "clean"; submit.disabled = readonly; clearMask.disabled = readonly; size.disabled = readonly; workspace.classList.toggle("review-readonly-document", readonly); syncTool(shell); };
     shell._syncVariantUI = syncVariant;
-    const busy = (on, text = "Đang xử lý…") => { workspace.classList.toggle("review-busy", on); [submit, clearMask, size, prev, next, select, clean, rendered, original, zoomOut, zoomIn, one, zoomValue].forEach((el) => el.disabled = on); submit.textContent = on ? text : "Inpaint"; workspace._pageNavigator?.setBusy(on); document.querySelectorAll(".review-rail-tool").forEach((b) => b.disabled = on); if (!on) syncVariant(); };
-    const updateCompat = () => { const items = groups().get(sourcePage) || []; const canonical = Number(items[0]?.canonicalIndex ?? 0); compatibility.dataset.pageIndex = String(canonical); workspace.dataset.reviewCanonicalIndex = String(canonical); window.setWorkflowCheckpoint?.("review", canonical); };
-    const rerender = () => { const items = groups().get(sourcePage); if (!items) return; captureSnapshot(shell); workspace.dataset.pendingSourcePage = String(sourcePage); select.value = String(sourcePage); const pos = pages.indexOf(sourcePage); prev.disabled = pos <= 0; next.disabled = pos >= pages.length - 1; pageMeta.textContent = `Trang ${pos + 1}/${pages.length}`; updateCompat(); syncVariant(); void renderPage(shell, sourcePage, items, signal); };
+    const busy = (on, text = "Đang xử lý…") => { workspace.classList.toggle("review-busy", on); [submit, clearMask, size, clean, rendered, original, zoomOut, zoomIn, one, zoomValue].forEach((el) => el.disabled = on); submit.textContent = on ? text : "Inpaint"; document.querySelectorAll(".review-rail-tool").forEach((b) => b.disabled = on); if (!on) syncVariant(); };
+    const updateCompat = () => {
+      const canonical = Number(items[0]?.canonicalIndex ?? 0);
+      compatibility.dataset.pageIndex = String(canonical);
+      workspace.dataset.reviewCanonicalIndex = String(canonical);
+      window.setWorkflowCheckpoint?.("review", canonical);
+    };
+    const rerender = () => {
+      captureSnapshot(shell);
+      updateCompat();
+      syncVariant();
+      void renderStrip(shell, items, signal);
+    };
     shell._rerender = rerender;
-    const selectSource = (nextPage) => { nextPage = Number(nextPage); if (!pages.includes(nextPage) || nextPage === sourcePage) return true; captureSnapshot(shell); clearSelection(shell); sourcePage = nextPage; rerender(); return true; };
-    window.selectReviewSourcePage = selectSource; signal.addEventListener("abort", () => { captureSnapshot(shell); if (window.selectReviewSourcePage === selectSource) delete window.selectReviewSourcePage; }, { once: true });
-
-    const navigator = null;
+    signal.addEventListener("abort", () => captureSnapshot(shell), { once: true });
 
     image.addEventListener("pointerdown", (e) => { if (variant !== "clean" || !["brush", "eraser"].includes(tool) || e.button !== 0) return; const p = sourcePoint(image, e); if (!p) return; e.preventDefault(); painting = true; last = p; image.setPointerCapture?.(e.pointerId); paintPoint(shell, p.x, p.y, radius, tool === "eraser"); }, { signal });
     image.addEventListener("pointermove", (e) => { if (!painting || !last || !["brush", "eraser"].includes(tool)) return; const p = sourcePoint(image, e); if (!p) return; paintStroke(shell, last, p, radius, tool === "eraser"); last = p; }, { signal });
@@ -801,8 +893,6 @@
       if (e.key === "]" && ["brush","eraser"].includes(tool)) { e.preventDefault(); radius = Math.min(100, radius + 2); size.value = String(radius); sizeOut.textContent = `${radius * 2}px`; return; }
       if ((e.key === "Delete" || e.key === "Backspace") && window.editorState?.selectedTextObjectId) { const pageIndex = Number(window.editorState.activePageIndex || 0), id = window.editorState.selectedTextObjectId; e.preventDefault(); window.deleteTextObject?.(pageIndex, id)?.then(() => renderOverlays(shell, signal)).catch((err) => window.showToast?.("Không thể xóa vùng chữ: " + err.message, "error")); return; }
       if (e.key === "Escape") return setTool(shell, "select");
-      if (e.key === "ArrowLeft" || e.key === "PageUp") { const i = pages.indexOf(sourcePage); if (i > 0) { e.preventDefault(); selectSource(pages[i - 1]); navigator?.setActive(i - 1); } return; }
-      if (e.key === "ArrowRight" || e.key === "PageDown") { const i = pages.indexOf(sourcePage); if (i < pages.length - 1) { e.preventDefault(); selectSource(pages[i + 1]); navigator?.setActive(i + 1); } return; }
       if (!e.ctrlKey && !e.metaKey && !e.altKey && SHORTCUTS[e.key.toLowerCase()]) { e.preventDefault(); setTool(shell, SHORTCUTS[e.key.toLowerCase()]); }
     }, { signal });
     window.addEventListener("keyup", (e) => { if (e.code === "Space") { space = false; panning = false; pan = null; viewport.classList.remove("is-panning"); } }, { signal });
@@ -813,10 +903,10 @@
     viewport.addEventListener("wheel", (e) => { if (!(e.ctrlKey || e.metaKey)) return; e.preventDefault(); const r = viewport.getBoundingClientRect(); stepZoom(e.deltaY < 0 ? 1 : -1); applyZoom(shell, { x: e.clientX - r.left, y: e.clientY - r.top }); }, { passive: false, signal });
 
     size.addEventListener("input", () => { radius = Number(size.value); sizeOut.textContent = `${radius * 2}px`; }, { signal });
-    clearMask.addEventListener("click", () => { for (const c of shell._brushChunks || []) { c.ctx.clearRect(0, 0, c.canvas.width, c.canvas.height); c.dirty = false; } snapshots.delete(snapshotKey(sourcePage)); }, { signal });
+    clearMask.addEventListener("click", () => { for (const c of shell._brushChunks || []) { c.ctx.clearRect(0, 0, c.canvas.width, c.canvas.height); c.dirty = false; } snapshots.delete(snapshotKey()); }, { signal });
     clean.addEventListener("click", () => { if (variant !== "clean") { variant = "clean"; rerender(); } }, { signal }); rendered.addEventListener("click", () => { if (variant !== "rendered") { captureSnapshot(shell); variant = "rendered"; rerender(); } }, { signal }); original.addEventListener("click", () => { if (variant !== "original") { captureSnapshot(shell); variant = "original"; rerender(); } }, { signal });
     zoomOut.addEventListener("click", () => { stepZoom(-1); applyZoom(shell); }, { signal }); zoomIn.addEventListener("click", () => { stepZoom(1); applyZoom(shell); }, { signal }); zoomValue.addEventListener("click", () => { fitWidth = true; applyZoom(shell); }, { signal }); one.addEventListener("click", () => { fitWidth = false; zoom = 100; applyZoom(shell); }, { signal });
-    select.addEventListener("change", () => { const p = Number(select.value); selectSource(p); navigator?.setActive(pages.indexOf(p)); }, { signal }); prev.addEventListener("click", () => { const i = pages.indexOf(sourcePage); if (i > 0) { selectSource(pages[i - 1]); navigator?.setActive(i - 1); } }, { signal }); next.addEventListener("click", () => { const i = pages.indexOf(sourcePage); if (i < pages.length - 1) { selectSource(pages[i + 1]); navigator?.setActive(i + 1); } }, { signal }); window.addEventListener("resize", () => { if (fitWidth) applyZoom(shell); }, { signal });
+    window.addEventListener("resize", () => { if (fitWidth) applyZoom(shell); }, { signal });
 
     submit.addEventListener("click", async () => {
       const chapterId = window.currentChapterId, chunks = shell._brushChunks || []; if (!chapterId || !chunks.some((c) => c.dirty && chunkHasPaint(c))) return window.showToast?.("Chưa có vùng nào được đánh dấu.", "error");
@@ -830,7 +920,7 @@
           const response = await fetch("/api/repaint_mask", { method: "POST", body: form }), parse = window.parseApiResponse || (async (r) => r.json().catch(() => ({}))), data = await parse(response); if (!response.ok) throw new Error(window.getErrorMessage?.(response.status, data) || data.detail || `HTTP ${response.status}`);
           if (window.currentManifest?.pages?.[desc.item.canonicalIndex] && data.pages?.[desc.item.canonicalIndex]) window.currentManifest.pages[desc.item.canonicalIndex] = data.pages[desc.item.canonicalIndex]; affected++;
         }
-        for (const c of chunks) { c.ctx.clearRect(0, 0, c.canvas.width, c.canvas.height); c.dirty = false; } snapshots.delete(snapshotKey(sourcePage)); window.showToast?.(`Đã xử lý ${affected} vùng ảnh trên trang ${sourcePage + 1}.`, affected ? "success" : "info"); rerender();
+        for (const c of chunks) { c.ctx.clearRect(0, 0, c.canvas.width, c.canvas.height); c.dirty = false; } snapshots.delete(snapshotKey()); window.showToast?.(`Đã xử lý ${affected} lát trên strip.`, affected ? "success" : "info"); rerender();
       } catch (err) { window.showToast?.("Không thể xử lý vùng đánh dấu: " + err.message, "error"); } finally { busy(false); }
     }, { signal });
 
