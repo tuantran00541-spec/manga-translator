@@ -110,23 +110,42 @@ def _exercise_desktop(page: Page) -> None:
     expect(page.locator('.sidebar-link[data-stage="preview"]')).to_be_visible()
     expect(page.locator('.sidebar-link[data-stage="preview"]')).to_be_enabled()
 
-    toolbar_ok = page.evaluate(
+    toolbar_overflow = page.evaluate(
         """() => {
           const bar = document.querySelector('.review-document-toolbar-compact');
-          if (!bar) return false;
+          if (!bar) return [{ missing: true }];
           const frame = bar.getBoundingClientRect();
-          return [...bar.querySelectorAll('button,select,input')].every((el) => {
-            const r = el.getBoundingClientRect();
-            if (r.width === 0 || r.height === 0) return true;
-            return r.left >= frame.left - 1
-              && r.right <= frame.right + 1
-              && r.top >= frame.top - 1
-              && r.bottom <= frame.bottom + 1;
-          });
+          return [...bar.querySelectorAll('button,select,input')]
+            .map((el) => {
+              const r = el.getBoundingClientRect();
+              return {
+                tag: el.tagName,
+                cls: el.className,
+                text: (el.textContent || el.value || "").trim().slice(0, 80),
+                left: r.left,
+                right: r.right,
+                top: r.top,
+                bottom: r.bottom,
+                width: r.width,
+                height: r.height,
+                frameLeft: frame.left,
+                frameRight: frame.right,
+                frameTop: frame.top,
+                frameBottom: frame.bottom,
+              };
+            })
+            .filter((r) => r.width > 0 && r.height > 0)
+            .filter((r) => r.left < r.frameLeft - 1
+              || r.right > r.frameRight + 1
+              || r.top < r.frameTop - 1
+              || r.bottom > r.frameBottom + 1);
         }"""
     )
-    if not toolbar_ok:
-        raise AssertionError("desktop Review toolbar controls overflow their frame")
+    if toolbar_overflow:
+        raise AssertionError(
+            "desktop Review toolbar controls overflow their frame: "
+            + repr(toolbar_overflow)
+        )
 
     page.locator('.sidebar-link[data-route="home"]').click()
     expect(page.locator("#home-view")).to_be_visible()
@@ -169,23 +188,42 @@ def _exercise_mobile(page: Page) -> None:
     expect(page.locator('.sidebar-link[data-stage="preview"]')).to_be_visible()
     expect(page.locator('.sidebar-link[data-stage="preview"]')).to_be_enabled()
 
-    toolbar_ok = page.evaluate(
+    toolbar_overflow = page.evaluate(
         """() => {
           const bar = document.querySelector('.review-document-toolbar-compact');
-          if (!bar) return false;
+          if (!bar) return [{ missing: true }];
           const frame = bar.getBoundingClientRect();
-          return [...bar.querySelectorAll('button,select,input')].every((el) => {
-            const r = el.getBoundingClientRect();
-            if (r.width === 0 || r.height === 0) return true;
-            return r.left >= frame.left - 1
-              && r.right <= frame.right + 1
-              && r.top >= frame.top - 1
-              && r.bottom <= frame.bottom + 1;
-          });
+          return [...bar.querySelectorAll('button,select,input')]
+            .map((el) => {
+              const r = el.getBoundingClientRect();
+              return {
+                tag: el.tagName,
+                cls: el.className,
+                text: (el.textContent || el.value || "").trim().slice(0, 80),
+                left: r.left,
+                right: r.right,
+                top: r.top,
+                bottom: r.bottom,
+                width: r.width,
+                height: r.height,
+                frameLeft: frame.left,
+                frameRight: frame.right,
+                frameTop: frame.top,
+                frameBottom: frame.bottom,
+              };
+            })
+            .filter((r) => r.width > 0 && r.height > 0)
+            .filter((r) => r.left < r.frameLeft - 1
+              || r.right > r.frameRight + 1
+              || r.top < r.frameTop - 1
+              || r.bottom > r.frameBottom + 1);
         }"""
     )
-    if not toolbar_ok:
-        raise AssertionError("mobile Review toolbar controls overflow their frame")
+    if toolbar_overflow:
+        raise AssertionError(
+            "mobile Review toolbar controls overflow their frame: "
+            + repr(toolbar_overflow)
+        )
 
 
 def _canvas_metrics(page: Page) -> dict[str, float | int]:
