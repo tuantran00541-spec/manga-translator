@@ -145,7 +145,27 @@ jobs:
           raw.mkdir(parents=True, exist_ok=True)
           slc.mkdir(parents=True, exist_ok=True)
 
-          paths = download_chapter(os.environ["CHAPTER_URL"], raw)
+          import shutil
+          import time
+
+          paths = None
+          last_error = None
+          for attempt in range(1, 4):
+              try:
+                  paths = download_chapter(os.environ["CHAPTER_URL"], raw)
+                  break
+              except Exception as exc:
+                  last_error = exc
+                  print(f"download attempt {attempt}/3 failed: {exc!r}")
+                  if attempt >= 3:
+                      raise
+                  shutil.rmtree(raw, ignore_errors=True)
+                  raw.mkdir(parents=True, exist_ok=True)
+                  time.sleep(3 * attempt)
+
+          if paths is None:
+              raise RuntimeError(f"chapter download failed: {last_error!r}")
+
           slices = []
           for i, path in enumerate(sorted(paths)):
               recs = slice_image(path, slc, f"{i:03d}", return_metadata=True)
