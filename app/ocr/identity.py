@@ -223,3 +223,41 @@ def stamp_machine_cache(
     else:
         box.pop("ocr_target_mode", None)
     box["ocr_retry_applied"] = bool(_metadata_value(metadata, "retry_applied", False))
+
+    text_color = str(_metadata_value(metadata, "text_color", "") or "").strip()
+    if text_color:
+        box["ocr_text_color"] = text_color
+    else:
+        box.pop("ocr_text_color", None)
+
+    font_size = _metadata_value(metadata, "font_size")
+    try:
+        parsed_font_size = int(round(float(font_size))) if font_size is not None else 0
+    except (TypeError, ValueError):
+        parsed_font_size = 0
+    if parsed_font_size > 0:
+        box["ocr_font_size"] = parsed_font_size
+    else:
+        box.pop("ocr_font_size", None)
+
+    text_region = _metadata_value(metadata, "text_region")
+    if isinstance(text_region, dict):
+        try:
+            x1 = int(text_region["x1"])
+            y1 = int(text_region["y1"])
+            x2 = int(text_region["x2"])
+            y2 = int(text_region["y2"])
+        except (KeyError, TypeError, ValueError):
+            box.pop("ocr_text_region", None)
+        else:
+            if x1 < x2 and y1 < y2:
+                box["ocr_text_region"] = {
+                    "x1": x1,
+                    "y1": y1,
+                    "x2": x2,
+                    "y2": y2,
+                }
+            else:
+                box.pop("ocr_text_region", None)
+    else:
+        box.pop("ocr_text_region", None)
