@@ -98,6 +98,16 @@ def _clamped_detector_bounds(
     )
 
 
+def _visual_cache_complete(box: dict) -> bool:
+    if not str(box.get("ocr_text") or "").strip():
+        return True
+    return bool(
+        box.get("ocr_text_color")
+        and box.get("ocr_font_size")
+        and isinstance(box.get("ocr_text_region"), dict)
+    )
+
+
 def _box_region(box: dict) -> dict | None:
     try:
         x1, y1, x2, y2 = (
@@ -179,11 +189,12 @@ def _sample_source_text_color(
                     region["y1"]:region["y2"],
                     region["x1"]:region["x2"],
                 ]
-                pixels = patch[mask > 127]
-                if pixels.ndim == 2 and pixels.shape[0] >= 8:
-                    sampled = _rgb_hex_from_bgr(pixels)
-                    if sampled:
-                        return sampled
+                if patch.shape[:2] == mask.shape:
+                    pixels = patch[mask > 127]
+                    if pixels.ndim == 2 and pixels.shape[0] >= 8:
+                        sampled = _rgb_hex_from_bgr(pixels)
+                        if sampled:
+                            return sampled
 
     if not isinstance(text_region, dict):
         return None
@@ -785,12 +796,16 @@ class OCRService:
             )
             original_path, original_revision = self._source_identity(original_value)
 
-            if not force and machine_cache_valid(
-                box_snapshot,
-                lang=lang,
-                engine=engine,
-                source_revision=source_revision,
-                original_revision=original_revision,
+            if (
+                not force
+                and machine_cache_valid(
+                    box_snapshot,
+                    lang=lang,
+                    engine=engine,
+                    source_revision=source_revision,
+                    original_revision=original_revision,
+                )
+                and _visual_cache_complete(box_snapshot)
             ):
                 return self._cached_box_result(
                     page_index, box_id, box_snapshot, lang, engine
