@@ -70,9 +70,6 @@
       .review-text-object-overlay{z-index:12;overflow:visible!important;border:1.5px solid rgba(55,155,255,.95);background:rgba(55,155,255,.045)}
       .review-text-object-overlay.ellipse{border-radius:999px}.review-text-object-overlay.selected{border-color:#57a8ff;box-shadow:0 0 0 1px rgba(87,168,255,.45)}
       .review-text-object-overlay.tool-muted{opacity:.42;pointer-events:none!important}
-      .review-inline-ocr{position:absolute;min-height:22px;overflow:hidden;padding:4px 6px;border:1px solid rgba(255,255,255,.18);border-radius:3px;background:rgba(25,25,25,.94);box-shadow:0 2px 8px rgba(0,0,0,.32);color:#f2f2f2;font:11px/1.25 system-ui,sans-serif;text-overflow:ellipsis;white-space:nowrap;user-select:text;pointer-events:auto}
-      .review-inline-translation{position:absolute;min-height:28px;max-height:156px;overflow:hidden;resize:none;padding:5px 7px;border:1px solid rgba(87,168,255,.75);border-radius:3px;outline:0;background:rgba(250,250,250,.97);box-shadow:0 2px 8px rgba(0,0,0,.28);color:#171717;font:12px/18px system-ui,sans-serif;white-space:pre-wrap;pointer-events:auto}
-      .review-inline-translation:focus{border-color:#57a8ff;box-shadow:0 0 0 1px rgba(87,168,255,.38),0 2px 8px rgba(0,0,0,.28)}
       .review-text-drawing{position:absolute;z-index:20;border:1.5px dashed #57a8ff;background:rgba(87,168,255,.08);pointer-events:none}.review-text-drawing.ellipse{border-radius:999px}
       .review-document-viewport[data-active-tool="hand"]{cursor:grab}.review-document-viewport[data-active-tool="hand"].is-panning{cursor:grabbing}.review-document-viewport[data-active-tool="zoom"]{cursor:zoom-in}
       .review-stitched-image[data-active-tool="rectangle"],.review-stitched-image[data-active-tool="ellipse"],.review-stitched-image[data-active-tool="brush"],.review-stitched-image[data-active-tool="eraser"]{cursor:crosshair}
@@ -273,31 +270,20 @@
     x2: Number(r.x2), y2: desc.sourceY1 + (Number(r.y2) - desc.localY1),
   });
 
-  function grow(textarea) {
-    textarea.style.height = "0px";
-    textarea.style.height = `${Math.max(28, Math.min(156, textarea.scrollHeight))}px`;
-  }
-
   function syncOverlay(shell, pageIndex, id) {
-    const desc = descriptorFor(shell, pageIndex), obj = window.findTextObject?.(pageIndex, id);
-    const overlay = shell.querySelector(`.review-text-object-overlay[data-page-index="${pageIndex}"][data-object-id="${CSS.escape(String(id))}"]`);
+    const desc = descriptorFor(shell, pageIndex);
+    const obj = window.findTextObject?.(pageIndex, id);
+    const overlay = shell.querySelector(
+      `.review-text-object-overlay[data-page-index="${pageIndex}"][data-object-id="${CSS.escape(String(id))}"]`,
+    );
     if (!desc || !obj?.region || !overlay) return false;
-    const r = sourceRegion(desc, obj.region), width = Math.max(MIN_BOX, r.x2 - r.x1), height = Math.max(MIN_BOX, r.y2 - r.y1);
-    Object.assign(overlay.style, { left: `${r.x1}px`, top: `${r.y1}px`, width: `${width}px`, height: `${height}px` });
-    const host = shell.querySelector(".review-stitched-image");
-    const W = Number(host?.dataset.sourceWidth || 0), H = Number(host?.dataset.sourceHeight || 0);
-    const inlineW = Math.max(150, Math.min(360, width)), right = W > 0 && r.x1 + inlineW > W;
-    const below = r.y1 < 48, above = !below && H > 0 && H - r.y2 < 170;
-    const ocr = overlay.querySelector(".review-inline-ocr"), translation = overlay.querySelector(".review-inline-translation");
-    if (ocr) {
-      ocr.textContent = obj.ocr_text?.trim() || "Đang OCR…";
-      Object.assign(ocr.style, { width: `${inlineW}px`, left: right ? "auto" : "0", right: right ? "0" : "auto", top: below ? "calc(100% + 4px)" : "auto", bottom: below ? "auto" : "calc(100% + 4px)" });
-    }
-    if (translation) {
-      if (translation !== document.activeElement) translation.value = obj.translation || "";
-      Object.assign(translation.style, { width: `${inlineW}px`, left: right ? "auto" : "0", right: right ? "0" : "auto", top: above ? "auto" : (below ? "calc(100% + 32px)" : "calc(100% + 4px)"), bottom: above ? "calc(100% + 32px)" : "auto" });
-      grow(translation);
-    }
+    const r = sourceRegion(desc, obj.region);
+    Object.assign(overlay.style, {
+      left: `${r.x1}px`,
+      top: `${r.y1}px`,
+      width: `${Math.max(MIN_BOX, r.x2 - r.x1)}px`,
+      height: `${Math.max(MIN_BOX, r.y2 - r.y1)}px`,
+    });
     return true;
   }
 
@@ -393,21 +379,16 @@
   function createInlineEditor(shell, desc, pageIndex, obj, signal) {
     const overlay = document.createElement("div");
     overlay.className = `text-object-overlay review-text-object-overlay${obj.shape === "ellipse" ? " ellipse" : ""}`;
-    overlay.dataset.pageIndex = String(pageIndex); overlay.dataset.objectId = String(obj.id);
-    const ocr = document.createElement("div"); ocr.className = "review-inline-ocr"; ocr.title = "OCR nguồn"; ocr.textContent = obj.ocr_text?.trim() || "Đang OCR…";
-    const translation = document.createElement("textarea"); translation.className = "review-inline-translation"; translation.rows = 1; translation.placeholder = "Bản dịch…"; translation.value = obj.translation || ""; translation.spellcheck = false;
-    for (const el of [ocr, translation]) el.addEventListener("pointerdown", (e) => e.stopPropagation(), { signal });
-    ocr.addEventListener("click", (e) => { e.stopPropagation(); selectObject(shell, pageIndex, obj.id); }, { signal });
-    translation.addEventListener("click", (e) => { e.stopPropagation(); selectObject(shell, pageIndex, obj.id); }, { signal });
-    translation.addEventListener("input", () => {
-      const live = window.findTextObject?.(pageIndex, obj.id); if (!live) return;
-      live.translation = translation.value; grow(translation); window.scheduleTextObjectPersist?.(pageIndex, obj.id);
-      const panel = document.querySelector(`.review-inspector .translation-textarea[data-text-object-id="${CSS.escape(String(obj.id))}"]`);
-      if (panel && panel !== document.activeElement) panel.value = translation.value;
+    overlay.dataset.pageIndex = String(pageIndex);
+    overlay.dataset.objectId = String(obj.id);
+    overlay.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      selectObject(shell, pageIndex, obj.id);
     }, { signal });
-    overlay.append(ocr, translation);
-    overlay.addEventListener("click", (e) => { if (e.target.closest(".review-inline-ocr,.review-inline-translation")) return; e.preventDefault(); e.stopPropagation(); selectObject(shell, pageIndex, obj.id); }, { signal });
-    shell.querySelector(".review-stitched-image")?.appendChild(overlay); syncOverlay(shell, pageIndex, obj.id); installTransform(shell, overlay, desc, pageIndex, obj, signal);
+    shell.querySelector(".review-stitched-image")?.appendChild(overlay);
+    syncOverlay(shell, pageIndex, obj.id);
+    installTransform(shell, overlay, desc, pageIndex, obj, signal);
   }
 
   function renderOverlays(shell, signal) {
@@ -421,13 +402,12 @@
   async function waitForOcr(shell, pageIndex, id, signal) {
     const start = Date.now();
     while (!signal.aborted && Date.now() - start < 8000) {
-      if (window.findTextObject?.(pageIndex, id)?.ocr_text?.trim()) return void syncOverlay(shell, pageIndex, id);
-      await new Promise((r) => setTimeout(r, 250));
+      if (window.findTextObject?.(pageIndex, id)?.ocr_text?.trim()) break;
+      await new Promise((resolve) => setTimeout(resolve, 250));
     }
     syncOverlay(shell, pageIndex, id);
-    if (!window.findTextObject?.(pageIndex, id)?.ocr_text?.trim()) {
-      const bar = shell.querySelector(`.review-text-object-overlay[data-page-index="${pageIndex}"][data-object-id="${CSS.escape(String(id))}"] .review-inline-ocr`);
-      if (bar) bar.textContent = "Không nhận được chữ";
+    if (window.editorState?.selectedTextObjectId === id) {
+      window.renderEditorPanel?.(Number(pageIndex));
     }
   }
 
@@ -555,21 +535,7 @@
 
     close.addEventListener("click", () => clearSelection(shell), { signal });
 
-    host.addEventListener("input", (e) => {
-      const pageIndex = Number(window.editorState?.activePageIndex || 0);
-      const id = window.editorState?.selectedTextObjectId;
-      if (!id) return;
-      if (e.target.classList?.contains("translation-textarea")) {
-        const inline = shell.querySelector(`.review-text-object-overlay[data-page-index="${pageIndex}"][data-object-id="${CSS.escape(String(id))}"] .review-inline-translation`);
-        if (inline && inline !== document.activeElement) {
-          inline.value = e.target.value;
-          grow(inline);
-        }
-      } else if (e.target.classList?.contains("ocr-textarea")) {
-        const bar = shell.querySelector(`.review-text-object-overlay[data-page-index="${pageIndex}"][data-object-id="${CSS.escape(String(id))}"] .review-inline-ocr`);
-        if (bar) bar.textContent = e.target.value.trim() || "OCR nguồn";
-      }
-    }, { signal });
+
   }
 
   function syncToolButtons() {
@@ -839,7 +805,7 @@
       if (!e.ctrlKey && !e.metaKey && !e.altKey && SHORTCUTS[e.key.toLowerCase()]) { e.preventDefault(); setTool(shell, SHORTCUTS[e.key.toLowerCase()]); }
     }, { signal });
     window.addEventListener("keyup", (e) => { if (e.code === "Space") { space = false; panning = false; pan = null; viewport.classList.remove("is-panning"); } }, { signal });
-    viewport.addEventListener("pointerdown", (e) => { if (e.button !== 0 || !(space || tool === "hand") || e.target.closest(".review-inline-translation,.review-inline-ocr")) return; panning = true; pan = { x: e.clientX, y: e.clientY, left: viewport.scrollLeft, top: viewport.scrollTop }; viewport.setPointerCapture?.(e.pointerId); viewport.classList.add("is-panning"); e.preventDefault(); }, { signal });
+    viewport.addEventListener("pointerdown", (e) => { if (e.button !== 0 || !(space || tool === "hand")) return; panning = true; pan = { x: e.clientX, y: e.clientY, left: viewport.scrollLeft, top: viewport.scrollTop }; viewport.setPointerCapture?.(e.pointerId); viewport.classList.add("is-panning"); e.preventDefault(); }, { signal });
     viewport.addEventListener("pointermove", (e) => { if (!panning || !pan) return; viewport.scrollLeft = pan.left - (e.clientX - pan.x); viewport.scrollTop = pan.top - (e.clientY - pan.y); }, { signal });
     viewport.addEventListener("pointerup", () => { panning = false; pan = null; viewport.classList.remove("is-panning"); }, { signal });
     viewport.addEventListener("click", (e) => { if (tool !== "zoom" || e.target.closest("button,input,textarea,select")) return; const r = viewport.getBoundingClientRect(); stepZoom(e.altKey ? -1 : 1); applyZoom(shell, { x: e.clientX - r.left, y: e.clientY - r.top }); }, { signal });
