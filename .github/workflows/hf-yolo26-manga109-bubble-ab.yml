@@ -46,6 +46,7 @@ jobs:
           python -m pip install ultralytics==8.4.156 huggingface_hub==0.35.1 onnx==1.17.0 onnxslim==0.1.71
           python -m pip install numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 psutil==6.1.1 loguru==0.7.2 requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 playwright==1.47.0 fastapi==0.115.0 pydantic==2.9.2 filelock==3.16.1 threadpoolctl==3.6.0
           python -m pip install --force-reinstall --no-deps onnxruntime-openvino==1.24.1
+          python -m pip install openvino==2026.4.0
 
       - name: Restore production models
         id: models
