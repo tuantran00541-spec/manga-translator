@@ -26,8 +26,8 @@ jobs:
       RAW_DIR: "benchmark-results/hf-yolo26-bubble/raw"
       SLICE_DIR: "benchmark-results/hf-yolo26-bubble/slices"
       MODEL_DIR: "benchmark-results/hf-yolo26-bubble/model"
-      MANGA_ORT_PROVIDER: openvino
-      MANGA_ORT_REQUIRE_PROVIDER: "1"
+      MANGA_ORT_PROVIDER: cpu
+      MANGA_ORT_REQUIRE_PROVIDER: "0"
       MANGA_ORT_OPENVINO_SCOPE: detectors
       MANGA_ORT_OPENVINO_THREADS: "2"
       MANGA_ORT_OPENVINO_STREAMS: "1"
@@ -172,23 +172,18 @@ jobs:
 
           providers = ort.get_available_providers()
           print("providers", providers)
-          if "OpenVINOExecutionProvider" not in providers:
-              raise RuntimeError("OpenVINOExecutionProvider unavailable")
+          if "CPUExecutionProvider" not in providers:
+              raise RuntimeError("CPUExecutionProvider unavailable")
 
           def session(path):
               so = ort.SessionOptions()
               so.intra_op_num_threads = 2
               so.inter_op_num_threads = 1
+              so.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
               return ort.InferenceSession(
                   str(path),
                   sess_options=so,
-                  providers=["OpenVINOExecutionProvider"],
-                  provider_options=[{
-                      "device_type": "CPU",
-                      "num_of_threads": "2",
-                      "num_streams": "1",
-                      "cache_dir": "/tmp/manga-openvino-cache",
-                  }],
+                  providers=["CPUExecutionProvider"],
               )
 
           def preprocess(path):
