@@ -53,17 +53,25 @@
   }
 
   function renderPanel(workspace) {
-    const panel = workspace?.querySelector(".chapter-ocr-panel");
-    if (!panel) return;
     const snapshot = state.snapshot;
     const running = isRunning(snapshot);
+    const run = workspace?.querySelector(".chapter-ocr-run");
+    if (run) {
+      const total = Number(snapshot?.total) || 0;
+      const done = Number(snapshot?.completed || 0)
+        + Number(snapshot?.stale || 0)
+        + Number(snapshot?.failed || 0);
+      run.disabled = running;
+      run.textContent = running && total > 0
+        ? `OCR ${done}/${total}`
+        : "OCR toàn chương";
+      run.title = snapshot ? summaryText(snapshot) : "Nhận dạng chữ toàn chương";
+    }
+
+    const panel = workspace?.querySelector(".chapter-ocr-panel");
+    if (!panel) return;
     panel.hidden = !snapshot;
     if (running) panel.open = true;
-    const run = workspace.querySelector(".chapter-ocr-run");
-    if (run) {
-      run.disabled = running;
-      run.textContent = running ? "OCR toàn chương đang chạy…" : "OCR toàn chương";
-    }
     const summary = panel.querySelector(".chapter-ocr-summary");
     if (summary) summary.textContent = summaryText(snapshot);
     const progress = panel.querySelector(".chapter-ocr-progress");
@@ -236,20 +244,24 @@
   function bindWorkspace(workspace) {
     syncChapter();
     if (!workspace || workspace.dataset.chapterOcrBound === "1") return;
-    const actions = workspace.querySelector(".review-actions-group");
-    const inspector = workspace.querySelector(".review-inspector");
-    if (!actions || !inspector) return;
+    const actions = workspace.querySelector(".review-docbar-actions")
+      || workspace.querySelector(".review-actions-group");
+    if (!actions) return;
     workspace.dataset.chapterOcrBound = "1";
 
     const run = document.createElement("button");
     run.type = "button";
-    run.className = "ui-btn ui-btn-ghost chapter-ocr-run";
+    run.className = "ui-btn ui-btn-ghost ui-btn-compact chapter-ocr-run";
     run.textContent = "OCR toàn chương";
+    run.title = "Nhận dạng chữ toàn chương";
     run.addEventListener("click", startChapterOCR);
     actions.prepend(run);
 
-    const panel = createPanel();
-    inspector.appendChild(panel);
+    const inspector = workspace.querySelector(".review-inspector");
+    if (inspector) {
+      const panel = createPanel();
+      inspector.appendChild(panel);
+    }
     renderPanel(workspace);
   }
 
