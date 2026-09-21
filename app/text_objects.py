@@ -28,6 +28,9 @@ OCR_METADATA_FIELDS = (
     "ocr_coverage",
     "ocr_target_mode",
     "ocr_retry_applied",
+    "ocr_text_color",
+    "ocr_font_size",
+    "ocr_text_region",
 )
 TRANSLATION_MACHINE_FIELDS = (
     "translation_source",
