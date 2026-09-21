@@ -246,6 +246,19 @@
     }
   }
 
+  function syncChapterHash(chapterId) {
+    if (!chapterId) return;
+    const expected = `#${chapterId}`;
+    if (window.location.hash === expected) return;
+    try {
+      window.history.replaceState(
+        null,
+        "",
+        `${window.location.pathname}${window.location.search}${expected}`,
+      );
+    } catch (_) {}
+  }
+
   async function navigateAppStage(stage, landingMode = "home") {
     if (!STAGES.includes(stage) || navigationBusy) return false;
     const currentStage = document.body.dataset.appStage || "landing";
@@ -284,6 +297,7 @@
       }
       const renderer = window[{ preview: "renderPreview", review: "renderReview", editor: "renderEditor" }[stage]];
       if (typeof renderer !== "function") throw new Error(`Không tìm thấy màn hình ${STAGE_LABELS[stage]}.`);
+      syncChapterHash(chapterId);
       renderer();
       return true;
     } catch (error) {
