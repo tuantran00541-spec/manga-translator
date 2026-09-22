@@ -197,28 +197,6 @@ function buildTextSection(body, panel, obj, pageIndex) {
   });
   fontToolbar.appendChild(fontSelect);
 
-  const suggestBtn = document.createElement("button");
-  suggestBtn.type = "button";
-  suggestBtn.className = "ui-btn ui-btn-ghost ui-btn-compact font-match-btn";
-  suggestBtn.textContent = "Gợi ý gần nhất";
-  suggestBtn.title = "So sánh chữ gốc với kho font đã cài";
-  suggestBtn.addEventListener("click", async () => {
-    suggestBtn.disabled = true;
-    try {
-      const result = await window.matchFontForObject(pageIndex, obj.id);
-      const best = result?.matches?.[0];
-      if (best) {
-        obj.font_match = result.matches;
-        showToast(`Gợi ý: ${best.font_id} (${best.confidence})`, "info");
-      }
-    } catch (err) {
-      showToast("Không thể so khớp font: " + err.message, "info");
-    } finally {
-      suggestBtn.disabled = false;
-    }
-  });
-  fontToolbar.appendChild(suggestBtn);
-
   const boldBtn = document.createElement("button");
   boldBtn.type = "button";
   boldBtn.className = "ui-icon-btn ui-btn-ghost ui-btn-compact bold-toggle-btn";

@@ -695,30 +695,6 @@ async function loadFonts() {
   }
 }
 
-async function matchFontForObject(pageIndex, objectId, category = null) {
-  if (!currentChapterId) throw new Error("Chưa chọn chương");
-  const page = currentManifest?.pages?.[pageIndex];
-  const obj = (page?.text_objects || []).find((item) => item?.id === objectId);
-  if (!obj) throw new Error("Không tìm thấy vùng chữ");
-  const resp = await fetch("/api/fonts/match", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      chapter_id: currentChapterId,
-      page_index: pageIndex,
-      object_id: objectId,
-      source_text: obj.ocr_text || null,
-      category,
-      top_k: 3,
-    }),
-  });
-  const data = await parseApiResponse(resp);
-  if (!resp.ok) throw new Error(getErrorMessage(resp.status, data));
-  obj.font_match = data.matches || [];
-  return data;
-}
-window.matchFontForObject = matchFontForObject;
-
 const _preserveRegionSaveStates = new Map();
 
 function _clonePreserveRegions(preserveRegions) {
