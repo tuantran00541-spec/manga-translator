@@ -29,6 +29,36 @@ def _wait_for_text_overlay(page: Page) -> None:
     expect(page.locator(".review-text-object-overlay").first).to_be_visible()
 
 
+def _review_layout_chain(page: Page) -> list[dict]:
+    return page.evaluate(
+        """() => {
+          const viewport = document.querySelector('.review-document-viewport');
+          const nodes = [];
+          let node = viewport;
+          while (node && nodes.length < 8) {
+            const style = getComputedStyle(node);
+            const rect = node.getBoundingClientRect();
+            nodes.push({
+              tag: node.tagName,
+              id: node.id || '',
+              cls: node.className || '',
+              hidden: !!node.hidden,
+              display: style.display,
+              position: style.position,
+              height: rect.height,
+              width: rect.width,
+              gridTemplateRows: style.gridTemplateRows,
+              minHeight: style.minHeight,
+              maxHeight: style.maxHeight,
+              overflow: style.overflow,
+            });
+            node = node.parentElement;
+          }
+          return nodes;
+        }"""
+    )
+
+
 def _exercise_landing(page: Page, base_url: str, name: str, artifacts: Path) -> None:
     page.goto(base_url, wait_until="networkidle")
     expect(page.locator("#home-view")).to_be_visible()
@@ -74,7 +104,10 @@ def _exercise_desktop(page: Page) -> None:
     _wait_for_review(page)
     viewport_box = page.locator(".review-document-viewport").bounding_box()
     if not viewport_box or viewport_box["height"] < 160:
-        raise AssertionError(f"desktop Review canvas is not usable: {viewport_box}")
+        chain = _review_layout_chain(page)
+        raise AssertionError(
+            f"desktop Review canvas is not usable: {viewport_box}; chain={chain}"
+        )
     # The fixture intentionally stores the legacy "editor" checkpoint. Opening
     # it must migrate into the single Review/lettering workspace.
     expect(page.locator('.sidebar-link[data-stage="editor"]')).to_have_count(0)
@@ -200,7 +233,10 @@ def _exercise_mobile(page: Page) -> None:
     _wait_for_review(page)
     viewport_box = page.locator(".review-document-viewport").bounding_box()
     if not viewport_box or viewport_box["height"] < 160:
-        raise AssertionError(f"mobile Review canvas is not usable: {viewport_box}")
+        chain = _review_layout_chain(page)
+        raise AssertionError(
+            f"mobile Review canvas is not usable: {viewport_box}; chain={chain}"
+        )
 
     expect(page.locator("#workbench-panel-controls")).to_be_hidden()
     expect(page.locator("#site-header")).to_be_hidden()
