@@ -479,7 +479,7 @@ class UpdateTextObjectRequest(BaseModel):
 
 
 class BulkTextObjectUpdateItem(BaseModel):
-    """ One text-object patch inside a bulk save. Mirrors ``UpdateTextObjectRequest`` without ``chapter_id``; the chapter is carried once by the envelope so a multi-object save cannot span chapters. """
+    """ One text-object patch inside a bulk save. """
 
     page_index: int = Field(ge=0)
     id: str

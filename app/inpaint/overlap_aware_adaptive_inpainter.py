@@ -7,7 +7,7 @@ from app.inpaint.lama_inpainter import Inpainter
 
 
 class OverlapAwareAdaptiveFastInpainter(AdaptiveFastInpainter):
-    """ Union near-duplicate destructive authorities before size-based grouping. The base clusterer intentionally limits cluster span for CPU cost. That limit should not split two authorities that almost contain one another: unioning their existing masks adds no destructive pixels, while processing them in separate LaMa jobs can repaint the same text region repeatedly. Oversized area handling still runs after this merge in ``Inpainter.inpaint``. """
+    """ Union near-duplicate destructive authorities before size-based grouping. """
 
     @staticmethod
     def _clusters_strongly_overlap(

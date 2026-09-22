@@ -1,4 +1,4 @@
-""" Research-only stroke-aware expansion for verified text masks. This module intentionally lives under scripts/ so the experiment is not part of the production app import graph. Detector segmentation remains the seed authority; this helper only tests conservative bounded expansion. """
+""" Research-only stroke-aware expansion for verified text masks. """
 from __future__ import annotations
 
 from dataclasses import dataclass

@@ -138,7 +138,7 @@ _ROI_MIN_SAVINGS = _env_float(
 
 
 class FastInpainter(Inpainter):
-    """ CPU-oriented inpainting candidate layered on top of production LaMa. Verified speech-bubble masks first try cheap, artwork-safe background reconstruction. Flat interiors keep the existing solid smart-fill; smooth bubble gradients use a robust quadratic surface fitted only from clean ring pixels. Complex or ambiguous regions fall back to LaMa. Telea is disabled by default because real-page auditing found visible polygon/facet artifacts. Dynamic LaMa also receives a tight mask-derived ROI with bounded context instead of the wider detector-cluster crop when doing so removes meaningful pixels. Final compositing remains restricted to the authorized mask. """
+    """ CPU-oriented inpainting candidate layered on top of production LaMa. """
 
     def _begin_metrics(self, *, boxes: int = 0) -> None:
         super()._begin_metrics(boxes=boxes)
@@ -231,7 +231,7 @@ class FastInpainter(Inpainter):
 
     @staticmethod
     def _strong_authority_overlap(box: BubbleBox, boxes: list[BubbleBox]) -> bool:
-        """ Detect duplicate destructive authorities before per-box fast fill. A common failure mode is one segmenter result represented as both a speech-bubble and a free-text record. Fast-filling the first and then sending the overlapping second record through LaMa paints the same pixels twice and amplifies blur. Strongly overlapping authorities are therefore left together for the clustered path, which unions their masks once. """
+        """ Detect duplicate destructive authorities before per-box fast fill. """
         area = max(0, int(box.x2 - box.x1)) * max(0, int(box.y2 - box.y1))
         if area <= 0:
             return False

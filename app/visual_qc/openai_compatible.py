@@ -29,7 +29,7 @@ def _resolve_provider_id(provider_id: str | None, chat_url: str | None) -> str:
 
 
 class OpenAICompatibleVisualQC:
-    """ Single-page visual QC for OpenAI-compatible providers. Endpoint/auth selection remains server-owned and provider-specific request fields are sourced from ``AIProvider`` just like chapter QC and translation. ``provider_id`` is optional only for backwards compatibility with the existing router; when omitted the fixed server-owned endpoint identifies the provider rather than accepting an arbitrary browser-supplied API base. """
+    """ Single-page visual QC for OpenAI-compatible providers. """
 
     def __init__(
         self,

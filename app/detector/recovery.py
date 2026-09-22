@@ -61,7 +61,7 @@ from app.parameters import (
 
 
 class SecondaryTextRecovery:
-    """ Conservative OpenCV/MSER recovery for text styles missed by the segmenter. Recovery is deliberately detection-first, not cleanup-first. Candidates are review-only unless a compact pixel mask can be reconstructed with conservative geometry. This prevents an outlined/SFX proposal from turning into rectangle inpainting while still ensuring detector misses are visible to the editor. """
+    """ Conservative OpenCV/MSER recovery for text styles missed by the segmenter. """
 
     def __init__(self) -> None:
         self._mser = cv2.MSER_create(MSER_DELTA, MSER_MIN_AREA, MSER_MAX_AREA)

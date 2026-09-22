@@ -11,7 +11,7 @@ from app.ocr.quality import classify_ocr_quality
 
 
 class MultiLangOCR:
-    """ Production OCR facade for manga/manhua/webtoon crops. Japanese stays on MangaOCR because the Japanese ground-truth gate still shows materially better exact transcription there. English and Chinese use PP-OCRv6; Korean uses the dedicated Korean PP-OCRv5 mobile recognizer behind the same PaddleOCR 3.x detector. Paddle defaults to all detected lines. OCRService may opt into centered selection for an explicitly single-line comic target, but grouped bubbles, narration and free text must never silently lose surrounding lines. """
+    """ Production OCR facade for manga/manhua/webtoon crops. """
 
     def __init__(self):
         self._paddle = PaddleV6OCR()

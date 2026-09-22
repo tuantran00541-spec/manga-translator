@@ -778,7 +778,7 @@ def _get_manual_mask_state(
 
 
 def capture_processing_state(manifest: dict, page_index: int, processed_dir: Path) -> dict | None:
-    """ Capture snapshot of canonical inputs for page detection and inpainting. Derived outputs (such as 'clean') are deliberately excluded to prevent self-referential validation. """
+    """ Capture snapshot of canonical inputs for page detection and inpainting. """
     pages = manifest.get("pages", [])
     if page_index < 0 or page_index >= len(pages):
         return None

@@ -17,7 +17,7 @@ _ALLOWED_PROTOCOLS = frozenset({"openai", "gemini"})
 
 @dataclass(frozen=True)
 class AIProvider:
-    """ Server-owned contract for one AI provider. The UI only selects a provider/model. Authentication, endpoint selection, image transport, provider-specific request knobs and cost behaviour stay on the backend so browser code does not need provider-specific HTTP logic. """
+    """ Server-owned contract for one AI provider. """
 
     id: str
     label: str
@@ -44,7 +44,7 @@ class AIProvider:
         return f"{self.api_base.rstrip('/')}/models"
 
     def chat_completion_extras(self) -> dict:
-        """ Return provider-specific OpenAI-compatible body fields. DeepSeek accepts the explicit thinking control used by this app. Other OpenAI-compatible providers must not receive that vendor-specific field. """
+        """ Return provider-specific OpenAI-compatible body fields. """
 
         if self.protocol != "openai":
             return {}

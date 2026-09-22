@@ -33,7 +33,7 @@ class ChapterProcessingJob:
 
 
 class ChapterProcessingJobManager:
-    """ Own chapter processing independently from the browser request lifetime. The server owns the complete page plan and dispatches it to the pipeline once. The pipeline's worker pool controls true concurrency, so a 100-page chapter can live in one queue while only the user-selected number of pages run at the same time. Browser tabs only start or observe the job; disconnecting them cannot truncate the queue. """
+    """ Own chapter processing independently from the browser request lifetime. """
 
     def __init__(
         self,

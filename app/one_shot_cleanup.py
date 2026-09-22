@@ -112,7 +112,7 @@ class OneShotTextMaskDetector:
         }
 
 class OneShotProductionDetector(FastResidueAdaptiveFocusCombinedTextDetector):
-    """ Production adapter for the one-forward text-mask detector. Detection itself uses only ``text_segmenter.onnx``. The inherited fast residue verifier is retained because it only needs ``self.text_detector``; bubble YOLO, MSER recovery, adaptive focus and their model sessions are never constructed here. """
+    """ Production adapter for the one-forward text-mask detector. """
 
     def __init__(self):
         self.core = OneShotTextMaskDetector()

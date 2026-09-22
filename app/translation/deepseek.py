@@ -86,7 +86,7 @@ def _preflight_cost_usd(items: list[dict]) -> float:
 
 
 class OpenAICompatibleTranslator:
-    """ Text translation through the provider contract used by the current UI. The browser supplies only provider/model. Endpoint selection and vendor-only request fields are resolved here from ``AIProvider`` so OpenRouter/OpenAI do not accidentally receive DeepSeek-specific parameters. """
+    """ Text translation through the provider contract used by the current UI. """
 
     def __init__(
         self,

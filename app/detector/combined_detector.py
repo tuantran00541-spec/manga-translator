@@ -698,7 +698,7 @@ class CombinedTextDetector:
 
     @staticmethod
     def _refine_and_split_tall_boxes(boxes: list[BubbleBox], img: np.ndarray) -> list[BubbleBox]:
-        """ Refine geometry without inventing segmentation pixels. Detector masks are evidence. A missing mask must stay missing all the way to the artwork-safe mask builder; turning ``None`` into a filled rectangle here would bypass the downstream safety policy and erase artwork. """
+        """ Refine geometry without inventing segmentation pixels. """
         img_h, img_w = img.shape[:2]
         full_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if img.ndim == 3 else img
 

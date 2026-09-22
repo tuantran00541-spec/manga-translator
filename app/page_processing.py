@@ -23,7 +23,7 @@ from app.parameters import (
 class PageProcessingMixin:
     @staticmethod
     def _review_only_residue_sources(records: list[dict] | None) -> list[BubbleBox]:
-        """ Build non-destructive verifier sources for deferred segmenter text. These boxes are intentionally NOT erase authority. They only make the post-inpaint verifier inspect story-like text evidence that policy held back from automatic cleanup (for example a full-width free-text bbox). """
+        """ Build non-destructive verifier sources for deferred segmenter text. """
         boxes: list[BubbleBox] = []
         for record in records or []:
             if not isinstance(record, dict) or record.get("removed"):

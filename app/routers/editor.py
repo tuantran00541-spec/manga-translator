@@ -77,7 +77,7 @@ def _regions_to_repaint_mask(image_shape: tuple[int, ...], regions) -> np.ndarra
 
 
 def _reconcile_translation_after_ocr_edit(req: UpdateTextObjectRequest) -> dict:
-    """ Invalidate an untouched generated translation after a source-only OCR edit. ``pipeline.update_text_object`` owns the editor mutation itself. This follow-up transaction is optimistic and only applies if the object still contains the exact OCR text from this request; a concurrent newer edit therefore wins. If the request also supplied a translation, that is explicit user intent and the caller skips this reconciliation entirely. """
+    """ Invalidate an untouched generated translation after a source-only OCR edit. """
     expected_source = str(req.ocr_text or "")
     with get_manifest_lock(req.chapter_id):
         manifest = load_manifest_raw(req.chapter_id)
