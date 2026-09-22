@@ -582,7 +582,7 @@ class YoloDetector:
 
     @staticmethod
     def _merge_text_mask_evidence(boxes: list[BubbleBox]) -> BubbleBox:
-        """ Union duplicate text masks instead of discarding their pixels. """
+        """ Only verified text-segmenter masks may merge; preserve all mask evidence. """
         base = max(boxes, key=lambda box: float(box.confidence))
         evidence = [box for box in boxes if box.verified_mask]
         if not evidence:
