@@ -107,11 +107,7 @@ def apply_final_review(page: dict, *, approved: bool) -> bool:
 
 
 def is_story_candidate(box: dict | None) -> bool:
-    """High-confidence detector evidence likely to carry story text.
-
-    OCR eligibility and planner state are deliberately ignored. Curation cannot
-    make detector evidence disappear merely by changing scheduling fields.
-    """
+    """ OCR eligibility and planner state are deliberately ignored. Curation cannot make detector evidence disappear merely by changing scheduling fields. """
     if not isinstance(box, dict):
         return False
     if box.get("manual") or _norm(box.get("origin")) == "manual":

@@ -19,13 +19,7 @@ from app.parameters import (
 
 
 class CompleteFlatEnvelopeMaskRecallPipeline(FlatEnvelopeMaskRecallPipeline):
-    """Adaptive mask recall with bounded evidence-driven repair follow-ups.
-
-    Geometry derives from detector scale instead of chapter-specific pixels.
-    Near-duplicate destructive authorities are unioned before LaMa grouping, and
-    post-inpaint repair follows fresh verifier evidence even on textured regions.
-    Hard caps remain safety rails; they do not decide which pixels are writable.
-    """
+    """ Geometry derives from detector scale instead of chapter-specific pixels. Near-duplicate destructive authorities are unioned before LaMa grouping, and post-inpaint repair follows fresh verifier evidence even on textured regions. Hard caps remain safety rails; they do not decide which pixels are writable. """
 
     _ADAPTIVE_GEOMETRY_SIDE = max(
         1,

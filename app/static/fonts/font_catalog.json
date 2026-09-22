@@ -2,7 +2,7 @@
   "schema_version": 1,
   "generated_at": "2026-09-22",
   "default_font": "default.ttf",
-  "font_count": 70,
+  "font_count": 66,
   "records": [
     {
       "id": "dialogue.be-vietnam-pro",
@@ -20,21 +20,6 @@
       "default_rank": 0
     },
     {
-      "id": "dialogue.noto-sans",
-      "name": "Noto Sans",
-      "path": "dialogue/noto-sans.ttf",
-      "category": "dialogue",
-      "tags": [
-        "readable",
-        "comic"
-      ],
-      "vietnamese": true,
-      "license": "OFL-1.1",
-      "license_file": "licenses/OFL.txt",
-      "source_url": "https://fonts.google.com/specimen/Noto+Sans",
-      "default_rank": 1
-    },
-    {
       "id": "dialogue.roboto",
       "name": "Roboto",
       "path": "dialogue/roboto.ttf",
@@ -47,7 +32,7 @@
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Roboto",
-      "default_rank": 2
+      "default_rank": 1
     },
     {
       "id": "dialogue.roboto-condensed",
@@ -62,7 +47,7 @@
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Roboto+Condensed",
-      "default_rank": 3
+      "default_rank": 2
     },
     {
       "id": "dialogue.open-sans",
@@ -77,7 +62,7 @@
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Open+Sans",
-      "default_rank": 4
+      "default_rank": 3
     },
     {
       "id": "dialogue.inter",
@@ -92,7 +77,7 @@
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Inter",
-      "default_rank": 5
+      "default_rank": 4
     },
     {
       "id": "dialogue.nunito-sans",
@@ -107,7 +92,7 @@
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Nunito+Sans",
-      "default_rank": 6
+      "default_rank": 5
     },
     {
       "id": "dialogue.source-sans-3",
@@ -122,7 +107,7 @@
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Source+Sans+3",
-      "default_rank": 7
+      "default_rank": 6
     },
     {
       "id": "dialogue.public-sans",
@@ -137,7 +122,7 @@
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Public+Sans",
-      "default_rank": 8
+      "default_rank": 7
     },
     {
       "id": "dialogue.lato",
@@ -152,7 +137,7 @@
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Lato",
-      "default_rank": 9
+      "default_rank": 8
     },
     {
       "id": "dialogue.atkinson-hyperlegible",
@@ -167,7 +152,7 @@
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Atkinson+Hyperlegible",
-      "default_rank": 10
+      "default_rank": 9
     },
     {
       "id": "dialogue.lexend",
@@ -182,7 +167,7 @@
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Lexend",
-      "default_rank": 11
+      "default_rank": 10
     },
     {
       "id": "dialogue.ibm-plex-sans",
@@ -197,7 +182,7 @@
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/IBM+Plex+Sans",
-      "default_rank": 12
+      "default_rank": 11
     },
     {
       "id": "dialogue.assistant",
@@ -212,7 +197,7 @@
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Assistant",
-      "default_rank": 13
+      "default_rank": 12
     },
     {
       "id": "emphasis.bangers",
@@ -227,7 +212,7 @@
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Bangers",
-      "default_rank": 14
+      "default_rank": 13
     },
     {
       "id": "emphasis.anton",
@@ -242,7 +227,7 @@
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Anton",
-      "default_rank": 15
+      "default_rank": 14
     },
     {
       "id": "emphasis.bebas-neue",
@@ -257,7 +242,7 @@
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Bebas+Neue",
-      "default_rank": 16
+      "default_rank": 15
     },
     {
       "id": "emphasis.oswald",
@@ -272,7 +257,7 @@
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Oswald",
-      "default_rank": 17
+      "default_rank": 16
     },
     {
       "id": "emphasis.teko",
@@ -287,7 +272,7 @@
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Teko",
-      "default_rank": 18
+      "default_rank": 17
     },
     {
       "id": "emphasis.league-spartan",
@@ -302,7 +287,7 @@
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/League+Spartan",
-      "default_rank": 19
+      "default_rank": 18
     },
     {
       "id": "emphasis.archivo-black",
@@ -317,7 +302,7 @@
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Archivo+Black",
-      "default_rank": 20
+      "default_rank": 19
     },
     {
       "id": "emphasis.bungee",
@@ -332,7 +317,7 @@
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Bungee",
-      "default_rank": 21
+      "default_rank": 20
     },
     {
       "id": "emphasis.russo-one",
@@ -347,7 +332,7 @@
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Russo+One",
-      "default_rank": 22
+      "default_rank": 21
     },
     {
       "id": "thought.comic-neue",
@@ -362,7 +347,7 @@
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Comic+Neue",
-      "default_rank": 23
+      "default_rank": 22
     },
     {
       "id": "thought.patrick-hand",
@@ -377,7 +362,7 @@
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Patrick+Hand",
-      "default_rank": 24
+      "default_rank": 23
     },
     {
       "id": "thought.kalam",
@@ -392,7 +377,7 @@
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Kalam",
-      "default_rank": 25
+      "default_rank": 24
     },
     {
       "id": "thought.caveat",
@@ -407,7 +392,7 @@
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Caveat",
-      "default_rank": 26
+      "default_rank": 25
     },
     {
       "id": "thought.itim",
@@ -422,7 +407,7 @@
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Itim",
-      "default_rank": 27
+      "default_rank": 26
     },
     {
       "id": "thought.mali",
@@ -437,7 +422,7 @@
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Mali",
-      "default_rank": 28
+      "default_rank": 27
     },
     {
       "id": "thought.indie-flower",
@@ -452,22 +437,7 @@
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Indie+Flower",
-      "default_rank": 29
-    },
-    {
-      "id": "narration.merriweather",
-      "name": "Merriweather",
-      "path": "narration/merriweather.ttf",
-      "category": "narration",
-      "tags": [
-        "serif",
-        "editorial"
-      ],
-      "vietnamese": true,
-      "license": "OFL-1.1",
-      "license_file": "licenses/OFL.txt",
-      "source_url": "https://fonts.google.com/specimen/Merriweather",
-      "default_rank": 30
+      "default_rank": 28
     },
     {
       "id": "narration.lora",
@@ -482,7 +452,7 @@
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Lora",
-      "default_rank": 31
+      "default_rank": 29
     },
     {
       "id": "narration.libre-baskerville",
@@ -497,22 +467,7 @@
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Libre+Baskerville",
-      "default_rank": 32
-    },
-    {
-      "id": "narration.source-serif-4",
-      "name": "Source Serif 4",
-      "path": "narration/source-serif-4.ttf",
-      "category": "narration",
-      "tags": [
-        "serif",
-        "editorial"
-      ],
-      "vietnamese": true,
-      "license": "OFL-1.1",
-      "license_file": "licenses/OFL.txt",
-      "source_url": "https://fonts.google.com/specimen/Source+Serif+4",
-      "default_rank": 33
+      "default_rank": 30
     },
     {
       "id": "narration.spectral",
@@ -527,7 +482,7 @@
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Spectral",
-      "default_rank": 34
+      "default_rank": 31
     },
     {
       "id": "narration.alegreya",
@@ -542,7 +497,7 @@
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Alegreya",
-      "default_rank": 35
+      "default_rank": 32
     },
     {
       "id": "narration.vollkorn",
@@ -557,7 +512,7 @@
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Vollkorn",
-      "default_rank": 36
+      "default_rank": 33
     },
     {
       "id": "narration.crimson-pro",
@@ -572,7 +527,7 @@
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Crimson+Pro",
-      "default_rank": 37
+      "default_rank": 34
     },
     {
       "id": "narration.literata",
@@ -587,7 +542,7 @@
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Literata",
-      "default_rank": 38
+      "default_rank": 35
     },
     {
       "id": "skill.phudu",
@@ -602,7 +557,7 @@
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Phudu",
-      "default_rank": 39
+      "default_rank": 36
     },
     {
       "id": "skill.cinzel",
@@ -617,7 +572,7 @@
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Cinzel",
-      "default_rank": 40
+      "default_rank": 37
     },
     {
       "id": "skill.orbitron",
@@ -632,7 +587,7 @@
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Orbitron",
-      "default_rank": 41
+      "default_rank": 38
     },
     {
       "id": "skill.exo-2",
@@ -647,7 +602,7 @@
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Exo+2",
-      "default_rank": 42
+      "default_rank": 39
     },
     {
       "id": "skill.audiowide",
@@ -662,7 +617,7 @@
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Audiowide",
-      "default_rank": 43
+      "default_rank": 40
     },
     {
       "id": "skill.chakra-petch",
@@ -677,7 +632,7 @@
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Chakra+Petch",
-      "default_rank": 44
+      "default_rank": 41
     },
     {
       "id": "skill.rajdhani",
@@ -692,7 +647,7 @@
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Rajdhani",
-      "default_rank": 45
+      "default_rank": 42
     },
     {
       "id": "skill.michroma",
@@ -707,7 +662,7 @@
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Michroma",
-      "default_rank": 46
+      "default_rank": 43
     },
     {
       "id": "skill.uncial-antiqua",
@@ -722,7 +677,7 @@
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Uncial+Antiqua",
-      "default_rank": 47
+      "default_rank": 44
     },
     {
       "id": "skill.pirata-one",
@@ -737,7 +692,7 @@
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Pirata+One",
-      "default_rank": 48
+      "default_rank": 45
     },
     {
       "id": "sfx.knewave",
@@ -752,7 +707,7 @@
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Knewave",
-      "default_rank": 49
+      "default_rank": 46
     },
     {
       "id": "sfx.luckiest-guy",
@@ -767,7 +722,7 @@
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Luckiest+Guy",
-      "default_rank": 50
+      "default_rank": 47
     },
     {
       "id": "sfx.bowlby-one-sc",
@@ -782,7 +737,7 @@
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Bowlby+One+SC",
-      "default_rank": 51
+      "default_rank": 48
     },
     {
       "id": "sfx.titan-one",
@@ -797,7 +752,7 @@
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Titan+One",
-      "default_rank": 52
+      "default_rank": 49
     },
     {
       "id": "sfx.concert-one",
@@ -812,7 +767,7 @@
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Concert+One",
-      "default_rank": 53
+      "default_rank": 50
     },
     {
       "id": "sfx.fredoka",
@@ -827,7 +782,7 @@
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Fredoka",
-      "default_rank": 54
+      "default_rank": 51
     },
     {
       "id": "sfx.modak",
@@ -842,7 +797,7 @@
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Modak",
-      "default_rank": 55
+      "default_rank": 52
     },
     {
       "id": "sfx.rubik-mono-one",
@@ -857,7 +812,7 @@
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Rubik+Mono+One",
-      "default_rank": 56
+      "default_rank": 53
     },
     {
       "id": "sfx.black-ops-one",
@@ -872,7 +827,7 @@
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Black+Ops+One",
-      "default_rank": 57
+      "default_rank": 54
     },
     {
       "id": "sfx.special-elite",
@@ -887,7 +842,7 @@
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Special+Elite",
-      "default_rank": 58
+      "default_rank": 55
     },
     {
       "id": "horror.nosifer",
@@ -902,7 +857,7 @@
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Nosifer",
-      "default_rank": 59
+      "default_rank": 56
     },
     {
       "id": "horror.creepster",
@@ -917,7 +872,7 @@
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Creepster",
-      "default_rank": 60
+      "default_rank": 57
     },
     {
       "id": "horror.eater",
@@ -932,7 +887,7 @@
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Eater",
-      "default_rank": 61
+      "default_rank": 58
     },
     {
       "id": "horror.metal-mania",
@@ -947,22 +902,7 @@
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Metal+Mania",
-      "default_rank": 62
-    },
-    {
-      "id": "horror.dokdo",
-      "name": "Dokdo",
-      "path": "horror/dokdo.ttf",
-      "category": "horror",
-      "tags": [
-        "horror",
-        "display"
-      ],
-      "vietnamese": true,
-      "license": "OFL-1.1",
-      "license_file": "licenses/OFL.txt",
-      "source_url": "https://fonts.google.com/specimen/Dokdo",
-      "default_rank": 63
+      "default_rank": 59
     },
     {
       "id": "romance.dancing-script",
@@ -977,7 +917,7 @@
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Dancing+Script",
-      "default_rank": 64
+      "default_rank": 60
     },
     {
       "id": "romance.pacifico",
@@ -992,7 +932,7 @@
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Pacifico",
-      "default_rank": 65
+      "default_rank": 61
     },
     {
       "id": "romance.great-vibes",
@@ -1007,7 +947,7 @@
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Great+Vibes",
-      "default_rank": 66
+      "default_rank": 62
     },
     {
       "id": "romance.comfortaa",
@@ -1022,7 +962,7 @@
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Comfortaa",
-      "default_rank": 67
+      "default_rank": 63
     },
     {
       "id": "romance.satisfy",
@@ -1037,7 +977,7 @@
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Satisfy",
-      "default_rank": 68
+      "default_rank": 64
     },
     {
       "id": "romance.lobster",
@@ -1052,7 +992,7 @@
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Lobster",
-      "default_rank": 69
+      "default_rank": 65
     }
   ]
 }

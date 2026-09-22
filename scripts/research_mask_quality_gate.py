@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""Research-only A/B gate for text-mask refinement.
-
-A candidate can never be eligible for promotion unless enough mask samples have
-human-reviewed ``truth_mask`` evidence. The default is intentionally strict:
-100% truth coverage.
-"""
+""" A candidate can never be eligible for promotion unless enough mask samples have human-reviewed ``truth_mask`` evidence. The default is intentionally strict: 100% truth coverage. """
 from __future__ import annotations
 
 import argparse

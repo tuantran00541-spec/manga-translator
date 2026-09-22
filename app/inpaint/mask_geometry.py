@@ -54,14 +54,7 @@ def remap_local_mask_page_space(
 
 
 def reconcile_detector_geometry_override(new_box: dict, existing_box: dict) -> bool:
-    """Apply a persisted detector-box geometry override to a fresh detection.
-
-    This is intentionally used only before inpaint, while ``new_box`` still carries
-    ``_mask_array``. The fresh detector mask is remapped into the user's edited
-    geometry. ``existing_box`` is the per-job snapshot used by ``pipeline.py``;
-    clearing its flag prevents the legacy pipeline branch from discarding the mask
-    a second time. The canonical manifest is not mutated here.
-    """
+    """ This is intentionally used only before inpaint, while ``new_box`` still carries ``_mask_array``. The fresh detector mask is remapped into the user's edited geometry. ``existing_box`` is the per-job snapshot used by ``pipeline.py``; clearing its flag prevents the legacy pipeline branch from discarding the mask a second time. The canonical manifest is not mutated here. """
     if not existing_box.get("geometry_overridden") or "_mask_array" not in new_box:
         return False
 

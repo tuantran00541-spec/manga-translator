@@ -539,13 +539,7 @@ class YoloDetector:
 
     @staticmethod
     def _decode_text_mask_hysteresis(probabilities: np.ndarray) -> np.ndarray:
-        """Keep only low-confidence support connected to a confident core.
-
-        This preserves a glyph's anti-aliased edge, outline and nearby shadow
-        when the segmenter sees them, but cannot bridge to unrelated artwork as
-        a dilation would. A detection with no confident core has no destructive
-        mask authority and is handled by the normal review path.
-        """
+        """ This preserves a glyph's anti-aliased edge, outline and nearby shadow when the segmenter sees them, but cannot bridge to unrelated artwork as a dilation would. A detection with no confident core has no destructive mask authority and is handled by the normal review path. """
         if probabilities.size == 0:
             return np.zeros(probabilities.shape, dtype=np.uint8)
         core = probabilities >= DETECTOR_MASK_THRESHOLD
@@ -566,13 +560,7 @@ class YoloDetector:
 
     @staticmethod
     def _candidate_fields(candidate: tuple) -> tuple[float, int, int, object, object]:
-        """Normalize current and v0.1 candidate tuple layouts.
-
-        v0.1 tests and third-party callers may still pass the legacy seven-field
-        tuple ``(x1, y1, x2, y2, score, canvas_box, mask_coeffs)``. Production
-        v0.2 candidates append class provenance before the mask metadata. Keep
-        that compatibility without weakening class-aware NMS for new detections.
-        """
+        """ v0.1 tests and third-party callers may still pass the legacy seven-field tuple ``(x1, y1, x2, y2, score, canvas_box, mask_coeffs)``. Production v0.2 candidates append class provenance before the mask metadata. Keep that compatibility without weakening class-aware NMS for new detections. """
         if len(candidate) >= 9 and isinstance(candidate[5], (int, np.integer)):
             return float(candidate[4]), int(candidate[5]), int(candidate[6]), candidate[7], candidate[8]
         if len(candidate) >= 7:
@@ -594,14 +582,7 @@ class YoloDetector:
 
     @staticmethod
     def _merge_text_mask_evidence(boxes: list[BubbleBox]) -> BubbleBox:
-        """Union duplicate text masks instead of discarding their pixels.
-
-        Horizontal-flip TTA, detector windows, and shared seam passes can return
-        slightly different extents for the same text block. Conventional NMS
-        keeps only the highest score; a tighter high-score box can therefore
-        discard the right or bottom of a fuller lower-score mask. Only verified
-        text-segmenter pixels are merged here, so this never invents a rectangle.
-        """
+        """ Horizontal-flip TTA, detector windows, and shared seam passes can return slightly different extents for the same text block. Conventional NMS keeps only the highest score; a tighter high-score box can therefore discard the right or bottom of a fuller lower-score mask. Only verified text-segmenter pixels are merged here, so this never invents a rectangle. """
         base = max(boxes, key=lambda box: float(box.confidence))
         evidence = [box for box in boxes if box.verified_mask]
         if not evidence:

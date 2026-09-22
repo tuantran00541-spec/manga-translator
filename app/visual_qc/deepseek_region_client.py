@@ -151,12 +151,7 @@ def _ordered_decisions(
 
 
 class OpenAICompatibleRegionQC:
-    """Region-batch visual QC for DeepSeek/OpenAI/OpenRouter-compatible APIs.
-
-    Provider-specific body fields come from ``AIProvider``. This is important
-    because fields accepted by DeepSeek (for example ``thinking``) must not leak
-    into requests sent to OpenAI, OpenRouter or Experiential Labs.
-    """
+    """ Provider-specific body fields come from ``AIProvider``. This is important because fields accepted by DeepSeek (for example ``thinking``) must not leak into requests sent to OpenAI, OpenRouter or Experiential Labs. """
 
     def __init__(
         self,

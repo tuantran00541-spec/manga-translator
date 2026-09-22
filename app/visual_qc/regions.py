@@ -51,14 +51,7 @@ def _page_dimensions(page: dict, manual_mask: np.ndarray | None) -> tuple[int, i
 
 
 def owned_core_bbox(page: dict, width: int, height: int) -> tuple[int, int, int, int]:
-    """Return the physical pixels this slice owns in the stitched source page.
-
-    Unsafe cuts deliberately leave detector context above/below a slice's core.
-    That context is not exported, so treating it as QC input creates false
-    residual-text findings for pixels that are correctly cleaned by a neighbor.
-    Invalid or legacy metadata falls back to the full image so QC never silently
-    drops real output pixels.
-    """
+    """ Unsafe cuts deliberately leave detector context above/below a slice's core. That context is not exported, so treating it as QC input creates false residual-text findings for pixels that are correctly cleaned by a neighbor. Invalid or legacy metadata falls back to the full image so QC never silently drops real output pixels. """
     core = page.get("stitch_core")
     if not isinstance(core, dict):
         return 0, 0, width, height

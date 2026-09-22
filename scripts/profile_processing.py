@@ -1,14 +1,4 @@
-"""Bounded real-image CPU profile of the production detector/inpaint path.
-
-Timer rows are inclusive and may overlap across threads: never add them to
-infer elapsed time. Configuration comparisons run in separate processes.
-
-The profiler deliberately does not wrap the LaMa ONNX session. The fixed-LaMa
-runtime uses session capabilities to decide serialization/recycling behavior;
-wrapping that session used to change the control flow being measured (F15).
-LaMa execution is instead timed at the Inpainter method boundary and via the
-production inpaint metrics.
-"""
+""" Timer rows are inclusive and may overlap across threads: never add them to infer elapsed time. Configuration comparisons run in separate processes. The profiler deliberately does not wrap the LaMa ONNX session. The fixed-LaMa runtime uses session capabilities to decide serialization/recycling behavior; wrapping that session used to change the control flow being measured (F15). LaMa execution is instead timed at the Inpainter method boundary and via the production inpaint metrics. """
 from __future__ import annotations
 
 import argparse
