@@ -48,8 +48,20 @@ def main() -> None:
             {
                 "source_page": index,
                 "slice_index": 0,
-                "width": image.width,
-                "height": image.height,
+                "stitch_core": {
+                    "source_y1": 0,
+                    "source_y2": image.height,
+                    "core_y1": 0,
+                    "core_y2": image.height,
+                    "core_source_y1": 0,
+                    "core_source_y2": image.height,
+                    "unsafe_before": False,
+                    "unsafe_after": False,
+                    "source_height": image.height,
+                },
+                # Deliberately omit width/height here. Production manifests made
+                # before slice-dimension persistence relied on stitch metadata,
+                # and the stitched Review must render those chapters immediately.
                 # Production manifests retain managed absolute paths; the API
                 # turns them into stable /api/image URLs for the browser.  Keep
                 # the fixture on that same contract instead of using filenames
