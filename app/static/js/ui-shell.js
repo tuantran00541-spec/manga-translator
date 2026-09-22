@@ -275,6 +275,7 @@
       showNavigationMessage("Chưa có chương đang mở để chuyển tới màn hình này.");
       return false;
     }
+    const chapterId = window.currentChapterId || null;
     const targetIndex = STAGES.indexOf(stage);
     if (targetIndex > maxReachedIndex) {
       showNavigationMessage("Hãy hoàn tất bước hiện tại trước khi mở màn hình này.");
