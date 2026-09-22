@@ -502,6 +502,7 @@
       let stripHeight = 0;
       let fallbackSlices = 0;
 
+      let firstPreloaded = null;
       for (const item of items) {
         const live = livePage(item);
         if (!live) continue;
@@ -510,15 +511,33 @@
 
         let width = Number(live.width || 0);
         let height = Number(live.height || 0);
+        const rawCore = live.stitch_core;
+        if (!(height > 0) && rawCore && typeof rawCore === "object") {
+          const sourceY1 = Number(rawCore.source_y1);
+          const sourceY2 = Number(rawCore.source_y2);
+          if (Number.isFinite(sourceY1) && Number.isFinite(sourceY2) && sourceY2 > sourceY1) {
+            height = sourceY2 - sourceY1;
+          }
+        }
+
         let preloaded = null;
-        if (!(width > 0 && height > 0)) {
+        if (!(stripWidth > 0) && !(width > 0)) {
           preloaded = await loadImage(url);
           if (token !== renderToken) return;
           width = preloaded.naturalWidth;
-          height = preloaded.naturalHeight;
+          if (!(height > 0)) height = preloaded.naturalHeight;
+          firstPreloaded = preloaded;
         }
-        if (!stripWidth) stripWidth = width;
-        if (width !== stripWidth) {
+        if (!(stripWidth > 0)) stripWidth = width;
+        if (!(width > 0)) width = stripWidth;
+
+        if (!(height > 0)) {
+          preloaded = preloaded || await loadImage(url);
+          if (token !== renderToken) return;
+          height = preloaded.naturalHeight;
+          width = preloaded.naturalWidth || width;
+        }
+        if (!(width > 0) || width !== stripWidth) {
           throw new Error("Các lát trong chapter không cùng chiều rộng.");
         }
 
@@ -566,11 +585,17 @@
         img.className = "review-strip-slice-image";
         img.alt = "";
         img.decoding = "async";
-        img.loading = "lazy";
+        img.loading = desc.sourceY1 === 0 ? "eager" : "lazy";
         Object.assign(img.style, {
           top: `-${desc.localY1}px`,
         });
-        if (!desc.preloaded) img.src = desc.url;
+        if (!desc.preloaded) {
+          img.addEventListener("error", () => {
+            slice.classList.add("review-strip-slice-error");
+            slice.textContent = `Không tải được lát ${desc.item.canonicalIndex + 1}`;
+          }, { once: true });
+          img.src = desc.url;
+        }
         slice.appendChild(img);
         image.appendChild(slice);
 
