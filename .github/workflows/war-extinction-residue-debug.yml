@@ -1,0 +1,179 @@
+name: War of Extinction residue debug
+
+on:
+  push:
+    branches:
+      - audit/war-extinction-residue-debug
+
+permissions:
+  contents: read
+
+jobs:
+  debug:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    env:
+      PYTHONPATH: ${{ github.workspace }}
+      PYTHONUNBUFFERED: "1"
+      MANGA_PROCESSING_PIPELINE: fast
+      MANGA_USE_DYNAMIC_LAMA: "1"
+      MANGA_ORT_PROVIDER: openvino
+      MANGA_ORT_REQUIRE_PROVIDER: "1"
+      MANGA_ORT_OPENVINO_SCOPE: detectors
+      MANGA_ORT_OPENVINO_THREADS: "2"
+      MANGA_ORT_OPENVINO_STREAMS: "1"
+      MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
+      OPENBLAS_NUM_THREADS: "1"
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install runtime
+        run: |
+          python -m pip install \
+            numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 \
+            onnxruntime-openvino==1.24.1 psutil==6.1.1 loguru==0.7.2 \
+            requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 \
+            playwright==1.47.0 fastapi==0.115.0 pydantic==2.9.2 \
+            filelock==3.16.1 threadpoolctl==3.6.0
+
+      - name: Restore models
+        id: models
+        uses: actions/cache@v4
+        with:
+          path: |
+            models/*.onnx
+            models/.e2e-provenance.json
+          key: processing-profile-models-b224548-v1
+
+      - name: Read pinned provisioner
+        if: steps.models.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: b22454827f8190655d7070b80eb20c2550beadfa
+          path: benchmark-bootstrap
+          sparse-checkout: scripts/provision_real_e2e_models.py
+          sparse-checkout-cone-mode: false
+
+      - name: Provision models
+        if: steps.models.outputs.cache-hit != 'true'
+        run: |
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple torch==2.5.1+cpu torchvision==0.20.1+cpu
+          python -m pip install --no-deps ultralytics==8.3.221 onnx==1.17.0 onnxslim==0.1.71
+          python -m pip install numpy==1.26.4 sympy==1.13.1 PyYAML==6.0.2 scipy==1.14.1 tqdm==4.67.1 matplotlib==3.9.2 pandas==2.2.3 py-cpuinfo==9.0.0 ml_dtypes==0.5.3 colorama==0.4.6 polars==1.33.1 ultralytics-thop==2.0.17
+          python benchmark-bootstrap/scripts/provision_real_e2e_models.py
+          cp benchmark-bootstrap/models/*.onnx models/
+          cp benchmark-bootstrap/models/.e2e-provenance.json models/
+
+      - name: Probe pages 21 and 48
+        run: |
+          python - <<'PY'
+          import hashlib, json, os, time
+          from pathlib import Path
+          import cv2
+          import numpy as np
+
+          from app.processing_pipeline_factory import build_processing_pipeline
+          from app.manifest_utils import load_manifest_raw
+          from app.image_io import read_image
+          from app.mask_store import decode_mask_value
+
+          URL = "https://asurascans.com/comics/war-of-extinction-6f7fe6eb/chapter/1"
+          indices = [21, 48]
+          pipeline = build_processing_pipeline()
+          chapter_id = hashlib.sha256(
+              f"residue-debug:{URL}:{os.getenv('GITHUB_RUN_ID', time.time_ns())}".encode()
+          ).hexdigest()[:8]
+          manifest = pipeline.download_chapter(URL, chapter_id, workers=2)
+          pipeline.process_pages(chapter_id, indices, workers=2)
+          manifest = load_manifest_raw(chapter_id)
+
+          report = {"source_sha": os.getenv("GITHUB_SHA"), "chapter_id": chapter_id, "pages": []}
+          for index in indices:
+              page = manifest["pages"][index]
+              clean = read_image(Path(page["clean"]))
+              records = page.get("boxes") or []
+              verification_boxes = pipeline._residue_verification_boxes(records)
+              direct_residue = pipeline.detector.verify_post_inpaint_residue(clean, verification_boxes)
+              direct_metrics = pipeline.detector.last_residue_metrics()
+
+              box_rows = []
+              focused = []
+              for ordinal, record in enumerate(records):
+                  mask = decode_mask_value(record.get("mask"))
+                  support = None
+                  if mask is not None and np.any(mask > 127):
+                      ys, xs = np.nonzero(mask > 127)
+                      support = [int(xs.min()), int(ys.min()), int(xs.max()) + 1, int(ys.max()) + 1]
+                  row = {
+                      "ordinal": ordinal,
+                      "bbox": [record.get(k) for k in ("x1","y1","x2","y2")],
+                      "confidence": record.get("confidence"),
+                      "safe_to_inpaint": record.get("safe_to_inpaint"),
+                      "needs_review": record.get("needs_review"),
+                      "deferred_reason": record.get("deferred_reason"),
+                      "semantic_type": record.get("semantic_type"),
+                      "source_role": record.get("source_role"),
+                      "mask_support_local": support,
+                      "mask_pixels": int(np.count_nonzero(mask > 127)) if mask is not None else 0,
+                  }
+                  box_rows.append(row)
+
+                  if str(record.get("source_role") or "") != "text_segmenter":
+                      continue
+                  x1 = max(0, int(record["x1"]) - 220)
+                  y1 = max(0, int(record["y1"]) - 160)
+                  x2 = min(clean.shape[1], int(record["x2"]) + 220)
+                  y2 = min(clean.shape[0], int(record["y2"]) + 160)
+                  crop = clean[y1:y2, x1:x2]
+                  raw = pipeline.detector.text_detector._detect_single_plain(crop, x1, y1)
+                  focused.append({
+                      "source_ordinal": ordinal,
+                      "roi": [x1,y1,x2,y2],
+                      "detections": [
+                          {
+                              "bbox": [b.x1,b.y1,b.x2,b.y2],
+                              "confidence": float(b.confidence),
+                              "verified_mask": bool(b.verified_mask),
+                              "mask_pixels": int(np.count_nonzero(b.mask > 127)) if b.mask is not None else 0,
+                          }
+                          for b in raw
+                      ],
+                  })
+
+              report["pages"].append({
+                  "index": index,
+                  "detection_state": page.get("detection_state"),
+                  "detection_issues": page.get("detection_issues"),
+                  "needs_review": page.get("needs_review"),
+                  "residue_regions": page.get("residue_regions"),
+                  "processing_metrics": page.get("processing_metrics"),
+                  "boxes": box_rows,
+                  "direct_residue": [
+                      {
+                          "bbox": [b.x1,b.y1,b.x2,b.y2],
+                          "confidence": float(b.confidence),
+                          "deferred_reason": b.deferred_reason,
+                          "source_role": b.source_role,
+                          "verified_mask": bool(b.verified_mask),
+                      }
+                      for b in direct_residue
+                  ],
+                  "direct_residue_metrics": direct_metrics,
+                  "focused_after_clean": focused,
+              })
+
+          out = Path("benchmark-results/residue-debug.json")
+          out.parent.mkdir(parents=True, exist_ok=True)
+          out.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+          print(json.dumps(report, ensure_ascii=False))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: war-extinction-residue-debug-${{ github.run_id }}
+          path: benchmark-results/residue-debug.json
+          retention-days: 7
