@@ -943,6 +943,7 @@
       void renderStrip(shell, items, signal);
     };
     shell._rerender = rerender;
+    shell._showRendered = () => { variant = "rendered"; rerender(); };
     signal.addEventListener("abort", () => captureSnapshot(shell), { once: true });
 
     image.addEventListener("pointerdown", (e) => { if (variant !== "clean" || !["brush", "eraser"].includes(tool) || e.button !== 0) return; const p = sourcePoint(image, e); if (!p) return; e.preventDefault(); painting = true; last = p; image.setPointerCapture?.(e.pointerId); paintPoint(shell, p.x, p.y, radius, tool === "eraser"); }, { signal });
