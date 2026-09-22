@@ -72,6 +72,9 @@ def _select_text_object(page: Page) -> None:
 
 def _exercise_desktop(page: Page) -> None:
     _wait_for_review(page)
+    viewport_box = page.locator(".review-document-viewport").bounding_box()
+    if not viewport_box or viewport_box["height"] < 160:
+        raise AssertionError(f"desktop Review canvas is not usable: {viewport_box}")
     # The fixture intentionally stores the legacy "editor" checkpoint. Opening
     # it must migrate into the single Review/lettering workspace.
     expect(page.locator('.sidebar-link[data-stage="editor"]')).to_have_count(0)
