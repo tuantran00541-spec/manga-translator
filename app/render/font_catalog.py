@@ -32,11 +32,17 @@ class FontRecord:
     source_url: str
     default_rank: int
 
-    def as_dict(self) -> dict[str, Any]:
+    def as_dict(self, root: Path | None = None) -> dict[str, Any]:
+        display_path = self.path
+        if root is not None:
+            try:
+                display_path = self.path.relative_to(root)
+            except ValueError:
+                display_path = self.path
         return {
             "id": self.id,
             "name": self.name,
-            "path": self.path.as_posix(),
+            "path": display_path.as_posix(),
             "category": self.category,
             "tags": list(self.tags),
             "vietnamese": self.vietnamese,
@@ -68,7 +74,7 @@ class FontCatalog:
         raise FontNotFoundError(f"Unknown font id: {requested}")
 
     def records_as_dicts(self) -> list[dict[str, Any]]:
-        return [record.as_dict() for record in self.records]
+        return [record.as_dict(self.root) for record in self.records]
 
 
 def _catalog_path() -> Path:

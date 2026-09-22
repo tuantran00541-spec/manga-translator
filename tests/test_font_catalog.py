@@ -23,7 +23,8 @@ def test_font_ids_are_stable_and_legacy_default_resolves():
     catalog = load_font_catalog()
     ids = [record.id for record in catalog.records]
     assert len(ids) == len(set(ids))
-    assert resolve_font_id("default") == resolve_font_id(catalog.records[0].id).parent.parent / "default.ttf" or resolve_font_id("default").is_file()
+    assert resolve_font_id("default").is_file()
+    assert not str(catalog.records[0].as_dict(catalog.root)["path"]).startswith("/")
 
 
 def test_unknown_font_id_is_rejected():

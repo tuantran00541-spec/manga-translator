@@ -1,10 +1,11 @@
 from fastapi import APIRouter, HTTPException
 from PIL import Image
 
+from app.config import RAW_DIR
 from app.render.font_matcher import match_fonts
 from app.render.text_renderer import list_available_fonts
 from app.schemas import FontMatchRequest
-from app.security import validate_chapter_id
+from app.security import validate_chapter_id, validate_managed_path
 
 router = APIRouter(prefix="/api", tags=["render"])
 
@@ -42,7 +43,10 @@ def match_available_font(req: FontMatchRequest) -> dict:
     if not source_value:
         raise HTTPException(404, "Original page image is unavailable")
     try:
-        image = Image.open(source_value).convert("RGB")
+        source_path = validate_managed_path(source_value, RAW_DIR / req.chapter_id)
+        image = Image.open(source_path).convert("RGB")
+    except ValueError as exc:
+        raise HTTPException(400, "Original page image path is invalid") from exc
     except FileNotFoundError as exc:
         raise HTTPException(404, "Original page image is unavailable") from exc
     except Exception as exc:

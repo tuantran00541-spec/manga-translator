@@ -43,6 +43,11 @@ def resolve_object_font(
     style_font = _style_font(obj)
     selection_mode = str(obj.get("font_selection_mode") or "").lower()
 
+    if str(ai_font_id or "").strip().lower() == "auto":
+        # An AI may explicitly delegate the choice to the visual matcher.
+        ai_font_id = None
+        style_font = "auto"
+
     if selection_mode == "user":
         if _valid_font_id(style_font):
             return style_font, "user", {"reason": "explicit_user_selection"}
