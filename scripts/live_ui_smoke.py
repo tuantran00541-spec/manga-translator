@@ -100,6 +100,52 @@ def _select_text_object(page: Page) -> None:
     overlay.click()
 
 
+def _exercise_font_picker(page: Page) -> None:
+    """Verify the live editor exposes the catalog and automatic matcher contract."""
+
+    font_select = page.locator(".font-style-toolbar select")
+    expect(font_select).to_have_count(1)
+    expect(font_select.locator('option[value="auto"]')).to_have_count(1)
+    expect(page.get_by_role("button", name="Gợi ý gần nhất", exact=True)).to_have_count(0)
+
+    catalog = page.evaluate(
+        """async () => {
+          const response = await fetch('/api/fonts');
+          const payload = await response.json();
+          return {
+            status: response.status,
+            count: Array.isArray(payload) ? payload.length : 0,
+            grouped: Array.isArray(payload) && payload.some((item) => item && item.category),
+          };
+        }"""
+    )
+    if catalog["status"] != 200 or catalog["count"] < 60 or not catalog["grouped"]:
+        raise AssertionError(f"font catalog contract failed: {catalog}")
+
+    match = page.evaluate(
+        """async () => {
+          const response = await fetch('/api/fonts/match', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+              chapter_id: 'f00d0001',
+              page_index: 0,
+              object_id: 'bubble-a',
+              top_k: 3,
+            }),
+          });
+          const payload = await response.json();
+          return {
+            status: response.status,
+            count: Array.isArray(payload.matches) ? payload.matches.length : 0,
+            first: payload.matches?.[0]?.font_id || null,
+          };
+        }"""
+    )
+    if match["status"] != 200 or match["count"] != 3 or not match["first"]:
+        raise AssertionError(f"font matcher contract failed: {match}")
+
+
 def _exercise_desktop(page: Page) -> None:
     _wait_for_review(page)
     expect(page.locator(".chapter-translate-controls")).to_be_visible()
@@ -121,6 +167,7 @@ def _exercise_desktop(page: Page) -> None:
 
     _select_text_object(page)
     expect(page.locator(".review-floating-inspector")).to_be_visible()
+    _exercise_font_picker(page)
     expect(page.get_by_role("button", name="OCR toàn chương", exact=True)).to_be_visible()
     expect(page.locator("#site-header")).to_be_hidden()
 
@@ -251,6 +298,7 @@ def _exercise_mobile(page: Page) -> None:
     expect(second).to_be_visible()
     second.click()
     expect(page.locator(".review-floating-inspector")).to_be_visible()
+    _exercise_font_picker(page)
     translation = page.locator(".review-floating-inspector .translation-textarea").first
     expect(translation).to_be_visible()
     expect(translation).to_have_value("Bong bóng thứ hai")
