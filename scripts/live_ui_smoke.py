@@ -102,6 +102,7 @@ def _select_text_object(page: Page) -> None:
 
 def _exercise_desktop(page: Page) -> None:
     _wait_for_review(page)
+    expect(page.locator(".chapter-translate-controls")).to_be_visible()
     viewport_box = page.locator(".review-document-viewport").bounding_box()
     if not viewport_box or viewport_box["height"] < 160:
         chain = _review_layout_chain(page)
