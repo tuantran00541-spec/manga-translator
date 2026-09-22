@@ -156,7 +156,7 @@ jobs:
               clean_x = original_view.shape[1] + divider.shape[1] + 16
               cv2.putText(compare, "CLEAN", (clean_x, 42), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 0), 3, cv2.LINE_AA)
               cv2.putText(compare, "CLEAN", (clean_x, 42), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 1, cv2.LINE_AA)
-              write_image(compare_dir / f"page_{index:03d}_original_vs_clean.jpg", compare, quality=92)
+              write_image(compare_dir / f"page_{index:03d}_original_vs_clean.png", compare)
 
               boxes = page.get("boxes") or []
               crop_records = []
@@ -192,7 +192,7 @@ jobs:
                   "slice_index": page.get("slice_index"),
                   "boxes": len(boxes),
                   "safe_boxes": len(crop_records),
-                  "compare_file": f"compare/page_{index:03d}_original_vs_clean.jpg",
+                  "compare_file": f"compare/page_{index:03d}_original_vs_clean.png",
                   "crops": crop_records,
                   "metrics": {
                       key: metrics.get(key)
