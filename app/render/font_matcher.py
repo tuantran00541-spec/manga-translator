@@ -17,6 +17,8 @@ from PIL import Image, ImageDraw, ImageFont
 
 from app.render.font_catalog import FontRecord, load_font_catalog
 
+__all__ = ["FontMatch", "clear_match_caches", "match_fonts"]
+
 
 _SAMPLE_SIZE = (128, 64)
 

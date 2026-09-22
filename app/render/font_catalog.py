@@ -14,6 +14,8 @@ from typing import Any
 
 from app.config import DEFAULT_FONT
 
+__all__ = ["FontCatalog", "FontNotFoundError", "FontRecord", "clear_font_catalog_cache", "list_font_records", "load_font_catalog", "resolve_font_id"]
+
 
 class FontNotFoundError(ValueError):
     """Raised when a user or AI requests an unknown font identifier."""

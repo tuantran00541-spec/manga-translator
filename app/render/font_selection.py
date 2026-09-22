@@ -10,6 +10,8 @@ from PIL import Image
 from app.render.font_catalog import FontNotFoundError, load_font_catalog, resolve_font_id
 from app.render.font_matcher import match_fonts
 
+__all__ = ["font_path_for_id", "resolve_object_font"]
+
 
 def _valid_font_id(value: str | None) -> bool:
     try:
@@ -58,7 +60,7 @@ def resolve_object_font(
             return str(ai_font_id), "ai", {"reason": "ai_selection", "font_id": str(ai_font_id)}
         return "default", "default", {"reason": "ai_selection_rejected", "requested": str(ai_font_id)}
 
-    should_auto_match = style_font.lower() == "auto" or style_font.lower() == "default"
+    should_auto_match = style_font.lower() == "auto" or selection_mode == "auto"
     if should_auto_match and source_image is not None and region is not None:
         matches = match_fonts(source_image, region, source_text, top_k=3)
         if matches:

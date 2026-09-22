@@ -20,8 +20,10 @@ remain supported by the resolver.
 
 - `font_selection_mode=user`: an explicit editor/API choice wins.
 - `font_selection_mode=ai`: a validated AI `font_id` is used when present.
-- `font_selection_mode=auto` or a legacy `default`: the CPU matcher compares
-  the original lettering crop with rendered samples from the catalog.
+- `font_selection_mode=auto` (also used for newly detected text objects): the
+  CPU matcher compares the original lettering crop with rendered samples from
+  the catalog. A legacy object with an unmarked `default` style remains on the
+  historical default until the user or AI opts into auto matching.
 - If the crop is unavailable or confidence is low, rendering falls back to
   `default` without generating or downloading a new font.
 
