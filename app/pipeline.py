@@ -257,6 +257,16 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
                     "source_page": source_index,
                     "slice_index": slice_index,
                 }
+                if isinstance(slice_item, dict):
+                    try:
+                        width = int(slice_item.get("width") or 0)
+                        height = int(slice_item.get("height") or 0)
+                    except (TypeError, ValueError):
+                        width = height = 0
+                    if width > 0:
+                        page["width"] = width
+                    if height > 0:
+                        page["height"] = height
                 if stitch_core is not None:
                     page["stitch_core"] = stitch_core
                 pages.append(page)
