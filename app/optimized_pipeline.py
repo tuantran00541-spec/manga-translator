@@ -225,12 +225,13 @@ class OptimizedChapterPipeline(ChapterPipeline):
         result: dict,
         preserve_regions: list[dict] | None,
     ) -> dict:
-        """Repair verified residue without inventing new destructive authority.
+        """Repair text that a focused post-inpaint verification proves remains.
 
-        The residue detector only selects pixels already owned by the original
-        automatic erase mask. LaMa may use its normal hidden dilation internally,
-        but final writes are clipped to that pre-existing authority and preserve
-        rectangles remain hard-locked.
+        Existing automatic authority stays valid. A freshly verified
+        text-segmenter residue mask may also add stroke-shaped authority outside
+        the original mask; raw rectangles and review-only geometry never gain
+        destructive permission. LaMa can use context internally, but final writes
+        remain clipped to verified masks and preserve rectangles.
         """
         initial_regions = list(result.get("residue_regions") or [])
         actual_hits = [
@@ -245,6 +246,7 @@ class OptimizedChapterPipeline(ChapterPipeline):
             "initial_regions": len(initial_regions),
             "initial_text_hits": len(actual_hits),
             "repair_mask_pixels": 0,
+            "verified_extension_pixels": 0,
             "outside_authority_changed_channel_values": 0,
             "final_regions": len(initial_regions),
             "skipped_manual_state": 0,
@@ -264,28 +266,27 @@ class OptimizedChapterPipeline(ChapterPipeline):
             return result
 
         authorized_boxes = self._residue_repair_effective_boxes(result.get("boxes"))
-        if not authorized_boxes:
-            return result
 
         started_at = time.perf_counter()
         original = read_image(img_path)
         clean_before = read_image(tmp_clean_path)
-        full_authority = build_mask(
-            clean_before.shape[:2],
-            authorized_boxes,
-            original,
-        )
-        full_authority = subtract_regions_from_mask(
-            full_authority,
-            preserve_regions,
-        )
-        if full_authority is None or not np.any(
-            full_authority > MANUAL_MASK_THRESHOLD
-        ):
-            return result
-
         h, w = clean_before.shape[:2]
-        scope = np.zeros((h, w), dtype=np.uint8)
+        full_authority = np.zeros((h, w), dtype=np.uint8)
+        if authorized_boxes:
+            full_authority = build_mask(
+                clean_before.shape[:2],
+                authorized_boxes,
+                original,
+            )
+            full_authority = subtract_regions_from_mask(
+                full_authority,
+                preserve_regions,
+            )
+            if full_authority is None:
+                full_authority = np.zeros((h, w), dtype=np.uint8)
+
+        verified_scope = np.zeros((h, w), dtype=np.uint8)
+        legacy_scope = np.zeros((h, w), dtype=np.uint8)
         fallback_pad = 6
         for region in actual_hits:
             try:
@@ -299,7 +300,11 @@ class OptimizedChapterPipeline(ChapterPipeline):
                 continue
 
             residue_mask = decode_mask_value(region.get("mask"))
-            if residue_mask is not None:
+            verified_segmenter = (
+                residue_mask is not None
+                and str(region.get("source_role") or "") == "text_segmenter"
+            )
+            if verified_segmenter:
                 target_w, target_h = x2 - x1, y2 - y1
                 if residue_mask.shape[:2] != (target_h, target_w):
                     residue_mask = cv2.resize(
@@ -307,21 +312,31 @@ class OptimizedChapterPipeline(ChapterPipeline):
                         (target_w, target_h),
                         interpolation=cv2.INTER_NEAREST,
                     )
-                local_scope = scope[y1:y2, x1:x2]
+                local_scope = verified_scope[y1:y2, x1:x2]
                 local_scope[residue_mask > MANUAL_MASK_THRESHOLD] = 255
                 continue
 
-            # Backward-compatible fallback for old manifests that did not retain
-            # the verifier mask. New processing results should take the branch
-            # above and stay stroke-shaped.
+            # Backward-compatible geometry can only narrow an already-authorized
+            # mask. It never creates new destructive pixels.
             px1 = max(0, raw_x1 - fallback_pad)
             py1 = max(0, raw_y1 - fallback_pad)
             px2 = min(w, raw_x2 + fallback_pad)
             py2 = min(h, raw_y2 + fallback_pad)
             if px2 > px1 and py2 > py1:
-                scope[py1:py2, px1:px2] = 255
+                legacy_scope[py1:py2, px1:px2] = 255
 
-        repair_mask = cv2.bitwise_and(full_authority, scope)
+        legacy_repair = cv2.bitwise_and(full_authority, legacy_scope)
+        repair_mask = cv2.bitwise_or(verified_scope, legacy_repair)
+        repair_mask = subtract_regions_from_mask(repair_mask, preserve_regions)
+        if repair_mask is None:
+            repair_mask = np.zeros((h, w), dtype=np.uint8)
+        extension = (
+            (verified_scope > MANUAL_MASK_THRESHOLD)
+            & (full_authority <= MANUAL_MASK_THRESHOLD)
+        )
+        repair_metrics["verified_extension_pixels"] = int(
+            np.count_nonzero(extension)
+        )
         repair_pixels = int(
             np.count_nonzero(repair_mask > MANUAL_MASK_THRESHOLD)
         )
