@@ -123,7 +123,22 @@ class OneShotTextMaskDetector:
             for box in rescue_boxes
             if float(box.confidence) < float(TEXT_CONF_THRESHOLD)
         ]
-        boxes = [*normal_boxes, *low_conf_boxes]
+        # A low detector score is useful recall evidence, but the real-chapter
+        # visual audit found that directly granting it destructive authority can
+        # damage artwork. Keep weak masks review-only; the post-inpaint verifier
+        # gets a focused second look and may promote only a freshly verified
+        # text-segmenter mask into the repair pass.
+        low_conf_review = [
+            replace(
+                box,
+                safe_to_inpaint=False,
+                ocr_eligible=True,
+                needs_review=True,
+                deferred_reason="low_confidence_unconfirmed",
+            )
+            for box in low_conf_boxes
+        ]
+        boxes = [*normal_boxes, *low_conf_review]
         low_conf_rescue = bool(low_conf_boxes)
 
         raw_count = len(rescue_raw)
