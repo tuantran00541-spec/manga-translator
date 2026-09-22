@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import copy
-from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 from fastapi.concurrency import run_in_threadpool
