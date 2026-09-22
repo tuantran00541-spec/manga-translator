@@ -15,7 +15,6 @@ from app.parameters import (
     DETECTOR_RESIDUE_VERIFY_MAX_ROIS,
     DETECTOR_RESIDUE_VERIFY_MAX_SOURCE_SIDE,
     DETECTOR_RESIDUE_VERIFY_PAD,
-    DETECTOR_RESIDUE_VERIFY_FREE_TEXT_PAD,
 )
 
 
@@ -245,45 +244,15 @@ class FastResidueAdaptiveFocusCombinedTextDetector(
                 )
             ys, xs = np.nonzero(support > 127)
             if xs.size and ys.size:
-                is_free_text = (
-                    str(getattr(source, "semantic_type", "")) == "free_text"
-                )
-                pad = int(
-                    DETECTOR_RESIDUE_VERIFY_FREE_TEXT_PAD
-                    if is_free_text
-                    else DETECTOR_RESIDUE_VERIFY_PAD
-                )
+                pad = int(DETECTOR_RESIDUE_VERIFY_PAD)
                 x1 = max(0, int(source.x1) + int(xs.min()) - pad)
                 y1 = max(0, int(source.y1) + int(ys.min()) - pad)
                 x2 = min(w, int(source.x1) + int(xs.max()) + 1 + pad)
                 y2 = min(h, int(source.y1) + int(ys.max()) + 1 + pad)
-
-                # Free-text detector boxes can clip the first/last word even when
-                # the verified mask in the middle is correct. Verification is
-                # non-destructive, so inspect the padded detector envelope too,
-                # but only when that wider crop still fits the existing source
-                # budget. Destructive repair remains limited to a newly verified
-                # text-segmenter mask.
-                if is_free_text:
-                    bx1 = max(0, int(source.x1) - pad)
-                    by1 = max(0, int(source.y1) - pad)
-                    bx2 = min(w, int(source.x2) + pad)
-                    by2 = min(h, int(source.y2) + pad)
-                    wx1, wy1 = min(x1, bx1), min(y1, by1)
-                    wx2, wy2 = max(x2, bx2), max(y2, by2)
-                    if max(wx2 - wx1, wy2 - wy1) <= int(
-                        DETECTOR_RESIDUE_VERIFY_MAX_SOURCE_SIDE
-                    ):
-                        x1, y1, x2, y2 = wx1, wy1, wx2, wy2
-
                 if x2 > x1 and y2 > y1:
                     return x1, y1, x2, y2
 
-        pad = int(
-            DETECTOR_RESIDUE_VERIFY_FREE_TEXT_PAD
-            if str(getattr(source, "semantic_type", "")) == "free_text"
-            else DETECTOR_RESIDUE_VERIFY_PAD
-        )
+        pad = int(DETECTOR_RESIDUE_VERIFY_PAD)
         x1 = max(0, int(source.x1) - pad)
         y1 = max(0, int(source.y1) - pad)
         x2 = min(w, int(source.x2) + pad)
@@ -401,18 +370,9 @@ class FastResidueAdaptiveFocusCombinedTextDetector(
                 center_x = (verified.x1 + verified.x2) * 0.5
                 center_y = (verified.y1 + verified.y2) * 0.5
                 for source in group["sources"]:
-                    association_pad = int(
-                        DETECTOR_RESIDUE_VERIFY_FREE_TEXT_PAD
-                        if str(getattr(source, "semantic_type", "")) == "free_text"
-                        else 0
-                    )
                     if not (
-                        int(source.x1) - association_pad
-                        <= center_x
-                        <= int(source.x2) + association_pad
-                        and int(source.y1) - association_pad
-                        <= center_y
-                        <= int(source.y2) + association_pad
+                        source.x1 <= center_x <= source.x2
+                        and source.y1 <= center_y <= source.y2
                     ):
                         continue
                     residue.append(
