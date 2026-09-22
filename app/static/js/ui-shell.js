@@ -11,6 +11,7 @@
   let trackedChapterId = null;
   let maxReachedIndex = 0;
   let navigationBusy = false;
+  let pendingNavigation = null;
   let activePanels = null;
   let focusModeActive = false;
   let shellMounted = false;
@@ -63,7 +64,7 @@
       const index = STAGES.indexOf(button.dataset.stage);
       const available = Boolean(window.currentChapterId) && index <= maxReachedIndex;
       const active = button.dataset.stage === activeStage;
-      button.disabled = navigationBusy || !available;
+      button.disabled = !available;
       button.classList.toggle("active", active);
       button.classList.toggle("complete", available && index < STAGES.indexOf(activeStage));
       if (active) button.setAttribute("aria-current", "page");
@@ -260,7 +261,11 @@
   }
 
   async function navigateAppStage(stage, landingMode = "home") {
-    if (!STAGES.includes(stage) || navigationBusy) return false;
+    if (!STAGES.includes(stage)) return false;
+    if (navigationBusy) {
+      pendingNavigation = { stage, landingMode };
+      return true;
+    }
     const currentStage = document.body.dataset.appStage || "landing";
     if (stage === "landing" && currentStage === "landing") {
       setLandingMode(landingMode);
@@ -307,6 +312,11 @@
     } finally {
       navigationBusy = false;
       syncSidebar(document.body.dataset.appStage || currentStage);
+      const pending = pendingNavigation;
+      pendingNavigation = null;
+      if (pending) {
+        queueMicrotask(() => navigateAppStage(pending.stage, pending.landingMode));
+      }
     }
   }
 
