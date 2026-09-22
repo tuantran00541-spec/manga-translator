@@ -22,6 +22,11 @@ from app.parameters import (
     DETECTOR_MIN_BOX_SIDE,
     DETECTOR_TALL_IMAGE_FACTOR,
     DETECTOR_TEXT_MASK_DECODE_PAD,
+    DETECTOR_TEXT_MASK_CONTINUATION_EDGE_MARGIN,
+    DETECTOR_TEXT_MASK_CONTINUATION_ENABLED,
+    DETECTOR_TEXT_MASK_CONTINUATION_MAX_EXTRA,
+    DETECTOR_TEXT_MASK_CONTINUATION_MIN_NEW_PIXELS,
+    DETECTOR_TEXT_MASK_CONTINUATION_STEP,
     DETECTOR_TTA_ENABLED as ENABLE_TTA,
     DETECTOR_TTA_MIN_SIDE,
     DETECTOR_TTA_SMALL_SCALE,
@@ -538,6 +543,128 @@ class YoloDetector:
         return self._decode_text_mask_hysteresis(probabilities)
 
     @staticmethod
+    def _mask_touch_sides(mask: np.ndarray) -> tuple[bool, bool, bool, bool]:
+        if mask is None or mask.ndim != 2 or not np.any(mask > 127):
+            return False, False, False, False
+        h, w = mask.shape
+        margin = max(
+            1,
+            min(
+                int(DETECTOR_TEXT_MASK_CONTINUATION_EDGE_MARGIN),
+                max(1, h // 2),
+                max(1, w // 2),
+            ),
+        )
+        active = mask > 127
+        return (
+            bool(np.any(active[:, :margin])),
+            bool(np.any(active[:, max(0, w - margin):])),
+            bool(np.any(active[:margin, :])),
+            bool(np.any(active[max(0, h - margin):, :])),
+        )
+
+    def _continue_clipped_text_mask(
+        self,
+        candidate: tuple,
+        mask: np.ndarray | None,
+        prototypes: np.ndarray | None,
+    ) -> tuple[tuple, np.ndarray | None]:
+        """Expand only masks that visibly collide with their detector envelope.
+
+        The expansion reuses the same mask coefficients and prototype tensor, so
+        it adds no ONNX inference. A wider candidate is accepted only when the
+        re-decoded segmentation contributes new mask pixels outside the previous
+        box. This keeps destructive authority tied to model mask evidence rather
+        than rectangle growth.
+        """
+        if (
+            not DETECTOR_TEXT_MASK_CONTINUATION_ENABLED
+            or mask is None
+            or prototypes is None
+            or len(candidate) < 9
+        ):
+            return candidate, mask
+
+        _score, _cid, _classes, geometry, coeffs = self._candidate_fields(candidate)
+        if not isinstance(geometry, MaskDecodeGeometry) or coeffs is None:
+            return candidate, mask
+
+        current_candidate = tuple(candidate)
+        current_mask = mask
+        base_x1, base_y1, base_x2, base_y2 = map(int, candidate[:4])
+        transform = geometry.transform
+        page_x1 = int(transform.offset_x)
+        page_y1 = int(transform.offset_y)
+        page_x2 = page_x1 + int(transform.src_w)
+        page_y2 = page_y1 + int(transform.src_h)
+        step = max(1, int(DETECTOR_TEXT_MASK_CONTINUATION_STEP))
+        max_extra = max(0, int(DETECTOR_TEXT_MASK_CONTINUATION_MAX_EXTRA))
+        max_rounds = max(1, (max_extra + step - 1) // step)
+
+        for _ in range(max_rounds):
+            touch_left, touch_right, touch_top, touch_bottom = self._mask_touch_sides(
+                current_mask
+            )
+            if not any((touch_left, touch_right, touch_top, touch_bottom)):
+                break
+
+            cx1, cy1, cx2, cy2 = map(int, current_candidate[:4])
+            left_budget = max(0, max_extra - (base_x1 - cx1))
+            right_budget = max(0, max_extra - (cx2 - base_x2))
+            top_budget = max(0, max_extra - (base_y1 - cy1))
+            bottom_budget = max(0, max_extra - (cy2 - base_y2))
+
+            nx1 = max(
+                page_x1,
+                cx1 - min(step, left_budget) if touch_left and left_budget else cx1,
+            )
+            nx2 = min(
+                page_x2,
+                cx2 + min(step, right_budget) if touch_right and right_budget else cx2,
+            )
+            ny1 = max(
+                page_y1,
+                cy1 - min(step, top_budget) if touch_top and top_budget else cy1,
+            )
+            ny2 = min(
+                page_y2,
+                cy2 + min(step, bottom_budget) if touch_bottom and bottom_budget else cy2,
+            )
+            if (nx1, ny1, nx2, ny2) == (cx1, cy1, cx2, cy2):
+                break
+
+            new_geometry = MaskDecodeGeometry(transform, (nx1, ny1, nx2, ny2))
+            new_mask = self._decode_mask(
+                coeffs,
+                prototypes,
+                new_geometry,
+                nx2 - nx1,
+                ny2 - ny1,
+            )
+            if new_mask is None or not np.any(new_mask > 127):
+                break
+
+            outside = new_mask > 127
+            ix1, iy1 = cx1 - nx1, cy1 - ny1
+            ix2, iy2 = ix1 + (cx2 - cx1), iy1 + (cy2 - cy1)
+            outside[
+                max(0, iy1):min(outside.shape[0], iy2),
+                max(0, ix1):min(outside.shape[1], ix2),
+            ] = False
+            if int(np.count_nonzero(outside)) < int(
+                DETECTOR_TEXT_MASK_CONTINUATION_MIN_NEW_PIXELS
+            ):
+                break
+
+            expanded = list(current_candidate)
+            expanded[0:4] = [float(nx1), float(ny1), float(nx2), float(ny2)]
+            expanded[7] = new_geometry
+            current_candidate = tuple(expanded)
+            current_mask = new_mask
+
+        return current_candidate, current_mask
+
+    @staticmethod
     def _decode_text_mask_hysteresis(probabilities: np.ndarray) -> np.ndarray:
         """Keep only low-confidence support connected to a confident core.
 
@@ -894,10 +1021,16 @@ class YoloDetector:
                     contributors,
                     prototypes,
                 )
-                decoded = [
-                    self._candidate_to_box(subset[index], masks.get(index))
-                    for index in contributors
-                ]
+                decoded = []
+                for index in contributors:
+                    candidate = subset[index]
+                    mask = masks.get(index)
+                    candidate, mask = self._continue_clipped_text_mask(
+                        candidate,
+                        mask,
+                        prototypes,
+                    )
+                    decoded.append(self._candidate_to_box(candidate, mask))
                 result.append(self._merge_text_mask_evidence(decoded))
 
         result.sort(key=lambda box: box.confidence, reverse=True)
