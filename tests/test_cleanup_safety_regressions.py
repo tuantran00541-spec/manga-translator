@@ -16,7 +16,7 @@ from app.parameters import TEXT_CONF_THRESHOLD
 
 
 
-def test_one_shot_rescue_keeps_weak_text_on_mixed_confidence_page():
+def test_one_shot_weak_text_on_mixed_page_requires_confirmation_before_cleanup():
     detector = OneShotTextMaskDetector.__new__(OneShotTextMaskDetector)
     detector.RESCUE_CONF_THRESHOLD = 0.12
 
@@ -45,6 +45,11 @@ def test_one_shot_rescue_keeps_weak_text_on_mixed_confidence_page():
     boxes, metrics = detector.detect(np.zeros((40, 100, 3), dtype=np.uint8))
 
     assert [round(float(box.confidence), 2) for box in boxes] == [0.82, 0.15]
+    assert boxes[0].safe_to_inpaint is True
+    assert boxes[1].safe_to_inpaint is False
+    assert boxes[1].needs_review is True
+    assert boxes[1].ocr_eligible is True
+    assert boxes[1].deferred_reason == "low_confidence_unconfirmed"
     assert thresholds == [float(TEXT_CONF_THRESHOLD), 0.12]
     assert metrics["detector_forward_calls"] == 1
     assert metrics["normal_conf_boxes"] == 1
