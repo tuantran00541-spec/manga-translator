@@ -9,7 +9,10 @@ from app.detector.fast_residue_detector import (
 from app.detector.parallel_focus_detector import (
     ParallelAdaptiveFocusCombinedTextDetector,
 )
-from app.parameters import DETECTOR_RESIDUE_VERIFY_MAX_SOURCE_SIDE
+from app.parameters import (
+    DETECTOR_RESIDUE_VERIFY_FREE_TEXT_PAD,
+    DETECTOR_RESIDUE_VERIFY_MAX_SOURCE_SIDE,
+)
 
 
 def _box(x1, y1, x2, y2):
@@ -237,3 +240,71 @@ def test_review_only_maskless_segmenter_region_gets_non_destructive_verification
     assert residue
     assert residue[0].deferred_reason == "post_inpaint_text_residue"
     assert residue[0].safe_to_inpaint is False
+
+
+def test_free_text_residue_verifier_can_confirm_adjacent_fragment_outside_old_bbox():
+    detector = _detector_with_fake_text()
+
+    class _AdjacentTextDetector:
+        def __init__(self):
+            self.calls = 0
+
+        def _detect_single_plain(self, crop, x1, y1):
+            self.calls += 1
+            # Deliberately outside the original source bbox but inside the
+            # free-text verification context. This models a phrase whose first
+            # detector box clipped the final word.
+            return [
+                BubbleBox(
+                    x1 + 210,
+                    y1 + 35,
+                    x1 + 250,
+                    y1 + 60,
+                    0.82,
+                    np.full((25, 40), 255, dtype=np.uint8),
+                    source_model="text_segmenter.onnx",
+                    source_role="text_segmenter",
+                    semantic_type="free_text",
+                    mask_source="text_segmenter",
+                )
+            ]
+
+        @staticmethod
+        def _with_semantics(box):
+            return box
+
+    detector.text_detector = _AdjacentTextDetector()
+    mask = np.zeros((60, 80), dtype=np.uint8)
+    mask[18:42, 15:55] = 255
+    source = BubbleBox(
+        100,
+        40,
+        180,
+        100,
+        0.75,
+        mask,
+        source_model="text_segmenter.onnx",
+        source_role="text_segmenter",
+        semantic_type="free_text",
+        mask_source="text_segmenter",
+        safe_to_inpaint=True,
+        ocr_eligible=True,
+    )
+    image = np.full((180, 360, 3), 248, dtype=np.uint8)
+    image[70:82, 125:145] = 0
+
+    roi = detector._tight_verified_mask_roi(image.shape, source)
+    assert roi is not None
+    # The verifier expands from the actual verified-mask support, not from the
+    # detector rectangle. It still must reach beyond the old bbox on both sides
+    # so a clipped adjacent word can be reconsidered.
+    assert roi[0] < source.x1
+    assert roi[2] > source.x2
+
+    residue = detector.verify_post_inpaint_residue(image, [source])
+
+    assert detector.text_detector.calls == 1
+    assert residue
+    assert residue[0].deferred_reason == "post_inpaint_text_residue"
+    center_x = (residue[0].x1 + residue[0].x2) * 0.5
+    assert center_x > source.x2

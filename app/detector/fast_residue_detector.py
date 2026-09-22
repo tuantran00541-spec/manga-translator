@@ -15,6 +15,7 @@ from app.parameters import (
     DETECTOR_RESIDUE_VERIFY_MAX_ROIS,
     DETECTOR_RESIDUE_VERIFY_MAX_SOURCE_SIDE,
     DETECTOR_RESIDUE_VERIFY_PAD,
+    DETECTOR_RESIDUE_VERIFY_FREE_TEXT_PAD,
 )
 
 
@@ -244,7 +245,11 @@ class FastResidueAdaptiveFocusCombinedTextDetector(
                 )
             ys, xs = np.nonzero(support > 127)
             if xs.size and ys.size:
-                pad = int(DETECTOR_RESIDUE_VERIFY_PAD)
+                pad = int(
+                    DETECTOR_RESIDUE_VERIFY_FREE_TEXT_PAD
+                    if str(getattr(source, "semantic_type", "")) == "free_text"
+                    else DETECTOR_RESIDUE_VERIFY_PAD
+                )
                 x1 = max(0, int(source.x1) + int(xs.min()) - pad)
                 y1 = max(0, int(source.y1) + int(ys.min()) - pad)
                 x2 = min(w, int(source.x1) + int(xs.max()) + 1 + pad)
@@ -252,7 +257,11 @@ class FastResidueAdaptiveFocusCombinedTextDetector(
                 if x2 > x1 and y2 > y1:
                     return x1, y1, x2, y2
 
-        pad = int(DETECTOR_RESIDUE_VERIFY_PAD)
+        pad = int(
+            DETECTOR_RESIDUE_VERIFY_FREE_TEXT_PAD
+            if str(getattr(source, "semantic_type", "")) == "free_text"
+            else DETECTOR_RESIDUE_VERIFY_PAD
+        )
         x1 = max(0, int(source.x1) - pad)
         y1 = max(0, int(source.y1) - pad)
         x2 = min(w, int(source.x2) + pad)
@@ -370,9 +379,18 @@ class FastResidueAdaptiveFocusCombinedTextDetector(
                 center_x = (verified.x1 + verified.x2) * 0.5
                 center_y = (verified.y1 + verified.y2) * 0.5
                 for source in group["sources"]:
+                    association_pad = int(
+                        DETECTOR_RESIDUE_VERIFY_FREE_TEXT_PAD
+                        if str(getattr(source, "semantic_type", "")) == "free_text"
+                        else 0
+                    )
                     if not (
-                        source.x1 <= center_x <= source.x2
-                        and source.y1 <= center_y <= source.y2
+                        int(source.x1) - association_pad
+                        <= center_x
+                        <= int(source.x2) + association_pad
+                        and int(source.y1) - association_pad
+                        <= center_y
+                        <= int(source.y2) + association_pad
                     ):
                         continue
                     residue.append(

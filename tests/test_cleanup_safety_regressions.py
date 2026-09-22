@@ -9,14 +9,16 @@ from app.detector.combined_detector import CombinedTextDetector
 from app.detector.mask_builder import build_mask
 from app.render.text_renderer import _fit_text, render_text_in_box
 from app.pipeline import ChapterPipeline
+from app.optimized_pipeline import OptimizedChapterPipeline
 from app.one_shot_cleanup import OneShotTextMaskDetector
 from app.parameters import TEXT_CONF_THRESHOLD
+from app.image_io import encode_mask, read_image
 
 
 
 
 
-def test_one_shot_rescue_keeps_weak_text_on_mixed_confidence_page():
+def test_one_shot_weak_text_on_mixed_page_requires_confirmation_before_cleanup():
     detector = OneShotTextMaskDetector.__new__(OneShotTextMaskDetector)
     detector.RESCUE_CONF_THRESHOLD = 0.12
 
@@ -45,6 +47,11 @@ def test_one_shot_rescue_keeps_weak_text_on_mixed_confidence_page():
     boxes, metrics = detector.detect(np.zeros((40, 100, 3), dtype=np.uint8))
 
     assert [round(float(box.confidence), 2) for box in boxes] == [0.82, 0.15]
+    assert boxes[0].safe_to_inpaint is True
+    assert boxes[1].safe_to_inpaint is False
+    assert boxes[1].needs_review is True
+    assert boxes[1].ocr_eligible is True
+    assert boxes[1].deferred_reason == "low_confidence_unconfirmed"
     assert thresholds == [float(TEXT_CONF_THRESHOLD), 0.12]
     assert metrics["detector_forward_calls"] == 1
     assert metrics["normal_conf_boxes"] == 1
@@ -270,3 +277,111 @@ def test_auto_fit_refuses_unreadable_transparent_dialogue():
             (45, 25, 55, 35),
             bg_color="transparent",
         )
+
+
+class _VerifiedResidueRepairDetector:
+    @staticmethod
+    def verify_post_inpaint_residue(_image, _authorized):
+        return []
+
+    @staticmethod
+    def last_residue_metrics():
+        return {}
+
+
+class _VerifiedResidueRepairInpainter:
+    lama_model_path = None
+    session_loaded = False
+    _prefer_dynamic = True
+    serialized_inference = False
+
+    def __init__(self):
+        self.last_mask = None
+
+    def inpaint_mask(self, image, mask, *, force_lama=False):
+        assert force_lama is True
+        self.last_mask = mask.copy()
+        result = image.copy()
+        result[mask > 10] = (17, 29, 43)
+        return result
+
+    @staticmethod
+    def last_metrics():
+        return {"lama_model_runs": 1, "lama_model_ms": 1}
+
+
+def test_verified_residue_mask_can_extend_repair_without_old_authority(tmp_path):
+    original = np.full((80, 120, 3), 210, dtype=np.uint8)
+    image_path = tmp_path / "original.png"
+    clean_path = tmp_path / "clean.png"
+    assert cv2.imwrite(str(image_path), original)
+    assert cv2.imwrite(str(clean_path), original)
+
+    residue_local = np.zeros((18, 24), dtype=np.uint8)
+    residue_local[4:14, 5:19] = 255
+    weak_mask = np.zeros((18, 24), dtype=np.uint8)
+    weak_mask[7:11, 9:15] = 255
+
+    result = {
+        "tmp_clean": clean_path.as_posix(),
+        "boxes": [
+            {
+                "x1": 58,
+                "y1": 24,
+                "x2": 82,
+                "y2": 42,
+                "confidence": 0.15,
+                "mask": encode_mask(weak_mask),
+                "source_model": "text_segmenter.onnx",
+                "source_role": "text_segmenter",
+                "class_name": "text",
+                "semantic_type": "free_text",
+                "mask_source": "text_segmenter",
+                "safe_to_inpaint": False,
+                "ocr_eligible": True,
+                "needs_review": True,
+                "deferred_reason": "low_confidence_unconfirmed",
+            }
+        ],
+        "residue_regions": [
+            {
+                "x1": 58,
+                "y1": 24,
+                "x2": 82,
+                "y2": 42,
+                "confidence": 0.81,
+                "mask": encode_mask(residue_local),
+                "source_model": "text_segmenter.onnx",
+                "source_role": "text_segmenter",
+                "class_name": "text",
+                "semantic_type": "free_text",
+                "deferred_reason": "post_inpaint_text_residue",
+            }
+        ],
+        "processing_metrics": {},
+        "detection_issues": ["post_inpaint_text_residue"],
+        "detection_state": "needs_review",
+        "cleanup_verified": False,
+        "needs_review": True,
+    }
+
+    pipeline = OptimizedChapterPipeline.__new__(OptimizedChapterPipeline)
+    pipeline._detector = _VerifiedResidueRepairDetector()
+    pipeline._inpainter = _VerifiedResidueRepairInpainter()
+
+    updated = pipeline._repair_post_inpaint_result(image_path, result, None)
+
+    metrics = updated["processing_metrics"]["residue_repair"]
+    assert metrics["attempted"] == 1
+    assert metrics["verified_extension_pixels"] == int(np.count_nonzero(residue_local))
+    assert metrics["repair_mask_pixels"] == int(np.count_nonzero(residue_local))
+    assert metrics["outside_authority_changed_channel_values"] == 0
+    assert pipeline._inpainter.last_mask is not None
+
+    repaired = read_image(clean_path)
+    authority = np.zeros(repaired.shape[:2], dtype=bool)
+    authority[24:42, 58:82] = residue_local > 10
+    assert np.all(repaired[authority] == np.array([17, 29, 43], dtype=np.uint8))
+    assert np.array_equal(repaired[~authority], original[~authority])
+    assert updated["residue_regions"] == []
+    assert updated["cleanup_verified"] is True
