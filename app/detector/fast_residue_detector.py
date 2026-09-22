@@ -245,15 +245,37 @@ class FastResidueAdaptiveFocusCombinedTextDetector(
                 )
             ys, xs = np.nonzero(support > 127)
             if xs.size and ys.size:
+                is_free_text = (
+                    str(getattr(source, "semantic_type", "")) == "free_text"
+                )
                 pad = int(
                     DETECTOR_RESIDUE_VERIFY_FREE_TEXT_PAD
-                    if str(getattr(source, "semantic_type", "")) == "free_text"
+                    if is_free_text
                     else DETECTOR_RESIDUE_VERIFY_PAD
                 )
                 x1 = max(0, int(source.x1) + int(xs.min()) - pad)
                 y1 = max(0, int(source.y1) + int(ys.min()) - pad)
                 x2 = min(w, int(source.x1) + int(xs.max()) + 1 + pad)
                 y2 = min(h, int(source.y1) + int(ys.max()) + 1 + pad)
+
+                # Free-text detector boxes can clip the first/last word even when
+                # the verified mask in the middle is correct. Verification is
+                # non-destructive, so inspect the padded detector envelope too,
+                # but only when that wider crop still fits the existing source
+                # budget. Destructive repair remains limited to a newly verified
+                # text-segmenter mask.
+                if is_free_text:
+                    bx1 = max(0, int(source.x1) - pad)
+                    by1 = max(0, int(source.y1) - pad)
+                    bx2 = min(w, int(source.x2) + pad)
+                    by2 = min(h, int(source.y2) + pad)
+                    wx1, wy1 = min(x1, bx1), min(y1, by1)
+                    wx2, wy2 = max(x2, bx2), max(y2, by2)
+                    if max(wx2 - wx1, wy2 - wy1) <= int(
+                        DETECTOR_RESIDUE_VERIFY_MAX_SOURCE_SIDE
+                    ):
+                        x1, y1, x2, y2 = wx1, wy1, wx2, wy2
+
                 if x2 > x1 and y2 > y1:
                     return x1, y1, x2, y2
 
