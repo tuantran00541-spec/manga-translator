@@ -1,0 +1,228 @@
+name: War of Extinction visual audit
+
+on:
+  push:
+    branches:
+      - audit/war-extinction-visual
+
+permissions:
+  contents: read
+
+jobs:
+  visual-audit:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    env:
+      PYTHONPATH: ${{ github.workspace }}
+      PYTHONUNBUFFERED: "1"
+      MANGA_PROCESSING_PIPELINE: fast
+      MANGA_USE_DYNAMIC_LAMA: "1"
+      MANGA_ORT_PROVIDER: openvino
+      MANGA_ORT_REQUIRE_PROVIDER: "1"
+      MANGA_ORT_OPENVINO_SCOPE: detectors
+      MANGA_ORT_OPENVINO_THREADS: "2"
+      MANGA_ORT_OPENVINO_STREAMS: "1"
+      MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
+      OPENBLAS_NUM_THREADS: "1"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install processing runtime
+        run: |
+          python -m pip install \
+            numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 \
+            onnxruntime-openvino==1.24.1 psutil==6.1.1 loguru==0.7.2 \
+            requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 \
+            playwright==1.47.0 fastapi==0.115.0 pydantic==2.9.2 \
+            filelock==3.16.1 threadpoolctl==3.6.0
+
+      - name: Restore detector and inpaint models
+        id: models
+        uses: actions/cache@v4
+        with:
+          path: |
+            models/*.onnx
+            models/.e2e-provenance.json
+          key: processing-profile-models-b224548-v1
+
+      - name: Read pinned model provisioner
+        if: steps.models.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: b22454827f8190655d7070b80eb20c2550beadfa
+          path: benchmark-bootstrap
+          sparse-checkout: scripts/provision_real_e2e_models.py
+          sparse-checkout-cone-mode: false
+
+      - name: Provision production models
+        if: steps.models.outputs.cache-hit != 'true'
+        run: |
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple torch==2.5.1+cpu torchvision==0.20.1+cpu
+          python -m pip install --no-deps ultralytics==8.3.221 onnx==1.17.0 onnxslim==0.1.71
+          python -m pip install numpy==1.26.4 sympy==1.13.1 PyYAML==6.0.2 scipy==1.14.1 tqdm==4.67.1 matplotlib==3.9.2 pandas==2.2.3 py-cpuinfo==9.0.0 ml_dtypes==0.5.3 colorama==0.4.6 polars==1.33.1 ultralytics-thop==2.0.17
+          python benchmark-bootstrap/scripts/provision_real_e2e_models.py
+          cp benchmark-bootstrap/models/*.onnx models/
+          cp benchmark-bootstrap/models/.e2e-provenance.json models/
+
+      - name: Build visual audit sample
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+
+          import hashlib
+          import json
+          import os
+          import time
+          from pathlib import Path
+
+          import cv2
+          import numpy as np
+
+          from app.image_io import read_image, write_image
+          from app.manifest_utils import load_manifest_raw
+          from app.processing_pipeline_factory import build_processing_pipeline
+
+          URL = "https://asurascans.com/comics/war-of-extinction-6f7fe6eb/chapter/1"
+          root = Path("benchmark-results/visual-audit")
+          compare_dir = root / "compare"
+          crop_dir = root / "crops"
+          compare_dir.mkdir(parents=True, exist_ok=True)
+          crop_dir.mkdir(parents=True, exist_ok=True)
+
+          pipeline = build_processing_pipeline()
+          chapter_id = hashlib.sha256(
+              f"visual-audit:{URL}:{os.getenv('GITHUB_RUN_ID', time.time_ns())}".encode()
+          ).hexdigest()[:8]
+
+          started = time.perf_counter()
+          manifest = pipeline.download_chapter(URL, chapter_id, workers=2)
+          pages = manifest.get("pages", [])
+          n = len(pages)
+          if not n:
+              raise RuntimeError("chapter produced zero slices")
+
+          selected = set(range(min(25, n)))
+          for k in range(21):
+              selected.add(round(k * (n - 1) / 20))
+          selected = sorted(i for i in selected if 0 <= i < n)
+
+          pipeline.process_pages(chapter_id, selected, workers=2)
+          manifest = load_manifest_raw(chapter_id)
+          pages = manifest.get("pages", [])
+
+          report = {
+              "source_sha": os.getenv("GITHUB_SHA"),
+              "chapter_url": URL,
+              "chapter_id": chapter_id,
+              "slices_total": n,
+              "selected_indices": selected,
+              "selected_count": len(selected),
+              "pages": [],
+          }
+
+          for index in selected:
+              page = pages[index]
+              original = read_image(Path(page["original"]))
+              clean = read_image(Path(page["clean"]))
+              if original.shape != clean.shape:
+                  raise RuntimeError(f"shape mismatch page {index}: {original.shape} != {clean.shape}")
+
+              max_width = 900
+              scale = min(1.0, max_width / max(1, original.shape[1]))
+              if scale < 1.0:
+                  size = (
+                      max(1, int(round(original.shape[1] * scale))),
+                      max(1, int(round(original.shape[0] * scale))),
+                  )
+                  original_view = cv2.resize(original, size, interpolation=cv2.INTER_AREA)
+                  clean_view = cv2.resize(clean, size, interpolation=cv2.INTER_AREA)
+              else:
+                  original_view = original
+                  clean_view = clean
+
+              divider = np.full(
+                  (original_view.shape[0], 8, original_view.shape[2]),
+                  127,
+                  dtype=np.uint8,
+              )
+              compare = np.concatenate([original_view, divider, clean_view], axis=1)
+              cv2.putText(compare, "ORIGINAL", (16, 42), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 0), 3, cv2.LINE_AA)
+              cv2.putText(compare, "ORIGINAL", (16, 42), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 1, cv2.LINE_AA)
+              clean_x = original_view.shape[1] + divider.shape[1] + 16
+              cv2.putText(compare, "CLEAN", (clean_x, 42), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 0), 3, cv2.LINE_AA)
+              cv2.putText(compare, "CLEAN", (clean_x, 42), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 1, cv2.LINE_AA)
+              write_image(compare_dir / f"page_{index:03d}_original_vs_clean.jpg", compare, quality=92)
+
+              boxes = page.get("boxes") or []
+              crop_records = []
+              for ordinal, box in enumerate(boxes):
+                  if not box.get("safe_to_inpaint"):
+                      continue
+                  x1 = max(0, int(box.get("x1", 0)) - 40)
+                  y1 = max(0, int(box.get("y1", 0)) - 40)
+                  x2 = min(original.shape[1], int(box.get("x2", 0)) + 40)
+                  y2 = min(original.shape[0], int(box.get("y2", 0)) + 40)
+                  if x2 <= x1 or y2 <= y1:
+                      continue
+                  a = original[y1:y2, x1:x2]
+                  b = clean[y1:y2, x1:x2]
+                  divider_crop = np.full((a.shape[0], 6, a.shape[2]), 127, dtype=np.uint8)
+                  pair = np.concatenate([a, divider_crop, b], axis=1)
+                  name = f"page_{index:03d}_box_{ordinal:02d}.png"
+                  write_image(crop_dir / name, pair)
+                  crop_records.append({
+                      "file": f"crops/{name}",
+                      "semantic_type": box.get("semantic_type"),
+                      "confidence": box.get("confidence"),
+                      "source_role": box.get("source_role"),
+                      "needs_review": box.get("needs_review"),
+                      "deferred_reason": box.get("deferred_reason"),
+                      "bbox": [int(box.get("x1", 0)), int(box.get("y1", 0)), int(box.get("x2", 0)), int(box.get("y2", 0))],
+                  })
+
+              metrics = page.get("processing_metrics") or {}
+              report["pages"].append({
+                  "index": index,
+                  "source_page": page.get("source_page"),
+                  "slice_index": page.get("slice_index"),
+                  "boxes": len(boxes),
+                  "safe_boxes": len(crop_records),
+                  "compare_file": f"compare/page_{index:03d}_original_vs_clean.jpg",
+                  "crops": crop_records,
+                  "metrics": {
+                      key: metrics.get(key)
+                      for key in (
+                          "low_conf_rescue",
+                          "low_conf_rescue_boxes",
+                          "stroke_refined_residual_rejects",
+                          "stroke_refined_regions",
+                          "lama_model_runs",
+                          "post_inpaint_residue_regions",
+                      )
+                      if key in metrics
+                  },
+              })
+
+          report["elapsed_s"] = round(time.perf_counter() - started, 3)
+          (root / "report.json").write_text(
+              json.dumps(report, ensure_ascii=False, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps({
+              "selected_count": report["selected_count"],
+              "elapsed_s": report["elapsed_s"],
+              "output": str(root),
+          }))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: war-of-extinction-visual-audit-${{ github.run_id }}
+          path: benchmark-results/visual-audit/
+          retention-days: 7
+          if-no-files-found: error
