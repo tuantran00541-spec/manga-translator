@@ -75,6 +75,14 @@
   .workbench-stage-grid.focus-mode > :is(.page-navigator, .context-inspector), .editor-workbench-grid.focus-mode > :is(.page-navigator, .translation-panel-host) { display: none; }
 
   /* Review is one stitched source-page document, never a slice card. */
+  .review-workspace-shell.review-canvas-only {
+    grid-template-rows: minmax(0, 1fr);
+  }
+  .review-workspace-shell.review-canvas-only > .review-canvas-only-layout {
+    grid-row: 1;
+    min-height: 0;
+    height: 100%;
+  }
   .review-single-document .review-canvas-host { padding: 0; overflow: hidden; place-items: stretch; background: var(--surface-app); }
   .review-single-document .review-document-shell { display: grid; grid-template-rows: 36px auto auto minmax(0, 1fr); width: 100%; max-width: none; height: 100%; min-height: 0; overflow: hidden; border: 0; border-radius: 0; background: var(--surface-app); box-shadow: none; }
   .review-single-document .review-document-toolbar { justify-content: flex-start; min-height: 36px; padding: 3px 6px; border: 0; border-bottom: 1px solid var(--border-strong); background: var(--surface-panel); }
