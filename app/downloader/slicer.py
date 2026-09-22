@@ -62,7 +62,8 @@ def slice_image(image_path: Path, out_dir: Path, prefix: str, *, return_metadata
         if not return_metadata:
             return [out_path]
         return [{
-            "path": out_path, "source_y1": 0, "source_y2": h,
+            "path": out_path, "width": w, "height": h,
+            "source_y1": 0, "source_y2": h,
             "core_y1": 0, "core_y2": h, "core_source_y1": 0, "core_source_y2": h,
             "unsafe_before": False, "unsafe_after": False, "source_height": h,
         }]
@@ -91,7 +92,7 @@ def slice_image(image_path: Path, out_dir: Path, prefix: str, *, return_metadata
         save_segment(out_path, segment)
         paths.append(out_path)
         meta.append({
-            "path": out_path,
+            "path": out_path, "width": w, "height": context_end - context_start,
             "source_y1": context_start, "source_y2": context_end,
             "core_y1": core_start - context_start, "core_y2": core_end - context_start,
             "core_source_y1": core_start, "core_source_y2": core_end,
