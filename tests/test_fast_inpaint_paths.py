@@ -5,6 +5,7 @@ from app.detector.bubble_detector import BubbleBox
 from app.detector.mask_builder import build_mask
 from app.image_io import encode_mask, read_image, write_image
 from app.inpaint.fast_lama_inpainter import FastInpainter
+from app.inpaint.lama_inpainter import Inpainter
 from app.optimized_pipeline import OptimizedChapterPipeline
 
 
@@ -178,9 +179,9 @@ def test_dynamic_lama_tightens_mask_roi_before_model_call():
     assert max(model_shapes[0]) < 800
 
 
-def test_optimized_pipeline_uses_fast_inpainter():
+def test_optimized_pipeline_uses_plain_lama_inpainter():
     pipeline = OptimizedChapterPipeline()
-    assert isinstance(pipeline.inpainter, FastInpainter)
+    assert isinstance(pipeline.inpainter, Inpainter)
 
 
 
