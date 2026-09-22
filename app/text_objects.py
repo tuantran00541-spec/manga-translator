@@ -84,9 +84,9 @@ def invalidate_stale_machine_translation(obj: dict, source_text: str) -> bool:
     Ownership is intentionally prospective. Legacy manifests without the
     ``auto_translation`` snapshot are left untouched because a user may already
     have edited the translated text while older versions still labelled it as
-    coming from DeepSeek.
+    machine-generated.
     """
-    if obj.get("translation_source") != "deepseek" or "auto_translation" not in obj:
+    if not obj.get("translation_source") or "auto_translation" not in obj:
         return False
     translation_input = str(obj.get("translation_input_text") or "").strip()
     if translation_input == str(source_text or "").strip():
