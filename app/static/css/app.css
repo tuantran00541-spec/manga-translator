@@ -88,7 +88,10 @@
   }
   .review-single-document .review-canvas-host { padding: 0; overflow: hidden; place-items: stretch; background: var(--surface-app); }
   .review-single-document .review-document-shell { display: grid; grid-template-rows: 36px auto auto minmax(0, 1fr); width: 100%; max-width: none; height: 100%; min-height: 0; overflow: hidden; border: 0; border-radius: 0; background: var(--surface-app); box-shadow: none; }
-  .review-single-document .review-document-toolbar { justify-content: flex-start; min-height: 36px; padding: 3px 6px; border: 0; border-bottom: 1px solid var(--border-strong); background: var(--surface-panel); }
+  .review-single-document .review-document-toolbar { grid-row: 1; justify-content: flex-start; min-height: 36px; padding: 3px 6px; border: 0; border-bottom: 1px solid var(--border-strong); background: var(--surface-panel); }
+  .review-single-document .review-stitched-meta { grid-row: 2; }
+  .review-single-document .review-stitched-warning { grid-row: 3; }
+  .review-single-document .review-document-viewport { grid-row: 4; }
   .review-single-document .review-document-toolbar .ui-btn, .review-single-document .review-document-toolbar .ui-select { min-height: 28px; height: 28px; border-radius: 3px; font-size: 11px; }
   .review-single-document .review-document-toolbar .review-stitched-select { width: 120px; }
   .review-single-document .review-stitched-meta { padding: 4px 8px; border-bottom: 1px solid var(--border-subtle); background: var(--surface-panel); color: var(--text-muted); font-size: 10px; }
