@@ -12,7 +12,7 @@ from app.detector.bubble_detector import BubbleBox
 from app.detector.mask_builder import build_mask
 from app.one_shot_cleanup import OneShotProductionDetector
 from app.image_io import read_image, write_image
-from app.inpaint.adaptive_fast_inpainter import AdaptiveFastInpainter
+from app.inpaint.lama_inpainter import Inpainter
 from app.manifest_utils import atomic_replace
 from app.mask_store import decode_mask_value
 from app.parameters import MANUAL_MASK_THRESHOLD, PIPELINE_DEFAULT_WORKERS
@@ -36,7 +36,7 @@ class OptimizedChapterPipeline(ChapterPipeline):
         if self._inpainter is None:
             with self._inpainter_init_lock:
                 if self._inpainter is None:
-                    self._inpainter = AdaptiveFastInpainter()
+                    self._inpainter = Inpainter()
         return self._inpainter
 
     def process_pages(
@@ -456,7 +456,7 @@ class OptimizedChapterPipeline(ChapterPipeline):
         *,
         parallel_detectors: bool = False,
     ) -> dict:
-        result = super()._process_page(
+        return super()._process_page(
             img_path,
             processed_dir,
             preserve_regions=preserve_regions,
@@ -465,11 +465,6 @@ class OptimizedChapterPipeline(ChapterPipeline):
             supplemental_detections=supplemental_detections,
             seam_context_unavailable=seam_context_unavailable,
             parallel_detectors=parallel_detectors,
-        )
-        return self._repair_post_inpaint_result(
-            img_path,
-            result,
-            preserve_regions,
         )
 
     def _do_reinpaint(
