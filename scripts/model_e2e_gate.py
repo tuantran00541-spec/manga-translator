@@ -148,7 +148,7 @@ def _box_from_record(record: dict):
 
 
 def _authority_mask(image: np.ndarray, records: list[dict], inpainter) -> np.ndarray:
-    """Reconstruct the maximum configured automatic cleanup authority.\n\n    Runtime may choose the normal or adaptive dilation kernel from local image\n    texture. Validation must use the configured maximum so sequential cleanup\n    cannot create a false safety failure merely because the RAW replay chooses\n    the smaller kernel. Production write paths remain clipped to their runtime\n    mask; this is only the conservative upper bound used by the gate.\n    """
+    """Use maximum configured cleanup authority for conservative replay validation."""
     from app.detector.bubble_detector import BubbleBox
     from app.detector.mask_builder import build_mask
 
