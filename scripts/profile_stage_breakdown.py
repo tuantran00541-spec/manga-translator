@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-""" The production profiler intentionally records many inclusive timers. Those event sums are useful diagnostic evidence, but adding them together double-counts work. This module therefore keeps two views separate: * ``stage_breakdown``: one conservative, non-overlapping page budget derived from page ``processing_metrics`` and detector/inpaint sub-metrics. * ``inclusive_timer_sums``: raw profiler method/event sums, explicitly marked as overlapping and never included in the page budget total. No model runtime is imported here; existing profile JSON can be analyzed offline. """
+""" Normalize production profiler JSON into non-overlapping stage attribution. The production profiler intentionally records many inclusive timers. Those event sums are useful diagnostic evidence, but adding them together double-counts work. This module therefore keeps two views separate: * ``stage_breakdown``: one conservative, non-overlapping page budget derived from page ``processing_metrics`` and detector/inpaint sub-metrics. * ``inclusive_timer_sums``: raw profiler method/event sums, explicitly marked as overlapping and never included in the page budget total. No model runtime is imported here; existing profile JSON can be analyzed offline. """
 from __future__ import annotations
 
 import argparse

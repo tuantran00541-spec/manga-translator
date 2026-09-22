@@ -14,7 +14,7 @@ from app.optimized_pipeline import OptimizedChapterPipeline
 
 
 class MaskRecallOptimizedChapterPipeline(OptimizedChapterPipeline):
-    """ The first automatic inpaint pass keeps the production segmentation mask. Residue handling then deliberately stops trusting that same sparse mask: neural verification scans the full detector text region, and overwhelmingly flat text regions get an independent contrast-based residual-ink check even when the neural verifier returns no hit. All repair writes are still bounded by detector-owned text geometry and preserve regions remain hard-locked by the parent pipeline. """
+    """ Recover clipped glyphs with independent residue verification. The first automatic inpaint pass keeps the production segmentation mask. Residue handling then deliberately stops trusting that same sparse mask: neural verification scans the full detector text region, and overwhelmingly flat text regions get an independent contrast-based residual-ink check even when the neural verifier returns no hit. All repair writes are still bounded by detector-owned text geometry and preserve regions remain hard-locked by the parent pipeline. """
 
     _FLAT_DELTA_MAX = 8
     _FLAT_RATIO_MIN = 0.98
@@ -66,7 +66,7 @@ class MaskRecallOptimizedChapterPipeline(OptimizedChapterPipeline):
 
     @classmethod
     def _flat_residual_ink_mask(cls, crop: np.ndarray) -> np.ndarray | None:
-        """ Uncertain/textured crops return None. Components may touch detector-box edges because clipped first/last glyphs are a real failure mode, while long frame-like strokes are rejected by span. """
+        """ Return bounded residual-ink support for an overwhelmingly flat crop. Uncertain/textured crops return None. Components may touch detector-box edges because clipped first/last glyphs are a real failure mode, while long frame-like strokes are rejected by span. """
         if crop is None or crop.size == 0:
             return None
         if crop.ndim == 2:

@@ -10,7 +10,7 @@ from app.mask_recall_pipeline import MaskRecallOptimizedChapterPipeline
 
 
 class FlatEnvelopeMaskRecallPipeline(MaskRecallOptimizedChapterPipeline):
-    """ The first-pass detector geometry remains unchanged. During residue repair, overwhelmingly flat text containers may search a small envelope around the detector bbox. Only small dark/bright components surrounded mostly by the same flat background become repair scope. This lets clipped first/last glyphs cross the detector edge without turning a bubble/frame outline into authority. """
+    """ Recover clipped edge glyphs outside a text detector bbox safely. The first-pass detector geometry remains unchanged. During residue repair, overwhelmingly flat text containers may search a small envelope around the detector bbox. Only small dark/bright components surrounded mostly by the same flat background become repair scope. This lets clipped first/last glyphs cross the detector edge without turning a bubble/frame outline into authority. """
 
     _FLAT_SEARCH_PAD_X = 96
     _FLAT_SEARCH_PAD_Y = 32

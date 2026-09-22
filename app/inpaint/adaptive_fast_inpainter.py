@@ -28,7 +28,7 @@ _DENSE_AUTHORITY_MIN_CONTRAST = fast_lama._env_float(
 
 
 class AdaptiveFastInpainter(FastInpainter):
-    """ The image/mask/model path is unchanged. Only ONNX Runtime scheduling and allocator settings differ, so the candidate remains suitable for pixel-level A/B comparison against FastInpainter. """
+    """ FastInpainter with CPU LaMa runtime policy tuned to page concurrency. The image/mask/model path is unchanged. Only ONNX Runtime scheduling and allocator settings differ, so the candidate remains suitable for pixel-level A/B comparison against FastInpainter. """
 
     def __init__(self):
         super().__init__()
@@ -169,7 +169,7 @@ class AdaptiveFastInpainter(FastInpainter):
             self._trim_process_heap()
 
     def prepare_for_page_workers(self, page_workers: int) -> dict:
-        """ A loaded dynamic session is rebuilt only if a session-affecting setting changes. Memory byte counters themselves are diagnostic and do not cause churn when the arena decision remains the same. """
+        """ Select the session profile before page worker threads begin. A loaded dynamic session is rebuilt only if a session-affecting setting changes. Memory byte counters themselves are diagnostic and do not cause churn when the arena decision remains the same. """
         desired = select_lama_runtime_profile(page_workers)
         desired_signature = desired.session_signature()
         with self._session_lock:

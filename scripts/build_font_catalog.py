@@ -1,4 +1,4 @@
-""" The download step is intentionally separate: assets are sourced from the upstream Google Fonts repository, while this script only validates paths, licenses, and stable identifiers in a checkout. """
+""" Validate bundled fonts and regenerate the catalog metadata. The download step is intentionally separate: assets are sourced from the upstream Google Fonts repository, while this script only validates paths, licenses, and stable identifiers in a checkout. """
 
 from __future__ import annotations
 

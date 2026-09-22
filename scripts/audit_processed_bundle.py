@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-""" Manual repaint masks are treated as human correction evidence. They provide a repeatable completion proxy (how often automatic cleanup needed intervention), while review/residue state comes from the persisted manifest. This report does not claim detector recall unless a separately labelled source dataset exists. """
+""" Audit a processed chapter bundle without trusting machine-cleaned labels. Manual repaint masks are treated as human correction evidence. They provide a repeatable completion proxy (how often automatic cleanup needed intervention), while review/residue state comes from the persisted manifest. This report does not claim detector recall unless a separately labelled source dataset exists. """
 from __future__ import annotations
 
 import argparse

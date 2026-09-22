@@ -1,4 +1,4 @@
-""" This is deliberately small and dependency-light: it compares normalized ink geometry and text metrics against rendered samples from the bundled catalog. It is an aid for selecting the closest installed font, not a font generator. """
+""" Deterministic CPU font matching for original lettering crops. This is deliberately small and dependency-light: it compares normalized ink geometry and text metrics against rendered samples from the bundled catalog. It is an aid for selecting the closest installed font, not a font generator. """
 
 from __future__ import annotations
 

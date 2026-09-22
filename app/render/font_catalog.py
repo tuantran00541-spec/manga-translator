@@ -1,4 +1,4 @@
-""" The catalog is the source of truth for both the API and the renderer. Font identifiers are stable slugs; callers never need to send filesystem paths. """
+""" Catalog and safe path resolution for bundled comic fonts. The catalog is the source of truth for both the API and the renderer. Font identifiers are stable slugs; callers never need to send filesystem paths. """
 
 from __future__ import annotations
 

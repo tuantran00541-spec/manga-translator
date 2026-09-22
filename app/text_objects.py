@@ -79,7 +79,7 @@ def _sync_ocr_metadata(obj: dict, box: dict) -> bool:
 
 
 def invalidate_stale_machine_translation(obj: dict, source_text: str) -> bool:
-    """ Ownership is intentionally prospective. Legacy manifests without the ``auto_translation`` snapshot are left untouched because a user may already have edited the translated text while older versions still labelled it as machine-generated. """
+    """ Clear only an untouched generated translation whose OCR source changed. Ownership is intentionally prospective. Legacy manifests without the ``auto_translation`` snapshot are left untouched because a user may already have edited the translated text while older versions still labelled it as machine-generated. """
     if not obj.get("translation_source") or "auto_translation" not in obj:
         return False
     translation_input = str(obj.get("translation_input_text") or "").strip()
@@ -132,7 +132,7 @@ def _sync_existing_auto_object(obj: dict, box: dict, region: dict) -> bool:
 
 
 def sync_existing_auto_text_object(page: dict, box: dict) -> bool:
-    """ This deliberately does not create objects for unrelated boxes, making it safe to call from the per-box OCR commit path without changing text-object creation lifecycle for the rest of the page. """
+    """ Sync existing auto-generated text objects for one committed detector box. This deliberately does not create objects for unrelated boxes, making it safe to call from the per-box OCR commit path without changing text-object creation lifecycle for the rest of the page. """
     box_id = str(box.get("id") or "")
     region = _region_from_box(box)
     if not box_id or region is None:
@@ -148,7 +148,7 @@ def sync_existing_auto_text_object(page: dict, box: dict) -> bool:
 
 
 def ensure_page_text_objects(page: dict) -> tuple[int, bool]:
-    """ Existing objects that already reference a detector box win, including manually grouped objects. Auto-generated objects only follow detector geometry/OCR while the user has not changed those fields since the previous automatic sync. """
+    """ Ensure detected text boxes have editable text objects without overwriting user work. Existing objects that already reference a detector box win, including manually grouped objects. Auto-generated objects only follow detector geometry/OCR while the user has not changed those fields since the previous automatic sync. """
     objects = page.setdefault("text_objects", [])
     if not isinstance(objects, list):
         objects = []

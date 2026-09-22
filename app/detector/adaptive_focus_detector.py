@@ -416,7 +416,7 @@ class _AdaptiveDetectorProxy:
 
 
 class AdaptiveFocusCombinedTextDetector(CombinedTextDetector):
-    """ Bubble proposals use a minimal gap-free tall-image window plan. The text segmenter runs one full-image pass and only refines proposal bands that lack plausible full-pass text, capped at two focus chips. Existing production grouping, safety classification, grayscale fallback, MSER recovery and final NMS stay in CombinedTextDetector. """
+    """ Production detector validated by the V2 logic + V4 OpenVINO benchmark. Bubble proposals use a minimal gap-free tall-image window plan. The text segmenter runs one full-image pass and only refines proposal bands that lack plausible full-pass text, capped at two focus chips. Existing production grouping, safety classification, grayscale fallback, MSER recovery and final NMS stay in CombinedTextDetector. """
 
     def __init__(self):
         super().__init__()

@@ -123,7 +123,7 @@ def _enhance_for_selective_retry(bgr: np.ndarray) -> np.ndarray:
 
 
 def _enhance_grayscale_retry(bgr: np.ndarray) -> np.ndarray:
-    """ Manga dialogue is often near-monochrome even when the surrounding artwork is not. A grayscale CLAHE view removes distracting chroma while preserving anti-aliased glyph edges. It deliberately avoids hard thresholding, which is too destructive for thin punctuation and coloured free text. """
+    """ Make a second, contrast-focused view only for still-suspicious crops. Manga dialogue is often near-monochrome even when the surrounding artwork is not. A grayscale CLAHE view removes distracting chroma while preserving anti-aliased glyph edges. It deliberately avoids hard thresholding, which is too destructive for thin punctuation and coloured free text. """
     gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
     gray = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(gray)
     enhanced = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
@@ -131,7 +131,7 @@ def _enhance_grayscale_retry(bgr: np.ndarray) -> np.ndarray:
 
 
 def _result_rank(result: OCRReadResult) -> tuple[int, int, float, float, int]:
-    """ OCR confidence measures characters the recognizer *did* see. It does not prove that the crop contained every line. A complete review candidate is therefore preferable to a crop-edge/incomplete candidate with spectacular confidence (a real failure mode in comic bubbles). """
+    """ Rank retry candidates by safety/completeness before raw confidence. OCR confidence measures characters the recognizer *did* see. It does not prove that the crop contained every line. A complete review candidate is therefore preferable to a crop-edge/incomplete candidate with spectacular confidence (a real failure mode in comic bubbles). """
     quality_rank = {"reject": 0, "unknown": 0, "review": 1, "good": 2}
     completeness_rank = 0 if result.quality_reason in _COMPLETENESS_REASONS else 1
     coverage = result.coverage if result.coverage is not None else -1.0
@@ -156,7 +156,7 @@ def _should_selective_retry(result: OCRReadResult, image: np.ndarray) -> bool:
 
 
 class PaddleV6OCR:
-    """ EN/ZH use PP-OCRv6 small detection + recognition in production. Japanese remains supported here for research probes, while MultiLangOCR routes JA to MangaOCR. Korean reuses the PP-OCRv6 detector with the dedicated Korean PP-OCRv5 mobile recognizer. """
+    """ Lazy CPU-only PaddleOCR 3.x backend. EN/ZH use PP-OCRv6 small detection + recognition in production. Japanese remains supported here for research probes, while MultiLangOCR routes JA to MangaOCR. Korean reuses the PP-OCRv6 detector with the dedicated Korean PP-OCRv5 mobile recognizer. """
 
     def __init__(self) -> None:
         tier = os.getenv("MANGA_PPOCRV6_TIER", "small").strip().lower()

@@ -72,7 +72,7 @@ def _optional_env_flag(name: str) -> bool | None:
 
 
 def _tight_cgroup_memory_limit() -> bool:
-    """ The fixed-session recycle workaround exists for the 4 GiB acceptance container. Recreating a ~200 MB ONNX session every four calls is harmful on normal desktop installs, especially Windows, so do not enable it merely because the fixed model is selected. """
+    """ Return True only for Linux-style memory cgroups with a small hard cap. The fixed-session recycle workaround exists for the 4 GiB acceptance container. Recreating a ~200 MB ONNX session every four calls is harmful on normal desktop installs, especially Windows, so do not enable it merely because the fixed model is selected. """
     if os.name != "posix":
         return False
 

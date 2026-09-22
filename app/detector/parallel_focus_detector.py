@@ -110,7 +110,7 @@ def _finish_focus_from_full(
 
 
 class ParallelAdaptiveFocusCombinedTextDetector(AdaptiveFocusCombinedTextDetector):
-    """ ``ChapterPipeline`` requests ``parallel=True`` only when there is a single page worker. In that case bubble detection and the text model's full-image pass are independent and may use separate CPU/OpenVINO streams. Recovery and focus retries remain sequential because focus geometry depends on bubble/MSER proposals. With ``parallel=False`` this class is byte-for-byte behaviorally delegated to the validated adaptive detector. """
+    """ Overlap independent bubble/text prefetch only for single-page workers. ``ChapterPipeline`` requests ``parallel=True`` only when there is a single page worker. In that case bubble detection and the text model's full-image pass are independent and may use separate CPU/OpenVINO streams. Recovery and focus retries remain sequential because focus geometry depends on bubble/MSER proposals. With ``parallel=False`` this class is byte-for-byte behaviorally delegated to the validated adaptive detector. """
 
     def detect(
         self,

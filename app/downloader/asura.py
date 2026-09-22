@@ -48,7 +48,7 @@ def filter_asura_chapter_assets(urls: list[str]) -> list[str]:
 
 
 def _ordered_reader_urls(candidates: list[tuple[int, str]]) -> list[str]:
-    """ Page labels are DOM provenance, not a size heuristic. Requiring the sequence to start at Page 1 also prevents a stray page-labelled image elsewhere on the document from being appended to the current chapter. """
+    """ Return the contiguous Page 1..N reader sequence. Page labels are DOM provenance, not a size heuristic. Requiring the sequence to start at Page 1 also prevents a stray page-labelled image elsewhere on the document from being appended to the current chapter. """
     by_page: dict[int, str] = {}
     for page_number, url in candidates:
         if page_number < 1 or not is_asura_chapter_asset(url):

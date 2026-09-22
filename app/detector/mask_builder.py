@@ -57,7 +57,7 @@ def adaptive_dilate_mask(
 
 
 def _rectangle_fallback_allowed(box: BubbleBox) -> bool:
-    """ Callers may opt in with ``allow_rectangle_fallback``. The persisted v0.1 manual-box format predates that attribute and uses confidence=1.0. Detector confidence is capped at ``DETECTOR_CONFIDENCE_MAX`` strictly below 1.0, so the legacy sentinel is now collision-free rather than heuristic. """
+    """ Allow destructive rectangle masks only for explicit/manual intent. Callers may opt in with ``allow_rectangle_fallback``. The persisted v0.1 manual-box format predates that attribute and uses confidence=1.0. Detector confidence is capped at ``DETECTOR_CONFIDENCE_MAX`` strictly below 1.0, so the legacy sentinel is now collision-free rather than heuristic. """
     explicit = getattr(box, "allow_rectangle_fallback", None)
     if explicit is not None:
         return bool(explicit)
@@ -68,7 +68,7 @@ def _rectangle_fallback_allowed(box: BubbleBox) -> bool:
 
 
 def is_destructive_box_authorized(box: BubbleBox) -> bool:
-    """ A verified detector mask needs explicit ``safe_to_inpaint`` provenance. Manual/geometry-override boxes retain their explicit rectangle fallback permission. Merely carrying a pixel mask is never sufficient authority. """
+    """ Return whether a box may contribute pixels to automatic cleanup. A verified detector mask needs explicit ``safe_to_inpaint`` provenance. Manual/geometry-override boxes retain their explicit rectangle fallback permission. Merely carrying a pixel mask is never sufficient authority. """
     return bool(
         getattr(box, "safe_to_inpaint", False)
         or _rectangle_fallback_allowed(box)

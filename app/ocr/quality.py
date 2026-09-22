@@ -76,7 +76,7 @@ def _is_hangul(ch: str) -> bool:
 
 
 def _is_meaningful_punctuation_only(value: str) -> bool:
-    """ A confirmed OCR target containing ``?!``, emphatic exclamation marks or an ellipsis is valid dialogue content. A lone quote/period remains noise. The quality classifier still applies confidence and completeness checks before accepting these strings. """
+    """ Recognize common punctuation-only comic utterances conservatively. A confirmed OCR target containing ``?!``, emphatic exclamation marks or an ellipsis is valid dialogue content. A lone quote/period remains noise. The quality classifier still applies confidence and completeness checks before accepting these strings. """
 
     visible = [ch for ch in value if not ch.isspace()]
     if not visible or len(visible) > 16:
@@ -199,7 +199,7 @@ def classify_ocr_quality(
 
 
 def should_block_translation(obj: dict) -> bool:
-    """ Auto-generated text objects preserve ``auto_ocr_text``. Once a user edits ``ocr_text`` away from that value, the manual correction is allowed through even if the original machine OCR carried a reject classification. """
+    """ Block only untouched machine OCR that was classified as reject. Auto-generated text objects preserve ``auto_ocr_text``. Once a user edits ``ocr_text`` away from that value, the manual correction is allowed through even if the original machine OCR carried a reject classification. """
 
     if str(obj.get("ocr_quality") or "").strip().lower() != "reject":
         return False
