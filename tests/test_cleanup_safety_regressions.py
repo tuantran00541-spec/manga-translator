@@ -18,7 +18,7 @@ from app.image_io import encode_mask, read_image
 
 
 
-def test_one_shot_weak_text_on_mixed_page_requires_confirmation_before_cleanup():
+def test_one_shot_uses_only_normal_threshold_without_low_conf_rescue():
     detector = OneShotTextMaskDetector.__new__(OneShotTextMaskDetector)
     detector.RESCUE_CONF_THRESHOLD = 0.12
 
@@ -46,17 +46,13 @@ def test_one_shot_weak_text_on_mixed_page_requires_confirmation_before_cleanup()
 
     boxes, metrics = detector.detect(np.zeros((40, 100, 3), dtype=np.uint8))
 
-    assert [round(float(box.confidence), 2) for box in boxes] == [0.82, 0.15]
+    assert [round(float(box.confidence), 2) for box in boxes] == [0.82]
     assert boxes[0].safe_to_inpaint is True
-    assert boxes[1].safe_to_inpaint is False
-    assert boxes[1].needs_review is True
-    assert boxes[1].ocr_eligible is True
-    assert boxes[1].deferred_reason == "low_confidence_unconfirmed"
-    assert thresholds == [float(TEXT_CONF_THRESHOLD), 0.12]
+    assert thresholds == [float(TEXT_CONF_THRESHOLD)]
     assert metrics["detector_forward_calls"] == 1
     assert metrics["normal_conf_boxes"] == 1
-    assert metrics["low_conf_rescue"] == 1
-    assert metrics["low_conf_rescue_boxes"] == 1
+    assert metrics["low_conf_rescue"] == 0
+    assert metrics["low_conf_rescue_boxes"] == 0
 
 def _probability_canvas() -> np.ndarray:
     """Core glyph with anti-aliased outline, coloured edge and glow support."""
@@ -220,7 +216,7 @@ class _PipelineInpainter:
         return {}
 
 
-def test_pipeline_never_marks_post_inpaint_residue_verified(tmp_path):
+def test_pipeline_skips_post_inpaint_residue_verification_by_default(tmp_path):
     source = BubbleBox(
         10, 10, 40, 30, 0.9, np.full((20, 30), 255, np.uint8),
         source_role="text_segmenter", source_model="text_segmenter.onnx",
@@ -240,10 +236,10 @@ def test_pipeline_never_marks_post_inpaint_residue_verified(tmp_path):
 
     result = pipeline._process_page(image_path, tmp_path)
 
-    assert result["detection_state"] == "needs_review"
-    assert result["cleanup_verified"] is False
-    assert result["detection_issues"] == ["post_inpaint_text_residue"]
-    assert result["residue_regions"][0]["deferred_reason"] == "post_inpaint_text_residue"
+    assert result["detection_state"] == "verified"
+    assert result["cleanup_verified"] is True
+    assert result["detection_issues"] == []
+    assert result["residue_regions"] == []
 
 
 @pytest.mark.parametrize("background", [(255, 255, 255), (0, 0, 0)])
