@@ -1,0 +1,138 @@
+name: Adaptive mask continuation audit
+
+on:
+  push:
+    branches:
+      - experiment/adaptive-mask-continuation
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 35
+    env:
+      PYTHONPATH: ${{ github.workspace }}
+      PYTHONUNBUFFERED: "1"
+      MANGA_PROCESSING_PIPELINE: fast
+      MANGA_USE_DYNAMIC_LAMA: "1"
+      MANGA_ORT_PROVIDER: openvino
+      MANGA_ORT_REQUIRE_PROVIDER: "1"
+      MANGA_ORT_OPENVINO_SCOPE: detectors
+      MANGA_ORT_OPENVINO_THREADS: "2"
+      MANGA_ORT_OPENVINO_STREAMS: "1"
+      MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
+      OPENBLAS_NUM_THREADS: "1"
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install runtime
+        run: |
+          python -m pip install \
+            numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 \
+            onnxruntime-openvino==1.24.1 psutil==6.1.1 loguru==0.7.2 \
+            requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 \
+            playwright==1.47.0 fastapi==0.115.0 pydantic==2.9.2 \
+            filelock==3.16.1 threadpoolctl==3.6.0 pytest==8.3.5
+
+      - name: Syntax and targeted tests
+        run: |
+          python -m py_compile app/detector/bubble_detector.py app/parameters.py
+          python -m pytest -q tests/test_cleanup_safety_regressions.py tests/test_fast_inpaint_paths.py
+
+      - name: Restore models
+        id: models
+        uses: actions/cache@v4
+        with:
+          path: |
+            models/*.onnx
+            models/.e2e-provenance.json
+          key: processing-profile-models-b224548-v1
+
+      - name: Read pinned provisioner
+        if: steps.models.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: b22454827f8190655d7070b80eb20c2550beadfa
+          path: benchmark-bootstrap
+          sparse-checkout: scripts/provision_real_e2e_models.py
+          sparse-checkout-cone-mode: false
+
+      - name: Provision models
+        if: steps.models.outputs.cache-hit != 'true'
+        run: |
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple torch==2.5.1+cpu torchvision==0.20.1+cpu
+          python -m pip install --no-deps ultralytics==8.3.221 onnx==1.17.0 onnxslim==0.1.71
+          python -m pip install numpy==1.26.4 sympy==1.13.1 PyYAML==6.0.2 scipy==1.14.1 tqdm==4.67.1 matplotlib==3.9.2 pandas==2.2.3 py-cpuinfo==9.0.0 ml_dtypes==0.5.3 colorama==0.4.6 polars==1.33.1 ultralytics-thop==2.0.17
+          python benchmark-bootstrap/scripts/provision_real_e2e_models.py
+          cp benchmark-bootstrap/models/*.onnx models/
+          cp benchmark-bootstrap/models/.e2e-provenance.json models/
+
+      - name: Process visual failures
+        run: |
+          python - <<'PY'
+          import hashlib, json, os, time
+          from pathlib import Path
+          import cv2
+          import numpy as np
+
+          from app.processing_pipeline_factory import build_processing_pipeline
+          from app.manifest_utils import load_manifest_raw
+          from app.image_io import read_image, write_image
+          from app.mask_store import decode_mask_value
+
+          URL = "https://asurascans.com/comics/war-of-extinction-6f7fe6eb/chapter/1"
+          indices = [21, 48]
+          root = Path("benchmark-results/adaptive-mask-continuation")
+          root.mkdir(parents=True, exist_ok=True)
+          pipeline = build_processing_pipeline()
+          chapter_id = hashlib.sha256(
+              f"adaptive-mask-continuation:{URL}:{os.getenv('GITHUB_RUN_ID', time.time_ns())}".encode()
+          ).hexdigest()[:8]
+          manifest = pipeline.download_chapter(URL, chapter_id, workers=2)
+          pipeline.process_pages(chapter_id, indices, workers=2)
+          manifest = load_manifest_raw(chapter_id)
+
+          report={"source_sha":os.getenv("GITHUB_SHA"),"pages":[]}
+          for index in indices:
+              page=manifest["pages"][index]
+              original=read_image(Path(page["original"]))
+              clean=read_image(Path(page["clean"]))
+              divider=np.full((original.shape[0],8,original.shape[2]),127,np.uint8)
+              pair=np.concatenate([original,divider,clean],axis=1)
+              write_image(root/f"page_{index:03d}_original_vs_clean.png",pair)
+              rows=[]
+              for box in page.get("boxes") or []:
+                  mask=decode_mask_value(box.get("mask"))
+                  support=None
+                  if mask is not None and np.any(mask>127):
+                      ys,xs=np.nonzero(mask>127)
+                      support=[int(xs.min()),int(ys.min()),int(xs.max())+1,int(ys.max())+1]
+                  rows.append({
+                      "bbox":[box.get(k) for k in ("x1","y1","x2","y2")],
+                      "confidence":box.get("confidence"),
+                      "safe":box.get("safe_to_inpaint"),
+                      "deferred":box.get("deferred_reason"),
+                      "mask_pixels":int(np.count_nonzero(mask>127)) if mask is not None else 0,
+                      "mask_support_local":support,
+                  })
+              report["pages"].append({
+                  "index":index,
+                  "boxes":rows,
+                  "residue_regions":page.get("residue_regions"),
+                  "processing_metrics":page.get("processing_metrics"),
+              })
+          (root/"report.json").write_text(json.dumps(report,indent=2)+"\n")
+          print(json.dumps(report))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: adaptive-mask-continuation-${{ github.run_id }}
+          path: benchmark-results/adaptive-mask-continuation/
+          retention-days: 7
