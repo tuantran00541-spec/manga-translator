@@ -295,10 +295,11 @@ def test_free_text_residue_verifier_can_confirm_adjacent_fragment_outside_old_bb
 
     roi = detector._tight_verified_mask_roi(image.shape, source)
     assert roi is not None
-    assert roi[0] <= source.x1 - min(
-        int(DETECTOR_RESIDUE_VERIFY_FREE_TEXT_PAD),
-        source.x1,
-    )
+    # The verifier expands from the actual verified-mask support, not from the
+    # detector rectangle. It still must reach beyond the old bbox on both sides
+    # so a clipped adjacent word can be reconsidered.
+    assert roi[0] < source.x1
+    assert roi[2] > source.x2
 
     residue = detector.verify_post_inpaint_residue(image, [source])
 
