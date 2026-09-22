@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import requests
 
@@ -33,6 +33,7 @@ class TranslationResult:
     usage: dict
     estimated_cost_usd: float
     model: str
+    font_choices: dict[str, dict] = field(default_factory=dict)
 
 
 def _language_name(code: str) -> str:
@@ -153,7 +154,9 @@ class OpenAICompatibleTranslator:
             f"Translate from {source_name} to {target_name}. "
             "Keep dialogue natural and concise enough for speech balloons. Preserve names, honorifics, "
             "sound-effect intent, punctuation, and line breaks when useful. Do not explain. "
-            "Return valid JSON exactly as {\"translations\": {\"<id>\": \"<translated text>\"}}. "
+            "Return valid JSON with translations exactly as {\"translations\": {\"<id>\": \"<translated text>\"}}. "
+            "Optionally include \"font_choices\": {\"<id>\": {\"font_id\": \"catalog id\", \"font_mode\": \"ai\"}}; "
+            "font_id must be one of the installed catalog IDs or \"auto\". "
             "Every input id must appear exactly once and no extra ids may be invented."
         )
         user = json.dumps(
@@ -212,6 +215,20 @@ class OpenAICompatibleTranslator:
         if not isinstance(raw_translations, dict):
             raise RuntimeError(f"{self.provider_label} translation payload is not an object")
 
+        raw_font_choices = parsed.get("font_choices", {})
+        font_choices: dict[str, dict] = {}
+        if isinstance(raw_font_choices, dict):
+            for item_id, choice in raw_font_choices.items():
+                if item_id not in expected_ids or not isinstance(choice, dict):
+                    continue
+                font_id = choice.get("font_id")
+                font_mode = choice.get("font_mode", "ai")
+                if isinstance(font_id, str) and isinstance(font_mode, str):
+                    font_choices[str(item_id)] = {
+                        "font_id": font_id.strip(),
+                        "font_mode": font_mode.strip().lower() or "ai",
+                    }
+
         expected_ids = {str(item["id"]) for item in items}
         translations: dict[str, str] = {}
         for item_id in expected_ids:
@@ -229,6 +246,7 @@ class OpenAICompatibleTranslator:
             usage=usage,
             estimated_cost_usd=actual_cost,
             model=str(data.get("model") or self.model),
+            font_choices=font_choices,
         )
 
 

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import requests
@@ -21,11 +21,14 @@ from app.visual_qc.gemini_interactions import (
 
 _TRANSLATIONS_SCHEMA = {
     "type": "object",
-    "properties": {"translations": {"type": "array", "items": {
-        "type": "object",
-        "properties": {"id": {"type": "string"}, "translated_text": {"type": "string"}},
-        "required": ["id", "translated_text"],
-    }}},
+    "properties": {
+        "translations": {"type": "array", "items": {
+            "type": "object",
+            "properties": {"id": {"type": "string"}, "translated_text": {"type": "string"}},
+            "required": ["id", "translated_text"],
+        }},
+        "font_choices": {"type": "object"},
+    },
     "required": ["translations"],
 }
 
@@ -36,6 +39,7 @@ class VisionTranslationResult:
     model: str
     usage: dict
     estimated_cost_usd: float | None
+    font_choices: dict[str, dict] = field(default_factory=dict)
 
 
 def parse_vision_translation(content: str, expected_ids: set[str]) -> dict[str, str]:
@@ -64,6 +68,28 @@ def parse_vision_translation(content: str, expected_ids: set[str]) -> dict[str, 
     if set(results) != expected_ids:
         raise RuntimeError("Vision model omitted one or more text-object IDs")
     return results
+
+
+def _parse_vision_payload(content: str, expected_ids: set[str]) -> tuple[dict[str, str], dict[str, dict]]:
+    """Parse translations and optional AI font choices without widening IDs."""
+    source = str(content or "").strip()
+    if source.startswith(chr(96) * 3):
+        source = source.split("\n", 1)[-1].rsplit(chr(96) * 3, 1)[0].strip()
+    try:
+        data = json.loads(source)
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError("Vision model returned invalid JSON") from exc
+    translations = parse_vision_translation(source, expected_ids)
+    choices: dict[str, dict] = {}
+    raw_choices = data.get("font_choices") if isinstance(data, dict) else None
+    if isinstance(raw_choices, dict):
+        for item_id, choice in raw_choices.items():
+            if item_id not in expected_ids or not isinstance(choice, dict):
+                continue
+            font_id, font_mode = choice.get("font_id"), choice.get("font_mode", "ai")
+            if isinstance(font_id, str) and isinstance(font_mode, str):
+                choices[str(item_id)] = {"font_id": font_id.strip(), "font_mode": font_mode.strip().lower() or "ai"}
+    return translations, choices
 
 
 class VisionPageTranslator:
@@ -96,10 +122,11 @@ class VisionPageTranslator:
             "source_text is an optional OCR hint; it can be blank or wrong. "
             "Keep dialogue concise to fit its existing bubble. "
             "Only translate the listed text objects. Never change or invent IDs. "
-            "Do not return geometry, color, font, size or images: they are already stored. "
+            "Do not return geometry, color, size or images: they are already stored. "
+            "You may optionally return font_choices with an installed catalog font_id and font_mode=ai. "
             "If a glyph is genuinely unreadable, return translated_text empty for its ID. "
             "Return JSON only as "
-            '{"translations":[{"id":"existing id","translated_text":"translated text"}]}.'
+            '{"translations":[{"id":"existing id","translated_text":"translated text"}],"font_choices":{"existing id":{"font_id":"catalog id","font_mode":"ai"}}}.'
             "\n" + json.dumps(
                 {"image_width": w, "image_height": h, "objects": objects},
                 ensure_ascii=False, separators=(",", ":"),
@@ -154,10 +181,10 @@ class VisionPageTranslator:
             answer = _extract_output_text(body)
         except (TypeError, KeyError, ValueError) as exc:
             raise RuntimeError(f"{self.provider.label} returned no translation text") from exc
-        translations = parse_vision_translation(answer, ids)
+        translations, font_choices = _parse_vision_payload(answer, ids)
         usage = body.get("usage") if isinstance(body.get("usage"), dict) else {}
         cost = _usage_cost_usd(usage) if self.provider.tracks_cost else None
-        return VisionTranslationResult(translations, str(body.get("model") or self.model), usage, cost)
+        return VisionTranslationResult(translations, str(body.get("model") or self.model), usage, cost, font_choices)
 
     def _gemini(self, prompt, original, cleaned, *, api_key, ids, max_tokens):
         payload = {
@@ -189,7 +216,9 @@ class VisionPageTranslator:
             answer = gemini_output_text(body)
         except (TypeError, KeyError, ValueError) as exc:
             raise RuntimeError("Gemini returned no translation text") from exc
+        translations, font_choices = _parse_vision_payload(answer, ids)
         return VisionTranslationResult(
-            parse_vision_translation(answer, ids), self.model,
+            translations, self.model,
             body.get("usage", {}) if isinstance(body.get("usage"), dict) else {}, None,
+            font_choices,
         )

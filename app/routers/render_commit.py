@@ -14,6 +14,7 @@ from app.manifest_utils import (
     publish_then_commit, save_manifest_raw,
 )
 from app.render.identity import render_input_signature, stamp_render_artifact
+from app.render.font_selection import resolve_object_font
 from app.render.page_renderer import cleanup_tmp, render_boxes_legacy, render_text_objects, style_get
 from app.schemas import RenderRequest
 from app.security import validate_chapter_id
@@ -37,9 +38,48 @@ def _request_style_maps(req: RenderRequest) -> dict[str, dict]:
     }
 
 
-def _render_snapshot(image: Image.Image, req: RenderRequest, page: dict, drafts: dict, styles: dict[str, dict]) -> int:
+def _resolve_snapshot_fonts(
+    page: dict,
+    source_image: Image.Image | None,
+    styles: dict[str, dict],
+) -> None:
+    resolved = styles.setdefault("resolved_fonts", {})
+    for obj in page.get("text_objects") or []:
+        if not isinstance(obj, dict) or not obj.get("id"):
+            continue
+        oid = str(obj["id"])
+        requested = style_get(styles.get("fonts", {}), oid)
+        if requested is not None:
+            obj.setdefault("style", {})["font"] = str(requested)
+            obj["font_selection_mode"] = "auto" if str(requested).lower() == "auto" else "user"
+        region = obj.get("ocr_text_region") or obj.get("region") or {}
+        try:
+            coords = tuple(int(region[key]) for key in ("x1", "y1", "x2", "y2"))
+        except (KeyError, TypeError, ValueError):
+            coords = None
+        font_id, mode, metadata = resolve_object_font(
+            obj,
+            source_image=source_image,
+            region=coords,
+            source_text=obj.get("ocr_text") or obj.get("source_text") or "",
+            ai_font_id=obj.get("font_ai_id"),
+            ai_font_mode="ai" if obj.get("font_ai_id") else None,
+        )
+        styles.setdefault("fonts", {})[oid] = font_id
+        resolved[oid] = {"font": font_id, "font_selection_mode": mode, "font_match": metadata}
+
+
+def _render_snapshot(
+    image: Image.Image,
+    req: RenderRequest,
+    page: dict,
+    drafts: dict,
+    styles: dict[str, dict],
+    source_image: Image.Image | None = None,
+) -> int:
     text_objects = page.get("text_objects") or []
     if text_objects:
+        _resolve_snapshot_fonts(page, source_image or image, styles)
         active_text_objects = [
             obj
             for obj in text_objects
@@ -119,6 +159,11 @@ def _persist_text_object_state(page: dict, req: RenderRequest, styles: dict[str,
         _set_style_value(style, "cornerRadius", style_get(styles["corner_radii"], oid), stringify=True)
         _set_style_value(style, "horizontalAlign", style_get(styles["horizontal_aligns"], oid))
         _set_style_value(style, "verticalAlign", style_get(styles["vertical_aligns"], oid))
+        resolved = (styles.get("resolved_fonts") or {}).get(str(oid))
+        if resolved:
+            style["font"] = resolved["font"]
+            obj["font_selection_mode"] = resolved["font_selection_mode"]
+            obj["font_match"] = resolved["font_match"]
 
 
 def _persist_legacy_drafts(manifest: dict, req: RenderRequest, styles: dict[str, dict]) -> None:
@@ -227,8 +272,17 @@ def render_page(req: RenderRequest) -> dict:
         )
         raise HTTPException(500, "Cannot open base image") from exc
 
+    source_image = image
+    original_value = page.get("original")
+    if original_value:
+        try:
+            source_image = Image.open(Path(str(original_value))).convert("RGB")
+        except (FileNotFoundError, OSError):
+            # Matching is best-effort; the cleaned base remains a safe fallback.
+            source_image = image
+
     styles = _request_style_maps(req)
-    rendered_count = _render_snapshot(image, req, page, drafts, styles)
+    rendered_count = _render_snapshot(image, req, page, drafts, styles, source_image=source_image)
 
     out_dir = OUTPUT_DIR / req.chapter_id
     out_dir.mkdir(parents=True, exist_ok=True)

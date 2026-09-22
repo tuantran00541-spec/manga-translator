@@ -70,6 +70,9 @@ function _captureTextState(obj) {
     style: obj.style
       ? JSON.parse(JSON.stringify(obj.style))
       : JSON.parse(JSON.stringify(DEFAULT_TEXT_OBJECT_STYLE)),
+    font_selection_mode: obj.font_selection_mode || null,
+    font_match: obj.font_match ? JSON.parse(JSON.stringify(obj.font_match)) : null,
+    font_ai_id: obj.font_ai_id || null,
   };
 }
 
@@ -98,6 +101,9 @@ async function _persistTextObjectsBulk(chapterId, items) {
         ocr_text: p.ocr_text,
         translation: p.translation,
         style: p.style,
+        font_selection_mode: p.font_selection_mode,
+        font_match: p.font_match,
+        font_ai_id: p.font_ai_id,
       })),
     }),
   });
@@ -120,6 +126,9 @@ async function _persistTextObjectsIndividually(chapterId, items) {
         ocr_text: p.ocr_text,
         translation: p.translation,
         style: p.style,
+        font_selection_mode: p.font_selection_mode,
+        font_match: p.font_match,
+        font_ai_id: p.font_ai_id,
       });
     } catch (err) {
       failures.push(err);

@@ -5,6 +5,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 from app.config import DEFAULT_FONT
+from app.render.font_catalog import list_font_records, resolve_font_id
 from app.parameters import (
     FONT_CACHE_SIZE,
     MAX_FONT_SIZE,
@@ -69,25 +70,14 @@ def auto_detect_text_color(image: Image.Image, box: tuple[int, int, int, int]) -
 
 
 def get_font_path(font_name: str = "default") -> Path:
-    if not font_name or font_name == "default":
-        return DEFAULT_FONT
-    font_dir = DEFAULT_FONT.parent
-    font_dir_resolved = font_dir.resolve()
-    candidate = font_dir / font_name
-    if candidate.exists() and candidate.is_file():
-        if not candidate.resolve().is_relative_to(font_dir_resolved):
-            return DEFAULT_FONT
-        return candidate
-    candidate_ttf = font_dir / f"{font_name}.ttf"
-    if candidate_ttf.exists() and candidate_ttf.is_file():
-        if not candidate_ttf.resolve().is_relative_to(font_dir_resolved):
-            return DEFAULT_FONT
-        return candidate_ttf
-    for f in font_dir.glob("*.[tT][tT][fF]"):
-        if f.stem.lower() == font_name.lower() or f.name.lower() == font_name.lower():
-            if not f.resolve().is_relative_to(font_dir_resolved):
-                return DEFAULT_FONT
-            return f
+    try:
+        return resolve_font_id(font_name)
+    except (OSError, ValueError):
+        # Keep the historical flat-file fallback for old manifests.
+        font_dir = DEFAULT_FONT.parent
+        for f in font_dir.glob("*.[tT][tT][fF]"):
+            if f.stem.lower() == str(font_name).lower() or f.name.lower() == str(font_name).lower():
+                return f.resolve()
     win_fonts = Path("C:/Windows/Fonts")
     if win_fonts.exists():
         win_fonts_resolved = win_fonts.resolve()
@@ -100,20 +90,23 @@ def get_font_path(font_name: str = "default") -> Path:
 
 
 def list_available_fonts() -> list[dict[str, str]]:
-    font_dir = DEFAULT_FONT.parent
-    fonts = []
-    seen = set()
-
-    if DEFAULT_FONT.exists():
-        fonts.append({"id": "default", "name": "Mặc định (Comic)"})
-        seen.add("default")
-
-    if font_dir.exists():
-        for f in sorted(font_dir.glob("*.[tT][tT][fF]")):
-            if f.stem.lower() not in seen:
-                name = f.stem.replace("_", " ").replace("-", " ").title()
-                fonts.append({"id": f.stem, "name": name})
-                seen.add(f.stem.lower())
+    fonts = [{"id": "default", "name": "Mặc định (Comic)", "category": "default", "tags": []}]
+    seen = {"default"}
+    for item in list_font_records():
+        if item["id"] in seen:
+            continue
+        fonts.append(
+            {
+                "id": item["id"],
+                "name": item["name"],
+                "category": item["category"],
+                "tags": item["tags"],
+                "vietnamese": item["vietnamese"],
+                "license": item["license"],
+                "source_url": item["source_url"],
+            }
+        )
+        seen.add(item["id"])
 
     win_fonts = Path("C:/Windows/Fonts")
     popular = [
@@ -128,7 +121,7 @@ def list_available_fonts() -> list[dict[str, str]]:
     if win_fonts.exists():
         for fname, dname in popular:
             if fname not in seen and (win_fonts / f"{fname}.ttf").exists():
-                fonts.append({"id": fname, "name": dname})
+                fonts.append({"id": fname, "name": dname, "category": "system", "tags": []})
                 seen.add(fname)
 
     return fonts

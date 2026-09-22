@@ -21,6 +21,7 @@ from app.manifest_utils import (
     urlify_manifest,
 )
 from app.ocr.quality import should_block_translation
+from app.render.font_catalog import FontNotFoundError, resolve_font_id
 from app.secret_store import (
     SecretStoreUnavailable,
     get_provider_api_key,
@@ -106,6 +107,29 @@ def _find_object(page: dict, object_id: str) -> dict | None:
         ),
         None,
     )
+
+
+def _apply_ai_font_choice(obj: dict, choice: dict | None) -> None:
+    """Persist a model font hint only after validating its catalog ID."""
+    if not isinstance(choice, dict):
+        return
+    font_id = str(choice.get("font_id") or "").strip()
+    font_mode = str(choice.get("font_mode") or "ai").strip().lower()
+    if not font_id:
+        return
+    if font_id == "auto":
+        obj["font_ai_id"] = "auto"
+        obj["font_selection_mode"] = "auto"
+        obj.setdefault("style", {})["font"] = "auto"
+        return
+    try:
+        resolve_font_id(font_id)
+    except (FontNotFoundError, OSError, ValueError):
+        obj["font_ai_rejection"] = {"font_id": font_id, "reason": "unknown_catalog_id"}
+        return
+    if font_mode == "ai" and obj.get("font_selection_mode") != "user":
+        obj["font_ai_id"] = font_id
+        obj["font_selection_mode"] = "ai"
 
 
 @router.post("/chapter")
@@ -253,6 +277,7 @@ async def translate_chapter(req: TranslateChapterRequest) -> dict:
             obj["translation_model"] = translated.model
             obj["translation_input_text"] = str(item["text"])
             obj["auto_translation"] = value
+            _apply_ai_font_choice(obj, getattr(translated, "font_choices", {}).get(str(item["id"])))
             changed_pages.add(page_index)
             committed += 1
 
@@ -433,6 +458,7 @@ async def translate_page_with_images(req: TranslateVisionPageRequest) -> dict:
             obj["translation_model"] = translated.model
             obj["translation_input_text"] = candidate["text"]
             obj["auto_translation"] = value
+            _apply_ai_font_choice(obj, getattr(translated, "font_choices", {}).get(candidate["id"]))
             committed += 1
             changed = True
         if changed:

@@ -165,20 +165,59 @@ function buildTextSection(body, panel, obj, pageIndex) {
   if (fonts.length === 0) {
     fontSelect.innerHTML = '<option value="default">Mặc định (Comic)</option>';
   } else {
+    const autoOpt = document.createElement("option");
+    autoOpt.value = "auto";
+    autoOpt.textContent = "Tự động · gần giống chữ gốc";
+    fontSelect.appendChild(autoOpt);
+    const groups = new Map();
     fonts.forEach((f) => {
+      if (!f || f.id === "auto") return;
+      const category = f.category || "other";
+      let group = groups.get(category);
+      if (!group) {
+        group = document.createElement("optgroup");
+        group.label = category === "default" ? "Mặc định" : category;
+        groups.set(category, group);
+        fontSelect.appendChild(group);
+      }
       const opt = document.createElement("option");
       opt.value = f.id;
       opt.textContent = f.name;
-      fontSelect.appendChild(opt);
+      group.appendChild(opt);
     });
   }
-  fontSelect.value = style.font || "default";
+  fontSelect.value = obj.font_selection_mode === "auto" ? "auto" : (style.font || "default");
   fontSelect.addEventListener("change", () => {
     style.font = fontSelect.value;
+    obj.font_selection_mode = fontSelect.value === "auto" ? "auto" : "user";
+    obj.font_ai_id = null;
+    obj.font_match = null;
     panel.dataset.font = fontSelect.value;
     schedule();
   });
   fontToolbar.appendChild(fontSelect);
+
+  const suggestBtn = document.createElement("button");
+  suggestBtn.type = "button";
+  suggestBtn.className = "ui-btn ui-btn-ghost ui-btn-compact font-match-btn";
+  suggestBtn.textContent = "Gợi ý gần nhất";
+  suggestBtn.title = "So sánh chữ gốc với kho font đã cài";
+  suggestBtn.addEventListener("click", async () => {
+    suggestBtn.disabled = true;
+    try {
+      const result = await window.matchFontForObject(pageIndex, obj.id);
+      const best = result?.matches?.[0];
+      if (best) {
+        obj.font_match = result.matches;
+        showToast(`Gợi ý: ${best.font_id} (${best.confidence})`, "info");
+      }
+    } catch (err) {
+      showToast("Không thể so khớp font: " + err.message, "info");
+    } finally {
+      suggestBtn.disabled = false;
+    }
+  });
+  fontToolbar.appendChild(suggestBtn);
 
   const boldBtn = document.createElement("button");
   boldBtn.type = "button";

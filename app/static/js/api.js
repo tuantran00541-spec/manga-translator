@@ -607,7 +607,13 @@ async function renderTranslations(pageIndex) {
     translations[obj.id] = obj.translation.trim();
     const s = obj.style || {};
     colors[obj.id] = s.color || "auto";
-    fonts[obj.id] = s.font || "default";
+    if (obj.font_selection_mode === "auto") {
+      fonts[obj.id] = "auto";
+    } else if (obj.font_selection_mode === "user") {
+      fonts[obj.id] = s.font || "default";
+    } else if (!obj.font_ai_id && s.font && s.font !== "default") {
+      fonts[obj.id] = s.font;
+    }
     font_sizes[obj.id] = s.fontSize || "auto";
     bolds[obj.id] = s.bold === true;
     stroke_widths[obj.id] = s.strokeWidth || "auto";
@@ -688,6 +694,30 @@ async function loadFonts() {
     showToast("Không thể tải danh sách phông chữ, dùng phông mặc định.", "info");
   }
 }
+
+async function matchFontForObject(pageIndex, objectId, category = null) {
+  if (!currentChapterId) throw new Error("Chưa chọn chương");
+  const page = currentManifest?.pages?.[pageIndex];
+  const obj = (page?.text_objects || []).find((item) => item?.id === objectId);
+  if (!obj) throw new Error("Không tìm thấy vùng chữ");
+  const resp = await fetch("/api/fonts/match", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      chapter_id: currentChapterId,
+      page_index: pageIndex,
+      object_id: objectId,
+      source_text: obj.ocr_text || null,
+      category,
+      top_k: 3,
+    }),
+  });
+  const data = await parseApiResponse(resp);
+  if (!resp.ok) throw new Error(getErrorMessage(resp.status, data));
+  obj.font_match = data.matches || [];
+  return data;
+}
+window.matchFontForObject = matchFontForObject;
 
 const _preserveRegionSaveStates = new Map();
 

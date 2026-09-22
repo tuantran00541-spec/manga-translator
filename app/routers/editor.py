@@ -434,6 +434,12 @@ def update_text_object(req: UpdateTextObjectRequest) -> dict:
         changes["translation"] = req.translation
     if req.style is not None:
         changes["style"] = req.style.model_dump()
+    if req.font_selection_mode is not None:
+        changes["font_selection_mode"] = req.font_selection_mode
+    if req.font_match is not None:
+        changes["font_match"] = req.font_match
+    if req.font_ai_id is not None:
+        changes["font_ai_id"] = req.font_ai_id
     try:
         manifest = pipeline.update_text_object(
             req.chapter_id, req.page_index, req.id, changes
@@ -473,6 +479,12 @@ def update_text_objects_bulk(req: BulkUpdateTextObjectsRequest) -> dict:
                 changes["translation"] = item.translation
             if item.style is not None:
                 changes["style"] = item.style.model_dump()
+            if item.font_selection_mode is not None:
+                changes["font_selection_mode"] = item.font_selection_mode
+            if item.font_match is not None:
+                changes["font_match"] = item.font_match
+            if item.font_ai_id is not None:
+                changes["font_ai_id"] = item.font_ai_id
             manifest = pipeline.update_text_object(req.chapter_id, item.page_index, item.id, changes)
             if item.ocr_text is not None and item.translation is None:
                 manifest = _reconcile_translation_after_ocr_edit(item)

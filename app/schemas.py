@@ -147,6 +147,30 @@ class RenderRequest(BaseModel):
         return v
 
 
+class FontMatchRequest(BaseModel):
+    """Request a closest-font suggestion for one source lettering object."""
+
+    chapter_id: str
+    page_index: int = Field(ge=0)
+    object_id: str
+    source_text: str | None = None
+    category: str | None = None
+    top_k: int = Field(default=3, ge=1, le=5)
+
+    @field_validator("object_id")
+    @classmethod
+    def _object_id(cls, value: str) -> str:
+        return _validate_text_object_id(value)
+
+    @field_validator("source_text")
+    @classmethod
+    def _source_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = str(value).strip()
+        return value[:MAX_RENDER_TEXT_LEN] or None
+
+
 class SaveDraftRequest(BaseModel):
     chapter_id: str
     drafts: dict[str, dict] = Field(default_factory=dict)
@@ -399,6 +423,9 @@ class CreateTextObjectRequest(BaseModel):
     page_index: int = Field(ge=0)
     shape: str = "rectangle"
     region: TextObjectRegion
+    font_selection_mode: Literal["default", "user", "ai", "auto"] | None = None
+    font_match: dict | None = None
+    font_ai_id: str | None = None
 
     @field_validator("shape")
     @classmethod
@@ -420,6 +447,9 @@ class UpdateTextObjectRequest(BaseModel):
     ocr_text: str | None = None
     translation: str | None = None
     style: TextObjectStyle | None = None
+    font_selection_mode: Literal["default", "user", "ai", "auto"] | None = None
+    font_match: dict | None = None
+    font_ai_id: str | None = None
 
     @field_validator("id")
     @classmethod
@@ -462,6 +492,9 @@ class BulkTextObjectUpdateItem(BaseModel):
     ocr_text: str | None = None
     translation: str | None = None
     style: TextObjectStyle | None = None
+    font_selection_mode: Literal["default", "user", "ai", "auto"] | None = None
+    font_match: dict | None = None
+    font_ai_id: str | None = None
 
     @field_validator("id")
     @classmethod
