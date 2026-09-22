@@ -858,6 +858,9 @@ function buildChapterExportButton() {
   return button;
 }
 
+window.buildChapterTranslateControls = buildChapterTranslateControls;
+window.buildChapterExportButton = buildChapterExportButton;
+
 function renderEditor() {
   const container = document.getElementById("page-view");
   if (!container) return;
