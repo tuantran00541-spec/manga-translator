@@ -11,13 +11,27 @@ Detect text, clean artwork, OCR, translate, typeset, review, render, and export 
 
 **Import → Slice → Detect → Clean → Review → OCR → Translate → Letter → Render → Export**
 
+### Real production demo — Chapter 60
+
 <p align="center">
-  <img src="https://raw.githubusercontent.com/tuantran00541-spec/manga-translator/trial/chapter-render-60/trials/chapter-60/demo/raw.jpg" alt="Raw manga slice" width="32%">
-  <img src="https://raw.githubusercontent.com/tuantran00541-spec/manga-translator/trial/chapter-render-60/trials/chapter-60/demo/detector.jpg" alt="Text detector overlay" width="32%">
-  <img src="https://raw.githubusercontent.com/tuantran00541-spec/manga-translator/trial/chapter-render-60/trials/chapter-60/demo/clean.jpg" alt="Cleaned manga slice" width="32%">
+  <strong>Slice 005_02</strong>
+</p>
+<p align="center">
+  <img src="https://raw.githubusercontent.com/tuantran00541-spec/manga-translator/trial/chapter-render-60/trials/chapter-60/demo/01-raw.jpg" alt="Chapter 60 slice 005_02 raw" width="32%">
+  <img src="https://raw.githubusercontent.com/tuantran00541-spec/manga-translator/trial/chapter-render-60/trials/chapter-60/demo/01-detector.jpg" alt="Chapter 60 slice 005_02 detector" width="32%">
+  <img src="https://raw.githubusercontent.com/tuantran00541-spec/manga-translator/trial/chapter-render-60/trials/chapter-60/demo/01-clean.jpg" alt="Chapter 60 slice 005_02 clean" width="32%">
 </p>
 
-<p align="center"><sub>One real chapter slice through the production pipeline: RAW → text detection → CLEAN.</sub></p>
+<p align="center">
+  <strong>Slice 000_00</strong>
+</p>
+<p align="center">
+  <img src="https://raw.githubusercontent.com/tuantran00541-spec/manga-translator/trial/chapter-render-60/trials/chapter-60/demo/02-raw.jpg" alt="Chapter 60 slice 000_00 raw" width="32%">
+  <img src="https://raw.githubusercontent.com/tuantran00541-spec/manga-translator/trial/chapter-render-60/trials/chapter-60/demo/02-detector.jpg" alt="Chapter 60 slice 000_00 detector" width="32%">
+  <img src="https://raw.githubusercontent.com/tuantran00541-spec/manga-translator/trial/chapter-render-60/trials/chapter-60/demo/02-clean.jpg" alt="Chapter 60 slice 000_00 clean" width="32%">
+</p>
+
+<p align="center"><sub>Two real Chapter 60 slices through the production pipeline: RAW → text detection → CLEAN.</sub></p>
 
 > **Automation proposes. Editorial state decides. Published artifacts must match the current state.**
 
@@ -176,9 +190,9 @@ Examples include:
 - OCR/translation/render visual proofs from **trial/chapter-render-251**
 - long-page and mixed-width review coverage from later chapter runs
 
-The focused demo above is a real slice from `trial/chapter-render-60`: `RAW → text detector → CLEAN`.
+The demo above uses two real Chapter 60 slices selected from the imported production artifact for visual richness. Each set shows the same slice as **RAW → detector overlay → CLEAN**, with the detector boxes and inpaint result produced by the production pipeline.
 
-The three images come from the same production slice (`011_00`) and are kept beside the historical trial evidence. Full runtime chapter images remain artifacts rather than permanent Git fixtures.
+The generated proof images live beside the historical trial evidence in `trials/chapter-60/demo/`. Full runtime chapter images remain artifacts rather than permanent Git fixtures.
 
 ## Quick start
 
