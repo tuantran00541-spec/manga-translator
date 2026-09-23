@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
   actions: read
 
 concurrency:
@@ -32,6 +32,7 @@ jobs:
       OPENBLAS_NUM_THREADS: "1"
       CHAPTER_ID: f1cd0121
       CHAPTER_URL: https://asurascans.com/comics/a-cadet-becomes-a-prophet-53fc8424/chapter/60
+      IMPORT_RUN_ID: "34663949045"
       IMPORT_ARTIFACT: 01-import-f1cd0121
     steps:
       - uses: actions/checkout@v4
@@ -85,9 +86,6 @@ jobs:
         run: |
           rm -rf checkpoint/01-import checkpoint/02-clean-review
           mkdir -p checkpoint/01-import checkpoint/02-clean-review
-          IMPORT_RUN_ID="$(gh run list --workflow .github/workflows/chapter-60-import.yml --branch trial/chapter-render-60 --limit 1 --json databaseId,status,conclusion --jq '.[0].databaseId')"
-          test -n "$IMPORT_RUN_ID"
-          gh run watch "$IMPORT_RUN_ID" --exit-status
           gh run download "$IMPORT_RUN_ID" -n "$IMPORT_ARTIFACT" -D checkpoint/01-import
           test -f checkpoint/01-import/manifest.json
           test -d checkpoint/01-import/raw/sliced
@@ -305,76 +303,6 @@ jobs:
           save_cards(object_cards,'objects',2,10)
           print(f'generated review sheets: full={len(full)} objects={len(object_cards)}')
           PY
-
-      - name: Publish focused pipeline demo
-        env:
-          CHAPTER_ID: f1cd0121
-        run: |
-          python - <<'PY'
-          import json, os
-          from pathlib import Path
-          from PIL import Image, ImageDraw
-
-          chapter_id=os.environ['CHAPTER_ID']
-          manifest=json.loads((Path('data/processed')/chapter_id/'manifest.json').read_text(encoding='utf-8'))
-          rows=json.loads(Path('checkpoint/02-clean-review/review-index.json').read_text(encoding='utf-8'))
-          box_rows=json.loads(Path('checkpoint/02-clean-review/box-index.json').read_text(encoding='utf-8'))
-          candidates=[r for r in rows if 2 <= int(r.get('box_count') or 0) <= 8 and int(r.get('free_text_like_boxes') or 0) > 0]
-          if not candidates:
-              candidates=[r for r in rows if int(r.get('box_count') or 0) > 0]
-          if not candidates:
-              raise RuntimeError('No detected text slice available for demo')
-          selected=max(candidates,key=lambda r:(int(r.get('free_text_like_boxes') or 0),-abs(int(r['page_index'])-24)))
-          pi=int(selected['page_index'])
-          page=manifest['pages'][pi]
-          raw_path=Path(str(page['original']))
-          clean_path=Path(str(page['clean']))
-          if not raw_path.is_file() or not clean_path.is_file():
-              raise RuntimeError(f'Missing raw/clean slice: {raw_path} {clean_path}')
-
-          out=Path('trials/chapter-60/demo')
-          out.mkdir(parents=True,exist_ok=True)
-          with Image.open(raw_path) as im:
-              raw=im.convert('RGB')
-              raw.save(out/'raw.jpg',quality=92,optimize=True)
-              detector=raw.copy()
-          draw=ImageDraw.Draw(detector)
-          page_boxes=[b for b in box_rows if int(b.get('page_index',-1))==pi]
-          text_boxes=[]
-          for b in page_boxes:
-              label=' '.join(str(b.get(k) or '') for k in ('semantic_type','class_name')).lower()
-              if any(token in label for token in ('text','sfx','free')) and 'bubble' not in label:
-                  text_boxes.append(b)
-          chosen=text_boxes or page_boxes
-          for b in chosen:
-              reg=b.get('region') or {}
-              vals=[reg.get(k) for k in ('x1','y1','x2','y2')]
-              if any(v is None for v in vals):
-                  continue
-              x1,y1,x2,y2=map(int,vals)
-              draw.rectangle((x1,y1,x2,y2),outline='red',width=max(3,min(12,round(min(detector.size)/500))))
-          detector.save(out/'detector.jpg',quality=92,optimize=True)
-          with Image.open(clean_path) as im:
-              im.convert('RGB').save(out/'clean.jpg',quality=92,optimize=True)
-          meta={
-              'page_index':pi,
-              'source_page':page.get('source_page'),
-              'slice_index':page.get('slice_index'),
-              'detector_boxes':len(chosen),
-              'text_boxes':len(text_boxes),
-              'source_width':raw.width,
-              'source_height':raw.height,
-          }
-          (out/'README.json').write_text(json.dumps(meta,ensure_ascii=False,indent=2)+'\\n',encoding='utf-8')
-          print(json.dumps(meta,ensure_ascii=False))
-          PY
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add trials/chapter-60/demo
-          if ! git diff --cached --quiet; then
-            git commit -m "docs: publish chapter 60 pipeline demo"
-            git push origin HEAD:trial/chapter-render-60
-          fi
 
       - name: Pack durable clean checkpoint
         if: always()
