@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import argparse
+from io import BytesIO
 import json
 from pathlib import Path
 
+from PIL import Image
 from playwright.sync_api import Page, expect, sync_playwright
 
 
@@ -377,6 +379,39 @@ def _canvas_metrics(page: Page) -> dict[str, float | int]:
     )
 
 
+def _exercise_long_image(page: Page, artifacts: Path, name: str) -> None:
+    page.locator('.sidebar-link[data-route="home"]').click()
+    expect(page.locator('.recent-card[data-chapter-id="f00d0042"]')).to_be_visible()
+    page.locator('.recent-card[data-chapter-id="f00d0042"]').click()
+    _wait_for_review(page)
+    image = page.locator('.review-strip-slice[data-page-index="0"] img')
+    expect(page.locator('.review-stitched-image')).to_have_attribute("data-strip-slices", "1")
+    expect(page.locator('.review-stitched-image')).to_have_attribute("data-source-height", "42000")
+    expect(image).to_have_js_property("naturalWidth", 1200)
+    expect(image).to_have_js_property("naturalHeight", 42000)
+    viewport = page.locator('.review-document-viewport')
+
+    def has_band(color: str, output: Path) -> None:
+        shot = viewport.screenshot(path=str(output))
+        with Image.open(BytesIO(shot)) as screenshot:
+            pixels = screenshot.convert("RGB")
+            x = pixels.width // 2
+            visible = [pixels.getpixel((x, y)) for y in range(pixels.height)]
+        if color == "red":
+            found = any(r > 170 and g < 90 and b < 90 for r, g, b in visible)
+        else:
+            found = any(b > 170 and r < 90 and g < 110 for r, g, b in visible)
+        if not found:
+            raise AssertionError(f"{name}: long image {color} band is absent from visible canvas")
+
+    has_band("red", artifacts / f"{name}-long-top.png")
+    viewport.evaluate("element => element.scrollTop = element.scrollHeight")
+    page.wait_for_function(
+        "() => { const v = document.querySelector('.review-document-viewport'); return v.scrollTop > 10000 && v.scrollTop + v.clientHeight >= v.scrollHeight - 2; }"
+    )
+    has_band("blue", artifacts / f"{name}-long-bottom.png")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--base-url", default="http://127.0.0.1:8000")
@@ -416,6 +451,7 @@ def main() -> None:
                 page.reload(wait_until="networkidle")
                 _wait_for_review(page)
                 expect(page.locator("body")).to_have_attribute("data-app-stage", "review")
+                _exercise_long_image(page, args.artifacts, name)
                 print(f"{name}: PASS")
                 page.close()
         finally:

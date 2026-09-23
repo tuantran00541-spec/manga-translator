@@ -10,6 +10,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 
 CHAPTER_ID = "f00d0001"
+LONG_CHAPTER_ID = "f00d0042"
 ROOT = Path(__file__).resolve().parents[1]
 RAW_DIR = ROOT / "data" / "raw" / CHAPTER_ID
 PROCESSED_DIR = ROOT / "data" / "processed" / CHAPTER_ID
@@ -120,7 +121,49 @@ def main() -> None:
     (PROCESSED_DIR / "manifest.json").write_text(
         json.dumps(manifest, ensure_ascii=False), encoding="utf-8"
     )
+    long_raw = ROOT / "data" / "raw" / LONG_CHAPTER_ID
+    long_processed = ROOT / "data" / "processed" / LONG_CHAPTER_ID
+    shutil.rmtree(long_raw, ignore_errors=True)
+    shutil.rmtree(long_processed, ignore_errors=True)
+    long_raw.mkdir(parents=True)
+    long_processed.mkdir(parents=True)
+    long_image = Image.new("RGB", (1200, 42000), "white")
+    long_draw = ImageDraw.Draw(long_image)
+    long_draw.rectangle((0, 0, 1199, 119), fill=(220, 35, 35))
+    long_draw.rectangle((0, 41880, 1199, 41999), fill=(35, 65, 220))
+    raw_path = long_raw / "page_000.png"
+    clean_path = long_processed / "clean_000.png"
+    long_image.save(raw_path)
+    long_image.save(clean_path)
+    long_manifest = {
+        "chapter_id": LONG_CHAPTER_ID,
+        "chapter_name": "Long image UI smoke fixture",
+        "source_url": "ui-smoke://long-image",
+        "source_lang": "ja",
+        "workflow": {"stage": "review", "page_index": 0},
+        "pages": [{
+            "source_page": 0,
+            "slice_index": 0,
+            "width": 1200,
+            "height": 42000,
+            "stitch_core": {
+                "source_y1": 0, "source_y2": 42000,
+                "core_y1": 0, "core_y2": 42000,
+                "core_source_y1": 0, "core_source_y2": 42000,
+                "source_height": 42000,
+            },
+            "original": str(raw_path.resolve()),
+            "clean": str(clean_path.resolve()),
+            "boxes": [],
+            "text_objects": [],
+            "excluded_regions": [],
+        }],
+    }
+    (long_processed / "manifest.json").write_text(
+        json.dumps(long_manifest, ensure_ascii=False), encoding="utf-8"
+    )
     print(CHAPTER_ID)
+    print(LONG_CHAPTER_ID)
 
 
 if __name__ == "__main__":
