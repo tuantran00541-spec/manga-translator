@@ -61,6 +61,7 @@ assert(review.includes('512 / Math.max(canvas.width, canvas.height)'), 'Review p
 assert(!review.includes('setupGeminiQCSettings'), 'legacy Gemini-only settings path must be removed');
 assert(!reviewWorkspace.includes('mountGeminiSettings'), 'multi-provider settings must not retain a Gemini-only mount path');
 assert(reviewWorkspace.includes('ai-custom-provider-form'), 'Settings must expose a custom provider form');
+assert(reviewWorkspace.includes('Mã này đã dành riêng'), 'custom provider form must reject built-in provider IDs');
 assert(reviewWorkspace.includes('provider_api_base'), 'custom provider settings must save its OpenAI-compatible API root');
 assert(reviewWorkspace.includes('remove_config=true'), 'custom provider settings must support removing its configuration');
 assert(reviewWorkspace.includes('syncAIProviderSelects'), 'custom providers must be synchronized into feature selectors');

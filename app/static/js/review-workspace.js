@@ -217,6 +217,7 @@
     customSave.addEventListener("click", async () => {
       const id = customProviderId();
       if (!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(id)) return window.showToast?.("Mã provider dùng chữ thường, số, dấu gạch ngang hoặc gạch dưới.", "error");
+      if (builtinProviders.includes(id)) return window.showToast?.("Mã này đã dành riêng cho provider có sẵn. Hãy chọn mã khác.", "error");
       if (!customLabel.value.trim() || !customBase.value.trim() || !customModel.value.trim() || !customKey.value.trim()) {
         return window.showToast?.("Nhập tên, mã, API root, model vision và API key.", "error");
       }
