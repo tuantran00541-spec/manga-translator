@@ -214,6 +214,9 @@
     const stage = document.body.dataset.appStage;
     if (stage === "editor" && window.editorState) return Math.max(0, parseInt(window.editorState.activePageIndex, 10) || 0);
     if (stage === "review") {
+      const reviewWorkspace = document.querySelector("#page-view .review-workspace-shell");
+      const visiblePageIndex = Number(reviewWorkspace?.dataset.reviewCanonicalIndex);
+      if (Number.isInteger(visiblePageIndex) && visiblePageIndex >= 0) return visiblePageIndex;
       const card = document.querySelector(".review-canvas-host .review-card");
       if (card) return Math.max(0, parseInt(card.dataset.pageIndex, 10) || 0);
     }

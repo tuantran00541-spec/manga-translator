@@ -164,6 +164,10 @@ def _exercise_desktop(page: Page) -> None:
     image = page.locator(".review-stitched-image")
     expect(image).to_have_attribute("data-strip-slices", "3")
     expect(image).to_have_attribute("data-source-height", "4800")
+    expect(page.get_by_role("button", name="Sau inpaint", exact=True)).to_be_visible()
+    expect(page.get_by_role("button", name="Có chữ", exact=True)).to_be_visible()
+    expect(page.get_by_role("button", name="Ảnh gốc", exact=True)).to_be_visible()
+    expect(page.locator(".review-strip-meta")).to_have_text("Ảnh liên tục")
     expect(image).to_have_attribute("data-source-width", "1200")
     first_image = page.locator('.review-strip-slice[data-page-index="0"] img')
     expect(first_image).to_have_js_property("naturalWidth", 1200)
@@ -186,11 +190,11 @@ def _exercise_desktop(page: Page) -> None:
     translation = page.locator(".review-floating-inspector .translation-textarea").first
     expect(translation).to_have_value("Bong bóng thứ hai")
 
-    page.get_by_role("button", name="Original", exact=True).click()
+    page.get_by_role("button", name="Ảnh gốc", exact=True).click()
     page.wait_for_function(
         "() => document.querySelector('.review-workspace-shell')?.classList.contains('review-readonly-document')"
     )
-    page.get_by_role("button", name="Clean", exact=True).click()
+    page.get_by_role("button", name="Sau inpaint", exact=True).click()
     page.wait_for_function(
         "() => !document.querySelector('.review-workspace-shell')?.classList.contains('review-readonly-document')"
     )
@@ -279,6 +283,23 @@ def _exercise_desktop(page: Page) -> None:
     print("desktop navigation:", json.dumps(nav_state, sort_keys=True))
     _wait_for_review(page)
 
+    page.locator(".review-document-viewport").evaluate(
+        """viewport => {
+          const image = document.querySelector('.review-stitched-image');
+          const rect = image.getBoundingClientRect();
+          const view = viewport.getBoundingClientRect();
+          const scale = Number(image.dataset.zoomScale || 1);
+          const sourceY = 2400;
+          viewport.scrollTop += rect.top + sourceY * scale - (view.top + viewport.clientHeight / 2);
+        }"""
+    )
+    expect(page.locator(".review-workspace-shell")).to_have_attribute("data-review-canonical-index", "1")
+    page.locator('.sidebar-link[data-stage="preview"]').click()
+    expect(page.locator('.preview-card-active[data-page-index="1"]')).to_be_visible()
+    page.locator('.sidebar-link[data-stage="review"]').click()
+    _wait_for_review(page)
+    expect(page.locator(".review-workspace-shell")).to_have_attribute("data-review-canonical-index", "1")
+
     # Repeated mounts must not retain duplicate observers/workspaces.
     page.evaluate("() => { for (let i = 0; i < 8; i += 1) window.renderReview(); }")
     _wait_for_review(page)
@@ -315,6 +336,16 @@ def _exercise_mobile(page: Page) -> None:
     expect(page.get_by_role("button", name="OCR toàn chương", exact=True)).to_be_visible()
 
     expect(page.locator(".review-tool-rail")).to_be_visible()
+    tool_sizes = page.locator(".review-rail-tool").evaluate_all(
+        "elements => elements.map(element => Math.round(element.getBoundingClientRect().height))"
+    )
+    if not tool_sizes or min(tool_sizes) < 36:
+        raise AssertionError(f"mobile Review tools are too small to tap comfortably: {tool_sizes}")
+    control_sizes = page.locator(".review-document-toolbar-compact .ui-btn").evaluate_all(
+        "elements => elements.map(element => Math.round(element.getBoundingClientRect().height))"
+    )
+    if not control_sizes or min(control_sizes) < 36:
+        raise AssertionError(f"mobile Review toolbar controls are too small to tap comfortably: {control_sizes}")
     expect(page.locator('.sidebar-link[data-route="home"]')).to_be_visible()
     expect(page.locator('.sidebar-link[data-stage="preview"]')).to_be_visible()
     expect(page.locator('.sidebar-link[data-stage="preview"]')).to_be_enabled()

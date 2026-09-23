@@ -1,5 +1,6 @@
 const fs = require('fs');
 const assert = require('assert');
+const vm = require('vm');
 const html = fs.readFileSync('app/templates/index.html', 'utf8');
 const css = fs.readFileSync('app/static/css/app.css', 'utf8');
 const studio = fs.readFileSync('app/static/css/studio.css', 'utf8');
@@ -15,6 +16,8 @@ const preview = fs.readFileSync('app/static/js/preview.js', 'utf8');
 const theme = fs.readFileSync('app/static/js/theme.js', 'utf8');
 const chapterOcr = fs.readFileSync('app/static/js/chapter-ocr.js', 'utf8');
 const chapterQc = fs.readFileSync('app/static/js/chapter-qc.js', 'utf8');
+const visionTranslation = fs.readFileSync('app/translation/vision.py', 'utf8');
+const translationRouter = fs.readFileSync('app/routers/translation.py', 'utf8');
 assert(css.includes('./studio.css'), 'studio stylesheet must be the runtime surface');
 for (const legacy of ['frontend-release.css', 'frontend-coordinator.js', 'frontend-release.js', 'frontend-release-encoder-guard.js']) assert(!html.includes(legacy), `${legacy} must not be loaded at runtime`);
 assert(!shell.includes('wrapRenderer("renderEditor"'), 'Editor must not be shell-wrapped');
@@ -57,6 +60,14 @@ assert(!review.includes('  refreshSrcData();\n\n  img.addEventListener("load"'),
 assert(review.includes('512 / Math.max(canvas.width, canvas.height)'), 'Review paint validation must use a bounded probe');
 assert(!review.includes('setupGeminiQCSettings'), 'legacy Gemini-only settings path must be removed');
 assert(!reviewWorkspace.includes('mountGeminiSettings'), 'multi-provider settings must not retain a Gemini-only mount path');
+assert(reviewWorkspace.includes('ai-custom-provider-form'), 'Settings must expose a custom provider form');
+assert(reviewWorkspace.includes('provider_api_base'), 'custom provider settings must save its OpenAI-compatible API root');
+assert(reviewWorkspace.includes('remove_config=true'), 'custom provider settings must support removing its configuration');
+assert(reviewWorkspace.includes('syncAIProviderSelects'), 'custom providers must be synchronized into feature selectors');
+assert(editor.includes('syncAIProviderSelects'), 'vision translation selector must include configured custom providers');
+assert(chapterQc.includes('syncAIProviderSelects'), 'visual QC selector must include configured custom providers');
+assert(visionTranslation.includes('{"type": "image_url"'), 'vision translation must send image inputs to OpenAI-compatible providers');
+assert(translationRouter.includes('def _resolve_translation_provider'), 'translation API must resolve configured custom providers');
 assert(!review.includes('/api/visual_qc/key'), 'Review must use provider-scoped credential endpoints only');
 assert(preview.includes('drawLayer.addEventListener("pointerdown"'), 'preview exclusion drawing must support touch input');
 assert(preview.includes('window.setAppStage?.("preview")'), 'preview must own its stage lifecycle');
@@ -80,4 +91,43 @@ assert(!reviewWorkspace.includes('context-inspector review-inspector'), 'Review 
 assert(!reviewWorkspace.includes('review-sticky-toolbar'), 'Review must not create a second outer toolbar');
 assert(stitchInspector.includes('review-document-toolbar-compact'), 'Review must use one compact document toolbar');
 assert(stitchInspector.includes('review-floating-inspector'), 'Review text properties must use an on-demand floating inspector');
-console.log('studio runtime sanity: PASS');
+const reviewTestWindow = { __currentChapterId: "test-chapter" };
+const reviewTestSource = stitchInspector.replace(
+  "window.mountStitchInspector = scan;",
+  "window.reviewPageIndexAtSourceY = reviewPageIndexAtSourceY;\n  window.__testEnsureObjects = ensureObjects;\n  window.mountStitchInspector = scan;"
+);
+reviewTestWindow.currentChapterId = reviewTestWindow.__currentChapterId;
+vm.runInNewContext(reviewTestSource, {
+  window: reviewTestWindow,
+  document: { querySelectorAll: () => [] },
+  HTMLElement: function HTMLElement() {},
+  AbortController,
+  console: { warn: () => {} },
+  setTimeout,
+  Date,
+});
+(async () => {
+  assert.strictEqual(typeof reviewTestWindow.reviewPageIndexAtSourceY, 'function', 'Review must expose its source-Y page mapping for navigation');
+  assert.strictEqual(
+    reviewTestWindow.reviewPageIndexAtSourceY([
+      { item: { canonicalIndex: 0 }, sourceY1: 0, sourceY2: 1600 },
+      { item: { canonicalIndex: 1 }, sourceY1: 1600, sourceY2: 3200 },
+      { item: { canonicalIndex: 2 }, sourceY1: 3200, sourceY2: 4800 },
+    ], 2400),
+    1,
+    'scrolling to the center of the second page must select that page for stage navigation'
+  );
+  let attempts = 0;
+  reviewTestWindow.ensureAutoTextObjects = async () => {
+    attempts += 1;
+    if (attempts === 1) throw new Error('transient OCR failure');
+  };
+  const testShell = { _descriptors: [{ item: { canonicalIndex: 0 } }] };
+  await reviewTestWindow.__testEnsureObjects(testShell);
+  await reviewTestWindow.__testEnsureObjects(testShell);
+  assert.strictEqual(attempts, 2, 'failed automatic text-object sync must retry when Review renders again');
+  console.log('studio runtime sanity: PASS');
+})().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});

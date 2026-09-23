@@ -408,6 +408,13 @@
       if (model) model.value = localStorage.getItem(`manga_ai_model_${provider}`) || "";
       syncProviderControls(panel, state.snapshot, isRunning());
     });
+    panel.querySelector(".chapter-qc-provider")?.addEventListener("ai-providers-updated", () => {
+      const select = panel.querySelector(".chapter-qc-provider");
+      const model = panel.querySelector(".chapter-qc-model");
+      if (model) model.value = localStorage.getItem(`manga_ai_model_${select?.value || "gemini"}`) || "";
+      syncProviderControls(panel, state.snapshot, isRunning());
+    });
+    window.syncAIProviderSelects?.();
     panel.querySelector(".chapter-qc-model")?.addEventListener("change", (event) => {
       const provider = panel.querySelector(".chapter-qc-provider")?.value || "gemini";
       localStorage.setItem(`manga_ai_model_${provider}`, event.target.value.trim());

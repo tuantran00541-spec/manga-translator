@@ -4,17 +4,32 @@
   let reviewLastChapterId = null;
   let aiSettingsInstance = null;
 
+  function syncAIProviderSelects() {
+    const providers = window.aiProviderSettings || {};
+    const fixedLabels = {
+      gemini: "Google Gemini", deepseek: "DeepSeek", openai: "OpenAI",
+      openrouter: "OpenRouter", experiential: "Experiential Labs",
+    };
+    document.querySelectorAll(".chapter-translate-provider, .chapter-qc-provider, .ai-active-provider").forEach((select) => {
+      const selected = select.value;
+      const capability = select.classList.contains("chapter-translate-provider") ? "translation"
+        : select.classList.contains("chapter-qc-provider") ? "visual_qc" : null;
+      const available = Object.values(providers).filter((info) => !capability || info.capabilities?.[capability]);
+      const options = available.map((info) => new Option(info.label || fixedLabels[info.id] || info.id, info.id));
+      if (options.length) select.replaceChildren(...options);
+      if ([...select.options].some((option) => option.value === selected)) select.value = selected;
+      else if (select.classList.contains("chapter-translate-provider")) select.value = "deepseek";
+      else if (select.classList.contains("chapter-qc-provider") || select.classList.contains("ai-active-provider")) select.value = "gemini";
+      select.dispatchEvent(new Event("ai-providers-updated", { bubbles: true }));
+    });
+  }
+  window.syncAIProviderSelects = syncAIProviderSelects;
+
   function createAIProviderSettings() {
     if (aiSettingsInstance?.config?.isConnected) return aiSettingsInstance.status;
 
-    const providers = ["gemini", "deepseek", "openai", "openrouter", "experiential"];
-    const labels = {
-      gemini: "Google Gemini",
-      deepseek: "DeepSeek",
-      openai: "OpenAI",
-      openrouter: "OpenRouter",
-      experiential: "Experiential Labs",
-    };
+    const builtinProviders = ["gemini", "deepseek", "openai", "openrouter", "experiential"];
+    const labels = { gemini: "Google Gemini", deepseek: "DeepSeek", openai: "OpenAI", openrouter: "OpenRouter", experiential: "Experiential Labs" };
 
     const config = document.createElement("div");
     config.className = "ai-provider-config";
@@ -25,13 +40,18 @@
     const active = document.createElement("select");
     active.className = "ui-select ai-active-provider";
     active.setAttribute("aria-label", "Dịch vụ AI mặc định");
-    providers.forEach((id) => active.add(new Option(labels[id], id)));
+    builtinProviders.forEach((id) => active.add(new Option(labels[id], id)));
     active.value = localStorage.getItem("manga_ai_active_provider") || "gemini";
-    active.addEventListener("change", () => localStorage.setItem("manga_ai_active_provider", active.value));
+    active.addEventListener("change", () => {
+      localStorage.setItem("manga_ai_active_provider", active.value);
+      window.syncAIProviderSelects?.();
+    });
     config.append(status, active);
 
     const cards = {};
-    providers.forEach((id) => {
+    const cardsHost = document.createElement("div");
+    cardsHost.className = "ai-provider-cards";
+    builtinProviders.forEach((id) => {
       const card = document.createElement("section");
       card.className = "ai-provider-card";
       const title = document.createElement("strong");
@@ -132,8 +152,114 @@
       });
 
       card.append(title, providerStatus, key, model, datalist, save, clear, load);
-      config.append(card);
+      cardsHost.append(card);
       cards[id] = { providerStatus, clear, model };
+    });
+
+    const customHeading = document.createElement("strong");
+    customHeading.textContent = "Provider OpenAI-compatible tùy chỉnh";
+    const customNote = document.createElement("p");
+    customNote.className = "ui-note";
+    customNote.textContent = "Dùng API root HTTPS có /models và /chat/completions; model cần hỗ trợ ảnh để dịch từ ảnh inpaint.";
+    const customForm = document.createElement("section");
+    customForm.className = "ai-provider-card ai-custom-provider-form";
+    const customLabel = document.createElement("input");
+    customLabel.className = "ui-input";
+    customLabel.placeholder = "Tên hiển thị, ví dụ: Local Vision";
+    customLabel.setAttribute("aria-label", "Tên provider tùy chỉnh");
+    const customId = document.createElement("input");
+    customId.className = "ui-input";
+    customId.placeholder = "Mã provider, ví dụ: local-vision";
+    customId.pattern = "[a-z0-9][a-z0-9_-]{0,63}";
+    customId.setAttribute("aria-label", "Mã provider tùy chỉnh");
+    const customBase = document.createElement("input");
+    customBase.className = "ui-input";
+    customBase.type = "url";
+    customBase.placeholder = "https://api.example.com/v1";
+    customBase.setAttribute("aria-label", "API root HTTPS của provider");
+    const customModel = document.createElement("input");
+    customModel.className = "ui-input";
+    customModel.placeholder = "Tên model hỗ trợ vision";
+    customModel.setAttribute("aria-label", "Model vision của provider tùy chỉnh");
+    const customKey = document.createElement("input");
+    customKey.className = "api-key-input";
+    customKey.type = "password";
+    customKey.autocomplete = "new-password";
+    customKey.placeholder = "API key";
+    customKey.setAttribute("aria-label", "API key của provider tùy chỉnh");
+    const customStatus = document.createElement("span");
+    customStatus.className = "ai-provider-status";
+    const customSave = document.createElement("button");
+    customSave.type = "button";
+    customSave.className = "ui-btn ui-btn-primary";
+    customSave.textContent = "Lưu provider";
+    const customClear = document.createElement("button");
+    customClear.type = "button";
+    customClear.className = "ui-btn ui-btn-ghost";
+    customClear.textContent = "Xóa provider";
+    customClear.disabled = true;
+    const customFields = [
+      ["Tên hiển thị", customLabel], ["Mã provider", customId], ["API root HTTPS", customBase],
+      ["Model vision", customModel], ["API key", customKey],
+    ].map(([label, input]) => {
+      const field = document.createElement("label");
+      field.className = "ui-field";
+      field.append(document.createTextNode(label), input);
+      return field;
+    });
+    const customActions = document.createElement("div");
+    customActions.className = "ui-control-row";
+    customActions.append(customSave, customClear);
+    customForm.append(customHeading, customNote, customStatus, ...customFields, customActions);
+    config.append(cardsHost, customForm);
+
+    const customProviderId = () => customId.value.trim().toLowerCase();
+    customSave.addEventListener("click", async () => {
+      const id = customProviderId();
+      if (!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(id)) return window.showToast?.("Mã provider dùng chữ thường, số, dấu gạch ngang hoặc gạch dưới.", "error");
+      if (!customLabel.value.trim() || !customBase.value.trim() || !customModel.value.trim() || !customKey.value.trim()) {
+        return window.showToast?.("Nhập tên, mã, API root, model vision và API key.", "error");
+      }
+      customSave.disabled = true;
+      try {
+        const response = await fetch(`/api/visual_qc/providers/${encodeURIComponent(id)}/key`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            api_key: customKey.value.trim(), provider_label: customLabel.value.trim(),
+            provider_protocol: "openai", provider_api_base: customBase.value.trim(),
+          }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.detail || `HTTP ${response.status}`);
+        localStorage.setItem(`manga_ai_model_${id}`, customModel.value.trim());
+        localStorage.setItem(`manga_translation_vision_model_${id}`, customModel.value.trim());
+        customKey.value = "";
+        window.showToast?.(`Đã lưu provider ${customLabel.value.trim()}.`, "success");
+        await refresh();
+      } catch (err) {
+        window.showToast?.("Không thể lưu provider: " + err.message, "error");
+      } finally {
+        customSave.disabled = false;
+      }
+    });
+    customClear.addEventListener("click", async () => {
+      const id = customProviderId();
+      if (!id) return;
+      customClear.disabled = true;
+      try {
+        const response = await fetch(`/api/visual_qc/providers/${encodeURIComponent(id)}/key?remove_config=true&provider_label=${encodeURIComponent(customLabel.value.trim() || id)}`, { method: "DELETE" });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.detail || `HTTP ${response.status}`);
+        localStorage.removeItem(`manga_ai_model_${id}`);
+        localStorage.removeItem(`manga_translation_vision_model_${id}`);
+        window.showToast?.(`Đã xóa provider ${id}.`, "success");
+        customLabel.value = customId.value = customBase.value = customModel.value = "";
+        await refresh();
+      } catch (err) {
+        window.showToast?.("Không thể xóa provider: " + err.message, "error");
+      } finally {
+        customClear.disabled = false;
+      }
     });
 
     async function refresh() {
@@ -142,7 +268,7 @@
         const data = await response.json();
         window.aiProviderSettings = data.providers || {};
         let ready = 0;
-        providers.forEach((id) => {
+        builtinProviders.forEach((id) => {
           const info = data.providers?.[id] || {};
           const refs = cards[id];
           if (!refs.model.value) refs.model.value = info.model || "";
@@ -151,6 +277,44 @@
           refs.clear.disabled = !info.configured || info.source === "environment";
           if (info.configured) ready += 1;
         });
+        const customInfos = Object.values(data.providers || {}).filter((info) => !info.builtin);
+        ready += customInfos.filter((info) => info.configured).length;
+        cardsHost.querySelectorAll(".ai-custom-provider-card").forEach((card) => card.remove());
+        customInfos.forEach((info) => {
+          const card = document.createElement("section");
+          card.className = "ai-provider-card ai-custom-provider-card";
+          const title = document.createElement("strong");
+          title.textContent = info.label || info.id;
+          const details = document.createElement("span");
+          details.className = "ui-value";
+          details.textContent = `${info.api_base} · ${localStorage.getItem(`manga_ai_model_${info.id}`) || "chưa chọn model"}`;
+          const edit = document.createElement("button");
+          edit.type = "button";
+          edit.className = "ui-btn ui-btn-ghost";
+          edit.textContent = "Chỉnh sửa";
+          edit.addEventListener("click", () => {
+            customLabel.value = info.label || ""; customId.value = info.id || "";
+            customBase.value = info.api_base || "";
+            customModel.value = localStorage.getItem(`manga_ai_model_${info.id}`) || "";
+            customStatus.textContent = info.configured ? "Đã cấu hình · model nhận ảnh OpenAI-compatible" : "Chưa có API key";
+            customClear.disabled = false;
+            customLabel.focus();
+          });
+          card.append(title, details, edit);
+          cardsHost.append(card);
+        });
+        active.replaceChildren(...Object.values(data.providers || {}).map((info) => new Option(info.label || info.id, info.id)));
+        if ([...active.options].some((option) => option.value === localStorage.getItem("manga_ai_active_provider"))) active.value = localStorage.getItem("manga_ai_active_provider");
+        else active.value = "gemini";
+        if (customInfos.length && customId.value && !customInfos.some((info) => info.id === customId.value)) customStatus.textContent = "Sẵn sàng thêm provider tùy chỉnh.";
+        const editingProvider = customInfos.find((info) => info.id === customProviderId());
+        if (editingProvider) {
+          customClear.disabled = false;
+          customStatus.textContent = editingProvider.configured
+            ? "Đã cấu hình · model vision gửi ảnh qua OpenAI-compatible API"
+            : "Provider đã lưu · chưa có API key";
+        }
+        window.syncAIProviderSelects?.();
         status.textContent = ready ? `Kiểm tra AI: ${ready} dịch vụ sẵn sàng` : "Kiểm tra AI: Chưa cấu hình";
         status.classList.toggle("configured", ready > 0);
       } catch (_) {
@@ -217,6 +381,8 @@
 
   function setupReviewWorkspace() {
     const previousState = captureReviewWorkspaceState();
+    const requestedPageIndex = window.initialReviewCanonicalPageIndex;
+    window.initialReviewCanonicalPageIndex = null;
     window.cleanupReviewWorkspace?.();
 
     const container = document.getElementById("page-view");
@@ -237,11 +403,11 @@
     const slices = (window.currentManifest?.pages || []).filter(Boolean);
     if (!slices.length) return;
 
-    window.initialReviewCanonicalPageIndex = null;
     reapplyFocusedDraft(previousState);
 
     const workspace = document.createElement("div");
     workspace.className = "review-workspace-shell review-canvas-only review-canvas-fullbleed";
+    workspace._initialCanonicalPageIndex = requestedPageIndex;
     if (previousState?.chapterId === chapterId) {
       workspace._reviewRestoreState = previousState;
     }

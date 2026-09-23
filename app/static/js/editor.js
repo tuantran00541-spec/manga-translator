@@ -685,6 +685,7 @@ function buildChapterTranslateControls() {
     budget.disabled = provider.value !== "deepseek";
   };
   provider.addEventListener("change", syncModel);
+  provider.addEventListener("ai-providers-updated", syncModel);
   model.addEventListener("change", () => {
     localStorage.setItem("manga_translation_vision_model_" + provider.value, model.value.trim());
   });
@@ -804,6 +805,7 @@ function buildChapterTranslateControls() {
   );
   syncModel();
   controls.append(summary, options);
+  window.syncAIProviderSelects?.();
   return controls;
 }
 

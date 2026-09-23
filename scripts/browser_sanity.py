@@ -7,6 +7,8 @@ import re
 JS_PATHS = sorted(Path("app/static/js").rglob("*.js"))
 HTML_PATHS = sorted(Path("app/templates").rglob("*.html"))
 CSS_PATHS = sorted(Path("app/static/css").rglob("*.css"))
+MAX_CSS_FILES = 10
+MAX_CSS_LINES = 2000
 STATIC_ROOT = Path("app/static")
 TOKENS_PATH = STATIC_ROOT / "css" / "tokens.css"
 WORKBENCH_PATH = STATIC_ROOT / "css" / "studio.css"
@@ -238,6 +240,18 @@ def check_design_token_convergence() -> None:
     print(f"Design token convergence OK: {len(defined_tokens)} canonical tokens")
 
 
+def check_css_budget() -> None:
+    failures: list[str] = []
+    if len(CSS_PATHS) > MAX_CSS_FILES:
+        failures.append(f"found {len(CSS_PATHS)} CSS files; limit is {MAX_CSS_FILES}")
+    for path in CSS_PATHS:
+        line_count = len(path.read_text(encoding="utf-8").splitlines())
+        if line_count > MAX_CSS_LINES:
+            failures.append(f"{path} has {line_count} lines; limit is {MAX_CSS_LINES}")
+    _fail("CSS budget exceeded:", failures)
+    print(f"CSS budget OK: {len(CSS_PATHS)}/{MAX_CSS_FILES} files, maximum {MAX_CSS_LINES} lines each")
+
+
 def _consume_js_string_literal(source: str, start: int) -> str | None:
     if start >= len(source) or source[start] not in {'"', "'", "`"}:
         return None
@@ -376,6 +390,7 @@ def check_workbench_shell_contract() -> None:
 def main() -> None:
     check_markup_integrity()
     check_browser_asset_reachability()
+    check_css_budget()
     check_design_token_convergence()
     check_unsafe_html_sinks()
     check_browser_state_contracts()

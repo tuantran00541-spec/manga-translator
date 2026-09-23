@@ -255,6 +255,10 @@
   }
 
   @media (max-width: 720px) {
+    .review-single-document .review-document-toolbar-compact .ui-btn {
+      min-height: 36px;
+      height: 36px;
+    }
     .review-document-toolbar-compact {
       grid-template-columns: minmax(0, 1fr);
       grid-template-areas:
