@@ -160,10 +160,8 @@ jobs:
           PY
       - name: Commit demo assets
         run: |
-          git fetch origin trial/chapter-render-60
-          git reset --hard origin/trial/chapter-render-60
           git add trials/chapter-60/demo
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git diff --cached --quiet || git commit -m 'docs: add two rich chapter 60 pipeline demos'
+          git diff --cached --quiet || git commit -m 'docs: refresh two rich chapter 60 pipeline demos'
           git push origin HEAD:trial/chapter-render-60
