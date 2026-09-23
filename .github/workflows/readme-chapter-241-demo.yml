@@ -18,7 +18,7 @@ jobs:
     env:
       PYTHONUNBUFFERED: '1'
       PYTHONPATH: '.'
-      CHAPTER_ID: c241dr01
+      CHAPTER_ID: c2410001
       MANGA_USE_DYNAMIC_LAMA: '1'
       MANGA_ORT_PROVIDER: openvino
       MANGA_ORT_REQUIRE_PROVIDER: '1'
@@ -86,14 +86,14 @@ jobs:
           from pathlib import Path
           from app.optimized_pipeline import OptimizedChapterPipeline
           from app.manifest_utils import load_manifest_raw
-          chosen=json.loads(Path('checkpoint/readme-demo/chosen.json').read_text()); raw=Path('data/raw/c241dr01'); processed=Path('data/processed/c241dr01')
+          chosen=json.loads(Path('checkpoint/readme-demo/chosen.json').read_text()); raw=Path('data/raw/c2410001'); processed=Path('data/processed/c2410001')
           if raw.exists(): shutil.rmtree(raw)
           if processed.exists(): shutil.rmtree(processed)
           (raw/'sliced').mkdir(parents=True); processed.mkdir(parents=True)
           target=Path(chosen['path']); dst=raw/'sliced'/target.name; shutil.copy2(target,dst)
-          manifest={'chapter_id':'c241dr01','pages':[{'original':dst.as_posix(),'clean':None,'boxes':[],'skipped':False,'source_page':chosen['source_page'],'slice_index':chosen['slice_index'],'stitch_core':{}}],'workflow':{'stage':'clean','page_index':0}}
+          manifest={'chapter_id':'c2410001','pages':[{'original':dst.as_posix(),'clean':None,'boxes':[],'skipped':False,'source_page':chosen['source_page'],'slice_index':chosen['slice_index'],'stitch_core':{}}],'workflow':{'stage':'clean','page_index':0}}
           (processed/'manifest.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding='utf-8')
-          t=time.perf_counter(); OptimizedChapterPipeline().process_pages('c241dr01',[0],workers=1); page=load_manifest_raw('c241dr01')['pages'][0]
+          t=time.perf_counter(); OptimizedChapterPipeline().process_pages('c2410001',[0],workers=1); page=load_manifest_raw('c2410001')['pages'][0]
           if not page.get('clean'): raise RuntimeError('clean output missing')
           Path('checkpoint/readme-demo/meta.json').write_text(json.dumps({'chosen':chosen,'clean':page['clean'],'boxes':len(page.get('boxes') or page.get('detections') or []),'elapsed_s':round(time.perf_counter()-t,3)},ensure_ascii=False,indent=2),encoding='utf-8')
           PY
@@ -103,7 +103,7 @@ jobs:
           import json
           from pathlib import Path
           from PIL import Image,ImageDraw
-          meta=json.loads(Path('checkpoint/readme-demo/meta.json').read_text()); page=json.loads(Path('data/processed/c241dr01/manifest.json').read_text())['pages'][0]
+          meta=json.loads(Path('checkpoint/readme-demo/meta.json').read_text()); page=json.loads(Path('data/processed/c2410001/manifest.json').read_text())['pages'][0]
           raw=Image.open(page['original']).convert('RGB'); clean=Image.open(page['clean']).convert('RGB'); detector=raw.copy(); d=ImageDraw.Draw(detector); n=0
           for b in page.get('boxes') or page.get('detections') or []:
               v=[b.get(k) for k in ('x1','y1','x2','y2')]
