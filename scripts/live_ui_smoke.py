@@ -379,10 +379,9 @@ def _canvas_metrics(page: Page) -> dict[str, float | int]:
     )
 
 
-def _exercise_long_image(page: Page, artifacts: Path, name: str) -> None:
-    page.locator('.sidebar-link[data-route="home"]').click()
-    expect(page.locator('.recent-card[data-chapter-id="f00d0042"]')).to_be_visible()
-    page.locator('.recent-card[data-chapter-id="f00d0042"]').click()
+def _exercise_long_image(page: Page, base_url: str, artifacts: Path, name: str) -> None:
+    page.goto(f"{base_url}/#f00d0042", wait_until="networkidle")
+    page.reload(wait_until="networkidle")
     _wait_for_review(page)
     image = page.locator('.review-strip-slice[data-page-index="0"] img')
     expect(page.locator('.review-stitched-image')).to_have_attribute("data-strip-slices", "1")
@@ -451,7 +450,7 @@ def main() -> None:
                 page.reload(wait_until="networkidle")
                 _wait_for_review(page)
                 expect(page.locator("body")).to_have_attribute("data-app-stage", "review")
-                _exercise_long_image(page, args.artifacts, name)
+                _exercise_long_image(page, args.base_url.rstrip("/"), args.artifacts, name)
                 print(f"{name}: PASS")
                 page.close()
         finally:
