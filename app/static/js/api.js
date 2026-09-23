@@ -258,9 +258,6 @@ async function resumeChapter(chapterId) {
       }
     } catch (_) {}
 
-    const recentEl = document.getElementById("recent-chapters");
-    if (recentEl) recentEl.innerHTML = "";
-
     const pages = currentManifest.pages || [];
     let workflow = currentManifest.workflow;
     if (!workflow || !workflow.stage) {
