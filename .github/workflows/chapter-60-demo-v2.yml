@@ -1,0 +1,235 @@
+name: Chapter 60 Focused Pipeline Demo v2
+
+on:
+  push:
+    branches:
+      - trial/chapter-render-60
+    paths:
+      - .github/workflows/chapter-60-demo-v2.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: chapter-60-focused-demo
+  cancel-in-progress: true
+
+jobs:
+  demo:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    env:
+      PYTHONUNBUFFERED: "1"
+      PYTHONPATH: "."
+      CHAPTER_ID: f1cd0121
+      CHAPTER_URL: https://asurascans.com/comics/a-cadet-becomes-a-prophet-53fc8424/chapter/60
+      IMPORT_ARTIFACT: 01-import-f1cd0121
+      DEMO_SLICE: 011_00
+      MANGA_USE_DYNAMIC_LAMA: "1"
+      MANGA_ORT_PROVIDER: openvino
+      MANGA_ORT_REQUIRE_PROVIDER: "1"
+      MANGA_ORT_OPENVINO_SCOPE: detectors
+      MANGA_ORT_OPENVINO_THREADS: "2"
+      MANGA_ORT_OPENVINO_STREAMS: "1"
+      MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
+      OPENBLAS_NUM_THREADS: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: trial/chapter-render-60
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install production runtime
+        run: |
+          python -m pip install             numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84             onnxruntime-openvino==1.24.1 psutil==6.1.1 loguru==0.7.2             requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0             fastapi==0.115.0 'uvicorn[standard]==0.30.6' pydantic==2.9.2             filelock==3.16.1 python-multipart==0.0.12
+
+      - name: Restore production models
+        id: models
+        uses: actions/cache@v4
+        with:
+          path: |
+            models/*.onnx
+            models/.e2e-provenance.json
+          key: processing-profile-models-b224548-v1
+
+      - name: Read pinned model provisioner
+        if: steps.models.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: b22454827f8190655d7070b80eb20c2550beadfa
+          path: benchmark-bootstrap
+          sparse-checkout: scripts/provision_real_e2e_models.py
+          sparse-checkout-cone-mode: false
+
+      - name: Provision public-equivalent models
+        if: steps.models.outputs.cache-hit != 'true'
+        run: |
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple torch==2.5.1+cpu torchvision==0.20.1+cpu
+          python -m pip install --no-deps ultralytics==8.3.221 onnx==1.17.0 onnxslim==0.1.71
+          python -m pip install sympy==1.13.1 PyYAML==6.0.2 scipy==1.14.1 tqdm==4.67.1 matplotlib==3.9.2 pandas==2.2.3 py-cpuinfo==9.0.0 ml_dtypes==0.5.3 colorama==0.4.6 polars==1.33.1 ultralytics-thop==2.0.17
+          python benchmark-bootstrap/scripts/provision_real_e2e_models.py
+          cp benchmark-bootstrap/models/*.onnx models/
+          cp benchmark-bootstrap/models/.e2e-provenance.json models/
+
+      - name: Restore fresh import artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          IMPORT_RUN_ID="$(gh run list --workflow .github/workflows/chapter-60-import.yml --branch trial/chapter-render-60 --limit 1 --json databaseId --jq '.[0].databaseId')"
+          test -n "$IMPORT_RUN_ID"
+          gh run watch "$IMPORT_RUN_ID" --exit-status
+          rm -rf checkpoint/01-import
+          mkdir -p checkpoint/01-import
+          gh run download "$IMPORT_RUN_ID" -n "$IMPORT_ARTIFACT" -D checkpoint/01-import
+          test -f checkpoint/01-import/manifest.json
+          test -d checkpoint/01-import/raw/sliced
+
+      - name: Prepare one-slice production manifest
+        run: |
+          python - <<'PY'
+          import json, os, shutil
+          from pathlib import Path
+          from app.security import validate_chapter_id
+
+          chapter_id=validate_chapter_id(os.environ['CHAPTER_ID'])
+          src=Path('checkpoint/01-import')
+          raw_src=src/'raw'
+          raw_dst=Path('data/raw')/chapter_id
+          processed=Path('data/processed')/chapter_id
+          raw_dst.parent.mkdir(parents=True, exist_ok=True)
+          processed.mkdir(parents=True, exist_ok=True)
+          if raw_dst.exists():
+              shutil.rmtree(raw_dst)
+          shutil.copytree(raw_src, raw_dst)
+
+          manifest=json.loads((src/'manifest.json').read_text(encoding='utf-8'))
+          prefix='checkpoint/01-import/raw/'
+          target=os.environ['DEMO_SLICE']
+          page_index=None
+          for i,page in enumerate(manifest.get('pages',[])):
+              original=str(page.get('original') or '')
+              if original == f'{prefix}sliced/{target}.png':
+                  page_index=i
+                  break
+          if page_index is None:
+              raise RuntimeError(f'Missing demo slice {target}')
+          for page in manifest.get('pages',[]):
+              original=str(page.get('original') or '')
+              if original.startswith(prefix):
+                  page['original']=(raw_dst/original[len(prefix):]).as_posix()
+          for i,page in enumerate(manifest.get('pages',[])):
+              if i != page_index:
+                  page['skipped']=True
+          manifest['workflow']={'stage':'clean','page_index':page_index}
+          (processed/'manifest.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding='utf-8')
+          print(json.dumps({'page_index':page_index,'slice':target},ensure_ascii=False))
+          PY
+
+      - name: Run production detector and clean on one slice
+        run: |
+          python - <<'PY'
+          import json, os, time
+          from pathlib import Path
+          from app.manifest_utils import load_manifest_raw
+          from app.optimized_pipeline import OptimizedChapterPipeline
+
+          chapter_id=os.environ['CHAPTER_ID']
+          target=os.environ['DEMO_SLICE']
+          manifest=load_manifest_raw(chapter_id)
+          index=next(
+              i for i,p in enumerate(manifest.get('pages',[]))
+              if str(p.get('original','')).endswith(f'sliced/{target}.png')
+          )
+          t=time.perf_counter()
+          OptimizedChapterPipeline().process_pages(chapter_id,[index],workers=1)
+          manifest=load_manifest_raw(chapter_id)
+          page=manifest['pages'][index]
+          if not page.get('clean'):
+              raise RuntimeError('Production pipeline returned no clean image')
+          meta={
+              'page_index':index,
+              'source_page':page.get('source_page'),
+              'slice_index':page.get('slice_index'),
+              'original':page.get('original'),
+              'clean':page.get('clean'),
+              'boxes':len(page.get('boxes') or page.get('detections') or []),
+              'elapsed_s':round(time.perf_counter()-t,3),
+          }
+          Path('checkpoint/demo-meta.json').write_text(json.dumps(meta,ensure_ascii=False,indent=2),encoding='utf-8')
+          print(json.dumps(meta,ensure_ascii=False))
+          PY
+
+      - name: Build RAW, text-detector, and CLEAN demo images
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          from PIL import Image, ImageDraw
+
+          meta=json.loads(Path('checkpoint/demo-meta.json').read_text(encoding='utf-8'))
+          manifest=json.loads((Path('data/processed')/os.environ['CHAPTER_ID']/'manifest.json').read_text(encoding='utf-8'))
+          index=int(meta['page_index'])
+          page=manifest['pages'][index]
+          raw_path=Path(page['original'])
+          clean_path=Path(page['clean'])
+          boxes=page.get('boxes') or page.get('detections') or []
+          if not raw_path.is_file() or not clean_path.is_file():
+              raise RuntimeError('RAW/CLEAN demo source missing')
+
+          out=Path('trials/chapter-60/demo')
+          out.mkdir(parents=True,exist_ok=True)
+
+          with Image.open(raw_path) as im:
+              raw=im.convert('RGB')
+          with Image.open(clean_path) as im:
+              clean=im.convert('RGB')
+
+          detector=raw.copy()
+          draw=ImageDraw.Draw(detector)
+          count=0
+          for box in boxes:
+              label=' '.join(str(box.get(k) or '') for k in ('semantic_type','class_name','label','type')).lower()
+              if 'bubble' in label and 'text_free' not in label:
+                  continue
+              vals=[box.get(k) for k in ('x1','y1','x2','y2')]
+              if any(v is None for v in vals):
+                  continue
+              x1,y1,x2,y2=map(int,vals)
+              if x2<=x1 or y2<=y1:
+                  continue
+              draw.rectangle((x1,y1,x2,y2),outline='red',width=max(3,min(10,round(min(raw.size)/400))))
+              count+=1
+
+          raw.save(out/'raw.jpg',quality=94,optimize=True)
+          detector.save(out/'detector.jpg',quality=94,optimize=True)
+          clean.save(out/'clean.jpg',quality=94,optimize=True)
+
+          payload={
+              'slice':os.environ['DEMO_SLICE'],
+              'page_index':index,
+              'source_page':page.get('source_page'),
+              'slice_index':page.get('slice_index'),
+              'detector_boxes':count,
+              'detector_source':'production manifest boxes',
+              'clean_source':'production inpaint output',
+              'raw_source':'production import artifact',
+          }
+          (out/'README.json').write_text(json.dumps(payload,ensure_ascii=False,indent=2)+'\\n',encoding='utf-8')
+          print(json.dumps(payload,ensure_ascii=False))
+          PY
+
+      - name: Commit focused demo without clobbering newer branch work
+        run: |
+          git fetch origin trial/chapter-render-60
+          git reset --hard origin/trial/chapter-render-60
+          git add trials/chapter-60/demo
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git diff --cached --quiet || git commit -m "docs: add focused chapter 60 pipeline demo"
+          git push origin HEAD:trial/chapter-render-60
