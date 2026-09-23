@@ -1,54 +1,54 @@
-# Manga & Webtoon Translator Studio — v0.2
+# Manga & Webtoon Translator Studio
 
-Local-first, CPU-oriented manga / manhua / manhwa / webtoon translation studio.
+Local-first, CPU-oriented manga / manhua / manhwa / webtoon translation studio for a human-in-the-loop workflow.
 
-The v0.2 product flow is intentionally narrow and complete:
+**Import → Slice → Detect/Clean → Review → OCR → Translate → Edit/Typeset → Render → ZIP**
 
-**Import → Slice → Detect/Clean → Review → OCR → Auto-translate → Edit/Typeset → Render chapter → ZIP export**
+The application keeps the editor in control. Detection, cleanup, OCR and translation create editable results; geometry, text, typography and cleanup can be corrected before export.
 
-The application keeps a human editor in control. Automatic steps create a first pass; the editor can correct OCR, translation, geometry, typography and inpainting before export.
+## Features
 
-## What v0.2 does
-
-- Import local PNG/JPEG/WEBP/BMP images, ZIP or CBZ archives.
-- Import chapter URLs with HTTP + Playwright discovery, including relative image URLs, `srcset`, common lazy-load attributes, and scroll-until-stable discovery.
-- Slice long webtoon images into CPU-friendly segments while preferring safe cut bands; unsafe boundaries keep detector-only overlap context while stitch ownership remains non-overlapping.
-- Detect speech bubbles and free text with local ONNX models while preserving detector/class provenance; secondary OpenCV/MSER recovery surfaces outlined SFX/free text that the segmenter misses.
-- Protect line art during cleanup with verified pixel masks only: proposal-only detections, uncertain recovery, and watermarks remain review-only instead of becoming destructive rectangle inpaint. Fixed-LaMa tiling and page-space mask remapping remain available for compatibility.
-- Review cleaned pages, repaint mistakes manually, and optionally use Gemini, DeepSeek, OpenAI, OpenRouter, or Experiential Labs visual QC.
+- Import PNG, JPEG, WEBP and BMP images, ZIP/CBZ archives, or chapter URLs.
+- URL ingestion supports HTTP and Playwright discovery, relative URLs, `srcset`, common lazy-load attributes and scroll-until-stable discovery.
+- Slice long webtoon pages into CPU-friendly segments with safe cut-band selection and non-overlapping stitch ownership.
+- Detect speech bubbles and free text with local ONNX models while retaining model/class provenance.
+- Recover outlined/SFX/free text with OpenCV/MSER without turning uncertain recovery into destructive cleanup.
+- Clean text with verified pixel masks and LaMa. Proposal boxes are never treated as masks; uncertain detections and watermarks remain review-only.
+- Remap detector masks and geometry edits in page coordinates so user edits survive re-detection.
+- Review pages, repair cleanup manually and run optional visual QC through built-in or custom AI providers.
 - OCR Japanese with MangaOCR and Chinese/Korean/English with PaddleOCR.
-- Automatically turn detector boxes into editable text objects; re-processing keeps stable box links and does not overwrite user geometry/text edits.
-- Translate OCR text in chapter batches with DeepSeek or another configured OpenAI-compatible provider. Translation is opt-in and rejects stale writes if the editor changes text while the request is in flight. The verified USD preflight cap applies only to direct DeepSeek calls.
-- Edit translation, font, font size, bold, stroke, background, alignment, and text-region geometry.
-- Render every non-skipped page with the revision-safe renderer.
-- Export one ZIP for the chapter. Webtoon slices belonging to the same source page are vertically stitched back together before packaging.
-
-## Current limits
-
-v0.2 is designed to accelerate a human editor, not replace professional redraw/lettering work. Rotation, curved/path text, perspective/warp typography, advanced SFX recreation, and difficult art redraw still need external/editor intervention. URL scraping is generic rather than site-specific, so heavily protected readers may still require local upload.
-
-Production ONNX binaries are intentionally not stored in Git. Model-dependent detector/inpaint validation therefore remains a local/model-artifact gate; the repository CI verifies the model-independent product closure path.
+- Convert detector/OCR regions into stable editable text objects without overwriting user edits.
+- Translate chapters through configured OpenAI-compatible providers with stale-write protection.
+- Edit text, font, size, bold, stroke, background, alignment and text-region geometry.
+- Native comic-font matcher runs automatically during rendering; the built-in catalog contains 70 OFL-licensed comic fonts.
+- Render from persisted editor state and export a strict chapter ZIP. Webtoon slices from one source page are stitched back together for export.
+- Long decoded images are supported up to 100 million pixels; browser coverage includes long-image and mixed-width stitched-page cases.
 
 ## Requirements
 
 - Python 3.12 is the release-gate runtime.
 - CPU execution is the supported baseline; GPU is not required.
-- The v0.2 chapter acceptance gate is exercised under a 4 GiB memory limit with the production default two page workers; additional RAM is still useful for OCR/browser workloads.
-- Chromium is required for Playwright URL ingestion and browser regression tests.
+- Chromium is required for Playwright URL ingestion and browser regression checks.
+- The production baseline uses two page workers and is validated on a 4 GiB memory limit; additional RAM is useful for OCR and browser workloads.
 
-Install:
+### Install
 
 ```bash
 python -m venv .venv
+
 # Linux/macOS
 source .venv/bin/activate
-# Windows PowerShell: .\.venv\Scripts\Activate.ps1
+
+# Windows PowerShell
+.\.venv\Scripts\Activate.ps1
 
 python -m pip install -r requirements.txt
 playwright install chromium
 ```
 
-Required local models in `models/`:
+### Local models
+
+Put the following files in `models/`:
 
 - `bubble_yolo.onnx`
 - `text_segmenter.onnx`
@@ -58,13 +58,11 @@ Optional preferred inpaint model:
 
 - `lama-manga-dynamic.onnx` — used automatically when present; `lama.onnx` remains the fallback.
 
-The shared inpaint session is prepared once during server startup, before the
-web app accepts work, so the first processing request does not appear to freeze
-while ONNX builds the graph. The console and `GET /health` report the measured
-load time. Set `MANGA_INPAINT_PRELOAD=0` only when the process should retain the
-old fully-lazy, lower-idle-memory behavior.
+Model binaries are intentionally not committed to Git. The model-dependent detector/inpaint path is therefore a local artifact gate.
 
-Start:
+The inpaint session is normally prepared during server startup. Set `MANGA_INPAINT_PRELOAD=0` to restore fully lazy loading when lower idle memory is preferred.
+
+### Start
 
 ```bash
 python run.py
@@ -78,129 +76,130 @@ Docker is also supported:
 docker compose up --build
 ```
 
-The Docker image expects model files to be supplied through the mounted `./models` directory.
+The Docker image expects model files through the mounted `./models` directory.
 
-## AI providers and translation
+## AI providers
 
-AI settings keep a separate secret for Google Gemini, DeepSeek, OpenAI, OpenRouter, and Experiential Labs. The corresponding environment variables are `GEMINI_API_KEY`/`GOOGLE_API_KEY`, `DEEPSEEK_API_KEY`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY`, and `EXPLABS_API_KEY`. After saving a key, use **Tải model** to query that provider's `/models` catalog, or enter an exact model id manually.
+Visual QC supports the built-in Google Gemini, DeepSeek, OpenAI, OpenRouter and Experiential Labs providers. The application can also register custom AI providers using the OpenAI-compatible protocol.
 
-Chapter translation supports DeepSeek, OpenAI, OpenRouter, and Experiential Labs through their fixed OpenAI-compatible endpoints. Direct DeepSeek translation uses the current `deepseek-v4-flash` non-thinking JSON mode and retains the preflight cost check; the UI defaults to a `$0.02` cap. Other providers report token usage when available but are not charged against DeepSeek's price table.
+Built-in credentials use:
 
-The provider response is never committed blindly: object identity, OCR source text, and existing translation are checked again after the network call. Concurrent editor changes win and are counted as stale instead of being overwritten.
+| Provider | Environment variable |
+| --- | --- |
+| Google Gemini | `GEMINI_API_KEY` or `GOOGLE_API_KEY` |
+| DeepSeek | `DEEPSEEK_API_KEY` |
+| OpenAI | `OPENAI_API_KEY` |
+| OpenRouter | `OPENROUTER_API_KEY` |
+| Experiential Labs | `EXPLABS_API_KEY` |
 
-## Inpainting safety
+Custom providers use an HTTPS API base and OpenAI-compatible endpoints. Credentials are not accepted inside the API URL. Provider IDs are restricted to lowercase letters, numbers, `-` and `_`.
 
-- Flat-fill shortcuts inspect a clean ring and edge density before bypassing LaMa; artwork edges near text force model inpainting.
-- Missing detector segmentation masks no longer silently become destructive full-rectangle masks. Explicit manual boxes retain their rectangle fallback.
-- Long, narrow crops on the fixed 512×512 LaMa model use tiled inference instead of squeezing the crop into a thin strip.
-- Detector geometry edits remap masks in page coordinates instead of stretching or discarding them. Re-detection reconciles fresh detector masks to the persisted user geometry.
-- Regression tests verify local mask behavior, geometry remapping, and that automatic compositing leaves pixels outside the effective mask unchanged.
+Use the settings UI to configure provider keys, discover `/models`, choose an exact model ID, or register a custom provider.
 
+### Translation
 
-## v0.2 detection and CPU-memory safety
+Chapter translation is available through DeepSeek, OpenAI, OpenRouter and Experiential Labs, plus configured custom OpenAI-compatible providers. Direct DeepSeek translation uses the configured DeepSeek translation model with thinking disabled and retains the verified preflight cost check. The UI defaults to a `$0.02` DeepSeek cap.
 
-- Detection records retain `source_model`, class id/name, semantic type, mask provenance, inpaint safety, OCR eligibility, and review state.
-- NMS is class-aware, so `text_bubble` and `text_free` proposals do not suppress each other blindly.
-- Proposal geometry is not an inpaint mask. Only verified pixel masks can trigger automatic cleanup; watermarks and uncertain outlined/SFX recovery are review-only.
-- Content-heavy zero-box pages and detector disagreement are surfaced through `detection_state`, `detection_issues`, `unverified_regions`, and `needs_review` instead of silently passing as clean.
-- Unsafe webtoon seams keep overlap context for detection while export/stitch owns each source core pixel exactly once. Intermediate slices use lossless PNG to avoid repeated WebP encoder retention/artifacts.
-- ONNX Runtime CPU arena/memory-pattern retention is disabled by default on the low-memory path, thread defaults respect cgroup CPU quota, and dynamic LaMa can run across the production two-page worker schedule while the fixed fallback uses a serialized compatibility path.
+Translation commits are revision-safe: object identity, OCR source text and existing translation are checked again after the network request. Concurrent editor changes win instead of being overwritten.
+
+## Detection and inpainting safety
+
+- Detection records retain source model, class, semantic type, mask provenance, cleanup safety, OCR eligibility and review state.
+- NMS is class-aware, so bubble and free-text proposals do not suppress each other blindly.
+- Proposal geometry is not an inpaint mask. Only verified pixel masks can trigger automatic cleanup.
+- Watermarks, uncertain recovery and detector disagreement remain review-only.
+- Content-heavy zero-box pages and unresolved regions are surfaced through detection state and review metadata instead of silently passing as clean.
+- Flat-fill cleanup checks a clean ring and edge density before bypassing LaMa; nearby artwork edges force model inpainting.
+- Long/narrow crops use tiled LaMa inference where required instead of squeezing the crop into a thin strip.
+- Webtoon seams retain detector overlap context while stitch/export assigns each source pixel exactly once.
+- Low-memory ONNX Runtime settings and CPU thread defaults respect the available CPU/memory environment.
 
 ## Main API surface
 
-### Chapter / processing
+### Chapter and processing
 
 - `POST /api/chapter` — import from URL.
-- `POST /api/chapter/upload` — import images / ZIP / CBZ.
+- `POST /api/chapter/upload` — import images, ZIP or CBZ.
 - `POST /api/process_pages` — detect and inpaint selected pages.
-- `GET /api/chapter/{chapter_id}` — current manifest.
-- `POST /api/workflow_checkpoint` — persist current editor stage/page.
+- `GET /api/chapter/{chapter_id}` — read the current chapter manifest.
+- `POST /api/workflow_checkpoint` — persist editor stage/page state.
 
-### OCR / editor automation
+### OCR and editor
 
-- `POST /api/ocr/chapter` — start chapter OCR job.
-- `GET /api/ocr/chapter/{job_id}` — OCR job status.
+- `POST /api/ocr/chapter` — start chapter OCR.
+- `GET /api/ocr/chapter/{job_id}` — read OCR job status.
 - `POST /api/ocr/chapter/{job_id}/cancel` — cancel OCR.
 - `POST /api/ocr/chapter/{job_id}/retry` — retry failed/stale OCR targets.
-- `POST /api/text_objects/ensure` — map detected boxes into stable editor text objects.
-- `POST /api/text_object/create|update|delete` — manual text-object editing.
+- `POST /api/text_objects/ensure` — create stable editor text objects from detected regions.
+- `POST /api/text_object/create|update|delete` — manage manual text objects.
 
-### Translation / render / export
+### Translation, render and export
 
-- `POST /api/translate/chapter` — budgeted chapter translation.
-- `POST /api/render` — revision-safe single-page render.
-- `POST /api/render/chapter?chapter_id=...` — render all non-skipped pages from persisted editor state.
-- `GET /api/download/{chapter_id}/{page_index}` — strict current single-page download.
-- `GET /api/export/{chapter_id}.zip` — strict chapter ZIP export.
+- `POST /api/translate/chapter` — run budgeted chapter translation.
+- `POST /api/render` — render one page from current revision state.
+- `POST /api/render/chapter?chapter_id=...` — render all non-skipped pages.
+- `GET /api/download/{chapter_id}/{page_index}` — download the current single page.
+- `GET /api/export/{chapter_id}.zip` — export the current chapter.
 
-### Visual QC
+### Visual QC and settings
 
-- `/api/visual_qc/...` — multi-provider quality inspection, model discovery, chapter jobs, retry/cancel and per-provider key settings.
+- `/api/visual_qc/...` — visual-QC providers, model discovery, chapter jobs, retry/cancel and provider settings.
+- `/api/fonts` — stable comic-font catalog and `font_id` values.
 
-## Release gate
+## Development and release checks
 
-The permanent GitHub Actions workflow is `.github/workflows/release-gate.yml`.
-
-Install the lightweight correctness dependencies once, then run the local equivalent:
+Install the test dependencies and run the maintained local gate:
 
 ```bash
 python -m pip install -r requirements-test.txt
 make release-check
 ```
 
-The gate compiles source, runs the maintained model-independent pytest suite
-(including artwork-safety, geometry-mask, OCR and provider regressions), and
-runs the static JavaScript/browser runtime checks. The separate `Live UI smoke`
-workflow starts the real FastAPI application and exercises Chromium at desktop
-and mobile widths. `tests/test_v01_product_closure.py` specifically validates
-the connected path:
+Useful commands:
 
-**processed OCR box → auto text object → translation commit → revision-safe render → strict ZIP export**
+```bash
+make test
+make test-browser
+make health
+make docker-up
+```
 
-The external DeepSeek network call is stubbed in that test; the product state transitions, filesystem render, render identity, and ZIP generation are real.
+The release checks compile production code, run the maintained pytest suite, run browser/runtime sanity checks, and verify release, responsiveness and inpaint-authority invariants. The live UI workflow starts the real FastAPI application and exercises Chromium at desktop and mobile widths.
 
-For a user-reviewed processed ZIP, run `scripts/audit_processed_bundle.py` to
-measure manual-correction rate, review workload, residue state and persisted
-mask geometry. The current real-chapter reference is documented in
-`docs/PROCESSED_CHAPTER_QUALITY_BASELINE_20260912.md`; the completion proxy is
-never presented as detector recall.
+The chapter E2E path covers:
+
+**processed OCR box → stable text object → translation commit → revision-safe render → strict ZIP export**
+
+External provider calls are stubbed in deterministic release tests; filesystem rendering, persisted editor state and ZIP generation remain real.
+
+For a manually reviewed processed bundle, `scripts/audit_processed_bundle.py` measures correction rate, review workload, residue state and persisted mask geometry. Completion metrics are not presented as detector recall.
 
 ## Project layout
 
 ```text
 app/              production application
-  image_io.py      bounded image/mask file I/O
-  page_processing.py detector/inpaint processing for one page
-  pipeline_editing.py manual repair and text-object mutations
-  pipeline.py      chapter ingestion, scheduling and workflow coordination
-  detector/       local bubble/text detection
+  detector/       bubble/text detection and recovery
   downloader/     URL/local ingestion and webtoon slicing
-  inpaint/        LaMa cleanup + mask geometry safety
-  ocr/            MangaOCR/PaddleOCR service + jobs
-  translation/    OpenAI-compatible chapter translator
-  render/         typography + render identity
+  inpaint/        LaMa cleanup and mask geometry safety
+  ocr/            MangaOCR/PaddleOCR services and jobs
+  render/         typography, font matching and render identity
+  translation/    OpenAI-compatible chapter translation
+  visual_qc/      visual quality inspection and provider orchestration
   routers/        FastAPI endpoints
   static/         browser UI
-  visual_qc/      Gemini/OpenAI-compatible image QC
+  pipeline.py     chapter workflow coordination
 tests/            correctness, security and product-release regression tests
-models/           local model files + setup note; binaries are not committed
+models/           local model files; binaries are not committed
 data/             runtime chapter data (ignored)
-docs/             maintained architecture/UI/security history
+docs/             maintained architecture, UI, security and quality records
 ```
 
 ## Repository hygiene
 
-The production branch intentionally does not carry exploratory benchmark generations, one-off debug scripts, frozen benchmark JSON, or stale model hash manifests. The pre-v0.1 benchmark/debug tree is preserved intact on `archive/pre-v0.1-benchmarks` for future archaeology or model experiments.
+`main` contains maintained product code and release-critical checks, not exploratory benchmark generations or one-off debug artifacts. Historical benchmark/debug material is kept on dedicated archive/experiment branches.
 
-New release-critical checks use functional names. A few historical backend
-regression filenames retain their original phase numbers so old run links stay
-traceable; obsolete patch/apply workflows are not shipped on `main`. New
-experiments should live on a feature/benchmark branch and only enter `main`
-when they become part of the maintained product or release gate.
+New experiments should stay on feature or benchmark branches until they become part of the maintained product or release gate.
 
 ## Release rule
 
-For v0.2, new work must answer one question: **does it block a real chapter from reaching a correct export?** Non-blocking model experiments, benchmark refactors, extra providers, and advanced lettering features stay outside the release branch until the product-closure gate is green.
-## Comic font library
-
-The native renderer includes a catalog of 70 OFL-licensed comic fonts in `app/static/fonts/`, grouped into dialogue, emphasis, thought, narration, skill, SFX, horror, and romance folders. Use `GET /api/fonts` for stable `font_id` values. The matcher runs automatically on each render with an original lettering crop; `user`, `ai`, and `auto` modes can request a font, but an explicit user/AI choice is kept only when it is among the visual candidates, otherwise the best match is used. Legacy objects with an unmarked `default` style keep the historical fallback for compatibility while still recording matcher candidates. Generate a visual contact sheet with `python scripts/font_specimen.py` and run `python scripts/font_library_sanity.py` before packaging.
+A change belongs on the release path when it helps a real chapter reach a correct, reviewable export without weakening cleanup, geometry, editor-state or security invariants. Experimental model work, benchmark-only tooling and advanced lettering features remain outside the release path until they are product-critical and validated.
