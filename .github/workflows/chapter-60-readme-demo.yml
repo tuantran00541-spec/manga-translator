@@ -85,7 +85,7 @@ jobs:
           for i,p in enumerate(manifest.get('pages',[])):
               rel=str(p.get('original') or '')
               if not rel.endswith('.png') or '/sliced/' not in rel: continue
-              if int(p.get('source_page') or -1) == 0: continue
+              if p.get('source_page') is not None and int(p['source_page']) == 0: continue
               path=Path(rel.replace('checkpoint/01-import/raw/','checkpoint/01-import/raw/'))
               if not path.is_file(): path=root/'sliced'/Path(rel).name
               g=cv2.imread(str(path),cv2.IMREAD_GRAYSCALE)
