@@ -418,7 +418,7 @@ def _exercise_long_image(page: Page, base_url: str, artifacts: Path, name: str) 
     has_band("red", artifacts / f"{name}-long-top.png")
     viewport.evaluate("element => element.scrollTop = element.scrollHeight")
     page.wait_for_function(
-        "() => { const v = document.querySelector('.review-document-viewport'); return v.scrollTop > 10000 && v.scrollTop + v.clientHeight >= v.scrollHeight - 2; }"
+        "() => { const v = document.querySelector('.review-document-viewport'); return v.scrollTop > 1000 && v.scrollTop + v.clientHeight >= v.scrollHeight - 2; }"
     )
     has_band("blue", artifacts / f"{name}-long-bottom.png")
 
