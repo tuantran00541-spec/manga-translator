@@ -23,7 +23,7 @@ Detect text, clean artwork, OCR, translate, typeset, review, render, and export 
 </p>
 
 <p align="center">
-  <strong>Slice 000_00</strong>
+  <strong>Slice 015_04</strong>
 </p>
 <p align="center">
   <img src="https://raw.githubusercontent.com/tuantran00541-spec/manga-translator/trial/chapter-render-60/trials/chapter-60/demo/02-raw.jpg" alt="Chapter 60 slice 000_00 raw" width="32%">
