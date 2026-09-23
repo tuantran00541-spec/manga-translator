@@ -1,0 +1,168 @@
+name: Chapter 60 README Demo
+
+on:
+  push:
+    branches: [trial/chapter-render-60]
+    paths: [.github/workflows/chapter-60-readme-demo.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: chapter-60-readme-demo
+  cancel-in-progress: true
+
+jobs:
+  demo:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    env:
+      PYTHONUNBUFFERED: '1'
+      PYTHONPATH: '.'
+      CHAPTER_ID: f1cd0121
+      IMPORT_ARTIFACT: 01-import-f1cd0121
+      MANGA_USE_DYNAMIC_LAMA: '1'
+      MANGA_ORT_PROVIDER: openvino
+      MANGA_ORT_REQUIRE_PROVIDER: '1'
+      MANGA_ORT_OPENVINO_SCOPE: detectors
+      MANGA_ORT_OPENVINO_THREADS: '2'
+      MANGA_ORT_OPENVINO_STREAMS: '1'
+      MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
+      OPENBLAS_NUM_THREADS: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with: {ref: trial/chapter-render-60}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12', cache: pip}
+      - name: Install production runtime
+        run: python -m pip install numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 onnxruntime-openvino==1.24.1 psutil==6.1.1 loguru==0.7.2 requests==2.32.3 beautifulsoup4==4.12.3 lxml==5.3.0 fastapi==0.115.0 'uvicorn[standard]==0.30.6' pydantic==2.9.2 filelock==3.16.1 python-multipart==0.0.12
+      - name: Restore production models
+        id: models
+        uses: actions/cache@v4
+        with:
+          path: |
+            models/*.onnx
+            models/.e2e-provenance.json
+          key: processing-profile-models-b224548-v1
+      - name: Read pinned model provisioner
+        if: steps.models.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: b22454827f8190655d7070b80eb20c2550beadfa
+          path: benchmark-bootstrap
+          sparse-checkout: scripts/provision_real_e2e_models.py
+          sparse-checkout-cone-mode: false
+      - name: Provision public-equivalent models
+        if: steps.models.outputs.cache-hit != 'true'
+        run: |
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple torch==2.5.1+cpu torchvision==0.20.1+cpu
+          python -m pip install --no-deps ultralytics==8.3.221 onnx==1.17.0 onnxslim==0.1.71
+          python -m pip install sympy==1.13.1 PyYAML==6.0.2 scipy==1.14.1 tqdm==4.67.1 matplotlib==3.9.2 pandas==2.2.3 py-cpuinfo==9.0.0 ml_dtypes==0.5.3 colorama==0.4.6 polars==1.33.1 ultralytics-thop==2.0.17
+          python benchmark-bootstrap/scripts/provision_real_e2e_models.py
+          cp benchmark-bootstrap/models/*.onnx models/
+          cp benchmark-bootstrap/models/.e2e-provenance.json models/
+      - name: Restore fresh import artifact
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          IMPORT_RUN_ID="$(gh run list --workflow .github/workflows/chapter-60-import.yml --branch trial/chapter-render-60 --limit 1 --json databaseId --jq '.[0].databaseId')"
+          test -n "$IMPORT_RUN_ID"
+          gh run watch "$IMPORT_RUN_ID" --exit-status
+          rm -rf checkpoint/01-import && mkdir -p checkpoint/01-import
+          gh run download "$IMPORT_RUN_ID" -n "$IMPORT_ARTIFACT" -D checkpoint/01-import
+          test -f checkpoint/01-import/manifest.json
+          test -d checkpoint/01-import/raw/sliced
+      - name: Select two visually rich slices
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          import cv2, numpy as np
+          manifest=json.loads(Path('checkpoint/01-import/manifest.json').read_text())
+          root=Path('checkpoint/01-import/raw')
+          candidates=[]
+          for i,p in enumerate(manifest.get('pages',[])):
+              rel=str(p.get('original') or '')
+              if not rel.endswith('.png') or '/sliced/' not in rel: continue
+              path=Path(rel.replace('checkpoint/01-import/raw/','checkpoint/01-import/raw/'))
+              if not path.is_file(): path=root/'sliced'/Path(rel).name
+              g=cv2.imread(str(path),cv2.IMREAD_GRAYSCALE)
+              if g is None: continue
+              small=cv2.resize(g,(min(900,g.shape[1]),min(900,g.shape[0])),interpolation=cv2.INTER_AREA)
+              edge=float((cv2.Canny(small,80,180)>0).mean())
+              contrast=min(1.0,float(np.std(small))/64.0)
+              score=edge*.65+contrast*.35
+              candidates.append({'page_index':i,'path':str(path),'source_page':p.get('source_page'),'slice_index':p.get('slice_index'),'score':score})
+          candidates.sort(key=lambda x:x['score'],reverse=True)
+          chosen=[]
+          for c in candidates:
+              if all(abs(c['page_index']-x['page_index'])>2 for x in chosen): chosen.append(c)
+              if len(chosen)==2: break
+          if len(chosen)<2: raise RuntimeError(f'only found {len(chosen)} suitable slices')
+          Path('checkpoint/chosen.json').write_text(json.dumps(chosen,ensure_ascii=False,indent=2))
+          print(json.dumps(chosen,ensure_ascii=False))
+          PY
+      - name: Prepare two-slice production manifest
+        run: |
+          python - <<'PY'
+          import json, shutil
+          from pathlib import Path
+          from app.security import validate_chapter_id
+          chapter=validate_chapter_id('f1cd0121'); src=Path('checkpoint/01-import'); raw_dst=Path('data/raw')/chapter; processed=Path('data/processed')/chapter
+          if raw_dst.exists(): shutil.rmtree(raw_dst)
+          if processed.exists(): shutil.rmtree(processed)
+          shutil.copytree(src/'raw',raw_dst); processed.mkdir(parents=True)
+          manifest=json.loads((src/'manifest.json').read_text()); chosen=json.loads(Path('checkpoint/chosen.json').read_text()); wanted={x['page_index'] for x in chosen}
+          prefix='checkpoint/01-import/raw/'
+          for p in manifest.get('pages',[]):
+              original=str(p.get('original') or '')
+              if original.startswith(prefix): p['original']=(raw_dst/original[len(prefix):]).as_posix()
+          for i,p in enumerate(manifest.get('pages',[])): p['skipped']=i not in wanted
+          manifest['workflow']={'stage':'clean','page_indexes':sorted(wanted)}
+          (processed/'manifest.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2))
+          PY
+      - name: Run production detector and inpaint on two slices
+        run: |
+          python - <<'PY'
+          import json,time
+          from pathlib import Path
+          from app.manifest_utils import load_manifest_raw
+          from app.optimized_pipeline import OptimizedChapterPipeline
+          chapter='f1cd0121'; wanted=[x['page_index'] for x in json.loads(Path('checkpoint/chosen.json').read_text())]
+          t=time.perf_counter(); OptimizedChapterPipeline().process_pages(chapter,wanted,workers=1)
+          manifest=load_manifest_raw(chapter)
+          rows=[]
+          for i in wanted:
+              p=manifest['pages'][i]
+              if not p.get('clean'): raise RuntimeError(f'missing clean output for page {i}')
+              rows.append({'page_index':i,'source_page':p.get('source_page'),'slice_index':p.get('slice_index'),'original':p.get('original'),'clean':p.get('clean'),'boxes':p.get('boxes') or p.get('detections') or []})
+          Path('checkpoint/result.json').write_text(json.dumps({'elapsed_s':round(time.perf_counter()-t,3),'pages':rows},ensure_ascii=False,indent=2))
+          PY
+      - name: Build six demo images
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from PIL import Image,ImageDraw
+          data=json.loads(Path('checkpoint/result.json').read_text()); out=Path('trials/chapter-60/demo'); out.mkdir(parents=True,exist_ok=True)
+          for n,row in enumerate(data['pages'],1):
+              raw=Image.open(row['original']).convert('RGB'); clean=Image.open(row['clean']).convert('RGB'); detector=raw.copy(); d=ImageDraw.Draw(detector); count=0
+              for b in row['boxes']:
+                  vals=[b.get(k) for k in ('x1','y1','x2','y2')]
+                  if any(v is None for v in vals): continue
+                  x1,y1,x2,y2=map(int,vals)
+                  if x2>x1 and y2>y1: d.rectangle((x1,y1,x2,y2),outline='red',width=max(3,min(10,round(min(raw.size)/400)))); count+=1
+              raw.save(out/f'{n:02d}-raw.jpg',quality=94,optimize=True); detector.save(out/f'{n:02d}-detector.jpg',quality=94,optimize=True); clean.save(out/f'{n:02d}-clean.jpg',quality=94,optimize=True)
+              row['detector_boxes']=count
+          Path(out/'README.json').write_text(json.dumps({'chapter':'A Cadet Becomes a Prophet — Chapter 60','selection':'top two visually rich slices by edge/contrast score','elapsed_s':data['elapsed_s'],'pages':data['pages']},ensure_ascii=False,indent=2)+'\n')
+          PY
+      - name: Commit demo assets
+        run: |
+          git fetch origin trial/chapter-render-60
+          git reset --hard origin/trial/chapter-render-60
+          git add trials/chapter-60/demo
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git diff --cached --quiet || git commit -m 'docs: add two rich chapter 60 pipeline demos'
+          git push origin HEAD:trial/chapter-render-60
