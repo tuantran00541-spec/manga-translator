@@ -6,11 +6,11 @@
   "source_url": "https://asurascans.com/comics/a-cadet-becomes-a-prophet-53fc8424/chapter/60",
   "branch": "trial/chapter-render-60",
   "source_of_truth_sha": "e5bd8c6c0aa7bb6e092a3d4680c6829fb62c804c",
-  "current_stage": "FINAL",
+  "current_stage": "IMPORT_REVIEW",
   "last_passed_checkpoint": "FINAL",
-  "current_artifact": "07b-final-f1cd0121",
+  "current_artifact": "01-import-f1cd0121",
   "review_evidence_artifact": "07b-punctuation-restoration",
   "blockers": [],
-  "next_action": "COMPLETE",
+  "next_action": "HUMAN_IMPORT_REVIEW",
   "final_correction": "Restored p029/p048 acting punctuation wrongly tombstoned during OCR curation."
 }
