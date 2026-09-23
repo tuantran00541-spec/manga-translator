@@ -3,7 +3,6 @@ name: README Chapter 241 Demo
 on:
   push:
     branches: [main]
-    paths: [.github/workflows/readme-chapter-241-demo.yml]
 
 permissions:
   contents: write
@@ -75,13 +74,10 @@ jobs:
                   g=cv2.imread(str(item['path']),cv2.IMREAD_GRAYSCALE)
                   if g is None: continue
                   small=cv2.resize(g,(min(900,g.shape[1]),min(900,g.shape[0])),interpolation=cv2.INTER_AREA)
-                  edge=float((cv2.Canny(small,80,180)>0).mean())
-                  contrast=min(1.0,float(np.std(small))/64.0)
+                  edge=float((cv2.Canny(small,80,180)>0).mean()); contrast=min(1.0,float(np.std(small))/64.0)
                   candidates.append((edge*.65+contrast*.35,si,sj,str(item['path'])))
-          score,si,sj,path=max(candidates)
-          chosen={'score':score,'source_page':si,'slice_index':sj,'path':path}
-          (root/'chosen.json').write_text(json.dumps(chosen,ensure_ascii=False,indent=2),encoding='utf-8')
-          print(json.dumps(chosen,ensure_ascii=False))
+          score,si,sj,path=max(candidates); chosen={'score':score,'source_page':si,'slice_index':sj,'path':path}
+          (root/'chosen.json').write_text(json.dumps(chosen,ensure_ascii=False,indent=2),encoding='utf-8'); print(json.dumps(chosen,ensure_ascii=False))
           PY
       - name: Run production clean on chosen slice
         run: |
@@ -90,16 +86,14 @@ jobs:
           from pathlib import Path
           from app.optimized_pipeline import OptimizedChapterPipeline
           from app.manifest_utils import load_manifest_raw
-          chosen=json.loads(Path('checkpoint/readme-demo/chosen.json').read_text())
-          raw=Path('data/raw/c241dr01'); processed=Path('data/processed/c241dr01')
+          chosen=json.loads(Path('checkpoint/readme-demo/chosen.json').read_text()); raw=Path('data/raw/c241dr01'); processed=Path('data/processed/c241dr01')
           if raw.exists(): shutil.rmtree(raw)
           if processed.exists(): shutil.rmtree(processed)
           (raw/'sliced').mkdir(parents=True); processed.mkdir(parents=True)
           target=Path(chosen['path']); dst=raw/'sliced'/target.name; shutil.copy2(target,dst)
           manifest={'chapter_id':'c241dr01','pages':[{'original':dst.as_posix(),'clean':None,'boxes':[],'skipped':False,'source_page':chosen['source_page'],'slice_index':chosen['slice_index'],'stitch_core':{}}],'workflow':{'stage':'clean','page_index':0}}
           (processed/'manifest.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding='utf-8')
-          t=time.perf_counter(); OptimizedChapterPipeline().process_pages('c241dr01',[0],workers=1)
-          page=load_manifest_raw('c241dr01')['pages'][0]
+          t=time.perf_counter(); OptimizedChapterPipeline().process_pages('c241dr01',[0],workers=1); page=load_manifest_raw('c241dr01')['pages'][0]
           if not page.get('clean'): raise RuntimeError('clean output missing')
           Path('checkpoint/readme-demo/meta.json').write_text(json.dumps({'chosen':chosen,'clean':page['clean'],'boxes':len(page.get('boxes') or page.get('detections') or []),'elapsed_s':round(time.perf_counter()-t,3)},ensure_ascii=False,indent=2),encoding='utf-8')
           PY
