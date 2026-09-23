@@ -399,9 +399,9 @@ def _exercise_long_image(page: Page, base_url: str, artifacts: Path, name: str) 
         }""")
         raise AssertionError(f"{name}: long image element missing: {state}")
     expect(page.locator('.review-stitched-image')).to_have_attribute("data-strip-slices", "1")
-    expect(page.locator('.review-stitched-image')).to_have_attribute("data-source-height", "41000")
+    expect(page.locator('.review-stitched-image')).to_have_attribute("data-source-height", "42000")
     expect(image).to_have_js_property("naturalWidth", 1200)
-    expect(image).to_have_js_property("naturalHeight", 41000)
+    expect(image).to_have_js_property("naturalHeight", 42000)
     viewport = page.locator('.review-document-viewport')
 
     def has_band(color: str, output: Path) -> None:

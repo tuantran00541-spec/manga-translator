@@ -13,7 +13,7 @@ from PIL import Image
 CHAPTER_ID_RE = re.compile(r"^[a-f0-9]{8}$")
 
 MAX_REQUEST_BYTES = 50 * 1024 * 1024
-MAX_IMAGE_PIXELS = 50_000_000
+MAX_IMAGE_PIXELS = 100_000_000
 MAX_RENDER_TRANSLATIONS = 100
 MAX_RENDER_TEXT_LEN = 5000
 # A debounced editor flush can contain patches from several pages.  Keep the
