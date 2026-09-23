@@ -12,11 +12,12 @@ Detect text, clean artwork, OCR, translate, typeset, review, render, and export 
 **Import → Slice → Detect → Clean → Review → OCR → Translate → Letter → Render → Export**
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/tuantran00541-spec/manga-translator/trial/chapter-render-60/chapters/chapter-60/review/01-import/source-contact-sheet.jpg" alt="Historical source chapter contact sheet" width="49%">
-  <img src="https://raw.githubusercontent.com/tuantran00541-spec/manga-translator/trial/chapter-render-60/trials/chapter-60/review/06-render-sheets/sheet_00_p000-003.jpg" alt="Historical rendered chapter proof" width="49%">
+  <img src="https://raw.githubusercontent.com/tuantran00541-spec/manga-translator/trial/chapter-render-60/trials/chapter-60/demo/raw.jpg" alt="Raw manga slice" width="32%">
+  <img src="https://raw.githubusercontent.com/tuantran00541-spec/manga-translator/trial/chapter-render-60/trials/chapter-60/demo/detector.jpg" alt="Text detector overlay" width="32%">
+  <img src="https://raw.githubusercontent.com/tuantran00541-spec/manga-translator/trial/chapter-render-60/trials/chapter-60/demo/clean.jpg" alt="Cleaned manga slice" width="32%">
 </p>
 
-<p align="center"><sub>Historical chapter artifacts preserved from the project's trial branches: source artwork and rendered proof.</sub></p>
+<p align="center"><sub>One real chapter slice through the production pipeline: RAW → text detection → CLEAN.</sub></p>
 
 > **Automation proposes. Editorial state decides. Published artifacts must match the current state.**
 
@@ -175,9 +176,9 @@ Examples include:
 - OCR/translation/render visual proofs from **trial/chapter-render-251**
 - long-page and mixed-width review coverage from later chapter runs
 
-The demo images above are historical artifacts from those branches rather than synthetic mockups.
+The focused demo above is a real slice from `trial/chapter-render-60`: `RAW → text detector → CLEAN`.
 
-Raw and clean working PNGs were runtime artifacts and were intentionally not kept in Git, so the README does not pretend a missing clean image is part of the public repository.
+The three images come from the same production slice (`011_00`) and are kept beside the historical trial evidence. Full runtime chapter images remain artifacts rather than permanent Git fixtures.
 
 ## Quick start
 
