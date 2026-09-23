@@ -402,6 +402,8 @@ def _exercise_long_image(page: Page, base_url: str, artifacts: Path, name: str) 
     expect(page.locator('.review-stitched-image')).to_have_attribute("data-source-height", "42000")
     expect(image).to_have_js_property("naturalWidth", 1200)
     expect(image).to_have_js_property("naturalHeight", 42000)
+    expect(image).to_have_js_property("complete", True)
+    image.evaluate("async element => { await element.decode(); await new Promise(requestAnimationFrame); await new Promise(requestAnimationFrame); }")
     viewport = page.locator('.review-document-viewport')
 
     def has_band(color: str, output: Path) -> None:
