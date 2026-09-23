@@ -40,6 +40,8 @@ def main() -> None:
     pages = []
     for index in range(3):
         image = _page(index)
+        if index == 2:
+            image = image.crop((0, 0, 1000, 1600))
         original = f"page_{index:03d}.png"
         clean = f"clean_{index:03d}.png"
         image.save(RAW_DIR / original)
@@ -47,6 +49,7 @@ def main() -> None:
         pages.append(
             {
                 "source_page": index,
+                **({"width": image.width} if index == 2 else {}),
                 "slice_index": 0,
                 "stitch_core": {
                     "source_y1": 0,

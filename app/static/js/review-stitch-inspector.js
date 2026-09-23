@@ -537,9 +537,8 @@
           height = preloaded.naturalHeight;
           width = preloaded.naturalWidth || width;
         }
-        if (!(width > 0) || width !== stripWidth) {
-          throw new Error("Các lát trong chapter không cùng chiều rộng.");
-        }
+        if (!(width > 0)) throw new Error(`Lát ${item.canonicalIndex + 1} không có chiều rộng hợp lệ.`);
+        stripWidth = Math.max(stripWidth, width);
 
         const core = coreMeta(live, height);
         const localY1 = core ? core.localY1 : 0;
@@ -578,6 +577,7 @@
         slice.dataset.pageIndex = String(desc.item.canonicalIndex);
         Object.assign(slice.style, {
           top: `${desc.sourceY1}px`,
+          width: `${desc.img.naturalWidth}px`,
           height: `${desc.sourceY2 - desc.sourceY1}px`,
         });
 
