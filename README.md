@@ -1,196 +1,144 @@
 # Manga & Webtoon Translator Studio
 
-Local-first, CPU-oriented translation and lettering workstation for manga, manhua, manhwa, and webtoon chapters.
+[![Release Gate](https://github.com/tuantran00541-spec/manga-translator/actions/workflows/release-gate.yml/badge.svg)](https://github.com/tuantran00541-spec/manga-translator/actions/workflows/release-gate.yml)
+[![Python 3.12](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/backend-FastAPI-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![CPU First](https://img.shields.io/badge/runtime-CPU--first-222222)](#cpu-first)
 
-Manga & Webtoon Translator Studio is built around a **human-in-the-loop editorial workflow**. Automation prepares a chapter, but the editor remains the source of truth for text, geometry, typography, cleanup decisions, and final export.
+**A local-first manga, manhwa, manhua, and webtoon translation & lettering studio.**
+
+Detect text, clean artwork, OCR, translate, typeset, review, render, and export complete chapters — while keeping the editor in control of the final result.
 
 **Import → Slice → Detect → Clean → Review → OCR → Translate → Letter → Render → Export**
 
-The project runs locally as a FastAPI application with a browser-based review workspace. Local ONNX models handle detection and inpainting; OCR and optional AI services are added around that local core rather than replacing it.
+<p align="center">
+  <img src="https://raw.githubusercontent.com/tuantran00541-spec/manga-translator/trial/chapter-render-60/chapters/chapter-60/review/01-import/source-contact-sheet.jpg" alt="Historical source chapter contact sheet" width="49%">
+  <img src="https://raw.githubusercontent.com/tuantran00541-spec/manga-translator/trial/chapter-render-60/trials/chapter-60/review/06-render-sheets/sheet_00_p000-003.jpg" alt="Historical rendered chapter proof" width="49%">
+</p>
 
-## What the project is
+<p align="center"><sub>Historical chapter artifacts preserved from the project's trial branches: source artwork and rendered proof.</sub></p>
 
-This is not a single “translate this image” script.
+> **Automation proposes. Editorial state decides. Published artifacts must match the current state.**
 
-It is a chapter-oriented processing system with four persistent layers:
+## Why this project exists
 
-1. **Source artwork** — the original imported pages or downloaded chapter.
-2. **Processing artifacts** — slices, detections, masks, cleaned pages, and OCR results.
-3. **Editorial state** — text objects, translations, geometry, typography, skip/preserve decisions, and manual repairs.
-4. **Published artifacts** — rendered pages and the final stitched ZIP export.
+Most automated manga translators treat a page as something to transform once.
 
-The architecture is deliberately revision-aware: expensive work is allowed to run concurrently, but stale results are rejected instead of silently replacing newer editor changes.
+This project treats a chapter as an **editable production workspace**.
 
-## End-to-end workflow
+Detection, cleanup, OCR, translation, typography, and AI assistance are all allowed to make mistakes. The editor can inspect, correct, reject, repaint, resize, retranslate, or restyle those results before anything becomes the published chapter artifact.
 
-### 1. Import
+The application is local-first and CPU-oriented. Local ONNX models provide the core detection and inpainting pipeline; OCR and external AI providers are optional layers around that local workflow.
 
-Import a chapter from:
+## The workflow
 
-- PNG, JPEG, WEBP, or BMP files
-- ZIP or CBZ archives
-- A chapter URL
+| Stage | What happens |
+| --- | --- |
+| **1. Import** | Images, ZIP/CBZ archives, or chapter URLs |
+| **2. Slice** | Long webtoon pages become processing-friendly slices |
+| **3. Detect** | Speech bubbles, free text, OCR regions, outlined/SFX text |
+| **4. Clean** | Verified-mask LaMa inpainting and manual repair |
+| **5. Review** | Unified canvas workspace and editorial corrections |
+| **6. OCR** | MangaOCR + PP-OCRv6 hybrid recognition |
+| **7. Translate** | Batch text translation or two-image vision translation |
+| **8. Letter** | Text objects, geometry, typography, font matching |
+| **9. Render** | Revision-safe page publication |
+| **10. Export** | Stitched chapter ZIP |
 
-URL ingestion combines direct HTTP retrieval with Playwright-based discovery. The generic browser path understands relative image URLs, `srcset`, common lazy-load attributes, and pages whose images only appear after scrolling. The downloader layer also contains site-specific adapters where a stable fast path is useful.
+## Features
 
-Downloads and uploads are bounded and validated before they enter the processing pipeline.
+### 📥 Import
 
-### 2. Slice
+- PNG, JPEG, WEBP and BMP
+- ZIP and CBZ chapters
+- Chapter URLs through HTTP and Playwright
+- Relative URLs, srcset, common lazy-load attributes, and scroll-based discovery
+- Site-specific downloader adapters where a stable fast path is useful
+- Bounded downloads and upload validation
 
-Long webtoon pages are converted into processing-friendly slices.
+### ✂️ Smart webtoon slicing
 
-The slicer does not treat the target slice height as a hard cut line. It searches for low-content and safe bands first, avoids known unsafe regions, and only falls back to a low-content or emergency boundary when a safe cut cannot be found.
+Long pages are split into CPU-friendly slices without blindly cutting at a fixed height.
 
-Each slice keeps source-page identity, slice ordering, and stitch-core metadata so the review UI can present a continuous page while export can reconstruct the original long page.
+The slicer prefers low-content and safe bands, preserves source-page and slice identity, and records stitch ownership so a webtoon page can be reconstructed without duplicated or missing pixels.
 
-### 3. Detect
+### 🔎 Detection
 
-Detection is local and ONNX-based.
-
-The maintained detector stack can identify:
+Local ONNX inference detects:
 
 - speech bubbles
 - free text
-- text regions suitable for OCR
-- outlined/SFX-like text recovered by secondary computer-vision logic
+- OCR-ready regions
+- outlined/SFX-like text recovered by secondary CV logic
 
-Detection records retain provenance and review metadata instead of collapsing everything into a single rectangle.
+Detection records retain source/model/class provenance and review state.
 
-A key design rule is:
+### 🧹 Artwork-safe cleanup
 
-> **A detection proposal is not automatically an inpaint mask.**
+Cleanup is driven by **verified pixel masks**, not detector rectangles.
 
-Confidence, class, mask provenance, semantic type, OCR eligibility, and cleanup safety are kept separately so uncertain detections can be reviewed instead of being destructively painted over.
+The pipeline supports:
 
-### 4. Clean / inpaint
+- LaMa inpainting
+- dynamic and fixed LaMa backends
+- tiled inference for long/narrow regions
+- safe flat-fill shortcuts
+- manual repaint
+- mask reset
+- preserve/skip regions
+- page-coordinate mask remapping
 
-Cleanup uses verified pixel masks and LaMa-based inpainting.
+Uncertain detections, watermarks, and review-only regions are not silently promoted to destructive cleanup.
 
-The system supports:
+### 👁️ OCR
 
-- the fixed `lama.onnx` backend
-- the preferred `lama-manga-dynamic.onnx` backend when present
-- tiled inference for long or narrow regions
-- smart flat-fill shortcuts when the surrounding artwork is provably safe
-- manual repaint and mask reset
-- preserve/skip regions and other review-only boundaries
+Hybrid chapter OCR uses:
 
-Artwork safety is enforced at the mask level. Automatic cleanup is not allowed to assume that a detector box is safe simply because the detector produced it.
+- **MangaOCR** for Japanese
+- **PP-OCRv6 / PaddleOCR** for Chinese, Korean, and English
 
-User geometry is persisted in page coordinates so detector refreshes and mask remapping do not silently destroy editorial changes.
+OCR is chapter-aware, revision-safe, and can preserve source visual metadata such as lettering color, position, and size hints for downstream typesetting.
 
-### 5. Review
+### 🌐 Translation
 
-The current UI is a unified canvas-oriented Review workspace rather than separate legacy screens.
+Two complementary modes are available.
 
-The editor can:
+**Text translation**
 
-- inspect the cleaned page and original artwork together
-- navigate stitched long pages and slices
-- review detections and OCR regions
-- add, resize, move, merge, or remove text regions
-- paint or reset cleanup masks
-- preserve regions from destructive operations
-- skip pages or regions intentionally
-- edit translation and typography in-place
-- re-render from the saved editorial state
+Batch existing text objects through configured OpenAI-compatible providers with stable IDs, stale-write protection, and provider-specific budget controls where pricing is known.
 
-The browser layer is designed to survive long-running chapter work: processing jobs belong to the backend, state is persisted, and refresh/navigation should reconnect to the current chapter rather than silently abandoning work.
+**Vision translation**
 
-### 6. OCR
+Send the **ORIGINAL** and **CLEAN** versions of the same slice together with existing text-object IDs and stored regions.
 
-OCR is a hybrid service rather than one universal recognizer.
+The model translates only the objects that already exist. Geometry, placement, color, and size remain editor-owned state rather than model-generated replacements.
 
-The maintained production stack uses:
+### ✍️ Lettering
 
-- **MangaOCR** for Japanese manga text
-- **PP-OCRv6 / PaddleOCR** for Chinese, Korean, and English text
-
-OCR is chapter-aware and revision-safe. Recognition results retain stable identity, reading-order information, and visual metadata where available.
-
-OCR visual metadata can carry source text color, position, and size hints into the editor so the initial typeset result starts closer to the source artwork instead of rebuilding every property from scratch.
-
-The service also uses bounded decoded-page caching and a fast recognition path with a full-page fallback when targeted recognition produces no usable result.
-
-### 7. Translate
-
-There are two translation modes.
-
-#### Text translation
-
-Chapter text objects can be translated in batches through configured OpenAI-compatible providers.
-
-The translator:
-
-- uses stable text-object IDs
-- requires every returned ID to match an existing object
-- rejects unknown or duplicated IDs
-- keeps translation commits revision-safe
-- refuses to overwrite newer editor changes
-- supports a provider-specific budget guard where pricing is known
-
-Direct DeepSeek translation keeps an explicit preflight cost estimate and configurable budget cap.
-
-#### Vision translation
-
-Vision translation works with the actual page context rather than OCR text alone.
-
-For each slice, the service can send:
-
-1. the **ORIGINAL** image containing the source lettering
-2. the **CLEAN** image after inpainting
-
-The model receives existing text-object IDs, source OCR as an optional hint, and stored pixel-space regions. It is instructed to translate only those existing objects.
-
-Geometry, color, size, and placement are not regenerated by the model. They are already part of the editorial state.
-
-The response is therefore an editorial patch, not a replacement page.
-
-Vision translation can also return an optional installed-font choice for an existing text object.
-
-### 8. Lettering and font matching
-
-The renderer treats typography as editable data, not a one-shot post-processing step.
-
-Text objects can retain and edit:
+The browser workbench provides region-centric editing for:
 
 - translated text
-- font
-- font size
+- font and size
 - weight
 - stroke
 - background
 - alignment
-- region geometry
-- other renderer-supported style properties
+- text-region geometry
+- manual text objects
 
-The project includes a native comic-font catalog with **66 bundled OFL-1.1 fonts** across dialogue, emphasis, thought, narration, skill, SFX, horror, and romance categories.
+The current UI is a unified Review workspace rather than a collection of legacy editor screens.
 
-Automatic font matching is the default path. It compares a source lettering crop against rendered candidates using deterministic CPU-side visual descriptors and returns ranked candidates with confidence/evidence. Explicit user or AI font choices are only accepted when they resolve to installed catalog fonts.
+### 🔤 Automatic comic-font matching
 
-### 9. Render
+The renderer includes a native catalog of **66 bundled OFL-1.1 comic fonts** across dialogue, emphasis, thought, narration, skill, SFX, horror, and romance categories.
 
-Rendering is driven from persisted editorial state.
+Automatic font matching runs by default using deterministic CPU-side visual comparison of original lettering crops.
 
-The renderer records the inputs used to produce the artifact and protects the publication step against stale edits. A render that finishes after the underlying page changed is not allowed to silently become the current render.
+User and AI font choices are validated against the installed catalog instead of accepting arbitrary filesystem paths.
 
-The chapter renderer can process all non-skipped pages, while the review workspace can display the current rendered result as a continuous stitched document.
+### 🧠 AI providers
 
-### 10. Export
-
-Final export is revision-safe.
-
-Before creating the archive, the system captures the canonical page/render inputs. Encoding and stitching happen outside the long-held manifest lock. The inputs are then checked again before the ZIP is published.
-
-For webtoon chapters, slices belonging to the same source page are vertically stitched back together using their persisted core ranges.
-
-The result is a chapter ZIP containing the current published page artifacts rather than whatever files happened to exist on disk when export began.
-
-## AI provider architecture
-
-AI is intentionally a service layer around the local editor.
-
-The current built-in provider registry includes:
+Built-in providers currently include:
 
 - Google Gemini
 - DeepSeek
@@ -198,81 +146,56 @@ The current built-in provider registry includes:
 - OpenRouter
 - Experiential Labs
 
-The application can also register **custom OpenAI-compatible providers** with an HTTPS API base.
+The settings layer can also register custom **OpenAI-compatible** providers with validated HTTPS API bases.
 
-Provider configuration is capability-driven. A provider can advertise model discovery, visual QC, translation, cost tracking, and image transport separately.
+Providers advertise capabilities independently, allowing the same registry to power model discovery, translation, and Visual QC without hard-wiring the UI to one vendor.
 
-The settings UI can:
+### 🔍 Visual QC
 
-- store provider credentials separately
-- query a provider's `/models` catalog
-- select an exact model ID
-- configure custom OpenAI-compatible endpoints
+Visual QC is an inspection layer, not the editor of record.
 
-Secrets are never embedded in provider URLs. Custom provider API bases must be public HTTPS URLs and are validated before outbound requests.
+The system supports region-aware chapter inspection, revision-aware caching, bounded concurrency, cancel/retry flows, provider-isolated results, and browser-tested navigation of QC findings.
 
-## Visual QC
+### 📦 Revision-safe render and export
 
-Visual QC is separate from translation.
+Rendered pages and chapter exports are tied to canonical editorial state.
 
-It is used to inspect processed pages and chapter regions for issues such as cleanup artifacts, lettering problems, or other visual regressions without letting a model directly become the editor of record.
+If an editor changes relevant content while expensive rendering or export work is running, stale artifacts are rejected instead of becoming the current published result.
 
-The QC system supports chapter jobs, region-aware batching, revision-aware caching, bounded concurrency, cancellation/retry flows, provider isolation, and browser-tested result navigation.
+Long webtoon slices are stitched back into their source-page structure during chapter export.
 
-The same provider registry used by the current settings surface allows built-in and custom visual-capable providers to participate without hard-wiring the UI to one vendor.
+## Demo artifacts
 
-## CPU-first runtime
+The repository has kept several historical chapter trials for regression and visual review.
 
-The supported baseline is CPU execution.
+Examples include:
 
-The production runtime has been repeatedly optimized around desktop-class CPU constraints:
+- source and slice contact sheets from **trial/chapter-render-60**
+- rendered page sheets from **trial/chapter-render-60**
+- OCR/translation/render visual proofs from **trial/chapter-render-251**
+- long-page and mixed-width review coverage from later chapter runs
 
-- bounded page concurrency
-- conservative ONNX Runtime thread usage
-- OpenVINO execution on supported x86-64 Windows/Linux environments
-- standard ONNX Runtime elsewhere
-- cached decoded source pages for repeated OCR work
-- bounded downloads and retry policy
-- shorter manifest lock windows
-- deterministic browser/runtime sanity checks
+The demo images above are historical artifacts from those branches rather than synthetic mockups.
 
-The current processing design intentionally favors a small bounded worker schedule over spawning many heavy inference jobs that compete for the same CPU and memory bandwidth.
+Raw and clean working PNGs were runtime artifacts and were intentionally not kept in Git, so the README does not pretend a missing clean image is part of the public repository.
 
-GPU acceleration is not required for the core workflow.
+## Quick start
 
-## Models
-
-The model binaries are intentionally excluded from Git.
-
-Place these files in `models/`:
-
-| Model | Role |
-| --- | --- |
-| `bubble_yolo.onnx` | Bubble/text detection |
-| `text_segmenter.onnx` | Text segmentation and pixel-mask support |
-| `lama-manga-dynamic.onnx` | Preferred dynamic-resolution inpainting backend |
-| `lama.onnx` | Fixed-resolution LaMa fallback |
-
-At runtime, the detector and segmenter are required. Inpainting requires either the dynamic model or the fixed LaMa model; when both exist, the dynamic model is preferred.
-
-The repository therefore separates two kinds of validation:
-
-- **Model-independent release gates** — source compilation, tests, browser/runtime checks, state and security invariants.
-- **Model-artifact validation** — real ONNX detector/segmenter/inpaint behavior against locally supplied model files.
-
-## Requirements
+### Requirements
 
 - Python 3.12
 - CPU-capable machine
 - Chromium for Playwright URL ingestion and browser regression checks
-- The production baseline is tuned around two page workers
-- Additional RAM is useful for OCR, large pages, and browser workloads
+- Additional RAM is useful for OCR and very large pages
 
 The image path accepts up to **100,000,000 decoded pixels** per image.
 
-### Install locally
+### Install
 
-```bash
+~~~bash
+git clone https://github.com/tuantran00541-spec/manga-translator.git
+cd manga-translator
+
 python -m venv .venv
 
 # Linux / macOS
@@ -283,235 +206,207 @@ source .venv/bin/activate
 
 python -m pip install -r requirements.txt
 playwright install chromium
-```
+~~~
 
-Copy the required ONNX files into `models/`, then start the application:
+### Models
 
-```bash
+Place these files in models/:
+
+| File | Purpose |
+| --- | --- |
+| bubble_yolo.onnx | Bubble/text detection |
+| text_segmenter.onnx | Text segmentation and pixel masks |
+| lama-manga-dynamic.onnx | Preferred inpainting backend |
+| lama.onnx | Fixed-resolution fallback |
+
+Model binaries are intentionally not committed to Git.
+
+### Run
+
+~~~bash
 python run.py
-```
+~~~
 
 Open:
 
-```text
+~~~text
 http://127.0.0.1:8000
-```
+~~~
 
 ### Docker
 
-```bash
+~~~bash
 docker compose up --build
-```
+~~~
 
-The container expects the model files through the mounted `./models` directory.
+The Docker image expects model files through the mounted ./models directory.
 
-## Configuration
+## AI setup
 
-The runtime can be adjusted through environment variables such as:
+Provider keys are configured independently in the settings UI or through environment variables:
 
-- `HOST`
-- `PORT`
-- `RELOAD`
-- `WORKERS`
-- `MANGA_INPAINT_PRELOAD`
-
-By default the server binds to localhost. A network-visible binding such as `0.0.0.0` should be protected by the deployment's firewall and authentication layer.
-
-API keys are configured independently for AI providers:
-
-```text
+~~~text
 GEMINI_API_KEY
 GOOGLE_API_KEY
 DEEPSEEK_API_KEY
 OPENAI_API_KEY
 OPENROUTER_API_KEY
 EXPLABS_API_KEY
-```
+~~~
 
-## Safety and trust boundaries
+The settings UI can discover provider models through /models, select exact model IDs, and register custom OpenAI-compatible providers.
 
-The repository has treated security as part of the product rather than as a deployment afterthought.
+Custom provider endpoints must use public HTTPS URLs. Credentials are never accepted inside the API URL.
 
-Current protections include:
+## CPU-first design
 
-- remote URL scheme and hostname validation
-- SSRF protection against local/private/link-local/reserved address ranges
-- managed-path validation to prevent path escape
-- upload size and file-count limits
-- decoded image pixel limits
-- ZIP/CBZ extraction limits and path-safe extraction
-- bounded remote image/document downloads
-- redirect controls on sensitive outbound requests
-- safe browser URL checks for Playwright flows
-- revision checks before publishing rendered and exported artifacts
-- provider URL validation for custom AI endpoints
+The supported baseline is CPU execution.
 
-These controls protect the application boundaries, but a network-exposed deployment should still be treated as a service deployment rather than assuming localhost-grade trust.
+The runtime has been optimized around bounded desktop-class workloads instead of assuming a GPU:
 
-## Main API surface
+- bounded page concurrency
+- conservative ONNX Runtime threading
+- OpenVINO on supported x86-64 Windows/Linux systems
+- standard ONNX Runtime elsewhere
+- decoded-page caching for repeated OCR work
+- bounded downloads and transient retries
+- short manifest lock windows
+- deterministic browser/runtime checks
 
-The REST API is organized around the same workflow exposed by the UI.
+The default production processing schedule is intentionally small enough to avoid multiplying heavy inference kernels until the machine becomes memory- or bandwidth-bound.
 
-### Chapter and processing
+GPU acceleration is not required for the core workflow.
 
-- `POST /api/chapter` — import a chapter from URL
-- `POST /api/chapter/upload` — import images, ZIP, or CBZ
-- `POST /api/process_pages` — detect and clean selected pages
-- `GET /api/chapter/{chapter_id}` — read the current chapter manifest
-- `POST /api/workflow_checkpoint` — persist workflow state
+## Safety by design
 
-### OCR and text objects
+Safety is part of the processing model, not just deployment hardening.
 
-- `POST /api/ocr/chapter` — start chapter OCR
-- `GET /api/ocr/chapter/{job_id}` — read OCR job state
-- `POST /api/ocr/chapter/{job_id}/cancel` — cancel OCR
-- `POST /api/ocr/chapter/{job_id}/retry` — retry stale/failed OCR work
-- `POST /api/text_objects/ensure` — materialize stable editor text objects
-- `POST /api/text_object/create|update|delete` — edit text objects
+The application protects:
 
-### Translation, render and export
+- remote URL imports against SSRF and unsafe address ranges
+- managed files against path escape
+- uploads and archives against oversized payloads
+- decoded images against excessive pixel counts
+- browser requests against unsafe remote targets
+- custom AI endpoints against invalid/untrusted URLs
+- rendered/exported artifacts against stale editor state
 
-- `POST /api/translate/chapter` — batch text translation
-- `POST /api/render` — render one page
-- `POST /api/render/chapter?chapter_id=...` — render the chapter
-- `GET /api/download/{chapter_id}/{page_index}` — download the current page artifact
-- `GET /api/export/{chapter_id}.zip` — export the chapter
-
-### Visual QC and fonts
-
-- `/api/visual_qc/...` — provider settings, model discovery, QC jobs, retry/cancel and results
-- `/api/fonts` — bundled font catalog and stable `font_id` values
+Network-exposed deployments still need normal firewall and authentication controls.
 
 ## Architecture
 
-```text
-                    ┌──────────────────────────────┐
-                    │       Browser Workbench      │
-                    │ Upload · Review · OCR · Edit │
-                    │ Translate · Letter · Export  │
-                    └──────────────┬───────────────┘
-                                   │
-                              FastAPI API
-                                   │
-          ┌────────────────────────┼────────────────────────┐
-          │                        │                        │
-          ▼                        ▼                        ▼
-   Chapter Pipeline          Editorial State          AI Services
-   import/slice/process      text/geometry/style      QC/translation
-          │                        │                        │
-    ┌─────┼─────┐                  │                 ┌─────┴─────┐
-    │     │     │                  │                 │ providers │
-    ▼     ▼     ▼                  │                 │ built-in  │
- detector OCR  inpaint             │                 │ + custom  │
-    │     │     │                  │                 └───────────┘
-    └─────┴─────┘                  │
-          │                        │
-          └──────────┬─────────────┘
-                     ▼
-              revision-safe render
-                     │
-                     ▼
-              stitched chapter ZIP
-```
+At a high level:
 
-## Project layout
+~~~text
+                    Browser Workbench
+                          │
+                       FastAPI
+                          │
+        ┌─────────────────┼─────────────────┐
+        │                 │                 │
+        ▼                 ▼                 ▼
+   Processing         Editorial           AI
+    Pipeline            State          Providers
+        │                 │                 │
+ Detect · OCR ·      Text · Geometry    Translate · QC
+ Inpaint · Render    · Typography
+        └─────────────────┼─────────────────┘
+                          ▼
+                  Revision-safe artifacts
+                          │
+                          ▼
+                   Stitched ZIP export
+~~~
 
-```text
-app/
-  detector/           local bubble/text detection and recovery
-  downloader/         HTTP, Playwright, site adapters, and webtoon slicing
-  inpaint/            LaMa backends and mask geometry
-  ocr/                MangaOCR + PP-OCRv6 services and jobs
-  translation/        text and two-image vision translation
-  render/             page/text rendering, font catalog and matching
-  visual_qc/          visual inspection and provider orchestration
-  routers/            FastAPI route layer
-  static/             browser workbench
-  pipeline*.py        chapter processing and runtime coordination
-  manifest_utils.py   persistent chapter/editor state
-  editorial_gate.py  artifact/editorial consistency rules
-  security.py         request, URL, file and path boundaries
-tests/                correctness, security and product regression tests
-models/               local model artifacts; binaries are not committed
-data/                 runtime chapter data (ignored)
-docs/                  maintained architecture, UI, security and quality records
-scripts/               release, browser, sanity and maintenance tooling
-```
+For implementation details see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-## Testing and release gates
+## Documentation
 
-The repository uses permanent release gates rather than relying on a single end-to-end happy path.
+The README is intentionally product-focused. Deeper engineering material lives in docs/.
 
-Install test dependencies and run:
+- [Architecture](docs/ARCHITECTURE.md)
+- [Security history](docs/SECURITY_HISTORY.md)
+- [Model E2E gate](docs/MODEL_E2E_GATE.md)
+- [Processed chapter quality baseline](docs/PROCESSED_CHAPTER_QUALITY_BASELINE_20260912.md)
+- [Comic font library](docs/comic-fonts.md)
+- [UI guidelines](docs/UI_GUIDELINES.md)
+- [Workstation audit](docs/UI_V03_WORKSTATION_AUDIT.md)
 
-```bash
+## Development
+
+Install test dependencies:
+
+~~~bash
 python -m pip install -r requirements-test.txt
-make release-check
-```
+~~~
 
-Useful local commands:
+Useful commands:
 
-```bash
+~~~bash
 make test
 make test-browser
 make health
+make release-check
 make docker-up
-```
+~~~
 
-The maintained checks cover:
+The maintained release path covers source compilation, regression tests, browser/runtime checks, OCR and provider contracts, mask authority, geometry/revision safety, long-image behavior, and the connected product flow:
 
-- Python compilation and regression tests
-- detector/inpaint mask authority rules
-- geometry and revision safety
-- OCR lifecycle and stale-result handling
-- provider contracts and key redaction
-- JavaScript runtime/syntax checks
-- Chromium browser flows at desktop and mobile sizes
-- long-image and stitched-page behavior
-- end-to-end chapter closure
+**processed page → OCR/text object → translation → render → chapter ZIP**
 
-The central product-closure path is:
+Model-dependent validation remains a separate local artifact gate because production ONNX binaries are not stored in Git.
 
-**processed page → OCR/text object → translation → revision-safe render → strict chapter export**
+## Project layout
 
-Provider network calls are stubbed where deterministic release tests require it; the editor state transitions, render publication, filesystem artifacts, and ZIP generation remain real.
+~~~text
+app/
+  detector/       bubble/text detection and recovery
+  downloader/     HTTP, Playwright, adapters and slicing
+  inpaint/        LaMa and mask geometry safety
+  ocr/            MangaOCR + PP-OCRv6
+  translation/    text and two-image vision translation
+  render/         typography, font catalog and matching
+  visual_qc/      visual inspection and provider orchestration
+  routers/        FastAPI API surface
+  static/         browser workbench
+  pipeline*.py    chapter processing and runtime coordination
+  manifest_utils.py
+  editorial_gate.py
+  security.py
 
-## Development philosophy
-
-The repository has gone through several major stages:
-
-- early local script and security hardening
-- completion of the first end-to-end translation-studio workflow
-- permanent backend and frontend release gates
-- consolidation into a unified Review/editor workspace
-- CPU throughput and long-chapter hardening
-- revision-safe OCR, translation, rendering, and export
-- hybrid OCR and native font matching
-- multi-provider Visual QC and configurable AI providers
-- current custom-provider and two-image vision-translation work
-
-The result is intentionally conservative about automatic mutation.
-
-**Automation proposes. Editorial state decides. Published artifacts must match the current state.**
-
-Experimental model research, benchmark-only code, temporary probes, and abandoned runtime approaches belong on experiment/archive branches until they become part of the maintained product.
+tests/            correctness and release regressions
+models/           local model artifacts
+data/             runtime chapter data
+docs/             maintained engineering documentation
+scripts/          release, browser and sanity tooling
+~~~
 
 ## Current limitations
 
-This project accelerates the production of translated chapters; it does not attempt to replace every part of professional lettering or redraw work.
+This project is designed to accelerate chapter production, not eliminate every form of professional redraw and lettering work.
 
-Expect manual intervention for:
+Manual intervention is still expected for:
 
 - difficult artwork reconstruction
-- complex perspective or warped lettering
+- perspective or heavily warped lettering
 - curved/path text
-- elaborate hand-drawn SFX recreation
+- complex hand-drawn SFX recreation
 - ambiguous OCR
-- heavily protected or unusual reader sites
-- typography choices that need artistic judgment
+- heavily protected reader sites
+- typography requiring artistic judgment
 
-The system is strongest when used as a **reviewable editor with automation**, not as a black-box batch converter.
+The strongest use case is a **reviewable production workstation with automation**, not a black-box batch converter.
+
+## Project philosophy
+
+The repository has evolved through security hardening, end-to-end product closure, detector/inpaint safety work, hybrid OCR, CPU throughput work, a unified Review workspace, revision-safe rendering/export, Visual QC, native font matching, configurable AI providers, and vision translation.
+
+Those features all reinforce the same rule:
+
+> **The page belongs to the editor.**
+
+Automation can detect it, clean it, read it, translate it, suggest a font, or inspect it — but the current editorial state remains authoritative until the final artifact is published.
 
 ## License
 
-See the repository's license files and bundled font metadata for software and asset licensing details.
+See the repository license and bundled asset metadata for software and font licensing details.
