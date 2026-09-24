@@ -4,7 +4,6 @@
 @import url("./studio.css") layer(studio);
 
 @layer studio {
-  /* Reuse the existing shell as an image-editor workspace. No parallel UI owner. */
   .app-shell { grid-template-columns: var(--ps-tool-rail) minmax(0, 1fr); }
   .app-sidebar { z-index: calc(var(--z-toolbar) + 4); width: var(--ps-tool-rail); padding: 6px 4px; border-right: 1px solid var(--border-strong); background: var(--surface-panel); overflow: visible; }
   .app-brand { width: 44px; min-height: 44px; margin: 0 0 9px; padding: 0; justify-content: center; border-radius: 3px; }
@@ -18,7 +17,6 @@
   .sidebar-link.active { border-color: var(--border-strong); background: var(--surface-panel); }
   .sidebar-link.complete::after { position: absolute; right: 3px; bottom: 3px; width: 5px; height: 5px; margin: 0; }
   .sidebar-footer { margin-top: auto; padding-top: 5px; border-top: 1px solid var(--border-subtle); }
-
   .app-main { grid-template-rows: var(--ps-topbar) minmax(0, 1fr); }
   .app-header { min-height: var(--ps-topbar); gap: 10px; padding: 0 10px; border-bottom: 1px solid var(--border-strong); background: var(--surface-panel); backdrop-filter: none; }
   .app-heading { grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 8px; }
@@ -27,14 +25,7 @@
   .app-header-actions { gap: 5px; }
   .workbench-panel-controls { gap: 3px; }
   .workbench-panel-controls .ui-btn, .header-primary-action { min-height: 30px; padding: 0 9px; border-radius: 3px; font-size: 11px; }
-
-  .workbench-stage-grid, .translation-workspace-body {
-    grid-template-columns: minmax(0, 1fr) var(--ps-dock-width);
-    grid-template-rows: minmax(190px, 42%) minmax(0, 58%);
-    grid-template-areas: "canvas pages" "canvas inspector";
-    gap: 0;
-    background: var(--surface-canvas-deep);
-  }
+  .workbench-stage-grid, .translation-workspace-body { grid-template-columns: minmax(0, 1fr) var(--ps-dock-width); grid-template-rows: minmax(190px, 42%) minmax(0, 58%); grid-template-areas: "canvas pages" "canvas inspector"; gap: 0; background: var(--surface-canvas-deep); }
   .workbench-stage-grid > .page-navigator, .translation-workspace-body > .page-navigator { grid-area: pages; }
   .workbench-stage-grid > :is(.workbench-canvas-column, .review-canvas-host, .preview-canvas-host), .translation-workspace-body > .translation-canvas-host { grid-area: canvas; }
   .workbench-stage-grid > .context-inspector, .translation-workspace-body > .translation-panel-host { grid-area: inspector; }
@@ -47,45 +38,25 @@
   .page-navigator-thumb { height: 54px; border-radius: 2px; }
   .page-navigator-item.active { border-color: var(--accent); background: var(--surface-panel); }
   .inspector-section { border-radius: 3px; }
-
-  .translation-canvas-host, .review-canvas-host, .preview-canvas-host, .workbench-canvas-column {
-    padding: 24px;
-    place-items: start center;
-    background-color: var(--surface-app);
-    background-image: none;
-    background-size: 20px 20px;
-    background-position: 0 0, 0 10px, 10px -10px, -10px 0;
-  }
+  .translation-canvas-host, .review-canvas-host, .preview-canvas-host, .workbench-canvas-column { padding: 24px; place-items: start center; background-color: var(--surface-app); background-image: none; }
   .preview-canvas-surface, .review-card, .review-stitched-shell, .page-block { border-radius: 1px; box-shadow: none; }
   .review-card, .preview-card, .page-block-wrapper { width: fit-content; max-width: none; }
   .review-image-wrap, .preview-image-wrap, .page-image-wrap { max-width: none; }
   .review-image-wrap img, .preview-image-wrap img, .page-image-wrap img { max-width: none; }
-
   .translation-sticky-toolbar, .review-sticky-toolbar, .process-commandbar { min-height: 38px; padding: 4px 7px; gap: 5px; border-bottom: 1px solid var(--border-strong); background: var(--surface-panel); box-shadow: none; }
   .review-sticky-toolbar, .translation-sticky-toolbar { position: sticky; top: 0; z-index: var(--z-toolbar); }
   .review-actions-group, .editor-tools, .zoom-controls { gap: 4px; }
   .review-actions-group .ui-btn, .editor-tools .ui-btn, .zoom-controls .ui-btn, .zoom-controls .ui-icon-btn { min-height: 28px; border-radius: 3px; font-size: 11px; }
   .review-toolbar-title, .preview-workspace-heading { margin-right: auto; }
   .review-toolbar-title, .preview-workspace-title { font-size: 11px; }
-
   .workbench-stage-grid[data-nav-open="false"], .editor-workbench-grid[data-nav-open="false"] { grid-template-columns: minmax(0, 1fr) var(--ps-dock-width); grid-template-rows: 0 minmax(0, 1fr); }
   .workbench-stage-grid[data-inspector-open="false"], .editor-workbench-grid[data-inspector-open="false"] { grid-template-columns: minmax(0, 1fr) var(--ps-dock-width); grid-template-rows: minmax(0, 1fr) 0; }
   .workbench-stage-grid[data-nav-open="false"][data-inspector-open="false"], .editor-workbench-grid[data-nav-open="false"][data-inspector-open="false"], .workbench-stage-grid.focus-mode { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); grid-template-areas: "canvas"; }
   .workbench-stage-grid[data-nav-open="false"] > .page-navigator, .editor-workbench-grid[data-nav-open="false"] > .page-navigator, .workbench-stage-grid[data-inspector-open="false"] > .context-inspector, .editor-workbench-grid[data-inspector-open="false"] > .translation-panel-host { display: none; }
   .workbench-stage-grid.focus-mode > :is(.page-navigator, .context-inspector), .editor-workbench-grid.focus-mode > :is(.page-navigator, .translation-panel-host) { display: none; }
-
-  /* Review is one stitched source-page document, never a slice card. */
-  .review-workspace-shell.review-canvas-only {
-    grid-template-rows: minmax(0, 1fr);
-  }
-  .review-workspace-shell.review-canvas-only > .review-canvas-only-layout {
-    grid-row: 1;
-    min-height: 0;
-    height: 100%;
-  }
-  .review-canvas-only-host {
-    grid-template-rows: minmax(0, 1fr);
-  }
+  .review-workspace-shell.review-canvas-only { grid-template-rows: minmax(0, 1fr); }
+  .review-workspace-shell.review-canvas-only > .review-canvas-only-layout { grid-row: 1; min-height: 0; height: 100%; }
+  .review-canvas-only-host { grid-template-rows: minmax(0, 1fr); }
   .review-single-document .review-canvas-host { padding: 0; overflow: hidden; place-items: stretch; background: var(--surface-app); }
   .review-single-document .review-document-shell { display: grid; grid-template-rows: 36px auto auto minmax(0, 1fr); width: 100%; max-width: none; height: 100%; min-height: 0; overflow: hidden; border: 0; border-radius: 0; background: var(--surface-app); box-shadow: none; }
   .review-single-document .review-document-toolbar { grid-row: 1; justify-content: flex-start; min-height: 36px; padding: 3px 6px; border: 0; border-bottom: 1px solid var(--border-strong); background: var(--surface-panel); }
@@ -107,7 +78,6 @@
   .review-single-document .review-stitched-controls { gap: 6px; }
   .review-single-document .review-stitched-controls .ui-btn { width: 100%; }
   .review-single-document .review-zoom-value { min-width: 78px; }
-
   @media (max-width: 1000px) {
     .workbench-stage-grid, .translation-workspace-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); grid-template-areas: "canvas"; }
     .page-navigator, .context-inspector, .translation-panel-host { position: absolute; top: 0; bottom: 0; z-index: var(--z-panel); width: var(--ps-dock-width); }
@@ -125,156 +95,47 @@
   }
 }
 
-
 @layer studio {
-  /* Three theme modes only: native System / Light / Dark selector. */
-  .theme-control {
-    display: flex;
-    height: 30px;
-    align-items: center;
-    gap: 5px;
-    padding: 0 6px;
-    border: 1px solid var(--border-strong);
-    border-radius: 3px;
-    background: var(--surface-panel);
-    color: var(--text-primary);
-  }
+  .theme-control { display: flex; height: 30px; align-items: center; gap: 5px; padding: 0 6px; border: 1px solid var(--border-strong); border-radius: 3px; background: var(--surface-panel); color: var(--text-primary); }
   .theme-control > svg { width: 14px; height: 14px; flex: 0 0 auto; }
-  .theme-control > select {
-    width: auto;
-    min-width: 82px;
-    height: 28px;
-    padding: 0 4px;
-    border: 0;
-    outline: 0;
-    background: var(--surface-panel);
-    color: var(--text-primary);
+  .theme-control > select { width: auto; min-width: 82px; height: 28px; padding: 0 4px; border: 0; outline: 0; background: var(--surface-panel); color: var(--text-primary); }
+  .app-sidebar, .app-header, .translation-canvas-host, .review-canvas-host, .preview-canvas-host, .workbench-canvas-column, .review-single-document .review-canvas-host, .review-single-document .review-document-shell, .review-single-document .review-document-viewport, .review-canvas-only, .review-canvas-fullbleed, .review-canvas-only-layout, .review-canvas-only-host { background: var(--surface-app); background-image: none; box-shadow: none; backdrop-filter: none; }
+  .sidebar-link.active, .page-navigator-item.active { border-color: var(--border-strong); background: var(--surface-panel); color: var(--text-primary); }
+  .preview-canvas-surface, .review-card, .review-stitched-shell, .page-block, .review-single-document .review-stitched-image, .review-floating-inspector { box-shadow: none; }
+  .review-floating-inspector { background: var(--surface-panel); backdrop-filter: none; }
+  .review-canvas-only .review-document-shell, .review-single-document .review-document-shell { grid-template-rows: auto 0 auto minmax(0, 1fr); }
+  .review-document-toolbar-compact { display: grid; grid-template-columns: auto minmax(220px, 1fr) auto; grid-template-areas: "left center right"; width: 100%; max-width: 100%; min-width: 0; min-height: 38px; gap: 4px 6px; padding: 4px 6px; overflow: hidden; border-bottom: 1px solid var(--border-strong); background: var(--surface-panel); }
+  .review-docbar-left { grid-area: left; min-width: 0; display: flex; align-items: center; gap: 4px; }
+  .review-docbar-center { grid-area: center; min-width: 0; display: flex; align-items: center; justify-content: center; gap: 4px; overflow: hidden; }
+  .review-docbar-right { grid-area: right; min-width: 0; display: flex; align-items: center; justify-content: flex-end; gap: 4px; overflow: hidden; flex-wrap: nowrap; }
+  .review-docbar-actions { display: flex; min-width: 0; align-items: center; gap: 4px; flex-wrap: nowrap; }
+  .review-docbar-brush-size { width: 110px; min-width: 90px; margin: 0; gap: 3px; font-size: 10px; }
+  .review-document-toolbar-compact :is(button, select, label) { max-width: 100%; }
+  .review-document-toolbar-compact .ui-btn { min-height: 28px; height: 28px; padding: 0 9px; border-radius: 3px; font-size: 11px; }
+  .review-document-toolbar-compact .ui-icon-btn { min-height: 28px; width: 28px; border-radius: 3px; }
+  .review-docbar-mini-meta { font-size: 10px; white-space: nowrap; }
+  .review-floating-inspector { top: 44px; right: 8px; bottom: 8px; width: min(300px, calc(100% - 68px)); border-radius: 4px; }
+  .review-floating-inspector-header { min-height: 34px; padding: 3px 5px 3px 9px; }
+  .review-floating-inspector-header strong { font-size: 11px; }
+  .review-floating-inspector .translation-panel-host { padding: 7px; }
+  .text-editor-panel { gap: 6px; }
+  .inspector-section { margin: 0; border-radius: 3px; }
+  .inspector-section > summary, .inspector-section > h3 { padding: 8px 9px; font-size: 11px; }
+  .text-editor-section-body { gap: 8px; padding: 0 9px 9px; }
+  .text-editor-section-body .ui-field { gap: 5px; font-size: 11px; }
+  .text-editor-section-body :is(.ui-input, .ui-select, .ui-textarea) { font-size: 11px; }
+  .text-editor-section-body .ui-textarea { min-height: 72px; }
+  .text-object-actions { gap: 6px; }
+  .text-object-action-btn { min-height: 30px; padding: 0 8px; font-size: 11px; }
+  .text-object-action-btn:last-child { grid-column: span 2; }
+  @media (max-width: 1200px) {
+    .review-document-toolbar-compact { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "left right"; }
+    .review-docbar-center { display: none; }
   }
-
-  /* Monochrome shell: no mixed canvas pattern, blur, colored active state or shadows. */
-  .app-sidebar,
-  .app-header,
-  .translation-canvas-host,
-  .review-canvas-host,
-  .preview-canvas-host,
-  .workbench-canvas-column,
-  .review-single-document .review-canvas-host,
-  .review-single-document .review-document-shell,
-  .review-single-document .review-document-viewport,
-  .review-canvas-only,
-  .review-canvas-fullbleed,
-  .review-canvas-only-layout,
-  .review-canvas-only-host {
-    background: var(--surface-app);
-    background-image: none;
-    box-shadow: none;
-    backdrop-filter: none;
-  }
-  .sidebar-link.active,
-  .page-navigator-item.active {
-    border-color: var(--border-strong);
-    background: var(--surface-panel);
-    color: var(--text-primary);
-  }
-  .preview-canvas-surface,
-  .review-card,
-  .review-stitched-shell,
-  .page-block,
-  .review-single-document .review-stitched-image,
-  .review-floating-inspector {
-    box-shadow: none;
-  }
-  .review-floating-inspector {
-    background: var(--surface-panel);
-    backdrop-filter: none;
-  }
-
-  /* Review/Inpaint toolbar always stays inside its own frame. */
-  .review-canvas-only .review-document-shell,
-  .review-single-document .review-document-shell {
-    grid-template-rows: auto 0 auto minmax(0, 1fr);
-  }
-  .review-document-toolbar-compact {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-    grid-template-areas:
-      "left center"
-      "right right";
-    width: 100%;
-    max-width: 100%;
-    min-width: 0;
-    min-height: 0;
-    gap: 3px 6px;
-    padding: 4px 6px;
-    overflow: hidden;
-    border-bottom: 1px solid var(--border-strong);
-    background: var(--surface-panel);
-  }
-  .review-docbar-left { grid-area: left; }
-  .review-docbar-center { grid-area: center; justify-content: flex-end; }
-  .review-docbar-right {
-    grid-area: right;
-    display: flex;
-    width: 100%;
-    min-width: 0;
-    flex-wrap: wrap;
-    justify-content: flex-start;
-    gap: 4px;
-    overflow: hidden;
-  }
-  .review-docbar-actions {
-    display: flex;
-    min-width: 0;
-    flex: 1 1 280px;
-    flex-wrap: wrap;
-    gap: 4px;
-  }
-  .review-document-toolbar-compact :is(button, select, label) {
-    max-width: 100%;
-  }
-  .review-docbar-brush-size {
-    width: min(118px, 100%);
-    min-width: 96px;
-    flex: 0 1 118px;
-  }
-
   @media (max-width: 820px) {
-    body[data-app-stage="review"] .app-shell {
-      grid-template-columns: var(--ps-tool-rail) minmax(0, 1fr);
-    }
-    body[data-app-stage="review"] .app-sidebar {
-      position: relative;
-      inset: auto;
-      width: var(--ps-tool-rail);
-      transform: none;
-      box-shadow: none;
-    }
-    body[data-app-stage="review"] .app-main {
-      margin-left: 0;
-    }
-  }
-
-  @media (max-width: 720px) {
-    .review-single-document .review-document-toolbar-compact .ui-btn {
-      min-height: 36px;
-      height: 36px;
-    }
-    .review-document-toolbar-compact {
-      grid-template-columns: minmax(0, 1fr);
-      grid-template-areas:
-        "left"
-        "center"
-        "right";
-    }
-    .review-docbar-left,
-    .review-docbar-center,
-    .review-docbar-right {
-      width: 100%;
-      max-width: 100%;
-      justify-content: flex-start;
-      overflow: hidden;
-      flex-wrap: wrap;
-    }
-    .review-docbar-actions { flex-basis: 100%; }
+    .review-document-toolbar-compact { grid-template-columns: minmax(0, 1fr); grid-template-areas: "left" "right"; gap: 3px; }
+    .review-docbar-left, .review-docbar-right { width: 100%; justify-content: flex-start; overflow-x: auto; scrollbar-width: none; }
+    .review-docbar-left::-webkit-scrollbar, .review-docbar-right::-webkit-scrollbar { display: none; }
+    .review-floating-inspector { top: auto; right: 6px; bottom: 6px; left: 6px; width: auto; max-height: 54%; }
   }
 }
