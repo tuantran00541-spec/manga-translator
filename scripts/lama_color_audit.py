@@ -95,8 +95,30 @@ def audit_pair(original: np.ndarray, clean: np.ndarray) -> list[dict]:
             "body_delta_e": round(body_de, 2),
             "texture_ratio": round(fill_std / ring_std, 2) if ring_std >= 2.0 else None,
             "outside_grey_std": round(ring_std, 2),
+            # Lightness and chroma of the surroundings: white bubbles sit near
+            # L=100 / chroma 0; coloured bubbles and art-backed text do not.
+            "outside_lightness": round(float(ring_lab[0]), 1),
+            "outside_chroma": round(float(np.hypot(ring_lab[1], ring_lab[2])), 1),
         })
     return records
+
+
+def audit_chapter(chapter_id: str) -> list[dict]:
+    manifest = load_manifest_raw(chapter_id)
+    records = []
+    for index, page in enumerate(manifest.get("pages") or []):
+        if not page.get("clean") or not page.get("original"):
+            continue
+        original = read_image(validate_managed_path(page["original"], RAW_DIR / chapter_id))
+        clean = read_image(validate_managed_path(page["clean"], PROCESSED_DIR / chapter_id))
+        for record in audit_pair(original, clean):
+            record["page"] = index
+            records.append(record)
+    return records
+
+
+def on_plain_white(record: dict) -> bool:
+    return record["outside_lightness"] >= 92 and record["outside_chroma"] <= 4
 
 
 def _grade(delta_e: float) -> str:
@@ -111,16 +133,7 @@ def main() -> int:
     args = parser.parse_args()
 
     manifest = load_manifest_raw(args.chapter_id)
-    all_records = []
-    for index, page in enumerate(manifest.get("pages") or []):
-        if not page.get("clean") or not page.get("original"):
-            continue
-        original_path = validate_managed_path(page["original"], RAW_DIR / args.chapter_id)
-        clean_path = validate_managed_path(page["clean"], PROCESSED_DIR / args.chapter_id)
-        original, clean = read_image(original_path), read_image(clean_path)
-        for record in audit_pair(original, clean):
-            record["page"] = index
-            all_records.append(record)
+    all_records = audit_chapter(args.chapter_id)
 
     if not all_records:
         print("No inpainted regions found (clean images equal the originals).")
@@ -134,6 +147,11 @@ def main() -> int:
     print(f"{len(all_records)} inpainted regions in {args.chapter_id}")
     print(f"seam ΔE  median {np.median(seams):.2f}  p90 {np.percentile(seams, 90):.2f}  max {seams.max():.2f}")
     print(f"  ok (<2): {grades['ok']}   visible (2-5): {grades['visible']}   mismatch (>5): {grades['mismatch']}")
+    coloured = [r for r in all_records if not on_plain_white(r)]
+    if coloured:
+        coloured_seams = np.array([r["seam_delta_e"] for r in coloured])
+        print(f"on coloured/art backgrounds: {len(coloured)} regions, seam ΔE median {np.median(coloured_seams):.2f}"
+              f"  p90 {np.percentile(coloured_seams, 90):.2f}  >5: {int((coloured_seams > 5).sum())}")
     if ratios:
         smooth = sum(1 for r in ratios if r < 0.5)
         print(f"textured surroundings: {len(ratios)} regions, {smooth} filled as a smooth patch (texture ratio < 0.5)")
