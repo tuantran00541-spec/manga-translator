@@ -30,7 +30,7 @@ from app.parameters import (
     STALE_TEMP_MAX_AGE_SECONDS,
     USE_DYNAMIC_LAMA,
 )
-from app.routers import automation, chapters, editor, export, image, ocr, render, render_commit, translation, visual_qc
+from app.routers import ai_mode, automation, chapters, editor, export, image, ocr, render, render_commit, translation, visual_qc
 from app.security import MAX_REQUEST_BYTES, MAX_UPLOAD_TOTAL_BYTES
 
 
@@ -191,6 +191,7 @@ app.include_router(render.router)
 app.include_router(image.router)
 app.include_router(export.router)
 app.include_router(visual_qc.router)
+app.include_router(ai_mode.router)
 
 
 def _current_rss_bytes() -> int | None:

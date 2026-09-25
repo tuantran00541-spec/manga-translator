@@ -311,7 +311,7 @@ def _validate_stitch_group(source_page: int, items: list[dict]) -> None:
         )
 
 
-def _snapshot_export_inputs(chapter_id: str) -> list[dict]:
+def _snapshot_export_inputs(chapter_id: str, *, enforce_editorial_gate: bool = True) -> list[dict]:
     with get_manifest_lock(chapter_id):
         manifest = load_manifest_raw(chapter_id)
         changed = False
@@ -322,10 +322,11 @@ def _snapshot_export_inputs(chapter_id: str) -> list[dict]:
             changed = changed or page_changed
         if changed:
             save_manifest_raw(chapter_id, manifest)
-        _editorial_gate_or_409(
-            manifest,
-            require_final_approval=True,
-        )
+        if enforce_editorial_gate:
+            _editorial_gate_or_409(
+                manifest,
+                require_final_approval=True,
+            )
         snapshot: list[dict] = []
         for page_index, page in enumerate(manifest.get("pages", [])):
             path = _export_path_for_page(chapter_id, page_index, page, manifest)
@@ -445,12 +446,31 @@ def render_chapter(chapter_id: str) -> dict:
 )
 def export_chapter(chapter_id: str):
     validate_chapter_id(chapter_id)
+    final_archive = write_chapter_archive(chapter_id)
+    return FileResponse(
+        final_archive,
+        filename=f"manga-translator-{chapter_id}.zip",
+        media_type="application/zip",
+    )
+
+
+def write_chapter_archive(
+    chapter_id: str,
+    *,
+    enforce_editorial_gate: bool = True,
+    archive_name: str | None = None,
+) -> Path:
+    """Stitch every current page into a ZIP and return its path.
+
+    The editorial gate is skipped only for A.I mode, whose report lists the
+    preflight blockers instead of refusing the export.
+    """
     out_dir = OUTPUT_DIR / chapter_id
     out_dir.mkdir(parents=True, exist_ok=True)
-    final_archive = out_dir / f"chapter_{chapter_id}.zip"
+    final_archive = out_dir / (archive_name or f"chapter_{chapter_id}.zip")
     tmp_archive = out_dir / f"chapter_{chapter_id}.export.{uuid.uuid4().hex[:12]}.tmp"
 
-    snapshot = _snapshot_export_inputs(chapter_id)
+    snapshot = _snapshot_export_inputs(chapter_id, enforce_editorial_gate=enforce_editorial_gate)
     groups: dict[int, list[dict]] = {}
     for item in snapshot:
         path = item["path"]
@@ -488,10 +508,11 @@ def export_chapter(chapter_id: str):
                     409,
                     "Chapter changed while export was running. Export again to include the latest edits.",
                 )
-            _editorial_gate_or_409(
-                load_manifest_raw(chapter_id),
-                require_final_approval=True,
-            )
+            if enforce_editorial_gate:
+                _editorial_gate_or_409(
+                    load_manifest_raw(chapter_id),
+                    require_final_approval=True,
+                )
             atomic_replace(tmp_archive, final_archive)
     finally:
         if tmp_archive.exists():
@@ -499,9 +520,4 @@ def export_chapter(chapter_id: str):
                 tmp_archive.unlink()
             except OSError:
                 pass
-
-    return FileResponse(
-        final_archive,
-        filename=f"manga-translator-{chapter_id}.zip",
-        media_type="application/zip",
-    )
+    return final_archive

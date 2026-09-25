@@ -41,6 +41,13 @@ router = APIRouter(prefix="/api/translate", tags=["translation"])
 MAX_CHAPTER_TRANSLATION_OBJECTS = 300
 
 
+def validate_lang_code(value: str) -> str:
+    value = (value or "").strip().lower()
+    if not value or len(value) > 20 or not all(c.isalnum() or c in "-_" for c in value):
+        raise ValueError("Invalid language code")
+    return value
+
+
 class TranslateChapterRequest(BaseModel):
     chapter_id: str
     source_lang: str = "ja"
@@ -63,10 +70,7 @@ class TranslateChapterRequest(BaseModel):
     @field_validator("source_lang", "target_lang")
     @classmethod
     def _lang(cls, value: str) -> str:
-        value = (value or "").strip().lower()
-        if not value or len(value) > 20 or not all(c.isalnum() or c in "-_" for c in value):
-            raise ValueError("Invalid language code")
-        return value
+        return validate_lang_code(value)
 
     @field_validator("budget_usd")
     @classmethod

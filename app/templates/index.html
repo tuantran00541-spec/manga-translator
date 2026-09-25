@@ -64,6 +64,23 @@
             <button id="upload-dropzone" type="button" aria-controls="upload-input"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0L7 9m5-5 5 5M5 14v5h14v-5"/></svg><span class="upload-copy"><strong>Kéo thả tệp vào đây</strong><span>hoặc <span id="upload-browse-text">chọn từ thiết bị</span></span></span><span id="upload-hint">Có thể chọn nhiều ảnh cùng lúc</span></button>
             <input type="file" id="upload-input" accept="image/png,image/jpeg,image/webp,image/bmp,.zip,.cbz" multiple hidden>
           </section>
+          <section id="ai-mode-panel" class="landing-panel ai-mode-panel" aria-labelledby="ai-mode-title">
+            <span class="source-index">AI</span><div class="source-copy"><h2 id="ai-mode-title">A.I mode</h2><p>Dán URL, AI tự làm hết: bỏ trang credit, giữ logo, clean, repaint chỗ sót, dịch, chọn font và render. Xong chỉ việc tải file zip.</p></div>
+            <form id="ai-mode-form" class="ai-mode-form">
+              <label class="ui-field ai-mode-url" for="ai-mode-url"><span class="sr-only">Liên kết chương cho A.I mode</span><input type="url" id="ai-mode-url" placeholder="Dán URL chương tại đây" autocomplete="url" required></label>
+              <label class="ui-field" for="ai-mode-provider"><span>Dịch vụ AI</span><select id="ai-mode-provider" class="ai-mode-provider"><option value="deepseek">DeepSeek</option><option value="gemini">Google Gemini</option><option value="openai">OpenAI</option><option value="openrouter">OpenRouter</option><option value="experiential">Experiential Labs</option></select></label>
+              <label class="ui-field" for="ai-mode-model"><span>Model vision</span><input id="ai-mode-model" class="ui-input" placeholder="Mặc định" autocomplete="off"></label>
+              <label class="ui-field" for="ai-mode-target"><span>Dịch sang</span><select id="ai-mode-target"><option value="vi">Tiếng Việt</option><option value="en">English</option></select></label>
+              <label class="ui-field" id="ai-mode-budget-field" for="ai-mode-budget"><span>Giới hạn chi phí (USD)</span><input id="ai-mode-budget" type="number" min="0.01" max="2" step="0.01" value="0.30"></label>
+              <button id="ai-mode-run" class="ui-btn ui-btn-primary" type="submit">Chạy A.I mode</button>
+            </form>
+            <div id="ai-mode-status" class="ai-mode-status" aria-live="polite" hidden>
+              <ol id="ai-mode-stages" class="ai-mode-stages"></ol>
+              <p id="ai-mode-summary" class="ai-mode-summary"></p>
+              <div class="ai-mode-actions"><a id="ai-mode-download" class="ui-btn ui-btn-primary" href="#" hidden>Tải file zip</a><button id="ai-mode-open" class="ui-btn" type="button" hidden>Mở chương để xem</button><button id="ai-mode-cancel" class="ui-btn" type="button" hidden>Hủy</button></div>
+              <details id="ai-mode-report" class="ai-mode-report" hidden><summary>Báo cáo của AI</summary><ul id="ai-mode-report-list"></ul></details>
+            </div>
+          </section>
         </section>
       </div>
     </section>
@@ -77,6 +94,6 @@
   <div class="settings-body"><section class="settings-section" aria-labelledby="ai-settings-title"><div class="settings-section-heading"><h3 id="ai-settings-title">Dịch vụ AI</h3><p>API key được giữ trong kho bí mật của hệ điều hành.</p></div><div id="ai-settings-host" class="ai-settings-host"><p class="settings-placeholder">Đang tải cấu hình AI…</p></div></section></div>
 </aside>
 <div id="toast-container" aria-live="polite" aria-atomic="true"></div>
-<script src="/static/js/icons.js"></script><script src="/static/js/toast.js"></script><script src="/static/js/api.js"></script><script src="/static/js/source-language.js"></script><script src="/static/js/upload.js"></script><script src="/static/js/page-navigator.js"></script><script src="/static/js/preview.js"></script><script src="/static/js/review.js"></script><script src="/static/js/review-workspace.js"></script><script type="module" src="/static/js/review-stitch/index.js"></script><script src="/static/js/chapter-qc.js"></script><script src="/static/js/chapter-ocr.js"></script><script src="/static/js/editor.js"></script><script src="/static/js/editor-inspector.js"></script><script src="/static/js/editor-persistence.js"></script><script src="/static/js/editor-box-transform.js"></script><script src="/static/js/ui-shell.js"></script><script src="/static/js/main.js"></script>
+<script src="/static/js/icons.js"></script><script src="/static/js/toast.js"></script><script src="/static/js/api.js"></script><script src="/static/js/source-language.js"></script><script src="/static/js/upload.js"></script><script src="/static/js/page-navigator.js"></script><script src="/static/js/preview.js"></script><script src="/static/js/review.js"></script><script src="/static/js/review-workspace.js"></script><script type="module" src="/static/js/review-stitch/index.js"></script><script src="/static/js/chapter-qc.js"></script><script src="/static/js/chapter-ocr.js"></script><script src="/static/js/editor.js"></script><script src="/static/js/editor-inspector.js"></script><script src="/static/js/editor-persistence.js"></script><script src="/static/js/editor-box-transform.js"></script><script src="/static/js/ui-shell.js"></script><script src="/static/js/main.js"></script><script src="/static/js/ai-mode.js"></script>
 </body>
 </html>

@@ -8,6 +8,7 @@ import requests
 
 from app.ai_providers import AIProvider
 from app.parameters import TRANSLATION_CONNECT_TIMEOUT_SECONDS, TRANSLATION_READ_TIMEOUT_SECONDS
+from app.render.font_catalog import load_font_catalog
 from app.security import validate_url
 from app.translation.deepseek import _language_name, _usage_cost_usd
 from app.visual_qc.deepseek_region_client import _extract_output_text, _safe_error_detail
@@ -39,6 +40,21 @@ class VisionTranslationResult:
     usage: dict
     estimated_cost_usd: float | None
     font_choices: dict[str, dict] = field(default_factory=dict)
+
+
+def _font_catalog_hint(target_lang: str) -> str:
+    """Compact role -> font_id list; Vietnamese output only gets fonts with its diacritics."""
+    try:
+        records = load_font_catalog().records
+    except (OSError, ValueError):
+        return "{}"
+    vietnamese = str(target_lang or "").lower() in {"vi", "vie", "vietnamese"}
+    groups: dict[str, list[str]] = {}
+    for record in sorted(records, key=lambda item: (item.category, item.default_rank, item.id)):
+        if vietnamese and not record.vietnamese:
+            continue
+        groups.setdefault(record.category, []).append(record.id)
+    return json.dumps(groups, ensure_ascii=False, separators=(",", ":"))
 
 
 def parse_vision_translation(content: str, expected_ids: set[str]) -> dict[str, str]:
@@ -108,9 +124,14 @@ class VisionPageTranslator:
             raise ValueError("Original and cleaned slices have different dimensions")
         h, w = original.shape[:2]
         objects = [{"id": item["id"], "source_text": item["text"], "bbox_xyxy": item["region"]} for item in items]
+        source_name = (
+            "the original language shown in the image"
+            if str(source_lang or "").lower() in {"", "auto"}
+            else _language_name(source_lang)
+        )
         prompt = (
             "Translate manga/manhwa/webtoon text naturally and accurately from "
-            f"{_language_name(source_lang)} to {_language_name(target_lang)}. "
+            f"{source_name} to {_language_name(target_lang)}. "
             "Image 1 is ORIGINAL (source text); image 2 is CLEAN (after inpainting). "
             "They are the SAME slice. Use ORIGINAL and the supplied bbox_xyxy in image pixels "
             "to read the text, and both images for scene, speaker and reading-order context. "
@@ -118,7 +139,10 @@ class VisionPageTranslator:
             "Keep dialogue concise to fit its existing bubble. "
             "Only translate the listed text objects. Never change or invent IDs. "
             "Do not return geometry, color, size or images: they are already stored. "
-            "You may optionally return font_choices with an installed catalog font_id and font_mode=ai. "
+            "You may optionally return font_choices with an installed catalog font_id and font_mode=ai, "
+            "picking the font whose role matches the ORIGINAL lettering (speech, narration, "
+            "thought, shouting/emphasis, system/skill windows, horror, romance). "
+            f"Installed catalog font_id values by role: {_font_catalog_hint(target_lang)}. "
             "If a glyph is genuinely unreadable, return translated_text empty for its ID. "
             "Return JSON only as "
             '{"translations":[{"id":"existing id","translated_text":"translated text"}],"font_choices":{"existing id":{"font_id":"catalog id","font_mode":"ai"}}}.'

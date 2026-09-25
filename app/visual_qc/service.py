@@ -8,6 +8,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from app.ai_providers import PROVIDERS, normalize_provider_id
 from app.config import PROCESSED_DIR, RAW_DIR
 from app.parameters import (
     VISUAL_QC_GLOBAL_BATCH_SIZE,
@@ -166,9 +167,9 @@ class ChapterQCService:
         if api_key_provider is None:
             from app.secret_store import get_gemini_api_key
             api_key_provider = get_gemini_api_key
-        provider = str(provider or "gemini").strip().lower()
-        if provider not in {"gemini", "deepseek"}:
-            raise ValueError(f"Unsupported visual QC provider: {provider}")
+        # Any configured vision provider can run chapter QC; the router already
+        # resolved it (built-in or custom OpenAI-compatible) before this point.
+        provider = normalize_provider_id(str(provider or "gemini"))
         self.runner = runner
         self.job_manager = job_manager or VisualQCJobManager()
         self.manifest_loader = manifest_loader
@@ -223,7 +224,7 @@ class ChapterQCService:
             manifest = self.manifest_loader(chapter_id)
         api_key = self.api_key_provider()
         if not api_key:
-            label = "DeepSeek" if self.provider == "deepseek" else "Gemini"
+            label = PROVIDERS[self.provider].label if self.provider in PROVIDERS else self.provider
             raise ValueError(f"{label} API key is not configured")
 
         plan = build_chapter_qc_plan(
