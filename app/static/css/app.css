@@ -176,3 +176,33 @@
     .review-zoom-dock { right: 8px; bottom: 8px; }
   }
 }
+
+@layer studio {
+  /* A.I mode: one full-width panel under the two manual sources. */
+  .ai-mode-panel { grid-column: 1 / -1; }
+  .ai-mode-panel [hidden] { display: none !important; }
+  .ai-mode-form { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); align-items: end; gap: 8px 10px; }
+  .ai-mode-form .ai-mode-url { grid-column: 1 / -1; }
+  .ai-mode-form .ui-field { gap: 4px; font-size: 12px; }
+  .ai-mode-form :is(select, input) { width: 100%; min-width: 0; }
+  .ai-mode-status { grid-column: 1 / -1; display: grid; gap: 10px; }
+  .ai-mode-stages { display: grid; margin: 0; padding: 0; gap: 4px; list-style: none; }
+  .ai-mode-stage { display: flex; min-width: 0; align-items: baseline; justify-content: space-between; gap: 12px; padding: 7px 10px; border: 1px solid var(--border-subtle); border-radius: 4px; font-size: 12px; }
+  .ai-mode-stage span { min-width: 0; overflow-wrap: anywhere; color: var(--text-muted); text-align: right; }
+  .ai-mode-stage.is-running { border-color: var(--accent); }
+  .ai-mode-stage.is-running span { color: var(--text-primary); }
+  .ai-mode-stage.is-done span { color: var(--success); }
+  .ai-mode-stage.is-failed { border-color: var(--danger); }
+  .ai-mode-stage.is-failed span { color: var(--danger); }
+  .ai-mode-summary { margin: 0; color: var(--text-secondary); font-size: 13px; }
+  .ai-mode-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  .ai-mode-actions > .ui-btn { display: inline-flex; min-height: 34px; align-items: center; text-decoration: none; }
+  .ai-mode-actions:not(:has(> :not([hidden]))) { display: none; }
+  .ai-mode-report > summary { cursor: pointer; font-size: 12px; font-weight: 650; }
+  .ai-mode-report ul { display: grid; margin: 8px 0 0; padding-left: 18px; gap: 4px; color: var(--text-secondary); font-size: 12px; }
+  @media (max-width: 720px) {
+    .ai-mode-form { grid-template-columns: 1fr; }
+    .ai-mode-stage { flex-direction: column; align-items: flex-start; gap: 2px; }
+    .ai-mode-stage span { text-align: left; }
+  }
+}
