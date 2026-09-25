@@ -12,6 +12,7 @@ from pydantic import BaseModel, field_validator
 from app import cloud
 from app.ai_providers import (
     PROVIDERS,
+    cloud_job_provider,
     normalize_provider_id,
     resolve_provider,
     validate_model_name,
@@ -105,6 +106,9 @@ def _raise_job_capacity_error(exc: RuntimeError) -> None:
 
 def _resolve_configured_provider(provider_id: str):
     normalized = normalize_provider_id(provider_id)
+    cloud = cloud_job_provider(normalized)
+    if cloud is not None:
+        return cloud
     if normalized in PROVIDERS:
         return PROVIDERS[normalized]
     stored = get_provider_config(normalized)

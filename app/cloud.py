@@ -7,11 +7,10 @@ import time
 import requests
 from fastapi import HTTPException
 
-from app.ai_providers import AIProvider
+from app.ai_providers import CLOUD_PROVIDER_ID, AIProvider
 from app.logging_config import logger
 from app.secret_store import SecretStoreUnavailable, get_cloud_token
 
-CLOUD_PROVIDER_ID = "manga-cloud"
 ALL_FEATURES = ("visual_qc", "byok", "custom_providers")
 ENTITLEMENT_TTL_SECONDS = 30
 TIMEOUT = (5, 15)

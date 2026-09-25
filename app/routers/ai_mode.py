@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from app.ai_mode.job import AIModeJobManager, AIModeSettings
 from app import cloud
-from app.ai_providers import normalize_provider_id, validate_model_name
+from app.ai_providers import bind_cloud_job, normalize_provider_id, unbind_cloud_job, validate_model_name
 from app.config import OUTPUT_DIR
 from app.parameters import PIPELINE_DEFAULT_WORKERS
 from app.routers.translation import _resolve_vision_provider, validate_lang_code
@@ -87,12 +87,15 @@ async def start_ai_mode(req: AIModeStartRequest) -> dict:
             url=req.url, provider=provider.id, model=provider.default_qc_model, target_lang=req.target_lang,
             budget_usd=float(reservation.get("cost_cap_usd") or req.budget_usd), workers=req.workers,
         )
-        hook = _cloud_finish_hook(str(reservation["job_token"]))
+        job_token = str(reservation["job_token"])
+        bound = bind_cloud_job(provider, job_token)
         try:
-            return ai_mode_jobs.start(settings, provider=provider, api_key=str(reservation["job_token"]), on_finish=hook)
+            return ai_mode_jobs.start(settings, provider=provider, api_key=job_token, on_finish=_cloud_finish_hook(job_token))
         except RuntimeError as exc:
-            await run_in_threadpool(cloud.finish_job, str(reservation["job_token"]), "cancelled")
+            await run_in_threadpool(cloud.finish_job, job_token, "cancelled")
             raise HTTPException(409, str(exc)) from exc
+        finally:
+            unbind_cloud_job(bound)
     await run_in_threadpool(cloud.require_feature, "byok")
     # Resolve the provider and key before downloading anything, so a missing
     # key fails in a second instead of after the chapter was fetched.

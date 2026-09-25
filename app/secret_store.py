@@ -4,7 +4,7 @@ import json
 import os
 
 from app.ai_providers import (
-    PROVIDERS, normalize_provider_id, resolve_provider, validate_provider_label
+    CLOUD_PROVIDER_ID, PROVIDERS, cloud_job_key, normalize_provider_id, resolve_provider, validate_provider_label
 )
 
 _SERVICE_NAME = "manga-translator"
@@ -158,6 +158,8 @@ def deepseek_key_status() -> dict:
 
 
 def get_provider_api_key(provider_id: str, *, provider_label: str | None = None) -> str | None:
+    if provider_id == CLOUD_PROVIDER_ID:
+        return cloud_job_key()
     provider_id, env_names, label = _provider_meta(provider_id, provider_label)
     if provider_id == "gemini":
         return get_gemini_api_key()

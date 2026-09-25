@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field, field_validator
 from app.config import PROCESSED_DIR, RAW_DIR
 from app.ai_providers import (
     PROVIDERS,
+    cloud_job_provider,
     normalize_provider_id,
     resolve_provider,
     validate_model_name,
@@ -310,7 +311,10 @@ class TranslateVisionPageRequest(TranslateChapterRequest):
 
 def _resolve_vision_provider(provider_id: str):
     normalized = normalize_provider_id(provider_id)
-    if normalized in PROVIDERS:
+    cloud = cloud_job_provider(normalized)
+    if cloud is not None:
+        provider = cloud
+    elif normalized in PROVIDERS:
         provider = PROVIDERS[normalized]
     else:
         stored = get_provider_config(normalized)
