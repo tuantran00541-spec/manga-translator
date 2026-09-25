@@ -174,7 +174,10 @@ def create_app(store: Store, upstream: Upstream, admin_key: str) -> FastAPI:
         except requests.RequestException:
             return _error(502, "upstream_unreachable", "A.I upstream is unreachable")
         usage = body.get("usage") if isinstance(body.get("usage"), dict) else {}
-        total = store.add_cost(row["id"], upstream.cost(usage))
+        total = store.add_cost(
+            row["id"], upstream.cost(usage),
+            int(usage.get("prompt_tokens") or 0), int(usage.get("completion_tokens") or 0),
+        )
         if status >= 400:
             return _error(status if status in (400, 429) else 502, "upstream_error", f"Upstream HTTP {status}")
         body.setdefault("usage", {})["gateway_job_cost_usd"] = round(total, 6)

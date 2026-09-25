@@ -30,6 +30,8 @@ CREATE TABLE IF NOT EXISTS jobs (
     cost_usd REAL NOT NULL DEFAULT 0,
     cost_cap_usd REAL NOT NULL,
     requests INTEGER NOT NULL DEFAULT 0,
+    prompt_tokens INTEGER NOT NULL DEFAULT 0,
+    completion_tokens INTEGER NOT NULL DEFAULT 0,
     refunded INTEGER NOT NULL DEFAULT 0,
     created_at REAL NOT NULL,
     expires_at REAL NOT NULL
@@ -159,9 +161,13 @@ class Store:
                 raise QuotaExceeded("cost_cap")
             db.execute("UPDATE jobs SET requests = requests + 1 WHERE id = ?", (job_id,))
 
-    def add_cost(self, job_id: str, cost: float) -> float:
+    def add_cost(self, job_id: str, cost: float, prompt_tokens: int = 0, completion_tokens: int = 0) -> float:
         with self._write() as db:
-            db.execute("UPDATE jobs SET cost_usd = cost_usd + ? WHERE id = ?", (max(0.0, cost), job_id))
+            db.execute(
+                "UPDATE jobs SET cost_usd = cost_usd + ?, prompt_tokens = prompt_tokens + ?, "
+                "completion_tokens = completion_tokens + ? WHERE id = ?",
+                (max(0.0, cost), max(0, prompt_tokens), max(0, completion_tokens), job_id),
+            )
             return float(db.execute("SELECT cost_usd FROM jobs WHERE id = ?", (job_id,)).fetchone()[0])
 
     def finish_job(self, job_id: str, outcome: str) -> dict:
@@ -172,4 +178,8 @@ class Store:
                 "UPDATE jobs SET status = ?, refunded = ? WHERE id = ?",
                 (outcome, int(refund), job_id),
             )
-        return {"job_id": job_id, "status": outcome, "refunded": refund, "cost_usd": round(float(row["cost_usd"]), 6)}
+        return {
+            "job_id": job_id, "status": outcome, "refunded": refund, "cost_usd": round(float(row["cost_usd"]), 6),
+            "requests": int(row["requests"]), "prompt_tokens": int(row["prompt_tokens"]),
+            "completion_tokens": int(row["completion_tokens"]),
+        }
