@@ -181,12 +181,22 @@ def main() -> int:
         if not page.get("clean"):
             continue
         original, clean = images(index)
+        # Keep only this slice's stitch core: overlapping seam rows belong to
+        # exactly one slice in the exported chapter, so counting whole slices
+        # would count seam text twice (and against the wrong slice).
+        core = page.get("stitch_core") if isinstance(page.get("stitch_core"), dict) else {}
+        try:
+            y1, y2 = int(core.get("core_y1", 0)), int(core.get("core_y2", original.shape[0]))
+        except (TypeError, ValueError):
+            y1, y2 = 0, original.shape[0]
+        if 0 <= y1 < y2 <= original.shape[0]:
+            original, clean = original[y1:y2], clean[y1:y2]
         scale = half_width / original.shape[1]
         size = (half_width, max(1, round(original.shape[0] * scale)))
         pair = _pair(cv2.resize(original, size, interpolation=cv2.INTER_AREA),
                      cv2.resize(clean, size, interpolation=cv2.INTER_AREA))
         label = np.full((28, pair.shape[1], 3), 255, np.uint8)
-        cv2.putText(label, f"slice {index}", (6, 21), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 200), 2)
+        cv2.putText(label, f"slice {index} core", (6, 21), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 200), 2)
         tiles.append(np.vstack([label, pair]))
     for sheet_no in range(0, len(tiles), per_sheet):
         group = tiles[sheet_no:sheet_no + per_sheet]
