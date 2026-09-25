@@ -8,14 +8,14 @@
  },
  "status": "completed",
  "error": null,
- "wall_s": 782.2,
+ "wall_s": 807.0,
  "stages": [
   {
    "key": "download",
    "status": "done",
    "done": 1,
    "total": 1,
-   "elapsed_s": 8.7,
+   "elapsed_s": 8.0,
    "detail": "87 lát"
   },
   {
@@ -23,15 +23,15 @@
    "status": "done",
    "done": 87,
    "total": 87,
-   "elapsed_s": 35.2,
-   "detail": "0 lát credit, 0 logo"
+   "elapsed_s": 143.9,
+   "detail": "2 lát credit, 1 logo"
   },
   {
    "key": "clean",
    "status": "done",
-   "done": 87,
-   "total": 87,
-   "elapsed_s": 465.1,
+   "done": 85,
+   "total": 85,
+   "elapsed_s": 400.1,
    "detail": ""
   },
   {
@@ -39,23 +39,23 @@
    "status": "done",
    "done": 0,
    "total": 0,
-   "elapsed_s": 107.8,
+   "elapsed_s": 104.1,
    "detail": "Repaint 0 vùng"
   },
   {
    "key": "translate",
    "status": "done",
-   "done": 87,
-   "total": 87,
-   "elapsed_s": 118.7,
-   "detail": "Dịch 174 vùng"
+   "done": 85,
+   "total": 85,
+   "elapsed_s": 105.9,
+   "detail": "Dịch 154 vùng"
   },
   {
    "key": "render",
    "status": "done",
-   "done": 87,
-   "total": 87,
-   "elapsed_s": 6.4,
+   "done": 85,
+   "total": 85,
+   "elapsed_s": 8.8,
    "detail": ""
   },
   {
@@ -63,225 +63,33 @@
    "status": "done",
    "done": 1,
    "total": 1,
-   "elapsed_s": 35.9,
+   "elapsed_s": 32.3,
    "detail": "Xong"
   }
  ],
  "report": {
-  "credit_pages": [],
-  "credit_rejected": [],
-  "logo_regions": 0,
-  "scan_errors": [
-   {
-    "pages": [
-     0,
-     1,
-     2,
-     3
-    ],
-    "error": "Manga Cloud HTTP 502: Upstream HTTP 422"
-   },
-   {
-    "pages": [
-     4,
-     5,
-     6,
-     7
-    ],
-    "error": "Manga Cloud HTTP 502: Upstream HTTP 422"
-   },
-   {
-    "pages": [
-     8,
-     9,
-     10,
-     11
-    ],
-    "error": "Manga Cloud HTTP 502: Upstream HTTP 422"
-   },
-   {
-    "pages": [
-     12,
-     13,
-     14,
-     15
-    ],
-    "error": "Manga Cloud HTTP 502: Upstream HTTP 422"
-   },
-   {
-    "pages": [
-     16,
-     17,
-     18,
-     19
-    ],
-    "error": "Manga Cloud HTTP 502: Upstream HTTP 422"
-   },
-   {
-    "pages": [
-     20,
-     21,
-     22,
-     23
-    ],
-    "error": "Manga Cloud HTTP 502: Upstream HTTP 422"
-   },
-   {
-    "pages": [
-     24,
-     25,
-     26,
-     27
-    ],
-    "error": "Manga Cloud HTTP 502: Upstream HTTP 422"
-   },
-   {
-    "pages": [
-     28,
-     29,
-     30,
-     31
-    ],
-    "error": "Manga Cloud HTTP 502: Upstream HTTP 422"
-   },
-   {
-    "pages": [
-     32,
-     33,
-     34,
-     35
-    ],
-    "error": "Manga Cloud HTTP 502: Upstream HTTP 422"
-   },
-   {
-    "pages": [
-     36,
-     37,
-     38,
-     39
-    ],
-    "error": "Manga Cloud HTTP 502: Upstream HTTP 422"
-   },
-   {
-    "pages": [
-     40,
-     41,
-     42,
-     43
-    ],
-    "error": "Manga Cloud HTTP 502: Upstream HTTP 422"
-   },
-   {
-    "pages": [
-     44,
-     45,
-     46,
-     47
-    ],
-    "error": "Manga Cloud HTTP 502: Upstream HTTP 422"
-   },
-   {
-    "pages": [
-     48,
-     49,
-     50,
-     51
-    ],
-    "error": "Manga Cloud HTTP 502: Upstream HTTP 422"
-   },
-   {
-    "pages": [
-     52,
-     53,
-     54,
-     55
-    ],
-    "error": "Manga Cloud HTTP 502: Upstream HTTP 422"
-   },
-   {
-    "pages": [
-     56,
-     57,
-     58,
-     59
-    ],
-    "error": "Manga Cloud HTTP 502: Upstream HTTP 422"
-   },
-   {
-    "pages": [
-     60,
-     61,
-     62,
-     63
-    ],
-    "error": "Manga Cloud HTTP 502: Upstream HTTP 422"
-   },
-   {
-    "pages": [
-     64,
-     65,
-     66,
-     67
-    ],
-    "error": "Manga Cloud HTTP 502: Upstream HTTP 422"
-   },
-   {
-    "pages": [
-     68,
-     69,
-     70,
-     71
-    ],
-    "error": "Manga Cloud HTTP 502: Upstream HTTP 422"
-   },
-   {
-    "pages": [
-     72,
-     73,
-     74,
-     75
-    ],
-    "error": "Manga Cloud HTTP 502: Upstream HTTP 422"
-   },
-   {
-    "pages": [
-     76,
-     77,
-     78,
-     79
-    ],
-    "error": "Manga Cloud HTTP 502: Upstream HTTP 422"
-   },
-   {
-    "pages": [
-     80,
-     81,
-     82,
-     83
-    ],
-    "error": "Manga Cloud HTTP 502: Upstream HTTP 422"
-   },
-   {
-    "pages": [
-     84,
-     85,
-     86
-    ],
-    "error": "Manga Cloud HTTP 502: Upstream HTTP 422"
-   }
+  "credit_pages": [
+   0,
+   86
   ],
+  "credit_rejected": [],
+  "logo_regions": 1,
+  "scan_errors": [],
   "repainted_regions": 0,
   "repaint_pages": [],
-  "qc_flagged": 47,
+  "qc_flagged": 49,
   "qc_errors": [],
-  "translated": 174,
-  "unreadable": 4,
+  "translated": 154,
+  "unreadable": 7,
   "translate_errors": [
-   "Lát 84: Vision model omitted one or more text-object IDs",
-   "Lát 87: Vision model must return a translations array"
+   "Lát 21: Vision model omitted one or more text-object IDs",
+   "Lát 26: Vision model omitted one or more text-object IDs",
+   "Lát 34: Vision model omitted one or more text-object IDs",
+   "Lát 60: Vision model omitted one or more text-object IDs",
+   "Lát 78: Vision model omitted one or more text-object IDs"
   ],
   "render_errors": [],
-  "editorial_blockers": 11,
+  "editorial_blockers": 20,
   "blocker_samples": [
    {
     "kind": "story_object_missing_ocr",
@@ -295,42 +103,42 @@
    },
    {
     "kind": "story_object_missing_ocr",
-    "page": 61,
+    "page": 21,
     "reason": "active story object has neither OCR source nor translation"
    },
    {
     "kind": "story_object_missing_ocr",
-    "page": 84,
+    "page": 21,
     "reason": "active story object has neither OCR source nor translation"
    },
    {
     "kind": "story_object_missing_ocr",
-    "page": 84,
+    "page": 26,
     "reason": "active story object has neither OCR source nor translation"
    },
    {
     "kind": "story_object_missing_ocr",
-    "page": 84,
+    "page": 26,
     "reason": "active story object has neither OCR source nor translation"
    },
    {
     "kind": "story_object_missing_ocr",
-    "page": 84,
+    "page": 26,
     "reason": "active story object has neither OCR source nor translation"
    },
    {
     "kind": "story_object_missing_ocr",
-    "page": 86,
+    "page": 26,
     "reason": "active story object has neither OCR source nor translation"
    },
    {
     "kind": "story_object_missing_ocr",
-    "page": 87,
+    "page": 34,
     "reason": "active story object has neither OCR source nor translation"
    },
    {
     "kind": "story_object_missing_ocr",
-    "page": 87,
+    "page": 48,
     "reason": "active story object has neither OCR source nor translation"
    }
   ],
@@ -338,21 +146,21 @@
  },
  "gateway_job": {
   "status": "completed",
-  "requests": 184,
-  "prompt_tokens": 459068,
-  "completion_tokens": 29530,
-  "cost_usd": 0.05863176
+  "requests": 268,
+  "prompt_tokens": 512607,
+  "completion_tokens": 33977,
+  "cost_usd": 0.06559007999999997
  },
  "zip_pages": 22,
  "slices": 87,
- "slices_active": 87,
+ "slices_active": 85,
  "per_chapter": {
-  "prompt_tokens": 459068,
-  "completion_tokens": 29530,
-  "cost_usd": 0.05863
+  "prompt_tokens": 512607,
+  "completion_tokens": 33977,
+  "cost_usd": 0.06559
  },
  "per_slice": {
-  "prompt_tokens": 5277,
-  "completion_tokens": 339
+  "prompt_tokens": 6031,
+  "completion_tokens": 400
  }
 }
