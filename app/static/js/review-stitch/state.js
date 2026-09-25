@@ -9,7 +9,15 @@ export const MIN_BOX = 10;
 
 export const SHORTCUTS = { v: "select", r: "rectangle", o: "ellipse", b: "brush", e: "eraser", h: "hand", z: "zoom" };
 
-export const snapshots = new Map();
+const snapshots = new Map();
+
+export const storeSnapshot = (key, value) => { snapshots.set(key, value); };
+
+export const readSnapshot = (key) => snapshots.get(key);
+
+export const deleteSnapshot = (key) => { snapshots.delete(key); };
+
+export const hasSnapshotPrefix = (prefix) => [...snapshots.keys()].some((key) => key.startsWith(prefix));
 
 const autoSynced = new Set();
 

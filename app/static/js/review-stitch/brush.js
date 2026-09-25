@@ -1,4 +1,4 @@
-import { BRUSH_CHUNK_H, snapshotKey, snapshots, state } from "./state.js";
+import { BRUSH_CHUNK_H, deleteSnapshot, readSnapshot, snapshotKey, state, storeSnapshot } from "./state.js";
 
 export function makeBrushChunks(host, width, height) {
   const chunks = [];
@@ -49,12 +49,15 @@ export function captureSnapshot(shell) {
   if (!shell || state.variant !== "clean") return;
   const dirty = (shell._brushChunks || []).filter((chunk) => chunk.dirty && chunkHasPaint(chunk));
   const key = snapshotKey();
-  if (!dirty.length) return void snapshots.delete(key);
-  snapshots.set(key, dirty.map((chunk) => ({ y1: chunk.y1, dataUrl: chunk.canvas.toDataURL("image/png") })));
+  if (!dirty.length) {
+    deleteSnapshot(key);
+    return;
+  }
+  storeSnapshot(key, dirty.map((chunk) => ({ y1: chunk.y1, dataUrl: chunk.canvas.toDataURL("image/png") })));
 }
 
 export function restoreSnapshot(shell) {
-  const saved = snapshots.get(snapshotKey());
+  const saved = readSnapshot(snapshotKey());
   if (!Array.isArray(saved)) return;
   const byY = new Map((shell._brushChunks || []).map((chunk) => [chunk.y1, chunk]));
   for (const item of saved) {

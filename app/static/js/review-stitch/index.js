@@ -1,13 +1,13 @@
 import { canvasBlob, captureSnapshot, chunkHasPaint, drawBrushMask, paintPoint, paintStroke } from "./brush.js";
 import { installOverlaySync, installTextDrawing, mountTextInspector, renderOverlays, reviewPageIndexAtSourceY, sourcePoint } from "./overlays.js";
-import { SHORTCUTS, chapterKey, resetChapterState, snapshotKey, snapshots, state } from "./state.js";
+import { SHORTCUTS, chapterKey, deleteSnapshot, hasSnapshotPrefix, resetChapterState, snapshotKey, state } from "./state.js";
 import { orderedSlices, renderStrip } from "./strip.js";
 import { mountActions, mountToolRail, setTool, syncTool } from "./tools.js";
 import { applyZoom, stepZoom } from "./zoom.js";
 
 window.hasUnsavedStitchedMarks = () => {
   const prefix = `${chapterKey()}:`;
-  if ([...snapshots.keys()].some((key) => key.startsWith(prefix))) return true;
+  if (hasSnapshotPrefix(prefix)) return true;
   const shell = document.querySelector("#page-view.review-mode .review-document-shell");
   return Boolean(shell?._brushChunks?.some((chunk) => chunk.dirty && chunkHasPaint(chunk)));
 };
@@ -283,7 +283,7 @@ export function mount(workspace) {
   viewport.addEventListener("wheel", (e) => { if (!(e.ctrlKey || e.metaKey)) { return; } e.preventDefault(); const r = viewport.getBoundingClientRect(); stepZoom(e.deltaY < 0 ? 1 : -1); applyZoom(shell, { x: e.clientX - r.left, y: e.clientY - r.top }); }, { passive: false, signal });
 
   size.addEventListener("input", () => { radius = Number(size.value); sizeOut.textContent = `${radius * 2}px`; }, { signal });
-  clearMask.addEventListener("click", () => { for (const c of shell._brushChunks || []) { if (c.canvas && c.ctx) { c.ctx.clearRect(0, 0, c.canvas.width, c.canvas.height); } c.dirty = false; } snapshots.delete(snapshotKey()); syncBrushBar(); }, { signal });
+  clearMask.addEventListener("click", () => { for (const c of shell._brushChunks || []) { if (c.canvas && c.ctx) { c.ctx.clearRect(0, 0, c.canvas.width, c.canvas.height); } c.dirty = false; } deleteSnapshot(snapshotKey()); syncBrushBar(); }, { signal });
   clean.addEventListener("click", () => { if (state.variant !== "clean") { state.variant = "clean"; rerender(); } }, { signal }); rendered.addEventListener("click", () => { if (state.variant !== "rendered") { captureSnapshot(shell); state.variant = "rendered"; rerender(); } }, { signal }); original.addEventListener("click", () => { if (state.variant !== "original") { captureSnapshot(shell); state.variant = "original"; rerender(); } }, { signal });
   zoomOut.addEventListener("click", () => { stepZoom(-1); applyZoom(shell); }, { signal }); zoomIn.addEventListener("click", () => { stepZoom(1); applyZoom(shell); }, { signal }); zoomValue.addEventListener("click", () => { state.fitWidth = true; applyZoom(shell); }, { signal }); one.addEventListener("click", () => { state.fitWidth = false; state.zoom = 100; applyZoom(shell); }, { signal });
   window.addEventListener("resize", () => { if (state.fitWidth) applyZoom(shell); }, { signal });
@@ -300,7 +300,7 @@ export function mount(workspace) {
         const response = await fetch("/api/repaint_mask", { method: "POST", body: form }), parse = window.parseApiResponse || (async (r) => r.json().catch(() => ({}))), data = await parse(response); if (!response.ok) throw new Error(window.getErrorMessage?.(response.status, data) || data.detail || `HTTP ${response.status}`);
         if (window.currentManifest?.pages?.[desc.item.canonicalIndex] && data.pages?.[desc.item.canonicalIndex]) { window.currentManifest.pages[desc.item.canonicalIndex] = data.pages[desc.item.canonicalIndex]; } affected++;
       }
-      for (const c of chunks) { if (c.canvas && c.ctx) { c.ctx.clearRect(0, 0, c.canvas.width, c.canvas.height); } c.dirty = false; } snapshots.delete(snapshotKey()); window.showToast?.(affected ? "Đã làm sạch các vùng được đánh dấu." : "Không có vùng ảnh nào được cập nhật.", affected ? "success" : "info"); rerender();
+      for (const c of chunks) { if (c.canvas && c.ctx) { c.ctx.clearRect(0, 0, c.canvas.width, c.canvas.height); } c.dirty = false; } deleteSnapshot(snapshotKey()); window.showToast?.(affected ? "Đã làm sạch các vùng được đánh dấu." : "Không có vùng ảnh nào được cập nhật.", affected ? "success" : "info"); rerender();
     } catch (err) { window.showToast?.("Không thể xử lý vùng đánh dấu: " + err.message, "error"); } finally { busy(false); }
   }, { signal });
 
