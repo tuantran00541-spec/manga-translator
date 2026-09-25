@@ -79,6 +79,24 @@ def test_scan_sends_every_slice_as_a_labelled_image(monkeypatch):
     assert cost is None, "OpenAI does not report priced usage"
 
 
+@pytest.mark.parametrize("provider_id, label", [
+    ("openai", "OpenAI"), ("openrouter", "OpenRouter"), ("my-proxy", "my-proxy"),
+])
+def test_chapter_qc_accepts_every_vision_provider(provider_id, label):
+    # The QC step of A.I mode (and the QC button) used to reject everything
+    # except Gemini and DeepSeek before even checking the key.
+    import contextlib
+    from app.visual_qc.service import ChapterQCService
+
+    service = ChapterQCService(
+        object(), provider=provider_id, api_key_provider=lambda: None,
+        manifest_loader=lambda chapter_id: {"pages": []}, manifest_saver=lambda *args: None,
+        manifest_lock=lambda chapter_id: contextlib.nullcontext(),
+    )
+    with pytest.raises(ValueError, match=f"^{label} API key is not configured$"):
+        asyncio.run(service.start("abcd1234"))
+
+
 # -- orchestration ------------------------------------------------------------
 
 class RecordingRunner:
@@ -189,6 +207,38 @@ def test_scan_stage_refuses_to_skip_most_of_a_chapter(monkeypatch):
     runner, skipped, _ = _scan_stage(monkeypatch, [SliceScan(i, True, 0.9, ()) for i in range(5)])
     assert skipped == []
     assert runner.report["credit_rejected"] == [0, 1, 2, 3, 4]
+
+
+def test_translate_stage_keeps_a_few_slices_in_flight_and_reports_failures(monkeypatch):
+    import app.routers.ocr as ocr_router
+
+    active = {"now": 0, "peak": 0}
+
+    async def detected(chapter_id, req=None):
+        return {"source_lang": None}
+
+    async def fake_translate(req):
+        active["now"] += 1
+        active["peak"] = max(active["peak"], active["now"])
+        await asyncio.sleep(0.01)
+        active["now"] -= 1
+        if req.page_index == 3:
+            raise translation_router.HTTPException(502, "provider down")
+        assert req.source_lang == "auto"
+        return {"translation_run": {"translated": 2, "unreadable": 0, "estimated_cost_usd": None}}
+
+    monkeypatch.setattr(ocr_router, "detect_chapter_language", detected)
+    monkeypatch.setattr(translation_router, "translate_page_with_images", fake_translate)
+    job = ai_job.AIModeJob(job_id="j", settings=SETTINGS, chapter_id=CHAPTER, stage="translate", cost_usd=None,
+                           stages={"translate": {"done": 0, "total": 0, "detail": ""}})
+    runner = AIModeRunner(job, PROVIDERS["openai"], "key")
+    monkeypatch.setattr(runner, "_active_pages", lambda: list(range(10)))
+    asyncio.run(runner.translate())
+
+    assert 1 < active["peak"] <= ai_job.TRANSLATE_CONCURRENCY
+    assert runner.report["translated"] == 18
+    assert runner.report["translate_errors"] == ["Lát 4: provider down"]
+    assert job.stages["translate"]["done"] == 10
 
 
 # -- translate -> render -> gate-free export ---------------------------------

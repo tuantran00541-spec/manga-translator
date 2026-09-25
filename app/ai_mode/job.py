@@ -39,6 +39,7 @@ CREDIT_MAX_ABSOLUTE = 3
 REPAINT_ISSUE_TYPES = frozenset({"residual_text", "partial_text", "partial_erase", "smear", "inpaint_artifact"})
 REPAINT_MIN_CONFIDENCE = 0.5
 REPAINT_PAD_PX = 6
+TRANSLATE_CONCURRENCY = 3
 POLL_SECONDS = 1.0
 MAX_RETAINED_JOBS = 16
 MAX_REPORT_ITEMS = 50
@@ -304,29 +305,47 @@ class AIModeRunner:
             source_lang = "auto"
         self.report["source_lang"] = source_lang
         indices = self._active_pages()
-        for done, page_index in enumerate(indices):
-            self._check_cancel()
-            self._progress(done, len(indices), f"Lát {page_index + 1}")
-            remaining = self._remaining_budget()
-            if remaining is not None and remaining < 0.001:
-                _append(self.report["translate_errors"], "Hết ngân sách, các lát còn lại chưa dịch")
-                break
-            try:
-                data = await translate_page_with_images(TranslateVisionPageRequest(
-                    chapter_id=self.job.chapter_id, page_index=page_index,
-                    source_lang=source_lang, target_lang=self.settings.target_lang,
-                    budget_usd=0.25 if remaining is None else max(0.001, min(0.25, remaining)),
-                    provider=self.provider.id, model=self.settings.model,
-                ))
-            except HTTPException as exc:
-                _append(self.report["translate_errors"], f"Lát {page_index + 1}: {_detail(exc)[:200]}")
-                continue
-            run = data.get("translation_run") or {}
-            self.report["translated"] += int(run.get("translated") or 0)
-            self.report["unreadable"] += int(run.get("unreadable") or 0)
-            self._add_cost(run.get("estimated_cost_usd") if self.provider.tracks_cost else None)
-            if run.get("render_error"):
-                _append(self.report["render_errors"], f"Lát {page_index + 1}: {run['render_error']}")
+        # Each slice is one network round trip; a few in flight hide the
+        # latency. Slices are independent, and every commit re-checks its own
+        # page under the manifest lock.
+        gate = asyncio.Semaphore(TRANSLATE_CONCURRENCY)
+        finished = 0
+        out_of_budget = False
+
+        async def translate_one(page_index: int) -> None:
+            nonlocal finished, out_of_budget
+            async with gate:
+                if self.job.cancel_requested or out_of_budget:
+                    return
+                remaining = self._remaining_budget()
+                if remaining is not None and remaining < 0.001:
+                    out_of_budget = True
+                    return
+                try:
+                    data = await translate_page_with_images(TranslateVisionPageRequest(
+                        chapter_id=self.job.chapter_id, page_index=page_index,
+                        source_lang=source_lang, target_lang=self.settings.target_lang,
+                        budget_usd=0.25 if remaining is None else max(0.001, min(0.25, remaining)),
+                        provider=self.provider.id, model=self.settings.model,
+                    ))
+                except HTTPException as exc:
+                    _append(self.report["translate_errors"], f"Lát {page_index + 1}: {_detail(exc)[:200]}")
+                    return
+                finally:
+                    finished += 1
+                    self._progress(finished, len(indices))
+                run = data.get("translation_run") or {}
+                self.report["translated"] += int(run.get("translated") or 0)
+                self.report["unreadable"] += int(run.get("unreadable") or 0)
+                self._add_cost(run.get("estimated_cost_usd") if self.provider.tracks_cost else None)
+                if run.get("render_error"):
+                    _append(self.report["render_errors"], f"Lát {page_index + 1}: {run['render_error']}")
+
+        self._progress(0, len(indices))
+        await asyncio.gather(*(translate_one(page_index) for page_index in indices))
+        self._check_cancel()
+        if out_of_budget:
+            _append(self.report["translate_errors"], "Hết ngân sách, các lát còn lại chưa dịch")
         self._progress(len(indices), len(indices), f"Dịch {self.report['translated']} vùng")
 
     async def render(self) -> None:
