@@ -1,0 +1,119 @@
+{
+ "inputs": [
+  "image",
+  "mask"
+ ],
+ "input_consumers": {
+  "image": [
+   {
+    "op": "Mul",
+    "name": "generator/Mul",
+    "inputs": [
+     "image",
+     "generator/Sub_output_0"
+    ]
+   },
+   {
+    "op": "Mul",
+    "name": "Mul_13616",
+    "inputs": [
+     "generator/Sub_output_0",
+     "image"
+    ]
+   }
+  ],
+  "mask": [
+   {
+    "op": "Sub",
+    "name": "generator/Sub",
+    "inputs": [
+     "generator/Constant_1_output_0",
+     "mask"
+    ]
+   },
+   {
+    "op": "Concat",
+    "name": "generator/Concat",
+    "inputs": [
+     "generator/Mul_output_0",
+     "mask"
+    ]
+   },
+   {
+    "op": "Mul",
+    "name": "Mul_13615",
+    "inputs": [
+     "generator/model/model.35/Sigmoid_output_0",
+     "mask"
+    ]
+   }
+  ]
+ },
+ "first_nodes": [
+  {
+   "op": "Constant",
+   "inputs": []
+  },
+  {
+   "op": "Constant",
+   "inputs": []
+  },
+  {
+   "op": "Sub",
+   "inputs": [
+    "generator/Constant_1_output_0",
+    "mask"
+   ]
+  },
+  {
+   "op": "Mul",
+   "inputs": [
+    "image",
+    "generator/Sub_output_0"
+   ]
+  },
+  {
+   "op": "Concat",
+   "inputs": [
+    "generator/Mul_output_0",
+    "mask"
+   ]
+  },
+  {
+   "op": "Constant",
+   "inputs": []
+  },
+  {
+   "op": "Constant",
+   "inputs": []
+  },
+  {
+   "op": "ConstantOfShape",
+   "inputs": [
+    "generator/model/model.0/Constant_output_0"
+   ]
+  },
+  {
+   "op": "Concat",
+   "inputs": [
+    "generator/model/model.0/Constant_1_output_0",
+    "generator/model/model.0/ConstantOfShape_output_0"
+   ]
+  },
+  {
+   "op": "Constant",
+   "inputs": []
+  },
+  {
+   "op": "Reshape",
+   "inputs": [
+    "generator/model/model.0/Concat_output_0",
+    "generator/model/model.0/Constant_2_output_0"
+   ]
+  },
+  {
+   "op": "Constant",
+   "inputs": []
+  }
+ ]
+}
