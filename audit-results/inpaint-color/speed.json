@@ -1,8 +1,8 @@
 {
  "slices": 87,
  "workers": 2,
- "clean_wall_s": 166.6,
- "wall_s_per_slice": 1.91,
+ "clean_wall_s": 433.6,
+ "wall_s_per_slice": 4.98,
  "slice_megapixels": {
   "mean": 2.72,
   "median": 2.73,
@@ -10,22 +10,22 @@
   "max": 4.83
  },
  "slice_total_s": {
-  "mean": 3.38,
-  "median": 2.58,
-  "p90": 6.25,
-  "max": 13.67
+  "mean": 8.81,
+  "median": 7.27,
+  "p90": 16.19,
+  "max": 36.26
  },
  "slice_detect_s": {
-  "mean": 0.99,
-  "median": 0.96,
-  "p90": 1.36,
-  "max": 4.67
+  "mean": 3.07,
+  "median": 3.06,
+  "p90": 4.25,
+  "max": 9.23
  },
  "slice_inpaint_s": {
-  "mean": 2.28,
-  "median": 1.28,
-  "p90": 4.99,
-  "max": 12.55
+  "mean": 5.58,
+  "median": 3.29,
+  "p90": 13.28,
+  "max": 32.81
  },
  "slice_residue_verify_s": {
   "mean": 0.0,
