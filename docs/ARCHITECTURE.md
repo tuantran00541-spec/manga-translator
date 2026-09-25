@@ -26,7 +26,7 @@ flowchart TB
     end
 
     subgraph AI["AI modules (CPU / ONNX Runtime)"]
-        DET["detector/combined_detector.py"]
+        DET["one_shot_cleanup.py — OneShotProductionDetector"]
         YOLO["detector/bubble_detector.py — YoloDetector"]
         MB["detector/mask_builder.py"]
         LAMA["inpaint/lama_inpainter.py — Inpainter"]
@@ -145,7 +145,7 @@ sequenceDiagram
     participant PL as pipeline.process_pages()
     participant LK as manifest_utils (lock + snapshot)
     participant PP as _process_page() (worker thread ×2–8)
-    participant DET as CombinedTextDetector
+    participant DET as OneShotProductionDetector
     participant LAMA as Inpainter (LaMa)
     participant MAN as save_manifest_raw
 
@@ -176,30 +176,20 @@ sequenceDiagram
 
 ```mermaid
 flowchart TD
-    A["Ảnh page (BGR)"] --> B["CombinedTextDetector.detect()"]
-    B --> C["YoloDetector(bubble_yolo.onnx).detect()"]
-    B --> D["YoloDetector(text_segmenter.onnx).detect()"]
-    C --> E{"Text box có nằm trong bubble?<br/>_is_inside (tâm hoặc ≥50% diện tích)"}
-    D --> E
-    E -->|"có"| F["_split_cluster_by_lines: gom theo dòng nếu >3 box hoặc cao"]
-    F --> G["_merge_masks: hợp mask các text box → 1 BubbleBox"]
-    E -->|"không"| H["Bubble không chứa text → crop mask lề (3%)"]
-    D --> I["Free text còn lại → _cluster_free_text_boxes<br/>(gom box gần nhau + giới hạn diện tích 35%)"]
-    I --> J["_refine_and_split_tall_boxes: tách box cao >45px theo dòng"]
-    G --> J
-    H --> J
-    J --> K["_apply_final_nms (IoU 0.35)"]
-    K --> L["list[BubbleBox] — kèm mask từng box"]
-    C -->|"đường khác"| M["YoloDetector nội bộ: preprocess 1024×1024 → NMS →<br/>decode mask từ prototype (YOLO seg)"]
-    D --> M
+    A["Ảnh page (BGR)"] --> B["OneShotProductionDetector.detect()"]
+    B --> C["OneShotTextMaskDetector: 1 lần forward text_segmenter.onnx<br/>(preprocess 1024×1024 → NMS → decode mask từ prototype)"]
+    C --> D["Chỉ nhận box text_segmenter có mask đã xác minh<br/>→ safe_to_inpaint, ocr_eligible"]
+    D --> E["page_processing: bỏ box trong vùng giữ nguyên,<br/>apply_final_nms (IoU 0.35)"]
+    E --> F["list[BubbleBox] — kèm mask từng box"]
+    F -.->|"MANGA_DETECTOR_RESIDUE_VERIFY_ENABLED=1"| G["verify_post_inpaint_residue:<br/>quét lại vùng đã inpaint tìm chữ sót"]
 ```
 
 ## 7. Inpaint chi tiết
 
 ```mermaid
 flowchart TD
-    A["Inpainter.inpaint(image, boxes)"] --> B["_cluster_boxes: gom box gần nhau<br/>(padding 35px, giới hạn cluster ≤600px)"]
-    B --> C["_compute_crop_region: padding 35, vuông hóa crop"]
+    A["Inpainter.inpaint(image, boxes)"] --> B["clustering.cluster_boxes: gom box gần nhau<br/>(padding 35px, giới hạn cluster ≤600px)"]
+    B --> C["clustering.compute_crop_region: padding 35, vuông hóa crop"]
     C --> D["mask_builder.build_mask: mask học được từng box,<br/>rect fallback nếu thiếu, adaptive_dilate (kernel 7–9)"]
     D --> E["_smart_paint_region"]
     E --> F{"Crop đơn sắc?"}

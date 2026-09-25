@@ -36,16 +36,6 @@ function getErrorMessage(status, data) {
 }
 window.getErrorMessage = getErrorMessage;
 
-function parsePageNumber(value, totalPages) {
-  if (typeof value !== "string" && typeof value !== "number") return null;
-  const str = String(value).trim();
-  if (!/^[1-9]\d*$/.test(str)) return null;
-  const num = Number(str);
-  if (!Number.isSafeInteger(num) || num < 1 || num > totalPages) return null;
-  return num - 1;
-}
-window.parsePageNumber = parsePageNumber;
-
 let _lastCheckpointStage = null;
 let _lastCheckpointPage = null;
 let _lastCheckpointChapter = null;
@@ -537,46 +527,6 @@ async function fetchOcr(pageIndex, boxIndex, originalEl) {
   }
 }
 
-function scheduleSaveDraft() {
-  if (_saveDraftTimer) clearTimeout(_saveDraftTimer);
-  _saveDraftTimer = setTimeout(saveDraftNow, 800);
-}
-
-async function saveDraftNow() {
-  if (!currentChapterId) return;
-  const textareas = document.querySelectorAll("textarea[data-page-index]");
-  const drafts = currentManifest ? (currentManifest.drafts || (currentManifest.drafts = {})) : {};
-  textareas.forEach((ta) => {
-    const key = `${ta.dataset.pageIndex}_${ta.dataset.boxIndex}`;
-    drafts[key] = {
-      text: ta.value,
-      color: ta.dataset.color || "auto",
-      font: ta.dataset.font || "default",
-      fontSize: ta.dataset.fontSize || "auto",
-      bold: ta.dataset.bold === "true",
-      strokeWidth: ta.dataset.strokeWidth || "auto",
-      strokeColor: ta.dataset.strokeColor || "auto",
-      bgColor: ta.dataset.bgColor || "transparent",
-      cornerRadius: ta.dataset.cornerRadius || "0",
-    };
-  });
-  try {
-    const resp = await fetch("/api/save_draft", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ chapter_id: currentChapterId, drafts }),
-    });
-    const data = await parseApiResponse(resp);
-    if (!resp.ok) {
-      console.error("Save draft failed:", getErrorMessage(resp.status, data));
-    }
-  } catch (e) {
-    console.error("Save draft network error:", e);
-  }
-}
-window.saveDraftNow = saveDraftNow;
-window.scheduleSaveDraft = scheduleSaveDraft;
-
 async function renderTranslations(pageIndex) {
   const chapterId = currentChapterId;
   if (!chapterId) return;
@@ -801,46 +751,3 @@ async function flushPreserveRegionSaves(chapterId = currentChapterId, pageIndex)
 }
 window.flushPreserveRegionSaves = flushPreserveRegionSaves;
 
-async function resetManualMask(pageIndex, img, canvas, ctx, resetBtn) {
-  const chapterId = currentChapterId;
-  const card = resetBtn?.closest(".review-card") || document.querySelector(`.review-card[data-page-index="${pageIndex}"]`) || null;
-  if (card) {
-    card._reviewBusy = true;
-    if (typeof card._syncReviewBusy === "function") card._syncReviewBusy();
-  }
-  if (canvas && typeof canvas._stopBrush === "function") canvas._stopBrush();
-  if (resetBtn) {
-    resetBtn.disabled = true;
-    resetBtn.textContent = "Đang xóa…";
-  }
-  try {
-    const resp = await fetch("/api/reset_manual_mask", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ chapter_id: chapterId, page_index: pageIndex }),
-    });
-    const data = await parseApiResponse(resp);
-    if (!resp.ok) {
-      throw new Error(getErrorMessage(resp.status, data));
-    }
-    if (chapterId !== currentChapterId || !currentManifest?.pages?.[pageIndex]) {
-      return;
-    }
-    currentManifest.pages[pageIndex] = data.pages[pageIndex];
-    if (img) img.src = data.pages[pageIndex].clean + "?t=" + Date.now();
-    if (ctx && canvas) ctx.clearRect(0, 0, canvas.width, canvas.height);
-  } catch (err) {
-    if (chapterId === currentChapterId) {
-      showToast("Không xóa được vùng chỉnh sửa thủ công: " + err.message, "error");
-    }
-  } finally {
-    if (card) {
-      card._reviewBusy = false;
-      if (typeof card._syncReviewBusy === "function") card._syncReviewBusy();
-    }
-    if (resetBtn) {
-      resetBtn.disabled = false;
-      resetBtn.textContent = "Xóa vùng chỉnh sửa";
-    }
-  }
-}

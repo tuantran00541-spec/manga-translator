@@ -60,9 +60,9 @@ events = [
 
 phase_specs = detector_phase_specs()
 check(
-    ("FastResidueAdaptiveFocusCombinedTextDetector", "verify_post_inpaint_residue", "residue_verify")
+    ("OneShotProductionDetector", "verify_post_inpaint_residue", "residue_verify")
     in phase_specs,
-    "production fast-residue override must be attributed as residue_verify",
+    "production residue verification must be attributed as residue_verify",
 )
 
 summary = summarize_detector_passes(events)

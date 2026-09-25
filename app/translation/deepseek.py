@@ -208,6 +208,7 @@ class OpenAICompatibleTranslator:
         if not isinstance(raw_translations, dict):
             raise RuntimeError(f"{self.provider_label} translation payload is not an object")
 
+        expected_ids = {str(item["id"]) for item in items}
         raw_font_choices = parsed.get("font_choices", {})
         font_choices: dict[str, dict] = {}
         if isinstance(raw_font_choices, dict):
@@ -222,7 +223,6 @@ class OpenAICompatibleTranslator:
                         "font_mode": font_mode.strip().lower() or "ai",
                     }
 
-        expected_ids = {str(item["id"]) for item in items}
         translations: dict[str, str] = {}
         for item_id in expected_ids:
             value = raw_translations.get(item_id)

@@ -7,16 +7,14 @@ from app.ocr.paddle_v6 import (
     _should_selective_retry,
 )
 from app.ocr.quality import classify_ocr_quality
-from app.ocr.service import (
-    OCRService,
-    _edge_recrop_bounds_sequence,
-    _expand_ocr_crop_bounds,
-    _expanded_context_crop_bounds,
-    _prefer_edge_recrop,
-    _ocr_crop_bounds,
-    ocr_target_mode_for_box,
-    ocr_target_skip_reason,
+from app.ocr.crop_geometry import (
+    edge_recrop_bounds_sequence,
+    expand_ocr_crop_bounds,
+    expanded_context_crop_bounds,
+    ocr_crop_bounds,
 )
+from app.ocr.service import OCRService
+from app.ocr.targeting import ocr_target_mode_for_box, ocr_target_skip_reason, prefer_edge_recrop
 
 
 def _box(**overrides):
@@ -57,7 +55,7 @@ def test_mask_crop_may_expand_but_never_contract_detector_context():
     image = np.zeros((180, 240, 3), np.uint8)
     mask = np.zeros((80, 100), np.uint8)
     mask[20:45, 0:30] = 255
-    x1, y1, x2, y2 = _ocr_crop_bounds(image.shape, _box(mask=mask))
+    x1, y1, x2, y2 = ocr_crop_bounds(image.shape, _box(mask=mask))
 
     assert x1 == 0
     assert y1 <= 10
@@ -70,7 +68,7 @@ def test_inner_stroke_mask_never_shrinks_recognition_below_detector_context():
     mask = np.zeros((80, 100), np.uint8)
     mask[25:45, 35:65] = 255
 
-    bounds = _ocr_crop_bounds(image.shape, _box(mask=mask))
+    bounds = ocr_crop_bounds(image.shape, _box(mask=mask))
 
     assert bounds[0] <= 10
     assert bounds[1] <= 10
@@ -80,8 +78,8 @@ def test_inner_stroke_mask_never_shrinks_recognition_below_detector_context():
 
 def test_expanded_context_retry_is_strictly_larger_when_page_space_allows():
     image = np.zeros((240, 320, 3), np.uint8)
-    base = _ocr_crop_bounds(image.shape, _box())
-    retry = _expanded_context_crop_bounds(image.shape, _box())
+    base = ocr_crop_bounds(image.shape, _box())
+    retry = expanded_context_crop_bounds(image.shape, _box())
 
     assert retry[0] < base[0]
     assert retry[1] < base[1]
@@ -263,11 +261,11 @@ def test_grayscale_retry_runs_only_when_first_retry_remains_suspicious():
 
 
 def test_edge_recrop_bounds_add_only_bounded_context():
-    assert _expand_ocr_crop_bounds((100, 120, 3), (10, 20, 80, 90)) == (0, 0, 104, 100)
+    assert expand_ocr_crop_bounds((100, 120, 3), (10, 20, 80, 90)) == (0, 0, 104, 100)
 
 
 def test_edge_recrop_bounds_sequence_grows_from_original_crop_without_cumulative_drift():
-    assert _edge_recrop_bounds_sequence((400, 500, 3), (100, 100, 200, 200)) == (
+    assert edge_recrop_bounds_sequence((400, 500, 3), (100, 100, 200, 200)) == (
         (76, 76, 224, 224),
         (52, 52, 248, 248),
         (4, 4, 296, 296),
@@ -275,11 +273,11 @@ def test_edge_recrop_bounds_sequence_grows_from_original_crop_without_cumulative
 
 
 def test_edge_recrop_bounds_sequence_deduplicates_page_clamped_retries():
-    assert _edge_recrop_bounds_sequence((100, 120, 3), (0, 0, 120, 100)) == ()
+    assert edge_recrop_bounds_sequence((100, 120, 3), (0, 0, 120, 100)) == ()
 
 
 def test_edge_recrop_prefers_quality_upgrade_without_extra_regions():
-    assert _prefer_edge_recrop(
+    assert prefer_edge_recrop(
         base_text="(..H?",
         base_quality="review",
         base_reason="crop-edge-text",
@@ -291,7 +289,7 @@ def test_edge_recrop_prefers_quality_upgrade_without_extra_regions():
         expanded_confidence=0.95,
         expanded_region_count=1,
     )
-    assert not _prefer_edge_recrop(
+    assert not prefer_edge_recrop(
         base_text="(..H?",
         base_quality="review",
         base_reason="crop-edge-text",
@@ -306,7 +304,7 @@ def test_edge_recrop_prefers_quality_upgrade_without_extra_regions():
 
 
 def test_edge_recrop_can_repair_order_but_not_add_lines():
-    assert _prefer_edge_recrop(
+    assert prefer_edge_recrop(
         base_text="CHILD\nSAVETHIS",
         base_quality="review",
         base_reason="crop-edge-text",
@@ -318,7 +316,7 @@ def test_edge_recrop_can_repair_order_but_not_add_lines():
         expanded_confidence=0.9992,
         expanded_region_count=2,
     )
-    assert not _prefer_edge_recrop(
+    assert not prefer_edge_recrop(
         base_text="CHILD\nSAVETHIS",
         base_quality="review",
         base_reason="crop-edge-text",

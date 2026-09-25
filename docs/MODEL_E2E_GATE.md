@@ -8,7 +8,7 @@ This gate is a model-dependent acceptance check for the production Manga Transla
 
 - production downloader when `--chapter-url` is used;
 - production slicing;
-- `CombinedTextDetector` with the real bubble detector and text segmenter ONNX models;
+- `OneShotProductionDetector` with the real text segmenter ONNX model;
 - persisted mask provenance and `safe_to_inpaint` policy;
 - production LaMa inpaint path (dynamic or fixed fallback);
 - non-empty authorized cleanup evidence for full promotion runs;
@@ -75,7 +75,7 @@ A smaller smoke run can use `--max-source-images`, `--start-page`, `--max-pages`
 The gate fails when any of these conditions are observed:
 
 1. An automatic `safe_to_inpaint` record has no persisted mask.
-2. Automatic destructive mask provenance is outside the allowed detector/recovery sources.
+2. Automatic destructive mask provenance is outside the allowed detector sources.
 3. Paddle output appears in detector mask records.
 4. The cleaned image changes any pixel outside the effective production mask above `--outside-pixel-tolerance` (default `0`).
 5. Unless `--allow-empty-cleanup` is explicitly set, the run produces no authorized cleanup-mask pixels or an authorized mask changes no pixels, meaning the detector → mask → inpaint path was not actually exercised.

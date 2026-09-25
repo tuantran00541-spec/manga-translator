@@ -390,11 +390,6 @@
     if (!container) return;
     window.setAppStage?.("review");
 
-    if (window._reviewKeyDownHandler) {
-      window.removeEventListener("keydown", window._reviewKeyDownHandler);
-      window._reviewKeyDownHandler = null;
-    }
-
     container.replaceChildren();
     container.className = "review-mode review-canvas-mode";
 
@@ -427,10 +422,6 @@
 
     window.cleanupReviewWorkspace = () => {
       window._reviewStitchAbort?.abort();
-      if (window._reviewKeyDownHandler) {
-        window.removeEventListener("keydown", window._reviewKeyDownHandler);
-        window._reviewKeyDownHandler = null;
-      }
     };
 
     window.setupWorkbenchPanels?.("review");

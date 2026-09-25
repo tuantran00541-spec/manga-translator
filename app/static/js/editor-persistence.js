@@ -1,4 +1,3 @@
-let _currentSaveStatus = "saved";
 let _textSaving = 0;
 let _textHasError = false;
 
@@ -18,7 +17,6 @@ function setSaveStatusContent(el, status) {
 }
 
 function updateSaveStatus(status) {
-  _currentSaveStatus = status;
   const statusEls = document.querySelectorAll(".editor-save-status");
   statusEls.forEach((el) => {
     el.className = `editor-save-status save-status-${status}`;
@@ -37,7 +35,6 @@ function updateSaveStatus(status) {
     }
   });
 }
-window.updateSaveStatus = updateSaveStatus;
 
 function refreshSaveStatus() {
   let status = "saved";

@@ -1,0 +1,136 @@
+name: Refactor parity
+
+# Processes one real chapter with the base branch and with this branch and
+# compares every clean slice pixel for pixel. The base is processed twice to
+# show whether the pipeline itself is deterministic on this runner.
+on:
+  push:
+    paths:
+      - ".github/refactor-parity.txt"
+  workflow_dispatch:
+    inputs:
+      chapter_url:
+        description: "Chapter URL to process"
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: refactor-parity-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    env:
+      PYTHONUNBUFFERED: "1"
+      PYTHONPATH: "."
+      MANGA_PROCESSING_PIPELINE: fast
+      MANGA_USE_DYNAMIC_LAMA: "1"
+      MANGA_ORT_PROVIDER: openvino
+      MANGA_ORT_REQUIRE_PROVIDER: "1"
+      MANGA_ORT_OPENVINO_SCOPE: detectors
+      MANGA_ORT_OPENVINO_THREADS: "2"
+      MANGA_ORT_OPENVINO_STREAMS: "1"
+      MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
+      OPENBLAS_NUM_THREADS: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install processing runtime
+        run: |
+          python -m pip install --only-binary :all: numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 \
+            onnxruntime-openvino==1.24.1 psutil==6.1.1 loguru==0.7.2 requests==2.32.3 \
+            beautifulsoup4==4.12.3 lxml==5.3.0 playwright==1.47.0 fastapi==0.115.0 \
+            pydantic==2.9.2 filelock==3.16.1 python-multipart==0.0.12
+          python -m playwright install --with-deps chromium
+
+      - name: Restore detector and inpaint models
+        id: models
+        uses: actions/cache@v4
+        with:
+          path: |
+            models/*.onnx
+            models/.e2e-provenance.json
+          key: processing-profile-models-b224548-v1
+
+      - name: Read pinned model provisioner
+        if: steps.models.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: b22454827f8190655d7070b80eb20c2550beadfa
+          path: benchmark-bootstrap
+          sparse-checkout: scripts/provision_real_e2e_models.py
+          sparse-checkout-cone-mode: false
+
+      - name: Provision production detector and LaMa models
+        if: steps.models.outputs.cache-hit != 'true'
+        run: |
+          python -m pip install --only-binary :all: --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple torch==2.5.1+cpu torchvision==0.20.1+cpu
+          python -m pip install --only-binary :all: --no-deps ultralytics==8.3.221 onnx==1.17.0 onnxslim==0.1.71
+          python -m pip install --only-binary :all: sympy==1.13.1 PyYAML==6.0.2 scipy==1.14.1 tqdm==4.67.1 matplotlib==3.9.2 pandas==2.2.3 py-cpuinfo==9.0.0 ml_dtypes==0.5.3 colorama==0.4.6 polars==1.33.1 ultralytics-thop==2.0.17
+          python benchmark-bootstrap/scripts/provision_real_e2e_models.py
+          cp benchmark-bootstrap/models/*.onnx models/
+          cp benchmark-bootstrap/models/.e2e-provenance.json models/ || true
+
+      - name: Show models in use
+        run: ls -la models/
+
+      - name: Process the chapter on the base branch (twice) and on this branch
+        env:
+          INPUT_URL: ${{ github.event.inputs.chapter_url }}
+        run: |
+          url="${INPUT_URL:-$(head -n1 .github/refactor-parity.txt | tr -d '\r')}"
+          base="$(git merge-base HEAD origin/main)"
+          echo "base commit: $base"
+          git worktree add ../base "$base"
+          mkdir -p ../base/models && cp models/*.onnx ../base/models/
+          cp models/.e2e-provenance.json ../base/models/ 2>/dev/null || true
+          cp scripts/refactor_parity.py ../base/scripts/refactor_parity.py
+          (cd ../base && PYTHONPATH=. python scripts/refactor_parity.py run "$url" --out /tmp/parity/base)
+          (cd ../base && PYTHONPATH=. python scripts/refactor_parity.py run "$url" --out /tmp/parity/base2)
+          python scripts/refactor_parity.py run "$url" --out /tmp/parity/head
+          mkdir -p audit-results/parity
+          python scripts/refactor_parity.py compare /tmp/parity/base /tmp/parity/base2 --out audit-results/parity/base_vs_base.json
+          python scripts/refactor_parity.py compare /tmp/parity/base /tmp/parity/head --out audit-results/parity/base_vs_head.json
+          echo "$base" > audit-results/parity/base_commit.txt
+          git rev-parse HEAD > audit-results/parity/head_commit.txt
+
+      - name: Measure post-inpaint residue verification (cost and effect)
+        env:
+          INPUT_URL: ${{ github.event.inputs.chapter_url }}
+          MANGA_DETECTOR_RESIDUE_VERIFY_ENABLED: "1"
+        run: |
+          url="${INPUT_URL:-$(head -n1 .github/refactor-parity.txt | tr -d '\r')}"
+          python scripts/refactor_parity.py run "$url" --out /tmp/parity/verify
+          python scripts/refactor_parity.py compare /tmp/parity/head /tmp/parity/verify --out audit-results/parity/head_vs_verify.json --crops audit-results/parity/verify-crops
+
+      - name: Record which app code a real chapter actually executes
+        env:
+          INPUT_URL: ${{ github.event.inputs.chapter_url }}
+        run: |
+          url="${INPUT_URL:-$(head -n1 .github/refactor-parity.txt | tr -d '\r')}"
+          python -m pip install --only-binary :all: coverage==7.6.1
+          python -m coverage run --source=app scripts/refactor_parity.py run "$url" --out /tmp/parity/coverage-run
+          python -m coverage json -o /tmp/parity/coverage.json
+          python scripts/refactor_parity.py unexecuted /tmp/parity/coverage.json --out audit-results/parity/unexecuted.json
+
+      - name: Commit evidence to the branch
+        if: always() && github.ref_name != github.event.repository.default_branch
+        run: |
+          test -d audit-results || exit 0
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add audit-results
+          git commit -m "audit: refactor parity evidence (run ${{ github.run_id }}) [skip ci]" || exit 0
+          git push origin "HEAD:${GITHUB_REF_NAME}"

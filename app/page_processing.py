@@ -7,8 +7,7 @@ from pathlib import Path
 
 import cv2
 
-from app.detector.bubble_detector import BubbleBox
-from app.detector.combined_detector import CombinedTextDetector
+from app.detector.bubble_detector import BubbleBox, apply_final_nms
 from app.image_io import encode_mask, read_image, write_image
 from app.manifest_utils import assign_stable_detector_box_ids
 from app.region_policy import geometry_center_in_regions, subtract_regions_from_mask
@@ -120,7 +119,7 @@ class PageProcessingMixin:
         detector_metrics = self.detector.last_metrics()
 
         if supplemental_detections:
-            detected = CombinedTextDetector._apply_final_nms(
+            detected = apply_final_nms(
                 detected + list(supplemental_detections),
                 iou_threshold=DETECTOR_FINAL_NMS_IOU,
             )
@@ -285,6 +284,7 @@ class PageProcessingMixin:
                 )
             ]
         residue_verify_ms = (time.perf_counter() - residue_started_at) * 1000.0
+        residue_checked = bool(DETECTOR_RESIDUE_VERIFY_ENABLED) or not verification_boxes
 
         tmp_clean_path = processed_dir / f"clean_{img_path.name}.{uuid.uuid4().hex[:12]}.tmp.png"
         write_started_at = time.perf_counter()
@@ -357,6 +357,7 @@ class PageProcessingMixin:
                 "deferred": len(deferred_regions),
                 "review_only_verification_sources": len(verification_only_boxes),
                 "post_inpaint_residue": len(residue_regions),
+                "residue_checked": residue_checked,
             },
             "auto_inpaint": auto_inpaint_metrics,
             "manual_inpaint": manual_inpaint_metrics,
@@ -385,7 +386,8 @@ class PageProcessingMixin:
             "unverified_regions": unverified_regions,
             "deferred_regions": deferred_regions,
             "residue_regions": residue_regions,
-            "cleanup_verified": not bool(detection_issues),
+            "residue_checked": residue_checked,
+            "cleanup_verified": residue_checked and not detection_issues,
             "needs_review": bool(detection_issues),
             "processing_metrics": processing_metrics,
         }

@@ -19,10 +19,6 @@ class _FakeInpainter:
     def inpaint_mask(self, image, mask, *, force_lama=False):
         raise AssertionError("optimized manual repaint must bypass dilating inpaint_mask")
 
-    @staticmethod
-    def _compute_manual_crop_region(x1, y1, x2, y2, w, h):
-        return (0, 0, w, h)
-
     def _smart_paint_region(
         self,
         image,

@@ -1,8 +1,6 @@
 import os
 from pathlib import Path
 
-from app import parameters as _parameters
-
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 RAW_DIR = BASE_DIR / "data" / "raw"
@@ -21,25 +19,7 @@ REQUIRED_MODELS = [
     TEXT_SEGMENTER_MODEL,
 ]
 
-BUBBLE_CONF_THRESHOLD = _parameters.BUBBLE_DESTRUCTIVE_CONF_THRESHOLD
-BUBBLE_IOU_THRESHOLD = _parameters.BUBBLE_IOU_THRESHOLD
-TEXT_CONF_THRESHOLD = _parameters.TEXT_CONF_THRESHOLD
-ENABLE_TTA = _parameters.DETECTOR_TTA_ENABLED
-MASK_DILATE_KERNEL_SIZE = _parameters.MASK_DILATE_KERNEL_SIZE
-SMART_FILL_CLEAN_RING_MARGIN = _parameters.SMART_FILL_CLEAN_RING_MARGIN
-INPAINT_SIZE = _parameters.INPAINT_SIZE
-SLICE_TARGET_HEIGHT = _parameters.SLICE_TARGET_HEIGHT
-SLICE_SEARCH_WINDOW = _parameters.SLICE_SEARCH_WINDOW
-SLICE_MIN_HEIGHT = _parameters.SLICE_MIN_HEIGHT
-SLICE_MAX_HEIGHT = _parameters.SLICE_MAX_HEIGHT
-MIN_FONT_SIZE = _parameters.MIN_FONT_SIZE
-MAX_FONT_SIZE = _parameters.MAX_FONT_SIZE
-
-EFFECTIVE_PARAMETERS = _parameters.parameter_snapshot()
-
 DEFAULT_FONT = BASE_DIR / "app" / "static" / "fonts" / "default.ttf"
-
-SUPPORTED_OCR_LANGS = ["ja", "ch", "korean", "en"]
 
 HOST = os.getenv("HOST", "127.0.0.1")
 PORT = int(os.getenv("PORT", "8000"))

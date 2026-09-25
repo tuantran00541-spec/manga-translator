@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import mimetypes
 import os
 from pathlib import Path
 import time
@@ -104,6 +105,11 @@ async def lifespan(app: FastAPI):
     yield
 
 
+def register_javascript_mime_type() -> None:
+    mimetypes.add_type("text/javascript", ".js")
+
+
+register_javascript_mime_type()
 app = FastAPI(lifespan=lifespan, title="Manga Translator", version="0.2.0")
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "app" / "static")), name="static")
 

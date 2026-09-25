@@ -435,16 +435,11 @@
   }
 
   window.setAppStage = setAppStage;
-  window.setAppContext = setAppContext;
   window.setLandingMode = setLandingMode;
   window.navigateAppStage = navigateAppStage;
   window.mountAISettings = mountAISettings;
-  window.openAppSettings = openSettings;
-  window.closeAppSettings = closeSettings;
   window.setupWorkbenchPanels = setupWorkbenchPanels;
-  window.syncWorkbenchPanels = syncWorkbenchPanels;
   window.showWorkbenchInspector = () => setPanelOpen("inspector", true);
-  window.toggleFocusMode = toggleFocusMode;
 
   document.addEventListener("DOMContentLoaded", () => {
     setupShellEvents();

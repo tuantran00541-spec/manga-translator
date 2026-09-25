@@ -14,17 +14,12 @@ COLUMNS = (
     "review",
     "ocr",
     "segmenter",
-    "flat_fallback",
-    "mser",
     "manual",
     "overlap_only",
     "geometry_override",
 )
 METRIC_COLUMNS = (
     "detect_ms",
-    "mser_ms",
-    "free_text_fallback_runs",
-    "free_text_fallback_ms",
     "inpaint_ms",
     "lama_runs",
     "smart_fill",
@@ -46,6 +41,14 @@ def _manifest_path(target: str) -> Path:
     return resolved
 
 
+def _cleanup_state(page: dict) -> str:
+    if page.get("cleanup_verified"):
+        return "verified"
+    if page.get("needs_review"):
+        return "needs_review"
+    return "unchecked"
+
+
 def _page_stats(page: dict) -> dict[str, int | float | str | bool | dict]:
     boxes = [box for box in (page.get("boxes") or []) if isinstance(box, dict)]
     active = [box for box in boxes if not box.get("removed")]
@@ -54,7 +57,6 @@ def _page_stats(page: dict) -> dict[str, int | float | str | bool | dict]:
     timing = metrics.get("timing_ms") if isinstance(metrics.get("timing_ms"), dict) else {}
     auto = metrics.get("auto_inpaint") if isinstance(metrics.get("auto_inpaint"), dict) else {}
     manual = metrics.get("manual_inpaint") if isinstance(metrics.get("manual_inpaint"), dict) else {}
-    detector = metrics.get("detector") if isinstance(metrics.get("detector"), dict) else {}
     detect_ms = float(timing.get("detect") or 0.0)
     inpaint_ms = float(timing.get("auto_inpaint") or 0.0) + float(
         timing.get("manual_inpaint") or 0.0
@@ -66,22 +68,14 @@ def _page_stats(page: dict) -> dict[str, int | float | str | bool | dict]:
         "review": sum(bool(box.get("needs_review")) for box in active),
         "ocr": sum(bool(box.get("ocr_eligible")) for box in active),
         "segmenter": sum(box.get("mask_source") == "text_segmenter" for box in active),
-        "flat_fallback": sum(box.get("mask_source") == "bubble_flat_contrast" for box in active),
-        "mser": sum(str(box.get("source_model") or "") == "opencv_mser" for box in active),
         "manual": sum(bool(box.get("manual")) or box.get("origin") == "manual" for box in active),
         "overlap_only": sum(bool(box.get("overlap_context_only")) for box in active),
         "geometry_override": sum(bool(box.get("geometry_overridden")) for box in active),
         "detection_state": str(page.get("detection_state") or "unknown"),
+        "cleanup": _cleanup_state(page),
         "needs_review": bool(page.get("needs_review")),
         "metrics_available": bool(metrics),
         "detect_ms": round(detect_ms, 3),
-        "mser_ms": round(float(detector.get("mser_ms") or 0.0), 3),
-        "free_text_fallback_runs": int(
-            detector.get("text_grayscale_fallback_runs") or 0
-        ),
-        "free_text_fallback_ms": round(
-            float(detector.get("text_grayscale_fallback_ms") or 0.0), 3
-        ),
         "inpaint_ms": round(inpaint_ms, 3),
         "lama_runs": int(auto.get("lama_model_runs") or 0)
         + int(manual.get("lama_model_runs") or 0),
@@ -126,11 +120,16 @@ def main() -> None:
         rows.append(row)
 
     totals = _sum_stats(rows)
+    cleanup_counts = {
+        state: sum(1 for row in rows if row["cleanup"] == state)
+        for state in ("verified", "unchecked", "needs_review")
+    }
     report = {
         "chapter_id": manifest.get("chapter_id"),
         "manifest": path.as_posix(),
         "pages": rows,
         "totals": totals,
+        "cleanup": cleanup_counts,
     }
     last_run = manifest.get("last_processing_run")
     if isinstance(last_run, dict):
@@ -140,7 +139,7 @@ def main() -> None:
         print(json.dumps(report, ensure_ascii=False, indent=2))
         return
 
-    header = ("page", *COLUMNS, *METRIC_COLUMNS, "state", "page_review")
+    header = ("page", *COLUMNS, *METRIC_COLUMNS, "state", "cleanup", "page_review")
     print("\t".join(header))
     for row in rows:
         values = [
@@ -148,6 +147,7 @@ def main() -> None:
             *(str(row[key]) for key in COLUMNS),
             *(str(row[key]) for key in METRIC_COLUMNS),
             str(row["detection_state"]),
+            str(row["cleanup"]),
             "1" if row["needs_review"] else "0",
         ]
         print("\t".join(values))
@@ -158,8 +158,15 @@ def main() -> None:
         *(str(totals[key]) for key in METRIC_COLUMNS),
         "-",
         "-",
+        "-",
     ]
     print("\t".join(total_values))
+    print(
+        "CLEANUP"
+        f"\tverified={cleanup_counts['verified']}"
+        f"\tunchecked={cleanup_counts['unchecked']}"
+        f"\tneeds_review={cleanup_counts['needs_review']}"
+    )
     if isinstance(last_run, dict):
         print(
             "LAST_RUN"
