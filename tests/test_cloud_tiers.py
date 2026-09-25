@@ -67,7 +67,8 @@ class Stack:
         self.api = f"{self.url}/v1"
 
     def signup(self, email="reader@example.com") -> tuple[str, str]:
-        body = requests.post(f"{self.api}/accounts", json={"email": email}, timeout=5).json()
+        body = requests.post(f"{self.api}/admin/accounts", json={"email": email},
+                             headers={"X-Admin-Key": ADMIN}, timeout=5).json()
         return body["account_id"], body["token"]
 
     def set_plan(self, account_id: str, plan: str, key: str = ADMIN) -> requests.Response:
@@ -284,3 +285,35 @@ def test_free_plan_cannot_bypass_the_quota_with_its_own_key(stack, monkeypatch):
     with pytest.raises(HTTPException) as locked:
         _start(ai_mode_router.AIModeStartRequest(url="https://example.com/c/1", provider="openai"))
     assert locked.value.status_code == 402
+
+
+def test_app_login_with_email_code_stores_the_session_and_checkout_reports_missing_billing(stack, monkeypatch):
+    import app.routers.account as account_router
+
+    saved = {}
+
+    def save(token):
+        saved["token"] = token
+        monkeypatch.setenv("MANGA_CLOUD_TOKEN", token)
+
+    monkeypatch.delenv("MANGA_CLOUD_TOKEN", raising=False)
+    monkeypatch.setenv("PYTHON_KEYRING_BACKEND", "keyring.backends.fail.Keyring")
+    monkeypatch.setattr(account_router, "set_cloud_token", save)
+    monkeypatch.setattr(account_router, "delete_cloud_token", lambda: monkeypatch.delenv("MANGA_CLOUD_TOKEN"))
+
+    sent = asyncio.run(account_router.start_login(account_router.LoginStartRequest(email="Reader@Example.com")))
+    with pytest.raises(HTTPException) as wrong:
+        asyncio.run(account_router.verify_login(account_router.LoginVerifyRequest(
+            email=sent["email"], code=f"{(int(sent['dev_code']) + 1) % 1_000_000:06d}")))
+    assert wrong.value.status_code == 400
+    me = asyncio.run(account_router.verify_login(account_router.LoginVerifyRequest(email=sent["email"], code=sent["dev_code"])))
+    assert me["signed_in"] and me["email"] == "reader@example.com" and me["quota"]["remaining"] == 3
+    assert saved["token"].startswith("mc_")
+
+    with pytest.raises(HTTPException) as unavailable:
+        asyncio.run(account_router.checkout(account_router.CheckoutRequest(plan="plus", provider="payos")))
+    assert unavailable.value.status_code == 503
+
+    out = asyncio.run(account_router.logout())
+    assert out["signed_in"] is False
+    assert stack.chat(saved["token"]).status_code == 401

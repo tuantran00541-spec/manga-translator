@@ -134,3 +134,45 @@ def finish_job(job_token: str, outcome: str) -> dict | None:
         return None
     invalidate()
     return response.json() if response.ok else None
+
+
+def _public(method: str, path: str, json: dict | None = None, token: str | None = None) -> dict:
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
+    try:
+        response = requests.request(method, f"{cloud_base()}{path}", headers=headers, json=json,
+                                    timeout=TIMEOUT, allow_redirects=False)
+    except requests.RequestException as exc:
+        raise HTTPException(503, "Không kết nối được Manga Cloud") from exc
+    if not response.ok:
+        status = response.status_code if response.status_code in (400, 401, 402, 409, 429, 503) else 502
+        raise HTTPException(status, _message(response))
+    return response.json()
+
+
+def login_start(email: str) -> dict:
+    return _public("POST", "/auth/start", {"email": email})
+
+
+def login_verify(email: str, code: str) -> dict:
+    return _public("POST", "/auth/verify", {"email": email, "code": code})
+
+
+def logout() -> None:
+    token = _token()
+    if token:
+        try:
+            _public("POST", "/auth/logout", token=token)
+        except HTTPException:
+            logger.warning("Manga Cloud logout call failed; the local token is removed anyway")
+    invalidate()
+
+
+def billing_plans() -> dict:
+    return _public("GET", "/billing/plans")
+
+
+def checkout(plan: str, provider: str) -> dict:
+    token = _token()
+    if not token:
+        raise HTTPException(401, "Chưa đăng nhập Manga Cloud")
+    return _public("POST", "/billing/checkout", {"plan": plan, "provider": provider}, token=token)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import secrets
 import sqlite3
 import threading
@@ -12,14 +13,43 @@ from pathlib import Path
 from gateway.plans import get_plan
 
 JOB_TTL_SECONDS = 6 * 3600
+LOGIN_CODE_TTL_SECONDS = 10 * 60
+LOGIN_CODE_RESEND_SECONDS = 60
+LOGIN_CODE_MAX_ATTEMPTS = 5
+PLAN_PERIOD_SECONDS = 30 * 86400
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS accounts (
     id TEXT PRIMARY KEY,
     email TEXT UNIQUE NOT NULL,
-    token_hash TEXT UNIQUE NOT NULL,
     plan TEXT NOT NULL,
+    plan_expires_at REAL,
     created_at REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS sessions (
+    token_hash TEXT PRIMARY KEY,
+    account_id TEXT NOT NULL REFERENCES accounts(id),
+    created_at REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS login_codes (
+    email TEXT PRIMARY KEY,
+    code_hash TEXT NOT NULL,
+    sent_at REAL NOT NULL,
+    expires_at REAL NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS payments (
+    id TEXT PRIMARY KEY,
+    provider TEXT NOT NULL,
+    external_id TEXT NOT NULL,
+    account_id TEXT NOT NULL REFERENCES accounts(id),
+    plan TEXT NOT NULL,
+    amount INTEGER NOT NULL,
+    currency TEXT NOT NULL,
+    status TEXT NOT NULL,
+    created_at REAL NOT NULL,
+    paid_at REAL,
+    UNIQUE (provider, external_id)
 );
 CREATE TABLE IF NOT EXISTS jobs (
     id TEXT PRIMARY KEY,
@@ -46,6 +76,13 @@ class QuotaExceeded(Exception):
 
 class InvalidToken(Exception):
     pass
+
+
+class LoginRejected(Exception):
+    def __init__(self, status: int, message: str):
+        super().__init__(message)
+        self.status = status
+        self.message = message
 
 
 def _hash(token: str) -> str:
@@ -87,29 +124,136 @@ class Store:
                 raise
             db.execute("COMMIT")
 
+    def _account_id_for_email(self, db, email: str) -> str:
+        row = db.execute("SELECT id FROM accounts WHERE email = ?", (email,)).fetchone()
+        if row is not None:
+            return row["id"]
+        account_id = uuid.uuid4().hex
+        db.execute(
+            "INSERT INTO accounts (id, email, plan, created_at) VALUES (?, ?, 'free', ?)",
+            (account_id, email, self.now()),
+        )
+        return account_id
+
+    def _new_session(self, db, account_id: str) -> str:
+        token = "mc_" + secrets.token_urlsafe(32)
+        db.execute(
+            "INSERT INTO sessions (token_hash, account_id, created_at) VALUES (?, ?, ?)",
+            (_hash(token), account_id, self.now()),
+        )
+        return token
+
     def create_account(self, email: str, plan: str = "free") -> tuple[str, str]:
         get_plan(plan)
-        account_id = uuid.uuid4().hex
-        token = "mc_" + secrets.token_urlsafe(32)
         with self._write() as db:
+            account_id = self._account_id_for_email(db, email)
+            db.execute("UPDATE accounts SET plan = ? WHERE id = ?", (plan, account_id))
+            return account_id, self._new_session(db, account_id)
+
+    def start_login(self, email: str) -> str:
+        now = self.now()
+        code = f"{secrets.randbelow(1_000_000):06d}"
+        with self._write() as db:
+            row = db.execute("SELECT sent_at FROM login_codes WHERE email = ?", (email,)).fetchone()
+            if row is not None and now - row["sent_at"] < LOGIN_CODE_RESEND_SECONDS:
+                raise LoginRejected(429, "Vừa gửi mã, đợi một phút rồi thử lại")
             db.execute(
-                "INSERT INTO accounts (id, email, token_hash, plan, created_at) VALUES (?, ?, ?, ?, ?)",
-                (account_id, email, _hash(token), plan, self.now()),
+                "INSERT OR REPLACE INTO login_codes (email, code_hash, sent_at, expires_at, attempts) "
+                "VALUES (?, ?, ?, ?, 0)",
+                (email, _hash(f"{email}:{code}"), now, now + LOGIN_CODE_TTL_SECONDS),
             )
+        return code
+
+    def verify_login(self, email: str, code: str) -> tuple[str, str]:
+        now = self.now()
+        rejected: LoginRejected | None = None
+        with self._write() as db:
+            row = db.execute("SELECT * FROM login_codes WHERE email = ?", (email,)).fetchone()
+            if row is None or row["expires_at"] < now:
+                rejected = LoginRejected(400, "Mã đã hết hạn, hãy gửi mã mới")
+            elif row["attempts"] >= LOGIN_CODE_MAX_ATTEMPTS:
+                rejected = LoginRejected(429, "Nhập sai quá nhiều lần, hãy gửi mã mới")
+            elif not hmac.compare_digest(row["code_hash"], _hash(f"{email}:{code.strip()}")):
+                db.execute("UPDATE login_codes SET attempts = attempts + 1 WHERE email = ?", (email,))
+                rejected = LoginRejected(400, "Mã không đúng")
+            else:
+                db.execute("DELETE FROM login_codes WHERE email = ?", (email,))
+                account_id = self._account_id_for_email(db, email)
+                token = self._new_session(db, account_id)
+        if rejected is not None:
+            raise rejected
         return account_id, token
 
-    def set_plan(self, account_id: str, plan: str) -> None:
+    def logout(self, token: str) -> None:
+        with self._write() as db:
+            db.execute("DELETE FROM sessions WHERE token_hash = ?", (_hash(token),))
+
+    def set_plan(self, account_id: str, plan: str, expires_at: float | None = None) -> None:
         get_plan(plan)
         with self._write() as db:
-            if db.execute("UPDATE accounts SET plan = ? WHERE id = ?", (plan, account_id)).rowcount != 1:
+            updated = db.execute(
+                "UPDATE accounts SET plan = ?, plan_expires_at = ? WHERE id = ?", (plan, expires_at, account_id),
+            ).rowcount
+            if updated != 1:
                 raise KeyError(account_id)
 
-    def account_for_token(self, token: str) -> sqlite3.Row:
+    def _effective_plan(self, row) -> str:
+        if row["plan"] != "free" and row["plan_expires_at"] is not None and row["plan_expires_at"] < self.now():
+            return "free"
+        return row["plan"]
+
+    def account(self, account_id: str) -> dict:
         with self._connect() as db:
-            row = db.execute("SELECT * FROM accounts WHERE token_hash = ?", (_hash(token),)).fetchone()
+            row = db.execute("SELECT * FROM accounts WHERE id = ?", (account_id,)).fetchone()
+        if row is None:
+            raise KeyError(account_id)
+        data = dict(row)
+        data["plan"] = self._effective_plan(row)
+        if data["plan"] == "free":
+            data["plan_expires_at"] = None
+        return data
+
+    def account_for_token(self, token: str) -> dict:
+        with self._connect() as db:
+            row = db.execute("SELECT account_id FROM sessions WHERE token_hash = ?", (_hash(token),)).fetchone()
         if row is None:
             raise InvalidToken()
-        return row
+        return self.account(row["account_id"])
+
+    def create_payment(self, provider: str, external_id: str, account_id: str, plan: str,
+                       amount: int, currency: str) -> str:
+        payment_id = uuid.uuid4().hex
+        with self._write() as db:
+            db.execute(
+                "INSERT INTO payments (id, provider, external_id, account_id, plan, amount, currency, status, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)",
+                (payment_id, provider, external_id, account_id, plan, amount, currency, self.now()),
+            )
+        return payment_id
+
+    def complete_payment(self, provider: str, external_id: str, amount: int) -> dict | None:
+        now = self.now()
+        with self._write() as db:
+            row = db.execute(
+                "SELECT * FROM payments WHERE provider = ? AND external_id = ?", (provider, external_id),
+            ).fetchone()
+            if row is None:
+                return None
+            if row["status"] == "paid":
+                return {"payment_id": row["id"], "applied": False}
+            if int(row["amount"]) != int(amount):
+                db.execute("UPDATE payments SET status = 'amount_mismatch' WHERE id = ?", (row["id"],))
+                return {"payment_id": row["id"], "applied": False, "error": "amount_mismatch"}
+            account = db.execute("SELECT * FROM accounts WHERE id = ?", (row["account_id"],)).fetchone()
+            current = self._effective_plan(account)
+            base = now
+            if current == row["plan"] and account["plan_expires_at"]:
+                base = max(now, float(account["plan_expires_at"]))
+            expires = base + PLAN_PERIOD_SECONDS
+            db.execute("UPDATE accounts SET plan = ?, plan_expires_at = ? WHERE id = ?",
+                       (row["plan"], expires, row["account_id"]))
+            db.execute("UPDATE payments SET status = 'paid', paid_at = ? WHERE id = ?", (now, row["id"]))
+            return {"payment_id": row["id"], "applied": True, "plan": row["plan"], "plan_expires_at": expires}
 
     @staticmethod
     def _used(db, account_id: str, period: str, now: float) -> int:
@@ -136,8 +280,8 @@ class Store:
         job_id = uuid.uuid4().hex
         token = "mcj_" + secrets.token_urlsafe(32)
         with self._write() as db:
-            account = db.execute("SELECT plan FROM accounts WHERE id = ?", (account_id,)).fetchone()
-            plan = get_plan(account["plan"])
+            account = db.execute("SELECT * FROM accounts WHERE id = ?", (account_id,)).fetchone()
+            plan = get_plan(self._effective_plan(account))
             if self._used(db, account_id, period, now) >= plan.chapters_per_month:
                 raise QuotaExceeded(plan.id)
             db.execute(

@@ -62,6 +62,43 @@
     if (!stored || stored === CLOUD || !account.features?.includes("byok")) provider.value = CLOUD;
   }
 
+  const postJson = (url, body) => requestJson(url, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}),
+  });
+  let plans = null;
+  let loginEmail = "";
+
+  function formatMoney(value, currency) {
+    return currency === "VND"
+      ? `${Number(value).toLocaleString("vi-VN")}đ`
+      : `$${Number(value).toFixed(2)}`;
+  }
+
+  function renderUpgrade(signedIn) {
+    const box = $("ai-mode-upgrade");
+    const options = $("ai-mode-upgrade-options");
+    const providers = plans?.providers || {};
+    const canBuy = signedIn && account?.plan !== "pro" && (providers.payos || providers.lemonsqueezy);
+    box.hidden = !canBuy;
+    if (!canBuy) return;
+    const buttons = [];
+    for (const plan of ["plus", "pro"]) {
+      if (plan === "plus" && account.plan === "plus") continue;
+      const price = plans.plans?.[plan] || {};
+      const label = plan === "plus" ? "Plus" : "Pro";
+      if (providers.payos) buttons.push([plan, "payos", `${label} · ${formatMoney(price.vnd, "VND")}/${plans.period_days} ngày · QR ngân hàng`]);
+      if (providers.lemonsqueezy) buttons.push([plan, "lemonsqueezy", `${label} · ${formatMoney(price.usd, "USD")}/tháng · Thẻ quốc tế`]);
+    }
+    options.replaceChildren(...buttons.map(([plan, provider, text]) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "ui-btn ui-btn-compact";
+      button.textContent = text;
+      button.addEventListener("click", () => checkout(plan, provider, button));
+      return button;
+    }));
+  }
+
   function renderAccount() {
     const bar = $("ai-mode-plan");
     if (!bar) return;
@@ -69,20 +106,25 @@
     if (!account?.tiers) return;
     const signedIn = account.signed_in && !account.invalid_token;
     const quota = account.quota;
-    let text = "Chưa đăng nhập Manga Cloud — dán token để dùng A.I mode.";
-    if (account.invalid_token) text = "Token Manga Cloud không hợp lệ — đăng nhập lại.";
+    let text = "Đăng nhập bằng email để dùng A.I mode.";
+    if (account.invalid_token) text = "Phiên đăng nhập đã hết — đăng nhập lại.";
     else if (account.offline) text = "Không kết nối được Manga Cloud — tạm dùng tính năng gói Free.";
     else if (signedIn && quota) {
-      text = `Gói ${account.plan_label || account.plan} · còn ${quota.remaining}/${quota.limit} chương A.I mode tháng ${quota.period}`;
+      text = `${account.email} · Gói ${account.plan_label || account.plan} · còn ${quota.remaining}/${quota.limit} chương A.I mode tháng ${quota.period}`;
+      if (account.plan_expires_at) {
+        text += ` · hết hạn ${new Date(account.plan_expires_at * 1000).toLocaleDateString("vi-VN")}`;
+      }
     }
     $("ai-mode-plan-text").textContent = text;
-    $("ai-mode-token-form").hidden = signedIn;
+    $("ai-mode-login-form").hidden = signedIn;
     $("ai-mode-signout").hidden = !signedIn;
+    renderUpgrade(signedIn);
   }
 
   async function loadAccount() {
     try {
       account = await requestJson("/api/account");
+      if (account?.tiers && !plans) plans = await requestJson("/api/account/plans").catch(() => null);
     } catch (_) {
       account = null;
     }
@@ -91,21 +133,85 @@
     syncProviderFields();
   }
 
-  async function saveToken(event) {
+  function resetLogin() {
+    loginEmail = "";
+    $("ai-mode-code-field").hidden = true;
+    $("ai-mode-code").value = "";
+    $("ai-mode-email").disabled = false;
+    $("ai-mode-login-submit").textContent = "Gửi mã";
+  }
+
+  async function submitLogin(event) {
     event.preventDefault();
-    const token = $("ai-mode-token").value.trim();
-    if (!token) return;
+    const submit = $("ai-mode-login-submit");
+    submit.disabled = true;
     try {
-      account = await requestJson("/api/account/token", {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token }),
-      });
-      $("ai-mode-token").value = "";
+      if (!loginEmail) {
+        const email = $("ai-mode-email").value.trim();
+        if (!email) return;
+        const sent = await postJson("/api/account/login/start", { email });
+        loginEmail = sent.email || email;
+        $("ai-mode-email").disabled = true;
+        $("ai-mode-code-field").hidden = false;
+        $("ai-mode-code").focus();
+        submit.textContent = "Đăng nhập";
+        window.showToast?.(sent.dev_code ? `Mã thử nghiệm: ${sent.dev_code}` : `Đã gửi mã tới ${loginEmail}`, "success");
+        return;
+      }
+      account = await postJson("/api/account/login/verify", { email: loginEmail, code: $("ai-mode-code").value.trim() });
+      resetLogin();
+      ensureCloudOption();
+      renderAccount();
+      syncProviderFields();
     } catch (err) {
-      window.showToast?.("Không lưu được token: " + err.message, "error");
+      window.showToast?.("Không đăng nhập được: " + err.message, "error");
+    } finally {
+      submit.disabled = false;
     }
-    ensureCloudOption();
+  }
+
+  async function checkout(plan, provider, button) {
+    button.disabled = true;
+    try {
+      const result = await postJson("/api/account/checkout", { plan, provider });
+      window.open(result.checkout_url, "_blank", "noopener");
+      window.showToast?.("Đã mở trang thanh toán. Gói tự nâng sau khi thanh toán xong.", "success");
+    } catch (err) {
+      window.showToast?.("Không mở được thanh toán: " + err.message, "error");
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  async function signOut() {
+    try {
+      account = await postJson("/api/account/logout");
+    } catch (err) {
+      window.showToast?.("Không đăng xuất được: " + err.message, "error");
+    }
+    resetLogin();
     renderAccount();
-    syncProviderFields();
+  }
+
+  function watchReturnFromCheckout() {
+    const params = new URLSearchParams(window.location.search);
+    const state = params.get("billing");
+    if (!state) return;
+    params.delete("billing");
+    const query = params.toString();
+    window.history.replaceState(null, "", window.location.pathname + (query ? `?${query}` : "") + window.location.hash);
+    if (state !== "paid") return;
+    window.showToast?.("Đang chờ xác nhận thanh toán…", "info");
+    const before = account?.plan;
+    let tries = 0;
+    const timer = window.setInterval(async () => {
+      tries += 1;
+      await loadAccount();
+      if ((account?.plan && account.plan !== before) || tries >= 20) {
+        window.clearInterval(timer);
+        if (account?.plan !== before) window.showToast?.(`Đã nâng lên gói ${account.plan_label || account.plan}`, "success");
+      }
+    }, 3000);
   }
 
   function setRunning(running) {
@@ -255,15 +361,8 @@
       ensureCloudOption();
       syncProviderFields();
     });
-    $("ai-mode-token-form").addEventListener("submit", saveToken);
-    $("ai-mode-signout").addEventListener("click", async () => {
-      try {
-        account = await requestJson("/api/account/token", { method: "DELETE" });
-      } catch (err) {
-        window.showToast?.("Không đăng xuất được: " + err.message, "error");
-      }
-      renderAccount();
-    });
+    $("ai-mode-login-form").addEventListener("submit", submitLogin);
+    $("ai-mode-signout").addEventListener("click", signOut);
     $("ai-mode-model").addEventListener("change", (event) => {
       storage("set", "manga_translation_vision_model_" + provider.value, event.target.value.trim());
     });
@@ -281,7 +380,7 @@
     });
     syncProviderFields();
     window.syncAIProviderSelects?.();
-    loadAccount();
+    loadAccount().then(watchReturnFromCheckout);
     restore();
   }
 

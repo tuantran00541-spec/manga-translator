@@ -275,7 +275,19 @@ Custom provider endpoints must use public HTTPS URLs. Credentials are never acce
 
 ### Plans (experimental, off by default)
 
-With `MANGA_TIERS=1` the app reads its plan from a Manga Cloud gateway at `MANGA_CLOUD_URL`. A.I mode can then run through the gateway's own provider key and spends one chapter of the monthly quota. Free has 3 chapters, Plus has 30 plus Visual QC, and Pro has 100 plus the user's own keys and custom providers. The gateway enforces the quota and a per-chapter cost cap. The app hides locked features and falls back to Free when the gateway is unreachable. The gateway lives in `gateway/`: `GATEWAY_UPSTREAM_BASE=… GATEWAY_UPSTREAM_KEY=… GATEWAY_ADMIN_KEY=… python -m gateway`. Screenshots of the flow are in `audit-results/tiers/`.
+With `MANGA_TIERS=1` the app reads its plan from a Manga Cloud gateway at `MANGA_CLOUD_URL`. Users sign in from the A.I mode panel with their email and a 6-digit code. A.I mode then runs through the gateway's own provider key and spends one chapter of the monthly quota. Free has 3 chapters, Plus has 30 plus Visual QC, and Pro has 100 plus the user's own keys and custom providers. The gateway enforces the quota and a per-chapter cost cap. The app hides locked features and falls back to Free when the gateway is unreachable.
+
+The gateway lives in `gateway/` and runs with `python -m gateway`:
+
+| Area | Variables |
+| --- | --- |
+| A.I upstream | `GATEWAY_UPSTREAM_BASE`, `GATEWAY_UPSTREAM_KEY`, `GATEWAY_UPSTREAM_MODEL`, `GATEWAY_PRICE_INPUT_PER_M`, `GATEWAY_PRICE_OUTPUT_PER_M` |
+| Login email | `GATEWAY_RESEND_API_KEY`, `GATEWAY_MAIL_FROM`, `GATEWAY_DEV_LOGIN=1` (shows the code instead of mailing it, local testing only) |
+| payOS (VietQR) | `GATEWAY_PAYOS_CLIENT_ID`, `GATEWAY_PAYOS_API_KEY`, `GATEWAY_PAYOS_CHECKSUM_KEY`, `GATEWAY_PRICE_PLUS_VND`, `GATEWAY_PRICE_PRO_VND`; webhook `/v1/billing/payos/webhook` |
+| Lemon Squeezy (cards) | `GATEWAY_LS_API_KEY`, `GATEWAY_LS_STORE_ID`, `GATEWAY_LS_VARIANT_PLUS`, `GATEWAY_LS_VARIANT_PRO`, `GATEWAY_LS_WEBHOOK_SECRET`, `GATEWAY_PRICE_PLUS_USD`, `GATEWAY_PRICE_PRO_USD`; webhook `/v1/billing/lemonsqueezy/webhook` |
+| Other | `GATEWAY_DB`, `GATEWAY_ADMIN_KEY`, `GATEWAY_RETURN_URL`, `GATEWAY_HOST`, `GATEWAY_PORT` |
+
+A payOS payment adds 30 days of the plan, stacked on top of time already paid. A Lemon Squeezy subscription follows its webhooks, and a cancelled subscription keeps the plan until the paid period ends. Screenshots of the flow are in `audit-results/tiers/`.
 
 ## Runtime settings
 

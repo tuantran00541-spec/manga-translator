@@ -69,7 +69,8 @@ def main() -> int:
     app = None
     try:
         _wait(f"{GATEWAY}/health", gateway)
-        account = requests.post(f"{GATEWAY}/v1/accounts", json={"email": "cost-run@example.com"}, timeout=10).json()
+        account = requests.post(f"{GATEWAY}/v1/admin/accounts", json={"email": "cost-run@example.com"},
+                                headers={"X-Admin-Key": ADMIN}, timeout=10).json()
         requests.post(f"{GATEWAY}/v1/admin/accounts/{account['account_id']}/plan", json={"plan": args.plan},
                       headers={"X-Admin-Key": ADMIN}, timeout=10).raise_for_status()
         app_env = {k: v for k, v in os.environ.items() if not k.startswith("GATEWAY_")}

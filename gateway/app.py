@@ -7,13 +7,15 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import requests
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
+from gateway.billing import Billing, BillingConfig, BillingError, billing_from_env
+from gateway.mailer import MailUnavailable, Mailer, mailer_from_env
 from gateway.plans import PLANS, get_plan
-from gateway.store import InvalidToken, QuotaExceeded, Store
+from gateway.store import InvalidToken, LoginRejected, QuotaExceeded, Store
 
 EMAIL_RE = re.compile(r"^[^@\s]{1,64}@[^@\s]{1,190}\.[^@\s]{2,63}$")
 MAX_OUTPUT_TOKENS = 8192
@@ -57,12 +59,23 @@ def upstream_from_env() -> Upstream:
     )
 
 
-class SignupRequest(BaseModel):
+class EmailRequest(BaseModel):
     email: str = Field(max_length=256)
+
+
+class VerifyRequest(BaseModel):
+    email: str = Field(max_length=256)
+    code: str = Field(min_length=6, max_length=6, pattern="^[0-9]{6}$")
 
 
 class PlanRequest(BaseModel):
     plan: str
+    days: int | None = Field(default=None, ge=1, le=3660)
+
+
+class CheckoutRequest(BaseModel):
+    plan: str
+    provider: str = Field(pattern="^(payos|lemonsqueezy)$")
 
 
 class FinishRequest(BaseModel):
@@ -80,8 +93,18 @@ def _error(status: int, code: str, message: str) -> JSONResponse:
     return JSONResponse({"error": {"code": code, "message": message}}, status_code=status)
 
 
-def create_app(store: Store, upstream: Upstream, admin_key: str) -> FastAPI:
+def _email(value: str) -> str:
+    email = value.strip().lower()
+    if not EMAIL_RE.fullmatch(email):
+        raise HTTPException(400, "Email không hợp lệ")
+    return email
+
+
+def create_app(store: Store, upstream: Upstream, admin_key: str, *, mailer: Mailer | None = None,
+               billing: BillingConfig | None = None) -> FastAPI:
     app = FastAPI(title="Manga Cloud gateway")
+    mailer = mailer or Mailer(api_key="", sender="", dev_mode=True)
+    payments = Billing(store, billing or BillingConfig())
 
     def account(authorization: str | None = Header(default=None)):
         try:
@@ -107,6 +130,7 @@ def create_app(store: Store, upstream: Upstream, admin_key: str) -> FastAPI:
             "email": row["email"],
             "plan": plan.id,
             "plan_label": plan.label,
+            "plan_expires_at": row.get("plan_expires_at"),
             "features": sorted(plan.features),
             "quota": {
                 "period": usage["period"],
@@ -122,18 +146,59 @@ def create_app(store: Store, upstream: Upstream, admin_key: str) -> FastAPI:
     def health() -> dict:
         return {"ok": True, "plans": sorted(PLANS)}
 
-    @app.post("/v1/accounts")
-    def signup(req: SignupRequest) -> dict:
-        email = req.email.strip().lower()
-        if not EMAIL_RE.fullmatch(email):
-            raise HTTPException(400, "Invalid email")
+    @app.post("/v1/auth/start")
+    def login_start(req: EmailRequest) -> dict:
+        email = _email(req.email)
         try:
-            account_id, token = store.create_account(email)
-        except Exception as exc:
-            if "UNIQUE" in str(exc):
-                raise HTTPException(409, "Email already registered") from exc
-            raise
+            code = store.start_login(email)
+            mailer.send_login_code(email, code)
+        except LoginRejected as exc:
+            raise HTTPException(exc.status, exc.message) from exc
+        except MailUnavailable as exc:
+            raise HTTPException(503, "Không gửi được email đăng nhập") from exc
+        result = {"sent": True, "email": email}
+        if mailer.dev_mode and not mailer.api_key:
+            result["dev_code"] = code
+        return result
+
+    @app.post("/v1/auth/verify")
+    def login_verify(req: VerifyRequest) -> dict:
+        try:
+            account_id, token = store.verify_login(_email(req.email), req.code)
+        except LoginRejected as exc:
+            raise HTTPException(exc.status, exc.message) from exc
         return {"account_id": account_id, "token": token}
+
+    @app.post("/v1/auth/logout")
+    def logout(authorization: str | None = Header(default=None)) -> dict:
+        store.logout(_bearer(authorization))
+        return {"ok": True}
+
+    @app.get("/v1/billing/plans")
+    def billing_plans() -> dict:
+        return payments.config.public()
+
+    @app.post("/v1/billing/checkout")
+    def checkout(req: CheckoutRequest, row=Depends(account)) -> dict:
+        try:
+            return payments.checkout(row, req.plan, req.provider)
+        except BillingError as exc:
+            raise HTTPException(exc.status, exc.message) from exc
+
+    @app.post("/v1/billing/payos/webhook")
+    def payos_webhook(body: dict):
+        try:
+            return payments.payos_webhook(body)
+        except BillingError as exc:
+            return _error(exc.status, "webhook_rejected", exc.message)
+
+    @app.post("/v1/billing/lemonsqueezy/webhook")
+    async def lemonsqueezy_webhook(request: Request, x_signature: str | None = Header(default=None)):
+        raw = await request.body()
+        try:
+            return payments.lemonsqueezy_webhook(raw, x_signature or "")
+        except BillingError as exc:
+            return _error(exc.status, "webhook_rejected", exc.message)
 
     @app.get("/v1/me")
     def me(row=Depends(account)) -> dict:
@@ -183,15 +248,21 @@ def create_app(store: Store, upstream: Upstream, admin_key: str) -> FastAPI:
         body.setdefault("usage", {})["gateway_job_cost_usd"] = round(total, 6)
         return body
 
+    @app.post("/v1/admin/accounts", dependencies=[Depends(admin)])
+    def admin_create_account(req: EmailRequest) -> dict:
+        account_id, token = store.create_account(_email(req.email))
+        return {"account_id": account_id, "token": token}
+
     @app.post("/v1/admin/accounts/{account_id}/plan", dependencies=[Depends(admin)])
     def set_plan(account_id: str, req: PlanRequest) -> dict:
+        expires = store.now() + req.days * 86400 if req.days else None
         try:
-            store.set_plan(account_id, req.plan)
+            store.set_plan(account_id, req.plan, expires)
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
         except KeyError as exc:
             raise HTTPException(404, "Account not found") from exc
-        return {"account_id": account_id, "plan": req.plan}
+        return {"account_id": account_id, "plan": req.plan, "plan_expires_at": expires}
 
     return app
 
@@ -199,4 +270,5 @@ def create_app(store: Store, upstream: Upstream, admin_key: str) -> FastAPI:
 def app_from_env() -> FastAPI:
     db_path = Path(os.getenv("GATEWAY_DB", "gateway-data/gateway.sqlite"))
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    return create_app(Store(db_path), upstream_from_env(), os.getenv("GATEWAY_ADMIN_KEY", ""))
+    return create_app(Store(db_path), upstream_from_env(), os.getenv("GATEWAY_ADMIN_KEY", ""),
+                      mailer=mailer_from_env(), billing=billing_from_env())
