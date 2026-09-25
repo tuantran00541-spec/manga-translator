@@ -1,0 +1,31 @@
+chapter: https://asurascans.com/comics/the-academy-s-weapon-replicator-05c7df14/chapter/1
+slices: 87 downloaded, 40 processed
+download 8s, clean 185s
+
+78 inpainted regions in a0d17c01
+seam ΔE  median 0.80  p90 4.52  max 38.63
+  ok (<2): 63   visible (2-5): 8   mismatch (>5): 7
+on coloured/art backgrounds: 39 regions, seam ΔE median 1.36  p90 6.03  >5: 7
+textured surroundings: 47 regions, 18 filled as a smooth patch (texture ratio < 0.5)
+
+worst regions (page, box, seam ΔE, body ΔE, texture ratio):
+  p024 [632, 1365, 900, 1419]  seam 38.63  body 24.21  texture 0.35
+  p000 [781, 826, 953, 901]  seam  7.42  body 16.01  texture 0.37
+  p000 [130, 561, 650, 800]  seam  7.29  body  6.19  texture 0.59
+  p027 [263, 2370, 539, 2462]  seam  6.25  body  6.11  texture 0.29
+  p000 [1190, 678, 1396, 751]  seam  5.98  body  9.89  texture 0.35
+  p000 [569, 561, 605, 580]  seam  5.97  body  6.72  texture 0.76
+  p000 [750, 460, 1402, 630]  seam  5.03  body 11.62  texture 0.55
+  p016 [205, 2549, 694, 2752]  seam  4.86  body  4.81  texture 0.01
+  p032 [402, 3991, 766, 4181]  seam  4.38  body  4.38  texture None
+  p031 [198, 921, 697, 1091]  seam  4.28  body  4.28  texture None
+  p019 [628, 364, 891, 422]  seam  4.17  body 15.88  texture 0.58
+  p033 [137, 1001, 581, 1251]  seam  3.73  body  3.73  texture None
+  p000 [1187, 824, 1374, 904]  seam  2.41  body 19.16  texture 0.51
+  p009 [426, 1937, 785, 2047]  seam  2.26  body  1.17  texture 0.41
+  p027 [509, 1915, 737, 2052]  seam  2.19  body  2.60  texture 0.99
+  p009 [0, 3028, 900, 3430]  seam  1.86  body  6.00  texture 0.48
+  p010 [239, 947, 682, 1260]  seam  1.70  body  2.36  texture 0.15
+  p015 [182, 1294, 728, 1545]  seam  1.66  body  1.58  texture 0.97
+  p018 [0, 1211, 285, 1352]  seam  1.41  body  8.41  texture 0.71
+  p015 [200, 2789, 697, 2970]  seam  1.40  body  1.71  texture 1.26
