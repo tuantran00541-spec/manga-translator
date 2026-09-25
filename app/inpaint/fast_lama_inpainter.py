@@ -206,30 +206,6 @@ class FastInpainter(Inpainter):
         return (cv2.dilate(mask.astype(np.uint8), kernel) > 0) & (~mask)
 
     @staticmethod
-    def _quadratic_design(
-        xs: np.ndarray,
-        ys: np.ndarray,
-        width: int,
-        height: int,
-    ) -> np.ndarray:
-        """Return a numerically stable degree-2 spatial design matrix."""
-        x = (xs.astype(np.float32) + 0.5) / max(1.0, float(width))
-        y = (ys.astype(np.float32) + 0.5) / max(1.0, float(height))
-        x = x * 2.0 - 1.0
-        y = y * 2.0 - 1.0
-        return np.stack(
-            (
-                np.ones_like(x),
-                x,
-                y,
-                x * x,
-                x * y,
-                y * y,
-            ),
-            axis=1,
-        )
-
-    @staticmethod
     def _strong_authority_overlap(box: BubbleBox, boxes: list[BubbleBox]) -> bool:
         """ Detect duplicate destructive authorities before per-box fast fill. """
         area = max(0, int(box.x2 - box.x1)) * max(0, int(box.y2 - box.y1))

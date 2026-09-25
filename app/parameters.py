@@ -675,6 +675,19 @@ SMART_FILL_MIDTONE_MIN = _env_float(
 SMART_FILL_MIDTONE_MAX = _env_float(
     "MANGA_SMART_FILL_MIDTONE_MAX", 205.0, minimum=0.0, maximum=255.0
 )
+# Gradient-aware Smart Fill: ring pixels within SEED_TOL of the flat fill
+# colour seed a quadratic colour surface; the surface replaces the flat colour
+# only if its RMS residual stays under RESIDUAL_MAX and it varies by at least
+# MIN_RANGE levels inside the mask (otherwise the exact flat colour is kept).
+SMART_FILL_SURFACE_SEED_TOL = _env_float(
+    "MANGA_SMART_FILL_SURFACE_SEED_TOL", 24.0, minimum=1.0, maximum=128.0
+)
+SMART_FILL_SURFACE_RESIDUAL_MAX = _env_float(
+    "MANGA_SMART_FILL_SURFACE_RESIDUAL_MAX", 3.0, minimum=0.1, maximum=64.0
+)
+SMART_FILL_SURFACE_MIN_RANGE = _env_float(
+    "MANGA_SMART_FILL_SURFACE_MIN_RANGE", 1.5, minimum=0.0, maximum=255.0
+)
 FIXED_LAMA_SESSION_MAX_RUNS = _env_int(
     "MANGA_FIXED_LAMA_SESSION_MAX_RUNS", 4, minimum=1, maximum=10000
 )

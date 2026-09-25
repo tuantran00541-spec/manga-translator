@@ -51,6 +51,9 @@ from app.parameters import (
     SMART_FILL_MIDTONE_MIN,
     SMART_FILL_MIDTONE_STD_MAX,
     SMART_FILL_RING_PIXELS_MIN,
+    SMART_FILL_SURFACE_MIN_RANGE,
+    SMART_FILL_SURFACE_RESIDUAL_MAX,
+    SMART_FILL_SURFACE_SEED_TOL,
     SMART_FILL_WHITE_LEVEL,
     SMART_FILL_WHITE_RATIO_MIN,
     SMART_FILL_WHITE_STD_MAX,
@@ -562,6 +565,70 @@ class Inpainter:
 
         return None
 
+    @staticmethod
+    def _quadratic_design(
+        xs: np.ndarray,
+        ys: np.ndarray,
+        width: int,
+        height: int,
+    ) -> np.ndarray:
+        """Return a numerically stable degree-2 spatial design matrix."""
+        x = (xs.astype(np.float32) + 0.5) / max(1.0, float(width))
+        y = (ys.astype(np.float32) + 0.5) / max(1.0, float(height))
+        x = x * 2.0 - 1.0
+        y = y * 2.0 - 1.0
+        return np.stack((np.ones_like(x), x, y, x * x, x * y, y * y), axis=1)
+
+    @classmethod
+    def _smart_fill_surface(
+        cls,
+        crop: np.ndarray,
+        local_mask: np.ndarray,
+        fill_color: np.ndarray,
+    ) -> np.ndarray | None:
+        """Smooth colour field for a Smart Fill region, or None to keep it flat.
+
+        A single median colour leaves a visible patch on a gentle gradient
+        (white fading to cream, a sky). Fit a quadratic surface per channel to
+        the clean ring around the mask, rejecting glyph/outline outliers, and
+        use it only when the ring really varies and the fit explains it.
+        """
+        mask_bool = local_mask > 127
+        margin = max(1, int(SMART_FILL_CLEAN_RING_MARGIN))
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (margin * 2 + 1, margin * 2 + 1))
+        ring = (cv2.dilate(mask_bool.astype(np.uint8), kernel) > 0) & ~mask_bool
+        ys, xs = np.nonzero(ring)
+        if xs.size < max(SMART_FILL_RING_PIXELS_MIN, 24) or crop.ndim != 3:
+            return None
+        values = crop[ring].astype(np.float32)
+        height, width = crop.shape[:2]
+        design = cls._quadratic_design(xs, ys, width, height)
+        # Only ring pixels close to the chosen fill colour describe the background.
+        inliers = np.max(np.abs(values - fill_color.astype(np.float32)), axis=1) <= SMART_FILL_SURFACE_SEED_TOL
+        coef = None
+        for _ in range(3):
+            if int(np.count_nonzero(inliers)) < max(24, design.shape[1] * 4):
+                return None
+            coef, *_ = np.linalg.lstsq(design[inliers], values[inliers], rcond=None)
+            residual = np.max(np.abs(design @ coef - values), axis=1)
+            refined = residual <= SMART_FILL_SURFACE_RESIDUAL_MAX * 2.0
+            if np.array_equal(refined, inliers):
+                break
+            inliers = refined
+        fit = design[inliers] @ coef
+        rms = float(np.sqrt(np.mean((fit - values[inliers]) ** 2)))
+        if rms > SMART_FILL_SURFACE_RESIDUAL_MAX:
+            return None
+        my, mx = np.nonzero(mask_bool)
+        surface = cls._quadratic_design(mx, my, width, height) @ coef
+        # Stay inside the colours actually present around the region.
+        low = values[inliers].min(axis=0) - 1.0
+        high = values[inliers].max(axis=0) + 1.0
+        surface = np.clip(surface, low, high)
+        if float(np.max(np.ptp(surface, axis=0))) < SMART_FILL_SURFACE_MIN_RANGE:
+            return None  # effectively flat: keep the exact median colour
+        return np.clip(np.rint(surface), 0, 255).astype(np.uint8)
+
     def _smart_paint_region(
         self,
         image: np.ndarray,
@@ -584,7 +651,12 @@ class Inpainter:
         if fill_color is not None:
             self._metric_add("smart_fill_regions")
             filled = crop.copy()
-            filled[mask_bool] = fill_color
+            surface = self._smart_fill_surface(crop, local_mask, fill_color)
+            if surface is not None:
+                self._metric_add("smart_fill_gradient_regions")
+                filled[mask_bool] = surface
+            else:
+                filled[mask_bool] = fill_color
             image[cy1:cy2, cx1:cx2] = filled
             return image
 
@@ -651,7 +723,7 @@ class Inpainter:
                 alpha = np.where(core, 1.0, feathered)
             alpha = np.clip(alpha, 0.0, 1.0)[:, :, None]
             blended = painted.astype(np.float32) * alpha + original_crop.astype(np.float32) * (1.0 - alpha)
-            image[cy1:cy2, cx1:cx2] = np.clip(blended, 0, 255).astype(np.uint8)
+            image[cy1:cy2, cx1:cx2] = np.clip(np.rint(blended), 0, 255).astype(np.uint8)
         else:
             mask_3d = (local_mask > 127)[:, :, None]
             image[cy1:cy2, cx1:cx2] = np.where(mask_3d, painted, original_crop)
@@ -842,7 +914,7 @@ class Inpainter:
                 weights[y0:y1, x0:x1] += weight
 
         weights = np.maximum(weights, 1e-6)
-        return np.clip(output / weights[:, :, None], 0, 255).astype(np.uint8)
+        return np.clip(np.rint(output / weights[:, :, None]), 0, 255).astype(np.uint8)
 
     @staticmethod
     def _tile_starts(length: int, tile: int, step: int) -> list[int]:

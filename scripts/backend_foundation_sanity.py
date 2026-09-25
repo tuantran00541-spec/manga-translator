@@ -132,7 +132,7 @@ def model_contract_checks():
                 dynamic_contract,
             )[0, 0, 0]
         )
-        == 127,
+        == 128,  # 0.5 * 255 = 127.5 rounds to nearest (no truncation bias)
         "dynamic scale contract",
     )
 
