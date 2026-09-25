@@ -184,7 +184,7 @@
   .ai-mode-login { display: flex; flex-wrap: wrap; gap: 6px; }
   .ai-mode-upgrade summary { list-style: none; cursor: pointer; }
   .ai-mode-upgrade { position: relative; }
-  .ai-mode-upgrade-options { position: absolute; z-index: 5; top: calc(100% + 4px); left: 0; display: grid; gap: 6px; min-width: 300px; padding: 8px; border: 1px solid var(--border-subtle); border-radius: 6px; background: var(--surface-raised); box-shadow: 0 6px 20px rgb(0 0 0 / 12%); }
+  .ai-mode-upgrade-options { position: absolute; z-index: 5; top: calc(100% + 4px); left: 0; display: grid; gap: 6px; min-width: 300px; padding: 8px; border: 1px solid var(--border-subtle); border-radius: 6px; background: var(--surface-raised); box-shadow: var(--shadow-float); }
   .ai-mode-stages { display: grid; margin: 0; padding: 0; gap: 4px; list-style: none; }
   .ai-mode-stage { display: flex; min-width: 0; align-items: baseline; justify-content: space-between; gap: 12px; padding: 7px 10px; border: 1px solid var(--border-subtle); border-radius: 4px; font-size: 12px; }
   .ai-mode-stage span { min-width: 0; overflow-wrap: anywhere; color: var(--text-muted); text-align: right; }
