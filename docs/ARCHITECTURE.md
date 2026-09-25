@@ -314,6 +314,4 @@ flowchart TD
 
 ## Ghi chú phát hiện khi rà soát
 
-- `app/static/js/box-item.js`, `editor-properties.js`, `editor-workspace.js` **không được nạp từ `index.html`** — có vẻ là module legacy; hai file sau còn định nghĩa lại `window.renderEditor` (trùng tên với `editor.js` đang dùng).
-- `app/downloader/playwright_worker.py` là script subprocess không được `registry.py` gọi — bản dự định thay thế `generic_js.py`.
 - Luồng ảnh: `data/raw/{id}` (gốc + sliced) → `data/processed/{id}` (clean, manifest) → `data/output/{id}` (render cuối). Tất cả đều git-ignored.

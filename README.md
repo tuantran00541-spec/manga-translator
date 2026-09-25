@@ -358,7 +358,6 @@ The README is intentionally product-focused. Deeper engineering material lives i
 - [Processed chapter quality baseline](docs/PROCESSED_CHAPTER_QUALITY_BASELINE_20260912.md)
 - [Comic font library](docs/comic-fonts.md)
 - [UI guidelines](docs/UI_GUIDELINES.md)
-- [Workstation audit](docs/UI_V03_WORKSTATION_AUDIT.md)
 
 ## Development
 
