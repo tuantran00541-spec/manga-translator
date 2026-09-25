@@ -106,6 +106,16 @@ jobs:
           echo "$base" > audit-results/parity/base_commit.txt
           git rev-parse HEAD > audit-results/parity/head_commit.txt
 
+      - name: Record which app code a real chapter actually executes
+        env:
+          INPUT_URL: ${{ github.event.inputs.chapter_url }}
+        run: |
+          url="${INPUT_URL:-$(head -n1 .github/refactor-parity.txt | tr -d '\r')}"
+          python -m pip install coverage==7.6.1
+          python -m coverage run --source=app scripts/refactor_parity.py run "$url" --out /tmp/parity/coverage-run
+          python -m coverage json -o /tmp/parity/coverage.json
+          python scripts/refactor_parity.py unexecuted /tmp/parity/coverage.json --out audit-results/parity/unexecuted.json
+
       - name: Commit evidence to the branch
         if: always()
         run: |

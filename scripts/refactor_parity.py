@@ -2,6 +2,7 @@
 
     python scripts/refactor_parity.py run <chapter_url> --out <dir>
     python scripts/refactor_parity.py compare <base_dir> <head_dir> --out <report.json>
+    python scripts/refactor_parity.py unexecuted <coverage.json> --out <report.json>
 """
 from __future__ import annotations
 
@@ -81,6 +82,34 @@ def compare(base: Path, head: Path, report: Path) -> int:
     return 0
 
 
+def unexecuted(coverage_json: Path, report: Path) -> int:
+    import ast
+
+    data = json.loads(coverage_json.read_text())["files"]
+    out = {}
+    for name, info in sorted(data.items()):
+        path = Path(name)
+        if not path.is_file():
+            continue
+        executed = set(info["executed_lines"])
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        dead = []
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                body = range(node.body[0].lineno, node.end_lineno + 1)
+                if not executed.intersection(body):
+                    dead.append(f"{node.lineno}:{node.name}")
+        summary = info["summary"]
+        out[str(path)] = {
+            "statements": summary["num_statements"],
+            "covered_percent": round(summary["percent_covered"], 1),
+            "never_called": sorted(dead, key=lambda item: int(item.split(":")[0])),
+        }
+    report.write_text(json.dumps(out, indent=1))
+    print(f"{len(out)} files; {sum(len(v['never_called']) for v in out.values())} functions never called")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="command", required=True)
@@ -92,7 +121,12 @@ def main() -> int:
     c.add_argument("base", type=Path)
     c.add_argument("head", type=Path)
     c.add_argument("--out", type=Path, required=True)
+    u = sub.add_parser("unexecuted")
+    u.add_argument("coverage_json", type=Path)
+    u.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
+    if args.command == "unexecuted":
+        return unexecuted(args.coverage_json, args.out)
     if args.command == "run":
         run(args.url, args.out, args.workers)
         return 0
