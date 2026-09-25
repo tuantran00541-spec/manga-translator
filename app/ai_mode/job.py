@@ -388,7 +388,7 @@ class AIModeJobManager:
             raise RuntimeError("An A.I mode job is already running")
         self._prune()
         job = AIModeJob(job_id=uuid.uuid4().hex, settings=settings)
-        job.stages = {key: {"label": label, "status": "pending", "done": 0, "total": 0, "detail": ""}
+        job.stages = {key: {"label": label, "status": "pending", "done": 0, "total": 0, "detail": "", "elapsed_s": None}
                       for key, label in STAGES}
         if not provider.tracks_cost:
             job.cost_usd = None
@@ -405,8 +405,11 @@ class AIModeJobManager:
                     raise AIModeCancelled()
                 job.stage = key
                 job.stages[key]["status"] = "running"
-                job.updated_at = time.time()
-                await getattr(runner, key)()
+                started = job.updated_at = time.time()
+                try:
+                    await getattr(runner, key)()
+                finally:
+                    job.stages[key]["elapsed_s"] = round(time.time() - started, 1)
                 job.stages[key]["status"] = "done"
             job.status = "completed"
         except AIModeCancelled:

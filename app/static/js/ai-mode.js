@@ -10,6 +10,11 @@
 
   const $ = (id) => document.getElementById(id);
 
+  function formatSeconds(value) {
+    const seconds = Math.max(0, Math.round(Number(value) || 0));
+    return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}p${String(seconds % 60).padStart(2, "0")}s`;
+  }
+
   async function requestJson(url, options) {
     const response = await fetch(url, options);
     const parse = window.parseApiResponse || (async (r) => r.json().catch(() => ({})));
@@ -86,7 +91,8 @@
       label.textContent = stage.label;
       const state = document.createElement("span");
       const count = stage.status === "running" && stage.total ? ` ${stage.done}/${stage.total}` : "";
-      state.textContent = (STATUS_TEXT[stage.status] || stage.status) + count + (stage.detail ? ` · ${stage.detail}` : "");
+      const elapsed = stage.status === "done" && stage.elapsed_s != null ? ` · ${formatSeconds(stage.elapsed_s)}` : "";
+      state.textContent = (STATUS_TEXT[stage.status] || stage.status) + count + (stage.detail ? ` · ${stage.detail}` : "") + elapsed;
       item.append(label, state);
       return item;
     }));
