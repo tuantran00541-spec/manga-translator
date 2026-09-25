@@ -86,7 +86,13 @@ def main() -> int:
     totals = {name: {"seconds": 0.0, "forwards": 0, "boxes": 0} for name in COLOURS}
     rows = []
     for index, page in enumerate(pages):
-        image = read_image(validate_managed_path(page["original"], RAW_DIR / CHAPTER_ID))
+        full = read_image(validate_managed_path(page["original"], RAW_DIR / CHAPTER_ID))
+        # Production (page_processing._process_page) detects on the stitch
+        # core only, so every variant sees exactly that crop.
+        core_meta = page.get("stitch_core") or {}
+        y1 = max(0, min(int(core_meta.get("core_y1", 0)), full.shape[0]))
+        y2 = max(y1 + 1, min(int(core_meta.get("core_y2", full.shape[0])), full.shape[0]))
+        image = full[y1:y2]
         found = {}
         for name in COLOURS:
             started = time.perf_counter()
@@ -106,18 +112,16 @@ def main() -> int:
             totals[name]["forwards"] += forwards
             totals[name]["boxes"] += len(boxes)
             found[name] = boxes
-        rows.append({"slice": index, **{f"{n}_boxes": len(b) for n, b in found.items()}})
+        rows.append({"slice": index, "core_h": int(image.shape[0]),
+                     **{f"{n}_boxes": len(b) for n, b in found.items()}})
 
         if index in show:
-            core_meta = page.get("stitch_core") or {}
-            y1 = int(core_meta.get("core_y1", 0))
-            y2 = int(core_meta.get("core_y2", image.shape[0]))
             panels = []
             for name, colour in COLOURS.items():
                 canvas = image.copy()
                 for b in found[name]:
                     cv2.rectangle(canvas, (int(b.x1), int(b.y1)), (int(b.x2), int(b.y2)), colour, 4)
-                panel = canvas[y1:y2]
+                panel = canvas
                 label = np.full((40, panel.shape[1], 3), 255, np.uint8)
                 cv2.putText(label, f"{name}: {len(found[name])}", (8, 30), cv2.FONT_HERSHEY_SIMPLEX, 1.0, colour, 2)
                 panels.append(np.vstack([label, panel]))
