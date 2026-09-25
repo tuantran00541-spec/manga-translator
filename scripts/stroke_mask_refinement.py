@@ -1,4 +1,3 @@
-""" Research-only stroke-aware expansion for verified text masks. """
 from __future__ import annotations
 
 from dataclasses import dataclass

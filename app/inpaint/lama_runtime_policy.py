@@ -97,7 +97,6 @@ def _cgroup_memory_status() -> tuple[int | None, int | None]:
 
 
 def detected_memory_status() -> tuple[int | None, int | None]:
-    """ Return effective memory limit and currently available bytes. """
     cgroup_limit, cgroup_current = _cgroup_memory_status()
     host_total = host_available = None
     try:

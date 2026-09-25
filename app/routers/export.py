@@ -145,7 +145,6 @@ def _stitch_png_to_file(
     output_path: Path,
     core_ranges: list[tuple[int, int] | None] | None = None,
 ) -> None:
-    """Stitch slices with only one decoded source image resident at a time."""
     if not paths:
         raise ValueError("No images to stitch")
     if core_ranges is not None and len(core_ranges) != len(paths):
@@ -246,7 +245,6 @@ def _source_core_metadata(page: dict) -> tuple[tuple[int, int] | None, int | Non
 
 
 def _validate_stitch_group(source_page: int, items: list[dict]) -> None:
-    """Fail closed when slice ownership cannot reconstruct one source page exactly."""
     if not items:
         raise HTTPException(409, f"Source page {source_page + 1} has no export slices")
 
@@ -314,7 +312,6 @@ def _validate_stitch_group(source_page: int, items: list[dict]) -> None:
 
 
 def _snapshot_export_inputs(chapter_id: str) -> list[dict]:
-    """Capture canonical export inputs while holding the manifest lock briefly."""
     with get_manifest_lock(chapter_id):
         manifest = load_manifest_raw(chapter_id)
         changed = False
@@ -353,7 +350,6 @@ def _snapshot_export_inputs(chapter_id: str) -> list[dict]:
 
 
 def _export_snapshot_is_current(chapter_id: str, snapshot: list[dict]) -> bool:
-    """Revalidate page/file and stitch metadata after expensive encoding."""
     manifest = load_manifest_raw(chapter_id)
     pages = manifest.get("pages", [])
     if len(snapshot) != len(pages):

@@ -33,8 +33,6 @@ def test_requests_validate_provider_id_shape_and_model():
     )
     assert custom.provider == "custom-lab"
 
-    # Capability/configuration checks happen server-side after a dynamic provider
-    # ID is resolved from the secure registry.
     assert TranslateChapterRequest(
         chapter_id="chapter", provider="gemini"
     ).provider == "gemini"

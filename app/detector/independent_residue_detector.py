@@ -9,13 +9,6 @@ from app.parameters import DETECTOR_RESIDUE_VERIFY_PAD
 class IndependentRegionResidueSequentialTextDetector(
     SequentialFastResidueAdaptiveFocusCombinedTextDetector
 ):
-    """Verify cleanup over the full detector-owned text region.
-
-    Residue verification must not derive its search ROI from the same sparse
-    segmentation mask whose recall is being checked. Keep the production neural
-    verifier, grouping and CPU budgets, but schedule it from detector geometry.
-    """
-
     @staticmethod
     def _tight_verified_mask_roi(
         image_shape: tuple[int, ...],

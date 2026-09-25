@@ -39,8 +39,6 @@ def _env_float(name: str, default: float, minimum: float, maximum: float) -> flo
     return max(float(minimum), min(float(maximum), float(value)))
 
 
-# Experimental knobs live with the branch candidate. If this path wins the real
-# chapter gate they should move into app.parameters before the production port.
 _BUBBLE_FASTPATH_ENABLED = _env_bool("MANGA_BUBBLE_FASTPATH_ENABLED", True)
 _BUBBLE_FASTPATH_PAD = _env_int("MANGA_BUBBLE_FASTPATH_PAD", 16, 4, 96)
 _BUBBLE_FASTPATH_RING = _env_int("MANGA_BUBBLE_FASTPATH_RING", 12, 4, 64)
@@ -53,8 +51,6 @@ _BUBBLE_FASTPATH_CHROMA_STD_MAX = _env_float(
 _BUBBLE_FASTPATH_EDGE_DENSITY_MAX = _env_float(
     "MANGA_BUBBLE_FASTPATH_EDGE_DENSITY_MAX", 0.020, 0.0, 0.25
 )
-# Telea is retained only as an opt-in benchmark fallback. Real chapter auditing
-# showed large polygon/facet artifacts even when its low-texture ring gate passed.
 _BUBBLE_FASTPATH_TELEA_ENABLED = _env_bool(
     "MANGA_BUBBLE_FASTPATH_TELEA_ENABLED", False
 )
@@ -74,11 +70,6 @@ _BUBBLE_FASTPATH_OVERLAP_RATIO = _env_float(
     "MANGA_BUBBLE_FASTPATH_OVERLAP_RATIO", 0.80, 0.50, 1.0
 )
 
-# Dense segmenter masks are erase authority, not necessarily glyph support.
-# On isolated smooth speech regions we derive a tighter stroke mask, but we
-# reconstruct its pixels from the *outside of the full authority* rather than
-# feeding the stroke silhouette to LaMa. This avoids the white-glyph ghosting
-# observed when LaMa is asked to inpaint only the foreground strokes.
 _STROKE_REFINE_ENABLED = _env_bool("MANGA_STROKE_REFINE_ENABLED", True)
 _STROKE_REFINE_DENSE_FRACTION_MIN = _env_float(
     "MANGA_STROKE_REFINE_DENSE_FRACTION_MIN", 0.55, 0.25, 0.95
@@ -95,9 +86,6 @@ _STROKE_REFINE_CORE_DELTA_MIN = _env_float(
 _STROKE_REFINE_WEAK_DELTA_MIN = _env_float(
     "MANGA_STROKE_REFINE_WEAK_DELTA_MIN", 14.0, 4.0, 64.0
 )
-# Recover outlined/anti-aliased glyph halos from either side of the local
-# background luminance. Growth is connectivity-limited, spatially bounded,
-# clipped to erase authority, and still subject to the authority-fraction gate.
 _STROKE_REFINE_HALO_RADIUS = _env_int(
     "MANGA_STROKE_REFINE_HALO_RADIUS", 2, 1, 4
 )
@@ -107,9 +95,6 @@ _STROKE_REFINE_HALO_DELTA_MIN = _env_float(
 _STROKE_REFINE_HALO_STD_SCALE = _env_float(
     "MANGA_STROKE_REFINE_HALO_STD_SCALE", 1.25, 0.5, 4.0
 )
-# A global median misses pale outlines on gradient bubbles. Fit the local smooth
-# background from the authority ring and recover only residual pixels connected
-# to the already-confirmed glyph support. This remains bounded and authority-only.
 _STROKE_REFINE_SURFACE_HALO_RADIUS = _env_int(
     "MANGA_STROKE_REFINE_SURFACE_HALO_RADIUS", 6, 1, 12
 )
@@ -138,8 +123,6 @@ _ROI_MIN_SAVINGS = _env_float(
 
 
 class FastInpainter(Inpainter):
-    """ CPU-oriented inpainting candidate layered on top of production LaMa. """
-
     def _begin_metrics(self, *, boxes: int = 0) -> None:
         super()._begin_metrics(boxes=boxes)
         self._metrics_local.value.update(
@@ -212,7 +195,6 @@ class FastInpainter(Inpainter):
         width: int,
         height: int,
     ) -> np.ndarray:
-        """Return a numerically stable degree-2 spatial design matrix."""
         x = (xs.astype(np.float32) + 0.5) / max(1.0, float(width))
         y = (ys.astype(np.float32) + 0.5) / max(1.0, float(height))
         x = x * 2.0 - 1.0
@@ -231,7 +213,6 @@ class FastInpainter(Inpainter):
 
     @staticmethod
     def _strong_authority_overlap(box: BubbleBox, boxes: list[BubbleBox]) -> bool:
-        """ Detect duplicate destructive authorities before per-box fast fill. """
         area = max(0, int(box.x2 - box.x1)) * max(0, int(box.y2 - box.y1))
         if area <= 0:
             return False
@@ -281,14 +262,6 @@ class FastInpainter(Inpainter):
         crop: np.ndarray,
         local_mask: np.ndarray,
     ) -> np.ndarray | None:
-        """Reconstruct a smooth bubble background from a clean surrounding ring.
-
-        The fit is deliberately conservative: extremely dense masks are likely
-        stylized SFX or a bad semantic classification rather than glyph support;
-        edge-heavy/chromatically complex rings fall back to LaMa. Dark outlines
-        or residual glyph pixels in the ring are rejected by robust residual
-        trimming before the quadratic surface is accepted.
-        """
         if not _BUBBLE_FASTPATH_GRADIENT_ENABLED:
             return None
         mask = local_mask > 127
@@ -309,8 +282,6 @@ class FastInpainter(Inpainter):
 
         gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop
         edges = cv2.Canny(gray, 64, 128, L2gradient=True) > 0
-        # Remove edge-adjacent samples from the fit rather than letting a bubble
-        # outline or missed glyph fringe bend the reconstructed background.
         edge_kernel = np.ones((3, 3), dtype=np.uint8)
         edge_margin = cv2.dilate(edges.astype(np.uint8), edge_kernel) > 0
         clean_ring = ring & (~edge_margin)
@@ -377,7 +348,6 @@ class FastInpainter(Inpainter):
         crop: np.ndarray,
         authority_mask: np.ndarray,
     ) -> np.ndarray | None:
-        """Derive conservative glyph support from a dense erase authority."""
         if not _STROKE_REFINE_ENABLED:
             return None
         authority = authority_mask > 127
@@ -450,11 +420,6 @@ class FastInpainter(Inpainter):
         if model_pixels / float(authority_pixels) > _STROKE_REFINE_MAX_AUTHORITY_FRACTION:
             return None
 
-        # The dominant-polarity component pass above finds the glyph core, but
-        # manga/manhwa lettering often has an opposite-polarity outline (e.g.
-        # black glyph + white stroke) plus a low-contrast anti-alias fringe.
-        # Grow only through contrast-bearing pixels connected to the confirmed
-        # core; using absolute contrast recovers both bright and dark halos.
         halo_delta = max(
             _STROKE_REFINE_HALO_DELTA_MIN,
             ring_std * _STROKE_REFINE_HALO_STD_SCALE,
@@ -469,12 +434,6 @@ class FastInpainter(Inpainter):
                 break
             grown = next_grown
 
-        # Refine the low-contrast tail against a local quadratic background, not
-        # the global ring median. This is the important gradient-background case:
-        # a white anti-alias pixel may be only +3 locally while being almost equal
-        # to the median sampled elsewhere. Fit robustly from clean ring samples,
-        # then allow bounded connectivity growth only through pixels whose color
-        # residual exceeds the ring noise floor.
         edge_margin = cv2.dilate(
             edges.astype(np.uint8), np.ones((3, 3), dtype=np.uint8), iterations=1
         ) > 0
@@ -548,12 +507,6 @@ class FastInpainter(Inpainter):
                             break
                         grown = next_grown
 
-        # One final one-pixel support fringe catches outer anti-alias values that
-        # are intentionally close to the fitted background. There is no unbounded
-        # morphology: the candidate can advance at most HALO_RADIUS pixels from
-        # verified support, then one final anti-alias pixel, and never outside the
-        # detector authority. Emit a canonical 0/255 mask because downstream mask
-        # consumers use the project-wide >127 foreground convention.
         fringe = cv2.dilate(
             grown.astype(np.uint8) * 255,
             halo_kernel,
@@ -573,7 +526,6 @@ class FastInpainter(Inpainter):
         model_mask: np.ndarray,
         authority_mask: np.ndarray,
     ) -> np.ndarray | None:
-        """Fit smooth background outside authority; paint only model strokes."""
         if not _BUBBLE_FASTPATH_GRADIENT_ENABLED:
             return None
         target = model_mask > 127
@@ -665,15 +617,6 @@ class FastInpainter(Inpainter):
         model_mask: np.ndarray,
         authority_mask: np.ndarray,
     ) -> bool:
-        """Reject a stroke-only fast fill when adjacent glyph evidence remains.
-
-        The detector authority is intentionally wider than the refined model mask.
-        Most of that difference is clean bubble background and should stay untouched.
-        A missed bright/dark outline, however, is both close to the confirmed glyph
-        support and meaningfully different from the smooth surface reconstructed from
-        outside the full authority. Such a region must fall through to the full
-        authority path instead of being declared clean after a partial repaint.
-        """
         authority = authority_mask > 127
         model = model_mask > 127
         if not np.any(authority) or not np.any(model):
@@ -734,8 +677,6 @@ class FastInpainter(Inpainter):
         box: BubbleBox,
         protected_regions: list[dict] | None,
     ) -> bool:
-        # Keep this path narrow. Free text and overlapping detector authorities
-        # are intentionally left to the established clustered LaMa path.
         if (
             not _STROKE_REFINE_ENABLED
             or not self._bubble_candidate(box)
@@ -780,8 +721,6 @@ class FastInpainter(Inpainter):
             authority_mask,
         )
         if painted is None:
-            # Critical safety behavior: do not pass the stroke silhouette to
-            # LaMa. The caller will continue with the original dense authority.
             return False
         if self._stroke_refine_has_unpainted_residue(
             crop,
@@ -789,9 +728,6 @@ class FastInpainter(Inpainter):
             authority_mask,
         ):
             self._metric_add("stroke_refined_residual_rejects")
-            # A nearby high-contrast remainder is likely an outline/halo omitted
-            # by the refined model mask. Keep the original authority intact and
-            # let the caller use full-authority reconstruction or LaMa.
             return False
 
         target = image[y1:y2, x1:x2]
@@ -883,8 +819,6 @@ class FastInpainter(Inpainter):
         result = image.copy()
         remaining: list[BubbleBox] = []
         for box in boxes:
-            # Strongly overlapping authorities are ambiguous duplicate evidence.
-            # Keep their original masks together; never shrink either one.
             if self._bubble_candidate(box) and self._strong_authority_overlap(box, boxes):
                 self._metric_add("bubble_fast_fill_overlap_skips")
                 remaining.append(box)
@@ -970,8 +904,6 @@ class FastInpainter(Inpainter):
                 feather=feather,
             )
 
-        # Only the dynamic model benefits from arbitrary native ROI dimensions.
-        # Fixed LaMa retains its validated 512x512 production path unchanged.
         self._ensure_session()
         if not self.dynamic_lama:
             return super()._lama_fill(

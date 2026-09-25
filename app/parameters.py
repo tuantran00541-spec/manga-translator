@@ -77,15 +77,9 @@ def _env_float(
     return float(value)
 
 
-# ---------------------------------------------------------------------------
-# Detector / segmentation
-# ---------------------------------------------------------------------------
-
 BUBBLE_DESTRUCTIVE_CONF_THRESHOLD = _env_float(
     "MANGA_BUBBLE_DESTRUCTIVE_CONF", 0.40, minimum=0.0, maximum=1.0
 )
-# Proposal confidence is intentionally separate from destructive authority.
-# v0.2 historically hid this as min(BUBBLE_CONF_THRESHOLD, 0.12).
 BUBBLE_PROPOSAL_CONF_THRESHOLD = _env_float(
     "MANGA_BUBBLE_PROPOSAL_CONF", 0.12, minimum=0.0, maximum=1.0
 )
@@ -172,8 +166,6 @@ DETECTOR_LETTERBOX_VALUE = _env_int(
 DETECTOR_MASK_THRESHOLD = _env_float(
     "MANGA_DETECTOR_MASK_THRESHOLD", 0.50, minimum=0.0, maximum=1.0
 )
-# Text segmentation uses a high-confidence core plus only lower-confidence
-# pixels connected to that core. This is not a page-wide dilation control.
 DETECTOR_MASK_HYSTERESIS_LOW_THRESHOLD = _env_float(
     "MANGA_DETECTOR_MASK_HYSTERESIS_LOW_THRESHOLD", 0.32, minimum=0.0, maximum=1.0
 )
@@ -202,7 +194,6 @@ DETECTION_CONTENT_STD_MIN = _env_float(
     "MANGA_DETECTION_CONTENT_STD_MIN", 24.0, minimum=0.0, maximum=128.0
 )
 
-# Bubble/text grouping and safety heuristics.
 BUBBLE_GROUP_PAD_X = _env_int(
     "MANGA_BUBBLE_GROUP_PAD_X", 20, minimum=0, maximum=128
 )
@@ -325,9 +316,6 @@ FLAT_BUBBLE_TEXT_BBOX_PAD = _env_int(
     "MANGA_FLAT_BUBBLE_TEXT_BBOX_PAD", 4, minimum=0, maximum=64
 )
 
-# ---------------------------------------------------------------------------
-# Secondary MSER recovery
-# ---------------------------------------------------------------------------
 
 MSER_DELTA = _env_int("MANGA_MSER_DELTA", 5, minimum=1, maximum=50)
 MSER_MIN_AREA = _env_int("MANGA_MSER_MIN_AREA", 18, minimum=1, maximum=100000)
@@ -386,8 +374,6 @@ MSER_PAGE_CLUSTER_SKIP_RATIO = _env_float(
     "MANGA_MSER_PAGE_CLUSTER_SKIP_RATIO", 0.45, minimum=0.0, maximum=1.0
 )
 
-# Residual-line verifier. These are separate from primary MSER mask authority:
-# equal defaults must not imply shared semantics when one side is tuned later.
 MSER_LINE_OVERLAP_MIN = _env_float(
     "MANGA_MSER_LINE_OVERLAP_MIN", 0.45, minimum=0.0, maximum=1.0
 )
@@ -476,9 +462,6 @@ MSER_RESIDUAL_FINAL_IOU_SKIP = _env_float(
     "MANGA_MSER_RESIDUAL_FINAL_IOU_SKIP", 0.35, minimum=0.0, maximum=1.0
 )
 
-# ---------------------------------------------------------------------------
-# Mask building
-# ---------------------------------------------------------------------------
 
 MASK_DILATE_KERNEL_SIZE = _env_int(
     "MANGA_MASK_DILATE_KERNEL_SIZE", 7, minimum=1, maximum=31, odd=True
@@ -495,9 +478,6 @@ MANUAL_MASK_THRESHOLD = _env_int(
 )
 MANUAL_CONFIDENCE_SENTINEL: Final[float] = 1.0
 
-# ---------------------------------------------------------------------------
-# Slicer / seam ownership
-# ---------------------------------------------------------------------------
 
 SLICE_TARGET_HEIGHT = _env_int(
     "MANGA_SLICE_TARGET_HEIGHT", 2400, minimum=256, maximum=8192
@@ -548,9 +528,6 @@ SLICE_FALLBACK_TOLERANCE_RATIO = _env_float(
     "MANGA_SLICE_FALLBACK_TOLERANCE_RATIO", 0.08, minimum=0.0, maximum=1.0
 )
 
-# ---------------------------------------------------------------------------
-# Inpaint / smart-fill / LaMa
-# ---------------------------------------------------------------------------
 
 USE_DYNAMIC_LAMA = _env_bool("MANGA_USE_DYNAMIC_LAMA", True)
 INPAINT_SIZE = _env_int(
@@ -614,7 +591,6 @@ MANUAL_FEATHER_RADIUS = _env_int(
 MANUAL_TILE_OVERLAP = _env_int(
     "MANGA_MANUAL_TILE_OVERLAP", 64, minimum=0, maximum=1024
 )
-# Elongated crops use this on both backends; retain the historical env name.
 FIXED_LAMA_TILE_ASPECT = _env_float(
     "MANGA_FIXED_LAMA_TILE_ASPECT", 2.0, minimum=1.0, maximum=20.0
 )
@@ -685,9 +661,6 @@ FIXED_LAMA_RECYCLE_MEMORY_LIMIT_BYTES = _env_int(
     maximum=1024**4,
 )
 
-# ---------------------------------------------------------------------------
-# Runtime concurrency / ONNX Runtime
-# ---------------------------------------------------------------------------
 
 PIPELINE_DEFAULT_WORKERS = _env_int(
     "MANGA_PIPELINE_DEFAULT_WORKERS", 2, minimum=1, maximum=32
@@ -721,9 +694,6 @@ ORT_INTER_OP_THREADS = _env_int(
     "MANGA_ORT_INTER_OP_THREADS", 1, minimum=1, maximum=64
 )
 
-# ---------------------------------------------------------------------------
-# OCR
-# ---------------------------------------------------------------------------
 
 OCR_IMAGE_CACHE_MB = _env_int(
     "MANGA_OCR_IMAGE_CACHE_MB", 128, minimum=0, maximum=1024
@@ -738,8 +708,6 @@ OCR_MASK_CROP_PADDING = _env_int(
     "MANGA_OCR_MASK_CROP_PADDING", 12, minimum=0, maximum=256
 )
 OCR_MASK_PAGE_CONTEXT_PADDING = _env_int(
-    # Only used when a segmenter mask runs into its detector edge.  This is
-    # OCR-only context; it never changes the destructive inpaint mask.
     "MANGA_OCR_MASK_PAGE_CONTEXT_PADDING", 20, minimum=0, maximum=256
 )
 OCR_MASK_EDGE_CONTEXT_TRIGGER = _env_int(
@@ -858,9 +826,6 @@ OCR_COLUMN_TOLERANCE_MIN = _env_float(
     "MANGA_OCR_COLUMN_TOLERANCE_MIN", 10.0, minimum=0.0, maximum=256.0
 )
 
-# ---------------------------------------------------------------------------
-# Render
-# ---------------------------------------------------------------------------
 
 MIN_FONT_SIZE = _env_int("MANGA_MIN_FONT_SIZE", 6, minimum=1, maximum=512)
 RENDER_MIN_READABLE_FONT_SIZE = _env_int(
@@ -893,9 +858,6 @@ RENDER_STROKE_WIDTH_MAX = _env_int(
     "MANGA_RENDER_STROKE_WIDTH_MAX", 12, minimum=0, maximum=64
 )
 
-# ---------------------------------------------------------------------------
-# Visual QC
-# ---------------------------------------------------------------------------
 
 VISUAL_QC_REGION_MARGIN = _env_int(
     "MANGA_VISUAL_QC_REGION_MARGIN", 64, minimum=0, maximum=1024
@@ -929,9 +891,6 @@ VISUAL_QC_JOB_CONCURRENCY = _env_int(
     maximum=VISUAL_QC_JOB_CONCURRENCY_LIMIT,
 )
 
-# ---------------------------------------------------------------------------
-# Translation/network defaults
-# ---------------------------------------------------------------------------
 
 DEEPSEEK_API_URL = os.getenv(
     "MANGA_DEEPSEEK_API_URL", "https://api.deepseek.com/chat/completions"
@@ -1006,8 +965,6 @@ DOWNLOAD_JS_NAVIGATION_TIMEOUT_MS = _env_int(
 )
 
 
-# Cross-parameter constraints. Individual env parsers clamp each value, while
-# these guards keep related values coherent.
 DETECTOR_WINDOW_OVERLAP = min(DETECTOR_WINDOW_OVERLAP, DETECTOR_INPUT_SIZE - 1)
 SLICE_MIN_HEIGHT = min(SLICE_MIN_HEIGHT, SLICE_MAX_HEIGHT)
 SLICE_TARGET_HEIGHT = min(
@@ -1030,7 +987,6 @@ MSER_RESIDUAL_ASPECT_MIN = min(MSER_RESIDUAL_ASPECT_MIN, MSER_RESIDUAL_ASPECT_MA
 
 
 def parameter_snapshot() -> dict[str, Number | bool | str]:
-    """Return current tuning values for diagnostics/reproducibility."""
     result: dict[str, Number | bool | str] = {}
     for name, value in globals().items():
         if not name.isupper() or name.startswith("_"):

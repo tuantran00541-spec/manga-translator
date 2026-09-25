@@ -17,13 +17,6 @@ def remap_local_mask_page_space(
     source_box: dict,
     target_box: dict,
 ) -> np.ndarray | None:
-    """Move a box-local mask between geometries without scaling page artwork.
-
-    Detector masks are defined in page coordinates, even though they are stored as
-    arrays local to their boxes. When a user expands/crops/moves a box, resizing the
-    old mask would distort glyph geometry. Instead, place the source mask back in
-    page space and crop it into the target box.
-    """
     if mask is None:
         return None
 
@@ -54,7 +47,6 @@ def remap_local_mask_page_space(
 
 
 def reconcile_detector_geometry_override(new_box: dict, existing_box: dict) -> bool:
-    """ Apply a persisted detector-box geometry override to a fresh detection. """
     if not existing_box.get("geometry_overridden") or "_mask_array" not in new_box:
         return False
 

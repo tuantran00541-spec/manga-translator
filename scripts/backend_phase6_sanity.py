@@ -53,8 +53,6 @@ def chromatic_smart_fill_check():
     neutral = np.full((64, 64, 3), 100, np.uint8)
     check(Inpainter._smart_fill_color(neutral, mask) is not None, "neutral Smart Fill regressed")
 
-    # BGR red-ish and green-ish values both convert to gray ~=60 in OpenCV, so
-    # grayscale variance/edges alone cannot see this chromatic artwork pattern.
     chromatic = np.empty((64, 64, 3), np.uint8)
     color_a = np.array([0, 0, 200], np.uint8)
     color_b = np.array([0, 102, 0], np.uint8)

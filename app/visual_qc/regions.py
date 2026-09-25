@@ -51,7 +51,6 @@ def _page_dimensions(page: dict, manual_mask: np.ndarray | None) -> tuple[int, i
 
 
 def owned_core_bbox(page: dict, width: int, height: int) -> tuple[int, int, int, int]:
-    """ Return the physical pixels this slice owns in the stitched source page. """
     core = page.get("stitch_core")
     if not isinstance(core, dict):
         return 0, 0, width, height
@@ -164,7 +163,6 @@ def extract_candidate_regions(
     min_manual_component_area: int = VISUAL_QC_MANUAL_COMPONENT_AREA_MIN,
     deep_area_ratio: float = VISUAL_QC_DEEP_AREA_RATIO,
 ) -> list[QCRegion]:
-    """Build deterministic QC regions from canonical changed/inpaint sources."""
     if page_index < 0:
         raise ValueError("page_index must be non-negative")
     if margin < 0 or merge_gap < 0:

@@ -1,4 +1,3 @@
-""" Bounded real-image CPU profile of the production detector/inpaint path. """
 from __future__ import annotations
 
 import argparse
@@ -31,8 +30,6 @@ def write_json(path, value):
 
 
 def detector_phase_specs():
-    """Return profiler phase owners without importing model runtime at module load."""
-
     return (
         ("CombinedTextDetector", "_grayscale_text_retry", "grayscale_retry"),
         ("CombinedTextDetector", "_focused_text_retry", "mser_promotion"),
@@ -45,8 +42,6 @@ def detector_phase_specs():
 
 
 def summarize_detector_passes(events):
-    """Aggregate non-overlapping YOLO forward calls by phase and model."""
-
     def new_bucket():
         return {
             "calls": 0,
@@ -201,8 +196,6 @@ def instrument():
     yolo.YoloDetector._detect_single_plain = measured_forward
 
     class Session:
-        """Detector-only timing proxy; attribute access remains transparent."""
-
         def __init__(self, session, name):
             self.session, self.name = session, name
 
@@ -223,9 +216,6 @@ def instrument():
             session = make_session(path, **kwargs)
         return Session(session, Path(path).name)
 
-    # Only detector sessions are wrapped. Inpainter keeps the exact production
-    # session object so fixed-session serialization/recycling decisions match an
-    # unprofiled run.
     yolo.make_session = measured_session
     for method in ("detect", "_preprocess", "_postprocess", "_decode_mask", "_nms", "_nms_boxes"):
         timers.wrap(yolo.YoloDetector, method, "yolo." + method)
@@ -263,7 +253,6 @@ def prepare(args):
     urls = ASURA_STATIC_ADAPTER.extract_image_urls(args.chapter_url)
     if len(urls) < 4:
         raise RuntimeError("Expected several original chapter images; refusing a blank benchmark")
-    # Distributed originals, excluding the first/last cover or credit image.
     chosen = sorted(set([1, len(urls) // 2, len(urls) - 2]))
     selected = [urls[index] for index in chosen]
     paths = ASURA_STATIC_ADAPTER.download_urls(selected, args.raw_dir, referer=args.chapter_url)
@@ -344,7 +333,6 @@ def run(args):
             manifest = pipeline._build_chapter_from_raw_paths(chapter_id, raw_paths, source_url=None, workers=args.workers)
             ingest_ms = (time.perf_counter() - started) * 1000
             count = len(manifest["pages"])
-            # Include adjacent slices, with coverage across the three originals.
             indices = sorted(set([min(1, count - 1), min(2, count - 1), count // 2, max(0, count - 2)]))
             timers.rows.clear()
             started = time.perf_counter()

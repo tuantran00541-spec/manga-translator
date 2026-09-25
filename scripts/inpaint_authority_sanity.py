@@ -6,7 +6,6 @@ import sys
 
 
 def check_runtime_geometry() -> None:
-    """Optional pixel-level checks; no model weights or LaMa inference needed."""
     import tempfile
     import threading
     from types import SimpleNamespace
@@ -121,7 +120,7 @@ def check_runtime_geometry() -> None:
 
     for dynamic in (False, True):
         painter = Inpainter()
-        painter.session = object()  # Explicit geometry stub, not a model benchmark.
+        painter.session = object()
         painter.dynamic_lama = dynamic
         calls = []
 
@@ -158,7 +157,6 @@ def _require(path: str, *needles: str) -> None:
 def main() -> None:
     _require(
         "app/pipeline_editing.py",
-        "Persisted review-only detector masks are evidence, not erase",
         "if overlap_context_only and not geometry_overridden:",
         "if not (safe_to_inpaint or geometry_overridden or explicit_manual):",
         "safe_to_inpaint=safe_to_inpaint",
@@ -181,7 +179,6 @@ def main() -> None:
         "AUTO_DESTRUCTIVE_MASK_SOURCES = frozenset(",
         '"text_segmenter"',
         '"bubble_flat_contrast"',
-        "MSER recovery remains review evidence",
         "def is_destructive_box_authorized(box: BubbleBox) -> bool:",
         'getattr(box, "safe_to_inpaint", False)',
         "or _rectangle_fallback_allowed(box)",
@@ -191,7 +188,6 @@ def main() -> None:
     _require(
         "app/detector/bubble_detector.py",
         "def _merge_text_mask_evidence(boxes: list[BubbleBox]) -> BubbleBox:",
-        "Only verified",
         'if members[kept[0]].source_role != "text_segmenter":',
         "buckets[target].append(box)",
         "deferred_reason",

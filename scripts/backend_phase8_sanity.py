@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Phase 8 equivalence/ownership/performance checks for MSER base-candidate caching."""
 from __future__ import annotations
 
 import argparse

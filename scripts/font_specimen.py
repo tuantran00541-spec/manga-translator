@@ -1,5 +1,3 @@
-"""Render a compact specimen sheet for the bundled comic font catalog."""
-
 from __future__ import annotations
 
 import argparse

@@ -46,7 +46,6 @@ def test_classify_readings_votes_by_script(readings, expected):
 
 
 def test_japanese_needs_some_kana_among_kanji():
-    # A single kanji-only bubble in an otherwise kana-rich chapter stays Japanese.
     readings = [_reading("本当", 0.9), _reading("そうなんですか", 0.9), _reading("大丈夫です", 0.9)]
     assert classify_readings(readings).lang == "ja"
 
@@ -176,7 +175,6 @@ def test_detect_endpoint_persists_result_once_and_manual_choice_wins(saved_chapt
     stored = manifests.load_manifest_raw(saved_chapter)
     assert (stored["source_lang"], stored["source_lang_origin"]) == ("ch", "auto")
 
-    # Stored language is reused without probing again.
     reader.calls.clear()
     again = asyncio.run(ocr_router.detect_chapter_language(saved_chapter))
     assert again["source_lang"] == "ch" and again["detection"] is None

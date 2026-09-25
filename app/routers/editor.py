@@ -35,7 +35,6 @@ router = APIRouter(prefix="/api", tags=["editor"])
 
 
 def _decode_repaint_mask_payload(mask_bytes: bytes) -> np.ndarray:
-    """Decode one bounded 8-bit mask without running OpenCV on the event loop."""
     if not mask_bytes:
         raise ValueError("Empty mask payload")
     encoded = np.frombuffer(mask_bytes, dtype=np.uint8)
@@ -77,7 +76,6 @@ def _regions_to_repaint_mask(image_shape: tuple[int, ...], regions) -> np.ndarra
 
 
 def _reconcile_translation_after_ocr_edit(req: UpdateTextObjectRequest) -> dict:
-    """ Invalidate an untouched generated translation after a source-only OCR edit. """
     expected_source = str(req.ocr_text or "")
     with get_manifest_lock(req.chapter_id):
         manifest = load_manifest_raw(req.chapter_id)
@@ -258,7 +256,6 @@ def set_final_review(req: FinalReviewPageRequest) -> dict:
 
 @router.post("/review/disposition")
 def set_review_disposition(req: ReviewDispositionRequest) -> dict:
-    """Record editorial and CLEAN decisions separately from planner/OCR state."""
     validate_chapter_id(req.chapter_id)
     if req.editorial_disposition is None and req.cleanup_disposition is None:
         raise HTTPException(400, "At least one disposition is required")
@@ -456,7 +453,6 @@ def update_text_object(req: UpdateTextObjectRequest) -> dict:
 
 @router.post("/text_object/update_bulk")
 def update_text_objects_bulk(req: BulkUpdateTextObjectsRequest) -> dict:
-    """Apply the editor's debounced object patches through one HTTP request."""
     validate_chapter_id(req.chapter_id)
     try:
         manifest = None

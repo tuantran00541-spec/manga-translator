@@ -80,7 +80,6 @@ def check_unused_python_imports() -> None:
 
 
 def check_loguru_usage() -> None:
-    """Reject stdlib logging syntax that Loguru does not interpret."""
     methods = {
         "trace", "debug", "info", "success", "warning", "error",
         "critical", "exception",

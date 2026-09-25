@@ -35,8 +35,6 @@ def test_residue_overlap_authorities_merge_before_size_gate():
     first = _box(0, 100, 900, 500)
     second = _box(0, 0, 900, 520)
 
-    # The production span gate (600px by default) separates these despite the
-    # first authority being almost fully contained by the second.
     assert len(Inpainter._cluster_boxes([first, second])) == 2
 
     clusters = OverlapAwareAdaptiveFastInpainter._cluster_boxes([first, second])
@@ -48,7 +46,6 @@ def test_residue_textured_neural_hits_receive_bounded_followup_passes(
     monkeypatch,
     tmp_path,
 ):
-    # Deliberately textured so flat-ink recovery cannot be the reason for a retry.
     yy, xx = np.mgrid[:120, :160]
     clean = np.empty((120, 160, 3), dtype=np.uint8)
     clean[..., 0] = (40 + (xx * 7 + yy * 3) % 180).astype(np.uint8)
@@ -125,8 +122,6 @@ def test_residue_textured_neural_hits_receive_bounded_followup_passes(
     pipeline = CompleteFlatEnvelopeMaskRecallPipeline()
     updated = pipeline._repair_post_inpaint_result(raw_path, result, None)
 
-    # Two detector-owned sources yield a three-pass safety budget. The first
-    # parent pass discovers hit A, follow-up discovers hit B, final pass clears it.
     assert calls["count"] == 3
     assert updated["residue_regions"] == []
     metrics = updated["processing_metrics"]["mask_recall_repair"]

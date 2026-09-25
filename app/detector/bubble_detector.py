@@ -31,8 +31,6 @@ from app.parameters import (
 
 @dataclass(frozen=True)
 class LetterboxTransform:
-    """Exact source-to-model transform for half-open pixel boxes [x1,y1,x2,y2)."""
-
     src_w: int
     src_h: int
     input_w: int
@@ -136,8 +134,6 @@ class BubbleBox:
     needs_review: bool = False
     source_role: str = "unknown"
     deferred_reason: str | None = None
-    # Non-destructive residue verification may inspect a review-only detector
-    # region even when that region has no erase-authority mask.
     verify_region_only: bool = False
 
     @property
@@ -233,14 +229,6 @@ class YoloDetector:
     def _filter_invalid(
         boxes: list[BubbleBox], img_w: int, img_h: int
     ) -> list[BubbleBox]:
-        """Retain oversized/aspect outliers as review evidence instead of dropping them.
-
-        Postprocess already rejects non-positive boxes before this point. Width,
-        page-area and aspect limits are bbox heuristics, not proof that text-mask
-        evidence is unsafe. A verified text-segmenter mask is already stroke-level
-        destructive authority, so bbox geometry must not revoke that authority.
-        Geometry outliers without verified mask authority remain review-only.
-        """
         result = []
         page_area = max(1, img_w * img_h)
         for b in boxes:
@@ -261,9 +249,6 @@ class YoloDetector:
                 and b.safe_to_inpaint
                 and b.verified_mask
             ):
-                # The bbox may span the page, while the actual write authority is
-                # still only the verified stroke mask. Do not turn a safe mask
-                # into a silent CLEAN miss merely because its envelope is wide.
                 result.append(b)
                 continue
             if reasons:
@@ -457,10 +442,6 @@ class YoloDetector:
             geometry = None
             mask_coeffs = None
             if has_proto and num_mask_coeffs > 0:
-                # Prototype masks are otherwise cropped exactly at the detector
-                # box.  A small text-only decode pad retains outlines, shadows
-                # and glow that the box regressor legitimately clips, without
-                # widening the final mask by global morphology.
                 if self.model_role == "text_segmenter":
                     pad = DETECTOR_TEXT_MASK_DECODE_PAD
                     source_box = (
@@ -511,8 +492,6 @@ class YoloDetector:
             input_w = geometry.transform.input_w
             input_h = geometry.transform.input_h
         else:
-            # Legacy seven-field test/plugin candidates remain supported, but
-            # production candidates always carry the explicit transform above.
             canvas_box = geometry
             input_w = INPUT_SIZE
             input_h = INPUT_SIZE
@@ -539,7 +518,6 @@ class YoloDetector:
 
     @staticmethod
     def _decode_text_mask_hysteresis(probabilities: np.ndarray) -> np.ndarray:
-        """ Keep only low-confidence support connected to a confident core. """
         if probabilities.size == 0:
             return np.zeros(probabilities.shape, dtype=np.uint8)
         core = probabilities >= DETECTOR_MASK_THRESHOLD
@@ -560,7 +538,6 @@ class YoloDetector:
 
     @staticmethod
     def _candidate_fields(candidate: tuple) -> tuple[float, int, int, object, object]:
-        """ Normalize current and v0.1 candidate tuple layouts. """
         if len(candidate) >= 9 and isinstance(candidate[5], (int, np.integer)):
             return float(candidate[4]), int(candidate[5]), int(candidate[6]), candidate[7], candidate[8]
         if len(candidate) >= 7:
@@ -582,7 +559,6 @@ class YoloDetector:
 
     @staticmethod
     def _merge_text_mask_evidence(boxes: list[BubbleBox]) -> BubbleBox:
-        """ Only verified text-segmenter masks may merge; preserve all mask evidence. """
         base = max(boxes, key=lambda box: float(box.confidence))
         evidence = [box for box in boxes if box.verified_mask]
         if not evidence:
@@ -689,7 +665,6 @@ class YoloDetector:
         self,
         subset: list[tuple],
     ) -> tuple[list[int], dict[int, list[int]]]:
-        """Plan class-local suppression before allocating any mask pixels."""
         if not subset:
             return [], {}
         rects = [
@@ -764,7 +739,6 @@ class YoloDetector:
         *,
         batch_size: int = 8,
     ) -> dict[int, np.ndarray | None]:
-        """Batch coefficient products inside the union prototype ROI only."""
         decoded: dict[int, np.ndarray | None] = {index: None for index in member_indices}
         if prototypes is None or prototypes.ndim != 3:
             return decoded

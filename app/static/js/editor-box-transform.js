@@ -134,8 +134,6 @@
   window.flushGeomPersist = flushGeomPersist;
 
   function scheduleGeomPersist(pageIndex, id) {
-    // Invalidate every response that captured an older geometry. Aborting the
-    // browser request alone cannot undo a server commit that already finished.
     geomGeneration += 1;
     if (geomController) {
       geomController.abort();
@@ -473,9 +471,6 @@
     });
   }
 
-  // Editor render creates a small, known set of overlay nodes.  Exposing this
-  // explicit installer avoids a document-wide MutationObserver that woke up
-  // for every inspector and toolbar DOM change.
   window.installEditorBoxTransforms = install;
 
   document.addEventListener("pointermove", move);

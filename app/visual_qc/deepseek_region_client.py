@@ -151,8 +151,6 @@ def _ordered_decisions(
 
 
 class OpenAICompatibleRegionQC:
-    """ Region-batch visual QC for DeepSeek/OpenAI/OpenRouter-compatible APIs. """
-
     def __init__(
         self,
         model: str = DEFAULT_DEEPSEEK_MODEL,
@@ -370,6 +368,4 @@ class OpenAICompatibleRegionQC:
         return _ordered_decisions(parsed, expected_ids, regions_by_id)
 
 
-# Backwards-compatible name for existing routers/tests. The runtime itself is
-# provider-neutral now.
 DeepSeekRegionQC = OpenAICompatibleRegionQC

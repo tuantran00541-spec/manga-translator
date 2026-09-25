@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-""" Audit a processed chapter bundle without trusting machine-cleaned labels. """
 from __future__ import annotations
 
 import argparse

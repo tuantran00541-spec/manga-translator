@@ -1,5 +1,3 @@
-"""Dependency-light acceptance checks for the bundled font catalog."""
-
 from __future__ import annotations
 
 from pathlib import Path

@@ -61,8 +61,6 @@ from app.parameters import (
 
 
 class SecondaryTextRecovery:
-    """ Conservative OpenCV/MSER recovery for text styles missed by the segmenter. """
-
     def __init__(self) -> None:
         self._mser = cv2.MSER_create(MSER_DELTA, MSER_MIN_AREA, MSER_MAX_AREA)
         self._mser_lock = threading.Lock()
@@ -145,19 +143,6 @@ class SecondaryTextRecovery:
         image_shape: tuple[int, int],
         existing: list[BubbleBox],
     ) -> list[BubbleBox]:
-        """Surface compact MSER text lines missed by the primary segmenter.
-
-        The legacy MSER agglomeration intentionally allows multi-line clusters,
-        but on dense webtoon art its distance threshold grows with cluster height
-        and can chain thousands of regions into one page-sized cluster.  That
-        cluster is then discarded as too large, silently hiding a real miss.
-
-        This second pass only creates *review-only* line proposals.  It filters
-        out page-scale MSER regions, groups locally aligned glyph-sized regions,
-        and never manufactures an inpaint mask.  Its purpose is therefore to
-        prevent a content-heavy miss from being labelled ``verified`` without
-        adding a new destructive cleanup path.
-        """
         h, w = image_shape
         if raw_boxes is None or len(raw_boxes) == 0 or h <= 0 or w <= 0:
             return []
@@ -318,7 +303,6 @@ class SecondaryTextRecovery:
         return out
 
     def _extract_primitives(self, image: np.ndarray, gray: np.ndarray) -> np.ndarray:
-        """Extract raw MSER regions once per source-image object and worker thread."""
         state = getattr(self._primitive_local, "value", None)
         if state is not None:
             image_ref = state.get("image_ref")
@@ -343,13 +327,6 @@ class SecondaryTextRecovery:
         gray: np.ndarray,
         boxes: np.ndarray,
     ) -> tuple[tuple[BubbleBox, float], ...]:
-        """Build expensive MSER cluster/mask evidence once per exact image object.
-
-        This cache deliberately stops before any check involving ``existing``.
-        First-pass bubble proposals and final merged detector evidence therefore
-        retain independent filtering semantics even when they share the same raw
-        MSER primitives, clusters and reconstructed review masks.
-        """
         state = getattr(self._candidate_local, "value", None)
         if state is not None:
             image_ref = state.get("image_ref")
@@ -509,9 +486,6 @@ class SecondaryTextRecovery:
                 continue
             out.append(candidate)
 
-        # Review-only MSER proposals must not suppress additional review
-        # recovery. Residual lines are permitted when independent existing
-        # evidence is already verified; they still never gain erase authority.
         verification_set = existing + out
         if existing and all(
             box.safe_to_inpaint and not box.needs_review for box in existing

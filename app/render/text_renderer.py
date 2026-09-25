@@ -73,7 +73,6 @@ def get_font_path(font_name: str = "default") -> Path:
     try:
         return resolve_font_id(font_name)
     except (OSError, ValueError):
-        # Keep the historical flat-file fallback for old manifests.
         font_dir = DEFAULT_FONT.parent
         for f in font_dir.glob("*.[tT][tT][fF]"):
             if f.stem.lower() == str(font_name).lower() or f.name.lower() == str(font_name).lower():
@@ -228,9 +227,6 @@ def render_text_in_box(
             stroke_w=stroke_w,
             minimum_size=RENDER_MIN_READABLE_FONT_SIZE,
         )
-        # Expanding an explicitly opaque caption is safe: the caller already
-        # asked us to paint a caption surface. Transparent dialogue is never
-        # allowed to spill over artwork merely to make it fit.
         opaque_caption = bool(bg_color and bg_color not in ("transparent", "none", ""))
         if not fits_readably and opaque_caption and RENDER_SAFE_CAPTION_EXPANSION:
             grow_x = int(round(raw_w * RENDER_SAFE_CAPTION_EXPANSION_RATIO))

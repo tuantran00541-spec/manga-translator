@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Deterministic contract for detector pass attribution in the CPU profiler."""
 from __future__ import annotations
 
 from pathlib import Path

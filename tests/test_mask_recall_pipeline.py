@@ -85,8 +85,6 @@ def test_flat_residual_ink_keeps_boundary_glyphs_and_rejects_long_frame():
     assert mask is not None
     assert np.any(mask[23:32, 0:8] > 127)
     assert np.any(mask[49:58, 192:200] > 127)
-    # The 180-pixel frame-like stroke spans 90% of the source width and must not
-    # become destructive repair authority merely because the box is otherwise flat.
     assert not np.any(mask[81:85, 40:160] > 127)
 
 
@@ -129,8 +127,6 @@ def test_flat_residue_augmentation_recovers_missed_glyph_at_source_edge():
     source_mask = np.zeros((50, 80), dtype=np.uint8)
     source_mask[20:25, 30:35] = 255
 
-    # A verifier-confirmed residual lives in the middle of the source box, while
-    # another isolated glyph is clipped against the source's left detector edge.
     clean[55:60, 70:74] = 20
     clean[66:71, 40:44] = 20
     hit_mask = np.full((5, 4), 255, dtype=np.uint8)
@@ -169,8 +165,6 @@ def test_verified_residue_can_extend_beyond_original_mask_but_not_preserve(tmp_p
     sparse = np.zeros((50, 80), dtype=np.uint8)
     sparse[18:24, 8:20] = 255
 
-    # Missed glyph evidence is well inside the detector box but deliberately far
-    # from the original sparse segmentation mask.
     residue_mask = np.full((16, 18), 255, dtype=np.uint8)
     rx1, ry1, rx2, ry2 = 92, 55, 110, 71
     clean[ry1:ry2, rx1:rx2] = 80
@@ -243,8 +237,6 @@ def test_verified_residue_can_extend_beyond_original_mask_but_not_preserve(tmp_p
     old_authority = build_mask(original.shape[:2], [source_box], original) > 127
     assert not np.any(old_authority[ry1:ry2, rx1:rx2])
 
-    # Protect the right half of the verifier hit. Fresh verifier evidence may add
-    # authority, but preserve geometry remains absolute.
     preserve = [{"x1": 101, "y1": 50, "x2": 114, "y2": 76}]
 
     pipeline = MaskRecallOptimizedChapterPipeline()

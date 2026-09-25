@@ -365,13 +365,6 @@ def select_centered_target(
     *,
     lang: str,
 ) -> dict[str, Any]:
-    """Conservatively select the OCR line/column nearest a crop's center.
-
-    OCRService crops are centered around one detector target, but Paddle may see
-    a neighboring line through the safety padding. This helper only prunes when
-    the central anchor is strong and the off-band regions are clearly farther
-    from center; ambiguous layouts keep the original reading-order result.
-    """
     ordered_indices = list(result.get("ordered_indices") or [])
     regions = list(result.get("regions") or [])
     if len(ordered_indices) < 2 or not regions:

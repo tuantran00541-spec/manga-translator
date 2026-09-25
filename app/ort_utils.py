@@ -31,7 +31,6 @@ _ORT_INFERENCE_LOCK = threading.RLock()
 
 
 def _cpu_count() -> int:
-    """Return CPU capacity visible to the process, including cgroup quota."""
     host = max(1, os.cpu_count() or 2)
     try:
         raw = open("/sys/fs/cgroup/cpu.max", "r", encoding="utf-8").read().strip().split()
@@ -74,7 +73,6 @@ def _positive_env_int(name: str, default: int) -> int:
 
 
 def _drop_model_file_cache_hint(model_path) -> None:
-    """Best-effort release of model file pages after ORT has parsed the model."""
     if not hasattr(os, "posix_fadvise") or not hasattr(os, "POSIX_FADV_DONTNEED"):
         return
     try:
@@ -101,7 +99,6 @@ def _is_detector_model(model_path) -> bool:
 
 
 def _openvino_selected(model_path) -> bool:
-    """Use OpenVINO for detector models by default when the EP is installed."""
     provider = os.environ.get(_PROVIDER_ENV, "auto").strip().lower()
     if provider in {"cpu", "ort", "onnxruntime"}:
         return False
@@ -166,8 +163,6 @@ def _provider_stack(model_path):
 
 
 class _SerializedSession:
-    """Thin proxy for sessions whose workspace must not overlap another run."""
-
     def __init__(self, session: ort.InferenceSession):
         self._session = session
         self._timing_local = threading.local()
@@ -204,14 +199,6 @@ def make_session(
     enable_mem_pattern: bool | None = None,
     serialize_inference: bool | None = None,
 ):
-    """Create an ONNX Runtime session with the validated detector turbo path.
-
-    Detector models prefer OpenVINOExecutionProvider when it is available, with
-    CPUExecutionProvider kept as a fallback. LaMa and other models retain the
-    conservative low-memory CPU path unless explicitly opted into OpenVINO.
-    Set MANGA_ORT_PROVIDER=cpu to disable OpenVINO globally.
-    """
-
     providers, use_openvino = _provider_stack(model_path)
 
     opts = ort.SessionOptions()
@@ -222,8 +209,6 @@ def make_session(
     )
     opts.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
 
-    # The V4 detector benchmark benefits from reuse, while LaMa keeps the
-    # low-memory defaults that protect the production two-page worker schedule.
     opts.enable_cpu_mem_arena = (
         _env_flag(_CPU_ARENA_ENV, use_openvino)
         if enable_cpu_mem_arena is None

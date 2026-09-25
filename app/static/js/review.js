@@ -207,8 +207,6 @@ function setupBrush(pageIndex, img, canvas, wrap, brushBtn, clearBtn, submitBtn,
   };
   img.addEventListener("load", () => {
     syncCanvasSize();
-    // Flood-fill source pixels are expensive on long manga pages. Load them
-    // only when the user actually double-clicks for connected selection.
     srcData = null;
   }, { signal });
 
@@ -429,7 +427,6 @@ function setupBrush(pageIndex, img, canvas, wrap, brushBtn, clearBtn, submitBtn,
     }, { signal });
   }
 }
-
 
 async function inspectVisualQC(
   pageIndex, canvas, ctx, aiQcBtn, submitBtn, resetManualBtn,
@@ -727,8 +724,6 @@ async function submitRepaint(pageIndex, canvas, img, ctx, submitBtn, card = null
     }
     currentManifest.pages[pageIndex] = manifest.pages[pageIndex];
 
-    // The repaint bumped clean_revision, so pageImageUrl produces a new URL
-    // here while staying stable for every other render of the same page.
     const repaintedPage = manifest.pages[pageIndex];
     img.src = typeof window.pageImageUrl === "function"
       ? window.pageImageUrl(repaintedPage)

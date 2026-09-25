@@ -13,14 +13,10 @@ def test_residue_envelope_recovers_glyph_near_adaptive_outer_edge():
     source = {"x1": 150, "y1": 60, "x2": 950, "y2": 360}
     pad_x = int(CompleteFlatEnvelopeMaskRecallPipeline._FLAT_SEARCH_PAD_X)
 
-    # Put a glyph close to the adaptive envelope edge. This preserves the old
-    # >96px regression without tying behavior to one chapter-specific constant.
     glyph_x1 = source["x2"] + pad_x - 26
     glyph_x2 = glyph_x1 + 10
     image[150:182, glyph_x1:glyph_x2] = 20
 
-    # A long frame-like stroke in the same envelope must still be rejected by
-    # the inherited span/ring safety gates.
     frame_x1 = source["x2"] + pad_x - 8
     frame_x2 = frame_x1 + 2
     image[90:330, frame_x1:frame_x2] = 20

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-""" Normalize production profiler JSON into non-overlapping stage attribution. """
 from __future__ import annotations
 
 import argparse

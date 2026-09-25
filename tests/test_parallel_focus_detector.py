@@ -188,7 +188,5 @@ def test_secondary_recovery_reuses_mser_primitives_for_same_image_object():
     assert recovery.detect(image, existing=[_box(4, 4, 24, 20)]) == []
     assert fake_mser.calls == 1
 
-    # The cache is deliberately image-object scoped; a new source object must
-    # run MSER again rather than reusing stale coordinates.
     assert recovery.detect(image.copy(), existing=[]) == []
     assert fake_mser.calls == 2

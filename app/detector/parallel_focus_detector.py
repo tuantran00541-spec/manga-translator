@@ -30,13 +30,6 @@ def _finish_focus_from_full(
     proposals: list[BubbleBox],
     full_boxes: list[BubbleBox],
 ) -> tuple[list[BubbleBox], dict[str, int], list[BubbleBox], float]:
-    """Finish tall-page focus retries after a prefetched full text pass.
-
-    This mirrors ``_focus_text_detect`` after its full-image call. Keeping it as
-    a separate helper lets the bubble model and the independent full text pass
-    overlap without changing how uncovered proposals, focus budgets, NMS or
-    deferred review regions are decided.
-    """
     h, w = image.shape[:2]
     uncovered = [
         proposal
@@ -110,8 +103,6 @@ def _finish_focus_from_full(
 
 
 class ParallelAdaptiveFocusCombinedTextDetector(AdaptiveFocusCombinedTextDetector):
-    """ Overlap independent bubble/text prefetch only for single-page workers. """
-
     def detect(
         self,
         image: np.ndarray,
@@ -139,8 +130,6 @@ class ParallelAdaptiveFocusCombinedTextDetector(AdaptiveFocusCombinedTextDetecto
                     for box in self._text_model._filter_invalid(raw, w, h)
                 ]
             else:
-                # Keep this raw just like _focus_text_detect: geometry-only
-                # completeness checks run before final NMS/semantic filtering.
                 boxes = self._text_model._detect_single_plain(image, 0, 0)
             return boxes, (time.perf_counter() - call_started) * 1000.0
 

@@ -7,8 +7,6 @@ from app.inpaint.lama_inpainter import Inpainter
 
 
 class OverlapAwareAdaptiveFastInpainter(AdaptiveFastInpainter):
-    """ Union near-duplicate destructive authorities before size-based grouping. """
-
     @staticmethod
     def _clusters_strongly_overlap(
         left: list[BubbleBox],

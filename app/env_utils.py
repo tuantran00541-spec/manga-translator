@@ -17,7 +17,6 @@ def env_choice(
     default: str,
     allowed: Collection[str],
 ) -> str:
-    """Read a normalized enum-like environment value with a safe fallback."""
     normalized_default = str(default).strip().lower()
     normalized_allowed = {str(value).strip().lower() for value in allowed}
     if normalized_default not in normalized_allowed:

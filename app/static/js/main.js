@@ -94,10 +94,6 @@ async function monitorProcessingJob(initialSnapshot, chapterId, options = {}) {
   return snapshot;
 }
 
-// api.js owns duplicate-click protection. The inner run now transfers the
-// complete page plan to one backend job instead of submitting browser-owned
-// 16-page batches. Refreshing/closing the tab therefore cannot truncate the
-// remaining inpaint queue.
 window._processSelectedPagesOnce = async function serverOwnedProcessSelectedPagesOnce() {
   const pages = currentManifest?.pages || [];
   const indices = pages
@@ -182,9 +178,6 @@ if (typeof resumeChapterWithoutProcessingReconnect === "function") {
   };
 }
 
-// The old Editor screen is now a compatibility route only. Lettering tools live
-// inside the stitched Review document, so old checkpoints and stale callers are
-// redirected to that unified workspace instead of mounting a second editor UI.
 const legacyRenderEditor = window.renderEditor;
 window.renderEditor = function renderUnifiedReviewFromLegacyEditor() {
   const pages = window.currentManifest?.pages || [];
@@ -485,8 +478,6 @@ if (typeof renderUnifiedReview === "function") {
 })();
 
 document.addEventListener("DOMContentLoaded", () => {
-  // Lettering is part of the stitched Review workspace now. Keep the legacy
-  // renderer only for old checkpoints, but do not expose a second Editor stage.
   document.querySelector('.sidebar-link[data-stage="editor"]')?.remove();
   const reviewLabel = document.querySelector('.sidebar-link[data-stage="review"] span');
   if (reviewLabel) {
@@ -515,8 +506,6 @@ document.addEventListener("DOMContentLoaded", () => {
   if (typeof loadFonts === "function") loadFonts();
 
   const urlHash = (window.location.hash || "").replace(/^#/, "").trim();
-  // An explicit deep link resumes immediately. resumeChapter is wrapped above,
-  // so F5 also reconnects to an active backend processing job.
   if (urlHash && typeof resumeChapter === "function") {
     resumeChapter(urlHash);
   }

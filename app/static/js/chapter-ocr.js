@@ -307,7 +307,5 @@
   }
 
   window.fetchOcr = safeFetchOcr;
-  // The Review renderer owns mounting. A document-wide observer used to scan
-  // every workspace mutation and could repeatedly traverse the canvas DOM.
   window.mountChapterOCR = scan;
 })();

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Deterministic safety/equivalence checks for detector ROI grayscale retry."""
 from __future__ import annotations
 
 from dataclasses import replace

@@ -87,7 +87,6 @@
     .app-brand, .sidebar-link { width: 100%; justify-content: flex-start; gap: 12px; padding: 0 10px; }
     .app-brand > span:last-child { display: inline; }
     .sidebar-link > span { position: static; display: inline; max-width: none; padding: 0; border: 0; background: none; font-size: 14px; transform: none; }
-    /* Review hides the app header (and its menu button), so it keeps the icon rail. */
     body[data-app-stage="review"] .app-shell { grid-template-columns: var(--ps-tool-rail) minmax(0, 1fr); }
     body[data-app-stage="review"] .app-sidebar { position: relative; inset: auto; width: var(--ps-tool-rail); padding: 6px 4px; transform: none; box-shadow: none; }
     body[data-app-stage="review"] :is(.app-brand, .sidebar-link) { width: 38px; justify-content: center; padding: 0; }
@@ -115,10 +114,8 @@
   .review-docbar-left, .review-docbar-right, .review-docbar-actions { display: flex; min-width: 0; align-items: center; gap: 6px; overflow: visible; }
   .review-docbar-right { margin-left: auto; }
   .review-document-toolbar-compact .ui-btn { min-height: 30px; height: 30px; padding: 0 10px; border-radius: 3px; font-size: 11px; }
-  /* One segmented control for the three views of the same image. */
   .review-view-switch { display: inline-flex; padding: 2px; gap: 2px; border: 1px solid var(--border-strong); border-radius: 4px; }
   .review-view-switch .ui-btn { min-height: 24px; height: 24px; border: 0; border-radius: 2px; }
-  /* Disclosures in the command bar open as dropdowns instead of growing the bar. */
   .review-docbar-right :is(.command-disclosure, .review-more-menu) { position: relative; }
   .review-docbar-right :is(.command-disclosure-panel, .review-more-panel) { position: absolute; z-index: var(--z-popover); top: calc(100% + 6px); right: 0; width: min(320px, calc(100vw - 24px)); max-height: min(70vh, 560px); margin: 0; overflow: auto; border: 1px solid var(--border-strong); border-radius: 4px; background: var(--surface-panel); }
   .review-view-switch .ui-btn[aria-pressed="true"] { background: var(--accent); color: var(--accent-contrast); }
@@ -139,13 +136,11 @@
   .review-more-toggle.has-alert { position: relative; }
   .review-more-toggle.has-alert::after { position: absolute; top: 4px; right: 4px; width: 7px; height: 7px; border-radius: 50%; background: var(--text-primary); content: ""; }
   .review-more-panel .ui-btn { width: 100%; justify-content: flex-start; border: 0; text-align: left; }
-  /* Brush options appear beside the tool rail only while painting a mask. */
   .review-brush-bar { position: absolute; z-index: calc(var(--z-toolbar) + 2); top: calc(var(--review-docbar-height, 40px) + 14px); left: 62px; display: flex; max-width: calc(100% - 74px); align-items: center; flex-wrap: wrap; gap: 6px; padding: 4px 6px; border: 1px solid var(--border-strong); border-radius: 4px; background: var(--surface-panel); }
   .review-brush-bar .ui-btn { min-height: 28px; height: 28px; padding: 0 10px; border-radius: 3px; font-size: 11px; }
   .review-docbar-brush-size { display: inline-flex; align-items: center; width: auto; min-width: 0; margin: 0; gap: 6px; font-size: 11px; white-space: nowrap; }
   .review-docbar-brush-size input { width: 90px; min-width: 0; accent-color: var(--accent); }
   .review-docbar-brush-size output { min-width: 34px; color: var(--text-muted); }
-  /* Zoom dock sits in the canvas corner and steps aside for the inspector. */
   .review-zoom-dock { position: absolute; z-index: calc(var(--z-toolbar) + 2); right: 12px; bottom: 12px; display: flex; align-items: center; gap: 2px; padding: 3px; border: 1px solid var(--border-strong); border-radius: 4px; background: var(--surface-panel); }
   .review-zoom-dock .ui-btn { min-height: 28px; height: 28px; padding: 0 8px; border: 0; border-radius: 3px; font-size: 11px; }
   .review-zoom-dock .review-zoom-value { min-width: 52px; justify-content: center; font-variant-numeric: tabular-nums; }

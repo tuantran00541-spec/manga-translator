@@ -226,8 +226,6 @@
     const viewportRect = viewport?.getBoundingClientRect();
     const scale = Number(image?.dataset.zoomScale || 1);
     if (!descriptor || !imageRect?.height || !viewport || !viewportRect || !scale) return false;
-    // Align the page top with the viewport top: centring a tall webtoon page
-    // would open the chapter in the middle of its first image.
     viewport.scrollTop = descriptor === shell._descriptors?.[0] ? 0 : Math.max(
       0,
       viewport.scrollTop + imageRect.top + descriptor.sourceY1 * scale - viewportRect.top,
@@ -716,7 +714,6 @@
 
     close.addEventListener("click", () => clearSelection(shell), { signal });
 
-
   }
 
   function syncToolButtons() {
@@ -910,7 +907,6 @@
     const original = button(null, "Ảnh gốc");
     viewSwitch.append(clean, rendered, original);
 
-    // Zoom lives in a small dock over the canvas corner, not in the command bar.
     const zoomDock = document.createElement("div");
     zoomDock.className = "review-zoom-dock";
     zoomDock.setAttribute("role", "group");
@@ -948,8 +944,6 @@
     size.className = "brush-size-slider";
     sizeWrap.append(size, sizeOut);
 
-    // Brush options only matter while painting a mask, so they float next to
-    // the tool rail instead of occupying the command bar permanently.
     const brushBar = document.createElement("div");
     brushBar.className = "review-brush-bar";
     brushBar.setAttribute("role", "toolbar");
@@ -971,8 +965,6 @@
     morePanel.className = "review-more-panel";
     more.append(moreToggle, morePanel);
 
-    // Source language is detected per chapter; this row shows it and lets the
-    // user correct it. Chapter actions (OCR, Render) are listed below it.
     const langRow = document.createElement("label");
     langRow.className = "review-lang-row";
     const langTitle = document.createElement("span");
@@ -1036,8 +1028,6 @@
     shell.append(docbar, meta, warning, viewport);
     canvasHost.appendChild(shell);
 
-    // The docbar wraps onto extra rows on narrow screens; floating panels read
-    // its live height so they never cover the toolbar.
     const syncDocbarHeight = () => shell.style.setProperty("--review-docbar-height", `${Math.ceil(docbar.getBoundingClientRect().height)}px`);
     const docbarObserver = new ResizeObserver(syncDocbarHeight);
     docbarObserver.observe(docbar);

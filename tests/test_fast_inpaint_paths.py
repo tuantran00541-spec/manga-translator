@@ -54,8 +54,6 @@ def test_smooth_gradient_bubble_uses_reconstruction_without_telea():
     background[..., 2] = np.clip(238 + xx * 0.020 + yy * 0.015, 0, 255)
     image = background.copy()
 
-    # Keep synthetic glyph support below the real safety occupancy gate even
-    # after automatic mask dilation. Dense masks intentionally fall back to LaMa.
     mask = np.zeros((60, 120), dtype=np.uint8)
     mask[14:18, 18:102] = 255
     mask[34:38, 26:94] = 255
@@ -182,7 +180,6 @@ def test_dynamic_lama_tightens_mask_roi_before_model_call():
 def test_optimized_pipeline_uses_plain_lama_inpainter():
     pipeline = OptimizedChapterPipeline()
     assert isinstance(pipeline.inpainter, Inpainter)
-
 
 
 def test_medium_dynamic_lama_keeps_native_resolution_single_call():
@@ -314,7 +311,6 @@ def test_residue_second_pass_is_clipped_to_existing_authority(tmp_path):
     )
 
 
-
 def test_smooth_gradient_free_text_uses_reconstruction_without_lama():
     h, w = 180, 240
     yy, xx = np.mgrid[:h, :w]
@@ -350,7 +346,6 @@ def test_smooth_gradient_free_text_uses_reconstruction_without_lama():
     assert mae < 5.0
 
 
-
 def test_textured_medium_dynamic_lama_stays_one_native_call():
     rng = np.random.default_rng(42)
     image = rng.integers(0, 256, size=(900, 920, 3), dtype=np.uint8)
@@ -381,10 +376,7 @@ def test_textured_medium_dynamic_lama_stays_one_native_call():
     assert model_shapes[0][1] >= 920
 
 
-
 def test_dynamic_long_crop_uses_native_single_call_within_pixel_budget():
-    # Old policy tiled this crop solely because 900/400 >= 2 and max_dim > 512.
-    # Dynamic LaMa should preserve one global-context call when the area is safe.
     rng = np.random.default_rng(7)
     image = rng.integers(0, 256, size=(400, 900, 3), dtype=np.uint8)
     mask = np.zeros((400, 900), dtype=np.uint8)
@@ -415,7 +407,6 @@ def test_dynamic_long_crop_uses_native_single_call_within_pixel_budget():
     assert shapes[0][1] >= 900
     assert metrics["lama_native_single_regions"] == 1
     assert metrics["lama_tiled_regions"] == 0
-
 
 
 def test_stroke_refine_rejects_adjacent_unpainted_bright_halo():
@@ -532,9 +523,6 @@ def test_dual_polarity_halo_recovers_bright_outline_around_dark_strokes():
     assert metrics["stroke_authority_gradient_regions"] == 1
     assert metrics["lama_model_runs"] == 0
     assert not np.any(changed & (~authority))
-    # Regression for the real p045 failure: a one-pixel same-polarity fringe
-    # leaves the outer white outline visible. The dual-polarity halo must cover
-    # almost all of the 2px bright outline before background reconstruction.
     assert float(changed[outline_only].mean()) > 0.95
 
     text_support = outline > 0
@@ -567,8 +555,6 @@ def test_surface_residual_halo_recovers_subtle_outline_on_gradient():
         iterations=1,
     )
     outline_only = (outline > 0) & (core == 0)
-    # Deliberately subtle: only +4 over the *local* gradient. A single global
-    # median plus the old 2px halo cannot reliably recover the full 4px outline.
     lifted = np.clip(background.astype(np.int16) + 4, 0, 255).astype(np.uint8)
     image[outline_only] = lifted[outline_only]
     image[core > 0] = 4

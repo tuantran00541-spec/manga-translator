@@ -55,8 +55,6 @@ _chapter_qc_context: dict[str, dict] = {}
 
 
 class DeepSeekKeyRequest(BaseModel):
-    """Legacy DeepSeek-only key request kept for API compatibility."""
-
     api_key: str
 
     @field_validator("api_key")
