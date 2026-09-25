@@ -383,6 +383,8 @@ The maintained release path covers source compilation, regression tests, browser
 
 Model-dependent validation remains a separate local artifact gate because production ONNX binaries are not stored in Git.
 
+To screenshot every screen on a real chapter with the real models, run the **UI tour** workflow from the Actions tab on a feature branch. It imports the chapter, skips all but the chosen slices, repaints a region with LaMa, preserves a cleaned bubble and reprocesses, checks each result pixel by pixel, and commits the screenshots and `report.json` to `audit-results/ui-tour/` on that branch. Against a running local server: `python scripts/ui_tour.py --chapter-url <url> --keep 16,19,24,27`.
+
 ## Project layout
 
 ~~~text
