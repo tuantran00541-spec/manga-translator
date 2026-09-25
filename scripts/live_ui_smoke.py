@@ -167,7 +167,15 @@ def _exercise_desktop(page: Page) -> None:
     expect(page.get_by_role("button", name="Sau inpaint", exact=True)).to_be_visible()
     expect(page.get_by_role("button", name="Có chữ", exact=True)).to_be_visible()
     expect(page.get_by_role("button", name="Ảnh gốc", exact=True)).to_be_visible()
-    expect(page.locator(".review-strip-meta")).to_have_text("Ảnh liên tục")
+    expect(page.locator(".review-strip-meta")).to_have_count(0)
+    # Brush options stay out of the way until a mask tool is picked.
+    expect(page.locator(".review-brush-bar")).to_be_hidden()
+    page.locator('.review-rail-tool[data-tool="brush"]').click()
+    expect(page.locator(".review-brush-bar")).to_be_visible()
+    expect(page.get_by_role("button", name="Làm sạch vùng", exact=True)).to_be_visible()
+    page.locator('.review-rail-tool[data-tool="select"]').click()
+    expect(page.locator(".review-brush-bar")).to_be_hidden()
+    expect(page.locator(".review-zoom-dock")).to_be_visible()
     expect(image).to_have_attribute("data-source-width", "1200")
     first_image = page.locator('.review-strip-slice[data-page-index="0"] img')
     expect(first_image).to_have_js_property("naturalWidth", 1200)
@@ -182,7 +190,7 @@ def _exercise_desktop(page: Page) -> None:
     _select_text_object(page)
     expect(page.locator(".review-floating-inspector")).to_be_visible()
     _exercise_font_picker(page)
-    expect(page.get_by_role("button", name="OCR toàn chương", exact=True)).to_be_visible()
+    _expect_more_menu_action(page, "OCR toàn chương")
     expect(page.locator("#site-header")).to_be_hidden()
 
     second = page.locator('.review-text-object-overlay[data-page-index="1"]').first
@@ -200,7 +208,7 @@ def _exercise_desktop(page: Page) -> None:
     )
     _wait_for_text_overlay(page)
 
-    page.get_by_role("button", name="100%", exact=True).click()
+    page.get_by_role("button", name="Xem kích thước thật 1:1", exact=True).click()
     expect(page.locator(".review-zoom-value")).to_have_text("100%")
 
     expect(page.locator(".review-tool-rail")).to_be_visible()
@@ -308,6 +316,14 @@ def _exercise_desktop(page: Page) -> None:
     expect(page.locator(".review-primary-action")).to_have_count(0)
 
 
+def _expect_more_menu_action(page: Page, name: str) -> None:
+    toggle = page.locator(".review-more-toggle")
+    toggle.click()
+    expect(page.get_by_role("button", name=name, exact=True)).to_be_visible()
+    toggle.click()
+    expect(page.get_by_role("button", name=name, exact=True)).to_be_hidden()
+
+
 def _exercise_mobile(page: Page) -> None:
     _wait_for_review(page)
     viewport_box = page.locator(".review-document-viewport").bounding_box()
@@ -333,7 +349,7 @@ def _exercise_mobile(page: Page) -> None:
     translation = page.locator(".review-floating-inspector .translation-textarea").first
     expect(translation).to_be_visible()
     expect(translation).to_have_value("Bong bóng thứ hai")
-    expect(page.get_by_role("button", name="OCR toàn chương", exact=True)).to_be_visible()
+    _expect_more_menu_action(page, "OCR toàn chương")
 
     expect(page.locator(".review-tool-rail")).to_be_visible()
     tool_sizes = page.locator(".review-rail-tool").evaluate_all(
