@@ -46,7 +46,6 @@ _ARTIFACT_TRANSACTION_PATTERN = ".page-*.artifact-txn.json"
 
 
 def atomic_replace(src: Path | str, dst: Path | str, max_retries: int = 8, delay: float = 0.05) -> None:
-    """Publish by atomic rename only; exhausted retries leave old bytes intact."""
     if max_retries < 1:
         raise ValueError("max_retries must be >= 1")
     if delay < 0:
@@ -65,7 +64,6 @@ def atomic_replace(src: Path | str, dst: Path | str, max_retries: int = 8, delay
 
 
 def _copy_rollback_snapshot(src: Path, dst: Path) -> None:
-    """Create a durable byte-independent rollback snapshot."""
     try:
         with src.open("rb") as source, dst.open("xb") as backup:
             shutil.copyfileobj(source, backup, length=1024 * 1024)
@@ -81,7 +79,6 @@ def _copy_rollback_snapshot(src: Path, dst: Path) -> None:
 
 
 def publish_then_commit(src: Path | str, dst: Path | str, commit_callback) -> None:
-    """Publish one artifact and restore its previous bytes if metadata commit fails."""
     src_path, dst_path = Path(src), Path(dst)
     rollback = None
     if dst_path.is_symlink():
@@ -123,7 +120,6 @@ def _manifest_page_artifact_state(
     chapter_dir: Path,
     page_index: int,
 ) -> tuple[bool, int, str | None]:
-    """Read the persisted artifact generation and owning transaction identity."""
     try:
         raw = json.loads((chapter_dir / "manifest.json").read_text(encoding="utf-8"))
         pages = raw.get("pages") if isinstance(raw, dict) else None
@@ -139,8 +135,6 @@ def _manifest_page_artifact_state(
 
 
 class PageArtifactTransaction:
-    """Keep page artifacts consistent with an atomic manifest revision update."""
-
     def __init__(
         self,
         chapter_dir: Path,
@@ -241,7 +235,6 @@ class PageArtifactTransaction:
         return self
 
     def mark_manifest_commit(self, page: dict) -> None:
-        """Bind the manifest page to this exact artifact publication."""
         if self.target_artifact_generation is None:
             raise RuntimeError("Artifact transaction generation was not initialized")
         try:
@@ -324,7 +317,6 @@ class PageArtifactTransaction:
 
 
 def recover_page_artifact_transactions(chapter_dir: Path) -> int:
-    """Resolve crash-left page transactions using the committed clean revision."""
     chapter_dir = Path(chapter_dir).resolve()
     if not chapter_dir.is_dir():
         return 0
@@ -389,7 +381,6 @@ def cleanup_stale_temp_artifacts(
     max_age_seconds: float = STALE_TEMP_MAX_AGE_SECONDS,
     now: float | None = None,
 ) -> int:
-    """Remove only known orphan temp files older than the safety window."""
     if max_age_seconds < 0:
         raise ValueError("max_age_seconds must be >= 0")
     if not directory.exists() or not directory.is_dir():
@@ -501,7 +492,6 @@ def _normalize_box_ocr_cache(
 
 
 def normalize_manifest_schema(manifest: dict) -> bool:
-    """Upgrade legacy manifests in memory without changing user-visible content."""
     changed = False
     if int(manifest.get("schema_version") or 0) < MANIFEST_SCHEMA_VERSION:
         manifest["schema_version"] = MANIFEST_SCHEMA_VERSION
@@ -627,13 +617,6 @@ def assign_stable_detector_box_ids(
     existing_boxes: list[dict],
     min_iou: float = DETECTOR_STABLE_ID_IOU_MIN,
 ) -> list[dict]:
-    """Assign stable detector IDs and reconcile persisted geometry overrides.
-
-    During the pre-inpaint call, detector records carry ``_mask_array`` and
-    ``existing_boxes`` is a job-local deep copy. At that point a matched geometry
-    override can safely remap the fresh segmentation mask into page-space edited
-    geometry and neutralize the legacy branch that used to discard the mask.
-    """
     candidates = [
         b for b in existing_boxes
         if isinstance(b, dict) and b.get("origin", "manual" if b.get("manual") else "detector") == "detector" and b.get("id")
@@ -778,7 +761,6 @@ def _get_manual_mask_state(
 
 
 def capture_processing_state(manifest: dict, page_index: int, processed_dir: Path) -> dict | None:
-    """ Capture snapshot of canonical inputs for page detection and inpainting. """
     pages = manifest.get("pages", [])
     if page_index < 0 or page_index >= len(pages):
         return None
@@ -802,7 +784,6 @@ def capture_processing_state(manifest: dict, page_index: int, processed_dir: Pat
 def is_processing_state_current(
     manifest: dict, page_index: int, snapshot: dict | None, processed_dir: Path
 ) -> bool:
-    """Check whether a page's canonical processing inputs still match the snapshot."""
     if snapshot is None:
         return False
     current = capture_processing_state(manifest, page_index, processed_dir)

@@ -79,7 +79,6 @@ def _prepare_rgb_for_paddle(image: np.ndarray) -> np.ndarray:
     elif image.shape[2] == 4:
         bgr = cv2.cvtColor(image, cv2.COLOR_RGBA2BGR)
     else:
-        # MultiLangOCR receives RGB images from OCRService.
         bgr = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
 
     height, width = bgr.shape[:2]
@@ -112,7 +111,6 @@ def _retry_upscale(image: np.ndarray) -> np.ndarray:
 
 
 def _enhance_for_selective_retry(bgr: np.ndarray) -> np.ndarray:
-    """Make an inexpensive colour-preserving comic-font retry candidate."""
     lab = cv2.cvtColor(bgr, cv2.COLOR_BGR2LAB)
     l_channel, a_channel, b_channel = cv2.split(lab)
     l_channel = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(l_channel)
@@ -123,7 +121,6 @@ def _enhance_for_selective_retry(bgr: np.ndarray) -> np.ndarray:
 
 
 def _enhance_grayscale_retry(bgr: np.ndarray) -> np.ndarray:
-    """ Make a second, contrast-focused view only for still-suspicious crops. """
     gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
     gray = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(gray)
     enhanced = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
@@ -131,7 +128,6 @@ def _enhance_grayscale_retry(bgr: np.ndarray) -> np.ndarray:
 
 
 def _result_rank(result: OCRReadResult) -> tuple[int, int, float, float, int]:
-    """ Rank retry candidates by safety/completeness before raw confidence. """
     quality_rank = {"reject": 0, "unknown": 0, "review": 1, "good": 2}
     completeness_rank = 0 if result.quality_reason in _COMPLETENESS_REASONS else 1
     coverage = result.coverage if result.coverage is not None else -1.0
@@ -156,17 +152,12 @@ def _should_selective_retry(result: OCRReadResult, image: np.ndarray) -> bool:
 
 
 class PaddleV6OCR:
-    """ Lazy CPU-only PaddleOCR 3.x backend. """
-
     def __init__(self) -> None:
         tier = os.getenv("MANGA_PPOCRV6_TIER", "small").strip().lower()
         if tier not in {"small", "medium"}:
             tier = "small"
         self.tier = tier
         self.device = "cpu"
-        # Text-line orientation adds another model/cold-start cost. Detector
-        # crops are normally upright, so keep it opt-in and benchmark rotated
-        # material separately before enabling it globally.
         self.textline_orientation = env_enabled(
             "MANGA_PPOCRV6_TEXTLINE_ORIENTATION", False
         )
@@ -195,11 +186,6 @@ class PaddleV6OCR:
         image: np.ndarray,
         lang: str,
     ) -> OCRReadResult:
-        """Single-pass recognizer-only path for detector-authorized text crops.
-
-        This intentionally does not run Paddle text detection, colour retry, or
-        grayscale retry. The manga detector already supplied the crop geometry.
-        """
         if image is None or image.size == 0:
             return OCRReadResult("", None, "none", "unknown", 0, "reject", "empty")
 
@@ -247,7 +233,6 @@ class PaddleV6OCR:
         *,
         target_mode: str = "all",
     ) -> OCRReadResult:
-        """Run one normal Paddle detection+recognition pass with no retries."""
         if image is None or image.size == 0:
             return OCRReadResult("", None, "none", "unknown", 0, "reject", "empty")
         if target_mode not in {"all", "centered"}:
@@ -313,9 +298,6 @@ class PaddleV6OCR:
             if _result_rank(colour_retry) > _result_rank(result):
                 result = colour_retry
 
-            # Do not pay for a third inference when the first retry already
-            # produced a normal high-quality result.  The second view exists
-            # only for difficult crops and leaves the fast path untouched.
             if _should_selective_retry(result, prepared):
                 grayscale_retry = self._read_once(
                     _enhance_grayscale_retry(prepared),
@@ -389,9 +371,6 @@ class PaddleV6OCR:
                 text,
                 normalized,
                 confidence=confidence,
-                # Centered mode is intentionally a single-line policy.  Its
-                # selection ratio is retained as metadata but does not alone
-                # mark an explicit single-line target incomplete.
                 coverage=selection_coverage if target_mode == "all" else None,
                 may_be_truncated=edge_truncated,
             )
@@ -410,8 +389,6 @@ class PaddleV6OCR:
                 font_size_hint=font_size_hint,
             )
 
-        # Paddle can occasionally return recognition text without polygons.
-        # Preserve useful text rather than dropping the result entirely.
         fallback_texts = [
             str(value or "").strip()
             for value in texts

@@ -39,7 +39,6 @@ async function getCurrentProcessingJob(chapterId) {
   if (!chapterId) return null;
   return processingJson(`/api/process/chapter/${encodeURIComponent(chapterId)}`);
 }
-window.getCurrentProcessingJob = getCurrentProcessingJob;
 
 async function finishSuccessfulProcessing(chapterId) {
   if (chapterId !== currentChapterId) return;
@@ -94,10 +93,6 @@ async function monitorProcessingJob(initialSnapshot, chapterId, options = {}) {
   return snapshot;
 }
 
-// api.js owns duplicate-click protection. The inner run now transfers the
-// complete page plan to one backend job instead of submitting browser-owned
-// 16-page batches. Refreshing/closing the tab therefore cannot truncate the
-// remaining inpaint queue.
 window._processSelectedPagesOnce = async function serverOwnedProcessSelectedPagesOnce() {
   const pages = currentManifest?.pages || [];
   const indices = pages
@@ -182,10 +177,6 @@ if (typeof resumeChapterWithoutProcessingReconnect === "function") {
   };
 }
 
-// The old Editor screen is now a compatibility route only. Lettering tools live
-// inside the stitched Review document, so old checkpoints and stale callers are
-// redirected to that unified workspace instead of mounting a second editor UI.
-const legacyRenderEditor = window.renderEditor;
 window.renderEditor = function renderUnifiedReviewFromLegacyEditor() {
   const pages = window.currentManifest?.pages || [];
   const rawIndex = Number(window.editorState?.activePageIndex ?? window.currentManifest?.workflow?.page_index ?? 0);
@@ -194,7 +185,6 @@ window.renderEditor = function renderUnifiedReviewFromLegacyEditor() {
   window.setWorkflowCheckpoint?.("review", pageIndex);
   return window.renderReview?.();
 };
-window.legacyRenderEditor = legacyRenderEditor;
 
 const renderUnifiedReview = window.renderReview;
 if (typeof renderUnifiedReview === "function") {
@@ -210,11 +200,8 @@ if (typeof renderUnifiedReview === "function") {
 (() => {
   "use strict";
 
-  const sourcePageOf = (page, fallback) => Number.isInteger(page?.source_page) ? page.source_page : fallback;
-
   const baseRenderTranslations = window.renderTranslations;
-  if (typeof baseRenderTranslations === "function" && !window._unifiedReviewRenderWrapped) {
-    window._unifiedReviewRenderWrapped = true;
+  if (typeof baseRenderTranslations === "function") {
     window.renderTranslations = async function renderTranslationsWithReviewUrl(pageIndex) {
       const result = await baseRenderTranslations(pageIndex);
       const page = window.currentManifest?.pages?.[Number(pageIndex)];
@@ -225,24 +212,6 @@ if (typeof renderUnifiedReview === "function") {
       }
       return result;
     };
-  }
-
-  function ensureAdapterStyles() {
-    if (document.getElementById("unified-review-adapter-styles")) return;
-    const style = document.createElement("style");
-    style.id = "unified-review-adapter-styles";
-    style.textContent = `
-      .review-inline-translation{max-height:240px!important;overflow:auto!important}
-      .review-qc-compat-card{position:absolute!important;z-index:35!important;display:block!important;margin:0!important;padding:0!important;border:0!important;background:transparent!important;box-shadow:none!important;pointer-events:none!important;overflow:visible!important}
-      .review-qc-compat-card>.review-image-wrap{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;max-width:none!important;margin:0!important;overflow:visible!important;pointer-events:none!important}
-      .review-qc-compat-card>.review-image-wrap>img{display:block!important;width:100%!important;height:100%!important;max-width:none!important;opacity:0!important;pointer-events:none!important}
-      .review-workspace-shell.review-chapter-qc-running .review-render-text-btn,
-      .review-workspace-shell.review-chapter-qc-running .chapter-translate-controls{opacity:.45;pointer-events:none!important}
-      .review-workspace-shell.review-chapter-qc-running .review-text-object-overlay{opacity:.5!important;pointer-events:none!important}
-      .review-document-viewport.review-space-pan{cursor:grab!important}
-      .review-document-viewport.review-space-pan.is-panning{cursor:grabbing!important}
-    `;
-    document.head.appendChild(style);
   }
 
   function sourceCoverage(desc) {
@@ -290,21 +259,6 @@ if (typeof renderUnifiedReview === "function") {
       wrap.appendChild(img);
       card.appendChild(wrap);
       image.appendChild(card);
-    });
-  }
-
-  function rewriteQcLabels(workspace) {
-    workspace?.querySelectorAll?.(".chapter-qc-result > span:first-child").forEach((label) => {
-      if (!label.dataset.qcCanonicalPage) {
-        const match = String(label.textContent || "").match(/Trang\s+(\d+)/i);
-        if (!match) return;
-        label.dataset.qcCanonicalPage = String(Number(match[1]) - 1);
-      }
-      const canonical = Number(label.dataset.qcCanonicalPage);
-      const page = window.currentManifest?.pages?.[canonical];
-      if (!page) return;
-      const next = `Trang ${sourcePageOf(page, canonical) + 1}`;
-      if (label.textContent !== next) label.textContent = next;
     });
   }
 
@@ -385,7 +339,6 @@ if (typeof renderUnifiedReview === "function") {
     const workspace = document.querySelector("#page-view.review-mode .review-workspace-shell");
     if (!workspace) return;
     ensureQcCompatibility(workspace);
-    rewriteQcLabels(workspace);
     syncQcLock(workspace);
     restoreReviewWorkspaceState(workspace);
   }
@@ -474,7 +427,6 @@ if (typeof renderUnifiedReview === "function") {
   document.addEventListener("pointerup", finishPan, true);
   document.addEventListener("pointercancel", finishPan, true);
 
-  ensureAdapterStyles();
   const pageView = document.getElementById("page-view");
   if (pageView) {
     const observer = new MutationObserver(scheduleRefresh);
@@ -485,8 +437,6 @@ if (typeof renderUnifiedReview === "function") {
 })();
 
 document.addEventListener("DOMContentLoaded", () => {
-  // Lettering is part of the stitched Review workspace now. Keep the legacy
-  // renderer only for old checkpoints, but do not expose a second Editor stage.
   document.querySelector('.sidebar-link[data-stage="editor"]')?.remove();
   const reviewLabel = document.querySelector('.sidebar-link[data-stage="review"] span');
   if (reviewLabel) {
@@ -515,8 +465,6 @@ document.addEventListener("DOMContentLoaded", () => {
   if (typeof loadFonts === "function") loadFonts();
 
   const urlHash = (window.location.hash || "").replace(/^#/, "").trim();
-  // An explicit deep link resumes immediately. resumeChapter is wrapped above,
-  // so F5 also reconnects to an active backend processing job.
   if (urlHash && typeof resumeChapter === "function") {
     resumeChapter(urlHash);
   }

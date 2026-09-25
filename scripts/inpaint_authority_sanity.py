@@ -6,81 +6,15 @@ import sys
 
 
 def check_runtime_geometry() -> None:
-    """Optional pixel-level checks; no model weights or LaMa inference needed."""
     import tempfile
-    import threading
-    from types import SimpleNamespace
     from unittest.mock import patch
 
     import cv2
     import numpy as np
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from app.detector.bubble_detector import BubbleBox
-    from app.detector.combined_detector import CombinedTextDetector
     from app.downloader import slicer
     from app.inpaint.lama_inpainter import Inpainter
-
-    image = np.full((220, 340, 3), 100, np.uint8)
-    mask = np.zeros((180, 300), np.uint8)
-    for y, color in ((10, (5, 5, 5)), (75, (210, 245, 245)), (140, (5, 5, 5))):
-        image[20 + y:36 + y, 50:250] = color
-        mask[y:y + 16, 30:230] = 255
-    box = BubbleBox(
-        20, 20, 320, 200, .8, mask,
-        source_model="text_segmenter.onnx",
-        source_role="text_segmenter",
-        mask_source="text_segmenter",
-        safe_to_inpaint=True,
-        ocr_eligible=True,
-        needs_review=False,
-    )
-    refined = CombinedTextDetector._refine_and_split_tall_boxes([box], image)
-    restored = np.zeros(image.shape[:2], np.uint8)
-    for item in refined:
-        restored[item.y1:item.y2, item.x1:item.x2] |= item.mask
-    expected = np.zeros_like(restored)
-    expected[20:200, 20:320] = mask
-    assert np.array_equal(restored, expected), "Line refinement lost mask evidence"
-    assert len(refined) == 1, "Mixed-polarity text must retain its original box"
-
-    dark_mask = mask.copy()
-    dark_mask[75:91] = 0
-    dark_box = BubbleBox(20, 20, 320, 200, .8, dark_mask,
-                         source_model="text_segmenter.onnx", safe_to_inpaint=True)
-    dark_lines = CombinedTextDetector._refine_and_split_tall_boxes([dark_box], image)
-    assert len(dark_lines) == 2, "Lossless dark-text splitting should remain available"
-    unmasked = BubbleBox(20, 20, 320, 200, .3)
-    assert all(item.mask is None for item in
-               CombinedTextDetector._refine_and_split_tall_boxes([unmasked], image))
-
-    proposal = BubbleBox(20, 20, 320, 200, .3,
-                         source_model="bubble_yolo.onnx", semantic_type="free_text")
-    detector = CombinedTextDetector.__new__(CombinedTextDetector)
-    detector._metrics_local = threading.local()
-    detector.bubble_detector = SimpleNamespace(detect=lambda _: [proposal])
-    detector.recovery = SimpleNamespace(detect=lambda *a, **kw: [])
-    for rgb_boxes, gray_boxes, fallback_calls, safe in (
-        ([], [box], 1, True), ([box], [], 0, True), ([], [], 1, False),
-    ):
-        with patch("app.detector.combined_detector.DETECTOR_FREE_TEXT_GRAYSCALE_FALLBACK", True):
-            with patch.object(detector, "text_detector", create=True) as text_detector:
-                text_detector.detect.return_value = rgb_boxes
-                with patch.object(
-                    detector,
-                    "_grayscale_text_retry",
-                    return_value=(gray_boxes, {
-                        "calls": fallback_calls,
-                        "source_pixels": image.shape[0] * image.shape[1] if fallback_calls else 0,
-                        "deferred_regions": 0,
-                    }),
-                ) as retry:
-                    result = detector.detect(image)
-                    assert text_detector.detect.call_count == 1
-                    assert retry.call_count == fallback_calls
-                    assert any(item.safe_to_inpaint for item in result) == safe
-                    assert detector.last_metrics()["text_grayscale_fallback_runs"] == fallback_calls
-    print("Free-text fallback and lossless mask refinement OK")
 
     height, width = 6200, 120
     gray = np.tile(np.linspace(35, 220, width, dtype=np.uint8), (height, 1))
@@ -121,7 +55,7 @@ def check_runtime_geometry() -> None:
 
     for dynamic in (False, True):
         painter = Inpainter()
-        painter.session = object()  # Explicit geometry stub, not a model benchmark.
+        painter.session = object()
         painter.dynamic_lama = dynamic
         calls = []
 
@@ -158,7 +92,6 @@ def _require(path: str, *needles: str) -> None:
 def main() -> None:
     _require(
         "app/pipeline_editing.py",
-        "Persisted review-only detector masks are evidence, not erase",
         "if overlap_context_only and not geometry_overridden:",
         "if not (safe_to_inpaint or geometry_overridden or explicit_manual):",
         "safe_to_inpaint=safe_to_inpaint",
@@ -181,7 +114,6 @@ def main() -> None:
         "AUTO_DESTRUCTIVE_MASK_SOURCES = frozenset(",
         '"text_segmenter"',
         '"bubble_flat_contrast"',
-        "MSER recovery remains review evidence",
         "def is_destructive_box_authorized(box: BubbleBox) -> bool:",
         'getattr(box, "safe_to_inpaint", False)',
         "or _rectangle_fallback_allowed(box)",
@@ -191,20 +123,9 @@ def main() -> None:
     _require(
         "app/detector/bubble_detector.py",
         "def _merge_text_mask_evidence(boxes: list[BubbleBox]) -> BubbleBox:",
-        "Only verified",
         'if members[kept[0]].source_role != "text_segmenter":',
         "buckets[target].append(box)",
         "deferred_reason",
-        'safe_to_inpaint=False',
-    )
-    _require(
-        "app/detector/combined_detector.py",
-        'mask_source="bubble_flat_contrast"',
-        "safe_to_inpaint=True",
-        "YoloDetector._nms_box_group(",
-        "np.any((box.mask > 0) & ~covered_mask)",
-        "DETECTOR_FREE_TEXT_GRAYSCALE_FALLBACK and unmatched_free_text",
-        "if box.deferred_reason:",
     )
     _require(
         "app/inpaint/lama_inpainter.py",
@@ -214,7 +135,10 @@ def main() -> None:
         "ocr_eligible=bool(b.ocr_eligible)",
         "needs_review=bool(b.needs_review)",
         "deferred_reason=b.deferred_reason",
-        "def _split_oversized_cluster_area(",
+    )
+    _require(
+        "app/inpaint/clustering.py",
+        "def split_oversized_cluster_area(",
     )
     _require(
         "scripts/model_e2e_gate.py",

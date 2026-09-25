@@ -1,4 +1,3 @@
-"""Two-image vision translation. Model output is restricted to existing object IDs."""
 from __future__ import annotations
 
 import json
@@ -59,7 +58,6 @@ def _font_catalog_hint(target_lang: str) -> str:
 
 
 def parse_vision_translation(content: str, expected_ids: set[str]) -> dict[str, str]:
-    """Never assign a model answer to a different text object."""
     source = str(content or "").strip()
     if source.startswith(chr(96) * 3):
         source = source.split("\n", 1)[-1].rsplit(chr(96) * 3, 1)[0].strip()
@@ -87,7 +85,6 @@ def parse_vision_translation(content: str, expected_ids: set[str]) -> dict[str, 
 
 
 def _parse_vision_payload(content: str, expected_ids: set[str]) -> tuple[dict[str, str], dict[str, dict]]:
-    """Parse translations and optional AI font choices without widening IDs."""
     source = str(content or "").strip()
     if source.startswith(chr(96) * 3):
         source = source.split("\n", 1)[-1].rsplit(chr(96) * 3, 1)[0].strip()
@@ -109,8 +106,6 @@ def _parse_vision_payload(content: str, expected_ids: set[str]) -> tuple[dict[st
 
 
 class VisionPageTranslator:
-    """Use the existing visual-QC image encoding and provider authentication."""
-
     def __init__(self, provider: AIProvider, model: str):
         if not provider.supports_visual_qc:
             raise ValueError(f"{provider.label} cannot receive image inputs")

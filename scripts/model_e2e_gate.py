@@ -148,9 +148,9 @@ def _box_from_record(record: dict):
 
 
 def _authority_mask(image: np.ndarray, records: list[dict], inpainter) -> np.ndarray:
-    """Use maximum configured cleanup authority for conservative replay validation."""
     from app.detector.bubble_detector import BubbleBox
     from app.detector.mask_builder import build_mask
+    from app.inpaint.clustering import cluster_boxes, compute_crop_region
 
     h, w = image.shape[:2]
     effective = [
@@ -162,12 +162,12 @@ def _authority_mask(image: np.ndarray, records: list[dict], inpainter) -> np.nda
         and (record.get("safe_to_inpaint") or record.get("geometry_overridden"))
     ]
     full_mask = np.zeros((h, w), dtype=np.uint8)
-    for cluster in inpainter._cluster_boxes(effective):
+    for cluster in cluster_boxes(effective):
         x1 = min(box.x1 for box in cluster)
         y1 = min(box.y1 for box in cluster)
         x2 = max(box.x2 for box in cluster)
         y2 = max(box.y2 for box in cluster)
-        cx1, cy1, cx2, cy2 = inpainter._compute_crop_region(x1, y1, x2, y2, w, h)
+        cx1, cy1, cx2, cy2 = compute_crop_region(x1, y1, x2, y2, w, h)
         local_boxes = []
         for box in cluster:
             local = BubbleBox(

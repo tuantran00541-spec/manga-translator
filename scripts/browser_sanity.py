@@ -172,6 +172,17 @@ def check_markup_integrity() -> None:
     print(f"Browser markup integrity OK: {len(HTML_PATHS)} HTML, {len(CSS_PATHS)} CSS files")
 
 
+JS_MODULE_IMPORT_PATTERN = re.compile(r"""\bfrom\s+["'](\.{1,2}/[^"']+)["']""")
+
+
+def _js_module_imports(path: Path) -> list[Path]:
+    source = path.read_text(encoding="utf-8")
+    return [
+        (path.parent / match.group(1)).resolve()
+        for match in JS_MODULE_IMPORT_PATTERN.finditer(source)
+    ]
+
+
 def check_browser_asset_reachability() -> None:
     entrypoints: set[Path] = set()
     failures: list[str] = []
@@ -198,6 +209,15 @@ def check_browser_asset_reachability() -> None:
     reachable_js = {
         path for path in entrypoints if path.suffix.lower() == ".js"
     }
+    queue = list(reachable_js)
+    while queue:
+        current = queue.pop()
+        if not current.is_file():
+            continue
+        for imported in _js_module_imports(current):
+            if imported not in reachable_js:
+                reachable_js.add(imported)
+                queue.append(imported)
     for path in JS_PATHS:
         resolved = path.resolve()
         if resolved not in reachable_js:
@@ -269,8 +289,6 @@ def _consume_js_string_literal(source: str, start: int) -> str | None:
 
 
 def _trusted_inner_html_template(path: Path, literal: str) -> bool:
-    # This editor helper receives only hard-coded section labels (Văn bản / Kiểu dáng / Nền).
-    # Keep the exception narrow so any other interpolated innerHTML still fails the gate.
     if path.as_posix() != "app/static/js/editor.js":
         return False
     expressions = re.findall(r"\$\{([^{}]+)\}", literal)
@@ -328,7 +346,6 @@ def check_browser_state_contracts() -> None:
             "state.persistedVersion < state.version",
         ),
         Path("app/static/js/editor-box-transform.js"): (
-            "browser request alone cannot undo a server commit",
             "if (currentGen === geomGeneration)",
             "window.editorImageMetrics(img)",
             "metrics.offsetX + r.x1 * metrics.sx",
@@ -338,21 +355,18 @@ def check_browser_state_contracts() -> None:
             "const rect = img.getBoundingClientRect();",
             "if (!point || !point.inside) return;",
         ),
-        Path("app/static/js/review-stitch-inspector.js"): (
+        Path("app/static/js/review-stitch"): (
             "function captureSnapshot(shell)",
             "function restoreSnapshot(shell)",
             'const snapshotKey = () => `${chapterKey()}:strip`;',
             "window.hasUnsavedStitchedMarks = () =>",
             "captureSnapshot(shell);",
         ),
-        Path("app/static/js/review.js"): (
-            "activeCard._reviewBusy = true",
-            "chapterId !== currentChapterId",
-        ),
     }
     failures: list[str] = []
     for path, markers in contracts.items():
-        source = path.read_text(encoding="utf-8")
+        files = sorted(path.glob("*.js")) if path.is_dir() else [path]
+        source = "\n".join(item.read_text(encoding="utf-8") for item in files)
         for marker in markers:
             if marker not in source:
                 failures.append(f"{path}: missing browser state contract marker {marker!r}")

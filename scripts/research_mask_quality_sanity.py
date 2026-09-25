@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Dependency-light regression checks for the research mask truth-coverage gate."""
 from __future__ import annotations
 
 import argparse
@@ -18,9 +17,6 @@ SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
-# This sanity exercises pure mask math only. Keep it dependency-light instead
-# of requiring the full ONNX Runtime stack just because detector modules import
-# the shared session helper at module load time.
 if "onnxruntime" not in sys.modules:
     sys.modules["onnxruntime"] = types.ModuleType("onnxruntime")
 

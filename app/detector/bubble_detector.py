@@ -11,28 +11,20 @@ from app.model_contracts import validate_detector_session
 from app.parameters import (
     BUBBLE_IOU_THRESHOLD,
     DETECTOR_CONFIDENCE_MAX,
+    DETECTOR_FINAL_NMS_IOU,
     DETECTOR_INPUT_SIZE as INPUT_SIZE,
     DETECTOR_LETTERBOX_VALUE,
     DETECTOR_MASK_HYSTERESIS_LOW_THRESHOLD,
     DETECTOR_MASK_HYSTERESIS_MIN_CORE_PIXELS,
     DETECTOR_MASK_THRESHOLD,
-    DETECTOR_MAX_ASPECT_RATIO as MAX_ASPECT_RATIO,
-    DETECTOR_MAX_BOX_AREA_RATIO as MAX_BOX_AREA_RATIO,
-    DETECTOR_MAX_BOX_WIDTH_RATIO as MAX_BOX_WIDTH_RATIO,
     DETECTOR_MIN_BOX_SIDE,
-    DETECTOR_TALL_IMAGE_FACTOR,
+    DETECTOR_NMS_SCORE_FLOOR,
     DETECTOR_TEXT_MASK_DECODE_PAD,
-    DETECTOR_TTA_ENABLED as ENABLE_TTA,
-    DETECTOR_TTA_MIN_SIDE,
-    DETECTOR_TTA_SMALL_SCALE,
-    DETECTOR_WINDOW_OVERLAP as SLICE_OVERLAP,
 )
 
 
 @dataclass(frozen=True)
 class LetterboxTransform:
-    """Exact source-to-model transform for half-open pixel boxes [x1,y1,x2,y2)."""
-
     src_w: int
     src_h: int
     input_w: int
@@ -136,8 +128,6 @@ class BubbleBox:
     needs_review: bool = False
     source_role: str = "unknown"
     deferred_reason: str | None = None
-    # Non-destructive residue verification may inspect a review-only detector
-    # region even when that region has no erase-authority mask.
     verify_region_only: bool = False
 
     @property
@@ -157,7 +147,6 @@ class YoloDetector:
         self,
         model_path,
         conf_threshold: float,
-        use_tta: bool | None = None,
         *,
         model_role: str,
     ):
@@ -172,7 +161,6 @@ class YoloDetector:
         )
         self.input_name = self.contract.input_name
         self.conf_threshold = conf_threshold
-        self.use_tta = ENABLE_TTA if use_tta is None else use_tta
 
     def _class_name(self, class_id: int, num_classes: int) -> str:
         if num_classes != len(self.contract.class_names):
@@ -204,91 +192,6 @@ class YoloDetector:
             source_role=self.model_role,
         )
 
-    def detect(self, image: np.ndarray) -> list[BubbleBox]:
-        h, w = image.shape[:2]
-        if h <= INPUT_SIZE * DETECTOR_TALL_IMAGE_FACTOR:
-            boxes = self._detect_single(image, 0, 0)
-        else:
-            all_boxes = []
-            step = INPUT_SIZE - SLICE_OVERLAP
-            y = 0
-            while y < h:
-                slice_h = min(INPUT_SIZE, h - y)
-                slice_img = image[y:y + slice_h, :]
-                boxes = self._detect_single(slice_img, 0, y)
-                all_boxes.extend(boxes)
-                if y + slice_h >= h:
-                    break
-                y += step
-
-            if self.model_role == "text_segmenter":
-                all_boxes.extend(self._detect_single_plain(image, 0, 0))
-
-            boxes = self._nms_boxes(all_boxes)
-
-        semantic_boxes = [self._with_semantics(b) for b in boxes]
-        return self._filter_invalid(semantic_boxes, w, h)
-
-    @staticmethod
-    def _filter_invalid(
-        boxes: list[BubbleBox], img_w: int, img_h: int
-    ) -> list[BubbleBox]:
-        """Retain oversized/aspect outliers as review evidence instead of dropping them.
-
-        Postprocess already rejects non-positive boxes before this point. Width,
-        page-area and aspect limits are bbox heuristics, not proof that text-mask
-        evidence is unsafe. A verified text-segmenter mask is already stroke-level
-        destructive authority, so bbox geometry must not revoke that authority.
-        Geometry outliers without verified mask authority remain review-only.
-        """
-        result = []
-        page_area = max(1, img_w * img_h)
-        for b in boxes:
-            box_w = b.x2 - b.x1
-            box_h = b.y2 - b.y1
-            if box_w <= 0 or box_h <= 0:
-                continue
-            reasons: list[str] = []
-            if box_w > img_w * MAX_BOX_WIDTH_RATIO:
-                reasons.append("box_width_limit")
-            if (box_w * box_h) > page_area * MAX_BOX_AREA_RATIO:
-                reasons.append("box_area_limit")
-            aspect = box_w / box_h
-            if aspect > MAX_ASPECT_RATIO or aspect < 1 / MAX_ASPECT_RATIO:
-                reasons.append("box_aspect_limit")
-            if reasons and (
-                b.source_role == "text_segmenter"
-                and b.safe_to_inpaint
-                and b.verified_mask
-            ):
-                # The bbox may span the page, while the actual write authority is
-                # still only the verified stroke mask. Do not turn a safe mask
-                # into a silent CLEAN miss merely because its envelope is wide.
-                result.append(b)
-                continue
-            if reasons:
-                result.append(
-                    replace(
-                        b,
-                        safe_to_inpaint=False,
-                        ocr_eligible=bool(
-                            b.ocr_eligible
-                            or b.source_role == "text_segmenter"
-                            or b.semantic_type == "free_text"
-                        ),
-                        needs_review=True,
-                        deferred_reason="|".join(reasons),
-                    )
-                )
-            else:
-                result.append(b)
-        return result
-
-    def _detect_single(self, image: np.ndarray, offset_x: int, offset_y: int) -> list[BubbleBox]:
-        if self.use_tta:
-            return self._detect_single_tta(image, offset_x, offset_y)
-        return self._detect_single_plain(image, offset_x, offset_y)
-
     def _detect_single_plain(
         self,
         image: np.ndarray,
@@ -302,65 +205,6 @@ class YoloDetector:
             return []
         outputs = self.session.run(None, {self.input_name: blob})
         return self._postprocess(outputs, transform)
-
-    def _detect_single_tta(self, image: np.ndarray, offset_x: int, offset_y: int) -> list[BubbleBox]:
-        h, w = image.shape[:2]
-        if h <= 0 or w <= 0:
-            return []
-
-        all_boxes = []
-        all_boxes.extend(self._detect_single_plain(image, offset_x, offset_y))
-
-        flipped = cv2.flip(image, 1)
-        flipped_boxes = self._detect_single_plain(flipped, 0, 0)
-        for b in flipped_boxes:
-            nx1 = max(0, min(w, w - b.x2))
-            nx2 = max(0, min(w, w - b.x1))
-            ny1 = max(0, min(h, b.y1))
-            ny2 = max(0, min(h, b.y2))
-            if nx2 > nx1 and ny2 > ny1:
-                mask = cv2.flip(b.mask, 1) if b.mask is not None else None
-                all_boxes.append(
-                    replace(
-                        b,
-                        x1=nx1 + offset_x,
-                        y1=ny1 + offset_y,
-                        x2=nx2 + offset_x,
-                        y2=ny2 + offset_y,
-                        mask=mask,
-                    )
-                )
-
-        small_scale = DETECTOR_TTA_SMALL_SCALE
-        sh, sw = int(round(h * small_scale)), int(round(w * small_scale))
-        if sh > DETECTOR_TTA_MIN_SIDE and sw > DETECTOR_TTA_MIN_SIDE:
-            scale_x = sw / w
-            scale_y = sh / h
-            small = cv2.resize(image, (sw, sh))
-            small_boxes = self._detect_single_plain(small, 0, 0)
-            for b in small_boxes:
-                nx1 = max(0, min(w, int(round(b.x1 / scale_x))))
-                ny1 = max(0, min(h, int(round(b.y1 / scale_y))))
-                nx2 = max(0, min(w, int(round(b.x2 / scale_x))))
-                ny2 = max(0, min(h, int(round(b.y2 / scale_y))))
-                nw = nx2 - nx1
-                nh = ny2 - ny1
-                if nw > 0 and nh > 0:
-                    mask = None
-                    if b.mask is not None:
-                        mask = cv2.resize(b.mask, (nw, nh), interpolation=cv2.INTER_NEAREST)
-                    all_boxes.append(
-                        replace(
-                            b,
-                            x1=nx1 + offset_x,
-                            y1=ny1 + offset_y,
-                            x2=nx2 + offset_x,
-                            y2=ny2 + offset_y,
-                            mask=mask,
-                        )
-                    )
-
-        return self._nms_boxes(all_boxes)
 
     def _preprocess(
         self,
@@ -457,10 +301,6 @@ class YoloDetector:
             geometry = None
             mask_coeffs = None
             if has_proto and num_mask_coeffs > 0:
-                # Prototype masks are otherwise cropped exactly at the detector
-                # box.  A small text-only decode pad retains outlines, shadows
-                # and glow that the box regressor legitimately clips, without
-                # widening the final mask by global morphology.
                 if self.model_role == "text_segmenter":
                     pad = DETECTOR_TEXT_MASK_DECODE_PAD
                     source_box = (
@@ -511,8 +351,6 @@ class YoloDetector:
             input_w = geometry.transform.input_w
             input_h = geometry.transform.input_h
         else:
-            # Legacy seven-field test/plugin candidates remain supported, but
-            # production candidates always carry the explicit transform above.
             canvas_box = geometry
             input_w = INPUT_SIZE
             input_h = INPUT_SIZE
@@ -539,7 +377,6 @@ class YoloDetector:
 
     @staticmethod
     def _decode_text_mask_hysteresis(probabilities: np.ndarray) -> np.ndarray:
-        """ Keep only low-confidence support connected to a confident core. """
         if probabilities.size == 0:
             return np.zeros(probabilities.shape, dtype=np.uint8)
         core = probabilities >= DETECTOR_MASK_THRESHOLD
@@ -560,7 +397,6 @@ class YoloDetector:
 
     @staticmethod
     def _candidate_fields(candidate: tuple) -> tuple[float, int, int, object, object]:
-        """ Normalize current and v0.1 candidate tuple layouts. """
         if len(candidate) >= 9 and isinstance(candidate[5], (int, np.integer)):
             return float(candidate[4]), int(candidate[5]), int(candidate[6]), candidate[7], candidate[8]
         if len(candidate) >= 7:
@@ -582,7 +418,6 @@ class YoloDetector:
 
     @staticmethod
     def _merge_text_mask_evidence(boxes: list[BubbleBox]) -> BubbleBox:
-        """ Only verified text-segmenter masks may merge; preserve all mask evidence. """
         base = max(boxes, key=lambda box: float(box.confidence))
         evidence = [box for box in boxes if box.verified_mask]
         if not evidence:
@@ -689,7 +524,6 @@ class YoloDetector:
         self,
         subset: list[tuple],
     ) -> tuple[list[int], dict[int, list[int]]]:
-        """Plan class-local suppression before allocating any mask pixels."""
         if not subset:
             return [], {}
         rects = [
@@ -764,7 +598,6 @@ class YoloDetector:
         *,
         batch_size: int = 8,
     ) -> dict[int, np.ndarray | None]:
-        """Batch coefficient products inside the union prototype ROI only."""
         decoded: dict[int, np.ndarray | None] = {index: None for index in member_indices}
         if prototypes is None or prototypes.ndim != 3:
             return decoded
@@ -884,22 +717,24 @@ class YoloDetector:
         result.sort(key=lambda box: box.confidence, reverse=True)
         return result
 
-    def _nms_boxes(self, boxes: list[BubbleBox]) -> list[BubbleBox]:
-        if not boxes:
-            return []
-        result: list[BubbleBox] = []
-        by_class: dict[tuple[str, str, int], list[BubbleBox]] = {}
-        for b in boxes:
-            by_class.setdefault(
-                (b.source_role, b.source_model, b.class_id), []
-            ).append(b)
-        for members in by_class.values():
-            result.extend(
-                self._nms_box_group(
-                    members,
-                    score_threshold=self.conf_threshold,
-                    iou_threshold=BUBBLE_IOU_THRESHOLD,
-                )
+
+
+def apply_final_nms(
+    boxes: list[BubbleBox],
+    iou_threshold: float = DETECTOR_FINAL_NMS_IOU,
+) -> list[BubbleBox]:
+    if not boxes:
+        return []
+    result: list[BubbleBox] = []
+    groups: dict[tuple[str, str], list[BubbleBox]] = {}
+    for b in boxes:
+        groups.setdefault((b.source_model, b.semantic_type), []).append(b)
+    for members in groups.values():
+        result.extend(
+            YoloDetector._nms_box_group(
+                members,
+                score_threshold=DETECTOR_NMS_SCORE_FLOOR,
+                iou_threshold=iou_threshold,
             )
-        result.sort(key=lambda b: b.confidence, reverse=True)
-        return result
+        )
+    return sorted(result, key=lambda b: b.confidence, reverse=True)

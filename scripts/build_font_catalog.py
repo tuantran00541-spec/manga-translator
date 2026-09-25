@@ -1,5 +1,3 @@
-""" Validate bundled fonts and regenerate the catalog metadata. """
-
 from __future__ import annotations
 
 import argparse
@@ -27,7 +25,7 @@ def validate(root: Path, catalog_path: Path) -> list[str]:
             continue
         try:
             TTFont(path, lazy=True).close()
-        except Exception as exc:  # pragma: no cover - diagnostic CLI path
+        except Exception as exc:  # pragma: no cover
             errors.append(f"invalid font {path}: {exc}")
         license_path = root / record["license_file"]
         if not license_path.is_file():

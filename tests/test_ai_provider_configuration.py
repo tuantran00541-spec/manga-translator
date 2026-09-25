@@ -33,8 +33,6 @@ def test_requests_validate_provider_id_shape_and_model():
     )
     assert custom.provider == "custom-lab"
 
-    # Capability/configuration checks happen server-side after a dynamic provider
-    # ID is resolved from the secure registry.
     assert TranslateChapterRequest(
         chapter_id="chapter", provider="gemini"
     ).provider == "gemini"
@@ -127,6 +125,41 @@ def test_compatible_translation_uses_selected_endpoint(monkeypatch):
     assert result.translations == {"box-1": "Xin chào"}
     assert result.estimated_cost_usd == 0.0
 
+
+
+def test_compatible_translation_keeps_font_choices_for_requested_ids(monkeypatch):
+    content = (
+        '{"translations":{"box-1":"Xin chào"},'
+        '"font_choices":{"box-1":{"font_id":"comic","font_mode":"AI"},'
+        '"stray":{"font_id":"other"}}}'
+    )
+
+    class Response:
+        status_code = 200
+
+        @staticmethod
+        def raise_for_status():
+            return None
+
+        @staticmethod
+        def json():
+            return {"choices": [{"message": {"content": content}}], "usage": {}}
+
+    monkeypatch.setattr("app.translation.deepseek.requests.post", lambda url, **kwargs: Response())
+    translator = DeepSeekTranslator(
+        "vendor/model-a",
+        api_url="https://api.openrouter.example/v1/chat/completions",
+        provider_id="openrouter",
+        provider_label="OpenRouter",
+    )
+    result = translator.translate(
+        [{"id": "box-1", "page_index": 0, "text": "Hello"}],
+        api_key="secret",
+        source_lang="en",
+        target_lang="vi",
+        budget_usd=0.001,
+    )
+    assert result.font_choices == {"box-1": {"font_id": "comic", "font_mode": "ai"}}
 
 def test_custom_provider_is_openai_compatible_and_https_only():
     provider = resolve_provider(

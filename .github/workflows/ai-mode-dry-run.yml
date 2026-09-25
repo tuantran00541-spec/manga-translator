@@ -93,7 +93,7 @@ jobs:
           python scripts/ai_mode_dry_run.py "$url" --out audit-results/ai-mode --workers 2
 
       - name: Commit evidence to the branch
-        if: always()
+        if: always() && github.ref_name != github.event.repository.default_branch
         run: |
           test -d audit-results || exit 0
           git config user.name 'github-actions[bot]'

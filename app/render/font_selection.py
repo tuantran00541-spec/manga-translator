@@ -1,5 +1,3 @@
-"""Resolve font ownership and precedence for a render snapshot."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -29,14 +27,6 @@ def resolve_object_font(
     ai_font_id: str | None = None,
     ai_font_mode: str | None = None,
 ) -> tuple[str, str, dict[str, Any]]:
-    """Return ``(font_id, selection_mode, metadata)`` with safe precedence.
-
-    Precedence: an explicit user choice, then a validated AI choice, then the
-    catalog default. ``auto`` means "let the AI pick"; without an AI choice it
-    renders with ``default``. A legacy/default style is considered implicit
-    until the object explicitly carries ``font_selection_mode=user``.
-    """
-
     style_font = _style_font(obj)
     selection_mode = str(obj.get("font_selection_mode") or "").lower()
 
@@ -59,9 +49,6 @@ def resolve_object_font(
         return "default", "default", {"reason": "auto_default"}
 
     if _valid_font_id(style_font) and style_font.lower() != "default":
-        # A pre-existing non-default ID without an ownership marker is kept for
-        # backwards compatibility, but the metadata makes the implicit origin
-        # visible to API clients.
         return style_font, "legacy", {"reason": "legacy_style"}
     return "default", "default", {"reason": "default_fallback"}
 

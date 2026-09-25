@@ -11,8 +11,6 @@ from app.parameters import (
     MASK_EXPAND,
 )
 
-# MSER recovery remains review evidence until independent text evidence or
-# an explicit user action authorizes cleanup. It is intentionally absent here.
 AUTO_DESTRUCTIVE_MASK_SOURCES = frozenset(
     {"text_segmenter", "bubble_flat_contrast"}
 )
@@ -57,7 +55,6 @@ def adaptive_dilate_mask(
 
 
 def _rectangle_fallback_allowed(box: BubbleBox) -> bool:
-    """ Allow destructive rectangle masks only for explicit/manual intent. """
     explicit = getattr(box, "allow_rectangle_fallback", None)
     if explicit is not None:
         return bool(explicit)
@@ -68,7 +65,6 @@ def _rectangle_fallback_allowed(box: BubbleBox) -> bool:
 
 
 def is_destructive_box_authorized(box: BubbleBox) -> bool:
-    """ Return whether a box may contribute pixels to automatic cleanup. """
     return bool(
         getattr(box, "safe_to_inpaint", False)
         or _rectangle_fallback_allowed(box)

@@ -29,8 +29,6 @@ def _resolve_provider_id(provider_id: str | None, chat_url: str | None) -> str:
 
 
 class OpenAICompatibleVisualQC:
-    """ Single-page visual QC for OpenAI-compatible providers. """
-
     def __init__(
         self,
         *,

@@ -769,7 +769,6 @@ class PipelineEditingMixin:
         apply_manual_mask: bool = True,
         preserve_regions: list[dict] | None = None,
     ) -> str:
-        """Repaint using masks stored inline or in managed PNG sidecars."""
         boxes_objects = []
         for box in boxes:
             if box.get("removed"):
@@ -785,8 +784,6 @@ class PipelineEditingMixin:
             safe_to_inpaint = bool(box.get("safe_to_inpaint"))
             overlap_context_only = bool(box.get("overlap_context_only"))
 
-            # Persisted review-only detector masks are evidence, not erase
-            # authority. Preserve the same overlap rule as initial processing.
             if overlap_context_only and not geometry_overridden:
                 continue
             if not (safe_to_inpaint or geometry_overridden or explicit_manual):
@@ -851,9 +848,6 @@ class PipelineEditingMixin:
             if manual_lama_mask_posix
             else self._manual_mask_path(processed_dir, img_path, force_lama=True)
         )
-        # Keep repaint authority attached to the persisted mask. Standard marks
-        # retain Smart Fill eligibility; explicit LaMa marks always run LaMa,
-        # including after box edits and later page reprocessing.
         mask_passes = (
             (manual_mask_path, False),
             (manual_lama_mask_path, True),

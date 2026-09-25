@@ -22,7 +22,6 @@ CHAPTER_ID = "c0ffee12"
 
 
 def test_processed_chapter_closes_translate_render_export_loop():
-    """Exercise the real persisted product path while stubbing only the network call."""
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
         raw = root / "raw"

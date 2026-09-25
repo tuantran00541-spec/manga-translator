@@ -1,5 +1,3 @@
-""" Catalog and safe path resolution for bundled comic fonts. """
-
 from __future__ import annotations
 
 import json
@@ -14,7 +12,7 @@ __all__ = ["FontCatalog", "FontNotFoundError", "FontRecord", "clear_font_catalog
 
 
 class FontNotFoundError(ValueError):
-    """Raised when a user or AI requests an unknown font identifier."""
+    pass
 
 
 @dataclass(frozen=True)

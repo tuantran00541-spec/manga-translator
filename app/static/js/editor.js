@@ -5,6 +5,7 @@ const editorState = {
   lastChapterId: null,
 };
 window.editorState = editorState;
+let editorOverlayResizeObserver = null;
 
 const DEFAULT_TEXT_OBJECT_STYLE = {
   color: "auto",
@@ -27,12 +28,6 @@ function findTextObject(pageIndex, id) {
   return list.find((o) => o && o.id === id) || null;
 }
 window.findTextObject = findTextObject;
-
-function currentTextObject() {
-  if (!editorState.selectedTextObjectId) return null;
-  return findTextObject(editorState.activePageIndex, editorState.selectedTextObjectId);
-}
-window.currentTextObject = currentTextObject;
 
 async function apiTextObject(action, payload) {
   const resp = await fetch(`/api/text_object/${action}`, {
@@ -234,7 +229,6 @@ async function addTextObjectBox() {
   const y1 = Math.round((H - bh) / 2);
   await createTextObject(pageIndex, "rectangle", { x1, y1, x2: x1 + bw, y2: y1 + bh });
 }
-window.addTextObjectBox = addTextObjectBox;
 
 async function associateTextObjectOcr(pageIndex, id) {
   const chapterId = currentChapterId;
@@ -300,8 +294,8 @@ function editorImageMetrics(img) {
 window.editorImageMetrics = editorImageMetrics;
 
 function renderTextObjectOverlays(pageIndex, page) {
-  window._editorOverlayResizeObserver?.disconnect();
-  window._editorOverlayResizeObserver = null;
+  editorOverlayResizeObserver?.disconnect();
+  editorOverlayResizeObserver = null;
   const wrapper = document.querySelector(".translation-canvas-host .page-block-wrapper");
   if (!wrapper) return;
   const imgWrap = wrapper.querySelector(".page-image-wrap");
@@ -330,10 +324,6 @@ function renderTextObjectOverlays(pageIndex, page) {
       });
       imgWrap.appendChild(overlay);
     });
-    // Transforms are installed only for the overlays we just created.  The
-    // previous runtime scanned the entire editor subtree through a permanent
-    // MutationObserver after every panel update, which made normal clicks
-    // progressively more expensive on long chapters.
     window.installEditorBoxTransforms?.(imgWrap);
   };
 
@@ -345,7 +335,7 @@ function renderTextObjectOverlays(pageIndex, page) {
       else render();
     });
     observer.observe(img);
-    window._editorOverlayResizeObserver = observer;
+    editorOverlayResizeObserver = observer;
   }
 }
 
@@ -483,9 +473,6 @@ function switchEditorPage(newIndex) {
   const target = Math.max(0, Math.min(Number(newIndex) || 0, pages.length - 1));
   if (target === editorState.activePageIndex) return true;
 
-  // Never hold a page switch hostage to network persistence.  Drafts are
-  // retained in the in-memory dirty maps, so they can save in the background
-  // while the next image becomes interactive immediately.
   void flushAllPendingPersists().catch((err) => {
     console.warn("Không thể lưu bản nháp trước khi chuyển trang:", err);
   });
@@ -506,8 +493,6 @@ function showRenderResult(pageIndex, outputPath, renderRevision = null) {
     resultBox.className = "render-result";
     panelHost.appendChild(resultBox);
   }
-  // Key the preview URL on the committed render revision when the server
-  // reported one; only fall back to a clock bust when it is unavailable.
   const cacheBust = renderRevision === null || renderRevision === undefined
     ? "?t=" + Date.now()
     : `?r=${encodeURIComponent(renderRevision)}`;
@@ -532,10 +517,6 @@ function showRenderResult(pageIndex, outputPath, renderRevision = null) {
 
 const _pendingAutoSync = new Map();
 
-// Guards the one-way auto-sync from renderEditor against re-entry: while a sync is
-// in flight for a page we must not start another from a nested renderEditor call,
-// or a fast local server turns that into an unbounded rebuild cascade that blocks the
-// main thread and makes the tab report "not responding".
 let _autoSyncingPageIndex = null;
 
 function _sourceBoxSet(obj) {
@@ -552,8 +533,6 @@ function _autoObjectNeedsSync(obj, box) {
   const boxText = String(box?.ocr_text || "");
   const objectText = String(obj.ocr_text || "");
   const previousAutoText = String(obj.auto_ocr_text || "");
-  // Match the backend ownership rule exactly: an empty value can be a deliberate
-  // user edit, so only the last machine-owned value may be advanced automatically.
   const machineTextCanMove = objectText === previousAutoText;
   if (machineTextCanMove && boxText !== objectText) return true;
 
@@ -571,8 +550,6 @@ function _isAutoSyncEligibleBox(box) {
 
 function _pageNeedsAutoSync(page) {
   if (!page || page.skipped) return false;
-  // Keep this eligibility predicate aligned with ensure_page_text_objects().
-  // A box the server intentionally ignores must never request another ensure.
   const activeBoxes = (page.boxes || []).filter(_isAutoSyncEligibleBox);
   if (!activeBoxes.length) return false;
   const objects = page.text_objects || [];
@@ -759,8 +736,6 @@ function buildChapterTranslateControls() {
         }
         if (chapterId !== window.currentChapterId) return;
         window.currentManifest = data;
-        // The backend persists a rendered artifact, but manifests carry a render
-        // state rather than an image URL. Resolve that URL for the stitched viewer.
         (data.pages || []).forEach((page, index) => {
           if (page?.rendered) {
             page._reviewRenderedUrl = "/api/image/" + encodeURIComponent(chapterId)
@@ -867,13 +842,8 @@ window.buildChapterExportButton = buildChapterExportButton;
 function renderEditor() {
   const container = document.getElementById("page-view");
   if (!container) return;
-  // Rendering must never discard debounced user edits.  Persistence is flushed
-  // explicitly on navigation and actions instead of being reset per frame.
   if (!currentManifest || !currentManifest.pages || currentManifest.pages.length === 0) return;
 
-  // The editor now owns its stage lifecycle.  It is deliberately not wrapped
-  // by ui-shell, so a render has exactly one owner for visibility and panel
-  // setup rather than a chain of render wrappers.
   window.setAppStage?.("editor");
 
   if (currentChapterId && editorState.lastChapterId !== currentChapterId) {
@@ -898,20 +868,13 @@ function renderEditor() {
     ensureAutoTextObjects(pageIndex)
       .then((manifest) => {
         if (Number(editorState.activePageIndex || 0) !== pageIndex) {
-          // User navigated away while the sync was in flight; let the next
-          // renderEditor for the new page pick up its own auto-sync.
           _autoSyncingPageIndex = null;
           return;
         }
-        // Do not rebuild solely because ensure answered successfully.  If the
-        // backend made no change, rendering again would repeat the same request
-        // forever for an ineligible or deliberately user-edited object.
         if (!manifest || !_autoSyncChangedPage(manifest, pageIndex)) {
           _autoSyncingPageIndex = null;
           return;
         }
-        // Let the current render finish before applying the one real manifest
-        // change returned by the server.
         queueMicrotask(() => {
           _autoSyncingPageIndex = null;
           renderEditor();
@@ -933,8 +896,8 @@ function renderEditor() {
     window._editorDrawCleanup();
     window._editorDrawCleanup = null;
   }
-  window._editorOverlayResizeObserver?.disconnect();
-  window._editorOverlayResizeObserver = null;
+  editorOverlayResizeObserver?.disconnect();
+  editorOverlayResizeObserver = null;
   container.innerHTML = "";
   container.className = "editor-mode";
 

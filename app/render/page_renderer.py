@@ -47,8 +47,6 @@ def _valid_region(region: object) -> bool:
 def _render_region_for_text_object(obj: dict) -> dict:
     region = obj.get("region") or {}
     ocr_region = obj.get("ocr_text_region")
-    # Machine-created objects use the OCR glyph bounds only while their
-    # geometry is still machine-owned. A user drag/resize immediately wins.
     if (
         obj.get("auto_generated")
         and region == obj.get("auto_geometry")

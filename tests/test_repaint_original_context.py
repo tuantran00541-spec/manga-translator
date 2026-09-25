@@ -14,18 +14,10 @@ class _FakeInpainter:
         self.manual_inputs: list[tuple[bool, np.ndarray, np.ndarray]] = []
 
     def inpaint(self, image, boxes, *, protected_regions=None):
-        # Deliberately ignore preserve regions here. The optimized repaint policy
-        # must hard-restore exact preserve pixels after every repaint pass.
         return np.full_like(image, 100)
 
     def inpaint_mask(self, image, mask, *, force_lama=False):
         raise AssertionError("optimized manual repaint must bypass dilating inpaint_mask")
-
-    @staticmethod
-    def _compute_manual_crop_region(x1, y1, x2, y2, w, h):
-        # Full-image crop makes it easy for the test to inspect the exact mask
-        # passed into the manual paint operation.
-        return (0, 0, w, h)
 
     def _smart_paint_region(
         self,
@@ -62,8 +54,6 @@ def test_lama_repaint_uses_exact_user_mask_without_growth(tmp_path: Path):
     user_mask_path = processed_dir / "manual_lama_mask_page.png"
     write_image(user_mask_path, user_mask)
 
-    # Even with detector evidence wider than the user region, exact repaint must
-    # never expand the model mask or output authority.
     boxes = [
         {
             "id": "segmenter_box",

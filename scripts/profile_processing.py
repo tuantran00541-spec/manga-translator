@@ -1,4 +1,3 @@
-""" Bounded real-image CPU profile of the production detector/inpaint path. """
 from __future__ import annotations
 
 import argparse
@@ -31,22 +30,12 @@ def write_json(path, value):
 
 
 def detector_phase_specs():
-    """Return profiler phase owners without importing model runtime at module load."""
-
     return (
-        ("CombinedTextDetector", "_grayscale_text_retry", "grayscale_retry"),
-        ("CombinedTextDetector", "_focused_text_retry", "mser_promotion"),
-        (
-            "FastResidueAdaptiveFocusCombinedTextDetector",
-            "verify_post_inpaint_residue",
-            "residue_verify",
-        ),
+        ("OneShotProductionDetector", "verify_post_inpaint_residue", "residue_verify"),
     )
 
 
 def summarize_detector_passes(events):
-    """Aggregate non-overlapping YOLO forward calls by phase and model."""
-
     def new_bucket():
         return {
             "calls": 0,
@@ -150,11 +139,7 @@ def instrument():
     import app.ort_utils as ort_utils
     import app.detector.bubble_detector as yolo
     import app.inpaint.lama_inpainter as lama
-    from app.detector.combined_detector import CombinedTextDetector
-    from app.detector.fast_residue_detector import (
-        FastResidueAdaptiveFocusCombinedTextDetector,
-    )
-    from app.detector.recovery import SecondaryTextRecovery
+    from app.one_shot_cleanup import OneShotProductionDetector
 
     timers = Timers()
     make_session = ort_utils.make_session
@@ -201,8 +186,6 @@ def instrument():
     yolo.YoloDetector._detect_single_plain = measured_forward
 
     class Session:
-        """Detector-only timing proxy; attribute access remains transparent."""
-
         def __init__(self, session, name):
             self.session, self.name = session, name
 
@@ -223,36 +206,32 @@ def instrument():
             session = make_session(path, **kwargs)
         return Session(session, Path(path).name)
 
-    # Only detector sessions are wrapped. Inpainter keeps the exact production
-    # session object so fixed-session serialization/recycling decisions match an
-    # unprofiled run.
     yolo.make_session = measured_session
-    for method in ("detect", "_preprocess", "_postprocess", "_decode_mask", "_nms", "_nms_boxes"):
+    for method in ("_preprocess", "_postprocess", "_decode_mask", "_nms"):
         timers.wrap(yolo.YoloDetector, method, "yolo." + method)
-    for method in ("detect", "_flat_bubble_text_fallback", "_merge_masks",
-                   "_refine_and_split_tall_boxes", "_apply_final_nms"):
-        timers.wrap(CombinedTextDetector, method, "combined." + method)
-    phase_owners = {
-        "CombinedTextDetector": CombinedTextDetector,
-        "FastResidueAdaptiveFocusCombinedTextDetector": (
-            FastResidueAdaptiveFocusCombinedTextDetector
-        ),
-    }
+    timers.wrap(OneShotProductionDetector, "detect", "detector.detect")
+    timers.wrap(OneShotProductionDetector, "verify_post_inpaint_residue", "detector.residue_verify")
+    phase_owners = {"OneShotProductionDetector": OneShotProductionDetector}
     for owner_name, method, phase_name in detector_phase_specs():
         wrap_phase(phase_owners[owner_name], method, phase_name)
-    timers.wrap(SecondaryTextRecovery, "detect", "recovery.detect")
-    for method in ("_cluster_boxes", "_smart_fill_color", "_smart_paint_region",
+    for method in ("_smart_fill_color", "_smart_paint_region",
                    "_lama_fill_single_dynamic", "_lama_fill_single", "_lama_fill_tiled",
                    "_run_lama"):
         if method in vars(lama.Inpainter):
             timers.wrap(lama.Inpainter, method, "inpaint." + method)
-    original_mask = lama.build_mask
 
-    def measured_mask(*args, **kwargs):
-        with timers.span("mask.build"):
-            return original_mask(*args, **kwargs)
+    def measure_function(name, span_name):
+        original = getattr(lama, name)
 
-    lama.build_mask = measured_mask
+        @functools.wraps(original)
+        def measured(*args, **kwargs):
+            with timers.span(span_name):
+                return original(*args, **kwargs)
+
+        setattr(lama, name, measured)
+
+    measure_function("cluster_boxes", "inpaint.cluster_boxes")
+    measure_function("build_mask", "mask.build")
     return timers
 
 
@@ -263,7 +242,6 @@ def prepare(args):
     urls = ASURA_STATIC_ADAPTER.extract_image_urls(args.chapter_url)
     if len(urls) < 4:
         raise RuntimeError("Expected several original chapter images; refusing a blank benchmark")
-    # Distributed originals, excluding the first/last cover or credit image.
     chosen = sorted(set([1, len(urls) // 2, len(urls) - 2]))
     selected = [urls[index] for index in chosen]
     paths = ASURA_STATIC_ADAPTER.download_urls(selected, args.raw_dir, referer=args.chapter_url)
@@ -301,7 +279,7 @@ def run(args):
     from threadpoolctl import threadpool_info
     from app.manifest_utils import load_manifest_raw
     from app.ort_utils import _configured_intra_op_threads, _cpu_count
-    from app.parameters import parameter_snapshot
+    from scripts.parameter_report import parameter_snapshot
 
     timers = instrument()
     from app.processing_pipeline_factory import build_processing_pipeline
@@ -344,7 +322,6 @@ def run(args):
             manifest = pipeline._build_chapter_from_raw_paths(chapter_id, raw_paths, source_url=None, workers=args.workers)
             ingest_ms = (time.perf_counter() - started) * 1000
             count = len(manifest["pages"])
-            # Include adjacent slices, with coverage across the three originals.
             indices = sorted(set([min(1, count - 1), min(2, count - 1), count // 2, max(0, count - 2)]))
             timers.rows.clear()
             started = time.perf_counter()

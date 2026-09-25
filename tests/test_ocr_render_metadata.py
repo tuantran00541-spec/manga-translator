@@ -2,11 +2,8 @@ import numpy as np
 from PIL import Image
 
 from app.ocr.paddle_v6 import OCRReadResult, PaddleV6OCR
-from app.ocr.service import (
-    _ocr_text_region,
-    _sample_source_text_color,
-    _source_font_size,
-)
+from app.ocr.crop_geometry import ocr_text_region
+from app.ocr.visual_metadata import sample_source_text_color, source_font_size
 from app.render import page_renderer
 from app.schemas import RenderRequest
 from app.text_objects import ensure_page_text_objects
@@ -45,10 +42,10 @@ def test_ocr_visual_geometry_and_size_map_back_to_original_page_coordinates():
         font_size_hint=12,
     )
     box = {"x1": 10, "y1": 20, "x2": 110, "y2": 60}
-    region = _ocr_text_region((100, 160, 3), (10, 20, 110, 60), result, box)
+    region = ocr_text_region((100, 160, 3), (10, 20, 110, 60), result, box)
 
     assert region == {"x1": 30, "y1": 30, "x2": 90, "y2": 50}
-    assert _source_font_size((10, 20, 110, 60), result, region, 1) == 12
+    assert source_font_size((10, 20, 110, 60), result, region, 1) == 12
 
 
 def test_verified_text_mask_samples_source_text_color_from_original_pixels():
@@ -65,7 +62,7 @@ def test_verified_text_mask_samples_source_text_color_from_original_pixels():
         "mask": mask,
     }
 
-    assert _sample_source_text_color(
+    assert sample_source_text_color(
         image,
         box,
         {"x1": 18, "y1": 15, "x2": 42, "y2": 25},

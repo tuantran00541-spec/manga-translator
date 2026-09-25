@@ -114,7 +114,6 @@ def _find_object(page: dict, object_id: str) -> dict | None:
 
 
 def _apply_ai_font_choice(obj: dict, choice: dict | None) -> None:
-    """Persist a model font hint only after validating its catalog ID."""
     if not isinstance(choice, dict):
         return
     font_id = str(choice.get("font_id") or "").strip()
@@ -305,10 +304,7 @@ async def translate_chapter(req: TranslateChapterRequest) -> dict:
     return result
 
 
-
 class TranslateVisionPageRequest(TranslateChapterRequest):
-    """A single image-pair call, allowing the browser to resume long chapters."""
-
     page_index: int = Field(ge=0)
 
 
@@ -331,7 +327,6 @@ def _resolve_vision_provider(provider_id: str):
 
 
 def _vision_candidates(page: dict, *, force: bool) -> list[dict]:
-    """Geometry comes from saved objects, never a vision model proposal."""
     candidates: list[dict] = []
     seen: set[str] = set()
     for obj in page.get("text_objects") or []:
@@ -365,7 +360,6 @@ def _vision_candidates(page: dict, *, force: bool) -> list[dict]:
 
 @router.post("/page/vision")
 async def translate_page_with_images(req: TranslateVisionPageRequest) -> dict:
-    """ORIGINAL+CLEAN -> vision text-only output -> saved styling renderer."""
     validate_chapter_id(req.chapter_id)
     try:
         provider = _resolve_vision_provider(req.provider)

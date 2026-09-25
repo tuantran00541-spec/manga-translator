@@ -79,7 +79,6 @@ def _sync_ocr_metadata(obj: dict, box: dict) -> bool:
 
 
 def invalidate_stale_machine_translation(obj: dict, source_text: str) -> bool:
-    """ Clear only an untouched generated translation whose OCR source changed. """
     if not obj.get("translation_source") or "auto_translation" not in obj:
         return False
     translation_input = str(obj.get("translation_input_text") or "").strip()
@@ -110,10 +109,6 @@ def _sync_existing_auto_object(obj: dict, box: dict, region: dict) -> bool:
     box_text = str(box.get("ocr_text") or "")
     previous_auto_text = str(obj.get("auto_ocr_text") or "")
     current_text = str(obj.get("ocr_text") or "")
-    # Auto-generated objects follow machine OCR only while the displayed text
-    # still equals the last machine-owned value. This lets an empty OCR rerun
-    # clear stale text, while preserving explicit user edits including a manual
-    # clear to the empty string.
     follows_machine_text = current_text == previous_auto_text
     effective_source = box_text if follows_machine_text else current_text
     changed = invalidate_stale_machine_translation(obj, effective_source) or changed
@@ -132,7 +127,6 @@ def _sync_existing_auto_object(obj: dict, box: dict, region: dict) -> bool:
 
 
 def sync_existing_auto_text_object(page: dict, box: dict) -> bool:
-    """ Sync existing auto-generated text objects for one committed detector box. """
     box_id = str(box.get("id") or "")
     region = _region_from_box(box)
     if not box_id or region is None:
@@ -148,7 +142,6 @@ def sync_existing_auto_text_object(page: dict, box: dict) -> bool:
 
 
 def ensure_page_text_objects(page: dict) -> tuple[int, bool]:
-    """ Ensure detected text boxes have editable text objects without overwriting user work. """
     objects = page.setdefault("text_objects", [])
     if not isinstance(objects, list):
         objects = []

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Deterministic contract tests for Phase 7 profiler stage attribution."""
 from __future__ import annotations
 
 from profile_stage_breakdown import analyze_report, detector_breakdown, page_stage_breakdown
@@ -69,7 +68,6 @@ def main() -> int:
     check(nested["page_total_ms"] == 145.0, "nested page total was ignored")
     check(nested["orchestration_other_ms"] == 5.0, "nested residual attribution is wrong")
 
-    # Inclusive timer sums must remain a separately labelled diagnostic view.
     report = {
         "source_sha": "abc",
         "profile": "fixture",
@@ -97,7 +95,6 @@ def main() -> int:
         "inclusive timers lost anti-double-count semantics",
     )
 
-    # Malformed/overlapping metrics must never create negative residuals.
     pathological = detector_breakdown(
         {
             "detect_ms": 5.0,

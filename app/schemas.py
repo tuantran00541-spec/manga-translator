@@ -324,7 +324,6 @@ class SavePreserveRegionsRequest(BaseModel):
 
 
 class SaveExcludedRegionsRequest(BaseModel):
-    """Deprecated wire alias for pre-v4 clients."""
     chapter_id: str
     page_index: int = Field(ge=0)
     excluded_regions: list[RegionModel]
@@ -473,8 +472,6 @@ class UpdateTextObjectRequest(BaseModel):
 
 
 class BulkTextObjectUpdateItem(BaseModel):
-    """ One text-object patch inside a bulk save. """
-
     page_index: int = Field(ge=0)
     id: str
     shape: str | None = None

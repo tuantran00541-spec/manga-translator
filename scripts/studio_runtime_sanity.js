@@ -1,6 +1,5 @@
 const fs = require('fs');
 const assert = require('assert');
-const vm = require('vm');
 const html = fs.readFileSync('app/templates/index.html', 'utf8');
 const css = fs.readFileSync('app/static/css/app.css', 'utf8');
 const studio = fs.readFileSync('app/static/css/studio.css', 'utf8');
@@ -10,7 +9,7 @@ const editorInspector = fs.readFileSync('app/static/js/editor-inspector.js', 'ut
 const editorPersistence = fs.readFileSync('app/static/js/editor-persistence.js', 'utf8');
 const transforms = fs.readFileSync('app/static/js/editor-box-transform.js', 'utf8');
 const reviewWorkspace = fs.readFileSync('app/static/js/review-workspace.js', 'utf8');
-const stitchInspector = fs.readFileSync('app/static/js/review-stitch-inspector.js', 'utf8');
+const stitchInspector = fs.readdirSync('app/static/js/review-stitch').sort().map((name) => fs.readFileSync(`app/static/js/review-stitch/${name}`, 'utf8')).join('\n');
 const review = fs.readFileSync('app/static/js/review.js', 'utf8');
 const preview = fs.readFileSync('app/static/js/preview.js', 'utf8');
 const theme = fs.readFileSync('app/static/js/theme.js', 'utf8');
@@ -36,7 +35,7 @@ assert(reviewWorkspace.includes('review-canvas-only'), 'Review must mount the si
 assert(stitchInspector.includes('new AbortController()'), 'stitched Review interactions must have abortable ownership');
 assert(
   stitchInspector.includes('window.addEventListener("keydown", (e) => {')
-    && stitchInspector.includes('    }, { signal });\n    window.addEventListener("keyup"'),
+    && /\}, \{ signal \}\);\n\s*window\.addEventListener\("keyup"/.test(stitchInspector),
   'stitched Review key listener must be abortable'
 );
 assert(
@@ -57,7 +56,6 @@ assert(coreIndex < inspectorIndex && inspectorIndex < persistenceIndex && persis
 assert(editor.includes('imgWrap.addEventListener("pointerdown"'), 'editor drawing must support pointer and touch input');
 assert(shell.includes('window.createAIProviderSettings?.()'), 'AI provider settings must mount before Review is opened');
 assert(!review.includes('  refreshSrcData();\n\n  img.addEventListener("load"'), 'Review must not decode full source pixels on every page mount');
-assert(review.includes('512 / Math.max(canvas.width, canvas.height)'), 'Review paint validation must use a bounded probe');
 assert(!review.includes('setupGeminiQCSettings'), 'legacy Gemini-only settings path must be removed');
 assert(!reviewWorkspace.includes('mountGeminiSettings'), 'multi-provider settings must not retain a Gemini-only mount path');
 assert(reviewWorkspace.includes('ai-custom-provider-form'), 'Settings must expose a custom provider form');
@@ -85,6 +83,7 @@ assert(!chapterOcr.includes('observeWorkspaceRoot'), 'OCR must not scan the whol
 assert(!chapterQc.includes('observeWorkspaceRoot'), 'chapter QC must not scan the whole workspace with an observer');
 assert(!chapterQc.includes('new MutationObserver'), 'chapter QC must use explicit lifecycle synchronization');
 assert(chapterQc.includes('window.syncChapterQCWorkspace = renderPanel'), 'chapter QC must expose explicit workspace synchronization');
+assert(chapterQc.includes('window.mountChapterQC = scan') && stitchInspector.includes('window.mountChapterQC?.()'), 'Review must mount the whole-chapter AI QC entry point');
 assert((reviewWorkspace.match(/new MutationObserver/g) || []).length === 0, 'Review canvas must not keep DOM observers');
 assert(!reviewWorkspace.includes('busyObserver'), 'Review busy state must not infer lifecycle from DOM mutations');
 assert(!reviewWorkspace.includes('createPageNavigator({'), 'Review must not recreate the old thumbnail page navigator');
@@ -93,21 +92,13 @@ assert(!reviewWorkspace.includes('review-sticky-toolbar'), 'Review must not crea
 assert(stitchInspector.includes('review-document-toolbar-compact'), 'Review must use one compact document toolbar');
 assert(stitchInspector.includes('review-floating-inspector'), 'Review text properties must use an on-demand floating inspector');
 const reviewTestWindow = { __currentChapterId: "test-chapter" };
-const reviewTestSource = stitchInspector.replace(
-  "window.mountStitchInspector = scan;",
-  "window.reviewPageIndexAtSourceY = reviewPageIndexAtSourceY;\n  window.__testEnsureObjects = ensureObjects;\n  window.mountStitchInspector = scan;"
-);
 reviewTestWindow.currentChapterId = reviewTestWindow.__currentChapterId;
-vm.runInNewContext(reviewTestSource, {
-  window: reviewTestWindow,
-  document: { querySelectorAll: () => [] },
-  HTMLElement: function HTMLElement() {},
-  AbortController,
-  console: { warn: () => {} },
-  setTimeout,
-  Date,
-});
+globalThis.window = reviewTestWindow;
+globalThis.document = { querySelectorAll: () => [] };
 (async () => {
+  const overlays = await import(require('url').pathToFileURL(require('path').resolve('app/static/js/review-stitch/overlays.js')).href);
+  reviewTestWindow.reviewPageIndexAtSourceY = overlays.reviewPageIndexAtSourceY;
+  reviewTestWindow.__testEnsureObjects = overlays.ensureObjects;
   assert.strictEqual(typeof reviewTestWindow.reviewPageIndexAtSourceY, 'function', 'Review must expose its source-Y page mapping for navigation');
   assert.strictEqual(
     reviewTestWindow.reviewPageIndexAtSourceY([

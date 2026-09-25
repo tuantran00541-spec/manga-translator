@@ -9,11 +9,11 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import numpy as np
 from app.downloader.registry import download_chapter as fetch_chapter_images
 from app.downloader.slicer import OVERLAP_CONTEXT, slice_image
-from app.detector.combined_detector import CombinedTextDetector
-from app.detector.bubble_detector import BubbleBox
+from app.detector.bubble_detector import BubbleBox, apply_final_nms
 from app.inpaint.lama_inpainter import Inpainter
 from app.inpaint.mask_geometry import geometry_dict, remap_local_mask_page_space
 from app.image_io import encode_mask as _encode_mask, read_image
+from app.one_shot_cleanup import OneShotProductionDetector
 from app.page_processing import PageProcessingMixin
 from app.pipeline_editing import PipelineEditingMixin
 from app.config import RAW_DIR, PROCESSED_DIR
@@ -41,7 +41,7 @@ from app.security import MAX_UPLOAD_FILE_BYTES, MAX_UPLOAD_FILES, MAX_UPLOAD_TOT
 
 
 class StaleProcessingStateError(RuntimeError):
-    """No requested page committed because user state changed during processing."""
+    pass
 
 
 class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
@@ -56,7 +56,7 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
         if self._detector is None:
             with self._detector_init_lock:
                 if self._detector is None:
-                    self._detector = CombinedTextDetector()
+                    self._detector = OneShotProductionDetector()
         return self._detector
 
     @property
@@ -69,7 +69,6 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
 
     @staticmethod
     def _apply_box_geometry(box: dict, new_geometry: dict[str, int]) -> None:
-        """Geometry-safe edit that understands legacy and sidecar detector masks."""
         source_geometry = geometry_dict(box)
         source_mask = decode_mask_value(box.get("mask"))
         detector_origin = box.get("origin") == "detector" and not box.get("manual")
@@ -289,12 +288,6 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
         page_source_y1: int,
         page_height: int,
     ) -> BubbleBox | None:
-        """Translate one seam-strip detection into an overlapping slice.
-
-        Physical slices keep their existing overlap so OCR/review/render geometry
-        remains backward compatible. The detector strip is shared, however, so
-        the same seam context is not inferred twice by adjacent pages.
-        """
         source_y1 = int(seam_source_y1) + int(box.y1)
         source_y2 = int(seam_source_y1) + int(box.y2)
         page_source_y2 = int(page_source_y1) + int(page_height)
@@ -332,19 +325,6 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
     def _shared_seam_detections(
         self, chapter_id: str, work_items: list[tuple]
     ) -> tuple[dict[int, list[BubbleBox]], set[int], dict[str, float | int]]:
-        """Detect each unsafe overlap seam once, then share it across pages.
-
-        The slicer deliberately stores overlap around unsafe cuts. That
-        protects bubbles crossing a cut, but letting each physical slice run its
-        full detector duplicates the same context and can make a long core even
-        taller. Instead, each page detects only its non-overlapping core while
-        every unsafe seam is detected once and shared by all requested adjacent
-        pages (the detector may use internal windows for large strips).
-
-        The physical slice files and their coordinates are unchanged, preserving
-        OCR/review/render behavior. If required seam context cannot be read or
-        detected, affected pages fail safe to ``needs_review``.
-        """
         consumers: dict[tuple[int, int], list[tuple[int, Path, dict]]] = {}
         unavailable_pages: set[int] = set()
         shared_metrics: dict[str, float | int] = {
@@ -477,7 +457,7 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
                         target.append(mapped)
 
         for idx, boxes in list(by_page.items()):
-            by_page[idx] = CombinedTextDetector._apply_final_nms(
+            by_page[idx] = apply_final_nms(
                 boxes, iou_threshold=DETECTOR_FINAL_NMS_IOU
             )
         return by_page, unavailable_pages, shared_metrics
@@ -490,7 +470,6 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
         page_data: dict,
         snapshot: dict | None,
     ) -> bool:
-        """Atomically publish one completed page as soon as its worker finishes."""
         tmp_clean_value = page_data.get("tmp_clean")
         tmp_clean_path = Path(tmp_clean_value) if tmp_clean_value else None
         tmp_auto_clean_value = page_data.get("tmp_auto_clean")
@@ -553,6 +532,9 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
                     target_page["residue_regions"] = list(
                         page_data.get("residue_regions") or []
                     )
+                    target_page["residue_checked"] = bool(
+                        page_data.get("residue_checked", False)
+                    )
                     target_page["cleanup_verified"] = bool(
                         page_data.get("cleanup_verified", False)
                     )
@@ -595,7 +577,6 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
         workers: int = PIPELINE_DEFAULT_WORKERS,
         progress_callback: Callable[[int], None] | None = None,
     ) -> dict:
-        """Process pages with shared seams and durable per-page progress."""
         run_started_at = time.perf_counter()
         processed_dir = PROCESSED_DIR / chapter_id
         unique_indices = list(dict.fromkeys(page_indices))

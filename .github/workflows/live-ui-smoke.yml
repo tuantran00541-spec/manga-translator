@@ -7,6 +7,7 @@ on:
       - "app/**"
       - "scripts/create_ui_smoke_fixture.py"
       - "scripts/live_ui_smoke.py"
+      - "scripts/chapter_qc_ui_e2e.py"
       - "tests/test_theme_picker_contract.py"
       - "requirements-test.txt"
       - ".github/workflows/live-ui-smoke.yml"
@@ -16,6 +17,7 @@ on:
       - "app/**"
       - "scripts/create_ui_smoke_fixture.py"
       - "scripts/live_ui_smoke.py"
+      - "scripts/chapter_qc_ui_e2e.py"
       - "tests/test_theme_picker_contract.py"
       - "requirements-test.txt"
       - ".github/workflows/live-ui-smoke.yml"
@@ -66,6 +68,9 @@ jobs:
       - name: Exercise desktop and mobile application flows
         run: python scripts/live_ui_smoke.py --artifacts artifacts/ui-smoke
 
+      - name: Exercise whole-chapter AI QC against a fake AI client
+        run: python scripts/chapter_qc_ui_e2e.py --artifacts artifacts/chapter-qc-e2e
+
       - name: Upload browser evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -73,6 +78,7 @@ jobs:
           name: live-ui-smoke-${{ github.run_id }}
           path: |
             artifacts/ui-smoke
+            artifacts/chapter-qc-e2e
             server.log
           if-no-files-found: warn
 

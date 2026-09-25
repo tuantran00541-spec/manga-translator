@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import mimetypes
 import os
 from pathlib import Path
 import time
@@ -36,7 +37,6 @@ from app.security import MAX_REQUEST_BYTES, MAX_UPLOAD_TOTAL_BYTES
 def _cleanup_extra_stale_artifacts(
     max_age_seconds: float = STALE_TEMP_MAX_AGE_SECONDS,
 ) -> int:
-    """Clean crash leftovers not covered by per-chapter manifest temp cleanup."""
     cutoff = time.time() - max(0.0, float(max_age_seconds))
     candidates: set[Path] = set()
 
@@ -105,13 +105,16 @@ async def lifespan(app: FastAPI):
     yield
 
 
+def register_javascript_mime_type() -> None:
+    mimetypes.add_type("text/javascript", ".js")
+
+
+register_javascript_mime_type()
 app = FastAPI(lifespan=lifespan, title="Manga Translator", version="0.2.0")
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "app" / "static")), name="static")
 
 
 class RequestSizeLimitMiddleware:
-    """Enforce request limits on bytes actually received, not only headers."""
-
     def __init__(self, app):
         self.app = app
 
@@ -192,7 +195,6 @@ app.include_router(ai_mode.router)
 
 
 def _current_rss_bytes() -> int | None:
-    """Return current process RSS without adding a runtime dependency."""
     if os.name == "nt":
         try:
             import ctypes

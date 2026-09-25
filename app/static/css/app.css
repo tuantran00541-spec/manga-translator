@@ -71,7 +71,7 @@
   .review-single-document .review-stitched-image { position: absolute; top: 0; left: 0; line-height: 0; transform-origin: top left; background: var(--surface-panel); box-shadow: none; }
   .review-single-document .review-stitched-image > canvas:not(.stitched-brush-canvas) { display: block; width: 100%; height: auto; }
   .review-single-document .review-stitched-image > .stitched-brush-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
-  .review-single-document .review-card-compat { display: none !important; }
+  .review-single-document .review-card-compat { display: none; }
   .review-single-document .review-controls-slot:empty { display: none; }
   .review-single-document .review-stitched-controls { gap: 6px; }
   .review-single-document .review-stitched-controls .ui-btn { width: 100%; }
@@ -87,7 +87,6 @@
     .app-brand, .sidebar-link { width: 100%; justify-content: flex-start; gap: 12px; padding: 0 10px; }
     .app-brand > span:last-child { display: inline; }
     .sidebar-link > span { position: static; display: inline; max-width: none; padding: 0; border: 0; background: none; font-size: 14px; transform: none; }
-    /* Review hides the app header (and its menu button), so it keeps the icon rail. */
     body[data-app-stage="review"] .app-shell { grid-template-columns: var(--ps-tool-rail) minmax(0, 1fr); }
     body[data-app-stage="review"] .app-sidebar { position: relative; inset: auto; width: var(--ps-tool-rail); padding: 6px 4px; transform: none; box-shadow: none; }
     body[data-app-stage="review"] :is(.app-brand, .sidebar-link) { width: 38px; justify-content: center; padding: 0; }
@@ -115,10 +114,8 @@
   .review-docbar-left, .review-docbar-right, .review-docbar-actions { display: flex; min-width: 0; align-items: center; gap: 6px; overflow: visible; }
   .review-docbar-right { margin-left: auto; }
   .review-document-toolbar-compact .ui-btn { min-height: 30px; height: 30px; padding: 0 10px; border-radius: 3px; font-size: 11px; }
-  /* One segmented control for the three views of the same image. */
   .review-view-switch { display: inline-flex; padding: 2px; gap: 2px; border: 1px solid var(--border-strong); border-radius: 4px; }
   .review-view-switch .ui-btn { min-height: 24px; height: 24px; border: 0; border-radius: 2px; }
-  /* Disclosures in the command bar open as dropdowns instead of growing the bar. */
   .review-docbar-right :is(.command-disclosure, .review-more-menu) { position: relative; }
   .review-docbar-right :is(.command-disclosure-panel, .review-more-panel) { position: absolute; z-index: var(--z-popover); top: calc(100% + 6px); right: 0; width: min(320px, calc(100vw - 24px)); max-height: min(70vh, 560px); margin: 0; overflow: auto; border: 1px solid var(--border-strong); border-radius: 4px; background: var(--surface-panel); }
   .review-view-switch .ui-btn[aria-pressed="true"] { background: var(--accent); color: var(--accent-contrast); }
@@ -127,11 +124,11 @@
   .review-docbar-right .command-disclosure-panel .ui-field:has(> input[type="checkbox"]) { display: flex; flex-direction: row; align-items: center; gap: 8px; }
   .review-docbar-right .command-disclosure-panel input[type="checkbox"] { width: 16px; height: 16px; min-height: 0; margin: 0; flex: 0 0 auto; accent-color: var(--accent); }
   .review-docbar-right :is(.command-disclosure, .review-more-menu):not([open]) > :is(.command-disclosure-panel, .review-more-panel) { display: none; }
-  .review-more-toggle { display: inline-flex; width: 30px; align-items: center; justify-content: center; padding: 0 !important; list-style: none; cursor: pointer; }
+  .review-document-toolbar-compact .review-more-toggle { display: inline-flex; width: 30px; align-items: center; justify-content: center; padding: 0; list-style: none; cursor: pointer; }
   .review-more-toggle::-webkit-details-marker { display: none; }
   .review-more-menu[open] > .review-more-toggle, .review-docbar-right .command-disclosure[open] > summary { border-color: var(--border-strong); background: var(--surface-raised); }
   .review-more-toggle .ui-icon { width: 16px; height: 16px; }
-  .review-more-panel { display: grid; width: 230px !important; padding: 4px; gap: 2px; }
+  .review-docbar-right .review-more-panel { display: grid; width: 230px; padding: 4px; gap: 2px; }
   .review-lang-row { display: grid; gap: 4px; padding: 6px 8px 8px; border-bottom: 1px solid var(--border-subtle); font-size: 11px; font-weight: 650; }
   .review-lang-select { width: 100%; height: 30px; font-size: 12px; }
   .review-lang-hint { color: var(--text-muted); font-size: 10px; font-weight: 400; }
@@ -139,13 +136,11 @@
   .review-more-toggle.has-alert { position: relative; }
   .review-more-toggle.has-alert::after { position: absolute; top: 4px; right: 4px; width: 7px; height: 7px; border-radius: 50%; background: var(--text-primary); content: ""; }
   .review-more-panel .ui-btn { width: 100%; justify-content: flex-start; border: 0; text-align: left; }
-  /* Brush options appear beside the tool rail only while painting a mask. */
   .review-brush-bar { position: absolute; z-index: calc(var(--z-toolbar) + 2); top: calc(var(--review-docbar-height, 40px) + 14px); left: 62px; display: flex; max-width: calc(100% - 74px); align-items: center; flex-wrap: wrap; gap: 6px; padding: 4px 6px; border: 1px solid var(--border-strong); border-radius: 4px; background: var(--surface-panel); }
   .review-brush-bar .ui-btn { min-height: 28px; height: 28px; padding: 0 10px; border-radius: 3px; font-size: 11px; }
   .review-docbar-brush-size { display: inline-flex; align-items: center; width: auto; min-width: 0; margin: 0; gap: 6px; font-size: 11px; white-space: nowrap; }
   .review-docbar-brush-size input { width: 90px; min-width: 0; accent-color: var(--accent); }
   .review-docbar-brush-size output { min-width: 34px; color: var(--text-muted); }
-  /* Zoom dock sits in the canvas corner and steps aside for the inspector. */
   .review-zoom-dock { position: absolute; z-index: calc(var(--z-toolbar) + 2); right: 12px; bottom: 12px; display: flex; align-items: center; gap: 2px; padding: 3px; border: 1px solid var(--border-strong); border-radius: 4px; background: var(--surface-panel); }
   .review-zoom-dock .ui-btn { min-height: 28px; height: 28px; padding: 0 8px; border: 0; border-radius: 3px; font-size: 11px; }
   .review-zoom-dock .review-zoom-value { min-width: 52px; justify-content: center; font-variant-numeric: tabular-nums; }
@@ -178,7 +173,6 @@
 }
 
 @layer studio {
-  /* A.I mode: one full-width panel under the two manual sources. */
   .ai-mode-panel { grid-column: 1 / -1; }
   .ai-mode-panel [hidden] { display: none !important; }
   .ai-mode-form { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); align-items: end; gap: 8px 10px; }
@@ -205,4 +199,36 @@
     .ai-mode-stage { flex-direction: column; align-items: flex-start; gap: 2px; }
     .ai-mode-stage span { text-align: left; }
   }
+  .review-inline-translation { max-height: 240px; overflow: auto; }
+  .review-qc-compat-card { position: absolute; z-index: 35; display: block; margin: 0; padding: 0; border: 0; background: transparent; box-shadow: none; pointer-events: none; overflow: visible; }
+  .review-qc-compat-card > .review-image-wrap { position: absolute; inset: 0; width: 100%; height: 100%; max-width: none; margin: 0; overflow: visible; pointer-events: none; }
+  .review-qc-compat-card > .review-image-wrap > img { display: block; width: 100%; height: 100%; max-width: none; opacity: 0; pointer-events: none; }
+  .review-workspace-shell.review-chapter-qc-running :is(.review-render-text-btn, .chapter-translate-controls) { opacity: .45; pointer-events: none; }
+  .review-workspace-shell.review-chapter-qc-running .review-text-object-overlay { opacity: .5; pointer-events: none; }
+  .review-document-viewport.review-space-pan { cursor: grab; }
+  .review-document-viewport.review-space-pan.is-panning { cursor: grabbing; }
+}
+
+@layer studio {
+  .review-tool-rail{position:absolute;z-index:calc(var(--z-toolbar) + 4);top:calc(var(--review-docbar-height, 38px) + 14px);left:8px;display:flex;width:44px;max-height:calc(100% - var(--review-docbar-height, 38px) - 30px);flex-direction:column;align-items:center;padding:3px;border:1px solid var(--border-strong);background:var(--surface-panel);overflow-y:auto}
+  .review-tool-group{display:flex;width:100%;flex-direction:column;align-items:center;gap:2px}
+  .review-rail-tool{position:relative;display:grid;width:36px;height:36px;flex:0 0 36px;place-items:center;padding:0;border:1px solid transparent;border-radius:3px;background:transparent;color:var(--text-primary);cursor:pointer}
+  .review-rail-tool:hover,.review-rail-tool:focus-visible,.review-rail-tool.active{outline:0;border-color:var(--border-strong);background:var(--surface-panel);color:var(--text-primary)}
+  .review-rail-tool:disabled{opacity:.45;cursor:default}.review-rail-tool>.ui-icon{width:19px;height:19px}
+  .review-tool-tooltip{position:absolute;z-index:calc(var(--z-toolbar) + 40);left:42px;top:50%;display:none;width:220px;padding:7px 9px;border:1px solid var(--border-strong);border-radius:3px;background:var(--surface-panel);color:var(--text-primary);text-align:left;transform:translateY(-50%);pointer-events:none}
+  .review-tool-tooltip strong{display:block;margin-bottom:2px;color:var(--text-primary);font-size:11px;line-height:1.25}.review-tool-tooltip span{display:block;font-size:10px;line-height:1.35}
+  @media(min-width:721px){.review-rail-tool:hover .review-tool-tooltip,.review-rail-tool:focus-visible .review-tool-tooltip{display:block}}
+  .review-single-document .review-stitched-image>.review-image-chunk{position:relative;z-index:1;display:block;width:100%;height:auto}
+  .review-single-document .review-stitched-image{position:relative}
+  .review-strip-slice{position:absolute;z-index:1;left:0;width:100%;overflow:hidden;pointer-events:none}
+  .review-strip-slice>img{position:absolute;left:0;display:block;width:100%;max-width:none;height:auto;pointer-events:none;user-select:none}
+  .review-single-document .review-stitched-image>.stitched-brush-chunk{position:absolute;z-index:5;left:0;display:block;width:100%;height:auto;pointer-events:none}
+  .review-text-object-overlay{z-index:12;overflow:visible;border:1.5px solid var(--text-primary);background:transparent;pointer-events:auto}
+  .review-text-object-overlay.ellipse{border-radius:999px}.review-text-object-overlay.selected{border-width:2px}
+  .review-text-object-overlay.tool-muted{opacity:.42;pointer-events:none}
+  .review-text-drawing{position:absolute;z-index:20;border:1.5px dashed var(--text-primary);background:transparent;pointer-events:none}.review-text-drawing.ellipse{border-radius:999px}
+  .review-document-viewport[data-active-tool="hand"]{cursor:grab}.review-document-viewport[data-active-tool="hand"].is-panning{cursor:grabbing}.review-document-viewport[data-active-tool="zoom"]{cursor:zoom-in}
+  .review-stitched-image[data-active-tool="rectangle"],.review-stitched-image[data-active-tool="ellipse"],.review-stitched-image[data-active-tool="brush"],.review-stitched-image[data-active-tool="eraser"]{cursor:crosshair}
+  @media(max-width:720px){.review-tool-rail{top:calc(var(--review-docbar-height, 38px) + 10px);left:4px;width:44px;max-height:calc(100% - var(--review-docbar-height, 38px) - 20px)}.review-rail-tool{width:36px;height:36px;flex-basis:36px}}
+  .review-text-object-overlay.is-inert { pointer-events: none; }
 }

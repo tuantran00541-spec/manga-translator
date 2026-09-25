@@ -1,10 +1,7 @@
-// Source language belongs to the chapter: detected once from its own text
-// regions on the server, stored in the manifest, and overridable by the user.
 (() => {
   const LABELS = { ja: "Tiếng Nhật", ch: "Tiếng Trung", korean: "Tiếng Hàn", en: "Tiếng Anh" };
   const ORIGINS = { auto: "tự nhận", site: "theo nguồn truyện", manual: "đã chọn" };
   const pending = new Map();
-  // Chapters whose text was sampled but stayed ambiguous: ask instead of re-probing.
   const uncertain = new Set();
 
   const known = (lang) => (Object.prototype.hasOwnProperty.call(LABELS, lang) ? lang : null);
@@ -42,8 +39,6 @@
       body: JSON.stringify({ force }),
     }).then((data) => {
       const lang = known(data.source_lang);
-      // Only remember "ambiguous" once real text was sampled; a chapter that
-      // has not been processed yet simply has nothing to read.
       if (!lang && data.detection?.samples) uncertain.add(chapterId);
       apply(chapterId, data);
       return lang;
@@ -52,7 +47,6 @@
     return job;
   };
 
-  // For OCR/translation: always returns a language or throws with guidance.
   window.resolveSourceLang = async () => {
     let lang = null;
     try {

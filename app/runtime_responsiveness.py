@@ -15,7 +15,6 @@ def _read_positive_int(path: Path) -> int | None:
 
 
 def _cgroup_cpu_limit() -> int | None:
-    """Return the Linux cgroup CPU quota, rounded up to one visible CPU."""
     try:
         parts = Path("/sys/fs/cgroup/cpu.max").read_text(
             encoding="utf-8"
@@ -41,7 +40,6 @@ def visible_cpu_count() -> int:
 
 
 def recommended_ort_intra_threads(cpu_count: int | None = None) -> int:
-    """Keep model inference fast while reserving CPU for the browser and OS."""
     cpu = max(1, int(cpu_count or visible_cpu_count()))
     if cpu <= 2:
         return 1
@@ -53,7 +51,6 @@ def recommended_ort_intra_threads(cpu_count: int | None = None) -> int:
 
 
 def configure_local_cpu_headroom(cpu_count: int | None = None) -> int:
-    """Set a responsive ORT default while preserving a valid explicit override."""
     recommended = recommended_ort_intra_threads(cpu_count)
     raw = os.environ.get(_ORT_THREAD_ENV, "").strip()
     if raw:
