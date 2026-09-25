@@ -18,27 +18,23 @@ remain supported by the resolver.
 
 ## Selection modes
 
-- The CPU matcher runs automatically for every render that has an original
-  lettering crop. It compares that crop with rendered samples from the catalog
-  and records the ranked candidates in `font_match`.
-- `font_selection_mode=user`: a valid editor/API choice is kept only when it
-  appears in the matcher candidates; otherwise the best visual match is used.
-- `font_selection_mode=ai`: a validated AI `font_id` follows the same safety
-  check, so an unsuitable AI choice falls back to the best visual match.
-- `font_selection_mode=auto` (also used for newly detected text objects): the
-  best visual match is applied. A legacy object with an unmarked `default`
-  style remains on the historical default for compatibility, while its match
-  candidates are still recorded.
-- If the crop is unavailable or confidence is low, rendering falls back to
-  `default` without generating or downloading a new font.
+Precedence, highest first:
 
-The matcher is deterministic and CPU-only. It uses grayscale ink geometry,
-projection profiles, edge profiles, and text metrics; it does not use a model
-that can invent font files. The API surface is:
+- `font_selection_mode=user`: a valid editor/API choice is always kept. An
+  unknown ID falls back to `default`.
+- `font_selection_mode=ai`: a validated AI `font_id` (the translator may pick a
+  catalog font by role: dialogue, SFX, horror, ...). An unknown ID falls back
+  to `default`.
+- `font_selection_mode=auto` (also used for newly detected text objects): use
+  the AI choice when there is one, otherwise `default`.
+- A legacy object with an unmarked non-default style keeps that font.
 
-- `GET /api/fonts` — grouped catalog metadata
-- `POST /api/fonts/match` — ranked candidates for API/AI callers that want to
-  inspect or reuse the same matcher outside the render pipeline
+There is no visual font matcher. An earlier CPU matcher compared the original
+lettering crop with catalog samples, but it could not work for Chinese,
+Japanese or Korean sources (no bundled font has those glyphs, so every sample
+rendered blank) and misranked Latin samples too, so it was removed.
+
+The API surface is `GET /api/fonts` (grouped catalog metadata).
 
 All bundled families are sourced from Google Fonts and redistributed under
 their SIL Open Font License metadata in `app/static/fonts/licenses/`.
