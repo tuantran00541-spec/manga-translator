@@ -225,4 +225,4 @@ def decode_lama_output(output, contract: LamaModelContract) -> np.ndarray:
     else:
         raise ValueError(f"Unknown LaMa output range contract: {contract.output_range}")
 
-    return np.clip(arr[0].transpose(1, 2, 0), 0, 255).astype(np.uint8)
+    return np.clip(np.rint(arr[0].transpose(1, 2, 0)), 0, 255).astype(np.uint8)
