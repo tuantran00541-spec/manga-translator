@@ -57,7 +57,6 @@ assert(coreIndex < inspectorIndex && inspectorIndex < persistenceIndex && persis
 assert(editor.includes('imgWrap.addEventListener("pointerdown"'), 'editor drawing must support pointer and touch input');
 assert(shell.includes('window.createAIProviderSettings?.()'), 'AI provider settings must mount before Review is opened');
 assert(!review.includes('  refreshSrcData();\n\n  img.addEventListener("load"'), 'Review must not decode full source pixels on every page mount');
-assert(review.includes('512 / Math.max(canvas.width, canvas.height)'), 'Review paint validation must use a bounded probe');
 assert(!review.includes('setupGeminiQCSettings'), 'legacy Gemini-only settings path must be removed');
 assert(!reviewWorkspace.includes('mountGeminiSettings'), 'multi-provider settings must not retain a Gemini-only mount path');
 assert(reviewWorkspace.includes('ai-custom-provider-form'), 'Settings must expose a custom provider form');

@@ -353,17 +353,5 @@
     return controller;
   }
 
-  window.disposePageNavigators = function disposePageNavigators(chapterId = null) {
-    for (const [key, controller] of [...navigatorCache.entries()]) {
-      if (chapterId && !key.startsWith(`${chapterId}\u001f`)) continue;
-      navigatorCache.delete(key);
-      controller.dispose({ remove: false, fromCache: true });
-    }
-  };
-  window.pageNavigatorDebug = {
-    cache: navigatorCache,
-    signature: itemSignature,
-    clear: window.disposePageNavigators,
-  };
   window.createPageNavigator = createPageNavigator;
 })();

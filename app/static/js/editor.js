@@ -5,6 +5,7 @@ const editorState = {
   lastChapterId: null,
 };
 window.editorState = editorState;
+let editorOverlayResizeObserver = null;
 
 const DEFAULT_TEXT_OBJECT_STYLE = {
   color: "auto",
@@ -27,12 +28,6 @@ function findTextObject(pageIndex, id) {
   return list.find((o) => o && o.id === id) || null;
 }
 window.findTextObject = findTextObject;
-
-function currentTextObject() {
-  if (!editorState.selectedTextObjectId) return null;
-  return findTextObject(editorState.activePageIndex, editorState.selectedTextObjectId);
-}
-window.currentTextObject = currentTextObject;
 
 async function apiTextObject(action, payload) {
   const resp = await fetch(`/api/text_object/${action}`, {
@@ -234,7 +229,6 @@ async function addTextObjectBox() {
   const y1 = Math.round((H - bh) / 2);
   await createTextObject(pageIndex, "rectangle", { x1, y1, x2: x1 + bw, y2: y1 + bh });
 }
-window.addTextObjectBox = addTextObjectBox;
 
 async function associateTextObjectOcr(pageIndex, id) {
   const chapterId = currentChapterId;
@@ -300,8 +294,8 @@ function editorImageMetrics(img) {
 window.editorImageMetrics = editorImageMetrics;
 
 function renderTextObjectOverlays(pageIndex, page) {
-  window._editorOverlayResizeObserver?.disconnect();
-  window._editorOverlayResizeObserver = null;
+  editorOverlayResizeObserver?.disconnect();
+  editorOverlayResizeObserver = null;
   const wrapper = document.querySelector(".translation-canvas-host .page-block-wrapper");
   if (!wrapper) return;
   const imgWrap = wrapper.querySelector(".page-image-wrap");
@@ -341,7 +335,7 @@ function renderTextObjectOverlays(pageIndex, page) {
       else render();
     });
     observer.observe(img);
-    window._editorOverlayResizeObserver = observer;
+    editorOverlayResizeObserver = observer;
   }
 }
 
@@ -902,8 +896,8 @@ function renderEditor() {
     window._editorDrawCleanup();
     window._editorDrawCleanup = null;
   }
-  window._editorOverlayResizeObserver?.disconnect();
-  window._editorOverlayResizeObserver = null;
+  editorOverlayResizeObserver?.disconnect();
+  editorOverlayResizeObserver = null;
   container.innerHTML = "";
   container.className = "editor-mode";
 

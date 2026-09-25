@@ -7,6 +7,7 @@
   const SHORTCUTS = { v: "select", r: "rectangle", o: "ellipse", b: "brush", e: "eraser", h: "hand", z: "zoom" };
 
   let variant = "clean";
+  let baseSyncOverlayForObject = null;
   let tool = "select";
   let zoom = 100;
   let fitWidth = true;
@@ -36,35 +37,6 @@
       .map((page, canonicalIndex) => ({ page, canonicalIndex }))
       .filter(({ page }) => Boolean(page))
       .map(({ canonicalIndex }) => ({ canonicalIndex }));
-  }
-
-  function ensureStyles() {
-    if (document.getElementById("review-photopea-tool-styles")) return;
-    const style = document.createElement("style");
-    style.id = "review-photopea-tool-styles";
-    style.textContent = `
-      .review-tool-rail{position:absolute;z-index:calc(var(--z-toolbar) + 4);top:calc(var(--review-docbar-height, 38px) + 14px);left:8px;display:flex;width:44px;max-height:calc(100% - var(--review-docbar-height, 38px) - 30px);flex-direction:column;align-items:center;padding:3px;border:1px solid var(--border-strong);background:var(--surface-panel);overflow-y:auto}
-      .review-tool-group{display:flex;width:100%;flex-direction:column;align-items:center;gap:2px}
-      .review-rail-tool{position:relative;display:grid;width:36px;height:36px;flex:0 0 36px;place-items:center;padding:0;border:1px solid transparent;border-radius:3px;background:transparent;color:var(--text-primary);cursor:pointer}
-      .review-rail-tool:hover,.review-rail-tool:focus-visible,.review-rail-tool.active{outline:0;border-color:var(--border-strong);background:var(--surface-panel);color:var(--text-primary)}
-      .review-rail-tool:disabled{opacity:.45;cursor:default}.review-rail-tool>.ui-icon{width:19px;height:19px}
-      .review-tool-tooltip{position:absolute;z-index:calc(var(--z-toolbar) + 40);left:42px;top:50%;display:none;width:220px;padding:7px 9px;border:1px solid var(--border-strong);border-radius:3px;background:var(--surface-panel);color:var(--text-primary);text-align:left;transform:translateY(-50%);pointer-events:none}
-      .review-tool-tooltip strong{display:block;margin-bottom:2px;color:var(--text-primary);font-size:11px;line-height:1.25}.review-tool-tooltip span{display:block;font-size:10px;line-height:1.35}
-      .review-rail-tool:hover .review-tool-tooltip,.review-rail-tool:focus-visible .review-tool-tooltip{display:block}
-      .review-single-document .review-stitched-image>.review-image-chunk{position:relative;z-index:1;display:block;width:100%;height:auto}
-      .review-single-document .review-stitched-image{position:relative}
-      .review-strip-slice{position:absolute;z-index:1;left:0;width:100%;overflow:hidden;pointer-events:none}
-      .review-strip-slice>img{position:absolute;left:0;display:block;width:100%;max-width:none;height:auto;pointer-events:none;user-select:none}
-      .review-single-document .review-stitched-image>.stitched-brush-chunk{position:absolute;z-index:5;left:0;display:block;width:100%;height:auto;pointer-events:none}
-      .review-text-object-overlay{z-index:12;overflow:visible!important;border:1.5px solid var(--text-primary);background:transparent}
-      .review-text-object-overlay.ellipse{border-radius:999px}.review-text-object-overlay.selected{border-width:2px}
-      .review-text-object-overlay.tool-muted{opacity:.42;pointer-events:none!important}
-      .review-text-drawing{position:absolute;z-index:20;border:1.5px dashed var(--text-primary);background:transparent;pointer-events:none}.review-text-drawing.ellipse{border-radius:999px}
-      .review-document-viewport[data-active-tool="hand"]{cursor:grab}.review-document-viewport[data-active-tool="hand"].is-panning{cursor:grabbing}.review-document-viewport[data-active-tool="zoom"]{cursor:zoom-in}
-      .review-stitched-image[data-active-tool="rectangle"],.review-stitched-image[data-active-tool="ellipse"],.review-stitched-image[data-active-tool="brush"],.review-stitched-image[data-active-tool="eraser"]{cursor:crosshair}
-      @media(max-width:720px){.review-tool-rail{top:calc(var(--review-docbar-height, 38px) + 10px);left:4px;width:44px;max-height:calc(100% - var(--review-docbar-height, 38px) - 20px)}.review-rail-tool{width:36px;height:36px;flex-basis:36px}.review-tool-tooltip{display:none!important}}
-    `;
-    document.head.appendChild(style);
   }
 
   function imageUrl(page, mode = variant) {
@@ -283,11 +255,11 @@
   }
 
   function installOverlaySync() {
-    if (!window._reviewBaseSyncOverlayForObject) window._reviewBaseSyncOverlayForObject = window.syncOverlayForObject || null;
+    if (!baseSyncOverlayForObject) baseSyncOverlayForObject = window.syncOverlayForObject || null;
     window.syncOverlayForObject = (pageIndex, id) => {
       const shell = document.querySelector("#page-view.review-mode .review-document-shell");
       if (shell && syncOverlay(shell, pageIndex, id)) return;
-      window._reviewBaseSyncOverlayForObject?.(pageIndex, id);
+      baseSyncOverlayForObject?.(pageIndex, id);
     };
   }
 
@@ -545,7 +517,6 @@
       let stripHeight = 0;
       let fallbackSlices = 0;
 
-      let firstPreloaded = null;
       for (const item of items) {
         const live = livePage(item);
         if (!live) continue;
@@ -569,7 +540,6 @@
           if (token !== renderToken) return;
           width = preloaded.naturalWidth;
           if (!(height > 0)) height = preloaded.naturalHeight;
-          firstPreloaded = preloaded;
         }
         if (!(stripWidth > 0)) stripWidth = width;
         if (!(width > 0)) width = stripWidth;
@@ -723,7 +693,7 @@
     const image = shell?.querySelector(".review-stitched-image"), viewport = shell?.querySelector(".review-document-viewport"); if (!image || !viewport) return;
     image.dataset.activeTool = tool; viewport.dataset.activeTool = tool;
     const paint = ["brush", "eraser"].includes(tool), text = ["rectangle", "ellipse"].includes(tool);
-    shell.querySelectorAll(".review-text-object-overlay").forEach((el) => { el.style.pointerEvents = tool === "select" && variant === "clean" ? "auto" : "none"; el.classList.toggle("tool-muted", variant === "clean" && tool !== "select"); });
+    shell.querySelectorAll(".review-text-object-overlay").forEach((el) => { el.classList.toggle("is-inert", !(tool === "select" && variant === "clean")); el.classList.toggle("tool-muted", variant === "clean" && tool !== "select"); });
     image.classList.toggle("text-draw-mode", text && variant === "clean"); image.classList.toggle("brush-mode", paint && variant === "clean"); syncToolButtons(); shell._syncBrushBar?.();
   }
   function setTool(shell, next) {
@@ -850,7 +820,6 @@
   function mount(workspace) {
     if (!(workspace instanceof HTMLElement) || workspace.dataset.stitchInspectorMounted === "1") return;
     resetChapterState();
-    ensureStyles();
     workspace._stitchAbort?.abort();
     window._reviewStitchAbort?.abort();
 

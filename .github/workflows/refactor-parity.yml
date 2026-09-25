@@ -106,6 +106,15 @@ jobs:
           echo "$base" > audit-results/parity/base_commit.txt
           git rev-parse HEAD > audit-results/parity/head_commit.txt
 
+      - name: Measure post-inpaint residue verification (cost and effect)
+        env:
+          INPUT_URL: ${{ github.event.inputs.chapter_url }}
+          MANGA_DETECTOR_RESIDUE_VERIFY_ENABLED: "1"
+        run: |
+          url="${INPUT_URL:-$(head -n1 .github/refactor-parity.txt | tr -d '\r')}"
+          python scripts/refactor_parity.py run "$url" --out /tmp/parity/verify
+          python scripts/refactor_parity.py compare /tmp/parity/head /tmp/parity/verify --out audit-results/parity/head_vs_verify.json --crops audit-results/parity/verify-crops
+
       - name: Record which app code a real chapter actually executes
         env:
           INPUT_URL: ${{ github.event.inputs.chapter_url }}

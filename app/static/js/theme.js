@@ -63,5 +63,4 @@
 
   document.addEventListener("DOMContentLoaded", bindThemeSelect);
   window.setAppTheme = applyMode;
-  window.getAppTheme = () => document.documentElement.dataset.theme || "system";
 })();

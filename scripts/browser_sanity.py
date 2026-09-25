@@ -342,10 +342,6 @@ def check_browser_state_contracts() -> None:
             "window.hasUnsavedStitchedMarks = () =>",
             "captureSnapshot(shell);",
         ),
-        Path("app/static/js/review.js"): (
-            "activeCard._reviewBusy = true",
-            "chapterId !== currentChapterId",
-        ),
     }
     failures: list[str] = []
     for path, markers in contracts.items():

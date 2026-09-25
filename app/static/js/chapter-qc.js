@@ -448,11 +448,5 @@
     renderPanel(workspace);
   }
 
-  function scan() {
-    syncChapterState();
-    workspaceRoot().querySelectorAll(".review-workspace-shell").forEach(bindWorkspace);
-  }
-
-  window.mountChapterQC = scan;
   window.syncChapterQCWorkspace = renderPanel;
 })();
