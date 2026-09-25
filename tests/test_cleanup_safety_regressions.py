@@ -1,3 +1,5 @@
+import threading
+
 import numpy as np
 import pytest
 import cv2
@@ -5,12 +7,11 @@ from PIL import Image, ImageDraw
 
 from app.config import DEFAULT_FONT
 from app.detector.bubble_detector import BubbleBox, YoloDetector
-from app.detector.combined_detector import CombinedTextDetector
 from app.detector.mask_builder import build_mask
 from app.render.text_renderer import _fit_text, render_text_in_box
 from app.pipeline import ChapterPipeline
 from app.optimized_pipeline import OptimizedChapterPipeline
-from app.one_shot_cleanup import OneShotTextMaskDetector
+from app.one_shot_cleanup import OneShotProductionDetector, OneShotTextMaskDetector
 from app.parameters import TEXT_CONF_THRESHOLD
 from app.image_io import encode_mask, read_image
 
@@ -116,27 +117,6 @@ def test_validation_max_dilation_covers_both_runtime_dilation_branches():
     assert np.array_equal(validation, adaptive)
 
 
-def test_mser_proposal_requires_independent_segmenter_mask_for_promotion():
-    proposal = BubbleBox(
-        20, 20, 100, 55, 0.4, None,
-        source_model="opencv_mser", semantic_type="free_text",
-        safe_to_inpaint=False, needs_review=True,
-    )
-    raw_mser = BubbleBox(
-        24, 24, 96, 51, 0.5, None,
-        source_model="opencv_mser", semantic_type="free_text",
-        safe_to_inpaint=False,
-    )
-    verified_segmenter = BubbleBox(
-        24, 24, 96, 51, 0.9, np.full((27, 72), 255, np.uint8),
-        source_role="text_segmenter", semantic_type="free_text",
-        safe_to_inpaint=True,
-    )
-
-    assert not CombinedTextDetector._recovery_has_segmenter_evidence(proposal, [raw_mser])
-    assert CombinedTextDetector._recovery_has_segmenter_evidence(proposal, [verified_segmenter])
-
-
 class _ResidueTextDetector:
     def _detect_single_plain(self, image, offset_x, offset_y):
         return [BubbleBox(
@@ -154,8 +134,12 @@ class _ResidueTextDetector:
 
 
 def test_post_inpaint_verifier_marks_partial_mask_residue_for_review():
-    detector = CombinedTextDetector.__new__(CombinedTextDetector)
+    detector = OneShotProductionDetector.__new__(OneShotProductionDetector)
     detector.text_detector = _ResidueTextDetector()
+    detector._residue_metrics_local = threading.local()
+    detector._residue_metrics_lock = threading.Lock()
+    detector._residue_totals = {}
+    detector._residue_flat_gate_enabled = False
     source = BubbleBox(
         0, 0, 40, 35, 0.9, np.full((35, 40), 255, np.uint8),
         source_role="text_segmenter", safe_to_inpaint=True,

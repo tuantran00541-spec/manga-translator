@@ -11,9 +11,7 @@ on:
       - app/model_contracts.py
       - app/parameters.py
       - app/detector/bubble_detector.py
-      - app/detector/combined_detector.py
-      - app/detector/adaptive_focus_detector.py
-      - app/detector/recovery.py
+      - app/one_shot_cleanup.py
       - app/detector/mask_builder.py
       - app/inpaint/lama_inpainter.py
       - app/pipeline.py
@@ -28,12 +26,9 @@ on:
       - scripts/process_responsiveness_sanity.py
       - scripts/backend_foundation_sanity.py
       - scripts/backend_second_pass_sanity.py
-      - scripts/backend_phase4_sanity.py
       - scripts/backend_phase5_sanity.py
       - scripts/backend_phase6_sanity.py
       - scripts/backend_phase7_sanity.py
-      - scripts/backend_phase8_sanity.py
-      - scripts/detector_grayscale_retry_sanity.py
       - scripts/profile_stage_breakdown.py
       - scripts/research_mask_quality_gate.py
       - scripts/research_mask_quality_sanity.py
@@ -67,17 +62,15 @@ jobs:
         run: >-
           python -m py_compile app/dependencies.py app/optimized_pipeline.py app/runtime_responsiveness.py
           app/manifest_utils.py app/model_contracts.py app/parameters.py
-          app/detector/bubble_detector.py app/detector/combined_detector.py
-          app/detector/adaptive_focus_detector.py app/detector/recovery.py
+          app/detector/bubble_detector.py app/one_shot_cleanup.py
           app/detector/mask_builder.py app/inpaint/lama_inpainter.py app/pipeline.py
           app/page_processing.py app/pipeline_editing.py app/image_io.py
           app/render/identity.py app/routers/editor.py app/routers/chapters.py
           app/routers/render_commit.py app/routers/export.py
           scripts/process_responsiveness_sanity.py
           scripts/backend_foundation_sanity.py scripts/backend_second_pass_sanity.py
-          scripts/backend_phase4_sanity.py scripts/backend_phase5_sanity.py
-          scripts/backend_phase6_sanity.py scripts/backend_phase7_sanity.py scripts/backend_phase8_sanity.py
-          scripts/detector_grayscale_retry_sanity.py
+          scripts/backend_phase5_sanity.py
+          scripts/backend_phase6_sanity.py scripts/backend_phase7_sanity.py
           scripts/profile_stage_breakdown.py scripts/research_mask_quality_gate.py
           scripts/research_mask_quality_sanity.py
       - name: Run deterministic backend foundation regressions
@@ -85,10 +78,8 @@ jobs:
           python scripts/process_responsiveness_sanity.py
           python scripts/backend_foundation_sanity.py
           python scripts/backend_second_pass_sanity.py
-          python scripts/backend_phase4_sanity.py
           python scripts/backend_phase6_sanity.py
           python scripts/backend_phase7_sanity.py
-          python scripts/detector_grayscale_retry_sanity.py
           python scripts/research_mask_quality_sanity.py
       - name: Run Phase 5 performance and equivalence regression
         if: matrix.os == 'ubuntu-22.04'
@@ -96,9 +87,3 @@ jobs:
       - name: Run Phase 5 cross-platform equivalence regression
         if: matrix.os == 'windows-2025'
         run: python scripts/backend_phase5_sanity.py --correctness-only
-      - name: Run Phase 8 performance and equivalence regression
-        if: matrix.os == 'ubuntu-22.04'
-        run: python scripts/backend_phase8_sanity.py
-      - name: Run Phase 8 cross-platform equivalence regression
-        if: matrix.os == 'windows-2025'
-        run: python scripts/backend_phase8_sanity.py --correctness-only

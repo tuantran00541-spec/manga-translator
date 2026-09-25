@@ -182,28 +182,6 @@ def protected_region_checks() -> None:
     )
 
 
-def recovery_cache_checks() -> None:
-    from app.detector.recovery import SecondaryTextRecovery
-
-    class FakeMser:
-        def __init__(self):
-            self.calls = 0
-
-        def detectRegions(self, gray):
-            self.calls += 1
-            return [], np.array([[2, 2, 4, 4]], dtype=np.int32)
-
-    recovery = SecondaryTextRecovery()
-    fake = FakeMser()
-    recovery._mser = fake
-    image = np.zeros((32, 32, 3), np.uint8)
-    gray = np.zeros((32, 32), np.uint8)
-    first = recovery._extract_primitives(image, gray)
-    second = recovery._extract_primitives(image, gray)
-    check(fake.calls == 1, "same-image MSER extraction repeated")
-    check(first is second, "same-image primitive cache was not reused")
-
-
 def render_identity_checks() -> None:
     from app.render.identity import render_input_signature
 
@@ -259,7 +237,6 @@ def main() -> None:
     transaction_identity_checks()
     stale_outcome_checks()
     protected_region_checks()
-    recovery_cache_checks()
     render_identity_checks()
     repaint_input_checks()
     print("backend second-pass sanity: PASS")

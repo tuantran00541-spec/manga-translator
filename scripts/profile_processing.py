@@ -31,13 +31,7 @@ def write_json(path, value):
 
 def detector_phase_specs():
     return (
-        ("CombinedTextDetector", "_grayscale_text_retry", "grayscale_retry"),
-        ("CombinedTextDetector", "_focused_text_retry", "mser_promotion"),
-        (
-            "FastResidueAdaptiveFocusCombinedTextDetector",
-            "verify_post_inpaint_residue",
-            "residue_verify",
-        ),
+        ("OneShotProductionDetector", "verify_post_inpaint_residue", "residue_verify"),
     )
 
 
@@ -145,11 +139,7 @@ def instrument():
     import app.ort_utils as ort_utils
     import app.detector.bubble_detector as yolo
     import app.inpaint.lama_inpainter as lama
-    from app.detector.combined_detector import CombinedTextDetector
-    from app.detector.fast_residue_detector import (
-        FastResidueAdaptiveFocusCombinedTextDetector,
-    )
-    from app.detector.recovery import SecondaryTextRecovery
+    from app.one_shot_cleanup import OneShotProductionDetector
 
     timers = Timers()
     make_session = ort_utils.make_session
@@ -217,32 +207,31 @@ def instrument():
         return Session(session, Path(path).name)
 
     yolo.make_session = measured_session
-    for method in ("detect", "_preprocess", "_postprocess", "_decode_mask", "_nms", "_nms_boxes"):
+    for method in ("_preprocess", "_postprocess", "_decode_mask", "_nms"):
         timers.wrap(yolo.YoloDetector, method, "yolo." + method)
-    for method in ("detect", "_flat_bubble_text_fallback", "_merge_masks",
-                   "_refine_and_split_tall_boxes", "_apply_final_nms"):
-        timers.wrap(CombinedTextDetector, method, "combined." + method)
-    phase_owners = {
-        "CombinedTextDetector": CombinedTextDetector,
-        "FastResidueAdaptiveFocusCombinedTextDetector": (
-            FastResidueAdaptiveFocusCombinedTextDetector
-        ),
-    }
+    timers.wrap(OneShotProductionDetector, "detect", "detector.detect")
+    timers.wrap(OneShotProductionDetector, "verify_post_inpaint_residue", "detector.residue_verify")
+    phase_owners = {"OneShotProductionDetector": OneShotProductionDetector}
     for owner_name, method, phase_name in detector_phase_specs():
         wrap_phase(phase_owners[owner_name], method, phase_name)
-    timers.wrap(SecondaryTextRecovery, "detect", "recovery.detect")
-    for method in ("_cluster_boxes", "_smart_fill_color", "_smart_paint_region",
+    for method in ("_smart_fill_color", "_smart_paint_region",
                    "_lama_fill_single_dynamic", "_lama_fill_single", "_lama_fill_tiled",
                    "_run_lama"):
         if method in vars(lama.Inpainter):
             timers.wrap(lama.Inpainter, method, "inpaint." + method)
-    original_mask = lama.build_mask
 
-    def measured_mask(*args, **kwargs):
-        with timers.span("mask.build"):
-            return original_mask(*args, **kwargs)
+    def measure_function(name, span_name):
+        original = getattr(lama, name)
 
-    lama.build_mask = measured_mask
+        @functools.wraps(original)
+        def measured(*args, **kwargs):
+            with timers.span(span_name):
+                return original(*args, **kwargs)
+
+        setattr(lama, name, measured)
+
+    measure_function("cluster_boxes", "inpaint.cluster_boxes")
+    measure_function("build_mask", "mask.build")
     return timers
 
 

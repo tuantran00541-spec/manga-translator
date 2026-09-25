@@ -7,8 +7,7 @@ from pathlib import Path
 
 import cv2
 
-from app.detector.bubble_detector import BubbleBox
-from app.detector.combined_detector import CombinedTextDetector
+from app.detector.bubble_detector import BubbleBox, apply_final_nms
 from app.image_io import encode_mask, read_image, write_image
 from app.manifest_utils import assign_stable_detector_box_ids
 from app.region_policy import geometry_center_in_regions, subtract_regions_from_mask
@@ -120,7 +119,7 @@ class PageProcessingMixin:
         detector_metrics = self.detector.last_metrics()
 
         if supplemental_detections:
-            detected = CombinedTextDetector._apply_final_nms(
+            detected = apply_final_nms(
                 detected + list(supplemental_detections),
                 iou_threshold=DETECTOR_FINAL_NMS_IOU,
             )

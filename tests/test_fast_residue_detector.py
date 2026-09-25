@@ -3,12 +3,7 @@ import threading
 import numpy as np
 
 from app.detector.bubble_detector import BubbleBox
-from app.detector.fast_residue_detector import (
-    FastResidueAdaptiveFocusCombinedTextDetector,
-)
-from app.detector.parallel_focus_detector import (
-    ParallelAdaptiveFocusCombinedTextDetector,
-)
+from app.one_shot_cleanup import OneShotProductionDetector
 from app.parameters import DETECTOR_RESIDUE_VERIFY_MAX_SOURCE_SIDE
 
 
@@ -30,9 +25,7 @@ def _box(x1, y1, x2, y2):
 
 
 def _detector_with_fake_text():
-    detector = FastResidueAdaptiveFocusCombinedTextDetector.__new__(
-        FastResidueAdaptiveFocusCombinedTextDetector
-    )
+    detector = OneShotProductionDetector.__new__(OneShotProductionDetector)
     detector._residue_metrics_local = threading.local()
     detector._residue_metrics_lock = threading.Lock()
     detector._residue_totals = {}
@@ -41,18 +34,11 @@ def _detector_with_fake_text():
     return detector
 
 
-def test_fast_residue_detector_inherits_parallel_focus_path():
-    assert issubclass(
-        FastResidueAdaptiveFocusCombinedTextDetector,
-        ParallelAdaptiveFocusCombinedTextDetector,
-    )
-
-
 def test_residue_groups_coalesce_nearby_windows_but_not_distant_ones():
     a = _box(10, 10, 50, 35)
     b = _box(48, 12, 88, 37)
     c = _box(300, 300, 340, 330)
-    groups = FastResidueAdaptiveFocusCombinedTextDetector._plan_residue_groups(
+    groups = OneShotProductionDetector._plan_residue_groups(
         [
             (a, (0, 0, 62, 47)),
             (b, (36, 0, 100, 49)),
@@ -66,7 +52,7 @@ def test_residue_groups_coalesce_nearby_windows_but_not_distant_ones():
 
 def test_residue_groups_refuse_union_that_exceeds_source_side_limit():
     max_side = int(DETECTOR_RESIDUE_VERIFY_MAX_SOURCE_SIDE)
-    method = FastResidueAdaptiveFocusCombinedTextDetector._can_merge_roi
+    method = OneShotProductionDetector._can_merge_roi
     ok, union = method(
         (0, 0, max_side - 10, 30),
         (max_side - 10, 0, max_side + 20, 30),

@@ -3,7 +3,6 @@ from __future__ import annotations
 import time
 import uuid
 from pathlib import Path
-from typing import Callable
 
 import cv2
 import numpy as np
@@ -11,52 +10,15 @@ import numpy as np
 from app.detector.bubble_detector import BubbleBox
 from app.inpaint.clustering import compute_manual_crop_region
 from app.detector.mask_builder import build_mask
-from app.one_shot_cleanup import OneShotProductionDetector
 from app.image_io import read_image, write_image
-from app.inpaint.lama_inpainter import Inpainter
 from app.manifest_utils import atomic_replace
 from app.mask_store import decode_mask_value
-from app.parameters import MANUAL_MASK_THRESHOLD, PIPELINE_DEFAULT_WORKERS
+from app.parameters import MANUAL_MASK_THRESHOLD
 from app.pipeline import ChapterPipeline
 from app.region_policy import geometry_center_in_regions, subtract_regions_from_mask
 
 
 class OptimizedChapterPipeline(ChapterPipeline):
-    @property
-    def detector(self):
-        if self._detector is None:
-            with self._detector_init_lock:
-                if self._detector is None:
-                    self._detector = OneShotProductionDetector()
-        return self._detector
-
-    @property
-    def inpainter(self):
-        if self._inpainter is None:
-            with self._inpainter_init_lock:
-                if self._inpainter is None:
-                    self._inpainter = Inpainter()
-        return self._inpainter
-
-    def process_pages(
-        self,
-        chapter_id: str,
-        page_indices: list[int],
-        workers: int = PIPELINE_DEFAULT_WORKERS,
-        progress_callback: Callable[[int], None] | None = None,
-    ) -> dict:
-        requested_workers = max(1, min(8, int(workers or PIPELINE_DEFAULT_WORKERS)))
-        inpainter = self.inpainter
-        prepare = getattr(inpainter, "prepare_for_page_workers", None)
-        if callable(prepare):
-            prepare(requested_workers)
-        return super().process_pages(
-            chapter_id,
-            page_indices,
-            workers=requested_workers,
-            progress_callback=progress_callback,
-        )
-
     @staticmethod
     def _restore_preserve_pixels(
         clean_image: np.ndarray,

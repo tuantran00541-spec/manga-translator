@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
+import re
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -115,14 +116,12 @@ def source_checks() -> None:
         "CPU headroom must be configured before pipeline factory imports",
     )
 
-    optimized = (ROOT / "app/optimized_pipeline.py").read_text(encoding="utf-8")
-    check(
-        "requested_workers = max(1, min(8" in optimized
-        and "workers=requested_workers" in optimized,
-        "optimized pipeline does not preserve the public 1..8 worker contract",
-    )
-
     pipeline = (ROOT / "app/pipeline.py").read_text(encoding="utf-8")
+    check(
+        re.search(r"max_workers = max\(\s*1,\s*min\(\s*int\(workers or PIPELINE_DEFAULT_WORKERS\),\s*8,", pipeline)
+        is not None,
+        "pipeline does not preserve the public 1..8 worker contract",
+    )
     check(
         "ThreadPoolExecutor(" in pipeline
         and "max_workers=max_workers" in pipeline,

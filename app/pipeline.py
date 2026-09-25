@@ -9,11 +9,11 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import numpy as np
 from app.downloader.registry import download_chapter as fetch_chapter_images
 from app.downloader.slicer import OVERLAP_CONTEXT, slice_image
-from app.detector.combined_detector import CombinedTextDetector
-from app.detector.bubble_detector import BubbleBox
+from app.detector.bubble_detector import BubbleBox, apply_final_nms
 from app.inpaint.lama_inpainter import Inpainter
 from app.inpaint.mask_geometry import geometry_dict, remap_local_mask_page_space
 from app.image_io import encode_mask as _encode_mask, read_image
+from app.one_shot_cleanup import OneShotProductionDetector
 from app.page_processing import PageProcessingMixin
 from app.pipeline_editing import PipelineEditingMixin
 from app.config import RAW_DIR, PROCESSED_DIR
@@ -56,7 +56,7 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
         if self._detector is None:
             with self._detector_init_lock:
                 if self._detector is None:
-                    self._detector = CombinedTextDetector()
+                    self._detector = OneShotProductionDetector()
         return self._detector
 
     @property
@@ -457,7 +457,7 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
                         target.append(mapped)
 
         for idx, boxes in list(by_page.items()):
-            by_page[idx] = CombinedTextDetector._apply_final_nms(
+            by_page[idx] = apply_final_nms(
                 boxes, iou_threshold=DETECTOR_FINAL_NMS_IOU
             )
         return by_page, unavailable_pages, shared_metrics
