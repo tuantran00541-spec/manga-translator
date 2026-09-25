@@ -206,12 +206,15 @@
     stage.style.width = `${Math.max(1, Math.round(width * scale))}px`;
     stage.style.height = `${Math.max(1, Math.round(height * scale))}px`;
     stage.style.marginTop = `${Math.max(24, Math.round((viewport.clientHeight - height * scale) / 2))}px`;
-    stage.style.marginBottom = "24px";
+    stage.style.marginBottom = "64px";
     if (src) {
       viewport.scrollLeft = Math.max(0, src.x * scale - focus.x);
       viewport.scrollTop = Math.max(0, src.y * scale - focus.y);
     }
-    if (label) label.textContent = fitWidth ? `Vừa khung · ${Math.round(scale * 100)}%` : `${zoom}%`;
+    if (label) {
+      label.textContent = fitWidth ? `${Math.round(scale * 100)}%` : `${zoom}%`;
+      label.title = fitWidth ? "Đang vừa khung" : "Bấm để vừa khung";
+    }
   }
 
   function scrollToReviewPage(shell, pageIndex) {
@@ -724,7 +727,7 @@
     image.dataset.activeTool = tool; viewport.dataset.activeTool = tool;
     const paint = ["brush", "eraser"].includes(tool), text = ["rectangle", "ellipse"].includes(tool);
     shell.querySelectorAll(".review-text-object-overlay").forEach((el) => { el.style.pointerEvents = tool === "select" && variant === "clean" ? "auto" : "none"; el.classList.toggle("tool-muted", variant === "clean" && tool !== "select"); });
-    image.classList.toggle("text-draw-mode", text && variant === "clean"); image.classList.toggle("brush-mode", paint && variant === "clean"); syncToolButtons();
+    image.classList.toggle("text-draw-mode", text && variant === "clean"); image.classList.toggle("brush-mode", paint && variant === "clean"); syncToolButtons(); shell._syncBrushBar?.();
   }
   function setTool(shell, next) {
     if (!["select", "rectangle", "ellipse", "brush", "eraser", "hand", "zoom"].includes(next)) next = "select";
@@ -803,7 +806,7 @@
       }
     }, { signal });
 
-    actions.appendChild(render);
+    (shell.querySelector(".review-more-panel") || actions).appendChild(render);
     if (typeof window.buildChapterTranslateControls === "function") {
       actions.appendChild(window.buildChapterTranslateControls());
     }
@@ -895,24 +898,31 @@
 
     const left = document.createElement("div");
     left.className = "review-docbar-group review-docbar-left";
-    const center = document.createElement("div");
-    center.className = "review-docbar-group review-docbar-center";
     const right = document.createElement("div");
     right.className = "review-docbar-group review-docbar-right";
 
-    const stripMeta = document.createElement("span");
-    stripMeta.className = "review-docbar-mini-meta review-strip-meta";
-    stripMeta.textContent = "Ảnh liên tục";
-
+    const viewSwitch = document.createElement("div");
+    viewSwitch.className = "review-view-switch";
+    viewSwitch.setAttribute("role", "group");
+    viewSwitch.setAttribute("aria-label", "Ảnh đang xem");
     const clean = button(null, "Sau inpaint");
     const rendered = button(null, "Có chữ");
     const original = button(null, "Ảnh gốc");
+    viewSwitch.append(clean, rendered, original);
 
+    // Zoom lives in a small dock over the canvas corner, not in the command bar.
+    const zoomDock = document.createElement("div");
+    zoomDock.className = "review-zoom-dock";
+    zoomDock.setAttribute("role", "group");
+    zoomDock.setAttribute("aria-label", "Thu phóng");
     const zoomOut = button("minus", "Thu nhỏ");
     const zoomValue = button(null, "Vừa khung");
     zoomValue.classList.add("review-zoom-value");
     const zoomIn = button("plus", "Phóng to");
-    const one = button(null, "100%");
+    const one = button(null, "1:1");
+    one.setAttribute("aria-label", "Xem kích thước thật 1:1");
+    one.title = "Kích thước thật (100%)";
+    zoomDock.append(zoomOut, zoomValue, zoomIn, one);
 
     const submit = document.createElement("button");
     submit.type = "button";
@@ -938,13 +948,34 @@
     size.className = "brush-size-slider";
     sizeWrap.append(size, sizeOut);
 
+    // Brush options only matter while painting a mask, so they float next to
+    // the tool rail instead of occupying the command bar permanently.
+    const brushBar = document.createElement("div");
+    brushBar.className = "review-brush-bar";
+    brushBar.setAttribute("role", "toolbar");
+    brushBar.setAttribute("aria-label", "Tùy chọn cọ inpaint");
+    brushBar.hidden = true;
+    brushBar.append(sizeWrap, clearMask, submit);
+
     const actionsHost = document.createElement("div");
     actionsHost.className = "review-docbar-actions";
 
-    left.append(stripMeta);
-    center.append(clean, rendered, original, zoomOut, zoomValue, zoomIn, one);
-    right.append(submit, clearMask, sizeWrap, actionsHost);
-    docbar.append(left, center, right);
+    const more = document.createElement("details");
+    more.className = "review-more-menu";
+    const moreToggle = document.createElement("summary");
+    moreToggle.className = "ui-btn ui-btn-ghost ui-btn-compact review-more-toggle";
+    moreToggle.setAttribute("aria-label", "Thêm thao tác");
+    moreToggle.title = "Thêm thao tác";
+    moreToggle.append(window.createUiIcon("more"));
+    const morePanel = document.createElement("div");
+    morePanel.className = "review-more-panel";
+    more.append(moreToggle, morePanel);
+    morePanel.addEventListener("click", (e) => { if (e.target.closest("button")) more.open = false; }, { signal });
+    document.addEventListener("pointerdown", (e) => { if (more.open && !more.contains(e.target)) more.open = false; }, { signal });
+
+    left.append(viewSwitch);
+    right.append(actionsHost, more);
+    docbar.append(left, right);
 
     const meta = document.createElement("div");
     meta.className = "review-stitched-meta";
@@ -976,14 +1007,20 @@
     installOverlaySync();
     mountTextInspector(workspace, shell, signal);
     mountToolRail(shell, signal);
+    shell.append(brushBar, zoomDock);
     installTextDrawing(shell, signal);
     mountActions(shell, signal, () => shell._rerender?.());
     window.mountChapterOCR?.();
 
     let painting = false, radius = 24, last = null, panning = false, pan = null, space = false;
 
-    const syncVariant = () => { clean.classList.toggle("ui-btn-primary", variant === "clean"); rendered.classList.toggle("ui-btn-primary", variant === "rendered"); original.classList.toggle("ui-btn-primary", variant === "original"); const readonly = variant !== "clean"; submit.disabled = readonly; clearMask.disabled = readonly; size.disabled = readonly; workspace.classList.toggle("review-readonly-document", readonly); syncTool(shell); };
+    const syncVariant = () => { [[clean, "clean"], [rendered, "rendered"], [original, "original"]].forEach(([b, name]) => { b.classList.toggle("ui-btn-primary", variant === name); b.setAttribute("aria-pressed", String(variant === name)); }); const readonly = variant !== "clean"; submit.disabled = readonly; clearMask.disabled = readonly; size.disabled = readonly; workspace.classList.toggle("review-readonly-document", readonly); syncTool(shell); };
     shell._syncVariantUI = syncVariant;
+    const syncBrushBar = () => {
+      const hasMask = (shell._brushChunks || []).some((c) => c.dirty);
+      brushBar.hidden = variant !== "clean" || !(["brush", "eraser"].includes(tool) || hasMask);
+    };
+    shell._syncBrushBar = syncBrushBar;
     const busy = (on, text = "Đang xử lý…") => { workspace.classList.toggle("review-busy", on); [submit, clearMask, size, clean, rendered, original, zoomOut, zoomIn, one, zoomValue].forEach((el) => el.disabled = on); submit.textContent = on ? text : "Làm sạch vùng"; document.querySelectorAll(".review-rail-tool").forEach((b) => b.disabled = on); if (!on) syncVariant(); };
     const updateCompat = () => {
       const savedPage = Number(workspace.dataset.reviewCanonicalIndex);
@@ -1027,7 +1064,7 @@
 
     image.addEventListener("pointerdown", (e) => { if (variant !== "clean" || !["brush", "eraser"].includes(tool) || e.button !== 0) return; const p = sourcePoint(image, e); if (!p) return; e.preventDefault(); painting = true; last = p; image.setPointerCapture?.(e.pointerId); paintPoint(shell, p.x, p.y, radius, tool === "eraser"); }, { signal });
     image.addEventListener("pointermove", (e) => { if (!painting || !last || !["brush", "eraser"].includes(tool)) return; const p = sourcePoint(image, e); if (!p) return; paintStroke(shell, last, p, radius, tool === "eraser"); last = p; }, { signal });
-    const stopPaint = () => { painting = false; last = null; }; image.addEventListener("pointerup", stopPaint, { signal }); image.addEventListener("pointercancel", stopPaint, { signal });
+    const stopPaint = () => { painting = false; last = null; syncBrushBar(); }; image.addEventListener("pointerup", stopPaint, { signal }); image.addEventListener("pointercancel", stopPaint, { signal });
 
     window.addEventListener("keydown", (e) => {
       const tag = e.target?.tagName?.toLowerCase(), editable = e.target?.isContentEditable || tag === "input" || tag === "textarea" || tag === "select"; if (editable) return;
@@ -1048,7 +1085,7 @@
     viewport.addEventListener("wheel", (e) => { if (!(e.ctrlKey || e.metaKey)) return; e.preventDefault(); const r = viewport.getBoundingClientRect(); stepZoom(e.deltaY < 0 ? 1 : -1); applyZoom(shell, { x: e.clientX - r.left, y: e.clientY - r.top }); }, { passive: false, signal });
 
     size.addEventListener("input", () => { radius = Number(size.value); sizeOut.textContent = `${radius * 2}px`; }, { signal });
-    clearMask.addEventListener("click", () => { for (const c of shell._brushChunks || []) { if (c.canvas && c.ctx) c.ctx.clearRect(0, 0, c.canvas.width, c.canvas.height); c.dirty = false; } snapshots.delete(snapshotKey()); }, { signal });
+    clearMask.addEventListener("click", () => { for (const c of shell._brushChunks || []) { if (c.canvas && c.ctx) c.ctx.clearRect(0, 0, c.canvas.width, c.canvas.height); c.dirty = false; } snapshots.delete(snapshotKey()); syncBrushBar(); }, { signal });
     clean.addEventListener("click", () => { if (variant !== "clean") { variant = "clean"; rerender(); } }, { signal }); rendered.addEventListener("click", () => { if (variant !== "rendered") { captureSnapshot(shell); variant = "rendered"; rerender(); } }, { signal }); original.addEventListener("click", () => { if (variant !== "original") { captureSnapshot(shell); variant = "original"; rerender(); } }, { signal });
     zoomOut.addEventListener("click", () => { stepZoom(-1); applyZoom(shell); }, { signal }); zoomIn.addEventListener("click", () => { stepZoom(1); applyZoom(shell); }, { signal }); zoomValue.addEventListener("click", () => { fitWidth = true; applyZoom(shell); }, { signal }); one.addEventListener("click", () => { fitWidth = false; zoom = 100; applyZoom(shell); }, { signal });
     window.addEventListener("resize", () => { if (fitWidth) applyZoom(shell); }, { signal });

@@ -59,12 +59,10 @@
   .review-canvas-only-host { grid-template-rows: minmax(0, 1fr); }
   .review-single-document .review-canvas-host { padding: 0; overflow: hidden; place-items: stretch; background: var(--surface-app); }
   .review-single-document .review-document-shell { display: grid; grid-template-rows: 36px auto auto minmax(0, 1fr); width: 100%; max-width: none; height: 100%; min-height: 0; overflow: hidden; border: 0; border-radius: 0; background: var(--surface-app); box-shadow: none; }
-  .review-single-document .review-document-toolbar { grid-row: 1; justify-content: flex-start; min-height: 36px; padding: 3px 6px; border: 0; border-bottom: 1px solid var(--border-strong); background: var(--surface-panel); }
+  .review-single-document .review-document-toolbar { grid-row: 1; }
   .review-single-document .review-stitched-meta { grid-row: 2; }
   .review-single-document .review-stitched-warning { grid-row: 3; }
   .review-single-document .review-document-viewport { grid-row: 4; }
-  .review-single-document .review-document-toolbar .ui-btn, .review-single-document .review-document-toolbar .ui-select { min-height: 28px; height: 28px; border-radius: 3px; font-size: 11px; }
-  .review-single-document .review-document-toolbar .review-stitched-select { width: 120px; }
   .review-single-document .review-stitched-meta { padding: 4px 8px; border-bottom: 1px solid var(--border-subtle); background: var(--surface-panel); color: var(--text-muted); font-size: 10px; }
   .review-single-document .review-stitched-warning { padding: 5px 8px; border-bottom: 1px solid var(--border-strong); background: var(--warning-soft); color: var(--text-secondary); font-size: 10px; }
   .review-single-document .review-document-viewport { position: relative; min-width: 0; min-height: 0; overflow: auto; padding: 24px; background: var(--surface-app); text-align: left; cursor: default; }
@@ -77,7 +75,6 @@
   .review-single-document .review-controls-slot:empty { display: none; }
   .review-single-document .review-stitched-controls { gap: 6px; }
   .review-single-document .review-stitched-controls .ui-btn { width: 100%; }
-  .review-single-document .review-zoom-value { min-width: 78px; }
   @media (max-width: 1000px) {
     .workbench-stage-grid, .translation-workspace-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); grid-template-areas: "canvas"; }
     .page-navigator, .context-inspector, .translation-panel-host { position: absolute; top: 0; bottom: 0; z-index: var(--z-panel); width: var(--ps-dock-width); }
@@ -114,19 +111,39 @@
   .preview-canvas-surface, .review-card, .review-stitched-shell, .page-block, .review-single-document .review-stitched-image, .review-floating-inspector { box-shadow: none; }
   .review-floating-inspector { background: var(--surface-panel); backdrop-filter: none; }
   .review-canvas-only .review-document-shell, .review-single-document .review-document-shell { grid-template-rows: auto 0 auto minmax(0, 1fr); }
-  .review-document-toolbar-compact { display: grid; grid-template-columns: auto minmax(220px, 1fr) auto; grid-template-areas: "left center right"; width: 100%; max-width: 100%; min-width: 0; min-height: 38px; gap: 4px 6px; padding: 4px 6px; overflow: hidden; border-bottom: 1px solid var(--border-strong); background: var(--surface-panel); }
-  .review-docbar-left { grid-area: left; min-width: 0; display: flex; align-items: center; gap: 4px; }
-  .review-docbar-center { grid-area: center; min-width: 0; display: flex; align-items: center; justify-content: center; gap: 4px; overflow-x: auto; scrollbar-width: none; }
-  .review-docbar-right { grid-area: right; min-width: 0; display: flex; align-items: center; justify-content: flex-end; gap: 4px; overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none; }
-  .review-docbar-center::-webkit-scrollbar, .review-docbar-right::-webkit-scrollbar { display: none; }
-  :is(.review-docbar-center, .review-docbar-right, .review-docbar-actions) > * { flex-shrink: 0; }
-  .review-docbar-actions { display: flex; flex-shrink: 0; align-items: center; gap: 4px; flex-wrap: nowrap; }
-  .review-docbar-brush-size { display: inline-flex; align-items: center; width: auto; min-width: 0; margin: 0; gap: 5px; font-size: 10px; white-space: nowrap; }
-  .review-docbar-brush-size input { width: 72px; min-width: 0; accent-color: var(--accent); }
-  .review-document-toolbar-compact :is(button, select, label) { max-width: 100%; }
-  .review-document-toolbar-compact .ui-btn { min-height: 28px; height: 28px; padding: 0 9px; border-radius: 3px; font-size: 11px; }
-  .review-document-toolbar-compact .ui-icon-btn { min-height: 28px; width: 28px; border-radius: 3px; }
-  .review-docbar-mini-meta { font-size: 10px; white-space: nowrap; }
+  .review-document-toolbar-compact { position: relative; z-index: calc(var(--z-toolbar) + 6); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; width: 100%; min-width: 0; min-height: 40px; gap: 6px 10px; padding: 5px 8px; overflow: visible; border-bottom: 1px solid var(--border-strong); background: var(--surface-panel); }
+  .review-docbar-left, .review-docbar-right, .review-docbar-actions { display: flex; min-width: 0; align-items: center; gap: 6px; overflow: visible; }
+  .review-docbar-right { margin-left: auto; }
+  .review-document-toolbar-compact .ui-btn { min-height: 30px; height: 30px; padding: 0 10px; border-radius: 3px; font-size: 11px; }
+  /* One segmented control for the three views of the same image. */
+  .review-view-switch { display: inline-flex; padding: 2px; gap: 2px; border: 1px solid var(--border-strong); border-radius: 4px; }
+  .review-view-switch .ui-btn { min-height: 24px; height: 24px; border: 0; border-radius: 2px; }
+  /* Disclosures in the command bar open as dropdowns instead of growing the bar. */
+  .review-docbar-right :is(.command-disclosure, .review-more-menu) { position: relative; }
+  .review-docbar-right :is(.command-disclosure-panel, .review-more-panel) { position: absolute; z-index: var(--z-popover); top: calc(100% + 6px); right: 0; width: min(320px, calc(100vw - 24px)); max-height: min(70vh, 560px); margin: 0; overflow: auto; border: 1px solid var(--border-strong); border-radius: 4px; background: var(--surface-panel); }
+  .review-view-switch .ui-btn[aria-pressed="true"] { background: var(--accent); color: var(--accent-contrast); }
+  .review-docbar-right .command-disclosure-panel { gap: 10px; padding: 12px; font-size: 12px; }
+  .review-docbar-right .command-disclosure-panel .ui-note { margin: 0; color: var(--text-secondary); font-size: 12px; line-height: 1.45; }
+  .review-docbar-right .command-disclosure-panel .ui-field:has(> input[type="checkbox"]) { display: flex; flex-direction: row; align-items: center; gap: 8px; }
+  .review-docbar-right .command-disclosure-panel input[type="checkbox"] { width: 16px; height: 16px; min-height: 0; margin: 0; flex: 0 0 auto; accent-color: var(--accent); }
+  .review-docbar-right :is(.command-disclosure, .review-more-menu):not([open]) > :is(.command-disclosure-panel, .review-more-panel) { display: none; }
+  .review-more-toggle { display: inline-flex; width: 30px; align-items: center; justify-content: center; padding: 0 !important; list-style: none; cursor: pointer; }
+  .review-more-toggle::-webkit-details-marker { display: none; }
+  .review-more-menu[open] > .review-more-toggle, .review-docbar-right .command-disclosure[open] > summary { border-color: var(--border-strong); background: var(--surface-raised); }
+  .review-more-toggle .ui-icon { width: 16px; height: 16px; }
+  .review-more-panel { display: grid; width: 210px !important; padding: 4px; gap: 2px; }
+  .review-more-panel .ui-btn { width: 100%; justify-content: flex-start; border: 0; text-align: left; }
+  /* Brush options appear beside the tool rail only while painting a mask. */
+  .review-brush-bar { position: absolute; z-index: calc(var(--z-toolbar) + 2); top: calc(var(--review-docbar-height, 40px) + 14px); left: 62px; display: flex; max-width: calc(100% - 74px); align-items: center; flex-wrap: wrap; gap: 6px; padding: 4px 6px; border: 1px solid var(--border-strong); border-radius: 4px; background: var(--surface-panel); }
+  .review-brush-bar .ui-btn { min-height: 28px; height: 28px; padding: 0 10px; border-radius: 3px; font-size: 11px; }
+  .review-docbar-brush-size { display: inline-flex; align-items: center; width: auto; min-width: 0; margin: 0; gap: 6px; font-size: 11px; white-space: nowrap; }
+  .review-docbar-brush-size input { width: 90px; min-width: 0; accent-color: var(--accent); }
+  .review-docbar-brush-size output { min-width: 34px; color: var(--text-muted); }
+  /* Zoom dock sits in the canvas corner and steps aside for the inspector. */
+  .review-zoom-dock { position: absolute; z-index: calc(var(--z-toolbar) + 2); right: 12px; bottom: 12px; display: flex; align-items: center; gap: 2px; padding: 3px; border: 1px solid var(--border-strong); border-radius: 4px; background: var(--surface-panel); }
+  .review-zoom-dock .ui-btn { min-height: 28px; height: 28px; padding: 0 8px; border: 0; border-radius: 3px; font-size: 11px; }
+  .review-zoom-dock .review-zoom-value { min-width: 52px; justify-content: center; font-variant-numeric: tabular-nums; }
+  .review-floating-inspector:not([hidden]) ~ .review-zoom-dock { right: calc(min(300px, 100% - 68px) + 16px); }
   .review-floating-inspector { top: calc(var(--review-docbar-height, 38px) + 6px); right: 8px; bottom: 8px; width: min(300px, calc(100% - 68px)); border-radius: 4px; }
   .review-floating-inspector-header { min-height: 34px; padding: 3px 5px 3px 9px; }
   .review-floating-inspector-header strong { font-size: 11px; }
@@ -141,21 +158,15 @@
   .text-object-actions { gap: 6px; }
   .text-object-action-btn { min-height: 30px; height: auto; padding: 4px 8px; font-size: 11px; line-height: 1.2; white-space: normal; }
   .text-object-action-btn:last-child { grid-column: span 2; }
-  @media (max-width: 1200px) {
-    .review-document-toolbar-compact { grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "left right" "center center"; }
-    .review-docbar-center { justify-content: flex-start; }
-  }
   @media (max-width: 820px) {
-    .review-document-toolbar-compact { grid-template-columns: minmax(0, 1fr); grid-template-areas: "left" "center" "right"; gap: 3px; }
-    .review-docbar-left, .review-docbar-center, .review-docbar-right { width: 100%; justify-content: flex-start; }
     .review-floating-inspector { top: auto; right: 6px; bottom: 6px; left: 6px; width: auto; max-height: 54%; }
-  }
-  @media (max-width: 820px) {
-    /* Narrow screens wrap every control into view: hidden horizontal scroll is easy to miss on touch. */
-    :is(.review-docbar-left, .review-docbar-center, .review-docbar-right, .review-docbar-actions) { flex-wrap: wrap; overflow: visible; }
-    .review-docbar-actions { flex-shrink: 1; min-width: 0; }
+    .review-floating-inspector:not([hidden]) ~ .review-zoom-dock { display: none; }
+    .review-docbar-right, .review-docbar-actions { flex-wrap: wrap; }
   }
   @media (max-width: 720px) {
-    .review-single-document .review-document-toolbar-compact .ui-btn { min-height: 36px; height: 36px; }
+    .review-single-document .review-document-toolbar-compact .ui-btn, .review-brush-bar .ui-btn, .review-zoom-dock .ui-btn { min-height: 36px; height: 36px; }
+    .review-view-switch .ui-btn { min-height: 36px; height: 36px; }
+    .review-brush-bar { left: 54px; max-width: calc(100% - 60px); }
+    .review-zoom-dock { right: 8px; bottom: 8px; }
   }
 }

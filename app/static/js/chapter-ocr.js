@@ -244,7 +244,8 @@
   function bindWorkspace(workspace) {
     syncChapter();
     if (!workspace || workspace.dataset.chapterOcrBound === "1") return;
-    const actions = workspace.querySelector(".review-docbar-actions")
+    const actions = workspace.querySelector(".review-more-panel")
+      || workspace.querySelector(".review-docbar-actions")
       || workspace.querySelector(".review-actions-group");
     if (!actions) return;
     workspace.dataset.chapterOcrBound = "1";
