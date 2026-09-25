@@ -328,3 +328,19 @@ def delete_provider_config(provider_id: str) -> None:
             ) from exc
     ids = [provider_id for provider_id in _custom_provider_ids() if provider_id != normalized]
     _set_custom_provider_ids(ids)
+
+
+_CLOUD_ACCOUNT = "manga-cloud-account-token"
+_CLOUD_ENV = ("MANGA_CLOUD_TOKEN",)
+
+
+def get_cloud_token() -> str | None:
+    return _get_api_key(_CLOUD_ACCOUNT, _CLOUD_ENV, "Manga Cloud")
+
+
+def set_cloud_token(value: str) -> None:
+    _set_api_key(_CLOUD_ACCOUNT, value, "Manga Cloud")
+
+
+def delete_cloud_token() -> None:
+    _delete_api_key(_CLOUD_ACCOUNT, "Manga Cloud")

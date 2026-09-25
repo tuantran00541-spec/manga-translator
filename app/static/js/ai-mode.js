@@ -5,8 +5,10 @@
   const STATUS_TEXT = {
     pending: "Chờ", running: "Đang chạy", done: "Xong", failed: "Lỗi", cancelled: "Đã hủy",
   };
+  const CLOUD = "manga-cloud";
   let pollTimer = null;
   let currentJob = null;
+  let account = null;
 
   const $ = (id) => document.getElementById(id);
 
@@ -43,8 +45,67 @@
     const budgetField = $("ai-mode-budget-field");
     if (!provider || !model) return;
     model.value = storage("get", "manga_translation_vision_model_" + provider.value) || "";
+    const cloud = provider.value === CLOUD;
+    const modelField = model.closest("label");
+    if (modelField) modelField.hidden = cloud;
     // Only DeepSeek reports token cost, so only there a budget can be enforced.
-    if (budgetField) budgetField.hidden = provider.value !== "deepseek";
+    if (budgetField) budgetField.hidden = cloud || provider.value !== "deepseek";
+  }
+
+  function ensureCloudOption() {
+    const provider = $("ai-mode-provider");
+    if (!provider || !account?.tiers) return;
+    if (![...provider.options].some((o) => o.value === CLOUD)) {
+      provider.prepend(new Option("Manga Cloud", CLOUD));
+    }
+    const stored = storage("get", "manga_translation_provider");
+    if (!stored || stored === CLOUD || !account.features?.includes("byok")) provider.value = CLOUD;
+  }
+
+  function renderAccount() {
+    const bar = $("ai-mode-plan");
+    if (!bar) return;
+    bar.hidden = !account?.tiers;
+    if (!account?.tiers) return;
+    const signedIn = account.signed_in && !account.invalid_token;
+    const quota = account.quota;
+    let text = "Chưa đăng nhập Manga Cloud — dán token để dùng A.I mode.";
+    if (account.invalid_token) text = "Token Manga Cloud không hợp lệ — đăng nhập lại.";
+    else if (account.offline) text = "Không kết nối được Manga Cloud — tạm dùng tính năng gói Free.";
+    else if (signedIn && quota) {
+      text = `Gói ${account.plan_label || account.plan} · còn ${quota.remaining}/${quota.limit} chương A.I mode tháng ${quota.period}`;
+    }
+    $("ai-mode-plan-text").textContent = text;
+    $("ai-mode-token-form").hidden = signedIn;
+    $("ai-mode-signout").hidden = !signedIn;
+  }
+
+  async function loadAccount() {
+    try {
+      account = await requestJson("/api/account");
+    } catch (_) {
+      account = null;
+    }
+    ensureCloudOption();
+    renderAccount();
+    syncProviderFields();
+  }
+
+  async function saveToken(event) {
+    event.preventDefault();
+    const token = $("ai-mode-token").value.trim();
+    if (!token) return;
+    try {
+      account = await requestJson("/api/account/token", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token }),
+      });
+      $("ai-mode-token").value = "";
+    } catch (err) {
+      window.showToast?.("Không lưu được token: " + err.message, "error");
+    }
+    ensureCloudOption();
+    renderAccount();
+    syncProviderFields();
   }
 
   function setRunning(running) {
@@ -165,6 +226,7 @@
       storage("set", JOB_KEY, job.job_id);
       render(job);
       poll(job.job_id);
+      if (provider === CLOUD) loadAccount();
     } catch (err) {
       setRunning(false);
       window.showToast?.("Không chạy được A.I mode: " + err.message, "error");
@@ -189,7 +251,19 @@
       storage("set", "manga_translation_provider", provider.value);
       syncProviderFields();
     });
-    provider.addEventListener("ai-providers-updated", syncProviderFields);
+    provider.addEventListener("ai-providers-updated", () => {
+      ensureCloudOption();
+      syncProviderFields();
+    });
+    $("ai-mode-token-form").addEventListener("submit", saveToken);
+    $("ai-mode-signout").addEventListener("click", async () => {
+      try {
+        account = await requestJson("/api/account/token", { method: "DELETE" });
+      } catch (err) {
+        window.showToast?.("Không đăng xuất được: " + err.message, "error");
+      }
+      renderAccount();
+    });
     $("ai-mode-model").addEventListener("change", (event) => {
       storage("set", "manga_translation_vision_model_" + provider.value, event.target.value.trim());
     });
@@ -207,6 +281,7 @@
     });
     syncProviderFields();
     window.syncAIProviderSelects?.();
+    loadAccount();
     restore();
   }
 

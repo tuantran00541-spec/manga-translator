@@ -273,6 +273,10 @@ The settings UI can discover provider models through /models, select exact model
 
 Custom provider endpoints must use public HTTPS URLs. Credentials are never accepted inside the API URL.
 
+### Plans (experimental, off by default)
+
+With `MANGA_TIERS=1` the app reads its plan from a Manga Cloud gateway at `MANGA_CLOUD_URL`. A.I mode can then run through the gateway's own provider key and spends one chapter of the monthly quota. Free has 3 chapters, Plus has 30 plus Visual QC, and Pro has 100 plus the user's own keys and custom providers. The gateway enforces the quota and a per-chapter cost cap. The app hides locked features and falls back to Free when the gateway is unreachable. The gateway lives in `gateway/`: `GATEWAY_UPSTREAM_BASE=… GATEWAY_UPSTREAM_KEY=… GATEWAY_ADMIN_KEY=… python -m gateway`. Screenshots of the flow are in `audit-results/tiers/`.
+
 ## Runtime settings
 
 Detection, inpainting, OCR and rendering thresholds are fixed constants in `app/parameters.py`. Only operational settings read environment variables:

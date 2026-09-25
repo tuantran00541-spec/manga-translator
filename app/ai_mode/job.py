@@ -402,7 +402,7 @@ class AIModeJobManager:
     def active_job(self) -> AIModeJob | None:
         return next((job for job in self._jobs.values() if job.status in {"pending", "running"}), None)
 
-    def start(self, settings: AIModeSettings, *, provider, api_key: str) -> dict:
+    def start(self, settings: AIModeSettings, *, provider, api_key: str, on_finish=None) -> dict:
         if self.active_job() is not None:
             raise RuntimeError("An A.I mode job is already running")
         self._prune()
@@ -413,10 +413,10 @@ class AIModeJobManager:
             job.cost_usd = None
         self._jobs[job.job_id] = job
         runner = self._runner_factory(job, provider, api_key)
-        job.task = asyncio.get_running_loop().create_task(self._run(job, runner))
+        job.task = asyncio.get_running_loop().create_task(self._run(job, runner, on_finish))
         return self.snapshot(job.job_id)
 
-    async def _run(self, job: AIModeJob, runner) -> None:
+    async def _run(self, job: AIModeJob, runner, on_finish=None) -> None:
         job.status = "running"
         try:
             for key, _label in STAGES:
@@ -443,6 +443,11 @@ class AIModeJobManager:
                 job.stages[job.stage]["status"] = "failed"
         finally:
             job.updated_at = time.time()
+            if on_finish is not None:
+                try:
+                    await asyncio.to_thread(on_finish, job)
+                except Exception as exc:
+                    logger.warning("A.I mode finish hook failed: {}", type(exc).__name__)
 
     def cancel(self, job_id: str) -> dict:
         job = self._get(job_id)

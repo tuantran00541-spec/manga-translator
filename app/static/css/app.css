@@ -180,6 +180,8 @@
   .ai-mode-form .ui-field { gap: 4px; font-size: 12px; }
   .ai-mode-form :is(select, input) { width: 100%; min-width: 0; }
   .ai-mode-status { grid-column: 1 / -1; display: grid; gap: 10px; }
+  .ai-mode-plan { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12px; }
+  .ai-mode-token { display: flex; gap: 6px; }
   .ai-mode-stages { display: grid; margin: 0; padding: 0; gap: 4px; list-style: none; }
   .ai-mode-stage { display: flex; min-width: 0; align-items: baseline; justify-content: space-between; gap: 12px; padding: 7px 10px; border: 1px solid var(--border-subtle); border-radius: 4px; font-size: 12px; }
   .ai-mode-stage span { min-width: 0; overflow-wrap: anywhere; color: var(--text-muted); text-align: right; }
