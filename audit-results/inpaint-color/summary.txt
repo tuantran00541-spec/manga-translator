@@ -1,7 +1,7 @@
 chapter: https://asurascans.com/comics/the-academy-s-weapon-replicator-05c7df14/chapter/1
 slices: 87 downloaded, 87 processed
-download 9s, clean 472s
-speed/completion: {"slices": 87, "workers": 2, "clean_wall_s": 472.4, "wall_s_per_slice": 5.43, "slice_megapixels": {"mean": 2.72, "median": 2.73, "p90": 4.04, "max": 4.83}, "slice_total_s": {"mean": 9.54, "median": 7.39, "p90": 17.33, "max": 37.57}, "slice_detect_s": {"mean": 3.27, "median": 3.11, "p90": 4.54, "max": 9.88}, "slice_inpaint_s": {"mean": 6.1, "median": 3.61, "p90": 14.55, "max": 34.12}, "slice_residue_verify_s": {"mean": 0.0, "median": 0.0, "p90": 0.0, "max": 0.0}, "regions_auto_cleaned": 190, "regions_left_for_review": 0, "auto_clean_share": 1.0, "residue_regions_after_clean": 0, "slices_with_residue": 0, "slices_verified_clean": 83, "slices_verified_share": 0.954, "issues": {"content_heavy_zero_box": 4}}
+download 6s, clean 167s
+speed/completion: {"slices": 87, "workers": 2, "clean_wall_s": 166.6, "wall_s_per_slice": 1.91, "slice_megapixels": {"mean": 2.72, "median": 2.73, "p90": 4.04, "max": 4.83}, "slice_total_s": {"mean": 3.38, "median": 2.58, "p90": 6.25, "max": 13.67}, "slice_detect_s": {"mean": 0.99, "median": 0.96, "p90": 1.36, "max": 4.67}, "slice_inpaint_s": {"mean": 2.28, "median": 1.28, "p90": 4.99, "max": 12.55}, "slice_residue_verify_s": {"mean": 0.0, "median": 0.0, "p90": 0.0, "max": 0.0}, "regions_auto_cleaned": 190, "regions_left_for_review": 0, "auto_clean_share": 1.0, "residue_regions_after_clean": 0, "slices_with_residue": 0, "slices_verified_clean": 83, "slices_verified_share": 0.954, "issues": {"content_heavy_zero_box": 4}}
 
 196 inpainted regions in a0d17c01
 seam ΔE  median 0.37  p90 2.28  max 38.53
