@@ -8,6 +8,7 @@ on:
     paths:
       - ".github/inpaint-audit-url.txt"
       - ".github/inpaint-audit-pages.txt"
+      - ".github/detector-probe.txt"
   workflow_dispatch:
     inputs:
       chapter_url:
@@ -100,6 +101,13 @@ jobs:
           python -m pip install onnx==1.17.0
           pages="$(head -n1 .github/inpaint-audit-pages.txt | tr -d '\r ')"
           python scripts/inpaint_ab_probe.py --pages "$pages" --out audit-results/inpaint-ab
+
+      - name: Detector recall probe (one-shot vs windowed)
+        if: hashFiles('.github/detector-probe.txt') != ''
+        run: |
+          show="$(head -n1 .github/detector-probe.txt | tr -d '\r ')"
+          python scripts/detector_recall_probe.py --show "$show" --out audit-results/detector
+          cat audit-results/detector/summary.json | head -n 40 >> "$GITHUB_STEP_SUMMARY"
 
       - name: Commit evidence to the branch
         if: always()
