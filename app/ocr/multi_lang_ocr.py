@@ -23,6 +23,13 @@ class MultiLangOCR:
         self._manga_ocr = None
         self._manga_lock = threading.RLock()
 
+    def read_probe(self, image: np.ndarray, lang: str) -> OCRReadResult:
+        """Cheap single read for source-language probing: manga-ocr for "ja",
+        otherwise one Paddle pass with no retries."""
+        if (lang or "").strip().lower() in {"ja", "japan"}:
+            return self.read_detailed(image, "ja")
+        return self._paddle.read_single_pass(image, lang)
+
     def read(self, image: np.ndarray, lang: str) -> str:
         return self.read_detailed(image, lang).text
 

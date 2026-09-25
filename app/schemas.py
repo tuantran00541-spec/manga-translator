@@ -81,6 +81,24 @@ class OcrBoxRequest(BaseModel):
         return _validate_ocr_lang(value)
 
 
+class ChapterLanguageRequest(BaseModel):
+    source_lang: str
+
+    @field_validator("source_lang")
+    @classmethod
+    def _source_lang(cls, value: str) -> str:
+        from app.ocr.language_detect import normalize_source_lang
+
+        lang = normalize_source_lang(value)
+        if lang is None:
+            raise ValueError(f"Unsupported source language: {value!r}")
+        return lang
+
+
+class ChapterLanguageDetectRequest(BaseModel):
+    force: bool = False
+
+
 class WorkflowCheckpointRequest(BaseModel):
     chapter_id: str
     stage: Literal["preview", "review", "editor"]

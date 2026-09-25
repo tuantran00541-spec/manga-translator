@@ -131,7 +131,13 @@
   .review-more-toggle::-webkit-details-marker { display: none; }
   .review-more-menu[open] > .review-more-toggle, .review-docbar-right .command-disclosure[open] > summary { border-color: var(--border-strong); background: var(--surface-raised); }
   .review-more-toggle .ui-icon { width: 16px; height: 16px; }
-  .review-more-panel { display: grid; width: 210px !important; padding: 4px; gap: 2px; }
+  .review-more-panel { display: grid; width: 230px !important; padding: 4px; gap: 2px; }
+  .review-lang-row { display: grid; gap: 4px; padding: 6px 8px 8px; border-bottom: 1px solid var(--border-subtle); font-size: 11px; font-weight: 650; }
+  .review-lang-select { width: 100%; height: 30px; font-size: 12px; }
+  .review-lang-hint { color: var(--text-muted); font-size: 10px; font-weight: 400; }
+  .review-more-actions { display: grid; gap: 2px; padding-top: 2px; }
+  .review-more-toggle.has-alert { position: relative; }
+  .review-more-toggle.has-alert::after { position: absolute; top: 4px; right: 4px; width: 7px; height: 7px; border-radius: 50%; background: var(--text-primary); content: ""; }
   .review-more-panel .ui-btn { width: 100%; justify-content: flex-start; border: 0; text-align: left; }
   /* Brush options appear beside the tool rail only while painting a mask. */
   .review-brush-bar { position: absolute; z-index: calc(var(--z-toolbar) + 2); top: calc(var(--review-docbar-height, 40px) + 14px); left: 62px; display: flex; max-width: calc(100% - 74px); align-items: center; flex-wrap: wrap; gap: 6px; padding: 4px 6px; border: 1px solid var(--border-strong); border-radius: 4px; background: var(--surface-panel); }

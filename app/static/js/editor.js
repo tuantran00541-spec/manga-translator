@@ -239,8 +239,7 @@ window.addTextObjectBox = addTextObjectBox;
 async function associateTextObjectOcr(pageIndex, id) {
   const chapterId = currentChapterId;
   if (!chapterId) return;
-  const langEl = document.getElementById("lang-select");
-  const lang = langEl ? langEl.value : "ja";
+  const lang = await window.resolveSourceLang();
   const snapshot = collectPanelState(pageIndex, id);
   const manifest = await apiTextObject("ocr", {
     chapter_id: chapterId,
@@ -727,6 +726,8 @@ function buildChapterTranslateControls() {
         window.showToast?.("Không có vùng chữ nào cần dịch trên các lát đã inpaint.", "info");
         return;
       }
+      const sourceLang = await window.resolveSourceLang();
+      if (chapterId !== window.currentChapterId) return;
       for (const pageIndex of indices) {
         if (chapterId !== window.currentChapterId) return;
         if (provider.value === "deepseek" && actualCost >= budgetTotal) {
@@ -741,7 +742,7 @@ function buildChapterTranslateControls() {
           body: JSON.stringify({
             chapter_id: chapterId,
             page_index: pageIndex,
-            source_lang: document.getElementById("lang-select")?.value || "ja",
+            source_lang: sourceLang,
             target_lang: target.value,
             provider: provider.value,
             model: model.value.trim() || null,

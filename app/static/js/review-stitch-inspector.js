@@ -806,7 +806,7 @@
       }
     }, { signal });
 
-    (shell.querySelector(".review-more-panel") || actions).appendChild(render);
+    (shell.querySelector(".review-more-actions") || actions).appendChild(render);
     if (typeof window.buildChapterTranslateControls === "function") {
       actions.appendChild(window.buildChapterTranslateControls());
     }
@@ -970,6 +970,45 @@
     const morePanel = document.createElement("div");
     morePanel.className = "review-more-panel";
     more.append(moreToggle, morePanel);
+
+    // Source language is detected per chapter; this row shows it and lets the
+    // user correct it. Chapter actions (OCR, Render) are listed below it.
+    const langRow = document.createElement("label");
+    langRow.className = "review-lang-row";
+    const langTitle = document.createElement("span");
+    langTitle.textContent = "Ngôn ngữ gốc";
+    const langSelect = document.createElement("select");
+    langSelect.className = "ui-select review-lang-select";
+    langSelect.add(new Option("Chưa rõ", ""));
+    Object.entries(window.SOURCE_LANG_LABELS || {}).forEach(([value, label]) => langSelect.add(new Option(label, value)));
+    const langHint = document.createElement("small");
+    langHint.className = "review-lang-hint";
+    langRow.append(langTitle, langSelect, langHint);
+    const moreActions = document.createElement("div");
+    moreActions.className = "review-more-actions";
+    morePanel.append(langRow, moreActions);
+
+    let detectingLang = false;
+    const syncLang = () => {
+      const lang = window.currentSourceLang?.() || "";
+      langSelect.value = lang;
+      langHint.textContent = lang
+        ? window.sourceLangOriginLabel?.(window.currentManifest?.source_lang_origin) || ""
+        : detectingLang ? "Đang nhận diện…" : "Chưa nhận diện được, hãy chọn";
+      moreToggle.classList.toggle("has-alert", !lang && !detectingLang);
+    };
+    langSelect.addEventListener("change", async () => {
+      if (!langSelect.value) return syncLang();
+      try {
+        const lang = await window.setSourceLang(langSelect.value);
+        window.showToast?.(`Ngôn ngữ gốc: ${window.SOURCE_LANG_LABELS?.[lang] || lang}. Chạy lại OCR toàn chương nếu cần đọc lại chữ.`, "success");
+      } catch (err) {
+        window.showToast?.("Không thể đổi ngôn ngữ gốc: " + err.message, "error");
+      }
+      syncLang();
+    }, { signal });
+    document.addEventListener("source-lang-changed", syncLang, { signal });
+    document.addEventListener("source-lang-needed", () => { more.open = true; langSelect.focus(); }, { signal });
     morePanel.addEventListener("click", (e) => { if (e.target.closest("button")) more.open = false; }, { signal });
     document.addEventListener("pointerdown", (e) => { if (more.open && !more.contains(e.target)) more.open = false; }, { signal });
 
@@ -1011,6 +1050,11 @@
     installTextDrawing(shell, signal);
     mountActions(shell, signal, () => shell._rerender?.());
     window.mountChapterOCR?.();
+    detectingLang = !window.currentSourceLang?.();
+    syncLang();
+    window.detectSourceLang?.()
+      .catch((err) => console.warn("Source language detection failed", err))
+      .finally(() => { detectingLang = false; syncLang(); });
 
     let painting = false, radius = 24, last = null, panning = false, pan = null, space = false;
 
