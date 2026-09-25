@@ -174,16 +174,19 @@ class AIModeRunner:
             self._add_cost(cost)
             scans.extend(found)
 
+        single = False
         for number, batch in enumerate(batches):
             self._check_cancel()
             self._progress(number * SCAN_BATCH_SIZE, len(active))
-            try:
-                await scan(batch)
-                continue
-            except (RuntimeError, ValueError, OSError) as exc:
-                if len(batch) == 1:
-                    _append(self.report["scan_errors"], {"pages": batch, "error": _detail(exc)[:300]})
+            if not single:
+                try:
+                    await scan(batch)
                     continue
+                except (RuntimeError, ValueError, OSError) as exc:
+                    if len(batch) == 1:
+                        _append(self.report["scan_errors"], {"pages": batch, "error": _detail(exc)[:300]})
+                        continue
+                    single = True
             for index in batch:
                 self._check_cancel()
                 try:

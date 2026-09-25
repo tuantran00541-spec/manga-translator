@@ -217,7 +217,7 @@ def test_scan_stage_retries_a_rejected_batch_one_slice_at_a_time(monkeypatch):
     runner, skipped, _ = _scan_stage(monkeypatch, [])
     monkeypatch.setattr(ai_job, "scan_slices", one_image_only)
     asyncio.run(runner.scan())
-    assert calls[:5] == [[0, 1, 2, 3], [0], [1], [2], [3]]
+    assert calls == [[0, 1, 2, 3], [0], [1], [2], [3], [4], [5], [6], [7]], "after one rejected batch, scan slice by slice"
     assert runner.report["scan_errors"][-1] == {"pages": [6], "error": "still rejected"}
     assert skipped[-1:] == [7]
 
