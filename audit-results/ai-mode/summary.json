@@ -1,0 +1,107 @@
+{
+ "job_id": "d8bb54107c764ac6a5af2ffb1a3ba5a3",
+ "status": "completed",
+ "stage": "export",
+ "stages": [
+  {
+   "key": "download",
+   "label": "Tải chương",
+   "status": "done",
+   "done": 1,
+   "total": 1,
+   "detail": "87 lát",
+   "elapsed_s": 9.0
+  },
+  {
+   "key": "scan",
+   "label": "AI quét credit và logo",
+   "status": "done",
+   "done": 87,
+   "total": 87,
+   "detail": "1 lát credit, 1 logo",
+   "elapsed_s": 4.0
+  },
+  {
+   "key": "clean",
+   "label": "Clean ảnh",
+   "status": "done",
+   "done": 86,
+   "total": 86,
+   "detail": "",
+   "elapsed_s": 454.8
+  },
+  {
+   "key": "qc",
+   "label": "AI kiểm tra và repaint",
+   "status": "done",
+   "done": 0,
+   "total": 0,
+   "detail": "Bỏ qua: không chạy được AI kiểm tra",
+   "elapsed_s": 0.1
+  },
+  {
+   "key": "translate",
+   "label": "Dịch và chọn font",
+   "status": "done",
+   "done": 86,
+   "total": 86,
+   "detail": "Dịch 182 vùng",
+   "elapsed_s": 83.1
+  },
+  {
+   "key": "render",
+   "label": "Render",
+   "status": "done",
+   "done": 86,
+   "total": 86,
+   "detail": "",
+   "elapsed_s": 4.9
+  },
+  {
+   "key": "export",
+   "label": "Đóng gói zip",
+   "status": "done",
+   "done": 1,
+   "total": 1,
+   "detail": "Xong",
+   "elapsed_s": 36.1
+  }
+ ],
+ "chapter_id": "c6f49472",
+ "url": "https://asurascans.com/comics/the-academy-s-weapon-replicator-05c7df14/chapter/1",
+ "provider": "openai",
+ "model": "dry-run",
+ "target_lang": "vi",
+ "cost_usd": null,
+ "budget_usd": 0.3,
+ "cancel_requested": false,
+ "error": null,
+ "report": {
+  "credit_pages": [
+   86
+  ],
+  "credit_rejected": [],
+  "logo_regions": 1,
+  "scan_errors": [],
+  "repainted_regions": 0,
+  "repaint_pages": [],
+  "qc_flagged": 0,
+  "qc_errors": [
+   "Unsupported visual QC provider: openai"
+  ],
+  "translated": 182,
+  "unreadable": 0,
+  "translate_errors": [],
+  "render_errors": [],
+  "editorial_blockers": 0,
+  "blocker_samples": [],
+  "source_lang": "auto"
+ },
+ "download_url": "/api/ai_mode/jobs/d8bb54107c764ac6a5af2ffb1a3ba5a3/download",
+ "created_at": 1790308627.1909776,
+ "updated_at": 1790309219.1306977,
+ "wall_s": 592.6,
+ "translate_calls": 79,
+ "zip_pages": 22,
+ "zip_bytes": 118263637
+}
