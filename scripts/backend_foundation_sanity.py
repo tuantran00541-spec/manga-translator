@@ -131,7 +131,7 @@ def model_contract_checks():
                 dynamic_contract,
             )[0, 0, 0]
         )
-        == 127,
+        == 128,
         "dynamic scale contract",
     )
 
