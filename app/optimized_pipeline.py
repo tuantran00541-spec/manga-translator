@@ -377,29 +377,6 @@ class OptimizedChapterPipeline(ChapterPipeline):
         )
         return result
 
-    def _process_page(
-        self,
-        img_path: Path,
-        processed_dir: Path,
-        preserve_regions: list[dict] | None = None,
-        existing_boxes: list[dict] | None = None,
-        stitch_core: dict | None = None,
-        supplemental_detections: list[BubbleBox] | None = None,
-        seam_context_unavailable: bool = False,
-        *,
-        parallel_detectors: bool = False,
-    ) -> dict:
-        return super()._process_page(
-            img_path,
-            processed_dir,
-            preserve_regions=preserve_regions,
-            existing_boxes=existing_boxes,
-            stitch_core=stitch_core,
-            supplemental_detections=supplemental_detections,
-            seam_context_unavailable=seam_context_unavailable,
-            parallel_detectors=parallel_detectors,
-        )
-
     def _do_reinpaint(
         self,
         processed_dir: Path,

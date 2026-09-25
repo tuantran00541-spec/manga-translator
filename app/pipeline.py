@@ -532,6 +532,9 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
                     target_page["residue_regions"] = list(
                         page_data.get("residue_regions") or []
                     )
+                    target_page["residue_checked"] = bool(
+                        page_data.get("residue_checked", False)
+                    )
                     target_page["cleanup_verified"] = bool(
                         page_data.get("cleanup_verified", False)
                     )

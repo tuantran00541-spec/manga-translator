@@ -168,7 +168,7 @@ class _PipelineDetector:
 
     def verify_post_inpaint_residue(self, image, authorized):
         assert authorized
-        return [self._residue]
+        return [self._residue] if self._residue is not None else []
 
 
 class _PipelineInpainter:
@@ -190,30 +190,58 @@ class _PipelineInpainter:
         return {}
 
 
-def test_pipeline_skips_post_inpaint_residue_verification_by_default(tmp_path):
+def _residue_check_page(tmp_path, residue):
     source = BubbleBox(
         10, 10, 40, 30, 0.9, np.full((20, 30), 255, np.uint8),
         source_role="text_segmenter", source_model="text_segmenter.onnx",
         semantic_type="free_text", safe_to_inpaint=True,
-    )
-    residue = BubbleBox(
-        15, 14, 28, 25, 0.8, np.full((11, 13), 255, np.uint8),
-        source_role="text_segmenter", source_model="text_segmenter.onnx",
-        semantic_type="free_text", needs_review=True,
-        deferred_reason="post_inpaint_text_residue",
     )
     pipeline = ChapterPipeline.__new__(ChapterPipeline)
     pipeline._detector = _PipelineDetector(source, residue)
     pipeline._inpainter = _PipelineInpainter()
     image_path = tmp_path / "page.png"
     assert cv2.imwrite(str(image_path), np.full((60, 80, 3), 200, np.uint8))
+    return pipeline._process_page(image_path, tmp_path)
 
-    result = pipeline._process_page(image_path, tmp_path)
+
+_RESIDUE = BubbleBox(
+    15, 14, 28, 25, 0.8, np.full((11, 13), 255, np.uint8),
+    source_role="text_segmenter", source_model="text_segmenter.onnx",
+    semantic_type="free_text", needs_review=True,
+    deferred_reason="post_inpaint_text_residue",
+)
+
+
+def test_unchecked_cleanup_is_not_reported_as_verified(tmp_path):
+    result = _residue_check_page(tmp_path, _RESIDUE)
 
     assert result["detection_state"] == "verified"
-    assert result["cleanup_verified"] is True
     assert result["detection_issues"] == []
     assert result["residue_regions"] == []
+    assert result["residue_checked"] is False
+    assert result["cleanup_verified"] is False
+    assert result["processing_metrics"]["detector"]["residue_checked"] is False
+
+
+def test_residue_check_flags_leftover_text(tmp_path, monkeypatch):
+    monkeypatch.setattr("app.page_processing.DETECTOR_RESIDUE_VERIFY_ENABLED", True)
+
+    result = _residue_check_page(tmp_path, _RESIDUE)
+
+    assert result["residue_checked"] is True
+    assert result["cleanup_verified"] is False
+    assert result["detection_issues"] == ["post_inpaint_text_residue"]
+    assert len(result["residue_regions"]) == 1
+
+
+def test_residue_check_without_leftover_text_verifies_cleanup(tmp_path, monkeypatch):
+    monkeypatch.setattr("app.page_processing.DETECTOR_RESIDUE_VERIFY_ENABLED", True)
+
+    result = _residue_check_page(tmp_path, None)
+
+    assert result["residue_checked"] is True
+    assert result["cleanup_verified"] is True
+    assert result["detection_issues"] == []
 
 
 @pytest.mark.parametrize("background", [(255, 255, 255), (0, 0, 0)])
