@@ -45,10 +45,10 @@ def run(url: str, out: Path, workers: int) -> None:
             shutil.copy2(page["clean"], target)
             record["sha256"] = hashlib.sha256(target.read_bytes()).hexdigest()
             record["cleanup_verified"] = bool(page.get("cleanup_verified"))
+            record["residue_checked"] = bool(page.get("residue_checked"))
             metrics = page.get("processing_metrics") or {}
             record["residue_verify_ms"] = (metrics.get("timing_ms") or {}).get("residue_verify")
             record["residue_regions"] = len(page.get("residue_regions") or [])
-            record["residue_repair"] = metrics.get("residue_repair")
         slices.append(record)
     (out / "run.json").write_text(json.dumps({"clean_s": round(elapsed, 1), "slices": slices}, indent=1))
     print(f"processed {len(slices)} slices in {elapsed:.0f}s")
@@ -86,14 +86,19 @@ def compare(base: Path, head: Path, report: Path, crops: Path | None = None) -> 
     summary = {
         "residue_verify_ms_total": round(sum(s["residue_verify_ms"] or 0 for s in verify)),
         "residue_regions_left": sum(s.get("residue_regions") or 0 for s in b["slices"]),
-        "residue_repairs": sum(1 for s in b["slices"] if s.get("residue_repair")),
+        "cleanup_verified": [
+            sum(1 for s in run["slices"] if s.get("cleanup_verified")) for run in (a, b)
+        ],
+        "residue_checked": [
+            sum(1 for s in run["slices"] if s.get("residue_checked")) for run in (a, b)
+        ],
         "slices": [len(a["slices"]), len(b["slices"])],
         "identical": identical,
         "clean_s": [a["clean_s"], b["clean_s"]],
         "different": [row for row in rows if not row["identical"]],
     }
     report.write_text(json.dumps(summary, indent=1))
-    print(json.dumps({k: summary[k] for k in ("slices", "identical", "clean_s")}))
+    print(json.dumps({k: summary[k] for k in ("slices", "identical", "clean_s", "cleanup_verified")}))
     print(f"different slices: {len(summary['different'])}")
     return 0
 

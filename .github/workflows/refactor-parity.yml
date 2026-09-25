@@ -126,7 +126,7 @@ jobs:
           python scripts/refactor_parity.py unexecuted /tmp/parity/coverage.json --out audit-results/parity/unexecuted.json
 
       - name: Commit evidence to the branch
-        if: always()
+        if: always() && github.ref_name != github.event.repository.default_branch
         run: |
           test -d audit-results || exit 0
           git config user.name 'github-actions[bot]'
