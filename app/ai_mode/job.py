@@ -436,7 +436,7 @@ class AIModeJobManager:
             if job.stage:
                 job.stages[job.stage]["status"] = "cancelled"
         except Exception as exc:
-            logger.opt(exception=True).error("A.I mode job {} failed at {}: {}", job.job_id, job.stage, exc)
+            logger.opt(exception=True).error("A.I mode job {} failed at {}: {}", job.job_id, job.stage, type(exc).__name__)
             job.status = "failed"
             job.error = _detail(exc)[:500]
             if job.stage:
