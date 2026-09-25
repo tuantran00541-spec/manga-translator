@@ -1,14 +1,3 @@
-"""Detect a chapter's source language from its own text regions.
-
-The OCR engine depends on the source language (manga-ocr for Japanese, the
-Korean Paddle recogniser for Korean, the unified Paddle recogniser for Chinese
-and English), so the language must be known before OCR. Instead of asking the
-user, sample a few detector-approved text regions, read each one with the
-unified recogniser (Chinese / Japanese / English) and the Korean recogniser,
-and vote by Unicode script. Vertical Japanese can come back from Paddle as
-kanji-only noise, so a Chinese or inconclusive vote is re-checked with
-manga-ocr: Japanese dialogue carries kana in nearly every bubble, Chinese none.
-"""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -33,8 +22,6 @@ MIN_LETTERS = 8
 MIN_SHARE = 0.6
 CROP_PADDING = 6
 
-# Chapter sources whose language is fixed. Used only when the text itself is
-# inconclusive (e.g. a chapter that is almost all artwork).
 SITE_LANGUAGE_HINTS = {
     "asuracomic.net": "en",
     "asurascans.com": "en",
@@ -65,8 +52,6 @@ def script_counts(text: str) -> dict[str, int]:
 
 @dataclass(frozen=True)
 class ProbeReading:
-    """One text region read by both recognisers."""
-
     unified_text: str
     unified_confidence: float | None
     korean_text: str
@@ -96,8 +81,6 @@ def _score(confidence: float | None) -> float:
 
 
 def classify_readings(readings: Iterable[ProbeReading]) -> LanguageDetection:
-    """Each region casts one vote, so dense scripts (one Hangul/Han glyph per
-    syllable or word) are not outweighed by letter-heavy Latin text."""
     votes = {"hangul": 0, "kana": 0, "han": 0, "latin": 0}
     letters = 0
     for reading in readings:
@@ -106,8 +89,6 @@ def classify_readings(readings: Iterable[ProbeReading]) -> LanguageDetection:
         unified_letters = unified["kana"] + unified["han"] + unified["latin"]
         if not korean["hangul"] and not unified_letters:
             continue
-        # Each recogniser produces confident text only for its own scripts; on
-        # foreign text it returns low-confidence noise. Keep the stronger read.
         korean_wins = korean["hangul"] > 0 and (
             not unified_letters
             or _score(reading.korean_confidence) >= _score(reading.unified_confidence)
@@ -133,8 +114,6 @@ def classify_readings(readings: Iterable[ProbeReading]) -> LanguageDetection:
     winner = max(ranked, key=ranked.get)
     share = ranked[winner] / samples
     if winner == "cjk":
-        # Japanese dialogue mixes kana into kanji, so kanji-only bubbles still
-        # count as Japanese once enough other bubbles carry kana. Chinese has none.
         winner = "ja" if votes["kana"] >= max(1, 0.2 * cjk) else "ch"
     if share < MIN_SHARE:
         return LanguageDetection(None, share, samples, votes, "mixed-scripts")
@@ -142,7 +121,6 @@ def classify_readings(readings: Iterable[ProbeReading]) -> LanguageDetection:
 
 
 def refine_with_japanese_reader(first: LanguageDetection, japanese_texts: list[str]) -> LanguageDetection:
-    """Promote to Japanese when manga-ocr finds kana in most sampled bubbles."""
     read = [text for text in japanese_texts if str(text or "").strip()]
     if not read:
         return first
@@ -182,7 +160,6 @@ def _box_is_dialogue_sample(box: object, preserve_regions: list[dict]) -> bool:
 
 
 def sample_regions(manifest: dict, limit: int = MAX_SAMPLES) -> list[tuple[int, dict]]:
-    """Pick the largest dialogue boxes, spread round-robin over the first pages."""
     per_page: list[list[tuple[int, dict]]] = []
     for page_index, page in enumerate(manifest.get("pages") or []):
         if len(per_page) >= MAX_SAMPLE_PAGES:
@@ -221,7 +198,6 @@ Reader = Callable[[np.ndarray, str], object]
 
 
 def detect_manifest_language(chapter_id: str, manifest: dict, reader: Reader) -> LanguageDetection:
-    """Read sampled regions with ``reader(rgb, lang)`` and vote on the script."""
     images: dict[int, np.ndarray] = {}
     readings: list[ProbeReading] = []
     crops: list[np.ndarray] = []

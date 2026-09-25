@@ -14,8 +14,6 @@ from app.optimized_pipeline import OptimizedChapterPipeline
 
 
 class MaskRecallOptimizedChapterPipeline(OptimizedChapterPipeline):
-    """ Recover clipped glyphs with independent residue verification. """
-
     _FLAT_DELTA_MAX = 8
     _FLAT_RATIO_MIN = 0.98
     _INK_STRONG_DELTA = 32
@@ -58,15 +56,11 @@ class MaskRecallOptimizedChapterPipeline(OptimizedChapterPipeline):
             box_w = int(box.x2) - int(box.x1)
             if box_h <= 0 or box_w <= 0:
                 continue
-            # The full detector envelope is candidate repair authority only.
-            # Actual writes are still intersected with a residue scope and with
-            # preserve-region subtraction in the parent repair path.
             box.mask = np.full((box_h, box_w), 255, dtype=np.uint8)
         return boxes
 
     @classmethod
     def _flat_residual_ink_mask(cls, crop: np.ndarray) -> np.ndarray | None:
-        """ Return bounded residual-ink support for an overwhelmingly flat crop. """
         if crop is None or crop.size == 0:
             return None
         if crop.ndim == 2:
@@ -121,8 +115,6 @@ class MaskRecallOptimizedChapterPipeline(OptimizedChapterPipeline):
             grown = cv2.dilate(support.astype(np.uint8), kernel) > 0
             support = support | (grown & weak)
 
-        # Return stroke support here; the caller applies the explicit commit
-        # margin after neural and contrast evidence have been merged.
         return support.astype(np.uint8) * 255
 
     @staticmethod
@@ -202,7 +194,6 @@ class MaskRecallOptimizedChapterPipeline(OptimizedChapterPipeline):
         clean_before: np.ndarray,
         result: dict,
     ) -> int:
-        """Add independent flat-region residue evidence, with or without neural hits."""
         regions = list(result.get("residue_regions") or [])
         records = [
             record
@@ -325,7 +316,6 @@ class MaskRecallOptimizedChapterPipeline(OptimizedChapterPipeline):
         result: dict,
         preserve_regions: list[dict] | None,
     ) -> dict:
-        """Run bounded independent flat-residue repair and final flat verification."""
         if result.get("manual_mask") or result.get("manual_lama_mask"):
             return super()._repair_post_inpaint_result(
                 img_path,
@@ -376,8 +366,6 @@ class MaskRecallOptimizedChapterPipeline(OptimizedChapterPipeline):
                 )
                 repair_passes += 1
 
-        # Never let a neural false-negative certify a flat detector-owned text
-        # region that still contains strong residual ink after the bounded repair.
         final_flat_regions = 0
         if tmp_clean_path.exists():
             clean_final = read_image(tmp_clean_path)

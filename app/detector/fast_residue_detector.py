@@ -21,33 +21,10 @@ from app.parameters import (
 class FastResidueAdaptiveFocusCombinedTextDetector(
     ParallelAdaptiveFocusCombinedTextDetector
 ):
-    """Adaptive detector with parallel coarse prefetch and fast residue checks.
-
-    Two optimizations remain conservative and independently fail-safe:
-
-    * When the chapter pipeline has only one page worker, the parent detector may
-      overlap bubble inference with the independent coarse/full text pass. Focus
-      retries remain sequential because their geometry depends on bubble/MSER
-      proposals. Multi-page processing keeps the validated sequential path.
-    * Residue verification coalesces nearby windows, then skips neural inference
-      only when an already-cleaned source bbox is almost perfectly flat. Any
-      meaningful luminance/colour span or edge signal falls back to the existing
-      1024px text segmenter verifier.
-
-    MSER extraction/base-candidate work is already cached inside
-    ``SecondaryTextRecovery`` before ``existing`` filtering, so the pre-focus and
-    final recovery passes reuse the expensive primitives while retaining their
-    distinct filtering semantics.
-    """
-
-    # Shared-ROI coalescing validated by the earlier residue A/B lane.
     _MERGE_GAP = max(4, int(DETECTOR_RESIDUE_VERIFY_PAD))
     _UNION_SLACK_RATIO = 0.20
     _UNION_SLACK_PIXELS = 4096
 
-    # Extremely conservative negative gate. It is intentionally much stricter
-    # than a general "looks clean" classifier: one clearly contrasting residual
-    # stroke is enough to force the neural verifier.
     _FLAT_NEGATIVE_MIN_PIXELS = 64
     _FLAT_NEGATIVE_CHANNEL_SPAN_MAX = 12
     _FLAT_NEGATIVE_GRAY_STD_MAX = 3.5
@@ -76,7 +53,6 @@ class FastResidueAdaptiveFocusCombinedTextDetector(
         return dict(getattr(self._residue_metrics_local, "value", {}) or {})
 
     def residue_metrics_snapshot(self, *, reset: bool = False) -> dict[str, int]:
-        """Return cross-worker residue counters for profiling/health telemetry."""
         with self._residue_metrics_lock:
             snapshot = {
                 str(name): int(value)
@@ -169,13 +145,6 @@ class FastResidueAdaptiveFocusCombinedTextDetector(
         image: np.ndarray,
         source: BubbleBox,
     ) -> bool:
-        """Return True only for an almost perfectly flat cleaned source bbox.
-
-        This is a one-sided gate: ``False`` means "run the neural verifier" and
-        is always safe. ``True`` is deliberately hard to reach so a residual
-        glyph, outline, colour edge, gradient or artwork texture keeps the old
-        verification path.
-        """
         if not bool(getattr(self, "_residue_flat_gate_enabled", True)):
             return False
         if image is None or image.size == 0:
@@ -221,12 +190,6 @@ class FastResidueAdaptiveFocusCombinedTextDetector(
         image_shape: tuple[int, ...],
         source: BubbleBox,
     ) -> tuple[int, int, int, int] | None:
-        """Return the smallest padded page ROI containing verified mask support.
-
-        Detector bboxes can be much larger than the glyphs they authorize. Using
-        the whole bbox for residue verification wastes the source-side budget and
-        can defer exactly the large free-text cases that need a second look.
-        """
         h, w = int(image_shape[0]), int(image_shape[1])
         box_w = max(0, int(source.x2) - int(source.x1))
         box_h = max(0, int(source.y2) - int(source.y1))
@@ -322,9 +285,6 @@ class FastResidueAdaptiveFocusCombinedTextDetector(
                 )
                 continue
 
-            # Cheap clean negatives should not consume the neural verification
-            # budget. This preserves CPU while letting later uncertain glyphs be
-            # verified instead of becoming false "text residue" review flags.
             if self._is_flat_negative_residue_source(image, source):
                 flat_negative_sources += 1
                 continue
@@ -384,8 +344,6 @@ class FastResidueAdaptiveFocusCombinedTextDetector(
                             deferred_reason="post_inpaint_text_residue",
                         )
                     )
-                    # One verified text detection is enough evidence for this
-                    # source region. NMS below removes cross-source duplicates.
                     break
 
         result = self._apply_final_nms(

@@ -41,8 +41,6 @@ def test_dense_smooth_authority_uses_surface_without_lama():
     expected_authority = build_mask(image.shape[:2], [box], image)
     inpainter = AdaptiveFastInpainter()
     inpainter._begin_metrics()
-    # Force the conservative stroke-refine stage to reject so this test targets
-    # exactly the dense full-authority surface fallback.
     inpainter._refine_dense_smooth_stroke_mask = lambda crop, authority: None
 
     before = image.copy()
@@ -74,9 +72,6 @@ def test_dense_muted_contrast_authority_rejects_surface_fallback():
 
     mask = np.full((92, 166), 255, dtype=np.uint8)
     box = _speech_box(67, 58, 233, 150, mask)
-    # Muted lettering deliberately stays well below the real p025 contrast while
-    # keeping the surrounding gradient just as smooth. This mirrors the p035 SFX
-    # regression that should remain on LaMa rather than repaint full authority.
     image[78:88, 96:204] = 118
     image[104:114, 86:214] = 126
     image[130:140, 105:195] = 122

@@ -1,4 +1,3 @@
-# Deterministic acceptance gate for backend foundation Phases 1-2.
 from __future__ import annotations
 import json, os, sys, tempfile
 from pathlib import Path
@@ -253,16 +252,11 @@ def geometry_contract_checks():
         "tile source ownership offset",
     )
 
-    # Independent clipped-border mask reproduction: the final source box is
-    # [0,50,80,100), so prototype crop must be derived from that clipped box,
-    # not from the original detector rectangle that extended into padding.
     transform = LetterboxTransform.create(400, 200, 1024, 1024)
     source_box = (0, 50, 80, 100)
     geometry = MaskDecodeGeometry(transform, source_box)
     prototypes = np.full((1, 256, 256), -10.0, np.float32)
     prototypes[0, 96:128, 0:26] = 10.0
-    # Bypass the model-loading constructor while still supplying a real
-    # instance: _decode_mask delegates to the detector's hysteresis helper.
     detector = object.__new__(YoloDetector)
     mask = detector._decode_mask(
         np.array([1.0], np.float32),

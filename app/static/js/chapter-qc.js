@@ -453,7 +453,6 @@
     workspaceRoot().querySelectorAll(".review-workspace-shell").forEach(bindWorkspace);
   }
 
-  // Mount and synchronize explicitly from the Review lifecycle.
   window.mountChapterQC = scan;
   window.syncChapterQCWorkspace = renderPanel;
 })();

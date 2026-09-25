@@ -1,4 +1,3 @@
-"""Regression gates for ORIGINAL+CLEAN vision translation and saved-layout rendering."""
 from __future__ import annotations
 
 import asyncio

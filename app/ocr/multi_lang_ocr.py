@@ -11,8 +11,6 @@ from app.ocr.quality import classify_ocr_quality
 
 
 class MultiLangOCR:
-    """ Production OCR facade for manga/manhua/webtoon crops. """
-
     def __init__(self):
         self._paddle = PaddleV6OCR()
         self._paddle_target_mode = env_choice(
@@ -24,8 +22,6 @@ class MultiLangOCR:
         self._manga_lock = threading.RLock()
 
     def read_probe(self, image: np.ndarray, lang: str) -> OCRReadResult:
-        """Cheap single read for source-language probing: manga-ocr for "ja",
-        otherwise one Paddle pass with no retries."""
         if (lang or "").strip().lower() in {"ja", "japan"}:
             return self.read_detailed(image, "ja")
         return self._paddle.read_single_pass(image, lang)

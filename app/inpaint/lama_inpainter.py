@@ -72,7 +72,6 @@ def _optional_env_flag(name: str) -> bool | None:
 
 
 def _tight_cgroup_memory_limit() -> bool:
-    """ Return True only for Linux-style memory cgroups with a small hard cap. """
     if os.name != "posix":
         return False
 
@@ -147,7 +146,6 @@ class Inpainter:
         metrics[name] = int(metrics.get(name, 0)) + int(amount)
 
     def last_metrics(self) -> dict[str, int]:
-        """Return counters from the current worker thread's latest inpaint call."""
         metrics = getattr(self._metrics_local, "value", {})
         return {str(name): int(value) for name, value in metrics.items()}
 
@@ -164,7 +162,6 @@ class Inpainter:
         return bool(not self.dynamic_lama and self._serialize_fixed_inference)
 
     def session_load_status(self) -> dict:
-        """Return a small thread-safe snapshot for health/debug reporting."""
         with self._session_state_lock:
             return {
                 "state": self._session_load_state,
@@ -173,7 +170,6 @@ class Inpainter:
             }
 
     def preload(self) -> None:
-        """Build the shared LaMa session before the first page needs it."""
         self._ensure_session()
 
     def _configure_loaded_session(
@@ -305,7 +301,6 @@ class Inpainter:
         crop_box: tuple[int, int, int, int],
         protected_regions: list[dict] | None,
     ) -> np.ndarray:
-        """Remove protected page pixels after all automatic mask dilation."""
         if local_mask is None or not protected_regions:
             return local_mask
         cx1, cy1, cx2, cy2 = (int(value) for value in crop_box)
@@ -500,10 +495,6 @@ class Inpainter:
         ring_pixels = crop[ring]
         context_std = float(context_gray.std())
 
-        # Grayscale flatness is not color flatness. Equal-luminance artwork can
-        # have almost zero gray variance while carrying strong chromatic edges.
-        # Smart Fill is allowed only when both the clean ring and wider context
-        # are chromatically stable in CIELAB a/b channels.
         chroma_safe = True
         if crop.ndim == 3 and crop.shape[2] == 3:
             lab = cv2.cvtColor(crop, cv2.COLOR_BGR2LAB)
@@ -603,9 +594,6 @@ class Inpainter:
             max_dim > INPAINT_SIZE
             and aspect >= FIXED_LAMA_TILE_ASPECT
         )
-        # A near-square artwork crop used to take the dynamic single-call path
-        # and be downscaled to 512px.  Tile only textured, materially masked
-        # regions; flat bubbles keep the existing fast single-call behaviour.
         texture_tiling = False
         if (
             INPAINT_NATIVE_TILE_ENABLED
@@ -618,11 +606,6 @@ class Inpainter:
             edge_density = float(np.mean(edges[context] > 0)) if np.any(context) else 0.0
             texture_tiling = edge_density >= INPAINT_NATIVE_TILE_EDGE_DENSITY_MIN
 
-        # Dynamic LaMa accepts arbitrary native dimensions. Do not split a
-        # medium elongated text ROI merely because its aspect ratio is large:
-        # grid tiling destroys the global context LaMa's Fourier path is meant
-        # to use and is a known source of polygon/facet seams. A pixel budget
-        # keeps this safe on CPU; genuinely large crops still use tiles.
         crop_pixels = int(crop_h * crop_w)
         dynamic_native_ok = bool(
             self.dynamic_lama
@@ -646,8 +629,6 @@ class Inpainter:
             if MANUAL_FEATHER_RADIUS > 0:
                 k = MANUAL_FEATHER_RADIUS * 2 + 1
                 feathered = cv2.GaussianBlur(alpha, (k, k), 0)
-                # Feather only the explicit margin; approved glyph support stays
-                # fully opaque so text cannot ghost back through the composite.
                 alpha = np.where(core, 1.0, feathered)
             alpha = np.clip(alpha, 0.0, 1.0)[:, :, None]
             blended = painted.astype(np.float32) * alpha + original_crop.astype(np.float32) * (1.0 - alpha)
@@ -663,12 +644,6 @@ class Inpainter:
         width: int,
         height: int,
     ) -> np.ndarray:
-        """Resize a binary mask without dropping thin glyph support.
-
-        Downscaling uses area coverage and promotes any positive contribution;
-        upscaling remains nearest-neighbour so no interpolated authority is
-        invented between disconnected source pixels.
-        """
         width, height = max(1, int(width)), max(1, int(height))
         source = (mask > 127).astype(np.uint8) * 255
         src_h, src_w = source.shape[:2]
@@ -910,7 +885,6 @@ class Inpainter:
         img_w: int,
         img_h: int,
     ) -> list[list[BubbleBox]]:
-        """Split an oversized group without dropping any child evidence."""
         if not cluster:
             return []
         page_limit = max(1.0, float(img_w * img_h) * MAX_BOX_AREA_RATIO)

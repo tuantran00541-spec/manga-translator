@@ -42,7 +42,6 @@ def geometry_signature(box: dict) -> tuple[int, int, int, int]:
 
 
 def ocr_crop_signature(box: dict) -> str:
-    """Identify every persisted input that changes the pixels sent to OCR."""
     mask_value = box.get("mask")
     mask_revision = None
     if isinstance(mask_value, str) and not mask_value.startswith("data:"):

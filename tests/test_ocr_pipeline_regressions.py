@@ -56,7 +56,7 @@ def test_centered_selection_is_reserved_for_explicit_horizontal_single_line_text
 def test_mask_crop_may_expand_but_never_contract_detector_context():
     image = np.zeros((180, 240, 3), np.uint8)
     mask = np.zeros((80, 100), np.uint8)
-    mask[20:45, 0:30] = 255  # text support meets detector's left edge
+    mask[20:45, 0:30] = 255
     x1, y1, x2, y2 = _ocr_crop_bounds(image.shape, _box(mask=mask))
 
     assert x1 == 0

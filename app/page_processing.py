@@ -23,7 +23,6 @@ from app.parameters import (
 class PageProcessingMixin:
     @staticmethod
     def _review_only_residue_sources(records: list[dict] | None) -> list[BubbleBox]:
-        """ Build non-destructive verifier sources for deferred segmenter text. """
         boxes: list[BubbleBox] = []
         for record in records or []:
             if not isinstance(record, dict) or record.get("removed"):
@@ -125,8 +124,6 @@ class PageProcessingMixin:
                 detected + list(supplemental_detections),
                 iou_threshold=DETECTOR_FINAL_NMS_IOU,
             )
-        # Exclusion rectangles protect pixels rather than suppressing
-        # detector/OCR evidence. Automatic erase authority is clipped later.
         detect_ms = (time.perf_counter() - detect_started_at) * 1000.0
 
         existing_boxes = copy.deepcopy(existing_boxes or [])
@@ -159,9 +156,6 @@ class PageProcessingMixin:
                         record[key] = int(old[key])
                     record["_mask_array"] = None
                     record["safe_to_inpaint"] = False
-                    # Geometry explicitly confirmed by the user remains a valid
-                    # non-destructive OCR target even though rectangle inpaint
-                    # authority is handled separately below.
                     record["ocr_eligible"] = True
                     record["needs_review"] = True
 
@@ -279,11 +273,6 @@ class PageProcessingMixin:
         residue_boxes: list[BubbleBox] = []
         verification_boxes = effective_boxes + verification_only_boxes
         if DETECTOR_RESIDUE_VERIFY_ENABLED and verification_boxes:
-            # This is deliberately after every automatic/manual inpaint pass.
-            # A detector mask authorizes deletion; it does not certify that the
-            # resulting pixels no longer look like text. Review-only deferred
-            # text-segmenter regions are also verified here, but they never gain
-            # destructive authority from this check.
             residue_boxes = self.detector.verify_post_inpaint_residue(
                 clean_image,
                 verification_boxes,

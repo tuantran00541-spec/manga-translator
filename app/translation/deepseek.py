@@ -86,8 +86,6 @@ def _preflight_cost_usd(items: list[dict]) -> float:
 
 
 class OpenAICompatibleTranslator:
-    """ Text translation through the provider contract used by the current UI. """
-
     def __init__(
         self,
         model: str | None = None,
@@ -245,6 +243,4 @@ class OpenAICompatibleTranslator:
         )
 
 
-# Existing imports use this name; keep it as an alias while the implementation
-# is now provider-neutral.
 DeepSeekTranslator = OpenAICompatibleTranslator

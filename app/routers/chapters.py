@@ -37,7 +37,6 @@ _CHAPTER_LIST_CACHE: dict[str, tuple[tuple[int, int, int], dict]] = {}
 
 
 def _allocate_chapter_id() -> str:
-    """Reserve a collision-free raw directory for one new chapter."""
     RAW_DIR.mkdir(parents=True, exist_ok=True)
     for _attempt in range(256):
         chapter_id = os.urandom(4).hex()
@@ -57,7 +56,6 @@ def _allocate_chapter_id() -> str:
 
 
 def _cleanup_uncommitted_chapter(chapter_id: str) -> None:
-    """Remove only storage reserved for a creation that never committed."""
     manifest_path = PROCESSED_DIR / chapter_id / "manifest.json"
     if manifest_path.exists():
         return
@@ -137,7 +135,6 @@ def _process_job_plan(
 
 
 def _mark_processing_complete(chapter_id: str) -> None:
-    """Make post-refresh navigation deterministic once the full job finishes."""
     with get_manifest_lock(chapter_id):
         manifest = load_manifest_raw(chapter_id)
         workflow = manifest.get("workflow") or {}

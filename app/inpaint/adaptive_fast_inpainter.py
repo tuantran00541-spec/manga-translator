@@ -28,8 +28,6 @@ _DENSE_AUTHORITY_MIN_CONTRAST = fast_lama._env_float(
 
 
 class AdaptiveFastInpainter(FastInpainter):
-    """ FastInpainter with CPU LaMa runtime policy tuned to page concurrency. """
-
     def __init__(self):
         super().__init__()
         self._runtime_profile: LamaRuntimeProfile = select_lama_runtime_profile(1)
@@ -41,21 +39,6 @@ class AdaptiveFastInpainter(FastInpainter):
         box: BubbleBox,
         protected_regions: list[dict] | None,
     ) -> bool:
-        """Use a validated smooth surface when dense stroke refinement is too wide.
-
-        FastInpainter first attempts the normal stroke-only authority-ring route.
-        Some outlined lettering legitimately occupies more than the conservative
-        stroke-fraction cap, even though the surrounding bubble is an extremely
-        clean smooth gradient. Sending that dense detector authority to LaMa can
-        create a visible block/facet. For that narrow case, fit the same robust
-        quadratic surface from *outside* the full authority and paint only pixels
-        already owned by that authority.
-
-        The full-authority fallback is additionally restricted to genuinely high-
-        contrast lettering. Muted or colored SFX can have an equally smooth ring
-        while still exposing the dense authority boundary when reconstructed
-        wholesale; those cases stay on the established LaMa path.
-        """
         if super()._try_stroke_authority_fill(image, box, protected_regions):
             return True
 
@@ -169,7 +152,6 @@ class AdaptiveFastInpainter(FastInpainter):
             self._trim_process_heap()
 
     def prepare_for_page_workers(self, page_workers: int) -> dict:
-        """ Select the session profile before page worker threads begin. """
         desired = select_lama_runtime_profile(page_workers)
         desired_signature = desired.session_signature()
         with self._session_lock:

@@ -36,7 +36,6 @@ from app.security import MAX_REQUEST_BYTES, MAX_UPLOAD_TOTAL_BYTES
 def _cleanup_extra_stale_artifacts(
     max_age_seconds: float = STALE_TEMP_MAX_AGE_SECONDS,
 ) -> int:
-    """Clean crash leftovers not covered by per-chapter manifest temp cleanup."""
     cutoff = time.time() - max(0.0, float(max_age_seconds))
     candidates: set[Path] = set()
 
@@ -110,8 +109,6 @@ app.mount("/static", StaticFiles(directory=str(BASE_DIR / "app" / "static")), na
 
 
 class RequestSizeLimitMiddleware:
-    """Enforce request limits on bytes actually received, not only headers."""
-
     def __init__(self, app):
         self.app = app
 
@@ -191,7 +188,6 @@ app.include_router(visual_qc.router)
 
 
 def _current_rss_bytes() -> int | None:
-    """Return current process RSS without adding a runtime dependency."""
     if os.name == "nt":
         try:
             import ctypes

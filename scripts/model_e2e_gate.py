@@ -148,7 +148,6 @@ def _box_from_record(record: dict):
 
 
 def _authority_mask(image: np.ndarray, records: list[dict], inpainter) -> np.ndarray:
-    """Use maximum configured cleanup authority for conservative replay validation."""
     from app.detector.bubble_detector import BubbleBox
     from app.detector.mask_builder import build_mask
 

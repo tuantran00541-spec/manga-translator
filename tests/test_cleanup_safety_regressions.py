@@ -15,9 +15,6 @@ from app.parameters import TEXT_CONF_THRESHOLD
 from app.image_io import encode_mask, read_image
 
 
-
-
-
 def test_one_shot_uses_only_normal_threshold_without_low_conf_rescue():
     detector = OneShotTextMaskDetector.__new__(OneShotTextMaskDetector)
     detector.RESCUE_CONF_THRESHOLD = 0.12
@@ -55,12 +52,11 @@ def test_one_shot_uses_only_normal_threshold_without_low_conf_rescue():
     assert metrics["low_conf_rescue_boxes"] == 0
 
 def _probability_canvas() -> np.ndarray:
-    """Core glyph with anti-aliased outline, coloured edge and glow support."""
     probabilities = np.zeros((21, 29), dtype=np.float32)
-    probabilities[7:14, 10:19] = 0.92  # confident glyph core
+    probabilities[7:14, 10:19] = 0.92
     probabilities[6:15, 9:20] = np.maximum(probabilities[6:15, 9:20], 0.38)
     probabilities[5:16, 8:21] = np.maximum(probabilities[5:16, 8:21], 0.33)
-    probabilities[0:3, 0:3] = 0.40  # disconnected artwork must not be kept
+    probabilities[0:3, 0:3] = 0.40
     return probabilities
 
 
@@ -68,11 +64,8 @@ def _probability_canvas() -> np.ndarray:
 def test_text_mask_hysteresis_keeps_connected_stylized_edges_not_artwork(style):
     mask = YoloDetector._decode_text_mask_hysteresis(_probability_canvas())
 
-    # The support reaches beyond the high-confidence core, proving the decode
-    # does not drop outlines/shadow merely because their probability < 0.50.
     assert mask[5, 8] == 255
     assert mask[15, 20] == 255
-    # It must still fail closed for unrelated low-confidence artwork.
     assert not np.any(mask[0:3, 0:3])
 
 
@@ -88,11 +81,8 @@ def test_padded_free_text_mask_is_not_a_rectangle_fallback():
     page_mask = build_mask((60, 80), [box])
 
     assert page_mask[15:36, 20:49].sum() > 0
-    # The disconnected low-probability corner and every outside page pixel
-    # remain protected; no raw detection rectangle was introduced.
     assert page_mask[15:18, 20:23].sum() == 0
     assert page_mask[0:10, :].sum() == 0
-
 
 
 def test_validation_max_dilation_covers_both_runtime_dilation_branches():

@@ -76,8 +76,6 @@ def _is_hangul(ch: str) -> bool:
 
 
 def _is_meaningful_punctuation_only(value: str) -> bool:
-    """ Recognize common punctuation-only comic utterances conservatively. """
-
     visible = [ch for ch in value if not ch.isspace()]
     if not visible or len(visible) > 16:
         return False
@@ -98,13 +96,6 @@ def classify_ocr_quality(
     coverage: float | None = None,
     may_be_truncated: bool = False,
 ) -> OCRQuality:
-    """Classify OCR output conservatively for downstream automation.
-
-    Only strong evidence becomes ``reject``. Ambiguous cases become ``review``
-    so OCR text remains visible/editable and can still be translated when the
-    user explicitly corrects it.
-    """
-
     value = str(text or "").strip()
     if not value:
         return OCRQuality("reject", "empty")
@@ -123,10 +114,6 @@ def classify_ocr_quality(
         if conf < OCR_REVIEW_CONFIDENCE:
             return OCRQuality("review", "low-confidence")
 
-    # Recognition confidence measures the characters Paddle did see; it is not
-    # evidence that every line in the target was transcribed. Coverage is
-    # supplied only when geometry gives us a meaningful expectation, so a
-    # missing value remains deliberately neutral.
     try:
         normalized_coverage = None if coverage is None else float(coverage)
     except (TypeError, ValueError):
@@ -142,8 +129,6 @@ def classify_ocr_quality(
     content = [ch for ch in value if ch.isalnum()]
     if not content:
         if _is_meaningful_punctuation_only(value):
-            # Paddle supplies confidence for normal EN/ZH/KO paths. Backends
-            # without confidence keep punctuation visible but ask for review.
             if conf is None:
                 return OCRQuality("review", "punctuation-only")
             return OCRQuality("good", None)
@@ -199,8 +184,6 @@ def classify_ocr_quality(
 
 
 def should_block_translation(obj: dict) -> bool:
-    """ Block only untouched machine OCR that was classified as reject. """
-
     if str(obj.get("ocr_quality") or "").strip().lower() != "reject":
         return False
     if not obj.get("auto_generated"):

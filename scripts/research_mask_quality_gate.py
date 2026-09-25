@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-""" Research-only A/B gate for text-mask refinement. """
 from __future__ import annotations
 
 import argparse

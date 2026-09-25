@@ -17,8 +17,6 @@ _ALLOWED_PROTOCOLS = frozenset({"openai", "gemini"})
 
 @dataclass(frozen=True)
 class AIProvider:
-    """ Server-owned contract for one AI provider. """
-
     id: str
     label: str
     protocol: AIProtocol
@@ -44,8 +42,6 @@ class AIProvider:
         return f"{self.api_base.rstrip('/')}/models"
 
     def chat_completion_extras(self) -> dict:
-        """ Return provider-specific OpenAI-compatible body fields. """
-
         if self.protocol != "openai":
             return {}
         if self.request_profile == "deepseek":
@@ -53,8 +49,6 @@ class AIProvider:
         return {}
 
     def public_capabilities(self) -> dict:
-        """Stable metadata that mirrors the controls exposed by the current UI."""
-
         return {
             "visual_qc": self.supports_visual_qc,
             "translation": self.supports_translation,

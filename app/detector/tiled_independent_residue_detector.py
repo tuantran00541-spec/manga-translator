@@ -15,15 +15,6 @@ from app.parameters import (
 class TiledIndependentRegionResidueSequentialTextDetector(
     IndependentRegionResidueSequentialTextDetector
 ):
-    """Verify oversized text regions without downscaling or blind size deferral.
-
-    Normal residue sources keep the existing verified path unchanged. Sources
-    whose padded detector region exceeds the source-side limit are split into
-    overlapping detector-sized tiles. A tiled source consumes one neural-source
-    budget slot, while each tile is an explicit model call. Hits are associated
-    back to the original source geometry before final NMS.
-    """
-
     _RESIDUE_TILE_SIDE = 1024
     _RESIDUE_TILE_OVERLAP = 160
     _RESIDUE_MAX_TILES_PER_SOURCE = 4
@@ -83,7 +74,6 @@ class TiledIndependentRegionResidueSequentialTextDetector(
         base: dict[str, int],
         combined: dict[str, int],
     ) -> None:
-        """Add only tiled deltas to totals; super already counted the base call."""
         self._residue_metrics_local.value = {
             str(name): int(value) for name, value in combined.items()
         }
@@ -220,7 +210,6 @@ class TiledIndependentRegionResidueSequentialTextDetector(
                     source_hit = True
 
             if source_hit:
-                # Final NMS below deduplicates detections produced by tile overlap.
                 pass
 
         result = self._apply_final_nms(

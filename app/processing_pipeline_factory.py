@@ -26,12 +26,6 @@ def processing_pipeline_profile(value: str | None = None) -> str:
 def build_processing_pipeline(
     profile: str | None = None,
 ) -> OptimizedChapterPipeline:
-    """Build the exact pipeline used by the web app and performance gates.
-
-    Fast one-shot cleanup is the production default. The previous complete
-    mask-recall stack remains available only as an explicit diagnostic/quality
-    profile so benchmarks cannot silently measure a different runtime path.
-    """
     selected = processing_pipeline_profile(profile)
     if selected == "high-recall":
         return CompleteFlatEnvelopeMaskRecallPipeline()

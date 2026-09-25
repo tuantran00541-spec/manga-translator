@@ -14,13 +14,6 @@ from app.parameters import (
 class AdaptiveTiledIndependentRegionResidueSequentialTextDetector(
     TiledIndependentRegionResidueSequentialTextDetector
 ):
-    """Scale residue tiling from detector geometry instead of fixed pixels.
-
-    The model input side is the natural tile scale. Overlap follows that scale,
-    with the existing text-mask decode pad as a lower bound so seams keep enough
-    context. The per-source tile cap follows the configured neural ROI budget.
-    """
-
     _RESIDUE_TILE_SIDE = max(
         1,
         min(

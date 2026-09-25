@@ -36,7 +36,6 @@ def is_asura_chapter_asset(url: str) -> bool:
 
 
 def filter_asura_chapter_assets(urls: list[str]) -> list[str]:
-    """Keep only Asura chapter-reader asset URLs, preserving input order."""
     out: list[str] = []
     seen: set[str] = set()
     for url in urls:
@@ -48,7 +47,6 @@ def filter_asura_chapter_assets(urls: list[str]) -> list[str]:
 
 
 def _ordered_reader_urls(candidates: list[tuple[int, str]]) -> list[str]:
-    """ Return the contiguous Page 1..N reader sequence. """
     by_page: dict[int, str] = {}
     for page_number, url in candidates:
         if page_number < 1 or not is_asura_chapter_asset(url):
@@ -64,8 +62,6 @@ def _ordered_reader_urls(candidates: list[tuple[int, str]]) -> list[str]:
 
 
 class AsuraScansStaticAdapter(BaseAdapter):
-    """Static fallback scoped to Asura's explicit reader-page DOM semantics."""
-
     def can_handle(self, url: str) -> bool:
         return is_asura_chapter_page(url)
 
@@ -104,8 +100,6 @@ class AsuraScansStaticAdapter(BaseAdapter):
 
 
 class AsuraScansJsAdapter(GenericJsAdapter):
-    """Asura reader discovery scoped to page elements instead of all site images."""
-
     img_selector = "img[alt^='Page ']"
     min_width = 0
 

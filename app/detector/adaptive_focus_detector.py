@@ -21,7 +21,6 @@ from app.parameters import (
 )
 
 
-# Values validated by the real full-chapter V2/V4 benchmark lane.
 ADAPTIVE_TILE_MAX = max(DETECTOR_INPUT_SIZE, 1344)
 ADAPTIVE_OVERLAP = DETECTOR_WINDOW_OVERLAP
 FOCUS_PAD_X = 96
@@ -44,7 +43,6 @@ def plan_adaptive_windows(
     tile_max: int = ADAPTIVE_TILE_MAX,
     overlap: int = ADAPTIVE_OVERLAP,
 ) -> list[tuple[int, int]]:
-    """Plan gap-free tall-image windows while minimizing model calls."""
     height = int(height)
     if height <= 0:
         return []
@@ -121,7 +119,6 @@ def _proposal_has_full_text(
     proposal: BubbleBox,
     text_boxes: list[BubbleBox],
 ) -> bool:
-    """Conservative completeness: scale, boundary and residual-span aware."""
     if _proposal_is_free_text(proposal):
         return False
     px1, py1, px2, py2 = (int(proposal.x1), int(proposal.y1), int(proposal.x2), int(proposal.y2))
@@ -232,7 +229,6 @@ def plan_focus_chips(
     tensor_pixel_budget: int = FOCUS_TENSOR_PIXEL_BUDGET,
     fallback_image: np.ndarray | None = None,
 ) -> tuple[list[tuple[int, int, int, int]], list[tuple[int, int, int, int]]]:
-    """Bound source geometry, model calls and total focus pixels."""
     height, width = int(height), int(width)
     if height <= 0 or width <= 0:
         return [], []
@@ -292,9 +288,6 @@ def _adaptive_detect(
                 detector._detect_single(image[start:end, :], 0, start)
             )
 
-        # Keep the full-image text pass as recall insurance. Focus mode uses its
-        # own full pass and therefore does not call this path for the main text
-        # detector, but grayscale fallback still benefits from it.
         if detector.model_role == "text_segmenter":
             all_boxes.extend(detector._detect_single_plain(image, 0, 0))
 
@@ -326,9 +319,6 @@ def _focus_text_detect(
     full_boxes = detector._detect_single_plain(image, 0, 0)
     uncovered = [proposal for proposal in proposals if not _proposal_has_full_text(proposal, full_boxes)]
     fallback_image = image if not proposals and not full_boxes else None
-    # A text-heavy page needs more than the historic two retries, while a hard
-    # cap still bounds model calls and tensor pixels on CPU. The budget reacts
-    # only to unresolved proposals, never to total page height.
     extra = max(0, len(uncovered) - 1) // DETECTOR_FOCUS_PROPOSALS_PER_EXTRA_CHIP
     adaptive_max_chips = min(DETECTOR_FOCUS_HARD_MAX_CHIPS, FOCUS_MAX_CHIPS + extra)
     scale = adaptive_max_chips / float(max(1, FOCUS_MAX_CHIPS))
@@ -370,8 +360,6 @@ def _focus_text_detect(
 
 
 class _AdaptiveDetectorProxy:
-    """Thread-local one-shot cache in front of an adaptive detector fallback."""
-
     def __init__(
         self,
         detector: YoloDetector,
@@ -416,8 +404,6 @@ class _AdaptiveDetectorProxy:
 
 
 class AdaptiveFocusCombinedTextDetector(CombinedTextDetector):
-    """ Production detector validated by the V2 logic + V4 OpenVINO benchmark. """
-
     def __init__(self):
         super().__init__()
         self._bubble_model = self.bubble_detector
@@ -435,8 +421,6 @@ class AdaptiveFocusCombinedTextDetector(CombinedTextDetector):
         *,
         parallel: bool = False,
     ) -> list[BubbleBox]:
-        # The chapter pipeline already runs two pages concurrently. Keeping the
-        # two neural models sequential inside each page avoids CPU oversubscription.
         started_at = time.perf_counter()
 
         bubble_started = time.perf_counter()

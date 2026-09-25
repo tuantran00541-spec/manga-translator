@@ -42,7 +42,6 @@ def is_mask_ref(value) -> bool:
 
 
 def decode_mask_value(value) -> np.ndarray | None:
-    """Decode either a legacy base64 PNG mask or a managed sidecar reference."""
     if not value:
         return None
 
@@ -106,14 +105,6 @@ def externalize_page_masks(
     *,
     created_paths: set[Path] | None = None,
 ) -> int:
-    """Move legacy base64 masks into immutable PNG sidecars.
-
-    The function is deliberately best-effort: an I/O failure leaves the original
-    base64 value untouched so correctness is never traded for manifest size.
-    Existing managed references are retained. Sidecars are content-addressed so
-    publishing a replacement mask cannot alter data referenced by the currently
-    committed manifest. Orphans are pruned separately, after manifest commit.
-    """
     try:
         chapter_dir = processed_dir.resolve()
         if not chapter_dir.is_relative_to(_processed_root()):
@@ -199,7 +190,6 @@ def prune_page_masks(
     page_index: int,
     boxes: list[dict],
 ) -> int:
-    """Best-effort removal of sidecars not referenced by a committed page."""
     try:
         chapter_dir = processed_dir.resolve()
         if not chapter_dir.is_relative_to(_processed_root()):

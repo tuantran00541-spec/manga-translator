@@ -150,7 +150,6 @@ def _language_payload(manifest: dict, detection: dict | None = None) -> dict:
     responses={404: {"description": "Chapter not found"}, 500: {"description": "Language detection failed"}},
 )
 async def detect_chapter_language(chapter_id: str, req: ChapterLanguageDetectRequest | None = None) -> dict:
-    """Return the chapter's source language, detecting it from its text regions once."""
     validate_chapter_id(chapter_id)
     force = bool(req and req.force)
     with get_manifest_lock(chapter_id):
@@ -164,7 +163,6 @@ async def detect_chapter_language(chapter_id: str, req: ChapterLanguageDetectReq
         raise HTTPException(500, "Language detection failed") from exc
     with get_manifest_lock(chapter_id):
         latest = load_manifest_raw(chapter_id)
-        # A manual choice made while detection ran always wins.
         if detection.lang and not (latest.get("source_lang_origin") == "manual" and not force):
             latest["source_lang"] = detection.lang
             latest["source_lang_origin"] = "site" if detection.reason == "site-hint" else "auto"

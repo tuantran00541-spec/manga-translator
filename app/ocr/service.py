@@ -176,8 +176,6 @@ def _sample_source_text_color(
     if image is None or image.size == 0:
         return None
 
-    # Verified text-segmenter masks are the strongest colour authority because
-    # they isolate glyph pixels instead of bubble/background pixels.
     if str(box.get("source_role") or "").strip().lower() == "text_segmenter":
         region = _box_region(box)
         raw_mask = box.get("mask")
@@ -208,8 +206,6 @@ def _sample_source_text_color(
     if roi.size == 0 or min(roi.shape[:2]) < 2:
         return None
 
-    # Fallback for OCR engines without a glyph mask: estimate the surrounding
-    # background from the region edge, then keep pixels most different from it.
     lab = cv2.cvtColor(roi, cv2.COLOR_BGR2LAB).astype(np.float32)
     edge = max(1, min(roi.shape[:2]) // 8)
     border = np.concatenate(
@@ -296,7 +292,6 @@ def _visual_text_metadata(
 def _ocr_crop_bounds(
     image_shape: tuple[int, ...], box: dict
 ) -> tuple[int, int, int, int]:
-    """Keep detector context as OCR minimum; masks may expand but never shrink it."""
     base = _clamped_detector_bounds(
         image_shape,
         box,
@@ -493,7 +488,6 @@ def _prefer_context_retry(
     )
 
 def ocr_target_mode_for_box(box: dict) -> str:
-    """Use centered selection only when the detector target is truly a line."""
     explicit = str(box.get("ocr_target_mode") or "").strip().lower()
     if explicit in {"all", "centered"}:
         return explicit
@@ -522,21 +516,14 @@ def ocr_target_mode_for_box(box: dict) -> str:
 
 
 def ocr_target_skip_reason(box: dict) -> str | None:
-    """Skip known review/noise proposals from batch OCR, retain them in manifest."""
     source_model = str(box.get("source_model") or "").strip().lower()
     source_role = str(box.get("source_role") or "").strip().lower()
     class_name = str(box.get("class_name") or "").strip().lower()
     deferred_reason = str(box.get("deferred_reason") or "").strip()
     if source_role == "scheduler":
         return "deferred-review-region"
-    # Geometry/safety deferral controls destructive cleanup, not OCR. A
-    # text-segmenter target remains a valid non-destructive OCR target even when
-    # its bbox is too wide/large/aspect-outlying for automatic erase.
     if deferred_reason and source_role != "text_segmenter":
         return "deferred-review-region"
-    # Raw MSER proposals are review evidence, not OCR authority. A proposal
-    # promoted through focused segmentation changes source_role to
-    # text_segmenter and is eligible again.
     if source_model == "opencv_mser" and source_role != "text_segmenter":
         return "unverified-recovery-proposal"
     if class_name in {
@@ -681,8 +668,6 @@ def _edge_recrop_bounds_sequence(
     image_shape: tuple[int, ...],
     crop_bounds: tuple[int, int, int, int],
 ) -> tuple[tuple[int, int, int, int], ...]:
-    # Grow only after an edge-truncation signal; each retry stays anchored
-    # to the original crop so padding never compounds accidentally.
     seen = {tuple(int(v) for v in crop_bounds)}
     bounds = []
     for extra_padding in OCR_EDGE_RECROP_EXTRA_PADDINGS:
@@ -770,8 +755,6 @@ class OCRService:
         self._image_cache_bytes = 0
         self._image_cache_budget = _cache_budget_bytes()
         self._image_cache_lock = threading.RLock()
-        # Detailed OCR metadata is transient per call. One OCRService instance can
-        # serve concurrent jobs, so it must never live directly on the instance.
         self._result_local = threading.local()
 
     def plan_chapter(self, chapter_id: str) -> list[tuple[int, str]]:
@@ -1229,12 +1212,6 @@ class OCRService:
         crop_bounds: tuple[int, int, int, int],
         result: object,
     ) -> float | None:
-        """Compare OCR text span to segmented text support when it exists.
-
-        This detects the important failure mode where a confident OCR line is
-        only a subset of a multi-line segmenter mask. It is intentionally
-        neutral for boxes without a trustworthy mask.
-        """
         raw_mask = box.get("mask")
         mask = raw_mask if isinstance(raw_mask, np.ndarray) else decode_mask_value(raw_mask)
         if mask is None:
@@ -1323,8 +1300,6 @@ class OCRService:
                 original_revision=original_revision,
                 metadata=metadata,
             )
-            # Existing auto-generated objects track committed machine OCR in the
-            # same manifest transaction, including translation ownership rules.
             sync_existing_auto_text_object(page, target)
             invalidate_page_render(manifest, page_index)
             save_manifest_raw(chapter_id, manifest)
@@ -1387,10 +1362,6 @@ class OCRService:
             lang,
         )
         if not combined:
-            # A manually drawn rectangle/ellipse is itself explicit OCR
-            # authority. Detector boxes improve grouping when available, but a
-            # complete detector miss must not turn the user's region into a
-            # silent empty result (common for HUD/system-panel/free text).
             combined = self._read_box_text(
                 original_path,
                 snapshot["region"],
@@ -1552,8 +1523,6 @@ class OCRService:
         original_revision: tuple[int, int, int],
         region: dict,
     ) -> None:
-        # Grouped OCR writes directly to a text object, so apply the same
-        # translation-ownership rule before replacing its machine-owned source.
         invalidate_stale_machine_translation(obj, combined)
         obj["source_boxes"] = source_box_ids
         obj["ocr_text"] = combined

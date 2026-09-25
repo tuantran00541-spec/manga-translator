@@ -13,8 +13,6 @@ from app.parameters import TEXT_CONF_THRESHOLD
 
 
 class OneShotTextMaskDetector:
-    """Minimal production detector: one ONNX forward at the normal threshold."""
-
     RESCUE_CONF_THRESHOLD = 0.12
 
     def __init__(self, detector: YoloDetector | None = None):
@@ -49,14 +47,12 @@ class OneShotTextMaskDetector:
         return accepted
 
     def _run_session(self, blob):
-        """Small seam so benchmarks/tests can count the real ONNX call."""
         return self.detector.session.run(
             None,
             {self.detector.input_name: blob},
         )
 
     def _single_forward_outputs(self, image: np.ndarray):
-        """Run preprocess + ONNX once and return raw outputs + geometry."""
         blob, transform = self.detector._preprocess(image, offset_x=0, offset_y=0)
         if blob is None or transform is None:
             return None, None
@@ -112,8 +108,6 @@ class OneShotTextMaskDetector:
         }
 
 class OneShotProductionDetector(FastResidueAdaptiveFocusCombinedTextDetector):
-    """ Production adapter for the one-forward text-mask detector. """
-
     def __init__(self):
         self.core = OneShotTextMaskDetector()
         self.text_detector = self.core.detector

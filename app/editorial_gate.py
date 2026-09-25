@@ -107,7 +107,6 @@ def apply_final_review(page: dict, *, approved: bool) -> bool:
 
 
 def is_story_candidate(box: dict | None) -> bool:
-    """ High-confidence detector evidence likely to carry story text. """
     if not isinstance(box, dict):
         return False
     if box.get("manual") or _norm(box.get("origin")) == "manual":
@@ -220,7 +219,6 @@ def apply_review_disposition(
     editorial_disposition: str | None = None,
     cleanup_disposition: str | None = None,
 ) -> bool:
-    """Apply explicit editorial and CLEAN decisions independently."""
     boxes = page.get("boxes") or []
     box = next(
         (
@@ -349,7 +347,6 @@ def editorial_preflight(
     *,
     require_final_approval: bool = False,
 ) -> dict:
-    """Fail-closed final/export coverage for story detector evidence."""
     blockers: list[dict] = []
     blocker_keys: set[tuple] = set()
     high_risk_regions: list[dict] = []

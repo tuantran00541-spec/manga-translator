@@ -1,5 +1,3 @@
-"""Create a tiny, model-free chapter for live browser smoke tests."""
-
 from __future__ import annotations
 
 import json
@@ -63,13 +61,6 @@ def main() -> None:
                     "unsafe_after": False,
                     "source_height": image.height,
                 },
-                # Deliberately omit width/height here. Production manifests made
-                # before slice-dimension persistence relied on stitch metadata,
-                # and the stitched Review must render those chapters immediately.
-                # Production manifests retain managed absolute paths; the API
-                # turns them into stable /api/image URLs for the browser.  Keep
-                # the fixture on that same contract instead of using filenames
-                # that only make sense relative to this script's working dir.
                 "original": str((RAW_DIR / original).resolve()),
                 "clean": str((PROCESSED_DIR / clean).resolve()),
                 "boxes": [],

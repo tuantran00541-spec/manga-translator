@@ -88,8 +88,6 @@ function scheduleTextObjectPersist(pageIndex, id) {
 window.scheduleTextObjectPersist = scheduleTextObjectPersist;
 
 async function _persistTextObjectsBulk(chapterId, items) {
-  // One request for the whole batch; the server applies every patch under a
-  // single manifest transaction instead of one full rewrite per object.
   const resp = await fetch("/api/text_object/update_bulk", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -163,7 +161,6 @@ async function _flushTextObjectPersistNow(pageIndex) {
       try {
         await _persistTextObjectsBulk(chapterId, items);
       } catch (bulkErr) {
-        // Older servers (or a rejected payload) still get a working save.
         console.warn("Bulk text-object save failed; falling back per object:", bulkErr);
         failures = await _persistTextObjectsIndividually(chapterId, items);
       }
@@ -180,8 +177,6 @@ async function _flushTextObjectPersistNow(pageIndex) {
 }
 
 function flushTextObjectPersist(pageIndex) {
-  // Keep server writes ordered. A slower earlier request must never arrive
-  // after and overwrite a newer draft for the same text object.
   const job = _textPersistChain.catch(() => {}).then(() => _flushTextObjectPersistNow(pageIndex));
   _textPersistChain = job;
   return job;

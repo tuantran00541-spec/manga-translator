@@ -33,8 +33,6 @@ class ChapterProcessingJob:
 
 
 class ChapterProcessingJobManager:
-    """ Own chapter processing independently from the browser request lifetime. """
-
     def __init__(
         self,
         process_plan: Callable[

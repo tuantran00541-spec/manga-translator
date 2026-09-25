@@ -1,5 +1,3 @@
-"""Exercise the real FastAPI server and unified Review browser runtime."""
-
 from __future__ import annotations
 
 import argparse
@@ -103,8 +101,6 @@ def _select_text_object(page: Page) -> None:
 
 
 def _exercise_font_picker(page: Page) -> None:
-    """Verify the live editor exposes the font catalog and the automatic option."""
-
     font_select = page.locator(".font-style-toolbar select")
     expect(font_select).to_have_count(1)
     expect(font_select.locator('option[value="auto"]')).to_have_count(1)
@@ -134,8 +130,6 @@ def _exercise_desktop(page: Page) -> None:
         raise AssertionError(
             f"desktop Review canvas is not usable: {viewport_box}; chain={chain}"
         )
-    # The fixture intentionally stores the legacy "editor" checkpoint. Opening
-    # it must migrate into the single Review/lettering workspace.
     expect(page.locator('.sidebar-link[data-stage="editor"]')).to_have_count(0)
     expect(page.locator(".review-stitched-select")).to_have_count(0)
     image = page.locator(".review-stitched-image")
@@ -145,7 +139,6 @@ def _exercise_desktop(page: Page) -> None:
     expect(page.get_by_role("button", name="Có chữ", exact=True)).to_be_visible()
     expect(page.get_by_role("button", name="Ảnh gốc", exact=True)).to_be_visible()
     expect(page.locator(".review-strip-meta")).to_have_count(0)
-    # Brush options stay out of the way until a mask tool is picked.
     expect(page.locator(".review-brush-bar")).to_be_hidden()
     page.locator('.review-rail-tool[data-tool="brush"]').click()
     expect(page.locator(".review-brush-bar")).to_be_visible()
@@ -285,7 +278,6 @@ def _exercise_desktop(page: Page) -> None:
     _wait_for_review(page)
     expect(page.locator(".review-workspace-shell")).to_have_attribute("data-review-canonical-index", "1")
 
-    # Repeated mounts must not retain duplicate observers/workspaces.
     page.evaluate("() => { for (let i = 0; i < 8; i += 1) window.renderReview(); }")
     _wait_for_review(page)
     expect(page.locator(".review-workspace-shell")).to_have_count(1)
@@ -297,7 +289,6 @@ def _expect_more_menu_action(page: Page, name: str) -> None:
     toggle = page.locator(".review-more-toggle")
     toggle.click()
     expect(page.get_by_role("button", name=name, exact=True)).to_be_visible()
-    # The chapter's stored source language replaces the old import-page picker.
     expect(page.locator(".review-lang-select")).to_have_value("ja")
     expect(page.locator("#lang-select")).to_have_count(0)
     toggle.click()
@@ -337,7 +328,6 @@ def _exercise_mobile(page: Page) -> None:
     )
     if not tool_sizes or min(tool_sizes) < 36:
         raise AssertionError(f"mobile Review tools are too small to tap comfortably: {tool_sizes}")
-    # Controls inside a closed disclosure are not rendered, so they cannot be tapped yet.
     control_sizes = page.locator(".review-document-toolbar-compact .ui-btn").evaluate_all(
         "elements => elements.filter(element => element.checkVisibility()).map(element => Math.round(element.getBoundingClientRect().height))"
     )
@@ -490,7 +480,6 @@ def main() -> None:
                     raise AssertionError(f"mobile image is unexpectedly collapsed: {metrics}")
                 page.screenshot(path=str(args.artifacts / f"{name}.png"), full_page=True)
 
-                # Hard reload of the chapter hash must restore the unified Review.
                 page.reload(wait_until="networkidle")
                 _wait_for_review(page)
                 expect(page.locator("body")).to_have_attribute("data-app-stage", "review")

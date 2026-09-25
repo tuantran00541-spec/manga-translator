@@ -21,8 +21,6 @@ REQUIRED_MODELS = [
     TEXT_SEGMENTER_MODEL,
 ]
 
-# Compatibility aliases for modules/third-party code that historically imported
-# tuning from app.config. New runtime code should import from app.parameters.
 BUBBLE_CONF_THRESHOLD = _parameters.BUBBLE_DESTRUCTIVE_CONF_THRESHOLD
 BUBBLE_IOU_THRESHOLD = _parameters.BUBBLE_IOU_THRESHOLD
 TEXT_CONF_THRESHOLD = _parameters.TEXT_CONF_THRESHOLD
@@ -37,9 +35,6 @@ SLICE_MAX_HEIGHT = _parameters.SLICE_MAX_HEIGHT
 MIN_FONT_SIZE = _parameters.MIN_FONT_SIZE
 MAX_FONT_SIZE = _parameters.MAX_FONT_SIZE
 
-# Process-start snapshot for health/debug/reproducibility. Tuning values are
-# intentionally read once from environment at import time, so this is stable for
-# the lifetime of the process and matches the values used by runtime modules.
 EFFECTIVE_PARAMETERS = _parameters.parameter_snapshot()
 
 DEFAULT_FONT = BASE_DIR / "app" / "static" / "fonts" / "default.ttf"
@@ -63,7 +58,5 @@ def check_models() -> list[str]:
         if not path.is_file():
             missing.append(path.name)
     if not LAMA_DYNAMIC_MODEL.is_file() and not LAMA_MODEL.is_file():
-        # Preserve the historical filename in the public response while accepting
-        # the preferred dynamic model as a complete inpaint backend on its own.
         missing.append(LAMA_MODEL.name)
     return missing

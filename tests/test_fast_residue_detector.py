@@ -137,8 +137,6 @@ def test_coalesced_verifier_uses_one_model_call_and_keeps_residue_evidence():
     first = _box(10, 10, 50, 35)
     second = _box(48, 12, 88, 37)
     image = np.full((120, 140, 3), 255, dtype=np.uint8)
-    # Force both sources through the neural path so the coalescing contract is
-    # exercised independently of the flat-negative gate.
     image[18:26, 22:34] = 0
     image[18:28, 58:72] = 0
 
@@ -164,7 +162,6 @@ def test_coalesced_verifier_uses_one_model_call_and_keeps_residue_evidence():
     reset = detector.residue_metrics_snapshot(reset=True)
     assert reset == totals
     assert detector.residue_metrics_snapshot() == {}
-
 
 
 def test_large_detector_box_uses_tight_verified_mask_roi():

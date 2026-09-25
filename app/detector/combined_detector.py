@@ -81,7 +81,6 @@ class CombinedTextDetector:
         self._metrics_local = threading.local()
 
     def last_metrics(self) -> dict[str, float | int]:
-        """Return detector counters from the current page-processing thread."""
         metrics = getattr(self._metrics_local, "value", {})
         return {
             str(name): float(value) if str(name).endswith("_ms") else int(value)
@@ -133,15 +132,6 @@ class CombinedTextDetector:
         img_w: int,
         img_h: int,
     ) -> BubbleBox | None:
-        """Recover text strokes only inside a high-confidence flat speech bubble.
-
-        v0.1 used the bubble segmentation itself as the destructive mask whenever
-        the text segmenter missed a bubble. That gave good recall but could erase
-        artwork. This fallback keeps the useful signal while rebuilding a narrow
-        contrast mask: the bubble must pass the destructive confidence threshold,
-        its interior must be overwhelmingly white or black, and only contrasting
-        stroke pixels become the inpaint mask.
-        """
         if box.source_role == "bubble_detector":
             return None
         if (
@@ -256,14 +246,6 @@ class CombinedTextDetector:
         image_shape: tuple[int, int],
         proposals: list[BubbleBox],
     ) -> tuple[list[tuple[int, int, int, int]], int]:
-        """Bound grayscale retry to compact free-text regions.
-
-        The old fallback re-ran the text model over the entire page, which is
-        especially expensive on tall slices because the adaptive detector may
-        execute several windows plus a full-image pass.  These ROIs are recall
-        insurance only: proposals that do not fit the bounded retry remain
-        review-only through the normal detector path.
-        """
         h, w = (int(image_shape[0]), int(image_shape[1]))
         if h <= 0 or w <= 0 or not proposals:
             return [], 0
@@ -368,7 +350,6 @@ class CombinedTextDetector:
         *,
         grayscale: bool,
     ) -> tuple[list[BubbleBox], dict[str, int]]:
-        """Run a bounded segmenter retry inside unresolved proposal ROIs."""
         h, w = image.shape[:2]
         rois, deferred = self._plan_grayscale_fallback_rois((h, w), proposals)
         recovered: list[BubbleBox] = []
@@ -383,9 +364,6 @@ class CombinedTextDetector:
                 detector_image = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
             else:
                 detector_image = crop
-            # The ROI is bounded below the tall-page retry regime. Calling the
-            # detector's single-image path preserves configured TTA while
-            # avoiding adaptive whole-page windows and their redundant full pass.
             boxes = self.text_detector._detect_single(detector_image, x1, y1)
             boxes = [self.text_detector._with_semantics(box) for box in boxes]
             boxes = self.text_detector._filter_invalid(boxes, w, h)
@@ -423,13 +401,9 @@ class CombinedTextDetector:
         proposal: BubbleBox,
         text_boxes: list[BubbleBox],
     ) -> bool:
-        """A raw MSER rectangle is resolved only by an independent mask."""
         matches = [box for box in text_boxes if CombinedTextDetector._is_inside(box, proposal)]
         if not matches:
             return False
-        # MSER provides the *where*, not deletion pixels. Any later inpaint is
-        # restricted to the segmenter's verified mask; post-inpaint verification
-        # remains the final completeness authority.
         return any(box.verified_mask and box.safe_to_inpaint for box in matches)
 
     def verify_post_inpaint_residue(
@@ -437,13 +411,6 @@ class CombinedTextDetector:
         image: np.ndarray,
         authorized_boxes: list[BubbleBox],
     ) -> list[BubbleBox]:
-        """Find text-segmenter evidence that survives inside cleaned regions.
-
-        Verification is deliberately focused and uses one plain segmenter pass
-        per bounded ROI (no TTA, no MSER). It therefore adds CPU work only for
-        regions that were actually changed. A hit is review evidence, never a
-        new destructive mask in the same run.
-        """
         if image is None or image.size == 0:
             return []
         h, w = image.shape[:2]
@@ -540,9 +507,6 @@ class CombinedTextDetector:
         bubble_boxes = [self._classify(b) for b in bubble_boxes]
         text_boxes = [self._classify(t) for t in text_boxes]
 
-        # A bubble/free-text proposal can reveal a colourful line missed by
-        # the RGB segmenter. Grayscale is additive, never a replacement for
-        # RGB evidence, and only segmenter masks can gain erase authority.
         unmatched_free_text = [
             bubble
             for bubble in bubble_boxes
@@ -635,9 +599,6 @@ class CombinedTextDetector:
         metrics["mser_ms"] = round(
             (time.perf_counter() - recovery_started_at) * 1000.0, 3
         )
-        # MSER can now seed a focused colour segmenter pass.  The MSER proposal
-        # itself remains review-only; only the independently decoded segmenter
-        # pixels are authorized for cleanup.
         mser_text, mser_retry_metrics = self._focused_text_retry(
             image,
             recovered,
@@ -698,7 +659,6 @@ class CombinedTextDetector:
 
     @staticmethod
     def _refine_and_split_tall_boxes(boxes: list[BubbleBox], img: np.ndarray) -> list[BubbleBox]:
-        """ Refine geometry without inventing segmentation pixels. """
         img_h, img_w = img.shape[:2]
         full_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if img.ndim == 3 else img
 
@@ -832,9 +792,6 @@ class CombinedTextDetector:
                     replace(box, x1=abs_x1, y1=abs_y1, x2=abs_x2, y2=abs_y2, mask=line_mask)
                 )
 
-            # The dark-on-light row heuristic does not describe coloured or
-            # light-on-dark lettering. It may refine layout, but must never
-            # delete segmentation evidence (including outlines and accents).
             if not split_boxes or (
                 covered_mask is not None
                 and np.any((box.mask > 0) & ~covered_mask)
@@ -893,9 +850,6 @@ class CombinedTextDetector:
                         continue
                     cluster_area = (max_x - min_x) * (max_y - min_y)
                     if cluster_area > img_w * img_h * MAX_BOX_AREA_RATIO:
-                        # Padding is optional layout context. Never lose the
-                        # detector's original mask just because the padded box
-                        # would exceed the broad area heuristic.
                         final_clusters.append(replace(b))
                         continue
                     merged_mask = self._merge_masks([b], min_x, min_y, max_x, max_y)
@@ -909,9 +863,6 @@ class CombinedTextDetector:
                         continue
                     cluster_area = (max_x - min_x) * (max_y - min_y)
                     if cluster_area > img_w * img_h * MAX_BOX_AREA_RATIO:
-                        # Preserve every child mask as an independent region.
-                        # Downstream inpaint can safely split these again; a
-                        # broad grouping heuristic must never erase evidence.
                         final_clusters.extend(replace(member) for member in sub)
                         continue
                     merged_mask = self._merge_masks(sub, min_x, min_y, max_x, max_y)
@@ -983,11 +934,6 @@ class CombinedTextDetector:
     def _merge_masks(
         inside_text: list[BubbleBox], min_x: int, min_y: int, max_x: int, max_y: int
     ) -> np.ndarray | None:
-        """Merge only segmentation evidence; never synthesize rectangles.
-
-        Missing child masks are ignored. If no child contributes a real non-empty
-        mask, return ``None`` so downstream policy can fail safe explicitly.
-        """
         merged = np.zeros((max_y - min_y, max_x - min_x), dtype=np.uint8)
         contributed = False
         for t in inside_text:

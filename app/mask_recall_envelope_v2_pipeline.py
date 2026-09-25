@@ -19,8 +19,6 @@ from app.parameters import (
 
 
 class CompleteFlatEnvelopeMaskRecallPipeline(FlatEnvelopeMaskRecallPipeline):
-    """ Adaptive mask recall with bounded evidence-driven repair follow-ups. """
-
     _ADAPTIVE_GEOMETRY_SIDE = max(
         1,
         min(
@@ -73,7 +71,6 @@ class CompleteFlatEnvelopeMaskRecallPipeline(FlatEnvelopeMaskRecallPipeline):
 
     @classmethod
     def _repair_pass_budget(cls, result: dict) -> int:
-        """Scale the bounded retry budget with independent text authorities."""
         owned_sources = 0
         for record in list(result.get("boxes") or []):
             if not isinstance(record, dict):
@@ -131,8 +128,6 @@ class CompleteFlatEnvelopeMaskRecallPipeline(FlatEnvelopeMaskRecallPipeline):
         followup_pixels = 0
         followup_outside = 0
 
-        # The base recall path already handled the first repair and any flat-only
-        # follow-up. Continue only while fresh verifier/ink evidence still exists.
         while repair_passes < pass_budget:
             clean_now = read_image(tmp_clean_path)
             added_flat = self._augment_flat_residue_regions(clean_now, updated)
@@ -168,8 +163,6 @@ class CompleteFlatEnvelopeMaskRecallPipeline(FlatEnvelopeMaskRecallPipeline):
             if pass_pixels <= 0:
                 break
 
-        # Re-run the independent flat audit after neural follow-ups. If the hard
-        # cap is reached, keep review state rather than silently certifying clean.
         final_flat_regions = 0
         if tmp_clean_path.exists():
             clean_final = read_image(tmp_clean_path)

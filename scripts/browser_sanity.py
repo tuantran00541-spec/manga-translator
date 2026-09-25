@@ -269,8 +269,6 @@ def _consume_js_string_literal(source: str, start: int) -> str | None:
 
 
 def _trusted_inner_html_template(path: Path, literal: str) -> bool:
-    # This editor helper receives only hard-coded section labels (Văn bản / Kiểu dáng / Nền).
-    # Keep the exception narrow so any other interpolated innerHTML still fails the gate.
     if path.as_posix() != "app/static/js/editor.js":
         return False
     expressions = re.findall(r"\$\{([^{}]+)\}", literal)
@@ -328,7 +326,6 @@ def check_browser_state_contracts() -> None:
             "state.persistedVersion < state.version",
         ),
         Path("app/static/js/editor-box-transform.js"): (
-            "browser request alone cannot undo a server commit",
             "if (currentGen === geomGeneration)",
             "window.editorImageMetrics(img)",
             "metrics.offsetX + r.x1 * metrics.sx",

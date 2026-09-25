@@ -10,8 +10,6 @@ from app.mask_recall_pipeline import MaskRecallOptimizedChapterPipeline
 
 
 class FlatEnvelopeMaskRecallPipeline(MaskRecallOptimizedChapterPipeline):
-    """ Recover clipped edge glyphs outside a text detector bbox safely. """
-
     _FLAT_SEARCH_PAD_X = 96
     _FLAT_SEARCH_PAD_Y = 32
     _FLAT_ENVELOPE_MIN_SOURCE_SIDE = 160
@@ -23,7 +21,6 @@ class FlatEnvelopeMaskRecallPipeline(MaskRecallOptimizedChapterPipeline):
 
     @classmethod
     def _residue_repair_effective_boxes(cls, records: list[dict] | None):
-        """Expand repair authority only for sources that passed the flat gate."""
         expandable: set[tuple[int, int, int, int]] = set()
         for record in records or []:
             if not isinstance(record, dict) or not record.get(cls._EXPAND_MARKER):

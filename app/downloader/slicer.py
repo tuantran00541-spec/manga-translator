@@ -105,13 +105,6 @@ def slice_image(image_path: Path, out_dir: Path, prefix: str, *, return_metadata
 def _find_cut_rows(
     gray: np.ndarray, h: int, w: int, *, unsafe_rows: np.ndarray | None = None
 ) -> list[int]:
-    """Return long, content-aware cuts with a hard emergency height limit.
-
-    ``SLICE_TARGET_HEIGHT`` is deliberately soft. A blank gutter anywhere in
-    the legal range is safer than a shorter cut through a speech bubble or
-    free text. Only when no safe band exists before ``SLICE_MAX_HEIGHT`` do we
-    choose the lowest-content row, keeping enough image for the trailing core.
-    """
     if h <= SLICE_MAX_HEIGHT:
         return []
 
@@ -124,8 +117,6 @@ def _find_cut_rows(
 
     while h - y > SLICE_MAX_HEIGHT:
         remaining = h - y
-        # Conflicting min/max overrides must never leave an oversized tail.
-        # If two minimum-size cores cannot fit, relax only the minimum.
         min_height = min(SLICE_MIN_HEIGHT, remaining // 2)
         allowed_lo = y + min_height
         allowed_hi = min(y + SLICE_MAX_HEIGHT, h - min_height)
@@ -135,9 +126,6 @@ def _find_cut_rows(
         hi = min(allowed_hi, target + SLICE_SEARCH_WINDOW)
         cut = _find_safe_cut(unsafe_rows, scores, lo, hi, target)
 
-        # A safe gutter outside the local target window is still preferable to
-        # cutting through content. This is the key distinction between target
-        # height and the emergency maximum.
         if cut is None:
             cut = _find_safe_cut(
                 unsafe_rows, scores, allowed_lo, allowed_hi, target
@@ -183,7 +171,6 @@ def _find_safe_cut(
     if lo > hi:
         return None
 
-    # lo/hi constrain the cut coordinate, not the surrounding safety band.
     start = max(SAFE_CUT_BAND, lo)
     end = min(len(unsafe_rows) - SAFE_CUT_BAND, hi + 1)
     if start >= end:

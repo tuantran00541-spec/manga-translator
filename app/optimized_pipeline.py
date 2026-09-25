@@ -21,8 +21,6 @@ from app.region_policy import geometry_center_in_regions, subtract_regions_from_
 
 
 class OptimizedChapterPipeline(ChapterPipeline):
-    """Chapter pipeline using validated CPU detector and cleanup candidates."""
-
     @property
     def detector(self):
         if self._detector is None:
@@ -46,12 +44,6 @@ class OptimizedChapterPipeline(ChapterPipeline):
         workers: int = PIPELINE_DEFAULT_WORKERS,
         progress_callback: Callable[[int], None] | None = None,
     ) -> dict:
-        """Process pages with exactly the user-requested page concurrency.
-
-        The UI/API contract is 1..8 workers. Runtime tuning belongs inside the
-        detector/inpainter sessions; it must not silently rewrite page
-        concurrency behind the user's back.
-        """
         requested_workers = max(1, min(8, int(workers or PIPELINE_DEFAULT_WORKERS)))
         inpainter = self.inpainter
         prepare = getattr(inpainter, "prepare_for_page_workers", None)
@@ -70,7 +62,6 @@ class OptimizedChapterPipeline(ChapterPipeline):
         original_image: np.ndarray,
         preserve_regions: list[dict] | None,
     ) -> None:
-        """Hard-lock user preserve rectangles without growing their geometry."""
         if not preserve_regions:
             return
         h, w = clean_image.shape[:2]
@@ -95,13 +86,6 @@ class OptimizedChapterPipeline(ChapterPipeline):
         *,
         force_lama: bool,
     ) -> np.ndarray:
-        """Repaint with the exact user mask: no dilation and no feather outside it.
-
-        The crop may include surrounding image context for the model, but the mask
-        passed to the inpaint operation is exactly the persisted manual mask.
-        Each connected component is inferred from the same source image so one
-        manual region cannot become context for another.
-        """
         binary = (mask > MANUAL_MASK_THRESHOLD).astype(np.uint8) * 255
         if not np.any(binary):
             return image.copy()
@@ -119,8 +103,6 @@ class OptimizedChapterPipeline(ChapterPipeline):
             if area <= 0 or bbox_w <= 0 or bbox_h <= 0:
                 continue
 
-            # x2/y2 are exclusive here. The crop grows only to provide source
-            # context; the local model mask itself remains exact.
             crop_box = self.inpainter._compute_manual_crop_region(
                 x,
                 y,
@@ -162,7 +144,6 @@ class OptimizedChapterPipeline(ChapterPipeline):
 
     @staticmethod
     def _residue_repair_effective_boxes(records: list[dict] | None) -> list[BubbleBox]:
-        """Rebuild destructive detector authorities persisted by _process_page."""
         boxes: list[BubbleBox] = []
         for record in records or []:
             if (
@@ -214,7 +195,6 @@ class OptimizedChapterPipeline(ChapterPipeline):
 
     @classmethod
     def _residue_verification_boxes(cls, records: list[dict] | None) -> list[BubbleBox]:
-        """Return destructive authorities plus review-only verification sources."""
         boxes = list(cls._residue_repair_effective_boxes(records))
         boxes.extend(cls._review_only_residue_sources(records))
         return boxes
@@ -225,14 +205,6 @@ class OptimizedChapterPipeline(ChapterPipeline):
         result: dict,
         preserve_regions: list[dict] | None,
     ) -> dict:
-        """Repair text that a focused post-inpaint verification proves remains.
-
-        Existing automatic authority stays valid. A freshly verified
-        text-segmenter residue mask may also add stroke-shaped authority outside
-        the original mask; raw rectangles and review-only geometry never gain
-        destructive permission. LaMa can use context internally, but final writes
-        remain clipped to verified masks and preserve rectangles.
-        """
         initial_regions = list(result.get("residue_regions") or [])
         actual_hits = [
             region
@@ -316,8 +288,6 @@ class OptimizedChapterPipeline(ChapterPipeline):
                 local_scope[residue_mask > MANUAL_MASK_THRESHOLD] = 255
                 continue
 
-            # Backward-compatible geometry can only narrow an already-authorized
-            # mask. It never creates new destructive pixels.
             px1 = max(0, raw_x1 - fallback_pad)
             py1 = max(0, raw_y1 - fallback_pad)
             px2 = min(w, raw_x2 + fallback_pad)
@@ -480,7 +450,6 @@ class OptimizedChapterPipeline(ChapterPipeline):
         apply_manual_mask: bool = True,
         preserve_regions: list[dict] | None = None,
     ) -> str:
-        """Replay manual repaint with exact masks while keeping RAW LaMa context."""
         if not apply_manual_mask:
             return super()._do_reinpaint(
                 processed_dir,
@@ -522,9 +491,6 @@ class OptimizedChapterPipeline(ChapterPipeline):
             preserve_regions,
         )
 
-        # Suppress both parent manual passes. They use Inpainter.inpaint_mask(),
-        # whose production default intentionally dilates manual masks. Repaint
-        # policy here replays both modes below with exact user geometry instead.
         suppressed_standard_path = processed_dir / (
             f".exact-standard-{uuid.uuid4().hex}.png"
         )
@@ -563,7 +529,6 @@ class OptimizedChapterPipeline(ChapterPipeline):
         if lama_mask is not None and np.any(lama_mask > MANUAL_MASK_THRESHOLD):
             if clean_image is None:
                 clean_image = read_image(Path(clean_path_posix))
-            # Explicit LaMa repaint keeps RAW/original pixels as source context.
             lama_candidate = self._exact_manual_repaint_candidate(
                 image.copy(),
                 lama_mask,
