@@ -63,54 +63,48 @@
     workspace?.querySelectorAll(".review-qc-highlight").forEach((node) => node.remove());
   }
 
-  function highlightGeometry(pageIndex, issue, img) {
+  function pageDescriptor(workspace, pageIndex) {
+    const shell = workspace?.querySelector(".review-document-shell");
+    return (shell?._descriptors || []).find((desc) => Number(desc?.item?.canonicalIndex) === pageIndex) || null;
+  }
+
+  function highlightRegion(desc, issue) {
+    const width = Number(desc.img?.naturalWidth) || 0;
+    const fallback = { x1: 0, y1: desc.localY1, x2: width, y2: desc.localY2 };
     const bbox = Array.isArray(issue?.bbox) ? issue.bbox.map(Number) : null;
-    const page = window.currentManifest?.pages?.[pageIndex];
-    const width = Number(page?.width) || img?.naturalWidth || 0;
-    const height = Number(page?.height) || img?.naturalHeight || 0;
-    if (bbox?.length !== 4 || !width || !height) return null;
-    const [x1, y1, x2, y2] = bbox;
-    if (![x1, y1, x2, y2].every(Number.isFinite) || x2 <= x1 || y2 <= y1) return null;
-    return { x1, y1, x2, y2, width, height };
-  }
-
-  function applyHighlightStyle(marker, geometry) {
-    const { x1, y1, x2, y2, width, height } = geometry;
-    marker.style.left = `${Math.max(0, Math.min(100, x1 / width * 100))}%`;
-    marker.style.top = `${Math.max(0, Math.min(100, y1 / height * 100))}%`;
-    marker.style.width = `${Math.max(0.5, Math.min(100, (x2 - x1) / width * 100))}%`;
-    marker.style.height = `${Math.max(0.5, Math.min(100, (y2 - y1) / height * 100))}%`;
-  }
-
-  function drawHighlight(workspace, pageIndex, issue, attempt = 0) {
-    if (!workspace?.isConnected || attempt > 8) return;
-    const card = workspace.querySelector(`.review-card[data-page-index="${pageIndex}"]`);
-    const wrap = card?.querySelector(".review-image-wrap");
-    const img = wrap?.querySelector("img");
-    const geometry = highlightGeometry(pageIndex, issue, img);
-    if (!wrap || !geometry) {
-      window.setTimeout(() => drawHighlight(workspace, pageIndex, issue, attempt + 1), 80);
-      return;
-    }
-    clearHighlight(workspace);
-    const marker = document.createElement("div");
-    const reason = issue?.reason ? ": " + issue.reason : "";
-    marker.className = "review-qc-highlight";
-    marker.setAttribute("aria-label", issueLabel(issue));
-    marker.title = issueLabel(issue) + reason;
-    applyHighlightStyle(marker, geometry);
-    wrap.appendChild(marker);
-    marker.scrollIntoView({ behavior: "smooth", block: "center" });
+    const valid = bbox?.length === 4 && bbox.every(Number.isFinite) && bbox[2] > bbox[0] && bbox[3] > bbox[1];
+    const [x1, y1, x2, y2] = valid ? bbox : [fallback.x1, fallback.y1, fallback.x2, fallback.y2];
+    return {
+      x1,
+      y1: desc.sourceY1 + (y1 - desc.localY1),
+      x2,
+      y2: desc.sourceY1 + (y2 - desc.localY1),
+    };
   }
 
   function jumpToResult(workspace, result, issue) {
     const pageIndex = Number(result?.page_index);
     if (!Number.isInteger(pageIndex) || pageIndex < 0) return;
     if (!visiblePageIndices().includes(pageIndex)) return;
-    const navigator = workspace._pageNavigator;
-    if (!navigator || typeof navigator.selectByKey !== "function") return;
-    navigator.selectByKey(pageIndex);
-    window.setTimeout(() => drawHighlight(workspace, pageIndex, issue), 40);
+    const desc = pageDescriptor(workspace, pageIndex);
+    const image = workspace.querySelector(".review-stitched-image");
+    if (!desc || !image) return;
+    clearHighlight(workspace);
+    const region = highlightRegion(desc, issue);
+    const marker = document.createElement("div");
+    const reason = issue?.reason ? ": " + issue.reason : "";
+    marker.className = "review-qc-highlight";
+    marker.dataset.pageIndex = String(pageIndex);
+    marker.setAttribute("aria-label", issueLabel(issue));
+    marker.title = issueLabel(issue) + reason;
+    Object.assign(marker.style, {
+      left: `${region.x1}px`,
+      top: `${region.y1}px`,
+      width: `${Math.max(4, region.x2 - region.x1)}px`,
+      height: `${Math.max(4, region.y2 - region.y1)}px`,
+    });
+    image.appendChild(marker);
+    marker.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
   }
 
   function flaggedResults(snapshot) {
@@ -199,13 +193,15 @@
       runBtn.textContent = snapshot && !running ? "Kiểm tra lại toàn chương" : "Kiểm tra toàn chương bằng AI";
     }
     if (cancelBtn) cancelBtn.hidden = !running || Boolean(snapshot?.cancel_requested);
-    if (retryBtn) retryBtn.hidden = running || Number(snapshot?.failed) <= 0;
+    if (retryBtn) retryBtn.hidden = running || !(Number(snapshot?.failed) > 0);
     syncProviderControls(panel, snapshot, running);
   }
 
   function makeResultButton(workspace, result, issue) {
     const button = document.createElement("button");
-    const pageNumber = Number(result.page_index) + 1;
+    const pageIndex = Number(result.page_index);
+    const sourcePage = window.currentManifest?.pages?.[pageIndex]?.source_page;
+    const pageNumber = (Number.isInteger(sourcePage) ? sourcePage : pageIndex) + 1;
     const confidenceNumber = Number(issue?.confidence);
     const confidence = Number.isFinite(confidenceNumber) ? ` · ${Math.round(confidenceNumber * 100)}%` : "";
     const page = document.createElement("span");
@@ -249,13 +245,9 @@
     if (!panel) return;
     const snapshot = state.snapshot;
     const running = isRunning(snapshot);
-    const disclosure = panel.closest(".command-disclosure");
-    if (disclosure) {
-      const summary = disclosure.querySelector("summary");
-      summary.textContent = running ? "AI đang kiểm tra…" : (snapshot ? "Kết quả kiểm tra AI" : "Kiểm tra AI");
-      const jobState = snapshot ? `${snapshot.job_id}:${snapshot.status}` : "idle";
-      if (snapshot && disclosure.dataset.jobState !== jobState) disclosure.open = true;
-      disclosure.dataset.jobState = jobState;
+    const opener = workspace.querySelector(".chapter-qc-open");
+    if (opener) {
+      opener.textContent = running ? "AI đang kiểm tra toàn chương…" : (snapshot ? "Kết quả kiểm tra AI" : "Kiểm tra AI toàn chương");
     }
     setLocked(workspace, running);
     updateProgress(panel, snapshot);
@@ -367,18 +359,11 @@
     }
   }
 
-  function createPanel() {
+  function createPanel(workspace) {
     const panel = document.createElement("section");
     panel.className = "chapter-qc-panel";
     panel.setAttribute("aria-live", "polite");
     panel.innerHTML = `
-      <div class="chapter-qc-head">
-        <div><strong>Kiểm tra toàn chương</strong></div>
-        <div class="chapter-qc-job-actions">
-          <button type="button" class="ui-btn ui-btn-ghost chapter-qc-retry" hidden>Thử lại phần lỗi</button>
-          <button type="button" class="ui-btn ui-btn-ghost chapter-qc-cancel" hidden>Hủy kiểm tra</button>
-        </div>
-      </div>
       <div class="chapter-qc-options">
         <label class="ui-field">Dịch vụ AI
           <select class="ui-select chapter-qc-provider">
@@ -396,10 +381,16 @@
           <span>$<input class="ui-input chapter-qc-budget-input" type="number" min="0.005" max="0.15" step="0.005" value="0.08" inputmode="decimal"></span>
         </label>
       </div>
+      <div class="chapter-qc-job-actions">
+        <button type="button" class="ui-btn ui-btn-primary ui-btn-compact chapter-qc-run">Kiểm tra toàn chương bằng AI</button>
+        <button type="button" class="ui-btn ui-btn-ghost ui-btn-compact chapter-qc-retry" hidden>Thử lại phần lỗi</button>
+        <button type="button" class="ui-btn ui-btn-ghost ui-btn-compact chapter-qc-cancel" hidden>Hủy kiểm tra</button>
+      </div>
       <p class="chapter-qc-summary">Chưa chạy kiểm tra toàn chương.</p>
       <p class="chapter-qc-usage" hidden></p>
       <progress class="ui-progress chapter-qc-progress" max="1" value="0" hidden></progress>
       <div class="chapter-qc-results"></div>`;
+    panel.querySelector(".chapter-qc-run")?.addEventListener("click", () => startChapterQC(workspace));
     panel.querySelector(".chapter-qc-cancel")?.addEventListener("click", cancelChapterQC);
     panel.querySelector(".chapter-qc-retry")?.addEventListener("click", retryChapterQC);
     panel.querySelector(".chapter-qc-provider")?.addEventListener("change", () => {
@@ -422,31 +413,58 @@
     return panel;
   }
 
+  function createFloatingPanel(workspace) {
+    const floating = document.createElement("aside");
+    floating.className = "chapter-qc-floating";
+    floating.hidden = true;
+    floating.setAttribute("aria-label", "Kiểm tra AI toàn chương");
+    const header = document.createElement("div");
+    header.className = "chapter-qc-floating-header";
+    const title = document.createElement("strong");
+    title.textContent = "Kiểm tra AI toàn chương";
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "ui-icon-btn ui-btn-ghost ui-btn-compact chapter-qc-close";
+    close.setAttribute("aria-label", "Đóng kiểm tra AI");
+    close.append(window.createUiIcon?.("close") || document.createTextNode("×"));
+    close.addEventListener("click", () => {
+      floating.hidden = true;
+      clearHighlight(workspace);
+    });
+    header.append(title, close);
+
+    const panel = createPanel(workspace);
+    floating.append(header, panel);
+    return floating;
+  }
+
   function bindWorkspace(workspace) {
     syncChapterState();
     if (!workspace || workspace.dataset.chapterQcBound === "1") return;
-    const actions = workspace.querySelector(".review-actions-group");
-    const toolbar = workspace.querySelector(".review-sticky-toolbar");
-    if (!actions || !toolbar) return;
+    const actions = workspace.querySelector(".review-more-actions");
+    const shell = workspace.querySelector(".review-document-shell");
+    if (!actions || !shell) return;
     workspace.dataset.chapterQcBound = "1";
 
-    const runBtn = document.createElement("button");
-    runBtn.type = "button";
-    runBtn.className = "ui-btn ui-btn-ghost chapter-qc-run";
-    runBtn.textContent = "Kiểm tra toàn chương bằng AI";
-    runBtn.addEventListener("click", () => startChapterQC(workspace));
-    const disclosure = document.createElement("details");
-    disclosure.className = "ui-disclosure command-disclosure chapter-qc-disclosure";
-    const summary = document.createElement("summary");
-    summary.className = "ui-btn ui-btn-ghost";
-    summary.textContent = "Kiểm tra AI";
-    const panel = createPanel();
-    panel.classList.add("ui-disclosure-panel", "command-disclosure-panel");
-    panel.querySelector(".chapter-qc-options").after(runBtn);
-    disclosure.append(summary, panel);
-    actions.prepend(disclosure);
+    const floating = createFloatingPanel(workspace);
+    shell.appendChild(floating);
+    const opener = document.createElement("button");
+    opener.type = "button";
+    opener.className = "ui-btn ui-btn-ghost ui-btn-compact chapter-qc-open";
+    opener.textContent = "Kiểm tra AI toàn chương";
+    opener.addEventListener("click", () => {
+      floating.hidden = false;
+      renderPanel(workspace);
+    });
+    actions.appendChild(opener);
     renderPanel(workspace);
   }
 
+  function scan() {
+    syncChapterState();
+    workspaceRoot().querySelectorAll(".review-workspace-shell").forEach(bindWorkspace);
+  }
+
+  window.mountChapterQC = scan;
   window.syncChapterQCWorkspace = renderPanel;
 })();

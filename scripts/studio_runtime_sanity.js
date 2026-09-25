@@ -83,6 +83,7 @@ assert(!chapterOcr.includes('observeWorkspaceRoot'), 'OCR must not scan the whol
 assert(!chapterQc.includes('observeWorkspaceRoot'), 'chapter QC must not scan the whole workspace with an observer');
 assert(!chapterQc.includes('new MutationObserver'), 'chapter QC must use explicit lifecycle synchronization');
 assert(chapterQc.includes('window.syncChapterQCWorkspace = renderPanel'), 'chapter QC must expose explicit workspace synchronization');
+assert(chapterQc.includes('window.mountChapterQC = scan') && stitchInspector.includes('window.mountChapterQC?.()'), 'Review must mount the whole-chapter AI QC entry point');
 assert((reviewWorkspace.match(/new MutationObserver/g) || []).length === 0, 'Review canvas must not keep DOM observers');
 assert(!reviewWorkspace.includes('busyObserver'), 'Review busy state must not infer lifecycle from DOM mutations');
 assert(!reviewWorkspace.includes('createPageNavigator({'), 'Review must not recreate the old thumbnail page navigator');
