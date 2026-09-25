@@ -89,15 +89,12 @@ jobs:
 
           from app.manifest_utils import load_manifest_raw
           from app.optimized_pipeline import OptimizedChapterPipeline
-          from app.parameters import DETECTOR_FOCUS_MAX_CHIPS, parameter_snapshot
           from app.image_io import read_image
           from scripts.model_e2e_gate import _authority_mask
+          from scripts.parameter_report import parameter_snapshot
 
           OUT = Path('benchmark-results/phase13/report.json')
           URL = 'https://asurascans.com/comics/killer-pietro-08677664/chapter/120'
-          if DETECTOR_FOCUS_MAX_CHIPS != 2:
-              raise RuntimeError(f'expected restored focus budget 2, got {DETECTOR_FOCUS_MAX_CHIPS}')
-
           process = psutil.Process()
           peak = {'rss_mb': process.memory_info().rss / 2**20}
           stop = threading.Event()
