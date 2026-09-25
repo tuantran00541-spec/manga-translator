@@ -244,7 +244,12 @@ def create_app(store: Store, upstream: Upstream, admin_key: str, *, mailer: Mail
             int(usage.get("prompt_tokens") or 0), int(usage.get("completion_tokens") or 0),
         )
         if status >= 400:
-            return _error(status if status in (400, 429) else 502, "upstream_error", f"Upstream HTTP {status}")
+            detail = body.get("error") if isinstance(body.get("error"), dict) else body
+            message = str(detail.get("message") or detail.get("detail") or "")[:200] if isinstance(detail, dict) else ""
+            if upstream.api_key:
+                message = message.replace(upstream.api_key, "***")
+            return _error(status if status in (400, 429) else 502, "upstream_error",
+                          f"Upstream HTTP {status}" + (f": {message}" if message else ""))
         body.setdefault("usage", {})["gateway_job_cost_usd"] = round(total, 6)
         return body
 

@@ -203,6 +203,25 @@ def test_scan_stage_skips_credit_slices_and_preserves_logos(monkeypatch):
     assert runner.job.cost_usd == pytest.approx(0.002), "two scan batches of four slices"
 
 
+def test_scan_stage_retries_a_rejected_batch_one_slice_at_a_time(monkeypatch):
+    calls = []
+
+    def one_image_only(provider, model, key, images):
+        calls.append([index for index, _ in images])
+        if len(images) > 1:
+            raise RuntimeError("Manga Cloud HTTP 502: Upstream HTTP 422")
+        if images[0][0] == 6:
+            raise RuntimeError("still rejected")
+        return [SliceScan(images[0][0], images[0][0] == 7, 0.9, ())], 0.001
+
+    runner, skipped, _ = _scan_stage(monkeypatch, [])
+    monkeypatch.setattr(ai_job, "scan_slices", one_image_only)
+    asyncio.run(runner.scan())
+    assert calls[:5] == [[0, 1, 2, 3], [0], [1], [2], [3]]
+    assert runner.report["scan_errors"][-1] == {"pages": [6], "error": "still rejected"}
+    assert skipped[-1:] == [7]
+
+
 def test_scan_stage_refuses_to_skip_most_of_a_chapter(monkeypatch):
     runner, skipped, _ = _scan_stage(monkeypatch, [SliceScan(i, True, 0.9, ()) for i in range(5)])
     assert skipped == []

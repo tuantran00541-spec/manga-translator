@@ -163,22 +163,33 @@ class AIModeRunner:
         active = [index for index, page in enumerate(pages) if not page.get("skipped")]
         batches = [active[i:i + SCAN_BATCH_SIZE] for i in range(0, len(active), SCAN_BATCH_SIZE)]
         scans = []
+        async def scan(batch: list[int]) -> None:
+            images = [
+                (index, read_image(validate_managed_path(pages[index]["original"], RAW_DIR / chapter_id)))
+                for index in batch
+            ]
+            found, cost = await asyncio.to_thread(
+                scan_slices, self.provider, self.settings.model, self.api_key, images,
+            )
+            self._add_cost(cost)
+            scans.extend(found)
+
         for number, batch in enumerate(batches):
             self._check_cancel()
             self._progress(number * SCAN_BATCH_SIZE, len(active))
             try:
-                images = [
-                    (index, read_image(validate_managed_path(pages[index]["original"], RAW_DIR / chapter_id)))
-                    for index in batch
-                ]
-                found, cost = await asyncio.to_thread(
-                    scan_slices, self.provider, self.settings.model, self.api_key, images,
-                )
-            except (RuntimeError, ValueError, OSError) as exc:
-                _append(self.report["scan_errors"], {"pages": batch, "error": _detail(exc)[:300]})
+                await scan(batch)
                 continue
-            self._add_cost(cost)
-            scans.extend(found)
+            except (RuntimeError, ValueError, OSError) as exc:
+                if len(batch) == 1:
+                    _append(self.report["scan_errors"], {"pages": batch, "error": _detail(exc)[:300]})
+                    continue
+            for index in batch:
+                self._check_cancel()
+                try:
+                    await scan([index])
+                except (RuntimeError, ValueError, OSError) as exc:
+                    _append(self.report["scan_errors"], {"pages": [index], "error": _detail(exc)[:300]})
 
         credits = sorted(scan.page_index for scan in scans if scan.is_credit)
         limit = max(CREDIT_MAX_ABSOLUTE, int(CREDIT_MAX_SHARE * len(active)))
