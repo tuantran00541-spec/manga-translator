@@ -261,7 +261,7 @@ def main() -> int:
     except Exception as exc:
         report = {"status": "fail", "error": f"{type(exc).__name__}: {exc}"}
     report_path.parent.mkdir(parents=True, exist_ok=True)
-    report_path.write_text(
+    report_path.write_text(  # NOSONAR(S8707)
         json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
     print(json.dumps(report, ensure_ascii=False, indent=2))

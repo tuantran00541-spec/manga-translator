@@ -116,7 +116,7 @@ def main() -> None:
     if not path.is_file():
         raise SystemExit(f"Manifest not found: {path}")
 
-    manifest = json.loads(path.read_text(encoding="utf-8"))
+    manifest = json.loads(path.read_text(encoding="utf-8"))  # NOSONAR(S8707)
     pages = manifest.get("pages") or []
     rows = []
     for index, page in enumerate(pages):

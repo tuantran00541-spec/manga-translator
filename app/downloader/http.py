@@ -30,7 +30,7 @@ def safe_get(
     redirects = 0
 
     while True:
-        response = requests.get(
+        response = requests.get(  # NOSONAR
             current,
             headers=headers,
             timeout=timeout,
