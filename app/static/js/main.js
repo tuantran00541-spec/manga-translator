@@ -200,8 +200,6 @@ if (typeof renderUnifiedReview === "function") {
 (() => {
   "use strict";
 
-  const sourcePageOf = (page, fallback) => Number.isInteger(page?.source_page) ? page.source_page : fallback;
-
   const baseRenderTranslations = window.renderTranslations;
   if (typeof baseRenderTranslations === "function") {
     window.renderTranslations = async function renderTranslationsWithReviewUrl(pageIndex) {
@@ -261,21 +259,6 @@ if (typeof renderUnifiedReview === "function") {
       wrap.appendChild(img);
       card.appendChild(wrap);
       image.appendChild(card);
-    });
-  }
-
-  function rewriteQcLabels(workspace) {
-    workspace?.querySelectorAll?.(".chapter-qc-result > span:first-child").forEach((label) => {
-      if (!label.dataset.qcCanonicalPage) {
-        const match = String(label.textContent || "").match(/Trang\s+(\d+)/i);
-        if (!match) return;
-        label.dataset.qcCanonicalPage = String(Number(match[1]) - 1);
-      }
-      const canonical = Number(label.dataset.qcCanonicalPage);
-      const page = window.currentManifest?.pages?.[canonical];
-      if (!page) return;
-      const next = `Trang ${sourcePageOf(page, canonical) + 1}`;
-      if (label.textContent !== next) label.textContent = next;
     });
   }
 
@@ -356,7 +339,6 @@ if (typeof renderUnifiedReview === "function") {
     const workspace = document.querySelector("#page-view.review-mode .review-workspace-shell");
     if (!workspace) return;
     ensureQcCompatibility(workspace);
-    rewriteQcLabels(workspace);
     syncQcLock(workspace);
     restoreReviewWorkspaceState(workspace);
   }

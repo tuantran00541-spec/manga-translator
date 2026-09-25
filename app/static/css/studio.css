@@ -206,7 +206,7 @@
   .review-canvas-host .review-card { overflow: hidden; }
   .review-card > .page-block-label, .review-card > .review-controls { margin: 0; padding: 10px; border-bottom: 1px solid var(--border-subtle); }
   .review-image-wrap { width: fit-content; max-width: 100%; margin: 0 auto; }
-  .review-busy .review-image-wrap::after, .review-chapter-qc-running .review-image-wrap::after { position: absolute; inset: 0; display: grid; place-items: center; background: var(--surface-overlay); color: var(--text-primary); content: attr(data-busy-text); font-size: 12px; font-weight: 700; line-height: 1.4; }
+  .review-busy .review-image-wrap::after { position: absolute; inset: 0; display: grid; place-items: center; background: var(--surface-overlay); color: var(--text-primary); content: attr(data-busy-text); font-size: 12px; font-weight: 700; line-height: 1.4; }
   .review-busy .review-image-wrap:not([data-busy-text])::after { content: "Đang xử lý…"; }
   .review-help { border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); }
   .review-help > summary { padding: 9px; }
@@ -218,12 +218,18 @@
   .review-stitched-select { min-height: 32px; }
   .review-stitched-note, .review-stitched-warning { padding: 8px 10px; color: var(--text-secondary); font-size: 11px; }
   .chapter-qc-panel, .chapter-ocr-panel { display: grid; gap: 10px; }
-  .chapter-qc-head, .chapter-ocr-head, .chapter-qc-job-actions, .chapter-ocr-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .chapter-ocr-head, .chapter-qc-job-actions, .chapter-ocr-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
   .chapter-qc-summary, .chapter-ocr-summary, .chapter-qc-empty { color: var(--text-secondary); font-size: 11px; }
   .chapter-qc-results { display: grid; gap: 6px; }
   .chapter-qc-result { display: grid; gap: 2px; width: 100%; padding: 8px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: transparent; color: var(--text-secondary); text-align: left; cursor: pointer; }
   .chapter-qc-result:hover { border-color: var(--text-muted); background: var(--accent-soft); }
-  .review-qc-highlight { position: absolute; border: 2px solid var(--danger); background: var(--danger-soft); pointer-events: none; }
+  .review-qc-highlight { position: absolute; z-index: 14; border: 3px dashed var(--danger); outline: 2px solid var(--surface-panel); background: var(--danger-soft); pointer-events: none; }
+  .chapter-qc-floating { position: absolute; z-index: calc(var(--z-panel) + 8); top: calc(var(--review-docbar-height, 38px) + 14px); left: 60px; max-height: calc(100% - var(--review-docbar-height, 38px) - 24px); display: grid; grid-template-rows: auto minmax(0, 1fr); width: min(320px, calc(100% - 76px)); min-height: 0; overflow: hidden; border: 1px solid var(--border-strong); border-radius: var(--radius-md); background: var(--surface-panel); box-shadow: var(--shadow-float); }
+  .chapter-qc-floating-header { display: flex; min-height: 38px; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 6px 4px 10px; border-bottom: 1px solid var(--border-subtle); }
+  .chapter-qc-floating-header strong { font-size: 11px; letter-spacing: .02em; }
+  .chapter-qc-floating .chapter-qc-panel { min-height: 0; overflow: auto; align-content: start; padding: 10px; }
+  .chapter-qc-floating .chapter-qc-job-actions { flex-wrap: wrap; justify-content: flex-start; }
+  @media (max-width: 720px) { .chapter-qc-floating { top: calc(var(--review-docbar-height, 38px) + 6px); right: 6px; bottom: auto; left: 52px; width: auto; max-height: 60%; } }
 
   @media (max-width: 1000px) {
     .workbench-stage-grid, .translation-workspace-body { grid-template-columns: minmax(0, 1fr); }

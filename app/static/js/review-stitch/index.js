@@ -204,6 +204,7 @@ export function mount(workspace) {
   installTextDrawing(shell, signal);
   mountActions(shell, signal, () => shell._rerender?.());
   window.mountChapterOCR?.();
+  window.mountChapterQC?.();
   detectingLang = !window.currentSourceLang?.();
   syncLang();
   window.detectSourceLang?.()
