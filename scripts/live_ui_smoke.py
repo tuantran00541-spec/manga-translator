@@ -103,7 +103,7 @@ def _select_text_object(page: Page) -> None:
 
 
 def _exercise_font_picker(page: Page) -> None:
-    """Verify the live editor exposes the catalog and automatic matcher contract."""
+    """Verify the live editor exposes the font catalog and the automatic option."""
 
     font_select = page.locator(".font-style-toolbar select")
     expect(font_select).to_have_count(1)
@@ -123,29 +123,6 @@ def _exercise_font_picker(page: Page) -> None:
     )
     if catalog["status"] != 200 or catalog["count"] < 60 or not catalog["grouped"]:
         raise AssertionError(f"font catalog contract failed: {catalog}")
-
-    match = page.evaluate(
-        """async () => {
-          const response = await fetch('/api/fonts/match', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({
-              chapter_id: 'f00d0001',
-              page_index: 0,
-              object_id: 'bubble-a',
-              top_k: 3,
-            }),
-          });
-          const payload = await response.json();
-          return {
-            status: response.status,
-            count: Array.isArray(payload.matches) ? payload.matches.length : 0,
-            first: payload.matches?.[0]?.font_id || null,
-          };
-        }"""
-    )
-    if match["status"] != 200 or match["count"] != 3 or not match["first"]:
-        raise AssertionError(f"font matcher contract failed: {match}")
 
 
 def _exercise_desktop(page: Page) -> None:

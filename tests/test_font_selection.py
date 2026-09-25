@@ -4,9 +4,6 @@ def test_user_selection_wins_over_ai_and_auto():
     obj = {"style": {"font": "dialogue.roboto"}, "font_selection_mode": "user"}
     font_id, mode, metadata = resolve_object_font(
         obj,
-        source_image=None,
-        region=None,
-        source_text="hello",
         ai_font_id="emphasis.bangers",
     )
 
@@ -20,9 +17,6 @@ def test_valid_ai_selection_is_used_when_style_is_default():
     obj = {"style": {"font": "default"}}
     font_id, mode, metadata = resolve_object_font(
         obj,
-        source_image=None,
-        region=None,
-        source_text="hello",
         ai_font_id="emphasis.bangers",
         ai_font_mode="ai",
     )
@@ -36,9 +30,6 @@ def test_unknown_ai_font_is_rejected_without_path_escape():
 
     font_id, mode, metadata = resolve_object_font(
         {"style": {"font": "default"}},
-        source_image=None,
-        region=None,
-        source_text="hello",
         ai_font_id="../../etc/passwd",
         ai_font_mode="ai",
     )
@@ -48,71 +39,36 @@ def test_unknown_ai_font_is_rejected_without_path_escape():
     assert metadata["reason"] == "ai_selection_rejected"
 
 
-def test_matcher_runs_for_legacy_default_objects(monkeypatch):
-    from app.render import font_selection
-    from app.render.font_matcher import FontMatch
+def test_auto_objects_render_with_the_default_font():
+    from app.render.font_selection import resolve_object_font
 
-    calls = []
+    for obj in (
+        {"style": {"font": "auto"}, "font_selection_mode": "auto"},
+        {"style": {"font": "default"}, "auto_generated": True},
+    ):
+        font_id, mode, metadata = resolve_object_font(obj)
+        assert (font_id, mode) == ("default", "default")
+        assert metadata["reason"] == "auto_default"
 
-    def fake_matcher(image, region, source_text, *, top_k):
-        calls.append((image, region, source_text, top_k))
-        return [FontMatch("dialogue.be-vietnam-pro", 0.91, "high", {})]
 
-    monkeypatch.setattr(font_selection, "match_fonts", fake_matcher)
-    image = object()
-    font_id, mode, metadata = font_selection.resolve_object_font(
+def test_ai_may_delegate_to_auto():
+    from app.render.font_selection import resolve_object_font
+
+    font_id, mode, metadata = resolve_object_font(
         {"style": {"font": "default"}},
-        source_image=image,
-        region=(0, 0, 30, 20),
-        source_text="hello",
+        ai_font_id="auto",
+        ai_font_mode="ai",
     )
 
-    assert calls == [(image, (0, 0, 30, 20), "hello", 3)]
     assert (font_id, mode) == ("default", "default")
-    assert metadata["matches"][0]["font_id"] == "dialogue.be-vietnam-pro"
+    assert metadata["reason"] == "auto_default"
 
 
-def test_unsuitable_user_selection_falls_back_to_visual_match(monkeypatch):
-    from app.render import font_selection
-    from app.render.font_matcher import FontMatch
+def test_valid_ai_selection_is_used_for_auto_generated_objects():
+    from app.render.font_selection import resolve_object_font
 
-    monkeypatch.setattr(
-        font_selection,
-        "match_fonts",
-        lambda *args, **kwargs: [
-            FontMatch("dialogue.be-vietnam-pro", 0.91, "high", {}),
-            FontMatch("dialogue.noto-sans", 0.83, "medium", {}),
-        ],
-    )
-    font_id, mode, metadata = font_selection.resolve_object_font(
-        {"style": {"font": "dialogue.roboto"}, "font_selection_mode": "user"},
-        source_image=object(),
-        region=(0, 0, 30, 20),
-        source_text="hello",
-    )
-
-    assert (font_id, mode) == ("dialogue.be-vietnam-pro", "auto")
-    assert metadata["reason"] == "user_selection_not_suitable"
-    assert metadata["requested"] == "dialogue.roboto"
-
-
-def test_suitable_ai_selection_is_kept_when_matcher_agrees(monkeypatch):
-    from app.render import font_selection
-    from app.render.font_matcher import FontMatch
-
-    monkeypatch.setattr(
-        font_selection,
-        "match_fonts",
-        lambda *args, **kwargs: [
-            FontMatch("emphasis.bangers", 0.91, "high", {}),
-            FontMatch("dialogue.noto-sans", 0.83, "medium", {}),
-        ],
-    )
-    font_id, mode, metadata = font_selection.resolve_object_font(
-        {"style": {"font": "default"}},
-        source_image=object(),
-        region=(0, 0, 30, 20),
-        source_text="wow",
+    font_id, mode, metadata = resolve_object_font(
+        {"style": {"font": "default"}, "font_selection_mode": "ai", "auto_generated": True},
         ai_font_id="emphasis.bangers",
         ai_font_mode="ai",
     )
@@ -121,21 +77,12 @@ def test_suitable_ai_selection_is_kept_when_matcher_agrees(monkeypatch):
     assert metadata["reason"] == "ai_selection"
 
 
-def test_low_confidence_auto_match_falls_back_to_default(monkeypatch):
-    from app.render import font_selection
-    from app.render.font_matcher import FontMatch
+def test_unknown_user_font_falls_back_to_default():
+    from app.render.font_selection import resolve_object_font
 
-    monkeypatch.setattr(
-        font_selection,
-        "match_fonts",
-        lambda *args, **kwargs: [FontMatch("dialogue.be-vietnam-pro", 0.42, "low", {})],
-    )
-    font_id, mode, metadata = font_selection.resolve_object_font(
-        {"style": {"font": "auto"}, "font_selection_mode": "auto"},
-        source_image=object(),
-        region=(0, 0, 30, 20),
-        source_text="hello",
+    font_id, mode, metadata = resolve_object_font(
+        {"style": {"font": "missing.font"}, "font_selection_mode": "user"},
     )
 
     assert (font_id, mode) == ("default", "default")
-    assert metadata["reason"] == "match_confidence_too_low"
+    assert metadata["reason"] == "user_selection_rejected"

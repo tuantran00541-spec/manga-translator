@@ -167,7 +167,7 @@ function buildTextSection(body, panel, obj, pageIndex) {
   } else {
     const autoOpt = document.createElement("option");
     autoOpt.value = "auto";
-    autoOpt.textContent = "Tự động · gần giống chữ gốc";
+    autoOpt.textContent = "Tự động (AI chọn)";
     fontSelect.appendChild(autoOpt);
     const groups = new Map();
     fonts.forEach((f) => {

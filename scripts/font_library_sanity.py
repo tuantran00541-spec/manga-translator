@@ -5,12 +5,9 @@ from __future__ import annotations
 from pathlib import Path
 import sys
 
-from PIL import Image, ImageDraw
-
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.render.font_catalog import load_font_catalog, list_font_records, resolve_font_id
-from app.render.font_matcher import match_fonts
 
 
 def main() -> int:
@@ -27,11 +24,7 @@ def main() -> int:
     assert resolve_font_id("default").is_file()
     assert all(not str(item["path"]).startswith("/") for item in list_font_records())
 
-    image = Image.new("RGB", (320, 100), "white")
-    ImageDraw.Draw(image).text((20, 28), "font smoke test", fill="black")
-    matches = match_fonts(image, (0, 0, 320, 100), "font smoke test", top_k=3)
-    assert len(matches) == 3
-    print(f"font library sanity: {len(catalog.records)} fonts, matcher returned {len(matches)}")
+    print(f"font library sanity: {len(catalog.records)} fonts")
     return 0
 
 

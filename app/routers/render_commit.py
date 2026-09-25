@@ -38,11 +38,7 @@ def _request_style_maps(req: RenderRequest) -> dict[str, dict]:
     }
 
 
-def _resolve_snapshot_fonts(
-    page: dict,
-    source_image: Image.Image | None,
-    styles: dict[str, dict],
-) -> None:
+def _resolve_snapshot_fonts(page: dict, styles: dict[str, dict]) -> None:
     resolved = styles.setdefault("resolved_fonts", {})
     for obj in page.get("text_objects") or []:
         if not isinstance(obj, dict) or not obj.get("id"):
@@ -52,16 +48,8 @@ def _resolve_snapshot_fonts(
         if requested is not None:
             obj.setdefault("style", {})["font"] = str(requested)
             obj["font_selection_mode"] = "auto" if str(requested).lower() == "auto" else "user"
-        region = obj.get("ocr_text_region") or obj.get("region") or {}
-        try:
-            coords = tuple(int(region[key]) for key in ("x1", "y1", "x2", "y2"))
-        except (KeyError, TypeError, ValueError):
-            coords = None
         font_id, mode, metadata = resolve_object_font(
             obj,
-            source_image=source_image,
-            region=coords,
-            source_text=obj.get("ocr_text") or obj.get("source_text") or "",
             ai_font_id=obj.get("font_ai_id"),
             ai_font_mode="ai" if obj.get("font_ai_id") else None,
         )
@@ -75,11 +63,10 @@ def _render_snapshot(
     page: dict,
     drafts: dict,
     styles: dict[str, dict],
-    source_image: Image.Image | None = None,
 ) -> int:
     text_objects = page.get("text_objects") or []
     if text_objects:
-        _resolve_snapshot_fonts(page, source_image or image, styles)
+        _resolve_snapshot_fonts(page, styles)
         active_text_objects = [
             obj
             for obj in text_objects
@@ -272,17 +259,8 @@ def render_page(req: RenderRequest) -> dict:
         )
         raise HTTPException(500, "Cannot open base image") from exc
 
-    source_image = image
-    original_value = page.get("original")
-    if original_value:
-        try:
-            source_image = Image.open(Path(str(original_value))).convert("RGB")
-        except (FileNotFoundError, OSError):
-            # Matching is best-effort; the cleaned base remains a safe fallback.
-            source_image = image
-
     styles = _request_style_maps(req)
-    rendered_count = _render_snapshot(image, req, page, drafts, styles, source_image=source_image)
+    rendered_count = _render_snapshot(image, req, page, drafts, styles)
 
     out_dir = OUTPUT_DIR / req.chapter_id
     out_dir.mkdir(parents=True, exist_ok=True)
