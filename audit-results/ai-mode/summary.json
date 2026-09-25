@@ -1,5 +1,5 @@
 {
- "job_id": "d8bb54107c764ac6a5af2ffb1a3ba5a3",
+ "job_id": "fcee6589d53b40a38d6dc0adb2ec2863",
  "status": "completed",
  "stage": "export",
  "stages": [
@@ -10,7 +10,7 @@
    "done": 1,
    "total": 1,
    "detail": "87 lát",
-   "elapsed_s": 9.0
+   "elapsed_s": 8.9
   },
   {
    "key": "scan",
@@ -19,7 +19,7 @@
    "done": 87,
    "total": 87,
    "detail": "1 lát credit, 1 logo",
-   "elapsed_s": 4.0
+   "elapsed_s": 3.6
   },
   {
    "key": "clean",
@@ -28,7 +28,7 @@
    "done": 86,
    "total": 86,
    "detail": "",
-   "elapsed_s": 454.8
+   "elapsed_s": 280.8
   },
   {
    "key": "qc",
@@ -46,7 +46,7 @@
    "done": 86,
    "total": 86,
    "detail": "Dịch 182 vùng",
-   "elapsed_s": 83.1
+   "elapsed_s": 43.4
   },
   {
    "key": "render",
@@ -55,7 +55,7 @@
    "done": 86,
    "total": 86,
    "detail": "",
-   "elapsed_s": 4.9
+   "elapsed_s": 4.0
   },
   {
    "key": "export",
@@ -64,10 +64,10 @@
    "done": 1,
    "total": 1,
    "detail": "Xong",
-   "elapsed_s": 36.1
+   "elapsed_s": 29.5
   }
  ],
- "chapter_id": "c6f49472",
+ "chapter_id": "33ccd63e",
  "url": "https://asurascans.com/comics/the-academy-s-weapon-replicator-05c7df14/chapter/1",
  "provider": "openai",
  "model": "dry-run",
@@ -87,7 +87,7 @@
   "repaint_pages": [],
   "qc_flagged": 0,
   "qc_errors": [
-   "Unsupported visual QC provider: openai"
+   "Secure secret storage is unavailable. Install the 'keyring' dependency."
   ],
   "translated": 182,
   "unreadable": 0,
@@ -97,11 +97,11 @@
   "blocker_samples": [],
   "source_lang": "auto"
  },
- "download_url": "/api/ai_mode/jobs/d8bb54107c764ac6a5af2ffb1a3ba5a3/download",
- "created_at": 1790308627.1909776,
- "updated_at": 1790309219.1306977,
- "wall_s": 592.6,
+ "download_url": "/api/ai_mode/jobs/fcee6589d53b40a38d6dc0adb2ec2863/download",
+ "created_at": 1790309423.304233,
+ "updated_at": 1790309793.6488624,
+ "wall_s": 371.8,
  "translate_calls": 79,
  "zip_pages": 22,
- "zip_bytes": 118263637
+ "zip_bytes": 118264284
 }
