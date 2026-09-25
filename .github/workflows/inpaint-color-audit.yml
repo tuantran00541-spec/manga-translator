@@ -91,7 +91,7 @@ jobs:
         run: |
           url="${INPUT_URL:-$(head -n1 .github/inpaint-audit-url.txt | tr -d '\r')}"
           test -n "$url" || { echo "No chapter URL"; exit 1; }
-          python scripts/inpaint_audit_run.py "$url" --out "audit-results/inpaint-color" --max-slices 40 --workers 2
+          python scripts/inpaint_audit_run.py "$url" --out "audit-results/inpaint-color" --max-slices 400 --workers 2
           cat audit-results/inpaint-color/summary.txt >> "$GITHUB_STEP_SUMMARY"
 
       - name: A/B probe on selected slices

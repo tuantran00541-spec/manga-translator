@@ -52,6 +52,65 @@ def _pair(original: np.ndarray, clean: np.ndarray) -> np.ndarray:
     return np.hstack([original, gap, clean])
 
 
+def speed_and_completion(manifest: dict, clean_wall_s: float, workers: int) -> dict:
+    """Per-slice timing and cleanup outcome from the pipeline's own metrics."""
+    pages = [p for p in manifest.get("pages") or [] if p.get("clean")]
+    totals, detect, inpaint, verify, megapixels = [], [], [], [], []
+    authorized = review_only = deferred = residue = 0
+    verified = with_residue = 0
+    issues: dict[str, int] = {}
+    for page in pages:
+        metrics = page.get("processing_metrics") or {}
+        timing = metrics.get("timing_ms") or {}
+        det = metrics.get("detector") or {}
+        totals.append(float(timing.get("total") or 0) / 1000)
+        detect.append(float(timing.get("detect") or 0) / 1000)
+        inpaint.append(float(timing.get("auto_inpaint") or 0) / 1000 + float(timing.get("manual_inpaint") or 0) / 1000)
+        verify.append(float(timing.get("residue_verify") or 0) / 1000)
+        authorized += int(det.get("authorized") or 0)
+        review_only += int(det.get("review_only") or 0)
+        deferred += int(det.get("deferred") or 0)
+        page_residue = len(page.get("residue_regions") or [])
+        residue += page_residue
+        with_residue += 1 if page_residue else 0
+        verified += 1 if page.get("cleanup_verified") else 0
+        for issue in page.get("detection_issues") or []:
+            issues[issue] = issues.get(issue, 0) + 1
+        original = page.get("original")
+        if original:
+            image = cv2.imread(str(original), cv2.IMREAD_UNCHANGED)
+            if image is not None:
+                megapixels.append(image.shape[0] * image.shape[1] / 1e6)
+
+    def stats(values: list[float]) -> dict:
+        if not values:
+            return {}
+        arr = np.array(values)
+        return {"mean": round(float(arr.mean()), 2), "median": round(float(np.median(arr)), 2),
+                "p90": round(float(np.percentile(arr, 90)), 2), "max": round(float(arr.max()), 2)}
+
+    handled = authorized + review_only + deferred
+    return {
+        "slices": len(pages),
+        "workers": workers,
+        "clean_wall_s": round(clean_wall_s, 1),
+        "wall_s_per_slice": round(clean_wall_s / max(1, len(pages)), 2),
+        "slice_megapixels": stats(megapixels),
+        "slice_total_s": stats(totals),
+        "slice_detect_s": stats(detect),
+        "slice_inpaint_s": stats(inpaint),
+        "slice_residue_verify_s": stats(verify),
+        "regions_auto_cleaned": authorized,
+        "regions_left_for_review": review_only + deferred,
+        "auto_clean_share": round(authorized / handled, 3) if handled else None,
+        "residue_regions_after_clean": residue,
+        "slices_with_residue": with_residue,
+        "slices_verified_clean": verified,
+        "slices_verified_share": round(verified / max(1, len(pages)), 3),
+        "issues": issues,
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("url")
@@ -79,10 +138,13 @@ def main() -> int:
     with contextlib.redirect_stdout(report):
         lama_color_audit.main()
     records = lama_color_audit.audit_chapter(CHAPTER_ID)
+    speed = speed_and_completion(load_manifest_raw(CHAPTER_ID), processed - downloaded, args.workers)
+    (args.out / "speed.json").write_text(json.dumps(speed, indent=1), encoding="utf-8")
     header = (
         f"chapter: {args.url}\n"
         f"slices: {len(pages)} downloaded, {len(indices)} processed\n"
-        f"download {downloaded - started:.0f}s, clean {processed - downloaded:.0f}s\n\n"
+        f"download {downloaded - started:.0f}s, clean {processed - downloaded:.0f}s\n"
+        f"speed/completion: {json.dumps(speed)}\n\n"
     )
     (args.out / "summary.txt").write_text(header + report.getvalue(), encoding="utf-8")
     (args.out / "report.json").write_text(json.dumps(records, indent=1), encoding="utf-8")
