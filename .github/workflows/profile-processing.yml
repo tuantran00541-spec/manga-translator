@@ -10,7 +10,6 @@ on:
       - app/optimized_pipeline.py
       - app/one_shot_cleanup.py
       - app/parameters.py
-      - scripts/backend_phase12_sanity.py
       - scripts/profile_processing.py
       - scripts/profile_stage_breakdown.py
       - .github/workflows/profile-processing.yml
