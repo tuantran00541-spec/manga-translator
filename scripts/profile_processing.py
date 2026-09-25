@@ -279,7 +279,7 @@ def run(args):
     from threadpoolctl import threadpool_info
     from app.manifest_utils import load_manifest_raw
     from app.ort_utils import _configured_intra_op_threads, _cpu_count
-    from app.parameters import parameter_snapshot
+    from scripts.parameter_report import parameter_snapshot
 
     timers = instrument()
     from app.processing_pipeline_factory import build_processing_pipeline

@@ -20,7 +20,6 @@ from app.parameters import (
     DETECTOR_MIN_BOX_SIDE,
     DETECTOR_NMS_SCORE_FLOOR,
     DETECTOR_TEXT_MASK_DECODE_PAD,
-    DETECTOR_TTA_ENABLED as ENABLE_TTA,
 )
 
 
@@ -148,7 +147,6 @@ class YoloDetector:
         self,
         model_path,
         conf_threshold: float,
-        use_tta: bool | None = None,
         *,
         model_role: str,
     ):
@@ -163,7 +161,6 @@ class YoloDetector:
         )
         self.input_name = self.contract.input_name
         self.conf_threshold = conf_threshold
-        self.use_tta = ENABLE_TTA if use_tta is None else use_tta
 
     def _class_name(self, class_id: int, num_classes: int) -> str:
         if num_classes != len(self.contract.class_names):

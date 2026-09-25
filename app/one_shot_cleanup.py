@@ -26,7 +26,6 @@ class OneShotTextMaskDetector:
         self.detector = detector or YoloDetector(
             TEXT_SEGMENTER_MODEL,
             TEXT_CONF_THRESHOLD,
-            use_tta=False,
             model_role="text_segmenter",
         )
         self._decode_lock = threading.Lock()
