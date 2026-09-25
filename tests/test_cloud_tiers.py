@@ -235,6 +235,14 @@ class CloudCallingRunner:
                     "scan", [("slice 0", image)],
                 )
                 assert result.data == {"ok": True}
+            if name == "translate":
+                from app.routers.translation import _resolve_vision_provider
+                from app.routers.visual_qc import _resolve_configured_provider
+                from app.secret_store import get_provider_api_key
+
+                assert _resolve_vision_provider("manga-cloud") is self.provider
+                assert _resolve_configured_provider("manga-cloud") is self.provider
+                assert await asyncio.to_thread(get_provider_api_key, "manga-cloud") == self.api_key
         return stage
 
 
@@ -258,6 +266,16 @@ def test_ai_mode_runs_through_the_gateway_and_spends_one_chapter(stack, monkeypa
     assert quota["used"] == 1 and quota["cost_usd"] == pytest.approx(CALL_COST)
     with stack.store._connect() as db:
         assert [row["status"] for row in db.execute("SELECT status FROM jobs")] == ["completed"]
+
+
+def test_manga_cloud_is_unusable_outside_an_ai_mode_job(stack, monkeypatch):
+    from app.routers.translation import _resolve_vision_provider
+    from app.secret_store import get_provider_api_key
+
+    _sign_in(stack, monkeypatch)
+    with pytest.raises(ValueError):
+        _resolve_vision_provider("manga-cloud")
+    assert get_provider_api_key("manga-cloud") is None
 
 
 def test_free_plan_cannot_bypass_the_quota_with_its_own_key(stack, monkeypatch):
