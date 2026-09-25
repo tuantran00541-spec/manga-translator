@@ -18,9 +18,9 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import io
 import json
 import sys
+import tempfile
 import time
 import zipfile
 from pathlib import Path
@@ -30,6 +30,7 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+ALLOWED_ROOTS = (ROOT, Path(tempfile.gettempdir()).resolve())
 
 import app.ai_mode.job as ai_job  # noqa: E402
 import app.routers.translation as translation_router  # noqa: E402
@@ -87,7 +88,10 @@ def main() -> int:
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--workers", type=int, default=2)
     args = parser.parse_args()
-    args.out.mkdir(parents=True, exist_ok=True)
+    out = args.out.resolve()
+    if not any(out.is_relative_to(root) for root in ALLOWED_ROOTS):
+        raise SystemExit(f"{args.out} must be inside {ROOT} or the temp directory")
+    out.mkdir(parents=True, exist_ok=True)  # NOSONAR(S8707)
 
     ai_job.scan_slices = fake_scan
     VisionPageTranslator.translate_page = fake_translate
@@ -114,9 +118,9 @@ def main() -> int:
                 # Keep the evidence small: at most the first 6000 px of each page.
                 ok, buf = cv2.imencode(".jpg", page[:6000], [cv2.IMWRITE_JPEG_QUALITY, 80])
                 if ok:
-                    (args.out / name.replace(".png", ".jpg")).write_bytes(io.BytesIO(buf.tobytes()).getvalue())
+                    (out / Path(name).with_suffix(".jpg").name).write_bytes(buf.tobytes())  # NOSONAR(S8707)
 
-    (args.out / "summary.json").write_text(json.dumps(snapshot, ensure_ascii=False, indent=1), encoding="utf-8")
+    (out / "summary.json").write_text(json.dumps(snapshot, ensure_ascii=False, indent=1), encoding="utf-8")  # NOSONAR(S8707)
     print(json.dumps({k: snapshot.get(k) for k in ("status", "error", "wall_s", "zip_pages")}, ensure_ascii=False))
     for stage in snapshot["stages"]:
         print(f"  {stage['label']}: {stage['status']} {stage.get('elapsed_s')}s {stage.get('detail') or ''}")
