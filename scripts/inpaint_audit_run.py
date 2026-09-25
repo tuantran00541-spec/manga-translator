@@ -171,6 +171,33 @@ def main() -> int:
         original, clean = images(index)
         _jpeg(slices_dir / f"{rank:02d}_slice{index:03d}.jpg", _pair(original, clean), 1600)
 
+    # Contact sheets: every processed slice as original | clean, three per
+    # sheet, so cleanup completeness can be counted by eye across the chapter.
+    sheets_dir = args.out / "sheets"
+    sheets_dir.mkdir(exist_ok=True)
+    half_width, per_sheet = 300, 3
+    tiles = []
+    for index, page in enumerate(pages):
+        if not page.get("clean"):
+            continue
+        original, clean = images(index)
+        scale = half_width / original.shape[1]
+        size = (half_width, max(1, round(original.shape[0] * scale)))
+        pair = _pair(cv2.resize(original, size, interpolation=cv2.INTER_AREA),
+                     cv2.resize(clean, size, interpolation=cv2.INTER_AREA))
+        label = np.full((28, pair.shape[1], 3), 255, np.uint8)
+        cv2.putText(label, f"slice {index}", (6, 21), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 200), 2)
+        tiles.append(np.vstack([label, pair]))
+    for sheet_no in range(0, len(tiles), per_sheet):
+        group = tiles[sheet_no:sheet_no + per_sheet]
+        height = max(t.shape[0] for t in group)
+        padded = [np.vstack([t, np.full((height - t.shape[0], t.shape[1], 3), 255, np.uint8)]) for t in group]
+        spacer = np.full((height, 24, 3), 255, np.uint8)
+        row = padded[0]
+        for tile in padded[1:]:
+            row = np.hstack([row, spacer, tile])
+        cv2.imwrite(str(sheets_dir / f"sheet_{sheet_no // per_sheet:02d}.jpg"), row, [cv2.IMWRITE_JPEG_QUALITY, 85])
+
     regions_dir = args.out / "regions"
     regions_dir.mkdir(exist_ok=True)
     worst = sorted(records, key=lambda r: r["seam_delta_e"], reverse=True)[: args.regions]
