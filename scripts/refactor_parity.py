@@ -1,9 +1,3 @@
-"""Process one real chapter and record every clean slice, for before/after parity checks.
-
-    python scripts/refactor_parity.py run <chapter_url> --out <dir>
-    python scripts/refactor_parity.py compare <base_dir> <head_dir> --out <report.json>
-    python scripts/refactor_parity.py unexecuted <coverage.json> --out <report.json>
-"""
 from __future__ import annotations
 
 import argparse
@@ -11,6 +5,7 @@ import hashlib
 import json
 import shutil
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -21,6 +16,17 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 CHAPTER_ID = "b0d17c01"
+RUN_JSON = "run.json"
+ALLOWED_ROOTS = (ROOT, Path(tempfile.gettempdir()).resolve())
+
+
+def confined(path: Path | None) -> Path | None:
+    if path is None:
+        return None
+    resolved = path.resolve()
+    if not any(resolved.is_relative_to(root) for root in ALLOWED_ROOTS):
+        raise SystemExit(f"{path} must be inside {ROOT} or the temp directory")
+    return resolved
 
 
 def run(url: str, out: Path, workers: int) -> None:
@@ -36,7 +42,7 @@ def run(url: str, out: Path, workers: int) -> None:
     pipeline.process_pages(CHAPTER_ID, list(range(len(manifest["pages"]))), workers=workers)
     elapsed = time.perf_counter() - started
 
-    out.mkdir(parents=True, exist_ok=True)
+    out.mkdir(parents=True, exist_ok=True)  # NOSONAR(S8707)
     slices = []
     for index, page in enumerate(load_manifest_raw(CHAPTER_ID)["pages"]):
         record = {"index": index, "boxes": len(page.get("boxes") or [])}
@@ -50,13 +56,13 @@ def run(url: str, out: Path, workers: int) -> None:
             record["residue_verify_ms"] = (metrics.get("timing_ms") or {}).get("residue_verify")
             record["residue_regions"] = len(page.get("residue_regions") or [])
         slices.append(record)
-    (out / "run.json").write_text(json.dumps({"clean_s": round(elapsed, 1), "slices": slices}, indent=1))
+    (out / RUN_JSON).write_text(json.dumps({"clean_s": round(elapsed, 1), "slices": slices}, indent=1))
     print(f"processed {len(slices)} slices in {elapsed:.0f}s")
 
 
 def compare(base: Path, head: Path, report: Path, crops: Path | None = None) -> int:
-    a = json.loads((base / "run.json").read_text())
-    b = json.loads((head / "run.json").read_text())
+    a = json.loads((base / RUN_JSON).read_text())
+    b = json.loads((head / RUN_JSON).read_text())
     rows, identical = [], 0
     for sa, sb in zip(a["slices"], b["slices"]):
         row = {"index": sa["index"], "boxes": [sa["boxes"], sb["boxes"]]}
@@ -97,7 +103,7 @@ def compare(base: Path, head: Path, report: Path, crops: Path | None = None) -> 
         "clean_s": [a["clean_s"], b["clean_s"]],
         "different": [row for row in rows if not row["identical"]],
     }
-    report.write_text(json.dumps(summary, indent=1))
+    report.write_text(json.dumps(summary, indent=1))  # NOSONAR(S8707)
     print(json.dumps({k: summary[k] for k in ("slices", "identical", "clean_s", "cleanup_verified")}))
     print(f"different slices: {len(summary['different'])}")
     return 0
@@ -106,7 +112,7 @@ def compare(base: Path, head: Path, report: Path, crops: Path | None = None) -> 
 def unexecuted(coverage_json: Path, report: Path) -> int:
     import ast
 
-    data = json.loads(coverage_json.read_text())["files"]
+    data = json.loads(coverage_json.read_text())["files"]  # NOSONAR(S8707)
     out = {}
     for name, info in sorted(data.items()):
         path = Path(name)
@@ -148,11 +154,11 @@ def main() -> int:
     u.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
     if args.command == "unexecuted":
-        return unexecuted(args.coverage_json, args.out)
+        return unexecuted(confined(args.coverage_json), confined(args.out))
     if args.command == "run":
-        run(args.url, args.out, args.workers)
+        run(args.url, confined(args.out), args.workers)
         return 0
-    return compare(args.base, args.head, args.out, args.crops)
+    return compare(confined(args.base), confined(args.head), confined(args.out), confined(args.crops))
 
 
 if __name__ == "__main__":

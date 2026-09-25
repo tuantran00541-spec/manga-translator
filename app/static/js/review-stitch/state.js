@@ -11,7 +11,11 @@ export const SHORTCUTS = { v: "select", r: "rectangle", o: "ellipse", b: "brush"
 
 export const snapshots = new Map();
 
-export const autoSynced = new Set();
+const autoSynced = new Set();
+
+export const isAutoSynced = (key) => autoSynced.has(key);
+
+export const markAutoSynced = (key) => { autoSynced.add(key); };
 
 export const chapterKey = () => String(window.currentChapterId || "");
 

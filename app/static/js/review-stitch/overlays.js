@@ -1,4 +1,4 @@
-import { MIN_BOX, autoSynced, chapterKey, state } from "./state.js";
+import { MIN_BOX, chapterKey, isAutoSynced, markAutoSynced, state } from "./state.js";
 import { setTool, syncTool } from "./tools.js";
 
 export function descriptorFor(shell, pageIndex) {
@@ -78,8 +78,8 @@ export function clearSelection(shell) {
 export function overlayMode(event, overlay) {
   const rect = overlay.getBoundingClientRect(), edge = Math.max(4, Math.min(10, Math.min(rect.width, rect.height) / 3));
   const l = event.clientX - rect.left < edge, r = rect.right - event.clientX < edge, t = event.clientY - rect.top < edge, b = rect.bottom - event.clientY < edge;
-  if (t && l) return "nw"; if (t && r) return "ne"; if (b && l) return "sw"; if (b && r) return "se";
-  if (l) return "w"; if (r) return "e"; if (t) return "n"; if (b) return "s"; return "move";
+  if (t && l) { return "nw"; } if (t && r) { return "ne"; } if (b && l) { return "sw"; } if (b && r) return "se";
+  if (l) { return "w"; } if (r) { return "e"; } if (t) { return "n"; } if (b) { return "s"; } return "move";
 }
 
 export function cursor(mode) {
@@ -102,7 +102,7 @@ export function installTransform(shell, overlay, desc, pageIndex, obj, signal) {
     overlay.classList.add("transforming"); overlay.setPointerCapture?.(event.pointerId);
   }, { signal });
   overlay.addEventListener("pointermove", (event) => {
-    if (!drag) { if (state.tool === "select") overlay.style.cursor = cursor(overlayMode(event, overlay)); return; }
+    if (!drag) { if (state.tool === "select") { overlay.style.cursor = cursor(overlayMode(event, overlay)); } return; }
     const rect = image.getBoundingClientRect(), W0 = Number(image.dataset.sourceWidth || 0), H0 = Number(image.dataset.sourceHeight || 0);
     if (!rect.width || !rect.height || !W0 || !H0) return;
     const x = (event.clientX - rect.left) * W0 / rect.width, y = (event.clientY - rect.top) * H0 / rect.height, dx = x - drag.x, dy = y - drag.y;
@@ -194,10 +194,10 @@ export async function ensureObjects(shell) {
   if (typeof window.ensureAutoTextObjects !== "function") return;
   for (const desc of shell._descriptors || []) {
     const pageIndex = Number(desc.item.canonicalIndex), key = `${chapterKey()}:${pageIndex}`;
-    if (autoSynced.has(key)) continue;
+    if (isAutoSynced(key)) continue;
     try {
       await window.ensureAutoTextObjects(pageIndex);
-      autoSynced.add(key);
+      markAutoSynced(key);
     } catch (err) {
       console.warn("Could not ensure text objects", pageIndex, err);
     }
@@ -253,7 +253,7 @@ export function installTextDrawing(shell, signal) {
   };
   image.addEventListener("pointerdown", (e) => {
     if (state.variant !== "clean" || !["rectangle", "ellipse"].includes(state.tool) || e.button !== 0 || e.target.closest(".review-text-object-overlay")) return;
-    const p = sourcePoint(image, e); if (!p) return; e.preventDefault();
+    const p = sourcePoint(image, e); if (!p) { return; } e.preventDefault();
     const preview = document.createElement("div"); preview.className = `text-object-overlay drawing review-text-drawing${state.tool === "ellipse" ? " ellipse" : ""}`; image.appendChild(preview);
     drawing = { tool: state.tool, start: p, last: p, preview }; image.setPointerCapture?.(e.pointerId); update(p);
   }, { signal });

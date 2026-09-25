@@ -260,8 +260,8 @@ export function mount(workspace) {
   shell._showRendered = () => { state.variant = "rendered"; rerender(); };
   signal.addEventListener("abort", () => captureSnapshot(shell), { once: true });
 
-  image.addEventListener("pointerdown", (e) => { if (state.variant !== "clean" || !["brush", "eraser"].includes(state.tool) || e.button !== 0) return; const p = sourcePoint(image, e); if (!p) return; e.preventDefault(); painting = true; last = p; image.setPointerCapture?.(e.pointerId); paintPoint(shell, p.x, p.y, radius, state.tool === "eraser"); }, { signal });
-  image.addEventListener("pointermove", (e) => { if (!painting || !last || !["brush", "eraser"].includes(state.tool)) return; const p = sourcePoint(image, e); if (!p) return; paintStroke(shell, last, p, radius, state.tool === "eraser"); last = p; }, { signal });
+  image.addEventListener("pointerdown", (e) => { if (state.variant !== "clean" || !["brush", "eraser"].includes(state.tool) || e.button !== 0) { return; } const p = sourcePoint(image, e); if (!p) { return; } e.preventDefault(); painting = true; last = p; image.setPointerCapture?.(e.pointerId); paintPoint(shell, p.x, p.y, radius, state.tool === "eraser"); }, { signal });
+  image.addEventListener("pointermove", (e) => { if (!painting || !last || !["brush", "eraser"].includes(state.tool)) { return; } const p = sourcePoint(image, e); if (!p) { return; } paintStroke(shell, last, p, radius, state.tool === "eraser"); last = p; }, { signal });
   const stopPaint = () => { painting = false; last = null; syncBrushBar(); }; image.addEventListener("pointerup", stopPaint, { signal }); image.addEventListener("pointercancel", stopPaint, { signal });
 
   window.addEventListener("keydown", (e) => {
@@ -276,21 +276,21 @@ export function mount(workspace) {
     if (!e.ctrlKey && !e.metaKey && !e.altKey && SHORTCUTS[e.key.toLowerCase()]) { e.preventDefault(); setTool(shell, SHORTCUTS[e.key.toLowerCase()]); }
   }, { signal });
   window.addEventListener("keyup", (e) => { if (e.code === "Space") { space = false; panning = false; pan = null; viewport.classList.remove("is-panning"); } }, { signal });
-  viewport.addEventListener("pointerdown", (e) => { if (e.button !== 0 || !(space || state.tool === "hand")) return; panning = true; pan = { x: e.clientX, y: e.clientY, left: viewport.scrollLeft, top: viewport.scrollTop }; viewport.setPointerCapture?.(e.pointerId); viewport.classList.add("is-panning"); e.preventDefault(); }, { signal });
-  viewport.addEventListener("pointermove", (e) => { if (!panning || !pan) return; viewport.scrollLeft = pan.left - (e.clientX - pan.x); viewport.scrollTop = pan.top - (e.clientY - pan.y); }, { signal });
+  viewport.addEventListener("pointerdown", (e) => { if (e.button !== 0 || !(space || state.tool === "hand")) { return; } panning = true; pan = { x: e.clientX, y: e.clientY, left: viewport.scrollLeft, top: viewport.scrollTop }; viewport.setPointerCapture?.(e.pointerId); viewport.classList.add("is-panning"); e.preventDefault(); }, { signal });
+  viewport.addEventListener("pointermove", (e) => { if (!panning || !pan) { return; } viewport.scrollLeft = pan.left - (e.clientX - pan.x); viewport.scrollTop = pan.top - (e.clientY - pan.y); }, { signal });
   viewport.addEventListener("pointerup", () => { panning = false; pan = null; viewport.classList.remove("is-panning"); }, { signal });
-  viewport.addEventListener("click", (e) => { if (state.tool !== "zoom" || e.target.closest("button,input,textarea,select")) return; const r = viewport.getBoundingClientRect(); stepZoom(e.altKey ? -1 : 1); applyZoom(shell, { x: e.clientX - r.left, y: e.clientY - r.top }); }, { signal });
-  viewport.addEventListener("wheel", (e) => { if (!(e.ctrlKey || e.metaKey)) return; e.preventDefault(); const r = viewport.getBoundingClientRect(); stepZoom(e.deltaY < 0 ? 1 : -1); applyZoom(shell, { x: e.clientX - r.left, y: e.clientY - r.top }); }, { passive: false, signal });
+  viewport.addEventListener("click", (e) => { if (state.tool !== "zoom" || e.target.closest("button,input,textarea,select")) { return; } const r = viewport.getBoundingClientRect(); stepZoom(e.altKey ? -1 : 1); applyZoom(shell, { x: e.clientX - r.left, y: e.clientY - r.top }); }, { signal });
+  viewport.addEventListener("wheel", (e) => { if (!(e.ctrlKey || e.metaKey)) { return; } e.preventDefault(); const r = viewport.getBoundingClientRect(); stepZoom(e.deltaY < 0 ? 1 : -1); applyZoom(shell, { x: e.clientX - r.left, y: e.clientY - r.top }); }, { passive: false, signal });
 
   size.addEventListener("input", () => { radius = Number(size.value); sizeOut.textContent = `${radius * 2}px`; }, { signal });
-  clearMask.addEventListener("click", () => { for (const c of shell._brushChunks || []) { if (c.canvas && c.ctx) c.ctx.clearRect(0, 0, c.canvas.width, c.canvas.height); c.dirty = false; } snapshots.delete(snapshotKey()); syncBrushBar(); }, { signal });
+  clearMask.addEventListener("click", () => { for (const c of shell._brushChunks || []) { if (c.canvas && c.ctx) { c.ctx.clearRect(0, 0, c.canvas.width, c.canvas.height); } c.dirty = false; } snapshots.delete(snapshotKey()); syncBrushBar(); }, { signal });
   clean.addEventListener("click", () => { if (state.variant !== "clean") { state.variant = "clean"; rerender(); } }, { signal }); rendered.addEventListener("click", () => { if (state.variant !== "rendered") { captureSnapshot(shell); state.variant = "rendered"; rerender(); } }, { signal }); original.addEventListener("click", () => { if (state.variant !== "original") { captureSnapshot(shell); state.variant = "original"; rerender(); } }, { signal });
   zoomOut.addEventListener("click", () => { stepZoom(-1); applyZoom(shell); }, { signal }); zoomIn.addEventListener("click", () => { stepZoom(1); applyZoom(shell); }, { signal }); zoomValue.addEventListener("click", () => { state.fitWidth = true; applyZoom(shell); }, { signal }); one.addEventListener("click", () => { state.fitWidth = false; state.zoom = 100; applyZoom(shell); }, { signal });
   window.addEventListener("resize", () => { if (state.fitWidth) applyZoom(shell); }, { signal });
 
   submit.addEventListener("click", async () => {
     const chapterId = window.currentChapterId, chunks = shell._brushChunks || []; if (!chapterId || !chunks.some((c) => c.dirty && chunkHasPaint(c))) return window.showToast?.("Chưa có vùng nào được đánh dấu.", "error");
-    const mode = typeof window.chooseRepaintMode === "function" ? await window.chooseRepaintMode() : "standard"; if (!mode || chapterId !== window.currentChapterId) return; busy(true, mode === "lama" ? "LaMa đang xử lý…" : "Đang xử lý…");
+    const mode = typeof window.chooseRepaintMode === "function" ? await window.chooseRepaintMode() : "standard"; if (!mode || chapterId !== window.currentChapterId) { return; } busy(true, mode === "lama" ? "LaMa đang xử lý…" : "Đang xử lý…");
     try {
       let affected = 0;
       for (const desc of shell._descriptors || []) {
@@ -298,9 +298,9 @@ export function mount(workspace) {
         const mask = document.createElement("canvas"); mask.width = desc.img.naturalWidth; mask.height = desc.img.naturalHeight; drawBrushMask(mask.getContext("2d"), chunks, desc, mask.width);
         const form = new FormData(); form.append("chapter_id", chapterId); form.append("page_index", desc.item.canonicalIndex); form.append("mode", mode); form.append("mask", await canvasBlob(mask), "mask.png");
         const response = await fetch("/api/repaint_mask", { method: "POST", body: form }), parse = window.parseApiResponse || (async (r) => r.json().catch(() => ({}))), data = await parse(response); if (!response.ok) throw new Error(window.getErrorMessage?.(response.status, data) || data.detail || `HTTP ${response.status}`);
-        if (window.currentManifest?.pages?.[desc.item.canonicalIndex] && data.pages?.[desc.item.canonicalIndex]) window.currentManifest.pages[desc.item.canonicalIndex] = data.pages[desc.item.canonicalIndex]; affected++;
+        if (window.currentManifest?.pages?.[desc.item.canonicalIndex] && data.pages?.[desc.item.canonicalIndex]) { window.currentManifest.pages[desc.item.canonicalIndex] = data.pages[desc.item.canonicalIndex]; } affected++;
       }
-      for (const c of chunks) { if (c.canvas && c.ctx) c.ctx.clearRect(0, 0, c.canvas.width, c.canvas.height); c.dirty = false; } snapshots.delete(snapshotKey()); window.showToast?.(affected ? "Đã làm sạch các vùng được đánh dấu." : "Không có vùng ảnh nào được cập nhật.", affected ? "success" : "info"); rerender();
+      for (const c of chunks) { if (c.canvas && c.ctx) { c.ctx.clearRect(0, 0, c.canvas.width, c.canvas.height); } c.dirty = false; } snapshots.delete(snapshotKey()); window.showToast?.(affected ? "Đã làm sạch các vùng được đánh dấu." : "Không có vùng ảnh nào được cập nhật.", affected ? "success" : "info"); rerender();
     } catch (err) { window.showToast?.("Không thể xử lý vùng đánh dấu: " + err.message, "error"); } finally { busy(false); }
   }, { signal });
 
