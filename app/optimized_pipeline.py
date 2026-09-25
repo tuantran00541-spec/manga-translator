@@ -9,6 +9,7 @@ import cv2
 import numpy as np
 
 from app.detector.bubble_detector import BubbleBox
+from app.inpaint.clustering import compute_manual_crop_region
 from app.detector.mask_builder import build_mask
 from app.one_shot_cleanup import OneShotProductionDetector
 from app.image_io import read_image, write_image
@@ -103,7 +104,7 @@ class OptimizedChapterPipeline(ChapterPipeline):
             if area <= 0 or bbox_w <= 0 or bbox_h <= 0:
                 continue
 
-            crop_box = self.inpainter._compute_manual_crop_region(
+            crop_box = compute_manual_crop_region(
                 x,
                 y,
                 x + bbox_w,

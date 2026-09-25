@@ -283,6 +283,7 @@ def evidence_retention_checks():
     from app.detector.bubble_detector import BubbleBox, YoloDetector
     from app.detector.combined_detector import CombinedTextDetector
     from app.detector.mask_builder import build_mask
+    from app.inpaint.clustering import split_oversized_cluster_area
     from app.inpaint.lama_inpainter import Inpainter
 
     giant = BubbleBox(
@@ -363,7 +364,7 @@ def evidence_retention_checks():
         "oversized free-text split lost a child mask",
     )
 
-    split = Inpainter._split_oversized_cluster_area(
+    split = split_oversized_cluster_area(
         [first, second], 1000, 1000
     )
     flat = [box for group in split for box in group]

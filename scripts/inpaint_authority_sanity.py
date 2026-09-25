@@ -210,7 +210,10 @@ def main() -> None:
         "ocr_eligible=bool(b.ocr_eligible)",
         "needs_review=bool(b.needs_review)",
         "deferred_reason=b.deferred_reason",
-        "def _split_oversized_cluster_area(",
+    )
+    _require(
+        "app/inpaint/clustering.py",
+        "def split_oversized_cluster_area(",
     )
     _require(
         "scripts/model_e2e_gate.py",

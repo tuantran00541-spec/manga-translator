@@ -146,7 +146,7 @@ def site_language_hint(source_url: object) -> str | None:
 
 
 def _box_is_dialogue_sample(box: object, preserve_regions: list[dict]) -> bool:
-    from app.ocr.service import ocr_target_skip_reason
+    from app.ocr.targeting import ocr_target_skip_reason
 
     if not isinstance(box, dict) or box.get("removed") or box.get("ocr_eligible") is False:
         return False
