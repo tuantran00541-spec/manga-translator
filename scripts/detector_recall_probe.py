@@ -84,6 +84,8 @@ def main() -> int:
     core.detect(first)
 
     totals = {name: {"seconds": 0.0, "forwards": 0, "boxes": 0} for name in COLOURS}
+    # Preprocess + ONNX forward alone (no mask decode / NMS), from oneshot12.
+    forward_s = 0.0
     rows = []
     for index, page in enumerate(pages):
         full = read_image(validate_managed_path(page["original"], RAW_DIR / CHAPTER_ID))
@@ -101,6 +103,7 @@ def main() -> int:
                 forwards = 1
             elif name == "oneshot12":
                 outputs, transform = core._single_forward_outputs(image)
+                forward_s += time.perf_counter() - started
                 raw = core._postprocess_at_threshold(outputs, transform, core.RESCUE_CONF_THRESHOLD)
                 boxes, forwards = core._accept_many(raw), 1
             elif name == "win1024":
@@ -133,6 +136,7 @@ def main() -> int:
 
     summary = {name: {**t, "seconds": round(t["seconds"], 1),
                       "per_slice_s": round(t["seconds"] / max(1, len(pages)), 3)} for name, t in totals.items()}
+    summary["forward_only_s_per_slice"] = round(forward_s / max(1, len(pages)), 3)
     (args.out / "summary.json").write_text(json.dumps({"slices": len(pages), "variants": summary, "rows": rows}, indent=1))
     print(json.dumps(summary, indent=1))
     return 0

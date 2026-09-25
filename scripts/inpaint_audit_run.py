@@ -59,6 +59,10 @@ def speed_and_completion(manifest: dict, clean_wall_s: float, workers: int) -> d
     authorized = review_only = deferred = residue = 0
     verified = with_residue = 0
     issues: dict[str, int] = {}
+    # Summed inpainter counters (lama_model_ms, lama_model_runs, ...) and the
+    # detector's own model time, to split slice time into its real costs.
+    inpaint_counters: dict[str, int] = {}
+    text_model_s: list[float] = []
     for page in pages:
         metrics = page.get("processing_metrics") or {}
         timing = metrics.get("timing_ms") or {}
@@ -67,6 +71,10 @@ def speed_and_completion(manifest: dict, clean_wall_s: float, workers: int) -> d
         detect.append(float(timing.get("detect") or 0) / 1000)
         inpaint.append(float(timing.get("auto_inpaint") or 0) / 1000 + float(timing.get("manual_inpaint") or 0) / 1000)
         verify.append(float(timing.get("residue_verify") or 0) / 1000)
+        text_model_s.append(float(det.get("text_model_ms") or 0) / 1000)
+        for key, value in (metrics.get("auto_inpaint") or {}).items():
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                inpaint_counters[key] = inpaint_counters.get(key, 0) + int(value)
         authorized += int(det.get("authorized") or 0)
         review_only += int(det.get("review_only") or 0)
         deferred += int(det.get("deferred") or 0)
@@ -100,6 +108,8 @@ def speed_and_completion(manifest: dict, clean_wall_s: float, workers: int) -> d
         "slice_detect_s": stats(detect),
         "slice_inpaint_s": stats(inpaint),
         "slice_residue_verify_s": stats(verify),
+        "slice_text_model_s": stats(text_model_s),
+        "inpaint_counters": inpaint_counters,
         "regions_auto_cleaned": authorized,
         "regions_left_for_review": review_only + deferred,
         "auto_clean_share": round(authorized / handled, 3) if handled else None,
