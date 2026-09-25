@@ -27,7 +27,7 @@
   --danger-strong: #000000;
   --danger-soft: transparent;
   --focus-ring: #000000;
-  --selection: transparent;
+  --selection: rgba(0, 0, 0, .18);
   --font-ui: "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, sans-serif;
   --font-mono: "Cascadia Mono", "Consolas", monospace;
   --space-1: 4px;
@@ -46,6 +46,7 @@
   --ps-tool-rail: 52px;
   --ps-dock-width: 310px;
   --ps-topbar: 44px;
+  --review-docbar-height: 38px;
   --app-header-height: 72px;
   --sticky-header-offset: 72px;
   --motion-fast: 130ms ease;
@@ -103,7 +104,7 @@ body:not([data-app-stage="landing"]) {
   --danger-strong: #ffffff;
   --danger-soft: transparent;
   --focus-ring: #ffffff;
-  --selection: transparent;
+  --selection: rgba(255, 255, 255, .3);
   --shadow-subtle: none;
   --shadow-panel: none;
   --shadow-float: none;

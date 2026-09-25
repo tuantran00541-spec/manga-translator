@@ -341,8 +341,9 @@ def _exercise_mobile(page: Page) -> None:
     )
     if not tool_sizes or min(tool_sizes) < 36:
         raise AssertionError(f"mobile Review tools are too small to tap comfortably: {tool_sizes}")
+    # Controls inside a closed disclosure are not rendered, so they cannot be tapped yet.
     control_sizes = page.locator(".review-document-toolbar-compact .ui-btn").evaluate_all(
-        "elements => elements.map(element => Math.round(element.getBoundingClientRect().height))"
+        "elements => elements.filter(element => element.checkVisibility()).map(element => Math.round(element.getBoundingClientRect().height))"
     )
     if not control_sizes or min(control_sizes) < 36:
         raise AssertionError(f"mobile Review toolbar controls are too small to tap comfortably: {control_sizes}")
