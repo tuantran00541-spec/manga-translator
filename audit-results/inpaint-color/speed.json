@@ -1,0 +1,46 @@
+{
+ "slices": 87,
+ "workers": 2,
+ "clean_wall_s": 472.4,
+ "wall_s_per_slice": 5.43,
+ "slice_megapixels": {
+  "mean": 2.72,
+  "median": 2.73,
+  "p90": 4.04,
+  "max": 4.83
+ },
+ "slice_total_s": {
+  "mean": 9.54,
+  "median": 7.39,
+  "p90": 17.33,
+  "max": 37.57
+ },
+ "slice_detect_s": {
+  "mean": 3.27,
+  "median": 3.11,
+  "p90": 4.54,
+  "max": 9.88
+ },
+ "slice_inpaint_s": {
+  "mean": 6.1,
+  "median": 3.61,
+  "p90": 14.55,
+  "max": 34.12
+ },
+ "slice_residue_verify_s": {
+  "mean": 0.0,
+  "median": 0.0,
+  "p90": 0.0,
+  "max": 0.0
+ },
+ "regions_auto_cleaned": 190,
+ "regions_left_for_review": 0,
+ "auto_clean_share": 1.0,
+ "residue_regions_after_clean": 0,
+ "slices_with_residue": 0,
+ "slices_verified_clean": 83,
+ "slices_verified_share": 0.954,
+ "issues": {
+  "content_heavy_zero_box": 4
+ }
+}

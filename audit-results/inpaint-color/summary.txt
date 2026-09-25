@@ -1,31 +1,32 @@
 chapter: https://asurascans.com/comics/the-academy-s-weapon-replicator-05c7df14/chapter/1
-slices: 87 downloaded, 40 processed
-download 8s, clean 104s
+slices: 87 downloaded, 87 processed
+download 9s, clean 472s
+speed/completion: {"slices": 87, "workers": 2, "clean_wall_s": 472.4, "wall_s_per_slice": 5.43, "slice_megapixels": {"mean": 2.72, "median": 2.73, "p90": 4.04, "max": 4.83}, "slice_total_s": {"mean": 9.54, "median": 7.39, "p90": 17.33, "max": 37.57}, "slice_detect_s": {"mean": 3.27, "median": 3.11, "p90": 4.54, "max": 9.88}, "slice_inpaint_s": {"mean": 6.1, "median": 3.61, "p90": 14.55, "max": 34.12}, "slice_residue_verify_s": {"mean": 0.0, "median": 0.0, "p90": 0.0, "max": 0.0}, "regions_auto_cleaned": 190, "regions_left_for_review": 0, "auto_clean_share": 1.0, "residue_regions_after_clean": 0, "slices_with_residue": 0, "slices_verified_clean": 83, "slices_verified_share": 0.954, "issues": {"content_heavy_zero_box": 4}}
 
-78 inpainted regions in a0d17c01
-seam ΔE  median 0.52  p90 4.42  max 38.53
-  ok (<2): 66   visible (2-5): 5   mismatch (>5): 7
-on coloured/art backgrounds: 39 regions, seam ΔE median 1.05  p90 5.96  >5: 7
-textured surroundings: 47 regions, 15 filled as a smooth patch (texture ratio < 0.5)
+196 inpainted regions in a0d17c01
+seam ΔE  median 0.37  p90 2.28  max 38.53
+  ok (<2): 172   visible (2-5): 13   mismatch (>5): 11
+on coloured/art backgrounds: 86 regions, seam ΔE median 0.90  p90 5.52  >5: 10
+textured surroundings: 107 regions, 33 filled as a smooth patch (texture ratio < 0.5)
 
 worst regions (page, box, seam ΔE, body ΔE, texture ratio):
   p024 [632, 1365, 900, 1419]  seam 38.53  body 24.08  texture 0.35
+  p086 [225, 2006, 435, 2097]  seam 16.21  body 45.52  texture 1.22
+  p081 [0, 2330, 261, 2380]  seam 15.57  body 15.49  texture 0.23
+  p086 [471, 2011, 663, 2095]  seam 14.46  body 39.43  texture 1.01
   p000 [130, 561, 650, 800]  seam  7.49  body  6.39  texture 0.59
   p000 [781, 826, 953, 901]  seam  7.27  body 15.77  texture 0.37
   p000 [569, 561, 605, 580]  seam  6.10  body  6.89  texture 0.76
   p027 [263, 2370, 539, 2462]  seam  5.93  body  5.91  texture 0.29
   p000 [1190, 678, 1396, 751]  seam  5.79  body  9.69  texture 0.35
   p000 [750, 460, 1402, 630]  seam  5.25  body 11.39  texture 0.55
+  p060 [0, 1001, 267, 1071]  seam  5.01  body  7.19  texture 1.45
   p016 [205, 2549, 694, 2752]  seam  4.83  body  4.80  texture 0.01
   p019 [628, 364, 891, 422]  seam  4.25  body 16.01  texture 0.58
+  p086 [129, 2762, 858, 3042]  seam  3.83  body  8.68  texture 0.84
+  p055 [156, 466, 449, 589]  seam  3.41  body  3.45  texture 0.01
+  p069 [215, 2760, 672, 2935]  seam  2.80  body  2.82  texture 0.01
+  p047 [551, 839, 852, 958]  seam  2.55  body  3.00  texture 1.0
   p000 [1187, 824, 1374, 904]  seam  2.39  body 18.93  texture 0.51
-  p009 [426, 1937, 785, 2047]  seam  2.10  body  1.32  texture 0.41
-  p027 [509, 1915, 737, 2052]  seam  2.03  body  2.52  texture 0.99
-  p010 [239, 947, 682, 1260]  seam  1.95  body  2.55  texture 0.15
-  p015 [182, 1294, 728, 1545]  seam  1.83  body  1.76  texture 0.97
-  p009 [0, 3028, 900, 3430]  seam  1.68  body  6.04  texture 0.48
-  p015 [200, 2789, 697, 2970]  seam  1.56  body  1.88  texture 1.26
-  p010 [0, 2275, 265, 2346]  seam  1.30  body  1.47  texture 0.98
-  p018 [0, 1211, 285, 1352]  seam  1.24  body  8.33  texture 0.71
-  p003 [339, 2792, 798, 2987]  seam  1.20  body  1.40  texture 0.8
-  p018 [0, 2717, 341, 2829]  seam  1.18  body  8.92  texture 3.59
+  p047 [278, 525, 793, 701]  seam  2.37  body  2.39  texture 0.01
+  p086 [199, 2355, 690, 2545]  seam  2.33  body  2.38  texture 0.02
