@@ -489,7 +489,10 @@ document.addEventListener("DOMContentLoaded", () => {
   // renderer only for old checkpoints, but do not expose a second Editor stage.
   document.querySelector('.sidebar-link[data-stage="editor"]')?.remove();
   const reviewLabel = document.querySelector('.sidebar-link[data-stage="review"] span');
-  if (reviewLabel) reviewLabel.textContent = "Xử lý & Biên tập";
+  if (reviewLabel) {
+    reviewLabel.textContent = "Xử lý & Biên tập";
+    reviewLabel.closest(".sidebar-link")?.setAttribute("aria-label", reviewLabel.textContent);
+  }
 
   const loadBtn = document.getElementById("load-btn");
   if (loadBtn && typeof loadChapter === "function") {

@@ -43,7 +43,7 @@
     const style = document.createElement("style");
     style.id = "review-photopea-tool-styles";
     style.textContent = `
-      .review-tool-rail{position:absolute;z-index:calc(var(--z-toolbar) + 4);top:52px;left:8px;display:flex;width:44px;max-height:calc(100% - 68px);flex-direction:column;align-items:center;padding:3px;border:1px solid var(--border-strong);background:var(--surface-panel);overflow-y:auto}
+      .review-tool-rail{position:absolute;z-index:calc(var(--z-toolbar) + 4);top:calc(var(--review-docbar-height, 38px) + 14px);left:8px;display:flex;width:44px;max-height:calc(100% - var(--review-docbar-height, 38px) - 30px);flex-direction:column;align-items:center;padding:3px;border:1px solid var(--border-strong);background:var(--surface-panel);overflow-y:auto}
       .review-tool-group{display:flex;width:100%;flex-direction:column;align-items:center;gap:2px}
       .review-rail-tool{position:relative;display:grid;width:36px;height:36px;flex:0 0 36px;place-items:center;padding:0;border:1px solid transparent;border-radius:3px;background:transparent;color:var(--text-primary);cursor:pointer}
       .review-rail-tool:hover,.review-rail-tool:focus-visible,.review-rail-tool.active{outline:0;border-color:var(--border-strong);background:var(--surface-panel);color:var(--text-primary)}
@@ -62,7 +62,7 @@
       .review-text-drawing{position:absolute;z-index:20;border:1.5px dashed var(--text-primary);background:transparent;pointer-events:none}.review-text-drawing.ellipse{border-radius:999px}
       .review-document-viewport[data-active-tool="hand"]{cursor:grab}.review-document-viewport[data-active-tool="hand"].is-panning{cursor:grabbing}.review-document-viewport[data-active-tool="zoom"]{cursor:zoom-in}
       .review-stitched-image[data-active-tool="rectangle"],.review-stitched-image[data-active-tool="ellipse"],.review-stitched-image[data-active-tool="brush"],.review-stitched-image[data-active-tool="eraser"]{cursor:crosshair}
-      @media(max-width:720px){.review-tool-rail{top:48px;left:4px;width:44px;max-height:calc(100% - 58px)}.review-rail-tool{width:36px;height:36px;flex-basis:36px}.review-tool-tooltip{display:none!important}}
+      @media(max-width:720px){.review-tool-rail{top:calc(var(--review-docbar-height, 38px) + 10px);left:4px;width:44px;max-height:calc(100% - var(--review-docbar-height, 38px) - 20px)}.review-rail-tool{width:36px;height:36px;flex-basis:36px}.review-tool-tooltip{display:none!important}}
     `;
     document.head.appendChild(style);
   }
@@ -223,10 +223,11 @@
     const viewportRect = viewport?.getBoundingClientRect();
     const scale = Number(image?.dataset.zoomScale || 1);
     if (!descriptor || !imageRect?.height || !viewport || !viewportRect || !scale) return false;
-    const sourceY = (descriptor.sourceY1 + descriptor.sourceY2) / 2;
-    viewport.scrollTop = Math.max(
+    // Align the page top with the viewport top: centring a tall webtoon page
+    // would open the chapter in the middle of its first image.
+    viewport.scrollTop = descriptor === shell._descriptors?.[0] ? 0 : Math.max(
       0,
-      viewport.scrollTop + imageRect.top + sourceY * scale - (viewportRect.top + viewport.clientHeight / 2),
+      viewport.scrollTop + imageRect.top + descriptor.sourceY1 * scale - viewportRect.top,
     );
     return true;
   }
@@ -964,6 +965,13 @@
 
     shell.append(docbar, meta, warning, viewport);
     canvasHost.appendChild(shell);
+
+    // The docbar wraps onto extra rows on narrow screens; floating panels read
+    // its live height so they never cover the toolbar.
+    const syncDocbarHeight = () => shell.style.setProperty("--review-docbar-height", `${Math.ceil(docbar.getBoundingClientRect().height)}px`);
+    const docbarObserver = new ResizeObserver(syncDocbarHeight);
+    docbarObserver.observe(docbar);
+    signal.addEventListener("abort", () => docbarObserver.disconnect(), { once: true });
 
     installOverlaySync();
     mountTextInspector(workspace, shell, signal);
