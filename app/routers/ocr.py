@@ -5,11 +5,12 @@ from fastapi.concurrency import run_in_threadpool
 
 from app.dependencies import ocr, pipeline
 from app.logging_config import logger
-from app.manifest_utils import urlify_manifest
+from app.manifest_utils import get_manifest_lock, load_manifest_raw, save_manifest_raw, urlify_manifest
+from app.ocr.language_detect import detect_manifest_language, normalize_source_lang
 from app.ocr.jobs import ChapterOCRJobManager
 from app.ocr.schemas import ChapterOCRRequest
 from app.ocr.service import OCRCancelled, OCRResultStale, OCRService
-from app.schemas import OcrBoxRequest, OcrTextObjectRequest
+from app.schemas import ChapterLanguageDetectRequest, ChapterLanguageRequest, OcrBoxRequest, OcrTextObjectRequest
 from app.security import validate_chapter_id
 
 router = APIRouter(prefix="/api", tags=["ocr"])
@@ -133,3 +134,50 @@ async def retry_chapter_ocr(job_id: str) -> dict:
         raise HTTPException(400, str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(409, str(exc)) from exc
+
+
+def _language_payload(manifest: dict, detection: dict | None = None) -> dict:
+    return {
+        "chapter_id": manifest.get("chapter_id"),
+        "source_lang": normalize_source_lang(manifest.get("source_lang")),
+        "source_lang_origin": manifest.get("source_lang_origin"),
+        "detection": detection,
+    }
+
+
+@router.post(
+    "/chapters/{chapter_id}/language/detect",
+    responses={404: {"description": "Chapter not found"}, 500: {"description": "Language detection failed"}},
+)
+async def detect_chapter_language(chapter_id: str, req: ChapterLanguageDetectRequest | None = None) -> dict:
+    """Return the chapter's source language, detecting it from its text regions once."""
+    validate_chapter_id(chapter_id)
+    force = bool(req and req.force)
+    with get_manifest_lock(chapter_id):
+        manifest = load_manifest_raw(chapter_id)
+    if normalize_source_lang(manifest.get("source_lang")) and not force:
+        return _language_payload(manifest)
+    try:
+        detection = await run_in_threadpool(detect_manifest_language, chapter_id, manifest, ocr.read_probe)
+    except Exception as exc:
+        logger.opt(exception=True).error("Chapter {} language detection failed: {}", chapter_id, exc)
+        raise HTTPException(500, "Language detection failed") from exc
+    with get_manifest_lock(chapter_id):
+        latest = load_manifest_raw(chapter_id)
+        # A manual choice made while detection ran always wins.
+        if detection.lang and not (latest.get("source_lang_origin") == "manual" and not force):
+            latest["source_lang"] = detection.lang
+            latest["source_lang_origin"] = "site" if detection.reason == "site-hint" else "auto"
+            save_manifest_raw(chapter_id, latest)
+    return _language_payload(latest, detection.as_dict())
+
+
+@router.put("/chapters/{chapter_id}/language", responses={404: {"description": "Chapter not found"}})
+def set_chapter_language(chapter_id: str, req: ChapterLanguageRequest) -> dict:
+    validate_chapter_id(chapter_id)
+    with get_manifest_lock(chapter_id):
+        manifest = load_manifest_raw(chapter_id)
+        manifest["source_lang"] = req.source_lang
+        manifest["source_lang_origin"] = "manual"
+        save_manifest_raw(chapter_id, manifest)
+    return _language_payload(manifest)

@@ -26,7 +26,7 @@
   }
 
   function currentLang() {
-    return document.getElementById("lang-select")?.value || "ja";
+    return window.resolveSourceLang();
   }
 
   function syncChapter() {
@@ -155,12 +155,14 @@
     const chapterId = window.currentChapterId;
     const generation = ++state.generation;
     try {
+      const lang = await currentLang();
+      if (generation !== state.generation || chapterId !== window.currentChapterId) return;
       const snapshot = await requestJson("/api/ocr/chapter", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           chapter_id: chapterId,
-          lang: currentLang(),
+          lang,
           concurrency: 1,
           force: false,
         }),
@@ -244,7 +246,7 @@
   function bindWorkspace(workspace) {
     syncChapter();
     if (!workspace || workspace.dataset.chapterOcrBound === "1") return;
-    const actions = workspace.querySelector(".review-more-panel")
+    const actions = workspace.querySelector(".review-more-actions")
       || workspace.querySelector(".review-docbar-actions")
       || workspace.querySelector(".review-actions-group");
     if (!actions) return;
@@ -274,8 +276,9 @@
   async function safeFetchOcr(pageIndex, boxIndex, originalEl) {
     const chapterId = window.currentChapterId;
     if (!chapterId) return;
-    const lang = currentLang();
     try {
+      const lang = await currentLang();
+      if (chapterId !== window.currentChapterId) return;
       const data = await requestJson("/api/ocr_box", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

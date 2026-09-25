@@ -320,6 +320,9 @@ def _expect_more_menu_action(page: Page, name: str) -> None:
     toggle = page.locator(".review-more-toggle")
     toggle.click()
     expect(page.get_by_role("button", name=name, exact=True)).to_be_visible()
+    # The chapter's stored source language replaces the old import-page picker.
+    expect(page.locator(".review-lang-select")).to_have_value("ja")
+    expect(page.locator("#lang-select")).to_have_count(0)
     toggle.click()
     expect(page.get_by_role("button", name=name, exact=True)).to_be_hidden()
 

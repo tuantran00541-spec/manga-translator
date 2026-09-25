@@ -497,8 +497,14 @@ async function _processSelectedPagesOnce() {
 
 async function fetchOcr(pageIndex, boxIndex, originalEl) {
   const page = currentManifest.pages[pageIndex];
-  const langEl = document.getElementById("lang-select");
-  const lang = langEl ? langEl.value : "ja";
+  let lang;
+  try {
+    lang = await window.resolveSourceLang();
+  } catch (err) {
+    originalEl.textContent = "(" + err.message + ")";
+    showToast(err.message, "error");
+    return;
+  }
   const box = page && page.boxes ? page.boxes[boxIndex] : null;
 
   if (box && box.ocr_text && box.ocr_lang === lang) {
