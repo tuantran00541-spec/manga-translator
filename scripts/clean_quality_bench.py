@@ -1,9 +1,8 @@
 """Compare text detection and LaMa fill settings on a real chapter.
 
 Downloads and slices a chapter the way the app does, then cleans the same
-slices with each variant (detector window scale, mask dilation, grain restore,
-neighbour text hidden from LaMa)
-and measures:
+slices with each variant (one pass, two halves side by side in one pass,
+windows at a given scale) and measures:
 
   detect_s / inpaint_s   time spent in each stage
   coverage              share of reference text pixels the variant's mask covers
@@ -28,7 +27,6 @@ import cv2
 import numpy as np
 
 import app.detector.mask_builder as mask_builder
-import app.parameters as params
 from app.detector.mask_builder import build_mask
 from app.image_io import read_image
 from app.inpaint.lama_inpainter import Inpainter
@@ -36,18 +34,17 @@ from app.one_shot_cleanup import OneShotTextMaskDetector
 from app.processing_pipeline_factory import build_processing_pipeline
 
 VARIANTS = {
-    "current": {"scale": 0.0, "dilate": 7, "grain": False},
-    "tile075": {"scale": 0.75, "dilate": 7, "grain": False},
-    "tile100": {"scale": 1.0, "dilate": 7, "grain": False},
-    "tile100_d5": {"scale": 1.0, "dilate": 5, "grain": False},
-    "tile100_grain": {"scale": 1.0, "dilate": 7, "grain": True},
-    "tile100_hide": {"scale": 1.0, "dilate": 7, "grain": False, "hide": True},
+    "current": {"scale": 0.0, "dilate": 7},
+    "collage": {"scale": 0.0, "dilate": 7, "collage": True},
+    "tile075": {"scale": 0.75, "dilate": 7},
 }
 REFERENCE_SCALE = 1.25
 
 
-def detect(detector: OneShotTextMaskDetector, image: np.ndarray, core: tuple[int, int], scale: float):
+def detect(detector: OneShotTextMaskDetector, image: np.ndarray, core: tuple[int, int], scale: float,
+           collage: bool = False):
     detector.tile_scale = scale
+    detector.collage = collage
     y1, y2 = core
     started = time.perf_counter()
     boxes, metrics = detector.detect(image[y1:y2])
@@ -65,11 +62,9 @@ def text_mask(shape: tuple[int, int], boxes) -> np.ndarray:
     return (mask > 127).astype(np.uint8) * 255
 
 
-def clean(inpainter: Inpainter, image: np.ndarray, boxes, dilate: int, grain: bool, hide: bool = False):
+def clean(inpainter: Inpainter, image: np.ndarray, boxes, dilate: int):
     mask_builder.MASK_DILATE_KERNEL_SIZE = dilate
     mask_builder.MASK_ADAPTIVE_DILATE_KERNEL_SIZE = dilate + 2
-    params.INPAINT_GRAIN_RESTORE = grain
-    params.INPAINT_HIDE_NEIGHBOUR_TEXT = hide
     started = time.perf_counter()
     result = inpainter.inpaint(image, boxes)
     elapsed = time.perf_counter() - started
@@ -141,9 +136,8 @@ def main() -> int:
         near_ref = cv2.dilate(ref, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (21, 21)))
         outputs = {}
         for name, variant in VARIANTS.items():
-            boxes, detect_s, calls = detect(detector, image, span, variant["scale"])
-            result, hole, inpaint_s = clean(inpainter, image, boxes, variant["dilate"], variant["grain"],
-                                            variant.get("hide", False))
+            boxes, detect_s, calls = detect(detector, image, span, variant["scale"], variant.get("collage", False))
+            result, hole, inpaint_s = clean(inpainter, image, boxes, variant["dilate"])
             mask = build_mask(image.shape[:2], boxes, image)
             after, _, _ = detect(detector, result, span, REFERENCE_SCALE)
             t = totals[name]
@@ -159,14 +153,14 @@ def main() -> int:
             t["sharpness"] += sharpness(result, hole)
             outputs[name] = (result, mask)
 
-        # Reference text the current detector leaves unmasked but tile100 masks.
-        missed = ((ref > 0) & (outputs["current"][1] == 0) & (outputs["tile100"][1] > 0)).astype(np.uint8)
+        # Reference text the current detector leaves unmasked but the collage masks.
+        missed = ((ref > 0) & (outputs["current"][1] == 0) & (outputs["collage"][1] > 0)).astype(np.uint8)
         count, _, stats, _ = cv2.connectedComponentsWithStats(cv2.dilate(missed, np.ones((15, 15), np.uint8)))
         for label in range(1, count):
             x, y, w, h, area = (int(v) for v in stats[label])
             if area >= 300:
                 caught_regions.append((area, page_number, (x, y, w, h)))
-        count, _, stats, _ = cv2.connectedComponentsWithStats((outputs["tile100"][1] > 0).astype(np.uint8))
+        count, _, stats, _ = cv2.connectedComponentsWithStats((outputs["collage"][1] > 0).astype(np.uint8))
         for label in range(1, count):
             x, y, w, h, area = (int(v) for v in stats[label])
             fill_regions.append((area, page_number, (x, y, w, h)))

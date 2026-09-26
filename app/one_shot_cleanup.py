@@ -9,8 +9,12 @@ import numpy as np
 from app.config import TEXT_SEGMENTER_MODEL
 import cv2
 
-from app.detector.bubble_detector import BubbleBox, YoloDetector, apply_final_nms
+from app.detector.bubble_detector import BubbleBox, LetterboxTransform, YoloDetector, apply_final_nms
 from app.parameters import (
+    DETECTOR_COLLAGE,
+    DETECTOR_COLLAGE_GAP,
+    DETECTOR_COLLAGE_MIN_OVERLAP,
+    DETECTOR_LETTERBOX_VALUE,
     DETECTOR_FINAL_NMS_IOU,
     DETECTOR_INPUT_SIZE,
     DETECTOR_TILE_OVERLAP,
@@ -83,6 +87,59 @@ class OneShotTextMaskDetector:
                 self.detector.conf_threshold = original_conf
 
     tile_scale = DETECTOR_TILE_SCALE
+    collage = DETECTOR_COLLAGE
+
+    @staticmethod
+    def collage_plan(height: int, width: int) -> tuple[float, list[tuple[int, int]]] | None:
+        """Scale and the two (y1, y2) halves to lay side by side, or None.
+
+        The halves overlap so text on the cut is whole in one of them; any
+        vertical room the width leaves free goes into a bigger overlap.
+        """
+        size = DETECTOR_INPUT_SIZE
+        if height <= 0 or width <= 0:
+            return None
+        single = min(size / width, size / height)
+        scale = min(1.0, (size - DETECTOR_COLLAGE_GAP) / (2.0 * width))
+        overlap = int(2 * size / scale) - height
+        if overlap < DETECTOR_COLLAGE_MIN_OVERLAP:
+            overlap = min(height, DETECTOR_COLLAGE_MIN_OVERLAP)
+            scale = min(scale, 2.0 * size / (height + overlap))
+        overlap = min(overlap, height)
+        if scale < single * 1.2:
+            return None
+        half = (height + overlap + 1) // 2
+        return scale, [(0, half), (height - half, height)]
+
+    def _detect_collage(self, image: np.ndarray, scale: float, halves: list[tuple[int, int]]):
+        size = DETECTOR_INPUT_SIZE
+        rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB) if image.ndim == 3 and image.shape[2] == 3 else image
+        canvas = np.full((size, size, 3), DETECTOR_LETTERBOX_VALUE, dtype=np.uint8)
+        width = image.shape[1]
+        transforms = []
+        x = 0
+        for y0, y1 in halves:
+            resized_w = max(1, min(size - x, int(width * scale)))
+            resized_h = max(1, min(size, int((y1 - y0) * scale)))
+            canvas[:resized_h, x:x + resized_w] = cv2.resize(rgb[y0:y1], (resized_w, resized_h))
+            transforms.append(LetterboxTransform(
+                src_w=width, src_h=y1 - y0, input_w=size, input_h=size,
+                resized_w=resized_w, resized_h=resized_h, pad_x=x, pad_y=0,
+                scale_x=resized_w / width, scale_y=resized_h / (y1 - y0),
+                offset_x=0, offset_y=y0,
+            ))
+            x += resized_w + DETECTOR_COLLAGE_GAP
+        outputs = self._run_session((canvas.astype(np.float32) / 255.0).transpose(2, 0, 1)[None])
+        found: list[tuple[BubbleBox, int, bool]] = []
+        raw_count = 0
+        for index, ((y0, y1), transform) in enumerate(zip(halves, transforms)):
+            # Each half's transform clamps boxes of the other half to nothing.
+            raw = self._postprocess_at_threshold(outputs, transform, TEXT_CONF_THRESHOLD)
+            raw_count += len(raw)
+            for box in self._accept_many(raw):
+                cut = (index > 0 and box.y1 <= y0 + 2) or (index < len(halves) - 1 and box.y2 >= y1 - 2)
+                found.append((box, index, cut))
+        return self.merge_tiles(found), raw_count
 
     @staticmethod
     def tile_windows(height: int, width: int, scale: float) -> list[tuple[int, int]]:
@@ -160,11 +217,15 @@ class OneShotTextMaskDetector:
         started = time.perf_counter()
 
         windows = self.tile_windows(image.shape[0], image.shape[1], float(self.tile_scale))
-        if len(windows) > 1:
-            boxes, raw_count = self._detect_tiled(image, windows)
+        plan = self.collage_plan(image.shape[0], image.shape[1]) if self.collage and len(windows) == 1 else None
+        if len(windows) > 1 or plan is not None:
+            if plan is not None:
+                boxes, raw_count = self._detect_collage(image, *plan)
+            else:
+                boxes, raw_count = self._detect_tiled(image, windows)
             return boxes, {
                 "detector_ms": round((time.perf_counter() - started) * 1000.0, 3),
-                "detector_forward_calls": len(windows),
+                "detector_forward_calls": 1 if plan is not None else len(windows),
                 "detector_boxes": int(raw_count),
                 "accepted_mask_boxes": int(len(boxes)),
                 "normal_conf_boxes": int(len(boxes)),
