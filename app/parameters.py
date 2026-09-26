@@ -132,6 +132,11 @@ BUBBLE_IOU_THRESHOLD = 0.30
 DETECTOR_FINAL_NMS_IOU = 0.35
 DETECTOR_STABLE_ID_IOU_MIN = 0.50
 DETECTOR_INPUT_SIZE = 1024
+# Tall slices are detected in vertical windows instead of being shrunk whole into
+# the square model input. The value is the scale each window is fed at (1.0 = the
+# slice's own pixels; 0 = one pass over the whole slice).
+DETECTOR_TILE_SCALE = _env_float("MANGA_DETECTOR_TILE_SCALE", 0.0, minimum=0.0, maximum=2.0)
+DETECTOR_TILE_OVERLAP = 0.2
 DETECTOR_MAX_BOX_AREA_RATIO = 0.35
 DETECTOR_CONFIDENCE_MAX = 0.999998
 EDITORIAL_STORY_CANDIDATE_CONFIDENCE = 0.70
@@ -172,6 +177,10 @@ SLICE_CONTOUR_PAD_Y = 40
 SLICE_FALLBACK_TOLERANCE_RATIO = 0.08
 
 INPAINT_SIZE = 512
+# Put back the fine grain LaMa smooths away, sampled from the ring around each hole.
+INPAINT_GRAIN_RESTORE = _env_bool("MANGA_INPAINT_GRAIN_RESTORE", False)
+INPAINT_GRAIN_RING_PX = 12
+INPAINT_GRAIN_MIN_STD = 2.0
 DYNAMIC_LAMA_MAX_SINGLE_CROP_DIM = 1024
 DYNAMIC_LAMA_MAX_SINGLE_CROP_PIXELS = 1024 * 1024
 INPAINT_NATIVE_TILE_ENABLED = True

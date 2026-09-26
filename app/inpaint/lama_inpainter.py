@@ -12,6 +12,7 @@ from app.detector.mask_builder import build_mask
 from app.logging_config import logger
 from app.model_contracts import decode_lama_output, validate_lama_session
 from app.ort_utils import make_session
+import app.parameters as _params
 from app.parameters import (
     DYNAMIC_LAMA_MAX_SINGLE_CROP_DIM,
     DYNAMIC_LAMA_MAX_SINGLE_CROP_PIXELS,
@@ -677,6 +678,8 @@ class Inpainter:
             painted = self._lama_fill_single(crop, local_mask)
 
         original_crop = image[cy1:cy2, cx1:cx2]
+        if _params.INPAINT_GRAIN_RESTORE:
+            painted = self._restore_grain(painted, crop, local_mask)
         if feather:
             core = local_mask > 127
             alpha = core.astype(np.float32)
@@ -691,6 +694,39 @@ class Inpainter:
             mask_3d = (local_mask > 127)[:, :, None]
             image[cy1:cy2, cx1:cx2] = np.where(mask_3d, painted, original_crop)
         return image
+
+    @staticmethod
+    def _restore_grain(painted: np.ndarray, crop: np.ndarray, local_mask: np.ndarray) -> np.ndarray:
+        """Add back fine grain LaMa smooths away, sampled from the ring around the hole.
+
+        Only where the surroundings have grain (high-pass std above a floor); flat
+        paper and bubbles are left alone. Values come from the ring itself, so the
+        grain keeps its strength and tone, and the result is deterministic.
+        """
+        hole = local_mask > 127
+        count = int(np.count_nonzero(hole))
+        if count < 16 or painted.shape[:2] != crop.shape[:2]:
+            return painted
+        ring_px = int(_params.INPAINT_GRAIN_RING_PX)
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * ring_px + 1, 2 * ring_px + 1))
+        ring = (cv2.dilate(hole.astype(np.uint8), kernel) > 0) & ~hole
+        if int(np.count_nonzero(ring)) < 64:
+            return painted
+        source = crop.astype(np.float32)
+        high = source - cv2.GaussianBlur(source, (0, 0), 1.2)
+        ring_high = high[ring]
+        ring_std = float(ring_high.std())
+        if ring_std < float(_params.INPAINT_GRAIN_MIN_STD):
+            return painted
+        filled = painted.astype(np.float32)
+        own_std = float((filled - cv2.GaussianBlur(filled, (0, 0), 1.2))[hole].std())
+        gain = float(np.sqrt(max(0.0, ring_std ** 2 - own_std ** 2)) / ring_std)
+        if gain <= 0.05:
+            return painted
+        rng = np.random.default_rng(count * 7919 + int(ring_high.size))
+        grain = ring_high[rng.integers(0, ring_high.shape[0], size=count)]
+        filled[hole] += gain * grain
+        return np.clip(np.rint(filled), 0, 255).astype(np.uint8)
 
     @staticmethod
     def _resize_mask_preserve_support(

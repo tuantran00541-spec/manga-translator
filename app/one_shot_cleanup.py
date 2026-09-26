@@ -12,6 +12,9 @@ import cv2
 from app.detector.bubble_detector import BubbleBox, YoloDetector, apply_final_nms
 from app.parameters import (
     DETECTOR_FINAL_NMS_IOU,
+    DETECTOR_INPUT_SIZE,
+    DETECTOR_TILE_OVERLAP,
+    DETECTOR_TILE_SCALE,
     DETECTOR_RESIDUE_VERIFY_MAX_ROIS,
     DETECTOR_RESIDUE_VERIFY_MAX_SOURCE_SIDE,
     DETECTOR_RESIDUE_VERIFY_PAD,
@@ -79,8 +82,96 @@ class OneShotTextMaskDetector:
             finally:
                 self.detector.conf_threshold = original_conf
 
+    tile_scale = DETECTOR_TILE_SCALE
+
+    @staticmethod
+    def tile_windows(height: int, width: int, scale: float) -> list[tuple[int, int]]:
+        """Vertical windows (y1, y2) that reach the model at about ``scale``.
+
+        One window covers the whole slice when tiling is off or the slice is
+        short enough to reach the model at that scale anyway.
+        """
+        if scale <= 0 or height <= 0 or width <= 0:
+            return [(0, max(0, height))]
+        scale = min(scale, DETECTOR_INPUT_SIZE / float(width))
+        window = max(1, int(DETECTOR_INPUT_SIZE / scale))
+        if height <= window * 1.1:
+            return [(0, height)]
+        overlap = max(64, int(window * DETECTOR_TILE_OVERLAP))
+        count = max(2, int(np.ceil((height - overlap) / max(1, window - overlap))))
+        # Spread the windows evenly: every overlap is at least ``overlap``.
+        starts = [round(i * (height - window) / (count - 1)) for i in range(count)]
+        return [(y0, y0 + window) for y0 in starts]
+
+    @staticmethod
+    def merge_tiles(found: list[tuple[BubbleBox, int, bool]]) -> list[BubbleBox]:
+        """One box per text block from overlapping windows.
+
+        ``found`` holds (box, window index, cut) where cut means the box touches
+        an inner window edge. A box seen by two windows keeps the uncut, then the
+        larger version; boxes from the same window never replace each other, and
+        a block cut by every window keeps its pieces so its mask stays whole.
+        """
+        def area(b: BubbleBox) -> int:
+            return max(0, b.x2 - b.x1) * max(0, b.y2 - b.y1)
+
+        def overlap(a: BubbleBox, b: BubbleBox) -> int:
+            return max(0, min(a.x2, b.x2) - max(a.x1, b.x1)) * max(0, min(a.y2, b.y2) - max(a.y1, b.y1))
+
+        def union(a: BubbleBox, b: BubbleBox) -> BubbleBox:
+            x1, y1, x2, y2 = min(a.x1, b.x1), min(a.y1, b.y1), max(a.x2, b.x2), max(a.y2, b.y2)
+            mask = np.zeros((y2 - y1, x2 - x1), np.uint8)
+            for part in (a, b):
+                if part.mask is not None and part.mask.shape == (part.y2 - part.y1, part.x2 - part.x1):
+                    view = mask[part.y1 - y1:part.y2 - y1, part.x1 - x1:part.x2 - x1]
+                    np.maximum(view, part.mask, out=view)
+            return replace(a, x1=x1, y1=y1, x2=x2, y2=y2, mask=mask, confidence=max(a.confidence, b.confidence))
+
+        def inside(a: BubbleBox, b: BubbleBox, slack: int = 2) -> bool:
+            return a.x1 >= b.x1 - slack and a.y1 >= b.y1 - slack and a.x2 <= b.x2 + slack and a.y2 <= b.y2 + slack
+
+        ranked = sorted(found, key=lambda item: (item[2], -area(item[0]), -item[0].confidence))
+        kept: list[list] = []
+        for box, tile, _cut in ranked:
+            match = next((entry for entry in kept if entry[1] != tile
+                          and overlap(box, entry[0]) >= 0.5 * max(1, min(area(box), area(entry[0])))), None)
+            if match is None:
+                kept.append([box, tile])
+            elif not inside(box, match[0]):
+                # Both windows cut this block: keep all of its mask.
+                match[0] = union(match[0], box)
+        return sorted((entry[0] for entry in kept), key=lambda b: (b.y1, b.x1))
+
+    def _detect_tiled(self, image: np.ndarray, windows: list[tuple[int, int]]) -> tuple[list[BubbleBox], int]:
+        found: list[tuple[BubbleBox, int, bool]] = []
+        raw_count = 0
+        for tile, (y0, y1) in enumerate(windows):
+            blob, transform = self.detector._preprocess(image[y0:y1], offset_x=0, offset_y=y0)
+            if blob is None or transform is None:
+                continue
+            raw = self._postprocess_at_threshold(self._run_session(blob), transform, TEXT_CONF_THRESHOLD)
+            raw_count += len(raw)
+            for box in self._accept_many(raw):
+                cut = (tile > 0 and box.y1 <= y0 + 2) or (tile < len(windows) - 1 and box.y2 >= y1 - 2)
+                found.append((box, tile, cut))
+        return self.merge_tiles(found), raw_count
+
     def detect(self, image: np.ndarray) -> tuple[list[BubbleBox], dict[str, float | int]]:
         started = time.perf_counter()
+
+        windows = self.tile_windows(image.shape[0], image.shape[1], float(self.tile_scale))
+        if len(windows) > 1:
+            boxes, raw_count = self._detect_tiled(image, windows)
+            return boxes, {
+                "detector_ms": round((time.perf_counter() - started) * 1000.0, 3),
+                "detector_forward_calls": len(windows),
+                "detector_boxes": int(raw_count),
+                "accepted_mask_boxes": int(len(boxes)),
+                "normal_conf_boxes": int(len(boxes)),
+                "low_conf_rescue": 0,
+                "low_conf_rescue_boxes": 0,
+                "rescue_conf_threshold": float(self.RESCUE_CONF_THRESHOLD),
+            }
 
         outputs, transform = self._single_forward_outputs(image)
         if outputs is None or transform is None:
