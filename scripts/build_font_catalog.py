@@ -6,6 +6,22 @@ from pathlib import Path
 
 from fontTools.ttLib import TTFont
 
+# Every precomposed Vietnamese letter. A font is marked "vietnamese" only when it
+# maps all of them; otherwise the renderer would print missing-glyph boxes.
+VIETNAMESE_LETTERS = (
+    "ăâđêôơưàáảãạằắẳẵặầấẩẫậèéẻẽẹềếểễệìíỉĩịòóỏõọồốổỗộờớởỡợùúủũụừứửữựỳýỷỹỵ"
+)
+VIETNAMESE_LETTERS += VIETNAMESE_LETTERS.upper()
+
+
+def covers_vietnamese(path: Path) -> bool:
+    font = TTFont(path, lazy=True)
+    try:
+        cmap = font.getBestCmap() or {}
+    finally:
+        font.close()
+    return all(ord(char) in cmap for char in VIETNAMESE_LETTERS)
+
 
 def validate(root: Path, catalog_path: Path) -> list[str]:
     payload = json.loads(catalog_path.read_text(encoding="utf-8"))
@@ -24,9 +40,13 @@ def validate(root: Path, catalog_path: Path) -> list[str]:
             errors.append(f"missing font file: {path}")
             continue
         try:
-            TTFont(path, lazy=True).close()
+            covers = covers_vietnamese(path)
         except Exception as exc:  # pragma: no cover
             errors.append(f"invalid font {path}: {exc}")
+        else:
+            if bool(record.get("vietnamese")) != covers:
+                errors.append(f"{font_id}: vietnamese is {record.get('vietnamese')} but the font "
+                              f"{'maps' if covers else 'lacks'} the Vietnamese letters")
         license_path = root / record["license_file"]
         if not license_path.is_file():
             errors.append(f"missing license file: {license_path}")
@@ -36,8 +56,15 @@ def validate(root: Path, catalog_path: Path) -> list[str]:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--font-root", type=Path, default=Path("app/static/fonts"))
+    parser.add_argument("--fix-vietnamese", action="store_true",
+                        help="rewrite each record's vietnamese flag from the font's own character map")
     args = parser.parse_args()
     catalog_path = args.font_root / "font_catalog.json"
+    if args.fix_vietnamese:
+        payload = json.loads(catalog_path.read_text(encoding="utf-8"))
+        for record in payload.get("records", []):
+            record["vietnamese"] = covers_vietnamese(args.font_root / record["path"])
+        catalog_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     errors = validate(args.font_root, catalog_path)
     if errors:
         for error in errors:

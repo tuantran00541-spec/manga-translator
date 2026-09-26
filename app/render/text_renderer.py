@@ -31,6 +31,28 @@ def get_font_object(font_path_str: str, size: int) -> ImageFont.FreeTypeFont:
         raise OSError(f"Cannot load font '{font_path_str}' size={size}: {e}") from e
 
 
+_PROBE_SIZE = 32
+_UNASSIGNED = "\U0010FFFD"
+
+
+@lru_cache(maxsize=FONT_CACHE_SIZE)
+def _missing_glyph_mask(font_path_str: str) -> tuple:
+    mask = get_font_object(font_path_str, _PROBE_SIZE).getmask(_UNASSIGNED)
+    return mask.size, bytes(mask)
+
+
+@lru_cache(maxsize=8192)
+def _draws_char(font_path_str: str, char: str) -> bool:
+    mask = get_font_object(font_path_str, _PROBE_SIZE).getmask(char)
+    return (mask.size, bytes(mask)) != _missing_glyph_mask(font_path_str)
+
+
+def font_draws_text(font_path, text: str) -> bool:
+    """False when some character would come out as the font's missing-glyph box."""
+    font_path_str = str(font_path)
+    return all(_draws_char(font_path_str, char) for char in set(str(text or "")) if not char.isspace())
+
+
 def parse_color(color_input, default=(0, 0, 0)) -> tuple[int, int, int]:
     if not color_input:
         return default
@@ -183,6 +205,10 @@ def render_text_in_box(
         font_path = get_font_path(font_name)
     else:
         font_path = Path(font_path)
+    if not font_draws_text(font_path, text) and font_draws_text(DEFAULT_FONT, text):
+        # A display font without the target language's letters would print boxes
+        # instead of them; the default font covers Vietnamese.
+        font_path = DEFAULT_FONT
 
     if fill is None or fill == "auto" or fill == "":
         text_color = auto_detect_text_color(image, box)

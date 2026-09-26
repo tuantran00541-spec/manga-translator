@@ -56,12 +56,12 @@ def _pages(archive_path: Path, out: Path, max_width: int = 800) -> int:
 
 
 def _fit_metrics(obj: dict, page_width: int) -> dict:
-    """Re-run the renderer's auto-fit for one object: the font size it drew at and the line count."""
+    """Reproduce how the renderer sizes one object: the font size it draws at, the lines, and whether it fits."""
     from PIL import Image, ImageDraw
 
     from app.parameters import RENDER_AUTO_STROKE_WIDTH, RENDER_DEFAULT_PADDING, RENDER_MIN_READABLE_FONT_SIZE, RENDER_PADDING_RATIO_MAX
-    from app.render.page_renderer import _render_region_for_text_object
-    from app.render.text_renderer import _fit_text, get_font_path
+    from app.render.page_renderer import _render_region_for_text_object, _resolve_ocr_style
+    from app.render.text_renderer import _calc_line_height, _fit_text, _wrap_text, font_draws_text, get_font_object, get_font_path
 
     text = str(obj.get("translation") or "").strip()
     region = _render_region_for_text_object(obj)
@@ -73,17 +73,25 @@ def _fit_metrics(obj: dict, page_width: int) -> dict:
     if not text or raw_w <= 0 or raw_h <= 0:
         return {}
     pad = max(2, min(RENDER_DEFAULT_PADDING, int(min(raw_w, raw_h) * RENDER_PADDING_RATIO_MAX)))
+    box_w, box_h = raw_w - 2 * pad, raw_h - 2 * pad
     style = obj.get("style") or {}
-    fixed = style.get("fontSize")
     draw = ImageDraw.Draw(Image.new("RGB", (8, 8)))
-    font_path = str(get_font_path(style.get("font") or "default"))
-    if isinstance(fixed, (int, float)) or (isinstance(fixed, str) and fixed.isdigit()):
-        size, lines, fits = int(fixed), [], True
+    font_path = get_font_path(style.get("font") or "default")
+    missing_glyphs = not font_draws_text(font_path, text)
+    size = _resolve_ocr_style(None, style.get("fontSize", "auto"), obj.get("ocr_font_size"), "auto")
+    if isinstance(size, (int, float)) or (isinstance(size, str) and size.isdigit()):
+        source = "ocr" if style.get("fontSize") in (None, "", "auto") else "style"
+        size = int(size)
+        font = get_font_object(str(font_path), size)
+        lines = _wrap_text(draw, text, font, box_w)
+        fits = bool(lines) and _calc_line_height(draw, font, stroke_w=RENDER_AUTO_STROKE_WIDTH) * len(lines) <= box_h
     else:
-        size, lines, fits = _fit_text(draw, text, raw_w - 2 * pad, raw_h - 2 * pad, font_path,
+        source = "fit"
+        size, lines, fits = _fit_text(draw, text, box_w, box_h, str(font_path),
                                       stroke_w=RENDER_AUTO_STROKE_WIDTH, minimum_size=RENDER_MIN_READABLE_FONT_SIZE)
-    return {"font_px": size, "font_px_at_800": round(size * 800 / max(1, page_width), 1), "lines": len(lines),
-            "wrapped": lines, "box_w": raw_w, "box_h": raw_h, "fits": fits,
+    return {"font_px": size, "font_px_at_800": round(size * 800 / max(1, page_width), 1), "size_source": source,
+            "lines": len(lines), "wrapped": lines, "box_w": raw_w, "box_h": raw_h, "fits": fits,
+            "missing_glyphs": missing_glyphs,
             # The wrap breaks a word apart when its lines no longer hold the text's own words.
             "split_word": bool(lines) and [w for line in lines for w in line.split()] != text.split()}
 
@@ -202,6 +210,8 @@ def main() -> int:
             "under_20px": sum(size < 20 for size in sizes),
             "split_word": sum(bool(line.get("split_word")) for line in measured),
             "does_not_fit": sum(not line.get("fits") for line in measured),
+            "missing_glyphs": sum(bool(line.get("missing_glyphs")) for line in measured),
+            "size_from_ocr": sum(line.get("size_source") == "ocr" for line in measured),
             "by_role": {
                 role: sorted(line["font_px_at_800"] for line in measured if (line.get("role") or "?") == role)
                 for role in sorted({line.get("role") or "?" for line in measured})
