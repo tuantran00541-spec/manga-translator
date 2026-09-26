@@ -179,6 +179,9 @@ SLICE_FALLBACK_TOLERANCE_RATIO = 0.08
 INPAINT_SIZE = 512
 # Put back the fine grain LaMa smooths away, sampled from the ring around each hole.
 INPAINT_GRAIN_RESTORE = _env_bool("MANGA_INPAINT_GRAIN_RESTORE", False)
+# Clean clusters top to bottom and hide the text of clusters not cleaned yet from
+# LaMa, so a fill never borrows strokes of neighbouring text as context.
+INPAINT_HIDE_NEIGHBOUR_TEXT = _env_bool("MANGA_INPAINT_HIDE_NEIGHBOUR_TEXT", False)
 INPAINT_GRAIN_RING_PX = 12
 INPAINT_GRAIN_MIN_STD = 2.0
 DYNAMIC_LAMA_MAX_SINGLE_CROP_DIM = 1024
