@@ -24,7 +24,7 @@ jobs:
       MANGA_USE_DYNAMIC_LAMA: "1"
       OPENBLAS_NUM_THREADS: "1"
       # LaMa code before the mask padding fix, for the before/after comparison.
-      BEFORE_REF: 6fc8930ebb13dadf10a3d9dc7d525a459365e186
+      BEFORE_REF: e08a56569d049d2bec6697829b5c23b1942809fb
     steps:
       - uses: actions/checkout@v4
         with:
