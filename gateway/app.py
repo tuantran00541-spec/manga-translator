@@ -3,6 +3,7 @@ from __future__ import annotations
 import hmac
 import os
 import re
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -29,6 +30,9 @@ class Upstream:
     input_usd_per_m: float
     output_usd_per_m: float
     reasoning_tokens: int = 0
+    # Extra attempts after a dropped connection, a timeout, 429 or 5xx.
+    retries: int = 2
+    retry_wait_s: float = 2.0
 
     def cost(self, usage: dict) -> float:
         prompt = max(0, int(usage.get("prompt_tokens") or 0))
@@ -36,18 +40,42 @@ class Upstream:
         return (prompt * self.input_usd_per_m + completion * self.output_usd_per_m) / 1_000_000
 
     def send(self, payload: dict) -> tuple[int, dict]:
-        response = requests.post(
-            f"{self.base.rstrip('/')}/chat/completions",
-            headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
-            json=payload,
-            timeout=(10, 300),
-            allow_redirects=False,
-        )
+        """POST to the upstream, retrying failures that say nothing about the request itself."""
+        for attempt in range(self.retries + 1):
+            last = attempt == self.retries
+            try:
+                response = requests.post(
+                    f"{self.base.rstrip('/')}/chat/completions",
+                    headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
+                    json=payload,
+                    timeout=(10, 300),
+                    allow_redirects=False,
+                )
+            except requests.RequestException:
+                if last:
+                    raise
+                time.sleep(self.retry_wait_s * 2 ** attempt)
+                continue
+            if response.status_code in RETRY_STATUSES and not last:
+                time.sleep(min(RETRY_AFTER_MAX_S, _retry_after(response) or self.retry_wait_s * 2 ** attempt))
+                continue
+            break
         try:
             body = response.json()
         except ValueError:
             body = {"error": {"message": "upstream returned no JSON"}}
         return response.status_code, body if isinstance(body, dict) else {}
+
+
+RETRY_STATUSES = frozenset({429, 500, 502, 503, 504})
+RETRY_AFTER_MAX_S = 20.0
+
+
+def _retry_after(response) -> float | None:
+    try:
+        return max(0.0, float(response.headers.get("Retry-After", "")))
+    except (TypeError, ValueError):
+        return None
 
 
 def upstream_from_env() -> Upstream:
@@ -58,6 +86,7 @@ def upstream_from_env() -> Upstream:
         input_usd_per_m=float(os.getenv("GATEWAY_PRICE_INPUT_PER_M", "0.28")),
         output_usd_per_m=float(os.getenv("GATEWAY_PRICE_OUTPUT_PER_M", "0.42")),
         reasoning_tokens=max(0, int(os.getenv("GATEWAY_UPSTREAM_REASONING_TOKENS", "0") or 0)),
+        retries=max(0, int(os.getenv("GATEWAY_UPSTREAM_RETRIES", "2") or 0)),
     )
 
 

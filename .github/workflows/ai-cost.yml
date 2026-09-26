@@ -141,6 +141,34 @@ jobs:
             echo "SKIP_TRANSLATE=1" >> "$GITHUB_ENV"
           fi
 
+      - name: Check the model reads images
+        if: env.SKIP_TRANSLATE != '1'
+        env:
+          SOVINFRA_LAB_1B_TOKEN: ${{ secrets.SOVINFRA_LAB_1B_TOKEN }}
+          MINIROUTER_API_KEY: ${{ secrets.MINIROUTER_API_KEY }}
+        run: |
+          grep -qE '^mode: *(text|reference)' .github/ai-cost.txt && exit 0
+          KEY="${!PROVIDER_SECRET}" python - <<'PY'
+          import base64, os, sys, cv2, numpy as np, requests
+          image = np.full((96, 160, 3), 255, np.uint8)
+          cv2.putText(image, "HELLO", (12, 62), cv2.FONT_HERSHEY_SIMPLEX, 1.3, (0, 0, 0), 3)
+          data = base64.b64encode(cv2.imencode(".jpg", image)[1].tobytes()).decode()
+          response = requests.post(
+              os.environ["GATEWAY_UPSTREAM_BASE"].rstrip("/") + "/chat/completions",
+              headers={"Authorization": "Bearer " + os.environ["KEY"]},
+              json={"model": os.environ["GATEWAY_UPSTREAM_MODEL"], "max_tokens": 2000, "messages": [{"role": "user", "content": [
+                  {"type": "text", "text": "What word is written in this image? Answer with the word only."},
+                  {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + data}}]}]},
+              timeout=(10, 120))
+          reply = ""
+          if response.ok:
+              reply = ((response.json().get("choices") or [{}])[0].get("message") or {}).get("content") or ""
+          print(f"HTTP {response.status_code}: {reply[:80]!r}")
+          if not response.ok or "HELLO" not in reply.upper():
+              print(f"::error::{os.environ['GATEWAY_UPSTREAM_MODEL']} did not read a test image: HTTP {response.status_code} {response.text[:300]}")
+              sys.exit(1)
+          PY
+
       - name: Translate a real chapter through the gateway
         if: env.SKIP_TRANSLATE != '1'
         env:
