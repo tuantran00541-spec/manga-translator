@@ -6,8 +6,8 @@
   "current": {
    "scale": 0.0,
    "dilate": 7,
-   "detect_s": 24.2,
-   "inpaint_s": 45.3,
+   "detect_s": 19.8,
+   "inpaint_s": 36.4,
    "forward_calls": 16,
    "boxes": 18,
    "coverage": 0.8809,
@@ -21,8 +21,8 @@
    "scale": 0.0,
    "dilate": 7,
    "collage": true,
-   "detect_s": 24.3,
-   "inpaint_s": 36.7,
+   "detect_s": 19.9,
+   "inpaint_s": 30.4,
    "forward_calls": 16,
    "boxes": 19,
    "coverage": 0.9008,
@@ -35,8 +35,8 @@
   "tile075": {
    "scale": 0.75,
    "dilate": 7,
-   "detect_s": 66.1,
-   "inpaint_s": 37.8,
+   "detect_s": 54.2,
+   "inpaint_s": 31.0,
    "forward_calls": 44,
    "boxes": 19,
    "coverage": 0.9593,
@@ -47,5 +47,6 @@
    "sharpness_regions": 12
   }
  },
- "caught_regions": 31
+ "caught_regions": 31,
+ "missed_regions": 52
 }
