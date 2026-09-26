@@ -97,6 +97,21 @@
 
   .settings-backdrop { position: fixed; inset: 0; z-index: calc(var(--z-modal) - 1); background: var(--surface-overlay); backdrop-filter: blur(2px); }
   .settings-drawer { position: fixed; z-index: var(--z-modal); inset: 0 0 0 auto; display: grid; grid-template-rows: auto minmax(0, 1fr); width: min(440px, 100vw); border-left: 1px solid var(--border-strong); background: var(--surface-panel); box-shadow: var(--shadow-float); }
+  body.repaint-mode-open { overflow: hidden; }
+  .repaint-mode-backdrop { position: fixed; inset: 0; z-index: var(--z-modal); display: grid; place-items: center; padding: 16px; background: color-mix(in srgb, var(--surface-overlay) 72%, transparent); backdrop-filter: blur(2px); }
+  .repaint-mode-dialog { display: grid; gap: 14px; width: min(520px, 100%); max-height: calc(100dvh - 32px); overflow: auto; padding: 22px; border: 1px solid var(--border-strong); border-radius: var(--radius-lg); background: var(--surface-panel); box-shadow: var(--shadow-float); color: var(--text-primary); }
+  .repaint-mode-eyebrow { margin: 0 0 -8px; color: var(--text-muted); font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+  .repaint-mode-dialog h2 { margin: 0; font-size: 20px; font-weight: 700; }
+  .repaint-mode-description { margin: -6px 0 0; color: var(--text-secondary); font-size: 13px; line-height: 1.5; }
+  .repaint-mode-options { display: grid; gap: 8px; }
+  .repaint-mode-option { display: grid; gap: 6px; width: 100%; padding: 12px 14px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--surface-panel); color: var(--text-secondary); text-align: left; cursor: pointer; transition: border-color var(--motion-fast); }
+  .repaint-mode-option:hover, .repaint-mode-option:focus-visible { border-color: var(--border-strong); }
+  .repaint-mode-option.is-selected { border: 2px solid var(--accent); padding: 11px 13px; color: var(--text-primary); }
+  .repaint-mode-option-header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .repaint-mode-option-header strong { font-size: 14px; }
+  .repaint-mode-option-detail { font-size: 12px; line-height: 1.5; }
+  .repaint-mode-actions { display: flex; justify-content: flex-end; gap: 8px; }
+  .repaint-mode-actions .ui-btn { padding: 0 16px; }
   .settings-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 12px 12px 20px; border-bottom: 1px solid var(--border-subtle); }
   .settings-header h2 { margin: 0; font-size: 15px; }
   .settings-header .ui-icon-btn { border-color: transparent; }
