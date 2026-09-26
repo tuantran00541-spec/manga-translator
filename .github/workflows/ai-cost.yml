@@ -143,7 +143,7 @@ jobs:
         if: always() && github.ref_name != github.event.repository.default_branch
         run: |
           dir="${EVIDENCE:-audit-results/ai-cost}"
-          ls "$dir"/report.json "$dir"/translation*.json >/dev/null 2>&1 || exit 0
+          compgen -G "$dir/report.json" >/dev/null || compgen -G "$dir/translation*.json" >/dev/null || exit 0
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           rm -rf /tmp/evidence && cp -r "$dir" /tmp/evidence
