@@ -42,7 +42,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("url")
     parser.add_argument("--out", type=Path, required=True)
-    parser.add_argument("--chapter-id", default="c1run0001")
+    parser.add_argument("--chapter-id", default="c1a90001")
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
 
