@@ -35,7 +35,7 @@ import numpy as np
 
 KIUYHA = "Kiuyha/Manga-Bubble-YOLO"
 REFERENCE_SCALE = 1.25
-BOX_PAD = 8
+BOX_PAD = 16  # 8 cut off letters at the ends of wide lines
 SHEET = 1024
 
 
@@ -127,7 +127,12 @@ def otsu_mask(image: np.ndarray, boxes) -> np.ndarray:
         for label in range(1, count):
             x, y, bw, bh, _area = stats[label]
             keep[label] = x > 0 and y > 0 and x + bw < fg.shape[1] and y + bh < fg.shape[0]
-        part = cv2.dilate(keep[labels].astype(np.uint8), np.ones((3, 3), np.uint8)) > 0
+        # Otsu takes the letters but not their outline (a white stroke around brown
+        # text sits close to a light background) and LaMa then keeps the outline
+        # as a ghost. Close the gaps into word blobs and grow past the outline.
+        part = keep[labels].astype(np.uint8)
+        part = cv2.morphologyEx(part, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15)))
+        part = cv2.dilate(part, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (13, 13))) > 0
         mask[y1:y2, x1:x2] |= part
     return mask
 
