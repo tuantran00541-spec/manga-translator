@@ -81,7 +81,8 @@ def parse_vision_translation(content: str, expected_ids: set[str], *, allow_miss
         raise RuntimeError("Vision model returned invalid JSON") from exc
     entries = data.get("translations") if isinstance(data, dict) else None
     if not isinstance(entries, list):
-        raise RuntimeError("Vision model must return a translations array")
+        shape = sorted(data)[:8] if isinstance(data, dict) else type(data).__name__
+        raise RuntimeError(f"Vision model must return a translations array (got {shape})")
     results: dict[str, str] = {}
     for entry in entries:
         if not isinstance(entry, dict) or not isinstance(entry.get("id"), str):
@@ -151,11 +152,13 @@ class VisionPageTranslator:
         system = system_prompt(_language_name(target_lang), target_lang, _font_catalog_hint(target_lang))
         where = f"SLICE {slice_number} of {slice_total}. " if slice_number and slice_total else ""
         prompt = (
-            (f"CHAPTER MEMORY: {json.dumps(memory.snapshot(), ensure_ascii=False, separators=(',', ':'))}\n"
+            (f"CHAPTER MEMORY (read-only context from earlier slices; never copy it into your answer): "
+             f"{json.dumps(memory.snapshot(), ensure_ascii=False, separators=(',', ':'))}\n\n"
              if memory is not None else "")
             + f"{where}Translate these text objects from {source_name}.\n"
             + json.dumps({"image_width": w, "image_height": h, "objects": objects},
                          ensure_ascii=False, separators=(",", ":"))
+            + '\n\nAnswer with one JSON object that starts with {"translations":[ and contains every id above.'
         )
         original_b64, cleaned_b64 = _encode_for_gemini(original), _encode_for_gemini(cleaned)
         ids = {str(item["id"]) for item in items}
@@ -218,7 +221,9 @@ class VisionPageTranslator:
             body = response.json()
             answer = _extract_output_text(body)
         except (TypeError, KeyError, ValueError) as exc:
-            raise RuntimeError(f"{self.provider.label} returned no translation text") from exc
+            choice = (body.get("choices") or [{}])[0] if isinstance(body, dict) else {}
+            reason = choice.get("finish_reason") if isinstance(choice, dict) else None
+            raise RuntimeError(f"{self.provider.label} returned no translation text ({exc}; finish_reason={reason})") from exc
         translations, font_choices, data = _parse_vision_payload(answer, ids)
         usage = body.get("usage") if isinstance(body.get("usage"), dict) else {}
         cost = _usage_cost_usd(usage) if self.provider.tracks_cost else None
