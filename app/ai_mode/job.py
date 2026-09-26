@@ -186,7 +186,7 @@ class AIModeRunner:
         active = [index for index, page in enumerate(pages) if not page.get("skipped")]
         batches = [active[i:i + SCAN_BATCH_SIZE] for i in range(0, len(active), SCAN_BATCH_SIZE)]
         scans = []
-        async def scan(batch: list[int]) -> None:
+        async def scan_images(batch: list[int]) -> None:
             images = [
                 (index, read_image(validate_managed_path(pages[index]["original"], RAW_DIR / chapter_id)))
                 for index in batch
@@ -206,7 +206,7 @@ class AIModeRunner:
                 if self.job.cancel_requested:
                     return
                 try:
-                    await scan([index])
+                    await scan_images([index])
                 except (RuntimeError, ValueError, OSError) as exc:
                     _append(self.report["scan_errors"], {"pages": [index], "error": _detail(exc)[:300]})
             finished += 1
@@ -218,7 +218,7 @@ class AIModeRunner:
                 if self.job.cancel_requested:
                     return True
                 try:
-                    await scan(batch)
+                    await scan_images(batch)
                 except (RuntimeError, ValueError, OSError) as exc:
                     if len(batch) > 1:
                         return False

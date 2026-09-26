@@ -113,7 +113,12 @@ export function mount(workspace) {
   brushBar.setAttribute("role", "toolbar");
   brushBar.setAttribute("aria-label", "Tùy chọn cọ inpaint");
   brushBar.hidden = true;
-  brushBar.append(sizeWrap, clearMask, submit);
+  const undoRepaint = document.createElement("button");
+  undoRepaint.type = "button";
+  undoRepaint.className = "ui-btn ui-btn-ghost ui-btn-compact undo-repaint-btn";
+  undoRepaint.textContent = "Bỏ repaint lát này";
+  undoRepaint.title = "Xóa mọi vùng đã làm sạch bằng cọ trên lát ở giữa màn hình, trả lại kết quả xử lý tự động";
+  brushBar.append(sizeWrap, clearMask, submit, undoRepaint);
 
   const actionsHost = document.createElement("div");
   actionsHost.className = "review-docbar-actions";
@@ -166,7 +171,18 @@ export function mount(workspace) {
   document.addEventListener("source-lang-changed", syncLang, { signal });
   document.addEventListener("source-lang-needed", () => { more.open = true; langSelect.focus(); }, { signal });
   morePanel.addEventListener("click", (e) => { if (e.target.closest("button")) more.open = false; }, { signal });
-  document.addEventListener("pointerdown", (e) => { if (more.open && !more.contains(e.target)) more.open = false; }, { signal });
+  // Docbar popovers (Dịch tự động, OCR, ⋯): one open at a time, closed by a click outside or Escape.
+  const openMenus = () => docbar.querySelectorAll("details[open]");
+  docbar.addEventListener("toggle", (e) => {
+    if (!(e.target instanceof HTMLDetailsElement) || !e.target.open) return;
+    openMenus().forEach((other) => { if (other !== e.target && !other.contains(e.target)) other.open = false; });
+  }, { capture: true, signal });
+  document.addEventListener("pointerdown", (e) => { openMenus().forEach((menu) => { if (!menu.contains(e.target)) menu.open = false; }); }, { capture: true, signal });
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape" || !openMenus().length) return;
+    openMenus().forEach((menu) => { menu.open = false; });
+    e.stopImmediatePropagation();
+  }, { capture: true, signal });
 
   left.append(viewSwitch);
   right.append(actionsHost, more);
@@ -220,7 +236,7 @@ export function mount(workspace) {
     brushBar.hidden = state.variant !== "clean" || !(["brush", "eraser"].includes(state.tool) || hasMask);
   };
   shell._syncBrushBar = syncBrushBar;
-  const busy = (on, text = "Đang xử lý…") => { workspace.classList.toggle("review-busy", on); [submit, clearMask, size, clean, rendered, original, zoomOut, zoomIn, one, zoomValue].forEach((el) => el.disabled = on); submit.textContent = on ? text : "Làm sạch vùng"; document.querySelectorAll(".review-rail-tool").forEach((b) => b.disabled = on); if (!on) syncVariant(); };
+  const busy = (on, text = "Đang xử lý…") => { workspace.classList.toggle("review-busy", on); [submit, clearMask, undoRepaint, size, clean, rendered, original, zoomOut, zoomIn, one, zoomValue].forEach((el) => el.disabled = on); submit.textContent = on ? text : "Làm sạch vùng"; document.querySelectorAll(".review-rail-tool").forEach((b) => b.disabled = on); if (!on) syncVariant(); };
   const updateCompat = () => {
     const savedPage = Number(workspace.dataset.reviewCanonicalIndex);
     const canonical = Number.isInteger(savedPage) && savedPage >= 0
@@ -303,6 +319,21 @@ export function mount(workspace) {
       }
       for (const c of chunks) { if (c.canvas && c.ctx) { c.ctx.clearRect(0, 0, c.canvas.width, c.canvas.height); } c.dirty = false; } deleteSnapshot(snapshotKey()); window.showToast?.(affected ? "Đã làm sạch các vùng được đánh dấu." : "Không có vùng ảnh nào được cập nhật.", affected ? "success" : "info"); rerender();
     } catch (err) { window.showToast?.("Không thể xử lý vùng đánh dấu: " + err.message, "error"); } finally { busy(false); }
+  }, { signal });
+
+  undoRepaint.addEventListener("click", async () => {
+    const chapterId = window.currentChapterId, pageIndex = Number(workspace.dataset.reviewCanonicalIndex), page = window.currentManifest?.pages?.[pageIndex];
+    if (!chapterId || !page) return;
+    if (!page.manual_mask && !page.manual_lama_mask) return window.showToast?.(`Lát ${pageIndex + 1} chưa có vùng nào làm sạch bằng cọ.`, "info");
+    if (!window.confirm(`Bỏ mọi vùng đã làm sạch bằng cọ trên lát ${pageIndex + 1}? Lát sẽ trở về kết quả xử lý tự động.`)) return;
+    busy(true, "Đang khôi phục…");
+    try {
+      const response = await fetch("/api/reset_manual_mask", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chapter_id: chapterId, page_index: pageIndex }) });
+      const parse = window.parseApiResponse || (async (r) => r.json().catch(() => ({}))), data = await parse(response);
+      if (!response.ok) throw new Error(window.getErrorMessage?.(response.status, data) || data.detail || `HTTP ${response.status}`);
+      if (data.pages?.[pageIndex]) window.currentManifest.pages[pageIndex] = data.pages[pageIndex];
+      window.showToast?.(`Đã bỏ repaint trên lát ${pageIndex + 1}.`, "success"); rerender();
+    } catch (err) { window.showToast?.("Không thể bỏ repaint: " + err.message, "error"); } finally { busy(false); }
   }, { signal });
 
   syncVariant(); setTool(shell, state.tool); rerender();
