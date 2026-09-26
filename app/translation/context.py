@@ -97,11 +97,12 @@ def text_system_prompt(target_name: str, target_lang: str) -> str:
     return "\n\n".join(parts)
 
 
-def system_prompt(target_name: str, target_lang: str, font_hint: str) -> str:
+def system_prompt(target_name: str, target_lang: str, font_hint: str, *, repair: bool = True) -> str:
     parts = [_with_input(target_name, _INPUT_IMAGES)]
     if str(target_lang or "").lower() in {"vi", "vie", "vietnamese"}:
         parts.append(_VIETNAMESE)
-    parts.append(_REPAIR)
+    if repair:
+        parts.append(_REPAIR)
     parts.append(_OUTPUT.format(fonts=font_hint))
     return "\n\n".join(parts)
 

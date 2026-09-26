@@ -204,6 +204,7 @@ class VisionPageTranslator:
         self, original_path: Path, cleaned_path: Path, items: list[dict],
         *, api_key: str, source_lang: str, target_lang: str,
         memory: ChapterMemory | None = None, slice_number: int | None = None, slice_total: int | None = None,
+        repair: bool = True,
     ) -> VisionTranslationResult:
         if not api_key.strip():
             raise ValueError(f"{self.provider.label} API key is not configured")
@@ -222,7 +223,7 @@ class VisionPageTranslator:
             if str(source_lang or "").lower() in {"", "auto"}
             else _language_name(source_lang)
         )
-        system = system_prompt(_language_name(target_lang), target_lang, _font_catalog_hint(target_lang))
+        system = system_prompt(_language_name(target_lang), target_lang, _font_catalog_hint(target_lang), repair=repair)
         where = f"SLICE {slice_number} of {slice_total}. " if slice_number and slice_total else ""
         prompt = (
             (f"CHAPTER MEMORY (read-only context from earlier slices; never copy it into your answer): "
@@ -254,10 +255,10 @@ class VisionPageTranslator:
                 roles[str(entry["id"])] = role
             if entry.get("review") is True:
                 review.add(str(entry["id"]))
-        keep = frozenset(str(item) for item in data.get("keep") or [] if str(item) in ids)
+        keep = frozenset(str(item) for item in data.get("keep") or [] if str(item) in ids) if repair else frozenset()
         return replace(
             result, roles=roles, review_ids=frozenset(review), missing_ids=frozenset(ids - answered),
-            keep_ids=keep, missed_boxes=_missed_boxes(data.get("missed"), w, h),
+            keep_ids=keep, missed_boxes=_missed_boxes(data.get("missed"), w, h) if repair else (),
         )
 
     def _openai(self, system, prompt, original, cleaned, *, api_key, ids, max_tokens):

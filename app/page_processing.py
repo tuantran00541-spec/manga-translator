@@ -6,6 +6,7 @@ import uuid
 from pathlib import Path
 
 import cv2
+import numpy as np
 
 from app.detector.bubble_detector import BubbleBox, apply_final_nms
 from app.image_io import encode_mask, read_image, write_image
@@ -18,6 +19,22 @@ from app.parameters import (
     DETECTOR_RESIDUE_VERIFY_ENABLED,
 )
 
+
+
+def _fold_leftover(records: list[dict], box: BubbleBox) -> None:
+    """Grow the first-pass record holding ``box`` so a later re-inpaint erases it too."""
+    cx, cy = (box.x1 + box.x2) / 2, (box.y1 + box.y2) / 2
+    for record in records:
+        mask = record.get("_mask_array")
+        x1, y1, x2, y2 = (int(record[k]) for k in ("x1", "y1", "x2", "y2"))
+        if not (x1 <= cx <= x2 and y1 <= cy <= y2) or mask is None or mask.shape != (y2 - y1, x2 - x1):
+            continue
+        ux1, uy1, ux2, uy2 = min(x1, box.x1), min(y1, box.y1), max(x2, box.x2), max(y2, box.y2)
+        grown = np.zeros((uy2 - uy1, ux2 - ux1), np.uint8)
+        grown[y1 - uy1:y2 - uy1, x1 - ux1:x2 - ux1] = mask
+        grown[box.y1 - uy1:box.y2 - uy1, box.x1 - ux1:box.x2 - ux1] |= box.mask
+        record.update(x1=ux1, y1=uy1, x2=ux2, y2=uy2, _mask_array=grown)
+        return
 
 class PageProcessingMixin:
     @staticmethod
@@ -142,6 +159,7 @@ class PageProcessingMixin:
         old_by_id = {str(b.get("id")): b for b in existing_boxes if isinstance(b, dict) and b.get("id")}
 
         effective_boxes: list[BubbleBox] = []
+        inpainted_records: list[dict] = []
         for record in detector_records:
             old = old_by_id.get(str(record.get("id")))
             if old is not None:
@@ -195,6 +213,7 @@ class PageProcessingMixin:
                 if record.get("geometry_overridden"):
                     _effective.allow_rectangle_fallback = True
                 effective_boxes.append(_effective)
+                inpainted_records.append(record)
 
         verification_only_boxes = self._review_only_residue_sources(detector_records)
 
@@ -227,6 +246,8 @@ class PageProcessingMixin:
         leftovers = second_pass(clean_image, effective_boxes) if callable(second_pass) else []
         if leftovers:
             clean_image = self.inpainter.inpaint(clean_image, leftovers, protected_regions=preserve_regions)
+            for box in leftovers:
+                _fold_leftover(inpainted_records, box)
         auto_inpaint_ms = (time.perf_counter() - auto_inpaint_started_at) * 1000.0
 
         auto_clean_path = self._auto_clean_path(processed_dir, img_path)

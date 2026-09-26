@@ -22,19 +22,22 @@ class Mailer:
             if self.dev_mode:
                 return
             raise MailUnavailable("Email sending is not configured")
-        response = requests.post(
-            f"{self.api_base}/emails",
-            headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
-            json={
-                "from": self.sender,
-                "to": [email],
-                "subject": f"Mã đăng nhập Manga Translator: {code}",
-                "text": f"Mã đăng nhập của bạn là {code}. Mã có hiệu lực 10 phút.\n\n"
-                        "Nếu bạn không yêu cầu mã này, hãy bỏ qua email.",
-            },
-            timeout=(5, 15),
-            allow_redirects=False,
-        )
+        try:
+            response = requests.post(
+                f"{self.api_base}/emails",
+                headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
+                json={
+                    "from": self.sender,
+                    "to": [email],
+                    "subject": f"Mã đăng nhập Manga Translator: {code}",
+                    "text": f"Mã đăng nhập của bạn là {code}. Mã có hiệu lực 10 phút.\n\n"
+                            "Nếu bạn không yêu cầu mã này, hãy bỏ qua email.",
+                },
+                timeout=(5, 15),
+                allow_redirects=False,
+            )
+        except requests.RequestException as exc:
+            raise MailUnavailable("Mail provider unreachable") from exc
         if not response.ok:
             raise MailUnavailable(f"Mail provider HTTP {response.status_code}")
 

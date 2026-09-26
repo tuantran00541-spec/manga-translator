@@ -219,6 +219,7 @@ def create_app(store: Store, upstream: Upstream, admin_key: str, *, mailer: Mail
         except LoginRejected as exc:
             raise HTTPException(exc.status, exc.message) from exc
         except MailUnavailable as exc:
+            store.cancel_login(email)
             raise HTTPException(503, "Không gửi được email đăng nhập") from exc
         result = {"sent": True, "email": email}
         if mailer.dev_mode and not mailer.api_key:

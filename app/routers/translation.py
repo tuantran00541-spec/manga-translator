@@ -369,12 +369,14 @@ def _vision_candidates(page: dict, *, force: bool) -> list[dict]:
 
 @router.post("/page/vision")
 async def translate_page_with_images(req: TranslateVisionPageRequest) -> dict:
-    return await translate_page_in_context(req)
+    return await translate_page_in_context(req, repair=False)
 
 
 async def translate_page_in_context(
     req: TranslateVisionPageRequest, memory: ChapterMemory | None = None, slice_total: int | None = None,
+    repair: bool = True,
 ) -> dict:
+    """Translate one slice; ``repair`` lets the model keep art text and report missed text (A.I mode only)."""
     validate_chapter_id(req.chapter_id)
     try:
         provider = _resolve_vision_provider(req.provider)
@@ -439,7 +441,7 @@ async def translate_page_in_context(
         translated = await run_in_threadpool(
             translator.translate_page, original_path, clean_path, candidates,
             api_key=api_key, source_lang=req.source_lang, target_lang=req.target_lang,
-            memory=memory, slice_number=req.page_index + 1, slice_total=slice_total,
+            memory=memory, slice_number=req.page_index + 1, slice_total=slice_total, repair=repair,
         )
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc

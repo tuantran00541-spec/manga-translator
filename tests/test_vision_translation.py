@@ -293,3 +293,9 @@ def test_vision_reply_reports_kept_missed_and_unanswered_objects(tmp_path, monke
     assert result.missing_ids == {"lost"}, "answered-empty differs from not answered"
     assert result.missed_boxes == ((100, 60, 300, 120, "CROSS THE MAP"),), "0-1000 boxes to pixels; tiny and whole-slice boxes dropped"
 
+    sent = []
+    monkeypatch.setattr("app.translation.vision.requests.post", lambda url, **kwargs: sent.append(kwargs) or Response())
+    editor = translator.translate_page(original, clean, [item("t1"), item("logo"), item("lost")],
+                                       api_key="k", source_lang="en", target_lang="vi", repair=False)
+    assert not editor.keep_ids and not editor.missed_boxes, "the editor never hides or adds regions"
+    assert "CLEANUP CHECK" not in sent[0]["json"]["messages"][0]["content"]

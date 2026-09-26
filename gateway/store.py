@@ -164,6 +164,11 @@ class Store:
             )
         return code
 
+    def cancel_login(self, email: str) -> None:
+        """Forget an unsent code so the user can retry at once."""
+        with self._write() as db:
+            db.execute("DELETE FROM login_codes WHERE email = ?", (email,))
+
     def verify_login(self, email: str, code: str) -> tuple[str, str]:
         now = self.now()
         rejected: LoginRejected | None = None

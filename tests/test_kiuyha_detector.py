@@ -123,3 +123,15 @@ def test_second_pass_only_keeps_leftovers_inside_first_pass_boxes():
     leftovers = detector.leftover_boxes(image, kept)
     assert len(leftovers) == 2 and all(b.y1 > 1000 for b in leftovers)
     assert detector.leftover_boxes(image, []) == []
+
+
+def test_leftover_mask_is_folded_into_the_saved_first_pass_box():
+    from app.detector.bubble_detector import BubbleBox
+    from app.page_processing import _fold_leftover
+
+    record = {"x1": 10, "y1": 10, "x2": 50, "y2": 30, "_mask_array": np.full((20, 40), 255, np.uint8)}
+    leftover = BubbleBox(25, 20, 65, 40, 0.9, np.full((20, 40), 255, np.uint8))
+    _fold_leftover([record], leftover)
+    assert (record["x1"], record["y1"], record["x2"], record["y2"]) == (10, 10, 65, 40)
+    assert record["_mask_array"].shape == (30, 55)
+    assert record["_mask_array"][25, 50] == 255 and record["_mask_array"][25, 5] == 0

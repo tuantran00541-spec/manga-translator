@@ -167,6 +167,14 @@ def test_login_without_a_mail_provider_is_refused_outside_dev_mode(world, tmp_pa
     assert response.status_code == 503 and "dev_code" not in response.text
 
 
+
+def test_unreachable_mail_provider_is_a_503_and_retry_is_not_blocked(world, tmp_path):
+    app = create_app(Store(tmp_path / "gw.sqlite"), Upstream("http://127.0.0.1:9", "", "m", 0, 0), ADMIN,
+                     mailer=Mailer(api_key="k", sender="s", dev_mode=False, api_base="http://127.0.0.1:9"))
+    client = TestClient(app)
+    for _ in range(2):
+        assert client.post("/v1/auth/start", json={"email": "a@example.com"}).status_code == 503
+
 def _payos_webhook(order_code: int, amount: int, *, key: str = CHECKSUM, code: str = "00") -> dict:
     data = {**SDK_WEBHOOK_DATA, "orderCode": order_code, "amount": amount, "code": code}
     return {"code": "00", "desc": "success", "success": True, "data": data, "signature": payos_data_signature(data, key)}
