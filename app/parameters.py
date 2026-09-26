@@ -134,10 +134,8 @@ DETECTOR_STABLE_ID_IOU_MIN = 0.50
 DETECTOR_INPUT_SIZE = 1024
 # Tall slices are detected in vertical windows instead of being shrunk whole into
 # the square model input. The value is the scale each window is fed at (1.0 = the
-# slice's own pixels; 0 = one pass over the whole slice). 0.75 is the measured
-# trade-off: one pass (0.43x on a 2400 px slice) missed whole captions, 1.0 caught
-# the most text but took 3.5x the detector time (audit-results/clean-quality).
-DETECTOR_TILE_SCALE = _env_float("MANGA_DETECTOR_TILE_SCALE", 0.75, minimum=0.0, maximum=2.0)
+# slice's own pixels; 0 = one pass over the whole slice).
+DETECTOR_TILE_SCALE = _env_float("MANGA_DETECTOR_TILE_SCALE", 0.0, minimum=0.0, maximum=2.0)
 DETECTOR_TILE_OVERLAP = 0.2
 DETECTOR_MAX_BOX_AREA_RATIO = 0.35
 DETECTOR_CONFIDENCE_MAX = 0.999998
