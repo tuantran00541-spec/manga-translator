@@ -126,7 +126,7 @@ def main() -> int:
     totals = {name: {"detect_s": 0.0, "inpaint_s": 0.0, "forward_calls": 0, "ref_px": 0, "covered_px": 0,
                      "mask_px": 0, "over_px": 0, "residual_px": 0, "boxes": 0, "sharpness": []}
               for name in VARIANTS}
-    caught_regions, fill_regions = [], []
+    caught_regions, missed_regions, fill_regions = [], [], []
     for page_number, page in enumerate(pages):
         image = read_image(Path(page["original"]))
         core = page.get("stitch_core") or {}
@@ -160,6 +160,13 @@ def main() -> int:
             x, y, w, h, area = (int(v) for v in stats[label])
             if area >= 300:
                 caught_regions.append((area, page_number, (x, y, w, h)))
+        # Reference text the collage still leaves unmasked.
+        left = ((ref > 0) & (outputs["collage"][1] == 0)).astype(np.uint8)
+        count, _, stats, _ = cv2.connectedComponentsWithStats(cv2.dilate(left, np.ones((15, 15), np.uint8)))
+        for label in range(1, count):
+            x, y, w, h, area = (int(v) for v in stats[label])
+            if area >= 300:
+                missed_regions.append((area, page_number, (x, y, w, h)))
         count, _, stats, _ = cv2.connectedComponentsWithStats((outputs["collage"][1] > 0).astype(np.uint8))
         for label in range(1, count):
             x, y, w, h, area = (int(v) for v in stats[label])
@@ -178,6 +185,7 @@ def main() -> int:
                        box, args.out / f"{kind}-{rank:02d}.jpg")
 
     sheet("caught", caught_regions, 8)
+    sheet("missed", missed_regions, 8)
     sheet("fill", fill_regions, 8)
 
     report = {"url": args.url, "slices": len(pages), "reference_scale": REFERENCE_SCALE, "variants": {}}
@@ -194,6 +202,7 @@ def main() -> int:
             "sharpness_regions": len(ratios),
         }
     report["caught_regions"] = len(caught_regions)
+    report["missed_regions"] = len(missed_regions)
     (args.out / "report.json").write_text(json.dumps(report, indent=1), encoding="utf-8")
     print(json.dumps(report, indent=1))
     return 0

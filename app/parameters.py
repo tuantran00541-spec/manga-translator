@@ -139,8 +139,10 @@ DETECTOR_TILE_SCALE = _env_float("MANGA_DETECTOR_TILE_SCALE", 0.0, minimum=0.0, 
 DETECTOR_TILE_OVERLAP = 0.2
 # Tall slices: put the top and bottom halves side by side in the one square model
 # input instead of shrinking the whole slice into its middle column, so text
-# reaches the model about 1.5-2x bigger for the same single forward pass.
-DETECTOR_COLLAGE = _env_bool("MANGA_DETECTOR_COLLAGE", False)
+# reaches the model about 1.5-2x bigger for the same single forward pass. On 16
+# real slices: same detector time, over-erase 27.5% -> 7.9%, inpaint 19% faster,
+# whole captions the single pass missed are caught (audit-results/clean-quality).
+DETECTOR_COLLAGE = _env_bool("MANGA_DETECTOR_COLLAGE", True)
 DETECTOR_COLLAGE_MIN_OVERLAP = 256
 DETECTOR_COLLAGE_GAP = 16
 DETECTOR_MAX_BOX_AREA_RATIO = 0.35
