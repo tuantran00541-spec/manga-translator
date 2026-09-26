@@ -1,4 +1,7 @@
 https://asurascans.com/comics/the-academy-s-weapon-replicator-05c7df14/chapter/1
-mode: reference
-reference-dir: lettering-reference-action
-reference-args: --vi 5 --en 1 --popular-tags Action --max-images 5
+provider: minirouter
+model: meta/muse-spark-1.2-contributor
+price: 0.105 0.21
+reasoning: 4000
+# render check: all pages + font metrics
+# repair stage run
