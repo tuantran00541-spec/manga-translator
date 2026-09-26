@@ -2,5 +2,6 @@ https://asurascans.com/comics/the-academy-s-weapon-replicator-05c7df14/chapter/1
 mode: text
 provider: minirouter
 model: meta/muse-spark-1.3-contributor
+price: 0.105 0.21
 notes:
-variant: muse-tuned-t02 --tuned --temperature 0.2
+variant: muse-tuned-t02 --tuned --temperature 0.2 --chunk 30 --max-tokens 16000

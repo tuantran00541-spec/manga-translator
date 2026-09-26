@@ -77,6 +77,7 @@ TUNING
 - Write normal Vietnamese sentence case even when the source is ALL CAPS. Keep capitals only for SFX, system window titles and names.
 - If you cannot tell who is speaking, infer it from the surrounding lines before choosing pronouns; a parent speaks to a child as ta/con or cha/con, never tôi.
 - Spell Vietnamese carefully: every word must be a real Vietnamese word with correct diacritics.
+- Copy every proper name letter for letter from the source (Frondier stays Frondier), even when it looks like a misspelt English word.
 """.strip()
 
 
@@ -85,10 +86,11 @@ def _valid_address(term: str) -> bool:
     return bool(words) and all(word in VI_ADDRESS_WORDS for word in words)
 
 
-def _ask(base: str, key: str, model: str, system: str, user: str, temperature: float | None = None) -> tuple[str, dict, float]:
+def _ask(base: str, key: str, model: str, system: str, user: str, temperature: float | None = None,
+         max_tokens: int = MAX_TOKENS) -> tuple[str, dict, float]:
     started = time.perf_counter()
     payload = {"model": model, "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
-               "response_format": {"type": "json_object"}, "max_tokens": MAX_TOKENS, "stream": False,
+               "response_format": {"type": "json_object"}, "max_tokens": max_tokens, "stream": False,
                **({"temperature": temperature} if temperature is not None else {})}
     headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
     url = f"{base.rstrip('/')}/chat/completions"
@@ -104,6 +106,8 @@ def _ask(base: str, key: str, model: str, system: str, user: str, temperature: f
     content = choice.get("message", {}).get("content") or ""
     if not content.strip():
         raise RuntimeError(f"empty reply (finish_reason={choice.get('finish_reason')})")
+    if choice.get("finish_reason") == "length":
+        raise RuntimeError(f"reply cut off at max_tokens={max_tokens} (usage={body.get('usage')})")
     return content, body.get("usage") or {}, elapsed
 
 
@@ -112,7 +116,7 @@ def _line(item: dict) -> str:
 
 
 def translate(out: Path, target_lang: str, notes: str, tag: str = "", tuned: bool = False,
-              temperature: float | None = None) -> None:
+              temperature: float | None = None, chunk_size: int = CHUNK, max_tokens: int = MAX_TOKENS) -> None:
     base, key, model = (os.environ[name] for name in ("GATEWAY_UPSTREAM_BASE", "GATEWAY_UPSTREAM_KEY", "GATEWAY_UPSTREAM_MODEL"))
     data = json.loads((out / "ocr.json").read_text(encoding="utf-8"))
     lines = data["lines"]
@@ -141,12 +145,14 @@ def translate(out: Path, target_lang: str, notes: str, tag: str = "", tuned: boo
             f"TRANSLATE NOW:\n" + "\n".join(_line(item) for item in chunk)
             + '\n\nAnswer with one JSON object that starts with {"translations":[ and contains every id under TRANSLATE NOW.'
         )
+        content = ""
         try:
-            content, usage, elapsed = _ask(base, key, model, system, user, temperature)
+            content, usage, elapsed = _ask(base, key, model, system, user, temperature, max_tokens)
             translations = parse_vision_translation(content, ids, allow_missing=True)
             reply = json.loads(content.strip().removeprefix("```json").removesuffix("```"))
         except Exception as exc:
-            errors.append({"chunk": label, "error": str(exc)[:400]})
+            errors.append({"chunk": label, "error": str(exc)[:400],
+                           **({"reply_tail": content[-300:]} if content else {})})
             calls.append({"chunk": label, "ok": False})
             return
         for name in usage_total:
@@ -169,11 +175,11 @@ def translate(out: Path, target_lang: str, notes: str, tag: str = "", tuned: boo
         calls.append({"chunk": label, "ok": True, "seconds": round(elapsed, 1), "usage": usage,
                       "missing": sorted(ids - {i for i in ids if translations.get(i)})})
 
-    for start in range(0, len(lines), CHUNK):
-        run(lines[start:start + CHUNK], f"{start + 1}-{min(start + CHUNK, len(lines))}")
+    for start in range(0, len(lines), chunk_size):
+        run(lines[start:start + chunk_size], f"{start + 1}-{min(start + chunk_size, len(lines))}")
     missing = [item for item in lines if item["id"] not in done]
-    if missing:
-        run(missing, "retry-missing")
+    for start in range(0, len(missing), chunk_size):
+        run(missing[start:start + chunk_size], f"retry-missing-{start // chunk_size + 1}")
 
     sheet = memory.snapshot()
     report = {
@@ -188,7 +194,8 @@ def translate(out: Path, target_lang: str, notes: str, tag: str = "", tuned: boo
                   for item in lines],
     }
     suffix = f"-{tag}" if tag else ""
-    report["variant"] = {"tag": tag, "tuned": tuned, "temperature": temperature}
+    report["variant"] = {"tag": tag, "tuned": tuned, "temperature": temperature, "chunk": chunk_size, "max_tokens": max_tokens}
+    report["cost_usd"] = round(sum(float((c.get("usage") or {}).get("cost") or 0) for c in calls), 5)
     (out / f"translation{suffix}.json").write_text(json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8")
     rows = ["| # | Lát | Gốc | Dịch | Vai | Người nói |", "|---|---|---|---|---|---|"]
     for n, row in enumerate(report["table"], start=1):
@@ -212,11 +219,13 @@ def main() -> int:
     t.add_argument("--tag", default="")
     t.add_argument("--tuned", action="store_true")
     t.add_argument("--temperature", type=float)
+    t.add_argument("--chunk", type=int, default=CHUNK)
+    t.add_argument("--max-tokens", type=int, default=MAX_TOKENS)
     args = parser.parse_args()
     if args.command == "ocr":
         ocr(args.url, confined(args.out), args.workers)
     else:
-        translate(confined(args.out), args.target, args.notes, args.tag, args.tuned, args.temperature)
+        translate(confined(args.out), args.target, args.notes, args.tag, args.tuned, args.temperature, args.chunk, args.max_tokens)
     return 0
 
 
