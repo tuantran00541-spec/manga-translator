@@ -111,9 +111,16 @@ jobs:
       - name: Commit evidence to the branch
         if: always() && github.ref_name != github.event.repository.default_branch
         run: |
-          test -d audit-results/ai-cost || exit 0
+          test -f audit-results/ai-cost/report.json || exit 0
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add audit-results/ai-cost
-          git commit -m "audit: A.I cost through the gateway (run ${{ github.run_id }}) [skip ci]" || exit 0
-          for i in 1 2 3; do git pull --rebase origin "${GITHUB_REF_NAME}" && git push origin "HEAD:${GITHUB_REF_NAME}" && break; sleep 5; done
+          rm -rf /tmp/ai-cost && cp -r audit-results/ai-cost /tmp/ai-cost
+          for i in 1 2 3; do
+            git fetch origin "${GITHUB_REF_NAME}"
+            git checkout -f -B evidence FETCH_HEAD
+            rm -rf audit-results/ai-cost && mkdir -p audit-results && cp -r /tmp/ai-cost audit-results/ai-cost
+            git add -A audit-results/ai-cost
+            git commit -m "audit: A.I cost through the gateway (run ${{ github.run_id }}) [skip ci]" || exit 0
+            git push origin "HEAD:${GITHUB_REF_NAME}" && break
+            sleep 5
+          done
