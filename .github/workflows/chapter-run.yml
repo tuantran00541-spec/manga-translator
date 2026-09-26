@@ -1,10 +1,10 @@
-name: Clean quality
+name: Chapter run
 
 on:
   push:
     paths:
-      - "scripts/clean_quality_bench.py"
-      - ".github/workflows/clean-quality.yml"
+      - "scripts/chapter_run.py"
+      - ".github/workflows/chapter-run.yml"
   workflow_dispatch:
     inputs:
       chapter_url:
@@ -15,15 +15,20 @@ permissions:
   contents: write
 
 concurrency:
-  group: clean-quality-${{ github.ref }}
+  group: chapter-run-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  bench:
+  run:
+    strategy:
+      fail-fast: false
+      matrix:
+        detector: [auto, segmenter]
     runs-on: ubuntu-22.04
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       PYTHONUNBUFFERED: "1"
+      MANGA_TEXT_DETECTOR: ${{ matrix.detector }}
       PYTHONPATH: "."
       MANGA_PROCESSING_PIPELINE: fast
       MANGA_USE_DYNAMIC_LAMA: "1"
@@ -70,12 +75,12 @@ jobs:
           ls -la models
           test -f models/text_segmenter.onnx && test -f models/lama-manga-dynamic.onnx && test -f models/kiuyha_text_1280.onnx
 
-      - name: Clean the same slices with each variant
-        run: python scripts/clean_quality_bench.py "$CHAPTER_URL" --out audit-results/clean-quality --slices 16
+      - name: Process the whole chapter
+        run: python scripts/chapter_run.py "$CHAPTER_URL" --out audit-results/chapter-run/${{ matrix.detector }}
 
       - name: Save evidence to audit-evidence
         if: always()
         uses: ./.github/actions/save-evidence
         with:
-          paths: audit-results/clean-quality
-          message: "audit: clean quality (run ${{ github.run_id }})"
+          paths: audit-results/chapter-run/${{ matrix.detector }}
+          message: "audit: chapter run, ${{ matrix.detector }} (run ${{ github.run_id }})"

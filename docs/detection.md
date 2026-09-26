@@ -22,13 +22,12 @@ than when the slice is shrunk whole into the middle of the square (0.43× for
 ## Text segmenter (fallback)
 
 `app/one_shot_cleanup.py` — `text_segmenter.onnx` (YOLOv8m-seg, 1024 input)
-on the two halves. It also re-checks cleaned regions for leftover text in
-either mode.
+on the two halves; `MANGA_TEXT_DETECTOR=segmenter` forces it.
 
 ## Evidence
 
 Same 16 slices of a real chapter, cleaned with LaMa after each detector
-(Clean quality workflow, runs 36241127693 and 36242336581):
+(output on the `audit-evidence` branch; full chapters: Chapter run workflow):
 
 | Detector | Text blocks left of 24 | Detection | Over-erase |
 | --- | --- | --- | --- |

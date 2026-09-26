@@ -21,6 +21,7 @@ from app.parameters import (
     DETECTOR_RESIDUE_VERIFY_MAX_ROIS,
     DETECTOR_RESIDUE_VERIFY_MAX_SOURCE_SIDE,
     DETECTOR_RESIDUE_VERIFY_PAD,
+    TEXT_DETECTOR,
     TEXT_CONF_THRESHOLD,
 )
 
@@ -234,7 +235,7 @@ class OneShotProductionDetector:
         self.core = OneShotTextMaskDetector()
         self.text_detector = self.core.detector
         self.kiuyha = None
-        if kiuyha_model is not None and Path(kiuyha_model).is_file():
+        if TEXT_DETECTOR != "segmenter" and kiuyha_model is not None and Path(kiuyha_model).is_file():
             from app.detector.kiuyha_detector import KiuyhaTextDetector
             self.kiuyha = KiuyhaTextDetector(kiuyha_model)
         self._metrics_local = threading.local()

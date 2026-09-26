@@ -230,7 +230,7 @@ Place these files in models/:
 | File | Purpose |
 | --- | --- |
 | kiuyha_text_1280.onnx | Text detection (optional, preferred): Kiuyha/Manga-Bubble-YOLO boxes, masked per letter |
-| text_segmenter.onnx | Text detection when the file above is absent; checks cleaned regions for leftover text |
+| text_segmenter.onnx | Text detection when the file above is absent or `MANGA_TEXT_DETECTOR=segmenter` |
 | bubble_yolo.onnx | Bubble detection (checked at startup, not used by the cleaning pipeline) |
 | lama-manga-dynamic.onnx | Preferred inpainting backend |
 | lama.onnx | Fixed-resolution fallback |
