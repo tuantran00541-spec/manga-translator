@@ -27,22 +27,22 @@
   "s87-box_eedc2d79af734a13",
   "s87-box_5d03793990d24cc7"
  ],
- "seconds": 92.2,
+ "seconds": 79.0,
  "usage": {
-  "prompt_tokens": 61517,
-  "completion_tokens": 15568
+  "prompt_tokens": 61022,
+  "completion_tokens": 16037
  },
  "calls": [
   {
    "chunk": "1-60",
    "ok": true,
-   "seconds": 28.4,
+   "seconds": 22.8,
    "usage": {
-    "completion_tokens": 4736,
-    "prompt_tokens": 10613,
-    "total_tokens": 15349,
+    "completion_tokens": 4709,
+    "prompt_tokens": 10673,
+    "total_tokens": 15382,
     "prompt_tokens_details": {
-     "cached_tokens": 0
+     "cached_tokens": 8000
     }
    },
    "missing": [
@@ -61,11 +61,11 @@
   {
    "chunk": "61-120",
    "ok": true,
-   "seconds": 24.2,
+   "seconds": 22.7,
    "usage": {
-    "completion_tokens": 4094,
-    "prompt_tokens": 13625,
-    "total_tokens": 17719,
+    "completion_tokens": 4630,
+    "prompt_tokens": 13600,
+    "total_tokens": 18230,
     "prompt_tokens_details": {
      "cached_tokens": 8000
     }
@@ -78,18 +78,17 @@
   {
    "chunk": "121-180",
    "ok": true,
-   "seconds": 28.3,
+   "seconds": 22.8,
    "usage": {
-    "completion_tokens": 4862,
-    "prompt_tokens": 13588,
-    "total_tokens": 18450,
+    "completion_tokens": 4650,
+    "prompt_tokens": 13489,
+    "total_tokens": 18139,
     "prompt_tokens_details": {
      "cached_tokens": 8000
     }
    },
    "missing": [
     "s61-box_6d16e6ece6034512",
-    "s73-box_172f2a6d78f540ee",
     "s76-box_acc530be3cc54098",
     "s82-box_adfb077dacf14945"
    ]
@@ -97,11 +96,11 @@
   {
    "chunk": "181-188",
    "ok": true,
-   "seconds": 3.5,
+   "seconds": 3.3,
    "usage": {
-    "completion_tokens": 494,
-    "prompt_tokens": 11580,
-    "total_tokens": 12074,
+    "completion_tokens": 539,
+    "prompt_tokens": 11391,
+    "total_tokens": 11930,
     "prompt_tokens_details": {
      "cached_tokens": 8000
     }
@@ -120,11 +119,11 @@
   {
    "chunk": "retry-missing",
    "ok": true,
-   "seconds": 7.8,
+   "seconds": 7.4,
    "usage": {
-    "completion_tokens": 1382,
-    "prompt_tokens": 12111,
-    "total_tokens": 13493,
+    "completion_tokens": 1509,
+    "prompt_tokens": 11869,
+    "total_tokens": 13378,
     "prompt_tokens_details": {
      "cached_tokens": 9600
     }
@@ -159,62 +158,48 @@
  "characters": [
   {
    "name": "Frondier",
-   "note": "Male, 17, lazy second son of House Roah, student, self-refers as tôi"
+   "note": "Nhân vật chính, con trai thứ hai của nhà Roah, học sinh năm nhất Constelle, không có Thần Lực"
   },
   {
-   "name": "Teacher",
-   "note": "Female, teacher, addresses Frondier as chàng trẻ"
+   "name": "Giáo viên",
+   "note": "Giáo viên trong lớp, gọi Frondier là 'chàng trai trẻ'"
   },
   {
-   "name": "Classmate",
-   "note": "Bạn học của Frondier, chế giễu cậu"
-  },
-  {
-   "name": "Messenger",
-   "note": "Người đưa thư/Truyền đạt lệnh của Lord Angper, dùng 'tôi' và 'chậu'"
+   "name": "Học sinh",
+   "note": "Bạn học của Frondier, chế giễu anh"
   },
   {
    "name": "Angper",
-   "note": "Cha của Frondier, Lord của Nhà Roah, siêu nhân, chưa để quái vật xâm nhập"
+   "note": "Cha của Frondier, Lord của nhà Roah, giọng nói uy quyền"
   },
   {
-   "name": "Atzie",
-   "note": "Con trai cả của Angper, nhân vật quá mạnh trong game"
-  },
-  {
-   "name": "Gaper Derdah",
-   "note": "Thành viên nổi tiếng của Nhà Roah (tên có thể bị OCR sai từ Angper/Gaper, giữ nguyên theo ngữ cảnh 'GAPER DERDAH')"
+   "name": "Người hầu",
+   "note": "Người hầu của Frondier, cung kính"
   }
  ],
  "address": [
   {
-   "from": "Teacher",
-   "to": "Frondier",
-   "other": "chàng trẻ"
-  },
-  {
    "from": "Frondier",
-   "to": "Teacher",
+   "to": "Giáo viên",
    "self": "tôi",
    "other": "cô"
   },
   {
-   "from": "Classmate",
+   "from": "Giáo viên",
    "to": "Frondier",
-   "self": "chậu ấy",
-   "other": "chậu ấy"
+   "self": "tôi"
   },
   {
-   "from": "Frondier",
-   "to": "Self/Internal",
-   "self": "tao",
-   "other": "mày"
+   "from": "Angper",
+   "to": "Frondier",
+   "self": "ta",
+   "other": "con"
   },
   {
-   "from": "Messenger",
+   "from": "Người hầu",
    "to": "Frondier",
    "self": "tôi",
-   "other": "chậu"
+   "other": "cậu"
   }
  ],
  "table": [
@@ -276,8 +261,8 @@
    "id": "s4-box_9480ced184114197",
    "slice": 4,
    "source": "O BALDUR, WHO\nGOVERNS JUSTICE\nAND LIGHT...",
-   "translated_text": "Hỡi Baldur,\nthần cai quản\ncông lý và ánh sáng...",
-   "role": "shout",
+   "translated_text": "Hỡi Baldur, vị thần cai quản công lý và ánh sáng...",
+   "role": "dialogue",
    "speaker": "Frondier",
    "review": false
   },
@@ -285,8 +270,8 @@
    "id": "s5-box_722e0207daab4b8e",
    "slice": 5,
    "source": "PLEASE,\nGRANTME\nSTRENGTH...!!!",
-   "translated_text": "Xin hãy\nban cho ta\nlực lượng...!!!",
-   "role": "shout",
+   "translated_text": "Xin hãy ban cho ta sức mạnh...!!!",
+   "role": "dialogue",
    "speaker": "Frondier",
    "review": false
   },
@@ -294,17 +279,17 @@
    "id": "s8-box_2c98cb65eca14822",
    "slice": 8,
    "source": "GAH!!",
-   "translated_text": "KHẸT!!",
+   "translated_text": "Aa!!",
    "role": "sfx",
-   "speaker": "",
+   "speaker": "narration",
    "review": false
   },
   {
    "id": "s9-box_afae8d495b34448b",
    "slice": 9,
    "source": "Z-ZO.:",
-   "translated_text": "T-TẠI SAO...!",
-   "role": "shout",
+   "translated_text": "Z-Zo...?",
+   "role": "dialogue",
    "speaker": "Frondier",
    "review": false
   },
@@ -312,7 +297,7 @@
    "id": "s10-box_38b051b8cd6b411b",
    "slice": 10,
    "source": "IT CAN'T\nEND...",
-   "translated_text": "Không thể\nkết thúc...",
+   "translated_text": "Không thể kết thúc...",
    "role": "dialogue",
    "speaker": "Frondier",
    "review": false
@@ -321,7 +306,7 @@
    "id": "s10-box_9f0bb8d1cd2e4a3a",
    "slice": 10,
    "source": "50\nPOINTLESSLY..",
-   "translated_text": "một cách\nvô nghĩa..",
+   "translated_text": "Một cách vô nghĩa..",
    "role": "dialogue",
    "speaker": "Frondier",
    "review": false
@@ -332,15 +317,15 @@
    "source": "GAMEOVER",
    "translated_text": "GAME OVER",
    "role": "system_ui",
-   "speaker": "",
+   "speaker": "narration",
    "review": false
   },
   {
    "id": "s11-box_6506529e14c54e42",
    "slice": 11,
    "source": "THASH\nGAME!!!",
-   "translated_text": "CON TRÒ TỆ HẠC\nNÀY!!!",
-   "role": "shout",
+   "translated_text": "Cái trò chơi khốn kiếp này!!!",
+   "role": "dialogue",
    "speaker": "Frondier",
    "review": false
   },
@@ -358,141 +343,141 @@
    "slice": 12,
    "source": "\"ETIUS.\"",
    "translated_text": "\"ETIUS.\"",
-   "role": "title",
-   "speaker": "",
+   "role": "narration",
+   "speaker": "narration",
    "review": false
   },
   {
    "id": "s13-box_4eb977ad9943433c",
    "slice": 13,
    "source": "AGAME OF SWORDS\nAND MAGIC, GOOS AND\nMONSTERS.",
-   "translated_text": "Một trò chơi\nkiếm thuật,\nphù thủy,\ntrời và quái vật.",
+   "translated_text": "Một trò chơi kiếm thuật và phép thuật, thần linh và quái vật.",
    "role": "narration",
-   "speaker": "Narrator",
+   "speaker": "narration",
    "review": false
   },
   {
    "id": "s14-box_8d3b4e57972b432c",
    "slice": 14,
    "source": "WITH ITS LIFELIKE AI,\nVAST OPEN WORLD,",
-   "translated_text": "Với AI sống động,\nthế giới mở\nrộng lớn,",
+   "translated_text": "Với AI sống động, thế giới mở rộng lớn,",
    "role": "narration",
-   "speaker": "Narrator",
+   "speaker": "narration",
    "review": false
   },
   {
    "id": "s14-box_6c71a9e853c44d52",
    "slice": 14,
    "source": "COMPELLING\nCHARACTERS, AND\nENDLESS CONTENT,",
-   "translated_text": "những nhân vật\ncổ động,\nvà nội dung\nvô tận,",
+   "translated_text": "những nhân vật cuốn hút và nội dung vô tận,",
    "role": "narration",
-   "speaker": "Narrator",
+   "speaker": "narration",
    "review": false
   },
   {
    "id": "s15-box_14668956b64d4673",
    "slice": 15,
    "source": "IT WON SUCH HIGH\nPRAISE THAT PEOPLE\nSAID IT HAD CREATED\nAN ENTIRE WORLD",
-   "translated_text": "Nó đã giành được\ngiọng khen ngợi\nđến mức mọi người\nnói nó đã tạo ra\nmột thế giới riêng.",
+   "translated_text": "Nó đã giành được những lời khen ngợi cao đến mức người ta nói rằng nó đã tạo ra cả một thế giới",
    "role": "narration",
-   "speaker": "Narrator",
+   "speaker": "narration",
    "review": false
   },
   {
    "id": "s16-box_8de6e0501da149a0",
    "slice": 16,
    "source": "BUTIT SOON BECAME A\nSHITSHOW THAT EVERY\nPLAYERABANDONED.",
-   "translated_text": "Nhưng nó sớm trở\nthành trò rác mà\ncảm game thủ\nrời bỏ.",
+   "translated_text": "Nhưng nó nhanh chóng trở thành một mớ hỗn độn mà mọi người chơi đều bỏ rơi.",
    "role": "narration",
-   "speaker": "Narrator",
+   "speaker": "narration",
    "review": false
   },
   {
    "id": "s16-box_ae5375b1dbb247bb",
    "slice": 16,
    "source": "THEREASON?ITS\nBRUTAL DIFFICULTY.",
-   "translated_text": "Lý do? Độ khó\nđe đọa.",
+   "translated_text": "Lý do? Độ khó tàn khốc của nó.",
    "role": "narration",
-   "speaker": "Narrator",
+   "speaker": "narration",
    "review": false
   },
   {
    "id": "s17-box_aaa4e84d68384009",
    "slice": 17,
    "source": "AND YOU'D ENTER AREAS\nWHERE EVEN TRASH MOBS\nARE HARD TO KILL.",
-   "translated_text": "Và bạn sẽ vào\nnhững vùng mà\nngay cả quái vật\nrác cũng khó\nthua.",
+   "translated_text": "Và bạn sẽ bước vào những khu vực mà ngay cả quái vật rác rưởi cũng khó giết.",
    "role": "narration",
-   "speaker": "Narrator",
+   "speaker": "narration",
    "review": false
   },
   {
    "id": "s17-box_2e90f4c3e4f143d7",
    "slice": 17,
    "source": "NO MATTER WHICH ROUTE\nYOU TOOK, THEPROTAGONIST\nALWAYS DIED.",
-   "translated_text": "Dù đi theo lộ\ntrình nào, nhân\nvật chính vẫn\nchết.",
+   "translated_text": "Dù bạn đi theo tuyến đường nào, nhân vật chính luôn chết.",
    "role": "narration",
-   "speaker": "Narrator",
+   "speaker": "narration",
    "review": false
   },
   {
    "id": "s18-box_f1e8155fa8844fda",
    "slice": 18,
    "source": "NOT A SINGLE ETIUS\nPLAYER HAD EVER SEEN AN\nENDING OTHER THAN THE\nPROTAGONIST'S DEATH.",
-   "translated_text": "Không một game\nthủ ETIUS nào\ntừng thấy kết\nthúc khác cái\nchết của nhân\nvật chính.",
+   "translated_text": "Không một người chơi ETIUS nào từng thấy kết thúc nào khác ngoài cái chết của nhân vật chính.",
    "role": "narration",
-   "speaker": "Narrator",
+   "speaker": "narration",
    "review": false
   },
   {
    "id": "s18-box_0f1a537e5b004448",
    "slice": 18,
    "source": "oo(235.9)\nWHAT A WASTE OF TIME.",
-   "translated_text": "oo(235.9)\nThật là phí\nthời gian.",
-   "role": "dialogue",
-   "speaker": "Player",
+   "translated_text": "oo(235.9) Thật là lãng phí thời gian.",
+   "role": "system_ui",
+   "speaker": "narration",
    "review": false
   },
   {
    "id": "s19-box_3106df94e49144e6",
    "slice": 19,
    "source": "oo(123.45)\nARE THE DEVS EVER GONNA PUT OUT A BALANCE PATCH?",
-   "translated_text": "oo(123.45)\nLập trình viên\nsẽ bao giờ ra bản\nvá cân bằng?",
-   "role": "dialogue",
-   "speaker": "Player",
+   "translated_text": "oo(123.45) Nhà phát triển có định ra bản vá cân bằng không?",
+   "role": "system_ui",
+   "speaker": "narration",
    "review": false
   },
   {
    "id": "s19-box_011861ecf38044c5",
    "slice": 19,
    "source": "oo(111.222)\nTHE SMART ONES QUIT FIRST.",
-   "translated_text": "oo(111.222)\nNgười thông\nminh bỏ cuộc\ntrước.",
-   "role": "dialogue",
-   "speaker": "Player",
+   "translated_text": "oo(111.222) Những người thông minh bỏ cuộc trước.",
+   "role": "system_ui",
+   "speaker": "narration",
    "review": false
   },
   {
    "id": "s19-box_395908a5f96d4afe",
    "slice": 19,
    "source": "00(34.5)\nLMA000",
-   "translated_text": "00(34.5)\nHÃHAHA",
-   "role": "dialogue",
-   "speaker": "Player",
+   "translated_text": "00(34.5) LMA000",
+   "role": "system_ui",
+   "speaker": "narration",
    "review": false
   },
   {
    "id": "s19-box_8bd5f8334aff4d64",
    "slice": 19,
    "source": "IT WAS AS IF THE\nCOMPANY HAD MADE\nTHE GAMEIMPOSSIBLE\nTO BEAT...",
-   "translated_text": "Như thể công ty\ndang cố tình\nthử khiến trò\nkhông thể\nthắng...",
+   "translated_text": "Cứ như thể công ty đã làm cho trò chơi không thể đánh bại...",
    "role": "narration",
-   "speaker": "Narrator",
+   "speaker": "narration",
    "review": false
   },
   {
    "id": "s19-box_582584f4b2c949da",
    "slice": 19,
    "source": "BUT I COULDN'T GIVE\nUP SO EASILY.",
-   "translated_text": "Nhưng tôi không\nthể bỏ cuộc\nnhẹ nhàng như\nvậy.",
+   "translated_text": "Nhưng tôi không thể bỏ cuộc dễ dàng như vậy.",
    "role": "narration",
    "speaker": "Frondier",
    "review": false
@@ -501,9 +486,9 @@
    "id": "s19-box_5bbfc1b3035a4035",
    "slice": 19,
    "source": "VE A FUTURE?",
-   "translated_text": "TRÒ NÀY CÒN\nTƯƠNG LAI KHÔNG?",
-   "role": "dialogue",
-   "speaker": "Player",
+   "translated_text": "CÓ TƯƠNG LAI?",
+   "role": "system_ui",
+   "speaker": "narration",
    "review": false
   },
   {
@@ -512,23 +497,23 @@
    "source": "REPORT",
    "translated_text": "BÁO CÁO",
    "role": "system_ui",
-   "speaker": "",
+   "speaker": "narration",
    "review": false
   },
   {
    "id": "s19-box_601b66496eb74128",
    "slice": 19,
    "source": "GEMENT'S FUCKED UP.\nING US AND PLAYING MIND GAMES\nTHIS GAME EVEN HAVE A FUTURE?\nTE, BUT I'M TRYING TO GET OUT\nISTILL CAN",
-   "translated_text": "ĐÁNH DẤU NÀY\nLÀ RÁC.\nHỌ ĐANG CƯỜI\nCHÚNG TÔI VÀ\nCHƠI TRÍ TRẺ.\nTRÒ NÀY CÒN TƯƠNG\nLAI KHÔNG?\nTÔI VẪN CÓ THỂ\nNHƯNG TÔI ĐANG CỐ\nTRỐN.",
-   "role": "dialogue",
-   "speaker": "Player",
+   "translated_text": "Bị hỏng. Đang chơi trò tâm lý với chúng ta. Trò chơi này có tương lai không? Tôi đang cố thoát ra.",
+   "role": "system_ui",
+   "speaker": "narration",
    "review": false
   },
   {
    "id": "s20-box_acc2da856a4a474c",
    "slice": 20,
    "source": "NO, BUT...\nIF THERE HAVEN'T\nBEEN ANY BALANCE\nPATCHES...",
-   "translated_text": "Không, nhưng...\nNếu chưa có bản\nvá cân bằng...",
+   "translated_text": "Không, nhưng... nếu chưa có bản vá cân bằng nào...",
    "role": "narration",
    "speaker": "Frondier",
    "review": false
@@ -546,7 +531,7 @@
    "id": "s21-box_8139597108de4649",
    "slice": 21,
    "source": "THERE MUST\nBE A WAY TO\nBEAT IT.",
-   "translated_text": "Đắt lẽ phải\ncó cách\nthắng.",
+   "translated_text": "Chắc chắn phải có cách để đánh bại nó.",
    "role": "narration",
    "speaker": "Frondier",
    "review": false
@@ -555,16 +540,16 @@
    "id": "s21-box_4778970286ad4286",
    "slice": 21,
    "source": "CAUGHT UP IN THAT\nFUTILE BELIEF,",
-   "translated_text": "Mải mê với\ntin tưởng\nvô ích đó,",
+   "translated_text": "Mắc kẹt trong niềm tin vô ích đó,",
    "role": "narration",
-   "speaker": "Narrator",
+   "speaker": "narration",
    "review": false
   },
   {
    "id": "s22-box_1f3228697c274459",
    "slice": 22,
    "source": "I KEPT CLINGING TO A\nGAME EVERYONE ELSE\nHAD LEFT BEHIND...",
-   "translated_text": "tôi tiếp tục\ngắmg với một trò\ncảm mọi người\nbỏ lại phía sau...",
+   "translated_text": "Tôi vẫn bám víu vào một trò chơi mà mọi người khác đã bỏ lại phía sau...",
    "role": "narration",
    "speaker": "Frondier",
    "review": false
@@ -573,17 +558,17 @@
    "id": "s22-box_6af688b62aa64913",
    "slice": 22,
    "source": "ONLY TO UTTERLY\nFAIL MY VERY LAST\nATTEMPT JUST NOW.",
-   "translated_text": "Chỉ để thất bại\nhoàn toàn\ntrong lần thử\ncuối cùng\nvừa nãy.",
+   "translated_text": "Chỉ để rồi thất bại hoàn toàn trong lần thử cuối cùng vừa rồi.",
    "role": "narration",
-   "speaker": "Narrator",
+   "speaker": "Frondier",
    "review": false
   },
   {
    "id": "s22-box_e7b741a18d554c21",
    "slice": 22,
    "source": "...EVEN\nTHAT DIDN'T\nWORK?",
-   "translated_text": "...Ngay cả\nđó cũng\nkhông hiệu\nquả?",
-   "role": "thought",
+   "translated_text": "...Ngay cả điều đó cũng không hiệu quả?",
+   "role": "narration",
    "speaker": "Frondier",
    "review": false
   },
@@ -591,8 +576,8 @@
    "id": "s23-box_65fa97d6fd5f4873",
    "slice": 23,
    "source": "IS THERE EVEN A\nWAY TO BEAT THIS?",
-   "translated_text": "Có thật sự có\ncách\nthắng không?",
-   "role": "thought",
+   "translated_text": "Liệu có cách nào để đánh bại cái này không?",
+   "role": "narration",
    "speaker": "Frondier",
    "review": false
   },
@@ -600,8 +585,8 @@
    "id": "s24-box_3135f40bb35b4719",
    "slice": 24,
    "source": "AM I REALLY GOING TO\nFINISH WITHOUT CLEARING\nANYTHING?",
-   "translated_text": "Liệu tôi thật\nsự sẽ kết thúc\nkhông hoàn thành\ngì sao?",
-   "role": "thought",
+   "translated_text": "Liệu tôi có thực sự kết thúc mà không hoàn thành bất cứ điều gì không?",
+   "role": "narration",
    "speaker": "Frondier",
    "review": false
   },
@@ -609,8 +594,8 @@
    "id": "s25-box_f6d05f8479b84c2d",
    "slice": 25,
    "source": "YEAH, THERE'S NO\nPOINT STICKING WITH\nTHIS SHITTY GAME.",
-   "translated_text": "Đúng, không có\ný gì với trò\nchày\ntệ hại này.",
-   "role": "thought",
+   "translated_text": "Đúng vậy, không có ý nghĩa gì khi bám víu vào trò chơi khốn kiếp này.",
+   "role": "narration",
    "speaker": "Frondier",
    "review": false
   },
@@ -627,8 +612,8 @@
    "id": "s26-box_970c9b95706b4123",
    "slice": 26,
    "source": "TIME TO\nMOVE ON TO\nA NEW ONE.",
-   "translated_text": "Đến lúc\nchuyển sang\ntrò mới.",
-   "role": "thought",
+   "translated_text": "Đã đến lúc chuyển sang một trò mới.",
+   "role": "narration",
    "speaker": "Frondier",
    "review": false
   },
@@ -636,8 +621,8 @@
    "id": "s26-box_6318c03ae53442c9",
    "slice": 26,
    "source": "THAT NEW\nRELEASE...",
-   "translated_text": "Trò vừa\nra mắt\nđó...",
-   "role": "thought",
+   "translated_text": "Trò mới phát hành đó...",
+   "role": "narration",
    "speaker": "Frondier",
    "review": false
   },
@@ -645,18 +630,18 @@
    "id": "s26-box_451a03a220a445a1",
    "slice": 26,
    "source": "YOUNG\nMAN?",
-   "translated_text": "Chàng\ntrẻ?",
+   "translated_text": "Chàng trai trẻ?",
    "role": "dialogue",
-   "speaker": "Teacher",
+   "speaker": "Giáo viên",
    "review": false
   },
   {
    "id": "s26-box_0134e506b43d4efe",
    "slice": 26,
    "source": "...YOUNG\nMAN.",
-   "translated_text": "...Chàng\ntrẻ.",
+   "translated_text": "...Chàng trai trẻ.",
    "role": "dialogue",
-   "speaker": "Teacher",
+   "speaker": "Frondier",
    "review": false
   },
   {
@@ -665,23 +650,23 @@
    "source": "FRONDIER.",
    "translated_text": "FRONDIER.",
    "role": "dialogue",
-   "speaker": "Teacher",
+   "speaker": "Giáo viên",
    "review": false
   },
   {
    "id": "s27-box_eb30a69376364e02",
    "slice": 27,
    "source": "FRONDIER\nDEROAH!",
-   "translated_text": "FRONDIER\nDE ROAH!",
-   "role": "shout",
-   "speaker": "Teacher",
+   "translated_text": "FRONDIER DEROAH!",
+   "role": "dialogue",
+   "speaker": "Giáo viên",
    "review": false
   },
   {
    "id": "s28-box_2b10c014bf8f4d83",
    "slice": 28,
    "source": "F-F-FRONDIER?",
-   "translated_text": "F-F-FRONDIER?",
+   "translated_text": "F-F-Frondier?",
    "role": "dialogue",
    "speaker": "Frondier",
    "review": false
@@ -690,7 +675,7 @@
    "id": "s28-box_0430eed93a4e4788",
    "slice": 28,
    "source": "WERE YOU\nTALKING TO\nME?",
-   "translated_text": "Cô đang nói\nvới\nchúng tôi\nsao?",
+   "translated_text": "Cô đang nói chuyện với tôi sao?",
    "role": "dialogue",
    "speaker": "Frondier",
    "review": false
@@ -699,34 +684,34 @@
    "id": "s28-box_83c8b49ad8694bb1",
    "slice": 28,
    "source": "snicker",
-   "translated_text": "(cười khẩy)",
+   "translated_text": "haha",
    "role": "sfx",
-   "speaker": "",
+   "speaker": "narration",
    "review": false
   },
   {
    "id": "s28-box_3ac01b2208a2490b",
    "slice": 28,
    "source": "And.\nthere that that\nbastard goes.",
-   "translated_text": "Và\nđằng đó, tên\nthằng\nđó lại\nxuất hiện.",
-   "role": "thought",
-   "speaker": "Classmate",
+   "translated_text": "Và đó, tên khốn đó lại xuất hiện.",
+   "role": "narration",
+   "speaker": "Học sinh",
    "review": false
   },
   {
    "id": "s28-box_add7d78bbe6f4438",
    "slice": 28,
    "source": "He's hopeless.",
-   "translated_text": "Thật vô\nvọng.",
-   "role": "thought",
-   "speaker": "Classmate",
+   "translated_text": "Hắn vô vọng.",
+   "role": "narration",
+   "speaker": "Học sinh",
    "review": false
   },
   {
    "id": "s29-box_4bdbf77eb6ca443a",
    "slice": 29,
    "source": "OF COURSE\nI WAS.",
-   "translated_text": "Đương nhiên\nlà tôi rồi.",
+   "translated_text": "Tất nhiên là tôi rồi.",
    "role": "dialogue",
    "speaker": "Frondier",
    "review": false
@@ -735,27 +720,27 @@
    "id": "s29-box_86087bbaed904275",
    "slice": 29,
    "source": "IS THERE\nANOTHER FRONDIER\nIN THIS CLASS?",
-   "translated_text": "Trong lớp\nnày có còn\nFrondier nào\nnữa\nkhông?",
+   "translated_text": "Có Frondier nào khác trong lớp này không?",
    "role": "dialogue",
-   "speaker": "Teacher",
+   "speaker": "Giáo viên",
    "review": false
   },
   {
    "id": "s30-box_af960502c0b6417c",
    "slice": 30,
    "source": "THIS IS\nTHE WEAPON THAT\nKILLED BALDUR.",
-   "translated_text": "Đây là\nvũ khí đã\nthiết Baldur.",
+   "translated_text": "Đây là vũ khí đã giết Baldur.",
    "role": "dialogue",
-   "speaker": "Teacher",
+   "speaker": "Giáo viên",
    "review": false
   },
   {
    "id": "s30-box_32e42ed2cf0f4821",
    "slice": 30,
    "source": "TELL ME\nITS NAME.",
-   "translated_text": "Nói cho tôi\nbiết tên\ncủa nó.",
+   "translated_text": "Hãy nói cho tôi biết tên của nó.",
    "role": "dialogue",
-   "speaker": "Teacher",
+   "speaker": "Giáo viên",
    "review": false
   },
   {
@@ -771,7 +756,7 @@
    "id": "s32-box_f1abadb3cc6f4a61",
    "slice": 32,
    "source": "COUNTLESS GODS APPEAR\nIN NORSE MYTHOLOGY.",
-   "translated_text": "Trong thần thoại\nBắc Âu có vô số\nthần.",
+   "translated_text": "Trong thần thoại Bắc Âu có vô số vị thần.",
    "role": "dialogue",
    "speaker": "Frondier",
    "review": false
@@ -780,7 +765,7 @@
    "id": "s33-box_b0db415f5a7f4aba",
    "slice": 33,
    "source": "AMONGTHOSE\nMANYGODS,",
-   "translated_text": "Trong số nhiều\nthần đó,",
+   "translated_text": "Giữa rất nhiều vị thần đó,",
    "role": "dialogue",
    "speaker": "Frondier",
    "review": false
@@ -789,7 +774,7 @@
    "id": "s34-box_78437ebb14fe4e62",
    "slice": 34,
    "source": "ONE IS CONSIDERED\nTHE MOST PERFECT\nOFALL:",
-   "translated_text": "một vị được coi là\nhoàn hảo nhất:\nBALDUR,",
+   "translated_text": "Một vị được coi là hoàn hảo nhất:",
    "role": "dialogue",
    "speaker": "Frondier",
    "review": false
@@ -798,7 +783,7 @@
    "id": "s34-box_d9dd12ce65e94d1b",
    "slice": 34,
    "source": "BALDUR,\nTHEGODOF\nLIGHT.",
-   "translated_text": "Thần của\nÁnh Sáng.",
+   "translated_text": "Baldur, Thần Ánh Sáng.",
    "role": "dialogue",
    "speaker": "Frondier",
    "review": false
@@ -807,7 +792,7 @@
    "id": "s36-box_9eec80a3722c41e2",
    "slice": 36,
    "source": "HOWEVER,\nBALDUR DIES WHEN\nHE'S PIERCED BY\nMISTILTEINN.",
-   "translated_text": "Tuy nhiên,\nBaldur chết khi\nbị xuyên qua bởi\nMISTILTEINN.",
+   "translated_text": "Tuy nhiên, Baldur chết khi bị Mistilteinn đâm xuyên qua.",
    "role": "dialogue",
    "speaker": "Frondier",
    "review": false
@@ -816,7 +801,7 @@
    "id": "s36-box_ed570151c60c44dd",
    "slice": 36,
    "source": "MISTILTEINN MEANS\nMISTLETOE.",
-   "translated_text": "Mistilteinn có nghĩa\nlà Cây Bông Tuyết.",
+   "translated_text": "Mistilteinn có nghĩa là cây tầm gửi.",
    "role": "dialogue",
    "speaker": "Frondier",
    "review": false
@@ -827,14 +812,14 @@
    "source": "FRONDIER?",
    "translated_text": "Frondier?",
    "role": "dialogue",
-   "speaker": "Teacher",
+   "speaker": "Giáo viên",
    "review": false
   },
   {
    "id": "s38-box_5c75adff4f8c4628",
    "slice": 38,
    "source": "MISTILTEINN\nKILLED BALDUR,\nBUT...",
-   "translated_text": "Mistilteinn\ngiết Baldur,\nnhưng...",
+   "translated_text": "Mistilteinn đã giết Baldur, nhưng...",
    "role": "dialogue",
    "speaker": "Frondier",
    "review": false
@@ -843,7 +828,7 @@
    "id": "s38-box_23ff252f16384119",
    "slice": 38,
    "source": "THAT'S JUST\nAN ORDINARY\nBRANCH.",
-   "translated_text": "đó chỉ là\nmột cành cây\nphần.",
+   "translated_text": "Đó chỉ là một cành cây bình thường.",
    "role": "dialogue",
    "speaker": "Frondier",
    "review": false
@@ -852,162 +837,162 @@
    "id": "s40-box_6c75d3b1b3cc459c",
    "slice": 40,
    "source": "THE MOMENT I\nANSWERED ON REFLEX,\nIREALIZED.",
-   "translated_text": "Cái khoảnh khắc\ntôi đáp lại phản\nxạ, tôi nhận ra.",
+   "translated_text": "Khoảnh khắc tôi trả lời theo phản xạ, tôi nhận ra.",
    "role": "narration",
-   "speaker": "Narrator",
+   "speaker": "Frondier",
    "review": false
   },
   {
    "id": "s41-box_fcb52e4e913d4e1f",
    "slice": 41,
    "source": "FRONDIER WAS THE\nNAME OF A CHARACTER\nIN ETIUS...",
-   "translated_text": "FRONDIER là tên\nmột nhân vật\ntrong ETIUS...",
+   "translated_text": "Frondier là tên của một nhân vật trong ETIUS...",
    "role": "narration",
-   "speaker": "Narrator",
+   "speaker": "Frondier",
    "review": false
   },
   {
    "id": "s41-box_cabd147a2d8041b0",
    "slice": 41,
    "source": "AN ORDINARY\nBRANCH?",
-   "translated_text": "Một cành\ncây phàn?",
+   "translated_text": "Một cành cây bình thường?",
    "role": "dialogue",
-   "speaker": "Teacher",
+   "speaker": "Giáo viên",
    "review": false
   },
   {
    "id": "s42-box_c05e218de0ab4405",
    "slice": 42,
    "source": "WERE YOU\nDREAMING IN\nCLASS?",
-   "translated_text": "Chàng có\nngủ gật trong\nlớp không?",
+   "translated_text": "Em đang mơ trong lớp sao?",
    "role": "dialogue",
-   "speaker": "Teacher",
+   "speaker": "Giáo viên",
    "review": false
   },
   {
    "id": "s42-box_7fc5293013c3464c",
    "slice": 42,
    "source": "...AND I WASN'T AT\nHOMEANYMORE.",
-   "translated_text": "...Và tôi không\ncòn ở nhà nữa.",
+   "translated_text": "...Và tôi không còn ở nhà nữa.",
    "role": "narration",
-   "speaker": "Narrator",
+   "speaker": "Frondier",
    "review": false
   },
   {
    "id": "s43-box_3f88c03c84c34a79",
    "slice": 43,
    "source": "I WAS AT THE SCHOOL\nINSIDE THE GAME.",
-   "translated_text": "Tôi đang ở trong\ntrường\ntrong trò chơi.",
+   "translated_text": "Tôi đang ở ngôi trường trong trò chơi.",
    "role": "narration",
-   "speaker": "Narrator",
+   "speaker": "Frondier",
    "review": false
   },
   {
    "id": "s45-box_431c5f37d9004fa1",
    "slice": 45,
    "source": "IT'S BEEN A WEEK SINCEI\nLANDED IN ETIUS, THE GAME\nTHAT GAVE ME SO MUCH\nTROUBLE.",
-   "translated_text": "Đã một tuần kể từ\ntôi lạc vào ETIUS,\ncái trò chơi\nđem lại cho tôi\nvô vàn rắc rối.",
+   "translated_text": "Đã một tuần kể từ khi tôi lạc vào ETIUS, trò chơi đã gây cho tôi bao nhiêu rắc rối.",
    "role": "narration",
-   "speaker": "Narrator",
+   "speaker": "Frondier",
    "review": false
   },
   {
    "id": "s45-box_3a76497b9f7d49dc",
    "slice": 45,
    "source": "TIME FLIES...",
-   "translated_text": "Thời gian trôi\nnhanh thật...",
+   "translated_text": "Thời gian trôi nhanh thật...",
    "role": "narration",
-   "speaker": "Narrator",
+   "speaker": "Frondier",
    "review": false
   },
   {
    "id": "s46-box_3453b1f86c8541d8",
    "slice": 46,
    "source": "THAT DAY'S LESSON\nWAS ABOUT THE GOD\nBALDUR.",
-   "translated_text": "Bài học ngày\nđó là về vị thần\nBaldur.",
+   "translated_text": "Bài học hôm đó là về vị thần Baldur.",
    "role": "narration",
-   "speaker": "Narrator",
+   "speaker": "Frondier",
    "review": false
   },
   {
    "id": "s46-box_ab3f6e9f67a54526",
    "slice": 46,
    "source": "THE SON OF ODIN\nAND GOD OF LIGHT,",
-   "translated_text": "Con trai của Odin\nvà là Thần của\nÁnh Sáng,",
+   "translated_text": "Con trai của Odin và là Thần Ánh Sáng,",
    "role": "narration",
-   "speaker": "Narrator",
+   "speaker": "Frondier",
    "review": false
   },
   {
    "id": "s46-box_0ac214486d0f405f",
    "slice": 46,
    "source": "HE DIES WHEN\nHE'S PIERCED BY\nMISTILTEINN.",
-   "translated_text": "Ông chết khi bị\nxuyên qua bởi\nMISTILTEINN.",
+   "translated_text": "Ông chết khi bị Mistilteinn đâm xuyên qua.",
    "role": "narration",
-   "speaker": "Narrator",
+   "speaker": "Frondier",
    "review": false
   },
   {
    "id": "s47-box_1af50b2141814d36",
    "slice": 47,
    "source": "A WEAPON THE\nPROTAGONIST WILL\nONE DAY WIELD.",
-   "translated_text": "Một vũ khí mà\nnhân vật chính sẽ\nvận dụng trong\nmột ngày.",
+   "translated_text": "Một vũ khí mà nhân vật chính sẽ một ngày nào đó sử dụng.",
    "role": "narration",
-   "speaker": "Narrator",
+   "speaker": "Frondier",
    "review": false
   },
   {
    "id": "s48-box_16c8a1787a24401d",
    "slice": 48,
    "source": "BUT WHAT THE\nTEACHER SHOWED US ON\nTHE WIZAVIEW*..",
-   "translated_text": "Nhưng thứ mà\ngiáo viên của chúng\nta chiếu trên\nWIZAVIEW*..",
+   "translated_text": "Nhưng những gì giáo viên chiếu trên Wizaview*",
    "role": "narration",
-   "speaker": "Narrator",
+   "speaker": "Frondier",
    "review": false
   },
   {
    "id": "s48-box_388d45f7ffb0487b",
    "slice": 48,
    "source": ".WASN'T MISTILTEINN. IT\nWAS AN ORDINARY BRANCH.",
-   "translated_text": "..không phải\nMistilteinn. Đó là\nmột cành cây\nphần.",
+   "translated_text": "không phải Mistilteinn. Đó là một cành cây bình thường.",
    "role": "narration",
-   "speaker": "Narrator",
+   "speaker": "Frondier",
    "review": false
   },
   {
    "id": "s48-box_2dbe16632eb74127",
    "slice": 48,
    "source": "magitechdevice\nthat projectsimages in\nmidair.",
-   "translated_text": "*Thiết bị ma\npháp dự ảnh\ntrong không\ngiữa.",
-   "role": "narration",
-   "speaker": "Narrator",
+   "translated_text": "Thiết bị ma thuật công nghệ chiếu hình ảnh lơ lửng giữa không trung.",
+   "role": "free_text",
+   "speaker": "narration",
    "review": false
   },
   {
    "id": "s48-box_174736061c904fa0",
    "slice": 48,
    "source": "I KNOW WHAT\nANSWER SHE WANTS, BUT\nTHAT'S JUST A SPRIG OF\nMISTLETOE.",
-   "translated_text": "Tôi biết cô ấy\nmuốn câu trả lời\ngì, nhưng đó\nchỉ là một chồi\nCây Bông Tuyết.",
+   "translated_text": "Tôi biết cô ấy muốn câu trả lời nào, nhưng đó chỉ là một nhánh tầm gửi.",
    "role": "narration",
-   "speaker": "Narrator",
+   "speaker": "Frondier",
    "review": false
   },
   {
    "id": "s49-box_7d137aaf4f4f4fdb",
    "slice": 49,
    "source": "APPARENTLY,\nAT THIS POINT,",
-   "translated_text": "Rõ ràng,\nvào thời điểm này,",
+   "translated_text": "Rõ ràng, vào thời điểm này,",
    "role": "narration",
-   "speaker": "Narrator",
+   "speaker": "Frondier",
    "review": false
   },
   {
    "id": "s49-box_f92ab5efba34467e",
    "slice": 49,
    "source": "THE TRUE IDENTITY\nOF MISTILTEINN HASN'T\nBEEN REVEALED YET.",
-   "translated_text": "thân phận thật sự\ncủa Mistilteinn\nchưa được tiết lộ.",
+   "translated_text": "bản thân thực sự của Mistilteinn vẫn chưa được tiết lộ.",
    "role": "narration",
-   "speaker": "Narrator",
+   "speaker": "Frondier",
    "review": false
   },
   {
@@ -1023,81 +1008,81 @@
    "id": "s49-box_560e1d1ee1b748c7",
    "slice": 49,
    "source": "I DIDN'T EXPECT\nTHEM TO LOOK AT\nME LIKE I WAS SO\nPATHETIC...",
-   "translated_text": "Tôi không ngờ\nhọ lại nhìn tôi\nnhư tôi thảm hại\nđến vậy...",
+   "translated_text": "Tôi không ngờ họ lại nhìn tôi như tôi thật đáng thương...",
    "role": "narration",
-   "speaker": "Narrator",
+   "speaker": "Frondier",
    "review": false
   },
   {
    "id": "s50-box_e2fd131f37224f4b",
    "slice": 50,
    "source": "PART OF THE REASON\nPEOPLE LOOK AT FRONDIER\nTHIS WAY...",
-   "translated_text": "Một phần lý do\nngười ta nhìn\nFrondier như vậy...",
+   "translated_text": "Một phần lý do mọi người nhìn Frondier như vậy...",
    "role": "narration",
-   "speaker": "Narrator",
+   "speaker": "Frondier",
    "review": false
   },
   {
    "id": "s50-box_e74439d14ad04512",
    "slice": 50,
    "source": "...MUST BE HIS\nINCREDIBLY LAZY\nATTITUDE.",
-   "translated_text": "...chắc là do\nthái độ lười biếng\nkhông tưởng của\ncậu ấy.",
+   "translated_text": "...chắc là vì thái độ lười biếng đến khó tin của anh ấy.",
    "role": "narration",
-   "speaker": "Narrator",
+   "speaker": "Frondier",
    "review": false
   },
   {
    "id": "s51-box_aff678aa38f74065",
    "slice": 51,
    "source": "He's asleep\nagain.",
-   "translated_text": "Lại ngủ tiếp\nrồi.",
+   "translated_text": "Hắn ngủ lại rồi.",
    "role": "dialogue",
-   "speaker": "Classmate",
+   "speaker": "Học sinh",
    "review": false
   },
   {
    "id": "s51-box_e7365939aec84af8",
    "slice": 51,
    "source": "Isn't it\namazing that he\nstill shows up to\nevery class?",
-   "translated_text": "Quá đáng\nngạc nhiên khi\nchậu ấy vẫn xuất\nhiện ở mỗi\ntiết học chứ?",
+   "translated_text": "Thật đáng kinh ngạc khi hắn vẫn đến lớp mỗi ngày.",
    "role": "dialogue",
-   "speaker": "Classmate",
+   "speaker": "Học sinh",
    "review": false
   },
   {
    "id": "s51-box_fe8a9682e48d45c3",
    "slice": 51,
    "source": "What is he,\na sloth?",
-   "translated_text": "Chậu ấy là gâu,\nbộ gấu lười\nsao?",
+   "translated_text": "Hắn là gấu lười hay sao?",
    "role": "dialogue",
-   "speaker": "Classmate",
+   "speaker": "Học sinh",
    "review": false
   },
   {
    "id": "s51-box_3261a444495d4727",
    "slice": 51,
    "source": "THEY EVEN CALL\nHIM THE\"HUMAN\nSLOTH.\" THAT\nSAYS IT ALL.\nSlow~",
-   "translated_text": "HỌ THẬM CHÍ\nGỌI CHẬU ẤY LÀ\n\"GẤU LƯỜI\nHAI CHÂN\".\nTHẬT SỰ.\nChậm~",
+   "translated_text": "Họ thậm chí còn gọi hắn là \"Gấu lười người\". Điều đó nói lên tất cả.",
    "role": "narration",
-   "speaker": "Narrator",
+   "speaker": "Frondier",
    "review": false
   },
   {
    "id": "s52-box_3600faaa4f6a4f0c",
    "slice": 52,
    "source": "BUT NOW, I CAN\nUNDERSTAND WHY\nHE'S SO LAZY...",
-   "translated_text": "Nhưng giờ, tôi\ncó thể hiểu vì\nsao cậu ấy lười\nđến vậy...",
+   "translated_text": "Nhưng bây giờ, tôi có thể hiểu tại sao anh ấy lại lười biếng đến vậy...",
    "role": "narration",
-   "speaker": "Narrator",
+   "speaker": "Frondier",
    "review": false
   },
   {
    "id": "s53-box_5e19eb7b10774abc",
    "slice": 53,
    "source": "CHARACTERINFO",
-   "translated_text": "THÔNG TIN NHÂN\nVẬT",
+   "translated_text": "THÔNG TIN NHÂN VẬT",
    "role": "system_ui",
-   "speaker": "",
+   "speaker": "narration",
    "review": false
   },
   {
@@ -1106,34 +1091,34 @@
    "source": "·NAME\nFRONDIER DE ROAH\n·AGE\n17",
    "translated_text": "·TÊN\nFRONDIER DE ROAH\n·TUỔI\n17",
    "role": "system_ui",
-   "speaker": "",
+   "speaker": "narration",
    "review": false
   },
   {
    "id": "s53-box_f8de75f43fb144e9",
    "slice": 53,
    "source": "·AFFILIATION\nSECOND SON OF HOUSE ROAH\nFIRST-YEAR STUDENT OF\nCONSTELLE\n· DIVINE POWER\nNONE",
-   "translated_text": "·HẠNG\nCon trai thứ\nhai của Nhà Roah\nSinh viên năm nhất\nConstelle\n·QUYỀN LỰC\nTHẦN: KHÔNG\nCÓ",
+   "translated_text": "·HUYỆT HỆ\nCon trai thứ hai của nhà Roah\nHọc sinh năm nhất Constelle\n·THẦN LỰC\nKHÔNG CÓ",
    "role": "system_ui",
-   "speaker": "",
+   "speaker": "narration",
    "review": false
   },
   {
    "id": "s53-box_66deaa6b69d24b7f",
    "slice": 53,
    "source": "·DIVINE POWER\nNONE",
-   "translated_text": "·QUYỀN LỰC\nTHẦN\nKHÔNG CÓ",
+   "translated_text": "·THẦN LỰC\nKHÔNG CÓ",
    "role": "system_ui",
-   "speaker": "",
+   "speaker": "narration",
    "review": false
   },
   {
    "id": "s53-box_71002602c9a34e25",
    "slice": 53,
    "source": "FABRICATION",
-   "translated_text": "FABRICATION\n(BIẾN HÌNH)\n(Chỉ xuất hiện khi\nnhân vật được\nchọn)",
-   "role": "system_ui",
-   "speaker": "",
+   "translated_text": "CHẾ TẠO",
+   "role": "skill_name",
+   "speaker": "narration",
    "review": false
   },
   {
@@ -1142,7 +1127,7 @@
    "source": "UNIQUE GRADE",
    "translated_text": "HẠNG ĐỘC QUYỀN",
    "role": "system_ui",
-   "speaker": "",
+   "speaker": "narration",
    "review": false
   },
   {
@@ -1151,34 +1136,34 @@
    "source": "•DESCRIPTION",
    "translated_text": "•MÔ TẢ",
    "role": "system_ui",
-   "speaker": "",
+   "speaker": "narration",
    "review": false
   },
   {
    "id": "s53-box_2cec66ec0bcb4998",
    "slice": 53,
    "source": "STORES AND REPLICATES\nTHE IMAGE OF AN OBJECT.\nHOWEVER, THE REPLICA IS\nMERELY AN ILLUSION.\nUSES THE PROCESSES\nOF\"REPLICATION\"AND\n\"WORKSHOP.\"",
-   "translated_text": "Lưu trữ và sao\nchép hình ảnh của\nmột vật thể.\nTuy nhiên, bản\nsao chỉ là ảo.\nSử dụng các\nquy trình \"SAO\nCHÉP\" và \"XƯỞNG\nSỬA\".",
+   "translated_text": "Lưu trữ và sao chép hình ảnh của một vật thể. Tuy nhiên, bản sao chỉ là một ảo ảnh. Sử dụng quy trình \"SAO CHÉP\" và \"XƯỞNG\".",
    "role": "system_ui",
-   "speaker": "",
+   "speaker": "narration",
    "review": false
   },
   {
    "id": "s54-box_f3505515054f4c16",
    "slice": 54,
    "source": "MAINQUEST",
-   "translated_text": "CHính\nNHIỆM",
+   "translated_text": "NHIỆM VỤ CHÍNH",
    "role": "system_ui",
-   "speaker": "",
+   "speaker": "narration",
    "review": false
   },
   {
    "id": "s54-box_754d68e9e2fe47a6",
    "slice": 54,
    "source": "• TITLE\nCHANGE OF FATE",
-   "translated_text": "• TÊN NHIỆM\nVỤ\nĐỔI DESTIN\nVẬN",
+   "translated_text": "• TIÊU ĐỀ\nĐỔI VẬN MỆNH",
    "role": "system_ui",
-   "speaker": "",
+   "speaker": "narration",
    "review": false
   },
   {
@@ -1187,32 +1172,32 @@
    "source": "DESCRIPTION",
    "translated_text": "MÔ TẢ",
    "role": "system_ui",
-   "speaker": "",
+   "speaker": "narration",
    "review": false
   },
   {
    "id": "s54-box_abd890ccd4514bf5",
    "slice": 54,
    "source": "YOU KNOW THE FATE THAT\nAWAITS HUMANITY.. THE DAY\nIT WILL MEET ITS END.",
-   "translated_text": "BẠN BIẾT SỐ\nPHẬN CHỜ ĐỢI LOÀI\nNGƯỜI.. NGÀY\nNÓ SẼ GẶP KẾT\nCỤC.",
+   "translated_text": "BẠN BIẾT VẬN MỆNH ĐANG CHỜ ĐỢI NHÂN LOẠI.. NGÀY NÓ SẼ GẶP KẾT CỤC.",
    "role": "system_ui",
-   "speaker": "",
+   "speaker": "narration",
    "review": false
   },
   {
    "id": "s54-box_b1f8593385ed4fa3",
    "slice": 54,
    "source": "SAVE HUMANITY AND\nCHANGE ITS DESTINY.",
-   "translated_text": "CỨU LOÀI\nNGƯỜI VÀ ĐỔI\nĐỊNH MỆNH CỦA\nHỌ.",
+   "translated_text": "CỨU NHÂN LOẠI VÀ ĐỔI VẬN MỆNH CỦA HỌ.",
    "role": "system_ui",
-   "speaker": "",
+   "speaker": "narration",
    "review": false
   },
   {
    "id": "s55-box_e7a535298c4b4e48",
    "slice": 55,
    "source": "I'M SUPPOSED TO\nSAVE HUMANITY...",
-   "translated_text": "Tôi phải cứu\nloài người...",
+   "translated_text": "Tôi phải cứu nhân loại...",
    "role": "dialogue",
    "speaker": "Frondier",
    "review": false
@@ -1221,7 +1206,7 @@
    "id": "s55-box_a13feefb38414ec5",
    "slice": 55,
    "source": "..WITH STATS\nTHIS SHITTY?",
-   "translated_text": "..Với thông số\nrác rưởi thế này?",
+   "translated_text": "...Với chỉ số tệ hại như thế này?",
    "role": "dialogue",
    "speaker": "Frondier",
    "review": false
@@ -1230,7 +1215,7 @@
    "id": "s55-box_1cc479263de349bc",
    "slice": 55,
    "source": "HOW THE HELL\nAM I SUPPOSED\nTO BEAT THIS?!",
-   "translated_text": "MÀY BẢO TAO\nPHẢI THẮNG SAO\nNAY?!",
+   "translated_text": "Làm thế nào tôi có thể đánh bại được đây?!",
    "role": "dialogue",
    "speaker": "Frondier",
    "review": false
@@ -1239,36 +1224,36 @@
    "id": "s56-box_ed3b34e4ecb144b4",
    "slice": 56,
    "source": "DIVINE POWER.",
-   "translated_text": "QUYỀN LỰC\nTHẦN.",
+   "translated_text": "Thần Lực.",
    "role": "narration",
-   "speaker": "Narrator",
+   "speaker": "Frondier",
    "review": false
   },
   {
    "id": "s56-box_d6ef0b7ea3a041ea",
    "slice": 56,
    "source": "POWER THAT GODS\nBESTOW UPON THEIR\nCHOSEN HUMANS,",
-   "translated_text": "Quyền lực mà\ncác vị thần ban\ncho con người\nđược chọn,",
+   "translated_text": "Sức mạnh mà các vị thần ban cho con người được chọn,",
    "role": "narration",
-   "speaker": "Narrator",
+   "speaker": "Frondier",
    "review": false
   },
   {
    "id": "s56-box_60dbbdf5ebf04f34",
    "slice": 56,
    "source": "FAR STRONGER THAN\nWHAT ANY SKILL OR MAGIC\nCAN MUSTER...",
-   "translated_text": "mạnh hơn rất\nnhiều so với bất\nkỳ kỹ năng hay\nphép thuật nào\ncó thể huy động...",
+   "translated_text": "Mạnh hơn nhiều so với bất kỳ kỹ năng hay phép thuật nào có thể huy động...",
    "role": "narration",
-   "speaker": "Narrator",
+   "speaker": "Frondier",
    "review": false
   },
   {
    "id": "s57-box_134e4ebc444840bb",
    "slice": 57,
    "source": "BUT FRONDIER HAS\nNO DIVINE POWER.",
-   "translated_text": "Nhưng Frondier\nkhông có Quyền\nLực Thần.",
+   "translated_text": "Nhưng Frondier không có Thần Lực.",
    "role": "narration",
-   "speaker": "Narrator",
+   "speaker": "Frondier",
    "review": false
   },
   {
@@ -1284,54 +1269,54 @@
    "id": "s57-box_92cf0074e9f240b1",
    "slice": 57,
    "source": "IN OTHER WORDS,\nNO GOD HAS CHOSEN\nHIM.",
-   "translated_text": "Nói cách khác,\nkhông có vị\nthần nào chọn\nchậu ấy.",
+   "translated_text": "Nói cách khác, không vị thần nào đã chọn anh ấy.",
    "role": "narration",
-   "speaker": "Narrator",
+   "speaker": "Frondier",
    "review": false
   },
   {
    "id": "s58-box_861d2a6975de43d9",
    "slice": 58,
    "source": "AND AS FOR\nWHETHER HIS SKILL\nIS ANY GOOD...",
-   "translated_text": "Và đối với việc\nkỹ năng của cậu\nấy có tốt không...",
+   "translated_text": "Và còn về việc kỹ năng của anh ấy có tốt hay không...",
    "role": "narration",
-   "speaker": "Narrator",
+   "speaker": "Frondier",
    "review": false
   },
   {
    "id": "s59-box_1da7ccbc179043c2",
    "slice": 59,
    "source": "ACTIVATE\n[FABRICATION]-",
-   "translated_text": "KÍCH HOẠT\n[FABRICATION]-",
+   "translated_text": "KÍCH HOẠT [CHẾ TẠO]-",
    "role": "system_ui",
-   "speaker": "System",
+   "speaker": "Frondier",
    "review": false
   },
   {
    "id": "s60-box_69b51a3bf2354573",
    "slice": 60,
    "source": "ITEMINFO",
-   "translated_text": "THÔNG TIN VẬT\nPHẨM",
+   "translated_text": "THÔNG TIN VẬT PHẨM",
    "role": "system_ui",
-   "speaker": "System",
+   "speaker": "narration",
    "review": false
   },
   {
    "id": "s60-box_ff335616b8644baf",
    "slice": 60,
    "source": "PREMETONCOMNORESUIA)",
-   "translated_text": "BÚT CẦM TAY\nMÃN TIỆN\n(Sao Chép)",
+   "translated_text": "BÚT CÚT SAO CHÉP",
    "role": "system_ui",
-   "speaker": "System",
+   "speaker": "narration",
    "review": false
   },
   {
    "id": "s60-box_4229eed8dd9f4403",
    "slice": 60,
    "source": "V\nCOMMON GRADE",
-   "translated_text": "HẠNG THÔNG\nTHƯỜNG",
+   "translated_text": "HẠNG THƯỜNG",
    "role": "system_ui",
-   "speaker": "System",
+   "speaker": "narration",
    "review": false
   },
   {
@@ -1340,25 +1325,25 @@
    "source": "DESCRIPTION\nOCONNICOTCNIM",
    "translated_text": "MÔ TẢ",
    "role": "system_ui",
-   "speaker": "System",
+   "speaker": "narration",
    "review": false
   },
   {
    "id": "s60-box_173169652b014754",
    "slice": 60,
    "source": "A FABRICATED IMITATION\nOFAFOUNTAINPEN.\nIT HAS NO PHYSICAL SUBSTANCE.",
-   "translated_text": "Bản sao chép\ncủa một cây bút\ncầm tay.\nNó không có\nthực thể vật lý.",
+   "translated_text": "Bản sao chế tạo của một cây bút mực. Nó không có thực thể vật lý.",
    "role": "system_ui",
-   "speaker": "System",
+   "speaker": "narration",
    "review": false
   },
   {
    "id": "s61-box_3ec33c96dd1647f9",
    "slice": 61,
    "source": "ITLOOKS\nALMOST IDENTICAL\nTO THE ORIGINAL.",
-   "translated_text": "Nó trông gần\nnhư hệt vật\nbản gốc.",
+   "translated_text": "Nó trông gần như giống hệt bản gốc.",
    "role": "narration",
-   "speaker": "Narrator",
+   "speaker": "Frondier",
    "review": false
   },
   {
@@ -1374,44 +1359,44 @@
    "id": "s61-box_a8ac8d13559b4634",
    "slice": 61,
    "source": "IT SEEMS LIKE AN\nORDINARY FOUNTAIN\nPEN, BUT...",
-   "translated_text": "Trông như một\ncây bút cầm tay\nthường, nhưng...",
+   "translated_text": "Nó trông như một cây bút mực bình thường, nhưng...",
    "role": "narration",
-   "speaker": "Narrator",
+   "speaker": "Frondier",
    "review": false
   },
   {
    "id": "s62-box_dc7d2aacc50b4b3c",
    "slice": 62,
    "source": "IT CAN'T WRITE,",
-   "translated_text": "Nó không viết\nđược,",
+   "translated_text": "Nó không thể viết,",
    "role": "narration",
-   "speaker": "Narrator",
+   "speaker": "Frondier",
    "review": false
   },
   {
    "id": "s62-box_552092557da845bc",
    "slice": 62,
    "source": "CAN'T PIERCE EVEN\nA SHEET OF PAPER,",
-   "translated_text": "không xuyên\nthủng được\ncả một tờ giấy,",
+   "translated_text": "không thể đâm thủng ngay cả một tờ giấy,",
    "role": "narration",
-   "speaker": "Narrator",
+   "speaker": "Frondier",
    "review": false
   },
   {
    "id": "s63-box_5457397b7acc40f5",
    "slice": 63,
    "source": "AND ONLY\nI CAN SEE IT.",
-   "translated_text": "và chỉ\nmột mình\ntôi nhìn thấy\nnó.",
+   "translated_text": "và chỉ có tôi nhìn thấy nó.",
    "role": "narration",
-   "speaker": "Narrator",
+   "speaker": "Frondier",
    "review": false
   },
   {
    "id": "s64-box_efe2ef2a2ffe40b4",
    "slice": 64,
    "source": "AND ONLY\nI CAN SEE IT.",
-   "translated_text": "VÀ CHỈ\nMỘT MÌNH\ntôi nhìn thấy\nnó.",
-   "role": "dialogue",
+   "translated_text": "Và chỉ có tôi nhìn thấy nó.",
+   "role": "narration",
    "speaker": "Frondier",
    "review": false
   },
@@ -1419,17 +1404,17 @@
    "id": "s64-box_601f652a272149ea",
    "slice": 64,
    "source": "AN ILLUSION THAT\nCAN'T INTERACT WITH\nREALITY AT ALL.",
-   "translated_text": "Một ảo ảnh\nkhông thể\ntương tác với\nthực tại.\nHoàn toàn.",
+   "translated_text": "Một ảo ảnh không thể tương tác với thực tại chút nào.",
    "role": "narration",
-   "speaker": "Narrator",
+   "speaker": "Frondier",
    "review": false
   },
   {
    "id": "s64-box_a168f835690c4ee3",
    "slice": 64,
    "source": "THIS ISN'T A\nSKILL...",
-   "translated_text": "Đây không\nphải Kỹ\nnăng...",
-   "role": "dialogue",
+   "translated_text": "Đây không phải là một kỹ năng...",
+   "role": "narration",
    "speaker": "Frondier",
    "review": false
   },
@@ -1437,8 +1422,8 @@
    "id": "s65-box_06c953c028cd4a81",
    "slice": 65,
    "source": "ISN'T IT\nMORELIKEA\n\"DELUSION\"?",
-   "translated_text": "Chẳng phải\nnó giống\n\"Ảo tưởng\"\nhơn sao?",
-   "role": "dialogue",
+   "translated_text": "Nó chẳng phải là một \"ảo tưởng\" sao?",
+   "role": "narration",
    "speaker": "Frondier",
    "review": false
   },
@@ -1446,53 +1431,53 @@
    "id": "s66-box_1953534177dd4f57",
    "slice": 66,
    "source": "ASTHE\nQUEST SAYS,",
-   "translated_text": "Như\nnhiệm vụ\nnói,",
+   "translated_text": "Như nhiệm vụ đã nói,",
    "role": "narration",
-   "speaker": "Narrator",
+   "speaker": "Frondier",
    "review": false
   },
   {
    "id": "s67-box_81fb8300bf3e41fd",
    "slice": 67,
    "source": "IKNOWHOW THIS\nGAMEENDS.",
-   "translated_text": "Tôi biết trò\nchơi này\nkết thúc\nthế nào.",
+   "translated_text": "Tôi biết trò chơi này kết thúc như thế nào.",
    "role": "narration",
-   "speaker": "Narrator",
+   "speaker": "Frondier",
    "review": false
   },
   {
    "id": "s67-box_37e7adbeef764fde",
    "slice": 67,
    "source": "UNABLE TO\nSTOP THE FLOOD OF\nMONSTERS,",
-   "translated_text": "Không ngăn\nđược lũ\nquái vật,",
+   "translated_text": "Không thể ngăn chặn lũ quái vật,",
    "role": "narration",
-   "speaker": "Narrator",
+   "speaker": "Frondier",
    "review": false
   },
   {
    "id": "s68-box_5db612c6e0454285",
    "slice": 68,
    "source": "A FUTILE END.",
-   "translated_text": "Một cái kết\nvô vọng.",
+   "translated_text": "Một kết cục vô vọng.",
    "role": "narration",
-   "speaker": "Narrator",
+   "speaker": "Frondier",
    "review": false
   },
   {
    "id": "s69-box_0f1681623620448b",
    "slice": 69,
    "source": "JUST LIKE THE\nENDING I'VE SEEN\nCOUNTLESS TIMES.",
-   "translated_text": "Giống hệt\nđoạn kết\nmà tôi đã\nnhìn thấy\nbao lần.",
+   "translated_text": "Giống hệt kết cục mà tôi đã thấy vô số lần.",
    "role": "narration",
-   "speaker": "Narrator",
+   "speaker": "Frondier",
    "review": false
   },
   {
    "id": "s70-box_fbae885e3beb4ab4",
    "slice": 70,
    "source": "ALL I'VE GOT\nIS ZERO DIVINE\nPOWER...",
-   "translated_text": "Tất cả những gì\ntao có\nchỉ là Quyền\nLực Thần\nbằng KHÔNG...",
-   "role": "dialogue",
+   "translated_text": "Tất cả những gì tôi có là Thần Lực bằng KHÔNG...",
+   "role": "narration",
    "speaker": "Frondier",
    "review": false
   },
@@ -1500,8 +1485,8 @@
    "id": "s70-box_5ab49cb8f1d94e59",
    "slice": 70,
    "source": "..AND A SKILL\nTHAT'S BASICALLY\nA DELUSION.",
-   "translated_text": "...và một Kỹ\nnăng\nvề cơ bản là\nẢo tưởng.",
-   "role": "dialogue",
+   "translated_text": "...và một kỹ năng về cơ bản là ảo tưởng.",
+   "role": "narration",
    "speaker": "Frondier",
    "review": false
   },
@@ -1509,8 +1494,8 @@
    "id": "s70-box_ee3365690e9f410b",
    "slice": 70,
    "source": "I COULDN'T EVEN\nBEAT THIS GAME AS\nTHE PROTAGONIST.",
-   "translated_text": "Tao thậm chí\ncòn không\nthắng được trò\nchơi này khi\nvai chính.",
-   "role": "dialogue",
+   "translated_text": "Tôi thậm chí còn không thể đánh bại trò chơi này khi là nhân vật chính.",
+   "role": "narration",
    "speaker": "Frondier",
    "review": false
   },
@@ -1518,8 +1503,8 @@
    "id": "s71-box_227fa483f8a34f4a",
    "slice": 71,
    "source": "WHAT KIND\nOF HARD MODE\nIS THIS?",
-   "translated_text": "Đây là chế độ\nKHÓ KHĂN\nloại gì\nvậy?",
-   "role": "dialogue",
+   "translated_text": "Đây là chế độ khó kiểu gì vậy?",
+   "role": "narration",
    "speaker": "Frondier",
    "review": false
   },
@@ -1527,16 +1512,16 @@
    "id": "s72-box_60581ee52cf543a5",
    "slice": 72,
    "source": "HARD MODE?",
-   "translated_text": "Chế độ\nKHÓ KHĂN?",
+   "translated_text": "Chế độ khó?",
    "role": "dialogue",
-   "speaker": "Messenger",
+   "speaker": "Người hầu",
    "review": false
   },
   {
    "id": "s73-box_347a2767f64941fd",
    "slice": 73,
    "source": "WH-WHEN\nDID YOU COME\nINP!",
-   "translated_text": "C-CÔ\nvào từ\nbao giờ\nvậy?!",
+   "translated_text": "C-Cái gì? Khi nào cậu vào vậy?!",
    "role": "dialogue",
    "speaker": "Frondier",
    "review": false
@@ -1545,34 +1530,34 @@
    "id": "s73-box_7f7047d7fa174878",
    "slice": 73,
    "source": "JUST NOW.",
-   "translated_text": "Vừa rồi.\nTôi gõ cửa\nnhưng cậu\nkhông trả lời,\nnên tôi tự vào.",
+   "translated_text": "Vừa nãy thôi.",
    "role": "dialogue",
-   "speaker": "Messenger",
+   "speaker": "Người hầu",
    "review": false
   },
   {
    "id": "s73-box_172f2a6d78f540ee",
    "slice": 73,
    "source": "I KNOCKED,\nBUT YOU DIDN'T\nANSWER, SO I LET\nMYSELF IN.",
-   "translated_text": "Tôi đã\ngõ cửa,\nnhưng cậu\nkhông trả lời,\nnên tôi\ntự vào.",
+   "translated_text": "Tôi đã gõ cửa, nhưng cậu không trả lời, nên tôi tự vào.",
    "role": "dialogue",
-   "speaker": "Messenger",
+   "speaker": "Người hầu",
    "review": false
   },
   {
    "id": "s74-box_aaf8735b1cce4fbf",
    "slice": 74,
    "source": "A LETTER\nHAS ARRIVED\nFOR YOU.",
-   "translated_text": "Có thư đến\ncho cậu.",
+   "translated_text": "Có một bức thư cho cậu.",
    "role": "dialogue",
-   "speaker": "Messenger",
+   "speaker": "Người hầu",
    "review": false
   },
   {
    "id": "s74-box_f27590d9de294699",
    "slice": 74,
    "source": "A LETTER?\nFROM WHO?",
-   "translated_text": "Thư? Của\nai?",
+   "translated_text": "Bức thư? Của ai?",
    "role": "dialogue",
    "speaker": "Frondier",
    "review": false
@@ -1581,18 +1566,18 @@
    "id": "s75-box_a7290f2a7f3642a2",
    "slice": 75,
    "source": "LORD\nANGPER.",
-   "translated_text": "LORD\nANGPER.",
+   "translated_text": "LORD ANGPER.",
    "role": "dialogue",
-   "speaker": "Messenger",
+   "speaker": "Người hầu",
    "review": false
   },
   {
    "id": "s76-box_318e7290d005405b",
    "slice": 76,
    "source": "IF I HAD TO NAME THE TWO\nMOST FAMOUS MEMBERS\nOFHOUSEROAH.",
-   "translated_text": "Nếu phải kể\ntên hai thành\nviên nổi tiếng\nnhất của Nhà\nRoah.",
+   "translated_text": "Nếu phải nêu tên hai thành viên nổi tiếng nhất của nhà Roah.",
    "role": "narration",
-   "speaker": "Narrator",
+   "speaker": "Frondier",
    "review": false
   },
   {
@@ -1608,71 +1593,71 @@
    "id": "s76-box_d6ef4dcb57994242",
    "slice": 76,
    "source": "THEYD BEGAPER DERDAH",
-   "translated_text": "Đó sẽ là\nGAPER DERDAH",
+   "translated_text": "Đó sẽ là GAPER DERDAH",
    "role": "narration",
-   "speaker": "Narrator",
+   "speaker": "Frondier",
    "review": false
   },
   {
    "id": "s77-box_fcf19c4c6b60458b",
    "slice": 77,
    "source": "ANDHISELDEST\nSON, ATZIE.",
-   "translated_text": "và người con\ntrai cả của\nông ấy, ATZIE.",
+   "translated_text": "và con trai cả của ông, ATZIE.",
    "role": "narration",
-   "speaker": "Narrator",
+   "speaker": "Frondier",
    "review": false
   },
   {
    "id": "s78-box_a35870cededc4638",
    "slice": 78,
    "source": "ANGPER IS A\nSUPERHUMAN...",
-   "translated_text": "ANGPER là một\nsiêu nhân...",
+   "translated_text": "ANGPER là một siêu nhân...",
    "role": "narration",
-   "speaker": "Narrator",
+   "speaker": "Frondier",
    "review": false
   },
   {
    "id": "s78-box_2b57fb2693ae436e",
    "slice": 78,
    "source": "WHO HAS NEVER LET\nMONSTERS BREACH HIS\nDEFENSES, NOTEVEN\nONCE.",
-   "translated_text": "...người chưa\ng bao giờ để\nquái vật xâm\nnhập phòng\nthủ, dù chỉ\nmột lần.",
+   "translated_text": "người chưa bao giờ để quái vật xuyên thủng phòng tuyến của mình, dù chỉ một lần.",
    "role": "narration",
-   "speaker": "Narrator",
+   "speaker": "Frondier",
    "review": false
   },
   {
    "id": "s79-box_bc9d09c52be94648",
    "slice": 79,
    "source": "AND ATZIE INHERITED ALL\nOF HIS FATHER'S TALENT,",
-   "translated_text": "Còn ATZIE kế\ntiếp tất cả tài\nnăng của cha\nmình,",
+   "translated_text": "Và ATZIE kế thừa toàn bộ tài năng của cha mình,",
    "role": "narration",
-   "speaker": "Narrator",
+   "speaker": "Frondier",
    "review": false
   },
   {
    "id": "s79-box_c22ddbdecc524be0",
    "slice": 79,
    "source": "MAKING HIM A\nTRULY OVERPOWERED\nCHARACTER IN ETIUS.",
-   "translated_text": "biến anh ta\nthành một nhân\nvật QUÁ MẠNH\ntrong ETIUS.",
+   "translated_text": "biến anh ta thành một nhân vật thực sự mạnh vượt trội trong ETIUS.",
    "role": "narration",
-   "speaker": "Narrator",
+   "speaker": "Frondier",
    "review": false
   },
   {
    "id": "s79-box_218a7ca3af444b4b",
    "slice": 79,
    "source": "RIGHT, FRONDIER\nIS ANGPER'S SON\nTOO, ISN'T HE?",
-   "translated_text": "Đúng rồi, FRONDIER\ncũng là con của\nANGPER, đúng\nkhông?",
+   "translated_text": "Đúng rồi, Frondier cũng là con trai của ANGPER, phải không?",
    "role": "narration",
-   "speaker": "Narrator",
+   "speaker": "Frondier",
    "review": false
   },
   {
    "id": "s80-box_bc9f1ea8e0b74692",
    "slice": 80,
    "source": "MAYBE\nI CAN GET SOME\nHELP--",
-   "translated_text": "Biết đâu\nmày giúp tao\nđược--",
-   "role": "dialogue",
+   "translated_text": "Có lẽ tôi có thể nhờ giúp đỡ--",
+   "role": "narration",
    "speaker": "Frondier",
    "review": false
   },
@@ -1680,27 +1665,27 @@
    "id": "s80-box_9986ed4c1e4a47b2",
    "slice": 80,
    "source": "Frondier, listen\ncarefully.",
-   "translated_text": "Frondier, nghe\ntôi kỹ.",
+   "translated_text": "Frondier, nghe kỹ đây.",
    "role": "dialogue",
-   "speaker": "Messenger",
+   "speaker": "Angper",
    "review": false
   },
   {
    "id": "s81-box_693cf1257f0c4d80",
    "slice": 81,
    "source": "I will no longer\ntolerate your\nlaziness.",
-   "translated_text": "Tôi sẽ không\nchịu đựng sự\nlười biếng của\nchậu nữa.",
+   "translated_text": "Ta sẽ không dung thứ cho sự lười biếng của con nữa.",
    "role": "dialogue",
-   "speaker": "Messenger",
+   "speaker": "Angper",
    "review": false
   },
   {
    "id": "s81-box_22e9050d10ca476c",
    "slice": 81,
    "source": "Place in the\nacademy's top\nten overall.",
-   "translated_text": "Xếp trong\nTOP 10 toàn\ntrường của học\nviện.",
+   "translated_text": "Đạt vào top 10 toàn trường học viện.",
    "role": "dialogue",
-   "speaker": "Messenger",
+   "speaker": "Angper",
    "review": false
   },
   {
@@ -1708,17 +1693,17 @@
    "slice": 81,
    "source": "??",
    "translated_text": "??",
-   "role": "sfx",
-   "speaker": "",
+   "role": "dialogue",
+   "speaker": "Frondier",
    "review": false
   },
   {
    "id": "s82-box_48c449f9b0974802",
    "slice": 82,
    "source": "IF YOU\nDON'T, YOU'RE\nDISONWED.",
-   "translated_text": "NẾU KHÔNG\nTHỰC HIỆN\nĐƯỢC, CHẬU\nSẼ BỊ\nRUẤT TỊCH.",
+   "translated_text": "Nếu không, con sẽ bị truất quyền thừa kế.",
    "role": "dialogue",
-   "speaker": "Messenger",
+   "speaker": "Angper",
    "review": false
   },
   {
@@ -1734,80 +1719,80 @@
    "id": "s83-box_d9da77f31af046ee",
    "slice": 83,
    "source": "A SIDE QUEST HAS\nBEEN GENERATED.",
-   "translated_text": "ĐÃ TẠO\nNHIỆM VỤ\nPHỤ.",
+   "translated_text": "MỘT NHIỆM VỤ PHỤ ĐÃ ĐƯỢC TẠO.",
    "role": "system_ui",
-   "speaker": "System",
+   "speaker": "Hệ thống",
    "review": false
   },
   {
    "id": "s83-box_2be3d9e631484bd6",
    "slice": 83,
    "source": "SKILLINFO",
-   "translated_text": "THÔNG TIN KỸ\nNĂNG",
+   "translated_text": "THÔNG TIN KỸ NĂNG",
    "role": "system_ui",
-   "speaker": "System",
+   "speaker": "Hệ thống",
    "review": false
   },
   {
    "id": "s83-box_4829d5a288ab4718",
    "slice": 83,
    "source": "TITLE\nFATHER'S ORDER",
-   "translated_text": "TÊN\nLỆNH CỦA CHA",
+   "translated_text": "TIÊU ĐỀ: LỆNH CỦA CHA",
    "role": "system_ui",
-   "speaker": "System",
+   "speaker": "Hệ thống",
    "review": false
   },
   {
    "id": "s83-box_bde3c568a2504cad",
    "slice": 83,
    "source": "ONGDER'S POTIENCE WITH",
-   "translated_text": "LÒNG NHẪN NẠI\ncủa CHA ĐÃ\nHẾT.",
+   "translated_text": "ĐIỀU KIỆN: ĐẠT TOP 10 TOÀN TRƯỜNG CONSTELLE TRƯỚC KHI KẾT THÚC HỌC KỲ NÀY.",
    "role": "system_ui",
-   "speaker": "System",
+   "speaker": "Hệ thống",
    "review": false
   },
   {
    "id": "s84-box_63dc7a928437477f",
    "slice": 84,
    "source": "RENEDSSIZNESHAS",
-   "translated_text": "ĐẠT TOP 10 TOÀN\nTRƯỜNG CONSTEL\nTRƯỚC KHI KẾT\nTHÚC HỌC KỲ\nNÀY.\nTHƯỞNG:",
+   "translated_text": "THƯỞNG",
    "role": "system_ui",
-   "speaker": "System",
+   "speaker": "Hệ thống",
    "review": false
   },
   {
    "id": "s84-box_600290d8ac044667",
    "slice": 84,
    "source": "PLACE IN CONSTEL'S TOP\nTEN OVERALL BY THE END\nOF THIS SEMESTER.\nREWARD",
-   "translated_text": "ĐẠT TOP 10 TOÀN\nTRƯỜNG CONSTEL\nTRƯỚC KHI KẾT\nTHÚC HỌC KỲ\nNÀY.\nTHƯỞNG:",
+   "translated_text": "Đạt vào top 10 toàn trường Constelle trước khi kết thúc học kỳ này.",
    "role": "system_ui",
-   "speaker": "System",
+   "speaker": "Hệ thống",
    "review": false
   },
   {
    "id": "s84-box_a1e3965915fd4098",
    "slice": 84,
    "source": "GAN NPER'  ECOGNITION.",
-   "translated_text": "SỰ CÔNG NHẬN\ncủa ANGPER.",
+   "translated_text": "Sự công nhận của Lord Angper.",
    "role": "system_ui",
-   "speaker": "System",
+   "speaker": "Hệ thống",
    "review": false
   },
   {
    "id": "s84-box_6333b4888d224fc4",
    "slice": 84,
    "source": "FAILURE WILL RESULT\nIN BEING DISOWNED.",
-   "translated_text": "THẤT BẠI SẼ\nDẪN ĐẾN BỊ\nRUẤT TỊCH.",
+   "translated_text": "Thất bại sẽ dẫn đến việc bị truất quyền thừa kế.",
    "role": "system_ui",
-   "speaker": "System",
+   "speaker": "Hệ thống",
    "review": false
   },
   {
    "id": "s85-box_fac2aa3841194fb5",
    "slice": 85,
    "source": "THAT\nMUCH...",
-   "translated_text": "NHIỀU\nTHẾ\nÀ...",
-   "role": "dialogue",
+   "translated_text": "Nhiều đến vậy...",
+   "role": "narration",
    "speaker": "Frondier",
    "review": false
   },
@@ -1816,16 +1801,16 @@
    "slice": 85,
    "source": "?",
    "translated_text": "?",
-   "role": "sfx",
-   "speaker": "",
+   "role": "dialogue",
+   "speaker": "Frondier",
    "review": false
   },
   {
    "id": "s86-box_1b027cb6542a436e",
    "slice": 86,
    "source": "I ALREADY\nKNOW!",
-   "translated_text": "TAO ĐÃ\nBIẾT RỒI!",
-   "role": "dialogue",
+   "translated_text": "Tôi đã biết rồi!",
+   "role": "narration",
    "speaker": "Frondier",
    "review": false
   },
@@ -1833,8 +1818,8 @@
    "id": "s86-box_8fcad37200764b01",
    "slice": 86,
    "source": "IT LOOKS LIKE\nI'M TRAPPED IN A\nSHITTY GAME.",
-   "translated_text": "Trông như\ntao đang bị\nkẹt trong một\ntrò chơi\nRÁC RỈ.",
-   "role": "dialogue",
+   "translated_text": "Trông như tôi bị mắc kẹt trong một trò chơi rác rưởi vậy.",
+   "role": "narration",
    "speaker": "Frondier",
    "review": false
   },
@@ -1910,5 +1895,10 @@
    "speaker": null,
    "review": null
   }
- ]
+ ],
+ "variant": {
+  "tag": "tuned-t02",
+  "tuned": true,
+  "temperature": 0.2
+ }
 }
