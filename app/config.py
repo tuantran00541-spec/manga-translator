@@ -11,6 +11,9 @@ LOGS_DIR = BASE_DIR / "logs"
 
 BUBBLE_DETECTOR_MODEL = MODELS_DIR / "bubble_yolo.onnx"
 TEXT_SEGMENTER_MODEL = MODELS_DIR / "text_segmenter.onnx"
+# Optional: Kiuyha/Manga-Bubble-YOLO text boxes. When present it finds the text
+# and the segmenter only double-checks cleaned regions.
+KIUYHA_TEXT_MODEL = MODELS_DIR / "kiuyha_text_1280.onnx"
 LAMA_MODEL = MODELS_DIR / "lama.onnx"
 LAMA_DYNAMIC_MODEL = MODELS_DIR / "lama-manga-dynamic.onnx"
 

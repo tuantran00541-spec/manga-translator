@@ -63,3 +63,53 @@ def test_raw_head_is_decoded_and_deduplicated():
     assert len(boxes) == 1
     x1, y1, x2, y2, _ = boxes[0]
     assert abs(x1 - 200) <= 3 and abs(y1 - 1000) <= 3 and abs(x2 - 600) <= 3 and abs(y2 - 1100) <= 3
+
+
+def _text_slice():
+    import cv2
+
+    image = np.full((2400, 800, 3), (250, 235, 220), np.uint8)
+    for y in (300, 1250, 2150):  # top half, the overlap, bottom half
+        cv2.putText(image, "HELLO", (180, y), cv2.FONT_HERSHEY_DUPLEX, 2.5, (255, 255, 255), 16)  # outline
+        cv2.putText(image, "HELLO", (180, y), cv2.FONT_HERSHEY_DUPLEX, 2.5, (40, 60, 110), 6)
+    return image
+
+
+def test_tall_slice_runs_as_two_halves_in_one_pass_and_masks_letters_with_outline():
+    image = _text_slice()
+    session = _BlobSession()
+    detector = KiuyhaTextDetector("unused", session=session)
+    boxes = detector.text_boxes(image)
+    assert len(session.blobs) == 1, "one forward pass"
+    assert len(boxes) == 3, "the line in the overlap is merged, not doubled"
+    for baseline in (300, 1250, 2150):
+        assert any(b.y1 < baseline - 20 and b.y2 > baseline for b in boxes), baseline
+    paper = np.array((250, 235, 220))
+    ink = np.abs(image.astype(int) - paper).sum(axis=2) > 30  # letters and outline
+    covered = np.zeros(image.shape[:2], bool)
+    for b in boxes:
+        covered[b.y1:b.y2, b.x1:b.x2] |= b.mask > 0
+        assert b.safe_to_inpaint and b.semantic_type == "free_text"
+    assert (covered & ink).sum() >= 0.97 * ink.sum()
+    assert covered.sum() < 3 * ink.sum(), "masks stay near the text"
+
+
+class _BlobSession(_Session):
+    """Raw head: one box per ink blob on the (static 1280) input."""
+
+    def __init__(self):
+        super().__init__([1, 3, 1280, 1280], raw=True)
+
+    def run(self, _names, feeds):
+        import cv2
+
+        blob = feeds["images"]
+        self.blobs.append(blob)
+        gray = (blob[0].transpose(1, 2, 0) * 255).astype(np.uint8)
+        ink = (np.abs(gray.astype(int) - gray[0, 0].astype(int)).sum(axis=2) > 30).astype(np.uint8)
+        ink[:, :] &= (np.abs(gray.astype(int) - 114).sum(axis=2) > 10).astype(np.uint8)  # not the letterbox
+        count, _, stats, _ = cv2.connectedComponentsWithStats(cv2.dilate(ink, np.ones((25, 25), np.uint8)))
+        cols = np.zeros((1, 5, 400), np.float32)
+        for i, (x, y, w, h, _a) in enumerate(stats[1:count]):
+            cols[0, :, i] = [x + w / 2, y + h / 2, w, h, 0.9]
+        return [cols]

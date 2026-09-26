@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from pathlib import Path
 import threading
 import time
 
 import numpy as np
 
-from app.config import TEXT_SEGMENTER_MODEL
+from app.config import KIUYHA_TEXT_MODEL, TEXT_SEGMENTER_MODEL
 import cv2
 
 from app.detector.bubble_detector import BubbleBox, LetterboxTransform, YoloDetector, apply_final_nms
@@ -279,9 +280,13 @@ class OneShotProductionDetector:
     _FLAT_NEGATIVE_GRAY_STD_MAX = 3.5
     _FLAT_NEGATIVE_EDGE_DENSITY_MAX = 0.0015
 
-    def __init__(self):
+    def __init__(self, kiuyha_model=KIUYHA_TEXT_MODEL):
         self.core = OneShotTextMaskDetector()
         self.text_detector = self.core.detector
+        self.kiuyha = None
+        if kiuyha_model is not None and Path(kiuyha_model).is_file():
+            from app.detector.kiuyha_detector import KiuyhaTextDetector
+            self.kiuyha = KiuyhaTextDetector(kiuyha_model)
         self._metrics_local = threading.local()
         self._residue_metrics_local = threading.local()
         self._residue_metrics_lock = threading.Lock()
@@ -622,7 +627,13 @@ class OneShotProductionDetector:
         return result
 
     def detect(self, image: np.ndarray, *, parallel: bool = False) -> list[BubbleBox]:
-        boxes, metrics = self.core.detect(image)
+        if self.kiuyha is not None:
+            started = time.perf_counter()
+            boxes = self.kiuyha.text_boxes(image, source_model=KIUYHA_TEXT_MODEL.name)
+            metrics = {"detector_ms": round((time.perf_counter() - started) * 1000.0, 3),
+                       "detector_forward_calls": 1, "normal_conf_boxes": len(boxes)}
+        else:
+            boxes, metrics = self.core.detect(image)
         detector_ms = float(metrics.get("detector_ms", 0.0))
         self._metrics_local.value = {
             "bubble_model_ms": 0.0,
