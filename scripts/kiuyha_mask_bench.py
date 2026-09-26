@@ -16,8 +16,9 @@ Runs on the same real slices as the other benches and compares text masks:
                 (one pass, text ~0.79x on a 800 px wide slice), as box / as
                 segmenter masks
 
-Per variant: miss rate (reference text blocks less than half covered), stray
-area (mask farther than 20 px from reference text), seconds and forward passes.
+Per variant, after the app's 7 px mask dilation: miss rate (reference text
+blocks less than half covered), stray area (mask farther than 20 px from
+reference text), seconds and forward passes.
 The reference is the app's segmenter in 1.25x windows, so it favours that
 model; missed-*.jpg and slice-*.jpg are there to check by eye.
 """
@@ -280,7 +281,7 @@ def main() -> int:
     names = ["current", "collage", "kiuyha_box", "kiuyha_otsu", "kiuyha_seg", "collage_plus",
              "kiuyha_collage_box", "kiuyha_collage_seg"]
     totals = {n: {"seconds": 0.0, "forwards": 0, "blocks": 0, "missed": 0, "area": 0, "stray": 0} for n in names}
-    missed_regions: dict[str, list] = {"collage": [], "collage_plus": []}
+    missed_regions: dict[str, list] = {"collage": [], "kiuyha_seg": [], "kiuyha_collage_seg": []}
     images, debug = [], []
     for number, page in enumerate(pages, start=1):
         full = read_image(Path(page["original"]))
@@ -331,8 +332,11 @@ def main() -> int:
                 ys, xs = np.nonzero(block)
                 box = (int(xs.min()), int(ys.min()), int(xs.max()) + 1, int(ys.max()) + 1)
                 debug.append(collage_debug(seg, image, box, f"{number:02d}-{index}", args.out))
+        grow = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
         for name in names:
-            t, m = totals[name], masks[name]
+            # Judge every variant after the app's own mask dilation (ellipse 7), so
+            # a stroke-tight mask is not counted as missing the blob around it.
+            t, m = totals[name], cv2.dilate(masks[name].astype(np.uint8), grow) > 0
             t["seconds"] += seconds[name]
             t["forwards"] += forwards[name]
             t["area"] += int(m.sum())
