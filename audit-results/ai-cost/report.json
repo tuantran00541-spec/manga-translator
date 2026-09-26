@@ -1,0 +1,1640 @@
+{
+ "url": "https://asurascans.com/comics/the-academy-s-weapon-replicator-05c7df14/chapter/1",
+ "plan": "pro",
+ "model": "qwen3.8-27b",
+ "price_usd_per_m": {
+  "input": 0.12,
+  "output": 0.12
+ },
+ "status": "completed",
+ "error": null,
+ "wall_s": 836.9,
+ "stages": [
+  {
+   "key": "download",
+   "status": "done",
+   "done": 1,
+   "total": 1,
+   "elapsed_s": 8.0,
+   "detail": "87 lát"
+  },
+  {
+   "key": "scan",
+   "status": "done",
+   "done": 87,
+   "total": 87,
+   "elapsed_s": 135.5,
+   "detail": "2 lát credit, 1 logo"
+  },
+  {
+   "key": "clean",
+   "status": "done",
+   "done": 85,
+   "total": 85,
+   "elapsed_s": 398.1,
+   "detail": ""
+  },
+  {
+   "key": "qc",
+   "status": "done",
+   "done": 0,
+   "total": 0,
+   "elapsed_s": 120.0,
+   "detail": "Repaint 0 vùng"
+  },
+  {
+   "key": "translate",
+   "status": "done",
+   "done": 85,
+   "total": 85,
+   "elapsed_s": 95.0,
+   "detail": "Dịch 12 vùng"
+  },
+  {
+   "key": "render",
+   "status": "done",
+   "done": 85,
+   "total": 85,
+   "elapsed_s": 45.2,
+   "detail": ""
+  },
+  {
+   "key": "export",
+   "status": "done",
+   "done": 1,
+   "total": 1,
+   "elapsed_s": 32.4,
+   "detail": "Xong"
+  }
+ ],
+ "report": {
+  "credit_pages": [
+   0,
+   86
+  ],
+  "credit_rejected": [],
+  "logo_regions": 1,
+  "scan_errors": [],
+  "repainted_regions": 0,
+  "repaint_pages": [],
+  "qc_flagged": 39,
+  "qc_errors": [],
+  "translated": 12,
+  "unreadable": 1,
+  "review_flags": 0,
+  "translate_errors": [
+   "Lát 4: Vision model omitted one or more text-object IDs",
+   "Lát 16: Vision model must return a translations array",
+   "Lát 18: Vision model must return a translations array",
+   "Lát 17: Vision model must return a translations array",
+   "Lát 19: Vision model must return a translations array",
+   "Lát 20: Vision model must return a translations array",
+   "Lát 22: Vision model must return a translations array",
+   "Lát 23: Vision model must return a translations array",
+   "Lát 24: Vision model returned an invalid object ID",
+   "Lát 25: Vision model must return a translations array",
+   "Lát 21: Manga Cloud returned no translation text",
+   "Lát 26: Vision model must return a translations array",
+   "Lát 28: Vision model must return a translations array",
+   "Lát 29: Vision model must return a translations array",
+   "Lát 30: Vision model must return a translations array",
+   "Lát 31: Vision model must return a translations array",
+   "Lát 27: Manga Cloud returned no translation text",
+   "Lát 32: Vision model must return a translations array",
+   "Lát 34: Vision model must return a translations array",
+   "Lát 36: Vision model must return a translations array",
+   "Lát 37: Vision model must return a translations array",
+   "Lát 33: Vision model must return a translations array",
+   "Lát 38: Vision model must return a translations array",
+   "Lát 41: Vision model must return a translations array",
+   "Lát 40: Vision model must return a translations array",
+   "Lát 42: Vision model must return a translations array",
+   "Lát 43: Vision model must return a translations array",
+   "Lát 46: Vision model must return a translations array",
+   "Lát 47: Vision model must return a translations array",
+   "Lát 48: Vision model must return a translations array",
+   "Lát 45: Manga Cloud returned no translation text",
+   "Lát 49: Vision model must return a translations array",
+   "Lát 51: Vision model must return a translations array",
+   "Lát 50: Vision model must return a translations array",
+   "Lát 52: Vision model must return a translations array",
+   "Lát 54: Vision model must return a translations array",
+   "Lát 55: Vision model must return a translations array",
+   "Lát 53: Vision model must return a translations array",
+   "Lát 56: Vision model must return a translations array",
+   "Lát 57: Vision model must return a translations array",
+   "Lát 58: Vision model must return a translations array",
+   "Lát 59: Vision model must return a translations array",
+   "Lát 60: Vision model must return a translations array",
+   "Lát 61: Vision model must return a translations array",
+   "Lát 62: Vision model must return a translations array",
+   "Lát 63: Vision model must return a translations array",
+   "Lát 65: Vision model must return a translations array",
+   "Lát 66: Vision model must return a translations array",
+   "Lát 67: Vision model must return a translations array",
+   "Lát 68: Vision model must return a translations array"
+  ],
+  "render_errors": [],
+  "editorial_blockers": 151,
+  "blocker_samples": [
+   {
+    "kind": "story_object_missing_ocr",
+    "page": 4,
+    "reason": "active story object has neither OCR source nor translation"
+   },
+   {
+    "kind": "story_object_missing_ocr",
+    "page": 15,
+    "reason": "active story object has neither OCR source nor translation"
+   },
+   {
+    "kind": "story_object_missing_ocr",
+    "page": 16,
+    "reason": "active story object has neither OCR source nor translation"
+   },
+   {
+    "kind": "story_object_missing_ocr",
+    "page": 16,
+    "reason": "active story object has neither OCR source nor translation"
+   },
+   {
+    "kind": "story_object_missing_ocr",
+    "page": 17,
+    "reason": "active story object has neither OCR source nor translation"
+   },
+   {
+    "kind": "story_object_missing_ocr",
+    "page": 17,
+    "reason": "active story object has neither OCR source nor translation"
+   },
+   {
+    "kind": "story_object_missing_ocr",
+    "page": 18,
+    "reason": "active story object has neither OCR source nor translation"
+   },
+   {
+    "kind": "story_object_missing_ocr",
+    "page": 19,
+    "reason": "active story object has neither OCR source nor translation"
+   },
+   {
+    "kind": "story_object_missing_ocr",
+    "page": 19,
+    "reason": "active story object has neither OCR source nor translation"
+   },
+   {
+    "kind": "story_object_missing_ocr",
+    "page": 19,
+    "reason": "active story object has neither OCR source nor translation"
+   }
+  ],
+  "source_lang": "auto",
+  "characters": [
+   {
+    "name": "Đệ tử",
+    "note": "Nhân vật nam, đang bực tức"
+   },
+   {
+    "name": "Sư phụ",
+    "note": "Tồn tại mạnh mẽ, đang trao sức mạnh"
+   }
+  ],
+  "address": [
+   {
+    "from": "Đệ tử",
+    "to": "Sư phụ",
+    "self": "ta",
+    "other": "(gọi gián tiếp)"
+   }
+  ]
+ },
+ "gateway_job": {
+  "status": "completed",
+  "requests": 251,
+  "prompt_tokens": 609745,
+  "completion_tokens": 31900,
+  "cost_usd": 0.07699739999999997
+ },
+ "zip_pages": 22,
+ "slices": 87,
+ "slices_active": 85,
+ "lines": [
+  {
+   "slice": 4,
+   "id": "text_b8ddaac8ce14469b",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 5,
+   "id": "text_9dc8bd15c03c42d9",
+   "translation": "Xin hãy ban\ncho ta sức mạnh...!!!",
+   "role": "shout",
+   "font": "dialogue.mac-dinh-3",
+   "review": false
+  },
+  {
+   "slice": 8,
+   "id": "text_9e906df290fb4165",
+   "translation": "Aa!!",
+   "role": "sfx",
+   "font": "sfx.knewave",
+   "review": false
+  },
+  {
+   "slice": 9,
+   "id": "text_ba46952773c64b08",
+   "translation": "K-Không...!",
+   "role": "dialogue",
+   "font": "dialogue.mac-dinh-3",
+   "review": false
+  },
+  {
+   "slice": 10,
+   "id": "text_c3cb9a4e88764812",
+   "translation": "Tt-tt... \nVô... \nVô nghĩa...",
+   "role": "narration",
+   "font": "narration.mac-dinh-2",
+   "review": false
+  },
+  {
+   "slice": 10,
+   "id": "text_0743d5cfe5d8455e",
+   "translation": "GAME \nOVER",
+   "role": "title",
+   "font": "emphasis.bungee",
+   "review": false
+  },
+  {
+   "slice": 10,
+   "id": "text_7546f0a4493e4374",
+   "translation": "Aa!\nĐồ trò rác \nrở!!",
+   "role": "shout",
+   "font": "dialogue.mac-dinh-3",
+   "review": false
+  },
+  {
+   "slice": 11,
+   "id": "text_b2821f6fe9e24612",
+   "translation": "Aaa!!\nTay đần\nchết tiệt!!",
+   "role": "shout",
+   "font": "dialogue.mac-dinh-3",
+   "review": false
+  },
+  {
+   "slice": 11,
+   "id": "text_9418534378a84ccd",
+   "translation": "GAME\nOVER",
+   "role": "sfx",
+   "font": "emphasis.bangers",
+   "review": false
+  },
+  {
+   "slice": 12,
+   "id": "text_9bd600c4b0914e5f",
+   "translation": "“ETIUS.”",
+   "role": "title",
+   "font": "emphasis.bebas-neue",
+   "review": false
+  },
+  {
+   "slice": 13,
+   "id": "text_3bb446dde71447c1",
+   "translation": "Một trò chơi của\ngươm và phép thuật,\nthần linh và quái vật.",
+   "role": "narration",
+   "font": "narration.mac-dinh-2",
+   "review": false
+  },
+  {
+   "slice": 14,
+   "id": "text_de112867e05a4c64",
+   "translation": "Với nội dung vô tận\nvà những nhân vật\nđầy sức hút,",
+   "role": "free_text",
+   "font": "emphasis.anton",
+   "review": false
+  },
+  {
+   "slice": 14,
+   "id": "text_3f1cac52cfd840af",
+   "translation": "Với AI sống động,\nthế giới mở rộng lớn,",
+   "role": "free_text",
+   "font": "emphasis.anton",
+   "review": false
+  },
+  {
+   "slice": 15,
+   "id": "text_bdbf1f0ee4434d71",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 16,
+   "id": "text_c2fc1095172a47d1",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 16,
+   "id": "text_054d6f3f07cc4a6d",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 17,
+   "id": "text_a4e4c347ce9649fa",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 17,
+   "id": "text_83f4f125eb0e470c",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 18,
+   "id": "text_8fda67b6929845fd",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 18,
+   "id": "text_103108d2ea204734",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 19,
+   "id": "text_08ff14b0a95c45cb",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 19,
+   "id": "text_d4eaa70be8c44ebe",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 19,
+   "id": "text_899b4f40c4474b01",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 19,
+   "id": "text_7aedcc03f5d6412d",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 19,
+   "id": "text_d200d4b083264042",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 19,
+   "id": "text_313b221fb7e249d3",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 19,
+   "id": "text_bc7d179c22c44311",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 19,
+   "id": "text_307a815c87e543ab",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 20,
+   "id": "text_85a93250c10d45bc",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 20,
+   "id": "text_96b0b9ad6e164496",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 21,
+   "id": "text_4a3e8a15771f44bf",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 21,
+   "id": "text_15084e68bbed4039",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 22,
+   "id": "text_ba7e93dd13ed40f7",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 22,
+   "id": "text_86ecb9f9375746d9",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 22,
+   "id": "text_67be3fe93e73469c",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 23,
+   "id": "text_9a1fce75128a45ae",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 24,
+   "id": "text_6acf047bc23c40bb",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 25,
+   "id": "text_69d0ce529df64f76",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 25,
+   "id": "text_71db72b371c9487a",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 26,
+   "id": "text_ce10332537c04b85",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 26,
+   "id": "text_0593f5c4f5fb4ef8",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 26,
+   "id": "text_98cdb6f509004632",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 26,
+   "id": "text_3a5d9c54b5204aeb",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 27,
+   "id": "text_c931f58cf57040db",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 27,
+   "id": "text_1b8c8c8bfbfc4b89",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 28,
+   "id": "text_1c50ac7cd73b4107",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 28,
+   "id": "text_0a1eadc896d14807",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 28,
+   "id": "text_1acdcde370354734",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 28,
+   "id": "text_3ff7201bac5a4f30",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 28,
+   "id": "text_55e39ba749de41a2",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 29,
+   "id": "text_c60f81cd2c9d44ca",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 29,
+   "id": "text_61ed33db365546b3",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 30,
+   "id": "text_a3d058d243ee4aa9",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 30,
+   "id": "text_c63b7000590444b9",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 31,
+   "id": "text_5c8eef06a6b9412d",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 31,
+   "id": "text_c662b3335dd34533",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 32,
+   "id": "text_28c4b1be9fb24755",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 33,
+   "id": "text_3c5f1a02e4b14cd4",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 34,
+   "id": "text_d9a8b6b1820a4c95",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 34,
+   "id": "text_9cd10dc79eb4469b",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 36,
+   "id": "text_7ddac2d0fce64b90",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 36,
+   "id": "text_40a8d9f98d7844be",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 37,
+   "id": "text_93af8a35a645432c",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 38,
+   "id": "text_d2bd98d10da64d81",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 38,
+   "id": "text_142c2cc72fb14737",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 40,
+   "id": "text_7482ea7b8fb74525",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 41,
+   "id": "text_52544f66f99c4068",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 41,
+   "id": "text_3d51e7e4e89d4d29",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 42,
+   "id": "text_fa212fb25867492c",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 42,
+   "id": "text_2467c28c14e94127",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 43,
+   "id": "text_60300afb194a4568",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 45,
+   "id": "text_d99d1e28857e48b1",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 45,
+   "id": "text_55af56414d0f45e0",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 46,
+   "id": "text_ec5690cc87f34e42",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 46,
+   "id": "text_7259017807074628",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 46,
+   "id": "text_0ad65a44d41a47e0",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 47,
+   "id": "text_e31f13272d4e4d0c",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 48,
+   "id": "text_6736924b703549ea",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 48,
+   "id": "text_d8baa58909e042c0",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 48,
+   "id": "text_5607f1c86f15418c",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 48,
+   "id": "text_6d6aa9217be94165",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 49,
+   "id": "text_3c124c41641b4a59",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 49,
+   "id": "text_a37b1a357197448a",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 49,
+   "id": "text_76a2ebed9bb741ea",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 49,
+   "id": "text_bf602e60a5854260",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 50,
+   "id": "text_26d5cc66b4234d96",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 50,
+   "id": "text_9775940afa534897",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 51,
+   "id": "text_9486755223b84b35",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 51,
+   "id": "text_2a4e41fa4dad4b03",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 51,
+   "id": "text_be338ee36b5646c5",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 51,
+   "id": "text_079dfcbe9dfa4596",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 52,
+   "id": "text_aef963a49afa4a07",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 53,
+   "id": "text_dd1115bf78734c4f",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 53,
+   "id": "text_ce76855cf8bd4e55",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 53,
+   "id": "text_8dc83cd893804a27",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 53,
+   "id": "text_5ee5c01c350a4404",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 53,
+   "id": "text_30ebab4ac700432a",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 53,
+   "id": "text_7046fd2654ed420b",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 53,
+   "id": "text_4d2f16e9d74f493d",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 53,
+   "id": "text_0a5badb8ee544c81",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 54,
+   "id": "text_e41bcb491ca8480e",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 54,
+   "id": "text_b2ab0c74fa36475b",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 54,
+   "id": "text_68ad20d8cebe4b82",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 54,
+   "id": "text_5c134878f1324775",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 54,
+   "id": "text_14fb6e2b3497456b",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 55,
+   "id": "text_479cf45a8dbc48c4",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 55,
+   "id": "text_f519047364a948b2",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 55,
+   "id": "text_f01a5fbdfe1c4864",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 56,
+   "id": "text_d61e6114c7c54973",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 56,
+   "id": "text_65193b11664f426f",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 56,
+   "id": "text_130d2f9d89944dba",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 57,
+   "id": "text_09fa4f3f81084f39",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 57,
+   "id": "text_b464194ce4304bc7",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 57,
+   "id": "text_f21e7dbe564a49b6",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 58,
+   "id": "text_d426c8caa0434621",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 59,
+   "id": "text_4305981592954e77",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 60,
+   "id": "text_5c05ad8721dc4ef0",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 60,
+   "id": "text_a4c9f804cbaa47fb",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 60,
+   "id": "text_c444c68c9c6444e4",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 60,
+   "id": "text_37215c5080614fa1",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 60,
+   "id": "text_1a59245c77144b90",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 61,
+   "id": "text_5955ce154d8f4acd",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 61,
+   "id": "text_c8c360885b1345da",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 61,
+   "id": "text_4fdbb5fed35e4249",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 62,
+   "id": "text_e8181db871464f54",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 62,
+   "id": "text_cc15f57ba8434260",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 63,
+   "id": "text_f2b9f690b9ac46f0",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 64,
+   "id": "text_a5e5c17bf4d94376",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 64,
+   "id": "text_4c07ace4ba814e80",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 64,
+   "id": "text_9242310d60df40a3",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 65,
+   "id": "text_0d04c4486cbc43d6",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 66,
+   "id": "text_cab00e65d8bd4eb0",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 67,
+   "id": "text_babb92c2974745bb",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 67,
+   "id": "text_8a330dc61e2c4fa7",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 68,
+   "id": "text_777323808aac4a9d",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 69,
+   "id": "text_f9a31be37cf3479f",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 70,
+   "id": "text_815dd59c073447e8",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 70,
+   "id": "text_6d0f03f9242f464c",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 70,
+   "id": "text_1a601cdf8a2e4a33",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 71,
+   "id": "text_02e52b65a6184414",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 72,
+   "id": "text_42833ad4ec644ebc",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 72,
+   "id": "text_3104ccd2e61c4b75",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 73,
+   "id": "text_57a71bc69e944b21",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 73,
+   "id": "text_cc8dde2fa4644bac",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 73,
+   "id": "text_333b13cb0df140e3",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 74,
+   "id": "text_8e000fc3f94242d7",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 74,
+   "id": "text_dedd8717dc134bfb",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 75,
+   "id": "text_873f84997bec49a9",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 76,
+   "id": "text_a20b57d2b0e84c60",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 76,
+   "id": "text_0ad47d05806741bc",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 76,
+   "id": "text_ab39e02e530f4a5f",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 77,
+   "id": "text_7ef94a35ec2d4149",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 78,
+   "id": "text_d464d2c3a4ee47c8",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 78,
+   "id": "text_82da7890a665458b",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 79,
+   "id": "text_7f8f23892f1042c7",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 79,
+   "id": "text_7fbe96fcaf9c46df",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 79,
+   "id": "text_d19d9e77d6f4409f",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 80,
+   "id": "text_e6ae5b9691f14176",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 80,
+   "id": "text_6151b9bc37154d63",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 81,
+   "id": "text_fe18ba9542e949bc",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 81,
+   "id": "text_bed20d9554af4a0d",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 81,
+   "id": "text_fcfbd6f855284bc8",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 82,
+   "id": "text_f21296edccb646da",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 82,
+   "id": "text_ac1415bef7d848b7",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 83,
+   "id": "text_eacd801d88274241",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 83,
+   "id": "text_2b5b0f87c75144a3",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 83,
+   "id": "text_6af9c02416d34973",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 83,
+   "id": "text_3413047facdc4e5c",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 84,
+   "id": "text_2c3995e955fe46fc",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 84,
+   "id": "text_d4c87f3318134d1d",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 84,
+   "id": "text_4104e180657e4dd2",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 84,
+   "id": "text_8fece2e8f3cc40c7",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 85,
+   "id": "text_f65cd848bce94df5",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 85,
+   "id": "text_0b47fdbf421943d4",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 86,
+   "id": "text_b0be0238293645e3",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  },
+  {
+   "slice": 86,
+   "id": "text_761b4dcfd5ae4d48",
+   "translation": "",
+   "role": null,
+   "font": "default",
+   "review": false
+  }
+ ],
+ "per_chapter": {
+  "prompt_tokens": 609745,
+  "completion_tokens": 31900,
+  "cost_usd": 0.077
+ },
+ "per_slice": {
+  "prompt_tokens": 7173,
+  "completion_tokens": 375
+ }
+}
