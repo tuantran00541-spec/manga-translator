@@ -176,7 +176,8 @@
   .ai-mode-panel { grid-column: 1 / -1; }
   .ai-mode-panel [hidden] { display: none !important; }
   .ai-mode-form { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); align-items: end; gap: 8px 10px; }
-  .ai-mode-form .ai-mode-url { grid-column: 1 / -1; }
+  .ai-mode-form .ai-mode-url, .ai-mode-form .ai-mode-notes { grid-column: 1 / -1; }
+  .ai-mode-notes textarea { width: 100%; resize: vertical; font: inherit; }
   .ai-mode-form .ui-field { gap: 4px; font-size: 12px; }
   .ai-mode-form :is(select, input) { width: 100%; min-width: 0; }
   .ai-mode-status { grid-column: 1 / -1; display: grid; gap: 10px; }

@@ -10,6 +10,7 @@ from app.ai_providers import AIProvider
 from app.parameters import TRANSLATION_CONNECT_TIMEOUT_SECONDS, TRANSLATION_READ_TIMEOUT_SECONDS
 from app.render.font_catalog import load_font_catalog
 from app.security import validate_url
+from app.translation.context import ChapterMemory, system_prompt
 from app.translation.deepseek import _language_name, _usage_cost_usd
 from app.visual_qc.deepseek_region_client import _extract_output_text, _safe_error_detail
 from app.visual_qc.gemini import _encode_for_gemini, _read_image
@@ -28,6 +29,17 @@ _TRANSLATIONS_SCHEMA = {
             "required": ["id", "translated_text"],
         }},
         "font_choices": {"type": "object"},
+        "speakers": {"type": "object"},
+        "characters": {"type": "array", "items": {
+            "type": "object",
+            "properties": {"name": {"type": "string"}, "note": {"type": "string"}},
+            "required": ["name"],
+        }},
+        "address": {"type": "array", "items": {
+            "type": "object",
+            "properties": {k: {"type": "string"} for k in ("from", "to", "self", "other")},
+            "required": ["from", "to"],
+        }},
     },
     "required": ["translations"],
 }
@@ -57,7 +69,7 @@ def _font_catalog_hint(target_lang: str) -> str:
     return json.dumps(groups, ensure_ascii=False, separators=(",", ":"))
 
 
-def parse_vision_translation(content: str, expected_ids: set[str]) -> dict[str, str]:
+def parse_vision_translation(content: str, expected_ids: set[str], *, allow_missing: bool = False) -> dict[str, str]:
     source = str(content or "").strip()
     if source.startswith(chr(96) * 3):
         source = source.split("\n", 1)[-1].rsplit(chr(96) * 3, 1)[0].strip()
@@ -80,11 +92,13 @@ def parse_vision_translation(content: str, expected_ids: set[str]) -> dict[str, 
             raise RuntimeError("Vision model returned oversized text")
         results[obj_id] = value.strip()
     if set(results) != expected_ids:
-        raise RuntimeError("Vision model omitted one or more text-object IDs")
+        if not allow_missing or not results:
+            raise RuntimeError("Vision model omitted one or more text-object IDs")
+        results.update({item_id: "" for item_id in expected_ids - set(results)})
     return results
 
 
-def _parse_vision_payload(content: str, expected_ids: set[str]) -> tuple[dict[str, str], dict[str, dict]]:
+def _parse_vision_payload(content: str, expected_ids: set[str]) -> tuple[dict[str, str], dict[str, dict], dict]:
     source = str(content or "").strip()
     if source.startswith(chr(96) * 3):
         source = source.split("\n", 1)[-1].rsplit(chr(96) * 3, 1)[0].strip()
@@ -92,7 +106,7 @@ def _parse_vision_payload(content: str, expected_ids: set[str]) -> tuple[dict[st
         data = json.loads(source)
     except (TypeError, ValueError) as exc:
         raise RuntimeError("Vision model returned invalid JSON") from exc
-    translations = parse_vision_translation(source, expected_ids)
+    translations = parse_vision_translation(source, expected_ids, allow_missing=True)
     choices: dict[str, dict] = {}
     raw_choices = data.get("font_choices") if isinstance(data, dict) else None
     if isinstance(raw_choices, dict):
@@ -102,7 +116,7 @@ def _parse_vision_payload(content: str, expected_ids: set[str]) -> tuple[dict[st
             font_id, font_mode = choice.get("font_id"), choice.get("font_mode", "ai")
             if isinstance(font_id, str) and isinstance(font_mode, str):
                 choices[str(item_id)] = {"font_id": font_id.strip(), "font_mode": font_mode.strip().lower() or "ai"}
-    return translations, choices
+    return translations, choices, data if isinstance(data, dict) else {}
 
 
 class VisionPageTranslator:
@@ -114,6 +128,7 @@ class VisionPageTranslator:
     def translate_page(
         self, original_path: Path, cleaned_path: Path, items: list[dict],
         *, api_key: str, source_lang: str, target_lang: str,
+        memory: ChapterMemory | None = None, slice_number: int | None = None, slice_total: int | None = None,
     ) -> VisionTranslationResult:
         if not api_key.strip():
             raise ValueError(f"{self.provider.label} API key is not configured")
@@ -129,36 +144,27 @@ class VisionPageTranslator:
             if str(source_lang or "").lower() in {"", "auto"}
             else _language_name(source_lang)
         )
+        system = system_prompt(_language_name(target_lang), target_lang, _font_catalog_hint(target_lang))
+        where = f"SLICE {slice_number} of {slice_total}. " if slice_number and slice_total else ""
         prompt = (
-            "Translate manga/manhwa/webtoon text naturally and accurately from "
-            f"{source_name} to {_language_name(target_lang)}. "
-            "Image 1 is ORIGINAL (source text); image 2 is CLEAN (after inpainting). "
-            "They are the SAME slice. Use ORIGINAL and the supplied bbox_xyxy in image pixels "
-            "to read the text, and both images for scene, speaker and reading-order context. "
-            "source_text is an optional OCR hint; it can be blank or wrong. "
-            "Keep dialogue concise to fit its existing bubble. "
-            "Only translate the listed text objects. Never change or invent IDs. "
-            "Do not return geometry, color, size or images: they are already stored. "
-            "You may optionally return font_choices with an installed catalog font_id and font_mode=ai, "
-            "picking the font whose role matches the ORIGINAL lettering (speech, narration, "
-            "thought, shouting/emphasis, system/skill windows, horror, romance). "
-            f"Installed catalog font_id values by role: {_font_catalog_hint(target_lang)}. "
-            "If a glyph is genuinely unreadable, return translated_text empty for its ID. "
-            "Return JSON only as "
-            '{"translations":[{"id":"existing id","translated_text":"translated text"}],"font_choices":{"existing id":{"font_id":"catalog id","font_mode":"ai"}}}.'
-            "\n" + json.dumps(
-                {"image_width": w, "image_height": h, "objects": objects},
-                ensure_ascii=False, separators=(",", ":"),
-            )
+            (f"CHAPTER MEMORY: {json.dumps(memory.snapshot(), ensure_ascii=False, separators=(',', ':'))}\n"
+             if memory is not None else "")
+            + f"{where}Translate these text objects from {source_name}.\n"
+            + json.dumps({"image_width": w, "image_height": h, "objects": objects},
+                         ensure_ascii=False, separators=(",", ":"))
         )
         original_b64, cleaned_b64 = _encode_for_gemini(original), _encode_for_gemini(cleaned)
         ids = {str(item["id"]) for item in items}
-        max_tokens = min(4096, max(1200, 140 * len(items) + 400))
+        max_tokens = min(4096, max(1200, 160 * len(items) + 700))
         if self.provider.protocol == "gemini":
-            return self._gemini(prompt, original_b64, cleaned_b64, api_key=api_key, ids=ids, max_tokens=max_tokens)
-        return self._openai(prompt, original_b64, cleaned_b64, api_key=api_key, ids=ids, max_tokens=max_tokens)
+            result, data = self._gemini(system, prompt, original_b64, cleaned_b64, api_key=api_key, ids=ids, max_tokens=max_tokens)
+        else:
+            result, data = self._openai(system, prompt, original_b64, cleaned_b64, api_key=api_key, ids=ids, max_tokens=max_tokens)
+        if memory is not None:
+            memory.update(slice_number or 0, data, result.translations, [str(item["id"]) for item in items])
+        return result
 
-    def _openai(self, prompt, original, cleaned, *, api_key, ids, max_tokens):
+    def _openai(self, system, prompt, original, cleaned, *, api_key, ids, max_tokens):
         url = str(self.provider.chat_url or "")
         if not url:
             raise ValueError("Provider does not have chat completions")
@@ -166,7 +172,7 @@ class VisionPageTranslator:
             validate_url(url)
         payload = {
             "model": self.model,
-            "messages": [{"role": "user", "content": [
+            "messages": [{"role": "system", "content": system}, {"role": "user", "content": [
                 {"type": "text", "text": prompt},
                 {"type": "text", "text": "IMAGE 1: ORIGINAL"},
                 {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{original}"}},
@@ -200,15 +206,16 @@ class VisionPageTranslator:
             answer = _extract_output_text(body)
         except (TypeError, KeyError, ValueError) as exc:
             raise RuntimeError(f"{self.provider.label} returned no translation text") from exc
-        translations, font_choices = _parse_vision_payload(answer, ids)
+        translations, font_choices, data = _parse_vision_payload(answer, ids)
         usage = body.get("usage") if isinstance(body.get("usage"), dict) else {}
         cost = _usage_cost_usd(usage) if self.provider.tracks_cost else None
-        return VisionTranslationResult(translations, str(body.get("model") or self.model), usage, cost, font_choices)
+        return VisionTranslationResult(translations, str(body.get("model") or self.model), usage, cost, font_choices), data
 
-    def _gemini(self, prompt, original, cleaned, *, api_key, ids, max_tokens):
+    def _gemini(self, system, prompt, original, cleaned, *, api_key, ids, max_tokens):
         payload = {
             "model": self.model, "store": False,
             "input": [
+                {"type": "text", "text": system},
                 {"type": "text", "text": prompt},
                 {"type": "text", "text": "IMAGE 1: ORIGINAL"},
                 {"type": "image", "data": original, "mime_type": "image/jpeg"},
@@ -235,9 +242,9 @@ class VisionPageTranslator:
             answer = gemini_output_text(body)
         except (TypeError, KeyError, ValueError) as exc:
             raise RuntimeError("Gemini returned no translation text") from exc
-        translations, font_choices = _parse_vision_payload(answer, ids)
+        translations, font_choices, data = _parse_vision_payload(answer, ids)
         return VisionTranslationResult(
             translations, self.model,
             body.get("usage", {}) if isinstance(body.get("usage"), dict) else {}, None,
             font_choices,
-        )
+        ), data

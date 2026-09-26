@@ -36,6 +36,7 @@ from app.region_policy import text_object_in_preserve_region
 from app.translation import DeepSeekTranslator, TranslationBudgetExceeded
 from app.translation.deepseek import PRICING_VERSION, _preflight_cost_usd
 from app.translation.vision import VisionPageTranslator
+from app.translation.context import ChapterMemory
 
 
 router = APIRouter(prefix="/api/translate", tags=["translation"])
@@ -364,6 +365,12 @@ def _vision_candidates(page: dict, *, force: bool) -> list[dict]:
 
 @router.post("/page/vision")
 async def translate_page_with_images(req: TranslateVisionPageRequest) -> dict:
+    return await translate_page_in_context(req)
+
+
+async def translate_page_in_context(
+    req: TranslateVisionPageRequest, memory: ChapterMemory | None = None, slice_total: int | None = None,
+) -> dict:
     validate_chapter_id(req.chapter_id)
     try:
         provider = _resolve_vision_provider(req.provider)
@@ -422,6 +429,7 @@ async def translate_page_with_images(req: TranslateVisionPageRequest) -> dict:
         translated = await run_in_threadpool(
             translator.translate_page, original_path, clean_path, candidates,
             api_key=api_key, source_lang=req.source_lang, target_lang=req.target_lang,
+            memory=memory, slice_number=req.page_index + 1, slice_total=slice_total,
         )
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc

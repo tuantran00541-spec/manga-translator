@@ -72,7 +72,10 @@ def test_vision_client_sends_original_and_clean_with_existing_ids(tmp_path, monk
     assert answer.translations == {"text_1": "Tôi hiểu rồi"}
     assert len(sent) == 1
     payload = sent[0][1]["json"]
-    content = payload["messages"][0]["content"]
+    system = payload["messages"][0]
+    assert system["role"] == "system"
+    assert "scanlation" in system["content"] and "Vietnamese rules" in system["content"]
+    content = payload["messages"][1]["content"]
     images = [item for item in content if item.get("type") == "image_url"]
     assert len(images) == 2
     assert all(item["image_url"]["url"].startswith("data:image/jpeg;base64,") for item in images)
@@ -192,3 +195,63 @@ def test_vision_page_rejects_stale_region_without_overwriting(saved_chapter, mon
     assert page["text_objects"][0]["translation"] == ""
     assert page["text_objects"][0]["style"] == style
     assert page["text_objects"][0]["region"]["x1"] == 45
+
+
+def test_chapter_memory_carries_characters_address_and_recent_lines_to_the_next_slice(tmp_path, monkeypatch):
+    from app.translation.context import ChapterMemory
+
+    original = tmp_path / "original.png"
+    clean = tmp_path / "clean.png"
+    Image.new("RGB", (160, 120), "white").save(original)
+    Image.new("RGB", (160, 120), "gray").save(clean)
+    answers = iter([
+        '{"translations":[{"id":"a","translated_text":"Thầy ơi, em đến rồi."},{"id":"b","translated_text":"Vào đi."}],'
+        '"speakers":{"a":"Ian","b":"Baldur"},'
+        '"characters":[{"name":"Ian","note":"student, 17"},{"name":"Baldur","note":"Ian\'s teacher"}],'
+        '"address":[{"from":"Ian","to":"Baldur","self":"em","other":"thầy"}]}',
+        '{"translations":[{"id":"c","translated_text":"Em hiểu rồi."}]}',
+    ])
+    prompts = []
+
+    class Response:
+        status_code, ok = 200, True
+
+        def __init__(self, content):
+            self.content = content
+
+        def json(self):
+            return {"choices": [{"message": {"content": self.content}}], "usage": {}}
+
+    def post(url, **kwargs):
+        prompts.append(kwargs["json"]["messages"][1]["content"][0]["text"])
+        return Response(next(answers))
+
+    monkeypatch.setattr("app.translation.vision.requests.post", post)
+    memory = ChapterMemory("Academy regression story")
+    translator = VisionPageTranslator(PROVIDERS["openai"], "vision-test")
+    item = lambda item_id: {"id": item_id, "text": "", "region": [1, 2, 30, 40]}
+    translator.translate_page(original, clean, [item("a"), item("b")], api_key="k", source_lang="ko",
+                              target_lang="vi", memory=memory, slice_number=1, slice_total=2)
+    second = translator.translate_page(original, clean, [item("c"), item("d")], api_key="k", source_lang="ko",
+                                       target_lang="vi", memory=memory, slice_number=2, slice_total=2)
+
+    assert "Academy regression story" in prompts[0] and "SLICE 1 of 2" in prompts[0]
+    carried = prompts[1]
+    assert '"self":"em","other":"thầy"' in carried
+    assert '"name":"Baldur"' in carried
+    assert '"speaker":"Ian","text":"Thầy ơi, em đến rồi."' in carried
+    assert second.translations == {"c": "Em hiểu rồi.", "d": ""}, "a missing id is left empty instead of failing the slice"
+
+
+def test_chapter_memory_is_bounded_and_ignores_malformed_entries():
+    from app.translation.context import MAX_CHARACTERS, RECENT_LINES, ChapterMemory
+
+    memory = ChapterMemory("x" * 5000)
+    memory.update(1, {"characters": [{"name": f"N{i}", "note": "n"} for i in range(MAX_CHARACTERS + 10)] + ["bad", {"note": "no name"}],
+                      "address": [{"from": "A", "to": ""}, "bad", {"from": "A", "to": "B", "self": "tôi"}]},
+                  {f"t{i}": "line " + "y" * 500 for i in range(RECENT_LINES + 5)}, [f"t{i}" for i in range(RECENT_LINES + 5)])
+    sheet = memory.snapshot()
+    assert len(sheet["story_notes"]) == 1500
+    assert len(sheet["characters"]) == MAX_CHARACTERS
+    assert sheet["address"] == [{"from": "A", "to": "B", "self": "tôi"}]
+    assert len(sheet["recent_lines"]) == RECENT_LINES and len(sheet["recent_lines"][0]["text"]) == 160

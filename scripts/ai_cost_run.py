@@ -128,6 +128,11 @@ def main() -> int:
         pages = json.loads(manifest_path.read_text(encoding="utf-8")).get("pages", [])
         report["slices"] = len(pages)
         report["slices_active"] = sum(1 for p in pages if not p.get("skipped"))
+        report["lines"] = [
+            {"slice": index + 1, "id": obj.get("id"), "translation": obj.get("translation") or ""}
+            for index, page in enumerate(pages) if not page.get("skipped")
+            for obj in page.get("text_objects") or [] if isinstance(obj, dict)
+        ]
     if usage.get("requests"):
         slices = max(1, report.get("slices_active") or 1)
         report["per_chapter"] = {

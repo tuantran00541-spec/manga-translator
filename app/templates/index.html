@@ -73,7 +73,7 @@
               <label class="ui-field" for="ai-mode-model"><span>Model vision</span><input id="ai-mode-model" class="ui-input" placeholder="Mặc định" autocomplete="off"></label>
               <label class="ui-field" for="ai-mode-target"><span>Dịch sang</span><select id="ai-mode-target"><option value="vi">Tiếng Việt</option><option value="en">English</option></select></label>
               <label class="ui-field" id="ai-mode-budget-field" for="ai-mode-budget"><span>Giới hạn chi phí (USD)</span><input id="ai-mode-budget" type="number" min="0.01" max="2" step="0.01" value="0.30"></label>
-              <button id="ai-mode-run" class="ui-btn ui-btn-primary" type="submit">Chạy A.I mode</button>
+              <label class="ui-field ai-mode-notes" for="ai-mode-notes"><span>Bối cảnh truyện (tùy chọn)</span><textarea id="ai-mode-notes" rows="2" maxlength="1500" placeholder="Thể loại, nhân vật chính, xưng hô. VD: Hồi quy học viện. Ian (17) xưng tôi, gọi thầy Baldur là thầy."></textarea></label><button id="ai-mode-run" class="ui-btn ui-btn-primary" type="submit">Chạy A.I mode</button>
             </form>
             <div id="ai-mode-status" class="ai-mode-status" aria-live="polite" hidden>
               <ol id="ai-mode-stages" class="ai-mode-stages"></ol>

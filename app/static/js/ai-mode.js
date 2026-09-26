@@ -321,6 +321,7 @@
       target_lang: $("ai-mode-target").value,
       budget_usd: Number($("ai-mode-budget").value || 0.3),
       workers: typeof window.getWorkersSetting === "function" ? window.getWorkersSetting() : 2,
+      story_notes: $("ai-mode-notes")?.value.trim() || "",
     };
     setRunning(true);
     try {

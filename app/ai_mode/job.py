@@ -61,6 +61,7 @@ class AIModeSettings:
     target_lang: str = "vi"
     budget_usd: float = 0.30
     workers: int = 2
+    story_notes: str = ""
 
 
 @dataclass
@@ -310,7 +311,8 @@ class AIModeRunner:
 
     async def translate(self) -> None:
         from app.routers.ocr import detect_chapter_language
-        from app.routers.translation import TranslateVisionPageRequest, translate_page_with_images
+        from app.routers.translation import TranslateVisionPageRequest, translate_page_in_context
+        from app.translation.context import ChapterMemory
 
         try:
             language = await detect_chapter_language(self.job.chapter_id)
@@ -319,9 +321,10 @@ class AIModeRunner:
             source_lang = "auto"
         self.report["source_lang"] = source_lang
         indices = self._active_pages()
-        # Each slice is one network round trip; a few in flight hide the
-        # latency. Slices are independent, and every commit re-checks its own
-        # page under the manifest lock.
+        memory = ChapterMemory(self.settings.story_notes)
+        slice_total = len(self._manifest().get("pages", []))
+        # The gate admits slices in reading order, so slice n always sees the
+        # memory of every slice up to n - TRANSLATE_CONCURRENCY.
         gate = asyncio.Semaphore(TRANSLATE_CONCURRENCY)
         finished = 0
         out_of_budget = False
@@ -336,12 +339,12 @@ class AIModeRunner:
                     out_of_budget = True
                     return
                 try:
-                    data = await translate_page_with_images(TranslateVisionPageRequest(
+                    data = await translate_page_in_context(TranslateVisionPageRequest(
                         chapter_id=self.job.chapter_id, page_index=page_index,
                         source_lang=source_lang, target_lang=self.settings.target_lang,
                         budget_usd=0.25 if remaining is None else max(0.001, min(0.25, remaining)),
                         provider=self.provider.id, model=self.settings.model,
-                    ))
+                    ), memory=memory, slice_total=slice_total)
                 except HTTPException as exc:
                     _append(self.report["translate_errors"], f"Lát {page_index + 1}: {_detail(exc)[:200]}")
                     return
@@ -360,6 +363,9 @@ class AIModeRunner:
         self._check_cancel()
         if out_of_budget:
             _append(self.report["translate_errors"], "Hết ngân sách, các lát còn lại chưa dịch")
+        sheet = memory.snapshot()
+        self.report["characters"] = sheet["characters"][:MAX_REPORT_ITEMS]
+        self.report["address"] = sheet["address"][:MAX_REPORT_ITEMS]
         self._progress(len(indices), len(indices), f"Dịch {self.report['translated']} vùng")
 
     async def render(self) -> None:
