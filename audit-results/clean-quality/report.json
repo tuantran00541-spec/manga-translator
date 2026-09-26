@@ -1,0 +1,83 @@
+{
+ "url": "https://asurascans.com/comics/the-academy-s-weapon-replicator-05c7df14/chapter/1",
+ "slices": 16,
+ "reference_scale": 1.25,
+ "variants": {
+  "current": {
+   "scale": 0.0,
+   "dilate": 7,
+   "grain": false,
+   "detect_s": 24.2,
+   "inpaint_s": 44.9,
+   "forward_calls": 16,
+   "boxes": 18,
+   "coverage": 0.8809,
+   "over_erase": 0.2755,
+   "mask_px": 1658456,
+   "residual_px": 133487,
+   "sharpness_median": 0.824,
+   "sharpness_regions": 12
+  },
+  "tile075": {
+   "scale": 0.75,
+   "dilate": 7,
+   "grain": false,
+   "detect_s": 66.0,
+   "inpaint_s": 38.0,
+   "forward_calls": 44,
+   "boxes": 19,
+   "coverage": 0.9593,
+   "over_erase": 0.0807,
+   "mask_px": 1421118,
+   "residual_px": 38915,
+   "sharpness_median": 0.661,
+   "sharpness_regions": 12
+  },
+  "tile100": {
+   "scale": 1.0,
+   "dilate": 7,
+   "grain": false,
+   "detect_s": 85.4,
+   "inpaint_s": 41.5,
+   "forward_calls": 57,
+   "boxes": 21,
+   "coverage": 0.9927,
+   "over_erase": 0.0295,
+   "mask_px": 1405839,
+   "residual_px": 6190,
+   "sharpness_median": 0.742,
+   "sharpness_regions": 16
+  },
+  "tile100_d5": {
+   "scale": 1.0,
+   "dilate": 5,
+   "grain": false,
+   "detect_s": 85.3,
+   "inpaint_s": 41.5,
+   "forward_calls": 57,
+   "boxes": 21,
+   "coverage": 0.9917,
+   "over_erase": 0.027,
+   "mask_px": 1383467,
+   "residual_px": 6190,
+   "sharpness_median": 0.739,
+   "sharpness_regions": 17
+  },
+  "tile100_grain": {
+   "scale": 1.0,
+   "dilate": 7,
+   "grain": true,
+   "detect_s": 85.6,
+   "inpaint_s": 41.8,
+   "forward_calls": 57,
+   "boxes": 21,
+   "coverage": 0.9927,
+   "over_erase": 0.0295,
+   "mask_px": 1405839,
+   "residual_px": 6190,
+   "sharpness_median": 0.909,
+   "sharpness_regions": 16
+  }
+ },
+ "caught_regions": 45
+}
