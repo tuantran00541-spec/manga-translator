@@ -9,15 +9,11 @@ OUTPUT_DIR = BASE_DIR / "data" / "output"
 MODELS_DIR = BASE_DIR / "models"
 LOGS_DIR = BASE_DIR / "logs"
 
-BUBBLE_DETECTOR_MODEL = MODELS_DIR / "bubble_yolo.onnx"
-TEXT_SEGMENTER_MODEL = MODELS_DIR / "text_segmenter.onnx"
+KIUYHA_TEXT_MODEL = MODELS_DIR / "kiuyha_text_1280.onnx"
 LAMA_MODEL = MODELS_DIR / "lama.onnx"
 LAMA_DYNAMIC_MODEL = MODELS_DIR / "lama-manga-dynamic.onnx"
 
-REQUIRED_MODELS = [
-    BUBBLE_DETECTOR_MODEL,
-    TEXT_SEGMENTER_MODEL,
-]
+REQUIRED_MODELS = [KIUYHA_TEXT_MODEL]
 
 DEFAULT_FONT = BASE_DIR / "app" / "static" / "fonts" / "default.ttf"
 

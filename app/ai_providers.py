@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import Literal
 from urllib.parse import urlparse
@@ -132,6 +133,31 @@ PROVIDERS: dict[str, AIProvider] = {
 }
 
 PROVIDER_IDS = frozenset(PROVIDERS)
+
+CLOUD_PROVIDER_ID = "manga-cloud"
+_cloud_job: ContextVar[tuple[AIProvider, str] | None] = ContextVar("cloud_job", default=None)
+
+
+def bind_cloud_job(provider: AIProvider, job_token: str):
+    return _cloud_job.set((provider, job_token))
+
+
+def unbind_cloud_job(token) -> None:
+    _cloud_job.reset(token)
+
+
+def cloud_job_provider(provider_id: str) -> AIProvider | None:
+    if provider_id != CLOUD_PROVIDER_ID:
+        return None
+    bound = _cloud_job.get()
+    if bound is None:
+        raise ValueError("Manga Cloud chỉ dùng được bên trong A.I mode")
+    return bound[0]
+
+
+def cloud_job_key() -> str | None:
+    bound = _cloud_job.get()
+    return bound[1] if bound else None
 
 
 def normalize_provider_id(value: str) -> str:

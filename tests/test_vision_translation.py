@@ -3,8 +3,6 @@ from __future__ import annotations
 import asyncio
 import copy
 import json
-from pathlib import Path
-from unittest.mock import patch
 
 import cv2
 import numpy as np
@@ -39,7 +37,7 @@ def test_vision_parser_rejects_unknown_duplicate_and_omitted_ids():
             parse_vision_translation(raw, {"a", "b"})
 
 
-def test_vision_client_sends_original_and_clean_with_existing_ids(tmp_path, monkeypatch):
+def test_vision_client_sends_original_and_clean_with_short_ids(tmp_path, monkeypatch):
     original = tmp_path / "original.png"
     clean = tmp_path / "clean.png"
     Image.new("RGB", (160, 120), "white").save(original)
@@ -54,7 +52,7 @@ def test_vision_client_sends_original_and_clean_with_existing_ids(tmp_path, monk
             return {
                 "model": "vision-test",
                 "choices": [{"message": {"content": (
-                    '{"translations":[{"id":"text_1","translated_text":"Tôi hiểu rồi"}]}'
+                    '{"translations":[{"id":"1","translated_text":"Tôi hiểu rồi"}]}'
                 )}}],
                 "usage": {"prompt_tokens": 80, "completion_tokens": 20},
             }
@@ -72,13 +70,17 @@ def test_vision_client_sends_original_and_clean_with_existing_ids(tmp_path, monk
     assert answer.translations == {"text_1": "Tôi hiểu rồi"}
     assert len(sent) == 1
     payload = sent[0][1]["json"]
-    content = payload["messages"][0]["content"]
+    system = payload["messages"][0]
+    assert system["role"] == "system"
+    assert "localization editor" in system["content"] and "VIETNAMESE" in system["content"]
+    assert "dialogue.mac-dinh-3" in system["content"] and "narration.mac-dinh-2" in system["content"]
+    content = payload["messages"][1]["content"]
     images = [item for item in content if item.get("type") == "image_url"]
     assert len(images) == 2
     assert all(item["image_url"]["url"].startswith("data:image/jpeg;base64,") for item in images)
     assert images[0]["image_url"]["url"] != images[1]["image_url"]["url"]
     prompt = content[0]["text"]
-    assert '"id":"text_1"' in prompt
+    assert '"id":"1"' in prompt and "text_1" not in prompt
     assert '"bbox_xyxy":[10,20,50,40]' in prompt
     assert "fontSize" not in prompt and "strokeColor" not in prompt
 
@@ -192,3 +194,106 @@ def test_vision_page_rejects_stale_region_without_overwriting(saved_chapter, mon
     assert page["text_objects"][0]["translation"] == ""
     assert page["text_objects"][0]["style"] == style
     assert page["text_objects"][0]["region"]["x1"] == 45
+
+
+def test_chapter_memory_carries_characters_address_and_recent_lines_to_the_next_slice(tmp_path, monkeypatch):
+    from app.translation.context import ChapterMemory
+
+    original = tmp_path / "original.png"
+    clean = tmp_path / "clean.png"
+    Image.new("RGB", (160, 120), "white").save(original)
+    Image.new("RGB", (160, 120), "gray").save(clean)
+    answers = iter([
+        # The model sees the objects numbered 1, 2, ... and answers with those numbers.
+        '{"translations":[{"id":"1","translated_text":"Thầy ơi, em đến rồi."},{"id":"2","translated_text":"Vào đi."}],'
+        '"speakers":{"1":"Ian","2":"Baldur"},'
+        '"characters":[{"name":"Ian","note":"student, 17"},{"name":"Baldur","note":"Ian\'s teacher"}],'
+        '"address":[{"from":"Ian","to":"Baldur","self":"em","other":"thầy"}]}',
+        '{"translations":[{"id":"1","translated_text":"Em hiểu\\nrồi.","role":"dialogue"},'
+        '{"id":"2","translated_text":"RẦM","role":"sfx","review":true},{"id":"9","translated_text":"x","role":"bogus"}]}',
+    ])
+    prompts = []
+
+    class Response:
+        status_code, ok = 200, True
+
+        def __init__(self, content):
+            self.content = content
+
+        def json(self):
+            return {"choices": [{"message": {"content": self.content}}], "usage": {}}
+
+    def post(url, **kwargs):
+        prompts.append(kwargs["json"]["messages"][1]["content"][0]["text"])
+        return Response(next(answers))
+
+    monkeypatch.setattr("app.translation.vision.requests.post", post)
+    memory = ChapterMemory("Academy regression story")
+    translator = VisionPageTranslator(PROVIDERS["openai"], "vision-test")
+    item = lambda item_id: {"id": item_id, "text": "", "region": [1, 2, 30, 40]}
+    translator.translate_page(original, clean, [item("a"), item("b")], api_key="k", source_lang="ko",
+                              target_lang="vi", memory=memory, slice_number=1, slice_total=2)
+    second = translator.translate_page(original, clean, [item("c"), item("d"), item("f")], api_key="k", source_lang="ko",
+                                       target_lang="vi", memory=memory, slice_number=2, slice_total=2)
+
+    assert "Academy regression story" in prompts[0] and "SLICE 1 of 2" in prompts[0]
+    carried = prompts[1]
+    assert '"self":"em","other":"thầy"' in carried
+    assert '"name":"Baldur"' in carried
+    assert '"speaker":"Ian","text":"Thầy ơi, em đến rồi."' in carried
+    assert second.translations == {"c": "Em hiểu\nrồi.", "d": "RẦM", "f": ""}, "a missing id is left empty"
+    assert second.roles == {"c": "dialogue", "d": "sfx"} and second.review_ids == {"d"}
+
+
+def test_chapter_memory_is_bounded_and_ignores_malformed_entries():
+    from app.translation.context import MAX_CHARACTERS, RECENT_LINES, ChapterMemory
+
+    memory = ChapterMemory("x" * 5000)
+    memory.update(1, {"characters": [{"name": f"N{i}", "note": "n"} for i in range(MAX_CHARACTERS + 10)] + ["bad", {"note": "no name"}],
+                      "address": [{"from": "A", "to": ""}, "bad", {"from": "A", "to": "B", "self": "tôi"}]},
+                  {f"t{i}": "line " + "y" * 500 for i in range(RECENT_LINES + 5)}, [f"t{i}" for i in range(RECENT_LINES + 5)])
+    sheet = memory.snapshot()
+    assert len(sheet["story_notes"]) == 1500
+    assert len(sheet["characters"]) == MAX_CHARACTERS
+    assert sheet["address"] == [{"from": "A", "to": "B", "self": "tôi"}]
+    assert len(sheet["recent_lines"]) == RECENT_LINES and len(sheet["recent_lines"][0]["text"]) == 160
+
+
+def test_vision_parser_accepts_a_translations_map_and_integer_ids():
+    assert parse_vision_translation('{"translations":{"1":"A","2":"B"}}', {"1", "2"}) == {"1": "A", "2": "B"}
+    assert parse_vision_translation('{"translations":[{"id":1,"translated_text":"A"}]}', {"1"}) == {"1": "A"}
+
+
+def test_vision_reply_reports_kept_missed_and_unanswered_objects(tmp_path, monkeypatch):
+    original = tmp_path / "original.png"
+    clean = tmp_path / "clean.png"
+    Image.new("RGB", (400, 600), "white").save(original)
+    Image.new("RGB", (400, 600), "gray").save(clean)
+
+    class Response:
+        status_code, ok = 200, True
+
+        def json(self):
+            return {"choices": [{"message": {"content": json.dumps({
+                "translations": [{"id": "1", "translated_text": "Chào"}, {"id": "2", "translated_text": ""}],
+                "keep": ["2", "9"],
+                "missed": [{"box_2d": [100, 250, 200, 750], "text": "CROSS THE MAP"},
+                           {"box_2d": [0, 0, 5, 5], "text": "speck"}, {"box_2d": [0, 0, 1000, 1000]}],
+            })}}], "usage": {}}
+
+    monkeypatch.setattr("app.translation.vision.requests.post", lambda url, **kwargs: Response())
+    translator = VisionPageTranslator(PROVIDERS["openai"], "vision-test")
+    item = lambda item_id: {"id": item_id, "text": "", "region": [1, 2, 30, 40]}
+    result = translator.translate_page(original, clean, [item("t1"), item("logo"), item("lost")],
+                                       api_key="k", source_lang="en", target_lang="vi")
+    assert result.translations == {"t1": "Chào", "logo": "", "lost": ""}
+    assert result.keep_ids == {"logo"}, "keep ids map back to object ids; unknown ids are dropped"
+    assert result.missing_ids == {"lost"}, "answered-empty differs from not answered"
+    assert result.missed_boxes == ((100, 60, 300, 120, "CROSS THE MAP"),), "0-1000 boxes to pixels; tiny and whole-slice boxes dropped"
+
+    sent = []
+    monkeypatch.setattr("app.translation.vision.requests.post", lambda url, **kwargs: sent.append(kwargs) or Response())
+    editor = translator.translate_page(original, clean, [item("t1"), item("logo"), item("lost")],
+                                       api_key="k", source_lang="en", target_lang="vi", repair=False)
+    assert not editor.keep_ids and not editor.missed_boxes, "the editor never hides or adds regions"
+    assert "CLEANUP CHECK" not in sent[0]["json"]["messages"][0]["content"]

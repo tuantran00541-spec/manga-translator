@@ -9,7 +9,8 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, field_validator
 
 from app.ai_mode.job import AIModeJobManager, AIModeSettings
-from app.ai_providers import normalize_provider_id, validate_model_name
+from app import cloud
+from app.ai_providers import bind_cloud_job, normalize_provider_id, unbind_cloud_job, validate_model_name
 from app.config import OUTPUT_DIR
 from app.parameters import PIPELINE_DEFAULT_WORKERS
 from app.routers.translation import _resolve_vision_provider, validate_lang_code
@@ -27,6 +28,7 @@ class AIModeStartRequest(BaseModel):
     target_lang: str = "vi"
     budget_usd: float = 0.30
     workers: int = Field(default=PIPELINE_DEFAULT_WORKERS, ge=1, le=8)
+    story_notes: str = Field(default="", max_length=1500)
 
     @field_validator("url")
     @classmethod
@@ -68,9 +70,35 @@ def _snapshot_or_404(job_id: str) -> dict:
         raise HTTPException(404, "A.I mode job not found") from exc
 
 
+def _cloud_finish_hook(job_token: str):
+    def finish(job) -> None:
+        cloud.finish_job(job_token, job.status if job.status in {"completed", "cancelled"} else "failed")
+    return finish
+
+
 @router.post("/start")
 async def start_ai_mode(req: AIModeStartRequest) -> dict:
     await run_in_threadpool(validate_url, req.url)
+    if ai_mode_jobs.active_job() is not None:
+        raise HTTPException(409, "An A.I mode job is already running")
+    if req.provider == cloud.CLOUD_PROVIDER_ID:
+        reservation = await run_in_threadpool(cloud.reserve_job)
+        provider = cloud.cloud_provider(str(reservation.get("model") or ""))
+        settings = AIModeSettings(
+            url=req.url, provider=provider.id, model=provider.default_qc_model, target_lang=req.target_lang,
+            budget_usd=float(reservation.get("cost_cap_usd") or req.budget_usd), workers=req.workers,
+            story_notes=req.story_notes,
+        )
+        job_token = str(reservation["job_token"])
+        bound = bind_cloud_job(provider, job_token)
+        try:
+            return ai_mode_jobs.start(settings, provider=provider, api_key=job_token, on_finish=_cloud_finish_hook(job_token))
+        except RuntimeError as exc:
+            await run_in_threadpool(cloud.finish_job, job_token, "cancelled")
+            raise HTTPException(409, str(exc)) from exc
+        finally:
+            unbind_cloud_job(bound)
+    await run_in_threadpool(cloud.require_feature, "byok")
     # Resolve the provider and key before downloading anything, so a missing
     # key fails in a second instead of after the chapter was fetched.
     try:
@@ -85,7 +113,7 @@ async def start_ai_mode(req: AIModeStartRequest) -> dict:
         raise HTTPException(409, f"{provider.label} API key is not configured")
     settings = AIModeSettings(
         url=req.url, provider=provider.id, model=model, target_lang=req.target_lang,
-        budget_usd=req.budget_usd, workers=req.workers,
+        budget_usd=req.budget_usd, workers=req.workers, story_notes=req.story_notes,
     )
     try:
         return ai_mode_jobs.start(settings, provider=provider, api_key=api_key)

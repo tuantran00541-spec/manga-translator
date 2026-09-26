@@ -210,7 +210,7 @@
   .inspector-section > summary, .inspector-section > h3 { padding: 9px 10px; font-size: 12px; }
   .inspector-section > h3 { margin: 0; }
   .text-editor-section-body { display: grid; gap: 10px; padding: 0 10px 10px; }
-  .text-object-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .text-object-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
   .text-object-action-btn:last-child { grid-column: span 2; }
   .editor-page-summary { padding: 11px; }
   .editor-page-summary h3 { padding: 0; }
@@ -243,6 +243,7 @@
   .excluded-region-del { position: absolute; top: -10px; right: -10px; display: none; min-height: 22px; border: 1px solid var(--danger); border-radius: 50%; background: var(--surface-panel); color: var(--danger); cursor: pointer; }
   .excluded-region-box:hover .excluded-region-del, .excluded-region-box:focus-within .excluded-region-del { display: block; }
   .preview-tools, .review-controls { display: grid; gap: 8px; }
+  .process-inspector .preview-card-footer { display: grid; grid-template-columns: minmax(0, 1fr); padding: 8px 0 0; }
   .review-workspace-shell { background: var(--surface-canvas); }
   .review-view-switch { display: inline-flex; gap: 3px; padding: 3px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--surface-app); }
   .review-view-switch .active { background: var(--accent-soft); color: var(--text-primary); }

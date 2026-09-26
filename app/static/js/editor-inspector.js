@@ -61,22 +61,22 @@ function renderEditorPanel(pageIndex) {
   ocrLabel.appendChild(ocrTa);
   trLabel.appendChild(trTa);
 
-  const textBody = buildPanelSection(panel, "Text", true);
+  const textBody = buildPanelSection(panel, "Nội dung chữ", true);
   textBody.append(ocrLabel, trLabel);
 
-  const typographyBody = buildPanelSection(panel, "Typography", false);
+  const typographyBody = buildPanelSection(panel, "Kiểu chữ", false);
   buildTextSection(typographyBody, panel, obj, pageIndex);
 
-  const appearanceBody = buildPanelSection(panel, "Appearance", false);
+  const appearanceBody = buildPanelSection(panel, "Màu và nền", false);
   buildAppearanceSection(appearanceBody, panel, obj, pageIndex);
 
   buildBackgroundSection(appearanceBody, panel, obj, pageIndex);
 
-  const geometryBody = buildPanelSection(panel, "Geometry", false);
+  const geometryBody = buildPanelSection(panel, "Vị trí và kích thước", false);
   buildGeometryControls(geometryBody, obj, pageIndex);
 
-  const actions = buildPanelSection(panel, "Actions", false);
-  actions.classList.add("text-object-actions");
+  const actions = document.createElement("div");
+  actions.className = "text-object-actions";
 
   const ocrBtn = document.createElement("button");
   ocrBtn.type = "button";

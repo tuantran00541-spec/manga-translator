@@ -1,5 +1,5 @@
 
-from app.detector.bubble_detector import BubbleBox
+from app.detector.boxes import BubbleBox
 from app.parameters import (
     DETECTOR_MAX_BOX_AREA_RATIO as MAX_BOX_AREA_RATIO,
     INPAINT_CLUSTER_MAX_DIM,

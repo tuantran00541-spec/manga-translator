@@ -2,8 +2,39 @@
   "schema_version": 1,
   "generated_at": "2026-09-22",
   "default_font": "default.ttf",
-  "font_count": 66,
+  "font_count": 68,
   "records": [
+    {
+      "id": "dialogue.mac-dinh-3",
+      "name": "Mac-dinh-3 (MTO Comic 2)",
+      "path": "Mac-dinh-3.ttf",
+      "category": "dialogue",
+      "tags": [
+        "readable",
+        "comic",
+        "default"
+      ],
+      "vietnamese": true,
+      "license": "user-provided",
+      "license_file": "licenses/USER-PROVIDED.txt",
+      "source_url": "",
+      "default_rank": -1
+    },
+    {
+      "id": "narration.mac-dinh-2",
+      "name": "Mac-dinh-2 (International Playboy)",
+      "path": "Mac-dinh-2.ttf",
+      "category": "narration",
+      "tags": [
+        "readable",
+        "default"
+      ],
+      "vietnamese": true,
+      "license": "user-provided",
+      "license_file": "licenses/USER-PROVIDED.txt",
+      "source_url": "",
+      "default_rank": -1
+    },
     {
       "id": "dialogue.be-vietnam-pro",
       "name": "Be Vietnam Pro",
@@ -148,7 +179,7 @@
         "readable",
         "comic"
       ],
-      "vietnamese": true,
+      "vietnamese": false,
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Atkinson+Hyperlegible",
@@ -193,7 +224,7 @@
         "readable",
         "comic"
       ],
-      "vietnamese": true,
+      "vietnamese": false,
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Assistant",
@@ -238,7 +269,7 @@
         "impact",
         "bold"
       ],
-      "vietnamese": true,
+      "vietnamese": false,
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Bebas+Neue",
@@ -268,7 +299,7 @@
         "impact",
         "bold"
       ],
-      "vietnamese": true,
+      "vietnamese": false,
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Teko",
@@ -298,7 +329,7 @@
         "impact",
         "bold"
       ],
-      "vietnamese": true,
+      "vietnamese": false,
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Archivo+Black",
@@ -328,7 +359,7 @@
         "impact",
         "bold"
       ],
-      "vietnamese": true,
+      "vietnamese": false,
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Russo+One",
@@ -343,7 +374,7 @@
         "handwritten",
         "casual"
       ],
-      "vietnamese": true,
+      "vietnamese": false,
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Comic+Neue",
@@ -373,7 +404,7 @@
         "handwritten",
         "casual"
       ],
-      "vietnamese": true,
+      "vietnamese": false,
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Kalam",
@@ -388,7 +419,7 @@
         "handwritten",
         "casual"
       ],
-      "vietnamese": true,
+      "vietnamese": false,
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Caveat",
@@ -463,7 +494,7 @@
         "serif",
         "editorial"
       ],
-      "vietnamese": true,
+      "vietnamese": false,
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Libre+Baskerville",
@@ -568,7 +599,7 @@
         "display",
         "fantasy"
       ],
-      "vietnamese": true,
+      "vietnamese": false,
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Cinzel",
@@ -583,7 +614,7 @@
         "display",
         "fantasy"
       ],
-      "vietnamese": true,
+      "vietnamese": false,
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Orbitron",
@@ -613,7 +644,7 @@
         "display",
         "fantasy"
       ],
-      "vietnamese": true,
+      "vietnamese": false,
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Audiowide",
@@ -643,7 +674,7 @@
         "display",
         "fantasy"
       ],
-      "vietnamese": true,
+      "vietnamese": false,
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Rajdhani",
@@ -658,7 +689,7 @@
         "display",
         "fantasy"
       ],
-      "vietnamese": true,
+      "vietnamese": false,
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Michroma",
@@ -673,7 +704,7 @@
         "display",
         "fantasy"
       ],
-      "vietnamese": true,
+      "vietnamese": false,
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Uncial+Antiqua",
@@ -688,7 +719,7 @@
         "display",
         "fantasy"
       ],
-      "vietnamese": true,
+      "vietnamese": false,
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Pirata+One",
@@ -703,7 +734,7 @@
         "display",
         "sound-effect"
       ],
-      "vietnamese": true,
+      "vietnamese": false,
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Knewave",
@@ -718,7 +749,7 @@
         "display",
         "sound-effect"
       ],
-      "vietnamese": true,
+      "vietnamese": false,
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Luckiest+Guy",
@@ -733,7 +764,7 @@
         "display",
         "sound-effect"
       ],
-      "vietnamese": true,
+      "vietnamese": false,
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Bowlby+One+SC",
@@ -748,7 +779,7 @@
         "display",
         "sound-effect"
       ],
-      "vietnamese": true,
+      "vietnamese": false,
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Titan+One",
@@ -763,7 +794,7 @@
         "display",
         "sound-effect"
       ],
-      "vietnamese": true,
+      "vietnamese": false,
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Concert+One",
@@ -778,7 +809,7 @@
         "display",
         "sound-effect"
       ],
-      "vietnamese": true,
+      "vietnamese": false,
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Fredoka",
@@ -793,7 +824,7 @@
         "display",
         "sound-effect"
       ],
-      "vietnamese": true,
+      "vietnamese": false,
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Modak",
@@ -808,7 +839,7 @@
         "display",
         "sound-effect"
       ],
-      "vietnamese": true,
+      "vietnamese": false,
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Rubik+Mono+One",
@@ -838,7 +869,7 @@
         "display",
         "sound-effect"
       ],
-      "vietnamese": true,
+      "vietnamese": false,
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Special+Elite",
@@ -853,7 +884,7 @@
         "horror",
         "display"
       ],
-      "vietnamese": true,
+      "vietnamese": false,
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Nosifer",
@@ -868,7 +899,7 @@
         "horror",
         "display"
       ],
-      "vietnamese": true,
+      "vietnamese": false,
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Creepster",
@@ -883,7 +914,7 @@
         "horror",
         "display"
       ],
-      "vietnamese": true,
+      "vietnamese": false,
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Eater",
@@ -898,7 +929,7 @@
         "horror",
         "display"
       ],
-      "vietnamese": true,
+      "vietnamese": false,
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Metal+Mania",
@@ -973,7 +1004,7 @@
         "script",
         "display"
       ],
-      "vietnamese": true,
+      "vietnamese": false,
       "license": "OFL-1.1",
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Satisfy",

@@ -62,7 +62,7 @@ def test_lama_repaint_uses_exact_user_mask_without_growth(tmp_path: Path):
             "x2": 42,
             "y2": 31,
             "confidence": 0.95,
-            "source_model": "text_segmenter.onnx",
+            "source_model": "kiuyha_text_1280.onnx",
             "mask_source": "text_segmenter",
             "safe_to_inpaint": True,
         }
@@ -155,3 +155,81 @@ def test_standard_repaint_uses_exact_user_mask_and_preserve(tmp_path: Path):
         clean[p["y1"]:p["y2"], p["x1"]:p["x2"]],
         original[p["y1"]:p["y2"], p["x1"]:p["x2"]],
     )
+
+
+def test_preserve_and_reinpaint_restores_original_pixels_and_keeps_translations(tmp_path: Path, monkeypatch):
+    import app.config as config
+    import app.manifest_utils as manifests
+    import app.pipeline_editing as editing
+    from app.region_policy import text_object_in_preserve_region
+
+    chapter = "d4c3b2a1"
+    processed, output = tmp_path / "processed", tmp_path / "output"
+    (processed / chapter).mkdir(parents=True)
+    for module, name, value in ((editing, "PROCESSED_DIR", processed), (manifests, "PROCESSED_DIR", processed),
+                                (config, "PROCESSED_DIR", processed), (config, "OUTPUT_DIR", output)):
+        monkeypatch.setattr(module, name, value)
+    original = np.full((60, 80, 3), 30, dtype=np.uint8)
+    img_path = tmp_path / "page.png"
+    write_image(img_path, original)
+    boxes = [
+        {"id": "b1", "x1": 5, "y1": 5, "x2": 35, "y2": 25, "confidence": 0.9, "safe_to_inpaint": True},
+        {"id": "b2", "x1": 45, "y1": 30, "x2": 75, "y2": 55, "confidence": 0.9, "safe_to_inpaint": True},
+    ]
+    pipeline = OptimizedChapterPipeline.__new__(OptimizedChapterPipeline)
+    pipeline._inpainter = _FakeInpainter()
+    clean = pipeline._do_reinpaint(processed / chapter, img_path, original, boxes,
+                                   manual_mask_posix=None, manual_lama_mask_posix=None, preserve_regions=[])
+    objects = [
+        {"id": "o1", "region": {"x1": 5, "y1": 5, "x2": 35, "y2": 25}, "translation": "Chào", "source_boxes": ["b1"]},
+        {"id": "o2", "region": {"x1": 45, "y1": 30, "x2": 75, "y2": 55}, "translation": "", "source_boxes": ["b2"]},
+    ]
+    manifests.save_manifest_raw(chapter, {"chapter_id": chapter, "pages": [{
+        "original": img_path.as_posix(), "clean": clean, "boxes": boxes, "text_objects": objects,
+        "preserve_regions": [], "skipped": False, "process_required": False,
+        "source_revision": 1, "clean_revision": 1, "render_revision": 0, "rendered": False,
+    }]})
+
+    region = {"x1": 43, "y1": 28, "x2": 77, "y2": 57}
+    pipeline.preserve_and_reinpaint(chapter, 0, [region])
+
+    page = manifests.load_manifest_raw(chapter)["pages"][0]
+    assert page["preserve_regions"] == [region]
+    assert page["process_required"] is False and page["clean_revision"] == 2, "no second detection pass"
+    assert [obj["translation"] for obj in page["text_objects"]] == ["Chào", ""], "translations survive"
+    assert text_object_in_preserve_region(page, page["text_objects"][1])
+    cleaned = read_image(Path(page["clean"]))
+    assert (cleaned[30:55, 45:75] == 30).all(), "the preserved object shows the original pixels again"
+    assert (cleaned[5:25, 5:35] == 100).all(), "the other box stays erased"
+
+
+def test_add_manual_boxes_adds_every_box_with_one_reinpaint(tmp_path: Path, monkeypatch):
+    import app.config as config
+    import app.manifest_utils as manifests
+    import app.pipeline_editing as editing
+
+    chapter = "e5d4c3b2"
+    processed, output = tmp_path / "processed", tmp_path / "output"
+    (processed / chapter).mkdir(parents=True)
+    for module, name, value in ((editing, "PROCESSED_DIR", processed), (manifests, "PROCESSED_DIR", processed),
+                                (config, "PROCESSED_DIR", processed), (config, "OUTPUT_DIR", output)):
+        monkeypatch.setattr(module, name, value)
+    img_path = tmp_path / "page.png"
+    write_image(img_path, np.full((60, 80, 3), 30, dtype=np.uint8))
+    manifests.save_manifest_raw(chapter, {"chapter_id": chapter, "pages": [{
+        "original": img_path.as_posix(), "clean": None, "boxes": [], "text_objects": [],
+        "preserve_regions": [], "skipped": False, "process_required": False,
+        "source_revision": 1, "clean_revision": 1, "render_revision": 0, "rendered": False,
+    }]})
+    pipeline = OptimizedChapterPipeline.__new__(OptimizedChapterPipeline)
+    pipeline._inpainter = _FakeInpainter()
+    calls = []
+    real = pipeline._do_reinpaint
+    monkeypatch.setattr(pipeline, "_do_reinpaint", lambda *a, **k: calls.append(len(a[3])) or real(*a, **k))
+
+    pipeline.add_manual_boxes(chapter, 0, [(5, 5, 35, 25), (45, 30, 75, 55), (10, 10, 10, 40)])
+
+    page = manifests.load_manifest_raw(chapter)["pages"][0]
+    assert [(b["x1"], b["y1"], b["x2"], b["y2"]) for b in page["boxes"]] == [(5, 5, 35, 25), (45, 30, 75, 55)]
+    assert calls == [2], "one re-inpaint with both boxes; the empty one is dropped"
+    assert page["clean_revision"] == 2

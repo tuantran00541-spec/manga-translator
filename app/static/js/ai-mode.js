@@ -5,8 +5,10 @@
   const STATUS_TEXT = {
     pending: "Chờ", running: "Đang chạy", done: "Xong", failed: "Lỗi", cancelled: "Đã hủy",
   };
+  const CLOUD = "manga-cloud";
   let pollTimer = null;
   let currentJob = null;
+  let account = null;
 
   const $ = (id) => document.getElementById(id);
 
@@ -43,8 +45,173 @@
     const budgetField = $("ai-mode-budget-field");
     if (!provider || !model) return;
     model.value = storage("get", "manga_translation_vision_model_" + provider.value) || "";
+    const cloud = provider.value === CLOUD;
+    const modelField = model.closest("label");
+    if (modelField) modelField.hidden = cloud;
     // Only DeepSeek reports token cost, so only there a budget can be enforced.
-    if (budgetField) budgetField.hidden = provider.value !== "deepseek";
+    if (budgetField) budgetField.hidden = cloud || provider.value !== "deepseek";
+  }
+
+  function ensureCloudOption() {
+    const provider = $("ai-mode-provider");
+    if (!provider || !account?.tiers) return;
+    if (![...provider.options].some((o) => o.value === CLOUD)) {
+      provider.prepend(new Option("Manga Cloud", CLOUD));
+    }
+    const stored = storage("get", "manga_translation_provider");
+    if (!stored || stored === CLOUD || !account.features?.includes("byok")) provider.value = CLOUD;
+  }
+
+  const postJson = (url, body) => requestJson(url, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}),
+  });
+  let plans = null;
+  let loginEmail = "";
+
+  function formatMoney(value, currency) {
+    return currency === "VND"
+      ? `${Number(value).toLocaleString("vi-VN")}đ`
+      : `$${Number(value).toFixed(2)}`;
+  }
+
+  function renderUpgrade(signedIn) {
+    const box = $("ai-mode-upgrade");
+    const options = $("ai-mode-upgrade-options");
+    const providers = plans?.providers || {};
+    const canBuy = signedIn && account?.plan !== "pro" && (providers.payos || providers.lemonsqueezy);
+    box.hidden = !canBuy;
+    if (!canBuy) return;
+    const buttons = [];
+    for (const plan of ["plus", "pro"]) {
+      if (plan === "plus" && account.plan === "plus") continue;
+      const price = plans.plans?.[plan] || {};
+      const label = plan === "plus" ? "Plus" : "Pro";
+      if (providers.payos) buttons.push([plan, "payos", `${label} · ${formatMoney(price.vnd, "VND")}/${plans.period_days} ngày · QR ngân hàng`]);
+      if (providers.lemonsqueezy) buttons.push([plan, "lemonsqueezy", `${label} · ${formatMoney(price.usd, "USD")}/tháng · Thẻ quốc tế`]);
+    }
+    options.replaceChildren(...buttons.map(([plan, provider, text]) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "ui-btn ui-btn-compact";
+      button.textContent = text;
+      button.addEventListener("click", () => checkout(plan, provider, button));
+      return button;
+    }));
+  }
+
+  function renderAccount() {
+    const bar = $("ai-mode-plan");
+    if (!bar) return;
+    bar.hidden = !account?.tiers;
+    if (!account?.tiers) return;
+    const signedIn = account.signed_in && !account.invalid_token;
+    const quota = account.quota;
+    let text = "Đăng nhập bằng email để dùng A.I mode.";
+    if (account.invalid_token) text = "Phiên đăng nhập đã hết — đăng nhập lại.";
+    else if (account.offline) text = "Không kết nối được Manga Cloud — tạm dùng tính năng gói Free.";
+    else if (signedIn && quota) {
+      text = `${account.email} · Gói ${account.plan_label || account.plan} · còn ${quota.remaining}/${quota.limit} chương A.I mode tháng ${quota.period}`;
+      if (account.plan_expires_at) {
+        text += ` · hết hạn ${new Date(account.plan_expires_at * 1000).toLocaleDateString("vi-VN")}`;
+      }
+    }
+    $("ai-mode-plan-text").textContent = text;
+    $("ai-mode-login-form").hidden = signedIn;
+    $("ai-mode-signout").hidden = !signedIn;
+    renderUpgrade(signedIn);
+  }
+
+  async function loadAccount() {
+    try {
+      account = await requestJson("/api/account");
+      if (account?.tiers && !plans) plans = await requestJson("/api/account/plans").catch(() => null);
+    } catch (_) {
+      account = null;
+    }
+    ensureCloudOption();
+    renderAccount();
+    syncProviderFields();
+  }
+
+  function resetLogin() {
+    loginEmail = "";
+    $("ai-mode-code-field").hidden = true;
+    $("ai-mode-code").value = "";
+    $("ai-mode-email").disabled = false;
+    $("ai-mode-login-submit").textContent = "Gửi mã";
+  }
+
+  async function submitLogin(event) {
+    event.preventDefault();
+    const submit = $("ai-mode-login-submit");
+    submit.disabled = true;
+    try {
+      if (!loginEmail) {
+        const email = $("ai-mode-email").value.trim();
+        if (!email) return;
+        const sent = await postJson("/api/account/login/start", { email });
+        loginEmail = sent.email || email;
+        $("ai-mode-email").disabled = true;
+        $("ai-mode-code-field").hidden = false;
+        $("ai-mode-code").focus();
+        submit.textContent = "Đăng nhập";
+        window.showToast?.(sent.dev_code ? `Mã thử nghiệm: ${sent.dev_code}` : `Đã gửi mã tới ${loginEmail}`, "success");
+        return;
+      }
+      account = await postJson("/api/account/login/verify", { email: loginEmail, code: $("ai-mode-code").value.trim() });
+      resetLogin();
+      ensureCloudOption();
+      renderAccount();
+      syncProviderFields();
+    } catch (err) {
+      window.showToast?.("Không đăng nhập được: " + err.message, "error");
+    } finally {
+      submit.disabled = false;
+    }
+  }
+
+  async function checkout(plan, provider, button) {
+    button.disabled = true;
+    try {
+      const result = await postJson("/api/account/checkout", { plan, provider });
+      window.open(result.checkout_url, "_blank", "noopener");
+      window.showToast?.("Đã mở trang thanh toán. Gói tự nâng sau khi thanh toán xong.", "success");
+    } catch (err) {
+      window.showToast?.("Không mở được thanh toán: " + err.message, "error");
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  async function signOut() {
+    try {
+      account = await postJson("/api/account/logout");
+    } catch (err) {
+      window.showToast?.("Không đăng xuất được: " + err.message, "error");
+    }
+    resetLogin();
+    renderAccount();
+  }
+
+  function watchReturnFromCheckout() {
+    const params = new URLSearchParams(window.location.search);
+    const state = params.get("billing");
+    if (!state) return;
+    params.delete("billing");
+    const query = params.toString();
+    window.history.replaceState(null, "", window.location.pathname + (query ? `?${query}` : "") + window.location.hash);
+    if (state !== "paid") return;
+    window.showToast?.("Đang chờ xác nhận thanh toán…", "info");
+    const before = account?.plan;
+    let tries = 0;
+    const timer = window.setInterval(async () => {
+      tries += 1;
+      await loadAccount();
+      if ((account?.plan && account.plan !== before) || tries >= 20) {
+        window.clearInterval(timer);
+        if (account?.plan !== before) window.showToast?.(`Đã nâng lên gói ${account.plan_label || account.plan}`, "success");
+      }
+    }, 3000);
   }
 
   function setRunning(running) {
@@ -59,7 +226,15 @@
     const lines = [];
     if (r.credit_pages?.length) lines.push(`Bỏ qua ${r.credit_pages.length} lát credit: lát ${r.credit_pages.map((i) => i + 1).join(", ")}`);
     if (r.credit_rejected?.length) lines.push(`AI coi ${r.credit_rejected.length} lát là credit — quá nhiều nên không bỏ lát nào`);
+    if (r.textless_pages?.length) lines.push(`Bỏ qua ${r.textless_pages.length} lát không có chữ (giữ ảnh gốc)`);
     if (r.logo_regions) lines.push(`Giữ nguyên ${r.logo_regions} vùng logo`);
+    if (r.kept_regions) lines.push(`Giữ nguyên ${r.kept_regions} vùng chữ là một phần của hình vẽ`);
+    if (r.missed_added) lines.push(`Thêm ${r.missed_added} vùng chữ bị sót rồi xoá và dịch`);
+    if (r.retried_pages?.length) lines.push(`Dịch lại ${r.retried_pages.length} lát theo lô nhỏ`);
+    if (r.restored_regions) {
+      const pages = [...new Set((r.review_list || []).map((item) => item.page))].slice(0, 8);
+      lines.push(`${r.restored_regions} vùng AI không dịch được, đã giữ ảnh gốc${pages.length ? ` (lát ${pages.join(", ")})` : ""}`);
+    }
     if (r.repainted_regions) lines.push(`Repaint ${r.repainted_regions} vùng AI thấy còn sót ở ${r.repaint_pages?.length || 0} lát`);
     if (r.source_lang) lines.push(`Ngôn ngữ gốc: ${window.SOURCE_LANG_LABELS?.[r.source_lang] || r.source_lang}`);
     if (r.translated || r.unreadable) lines.push(`Dịch ${r.translated || 0} vùng chữ${r.unreadable ? `, ${r.unreadable} vùng AI không đọc được` : ""}`);
@@ -154,6 +329,7 @@
       target_lang: $("ai-mode-target").value,
       budget_usd: Number($("ai-mode-budget").value || 0.3),
       workers: typeof window.getWorkersSetting === "function" ? window.getWorkersSetting() : 2,
+      story_notes: $("ai-mode-notes")?.value.trim() || "",
     };
     setRunning(true);
     try {
@@ -165,6 +341,7 @@
       storage("set", JOB_KEY, job.job_id);
       render(job);
       poll(job.job_id);
+      if (provider === CLOUD) loadAccount();
     } catch (err) {
       setRunning(false);
       window.showToast?.("Không chạy được A.I mode: " + err.message, "error");
@@ -189,7 +366,12 @@
       storage("set", "manga_translation_provider", provider.value);
       syncProviderFields();
     });
-    provider.addEventListener("ai-providers-updated", syncProviderFields);
+    provider.addEventListener("ai-providers-updated", () => {
+      ensureCloudOption();
+      syncProviderFields();
+    });
+    $("ai-mode-login-form").addEventListener("submit", submitLogin);
+    $("ai-mode-signout").addEventListener("click", signOut);
     $("ai-mode-model").addEventListener("change", (event) => {
       storage("set", "manga_translation_vision_model_" + provider.value, event.target.value.trim());
     });
@@ -207,6 +389,7 @@
     });
     syncProviderFields();
     window.syncAIProviderSelects?.();
+    loadAccount().then(watchReturnFromCheckout);
     restore();
   }
 

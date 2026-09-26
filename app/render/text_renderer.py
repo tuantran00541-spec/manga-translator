@@ -31,6 +31,41 @@ def get_font_object(font_path_str: str, size: int) -> ImageFont.FreeTypeFont:
         raise OSError(f"Cannot load font '{font_path_str}' size={size}: {e}") from e
 
 
+_PROBE_SIZE = 32
+_UNASSIGNED = "\U0010FFFD"
+
+
+@lru_cache(maxsize=FONT_CACHE_SIZE)
+def _missing_glyph_mask(font_path_str: str) -> tuple:
+    mask = get_font_object(font_path_str, _PROBE_SIZE).getmask(_UNASSIGNED)
+    return mask.size, bytes(mask)
+
+
+@lru_cache(maxsize=8192)
+def _draws_char(font_path_str: str, char: str) -> bool:
+    mask = get_font_object(font_path_str, _PROBE_SIZE).getmask(char)
+    return (mask.size, bytes(mask)) != _missing_glyph_mask(font_path_str)
+
+
+# Typographic punctuation many comic fonts lack, with the plain form they do have.
+_PUNCTUATION_FALLBACKS = {"\u2014": "-", "\u2013": "-", "\u2026": "...", "\u2022": "·", "\u00ab": '"', "\u00bb": '"',
+                          "\u201c": '"', "\u201d": '"', "\u2018": "'", "\u2019": "'"}
+
+
+def _plain_punctuation(font_path, text: str) -> str:
+    font_path_str = str(font_path)
+    return "".join(
+        _PUNCTUATION_FALLBACKS[char] if char in _PUNCTUATION_FALLBACKS and not _draws_char(font_path_str, char) else char
+        for char in text
+    )
+
+
+def font_draws_text(font_path, text: str) -> bool:
+    """False when some character would come out as the font's missing-glyph box."""
+    font_path_str = str(font_path)
+    return all(_draws_char(font_path_str, char) for char in set(str(text or "")) if not char.isspace())
+
+
 def parse_color(color_input, default=(0, 0, 0)) -> tuple[int, int, int]:
     if not color_input:
         return default
@@ -183,6 +218,13 @@ def render_text_in_box(
         font_path = get_font_path(font_name)
     else:
         font_path = Path(font_path)
+    if not font_draws_text(font_path, text):
+        # Replace glyphs the font lacks; fall back to the default font for missing letters.
+        plain = _plain_punctuation(font_path, text)
+        if font_draws_text(font_path, plain):
+            text = plain
+        elif font_draws_text(DEFAULT_FONT, text):
+            font_path = DEFAULT_FONT
 
     if fill is None or fill == "auto" or fill == "":
         text_color = auto_detect_text_color(image, box)

@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field, field_validator
 from app.config import PROCESSED_DIR, RAW_DIR
 from app.ai_providers import (
     PROVIDERS,
+    cloud_job_provider,
     normalize_provider_id,
     resolve_provider,
     validate_model_name,
@@ -35,6 +36,7 @@ from app.region_policy import text_object_in_preserve_region
 from app.translation import DeepSeekTranslator, TranslationBudgetExceeded
 from app.translation.deepseek import PRICING_VERSION, _preflight_cost_usd
 from app.translation.vision import VisionPageTranslator
+from app.translation.context import ChapterMemory
 
 
 router = APIRouter(prefix="/api/translate", tags=["translation"])
@@ -306,11 +308,18 @@ async def translate_chapter(req: TranslateChapterRequest) -> dict:
 
 class TranslateVisionPageRequest(TranslateChapterRequest):
     page_index: int = Field(ge=0)
+    # Cap per request; retries use a small batch so the reply fits.
+    max_objects: int | None = Field(default=None, ge=1, le=100)
+    # Only these objects (still untranslated ones); None means every untranslated object.
+    object_ids: list[str] | None = Field(default=None, max_length=100)
 
 
 def _resolve_vision_provider(provider_id: str):
     normalized = normalize_provider_id(provider_id)
-    if normalized in PROVIDERS:
+    cloud = cloud_job_provider(normalized)
+    if cloud is not None:
+        provider = cloud
+    elif normalized in PROVIDERS:
         provider = PROVIDERS[normalized]
     else:
         stored = get_provider_config(normalized)
@@ -360,6 +369,14 @@ def _vision_candidates(page: dict, *, force: bool) -> list[dict]:
 
 @router.post("/page/vision")
 async def translate_page_with_images(req: TranslateVisionPageRequest) -> dict:
+    return await translate_page_in_context(req, repair=False)
+
+
+async def translate_page_in_context(
+    req: TranslateVisionPageRequest, memory: ChapterMemory | None = None, slice_total: int | None = None,
+    repair: bool = True,
+) -> dict:
+    """Translate one slice; ``repair`` lets the model keep art text and report missed text (A.I mode only)."""
     validate_chapter_id(req.chapter_id)
     try:
         provider = _resolve_vision_provider(req.provider)
@@ -392,6 +409,12 @@ async def translate_page_with_images(req: TranslateVisionPageRequest) -> dict:
             raise HTTPException(409, str(exc)) from exc
         if len(candidates) > 100:
             raise HTTPException(400, "Too many text objects on one slice (maximum 100)")
+        if req.object_ids is not None:
+            wanted = set(req.object_ids)
+            candidates = [candidate for candidate in candidates if candidate["id"] in wanted]
+        total_candidates = len(candidates)
+        if req.max_objects is not None:
+            candidates = candidates[:req.max_objects]
         original_path = validate_managed_path(page["original"], RAW_DIR / req.chapter_id)
         clean_path = validate_managed_path(page["clean"], PROCESSED_DIR / req.chapter_id)
         snapshot = {
@@ -418,13 +441,16 @@ async def translate_page_with_images(req: TranslateVisionPageRequest) -> dict:
         translated = await run_in_threadpool(
             translator.translate_page, original_path, clean_path, candidates,
             api_key=api_key, source_lang=req.source_lang, target_lang=req.target_lang,
+            memory=memory, slice_number=req.page_index + 1, slice_total=slice_total, repair=repair,
         )
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(502, str(exc)) from exc
 
-    committed = stale = unreadable = 0
+    committed = stale = unreadable = review = 0
+    keep_regions: list[list[int]] = []
+    blank_ids: list[str] = []
     with get_manifest_lock(req.chapter_id):
         latest = load_manifest_raw(req.chapter_id)
         pages = latest.get("pages", [])
@@ -447,9 +473,14 @@ async def translate_page_with_images(req: TranslateVisionPageRequest) -> dict:
             ):
                 stale += 1
                 continue
+            if candidate["id"] in getattr(translated, "keep_ids", ()):
+                keep_regions.append(list(candidate["region"]))
+                continue
             value = translated.translations[candidate["id"]]
             if not value:
                 unreadable += 1
+                if candidate["id"] not in getattr(translated, "missing_ids", ()):
+                    blank_ids.append(candidate["id"])
                 continue
             obj["translation"] = value
             obj["translation_source"] = provider.id
@@ -457,6 +488,12 @@ async def translate_page_with_images(req: TranslateVisionPageRequest) -> dict:
             obj["translation_input_text"] = candidate["text"]
             obj["auto_translation"] = value
             _apply_ai_font_choice(obj, getattr(translated, "font_choices", {}).get(candidate["id"]))
+            role = getattr(translated, "roles", {}).get(candidate["id"])
+            if role:
+                obj["typography_role"] = role
+            if candidate["id"] in getattr(translated, "review_ids", ()):
+                obj["needs_review"] = True
+                review += 1
             committed += 1
             changed = True
         if changed:
@@ -482,7 +519,7 @@ async def translate_page_with_images(req: TranslateVisionPageRequest) -> dict:
         current = load_manifest_raw(req.chapter_id)
     result = urlify_manifest(current)
     result["translation_run"] = {
-        "translated": committed, "unreadable": unreadable, "stale": stale,
+        "translated": committed, "unreadable": unreadable, "stale": stale, "review": review,
         "model": translated.model, "usage": translated.usage,
         "estimated_cost_usd": (
             round(translated.estimated_cost_usd, 6)
@@ -493,5 +530,10 @@ async def translate_page_with_images(req: TranslateVisionPageRequest) -> dict:
             and translated.estimated_cost_usd >= req.budget_usd
         ),
         "rendered_pages": rendered_pages, "render_error": render_error,
+        "keep_regions": keep_regions,
+        "missing_ids": sorted(getattr(translated, "missing_ids", ())),
+        "blank_ids": blank_ids,
+        "missed_boxes": [list(box) for box in getattr(translated, "missed_boxes", ())],
+        "remaining": max(0, total_candidates - len(candidates)),
     }
     return result

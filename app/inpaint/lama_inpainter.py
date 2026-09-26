@@ -6,7 +6,7 @@ import time
 import numpy as np
 import cv2
 from app.config import LAMA_MODEL, LAMA_DYNAMIC_MODEL
-from app.detector.bubble_detector import BubbleBox
+from app.detector.boxes import BubbleBox
 from app.inpaint.clustering import cluster_boxes, compute_crop_region, compute_manual_crop_region, split_oversized_cluster_area
 from app.detector.mask_builder import build_mask
 from app.logging_config import logger
@@ -744,9 +744,7 @@ class Inpainter:
         canvas = cv2.copyMakeBorder(
             crop_resized, pad_y, pad_bottom, pad_x, pad_right, cv2.BORDER_REPLICATE
         )
-        # The padding repeats the edge pixels, so it must repeat the edge mask
-        # too: text cut by the crop edge (a slice boundary, a tile edge) would
-        # otherwise be fed to LaMa as known context and painted back.
+        # Pad the mask like the image so text cut by the crop edge stays masked.
         mask_canvas = cv2.copyMakeBorder(
             mask_resized, pad_y, pad_bottom, pad_x, pad_right, cv2.BORDER_REPLICATE
         )

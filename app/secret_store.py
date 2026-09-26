@@ -4,7 +4,7 @@ import json
 import os
 
 from app.ai_providers import (
-    PROVIDERS, normalize_provider_id, resolve_provider, validate_provider_label
+    CLOUD_PROVIDER_ID, PROVIDERS, cloud_job_key, normalize_provider_id, resolve_provider, validate_provider_label
 )
 
 _SERVICE_NAME = "manga-translator"
@@ -158,6 +158,8 @@ def deepseek_key_status() -> dict:
 
 
 def get_provider_api_key(provider_id: str, *, provider_label: str | None = None) -> str | None:
+    if provider_id == CLOUD_PROVIDER_ID:
+        return cloud_job_key()
     provider_id, env_names, label = _provider_meta(provider_id, provider_label)
     if provider_id == "gemini":
         return get_gemini_api_key()
@@ -328,3 +330,19 @@ def delete_provider_config(provider_id: str) -> None:
             ) from exc
     ids = [provider_id for provider_id in _custom_provider_ids() if provider_id != normalized]
     _set_custom_provider_ids(ids)
+
+
+_CLOUD_ACCOUNT = "manga-cloud-account-token"
+_CLOUD_ENV = ("MANGA_CLOUD_TOKEN",)
+
+
+def get_cloud_token() -> str | None:
+    return _get_api_key(_CLOUD_ACCOUNT, _CLOUD_ENV, "Manga Cloud")
+
+
+def set_cloud_token(value: str) -> None:
+    _set_api_key(_CLOUD_ACCOUNT, value, "Manga Cloud")
+
+
+def delete_cloud_token() -> None:
+    _delete_api_key(_CLOUD_ACCOUNT, "Manga Cloud")

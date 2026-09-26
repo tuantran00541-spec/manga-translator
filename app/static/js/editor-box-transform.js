@@ -49,6 +49,15 @@
     return geomDirty.size > 0;
   };
 
+  window.pendingGeomUpdates = function pendingGeomUpdates() {
+    const updates = [];
+    geomDirty.forEach((region, key) => {
+      const [pi, id] = key.split(":");
+      if (region && typeof region === "object") updates.push({ page_index: Number(pi), id, region });
+    });
+    return updates;
+  };
+
   window.isGeomSaving = function isGeomSaving() {
     return geomSaving > 0;
   };

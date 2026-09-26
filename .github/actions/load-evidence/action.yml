@@ -1,0 +1,8 @@
+name: Load evidence
+description: Restore earlier bench output from the audit-evidence branch.
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: |
+        git fetch -q origin audit-evidence && git checkout FETCH_HEAD -- audit-results && git reset -q -- audit-results || true

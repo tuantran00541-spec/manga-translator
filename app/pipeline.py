@@ -9,14 +9,14 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import numpy as np
 from app.downloader.registry import download_chapter as fetch_chapter_images
 from app.downloader.slicer import OVERLAP_CONTEXT, slice_image
-from app.detector.bubble_detector import BubbleBox, apply_final_nms
+from app.detector.boxes import BubbleBox, apply_final_nms
+from app.detector.kiuyha_detector import KiuyhaTextDetector
 from app.inpaint.lama_inpainter import Inpainter
 from app.inpaint.mask_geometry import geometry_dict, remap_local_mask_page_space
 from app.image_io import encode_mask as _encode_mask, read_image
-from app.one_shot_cleanup import OneShotProductionDetector
 from app.page_processing import PageProcessingMixin
 from app.pipeline_editing import PipelineEditingMixin
-from app.config import RAW_DIR, PROCESSED_DIR
+from app.config import KIUYHA_TEXT_MODEL, RAW_DIR, PROCESSED_DIR
 from app.logging_config import logger
 from app.mask_store import decode_mask_value
 from app.parameters import (
@@ -56,7 +56,7 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
         if self._detector is None:
             with self._detector_init_lock:
                 if self._detector is None:
-                    self._detector = OneShotProductionDetector()
+                    self._detector = KiuyhaTextDetector(KIUYHA_TEXT_MODEL)
         return self._detector
 
     @property
@@ -331,12 +331,7 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
             "attempts": 0,
             "failures": 0,
             "wall_ms": 0.0,
-            "bubble_model_ms": 0.0,
             "text_model_ms": 0.0,
-            "mser_ms": 0.0,
-            "text_grayscale_fallback_runs": 0,
-            "text_grayscale_fallback_ms": 0.0,
-            "detector_total_ms": 0.0,
         }
 
         for item in work_items:
@@ -415,23 +410,9 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
                 shared_metrics["wall_ms"] = float(shared_metrics["wall_ms"]) + (
                     (time.perf_counter() - seam_started_at) * 1000.0
                 )
-                for source_name, target_name in (
-                    ("bubble_model_ms", "bubble_model_ms"),
-                    ("text_model_ms", "text_model_ms"),
-                    ("mser_ms", "mser_ms"),
-                    (
-                        "text_grayscale_fallback_runs",
-                        "text_grayscale_fallback_runs",
-                    ),
-                    (
-                        "text_grayscale_fallback_ms",
-                        "text_grayscale_fallback_ms",
-                    ),
-                    ("total_ms", "detector_total_ms"),
-                ):
-                    shared_metrics[target_name] = float(
-                        shared_metrics[target_name]
-                    ) + float(detector_metrics.get(source_name) or 0.0)
+                shared_metrics["text_model_ms"] = float(shared_metrics["text_model_ms"]) + float(
+                    detector_metrics.get("text_model_ms") or 0.0
+                )
                 if "provider_image" in locals():
                     del provider_image
 
@@ -802,7 +783,8 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
                         page["clean"] = None
                         page["boxes"] = []
                         page["process_required"] = False
-                    else:
+                    elif changed:
+                        # Only a page returning from "skipped" needs processing.
                         page["process_required"] = True
                     if changed:
                         bump_page_revision(page, "clean_revision")

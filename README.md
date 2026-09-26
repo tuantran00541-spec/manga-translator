@@ -229,12 +229,16 @@ Place these files in models/:
 
 | File | Purpose |
 | --- | --- |
-| bubble_yolo.onnx | Bubble/text detection |
-| text_segmenter.onnx | Text segmentation and pixel masks |
+| kiuyha_text_1280.onnx | Text detection: Kiuyha/Manga-Bubble-YOLO boxes, masked per letter |
 | lama-manga-dynamic.onnx | Preferred inpainting backend |
 | lama.onnx | Fixed-resolution fallback |
 
-Model binaries are intentionally not committed to Git.
+Model binaries are intentionally not committed to Git. `kiuyha_text_1280.onnx`
+comes from the **Kiuyha ONNX export** workflow (Actions → Kiuyha ONNX export →
+artifact `kiuyha-onnx`), which exports
+[Kiuyha/Manga-Bubble-YOLO](https://huggingface.co/Kiuyha/Manga-Bubble-YOLO)
+and checks the ONNX boxes against the original model. See
+[docs/detection.md](docs/detection.md) for how detection works and why.
 
 ### Run
 
@@ -273,18 +277,32 @@ The settings UI can discover provider models through /models, select exact model
 
 Custom provider endpoints must use public HTTPS URLs. Credentials are never accepted inside the API URL.
 
+### Plans (experimental, off by default)
+
+With `MANGA_TIERS=1` the app reads its plan from a Manga Cloud gateway at `MANGA_CLOUD_URL`. Users sign in from the A.I mode panel with their email and a 6-digit code. A.I mode then runs through the gateway's own provider key and spends one chapter of the monthly quota. Free has 3 chapters, Plus has 30 plus Visual QC, and Pro has 100 plus the user's own keys and custom providers. The gateway enforces the quota and a per-chapter cost cap. The app hides locked features and falls back to Free when the gateway is unreachable.
+
+The gateway lives in `gateway/` and runs with `python -m gateway`:
+
+| Area | Variables |
+| --- | --- |
+| A.I upstream | `GATEWAY_UPSTREAM_BASE`, `GATEWAY_UPSTREAM_KEY`, `GATEWAY_UPSTREAM_MODEL`, `GATEWAY_PRICE_INPUT_PER_M`, `GATEWAY_PRICE_OUTPUT_PER_M` |
+| Login email | `GATEWAY_RESEND_API_KEY`, `GATEWAY_MAIL_FROM`, `GATEWAY_DEV_LOGIN=1` (shows the code instead of mailing it, local testing only) |
+| payOS (VietQR) | `GATEWAY_PAYOS_CLIENT_ID`, `GATEWAY_PAYOS_API_KEY`, `GATEWAY_PAYOS_CHECKSUM_KEY`, `GATEWAY_PRICE_PLUS_VND`, `GATEWAY_PRICE_PRO_VND`; webhook `/v1/billing/payos/webhook` |
+| Lemon Squeezy (cards) | `GATEWAY_LS_API_KEY`, `GATEWAY_LS_STORE_ID`, `GATEWAY_LS_VARIANT_PLUS`, `GATEWAY_LS_VARIANT_PRO`, `GATEWAY_LS_WEBHOOK_SECRET`, `GATEWAY_PRICE_PLUS_USD`, `GATEWAY_PRICE_PRO_USD`; webhook `/v1/billing/lemonsqueezy/webhook` |
+| Other | `GATEWAY_DB`, `GATEWAY_ADMIN_KEY`, `GATEWAY_RETURN_URL`, `GATEWAY_HOST`, `GATEWAY_PORT` |
+
+A payOS payment adds 30 days of the plan, stacked on top of time already paid. A Lemon Squeezy subscription follows its webhooks, and a cancelled subscription keeps the plan until the paid period ends. Screenshots of the flow are on the `audit-evidence` branch under `audit-results/tiers/`.
+
 ## Runtime settings
 
 Detection, inpainting, OCR and rendering thresholds are fixed constants in `app/parameters.py`. Only operational settings read environment variables:
 
 | Area | Variables |
 | --- | --- |
-| Processing | `MANGA_PIPELINE_DEFAULT_WORKERS`, `MANGA_PIPELINE_SLICE_WORKER_LIMIT`, `MANGA_USE_DYNAMIC_LAMA`, `MANGA_INPAINT_PRELOAD`, `MANGA_DETECTOR_RESIDUE_VERIFY_ENABLED`, `MANGA_FIXED_LAMA_*` |
+| Processing | `MANGA_PIPELINE_DEFAULT_WORKERS`, `MANGA_PIPELINE_SLICE_WORKER_LIMIT`, `MANGA_USE_DYNAMIC_LAMA`, `MANGA_INPAINT_PRELOAD`, `MANGA_FIXED_LAMA_*` |
 | ONNX Runtime | `MANGA_ORT_PROVIDER`, `MANGA_ORT_REQUIRE_PROVIDER`, `MANGA_ORT_INTRA_OP_THREADS`, `MANGA_ORT_OPENVINO_*`, `MANGA_ORT_CPU_MEM_ARENA`, `MANGA_ORT_MEM_PATTERN`, `MANGA_ORT_SERIALIZE_INFERENCE` |
 | OCR | `MANGA_PPOCRV6_TIER`, `MANGA_PPOCRV6_TEXTLINE_ORIENTATION`, `MANGA_OCR_TARGET_SELECTION`, `MANGA_OCR_IMAGE_CACHE_MB`, `MANGA_OCR_JOB_CONCURRENCY_LIMIT`, `MANGA_OCR_JOB_ACTIVE_LIMIT` |
 | Network and AI | `MANGA_DOWNLOAD_WORKERS`, `MANGA_DOWNLOAD_JS_NAVIGATION_TIMEOUT_MS`, `MANGA_REMOTE_CONNECT_TIMEOUT_SECONDS`, `MANGA_TRANSLATION_CONNECT_TIMEOUT_SECONDS`, `MANGA_TRANSLATION_READ_TIMEOUT_SECONDS`, `MANGA_VISUAL_QC_*` |
-
-`python scripts/parameter_report.py --env-only` prints the effective values of the ones defined in `app/parameters.py`.
 
 ## CPU-first design
 
@@ -354,8 +372,7 @@ The README is intentionally product-focused. Deeper engineering material lives i
 
 - [Architecture](docs/ARCHITECTURE.md)
 - [Security history](docs/SECURITY_HISTORY.md)
-- [Model E2E gate](docs/MODEL_E2E_GATE.md)
-- [Processed chapter quality baseline](docs/PROCESSED_CHAPTER_QUALITY_BASELINE_20260912.md)
+- [Text detection](docs/detection.md)
 - [Comic font library](docs/comic-fonts.md)
 - [UI guidelines](docs/UI_GUIDELINES.md)
 
@@ -383,13 +400,13 @@ The maintained release path covers source compilation, regression tests, browser
 
 Model-dependent validation remains a separate local artifact gate because production ONNX binaries are not stored in Git.
 
-To screenshot every screen on a real chapter with the real models, run the **UI tour** workflow from the Actions tab on a feature branch. It imports the chapter, skips all but the chosen slices, repaints a region with LaMa, preserves a cleaned bubble and reprocesses, checks each result pixel by pixel, and commits the screenshots and `report.json` to `audit-results/ui-tour/` on that branch. Against a running local server: `python scripts/ui_tour.py --chapter-url <url> --keep 16,19,24,27`.
+To clean a whole real chapter with the real models and see speed and text left behind, run the **Chapter run** workflow from the Actions tab; results go to the `audit-evidence` branch.
 
 ## Project layout
 
 ~~~text
 app/
-  detector/       bubble/text detection and recovery
+  detector/       text detection (Kiuyha) and masks
   downloader/     HTTP, Playwright, adapters and slicing
   inpaint/        LaMa and mask geometry safety
   ocr/            MangaOCR + PP-OCRv6

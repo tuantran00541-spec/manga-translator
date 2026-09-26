@@ -8,7 +8,8 @@ import cv2
 import numpy as np
 
 from app.config import PROCESSED_DIR
-from app.detector.bubble_detector import BubbleBox
+from app.text_objects import ensure_page_text_objects
+from app.detector.boxes import BubbleBox
 from app.image_io import read_image, write_image
 from app.logging_config import logger
 from app.manifest_utils import (
@@ -68,6 +69,10 @@ def _normalize_region(region: dict, w: int, h: int) -> tuple[int, int, int, int]
 
 class PipelineEditingMixin:
     def add_manual_box(self, chapter_id: str, page_index: int, x1: int, y1: int, x2: int, y2: int) -> dict:
+        return self.add_manual_boxes(chapter_id, page_index, [(x1, y1, x2, y2)])
+
+    def add_manual_boxes(self, chapter_id: str, page_index: int, rects: list[tuple[int, int, int, int]]) -> dict:
+        """Add several manual boxes with a single re-inpaint of the page."""
         processed_dir = PROCESSED_DIR / chapter_id
 
         with get_page_lock(chapter_id, page_index):
@@ -81,16 +86,19 @@ class PipelineEditingMixin:
             image = read_image(img_path)
             h, w = image.shape[:2]
 
-            nx1, nx2 = sorted((max(0, min(x1, w)), max(0, min(x2, w))))
-            ny1, ny2 = sorted((max(0, min(y1, h)), max(0, min(y2, h))))
-            if nx2 <= nx1 or ny2 <= ny1:
+            new_boxes = []
+            for x1, y1, x2, y2 in rects:
+                nx1, nx2 = sorted((max(0, min(int(x1), w)), max(0, min(int(x2), w))))
+                ny1, ny2 = sorted((max(0, min(int(y1), h)), max(0, min(int(y2), h))))
+                if nx2 <= nx1 or ny2 <= ny1:
+                    continue
+                new_boxes.append({
+                    "id": new_box_id(), "origin": "manual",
+                    "x1": nx1, "y1": ny1, "x2": nx2, "y2": ny2,
+                    "confidence": 1.0, "mask": None, "manual": True,
+                })
+            if not new_boxes:
                 return manifest
-
-            new_box = {
-                "id": new_box_id(), "origin": "manual",
-                "x1": nx1, "y1": ny1, "x2": nx2, "y2": ny2,
-                "confidence": 1.0, "mask": None, "manual": True,
-            }
             with get_manifest_lock(chapter_id):
                 manifest = load_manifest_raw(chapter_id)
                 if page_index < 0 or page_index >= len(manifest.get("pages", [])):
@@ -98,7 +106,7 @@ class PipelineEditingMixin:
                 target_page = manifest["pages"][page_index]
                 preserve_regions = copy.deepcopy(target_page.get("preserve_regions", []))
                 boxes_snapshot = copy.deepcopy(target_page.get("boxes", []))
-                boxes_snapshot.append(copy.deepcopy(new_box))
+                boxes_snapshot.extend(copy.deepcopy(new_boxes))
                 manual_mask_posix = target_page.get("manual_mask")
                 manual_lama_mask_posix = target_page.get("manual_lama_mask")
                 target_clean_revision = int(
@@ -123,7 +131,7 @@ class PipelineEditingMixin:
                     if page_index < 0 or page_index >= len(manifest.get("pages", [])):
                         raise ValueError(f"Chapter {chapter_id}: Invalid page_index {page_index}")
                     target_page = manifest["pages"][page_index]
-                    target_page.setdefault("boxes", []).append(new_box)
+                    target_page.setdefault("boxes", []).extend(new_boxes)
                     target_page["clean"] = clean_path_posix
                     clean_revision = bump_page_revision(
                         target_page, "clean_revision"
@@ -239,6 +247,60 @@ class PipelineEditingMixin:
                     )
                     if clean_revision != target_clean_revision:
                         raise RuntimeError("Page clean revision changed during repaint")
+                    invalidate_page_render(manifest, page_index)
+                    artifact_tx.mark_manifest_commit(target_page)
+                    save_manifest_raw(chapter_id, manifest)
+                    artifact_tx.commit()
+                    self._sync_output_dir(chapter_id, manifest, [page_index])
+            return manifest
+
+    def preserve_and_reinpaint(self, chapter_id: str, page_index: int, regions: list[dict]) -> dict:
+        """Add preserve regions and re-inpaint without re-detecting the page."""
+        processed_dir = PROCESSED_DIR / chapter_id
+        added = [
+            {key: int(region[key]) for key in ("x1", "y1", "x2", "y2")}
+            for region in regions
+            if int(region["x2"]) > int(region["x1"]) and int(region["y2"]) > int(region["y1"])
+        ]
+        with get_page_lock(chapter_id, page_index):
+            with get_manifest_lock(chapter_id):
+                manifest = load_manifest_raw(chapter_id)
+                if page_index < 0 or page_index >= len(manifest.get("pages", [])):
+                    raise ValueError("Invalid page index")
+                page = manifest["pages"][page_index]
+                if page.get("skipped") or page.get("process_required") or not page.get("clean"):
+                    raise ValueError("Page must be active and processed before preserving regions")
+                img_path = Path(page["original"])
+                preserve_regions = copy.deepcopy(page.get("preserve_regions", [])) + added
+                boxes_snapshot = copy.deepcopy(page.get("boxes", []))
+                manual_mask_posix = page.get("manual_mask")
+                manual_lama_mask_posix = page.get("manual_lama_mask")
+                target_clean_revision = int(page.get("clean_revision") or 0) + 1
+            if not added:
+                return manifest
+
+            image = read_image(img_path)
+            with self._page_artifact_transaction(
+                processed_dir, img_path, page_index, target_clean_revision
+            ) as artifact_tx:
+                clean_path_posix = self._do_reinpaint(
+                    processed_dir,
+                    img_path,
+                    image,
+                    boxes_snapshot,
+                    manual_mask_posix=manual_mask_posix,
+                    manual_lama_mask_posix=manual_lama_mask_posix,
+                    preserve_regions=preserve_regions,
+                )
+                with get_manifest_lock(chapter_id):
+                    manifest = load_manifest_raw(chapter_id)
+                    target_page = manifest["pages"][page_index]
+                    target_page["preserve_regions"] = preserve_regions
+                    target_page["clean"] = clean_path_posix
+                    # Sync covered objects now so export does not invalidate the render.
+                    ensure_page_text_objects(target_page)
+                    if bump_page_revision(target_page, "clean_revision") != target_clean_revision:
+                        raise RuntimeError("Page clean revision changed while preserving regions")
                     invalidate_page_render(manifest, page_index)
                     artifact_tx.mark_manifest_commit(target_page)
                     save_manifest_raw(chapter_id, manifest)

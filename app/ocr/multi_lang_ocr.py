@@ -8,6 +8,7 @@ from PIL import Image
 from app.env_utils import env_choice
 from app.ocr.paddle_v6 import OCRReadResult, PaddleV6OCR
 from app.ocr.quality import classify_ocr_quality
+from app.parameters import OCR_CENTERED_SINGLE_LINE_ASPECT
 
 
 class MultiLangOCR:
@@ -54,30 +55,17 @@ class MultiLangOCR:
             )
 
         if normalized in {"en", "english"}:
-            fast = self._paddle.read_recognition_only(image, lang)
-            if fast.text.strip():
-                return fast
+            fast = None
+            height, width = image.shape[:2]
+            if width >= OCR_CENTERED_SINGLE_LINE_ASPECT * max(1, height):
+                fast = self._paddle.read_recognition_only(image, lang)
+                if fast.text.strip() and fast.quality == "good":
+                    return fast
             effective_target_mode = target_mode or self._paddle_target_mode
-            fallback = self._paddle.read_single_pass(
-                image,
-                lang,
-                target_mode=effective_target_mode,
-            )
-            return OCRReadResult(
-                text=fallback.text,
-                confidence=fallback.confidence,
-                model=f"{fallback.model}:empty-fast-fallback",
-                orientation=fallback.orientation,
-                region_count=fallback.region_count,
-                quality=fallback.quality,
-                quality_reason=fallback.quality_reason,
-                coverage=fallback.coverage,
-                target_mode="hybrid-fallback",
-                retry_applied=True,
-                text_bounds=fallback.text_bounds,
-                input_shape=fallback.input_shape,
-                font_size_hint=fallback.font_size_hint,
-            )
+            full = self._paddle.read(image, lang, target_mode=effective_target_mode)
+            if full.text.strip() or fast is None:
+                return full
+            return fast
 
         effective_target_mode = target_mode or self._paddle_target_mode
         return self._paddle.read(
