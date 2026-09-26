@@ -11,6 +11,10 @@ Runs on the same real slices as the other benches and compares text masks:
                 run through the app's segmenter: pixel masks where Kiuyha found text
   collage_plus  collage, plus kiuyha_seg for the Kiuyha boxes the collage left
                 less than half covered
+  kiuyha_collage_box / kiuyha_collage_seg
+                Kiuyha run on the two halves side by side in one 1280 square
+                (one pass, text ~0.79x on a 800 px wide slice), as box / as
+                segmenter masks
 
 Per variant: miss rate (reference text blocks less than half covered), stray
 area (mask farther than 20 px from reference text), seconds and forward passes.
@@ -53,6 +57,57 @@ def kiuyha_boxes(model, image: np.ndarray) -> list[tuple[int, int, int, int]]:
         boxes.append((max(0, int(x1) - BOX_PAD), max(0, int(y1) - BOX_PAD),
                       min(w, int(math.ceil(x2)) + BOX_PAD), min(h, int(math.ceil(y2)) + BOX_PAD)))
     return boxes
+
+
+def kiuyha_collage_boxes(model, image: np.ndarray, size: int = 1280) -> list[tuple[int, int, int, int]]:
+    """Kiuyha on the two halves side by side in one square (the model card trains
+    and recommends 1280), boxes mapped back to the slice and merged in the overlap."""
+    h, w = image.shape[:2]
+    gap = 16
+    scale = min(1.0, (size - gap) / (2.0 * w))
+    overlap = int(2 * size / scale) - h
+    if overlap < 256:
+        overlap = min(h, 256)
+        scale = min(scale, 2.0 * size / (h + overlap))
+    overlap = min(overlap, h)
+    if scale < 1.2 * min(size / w, size / h):
+        result = model.predict(image, imgsz=size, conf=0.25, verbose=False)[0]
+        raw = [tuple(v) for v in result.boxes.xyxy.tolist()]
+        return [(max(0, int(x1) - BOX_PAD), max(0, int(y1) - BOX_PAD),
+                 min(w, int(math.ceil(x2)) + BOX_PAD), min(h, int(math.ceil(y2)) + BOX_PAD)) for x1, y1, x2, y2 in raw]
+    half = (h + overlap + 1) // 2
+    halves = [(0, half), (h - half, h)]
+    canvas = np.full((size, size, 3), 114, np.uint8)
+    columns = []
+    x = 0
+    for y0, y1 in halves:
+        rw, rh = min(size - x, int(w * scale)), min(size, int((y1 - y0) * scale))
+        canvas[:rh, x:x + rw] = cv2.resize(image[y0:y1], (rw, rh))
+        columns.append((x, rw, rh, y0, y1))
+        x += rw + gap
+    result = model.predict(canvas, imgsz=size, conf=0.25, verbose=False)[0]
+    boxes = []
+    for cx1, cy1, cx2, cy2 in result.boxes.xyxy.tolist():
+        centre = (cx1 + cx2) / 2
+        px, rw, rh, y0, y1 = columns[0] if centre < columns[1][0] else columns[1]
+        sx, sy = rw / w, rh / (y1 - y0)
+        x1 = max(0, int((max(cx1, px) - px) / sx) - BOX_PAD)
+        x2 = min(w, int(math.ceil((min(cx2, px + rw) - px) / sx)) + BOX_PAD)
+        top = max(0, int(min(cy1, rh) / sy) + y0 - BOX_PAD)
+        bottom = min(h, int(math.ceil(min(cy2, rh) / sy)) + y0 + BOX_PAD)
+        if x2 - x1 > 4 and bottom - top > 4:
+            boxes.append((x1, top, x2, bottom))
+    merged: list[list[int]] = []
+    for box in sorted(boxes, key=lambda b: (b[2] - b[0]) * (b[3] - b[1]), reverse=True):
+        for kept in merged:
+            ix = max(0, min(kept[2], box[2]) - max(kept[0], box[0]))
+            iy = max(0, min(kept[3], box[3]) - max(kept[1], box[1]))
+            if ix * iy >= 0.5 * (box[2] - box[0]) * (box[3] - box[1]):
+                kept[:] = [min(kept[0], box[0]), min(kept[1], box[1]), max(kept[2], box[2]), max(kept[3], box[3])]
+                break
+        else:
+            merged.append(list(box))
+    return [tuple(b) for b in merged]
 
 
 def otsu_mask(image: np.ndarray, boxes) -> np.ndarray:
@@ -222,7 +277,8 @@ def main() -> int:
                 mask[b.y1:b.y2, b.x1:b.x2] |= b.mask > 127
         return mask, int(metrics["detector_forward_calls"])
 
-    names = ["current", "collage", "kiuyha_box", "kiuyha_otsu", "kiuyha_seg", "collage_plus"]
+    names = ["current", "collage", "kiuyha_box", "kiuyha_otsu", "kiuyha_seg", "collage_plus",
+             "kiuyha_collage_box", "kiuyha_collage_seg"]
     totals = {n: {"seconds": 0.0, "forwards": 0, "blocks": 0, "missed": 0, "area": 0, "stray": 0} for n in names}
     missed_regions: dict[str, list] = {"collage": [], "collage_plus": []}
     images, debug = [], []
@@ -253,6 +309,15 @@ def main() -> int:
         masks["kiuyha_seg"], sheets = seg_masks(seg, image, boxes, DETECTOR_LETTERBOX_VALUE)
         seconds["kiuyha_seg"], forwards["kiuyha_seg"] = kiuyha_s + time.perf_counter() - started, 1 + sheets
 
+        started = time.perf_counter()
+        cboxes = kiuyha_collage_boxes(model, image)
+        kc_s = time.perf_counter() - started
+        masks["kiuyha_collage_box"], seconds["kiuyha_collage_box"], forwards["kiuyha_collage_box"] = (
+            box_mask(image.shape[:2], cboxes), kc_s, 1)
+        started = time.perf_counter()
+        masks["kiuyha_collage_seg"], sheets = seg_masks(seg, image, cboxes, DETECTOR_LETTERBOX_VALUE)
+        seconds["kiuyha_collage_seg"], forwards["kiuyha_collage_seg"] = kc_s + time.perf_counter() - started, 1 + sheets
+
         left = [b for b in boxes if uncovered(masks["collage"], masks["kiuyha_otsu"], b)]
         started = time.perf_counter()
         extra, sheets = seg_masks(seg, image, left, DETECTOR_LETTERBOX_VALUE) if left else (np.zeros_like(ref), 0)
@@ -281,7 +346,8 @@ def main() -> int:
                         missed_regions[name].append((int(block.sum()), number - 1,
                                                      (int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max()))))
         tiles = [overlay(image, ref, [], "reference (1.25x windows)")]
-        tiles += [overlay(image, masks[n], boxes if n.startswith("kiuyha") else [], n) for n in names]
+        tiles += [overlay(image, masks[n], cboxes if n.startswith("kiuyha_collage") else
+                          boxes if n.startswith("kiuyha") else [], n) for n in names]
         cv2.imwrite(str(args.out / f"slice-{number:02d}.jpg"), row(tiles), [cv2.IMWRITE_JPEG_QUALITY, 85])
         page["_masks"] = masks
         print(f"slice {number}/{len(pages)} done", flush=True)
