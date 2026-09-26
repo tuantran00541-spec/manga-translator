@@ -87,14 +87,15 @@ def _valid_address(term: str) -> bool:
 
 def _ask(base: str, key: str, model: str, system: str, user: str, temperature: float | None = None) -> tuple[str, dict, float]:
     started = time.perf_counter()
-    response = requests.post(
-        f"{base.rstrip('/')}/chat/completions",
-        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-        json={"model": model, "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
-              "response_format": {"type": "json_object"}, "max_tokens": MAX_TOKENS, "stream": False,
-              **({"temperature": temperature} if temperature is not None else {})},
-        timeout=(10, 600),
-    )
+    payload = {"model": model, "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
+               "response_format": {"type": "json_object"}, "max_tokens": MAX_TOKENS, "stream": False,
+               **({"temperature": temperature} if temperature is not None else {})}
+    headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+    url = f"{base.rstrip('/')}/chat/completions"
+    response = requests.post(url, headers=headers, json=payload, timeout=(10, 600))
+    if response.status_code in (400, 422) and "response_format" in response.text:
+        payload.pop("response_format")
+        response = requests.post(url, headers=headers, json=payload, timeout=(10, 600))
     elapsed = time.perf_counter() - started
     if not response.ok:
         raise RuntimeError(f"HTTP {response.status_code}: {response.text[:300]}")

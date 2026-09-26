@@ -38,10 +38,6 @@ jobs:
       MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
       OPENBLAS_NUM_THREADS: "1"
       PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK: "True"
-      GATEWAY_UPSTREAM_BASE: https://api.sovinfra.ai/v1
-      GATEWAY_UPSTREAM_MODEL: qwen3.8-27b
-      GATEWAY_PRICE_INPUT_PER_M: "0.12"
-      GATEWAY_PRICE_OUTPUT_PER_M: "0.12"
     steps:
       - uses: actions/checkout@v4
 
@@ -99,18 +95,60 @@ jobs:
           cp benchmark-bootstrap/models/*.onnx models/
           cp benchmark-bootstrap/models/.e2e-provenance.json models/ || true
 
+      - name: Pick the provider
+        run: |
+          conf() { sed -n "s/^$1: *//p" .github/ai-cost.txt | head -n1 | tr -d '\r'; }
+          provider="$(conf provider)"
+          case "${provider:-sovinfra}" in
+            sovinfra)
+              base=https://api.sovinfra.ai/v1; model=qwen3.8-27b; secret=SOVINFRA_LAB_1B_TOKEN; price_in=0.12; price_out=0.12 ;;
+            minirouter)
+              base=https://api.minirouter.sh/v1; model=; secret=MINIROUTER_API_KEY; price_in=0; price_out=0 ;;
+            *) echo "::error::Unknown provider '$provider'"; exit 1 ;;
+          esac
+          model="$(conf model)"; model="${model:-$( [ "$provider" = minirouter ] || echo qwen3.8-27b )}"
+          price="$(conf price)"
+          if [ -n "$price" ]; then read -r price_in price_out <<< "$price"; fi
+          {
+            echo "PROVIDER=${provider:-sovinfra}"
+            echo "PROVIDER_SECRET=$secret"
+            echo "GATEWAY_UPSTREAM_BASE=$base"
+            echo "GATEWAY_UPSTREAM_MODEL=$model"
+            echo "GATEWAY_PRICE_INPUT_PER_M=$price_in"
+            echo "GATEWAY_PRICE_OUTPUT_PER_M=${price_out:-$price_in}"
+          } >> "$GITHUB_ENV"
+
       - name: Check the provider secret
         env:
-          KEY: ${{ secrets.SOVINFRA_LAB_1B_TOKEN }}
+          SOVINFRA_LAB_1B_TOKEN: ${{ secrets.SOVINFRA_LAB_1B_TOKEN }}
+          MINIROUTER_API_KEY: ${{ secrets.MINIROUTER_API_KEY }}
         run: |
-          test -n "$KEY" || { echo "::error::Secret SOVINFRA_LAB_1B_TOKEN is missing or empty"; exit 1; }
+          test -n "${!PROVIDER_SECRET}" || { echo "::error::Secret $PROVIDER_SECRET is missing or empty"; exit 1; }
+
+      - name: List the provider's models
+        env:
+          SOVINFRA_LAB_1B_TOKEN: ${{ secrets.SOVINFRA_LAB_1B_TOKEN }}
+          MINIROUTER_API_KEY: ${{ secrets.MINIROUTER_API_KEY }}
+        run: |
+          mkdir -p audit-results/providers
+          curl -sS --max-time 30 -H "Authorization: Bearer ${!PROVIDER_SECRET}" "$GATEWAY_UPSTREAM_BASE/models" \
+            | python -c 'import json,sys; d=json.load(sys.stdin); rows=d.get("data", d) if isinstance(d, dict) else d; json.dump([{k: m.get(k) for k in ("id","name","context_length","pricing","architecture") if k in m} for m in rows if isinstance(m, dict)], sys.stdout, indent=1)' \
+            > "audit-results/providers/$PROVIDER-models.json" || echo "::warning::Could not list models"
+          python -c 'import json,sys; print(len(json.load(open(sys.argv[1]))), "models")' "audit-results/providers/$PROVIDER-models.json" || true
+          if [ -z "$GATEWAY_UPSTREAM_MODEL" ]; then
+            echo "No model: line in .github/ai-cost.txt; only the model list is recorded."
+            echo "SKIP_TRANSLATE=1" >> "$GITHUB_ENV"
+          fi
 
       - name: Translate a real chapter through the gateway
+        if: env.SKIP_TRANSLATE != '1'
         env:
-          GATEWAY_UPSTREAM_KEY: ${{ secrets.SOVINFRA_LAB_1B_TOKEN }}
+          SOVINFRA_LAB_1B_TOKEN: ${{ secrets.SOVINFRA_LAB_1B_TOKEN }}
+          MINIROUTER_API_KEY: ${{ secrets.MINIROUTER_API_KEY }}
           INPUT_URL: ${{ github.event.inputs.chapter_url }}
           INPUT_PLAN: ${{ github.event.inputs.plan }}
         run: |
+          export GATEWAY_UPSTREAM_KEY="${!PROVIDER_SECRET}"
           url="${INPUT_URL:-$(head -n1 .github/ai-cost.txt | tr -d '\r')}"
           if grep -q '^mode: *text' .github/ai-cost.txt; then
             echo "EVIDENCE=audit-results/ai-text" >> "$GITHUB_ENV"
@@ -119,9 +157,9 @@ jobs:
               rm -rf audit-results/ai-text
               python scripts/ai_text_test.py ocr "$url" --out audit-results/ai-text
             fi
-            rm -f audit-results/ai-text/translation*.json audit-results/ai-text/translation*.md
             if grep -q '^variant:' .github/ai-cost.txt; then
               grep '^variant:' .github/ai-cost.txt | while read -r _ tag args; do
+                rm -f "audit-results/ai-text/translation-$tag.json" "audit-results/ai-text/translation-$tag.md"
                 python scripts/ai_text_test.py translate --out audit-results/ai-text --notes "$notes" --tag "$tag" $args
               done
             else
@@ -142,16 +180,23 @@ jobs:
       - name: Commit evidence to the branch
         if: always() && github.ref_name != github.event.repository.default_branch
         run: |
-          dir="${EVIDENCE:-audit-results/ai-cost}"
-          compgen -G "$dir/report.json" >/dev/null || compgen -G "$dir/translation*.json" >/dev/null || exit 0
+          dirs=()
+          for d in "${EVIDENCE:-audit-results/ai-cost}" audit-results/providers; do
+            if compgen -G "$d/report.json" >/dev/null || compgen -G "$d/translation*.json" >/dev/null \
+               || { [ "$d" = audit-results/providers ] && compgen -G "$d/*.json" >/dev/null; }; then
+              dirs+=("$d")
+            fi
+          done
+          [ ${#dirs[@]} -gt 0 ] || exit 0
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          rm -rf /tmp/evidence && cp -r "$dir" /tmp/evidence
+          rm -rf /tmp/evidence && mkdir -p /tmp/evidence
+          for d in "${dirs[@]}"; do mkdir -p "/tmp/evidence/$d" && cp -r "$d/." "/tmp/evidence/$d/"; done
           for i in 1 2 3; do
             git fetch origin "${GITHUB_REF_NAME}"
             git checkout -f -B evidence FETCH_HEAD
-            rm -rf "$dir" && mkdir -p audit-results && cp -r /tmp/evidence "$dir"
-            git add -A "$dir"
+            for d in "${dirs[@]}"; do rm -rf "$d" && mkdir -p "$d" && cp -r "/tmp/evidence/$d/." "$d/"; done
+            git add -A "${dirs[@]}"
             git commit -m "audit: A.I cost through the gateway (run ${{ github.run_id }}) [skip ci]" || exit 0
             git push origin "HEAD:${GITHUB_REF_NAME}" && break
             sleep 5
