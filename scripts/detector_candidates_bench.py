@@ -2,8 +2,10 @@
 
 For each candidate repo on Hugging Face the model card and weights are fetched,
 then every slice is run at the model's usual 1024 input (the long side shrunk to
-1024, like the app today) and at the slice's own resolution in one pass (YOLO
-models are fully convolutional, so a .pt file accepts any multiple of 32).
+1024, like the app today), at a rectangle with the slice's shape and the same
+pixel count as 1024x1024 (same cost, no padding), and at the slice's own
+resolution in one pass (YOLO models are fully convolutional, so a .pt file
+accepts any multiple of 32).
 
 Measured per variant:
 
@@ -211,8 +213,12 @@ def main() -> int:
         add("app_current", current, elapsed, ref, ref_blocks, near_ref)
         tiles.append(overlay(image, current, f"app current (onnx, 1 pass) {elapsed:.1f}s"))
         native = [int(math.ceil(h / 32) * 32), int(math.ceil(w / 32) * 32)]
+        # A rectangle with the slice's shape and the same pixel count as 1024x1024:
+        # the same cost as today, without spending two thirds of it on padding.
+        fit = min(1.0, 1024 / math.sqrt(h * w))
+        samecost = [int(math.ceil(h * fit / 32) * 32), int(math.ceil(w * fit / 32) * 32)]
         for name, model in models.items():
-            for tag, imgsz in (("1024", 1024), ("native", native)):
+            for tag, imgsz in (("1024", 1024), ("samecost", samecost), ("native", native)):
                 try:
                     regions, elapsed = run_model(model, image, imgsz)
                 except Exception as exc:  # noqa: BLE001
