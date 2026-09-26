@@ -1,0 +1,105 @@
+{
+ "url": "https://asurascans.com/comics/the-academy-s-weapon-replicator-05c7df14/chapter/1",
+ "slices": 16,
+ "reference_scale": 1.25,
+ "variants": {
+  "current": {
+   "seconds": 24.6,
+   "forwards": 16,
+   "blocks": 24,
+   "missed": 8,
+   "miss_rate": 0.333,
+   "stray_area": 0.264,
+   "mask_px": 1586685
+  },
+  "collage": {
+   "seconds": 24.5,
+   "forwards": 16,
+   "blocks": 24,
+   "missed": 7,
+   "miss_rate": 0.292,
+   "stray_area": 0.061,
+   "mask_px": 1258064
+  },
+  "kiuyha_box": {
+   "seconds": 11.3,
+   "forwards": 16,
+   "blocks": 24,
+   "missed": 5,
+   "miss_rate": 0.208,
+   "stray_area": 0.099,
+   "mask_px": 1444028
+  },
+  "kiuyha_otsu": {
+   "seconds": 11.5,
+   "forwards": 16,
+   "blocks": 24,
+   "missed": 23,
+   "miss_rate": 0.958,
+   "stray_area": 0.043,
+   "mask_px": 509765
+  },
+  "kiuyha_seg": {
+   "seconds": 29.7,
+   "forwards": 28,
+   "blocks": 24,
+   "missed": 11,
+   "miss_rate": 0.458,
+   "stray_area": 0.009,
+   "mask_px": 725905
+  },
+  "collage_plus": {
+   "seconds": 38.9,
+   "forwards": 34,
+   "blocks": 24,
+   "missed": 5,
+   "miss_rate": 0.208,
+   "stray_area": 0.077,
+   "mask_px": 1396802
+  }
+ },
+ "collage_regressions": [
+  {
+   "tag": "15-1",
+   "slice": [
+    2428,
+    900
+   ],
+   "block": [
+    224,
+    2023,
+    676,
+    2193
+   ],
+   "single_raw": [
+    {
+     "box": [
+      203,
+      2024,
+      696,
+      2199
+     ],
+     "conf": 0.93,
+     "mask_px": 78400
+    }
+   ],
+   "plan": {
+    "scale": 0.56,
+    "halves": [
+     [
+      0,
+      1829
+     ],
+     [
+      599,
+      2428
+     ]
+    ]
+   },
+   "collage_raw": [
+    [],
+    []
+   ]
+  }
+ ]
+}
