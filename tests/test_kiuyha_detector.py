@@ -113,3 +113,13 @@ class _BlobSession(_Session):
         for i, (x, y, w, h, _a) in enumerate(stats[1:count]):
             cols[0, :, i] = [x + w / 2, y + h / 2, w, h, 0.9]
         return [cols]
+
+
+def test_second_pass_only_keeps_leftovers_inside_first_pass_boxes():
+    image = _text_slice()
+    detector = KiuyhaTextDetector("unused", session=_BlobSession())
+    first = detector.text_boxes(image)
+    kept = [b for b in first if b.y1 > 1000]
+    leftovers = detector.leftover_boxes(image, kept)
+    assert len(leftovers) == 2 and all(b.y1 > 1000 for b in leftovers)
+    assert detector.leftover_boxes(image, []) == []

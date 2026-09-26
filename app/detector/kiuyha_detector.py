@@ -168,3 +168,10 @@ class KiuyhaTextDetector:
                 source_role="text_segmenter",
             ))
         return boxes
+
+    def leftover_boxes(self, clean: np.ndarray, targets, source_model: str = "kiuyha_text") -> list[BubbleBox]:
+        """Text still visible after inpainting, only where a first-pass box already was."""
+        def inside(box) -> bool:
+            cx, cy = (box.x1 + box.x2) / 2, (box.y1 + box.y2) / 2
+            return any(t.x1 <= cx <= t.x2 and t.y1 <= cy <= t.y2 for t in targets)
+        return [box for box in self.text_boxes(clean, source_model) if inside(box)]

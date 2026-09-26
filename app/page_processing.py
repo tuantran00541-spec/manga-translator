@@ -222,8 +222,12 @@ class PageProcessingMixin:
             effective_boxes,
             protected_regions=preserve_regions,
         )
-        auto_inpaint_ms = (time.perf_counter() - auto_inpaint_started_at) * 1000.0
         auto_inpaint_metrics = self.inpainter.last_metrics()
+        second_pass = getattr(self.detector, "leftover_boxes", None)
+        leftovers = second_pass(clean_image, effective_boxes) if callable(second_pass) else []
+        if leftovers:
+            clean_image = self.inpainter.inpaint(clean_image, leftovers, protected_regions=preserve_regions)
+        auto_inpaint_ms = (time.perf_counter() - auto_inpaint_started_at) * 1000.0
 
         auto_clean_path = self._auto_clean_path(processed_dir, img_path)
         manual_mask_path = self._manual_mask_path(processed_dir, img_path)
@@ -356,6 +360,7 @@ class PageProcessingMixin:
                 "review_only": len(unverified_regions),
                 "deferred": len(deferred_regions),
                 "review_only_verification_sources": len(verification_only_boxes),
+                "second_pass_boxes": len(leftovers),
                 "post_inpaint_residue": len(residue_regions),
                 "residue_checked": residue_checked,
             },

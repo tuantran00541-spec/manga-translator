@@ -609,6 +609,12 @@ class OneShotProductionDetector:
         }
         return boxes
 
+    def leftover_boxes(self, clean: np.ndarray, boxes: list[BubbleBox]) -> list[BubbleBox]:
+        """Second Kiuyha pass on the cleaned slice; empty without Kiuyha."""
+        if self.kiuyha is None or not boxes:
+            return []
+        return self.kiuyha.leftover_boxes(clean, boxes, source_model=KIUYHA_TEXT_MODEL.name)
+
     def last_metrics(self) -> dict[str, float | int]:
         metrics = getattr(self._metrics_local, "value", {})
         return {
