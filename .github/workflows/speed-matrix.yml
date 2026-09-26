@@ -122,12 +122,9 @@ jobs:
               --out audit-results/speed/$n-vs-base.json --crops audit-results/speed/crops-$n || true
           done
 
-      - name: Commit evidence to the branch
-        if: always() && github.ref_name != github.event.repository.default_branch
-        run: |
-          test -d audit-results/speed || exit 0
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add audit-results/speed
-          git commit -m "audit: speed matrix (run ${{ github.run_id }}) [skip ci]" || exit 0
-          git push origin "HEAD:${GITHUB_REF_NAME}"
+      - name: Save evidence to audit-evidence
+        if: always()
+        uses: ./.github/actions/save-evidence
+        with:
+          paths: audit-results/speed
+          message: "audit: speed matrix (run ${{ github.run_id }})"

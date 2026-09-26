@@ -47,3 +47,6 @@ bench_*.json
 .agents/
 powershell.cmd
 debug/
+
+# Bench output lives on the audit-evidence branch.
+audit-results/

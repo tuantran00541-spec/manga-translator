@@ -73,19 +73,9 @@ jobs:
       - name: Clean the same slices with each variant
         run: python scripts/clean_quality_bench.py "$CHAPTER_URL" --out audit-results/clean-quality --slices 16
 
-      - name: Commit evidence to the branch
-        if: always() && github.ref_name != github.event.repository.default_branch
-        run: |
-          test -f audit-results/clean-quality/report.json || exit 0
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          rm -rf /tmp/evidence && cp -r audit-results/clean-quality /tmp/evidence
-          for i in 1 2 3; do
-            git fetch origin "${GITHUB_REF_NAME}"
-            git checkout -f -B evidence FETCH_HEAD
-            rm -rf audit-results/clean-quality && cp -r /tmp/evidence audit-results/clean-quality
-            git add -A audit-results/clean-quality
-            git commit -m "audit: clean quality variants on a real chapter (run ${{ github.run_id }}) [skip ci]" || exit 0
-            git push origin "HEAD:${GITHUB_REF_NAME}" && break
-            sleep 5
-          done
+      - name: Save evidence to audit-evidence
+        if: always()
+        uses: ./.github/actions/save-evidence
+        with:
+          paths: audit-results/clean-quality
+          message: "audit: clean quality (run ${{ github.run_id }})"

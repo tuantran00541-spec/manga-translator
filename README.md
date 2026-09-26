@@ -293,7 +293,7 @@ The gateway lives in `gateway/` and runs with `python -m gateway`:
 | Lemon Squeezy (cards) | `GATEWAY_LS_API_KEY`, `GATEWAY_LS_STORE_ID`, `GATEWAY_LS_VARIANT_PLUS`, `GATEWAY_LS_VARIANT_PRO`, `GATEWAY_LS_WEBHOOK_SECRET`, `GATEWAY_PRICE_PLUS_USD`, `GATEWAY_PRICE_PRO_USD`; webhook `/v1/billing/lemonsqueezy/webhook` |
 | Other | `GATEWAY_DB`, `GATEWAY_ADMIN_KEY`, `GATEWAY_RETURN_URL`, `GATEWAY_HOST`, `GATEWAY_PORT` |
 
-A payOS payment adds 30 days of the plan, stacked on top of time already paid. A Lemon Squeezy subscription follows its webhooks, and a cancelled subscription keeps the plan until the paid period ends. Screenshots of the flow are in `audit-results/tiers/`.
+A payOS payment adds 30 days of the plan, stacked on top of time already paid. A Lemon Squeezy subscription follows its webhooks, and a cancelled subscription keeps the plan until the paid period ends. Screenshots of the flow are on the `audit-evidence` branch under `audit-results/tiers/`.
 
 ## Runtime settings
 
@@ -405,7 +405,7 @@ The maintained release path covers source compilation, regression tests, browser
 
 Model-dependent validation remains a separate local artifact gate because production ONNX binaries are not stored in Git.
 
-To screenshot every screen on a real chapter with the real models, run the **UI tour** workflow from the Actions tab on a feature branch. It imports the chapter, skips all but the chosen slices, repaints a region with LaMa, preserves a cleaned bubble and reprocesses, checks each result pixel by pixel, and commits the screenshots and `report.json` to `audit-results/ui-tour/` on that branch. Against a running local server: `python scripts/ui_tour.py --chapter-url <url> --keep 16,19,24,27`.
+To screenshot every screen on a real chapter with the real models, run the **UI tour** workflow from the Actions tab on a feature branch. It imports the chapter, skips all but the chosen slices, repaints a region with LaMa, preserves a cleaned bubble and reprocesses, checks each result pixel by pixel, and saves the screenshots and `report.json` to `audit-results/ui-tour/` on the `audit-evidence` branch. Against a running local server: `python scripts/ui_tour.py --chapter-url <url> --keep 16,19,24,27`.
 
 ## Project layout
 

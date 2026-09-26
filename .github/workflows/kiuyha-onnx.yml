@@ -86,19 +86,9 @@ jobs:
           path: models/kiuyha_text*.onnx
           retention-days: 30
 
-      - name: Commit evidence to the branch
-        if: always() && github.ref_name != github.event.repository.default_branch
-        run: |
-          test -f audit-results/kiuyha-onnx/report.json || exit 0
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          rm -rf /tmp/evidence && cp -r audit-results/kiuyha-onnx /tmp/evidence
-          for i in 1 2 3; do
-            git fetch origin "${GITHUB_REF_NAME}"
-            git checkout -f -B evidence FETCH_HEAD
-            rm -rf audit-results/kiuyha-onnx && cp -r /tmp/evidence audit-results/kiuyha-onnx
-            git add -A audit-results/kiuyha-onnx
-            git commit -m "audit: Kiuyha ONNX export parity (run ${{ github.run_id }}) [skip ci]" || exit 0
-            git push origin "HEAD:${GITHUB_REF_NAME}" && break
-            sleep 5
-          done
+      - name: Save evidence to audit-evidence
+        if: always()
+        uses: ./.github/actions/save-evidence
+        with:
+          paths: audit-results/kiuyha-onnx
+          message: "audit: Kiuyha ONNX export (run ${{ github.run_id }})"

@@ -1,0 +1,33 @@
+name: Save evidence
+description: Push bench output to the audit-evidence branch, never to code branches.
+inputs:
+  paths:
+    description: Directories to save
+    required: true
+  message:
+    description: Commit message
+    required: true
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        EVIDENCE_PATHS: ${{ inputs.paths }}
+        EVIDENCE_MESSAGE: ${{ inputs.message }}
+      run: |
+        keep=()
+        for p in $EVIDENCE_PATHS; do [ -e "$p" ] && keep+=("$p"); done
+        [ ${#keep[@]} -gt 0 ] || exit 0
+        rm -rf /tmp/evidence && mkdir -p /tmp/evidence
+        for p in "${keep[@]}"; do mkdir -p "/tmp/evidence/$p" && cp -r "$p/." "/tmp/evidence/$p/"; done
+        git config user.name 'github-actions[bot]'
+        git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+        for i in 1 2 3 4; do
+          git fetch -q origin audit-evidence && git checkout -q -f -B evidence FETCH_HEAD
+          for p in "${keep[@]}"; do rm -rf "$p" && mkdir -p "$p" && cp -r "/tmp/evidence/$p/." "$p/"; done
+          git add -A -f "${keep[@]}"
+          git commit -qm "$EVIDENCE_MESSAGE" || exit 0
+          git push -q origin HEAD:audit-evidence && exit 0
+          sleep 5
+        done
+        exit 1

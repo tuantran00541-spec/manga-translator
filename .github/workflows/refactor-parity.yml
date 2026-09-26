@@ -125,12 +125,9 @@ jobs:
           python -m coverage json -o /tmp/parity/coverage.json
           python scripts/refactor_parity.py unexecuted /tmp/parity/coverage.json --out audit-results/parity/unexecuted.json
 
-      - name: Commit evidence to the branch
-        if: always() && github.ref_name != github.event.repository.default_branch
-        run: |
-          test -d audit-results || exit 0
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add audit-results
-          git commit -m "audit: refactor parity evidence (run ${{ github.run_id }}) [skip ci]" || exit 0
-          git push origin "HEAD:${GITHUB_REF_NAME}"
+      - name: Save evidence to audit-evidence
+        if: always()
+        uses: ./.github/actions/save-evidence
+        with:
+          paths: audit-results/parity
+          message: "audit: refactor parity (run ${{ github.run_id }})"

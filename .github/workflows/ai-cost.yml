@@ -41,6 +41,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: ./.github/actions/load-evidence
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -219,27 +221,9 @@ jobs:
           tail -n 60 /tmp/gateway.log || true
           grep -E "ERROR|WARNING|A.I mode" /tmp/app.log | tail -n 80 || true
 
-      - name: Commit evidence to the branch
-        if: always() && github.ref_name != github.event.repository.default_branch
-        run: |
-          dirs=()
-          for d in "${EVIDENCE:-audit-results/ai-cost}" audit-results/providers; do
-            if compgen -G "$d/report.json" >/dev/null || compgen -G "$d/translation*.json" >/dev/null \
-               || { [ "$d" = audit-results/providers ] && compgen -G "$d/*.json" >/dev/null; }; then
-              dirs+=("$d")
-            fi
-          done
-          [ ${#dirs[@]} -gt 0 ] || exit 0
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          rm -rf /tmp/evidence && mkdir -p /tmp/evidence
-          for d in "${dirs[@]}"; do mkdir -p "/tmp/evidence/$d" && cp -r "$d/." "/tmp/evidence/$d/"; done
-          for i in 1 2 3; do
-            git fetch origin "${GITHUB_REF_NAME}"
-            git checkout -f -B evidence FETCH_HEAD
-            for d in "${dirs[@]}"; do rm -rf "$d" && mkdir -p "$d" && cp -r "/tmp/evidence/$d/." "$d/"; done
-            git add -A "${dirs[@]}"
-            git commit -m "audit: A.I cost through the gateway (run ${{ github.run_id }}) [skip ci]" || exit 0
-            git push origin "HEAD:${GITHUB_REF_NAME}" && break
-            sleep 5
-          done
+      - name: Save evidence to audit-evidence
+        if: always()
+        uses: ./.github/actions/save-evidence
+        with:
+          paths: ${{ env.EVIDENCE || 'audit-results/ai-cost' }} audit-results/providers
+          message: "audit: A.I cost (run ${{ github.run_id }})"
