@@ -39,7 +39,8 @@ def _wait(url: str, proc: subprocess.Popen, timeout: float = 180) -> None:
 def _pages(archive_path: Path, out: Path) -> int:
     with zipfile.ZipFile(archive_path) as archive:
         names = sorted(archive.namelist())
-        for name in names[:3]:
+        picks = sorted({round(i * (len(names) - 1) / 5) for i in range(6)}) if names else []
+        for name in [names[i] for i in picks]:
             page = cv2.imdecode(np.frombuffer(archive.read(name), np.uint8), cv2.IMREAD_COLOR)
             scale = 700 / page.shape[1]
             page = cv2.resize(page, (700, max(1, round(page.shape[0] * scale))), interpolation=cv2.INTER_AREA)
