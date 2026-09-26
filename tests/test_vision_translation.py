@@ -264,3 +264,32 @@ def test_chapter_memory_is_bounded_and_ignores_malformed_entries():
 def test_vision_parser_accepts_a_translations_map_and_integer_ids():
     assert parse_vision_translation('{"translations":{"1":"A","2":"B"}}', {"1", "2"}) == {"1": "A", "2": "B"}
     assert parse_vision_translation('{"translations":[{"id":1,"translated_text":"A"}]}', {"1"}) == {"1": "A"}
+
+
+def test_vision_reply_reports_kept_missed_and_unanswered_objects(tmp_path, monkeypatch):
+    original = tmp_path / "original.png"
+    clean = tmp_path / "clean.png"
+    Image.new("RGB", (400, 600), "white").save(original)
+    Image.new("RGB", (400, 600), "gray").save(clean)
+
+    class Response:
+        status_code, ok = 200, True
+
+        def json(self):
+            return {"choices": [{"message": {"content": json.dumps({
+                "translations": [{"id": "1", "translated_text": "Chào"}, {"id": "2", "translated_text": ""}],
+                "keep": ["2", "9"],
+                "missed": [{"box_2d": [100, 250, 200, 750], "text": "CROSS THE MAP"},
+                           {"box_2d": [0, 0, 5, 5], "text": "speck"}, {"box_2d": [0, 0, 1000, 1000]}],
+            })}}], "usage": {}}
+
+    monkeypatch.setattr("app.translation.vision.requests.post", lambda url, **kwargs: Response())
+    translator = VisionPageTranslator(PROVIDERS["openai"], "vision-test")
+    item = lambda item_id: {"id": item_id, "text": "", "region": [1, 2, 30, 40]}
+    result = translator.translate_page(original, clean, [item("t1"), item("logo"), item("lost")],
+                                       api_key="k", source_lang="en", target_lang="vi")
+    assert result.translations == {"t1": "Chào", "logo": "", "lost": ""}
+    assert result.keep_ids == {"logo"}, "keep ids map back to object ids; unknown ids are dropped"
+    assert result.missing_ids == {"lost"}, "answered-empty differs from not answered"
+    assert result.missed_boxes == ((100, 60, 300, 120, "CROSS THE MAP"),), "0-1000 boxes to pixels; tiny and whole-slice boxes dropped"
+

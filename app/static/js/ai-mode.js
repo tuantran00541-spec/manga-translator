@@ -226,7 +226,15 @@
     const lines = [];
     if (r.credit_pages?.length) lines.push(`Bỏ qua ${r.credit_pages.length} lát credit: lát ${r.credit_pages.map((i) => i + 1).join(", ")}`);
     if (r.credit_rejected?.length) lines.push(`AI coi ${r.credit_rejected.length} lát là credit — quá nhiều nên không bỏ lát nào`);
+    if (r.textless_pages?.length) lines.push(`Bỏ qua ${r.textless_pages.length} lát không có chữ (giữ ảnh gốc)`);
     if (r.logo_regions) lines.push(`Giữ nguyên ${r.logo_regions} vùng logo`);
+    if (r.kept_regions) lines.push(`Giữ nguyên ${r.kept_regions} vùng chữ là một phần của hình vẽ`);
+    if (r.missed_added) lines.push(`Thêm ${r.missed_added} vùng chữ bị sót rồi xoá và dịch`);
+    if (r.retried_pages?.length) lines.push(`Dịch lại ${r.retried_pages.length} lát theo lô nhỏ`);
+    if (r.restored_regions) {
+      const pages = [...new Set((r.review_list || []).map((item) => item.page))].slice(0, 8);
+      lines.push(`${r.restored_regions} vùng AI không dịch được, đã giữ ảnh gốc${pages.length ? ` (lát ${pages.join(", ")})` : ""}`);
+    }
     if (r.repainted_regions) lines.push(`Repaint ${r.repainted_regions} vùng AI thấy còn sót ở ${r.repaint_pages?.length || 0} lát`);
     if (r.source_lang) lines.push(`Ngôn ngữ gốc: ${window.SOURCE_LANG_LABELS?.[r.source_lang] || r.source_lang}`);
     if (r.translated || r.unreadable) lines.push(`Dịch ${r.translated || 0} vùng chữ${r.unreadable ? `, ${r.unreadable} vùng AI không đọc được` : ""}`);

@@ -40,9 +40,19 @@ _TRANSLATIONS_SCHEMA = {
             "properties": {k: {"type": "string"} for k in ("from", "to", "self", "other")},
             "required": ["from", "to"],
         }},
+        "keep": {"type": "array", "items": {"type": "string"}},
+        "missed": {"type": "array", "items": {
+            "type": "object",
+            "properties": {"box_2d": {"type": "array", "items": {"type": "number"}}, "text": {"type": "string"}},
+            "required": ["box_2d"],
+        }},
     },
     "required": ["translations"],
 }
+# Missed-text boxes the model reports; anything larger or more numerous is a misread.
+MISSED_MAX_BOXES = 8
+MISSED_MIN_SIDE_PX = 10
+MISSED_MAX_AREA_RATIO = 0.4
 
 
 @dataclass(frozen=True)
@@ -54,6 +64,12 @@ class VisionTranslationResult:
     font_choices: dict[str, dict] = field(default_factory=dict)
     roles: dict[str, str] = field(default_factory=dict)
     review_ids: frozenset[str] = frozenset()
+    # Objects the model did not answer for at all (as opposed to answering "").
+    missing_ids: frozenset[str] = frozenset()
+    # Objects that are part of the artwork and should stay as drawn.
+    keep_ids: frozenset[str] = frozenset()
+    # Source text still visible in the cleaned slice with no object: (x1, y1, x2, y2, text).
+    missed_boxes: tuple[tuple[int, int, int, int, str], ...] = ()
 
 
 def _font_catalog_hint(target_lang: str) -> str:
@@ -146,11 +162,36 @@ def _unalias(result: VisionTranslationResult, data: dict, real: dict[str, str]) 
     for key in ("speakers", "font_choices"):
         if isinstance(data.get(key), dict):
             data[key] = {back(k): v for k, v in data[key].items()}
+    if isinstance(data.get("keep"), list):
+        data["keep"] = [back(item) for item in data["keep"] if isinstance(item, (str, int)) and not isinstance(item, bool)]
     return replace(
         result,
         translations={back(k): v for k, v in result.translations.items()},
         font_choices={back(k): v for k, v in (result.font_choices or {}).items()},
     ), data
+
+
+def _missed_boxes(raw, width: int, height: int) -> tuple[tuple[int, int, int, int, str], ...]:
+    """Pixel boxes for source text the model still sees in the cleaned slice (box_2d is 0-1000)."""
+    boxes = []
+    for entry in raw if isinstance(raw, list) else []:
+        box = entry.get("box_2d") if isinstance(entry, dict) else None
+        if not isinstance(box, (list, tuple)) or len(box) != 4:
+            continue
+        try:
+            ymin, xmin, ymax, xmax = (max(0.0, min(1000.0, float(v))) for v in box)
+        except (TypeError, ValueError):
+            continue
+        x1, x2 = round(xmin / 1000 * width), round(xmax / 1000 * width)
+        y1, y2 = round(ymin / 1000 * height), round(ymax / 1000 * height)
+        if x2 - x1 < MISSED_MIN_SIDE_PX or y2 - y1 < MISSED_MIN_SIDE_PX:
+            continue
+        if (x2 - x1) * (y2 - y1) > MISSED_MAX_AREA_RATIO * width * height:
+            continue
+        boxes.append((x1, y1, x2, y2, str(entry.get("text") or "")[:200]))
+        if len(boxes) >= MISSED_MAX_BOXES:
+            break
+    return tuple(boxes)
 
 
 class VisionPageTranslator:
@@ -204,16 +245,21 @@ class VisionPageTranslator:
         ids = set(real.values())
         if memory is not None:
             memory.update(slice_number or 0, data, result.translations, [str(item["id"]) for item in items])
-        roles, review = {}, set()
+        roles, review, answered = {}, set(), set()
         for entry in data.get("translations") or []:
             if not isinstance(entry, dict) or str(entry.get("id")) not in ids:
                 continue
+            answered.add(str(entry["id"]))
             role = str(entry.get("role") or "").strip().lower()
             if role in TYPOGRAPHY_ROLES:
                 roles[str(entry["id"])] = role
             if entry.get("review") is True:
                 review.add(str(entry["id"]))
-        return replace(result, roles=roles, review_ids=frozenset(review))
+        keep = frozenset(str(item) for item in data.get("keep") or [] if str(item) in ids)
+        return replace(
+            result, roles=roles, review_ids=frozenset(review), missing_ids=frozenset(ids - answered),
+            keep_ids=keep, missed_boxes=_missed_boxes(data.get("missed"), w, h),
+        )
 
     def _openai(self, system, prompt, original, cleaned, *, api_key, ids, max_tokens):
         url = str(self.provider.chat_url or "")

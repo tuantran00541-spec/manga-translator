@@ -308,6 +308,11 @@ async def translate_chapter(req: TranslateChapterRequest) -> dict:
 
 class TranslateVisionPageRequest(TranslateChapterRequest):
     page_index: int = Field(ge=0)
+    # Translate at most this many untranslated objects; a retry uses a small
+    # batch so a reply that ran out of tokens fits the second time.
+    max_objects: int | None = Field(default=None, ge=1, le=100)
+    # Only these objects (still untranslated ones); None means every untranslated object.
+    object_ids: list[str] | None = Field(default=None, max_length=100)
 
 
 def _resolve_vision_provider(provider_id: str):
@@ -403,6 +408,12 @@ async def translate_page_in_context(
             raise HTTPException(409, str(exc)) from exc
         if len(candidates) > 100:
             raise HTTPException(400, "Too many text objects on one slice (maximum 100)")
+        if req.object_ids is not None:
+            wanted = set(req.object_ids)
+            candidates = [candidate for candidate in candidates if candidate["id"] in wanted]
+        total_candidates = len(candidates)
+        if req.max_objects is not None:
+            candidates = candidates[:req.max_objects]
         original_path = validate_managed_path(page["original"], RAW_DIR / req.chapter_id)
         clean_path = validate_managed_path(page["clean"], PROCESSED_DIR / req.chapter_id)
         snapshot = {
@@ -437,6 +448,8 @@ async def translate_page_in_context(
         raise HTTPException(502, str(exc)) from exc
 
     committed = stale = unreadable = review = 0
+    keep_regions: list[list[int]] = []
+    blank_ids: list[str] = []
     with get_manifest_lock(req.chapter_id):
         latest = load_manifest_raw(req.chapter_id)
         pages = latest.get("pages", [])
@@ -459,9 +472,14 @@ async def translate_page_in_context(
             ):
                 stale += 1
                 continue
+            if candidate["id"] in getattr(translated, "keep_ids", ()):
+                keep_regions.append(list(candidate["region"]))
+                continue
             value = translated.translations[candidate["id"]]
             if not value:
                 unreadable += 1
+                if candidate["id"] not in getattr(translated, "missing_ids", ()):
+                    blank_ids.append(candidate["id"])
                 continue
             obj["translation"] = value
             obj["translation_source"] = provider.id
@@ -511,5 +529,10 @@ async def translate_page_in_context(
             and translated.estimated_cost_usd >= req.budget_usd
         ),
         "rendered_pages": rendered_pages, "render_error": render_error,
+        "keep_regions": keep_regions,
+        "missing_ids": sorted(getattr(translated, "missing_ids", ())),
+        "blank_ids": blank_ids,
+        "missed_boxes": [list(box) for box in getattr(translated, "missed_boxes", ())],
+        "remaining": max(0, total_candidates - len(candidates)),
     }
     return result

@@ -132,7 +132,7 @@ def _run_manager(fail_at=None, cancel=False):
 
 def test_manager_runs_every_stage_in_order():
     snapshot = _run_manager()
-    assert RecordingRunner.calls == ["download", "scan", "clean", "qc", "translate", "render", "export"]
+    assert RecordingRunner.calls == ["download", "scan", "clean", "qc", "translate", "repair", "render", "export"]
     assert snapshot["status"] == "completed"
     assert all(stage["status"] == "done" for stage in snapshot["stages"])
     assert snapshot["chapter_id"] == CHAPTER
@@ -226,6 +226,82 @@ def test_scan_stage_refuses_to_skip_most_of_a_chapter(monkeypatch):
     runner, skipped, _ = _scan_stage(monkeypatch, [SliceScan(i, True, 0.9, ()) for i in range(5)])
     assert skipped == []
     assert runner.report["credit_rejected"] == [0, 1, 2, 3, 4]
+
+
+def test_scan_stage_skips_textless_slices_but_not_most_of_a_chapter(monkeypatch):
+    runner, skipped, _ = _scan_stage(monkeypatch, [
+        SliceScan(2, False, 0.0, (), no_text=True), SliceScan(5, False, 0.0, (), no_text=True),
+    ])
+    assert skipped == [2, 5] and runner.report["textless_pages"] == [2, 5]
+
+    runner, skipped, _ = _scan_stage(monkeypatch, [SliceScan(i, False, 0.0, (), no_text=True) for i in range(5)])
+    assert skipped == [] and runner.report["textless_rejected"] == [0, 1, 2, 3, 4]
+
+
+def test_scan_parse_requires_a_confident_textless_answer():
+    sizes = {0: (800, 1000), 1: (800, 1000), 2: (800, 1000)}
+    scans = parse_scan({"slices": [
+        {"slice": 0, "is_credit": False, "credit_confidence": 0, "no_text": True, "no_text_confidence": 0.9, "logos": []},
+        {"slice": 1, "is_credit": False, "credit_confidence": 0, "no_text": True, "no_text_confidence": 0.7, "logos": []},
+        {"slice": 2, "is_credit": False, "credit_confidence": 0, "no_text": True, "no_text_confidence": 0.95,
+         "logos": [{"box_2d": [100, 100, 300, 500], "confidence": 0.9}]},
+    ]}, sizes)
+    assert [scan.no_text for scan in scans] == [True, False, False], "a slice with a logo has lettering"
+
+
+def test_repair_stage_uses_preserve_add_box_and_retries_before_restoring(monkeypatch):
+    from app.dependencies import pipeline
+
+    def obj(obj_id, translation=""):
+        return {"id": obj_id, "region": {"x1": 10, "y1": 10, "x2": 60, "y2": 40}, "translation": translation}
+
+    manifest = {"pages": [
+        {"width": 400, "height": 600, "text_objects": [obj("k", "")]},
+        {"width": 400, "height": 600, "text_objects": [obj("b1"), obj("b2"), obj("done", "Xong")]},
+        {"width": 400, "height": 600, "text_objects": [obj("a"), obj("other")]},
+    ]}
+    preserved, added, retries = [], [], []
+    def preserve(chapter_id, index, regions):
+        preserved.append((index, regions))
+        manifest["pages"][index].setdefault("preserve_regions", []).extend(regions)
+
+    monkeypatch.setattr(pipeline, "preserve_and_reinpaint", preserve, raising=False)
+    monkeypatch.setattr(pipeline, "add_manual_box",
+                        lambda chapter_id, index, *box: added.append((index, box)), raising=False)
+
+    job = ai_job.AIModeJob(job_id="j", settings=SETTINGS, chapter_id=CHAPTER, stage="repair", cost_usd=None,
+                           stages={"repair": {"done": 0, "total": 0, "detail": ""}})
+    runner = AIModeRunner(job, PROVIDERS["openai"], "key")
+    monkeypatch.setattr(runner, "_manifest", lambda: manifest)
+    ensured = []
+    monkeypatch.setattr(runner, "_ensure_objects", ensured.append)
+
+    async def retry(page_index, source_lang, object_ids):
+        retries.append((page_index, object_ids))
+        if page_index == 1:  # b1 translated, b2 deliberately left blank (a watermark)
+            manifest["pages"][1]["text_objects"][0]["translation"] = "Chào"
+            return {"blank_ids": ["b2"]}
+        return {"blank_ids": [], "missing_ids": object_ids}  # page 2: "a" is never answered
+
+    monkeypatch.setattr(runner, "_translate_retry", retry)
+    runner._repair = {
+        0: {"keep": [[10, 10, 60, 40]], "missed": [[100, 100, 200, 160, "HI"], [0, 0, 5, 5, "tiny"]], "missing": []},
+        1: {"failed": True},
+        2: {"missing": ["a"]},
+    }
+    asyncio.run(runner.repair())
+
+    assert preserved[0] == (0, [{"x1": 6, "y1": 6, "x2": 64, "y2": 44}]), "keep -> padded preserve region"
+    assert added == [(0, (100, 100, 200, 160))], "missed text -> add_box; boxes under 10px are dropped"
+    assert ensured == [0], "the new box gets its text object before the retry"
+    assert retries == [(1, ["b1", "b2"]), (2, ["a"]), (2, ["a"]), (2, ["a"])], (
+        "a kept object is not retried; a failed slice retries every untranslated object, "
+        "otherwise only the unanswered ids, until three batches make no progress"
+    )
+    assert not any(index == 1 for index, _ in preserved), "a deliberate blank is not restored"
+    assert preserved[-1] == (2, [{"x1": 10, "y1": 10, "x2": 60, "y2": 40}]), "never answered -> original restored"
+    assert [item["id"] for item in runner.report["review_list"]] == ["a"]
+    assert runner.report["missed_added"] == 1 and runner.report["kept_regions"] == 1
 
 
 def test_translate_stage_keeps_a_few_slices_in_flight_and_reports_failures(monkeypatch):
@@ -342,3 +418,28 @@ def test_translate_render_and_export_without_human_review(cleaned_chapter, monke
     # The normal export keeps refusing until a human reviews the script.
     with pytest.raises(export_router.HTTPException):
         export_router.export_chapter(CHAPTER)
+
+
+def test_repair_keeps_retrying_a_long_slice_while_batches_make_progress(monkeypatch):
+    manifest = {"pages": [{"width": 400, "height": 600, "text_objects": [
+        {"id": f"o{i}", "region": {"x1": 10, "y1": 10 + i, "x2": 60, "y2": 40 + i}, "translation": ""} for i in range(10)
+    ]}]}
+    job = ai_job.AIModeJob(job_id="j", settings=SETTINGS, chapter_id=CHAPTER, stage="repair", cost_usd=None,
+                           stages={"repair": {"done": 0, "total": 0, "detail": ""}})
+    runner = AIModeRunner(job, PROVIDERS["openai"], "key")
+    monkeypatch.setattr(runner, "_manifest", lambda: manifest)
+    batches = []
+
+    async def retry(page_index, source_lang, object_ids):
+        batches.append(object_ids)
+        for obj in manifest["pages"][0]["text_objects"]:
+            if obj["id"] in object_ids:
+                obj["translation"] = "ok"
+        return {"blank_ids": []}
+
+    monkeypatch.setattr(runner, "_translate_retry", retry)
+    runner._repair = {0: {"failed": True}}
+    asyncio.run(runner.repair())
+    assert [len(batch) for batch in batches] == [4, 4, 2], "ten objects in batches of four, none given up"
+    assert runner.report["review_list"] == [] and runner.report["restored_regions"] == 0
+

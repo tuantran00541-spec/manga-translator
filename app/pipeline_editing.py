@@ -246,6 +246,64 @@ class PipelineEditingMixin:
                     self._sync_output_dir(chapter_id, manifest, [page_index])
             return manifest
 
+    def preserve_and_reinpaint(self, chapter_id: str, page_index: int, regions: list[dict]) -> dict:
+        """Add preserve regions and re-inpaint with the page's current boxes.
+
+        Unlike saving preserve regions from the editor, this does not send the
+        page back through detection, so its boxes, text objects and
+        translations stay; only the pixels inside the new regions return to
+        the original, and the objects there drop out of translation and render.
+        """
+        processed_dir = PROCESSED_DIR / chapter_id
+        added = [
+            {key: int(region[key]) for key in ("x1", "y1", "x2", "y2")}
+            for region in regions
+            if int(region["x2"]) > int(region["x1"]) and int(region["y2"]) > int(region["y1"])
+        ]
+        with get_page_lock(chapter_id, page_index):
+            with get_manifest_lock(chapter_id):
+                manifest = load_manifest_raw(chapter_id)
+                if page_index < 0 or page_index >= len(manifest.get("pages", [])):
+                    raise ValueError("Invalid page index")
+                page = manifest["pages"][page_index]
+                if page.get("skipped") or page.get("process_required") or not page.get("clean"):
+                    raise ValueError("Page must be active and processed before preserving regions")
+                img_path = Path(page["original"])
+                preserve_regions = copy.deepcopy(page.get("preserve_regions", [])) + added
+                boxes_snapshot = copy.deepcopy(page.get("boxes", []))
+                manual_mask_posix = page.get("manual_mask")
+                manual_lama_mask_posix = page.get("manual_lama_mask")
+                target_clean_revision = int(page.get("clean_revision") or 0) + 1
+            if not added:
+                return manifest
+
+            image = read_image(img_path)
+            with self._page_artifact_transaction(
+                processed_dir, img_path, page_index, target_clean_revision
+            ) as artifact_tx:
+                clean_path_posix = self._do_reinpaint(
+                    processed_dir,
+                    img_path,
+                    image,
+                    boxes_snapshot,
+                    manual_mask_posix=manual_mask_posix,
+                    manual_lama_mask_posix=manual_lama_mask_posix,
+                    preserve_regions=preserve_regions,
+                )
+                with get_manifest_lock(chapter_id):
+                    manifest = load_manifest_raw(chapter_id)
+                    target_page = manifest["pages"][page_index]
+                    target_page["preserve_regions"] = preserve_regions
+                    target_page["clean"] = clean_path_posix
+                    if bump_page_revision(target_page, "clean_revision") != target_clean_revision:
+                        raise RuntimeError("Page clean revision changed while preserving regions")
+                    invalidate_page_render(manifest, page_index)
+                    artifact_tx.mark_manifest_commit(target_page)
+                    save_manifest_raw(chapter_id, manifest)
+                    artifact_tx.commit()
+                    self._sync_output_dir(chapter_id, manifest, [page_index])
+            return manifest
+
     def remove_box(self, chapter_id: str, page_index: int, box_index: int) -> dict:
         processed_dir = PROCESSED_DIR / chapter_id
 

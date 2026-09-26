@@ -1,8 +1,8 @@
-"""Ask a vision model which slices are credit pages and where series logos are.
+"""Ask a vision model which slices are credit pages or textless and where series logos are.
 
-Runs on the ORIGINAL slices before cleanup, so credit slices can be skipped
-(no cleanup time spent on them) and logo artwork can be stored as preserve
-regions before inpainting touches it.
+Runs on the ORIGINAL slices before cleanup, so credit and textless slices can be
+skipped (no cleanup time spent on them; they are exported as the original) and
+logo artwork can be stored as preserve regions before inpainting touches it.
 """
 from __future__ import annotations
 
@@ -16,6 +16,8 @@ from app.ai_mode.vision_json import request_vision_json
 
 # Only confident answers change the chapter; everything else stays as is.
 CREDIT_MIN_CONFIDENCE = 0.75
+# Skipping a slice that does hold text leaves it untranslated, so this is strict.
+TEXTLESS_MIN_CONFIDENCE = 0.85
 LOGO_MIN_CONFIDENCE = 0.6
 # A "logo" covering most of a slice is a misread, not a logo.
 LOGO_MAX_AREA_RATIO = 0.5
@@ -34,6 +36,8 @@ SCAN_SCHEMA = {
                     "slice": {"type": "integer"},
                     "is_credit": {"type": "boolean"},
                     "credit_confidence": {"type": "number"},
+                    "no_text": {"type": "boolean"},
+                    "no_text_confidence": {"type": "number"},
                     "logos": {
                         "type": "array",
                         "items": {
@@ -62,12 +66,14 @@ SCAN_PROMPT = (
     "uploader or scanlation group: credit/staff pages, recruitment ads, Discord/Patreon/"
     "donation promotions, 'read at <site>' banners, end-of-chapter notices. A story slice "
     "with a small watermark is NOT a credit slice. Blank or near-blank slices are NOT credit.\n"
-    "2. logos: boxes around the SERIES TITLE LOGO (stylised title artwork, usually near the "
+    "2. no_text: true only when the slice holds no lettering at all: no speech bubble, "
+    "caption, narration, system window, sign or sound effect, just artwork, gutter or blank space.\n"
+    "3. logos: boxes around the SERIES TITLE LOGO (stylised title artwork, usually near the "
     "start of the chapter) and publisher/studio logos drawn as artwork. These are kept "
     "untouched. Never box speech bubbles, captions, narration, sound effects or plain text.\n"
     "Boxes are [ymin, xmin, ymax, xmax] normalised to 0-1000 inside that slice's image. "
     "Confidences are 0-1. Return JSON only: "
-    '{"slices":[{"slice":<number>,"is_credit":false,"credit_confidence":0.0,'
+    '{"slices":[{"slice":<number>,"is_credit":false,"credit_confidence":0.0,"no_text":false,"no_text_confidence":0.0,'
     '"logos":[{"box_2d":[0,0,0,0],"confidence":0.0}],"reason":"short"}]}'
 )
 
@@ -79,6 +85,7 @@ class SliceScan:
     credit_confidence: float
     logos: tuple[tuple[int, int, int, int], ...]
     reason: str = ""
+    no_text: bool = False
 
 
 def _confidence(value) -> float:
@@ -138,6 +145,8 @@ def parse_scan(data: dict, sizes: dict[int, tuple[int, int]]) -> list[SliceScan]
         entry = answers.get(index, {})
         confidence = _confidence(entry.get("credit_confidence"))
         is_credit = entry.get("is_credit") is True and confidence >= CREDIT_MIN_CONFIDENCE
+        no_text = (not is_credit and entry.get("no_text") is True
+                   and _confidence(entry.get("no_text_confidence")) >= TEXTLESS_MIN_CONFIDENCE)
         logos = tuple(
             box for raw in (entry.get("logos") or [])
             if (box := _logo_box(raw, width, height)) is not None
@@ -149,6 +158,7 @@ def parse_scan(data: dict, sizes: dict[int, tuple[int, int]]) -> list[SliceScan]
             # A credit slice is skipped whole; its logos are irrelevant.
             logos=() if is_credit else logos,
             reason=str(entry.get("reason") or "")[:200],
+            no_text=no_text and not logos,
         ))
     return scans
 
