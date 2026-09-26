@@ -118,6 +118,23 @@ def test_skip_unskip_requires_reprocessing(monkeypatch):
     assert current["process_required"] is True and current["preserve_regions"] == page["preserve_regions"]
 
 
+def test_unskipping_an_active_page_keeps_its_clean_result(monkeypatch):
+    import app.pipeline as module
+    page = {"skipped": False, "process_required": False, "clean": "clean.png",
+            "boxes": [{"id": "box_1"}], "manual_mask": "manual_mask_page.png", "clean_revision": 4}
+    manifest = {"pages": [page]}
+    monkeypatch.setattr(module, "get_page_lock", lambda *_: nullcontext())
+    monkeypatch.setattr(module, "get_manifest_lock", lambda *_: nullcontext())
+    monkeypatch.setattr(module, "load_manifest_raw", lambda _: manifest)
+    monkeypatch.setattr(module, "save_manifest_raw", lambda *_a, **_k: None)
+    monkeypatch.setattr(module, "invalidate_page_render", lambda *_a, **_k: None)
+    pipeline = ChapterPipeline.__new__(ChapterPipeline)
+    pipeline._sync_output_dir = lambda *_a, **_k: None
+    current = pipeline.mark_skipped("abcd1234", [0], False)["pages"][0]
+    assert current["process_required"] is False, "a page that was never skipped must not need reprocessing"
+    assert current["clean"] == "clean.png" and current["clean_revision"] == 4
+
+
 def test_preserve_change_requires_reprocessing(monkeypatch):
     import app.routers.chapters as module
     page = {"original": "orig.png", "skipped": False, "process_required": False,

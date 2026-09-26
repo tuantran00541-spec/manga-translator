@@ -84,23 +84,24 @@ function scheduleTextObjectPersist(pageIndex, id) {
 }
 window.scheduleTextObjectPersist = scheduleTextObjectPersist;
 
+function _bulkUpdates(items) {
+  return items.map((p) => ({
+    page_index: p.pageIndex,
+    id: p.id,
+    ocr_text: p.ocr_text,
+    translation: p.translation,
+    style: p.style,
+    font_selection_mode: p.font_selection_mode,
+    font_match: p.font_match,
+    font_ai_id: p.font_ai_id,
+  }));
+}
+
 async function _persistTextObjectsBulk(chapterId, items) {
   const resp = await fetch("/api/text_object/update_bulk", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      chapter_id: chapterId,
-      updates: items.map((p) => ({
-        page_index: p.pageIndex,
-        id: p.id,
-        ocr_text: p.ocr_text,
-        translation: p.translation,
-        style: p.style,
-        font_selection_mode: p.font_selection_mode,
-        font_match: p.font_match,
-        font_ai_id: p.font_ai_id,
-      })),
-    }),
+    body: JSON.stringify({ chapter_id: chapterId, updates: _bulkUpdates(items) }),
   });
   if (!resp.ok) {
     throw new Error(getErrorMessage(resp.status, await parseApiResponse(resp)));
@@ -205,3 +206,24 @@ window.cancelPendingPersist = function cancelPendingPersist() {
   if (typeof window.clearPendingGeom === "function") window.clearPendingGeom();
   refreshSaveStatus();
 };
+
+// Closing or reloading the tab inside the autosave delay would drop the last
+// edits; send whatever is still pending with a request that outlives the page.
+window.addEventListener("pagehide", () => {
+  const chapterId = currentChapterId;
+  if (!chapterId) return;
+  clearTimeout(_textTimer);
+  const updates = _bulkUpdates([..._textDirty.values()]);
+  if (typeof window.pendingGeomUpdates === "function") updates.push(...window.pendingGeomUpdates());
+  if (!updates.length) return;
+  try {
+    fetch("/api/text_object/update_bulk", {
+      method: "POST",
+      keepalive: true,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chapter_id: chapterId, updates }),
+    });
+  } catch (_err) {
+    // Nothing more can be done while the page is going away.
+  }
+});
