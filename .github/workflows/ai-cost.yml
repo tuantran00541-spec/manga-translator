@@ -116,6 +116,7 @@ jobs:
             echo "GATEWAY_UPSTREAM_MODEL=$model"
             echo "GATEWAY_PRICE_INPUT_PER_M=$price_in"
             echo "GATEWAY_PRICE_OUTPUT_PER_M=${price_out:-$price_in}"
+            echo "GATEWAY_UPSTREAM_REASONING_TOKENS=$(conf reasoning)"
           } >> "$GITHUB_ENV"
 
       - name: Check the provider secret

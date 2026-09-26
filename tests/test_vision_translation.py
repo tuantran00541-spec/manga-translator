@@ -39,7 +39,7 @@ def test_vision_parser_rejects_unknown_duplicate_and_omitted_ids():
             parse_vision_translation(raw, {"a", "b"})
 
 
-def test_vision_client_sends_original_and_clean_with_existing_ids(tmp_path, monkeypatch):
+def test_vision_client_sends_original_and_clean_with_short_ids(tmp_path, monkeypatch):
     original = tmp_path / "original.png"
     clean = tmp_path / "clean.png"
     Image.new("RGB", (160, 120), "white").save(original)
@@ -54,7 +54,7 @@ def test_vision_client_sends_original_and_clean_with_existing_ids(tmp_path, monk
             return {
                 "model": "vision-test",
                 "choices": [{"message": {"content": (
-                    '{"translations":[{"id":"text_1","translated_text":"Tôi hiểu rồi"}]}'
+                    '{"translations":[{"id":"1","translated_text":"Tôi hiểu rồi"}]}'
                 )}}],
                 "usage": {"prompt_tokens": 80, "completion_tokens": 20},
             }
@@ -82,7 +82,7 @@ def test_vision_client_sends_original_and_clean_with_existing_ids(tmp_path, monk
     assert all(item["image_url"]["url"].startswith("data:image/jpeg;base64,") for item in images)
     assert images[0]["image_url"]["url"] != images[1]["image_url"]["url"]
     prompt = content[0]["text"]
-    assert '"id":"text_1"' in prompt
+    assert '"id":"1"' in prompt and "text_1" not in prompt
     assert '"bbox_xyxy":[10,20,50,40]' in prompt
     assert "fontSize" not in prompt and "strokeColor" not in prompt
 
@@ -206,12 +206,13 @@ def test_chapter_memory_carries_characters_address_and_recent_lines_to_the_next_
     Image.new("RGB", (160, 120), "white").save(original)
     Image.new("RGB", (160, 120), "gray").save(clean)
     answers = iter([
-        '{"translations":[{"id":"a","translated_text":"Thầy ơi, em đến rồi."},{"id":"b","translated_text":"Vào đi."}],'
-        '"speakers":{"a":"Ian","b":"Baldur"},'
+        # The model sees the objects numbered 1, 2, ... and answers with those numbers.
+        '{"translations":[{"id":"1","translated_text":"Thầy ơi, em đến rồi."},{"id":"2","translated_text":"Vào đi."}],'
+        '"speakers":{"1":"Ian","2":"Baldur"},'
         '"characters":[{"name":"Ian","note":"student, 17"},{"name":"Baldur","note":"Ian\'s teacher"}],'
         '"address":[{"from":"Ian","to":"Baldur","self":"em","other":"thầy"}]}',
-        '{"translations":[{"id":"c","translated_text":"Em hiểu\\nrồi.","role":"dialogue"},'
-        '{"id":"d","translated_text":"RẦM","role":"sfx","review":true},{"id":"e","translated_text":"x","role":"bogus"}]}',
+        '{"translations":[{"id":"1","translated_text":"Em hiểu\\nrồi.","role":"dialogue"},'
+        '{"id":"2","translated_text":"RẦM","role":"sfx","review":true},{"id":"9","translated_text":"x","role":"bogus"}]}',
     ])
     prompts = []
 
@@ -258,3 +259,8 @@ def test_chapter_memory_is_bounded_and_ignores_malformed_entries():
     assert len(sheet["characters"]) == MAX_CHARACTERS
     assert sheet["address"] == [{"from": "A", "to": "B", "self": "tôi"}]
     assert len(sheet["recent_lines"]) == RECENT_LINES and len(sheet["recent_lines"][0]["text"]) == 160
+
+
+def test_vision_parser_accepts_a_translations_map_and_integer_ids():
+    assert parse_vision_translation('{"translations":{"1":"A","2":"B"}}', {"1", "2"}) == {"1": "A", "2": "B"}
+    assert parse_vision_translation('{"translations":[{"id":1,"translated_text":"A"}]}', {"1"}) == {"1": "A"}

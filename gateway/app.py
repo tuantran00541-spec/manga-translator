@@ -28,6 +28,7 @@ class Upstream:
     model: str
     input_usd_per_m: float
     output_usd_per_m: float
+    reasoning_tokens: int = 0
 
     def cost(self, usage: dict) -> float:
         prompt = max(0, int(usage.get("prompt_tokens") or 0))
@@ -56,6 +57,7 @@ def upstream_from_env() -> Upstream:
         model=os.getenv("GATEWAY_UPSTREAM_MODEL", "deepseek-v4-flash-vision-exp"),
         input_usd_per_m=float(os.getenv("GATEWAY_PRICE_INPUT_PER_M", "0.28")),
         output_usd_per_m=float(os.getenv("GATEWAY_PRICE_OUTPUT_PER_M", "0.42")),
+        reasoning_tokens=max(0, int(os.getenv("GATEWAY_UPSTREAM_REASONING_TOKENS", "0") or 0)),
     )
 
 
@@ -233,7 +235,9 @@ def create_app(store: Store, upstream: Upstream, admin_key: str, *, mailer: Mail
             requested = int(payload.get("max_tokens") or MAX_OUTPUT_TOKENS)
         except (TypeError, ValueError):
             requested = MAX_OUTPUT_TOKENS
-        forwarded["max_tokens"] = max(1, min(requested, MAX_OUTPUT_TOKENS))
+        # Clients size max_tokens for the answer alone; a reasoning model spends
+        # part of the budget thinking first, so the gateway adds that on top.
+        forwarded["max_tokens"] = max(1, min(requested, MAX_OUTPUT_TOKENS)) + upstream.reasoning_tokens
         try:
             status, body = await run_in_threadpool(upstream.send, forwarded)
         except requests.RequestException:

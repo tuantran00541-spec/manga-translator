@@ -80,6 +80,15 @@ def parse_vision_translation(content: str, expected_ids: set[str], *, allow_miss
     except (TypeError, ValueError) as exc:
         raise RuntimeError("Vision model returned invalid JSON") from exc
     entries = data.get("translations") if isinstance(data, dict) else None
+    if isinstance(entries, dict):
+        entries = [{"id": key, "translated_text": value} for key, value in entries.items()]
+    if isinstance(entries, list):
+        entries = [
+            {**entry, "id": str(entry["id"])}
+            if isinstance(entry, dict) and isinstance(entry.get("id"), int) and not isinstance(entry.get("id"), bool)
+            else entry
+            for entry in entries
+        ]
     if not isinstance(entries, list):
         shape = sorted(data)[:8] if isinstance(data, dict) else type(data).__name__
         raise RuntimeError(f"Vision model must return a translations array (got {shape})")
@@ -112,6 +121,8 @@ def _parse_vision_payload(content: str, expected_ids: set[str]) -> tuple[dict[st
     except (TypeError, ValueError) as exc:
         raise RuntimeError("Vision model returned invalid JSON") from exc
     translations = parse_vision_translation(source, expected_ids, allow_missing=True)
+    if isinstance(data, dict) and isinstance(data.get("translations"), dict):
+        data["translations"] = [{"id": str(k), "translated_text": v} for k, v in data["translations"].items()]
     choices: dict[str, dict] = {}
     raw_choices = data.get("font_choices") if isinstance(data, dict) else None
     if isinstance(raw_choices, dict):
@@ -122,6 +133,24 @@ def _parse_vision_payload(content: str, expected_ids: set[str]) -> tuple[dict[st
             if isinstance(font_id, str) and isinstance(font_mode, str):
                 choices[str(item_id)] = {"font_id": font_id.strip(), "font_mode": font_mode.strip().lower() or "ai"}
     return translations, choices, data if isinstance(data, dict) else {}
+
+
+def _unalias(result: VisionTranslationResult, data: dict, real: dict[str, str]) -> tuple[VisionTranslationResult, dict]:
+    back = lambda key: real.get(str(key), str(key))  # noqa: E731
+    data = dict(data)
+    if isinstance(data.get("translations"), list):
+        data["translations"] = [
+            {**entry, "id": back(entry.get("id"))} if isinstance(entry, dict) else entry
+            for entry in data["translations"]
+        ]
+    for key in ("speakers", "font_choices"):
+        if isinstance(data.get(key), dict):
+            data[key] = {back(k): v for k, v in data[key].items()}
+    return replace(
+        result,
+        translations={back(k): v for k, v in result.translations.items()},
+        font_choices={back(k): v for k, v in (result.font_choices or {}).items()},
+    ), data
 
 
 class VisionPageTranslator:
@@ -143,7 +172,11 @@ class VisionPageTranslator:
         if original.shape[:2] != cleaned.shape[:2]:
             raise ValueError("Original and cleaned slices have different dimensions")
         h, w = original.shape[:2]
-        objects = [{"id": item["id"], "source_text": item["text"], "bbox_xyxy": item["region"]} for item in items]
+        # Models copy short ids far more reliably than long object ids, so the
+        # request numbers the objects and the answer is mapped back.
+        real = {str(n): str(item["id"]) for n, item in enumerate(items, start=1)}
+        objects = [{"id": alias, "source_text": item["text"], "bbox_xyxy": item["region"]}
+                   for alias, item in zip(real, items)]
         source_name = (
             "the original language shown in the image"
             if str(source_lang or "").lower() in {"", "auto"}
@@ -161,12 +194,14 @@ class VisionPageTranslator:
             + '\n\nAnswer with one JSON object that starts with {"translations":[ and contains every id above.'
         )
         original_b64, cleaned_b64 = _encode_for_gemini(original), _encode_for_gemini(cleaned)
-        ids = {str(item["id"]) for item in items}
+        ids = set(real)
         max_tokens = min(4096, max(1200, 160 * len(items) + 700))
         if self.provider.protocol == "gemini":
             result, data = self._gemini(system, prompt, original_b64, cleaned_b64, api_key=api_key, ids=ids, max_tokens=max_tokens)
         else:
             result, data = self._openai(system, prompt, original_b64, cleaned_b64, api_key=api_key, ids=ids, max_tokens=max_tokens)
+        result, data = _unalias(result, data, real)
+        ids = set(real.values())
         if memory is not None:
             memory.update(slice_number or 0, data, result.translations, [str(item["id"]) for item in items])
         roles, review = {}, set()
