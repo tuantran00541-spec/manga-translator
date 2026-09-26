@@ -1,30 +1,6 @@
 {
  "source": "yolo26n.pt",
  "exports": {
-  "kiuyha_text.onnx": {
-   "bytes": 9871540,
-   "inputs": [
-    [
-     "images",
-     [
-      "batch",
-      3,
-      "height",
-      "width"
-     ]
-    ]
-   ],
-   "outputs": [
-    [
-     "output0",
-     [
-      "batch",
-      5,
-      "anchors"
-     ]
-    ]
-   ]
-  },
   "kiuyha_text_1280.onnx": {
    "bytes": 10297844,
    "inputs": [
@@ -51,18 +27,13 @@
   }
  },
  "parity": {
-  "pt_native": 21,
   "pt_1280": 20,
-  "native_matched": 21,
-  "native_onnx": 21,
   "static_matched": 19,
   "static_onnx": 20
  },
  "seconds": {
-  "pt_native": 8.84,
-  "pt_1280": 1.97,
-  "kiuyha_text.onnx": 7.26,
-  "kiuyha_text_1280.onnx": 3.71
+  "pt_1280": 3.57,
+  "kiuyha_text_1280.onnx": 4.03
  },
  "slices": 16
 }
