@@ -152,15 +152,17 @@ jobs:
           export GATEWAY_UPSTREAM_KEY="${!PROVIDER_SECRET}"
           url="${INPUT_URL:-$(head -n1 .github/ai-cost.txt | tr -d '\r')}"
           if grep -q '^mode: *reference' .github/ai-cost.txt; then
-            echo "EVIDENCE=audit-results/lettering-reference" >> "$GITHUB_ENV"
-            rm -rf audit-results/lettering-reference
-            python scripts/lettering_reference.py --out audit-results/lettering-reference
-            mkdir -p audit-results/lettering-reference/guides
+            ref="audit-results/$(sed -n 's/^reference-dir: *//p' .github/ai-cost.txt | head -n1 | tr -cd 'A-Za-z0-9_-')"
+            [ "$ref" = "audit-results/" ] && ref=audit-results/lettering-reference
+            echo "EVIDENCE=$ref" >> "$GITHUB_ENV"
+            rm -rf "$ref"
+            python scripts/lettering_reference.py --out "$ref" $(sed -n 's/^reference-args: *//p' .github/ai-cost.txt | head -n1)
+            mkdir -p "$ref/guides"
             sed -n 's/^guide: *//p' .github/ai-cost.txt | while read -r guide; do
               name="$(echo "$guide" | sed 's#https\?://##; s#[^A-Za-z0-9]#_#g' | cut -c1-80)"
               curl -sSL -m 30 -A "Mozilla/5.0" "$guide" \
                 | python -c 'import sys; from bs4 import BeautifulSoup; s=BeautifulSoup(sys.stdin.read(), "lxml"); [t.decompose() for t in s(["script","style","nav","footer"])]; print(s.get_text("\n", strip=True)[:60000])' \
-                > "audit-results/lettering-reference/guides/$name.txt" || echo "::warning::could not fetch $guide"
+                > "$ref/guides/$name.txt" || echo "::warning::could not fetch $guide"
             done
           elif grep -q '^mode: *text' .github/ai-cost.txt; then
             echo "EVIDENCE=audit-results/ai-text" >> "$GITHUB_ENV"

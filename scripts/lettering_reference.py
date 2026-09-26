@@ -71,6 +71,37 @@ def _pick(language: str, count: int, long_strip: bool) -> list[dict]:
     return picked
 
 
+def _pick_popular(language: str, count: int, tags: list[str]) -> list[dict]:
+    """Latest chapter of the most followed long-strip series with these tags, one per group."""
+    by_name = {t["attributes"]["name"]["en"].lower(): t["id"] for t in _get(f"{API}/manga/tag")["data"]}
+    tag_ids = [by_name[name.lower()] for name in tags if name.lower() in by_name]
+    mangas = _get(f"{API}/manga", **{
+        "availableTranslatedLanguage[]": [language], "includedTags[]": tag_ids, "order[followedCount]": "desc",
+        "limit": 40, "contentRating[]": ["safe", "suggestive"],
+    })["data"]
+    picked, groups = [], set()
+    for manga in mangas:
+        chapters = _get(f"{API}/chapter", **{
+            "manga": manga["id"], "translatedLanguage[]": [language], "order[chapter]": "desc", "limit": 20,
+            "includes[]": ["scanlation_group"], "includeExternalUrl": 0,
+        })["data"]
+        for chapter in chapters:
+            group = next((r for r in chapter.get("relationships", []) if r["type"] == "scanlation_group"), None)
+            if not group or group["id"] in groups or (chapter["attributes"].get("pages") or 0) < 8:
+                continue
+            groups.add(group["id"])
+            picked.append({
+                "chapter_id": chapter["id"], "language": language, "manga": _title(manga),
+                "chapter": chapter["attributes"].get("chapter"),
+                "group": (group.get("attributes") or {}).get("name"),
+                "url": f"https://mangadex.org/chapter/{chapter['id']}", "long_strip": True, "tags": tags,
+            })
+            break
+        if len(picked) >= count:
+            break
+    return picked
+
+
 def _pages(chapter_id: str, max_pages: int) -> list[np.ndarray]:
     home = _get(f"{API}/at-home/server/{chapter_id}")
     base, data = home["baseUrl"], home["chapter"]
@@ -113,14 +144,20 @@ def main() -> int:
     parser.add_argument("--en", type=int, default=2, help="English chapters")
     parser.add_argument("--max-pages", type=int, default=40)
     parser.add_argument("--max-images", type=int, default=4, help="phone-view sheets per chapter")
+    parser.add_argument("--popular-tags", default="",
+                        help="comma-separated MangaDex tags; picks popular long-strip series instead of recent chapters")
     args = parser.parse_args()
     out = args.out.resolve()
     if not out.is_relative_to(ROOT):
         raise SystemExit(f"{args.out} must be inside {ROOT}")
     out.mkdir(parents=True, exist_ok=True)
 
-    wanted = (_pick("vi", args.vi - args.vi // 2, True) + _pick("vi", args.vi // 2, False)
-              + _pick("en", args.en, True))
+    if args.popular_tags:
+        tags = ["Long Strip"] + [t.strip() for t in args.popular_tags.split(",") if t.strip()]
+        wanted = _pick_popular("vi", args.vi, tags) + (_pick_popular("en", args.en, tags) if args.en else [])
+    else:
+        wanted = (_pick("vi", args.vi - args.vi // 2, True) + _pick("vi", args.vi // 2, False)
+                  + _pick("en", args.en, True))
     report = {"source": "MangaDex API", "chapters": []}
     for index, chapter in enumerate(wanted, start=1):
         folder = out / f"{index:02d}-{chapter['language']}"
