@@ -4,58 +4,76 @@
  "reference_scale": 1.25,
  "variants": {
   "current": {
-   "seconds": 24.6,
+   "seconds": 24.4,
    "forwards": 16,
    "blocks": 24,
    "missed": 8,
    "miss_rate": 0.333,
-   "stray_area": 0.264,
-   "mask_px": 1586685
+   "stray_area": 0.261,
+   "mask_px": 1650358
   },
   "collage": {
-   "seconds": 24.5,
+   "seconds": 24.3,
    "forwards": 16,
    "blocks": 24,
    "missed": 7,
    "miss_rate": 0.292,
-   "stray_area": 0.061,
-   "mask_px": 1258064
+   "stray_area": 0.064,
+   "mask_px": 1317048
   },
   "kiuyha_box": {
-   "seconds": 11.3,
+   "seconds": 10.7,
    "forwards": 16,
    "blocks": 24,
-   "missed": 5,
-   "miss_rate": 0.208,
-   "stray_area": 0.099,
-   "mask_px": 1444028
+   "missed": 3,
+   "miss_rate": 0.125,
+   "stray_area": 0.105,
+   "mask_px": 1513874
   },
   "kiuyha_otsu": {
-   "seconds": 11.5,
+   "seconds": 10.9,
    "forwards": 16,
    "blocks": 24,
-   "missed": 23,
-   "miss_rate": 0.958,
-   "stray_area": 0.043,
-   "mask_px": 509765
+   "missed": 13,
+   "miss_rate": 0.542,
+   "stray_area": 0.039,
+   "mask_px": 766786
   },
   "kiuyha_seg": {
-   "seconds": 29.7,
+   "seconds": 28.8,
    "forwards": 28,
    "blocks": 24,
-   "missed": 11,
-   "miss_rate": 0.458,
-   "stray_area": 0.009,
-   "mask_px": 725905
+   "missed": 10,
+   "miss_rate": 0.417,
+   "stray_area": 0.015,
+   "mask_px": 768935
   },
   "collage_plus": {
-   "seconds": 38.9,
+   "seconds": 38.0,
    "forwards": 34,
    "blocks": 24,
    "missed": 5,
    "miss_rate": 0.208,
-   "stray_area": 0.077,
-   "mask_px": 1396802
+   "stray_area": 0.081,
+   "mask_px": 1465275
+  },
+  "kiuyha_collage_box": {
+   "seconds": 4.0,
+   "forwards": 16,
+   "blocks": 24,
+   "missed": 4,
+   "miss_rate": 0.167,
+   "stray_area": 0.239,
+   "mask_px": 1761819
+  },
+  "kiuyha_collage_seg": {
+   "seconds": 22.1,
+   "forwards": 28,
+   "blocks": 24,
+   "missed": 11,
+   "miss_rate": 0.458,
+   "stray_area": 0.02,
+   "mask_px": 828594
   }
  },
  "collage_regressions": [
