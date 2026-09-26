@@ -436,7 +436,7 @@ async def translate_page_in_context(
     except RuntimeError as exc:
         raise HTTPException(502, str(exc)) from exc
 
-    committed = stale = unreadable = 0
+    committed = stale = unreadable = review = 0
     with get_manifest_lock(req.chapter_id):
         latest = load_manifest_raw(req.chapter_id)
         pages = latest.get("pages", [])
@@ -469,6 +469,12 @@ async def translate_page_in_context(
             obj["translation_input_text"] = candidate["text"]
             obj["auto_translation"] = value
             _apply_ai_font_choice(obj, getattr(translated, "font_choices", {}).get(candidate["id"]))
+            role = getattr(translated, "roles", {}).get(candidate["id"])
+            if role:
+                obj["typography_role"] = role
+            if candidate["id"] in getattr(translated, "review_ids", ()):
+                obj["needs_review"] = True
+                review += 1
             committed += 1
             changed = True
         if changed:
@@ -494,7 +500,7 @@ async def translate_page_in_context(
         current = load_manifest_raw(req.chapter_id)
     result = urlify_manifest(current)
     result["translation_run"] = {
-        "translated": committed, "unreadable": unreadable, "stale": stale,
+        "translated": committed, "unreadable": unreadable, "stale": stale, "review": review,
         "model": translated.model, "usage": translated.usage,
         "estimated_cost_usd": (
             round(translated.estimated_cost_usd, 6)

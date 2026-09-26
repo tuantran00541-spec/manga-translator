@@ -74,7 +74,8 @@ def test_vision_client_sends_original_and_clean_with_existing_ids(tmp_path, monk
     payload = sent[0][1]["json"]
     system = payload["messages"][0]
     assert system["role"] == "system"
-    assert "scanlation" in system["content"] and "Vietnamese rules" in system["content"]
+    assert "localization editor" in system["content"] and "VIETNAMESE" in system["content"]
+    assert "dialogue.mac-dinh-3" in system["content"] and "narration.mac-dinh-2" in system["content"]
     content = payload["messages"][1]["content"]
     images = [item for item in content if item.get("type") == "image_url"]
     assert len(images) == 2
@@ -209,7 +210,8 @@ def test_chapter_memory_carries_characters_address_and_recent_lines_to_the_next_
         '"speakers":{"a":"Ian","b":"Baldur"},'
         '"characters":[{"name":"Ian","note":"student, 17"},{"name":"Baldur","note":"Ian\'s teacher"}],'
         '"address":[{"from":"Ian","to":"Baldur","self":"em","other":"thầy"}]}',
-        '{"translations":[{"id":"c","translated_text":"Em hiểu rồi."}]}',
+        '{"translations":[{"id":"c","translated_text":"Em hiểu\\nrồi.","role":"dialogue"},'
+        '{"id":"d","translated_text":"RẦM","role":"sfx","review":true},{"id":"e","translated_text":"x","role":"bogus"}]}',
     ])
     prompts = []
 
@@ -232,7 +234,7 @@ def test_chapter_memory_carries_characters_address_and_recent_lines_to_the_next_
     item = lambda item_id: {"id": item_id, "text": "", "region": [1, 2, 30, 40]}
     translator.translate_page(original, clean, [item("a"), item("b")], api_key="k", source_lang="ko",
                               target_lang="vi", memory=memory, slice_number=1, slice_total=2)
-    second = translator.translate_page(original, clean, [item("c"), item("d")], api_key="k", source_lang="ko",
+    second = translator.translate_page(original, clean, [item("c"), item("d"), item("f")], api_key="k", source_lang="ko",
                                        target_lang="vi", memory=memory, slice_number=2, slice_total=2)
 
     assert "Academy regression story" in prompts[0] and "SLICE 1 of 2" in prompts[0]
@@ -240,7 +242,8 @@ def test_chapter_memory_carries_characters_address_and_recent_lines_to_the_next_
     assert '"self":"em","other":"thầy"' in carried
     assert '"name":"Baldur"' in carried
     assert '"speaker":"Ian","text":"Thầy ơi, em đến rồi."' in carried
-    assert second.translations == {"c": "Em hiểu rồi.", "d": ""}, "a missing id is left empty instead of failing the slice"
+    assert second.translations == {"c": "Em hiểu\nrồi.", "d": "RẦM", "f": ""}, "a missing id is left empty"
+    assert second.roles == {"c": "dialogue", "d": "sfx"} and second.review_ids == {"d"}
 
 
 def test_chapter_memory_is_bounded_and_ignores_malformed_entries():

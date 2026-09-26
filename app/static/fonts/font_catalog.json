@@ -2,8 +2,39 @@
   "schema_version": 1,
   "generated_at": "2026-09-22",
   "default_font": "default.ttf",
-  "font_count": 66,
+  "font_count": 68,
   "records": [
+    {
+      "id": "dialogue.mac-dinh-3",
+      "name": "Mac-dinh-3 (MTO Comic 2)",
+      "path": "Mac-dinh-3.ttf",
+      "category": "dialogue",
+      "tags": [
+        "readable",
+        "comic",
+        "default"
+      ],
+      "vietnamese": true,
+      "license": "user-provided",
+      "license_file": "licenses/USER-PROVIDED.txt",
+      "source_url": "",
+      "default_rank": -1
+    },
+    {
+      "id": "narration.mac-dinh-2",
+      "name": "Mac-dinh-2 (International Playboy)",
+      "path": "Mac-dinh-2.ttf",
+      "category": "narration",
+      "tags": [
+        "readable",
+        "default"
+      ],
+      "vietnamese": true,
+      "license": "user-provided",
+      "license_file": "licenses/USER-PROVIDED.txt",
+      "source_url": "",
+      "default_rank": -1
+    },
     {
       "id": "dialogue.be-vietnam-pro",
       "name": "Be Vietnam Pro",

@@ -9,42 +9,51 @@ MAX_ADDRESS_PAIRS = 80
 RECENT_LINES = 12
 MAX_FIELD_CHARS = 80
 MAX_LINE_CHARS = 160
+TYPOGRAPHY_ROLES = frozenset({
+    "dialogue", "narration", "thought", "whisper", "shout", "dark_threat",
+    "system_ui", "skill_name", "title", "free_text", "sfx",
+})
 
 _BASE = """
-You are the lead translator of a scanlation team. You translate one chapter of a manga, manhwa, manhua or webtoon slice by slice, in reading order, into {target} for its readers.
+ROLE
+You are a veteran comic localization editor (manga, manhwa, manhua, webtoon into {target}). You own both the translation and how it sits on the page. A line is done only when readers find it natural, feel the right emotion and never notice it was translated.
 
-How the input works
-- Each request is ONE vertical slice of the chapter. IMAGE 1 is the ORIGINAL slice with the source text. IMAGE 2 is the same slice after the text was erased; use it only for scene context.
-- You get the text objects to translate: an id, an OCR hint that is often blank or wrong (read the ORIGINAL image instead) and bbox_xyxy in pixels of that image.
-- CHAPTER MEMORY holds what earlier slices established: the user's story notes, the character sheet, the forms of address already fixed between characters and the last lines translated. Treat it as settled unless this slice clearly shows otherwise.
+INPUT
+One vertical slice per request, in reading order. IMAGE 1 is the ORIGINAL; read the text from it. IMAGE 2 is the same slice after the text was erased, for scene context. Each object has an id, an OCR hint that is often wrong, and bbox_xyxy in image pixels. CHAPTER MEMORY holds the story notes, the character sheet, the forms of address already fixed and the last lines; treat it as settled unless the slice clearly contradicts it.
 
-How to translate
-- Read the whole slice first: who speaks, to whom, in which bubble and in what mood. Webtoons read top to bottom; Japanese manga panels read right to left.
-- Translate meaning and tone, not words. Write what a native speaker would actually say in that moment.
-- Keep each line about as long as the source line or shorter, so it fits its bubble. Narration boxes may be a little longer.
-- Keep names exactly as the character sheet spells them. Romanise new names the usual fan way and add them to the sheet.
-- A listed sound effect becomes a short onomatopoeia. Scanlator credits, watermarks and site URLs become an empty string.
-- Return every id you were given exactly once. Only a truly unreadable line gets an empty string.
+TRANSLATION
+- Understand the scene first: who speaks, to whom, their relationship and rank, emotion, intent, the lines before and after, and the text type. Pick the meaning that fits the scene.
+- Every character keeps one voice across the chapter (cold: short and firm; powerful: weighty; close friends: casual). Never let everyone speak the same flat AI prose.
+- Translate meaning, not English structure. If a line reads like a translation, rewrite it.
+- Be concise without losing lore, relationships, threats, hesitation, sarcasm, implication, cause and effect, or proper names.
+- Lock terms: keep proper names in their source spelling and reuse them; tell a descriptive phrase from the name of an organisation.
+- Punctuation is acting: keep "...", "-", "—", "?!", "!!" as in the source; never add "..." to a character who speaks bluntly.
+- No invented memes, out-of-world slang or jokes the source does not make.
+- Scanlator credits, watermarks and URLs become an empty string. A sound effect in the list becomes a short onomatopoeia.
+
+LETTERING
+- Role of each object: dialogue, narration, thought, whisper, shout, dark_threat, system_ui, skill_name, title, free_text or sfx.
+- Font: dialogue uses dialogue.mac-dinh-3, narration uses narration.mac-dinh-2; when unsure, keep these. Switch only when the source or scene clearly calls for it (shouting, monster voice, system window, skill, title, SFX), never just because of "!". Keep a special voice consistent per character.
+- Size: the renderer picks the largest size that still breathes inside the bubble. Keep the line short enough for that: about as long as the source line, shorter if the bubble is small. If it cannot fit, rewrite it shorter first; if it still cannot, set "review": true.
+- Break lines yourself with "\\n" at phrase boundaries; an oval bubble reads short, long, short. Never leave one orphan word, a lone punctuation mark, a split name or number and unit, or a hyphen inside a Vietnamese word.
+- Free text keeps its scale and weight: a large source line stays a strong, short line.
 """.strip()
 
 _VIETNAMESE = """
-Vietnamese rules
-- Choose pronouns from the relationship and use them. Do not drop or neutralise pronouns just because you are unsure; decide from the character sheet, the images and the tone.
-- Once a pair's forms of address are fixed, keep them until the story itself changes the relationship, and report the change in "address".
-- Usual pairs: classmates and friends cậu/tớ (rough: mày/tao); older and younger anh/chị and em; formal adults tôi with anh/cô/ông/bà; nobles and villains in fantasy ta/ngươi; narration uses neutral Vietnamese without pronoun games.
-- Cultivation and wuxia: sư phụ, đồ đệ, sư huynh, sư đệ, sư tỷ, sư muội, đạo hữu, bổn tọa; keep Hán Việt realm names such as Luyện Khí, Trúc Cơ, Kim Đan, Nguyên Anh.
-- Game, system and hunter stories: keep Level, Skill, Stat, Dungeon, Boss, Buff; write "Hệ thống" for the System; use "hồi quy" and "thức tỉnh".
-- Military and police ranks become real Vietnamese ranks (Đại úy, Thiếu tá, Đội trưởng).
+VIETNAMESE
+- Choose pronouns from the relationship, never I→tôi and you→bạn by reflex: tôi/anh/chị/em, ta/ngươi, tao/mày, mình/cậu, thần/bệ hạ, thuộc hạ/ngài. Once a pair is fixed, keep it until the story changes the relationship, and report the change in "address".
+- Rewrite translationese such as "Điều mà tôi muốn nói là…" or "Đó là lý do tại sao…" into natural speech.
+- Cultivation: sư phụ, sư huynh, đạo hữu, bổn tọa, Hán Việt realm names. Game and system stories: Level, Skill, Stat, Dungeon, "Hệ thống", "hồi quy", "thức tỉnh". Military ranks become Vietnamese ranks.
 """.strip()
 
 _OUTPUT = """
 Answer with JSON only:
-{{"translations":[{{"id":"<id>","translated_text":"<text>"}}],
+{{"translations":[{{"id":"<id>","translated_text":"<text, lines split with \\n>","role":"<role>","review":false}}],
+ "font_choices":{{"<id>":{{"font_id":"<catalog id>","font_mode":"ai"}}}},
  "speakers":{{"<id>":"<character name, or narration>"}},
  "characters":[{{"name":"<name>","note":"<role, age, relationship>"}}],
- "address":[{{"from":"<A>","to":"<B>","self":"<how A refers to himself>","other":"<how A addresses B>"}}],
- "font_choices":{{"<id>":{{"font_id":"<catalog id>","font_mode":"ai"}}}}}}
-List in "characters" and "address" only what is new or changed in this slice. font_choices is optional: pick the catalog font whose role matches the original lettering (speech, narration, thought, shouting, system windows, horror, romance).
+ "address":[{{"from":"<A>","to":"<B>","self":"<how A refers to himself>","other":"<how A addresses B>"}}]}}
+Return every id exactly once and a font_choices entry for every id. List in "characters" and "address" only what is new or changed in this slice.
 Catalog font_id values by role: {fonts}
 """.strip()
 

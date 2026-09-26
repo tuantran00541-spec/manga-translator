@@ -129,7 +129,9 @@ def main() -> int:
         report["slices"] = len(pages)
         report["slices_active"] = sum(1 for p in pages if not p.get("skipped"))
         report["lines"] = [
-            {"slice": index + 1, "id": obj.get("id"), "translation": obj.get("translation") or ""}
+            {"slice": index + 1, "id": obj.get("id"), "translation": obj.get("translation") or "",
+             "role": obj.get("typography_role"), "font": (obj.get("style") or {}).get("font"),
+             "review": bool(obj.get("needs_review"))}
             for index, page in enumerate(pages) if not page.get("skipped")
             for obj in page.get("text_objects") or [] if isinstance(obj, dict)
         ]

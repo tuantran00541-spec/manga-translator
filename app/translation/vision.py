@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import requests
@@ -10,7 +10,7 @@ from app.ai_providers import AIProvider
 from app.parameters import TRANSLATION_CONNECT_TIMEOUT_SECONDS, TRANSLATION_READ_TIMEOUT_SECONDS
 from app.render.font_catalog import load_font_catalog
 from app.security import validate_url
-from app.translation.context import ChapterMemory, system_prompt
+from app.translation.context import TYPOGRAPHY_ROLES, ChapterMemory, system_prompt
 from app.translation.deepseek import _language_name, _usage_cost_usd
 from app.visual_qc.deepseek_region_client import _extract_output_text, _safe_error_detail
 from app.visual_qc.gemini import _encode_for_gemini, _read_image
@@ -52,6 +52,8 @@ class VisionTranslationResult:
     usage: dict
     estimated_cost_usd: float | None
     font_choices: dict[str, dict] = field(default_factory=dict)
+    roles: dict[str, str] = field(default_factory=dict)
+    review_ids: frozenset[str] = frozenset()
 
 
 def _font_catalog_hint(target_lang: str) -> str:
@@ -86,6 +88,8 @@ def parse_vision_translation(content: str, expected_ids: set[str], *, allow_miss
             raise RuntimeError("Vision model returned an invalid object ID")
         obj_id = entry["id"]
         value = entry.get("translated_text")
+        if allow_missing and (obj_id not in expected_ids or obj_id in results):
+            continue
         if obj_id not in expected_ids or obj_id in results or not isinstance(value, str):
             raise RuntimeError("Vision model returned an unknown, repeated or malformed translation")
         if len(value) > 4000:
@@ -162,7 +166,16 @@ class VisionPageTranslator:
             result, data = self._openai(system, prompt, original_b64, cleaned_b64, api_key=api_key, ids=ids, max_tokens=max_tokens)
         if memory is not None:
             memory.update(slice_number or 0, data, result.translations, [str(item["id"]) for item in items])
-        return result
+        roles, review = {}, set()
+        for entry in data.get("translations") or []:
+            if not isinstance(entry, dict) or str(entry.get("id")) not in ids:
+                continue
+            role = str(entry.get("role") or "").strip().lower()
+            if role in TYPOGRAPHY_ROLES:
+                roles[str(entry["id"])] = role
+            if entry.get("review") is True:
+                review.add(str(entry["id"]))
+        return replace(result, roles=roles, review_ids=frozenset(review))
 
     def _openai(self, system, prompt, original, cleaned, *, api_key, ids, max_tokens):
         url = str(self.provider.chat_url or "")

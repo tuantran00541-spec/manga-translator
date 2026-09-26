@@ -105,7 +105,7 @@ class AIModeRunner:
         self.report.update({
             "credit_pages": [], "credit_rejected": [], "logo_regions": 0, "scan_errors": [],
             "repainted_regions": 0, "repaint_pages": [], "qc_flagged": 0, "qc_errors": [],
-            "translated": 0, "unreadable": 0, "translate_errors": [], "render_errors": [],
+            "translated": 0, "unreadable": 0, "review_flags": 0, "translate_errors": [], "render_errors": [],
             "editorial_blockers": 0, "blocker_samples": [], "source_lang": None,
         })
 
@@ -354,6 +354,7 @@ class AIModeRunner:
                 run = data.get("translation_run") or {}
                 self.report["translated"] += int(run.get("translated") or 0)
                 self.report["unreadable"] += int(run.get("unreadable") or 0)
+                self.report["review_flags"] += int(run.get("review") or 0)
                 self._add_cost(run.get("estimated_cost_usd") if self.provider.tracks_cost else None)
                 if run.get("render_error"):
                     _append(self.report["render_errors"], f"Lát {page_index + 1}: {run['render_error']}")
