@@ -1,0 +1,251 @@
+{
+ "model": "/home/runner/work/manga-translator/manga-translator/models/lama-manga-dynamic.onnx",
+ "runs": [
+  {
+   "width": 468,
+   "height": 2000,
+   "letters_bbox": [
+    155,
+    1520,
+    337,
+    1614
+   ],
+   "mask_bbox_size": [
+    202,
+    114
+   ],
+   "seam_y": 1576,
+   "white_left": {
+    "current": 0.0,
+    "seam": 0.0,
+    "single": 0.0
+   },
+   "metrics": {
+    "current": {
+     "boxes": 0,
+     "clusters": 0,
+     "skipped_clusters": 0,
+     "split_clusters": 0,
+     "smart_fill_regions": 0,
+     "lama_regions": 1,
+     "lama_model_runs": 1,
+     "lama_model_ms": 1269,
+     "lama_native_single_regions": 0,
+     "lama_tiled_regions": 0,
+     "session_lock_wait_ms": 0,
+     "ort_global_lock_wait_ms": 0,
+     "mask_components": 1
+    },
+    "seam_top": {
+     "boxes": 0,
+     "clusters": 0,
+     "skipped_clusters": 0,
+     "split_clusters": 0,
+     "smart_fill_regions": 0,
+     "lama_regions": 1,
+     "lama_model_runs": 1,
+     "lama_model_ms": 612,
+     "lama_native_single_regions": 0,
+     "lama_tiled_regions": 0,
+     "session_lock_wait_ms": 0,
+     "ort_global_lock_wait_ms": 0,
+     "mask_components": 1
+    },
+    "seam_bottom": {
+     "boxes": 0,
+     "clusters": 0,
+     "skipped_clusters": 0,
+     "split_clusters": 0,
+     "smart_fill_regions": 0,
+     "lama_regions": 1,
+     "lama_model_runs": 1,
+     "lama_model_ms": 591,
+     "lama_native_single_regions": 0,
+     "lama_tiled_regions": 0,
+     "session_lock_wait_ms": 0,
+     "ort_global_lock_wait_ms": 0,
+     "mask_components": 1
+    },
+    "single": {
+     "boxes": 0,
+     "clusters": 0,
+     "skipped_clusters": 0,
+     "split_clusters": 0,
+     "smart_fill_regions": 0,
+     "lama_regions": 1,
+     "lama_model_runs": 1,
+     "lama_model_ms": 1289,
+     "lama_native_single_regions": 0,
+     "lama_tiled_regions": 0,
+     "session_lock_wait_ms": 0,
+     "ort_global_lock_wait_ms": 0,
+     "mask_components": 1
+    }
+   }
+  },
+  {
+   "width": 800,
+   "height": 3419,
+   "letters_bbox": [
+    265,
+    2598,
+    577,
+    2759
+   ],
+   "mask_bbox_size": [
+    346,
+    195
+   ],
+   "seam_y": 2694,
+   "white_left": {
+    "current": 0.0,
+    "seam": 0.0,
+    "single": 0.0
+   },
+   "metrics": {
+    "current": {
+     "boxes": 0,
+     "clusters": 0,
+     "skipped_clusters": 0,
+     "split_clusters": 0,
+     "smart_fill_regions": 0,
+     "lama_regions": 1,
+     "lama_model_runs": 1,
+     "lama_model_ms": 2295,
+     "lama_native_single_regions": 0,
+     "lama_tiled_regions": 0,
+     "session_lock_wait_ms": 0,
+     "ort_global_lock_wait_ms": 0,
+     "mask_components": 1
+    },
+    "seam_top": {
+     "boxes": 0,
+     "clusters": 0,
+     "skipped_clusters": 0,
+     "split_clusters": 0,
+     "smart_fill_regions": 0,
+     "lama_regions": 1,
+     "lama_model_runs": 1,
+     "lama_model_ms": 1069,
+     "lama_native_single_regions": 0,
+     "lama_tiled_regions": 0,
+     "session_lock_wait_ms": 0,
+     "ort_global_lock_wait_ms": 0,
+     "mask_components": 1
+    },
+    "seam_bottom": {
+     "boxes": 0,
+     "clusters": 0,
+     "skipped_clusters": 0,
+     "split_clusters": 0,
+     "smart_fill_regions": 0,
+     "lama_regions": 1,
+     "lama_model_runs": 1,
+     "lama_model_ms": 1034,
+     "lama_native_single_regions": 0,
+     "lama_tiled_regions": 0,
+     "session_lock_wait_ms": 0,
+     "ort_global_lock_wait_ms": 0,
+     "mask_components": 1
+    },
+    "single": {
+     "boxes": 0,
+     "clusters": 0,
+     "skipped_clusters": 0,
+     "split_clusters": 0,
+     "smart_fill_regions": 0,
+     "lama_regions": 1,
+     "lama_model_runs": 1,
+     "lama_model_ms": 2432,
+     "lama_native_single_regions": 0,
+     "lama_tiled_regions": 0,
+     "session_lock_wait_ms": 0,
+     "ort_global_lock_wait_ms": 0,
+     "mask_components": 1
+    }
+   }
+  },
+  {
+   "width": 1100,
+   "height": 4701,
+   "letters_bbox": [
+    365,
+    3572,
+    793,
+    3794
+   ],
+   "mask_bbox_size": [
+    476,
+    270
+   ],
+   "seam_y": 3705,
+   "white_left": {
+    "current": 0.0,
+    "seam": 0.0,
+    "single": 0.0
+   },
+   "metrics": {
+    "current": {
+     "boxes": 0,
+     "clusters": 0,
+     "skipped_clusters": 0,
+     "split_clusters": 0,
+     "smart_fill_regions": 0,
+     "lama_regions": 1,
+     "lama_model_runs": 2,
+     "lama_model_ms": 6207,
+     "lama_native_single_regions": 0,
+     "lama_tiled_regions": 1,
+     "session_lock_wait_ms": 0,
+     "ort_global_lock_wait_ms": 0,
+     "mask_components": 1
+    },
+    "seam_top": {
+     "boxes": 0,
+     "clusters": 0,
+     "skipped_clusters": 0,
+     "split_clusters": 0,
+     "smart_fill_regions": 0,
+     "lama_regions": 1,
+     "lama_model_runs": 2,
+     "lama_model_ms": 3266,
+     "lama_native_single_regions": 0,
+     "lama_tiled_regions": 1,
+     "session_lock_wait_ms": 0,
+     "ort_global_lock_wait_ms": 0,
+     "mask_components": 1
+    },
+    "seam_bottom": {
+     "boxes": 0,
+     "clusters": 0,
+     "skipped_clusters": 0,
+     "split_clusters": 0,
+     "smart_fill_regions": 0,
+     "lama_regions": 1,
+     "lama_model_runs": 2,
+     "lama_model_ms": 2477,
+     "lama_native_single_regions": 0,
+     "lama_tiled_regions": 1,
+     "session_lock_wait_ms": 0,
+     "ort_global_lock_wait_ms": 0,
+     "mask_components": 1
+    },
+    "single": {
+     "boxes": 0,
+     "clusters": 0,
+     "skipped_clusters": 0,
+     "split_clusters": 0,
+     "smart_fill_regions": 0,
+     "lama_regions": 1,
+     "lama_model_runs": 1,
+     "lama_model_ms": 3755,
+     "lama_native_single_regions": 0,
+     "lama_tiled_regions": 0,
+     "session_lock_wait_ms": 0,
+     "ort_global_lock_wait_ms": 0,
+     "mask_components": 1
+    }
+   }
+  }
+ ]
+}
