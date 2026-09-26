@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import copy
 import json
+import re
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -52,6 +53,9 @@ QC_CONCURRENCY = VISUAL_QC_JOB_CONCURRENCY_LIMIT
 RETRY_BATCH = 4
 RETRY_ROUNDS = 3
 KEEP_PAD_PX = 4
+# Objects per slice given back their original pixels when their translation cannot be lettered.
+RENDER_RESTORE_ATTEMPTS = 3
+RENDER_FAILED_OBJECT = re.compile(r"\(vùng ([\w-]+)\)")
 POLL_SECONDS = 1.0
 MAX_RETAINED_JOBS = 16
 MAX_REPORT_ITEMS = 50
@@ -503,17 +507,20 @@ class AIModeRunner:
                 except (ValueError, RuntimeError, OSError) as exc:
                     _append(self.report["qc_errors"], f"Lát {page_index + 1}: giữ nguyên thất bại: {_detail(exc)[:150]}")
 
-            added = 0
+            rects = []
             for box in todo.get("missed") or []:
                 x1, y1, x2, y2 = (int(v) for v in box[:4])
                 if width and height:
                     x1, x2 = max(0, x1), min(width, x2)
                     y1, y2 = max(0, y1), min(height, y2)
-                if x2 - x1 < 10 or y2 - y1 < 10:
-                    continue
+                if x2 - x1 >= 10 and y2 - y1 >= 10:
+                    rects.append((x1, y1, x2, y2))
+            added = 0
+            if rects:
+                # One re-inpaint for all of a slice's missed text, not one per box.
                 try:
-                    await asyncio.to_thread(pipeline.add_manual_box, chapter_id, page_index, x1, y1, x2, y2)
-                    added += 1
+                    await asyncio.to_thread(pipeline.add_manual_boxes, chapter_id, page_index, rects)
+                    added = len(rects)
                 except (ValueError, RuntimeError, OSError) as exc:
                     _append(self.report["qc_errors"], f"Lát {page_index + 1}: thêm vùng chữ thất bại: {_detail(exc)[:150]}")
             self.report["missed_added"] += added
@@ -569,9 +576,7 @@ class AIModeRunner:
         ))
 
     async def render(self) -> None:
-        from app.routers.export import _render_request_from_page
         from app.routers.image import _current_rendered_path
-        from app.routers.render_commit import render_page
 
         chapter_id = self.job.chapter_id
         indices = self._active_pages()
@@ -582,11 +587,46 @@ class AIModeRunner:
             page = manifest["pages"][page_index]
             if page.get("skipped") or _current_rendered_path(chapter_id, page_index, manifest) is not None:
                 continue
+            await self._render_one(page_index)
+        self._progress(len(indices), len(indices))
+
+    async def _render_one(self, page_index: int) -> None:
+        """Render a slice; an object that cannot be lettered gets its original pixels back.
+
+        Export needs every active slice rendered, so one translation too long for
+        its region must not cost the whole chapter.
+        """
+        from app.dependencies import pipeline
+        from app.routers.export import _render_request_from_page
+        from app.routers.render_commit import render_page
+
+        chapter_id = self.job.chapter_id
+        for attempt in range(RENDER_RESTORE_ATTEMPTS + 1):
+            page = self._manifest()["pages"][page_index]
             try:
                 await asyncio.to_thread(render_page, _render_request_from_page(chapter_id, page_index, page))
+                return
             except HTTPException as exc:
-                _append(self.report["render_errors"], f"Lát {page_index + 1}: {_detail(exc)[:200]}")
-        self._progress(len(indices), len(indices))
+                detail = _detail(exc)
+                _append(self.report["render_errors"], f"Lát {page_index + 1}: {detail[:200]}")
+                failed = RENDER_FAILED_OBJECT.search(detail)
+                obj = next((
+                    item for item in page.get("text_objects") or []
+                    if failed and isinstance(item, dict) and str(item.get("id")) == failed.group(1)
+                    and isinstance(item.get("region"), dict)
+                ), None)
+                if obj is None or attempt == RENDER_RESTORE_ATTEMPTS:
+                    return
+            try:
+                await asyncio.to_thread(pipeline.preserve_and_reinpaint, chapter_id, page_index, [dict(obj["region"])])
+            except (ValueError, RuntimeError, OSError) as exc:
+                _append(self.report["render_errors"], f"Lát {page_index + 1}: khôi phục thất bại: {_detail(exc)[:150]}")
+                return
+            self.report["restored_regions"] += 1
+            _append(self.report["review_list"], {
+                "page": page_index + 1, "id": obj["id"],
+                "reason": "Bản dịch không vừa vùng chữ; đã giữ ảnh gốc",
+            })
 
     async def export(self) -> None:
         from app.routers.export import _preflight_copy, write_chapter_archive

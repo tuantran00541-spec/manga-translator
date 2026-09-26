@@ -201,3 +201,35 @@ def test_preserve_and_reinpaint_restores_original_pixels_and_keeps_translations(
     cleaned = read_image(Path(page["clean"]))
     assert (cleaned[30:55, 45:75] == 30).all(), "the preserved object shows the original pixels again"
     assert (cleaned[5:25, 5:35] == 100).all(), "the other box stays erased"
+
+
+def test_add_manual_boxes_adds_every_box_with_one_reinpaint(tmp_path: Path, monkeypatch):
+    import app.config as config
+    import app.manifest_utils as manifests
+    import app.pipeline_editing as editing
+
+    chapter = "e5d4c3b2"
+    processed, output = tmp_path / "processed", tmp_path / "output"
+    (processed / chapter).mkdir(parents=True)
+    for module, name, value in ((editing, "PROCESSED_DIR", processed), (manifests, "PROCESSED_DIR", processed),
+                                (config, "PROCESSED_DIR", processed), (config, "OUTPUT_DIR", output)):
+        monkeypatch.setattr(module, name, value)
+    img_path = tmp_path / "page.png"
+    write_image(img_path, np.full((60, 80, 3), 30, dtype=np.uint8))
+    manifests.save_manifest_raw(chapter, {"chapter_id": chapter, "pages": [{
+        "original": img_path.as_posix(), "clean": None, "boxes": [], "text_objects": [],
+        "preserve_regions": [], "skipped": False, "process_required": False,
+        "source_revision": 1, "clean_revision": 1, "render_revision": 0, "rendered": False,
+    }]})
+    pipeline = OptimizedChapterPipeline.__new__(OptimizedChapterPipeline)
+    pipeline._inpainter = _FakeInpainter()
+    calls = []
+    real = pipeline._do_reinpaint
+    monkeypatch.setattr(pipeline, "_do_reinpaint", lambda *a, **k: calls.append(len(a[3])) or real(*a, **k))
+
+    pipeline.add_manual_boxes(chapter, 0, [(5, 5, 35, 25), (45, 30, 75, 55), (10, 10, 10, 40)])
+
+    page = manifests.load_manifest_raw(chapter)["pages"][0]
+    assert [(b["x1"], b["y1"], b["x2"], b["y2"]) for b in page["boxes"]] == [(5, 5, 35, 25), (45, 30, 75, 55)]
+    assert calls == [2], "one re-inpaint with both boxes; the empty one is dropped"
+    assert page["clean_revision"] == 2

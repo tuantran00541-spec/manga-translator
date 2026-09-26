@@ -68,6 +68,10 @@ def _normalize_region(region: dict, w: int, h: int) -> tuple[int, int, int, int]
 
 class PipelineEditingMixin:
     def add_manual_box(self, chapter_id: str, page_index: int, x1: int, y1: int, x2: int, y2: int) -> dict:
+        return self.add_manual_boxes(chapter_id, page_index, [(x1, y1, x2, y2)])
+
+    def add_manual_boxes(self, chapter_id: str, page_index: int, rects: list[tuple[int, int, int, int]]) -> dict:
+        """Add several manual boxes with a single re-inpaint of the page."""
         processed_dir = PROCESSED_DIR / chapter_id
 
         with get_page_lock(chapter_id, page_index):
@@ -81,16 +85,19 @@ class PipelineEditingMixin:
             image = read_image(img_path)
             h, w = image.shape[:2]
 
-            nx1, nx2 = sorted((max(0, min(x1, w)), max(0, min(x2, w))))
-            ny1, ny2 = sorted((max(0, min(y1, h)), max(0, min(y2, h))))
-            if nx2 <= nx1 or ny2 <= ny1:
+            new_boxes = []
+            for x1, y1, x2, y2 in rects:
+                nx1, nx2 = sorted((max(0, min(int(x1), w)), max(0, min(int(x2), w))))
+                ny1, ny2 = sorted((max(0, min(int(y1), h)), max(0, min(int(y2), h))))
+                if nx2 <= nx1 or ny2 <= ny1:
+                    continue
+                new_boxes.append({
+                    "id": new_box_id(), "origin": "manual",
+                    "x1": nx1, "y1": ny1, "x2": nx2, "y2": ny2,
+                    "confidence": 1.0, "mask": None, "manual": True,
+                })
+            if not new_boxes:
                 return manifest
-
-            new_box = {
-                "id": new_box_id(), "origin": "manual",
-                "x1": nx1, "y1": ny1, "x2": nx2, "y2": ny2,
-                "confidence": 1.0, "mask": None, "manual": True,
-            }
             with get_manifest_lock(chapter_id):
                 manifest = load_manifest_raw(chapter_id)
                 if page_index < 0 or page_index >= len(manifest.get("pages", [])):
@@ -98,7 +105,7 @@ class PipelineEditingMixin:
                 target_page = manifest["pages"][page_index]
                 preserve_regions = copy.deepcopy(target_page.get("preserve_regions", []))
                 boxes_snapshot = copy.deepcopy(target_page.get("boxes", []))
-                boxes_snapshot.append(copy.deepcopy(new_box))
+                boxes_snapshot.extend(copy.deepcopy(new_boxes))
                 manual_mask_posix = target_page.get("manual_mask")
                 manual_lama_mask_posix = target_page.get("manual_lama_mask")
                 target_clean_revision = int(
@@ -123,7 +130,7 @@ class PipelineEditingMixin:
                     if page_index < 0 or page_index >= len(manifest.get("pages", [])):
                         raise ValueError(f"Chapter {chapter_id}: Invalid page_index {page_index}")
                     target_page = manifest["pages"][page_index]
-                    target_page.setdefault("boxes", []).append(new_box)
+                    target_page.setdefault("boxes", []).extend(new_boxes)
                     target_page["clean"] = clean_path_posix
                     clean_revision = bump_page_revision(
                         target_page, "clean_revision"

@@ -284,8 +284,8 @@ def test_repair_stage_uses_preserve_add_box_and_retries_before_restoring(monkeyp
         manifest["pages"][index].setdefault("preserve_regions", []).extend(regions)
 
     monkeypatch.setattr(pipeline, "preserve_and_reinpaint", preserve, raising=False)
-    monkeypatch.setattr(pipeline, "add_manual_box",
-                        lambda chapter_id, index, *box: added.append((index, box)), raising=False)
+    monkeypatch.setattr(pipeline, "add_manual_boxes",
+                        lambda chapter_id, index, rects: added.append((index, rects)), raising=False)
 
     job = ai_job.AIModeJob(job_id="j", settings=SETTINGS, chapter_id=CHAPTER, stage="repair", cost_usd=None,
                            stages={"repair": {"done": 0, "total": 0, "detail": ""}})
@@ -310,7 +310,7 @@ def test_repair_stage_uses_preserve_add_box_and_retries_before_restoring(monkeyp
     asyncio.run(runner.repair())
 
     assert preserved[0] == (0, [{"x1": 6, "y1": 6, "x2": 64, "y2": 44}]), "keep -> padded preserve region"
-    assert added == [(0, (100, 100, 200, 160))], "missed text -> add_box; boxes under 10px are dropped"
+    assert added == [(0, [(100, 100, 200, 160)])], "missed text -> one add_boxes call per slice; boxes under 10px are dropped"
     assert ensured == [0], "the new box gets its text object before the retry"
     assert retries == [(1, ["b1", "b2"]), (2, ["a"]), (2, ["a"]), (2, ["a"])], (
         "a kept object is not retried; a failed slice retries every untranslated object, "
@@ -320,6 +320,40 @@ def test_repair_stage_uses_preserve_add_box_and_retries_before_restoring(monkeyp
     assert preserved[-1] == (2, [{"x1": 10, "y1": 10, "x2": 60, "y2": 40}]), "never answered -> original restored"
     assert [item["id"] for item in runner.report["review_list"]] == ["a"]
     assert runner.report["missed_added"] == 1 and runner.report["kept_regions"] == 1
+
+
+def test_render_stage_gives_an_unletterable_object_its_original_pixels(monkeypatch):
+    from app.dependencies import pipeline
+    import app.routers.export as export_router
+    import app.routers.image as image_router
+    import app.routers.render_commit as render_commit
+
+    region = {"x1": 10, "y1": 20, "x2": 60, "y2": 40}
+    manifest = {"pages": [{"text_objects": [{"id": "text_ok", "region": region}, {"id": "text_long", "region": region}]}]}
+    calls, preserved = [], []
+
+    def render(req):
+        calls.append(req)
+        if len(calls) == 1:
+            raise export_router.HTTPException(500, "Chèn chữ thất bại (vùng text_long)")
+
+    monkeypatch.setattr(render_commit, "render_page", render)
+    monkeypatch.setattr(export_router, "_render_request_from_page", lambda chapter_id, index, page: index)
+    monkeypatch.setattr(image_router, "_current_rendered_path", lambda chapter_id, index, manifest: None)
+    monkeypatch.setattr(pipeline, "preserve_and_reinpaint",
+                        lambda chapter_id, index, regions: preserved.append((index, regions)), raising=False)
+
+    job = ai_job.AIModeJob(job_id="j", settings=SETTINGS, chapter_id=CHAPTER, stage="render",
+                           stages={"render": {"done": 0, "total": 0, "detail": ""}})
+    runner = AIModeRunner(job, PROVIDERS["openai"], "key")
+    monkeypatch.setattr(runner, "_manifest", lambda: manifest)
+    monkeypatch.setattr(runner, "_active_pages", lambda: [0])
+    asyncio.run(runner.render())
+
+    assert len(calls) == 2, "the slice is rendered again once the object is restored"
+    assert preserved == [(0, [region])]
+    assert runner.report["restored_regions"] == 1
+    assert runner.report["review_list"][0]["id"] == "text_long"
 
 
 def test_translate_stage_keeps_a_few_slices_in_flight_and_reports_failures(monkeypatch):
