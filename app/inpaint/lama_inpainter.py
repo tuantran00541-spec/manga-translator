@@ -744,8 +744,12 @@ class Inpainter:
         canvas = cv2.copyMakeBorder(
             crop_resized, pad_y, pad_bottom, pad_x, pad_right, cv2.BORDER_REPLICATE
         )
-        mask_canvas = np.zeros((canvas_h, canvas_w), dtype=np.uint8)
-        mask_canvas[pad_y:pad_y + new_h, pad_x:pad_x + new_w] = mask_resized
+        # The padding repeats the edge pixels, so it must repeat the edge mask
+        # too: text cut by the crop edge (a slice boundary, a tile edge) would
+        # otherwise be fed to LaMa as known context and painted back.
+        mask_canvas = cv2.copyMakeBorder(
+            mask_resized, pad_y, pad_bottom, pad_x, pad_right, cv2.BORDER_REPLICATE
+        )
 
         painted_full = self._run_lama(canvas, mask_canvas)
         painted_crop = painted_full[pad_y:pad_y + new_h, pad_x:pad_x + new_w]
@@ -774,8 +778,9 @@ class Inpainter:
         )
 
         mask_resized = self._resize_mask_preserve_support(local_mask, new_w, new_h)
-        mask_canvas = np.zeros((INPAINT_SIZE, INPAINT_SIZE), dtype=np.uint8)
-        mask_canvas[pad_y:pad_y + new_h, pad_x:pad_x + new_w] = mask_resized
+        mask_canvas = cv2.copyMakeBorder(
+            mask_resized, pad_y, pad_bottom, pad_x, pad_right, cv2.BORDER_REPLICATE
+        )
 
         painted_full = self._run_lama(canvas, mask_canvas)
         painted_crop = painted_full[pad_y:pad_y + new_h, pad_x:pad_x + new_w]
