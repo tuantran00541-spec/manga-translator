@@ -37,6 +37,7 @@ jobs:
       MANGA_ORT_OPENVINO_STREAMS: "1"
       MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
       OPENBLAS_NUM_THREADS: "1"
+      PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK: "True"
       GATEWAY_UPSTREAM_BASE: https://api.sovinfra.ai/v1
       GATEWAY_UPSTREAM_MODEL: qwen3.8-27b
       GATEWAY_PRICE_INPUT_PER_M: "0.12"
@@ -57,6 +58,18 @@ jobs:
             beautifulsoup4==4.12.3 lxml==5.3.0 playwright==1.47.0 fastapi==0.115.0 \
             'uvicorn[standard]==0.30.6' pydantic==2.9.2 filelock==3.16.1 python-multipart==0.0.12 keyring==25.6.0
           python -m playwright install --with-deps chromium
+          if grep -q '^mode: *text' .github/ai-cost.txt; then
+            python -m pip install threadpoolctl==3.6.0 chardet==5.2.0 pyclipper==1.3.0.post5 shapely==2.0.6 \
+              paddleocr==3.7.0 paddlepaddle==3.2.2
+          fi
+
+      - name: Cache PaddleOCR model downloads
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.paddlex
+            ~/.cache/paddle
+          key: paddleocr-v6-small-en-v1
 
       - name: Restore detector and inpaint models
         id: models
@@ -99,8 +112,20 @@ jobs:
           INPUT_PLAN: ${{ github.event.inputs.plan }}
         run: |
           url="${INPUT_URL:-$(head -n1 .github/ai-cost.txt | tr -d '\r')}"
-          rm -rf audit-results/ai-cost
-          python scripts/ai_cost_run.py "$url" --plan "${INPUT_PLAN:-pro}" --out audit-results/ai-cost
+          if grep -q '^mode: *text' .github/ai-cost.txt; then
+            echo "EVIDENCE=audit-results/ai-text" >> "$GITHUB_ENV"
+            notes="$(sed -n 's/^notes: *//p' .github/ai-cost.txt | head -n1)"
+            if ! grep -qF "\"url\": \"$url\"" audit-results/ai-text/ocr.json 2>/dev/null; then
+              rm -rf audit-results/ai-text
+              python scripts/ai_text_test.py ocr "$url" --out audit-results/ai-text
+            fi
+            rm -f audit-results/ai-text/translation.json audit-results/ai-text/translation.md
+            python scripts/ai_text_test.py translate --out audit-results/ai-text --notes "$notes"
+          else
+            echo "EVIDENCE=audit-results/ai-cost" >> "$GITHUB_ENV"
+            rm -rf audit-results/ai-cost
+            python scripts/ai_cost_run.py "$url" --plan "${INPUT_PLAN:-pro}" --out audit-results/ai-cost
+          fi
 
       - name: Logs
         if: always()
@@ -111,15 +136,16 @@ jobs:
       - name: Commit evidence to the branch
         if: always() && github.ref_name != github.event.repository.default_branch
         run: |
-          test -f audit-results/ai-cost/report.json || exit 0
+          dir="${EVIDENCE:-audit-results/ai-cost}"
+          test -f "$dir/report.json" || test -f "$dir/translation.json" || exit 0
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          rm -rf /tmp/ai-cost && cp -r audit-results/ai-cost /tmp/ai-cost
+          rm -rf /tmp/evidence && cp -r "$dir" /tmp/evidence
           for i in 1 2 3; do
             git fetch origin "${GITHUB_REF_NAME}"
             git checkout -f -B evidence FETCH_HEAD
-            rm -rf audit-results/ai-cost && mkdir -p audit-results && cp -r /tmp/ai-cost audit-results/ai-cost
-            git add -A audit-results/ai-cost
+            rm -rf "$dir" && mkdir -p audit-results && cp -r /tmp/evidence "$dir"
+            git add -A "$dir"
             git commit -m "audit: A.I cost through the gateway (run ${{ github.run_id }}) [skip ci]" || exit 0
             git push origin "HEAD:${GITHUB_REF_NAME}" && break
             sleep 5

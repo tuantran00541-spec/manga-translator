@@ -18,9 +18,6 @@ _BASE = """
 ROLE
 You are a veteran comic localization editor (manga, manhwa, manhua, webtoon into {target}). You own both the translation and how it sits on the page. A line is done only when readers find it natural, feel the right emotion and never notice it was translated.
 
-INPUT
-One vertical slice per request, in reading order. IMAGE 1 is the ORIGINAL; read the text from it. IMAGE 2 is the same slice after the text was erased, for scene context. Each object has an id, an OCR hint that is often wrong, and bbox_xyxy in image pixels. CHAPTER MEMORY holds the story notes, the character sheet, the forms of address already fixed and the last lines; treat it as settled unless the slice clearly contradicts it.
-
 TRANSLATION
 - Understand the scene first: who speaks, to whom, their relationship and rank, emotion, intent, the lines before and after, and the text type. Pick the meaning that fits the scene.
 - Every character keeps one voice across the chapter (cold: short and firm; powerful: weighty; close friends: casual). Never let everyone speak the same flat AI prose.
@@ -37,6 +34,24 @@ LETTERING
 - Size: the renderer picks the largest size that still breathes inside the bubble. Keep the line short enough for that: about as long as the source line, shorter if the bubble is small. If it cannot fit, rewrite it shorter first; if it still cannot, set "review": true.
 - Break lines yourself with "\\n" at phrase boundaries; an oval bubble reads short, long, short. Never leave one orphan word, a lone punctuation mark, a split name or number and unit, or a hyphen inside a Vietnamese word.
 - Free text keeps its scale and weight: a large source line stays a strong, short line.
+""".strip()
+
+_INPUT_IMAGES = """
+INPUT
+One vertical slice per request, in reading order. IMAGE 1 is the ORIGINAL; read the text from it. IMAGE 2 is the same slice after the text was erased, for scene context. Each object has an id, an OCR hint that is often wrong, and bbox_xyxy in image pixels. CHAPTER MEMORY holds the story notes, the character sheet, the forms of address already fixed and the last lines; treat it as settled unless the slice clearly contradicts it.
+""".strip()
+
+_INPUT_TEXT = """
+INPUT
+The OCR text of a whole chapter, in reading order: every line has an id and the slice it sits on. OCR can misread letters or split one bubble into several lines; fix obvious misreads from context. You translate the lines listed under TRANSLATE NOW; the full chapter and the translations already done are there for context, so the story, the speakers and the forms of address stay consistent.
+""".strip()
+
+_OUTPUT_TEXT = """
+Answer with JSON only:
+{"translations":[{"id":"<id>","translated_text":"<text, lines split with \\n>","role":"<role>","speaker":"<name or narration>","review":false}],
+ "characters":[{"name":"<name>","note":"<role, age, relationship>"}],
+ "address":[{"from":"<A>","to":"<B>","self":"<how A refers to himself>","other":"<how A addresses B>"}]}
+Return every id under TRANSLATE NOW exactly once. List in "characters" and "address" only what is new or changed.
 """.strip()
 
 _VIETNAMESE = """
@@ -58,8 +73,22 @@ Catalog font_id values by role: {fonts}
 """.strip()
 
 
+def _with_input(target_name: str, block: str) -> str:
+    base = _BASE.format(target=target_name)
+    head, rest = base.split("\n\nTRANSLATION\n", 1)
+    return f"{head}\n\n{block}\n\nTRANSLATION\n{rest}"
+
+
+def text_system_prompt(target_name: str, target_lang: str) -> str:
+    parts = [_with_input(target_name, _INPUT_TEXT)]
+    if str(target_lang or "").lower() in {"vi", "vie", "vietnamese"}:
+        parts.append(_VIETNAMESE)
+    parts.append(_OUTPUT_TEXT)
+    return "\n\n".join(parts)
+
+
 def system_prompt(target_name: str, target_lang: str, font_hint: str) -> str:
-    parts = [_BASE.format(target=target_name)]
+    parts = [_with_input(target_name, _INPUT_IMAGES)]
     if str(target_lang or "").lower() in {"vi", "vie", "vietnamese"}:
         parts.append(_VIETNAMESE)
     parts.append(_OUTPUT.format(fonts=font_hint))
