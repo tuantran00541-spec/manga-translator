@@ -1,0 +1,171 @@
+{
+ "url": "https://asurascans.com/comics/the-academy-s-weapon-replicator-05c7df14/chapter/1",
+ "slices": 16,
+ "reference_scale": 1.25,
+ "models": {
+  "Manga109-panel-balloon-text-yolov26-segmentation": "/home/runner/.cache/huggingface/hub/models--ShadowB--Manga109-panel-balloon-text-yolov26-segmentation/snapshots/3a860269ee0beb43ce9f31d82c7851441eb178ae/best.pt",
+  "Manga-Bubble-YOLO": "/home/runner/.cache/huggingface/hub/models--Kiuyha--Manga-Bubble-YOLO/snapshots/fb646500455e8a8a3a807fd27b855c8e4fc63766/weights/yolo26n.pt",
+  "manga-panel-detector-yolo26n": "/home/runner/.cache/huggingface/hub/models--leoxs22--manga-panel-detector-yolo26n/snapshots/40a2854663d537563cfb95c370288a84c6505b9a/manga_panel_detector_fp32.pt",
+  "comic-text-segmenter-yolov8m": "/home/runner/.cache/huggingface/hub/models--ogkalu--comic-text-segmenter-yolov8m/snapshots/5aff9096ce0c892cefe3aca07440cff9b482e30f/comic-text-segmenter.pt",
+  "comic-speech-bubble-detector-yolov8m": "/home/runner/.cache/huggingface/hub/models--ogkalu--comic-speech-bubble-detector-yolov8m/snapshots/21d5af0a9c69bb522b9968d6cc915f898d71a264/comic-speech-bubble-detector.pt"
+ },
+ "names": {
+  "Manga109-panel-balloon-text-yolov26-segmentation": {
+   "0": "frame",
+   "1": "text",
+   "2": "balloon"
+  },
+  "Manga-Bubble-YOLO": {
+   "0": "text"
+  },
+  "manga-panel-detector-yolo26n": {
+   "0": "frame",
+   "1": "text"
+  },
+  "comic-text-segmenter-yolov8m": {
+   "0": "text_comic"
+  },
+  "comic-speech-bubble-detector-yolov8m": {
+   "0": "text_bubble",
+   "1": "text_free"
+  }
+ },
+ "variants": {
+  "app_current": {
+   "seconds": 24.2,
+   "block_recall": 0.667,
+   "stray_area": 0.264,
+   "classes": {
+    "text_comic": 18
+   }
+  },
+  "Manga109-panel-balloon-text-yolov26-segmentation@1024": {
+   "seconds": 7.5,
+   "block_recall": 0.042,
+   "stray_area": 0.608,
+   "classes": {
+    "frame": 12,
+    "balloon": 3,
+    "text": 3
+   }
+  },
+  "Manga109-panel-balloon-text-yolov26-segmentation@samecost": {
+   "seconds": 13.2,
+   "block_recall": 0.042,
+   "stray_area": 0.0,
+   "classes": {
+    "frame": 9,
+    "text": 1
+   }
+  },
+  "Manga109-panel-balloon-text-yolov26-segmentation@native": {
+   "seconds": 34.0,
+   "block_recall": 0.0,
+   "stray_area": 0.0,
+   "classes": {
+    "frame": 11
+   }
+  },
+  "Manga-Bubble-YOLO@1024": {
+   "seconds": 1.6,
+   "block_recall": 0.75,
+   "stray_area": 0.288,
+   "classes": {
+    "text": 20
+   }
+  },
+  "Manga-Bubble-YOLO@samecost": {
+   "seconds": 3.1,
+   "block_recall": 0.75,
+   "stray_area": 0.253,
+   "classes": {
+    "text": 21
+   }
+  },
+  "Manga-Bubble-YOLO@native": {
+   "seconds": 8.6,
+   "block_recall": 0.792,
+   "stray_area": 0.083,
+   "classes": {
+    "text": 21
+   }
+  },
+  "manga-panel-detector-yolo26n@1024": {
+   "seconds": 1.3,
+   "block_recall": 0.417,
+   "stray_area": 0.325,
+   "classes": {
+    "frame": 14,
+    "text": 10
+   }
+  },
+  "manga-panel-detector-yolo26n@samecost": {
+   "seconds": 2.7,
+   "block_recall": 0.208,
+   "stray_area": 0.044,
+   "classes": {
+    "frame": 27,
+    "text": 8
+   }
+  },
+  "manga-panel-detector-yolo26n@native": {
+   "seconds": 8.2,
+   "block_recall": 0.083,
+   "stray_area": 0.194,
+   "classes": {
+    "frame": 38,
+    "text": 14
+   }
+  },
+  "comic-text-segmenter-yolov8m@1024": {
+   "seconds": 13.7,
+   "block_recall": 0.667,
+   "stray_area": 0.265,
+   "classes": {
+    "text_comic": 18
+   }
+  },
+  "comic-text-segmenter-yolov8m@samecost": {
+   "seconds": 33.3,
+   "block_recall": 0.667,
+   "stray_area": 0.057,
+   "classes": {
+    "text_comic": 17
+   }
+  },
+  "comic-text-segmenter-yolov8m@native": {
+   "seconds": 76.4,
+   "block_recall": 0.75,
+   "stray_area": 0.0,
+   "classes": {
+    "text_comic": 18
+   }
+  },
+  "comic-speech-bubble-detector-yolov8m@1024": {
+   "seconds": 10.4,
+   "block_recall": 0.0,
+   "stray_area": 0.0,
+   "classes": {
+    "text_bubble": 15
+   }
+  },
+  "comic-speech-bubble-detector-yolov8m@samecost": {
+   "seconds": 25.2,
+   "block_recall": 0.042,
+   "stray_area": 0.059,
+   "classes": {
+    "text_bubble": 14,
+    "text_free": 1
+   }
+  },
+  "comic-speech-bubble-detector-yolov8m@native": {
+   "seconds": 59.9,
+   "block_recall": 0.042,
+   "stray_area": 0.119,
+   "classes": {
+    "text_bubble": 18,
+    "text_free": 1
+   }
+  }
+ }
+}
