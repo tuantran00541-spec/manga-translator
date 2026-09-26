@@ -131,6 +131,40 @@ def uncovered(mask: np.ndarray, text: np.ndarray, box) -> bool:
     return (inside & wanted).sum() < 0.5 * wanted.sum()
 
 
+def collage_debug(seg, image: np.ndarray, block_box, tag: str, out: Path) -> dict:
+    """Why did the collage miss a block the single pass caught? Raw detections at a
+    low threshold, from both layouts, near the block; the collage canvas is saved."""
+    h, w = image.shape[:2]
+    info = {"tag": tag, "slice": [h, w], "block": list(block_box)}
+    bx1, by1, bx2, by2 = block_box
+
+    def near(boxes):
+        return [{"box": [b.x1, b.y1, b.x2, b.y2], "conf": round(float(b.confidence), 3),
+                 "mask_px": int(np.count_nonzero(b.mask)) if b.mask is not None else 0}
+                for b in boxes if b.x2 > bx1 and b.x1 < bx2 and b.y2 > by1 and b.y1 < by2]
+
+    outputs, transform = seg._single_forward_outputs(image)
+    info["single_raw"] = near(seg._postprocess_at_threshold(outputs, transform, 0.05))
+    plan = seg.collage_plan(h, w)
+    info["plan"] = None if plan is None else {"scale": round(plan[0], 3), "halves": plan[1]}
+    if plan is not None:
+        canvas, transforms = seg._collage_canvas(image, *plan)
+        outputs = seg._run_session((canvas.astype(np.float32) / 255.0).transpose(2, 0, 1)[None])
+        drawn = cv2.cvtColor(canvas, cv2.COLOR_RGB2BGR)
+        info["collage_raw"] = []
+        for index, t in enumerate(transforms):
+            raw = seg._postprocess_at_threshold(outputs, t, 0.05)
+            info["collage_raw"].append(near(raw))
+            for b in raw:
+                x1, y1, x2, y2 = (int(v) for v in t.canvas_box_from_page((b.x1, b.y1, b.x2, b.y2)))
+                cv2.rectangle(drawn, (x1, y1), (x2, y2), (0, 0, 255) if b.confidence >= 0.2 else (0, 200, 255), 2)
+            x1, y1, x2, y2 = (int(v) for v in t.canvas_box_from_page(block_box))
+            if y2 > 0 and y1 < canvas.shape[0]:
+                cv2.rectangle(drawn, (x1, y1), (x2, y2), (0, 200, 0), 2)
+        cv2.imwrite(str(out / f"debug-{tag}.jpg"), drawn, [cv2.IMWRITE_JPEG_QUALITY, 88])
+    return info
+
+
 def box_mask(shape, boxes) -> np.ndarray:
     mask = np.zeros(shape, bool)
     for x1, y1, x2, y2 in boxes:
@@ -191,7 +225,7 @@ def main() -> int:
     names = ["current", "collage", "kiuyha_box", "kiuyha_otsu", "kiuyha_seg", "collage_plus"]
     totals = {n: {"seconds": 0.0, "forwards": 0, "blocks": 0, "missed": 0, "area": 0, "stray": 0} for n in names}
     missed_regions: dict[str, list] = {"collage": [], "collage_plus": []}
-    images = []
+    images, debug = [], []
     for number, page in enumerate(pages, start=1):
         full = read_image(Path(page["original"]))
         core = page.get("stitch_core") or {}
@@ -226,6 +260,12 @@ def main() -> int:
         seconds["collage_plus"] = seconds["collage"] + kiuyha_s + time.perf_counter() - started
         forwards["collage_plus"] = forwards["collage"] + 1 + sheets
 
+        for index, block in enumerate(blocks):
+            size = block.sum()
+            if (masks["collage"] & block).sum() < 0.5 * size <= (masks["current"] & block).sum():
+                ys, xs = np.nonzero(block)
+                box = (int(xs.min()), int(ys.min()), int(xs.max()) + 1, int(ys.max()) + 1)
+                debug.append(collage_debug(seg, image, box, f"{number:02d}-{index}", args.out))
         for name in names:
             t, m = totals[name], masks[name]
             t["seconds"] += seconds[name]
@@ -257,7 +297,8 @@ def main() -> int:
             tiles += [overlay(crop, masks[n][by1:by2, bx1:bx2], [], n, 360) for n in names]
             cv2.imwrite(str(args.out / f"missed-{name}-{rank:02d}.jpg"), row(tiles), [cv2.IMWRITE_JPEG_QUALITY, 88])
 
-    report = {"url": args.url, "slices": len(pages), "reference_scale": REFERENCE_SCALE, "variants": {}}
+    report = {"url": args.url, "slices": len(pages), "reference_scale": REFERENCE_SCALE, "variants": {},
+              "collage_regressions": debug}
     for name, t in totals.items():
         report["variants"][name] = {
             "seconds": round(t["seconds"], 1), "forwards": t["forwards"],

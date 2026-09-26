@@ -111,7 +111,7 @@ class OneShotTextMaskDetector:
         half = (height + overlap + 1) // 2
         return scale, [(0, half), (height - half, height)]
 
-    def _detect_collage(self, image: np.ndarray, scale: float, halves: list[tuple[int, int]]):
+    def _collage_canvas(self, image: np.ndarray, scale: float, halves: list[tuple[int, int]]):
         size = DETECTOR_INPUT_SIZE
         rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB) if image.ndim == 3 and image.shape[2] == 3 else image
         canvas = np.full((size, size, 3), DETECTOR_LETTERBOX_VALUE, dtype=np.uint8)
@@ -129,6 +129,10 @@ class OneShotTextMaskDetector:
                 offset_x=0, offset_y=y0,
             ))
             x += resized_w + DETECTOR_COLLAGE_GAP
+        return canvas, transforms
+
+    def _detect_collage(self, image: np.ndarray, scale: float, halves: list[tuple[int, int]]):
+        canvas, transforms = self._collage_canvas(image, scale, halves)
         outputs = self._run_session((canvas.astype(np.float32) / 255.0).transpose(2, 0, 1)[None])
         found: list[tuple[BubbleBox, int, bool]] = []
         raw_count = 0
