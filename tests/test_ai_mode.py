@@ -217,9 +217,27 @@ def test_scan_stage_retries_a_rejected_batch_one_slice_at_a_time(monkeypatch):
     runner, skipped, _ = _scan_stage(monkeypatch, [])
     monkeypatch.setattr(ai_job, "scan_slices", one_image_only)
     asyncio.run(runner.scan())
-    assert calls == [[0, 1, 2, 3], [0], [1], [2], [3], [4], [5], [6], [7]], "after one rejected batch, scan slice by slice"
+    assert calls[0] == [0, 1, 2, 3], "the first batch probes whether the provider takes several images"
+    assert sorted(calls[1:]) == [[0], [1], [2], [3], [4], [5], [6], [7]], "after one rejected batch, scan slice by slice"
     assert runner.report["scan_errors"][-1] == {"pages": [6], "error": "still rejected"}
     assert skipped[-1:] == [7]
+
+
+def test_scan_stage_retries_only_the_batch_that_failed(monkeypatch):
+    calls = []
+
+    def flaky_second_batch(provider, model, key, images):
+        indices = [index for index, _ in images]
+        calls.append(indices)
+        if indices == [4, 5, 6, 7]:
+            raise RuntimeError("Manga Cloud HTTP 502")
+        return [SliceScan(index, index == 7, 0.9, ()) for index in indices], 0.001
+
+    runner, skipped, _ = _scan_stage(monkeypatch, [])
+    monkeypatch.setattr(ai_job, "scan_slices", flaky_second_batch)
+    asyncio.run(runner.scan())
+    assert sorted(calls) == [[0, 1, 2, 3], [4], [4, 5, 6, 7], [5], [6], [7]]
+    assert runner.report["scan_errors"] == [] and skipped[-1:] == [7]
 
 
 def test_scan_stage_refuses_to_skip_most_of_a_chapter(monkeypatch):

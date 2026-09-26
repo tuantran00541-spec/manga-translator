@@ -21,6 +21,7 @@ from app.config import OUTPUT_DIR, RAW_DIR
 from app.image_io import read_image
 from app.logging_config import logger
 from app.manifest_utils import get_manifest_lock, load_manifest_raw
+from app.parameters import VISUAL_QC_JOB_CONCURRENCY_LIMIT
 from app.security import validate_managed_path
 
 STAGES: tuple[tuple[str, str], ...] = (
@@ -34,6 +35,7 @@ STAGES: tuple[tuple[str, str], ...] = (
     ("export", "Đóng gói zip"),
 )
 SCAN_BATCH_SIZE = 4
+SCAN_CONCURRENCY = 3
 # More "credit" slices than this is a misread of the chapter, not credits.
 CREDIT_MAX_SHARE = 0.25
 CREDIT_MAX_ABSOLUTE = 3
@@ -45,6 +47,7 @@ REPAINT_MIN_CONFIDENCE = 0.5
 REPAINT_REVIEW_MIN_CONFIDENCE = 0.7
 REPAINT_PAD_PX = 6
 TRANSLATE_CONCURRENCY = 3
+QC_CONCURRENCY = VISUAL_QC_JOB_CONCURRENCY_LIMIT
 # Repair: objects per retry request, and retry batches without progress before restoring the original.
 RETRY_BATCH = 4
 RETRY_ROUNDS = 3
@@ -190,25 +193,46 @@ class AIModeRunner:
             self._add_cost(cost)
             scans.extend(found)
 
-        single = False
-        for number, batch in enumerate(batches):
-            self._check_cancel()
-            self._progress(number * SCAN_BATCH_SIZE, len(active))
-            if not single:
-                try:
-                    await scan(batch)
-                    continue
-                except (RuntimeError, ValueError, OSError) as exc:
-                    if len(batch) == 1:
-                        _append(self.report["scan_errors"], {"pages": batch, "error": _detail(exc)[:300]})
-                        continue
-                    single = True
-            for index in batch:
-                self._check_cancel()
+        gate = asyncio.Semaphore(SCAN_CONCURRENCY)
+        finished = 0
+
+        async def scan_one(index: int) -> None:
+            nonlocal finished
+            async with gate:
+                if self.job.cancel_requested:
+                    return
                 try:
                     await scan([index])
                 except (RuntimeError, ValueError, OSError) as exc:
                     _append(self.report["scan_errors"], {"pages": [index], "error": _detail(exc)[:300]})
+            finished += 1
+            self._progress(finished, len(active))
+
+        async def scan_batch(batch: list[int]) -> bool:
+            nonlocal finished
+            async with gate:
+                if self.job.cancel_requested:
+                    return True
+                try:
+                    await scan(batch)
+                except (RuntimeError, ValueError, OSError) as exc:
+                    if len(batch) > 1:
+                        return False
+                    _append(self.report["scan_errors"], {"pages": batch, "error": _detail(exc)[:300]})
+            finished += len(batch)
+            self._progress(finished, len(active))
+            return True
+
+        # The first batch runs alone: a provider that rejects several images per
+        # request is scanned slice by slice from then on.
+        self._progress(0, len(active))
+        if batches and not await scan_batch(batches[0]):
+            await asyncio.gather(*(scan_one(index) for index in active))
+        elif batches:
+            results = await asyncio.gather(*(scan_batch(batch) for batch in batches[1:]))
+            rejected = [index for batch, ok in zip(batches[1:], results) if not ok for index in batch]
+            await asyncio.gather(*(scan_one(index) for index in rejected))
+        self._check_cancel()
 
         credits = sorted(scan.page_index for scan in scans if scan.is_credit)
         limit = max(CREDIT_MAX_ABSOLUTE, int(CREDIT_MAX_SHARE * len(active)))
@@ -277,7 +301,7 @@ class AIModeRunner:
         try:
             snapshot = await start_chapter_visual_qc(VisualQCChapterRequest(
                 chapter_id=self.job.chapter_id, provider=self.provider.id,
-                model=self.settings.model, budget_usd=qc_budget,
+                model=self.settings.model, budget_usd=qc_budget, concurrency=QC_CONCURRENCY,
             ))
         except HTTPException as exc:
             _append(self.report["qc_errors"], _detail(exc)[:300])
