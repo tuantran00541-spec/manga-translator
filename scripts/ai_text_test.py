@@ -65,13 +65,34 @@ def ocr(url: str, out: Path, workers: int) -> None:
     print(f"OCR: {len(lines)} lines from {len(manifest['pages'])} slices, {len(errors)} errors")
 
 
-def _ask(base: str, key: str, model: str, system: str, user: str) -> tuple[str, dict, float]:
+VI_ADDRESS_WORDS = frozenset("""
+tôi ta tao mình tớ em anh chị cậu mày ngươi con cha bố mẹ má ba ông bà cô chú bác thầy ngài người nó hắn
+bọn chúng bạn thần bệ hạ thuộc hạ huynh đệ tỷ muội sư phụ đồ nhi lão tiểu nhóc cháu dì dượng thím mợ
+nàng chàng quý tộc điện chủ nhân thiếu gia tiểu thư đại nhân các vị ấy kia này
+""".split())
+
+TUNED_RULES = """
+TUNING
+- Do not insert line breaks; return each translation as one line. The renderer wraps text to the bubble.
+- Write normal Vietnamese sentence case even when the source is ALL CAPS. Keep capitals only for SFX, system window titles and names.
+- If you cannot tell who is speaking, infer it from the surrounding lines before choosing pronouns; a parent speaks to a child as ta/con or cha/con, never tôi.
+- Spell Vietnamese carefully: every word must be a real Vietnamese word with correct diacritics.
+""".strip()
+
+
+def _valid_address(term: str) -> bool:
+    words = term.lower().split()
+    return bool(words) and all(word in VI_ADDRESS_WORDS for word in words)
+
+
+def _ask(base: str, key: str, model: str, system: str, user: str, temperature: float | None = None) -> tuple[str, dict, float]:
     started = time.perf_counter()
     response = requests.post(
         f"{base.rstrip('/')}/chat/completions",
         headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
         json={"model": model, "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
-              "response_format": {"type": "json_object"}, "max_tokens": MAX_TOKENS, "stream": False},
+              "response_format": {"type": "json_object"}, "max_tokens": MAX_TOKENS, "stream": False,
+              **({"temperature": temperature} if temperature is not None else {})},
         timeout=(10, 600),
     )
     elapsed = time.perf_counter() - started
@@ -89,11 +110,15 @@ def _line(item: dict) -> str:
     return f"[{item['id']}] (slice {item['slice']}) {item['text']}"
 
 
-def translate(out: Path, target_lang: str, notes: str) -> None:
+def translate(out: Path, target_lang: str, notes: str, tag: str = "", tuned: bool = False,
+              temperature: float | None = None) -> None:
     base, key, model = (os.environ[name] for name in ("GATEWAY_UPSTREAM_BASE", "GATEWAY_UPSTREAM_KEY", "GATEWAY_UPSTREAM_MODEL"))
     data = json.loads((out / "ocr.json").read_text(encoding="utf-8"))
     lines = data["lines"]
     system = text_system_prompt(_language_name(target_lang), target_lang)
+    if tuned:
+        system = "\n".join(line for line in system.splitlines() if not line.startswith("- Break lines yourself"))
+        system = system.replace("<text, lines split with \\n>", "<text on one line>") + "\n\n" + TUNED_RULES
     chapter = "\n".join(_line(item) for item in lines)
     memory = ChapterMemory(notes)
     done: dict[str, dict] = {}
@@ -116,7 +141,7 @@ def translate(out: Path, target_lang: str, notes: str) -> None:
             + '\n\nAnswer with one JSON object that starts with {"translations":[ and contains every id under TRANSLATE NOW.'
         )
         try:
-            content, usage, elapsed = _ask(base, key, model, system, user)
+            content, usage, elapsed = _ask(base, key, model, system, user, temperature)
             translations = parse_vision_translation(content, ids, allow_missing=True)
             reply = json.loads(content.strip().removeprefix("```json").removesuffix("```"))
         except Exception as exc:
@@ -127,6 +152,11 @@ def translate(out: Path, target_lang: str, notes: str) -> None:
             usage_total[name] += int(usage.get(name) or 0)
         extra = {e["id"]: e for e in reply.get("translations") or [] if isinstance(e, dict) and e.get("id") in ids}
         speakers = {i: str(e.get("speaker") or "") for i, e in extra.items()}
+        if tuned:
+            reply["address"] = [
+                {k: v for k, v in entry.items() if k not in ("self", "other") or _valid_address(str(v))}
+                for entry in reply.get("address") or [] if isinstance(entry, dict)
+            ]
         memory.update(0, {**reply, "speakers": speakers}, translations, [item["id"] for item in chunk])
         for item in chunk:
             value = translations.get(item["id"], "")
@@ -156,12 +186,14 @@ def translate(out: Path, target_lang: str, notes: str) -> None:
                    **{k: done.get(item["id"], {}).get(k) for k in ("translated_text", "role", "speaker", "review")}}
                   for item in lines],
     }
-    (out / "translation.json").write_text(json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8")
+    suffix = f"-{tag}" if tag else ""
+    report["variant"] = {"tag": tag, "tuned": tuned, "temperature": temperature}
+    (out / f"translation{suffix}.json").write_text(json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8")
     rows = ["| # | Lát | Gốc | Dịch | Vai | Người nói |", "|---|---|---|---|---|---|"]
     for n, row in enumerate(report["table"], start=1):
         cells = [str(n), str(row["slice"]), row["source"], row.get("translated_text") or "—", row.get("role") or "", row.get("speaker") or ""]
         rows.append("| " + " | ".join(c.replace("|", "/").replace("\n", " / ") for c in cells) + " |")
-    (out / "translation.md").write_text("\n".join(rows) + "\n", encoding="utf-8")
+    (out / f"translation{suffix}.md").write_text("\n".join(rows) + "\n", encoding="utf-8")
     print(json.dumps({k: report[k] for k in ("lines", "translated", "seconds", "usage", "errors")}, ensure_ascii=False, indent=1))
 
 
@@ -176,11 +208,14 @@ def main() -> int:
     t.add_argument("--out", type=Path, required=True)
     t.add_argument("--target", default="vi")
     t.add_argument("--notes", default="")
+    t.add_argument("--tag", default="")
+    t.add_argument("--tuned", action="store_true")
+    t.add_argument("--temperature", type=float)
     args = parser.parse_args()
     if args.command == "ocr":
         ocr(args.url, confined(args.out), args.workers)
     else:
-        translate(confined(args.out), args.target, args.notes)
+        translate(confined(args.out), args.target, args.notes, args.tag, args.tuned, args.temperature)
     return 0
 
 

@@ -1,4 +1,6 @@
 https://asurascans.com/comics/the-academy-s-weapon-replicator-05c7df14/chapter/1
 mode: text
 notes:
-run: OCR fix (multi-line bubbles go through line detection)
+variant: base
+variant: base-t02 --temperature 0.2
+variant: tuned-t02 --tuned --temperature 0.2

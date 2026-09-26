@@ -119,8 +119,14 @@ jobs:
               rm -rf audit-results/ai-text
               python scripts/ai_text_test.py ocr "$url" --out audit-results/ai-text
             fi
-            rm -f audit-results/ai-text/translation.json audit-results/ai-text/translation.md
-            python scripts/ai_text_test.py translate --out audit-results/ai-text --notes "$notes"
+            rm -f audit-results/ai-text/translation*.json audit-results/ai-text/translation*.md
+            if grep -q '^variant:' .github/ai-cost.txt; then
+              grep '^variant:' .github/ai-cost.txt | while read -r _ tag args; do
+                python scripts/ai_text_test.py translate --out audit-results/ai-text --notes "$notes" --tag "$tag" $args
+              done
+            else
+              python scripts/ai_text_test.py translate --out audit-results/ai-text --notes "$notes"
+            fi
           else
             echo "EVIDENCE=audit-results/ai-cost" >> "$GITHUB_ENV"
             rm -rf audit-results/ai-cost
@@ -137,7 +143,7 @@ jobs:
         if: always() && github.ref_name != github.event.repository.default_branch
         run: |
           dir="${EVIDENCE:-audit-results/ai-cost}"
-          test -f "$dir/report.json" || test -f "$dir/translation.json" || exit 0
+          ls "$dir"/report.json "$dir"/translation*.json >/dev/null 2>&1 || exit 0
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           rm -rf /tmp/evidence && cp -r "$dir" /tmp/evidence
