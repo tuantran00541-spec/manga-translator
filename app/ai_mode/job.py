@@ -601,6 +601,9 @@ class AIModeRunner:
         from app.routers.render_commit import render_page
 
         chapter_id = self.job.chapter_id
+        # Export re-syncs text objects before checking renders; do it first so a
+        # sync cannot turn a fresh render stale.
+        await asyncio.to_thread(self._ensure_objects, page_index)
         for attempt in range(RENDER_RESTORE_ATTEMPTS + 1):
             page = self._manifest()["pages"][page_index]
             try:

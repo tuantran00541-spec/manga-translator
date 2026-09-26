@@ -348,6 +348,7 @@ def test_render_stage_gives_an_unletterable_object_its_original_pixels(monkeypat
     runner = AIModeRunner(job, PROVIDERS["openai"], "key")
     monkeypatch.setattr(runner, "_manifest", lambda: manifest)
     monkeypatch.setattr(runner, "_active_pages", lambda: [0])
+    monkeypatch.setattr(runner, "_ensure_objects", lambda index: None)
     asyncio.run(runner.render())
 
     assert len(calls) == 2, "the slice is rendered again once the object is restored"

@@ -8,6 +8,7 @@ import cv2
 import numpy as np
 
 from app.config import PROCESSED_DIR
+from app.text_objects import ensure_page_text_objects
 from app.detector.bubble_detector import BubbleBox
 from app.image_io import read_image, write_image
 from app.logging_config import logger
@@ -302,6 +303,9 @@ class PipelineEditingMixin:
                     target_page = manifest["pages"][page_index]
                     target_page["preserve_regions"] = preserve_regions
                     target_page["clean"] = clean_path_posix
+                    # Mark the objects the new regions cover now; export re-syncs them
+                    # and would otherwise invalidate the next render.
+                    ensure_page_text_objects(target_page)
                     if bump_page_revision(target_page, "clean_revision") != target_clean_revision:
                         raise RuntimeError("Page clean revision changed while preserving regions")
                     invalidate_page_render(manifest, page_index)
