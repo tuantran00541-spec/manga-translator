@@ -21,7 +21,7 @@ concurrency:
 jobs:
   bench:
     runs-on: ubuntu-22.04
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       PYTHONUNBUFFERED: "1"
       PYTHONPATH: "."
@@ -49,6 +49,11 @@ jobs:
             beautifulsoup4==4.12.3 lxml==5.3.0 playwright==1.47.0 fastapi==0.115.0 \
             pydantic==2.9.2 filelock==3.16.1 python-multipart==0.0.12
           python -m playwright install --with-deps chromium
+          python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install "ultralytics>=8.4" huggingface_hub
+          # ultralytics pulls opencv-python; the app needs the contrib build.
+          python -m pip uninstall -y opencv-python opencv-python-headless || true
+          python -m pip install --force-reinstall --no-deps opencv-contrib-python==4.10.0.84
 
       - name: Restore detector and inpaint models
         uses: actions/cache/restore@v4

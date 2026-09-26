@@ -1,14 +1,18 @@
 """Compare text detection and LaMa fill settings on a real chapter.
 
 Downloads and slices a chapter the way the app does, then cleans the same
-slices with each variant (one pass, two halves side by side in one pass,
-windows at a given scale) and measures:
+slices with each variant (the app's segmenter: one pass, two halves side by
+side in one pass, windows at a given scale; or Kiuyha/Manga-Bubble-YOLO boxes,
+native or two halves in a 1280 square, masked by Otsu inside each box) and
+measures:
 
   detect_s / inpaint_s   time spent in each stage
   coverage              share of reference text pixels the variant's mask covers
                         (reference: tiled detection at scale 1.25 on the original)
   over_erase            share of the variant's mask farther than 10 px from text
   residual_px           text pixels the reference detector still finds after cleaning
+  left_rate             share of reference text blocks still at least 30% there
+                        after cleaning (the miss rate that matters)
   sharpness             gradient energy inside the filled holes / in the ring
                         around them (1.0 = as sharp as the surroundings)
 
@@ -27,6 +31,7 @@ import cv2
 import numpy as np
 
 import app.detector.mask_builder as mask_builder
+from app.detector.bubble_detector import BubbleBox
 from app.detector.mask_builder import build_mask
 from app.image_io import read_image
 from app.inpaint.lama_inpainter import Inpainter
@@ -37,6 +42,8 @@ VARIANTS = {
     "current": {"scale": 0.0, "dilate": 7},
     "collage": {"scale": 0.0, "dilate": 7, "collage": True},
     "tile075": {"scale": 0.75, "dilate": 7},
+    "kiuyha_otsu": {"scale": 0.0, "dilate": 7, "kiuyha": "native"},
+    "kiuyha_collage_otsu": {"scale": 0.0, "dilate": 7, "kiuyha": "collage"},
 }
 REFERENCE_SCALE = 1.25
 
@@ -50,6 +57,23 @@ def detect(detector: OneShotTextMaskDetector, image: np.ndarray, core: tuple[int
     boxes, metrics = detector.detect(image[y1:y2])
     elapsed = time.perf_counter() - started
     return [replace(b, y1=b.y1 + y1, y2=b.y2 + y1) for b in boxes], elapsed, int(metrics["detector_forward_calls"])
+
+
+def kiuyha_detect(model, image: np.ndarray, core: tuple[int, int], mode: str):
+    """Kiuyha (YOLO26) boxes, each masked by Otsu against the box's border colour."""
+    from scripts.kiuyha_mask_bench import kiuyha_boxes, kiuyha_collage_boxes, otsu_mask
+
+    y1, y2 = core
+    part = np.ascontiguousarray(image[y1:y2])
+    started = time.perf_counter()
+    found = kiuyha_collage_boxes(model, part) if mode == "collage" else kiuyha_boxes(model, part)
+    boxes = []
+    for bx1, by1, bx2, by2 in found:
+        mask = otsu_mask(part, [(bx1, by1, bx2, by2)])[by1:by2, bx1:bx2]
+        if mask.any():
+            boxes.append(BubbleBox(bx1, by1 + y1, bx2, by2 + y1, 0.9, mask.astype(np.uint8) * 255,
+                                   source_role="text_segmenter", safe_to_inpaint=True))
+    return boxes, time.perf_counter() - started, 1
 
 
 def text_mask(shape: tuple[int, int], boxes) -> np.ndarray:
@@ -121,12 +145,17 @@ def main() -> int:
     manifest = pipeline.download_chapter(args.url, "c1ea0001", workers=2)
     pages = manifest["pages"][args.skip:args.skip + args.slices]
     detector = OneShotTextMaskDetector()
+    from scripts.kiuyha_mask_bench import kiuyha_model
+    kiuyha = kiuyha_model()
+    import torch
+    torch.set_num_threads(2)  # same budget as the app's OpenVINO detector threads
     inpainter = Inpainter()
 
     totals = {name: {"detect_s": 0.0, "inpaint_s": 0.0, "forward_calls": 0, "ref_px": 0, "covered_px": 0,
-                     "mask_px": 0, "over_px": 0, "residual_px": 0, "boxes": 0, "sharpness": []}
+                     "mask_px": 0, "over_px": 0, "residual_px": 0, "boxes": 0, "sharpness": [],
+                     "blocks": 0, "blocks_left": 0}
               for name in VARIANTS}
-    caught_regions, missed_regions, fill_regions = [], [], []
+    caught_regions, missed_regions, fill_regions, kiuyha_missed = [], [], [], []
     for page_number, page in enumerate(pages):
         image = read_image(Path(page["original"]))
         core = page.get("stitch_core") or {}
@@ -134,9 +163,14 @@ def main() -> int:
         ref_boxes, _, _ = detect(detector, image, span, REFERENCE_SCALE)
         ref = text_mask(image.shape[:2], ref_boxes)
         near_ref = cv2.dilate(ref, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (21, 21)))
+        count, labels = cv2.connectedComponents(cv2.dilate(ref, np.ones((15, 15), np.uint8)))
+        blocks = [b for b in ((labels == i) & (ref > 0) for i in range(1, count)) if np.count_nonzero(b) >= 150]
         outputs = {}
         for name, variant in VARIANTS.items():
-            boxes, detect_s, calls = detect(detector, image, span, variant["scale"], variant.get("collage", False))
+            if variant.get("kiuyha"):
+                boxes, detect_s, calls = kiuyha_detect(kiuyha, image, span, variant["kiuyha"])
+            else:
+                boxes, detect_s, calls = detect(detector, image, span, variant["scale"], variant.get("collage", False))
             result, hole, inpaint_s = clean(inpainter, image, boxes, variant["dilate"])
             mask = build_mask(image.shape[:2], boxes, image)
             after, _, _ = detect(detector, result, span, REFERENCE_SCALE)
@@ -149,7 +183,12 @@ def main() -> int:
             t["covered_px"] += int(np.count_nonzero((ref > 0) & (mask > 0)))
             t["mask_px"] += int(np.count_nonzero(mask))
             t["over_px"] += int(np.count_nonzero((mask > 0) & (near_ref == 0)))
-            t["residual_px"] += int(np.count_nonzero(text_mask(image.shape[:2], after)))
+            left_text = text_mask(image.shape[:2], after)
+            t["residual_px"] += int(np.count_nonzero(left_text))
+            for block in blocks:
+                t["blocks"] += 1
+                if np.count_nonzero(left_text[block]) >= 0.3 * np.count_nonzero(block):
+                    t["blocks_left"] += 1
             t["sharpness"] += sharpness(result, hole)
             outputs[name] = (result, mask)
 
@@ -171,6 +210,12 @@ def main() -> int:
         for label in range(1, count):
             x, y, w, h, area = (int(v) for v in stats[label])
             fill_regions.append((area, page_number, (x, y, w, h)))
+        left = ((ref > 0) & (outputs["kiuyha_collage_otsu"][1] == 0)).astype(np.uint8)
+        count, _, stats, _ = cv2.connectedComponentsWithStats(cv2.dilate(left, np.ones((15, 15), np.uint8)))
+        for label in range(1, count):
+            x, y, w, h, area = (int(v) for v in stats[label])
+            if area >= 300:
+                kiuyha_missed.append((area, page_number, (x, y, w, h)))
         page["_outputs"] = {name: result for name, (result, _) in outputs.items()}
         page["_image"] = image
         print(f"slice {page_number + 1}/{len(pages)} done", flush=True)
@@ -186,6 +231,7 @@ def main() -> int:
 
     sheet("caught", caught_regions, 8)
     sheet("missed", missed_regions, 8)
+    sheet("missed-kiuyha", kiuyha_missed, 8)
     sheet("fill", fill_regions, 8)
 
     report = {"url": args.url, "slices": len(pages), "reference_scale": REFERENCE_SCALE, "variants": {}}
@@ -198,6 +244,8 @@ def main() -> int:
             "coverage": round(t["covered_px"] / max(1, t["ref_px"]), 4),
             "over_erase": round(t["over_px"] / max(1, t["mask_px"]), 4),
             "mask_px": t["mask_px"], "residual_px": t["residual_px"],
+            "blocks": t["blocks"], "blocks_left": t["blocks_left"],
+            "left_rate": round(t["blocks_left"] / max(1, t["blocks"]), 3),
             "sharpness_median": round(ratios[len(ratios) // 2], 3) if ratios else None,
             "sharpness_regions": len(ratios),
         }
