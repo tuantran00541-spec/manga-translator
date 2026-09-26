@@ -332,3 +332,8 @@ def health():
 @app.get("/")
 def index():
     return FileResponse("app/templates/index.html")
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    return FileResponse("app/static/favicon.ico", media_type="image/x-icon")
