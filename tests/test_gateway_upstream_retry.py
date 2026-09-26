@@ -54,3 +54,28 @@ def test_the_last_failure_is_returned_or_raised(monkeypatch):
     _replay(monkeypatch, [requests.Timeout("slow")] * 3)
     with pytest.raises(requests.Timeout):
         _upstream(retries=2).send({})
+
+
+def test_send_traces_every_attempt(monkeypatch):
+    _replay(monkeypatch, [requests.ConnectionError("reset"), _Response(503), _Response(200, {"ok": True})])
+    trace: dict = {}
+    assert _upstream(retries=2).send({}, trace)[0] == 200
+    assert trace == {"attempts": 3, "statuses": ["ConnectionError", 503, 200]}
+
+
+def test_request_shape_counts_images_and_names_the_prompt():
+    payload = {"messages": [
+        {"role": "system", "content": "You letter manga.\n  Keep it short."},
+        {"role": "user", "content": [
+            {"type": "text", "text": "slice 3"},
+            {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,AAA"}},
+            {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,BBB"}},
+        ]},
+    ]}
+    assert gateway_app._request_shape(payload) == {"prompt_head": "You letter manga. Keep it short.", "images": 2}
+
+
+def test_request_shape_reads_a_prompt_sent_as_user_text():
+    payload = {"messages": [{"role": "user", "content": [
+        {"type": "text", "text": "Scan these slices"}, {"type": "image_url", "image_url": {"url": "x"}}]}]}
+    assert gateway_app._request_shape(payload) == {"prompt_head": "Scan these slices", "images": 1}

@@ -106,6 +106,45 @@ def _slice_width(chapter_id: str, index: int) -> int:
     return 800
 
 
+TRANSPORT_STAGES = (
+    ("You are preparing manga", "scan"),
+    ("You are a visual quality-control", "qc"),
+    ("ROLE You are a veteran comic localization", "translate+repair"),
+)
+
+
+def _transport(path: Path) -> dict:
+    """Per stage: requests, latency, payload size, tokens and retries from the gateway trace."""
+    if not path.is_file():
+        return {}
+    rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    stages: dict[str, list[dict]] = {}
+    for row in rows:
+        head = str(row.get("prompt_head") or "")
+        stage = next((name for prefix, name in TRANSPORT_STAGES if head.startswith(prefix)), "other")
+        stages.setdefault(stage, []).append(row)
+    summary = {}
+    for stage, items in stages.items():
+        ms = sorted(int(r.get("ms") or 0) for r in items)
+        first = min(float(r["t"]) - int(r.get("ms") or 0) / 1000 for r in items)
+        last = max(float(r["t"]) for r in items)
+        total = lambda key: sum(int(r.get(key) or 0) for r in items)
+        summary[stage] = {
+            "requests": len(items),
+            "failed": sum(1 for r in items if r.get("status") != 200),
+            "retried": sum(1 for r in items if int(r.get("attempts") or 1) > 1),
+            "truncated": sum(1 for r in items if r.get("finish_reason") == "length"),
+            "latency_s": {"p50": round(ms[len(ms) // 2] / 1000, 1), "p90": round(ms[int(len(ms) * 0.9)] / 1000, 1),
+                          "max": round(ms[-1] / 1000, 1), "sum": round(sum(ms) / 1000, 1)},
+            "span_s": round(last - first, 1),
+            "images": total("images"),
+            "request_kb_avg": round(sum(float(r.get("request_kb") or 0) for r in items) / len(items), 1),
+            "prompt_tokens": total("prompt_tokens"), "cached_tokens": total("cached_tokens"),
+            "completion_tokens": total("completion_tokens"), "reasoning_tokens": total("reasoning_tokens"),
+        }
+    return summary
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("url")
@@ -120,7 +159,9 @@ def main() -> int:
     db = Path(tempfile.mkdtemp()) / "gateway.sqlite"
     logs = Path(tempfile.gettempdir())
 
-    gateway_env = {**os.environ, "GATEWAY_DB": str(db), "GATEWAY_ADMIN_KEY": ADMIN}
+    trace = out / "transport.jsonl"
+    trace.unlink(missing_ok=True)
+    gateway_env = {**os.environ, "GATEWAY_DB": str(db), "GATEWAY_ADMIN_KEY": ADMIN, "GATEWAY_TRACE_PATH": str(trace)}
     gateway = subprocess.Popen([sys.executable, "-m", "gateway"], cwd=ROOT, env=gateway_env,
                                stdout=open(logs / "gateway.log", "w"), stderr=subprocess.STDOUT)
     app = None
@@ -174,6 +215,7 @@ def main() -> int:
         "stages": [{k: s.get(k) for k in ("key", "status", "done", "total", "elapsed_s", "detail")} for s in job["stages"]],
         "report": job.get("report"),
         "gateway_job": usage,
+        "transport": _transport(trace),
     }
     chapter_id = job.get("chapter_id")
     if job["status"] == "completed" and chapter_id:
@@ -228,7 +270,7 @@ def main() -> int:
             "completion_tokens": round(usage["completion_tokens"] / slices),
         }
     (out / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8")
-    print(json.dumps({k: report.get(k) for k in ("status", "error", "wall_s", "gateway_job", "per_chapter", "per_slice", "readability")},
+    print(json.dumps({k: report.get(k) for k in ("status", "error", "wall_s", "gateway_job", "transport", "per_chapter", "per_slice", "readability")},
                      ensure_ascii=False, indent=1))
     return 0 if job["status"] == "completed" else 1
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hmac
+import json
 import os
 import re
 import time
@@ -39,10 +40,15 @@ class Upstream:
         completion = max(0, int(usage.get("completion_tokens") or 0))
         return (prompt * self.input_usd_per_m + completion * self.output_usd_per_m) / 1_000_000
 
-    def send(self, payload: dict) -> tuple[int, dict]:
-        """POST to the upstream, retrying failures that say nothing about the request itself."""
+    def send(self, payload: dict, trace: dict | None = None) -> tuple[int, dict]:
+        """POST to the upstream, retrying failures that say nothing about the request itself.
+
+        ``trace``, when given, receives the number of attempts and each attempt's status.
+        """
         for attempt in range(self.retries + 1):
             last = attempt == self.retries
+            if trace is not None:
+                trace["attempts"] = attempt + 1
             try:
                 response = requests.post(
                     f"{self.base.rstrip('/')}/chat/completions",
@@ -51,11 +57,15 @@ class Upstream:
                     timeout=(10, 300),
                     allow_redirects=False,
                 )
-            except requests.RequestException:
+            except requests.RequestException as exc:
+                if trace is not None:
+                    trace.setdefault("statuses", []).append(type(exc).__name__)
                 if last:
                     raise
                 time.sleep(self.retry_wait_s * 2 ** attempt)
                 continue
+            if trace is not None:
+                trace.setdefault("statuses", []).append(response.status_code)
             if response.status_code in RETRY_STATUSES and not last:
                 time.sleep(min(RETRY_AFTER_MAX_S, _retry_after(response) or self.retry_wait_s * 2 ** attempt))
                 continue
@@ -76,6 +86,30 @@ def _retry_after(response) -> float | None:
         return max(0.0, float(response.headers.get("Retry-After", "")))
     except (TypeError, ValueError):
         return None
+
+
+def _request_shape(payload: dict) -> dict:
+    """What a request carries: the opening words of its prompt, its images and size."""
+    head, images = "", 0
+    for message in payload.get("messages") or []:
+        content = message.get("content") if isinstance(message, dict) else None
+        parts = [{"type": "text", "text": content}] if isinstance(content, str) else content or []
+        for part in parts:
+            if not isinstance(part, dict):
+                continue
+            if part.get("type") == "image_url":
+                images += 1
+            elif part.get("type") == "text" and not head:
+                head = str(part.get("text") or "")
+    return {"prompt_head": " ".join(head.split())[:80], "images": images}
+
+
+def _trace_line(path: str, entry: dict) -> None:
+    try:
+        with open(path, "a", encoding="utf-8") as handle:
+            handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
 
 
 def upstream_from_env() -> Upstream:
@@ -136,6 +170,8 @@ def create_app(store: Store, upstream: Upstream, admin_key: str, *, mailer: Mail
     app = FastAPI(title="Manga Cloud gateway")
     mailer = mailer or Mailer(api_key="", sender="", dev_mode=True)
     payments = Billing(store, billing or BillingConfig())
+    # GATEWAY_TRACE_PATH: append a JSON line per upstream request (timing, size, tokens).
+    trace_path = os.getenv("GATEWAY_TRACE_PATH", "")
 
     def account(authorization: str | None = Header(default=None)):
         try:
@@ -267,11 +303,31 @@ def create_app(store: Store, upstream: Upstream, admin_key: str, *, mailer: Mail
         # Clients size max_tokens for the answer alone; a reasoning model spends
         # part of the budget thinking first, so the gateway adds that on top.
         forwarded["max_tokens"] = max(1, min(requested, MAX_OUTPUT_TOKENS)) + upstream.reasoning_tokens
+        trace: dict = {}
+        started = time.perf_counter()
         try:
-            status, body = await run_in_threadpool(upstream.send, forwarded)
+            status, body = await run_in_threadpool(upstream.send, forwarded, trace)
         except requests.RequestException:
-            return _error(502, "upstream_unreachable", "A.I upstream is unreachable")
+            status, body = 0, {}
         usage = body.get("usage") if isinstance(body.get("usage"), dict) else {}
+        if trace_path:
+            # One line per request: where the time and tokens of an A.I run go.
+            prompt_details = usage.get("prompt_tokens_details") if isinstance(usage.get("prompt_tokens_details"), dict) else {}
+            completion_details = (usage.get("completion_tokens_details")
+                                  if isinstance(usage.get("completion_tokens_details"), dict) else {})
+            choices = body.get("choices") if isinstance(body.get("choices"), list) else []
+            _trace_line(trace_path, {
+                "t": round(time.time(), 3), "ms": round((time.perf_counter() - started) * 1000),
+                "status": status, **trace, **_request_shape(payload),
+                "request_kb": round(len(json.dumps(payload)) / 1024, 1), "max_tokens": forwarded["max_tokens"],
+                "prompt_tokens": int(usage.get("prompt_tokens") or 0),
+                "cached_tokens": int(prompt_details.get("cached_tokens") or 0),
+                "completion_tokens": int(usage.get("completion_tokens") or 0),
+                "reasoning_tokens": int(completion_details.get("reasoning_tokens") or 0),
+                "finish_reason": (choices[0].get("finish_reason") if choices and isinstance(choices[0], dict) else None),
+            })
+        if status == 0:
+            return _error(502, "upstream_unreachable", "A.I upstream is unreachable")
         total = store.add_cost(
             row["id"], upstream.cost(usage),
             int(usage.get("prompt_tokens") or 0), int(usage.get("completion_tokens") or 0),
