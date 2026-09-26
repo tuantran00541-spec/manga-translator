@@ -36,18 +36,66 @@ def _wait(url: str, proc: subprocess.Popen, timeout: float = 180) -> None:
     raise SystemExit(f"{url} did not come up")
 
 
-def _pages(archive_path: Path, out: Path) -> int:
+def _pages(archive_path: Path, out: Path, max_width: int = 800) -> int:
+    """Save every rendered page, so readability can be checked on the whole chapter."""
+    pages = out / "pages"
+    pages.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(archive_path) as archive:
-        names = sorted(archive.namelist())
-        picks = sorted({round(i * (len(names) - 1) / 5) for i in range(6)}) if names else []
-        for name in [names[i] for i in picks]:
+        names = sorted(n for n in archive.namelist() if not n.endswith("/"))
+        for index, name in enumerate(names, start=1):
             page = cv2.imdecode(np.frombuffer(archive.read(name), np.uint8), cv2.IMREAD_COLOR)
-            scale = 700 / page.shape[1]
-            page = cv2.resize(page, (700, max(1, round(page.shape[0] * scale))), interpolation=cv2.INTER_AREA)
-            ok, buf = cv2.imencode(".jpg", page[:7000], [cv2.IMWRITE_JPEG_QUALITY, 80])
+            if page is None:
+                continue
+            if page.shape[1] > max_width:
+                scale = max_width / page.shape[1]
+                page = cv2.resize(page, (max_width, max(1, round(page.shape[0] * scale))), interpolation=cv2.INTER_AREA)
+            ok, buf = cv2.imencode(".jpg", page, [cv2.IMWRITE_JPEG_QUALITY, 82])
             if ok:
-                (out / Path(name).with_suffix(".jpg").name).write_bytes(buf.tobytes())
+                (pages / f"{index:03d}.jpg").write_bytes(buf.tobytes())
         return len(names)
+
+
+def _fit_metrics(obj: dict, page_width: int) -> dict:
+    """Re-run the renderer's auto-fit for one object: the font size it drew at and the line count."""
+    from PIL import Image, ImageDraw
+
+    from app.parameters import RENDER_AUTO_STROKE_WIDTH, RENDER_DEFAULT_PADDING, RENDER_MIN_READABLE_FONT_SIZE, RENDER_PADDING_RATIO_MAX
+    from app.render.page_renderer import _render_region_for_text_object
+    from app.render.text_renderer import _fit_text, get_font_path
+
+    text = str(obj.get("translation") or "").strip()
+    region = _render_region_for_text_object(obj)
+    try:
+        x1, y1, x2, y2 = (int(region[k]) for k in ("x1", "y1", "x2", "y2"))
+    except (KeyError, TypeError, ValueError):
+        return {}
+    raw_w, raw_h = abs(x2 - x1), abs(y2 - y1)
+    if not text or raw_w <= 0 or raw_h <= 0:
+        return {}
+    pad = max(2, min(RENDER_DEFAULT_PADDING, int(min(raw_w, raw_h) * RENDER_PADDING_RATIO_MAX)))
+    style = obj.get("style") or {}
+    fixed = style.get("fontSize")
+    draw = ImageDraw.Draw(Image.new("RGB", (8, 8)))
+    font_path = str(get_font_path(style.get("font") or "default"))
+    if isinstance(fixed, (int, float)) or (isinstance(fixed, str) and fixed.isdigit()):
+        size, lines, fits = int(fixed), [], True
+    else:
+        size, lines, fits = _fit_text(draw, text, raw_w - 2 * pad, raw_h - 2 * pad, font_path,
+                                      stroke_w=RENDER_AUTO_STROKE_WIDTH, minimum_size=RENDER_MIN_READABLE_FONT_SIZE)
+    return {"font_px": size, "font_px_at_800": round(size * 800 / max(1, page_width), 1), "lines": len(lines),
+            "wrapped": lines, "box_w": raw_w, "box_h": raw_h, "fits": fits,
+            # The wrap breaks a word apart when its lines no longer hold the text's own words.
+            "split_word": bool(lines) and [w for line in lines for w in line.split()] != text.split()}
+
+
+def _slice_width(chapter_id: str, index: int) -> int:
+    for folder in (ROOT / "data" / "processed" / chapter_id, ROOT / "data" / "raw" / chapter_id / "sliced"):
+        files = sorted(p for p in folder.glob("*") if p.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"})
+        if index < len(files):
+            image = cv2.imread(str(files[index]))
+            if image is not None:
+                return int(image.shape[1])
+    return 800
 
 
 def main() -> int:
@@ -129,13 +177,36 @@ def main() -> int:
         pages = json.loads(manifest_path.read_text(encoding="utf-8")).get("pages", [])
         report["slices"] = len(pages)
         report["slices_active"] = sum(1 for p in pages if not p.get("skipped"))
-        report["lines"] = [
-            {"slice": index + 1, "id": obj.get("id"), "translation": obj.get("translation") or "",
-             "role": obj.get("typography_role"), "font": (obj.get("style") or {}).get("font"),
-             "review": bool(obj.get("needs_review"))}
-            for index, page in enumerate(pages) if not page.get("skipped")
-            for obj in page.get("text_objects") or [] if isinstance(obj, dict)
-        ]
+        report["lines"] = []
+        for index, page in enumerate(pages):
+            if page.get("skipped"):
+                continue
+            width = int(page.get("width") or 0) or _slice_width(chapter_id, index)
+            for obj in page.get("text_objects") or []:
+                if not isinstance(obj, dict):
+                    continue
+                report["lines"].append({
+                    "slice": index + 1, "id": obj.get("id"), "source": obj.get("ocr_text") or obj.get("text") or "",
+                    "translation": obj.get("translation") or "",
+                    "role": obj.get("typography_role"), "font": (obj.get("style") or {}).get("font"),
+                    "review": bool(obj.get("needs_review")), "page_width": width,
+                    **_fit_metrics(obj, width),
+                })
+    measured = [line for line in report.get("lines", []) if line.get("font_px")]
+    if measured:
+        sizes = sorted(line["font_px_at_800"] for line in measured)
+        report["readability"] = {
+            "rendered": len(measured),
+            "font_px_at_800": {"min": sizes[0], "p10": sizes[len(sizes) // 10], "median": sizes[len(sizes) // 2], "max": sizes[-1]},
+            "under_16px": sum(size < 16 for size in sizes),
+            "under_20px": sum(size < 20 for size in sizes),
+            "split_word": sum(bool(line.get("split_word")) for line in measured),
+            "does_not_fit": sum(not line.get("fits") for line in measured),
+            "by_role": {
+                role: sorted(line["font_px_at_800"] for line in measured if (line.get("role") or "?") == role)
+                for role in sorted({line.get("role") or "?" for line in measured})
+            },
+        }
     if usage.get("requests"):
         slices = max(1, report.get("slices_active") or 1)
         report["per_chapter"] = {
@@ -147,7 +218,7 @@ def main() -> int:
             "completion_tokens": round(usage["completion_tokens"] / slices),
         }
     (out / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8")
-    print(json.dumps({k: report.get(k) for k in ("status", "error", "wall_s", "gateway_job", "per_chapter", "per_slice")},
+    print(json.dumps({k: report.get(k) for k in ("status", "error", "wall_s", "gateway_job", "per_chapter", "per_slice", "readability")},
                      ensure_ascii=False, indent=1))
     return 0 if job["status"] == "completed" else 1
 
