@@ -1,7 +1,8 @@
 """Compare text detection and LaMa fill settings on a real chapter.
 
 Downloads and slices a chapter the way the app does, then cleans the same
-slices with each variant (detector window scale, mask dilation, grain restore)
+slices with each variant (detector window scale, mask dilation, grain restore,
+neighbour text hidden from LaMa)
 and measures:
 
   detect_s / inpaint_s   time spent in each stage
@@ -40,6 +41,7 @@ VARIANTS = {
     "tile100": {"scale": 1.0, "dilate": 7, "grain": False},
     "tile100_d5": {"scale": 1.0, "dilate": 5, "grain": False},
     "tile100_grain": {"scale": 1.0, "dilate": 7, "grain": True},
+    "tile100_hide": {"scale": 1.0, "dilate": 7, "grain": False, "hide": True},
 }
 REFERENCE_SCALE = 1.25
 
@@ -63,10 +65,11 @@ def text_mask(shape: tuple[int, int], boxes) -> np.ndarray:
     return (mask > 127).astype(np.uint8) * 255
 
 
-def clean(inpainter: Inpainter, image: np.ndarray, boxes, dilate: int, grain: bool):
+def clean(inpainter: Inpainter, image: np.ndarray, boxes, dilate: int, grain: bool, hide: bool = False):
     mask_builder.MASK_DILATE_KERNEL_SIZE = dilate
     mask_builder.MASK_ADAPTIVE_DILATE_KERNEL_SIZE = dilate + 2
     params.INPAINT_GRAIN_RESTORE = grain
+    params.INPAINT_HIDE_NEIGHBOUR_TEXT = hide
     started = time.perf_counter()
     result = inpainter.inpaint(image, boxes)
     elapsed = time.perf_counter() - started
@@ -139,7 +142,8 @@ def main() -> int:
         outputs = {}
         for name, variant in VARIANTS.items():
             boxes, detect_s, calls = detect(detector, image, span, variant["scale"])
-            result, hole, inpaint_s = clean(inpainter, image, boxes, variant["dilate"], variant["grain"])
+            result, hole, inpaint_s = clean(inpainter, image, boxes, variant["dilate"], variant["grain"],
+                                            variant.get("hide", False))
             mask = build_mask(image.shape[:2], boxes, image)
             after, _, _ = detect(detector, result, span, REFERENCE_SCALE)
             t = totals[name]
