@@ -64,3 +64,17 @@ def test_text_the_font_cannot_draw_falls_back_to_the_default_font():
     drawn = render_text_in_box(Image.new("RGB", (320, 120), "white"), text, box, font_path=display)
     expected = render_text_in_box(Image.new("RGB", (320, 120), "white"), text, box, font_path=DEFAULT_FONT)
     assert drawn.tobytes() == expected.tobytes()
+
+
+def test_punctuation_the_font_lacks_is_drawn_in_plain_form_in_the_same_font():
+    from PIL import Image
+
+    from app.render.text_renderer import font_draws_text, get_font_path, render_text_in_box
+
+    narration = get_font_path("narration.mac-dinh-2")
+    text = "tạo ra cả một thế giới —"
+    assert not font_draws_text(narration, text), "this UTM font draws a notice banner for a missing em dash"
+    box = (0, 0, 420, 90)
+    drawn = render_text_in_box(Image.new("RGB", (420, 90), "white"), text, box, font_path=narration)
+    plain = render_text_in_box(Image.new("RGB", (420, 90), "white"), "tạo ra cả một thế giới -", box, font_path=narration)
+    assert drawn.tobytes() == plain.tobytes()

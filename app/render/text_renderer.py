@@ -47,6 +47,19 @@ def _draws_char(font_path_str: str, char: str) -> bool:
     return (mask.size, bytes(mask)) != _missing_glyph_mask(font_path_str)
 
 
+# Typographic punctuation many comic fonts lack, with the plain form they do have.
+_PUNCTUATION_FALLBACKS = {"\u2014": "-", "\u2013": "-", "\u2026": "...", "\u2022": "·", "\u00ab": '"', "\u00bb": '"',
+                          "\u201c": '"', "\u201d": '"', "\u2018": "'", "\u2019": "'"}
+
+
+def _plain_punctuation(font_path, text: str) -> str:
+    font_path_str = str(font_path)
+    return "".join(
+        _PUNCTUATION_FALLBACKS[char] if char in _PUNCTUATION_FALLBACKS and not _draws_char(font_path_str, char) else char
+        for char in text
+    )
+
+
 def font_draws_text(font_path, text: str) -> bool:
     """False when some character would come out as the font's missing-glyph box."""
     font_path_str = str(font_path)
@@ -205,10 +218,16 @@ def render_text_in_box(
         font_path = get_font_path(font_name)
     else:
         font_path = Path(font_path)
-    if not font_draws_text(font_path, text) and font_draws_text(DEFAULT_FONT, text):
-        # A display font without the target language's letters would print boxes
-        # instead of them; the default font covers Vietnamese.
-        font_path = DEFAULT_FONT
+    if not font_draws_text(font_path, text):
+        # A missing glyph prints the font's placeholder (a box, or in some UTM
+        # fonts a whole "use the UNICODE table" notice). Swap in plain punctuation
+        # the font has; if letters are still missing, use the default font,
+        # which covers Vietnamese.
+        plain = _plain_punctuation(font_path, text)
+        if font_draws_text(font_path, plain):
+            text = plain
+        elif font_draws_text(DEFAULT_FONT, text):
+            font_path = DEFAULT_FONT
 
     if fill is None or fill == "auto" or fill == "":
         text_color = auto_detect_text_color(image, box)
