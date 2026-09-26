@@ -1,8 +1,8 @@
 # Local model files
 
-Model binaries are not committed to Git. Put these files here before running the app:
+Only the Kiuyha model is committed; put the LaMa file here before running the app:
 
-- `kiuyha_text_1280.onnx` — required text detector (Actions → Kiuyha ONNX export → artifact `kiuyha-onnx`)
+- `kiuyha_text_1280.onnx` — text detector, already in the repository
 - `lama-manga-dynamic.onnx` — preferred inpaint model
 - `lama.onnx` — fixed 512×512 inpaint fallback, needed when the dynamic model is absent
 

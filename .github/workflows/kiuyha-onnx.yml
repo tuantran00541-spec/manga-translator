@@ -4,7 +4,6 @@ on:
   push:
     paths:
       - "scripts/export_kiuyha_onnx.py"
-      - "app/detector/kiuyha_detector.py"
       - ".github/workflows/kiuyha-onnx.yml"
   workflow_dispatch:
     inputs:
@@ -73,18 +72,14 @@ jobs:
       - name: Export to ONNX and check against the .pt model
         run: python scripts/export_kiuyha_onnx.py "$CHAPTER_URL" --out audit-results/kiuyha-onnx --slices 16
 
-      - name: Keep the ONNX files for the benches
-        uses: actions/cache/save@v4
-        with:
-          path: models/kiuyha_text_1280.onnx
-          key: kiuyha-onnx-${{ github.sha }}
-
-      - name: Upload the ONNX files
-        uses: actions/upload-artifact@v4
-        with:
-          name: kiuyha-onnx
-          path: models/kiuyha_text_1280.onnx
-          retention-days: 90
+      - name: Commit the model to this branch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -f models/kiuyha_text_1280.onnx
+          git diff --cached --quiet && exit 0
+          git commit -m "chore(models): Kiuyha ONNX export (run ${{ github.run_id }})"
+          git push origin HEAD:${{ github.ref_name }}
 
       - name: Save evidence to audit-evidence
         if: always()

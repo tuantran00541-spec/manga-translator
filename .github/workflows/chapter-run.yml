@@ -58,13 +58,6 @@ jobs:
             models/.e2e-provenance.json
           key: processing-profile-models-b224548-v1
 
-      - name: Restore the Kiuyha ONNX export
-        uses: actions/cache/restore@v4
-        with:
-          path: models/kiuyha_text_1280.onnx
-          key: kiuyha-onnx-${{ github.sha }}
-          restore-keys: kiuyha-onnx-
-
       - name: Check the models are there
         run: |
           ls -la models

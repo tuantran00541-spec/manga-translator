@@ -1,6 +1,7 @@
 data/
 logs/
 models/*.onnx
+!models/kiuyha_text_1280.onnx
 models/*.pt
 models/*.pth
 
