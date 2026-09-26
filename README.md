@@ -229,12 +229,18 @@ Place these files in models/:
 
 | File | Purpose |
 | --- | --- |
-| bubble_yolo.onnx | Bubble/text detection |
-| text_segmenter.onnx | Text segmentation and pixel masks |
+| kiuyha_text_1280.onnx | Text detection (optional, preferred): Kiuyha/Manga-Bubble-YOLO boxes, masked per letter |
+| text_segmenter.onnx | Text detection when the file above is absent; checks cleaned regions for leftover text |
+| bubble_yolo.onnx | Bubble detection (checked at startup, not used by the cleaning pipeline) |
 | lama-manga-dynamic.onnx | Preferred inpainting backend |
 | lama.onnx | Fixed-resolution fallback |
 
-Model binaries are intentionally not committed to Git.
+Model binaries are intentionally not committed to Git. `kiuyha_text_1280.onnx`
+comes from the **Kiuyha ONNX export** workflow (Actions → Kiuyha ONNX export →
+artifact `kiuyha-onnx`), which exports
+[Kiuyha/Manga-Bubble-YOLO](https://huggingface.co/Kiuyha/Manga-Bubble-YOLO)
+and checks the ONNX boxes against the original model. See
+[docs/detection.md](docs/detection.md) for how detection works and why.
 
 ### Run
 

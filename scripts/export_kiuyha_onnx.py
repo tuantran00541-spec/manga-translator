@@ -17,6 +17,8 @@ from pathlib import Path
 
 import numpy as np
 
+KIUYHA_REPO = "Kiuyha/Manga-Bubble-YOLO"
+
 
 def iou(a, b) -> float:
     ix = max(0, min(a[2], b[2]) - max(a[0], b[0]))
@@ -45,11 +47,14 @@ def main() -> int:
     from app.detector.kiuyha_detector import KiuyhaTextDetector
     from app.image_io import read_image
     from app.processing_pipeline_factory import build_processing_pipeline
-    from scripts.kiuyha_mask_bench import kiuyha_model
+
+    from huggingface_hub import hf_hub_download, list_repo_files
 
     torch.set_num_threads(2)
-    pt_model = kiuyha_model()
-    pt_path = Path(pt_model.ckpt_path)
+    weights = sorted((f for f in list_repo_files(KIUYHA_REPO) if f.endswith(".pt")),
+                     key=lambda f: ("best" not in f.lower(), len(f)))
+    pt_path = Path(hf_hub_download(KIUYHA_REPO, weights[0]))
+    pt_model = YOLO(str(pt_path))
     models = Path("models")
     models.mkdir(exist_ok=True)
     targets = {"kiuyha_text.onnx": {"dynamic": True}, "kiuyha_text_1280.onnx": {"dynamic": False}}

@@ -39,7 +39,6 @@ def _detector():
     yolo.contract = SimpleNamespace(class_names=("text_comic",))
     yolo.session = _DarkBlobModel()
     detector = Detector(yolo)
-    detector.tile_scale = 0.0
     detector.collage = True
     return detector
 

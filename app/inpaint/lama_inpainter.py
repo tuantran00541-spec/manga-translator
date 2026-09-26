@@ -1,7 +1,6 @@
 import gc
 import os
 import threading
-from dataclasses import replace
 import time
 
 import numpy as np
@@ -13,7 +12,6 @@ from app.detector.mask_builder import build_mask
 from app.logging_config import logger
 from app.model_contracts import decode_lama_output, validate_lama_session
 from app.ort_utils import make_session
-import app.parameters as _params
 from app.parameters import (
     DYNAMIC_LAMA_MAX_SINGLE_CROP_DIM,
     DYNAMIC_LAMA_MAX_SINGLE_CROP_PIXELS,
@@ -338,12 +336,8 @@ class Inpainter:
                 self._metric_add("split_clusters", len(parts) - 1)
             clusters.extend(parts)
         self._metrics_local.value["clusters"] = len(clusters)
-        hide_neighbours = bool(_params.INPAINT_HIDE_NEIGHBOUR_TEXT)
-        if hide_neighbours:
-            # Top to bottom, so each crop sees the slice already cleaned above it.
-            clusters.sort(key=lambda c: (min(b.y1 for b in c), min(b.x1 for b in c)))
 
-        for index, cluster in enumerate(clusters):
+        for cluster in clusters:
             x1 = min(b.x1 for b in cluster)
             y1 = min(b.y1 for b in cluster)
             x2 = max(b.x2 for b in cluster)
@@ -382,22 +376,8 @@ class Inpainter:
                 crop_box,
                 protected_regions,
             )
-            hole_mask = None
-            if hide_neighbours:
-                # Text of clusters not cleaned yet is not context: LaMa would draw
-                # its strokes into this fill. Hide it; only this cluster is written.
-                pending = [
-                    replace(b, x1=b.x1 - cx1, y1=b.y1 - cy1, x2=b.x2 - cx1, y2=b.y2 - cy1)
-                    for later in clusters[index + 1:] for b in later
-                    if b.x1 < cx2 and b.x2 > cx1 and b.y1 < cy2 and b.y2 > cy1
-                ]
-                if pending:
-                    others = self._subtract_protected_regions(
-                        build_mask((cy2 - cy1, cx2 - cx1), pending, crop_img), crop_box, protected_regions,
-                    )
-                    hole_mask = np.maximum(local_mask, others)
 
-            result = self._smart_paint_region(result, local_mask, crop_box, hole_mask=hole_mask)
+            result = self._smart_paint_region(result, local_mask, crop_box)
 
         return result
 
@@ -629,7 +609,6 @@ class Inpainter:
         crop_box: tuple,
         feather: bool = False,
         force_lama: bool = False,
-        hole_mask: np.ndarray | None = None,
     ) -> np.ndarray:
         cx1, cy1, cx2, cy2 = crop_box
         crop = image[cy1:cy2, cx1:cx2]
@@ -655,14 +634,10 @@ class Inpainter:
             return image
 
         self._metric_add("lama_regions")
-        return self._lama_fill(image, crop, local_mask, crop_box, feather=feather, hole_mask=hole_mask)
+        return self._lama_fill(image, crop, local_mask, crop_box, feather=feather)
 
-    def _lama_fill(self, image: np.ndarray, crop: np.ndarray, local_mask: np.ndarray, crop_box: tuple, feather: bool = False,
-                   hole_mask: np.ndarray | None = None) -> np.ndarray:
-        """Fill ``local_mask`` with LaMa. ``hole_mask`` (a superset) is what the model
-        treats as unknown; only ``local_mask`` pixels are written back."""
+    def _lama_fill(self, image: np.ndarray, crop: np.ndarray, local_mask: np.ndarray, crop_box: tuple, feather: bool = False) -> np.ndarray:
         self._ensure_session()
-        model_mask = local_mask if hole_mask is None else hole_mask
         cx1, cy1, cx2, cy2 = crop_box
         crop_h, crop_w = crop.shape[:2]
 
@@ -694,12 +669,12 @@ class Inpainter:
         )
         if dynamic_native_ok:
             self._metric_add("lama_native_single_regions")
-            painted = self._lama_fill_single(crop, model_mask)
+            painted = self._lama_fill_single(crop, local_mask)
         elif long_crop or texture_tiling or (feather and max_dim > INPAINT_SIZE):
             self._metric_add("lama_tiled_regions")
-            painted = self._lama_fill_tiled(crop, model_mask)
+            painted = self._lama_fill_tiled(crop, local_mask)
         else:
-            painted = self._lama_fill_single(crop, model_mask)
+            painted = self._lama_fill_single(crop, local_mask)
 
         original_crop = image[cy1:cy2, cx1:cx2]
         if feather:

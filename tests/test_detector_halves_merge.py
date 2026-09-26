@@ -9,16 +9,6 @@ def _box(x1, y1, x2, y2, conf=0.9):
                      source_role="text_segmenter", safe_to_inpaint=True)
 
 
-def test_windows_cover_the_slice_with_overlap_at_the_requested_scale():
-    assert Detector.tile_windows(2400, 800, 0.0) == [(0, 2400)], "0 keeps one pass over the whole slice"
-    windows = Detector.tile_windows(2400, 800, 0.75)
-    assert windows[0][0] == 0 and windows[-1][1] == 2400
-    assert all(y2 - y1 == 1365 for y1, y2 in windows), "each window reaches the model at 0.75"
-    assert all(windows[i][1] - windows[i + 1][0] >= 273 for i in range(len(windows) - 1))
-    assert Detector.tile_windows(1000, 800, 1.0) == [(0, 1000)], "a short slice needs no windows"
-    assert all(y2 - y1 == 1200 for y1, y2 in Detector.tile_windows(2400, 1200, 1.0)), "width caps the scale"
-
-
 def test_merge_keeps_the_whole_box_over_the_piece_a_window_edge_cut():
     whole = _box(100, 900, 300, 1100)           # window 1 saw it whole
     piece = _box(100, 900, 300, 1024)           # window 0 cut it at its bottom edge

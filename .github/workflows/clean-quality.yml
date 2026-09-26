@@ -21,7 +21,7 @@ concurrency:
 jobs:
   bench:
     runs-on: ubuntu-22.04
-    timeout-minutes: 60
+    timeout-minutes: 45
     env:
       PYTHONUNBUFFERED: "1"
       PYTHONPATH: "."
@@ -49,11 +49,6 @@ jobs:
             beautifulsoup4==4.12.3 lxml==5.3.0 playwright==1.47.0 fastapi==0.115.0 \
             pydantic==2.9.2 filelock==3.16.1 python-multipart==0.0.12
           python -m playwright install --with-deps chromium
-          python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
-          python -m pip install "ultralytics>=8.4" huggingface_hub
-          # ultralytics pulls opencv-python; the app needs the contrib build.
-          python -m pip uninstall -y opencv-python opencv-python-headless || true
-          python -m pip install --force-reinstall --no-deps opencv-contrib-python==4.10.0.84
 
       - name: Restore detector and inpaint models
         uses: actions/cache/restore@v4
@@ -63,10 +58,17 @@ jobs:
             models/.e2e-provenance.json
           key: processing-profile-models-b224548-v1
 
+      - name: Restore the Kiuyha ONNX export
+        uses: actions/cache/restore@v4
+        with:
+          path: models/kiuyha_text*.onnx
+          key: kiuyha-onnx-${{ github.sha }}
+          restore-keys: kiuyha-onnx-
+
       - name: Check the models are there
         run: |
           ls -la models
-          test -f models/text_segmenter.onnx && test -f models/lama-manga-dynamic.onnx
+          test -f models/text_segmenter.onnx && test -f models/lama-manga-dynamic.onnx && test -f models/kiuyha_text_1280.onnx
 
       - name: Clean the same slices with each variant
         run: python scripts/clean_quality_bench.py "$CHAPTER_URL" --out audit-results/clean-quality --slices 16

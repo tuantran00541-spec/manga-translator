@@ -18,8 +18,6 @@ from app.parameters import (
     DETECTOR_LETTERBOX_VALUE,
     DETECTOR_FINAL_NMS_IOU,
     DETECTOR_INPUT_SIZE,
-    DETECTOR_TILE_OVERLAP,
-    DETECTOR_TILE_SCALE,
     DETECTOR_RESIDUE_VERIFY_MAX_ROIS,
     DETECTOR_RESIDUE_VERIFY_MAX_SOURCE_SIDE,
     DETECTOR_RESIDUE_VERIFY_PAD,
@@ -87,7 +85,6 @@ class OneShotTextMaskDetector:
             finally:
                 self.detector.conf_threshold = original_conf
 
-    tile_scale = DETECTOR_TILE_SCALE
     collage = DETECTOR_COLLAGE
 
     @staticmethod
@@ -147,32 +144,13 @@ class OneShotTextMaskDetector:
         return self.merge_tiles(found), raw_count
 
     @staticmethod
-    def tile_windows(height: int, width: int, scale: float) -> list[tuple[int, int]]:
-        """Vertical windows (y1, y2) that reach the model at about ``scale``.
-
-        One window covers the whole slice when tiling is off or the slice is
-        short enough to reach the model at that scale anyway.
-        """
-        if scale <= 0 or height <= 0 or width <= 0:
-            return [(0, max(0, height))]
-        scale = min(scale, DETECTOR_INPUT_SIZE / float(width))
-        window = max(1, int(DETECTOR_INPUT_SIZE / scale))
-        if height <= window * 1.1:
-            return [(0, height)]
-        overlap = max(64, int(window * DETECTOR_TILE_OVERLAP))
-        count = max(2, int(np.ceil((height - overlap) / max(1, window - overlap))))
-        # Spread the windows evenly: every overlap is at least ``overlap``.
-        starts = [round(i * (height - window) / (count - 1)) for i in range(count)]
-        return [(y0, y0 + window) for y0 in starts]
-
-    @staticmethod
     def merge_tiles(found: list[tuple[BubbleBox, int, bool]]) -> list[BubbleBox]:
-        """One box per text block from overlapping windows.
+        """One box per text block from overlapping halves.
 
-        ``found`` holds (box, window index, cut) where cut means the box touches
-        an inner window edge. A box seen by two windows keeps the uncut, then the
-        larger version; boxes from the same window never replace each other, and
-        a block cut by every window keeps its pieces so its mask stays whole.
+        ``found`` holds (box, half index, cut) where cut means the box touches
+        the edge between halves. A box seen by both halves keeps the uncut, then
+        the larger version; boxes from the same half never replace each other,
+        and a block both halves cut keeps its pieces so its mask stays whole.
         """
         def area(b: BubbleBox) -> int:
             return max(0, b.x2 - b.x1) * max(0, b.y2 - b.y1)
@@ -204,33 +182,15 @@ class OneShotTextMaskDetector:
                 match[0] = union(match[0], box)
         return sorted((entry[0] for entry in kept), key=lambda b: (b.y1, b.x1))
 
-    def _detect_tiled(self, image: np.ndarray, windows: list[tuple[int, int]]) -> tuple[list[BubbleBox], int]:
-        found: list[tuple[BubbleBox, int, bool]] = []
-        raw_count = 0
-        for tile, (y0, y1) in enumerate(windows):
-            blob, transform = self.detector._preprocess(image[y0:y1], offset_x=0, offset_y=y0)
-            if blob is None or transform is None:
-                continue
-            raw = self._postprocess_at_threshold(self._run_session(blob), transform, TEXT_CONF_THRESHOLD)
-            raw_count += len(raw)
-            for box in self._accept_many(raw):
-                cut = (tile > 0 and box.y1 <= y0 + 2) or (tile < len(windows) - 1 and box.y2 >= y1 - 2)
-                found.append((box, tile, cut))
-        return self.merge_tiles(found), raw_count
-
     def detect(self, image: np.ndarray) -> tuple[list[BubbleBox], dict[str, float | int]]:
         started = time.perf_counter()
 
-        windows = self.tile_windows(image.shape[0], image.shape[1], float(self.tile_scale))
-        plan = self.collage_plan(image.shape[0], image.shape[1]) if self.collage and len(windows) == 1 else None
-        if len(windows) > 1 or plan is not None:
-            if plan is not None:
-                boxes, raw_count = self._detect_collage(image, *plan)
-            else:
-                boxes, raw_count = self._detect_tiled(image, windows)
+        plan = self.collage_plan(image.shape[0], image.shape[1]) if self.collage else None
+        if plan is not None:
+            boxes, raw_count = self._detect_collage(image, *plan)
             return boxes, {
                 "detector_ms": round((time.perf_counter() - started) * 1000.0, 3),
-                "detector_forward_calls": 1 if plan is not None else len(windows),
+                "detector_forward_calls": 1,
                 "detector_boxes": int(raw_count),
                 "accepted_mask_boxes": int(len(boxes)),
                 "normal_conf_boxes": int(len(boxes)),
