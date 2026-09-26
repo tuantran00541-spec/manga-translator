@@ -2,7 +2,7 @@
  "source": "yolo26n.pt",
  "exports": {
   "kiuyha_text.onnx": {
-   "bytes": 9961265,
+   "bytes": 9934002,
    "inputs": [
     [
      "images",
@@ -59,10 +59,10 @@
   "static_onnx": 20
  },
  "seconds": {
-  "pt_native": 10.31,
-  "pt_1280": 2.02,
-  "kiuyha_text.onnx": 7.53,
-  "kiuyha_text_1280.onnx": 3.47
+  "pt_native": 10.42,
+  "pt_1280": 2.03,
+  "kiuyha_text.onnx": 7.78,
+  "kiuyha_text_1280.onnx": 3.6
  },
  "slices": 16
 }
