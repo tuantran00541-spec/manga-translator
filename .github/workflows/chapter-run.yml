@@ -24,7 +24,6 @@ jobs:
     timeout-minutes: 60
     env:
       PYTHONUNBUFFERED: "1"
-      MANGA_TEXT_DETECTOR: auto
       PYTHONPATH: "."
       MANGA_PROCESSING_PIPELINE: fast
       MANGA_USE_DYNAMIC_LAMA: "1"
@@ -62,14 +61,14 @@ jobs:
       - name: Restore the Kiuyha ONNX export
         uses: actions/cache/restore@v4
         with:
-          path: models/kiuyha_text*.onnx
+          path: models/kiuyha_text_1280.onnx
           key: kiuyha-onnx-${{ github.sha }}
           restore-keys: kiuyha-onnx-
 
       - name: Check the models are there
         run: |
           ls -la models
-          test -f models/text_segmenter.onnx && test -f models/lama-manga-dynamic.onnx && test -f models/kiuyha_text_1280.onnx
+          test -f models/lama-manga-dynamic.onnx && test -f models/kiuyha_text_1280.onnx
 
       - name: Process the whole chapter
         run: python scripts/chapter_run.py "$CHAPTER_URL" --out audit-results/chapter-run

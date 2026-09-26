@@ -1,7 +1,8 @@
 import numpy as np
 import cv2
 
-from app.detector.bubble_detector import BubbleBox, DETECTOR_CONFIDENCE_MAX
+from app.detector.boxes import BubbleBox
+from app.parameters import DETECTOR_CONFIDENCE_MAX
 from app.logging_config import logger
 from app.parameters import (
     MANUAL_CONFIDENCE_SENTINEL,

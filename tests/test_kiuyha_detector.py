@@ -42,7 +42,7 @@ def _image():
 
 def test_static_square_model_letterboxes_and_maps_back():
     session = _Session([1, 3, 1280, 1280])
-    boxes = KiuyhaTextDetector("unused", session=session).detect(_image())
+    boxes = KiuyhaTextDetector("unused", session=session).raw_boxes(_image())
     assert session.blobs[0].shape == (1, 3, 1280, 1280)
     assert len(boxes) == 1
     x1, y1, x2, y2, score = boxes[0]
@@ -52,14 +52,14 @@ def test_static_square_model_letterboxes_and_maps_back():
 
 def test_dynamic_model_runs_at_the_slice_size():
     session = _Session([1, 3, "height", "width"])
-    boxes = KiuyhaTextDetector("unused", session=session).detect(_image())
+    boxes = KiuyhaTextDetector("unused", session=session).raw_boxes(_image())
     assert session.blobs[0].shape == (1, 3, 2400, 800)
     assert boxes[0][:4] == (200, 1000, 600, 1100)
 
 
 def test_raw_head_is_decoded_and_deduplicated():
     session = _Session([1, 3, 1280, 1280], raw=True)
-    boxes = KiuyhaTextDetector("unused", session=session).detect(_image())
+    boxes = KiuyhaTextDetector("unused", session=session).raw_boxes(_image())
     assert len(boxes) == 1
     x1, y1, x2, y2, _ = boxes[0]
     assert abs(x1 - 200) <= 3 and abs(y1 - 1000) <= 3 and abs(x2 - 600) <= 3 and abs(y2 - 1100) <= 3
@@ -126,7 +126,7 @@ def test_second_pass_only_keeps_leftovers_inside_first_pass_boxes():
 
 
 def test_leftover_mask_is_folded_into_the_saved_first_pass_box():
-    from app.detector.bubble_detector import BubbleBox
+    from app.detector.boxes import BubbleBox
     from app.page_processing import _fold_leftover
 
     record = {"x1": 10, "y1": 10, "x2": 50, "y2": 30, "_mask_array": np.full((20, 40), 255, np.uint8)}
@@ -148,3 +148,10 @@ def test_letters_cut_by_the_slice_edge_are_masked_and_leftovers_take_the_whole_b
     image = _text_slice()
     (left,) = detector.leftover_boxes(image, [b for b in detector.text_boxes(image) if b.y1 > 2000])
     assert (left.mask == 255).all()
+
+
+def test_pipeline_detect_names_the_model_and_reports_timing():
+    detector = KiuyhaTextDetector("models/kiuyha_text_1280.onnx", session=_BlobSession())
+    boxes = detector.detect(_text_slice())
+    assert boxes and all(b.source_model == "kiuyha_text_1280.onnx" for b in boxes)
+    assert detector.last_metrics()["result_boxes"] == len(boxes)

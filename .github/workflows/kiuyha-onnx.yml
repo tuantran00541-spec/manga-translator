@@ -68,7 +68,7 @@ jobs:
       - name: Check the models are there
         run: |
           ls -la models
-          test -f models/text_segmenter.onnx && test -f models/lama-manga-dynamic.onnx
+          test -f models/lama-manga-dynamic.onnx
 
       - name: Export to ONNX and check against the .pt model
         run: python scripts/export_kiuyha_onnx.py "$CHAPTER_URL" --out audit-results/kiuyha-onnx --slices 16
@@ -76,15 +76,15 @@ jobs:
       - name: Keep the ONNX files for the benches
         uses: actions/cache/save@v4
         with:
-          path: models/kiuyha_text*.onnx
+          path: models/kiuyha_text_1280.onnx
           key: kiuyha-onnx-${{ github.sha }}
 
       - name: Upload the ONNX files
         uses: actions/upload-artifact@v4
         with:
           name: kiuyha-onnx
-          path: models/kiuyha_text*.onnx
-          retention-days: 30
+          path: models/kiuyha_text_1280.onnx
+          retention-days: 90
 
       - name: Save evidence to audit-evidence
         if: always()

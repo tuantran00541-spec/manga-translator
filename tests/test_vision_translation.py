@@ -3,8 +3,6 @@ from __future__ import annotations
 import asyncio
 import copy
 import json
-from pathlib import Path
-from unittest.mock import patch
 
 import cv2
 import numpy as np

@@ -16,7 +16,6 @@ class _FakeInpainter:
 
 
 def test_render_stage_restores_an_unletterable_object_and_the_slice_exports(tmp_path: Path, monkeypatch):
-    import app.ai_mode.job as ai_job
     import app.config as config
     import app.dependencies as deps
     import app.manifest_utils as manifests

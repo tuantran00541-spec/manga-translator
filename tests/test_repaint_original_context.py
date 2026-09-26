@@ -62,7 +62,7 @@ def test_lama_repaint_uses_exact_user_mask_without_growth(tmp_path: Path):
             "x2": 42,
             "y2": 31,
             "confidence": 0.95,
-            "source_model": "text_segmenter.onnx",
+            "source_model": "kiuyha_text_1280.onnx",
             "mask_source": "text_segmenter",
             "safe_to_inpaint": True,
         }

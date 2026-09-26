@@ -1,12 +1,15 @@
-"""Kiuyha/Manga-Bubble-YOLO text boxes (ONNX) with Otsu letter masks."""
+"""The text detector: Kiuyha/Manga-Bubble-YOLO boxes (ONNX) with Otsu letter masks."""
 from __future__ import annotations
 
 import math
+import threading
+import time
+from pathlib import Path
 
 import cv2
 import numpy as np
 
-from app.detector.bubble_detector import BubbleBox
+from app.detector.boxes import BubbleBox
 from app.ort_utils import make_session
 
 LETTERBOX_VALUE = 114
@@ -97,14 +100,16 @@ class KiuyhaTextDetector:
         height, width = inp.shape[2], inp.shape[3]
         self.fixed = (int(height), int(width)) if isinstance(height, int) and isinstance(width, int) else None
         self.conf_threshold = float(conf_threshold)
+        self._metrics = threading.local()
+        self.source_model = Path(str(model_path)).name
 
     def _input_size(self, height: int, width: int) -> tuple[int, int]:
         if self.fixed is not None:
             return self.fixed
         return int(math.ceil(height / STRIDE) * STRIDE), int(math.ceil(width / STRIDE) * STRIDE)
 
-    def detect(self, image: np.ndarray) -> list[tuple[int, int, int, int, float]]:
-        """Boxes (x1, y1, x2, y2, score) in ``image`` pixels."""
+    def raw_boxes(self, image: np.ndarray) -> list[tuple[int, int, int, int, float]]:
+        """Boxes (x1, y1, x2, y2, score) in ``image`` pixels from one letterboxed pass."""
         h, w = image.shape[:2]
         in_h, in_w = self._input_size(h, w)
         scale = min(in_w / w, in_h / h)
@@ -145,7 +150,7 @@ class KiuyhaTextDetector:
         h, w = image.shape[:2]
         plan = self.halves_plan(h, w)
         if plan is None:
-            found = self.detect(image)
+            found = self.raw_boxes(image)
         else:
             scale, halves = plan
             size = self.fixed[0]
@@ -157,7 +162,7 @@ class KiuyhaTextDetector:
                 columns.append((x, rw, rh, y0, y1))
                 x += rw + HALVES_GAP
             found = []
-            for cx1, cy1, cx2, cy2, score in self.detect(canvas):
+            for cx1, cy1, cx2, cy2, score in self.raw_boxes(canvas):
                 px, rw, rh, y0, y1 = columns[0] if (cx1 + cx2) / 2 < columns[1][0] else columns[1]
                 sx, sy = rw / w, rh / (y1 - y0)
                 bx1, bx2 = int((max(cx1, px) - px) / sx), int(math.ceil((min(cx2, px + rw) - px) / sx))
@@ -168,21 +173,31 @@ class KiuyhaTextDetector:
         return [(max(0, x1 - BOX_PAD), max(0, y1 - BOX_PAD), min(w, x2 + BOX_PAD), min(h, y2 + BOX_PAD), score)
                 for x1, y1, x2, y2, score in found]
 
-    def text_boxes(self, image: np.ndarray, source_model: str = "kiuyha_text") -> list[BubbleBox]:
+    def text_boxes(self, image: np.ndarray) -> list[BubbleBox]:
         """Detected text blocks with letter masks, ready for inpainting and OCR."""
         h, w = image.shape[:2]
         boxes = []
         for x1, y1, x2, y2, score in self.detect_slice(image):
             mask = stroke_mask(image[y1:y2, x1:x2], (y1 == 0, y2 == h, x1 == 0, x2 == w))
             if mask.any():
-                boxes.append(_text_box(x1, y1, x2, y2, score, mask.astype(np.uint8) * 255, source_model))
+                boxes.append(_text_box(x1, y1, x2, y2, score, mask.astype(np.uint8) * 255, self.source_model))
         return boxes
 
-    def leftover_boxes(self, clean: np.ndarray, targets, source_model: str = "kiuyha_text") -> list[BubbleBox]:
+    def leftover_boxes(self, clean: np.ndarray, targets) -> list[BubbleBox]:
         """Text still seen inside a first-pass box after inpainting; the colour split failed there, so the whole box goes."""
         boxes = []
         for x1, y1, x2, y2, score in self.detect_slice(clean):
             cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
             if any(t.x1 <= cx <= t.x2 and t.y1 <= cy <= t.y2 for t in targets):
-                boxes.append(_text_box(x1, y1, x2, y2, score, np.full((y2 - y1, x2 - x1), 255, np.uint8), source_model))
+                boxes.append(_text_box(x1, y1, x2, y2, score, np.full((y2 - y1, x2 - x1), 255, np.uint8), self.source_model))
         return boxes
+
+    def detect(self, image: np.ndarray, *, parallel: bool = False) -> list[BubbleBox]:
+        """Text boxes for the pipeline, timing kept for ``last_metrics``."""
+        started = time.perf_counter()
+        boxes = self.text_boxes(image)
+        self._metrics.value = {"text_model_ms": (time.perf_counter() - started) * 1000.0, "result_boxes": len(boxes)}
+        return boxes
+
+    def last_metrics(self) -> dict[str, float | int]:
+        return dict(getattr(self._metrics, "value", {}) or {})

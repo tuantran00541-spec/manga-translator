@@ -121,9 +121,9 @@ def main() -> None:
         "Skipping non-authorized destructive mask",
     )
     _require(
-        "app/detector/bubble_detector.py",
-        "def _merge_text_mask_evidence(boxes: list[BubbleBox]) -> BubbleBox:",
-        'if members[kept[0]].source_role != "text_segmenter":',
+        "app/detector/boxes.py",
+        "def _merge_mask_evidence(boxes: list[BubbleBox]) -> BubbleBox:",
+        'members[kept[0]].source_role != "text_segmenter"',
         "buckets[target].append(box)",
         "deferred_reason",
     )
@@ -139,20 +139,6 @@ def main() -> None:
     _require(
         "app/inpaint/clustering.py",
         "def split_oversized_cluster_area(",
-    )
-    _require(
-        "scripts/model_e2e_gate.py",
-        "from app.detector.mask_builder import AUTO_DESTRUCTIVE_MASK_SOURCES",
-        "mask_source not in AUTO_DESTRUCTIVE_MASK_SOURCES",
-        "source_model=box.source_model",
-        "mask_source=box.mask_source",
-        "safe_to_inpaint=bool(box.safe_to_inpaint)",
-        "ocr_eligible=bool(box.ocr_eligible)",
-        "needs_review=bool(box.needs_review)",
-        "if not args.allow_empty_cleanup:",
-        '"model E2E produced no authorized cleanup mask pixels; inpaint path was not exercised"',
-        '"cleanup_evidence": cleanup_evidence',
-        'box_counts["ocr_eligible"] += int(bool(record.get("ocr_eligible")))',
     )
     print("Inpaint destructive-authority source contract OK")
 

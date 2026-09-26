@@ -9,7 +9,7 @@ import numpy as np
 
 from app.config import PROCESSED_DIR
 from app.text_objects import ensure_page_text_objects
-from app.detector.bubble_detector import BubbleBox
+from app.detector.boxes import BubbleBox
 from app.image_io import read_image, write_image
 from app.logging_config import logger
 from app.manifest_utils import (

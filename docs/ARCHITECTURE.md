@@ -26,8 +26,8 @@ flowchart TB
     end
 
     subgraph AI["AI modules (CPU / ONNX Runtime)"]
-        DET["one_shot_cleanup.py — OneShotProductionDetector"]
-        YOLO["detector/bubble_detector.py — YoloDetector"]
+        DET["detector/kiuyha_detector.py — KiuyhaTextDetector"]
+        BOX["detector/boxes.py — BubbleBox, NMS"]
         MB["detector/mask_builder.py"]
         LAMA["inpaint/lama_inpainter.py — Inpainter"]
     end
@@ -47,7 +47,7 @@ flowchart TB
         RAW["data/raw/{chapter}/sliced/"]
         PROC["data/processed/{chapter}/<br/>manifest.json · clean_*.png · manual_mask_*"]
         OUT["data/output/{chapter}/page_XXX.png"]
-        MOD["models/ — 3 file ONNX"]
+        MOD["models/ — Kiuyha + LaMa ONNX"]
     end
 
     UI -->|HTTP /api/*| MW --> RTR
@@ -56,7 +56,7 @@ flowchart TB
     PL --> PAGE
     PL --> EDIT
     DEP --> OCR
-    PL --> DET --> YOLO
+    PL --> DET --> BOX
     DET --> MB
     PL --> LAMA --> MB
     PL --> REG --> BASE
@@ -71,7 +71,7 @@ flowchart TB
     PL --> PROC
     TR --> OUT
     RTR --> OUT
-    YOLO --> MOD
+    DET --> MOD
     LAMA --> MOD
 ```
 
@@ -176,12 +176,12 @@ sequenceDiagram
 
 ```mermaid
 flowchart TD
-    A["Ảnh page (BGR)"] --> B["OneShotProductionDetector.detect()"]
-    B --> C["OneShotTextMaskDetector: 1 lần forward text_segmenter.onnx<br/>(preprocess 1024×1024 → NMS → decode mask từ prototype)"]
-    C --> D["Chỉ nhận box text_segmenter có mask đã xác minh<br/>→ safe_to_inpaint, ocr_eligible"]
+    A["Ảnh page (BGR)"] --> B["KiuyhaTextDetector.detect()"]
+    B --> C["1 lần forward kiuyha_text_1280.onnx<br/>(2 nửa lát đặt cạnh nhau trong khung 1280)"]
+    C --> D["Mỗi box → mask chữ bằng Otsu theo màu viền"]
     D --> E["page_processing: bỏ box trong vùng giữ nguyên,<br/>apply_final_nms (IoU 0.35)"]
-    E --> F["list[BubbleBox] — kèm mask từng box"]
-    F -.->|"MANGA_DETECTOR_RESIDUE_VERIFY_ENABLED=1"| G["verify_post_inpaint_residue:<br/>quét lại vùng đã inpaint tìm chữ sót"]
+    E --> F["Inpaint"]
+    F --> G["leftover_boxes: Kiuyha dò lại ảnh sạch,<br/>chữ còn trong box cũ → xóa cả box"]
 ```
 
 ## 7. Inpaint chi tiết

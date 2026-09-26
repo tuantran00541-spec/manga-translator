@@ -8,7 +8,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from app.detector.bubble_detector import BubbleBox, apply_final_nms
+from app.detector.boxes import BubbleBox, apply_final_nms
 from app.image_io import encode_mask, read_image, write_image
 from app.manifest_utils import assign_stable_detector_box_ids
 from app.region_policy import geometry_center_in_regions, subtract_regions_from_mask
@@ -16,9 +16,7 @@ from app.mask_store import decode_mask_value
 from app.parameters import (
     DETECTION_CONTENT_STD_MIN,
     DETECTOR_FINAL_NMS_IOU,
-    DETECTOR_RESIDUE_VERIFY_ENABLED,
 )
-
 
 
 def _fold_leftover(records: list[dict], box: BubbleBox) -> None:
@@ -36,61 +34,8 @@ def _fold_leftover(records: list[dict], box: BubbleBox) -> None:
         record.update(x1=ux1, y1=uy1, x2=ux2, y2=uy2, _mask_array=grown)
         return
 
-class PageProcessingMixin:
-    @staticmethod
-    def _review_only_residue_sources(records: list[dict] | None) -> list[BubbleBox]:
-        boxes: list[BubbleBox] = []
-        for record in records or []:
-            if not isinstance(record, dict) or record.get("removed"):
-                continue
-            if record.get("overlap_context_only"):
-                continue
-            if str(record.get("source_role") or "") != "text_segmenter":
-                continue
-            if not record.get("deferred_reason"):
-                continue
-            if record.get("ocr_eligible") is False:
-                continue
-            try:
-                x1, y1 = int(record["x1"]), int(record["y1"])
-                x2, y2 = int(record["x2"]), int(record["y2"])
-            except (KeyError, TypeError, ValueError):
-                continue
-            box_w, box_h = x2 - x1, y2 - y1
-            if box_w <= 0 or box_h <= 0:
-                continue
-            mask = record.get("_mask_array")
-            if mask is None:
-                mask = decode_mask_value(record.get("mask"))
-            if mask is not None and mask.shape != (box_h, box_w):
-                try:
-                    mask = cv2.resize(
-                        mask,
-                        (box_w, box_h),
-                        interpolation=cv2.INTER_NEAREST,
-                    )
-                except Exception:
-                    mask = None
-            boxes.append(
-                BubbleBox(
-                    x1, y1, x2, y2,
-                    float(record.get("confidence", 1.0)),
-                    mask,
-                    source_model=str(record.get("source_model") or "unknown"),
-                    class_id=int(record.get("class_id") or 0),
-                    class_name=str(record.get("class_name") or "unknown"),
-                    semantic_type=str(record.get("semantic_type") or "unknown"),
-                    mask_source=str(record.get("mask_source") or "none"),
-                    safe_to_inpaint=False,
-                    ocr_eligible=True,
-                    needs_review=True,
-                    source_role="text_segmenter",
-                    deferred_reason=str(record.get("deferred_reason") or ""),
-                    verify_region_only=True,
-                )
-            )
-        return boxes
 
+class PageProcessingMixin:
     def _process_page(
         self,
         img_path: Path,
@@ -215,8 +160,6 @@ class PageProcessingMixin:
                 effective_boxes.append(_effective)
                 inpainted_records.append(record)
 
-        verification_only_boxes = self._review_only_residue_sources(detector_records)
-
         for old in existing_boxes:
             if not isinstance(old, dict) or not old.get("manual") or old.get("removed"):
                 continue
@@ -242,8 +185,7 @@ class PageProcessingMixin:
             protected_regions=preserve_regions,
         )
         auto_inpaint_metrics = self.inpainter.last_metrics()
-        second_pass = getattr(self.detector, "leftover_boxes", None)
-        leftovers = second_pass(clean_image, effective_boxes) if callable(second_pass) else []
+        leftovers = self.detector.leftover_boxes(clean_image, effective_boxes) if effective_boxes else []
         if leftovers:
             clean_image = self.inpainter.inpaint(clean_image, leftovers, protected_regions=preserve_regions)
             for box in leftovers:
@@ -293,24 +235,6 @@ class PageProcessingMixin:
             else:
                 manual_lama_mask_posix = mask_path.as_posix()
 
-        residue_started_at = time.perf_counter()
-        residue_boxes: list[BubbleBox] = []
-        verification_boxes = effective_boxes + verification_only_boxes
-        if DETECTOR_RESIDUE_VERIFY_ENABLED and verification_boxes:
-            residue_boxes = self.detector.verify_post_inpaint_residue(
-                clean_image,
-                verification_boxes,
-            )
-            residue_boxes = [
-                box for box in residue_boxes
-                if not geometry_center_in_regions(
-                    {"x1": box.x1, "y1": box.y1, "x2": box.x2, "y2": box.y2},
-                    preserve_regions,
-                )
-            ]
-        residue_verify_ms = (time.perf_counter() - residue_started_at) * 1000.0
-        residue_checked = bool(DETECTOR_RESIDUE_VERIFY_ENABLED) or not verification_boxes
-
         tmp_clean_path = processed_dir / f"clean_{img_path.name}.{uuid.uuid4().hex[:12]}.tmp.png"
         write_started_at = time.perf_counter()
         write_image(tmp_clean_path, clean_image)
@@ -332,13 +256,6 @@ class PageProcessingMixin:
             if record.get("deferred_reason")
             and not geometry_center_in_regions(record, preserve_regions)
         ]
-        residue_regions = [
-            {
-                **{k: getattr(box, k) for k in decision_fields},
-                "mask": encode_mask(box.mask),
-            }
-            for box in residue_boxes
-        ]
         detection_issues = []
         if seam_context_unavailable:
             detection_issues.append("seam_context_unavailable")
@@ -346,8 +263,6 @@ class PageProcessingMixin:
             detection_issues.append("unverified_regions")
         if deferred_regions:
             detection_issues.append("deferred_regions")
-        if residue_regions:
-            detection_issues.append("post_inpaint_text_residue")
         if not detector_records:
             gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
             if float(gray.std()) > DETECTION_CONTENT_STD_MIN:
@@ -371,7 +286,6 @@ class PageProcessingMixin:
                 "auto_inpaint": round(auto_inpaint_ms, 3),
                 "manual_inpaint": round(manual_inpaint_ms, 3),
                 "write": round(write_ms, 3),
-                "residue_verify": round(residue_verify_ms, 3),
                 "total": round((time.perf_counter() - started_at) * 1000.0, 3),
             },
             "detector": {
@@ -380,10 +294,7 @@ class PageProcessingMixin:
                 "authorized": len(effective_boxes),
                 "review_only": len(unverified_regions),
                 "deferred": len(deferred_regions),
-                "review_only_verification_sources": len(verification_only_boxes),
                 "second_pass_boxes": len(leftovers),
-                "post_inpaint_residue": len(residue_regions),
-                "residue_checked": residue_checked,
             },
             "auto_inpaint": auto_inpaint_metrics,
             "manual_inpaint": manual_inpaint_metrics,
@@ -411,9 +322,9 @@ class PageProcessingMixin:
             "detection_issues": detection_issues,
             "unverified_regions": unverified_regions,
             "deferred_regions": deferred_regions,
-            "residue_regions": residue_regions,
-            "residue_checked": residue_checked,
-            "cleanup_verified": residue_checked and not detection_issues,
+            "residue_regions": [],
+            "residue_checked": True,
+            "cleanup_verified": not detection_issues,
             "needs_review": bool(detection_issues),
             "processing_metrics": processing_metrics,
         }

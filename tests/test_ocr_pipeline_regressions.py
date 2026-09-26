@@ -26,7 +26,7 @@ def _box(**overrides):
         "y2": 110,
         "semantic_type": "speech_bubble",
         "source_role": "text_segmenter",
-        "source_model": "text_segmenter.onnx",
+        "source_model": "kiuyha_text_1280.onnx",
         "ocr_eligible": True,
     }
     box.update(overrides)
@@ -155,7 +155,7 @@ def test_geometry_deferred_text_segmenter_still_runs_batch_ocr():
         y2=4537,
         confidence=0.9258392453193665,
         semantic_type="free_text",
-        source_model="text_segmenter.onnx",
+        source_model="kiuyha_text_1280.onnx",
         source_role="text_segmenter",
         safe_to_inpaint=False,
         needs_review=True,

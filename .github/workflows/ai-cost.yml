@@ -37,7 +37,6 @@ jobs:
       MANGA_ORT_OPENVINO_STREAMS: "1"
       MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
       OPENBLAS_NUM_THREADS: "1"
-      PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK: "True"
     steps:
       - uses: actions/checkout@v4
 
@@ -56,18 +55,6 @@ jobs:
             beautifulsoup4==4.12.3 lxml==5.3.0 playwright==1.47.0 fastapi==0.115.0 \
             'uvicorn[standard]==0.30.6' pydantic==2.9.2 filelock==3.16.1 python-multipart==0.0.12 keyring==25.6.0
           python -m playwright install --with-deps chromium
-          if grep -q '^mode: *text' .github/ai-cost.txt; then
-            python -m pip install threadpoolctl==3.6.0 chardet==5.2.0 pyclipper==1.3.0.post5 shapely==2.0.6 \
-              paddleocr==3.7.0 paddlepaddle==3.2.2
-          fi
-
-      - name: Cache PaddleOCR model downloads
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.paddlex
-            ~/.cache/paddle
-          key: paddleocr-v6-small-en-v1
 
       - name: Restore detector and inpaint models
         id: models
@@ -96,6 +83,13 @@ jobs:
           python benchmark-bootstrap/scripts/provision_real_e2e_models.py
           cp benchmark-bootstrap/models/*.onnx models/
           cp benchmark-bootstrap/models/.e2e-provenance.json models/ || true
+
+      - name: Restore the Kiuyha ONNX export
+        uses: actions/cache/restore@v4
+        with:
+          path: models/kiuyha_text_1280.onnx
+          key: kiuyha-onnx-${{ github.sha }}
+          restore-keys: kiuyha-onnx-
 
       - name: Pick the provider
         run: |
@@ -149,7 +143,6 @@ jobs:
           SOVINFRA_LAB_1B_TOKEN: ${{ secrets.SOVINFRA_LAB_1B_TOKEN }}
           MINIROUTER_API_KEY: ${{ secrets.MINIROUTER_API_KEY }}
         run: |
-          grep -qE '^mode: *(text|reference)' .github/ai-cost.txt && exit 0
           KEY="${!PROVIDER_SECRET}" python - <<'PY'
           import base64, os, sys, cv2, numpy as np, requests
           image = np.full((96, 160, 3), 255, np.uint8)
@@ -181,39 +174,8 @@ jobs:
         run: |
           export GATEWAY_UPSTREAM_KEY="${!PROVIDER_SECRET}"
           url="${INPUT_URL:-$(head -n1 .github/ai-cost.txt | tr -d '\r')}"
-          if grep -q '^mode: *reference' .github/ai-cost.txt; then
-            ref="audit-results/$(sed -n 's/^reference-dir: *//p' .github/ai-cost.txt | head -n1 | tr -cd 'A-Za-z0-9_-')"
-            [ "$ref" = "audit-results/" ] && ref=audit-results/lettering-reference
-            echo "EVIDENCE=$ref" >> "$GITHUB_ENV"
-            rm -rf "$ref"
-            python scripts/lettering_reference.py --out "$ref" $(sed -n 's/^reference-args: *//p' .github/ai-cost.txt | head -n1)
-            mkdir -p "$ref/guides"
-            sed -n 's/^guide: *//p' .github/ai-cost.txt | while read -r guide; do
-              name="$(echo "$guide" | sed 's#https\?://##; s#[^A-Za-z0-9]#_#g' | cut -c1-80)"
-              curl -sSL -m 30 -A "Mozilla/5.0" "$guide" \
-                | python -c 'import sys; from bs4 import BeautifulSoup; s=BeautifulSoup(sys.stdin.read(), "lxml"); [t.decompose() for t in s(["script","style","nav","footer"])]; print(s.get_text("\n", strip=True)[:60000])' \
-                > "$ref/guides/$name.txt" || echo "::warning::could not fetch $guide"
-            done
-          elif grep -q '^mode: *text' .github/ai-cost.txt; then
-            echo "EVIDENCE=audit-results/ai-text" >> "$GITHUB_ENV"
-            notes="$(sed -n 's/^notes: *//p' .github/ai-cost.txt | head -n1)"
-            if ! grep -qF "\"url\": \"$url\"" audit-results/ai-text/ocr.json 2>/dev/null; then
-              rm -rf audit-results/ai-text
-              python scripts/ai_text_test.py ocr "$url" --out audit-results/ai-text
-            fi
-            if grep -q '^variant:' .github/ai-cost.txt; then
-              grep '^variant:' .github/ai-cost.txt | while read -r _ tag args; do
-                rm -f "audit-results/ai-text/translation-$tag.json" "audit-results/ai-text/translation-$tag.md"
-                python scripts/ai_text_test.py translate --out audit-results/ai-text --notes "$notes" --tag "$tag" $args
-              done
-            else
-              python scripts/ai_text_test.py translate --out audit-results/ai-text --notes "$notes"
-            fi
-          else
-            echo "EVIDENCE=audit-results/ai-cost" >> "$GITHUB_ENV"
-            rm -rf audit-results/ai-cost
-            python scripts/ai_cost_run.py "$url" --plan "${INPUT_PLAN:-pro}" --out audit-results/ai-cost
-          fi
+          rm -rf audit-results/ai-cost
+          python scripts/ai_cost_run.py "$url" --plan "${INPUT_PLAN:-pro}" --out audit-results/ai-cost
 
       - name: Logs
         if: always()
@@ -225,5 +187,5 @@ jobs:
         if: always()
         uses: ./.github/actions/save-evidence
         with:
-          paths: ${{ env.EVIDENCE || 'audit-results/ai-cost' }} audit-results/providers
+          paths: audit-results/ai-cost audit-results/providers
           message: "audit: A.I cost (run ${{ github.run_id }})"

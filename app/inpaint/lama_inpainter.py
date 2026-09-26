@@ -6,7 +6,7 @@ import time
 import numpy as np
 import cv2
 from app.config import LAMA_MODEL, LAMA_DYNAMIC_MODEL
-from app.detector.bubble_detector import BubbleBox
+from app.detector.boxes import BubbleBox
 from app.inpaint.clustering import cluster_boxes, compute_crop_region, compute_manual_crop_region, split_oversized_cluster_area
 from app.detector.mask_builder import build_mask
 from app.logging_config import logger

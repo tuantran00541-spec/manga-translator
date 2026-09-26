@@ -13,7 +13,6 @@ from app.config import KIUYHA_TEXT_MODEL
 from app.detector.kiuyha_detector import KiuyhaTextDetector
 from app.image_io import read_image
 from app.manifest_utils import load_manifest_raw
-from app.one_shot_cleanup import OneShotTextMaskDetector
 from app.processing_pipeline_factory import build_processing_pipeline
 
 
@@ -53,15 +52,12 @@ def main() -> int:
     started = time.perf_counter()
     pipeline.process_pages(args.chapter_id, list(range(len(pages))))
     process_s = time.perf_counter() - started
-    detector = "kiuyha" if getattr(pipeline.detector, "kiuyha", None) is not None else "segmenter"
-    print(f"{len(pages)} slices processed in {process_s:.1f} s with {detector}", flush=True)
+    print(f"{len(pages)} slices processed in {process_s:.1f} s", flush=True)
 
-    segmenter = OneShotTextMaskDetector()
-    segmenter.collage = True
     kiuyha = KiuyhaTextDetector(KIUYHA_TEXT_MODEL)
 
     def found(image: np.ndarray) -> np.ndarray:
-        return text_mask(image.shape[:2], segmenter.detect(image)[0] + kiuyha.text_boxes(image))
+        return text_mask(image.shape[:2], kiuyha.text_boxes(image))
 
     blocks = left = 0
     lefts = []
@@ -88,7 +84,7 @@ def main() -> int:
                 pair(before, after, box, args.out / f"left-{len(lefts):02d}.jpg")
 
     report = {
-        "url": args.url, "detector": detector, "slices": len(pages),
+        "url": args.url, "slices": len(pages),
         "download_s": round(download_s, 1), "process_s": round(process_s, 1),
         "per_slice_s": round(process_s / max(1, len(pages)), 2),
         "blocks": blocks, "blocks_left": left, "left": lefts,

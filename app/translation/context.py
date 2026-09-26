@@ -41,19 +41,6 @@ INPUT
 One vertical slice per request, in reading order. IMAGE 1 is the ORIGINAL; read the text from it. IMAGE 2 is the same slice after the text was erased, for scene context. Each object has an id, an OCR hint that is often wrong, and bbox_xyxy in image pixels. CHAPTER MEMORY holds the story notes, the character sheet, the forms of address already fixed and the last lines; treat it as settled unless the slice clearly contradicts it.
 """.strip()
 
-_INPUT_TEXT = """
-INPUT
-The OCR text of a whole chapter, in reading order: every line has an id and the slice it sits on. OCR can misread letters or split one bubble into several lines; fix obvious misreads from context. You translate the lines listed under TRANSLATE NOW; the full chapter and the translations already done are there for context, so the story, the speakers and the forms of address stay consistent.
-""".strip()
-
-_OUTPUT_TEXT = """
-Answer with JSON only:
-{"translations":[{"id":"<id>","translated_text":"<text, lines split with \\n>","role":"<role>","speaker":"<name or narration>","review":false}],
- "characters":[{"name":"<name>","note":"<role, age, relationship>"}],
- "address":[{"from":"<A>","to":"<B>","self":"<how A refers to himself>","other":"<how A addresses B>"}]}
-Return every id under TRANSLATE NOW exactly once. List in "characters" and "address" only what is new or changed.
-""".strip()
-
 _VIETNAMESE = """
 VIETNAMESE
 - Choose pronouns from the relationship, never I→tôi and you→bạn by reflex: tôi/anh/chị/em, ta/ngươi, tao/mày, mình/cậu, thần/bệ hạ, thuộc hạ/ngài. Once a pair is fixed, keep it until the story changes the relationship, and report the change in "address".
@@ -87,14 +74,6 @@ def _with_input(target_name: str, block: str) -> str:
     base = _BASE.format(target=target_name)
     head, rest = base.split("\n\nTRANSLATION\n", 1)
     return f"{head}\n\n{block}\n\nTRANSLATION\n{rest}"
-
-
-def text_system_prompt(target_name: str, target_lang: str) -> str:
-    parts = [_with_input(target_name, _INPUT_TEXT)]
-    if str(target_lang or "").lower() in {"vi", "vie", "vietnamese"}:
-        parts.append(_VIETNAMESE)
-    parts.append(_OUTPUT_TEXT)
-    return "\n\n".join(parts)
 
 
 def system_prompt(target_name: str, target_lang: str, font_hint: str, *, repair: bool = True) -> str:

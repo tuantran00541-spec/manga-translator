@@ -19,7 +19,7 @@ def _root_box(**overrides):
         "x2": 900,
         "y2": 4537,
         "confidence": 0.9258392453193665,
-        "source_model": "text_segmenter.onnx",
+        "source_model": "kiuyha_text_1280.onnx",
         "source_role": "text_segmenter",
         "class_name": "text_comic",
         "semantic_type": "free_text",
