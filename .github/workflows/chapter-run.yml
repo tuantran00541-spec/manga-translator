@@ -20,15 +20,11 @@ concurrency:
 
 jobs:
   run:
-    strategy:
-      fail-fast: false
-      matrix:
-        detector: [auto, segmenter]
     runs-on: ubuntu-22.04
     timeout-minutes: 60
     env:
       PYTHONUNBUFFERED: "1"
-      MANGA_TEXT_DETECTOR: ${{ matrix.detector }}
+      MANGA_TEXT_DETECTOR: auto
       PYTHONPATH: "."
       MANGA_PROCESSING_PIPELINE: fast
       MANGA_USE_DYNAMIC_LAMA: "1"
@@ -76,11 +72,11 @@ jobs:
           test -f models/text_segmenter.onnx && test -f models/lama-manga-dynamic.onnx && test -f models/kiuyha_text_1280.onnx
 
       - name: Process the whole chapter
-        run: python scripts/chapter_run.py "$CHAPTER_URL" --out audit-results/chapter-run/${{ matrix.detector }}
+        run: python scripts/chapter_run.py "$CHAPTER_URL" --out audit-results/chapter-run
 
       - name: Save evidence to audit-evidence
         if: always()
         uses: ./.github/actions/save-evidence
         with:
-          paths: audit-results/chapter-run/${{ matrix.detector }}
-          message: "audit: chapter run, ${{ matrix.detector }} (run ${{ github.run_id }})"
+          paths: audit-results/chapter-run
+          message: "audit: chapter run (run ${{ github.run_id }})"
