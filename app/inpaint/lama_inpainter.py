@@ -744,9 +744,7 @@ class Inpainter:
         canvas = cv2.copyMakeBorder(
             crop_resized, pad_y, pad_bottom, pad_x, pad_right, cv2.BORDER_REPLICATE
         )
-        # The padding repeats the edge pixels, so it must repeat the edge mask
-        # too: text cut by the crop edge (a slice boundary, a tile edge) would
-        # otherwise be fed to LaMa as known context and painted back.
+        # Pad the mask like the image so text cut by the crop edge stays masked.
         mask_canvas = cv2.copyMakeBorder(
             mask_resized, pad_y, pad_bottom, pad_x, pad_right, cv2.BORDER_REPLICATE
         )

@@ -89,11 +89,7 @@ class OneShotTextMaskDetector:
 
     @staticmethod
     def collage_plan(height: int, width: int) -> tuple[float, list[tuple[int, int]]] | None:
-        """Scale and the two (y1, y2) halves to lay side by side, or None.
-
-        The halves overlap so text on the cut is whole in one of them; any
-        vertical room the width leaves free goes into a bigger overlap.
-        """
+        """Scale and the two overlapping (y1, y2) halves to lay side by side, or None."""
         size = DETECTOR_INPUT_SIZE
         if height <= 0 or width <= 0:
             return None
@@ -145,13 +141,7 @@ class OneShotTextMaskDetector:
 
     @staticmethod
     def merge_tiles(found: list[tuple[BubbleBox, int, bool]]) -> list[BubbleBox]:
-        """One box per text block from overlapping halves.
-
-        ``found`` holds (box, half index, cut) where cut means the box touches
-        the edge between halves. A box seen by both halves keeps the uncut, then
-        the larger version; boxes from the same half never replace each other,
-        and a block both halves cut keeps its pieces so its mask stays whole.
-        """
+        """One box per text block across the two halves, keeping uncut and larger boxes."""
         def area(b: BubbleBox) -> int:
             return max(0, b.x2 - b.x1) * max(0, b.y2 - b.y1)
 

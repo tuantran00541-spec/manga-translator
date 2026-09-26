@@ -1,11 +1,4 @@
-"""Collect a few recently published translated chapters as lettering references.
-
-The chapters come from the MangaDex API: different series and different
-translation groups, so their typesetting (fonts per text type, size, bubble
-fill, system windows) can be compared with ours. Pages are scaled to phone
-width and stacked three columns per image, the same view used to read our own
-rendered chapters.
-"""
+"""Collect recent translated chapters from MangaDex as lettering references."""
 from __future__ import annotations
 
 import argparse

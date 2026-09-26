@@ -132,11 +132,7 @@ BUBBLE_IOU_THRESHOLD = 0.30
 DETECTOR_FINAL_NMS_IOU = 0.35
 DETECTOR_STABLE_ID_IOU_MIN = 0.50
 DETECTOR_INPUT_SIZE = 1024
-# Tall slices: put the top and bottom halves side by side in the one square model
-# input instead of shrinking the whole slice into its middle column, so text
-# reaches the model about 1.5-2x bigger for the same single forward pass. On 16
-# real slices: same detector time, over-erase 27.5% -> 7.9%, inpaint 19% faster,
-# whole captions the single pass missed are caught (audit-results/clean-quality).
+# Detect a tall slice as two halves side by side in one pass (text ~1.5x bigger).
 DETECTOR_COLLAGE = _env_bool("MANGA_DETECTOR_COLLAGE", True)
 DETECTOR_COLLAGE_MIN_OVERLAP = 256
 DETECTOR_COLLAGE_GAP = 16

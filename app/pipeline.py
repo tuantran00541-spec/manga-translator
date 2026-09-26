@@ -803,8 +803,7 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
                         page["boxes"] = []
                         page["process_required"] = False
                     elif changed:
-                        # Only a page coming back from "skipped" needs processing; an
-                        # already active page keeps its clean image and repaints.
+                        # Only a page returning from "skipped" needs processing.
                         page["process_required"] = True
                     if changed:
                         bump_page_revision(page, "clean_revision")

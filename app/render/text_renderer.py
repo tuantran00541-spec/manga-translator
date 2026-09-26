@@ -219,10 +219,7 @@ def render_text_in_box(
     else:
         font_path = Path(font_path)
     if not font_draws_text(font_path, text):
-        # A missing glyph prints the font's placeholder (a box, or in some UTM
-        # fonts a whole "use the UNICODE table" notice). Swap in plain punctuation
-        # the font has; if letters are still missing, use the default font,
-        # which covers Vietnamese.
+        # Replace glyphs the font lacks; fall back to the default font for missing letters.
         plain = _plain_punctuation(font_path, text)
         if font_draws_text(font_path, plain):
             text = plain

@@ -6,8 +6,7 @@ from pathlib import Path
 
 from fontTools.ttLib import TTFont
 
-# Every precomposed Vietnamese letter. A font is marked "vietnamese" only when it
-# maps all of them; otherwise the renderer would print missing-glyph boxes.
+# A font counts as Vietnamese only if it has all of these letters.
 VIETNAMESE_LETTERS = (
     "ăâđêôơưàáảãạằắẳẵặầấẩẫậèéẻẽẹềếểễệìíỉĩịòóỏõọồốổỗộờớởỡợùúủũụừứửữựỳýỷỹỵ"
 )

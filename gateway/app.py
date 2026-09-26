@@ -41,10 +41,7 @@ class Upstream:
         return (prompt * self.input_usd_per_m + completion * self.output_usd_per_m) / 1_000_000
 
     def send(self, payload: dict, trace: dict | None = None) -> tuple[int, dict]:
-        """POST to the upstream, retrying failures that say nothing about the request itself.
-
-        ``trace``, when given, receives the number of attempts and each attempt's status.
-        """
+        """POST upstream, retrying transient failures; ``trace`` records attempts."""
         for attempt in range(self.retries + 1):
             last = attempt == self.retries
             if trace is not None:
@@ -300,8 +297,7 @@ def create_app(store: Store, upstream: Upstream, admin_key: str, *, mailer: Mail
             requested = int(payload.get("max_tokens") or MAX_OUTPUT_TOKENS)
         except (TypeError, ValueError):
             requested = MAX_OUTPUT_TOKENS
-        # Clients size max_tokens for the answer alone; a reasoning model spends
-        # part of the budget thinking first, so the gateway adds that on top.
+        # Add the reasoning budget on top of the client's answer budget.
         forwarded["max_tokens"] = max(1, min(requested, MAX_OUTPUT_TOKENS)) + upstream.reasoning_tokens
         trace: dict = {}
         started = time.perf_counter()

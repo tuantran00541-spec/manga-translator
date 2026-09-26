@@ -1,11 +1,4 @@
-"""Export Kiuyha/Manga-Bubble-YOLO to ONNX and check it against the .pt model.
-
-Writes models/kiuyha_text.onnx (dynamic input, run at the slice's own size)
-and models/kiuyha_text_1280.onnx (static 1280x1280), prints their inputs and
-outputs, then runs both the .pt model (Ultralytics) and the ONNX files
-(app.detector.kiuyha_detector) on real slices and reports how many boxes
-match (IoU >= 0.9) and how long each took on 2 threads.
-"""
+"""Export Kiuyha/Manga-Bubble-YOLO to ONNX and check its boxes against the .pt model."""
 from __future__ import annotations
 
 import argparse

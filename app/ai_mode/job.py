@@ -227,8 +227,7 @@ class AIModeRunner:
             self._progress(finished, len(active))
             return True
 
-        # The first batch runs alone: a provider that rejects several images per
-        # request is scanned slice by slice from then on.
+        # Probe with one batch; if it fails, scan slice by slice.
         self._progress(0, len(active))
         if batches and not await scan_batch(batches[0]):
             await asyncio.gather(*(scan_one(index) for index in active))
@@ -376,8 +375,7 @@ class AIModeRunner:
         indices = self._active_pages()
         memory = self._memory = ChapterMemory(self.settings.story_notes)
         slice_total = self._slice_total = len(self._manifest().get("pages", []))
-        # The gate admits slices in reading order, so slice n always sees the
-        # memory of every slice up to n - TRANSLATE_CONCURRENCY.
+        # Admit slices in reading order so each sees the memory of earlier ones.
         gate = asyncio.Semaphore(TRANSLATE_CONCURRENCY)
         finished = 0
         out_of_budget = False
@@ -525,8 +523,7 @@ class AIModeRunner:
                     _append(self.report["qc_errors"], f"Lát {page_index + 1}: thêm vùng chữ thất bại: {_detail(exc)[:150]}")
             self.report["missed_added"] += added
             if added:
-                # New boxes become text objects only when something asks for them; make them now
-                # so the retry below sees them.
+                # Create text objects for the new boxes before retrying.
                 await asyncio.to_thread(self._ensure_objects, page_index)
 
             # New boxes and failed slices: every untranslated object; otherwise only the ones skipped.
@@ -601,8 +598,7 @@ class AIModeRunner:
         from app.routers.render_commit import render_page
 
         chapter_id = self.job.chapter_id
-        # Export re-syncs text objects before checking renders; do it first so a
-        # sync cannot turn a fresh render stale.
+        # Sync text objects first so export cannot make the render stale.
         await asyncio.to_thread(self._ensure_objects, page_index)
         for attempt in range(RENDER_RESTORE_ATTEMPTS + 1):
             page = self._manifest()["pages"][page_index]

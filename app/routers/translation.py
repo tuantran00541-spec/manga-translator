@@ -308,8 +308,7 @@ async def translate_chapter(req: TranslateChapterRequest) -> dict:
 
 class TranslateVisionPageRequest(TranslateChapterRequest):
     page_index: int = Field(ge=0)
-    # Translate at most this many untranslated objects; a retry uses a small
-    # batch so a reply that ran out of tokens fits the second time.
+    # Cap per request; retries use a small batch so the reply fits.
     max_objects: int | None = Field(default=None, ge=1, le=100)
     # Only these objects (still untranslated ones); None means every untranslated object.
     object_ids: list[str] | None = Field(default=None, max_length=100)

@@ -213,8 +213,7 @@ class VisionPageTranslator:
         if original.shape[:2] != cleaned.shape[:2]:
             raise ValueError("Original and cleaned slices have different dimensions")
         h, w = original.shape[:2]
-        # Models copy short ids far more reliably than long object ids, so the
-        # request numbers the objects and the answer is mapped back.
+        # Send short numeric ids; models copy them more reliably.
         real = {str(n): str(item["id"]) for n, item in enumerate(items, start=1)}
         objects = [{"id": alias, "source_text": item["text"], "bbox_xyxy": item["region"]}
                    for alias, item in zip(real, items)]

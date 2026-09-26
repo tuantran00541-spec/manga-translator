@@ -255,13 +255,7 @@ class PipelineEditingMixin:
             return manifest
 
     def preserve_and_reinpaint(self, chapter_id: str, page_index: int, regions: list[dict]) -> dict:
-        """Add preserve regions and re-inpaint with the page's current boxes.
-
-        Unlike saving preserve regions from the editor, this does not send the
-        page back through detection, so its boxes, text objects and
-        translations stay; only the pixels inside the new regions return to
-        the original, and the objects there drop out of translation and render.
-        """
+        """Add preserve regions and re-inpaint without re-detecting the page."""
         processed_dir = PROCESSED_DIR / chapter_id
         added = [
             {key: int(region[key]) for key in ("x1", "y1", "x2", "y2")}
@@ -303,8 +297,7 @@ class PipelineEditingMixin:
                     target_page = manifest["pages"][page_index]
                     target_page["preserve_regions"] = preserve_regions
                     target_page["clean"] = clean_path_posix
-                    # Mark the objects the new regions cover now; export re-syncs them
-                    # and would otherwise invalidate the next render.
+                    # Sync covered objects now so export does not invalidate the render.
                     ensure_page_text_objects(target_page)
                     if bump_page_revision(target_page, "clean_revision") != target_clean_revision:
                         raise RuntimeError("Page clean revision changed while preserving regions")

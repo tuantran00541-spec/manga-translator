@@ -1,20 +1,4 @@
-"""Clean the same real slices with each text detector and compare.
-
-Downloads and slices a chapter the way the app does, then cleans every slice
-with LaMa after each detector:
-
-  segmenter   text_segmenter.onnx, two halves side by side in one pass
-              (the app's detector when the Kiuyha model is absent)
-  kiuyha      kiuyha_text_1280.onnx boxes with Otsu letter masks (the app's
-              detector when it is present)
-
-and reports, per detector: detect_s / inpaint_s, blocks_left (text blocks found
-on the original by either detector that either detector still finds after
-cleaning, the miss rate that matters) and over_erase (mask farther than 10 px
-from any text either detector found). Crops of the largest fills and of every
-block left behind are saved for checking by eye: the counts cannot see a
-letter outline left as a ghost.
-"""
+"""Clean real slices with each text detector and compare time, text left and crops."""
 from __future__ import annotations
 
 import argparse

@@ -1,24 +1,4 @@
-"""Kiuyha/Manga-Bubble-YOLO (YOLO26, boxes only) exported to ONNX.
-
-Two output layouts are read, both in input pixels:
-
-- end-to-end (YOLO26's one-to-one head, or an export with NMS): ``[1, N, 6]``
-  rows of ``x1, y1, x2, y2, score, class``, already final;
-- raw (the default Ultralytics ONNX export of this checkpoint): ``[1, 4 + C, A]``
-  columns of ``cx, cy, w, h`` and C class scores per anchor, which still need
-  NMS.
-
-The model accepts either a fixed square input (a static export) or any size
-that is a multiple of 32 (a dynamic export); a static model gets the slice
-letterboxed into its square.
-
-``text_boxes`` is what the pipeline uses: a tall slice's two halves side by
-side in the square (one pass, text ~0.79x on a 800 px wide slice at 1280),
-each box turned into a mask of the letters and their outline by Otsu against
-the box's border colour. On 16 real slices this left the fewest text blocks
-behind, by eye as well as by count, at a quarter of the segmenter's detector
-time (docs/detection.md).
-"""
+"""Kiuyha/Manga-Bubble-YOLO text boxes (ONNX) with Otsu letter masks."""
 from __future__ import annotations
 
 import math
@@ -40,9 +20,7 @@ GROW_KERNEL = 13  # past the letter outline (a white stroke round brown text)
 
 
 def stroke_mask(crop: np.ndarray) -> np.ndarray:
-    """Text pixels of a box crop: far from the border colour (Otsu), minus what
-    touches the border (bubble outline, art), closed into word blobs and grown
-    past the letter outline."""
+    """Letters and their outline inside a box crop, found by Otsu against the border colour."""
     lab = cv2.cvtColor(crop, cv2.COLOR_BGR2LAB).astype(np.float32)
     if min(lab.shape[:2]) < 8:
         return np.zeros(crop.shape[:2], bool)
@@ -62,8 +40,7 @@ def stroke_mask(crop: np.ndarray) -> np.ndarray:
 
 
 def _merge(boxes: list[tuple[int, int, int, int, float]]) -> list[tuple[int, int, int, int, float]]:
-    """One box per text block seen by both halves: a box mostly inside a kept
-    one is folded into it."""
+    """Fold boxes that are mostly inside a bigger one."""
     kept: list[list[float]] = []
     for box in sorted(boxes, key=lambda b: (b[2] - b[0]) * (b[3] - b[1]), reverse=True):
         area = (box[2] - box[0]) * (box[3] - box[1])
@@ -135,8 +112,7 @@ class KiuyhaTextDetector:
         return boxes
 
     def halves_plan(self, height: int, width: int) -> tuple[float, list[tuple[int, int]]] | None:
-        """Scale and the two overlapping halves to lay side by side in a static
-        square input, or None when the slice fits as it is."""
+        """Scale and overlapping halves for a static square input, or None if not worth it."""
         if self.fixed is None or self.fixed[0] != self.fixed[1]:
             return None
         size = self.fixed[0]
@@ -151,8 +127,7 @@ class KiuyhaTextDetector:
         return scale, [(0, half), (height - half, height)]
 
     def detect_slice(self, image: np.ndarray) -> list[tuple[int, int, int, int, float]]:
-        """Boxes for a whole slice, padded by BOX_PAD: two halves side by side in
-        one pass when that shows the text bigger, else the slice as it is."""
+        """Padded text boxes for a slice, detected as two halves when that helps."""
         h, w = image.shape[:2]
         plan = self.halves_plan(h, w)
         if plan is None:

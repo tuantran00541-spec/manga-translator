@@ -207,8 +207,7 @@ window.cancelPendingPersist = function cancelPendingPersist() {
   refreshSaveStatus();
 };
 
-// Closing or reloading the tab inside the autosave delay would drop the last
-// edits; send whatever is still pending with a request that outlives the page.
+// Flush pending edits when the tab closes.
 window.addEventListener("pagehide", () => {
   const chapterId = currentChapterId;
   if (!chapterId) return;
