@@ -3,4 +3,4 @@ provider: minirouter
 model: meta/muse-spark-1.2-contributor
 price: 0.105 0.21
 reasoning: 8000
-# muse 1.2 tuned: parallel scan, QC x4, larger reasoning budget, repair stage
+# muse 1.2: repair batching, render fallback, LaMa padding fix, transport trace
