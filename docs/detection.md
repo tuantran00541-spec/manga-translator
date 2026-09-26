@@ -17,7 +17,11 @@ than when the slice is shrunk whole into the middle of the square (0.43× for
    merged across the overlap.
 2. Each box becomes a letter mask: pixels far from the box's border colour
    (Otsu), minus anything touching the border (bubble outline, art), closed
-   into word blobs and grown 6 px past the letter outline.
+   into word blobs and grown 6 px past the letter outline. Letters cut by the
+   slice edge may touch the border on that side.
+3. After inpainting, Kiuyha looks again; text it still sees inside a
+   first-pass box (gradient or two-colour lettering the colour split missed)
+   is erased as the whole box.
 
 ## Text segmenter (fallback)
 

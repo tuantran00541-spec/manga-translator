@@ -19,8 +19,11 @@ CLOSE_KERNEL = 15  # letters -> word blobs
 GROW_KERNEL = 13  # past the letter outline (a white stroke round brown text)
 
 
-def stroke_mask(crop: np.ndarray) -> np.ndarray:
-    """Letters and their outline inside a box crop, found by Otsu against the border colour."""
+def stroke_mask(crop: np.ndarray, open_sides: tuple[bool, bool, bool, bool] = (False,) * 4) -> np.ndarray:
+    """Letters and their outline inside a box crop, found by Otsu against the border colour.
+
+    ``open_sides`` (top, bottom, left, right) are image edges, where letters cut by the slice may touch.
+    """
     lab = cv2.cvtColor(crop, cv2.COLOR_BGR2LAB).astype(np.float32)
     if min(lab.shape[:2]) < 8:
         return np.zeros(crop.shape[:2], bool)
@@ -33,10 +36,21 @@ def stroke_mask(crop: np.ndarray) -> np.ndarray:
     keep = np.zeros(count, bool)
     for label in range(1, count):
         x, y, w, h, _area = stats[label]
-        keep[label] = x > 0 and y > 0 and x + w < fg.shape[1] and y + h < fg.shape[0]
+        top, bottom, left, right = open_sides
+        keep[label] = ((top or y > 0) and (bottom or y + h < fg.shape[0])
+                       and (left or x > 0) and (right or x + w < fg.shape[1]))
     part = keep[labels].astype(np.uint8)
     part = cv2.morphologyEx(part, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (CLOSE_KERNEL,) * 2))
     return cv2.dilate(part, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (GROW_KERNEL,) * 2)) > 0
+
+
+def _text_box(x1, y1, x2, y2, score, mask, source_model) -> BubbleBox:
+    return BubbleBox(
+        x1, y1, x2, y2, score, mask,
+        source_model=source_model, class_name="text", semantic_type="free_text",
+        mask_source="text_segmenter", safe_to_inpaint=True, ocr_eligible=True,
+        source_role="text_segmenter",
+    )
 
 
 def _merge(boxes: list[tuple[int, int, int, int, float]]) -> list[tuple[int, int, int, int, float]]:
@@ -156,22 +170,19 @@ class KiuyhaTextDetector:
 
     def text_boxes(self, image: np.ndarray, source_model: str = "kiuyha_text") -> list[BubbleBox]:
         """Detected text blocks with letter masks, ready for inpainting and OCR."""
+        h, w = image.shape[:2]
         boxes = []
         for x1, y1, x2, y2, score in self.detect_slice(image):
-            mask = stroke_mask(image[y1:y2, x1:x2])
-            if not mask.any():
-                continue
-            boxes.append(BubbleBox(
-                x1, y1, x2, y2, score, mask.astype(np.uint8) * 255,
-                source_model=source_model, class_name="text", semantic_type="free_text",
-                mask_source="text_segmenter", safe_to_inpaint=True, ocr_eligible=True,
-                source_role="text_segmenter",
-            ))
+            mask = stroke_mask(image[y1:y2, x1:x2], (y1 == 0, y2 == h, x1 == 0, x2 == w))
+            if mask.any():
+                boxes.append(_text_box(x1, y1, x2, y2, score, mask.astype(np.uint8) * 255, source_model))
         return boxes
 
     def leftover_boxes(self, clean: np.ndarray, targets, source_model: str = "kiuyha_text") -> list[BubbleBox]:
-        """Text still visible after inpainting, only where a first-pass box already was."""
-        def inside(box) -> bool:
-            cx, cy = (box.x1 + box.x2) / 2, (box.y1 + box.y2) / 2
-            return any(t.x1 <= cx <= t.x2 and t.y1 <= cy <= t.y2 for t in targets)
-        return [box for box in self.text_boxes(clean, source_model) if inside(box)]
+        """Text still seen inside a first-pass box after inpainting; the colour split failed there, so the whole box goes."""
+        boxes = []
+        for x1, y1, x2, y2, score in self.detect_slice(clean):
+            cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
+            if any(t.x1 <= cx <= t.x2 and t.y1 <= cy <= t.y2 for t in targets):
+                boxes.append(_text_box(x1, y1, x2, y2, score, np.full((y2 - y1, x2 - x1), 255, np.uint8), source_model))
+        return boxes

@@ -135,3 +135,16 @@ def test_leftover_mask_is_folded_into_the_saved_first_pass_box():
     assert (record["x1"], record["y1"], record["x2"], record["y2"]) == (10, 10, 65, 40)
     assert record["_mask_array"].shape == (30, 55)
     assert record["_mask_array"][25, 50] == 255 and record["_mask_array"][25, 5] == 0
+
+
+def test_letters_cut_by_the_slice_edge_are_masked_and_leftovers_take_the_whole_box():
+    from app.detector.kiuyha_detector import stroke_mask
+
+    crop = np.full((60, 200, 3), 230, np.uint8)
+    crop[0:20, 40:160] = 30  # the bottom of a line cut by the slice's top edge
+    assert not stroke_mask(crop).any(), "inside the image, border-touching blobs are art"
+    assert stroke_mask(crop, (True, False, False, False))[10, 100]
+    detector = KiuyhaTextDetector("unused", session=_BlobSession())
+    image = _text_slice()
+    (left,) = detector.leftover_boxes(image, [b for b in detector.text_boxes(image) if b.y1 > 2000])
+    assert (left.mask == 255).all()
