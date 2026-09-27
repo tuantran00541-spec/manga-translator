@@ -381,7 +381,8 @@ def create_app(store: Store, upstream: Upstream, admin_key: str, *, mailer: Mail
             status, body = 0, {}
         usage = body.get("usage") if isinstance(body.get("usage"), dict) else {}
         # Bill the reported input tokens, or about four characters per token when none are reported.
-        tokens = int(usage.get("prompt_tokens") or usage.get("input_tokens") or 0) or len(json.dumps(forwarded)) // 4
+        tokens = int(usage.get("prompt_tokens") or usage.get("input_tokens") or usage.get("inputTokens") or 0
+                     ) or len(json.dumps(forwarded)) // 4
         if trace_path:
             _trace_line(trace_path, {"t": round(time.time(), 3), "ms": round((time.perf_counter() - started) * 1000),
                                      "status": status, "judge": True, "prompt_tokens": tokens})

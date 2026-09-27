@@ -297,7 +297,8 @@ def test_judge_requests_go_to_evaluate_and_bill_input_only(tmp_path, monkeypatch
 
     def send(self, payload, trace=None, path="chat/completions"):
         sent.append((path, payload))
-        return 200, {"answers": {"wrong_meaning": {"noul": 0.1}}, "usage": {"input_tokens": 1_000_000}}
+        # minirouter reports usage in camelCase.
+        return 200, {"answers": {"wrong_meaning": {"noul": 0.1}}, "usage": {"inputTokens": 1_000_000, "outputTokens": 90}}
 
     monkeypatch.setattr(Upstream, "send", send)
     store = Store(tmp_path / "gw.sqlite")
