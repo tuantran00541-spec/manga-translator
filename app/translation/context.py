@@ -35,7 +35,7 @@ LETTERING
 - Font: a chapter uses at most 3 fonts. dialogue.mac-dinh-3 is the base font for nearly all dialogue, thoughts and narration. Pick another font from FONTS only when IMAGE 1 letters that text in a clearly different style (a bold caption on the art, a screen, a skill name, a sound effect) and it matches the FONT SAMPLES image; reuse a font from fonts_in_use in CHAPTER MEMORY before adding one. When unsure, use the base font.
 - Size: the renderer picks the largest size that still breathes inside the bubble. Keep the line short enough for that: about as long as the source line, shorter if the bubble is small. If it cannot fit, rewrite it shorter first; if it still cannot, set "review": true.
 - Break lines yourself with "\\n" at phrase boundaries; an oval bubble reads short, long, short. Never leave one orphan word, a lone punctuation mark, a split name or number and unit, or a hyphen inside a Vietnamese word.
-- Free text keeps its scale and weight: a large source line stays a strong, short line.
+- Free text keeps its scale and weight: a large source line stays a strong, short line. When free text or a caption would be too small to read at the source size (tiny notes, several captions in one box), set "enlarge": true and the renderer letters it bigger, growing its area a little.
 - Always write translated_text in normal sentence case, never in all capitals, even when the source is lettered in capitals.
 """.strip()
 
@@ -53,7 +53,7 @@ VIETNAMESE
 
 _OUTPUT = """
 Answer with JSON only:
-{{"translations":[{{"id":"<id>","translated_text":"<text, lines split with \\n>","role":"<role>","review":false}}],
+{{"translations":[{{"id":"<id>","translated_text":"<text, lines split with \\n>","role":"<role>","review":false,"enlarge":false}}],
  "font_choices":{{"<id>":"<font_id from FONTS>"}},
  "speakers":{{"<id>":"<character name, or narration>"}},
  "characters":[{{"name":"<name>","note":"<role, age, relationship>"}}],

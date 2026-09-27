@@ -321,6 +321,7 @@ def render_text_objects(
                 horizontal_align=h_align,
                 vertical_align=v_align,
                 source_cap_px=obj.get("source_cap_px"),
+                enlarge=bool(obj.get("enlarge")),
             )
             rendered_count += 1
         except Exception as e:

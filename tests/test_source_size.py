@@ -44,3 +44,13 @@ def test_large_source_lettering_is_matched_past_the_default_maximum():
         return rows.max() - rows.min()
 
     assert ink_height(90) > 1.5 * ink_height(None)
+
+
+def test_enlarge_letters_small_source_text_at_a_readable_size():
+    def ink_height(enlarge):
+        image = render_text_in_box(Image.new("RGB", (900, 600), "white"), "Chậm chạp~", (300, 250, 520, 330),
+                                   fill="#000000", font_name="dialogue.mac-dinh-3", source_cap_px=8, enlarge=enlarge)
+        rows = np.where(np.asarray(image.convert("L")) < 128)[0]
+        return rows.max() - rows.min()
+
+    assert ink_height(True) > 1.5 * ink_height(False)

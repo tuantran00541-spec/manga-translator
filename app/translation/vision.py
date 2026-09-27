@@ -57,6 +57,7 @@ class VisionTranslationResult:
     review_ids: frozenset[str] = frozenset()
     # Objects the model did not answer for at all (as opposed to answering "").
     missing_ids: frozenset[str] = frozenset()
+    enlarge_ids: frozenset[str] = frozenset()
 
 
 def parse_vision_translation(content: str, expected_ids: set[str], *, allow_missing: bool = False) -> dict[str, str]:
@@ -234,7 +235,7 @@ class VisionPageTranslator:
                 str(item["id"]): {"font_id": memory.admit_font(fonts[str(item["id"])]["font_id"]), "font_mode": "ai"}
                 for item in items if str(item["id"]) in fonts
             })
-        roles, review, answered = {}, set(), set()
+        roles, review, answered, enlarge = {}, set(), set(), set()
         for entry in data.get("translations") or []:
             if not isinstance(entry, dict) or str(entry.get("id")) not in ids:
                 continue
@@ -244,8 +245,11 @@ class VisionPageTranslator:
                 roles[str(entry["id"])] = role
             if entry.get("review") is True:
                 review.add(str(entry["id"]))
+            if entry.get("enlarge") is True:
+                enlarge.add(str(entry["id"]))
         return replace(
             result, roles=roles, review_ids=frozenset(review), missing_ids=frozenset(ids - answered),
+            enlarge_ids=frozenset(enlarge),
         )
 
     def _openai(self, system, prompt, original, cleaned, *, api_key, ids, max_tokens):

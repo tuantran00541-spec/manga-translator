@@ -508,6 +508,10 @@ async def translate_page_in_context(
             if candidate["id"] in getattr(translated, "review_ids", ()):
                 obj["needs_review"] = True
                 review += 1
+            if candidate["id"] in getattr(translated, "enlarge_ids", ()):
+                obj["enlarge"] = True
+            else:
+                obj.pop("enlarge", None)
             committed += 1
             changed = True
         if changed:

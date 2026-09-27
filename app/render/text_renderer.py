@@ -189,6 +189,7 @@ def render_text_in_box(
     horizontal_align: str = "center",
     vertical_align: str = "middle",
     source_cap_px: int | None = None,
+    enlarge: bool = False,
 ) -> Image.Image:
     x1, y1, x2, y2 = (int(box[0]), int(box[1]), int(box[2]), int(box[3]))
     if x2 < x1:
@@ -263,7 +264,16 @@ def render_text_in_box(
     else:
         # Auto size never letters bigger than the source did.
         maximum_size = MAX_FONT_SIZE
-        if source_cap_px:
+        if enlarge:
+            # Text flagged too small to read grows its area and may exceed the source size.
+            grow_x, grow_y = int(round(raw_w * ENLARGE_GROW_RATIO)), int(round(raw_h * ENLARGE_GROW_RATIO))
+            image_w, image_h = image.size
+            x1, y1 = max(0, x1 - grow_x), max(0, y1 - grow_y)
+            x2, y2 = min(image_w, x2 + grow_x), min(image_h, y2 + grow_y)
+            raw_w, raw_h = x2 - x1, y2 - y1
+            pad = max(2, min(padding, int(min(raw_w, raw_h) * RENDER_PADDING_RATIO_MAX)))
+            box_w, box_h = raw_w - pad * 2, raw_h - pad * 2
+        elif source_cap_px:
             from app.render.source_size import SIZE_SLACK, matching_font_px
             maximum_size = max(RENDER_MIN_READABLE_FONT_SIZE,
                                int(matching_font_px(font_path_str, int(source_cap_px)) * SIZE_SLACK))
@@ -274,9 +284,14 @@ def render_text_in_box(
             box_h,
             font_path_str,
             stroke_w=stroke_w,
-            minimum_size=RENDER_MIN_READABLE_FONT_SIZE,
+            minimum_size=ENLARGED_MIN_FONT_SIZE if enlarge else RENDER_MIN_READABLE_FONT_SIZE,
             maximum_size=maximum_size,
         )
+        if enlarge and not fits_readably:
+            actual_size, lines, fits_readably = _fit_text(
+                draw, text, box_w, box_h, font_path_str, stroke_w=stroke_w,
+                minimum_size=RENDER_MIN_READABLE_FONT_SIZE, maximum_size=maximum_size,
+            )
         opaque_caption = bool(bg_color and bg_color not in ("transparent", "none", ""))
         if not fits_readably and opaque_caption and RENDER_SAFE_CAPTION_EXPANSION:
             grow_x = int(round(raw_w * RENDER_SAFE_CAPTION_EXPANSION_RATIO))
@@ -350,6 +365,8 @@ def render_text_in_box(
     return image
 
 
+ENLARGE_GROW_RATIO = 0.25  # each side of a region flagged enlarge grows by this share
+ENLARGED_MIN_FONT_SIZE = 22
 SOURCE_MATCH_MAX_FONT_SIZE = 200  # large source lettering may be matched past MAX_FONT_SIZE
 
 
