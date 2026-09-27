@@ -369,14 +369,12 @@ def _vision_candidates(page: dict, *, force: bool) -> list[dict]:
 
 @router.post("/page/vision")
 async def translate_page_with_images(req: TranslateVisionPageRequest) -> dict:
-    return await translate_page_in_context(req, repair=False)
+    return await translate_page_in_context(req)
 
 
 async def translate_page_in_context(
     req: TranslateVisionPageRequest, memory: ChapterMemory | None = None, slice_total: int | None = None,
-    repair: bool = True,
 ) -> dict:
-    """Translate one slice; ``repair`` lets the model keep art text and report missed text (A.I mode only)."""
     validate_chapter_id(req.chapter_id)
     try:
         provider = _resolve_vision_provider(req.provider)
@@ -441,7 +439,7 @@ async def translate_page_in_context(
         translated = await run_in_threadpool(
             translator.translate_page, original_path, clean_path, candidates,
             api_key=api_key, source_lang=req.source_lang, target_lang=req.target_lang,
-            memory=memory, slice_number=req.page_index + 1, slice_total=slice_total, repair=repair,
+            memory=memory, slice_number=req.page_index + 1, slice_total=slice_total,
         )
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
@@ -449,7 +447,6 @@ async def translate_page_in_context(
         raise HTTPException(502, str(exc)) from exc
 
     committed = stale = unreadable = review = 0
-    keep_regions: list[list[int]] = []
     blank_ids: list[str] = []
     with get_manifest_lock(req.chapter_id):
         latest = load_manifest_raw(req.chapter_id)
@@ -472,9 +469,6 @@ async def translate_page_in_context(
                    != candidate["region"]
             ):
                 stale += 1
-                continue
-            if candidate["id"] in getattr(translated, "keep_ids", ()):
-                keep_regions.append(list(candidate["region"]))
                 continue
             value = translated.translations[candidate["id"]]
             if not value:
@@ -530,10 +524,8 @@ async def translate_page_in_context(
             and translated.estimated_cost_usd >= req.budget_usd
         ),
         "rendered_pages": rendered_pages, "render_error": render_error,
-        "keep_regions": keep_regions,
         "missing_ids": sorted(getattr(translated, "missing_ids", ())),
         "blank_ids": blank_ids,
-        "missed_boxes": [list(box) for box in getattr(translated, "missed_boxes", ())],
         "remaining": max(0, total_candidates - len(candidates)),
     }
     return result

@@ -108,8 +108,9 @@ def _slice_width(chapter_id: str, index: int) -> int:
 
 TRANSPORT_STAGES = (
     ("You are preparing manga", "scan"),
-    ("You are a visual quality-control", "qc"),
-    ("ROLE You are a veteran comic localization", "translate+repair"),
+    ("You check an automatic manga", "review"),
+    ("ROLE You are a veteran comic localization", "translate"),
+    ("You do the final check", "final"),
 )
 
 

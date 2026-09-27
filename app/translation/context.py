@@ -54,19 +54,9 @@ Answer with JSON only:
  "font_choices":{{"<id>":{{"font_id":"<catalog id>","font_mode":"ai"}}}},
  "speakers":{{"<id>":"<character name, or narration>"}},
  "characters":[{{"name":"<name>","note":"<role, age, relationship>"}}],
- "address":[{{"from":"<A>","to":"<B>","self":"<how A refers to himself>","other":"<how A addresses B>"}}],
- "keep":["<id>"],
- "missed":[{{"box_2d":[ymin,xmin,ymax,xmax],"text":"<source text>"}}]}}
-Return every id exactly once and a font_choices entry for every id. List in "characters" and "address" only what is new or changed in this slice. Leave "keep" and "missed" empty when nothing applies.
+ "address":[{{"from":"<A>","to":"<B>","self":"<how A refers to himself>","other":"<how A addresses B>"}}]}}
+Return every id exactly once and a font_choices entry for every id. List in "characters" and "address" only what is new or changed in this slice. Scanlator credits and watermarks get an empty translation.
 Catalog font_id values by role: {fonts}
-""".strip()
-
-
-_REPAIR = """
-CLEANUP CHECK
-- "keep": ids whose text is part of the artwork and must stay exactly as drawn: series or title logos, sound effects drawn as art, writing on objects or signs that belongs to the drawing. Their translation is ignored and the original pixels are restored.
-- "missed": story text a reader must read (dialogue, narration, system windows, titles in the source language) that is still visible in IMAGE 2 and has no id, because the detector missed it. box_2d is [ymin, xmin, ymax, xmax] normalised to 0-1000 on IMAGE 2. It will be erased and translated in a second pass.
-- Scanlator credits and watermarks are neither: give them an empty translation.
 """.strip()
 
 
@@ -76,12 +66,10 @@ def _with_input(target_name: str, block: str) -> str:
     return f"{head}\n\n{block}\n\nTRANSLATION\n{rest}"
 
 
-def system_prompt(target_name: str, target_lang: str, font_hint: str, *, repair: bool = True) -> str:
+def system_prompt(target_name: str, target_lang: str, font_hint: str) -> str:
     parts = [_with_input(target_name, _INPUT_IMAGES)]
     if str(target_lang or "").lower() in {"vi", "vie", "vietnamese"}:
         parts.append(_VIETNAMESE)
-    if repair:
-        parts.append(_REPAIR)
     parts.append(_OUTPUT.format(fonts=font_hint))
     return "\n\n".join(parts)
 

@@ -40,19 +40,9 @@ _TRANSLATIONS_SCHEMA = {
             "properties": {k: {"type": "string"} for k in ("from", "to", "self", "other")},
             "required": ["from", "to"],
         }},
-        "keep": {"type": "array", "items": {"type": "string"}},
-        "missed": {"type": "array", "items": {
-            "type": "object",
-            "properties": {"box_2d": {"type": "array", "items": {"type": "number"}}, "text": {"type": "string"}},
-            "required": ["box_2d"],
-        }},
     },
     "required": ["translations"],
 }
-# Missed-text boxes the model reports; anything larger or more numerous is a misread.
-MISSED_MAX_BOXES = 8
-MISSED_MIN_SIDE_PX = 10
-MISSED_MAX_AREA_RATIO = 0.4
 
 
 @dataclass(frozen=True)
@@ -66,10 +56,6 @@ class VisionTranslationResult:
     review_ids: frozenset[str] = frozenset()
     # Objects the model did not answer for at all (as opposed to answering "").
     missing_ids: frozenset[str] = frozenset()
-    # Objects that are part of the artwork and should stay as drawn.
-    keep_ids: frozenset[str] = frozenset()
-    # Source text still visible in the cleaned slice with no object: (x1, y1, x2, y2, text).
-    missed_boxes: tuple[tuple[int, int, int, int, str], ...] = ()
 
 
 def _font_catalog_hint(target_lang: str) -> str:
@@ -162,36 +148,11 @@ def _unalias(result: VisionTranslationResult, data: dict, real: dict[str, str]) 
     for key in ("speakers", "font_choices"):
         if isinstance(data.get(key), dict):
             data[key] = {back(k): v for k, v in data[key].items()}
-    if isinstance(data.get("keep"), list):
-        data["keep"] = [back(item) for item in data["keep"] if isinstance(item, (str, int)) and not isinstance(item, bool)]
     return replace(
         result,
         translations={back(k): v for k, v in result.translations.items()},
         font_choices={back(k): v for k, v in (result.font_choices or {}).items()},
     ), data
-
-
-def _missed_boxes(raw, width: int, height: int) -> tuple[tuple[int, int, int, int, str], ...]:
-    """Pixel boxes for source text the model still sees in the cleaned slice (box_2d is 0-1000)."""
-    boxes = []
-    for entry in raw if isinstance(raw, list) else []:
-        box = entry.get("box_2d") if isinstance(entry, dict) else None
-        if not isinstance(box, (list, tuple)) or len(box) != 4:
-            continue
-        try:
-            ymin, xmin, ymax, xmax = (max(0.0, min(1000.0, float(v))) for v in box)
-        except (TypeError, ValueError):
-            continue
-        x1, x2 = round(xmin / 1000 * width), round(xmax / 1000 * width)
-        y1, y2 = round(ymin / 1000 * height), round(ymax / 1000 * height)
-        if x2 - x1 < MISSED_MIN_SIDE_PX or y2 - y1 < MISSED_MIN_SIDE_PX:
-            continue
-        if (x2 - x1) * (y2 - y1) > MISSED_MAX_AREA_RATIO * width * height:
-            continue
-        boxes.append((x1, y1, x2, y2, str(entry.get("text") or "")[:200]))
-        if len(boxes) >= MISSED_MAX_BOXES:
-            break
-    return tuple(boxes)
 
 
 class VisionPageTranslator:
@@ -204,7 +165,6 @@ class VisionPageTranslator:
         self, original_path: Path, cleaned_path: Path, items: list[dict],
         *, api_key: str, source_lang: str, target_lang: str,
         memory: ChapterMemory | None = None, slice_number: int | None = None, slice_total: int | None = None,
-        repair: bool = True,
     ) -> VisionTranslationResult:
         if not api_key.strip():
             raise ValueError(f"{self.provider.label} API key is not configured")
@@ -223,7 +183,7 @@ class VisionPageTranslator:
             if str(source_lang or "").lower() in {"", "auto"}
             else _language_name(source_lang)
         )
-        system = system_prompt(_language_name(target_lang), target_lang, _font_catalog_hint(target_lang), repair=repair)
+        system = system_prompt(_language_name(target_lang), target_lang, _font_catalog_hint(target_lang))
         where = f"SLICE {slice_number} of {slice_total}. " if slice_number and slice_total else ""
         prompt = (
             (f"CHAPTER MEMORY (read-only context from earlier slices; never copy it into your answer): "
@@ -255,10 +215,8 @@ class VisionPageTranslator:
                 roles[str(entry["id"])] = role
             if entry.get("review") is True:
                 review.add(str(entry["id"]))
-        keep = frozenset(str(item) for item in data.get("keep") or [] if str(item) in ids) if repair else frozenset()
         return replace(
             result, roles=roles, review_ids=frozenset(review), missing_ids=frozenset(ids - answered),
-            keep_ids=keep, missed_boxes=_missed_boxes(data.get("missed"), w, h) if repair else (),
         )
 
     def _openai(self, system, prompt, original, cleaned, *, api_key, ids, max_tokens):
