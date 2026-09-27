@@ -64,9 +64,11 @@ def test_validation_max_dilation_covers_both_runtime_dilation_branches():
 
 
 class _PipelineDetector:
-    def __init__(self, source, leftover):
+    def __init__(self, source, leftover, stubborn=False):
         self._source = source
         self._leftover = leftover
+        self._stubborn = stubborn
+        self.passes = 0
 
     def detect(self, image, **_kwargs):
         return [self._source] if self._source is not None else []
@@ -77,7 +79,10 @@ class _PipelineDetector:
 
     def leftover_boxes(self, image, first_pass):
         assert first_pass
-        leftover, self._leftover = self._leftover, None  # the next pass finds it erased
+        self.passes += 1
+        leftover = self._leftover
+        if not self._stubborn:
+            self._leftover = None  # the next pass finds it erased
         return [leftover] if leftover is not None else []
 
 
@@ -100,18 +105,20 @@ class _PipelineInpainter:
         return {}
 
 
-def _process(tmp_path, leftover, text=True):
+def _process(tmp_path, leftover, text=True, stubborn=False, preserve=None):
     source = BubbleBox(
         10, 10, 40, 30, 0.9, np.full((20, 30), 255, np.uint8),
         source_role="text_segmenter", source_model="kiuyha_text_1280.onnx",
         semantic_type="free_text", safe_to_inpaint=True,
     ) if text else None
     pipeline = ChapterPipeline.__new__(ChapterPipeline)
-    pipeline._detector = _PipelineDetector(source, leftover)
+    pipeline._detector = _PipelineDetector(source, leftover, stubborn)
     pipeline._inpainter = _PipelineInpainter()
     image_path = tmp_path / "page.png"
     assert cv2.imwrite(str(image_path), np.full((60, 80, 3), 200, np.uint8))
-    return pipeline._process_page(image_path, tmp_path)
+    result = pipeline._process_page(image_path, tmp_path, preserve_regions=preserve)
+    result["_passes"] = pipeline._detector.passes
+    return result
 
 
 def test_second_pass_leftover_is_saved_with_the_first_pass_box(tmp_path):
@@ -170,3 +177,11 @@ def test_a_page_without_text_is_processed(tmp_path):
 
     assert result["boxes"] == []
     assert result["processing_metrics"]["detector"]["second_pass_boxes"] == 0
+
+
+def test_text_kept_as_art_or_left_unchanged_is_not_inpainted_again(tmp_path):
+    leftover = BubbleBox(20, 15, 60, 35, 0.8, np.full((20, 40), 255, np.uint8), source_role="text_segmenter")
+    kept = _process(tmp_path, leftover, stubborn=True, preserve=[{"x1": 15, "y1": 10, "x2": 65, "y2": 40}])
+    assert kept["processing_metrics"]["detector"]["second_pass_boxes"] == 0 and kept["_passes"] == 1
+    stuck = _process(tmp_path, leftover, stubborn=True)
+    assert stuck["processing_metrics"]["detector"]["second_pass_boxes"] == 1 and stuck["_passes"] == 2

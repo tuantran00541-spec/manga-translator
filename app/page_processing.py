@@ -200,10 +200,16 @@ class PageProcessingMixin:
         )
         auto_inpaint_metrics = self.inpainter.last_metrics()
         second_pass_boxes = 0
+        seen: set[tuple[int, int, int, int]] = set()
         for _ in range(LEFTOVER_PASSES if effective_boxes else 0):
-            leftovers = self.detector.leftover_boxes(clean_image, effective_boxes)
+            # Text kept as art is never erased, and text that survived a pass unchanged will survive another.
+            leftovers = [box for box in self.detector.leftover_boxes(clean_image, effective_boxes)
+                         if not geometry_center_in_regions(
+                             {"x1": box.x1, "y1": box.y1, "x2": box.x2, "y2": box.y2}, preserve_regions)
+                         and (box.x1, box.y1, box.x2, box.y2) not in seen]
             if not leftovers:
                 break
+            seen.update((box.x1, box.y1, box.x2, box.y2) for box in leftovers)
             second_pass_boxes += len(leftovers)
             clean_image = self.inpainter.inpaint(clean_image, leftovers, protected_regions=preserve_regions)
             for box in leftovers:
