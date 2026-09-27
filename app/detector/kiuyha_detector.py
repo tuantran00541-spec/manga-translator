@@ -25,6 +25,7 @@ LINE_REACH_MAX = 240  # how far sideways a line may run past its box
 LINE_SHARE = 0.6  # height two letters share to be on one line
 LETTER_GAP = 1.2  # widest gap, in letter heights, between neighbouring letters of a line
 OUTLINE_SHARE = 0.35  # mask growth as a share of the letter height
+GROW_MAX = 31  # outlines stop growing past this, so huge sound effects do not swallow the art round them
 BAND_OVERLAP = 0.25  # share of a detection band repeated in the next one
 EDGE_TOUCH = 3  # a box this close to an inner band edge was cut by it
 UNION_SHARE = 0.3  # boxes sharing this much of the smaller one are one text
@@ -36,6 +37,7 @@ FAR_SHARE = 0.5  # share of the border-colour threshold a dark or light letter m
 SPECK_SHARE = 0.4  # in a dark or light split, pieces shorter than this share of the letters are art
 INK_TOLERANCE = 40  # how much fainter than the letters, on the 0-255 split score, a joined piece may be
 HALO_REACH = 1.0  # how far, in letter heights, glow may spread from a letter
+HALO_REACH_MAX = 64  # and never further than this many pixels
 HALO_RING = 8  # width of the band past that reach where the background colour is read
 HALO_MARGIN = 4.0  # Lab distance past the band's own spread that still counts as glow
 HOLE_AREA = 4.0  # largest enclosed hole filled, in squared letter heights (white fill inside an outline)
@@ -80,9 +82,7 @@ def letter_mask(image: np.ndarray, box: tuple[int, int, int, int]) -> tuple[tupl
             inside = [label for label in inside if far[label] >= FAR_SHARE * base[1]]
         if letters_only and inside:
             # Art specks (windows, leaves) are many but small; letters hold most of the ink.
-            order = sorted(inside, key=lambda label: stats[label][3])
-            ink = np.cumsum([stats[label][4] for label in order])
-            tall = stats[order[int(np.searchsorted(ink, ink[-1] / 2))]][3]
+            tall = _ink_height(stats, inside)
             inside = [label for label in inside if stats[label][3] >= SPECK_SHARE * tall]
         return score, level, count, labels, stats, inside, not letters_only
 
@@ -99,8 +99,7 @@ def letter_mask(image: np.ndarray, box: tuple[int, int, int, int]) -> tuple[tupl
         inside = [label for label in inside if means[label] >= ink - INK_TOLERANCE]
     keep = np.zeros(count, bool)
     keep[inside] = True
-    heights = [int(stats[label][3]) for label in inside if stats[label][4] >= 12]
-    letter = float(np.median(heights)) if heights else 0.0
+    letter = _ink_height(stats, inside)
 
     def letter_like(label) -> bool:
         x, y, bw, bh, area = stats[label]
@@ -136,7 +135,7 @@ def letter_mask(image: np.ndarray, box: tuple[int, int, int, int]) -> tuple[tupl
     part = part.astype(np.uint8)
     part = cv2.morphologyEx(part, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (CLOSE_KERNEL,) * 2))
     # Outlines and glow round big lettering are wider than round small text.
-    grow = max(GROW_KERNEL, int(OUTLINE_SHARE * letter) | 1)
+    grow = min(GROW_MAX, max(GROW_KERNEL, int(OUTLINE_SHARE * letter) | 1))
     part = cv2.dilate(part, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (grow,) * 2)) > 0
     ys, xs = np.nonzero(part)
     bx1, by1 = min(ix1, int(xs.min())) if len(xs) else ix1, min(iy1, int(ys.min())) if len(ys) else iy1
@@ -144,9 +143,18 @@ def letter_mask(image: np.ndarray, box: tuple[int, int, int, int]) -> tuple[tupl
     return (gx1 + bx1, gy1 + by1, gx1 + bx2, gy1 + by2), part[by1:by2, bx1:bx2]
 
 
+def _ink_height(stats: np.ndarray, labels: list[int]) -> float:
+    """Letter height: the height holding the middle of the ink, so specks and stars do not shrink it."""
+    if not labels:
+        return 0.0
+    order = sorted(labels, key=lambda label: stats[label][3])
+    ink = np.cumsum([stats[label][4] for label in order])
+    return float(stats[order[int(np.searchsorted(ink, ink[-1] / 2))]][3])
+
+
 def _with_halo(lab: np.ndarray, part: np.ndarray, letter: float) -> np.ndarray:
     """Letters plus the glow joined to them, out to where the colour settles to the background past it."""
-    reach = max(3, int(HALO_REACH * letter))
+    reach = max(3, min(HALO_REACH_MAX, int(HALO_REACH * letter)))
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * reach + 1,) * 2)
     near = cv2.dilate(part.astype(np.uint8), kernel) > 0
     outer = (cv2.dilate(near.astype(np.uint8), np.ones((2 * HALO_RING + 1,) * 2, np.uint8)) > 0) & ~near

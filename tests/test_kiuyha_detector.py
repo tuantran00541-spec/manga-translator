@@ -282,3 +282,19 @@ def test_outlined_letters_over_sky_and_trees_are_erased():
     ink = image.max(axis=2) < 20
     assert (full & ink).sum() >= 0.95 * ink.sum(), "both lines are erased"
     assert full[450:, :].mean() < 0.05, "the trees below stay"
+
+
+def test_stars_round_big_letters_do_not_shrink_the_letter_height():
+    from app.detector.kiuyha_detector import letter_mask
+
+    rng = np.random.default_rng(5)
+    image = np.full((420, 1300, 3), 25, np.uint8)
+    for x, y in rng.integers((0, 0), (1300, 420), (400, 2)):
+        cv2.circle(image, (int(x), int(y)), 3, (230, 230, 230), -1)  # a starfield
+    cv2.putText(image, "OUR DREAM", (40, 300), cv2.FONT_HERSHEY_DUPLEX, 6.0, (240, 240, 170), 26)
+    box, mask = letter_mask(image, (120, 110, 1200, 320))  # the box cuts the O
+    full = np.zeros(image.shape[:2], bool)
+    full[box[1]:box[3], box[0]:box[2]] = mask
+    letters = np.zeros(image.shape[:2], np.uint8)
+    cv2.putText(letters, "O", (40, 300), cv2.FONT_HERSHEY_DUPLEX, 6.0, 255, 26)
+    assert (full & (letters > 0)).sum() >= 0.95 * (letters > 0).sum(), "the O the box cuts is erased"
