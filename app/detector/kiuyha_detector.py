@@ -31,6 +31,9 @@ UNION_SHARE = 0.3  # boxes sharing this much of the smaller one are one text
 SAME_LINE = 0.7  # overlapping boxes sharing this much of the shorter height are pieces of one line
 LEFTOVER_GROW = 9  # the second pass also takes the glow round what is left
 LETTER_FILL = 0.2  # ink share of a letter's bounding box; outlines and hairlines fall below it
+HALO_LEVEL = 0.35  # share of the letter threshold that still counts as glow round a letter
+HALO_REACH = 0.6  # how far, in letter heights, glow may spread from a letter
+HOLE_AREA = 4.0  # largest enclosed hole filled, in squared letter heights (white fill inside an outline)
 
 
 def letter_mask(image: np.ndarray, box: tuple[int, int, int, int]) -> tuple[tuple[int, int, int, int], np.ndarray]:
@@ -96,7 +99,12 @@ def letter_mask(image: np.ndarray, box: tuple[int, int, int, int]) -> tuple[tupl
                 if same_line and gap <= LETTER_GAP * letter:
                     keep[label] = grew = True
                     break
-    part = keep[labels].astype(np.uint8)
+    part = keep[labels]
+    if letter:
+        edge = np.concatenate([diff[iy1:iy1 + 3, ix1:ix2].ravel(), diff[iy2 - 3:iy2, ix1:ix2].ravel(),
+                               diff[iy1:iy2, ix1:ix1 + 3].ravel(), diff[iy1:iy2, ix2 - 3:ix2].ravel()])
+        part = _fill_holes(_with_halo(diff, part, level, float(np.percentile(edge, 90)), letter), letter)
+    part = part.astype(np.uint8)
     part = cv2.morphologyEx(part, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (CLOSE_KERNEL,) * 2))
     # Outlines and glow round big lettering are wider than round small text.
     grow = max(GROW_KERNEL, int(OUTLINE_SHARE * letter) | 1)
@@ -105,6 +113,26 @@ def letter_mask(image: np.ndarray, box: tuple[int, int, int, int]) -> tuple[tupl
     bx1, by1 = min(ix1, int(xs.min())) if len(xs) else ix1, min(iy1, int(ys.min())) if len(ys) else iy1
     bx2, by2 = max(ix2, int(xs.max()) + 1) if len(xs) else ix2, max(iy2, int(ys.max()) + 1) if len(ys) else iy2
     return (gx1 + bx1, gy1 + by1, gx1 + bx2, gy1 + by2), part[by1:by2, bx1:bx2]
+
+
+def _with_halo(diff: np.ndarray, part: np.ndarray, level: float, noise: float, letter: float) -> np.ndarray:
+    """Letters plus the faint glow and outline joined to them, no further than HALO_REACH letter heights."""
+    reach = max(3, int(HALO_REACH * letter))
+    near = cv2.dilate(part.astype(np.uint8), cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * reach + 1,) * 2)) > 0
+    faint = ((diff > max(HALO_LEVEL * level, noise)) & near) | part
+    _count, labels = cv2.connectedComponents(faint.astype(np.uint8))
+    joined = np.unique(labels[part])
+    return np.isin(labels, joined[joined > 0])
+
+
+def _fill_holes(part: np.ndarray, letter: float) -> np.ndarray:
+    """Enclosed holes up to HOLE_AREA letter squares, such as white fill inside a dark outline."""
+    count, labels, stats, _ = cv2.connectedComponentsWithStats((~part).astype(np.uint8), connectivity=4)
+    h, w = part.shape
+    holes = [label for label in range(1, count) if stats[label][4] <= HOLE_AREA * letter * letter
+             and stats[label][0] > 0 and stats[label][1] > 0
+             and stats[label][0] + stats[label][2] < w and stats[label][1] + stats[label][3] < h]
+    return part | np.isin(labels, holes) if holes else part
 
 
 def _text_box(x1, y1, x2, y2, score, mask, source_model) -> BubbleBox:

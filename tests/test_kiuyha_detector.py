@@ -244,3 +244,23 @@ def test_big_lettering_takes_its_outline_with_it():
     full[box[1]:box[3], box[0]:box[2]] = mask
     outline = (np.abs(image.astype(int) - (255, 255, 255)).sum(axis=2) < 30)
     assert (full & outline).sum() >= 0.9 * outline.sum()
+
+
+def test_glow_round_letters_is_erased_with_them():
+    from app.detector.kiuyha_detector import letter_mask
+
+    rng = np.random.default_rng(1)
+    background = np.clip(rng.normal(30, 6, (400, 1000, 3)), 0, 255).astype(np.uint8)
+    glow = np.zeros((400, 1000), np.uint8)
+    cv2.putText(glow, "DARE TO DREAM", (80, 240), cv2.FONT_HERSHEY_DUPLEX, 3.0, 255, 22)
+    glow = cv2.GaussianBlur(glow, (0, 0), 14).astype(np.float32)[..., None] / 255
+    image = background + glow * np.array([200, 190, 60], np.float32)
+    core = np.zeros((400, 1000), np.uint8)
+    cv2.putText(core, "DARE TO DREAM", (80, 240), cv2.FONT_HERSHEY_DUPLEX, 3.0, 255, 8)
+    image[core > 0] = (255, 240, 170)
+    image = np.clip(image, 0, 255).astype(np.uint8)
+    box, mask = letter_mask(image, (70, 150, 900, 270))
+    full = np.zeros(image.shape[:2], bool)
+    full[box[1]:box[3], box[0]:box[2]] = mask
+    changed = np.abs(image.astype(int) - background.astype(int)).max(axis=2) > 18
+    assert (full & changed).sum() >= 0.99 * changed.sum(), "a glow left round the hole paints the letters back"

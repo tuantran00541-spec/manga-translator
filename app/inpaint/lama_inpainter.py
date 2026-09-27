@@ -15,6 +15,8 @@ from app.ort_utils import make_session
 from app.parameters import (
     DYNAMIC_LAMA_MAX_SINGLE_CROP_DIM,
     DYNAMIC_LAMA_MAX_SINGLE_CROP_PIXELS,
+    DYNAMIC_LAMA_TILE,
+    DYNAMIC_LAMA_TILE_OVERLAP,
     FIXED_LAMA_RECYCLE_MEMORY_LIMIT_BYTES,
     FIXED_LAMA_CONCURRENT_INFERENCE,
     FIXED_LAMA_SESSION_MAX_RUNS,
@@ -94,6 +96,20 @@ def _should_recycle_fixed_session() -> bool:
     if override is not None:
         return override
     return _tight_cgroup_memory_limit()
+
+
+def _local_box(b: BubbleBox, cx1: int, cy1: int) -> BubbleBox:
+    """``b`` in crop coordinates."""
+    local = BubbleBox(
+        b.x1 - cx1, b.y1 - cy1, b.x2 - cx1, b.y2 - cy1, b.confidence, b.mask,
+        source_model=b.source_model, class_id=b.class_id, class_name=b.class_name,
+        semantic_type=b.semantic_type, mask_source=b.mask_source,
+        safe_to_inpaint=bool(b.safe_to_inpaint), ocr_eligible=bool(b.ocr_eligible),
+        needs_review=bool(b.needs_review), source_role=b.source_role, deferred_reason=b.deferred_reason,
+    )
+    if bool(getattr(b, "allow_rectangle_fallback", False)):
+        local.allow_rectangle_fallback = True
+    return local
 
 
 class Inpainter:
@@ -337,7 +353,9 @@ class Inpainter:
             clusters.extend(parts)
         self._metrics_local.value["clusters"] = len(clusters)
 
+        pending = {id(b) for cluster in clusters for b in cluster}
         for cluster in clusters:
+            pending.difference_update(id(b) for b in cluster)
             x1 = min(b.x1 for b in cluster)
             y1 = min(b.y1 for b in cluster)
             x2 = max(b.x2 for b in cluster)
@@ -346,38 +364,18 @@ class Inpainter:
             crop_box = compute_crop_region(x1, y1, x2, y2, w, h)
 
             cx1, cy1, cx2, cy2 = crop_box
-            local_boxes = []
-            for b in cluster:
-                local_box = BubbleBox(
-                    b.x1 - cx1,
-                    b.y1 - cy1,
-                    b.x2 - cx1,
-                    b.y2 - cy1,
-                    b.confidence,
-                    b.mask,
-                    source_model=b.source_model,
-                    class_id=b.class_id,
-                    class_name=b.class_name,
-                    semantic_type=b.semantic_type,
-                    mask_source=b.mask_source,
-                    safe_to_inpaint=bool(b.safe_to_inpaint),
-                    ocr_eligible=bool(b.ocr_eligible),
-                    needs_review=bool(b.needs_review),
-                    source_role=b.source_role,
-                    deferred_reason=b.deferred_reason,
-                )
-                if bool(getattr(b, "allow_rectangle_fallback", False)):
-                    local_box.allow_rectangle_fallback = True
-                local_boxes.append(local_box)
             crop_img = image[cy1:cy2, cx1:cx2]
-            local_mask = build_mask((cy2 - cy1, cx2 - cx1), local_boxes, crop_img)
-            local_mask = self._subtract_protected_regions(
-                local_mask,
-                crop_box,
-                protected_regions,
-            )
+            local_mask = build_mask((cy2 - cy1, cx2 - cx1), [_local_box(b, cx1, cy1) for b in cluster], crop_img)
+            local_mask = self._subtract_protected_regions(local_mask, crop_box, protected_regions)
+            # Text not erased yet is a hole too, so LaMa never copies its letters.
+            others = [_local_box(b, cx1, cy1) for cl in clusters for b in cl if id(b) in pending
+                      and b.x1 < cx2 and b.x2 > cx1 and b.y1 < cy2 and b.y2 > cy1]
+            hole = None
+            if others:
+                hole = build_mask((cy2 - cy1, cx2 - cx1), others, crop_img)
+                hole = np.maximum(self._subtract_protected_regions(hole, crop_box, protected_regions), local_mask)
 
-            result = self._smart_paint_region(result, local_mask, crop_box)
+            result = self._smart_paint_region(result, local_mask, crop_box, hole=hole)
 
         return result
 
@@ -609,6 +607,7 @@ class Inpainter:
         crop_box: tuple,
         feather: bool = False,
         force_lama: bool = False,
+        hole: np.ndarray | None = None,
     ) -> np.ndarray:
         cx1, cy1, cx2, cy2 = crop_box
         crop = image[cy1:cy2, cx1:cx2]
@@ -634,9 +633,10 @@ class Inpainter:
             return image
 
         self._metric_add("lama_regions")
-        return self._lama_fill(image, crop, local_mask, crop_box, feather=feather)
+        return self._lama_fill(image, crop, local_mask, crop_box, feather=feather, hole=hole)
 
-    def _lama_fill(self, image: np.ndarray, crop: np.ndarray, local_mask: np.ndarray, crop_box: tuple, feather: bool = False) -> np.ndarray:
+    def _lama_fill(self, image: np.ndarray, crop: np.ndarray, local_mask: np.ndarray, crop_box: tuple,
+                   feather: bool = False, hole: np.ndarray | None = None) -> np.ndarray:
         self._ensure_session()
         cx1, cy1, cx2, cy2 = crop_box
         crop_h, crop_w = crop.shape[:2]
@@ -667,14 +667,15 @@ class Inpainter:
             and max_dim <= DYNAMIC_LAMA_MAX_SINGLE_CROP_DIM
             and crop_pixels <= DYNAMIC_LAMA_MAX_SINGLE_CROP_PIXELS
         )
+        fill_mask = local_mask if hole is None else hole
         if dynamic_native_ok:
             self._metric_add("lama_native_single_regions")
-            painted = self._lama_fill_single(crop, local_mask)
+            painted = self._lama_fill_single(crop, fill_mask)
         elif long_crop or texture_tiling or (feather and max_dim > INPAINT_SIZE):
             self._metric_add("lama_tiled_regions")
-            painted = self._lama_fill_tiled(crop, local_mask)
+            painted = self._lama_fill_tiled(crop, fill_mask)
         else:
-            painted = self._lama_fill_single(crop, local_mask)
+            painted = self._lama_fill_single(crop, fill_mask)
 
         original_crop = image[cy1:cy2, cx1:cx2]
         if feather:
@@ -844,8 +845,9 @@ class Inpainter:
 
     def _lama_fill_tiled(self, crop: np.ndarray, local_mask: np.ndarray) -> np.ndarray:
         h, w = crop.shape[:2]
-        tile = INPAINT_SIZE
-        overlap = min(MANUAL_TILE_OVERLAP, tile // 4)
+        # The dynamic model runs bigger tiles, so each hole keeps more of its surroundings.
+        tile = DYNAMIC_LAMA_TILE if self.dynamic_lama else INPAINT_SIZE
+        overlap = min(DYNAMIC_LAMA_TILE_OVERLAP if self.dynamic_lama else MANUAL_TILE_OVERLAP, tile // 4)
         step = tile - overlap
 
         output = np.zeros((h, w, 3), dtype=np.float32)

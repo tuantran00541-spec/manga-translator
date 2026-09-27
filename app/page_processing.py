@@ -35,6 +35,7 @@ def _fold_leftover(records: list[dict], box: BubbleBox) -> None:
         return
 
 
+LEFTOVER_PASSES = 3  # erase what the detector still sees after inpainting, up to this many times
 SEAM_CONTAINED = 0.5  # share of a core box inside a seam box for the two to be one text
 
 
@@ -198,8 +199,10 @@ class PageProcessingMixin:
             protected_regions=preserve_regions,
         )
         auto_inpaint_metrics = self.inpainter.last_metrics()
-        leftovers = self.detector.leftover_boxes(clean_image, effective_boxes) if effective_boxes else []
-        if leftovers:
+        for _ in range(LEFTOVER_PASSES if effective_boxes else 0):
+            leftovers = self.detector.leftover_boxes(clean_image, effective_boxes)
+            if not leftovers:
+                break
             clean_image = self.inpainter.inpaint(clean_image, leftovers, protected_regions=preserve_regions)
             for box in leftovers:
                 _fold_leftover(inpainted_records, box)
