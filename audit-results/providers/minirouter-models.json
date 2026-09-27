@@ -58,23 +58,6 @@
   }
  },
  {
-  "id": "xiaomi/mimo-v2.6-pro-ultraspeed",
-  "name": "MiMo V2.6 Pro UltraSpeed",
-  "pricing": {
-   "input_cache_read": "0.0000000378",
-   "input": "0.0000045675",
-   "output": "0.000009135"
-  }
- },
- {
-  "id": "zai/glm-5",
-  "name": "GLM 5",
-  "pricing": {
-   "input": "0.00000105",
-   "output": "0.00000336"
-  }
- },
- {
   "id": "alibaba/qwen3-coder-30b-a3b",
   "name": "Qwen 3 Coder 30B A3B Instruct",
   "pricing": {
@@ -90,6 +73,15 @@
    "input_cache_write": "0.00000013125",
    "input": "0.000000105",
    "output": "0.00000042"
+  }
+ },
+ {
+  "id": "xiaomi/mimo-v2.6-pro-ultraspeed",
+  "name": "MiMo V2.6 Pro UltraSpeed",
+  "pricing": {
+   "input_cache_read": "0.0000000378",
+   "input": "0.0000045675",
+   "output": "0.000009135"
   }
  },
  {
@@ -111,15 +103,6 @@
   }
  },
  {
-  "id": "zai/glm-4.5",
-  "name": "GLM 4.5",
-  "pricing": {
-   "input_cache_read": "0.0000001155",
-   "input": "0.00000063",
-   "output": "0.00000231"
-  }
- },
- {
   "id": "zai/glm-4.5-air",
   "name": "GLM 4.5 Air",
   "pricing": {
@@ -135,6 +118,15 @@
    "input_cache_read": "0.000000252",
    "input": "0.00000126",
    "output": "0.0000063"
+  }
+ },
+ {
+  "id": "zai/glm-4.5",
+  "name": "GLM 4.5",
+  "pricing": {
+   "input_cache_read": "0.0000001155",
+   "input": "0.00000063",
+   "output": "0.00000231"
   }
  },
  {
@@ -171,6 +163,14 @@
    "input_cache_read": "0.000000147",
    "input": "0.00000147",
    "output": "0.00000462"
+  }
+ },
+ {
+  "id": "zai/glm-5",
+  "name": "GLM 5",
+  "pricing": {
+   "input": "0.00000105",
+   "output": "0.00000336"
   }
  },
  {
@@ -217,6 +217,15 @@
   }
  },
  {
+  "id": "prism-ml/ternary-bonsai-2-27b",
+  "name": "Bonsai 2 27B",
+  "pricing": {
+   "input": "0.00000007875",
+   "output": "0.000000525",
+   "request": "0.000105"
+  }
+ },
+ {
   "id": "alibaba/qwen3-235b-a22b-thinking",
   "name": "Qwen3 VL 235B A22B Thinking",
   "pricing": {
@@ -239,26 +248,6 @@
    "input_cache_read": "0.0000002625",
    "input": "0.0000021",
    "output": "0.0000063"
-  }
- },
- {
-  "id": "prism-ml/ternary-bonsai-2-27b",
-  "name": "Bonsai 2 27B",
-  "pricing": {
-   "input": "0.00000007875",
-   "output": "0.000000525",
-   "request": "0.000105"
-  }
- },
- {
-  "id": "anthropic/claude-haiku-4.5",
-  "name": "Claude Haiku 4.5",
-  "pricing": {
-   "input_cache_read": "0.000000105",
-   "input_cache_write": "0.0000013125",
-   "input": "0.00000105",
-   "output": "0.00000525",
-   "web_search": "10.5"
   }
  },
  {
@@ -305,21 +294,14 @@
   }
  },
  {
-  "id": "meituan/longcat-2.5-preview",
-  "name": "LongCat 2.5 Preview",
+  "id": "anthropic/claude-haiku-4.5",
+  "name": "Claude Haiku 4.5",
   "pricing": {
-   "input_cache_read": "0.0000000063",
-   "input": "0.000000315",
-   "output": "0.00000126"
-  }
- },
- {
-  "id": "mistral/ministral-3b",
-  "name": "Ministral 3B",
-  "pricing": {
-   "input_cache_read": "0.0000000105",
-   "input": "0.000000105",
-   "output": "0.000000105"
+   "input_cache_read": "0.000000105",
+   "input_cache_write": "0.0000013125",
+   "input": "0.00000105",
+   "output": "0.00000525",
+   "web_search": "10.5"
   }
  },
  {
@@ -351,22 +333,21 @@
   }
  },
  {
-  "id": "spacexai/grok-build-0.1",
-  "name": "Grok Build 0.1",
+  "id": "meituan/longcat-2.5-preview",
+  "name": "LongCat 2.5 Preview",
   "pricing": {
-   "input_cache_read": "0.00000021",
-   "input": "0.00000105",
-   "output": "0.0000021",
-   "web_search": "5.25"
+   "input_cache_read": "0.0000000063",
+   "input": "0.000000315",
+   "output": "0.00000126"
   }
  },
  {
-  "id": "xiaomi/mimo-v2.5-pro",
-  "name": "MiMo V2.5 Pro",
+  "id": "mistral/ministral-3b",
+  "name": "Ministral 3B",
   "pricing": {
-   "input_cache_read": "0.00000000378",
-   "input": "0.00000045675",
-   "output": "0.0000009135"
+   "input_cache_read": "0.0000000105",
+   "input": "0.000000105",
+   "output": "0.000000105"
   }
  },
  {
@@ -396,6 +377,25 @@
   }
  },
  {
+  "id": "spacexai/grok-build-0.1",
+  "name": "Grok Build 0.1",
+  "pricing": {
+   "input_cache_read": "0.00000021",
+   "input": "0.00000105",
+   "output": "0.0000021",
+   "web_search": "5.25"
+  }
+ },
+ {
+  "id": "xiaomi/mimo-v2.5-pro",
+  "name": "MiMo V2.5 Pro",
+  "pricing": {
+   "input_cache_read": "0.00000000378",
+   "input": "0.00000045675",
+   "output": "0.0000009135"
+  }
+ },
+ {
   "id": "spacexai/grok-4.20-non-reasoning-beta",
   "name": "Grok 4.20 Beta Non-Reasoning",
   "pricing": {
@@ -412,6 +412,14 @@
    "input_cache_read": "0.00000000294",
    "input": "0.000000147",
    "output": "0.000000294"
+  }
+ },
+ {
+  "id": "zai/glm-4.7",
+  "name": "GLM 4.7",
+  "pricing": {
+   "input": "0.00000063",
+   "output": "0.00000231"
   }
  },
  {
@@ -441,14 +449,6 @@
   }
  },
  {
-  "id": "zai/glm-4.7",
-  "name": "GLM 4.7",
-  "pricing": {
-   "input": "0.00000063",
-   "output": "0.00000231"
-  }
- },
- {
   "id": "bytedance/seed-1.6",
   "name": "Seed 1.6",
   "pricing": {
@@ -474,16 +474,6 @@
   }
  },
  {
-  "id": "minimax/minimax-m2",
-  "name": "MiniMax M2",
-  "pricing": {
-   "input_cache_read": "0.0000000315",
-   "input_cache_write": "0.00000039375",
-   "input": "0.000000315",
-   "output": "0.00000126"
-  }
- },
- {
   "id": "alibaba/qwen3.8-max-prime",
   "name": "Qwen 3.8 Max Prime",
   "pricing": {
@@ -491,6 +481,16 @@
    "input_cache_write": "0.00000525",
    "input": "0.0000042",
    "output": "0.0000126"
+  }
+ },
+ {
+  "id": "minimax/minimax-m2",
+  "name": "MiniMax M2",
+  "pricing": {
+   "input_cache_read": "0.0000000315",
+   "input_cache_write": "0.00000039375",
+   "input": "0.000000315",
+   "output": "0.00000126"
   }
  },
  {
@@ -1218,6 +1218,15 @@
   }
  },
  {
+  "id": "spacexai/grok-4.1-fast-non-reasoning",
+  "name": "Grok 4.1 Fast Non-Reasoning",
+  "pricing": {
+   "input_cache_read": "0.0000000525",
+   "input": "0.00000021",
+   "output": "0.000000525"
+  }
+ },
+ {
   "id": "google/gemini-2.5-pro",
   "name": "Gemini 2.5 Pro",
   "pricing": {
@@ -1242,15 +1251,6 @@
    "input_cache_read": "0.00000003675",
    "input": "0.000000147",
    "output": "0.000000609"
-  }
- },
- {
-  "id": "spacexai/grok-4.1-fast-non-reasoning",
-  "name": "Grok 4.1 Fast Non-Reasoning",
-  "pricing": {
-   "input_cache_read": "0.0000000525",
-   "input": "0.00000021",
-   "output": "0.000000525"
   }
  },
  {
@@ -2100,15 +2100,6 @@
   }
  },
  {
-  "id": "zai/glm-5.2-fast",
-  "name": "GLM 5.2 Fast",
-  "pricing": {
-   "input_cache_read": "0.000000588",
-   "input": "0.00000294",
-   "output": "0.00000924"
-  }
- },
- {
   "id": "anthropic/claude-fable-5",
   "name": "Claude Fable 5",
   "pricing": {
@@ -2117,6 +2108,15 @@
    "input": "0.0000105",
    "output": "0.0000525",
    "web_search": "10.5"
+  }
+ },
+ {
+  "id": "zai/glm-5.2-fast",
+  "name": "GLM 5.2 Fast",
+  "pricing": {
+   "input_cache_read": "0.000000588",
+   "input": "0.00000294",
+   "output": "0.00000924"
   }
  },
  {
