@@ -37,6 +37,7 @@ STAGES: tuple[tuple[str, str], ...] = (
 )
 SCAN_BATCH_SIZE = 4
 SCAN_CONCURRENCY = 3
+GLOSSARY_BATCH_SIZE = 6
 # More "credit" slices than this is a misread of the chapter, not credits.
 CREDIT_MAX_SHARE = 0.25
 CREDIT_MAX_ABSOLUTE = 3
@@ -120,10 +121,11 @@ class AIModeRunner:
             "translated": 0, "unreadable": 0, "review_flags": 0, "translate_errors": [], "render_errors": [],
             "editorial_blockers": 0, "blocker_samples": [], "source_lang": None,
             "textless_pages": [], "textless_rejected": [], "kept_regions": 0, "missed_added": 0,
-            "retried_pages": [], "restored_regions": 0, "review_list": [],
+            "retried_pages": [], "restored_regions": 0, "sfx_kept": 0, "review_list": [],
             "final_rounds": 0, "final_flagged": [], "final_fixes": 0, "final_errors": [],
         })
         self._memory = None
+        self._glossary_task: asyncio.Task | None = None
         self._slice_total: int | None = None
 
     # -- bookkeeping ---------------------------------------------------------
@@ -267,6 +269,8 @@ class AIModeRunner:
         from app.routers.chapters import chapter_processing_jobs
 
         indices = self._active_pages()
+        # The glossary only needs the original slices, so it is read while cleanup runs.
+        self._glossary_task = asyncio.create_task(self._read_glossary(indices))
         if not indices:
             self._progress(0, 0, "Không có lát nào cần clean")
             return
@@ -284,6 +288,35 @@ class AIModeRunner:
             errors = "; ".join(str(item.get("message")) for item in snapshot.get("errors") or [])
             raise AIModeFailed(f"Clean thất bại: {errors or 'lỗi không rõ'}")
         self._check_cancel()
+
+    async def _read_glossary(self, indices: list[int]) -> dict:
+        """Names, terms and forms of address for the whole chapter; empty when the read fails."""
+        from app.ai_mode.glossary import merge_glossaries, read_glossary
+        from app.translation.deepseek import _language_name
+
+        pages = self._manifest().get("pages", [])
+        gate = asyncio.Semaphore(SCAN_CONCURRENCY)
+
+        async def read(batch: list[int]) -> dict:
+            async with gate:
+                if self.job.cancel_requested:
+                    return {}
+                try:
+                    images = [(index, read_image(validate_managed_path(pages[index]["original"], RAW_DIR / self.job.chapter_id)))
+                              for index in batch]
+                    data, cost = await asyncio.to_thread(
+                        read_glossary, self.provider, self.settings.model, self.api_key,
+                        _language_name(self.settings.target_lang), self.settings.target_lang, images)
+                except (RuntimeError, ValueError, OSError) as exc:
+                    _append(self.report["translate_errors"], f"Bảng thuật ngữ lát {batch[0] + 1}: {_detail(exc)[:150]}")
+                    return {}
+                self._add_cost(cost)
+                return data
+
+        batches = [indices[i:i + GLOSSARY_BATCH_SIZE] for i in range(0, len(indices), GLOSSARY_BATCH_SIZE)]
+        glossary = merge_glossaries(list(await asyncio.gather(*(read(batch) for batch in batches))))
+        self.report["glossary"] = glossary
+        return glossary
 
     def _images(self, page_index: int, second_key: str, second_root) -> tuple:
         """The raw slice and one derived image (clean or rendered) of a page."""
@@ -354,7 +387,12 @@ class AIModeRunner:
         source_lang = manifest.get("source_lang") or site_language_hint(manifest.get("source_url")) or "auto"
         self.report["source_lang"] = source_lang
         indices = self._active_pages()
-        memory = self._memory = ChapterMemory(self.settings.story_notes)
+        try:
+            glossary = await self._glossary_task if self._glossary_task else {}
+        except Exception as exc:  # the glossary only helps; translation goes on without it
+            _append(self.report["translate_errors"], f"Bảng thuật ngữ: {_detail(exc)[:150]}")
+            glossary = {}
+        memory = self._memory = ChapterMemory(self.settings.story_notes, glossary)
         slice_total = self._slice_total = len(self._manifest().get("pages", []))
         # Admit slices in reading order so each sees the memory of earlier ones.
         gate = asyncio.Semaphore(TRANSLATE_CONCURRENCY)
@@ -382,6 +420,7 @@ class AIModeRunner:
                     _append(self.report["translate_errors"], f"Lát {page_index + 1}: {_detail(exc)[:200]}")
                     run = None
                 if run is not None:
+                    await self._keep_art(page_index, run)
                     self.report["translated"] += int(run.get("translated") or 0)
                     self.report["unreadable"] += int(run.get("unreadable") or 0)
                     self.report["review_flags"] += int(run.get("review") or 0)
@@ -420,7 +459,21 @@ class AIModeRunner:
         run = data.get("translation_run") or {}
         self.report["translated"] += int(run.get("translated") or 0)
         self._add_cost(run.get("estimated_cost_usd") if self.provider.tracks_cost else None)
+        await self._keep_art(page_index, run)
         return run
+
+    async def _keep_art(self, page_index: int, run: dict) -> None:
+        """Sound effects the model left as art get their original pixels back."""
+        from app.dependencies import pipeline
+
+        regions = run.get("art_regions") or []
+        if not regions:
+            return
+        try:
+            await asyncio.to_thread(pipeline.preserve_and_reinpaint, self.job.chapter_id, page_index, regions)
+            self.report["sfx_kept"] += len(regions)
+        except (ValueError, RuntimeError, OSError) as exc:
+            _append(self.report["translate_errors"], f"Lát {page_index + 1}: giữ SFX thất bại: {_detail(exc)[:150]}")
 
     def _ensure_objects(self, page_index: int) -> None:
         from app.manifest_utils import save_manifest_raw

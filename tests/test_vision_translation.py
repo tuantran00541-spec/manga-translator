@@ -343,3 +343,55 @@ def test_fonts_are_curated_and_a_chapter_letters_in_at_most_three():
         "emphasis.anton", "skill.kanit", "dialogue.mac-dinh-3", "emphasis.anton", "dialogue.mac-dinh-3"]
     assert memory.snapshot()["fonts_in_use"] == ["dialogue.mac-dinh-3", "emphasis.anton", "skill.kanit"]
     assert parse_vision_translation('{"translations":[{"id":"a","translated_text":"Thì…"}]}', {"a"}) == {"a": "Thì..."}
+
+
+def test_sound_effect_left_as_art_returns_its_region_for_restoring(saved_chapter, monkeypatch):
+    _style, region, _output = saved_chapter
+    monkeypatch.setattr(translation_router, "get_provider_api_key", lambda *a, **kw: "test-key")
+    monkeypatch.setattr(
+        "app.translation.vision.VisionPageTranslator.translate_page",
+        lambda self, *a, **kw: VisionTranslationResult({"obj_1": ""}, self.model, {}, None, roles={"obj_1": "sfx"}),
+    )
+    request = translation_router.TranslateVisionPageRequest(
+        chapter_id=CHAPTER, page_index=0, provider="openai", model="vision-test", source_lang="en", target_lang="vi",
+    )
+    info = asyncio.run(translation_router.translate_page_with_images(request))["translation_run"]
+    assert info["blank_ids"] == ["obj_1"] and info["art_regions"] == [region]
+
+
+def test_speech_roles_always_take_the_base_font(tmp_path, monkeypatch):
+    original, clean = tmp_path / "original.png", tmp_path / "clean.png"
+    Image.new("RGB", (400, 600), "white").save(original)
+    Image.new("RGB", (400, 600), "gray").save(clean)
+
+    class Response:
+        status_code, ok = 200, True
+
+        def json(self):
+            return {"choices": [{"message": {"content": json.dumps({
+                "translations": [{"id": "1", "translated_text": "Ừ", "role": "thought"},
+                                 {"id": "2", "translated_text": "Chạy!", "role": "shout"}],
+                "font_choices": {"1": "emphasis.bangers", "2": "emphasis.bangers"},
+            })}}], "usage": {}}
+
+    monkeypatch.setattr("app.translation.vision.requests.post", lambda url, **kwargs: Response())
+    items = [{"id": item_id, "text": "", "region": [1, 2, 30, 40]} for item_id in ("calm", "loud")]
+    result = VisionPageTranslator(PROVIDERS["openai"], "vision-test").translate_page(
+        original, clean, items, api_key="k", source_lang="en", target_lang="vi")
+    assert result.font_choices["calm"]["font_id"] == "dialogue.mac-dinh-3"
+    assert result.font_choices["loud"]["font_id"] == "emphasis.bangers"
+
+
+def test_glossary_vote_drops_a_misread_name_and_fixes_one_form_of_address():
+    from app.ai_mode.glossary import merge_glossaries
+    from app.translation.context import ChapterMemory
+
+    reads = [{"names": [{"source": "Yanguo", "target": "Yanguo"}],
+              "address": [{"from": "disciples", "to": "master", "self": "bọn con", "other": "sư phụ"}]}] * 2
+    reads.append({"names": [{"source": "Yanglu"}, {"source": "Lee Jin"}], "terms": [{"source": "Qi Refining", "target": "Luyện Khí"}],
+                  "address": [{"from": "Disciples", "to": "Master", "self": "bọn ta", "other": "sư phụ"}]})
+    glossary = merge_glossaries(reads + ["junk", {"names": "junk"}])
+    assert [name["source"] for name in glossary["names"]] == ["Yanguo", "Lee Jin"]
+    assert glossary["address"] == [{"from": "disciples", "to": "master", "self": "bọn con", "other": "sư phụ"}]
+    assert glossary["terms"] == [{"source": "qi refining", "target": "Luyện Khí"}]
+    assert ChapterMemory("", glossary).snapshot()["glossary"] == glossary

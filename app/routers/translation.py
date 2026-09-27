@@ -469,6 +469,7 @@ async def translate_page_in_context(
 
     committed = stale = unreadable = review = 0
     blank_ids: list[str] = []
+    art_regions: list[dict] = []  # sound effects left as art get their original pixels back
     with get_manifest_lock(req.chapter_id):
         latest = load_manifest_raw(req.chapter_id)
         pages = latest.get("pages", [])
@@ -496,6 +497,8 @@ async def translate_page_in_context(
                 unreadable += 1
                 if candidate["id"] not in getattr(translated, "missing_ids", ()):
                     blank_ids.append(candidate["id"])
+                    if getattr(translated, "roles", {}).get(candidate["id"]) == "sfx":
+                        art_regions.append(dict(obj["region"]))
                 continue
             obj["translation"] = value
             obj["translation_source"] = provider.id
@@ -556,6 +559,7 @@ async def translate_page_in_context(
         "rendered_pages": rendered_pages, "render_error": render_error,
         "missing_ids": sorted(getattr(translated, "missing_ids", ())),
         "blank_ids": blank_ids,
+        "art_regions": art_regions,
         "remaining": max(0, total_candidates - len(candidates)),
     }
     return result

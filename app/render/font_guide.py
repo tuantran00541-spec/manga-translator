@@ -14,6 +14,7 @@ from app.config import DEFAULT_FONT
 GUIDE_DIR = DEFAULT_FONT.parent / "guide"
 DEFAULT_LETTERING_FONT = "dialogue.mac-dinh-3"
 MAX_CHAPTER_FONTS = 3  # the base font plus at most two others
+BASE_FONT_ROLES = frozenset({"dialogue", "thought", "whisper"})  # speech in bubbles never takes a display font
 
 
 @dataclass(frozen=True)

@@ -28,11 +28,12 @@ TRANSLATION
 - Lock terms: keep proper names in their source spelling and reuse them; tell a descriptive phrase from the name of an organisation.
 - Punctuation is acting: keep "...", "-", "—", "?!", "!!" as in the source; never add "..." to a character who speaks bluntly.
 - No invented memes, out-of-world slang or jokes the source does not make.
-- Scanlator credits, watermarks and URLs become an empty string. A sound effect in the list becomes a short onomatopoeia.
+- Scanlator credits, watermarks and URLs become an empty string.
+- A sound effect drawn as part of the art (big stylised letters, often Korean, Japanese or Chinese) stays as art: role "sfx" and an empty translated_text, and its original pixels are put back. Only a sound effect lettered as plain text gets a short onomatopoeia.
 
 LETTERING
 - Role of each object: dialogue, narration, thought, whisper, shout, dark_threat, system_ui, skill_name, title, free_text or sfx.
-- Font: a chapter uses at most 3 fonts. dialogue.mac-dinh-3 is the base font for nearly all dialogue, thoughts and narration. Pick another font from FONTS only when IMAGE 1 letters that text in a clearly different style (a bold caption on the art, a screen, a skill name, a sound effect) and it matches the FONT SAMPLES image; reuse a font from fonts_in_use in CHAPTER MEMORY before adding one. When unsure, use the base font.
+- Font: a chapter uses at most 3 fonts. dialogue.mac-dinh-3 is the base font for nearly all dialogue, thoughts and narration; roles dialogue, thought and whisper always get it. Keep emphasis.bangers for real shouts. Pick another font from FONTS only when IMAGE 1 letters that text in a clearly different style (a bold caption on the art, a screen, a skill name, a sound effect) and it matches the FONT SAMPLES image; reuse a font from fonts_in_use in CHAPTER MEMORY before adding one. When unsure, use the base font.
 - Size: the renderer picks the largest size that still breathes inside the bubble. Keep the line short enough for that: about as long as the source line, shorter if the bubble is small. If it cannot fit, rewrite it shorter first; if it still cannot, set "review": true.
 - Break lines yourself with "\\n" at phrase boundaries; an oval bubble reads short, long, short. Never leave one orphan word, a lone punctuation mark, a split name or number and unit, or a hyphen inside a Vietnamese word.
 - Colour: the renderer letters in the source letters' measured colour. Add "color" (#rrggbb) only when IMAGE 1 letters that text in a distinct colour the measurement could miss (red or glowing titles, coloured skill names, gradients); otherwise leave it out.
@@ -42,7 +43,7 @@ LETTERING
 
 _INPUT_IMAGES = """
 INPUT
-One vertical slice per request, in reading order. IMAGE 1 is the ORIGINAL; read the text from it. IMAGE 2 is the same slice after the text was erased, for scene context. Each object has an id, an OCR hint that is often wrong, bbox_xyxy in image pixels, and usually max_chars: how many characters (spaces included) fit its box when lettered about as large as the source. Stay within max_chars; rephrase shorter rather than go over, so bubbles and free text keep the size of the original lettering. CHAPTER MEMORY holds the story notes, the character sheet, the forms of address already fixed and the last lines; treat it as settled unless the slice clearly contradicts it.
+One vertical slice per request, in reading order. IMAGE 1 is the ORIGINAL; read the text from it. IMAGE 2 is the same slice after the text was erased, for scene context. Each object has an id, an OCR hint that is often wrong, bbox_xyxy in image pixels, and usually max_chars: how many characters (spaces included) fit its box when lettered about as large as the source. Stay within max_chars; rephrase shorter rather than go over, so bubbles and free text keep the size of the original lettering. CHAPTER MEMORY holds the GLOSSARY (names, terms and forms of address fixed for the whole chapter; always use them exactly and never respell a name), the story notes, the character sheet, the forms of address already fixed and the last lines; treat it as settled unless the slice clearly contradicts it.
 """.strip()
 
 _VIETNAMESE = """
@@ -83,8 +84,9 @@ def _clean(value, limit: int = MAX_FIELD_CHARS) -> str:
 
 
 class ChapterMemory:
-    def __init__(self, notes: str = ""):
+    def __init__(self, notes: str = "", glossary: dict | None = None):
         self.notes = _clean(notes, MAX_NOTES_CHARS)
+        self.glossary = glossary or {}
         self.characters: dict[str, str] = {}
         self.address: dict[tuple[str, str], dict[str, str]] = {}
         self.recent: deque[dict] = deque(maxlen=RECENT_LINES)
@@ -104,6 +106,7 @@ class ChapterMemory:
     def snapshot(self) -> dict:
         with self._lock:
             return {
+                **({"glossary": self.glossary} if self.glossary else {}),
                 "story_notes": self.notes,
                 "characters": [{"name": name, "note": note} for name, note in self.characters.items()],
                 "address": [{"from": a, "to": b, **terms} for (a, b), terms in self.address.items()],

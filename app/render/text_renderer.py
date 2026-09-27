@@ -304,7 +304,10 @@ def render_text_in_box(
             box_w, box_h = raw_w - pad * 2, raw_h - pad * 2
         elif source_cap_px:
             from app.render.source_size import SIZE_SLACK, matching_font_px
-            maximum_size = max(RENDER_MIN_READABLE_FONT_SIZE,
+            # A misread source size must not shrink the text far below what the box holds.
+            box_fit = _fit_text(draw, text, box_w, box_h, font_path_str, stroke_w=stroke_w,
+                                minimum_size=RENDER_MIN_READABLE_FONT_SIZE)[0]
+            maximum_size = max(RENDER_MIN_READABLE_FONT_SIZE, int(SOURCE_FLOOR_RATIO * box_fit),
                                int(matching_font_px(font_path_str, int(source_cap_px)) * SIZE_SLACK))
         actual_size, lines, fits_readably = _fit_text(
             draw,
@@ -396,6 +399,7 @@ def render_text_in_box(
 
 ENLARGE_GROW_RATIO = 0.25  # each side of a region flagged enlarge grows by this share
 ENLARGED_MIN_FONT_SIZE = 22
+SOURCE_FLOOR_RATIO = 0.6  # source-matched text never drops below this share of the box-fit size
 SOURCE_MATCH_MAX_FONT_SIZE = 200  # large source lettering may be matched past MAX_FONT_SIZE
 
 

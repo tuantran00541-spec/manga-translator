@@ -10,7 +10,7 @@ import requests
 from app.ai_providers import AIProvider
 from app.parameters import TRANSLATION_CONNECT_TIMEOUT_SECONDS, TRANSLATION_READ_TIMEOUT_SECONDS
 from app.security import validate_url
-from app.render.font_guide import font_specimen_b64, lettering_font
+from app.render.font_guide import BASE_FONT_ROLES, DEFAULT_LETTERING_FONT, font_specimen_b64, lettering_font
 from app.translation.context import TYPOGRAPHY_ROLES, ChapterMemory, system_prompt
 from app.translation.deepseek import _language_name, _usage_cost_usd
 from app.visual_qc.deepseek_region_client import _extract_output_text, _safe_error_detail
@@ -230,13 +230,6 @@ class VisionPageTranslator:
         ids = set(real.values())
         if str(target_lang or "").lower() in {"vi", "vie", "vietnamese"}:
             result, data = _drop_foreign_script(result, data)
-        if memory is not None:
-            memory.update(slice_number or 0, data, result.translations, [str(item["id"]) for item in items])
-            fonts = result.font_choices or {}
-            result = replace(result, font_choices={
-                str(item["id"]): {"font_id": memory.admit_font(fonts[str(item["id"])]["font_id"]), "font_mode": "ai"}
-                for item in items if str(item["id"]) in fonts
-            })
         roles, review, answered, enlarge, colors = {}, set(), set(), set(), {}
         for entry in data.get("translations") or []:
             if not isinstance(entry, dict) or str(entry.get("id")) not in ids:
@@ -251,8 +244,17 @@ class VisionPageTranslator:
                 enlarge.add(str(entry["id"]))
             if isinstance(entry.get("color"), str) and _HEX_COLOR.fullmatch(entry["color"].strip()):
                 colors[str(entry["id"])] = entry["color"].strip().lower()
+        # Bubble speech always takes the base font; display fonts are for shouts, captions and art.
+        fonts = {key: (dict(value, font_id=DEFAULT_LETTERING_FONT) if roles.get(key) in BASE_FONT_ROLES else value)
+                 for key, value in (result.font_choices or {}).items()}
+        if memory is not None:
+            memory.update(slice_number or 0, data, result.translations, [str(item["id"]) for item in items])
+            fonts = {
+                str(item["id"]): {"font_id": memory.admit_font(fonts[str(item["id"])]["font_id"]), "font_mode": "ai"}
+                for item in items if str(item["id"]) in fonts
+            }
         return replace(
-            result, roles=roles, review_ids=frozenset(review), missing_ids=frozenset(ids - answered),
+            result, font_choices=fonts, roles=roles, review_ids=frozenset(review), missing_ids=frozenset(ids - answered),
             enlarge_ids=frozenset(enlarge), colors=colors,
         )
 

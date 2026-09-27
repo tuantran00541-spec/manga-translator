@@ -67,3 +67,13 @@ def test_source_ink_colour_is_measured_and_low_contrast_text_gets_an_outline():
     dark = Image.new("RGB", (400, 200), (20, 20, 20))
     image = render_text_in_box(dark, "Chào", (0, 0, 400, 200), fill="#202020", font_name="dialogue.mac-dinh-3")
     assert np.asarray(image).max() > 200, "dark text on a dark background gets a light outline"
+
+
+def test_a_misread_tiny_source_size_does_not_shrink_a_shout():
+    def ink_height(cap):
+        image = render_text_in_box(Image.new("RGB", (500, 300), "white"), "Thả ra ngay!", (0, 0, 500, 300),
+                                   fill="#000000", font_name="dialogue.mac-dinh-3", source_cap_px=cap)
+        rows = np.where(np.asarray(image.convert("L")) < 128)[0]
+        return rows.max() - rows.min()
+
+    assert ink_height(5) >= 0.55 * ink_height(None)
