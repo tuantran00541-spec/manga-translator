@@ -79,3 +79,10 @@ def test_request_shape_reads_a_prompt_sent_as_user_text():
     payload = {"messages": [{"role": "user", "content": [
         {"type": "text", "text": "Scan these slices"}, {"type": "image_url", "image_url": {"url": "x"}}]}]}
     assert gateway_app._request_shape(payload) == {"prompt_head": "Scan these slices", "images": 1}
+
+
+def test_cache_hits_are_billed_at_the_cached_price():
+    usage = {"prompt_tokens": 1000, "completion_tokens": 100, "prompt_tokens_details": {"cached_tokens": 800}}
+    billed = Upstream("b", "k", "m", 1.0, 2.0, cached_usd_per_m=0.02).cost(usage)
+    assert billed == (200 * 1.0 + 800 * 0.02 + 100 * 2.0) / 1_000_000
+    assert Upstream("b", "k", "m", 1.0, 2.0).cost(usage) == (1000 * 1.0 + 100 * 2.0) / 1_000_000

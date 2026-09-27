@@ -31,6 +31,8 @@ class Upstream:
     input_usd_per_m: float
     output_usd_per_m: float
     reasoning_tokens: int = 0
+    reasoning_effort: str = ""  # "low", "medium" or "high"; empty leaves the model's default
+    cached_usd_per_m: float | None = None  # price of cache-hit prompt tokens; None bills them as input
     # Extra attempts after a dropped connection, a timeout, 429 or 5xx.
     retries: int = 2
     retry_wait_s: float = 2.0
@@ -38,7 +40,10 @@ class Upstream:
     def cost(self, usage: dict) -> float:
         prompt = max(0, int(usage.get("prompt_tokens") or 0))
         completion = max(0, int(usage.get("completion_tokens") or 0))
-        return (prompt * self.input_usd_per_m + completion * self.output_usd_per_m) / 1_000_000
+        details = usage.get("prompt_tokens_details") if isinstance(usage.get("prompt_tokens_details"), dict) else {}
+        cached = min(prompt, max(0, int(details.get("cached_tokens") or 0))) if self.cached_usd_per_m is not None else 0
+        return ((prompt - cached) * self.input_usd_per_m + cached * (self.cached_usd_per_m or 0.0)
+                + completion * self.output_usd_per_m) / 1_000_000
 
     def send(self, payload: dict, trace: dict | None = None) -> tuple[int, dict]:
         """POST upstream, retrying transient failures; ``trace`` records attempts."""
@@ -117,6 +122,9 @@ def upstream_from_env() -> Upstream:
         input_usd_per_m=float(os.getenv("GATEWAY_PRICE_INPUT_PER_M", "0.28")),
         output_usd_per_m=float(os.getenv("GATEWAY_PRICE_OUTPUT_PER_M", "0.42")),
         reasoning_tokens=max(0, int(os.getenv("GATEWAY_UPSTREAM_REASONING_TOKENS", "0") or 0)),
+        reasoning_effort=os.getenv("GATEWAY_UPSTREAM_REASONING_EFFORT", "").strip().lower(),
+        cached_usd_per_m=(float(os.environ["GATEWAY_PRICE_CACHED_PER_M"])
+                          if os.getenv("GATEWAY_PRICE_CACHED_PER_M", "").strip() else None),
         retries=max(0, int(os.getenv("GATEWAY_UPSTREAM_RETRIES", "2") or 0)),
     )
 
@@ -300,6 +308,8 @@ def create_app(store: Store, upstream: Upstream, admin_key: str, *, mailer: Mail
             requested = MAX_OUTPUT_TOKENS
         # Add the reasoning budget on top of the client's answer budget.
         forwarded["max_tokens"] = max(1, min(requested, MAX_OUTPUT_TOKENS)) + upstream.reasoning_tokens
+        if upstream.reasoning_effort:
+            forwarded["reasoning_effort"] = upstream.reasoning_effort
         trace: dict = {}
         started = time.perf_counter()
         try:
