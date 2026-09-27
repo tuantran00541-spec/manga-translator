@@ -673,7 +673,7 @@ class Inpainter:
             painted = self._lama_fill_single(crop, fill_mask)
         elif long_crop or texture_tiling or (feather and max_dim > INPAINT_SIZE):
             self._metric_add("lama_tiled_regions")
-            painted = self._lama_fill_tiled(crop, fill_mask)
+            painted = self._lama_fill_tiled(crop, fill_mask, own=local_mask)
         else:
             painted = self._lama_fill_single(crop, fill_mask)
 
@@ -843,7 +843,7 @@ class Inpainter:
         painted_rgb = decode_lama_output(output, self.lama_contract)
         return cv2.cvtColor(painted_rgb, cv2.COLOR_RGB2BGR)
 
-    def _lama_fill_tiled(self, crop: np.ndarray, local_mask: np.ndarray) -> np.ndarray:
+    def _lama_fill_tiled(self, crop: np.ndarray, local_mask: np.ndarray, own: np.ndarray | None = None) -> np.ndarray:
         h, w = crop.shape[:2]
         # The dynamic model runs bigger tiles, so each hole keeps more of its surroundings.
         tile = DYNAMIC_LAMA_TILE if self.dynamic_lama else INPAINT_SIZE
@@ -866,7 +866,8 @@ class Inpainter:
                 wx = self._tile_weight(tile_w, overlap, x0 > 0, x1 < w)
                 weight = wy[:, None] * wx[None, :]
 
-                if not np.any(tile_mask > 127):
+                # Tiles holding only other text hidden as context are not painted here.
+                if not np.any((tile_mask if own is None else own[y0:y1, x0:x1]) > 127):
                     output[y0:y1, x0:x1] += tile_img.astype(np.float32) * weight[:, :, None]
                     weights[y0:y1, x0:x1] += weight
                     continue

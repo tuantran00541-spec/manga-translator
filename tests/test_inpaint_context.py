@@ -20,3 +20,16 @@ def test_text_not_erased_yet_is_hidden_from_lama():
     first, second = seen
     assert first[410, 250] == 255, "the second text is a hole while the first is inpainted"
     assert second[5, 250] == 0, "the first text, already erased, is context again"
+
+
+def test_tiles_holding_only_hidden_text_are_not_painted():
+    inpainter = Inpainter()
+    inpainter.dynamic_lama = True
+    runs = []
+    inpainter._lama_fill_single = lambda crop, mask: (runs.append(1), crop)[1]
+    crop = np.zeros((600, 3000, 3), np.uint8)
+    hole, own = np.zeros((600, 3000), np.uint8), np.zeros((600, 3000), np.uint8)
+    own[100:200, 100:300] = 255
+    hole[100:200, 2600:2800] = 255  # another text, far right, only hidden
+    inpainter._lama_fill_tiled(crop, np.maximum(hole, own), own=own)
+    assert len(runs) == 1
