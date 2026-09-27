@@ -384,7 +384,7 @@ def check_workbench_shell_contract() -> None:
     failures: list[str] = []
     source = WORKBENCH_PATH.read_text(encoding="utf-8")
     for marker in (
-        ".workbench-stage-grid, .translation-workspace-body",
+        ".workbench-stage-grid { position: relative; display: grid;",
         "grid-template-columns: var(--studio-rail-width) minmax(0, 1fr) var(--studio-inspector-width)",
         "@media (max-width: 1000px)",
     ):

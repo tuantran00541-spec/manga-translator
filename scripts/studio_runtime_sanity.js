@@ -22,7 +22,7 @@ for (const legacy of ['frontend-release.css', 'frontend-coordinator.js', 'fronte
 assert(!shell.includes('wrapRenderer("renderEditor"'), 'Editor must not be shell-wrapped');
 assert(!shell.includes('function wrapRenderer'), 'stage renderers must own their lifecycle without wrapper chains');
 assert(!editor.includes('cancelTextObjectPersist();\n  if (typeof window.cancelGeomPersist'), 'Editor render must not cancel pending edits');
-assert(studio.includes('.translation-workspace-body'), 'studio must own editor workspace layout');
+assert(studio.includes('.workbench-stage-grid {'), 'studio must own the workspace layout');
 assert(studio.includes('.page-navigator-item.active'), 'studio must own navigator active state');
 assert(editor.includes('return window.renderReview?.();'), 'editing opens inside the review workspace');
 assert(!editor.includes('function setupEditorDraw'), 'the separate editor page view must stay removed');
