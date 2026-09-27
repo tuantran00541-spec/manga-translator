@@ -264,3 +264,21 @@ def test_glow_round_letters_is_erased_with_them():
     full[box[1]:box[3], box[0]:box[2]] = mask
     changed = np.abs(image.astype(int) - background.astype(int)).max(axis=2) > 18
     assert (full & changed).sum() >= 0.99 * changed.sum(), "a glow left round the hole paints the letters back"
+
+
+def test_outlined_letters_over_sky_and_trees_are_erased():
+    from app.detector.kiuyha_detector import letter_mask
+
+    rng = np.random.default_rng(4)
+    image = np.empty((500, 1200, 3), np.uint8)
+    image[:170] = (225, 205, 185)  # light sky over dark trees: the box border holds both
+    image[170:] = np.clip(rng.normal(60, 18, (330, 1200, 3)), 0, 255).astype(np.uint8)
+    for y in (200, 330):
+        cv2.putText(image, "THE SLUMS", (160, y), cv2.FONT_HERSHEY_DUPLEX, 3.2, (255, 255, 255), 26)
+        cv2.putText(image, "THE SLUMS", (160, y), cv2.FONT_HERSHEY_DUPLEX, 3.2, (10, 10, 10), 10)
+    box, mask = letter_mask(image, (130, 90, 1000, 370))
+    full = np.zeros(image.shape[:2], bool)
+    full[box[1]:box[3], box[0]:box[2]] = mask
+    ink = image.max(axis=2) < 20
+    assert (full & ink).sum() >= 0.95 * ink.sum(), "both lines are erased"
+    assert full[450:, :].mean() < 0.05, "the trees below stay"

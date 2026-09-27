@@ -31,6 +31,10 @@ UNION_SHARE = 0.3  # boxes sharing this much of the smaller one are one text
 SAME_LINE = 0.7  # overlapping boxes sharing this much of the shorter height are pieces of one line
 LEFTOVER_GROW = 9  # the second pass also takes the glow round what is left
 LETTER_FILL = 0.2  # ink share of a letter's bounding box; outlines and hairlines fall below it
+SPLIT_GAIN = 1.5  # a dark or light split must find this much more letter area than the border-colour one
+FAR_SHARE = 0.5  # share of the border-colour threshold a dark or light letter must still stand out by
+SPECK_SHARE = 0.4  # in a dark or light split, pieces shorter than this share of the letters are art
+INK_TOLERANCE = 40  # how much fainter than the letters, on the 0-255 split score, a joined piece may be
 HALO_LEVEL = 0.35  # share of the letter threshold that still counts as glow round a letter
 HALO_REACH = 0.6  # how far, in letter heights, glow may spread from a letter
 HOLE_AREA = 4.0  # largest enclosed hole filled, in squared letter heights (white fill inside an outline)
@@ -54,30 +58,54 @@ def letter_mask(image: np.ndarray, box: tuple[int, int, int, int]) -> tuple[tupl
                            inner[:, :3].reshape(-1, 3), inner[:, -3:].reshape(-1, 3)])
     diff = np.linalg.norm(lab - np.median(ring, axis=0), axis=2)
     scale = 255.0 / max(1.0, float(diff[iy1:iy2, ix1:ix2].max()))
-    diff = np.clip(diff * scale, 0, 255).astype(np.uint8)
-    # The threshold is chosen inside the box and applied to the grown crop.
-    level = cv2.threshold(diff[iy1:iy2, ix1:ix2], 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[0]
-    fg = diff > level
-    count, labels, stats, _ = cv2.connectedComponentsWithStats(fg.astype(np.uint8))
+    lightness = lab[..., 0].astype(np.uint8)
     open_top, open_bottom, open_left, open_right = gy1 == 0, gy2 == h, gx1 == 0, gx2 == w
-    ch, cw = fg.shape
+    ch, cw = crop.shape[:2]
 
     def touches_edge(x, y, bw, bh):
         return ((not open_top and y == 0) or (not open_bottom and y + bh >= ch)
                 or (not open_left and x == 0) or (not open_right and x + bw >= cw))
 
-    inside = [label for label in range(1, count) if stats[label][0] >= ix1 and stats[label][1] >= iy1
-              and stats[label][0] + stats[label][2] <= ix2 and stats[label][1] + stats[label][3] <= iy2
-              and not touches_edge(*stats[label][:4])]
+    def split(score, letters_only=False):
+        # The threshold is chosen inside the box and applied to the grown crop.
+        level = cv2.threshold(score[iy1:iy2, ix1:ix2], 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[0]
+        count, labels, stats, _ = cv2.connectedComponentsWithStats((score > level).astype(np.uint8))
+        inside = [label for label in range(1, count) if stats[label][0] >= ix1 and stats[label][1] >= iy1
+                  and stats[label][0] + stats[label][2] <= ix2 and stats[label][1] + stats[label][3] <= iy2
+                  and not touches_edge(*stats[label][:4])]
+        if letters_only and inside:
+            # Gaps of background between glowing letters are dark too; letters stand out from the border colour.
+            far = np.bincount(labels.ravel(), weights=base[0].ravel(), minlength=count) / np.maximum(1, stats[:, 4])
+            inside = [label for label in inside if far[label] >= FAR_SHARE * base[1]]
+        if letters_only and inside:
+            # Art specks (windows, leaves) are many but small; letters hold most of the ink.
+            order = sorted(inside, key=lambda label: stats[label][3])
+            ink = np.cumsum([stats[label][4] for label in order])
+            tall = stats[order[int(np.searchsorted(ink, ink[-1] / 2))]][3]
+            inside = [label for label in inside if stats[label][3] >= SPECK_SHARE * tall]
+        return score, level, count, labels, stats, inside, not letters_only
+
+    # Far from the border colour first; on a border crossing sky and trees, dark or light letters instead.
+    base = split(np.clip(diff * scale, 0, 255).astype(np.uint8))
+    candidates = [base, split(255 - lightness, letters_only=True), split(lightness, letters_only=True)]
+    area = [int(sum(c[4][label][4] for label in c[5])) for c in candidates]
+    best = max(range(1, len(candidates)), key=lambda i: area[i])
+    diff, level, count, labels, stats, inside, glow = candidates[best if area[best] > SPLIT_GAIN * area[0] else 0]
+    # Letters share one ink; art of the same height (trees, windows) is fainter in the split.
+    means = np.bincount(labels.ravel(), weights=diff.ravel(), minlength=count) / np.maximum(1, stats[:, 4])
+    ink = float(np.median(means[inside])) if inside else 0.0
+    if not glow:  # a dark or light split also holds art strokes inside the box; letters are the deepest ink
+        inside = [label for label in inside if means[label] >= ink - INK_TOLERANCE]
     keep = np.zeros(count, bool)
     keep[inside] = True
     heights = [int(stats[label][3]) for label in inside if stats[label][4] >= 12]
     letter = float(np.median(heights)) if heights else 0.0
+
     def letter_like(label) -> bool:
         x, y, bw, bh, area = stats[label]
         # Letter sized and solid, not a thin outline or art running out of the crop.
         return (bool(letter) and not touches_edge(x, y, bw, bh) and bh <= 1.5 * letter and bw <= 3 * letter
-                and area >= LETTER_FILL * bw * bh)
+                and area >= LETTER_FILL * bw * bh and means[label] >= ink - INK_TOLERANCE)
 
     for label in range(1, count):
         x, y, bw, bh, _area = stats[label]
@@ -103,7 +131,9 @@ def letter_mask(image: np.ndarray, box: tuple[int, int, int, int]) -> tuple[tupl
     if letter:
         edge = np.concatenate([diff[iy1:iy1 + 3, ix1:ix2].ravel(), diff[iy2 - 3:iy2, ix1:ix2].ravel(),
                                diff[iy1:iy2, ix1:ix1 + 3].ravel(), diff[iy1:iy2, ix2 - 3:ix2].ravel()])
-        part = _fill_holes(_with_halo(diff, part, level, float(np.percentile(edge, 90)), letter), letter)
+        if glow:  # glow is measured against the border colour; a dark or light split has no such reference
+            part = _with_halo(diff, part, level, float(np.percentile(edge, 90)), letter)
+        part = _fill_holes(part, letter)
     part = part.astype(np.uint8)
     part = cv2.morphologyEx(part, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (CLOSE_KERNEL,) * 2))
     # Outlines and glow round big lettering are wider than round small text.
