@@ -21,6 +21,11 @@ HALVES_MIN_OVERLAP = 256
 CLOSE_KERNEL = 15  # letters -> word blobs
 GROW_KERNEL = 13  # past the letter outline (a white stroke round brown text)
 EDGE_GROW = 24  # room around a box for letters its edge cuts
+BAND_OVERLAP = 0.25  # share of a detection band repeated in the next one
+EDGE_TOUCH = 3  # a box this close to an inner band edge was cut by it
+UNION_SHARE = 0.3  # boxes sharing this much of the smaller one are one text
+SAME_LINE = 0.7  # overlapping boxes sharing this much of the shorter height are pieces of one line
+LEFTOVER_GROW = 9  # the second pass also takes the glow round what is left
 LETTER_FILL = 0.2  # ink share of a letter's bounding box; outlines and hairlines fall below it
 
 
@@ -100,6 +105,29 @@ def _merge(boxes: list[tuple[int, int, int, int, float]]) -> list[tuple[int, int
     return [(int(a), int(b), int(c), int(d), float(e)) for a, b, c, d, e in kept]
 
 
+def _union_overlapping(boxes: list[tuple[int, int, int, int, float]]) -> list[tuple[int, int, int, int, float]]:
+    """Join overlapping pieces of one text seen by different passes: the same line, or mostly the same area."""
+    merged = [list(box) for box in boxes]
+    changed = True
+    while changed:
+        changed = False
+        for i in range(len(merged)):
+            for j in range(i + 1, len(merged)):
+                a, b = merged[i], merged[j]
+                ix = min(a[2], b[2]) - max(a[0], b[0])
+                iy = min(a[3], b[3]) - max(a[1], b[1])
+                smaller = min((a[2] - a[0]) * (a[3] - a[1]), (b[2] - b[0]) * (b[3] - b[1]))
+                same_line = iy >= SAME_LINE * min(a[3] - a[1], b[3] - b[1])
+                if ix > 0 and iy > 0 and (same_line or ix * iy >= UNION_SHARE * max(1, smaller)):
+                    merged[i] = [min(a[0], b[0]), min(a[1], b[1]), max(a[2], b[2]), max(a[3], b[3]), max(a[4], b[4])]
+                    del merged[j]
+                    changed = True
+                    break
+            if changed:
+                break
+    return [(int(a), int(b), int(c), int(d), float(e)) for a, b, c, d, e in merged]
+
+
 def _rows(output: np.ndarray, conf_threshold: float) -> np.ndarray:
     """Final ``x1, y1, x2, y2, score`` rows from either output layout."""
     output = np.asarray(output)
@@ -173,8 +201,35 @@ class KiuyhaTextDetector:
         half = (height + min(overlap, height) + 1) // 2
         return scale, [(0, half), (height - half, height)]
 
+    def band_boxes(self, image: np.ndarray) -> list[tuple[int, int, int, int, float]]:
+        """Boxes from overlapping full-width bands shrunk no more than the model input needs, for small text."""
+        if self.fixed is None:
+            return []
+        h, w = image.shape[:2]
+        scale = min(1.0, self.fixed[1] / w)
+        band = int(self.fixed[0] / scale)
+        if band >= h:
+            return []
+        step = int(band * (1 - BAND_OVERLAP))
+        starts = list(range(0, h - band, step)) + [h - band]
+        found = []
+        for y0 in starts:
+            for x1, y1, x2, y2, score in self.raw_boxes(image[y0:y0 + band]):
+                # A box cut by an inner band edge is seen whole in the next band or the coarse pass.
+                if (y1 <= EDGE_TOUCH and y0 > 0) or (y2 >= band - EDGE_TOUCH and y0 + band < h):
+                    continue
+                found.append((x1, y1 + y0, x2, y2 + y0, score))
+        return found
+
     def detect_slice(self, image: np.ndarray) -> list[tuple[int, int, int, int, float]]:
-        """Padded text boxes for a slice, detected as two halves when that helps."""
+        """Padded text boxes for a slice: one coarse pass plus near-native bands, pieces of one text merged."""
+        h, w = image.shape[:2]
+        found = _union_overlapping(self._coarse_boxes(image) + self.band_boxes(image))
+        return [(max(0, x1 - BOX_PAD), max(0, y1 - BOX_PAD), min(w, x2 + BOX_PAD), min(h, y2 + BOX_PAD), score)
+                for x1, y1, x2, y2, score in found]
+
+    def _coarse_boxes(self, image: np.ndarray) -> list[tuple[int, int, int, int, float]]:
+        """Boxes from the whole slice at once, as two halves when that helps."""
         h, w = image.shape[:2]
         plan = self.halves_plan(h, w)
         if plan is None:
@@ -198,8 +253,7 @@ class KiuyhaTextDetector:
                 if bx2 - bx1 > 4 and by2 - by1 > 4:
                     found.append((bx1, by1, bx2, by2, score))
             found = _merge(found)
-        return [(max(0, x1 - BOX_PAD), max(0, y1 - BOX_PAD), min(w, x2 + BOX_PAD), min(h, y2 + BOX_PAD), score)
-                for x1, y1, x2, y2, score in found]
+        return found
 
     def text_boxes(self, image: np.ndarray) -> list[BubbleBox]:
         """Detected text blocks with letter masks, ready for inpainting and OCR."""
@@ -212,12 +266,19 @@ class KiuyhaTextDetector:
         return boxes
 
     def leftover_boxes(self, clean: np.ndarray, targets) -> list[BubbleBox]:
-        """Text still seen inside a first-pass box after inpainting; the colour split failed there, so the whole box goes."""
+        """Text still seen inside a first-pass box after inpainting, masked by what is left of its strokes."""
         boxes = []
         for x1, y1, x2, y2, score in self.detect_slice(clean):
             cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
             if any(t.x1 <= cx <= t.x2 and t.y1 <= cy <= t.y2 for t in targets):
-                boxes.append(_text_box(x1, y1, x2, y2, score, np.full((y2 - y1, x2 - x1), 255, np.uint8), self.source_model))
+                (x1, y1, x2, y2), mask = letter_mask(clean, (x1, y1, x2, y2))
+                if mask.any():
+                    # Glow and outlines left round erased letters; a rectangle would leave a flat patch on art.
+                    mask = cv2.dilate(mask.astype(np.uint8) * 255, cv2.getStructuringElement(
+                        cv2.MORPH_ELLIPSE, (LEFTOVER_GROW,) * 2))
+                else:
+                    mask = np.full((y2 - y1, x2 - x1), 255, np.uint8)
+                boxes.append(_text_box(x1, y1, x2, y2, score, mask, self.source_model))
         return boxes
 
     def detect(self, image: np.ndarray, *, parallel: bool = False) -> list[BubbleBox]:

@@ -76,13 +76,13 @@ def _text_slice():
     return image
 
 
-def test_tall_slice_runs_as_two_halves_in_one_pass_and_masks_letters_with_outline():
+def test_tall_slice_runs_a_coarse_pass_and_near_native_bands_and_masks_letters_with_outline():
     image = _text_slice()
     session = _BlobSession()
     detector = KiuyhaTextDetector("unused", session=session)
     boxes = detector.text_boxes(image)
-    assert len(session.blobs) == 1, "one forward pass"
-    assert len(boxes) == 3, "the line in the overlap is merged, not doubled"
+    assert len(session.blobs) == 1 + 3, "the whole slice once, then three overlapping bands"
+    assert len(boxes) == 3, "a line seen by several passes is one box"
     for baseline in (300, 1250, 2150):
         assert any(b.y1 < baseline - 20 and b.y2 > baseline for b in boxes), baseline
     paper = np.array((250, 235, 220))
@@ -151,7 +151,10 @@ def test_letters_cut_by_the_slice_edge_are_masked_and_leftovers_take_the_whole_b
     detector = KiuyhaTextDetector("unused", session=_BlobSession())
     image = _text_slice()
     (left,) = detector.leftover_boxes(image, [b for b in detector.text_boxes(image) if b.y1 > 2000])
-    assert (left.mask == 255).all()
+    ink = np.abs(image.astype(int) - (250, 235, 220)).sum(axis=2) > 30
+    region = ink[left.y1:left.y2, left.x1:left.x2]
+    assert (left.mask[region] == 255).all(), "every stroke left is taken"
+    assert (left.mask == 255).mean() < 0.9, "the art round it is not painted over as a rectangle"
 
 
 def test_pipeline_detect_names_the_model_and_reports_timing():
@@ -189,3 +192,11 @@ def test_a_bubble_outline_past_the_box_is_not_erased():
     cv2.ellipse(outline, (300, 150), (230, 110), 0, 0, 360, 255, 3)
     assert not (grown & (outline > 0)).any()
     assert grown[150, 190]
+
+
+def test_pieces_of_one_text_from_different_passes_become_one_box():
+    from app.detector.kiuyha_detector import _union_overlapping
+
+    pieces = [(100, 100, 400, 160, 0.9), (350, 100, 700, 160, 0.8), (100, 400, 300, 450, 0.7)]
+    assert _union_overlapping(pieces) == [(100, 100, 700, 160, 0.9), (100, 400, 300, 450, 0.7)]
+    assert len(_union_overlapping([(0, 0, 100, 100, 0.9), (95, 95, 200, 200, 0.9)])) == 2, "a touching corner is two texts"
