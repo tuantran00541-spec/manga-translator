@@ -287,3 +287,8 @@ def test_vision_reply_tells_unanswered_from_deliberately_blank_objects(tmp_path,
     assert result.translations == {"t1": "Chào", "mark": "", "lost": ""}
     assert result.missing_ids == {"lost"}, "answered-empty differs from not answered"
     assert '"keep"' not in sent[0]["json"]["messages"][0]["content"], "checkpoint 3 owns kept and missed text"
+
+
+def test_vision_parser_capitalises_objects_marked_caps():
+    raw = '{"translations":[{"id":"a","translated_text":"Bám chặt lấy game này","caps":true},{"id":"b","translated_text":"Thoát trước."}]}'
+    assert parse_vision_translation(raw, {"a", "b"}) == {"a": "BÁM CHẶT LẤY GAME NÀY", "b": "Thoát trước."}

@@ -38,7 +38,7 @@ FINAL_REVIEW_PROMPT = (
     "its id, its box as [ymin, xmin, ymax, xmax] normalised to 0-1000, and its translation.\n"
     "Decide verdict \"ok\" or \"fix\". Ask for a fix only for clear defects a reader would notice:\n"
     "- repaint (box_2d): source-language text or erase marks still visible in FINAL outside the lettering.\n"
-    "- retranslate (id): a translation that is wrong, missing words, or does not fit the scene.\n"
+    "- retranslate (id): a translation that is wrong, misspelled, missing words, or does not fit the scene.\n"
     "- restore (id): lettering that should not be there (art, logo, sound effect drawn as art); the original "
     "pixels are put back.\n"
     "Do not ask for style changes. Return JSON only: "

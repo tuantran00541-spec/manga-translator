@@ -106,7 +106,8 @@ def parse_vision_translation(content: str, expected_ids: set[str], *, allow_miss
             raise RuntimeError("Vision model returned an unknown, repeated or malformed translation")
         if len(value) > 4000:
             raise RuntimeError("Vision model returned oversized text")
-        results[obj_id] = value.strip()
+        # The model spells better in sentence case; capitals are applied here.
+        results[obj_id] = value.strip().upper() if entry.get("caps") is True else value.strip()
     if set(results) != expected_ids:
         if not allow_missing or not results:
             raise RuntimeError("Vision model omitted one or more text-object IDs")
