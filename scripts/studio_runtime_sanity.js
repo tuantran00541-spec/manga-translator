@@ -7,7 +7,7 @@ const shell = fs.readFileSync('app/static/js/ui-shell.js', 'utf8');
 const editor = fs.readFileSync('app/static/js/editor.js', 'utf8');
 const editorInspector = fs.readFileSync('app/static/js/editor-inspector.js', 'utf8');
 const editorPersistence = fs.readFileSync('app/static/js/editor-persistence.js', 'utf8');
-const transforms = fs.readFileSync('app/static/js/editor-box-transform.js', 'utf8');
+const transforms = fs.readFileSync('app/static/js/editor-geometry.js', 'utf8');
 const reviewWorkspace = fs.readFileSync('app/static/js/review-workspace.js', 'utf8');
 const stitchInspector = fs.readdirSync('app/static/js/review-stitch').sort().map((name) => fs.readFileSync(`app/static/js/review-stitch/${name}`, 'utf8')).join('\n');
 const review = fs.readFileSync('app/static/js/review.js', 'utf8');
@@ -51,7 +51,7 @@ assert(editorPersistence.includes('let _textPersistChain = Promise.resolve()'), 
 const coreIndex = html.indexOf('/static/js/editor.js');
 const inspectorIndex = html.indexOf('/static/js/editor-inspector.js');
 const persistenceIndex = html.indexOf('/static/js/editor-persistence.js');
-const transformIndex = html.indexOf('/static/js/editor-box-transform.js');
+const transformIndex = html.indexOf('/static/js/editor-geometry.js');
 assert(coreIndex < inspectorIndex && inspectorIndex < persistenceIndex && persistenceIndex < transformIndex, 'editor modules must load in ownership order');
 assert(shell.includes('window.createAIProviderSettings?.()'), 'AI provider settings must mount before Review is opened');
 assert(!review.includes('  refreshSrcData();\n\n  img.addEventListener("load"'), 'Review must not decode full source pixels on every page mount');

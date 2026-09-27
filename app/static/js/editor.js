@@ -94,7 +94,6 @@ function applyManifestResponse(manifest, pageIndex, opts = {}) {
   if (!manifest || (manifest.chapter_id && manifest.chapter_id !== currentChapterId)) {
     return false;
   }
-  const skipOverlays = opts.skipOverlays === true;
   const snapshot = opts.snapshot || null;
   const targetId = opts.id || editorState.selectedTextObjectId;
   const currentState = targetId ? collectPanelState(pageIndex, targetId) : null;
@@ -113,9 +112,6 @@ function applyManifestResponse(manifest, pageIndex, opts = {}) {
     if (entry.style) obj.style = Object.assign({}, DEFAULT_TEXT_OBJECT_STYLE, obj.style || {}, entry.style);
   });
   if (typeof window.reapplyPendingGeom === "function") window.reapplyPendingGeom();
-  const wrapper = document.querySelector(".translation-canvas-host .page-block-wrapper");
-  const page = currentManifest ? currentManifest.pages[pageIndex] : null;
-  if (!skipOverlays && wrapper && page) renderTextObjectOverlays(pageIndex, page);
   renderEditorPanel(pageIndex);
   return true;
 }
@@ -229,7 +225,7 @@ async function associateTextObjectOcr(pageIndex, id) {
   });
   if (chapterId !== currentChapterId) return;
   if (!findTextObject(pageIndex, id)) return;
-  applyManifestResponse(manifest, pageIndex, { skipOverlays: true, snapshot, id });
+  applyManifestResponse(manifest, pageIndex, { snapshot, id });
 }
 window.associateTextObjectOcr = associateTextObjectOcr;
 
@@ -242,8 +238,6 @@ function setEditorTool(tool) {
     btn.classList.toggle("ui-btn-ghost", !active);
     if (btn.dataset.tool) btn.setAttribute("aria-pressed", String(active));
   });
-  const imgWrap = document.querySelector(".translation-canvas-host .page-image-wrap");
-  if (imgWrap) imgWrap.classList.toggle("draw-mode", tool !== "select");
 }
 window.setEditorTool = setEditorTool;
 
@@ -263,21 +257,6 @@ function clearSelectedTextObject() {
   renderEditorPanel(editorState.activePageIndex);
 }
 window.clearSelectedTextObject = clearSelectedTextObject;
-
-function editorImageMetrics(img) {
-  if (!img || !img.naturalWidth || !img.naturalHeight || !img.clientWidth || !img.clientHeight) {
-    return null;
-  }
-  return {
-    offsetX: img.offsetLeft,
-    offsetY: img.offsetTop,
-    width: img.clientWidth,
-    height: img.clientHeight,
-    sx: img.clientWidth / img.naturalWidth,
-    sy: img.clientHeight / img.naturalHeight,
-  };
-}
-window.editorImageMetrics = editorImageMetrics;
 
 function switchEditorPage(newIndex) {
   const pages = currentManifest ? currentManifest.pages : null;

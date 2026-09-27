@@ -345,13 +345,8 @@ def check_browser_state_contracts() -> None:
             "await window.flushPreserveRegionSaves(chapterId);",
             "state.persistedVersion < state.version",
         ),
-        Path("app/static/js/editor-box-transform.js"): (
+        Path("app/static/js/editor-geometry.js"): (
             "if (currentGen === geomGeneration)",
-            "window.editorImageMetrics(img)",
-            "metrics.offsetX + r.x1 * metrics.sx",
-        ),
-        Path("app/static/js/editor.js"): (
-            "function editorImageMetrics(img)",
         ),
         Path("app/static/js/review-stitch"): (
             "function captureSnapshot(shell)",

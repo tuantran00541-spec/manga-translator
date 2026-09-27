@@ -42,11 +42,9 @@ export function syncOverlay(shell, pageIndex, id) {
 }
 
 export function installOverlaySync() {
-  if (!state.baseSyncOverlayForObject) state.baseSyncOverlayForObject = window.syncOverlayForObject || null;
   window.syncOverlayForObject = (pageIndex, id) => {
     const shell = document.querySelector("#page-view.review-mode .review-document-shell");
-    if (shell && syncOverlay(shell, pageIndex, id)) return;
-    state.baseSyncOverlayForObject?.(pageIndex, id);
+    if (shell) syncOverlay(shell, pageIndex, id);
   };
 }
 

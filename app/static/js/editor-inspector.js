@@ -440,8 +440,6 @@ const TEXT_OBJECT_MIN_SIZE = 10;
 function getPageImageSize(pageIndex) {
   const page = currentManifest && currentManifest.pages ? currentManifest.pages[pageIndex] : null;
   if (page && page.width && page.height) return { w: page.width, h: page.height };
-  const img = document.querySelector(".translation-canvas-host .page-image-wrap img");
-  if (img && img.naturalWidth) return { w: img.naturalWidth, h: img.naturalHeight };
   return { w: Infinity, h: Infinity };
 }
 
