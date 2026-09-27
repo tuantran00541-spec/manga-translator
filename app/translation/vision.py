@@ -9,9 +9,8 @@ import requests
 
 from app.ai_providers import AIProvider
 from app.parameters import TRANSLATION_CONNECT_TIMEOUT_SECONDS, TRANSLATION_READ_TIMEOUT_SECONDS
-from app.render.font_catalog import load_font_catalog
 from app.security import validate_url
-from app.translation.context import TYPOGRAPHY_ROLES, ChapterMemory, system_prompt
+from app.translation.context import LETTERING_FONT, TYPOGRAPHY_ROLES, ChapterMemory, system_prompt
 from app.translation.deepseek import _language_name, _usage_cost_usd
 from app.visual_qc.deepseek_region_client import _extract_output_text, _safe_error_detail
 from app.visual_qc.gemini import _encode_for_gemini, _read_image
@@ -29,7 +28,6 @@ _TRANSLATIONS_SCHEMA = {
             "properties": {"id": {"type": "string"}, "translated_text": {"type": "string"}},
             "required": ["id", "translated_text"],
         }},
-        "font_choices": {"type": "object"},
         "speakers": {"type": "object"},
         "characters": {"type": "array", "items": {
             "type": "object",
@@ -57,21 +55,6 @@ class VisionTranslationResult:
     review_ids: frozenset[str] = frozenset()
     # Objects the model did not answer for at all (as opposed to answering "").
     missing_ids: frozenset[str] = frozenset()
-
-
-def _font_catalog_hint(target_lang: str) -> str:
-    """Compact role -> font_id list; Vietnamese output only gets fonts with its diacritics."""
-    try:
-        records = load_font_catalog().records
-    except (OSError, ValueError):
-        return "{}"
-    vietnamese = str(target_lang or "").lower() in {"vi", "vie", "vietnamese"}
-    groups: dict[str, list[str]] = {}
-    for record in sorted(records, key=lambda item: (item.category, item.default_rank, item.id)):
-        if vietnamese and not record.vietnamese:
-            continue
-        groups.setdefault(record.category, []).append(record.id)
-    return json.dumps(groups, ensure_ascii=False, separators=(",", ":"))
 
 
 def parse_vision_translation(content: str, expected_ids: set[str], *, allow_missing: bool = False) -> dict[str, str]:
@@ -126,15 +109,8 @@ def _parse_vision_payload(content: str, expected_ids: set[str]) -> tuple[dict[st
     translations = parse_vision_translation(source, expected_ids, allow_missing=True)
     if isinstance(data, dict) and isinstance(data.get("translations"), dict):
         data["translations"] = [{"id": str(k), "translated_text": v} for k, v in data["translations"].items()]
-    choices: dict[str, dict] = {}
-    raw_choices = data.get("font_choices") if isinstance(data, dict) else None
-    if isinstance(raw_choices, dict):
-        for item_id, choice in raw_choices.items():
-            if item_id not in expected_ids or not isinstance(choice, dict):
-                continue
-            font_id, font_mode = choice.get("font_id"), choice.get("font_mode", "ai")
-            if isinstance(font_id, str) and isinstance(font_mode, str):
-                choices[str(item_id)] = {"font_id": font_id.strip(), "font_mode": font_mode.strip().lower() or "ai"}
+    # One fixed lettering font; the model no longer picks fonts.
+    choices = {item_id: {"font_id": LETTERING_FONT, "font_mode": "ai"} for item_id in translations}
     return translations, choices, data if isinstance(data, dict) else {}
 
 
@@ -217,7 +193,7 @@ class VisionPageTranslator:
             if str(source_lang or "").lower() in {"", "auto"}
             else _language_name(source_lang)
         )
-        system = system_prompt(_language_name(target_lang), target_lang, _font_catalog_hint(target_lang))
+        system = system_prompt(_language_name(target_lang), target_lang)
         where = f"SLICE {slice_number} of {slice_total}. " if slice_number and slice_total else ""
         prompt = (
             (f"CHAPTER MEMORY (read-only context from earlier slices; never copy it into your answer): "

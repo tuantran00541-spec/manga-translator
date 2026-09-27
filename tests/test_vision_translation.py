@@ -73,7 +73,8 @@ def test_vision_client_sends_original_and_clean_with_short_ids(tmp_path, monkeyp
     system = payload["messages"][0]
     assert system["role"] == "system"
     assert "localization editor" in system["content"] and "VIETNAMESE" in system["content"]
-    assert "dialogue.mac-dinh-3" in system["content"] and "narration.mac-dinh-2" in system["content"]
+    assert "font" not in system["content"].lower(), "the lettering font is fixed, not chosen by the model"
+    assert answer.font_choices == {"text_1": {"font_id": "dialogue.mac-dinh-3", "font_mode": "ai"}}
     content = payload["messages"][1]["content"]
     images = [item for item in content if item.get("type") == "image_url"]
     assert len(images) == 2
