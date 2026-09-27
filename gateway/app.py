@@ -21,6 +21,8 @@ from gateway.store import InvalidToken, LoginRejected, QuotaExceeded, Store
 
 EMAIL_RE = re.compile(r"^[^@\s]{1,64}@[^@\s]{1,190}\.[^@\s]{2,63}$")
 MAX_OUTPUT_TOKENS = 8192
+# A client may ask for more thinking on one request; the gateway adds room for it.
+REASONING_BUDGETS = {"none": 0, "minimal": 1024, "low": 4096, "medium": 8192}
 
 
 @dataclass(frozen=True)
@@ -307,9 +309,15 @@ def create_app(store: Store, upstream: Upstream, admin_key: str, *, mailer: Mail
         except (TypeError, ValueError):
             requested = MAX_OUTPUT_TOKENS
         # Add the reasoning budget on top of the client's answer budget.
-        forwarded["max_tokens"] = max(1, min(requested, MAX_OUTPUT_TOKENS)) + upstream.reasoning_tokens
-        if upstream.reasoning_effort:
+        extra = upstream.reasoning_tokens
+        asked = str(payload.get("reasoning_effort") or "").strip().lower()
+        forwarded.pop("reasoning_effort", None)
+        if asked in REASONING_BUDGETS:
+            forwarded["reasoning_effort"] = asked
+            extra = max(extra, REASONING_BUDGETS[asked])
+        elif upstream.reasoning_effort:
             forwarded["reasoning_effort"] = upstream.reasoning_effort
+        forwarded["max_tokens"] = max(1, min(requested, MAX_OUTPUT_TOKENS)) + extra
         trace: dict = {}
         started = time.perf_counter()
         try:

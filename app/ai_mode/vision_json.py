@@ -12,7 +12,7 @@ from dataclasses import dataclass
 import numpy as np
 import requests
 
-from app.ai_providers import AIProvider
+from app.ai_providers import CLOUD_PROVIDER_ID, AIProvider
 from app.parameters import TRANSLATION_CONNECT_TIMEOUT_SECONDS, TRANSLATION_READ_TIMEOUT_SECONDS
 from app.security import validate_url
 from app.translation.deepseek import _usage_cost_usd
@@ -61,6 +61,7 @@ def request_vision_json(
     *,
     schema: dict | None = None,
     max_tokens: int = 2048,
+    reasoning_effort: str | None = None,
 ) -> VisionJSONResult:
     """Return the model's JSON object for ``prompt`` and labelled ``images``."""
     key = str(api_key or "").strip()
@@ -69,10 +70,10 @@ def request_vision_json(
     encoded = [(label, _encode_for_gemini(image)) for label, image in images]
     if provider.protocol == "gemini":
         return _gemini(model, key, prompt, encoded, schema=schema, max_tokens=max_tokens)
-    return _openai(provider, model, key, prompt, encoded, max_tokens=max_tokens)
+    return _openai(provider, model, key, prompt, encoded, max_tokens=max_tokens, reasoning_effort=reasoning_effort)
 
 
-def _openai(provider, model, api_key, prompt, encoded, *, max_tokens) -> VisionJSONResult:
+def _openai(provider, model, api_key, prompt, encoded, *, max_tokens, reasoning_effort=None) -> VisionJSONResult:
     url = str(provider.chat_url or "")
     if not url:
         raise ValueError("Provider does not have chat completions")
@@ -90,6 +91,9 @@ def _openai(provider, model, api_key, prompt, encoded, *, max_tokens) -> VisionJ
         "stream": False,
     }
     payload.update(provider.chat_completion_extras())
+    if reasoning_effort and provider.id == CLOUD_PROVIDER_ID:
+        # Only the Manga Cloud gateway knows which upstream models take this field.
+        payload["reasoning_effort"] = reasoning_effort
     try:
         response = requests.post(
             url,

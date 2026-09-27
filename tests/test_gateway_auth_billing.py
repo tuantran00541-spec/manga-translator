@@ -259,3 +259,22 @@ def test_checkout_refuses_free_plans_and_unconfigured_providers(world, tmp_path)
     _, bare_headers = _login(bare)
     assert bare.post("/v1/billing/checkout", json={"plan": "pro", "provider": "payos"}, headers=bare_headers).status_code == 503
     assert bare.get("/v1/billing/plans").json()["providers"] == {"payos": False, "lemonsqueezy": False}
+
+
+def test_a_request_may_ask_for_more_thinking_and_gets_room_for_it(world, monkeypatch):
+    client, _store, _clock, _fake = world
+    _token, headers = _login(client)
+    job_token = client.post("/v1/jobs", headers=headers).json()["job_token"]
+    sent = []
+
+    def send(self, payload, trace=None):
+        sent.append(payload)
+        return 200, {"choices": [{"message": {"content": "{}"}}], "usage": {}}
+
+    monkeypatch.setattr(Upstream, "send", send)
+    job = {"Authorization": f"Bearer {job_token}"}
+    body = {"messages": [{"role": "user", "content": "x"}], "max_tokens": 1000}
+    client.post("/v1/chat/completions", headers=job, json={**body, "reasoning_effort": "low"})
+    client.post("/v1/chat/completions", headers=job, json={**body, "reasoning_effort": "extreme"})
+    assert (sent[0]["reasoning_effort"], sent[0]["max_tokens"]) == ("low", 1000 + 4096)
+    assert "reasoning_effort" not in sent[1] and sent[1]["max_tokens"] == 1000, "unknown efforts are dropped"

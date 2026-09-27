@@ -16,20 +16,26 @@ MIN_SIDE_PX = 10
 MAX_AREA_RATIO = 0.4  # a box over most of a slice is a misread
 MARGIN_PX = 6
 MAX_BOXES = 12
+CLEAN_REVIEW_EFFORT = "low"
 FINAL_ACTIONS = frozenset({"repaint", "retranslate", "restore"})
 
 _BOX = '{"box_2d":[ymin,xmin,ymax,xmax],"confidence":0.0}'
 
 CLEAN_REVIEW_PROMPT = (
-    "You check an automatic manga/manhwa text cleanup. IMAGE 1 is the ORIGINAL slice, IMAGE 2 is the "
-    "same slice after the text was erased (CLEAN). Compare them and report only clear problems in IMAGE 2:\n"
-    "- missed: story text a reader must read (dialogue, narration, captions, system windows, titles) that is "
-    "still fully readable in CLEAN. It will be erased and translated.\n"
-    "- residue: fragments, ghost outlines, smears or blotches left where text was erased, and leftover "
-    "scanlator watermarks or credits. They will be erased; nothing is translated.\n"
+    "You are the last check of an automatic manga/manhwa text cleanup. IMAGE 1 is the ORIGINAL slice, IMAGE 2 is "
+    "the same slice after the text was erased (CLEAN). Inspect IMAGE 2 slowly, top to bottom and edge to edge: "
+    "inside and around every bubble, caption box, dark area, gradient, panel border, screen and the art itself, "
+    "and compare each spot with IMAGE 1.\n"
+    "HARD RULE: any words left in CLEAN that read as a sentence or phrase someone says or narrates (dialogue, "
+    "thoughts, narration, captions, system messages, comments on a screen, titles), in any language, even partly "
+    "readable or half erased, must be reported. Never let such text through.\n"
+    "- missed: that kind of text still readable in CLEAN. It will be erased and translated.\n"
+    "- residue: fragments of erased letters, ghost outlines, smears or blotches, and leftover scanlator "
+    "watermarks or credits. They will be erased; nothing is translated.\n"
     "- restore: artwork CLEAN damaged that has no words in it: ornaments, patterns, drawn objects, the series "
     "logo. The original pixels will be put back and nothing there is translated, so never list words a reader "
     "reads, whatever the font, size or colour: captions, narration, titles and stylised lettering are story text.\n"
+    "Sound effects drawn as part of the art are not reported. "
     "Boxes are [ymin, xmin, ymax, xmax] normalised to 0-1000 on the slice, tight around the problem. "
     "Leave a list empty when nothing applies; a clean slice returns three empty lists. Return JSON only: "
     f'{{"missed":[{_BOX}],"residue":[{_BOX}],"restore":[{_BOX}]}}'
@@ -156,8 +162,10 @@ def parse_final_review(data: dict, page_index: int, width: int, height: int, ids
 def review_clean(provider, model: str, api_key: str, page_index: int,
                  original: np.ndarray, clean: np.ndarray) -> tuple[CleanReview, float | None]:
     """Checkpoint 3: one request with the raw and the cleaned slice."""
+    # This check thinks (low effort) so it looks at every part of the slice.
     result = request_vision_json(provider, model, api_key, CLEAN_REVIEW_PROMPT,
-                                 [("IMAGE 1: ORIGINAL", original), ("IMAGE 2: CLEAN", clean)], max_tokens=1200)
+                                 [("IMAGE 1: ORIGINAL", original), ("IMAGE 2: CLEAN", clean)], max_tokens=1200,
+                                 reasoning_effort=CLEAN_REVIEW_EFFORT)
     height, width = original.shape[:2]
     return parse_clean_review(result.data, page_index, width, height), result.estimated_cost_usd
 
