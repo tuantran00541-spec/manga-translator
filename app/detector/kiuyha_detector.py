@@ -35,8 +35,9 @@ SPLIT_GAIN = 1.5  # a dark or light split must find this much more letter area t
 FAR_SHARE = 0.5  # share of the border-colour threshold a dark or light letter must still stand out by
 SPECK_SHARE = 0.4  # in a dark or light split, pieces shorter than this share of the letters are art
 INK_TOLERANCE = 40  # how much fainter than the letters, on the 0-255 split score, a joined piece may be
-HALO_LEVEL = 0.35  # share of the letter threshold that still counts as glow round a letter
-HALO_REACH = 0.6  # how far, in letter heights, glow may spread from a letter
+HALO_REACH = 1.0  # how far, in letter heights, glow may spread from a letter
+HALO_RING = 8  # width of the band past that reach where the background colour is read
+HALO_MARGIN = 4.0  # Lab distance past the band's own spread that still counts as glow
 HOLE_AREA = 4.0  # largest enclosed hole filled, in squared letter heights (white fill inside an outline)
 
 
@@ -129,10 +130,8 @@ def letter_mask(image: np.ndarray, box: tuple[int, int, int, int]) -> tuple[tupl
                     break
     part = keep[labels]
     if letter:
-        edge = np.concatenate([diff[iy1:iy1 + 3, ix1:ix2].ravel(), diff[iy2 - 3:iy2, ix1:ix2].ravel(),
-                               diff[iy1:iy2, ix1:ix1 + 3].ravel(), diff[iy1:iy2, ix2 - 3:ix2].ravel()])
-        if glow:  # glow is measured against the border colour; a dark or light split has no such reference
-            part = _with_halo(diff, part, level, float(np.percentile(edge, 90)), letter)
+        if glow:  # a dark or light split is chosen over busy art, where there is no glow to follow
+            part = _with_halo(lab, part, letter)
         part = _fill_holes(part, letter)
     part = part.astype(np.uint8)
     part = cv2.morphologyEx(part, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (CLOSE_KERNEL,) * 2))
@@ -145,11 +144,19 @@ def letter_mask(image: np.ndarray, box: tuple[int, int, int, int]) -> tuple[tupl
     return (gx1 + bx1, gy1 + by1, gx1 + bx2, gy1 + by2), part[by1:by2, bx1:bx2]
 
 
-def _with_halo(diff: np.ndarray, part: np.ndarray, level: float, noise: float, letter: float) -> np.ndarray:
-    """Letters plus the faint glow and outline joined to them, no further than HALO_REACH letter heights."""
+def _with_halo(lab: np.ndarray, part: np.ndarray, letter: float) -> np.ndarray:
+    """Letters plus the glow joined to them, out to where the colour settles to the background past it."""
     reach = max(3, int(HALO_REACH * letter))
-    near = cv2.dilate(part.astype(np.uint8), cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * reach + 1,) * 2)) > 0
-    faint = ((diff > max(HALO_LEVEL * level, noise)) & near) | part
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * reach + 1,) * 2)
+    near = cv2.dilate(part.astype(np.uint8), kernel) > 0
+    outer = (cv2.dilate(near.astype(np.uint8), np.ones((2 * HALO_RING + 1,) * 2, np.uint8)) > 0) & ~near
+    if int(outer.sum()) < 50:
+        return part
+    # The background is read beyond the glow, not on the box border that may sit inside it.
+    dist = np.linalg.norm(lab - np.median(lab[outer], axis=0), axis=2)
+    # Busy art past the glow raises the bar, so only light well above it is taken.
+    noise = float(np.percentile(dist[outer], 90))
+    faint = ((dist > noise + HALO_MARGIN) & near) | part
     _count, labels = cv2.connectedComponents(faint.astype(np.uint8))
     joined = np.unique(labels[part])
     return np.isin(labels, joined[joined > 0])
