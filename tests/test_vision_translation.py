@@ -427,3 +427,21 @@ def test_the_clean_image_marks_each_object_box_with_its_id():
     marked = mark_objects(clean, [{"id": "7", "bbox_xyxy": [100, 150, 300, 250]}])
     assert tuple(marked[200, 100]) == MARK_COLOR and tuple(marked[200, 200]) == (255, 255, 255)
     assert (clean == 255).all(), "the slice itself is not drawn on"
+
+
+def test_a_sound_effect_answer_on_a_review_box_does_not_restore_the_source_text(saved_chapter, monkeypatch):
+    manifest = manifests.load_manifest_raw(CHAPTER)
+    page = manifest["pages"][0]
+    page["boxes"] = [{"id": "m1", "x1": 20, "y1": 23, "x2": 180, "y2": 100, "manual": True, "ocr_eligible": False}]
+    page["text_objects"][0]["source_boxes"] = ["m1"]
+    manifests.save_manifest_raw(CHAPTER, manifest)
+    monkeypatch.setattr(translation_router, "get_provider_api_key", lambda *a, **kw: "test-key")
+    monkeypatch.setattr(
+        "app.translation.vision.VisionPageTranslator.translate_page",
+        lambda self, *a, **kw: VisionTranslationResult({"obj_1": ""}, self.model, {}, None, roles={"obj_1": "sfx"}),
+    )
+    request = translation_router.TranslateVisionPageRequest(
+        chapter_id=CHAPTER, page_index=0, provider="openai", model="vision-test", source_lang="en", target_lang="vi",
+    )
+    info = asyncio.run(translation_router.translate_page_with_images(request))["translation_run"]
+    assert info["art_regions"] == [], "a fragment of missed text stays erased"

@@ -222,3 +222,25 @@ def test_a_line_box_inside_a_block_box_is_not_a_second_text():
     cv2.putText(image, "THERE", (330, 455), cv2.FONT_HERSHEY_DUPLEX, 1.2, (0, 0, 0), 3)
     boxes = KiuyhaTextDetector("unused", session=_NestedSession()).text_boxes(image)
     assert len(boxes) == 1 and boxes[0].x1 <= 300 and boxes[0].y2 >= 500
+
+
+def test_a_line_running_far_past_its_box_is_erased_to_its_last_letter():
+    from app.detector.kiuyha_detector import letter_mask
+
+    image = _letters(np.full((260, 900, 3), 245, np.uint8), range(100, 701, 40))  # letters up to x=724
+    box, mask = letter_mask(image, (90, 90, 560, 150))  # the box stops four letters short
+    assert box[2] >= 724
+    assert mask[120 - box[1], 710 - box[0]], "the last letter of the line is erased"
+
+
+def test_big_lettering_takes_its_outline_with_it():
+    from app.detector.kiuyha_detector import letter_mask
+
+    image = np.full((400, 900, 3), (120, 140, 150), np.uint8)
+    cv2.putText(image, "WORTH", (120, 260), cv2.FONT_HERSHEY_DUPLEX, 4.0, (255, 255, 255), 40)  # thick white outline
+    cv2.putText(image, "WORTH", (120, 260), cv2.FONT_HERSHEY_DUPLEX, 4.0, (20, 20, 20), 12)
+    box, mask = letter_mask(image, (100, 120, 800, 300))
+    full = np.zeros(image.shape[:2], bool)
+    full[box[1]:box[3], box[0]:box[2]] = mask
+    outline = (np.abs(image.astype(int) - (255, 255, 255)).sum(axis=2) < 30)
+    assert (full & outline).sum() >= 0.9 * outline.sum()

@@ -21,6 +21,10 @@ HALVES_MIN_OVERLAP = 256
 CLOSE_KERNEL = 15  # letters -> word blobs
 GROW_KERNEL = 13  # past the letter outline (a white stroke round brown text)
 EDGE_GROW = 24  # room around a box for letters its edge cuts
+LINE_REACH_MAX = 240  # how far sideways a line may run past its box
+LINE_SHARE = 0.6  # height two letters share to be on one line
+LETTER_GAP = 1.2  # widest gap, in letter heights, between neighbouring letters of a line
+OUTLINE_SHARE = 0.35  # mask growth as a share of the letter height
 BAND_OVERLAP = 0.25  # share of a detection band repeated in the next one
 EDGE_TOUCH = 3  # a box this close to an inner band edge was cut by it
 UNION_SHARE = 0.3  # boxes sharing this much of the smaller one are one text
@@ -33,7 +37,9 @@ def letter_mask(image: np.ndarray, box: tuple[int, int, int, int]) -> tuple[tupl
     """Letters of ``box`` including ones the box cuts at its edge; returns the grown box and its mask."""
     h, w = image.shape[:2]
     x1, y1, x2, y2 = box
-    gx1, gy1, gx2, gy2 = max(0, x1 - EDGE_GROW), max(0, y1 - EDGE_GROW), min(w, x2 + EDGE_GROW), min(h, y2 + EDGE_GROW)
+    # Lines can run well past a box's side, so the crop reaches further sideways than up and down.
+    side = max(EDGE_GROW, min(LINE_REACH_MAX, 3 * (y2 - y1)))
+    gx1, gy1, gx2, gy2 = max(0, x1 - side), max(0, y1 - EDGE_GROW), min(w, x2 + side), min(h, y2 + EDGE_GROW)
     crop = image[gy1:gy2, gx1:gx2]
     ix1, iy1, ix2, iy2 = x1 - gx1, y1 - gy1, x2 - gx1, y2 - gy1
     if min(iy2 - iy1, ix2 - ix1) < 8:
@@ -64,16 +70,37 @@ def letter_mask(image: np.ndarray, box: tuple[int, int, int, int]) -> tuple[tupl
     keep[inside] = True
     heights = [int(stats[label][3]) for label in inside if stats[label][4] >= 12]
     letter = float(np.median(heights)) if heights else 0.0
-    for label in range(1, count):
+    def letter_like(label) -> bool:
         x, y, bw, bh, area = stats[label]
-        cut = x < ix2 and y < iy2 and x + bw > ix1 and y + bh > iy1 and not keep[label]
-        # A letter the box cut in half: letter sized and solid, not a thin outline or art running out of the crop.
-        if (cut and letter and not touches_edge(x, y, bw, bh) and bh <= 1.5 * letter and bw <= 3 * letter
-                and area >= LETTER_FILL * bw * bh):
-            keep[label] = True
+        # Letter sized and solid, not a thin outline or art running out of the crop.
+        return (bool(letter) and not touches_edge(x, y, bw, bh) and bh <= 1.5 * letter and bw <= 3 * letter
+                and area >= LETTER_FILL * bw * bh)
+
+    for label in range(1, count):
+        x, y, bw, bh, _area = stats[label]
+        if not keep[label] and x < ix2 and y < iy2 and x + bw > ix1 and y + bh > iy1 and letter_like(label):
+            keep[label] = True  # a letter the box cut in half
+    # Letters past the box's side that continue a kept line, one letter gap at a time.
+    grew = bool(letter)
+    while grew:
+        grew = False
+        kept = np.flatnonzero(keep)
+        for label in range(1, count):
+            if keep[label] or not letter_like(label):
+                continue
+            x, y, bw, bh, _area = stats[label]
+            for other in kept:
+                ox, oy, ow, oh, _ = stats[other]
+                same_line = min(y + bh, oy + oh) - max(y, oy) >= LINE_SHARE * min(bh, oh)
+                gap = max(x - (ox + ow), ox - (x + bw))
+                if same_line and gap <= LETTER_GAP * letter:
+                    keep[label] = grew = True
+                    break
     part = keep[labels].astype(np.uint8)
     part = cv2.morphologyEx(part, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (CLOSE_KERNEL,) * 2))
-    part = cv2.dilate(part, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (GROW_KERNEL,) * 2)) > 0
+    # Outlines and glow round big lettering are wider than round small text.
+    grow = max(GROW_KERNEL, int(OUTLINE_SHARE * letter) | 1)
+    part = cv2.dilate(part, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (grow,) * 2)) > 0
     ys, xs = np.nonzero(part)
     bx1, by1 = min(ix1, int(xs.min())) if len(xs) else ix1, min(iy1, int(ys.min())) if len(ys) else iy1
     bx2, by2 = max(ix2, int(xs.max()) + 1) if len(xs) else ix2, max(iy2, int(ys.max()) + 1) if len(ys) else iy2

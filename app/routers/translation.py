@@ -509,7 +509,11 @@ async def translate_page_in_context(
                 unreadable += 1
                 if candidate["id"] not in getattr(translated, "missing_ids", ()):
                     blank_ids.append(candidate["id"])
-                    if getattr(translated, "roles", {}).get(candidate["id"]) == "sfx":
+                    # Only a detected sound effect is art; a review box around missed text stays erased.
+                    manual = {str(box.get("id")) for box in page.get("boxes") or []
+                              if isinstance(box, dict) and box.get("manual")}
+                    if (getattr(translated, "roles", {}).get(candidate["id"]) == "sfx"
+                            and not set(map(str, obj.get("source_boxes") or [])) & manual):
                         art_regions.append(dict(obj["region"]))
                 continue
             obj["translation"] = value
