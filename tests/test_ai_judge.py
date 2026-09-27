@@ -6,6 +6,7 @@ def test_probabilities_are_found_in_any_answer_shape():
     assert _probability({"results": [{"wrong_name": {"probability": 0.2}}]}, "wrong_name") == 0.2
     assert _probability({"duplicate": 0.4}, "duplicate") == 0.4
     assert _probability({"duplicate": {"noul": True}}, "duplicate") is None
+    assert _probability({"answers": {"duplicate": {"probabilities": {"true": 0.8, "false": 0.2}}}}, "duplicate") == 0.8
 
 
 def test_only_confident_doubts_send_a_line_back():

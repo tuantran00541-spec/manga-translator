@@ -107,3 +107,35 @@ def sync_seam_mirrors(manifest: dict) -> list[int]:
             if page_index not in changed:
                 changed.append(page_index)
     return changed
+
+
+OVERLAP_KEEP = 0.5  # two lettered objects sharing this much of the smaller one garble each other
+
+
+def drop_overlapping_letters(manifest: dict) -> list[tuple[int, str]]:
+    """Of two translated objects on one slice that mostly overlap, keep the larger; returns what was dropped."""
+    dropped = []
+    for page_index, page in enumerate(manifest.get("pages") or []):
+        objects = [obj for obj in page.get("text_objects") or [] if isinstance(obj, dict)
+                   and str(obj.get("translation") or "").strip() and _rect(obj, 0) is not None]
+        objects.sort(key=lambda obj: -_area(_rect(obj, 0)))
+        kept: list[dict] = []
+        for obj in objects:
+            rect = _rect(obj, 0)
+            if any(_shared(rect, _rect(other, 0)) >= OVERLAP_KEEP for other in kept):
+                obj["translation"] = ""
+                obj["overlap_dropped"] = True
+                dropped.append((page_index, str(obj.get("id"))))
+            else:
+                kept.append(obj)
+    return dropped
+
+
+def _area(rect) -> int:
+    return max(1, (rect[2] - rect[0]) * (rect[3] - rect[1]))
+
+
+def _shared(a, b) -> float:
+    ix = max(0, min(a[2], b[2]) - max(a[0], b[0]))
+    iy = max(0, min(a[3], b[3]) - max(a[1], b[1]))
+    return ix * iy / min(_area(a), _area(b))

@@ -179,7 +179,7 @@ jobs:
           KEY="${!PROVIDER_SECRET}" python - <<'PY'
           import json, os, requests
           body = {"model": os.environ["GATEWAY_JUDGE_MODEL"], "state": "SOURCE: Let him go now!\nTRANSLATION (Vietnamese): Thả nó ra ngay!",
-                  "questions": {"wrong_meaning": {"type": "noul", "instructions": "The translation changes what the source says."}}}
+                  "questions": {"wrong_meaning": {"type": "boolean", "instructions": "The translation changes what the source says."}}}
           response = requests.post(os.environ["GATEWAY_UPSTREAM_BASE"].rstrip("/") + "/evaluate",
                                    headers={"Authorization": "Bearer " + os.environ["KEY"]}, json=body, timeout=(10, 60))
           print(f"HTTP {response.status_code}: {response.text[:600]}")

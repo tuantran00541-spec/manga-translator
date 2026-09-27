@@ -18,7 +18,7 @@ from dataclasses import dataclass, field, replace
 import requests
 from fastapi import HTTPException
 
-from app.ai_mode.checkpoints import review_clean, review_final, settle_clean_review
+from app.ai_mode.checkpoints import _covered, review_clean, review_final, settle_clean_review
 from app.ai_mode.page_scan import scan_slices
 from app.config import OUTPUT_DIR, PROCESSED_DIR, RAW_DIR
 from app.image_io import read_image
@@ -408,9 +408,12 @@ class AIModeRunner:
         self._progress(0, len(indices))
         await asyncio.gather(*(review_one(page_index) for page_index in indices))
         for page_index, fixes in spill.items():
+            # The neighbour may already hold that text as its own box.
+            existing = self._page_boxes(page_index)
+            missed = [box for box in fixes.get("missed", []) if not _covered(box, existing)]
             try:
                 await asyncio.to_thread(pipeline.apply_review_fixes, chapter_id, page_index,
-                                        boxes=fixes.get("missed", []), repaint=fixes.get("residue", []))
+                                        boxes=missed, repaint=fixes.get("residue", []))
             except (HTTPException, RuntimeError, ValueError, OSError, KeyError) as exc:
                 _append(self.report["qc_errors"], f"Lát {page_index + 1}: {_detail(exc)[:200]}")
         self._check_cancel()
@@ -489,13 +492,15 @@ class AIModeRunner:
 
     async def _sync_seams(self) -> list[int]:
         """Letter every text crossing a slice cut exactly as its owning slice does."""
-        from app.ai_mode.seams import sync_seam_mirrors
+        from app.ai_mode.seams import drop_overlapping_letters, sync_seam_mirrors
         from app.manifest_utils import invalidate_page_render, save_manifest_raw
 
         def sync() -> list[int]:
             with get_manifest_lock(self.job.chapter_id):
                 manifest = load_manifest_raw(self.job.chapter_id)
-                changed = sync_seam_mirrors(manifest)
+                dropped = drop_overlapping_letters(manifest)
+                self.report["overlaps_dropped"] = self.report.get("overlaps_dropped", 0) + len(dropped)
+                changed = sorted(set(sync_seam_mirrors(manifest)) | {page_index for page_index, _ in dropped})
                 for page_index in changed:
                     invalidate_page_render(manifest, page_index)
                 if changed:
@@ -563,7 +568,7 @@ class AIModeRunner:
         return [
             obj for obj in page.get("text_objects") or []
             if isinstance(obj, dict) and obj.get("id") and not obj.get("source_missing")
-            and not str(obj.get("translation") or "").strip()
+            and not obj.get("overlap_dropped") and not str(obj.get("translation") or "").strip()
             and (only is None or str(obj["id"]) in only) and str(obj["id"]) not in blank
             and isinstance(obj.get("region"), dict) and not text_object_in_preserve_region(page, obj)
         ]

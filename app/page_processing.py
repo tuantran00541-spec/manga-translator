@@ -35,6 +35,16 @@ def _fold_leftover(records: list[dict], box: BubbleBox) -> None:
         return
 
 
+SEAM_CONTAINED = 0.5  # share of a core box inside a seam box for the two to be one text
+
+
+def _contained(box: BubbleBox, seam: BubbleBox) -> bool:
+    """True when at least SEAM_CONTAINED of ``box`` lies inside ``seam``."""
+    ix = max(0, min(box.x2, seam.x2) - max(box.x1, seam.x1))
+    iy = max(0, min(box.y2, seam.y2) - max(box.y1, seam.y1))
+    return ix * iy >= SEAM_CONTAINED * max(1, (box.x2 - box.x1) * (box.y2 - box.y1))
+
+
 class PageProcessingMixin:
     def _process_page(
         self,
@@ -81,6 +91,9 @@ class PageProcessingMixin:
         detector_metrics = self.detector.last_metrics()
 
         if supplemental_detections:
+            # A core box cut short by the slice edge is the same text as the seam box that holds it whole.
+            detected = [box for box in detected
+                        if not any(_contained(box, seam) for seam in supplemental_detections)]
             detected = apply_final_nms(
                 detected + list(supplemental_detections),
                 iou_threshold=DETECTOR_FINAL_NMS_IOU,

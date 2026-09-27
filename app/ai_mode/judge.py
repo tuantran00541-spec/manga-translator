@@ -6,6 +6,7 @@ import requests
 from app.parameters import TRANSLATION_CONNECT_TIMEOUT_SECONDS, TRANSLATION_READ_TIMEOUT_SECONDS
 
 FLAG = 0.7  # probability above which a line is sent back
+QUESTION_TYPE = "boolean"  # minirouter's name for TypeSafe's yes/no ("noul") question
 QUESTIONS = {
     "wrong_meaning": "The translation changes what the source says, adds something the source does not say, "
                      "or leaves part of the source out.",
@@ -54,9 +55,12 @@ def _probability(body, name: str) -> float | None:
             if isinstance(value, (int, float)) and not isinstance(value, bool):
                 return float(value)
             if isinstance(value, dict):
-                for key in ("noul", "probability", "value", "answer"):
+                for key in ("noul", "boolean", "probability", "value", "answer"):
                     if isinstance(value.get(key), (int, float)) and not isinstance(value.get(key), bool):
                         return float(value[key])
+                odds = value.get("probabilities")
+                if isinstance(odds, dict) and isinstance(odds.get("true"), (int, float)):
+                    return float(odds["true"])
         for value in body.values():
             if (found := _probability(value, name)) is not None:
                 return found
@@ -71,7 +75,7 @@ def judge_line(url: str, api_key: str, state: str) -> tuple[dict[str, float], di
     """Probabilities per question and the raw answer."""
     response = requests.post(
         url, headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-        json={"state": state, "questions": {name: {"type": "noul", "instructions": text}
+        json={"state": state, "questions": {name: {"type": QUESTION_TYPE, "instructions": text}
                                             for name, text in QUESTIONS.items()}},
         timeout=(TRANSLATION_CONNECT_TIMEOUT_SECONDS, TRANSLATION_READ_TIMEOUT_SECONDS), allow_redirects=False,
     )

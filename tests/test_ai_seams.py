@@ -46,3 +46,23 @@ def test_a_bubble_only_one_slice_has_is_translated_there():
     manifest = _chapter()
     manifest["pages"][1]["skipped"] = True
     assert seam_mirror_ids(manifest, 0) == set()
+
+
+def test_of_two_letterings_on_the_same_text_only_the_larger_stays():
+    from app.ai_mode.seams import drop_overlapping_letters
+
+    manifest = {"pages": [{"text_objects": [_obj("small", 120, 160, "Có khi cậu phải giết chúng"),
+                                            _obj("big", 100, 300, "Có khi cậu phải giết chúng đấy, nhóc."),
+                                            _obj("other", 400, 500, "Ừm.")]}]}
+    assert drop_overlapping_letters(manifest) == [(0, "small")]
+    texts = {obj["id"]: obj["translation"] for obj in manifest["pages"][0]["text_objects"]}
+    assert texts == {"small": "", "big": "Có khi cậu phải giết chúng đấy, nhóc.", "other": "Ừm."}
+
+
+def test_a_core_box_cut_by_the_slice_edge_gives_way_to_the_whole_seam_box():
+    from app.detector.boxes import BubbleBox
+    from app.page_processing import _contained
+
+    seam = BubbleBox(100, 1800, 500, 2200, 0.9, None)
+    assert _contained(BubbleBox(110, 1900, 490, 2000, 0.8, None), seam), "the top quarter the core saw"
+    assert not _contained(BubbleBox(110, 100, 490, 300, 0.8, None), seam)
