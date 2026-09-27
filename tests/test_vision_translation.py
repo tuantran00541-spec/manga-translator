@@ -73,8 +73,9 @@ def test_vision_client_sends_original_and_clean_with_short_ids(tmp_path, monkeyp
     system = payload["messages"][0]
     assert system["role"] == "system"
     assert "localization editor" in system["content"] and "VIETNAMESE" in system["content"]
-    assert "font" not in system["content"].lower(), "the lettering font is fixed, not chosen by the model"
-    assert answer.font_choices == {"text_1": {"font_id": "dialogue.mac-dinh-3", "font_mode": "ai"}}
+    assert "- emphasis.anton:" in system["content"] and "Example:" in system["content"], "curated fonts come with notes"
+    assert "dialogue.inter" not in system["content"], "only curated fonts are offered"
+    assert answer.font_choices == {"text_1": {"font_id": "dialogue.mac-dinh-3", "font_mode": "ai"}}, "no pick: role default"
     content = payload["messages"][1]["content"]
     images = [item for item in content if item.get("type") == "image_url"]
     assert len(images) == 2
@@ -327,3 +328,13 @@ def test_english_left_as_the_translation_is_treated_as_untranslated():
     assert _untranslated_english("Were you talking to me?")
     assert not _untranslated_english("GAME OVER") and not _untranslated_english("FRONDIER DE ROAH!")
     assert not _untranslated_english("Level của ngươi là bao nhiêu?")
+
+
+def test_font_picks_outside_the_guide_fall_back_to_the_role_default():
+    from app.render.font_guide import lettering_font
+
+    assert lettering_font("emphasis.anton", "dialogue") == "emphasis.anton"
+    assert lettering_font("dialogue.inter", "narration") == "narration.mac-dinh-2"
+    assert lettering_font(None, "sfx") == "sfx.black-ops-one"
+    assert lettering_font(None, "unknown") == "dialogue.mac-dinh-3"
+    assert parse_vision_translation('{"translations":[{"id":"a","translated_text":"Thì…"}]}', {"a"}) == {"a": "Thì..."}

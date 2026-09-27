@@ -10,7 +10,8 @@ import requests
 from app.ai_providers import AIProvider
 from app.parameters import TRANSLATION_CONNECT_TIMEOUT_SECONDS, TRANSLATION_READ_TIMEOUT_SECONDS
 from app.security import validate_url
-from app.translation.context import LETTERING_FONT, TYPOGRAPHY_ROLES, ChapterMemory, system_prompt
+from app.render.font_guide import lettering_font
+from app.translation.context import TYPOGRAPHY_ROLES, ChapterMemory, system_prompt
 from app.translation.deepseek import _language_name, _usage_cost_usd
 from app.visual_qc.deepseek_region_client import _extract_output_text, _safe_error_detail
 from app.visual_qc.gemini import _encode_for_gemini, _read_image
@@ -28,6 +29,7 @@ _TRANSLATIONS_SCHEMA = {
             "properties": {"id": {"type": "string"}, "translated_text": {"type": "string"}},
             "required": ["id", "translated_text"],
         }},
+        "font_choices": {"type": "object"},
         "speakers": {"type": "object"},
         "characters": {"type": "array", "items": {
             "type": "object",
@@ -90,7 +92,8 @@ def parse_vision_translation(content: str, expected_ids: set[str], *, allow_miss
             raise RuntimeError("Vision model returned an unknown, repeated or malformed translation")
         if len(value) > 4000:
             raise RuntimeError("Vision model returned oversized text")
-        results[obj_id] = value.strip()
+        # Not every lettering font has the ellipsis glyph.
+        results[obj_id] = value.strip().replace("…", "...")
     if set(results) != expected_ids:
         if not allow_missing or not results:
             raise RuntimeError("Vision model omitted one or more text-object IDs")
@@ -109,8 +112,16 @@ def _parse_vision_payload(content: str, expected_ids: set[str]) -> tuple[dict[st
     translations = parse_vision_translation(source, expected_ids, allow_missing=True)
     if isinstance(data, dict) and isinstance(data.get("translations"), dict):
         data["translations"] = [{"id": str(k), "translated_text": v} for k, v in data["translations"].items()]
-    # One fixed lettering font; the model no longer picks fonts.
-    choices = {item_id: {"font_id": LETTERING_FONT, "font_mode": "ai"} for item_id in translations}
+    picks = data.get("font_choices") if isinstance(data, dict) and isinstance(data.get("font_choices"), dict) else {}
+    roles = {str(entry.get("id")): str(entry.get("role") or "").strip().lower()
+             for entry in (data.get("translations") if isinstance(data, dict) else None) or []
+             if isinstance(entry, dict)}
+    # Only curated fonts; anything else falls back to the role's default.
+    choices = {}
+    for item_id in translations:
+        pick = picks.get(item_id)
+        pick = pick.get("font_id") if isinstance(pick, dict) else pick
+        choices[item_id] = {"font_id": lettering_font(pick, roles.get(item_id)), "font_mode": "ai"}
     return translations, choices, data if isinstance(data, dict) else {}
 
 

@@ -9,7 +9,6 @@ MAX_ADDRESS_PAIRS = 80
 RECENT_LINES = 12
 MAX_FIELD_CHARS = 80
 MAX_LINE_CHARS = 160
-LETTERING_FONT = "dialogue.mac-dinh-3"  # every translation is lettered in one comic font
 TYPOGRAPHY_ROLES = frozenset({
     "dialogue", "narration", "thought", "whisper", "shout", "dark_threat",
     "system_ui", "skill_name", "title", "free_text", "sfx",
@@ -31,6 +30,7 @@ TRANSLATION
 
 LETTERING
 - Role of each object: dialogue, narration, thought, whisper, shout, dark_threat, system_ui, skill_name, title, free_text or sfx.
+- Font: pick font_id from FONTS by what the lettering is, not by taste. Keep the role's default unless the source clearly letters the text differently (a bold caption on the art, a screen, a letter). The same kind of text keeps the same font for the whole chapter.
 - Size: the renderer picks the largest size that still breathes inside the bubble. Keep the line short enough for that: about as long as the source line, shorter if the bubble is small. If it cannot fit, rewrite it shorter first; if it still cannot, set "review": true.
 - Break lines yourself with "\\n" at phrase boundaries; an oval bubble reads short, long, short. Never leave one orphan word, a lone punctuation mark, a split name or number and unit, or a hyphen inside a Vietnamese word.
 - Free text keeps its scale and weight: a large source line stays a strong, short line.
@@ -52,10 +52,11 @@ VIETNAMESE
 _OUTPUT = """
 Answer with JSON only:
 {{"translations":[{{"id":"<id>","translated_text":"<text, lines split with \\n>","role":"<role>","review":false}}],
+ "font_choices":{{"<id>":"<font_id from FONTS>"}},
  "speakers":{{"<id>":"<character name, or narration>"}},
  "characters":[{{"name":"<name>","note":"<role, age, relationship>"}}],
  "address":[{{"from":"<A>","to":"<B>","self":"<how A refers to himself>","other":"<how A addresses B>"}}]}}
-Return every id exactly once. List in "characters" and "address" only what is new or changed in this slice. Scanlator credits and watermarks get an empty translation.
+Return every id exactly once and a font_choices entry for every id. List in "characters" and "address" only what is new or changed in this slice. Scanlator credits and watermarks get an empty translation.
 """.strip()
 
 
@@ -66,7 +67,9 @@ def _with_input(target_name: str, block: str) -> str:
 
 
 def system_prompt(target_name: str, target_lang: str) -> str:
-    parts = [_with_input(target_name, _INPUT_IMAGES)]
+    from app.render.font_guide import font_guide_prompt
+
+    parts = [_with_input(target_name, _INPUT_IMAGES), "FONTS\n" + font_guide_prompt()]
     if str(target_lang or "").lower() in {"vi", "vie", "vietnamese"}:
         parts.append(_VIETNAMESE)
     parts.append(_OUTPUT.format())
