@@ -55,6 +55,34 @@ def _pages(archive_path: Path, out: Path, max_width: int = 800) -> int:
         return len(names)
 
 
+def _pairs(chapter_id: str, pages: list, out: Path, width: int = 560) -> int:
+    """Save each active slice as original | final side by side for a close review."""
+    from app.routers.image import _rendered_file_path
+
+    folder = out / "pairs"
+    folder.mkdir(parents=True, exist_ok=True)
+    saved = 0
+    for index, page in enumerate(pages):
+        if page.get("skipped") or not page.get("original"):
+            continue
+        final_path = _rendered_file_path(chapter_id, index)
+        if not final_path.is_file():
+            final_path = Path(page.get("clean") or "")
+        raw, final = cv2.imread(str(page["original"])), cv2.imread(str(final_path))
+        if raw is None or final is None:
+            continue
+        pair = [cv2.resize(im, (width, max(1, round(im.shape[0] * width / im.shape[1]))), interpolation=cv2.INTER_AREA)
+                for im in (raw, final)]
+        height = max(im.shape[0] for im in pair)
+        pair = [np.vstack([im, np.full((height - im.shape[0], width, 3), 255, np.uint8)]) for im in pair]
+        joined = np.hstack([pair[0], np.full((height, 8, 3), 128, np.uint8), pair[1]])
+        ok, buf = cv2.imencode(".jpg", joined, [cv2.IMWRITE_JPEG_QUALITY, 80])
+        if ok:
+            (folder / f"{index + 1:03d}.jpg").write_bytes(buf.tobytes())
+            saved += 1
+    return saved
+
+
 def _fit_metrics(obj: dict, page_width: int) -> dict:
     """Reproduce how the renderer sizes one object: the font size it draws at, the lines, and whether it fits."""
     from PIL import Image, ImageDraw
@@ -232,6 +260,10 @@ def main() -> int:
         pages = json.loads(manifest_path.read_text(encoding="utf-8")).get("pages", [])
         report["slices"] = len(pages)
         report["slices_active"] = sum(1 for p in pages if not p.get("skipped"))
+        try:
+            report["pairs"] = _pairs(str(chapter_id), pages, out)
+        except Exception as exc:  # noqa: BLE001 - the pairs are a review aid, never a reason to lose the report
+            report["pairs_error"] = repr(exc)[:300]
         report["lines"] = []
         for index, page in enumerate(pages):
             if page.get("skipped"):
