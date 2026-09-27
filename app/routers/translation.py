@@ -371,13 +371,16 @@ def _add_fit_budgets(original_path, candidates: list[dict]) -> None:
     """Measure each region's source letter size and the characters that fit it at that size."""
     from app.render.font_catalog import resolve_font_id
     from app.render.font_guide import DEFAULT_LETTERING_FONT
-    from app.render.source_size import char_budget, source_cap_px
+    from app.render.source_size import char_budget, source_cap_px, source_ink_hex
 
     from app.image_io import read_image
 
     raw = read_image(original_path)
     font_path = resolve_font_id(DEFAULT_LETTERING_FONT)
     for candidate in candidates:
+        ink = source_ink_hex(raw, candidate["region"])
+        if ink:
+            candidate["source_ink"] = ink
         cap = source_cap_px(raw, candidate["region"])
         if cap:
             candidate["source_cap_px"] = cap
@@ -508,6 +511,9 @@ async def translate_page_in_context(
             if candidate["id"] in getattr(translated, "review_ids", ()):
                 obj["needs_review"] = True
                 review += 1
+            color = getattr(translated, "colors", {}).get(candidate["id"]) or candidate.get("source_ink")
+            if color:
+                obj["lettering_color"] = color
             if candidate["id"] in getattr(translated, "enlarge_ids", ()):
                 obj["enlarge"] = True
             else:

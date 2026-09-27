@@ -58,6 +58,7 @@ class VisionTranslationResult:
     # Objects the model did not answer for at all (as opposed to answering "").
     missing_ids: frozenset[str] = frozenset()
     enlarge_ids: frozenset[str] = frozenset()
+    colors: dict[str, str] = field(default_factory=dict)
 
 
 def parse_vision_translation(content: str, expected_ids: set[str], *, allow_missing: bool = False) -> dict[str, str]:
@@ -141,6 +142,7 @@ def _unalias(result: VisionTranslationResult, data: dict, real: dict[str, str]) 
     ), data
 
 
+_HEX_COLOR = re.compile(r"#[0-9a-fA-F]{6}")
 FONT_SAMPLES_LABEL = "FONT SAMPLES: each row is a font_id in red and a sample line lettered in that font."
 
 # Chinese, Japanese and Korean letters never belong in a Vietnamese translation.
@@ -235,7 +237,7 @@ class VisionPageTranslator:
                 str(item["id"]): {"font_id": memory.admit_font(fonts[str(item["id"])]["font_id"]), "font_mode": "ai"}
                 for item in items if str(item["id"]) in fonts
             })
-        roles, review, answered, enlarge = {}, set(), set(), set()
+        roles, review, answered, enlarge, colors = {}, set(), set(), set(), {}
         for entry in data.get("translations") or []:
             if not isinstance(entry, dict) or str(entry.get("id")) not in ids:
                 continue
@@ -247,9 +249,11 @@ class VisionPageTranslator:
                 review.add(str(entry["id"]))
             if entry.get("enlarge") is True:
                 enlarge.add(str(entry["id"]))
+            if isinstance(entry.get("color"), str) and _HEX_COLOR.fullmatch(entry["color"].strip()):
+                colors[str(entry["id"])] = entry["color"].strip().lower()
         return replace(
             result, roles=roles, review_ids=frozenset(review), missing_ids=frozenset(ids - answered),
-            enlarge_ids=frozenset(enlarge),
+            enlarge_ids=frozenset(enlarge), colors=colors,
         )
 
     def _openai(self, system, prompt, original, cleaned, *, api_key, ids, max_tokens):

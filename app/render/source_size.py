@@ -31,6 +31,24 @@ def source_cap_px(raw: np.ndarray, rect) -> int | None:
     return int(np.median(heights)) if len(heights) >= 3 else None
 
 
+def source_ink_hex(raw: np.ndarray, rect) -> str | None:
+    """Median colour of the source letters in ``rect`` as #rrggbb, or None when no letters stand out."""
+    x1, y1, x2, y2 = (int(v) for v in rect)
+    crop = raw[max(0, y1):y2, max(0, x1):x2]
+    if crop.ndim != 3 or crop.size == 0 or min(crop.shape[:2]) < 8:
+        return None
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+    _, ink = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    if np.count_nonzero(ink) > ink.size / 2:
+        ink = 255 - ink
+    # Skip the anti-aliased rim so the colour comes from the letter bodies.
+    body = cv2.erode(ink, np.ones((3, 3), np.uint8)) > 0
+    if np.count_nonzero(body) < 20:
+        return None
+    b, g, r = (int(np.median(crop[..., channel][body])) for channel in range(3))
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
 @lru_cache(maxsize=32)
 def _metrics(font_path: str) -> tuple[float, float, float]:
     """Cap height, mean character width and line height of a font, per pixel of font size."""

@@ -54,3 +54,16 @@ def test_enlarge_letters_small_source_text_at_a_readable_size():
         return rows.max() - rows.min()
 
     assert ink_height(True) > 1.5 * ink_height(False)
+
+
+def test_source_ink_colour_is_measured_and_low_contrast_text_gets_an_outline():
+    from app.render.source_size import source_ink_hex
+
+    raw = np.full((200, 400, 3), 255, np.uint8)
+    cv2.putText(raw, "HELLO", (20, 130), cv2.FONT_HERSHEY_SIMPLEX, 3, (30, 30, 220), 12)  # BGR red
+    ink = source_ink_hex(raw, (0, 0, 400, 200))
+    assert ink and int(ink[1:3], 16) > 180 and int(ink[5:7], 16) < 80, "red letters read as red"
+
+    dark = Image.new("RGB", (400, 200), (20, 20, 20))
+    image = render_text_in_box(dark, "Chào", (0, 0, 400, 200), fill="#202020", font_name="dialogue.mac-dinh-3")
+    assert np.asarray(image).max() > 200, "dark text on a dark background gets a light outline"

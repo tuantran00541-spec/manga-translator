@@ -260,7 +260,7 @@ def render_text_objects(
         box_color = _resolve_ocr_style(
             style_get(colors_dict, oid),
             obj_style.get("color", "auto"),
-            obj.get("ocr_text_color"),
+            obj.get("ocr_text_color") or obj.get("lettering_color"),
             "auto",
         )
         box_font = style_get(fonts_dict, oid)

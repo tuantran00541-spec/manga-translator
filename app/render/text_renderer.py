@@ -104,6 +104,31 @@ def auto_detect_text_color(image: Image.Image, box: tuple[int, int, int, int]) -
     return (0, 0, 0)
 
 
+LOW_CONTRAST_RATIO = 3.0  # below this text-to-background contrast the text gets an outline
+LOW_CONTRAST_STROKE_WIDTH = 3
+
+
+def _luminance(rgb) -> float:
+    def channel(value: float) -> float:
+        value /= 255
+        return value / 12.92 if value <= 0.03928 else ((value + 0.055) / 1.055) ** 2.4
+    r, g, b = (channel(float(v)) for v in rgb[:3])
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
+def _contrast(a, b) -> float:
+    """WCAG contrast ratio between two RGB colours."""
+    la, lb = sorted((_luminance(a), _luminance(b)), reverse=True)
+    return (la + 0.05) / (lb + 0.05)
+
+
+def _mean_color(image: Image.Image, box) -> tuple[int, int, int]:
+    crop = np.asarray(image.convert("RGB").crop(tuple(int(v) for v in box)))
+    if crop.size == 0:
+        return (255, 255, 255)
+    return tuple(int(v) for v in crop.reshape(-1, 3).mean(axis=0))
+
+
 def get_font_path(font_name: str = "default") -> Path:
     try:
         return resolve_font_id(font_name)
@@ -240,6 +265,10 @@ def render_text_in_box(
             stroke_w = max(0, min(RENDER_STROKE_WIDTH_MAX, int(stroke_width)))
         except (ValueError, TypeError):
             stroke_w = RENDER_AUTO_STROKE_WIDTH
+
+    if _contrast(text_color, _mean_color(image, (x1, y1, x2, y2))) < LOW_CONTRAST_RATIO:
+        # Letters close to the background colour get a thick contrasting outline.
+        stroke_w = max(stroke_w, LOW_CONTRAST_STROKE_WIDTH)
 
     if stroke_color is None or stroke_color == "auto" or stroke_color == "":
         luminance = (text_color[0] * 299 + text_color[1] * 587 + text_color[2] * 114) / 1000
