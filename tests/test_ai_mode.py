@@ -610,3 +610,12 @@ def test_final_check_repaints_source_text_over_an_existing_object_instead_of_add
     asyncio.run(runner._apply_final_fixes(found, "en"))
     assert calls == [{"preserve": [], "boxes": [(500, 500, 600, 560)], "repaint": [(120, 120, 380, 280)]}]
     assert retried == [0], "only the new text is translated"
+
+
+def test_checkpoint_three_never_restores_over_a_detected_text_box():
+    from app.ai_mode.checkpoints import CleanReview, settle_clean_review
+
+    caption = (0, 170, 1500, 550)
+    art = (100, 900, 400, 1200)
+    settled = settle_clean_review(CleanReview(3, (), (), ((100, 150, 1500, 560), art)), [caption])
+    assert settled.restore == (art,), "the caption stays erased; damaged art away from text is restored"

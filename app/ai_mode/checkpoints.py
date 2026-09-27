@@ -124,11 +124,12 @@ def _covered(box, others) -> bool:
 
 
 def settle_clean_review(review: CleanReview, existing: list[tuple[int, int, int, int]]) -> CleanReview:
-    """Missed text over an existing box is re-erased, not added twice; restore loses to any erase request."""
+    """Missed text over an existing box is re-erased, not added twice; restore never brings back text."""
     missed = [box for box in review.missed if not _covered(box, existing)]
     residue = list(review.residue) + [box for box in review.missed if box not in missed]
     erase = missed + residue
-    restore = [box for box in review.restore if not _covered(box, erase)]
+    # Restoring over a detected text box puts the source lettering back untranslated.
+    restore = [box for box in review.restore if not _covered(box, erase + list(existing))]
     return CleanReview(review.page_index, tuple(missed), tuple(residue), tuple(restore))
 
 
