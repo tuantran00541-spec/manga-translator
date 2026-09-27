@@ -4,4 +4,4 @@ model: openai/gpt-6-luna
 price: 0.105 0.525 0.0105
 reasoning: 0
 effort: none
-# gpt-6-luna, thinking off, font samples image, at most 3 fonts per chapter
+# gpt-6-luna: fit to source letter size (max_chars), no OCR probe
