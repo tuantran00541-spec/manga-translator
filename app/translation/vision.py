@@ -160,9 +160,21 @@ def _unalias(result: VisionTranslationResult, data: dict, real: dict[str, str]) 
 _FOREIGN_SCRIPT = re.compile("[\u1100-\u11ff\u3040-\u30ff\u3130-\u318f\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af\uf900-\ufaff]")
 
 
+_ENGLISH_WORDS = frozenset(
+    "the and with you your to of is are was were its it's this that for in on my me we what i".split())
+
+
+def _untranslated_english(text: str) -> bool:
+    """True for a line left in English: plain ASCII with at least two words, one of them an English function word."""
+    words = [word.strip(".,!?;:\"'()-—…").lower() for word in text.split()]
+    words = [word for word in words if word]
+    return text.isascii() and len(words) >= 2 and any(word in _ENGLISH_WORDS for word in words)
+
+
 def _drop_foreign_script(result: VisionTranslationResult, data: dict) -> tuple[VisionTranslationResult, dict]:
-    """Treat lines with CJK letters as unanswered so they are retried, and keep them out of chapter memory."""
-    foreign = {key for key, value in result.translations.items() if _FOREIGN_SCRIPT.search(value)}
+    """Treat CJK or untranslated English lines as unanswered so they are retried, and keep them out of memory."""
+    foreign = {key for key, value in result.translations.items()
+               if _FOREIGN_SCRIPT.search(value) or _untranslated_english(value)}
     data = dict(data)
     if isinstance(data.get("translations"), list):
         data["translations"] = [entry for entry in data["translations"]
@@ -214,7 +226,8 @@ class VisionPageTranslator:
             + f"{where}Translate these text objects from {source_name}.\n"
             + json.dumps({"image_width": w, "image_height": h, "objects": objects},
                          ensure_ascii=False, separators=(",", ":"))
-            + '\n\nAnswer with one JSON object that starts with {"translations":[ and contains every id above.'
+            + '\n\nAnswer with one JSON object that starts with {"translations":[ and contains every id above. '
+            + "Write every translated_text in normal sentence case, never in all capitals."
         )
         original_b64, cleaned_b64 = _encode_for_gemini(original), _encode_for_gemini(cleaned)
         ids = set(real)

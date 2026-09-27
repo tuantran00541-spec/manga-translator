@@ -317,3 +317,12 @@ def test_vietnamese_line_with_cjk_letters_is_retried_and_kept_out_of_memory(tmp_
     assert result.translations == {"a": "Chào", "b": ""}
     assert result.missing_ids == {"b"}
     assert [c["name"] for c in memory.snapshot()["characters"]] == ["Angper"]
+
+
+def test_english_left_as_the_translation_is_treated_as_untranslated():
+    from app.translation.vision import _untranslated_english
+
+    assert _untranslated_english("WITH ITS LIFELIKE AI,\nVAST OPEN WORLD,")
+    assert _untranslated_english("Were you talking to me?")
+    assert not _untranslated_english("GAME OVER") and not _untranslated_english("FRONDIER DE ROAH!")
+    assert not _untranslated_english("Level của ngươi là bao nhiêu?")

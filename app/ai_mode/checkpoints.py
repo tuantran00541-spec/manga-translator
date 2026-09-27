@@ -11,7 +11,7 @@ from app.ai_mode.vision_json import request_vision_json
 
 MIN_CONFIDENCE = 0.6
 RESTORE_CONFIDENCE = 0.8  # a wrong restore leaves source text on the page
-OVERLAP = 0.5
+OVERLAP = 0.3  # of the smaller box; two lettered objects overlapping this much garble each other
 MIN_SIDE_PX = 10
 MAX_AREA_RATIO = 0.4  # a box over most of a slice is a misread
 MARGIN_PX = 6
@@ -42,8 +42,9 @@ FINAL_REVIEW_PROMPT = (
     "Most slices are fine: answer \"ok\" unless a reader would stop at a clear defect. Only these count:\n"
     "- repaint (box_2d): a whole source-language word or sentence still readable in FINAL outside the lettering, "
     "or an obvious erase smear. Not faint traces, texture, or text that is part of the art.\n"
-    "- retranslate (id): a translation that is misspelled, says something different from the original, or "
-    "leaves words out. Not wording you would merely phrase differently.\n"
+    "- retranslate (id): lettering still in the source language, a translation that is misspelled, says "
+    "something different from the original, or leaves words out. Not wording you would merely phrase "
+    "differently.\n"
     "- restore (id): lettering placed over a sound effect drawn as art or a logo. Never dialogue, narration or "
     "captions.\n"
     "Never ask for style, font, size or placement changes. Return JSON only: "
@@ -104,12 +105,13 @@ def _boxes(items, width: int, height: int, min_confidence: float = MIN_CONFIDENC
 
 
 def _covered(box, others) -> bool:
-    """True when at least half of ``box`` lies inside one of ``others``."""
-    area = max(1, (box[2] - box[0]) * (box[3] - box[1]))
+    """True when ``box`` and one of ``others`` share at least OVERLAP of the smaller one's area."""
+    area = (box[2] - box[0]) * (box[3] - box[1])
     for other in others:
         ix = min(box[2], other[2]) - max(box[0], other[0])
         iy = min(box[3], other[3]) - max(box[1], other[1])
-        if ix > 0 and iy > 0 and ix * iy >= OVERLAP * area:
+        smaller = max(1, min(area, (other[2] - other[0]) * (other[3] - other[1])))
+        if ix > 0 and iy > 0 and ix * iy >= OVERLAP * smaller:
             return True
     return False
 
@@ -119,7 +121,7 @@ def settle_clean_review(review: CleanReview, existing: list[tuple[int, int, int,
     missed = [box for box in review.missed if not _covered(box, existing)]
     residue = list(review.residue) + [box for box in review.missed if box not in missed]
     erase = missed + residue
-    restore = [box for box in review.restore if not _covered(box, erase) and not any(_covered(e, [box]) for e in erase)]
+    restore = [box for box in review.restore if not _covered(box, erase)]
     return CleanReview(review.page_index, tuple(missed), tuple(residue), tuple(restore))
 
 
