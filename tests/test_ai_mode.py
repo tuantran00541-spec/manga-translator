@@ -488,7 +488,7 @@ def test_translate_render_and_export_without_human_review(cleaned_chapter, monke
     import app.routers.ocr as ocr_router
 
     async def detected(chapter_id, req=None):
-        return {"source_lang": "en"}
+        raise AssertionError("A.I mode must not run the OCR language probe")
 
     monkeypatch.setattr(ocr_router, "detect_chapter_language", detected)
     monkeypatch.setattr(translation_router, "get_provider_api_key", lambda *a, **kw: "test-key")
@@ -509,7 +509,7 @@ def test_translate_render_and_export_without_human_review(cleaned_chapter, monke
 
     asyncio.run(run())
 
-    assert runner.report["translated"] == 1 and runner.report["source_lang"] == "en"
+    assert runner.report["translated"] == 1 and runner.report["source_lang"] == "auto"
     assert runner.report["editorial_blockers"] >= 1, "unreviewed script is reported, not hidden"
     assert job.archive_path and job.archive_path.endswith(f"ai_mode_{CHAPTER}.zip")
     with zipfile.ZipFile(job.archive_path) as archive:

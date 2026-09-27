@@ -345,15 +345,13 @@ class AIModeRunner:
         ))
 
     async def translate(self) -> None:
-        from app.routers.ocr import detect_chapter_language
+        from app.ocr.language_detect import site_language_hint
         from app.routers.translation import TranslateVisionPageRequest, translate_page_in_context
         from app.translation.context import ChapterMemory
 
-        try:
-            language = await detect_chapter_language(self.job.chapter_id)
-            source_lang = language.get("source_lang") or "auto"
-        except HTTPException:
-            source_lang = "auto"
+        # The vision model reads the source language off the image, so no OCR probe runs here.
+        manifest = self._manifest()
+        source_lang = manifest.get("source_lang") or site_language_hint(manifest.get("source_url")) or "auto"
         self.report["source_lang"] = source_lang
         indices = self._active_pages()
         memory = self._memory = ChapterMemory(self.settings.story_notes)
