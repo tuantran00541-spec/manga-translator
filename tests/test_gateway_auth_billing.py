@@ -290,3 +290,27 @@ def test_the_default_thinking_level_also_gets_room(tmp_path, monkeypatch):
     job = {"Authorization": f"Bearer {client.post('/v1/jobs', headers=headers).json()['job_token']}"}
     client.post("/v1/chat/completions", headers=job, json={"messages": [], "max_tokens": 500})
     assert (sent[0]["reasoning_effort"], sent[0]["max_tokens"]) == ("low", 500 + 4096)
+
+
+def test_judge_requests_go_to_evaluate_and_bill_input_only(tmp_path, monkeypatch):
+    sent = []
+
+    def send(self, payload, trace=None, path="chat/completions"):
+        sent.append((path, payload))
+        return 200, {"answers": {"wrong_meaning": {"noul": 0.1}}, "usage": {"input_tokens": 1_000_000}}
+
+    monkeypatch.setattr(Upstream, "send", send)
+    store = Store(tmp_path / "gw.sqlite")
+    upstream = Upstream("http://127.0.0.1:9", "", "m", 0, 0, judge_model="typesafe-ai/jev", judge_usd_per_m=0.0462)
+    client = TestClient(create_app(store, upstream, ADMIN, mailer=Mailer(api_key="", sender="", dev_mode=True)))
+    _token, headers = _login(client)
+    job = {"Authorization": f"Bearer {client.post('/v1/jobs', headers=headers).json()['job_token']}"}
+    body = client.post("/v1/evaluate", headers=job, json={"state": "s", "questions": {"q": {"type": "noul"}}, "model": "x"}).json()
+    assert sent == [("evaluate", {"model": "typesafe-ai/jev", "state": "s", "questions": {"q": {"type": "noul"}}})]
+    assert body["usage"]["gateway_job_cost_usd"] == 0.0462
+    assert client.post("/v1/evaluate", headers=job, json={"state": 1}).status_code == 400
+    bare = TestClient(create_app(Store(tmp_path / "bare.sqlite"), Upstream("http://127.0.0.1:9", "", "m", 0, 0), ADMIN,
+                                 mailer=Mailer(api_key="", sender="", dev_mode=True)))
+    _token, headers = _login(bare)
+    job = {"Authorization": f"Bearer {bare.post('/v1/jobs', headers=headers).json()['job_token']}"}
+    assert bare.post("/v1/evaluate", headers=job, json={"state": "s", "questions": {}}).status_code == 404

@@ -312,6 +312,8 @@ class TranslateVisionPageRequest(TranslateChapterRequest):
     max_objects: int | None = Field(default=None, ge=1, le=100)
     # Only these objects (still untranslated ones); None means every untranslated object.
     object_ids: list[str] | None = Field(default=None, max_length=100)
+    # Reviewer notes by object id, sent with the rejected translation.
+    notes: dict[str, str] | None = Field(default=None, max_length=100)
 
 
 def _resolve_vision_provider(provider_id: str):
@@ -430,6 +432,9 @@ async def translate_page_in_context(
         if req.object_ids is not None:
             wanted = set(req.object_ids)
             candidates = [candidate for candidate in candidates if candidate["id"] in wanted]
+        for candidate in candidates:
+            if note := str((req.notes or {}).get(candidate["id"]) or "").strip()[:300]:
+                candidate["note"] = note
         total_candidates = len(candidates)
         if req.max_objects is not None:
             candidates = candidates[:req.max_objects]
@@ -504,6 +509,8 @@ async def translate_page_in_context(
             obj["translation_source"] = provider.id
             if candidate.get("source_cap_px"):
                 obj["source_cap_px"] = candidate["source_cap_px"]
+            if source := getattr(translated, "sources", {}).get(candidate["id"]):
+                obj["source_read"] = source
             obj["translation_model"] = translated.model
             obj["translation_input_text"] = candidate["text"]
             obj["auto_translation"] = value

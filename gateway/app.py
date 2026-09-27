@@ -38,6 +38,8 @@ class Upstream:
     # Extra attempts after a dropped connection, a timeout, 429 or 5xx.
     retries: int = 2
     retry_wait_s: float = 2.0
+    judge_model: str = ""  # a decision model behind /evaluate; empty turns the judge off
+    judge_usd_per_m: float = 0.0
 
     def cost(self, usage: dict) -> float:
         prompt = max(0, int(usage.get("prompt_tokens") or 0))
@@ -47,7 +49,7 @@ class Upstream:
         return ((prompt - cached) * self.input_usd_per_m + cached * (self.cached_usd_per_m or 0.0)
                 + completion * self.output_usd_per_m) / 1_000_000
 
-    def send(self, payload: dict, trace: dict | None = None) -> tuple[int, dict]:
+    def send(self, payload: dict, trace: dict | None = None, path: str = "chat/completions") -> tuple[int, dict]:
         """POST upstream, retrying transient failures; ``trace`` records attempts."""
         for attempt in range(self.retries + 1):
             last = attempt == self.retries
@@ -55,7 +57,7 @@ class Upstream:
                 trace["attempts"] = attempt + 1
             try:
                 response = requests.post(
-                    f"{self.base.rstrip('/')}/chat/completions",
+                    f"{self.base.rstrip('/')}/{path}",
                     headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
                     json=payload,
                     timeout=(10, 300),
@@ -128,6 +130,8 @@ def upstream_from_env() -> Upstream:
         cached_usd_per_m=(float(os.environ["GATEWAY_PRICE_CACHED_PER_M"])
                           if os.getenv("GATEWAY_PRICE_CACHED_PER_M", "").strip() else None),
         retries=max(0, int(os.getenv("GATEWAY_UPSTREAM_RETRIES", "2") or 0)),
+        judge_model=os.getenv("GATEWAY_JUDGE_MODEL", "").strip(),
+        judge_usd_per_m=float(os.getenv("GATEWAY_JUDGE_PRICE_PER_M", "0") or 0),
     )
 
 
@@ -355,6 +359,40 @@ def create_app(store: Store, upstream: Upstream, admin_key: str, *, mailer: Mail
                 message = message.replace(upstream.api_key, "***")
             return _error(status if status in (400, 429) else 502, "upstream_error",
                           f"Upstream HTTP {status}" + (f": {message}" if message else ""))
+        body.setdefault("usage", {})["gateway_job_cost_usd"] = round(total, 6)
+        return body
+
+    @app.post("/v1/evaluate")
+    async def evaluate(payload: dict, row=Depends(job)):
+        """Typed decisions from the judge model; only input is billed."""
+        if not upstream.judge_model:
+            return _error(404, "judge_unavailable", "No judge model is configured")
+        if not isinstance(payload.get("state"), str) or not isinstance(payload.get("questions"), dict):
+            return _error(400, "invalid_request", "state and questions are required")
+        try:
+            store.begin_request(row["id"])
+        except QuotaExceeded:
+            return _error(402, "cost_cap", "This chapter reached its A.I cost cap")
+        forwarded = {"model": upstream.judge_model, "state": payload["state"], "questions": payload["questions"]}
+        started = time.perf_counter()
+        try:
+            status, body = await run_in_threadpool(upstream.send, forwarded, None, "evaluate")
+        except requests.RequestException:
+            status, body = 0, {}
+        usage = body.get("usage") if isinstance(body.get("usage"), dict) else {}
+        # Bill the reported input tokens, or about four characters per token when none are reported.
+        tokens = int(usage.get("prompt_tokens") or usage.get("input_tokens") or 0) or len(json.dumps(forwarded)) // 4
+        if trace_path:
+            _trace_line(trace_path, {"t": round(time.time(), 3), "ms": round((time.perf_counter() - started) * 1000),
+                                     "status": status, "judge": True, "prompt_tokens": tokens})
+        if status == 0:
+            return _error(502, "upstream_unreachable", "Judge upstream is unreachable")
+        total = store.add_cost(row["id"], tokens * upstream.judge_usd_per_m / 1_000_000, tokens, 0)
+        if status >= 400:
+            message = json.dumps(body.get("error") or body)[:200]
+            if upstream.api_key:
+                message = message.replace(upstream.api_key, "***")
+            return _error(status if status in (400, 429) else 502, "upstream_error", f"Upstream HTTP {status}: {message}")
         body.setdefault("usage", {})["gateway_job_cost_usd"] = round(total, 6)
         return body
 

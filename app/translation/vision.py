@@ -59,6 +59,7 @@ class VisionTranslationResult:
     missing_ids: frozenset[str] = frozenset()
     enlarge_ids: frozenset[str] = frozenset()
     colors: dict[str, str] = field(default_factory=dict)
+    sources: dict[str, str] = field(default_factory=dict)  # the source text as the model read it
 
 
 def parse_vision_translation(content: str, expected_ids: set[str], *, allow_missing: bool = False) -> dict[str, str]:
@@ -200,7 +201,9 @@ class VisionPageTranslator:
         # Send short numeric ids; models copy them more reliably.
         real = {str(n): str(item["id"]) for n, item in enumerate(items, start=1)}
         objects = [{"id": alias, "source_text": item["text"], "bbox_xyxy": item["region"],
-                    **({"max_chars": item["max_chars"]} if item.get("max_chars") else {})}
+                    **({"max_chars": item["max_chars"]} if item.get("max_chars") else {}),
+                    **({"rejected_translation": item["initial_translation"], "reviewer_note": item["note"]}
+                       if item.get("note") else {})}
                    for alias, item in zip(real, items)]
         source_name = (
             "the original language shown in the image"
@@ -221,7 +224,7 @@ class VisionPageTranslator:
         )
         original_b64, cleaned_b64 = _encode_for_gemini(original), _encode_for_gemini(cleaned)
         ids = set(real)
-        max_tokens = min(4096, max(1200, 160 * len(items) + 700))
+        max_tokens = min(4096, max(1200, 200 * len(items) + 700))
         if self.provider.protocol == "gemini":
             result, data = self._gemini(system, prompt, original_b64, cleaned_b64, api_key=api_key, ids=ids, max_tokens=max_tokens)
         else:
@@ -230,7 +233,7 @@ class VisionPageTranslator:
         ids = set(real.values())
         if str(target_lang or "").lower() in {"vi", "vie", "vietnamese"}:
             result, data = _drop_foreign_script(result, data)
-        roles, review, answered, enlarge, colors = {}, set(), set(), set(), {}
+        roles, review, answered, enlarge, colors, sources = {}, set(), set(), set(), {}, {}
         for entry in data.get("translations") or []:
             if not isinstance(entry, dict) or str(entry.get("id")) not in ids:
                 continue
@@ -242,6 +245,8 @@ class VisionPageTranslator:
                 review.add(str(entry["id"]))
             if entry.get("enlarge") is True:
                 enlarge.add(str(entry["id"]))
+            if isinstance(entry.get("source"), str) and entry["source"].strip():
+                sources[str(entry["id"])] = " ".join(entry["source"].split())[:300]
             if isinstance(entry.get("color"), str) and _HEX_COLOR.fullmatch(entry["color"].strip()):
                 colors[str(entry["id"])] = entry["color"].strip().lower()
         # Bubble speech always takes the base font; display fonts are for shouts, captions and art.
@@ -255,7 +260,7 @@ class VisionPageTranslator:
             }
         return replace(
             result, font_choices=fonts, roles=roles, review_ids=frozenset(review), missing_ids=frozenset(ids - answered),
-            enlarge_ids=frozenset(enlarge), colors=colors,
+            enlarge_ids=frozenset(enlarge), colors=colors, sources=sources,
         )
 
     def _openai(self, system, prompt, original, cleaned, *, api_key, ids, max_tokens):

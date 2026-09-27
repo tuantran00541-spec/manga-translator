@@ -15,6 +15,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 
+import requests
 from fastapi import HTTPException
 
 from app.ai_mode.checkpoints import review_clean, review_final, settle_clean_review
@@ -43,6 +44,7 @@ CREDIT_MAX_SHARE = 0.25
 CREDIT_MAX_ABSOLUTE = 3
 # More than this share of textless slices means the scan misread the chapter.
 TEXTLESS_MAX_SHARE = 0.5
+JUDGE_CONCURRENCY = 16  # the judge answers in a fraction of a second
 REVIEW_CONCURRENCY = 8  # checkpoints 3 and 5 have no reading-order dependency
 TRANSLATE_CONCURRENCY = 3
 # Checkpoint 5: at most two review-and-fix rounds.
@@ -123,6 +125,7 @@ class AIModeRunner:
             "textless_pages": [], "textless_rejected": [], "kept_regions": 0, "missed_added": 0,
             "retried_pages": [], "restored_regions": 0, "sfx_kept": 0, "review_list": [],
             "final_rounds": 0, "final_flagged": [], "final_fixes": 0, "final_errors": [],
+            "judged": 0, "judge_flags": [], "judge_errors": [], "judge_sample": None,
         })
         self._memory = None
         self._glossary_task: asyncio.Task | None = None
@@ -445,7 +448,7 @@ class AIModeRunner:
         self._progress(len(indices), len(indices), f"Dịch {self.report['translated']} vùng")
 
     async def _translate_retry(self, page_index: int, source_lang: str, object_ids: list[str] | None,
-                               force: bool = False) -> dict:
+                               force: bool = False, notes: dict[str, str] | None = None) -> dict:
         from app.routers.translation import TranslateVisionPageRequest, translate_page_in_context
 
         remaining = self._remaining_budget()
@@ -454,7 +457,7 @@ class AIModeRunner:
             source_lang=source_lang, target_lang=self.settings.target_lang,
             budget_usd=0.25 if remaining is None else max(0.001, min(0.25, remaining)),
             provider=self.provider.id, model=self.settings.model,
-            max_objects=RETRY_BATCH, object_ids=object_ids, force=force,
+            max_objects=RETRY_BATCH, object_ids=object_ids, force=force, notes=notes,
         ), memory=self._memory, slice_total=self._slice_total)
         run = data.get("translation_run") or {}
         self.report["translated"] += int(run.get("translated") or 0)
@@ -628,6 +631,7 @@ class AIModeRunner:
                 self._add_cost(cost)
                 return found
 
+        await self._judge(pages, source_lang)
         for round_number in range(1, FINAL_ROUNDS + 1):
             self._check_cancel()
             self._progress(0, len(pages), f"Vòng {round_number}")
@@ -657,6 +661,69 @@ class AIModeRunner:
             f"{self.report['final_rounds']} vòng, sửa {self.report['final_fixes']} chỗ"
             + (f", còn {flagged[-1]} lát chưa ổn" if len(flagged) == FINAL_ROUNDS and flagged[-1] else "")
         ))
+
+    async def _judge(self, pages: list[int], source_lang: str) -> None:
+        """The judge grades every line as text; doubted lines are retranslated with its note."""
+        from app.ai_mode.judge import evaluate_url, flagged, judge_line, line_state
+        from app.ai_providers import CLOUD_PROVIDER_ID
+
+        if self.provider.id != CLOUD_PROVIDER_ID or not self.provider.chat_url:
+            return
+        url, glossary = evaluate_url(self.provider.chat_url), (self._memory.glossary if self._memory else {})
+        gate = asyncio.Semaphore(JUDGE_CONCURRENCY)
+        notes: dict[int, dict[str, str]] = {}
+
+        async def grade(page_index: int, line: dict, previous: str, following: str) -> None:
+            async with gate:
+                if self.job.cancel_requested or len(self.report["judge_errors"]) >= MAX_REPORT_ITEMS:
+                    return
+                try:
+                    scores, body = await asyncio.to_thread(
+                        judge_line, url, self.api_key, line_state(line, previous, following, glossary))
+                except (requests.RequestException, RuntimeError, ValueError) as exc:
+                    _append(self.report["judge_errors"], f"Lát {page_index + 1}: {_detail(exc)[:200]}")
+                    return
+                self.report["judged"] += 1
+                self.report["judge_sample"] = self.report["judge_sample"] or body
+                if note := flagged(scores):
+                    notes.setdefault(page_index, {})[line["id"]] = note
+                    _append(self.report["judge_flags"], {"page": page_index + 1, "id": line["id"], "note": note,
+                                                         "translation": line["translation"][:120]})
+
+        jobs = []
+        for page_index in pages:
+            page = self._manifest()["pages"][page_index]
+            lines = sorted((
+                {"id": str(obj["id"]), "source": str(obj["source_read"]), "translation": str(obj["translation"]),
+                 "y": int(obj["region"].get("y1", 0)), "x": int(obj["region"].get("x1", 0))}
+                for obj in page.get("text_objects") or []
+                if isinstance(obj, dict) and obj.get("source_read") and str(obj.get("translation") or "").strip()
+                and isinstance(obj.get("region"), dict)
+            ), key=lambda line: (line["y"], line["x"]))
+            for number, line in enumerate(lines):
+                previous = lines[number - 1]["translation"] if number else ""
+                following = lines[number + 1]["translation"] if number + 1 < len(lines) else ""
+                jobs.append(grade(page_index, line, previous, following))
+        self._progress(0, len(jobs), "Jev chấm từng câu")
+        await asyncio.gather(*jobs)
+        self._check_cancel()
+        fixing = asyncio.Semaphore(TRANSLATE_CONCURRENCY)
+
+        async def retranslate(page_index: int, page_notes: dict[str, str]) -> None:
+            async with fixing:
+                if self.job.cancel_requested:
+                    return
+                ids = list(page_notes)
+                for start in range(0, len(ids), RETRY_BATCH):
+                    try:
+                        await self._translate_retry(page_index, source_lang, ids[start:start + RETRY_BATCH],
+                                                    force=True, notes=page_notes)
+                    except HTTPException as exc:
+                        _append(self.report["judge_errors"], f"Lát {page_index + 1} (dịch lại): {_detail(exc)[:200]}")
+                await self._render_one(page_index)
+
+        await asyncio.gather(*(retranslate(page_index, page_notes) for page_index, page_notes in notes.items()))
+        self._progress(len(jobs), len(jobs), f"Jev chấm {self.report['judged']} câu, dịch lại {len(self.report['judge_flags'])}")
 
     async def _apply_final_fixes(self, found, source_lang: str) -> None:
         from app.dependencies import pipeline
