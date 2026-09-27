@@ -34,7 +34,7 @@ LETTERING
 - Size: the renderer picks the largest size that still breathes inside the bubble. Keep the line short enough for that: about as long as the source line, shorter if the bubble is small. If it cannot fit, rewrite it shorter first; if it still cannot, set "review": true.
 - Break lines yourself with "\\n" at phrase boundaries; an oval bubble reads short, long, short. Never leave one orphan word, a lone punctuation mark, a split name or number and unit, or a hyphen inside a Vietnamese word.
 - Free text keeps its scale and weight: a large source line stays a strong, short line.
-- Always write translated_text in normal sentence case, even when the source is lettered in capitals; set "caps": true for such objects and the renderer capitalises them.
+- Always write translated_text in normal sentence case, never in all capitals, even when the source is lettered in capitals.
 """.strip()
 
 _INPUT_IMAGES = """
@@ -51,7 +51,7 @@ VIETNAMESE
 
 _OUTPUT = """
 Answer with JSON only:
-{{"translations":[{{"id":"<id>","translated_text":"<text, lines split with \\n>","role":"<role>","caps":false,"review":false}}],
+{{"translations":[{{"id":"<id>","translated_text":"<text, lines split with \\n>","role":"<role>","review":false}}],
  "font_choices":{{"<id>":{{"font_id":"<catalog id>","font_mode":"ai"}}}},
  "speakers":{{"<id>":"<character name, or narration>"}},
  "characters":[{{"name":"<name>","note":"<role, age, relationship>"}}],
