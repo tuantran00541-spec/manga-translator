@@ -4,4 +4,4 @@ model: openai/gpt-6-luna
 price: 0.105 0.525 0.0105
 reasoning: 0
 effort: none
-# gpt-6-luna: fit to source letter size (max_chars), no OCR probe
+# gpt-6-luna: checkpoint 3 thinks at low effort with the dialogue-left hard rule
