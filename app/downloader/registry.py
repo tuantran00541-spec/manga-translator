@@ -82,32 +82,28 @@ def download_chapter(chapter_url: str, output_dir: Path) -> list[Path]:
     validate_url(chapter_url)
     static_urls: list[str] = []
     js_urls: list[str] = []
+    failures: list[str] = []
+
+    def attempt(label: str, adapter) -> list[str]:
+        try:
+            return adapter.extract_image_urls(chapter_url)
+        except Exception as exc:  # one way failing still leaves the other
+            failures.append(f"{label}: {getattr(exc, 'detail', None) or exc or type(exc).__name__}")
+            return []
 
     if is_asura_chapter_page(chapter_url):
-        try:
-            static_urls = ASURA_STATIC_ADAPTER.extract_image_urls(chapter_url)
-        except Exception:
-            static_urls = []
-
+        static_urls = attempt("trang tĩnh", ASURA_STATIC_ADAPTER)
         if len(static_urls) >= 2:
             selected = static_urls
         else:
-            try:
-                js_urls = ASURA_JS_ADAPTER.extract_image_urls(chapter_url)
-            except Exception:
-                js_urls = []
+            js_urls = attempt("trình duyệt", ASURA_JS_ADAPTER)
             selected = js_urls or static_urls
     else:
-        try:
-            static_urls = STATIC_ADAPTER.extract_image_urls(chapter_url)
-        except Exception:
-            static_urls = []
-        try:
-            js_urls = JS_ADAPTER.extract_image_urls(chapter_url)
-        except Exception:
-            js_urls = []
+        static_urls = attempt("trang tĩnh", STATIC_ADAPTER)
+        js_urls = attempt("trình duyệt", JS_ADAPTER)
         selected = _choose_image_urls(static_urls, js_urls)
     if not selected:
-        raise ValueError("Không tìm thấy ảnh chương hợp lệ từ URL này")
+        reason = "; ".join(str(item)[:200] for item in failures)
+        raise ValueError("Không tìm thấy ảnh chương hợp lệ từ URL này" + (f" ({reason})" if reason else ""))
 
     return STATIC_ADAPTER.download_urls(selected, output_dir, referer=chapter_url)
