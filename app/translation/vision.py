@@ -5,6 +5,7 @@ import re
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
+import cv2
 import requests
 
 from app.ai_providers import AIProvider
@@ -179,6 +180,26 @@ def _drop_foreign_script(result: VisionTranslationResult, data: dict) -> tuple[V
     return result, data
 
 
+MARK_COLOR = (0, 0, 230)  # BGR red
+
+
+def mark_objects(image, objects: list[dict]):
+    """A copy of the slice with each object's box outlined and labelled with its id."""
+    marked = image.copy()
+    width = marked.shape[1]
+    thickness = max(2, width // 400)
+    scale = max(0.6, width / 1000)
+    for obj in objects:
+        x1, y1, x2, y2 = (int(v) for v in obj["bbox_xyxy"])
+        cv2.rectangle(marked, (x1, y1), (x2, y2), MARK_COLOR, thickness)
+        label = str(obj["id"])
+        (tw, th), base = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, scale, thickness)
+        ty = max(th + base, y1)
+        cv2.rectangle(marked, (x1, ty - th - base), (x1 + tw + 4, ty), MARK_COLOR, -1)
+        cv2.putText(marked, label, (x1 + 2, ty - base), cv2.FONT_HERSHEY_SIMPLEX, scale, (255, 255, 255), thickness)
+    return marked
+
+
 class VisionPageTranslator:
     def __init__(self, provider: AIProvider, model: str):
         if not provider.supports_visual_qc:
@@ -222,7 +243,7 @@ class VisionPageTranslator:
             + '\n\nAnswer with one JSON object that starts with {"translations":[ and contains every id above. '
             + "Write every translated_text in normal sentence case, never in all capitals."
         )
-        original_b64, cleaned_b64 = _encode_for_gemini(original), _encode_for_gemini(cleaned)
+        original_b64, cleaned_b64 = _encode_for_gemini(original), _encode_for_gemini(mark_objects(cleaned, objects))
         ids = set(real)
         max_tokens = min(4096, max(1200, 200 * len(items) + 700))
         if self.provider.protocol == "gemini":

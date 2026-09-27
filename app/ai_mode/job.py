@@ -13,7 +13,7 @@ import json
 import re
 import time
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import requests
 from fastapi import HTTPException
@@ -329,6 +329,34 @@ class AIModeRunner:
         other = read_image(validate_managed_path(page[second_key], second_root / chapter_id))
         return original, other
 
+    def _in_core(self, page_index: int, boxes, spill: dict | None = None, kind: str = "") -> tuple:
+        """Boxes whose centre is in the part of the slice that is exported; a box crossing the cut is also given to the neighbour."""
+        pages = self._manifest()["pages"]
+        core = pages[page_index].get("stitch_core")
+        if not isinstance(core, dict):
+            return tuple(boxes)
+        try:
+            top, bottom, offset = int(core["core_y1"]), int(core["core_y2"]), int(core["source_y1"])
+        except (KeyError, TypeError, ValueError):
+            return tuple(boxes)
+        kept = []
+        for box in boxes:
+            if not top <= (box[1] + box[3]) / 2 < bottom:
+                continue
+            kept.append(box)
+            if spill is None or (box[1] >= top and box[3] <= bottom):
+                continue
+            for other_index in (page_index - 1,) * (box[1] < top) + (page_index + 1,) * (box[3] > bottom):
+                other = pages[other_index] if 0 <= other_index < len(pages) else {}
+                other_core = other.get("stitch_core")
+                if (other.get("skipped") or not isinstance(other_core, dict)
+                        or other.get("source_page") != pages[page_index].get("source_page")):
+                    continue
+                shift = offset - int(other_core["source_y1"])
+                spill.setdefault(other_index, {}).setdefault(kind, []).append(
+                    (box[0], box[1] + shift, box[2], box[3] + shift))
+        return tuple(kept)
+
     def _page_boxes(self, page_index: int) -> list[tuple[int, int, int, int]]:
         """Pixel rectangles of the page's active text boxes."""
         boxes = self._manifest()["pages"][page_index].get("boxes") or []
@@ -344,6 +372,8 @@ class AIModeRunner:
         gate = asyncio.Semaphore(REVIEW_CONCURRENCY)
         finished = 0
 
+        spill: dict[int, dict[str, list]] = {}  # fixes crossing a slice cut, for the neighbouring slice
+
         async def review_one(page_index: int) -> None:
             nonlocal finished
             try:
@@ -357,6 +387,9 @@ class AIModeRunner:
                         review_clean, self.provider, self.settings.model, self.api_key, page_index, original, clean)
                     self._add_cost(cost)
                 found = settle_clean_review(found, self._page_boxes(page_index))
+                found = replace(found, missed=self._in_core(page_index, found.missed, spill, "missed"),
+                                residue=self._in_core(page_index, found.residue, spill, "residue"),
+                                restore=self._in_core(page_index, found.restore))
                 if found.restore or found.missed or found.residue:
                     await asyncio.to_thread(
                         pipeline.apply_review_fixes, chapter_id, page_index,
@@ -374,6 +407,12 @@ class AIModeRunner:
 
         self._progress(0, len(indices))
         await asyncio.gather(*(review_one(page_index) for page_index in indices))
+        for page_index, fixes in spill.items():
+            try:
+                await asyncio.to_thread(pipeline.apply_review_fixes, chapter_id, page_index,
+                                        boxes=fixes.get("missed", []), repaint=fixes.get("residue", []))
+            except (HTTPException, RuntimeError, ValueError, OSError, KeyError) as exc:
+                _append(self.report["qc_errors"], f"Lát {page_index + 1}: {_detail(exc)[:200]}")
         self._check_cancel()
         self._progress(len(indices), len(indices), (
             f"Xoá thêm {self.report['missed_added']} vùng sót, repaint {self.report['repainted_regions']}, "
@@ -417,7 +456,7 @@ class AIModeRunner:
                         source_lang=source_lang, target_lang=self.settings.target_lang,
                         budget_usd=0.25 if remaining is None else max(0.001, min(0.25, remaining)),
                         provider=self.provider.id, model=self.settings.model,
-                    ), memory=memory, slice_total=slice_total)
+                    ), memory=memory, slice_total=slice_total, skip_seam_mirrors=True)
                     run = data.get("translation_run") or {}
                 except HTTPException as exc:
                     _append(self.report["translate_errors"], f"Lát {page_index + 1}: {_detail(exc)[:200]}")
@@ -442,10 +481,35 @@ class AIModeRunner:
         self._check_cancel()
         if out_of_budget:
             _append(self.report["translate_errors"], "Hết ngân sách, các lát còn lại chưa dịch")
+        await self._sync_seams()
         sheet = memory.snapshot()
         self.report["characters"] = sheet["characters"][:MAX_REPORT_ITEMS]
         self.report["address"] = sheet["address"][:MAX_REPORT_ITEMS]
         self._progress(len(indices), len(indices), f"Dịch {self.report['translated']} vùng")
+
+    async def _sync_seams(self) -> list[int]:
+        """Letter every text crossing a slice cut exactly as its owning slice does."""
+        from app.ai_mode.seams import sync_seam_mirrors
+        from app.manifest_utils import invalidate_page_render, save_manifest_raw
+
+        def sync() -> list[int]:
+            with get_manifest_lock(self.job.chapter_id):
+                manifest = load_manifest_raw(self.job.chapter_id)
+                changed = sync_seam_mirrors(manifest)
+                for page_index in changed:
+                    invalidate_page_render(manifest, page_index)
+                if changed:
+                    save_manifest_raw(self.job.chapter_id, manifest)
+                return changed
+
+        changed = await asyncio.to_thread(sync)
+        self.report["seam_copies"] = self.report.get("seam_copies", 0) + len(changed)
+        return changed
+
+    async def _resync_seams(self) -> None:
+        """After fixes, copy changed seam lettering and render the slices that received it."""
+        for page_index in await self._sync_seams():
+            await self._render_one(page_index)
 
     async def _translate_retry(self, page_index: int, source_lang: str, object_ids: list[str] | None,
                                force: bool = False, notes: dict[str, str] | None = None) -> dict:
@@ -458,7 +522,7 @@ class AIModeRunner:
             budget_usd=0.25 if remaining is None else max(0.001, min(0.25, remaining)),
             provider=self.provider.id, model=self.settings.model,
             max_objects=RETRY_BATCH, object_ids=object_ids, force=force, notes=notes,
-        ), memory=self._memory, slice_total=self._slice_total)
+        ), memory=self._memory, slice_total=self._slice_total, skip_seam_mirrors=True)
         run = data.get("translation_run") or {}
         self.report["translated"] += int(run.get("translated") or 0)
         self._add_cost(run.get("estimated_cost_usd") if self.provider.tracks_cost else None)
@@ -491,7 +555,11 @@ class AIModeRunner:
     def _untranslated(self, page_index: int, only: set[str] | None, blank: set[str]) -> list[dict]:
         from app.region_policy import text_object_in_preserve_region
 
-        page = self._manifest()["pages"][page_index]
+        from app.ai_mode.seams import seam_mirror_ids
+
+        manifest = self._manifest()
+        page = manifest["pages"][page_index]
+        blank = blank | seam_mirror_ids(manifest, page_index)
         return [
             obj for obj in page.get("text_objects") or []
             if isinstance(obj, dict) and obj.get("id") and not obj.get("source_missing")
@@ -654,6 +722,7 @@ class AIModeRunner:
 
             self._progress(0, len(reviews), f"Vòng {round_number}: sửa lát")
             await asyncio.gather(*(fix(found) for found in reviews))
+            await self._resync_seams()
             self._check_cancel()
             pages = [found.page_index for found in reviews]
         flagged = self.report["final_flagged"]
@@ -697,7 +766,8 @@ class AIModeRunner:
                 {"id": str(obj["id"]), "source": str(obj["source_read"]), "translation": str(obj["translation"]),
                  "y": int(obj["region"].get("y1", 0)), "x": int(obj["region"].get("x1", 0))}
                 for obj in page.get("text_objects") or []
-                if isinstance(obj, dict) and obj.get("source_read") and str(obj.get("translation") or "").strip()
+                if isinstance(obj, dict) and obj.get("source_read") and not obj.get("seam_owner")
+                and str(obj.get("translation") or "").strip()
                 and isinstance(obj.get("region"), dict)
             ), key=lambda line: (line["y"], line["x"]))
             for number, line in enumerate(lines):
@@ -723,23 +793,35 @@ class AIModeRunner:
                 await self._render_one(page_index)
 
         await asyncio.gather(*(retranslate(page_index, page_notes) for page_index, page_notes in notes.items()))
+        await self._resync_seams()
         self._progress(len(jobs), len(jobs), f"Jev chấm {self.report['judged']} câu, dịch lại {len(self.report['judge_flags'])}")
 
     async def _apply_final_fixes(self, found, source_lang: str) -> None:
         from app.dependencies import pipeline
 
+        from app.ai_mode.seams import seam_mirror_ids
+
         chapter_id, page_index = self.job.chapter_id, found.page_index
-        page = self._manifest()["pages"][page_index]
+        manifest = self._manifest()
+        page = manifest["pages"][page_index]
         by_id = {str(obj.get("id")): obj for obj in page.get("text_objects") or [] if isinstance(obj, dict)}
+        # Seam copies follow their owning slice, which is reviewed on its own.
+        mirrors = seam_mirror_ids(manifest, page_index)
+        retranslate = [obj_id for obj_id in found.retranslate if obj_id not in mirrors]
+        missed = list(self._in_core(page_index, found.repaint))
         try:
-            regions = [dict(by_id[obj_id]["region"]) for obj_id in found.restore if obj_id in by_id]
-            if regions or found.repaint:
+            regions = [dict(by_id[obj_id]["region"]) for obj_id in found.restore
+                       if obj_id in by_id and obj_id not in mirrors]
+            if regions or missed:
+                # Source text left on the page is erased and translated like text the detector missed.
                 await asyncio.to_thread(
                     pipeline.apply_review_fixes, chapter_id, page_index,
-                    preserve=[(r["x1"], r["y1"], r["x2"], r["y2"]) for r in regions], repaint=list(found.repaint))
-            if found.retranslate:
-                await self._translate_retry(page_index, source_lang, list(found.retranslate), force=True)
-            self.report["final_fixes"] += len(regions) + len(found.repaint) + len(found.retranslate)
+                    preserve=[(r["x1"], r["y1"], r["x2"], r["y2"]) for r in regions], boxes=missed)
+            if missed:
+                await self._retry_untranslated(page_index, source_lang, None)
+            if retranslate:
+                await self._translate_retry(page_index, source_lang, retranslate, force=True)
+            self.report["final_fixes"] += len(regions) + len(missed) + len(retranslate)
         except (HTTPException, RuntimeError, ValueError, OSError) as exc:
             _append(self.report["final_errors"], f"Lát {page_index + 1}: {_detail(exc)[:200]}")
         await self._render_one(page_index)

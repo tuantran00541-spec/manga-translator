@@ -396,6 +396,7 @@ async def translate_page_with_images(req: TranslateVisionPageRequest) -> dict:
 
 async def translate_page_in_context(
     req: TranslateVisionPageRequest, memory: ChapterMemory | None = None, slice_total: int | None = None,
+    skip_seam_mirrors: bool = False,
 ) -> dict:
     validate_chapter_id(req.chapter_id)
     try:
@@ -427,6 +428,12 @@ async def translate_page_in_context(
             candidates = _vision_candidates(page, force=req.force)
         except ValueError as exc:
             raise HTTPException(409, str(exc)) from exc
+        if skip_seam_mirrors:
+            from app.ai_mode.seams import seam_mirror_ids
+
+            # The slice that owns a text crossing the cut translates it; this one gets a copy.
+            mirrors = seam_mirror_ids(manifest, req.page_index)
+            candidates = [candidate for candidate in candidates if candidate["id"] not in mirrors]
         if len(candidates) > 100:
             raise HTTPException(400, "Too many text objects on one slice (maximum 100)")
         if req.object_ids is not None:

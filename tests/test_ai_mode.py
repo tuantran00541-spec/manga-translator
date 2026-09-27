@@ -272,6 +272,11 @@ def _runner(monkeypatch, stage, manifest):
                            stages={stage: {"done": 0, "total": 0, "detail": ""}})
     runner = AIModeRunner(job, PROVIDERS["openai"], "key")
     monkeypatch.setattr(runner, "_manifest", lambda: manifest)
+
+    async def no_seams():
+        return []
+
+    monkeypatch.setattr(runner, "_sync_seams", no_seams)
     return runner
 
 
@@ -407,7 +412,8 @@ def test_translate_stage_keeps_a_few_slices_in_flight_and_reports_failures(monke
 
     started, memories = [], set()
 
-    async def fake_translate(req, memory=None, slice_total=None):
+    async def fake_translate(req, memory=None, slice_total=None, skip_seam_mirrors=False):
+        assert skip_seam_mirrors, "A.I mode leaves seam copies to their owning slice"
         started.append(req.page_index)
         memories.add(id(memory))
         assert slice_total == 10
@@ -427,6 +433,13 @@ def test_translate_stage_keeps_a_few_slices_in_flight_and_reports_failures(monke
     runner = AIModeRunner(job, PROVIDERS["openai"], "key")
     monkeypatch.setattr(runner, "_active_pages", lambda: list(range(10)))
     monkeypatch.setattr(runner, "_manifest", lambda: {"pages": [{} for _ in range(10)]})
+    synced = []
+
+    async def sync():
+        synced.append(True)
+        return []
+
+    monkeypatch.setattr(runner, "_sync_seams", sync)
     retried = []
 
     async def retry(page_index, source_lang, only):

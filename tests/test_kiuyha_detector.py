@@ -1,5 +1,6 @@
 from types import SimpleNamespace
 
+import cv2
 import numpy as np
 
 from app.detector.kiuyha_detector import KiuyhaTextDetector
@@ -138,12 +139,15 @@ def test_leftover_mask_is_folded_into_the_saved_first_pass_box():
 
 
 def test_letters_cut_by_the_slice_edge_are_masked_and_leftovers_take_the_whole_box():
-    from app.detector.kiuyha_detector import stroke_mask
+    from app.detector.kiuyha_detector import letter_mask
 
-    crop = np.full((60, 200, 3), 230, np.uint8)
-    crop[0:20, 40:160] = 30  # the bottom of a line cut by the slice's top edge
-    assert not stroke_mask(crop).any(), "inside the image, border-touching blobs are art"
-    assert stroke_mask(crop, (True, False, False, False))[10, 100]
+    page = np.full((300, 400, 3), 230, np.uint8)
+    page[0:20, 140:260] = 30  # the bottom of a line cut by the slice's top edge
+    page[150:170, 20:380] = 30  # a bar of art running out of any crop around the box
+    box, mask = letter_mask(page, (130, 0, 270, 60))
+    assert box[1] == 0 and mask[10, 200 - box[0]], "letters cut by the slice edge are masked"
+    box, mask = letter_mask(page, (100, 140, 300, 180))
+    assert not mask.any(), "inside the image, art running past the box is kept"
     detector = KiuyhaTextDetector("unused", session=_BlobSession())
     image = _text_slice()
     (left,) = detector.leftover_boxes(image, [b for b in detector.text_boxes(image) if b.y1 > 2000])
@@ -155,3 +159,33 @@ def test_pipeline_detect_names_the_model_and_reports_timing():
     boxes = detector.detect(_text_slice())
     assert boxes and all(b.source_model == "kiuyha_text_1280.onnx" for b in boxes)
     assert detector.last_metrics()["result_boxes"] == len(boxes)
+
+
+def _letters(image, xs, top=100, size=40):
+    for x in xs:
+        image[top:top + size, x:x + 24] = 20  # a solid letter
+    return image
+
+
+def test_first_and_last_letters_cut_by_the_box_edge_are_erased():
+    from app.detector.kiuyha_detector import letter_mask
+
+    image = _letters(np.full((260, 600, 3), 245, np.uint8), range(100, 461, 40))
+    box, mask = letter_mask(image, (112, 90, 470, 150))  # the box stops inside the first and last letters
+    assert box[0] <= 100 and box[2] >= 484
+    assert mask[120 - box[1], 105 - box[0]] and mask[120 - box[1], 480 - box[0]]
+
+
+def test_a_bubble_outline_past_the_box_is_not_erased():
+    from app.detector.kiuyha_detector import letter_mask
+
+    image = np.full((300, 600, 3), 245, np.uint8)
+    cv2.ellipse(image, (300, 150), (230, 110), 0, 0, 360, (20, 20, 20), 3)
+    _letters(image, range(180, 420, 40), top=130)
+    box, mask = letter_mask(image, (160, 110, 440, 190))
+    grown = np.zeros(image.shape[:2], bool)
+    grown[box[1]:box[3], box[0]:box[2]] = mask
+    outline = np.zeros(image.shape[:2], np.uint8)
+    cv2.ellipse(outline, (300, 150), (230, 110), 0, 0, 360, 255, 3)
+    assert not (grown & (outline > 0)).any()
+    assert grown[150, 190]

@@ -418,3 +418,12 @@ def test_rejected_line_goes_back_with_the_note_and_the_source_read_is_kept(tmp_p
     prompt = json.dumps(sent[0]["json"]["messages"], ensure_ascii=False)
     assert "rejected_translation" in prompt and "it repeats the previous or next line" in prompt
     assert result.sources == {"t": "Let him go!"}
+
+
+def test_the_clean_image_marks_each_object_box_with_its_id():
+    from app.translation.vision import MARK_COLOR, mark_objects
+
+    clean = np.full((400, 600, 3), 255, np.uint8)
+    marked = mark_objects(clean, [{"id": "7", "bbox_xyxy": [100, 150, 300, 250]}])
+    assert tuple(marked[200, 100]) == MARK_COLOR and tuple(marked[200, 200]) == (255, 255, 255)
+    assert (clean == 255).all(), "the slice itself is not drawn on"

@@ -25,7 +25,7 @@ TRANSLATION
 - Every character keeps one voice across the chapter (cold: short and firm; powerful: weighty; close friends: casual). Never let everyone speak the same flat AI prose.
 - Translate meaning, not English structure. If a line reads like a translation, rewrite it.
 - Be concise without losing lore, relationships, threats, hesitation, sarcasm, implication, cause and effect, or proper names.
-- Lock terms: keep proper names in their source spelling and reuse them; tell a descriptive phrase from the name of an organisation.
+- Lock terms: people's names keep their source spelling; places, organisations, spells, techniques, titles, captions and signs are translated, never left in the source language. Reuse the same form every time; tell a descriptive phrase from the name of an organisation.
 - Punctuation is acting: keep "...", "-", "—", "?!", "!!" as in the source; never add "..." to a character who speaks bluntly.
 - No invented memes, out-of-world slang or jokes the source does not make.
 - Scanlator credits, watermarks and URLs become an empty string.
@@ -43,7 +43,7 @@ LETTERING
 
 _INPUT_IMAGES = """
 INPUT
-One vertical slice per request, in reading order. IMAGE 1 is the ORIGINAL; read the text from it. IMAGE 2 is the same slice after the text was erased, for scene context. Each object has an id, an OCR hint that is often wrong, bbox_xyxy in image pixels, and usually max_chars: how many characters (spaces included) fit its box when lettered about as large as the source. Stay within max_chars; rephrase shorter rather than go over, so bubbles and free text keep the size of the original lettering. CHAPTER MEMORY holds the GLOSSARY (names, terms and forms of address fixed for the whole chapter; always use them exactly and never respell a name), the story notes, the character sheet, the forms of address already fixed and the last lines; treat it as settled unless the slice clearly contradicts it. An object with rejected_translation was sent back by a reviewer: fix what reviewer_note names and never repeat the rejected text.
+One vertical slice per request, in reading order. IMAGE 1 is the ORIGINAL; read the text from it. IMAGE 2 is the same slice after the text was erased, with each object's box outlined in red and labelled with its id; the text of an object is what IMAGE 1 shows inside that box, never text from elsewhere. Each object has an id, an OCR hint that is often empty or wrong, bbox_xyxy in image pixels, and usually max_chars: how many characters (spaces included) fit its box when lettered about as large as the source. Stay within max_chars; rephrase shorter rather than go over, so bubbles and free text keep the size of the original lettering. CHAPTER MEMORY holds the GLOSSARY (names, terms and forms of address fixed for the whole chapter; always use them exactly and never respell a name), the story notes, the character sheet, the forms of address already fixed and the last lines; treat it as settled unless the slice clearly contradicts it. An object with rejected_translation was sent back by a reviewer: fix what reviewer_note names and never repeat the rejected text.
 """.strip()
 
 _VIETNAMESE = """

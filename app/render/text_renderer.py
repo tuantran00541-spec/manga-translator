@@ -291,8 +291,11 @@ def render_text_in_box(
         font = get_font_object(font_path_str, actual_size)
         lines = _wrap_text(draw, text, font, box_w)
     else:
+        # Size limits are set for an 800 px wide page and grow with wider pages.
+        scale = max(1.0, image.size[0] / REFERENCE_PAGE_WIDTH)
+        readable, maximum_size = int(RENDER_MIN_READABLE_FONT_SIZE * scale), int(MAX_FONT_SIZE * scale)
+        enlarged_min = int(ENLARGED_MIN_FONT_SIZE * scale)
         # Auto size never letters bigger than the source did.
-        maximum_size = MAX_FONT_SIZE
         if enlarge:
             # Text flagged too small to read grows its area and may exceed the source size.
             grow_x, grow_y = int(round(raw_w * ENLARGE_GROW_RATIO)), int(round(raw_h * ENLARGE_GROW_RATIO))
@@ -306,8 +309,8 @@ def render_text_in_box(
             from app.render.source_size import SIZE_SLACK, matching_font_px
             # A misread source size must not shrink the text far below what the box holds.
             box_fit = _fit_text(draw, text, box_w, box_h, font_path_str, stroke_w=stroke_w,
-                                minimum_size=RENDER_MIN_READABLE_FONT_SIZE)[0]
-            maximum_size = max(RENDER_MIN_READABLE_FONT_SIZE, int(SOURCE_FLOOR_RATIO * box_fit),
+                                minimum_size=readable, maximum_size=maximum_size)[0]
+            maximum_size = max(readable, int(SOURCE_FLOOR_RATIO * box_fit),
                                int(matching_font_px(font_path_str, int(source_cap_px)) * SIZE_SLACK))
         actual_size, lines, fits_readably = _fit_text(
             draw,
@@ -316,13 +319,13 @@ def render_text_in_box(
             box_h,
             font_path_str,
             stroke_w=stroke_w,
-            minimum_size=ENLARGED_MIN_FONT_SIZE if enlarge else RENDER_MIN_READABLE_FONT_SIZE,
+            minimum_size=enlarged_min if enlarge else readable,
             maximum_size=maximum_size,
         )
         if enlarge and not fits_readably:
             actual_size, lines, fits_readably = _fit_text(
                 draw, text, box_w, box_h, font_path_str, stroke_w=stroke_w,
-                minimum_size=RENDER_MIN_READABLE_FONT_SIZE, maximum_size=maximum_size,
+                minimum_size=readable, maximum_size=maximum_size,
             )
         opaque_caption = bool(bg_color and bg_color not in ("transparent", "none", ""))
         if not fits_readably and opaque_caption and RENDER_SAFE_CAPTION_EXPANSION:
@@ -341,7 +344,7 @@ def render_text_in_box(
                 box_h,
                 font_path_str,
                 stroke_w=stroke_w,
-                minimum_size=RENDER_MIN_READABLE_FONT_SIZE,
+                minimum_size=readable,
                 maximum_size=maximum_size,
             )
         if not fits_readably:
@@ -400,6 +403,7 @@ def render_text_in_box(
 ENLARGE_GROW_RATIO = 0.25  # each side of a region flagged enlarge grows by this share
 ENLARGED_MIN_FONT_SIZE = 22
 SOURCE_FLOOR_RATIO = 0.6  # source-matched text never drops below this share of the box-fit size
+REFERENCE_PAGE_WIDTH = 800  # font size limits are for a page this wide
 SOURCE_MATCH_MAX_FONT_SIZE = 200  # large source lettering may be matched past MAX_FONT_SIZE
 
 

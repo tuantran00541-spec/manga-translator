@@ -20,31 +20,59 @@ HALVES_GAP = 16
 HALVES_MIN_OVERLAP = 256
 CLOSE_KERNEL = 15  # letters -> word blobs
 GROW_KERNEL = 13  # past the letter outline (a white stroke round brown text)
+EDGE_GROW = 24  # room around a box for letters its edge cuts
+LETTER_FILL = 0.2  # ink share of a letter's bounding box; outlines and hairlines fall below it
 
 
-def stroke_mask(crop: np.ndarray, open_sides: tuple[bool, bool, bool, bool] = (False,) * 4) -> np.ndarray:
-    """Letters and their outline inside a box crop, found by Otsu against the border colour.
-
-    ``open_sides`` (top, bottom, left, right) are image edges, where letters cut by the slice may touch.
-    """
+def letter_mask(image: np.ndarray, box: tuple[int, int, int, int]) -> tuple[tuple[int, int, int, int], np.ndarray]:
+    """Letters of ``box`` including ones the box cuts at its edge; returns the grown box and its mask."""
+    h, w = image.shape[:2]
+    x1, y1, x2, y2 = box
+    gx1, gy1, gx2, gy2 = max(0, x1 - EDGE_GROW), max(0, y1 - EDGE_GROW), min(w, x2 + EDGE_GROW), min(h, y2 + EDGE_GROW)
+    crop = image[gy1:gy2, gx1:gx2]
+    ix1, iy1, ix2, iy2 = x1 - gx1, y1 - gy1, x2 - gx1, y2 - gy1
+    if min(iy2 - iy1, ix2 - ix1) < 8:
+        return box, np.zeros((y2 - y1, x2 - x1), bool)
     lab = cv2.cvtColor(crop, cv2.COLOR_BGR2LAB).astype(np.float32)
-    if min(lab.shape[:2]) < 8:
-        return np.zeros(crop.shape[:2], bool)
-    ring = np.concatenate([lab[:3].reshape(-1, 3), lab[-3:].reshape(-1, 3),
-                           lab[:, :3].reshape(-1, 3), lab[:, -3:].reshape(-1, 3)])
+    inner = lab[iy1:iy2, ix1:ix2]
+    # The background colour comes from the detector box's own border, as before.
+    ring = np.concatenate([inner[:3].reshape(-1, 3), inner[-3:].reshape(-1, 3),
+                           inner[:, :3].reshape(-1, 3), inner[:, -3:].reshape(-1, 3)])
     diff = np.linalg.norm(lab - np.median(ring, axis=0), axis=2)
-    diff = np.clip(diff * (255.0 / max(1.0, float(diff.max()))), 0, 255).astype(np.uint8)
-    _, fg = cv2.threshold(diff, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    count, labels, stats, _ = cv2.connectedComponentsWithStats(fg)
+    scale = 255.0 / max(1.0, float(diff[iy1:iy2, ix1:ix2].max()))
+    diff = np.clip(diff * scale, 0, 255).astype(np.uint8)
+    # The threshold is chosen inside the box and applied to the grown crop.
+    level = cv2.threshold(diff[iy1:iy2, ix1:ix2], 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[0]
+    fg = diff > level
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(fg.astype(np.uint8))
+    open_top, open_bottom, open_left, open_right = gy1 == 0, gy2 == h, gx1 == 0, gx2 == w
+    ch, cw = fg.shape
+
+    def touches_edge(x, y, bw, bh):
+        return ((not open_top and y == 0) or (not open_bottom and y + bh >= ch)
+                or (not open_left and x == 0) or (not open_right and x + bw >= cw))
+
+    inside = [label for label in range(1, count) if stats[label][0] >= ix1 and stats[label][1] >= iy1
+              and stats[label][0] + stats[label][2] <= ix2 and stats[label][1] + stats[label][3] <= iy2
+              and not touches_edge(*stats[label][:4])]
     keep = np.zeros(count, bool)
+    keep[inside] = True
+    heights = [int(stats[label][3]) for label in inside if stats[label][4] >= 12]
+    letter = float(np.median(heights)) if heights else 0.0
     for label in range(1, count):
-        x, y, w, h, _area = stats[label]
-        top, bottom, left, right = open_sides
-        keep[label] = ((top or y > 0) and (bottom or y + h < fg.shape[0])
-                       and (left or x > 0) and (right or x + w < fg.shape[1]))
+        x, y, bw, bh, area = stats[label]
+        cut = x < ix2 and y < iy2 and x + bw > ix1 and y + bh > iy1 and not keep[label]
+        # A letter the box cut in half: letter sized and solid, not a thin outline or art running out of the crop.
+        if (cut and letter and not touches_edge(x, y, bw, bh) and bh <= 1.5 * letter and bw <= 3 * letter
+                and area >= LETTER_FILL * bw * bh):
+            keep[label] = True
     part = keep[labels].astype(np.uint8)
     part = cv2.morphologyEx(part, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (CLOSE_KERNEL,) * 2))
-    return cv2.dilate(part, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (GROW_KERNEL,) * 2)) > 0
+    part = cv2.dilate(part, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (GROW_KERNEL,) * 2)) > 0
+    ys, xs = np.nonzero(part)
+    bx1, by1 = min(ix1, int(xs.min())) if len(xs) else ix1, min(iy1, int(ys.min())) if len(ys) else iy1
+    bx2, by2 = max(ix2, int(xs.max()) + 1) if len(xs) else ix2, max(iy2, int(ys.max()) + 1) if len(ys) else iy2
+    return (gx1 + bx1, gy1 + by1, gx1 + bx2, gy1 + by2), part[by1:by2, bx1:bx2]
 
 
 def _text_box(x1, y1, x2, y2, score, mask, source_model) -> BubbleBox:
@@ -178,7 +206,7 @@ class KiuyhaTextDetector:
         h, w = image.shape[:2]
         boxes = []
         for x1, y1, x2, y2, score in self.detect_slice(image):
-            mask = stroke_mask(image[y1:y2, x1:x2], (y1 == 0, y2 == h, x1 == 0, x2 == w))
+            (x1, y1, x2, y2), mask = letter_mask(image, (x1, y1, x2, y2))
             if mask.any():
                 boxes.append(_text_box(x1, y1, x2, y2, score, mask.astype(np.uint8) * 255, self.source_model))
         return boxes

@@ -77,3 +77,19 @@ def test_a_misread_tiny_source_size_does_not_shrink_a_shout():
         return rows.max() - rows.min()
 
     assert ink_height(5) >= 0.55 * ink_height(None)
+
+
+def test_wide_pages_letter_as_large_as_narrow_ones_relative_to_the_page():
+    def ink_height(width):
+        image = render_text_in_box(Image.new("RGB", (width, 1200), "white"), "Cái gì?!", (0, 0, width // 2, 600),
+                                   fill="#000000", font_name="dialogue.mac-dinh-3")
+        rows = np.where(np.asarray(image.convert("L")) < 128)[0]
+        return rows.max() - rows.min()
+
+    assert ink_height(1600) > 1.6 * ink_height(800)
+
+
+def test_a_one_line_shout_filling_its_box_is_measured_at_its_own_height():
+    image = np.full((90, 400, 3), 255, np.uint8)
+    cv2.putText(image, "WHAT?", (20, 72), cv2.FONT_HERSHEY_SIMPLEX, 2.4, (0, 0, 0), 6)
+    assert source_cap_px(image, (0, 0, 400, 90)) >= 45

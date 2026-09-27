@@ -25,9 +25,11 @@ def source_cap_px(raw: np.ndarray, rect) -> int | None:
     if np.count_nonzero(ink) > ink.size / 2:
         ink = 255 - ink  # letters are the minority class
     count, _, stats, _ = cv2.connectedComponentsWithStats(ink, connectivity=8)
-    height = crop.shape[0]
-    heights = [int(h) for _x, _y, w, h, area in stats[1:count]
-               if area >= 12 and 5 <= h <= 0.6 * height and w <= 3 * h]
+    height, width = crop.shape[:2]
+    # Bubble outlines and art reach the crop edge; letters of a one-line shout can fill most of its height.
+    heights = [int(h) for x, y, w, h, area in stats[1:count]
+               if area >= 12 and 5 <= h <= 0.9 * height and w <= 3 * h
+               and x > 0 and y > 0 and x + w < width and y + h < height]
     return int(np.median(heights)) if len(heights) >= 3 else None
 
 
