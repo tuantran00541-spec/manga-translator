@@ -83,6 +83,23 @@ def _pairs(chapter_id: str, pages: list, out: Path, width: int = 560) -> int:
     return saved
 
 
+def _objects(pages: list) -> list[dict]:
+    """Every slice's boxes and text objects with coordinates, to trace a defect back to where it began."""
+    keys = ("x1", "y1", "x2", "y2")
+    return [{
+        "slice": index + 1, "skipped": bool(page.get("skipped")), "stitch_core": page.get("stitch_core"),
+        "boxes": [{**{k: box.get(k) for k in keys}, "origin": box.get("origin"), "manual": bool(box.get("manual")),
+                   "overlap_context_only": bool(box.get("overlap_context_only")), "removed": bool(box.get("removed"))}
+                  for box in page.get("boxes") or [] if isinstance(box, dict)],
+        "objects": [{"id": obj.get("id"), "region": obj.get("region"), "source_boxes": obj.get("source_boxes"),
+                     "translation": obj.get("translation"), "source_read": obj.get("source_read"),
+                     "seam_owner": obj.get("seam_owner"), "overlap_dropped": obj.get("overlap_dropped"),
+                     "source_missing": obj.get("source_missing")}
+                    for obj in page.get("text_objects") or [] if isinstance(obj, dict)],
+        "preserve_regions": page.get("preserve_regions"),
+    } for index, page in enumerate(pages)]
+
+
 def _fit_metrics(obj: dict, page_width: int) -> dict:
     """Reproduce how the renderer sizes one object: the font size it draws at, the lines, and whether it fits."""
     from PIL import Image, ImageDraw
@@ -264,6 +281,7 @@ def main() -> int:
             report["pairs"] = _pairs(str(chapter_id), pages, out)
         except Exception as exc:  # noqa: BLE001 - the pairs are a review aid, never a reason to lose the report
             report["pairs_error"] = repr(exc)[:300]
+        (out / "objects.json").write_text(json.dumps(_objects(pages), ensure_ascii=False), encoding="utf-8")
         report["lines"] = []
         for index, page in enumerate(pages):
             if page.get("skipped"):
