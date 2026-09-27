@@ -22,7 +22,7 @@ from gateway.store import InvalidToken, LoginRejected, QuotaExceeded, Store
 EMAIL_RE = re.compile(r"^[^@\s]{1,64}@[^@\s]{1,190}\.[^@\s]{2,63}$")
 MAX_OUTPUT_TOKENS = 8192
 # A client may ask for more thinking on one request; the gateway adds room for it.
-REASONING_BUDGETS = {"none": 0, "minimal": 1024, "low": 4096, "medium": 8192}
+REASONING_BUDGETS = {"none": 0, "minimal": 1024, "low": 4096, "medium": 8192, "high": 16384}
 
 
 @dataclass(frozen=True)
