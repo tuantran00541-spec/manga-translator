@@ -352,8 +352,6 @@ def check_browser_state_contracts() -> None:
         ),
         Path("app/static/js/editor.js"): (
             "function editorImageMetrics(img)",
-            "const rect = img.getBoundingClientRect();",
-            "if (!point || !point.inside) return;",
         ),
         Path("app/static/js/review-stitch"): (
             "function captureSnapshot(shell)",

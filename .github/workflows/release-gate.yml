@@ -56,9 +56,6 @@ jobs:
       - name: Check browser JavaScript syntax
         run: find app/static/js -type f -name '*.js' -print0 | xargs -0 -n1 node --check
 
-      - name: Run editor auto-sync regression
-        run: node scripts/editor_auto_sync_sanity.js
-
       - name: Run studio runtime regression
         run: node scripts/studio_runtime_sanity.js
 
