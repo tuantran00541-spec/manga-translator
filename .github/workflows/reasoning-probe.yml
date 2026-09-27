@@ -1,0 +1,56 @@
+name: Reasoning probe
+
+on:
+  push:
+    paths:
+      - ".github/workflows/reasoning-probe.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - name: Try each way of turning thinking off
+        env:
+          KEY: ${{ secrets.MINIROUTER_API_KEY }}
+        run: |
+          python -m pip install -q --only-binary :all: numpy==1.26.4 opencv-python-headless==4.10.0.84 requests==2.32.3
+          python - <<'PY'
+          import base64, json, os, time, cv2, numpy as np, requests
+          image = np.full((96, 160, 3), 255, np.uint8)
+          cv2.putText(image, "HELLO", (12, 62), cv2.FONT_HERSHEY_SIMPLEX, 1.3, (0, 0, 0), 3)
+          data = base64.b64encode(cv2.imencode(".jpg", image)[1].tobytes()).decode()
+          variants = {
+              "default": {},
+              "effort low": {"reasoning_effort": "low"},
+              "effort minimal": {"reasoning_effort": "minimal"},
+              "effort none": {"reasoning_effort": "none"},
+              "reasoning enabled false": {"reasoning": {"enabled": False}},
+              "reasoning effort none": {"reasoning": {"effort": "none"}},
+              "reasoning max_tokens 0": {"reasoning": {"max_tokens": 0}},
+              "thinking disabled": {"thinking": {"type": "disabled"}},
+              "enable_thinking false": {"enable_thinking": False},
+              "chat_template enable_thinking false": {"chat_template_kwargs": {"enable_thinking": False}},
+          }
+          for name, extra in variants.items():
+              body = {"model": "xiaomi/mimo-v2.6-flash", "max_tokens": 3000, "messages": [{"role": "user", "content": [
+                  {"type": "text", "text": "What word is written in this image? Answer with the word only."},
+                  {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + data}}]}], **extra}
+              started = time.perf_counter()
+              try:
+                  r = requests.post("https://api.minirouter.sh/v1/chat/completions",
+                                    headers={"Authorization": "Bearer " + os.environ["KEY"]}, json=body, timeout=(10, 180))
+                  seconds = time.perf_counter() - started
+                  payload = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
+                  usage = payload.get("usage") or {}
+                  reasoning = (usage.get("completion_tokens_details") or {}).get("reasoning_tokens")
+                  answer = (((payload.get("choices") or [{}])[0].get("message") or {}).get("content") or "")[:30]
+                  print(f"{name:40} HTTP {r.status_code} {seconds:5.1f}s reasoning={reasoning} completion={usage.get('completion_tokens')} answer={answer!r}"
+                        + ("" if r.ok else f" error={r.text[:160]!r}"))
+              except requests.RequestException as exc:
+                  print(f"{name:40} failed: {type(exc).__name__}")
+          PY
