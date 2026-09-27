@@ -336,5 +336,6 @@ def test_font_picks_outside_the_guide_fall_back_to_the_role_default():
     assert lettering_font("emphasis.anton", "dialogue") == "emphasis.anton"
     assert lettering_font("dialogue.inter", "narration") == "narration.mac-dinh-2"
     assert lettering_font(None, "sfx") == "sfx.black-ops-one"
+    assert lettering_font(None, "skill_name") == "skill.kanit"
     assert lettering_font(None, "unknown") == "dialogue.mac-dinh-3"
     assert parse_vision_translation('{"translations":[{"id":"a","translated_text":"Thì…"}]}', {"a"}) == {"a": "Thì..."}
