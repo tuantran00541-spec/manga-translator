@@ -554,41 +554,6 @@ def test_retry_keeps_going_on_a_long_slice_while_batches_make_progress(monkeypat
     assert runner.report["review_list"] == [] and runner.report["restored_regions"] == 0
 
 
-def test_judge_sends_doubted_lines_back_with_its_note(monkeypatch):
-    import dataclasses
-
-    from app.ai_providers import CLOUD_PROVIDER_ID
-
-    def obj(obj_id, y, text):
-        return {"id": obj_id, "region": {"x1": 0, "y1": y, "x2": 50, "y2": y + 20}, "translation": text,
-                "source_read": text.upper()}
-
-    manifest = {"pages": [{"text_objects": [obj("b", 50, "Đúng vậy."), obj("a", 10, "Sư phụ!"),
-                                            {"id": "blank", "region": {}, "translation": ""}]}]}
-    runner = _runner(monkeypatch, "final", manifest)
-    runner.provider = dataclasses.replace(PROVIDERS["openai"], id=CLOUD_PROVIDER_ID)
-    states, retried, rendered = [], [], []
-
-    def judge(url, key, state):
-        states.append(state)
-        return ({"duplicate": 0.9} if "Đúng vậy" in state.split("\n")[1] else {"duplicate": 0.1}), {"ok": True}
-
-    monkeypatch.setattr("app.ai_mode.judge.judge_line", judge)
-
-    async def retry(page_index, source_lang, object_ids, force=False, notes=None):
-        retried.append((page_index, object_ids, force, notes))
-
-    async def render(page_index):
-        rendered.append(page_index)
-
-    monkeypatch.setattr(runner, "_translate_retry", retry)
-    monkeypatch.setattr(runner, "_render_one", render)
-    asyncio.run(runner._judge([0], "en"))
-    assert len(states) == 2 and "NEXT LINE: Đúng vậy." in states[0], "lines are graded in reading order"
-    assert retried == [(0, ["b"], True, {"b": "it repeats the previous or next line"})] and rendered == [0]
-    assert runner.report["judged"] == 2 and runner.report["judge_flags"][0]["id"] == "b"
-
-
 def test_final_check_repaints_source_text_over_an_existing_object_instead_of_adding_one(monkeypatch):
     from app.ai_mode.checkpoints import FinalReview
     from app.dependencies import pipeline

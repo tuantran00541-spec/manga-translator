@@ -92,7 +92,7 @@ def _objects(pages: list) -> list[dict]:
                    "overlap_context_only": bool(box.get("overlap_context_only")), "removed": bool(box.get("removed"))}
                   for box in page.get("boxes") or [] if isinstance(box, dict)],
         "objects": [{"id": obj.get("id"), "region": obj.get("region"), "source_boxes": obj.get("source_boxes"),
-                     "translation": obj.get("translation"), "source_read": obj.get("source_read"),
+                     "translation": obj.get("translation"),
                      "seam_owner": obj.get("seam_owner"), "overlap_dropped": obj.get("overlap_dropped"),
                      "source_missing": obj.get("source_missing")}
                     for obj in page.get("text_objects") or [] if isinstance(obj, dict)],

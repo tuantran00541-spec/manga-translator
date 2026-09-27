@@ -43,7 +43,7 @@ LETTERING
 
 _INPUT_IMAGES = """
 INPUT
-One vertical slice per request, in reading order. IMAGE 1 is the ORIGINAL; read the text from it. IMAGE 2 is the same slice after the text was erased, with each object's box outlined in red and labelled with its id; the text of an object is what IMAGE 1 shows inside that box, never text from elsewhere. Each object has an id, an OCR hint that is often empty or wrong, bbox_xyxy in image pixels, and usually max_chars: how many characters (spaces included) fit its box when lettered about as large as the source. Stay within max_chars; rephrase shorter rather than go over, so bubbles and free text keep the size of the original lettering. CHAPTER MEMORY holds the GLOSSARY (names, terms and forms of address fixed for the whole chapter; always use them exactly and never respell a name), the story notes, the character sheet, the forms of address already fixed and the last lines; treat it as settled unless the slice clearly contradicts it. An object with rejected_translation was sent back by a reviewer: fix what reviewer_note names and never repeat the rejected text.
+One vertical slice per request, in reading order. IMAGE 1 is the ORIGINAL; read the text from it. IMAGE 2 is the same slice after the text was erased, with each object's box outlined in red and labelled with its id; the text of an object is what IMAGE 1 shows inside that box, never text from elsewhere. Each object has an id, an OCR hint that is often empty or wrong, bbox_xyxy in image pixels, and usually max_chars: how many characters (spaces included) fit its box when lettered about as large as the source. Stay within max_chars; rephrase shorter rather than go over, so bubbles and free text keep the size of the original lettering. CHAPTER MEMORY holds the GLOSSARY (names, terms and forms of address fixed for the whole chapter; always use them exactly and never respell a name), the story notes, the character sheet, the forms of address already fixed and the last lines; treat it as settled unless the slice clearly contradicts it.
 """.strip()
 
 _VIETNAMESE = """
@@ -55,7 +55,7 @@ VIETNAMESE
 
 _OUTPUT = """
 Answer with JSON only:
-{{"translations":[{{"id":"<id>","source":"<the source text as you read it in IMAGE 1>","translated_text":"<text, lines split with \\n>","role":"<role>","review":false,"enlarge":false,"color":"#rrggbb or omit"}}],
+{{"translations":[{{"id":"<id>","translated_text":"<text, lines split with \\n>","role":"<role>","review":false,"enlarge":false,"color":"#rrggbb or omit"}}],
  "font_choices":{{"<id>":"<font_id from FONTS>"}},
  "speakers":{{"<id>":"<character name, or narration>"}},
  "characters":[{{"name":"<name>","note":"<role, age, relationship>"}}],

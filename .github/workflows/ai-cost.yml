@@ -99,10 +99,6 @@ jobs:
           price="$(conf price)"
           price_cached=
           if [ -n "$price" ]; then read -r price_in price_out price_cached <<< "$price"; fi
-          # The judge grades translated lines as text; "judge: off" turns it off.
-          judge="$(conf judge)"; judge="${judge:-$( [ "$provider" = minirouter ] && echo typesafe-ai/jev )}"
-          [ "$judge" = off ] && judge=
-          judge_price="$(conf judge_price)"
           {
             echo "PROVIDER=${provider:-sovinfra}"
             echo "PROVIDER_SECRET=$secret"
@@ -113,8 +109,6 @@ jobs:
             echo "GATEWAY_UPSTREAM_REASONING_TOKENS=$(conf reasoning)"
             echo "GATEWAY_UPSTREAM_REASONING_EFFORT=$(conf effort)"
             echo "GATEWAY_PRICE_CACHED_PER_M=$price_cached"
-            echo "GATEWAY_JUDGE_MODEL=$judge"
-            echo "GATEWAY_JUDGE_PRICE_PER_M=${judge_price:-0.0462}"
           } >> "$GITHUB_ENV"
 
       - name: Check the provider secret
@@ -167,26 +161,6 @@ jobs:
           if not response.ok or "HELLO" not in reply.upper():
               print(f"::error::{os.environ['GATEWAY_UPSTREAM_MODEL']} did not read a test image: HTTP {response.status_code} {response.text[:300]}")
               sys.exit(1)
-          PY
-
-      - name: Check the judge answers
-        if: env.SKIP_TRANSLATE != '1' && env.GATEWAY_JUDGE_MODEL != ''
-        env:
-          SOVINFRA_LAB_1B_TOKEN: ${{ secrets.SOVINFRA_LAB_1B_TOKEN }}
-          MINIROUTER_API_KEY: ${{ secrets.MINIROUTER_API_KEY }}
-        run: |
-          mkdir -p audit-results/providers
-          KEY="${!PROVIDER_SECRET}" python - <<'PY'
-          import json, os, requests
-          body = {"model": os.environ["GATEWAY_JUDGE_MODEL"], "state": "SOURCE: Let him go now!\nTRANSLATION (Vietnamese): Thả nó ra ngay!",
-                  "questions": {"wrong_meaning": {"type": "boolean", "instructions": "The translation changes what the source says."}}}
-          response = requests.post(os.environ["GATEWAY_UPSTREAM_BASE"].rstrip("/") + "/evaluate",
-                                   headers={"Authorization": "Bearer " + os.environ["KEY"]}, json=body, timeout=(10, 60))
-          print(f"HTTP {response.status_code}: {response.text[:600]}")
-          open("audit-results/providers/judge-probe.json", "w").write(response.text[:4000])
-          if not response.ok:
-              print("::warning::The judge did not answer; this run goes on without it")
-              open(os.environ["GITHUB_ENV"], "a").write("GATEWAY_JUDGE_MODEL=\n")
           PY
 
       - name: Translate a real chapter through the gateway
