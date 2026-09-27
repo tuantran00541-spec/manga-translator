@@ -797,6 +797,8 @@ class Inpainter:
         mask_blob = np.ascontiguousarray(
             (mask_canvas > 127).astype(np.float32)[None, None]
         )
+        # LaMa is trained on images whose hole is zeroed; text left there bleeds into the fill.
+        img_blob = np.ascontiguousarray(img_blob * (1.0 - mask_blob))
         feed = {self.image_input: img_blob, self.mask_input: mask_blob}
 
         if self.dynamic_lama or not self._serialize_fixed_inference:

@@ -8,7 +8,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from app.detector.boxes import BubbleBox, apply_final_nms
+from app.detector.boxes import BubbleBox, _merge_mask_evidence, apply_final_nms
 from app.image_io import encode_mask, read_image, write_image
 from app.manifest_utils import assign_stable_detector_box_ids
 from app.region_policy import geometry_center_in_regions, subtract_regions_from_mask
@@ -44,6 +44,18 @@ def _contained(box: BubbleBox, seam: BubbleBox) -> bool:
     ix = max(0, min(box.x2, seam.x2) - max(box.x1, seam.x1))
     iy = max(0, min(box.y2, seam.y2) - max(box.y1, seam.y1))
     return ix * iy >= SEAM_CONTAINED * max(1, (box.x2 - box.x1) * (box.y2 - box.y1))
+
+
+def _fold_nested(boxes: list[BubbleBox]) -> list[BubbleBox]:
+    """A box mostly inside a larger one is the same text, so its mask joins the larger box."""
+    groups: list[list[BubbleBox]] = []
+    for box in sorted(boxes, key=lambda b: (b.x2 - b.x1) * (b.y2 - b.y1), reverse=True):
+        home = next((group for group in groups if _contained(box, group[0])), None)
+        if home is None:
+            groups.append([box])
+        else:
+            home.append(box)
+    return [group[0] if len(group) == 1 else _merge_mask_evidence(group) for group in groups]
 
 
 class PageProcessingMixin:
@@ -95,10 +107,10 @@ class PageProcessingMixin:
             # A core box cut short by the slice edge is the same text as the seam box that holds it whole.
             detected = [box for box in detected
                         if not any(_contained(box, seam) for seam in supplemental_detections)]
-            detected = apply_final_nms(
+            detected = _fold_nested(apply_final_nms(
                 detected + list(supplemental_detections),
                 iou_threshold=DETECTOR_FINAL_NMS_IOU,
-            )
+            ))
         detect_ms = (time.perf_counter() - detect_started_at) * 1000.0
 
         existing_boxes = copy.deepcopy(existing_boxes or [])

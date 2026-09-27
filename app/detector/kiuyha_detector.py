@@ -45,15 +45,23 @@ HOLE_AREA = 4.0  # largest enclosed hole filled, in squared letter heights (whit
 
 def letter_mask(image: np.ndarray, box: tuple[int, int, int, int]) -> tuple[tuple[int, int, int, int], np.ndarray]:
     """Letters of ``box`` including ones the box cuts at its edge; returns the grown box and its mask."""
+    # Lines can run well past a box's side, so the crop reaches further sideways than up and down.
+    side = max(EDGE_GROW, min(LINE_REACH_MAX, 3 * (box[3] - box[1])))
+    while True:
+        grown, part, cut = _letters(image, box, side)
+        if not cut or side >= image.shape[1]:
+            return grown, part
+        side *= 2  # the line runs on past the crop
+
+
+def _letters(image, box, side):
     h, w = image.shape[:2]
     x1, y1, x2, y2 = box
-    # Lines can run well past a box's side, so the crop reaches further sideways than up and down.
-    side = max(EDGE_GROW, min(LINE_REACH_MAX, 3 * (y2 - y1)))
     gx1, gy1, gx2, gy2 = max(0, x1 - side), max(0, y1 - EDGE_GROW), min(w, x2 + side), min(h, y2 + EDGE_GROW)
     crop = image[gy1:gy2, gx1:gx2]
     ix1, iy1, ix2, iy2 = x1 - gx1, y1 - gy1, x2 - gx1, y2 - gy1
     if min(iy2 - iy1, ix2 - ix1) < 8:
-        return box, np.zeros((y2 - y1, x2 - x1), bool)
+        return box, np.zeros((y2 - y1, x2 - x1), bool), False
     lab = cv2.cvtColor(crop, cv2.COLOR_BGR2LAB).astype(np.float32)
     inner = lab[iy1:iy2, ix1:ix2]
     # The background colour comes from the detector box's own border, as before.
@@ -127,6 +135,10 @@ def letter_mask(image: np.ndarray, box: tuple[int, int, int, int]) -> tuple[tupl
                 if same_line and gap <= LETTER_GAP * letter:
                     keep[label] = grew = True
                     break
+    kept = np.flatnonzero(keep)
+    cut = bool(letter) and len(kept) > 0 and (
+        (not open_left and stats[kept, 0].min() <= LETTER_GAP * letter)
+        or (not open_right and cw - (stats[kept, 0] + stats[kept, 2]).max() <= LETTER_GAP * letter))
     part = keep[labels]
     if letter:
         if glow:  # a dark or light split is chosen over busy art, where there is no glow to follow
@@ -140,7 +152,7 @@ def letter_mask(image: np.ndarray, box: tuple[int, int, int, int]) -> tuple[tupl
     ys, xs = np.nonzero(part)
     bx1, by1 = min(ix1, int(xs.min())) if len(xs) else ix1, min(iy1, int(ys.min())) if len(ys) else iy1
     bx2, by2 = max(ix2, int(xs.max()) + 1) if len(xs) else ix2, max(iy2, int(ys.max()) + 1) if len(ys) else iy2
-    return (gx1 + bx1, gy1 + by1, gx1 + bx2, gy1 + by2), part[by1:by2, bx1:bx2]
+    return (gx1 + bx1, gy1 + by1, gx1 + bx2, gy1 + by2), part[by1:by2, bx1:bx2], cut
 
 
 def _ink_height(stats: np.ndarray, labels: list[int]) -> float:

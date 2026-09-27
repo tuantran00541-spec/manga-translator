@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from app.detector.boxes import BubbleBox
 from app.inpaint.lama_inpainter import Inpainter
@@ -33,3 +34,24 @@ def test_tiles_holding_only_hidden_text_are_not_painted():
     hole[100:200, 2600:2800] = 255  # another text, far right, only hidden
     inpainter._lama_fill_tiled(crop, np.maximum(hole, own), own=own)
     assert len(runs) == 1
+
+
+def test_lama_never_sees_the_pixels_under_the_hole():
+    inpainter = Inpainter()
+    inpainter._ensure_session = lambda: None
+    inpainter.dynamic_lama = True
+    inpainter.image_input, inpainter.mask_input, inpainter.output_name = "image", "mask", "output"
+    fed = {}
+
+    class Session:
+        def run(self, _names, feed):
+            fed.update(feed)
+            raise StopIteration
+
+    inpainter.session = Session()
+    canvas = np.full((16, 16, 3), 250, np.uint8)
+    mask = np.zeros((16, 16), np.uint8)
+    mask[4:12, 4:12] = 255
+    with pytest.raises(StopIteration):
+        inpainter._run_lama(canvas, mask)
+    assert fed["image"][0, :, 4:12, 4:12].max() == 0 and fed["image"][0, :, 0, 0].min() > 0.9

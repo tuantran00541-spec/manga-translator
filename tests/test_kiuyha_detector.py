@@ -233,6 +233,14 @@ def test_a_line_running_far_past_its_box_is_erased_to_its_last_letter():
     assert mask[120 - box[1], 710 - box[0]], "the last letter of the line is erased"
 
 
+def test_a_line_longer_than_the_side_reach_is_followed_to_its_end():
+    from app.detector.kiuyha_detector import letter_mask
+
+    image = _letters(np.full((260, 1500, 3), 245, np.uint8), range(100, 1301, 40))  # letters up to x=1324
+    box, mask = letter_mask(image, (90, 90, 300, 150))  # the side reach alone stops near x=480
+    assert box[2] >= 1324 and mask[120 - box[1], 1310 - box[0]]
+
+
 def test_big_lettering_takes_its_outline_with_it():
     from app.detector.kiuyha_detector import letter_mask
 

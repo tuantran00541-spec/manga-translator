@@ -68,6 +68,19 @@ def test_a_core_box_cut_by_the_slice_edge_gives_way_to_the_whole_seam_box():
     assert not _contained(BubbleBox(110, 100, 490, 300, 0.8, None), seam)
 
 
+def test_a_seam_line_inside_the_core_box_joins_it_as_one_text():
+    import numpy as np
+
+    from app.detector.boxes import BubbleBox
+    from app.page_processing import _fold_nested
+
+    core = BubbleBox(52, 3777, 1600, 4320, 0.9, np.ones((543, 1548), np.uint8))
+    line = BubbleBox(209, 4026, 1431, 4300, 0.8, np.ones((274, 1222), np.uint8))
+    apart = BubbleBox(100, 100, 400, 200, 0.8, np.ones((100, 300), np.uint8))
+    folded = _fold_nested([line, apart, core])
+    assert sorted((b.x1, b.y1, b.x2, b.y2) for b in folded) == [(52, 3777, 1600, 4320), (100, 100, 400, 200)]
+
+
 def test_review_boxes_are_masked_by_letters_not_rectangles():
     import cv2
     import numpy as np
