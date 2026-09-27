@@ -130,3 +130,12 @@ def test_health_is_degraded_when_inpaint_preload_failed():
     assert response["status"] == "degraded"
     assert response["models_missing"] == []
     assert response["runtime"] is runtime
+
+
+def test_index_and_favicon_do_not_depend_on_the_working_directory(tmp_path, monkeypatch):
+    import app.main as main
+
+    monkeypatch.chdir(tmp_path)
+    assert str(main.index().path) == str(main.BASE_DIR / "app" / "templates" / "index.html")
+    assert str(main.favicon().path) == str(main.BASE_DIR / "app" / "static" / "favicon.ico")
+    assert set(main._runtime_state()["models"]["detector"]) == {"resident", "session_loaded"}

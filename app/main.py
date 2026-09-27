@@ -277,14 +277,7 @@ def _runtime_state() -> dict:
         "models": {
             "detector": {
                 "resident": detector is not None,
-                "bubble_session_loaded": bool(
-                    detector is not None
-                    and getattr(getattr(detector, "bubble_detector", None), "session", None) is not None
-                ),
-                "text_session_loaded": bool(
-                    detector is not None
-                    and getattr(getattr(detector, "text_detector", None), "session", None) is not None
-                ),
+                "session_loaded": bool(detector is not None and getattr(detector, "session", None) is not None),
             },
             "inpaint": {
                 "object_created": inpainter is not None,
@@ -332,9 +325,9 @@ def health():
 
 @app.get("/")
 def index():
-    return FileResponse("app/templates/index.html")
+    return FileResponse(BASE_DIR / "app" / "templates" / "index.html")
 
 
 @app.get("/favicon.ico", include_in_schema=False)
 def favicon():
-    return FileResponse("app/static/favicon.ico", media_type="image/x-icon")
+    return FileResponse(BASE_DIR / "app" / "static" / "favicon.ico", media_type="image/x-icon")
