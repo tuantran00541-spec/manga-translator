@@ -196,7 +196,8 @@ class VisionPageTranslator:
         h, w = original.shape[:2]
         # Send short numeric ids; models copy them more reliably.
         real = {str(n): str(item["id"]) for n, item in enumerate(items, start=1)}
-        objects = [{"id": alias, "source_text": item["text"], "bbox_xyxy": item["region"]}
+        objects = [{"id": alias, "source_text": item["text"], "bbox_xyxy": item["region"],
+                    **({"max_chars": item["max_chars"]} if item.get("max_chars") else {})}
                    for alias, item in zip(real, items)]
         source_name = (
             "the original language shown in the image"

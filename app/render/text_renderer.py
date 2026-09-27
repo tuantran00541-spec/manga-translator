@@ -188,6 +188,7 @@ def render_text_in_box(
     shape: str = "rectangle",
     horizontal_align: str = "center",
     vertical_align: str = "middle",
+    source_cap_px: int | None = None,
 ) -> Image.Image:
     x1, y1, x2, y2 = (int(box[0]), int(box[1]), int(box[2]), int(box[3]))
     if x2 < x1:
@@ -260,6 +261,12 @@ def render_text_in_box(
         font = get_font_object(font_path_str, actual_size)
         lines = _wrap_text(draw, text, font, box_w)
     else:
+        # Auto size never letters bigger than the source did.
+        maximum_size = MAX_FONT_SIZE
+        if source_cap_px:
+            from app.render.source_size import SIZE_SLACK, matching_font_px
+            maximum_size = max(RENDER_MIN_READABLE_FONT_SIZE,
+                               int(matching_font_px(font_path_str, int(source_cap_px)) * SIZE_SLACK))
         actual_size, lines, fits_readably = _fit_text(
             draw,
             text,
@@ -268,6 +275,7 @@ def render_text_in_box(
             font_path_str,
             stroke_w=stroke_w,
             minimum_size=RENDER_MIN_READABLE_FONT_SIZE,
+            maximum_size=maximum_size,
         )
         opaque_caption = bool(bg_color and bg_color not in ("transparent", "none", ""))
         if not fits_readably and opaque_caption and RENDER_SAFE_CAPTION_EXPANSION:
@@ -287,6 +295,7 @@ def render_text_in_box(
                 font_path_str,
                 stroke_w=stroke_w,
                 minimum_size=RENDER_MIN_READABLE_FONT_SIZE,
+                maximum_size=maximum_size,
             )
         if not fits_readably:
             raise ValueError(
@@ -341,6 +350,9 @@ def render_text_in_box(
     return image
 
 
+SOURCE_MATCH_MAX_FONT_SIZE = 200  # large source lettering may be matched past MAX_FONT_SIZE
+
+
 def _fits(draw, text: str, box_w: int, box_h: int, font_path_str: str, size: int, stroke_w: int) -> tuple[bool, list[str]]:
     font = get_font_object(font_path_str, size)
     lines = _wrap_text(draw, text, font, box_w)
@@ -360,9 +372,10 @@ def _fit_text(
     font_path_str: str,
     stroke_w: int = RENDER_AUTO_STROKE_WIDTH,
     minimum_size: int = MIN_FONT_SIZE,
+    maximum_size: int = MAX_FONT_SIZE,
 ) -> tuple[int, list[str], bool]:
     minimum_size = max(MIN_FONT_SIZE, int(minimum_size))
-    lo, hi = minimum_size, MAX_FONT_SIZE
+    lo, hi = minimum_size, max(minimum_size, min(SOURCE_MATCH_MAX_FONT_SIZE, int(maximum_size)))
     best_size = minimum_size
     best_lines: list[str] = []
 

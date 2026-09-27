@@ -87,11 +87,15 @@ def _fit_metrics(obj: dict, page_width: int) -> dict:
         fits = bool(lines) and _calc_line_height(draw, font, stroke_w=RENDER_AUTO_STROKE_WIDTH) * len(lines) <= box_h
     else:
         source = "fit"
-        size, lines, fits = _fit_text(draw, text, box_w, box_h, str(font_path),
-                                      stroke_w=RENDER_AUTO_STROKE_WIDTH, minimum_size=RENDER_MIN_READABLE_FONT_SIZE)
+        maximum = 48
+        if obj.get("source_cap_px"):
+            from app.render.source_size import SIZE_SLACK, matching_font_px
+            maximum = max(RENDER_MIN_READABLE_FONT_SIZE, int(matching_font_px(font_path, obj["source_cap_px"]) * SIZE_SLACK))
+        size, lines, fits = _fit_text(draw, text, box_w, box_h, str(font_path), stroke_w=RENDER_AUTO_STROKE_WIDTH,
+                                      minimum_size=RENDER_MIN_READABLE_FONT_SIZE, maximum_size=maximum)
     return {"font_px": size, "font_px_at_800": round(size * 800 / max(1, page_width), 1), "size_source": source,
             "lines": len(lines), "wrapped": lines, "box_w": raw_w, "box_h": raw_h, "fits": fits,
-            "missing_glyphs": missing_glyphs,
+            "missing_glyphs": missing_glyphs, "source_cap_px": obj.get("source_cap_px"),
             # The wrap breaks a word apart when its lines no longer hold the text's own words.
             "split_word": bool(lines) and [w for line in lines for w in line.split()] != text.split()}
 

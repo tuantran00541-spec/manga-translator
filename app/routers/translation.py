@@ -367,6 +367,23 @@ def _vision_candidates(page: dict, *, force: bool) -> list[dict]:
     return candidates
 
 
+def _add_fit_budgets(original_path, candidates: list[dict]) -> None:
+    """Measure each region's source letter size and the characters that fit it at that size."""
+    from app.render.font_catalog import resolve_font_id
+    from app.render.font_guide import DEFAULT_LETTERING_FONT
+    from app.render.source_size import char_budget, source_cap_px
+
+    from app.image_io import read_image
+
+    raw = read_image(original_path)
+    font_path = resolve_font_id(DEFAULT_LETTERING_FONT)
+    for candidate in candidates:
+        cap = source_cap_px(raw, candidate["region"])
+        if cap:
+            candidate["source_cap_px"] = cap
+            candidate["max_chars"] = char_budget(font_path, candidate["region"], cap)
+
+
 @router.post("/page/vision")
 async def translate_page_with_images(req: TranslateVisionPageRequest) -> dict:
     return await translate_page_in_context(req)
@@ -434,6 +451,7 @@ async def translate_page_in_context(
 
     if provider.tracks_cost and _preflight_cost_usd(candidates) > req.budget_usd:
         raise HTTPException(409, "Text-only lower-bound estimate exceeds remaining budget")
+    await run_in_threadpool(_add_fit_budgets, original_path, candidates)
     translator = VisionPageTranslator(provider, model)
     try:
         translated = await run_in_threadpool(
@@ -478,6 +496,8 @@ async def translate_page_in_context(
                 continue
             obj["translation"] = value
             obj["translation_source"] = provider.id
+            if candidate.get("source_cap_px"):
+                obj["source_cap_px"] = candidate["source_cap_px"]
             obj["translation_model"] = translated.model
             obj["translation_input_text"] = candidate["text"]
             obj["auto_translation"] = value
