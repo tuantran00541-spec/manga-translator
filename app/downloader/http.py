@@ -6,14 +6,64 @@ from urllib.parse import urljoin
 import uuid
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.connection import HTTPConnection, HTTPSConnection
+from urllib3.connectionpool import HTTPConnectionPool, HTTPSConnectionPool
 
 from app.parameters import REMOTE_CHUNK_BYTES, REMOTE_CONNECT_TIMEOUT_SECONDS
 from app.security import (
     MAX_REMOTE_IMAGE_BYTES,
     MAX_REMOTE_REDIRECTS,
+    public_address,
     validate_image_file,
     validate_url,
 )
+
+
+class _PinnedMixin:
+    """Connects to the address checked at connect time, so DNS cannot swap in a private one afterwards."""
+
+    def _new_conn(self):
+        if self.proxy is not None:  # the proxy resolves the target itself
+            return super()._new_conn()
+        name = self._dns_host
+        self._dns_host = public_address(name, self.port)
+        try:
+            return super()._new_conn()
+        finally:
+            self._dns_host = name
+
+
+class _PinnedHTTPConnection(_PinnedMixin, HTTPConnection):
+    pass
+
+
+class _PinnedHTTPSConnection(_PinnedMixin, HTTPSConnection):
+    pass
+
+
+class _PinnedHTTPPool(HTTPConnectionPool):
+    ConnectionCls = _PinnedHTTPConnection
+
+
+class _PinnedHTTPSPool(HTTPSConnectionPool):
+    ConnectionCls = _PinnedHTTPSConnection
+
+
+class _PublicOnlyAdapter(HTTPAdapter):
+    def init_poolmanager(self, *args, **kwargs):
+        super().init_poolmanager(*args, **kwargs)
+        self.poolmanager.pool_classes_by_scheme = {"http": _PinnedHTTPPool, "https": _PinnedHTTPSPool}
+
+
+_ADAPTER = _PublicOnlyAdapter()
+
+
+def _session() -> requests.Session:
+    session = requests.Session()
+    session.mount("http://", _ADAPTER)
+    session.mount("https://", _ADAPTER)
+    return session
 
 _REDIRECT_STATUS_CODES = {301, 302, 303, 307, 308}
 
@@ -30,7 +80,7 @@ def safe_get(
     redirects = 0
 
     while True:
-        response = requests.get(  # NOSONAR
+        response = _session().get(  # NOSONAR
             current,
             headers=headers,
             timeout=timeout,
