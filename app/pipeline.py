@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import numpy as np
+from fastapi import HTTPException
 from app.downloader.registry import download_chapter as fetch_chapter_images
 from app.downloader.slicer import OVERLAP_CONTEXT, slice_image
 from app.detector.boxes import BubbleBox, apply_final_nms
@@ -168,7 +169,7 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
                                 continue
                             img_bytes = z.read(name)
                             if len(img_bytes) > 0:
-                                extracted_files.append((clean_name, img_bytes))
+                                extracted_files.append((clean_name, img_bytes, True))
                                 total_extracted_bytes += len(img_bytes)
                 except Exception as e:
                     logger.warning(f"Failed to extract zip file {filename}: {e}")
@@ -176,7 +177,7 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
                 if total_extracted_bytes + len(data) > MAX_UPLOAD_TOTAL_BYTES:
                     logger.warning(f"Skip {filename}: tổng dung lượng vượt {MAX_UPLOAD_TOTAL_BYTES // (1024*1024)}MB")
                     break
-                extracted_files.append((filename, data))
+                extracted_files.append((filename, data, False))
                 total_extracted_bytes += len(data)
 
         if not extracted_files:
@@ -184,12 +185,20 @@ class ChapterPipeline(PageProcessingMixin, PipelineEditingMixin):
 
         raw_paths = []
         ext_map = {"PNG": ".png", "JPEG": ".jpg", "WEBP": ".webp", "BMP": ".bmp"}
-        for idx, (filename, data) in enumerate(extracted_files[:MAX_UPLOAD_FILES]):
-            fmt = validate_upload_image(data, filename)
-            ext = ext_map.get(fmt, ".png")
-            out_path = raw_dir / f"{idx:03d}{ext}"
+        for filename, data, from_zip in extracted_files[:MAX_UPLOAD_FILES]:
+            try:
+                fmt = validate_upload_image(data, filename)
+            except HTTPException as exc:
+                if not from_zip:
+                    raise
+                # One broken image in an archive does not sink the other pages.
+                logger.warning("Skip {} in the archive: {}", filename, exc.detail)
+                continue
+            out_path = raw_dir / f"{len(raw_paths):03d}{ext_map.get(fmt, '.png')}"
             out_path.write_bytes(data)
             raw_paths.append(out_path)
+        if not raw_paths:
+            raise ValueError("Không có ảnh hợp lệ nào trong dữ liệu tải lên")
 
         logger.info(f"Chapter {chapter_id}: saved {len(raw_paths)} uploaded images")
         return self._build_chapter_from_raw_paths(
