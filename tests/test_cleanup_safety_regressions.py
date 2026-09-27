@@ -69,7 +69,7 @@ class _PipelineDetector:
         self._leftover = leftover
 
     def detect(self, image, **_kwargs):
-        return [self._source]
+        return [self._source] if self._source is not None else []
 
     @staticmethod
     def last_metrics():
@@ -77,7 +77,8 @@ class _PipelineDetector:
 
     def leftover_boxes(self, image, first_pass):
         assert first_pass
-        return [self._leftover] if self._leftover is not None else []
+        leftover, self._leftover = self._leftover, None  # the next pass finds it erased
+        return [leftover] if leftover is not None else []
 
 
 class _PipelineInpainter:
@@ -99,12 +100,12 @@ class _PipelineInpainter:
         return {}
 
 
-def _process(tmp_path, leftover):
+def _process(tmp_path, leftover, text=True):
     source = BubbleBox(
         10, 10, 40, 30, 0.9, np.full((20, 30), 255, np.uint8),
         source_role="text_segmenter", source_model="kiuyha_text_1280.onnx",
         semantic_type="free_text", safe_to_inpaint=True,
-    )
+    ) if text else None
     pipeline = ChapterPipeline.__new__(ChapterPipeline)
     pipeline._detector = _PipelineDetector(source, leftover)
     pipeline._inpainter = _PipelineInpainter()
@@ -162,3 +163,10 @@ def test_auto_fit_refuses_unreadable_transparent_dialogue():
             (45, 25, 55, 35),
             bg_color="transparent",
         )
+
+
+def test_a_page_without_text_is_processed(tmp_path):
+    result = _process(tmp_path, None, text=False)
+
+    assert result["boxes"] == []
+    assert result["processing_metrics"]["detector"]["second_pass_boxes"] == 0

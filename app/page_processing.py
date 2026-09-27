@@ -199,10 +199,12 @@ class PageProcessingMixin:
             protected_regions=preserve_regions,
         )
         auto_inpaint_metrics = self.inpainter.last_metrics()
+        second_pass_boxes = 0
         for _ in range(LEFTOVER_PASSES if effective_boxes else 0):
             leftovers = self.detector.leftover_boxes(clean_image, effective_boxes)
             if not leftovers:
                 break
+            second_pass_boxes += len(leftovers)
             clean_image = self.inpainter.inpaint(clean_image, leftovers, protected_regions=preserve_regions)
             for box in leftovers:
                 _fold_leftover(inpainted_records, box)
@@ -310,7 +312,7 @@ class PageProcessingMixin:
                 "authorized": len(effective_boxes),
                 "review_only": len(unverified_regions),
                 "deferred": len(deferred_regions),
-                "second_pass_boxes": len(leftovers),
+                "second_pass_boxes": second_pass_boxes,
             },
             "auto_inpaint": auto_inpaint_metrics,
             "manual_inpaint": manual_inpaint_metrics,
