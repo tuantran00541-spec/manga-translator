@@ -51,8 +51,8 @@ The application is local-first and CPU-oriented. Local ONNX models provide the c
 | --- | --- |
 | **1. Import** | Images, ZIP/CBZ archives, or chapter URLs |
 | **2. Slice** | Long webtoon pages become processing-friendly slices |
-| **3. Detect** | Speech bubbles, free text, OCR regions, outlined/SFX text |
-| **4. Clean** | Verified-mask LaMa inpainting and manual repair |
+| **3. Detect** | Text blocks and a letter mask for each (letters, outlines, glow) |
+| **4. Clean** | LaMa inpainting on letter masks, leftover passes, manual repair |
 | **5. Review** | Unified canvas workspace and editorial corrections |
 | **6. OCR** | MangaOCR + PP-OCRv6 hybrid recognition |
 | **7. Translate** | Batch text translation or two-image vision translation |
@@ -79,14 +79,14 @@ The slicer prefers low-content and safe bands, preserves source-page and slice i
 
 ### 🔎 Detection
 
-Local ONNX inference detects:
+The Kiuyha ONNX text detector (`models/kiuyha_text_1280.onnx`) finds text blocks on each slice in one coarse pass plus near-native bands. Each block then gets a letter mask:
 
-- speech bubbles
-- free text
-- OCR-ready regions
-- outlined/SFX-like text recovered by secondary CV logic
+- letters split from the background by colour, or by lightness over mixed backgrounds
+- outlines and glow round the letters
+- letters the box cuts, and the rest of a line that runs past it
+- text across a slice seam is detected once on a strip over the cut and joins the block it belongs to
 
-Detection records retain source/model/class provenance and review state.
+Detection records retain source/model provenance and review state.
 
 ### 🧹 Artwork-safe cleanup
 
@@ -94,7 +94,8 @@ Cleanup is driven by **verified pixel masks**, not detector rectangles.
 
 The pipeline supports:
 
-- LaMa inpainting
+- LaMa inpainting with a zeroed hole, and nearby text not erased yet hidden from its context
+- up to three leftover passes that erase what the detector still sees after inpainting
 - dynamic and fixed LaMa backends
 - tiled inference for long/narrow regions
 - safe flat-fill shortcuts
