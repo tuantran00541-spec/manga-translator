@@ -3,6 +3,8 @@ from __future__ import annotations
 import threading
 from collections import deque
 
+from app.render.font_guide import DEFAULT_LETTERING_FONT, MAX_CHAPTER_FONTS, font_guide_prompt
+
 MAX_NOTES_CHARS = 1500
 MAX_CHARACTERS = 40
 MAX_ADDRESS_PAIRS = 80
@@ -30,7 +32,7 @@ TRANSLATION
 
 LETTERING
 - Role of each object: dialogue, narration, thought, whisper, shout, dark_threat, system_ui, skill_name, title, free_text or sfx.
-- Font: pick font_id from FONTS by what the lettering is, not by taste. Keep the role's default unless the source clearly letters the text differently (a bold caption on the art, a screen, a letter). The same kind of text keeps the same font for the whole chapter.
+- Font: a chapter uses at most 3 fonts. dialogue.mac-dinh-3 is the base font for nearly all dialogue, thoughts and narration. Pick another font from FONTS only when IMAGE 1 letters that text in a clearly different style (a bold caption on the art, a screen, a skill name, a sound effect) and it matches the FONT SAMPLES image; reuse a font from fonts_in_use in CHAPTER MEMORY before adding one. When unsure, use the base font.
 - Size: the renderer picks the largest size that still breathes inside the bubble. Keep the line short enough for that: about as long as the source line, shorter if the bubble is small. If it cannot fit, rewrite it shorter first; if it still cannot, set "review": true.
 - Break lines yourself with "\\n" at phrase boundaries; an oval bubble reads short, long, short. Never leave one orphan word, a lone punctuation mark, a split name or number and unit, or a hyphen inside a Vietnamese word.
 - Free text keeps its scale and weight: a large source line stays a strong, short line.
@@ -67,8 +69,6 @@ def _with_input(target_name: str, block: str) -> str:
 
 
 def system_prompt(target_name: str, target_lang: str) -> str:
-    from app.render.font_guide import font_guide_prompt
-
     parts = [_with_input(target_name, _INPUT_IMAGES), "FONTS\n" + font_guide_prompt()]
     if str(target_lang or "").lower() in {"vi", "vie", "vietnamese"}:
         parts.append(_VIETNAMESE)
@@ -87,7 +87,18 @@ class ChapterMemory:
         self.characters: dict[str, str] = {}
         self.address: dict[tuple[str, str], dict[str, str]] = {}
         self.recent: deque[dict] = deque(maxlen=RECENT_LINES)
+        self.fonts: list[str] = [DEFAULT_LETTERING_FONT]
         self._lock = threading.Lock()
+
+    def admit_font(self, font_id: str) -> str:
+        """The font to letter with: a font already in use, a new one within the chapter budget, else the base font."""
+        with self._lock:
+            if font_id in self.fonts:
+                return font_id
+            if len(self.fonts) < MAX_CHAPTER_FONTS:
+                self.fonts.append(font_id)
+                return font_id
+            return DEFAULT_LETTERING_FONT
 
     def snapshot(self) -> dict:
         with self._lock:
@@ -96,6 +107,7 @@ class ChapterMemory:
                 "characters": [{"name": name, "note": note} for name, note in self.characters.items()],
                 "address": [{"from": a, "to": b, **terms} for (a, b), terms in self.address.items()],
                 "recent_lines": list(self.recent),
+                "fonts_in_use": list(self.fonts),
             }
 
     def update(self, slice_number: int, data: dict, translations: dict[str, str], order: list[str]) -> None:

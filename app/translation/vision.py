@@ -10,7 +10,7 @@ import requests
 from app.ai_providers import AIProvider
 from app.parameters import TRANSLATION_CONNECT_TIMEOUT_SECONDS, TRANSLATION_READ_TIMEOUT_SECONDS
 from app.security import validate_url
-from app.render.font_guide import lettering_font
+from app.render.font_guide import font_specimen_b64, lettering_font
 from app.translation.context import TYPOGRAPHY_ROLES, ChapterMemory, system_prompt
 from app.translation.deepseek import _language_name, _usage_cost_usd
 from app.visual_qc.deepseek_region_client import _extract_output_text, _safe_error_detail
@@ -113,15 +113,12 @@ def _parse_vision_payload(content: str, expected_ids: set[str]) -> tuple[dict[st
     if isinstance(data, dict) and isinstance(data.get("translations"), dict):
         data["translations"] = [{"id": str(k), "translated_text": v} for k, v in data["translations"].items()]
     picks = data.get("font_choices") if isinstance(data, dict) and isinstance(data.get("font_choices"), dict) else {}
-    roles = {str(entry.get("id")): str(entry.get("role") or "").strip().lower()
-             for entry in (data.get("translations") if isinstance(data, dict) else None) or []
-             if isinstance(entry, dict)}
-    # Only curated fonts; anything else falls back to the role's default.
+    # Only curated fonts; anything else falls back to the base font.
     choices = {}
     for item_id in translations:
         pick = picks.get(item_id)
         pick = pick.get("font_id") if isinstance(pick, dict) else pick
-        choices[item_id] = {"font_id": lettering_font(pick, roles.get(item_id)), "font_mode": "ai"}
+        choices[item_id] = {"font_id": lettering_font(pick), "font_mode": "ai"}
     return translations, choices, data if isinstance(data, dict) else {}
 
 
@@ -142,6 +139,8 @@ def _unalias(result: VisionTranslationResult, data: dict, real: dict[str, str]) 
         font_choices={back(k): v for k, v in (result.font_choices or {}).items()},
     ), data
 
+
+FONT_SAMPLES_LABEL = "FONT SAMPLES: each row is a font_id in red and a sample line lettered in that font."
 
 # Chinese, Japanese and Korean letters never belong in a Vietnamese translation.
 _FOREIGN_SCRIPT = re.compile("[\u1100-\u11ff\u3040-\u30ff\u3130-\u318f\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af\uf900-\ufaff]")
@@ -229,6 +228,11 @@ class VisionPageTranslator:
             result, data = _drop_foreign_script(result, data)
         if memory is not None:
             memory.update(slice_number or 0, data, result.translations, [str(item["id"]) for item in items])
+            fonts = result.font_choices or {}
+            result = replace(result, font_choices={
+                str(item["id"]): {"font_id": memory.admit_font(fonts[str(item["id"])]["font_id"]), "font_mode": "ai"}
+                for item in items if str(item["id"]) in fonts
+            })
         roles, review, answered = {}, set(), set()
         for entry in data.get("translations") or []:
             if not isinstance(entry, dict) or str(entry.get("id")) not in ids:
@@ -252,6 +256,9 @@ class VisionPageTranslator:
         payload = {
             "model": self.model,
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": [
+                # The specimen comes first so the cached prefix covers it.
+                {"type": "text", "text": FONT_SAMPLES_LABEL},
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{font_specimen_b64()}"}},
                 {"type": "text", "text": prompt},
                 {"type": "text", "text": "IMAGE 1: ORIGINAL"},
                 {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{original}"}},
@@ -297,6 +304,8 @@ class VisionPageTranslator:
             "model": self.model, "store": False,
             "input": [
                 {"type": "text", "text": system},
+                {"type": "text", "text": FONT_SAMPLES_LABEL},
+                {"type": "image", "data": font_specimen_b64(), "mime_type": "image/jpeg"},
                 {"type": "text", "text": prompt},
                 {"type": "text", "text": "IMAGE 1: ORIGINAL"},
                 {"type": "image", "data": original, "mime_type": "image/jpeg"},

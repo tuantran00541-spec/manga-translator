@@ -75,13 +75,14 @@ def test_vision_client_sends_original_and_clean_with_short_ids(tmp_path, monkeyp
     assert "localization editor" in system["content"] and "VIETNAMESE" in system["content"]
     assert "- emphasis.anton:" in system["content"] and "Example:" in system["content"], "curated fonts come with notes"
     assert "dialogue.inter" not in system["content"], "only curated fonts are offered"
-    assert answer.font_choices == {"text_1": {"font_id": "dialogue.mac-dinh-3", "font_mode": "ai"}}, "no pick: role default"
+    assert answer.font_choices == {"text_1": {"font_id": "dialogue.mac-dinh-3", "font_mode": "ai"}}, "no pick: base font"
     content = payload["messages"][1]["content"]
     images = [item for item in content if item.get("type") == "image_url"]
-    assert len(images) == 2
+    assert len(images) == 3, "font samples, original, clean"
+    assert content[0]["text"].startswith("FONT SAMPLES"), "the fixed specimen leads so it is cached"
     assert all(item["image_url"]["url"].startswith("data:image/jpeg;base64,") for item in images)
-    assert images[0]["image_url"]["url"] != images[1]["image_url"]["url"]
-    prompt = content[0]["text"]
+    assert images[1]["image_url"]["url"] != images[2]["image_url"]["url"]
+    prompt = content[2]["text"]
     assert '"id":"1"' in prompt and "text_1" not in prompt
     assert '"bbox_xyxy":[10,20,50,40]' in prompt
     assert "fontSize" not in prompt and "strokeColor" not in prompt
@@ -226,7 +227,7 @@ def test_chapter_memory_carries_characters_address_and_recent_lines_to_the_next_
             return {"choices": [{"message": {"content": self.content}}], "usage": {}}
 
     def post(url, **kwargs):
-        prompts.append(kwargs["json"]["messages"][1]["content"][0]["text"])
+        prompts.append(kwargs["json"]["messages"][1]["content"][2]["text"])
         return Response(next(answers))
 
     monkeypatch.setattr("app.translation.vision.requests.post", post)
@@ -330,12 +331,15 @@ def test_english_left_as_the_translation_is_treated_as_untranslated():
     assert not _untranslated_english("Level của ngươi là bao nhiêu?")
 
 
-def test_font_picks_outside_the_guide_fall_back_to_the_role_default():
+def test_fonts_are_curated_and_a_chapter_letters_in_at_most_three():
     from app.render.font_guide import lettering_font
+    from app.translation.context import ChapterMemory
 
-    assert lettering_font("emphasis.anton", "dialogue") == "emphasis.anton"
-    assert lettering_font("dialogue.inter", "narration") == "narration.mac-dinh-2"
-    assert lettering_font(None, "sfx") == "sfx.black-ops-one"
-    assert lettering_font(None, "skill_name") == "skill.kanit"
-    assert lettering_font(None, "unknown") == "dialogue.mac-dinh-3"
+    assert lettering_font("emphasis.anton") == "emphasis.anton"
+    assert lettering_font("dialogue.inter") == lettering_font(None) == "dialogue.mac-dinh-3"
+    memory = ChapterMemory()
+    picks = ["emphasis.anton", "skill.kanit", "sfx.black-ops-one", "emphasis.anton", "dialogue.mac-dinh-3"]
+    assert [memory.admit_font(font) for font in picks] == [
+        "emphasis.anton", "skill.kanit", "dialogue.mac-dinh-3", "emphasis.anton", "dialogue.mac-dinh-3"]
+    assert memory.snapshot()["fonts_in_use"] == ["dialogue.mac-dinh-3", "emphasis.anton", "skill.kanit"]
     assert parse_vision_translation('{"translations":[{"id":"a","translated_text":"Thì…"}]}', {"a"}) == {"a": "Thì..."}
