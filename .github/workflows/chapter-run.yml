@@ -34,7 +34,7 @@ jobs:
       MANGA_ORT_OPENVINO_STREAMS: "1"
       MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
       OPENBLAS_NUM_THREADS: "1"
-      CHAPTER_URL: ${{ github.event.inputs.chapter_url || 'https://asurascans.com/comics/the-academy-s-weapon-replicator-05c7df14/chapter/1' }}
+      CHAPTER_URL: ${{ github.event.inputs.chapter_url || 'https://asurascans.com/comics/shadow-slave-05c7df14/chapter/1' }}
     steps:
       - uses: actions/checkout@v4
 

@@ -90,6 +90,35 @@ def main() -> int:
         side = cv2.resize(side, None, fx=900 / side.shape[1], fy=900 / side.shape[1])
         cv2.imwrite(str(args.out / f"sample-{rank}-slice{number:03d}.jpg"), side, [cv2.IMWRITE_JPEG_QUALITY, 85])
 
+    # Every text block: full-size original crop to replay masks, and original | mask | clean to judge.
+    (args.out / "raw").mkdir(exist_ok=True)
+    (args.out / "blocks").mkdir(exist_ok=True)
+    crops = []
+    for number, page in enumerate(load_manifest_raw(args.chapter_id)["pages"]):
+        if not page.get("clean"):
+            continue
+        core = page.get("stitch_core") or {}
+        original, clean = read_image(Path(page["original"])), read_image(Path(page["clean"]))
+        y0, y1 = int(core.get("core_y1", 0)), int(core.get("core_y2", original.shape[0]))
+        for k, b in enumerate(kiuyha.text_boxes(np.ascontiguousarray(original[y0:y1]))):
+            h, w = original.shape[:2]
+            x1, cy1 = max(0, b.x1 - 120), max(0, b.y1 + y0 - 120)
+            x2, cy2 = min(w, b.x2 + 120), min(h, b.y2 + y0 + 120)
+            name = f"s{number:03d}-b{k}"
+            cv2.imwrite(str(args.out / "raw" / f"{name}.jpg"), original[cy1:cy2, x1:x2], [cv2.IMWRITE_JPEG_QUALITY, 93])
+            shown = original.copy()
+            m = np.zeros(original.shape[:2], bool)
+            m[b.y1 + y0:b.y2 + y0, b.x1:b.x2] = b.mask > 127
+            shown[m] = (0.45 * shown[m] + (0, 0, 140)).astype(np.uint8)
+            tiles = [img[cy1:cy2, x1:x2] for img in (original, shown, clean)]
+            strip = np.concatenate([np.pad(t, ((0, 0), (0, 8), (0, 0)), constant_values=255) for t in tiles], axis=1)
+            scale = min(1.0, 1500 / strip.shape[1])
+            cv2.imwrite(str(args.out / "blocks" / f"{name}.jpg"), cv2.resize(strip, None, fx=scale, fy=scale),
+                        [cv2.IMWRITE_JPEG_QUALITY, 85])
+            crops.append({"name": name, "slice": number, "crop": [x1, cy1, x2, cy2],
+                          "box": [b.x1 - x1, b.y1 + y0 - cy1, b.x2 - x1, b.y2 + y0 - cy1]})
+    (args.out / "blocks.json").write_text(json.dumps(crops, indent=1), encoding="utf-8")
+
     report = {
         "url": args.url, "slices": len(pages),
         "download_s": round(download_s, 1), "process_s": round(process_s, 1),
