@@ -233,9 +233,9 @@ Place these files in models/:
 | lama-manga-dynamic.onnx | Preferred inpainting backend |
 | lama.onnx | Fixed-resolution fallback |
 
-Model binaries are intentionally not committed to Git. `kiuyha_text_1280.onnx`
-comes from the **Kiuyha ONNX export** workflow (Actions → Kiuyha ONNX export →
-artifact `kiuyha-onnx`), which exports
+`kiuyha_text_1280.onnx` (10 MB) is in the repository; the LaMa files are too
+large for Git and must be downloaded. The **Kiuyha ONNX export** workflow
+re-exports
 [Kiuyha/Manga-Bubble-YOLO](https://huggingface.co/Kiuyha/Manga-Bubble-YOLO)
 and checks the ONNX boxes against the original model. See
 [docs/detection.md](docs/detection.md) for how detection works and why.
