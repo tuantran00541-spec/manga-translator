@@ -38,8 +38,15 @@ def parse_json_object(content: str) -> dict:
         source = source.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
     try:
         data = json.loads(source)
-    except (TypeError, ValueError) as exc:
-        raise RuntimeError("Vision model returned invalid JSON") from exc
+    except (TypeError, ValueError):
+        # Some models wrap the object in prose; take the first complete object.
+        start = source.find("{")
+        try:
+            data = json.JSONDecoder().raw_decode(source, start)[0] if start >= 0 else None
+        except ValueError as exc:
+            raise RuntimeError("Vision model returned invalid JSON") from exc
+        if data is None:
+            raise RuntimeError("Vision model returned invalid JSON")
     if not isinstance(data, dict):
         raise RuntimeError("Vision model must return a JSON object")
     return data

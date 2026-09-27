@@ -275,34 +275,28 @@ def _runner(monkeypatch, stage, manifest):
     return runner
 
 
-def test_review_stage_restores_art_erases_missed_text_and_repaints_residue(monkeypatch):
+def test_review_stage_applies_each_slice_in_one_pass_without_duplicating_boxes(monkeypatch):
     from app.ai_mode.checkpoints import CleanReview
     from app.dependencies import pipeline
-    import app.routers.editor as editor_router
 
-    runner = _runner(monkeypatch, "review", {"pages": [{}, {}]})
+    existing = {"x1": 100, "y1": 100, "x2": 200, "y2": 160}
+    runner = _runner(monkeypatch, "review", {"pages": [{"boxes": [existing]}, {}]})
     monkeypatch.setattr(runner, "_active_pages", lambda: [0, 1])
     monkeypatch.setattr(runner, "_images", lambda index, key, root: (np.zeros((10, 10, 3)), np.zeros((10, 10, 3))))
-    reviews = {0: CleanReview(0, missed=((1, 2, 30, 40),), residue=((5, 5, 20, 20),), restore=((0, 0, 50, 50),)),
+    reviews = {0: CleanReview(0, missed=((1, 2, 30, 40), (105, 105, 195, 150)), residue=((5, 5, 20, 20),),
+                              restore=((300, 300, 400, 400), (0, 0, 50, 50))),
                1: CleanReview(1)}
     monkeypatch.setattr(ai_job, "review_clean", lambda provider, model, key, index, a, b: (reviews[index], None))
     calls = []
-    monkeypatch.setattr(pipeline, "preserve_and_reinpaint",
-                        lambda chapter, index, regions: calls.append(("restore", index, regions)), raising=False)
-    monkeypatch.setattr(pipeline, "add_manual_boxes",
-                        lambda chapter, index, rects: calls.append(("missed", index, rects)), raising=False)
-
-    async def repaint(req):
-        calls.append(("repaint", req.page_index, [(r.x1, r.y1, r.x2, r.y2) for r in req.regions]))
-
-    monkeypatch.setattr(editor_router, "repaint_regions", repaint)
+    monkeypatch.setattr(pipeline, "apply_review_fixes",
+                        lambda chapter, index, **fixes: calls.append((index, fixes)), raising=False)
     asyncio.run(runner.review())
-    assert calls == [
-        ("restore", 0, [{"x1": 0, "y1": 0, "x2": 50, "y2": 50}]),
-        ("missed", 0, [(1, 2, 30, 40)]),
-        ("repaint", 0, [(5, 5, 20, 20)]),
-    ], "art back first, then missed text erased as boxes to translate, then residue repainted"
-    assert (runner.report["kept_regions"], runner.report["missed_added"], runner.report["repainted_regions"]) == (1, 1, 1)
+    assert calls == [(0, {
+        "preserve": [(300, 300, 400, 400)],
+        "boxes": [(1, 2, 30, 40)],
+        "repaint": [(5, 5, 20, 20), (105, 105, 195, 150)],
+    })], "missed text over an existing box is re-erased, and a restore over an erase is dropped"
+    assert (runner.report["kept_regions"], runner.report["missed_added"], runner.report["repainted_regions"]) == (1, 1, 2)
 
 
 def test_retry_uses_small_batches_and_restores_what_never_translates(monkeypatch):

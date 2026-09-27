@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 
 from fastapi import HTTPException
 
-from app.ai_mode.checkpoints import review_clean, review_final
+from app.ai_mode.checkpoints import review_clean, review_final, settle_clean_review
 from app.ai_mode.page_scan import scan_slices
 from app.config import OUTPUT_DIR, PROCESSED_DIR, RAW_DIR
 from app.image_io import read_image
@@ -293,11 +293,15 @@ class AIModeRunner:
         other = read_image(validate_managed_path(page[second_key], second_root / chapter_id))
         return original, other
 
+    def _page_boxes(self, page_index: int) -> list[tuple[int, int, int, int]]:
+        """Pixel rectangles of the page's active text boxes."""
+        boxes = self._manifest()["pages"][page_index].get("boxes") or []
+        return [(int(b["x1"]), int(b["y1"]), int(b["x2"]), int(b["y2"])) for b in boxes
+                if isinstance(b, dict) and not b.get("removed") and all(k in b for k in ("x1", "y1", "x2", "y2"))]
+
     async def review(self) -> None:
         """Checkpoint 3: the model compares each raw and clean slice; the system applies what it reports."""
         from app.dependencies import pipeline
-        from app.routers.editor import repaint_regions
-        from app.schemas import RegionModel, RepaintRegionsRequest
 
         chapter_id = self.job.chapter_id
         indices = self._active_pages()
@@ -306,34 +310,31 @@ class AIModeRunner:
 
         async def review_one(page_index: int) -> None:
             nonlocal finished
-            async with gate:
-                remaining = self._remaining_budget()
-                if self.job.cancel_requested or (remaining is not None and remaining < 0.001):
-                    return
-                try:
+            try:
+                # Only the model call holds the gate; the local fix runs while other slices are checked.
+                async with gate:
+                    remaining = self._remaining_budget()
+                    if self.job.cancel_requested or (remaining is not None and remaining < 0.001):
+                        return
                     original, clean = await asyncio.to_thread(self._images, page_index, "clean", PROCESSED_DIR)
                     found, cost = await asyncio.to_thread(
                         review_clean, self.provider, self.settings.model, self.api_key, page_index, original, clean)
                     self._add_cost(cost)
-                    if found.restore:
-                        regions = [dict(zip(("x1", "y1", "x2", "y2"), box)) for box in found.restore]
-                        await asyncio.to_thread(pipeline.preserve_and_reinpaint, chapter_id, page_index, regions)
-                        self.report["kept_regions"] += len(regions)
-                    if found.missed:
-                        await asyncio.to_thread(pipeline.add_manual_boxes, chapter_id, page_index, list(found.missed))
-                        self.report["missed_added"] += len(found.missed)
+                found = settle_clean_review(found, self._page_boxes(page_index))
+                if found.restore or found.missed or found.residue:
+                    await asyncio.to_thread(
+                        pipeline.apply_review_fixes, chapter_id, page_index,
+                        preserve=list(found.restore), boxes=list(found.missed), repaint=list(found.residue))
+                    self.report["kept_regions"] += len(found.restore)
+                    self.report["missed_added"] += len(found.missed)
+                    self.report["repainted_regions"] += len(found.residue)
                     if found.residue:
-                        await repaint_regions(RepaintRegionsRequest(
-                            chapter_id=chapter_id, page_index=page_index, mode="standard",
-                            regions=[RegionModel(x1=x1, y1=y1, x2=x2, y2=y2) for x1, y1, x2, y2 in found.residue],
-                        ))
-                        self.report["repainted_regions"] += len(found.residue)
                         _append(self.report["repaint_pages"], page_index)
-                except (HTTPException, RuntimeError, ValueError, OSError, KeyError) as exc:
-                    _append(self.report["qc_errors"], f"Lát {page_index + 1}: {_detail(exc)[:200]}")
-                finally:
-                    finished += 1
-                    self._progress(finished, len(indices))
+            except (HTTPException, RuntimeError, ValueError, OSError, KeyError) as exc:
+                _append(self.report["qc_errors"], f"Lát {page_index + 1}: {_detail(exc)[:200]}")
+            finally:
+                finished += 1
+                self._progress(finished, len(indices))
 
         self._progress(0, len(indices))
         await asyncio.gather(*(review_one(page_index) for page_index in indices))
@@ -585,10 +586,20 @@ class AIModeRunner:
             self.report["final_flagged"].append(len(reviews))
             if not reviews:
                 break
-            for done, found in enumerate(reviews):
-                self._check_cancel()
-                self._progress(done, len(reviews), f"Vòng {round_number}: sửa lát {found.page_index + 1}")
-                await self._apply_final_fixes(found, source_lang)
+            fixing, done = asyncio.Semaphore(TRANSLATE_CONCURRENCY), 0
+
+            async def fix(found) -> None:
+                nonlocal done
+                async with fixing:
+                    if self.job.cancel_requested:
+                        return
+                    await self._apply_final_fixes(found, source_lang)
+                    done += 1
+                    self._progress(done, len(reviews), f"Vòng {round_number}: sửa lát")
+
+            self._progress(0, len(reviews), f"Vòng {round_number}: sửa lát")
+            await asyncio.gather(*(fix(found) for found in reviews))
+            self._check_cancel()
             pages = [found.page_index for found in reviews]
         flagged = self.report["final_flagged"]
         self._progress(len(pages), len(pages), (
@@ -598,21 +609,16 @@ class AIModeRunner:
 
     async def _apply_final_fixes(self, found, source_lang: str) -> None:
         from app.dependencies import pipeline
-        from app.routers.editor import repaint_regions
-        from app.schemas import RegionModel, RepaintRegionsRequest
 
         chapter_id, page_index = self.job.chapter_id, found.page_index
         page = self._manifest()["pages"][page_index]
         by_id = {str(obj.get("id")): obj for obj in page.get("text_objects") or [] if isinstance(obj, dict)}
         try:
             regions = [dict(by_id[obj_id]["region"]) for obj_id in found.restore if obj_id in by_id]
-            if regions:
-                await asyncio.to_thread(pipeline.preserve_and_reinpaint, chapter_id, page_index, regions)
-            if found.repaint:
-                await repaint_regions(RepaintRegionsRequest(
-                    chapter_id=chapter_id, page_index=page_index, mode="standard",
-                    regions=[RegionModel(x1=x1, y1=y1, x2=x2, y2=y2) for x1, y1, x2, y2 in found.repaint],
-                ))
+            if regions or found.repaint:
+                await asyncio.to_thread(
+                    pipeline.apply_review_fixes, chapter_id, page_index,
+                    preserve=[(r["x1"], r["y1"], r["x2"], r["y2"]) for r in regions], repaint=list(found.repaint))
             if found.retranslate:
                 await self._translate_retry(page_index, source_lang, list(found.retranslate), force=True)
             self.report["final_fixes"] += len(regions) + len(found.repaint) + len(found.retranslate)

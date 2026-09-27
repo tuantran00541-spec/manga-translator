@@ -10,6 +10,8 @@ import numpy as np
 from app.ai_mode.vision_json import request_vision_json
 
 MIN_CONFIDENCE = 0.6
+RESTORE_CONFIDENCE = 0.8  # a wrong restore leaves source text on the page
+OVERLAP = 0.5
 MIN_SIDE_PX = 10
 MAX_AREA_RATIO = 0.4  # a box over most of a slice is a misread
 MARGIN_PX = 6
@@ -25,8 +27,9 @@ CLEAN_REVIEW_PROMPT = (
     "still fully readable in CLEAN. It will be erased and translated.\n"
     "- residue: fragments, ghost outlines, smears or blotches left where text was erased, and leftover "
     "scanlator watermarks or credits. They will be erased; nothing is translated.\n"
-    "- restore: things CLEAN erased that must stay as drawn: artwork, ornaments, patterns, series logos, "
-    "writing that belongs to the drawing. The original pixels will be put back.\n"
+    "- restore: artwork CLEAN damaged that has no words in it: ornaments, patterns, drawn objects, the series "
+    "logo. The original pixels will be put back and nothing there is translated, so never list words a reader "
+    "reads, whatever the font, size or colour: captions, narration, titles and stylised lettering are story text.\n"
     "Boxes are [ymin, xmin, ymax, xmax] normalised to 0-1000 on the slice, tight around the problem. "
     "Leave a list empty when nothing applies; a clean slice returns three empty lists. Return JSON only: "
     f'{{"missed":[{_BOX}],"residue":[{_BOX}],"restore":[{_BOX}]}}'
@@ -36,12 +39,14 @@ FINAL_REVIEW_PROMPT = (
     "You do the final check of a translated manga/manhwa slice before it is exported. IMAGE 1 is the ORIGINAL "
     "slice, IMAGE 2 is the FINAL slice with the translation lettered in. OBJECTS lists every lettered region: "
     "its id, its box as [ymin, xmin, ymax, xmax] normalised to 0-1000, and its translation.\n"
-    "Decide verdict \"ok\" or \"fix\". Ask for a fix only for clear defects a reader would notice:\n"
-    "- repaint (box_2d): source-language text or erase marks still visible in FINAL outside the lettering.\n"
-    "- retranslate (id): a translation that is wrong, misspelled, missing words, or does not fit the scene.\n"
-    "- restore (id): lettering that should not be there (art, logo, sound effect drawn as art); the original "
-    "pixels are put back.\n"
-    "Do not ask for style changes. Return JSON only: "
+    "Most slices are fine: answer \"ok\" unless a reader would stop at a clear defect. Only these count:\n"
+    "- repaint (box_2d): a whole source-language word or sentence still readable in FINAL outside the lettering, "
+    "or an obvious erase smear. Not faint traces, texture, or text that is part of the art.\n"
+    "- retranslate (id): a translation that is misspelled, says something different from the original, or "
+    "leaves words out. Not wording you would merely phrase differently.\n"
+    "- restore (id): lettering placed over a sound effect drawn as art or a logo. Never dialogue, narration or "
+    "captions.\n"
+    "Never ask for style, font, size or placement changes. Return JSON only: "
     '{"verdict":"ok","fixes":[{"action":"repaint","box_2d":[0,0,0,0]},{"action":"retranslate","id":"<id>"},'
     '{"action":"restore","id":"<id>"}],"reason":"short"}'
 )
@@ -65,13 +70,14 @@ class FinalReview:
     reason: str = ""
 
 
-def _box(raw, width: int, height: int, *, need_confidence: bool = True) -> tuple[int, int, int, int] | None:
+def _box(raw, width: int, height: int, *, need_confidence: bool = True,
+         min_confidence: float = MIN_CONFIDENCE) -> tuple[int, int, int, int] | None:
     """Pixel box from a 0-1000 ``box_2d``, or None when unsure, tiny or implausibly large."""
     if not isinstance(raw, dict):
         return None
     if need_confidence:
         try:
-            if float(raw.get("confidence", 1.0)) < MIN_CONFIDENCE:
+            if float(raw.get("confidence", 1.0)) < min_confidence:
                 return None
         except (TypeError, ValueError):
             return None
@@ -91,9 +97,30 @@ def _box(raw, width: int, height: int, *, need_confidence: bool = True) -> tuple
             min(width, math.ceil(x2) + MARGIN_PX), min(height, math.ceil(y2) + MARGIN_PX))
 
 
-def _boxes(items, width: int, height: int) -> tuple[tuple[int, int, int, int], ...]:
-    found = [box for raw in (items or [])[:MAX_BOXES] if (box := _box(raw, width, height)) is not None]
-    return tuple(found)
+def _boxes(items, width: int, height: int, min_confidence: float = MIN_CONFIDENCE) -> tuple[tuple[int, int, int, int], ...]:
+    items = items if isinstance(items, list) else []
+    return tuple(box for raw in items[:MAX_BOXES]
+                 if (box := _box(raw, width, height, min_confidence=min_confidence)) is not None)
+
+
+def _covered(box, others) -> bool:
+    """True when at least half of ``box`` lies inside one of ``others``."""
+    area = max(1, (box[2] - box[0]) * (box[3] - box[1]))
+    for other in others:
+        ix = min(box[2], other[2]) - max(box[0], other[0])
+        iy = min(box[3], other[3]) - max(box[1], other[1])
+        if ix > 0 and iy > 0 and ix * iy >= OVERLAP * area:
+            return True
+    return False
+
+
+def settle_clean_review(review: CleanReview, existing: list[tuple[int, int, int, int]]) -> CleanReview:
+    """Missed text over an existing box is re-erased, not added twice; restore loses to any erase request."""
+    missed = [box for box in review.missed if not _covered(box, existing)]
+    residue = list(review.residue) + [box for box in review.missed if box not in missed]
+    erase = missed + residue
+    restore = [box for box in review.restore if not _covered(box, erase) and not any(_covered(e, [box]) for e in erase)]
+    return CleanReview(review.page_index, tuple(missed), tuple(residue), tuple(restore))
 
 
 def parse_clean_review(data: dict, page_index: int, width: int, height: int) -> CleanReview:
@@ -102,7 +129,7 @@ def parse_clean_review(data: dict, page_index: int, width: int, height: int) -> 
         page_index,
         missed=_boxes(data.get("missed"), width, height),
         residue=_boxes(data.get("residue"), width, height),
-        restore=_boxes(data.get("restore"), width, height),
+        restore=_boxes(data.get("restore"), width, height, RESTORE_CONFIDENCE),
     )
 
 
