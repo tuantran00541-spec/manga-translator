@@ -759,7 +759,7 @@ class AIModeRunner:
                     return
                 self.report["judged"] += 1
                 self.report["judge_sample"] = self.report["judge_sample"] or body
-                if note := flagged(scores):
+                if note := flagged(scores, line["source"]):
                     notes.setdefault(page_index, {})[line["id"]] = note
                     _append(self.report["judge_flags"], {"page": page_index + 1, "id": line["id"], "note": note,
                                                          "translation": line["translation"][:120]})

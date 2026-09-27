@@ -6,12 +6,15 @@ import requests
 from app.parameters import TRANSLATION_CONNECT_TIMEOUT_SECONDS, TRANSLATION_READ_TIMEOUT_SECONDS
 
 FLAG = 0.7  # probability above which a line is sent back
+SHORT_WORDS = 4  # titles and captions this short read as broken language to the judge too easily
+FLAG_SHORT_LANGUAGE = 0.9  # so their language flag needs this much
 QUESTION_TYPE = "boolean"  # minirouter's name for TypeSafe's yes/no ("noul") question
 QUESTIONS = {
     "wrong_meaning": "The translation changes what the source says, adds something the source does not say, "
                      "or leaves part of the source out.",
     "bad_language": "The translation has a misspelled or broken Vietnamese word, an English word that should have "
-                    "been translated, or clumsy word-for-word Vietnamese.",
+                    "been translated, or clumsy word-for-word Vietnamese. Names of people, places, works and credits "
+                    "kept in the source spelling are correct, and so are short title-style phrases.",
     "wrong_name": "The translation spells a name or term differently from the source or from the GLOSSARY.",
     "wrong_address": "The translation uses a pronoun or form of address that contradicts the GLOSSARY forms of "
                      "address for the people talking.",
@@ -88,6 +91,8 @@ def judge_line(url: str, api_key: str, state: str) -> tuple[dict[str, float], di
     return scores, body
 
 
-def flagged(scores: dict[str, float]) -> str:
+def flagged(scores: dict[str, float], source: str = "") -> str:
     """Reviewer note for the translator, or "" when the line passes."""
-    return "; ".join(NOTES[name] for name, value in scores.items() if value >= FLAG)
+    short = len(str(source or "").split()) <= SHORT_WORDS
+    return "; ".join(NOTES[name] for name, value in scores.items()
+                     if value >= (FLAG_SHORT_LANGUAGE if short and name == "bad_language" else FLAG))

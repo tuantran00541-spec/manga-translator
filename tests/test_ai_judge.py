@@ -22,3 +22,10 @@ def test_the_judge_reads_the_line_its_neighbours_and_the_glossary():
     assert "SOURCE: Master!" in state and "NEXT LINE: Con đây." in state and "PREVIOUS" not in state
     assert "Yanguo = Yanguo" in state and 'self "bọn con"' in state
     assert evaluate_url("https://gw.example/v1/chat/completions") == "https://gw.example/v1/evaluate"
+
+
+def test_short_titles_need_a_surer_language_flag():
+    assert flagged({"bad_language": 0.8}, "EPISODE 1") == ""
+    assert flagged({"bad_language": 0.95}, "EPISODE 1") != ""
+    assert flagged({"bad_language": 0.8}, "How much do you really know about the Nightmare Spell?") != ""
+    assert flagged({"wrong_meaning": 0.8}, "SPACE THEATRE") != "", "meaning is judged as before"
