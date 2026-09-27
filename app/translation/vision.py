@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
@@ -155,6 +156,27 @@ def _unalias(result: VisionTranslationResult, data: dict, real: dict[str, str]) 
     ), data
 
 
+# Chinese, Japanese and Korean letters never belong in a Vietnamese translation.
+_FOREIGN_SCRIPT = re.compile("[\u1100-\u11ff\u3040-\u30ff\u3130-\u318f\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af\uf900-\ufaff]")
+
+
+def _drop_foreign_script(result: VisionTranslationResult, data: dict) -> tuple[VisionTranslationResult, dict]:
+    """Treat lines with CJK letters as unanswered so they are retried, and keep them out of chapter memory."""
+    foreign = {key for key, value in result.translations.items() if _FOREIGN_SCRIPT.search(value)}
+    data = dict(data)
+    if isinstance(data.get("translations"), list):
+        data["translations"] = [entry for entry in data["translations"]
+                                if not (isinstance(entry, dict) and str(entry.get("id")) in foreign)]
+    for key in ("characters", "address"):
+        if isinstance(data.get(key), list):
+            data[key] = [entry for entry in data[key]
+                         if not _FOREIGN_SCRIPT.search(json.dumps(entry, ensure_ascii=False))]
+    if foreign:
+        result = replace(result, translations={key: "" if key in foreign else value
+                                               for key, value in result.translations.items()})
+    return result, data
+
+
 class VisionPageTranslator:
     def __init__(self, provider: AIProvider, model: str):
         if not provider.supports_visual_qc:
@@ -203,6 +225,8 @@ class VisionPageTranslator:
             result, data = self._openai(system, prompt, original_b64, cleaned_b64, api_key=api_key, ids=ids, max_tokens=max_tokens)
         result, data = _unalias(result, data, real)
         ids = set(real.values())
+        if str(target_lang or "").lower() in {"vi", "vie", "vietnamese"}:
+            result, data = _drop_foreign_script(result, data)
         if memory is not None:
             memory.update(slice_number or 0, data, result.translations, [str(item["id"]) for item in items])
         roles, review, answered = {}, set(), set()

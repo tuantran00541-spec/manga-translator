@@ -288,3 +288,32 @@ def test_vision_reply_tells_unanswered_from_deliberately_blank_objects(tmp_path,
     assert result.missing_ids == {"lost"}, "answered-empty differs from not answered"
     assert '"keep"' not in sent[0]["json"]["messages"][0]["content"], "checkpoint 3 owns kept and missed text"
 
+
+
+def test_vietnamese_line_with_cjk_letters_is_retried_and_kept_out_of_memory(tmp_path, monkeypatch):
+    original = tmp_path / "original.png"
+    clean = tmp_path / "clean.png"
+    Image.new("RGB", (400, 600), "white").save(original)
+    Image.new("RGB", (400, 600), "gray").save(clean)
+
+    class Response:
+        status_code, ok = 200, True
+
+        def json(self):
+            return {"choices": [{"message": {"content": json.dumps({
+                "translations": [{"id": "1", "translated_text": "Chào"},
+                                 {"id": "2", "translated_text": "Tôi 发现自己 kẹt rồi"}],
+                "characters": [{"name": "Frondier", "note": "hoảng loạn khi 发现自己 kẹt"},
+                               {"name": "Angper", "note": "cha của Frondier"}],
+            })}}], "usage": {}}
+
+    monkeypatch.setattr("app.translation.vision.requests.post", lambda url, **kwargs: Response())
+    from app.translation.context import ChapterMemory
+
+    memory = ChapterMemory("")
+    item = lambda item_id: {"id": item_id, "text": "", "region": [1, 2, 30, 40]}
+    result = VisionPageTranslator(PROVIDERS["openai"], "vision-test").translate_page(
+        original, clean, [item("a"), item("b")], api_key="k", source_lang="en", target_lang="vi", memory=memory)
+    assert result.translations == {"a": "Chào", "b": ""}
+    assert result.missing_ids == {"b"}
+    assert [c["name"] for c in memory.snapshot()["characters"]] == ["Angper"]
