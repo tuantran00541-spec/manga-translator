@@ -278,3 +278,15 @@ def test_a_request_may_ask_for_more_thinking_and_gets_room_for_it(world, monkeyp
     client.post("/v1/chat/completions", headers=job, json={**body, "reasoning_effort": "extreme"})
     assert (sent[0]["reasoning_effort"], sent[0]["max_tokens"]) == ("low", 1000 + 4096)
     assert "reasoning_effort" not in sent[1] and sent[1]["max_tokens"] == 1000, "unknown efforts are dropped"
+
+
+def test_the_default_thinking_level_also_gets_room(tmp_path, monkeypatch):
+    sent = []
+    monkeypatch.setattr(Upstream, "send", lambda self, payload, trace=None: sent.append(payload) or (200, {"usage": {}}))
+    store = Store(tmp_path / "gw.sqlite")
+    client = TestClient(create_app(store, Upstream("http://127.0.0.1:9", "", "m", 0, 0, reasoning_effort="low"), ADMIN,
+                                   mailer=Mailer(api_key="", sender="", dev_mode=True)))
+    _token, headers = _login(client)
+    job = {"Authorization": f"Bearer {client.post('/v1/jobs', headers=headers).json()['job_token']}"}
+    client.post("/v1/chat/completions", headers=job, json={"messages": [], "max_tokens": 500})
+    assert (sent[0]["reasoning_effort"], sent[0]["max_tokens"]) == ("low", 500 + 4096)

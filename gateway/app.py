@@ -317,6 +317,7 @@ def create_app(store: Store, upstream: Upstream, admin_key: str, *, mailer: Mail
             extra = max(extra, REASONING_BUDGETS[asked])
         elif upstream.reasoning_effort:
             forwarded["reasoning_effort"] = upstream.reasoning_effort
+            extra = max(extra, REASONING_BUDGETS.get(upstream.reasoning_effort, 0))
         forwarded["max_tokens"] = max(1, min(requested, MAX_OUTPUT_TOKENS)) + extra
         trace: dict = {}
         started = time.perf_counter()
