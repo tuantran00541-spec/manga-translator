@@ -78,8 +78,6 @@
   .recent-name { overflow: hidden; font-size: 14px; font-weight: 680; text-overflow: ellipsis; white-space: nowrap; }
   .recent-url { display: block; overflow: hidden; color: var(--text-muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
   .recent-meta { display: flex; align-items: center; gap: 7px; color: var(--text-secondary); font-size: 11px; }
-  .landing-import-options { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; }
-  .landing-import-options > .ui-field { width: min(100%, 210px); }
   .landing-start { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
   .landing-panel { display: grid; grid-template-columns: auto minmax(0, 1fr); align-content: start; gap: 14px 16px; padding: clamp(18px, 3vw, 26px); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); background: var(--surface-panel); box-shadow: var(--shadow-subtle); }
   .source-index { display: grid; width: 30px; height: 30px; place-items: center; border-radius: 50%; background: var(--surface-raised); color: var(--text-muted); font-size: 10px; font-weight: 750; }
@@ -309,7 +307,6 @@
     .recent-list { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 12px; }
     .home-empty-state { padding: 20px; }
     .chapter-input-grid { grid-template-columns: 1fr; }
-    .landing-import-options > .ui-field { width: calc(50% - 6px); }
     .translation-sticky-toolbar, .review-sticky-toolbar, .process-commandbar { align-items: stretch; flex-wrap: wrap; padding: 8px; }
     .editor-save-status { width: 100%; margin-left: 0; }
     .translation-canvas-host, .review-canvas-host, .preview-canvas-host, .workbench-canvas-column { padding: 9px; }

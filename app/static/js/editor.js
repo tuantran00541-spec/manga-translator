@@ -5,7 +5,6 @@ const editorState = {
   lastChapterId: null,
 };
 window.editorState = editorState;
-let editorOverlayResizeObserver = null;
 
 const DEFAULT_TEXT_OBJECT_STYLE = {
   color: "auto",
@@ -217,19 +216,6 @@ async function duplicateTextObject(pageIndex, id) {
 }
 window.duplicateTextObject = duplicateTextObject;
 
-async function addTextObjectBox() {
-  const pageIndex = editorState.activePageIndex;
-  const { w: W, h: H } = getPageImageSize(pageIndex);
-  if (!Number.isFinite(W) || !Number.isFinite(H)) {
-    throw new Error("Chưa xác định được kích thước trang");
-  }
-  const bw = Math.max(TEXT_OBJECT_MIN_SIZE, Math.min(200, Math.round(W * 0.3)));
-  const bh = Math.max(TEXT_OBJECT_MIN_SIZE, Math.min(64, Math.round(H * 0.12)));
-  const x1 = Math.round((W - bw) / 2);
-  const y1 = Math.round((H - bh) / 2);
-  await createTextObject(pageIndex, "rectangle", { x1, y1, x2: x1 + bw, y2: y1 + bh });
-}
-
 async function associateTextObjectOcr(pageIndex, id) {
   const chapterId = currentChapterId;
   if (!chapterId) return;
@@ -293,180 +279,6 @@ function editorImageMetrics(img) {
 }
 window.editorImageMetrics = editorImageMetrics;
 
-function renderTextObjectOverlays(pageIndex, page) {
-  editorOverlayResizeObserver?.disconnect();
-  editorOverlayResizeObserver = null;
-  const wrapper = document.querySelector(".translation-canvas-host .page-block-wrapper");
-  if (!wrapper) return;
-  const imgWrap = wrapper.querySelector(".page-image-wrap");
-  if (!imgWrap) return;
-  const img = imgWrap.querySelector("img");
-  const render = () => {
-    const metrics = editorImageMetrics(img);
-    if (!metrics) return;
-    imgWrap.querySelectorAll(".text-object-overlay:not(.drawing)").forEach((el) => el.remove());
-    (page.text_objects || []).forEach((obj) => {
-      if (!obj || !obj.region) return;
-      const overlay = document.createElement("div");
-      overlay.className = "text-object-overlay" + (obj.shape === "ellipse" ? " ellipse" : "");
-      overlay.dataset.pageIndex = String(pageIndex);
-      overlay.dataset.objectId = obj.id;
-      overlay.style.left = metrics.offsetX + obj.region.x1 * metrics.sx + "px";
-      overlay.style.top = metrics.offsetY + obj.region.y1 * metrics.sy + "px";
-      overlay.style.width = (obj.region.x2 - obj.region.x1) * metrics.sx + "px";
-      overlay.style.height = (obj.region.y2 - obj.region.y1) * metrics.sy + "px";
-      if (editorState.selectedTextObjectId === obj.id) overlay.classList.add("selected");
-      overlay.addEventListener("dblclick", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        const editor = document.querySelector(".translation-panel-host .translation-textarea");
-        if (editor) editor.focus();
-      });
-      imgWrap.appendChild(overlay);
-    });
-    window.installEditorBoxTransforms?.(imgWrap);
-  };
-
-  if (img.complete && img.naturalWidth > 0) render();
-  else img.onload = render;
-  if (typeof ResizeObserver === "function") {
-    const observer = new ResizeObserver(() => {
-      if (!img.isConnected) observer.disconnect();
-      else render();
-    });
-    observer.observe(img);
-    editorOverlayResizeObserver = observer;
-  }
-}
-
-function setupEditorDraw(wrapper, pageIndex) {
-  const imgWrap = wrapper.querySelector(".page-image-wrap");
-  const img = imgWrap.querySelector("img");
-  let drawing = false;
-  let start = null;
-  let last = null;
-  let temp = null;
-
-  const pointInImage = (e) => {
-    const metrics = editorImageMetrics(img);
-    if (!metrics) return null;
-    const rect = img.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0) return null;
-    const rawX = (e.clientX - rect.left) * (metrics.width / rect.width);
-    const rawY = (e.clientY - rect.top) * (metrics.height / rect.height);
-    return {
-      x: Math.max(0, Math.min(metrics.width, rawX)),
-      y: Math.max(0, Math.min(metrics.height, rawY)),
-      inside: rawX >= 0 && rawX <= metrics.width && rawY >= 0 && rawY <= metrics.height,
-      metrics,
-    };
-  };
-
-  const updateTemp = (x, y) => {
-    if (!temp || !start) return;
-    const metrics = editorImageMetrics(img);
-    if (!metrics) return;
-    temp.style.left = metrics.offsetX + Math.min(start.x, x) + "px";
-    temp.style.top = metrics.offsetY + Math.min(start.y, y) + "px";
-    temp.style.width = Math.abs(x - start.x) + "px";
-    temp.style.height = Math.abs(y - start.y) + "px";
-  };
-
-  const onDown = (e) => {
-    if (editorState.tool === "select") return;
-    if (e.button !== 0) return;
-    if (e.target.closest(".text-object-overlay")) return;
-    e.preventDefault();
-    const point = pointInImage(e);
-    if (!point || !point.inside) return;
-    drawing = true;
-    start = { x: point.x, y: point.y };
-    last = start;
-    temp = document.createElement("div");
-    temp.className = "text-object-overlay drawing" + (editorState.tool === "ellipse" ? " ellipse" : "");
-    imgWrap.appendChild(temp);
-    updateTemp(start.x, start.y);
-  };
-
-  const onMove = (e) => {
-    if (!drawing) return;
-    const point = pointInImage(e);
-    if (!point) return;
-    last = { x: point.x, y: point.y };
-    updateTemp(last.x, last.y);
-  };
-
-  const onUp = () => {
-    if (!drawing) return;
-    drawing = false;
-    if (temp) { temp.remove(); temp = null; }
-    if (!start || !last) { start = null; last = null; return; }
-    const metrics = editorImageMetrics(img);
-    if (!metrics) { start = null; last = null; return; }
-    const sx = img.naturalWidth / metrics.width;
-    const sy = img.naturalHeight / metrics.height;
-    const x1 = Math.round(Math.min(start.x, last.x) * sx);
-    const y1 = Math.round(Math.min(start.y, last.y) * sy);
-    const x2 = Math.round(Math.max(start.x, last.x) * sx);
-    const y2 = Math.round(Math.max(start.y, last.y) * sy);
-    const shape = editorState.tool;
-    start = null;
-    last = null;
-    if (x2 - x1 < 10 || y2 - y1 < 10) return;
-    createTextObject(pageIndex, shape, { x1, y1, x2, y2 }).catch((err) => {
-      showToast("Không thể tạo vùng chữ: " + err.message, "error");
-    });
-  };
-
-  const onClick = (e) => {
-    if (editorState.tool !== "select") return;
-    if (e.target.closest(".text-object-overlay")) return;
-    clearSelectedTextObject();
-  };
-
-  const drawAbort = new AbortController();
-  const signal = drawAbort.signal;
-  imgWrap.style.touchAction = editorState.tool === "select" ? "pan-x pan-y" : "none";
-  imgWrap.addEventListener("pointerdown", (event) => {
-    onDown(event);
-    if (drawing) imgWrap.setPointerCapture?.(event.pointerId);
-  }, { signal });
-  imgWrap.addEventListener("pointermove", onMove, { signal });
-  window.addEventListener("pointerup", onUp, { signal });
-  window.addEventListener("pointercancel", onUp, { signal });
-  imgWrap.addEventListener("click", onClick);
-
-  window._editorDrawCleanup = function cleanupEditorDraw() {
-    drawAbort.abort();
-  };
-}
-
-function buildPageWrapper(page, pageIndex, pages) {
-  const wrapper = document.createElement("div");
-  wrapper.className = "page-block-wrapper";
-
-  const label = document.createElement("div");
-  label.className = "page-block-label";
-  label.textContent = pageLabel(pages, pageIndex);
-  wrapper.appendChild(label);
-
-  const block = document.createElement("div");
-  block.className = "page-block";
-  block.dataset.pageIndex = pageIndex;
-
-  const imgWrap = document.createElement("div");
-  imgWrap.className = "page-image-wrap";
-  const img = document.createElement("img");
-  img.src = typeof window.pageImageUrl === "function"
-    ? window.pageImageUrl(page)
-    : (page.clean || page.original);
-  img.draggable = false;
-  imgWrap.appendChild(img);
-  block.appendChild(imgWrap);
-  wrapper.appendChild(block);
-  return wrapper;
-}
-
 function switchEditorPage(newIndex) {
   const pages = currentManifest ? currentManifest.pages : null;
   if (!pages || newIndex < 0 || newIndex >= pages.length) return;
@@ -516,53 +328,6 @@ function showRenderResult(pageIndex, outputPath, renderRevision = null) {
 }
 
 const _pendingAutoSync = new Map();
-
-let _autoSyncingPageIndex = null;
-
-function _sourceBoxSet(obj) {
-  return new Set(Array.isArray(obj?.source_boxes) ? obj.source_boxes.map(String) : []);
-}
-
-function _sameRegion(region, box) {
-  if (!region || !box) return false;
-  return ["x1", "y1", "x2", "y2"].every((key) => Number(region[key]) === Number(box[key]));
-}
-
-function _autoObjectNeedsSync(obj, box) {
-  if (!obj?.auto_generated) return false;
-  const boxText = String(box?.ocr_text || "");
-  const objectText = String(obj.ocr_text || "");
-  const previousAutoText = String(obj.auto_ocr_text || "");
-  const machineTextCanMove = objectText === previousAutoText;
-  if (machineTextCanMove && boxText !== objectText) return true;
-
-  const currentRegion = obj.region || null;
-  const previousAutoRegion = obj.auto_geometry || null;
-  const machineGeometryCanMove = !previousAutoRegion || _sameRegion(currentRegion, previousAutoRegion);
-  return machineGeometryCanMove && !_sameRegion(currentRegion, box);
-}
-
-function _isAutoSyncEligibleBox(box) {
-  if (!box || box.removed || !box.id || box.ocr_eligible === false) return false;
-  const [x1, y1, x2, y2] = [box.x1, box.y1, box.x2, box.y2].map(Number);
-  return [x1, y1, x2, y2].every(Number.isFinite) && x1 < x2 && y1 < y2;
-}
-
-function _pageNeedsAutoSync(page) {
-  if (!page || page.skipped) return false;
-  const activeBoxes = (page.boxes || []).filter(_isAutoSyncEligibleBox);
-  if (!activeBoxes.length) return false;
-  const objects = page.text_objects || [];
-  return activeBoxes.some((box) => {
-    const linked = objects.find((obj) => _sourceBoxSet(obj).has(String(box.id)));
-    return !linked || _autoObjectNeedsSync(linked, box);
-  });
-}
-
-function _autoSyncChangedPage(manifest, pageIndex) {
-  return Array.isArray(manifest?.auto_text_objects?.changed_pages)
-    && manifest.auto_text_objects.changed_pages.some((index) => Number(index) === Number(pageIndex));
-}
 
 async function ensureAutoTextObjects(pageIndex) {
   const chapterId = window.currentChapterId;
@@ -755,7 +520,6 @@ function buildChapterTranslateControls() {
       if (chapterId !== window.currentChapterId) return;
       const shell = document.querySelector("#page-view.review-mode .review-document-shell");
       if (shell && typeof shell._showRendered === "function") shell._showRendered();
-      else if (document.body.dataset.appStage === "editor" && typeof window.renderEditor === "function") window.renderEditor();
       const price = costKnown ? " · ~$" + actualCost.toFixed(4) : " · phí ảnh theo provider";
       const warning = renderErrors.length ? " · " + renderErrors.length + " lát chưa render" : "";
       window.showToast?.(
@@ -839,162 +603,13 @@ function buildChapterExportButton() {
 window.buildChapterTranslateControls = buildChapterTranslateControls;
 window.buildChapterExportButton = buildChapterExportButton;
 
+// The editor lives inside the review workspace; opening it opens review at the same page.
 function renderEditor() {
-  const container = document.getElementById("page-view");
-  if (!container) return;
-  if (!currentManifest || !currentManifest.pages || currentManifest.pages.length === 0) return;
-
-  window.setAppStage?.("editor");
-
-  if (currentChapterId && editorState.lastChapterId !== currentChapterId) {
-    if (
-      editorState.lastChapterId
-      && typeof window.cancelPendingPersist === "function"
-    ) {
-      window.cancelPendingPersist();
-    }
-    editorState.lastChapterId = currentChapterId;
-    editorState.activePageIndex = 0;
-    editorState.selectedTextObjectId = null;
-  }
-
-  const pages = currentManifest.pages;
-  editorState.activePageIndex = Math.max(0, Math.min(editorState.activePageIndex, pages.length - 1));
-  const pageIndex = editorState.activePageIndex;
-  const page = pages[pageIndex];
-
-  if (_autoSyncingPageIndex !== pageIndex && _pageNeedsAutoSync(page)) {
-    _autoSyncingPageIndex = pageIndex;
-    ensureAutoTextObjects(pageIndex)
-      .then((manifest) => {
-        if (Number(editorState.activePageIndex || 0) !== pageIndex) {
-          _autoSyncingPageIndex = null;
-          return;
-        }
-        if (!manifest || !_autoSyncChangedPage(manifest, pageIndex)) {
-          _autoSyncingPageIndex = null;
-          return;
-        }
-        queueMicrotask(() => {
-          _autoSyncingPageIndex = null;
-          renderEditor();
-        });
-      })
-      .catch((err) => {
-        _autoSyncingPageIndex = null;
-        if (typeof window.showToast === "function") {
-          window.showToast("Không thể đồng bộ vùng chữ từ nhận diện: " + err.message, "error");
-        }
-      });
-  }
-
-  if (typeof window.setWorkflowCheckpoint === "function") {
-    window.setWorkflowCheckpoint("editor", pageIndex);
-  }
-
-  if (typeof window._editorDrawCleanup === "function") {
-    window._editorDrawCleanup();
-    window._editorDrawCleanup = null;
-  }
-  editorOverlayResizeObserver?.disconnect();
-  editorOverlayResizeObserver = null;
-  container.innerHTML = "";
-  container.className = "editor-mode";
-
-  const shell = document.createElement("div");
-  shell.className = "translation-workspace";
-
-  const toolbar = document.createElement("div");
-  toolbar.className = "translation-sticky-toolbar";
-
-  const tools = document.createElement("div");
-  tools.className = "editor-tools";
-  tools.setAttribute("role", "group");
-  tools.setAttribute("aria-label", "Công cụ vùng chữ");
-  [
-    { key: "select", label: "Chọn" },
-    { key: "rectangle", label: "Khung chữ nhật" },
-    { key: "ellipse", label: "Khung elip" },
-  ].forEach((t) => {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "ui-btn editor-tool-btn" + (editorState.tool === t.key ? " ui-btn-primary active" : " ui-btn-ghost");
-    btn.dataset.tool = t.key;
-    btn.textContent = t.label;
-    btn.addEventListener("click", () => setEditorTool(t.key));
-    tools.appendChild(btn);
-  });
-
-  const addBoxBtn = document.createElement("button");
-  addBoxBtn.type = "button";
-  addBoxBtn.className = "ui-btn ui-btn-ghost editor-tool-btn";
-  addBoxBtn.textContent = "Thêm vùng chữ";
-  addBoxBtn.title = "Tạo một vùng chữ mới ở giữa trang";
-  addBoxBtn.addEventListener("click", () => {
-    addTextObjectBox().catch((err) => {
-      showToast("Không thể thêm vùng chữ: " + err.message, "error");
-    });
-  });
-  tools.appendChild(addBoxBtn);
-
-  const translateControls = buildChapterTranslateControls();
-
-  const renderBtn = document.createElement("button");
-  renderBtn.type = "button";
-  renderBtn.className = "ui-btn ui-btn-primary render-btn editor-render-btn";
-  renderBtn.textContent = "Kết xuất trang";
-  renderBtn.addEventListener("click", () => renderTranslations(pageIndex));
-
-  const exportBtn = buildChapterExportButton();
-
-  const saveStatus = document.createElement("div");
-  const initialStatus = refreshSaveStatus();
-  saveStatus.className = `editor-save-status save-status-${initialStatus}`;
-  setSaveStatusContent(saveStatus, initialStatus);
-
-  saveStatus.setAttribute("role", "status");
-  toolbar.append(tools, translateControls, renderBtn, exportBtn, saveStatus);
-
-  const navItems = pages.map((item, index) => ({
-    key: index,
-    label: typeof pageLabel === "function" ? pageLabel(pages, index) : `Trang ${index + 1}`,
-    image: item.rendered || item.clean || item.original,
-    state: item.skipped ? "skipped" : (item.rendered ? "rendered" : "ready"),
-    stateLabel: item.skipped ? "Bỏ qua" : (item.rendered ? "Đã kết xuất" : "Đang biên tập"),
-  }));
-  const navigator = window.createPageNavigator({
-    items: navItems,
-    activeIndex: pageIndex,
-    title: "Trang biên tập",
-    ariaLabel: "Điều hướng trang biên tập",
-    onSelect: (index) => switchEditorPage(index),
-  });
-
-  const body = document.createElement("div");
-  body.className = "translation-workspace-body workbench-stage-grid editor-workbench-grid";
-
-  const canvasHost = document.createElement("main");
-  canvasHost.className = "translation-canvas-host";
-
-  const panelHost = document.createElement("aside");
-  panelHost.className = "translation-panel-host context-inspector editor-inspector";
-  panelHost.setAttribute("aria-label", "Bảng biên tập vùng chữ");
-
-  body.append(navigator.element, canvasHost, panelHost);
-
-  shell.append(toolbar, body);
-  container.appendChild(shell);
-
-  const wrapper = buildPageWrapper(page, pageIndex, pages);
-  canvasHost.appendChild(wrapper);
-
-  if (editorState.selectedTextObjectId && !findTextObject(pageIndex, editorState.selectedTextObjectId)) {
-    editorState.selectedTextObjectId = null;
-  }
-
-  setupEditorDraw(wrapper, pageIndex);
-  renderTextObjectOverlays(pageIndex, page);
-  renderEditorPanel(pageIndex);
-  setEditorTool(editorState.tool);
-  window.setupWorkbenchPanels?.("editor");
+  const pages = window.currentManifest?.pages || [];
+  const rawIndex = Number(editorState.activePageIndex ?? window.currentManifest?.workflow?.page_index ?? 0);
+  const pageIndex = Math.max(0, Math.min(Number.isFinite(rawIndex) ? rawIndex : 0, Math.max(0, pages.length - 1)));
+  window.initialReviewCanonicalPageIndex = pageIndex;
+  window.setWorkflowCheckpoint?.("review", pageIndex);
+  return window.renderReview?.();
 }
+window.renderEditor = renderEditor;

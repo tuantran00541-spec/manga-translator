@@ -177,26 +177,6 @@ if (typeof resumeChapterWithoutProcessingReconnect === "function") {
   };
 }
 
-window.renderEditor = function renderUnifiedReviewFromLegacyEditor() {
-  const pages = window.currentManifest?.pages || [];
-  const rawIndex = Number(window.editorState?.activePageIndex ?? window.currentManifest?.workflow?.page_index ?? 0);
-  const pageIndex = Math.max(0, Math.min(Number.isFinite(rawIndex) ? rawIndex : 0, Math.max(0, pages.length - 1)));
-  window.initialReviewCanonicalPageIndex = pageIndex;
-  window.setWorkflowCheckpoint?.("review", pageIndex);
-  return window.renderReview?.();
-};
-
-const renderUnifiedReview = window.renderReview;
-if (typeof renderUnifiedReview === "function") {
-  window.renderReview = function renderReviewWithoutEditorHandoff(...args) {
-    const result = renderUnifiedReview(...args);
-    queueMicrotask(() => {
-      document.querySelectorAll(".review-primary-action").forEach((button) => button.remove());
-    });
-    return result;
-  };
-}
-
 (() => {
   "use strict";
 
@@ -212,54 +192,6 @@ if (typeof renderUnifiedReview === "function") {
       }
       return result;
     };
-  }
-
-  function sourceCoverage(desc) {
-    return {
-      y1: Number(desc.sourceY1) - Number(desc.localY1),
-      y2: Number(desc.sourceY1) + (Number(desc.img?.naturalHeight || 0) - Number(desc.localY1)),
-    };
-  }
-
-  function ensureQcCompatibility(workspace) {
-    const shell = workspace?.querySelector(".review-document-shell");
-    const image = shell?.querySelector(".review-stitched-image");
-    const descriptors = Array.isArray(shell?._descriptors) ? shell._descriptors : [];
-    if (!image || !descriptors.length) return;
-    const signature = descriptors.map((desc) => [
-      Number(desc.item?.canonicalIndex),
-      Number(desc.sourceY1), Number(desc.sourceY2),
-      Number(desc.localY1), Number(desc.localY2),
-      Number(desc.img?.naturalWidth), Number(desc.img?.naturalHeight),
-    ].join(":" )).join("|");
-    const existing = image.querySelectorAll(":scope > .review-qc-compat-card");
-    if (image.dataset.qcCompatSignature === signature && existing.length === descriptors.length) return;
-    existing.forEach((node) => node.remove());
-    image.dataset.qcCompatSignature = signature;
-
-    descriptors.forEach((desc) => {
-      const pageIndex = Number(desc.item?.canonicalIndex);
-      const page = window.currentManifest?.pages?.[pageIndex];
-      if (!page || !Number.isInteger(pageIndex)) return;
-      const coverage = sourceCoverage(desc);
-      const card = document.createElement("div");
-      card.className = "review-card review-qc-compat-card";
-      card.dataset.pageIndex = String(pageIndex);
-      Object.assign(card.style, {
-        left: "0px",
-        top: `${coverage.y1}px`,
-        width: `${Number(desc.img?.naturalWidth || page.width || 1)}px`,
-        height: `${Number(desc.img?.naturalHeight || page.height || 1)}px`,
-      });
-      const wrap = document.createElement("div");
-      wrap.className = "review-image-wrap";
-      const img = document.createElement("img");
-      img.alt = "";
-      img.src = desc.img?.currentSrc || desc.img?.src || page.clean || page.original || "";
-      wrap.appendChild(img);
-      card.appendChild(wrap);
-      image.appendChild(card);
-    });
   }
 
   function setQcDisabled(control, locked) {
@@ -338,7 +270,6 @@ if (typeof renderUnifiedReview === "function") {
   function refreshReviewAdapters() {
     const workspace = document.querySelector("#page-view.review-mode .review-workspace-shell");
     if (!workspace) return;
-    ensureQcCompatibility(workspace);
     syncQcLock(workspace);
     restoreReviewWorkspaceState(workspace);
   }
@@ -437,27 +368,9 @@ if (typeof renderUnifiedReview === "function") {
 })();
 
 document.addEventListener("DOMContentLoaded", () => {
-  document.querySelector('.sidebar-link[data-stage="editor"]')?.remove();
-  const reviewLabel = document.querySelector('.sidebar-link[data-stage="review"] span');
-  if (reviewLabel) {
-    reviewLabel.textContent = "Xử lý & Biên tập";
-    reviewLabel.closest(".sidebar-link")?.setAttribute("aria-label", reviewLabel.textContent);
-  }
-
   const loadBtn = document.getElementById("load-btn");
   if (loadBtn && typeof loadChapter === "function") {
     loadBtn.addEventListener("click", loadChapter);
-  }
-
-  const workersEl = document.getElementById("workers-select");
-  if (workersEl) {
-    const saved = localStorage.getItem("mt_workers");
-    if (saved && [...workersEl.options].some((o) => o.value === saved)) {
-      workersEl.value = saved;
-    }
-    workersEl.addEventListener("change", () => {
-      localStorage.setItem("mt_workers", workersEl.value);
-    });
   }
 
   if (typeof initUpload === "function") initUpload();

@@ -1,10 +1,9 @@
 (() => {
-  const STAGES = ["landing", "preview", "review", "editor"];
+  const STAGES = ["landing", "preview", "review"];
   const STAGE_LABELS = {
     landing: "Trang chủ",
     preview: "Xem cắt lát",
-    review: "Xem inpaint",
-    editor: "Biên tập",
+    review: "Xử lý & Biên tập",
   };
   const PANEL_QUERY = "(max-width: 1000px)";
 
@@ -22,7 +21,6 @@
     const workflowStage = window.currentManifest?.workflow?.stage;
     let reached = Math.max(1, STAGES.indexOf(activeStage), STAGES.indexOf(workflowStage));
     if (pages.some((page) => page?.clean)) reached = Math.max(reached, STAGES.indexOf("review"));
-    if (pages.some((page) => page?.rendered || (page?.text_objects || []).length)) reached = Math.max(reached, STAGES.indexOf("editor"));
     return Math.min(STAGES.length - 1, reached);
   }
 
@@ -82,7 +80,7 @@
     if (importView) importView.hidden = resolved !== "import";
     setPageTitle(resolved === "home" ? "Trang chủ" : "Nhập nội dung");
     const start = document.getElementById("start-action");
-    if (start) start.textContent = resolved === "home" ? "Bắt đầu xử lý" : "Tải chương";
+    if (start) start.textContent = resolved === "home" ? "Dự án mới" : "Tải chương";
     if ((document.body.dataset.appStage || "landing") !== "landing") return;
     syncSidebar("landing");
     closeSidebar();
@@ -212,7 +210,6 @@
 
   function currentCanonicalPageIndex() {
     const stage = document.body.dataset.appStage;
-    if (stage === "editor" && window.editorState) return Math.max(0, parseInt(window.editorState.activePageIndex, 10) || 0);
     if (stage === "review") {
       const reviewWorkspace = document.querySelector("#page-view .review-workspace-shell");
       const visiblePageIndex = Number(reviewWorkspace?.dataset.reviewCanonicalIndex);
@@ -232,7 +229,6 @@
     const canonicalIndex = Math.max(0, Math.min(parseInt(pageIndex, 10) || 0, lastIndex));
     if (stage === "preview") window.initialPreviewCanonicalPageIndex = canonicalIndex;
     else if (stage === "review") window.initialReviewCanonicalPageIndex = canonicalIndex;
-    else if (stage === "editor" && window.editorState) window.editorState.activePageIndex = canonicalIndex;
   }
 
   function showNavigationMessage(message, type = "info") {
@@ -241,13 +237,8 @@
 
   async function leaveActiveWorkspace(targetStage) {
     const currentStage = document.body.dataset.appStage || "landing";
-    if (currentStage === "editor" && targetStage !== "editor" && typeof window.flushAllPendingPersists === "function") await window.flushAllPendingPersists();
     if (currentStage === "review" && targetStage !== "review") window.cleanupReviewWorkspace?.();
     if (currentStage === "preview" && targetStage !== "preview") window.cleanupPreviewDrawListeners?.();
-    if (currentStage === "editor" && targetStage !== "editor" && typeof window._editorDrawCleanup === "function") {
-      window._editorDrawCleanup();
-      window._editorDrawCleanup = null;
-    }
   }
 
   function syncChapterHash(chapterId) {
@@ -304,7 +295,7 @@
         setAppStage("landing");
         return true;
       }
-      const renderer = window[{ preview: "renderPreview", review: "renderReview", editor: "renderEditor" }[stage]];
+      const renderer = window[{ preview: "renderPreview", review: "renderReview" }[stage]];
       if (typeof renderer !== "function") throw new Error(`Không tìm thấy màn hình ${STAGE_LABELS[stage]}.`);
       syncChapterHash(chapterId);
       setAppStage(stage);
