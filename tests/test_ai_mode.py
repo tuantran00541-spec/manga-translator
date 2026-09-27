@@ -587,3 +587,26 @@ def test_judge_sends_doubted_lines_back_with_its_note(monkeypatch):
     assert len(states) == 2 and "NEXT LINE: Đúng vậy." in states[0], "lines are graded in reading order"
     assert retried == [(0, ["b"], True, {"b": "it repeats the previous or next line"})] and rendered == [0]
     assert runner.report["judged"] == 2 and runner.report["judge_flags"][0]["id"] == "b"
+
+
+def test_final_check_repaints_source_text_over_an_existing_object_instead_of_adding_one(monkeypatch):
+    from app.ai_mode.checkpoints import FinalReview
+    from app.dependencies import pipeline
+
+    manifest = {"pages": [{"boxes": [{"x1": 100, "y1": 100, "x2": 400, "y2": 300}], "text_objects": []}]}
+    runner = _runner(monkeypatch, "final", manifest)
+    calls, retried = [], []
+    monkeypatch.setattr(pipeline, "apply_review_fixes", lambda chapter, index, **fixes: calls.append(fixes), raising=False)
+
+    async def retry(page_index, source_lang, only):
+        retried.append(page_index)
+
+    async def render(page_index):
+        return None
+
+    monkeypatch.setattr(runner, "_retry_untranslated", retry)
+    monkeypatch.setattr(runner, "_render_one", render)
+    found = FinalReview(0, ok=False, repaint=((120, 120, 380, 280), (500, 500, 600, 560)))
+    asyncio.run(runner._apply_final_fixes(found, "en"))
+    assert calls == [{"preserve": [], "boxes": [(500, 500, 600, 560)], "repaint": [(120, 120, 380, 280)]}]
+    assert retried == [0], "only the new text is translated"

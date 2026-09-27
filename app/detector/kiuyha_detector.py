@@ -128,6 +128,22 @@ def _union_overlapping(boxes: list[tuple[int, int, int, int, float]]) -> list[tu
     return [(int(a), int(b), int(c), int(d), float(e)) for a, b, c, d, e in merged]
 
 
+def _join_grown(boxes: list[BubbleBox]) -> list[BubbleBox]:
+    """Boxes that grew into each other while taking cut letters are one text; their masks are joined."""
+    rects = _union_overlapping([(b.x1, b.y1, b.x2, b.y2, b.confidence) for b in boxes])
+    if len(rects) == len(boxes):
+        return boxes
+    joined = []
+    for x1, y1, x2, y2, score in rects:
+        mask = np.zeros((y2 - y1, x2 - x1), np.uint8)
+        for b in boxes:
+            if b.x1 >= x1 and b.y1 >= y1 and b.x2 <= x2 and b.y2 <= y2:
+                view = mask[b.y1 - y1:b.y2 - y1, b.x1 - x1:b.x2 - x1]
+                np.maximum(view, b.mask, out=view)
+        joined.append(_text_box(x1, y1, x2, y2, score, mask, boxes[0].source_model))
+    return joined
+
+
 def _rows(output: np.ndarray, conf_threshold: float) -> np.ndarray:
     """Final ``x1, y1, x2, y2, score`` rows from either output layout."""
     output = np.asarray(output)
@@ -257,13 +273,12 @@ class KiuyhaTextDetector:
 
     def text_boxes(self, image: np.ndarray) -> list[BubbleBox]:
         """Detected text blocks with letter masks, ready for inpainting and OCR."""
-        h, w = image.shape[:2]
         boxes = []
         for x1, y1, x2, y2, score in self.detect_slice(image):
             (x1, y1, x2, y2), mask = letter_mask(image, (x1, y1, x2, y2))
             if mask.any():
                 boxes.append(_text_box(x1, y1, x2, y2, score, mask.astype(np.uint8) * 255, self.source_model))
-        return boxes
+        return _join_grown(boxes)
 
     def leftover_boxes(self, clean: np.ndarray, targets) -> list[BubbleBox]:
         """Text still seen inside a first-pass box after inpainting, masked by what is left of its strokes."""

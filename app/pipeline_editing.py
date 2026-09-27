@@ -67,6 +67,32 @@ def _normalize_region(region: dict, w: int, h: int) -> tuple[int, int, int, int]
     return x1, y1, x2, y2
 
 
+
+def _paint_residue(mask: np.ndarray, clean: np.ndarray | None, rect: tuple[int, int, int, int]) -> None:
+    """Mark the leftover strokes in ``rect`` of the cleaned slice; the whole rectangle only when none stand out."""
+    from app.detector.kiuyha_detector import letter_mask
+
+    if clean is not None and clean.shape[:2] == mask.shape:
+        (x1, y1, x2, y2), strokes = letter_mask(clean, rect)
+        if strokes.any():
+            view = mask[y1:y2, x1:x2]
+            view[strokes] = 255
+            return
+    mask[rect[1]:rect[3], rect[0]:rect[2]] = 255
+
+
+def _stroke_box(image: np.ndarray, rect: tuple[int, int, int, int]) -> dict:
+    """A manual box masked by the letters inside it; a rectangle only when no letters stand out."""
+    from app.detector.kiuyha_detector import letter_mask
+    from app.image_io import encode_mask
+
+    grown, mask = letter_mask(image, rect)
+    if not mask.any():
+        grown, mask = rect, None
+    return {"id": new_box_id(), "origin": "manual", "x1": int(grown[0]), "y1": int(grown[1]),
+            "x2": int(grown[2]), "y2": int(grown[3]), "confidence": 1.0, "manual": True,
+            "mask": encode_mask(mask.astype(np.uint8) * 255) if mask is not None else None}
+
 class PipelineEditingMixin:
     def add_manual_box(self, chapter_id: str, page_index: int, x1: int, y1: int, x2: int, y2: int) -> dict:
         return self.add_manual_boxes(chapter_id, page_index, [(x1, y1, x2, y2)])
@@ -328,6 +354,7 @@ class PipelineEditingMixin:
                 if page.get("skipped") or page.get("process_required") or not page.get("clean"):
                     raise ValueError("Page must be active and processed before review fixes")
                 img_path = Path(page["original"])
+                clean_now = Path(page["clean"])
                 old_preserve = copy.deepcopy(page.get("preserve_regions", []))
                 boxes_snapshot = copy.deepcopy(page.get("boxes", []))
                 manual_mask_posix = page.get("manual_mask")
@@ -343,20 +370,18 @@ class PipelineEditingMixin:
                 return (x1, y1, x2, y2) if x2 > x1 and y2 > y1 else None
 
             added_preserve = [dict(zip(("x1", "y1", "x2", "y2"), r)) for r in map(clip, preserve) if r]
-            new_boxes = [
-                {"id": new_box_id(), "origin": "manual", "x1": r[0], "y1": r[1], "x2": r[2], "y2": r[3],
-                 "confidence": 1.0, "mask": None, "manual": True}
-                for r in map(clip, boxes) if r
-            ]
+            new_boxes = [_stroke_box(image, r) for r in map(clip, boxes) if r]
             preserve_regions = old_preserve + added_preserve
             boxes_snapshot.extend(copy.deepcopy(new_boxes))
 
             final_mask_path = self._manual_mask_path(processed_dir, img_path)
             mask = None
-            for rect in filter(None, map(clip, repaint)):
+            repaint_rects = [r for r in map(clip, repaint) if r]
+            clean = read_image(clean_now) if repaint_rects else None
+            for rect in repaint_rects:
                 if mask is None:
                     mask = np.zeros((h, w), dtype=np.uint8)
-                mask[rect[1]:rect[3], rect[0]:rect[2]] = 255
+                _paint_residue(mask, clean, rect)
             if mask is not None:
                 existing = self._read_manual_mask(
                     Path(manual_mask_posix) if manual_mask_posix else final_mask_path, (h, w))

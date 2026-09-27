@@ -200,3 +200,25 @@ def test_pieces_of_one_text_from_different_passes_become_one_box():
     pieces = [(100, 100, 400, 160, 0.9), (350, 100, 700, 160, 0.8), (100, 400, 300, 450, 0.7)]
     assert _union_overlapping(pieces) == [(100, 100, 700, 160, 0.9), (100, 400, 300, 450, 0.7)]
     assert len(_union_overlapping([(0, 0, 100, 100, 0.9), (95, 95, 200, 200, 0.9)])) == 2, "a touching corner is two texts"
+
+
+class _NestedSession(_Session):
+    """A block box with a line box inside it, as the model returns for one bubble."""
+
+    def __init__(self):
+        super().__init__([1, 3, 1280, 1280])
+
+    def run(self, _names, feeds):
+        self.blobs.append(feeds["images"])
+        rows = np.zeros((1, 300, 6), np.float32)
+        rows[0, 0] = [300, 300, 700, 500, 0.9, 0]
+        rows[0, 1] = [320, 320, 560, 360, 0.6, 0]
+        return [rows]
+
+
+def test_a_line_box_inside_a_block_box_is_not_a_second_text():
+    image = np.full((1280, 1280, 3), 255, np.uint8)
+    cv2.putText(image, "HELLO", (330, 355), cv2.FONT_HERSHEY_DUPLEX, 1.2, (0, 0, 0), 3)
+    cv2.putText(image, "THERE", (330, 455), cv2.FONT_HERSHEY_DUPLEX, 1.2, (0, 0, 0), 3)
+    boxes = KiuyhaTextDetector("unused", session=_NestedSession()).text_boxes(image)
+    assert len(boxes) == 1 and boxes[0].x1 <= 300 and boxes[0].y2 >= 500

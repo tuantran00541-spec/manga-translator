@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import copy
 
-OWNER_IOU = 0.5  # the same bubble seen from two slices
+OWNER_SHARE = 0.5  # share of the smaller box two slices' boxes must share to be the same text
 # Everything that decides how a line is lettered, copied from the owning slice.
 LETTERING_KEYS = (
     "translation", "auto_translation", "translation_source", "translation_model", "translation_input_text",
@@ -33,14 +33,6 @@ def _rect(obj: dict, offset: int) -> tuple[int, int, int, int] | None:
         return None
 
 
-def _iou(a, b) -> float:
-    ix = max(0, min(a[2], b[2]) - max(a[0], b[0]))
-    iy = max(0, min(a[3], b[3]) - max(a[1], b[1]))
-    inter = ix * iy
-    union = (a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1]) - inter
-    return inter / union if union > 0 else 0.0
-
-
 def _owner(pages: list, page_index: int, obj: dict):
     """(page index, object) of the slice whose core holds the object's centre, when it has the same object."""
     page = pages[page_index]
@@ -48,21 +40,22 @@ def _owner(pages: list, page_index: int, obj: dict):
     rect = _rect(obj, core[0]) if core else None
     if rect is None:
         return None
-    center = (rect[1] + rect[3]) / 2
-    if core[1] <= center < core[2]:
-        return None
     for other_index in (page_index - 1, page_index + 1):
         if not 0 <= other_index < len(pages):
             continue
         other = pages[other_index]
         other_core = _core(other)
-        if (other.get("skipped") or other_core is None or other.get("source_page") != page.get("source_page")
-                or not other_core[1] <= center < other_core[2]):
+        if other.get("skipped") or other_core is None or other.get("source_page") != page.get("source_page"):
             continue
-        best = max(((candidate, _iou(rect, other_rect)) for candidate in other.get("text_objects") or []
+        # The two slices may box the same text a little differently, so containment counts, not IoU.
+        best = max(((candidate, other_rect) for candidate in other.get("text_objects") or []
                     if isinstance(candidate, dict) and (other_rect := _rect(candidate, other_core[0]))),
-                   key=lambda item: item[1], default=(None, 0.0))
-        if best[0] is not None and best[1] >= OWNER_IOU:
+                   key=lambda item: _shared(rect, item[1]), default=None)
+        if best is None or _shared(rect, best[1]) < OWNER_SHARE:
+            continue
+        # Both slices judge by the same whole text, so exactly one of them owns it.
+        center = (min(rect[1], best[1][1]) + max(rect[3], best[1][3])) / 2
+        if other_core[1] <= center < other_core[2]:
             return other_index, best[0]
     return None
 

@@ -813,20 +813,25 @@ class AIModeRunner:
         # Seam copies follow their owning slice, which is reviewed on its own.
         mirrors = seam_mirror_ids(manifest, page_index)
         retranslate = [obj_id for obj_id in found.retranslate if obj_id not in mirrors]
-        missed = list(self._in_core(page_index, found.repaint))
+        inside = list(self._in_core(page_index, found.repaint))
+        # Source text over an existing object is erased again; only text nothing covers becomes a new object.
+        existing = self._page_boxes(page_index)
+        missed = [box for box in inside if not _covered(box, existing)]
+        repaint = [box for box in inside if box not in missed]
         try:
             regions = [dict(by_id[obj_id]["region"]) for obj_id in found.restore
                        if obj_id in by_id and obj_id not in mirrors]
-            if regions or missed:
+            if regions or missed or repaint:
                 # Source text left on the page is erased and translated like text the detector missed.
                 await asyncio.to_thread(
                     pipeline.apply_review_fixes, chapter_id, page_index,
-                    preserve=[(r["x1"], r["y1"], r["x2"], r["y2"]) for r in regions], boxes=missed)
+                    preserve=[(r["x1"], r["y1"], r["x2"], r["y2"]) for r in regions], boxes=missed,
+                    repaint=repaint)
             if missed:
                 await self._retry_untranslated(page_index, source_lang, None)
             if retranslate:
                 await self._translate_retry(page_index, source_lang, retranslate, force=True)
-            self.report["final_fixes"] += len(regions) + len(missed) + len(retranslate)
+            self.report["final_fixes"] += len(regions) + len(missed) + len(repaint) + len(retranslate)
         except (HTTPException, RuntimeError, ValueError, OSError) as exc:
             _append(self.report["final_errors"], f"Lát {page_index + 1}: {_detail(exc)[:200]}")
         await self._render_one(page_index)

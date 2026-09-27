@@ -66,3 +66,30 @@ def test_a_core_box_cut_by_the_slice_edge_gives_way_to_the_whole_seam_box():
     seam = BubbleBox(100, 1800, 500, 2200, 0.9, None)
     assert _contained(BubbleBox(110, 1900, 490, 2000, 0.8, None), seam), "the top quarter the core saw"
     assert not _contained(BubbleBox(110, 100, 490, 300, 0.8, None), seam)
+
+
+def test_review_boxes_are_masked_by_letters_not_rectangles():
+    import cv2
+    import numpy as np
+
+    from app.pipeline_editing import _paint_residue, _stroke_box
+
+    image = np.full((400, 600, 3), (60, 90, 40), np.uint8)
+    cv2.putText(image, "LEFT", (200, 220), cv2.FONT_HERSHEY_DUPLEX, 1.5, (250, 250, 250), 3)
+    box = _stroke_box(image, (150, 150, 450, 260))
+    assert box["mask"] is not None and box["manual"]
+    mask = np.zeros((400, 600), np.uint8)
+    _paint_residue(mask, image, (150, 150, 450, 260))
+    assert mask[200, 210] == 255 or mask[205, 205] == 255
+    assert (mask[150:260, 150:450] == 255).mean() < 0.6, "the art round the letters is kept"
+    flat = np.full((400, 600, 3), 200, np.uint8)
+    _paint_residue(mask := np.zeros((400, 600), np.uint8), flat, (10, 10, 60, 60))
+    assert (mask[10:60, 10:60] == 255).all(), "nothing stands out: the rectangle is repainted"
+
+
+def test_both_slices_agree_on_the_owner_even_when_one_sees_the_text_cut():
+    # Slice 0 sees only the top of the bubble (1900-2050, centre in its own core); slice 1 sees it whole.
+    top = _slice(0, 0, 2000, [_obj("a", 1900, 2050, "")])
+    bottom = _slice(1232, 2000, 4000, [_obj("b", 668, 1168, "Chào")])
+    manifest = {"pages": [top, bottom]}
+    assert seam_mirror_ids(manifest, 0) == {"a"} and seam_mirror_ids(manifest, 1) == set()
