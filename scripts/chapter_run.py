@@ -60,7 +60,7 @@ def main() -> int:
         return text_mask(image.shape[:2], kiuyha.text_boxes(image))
 
     blocks = left = 0
-    lefts = []
+    lefts, per_slice = [], []
     for number, page in enumerate(load_manifest_raw(args.chapter_id)["pages"]):
         if not page.get("clean"):
             continue
@@ -70,6 +70,7 @@ def main() -> int:
         before, after = np.ascontiguousarray(original[y0:y1]), np.ascontiguousarray(clean[y0:y1])
         text, rest = found(before), found(after)
         count, labels = cv2.connectedComponents(cv2.dilate(text.astype(np.uint8), np.ones((15, 15), np.uint8)))
+        per_slice.append((count - 1, number, page, y0, y1))
         for i in range(1, count):
             block = (labels == i) & text
             if block.sum() < 150:
@@ -82,6 +83,12 @@ def main() -> int:
                        min(before.shape[1], int(xs.max()) + 40), min(before.shape[0], int(ys.max()) + 40))
                 lefts.append({"slice": number, "box": box, "px": int(block.sum())})
                 pair(before, after, box, args.out / f"left-{len(lefts):02d}.jpg")
+
+    for rank, (_, number, page, y0, y1) in enumerate(sorted(per_slice, key=lambda s: -s[0])[:8], 1):
+        before, after = (read_image(Path(page[key]))[y0:y1] for key in ("original", "clean"))
+        side = np.concatenate([before, np.full((before.shape[0], 12, 3), 255, np.uint8), after], axis=1)
+        side = cv2.resize(side, None, fx=900 / side.shape[1], fy=900 / side.shape[1])
+        cv2.imwrite(str(args.out / f"sample-{rank}-slice{number:03d}.jpg"), side, [cv2.IMWRITE_JPEG_QUALITY, 85])
 
     report = {
         "url": args.url, "slices": len(pages),
