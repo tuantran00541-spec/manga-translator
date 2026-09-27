@@ -93,3 +93,18 @@ def test_a_one_line_shout_filling_its_box_is_measured_at_its_own_height():
     image = np.full((90, 400, 3), 255, np.uint8)
     cv2.putText(image, "WHAT?", (20, 72), cv2.FONT_HERSHEY_SIMPLEX, 2.4, (0, 0, 0), 6)
     assert source_cap_px(image, (0, 0, 400, 90)) >= 45
+
+
+def test_specks_in_the_box_do_not_shrink_the_source_size():
+    import cv2
+    import numpy as np
+
+    from app.render.source_size import source_cap_px
+
+    rng = np.random.default_rng(6)
+    image = np.full((400, 1200, 3), 200, np.uint8)
+    for x, y in rng.integers((20, 20), (1180, 380), (80, 2)):
+        cv2.circle(image, (int(x), int(y)), 4, (40, 40, 40), -1)  # grit in the art
+    cv2.putText(image, "WORTH IT", (60, 260), cv2.FONT_HERSHEY_DUPLEX, 4.0, (20, 20, 20), 14)
+    cap = source_cap_px(image, (0, 0, 1200, 400))
+    assert cap is not None and cap >= 80, cap

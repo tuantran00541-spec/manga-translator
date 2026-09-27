@@ -27,10 +27,14 @@ def source_cap_px(raw: np.ndarray, rect) -> int | None:
     count, _, stats, _ = cv2.connectedComponentsWithStats(ink, connectivity=8)
     height, width = crop.shape[:2]
     # Bubble outlines and art reach the crop edge; letters of a one-line shout can fill most of its height.
-    heights = [int(h) for x, y, w, h, area in stats[1:count]
-               if area >= 12 and 5 <= h <= 0.9 * height and w <= 3 * h
-               and x > 0 and y > 0 and x + w < width and y + h < height]
-    return int(np.median(heights)) if len(heights) >= 3 else None
+    pieces = sorted((int(h), int(area)) for x, y, w, h, area in stats[1:count]
+                    if area >= 12 and 5 <= h <= 0.9 * height and w <= 3 * h
+                    and x > 0 and y > 0 and x + w < width and y + h < height)
+    if len(pieces) < 3:
+        return None
+    # The height holding the middle of the ink: specks of art are many but carry little of it.
+    ink = np.cumsum([area for _h, area in pieces])
+    return pieces[int(np.searchsorted(ink, ink[-1] / 2))][0]
 
 
 def source_ink_hex(raw: np.ndarray, rect) -> str | None:
