@@ -1,10 +1,6 @@
 name: Kiuyha ONNX export
 
 on:
-  push:
-    paths:
-      - "scripts/export_kiuyha_onnx.py"
-      - ".github/workflows/kiuyha-onnx.yml"
   workflow_dispatch:
     inputs:
       chapter_url:
