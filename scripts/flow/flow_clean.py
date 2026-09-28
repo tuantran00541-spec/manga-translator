@@ -8,6 +8,7 @@ import ctd_mask
 from app.detector.kiuyha_detector import _text_box
 
 WIN, OVERLAP, BAND_PAD, CUT_TARGET = 2400, 128, 256, 2400
+LEFT_SHARE = 0.004  # share of a block CTD may still read before it gets a second pass
 
 
 def page_height(shape, width: int) -> int:
@@ -81,18 +82,27 @@ def _erase(band: np.ndarray, boxes, inpainter):
     return inpainter.inpaint(band, masked) if masked else band
 
 
-def clean(strip: np.ndarray, det, inpainter, passes: int = 2):
-    """Clean strip and the blocks that were erased."""
+def _left(band: np.ndarray, box) -> bool:
+    """Letters CTD still sees inside an erased block."""
+    x1, y1, x2, y2, _ = box
+    crop = band[max(0, y1):y2, max(0, x1):x2]
+    if min(crop.shape[:2]) < 8:
+        return False
+    seen = ctd_mask._prob(crop, 1.0) > ctd_mask.THRESHOLD
+    return int(seen.sum()) > max(40, LEFT_SHARE * seen.size)
+
+
+def clean(strip: np.ndarray, det, inpainter, stats: dict | None = None):
+    """Clean strip and the blocks that were erased; a block CTD still reads gets one more pass."""
+    stats = {} if stats is None else stats
     boxes = flow_boxes(strip, det)
     out = strip.copy()
     for y1, y2, group in _bands(boxes, strip.shape[0]):
         local = [(x1, by1 - y1, x2, by2 - y1, s) for x1, by1, x2, by2, s in group]
         band = _erase(np.ascontiguousarray(strip[y1:y2]), local, inpainter)
-        for _ in range(passes - 1):  # text still seen inside an erased block gets one more pass
-            left = [b for b in det.detect_slice(band)
-                    if any(t[0] <= (b[0] + b[2]) / 2 <= t[2] and t[1] <= (b[1] + b[3]) / 2 <= t[3] for t in local)]
-            if not left:
-                break
+        left = [b for b in local if _left(band, b)]
+        if left:
+            stats["second_pass_blocks"] = stats.get("second_pass_blocks", 0) + len(left)
             band = _erase(band, left, inpainter)
         out[y1:y2] = band
     return out, boxes

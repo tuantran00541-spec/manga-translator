@@ -22,7 +22,7 @@ from app.manifest_utils import load_manifest_raw  # noqa: E402
 from app.processing_pipeline_factory import build_processing_pipeline  # noqa: E402
 
 CHAPTER = "f10ec0de"
-LAMA_CAP = 640
+LAMA_CAP = 512
 
 
 def old_pages(width: int) -> tuple[list[np.ndarray], list[np.ndarray]]:
@@ -99,9 +99,17 @@ def main(url: str, out: Path) -> None:
     timed(ctd_mask, "grow", "grow")
     timed(inpainter, "inpaint", "inpaint")
     timed(inpainter, "_run_lama", "lama model")
+    calls = {"lama_calls": 0}
+    run_lama = inpainter._run_lama
+
+    def counted(*a, **k):
+        calls["lama_calls"] += 1
+        return run_lama(*a, **k)
+    inpainter._run_lama = counted
     started = time.perf_counter()
-    new, boxes = flow_clean.clean(strip, det, inpainter)
+    new, boxes = flow_clean.clean(strip, det, inpainter, calls)
     new_s = time.perf_counter() - started
+    stages = {**{k: round(v, 1) for k, v in stages.items()}, **calls}  # frozen before scoring runs Kiuyha again
     print(f"flow strip: {new_s:.1f} s, {len(boxes)} blocks, stages {stages}", flush=True)
 
     text, rest_old, rest_new = text_mask(det, strip), text_mask(det, old), text_mask(det, new)
@@ -146,7 +154,7 @@ def main(url: str, out: Path) -> None:
     summary = {
         "url": url, "pages": len(originals), "strip": [int(strip.shape[0]), width],
         "seconds": {"current": round(old_s, 1), "flow": round(new_s, 1),
-                    "flow_stages": {k: round(v, 1) for k, v in stages.items()}, "lama_cap": LAMA_CAP},
+                    "flow_stages": stages, "lama_cap": LAMA_CAP},
         "blocks": blocks, "left": {"current": left_old, "flow": left_new},
         "on_page_seams": {"blocks": sum(r["on_page_seam"] for r in rows),
                           "left_current": sum(r["on_page_seam"] and r["left_current"] for r in rows),
