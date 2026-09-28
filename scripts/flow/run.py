@@ -22,6 +22,7 @@ from app.manifest_utils import load_manifest_raw  # noqa: E402
 from app.processing_pipeline_factory import build_processing_pipeline  # noqa: E402
 
 CHAPTER = "f10ec0de"
+LAMA_CAP = 640
 
 
 def old_pages(width: int) -> tuple[list[np.ndarray], list[np.ndarray]]:
@@ -74,12 +75,34 @@ def main(url: str, out: Path) -> None:
     strip = flow_clean.build_strip(originals, width)
     old = flow_clean.build_strip(cleans_old, width)
 
+    import app.inpaint.lama_inpainter as li
+    import ctd_mask
+    li.DYNAMIC_LAMA_MAX_SINGLE_CROP_DIM = LAMA_CAP  # the fill is as good at a 640 px long side and ~4x cheaper
+    li.INPAINT_NATIVE_TILE_ENABLED = False
+    li.FIXED_LAMA_TILE_ASPECT = 1e9
     det = KiuyhaTextDetector(KIUYHA_TEXT_MODEL)
     inpainter = Inpainter()
+    stages: dict[str, float] = {}
+
+    def timed(obj, name, label):
+        f = getattr(obj, name)
+
+        def g(*a, **k):
+            t = time.perf_counter()
+            r = f(*a, **k)
+            stages[label] = stages.get(label, 0.0) + time.perf_counter() - t
+            return r
+        setattr(obj, name, g)
+
+    timed(det, "detect_slice", "kiuyha")
+    timed(ctd_mask, "_prob", "ctd")
+    timed(ctd_mask, "grow", "grow")
+    timed(inpainter, "inpaint", "inpaint")
+    timed(inpainter, "_run_lama", "lama model")
     started = time.perf_counter()
     new, boxes = flow_clean.clean(strip, det, inpainter)
     new_s = time.perf_counter() - started
-    print(f"flow strip: {new_s:.1f} s, {len(boxes)} blocks", flush=True)
+    print(f"flow strip: {new_s:.1f} s, {len(boxes)} blocks, stages {stages}", flush=True)
 
     text, rest_old, rest_new = text_mask(det, strip), text_mask(det, old), text_mask(det, new)
     count, labels, stats, _ = cv2.connectedComponentsWithStats(cv2.dilate(text.astype(np.uint8), np.ones((15, 15), np.uint8)))
@@ -122,7 +145,8 @@ def main(url: str, out: Path) -> None:
 
     summary = {
         "url": url, "pages": len(originals), "strip": [int(strip.shape[0]), width],
-        "seconds": {"current": round(old_s, 1), "flow": round(new_s, 1)},
+        "seconds": {"current": round(old_s, 1), "flow": round(new_s, 1),
+                    "flow_stages": {k: round(v, 1) for k, v in stages.items()}, "lama_cap": LAMA_CAP},
         "blocks": blocks, "left": {"current": left_old, "flow": left_new},
         "on_page_seams": {"blocks": sum(r["on_page_seam"] for r in rows),
                           "left_current": sum(r["on_page_seam"] and r["left_current"] for r in rows),
