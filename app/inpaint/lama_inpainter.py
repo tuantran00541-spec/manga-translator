@@ -645,7 +645,8 @@ class Inpainter:
         min_dim = max(1, min(crop_h, crop_w))
         aspect = max_dim / min_dim
         long_crop = (
-            max_dim > INPAINT_SIZE
+            not self.dynamic_lama  # the dynamic model takes any shape in one downscaled pass
+            and max_dim > INPAINT_SIZE
             and aspect >= FIXED_LAMA_TILE_ASPECT
         )
         texture_tiling = False

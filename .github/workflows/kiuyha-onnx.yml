@@ -60,6 +60,9 @@ jobs:
             models/.e2e-provenance.json
           key: processing-profile-models-b224548-v1
 
+      - name: Build the CTD mask model
+        uses: ./.github/actions/build-ctd
+
       - name: Check the models are there
         run: |
           ls -la models

@@ -1,0 +1,13 @@
+name: Build the CTD mask model
+description: Download the released comic-text-detector, check it, and export models/ctd_seg.onnx.
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: |
+        python -m venv /tmp/ctd
+        /tmp/ctd/bin/pip install -q torch==2.5.1 --index-url https://download.pytorch.org/whl/cpu
+        /tmp/ctd/bin/pip install -q numpy==1.26.4 onnx==1.17.0 onnx2torch==1.5.15 onnxruntime==1.20.1
+        curl -sSL -o /tmp/ctd.onnx https://github.com/zyddnys/manga-image-translator/releases/download/beta-0.3/comictextdetector.pt.onnx
+        echo "1a86ace74961413cbd650002e7bb4dcec4980ffa21b2f19b86933372071d718f  /tmp/ctd.onnx" | sha256sum -c
+        /tmp/ctd/bin/python scripts/export_ctd_onnx.py /tmp/ctd.onnx models/ctd_seg.onnx
