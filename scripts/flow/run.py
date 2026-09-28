@@ -5,12 +5,14 @@ Usage: run.py <chapter-url> <out-dir>
 from __future__ import annotations
 
 import json
+import re
 import sys
 import time
 from pathlib import Path
 
 import cv2
 import numpy as np
+import requests
 
 sys.path.insert(0, str(Path(__file__).parent))
 import flow_clean  # noqa: E402
@@ -22,6 +24,24 @@ from app.manifest_utils import load_manifest_raw  # noqa: E402
 from app.processing_pipeline_factory import build_processing_pipeline  # noqa: E402
 
 CHAPTER = "f10ec0de"
+MANGADEX = re.compile(r"mangadex\.org/chapter/([0-9a-f-]{36})")
+
+
+def fetch_mangadex(url: str, dest: Path) -> list[Path]:
+    """Every page of a MangaDex chapter through its public at-home API."""
+    cid = MANGADEX.search(url).group(1)
+    headers = {"User-Agent": "manga-translator-bench"}
+    info = requests.get(f"https://api.mangadex.org/at-home/server/{cid}", headers=headers, timeout=30).json()
+    base, chapter = info["baseUrl"], info["chapter"]
+    dest.mkdir(parents=True, exist_ok=True)
+    paths = []
+    for i, name in enumerate(chapter["data"]):
+        r = requests.get(f"{base}/data/{chapter['hash']}/{name}", headers=headers, timeout=60)
+        r.raise_for_status()
+        path = dest / f"{i:03d}{Path(name).suffix}"
+        path.write_bytes(r.content)
+        paths.append(path)
+    return paths
 LAMA_CAP = 512
 
 
@@ -62,7 +82,11 @@ def main(url: str, out: Path) -> None:
     out.mkdir(parents=True, exist_ok=True)
     pipeline = build_processing_pipeline()
     started = time.perf_counter()
-    pages = pipeline.download_chapter(url, CHAPTER, workers=2)["pages"]
+    if MANGADEX.search(url):
+        raw = fetch_mangadex(url, RAW_DIR / CHAPTER / "pages")
+        pages = pipeline._build_chapter_from_raw_paths(CHAPTER, raw, source_url=url, workers=2)["pages"]
+    else:
+        pages = pipeline.download_chapter(url, CHAPTER, workers=2)["pages"]
     print(f"downloaded {len(pages)} slices in {time.perf_counter() - started:.0f} s", flush=True)
 
     started = time.perf_counter()
