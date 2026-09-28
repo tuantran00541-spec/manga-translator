@@ -260,7 +260,7 @@ def render_text_objects(
         box_color = _resolve_ocr_style(
             style_get(colors_dict, oid),
             obj_style.get("color", "auto"),
-            obj.get("ocr_text_color"),
+            obj.get("ocr_text_color") or obj.get("lettering_color"),
             "auto",
         )
         box_font = style_get(fonts_dict, oid)
@@ -320,6 +320,8 @@ def render_text_objects(
                 shape=obj_shape,
                 horizontal_align=h_align,
                 vertical_align=v_align,
+                source_cap_px=obj.get("source_cap_px"),
+                enlarge=bool(obj.get("enlarge")),
             )
             rendered_count += 1
         except Exception as e:

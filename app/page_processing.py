@@ -8,7 +8,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from app.detector.boxes import BubbleBox, apply_final_nms
+from app.detector.boxes import BubbleBox, _merge_mask_evidence, apply_final_nms
 from app.image_io import encode_mask, read_image, write_image
 from app.manifest_utils import assign_stable_detector_box_ids
 from app.region_policy import geometry_center_in_regions, subtract_regions_from_mask
@@ -33,6 +33,29 @@ def _fold_leftover(records: list[dict], box: BubbleBox) -> None:
         grown[box.y1 - uy1:box.y2 - uy1, box.x1 - ux1:box.x2 - ux1] |= box.mask
         record.update(x1=ux1, y1=uy1, x2=ux2, y2=uy2, _mask_array=grown)
         return
+
+
+LEFTOVER_PASSES = 3  # erase what the detector still sees after inpainting, up to this many times
+SEAM_CONTAINED = 0.5  # share of a core box inside a seam box for the two to be one text
+
+
+def _contained(box: BubbleBox, seam: BubbleBox) -> bool:
+    """True when at least SEAM_CONTAINED of ``box`` lies inside ``seam``."""
+    ix = max(0, min(box.x2, seam.x2) - max(box.x1, seam.x1))
+    iy = max(0, min(box.y2, seam.y2) - max(box.y1, seam.y1))
+    return ix * iy >= SEAM_CONTAINED * max(1, (box.x2 - box.x1) * (box.y2 - box.y1))
+
+
+def _fold_nested(boxes: list[BubbleBox]) -> list[BubbleBox]:
+    """A box mostly inside a larger one is the same text, so its mask joins the larger box."""
+    groups: list[list[BubbleBox]] = []
+    for box in sorted(boxes, key=lambda b: (b.x2 - b.x1) * (b.y2 - b.y1), reverse=True):
+        home = next((group for group in groups if _contained(box, group[0])), None)
+        if home is None:
+            groups.append([box])
+        else:
+            home.append(box)
+    return [group[0] if len(group) == 1 else _merge_mask_evidence(group) for group in groups]
 
 
 class PageProcessingMixin:
@@ -81,10 +104,11 @@ class PageProcessingMixin:
         detector_metrics = self.detector.last_metrics()
 
         if supplemental_detections:
-            detected = apply_final_nms(
+            # A core box inside a seam box is the same text; their masks join, as each can miss letters.
+            detected = _fold_nested(apply_final_nms(
                 detected + list(supplemental_detections),
                 iou_threshold=DETECTOR_FINAL_NMS_IOU,
-            )
+            ))
         detect_ms = (time.perf_counter() - detect_started_at) * 1000.0
 
         existing_boxes = copy.deepcopy(existing_boxes or [])
@@ -185,8 +209,18 @@ class PageProcessingMixin:
             protected_regions=preserve_regions,
         )
         auto_inpaint_metrics = self.inpainter.last_metrics()
-        leftovers = self.detector.leftover_boxes(clean_image, effective_boxes) if effective_boxes else []
-        if leftovers:
+        second_pass_boxes = 0
+        seen: set[tuple[int, int, int, int]] = set()
+        for _ in range(LEFTOVER_PASSES if effective_boxes else 0):
+            # Text kept as art is never erased, and text that survived a pass unchanged will survive another.
+            leftovers = [box for box in self.detector.leftover_boxes(clean_image, effective_boxes)
+                         if not geometry_center_in_regions(
+                             {"x1": box.x1, "y1": box.y1, "x2": box.x2, "y2": box.y2}, preserve_regions)
+                         and (box.x1, box.y1, box.x2, box.y2) not in seen]
+            if not leftovers:
+                break
+            seen.update((box.x1, box.y1, box.x2, box.y2) for box in leftovers)
+            second_pass_boxes += len(leftovers)
             clean_image = self.inpainter.inpaint(clean_image, leftovers, protected_regions=preserve_regions)
             for box in leftovers:
                 _fold_leftover(inpainted_records, box)
@@ -294,7 +328,7 @@ class PageProcessingMixin:
                 "authorized": len(effective_boxes),
                 "review_only": len(unverified_regions),
                 "deferred": len(deferred_regions),
-                "second_pass_boxes": len(leftovers),
+                "second_pass_boxes": second_pass_boxes,
             },
             "auto_inpaint": auto_inpaint_metrics,
             "manual_inpaint": manual_inpaint_metrics,

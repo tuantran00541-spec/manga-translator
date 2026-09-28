@@ -1,3 +1,7 @@
+// The open chapter; every screen reads these, so they exist before any chapter is loaded.
+var currentChapterId = null;
+var currentManifest = null;
+
 async function parseApiResponse(resp) {
   let data = null;
   try {
@@ -251,30 +255,19 @@ async function resumeChapter(chapterId) {
     const pages = currentManifest.pages || [];
     let workflow = currentManifest.workflow;
     if (!workflow || !workflow.stage) {
-      if (pages.some((p) => p.rendered)) {
-        workflow = { stage: "editor", page_index: 0 };
-      } else if (pages.some((p) => p.clean)) {
-        workflow = { stage: "review", page_index: 0 };
-      } else {
-        workflow = { stage: "preview", page_index: 0 };
-      }
+      workflow = { stage: pages.some((p) => p.clean || p.rendered) ? "review" : "preview", page_index: 0 };
     }
 
-    const stage = workflow.stage;
     const rawIndex = parseInt(workflow.page_index, 10) || 0;
     const pageIndex = Math.max(0, Math.min(rawIndex, Math.max(0, pages.length - 1)));
 
-    if (stage === "preview") {
+    // Chapters saved at the old separate editor step open in review, where editing now lives.
+    if (workflow.stage === "preview") {
       window.initialPreviewCanonicalPageIndex = pageIndex;
       renderPreview();
-    } else if (stage === "review") {
+    } else {
       window.initialReviewCanonicalPageIndex = pageIndex;
       renderReview();
-    } else {
-      if (window.editorState) {
-        window.editorState.activePageIndex = pageIndex;
-      }
-      renderEditor();
     }
   } catch (err) {
     if (navigationSeq === _chapterNavigationSeq) {
@@ -359,12 +352,12 @@ async function toggleSkip(pageIndex, card, btn) {
   }
 }
 
+// Half the CPU cores, 1 to 4: enough to keep the machine busy without starving the browser.
 function getWorkersSetting() {
-  const el = document.getElementById("workers-select");
-  const n = el ? parseInt(el.value, 10) : 2;
-  if (!Number.isFinite(n) || n < 1) return 2;
-  return Math.min(8, n);
+  const cores = Number(navigator.hardwareConcurrency) || 4;
+  return Math.max(1, Math.min(4, Math.floor(cores / 2)));
 }
+window.getWorkersSetting = getWorkersSetting;
 
 const PROCESS_BATCH_SIZE = 16;
 let _activePageProcessing = null;

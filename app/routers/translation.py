@@ -367,16 +367,35 @@ def _vision_candidates(page: dict, *, force: bool) -> list[dict]:
     return candidates
 
 
+def _add_fit_budgets(original_path, candidates: list[dict]) -> None:
+    """Measure each region's source letter size and the characters that fit it at that size."""
+    from app.render.font_catalog import resolve_font_id
+    from app.render.font_guide import DEFAULT_LETTERING_FONT
+    from app.render.source_size import char_budget, source_cap_px, source_ink_hex
+
+    from app.image_io import read_image
+
+    raw = read_image(original_path)
+    font_path = resolve_font_id(DEFAULT_LETTERING_FONT)
+    for candidate in candidates:
+        ink = source_ink_hex(raw, candidate["region"])
+        if ink:
+            candidate["source_ink"] = ink
+        cap = source_cap_px(raw, candidate["region"])
+        if cap:
+            candidate["source_cap_px"] = cap
+            candidate["max_chars"] = char_budget(font_path, candidate["region"], cap)
+
+
 @router.post("/page/vision")
 async def translate_page_with_images(req: TranslateVisionPageRequest) -> dict:
-    return await translate_page_in_context(req, repair=False)
+    return await translate_page_in_context(req)
 
 
 async def translate_page_in_context(
     req: TranslateVisionPageRequest, memory: ChapterMemory | None = None, slice_total: int | None = None,
-    repair: bool = True,
+    skip_seam_mirrors: bool = False,
 ) -> dict:
-    """Translate one slice; ``repair`` lets the model keep art text and report missed text (A.I mode only)."""
     validate_chapter_id(req.chapter_id)
     try:
         provider = _resolve_vision_provider(req.provider)
@@ -407,6 +426,12 @@ async def translate_page_in_context(
             candidates = _vision_candidates(page, force=req.force)
         except ValueError as exc:
             raise HTTPException(409, str(exc)) from exc
+        if skip_seam_mirrors:
+            from app.ai_mode.seams import seam_mirror_ids
+
+            # The slice that owns a text crossing the cut translates it; this one gets a copy.
+            mirrors = seam_mirror_ids(manifest, req.page_index)
+            candidates = [candidate for candidate in candidates if candidate["id"] not in mirrors]
         if len(candidates) > 100:
             raise HTTPException(400, "Too many text objects on one slice (maximum 100)")
         if req.object_ids is not None:
@@ -436,12 +461,13 @@ async def translate_page_in_context(
 
     if provider.tracks_cost and _preflight_cost_usd(candidates) > req.budget_usd:
         raise HTTPException(409, "Text-only lower-bound estimate exceeds remaining budget")
+    await run_in_threadpool(_add_fit_budgets, original_path, candidates)
     translator = VisionPageTranslator(provider, model)
     try:
         translated = await run_in_threadpool(
             translator.translate_page, original_path, clean_path, candidates,
             api_key=api_key, source_lang=req.source_lang, target_lang=req.target_lang,
-            memory=memory, slice_number=req.page_index + 1, slice_total=slice_total, repair=repair,
+            memory=memory, slice_number=req.page_index + 1, slice_total=slice_total,
         )
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
@@ -449,8 +475,8 @@ async def translate_page_in_context(
         raise HTTPException(502, str(exc)) from exc
 
     committed = stale = unreadable = review = 0
-    keep_regions: list[list[int]] = []
     blank_ids: list[str] = []
+    art_regions: list[dict] = []  # sound effects left as art get their original pixels back
     with get_manifest_lock(req.chapter_id):
         latest = load_manifest_raw(req.chapter_id)
         pages = latest.get("pages", [])
@@ -473,17 +499,22 @@ async def translate_page_in_context(
             ):
                 stale += 1
                 continue
-            if candidate["id"] in getattr(translated, "keep_ids", ()):
-                keep_regions.append(list(candidate["region"]))
-                continue
             value = translated.translations[candidate["id"]]
             if not value:
                 unreadable += 1
                 if candidate["id"] not in getattr(translated, "missing_ids", ()):
                     blank_ids.append(candidate["id"])
+                    # Only a detected sound effect is art; a review box around missed text stays erased.
+                    manual = {str(box.get("id")) for box in page.get("boxes") or []
+                              if isinstance(box, dict) and box.get("manual")}
+                    if (getattr(translated, "roles", {}).get(candidate["id"]) == "sfx"
+                            and not set(map(str, obj.get("source_boxes") or [])) & manual):
+                        art_regions.append(dict(obj["region"]))
                 continue
             obj["translation"] = value
             obj["translation_source"] = provider.id
+            if candidate.get("source_cap_px"):
+                obj["source_cap_px"] = candidate["source_cap_px"]
             obj["translation_model"] = translated.model
             obj["translation_input_text"] = candidate["text"]
             obj["auto_translation"] = value
@@ -494,6 +525,13 @@ async def translate_page_in_context(
             if candidate["id"] in getattr(translated, "review_ids", ()):
                 obj["needs_review"] = True
                 review += 1
+            color = getattr(translated, "colors", {}).get(candidate["id"]) or candidate.get("source_ink")
+            if color:
+                obj["lettering_color"] = color
+            if candidate["id"] in getattr(translated, "enlarge_ids", ()):
+                obj["enlarge"] = True
+            else:
+                obj.pop("enlarge", None)
             committed += 1
             changed = True
         if changed:
@@ -530,10 +568,9 @@ async def translate_page_in_context(
             and translated.estimated_cost_usd >= req.budget_usd
         ),
         "rendered_pages": rendered_pages, "render_error": render_error,
-        "keep_regions": keep_regions,
         "missing_ids": sorted(getattr(translated, "missing_ids", ())),
         "blank_ids": blank_ids,
-        "missed_boxes": [list(box) for box in getattr(translated, "missed_boxes", ())],
+        "art_regions": art_regions,
         "remaining": max(0, total_candidates - len(candidates)),
     }
     return result

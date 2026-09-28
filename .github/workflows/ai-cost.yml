@@ -97,7 +97,8 @@ jobs:
           esac
           model="$(conf model)"; model="${model:-$( [ "$provider" = minirouter ] || echo qwen3.8-27b )}"
           price="$(conf price)"
-          if [ -n "$price" ]; then read -r price_in price_out <<< "$price"; fi
+          price_cached=
+          if [ -n "$price" ]; then read -r price_in price_out price_cached <<< "$price"; fi
           {
             echo "PROVIDER=${provider:-sovinfra}"
             echo "PROVIDER_SECRET=$secret"
@@ -106,6 +107,8 @@ jobs:
             echo "GATEWAY_PRICE_INPUT_PER_M=$price_in"
             echo "GATEWAY_PRICE_OUTPUT_PER_M=${price_out:-$price_in}"
             echo "GATEWAY_UPSTREAM_REASONING_TOKENS=$(conf reasoning)"
+            echo "GATEWAY_UPSTREAM_REASONING_EFFORT=$(conf effort)"
+            echo "GATEWAY_PRICE_CACHED_PER_M=$price_cached"
           } >> "$GITHUB_ENV"
 
       - name: Check the provider secret
@@ -141,17 +144,20 @@ jobs:
           image = np.full((96, 160, 3), 255, np.uint8)
           cv2.putText(image, "HELLO", (12, 62), cv2.FONT_HERSHEY_SIMPLEX, 1.3, (0, 0, 0), 3)
           data = base64.b64encode(cv2.imencode(".jpg", image)[1].tobytes()).decode()
+          body = {"model": os.environ["GATEWAY_UPSTREAM_MODEL"], "max_tokens": 2000, "messages": [{"role": "user", "content": [
+              {"type": "text", "text": "What word is written in this image? Answer with the word only."},
+              {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + data}}]}]}
+          if os.environ.get("GATEWAY_UPSTREAM_REASONING_EFFORT"):
+              body["reasoning_effort"] = os.environ["GATEWAY_UPSTREAM_REASONING_EFFORT"]
           response = requests.post(
               os.environ["GATEWAY_UPSTREAM_BASE"].rstrip("/") + "/chat/completions",
-              headers={"Authorization": "Bearer " + os.environ["KEY"]},
-              json={"model": os.environ["GATEWAY_UPSTREAM_MODEL"], "max_tokens": 2000, "messages": [{"role": "user", "content": [
-                  {"type": "text", "text": "What word is written in this image? Answer with the word only."},
-                  {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + data}}]}]},
-              timeout=(10, 120))
-          reply = ""
+              headers={"Authorization": "Bearer " + os.environ["KEY"]}, json=body, timeout=(10, 120))
+          reply, usage = "", {}
           if response.ok:
               reply = ((response.json().get("choices") or [{}])[0].get("message") or {}).get("content") or ""
-          print(f"HTTP {response.status_code}: {reply[:80]!r}")
+              usage = response.json().get("usage") or {}
+          reasoning = (usage.get("completion_tokens_details") or {}).get("reasoning_tokens")
+          print(f"HTTP {response.status_code}: {reply[:80]!r}, reasoning tokens {reasoning}")
           if not response.ok or "HELLO" not in reply.upper():
               print(f"::error::{os.environ['GATEWAY_UPSTREAM_MODEL']} did not read a test image: HTTP {response.status_code} {response.text[:300]}")
               sys.exit(1)

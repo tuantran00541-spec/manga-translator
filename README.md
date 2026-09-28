@@ -51,8 +51,8 @@ The application is local-first and CPU-oriented. Local ONNX models provide the c
 | --- | --- |
 | **1. Import** | Images, ZIP/CBZ archives, or chapter URLs |
 | **2. Slice** | Long webtoon pages become processing-friendly slices |
-| **3. Detect** | Speech bubbles, free text, OCR regions, outlined/SFX text |
-| **4. Clean** | Verified-mask LaMa inpainting and manual repair |
+| **3. Detect** | Text blocks and a letter mask for each (letters, outlines, glow) |
+| **4. Clean** | LaMa inpainting on letter masks, leftover passes, manual repair |
 | **5. Review** | Unified canvas workspace and editorial corrections |
 | **6. OCR** | MangaOCR + PP-OCRv6 hybrid recognition |
 | **7. Translate** | Batch text translation or two-image vision translation |
@@ -79,14 +79,14 @@ The slicer prefers low-content and safe bands, preserves source-page and slice i
 
 ### 🔎 Detection
 
-Local ONNX inference detects:
+The Kiuyha ONNX text detector (`models/kiuyha_text_1280.onnx`) finds text blocks on each slice in one coarse pass plus near-native bands. Each block then gets a letter mask:
 
-- speech bubbles
-- free text
-- OCR-ready regions
-- outlined/SFX-like text recovered by secondary CV logic
+- letters split from the background by colour, or by lightness over mixed backgrounds
+- outlines and glow round the letters
+- letters the box cuts, and the rest of a line that runs past it
+- text across a slice seam is detected once on a strip over the cut and joins the block it belongs to
 
-Detection records retain source/model/class provenance and review state.
+Detection records retain source/model provenance and review state.
 
 ### 🧹 Artwork-safe cleanup
 
@@ -94,7 +94,8 @@ Cleanup is driven by **verified pixel masks**, not detector rectangles.
 
 The pipeline supports:
 
-- LaMa inpainting
+- LaMa inpainting with a zeroed hole, and nearby text not erased yet hidden from its context
+- up to three leftover passes that erase what the detector still sees after inpainting
 - dynamic and fixed LaMa backends
 - tiled inference for long/narrow regions
 - safe flat-fill shortcuts
@@ -279,7 +280,15 @@ Custom provider endpoints must use public HTTPS URLs. Credentials are never acce
 
 ### Plans (experimental, off by default)
 
-With `MANGA_TIERS=1` the app reads its plan from a Manga Cloud gateway at `MANGA_CLOUD_URL`. Users sign in from the A.I mode panel with their email and a 6-digit code. A.I mode then runs through the gateway's own provider key and spends one chapter of the monthly quota. Free has 3 chapters, Plus has 30 plus Visual QC, and Pro has 100 plus the user's own keys and custom providers. The gateway enforces the quota and a per-chapter cost cap. The app hides locked features and falls back to Free when the gateway is unreachable.
+With `MANGA_TIERS=1` the app reads its plan from a Manga Cloud gateway at `MANGA_CLOUD_URL`. Users sign in from the A.I mode panel with their email and a 6-digit code. A.I mode then runs through the gateway's own provider key and spends one chapter of the monthly quota. Free has 3 chapters, Plus has 30 plus Visual QC, and Pro has 100 plus the user's own keys and custom providers. Plans count chapters, not money; the gateway enforces the quota and stops only a job that spends far more than a chapter ($2). The app hides locked features and falls back to Free when the gateway is unreachable.
+
+A.I mode runs a chapter through five checkpoints, each with its own prompt:
+
+1. Scan the raw slices: skip credit and textless slices, keep series logos untouched.
+2. Clean the text (Kiuyha + LaMa).
+3. Compare each raw and clean slice: erase missed text, repaint leftovers, restore art erased by mistake.
+4. Translate each slice from its raw and clean image and pick fonts; the app letters the text.
+5. Check each lettered slice: repaint, retranslate or restore what is wrong, at most two rounds, then open the lettered chapter in the editor, where it can be fixed by hand and exported.
 
 The gateway lives in `gateway/` and runs with `python -m gateway`:
 
@@ -302,6 +311,7 @@ Detection, inpainting, OCR and rendering thresholds are fixed constants in `app/
 | Processing | `MANGA_PIPELINE_DEFAULT_WORKERS`, `MANGA_PIPELINE_SLICE_WORKER_LIMIT`, `MANGA_USE_DYNAMIC_LAMA`, `MANGA_INPAINT_PRELOAD`, `MANGA_FIXED_LAMA_*` |
 | ONNX Runtime | `MANGA_ORT_PROVIDER`, `MANGA_ORT_REQUIRE_PROVIDER`, `MANGA_ORT_INTRA_OP_THREADS`, `MANGA_ORT_OPENVINO_*`, `MANGA_ORT_CPU_MEM_ARENA`, `MANGA_ORT_MEM_PATTERN`, `MANGA_ORT_SERIALIZE_INFERENCE` |
 | OCR | `MANGA_PPOCRV6_TIER`, `MANGA_PPOCRV6_TEXTLINE_ORIENTATION`, `MANGA_OCR_TARGET_SELECTION`, `MANGA_OCR_IMAGE_CACHE_MB`, `MANGA_OCR_JOB_CONCURRENCY_LIMIT`, `MANGA_OCR_JOB_ACTIVE_LIMIT` |
+| Access | `MANGA_ALLOWED_HOSTS`: extra host names the app answers to, comma separated (loopback always works; add the machine's LAN name or IP to open it from another device) |
 | Network and AI | `MANGA_DOWNLOAD_WORKERS`, `MANGA_DOWNLOAD_JS_NAVIGATION_TIMEOUT_MS`, `MANGA_REMOTE_CONNECT_TIMEOUT_SECONDS`, `MANGA_TRANSLATION_CONNECT_TIMEOUT_SECONDS`, `MANGA_TRANSLATION_READ_TIMEOUT_SECONDS`, `MANGA_VISUAL_QC_*` |
 
 ## CPU-first design

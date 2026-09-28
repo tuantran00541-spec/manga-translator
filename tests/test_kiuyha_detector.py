@@ -1,5 +1,6 @@
 from types import SimpleNamespace
 
+import cv2
 import numpy as np
 
 from app.detector.kiuyha_detector import KiuyhaTextDetector
@@ -75,13 +76,13 @@ def _text_slice():
     return image
 
 
-def test_tall_slice_runs_as_two_halves_in_one_pass_and_masks_letters_with_outline():
+def test_tall_slice_runs_a_coarse_pass_and_near_native_bands_and_masks_letters_with_outline():
     image = _text_slice()
     session = _BlobSession()
     detector = KiuyhaTextDetector("unused", session=session)
     boxes = detector.text_boxes(image)
-    assert len(session.blobs) == 1, "one forward pass"
-    assert len(boxes) == 3, "the line in the overlap is merged, not doubled"
+    assert len(session.blobs) == 1 + 3, "the whole slice once, then three overlapping bands"
+    assert len(boxes) == 3, "a line seen by several passes is one box"
     for baseline in (300, 1250, 2150):
         assert any(b.y1 < baseline - 20 and b.y2 > baseline for b in boxes), baseline
     paper = np.array((250, 235, 220))
@@ -138,16 +139,22 @@ def test_leftover_mask_is_folded_into_the_saved_first_pass_box():
 
 
 def test_letters_cut_by_the_slice_edge_are_masked_and_leftovers_take_the_whole_box():
-    from app.detector.kiuyha_detector import stroke_mask
+    from app.detector.kiuyha_detector import letter_mask
 
-    crop = np.full((60, 200, 3), 230, np.uint8)
-    crop[0:20, 40:160] = 30  # the bottom of a line cut by the slice's top edge
-    assert not stroke_mask(crop).any(), "inside the image, border-touching blobs are art"
-    assert stroke_mask(crop, (True, False, False, False))[10, 100]
+    page = np.full((300, 400, 3), 230, np.uint8)
+    page[0:20, 140:260] = 30  # the bottom of a line cut by the slice's top edge
+    page[150:170, 20:380] = 30  # a bar of art running out of any crop around the box
+    box, mask = letter_mask(page, (130, 0, 270, 60))
+    assert box[1] == 0 and mask[10, 200 - box[0]], "letters cut by the slice edge are masked"
+    box, mask = letter_mask(page, (100, 140, 300, 180))
+    assert not mask.any(), "inside the image, art running past the box is kept"
     detector = KiuyhaTextDetector("unused", session=_BlobSession())
     image = _text_slice()
     (left,) = detector.leftover_boxes(image, [b for b in detector.text_boxes(image) if b.y1 > 2000])
-    assert (left.mask == 255).all()
+    ink = np.abs(image.astype(int) - (250, 235, 220)).sum(axis=2) > 30
+    region = ink[left.y1:left.y2, left.x1:left.x2]
+    assert (left.mask[region] == 255).all(), "every stroke left is taken"
+    assert (left.mask == 255).mean() < 0.9, "the art round it is not painted over as a rectangle"
 
 
 def test_pipeline_detect_names_the_model_and_reports_timing():
@@ -155,3 +162,147 @@ def test_pipeline_detect_names_the_model_and_reports_timing():
     boxes = detector.detect(_text_slice())
     assert boxes and all(b.source_model == "kiuyha_text_1280.onnx" for b in boxes)
     assert detector.last_metrics()["result_boxes"] == len(boxes)
+
+
+def _letters(image, xs, top=100, size=40):
+    for x in xs:
+        image[top:top + size, x:x + 24] = 20  # a solid letter
+    return image
+
+
+def test_first_and_last_letters_cut_by_the_box_edge_are_erased():
+    from app.detector.kiuyha_detector import letter_mask
+
+    image = _letters(np.full((260, 600, 3), 245, np.uint8), range(100, 461, 40))
+    box, mask = letter_mask(image, (112, 90, 470, 150))  # the box stops inside the first and last letters
+    assert box[0] <= 100 and box[2] >= 484
+    assert mask[120 - box[1], 105 - box[0]] and mask[120 - box[1], 480 - box[0]]
+
+
+def test_a_bubble_outline_past_the_box_is_not_erased():
+    from app.detector.kiuyha_detector import letter_mask
+
+    image = np.full((300, 600, 3), 245, np.uint8)
+    cv2.ellipse(image, (300, 150), (230, 110), 0, 0, 360, (20, 20, 20), 3)
+    _letters(image, range(180, 420, 40), top=130)
+    box, mask = letter_mask(image, (160, 110, 440, 190))
+    grown = np.zeros(image.shape[:2], bool)
+    grown[box[1]:box[3], box[0]:box[2]] = mask
+    outline = np.zeros(image.shape[:2], np.uint8)
+    cv2.ellipse(outline, (300, 150), (230, 110), 0, 0, 360, 255, 3)
+    assert not (grown & (outline > 0)).any()
+    assert grown[150, 190]
+
+
+def test_pieces_of_one_text_from_different_passes_become_one_box():
+    from app.detector.kiuyha_detector import _union_overlapping
+
+    pieces = [(100, 100, 400, 160, 0.9), (350, 100, 700, 160, 0.8), (100, 400, 300, 450, 0.7)]
+    assert _union_overlapping(pieces) == [(100, 100, 700, 160, 0.9), (100, 400, 300, 450, 0.7)]
+    assert len(_union_overlapping([(0, 0, 100, 100, 0.9), (95, 95, 200, 200, 0.9)])) == 2, "a touching corner is two texts"
+
+
+class _NestedSession(_Session):
+    """A block box with a line box inside it, as the model returns for one bubble."""
+
+    def __init__(self):
+        super().__init__([1, 3, 1280, 1280])
+
+    def run(self, _names, feeds):
+        self.blobs.append(feeds["images"])
+        rows = np.zeros((1, 300, 6), np.float32)
+        rows[0, 0] = [300, 300, 700, 500, 0.9, 0]
+        rows[0, 1] = [320, 320, 560, 360, 0.6, 0]
+        return [rows]
+
+
+def test_a_line_box_inside_a_block_box_is_not_a_second_text():
+    image = np.full((1280, 1280, 3), 255, np.uint8)
+    cv2.putText(image, "HELLO", (330, 355), cv2.FONT_HERSHEY_DUPLEX, 1.2, (0, 0, 0), 3)
+    cv2.putText(image, "THERE", (330, 455), cv2.FONT_HERSHEY_DUPLEX, 1.2, (0, 0, 0), 3)
+    boxes = KiuyhaTextDetector("unused", session=_NestedSession()).text_boxes(image)
+    assert len(boxes) == 1 and boxes[0].x1 <= 300 and boxes[0].y2 >= 500
+
+
+def test_a_line_running_far_past_its_box_is_erased_to_its_last_letter():
+    from app.detector.kiuyha_detector import letter_mask
+
+    image = _letters(np.full((260, 900, 3), 245, np.uint8), range(100, 701, 40))  # letters up to x=724
+    box, mask = letter_mask(image, (90, 90, 560, 150))  # the box stops four letters short
+    assert box[2] >= 724
+    assert mask[120 - box[1], 710 - box[0]], "the last letter of the line is erased"
+
+
+def test_a_line_longer_than_the_side_reach_is_followed_to_its_end():
+    from app.detector.kiuyha_detector import letter_mask
+
+    image = _letters(np.full((260, 1500, 3), 245, np.uint8), range(100, 1301, 40))  # letters up to x=1324
+    box, mask = letter_mask(image, (90, 90, 300, 150))  # the side reach alone stops near x=480
+    assert box[2] >= 1324 and mask[120 - box[1], 1310 - box[0]]
+
+
+def test_big_lettering_takes_its_outline_with_it():
+    from app.detector.kiuyha_detector import letter_mask
+
+    image = np.full((400, 900, 3), (120, 140, 150), np.uint8)
+    cv2.putText(image, "WORTH", (120, 260), cv2.FONT_HERSHEY_DUPLEX, 4.0, (255, 255, 255), 40)  # thick white outline
+    cv2.putText(image, "WORTH", (120, 260), cv2.FONT_HERSHEY_DUPLEX, 4.0, (20, 20, 20), 12)
+    box, mask = letter_mask(image, (100, 120, 800, 300))
+    full = np.zeros(image.shape[:2], bool)
+    full[box[1]:box[3], box[0]:box[2]] = mask
+    outline = (np.abs(image.astype(int) - (255, 255, 255)).sum(axis=2) < 30)
+    assert (full & outline).sum() >= 0.9 * outline.sum()
+
+
+def test_glow_round_letters_is_erased_with_them():
+    from app.detector.kiuyha_detector import letter_mask
+
+    rng = np.random.default_rng(1)
+    background = np.clip(rng.normal(30, 6, (400, 1000, 3)), 0, 255).astype(np.uint8)
+    glow = np.zeros((400, 1000), np.uint8)
+    cv2.putText(glow, "DARE TO DREAM", (80, 240), cv2.FONT_HERSHEY_DUPLEX, 3.0, 255, 22)
+    glow = cv2.GaussianBlur(glow, (0, 0), 14).astype(np.float32)[..., None] / 255
+    image = background + glow * np.array([200, 190, 60], np.float32)
+    core = np.zeros((400, 1000), np.uint8)
+    cv2.putText(core, "DARE TO DREAM", (80, 240), cv2.FONT_HERSHEY_DUPLEX, 3.0, 255, 8)
+    image[core > 0] = (255, 240, 170)
+    image = np.clip(image, 0, 255).astype(np.uint8)
+    box, mask = letter_mask(image, (70, 150, 900, 270))
+    full = np.zeros(image.shape[:2], bool)
+    full[box[1]:box[3], box[0]:box[2]] = mask
+    changed = np.abs(image.astype(int) - background.astype(int)).max(axis=2) > 18
+    assert (full & changed).sum() >= 0.99 * changed.sum(), "a glow left round the hole paints the letters back"
+
+
+def test_outlined_letters_over_sky_and_trees_are_erased():
+    from app.detector.kiuyha_detector import letter_mask
+
+    rng = np.random.default_rng(4)
+    image = np.empty((500, 1200, 3), np.uint8)
+    image[:170] = (225, 205, 185)  # light sky over dark trees: the box border holds both
+    image[170:] = np.clip(rng.normal(60, 18, (330, 1200, 3)), 0, 255).astype(np.uint8)
+    for y in (200, 330):
+        cv2.putText(image, "THE SLUMS", (160, y), cv2.FONT_HERSHEY_DUPLEX, 3.2, (255, 255, 255), 26)
+        cv2.putText(image, "THE SLUMS", (160, y), cv2.FONT_HERSHEY_DUPLEX, 3.2, (10, 10, 10), 10)
+    box, mask = letter_mask(image, (130, 90, 1000, 370))
+    full = np.zeros(image.shape[:2], bool)
+    full[box[1]:box[3], box[0]:box[2]] = mask
+    ink = image.max(axis=2) < 20
+    assert (full & ink).sum() >= 0.95 * ink.sum(), "both lines are erased"
+    assert full[450:, :].mean() < 0.05, "the trees below stay"
+
+
+def test_stars_round_big_letters_do_not_shrink_the_letter_height():
+    from app.detector.kiuyha_detector import letter_mask
+
+    rng = np.random.default_rng(5)
+    image = np.full((420, 1300, 3), 25, np.uint8)
+    for x, y in rng.integers((0, 0), (1300, 420), (400, 2)):
+        cv2.circle(image, (int(x), int(y)), 3, (230, 230, 230), -1)  # a starfield
+    cv2.putText(image, "OUR DREAM", (40, 300), cv2.FONT_HERSHEY_DUPLEX, 6.0, (240, 240, 170), 26)
+    box, mask = letter_mask(image, (120, 110, 1200, 320))  # the box cuts the O
+    full = np.zeros(image.shape[:2], bool)
+    full[box[1]:box[3], box[0]:box[2]] = mask
+    letters = np.zeros(image.shape[:2], np.uint8)
+    cv2.putText(letters, "O", (40, 300), cv2.FONT_HERSHEY_DUPLEX, 6.0, 255, 26)
+    assert (full & (letters > 0)).sum() >= 0.95 * (letters > 0).sum(), "the O the box cuts is erased"

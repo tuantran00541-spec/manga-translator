@@ -137,13 +137,16 @@ def test_only_a_live_job_token_reaches_the_ai_and_the_gateway_picks_the_model(st
     assert stack.chat("mcj_forged").status_code == 401
 
 
-def test_cost_cap_stops_one_chapter_from_draining_the_plan(stack, monkeypatch):
+def test_the_cost_guard_stops_a_job_that_spends_far_more_than_a_chapter(stack, monkeypatch):
+    monkeypatch.setattr("gateway.store.JOB_COST_GUARD_USD", 0.10)
     _sign_in(stack, monkeypatch)
     job = cloud.reserve_job()
     assert job["cost_cap_usd"] == 0.10
     statuses = [stack.chat(job["job_token"]).status_code for _ in range(6)]
-    allowed = int(np.ceil(0.10 / CALL_COST))
+    # A call is refused once the cost so far plus what it may cost would pass the cap.
+    allowed = int(0.10 // CALL_COST)
     assert statuses == [200] * allowed + [402] * (6 - allowed)
+    assert allowed * CALL_COST <= 0.10
     assert cloud.entitlements(fresh=True)["quota"]["cost_usd"] == pytest.approx(allowed * CALL_COST)
 
 

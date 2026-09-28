@@ -67,6 +67,32 @@ def _normalize_region(region: dict, w: int, h: int) -> tuple[int, int, int, int]
     return x1, y1, x2, y2
 
 
+
+def _paint_residue(mask: np.ndarray, clean: np.ndarray | None, rect: tuple[int, int, int, int]) -> None:
+    """Mark the leftover strokes in ``rect`` of the cleaned slice; the whole rectangle only when none stand out."""
+    from app.detector.kiuyha_detector import letter_mask
+
+    if clean is not None and clean.shape[:2] == mask.shape:
+        (x1, y1, x2, y2), strokes = letter_mask(clean, rect)
+        if strokes.any():
+            view = mask[y1:y2, x1:x2]
+            view[strokes] = 255
+            return
+    mask[rect[1]:rect[3], rect[0]:rect[2]] = 255
+
+
+def _stroke_box(image: np.ndarray, rect: tuple[int, int, int, int]) -> dict:
+    """A manual box masked by the letters inside it; a rectangle only when no letters stand out."""
+    from app.detector.kiuyha_detector import letter_mask
+    from app.image_io import encode_mask
+
+    grown, mask = letter_mask(image, rect)
+    if not mask.any():
+        grown, mask = rect, None
+    return {"id": new_box_id(), "origin": "manual", "x1": int(grown[0]), "y1": int(grown[1]),
+            "x2": int(grown[2]), "y2": int(grown[3]), "confidence": 1.0, "manual": True,
+            "mask": encode_mask(mask.astype(np.uint8) * 255) if mask is not None else None}
+
 class PipelineEditingMixin:
     def add_manual_box(self, chapter_id: str, page_index: int, x1: int, y1: int, x2: int, y2: int) -> dict:
         return self.add_manual_boxes(chapter_id, page_index, [(x1, y1, x2, y2)])
@@ -306,6 +332,105 @@ class PipelineEditingMixin:
                     save_manifest_raw(chapter_id, manifest)
                     artifact_tx.commit()
                     self._sync_output_dir(chapter_id, manifest, [page_index])
+            return manifest
+
+    def apply_review_fixes(
+        self,
+        chapter_id: str,
+        page_index: int,
+        *,
+        preserve: list[tuple[int, int, int, int]] = (),
+        boxes: list[tuple[int, int, int, int]] = (),
+        repaint: list[tuple[int, int, int, int]] = (),
+    ) -> dict:
+        """Add preserve regions, manual boxes and repaint areas with one re-inpaint of the page."""
+        processed_dir = PROCESSED_DIR / chapter_id
+        with get_page_lock(chapter_id, page_index):
+            with get_manifest_lock(chapter_id):
+                manifest = load_manifest_raw(chapter_id)
+                if page_index < 0 or page_index >= len(manifest.get("pages", [])):
+                    raise ValueError("Invalid page index")
+                page = manifest["pages"][page_index]
+                if page.get("skipped") or page.get("process_required") or not page.get("clean"):
+                    raise ValueError("Page must be active and processed before review fixes")
+                img_path = Path(page["original"])
+                clean_now = Path(page["clean"])
+                old_preserve = copy.deepcopy(page.get("preserve_regions", []))
+                boxes_snapshot = copy.deepcopy(page.get("boxes", []))
+                manual_mask_posix = page.get("manual_mask")
+                manual_lama_mask_posix = page.get("manual_lama_mask")
+                target_clean_revision = int(page.get("clean_revision") or 0) + 1
+
+            image = read_image(img_path)
+            h, w = image.shape[:2]
+
+            def clip(rect):
+                x1, x2 = sorted((max(0, min(int(rect[0]), w)), max(0, min(int(rect[2]), w))))
+                y1, y2 = sorted((max(0, min(int(rect[1]), h)), max(0, min(int(rect[3]), h))))
+                return (x1, y1, x2, y2) if x2 > x1 and y2 > y1 else None
+
+            added_preserve = [dict(zip(("x1", "y1", "x2", "y2"), r)) for r in map(clip, preserve) if r]
+            new_boxes = [_stroke_box(image, r) for r in map(clip, boxes) if r]
+            preserve_regions = old_preserve + added_preserve
+            boxes_snapshot.extend(copy.deepcopy(new_boxes))
+
+            final_mask_path = self._manual_mask_path(processed_dir, img_path)
+            mask = None
+            repaint_rects = [r for r in map(clip, repaint) if r]
+            clean = read_image(clean_now) if repaint_rects else None
+            for rect in repaint_rects:
+                if mask is None:
+                    mask = np.zeros((h, w), dtype=np.uint8)
+                _paint_residue(mask, clean, rect)
+            if mask is not None:
+                existing = self._read_manual_mask(
+                    Path(manual_mask_posix) if manual_mask_posix else final_mask_path, (h, w))
+                if existing is not None:
+                    mask = np.maximum(existing, mask)
+                mask = subtract_regions_from_mask(mask, preserve_regions)
+                if mask is not None and not np.any(mask):
+                    mask = None
+            if not added_preserve and not new_boxes and mask is None:
+                return manifest
+
+            tmp_mask_path = processed_dir / f"manual_mask_{img_path.name}.{uuid.uuid4().hex}.tmp.png"
+            try:
+                if mask is not None:
+                    write_image(tmp_mask_path, mask)
+                with self._page_artifact_transaction(
+                    processed_dir, img_path, page_index, target_clean_revision, [final_mask_path]
+                ) as artifact_tx:
+                    clean_path_posix = self._do_reinpaint(
+                        processed_dir,
+                        img_path,
+                        image,
+                        boxes_snapshot,
+                        manual_mask_posix=tmp_mask_path.as_posix() if mask is not None else manual_mask_posix,
+                        manual_lama_mask_posix=manual_lama_mask_posix,
+                        # Only a new mask on the same boxes can reuse the box inpaint.
+                        reuse_auto_clean=not added_preserve and not new_boxes,
+                        preserve_regions=preserve_regions,
+                    )
+                    if mask is not None:
+                        atomic_replace(tmp_mask_path, final_mask_path)
+                    with get_manifest_lock(chapter_id):
+                        manifest = load_manifest_raw(chapter_id)
+                        target_page = manifest["pages"][page_index]
+                        target_page.setdefault("boxes", []).extend(new_boxes)
+                        target_page["preserve_regions"] = preserve_regions
+                        if mask is not None:
+                            target_page["manual_mask"] = final_mask_path.as_posix()
+                        target_page["clean"] = clean_path_posix
+                        ensure_page_text_objects(target_page)
+                        if bump_page_revision(target_page, "clean_revision") != target_clean_revision:
+                            raise RuntimeError("Page clean revision changed during review fixes")
+                        invalidate_page_render(manifest, page_index)
+                        artifact_tx.mark_manifest_commit(target_page)
+                        save_manifest_raw(chapter_id, manifest)
+                        artifact_tx.commit()
+                        self._sync_output_dir(chapter_id, manifest, [page_index])
+            finally:
+                tmp_mask_path.unlink(missing_ok=True)
             return manifest
 
     def remove_box(self, chapter_id: str, page_index: int, box_index: int) -> dict:

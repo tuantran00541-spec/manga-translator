@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
+import cv2
 import requests
 
 from app.ai_providers import AIProvider
 from app.parameters import TRANSLATION_CONNECT_TIMEOUT_SECONDS, TRANSLATION_READ_TIMEOUT_SECONDS
-from app.render.font_catalog import load_font_catalog
 from app.security import validate_url
+from app.render.font_guide import BASE_FONT_ROLES, DEFAULT_LETTERING_FONT, font_specimen_b64, lettering_font
 from app.translation.context import TYPOGRAPHY_ROLES, ChapterMemory, system_prompt
 from app.translation.deepseek import _language_name, _usage_cost_usd
 from app.visual_qc.deepseek_region_client import _extract_output_text, _safe_error_detail
@@ -40,19 +42,9 @@ _TRANSLATIONS_SCHEMA = {
             "properties": {k: {"type": "string"} for k in ("from", "to", "self", "other")},
             "required": ["from", "to"],
         }},
-        "keep": {"type": "array", "items": {"type": "string"}},
-        "missed": {"type": "array", "items": {
-            "type": "object",
-            "properties": {"box_2d": {"type": "array", "items": {"type": "number"}}, "text": {"type": "string"}},
-            "required": ["box_2d"],
-        }},
     },
     "required": ["translations"],
 }
-# Missed-text boxes the model reports; anything larger or more numerous is a misread.
-MISSED_MAX_BOXES = 8
-MISSED_MIN_SIDE_PX = 10
-MISSED_MAX_AREA_RATIO = 0.4
 
 
 @dataclass(frozen=True)
@@ -66,25 +58,8 @@ class VisionTranslationResult:
     review_ids: frozenset[str] = frozenset()
     # Objects the model did not answer for at all (as opposed to answering "").
     missing_ids: frozenset[str] = frozenset()
-    # Objects that are part of the artwork and should stay as drawn.
-    keep_ids: frozenset[str] = frozenset()
-    # Source text still visible in the cleaned slice with no object: (x1, y1, x2, y2, text).
-    missed_boxes: tuple[tuple[int, int, int, int, str], ...] = ()
-
-
-def _font_catalog_hint(target_lang: str) -> str:
-    """Compact role -> font_id list; Vietnamese output only gets fonts with its diacritics."""
-    try:
-        records = load_font_catalog().records
-    except (OSError, ValueError):
-        return "{}"
-    vietnamese = str(target_lang or "").lower() in {"vi", "vie", "vietnamese"}
-    groups: dict[str, list[str]] = {}
-    for record in sorted(records, key=lambda item: (item.category, item.default_rank, item.id)):
-        if vietnamese and not record.vietnamese:
-            continue
-        groups.setdefault(record.category, []).append(record.id)
-    return json.dumps(groups, ensure_ascii=False, separators=(",", ":"))
+    enlarge_ids: frozenset[str] = frozenset()
+    colors: dict[str, str] = field(default_factory=dict)
 
 
 def parse_vision_translation(content: str, expected_ids: set[str], *, allow_missing: bool = False) -> dict[str, str]:
@@ -120,7 +95,8 @@ def parse_vision_translation(content: str, expected_ids: set[str], *, allow_miss
             raise RuntimeError("Vision model returned an unknown, repeated or malformed translation")
         if len(value) > 4000:
             raise RuntimeError("Vision model returned oversized text")
-        results[obj_id] = value.strip()
+        # Not every lettering font has the ellipsis glyph.
+        results[obj_id] = value.strip().replace("…", "...")
     if set(results) != expected_ids:
         if not allow_missing or not results:
             raise RuntimeError("Vision model omitted one or more text-object IDs")
@@ -139,15 +115,13 @@ def _parse_vision_payload(content: str, expected_ids: set[str]) -> tuple[dict[st
     translations = parse_vision_translation(source, expected_ids, allow_missing=True)
     if isinstance(data, dict) and isinstance(data.get("translations"), dict):
         data["translations"] = [{"id": str(k), "translated_text": v} for k, v in data["translations"].items()]
-    choices: dict[str, dict] = {}
-    raw_choices = data.get("font_choices") if isinstance(data, dict) else None
-    if isinstance(raw_choices, dict):
-        for item_id, choice in raw_choices.items():
-            if item_id not in expected_ids or not isinstance(choice, dict):
-                continue
-            font_id, font_mode = choice.get("font_id"), choice.get("font_mode", "ai")
-            if isinstance(font_id, str) and isinstance(font_mode, str):
-                choices[str(item_id)] = {"font_id": font_id.strip(), "font_mode": font_mode.strip().lower() or "ai"}
+    picks = data.get("font_choices") if isinstance(data, dict) and isinstance(data.get("font_choices"), dict) else {}
+    # Only curated fonts; anything else falls back to the base font.
+    choices = {}
+    for item_id in translations:
+        pick = picks.get(item_id)
+        pick = pick.get("font_id") if isinstance(pick, dict) else pick
+        choices[item_id] = {"font_id": lettering_font(pick), "font_mode": "ai"}
     return translations, choices, data if isinstance(data, dict) else {}
 
 
@@ -162,8 +136,6 @@ def _unalias(result: VisionTranslationResult, data: dict, real: dict[str, str]) 
     for key in ("speakers", "font_choices"):
         if isinstance(data.get(key), dict):
             data[key] = {back(k): v for k, v in data[key].items()}
-    if isinstance(data.get("keep"), list):
-        data["keep"] = [back(item) for item in data["keep"] if isinstance(item, (str, int)) and not isinstance(item, bool)]
     return replace(
         result,
         translations={back(k): v for k, v in result.translations.items()},
@@ -171,27 +143,60 @@ def _unalias(result: VisionTranslationResult, data: dict, real: dict[str, str]) 
     ), data
 
 
-def _missed_boxes(raw, width: int, height: int) -> tuple[tuple[int, int, int, int, str], ...]:
-    """Pixel boxes for source text the model still sees in the cleaned slice (box_2d is 0-1000)."""
-    boxes = []
-    for entry in raw if isinstance(raw, list) else []:
-        box = entry.get("box_2d") if isinstance(entry, dict) else None
-        if not isinstance(box, (list, tuple)) or len(box) != 4:
-            continue
-        try:
-            ymin, xmin, ymax, xmax = (max(0.0, min(1000.0, float(v))) for v in box)
-        except (TypeError, ValueError):
-            continue
-        x1, x2 = round(xmin / 1000 * width), round(xmax / 1000 * width)
-        y1, y2 = round(ymin / 1000 * height), round(ymax / 1000 * height)
-        if x2 - x1 < MISSED_MIN_SIDE_PX or y2 - y1 < MISSED_MIN_SIDE_PX:
-            continue
-        if (x2 - x1) * (y2 - y1) > MISSED_MAX_AREA_RATIO * width * height:
-            continue
-        boxes.append((x1, y1, x2, y2, str(entry.get("text") or "")[:200]))
-        if len(boxes) >= MISSED_MAX_BOXES:
-            break
-    return tuple(boxes)
+_HEX_COLOR = re.compile(r"#[0-9a-fA-F]{6}")
+FONT_SAMPLES_LABEL = "FONT SAMPLES: each row is a font_id in red and a sample line lettered in that font."
+
+# Chinese, Japanese and Korean letters never belong in a Vietnamese translation.
+_FOREIGN_SCRIPT = re.compile("[\u1100-\u11ff\u3040-\u30ff\u3130-\u318f\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af\uf900-\ufaff]")
+
+
+_ENGLISH_WORDS = frozenset(
+    "the and with you your to of is are was were its it's this that for in on my me we what i".split())
+
+
+def _untranslated_english(text: str) -> bool:
+    """True for a line left in English: plain ASCII with at least two words, one of them an English function word."""
+    words = [word.strip(".,!?;:\"'()-—…").lower() for word in text.split()]
+    words = [word for word in words if word]
+    return text.isascii() and len(words) >= 2 and any(word in _ENGLISH_WORDS for word in words)
+
+
+def _drop_foreign_script(result: VisionTranslationResult, data: dict) -> tuple[VisionTranslationResult, dict]:
+    """Treat CJK or untranslated English lines as unanswered so they are retried, and keep them out of memory."""
+    foreign = {key for key, value in result.translations.items()
+               if _FOREIGN_SCRIPT.search(value) or _untranslated_english(value)}
+    data = dict(data)
+    if isinstance(data.get("translations"), list):
+        data["translations"] = [entry for entry in data["translations"]
+                                if not (isinstance(entry, dict) and str(entry.get("id")) in foreign)]
+    for key in ("characters", "address"):
+        if isinstance(data.get(key), list):
+            data[key] = [entry for entry in data[key]
+                         if not _FOREIGN_SCRIPT.search(json.dumps(entry, ensure_ascii=False))]
+    if foreign:
+        result = replace(result, translations={key: "" if key in foreign else value
+                                               for key, value in result.translations.items()})
+    return result, data
+
+
+MARK_COLOR = (0, 0, 230)  # BGR red
+
+
+def mark_objects(image, objects: list[dict]):
+    """A copy of the slice with each object's box outlined and labelled with its id."""
+    marked = image.copy()
+    width = marked.shape[1]
+    thickness = max(2, width // 400)
+    scale = max(0.6, width / 1000)
+    for obj in objects:
+        x1, y1, x2, y2 = (int(v) for v in obj["bbox_xyxy"])
+        cv2.rectangle(marked, (x1, y1), (x2, y2), MARK_COLOR, thickness)
+        label = str(obj["id"])
+        (tw, th), base = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, scale, thickness)
+        ty = max(th + base, y1)
+        cv2.rectangle(marked, (x1, ty - th - base), (x1 + tw + 4, ty), MARK_COLOR, -1)
+        cv2.putText(marked, label, (x1 + 2, ty - base), cv2.FONT_HERSHEY_SIMPLEX, scale, (255, 255, 255), thickness)
+    return marked
 
 
 class VisionPageTranslator:
@@ -204,7 +209,6 @@ class VisionPageTranslator:
         self, original_path: Path, cleaned_path: Path, items: list[dict],
         *, api_key: str, source_lang: str, target_lang: str,
         memory: ChapterMemory | None = None, slice_number: int | None = None, slice_total: int | None = None,
-        repair: bool = True,
     ) -> VisionTranslationResult:
         if not api_key.strip():
             raise ValueError(f"{self.provider.label} API key is not configured")
@@ -216,14 +220,15 @@ class VisionPageTranslator:
         h, w = original.shape[:2]
         # Send short numeric ids; models copy them more reliably.
         real = {str(n): str(item["id"]) for n, item in enumerate(items, start=1)}
-        objects = [{"id": alias, "source_text": item["text"], "bbox_xyxy": item["region"]}
+        objects = [{"id": alias, "source_text": item["text"], "bbox_xyxy": item["region"],
+                    **({"max_chars": item["max_chars"]} if item.get("max_chars") else {})}
                    for alias, item in zip(real, items)]
         source_name = (
             "the original language shown in the image"
             if str(source_lang or "").lower() in {"", "auto"}
             else _language_name(source_lang)
         )
-        system = system_prompt(_language_name(target_lang), target_lang, _font_catalog_hint(target_lang), repair=repair)
+        system = system_prompt(_language_name(target_lang), target_lang)
         where = f"SLICE {slice_number} of {slice_total}. " if slice_number and slice_total else ""
         prompt = (
             (f"CHAPTER MEMORY (read-only context from earlier slices; never copy it into your answer): "
@@ -232,9 +237,10 @@ class VisionPageTranslator:
             + f"{where}Translate these text objects from {source_name}.\n"
             + json.dumps({"image_width": w, "image_height": h, "objects": objects},
                          ensure_ascii=False, separators=(",", ":"))
-            + '\n\nAnswer with one JSON object that starts with {"translations":[ and contains every id above.'
+            + '\n\nAnswer with one JSON object that starts with {"translations":[ and contains every id above. '
+            + "Write every translated_text in normal sentence case, never in all capitals."
         )
-        original_b64, cleaned_b64 = _encode_for_gemini(original), _encode_for_gemini(cleaned)
+        original_b64, cleaned_b64 = _encode_for_gemini(original), _encode_for_gemini(mark_objects(cleaned, objects))
         ids = set(real)
         max_tokens = min(4096, max(1200, 160 * len(items) + 700))
         if self.provider.protocol == "gemini":
@@ -243,9 +249,9 @@ class VisionPageTranslator:
             result, data = self._openai(system, prompt, original_b64, cleaned_b64, api_key=api_key, ids=ids, max_tokens=max_tokens)
         result, data = _unalias(result, data, real)
         ids = set(real.values())
-        if memory is not None:
-            memory.update(slice_number or 0, data, result.translations, [str(item["id"]) for item in items])
-        roles, review, answered = {}, set(), set()
+        if str(target_lang or "").lower() in {"vi", "vie", "vietnamese"}:
+            result, data = _drop_foreign_script(result, data)
+        roles, review, answered, enlarge, colors = {}, set(), set(), set(), {}
         for entry in data.get("translations") or []:
             if not isinstance(entry, dict) or str(entry.get("id")) not in ids:
                 continue
@@ -255,10 +261,22 @@ class VisionPageTranslator:
                 roles[str(entry["id"])] = role
             if entry.get("review") is True:
                 review.add(str(entry["id"]))
-        keep = frozenset(str(item) for item in data.get("keep") or [] if str(item) in ids) if repair else frozenset()
+            if entry.get("enlarge") is True:
+                enlarge.add(str(entry["id"]))
+            if isinstance(entry.get("color"), str) and _HEX_COLOR.fullmatch(entry["color"].strip()):
+                colors[str(entry["id"])] = entry["color"].strip().lower()
+        # Bubble speech always takes the base font; display fonts are for shouts, captions and art.
+        fonts = {key: (dict(value, font_id=DEFAULT_LETTERING_FONT) if roles.get(key) in BASE_FONT_ROLES else value)
+                 for key, value in (result.font_choices or {}).items()}
+        if memory is not None:
+            memory.update(slice_number or 0, data, result.translations, [str(item["id"]) for item in items])
+            fonts = {
+                str(item["id"]): {"font_id": memory.admit_font(fonts[str(item["id"])]["font_id"]), "font_mode": "ai"}
+                for item in items if str(item["id"]) in fonts
+            }
         return replace(
-            result, roles=roles, review_ids=frozenset(review), missing_ids=frozenset(ids - answered),
-            keep_ids=keep, missed_boxes=_missed_boxes(data.get("missed"), w, h) if repair else (),
+            result, font_choices=fonts, roles=roles, review_ids=frozenset(review), missing_ids=frozenset(ids - answered),
+            enlarge_ids=frozenset(enlarge), colors=colors,
         )
 
     def _openai(self, system, prompt, original, cleaned, *, api_key, ids, max_tokens):
@@ -270,6 +288,9 @@ class VisionPageTranslator:
         payload = {
             "model": self.model,
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": [
+                # The specimen comes first so the cached prefix covers it.
+                {"type": "text", "text": FONT_SAMPLES_LABEL},
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{font_specimen_b64()}"}},
                 {"type": "text", "text": prompt},
                 {"type": "text", "text": "IMAGE 1: ORIGINAL"},
                 {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{original}"}},
@@ -315,6 +336,8 @@ class VisionPageTranslator:
             "model": self.model, "store": False,
             "input": [
                 {"type": "text", "text": system},
+                {"type": "text", "text": FONT_SAMPLES_LABEL},
+                {"type": "image", "data": font_specimen_b64(), "mime_type": "image/jpeg"},
                 {"type": "text", "text": prompt},
                 {"type": "text", "text": "IMAGE 1: ORIGINAL"},
                 {"type": "image", "data": original, "mime_type": "image/jpeg"},

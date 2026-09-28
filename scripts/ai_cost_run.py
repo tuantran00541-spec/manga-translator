@@ -55,6 +55,51 @@ def _pages(archive_path: Path, out: Path, max_width: int = 800) -> int:
         return len(names)
 
 
+def _pairs(chapter_id: str, pages: list, out: Path, width: int = 560) -> int:
+    """Save each active slice as original | final side by side for a close review."""
+    from app.routers.image import _rendered_file_path
+
+    folder = out / "pairs"
+    folder.mkdir(parents=True, exist_ok=True)
+    saved = 0
+    for index, page in enumerate(pages):
+        if page.get("skipped") or not page.get("original"):
+            continue
+        final_path = _rendered_file_path(chapter_id, index)
+        if not final_path.is_file():
+            final_path = Path(page.get("clean") or "")
+        raw, final = cv2.imread(str(page["original"])), cv2.imread(str(final_path))
+        if raw is None or final is None:
+            continue
+        pair = [cv2.resize(im, (width, max(1, round(im.shape[0] * width / im.shape[1]))), interpolation=cv2.INTER_AREA)
+                for im in (raw, final)]
+        height = max(im.shape[0] for im in pair)
+        pair = [np.vstack([im, np.full((height - im.shape[0], width, 3), 255, np.uint8)]) for im in pair]
+        joined = np.hstack([pair[0], np.full((height, 8, 3), 128, np.uint8), pair[1]])
+        ok, buf = cv2.imencode(".jpg", joined, [cv2.IMWRITE_JPEG_QUALITY, 80])
+        if ok:
+            (folder / f"{index + 1:03d}.jpg").write_bytes(buf.tobytes())
+            saved += 1
+    return saved
+
+
+def _objects(pages: list) -> list[dict]:
+    """Every slice's boxes and text objects with coordinates, to trace a defect back to where it began."""
+    keys = ("x1", "y1", "x2", "y2")
+    return [{
+        "slice": index + 1, "skipped": bool(page.get("skipped")), "stitch_core": page.get("stitch_core"),
+        "boxes": [{**{k: box.get(k) for k in keys}, "origin": box.get("origin"), "manual": bool(box.get("manual")),
+                   "overlap_context_only": bool(box.get("overlap_context_only")), "removed": bool(box.get("removed"))}
+                  for box in page.get("boxes") or [] if isinstance(box, dict)],
+        "objects": [{"id": obj.get("id"), "region": obj.get("region"), "source_boxes": obj.get("source_boxes"),
+                     "translation": obj.get("translation"),
+                     "seam_owner": obj.get("seam_owner"), "overlap_dropped": obj.get("overlap_dropped"),
+                     "source_missing": obj.get("source_missing")}
+                    for obj in page.get("text_objects") or [] if isinstance(obj, dict)],
+        "preserve_regions": page.get("preserve_regions"),
+    } for index, page in enumerate(pages)]
+
+
 def _fit_metrics(obj: dict, page_width: int) -> dict:
     """Reproduce how the renderer sizes one object: the font size it draws at, the lines, and whether it fits."""
     from PIL import Image, ImageDraw
@@ -87,11 +132,15 @@ def _fit_metrics(obj: dict, page_width: int) -> dict:
         fits = bool(lines) and _calc_line_height(draw, font, stroke_w=RENDER_AUTO_STROKE_WIDTH) * len(lines) <= box_h
     else:
         source = "fit"
-        size, lines, fits = _fit_text(draw, text, box_w, box_h, str(font_path),
-                                      stroke_w=RENDER_AUTO_STROKE_WIDTH, minimum_size=RENDER_MIN_READABLE_FONT_SIZE)
+        maximum = 48
+        if obj.get("source_cap_px"):
+            from app.render.source_size import SIZE_SLACK, matching_font_px
+            maximum = max(RENDER_MIN_READABLE_FONT_SIZE, int(matching_font_px(font_path, obj["source_cap_px"]) * SIZE_SLACK))
+        size, lines, fits = _fit_text(draw, text, box_w, box_h, str(font_path), stroke_w=RENDER_AUTO_STROKE_WIDTH,
+                                      minimum_size=RENDER_MIN_READABLE_FONT_SIZE, maximum_size=maximum)
     return {"font_px": size, "font_px_at_800": round(size * 800 / max(1, page_width), 1), "size_source": source,
             "lines": len(lines), "wrapped": lines, "box_w": raw_w, "box_h": raw_h, "fits": fits,
-            "missing_glyphs": missing_glyphs,
+            "missing_glyphs": missing_glyphs, "source_cap_px": obj.get("source_cap_px"),
             # The wrap breaks a word apart when its lines no longer hold the text's own words.
             "split_word": bool(lines) and [w for line in lines for w in line.split()] != text.split()}
 
@@ -108,8 +157,9 @@ def _slice_width(chapter_id: str, index: int) -> int:
 
 TRANSPORT_STAGES = (
     ("You are preparing manga", "scan"),
-    ("You are a visual quality-control", "qc"),
-    ("ROLE You are a veteran comic localization", "translate+repair"),
+    ("You check an automatic manga", "review"),
+    ("ROLE You are a veteran comic localization", "translate"),
+    ("You do the final check", "final"),
 )
 
 
@@ -219,14 +269,25 @@ def main() -> int:
     }
     chapter_id = job.get("chapter_id")
     if job["status"] == "completed" and chapter_id:
-        archive = ROOT / "data" / "output" / chapter_id / f"ai_mode_{chapter_id}.zip"
-        if archive.is_file():
+        # The chapter is exported the way a user would, from the editor's export.
+        response = requests.get(f"{APP}/api/export/{chapter_id}.zip", timeout=600)
+        if response.ok:
+            archive = out / "chapter.zip"
+            archive.write_bytes(response.content)
             report["zip_pages"] = _pages(archive, out)
+            archive.unlink()
+        else:
+            report["export_error"] = f"HTTP {response.status_code}: {response.text[:300]}"
     manifest_path = ROOT / "data" / "processed" / str(chapter_id) / "manifest.json"
     if chapter_id and manifest_path.is_file():
         pages = json.loads(manifest_path.read_text(encoding="utf-8")).get("pages", [])
         report["slices"] = len(pages)
         report["slices_active"] = sum(1 for p in pages if not p.get("skipped"))
+        try:
+            report["pairs"] = _pairs(str(chapter_id), pages, out)
+        except Exception as exc:  # noqa: BLE001 - the pairs are a review aid, never a reason to lose the report
+            report["pairs_error"] = repr(exc)[:300]
+        (out / "objects.json").write_text(json.dumps(_objects(pages), ensure_ascii=False), encoding="utf-8")
         report["lines"] = []
         for index, page in enumerate(pages):
             if page.get("skipped"):

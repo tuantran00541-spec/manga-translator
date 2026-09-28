@@ -233,3 +233,39 @@ def test_add_manual_boxes_adds_every_box_with_one_reinpaint(tmp_path: Path, monk
     assert [(b["x1"], b["y1"], b["x2"], b["y2"]) for b in page["boxes"]] == [(5, 5, 35, 25), (45, 30, 75, 55)]
     assert calls == [2], "one re-inpaint with both boxes; the empty one is dropped"
     assert page["clean_revision"] == 2
+
+
+def test_review_fixes_apply_preserve_boxes_and_repaint_in_one_reinpaint(tmp_path: Path, monkeypatch):
+    import app.config as config
+    import app.manifest_utils as manifests
+    import app.pipeline_editing as editing
+
+    chapter = "abcd1234"
+    raw, processed, output = tmp_path / "raw", tmp_path / "processed", tmp_path / "output"
+    for root in (raw, processed, output):
+        (root / chapter).mkdir(parents=True)
+    original = raw / chapter / "page.png"
+    write_image(original, np.full((60, 80, 3), 10, dtype=np.uint8))
+    write_image(processed / chapter / "clean_page.png", np.full((60, 80, 3), 100, dtype=np.uint8))
+    for module in (config, manifests, editing):
+        monkeypatch.setattr(module, "PROCESSED_DIR", processed, raising=False)
+    monkeypatch.setattr(config, "OUTPUT_DIR", output)
+    manifests.save_manifest_raw(chapter, {"chapter_id": chapter, "pages": [{
+        "original": original.as_posix(), "clean": (processed / chapter / "clean_page.png").as_posix(),
+        "boxes": [{"id": "b0", "x1": 2, "y1": 2, "x2": 20, "y2": 20, "confidence": 0.9, "safe_to_inpaint": True}],
+    }]})
+
+    pipeline = OptimizedChapterPipeline.__new__(OptimizedChapterPipeline)
+    fake = _FakeInpainter()
+    runs = []
+    fake.inpaint = lambda image, boxes, *, protected_regions=None: runs.append(len(boxes)) or np.full_like(image, 100)
+    pipeline._inpainter = fake
+
+    pipeline.apply_review_fixes(chapter, 0, preserve=[(60, 40, 70, 50)], boxes=[(30, 5, 50, 15)],
+                                repaint=[(5, 30, 25, 50), (62, 42, 68, 48)])
+    page = manifests.load_manifest_raw(chapter)["pages"][0]
+    assert runs == [2], "one box inpaint covering the old and the new box"
+    assert [b["x1"] for b in page["boxes"]] == [2, 30] and page["boxes"][1]["manual"]
+    assert page["preserve_regions"] == [{"x1": 60, "y1": 40, "x2": 70, "y2": 50}]
+    mask = read_image(Path(page["manual_mask"]))
+    assert mask[40, 15].max() == 255 and mask[45, 65].max() == 0, "repaint inside a preserve region is dropped"

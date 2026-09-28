@@ -2,7 +2,7 @@
   "schema_version": 1,
   "generated_at": "2026-09-22",
   "default_font": "default.ttf",
-  "font_count": 68,
+  "font_count": 71,
   "records": [
     {
       "id": "dialogue.mac-dinh-3",
@@ -1024,6 +1024,51 @@
       "license_file": "licenses/OFL.txt",
       "source_url": "https://fonts.google.com/specimen/Lobster",
       "default_rank": 65
+    },
+    {
+      "id": "skill.kanit",
+      "name": "Kanit ExtraBold Italic",
+      "path": "skill/kanit-extrabold-italic.ttf",
+      "category": "skill",
+      "tags": [
+        "display",
+        "fantasy"
+      ],
+      "vietnamese": true,
+      "license": "OFL-1.1",
+      "license_file": "licenses/OFL.txt",
+      "source_url": "https://fonts.google.com/specimen/Kanit",
+      "default_rank": 66
+    },
+    {
+      "id": "skill.protest-revolution",
+      "name": "Protest Revolution",
+      "path": "skill/protest-revolution.ttf",
+      "category": "skill",
+      "tags": [
+        "display",
+        "fantasy"
+      ],
+      "vietnamese": true,
+      "license": "OFL-1.1",
+      "license_file": "licenses/OFL.txt",
+      "source_url": "https://fonts.google.com/specimen/Protest+Revolution",
+      "default_rank": 67
+    },
+    {
+      "id": "skill.playfair-display-sc",
+      "name": "Playfair Display SC Black",
+      "path": "skill/playfair-display-sc.ttf",
+      "category": "skill",
+      "tags": [
+        "display",
+        "fantasy"
+      ],
+      "vietnamese": true,
+      "license": "OFL-1.1",
+      "license_file": "licenses/OFL.txt",
+      "source_url": "https://fonts.google.com/specimen/Playfair+Display+SC",
+      "default_rank": 68
     }
   ]
 }

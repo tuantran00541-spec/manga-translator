@@ -104,6 +104,31 @@ def auto_detect_text_color(image: Image.Image, box: tuple[int, int, int, int]) -
     return (0, 0, 0)
 
 
+LOW_CONTRAST_RATIO = 3.0  # below this text-to-background contrast the text gets an outline
+LOW_CONTRAST_STROKE_WIDTH = 3
+
+
+def _luminance(rgb) -> float:
+    def channel(value: float) -> float:
+        value /= 255
+        return value / 12.92 if value <= 0.03928 else ((value + 0.055) / 1.055) ** 2.4
+    r, g, b = (channel(float(v)) for v in rgb[:3])
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
+def _contrast(a, b) -> float:
+    """WCAG contrast ratio between two RGB colours."""
+    la, lb = sorted((_luminance(a), _luminance(b)), reverse=True)
+    return (la + 0.05) / (lb + 0.05)
+
+
+def _mean_color(image: Image.Image, box) -> tuple[int, int, int]:
+    crop = np.asarray(image.convert("RGB").crop(tuple(int(v) for v in box)))
+    if crop.size == 0:
+        return (255, 255, 255)
+    return tuple(int(v) for v in crop.reshape(-1, 3).mean(axis=0))
+
+
 def get_font_path(font_name: str = "default") -> Path:
     try:
         return resolve_font_id(font_name)
@@ -188,6 +213,8 @@ def render_text_in_box(
     shape: str = "rectangle",
     horizontal_align: str = "center",
     vertical_align: str = "middle",
+    source_cap_px: int | None = None,
+    enlarge: bool = False,
 ) -> Image.Image:
     x1, y1, x2, y2 = (int(box[0]), int(box[1]), int(box[2]), int(box[3]))
     if x2 < x1:
@@ -239,6 +266,10 @@ def render_text_in_box(
         except (ValueError, TypeError):
             stroke_w = RENDER_AUTO_STROKE_WIDTH
 
+    if _contrast(text_color, _mean_color(image, (x1, y1, x2, y2))) < LOW_CONTRAST_RATIO:
+        # Letters close to the background colour get a thick contrasting outline.
+        stroke_w = max(stroke_w, LOW_CONTRAST_STROKE_WIDTH)
+
     if stroke_color is None or stroke_color == "auto" or stroke_color == "":
         luminance = (text_color[0] * 299 + text_color[1] * 587 + text_color[2] * 114) / 1000
         stroke_c = (0, 0, 0) if luminance > 128 else (255, 255, 255)
@@ -260,6 +291,27 @@ def render_text_in_box(
         font = get_font_object(font_path_str, actual_size)
         lines = _wrap_text(draw, text, font, box_w)
     else:
+        # Size limits are set for an 800 px wide page and grow with wider pages.
+        scale = max(1.0, image.size[0] / REFERENCE_PAGE_WIDTH)
+        readable, maximum_size = int(RENDER_MIN_READABLE_FONT_SIZE * scale), int(MAX_FONT_SIZE * scale)
+        enlarged_min = int(ENLARGED_MIN_FONT_SIZE * scale)
+        # Auto size never letters bigger than the source did.
+        if enlarge:
+            # Text flagged too small to read grows its area and may exceed the source size.
+            grow_x, grow_y = int(round(raw_w * ENLARGE_GROW_RATIO)), int(round(raw_h * ENLARGE_GROW_RATIO))
+            image_w, image_h = image.size
+            x1, y1 = max(0, x1 - grow_x), max(0, y1 - grow_y)
+            x2, y2 = min(image_w, x2 + grow_x), min(image_h, y2 + grow_y)
+            raw_w, raw_h = x2 - x1, y2 - y1
+            pad = max(2, min(padding, int(min(raw_w, raw_h) * RENDER_PADDING_RATIO_MAX)))
+            box_w, box_h = raw_w - pad * 2, raw_h - pad * 2
+        elif source_cap_px:
+            from app.render.source_size import SIZE_SLACK, matching_font_px
+            # A misread source size must not shrink the text far below what the box holds.
+            box_fit = _fit_text(draw, text, box_w, box_h, font_path_str, stroke_w=stroke_w,
+                                minimum_size=readable, maximum_size=maximum_size)[0]
+            maximum_size = max(readable, int(SOURCE_FLOOR_RATIO * box_fit),
+                               int(matching_font_px(font_path_str, int(source_cap_px)) * SIZE_SLACK))
         actual_size, lines, fits_readably = _fit_text(
             draw,
             text,
@@ -267,8 +319,14 @@ def render_text_in_box(
             box_h,
             font_path_str,
             stroke_w=stroke_w,
-            minimum_size=RENDER_MIN_READABLE_FONT_SIZE,
+            minimum_size=enlarged_min if enlarge else readable,
+            maximum_size=maximum_size,
         )
+        if enlarge and not fits_readably:
+            actual_size, lines, fits_readably = _fit_text(
+                draw, text, box_w, box_h, font_path_str, stroke_w=stroke_w,
+                minimum_size=readable, maximum_size=maximum_size,
+            )
         opaque_caption = bool(bg_color and bg_color not in ("transparent", "none", ""))
         if not fits_readably and opaque_caption and RENDER_SAFE_CAPTION_EXPANSION:
             grow_x = int(round(raw_w * RENDER_SAFE_CAPTION_EXPANSION_RATIO))
@@ -286,7 +344,8 @@ def render_text_in_box(
                 box_h,
                 font_path_str,
                 stroke_w=stroke_w,
-                minimum_size=RENDER_MIN_READABLE_FONT_SIZE,
+                minimum_size=readable,
+                maximum_size=maximum_size,
             )
         if not fits_readably:
             raise ValueError(
@@ -341,6 +400,13 @@ def render_text_in_box(
     return image
 
 
+ENLARGE_GROW_RATIO = 0.25  # each side of a region flagged enlarge grows by this share
+ENLARGED_MIN_FONT_SIZE = 22
+SOURCE_FLOOR_RATIO = 0.6  # source-matched text never drops below this share of the box-fit size
+REFERENCE_PAGE_WIDTH = 800  # font size limits are for a page this wide
+SOURCE_MATCH_MAX_FONT_SIZE = 200  # large source lettering may be matched past MAX_FONT_SIZE
+
+
 def _fits(draw, text: str, box_w: int, box_h: int, font_path_str: str, size: int, stroke_w: int) -> tuple[bool, list[str]]:
     font = get_font_object(font_path_str, size)
     lines = _wrap_text(draw, text, font, box_w)
@@ -360,9 +426,10 @@ def _fit_text(
     font_path_str: str,
     stroke_w: int = RENDER_AUTO_STROKE_WIDTH,
     minimum_size: int = MIN_FONT_SIZE,
+    maximum_size: int = MAX_FONT_SIZE,
 ) -> tuple[int, list[str], bool]:
     minimum_size = max(MIN_FONT_SIZE, int(minimum_size))
-    lo, hi = minimum_size, MAX_FONT_SIZE
+    lo, hi = minimum_size, max(minimum_size, min(SOURCE_MATCH_MAX_FONT_SIZE, int(maximum_size)))
     best_size = minimum_size
     best_lines: list[str] = []
 

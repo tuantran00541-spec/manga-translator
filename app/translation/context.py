@@ -3,6 +3,8 @@ from __future__ import annotations
 import threading
 from collections import deque
 
+from app.render.font_guide import DEFAULT_LETTERING_FONT, MAX_CHAPTER_FONTS, font_guide_prompt
+
 MAX_NOTES_CHARS = 1500
 MAX_CHARACTERS = 40
 MAX_ADDRESS_PAIRS = 80
@@ -23,22 +25,25 @@ TRANSLATION
 - Every character keeps one voice across the chapter (cold: short and firm; powerful: weighty; close friends: casual). Never let everyone speak the same flat AI prose.
 - Translate meaning, not English structure. If a line reads like a translation, rewrite it.
 - Be concise without losing lore, relationships, threats, hesitation, sarcasm, implication, cause and effect, or proper names.
-- Lock terms: keep proper names in their source spelling and reuse them; tell a descriptive phrase from the name of an organisation.
+- Lock terms: people's names keep their source spelling; places, organisations, spells, techniques, titles, captions and signs are translated, never left in the source language. Reuse the same form every time; tell a descriptive phrase from the name of an organisation.
 - Punctuation is acting: keep "...", "-", "—", "?!", "!!" as in the source; never add "..." to a character who speaks bluntly.
 - No invented memes, out-of-world slang or jokes the source does not make.
-- Scanlator credits, watermarks and URLs become an empty string. A sound effect in the list becomes a short onomatopoeia.
+- Scanlator credits, watermarks and URLs become an empty string.
+- A sound effect drawn as part of the art (big stylised letters, often Korean, Japanese or Chinese) stays as art: role "sfx" and an empty translated_text, and its original pixels are put back. Only a sound effect lettered as plain text gets a short onomatopoeia.
 
 LETTERING
 - Role of each object: dialogue, narration, thought, whisper, shout, dark_threat, system_ui, skill_name, title, free_text or sfx.
-- Font: dialogue uses dialogue.mac-dinh-3, narration uses narration.mac-dinh-2; when unsure, keep these. Switch only when the source or scene clearly calls for it (shouting, monster voice, system window, skill, title, SFX), never just because of "!". Keep a special voice consistent per character.
+- Font: a chapter uses at most 3 fonts. dialogue.mac-dinh-3 is the base font for nearly all dialogue, thoughts and narration; roles dialogue, thought and whisper always get it. Keep emphasis.bangers for real shouts. Pick another font from FONTS only when IMAGE 1 letters that text in a clearly different style (a bold caption on the art, a screen, a skill name, a sound effect) and it matches the FONT SAMPLES image; reuse a font from fonts_in_use in CHAPTER MEMORY before adding one. When unsure, use the base font.
 - Size: the renderer picks the largest size that still breathes inside the bubble. Keep the line short enough for that: about as long as the source line, shorter if the bubble is small. If it cannot fit, rewrite it shorter first; if it still cannot, set "review": true.
 - Break lines yourself with "\\n" at phrase boundaries; an oval bubble reads short, long, short. Never leave one orphan word, a lone punctuation mark, a split name or number and unit, or a hyphen inside a Vietnamese word.
-- Free text keeps its scale and weight: a large source line stays a strong, short line.
+- Colour: the renderer letters in the source letters' measured colour. Add "color" (#rrggbb) only when IMAGE 1 letters that text in a distinct colour the measurement could miss (red or glowing titles, coloured skill names, gradients); otherwise leave it out.
+- Free text keeps its scale and weight: a large source line stays a strong, short line. When free text or a caption would be too small to read at the source size (tiny notes, several captions in one box), set "enlarge": true and the renderer letters it bigger, growing its area a little.
+- Always write translated_text in normal sentence case, never in all capitals, even when the source is lettered in capitals.
 """.strip()
 
 _INPUT_IMAGES = """
 INPUT
-One vertical slice per request, in reading order. IMAGE 1 is the ORIGINAL; read the text from it. IMAGE 2 is the same slice after the text was erased, for scene context. Each object has an id, an OCR hint that is often wrong, and bbox_xyxy in image pixels. CHAPTER MEMORY holds the story notes, the character sheet, the forms of address already fixed and the last lines; treat it as settled unless the slice clearly contradicts it.
+One vertical slice per request, in reading order. IMAGE 1 is the ORIGINAL; read the text from it. IMAGE 2 is the same slice after the text was erased, with each object's box outlined in red and labelled with its id; the text of an object is what IMAGE 1 shows inside that box, never text from elsewhere. Each object has an id, an OCR hint that is often empty or wrong, bbox_xyxy in image pixels, and usually max_chars: how many characters (spaces included) fit its box when lettered about as large as the source. Stay within max_chars; rephrase shorter rather than go over, so bubbles and free text keep the size of the original lettering. CHAPTER MEMORY holds the GLOSSARY (names, terms and forms of address fixed for the whole chapter; always use them exactly and never respell a name), the story notes, the character sheet, the forms of address already fixed and the last lines; treat it as settled unless the slice clearly contradicts it.
 """.strip()
 
 _VIETNAMESE = """
@@ -50,23 +55,12 @@ VIETNAMESE
 
 _OUTPUT = """
 Answer with JSON only:
-{{"translations":[{{"id":"<id>","translated_text":"<text, lines split with \\n>","role":"<role>","review":false}}],
- "font_choices":{{"<id>":{{"font_id":"<catalog id>","font_mode":"ai"}}}},
+{{"translations":[{{"id":"<id>","translated_text":"<text, lines split with \\n>","role":"<role>","review":false,"enlarge":false,"color":"#rrggbb or omit"}}],
+ "font_choices":{{"<id>":"<font_id from FONTS>"}},
  "speakers":{{"<id>":"<character name, or narration>"}},
  "characters":[{{"name":"<name>","note":"<role, age, relationship>"}}],
- "address":[{{"from":"<A>","to":"<B>","self":"<how A refers to himself>","other":"<how A addresses B>"}}],
- "keep":["<id>"],
- "missed":[{{"box_2d":[ymin,xmin,ymax,xmax],"text":"<source text>"}}]}}
-Return every id exactly once and a font_choices entry for every id. List in "characters" and "address" only what is new or changed in this slice. Leave "keep" and "missed" empty when nothing applies.
-Catalog font_id values by role: {fonts}
-""".strip()
-
-
-_REPAIR = """
-CLEANUP CHECK
-- "keep": ids whose text is part of the artwork and must stay exactly as drawn: series or title logos, sound effects drawn as art, writing on objects or signs that belongs to the drawing. Their translation is ignored and the original pixels are restored.
-- "missed": story text a reader must read (dialogue, narration, system windows, titles in the source language) that is still visible in IMAGE 2 and has no id, because the detector missed it. box_2d is [ymin, xmin, ymax, xmax] normalised to 0-1000 on IMAGE 2. It will be erased and translated in a second pass.
-- Scanlator credits and watermarks are neither: give them an empty translation.
+ "address":[{{"from":"<A>","to":"<B>","self":"<how A refers to himself>","other":"<how A addresses B>"}}]}}
+Return every id exactly once and a font_choices entry for every id. List in "characters" and "address" only what is new or changed in this slice. Scanlator credits and watermarks get an empty translation.
 """.strip()
 
 
@@ -76,13 +70,11 @@ def _with_input(target_name: str, block: str) -> str:
     return f"{head}\n\n{block}\n\nTRANSLATION\n{rest}"
 
 
-def system_prompt(target_name: str, target_lang: str, font_hint: str, *, repair: bool = True) -> str:
-    parts = [_with_input(target_name, _INPUT_IMAGES)]
+def system_prompt(target_name: str, target_lang: str) -> str:
+    parts = [_with_input(target_name, _INPUT_IMAGES), "FONTS\n" + font_guide_prompt()]
     if str(target_lang or "").lower() in {"vi", "vie", "vietnamese"}:
         parts.append(_VIETNAMESE)
-    if repair:
-        parts.append(_REPAIR)
-    parts.append(_OUTPUT.format(fonts=font_hint))
+    parts.append(_OUTPUT.format())
     return "\n\n".join(parts)
 
 
@@ -92,20 +84,34 @@ def _clean(value, limit: int = MAX_FIELD_CHARS) -> str:
 
 
 class ChapterMemory:
-    def __init__(self, notes: str = ""):
+    def __init__(self, notes: str = "", glossary: dict | None = None):
         self.notes = _clean(notes, MAX_NOTES_CHARS)
+        self.glossary = glossary or {}
         self.characters: dict[str, str] = {}
         self.address: dict[tuple[str, str], dict[str, str]] = {}
         self.recent: deque[dict] = deque(maxlen=RECENT_LINES)
+        self.fonts: list[str] = [DEFAULT_LETTERING_FONT]
         self._lock = threading.Lock()
+
+    def admit_font(self, font_id: str) -> str:
+        """The font to letter with: a font already in use, a new one within the chapter budget, else the base font."""
+        with self._lock:
+            if font_id in self.fonts:
+                return font_id
+            if len(self.fonts) < MAX_CHAPTER_FONTS:
+                self.fonts.append(font_id)
+                return font_id
+            return DEFAULT_LETTERING_FONT
 
     def snapshot(self) -> dict:
         with self._lock:
             return {
+                **({"glossary": self.glossary} if self.glossary else {}),
                 "story_notes": self.notes,
                 "characters": [{"name": name, "note": note} for name, note in self.characters.items()],
                 "address": [{"from": a, "to": b, **terms} for (a, b), terms in self.address.items()],
                 "recent_lines": list(self.recent),
+                "fonts_in_use": list(self.fonts),
             }
 
     def update(self, slice_number: int, data: dict, translations: dict[str, str], order: list[str]) -> None:

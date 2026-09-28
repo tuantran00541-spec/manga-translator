@@ -14,7 +14,7 @@ from fastapi import FastAPI, Header
 from gateway.app import Upstream, create_app
 from gateway.billing import BillingConfig, lemonsqueezy_signature, payos_data_signature, payos_request_signature
 from gateway.mailer import Mailer
-from gateway.store import Store
+from gateway.store import QuotaExceeded, Store
 
 ADMIN = "admin-secret"
 CHECKSUM = "test-checksum-key"
@@ -259,3 +259,78 @@ def test_checkout_refuses_free_plans_and_unconfigured_providers(world, tmp_path)
     _, bare_headers = _login(bare)
     assert bare.post("/v1/billing/checkout", json={"plan": "pro", "provider": "payos"}, headers=bare_headers).status_code == 503
     assert bare.get("/v1/billing/plans").json()["providers"] == {"payos": False, "lemonsqueezy": False}
+
+
+def test_a_request_may_ask_for_more_thinking_and_gets_room_for_it(world, monkeypatch):
+    client, _store, _clock, _fake = world
+    _token, headers = _login(client)
+    job_token = client.post("/v1/jobs", headers=headers).json()["job_token"]
+    sent = []
+
+    def send(self, payload, trace=None):
+        sent.append(payload)
+        return 200, {"choices": [{"message": {"content": "{}"}}], "usage": {}}
+
+    monkeypatch.setattr(Upstream, "send", send)
+    job = {"Authorization": f"Bearer {job_token}"}
+    body = {"messages": [{"role": "user", "content": "x"}], "max_tokens": 1000}
+    client.post("/v1/chat/completions", headers=job, json={**body, "reasoning_effort": "low"})
+    client.post("/v1/chat/completions", headers=job, json={**body, "reasoning_effort": "extreme"})
+    assert (sent[0]["reasoning_effort"], sent[0]["max_tokens"]) == ("low", 1000 + 4096)
+    assert "reasoning_effort" not in sent[1] and sent[1]["max_tokens"] == 1000, "unknown efforts are dropped"
+
+
+def test_the_default_thinking_level_also_gets_room(tmp_path, monkeypatch):
+    sent = []
+    monkeypatch.setattr(Upstream, "send", lambda self, payload, trace=None: sent.append(payload) or (200, {"usage": {}}))
+    store = Store(tmp_path / "gw.sqlite")
+    client = TestClient(create_app(store, Upstream("http://127.0.0.1:9", "", "m", 0, 0, reasoning_effort="low"), ADMIN,
+                                   mailer=Mailer(api_key="", sender="", dev_mode=True)))
+    _token, headers = _login(client)
+    job = {"Authorization": f"Bearer {client.post('/v1/jobs', headers=headers).json()['job_token']}"}
+    client.post("/v1/chat/completions", headers=job, json={"messages": [], "max_tokens": 500})
+    assert (sent[0]["reasoning_effort"], sent[0]["max_tokens"]) == ("low", 500 + 4096)
+
+
+def test_requests_in_flight_together_cannot_pass_the_cost_cap(tmp_path):
+    store = Store(tmp_path / "gw.sqlite")
+    account_id, _token = store.create_account("a@example.com")
+    job_id, _job_token, cap = store.reserve_job(account_id)
+    assert cap == 2.0, "every plan gets the same guard; plans count chapters, not money"
+    store.begin_request(job_id, 0.8)
+    store.begin_request(job_id, 0.8)
+    with pytest.raises(QuotaExceeded):
+        store.begin_request(job_id, 0.8)  # nothing is billed yet, but the held cost would pass the guard
+    store.add_cost(job_id, 0.2, released_usd=0.8)
+    store.begin_request(job_id, 0.8)  # the real cost came in lower, so there is room again
+
+
+def test_the_gateway_forwards_one_answer_and_frees_what_it_held(tmp_path, monkeypatch):
+    sent = []
+    monkeypatch.setattr(Upstream, "send", lambda self, payload, trace=None: sent.append(payload) or (
+        200, {"usage": {"prompt_tokens": 1000, "completion_tokens": 100}}))
+    store = Store(tmp_path / "gw.sqlite")
+    client = TestClient(create_app(store, Upstream("http://127.0.0.1:9", "", "m", 1.0, 1.0), ADMIN,
+                                   mailer=Mailer(api_key="", sender="", dev_mode=True)))
+    _token, headers = _login(client)
+    job = {"Authorization": f"Bearer {client.post('/v1/jobs', headers=headers).json()['job_token']}"}
+    content = [{"type": "text", "text": "x" * 400}, {"type": "image_url", "image_url": {"url": "data:,"}}]
+    assert client.post("/v1/chat/completions", headers=job,
+                       json={"messages": [{"role": "user", "content": content}], "n": 8, "max_tokens": 500}).status_code == 200
+    assert "n" not in sent[0]
+    with store._connect() as db:
+        row = db.execute("SELECT cost_usd, reserved_usd FROM jobs").fetchone()
+    assert row["reserved_usd"] == 0 and row["cost_usd"] == pytest.approx(0.0011)
+
+
+def test_login_codes_are_capped_per_day_and_sessions_expire(world):
+    client, _store, clock, _fake = world
+    for _ in range(10):
+        assert client.post("/v1/auth/start", json={"email": "t@example.com"}).status_code == 200
+        clock[0] += 61
+    assert client.post("/v1/auth/start", json={"email": "t@example.com"}).status_code == 429, "ten codes a day"
+    clock[0] += DAY
+    token, headers = _login(client, "t@example.com")
+    assert client.get("/v1/me", headers=headers).status_code == 200
+    clock[0] += 91 * DAY
+    assert client.get("/v1/me", headers=headers).status_code == 401, "sessions end after 90 days"

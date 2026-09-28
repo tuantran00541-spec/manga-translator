@@ -1,9 +1,9 @@
-"""A.I mode job: chapter URL -> scan -> clean -> QC/repaint -> translate -> repair -> render -> ZIP.
+"""A.I mode job: URL -> five A.I checkpoints (scan, clean, review, translate, final check) -> a lettered chapter.
 
 Every stage reuses the same endpoint functions the editor calls, so locking,
 revision checks and manifest bookkeeping are identical to manual work. The
-chapter stays a normal chapter afterwards: it can be opened, fixed by hand
-and exported again.
+chapter stays a normal chapter afterwards: it opens in the editor, where it
+can be fixed by hand and exported.
 """
 from __future__ import annotations
 
@@ -13,46 +13,43 @@ import json
 import re
 import time
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from fastapi import HTTPException
 
+from app.ai_mode.checkpoints import _covered, review_clean, review_final, settle_clean_review
 from app.ai_mode.page_scan import scan_slices
-from app.config import OUTPUT_DIR, RAW_DIR
+from app.config import OUTPUT_DIR, PROCESSED_DIR, RAW_DIR
 from app.image_io import read_image
 from app.logging_config import logger
-from app.manifest_utils import get_manifest_lock, load_manifest_raw
-from app.parameters import VISUAL_QC_JOB_CONCURRENCY_LIMIT
+from app.manifest_utils import get_manifest_lock, load_manifest_raw, save_manifest_raw
 from app.security import validate_managed_path
 
 STAGES: tuple[tuple[str, str], ...] = (
     ("download", "Tải chương"),
-    ("scan", "AI quét credit, lát trống và logo"),
-    ("clean", "Clean ảnh"),
-    ("qc", "AI kiểm tra và repaint"),
-    ("translate", "Dịch và chọn font"),
-    ("repair", "AI tự sửa lỗi"),
+    ("scan", "Checkpoint 1: AI bỏ lát credit, lát trống và giữ logo"),
+    ("clean", "Checkpoint 2: Clean ảnh"),
+    ("review", "Checkpoint 3: AI so ảnh gốc và ảnh clean"),
+    ("translate", "Checkpoint 4: Dịch và chọn font"),
     ("render", "Render"),
-    ("export", "Đóng gói zip"),
+    ("final", "Checkpoint 5: AI duyệt lượt cuối"),
+    ("finish", "Hoàn tất"),
 )
 SCAN_BATCH_SIZE = 4
 SCAN_CONCURRENCY = 3
+GLOSSARY_BATCH_SIZE = 6
 # More "credit" slices than this is a misread of the chapter, not credits.
 CREDIT_MAX_SHARE = 0.25
 CREDIT_MAX_ABSOLUTE = 3
 # More than this share of textless slices means the scan misread the chapter.
 TEXTLESS_MAX_SHARE = 0.5
-REPAINT_ISSUE_TYPES = frozenset({"residual_text", "partial_text", "partial_erase", "smear", "inpaint_artifact"})
-REPAINT_MIN_CONFIDENCE = 0.5
-# QC often marks clear leftover text "review" instead of "repaint"; act on the confident ones.
-REPAINT_REVIEW_MIN_CONFIDENCE = 0.7
-REPAINT_PAD_PX = 6
+REVIEW_CONCURRENCY = 8  # checkpoints 3 and 5 have no reading-order dependency
 TRANSLATE_CONCURRENCY = 3
-QC_CONCURRENCY = VISUAL_QC_JOB_CONCURRENCY_LIMIT
-# Repair: objects per retry request, and retry batches without progress before restoring the original.
+# Checkpoint 5: at most two review-and-fix rounds.
+FINAL_ROUNDS = 2
+# Objects per retry request, and retry batches without progress before restoring the original.
 RETRY_BATCH = 4
 RETRY_ROUNDS = 3
-KEEP_PAD_PX = 4
 # Objects per slice given back their original pixels when their translation cannot be lettered.
 RENDER_RESTORE_ATTEMPTS = 3
 RENDER_FAILED_OBJECT = re.compile(r"\(vùng ([\w-]+)\)")
@@ -91,7 +88,6 @@ class AIModeJob:
     error: str | None = None
     cost_usd: float | None = 0.0
     report: dict = field(default_factory=dict)
-    archive_path: str | None = None
     cancel_requested: bool = False
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
@@ -124,11 +120,11 @@ class AIModeRunner:
             "translated": 0, "unreadable": 0, "review_flags": 0, "translate_errors": [], "render_errors": [],
             "editorial_blockers": 0, "blocker_samples": [], "source_lang": None,
             "textless_pages": [], "textless_rejected": [], "kept_regions": 0, "missed_added": 0,
-            "retried_pages": [], "restored_regions": 0, "review_list": [],
+            "retried_pages": [], "restored_regions": 0, "sfx_kept": 0, "review_list": [],
+            "final_rounds": 0, "final_flagged": [], "final_fixes": 0, "final_errors": [],
         })
-        # page index -> what translation asked the repair stage to do
-        self._repair: dict[int, dict] = {}
         self._memory = None
+        self._glossary_task: asyncio.Task | None = None
         self._slice_total: int | None = None
 
     # -- bookkeeping ---------------------------------------------------------
@@ -272,6 +268,8 @@ class AIModeRunner:
         from app.routers.chapters import chapter_processing_jobs
 
         indices = self._active_pages()
+        # The glossary only needs the original slices, so it is read while cleanup runs.
+        self._glossary_task = asyncio.create_task(self._read_glossary(indices))
         if not indices:
             self._progress(0, 0, "Không có lát nào cần clean")
             return
@@ -290,90 +288,152 @@ class AIModeRunner:
             raise AIModeFailed(f"Clean thất bại: {errors or 'lỗi không rõ'}")
         self._check_cancel()
 
-    async def qc(self) -> None:
-        from app.routers.editor import repaint_regions
-        from app.routers.visual_qc import chapter_qc_jobs, chapter_visual_qc_status, start_chapter_visual_qc
-        from app.schemas import RegionModel, RepaintRegionsRequest
-        from app.visual_qc.schemas import VisualQCChapterRequest
+    async def _read_glossary(self, indices: list[int]) -> dict:
+        """Names, terms and forms of address for the whole chapter; empty when the read fails."""
+        from app.ai_mode.glossary import merge_glossaries, read_glossary
+        from app.translation.deepseek import _language_name
 
-        if not self._active_pages():
-            self._progress(0, 0, "Không có lát nào")
-            return
-        remaining = self._remaining_budget()
-        qc_budget = 0.15 if remaining is None else max(0.005, min(0.15, 0.25 * remaining))
+        pages = self._manifest().get("pages", [])
+        gate = asyncio.Semaphore(SCAN_CONCURRENCY)
+
+        async def read(batch: list[int]) -> dict:
+            async with gate:
+                if self.job.cancel_requested:
+                    return {}
+                try:
+                    images = [(index, read_image(validate_managed_path(pages[index]["original"], RAW_DIR / self.job.chapter_id)))
+                              for index in batch]
+                    data, cost = await asyncio.to_thread(
+                        read_glossary, self.provider, self.settings.model, self.api_key,
+                        _language_name(self.settings.target_lang), self.settings.target_lang, images)
+                except (RuntimeError, ValueError, OSError) as exc:
+                    _append(self.report["translate_errors"], f"Bảng thuật ngữ lát {batch[0] + 1}: {_detail(exc)[:150]}")
+                    return {}
+                self._add_cost(cost)
+                return data
+
+        batches = [indices[i:i + GLOSSARY_BATCH_SIZE] for i in range(0, len(indices), GLOSSARY_BATCH_SIZE)]
+        glossary = merge_glossaries(list(await asyncio.gather(*(read(batch) for batch in batches))))
+        self.report["glossary"] = glossary
+        return glossary
+
+    def _images(self, page_index: int, second_key: str, second_root) -> tuple:
+        """The raw slice and one derived image (clean or rendered) of a page."""
+        page = self._manifest()["pages"][page_index]
+        chapter_id = self.job.chapter_id
+        original = read_image(validate_managed_path(page["original"], RAW_DIR / chapter_id))
+        other = read_image(validate_managed_path(page[second_key], second_root / chapter_id))
+        return original, other
+
+    def _in_core(self, page_index: int, boxes, spill: dict | None = None, kind: str = "") -> tuple:
+        """Boxes whose centre is in the part of the slice that is exported; a box crossing the cut is also given to the neighbour."""
+        pages = self._manifest()["pages"]
+        core = pages[page_index].get("stitch_core")
+        if not isinstance(core, dict):
+            return tuple(boxes)
         try:
-            snapshot = await start_chapter_visual_qc(VisualQCChapterRequest(
-                chapter_id=self.job.chapter_id, provider=self.provider.id,
-                model=self.settings.model, budget_usd=qc_budget, concurrency=QC_CONCURRENCY,
-            ))
-        except HTTPException as exc:
-            _append(self.report["qc_errors"], _detail(exc)[:300])
-            self._progress(0, 0, "Bỏ qua: không chạy được AI kiểm tra")
-            return
-        qc_job_id = snapshot["job_id"]
-        while snapshot["status"] in {"pending", "running"}:
-            if self.job.cancel_requested:
-                chapter_qc_jobs.cancel(qc_job_id)
-            self._progress(snapshot["completed_regions"], snapshot["total_regions"], "AI đang kiểm tra")
-            await asyncio.sleep(POLL_SECONDS)
-            snapshot = chapter_visual_qc_status(qc_job_id)
-        self._check_cancel()
-        usage = snapshot.get("usage") or {}
-        if self.provider.tracks_cost:
-            self._add_cost(float(usage.get("estimated_cost_usd") or 0.0))
-        self.report["qc_flagged"] = int(snapshot.get("flagged") or 0)
-        if snapshot.get("failed"):
-            _append(self.report["qc_errors"], f"{snapshot['failed']} vùng AI không kiểm tra được")
-
-        manifest = self._manifest()
-        by_page: dict[int, list] = {}
-        for result in snapshot.get("results") or []:
-            for issue in result.get("issues") or []:
-                action, confidence = issue.get("recommended_action"), float(issue.get("confidence") or 0.0)
-                if issue.get("issue_type") not in REPAINT_ISSUE_TYPES or not (
-                    (action == "repaint" and confidence >= REPAINT_MIN_CONFIDENCE)
-                    or (action == "review" and confidence >= REPAINT_REVIEW_MIN_CONFIDENCE)
-                ):
-                    continue
-                page_index = int(result["page_index"])
-                page = manifest["pages"][page_index]
-                width, height = int(page.get("width") or 0), int(page.get("height") or 0)
-                x1, y1, x2, y2 = (int(v) for v in issue["bbox"])
-                x1, y1 = max(0, x1 - REPAINT_PAD_PX), max(0, y1 - REPAINT_PAD_PX)
-                x2 = min(width, x2 + REPAINT_PAD_PX) if width else x2 + REPAINT_PAD_PX
-                y2 = min(height, y2 + REPAINT_PAD_PX) if height else y2 + REPAINT_PAD_PX
-                if x2 > x1 and y2 > y1:
-                    by_page.setdefault(page_index, []).append(RegionModel(x1=x1, y1=y1, x2=x2, y2=y2))
-
-        done = 0
-        for page_index, regions in sorted(by_page.items()):
-            self._check_cancel()
-            self._progress(done, len(by_page), "Đang repaint")
-            try:
-                await repaint_regions(RepaintRegionsRequest(
-                    chapter_id=self.job.chapter_id, page_index=page_index, regions=regions, mode="standard",
-                ))
-            except HTTPException as exc:
-                _append(self.report["qc_errors"], f"Lát {page_index + 1}: {_detail(exc)[:200]}")
+            top, bottom, offset = int(core["core_y1"]), int(core["core_y2"]), int(core["source_y1"])
+        except (KeyError, TypeError, ValueError):
+            return tuple(boxes)
+        kept = []
+        for box in boxes:
+            if not top <= (box[1] + box[3]) / 2 < bottom:
                 continue
-            self.report["repainted_regions"] += len(regions)
-            _append(self.report["repaint_pages"], page_index)
-            done += 1
-        self._progress(len(by_page), len(by_page), f"Repaint {self.report['repainted_regions']} vùng")
+            kept.append(box)
+            if spill is None or (box[1] >= top and box[3] <= bottom):
+                continue
+            for other_index in (page_index - 1,) * (box[1] < top) + (page_index + 1,) * (box[3] > bottom):
+                other = pages[other_index] if 0 <= other_index < len(pages) else {}
+                other_core = other.get("stitch_core")
+                if (other.get("skipped") or not isinstance(other_core, dict)
+                        or other.get("source_page") != pages[page_index].get("source_page")):
+                    continue
+                shift = offset - int(other_core["source_y1"])
+                spill.setdefault(other_index, {}).setdefault(kind, []).append(
+                    (box[0], box[1] + shift, box[2], box[3] + shift))
+        return tuple(kept)
+
+    def _page_boxes(self, page_index: int) -> list[tuple[int, int, int, int]]:
+        """Pixel rectangles of the page's active text boxes."""
+        boxes = self._manifest()["pages"][page_index].get("boxes") or []
+        return [(int(b["x1"]), int(b["y1"]), int(b["x2"]), int(b["y2"])) for b in boxes
+                if isinstance(b, dict) and not b.get("removed") and all(k in b for k in ("x1", "y1", "x2", "y2"))]
+
+    async def review(self) -> None:
+        """Checkpoint 3: the model compares each raw and clean slice; the system applies what it reports."""
+        from app.dependencies import pipeline
+
+        chapter_id = self.job.chapter_id
+        indices = self._active_pages()
+        gate = asyncio.Semaphore(REVIEW_CONCURRENCY)
+        finished = 0
+
+        spill: dict[int, dict[str, list]] = {}  # fixes crossing a slice cut, for the neighbouring slice
+
+        async def review_one(page_index: int) -> None:
+            nonlocal finished
+            try:
+                # Only the model call holds the gate; the local fix runs while other slices are checked.
+                async with gate:
+                    remaining = self._remaining_budget()
+                    if self.job.cancel_requested or (remaining is not None and remaining < 0.001):
+                        return
+                    original, clean = await asyncio.to_thread(self._images, page_index, "clean", PROCESSED_DIR)
+                    found, cost = await asyncio.to_thread(
+                        review_clean, self.provider, self.settings.model, self.api_key, page_index, original, clean)
+                    self._add_cost(cost)
+                found = settle_clean_review(found, self._page_boxes(page_index))
+                found = replace(found, missed=self._in_core(page_index, found.missed, spill, "missed"),
+                                residue=self._in_core(page_index, found.residue, spill, "residue"),
+                                restore=self._in_core(page_index, found.restore))
+                if found.restore or found.missed or found.residue:
+                    await asyncio.to_thread(
+                        pipeline.apply_review_fixes, chapter_id, page_index,
+                        preserve=list(found.restore), boxes=list(found.missed), repaint=list(found.residue))
+                    self.report["kept_regions"] += len(found.restore)
+                    self.report["missed_added"] += len(found.missed)
+                    self.report["repainted_regions"] += len(found.residue)
+                    if found.residue:
+                        _append(self.report["repaint_pages"], page_index)
+            except (HTTPException, RuntimeError, ValueError, OSError, KeyError) as exc:
+                _append(self.report["qc_errors"], f"Lát {page_index + 1}: {_detail(exc)[:200]}")
+            finally:
+                finished += 1
+                self._progress(finished, len(indices))
+
+        self._progress(0, len(indices))
+        await asyncio.gather(*(review_one(page_index) for page_index in indices))
+        for page_index, fixes in spill.items():
+            # The neighbour may already hold that text as its own box.
+            existing = self._page_boxes(page_index)
+            missed = [box for box in fixes.get("missed", []) if not _covered(box, existing)]
+            try:
+                await asyncio.to_thread(pipeline.apply_review_fixes, chapter_id, page_index,
+                                        boxes=missed, repaint=fixes.get("residue", []))
+            except (HTTPException, RuntimeError, ValueError, OSError, KeyError) as exc:
+                _append(self.report["qc_errors"], f"Lát {page_index + 1}: {_detail(exc)[:200]}")
+        self._check_cancel()
+        self._progress(len(indices), len(indices), (
+            f"Xoá thêm {self.report['missed_added']} vùng sót, repaint {self.report['repainted_regions']}, "
+            f"giữ nguyên {self.report['kept_regions']}"
+        ))
 
     async def translate(self) -> None:
-        from app.routers.ocr import detect_chapter_language
+        from app.ocr.language_detect import site_language_hint
         from app.routers.translation import TranslateVisionPageRequest, translate_page_in_context
         from app.translation.context import ChapterMemory
 
-        try:
-            language = await detect_chapter_language(self.job.chapter_id)
-            source_lang = language.get("source_lang") or "auto"
-        except HTTPException:
-            source_lang = "auto"
+        # The vision model reads the source language off the image, so no OCR probe runs here.
+        manifest = self._manifest()
+        source_lang = manifest.get("source_lang") or site_language_hint(manifest.get("source_url")) or "auto"
         self.report["source_lang"] = source_lang
         indices = self._active_pages()
-        memory = self._memory = ChapterMemory(self.settings.story_notes)
+        try:
+            glossary = await self._glossary_task if self._glossary_task else {}
+        except Exception as exc:  # the glossary only helps; translation goes on without it
+            _append(self.report["translate_errors"], f"Bảng thuật ngữ: {_detail(exc)[:150]}")
+            glossary = {}
+        memory = self._memory = ChapterMemory(self.settings.story_notes, glossary)
         slice_total = self._slice_total = len(self._manifest().get("pages", []))
         # Admit slices in reading order so each sees the memory of earlier ones.
         gate = asyncio.Semaphore(TRANSLATE_CONCURRENCY)
@@ -395,44 +455,65 @@ class AIModeRunner:
                         source_lang=source_lang, target_lang=self.settings.target_lang,
                         budget_usd=0.25 if remaining is None else max(0.001, min(0.25, remaining)),
                         provider=self.provider.id, model=self.settings.model,
-                    ), memory=memory, slice_total=slice_total)
+                    ), memory=memory, slice_total=slice_total, skip_seam_mirrors=True)
+                    run = data.get("translation_run") or {}
                 except HTTPException as exc:
                     _append(self.report["translate_errors"], f"Lát {page_index + 1}: {_detail(exc)[:200]}")
-                    self._repair.setdefault(page_index, {})["failed"] = True
-                    return
-                finally:
-                    finished += 1
-                    self._progress(finished, len(indices))
-                run = data.get("translation_run") or {}
-                self._note_repair(page_index, run)
-                self.report["translated"] += int(run.get("translated") or 0)
-                self.report["unreadable"] += int(run.get("unreadable") or 0)
-                self.report["review_flags"] += int(run.get("review") or 0)
-                self._add_cost(run.get("estimated_cost_usd") if self.provider.tracks_cost else None)
-                if run.get("render_error"):
-                    _append(self.report["render_errors"], f"Lát {page_index + 1}: {run['render_error']}")
+                    run = None
+                if run is not None:
+                    await self._keep_art(page_index, run)
+                    self.report["translated"] += int(run.get("translated") or 0)
+                    self.report["unreadable"] += int(run.get("unreadable") or 0)
+                    self.report["review_flags"] += int(run.get("review") or 0)
+                    self._add_cost(run.get("estimated_cost_usd") if self.provider.tracks_cost else None)
+                    if run.get("render_error"):
+                        _append(self.report["render_errors"], f"Lát {page_index + 1}: {run['render_error']}")
+                # A failed or cut-off slice retries everything; otherwise only what the model skipped.
+                if run is None or run.get("remaining") or run.get("missing_ids"):
+                    only = None if run is None or run.get("remaining") else set(run.get("missing_ids") or [])
+                    await self._retry_untranslated(page_index, source_lang, only)
+                finished += 1
+                self._progress(finished, len(indices))
 
         self._progress(0, len(indices))
         await asyncio.gather(*(translate_one(page_index) for page_index in indices))
         self._check_cancel()
         if out_of_budget:
             _append(self.report["translate_errors"], "Hết ngân sách, các lát còn lại chưa dịch")
+        await self._sync_seams()
         sheet = memory.snapshot()
         self.report["characters"] = sheet["characters"][:MAX_REPORT_ITEMS]
         self.report["address"] = sheet["address"][:MAX_REPORT_ITEMS]
         self._progress(len(indices), len(indices), f"Dịch {self.report['translated']} vùng")
 
-    def _note_repair(self, page_index: int, run: dict) -> None:
-        keep, missed, missing = run.get("keep_regions") or [], run.get("missed_boxes") or [], run.get("missing_ids") or []
-        if keep or missed or missing or run.get("remaining"):
-            todo = self._repair.setdefault(page_index, {})
-            todo.setdefault("keep", []).extend(keep)
-            todo.setdefault("missed", []).extend(missed)
-            todo.setdefault("missing", []).extend(missing)
-            if run.get("remaining"):
-                todo["failed"] = True
+    async def _sync_seams(self) -> list[int]:
+        """Letter every text crossing a slice cut exactly as its owning slice does."""
+        from app.ai_mode.seams import drop_overlapping_letters, sync_seam_mirrors
+        from app.manifest_utils import invalidate_page_render, save_manifest_raw
 
-    async def _translate_retry(self, page_index: int, source_lang: str, object_ids: list[str] | None) -> dict:
+        def sync() -> list[int]:
+            with get_manifest_lock(self.job.chapter_id):
+                manifest = load_manifest_raw(self.job.chapter_id)
+                dropped = drop_overlapping_letters(manifest)
+                self.report["overlaps_dropped"] = self.report.get("overlaps_dropped", 0) + len(dropped)
+                changed = sorted(set(sync_seam_mirrors(manifest)) | {page_index for page_index, _ in dropped})
+                for page_index in changed:
+                    invalidate_page_render(manifest, page_index)
+                if changed:
+                    save_manifest_raw(self.job.chapter_id, manifest)
+                return changed
+
+        changed = await asyncio.to_thread(sync)
+        self.report["seam_copies"] = self.report.get("seam_copies", 0) + len(changed)
+        return changed
+
+    async def _resync_seams(self) -> None:
+        """After fixes, copy changed seam lettering and render the slices that received it."""
+        for page_index in await self._sync_seams():
+            await self._render_one(page_index)
+
+    async def _translate_retry(self, page_index: int, source_lang: str, object_ids: list[str] | None,
+                               force: bool = False) -> dict:
         from app.routers.translation import TranslateVisionPageRequest, translate_page_in_context
 
         remaining = self._remaining_budget()
@@ -441,12 +522,26 @@ class AIModeRunner:
             source_lang=source_lang, target_lang=self.settings.target_lang,
             budget_usd=0.25 if remaining is None else max(0.001, min(0.25, remaining)),
             provider=self.provider.id, model=self.settings.model,
-            max_objects=RETRY_BATCH, object_ids=object_ids,
-        ), memory=self._memory, slice_total=self._slice_total)
+            max_objects=RETRY_BATCH, object_ids=object_ids, force=force,
+        ), memory=self._memory, slice_total=self._slice_total, skip_seam_mirrors=True)
         run = data.get("translation_run") or {}
         self.report["translated"] += int(run.get("translated") or 0)
         self._add_cost(run.get("estimated_cost_usd") if self.provider.tracks_cost else None)
+        await self._keep_art(page_index, run)
         return run
+
+    async def _keep_art(self, page_index: int, run: dict) -> None:
+        """Sound effects the model left as art get their original pixels back."""
+        from app.dependencies import pipeline
+
+        regions = run.get("art_regions") or []
+        if not regions:
+            return
+        try:
+            await asyncio.to_thread(pipeline.preserve_and_reinpaint, self.job.chapter_id, page_index, regions)
+            self.report["sfx_kept"] += len(regions)
+        except (ValueError, RuntimeError, OSError) as exc:
+            _append(self.report["translate_errors"], f"Lát {page_index + 1}: giữ SFX thất bại: {_detail(exc)[:150]}")
 
     def _ensure_objects(self, page_index: int) -> None:
         from app.manifest_utils import save_manifest_raw
@@ -461,116 +556,56 @@ class AIModeRunner:
     def _untranslated(self, page_index: int, only: set[str] | None, blank: set[str]) -> list[dict]:
         from app.region_policy import text_object_in_preserve_region
 
-        page = self._manifest()["pages"][page_index]
+        from app.ai_mode.seams import seam_mirror_ids
+
+        manifest = self._manifest()
+        page = manifest["pages"][page_index]
+        blank = blank | seam_mirror_ids(manifest, page_index)
         return [
             obj for obj in page.get("text_objects") or []
             if isinstance(obj, dict) and obj.get("id") and not obj.get("source_missing")
-            and not str(obj.get("translation") or "").strip()
+            and not obj.get("overlap_dropped") and not str(obj.get("translation") or "").strip()
             and (only is None or str(obj["id"]) in only) and str(obj["id"]) not in blank
             and isinstance(obj.get("region"), dict) and not text_object_in_preserve_region(page, obj)
         ]
 
-    async def repair(self) -> None:
-        """Use the editor's own tools on what translation reported.
-
-        keep -> preserve region (original pixels back, object left out);
-        missed text -> add_box (erased) and translated in small batches;
-        a slice whose reply was cut off or skipped objects -> retried in small batches;
-        whatever is still untranslated -> original restored and listed for review.
-        """
+    async def _retry_untranslated(self, page_index: int, source_lang: str, only: set[str] | None) -> None:
+        """Retry untranslated objects in small batches; what never translates keeps its original pixels."""
         from app.dependencies import pipeline
 
-        chapter_id = self.job.chapter_id
-        pages = sorted(self._repair)
-        source_lang = self.report.get("source_lang") or "auto"
-        for done, page_index in enumerate(pages):
-            self._check_cancel()
-            self._progress(done, len(pages), f"Lát {page_index + 1}")
-            todo = self._repair[page_index]
-            page = self._manifest()["pages"][page_index]
-            if page.get("skipped"):
+        await asyncio.to_thread(self._ensure_objects, page_index)
+        blank: set[str] = set()
+        _append(self.report["retried_pages"], page_index + 1)
+        fruitless = 0
+        while fruitless < RETRY_ROUNDS and not self.job.cancel_requested:
+            targets = self._untranslated(page_index, only, blank)
+            remaining = self._remaining_budget()
+            if not targets or (remaining is not None and remaining < 0.001):
+                break
+            batch = [str(obj["id"]) for obj in targets[:RETRY_BATCH]]
+            try:
+                run = await self._translate_retry(page_index, source_lang, batch)
+            except HTTPException as exc:
+                _append(self.report["translate_errors"], f"Lát {page_index + 1} (thử lại): {_detail(exc)[:200]}")
+                fruitless += 1
                 continue
-            height, width = int(page.get("height") or 0), int(page.get("width") or 0)
-
-            keep = [
-                {"x1": max(0, x1 - KEEP_PAD_PX), "y1": max(0, y1 - KEEP_PAD_PX),
-                 "x2": (min(width, x2 + KEEP_PAD_PX) if width else x2 + KEEP_PAD_PX),
-                 "y2": (min(height, y2 + KEEP_PAD_PX) if height else y2 + KEEP_PAD_PX)}
-                for x1, y1, x2, y2 in (tuple(int(v) for v in region[:4]) for region in todo.get("keep") or [])
-            ]
-            if keep:
-                try:
-                    await asyncio.to_thread(pipeline.preserve_and_reinpaint, chapter_id, page_index, keep)
-                    self.report["kept_regions"] += len(keep)
-                except (ValueError, RuntimeError, OSError) as exc:
-                    _append(self.report["qc_errors"], f"Lát {page_index + 1}: giữ nguyên thất bại: {_detail(exc)[:150]}")
-
-            rects = []
-            for box in todo.get("missed") or []:
-                x1, y1, x2, y2 = (int(v) for v in box[:4])
-                if width and height:
-                    x1, x2 = max(0, x1), min(width, x2)
-                    y1, y2 = max(0, y1), min(height, y2)
-                if x2 - x1 >= 10 and y2 - y1 >= 10:
-                    rects.append((x1, y1, x2, y2))
-            added = 0
-            if rects:
-                # One re-inpaint for all of a slice's missed text, not one per box.
-                try:
-                    await asyncio.to_thread(pipeline.add_manual_boxes, chapter_id, page_index, rects)
-                    added = len(rects)
-                except (ValueError, RuntimeError, OSError) as exc:
-                    _append(self.report["qc_errors"], f"Lát {page_index + 1}: thêm vùng chữ thất bại: {_detail(exc)[:150]}")
-            self.report["missed_added"] += added
-            if added:
-                # Create text objects for the new boxes before retrying.
-                await asyncio.to_thread(self._ensure_objects, page_index)
-
-            # New boxes and failed slices: every untranslated object; otherwise only the ones skipped.
-            only = None if (added or todo.get("failed")) else set(todo.get("missing") or [])
-            if only == set():
-                continue
-            blank: set[str] = set()
-            _append(self.report["retried_pages"], page_index + 1)
-            # Keep going while batches make progress; give up after RETRY_ROUNDS fruitless ones.
-            fruitless = 0
-            while fruitless < RETRY_ROUNDS:
-                self._check_cancel()
-                targets = self._untranslated(page_index, only, blank)
-                if not targets:
-                    break
-                remaining = self._remaining_budget()
-                if remaining is not None and remaining < 0.001:
-                    break
-                batch = [str(obj["id"]) for obj in targets[:RETRY_BATCH]]
-                try:
-                    run = await self._translate_retry(page_index, source_lang, batch)
-                except HTTPException as exc:
-                    _append(self.report["translate_errors"], f"Lát {page_index + 1} (thử lại): {_detail(exc)[:200]}")
-                    fruitless += 1
-                    continue
-                blank.update(run.get("blank_ids") or [])
-                left = {str(obj["id"]) for obj in self._untranslated(page_index, only, blank)}
-                if set(batch) <= left:
-                    fruitless += 1
-
-            unresolved = self._untranslated(page_index, only, blank)
-            if unresolved:
-                regions = [dict(obj["region"]) for obj in unresolved]
-                try:
-                    await asyncio.to_thread(pipeline.preserve_and_reinpaint, chapter_id, page_index, regions)
-                    self.report["restored_regions"] += len(regions)
-                except (ValueError, RuntimeError, OSError) as exc:
-                    _append(self.report["qc_errors"], f"Lát {page_index + 1}: khôi phục thất bại: {_detail(exc)[:150]}")
-                for obj in unresolved:
-                    _append(self.report["review_list"], {
-                        "page": page_index + 1, "id": obj["id"],
-                        "reason": "AI không dịch được sau khi thử lại; đã giữ ảnh gốc",
-                    })
-        self._progress(len(pages), len(pages), (
-            f"Giữ {self.report['kept_regions']}, thêm {self.report['missed_added']} vùng sót, "
-            f"khôi phục {self.report['restored_regions']}"
-        ))
+            blank.update(run.get("blank_ids") or [])
+            if set(batch) <= {str(obj["id"]) for obj in self._untranslated(page_index, only, blank)}:
+                fruitless += 1
+        unresolved = self._untranslated(page_index, only, blank)
+        if not unresolved:
+            return
+        regions = [dict(obj["region"]) for obj in unresolved]
+        try:
+            await asyncio.to_thread(pipeline.preserve_and_reinpaint, self.job.chapter_id, page_index, regions)
+            self.report["restored_regions"] += len(regions)
+        except (ValueError, RuntimeError, OSError) as exc:
+            _append(self.report["translate_errors"], f"Lát {page_index + 1}: khôi phục thất bại: {_detail(exc)[:150]}")
+        for obj in unresolved:
+            _append(self.report["review_list"], {
+                "page": page_index + 1, "id": obj["id"],
+                "reason": "AI không dịch được sau khi thử lại; đã giữ ảnh gốc",
+            })
 
     async def render(self) -> None:
         from app.routers.image import _current_rendered_path
@@ -627,28 +662,127 @@ class AIModeRunner:
                 "reason": "Bản dịch không vừa vùng chữ; đã giữ ảnh gốc",
             })
 
-    async def export(self) -> None:
-        from app.routers.export import _preflight_copy, write_chapter_archive
+    async def final(self) -> None:
+        """Checkpoint 5: the model checks each lettered slice; up to two rounds of fixes, then export."""
+        from app.region_policy import text_object_in_preserve_region
+        from app.routers.image import _current_rendered_path
 
         chapter_id = self.job.chapter_id
-        # The gate normally blocks export until a human reviews every story
-        # object. A.I mode exports anyway and reports what a reviewer would see.
-        preflight = _preflight_copy(self._manifest(), require_final_approval=False)
+        pages = self._active_pages()
+        gate = asyncio.Semaphore(REVIEW_CONCURRENCY)
+        source_lang = self.report.get("source_lang") or "auto"
+
+        async def check(page_index: int):
+            async with gate:
+                remaining = self._remaining_budget()
+                if self.job.cancel_requested or (remaining is not None and remaining < 0.001):
+                    return None
+                manifest = self._manifest()
+                page = manifest["pages"][page_index]
+                rendered = _current_rendered_path(chapter_id, page_index, manifest)
+                if rendered is None:
+                    return None
+                objects = [
+                    obj for obj in page.get("text_objects") or []
+                    if isinstance(obj, dict) and obj.get("id") and isinstance(obj.get("region"), dict)
+                    and str(obj.get("translation") or "").strip() and not text_object_in_preserve_region(page, obj)
+                ]
+                try:
+                    original = await asyncio.to_thread(
+                        read_image, validate_managed_path(page["original"], RAW_DIR / chapter_id))
+                    final = await asyncio.to_thread(read_image, rendered)
+                    found, cost = await asyncio.to_thread(
+                        review_final, self.provider, self.settings.model, self.api_key,
+                        page_index, original, final, objects)
+                except (RuntimeError, ValueError, OSError) as exc:
+                    _append(self.report["final_errors"], f"Lát {page_index + 1}: {_detail(exc)[:200]}")
+                    return None
+                self._add_cost(cost)
+                return found
+
+        for round_number in range(1, FINAL_ROUNDS + 1):
+            self._check_cancel()
+            self._progress(0, len(pages), f"Vòng {round_number}")
+            reviews = [found for found in await asyncio.gather(*(check(index) for index in pages))
+                       if found is not None and not found.ok]
+            self.report["final_rounds"] = round_number
+            self.report["final_flagged"].append(len(reviews))
+            if not reviews:
+                break
+            fixing, done = asyncio.Semaphore(TRANSLATE_CONCURRENCY), 0
+
+            async def fix(found) -> None:
+                nonlocal done
+                async with fixing:
+                    if self.job.cancel_requested:
+                        return
+                    await self._apply_final_fixes(found, source_lang)
+                    done += 1
+                    self._progress(done, len(reviews), f"Vòng {round_number}: sửa lát")
+
+            self._progress(0, len(reviews), f"Vòng {round_number}: sửa lát")
+            await asyncio.gather(*(fix(found) for found in reviews))
+            await self._resync_seams()
+            self._check_cancel()
+            pages = [found.page_index for found in reviews]
+        flagged = self.report["final_flagged"]
+        self._progress(len(pages), len(pages), (
+            f"{self.report['final_rounds']} vòng, sửa {self.report['final_fixes']} chỗ"
+            + (f", còn {flagged[-1]} lát chưa ổn" if len(flagged) == FINAL_ROUNDS and flagged[-1] else "")
+        ))
+
+    async def _apply_final_fixes(self, found, source_lang: str) -> None:
+        from app.dependencies import pipeline
+
+        from app.ai_mode.seams import seam_mirror_ids
+
+        chapter_id, page_index = self.job.chapter_id, found.page_index
+        manifest = self._manifest()
+        page = manifest["pages"][page_index]
+        by_id = {str(obj.get("id")): obj for obj in page.get("text_objects") or [] if isinstance(obj, dict)}
+        # Seam copies follow their owning slice, which is reviewed on its own.
+        mirrors = seam_mirror_ids(manifest, page_index)
+        retranslate = [obj_id for obj_id in found.retranslate if obj_id not in mirrors]
+        inside = list(self._in_core(page_index, found.repaint))
+        # Source text over an existing object is erased again; only text nothing covers becomes a new object.
+        existing = self._page_boxes(page_index)
+        missed = [box for box in inside if not _covered(box, existing)]
+        repaint = [box for box in inside if box not in missed]
+        try:
+            regions = [dict(by_id[obj_id]["region"]) for obj_id in found.restore
+                       if obj_id in by_id and obj_id not in mirrors]
+            if regions or missed or repaint:
+                # Source text left on the page is erased and translated like text the detector missed.
+                await asyncio.to_thread(
+                    pipeline.apply_review_fixes, chapter_id, page_index,
+                    preserve=[(r["x1"], r["y1"], r["x2"], r["y2"]) for r in regions], boxes=missed,
+                    repaint=repaint)
+            if missed:
+                await self._retry_untranslated(page_index, source_lang, None)
+            if retranslate:
+                await self._translate_retry(page_index, source_lang, retranslate, force=True)
+            self.report["final_fixes"] += len(regions) + len(missed) + len(repaint) + len(retranslate)
+        except (HTTPException, RuntimeError, ValueError, OSError) as exc:
+            _append(self.report["final_errors"], f"Lát {page_index + 1}: {_detail(exc)[:200]}")
+        await self._render_one(page_index)
+
+    async def finish(self) -> None:
+        """Report what a reviewer would still see and leave the chapter open in the editor."""
+        from app.routers.export import _preflight_copy
+
+        chapter_id = self.job.chapter_id
+        with get_manifest_lock(chapter_id):
+            manifest = load_manifest_raw(chapter_id)
+            manifest["workflow"] = {"stage": "review", "page_index": 0}
+            save_manifest_raw(chapter_id, manifest)
+        preflight = _preflight_copy(manifest, require_final_approval=False)
         self.report["editorial_blockers"] = int(preflight.get("blocker_count") or 0)
         self.report["blocker_samples"] = [
             {"kind": item.get("kind"), "page": int(item.get("page_index", 0)) + 1, "reason": item.get("reason")}
             for item in (preflight.get("blockers") or [])[:10]
         ]
-        self._progress(0, 1, "Đang ghép trang và nén")
-        try:
-            archive = await asyncio.to_thread(
-                write_chapter_archive, chapter_id,
-                enforce_editorial_gate=False, archive_name=f"ai_mode_{chapter_id}.zip",
-            )
-        except HTTPException as exc:
-            raise AIModeFailed(f"Không đóng gói được zip: {_detail(exc)}") from exc
-        self.job.archive_path = str(archive)
         report_path = OUTPUT_DIR / chapter_id / "ai_mode_report.json"
+        report_path.parent.mkdir(parents=True, exist_ok=True)
         report_path.write_text(json.dumps(self.report, ensure_ascii=False, indent=1), encoding="utf-8")
         self._progress(1, 1, "Xong")
 
@@ -714,10 +848,6 @@ class AIModeJobManager:
             job.cancel_requested = True
         return self.snapshot(job_id)
 
-    def archive_path(self, job_id: str) -> str | None:
-        job = self._get(job_id)
-        return job.archive_path if job.status == "completed" else None
-
     def snapshot(self, job_id: str) -> dict:
         job = self._get(job_id)
         return {
@@ -735,7 +865,6 @@ class AIModeJobManager:
             "cancel_requested": job.cancel_requested,
             "error": job.error,
             "report": copy.deepcopy(job.report),
-            "download_url": f"/api/ai_mode/jobs/{job.job_id}/download" if job.archive_path and job.status == "completed" else None,
             "created_at": job.created_at,
             "updated_at": job.updated_at,
         }

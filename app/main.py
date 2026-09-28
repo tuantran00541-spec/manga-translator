@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import (
     BASE_DIR,
+    HOST,
     LAMA_DYNAMIC_MODEL,
     LAMA_MODEL,
     OUTPUT_DIR,
@@ -170,7 +171,43 @@ class RequestSizeLimitMiddleware:
         await self.app(scope, limited_receive, send)
 
 
+def allowed_hosts() -> set[str]:
+    """Hosts the app answers to: loopback, the bound host and MANGA_ALLOWED_HOSTS."""
+    hosts = {"127.0.0.1", "localhost", "::1"}
+    if HOST not in ("0.0.0.0", "::", ""):
+        hosts.add(HOST.lower())
+    hosts.update(h.strip().lower() for h in os.getenv("MANGA_ALLOWED_HOSTS", "").split(",") if h.strip())
+    return hosts
+
+
+def _host_name(value: str) -> str:
+    value = value.strip().lower()
+    if value.startswith("["):
+        return value[1:].split("]", 1)[0]
+    return value.rsplit(":", 1)[0] if value.count(":") == 1 else value
+
+
+class LocalHostOnlyMiddleware:
+    """Refuse requests naming another host, so a web page rebinding its domain to this machine gets nothing."""
+
+    def __init__(self, app, hosts: set[str] | None = None):
+        self.app = app
+        self.hosts = hosts if hosts is not None else allowed_hosts()
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") in ("http", "websocket"):
+            host = next((v.decode("latin-1") for k, v in scope.get("headers", []) if k.lower() == b"host"), "")
+            if _host_name(host) not in self.hosts:
+                if scope["type"] == "websocket":
+                    await send({"type": "websocket.close", "code": 1008})
+                    return
+                await JSONResponse({"detail": "Host not allowed"}, status_code=403)(scope, receive, send)
+                return
+        await self.app(scope, receive, send)
+
+
 app.add_middleware(RequestSizeLimitMiddleware)
+app.add_middleware(LocalHostOnlyMiddleware)
 
 
 @app.exception_handler(Exception)
@@ -277,14 +314,7 @@ def _runtime_state() -> dict:
         "models": {
             "detector": {
                 "resident": detector is not None,
-                "bubble_session_loaded": bool(
-                    detector is not None
-                    and getattr(getattr(detector, "bubble_detector", None), "session", None) is not None
-                ),
-                "text_session_loaded": bool(
-                    detector is not None
-                    and getattr(getattr(detector, "text_detector", None), "session", None) is not None
-                ),
+                "session_loaded": bool(detector is not None and getattr(detector, "session", None) is not None),
             },
             "inpaint": {
                 "object_created": inpainter is not None,
@@ -332,9 +362,9 @@ def health():
 
 @app.get("/")
 def index():
-    return FileResponse("app/templates/index.html")
+    return FileResponse(BASE_DIR / "app" / "templates" / "index.html")
 
 
 @app.get("/favicon.ico", include_in_schema=False)
 def favicon():
-    return FileResponse("app/static/favicon.ico", media_type="image/x-icon")
+    return FileResponse(BASE_DIR / "app" / "static" / "favicon.ico", media_type="image/x-icon")

@@ -114,8 +114,8 @@ def exercise_desktop(page: Page, base_url: str, artifacts: Path) -> None:
     expect(page.locator(".chapter-qc-open")).to_have_text("AI đang kiểm tra toàn chương…")
     expect(panel.locator(".chapter-qc-summary")).to_contain_text("Đang kiểm tra")
     veiled = page.evaluate(
-        """() => [...document.querySelectorAll('.review-stitched-image .review-image-wrap')]
-          .filter((wrap) => getComputedStyle(wrap, '::after').content !== 'none').length"""
+        """() => [...document.querySelectorAll('.review-stitched-image')]
+          .filter((image) => getComputedStyle(image, '::after').content !== 'none').length"""
     )
     assert veiled == 0, f"{veiled} page(s) are covered while chapter QC runs"
     overlay = page.locator('.review-text-object-overlay[data-page-index="0"]').first

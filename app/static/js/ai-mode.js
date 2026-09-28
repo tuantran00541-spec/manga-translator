@@ -228,7 +228,7 @@
     if (r.credit_rejected?.length) lines.push(`AI coi ${r.credit_rejected.length} lát là credit — quá nhiều nên không bỏ lát nào`);
     if (r.textless_pages?.length) lines.push(`Bỏ qua ${r.textless_pages.length} lát không có chữ (giữ ảnh gốc)`);
     if (r.logo_regions) lines.push(`Giữ nguyên ${r.logo_regions} vùng logo`);
-    if (r.kept_regions) lines.push(`Giữ nguyên ${r.kept_regions} vùng chữ là một phần của hình vẽ`);
+    if (r.kept_regions) lines.push(`Trả lại ${r.kept_regions} vùng hình vẽ bị xoá nhầm`);
     if (r.missed_added) lines.push(`Thêm ${r.missed_added} vùng chữ bị sót rồi xoá và dịch`);
     if (r.retried_pages?.length) lines.push(`Dịch lại ${r.retried_pages.length} lát theo lô nhỏ`);
     if (r.restored_regions) {
@@ -236,6 +236,7 @@
       lines.push(`${r.restored_regions} vùng AI không dịch được, đã giữ ảnh gốc${pages.length ? ` (lát ${pages.join(", ")})` : ""}`);
     }
     if (r.repainted_regions) lines.push(`Repaint ${r.repainted_regions} vùng AI thấy còn sót ở ${r.repaint_pages?.length || 0} lát`);
+    if (r.final_rounds) lines.push(`Duyệt cuối ${r.final_rounds} vòng, sửa ${r.final_fixes || 0} chỗ`);
     if (r.source_lang) lines.push(`Ngôn ngữ gốc: ${window.SOURCE_LANG_LABELS?.[r.source_lang] || r.source_lang}`);
     if (r.translated || r.unreadable) lines.push(`Dịch ${r.translated || 0} vùng chữ${r.unreadable ? `, ${r.unreadable} vùng AI không đọc được` : ""}`);
     if (r.editorial_blockers) {
@@ -243,8 +244,8 @@
       lines.push(`${r.editorial_blockers} chỗ nên xem lại bằng mắt${pages.length ? ` (ví dụ lát ${pages.join(", ")})` : ""}`);
     }
     const errors = [
-      ["quét credit/logo", r.scan_errors], ["kiểm tra/repaint", r.qc_errors],
-      ["dịch", r.translate_errors], ["render", r.render_errors],
+      ["quét credit/logo", r.scan_errors], ["so ảnh gốc và clean", r.qc_errors],
+      ["dịch", r.translate_errors], ["render", r.render_errors], ["duyệt cuối", r.final_errors],
     ].filter(([, list]) => list?.length);
     errors.forEach(([label, list]) => {
       const first = typeof list[0] === "string" ? list[0] : list[0]?.error || "";
@@ -276,13 +277,10 @@
     const cost = job.cost_usd == null ? "" : ` · chi phí ~$${Number(job.cost_usd).toFixed(4)}`;
     const summary = $("ai-mode-summary");
     if (running) summary.textContent = (job.cancel_requested ? "Đang hủy sau bước hiện tại…" : "AI đang làm, bạn có thể để trang này mở hoặc quay lại sau.") + cost;
-    else if (job.status === "completed") summary.textContent = "Xong! File zip đã sẵn sàng." + cost;
+    else if (job.status === "completed") summary.textContent = "Xong! Chương đã có chữ, mở ra để xem, sửa và xuất." + cost;
     else if (job.status === "cancelled") summary.textContent = "Đã hủy. Những gì đã làm vẫn được lưu trong chương." + cost;
     else summary.textContent = `Dừng vì lỗi: ${job.error || "không rõ"}` + cost;
 
-    const download = $("ai-mode-download");
-    download.hidden = !job.download_url;
-    if (job.download_url) download.href = job.download_url;
     const open = $("ai-mode-open");
     open.hidden = running || !job.chapter_id;
     setRunning(running);
@@ -300,12 +298,15 @@
   async function poll(jobId) {
     window.clearTimeout(pollTimer);
     try {
+      const wasRunning = currentJob?.job_id === jobId && (currentJob.status === "pending" || currentJob.status === "running");
       const job = await requestJson(`/api/ai_mode/jobs/${encodeURIComponent(jobId)}`);
       render(job);
       if (job.status === "pending" || job.status === "running") {
         pollTimer = window.setTimeout(() => poll(jobId), POLL_MS);
-      } else if (job.status === "completed") {
-        window.showToast?.("A.I mode xong, tải file zip ở khung A.I mode.", "success");
+      } else if (job.status === "completed" && wasRunning && job.chapter_id) {
+        // A job finishing while watched opens its chapter; an old finished job only shows its summary.
+        window.showToast?.("A.I mode xong, đang mở chương.", "success");
+        window.resumeChapter?.(job.chapter_id);
       }
     } catch (err) {
       if (err.status === 404) {

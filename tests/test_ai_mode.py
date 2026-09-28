@@ -132,7 +132,7 @@ def _run_manager(fail_at=None, cancel=False):
 
 def test_manager_runs_every_stage_in_order():
     snapshot = _run_manager()
-    assert RecordingRunner.calls == ["download", "scan", "clean", "qc", "translate", "repair", "render", "export"]
+    assert RecordingRunner.calls == ["download", "scan", "clean", "review", "translate", "render", "final", "finish"]
     assert snapshot["status"] == "completed"
     assert all(stage["status"] == "done" for stage in snapshot["stages"])
     assert snapshot["chapter_id"] == CHAPTER
@@ -140,12 +140,11 @@ def test_manager_runs_every_stage_in_order():
 
 
 def test_manager_stops_at_the_failing_stage():
-    snapshot = _run_manager(fail_at="qc")
-    assert RecordingRunner.calls == ["download", "scan", "clean", "qc"]
+    snapshot = _run_manager(fail_at="review")
+    assert RecordingRunner.calls == ["download", "scan", "clean", "review"]
     assert snapshot["status"] == "failed" and snapshot["error"] == "boom"
     states = {stage["key"]: stage["status"] for stage in snapshot["stages"]}
-    assert states["qc"] == "failed" and states["translate"] == "pending"
-    assert snapshot["download_url"] is None
+    assert states["review"] == "failed" and states["translate"] == "pending"
 
 
 def test_manager_cancel_before_first_stage():
@@ -267,59 +266,104 @@ def test_scan_parse_requires_a_confident_textless_answer():
     assert [scan.no_text for scan in scans] == [True, False, False], "a slice with a logo has lettering"
 
 
-def test_repair_stage_uses_preserve_add_box_and_retries_before_restoring(monkeypatch):
+def _runner(monkeypatch, stage, manifest):
+    job = ai_job.AIModeJob(job_id="j", settings=SETTINGS, chapter_id=CHAPTER, stage=stage, cost_usd=None,
+                           stages={stage: {"done": 0, "total": 0, "detail": ""}})
+    runner = AIModeRunner(job, PROVIDERS["openai"], "key")
+    monkeypatch.setattr(runner, "_manifest", lambda: manifest)
+
+    async def no_seams():
+        return []
+
+    monkeypatch.setattr(runner, "_sync_seams", no_seams)
+    return runner
+
+
+def test_review_stage_applies_each_slice_in_one_pass_without_duplicating_boxes(monkeypatch):
+    from app.ai_mode.checkpoints import CleanReview
+    from app.dependencies import pipeline
+
+    existing = {"x1": 100, "y1": 100, "x2": 200, "y2": 160}
+    runner = _runner(monkeypatch, "review", {"pages": [{"boxes": [existing]}, {}]})
+    monkeypatch.setattr(runner, "_active_pages", lambda: [0, 1])
+    monkeypatch.setattr(runner, "_images", lambda index, key, root: (np.zeros((10, 10, 3)), np.zeros((10, 10, 3))))
+    reviews = {0: CleanReview(0, missed=((1, 2, 30, 40), (105, 105, 195, 150)), residue=((5, 5, 20, 20),),
+                              restore=((300, 300, 400, 400), (0, 0, 50, 50))),
+               1: CleanReview(1)}
+    monkeypatch.setattr(ai_job, "review_clean", lambda provider, model, key, index, a, b: (reviews[index], None))
+    calls = []
+    monkeypatch.setattr(pipeline, "apply_review_fixes",
+                        lambda chapter, index, **fixes: calls.append((index, fixes)), raising=False)
+    asyncio.run(runner.review())
+    assert calls == [(0, {
+        "preserve": [(300, 300, 400, 400)],
+        "boxes": [(1, 2, 30, 40)],
+        "repaint": [(5, 5, 20, 20), (105, 105, 195, 150)],
+    })], "missed text over an existing box is re-erased, and a restore over an erase is dropped"
+    assert (runner.report["kept_regions"], runner.report["missed_added"], runner.report["repainted_regions"]) == (1, 1, 2)
+
+
+def test_retry_uses_small_batches_and_restores_what_never_translates(monkeypatch):
     from app.dependencies import pipeline
 
     def obj(obj_id, translation=""):
         return {"id": obj_id, "region": {"x1": 10, "y1": 10, "x2": 60, "y2": 40}, "translation": translation}
 
     manifest = {"pages": [
-        {"width": 400, "height": 600, "text_objects": [obj("k", "")]},
         {"width": 400, "height": 600, "text_objects": [obj("b1"), obj("b2"), obj("done", "Xong")]},
         {"width": 400, "height": 600, "text_objects": [obj("a"), obj("other")]},
     ]}
-    preserved, added, retries = [], [], []
-    def preserve(chapter_id, index, regions):
-        preserved.append((index, regions))
-        manifest["pages"][index].setdefault("preserve_regions", []).extend(regions)
+    preserved, retries = [], []
+    monkeypatch.setattr(pipeline, "preserve_and_reinpaint",
+                        lambda chapter, index, regions: preserved.append((index, regions)), raising=False)
+    runner = _runner(monkeypatch, "translate", manifest)
+    monkeypatch.setattr(runner, "_ensure_objects", lambda index: None)
 
-    monkeypatch.setattr(pipeline, "preserve_and_reinpaint", preserve, raising=False)
-    monkeypatch.setattr(pipeline, "add_manual_boxes",
-                        lambda chapter_id, index, rects: added.append((index, rects)), raising=False)
-
-    job = ai_job.AIModeJob(job_id="j", settings=SETTINGS, chapter_id=CHAPTER, stage="repair", cost_usd=None,
-                           stages={"repair": {"done": 0, "total": 0, "detail": ""}})
-    runner = AIModeRunner(job, PROVIDERS["openai"], "key")
-    monkeypatch.setattr(runner, "_manifest", lambda: manifest)
-    ensured = []
-    monkeypatch.setattr(runner, "_ensure_objects", ensured.append)
-
-    async def retry(page_index, source_lang, object_ids):
+    async def retry(page_index, source_lang, object_ids, force=False):
         retries.append((page_index, object_ids))
-        if page_index == 1:  # b1 translated, b2 deliberately left blank (a watermark)
-            manifest["pages"][1]["text_objects"][0]["translation"] = "Chào"
+        if page_index == 0:  # b1 translated, b2 deliberately left blank (a watermark)
+            manifest["pages"][0]["text_objects"][0]["translation"] = "Chào"
             return {"blank_ids": ["b2"]}
-        return {"blank_ids": [], "missing_ids": object_ids}  # page 2: "a" is never answered
+        return {"blank_ids": []}  # page 1: "a" is never answered
 
     monkeypatch.setattr(runner, "_translate_retry", retry)
-    runner._repair = {
-        0: {"keep": [[10, 10, 60, 40]], "missed": [[100, 100, 200, 160, "HI"], [0, 0, 5, 5, "tiny"]], "missing": []},
-        1: {"failed": True},
-        2: {"missing": ["a"]},
-    }
-    asyncio.run(runner.repair())
-
-    assert preserved[0] == (0, [{"x1": 6, "y1": 6, "x2": 64, "y2": 44}]), "keep -> padded preserve region"
-    assert added == [(0, [(100, 100, 200, 160)])], "missed text -> one add_boxes call per slice; boxes under 10px are dropped"
-    assert ensured == [0], "the new box gets its text object before the retry"
-    assert retries == [(1, ["b1", "b2"]), (2, ["a"]), (2, ["a"]), (2, ["a"])], (
-        "a kept object is not retried; a failed slice retries every untranslated object, "
-        "otherwise only the unanswered ids, until three batches make no progress"
+    asyncio.run(runner._retry_untranslated(0, "en", None))
+    asyncio.run(runner._retry_untranslated(1, "en", {"a"}))
+    assert retries == [(0, ["b1", "b2"]), (1, ["a"]), (1, ["a"]), (1, ["a"])], (
+        "a failed slice retries every untranslated object, otherwise only the unanswered ids, "
+        "until three batches make no progress"
     )
-    assert not any(index == 1 for index, _ in preserved), "a deliberate blank is not restored"
-    assert preserved[-1] == (2, [{"x1": 10, "y1": 10, "x2": 60, "y2": 40}]), "never answered -> original restored"
+    assert preserved == [(1, [{"x1": 10, "y1": 10, "x2": 60, "y2": 40}])], "a deliberate blank is not restored"
     assert [item["id"] for item in runner.report["review_list"]] == ["a"]
-    assert runner.report["missed_added"] == 1 and runner.report["kept_regions"] == 1
+
+
+def test_final_stage_fixes_flagged_slices_at_most_twice(monkeypatch):
+    from app.ai_mode.checkpoints import FinalReview
+    import app.routers.image as image_module
+
+    manifest = {"pages": [{"original": "o0", "text_objects": []}, {"original": "o1", "text_objects": []}]}
+    runner = _runner(monkeypatch, "final", manifest)
+    monkeypatch.setattr(runner, "_active_pages", lambda: [0, 1])
+    monkeypatch.setattr(image_module, "_current_rendered_path", lambda chapter, index, m: f"r{index}")
+    monkeypatch.setattr(ai_job, "validate_managed_path", lambda path, root: path)
+    monkeypatch.setattr(ai_job, "read_image", lambda path: np.zeros((10, 10, 3)))
+    checked = []
+
+    def review(provider, model, key, index, original, final, objects):
+        checked.append(index)
+        return FinalReview(index, ok=index == 0, repaint=((1, 1, 5, 5),)), None
+
+    monkeypatch.setattr(ai_job, "review_final", review)
+    fixed = []
+
+    async def apply(found, source_lang):
+        fixed.append(found.page_index)
+
+    monkeypatch.setattr(runner, "_apply_final_fixes", apply)
+    asyncio.run(runner.final())
+    assert sorted(checked[:2]) == [0, 1] and checked[2:] == [1], "round two looks only at the slice round one flagged"
+    assert fixed == [1, 1], "two rounds of fixes at most"
+    assert runner.report["final_rounds"] == 2 and runner.report["final_flagged"] == [1, 1]
 
 
 def test_render_stage_gives_an_unletterable_object_its_original_pixels(monkeypatch):
@@ -367,7 +411,8 @@ def test_translate_stage_keeps_a_few_slices_in_flight_and_reports_failures(monke
 
     started, memories = [], set()
 
-    async def fake_translate(req, memory=None, slice_total=None):
+    async def fake_translate(req, memory=None, slice_total=None, skip_seam_mirrors=False):
+        assert skip_seam_mirrors, "A.I mode leaves seam copies to their owning slice"
         started.append(req.page_index)
         memories.add(id(memory))
         assert slice_total == 10
@@ -387,7 +432,21 @@ def test_translate_stage_keeps_a_few_slices_in_flight_and_reports_failures(monke
     runner = AIModeRunner(job, PROVIDERS["openai"], "key")
     monkeypatch.setattr(runner, "_active_pages", lambda: list(range(10)))
     monkeypatch.setattr(runner, "_manifest", lambda: {"pages": [{} for _ in range(10)]})
+    synced = []
+
+    async def sync():
+        synced.append(True)
+        return []
+
+    monkeypatch.setattr(runner, "_sync_seams", sync)
+    retried = []
+
+    async def retry(page_index, source_lang, only):
+        retried.append((page_index, only))
+
+    monkeypatch.setattr(runner, "_retry_untranslated", retry)
     asyncio.run(runner.translate())
+    assert retried == [(3, None)], "a failed slice retries every object in the same stage"
 
     assert started == list(range(10)), "slices start in reading order so earlier memory reaches later slices"
     assert len(memories) == 1 and None not in memories, "one chapter memory shared by every slice"
@@ -437,11 +496,11 @@ def cleaned_chapter(tmp_path, monkeypatch):
     return output
 
 
-def test_translate_render_and_export_without_human_review(cleaned_chapter, monkeypatch):
+def test_translate_render_and_leave_the_chapter_open_in_the_editor(cleaned_chapter, monkeypatch):
     import app.routers.ocr as ocr_router
 
     async def detected(chapter_id, req=None):
-        return {"source_lang": "en"}
+        raise AssertionError("A.I mode must not run the OCR language probe")
 
     monkeypatch.setattr(ocr_router, "detect_chapter_language", detected)
     monkeypatch.setattr(translation_router, "get_provider_api_key", lambda *a, **kw: "test-key")
@@ -456,34 +515,35 @@ def test_translate_render_and_export_without_human_review(cleaned_chapter, monke
     runner = AIModeRunner(job, PROVIDERS["openai"], "key")
 
     async def run():
-        for stage in ("translate", "render", "export"):
+        for stage in ("translate", "render", "finish"):
             job.stage = stage
             await getattr(runner, stage)()
 
     asyncio.run(run())
 
-    assert runner.report["translated"] == 1 and runner.report["source_lang"] == "en"
+    assert runner.report["translated"] == 1 and runner.report["source_lang"] == "auto"
     assert runner.report["editorial_blockers"] >= 1, "unreviewed script is reported, not hidden"
-    assert job.archive_path and job.archive_path.endswith(f"ai_mode_{CHAPTER}.zip")
-    with zipfile.ZipFile(job.archive_path) as archive:
-        assert archive.namelist() == ["page_001.png", "page_002.png"]
     assert (cleaned_chapter / CHAPTER / "ai_mode_report.json").is_file()
-    # The normal export keeps refusing until a human reviews the script.
+    assert not list(cleaned_chapter.glob("**/*.zip")), "A.I mode leaves exporting to the editor"
+    manifest = manifests.load_manifest_raw(CHAPTER)
+    assert manifest["workflow"] == {"stage": "review", "page_index": 0}
+    # The editor's export refuses until a human reviews the script, then exports the lettered pages.
     with pytest.raises(export_router.HTTPException):
         export_router.export_chapter(CHAPTER)
+    manifests.save_manifest_raw(CHAPTER, {**manifest, "script_review_required": False})
+    with zipfile.ZipFile(export_router.write_chapter_archive(CHAPTER)) as archive:
+        assert archive.namelist() == ["page_001.png", "page_002.png"]
 
 
-def test_repair_keeps_retrying_a_long_slice_while_batches_make_progress(monkeypatch):
+def test_retry_keeps_going_on_a_long_slice_while_batches_make_progress(monkeypatch):
     manifest = {"pages": [{"width": 400, "height": 600, "text_objects": [
         {"id": f"o{i}", "region": {"x1": 10, "y1": 10 + i, "x2": 60, "y2": 40 + i}, "translation": ""} for i in range(10)
     ]}]}
-    job = ai_job.AIModeJob(job_id="j", settings=SETTINGS, chapter_id=CHAPTER, stage="repair", cost_usd=None,
-                           stages={"repair": {"done": 0, "total": 0, "detail": ""}})
-    runner = AIModeRunner(job, PROVIDERS["openai"], "key")
-    monkeypatch.setattr(runner, "_manifest", lambda: manifest)
+    runner = _runner(monkeypatch, "translate", manifest)
+    monkeypatch.setattr(runner, "_ensure_objects", lambda index: None)
     batches = []
 
-    async def retry(page_index, source_lang, object_ids):
+    async def retry(page_index, source_lang, object_ids, force=False):
         batches.append(object_ids)
         for obj in manifest["pages"][0]["text_objects"]:
             if obj["id"] in object_ids:
@@ -491,8 +551,38 @@ def test_repair_keeps_retrying_a_long_slice_while_batches_make_progress(monkeypa
         return {"blank_ids": []}
 
     monkeypatch.setattr(runner, "_translate_retry", retry)
-    runner._repair = {0: {"failed": True}}
-    asyncio.run(runner.repair())
+    asyncio.run(runner._retry_untranslated(0, "en", None))
     assert [len(batch) for batch in batches] == [4, 4, 2], "ten objects in batches of four, none given up"
     assert runner.report["review_list"] == [] and runner.report["restored_regions"] == 0
 
+
+def test_final_check_repaints_source_text_over_an_existing_object_instead_of_adding_one(monkeypatch):
+    from app.ai_mode.checkpoints import FinalReview
+    from app.dependencies import pipeline
+
+    manifest = {"pages": [{"boxes": [{"x1": 100, "y1": 100, "x2": 400, "y2": 300}], "text_objects": []}]}
+    runner = _runner(monkeypatch, "final", manifest)
+    calls, retried = [], []
+    monkeypatch.setattr(pipeline, "apply_review_fixes", lambda chapter, index, **fixes: calls.append(fixes), raising=False)
+
+    async def retry(page_index, source_lang, only):
+        retried.append(page_index)
+
+    async def render(page_index):
+        return None
+
+    monkeypatch.setattr(runner, "_retry_untranslated", retry)
+    monkeypatch.setattr(runner, "_render_one", render)
+    found = FinalReview(0, ok=False, repaint=((120, 120, 380, 280), (500, 500, 600, 560)))
+    asyncio.run(runner._apply_final_fixes(found, "en"))
+    assert calls == [{"preserve": [], "boxes": [(500, 500, 600, 560)], "repaint": [(120, 120, 380, 280)]}]
+    assert retried == [0], "only the new text is translated"
+
+
+def test_checkpoint_three_never_restores_over_a_detected_text_box():
+    from app.ai_mode.checkpoints import CleanReview, settle_clean_review
+
+    caption = (0, 170, 1500, 550)
+    art = (100, 900, 400, 1200)
+    settled = settle_clean_review(CleanReview(3, (), (), ((100, 150, 1500, 560), art)), [caption])
+    assert settled.restore == (art,), "the caption stays erased; damaged art away from text is restored"

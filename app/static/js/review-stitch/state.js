@@ -1,4 +1,4 @@
-export const state = { variant: "clean", baseSyncOverlayForObject: null, tool: "select", zoom: 100, fitWidth: true, chapter: null, renderToken: 0 };
+export const state = { variant: "clean", tool: "select", zoom: 100, fitWidth: true, chapter: null, renderToken: 0 };
 
 
 export const BRUSH_CHUNK_H = 4096;

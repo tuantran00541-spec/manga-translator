@@ -1,6 +1,7 @@
-https://asurascans.com/comics/the-academy-s-weapon-replicator-05c7df14/chapter/1
+https://asurascans.com/comics/shadow-slave-05c7df14/chapter/1
 provider: minirouter
-model: meta/muse-spark-1.2-contributor
-price: 0.105 0.21
-reasoning: 8000
-# muse 1.2: repair batching, render fallback, LaMa padding fix, transport trace
+model: openai/gpt-6-luna
+price: 0.105 0.525 0.0105
+reasoning: 0
+effort: low
+# benchmark: Shadow Slave ch.1 run 9, no Jev, nested seam lines folded, line reach grows, LaMa hole zeroed

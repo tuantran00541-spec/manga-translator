@@ -345,15 +345,8 @@ def check_browser_state_contracts() -> None:
             "await window.flushPreserveRegionSaves(chapterId);",
             "state.persistedVersion < state.version",
         ),
-        Path("app/static/js/editor-box-transform.js"): (
+        Path("app/static/js/editor-geometry.js"): (
             "if (currentGen === geomGeneration)",
-            "window.editorImageMetrics(img)",
-            "metrics.offsetX + r.x1 * metrics.sx",
-        ),
-        Path("app/static/js/editor.js"): (
-            "function editorImageMetrics(img)",
-            "const rect = img.getBoundingClientRect();",
-            "if (!point || !point.inside) return;",
         ),
         Path("app/static/js/review-stitch"): (
             "function captureSnapshot(shell)",
@@ -391,7 +384,7 @@ def check_workbench_shell_contract() -> None:
     failures: list[str] = []
     source = WORKBENCH_PATH.read_text(encoding="utf-8")
     for marker in (
-        ".workbench-stage-grid, .translation-workspace-body",
+        ".workbench-stage-grid { position: relative; display: grid;",
         "grid-template-columns: var(--studio-rail-width) minmax(0, 1fr) var(--studio-inspector-width)",
         "@media (max-width: 1000px)",
     ):

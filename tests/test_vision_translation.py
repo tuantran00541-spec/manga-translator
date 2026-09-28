@@ -73,13 +73,16 @@ def test_vision_client_sends_original_and_clean_with_short_ids(tmp_path, monkeyp
     system = payload["messages"][0]
     assert system["role"] == "system"
     assert "localization editor" in system["content"] and "VIETNAMESE" in system["content"]
-    assert "dialogue.mac-dinh-3" in system["content"] and "narration.mac-dinh-2" in system["content"]
+    assert "- emphasis.anton:" in system["content"] and "Example:" in system["content"], "curated fonts come with notes"
+    assert "dialogue.inter" not in system["content"], "only curated fonts are offered"
+    assert answer.font_choices == {"text_1": {"font_id": "dialogue.mac-dinh-3", "font_mode": "ai"}}, "no pick: base font"
     content = payload["messages"][1]["content"]
     images = [item for item in content if item.get("type") == "image_url"]
-    assert len(images) == 2
+    assert len(images) == 3, "font samples, original, clean"
+    assert content[0]["text"].startswith("FONT SAMPLES"), "the fixed specimen leads so it is cached"
     assert all(item["image_url"]["url"].startswith("data:image/jpeg;base64,") for item in images)
-    assert images[0]["image_url"]["url"] != images[1]["image_url"]["url"]
-    prompt = content[0]["text"]
+    assert images[1]["image_url"]["url"] != images[2]["image_url"]["url"]
+    prompt = content[2]["text"]
     assert '"id":"1"' in prompt and "text_1" not in prompt
     assert '"bbox_xyxy":[10,20,50,40]' in prompt
     assert "fontSize" not in prompt and "strokeColor" not in prompt
@@ -224,7 +227,7 @@ def test_chapter_memory_carries_characters_address_and_recent_lines_to_the_next_
             return {"choices": [{"message": {"content": self.content}}], "usage": {}}
 
     def post(url, **kwargs):
-        prompts.append(kwargs["json"]["messages"][1]["content"][0]["text"])
+        prompts.append(kwargs["json"]["messages"][1]["content"][2]["text"])
         return Response(next(answers))
 
     monkeypatch.setattr("app.translation.vision.requests.post", post)
@@ -264,7 +267,7 @@ def test_vision_parser_accepts_a_translations_map_and_integer_ids():
     assert parse_vision_translation('{"translations":[{"id":1,"translated_text":"A"}]}', {"1"}) == {"1": "A"}
 
 
-def test_vision_reply_reports_kept_missed_and_unanswered_objects(tmp_path, monkeypatch):
+def test_vision_reply_tells_unanswered_from_deliberately_blank_objects(tmp_path, monkeypatch):
     original = tmp_path / "original.png"
     clean = tmp_path / "clean.png"
     Image.new("RGB", (400, 600), "white").save(original)
@@ -276,24 +279,119 @@ def test_vision_reply_reports_kept_missed_and_unanswered_objects(tmp_path, monke
         def json(self):
             return {"choices": [{"message": {"content": json.dumps({
                 "translations": [{"id": "1", "translated_text": "Chào"}, {"id": "2", "translated_text": ""}],
-                "keep": ["2", "9"],
-                "missed": [{"box_2d": [100, 250, 200, 750], "text": "CROSS THE MAP"},
-                           {"box_2d": [0, 0, 5, 5], "text": "speck"}, {"box_2d": [0, 0, 1000, 1000]}],
             })}}], "usage": {}}
-
-    monkeypatch.setattr("app.translation.vision.requests.post", lambda url, **kwargs: Response())
-    translator = VisionPageTranslator(PROVIDERS["openai"], "vision-test")
-    item = lambda item_id: {"id": item_id, "text": "", "region": [1, 2, 30, 40]}
-    result = translator.translate_page(original, clean, [item("t1"), item("logo"), item("lost")],
-                                       api_key="k", source_lang="en", target_lang="vi")
-    assert result.translations == {"t1": "Chào", "logo": "", "lost": ""}
-    assert result.keep_ids == {"logo"}, "keep ids map back to object ids; unknown ids are dropped"
-    assert result.missing_ids == {"lost"}, "answered-empty differs from not answered"
-    assert result.missed_boxes == ((100, 60, 300, 120, "CROSS THE MAP"),), "0-1000 boxes to pixels; tiny and whole-slice boxes dropped"
 
     sent = []
     monkeypatch.setattr("app.translation.vision.requests.post", lambda url, **kwargs: sent.append(kwargs) or Response())
-    editor = translator.translate_page(original, clean, [item("t1"), item("logo"), item("lost")],
-                                       api_key="k", source_lang="en", target_lang="vi", repair=False)
-    assert not editor.keep_ids and not editor.missed_boxes, "the editor never hides or adds regions"
-    assert "CLEANUP CHECK" not in sent[0]["json"]["messages"][0]["content"]
+    translator = VisionPageTranslator(PROVIDERS["openai"], "vision-test")
+    item = lambda item_id: {"id": item_id, "text": "", "region": [1, 2, 30, 40]}
+    result = translator.translate_page(original, clean, [item("t1"), item("mark"), item("lost")],
+                                       api_key="k", source_lang="en", target_lang="vi")
+    assert result.translations == {"t1": "Chào", "mark": "", "lost": ""}
+    assert result.missing_ids == {"lost"}, "answered-empty differs from not answered"
+    assert '"keep"' not in sent[0]["json"]["messages"][0]["content"], "checkpoint 3 owns kept and missed text"
+
+
+
+def test_vietnamese_line_with_cjk_letters_is_retried_and_kept_out_of_memory(tmp_path, monkeypatch):
+    original = tmp_path / "original.png"
+    clean = tmp_path / "clean.png"
+    Image.new("RGB", (400, 600), "white").save(original)
+    Image.new("RGB", (400, 600), "gray").save(clean)
+
+    class Response:
+        status_code, ok = 200, True
+
+        def json(self):
+            return {"choices": [{"message": {"content": json.dumps({
+                "translations": [{"id": "1", "translated_text": "Chào"},
+                                 {"id": "2", "translated_text": "Tôi 发现自己 kẹt rồi"}],
+                "characters": [{"name": "Frondier", "note": "hoảng loạn khi 发现自己 kẹt"},
+                               {"name": "Angper", "note": "cha của Frondier"}],
+            })}}], "usage": {}}
+
+    monkeypatch.setattr("app.translation.vision.requests.post", lambda url, **kwargs: Response())
+    from app.translation.context import ChapterMemory
+
+    memory = ChapterMemory("")
+    item = lambda item_id: {"id": item_id, "text": "", "region": [1, 2, 30, 40]}
+    result = VisionPageTranslator(PROVIDERS["openai"], "vision-test").translate_page(
+        original, clean, [item("a"), item("b")], api_key="k", source_lang="en", target_lang="vi", memory=memory)
+    assert result.translations == {"a": "Chào", "b": ""}
+    assert result.missing_ids == {"b"}
+    assert [c["name"] for c in memory.snapshot()["characters"]] == ["Angper"]
+
+
+def test_english_left_as_the_translation_is_treated_as_untranslated():
+    from app.translation.vision import _untranslated_english
+
+    assert _untranslated_english("WITH ITS LIFELIKE AI,\nVAST OPEN WORLD,")
+    assert _untranslated_english("Were you talking to me?")
+    assert not _untranslated_english("GAME OVER") and not _untranslated_english("FRONDIER DE ROAH!")
+    assert not _untranslated_english("Level của ngươi là bao nhiêu?")
+
+
+def test_fonts_are_curated_and_a_chapter_letters_in_at_most_three():
+    from app.render.font_guide import lettering_font
+    from app.translation.context import ChapterMemory
+
+    assert lettering_font("emphasis.anton") == "emphasis.anton"
+    assert lettering_font("dialogue.inter") == lettering_font(None) == "dialogue.mac-dinh-3"
+    memory = ChapterMemory()
+    picks = ["emphasis.anton", "skill.kanit", "sfx.black-ops-one", "emphasis.anton", "dialogue.mac-dinh-3"]
+    assert [memory.admit_font(font) for font in picks] == [
+        "emphasis.anton", "skill.kanit", "dialogue.mac-dinh-3", "emphasis.anton", "dialogue.mac-dinh-3"]
+    assert memory.snapshot()["fonts_in_use"] == ["dialogue.mac-dinh-3", "emphasis.anton", "skill.kanit"]
+    assert parse_vision_translation('{"translations":[{"id":"a","translated_text":"Thì…"}]}', {"a"}) == {"a": "Thì..."}
+
+
+def test_sound_effect_left_as_art_returns_its_region_for_restoring(saved_chapter, monkeypatch):
+    _style, region, _output = saved_chapter
+    monkeypatch.setattr(translation_router, "get_provider_api_key", lambda *a, **kw: "test-key")
+    monkeypatch.setattr(
+        "app.translation.vision.VisionPageTranslator.translate_page",
+        lambda self, *a, **kw: VisionTranslationResult({"obj_1": ""}, self.model, {}, None, roles={"obj_1": "sfx"}),
+    )
+    request = translation_router.TranslateVisionPageRequest(
+        chapter_id=CHAPTER, page_index=0, provider="openai", model="vision-test", source_lang="en", target_lang="vi",
+    )
+    info = asyncio.run(translation_router.translate_page_with_images(request))["translation_run"]
+    assert info["blank_ids"] == ["obj_1"] and info["art_regions"] == [region]
+
+
+def test_speech_roles_always_take_the_base_font(tmp_path, monkeypatch):
+    original, clean = tmp_path / "original.png", tmp_path / "clean.png"
+    Image.new("RGB", (400, 600), "white").save(original)
+    Image.new("RGB", (400, 600), "gray").save(clean)
+
+    class Response:
+        status_code, ok = 200, True
+
+        def json(self):
+            return {"choices": [{"message": {"content": json.dumps({
+                "translations": [{"id": "1", "translated_text": "Ừ", "role": "thought"},
+                                 {"id": "2", "translated_text": "Chạy!", "role": "shout"}],
+                "font_choices": {"1": "emphasis.bangers", "2": "emphasis.bangers"},
+            })}}], "usage": {}}
+
+    monkeypatch.setattr("app.translation.vision.requests.post", lambda url, **kwargs: Response())
+    items = [{"id": item_id, "text": "", "region": [1, 2, 30, 40]} for item_id in ("calm", "loud")]
+    result = VisionPageTranslator(PROVIDERS["openai"], "vision-test").translate_page(
+        original, clean, items, api_key="k", source_lang="en", target_lang="vi")
+    assert result.font_choices["calm"]["font_id"] == "dialogue.mac-dinh-3"
+    assert result.font_choices["loud"]["font_id"] == "emphasis.bangers"
+
+
+def test_glossary_vote_drops_a_misread_name_and_fixes_one_form_of_address():
+    from app.ai_mode.glossary import merge_glossaries
+    from app.translation.context import ChapterMemory
+
+    reads = [{"names": [{"source": "Yanguo", "target": "Yanguo"}],
+              "address": [{"from": "disciples", "to": "master", "self": "bọn con", "other": "sư phụ"}]}] * 2
+    reads.append({"names": [{"source": "Yanglu"}, {"source": "Lee Jin"}], "terms": [{"source": "Qi Refining", "target": "Luyện Khí"}],
+                  "address": [{"from": "Disciples", "to": "Master", "self": "bọn ta", "other": "sư phụ"}]})
+    glossary = merge_glossaries(reads + ["junk", {"names": "junk"}])
+    assert [name["source"] for name in glossary["names"]] == ["Yanguo", "Lee Jin"]
+    assert glossary["address"] == [{"from": "disciples", "to": "master", "self": "bọn con", "other": "sư phụ"}]
+    assert glossary["terms"] == [{"source": "qi refining", "target": "Luyện Khí"}]
+    assert ChapterMemory("", glossary).snapshot()["glossary"] == glossary
