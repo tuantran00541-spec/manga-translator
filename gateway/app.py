@@ -108,6 +108,26 @@ def _request_shape(payload: dict) -> dict:
     return {"prompt_head": " ".join(head.split())[:80], "images": images}
 
 
+IMAGE_TOKENS_HELD = 3000  # held per image before the upstream reports the real count
+
+
+def _held_usd(upstream: Upstream, payload: dict, max_tokens: int) -> float:
+    """Most a request is expected to cost: its text and images in, its whole token budget out."""
+    chars, images = 0, 0
+    for message in payload.get("messages") or []:
+        content = message.get("content") if isinstance(message, dict) else None
+        parts = content if isinstance(content, list) else [content]
+        for part in parts:
+            if isinstance(part, str):
+                chars += len(part)
+            elif isinstance(part, dict) and part.get("type") == "image_url":
+                images += 1
+            elif isinstance(part, dict):
+                chars += len(str(part.get("text") or ""))
+    prompt = chars / 4 + images * IMAGE_TOKENS_HELD
+    return (prompt * upstream.input_usd_per_m + max_tokens * upstream.output_usd_per_m) / 1_000_000
+
+
 def _trace_line(path: str, entry: dict) -> None:
     try:
         with open(path, "a", encoding="utf-8") as handle:
@@ -298,12 +318,9 @@ def create_app(store: Store, upstream: Upstream, admin_key: str, *, mailer: Mail
     async def chat(payload: dict, row=Depends(job)):
         if payload.get("stream"):
             return _error(400, "stream_unsupported", "Streaming is not supported")
-        try:
-            store.begin_request(row["id"])
-        except QuotaExceeded:
-            return _error(402, "cost_cap", "This chapter reached its A.I cost cap")
         forwarded = dict(payload)
         forwarded["model"] = upstream.model
+        forwarded.pop("n", None)  # one answer per request; more would multiply the cost
         try:
             requested = int(payload.get("max_tokens") or MAX_OUTPUT_TOKENS)
         except (TypeError, ValueError):
@@ -319,12 +336,20 @@ def create_app(store: Store, upstream: Upstream, admin_key: str, *, mailer: Mail
             forwarded["reasoning_effort"] = upstream.reasoning_effort
             extra = max(extra, REASONING_BUDGETS.get(upstream.reasoning_effort, 0))
         forwarded["max_tokens"] = max(1, min(requested, MAX_OUTPUT_TOKENS)) + extra
+        held = _held_usd(upstream, forwarded, forwarded["max_tokens"])
+        try:
+            store.begin_request(row["id"], held)
+        except QuotaExceeded:
+            return _error(402, "cost_cap", "This chapter reached its A.I cost cap")
         trace: dict = {}
         started = time.perf_counter()
         try:
             status, body = await run_in_threadpool(upstream.send, forwarded, trace)
         except requests.RequestException:
             status, body = 0, {}
+        except BaseException:
+            store.add_cost(row["id"], 0.0, released_usd=held)
+            raise
         usage = body.get("usage") if isinstance(body.get("usage"), dict) else {}
         if trace_path:
             # One line per request: where the time and tokens of an A.I run go.
@@ -342,12 +367,12 @@ def create_app(store: Store, upstream: Upstream, admin_key: str, *, mailer: Mail
                 "reasoning_tokens": int(completion_details.get("reasoning_tokens") or 0),
                 "finish_reason": (choices[0].get("finish_reason") if choices and isinstance(choices[0], dict) else None),
             })
-        if status == 0:
-            return _error(502, "upstream_unreachable", "A.I upstream is unreachable")
         total = store.add_cost(
             row["id"], upstream.cost(usage),
-            int(usage.get("prompt_tokens") or 0), int(usage.get("completion_tokens") or 0),
+            int(usage.get("prompt_tokens") or 0), int(usage.get("completion_tokens") or 0), released_usd=held,
         )
+        if status == 0:
+            return _error(502, "upstream_unreachable", "A.I upstream is unreachable")
         if status >= 400:
             detail = body.get("error") if isinstance(body.get("error"), dict) else body
             message = str(detail.get("message") or detail.get("detail") or "")[:200] if isinstance(detail, dict) else ""

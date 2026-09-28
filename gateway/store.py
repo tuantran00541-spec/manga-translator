@@ -16,6 +16,8 @@ JOB_TTL_SECONDS = 6 * 3600
 LOGIN_CODE_TTL_SECONDS = 10 * 60
 LOGIN_CODE_RESEND_SECONDS = 60
 LOGIN_CODE_MAX_ATTEMPTS = 5
+LOGIN_CODES_PER_DAY = 10  # with the attempts per code, about 50 guesses a day at a 6-digit code
+SESSION_TTL_SECONDS = 90 * 86400
 PLAN_PERIOD_SECONDS = 30 * 86400
 
 _SCHEMA = """
@@ -36,7 +38,9 @@ CREATE TABLE IF NOT EXISTS login_codes (
     code_hash TEXT NOT NULL,
     sent_at REAL NOT NULL,
     expires_at REAL NOT NULL,
-    attempts INTEGER NOT NULL DEFAULT 0
+    attempts INTEGER NOT NULL DEFAULT 0,
+    day TEXT NOT NULL DEFAULT '',
+    sent_today INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS payments (
     id TEXT PRIMARY KEY,
@@ -59,6 +63,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     status TEXT NOT NULL,
     cost_usd REAL NOT NULL DEFAULT 0,
     cost_cap_usd REAL NOT NULL,
+    reserved_usd REAL NOT NULL DEFAULT 0,
     requests INTEGER NOT NULL DEFAULT 0,
     prompt_tokens INTEGER NOT NULL DEFAULT 0,
     completion_tokens INTEGER NOT NULL DEFAULT 0,
@@ -100,6 +105,13 @@ class Store:
         self._lock = threading.Lock()
         with self._connect() as db:
             db.executescript(_SCHEMA)
+            if "reserved_usd" not in {row["name"] for row in db.execute("PRAGMA table_info(jobs)")}:
+                db.execute("ALTER TABLE jobs ADD COLUMN reserved_usd REAL NOT NULL DEFAULT 0")
+            if "day" not in {row["name"] for row in db.execute("PRAGMA table_info(login_codes)")}:
+                db.execute("ALTER TABLE login_codes ADD COLUMN day TEXT NOT NULL DEFAULT ''")
+                db.execute("ALTER TABLE login_codes ADD COLUMN sent_today INTEGER NOT NULL DEFAULT 0")
+            # Nothing is in flight when the gateway starts.
+            db.execute("UPDATE jobs SET reserved_usd = 0 WHERE reserved_usd != 0")
 
     def now(self) -> float:
         return float(self._clock())
@@ -153,21 +165,25 @@ class Store:
     def start_login(self, email: str) -> str:
         now = self.now()
         code = f"{secrets.randbelow(1_000_000):06d}"
+        day = time.strftime("%Y-%m-%d", time.gmtime(now))
         with self._write() as db:
-            row = db.execute("SELECT sent_at FROM login_codes WHERE email = ?", (email,)).fetchone()
+            row = db.execute("SELECT sent_at, day, sent_today FROM login_codes WHERE email = ?", (email,)).fetchone()
             if row is not None and now - row["sent_at"] < LOGIN_CODE_RESEND_SECONDS:
                 raise LoginRejected(429, "Vừa gửi mã, đợi một phút rồi thử lại")
+            sent_today = int(row["sent_today"]) if row is not None and row["day"] == day else 0
+            if sent_today >= LOGIN_CODES_PER_DAY:
+                raise LoginRejected(429, "Đã gửi quá nhiều mã hôm nay, hãy thử lại vào ngày mai")
             db.execute(
-                "INSERT OR REPLACE INTO login_codes (email, code_hash, sent_at, expires_at, attempts) "
-                "VALUES (?, ?, ?, ?, 0)",
-                (email, _hash(f"{email}:{code}"), now, now + LOGIN_CODE_TTL_SECONDS),
+                "INSERT OR REPLACE INTO login_codes (email, code_hash, sent_at, expires_at, attempts, day, sent_today) "
+                "VALUES (?, ?, ?, ?, 0, ?, ?)",
+                (email, _hash(f"{email}:{code}"), now, now + LOGIN_CODE_TTL_SECONDS, day, sent_today + 1),
             )
         return code
 
     def cancel_login(self, email: str) -> None:
         """Forget an unsent code so the user can retry at once."""
         with self._write() as db:
-            db.execute("DELETE FROM login_codes WHERE email = ?", (email,))
+            db.execute("UPDATE login_codes SET code_hash = '', expires_at = 0, sent_at = 0 WHERE email = ?", (email,))
 
     def verify_login(self, email: str, code: str) -> tuple[str, str]:
         now = self.now()
@@ -182,7 +198,8 @@ class Store:
                 db.execute("UPDATE login_codes SET attempts = attempts + 1 WHERE email = ?", (email,))
                 rejected = LoginRejected(400, "Mã không đúng")
             else:
-                db.execute("DELETE FROM login_codes WHERE email = ?", (email,))
+                # The code is spent; the row stays so the day's count holds.
+                db.execute("UPDATE login_codes SET code_hash = '', expires_at = 0 WHERE email = ?", (email,))
                 account_id = self._account_id_for_email(db, email)
                 token = self._new_session(db, account_id)
         if rejected is not None:
@@ -220,8 +237,9 @@ class Store:
 
     def account_for_token(self, token: str) -> dict:
         with self._connect() as db:
-            row = db.execute("SELECT account_id FROM sessions WHERE token_hash = ?", (_hash(token),)).fetchone()
-        if row is None:
+            row = db.execute("SELECT account_id, created_at FROM sessions WHERE token_hash = ?",
+                             (_hash(token),)).fetchone()
+        if row is None or row["created_at"] + SESSION_TTL_SECONDS < self.now():
             raise InvalidToken()
         return self.account(row["account_id"])
 
@@ -303,19 +321,22 @@ class Store:
             raise InvalidToken()
         return row
 
-    def begin_request(self, job_id: str) -> None:
+    def begin_request(self, job_id: str, reserve_usd: float = 0.0) -> None:
+        """Hold ``reserve_usd`` for a request, so requests in flight together cannot pass the cap."""
         with self._write() as db:
-            row = db.execute("SELECT cost_usd, cost_cap_usd FROM jobs WHERE id = ?", (job_id,)).fetchone()
-            if row["cost_usd"] >= row["cost_cap_usd"]:
+            row = db.execute("SELECT cost_usd, reserved_usd, cost_cap_usd FROM jobs WHERE id = ?", (job_id,)).fetchone()
+            if row["cost_usd"] + row["reserved_usd"] + max(0.0, reserve_usd) > row["cost_cap_usd"]:
                 raise QuotaExceeded("cost_cap")
-            db.execute("UPDATE jobs SET requests = requests + 1 WHERE id = ?", (job_id,))
+            db.execute("UPDATE jobs SET requests = requests + 1, reserved_usd = reserved_usd + ? WHERE id = ?",
+                       (max(0.0, reserve_usd), job_id))
 
-    def add_cost(self, job_id: str, cost: float, prompt_tokens: int = 0, completion_tokens: int = 0) -> float:
+    def add_cost(self, job_id: str, cost: float, prompt_tokens: int = 0, completion_tokens: int = 0,
+                 released_usd: float = 0.0) -> float:
         with self._write() as db:
             db.execute(
                 "UPDATE jobs SET cost_usd = cost_usd + ?, prompt_tokens = prompt_tokens + ?, "
-                "completion_tokens = completion_tokens + ? WHERE id = ?",
-                (max(0.0, cost), max(0, prompt_tokens), max(0, completion_tokens), job_id),
+                "completion_tokens = completion_tokens + ?, reserved_usd = MAX(0, reserved_usd - ?) WHERE id = ?",
+                (max(0.0, cost), max(0, prompt_tokens), max(0, completion_tokens), max(0.0, released_usd), job_id),
             )
             return float(db.execute("SELECT cost_usd FROM jobs WHERE id = ?", (job_id,)).fetchone()[0])
 

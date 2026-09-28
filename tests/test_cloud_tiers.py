@@ -142,8 +142,10 @@ def test_cost_cap_stops_one_chapter_from_draining_the_plan(stack, monkeypatch):
     job = cloud.reserve_job()
     assert job["cost_cap_usd"] == 0.10
     statuses = [stack.chat(job["job_token"]).status_code for _ in range(6)]
-    allowed = int(np.ceil(0.10 / CALL_COST))
+    # A call is refused once the cost so far plus what it may cost would pass the cap.
+    allowed = int(0.10 // CALL_COST)
     assert statuses == [200] * allowed + [402] * (6 - allowed)
+    assert allowed * CALL_COST <= 0.10
     assert cloud.entitlements(fresh=True)["quota"]["cost_usd"] == pytest.approx(allowed * CALL_COST)
 
 

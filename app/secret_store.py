@@ -33,6 +33,28 @@ class SecretStoreUnavailable(RuntimeError):
     pass
 
 
+class _GuardedKeyring:
+    """Keyring whose backend crashes (a Rust panic is a BaseException) surface as KeyringError."""
+
+    def __init__(self, keyring, error):
+        self._keyring, self._error = keyring, error
+
+    def __getattr__(self, name):
+        method = getattr(self._keyring, name)
+
+        def call(*args, **kwargs):
+            try:
+                return method(*args, **kwargs)
+            except (KeyboardInterrupt, SystemExit, GeneratorExit):
+                raise
+            except self._error:
+                raise
+            except BaseException as exc:
+                raise self._error(f"secure storage backend failed ({type(exc).__name__})") from exc
+
+        return call
+
+
 def _keyring_module():
     try:
         import keyring  # type: ignore
@@ -41,7 +63,7 @@ def _keyring_module():
         raise SecretStoreUnavailable(
             "Secure secret storage is unavailable. Install the 'keyring' dependency."
         ) from exc
-    return keyring, KeyringError
+    return _GuardedKeyring(keyring, KeyringError), KeyringError
 
 
 def _get_api_key(account: str, env_names: tuple[str, ...], provider: str) -> str | None:
