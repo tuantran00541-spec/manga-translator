@@ -6,21 +6,23 @@
   900
  ],
  "seconds": {
-  "current": 779.2,
-  "flow": 701.8,
+  "current": 762.8,
+  "flow": 561.9,
   "flow_stages": {
-   "kiuyha": 558.7,
-   "ctd": 64.9,
-   "grow": 10.2,
-   "lama model": 437.9,
-   "inpaint": 452.7
+   "kiuyha": 532.0987997600009,
+   "ctd": 88.8,
+   "grow": 13.0,
+   "lama model": 314.8,
+   "inpaint": 328.7,
+   "lama_calls": 92,
+   "second_pass_blocks": 3
   },
-  "lama_cap": 640
+  "lama_cap": 512
  },
  "blocks": 243,
  "left": {
   "current": 17,
-  "flow": 25
+  "flow": 22
  },
  "on_page_seams": {
   "blocks": 3,
@@ -411,7 +413,7 @@
   {
    "block": "y153141.jpg",
    "left_current": false,
-   "left_flow": true,
+   "left_flow": false,
    "on_page_seam": false
   },
   {
@@ -771,13 +773,13 @@
   {
    "block": "y225204.jpg",
    "left_current": false,
-   "left_flow": true,
+   "left_flow": false,
    "on_page_seam": false
   },
   {
    "block": "y225228.jpg",
    "left_current": false,
-   "left_flow": true,
+   "left_flow": false,
    "on_page_seam": false
   },
   {
