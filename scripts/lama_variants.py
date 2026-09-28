@@ -14,7 +14,7 @@ import app.inpaint.lama_inpainter as li
 from app.config import MODELS_DIR
 
 EVIDENCE = "bc2de309"  # chapter-run evidence that still holds the full-size crops
-CROPS = ("s002-b0", "s001-b0", "s014-b0", "s047-b0", "s016-b0")
+CROPS = ("s002-b0", "s001-b0", "s014-b0", "s047-b0", "s016-b0", "s050-b0")
 RING = 40  # px of untouched background round the mask the fill is compared with
 BAND = 32  # px committed per edge-in pass
 
