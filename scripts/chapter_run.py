@@ -13,7 +13,6 @@ from app.config import KIUYHA_TEXT_MODEL
 from app.detector.kiuyha_detector import KiuyhaTextDetector
 from app.image_io import read_image
 from app.manifest_utils import load_manifest_raw
-from app.mask_store import decode_mask_value
 from app.processing_pipeline_factory import build_processing_pipeline
 
 
@@ -90,48 +89,6 @@ def main() -> int:
         side = np.concatenate([before, np.full((before.shape[0], 12, 3), 255, np.uint8), after], axis=1)
         side = cv2.resize(side, None, fx=900 / side.shape[1], fy=900 / side.shape[1])
         cv2.imwrite(str(args.out / f"sample-{rank}-slice{number:03d}.jpg"), side, [cv2.IMWRITE_JPEG_QUALITY, 85])
-
-    # Every text block: full-size original crop to replay masks, and original | mask | clean to judge.
-    (args.out / "raw").mkdir(exist_ok=True)
-    (args.out / "blocks").mkdir(exist_ok=True)
-    crops = []
-    for number, page in enumerate(load_manifest_raw(args.chapter_id)["pages"]):
-        if not page.get("clean"):
-            continue
-        core = page.get("stitch_core") or {}
-        original, clean = read_image(Path(page["original"])), read_image(Path(page["clean"]))
-        y0, y1 = int(core.get("core_y1", 0)), int(core.get("core_y2", original.shape[0]))
-        # The masks the pipeline really inpainted, as saved with each box.
-        used = np.zeros(original.shape[:2], bool)
-        for saved in page.get("boxes") or []:
-            mask = decode_mask_value(saved.get("mask"))
-            bx1, by1, bx2, by2 = (int(saved[key]) for key in ("x1", "y1", "x2", "y2"))
-            if mask is not None and mask.shape == (by2 - by1, bx2 - bx1) and not saved.get("removed"):
-                used[by1:by2, bx1:bx2] |= mask > 127
-        if number in (13, 14, 15):  # one-off: whole slices round the GETTING leftover
-            cv2.imwrite(str(args.out / "raw" / f"slice{number:03d}.png"), original)
-            cv2.imwrite(str(args.out / "raw" / f"slice{number:03d}-mask.png"), used.astype(np.uint8) * 255)
-            (args.out / "raw" / f"slice{number:03d}.json").write_text(json.dumps({"stitch_core": core, "boxes": [
-                {key: saved.get(key) for key in ("x1", "y1", "x2", "y2", "origin", "manual", "removed", "source_role",
-                                                 "overlap_context_only", "mask_source")}
-                for saved in page.get("boxes") or []]}, indent=1, default=str), encoding="utf-8")
-        for k, b in enumerate(kiuyha.text_boxes(np.ascontiguousarray(original[y0:y1]))):
-            h, w = original.shape[:2]
-            x1, cy1 = max(0, b.x1 - 120), max(0, b.y1 + y0 - 120)
-            x2, cy2 = min(w, b.x2 + 120), min(h, b.y2 + y0 + 120)
-            name = f"s{number:03d}-b{k}"
-            cv2.imwrite(str(args.out / "raw" / f"{name}.jpg"), original[cy1:cy2, x1:x2], [cv2.IMWRITE_JPEG_QUALITY, 93])
-            shown = original.copy()
-            m = used
-            shown[m] = (0.45 * shown[m] + (0, 0, 140)).astype(np.uint8)
-            tiles = [img[cy1:cy2, x1:x2] for img in (original, shown, clean)]
-            strip = np.concatenate([np.pad(t, ((0, 0), (0, 8), (0, 0)), constant_values=255) for t in tiles], axis=1)
-            scale = min(1.0, 1500 / strip.shape[1])
-            cv2.imwrite(str(args.out / "blocks" / f"{name}.jpg"), cv2.resize(strip, None, fx=scale, fy=scale),
-                        [cv2.IMWRITE_JPEG_QUALITY, 85])
-            crops.append({"name": name, "slice": number, "crop": [x1, cy1, x2, cy2],
-                          "box": [b.x1 - x1, b.y1 + y0 - cy1, b.x2 - x1, b.y2 + y0 - cy1]})
-    (args.out / "blocks.json").write_text(json.dumps(crops, indent=1), encoding="utf-8")
 
     report = {
         "url": args.url, "slices": len(pages),
