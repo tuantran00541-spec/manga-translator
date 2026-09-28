@@ -471,6 +471,7 @@ class AIModeRunner:
                 finished += 1
                 self._progress(finished, len(indices))
 
+        await asyncio.to_thread(self._join_stacked_lines, indices)
         self._progress(0, len(indices))
         await asyncio.gather(*(translate_one(page_index) for page_index in indices))
         self._check_cancel()
@@ -533,6 +534,18 @@ class AIModeRunner:
         except (ValueError, RuntimeError, OSError) as exc:
             _append(self.report["translate_errors"], f"Lát {page_index + 1}: giữ SFX thất bại: {_detail(exc)[:150]}")
 
+    def _join_stacked_lines(self, indices: list[int]) -> None:
+        from app.ai_mode.seams import join_stacked_lines
+        from app.manifest_utils import save_manifest_raw
+        from app.text_objects import ensure_page_text_objects
+
+        with get_manifest_lock(self.job.chapter_id):
+            manifest = load_manifest_raw(self.job.chapter_id)
+            for page_index in indices:
+                ensure_page_text_objects(manifest["pages"][page_index])
+            self.report["lines_joined"] = join_stacked_lines(manifest, indices)
+            save_manifest_raw(self.job.chapter_id, manifest)
+
     def _ensure_objects(self, page_index: int) -> None:
         from app.manifest_utils import save_manifest_raw
         from app.text_objects import ensure_page_text_objects
@@ -554,7 +567,8 @@ class AIModeRunner:
         return [
             obj for obj in page.get("text_objects") or []
             if isinstance(obj, dict) and obj.get("id") and not obj.get("source_missing")
-            and not obj.get("overlap_dropped") and not str(obj.get("translation") or "").strip()
+            and not obj.get("overlap_dropped") and not obj.get("joined_into")
+            and not str(obj.get("translation") or "").strip()
             and (only is None or str(obj["id"]) in only) and str(obj["id"]) not in blank
             and isinstance(obj.get("region"), dict) and not text_object_in_preserve_region(page, obj)
         ]

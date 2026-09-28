@@ -132,3 +132,53 @@ def _shared(a, b) -> float:
     ix = max(0, min(a[2], b[2]) - max(a[0], b[0]))
     iy = max(0, min(a[3], b[3]) - max(a[1], b[1]))
     return ix * iy / min(_area(a), _area(b))
+
+
+STACK_GAP = 0.2  # widest gap between stacked lines of one block, as a share of the shorter line
+STACK_OVERLAP = 0.5  # share of the narrower line two stacked lines must share across
+STACK_HEIGHTS = 1.5  # lines of one block are about the same height
+
+
+def _stacked(upper, lower) -> bool:
+    """True when ``lower`` is the next line of the block ``upper`` ends."""
+    h = min(upper[3] - upper[1], lower[3] - lower[1])
+    if h <= 0 or max(upper[3] - upper[1], lower[3] - lower[1]) > STACK_HEIGHTS * h:
+        return False
+    gap = lower[1] - upper[3]
+    across = min(upper[2], lower[2]) - max(upper[0], lower[0])
+    return -STACK_GAP * h <= gap <= STACK_GAP * h and across >= STACK_OVERLAP * min(upper[2] - upper[0],
+                                                                                  lower[2] - lower[0])
+
+
+def join_stacked_lines(manifest: dict, page_indices: list[int]) -> int:
+    """Lines the detector split from one block become one object before translation, so no word is dropped."""
+    pages = manifest.get("pages") or []
+    joined = 0
+    for page_index in page_indices:
+        page = pages[page_index]
+        mirrors = seam_mirror_ids(manifest, page_index)
+        lines = sorted((obj for obj in page.get("text_objects") or []
+                        if isinstance(obj, dict) and obj.get("id") and str(obj["id"]) not in mirrors
+                        and not obj.get("source_missing") and not obj.get("joined_into")
+                        and not str(obj.get("translation") or "").strip() and _rect(obj, 0) is not None),
+                       key=lambda obj: _rect(obj, 0)[1])
+        blocks: list[list[dict]] = []
+        for obj in lines:
+            block = next((b for b in blocks if _stacked(_rect(b[-1], 0), _rect(obj, 0))), None)
+            if block is None:
+                blocks.append([obj])
+            else:
+                block.append(obj)
+        for block in blocks:
+            if len(block) < 2:
+                continue
+            rects = [_rect(obj, 0) for obj in block]
+            top = block[0]
+            top["region"] = {"x1": min(r[0] for r in rects), "y1": rects[0][1],
+                             "x2": max(r[2] for r in rects), "y2": max(r[3] for r in rects)}
+            top["joined_lines"] = [str(obj["id"]) for obj in block[1:]]
+            for obj in block[1:]:
+                obj["joined_into"] = str(top["id"])
+                obj["translation"] = ""
+            joined += len(block) - 1
+    return joined

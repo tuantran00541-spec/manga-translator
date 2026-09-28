@@ -276,6 +276,7 @@ def _runner(monkeypatch, stage, manifest):
         return []
 
     monkeypatch.setattr(runner, "_sync_seams", no_seams)
+    monkeypatch.setattr(runner, "_join_stacked_lines", lambda indices: None)
     return runner
 
 
@@ -410,6 +411,7 @@ def test_translate_stage_keeps_a_few_slices_in_flight_and_reports_failures(monke
         return []
 
     monkeypatch.setattr(runner, "_sync_seams", sync)
+    monkeypatch.setattr(runner, "_join_stacked_lines", lambda indices: None)
     retried = []
 
     async def retry(page_index, source_lang, only):

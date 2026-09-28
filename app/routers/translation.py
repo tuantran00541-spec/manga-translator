@@ -339,7 +339,7 @@ def _vision_candidates(page: dict, *, force: bool) -> list[dict]:
     candidates: list[dict] = []
     seen: set[str] = set()
     for obj in page.get("text_objects") or []:
-        if not isinstance(obj, dict) or not obj.get("id") or obj.get("source_missing"):
+        if not isinstance(obj, dict) or not obj.get("id") or obj.get("source_missing") or obj.get("joined_into"):
             continue
         if text_object_in_preserve_region(page, obj):
             continue

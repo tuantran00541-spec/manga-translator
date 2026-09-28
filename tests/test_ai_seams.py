@@ -123,3 +123,43 @@ def test_a_core_box_and_the_seam_box_holding_it_join_their_masks():
     assert len(folded) == 1
     box = folded[0]
     assert box.mask[995 - box.y1, 1186 - box.x1] and box.mask[600 - box.y1, 100 - box.x1]
+
+
+def test_lines_split_from_one_title_become_one_object_before_translation():
+    from app.ai_mode.seams import join_stacked_lines
+
+    def obj(obj_id, x1, y1, x2, y2):
+        return {"id": obj_id, "region": {"x1": x1, "y1": y1, "x2": x2, "y2": y2}, "translation": ""}
+
+    # Shadow Slave 1, slice 48: BY THE / NIGHTMARE / SPELL as three detector boxes.
+    title = [obj("by", 441, 2857, 1100, 3136), obj("nightmare", 81, 3147, 1600, 3420), obj("spell", 521, 3456, 1092, 3720)]
+    # Two bubbles one above the other are two texts.
+    bubbles = [obj("top", 200, 100, 700, 300), obj("bottom", 220, 380, 680, 560)]
+    manifest = {"pages": [{"text_objects": title + bubbles}]}
+    assert join_stacked_lines(manifest, [0]) == 2
+    by, nightmare, spell, top, bottom = manifest["pages"][0]["text_objects"]
+    assert by["region"] == {"x1": 81, "y1": 2857, "x2": 1600, "y2": 3720}
+    assert by["joined_lines"] == ["nightmare", "spell"]
+    assert nightmare["joined_into"] == spell["joined_into"] == "by"
+    assert "joined_into" not in top and "joined_into" not in bottom and "joined_lines" not in top
+    from app.routers.translation import _vision_candidates
+
+    sent = [candidate["id"] for candidate in _vision_candidates(manifest["pages"][0], force=False)]
+    assert "nightmare" not in sent and "spell" not in sent and "by" in sent, "joined lines are not translated alone"
+
+
+def test_a_line_joined_into_another_does_not_block_export():
+    from app.editorial_gate import editorial_preflight
+
+    def box(box_id, y):
+        return {"id": box_id, "x1": 0, "y1": y, "x2": 100, "y2": y + 50, "confidence": 0.9,
+                "source_role": "text_segmenter", "origin": "detector", "safe_to_inpaint": True}
+
+    joined = {"id": "ob", "source_boxes": ["b"], "region": {"x1": 0, "y1": 55, "x2": 100, "y2": 105},
+              "ocr_text": "", "translation": "", "joined_into": "oa"}
+    page = {"boxes": [box("a", 0), box("b", 55)], "text_objects": [
+        {"id": "oa", "source_boxes": ["a"], "region": {"x1": 0, "y1": 0, "x2": 100, "y2": 105},
+         "ocr_text": "", "translation": "Bởi Chú thuật Ác Mộng", "joined_lines": ["ob"]}, joined]}
+    assert editorial_preflight({"pages": [page]})["blocker_count"] == 0
+    joined["joined_into"] = "gone"
+    assert editorial_preflight({"pages": [page]})["blocker_count"] == 1, "a join to nothing is still a blank line"
