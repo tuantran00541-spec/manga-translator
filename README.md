@@ -29,10 +29,11 @@ Same GitHub runner, whole chapters, both cleaners side by side (evidence on the 
 | --- | --- | --- |
 | Webtoon, 36 pages, 243 text blocks | 763 s, missed a glowing title | **562 s (26 % faster)**, no story text left |
 | Manga oneshot, 39 pages, 158 blocks | 301 s, clean | 382 s, clean |
+| Shadow Slave ch.1 in the app, 135 slices | 403–934 s, 5 blocks with text left | **451 s, 1** (the edge of the series logo) |
 | Labelled synthetic text: erased / precision | 65.4 % / 43.1 % | **73.7 % / 73.1 %** |
 
 - **Glow, outlines and shadows go with the letters**, while the bubble outline and the art stay.
-- **Sound effects are kept as art**, so they are never smeared.
+- **Stylised sound effects are mostly left as art**: the letter model reads story lettering, not drawn SFX.
 - **The mask model runs about 40× faster than the released one** with identical output (see [docs/detection.md](docs/detection.md)).
 - **A restore brush** puts back any area the cleanup took by mistake, and the page keeps it through later repaints.
 

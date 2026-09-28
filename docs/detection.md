@@ -47,10 +47,14 @@ on the `audit-evidence` branch:
 | The Hero Cannot Rest 1 (webtoon) | 36 | 763 s | 562 s | none; the old rules missed a glowing title |
 | Oneshot on MangaDex (manga, coloured characters) | 39 | 301 s | 382 s | none in either |
 
+The app itself on Shadow Slave ch.1 (135 slices): 451 s and one block with
+leftover (the edge of the series logo), against 403–934 s and five blocks for
+the old rules over five runs.
+
 On labelled synthetic tiles, the CTD mask inside Kiuyha boxes erases 73.7 %
 of what has to go at 73.1 % precision, against 65.4 % at 43.1 % for the old
 rules, which painted over 2.3× the text. What is left is watermarks and site
-banners. Sound effects are kept as art. On large manga pages with heavy black
+banners. Stylised sound effects are mostly kept as art. On large manga pages with heavy black
 art the new path can still take a stroke of art that Kiuyha boxed as text;
 the restore brush puts it back.
 
