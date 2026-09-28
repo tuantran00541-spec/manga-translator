@@ -178,10 +178,10 @@ sequenceDiagram
 flowchart TD
     A["Ảnh page (BGR)"] --> B["KiuyhaTextDetector.detect()"]
     B --> C["1 lần forward kiuyha_text_1280.onnx<br/>(2 nửa lát đặt cạnh nhau trong khung 1280)"]
-    C --> D["Mỗi box → mask chữ bằng Otsu theo màu viền"]
+    C --> D["Mỗi box → mask chữ từ comic-text-detector (2 cỡ),<br/>nới viền mỏng + lan vào quầng sáng khác màu nền"]
     D --> E["page_processing: bỏ box trong vùng giữ nguyên,<br/>apply_final_nms (IoU 0.35)"]
     E --> F["Inpaint"]
-    F --> G["leftover_boxes: Kiuyha dò lại ảnh sạch,<br/>chữ còn trong box cũ → xóa cả box"]
+    F --> G["leftover_boxes: CTD đọc lại từng box đã xóa,<br/>còn chữ → xóa thêm một lượt bằng mask mới"]
 ```
 
 ## 7. Inpaint chi tiết
