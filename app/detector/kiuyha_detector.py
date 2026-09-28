@@ -40,6 +40,8 @@ HALO_REACH = 1.0  # how far, in letter heights, glow may spread from a letter
 HALO_REACH_MAX = 64  # and never further than this many pixels
 HALO_RING = 8  # width of the band past that reach where the background colour is read
 HALO_MARGIN = 4.0  # Lab distance past the band's own spread that still counts as glow
+HALO_STEP = 4  # ring width, in pixels, when following glow out to the background
+HALO_FADE = 1.0  # Lab distance a ring must fall below the one inside it to still be glow
 HOLE_AREA = 4.0  # largest enclosed hole filled, in squared letter heights (white fill inside an outline)
 
 
@@ -179,7 +181,20 @@ def _with_halo(lab: np.ndarray, part: np.ndarray, letter: float) -> np.ndarray:
     faint = ((dist > noise + HALO_MARGIN) & near) | part
     _count, labels = cv2.connectedComponents(faint.astype(np.uint8))
     joined = np.unique(labels[part])
-    return np.isin(labels, joined[joined > 0])
+    halo = np.isin(labels, joined[joined > 0])
+    # Soft glow fades under the noise bar; follow it ring by ring while it still fades.
+    away = cv2.distanceTransform((~halo).astype(np.uint8), cv2.DIST_L2, 5)
+    tail, last = 0, None
+    for radius in range(HALO_STEP, reach + 1, HALO_STEP):
+        ring = (away > radius - HALO_STEP) & (away <= radius) & near
+        if not ring.any():
+            break
+        level = float(np.median(dist[ring]))
+        if last is not None and level > last - HALO_FADE:
+            break
+        tail, last = radius, level
+    # The first ring only starts the profile; glow needs a fade across at least two.
+    return halo | ((away <= tail) & near) if tail > HALO_STEP else halo
 
 
 def _fill_holes(part: np.ndarray, letter: float) -> np.ndarray:

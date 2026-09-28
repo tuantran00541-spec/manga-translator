@@ -274,6 +274,22 @@ def test_glow_round_letters_is_erased_with_them():
     assert (full & changed).sum() >= 0.99 * changed.sum(), "a glow left round the hole paints the letters back"
 
 
+def test_faint_glow_over_a_starfield_is_followed_to_the_background():
+    from app.detector.kiuyha_detector import _with_halo
+
+    rng = np.random.default_rng(2)
+    lab = np.full((300, 600, 3), (20.0, 128.0, 128.0), np.float32)
+    stars = rng.random((300, 600)) < 0.15  # busy specks push the noise bar above the glow
+    lab[stars, 0] = 230
+    part = np.zeros((300, 600), bool)
+    part[130:170, 150:450] = True  # the letters
+    away = cv2.distanceTransform((~part).astype(np.uint8), cv2.DIST_L2, 5)
+    lab[..., 0] += np.where(part, 0, 40 * np.exp(-away / 12)).astype(np.float32)  # glow fading over ~30 px
+    halo = _with_halo(lab, part, letter=60)
+    assert halo[(away > 4) & (away < 20) & ~stars].mean() > 0.95, "glow left at the hole's edge is painted back as a light band"
+    assert not halo[(away > 50) & ~stars].any(), "the background past the glow stays"
+
+
 def test_outlined_letters_over_sky_and_trees_are_erased():
     from app.detector.kiuyha_detector import letter_mask
 
