@@ -108,6 +108,13 @@ def main() -> int:
             bx1, by1, bx2, by2 = (int(saved[key]) for key in ("x1", "y1", "x2", "y2"))
             if mask is not None and mask.shape == (by2 - by1, bx2 - bx1) and not saved.get("removed"):
                 used[by1:by2, bx1:bx2] |= mask > 127
+        if number in (13, 14, 15):  # one-off: whole slices round the GETTING leftover
+            cv2.imwrite(str(args.out / "raw" / f"slice{number:03d}.png"), original)
+            cv2.imwrite(str(args.out / "raw" / f"slice{number:03d}-mask.png"), used.astype(np.uint8) * 255)
+            (args.out / "raw" / f"slice{number:03d}.json").write_text(json.dumps({"stitch_core": core, "boxes": [
+                {key: saved.get(key) for key in ("x1", "y1", "x2", "y2", "origin", "manual", "removed", "source_role",
+                                                 "overlap_context_only", "mask_source")}
+                for saved in page.get("boxes") or []]}, indent=1, default=str), encoding="utf-8")
         for k, b in enumerate(kiuyha.text_boxes(np.ascontiguousarray(original[y0:y1]))):
             h, w = original.shape[:2]
             x1, cy1 = max(0, b.x1 - 120), max(0, b.y1 + y0 - 120)
