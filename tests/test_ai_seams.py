@@ -85,8 +85,11 @@ def test_review_boxes_are_masked_by_letters_not_rectangles():
     import cv2
     import numpy as np
 
+    from app.detector import ctd_mask
     from app.pipeline_editing import _paint_residue, _stroke_box
+    from ctd_fake import InkModel
 
+    ctd_mask._session = InkModel(light_above=235)
     image = np.full((400, 600, 3), (60, 90, 40), np.uint8)
     cv2.putText(image, "LEFT", (200, 220), cv2.FONT_HERSHEY_DUPLEX, 1.5, (250, 250, 250), 3)
     box = _stroke_box(image, (150, 150, 450, 260))
