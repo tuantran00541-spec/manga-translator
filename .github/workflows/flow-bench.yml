@@ -10,6 +10,9 @@ on:
       chapter_url:
         description: "Chapter to clean"
         required: false
+      label:
+        description: "Evidence folder suffix"
+        required: false
 
 permissions:
   contents: write
@@ -35,6 +38,7 @@ jobs:
       MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
       OPENBLAS_NUM_THREADS: "1"
       CHAPTER_URL: ${{ github.event.inputs.chapter_url || 'https://mangadex.org/chapter/ef7c4c66-97da-460a-9409-2231a950c877/1' }}
+      EVIDENCE: audit-results/flow-bench-${{ github.event.inputs.label || 'manga' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -68,11 +72,11 @@ jobs:
           /tmp/ctd/bin/python scripts/flow/prepare_ctd.py /tmp/ctd.onnx models/ctd_seg.onnx
 
       - name: Clean the chapter both ways
-        run: python scripts/flow/run.py "$CHAPTER_URL" audit-results/flow-bench-manga
+        run: python scripts/flow/run.py "$CHAPTER_URL" "$EVIDENCE"
 
       - name: Save evidence to audit-evidence
         if: always()
         uses: ./.github/actions/save-evidence
         with:
-          paths: audit-results/flow-bench-manga
+          paths: ${{ env.EVIDENCE }}
           message: "audit: flow bench (run ${{ github.run_id }})"
