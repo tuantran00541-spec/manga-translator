@@ -207,6 +207,11 @@ class OptimizedChapterPipeline(ChapterPipeline):
                 clean_image = read_image(Path(clean_path_posix))
             self._restore_preserve_pixels(clean_image, image, preserve_regions)
 
+        if self._restore_mask_path(processed_dir, img_path).exists():
+            if clean_image is None:
+                clean_image = read_image(Path(clean_path_posix))
+            needs_rewrite = self._apply_restore_mask(clean_image, image, processed_dir, img_path) or needs_rewrite
+
         if needs_rewrite and clean_image is not None:
             clean_path = Path(clean_path_posix)
             tmp_clean_path = processed_dir / (

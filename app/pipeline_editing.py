@@ -574,13 +574,21 @@ class PipelineEditingMixin:
             final_mask_path = self._manual_mask_path(
                 processed_dir, img_path, force_lama=force_lama
             )
+            restore_path = self._restore_mask_path(processed_dir, img_path)
             with self._page_artifact_transaction(
                 processed_dir,
                 img_path,
                 page_index,
                 target_clean_revision,
-                [final_mask_path],
+                [final_mask_path, restore_path],
             ) as artifact_tx:
+                restore = self._read_manual_mask(restore_path, (img_h, img_w))
+                if restore is not None and bin_mask is not None:
+                    restore[bin_mask > MANUAL_MASK_THRESHOLD] = 0  # the newest stroke wins
+                    if np.any(restore):
+                        write_image(restore_path, restore)
+                    else:
+                        restore_path.unlink()
                 auto_clean_path = self._auto_clean_path(processed_dir, img_path)
                 if (
                     not auto_clean_path.exists()
@@ -657,6 +665,67 @@ class PipelineEditingMixin:
                     self._sync_output_dir(chapter_id, manifest, [page_index])
             return manifest
 
+    def restore_mask(self, chapter_id: str, page_index: int, mask: np.ndarray) -> dict:
+        """Put the original pixels back under ``mask`` and keep them there through later repaints."""
+        processed_dir = PROCESSED_DIR / chapter_id
+
+        with get_page_lock(chapter_id, page_index):
+            with get_manifest_lock(chapter_id):
+                manifest = load_manifest_raw(chapter_id)
+                if page_index < 0 or page_index >= len(manifest.get("pages", [])):
+                    raise ValueError(f"Chapter {chapter_id}: Invalid page index {page_index}")
+                page = manifest["pages"][page_index]
+                if page.get("skipped"):
+                    raise ValueError("Cannot restore a skipped page; unskip it first")
+                if page.get("process_required"):
+                    raise ValueError("Cannot restore a page that requires processing")
+                img_path = Path(page["original"])
+                boxes_snapshot = copy.deepcopy(page.get("boxes", []))
+                preserve_regions = copy.deepcopy(page.get("preserve_regions", []))
+                target_clean_revision = int(page.get("clean_revision") or 0) + 1
+
+            image = read_image(img_path)
+            img_h, img_w = image.shape[:2]
+            painted = (mask > MANUAL_MASK_THRESHOLD).astype(np.uint8) * 255
+            if painted.shape[:2] != (img_h, img_w):
+                raise ValueError(
+                    f"Restore mask dimensions {painted.shape[:2]} must exactly match page dimensions {(img_h, img_w)}"
+                )
+            if not np.any(painted):
+                raise ValueError("Restore mask is empty")
+            restore_path = self._restore_mask_path(processed_dir, img_path)
+            existing = self._read_manual_mask(restore_path, (img_h, img_w))
+            if existing is not None:
+                painted = np.maximum(existing, painted)
+
+            with self._page_artifact_transaction(
+                processed_dir, img_path, page_index, target_clean_revision, [restore_path],
+            ) as artifact_tx:
+                write_image(restore_path, painted)
+                clean_path_posix = self._do_reinpaint(
+                    processed_dir,
+                    img_path,
+                    image,
+                    boxes_snapshot,
+                    reuse_auto_clean=True,
+                    preserve_regions=preserve_regions,
+                )
+                with get_manifest_lock(chapter_id):
+                    manifest = load_manifest_raw(chapter_id)
+                    if page_index < 0 or page_index >= len(manifest.get("pages", [])):
+                        raise ValueError(f"Chapter {chapter_id}: Invalid page index {page_index}")
+                    target_page = manifest["pages"][page_index]
+                    target_page["restore_mask"] = restore_path.as_posix()
+                    target_page["clean"] = clean_path_posix
+                    if bump_page_revision(target_page, "clean_revision") != target_clean_revision:
+                        raise RuntimeError("Page clean revision changed during restore")
+                    invalidate_page_render(manifest, page_index)
+                    artifact_tx.mark_manifest_commit(target_page)
+                    save_manifest_raw(chapter_id, manifest)
+                    artifact_tx.commit()
+                    self._sync_output_dir(chapter_id, manifest, [page_index])
+            return manifest
+
     def reset_manual_mask(self, chapter_id: str, page_index: int) -> dict:
         processed_dir = PROCESSED_DIR / chapter_id
 
@@ -679,6 +748,7 @@ class PipelineEditingMixin:
             manual_lama_mask_path = self._manual_mask_path(
                 processed_dir, img_path, force_lama=True
             )
+            restore_path = self._restore_mask_path(processed_dir, img_path)
 
             image = read_image(img_path)
             with self._page_artifact_transaction(
@@ -686,7 +756,7 @@ class PipelineEditingMixin:
                 img_path,
                 page_index,
                 target_clean_revision,
-                [manual_mask_path, manual_lama_mask_path],
+                [manual_mask_path, manual_lama_mask_path, restore_path],
             ) as artifact_tx:
                 clean_path_posix = self._do_reinpaint(
                     processed_dir,
@@ -700,7 +770,7 @@ class PipelineEditingMixin:
                     preserve_regions=preserve_regions,
                 )
 
-                for mask_path in (manual_mask_path, manual_lama_mask_path):
+                for mask_path in (manual_mask_path, manual_lama_mask_path, restore_path):
                     if mask_path.exists():
                         try:
                             mask_path.unlink()
@@ -716,6 +786,7 @@ class PipelineEditingMixin:
                     target_page = manifest["pages"][page_index]
                     target_page.pop("manual_mask", None)
                     target_page.pop("manual_lama_mask", None)
+                    target_page.pop("restore_mask", None)
                     target_page["clean"] = clean_path_posix
                     clean_revision = bump_page_revision(
                         target_page, "clean_revision"
@@ -890,6 +961,19 @@ class PipelineEditingMixin:
     ) -> Path:
         prefix = "manual_lama_mask" if force_lama else "manual_mask"
         return processed_dir / f"{prefix}_{img_path.name}"
+
+    @staticmethod
+    def _restore_mask_path(processed_dir: Path, img_path: Path) -> Path:
+        return processed_dir / f"restore_mask_{img_path.name}"
+
+    def _apply_restore_mask(self, clean: np.ndarray, original: np.ndarray, processed_dir: Path, img_path: Path) -> bool:
+        """Put the original pixels back where the restore brush painted; True when any were."""
+        mask = self._read_manual_mask(self._restore_mask_path(processed_dir, img_path), clean.shape[:2])
+        if mask is None:
+            return False
+        keep = mask > MANUAL_MASK_THRESHOLD
+        clean[keep] = original[keep]
+        return True
 
     @staticmethod
     def _read_manual_mask(

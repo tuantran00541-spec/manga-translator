@@ -11,27 +11,31 @@ Detect text, clean artwork, OCR, translate, typeset, review, render, and export 
 
 **Import → Slice → Detect → Clean → Review → OCR → Translate → Letter → Render → Export**
 
-### Real production demo — Chapter 60
+### What the cleanup does
 
 <p align="center">
-  <strong>Slice 005_02</strong>
-</p>
-<p align="center">
-  <img src="https://raw.githubusercontent.com/tuantran00541-spec/manga-translator/trial/chapter-render-60/trials/chapter-60/demo/01-raw.jpg" alt="Chapter 60 slice 005_02 raw" width="32%">
-  <img src="https://raw.githubusercontent.com/tuantran00541-spec/manga-translator/trial/chapter-render-60/trials/chapter-60/demo/01-detector.jpg" alt="Chapter 60 slice 005_02 detector" width="32%">
-  <img src="https://raw.githubusercontent.com/tuantran00541-spec/manga-translator/trial/chapter-render-60/trials/chapter-60/demo/01-clean.jpg" alt="Chapter 60 slice 005_02 clean" width="32%">
+  <img src="docs/images/demo-raw.jpg" alt="Original test page with a glowing caption, a speech bubble and outlined narration" width="32%">
+  <img src="docs/images/demo-mask.jpg" alt="The erase mask the app builds, in green" width="32%">
+  <img src="docs/images/demo-clean.jpg" alt="The page after cleanup" width="32%">
 </p>
 
-<p align="center">
-  <strong>Slice 015_04</strong>
-</p>
-<p align="center">
-  <img src="https://raw.githubusercontent.com/tuantran00541-spec/manga-translator/trial/chapter-render-60/trials/chapter-60/demo/02-raw.jpg" alt="Chapter 60 slice 000_00 raw" width="32%">
-  <img src="https://raw.githubusercontent.com/tuantran00541-spec/manga-translator/trial/chapter-render-60/trials/chapter-60/demo/02-detector.jpg" alt="Chapter 60 slice 000_00 detector" width="32%">
-  <img src="https://raw.githubusercontent.com/tuantran00541-spec/manga-translator/trial/chapter-render-60/trials/chapter-60/demo/02-clean.jpg" alt="Chapter 60 slice 000_00 clean" width="32%">
-</p>
+<p align="center"><sub>An original test page (drawn for this README, not taken from any series) through the app: RAW → erase mask → CLEAN. The glowing caption, the speech bubble and the white-outlined narration are gone; the bubble outline, stars, moon and tower stay.</sub></p>
 
-<p align="center"><sub>Two real Chapter 60 slices through the production pipeline: RAW → text detection → CLEAN.</sub></p>
+### Measured on real chapters
+
+Same GitHub runner, whole chapters, both cleaners side by side (evidence on the `audit-evidence` branch):
+
+| | Old hand-tuned masks | Current masks |
+| --- | --- | --- |
+| Webtoon, 36 pages, 243 text blocks | 763 s, missed a glowing title | **562 s (26 % faster)**, no story text left |
+| Manga oneshot, 39 pages, 158 blocks | 301 s, clean | 382 s, clean |
+| Shadow Slave ch.1 in the app, 135 slices | 403–934 s, 5 blocks with text left | **451 s, 1** (the edge of the series logo) |
+| Labelled synthetic text: erased / precision | 65.4 % / 43.1 % | **73.7 % / 73.1 %** |
+
+- **Glow, outlines and shadows go with the letters**, while the bubble outline and the art stay.
+- **Stylised sound effects are mostly left as art**: the letter model reads story lettering, not drawn SFX.
+- **The mask model runs about 40× faster than the released one** with identical output (see [docs/detection.md](docs/detection.md)).
+- **A restore brush** puts back any area the cleanup took by mistake, and the page keeps it through later repaints.
 
 > **Automation proposes. Editorial state decides. Published artifacts must match the current state.**
 
@@ -79,11 +83,12 @@ The slicer prefers low-content and safe bands, preserves source-page and slice i
 
 ### 🔎 Detection
 
-The Kiuyha ONNX text detector (`models/kiuyha_text_1280.onnx`) finds text blocks on each slice in one coarse pass plus near-native bands. Each block then gets a letter mask:
+The Kiuyha ONNX text detector (`models/kiuyha_text_1280.onnx`) finds text blocks on each slice in one coarse pass plus near-native bands. Each block then gets an erase mask:
 
-- letters split from the background by colour, or by lightness over mixed backgrounds
-- outlines and glow round the letters
-- letters the box cuts, and the rest of a line that runs past it
+- letters read by the mask head of comic-text-detector (`models/ctd_seg.onnx`), at full and half size
+- a thin outline round every letter, even one the same colour as the background
+- glow and shadow: smooth pixels unlike the colours round the block, grown out from the letters
+- art touching the letters stays: growth that runs off the block is dropped
 - text across a slice seam is detected once on a strip over the cut and joins the block it belongs to
 
 Detection records retain source/model provenance and review state.
@@ -95,11 +100,12 @@ Cleanup is driven by **verified pixel masks**, not detector rectangles.
 The pipeline supports:
 
 - LaMa inpainting with a zeroed hole, and nearby text not erased yet hidden from its context
-- up to three leftover passes that erase what the detector still sees after inpainting
-- dynamic and fixed LaMa backends
-- tiled inference for long/narrow regions
+- one downscaled LaMa pass per region (512 px long side: the same fill, several times cheaper)
+- leftover passes only for blocks where the letter model still reads text
+- dynamic and fixed LaMa backends, with tiling for the fixed 512 model
 - safe flat-fill shortcuts
 - manual repaint
+- a restore brush that puts the original page back where the cleanup went too far
 - mask reset
 - preserve/skip regions
 - page-coordinate mask remapping
@@ -180,20 +186,12 @@ If an editor changes relevant content while expensive rendering or export work i
 
 Long webtoon slices are stitched back into their source-page structure during chapter export.
 
-## Demo artifacts
+## Evidence
 
-The repository has kept several historical chapter trials for regression and visual review.
-
-Examples include:
-
-- source and slice contact sheets from **trial/chapter-render-60**
-- rendered page sheets from **trial/chapter-render-60**
-- OCR/translation/render visual proofs from **trial/chapter-render-251**
-- long-page and mixed-width review coverage from later chapter runs
-
-The demo above uses two real Chapter 60 slices selected from the imported production artifact for visual richness. Each set shows the same slice as **RAW → detector overlay → CLEAN**, with the detector boxes and inpaint result produced by the production pipeline.
-
-The generated proof images live beside the historical trial evidence in `trials/chapter-60/demo/`. Full runtime chapter images remain artifacts rather than permanent Git fixtures.
+Every quality claim above comes from a bench run on real chapters, saved on the
+`audit-evidence` branch with a side-by-side image per text block. The demo page
+at the top (`docs/images/demo-*.jpg`) is an original drawing made for this
+README; no series artwork is kept in the repository.
 
 ## Quick start
 
@@ -230,12 +228,16 @@ Place these files in models/:
 
 | File | Purpose |
 | --- | --- |
-| kiuyha_text_1280.onnx | Text detection: Kiuyha/Manga-Bubble-YOLO boxes, masked per letter |
+| kiuyha_text_1280.onnx | Text detection: Kiuyha/Manga-Bubble-YOLO boxes |
+| ctd_seg.onnx | Letter masks: comic-text-detector, exported fast and mask-only |
 | lama-manga-dynamic.onnx | Preferred inpainting backend |
 | lama.onnx | Fixed-resolution fallback |
 
 `kiuyha_text_1280.onnx` (10 MB) is in the repository; the LaMa files are too
-large for Git and must be downloaded. The **Kiuyha ONNX export** workflow
+large for Git and must be downloaded. Build `ctd_seg.onnx` from the released
+[comictextdetector.pt.onnx](https://github.com/zyddnys/manga-image-translator/releases/tag/beta-0.3)
+with `python scripts/export_ctd_onnx.py comictextdetector.pt.onnx models/ctd_seg.onnx`
+(needs `torch`, `onnx` and `onnx2torch` once; the app itself only needs onnxruntime). The **Kiuyha ONNX export** workflow
 re-exports
 [Kiuyha/Manga-Bubble-YOLO](https://huggingface.co/Kiuyha/Manga-Bubble-YOLO)
 and checks the ONNX boxes against the original model. See
@@ -282,13 +284,14 @@ Custom provider endpoints must use public HTTPS URLs. Credentials are never acce
 
 With `MANGA_TIERS=1` the app reads its plan from a Manga Cloud gateway at `MANGA_CLOUD_URL`. Users sign in from the A.I mode panel with their email and a 6-digit code. A.I mode then runs through the gateway's own provider key and spends one chapter of the monthly quota. Free has 3 chapters, Plus has 30 plus Visual QC, and Pro has 100 plus the user's own keys and custom providers. Plans count chapters, not money; the gateway enforces the quota and stops only a job that spends far more than a chapter ($2). The app hides locked features and falls back to Free when the gateway is unreachable.
 
-A.I mode runs a chapter through five checkpoints, each with its own prompt:
+A.I mode runs a chapter through four checkpoints, each with its own prompt:
 
 1. Scan the raw slices: skip credit and textless slices, keep series logos untouched.
 2. Clean the text (Kiuyha + LaMa).
 3. Compare each raw and clean slice: erase missed text, repaint leftovers, restore art erased by mistake.
 4. Translate each slice from its raw and clean image and pick fonts; the app letters the text.
-5. Check each lettered slice: repaint, retranslate or restore what is wrong, at most two rounds, then open the lettered chapter in the editor, where it can be fixed by hand and exported.
+
+The lettered chapter then opens in the editor, where it can be fixed by hand and exported.
 
 The gateway lives in `gateway/` and runs with `python -m gateway`:
 

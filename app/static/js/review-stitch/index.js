@@ -307,7 +307,7 @@ export function mount(workspace) {
 
   submit.addEventListener("click", async () => {
     const chapterId = window.currentChapterId, chunks = shell._brushChunks || []; if (!chapterId || !chunks.some((c) => c.dirty && chunkHasPaint(c))) return window.showToast?.("Chưa có vùng nào được đánh dấu.", "error");
-    const mode = typeof window.chooseRepaintMode === "function" ? await window.chooseRepaintMode() : "standard"; if (!mode || chapterId !== window.currentChapterId) { return; } busy(true, mode === "lama" ? "LaMa đang xử lý…" : "Đang xử lý…");
+    const mode = typeof window.chooseRepaintMode === "function" ? await window.chooseRepaintMode() : "standard"; if (!mode || chapterId !== window.currentChapterId) { return; } busy(true, mode === "lama" ? "LaMa đang xử lý…" : mode === "restore" ? "Đang khôi phục…" : "Đang xử lý…");
     try {
       let affected = 0;
       for (const desc of shell._descriptors || []) {
@@ -317,7 +317,7 @@ export function mount(workspace) {
         const response = await fetch("/api/repaint_mask", { method: "POST", body: form }), parse = window.parseApiResponse || (async (r) => r.json().catch(() => ({}))), data = await parse(response); if (!response.ok) throw new Error(window.getErrorMessage?.(response.status, data) || data.detail || `HTTP ${response.status}`);
         if (window.currentManifest?.pages?.[desc.item.canonicalIndex] && data.pages?.[desc.item.canonicalIndex]) { window.currentManifest.pages[desc.item.canonicalIndex] = data.pages[desc.item.canonicalIndex]; } affected++;
       }
-      for (const c of chunks) { if (c.canvas && c.ctx) { c.ctx.clearRect(0, 0, c.canvas.width, c.canvas.height); } c.dirty = false; } deleteSnapshot(snapshotKey()); window.showToast?.(affected ? "Đã làm sạch các vùng được đánh dấu." : "Không có vùng ảnh nào được cập nhật.", affected ? "success" : "info"); rerender();
+      for (const c of chunks) { if (c.canvas && c.ctx) { c.ctx.clearRect(0, 0, c.canvas.width, c.canvas.height); } c.dirty = false; } deleteSnapshot(snapshotKey()); window.showToast?.(affected ? (mode === "restore" ? "Đã khôi phục ảnh gốc ở các vùng được đánh dấu." : "Đã làm sạch các vùng được đánh dấu.") : "Không có vùng ảnh nào được cập nhật.", affected ? "success" : "info"); rerender();
     } catch (err) { window.showToast?.("Không thể xử lý vùng đánh dấu: " + err.message, "error"); } finally { busy(false); }
   }, { signal });
 

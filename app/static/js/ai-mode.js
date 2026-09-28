@@ -236,7 +236,6 @@
       lines.push(`${r.restored_regions} vùng AI không dịch được, đã giữ ảnh gốc${pages.length ? ` (lát ${pages.join(", ")})` : ""}`);
     }
     if (r.repainted_regions) lines.push(`Repaint ${r.repainted_regions} vùng AI thấy còn sót ở ${r.repaint_pages?.length || 0} lát`);
-    if (r.final_rounds) lines.push(`Duyệt cuối ${r.final_rounds} vòng, sửa ${r.final_fixes || 0} chỗ`);
     if (r.source_lang) lines.push(`Ngôn ngữ gốc: ${window.SOURCE_LANG_LABELS?.[r.source_lang] || r.source_lang}`);
     if (r.translated || r.unreadable) lines.push(`Dịch ${r.translated || 0} vùng chữ${r.unreadable ? `, ${r.unreadable} vùng AI không đọc được` : ""}`);
     if (r.editorial_blockers) {
@@ -245,7 +244,7 @@
     }
     const errors = [
       ["quét credit/logo", r.scan_errors], ["so ảnh gốc và clean", r.qc_errors],
-      ["dịch", r.translate_errors], ["render", r.render_errors], ["duyệt cuối", r.final_errors],
+      ["dịch", r.translate_errors], ["render", r.render_errors],
     ].filter(([, list]) => list?.length);
     errors.forEach(([label, list]) => {
       const first = typeof list[0] === "string" ? list[0] : list[0]?.error || "";

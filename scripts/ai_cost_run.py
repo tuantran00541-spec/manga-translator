@@ -159,7 +159,6 @@ TRANSPORT_STAGES = (
     ("You are preparing manga", "scan"),
     ("You check an automatic manga", "review"),
     ("ROLE You are a veteran comic localization", "translate"),
-    ("You do the final check", "final"),
 )
 
 

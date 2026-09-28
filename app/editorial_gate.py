@@ -468,9 +468,12 @@ def editorial_preflight(
                     )
 
         checked_objects: set[str] = set()
+        live_ids = {str(obj.get("id")) for obj in objects if not obj.get("source_missing")}
         for obj in objects:
             if obj.get("source_missing") or text_object_in_preserve_region(page, obj):
                 continue
+            if str(obj.get("joined_into") or "") in live_ids:
+                continue  # its line is lettered by the object it joined
             oid = str(obj.get("id") or "")
             if oid and oid in checked_objects:
                 continue

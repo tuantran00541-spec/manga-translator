@@ -132,7 +132,7 @@ def _run_manager(fail_at=None, cancel=False):
 
 def test_manager_runs_every_stage_in_order():
     snapshot = _run_manager()
-    assert RecordingRunner.calls == ["download", "scan", "clean", "review", "translate", "render", "final", "finish"]
+    assert RecordingRunner.calls == ["download", "scan", "clean", "review", "translate", "render", "finish"]
     assert snapshot["status"] == "completed"
     assert all(stage["status"] == "done" for stage in snapshot["stages"])
     assert snapshot["chapter_id"] == CHAPTER
@@ -276,6 +276,7 @@ def _runner(monkeypatch, stage, manifest):
         return []
 
     monkeypatch.setattr(runner, "_sync_seams", no_seams)
+    monkeypatch.setattr(runner, "_join_stacked_lines", lambda indices: None)
     return runner
 
 
@@ -335,35 +336,6 @@ def test_retry_uses_small_batches_and_restores_what_never_translates(monkeypatch
     )
     assert preserved == [(1, [{"x1": 10, "y1": 10, "x2": 60, "y2": 40}])], "a deliberate blank is not restored"
     assert [item["id"] for item in runner.report["review_list"]] == ["a"]
-
-
-def test_final_stage_fixes_flagged_slices_at_most_twice(monkeypatch):
-    from app.ai_mode.checkpoints import FinalReview
-    import app.routers.image as image_module
-
-    manifest = {"pages": [{"original": "o0", "text_objects": []}, {"original": "o1", "text_objects": []}]}
-    runner = _runner(monkeypatch, "final", manifest)
-    monkeypatch.setattr(runner, "_active_pages", lambda: [0, 1])
-    monkeypatch.setattr(image_module, "_current_rendered_path", lambda chapter, index, m: f"r{index}")
-    monkeypatch.setattr(ai_job, "validate_managed_path", lambda path, root: path)
-    monkeypatch.setattr(ai_job, "read_image", lambda path: np.zeros((10, 10, 3)))
-    checked = []
-
-    def review(provider, model, key, index, original, final, objects):
-        checked.append(index)
-        return FinalReview(index, ok=index == 0, repaint=((1, 1, 5, 5),)), None
-
-    monkeypatch.setattr(ai_job, "review_final", review)
-    fixed = []
-
-    async def apply(found, source_lang):
-        fixed.append(found.page_index)
-
-    monkeypatch.setattr(runner, "_apply_final_fixes", apply)
-    asyncio.run(runner.final())
-    assert sorted(checked[:2]) == [0, 1] and checked[2:] == [1], "round two looks only at the slice round one flagged"
-    assert fixed == [1, 1], "two rounds of fixes at most"
-    assert runner.report["final_rounds"] == 2 and runner.report["final_flagged"] == [1, 1]
 
 
 def test_render_stage_gives_an_unletterable_object_its_original_pixels(monkeypatch):
@@ -439,6 +411,7 @@ def test_translate_stage_keeps_a_few_slices_in_flight_and_reports_failures(monke
         return []
 
     monkeypatch.setattr(runner, "_sync_seams", sync)
+    monkeypatch.setattr(runner, "_join_stacked_lines", lambda indices: None)
     retried = []
 
     async def retry(page_index, source_lang, only):
@@ -554,29 +527,6 @@ def test_retry_keeps_going_on_a_long_slice_while_batches_make_progress(monkeypat
     asyncio.run(runner._retry_untranslated(0, "en", None))
     assert [len(batch) for batch in batches] == [4, 4, 2], "ten objects in batches of four, none given up"
     assert runner.report["review_list"] == [] and runner.report["restored_regions"] == 0
-
-
-def test_final_check_repaints_source_text_over_an_existing_object_instead_of_adding_one(monkeypatch):
-    from app.ai_mode.checkpoints import FinalReview
-    from app.dependencies import pipeline
-
-    manifest = {"pages": [{"boxes": [{"x1": 100, "y1": 100, "x2": 400, "y2": 300}], "text_objects": []}]}
-    runner = _runner(monkeypatch, "final", manifest)
-    calls, retried = [], []
-    monkeypatch.setattr(pipeline, "apply_review_fixes", lambda chapter, index, **fixes: calls.append(fixes), raising=False)
-
-    async def retry(page_index, source_lang, only):
-        retried.append(page_index)
-
-    async def render(page_index):
-        return None
-
-    monkeypatch.setattr(runner, "_retry_untranslated", retry)
-    monkeypatch.setattr(runner, "_render_one", render)
-    found = FinalReview(0, ok=False, repaint=((120, 120, 380, 280), (500, 500, 600, 560)))
-    asyncio.run(runner._apply_final_fixes(found, "en"))
-    assert calls == [{"preserve": [], "boxes": [(500, 500, 600, 560)], "repaint": [(120, 120, 380, 280)]}]
-    assert retried == [0], "only the new text is translated"
 
 
 def test_checkpoint_three_never_restores_over_a_detected_text_box():

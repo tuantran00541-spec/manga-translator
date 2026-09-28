@@ -316,7 +316,7 @@ async def repaint_mask(
 ) -> dict:
     validate_chapter_id(chapter_id)
     mode = str(mode).strip().lower()
-    if mode not in {"standard", "lama"}:
+    if mode not in {"standard", "lama", "restore"}:
         raise HTTPException(400, "Invalid repaint mode")
     manifest_raw = load_manifest_raw(chapter_id)
     pages = manifest_raw.get("pages", [])
@@ -349,13 +349,16 @@ async def repaint_mask(
         raise HTTPException(400, str(exc)) from exc
 
     try:
-        manifest = await run_in_threadpool(
-            pipeline.repaint_mask,
-            chapter_id,
-            page_index,
-            mask_array,
-            force_lama=mode == "lama",
-        )
+        if mode == "restore":
+            manifest = await run_in_threadpool(pipeline.restore_mask, chapter_id, page_index, mask_array)
+        else:
+            manifest = await run_in_threadpool(
+                pipeline.repaint_mask,
+                chapter_id,
+                page_index,
+                mask_array,
+                force_lama=mode == "lama",
+            )
         return urlify_manifest(manifest)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
