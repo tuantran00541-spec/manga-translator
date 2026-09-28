@@ -1,0 +1,27 @@
+{
+ "stitch_core": {
+  "source_y1": 2491,
+  "source_y2": 6645,
+  "core_y1": 768,
+  "core_y2": 4154,
+  "core_source_y1": 3259,
+  "core_source_y2": 6645,
+  "unsafe_before": true,
+  "unsafe_after": false,
+  "source_height": 6645
+ },
+ "boxes": [
+  {
+   "x1": 0,
+   "y1": 501,
+   "x2": 1593,
+   "y2": 1299,
+   "origin": "detector",
+   "manual": null,
+   "removed": null,
+   "source_role": "text_segmenter",
+   "overlap_context_only": null,
+   "mask_source": "text_segmenter"
+  }
+ ]
+}
