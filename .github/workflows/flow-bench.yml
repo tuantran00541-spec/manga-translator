@@ -1,0 +1,78 @@
+name: Flow bench
+
+on:
+  push:
+    paths:
+      - "scripts/flow/**"
+      - ".github/workflows/flow-bench.yml"
+  workflow_dispatch:
+    inputs:
+      chapter_url:
+        description: "Chapter to clean"
+        required: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: flow-bench-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  run:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    env:
+      PYTHONUNBUFFERED: "1"
+      PYTHONPATH: "."
+      MANGA_PROCESSING_PIPELINE: fast
+      MANGA_USE_DYNAMIC_LAMA: "1"
+      MANGA_ORT_PROVIDER: openvino
+      MANGA_ORT_REQUIRE_PROVIDER: "1"
+      MANGA_ORT_OPENVINO_SCOPE: detectors
+      MANGA_ORT_OPENVINO_THREADS: "2"
+      MANGA_ORT_OPENVINO_STREAMS: "1"
+      MANGA_ORT_OPENVINO_CACHE_DIR: /tmp/manga-openvino-cache
+      OPENBLAS_NUM_THREADS: "1"
+      CHAPTER_URL: ${{ github.event.inputs.chapter_url || 'https://asurascans.com/comics/the-hero-cannot-rest-3ec3b16f/chapter/1' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install processing runtime
+        run: |
+          python -m pip install --only-binary :all: numpy==1.26.4 Pillow==10.4.0 opencv-contrib-python==4.10.0.84 \
+            onnxruntime-openvino==1.24.1 psutil==6.1.1 loguru==0.7.2 requests==2.32.3 \
+            beautifulsoup4==4.12.3 lxml==5.3.0 playwright==1.47.0 fastapi==0.115.0 \
+            pydantic==2.9.2 filelock==3.16.1 python-multipart==0.0.12
+          python -m playwright install --with-deps chromium
+
+      - name: Restore detector and inpaint models
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            models/*.onnx
+            models/.e2e-provenance.json
+          key: processing-profile-models-b224548-v1
+
+      - name: Build the fast mask-only CTD
+        run: |
+          test -f models/lama-manga-dynamic.onnx && test -f models/kiuyha_text_1280.onnx
+          python -m venv /tmp/ctd && /tmp/ctd/bin/pip install -q torch==2.5.1 --index-url https://download.pytorch.org/whl/cpu
+          /tmp/ctd/bin/pip install -q numpy==1.26.4 onnx==1.17.0 onnx2torch==1.5.15 onnxruntime==1.20.1
+          curl -sSL -o /tmp/ctd.onnx https://github.com/zyddnys/manga-image-translator/releases/download/beta-0.3/comictextdetector.pt.onnx
+          echo "1a86ace74961413cbd650002e7bb4dcec4980ffa21b2f19b86933372071d718f  /tmp/ctd.onnx" | sha256sum -c
+          /tmp/ctd/bin/python scripts/flow/prepare_ctd.py /tmp/ctd.onnx models/ctd_seg.onnx
+
+      - name: Clean the chapter both ways
+        run: python scripts/flow/run.py "$CHAPTER_URL" audit-results/flow-bench
+
+      - name: Save evidence to audit-evidence
+        if: always()
+        uses: ./.github/actions/save-evidence
+        with:
+          paths: audit-results/flow-bench
+          message: "audit: flow bench (run ${{ github.run_id }})"
