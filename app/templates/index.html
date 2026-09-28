@@ -53,7 +53,7 @@
         <div class="page-intro"><span class="ui-eyebrow">Dự án mới</span><h1>Nhập nội dung</h1><p>Dán liên kết chương hoặc tải ảnh, ZIP, CBZ từ máy. Ngôn ngữ gốc được tự nhận diện sau khi xử lý ảnh.</p></div>
         <section class="landing-start" aria-label="Mở chương mới">
           <section id="ai-mode-panel" class="landing-panel ai-mode-panel" aria-labelledby="ai-mode-title">
-            <span class="source-index">AI</span><div class="source-copy"><h2 id="ai-mode-title">A.I mode</h2><p>Dán URL, AI tự làm hết: bỏ trang credit, giữ logo, clean, repaint chỗ sót, dịch, chọn font và render. Xong chỉ việc tải file zip.</p></div>
+            <span class="source-index">AI</span><div class="source-copy"><h2 id="ai-mode-title">A.I mode</h2><p>Dán URL, AI tự làm hết: bỏ trang credit, giữ logo, clean, repaint chỗ sót, dịch, chọn font và render. Xong là chương đã có chữ mở sẵn để bạn xem, sửa và xuất.</p></div>
             <div id="ai-mode-plan" class="ai-mode-plan" hidden><span id="ai-mode-plan-text"></span><form id="ai-mode-login-form" class="ai-mode-login" hidden><label class="ui-field" for="ai-mode-email"><span class="sr-only">Email</span><input id="ai-mode-email" type="email" placeholder="Email của bạn" autocomplete="email" required></label><label class="ui-field" id="ai-mode-code-field" for="ai-mode-code" hidden><span class="sr-only">Mã 6 số</span><input id="ai-mode-code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="Mã 6 số" autocomplete="one-time-code"></label><button id="ai-mode-login-submit" class="ui-btn" type="submit">Gửi mã</button></form><details id="ai-mode-upgrade" class="ai-mode-upgrade" hidden><summary class="ui-btn ui-btn-compact">Nâng cấp gói</summary><div id="ai-mode-upgrade-options" class="ai-mode-upgrade-options"></div></details><button id="ai-mode-signout" class="ui-btn ui-btn-ghost ui-btn-compact" type="button" hidden>Đăng xuất</button></div>
             <form id="ai-mode-form" class="ai-mode-form">
               <label class="ui-field ai-mode-url" for="ai-mode-url"><span class="sr-only">Liên kết chương cho A.I mode</span><input type="url" id="ai-mode-url" placeholder="Dán URL chương tại đây" autocomplete="url" required></label>
@@ -66,7 +66,7 @@
             <div id="ai-mode-status" class="ai-mode-status" aria-live="polite" hidden>
               <ol id="ai-mode-stages" class="ai-mode-stages"></ol>
               <p id="ai-mode-summary" class="ai-mode-summary"></p>
-              <div class="ai-mode-actions"><a id="ai-mode-download" class="ui-btn ui-btn-primary" href="#" hidden>Tải file zip</a><button id="ai-mode-open" class="ui-btn" type="button" hidden>Mở chương để xem</button><button id="ai-mode-cancel" class="ui-btn" type="button" hidden>Hủy</button></div>
+              <div class="ai-mode-actions"><button id="ai-mode-open" class="ui-btn ui-btn-primary" type="button" hidden>Mở chương</button><button id="ai-mode-cancel" class="ui-btn" type="button" hidden>Hủy</button></div>
               <details id="ai-mode-report" class="ai-mode-report" hidden><summary>Báo cáo của AI</summary><ul id="ai-mode-report-list"></ul></details>
             </div>
           </section>

@@ -1,17 +1,14 @@
 from __future__ import annotations
 
 import math
-from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, field_validator
 
 from app.ai_mode.job import AIModeJobManager, AIModeSettings
 from app import cloud
 from app.ai_providers import bind_cloud_job, normalize_provider_id, unbind_cloud_job, validate_model_name
-from app.config import OUTPUT_DIR
 from app.parameters import PIPELINE_DEFAULT_WORKERS
 from app.routers.translation import _resolve_vision_provider, validate_lang_code
 from app.secret_store import SecretStoreUnavailable, get_provider_api_key
@@ -138,18 +135,3 @@ async def cancel_ai_mode_job(job_id: str) -> dict:
         return ai_mode_jobs.cancel(job_id)
     except KeyError as exc:
         raise HTTPException(404, "A.I mode job not found") from exc
-
-
-@router.get("/jobs/{job_id}/download")
-async def download_ai_mode_zip(job_id: str):
-    snapshot = _snapshot_or_404(job_id)
-    archive = ai_mode_jobs.archive_path(job_id)
-    if not archive:
-        raise HTTPException(409, "The ZIP is not ready yet")
-    path = Path(archive).resolve()
-    chapter_dir = (OUTPUT_DIR / str(snapshot["chapter_id"])).resolve()
-    if chapter_dir not in path.parents or not path.is_file():
-        raise HTTPException(404, "The ZIP is no longer available")
-    return FileResponse(
-        path, filename=f"manga-translator-ai-{snapshot['chapter_id']}.zip", media_type="application/zip",
-    )

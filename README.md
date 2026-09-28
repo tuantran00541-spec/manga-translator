@@ -288,7 +288,7 @@ A.I mode runs a chapter through five checkpoints, each with its own prompt:
 2. Clean the text (Kiuyha + LaMa).
 3. Compare each raw and clean slice: erase missed text, repaint leftovers, restore art erased by mistake.
 4. Translate each slice from its raw and clean image and pick fonts; the app letters the text.
-5. Check each lettered slice: repaint, retranslate or restore what is wrong, at most two rounds, then export the ZIP.
+5. Check each lettered slice: repaint, retranslate or restore what is wrong, at most two rounds, then open the lettered chapter in the editor, where it can be fixed by hand and exported.
 
 The gateway lives in `gateway/` and runs with `python -m gateway`:
 

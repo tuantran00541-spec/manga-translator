@@ -277,13 +277,10 @@
     const cost = job.cost_usd == null ? "" : ` · chi phí ~$${Number(job.cost_usd).toFixed(4)}`;
     const summary = $("ai-mode-summary");
     if (running) summary.textContent = (job.cancel_requested ? "Đang hủy sau bước hiện tại…" : "AI đang làm, bạn có thể để trang này mở hoặc quay lại sau.") + cost;
-    else if (job.status === "completed") summary.textContent = "Xong! File zip đã sẵn sàng." + cost;
+    else if (job.status === "completed") summary.textContent = "Xong! Chương đã có chữ, mở ra để xem, sửa và xuất." + cost;
     else if (job.status === "cancelled") summary.textContent = "Đã hủy. Những gì đã làm vẫn được lưu trong chương." + cost;
     else summary.textContent = `Dừng vì lỗi: ${job.error || "không rõ"}` + cost;
 
-    const download = $("ai-mode-download");
-    download.hidden = !job.download_url;
-    if (job.download_url) download.href = job.download_url;
     const open = $("ai-mode-open");
     open.hidden = running || !job.chapter_id;
     setRunning(running);
@@ -301,12 +298,15 @@
   async function poll(jobId) {
     window.clearTimeout(pollTimer);
     try {
+      const wasRunning = currentJob?.job_id === jobId && (currentJob.status === "pending" || currentJob.status === "running");
       const job = await requestJson(`/api/ai_mode/jobs/${encodeURIComponent(jobId)}`);
       render(job);
       if (job.status === "pending" || job.status === "running") {
         pollTimer = window.setTimeout(() => poll(jobId), POLL_MS);
-      } else if (job.status === "completed") {
-        window.showToast?.("A.I mode xong, tải file zip ở khung A.I mode.", "success");
+      } else if (job.status === "completed" && wasRunning && job.chapter_id) {
+        // A job finishing while watched opens its chapter; an old finished job only shows its summary.
+        window.showToast?.("A.I mode xong, đang mở chương.", "success");
+        window.resumeChapter?.(job.chapter_id);
       }
     } catch (err) {
       if (err.status === 404) {

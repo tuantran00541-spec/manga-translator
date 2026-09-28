@@ -132,7 +132,7 @@ def _run_manager(fail_at=None, cancel=False):
 
 def test_manager_runs_every_stage_in_order():
     snapshot = _run_manager()
-    assert RecordingRunner.calls == ["download", "scan", "clean", "review", "translate", "render", "final", "export"]
+    assert RecordingRunner.calls == ["download", "scan", "clean", "review", "translate", "render", "final", "finish"]
     assert snapshot["status"] == "completed"
     assert all(stage["status"] == "done" for stage in snapshot["stages"])
     assert snapshot["chapter_id"] == CHAPTER
@@ -145,7 +145,6 @@ def test_manager_stops_at_the_failing_stage():
     assert snapshot["status"] == "failed" and snapshot["error"] == "boom"
     states = {stage["key"]: stage["status"] for stage in snapshot["stages"]}
     assert states["review"] == "failed" and states["translate"] == "pending"
-    assert snapshot["download_url"] is None
 
 
 def test_manager_cancel_before_first_stage():
@@ -497,7 +496,7 @@ def cleaned_chapter(tmp_path, monkeypatch):
     return output
 
 
-def test_translate_render_and_export_without_human_review(cleaned_chapter, monkeypatch):
+def test_translate_render_and_leave_the_chapter_open_in_the_editor(cleaned_chapter, monkeypatch):
     import app.routers.ocr as ocr_router
 
     async def detected(chapter_id, req=None):
@@ -516,7 +515,7 @@ def test_translate_render_and_export_without_human_review(cleaned_chapter, monke
     runner = AIModeRunner(job, PROVIDERS["openai"], "key")
 
     async def run():
-        for stage in ("translate", "render", "export"):
+        for stage in ("translate", "render", "finish"):
             job.stage = stage
             await getattr(runner, stage)()
 
@@ -524,13 +523,16 @@ def test_translate_render_and_export_without_human_review(cleaned_chapter, monke
 
     assert runner.report["translated"] == 1 and runner.report["source_lang"] == "auto"
     assert runner.report["editorial_blockers"] >= 1, "unreviewed script is reported, not hidden"
-    assert job.archive_path and job.archive_path.endswith(f"ai_mode_{CHAPTER}.zip")
-    with zipfile.ZipFile(job.archive_path) as archive:
-        assert archive.namelist() == ["page_001.png", "page_002.png"]
     assert (cleaned_chapter / CHAPTER / "ai_mode_report.json").is_file()
-    # The normal export keeps refusing until a human reviews the script.
+    assert not list(cleaned_chapter.glob("**/*.zip")), "A.I mode leaves exporting to the editor"
+    manifest = manifests.load_manifest_raw(CHAPTER)
+    assert manifest["workflow"] == {"stage": "review", "page_index": 0}
+    # The editor's export refuses until a human reviews the script, then exports the lettered pages.
     with pytest.raises(export_router.HTTPException):
         export_router.export_chapter(CHAPTER)
+    manifests.save_manifest_raw(CHAPTER, {**manifest, "script_review_required": False})
+    with zipfile.ZipFile(export_router.write_chapter_archive(CHAPTER)) as archive:
+        assert archive.namelist() == ["page_001.png", "page_002.png"]
 
 
 def test_retry_keeps_going_on_a_long_slice_while_batches_make_progress(monkeypatch):

@@ -1,9 +1,9 @@
-"""A.I mode job: URL -> five A.I checkpoints (scan, clean, review, translate, final check) -> ZIP.
+"""A.I mode job: URL -> five A.I checkpoints (scan, clean, review, translate, final check) -> a lettered chapter.
 
 Every stage reuses the same endpoint functions the editor calls, so locking,
 revision checks and manifest bookkeeping are identical to manual work. The
-chapter stays a normal chapter afterwards: it can be opened, fixed by hand
-and exported again.
+chapter stays a normal chapter afterwards: it opens in the editor, where it
+can be fixed by hand and exported.
 """
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ from app.ai_mode.page_scan import scan_slices
 from app.config import OUTPUT_DIR, PROCESSED_DIR, RAW_DIR
 from app.image_io import read_image
 from app.logging_config import logger
-from app.manifest_utils import get_manifest_lock, load_manifest_raw
+from app.manifest_utils import get_manifest_lock, load_manifest_raw, save_manifest_raw
 from app.security import validate_managed_path
 
 STAGES: tuple[tuple[str, str], ...] = (
@@ -33,7 +33,7 @@ STAGES: tuple[tuple[str, str], ...] = (
     ("translate", "Checkpoint 4: Dịch và chọn font"),
     ("render", "Render"),
     ("final", "Checkpoint 5: AI duyệt lượt cuối"),
-    ("export", "Đóng gói zip"),
+    ("finish", "Hoàn tất"),
 )
 SCAN_BATCH_SIZE = 4
 SCAN_CONCURRENCY = 3
@@ -88,7 +88,6 @@ class AIModeJob:
     error: str | None = None
     cost_usd: float | None = 0.0
     report: dict = field(default_factory=dict)
-    archive_path: str | None = None
     cancel_requested: bool = False
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
@@ -767,28 +766,23 @@ class AIModeRunner:
             _append(self.report["final_errors"], f"Lát {page_index + 1}: {_detail(exc)[:200]}")
         await self._render_one(page_index)
 
-    async def export(self) -> None:
-        from app.routers.export import _preflight_copy, write_chapter_archive
+    async def finish(self) -> None:
+        """Report what a reviewer would still see and leave the chapter open in the editor."""
+        from app.routers.export import _preflight_copy
 
         chapter_id = self.job.chapter_id
-        # The gate normally blocks export until a human reviews every story
-        # object. A.I mode exports anyway and reports what a reviewer would see.
-        preflight = _preflight_copy(self._manifest(), require_final_approval=False)
+        with get_manifest_lock(chapter_id):
+            manifest = load_manifest_raw(chapter_id)
+            manifest["workflow"] = {"stage": "review", "page_index": 0}
+            save_manifest_raw(chapter_id, manifest)
+        preflight = _preflight_copy(manifest, require_final_approval=False)
         self.report["editorial_blockers"] = int(preflight.get("blocker_count") or 0)
         self.report["blocker_samples"] = [
             {"kind": item.get("kind"), "page": int(item.get("page_index", 0)) + 1, "reason": item.get("reason")}
             for item in (preflight.get("blockers") or [])[:10]
         ]
-        self._progress(0, 1, "Đang ghép trang và nén")
-        try:
-            archive = await asyncio.to_thread(
-                write_chapter_archive, chapter_id,
-                enforce_editorial_gate=False, archive_name=f"ai_mode_{chapter_id}.zip",
-            )
-        except HTTPException as exc:
-            raise AIModeFailed(f"Không đóng gói được zip: {_detail(exc)}") from exc
-        self.job.archive_path = str(archive)
         report_path = OUTPUT_DIR / chapter_id / "ai_mode_report.json"
+        report_path.parent.mkdir(parents=True, exist_ok=True)
         report_path.write_text(json.dumps(self.report, ensure_ascii=False, indent=1), encoding="utf-8")
         self._progress(1, 1, "Xong")
 
@@ -854,10 +848,6 @@ class AIModeJobManager:
             job.cancel_requested = True
         return self.snapshot(job_id)
 
-    def archive_path(self, job_id: str) -> str | None:
-        job = self._get(job_id)
-        return job.archive_path if job.status == "completed" else None
-
     def snapshot(self, job_id: str) -> dict:
         job = self._get(job_id)
         return {
@@ -875,7 +865,6 @@ class AIModeJobManager:
             "cancel_requested": job.cancel_requested,
             "error": job.error,
             "report": copy.deepcopy(job.report),
-            "download_url": f"/api/ai_mode/jobs/{job.job_id}/download" if job.archive_path and job.status == "completed" else None,
             "created_at": job.created_at,
             "updated_at": job.updated_at,
         }

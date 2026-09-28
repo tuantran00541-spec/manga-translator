@@ -269,9 +269,15 @@ def main() -> int:
     }
     chapter_id = job.get("chapter_id")
     if job["status"] == "completed" and chapter_id:
-        archive = ROOT / "data" / "output" / chapter_id / f"ai_mode_{chapter_id}.zip"
-        if archive.is_file():
+        # The chapter is exported the way a user would, from the editor's export.
+        response = requests.get(f"{APP}/api/export/{chapter_id}.zip", timeout=600)
+        if response.ok:
+            archive = out / "chapter.zip"
+            archive.write_bytes(response.content)
             report["zip_pages"] = _pages(archive, out)
+            archive.unlink()
+        else:
+            report["export_error"] = f"HTTP {response.status_code}: {response.text[:300]}"
     manifest_path = ROOT / "data" / "processed" / str(chapter_id) / "manifest.json"
     if chapter_id and manifest_path.is_file():
         pages = json.loads(manifest_path.read_text(encoding="utf-8")).get("pages", [])

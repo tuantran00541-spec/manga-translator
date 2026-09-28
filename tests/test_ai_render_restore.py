@@ -67,5 +67,5 @@ def test_render_stage_restores_an_unletterable_object_and_the_slice_exports(tmp_
     assert runner.report["restored_regions"] == 1, runner.report["render_errors"]
     assert image_router._current_rendered_path(chapter, 0, manifest) is not None, "the slice must be rendered"
     # Export re-syncs text objects first; that must not invalidate the render.
-    snapshot = export_router._snapshot_export_inputs(chapter, enforce_editorial_gate=False)
+    snapshot = export_router._snapshot_export_inputs(chapter)
     assert [item["page_index"] for item in snapshot] == [0]
