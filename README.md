@@ -282,13 +282,14 @@ Custom provider endpoints must use public HTTPS URLs. Credentials are never acce
 
 With `MANGA_TIERS=1` the app reads its plan from a Manga Cloud gateway at `MANGA_CLOUD_URL`. Users sign in from the A.I mode panel with their email and a 6-digit code. A.I mode then runs through the gateway's own provider key and spends one chapter of the monthly quota. Free has 3 chapters, Plus has 30 plus Visual QC, and Pro has 100 plus the user's own keys and custom providers. Plans count chapters, not money; the gateway enforces the quota and stops only a job that spends far more than a chapter ($2). The app hides locked features and falls back to Free when the gateway is unreachable.
 
-A.I mode runs a chapter through five checkpoints, each with its own prompt:
+A.I mode runs a chapter through four checkpoints, each with its own prompt:
 
 1. Scan the raw slices: skip credit and textless slices, keep series logos untouched.
 2. Clean the text (Kiuyha + LaMa).
 3. Compare each raw and clean slice: erase missed text, repaint leftovers, restore art erased by mistake.
 4. Translate each slice from its raw and clean image and pick fonts; the app letters the text.
-5. Check each lettered slice: repaint, retranslate or restore what is wrong, at most two rounds, then open the lettered chapter in the editor, where it can be fixed by hand and exported.
+
+The lettered chapter then opens in the editor, where it can be fixed by hand and exported.
 
 The gateway lives in `gateway/` and runs with `python -m gateway`:
 
