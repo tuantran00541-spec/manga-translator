@@ -294,15 +294,15 @@ def test_the_default_thinking_level_also_gets_room(tmp_path, monkeypatch):
 
 def test_requests_in_flight_together_cannot_pass_the_cost_cap(tmp_path):
     store = Store(tmp_path / "gw.sqlite")
-    account_id, _token = store.create_account("a@example.com")  # free: $0.10 a chapter
+    account_id, _token = store.create_account("a@example.com")
     job_id, _job_token, cap = store.reserve_job(account_id)
-    store.begin_request(job_id, 0.04)
-    store.begin_request(job_id, 0.04)
+    assert cap == 2.0, "every plan gets the same guard; plans count chapters, not money"
+    store.begin_request(job_id, 0.8)
+    store.begin_request(job_id, 0.8)
     with pytest.raises(QuotaExceeded):
-        store.begin_request(job_id, 0.04)  # nothing is billed yet, but the held cost would pass the cap
-    store.add_cost(job_id, 0.01, released_usd=0.04)
-    store.begin_request(job_id, 0.04)  # the real cost came in lower, so there is room again
-    assert cap == 0.10
+        store.begin_request(job_id, 0.8)  # nothing is billed yet, but the held cost would pass the guard
+    store.add_cost(job_id, 0.2, released_usd=0.8)
+    store.begin_request(job_id, 0.8)  # the real cost came in lower, so there is room again
 
 
 def test_the_gateway_forwards_one_answer_and_frees_what_it_held(tmp_path, monkeypatch):

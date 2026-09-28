@@ -233,7 +233,7 @@ def create_app(store: Store, upstream: Upstream, admin_key: str, *, mailer: Mail
                 "remaining": max(0, plan.chapters_per_month - usage["used"]),
                 "cost_usd": usage["cost_usd"],
             },
-            "limits": {"max_cost_per_chapter_usd": plan.max_cost_per_chapter_usd, "model": upstream.model},
+            "limits": {"model": upstream.model},
         }
 
     @app.get("/health")

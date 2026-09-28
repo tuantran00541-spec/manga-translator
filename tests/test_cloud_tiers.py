@@ -137,7 +137,8 @@ def test_only_a_live_job_token_reaches_the_ai_and_the_gateway_picks_the_model(st
     assert stack.chat("mcj_forged").status_code == 401
 
 
-def test_cost_cap_stops_one_chapter_from_draining_the_plan(stack, monkeypatch):
+def test_the_cost_guard_stops_a_job_that_spends_far_more_than_a_chapter(stack, monkeypatch):
+    monkeypatch.setattr("gateway.store.JOB_COST_GUARD_USD", 0.10)
     _sign_in(stack, monkeypatch)
     job = cloud.reserve_job()
     assert job["cost_cap_usd"] == 0.10

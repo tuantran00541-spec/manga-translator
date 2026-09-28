@@ -19,6 +19,8 @@ LOGIN_CODE_MAX_ATTEMPTS = 5
 LOGIN_CODES_PER_DAY = 10  # with the attempts per code, about 50 guesses a day at a 6-digit code
 SESSION_TTL_SECONDS = 90 * 86400
 PLAN_PERIOD_SECONDS = 30 * 86400
+# Plans count chapters, not money; this only stops a leaked or scripted job token, far above a real chapter.
+JOB_COST_GUARD_USD = 2.0
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS accounts (
@@ -310,9 +312,9 @@ class Store:
             db.execute(
                 "INSERT INTO jobs (id, account_id, token_hash, period, status, cost_cap_usd, created_at, expires_at) "
                 "VALUES (?, ?, ?, ?, 'active', ?, ?, ?)",
-                (job_id, account_id, _hash(token), period, plan.max_cost_per_chapter_usd, now, now + JOB_TTL_SECONDS),
+                (job_id, account_id, _hash(token), period, JOB_COST_GUARD_USD, now, now + JOB_TTL_SECONDS),
             )
-        return job_id, token, plan.max_cost_per_chapter_usd
+        return job_id, token, JOB_COST_GUARD_USD
 
     def active_job_for_token(self, token: str) -> sqlite3.Row:
         with self._connect() as db:

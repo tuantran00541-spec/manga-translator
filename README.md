@@ -280,7 +280,7 @@ Custom provider endpoints must use public HTTPS URLs. Credentials are never acce
 
 ### Plans (experimental, off by default)
 
-With `MANGA_TIERS=1` the app reads its plan from a Manga Cloud gateway at `MANGA_CLOUD_URL`. Users sign in from the A.I mode panel with their email and a 6-digit code. A.I mode then runs through the gateway's own provider key and spends one chapter of the monthly quota. Free has 3 chapters, Plus has 30 plus Visual QC, and Pro has 100 plus the user's own keys and custom providers. The gateway enforces the quota and a per-chapter cost cap. The app hides locked features and falls back to Free when the gateway is unreachable.
+With `MANGA_TIERS=1` the app reads its plan from a Manga Cloud gateway at `MANGA_CLOUD_URL`. Users sign in from the A.I mode panel with their email and a 6-digit code. A.I mode then runs through the gateway's own provider key and spends one chapter of the monthly quota. Free has 3 chapters, Plus has 30 plus Visual QC, and Pro has 100 plus the user's own keys and custom providers. Plans count chapters, not money; the gateway enforces the quota and stops only a job that spends far more than a chapter ($2). The app hides locked features and falls back to Free when the gateway is unreachable.
 
 A.I mode runs a chapter through five checkpoints, each with its own prompt:
 
