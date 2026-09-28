@@ -269,6 +269,7 @@ class PageProcessingMixin:
             else:
                 manual_lama_mask_posix = mask_path.as_posix()
 
+        self._apply_restore_mask(clean_image, image, processed_dir, img_path)
         tmp_clean_path = processed_dir / f"clean_{img_path.name}.{uuid.uuid4().hex[:12]}.tmp.png"
         write_started_at = time.perf_counter()
         write_image(tmp_clean_path, clean_image)
