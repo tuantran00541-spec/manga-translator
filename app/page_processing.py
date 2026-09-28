@@ -104,9 +104,7 @@ class PageProcessingMixin:
         detector_metrics = self.detector.last_metrics()
 
         if supplemental_detections:
-            # A core box cut short by the slice edge is the same text as the seam box that holds it whole.
-            detected = [box for box in detected
-                        if not any(_contained(box, seam) for seam in supplemental_detections)]
+            # A core box inside a seam box is the same text; their masks join, as each can miss letters.
             detected = _fold_nested(apply_final_nms(
                 detected + list(supplemental_detections),
                 iou_threshold=DETECTOR_FINAL_NMS_IOU,

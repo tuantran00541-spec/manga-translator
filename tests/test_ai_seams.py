@@ -106,3 +106,20 @@ def test_both_slices_agree_on_the_owner_even_when_one_sees_the_text_cut():
     bottom = _slice(1232, 2000, 4000, [_obj("b", 668, 1168, "Chào")])
     manifest = {"pages": [top, bottom]}
     assert seam_mirror_ids(manifest, 0) == {"a"} and seam_mirror_ids(manifest, 1) == set()
+
+
+def test_a_core_box_and_the_seam_box_holding_it_join_their_masks():
+    import numpy as np
+
+    from app.detector.boxes import BubbleBox
+    from app.page_processing import _fold_nested
+
+    seam = np.zeros((718, 1593), np.uint8)
+    seam[:, :900] = 255  # the seam pass missed the end of the line
+    core = np.zeros((535, 1310), np.uint8)
+    core[:, 900:] = 255  # the core pass has it
+    folded = _fold_nested([BubbleBox(0, 501, 1593, 1219, 0.6, seam, source_role="text_segmenter"),
+                           BubbleBox(128, 768, 1438, 1303, 0.5, core, source_role="text_segmenter")])
+    assert len(folded) == 1
+    box = folded[0]
+    assert box.mask[995 - box.y1, 1186 - box.x1] and box.mask[600 - box.y1, 100 - box.x1]
