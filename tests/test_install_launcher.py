@@ -114,9 +114,70 @@ def test_a_broken_download_resumes_where_it_stopped(tmp_path, monkeypatch):
     assert (tmp_path / "m.onnx").read_bytes() == whole and asked == ["bytes=4-", "bytes=4-"]
 
 
-def test_missing_visual_cpp_runtime_files_are_found(tmp_path):
-    (tmp_path / "msvcp140.dll").write_bytes(b"")
-    assert install.missing_vc_runtime(tmp_path) == ["vcruntime140_1.dll", "vcomp140.dll"]
+def test_missing_or_old_visual_cpp_runtime_is_found(tmp_path, monkeypatch):
+    from app import vc_runtime
+
+    monkeypatch.delenv("MANGA_VC_ASSUME_MISSING", raising=False)
+    for name in ("msvcp140.dll", "vcomp140.dll"):
+        (tmp_path / name).write_bytes(b"")
+    versions = {"msvcp140.dll": (14, 29, 30133, 0), "vcomp140.dll": None}
+    found = vc_runtime.problems(tmp_path, version_of=lambda path: versions[path.name])
+    assert found == ["msvcp140.dll (bản 14.29.30133.0 quá cũ)", "vcruntime140_1.dll (thiếu)"]
+    (tmp_path / "vcruntime140_1.dll").write_bytes(b"")
+    assert vc_runtime.problems(tmp_path, version_of=lambda path: (14, 44, 35211, 0)) == []
+
+
+class _Ran:
+    def __init__(self, code):
+        self.returncode = code
+
+
+@pytest.mark.parametrize("code, outcome", [
+    (0, ""), (1638, ""), (3010, "khởi động lại"), (1602, "từ chối quyền admin"), (1603, "mã 1603"),
+])
+def test_every_runtime_installer_outcome_gets_a_clear_answer(code, outcome, monkeypatch):
+    from app import vc_runtime
+
+    monkeypatch.setattr(vc_runtime.urllib.request, "urlretrieve", lambda url, path: Path(path).write_bytes(b"x"))
+    monkeypatch.setattr(vc_runtime.subprocess, "run", lambda args: _Ran(code))
+    monkeypatch.setattr(vc_runtime, "problems", lambda: [])
+    if code in vc_runtime.OK_CODES:
+        assert outcome in vc_runtime.install()
+    else:
+        with pytest.raises(RuntimeError, match=outcome):
+            vc_runtime.install()
+
+
+def test_a_runtime_that_is_still_missing_after_installing_is_reported(monkeypatch):
+    from app import vc_runtime
+
+    monkeypatch.setattr(vc_runtime.urllib.request, "urlretrieve", lambda url, path: Path(path).write_bytes(b"x"))
+    monkeypatch.setattr(vc_runtime.subprocess, "run", lambda args: _Ran(0))
+    monkeypatch.setattr(vc_runtime, "problems", lambda: ["msvcp140.dll (thiếu)"])
+    with pytest.raises(RuntimeError, match="Khởi động lại máy"):
+        vc_runtime.install()
+
+
+def test_no_network_for_the_runtime_points_to_the_manual_download(monkeypatch):
+    from app import vc_runtime
+
+    def offline(url, path):
+        raise OSError("no route")
+
+    monkeypatch.setattr(vc_runtime.urllib.request, "urlretrieve", offline)
+    with pytest.raises(RuntimeError, match="aka.ms/vs/17/release/vc_redist.x64.exe"):
+        vc_runtime.install()
+
+
+def test_the_app_repairs_the_runtime_before_loading_torch(monkeypatch, capsys):
+    from app import vc_runtime
+
+    calls = []
+    monkeypatch.setattr(run.os, "name", "nt")
+    monkeypatch.setattr(vc_runtime, "problems", lambda: ["vcomp140.dll (thiếu)"])
+    monkeypatch.setattr(vc_runtime, "install", lambda: calls.append("install") or "")
+    run._check_vc_runtime()
+    assert calls == ["install"] and "vcomp140.dll" in capsys.readouterr().out
 
 
 def test_a_new_mac_account_without_zshrc_gets_one(tmp_path, monkeypatch):

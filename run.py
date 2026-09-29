@@ -153,7 +153,25 @@ def main(argv: list[str] | None = None) -> None:
     _serve(port, args.open)
 
 
+def _check_vc_runtime() -> None:
+    """On Windows, fix a missing or old Visual C++ runtime before torch fails with a cryptic WinError 126."""
+    if os.name != "nt":
+        return
+    from app import vc_runtime
+
+    found = vc_runtime.problems()
+    if not found:
+        return
+    print(f"Thiếu Microsoft Visual C++ Runtime ({', '.join(found)}); đang cài, Windows sẽ hỏi quyền admin…", flush=True)
+    try:
+        note = vc_runtime.install()
+    except RuntimeError as exc:
+        raise SystemExit(str(exc)) from exc
+    print(note or "Đã cài xong Visual C++ Runtime.", flush=True)
+
+
 def _serve(port: int, open_browser: bool) -> None:
+    _check_vc_runtime()
     import cv2
     import uvicorn
 

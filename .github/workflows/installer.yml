@@ -28,7 +28,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        accented_user_folder: [false, true]
+        case: [plain, accented_user_folder, no_vc_runtime]
     env:
       MANGA_REF: ${{ github.ref_name }}
     steps:
@@ -37,7 +37,12 @@ jobs:
       - name: One-line install (Windows PowerShell 5.1)
         shell: powershell
         run: |
-          if ('${{ matrix.accented_user_folder }}' -eq 'true') {
+          if ('${{ matrix.case }}' -eq 'no_vc_runtime') {
+            # The runner has the runtime; the installer is told it is missing, so it must download and run
+            # Microsoft's installer for real and then find a working runtime on its own.
+            $env:MANGA_VC_ASSUME_MISSING = '1'
+          }
+          if ('${{ matrix.case }}' -eq 'accented_user_folder') {
             # A user folder with accents, as many Vietnamese Windows accounts have.
             $name = 'Nguy' + [char]0x1EC5 + 'n V' + [char]0x0103 + 'n'
             $env:LOCALAPPDATA = Join-Path $env:RUNNER_TEMP "$name\AppData\Local"
@@ -55,8 +60,11 @@ jobs:
           Write-Host "manga -> $shim"; Get-Content $shim
           manga --version
           if ($LASTEXITCODE -ne 0) { throw 'manga --version failed' }
-          $info = Get-Content -Raw (Join-Path (Split-Path (Split-Path $shim)) 'app\.manga-install.json') | ConvertFrom-Json
-          $python = Join-Path (Split-Path (Split-Path $shim)) 'app\.venv\Scripts\python.exe'
+          $app = Join-Path (Split-Path (Split-Path $shim)) 'app'
+          $python = Join-Path $app '.venv\Scripts\python.exe'
+          # The version reader must see the real runtime: a wrong number would send users into needless installs.
+          & $python -c "import sys; sys.path.insert(0, r'$app'); from app import vc_runtime as v; print({n: v.file_version(v.system32() / n) for n in v.DLLS}, v.problems()); assert v.file_version(v.system32() / 'msvcp140.dll') >= v.MIN_VERSION and not v.problems()"
+          if ($LASTEXITCODE -ne 0) { throw 'the Visual C++ runtime check is wrong on a real Windows' }
           & $python -c "import torch, paddle, onnxruntime, cv2, paddleocr, manga_ocr; print('torch', torch.__version__, 'ort', onnxruntime.__version__, onnxruntime.get_available_providers())"
           if ($LASTEXITCODE -ne 0) { throw 'a library failed to load' }
 

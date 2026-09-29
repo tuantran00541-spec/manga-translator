@@ -21,9 +21,6 @@ LAMA_URL = "https://huggingface.co/ogkalu/lama-manga-onnx-dynamic/resolve/main/l
 LAMA_SHA256 = "de31ffa5ba26916b8ea35319f6c12151ff9654d4261bccf0583a69bb095315f9"
 CTD_URL = "https://github.com/zyddnys/manga-image-translator/releases/download/beta-0.3/comictextdetector.pt.onnx"
 CTD_SHA256 = "1a86ace74961413cbd650002e7bb4dcec4980ffa21b2f19b86933372071d718f"
-VC_REDIST_URL = "https://aka.ms/vs/17/release/vc_redist.x64.exe"
-# torch, onnxruntime and paddle load these from Windows instead of shipping them.
-VC_RUNTIME_DLLS = ("msvcp140.dll", "vcruntime140_1.dll", "vcomp140.dll")
 # Kept across updates: the environment, models, chapters and logs of the user.
 KEEP = frozenset({".venv", "models", "data", "logs", ".cache"})
 MARKER = ".manga-install.json"
@@ -133,24 +130,23 @@ def check_disk(target: Path) -> None:
         raise SystemExit(f"Ổ đĩa còn {free_gb:.1f} GB, cần khoảng {FREE_GB_NEEDED} GB trống để cài.")
 
 
-def missing_vc_runtime(system32: Path | None = None) -> list[str]:
-    system32 = system32 or Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32"
-    return [name for name in VC_RUNTIME_DLLS if not (system32 / name).is_file()]
-
-
 def ensure_vc_runtime() -> None:
-    """Install the Microsoft Visual C++ runtime that torch and paddle need, when Windows lacks it."""
-    if not WINDOWS or not missing_vc_runtime():
+    """Install or update the Microsoft Visual C++ runtime that torch, onnxruntime and paddle need."""
+    if not WINDOWS:
         return
-    say("Cài Microsoft Visual C++ Runtime (Windows sẽ hỏi quyền admin)")
-    installer = Path(tempfile.gettempdir()) / "vc_redist.x64.exe"
-    download(VC_REDIST_URL, installer, None)
-    code = subprocess.run([str(installer), "/install", "/passive", "/norestart"]).returncode
-    installer.unlink(missing_ok=True)
-    # 1638: a newer version is already there; 3010: installed, a restart finishes it.
-    if code not in (0, 1638, 3010) or missing_vc_runtime():
-        raise SystemExit("Chưa cài được Visual C++ Runtime. Tải tay tại "
-                         f"{VC_REDIST_URL}, cài xong rồi chạy lại bộ cài.")
+    sys.path.insert(0, str(ROOT))
+    from app import vc_runtime
+
+    found = vc_runtime.problems()
+    if not found:
+        return
+    say(f"Cài Microsoft Visual C++ Runtime ({', '.join(found)}); Windows sẽ hỏi quyền admin")
+    try:
+        note = vc_runtime.install()
+    except RuntimeError as exc:
+        raise SystemExit(str(exc)) from exc
+    if note:
+        print(f"    {note}")
 
 
 def python_version(python: Path) -> tuple[int, int] | None:

@@ -229,7 +229,7 @@ manga --version
 What the installer does, in one folder (`%LOCALAPPDATA%\manga-translator` on Windows, `~/.local/share/manga-translator` elsewhere):
 
 - downloads [uv](https://github.com/astral-sh/uv) (pinned, hash checked), which fetches Python 3.12 and installs the dependencies with CPU-only PyTorch;
-- on Windows, installs the Microsoft Visual C++ runtime if it is missing (torch and PaddleOCR need it; Windows asks for admin once);
+- on Windows, installs the Microsoft Visual C++ runtime when it is missing or older than 14.40 (torch, onnxruntime and PaddleOCR need it; Windows asks for admin once). `manga` checks it again at every start, so a runtime removed later is put back instead of failing with WinError 126;
 - downloads the LaMa model (hash checked, resumes broken downloads) and builds `ctd_seg.onnx`;
 - adds a `manga` command to the user PATH. The first install downloads a few GB and needs about 8 GB free.
 
