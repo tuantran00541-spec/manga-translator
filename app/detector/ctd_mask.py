@@ -69,7 +69,13 @@ def grow(img: np.ndarray, seed: np.ndarray, bg: np.ndarray, reach: int) -> np.nd
                                (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 10, 1.0), 2, cv2.KMEANS_PP_CENTERS)
 
     def dist(a):
-        return np.min(np.linalg.norm(a[..., None, :] - centers[None], axis=-1), -1)
+        # One centre at a time: the same distances without a pixels x centres x channels array.
+        nearest = None
+        for centre in centers:
+            diff = a - centre
+            square = np.einsum("...k,...k->...", diff, diff)
+            nearest = square if nearest is None else np.minimum(nearest, square)
+        return np.sqrt(nearest)
 
     smooth = np.hypot(cv2.Sobel(lab[..., 0], cv2.CV_32F, 1, 0), cv2.Sobel(lab[..., 0], cv2.CV_32F, 0, 1)) < EDGE
     open_ = ((dist(lab.reshape(-1, 3)).reshape(lab.shape[:2]) > np.percentile(dist(bg), 90) + 6) & smooth) | seed
