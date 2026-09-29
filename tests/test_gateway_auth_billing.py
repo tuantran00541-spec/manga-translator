@@ -57,6 +57,9 @@ class Client:
     def post(self, path, **kwargs):
         return requests.post(self.base + path, timeout=10, **kwargs)
 
+    def delete(self, path, **kwargs):
+        return requests.delete(self.base + path, timeout=10, **kwargs)
+
     def close(self):
         self._server.should_exit = True
 
@@ -288,15 +291,17 @@ def test_the_default_thinking_level_also_gets_room(tmp_path, monkeypatch):
                                    mailer=Mailer(api_key="", sender="", dev_mode=True)))
     _token, headers = _login(client)
     job = {"Authorization": f"Bearer {client.post('/v1/jobs', headers=headers).json()['job_token']}"}
-    client.post("/v1/chat/completions", headers=job, json={"messages": [], "max_tokens": 500})
+    client.post("/v1/chat/completions", headers=job, json={"messages": [{"role": "user", "content": "x"}], "max_tokens": 500})
     assert (sent[0]["reasoning_effort"], sent[0]["max_tokens"]) == ("low", 500 + 4096)
 
 
 def test_requests_in_flight_together_cannot_pass_the_cost_cap(tmp_path):
     store = Store(tmp_path / "gw.sqlite")
     account_id, _token = store.create_account("a@example.com")
+    assert store.reserve_job(account_id)[2] == 0.75, "free chapters get a lower guard against farmed accounts"
+    store.set_plan(account_id, "plus")
     job_id, _job_token, cap = store.reserve_job(account_id)
-    assert cap == 2.0, "every plan gets the same guard; plans count chapters, not money"
+    assert cap == 2.0
     store.begin_request(job_id, 0.8)
     store.begin_request(job_id, 0.8)
     with pytest.raises(QuotaExceeded):
@@ -314,7 +319,7 @@ def test_the_gateway_forwards_one_answer_and_frees_what_it_held(tmp_path, monkey
                                    mailer=Mailer(api_key="", sender="", dev_mode=True)))
     _token, headers = _login(client)
     job = {"Authorization": f"Bearer {client.post('/v1/jobs', headers=headers).json()['job_token']}"}
-    content = [{"type": "text", "text": "x" * 400}, {"type": "image_url", "image_url": {"url": "data:,"}}]
+    content = [{"type": "text", "text": "x" * 400}, {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,AA=="}}]
     assert client.post("/v1/chat/completions", headers=job,
                        json={"messages": [{"role": "user", "content": content}], "n": 8, "max_tokens": 500}).status_code == 200
     assert "n" not in sent[0]
@@ -334,3 +339,138 @@ def test_login_codes_are_capped_per_day_and_sessions_expire(world):
     assert client.get("/v1/me", headers=headers).status_code == 200
     clock[0] += 91 * DAY
     assert client.get("/v1/me", headers=headers).status_code == 401, "sessions end after 90 days"
+
+
+def test_one_network_can_make_only_a_few_new_accounts_a_day(world, monkeypatch):
+    client, _store, clock, _fake = world
+    for n in range(3):
+        _login(client, f"reader{n}@example.com")
+    code = client.post("/v1/auth/start", json={"email": "farm@example.com"}).json()["dev_code"]
+    assert client.post("/v1/auth/verify", json={"email": "farm@example.com", "code": code}).status_code == 429
+    clock[0] += 61
+    assert _login(client, "reader0@example.com")[0], "existing accounts still sign in"
+    clock[0] += DAY
+    assert _login(client, "farm@example.com")[0], "the count starts again the next day"
+    monkeypatch.setattr("gateway.store.LOGIN_STARTS_PER_IP", 1)
+    clock[0] += DAY
+    assert client.post("/v1/auth/start", json={"email": "x@example.com"}).status_code == 200
+    assert client.post("/v1/auth/start", json={"email": "y@example.com"}).status_code == 429
+
+
+def _job(client) -> dict:
+    _token, headers = _login(client)
+    return {"Authorization": f"Bearer {client.post('/v1/jobs', headers=headers).json()['job_token']}"}
+
+
+def test_only_known_fields_and_inline_images_reach_the_upstream(world, monkeypatch):
+    client, _store, _clock, _fake = world
+    sent = []
+    monkeypatch.setattr(Upstream, "send", lambda self, payload, trace=None: sent.append(payload) or (200, {"usage": {}}))
+    job = _job(client)
+    image = {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,AA=="}}
+    ok = {"messages": [{"role": "user", "content": [{"type": "text", "text": "x"}, image]}],
+          "response_format": {"type": "json_object"}, "tools": [{"type": "function"}], "logprobs": True, "n": 4}
+    assert client.post("/v1/chat/completions", headers=job, json=ok).status_code == 200
+    assert set(sent[0]) == {"messages", "response_format", "model", "max_tokens"}
+    remote = {"type": "image_url", "image_url": {"url": "https://example.com/a.jpg"}}
+    for bad in ([{"role": "user", "content": [remote]}], [{"role": "tool", "content": "x"}],
+                [{"role": "user", "content": [image] * 25}], []):
+        assert client.post("/v1/chat/completions", headers=job, json={"messages": bad}).status_code == 400
+    assert len(sent) == 1
+
+
+def test_oversized_bodies_and_runaway_request_counts_are_refused(world, monkeypatch):
+    client, _store, _clock, _fake = world
+    monkeypatch.setattr(Upstream, "send", lambda self, payload, trace=None: (200, {"usage": {}}))
+    job = _job(client)
+    body = {"messages": [{"role": "user", "content": "x"}]}
+    monkeypatch.setattr("gateway.app.MAX_BODY_BYTES", 10)
+    assert client.post("/v1/chat/completions", headers=job, json=body).status_code == 413
+    monkeypatch.setattr("gateway.app.MAX_BODY_BYTES", 1024)
+    monkeypatch.setattr("gateway.store.JOB_MAX_REQUESTS", 2)
+    codes = [client.post("/v1/chat/completions", headers=job, json=body).status_code for _ in range(3)]
+    assert codes == [200, 200, 402]
+
+
+def test_signing_out_everywhere_ends_every_session(world):
+    client, _store, clock, _fake = world
+    _, first = _login(client)
+    clock[0] += 61
+    _, second = _login(client)
+    assert client.post("/v1/auth/logout-all", headers=first).json()["sessions"] == 2
+    assert client.get("/v1/me", headers=first).status_code == 401
+    assert client.get("/v1/me", headers=second).status_code == 401
+
+
+def test_payment_history_lists_what_was_bought(world):
+    client, _store, _clock, _fake = world
+    _, headers = _login(client)
+    order = client.post("/v1/billing/checkout", json={"plan": "plus", "provider": "payos"}, headers=headers).json()["order_code"]
+    assert [p["status"] for p in client.get("/v1/me/payments", headers=headers).json()["payments"]] == ["pending"]
+    client.post("/v1/billing/payos/webhook", json=_payos_webhook(order, 49000))
+    payment = client.get("/v1/me/payments", headers=headers).json()["payments"][0]
+    assert (payment["plan"], payment["amount"], payment["currency"], payment["status"]) == ("plus", 49000, "VND", "paid")
+
+
+def test_a_deleted_account_forgets_the_email_but_not_its_usage(world):
+    client, store, clock, _fake = world
+    _, headers = _login(client)
+    for _ in range(3):
+        client.post("/v1/jobs", headers=headers)
+    assert client.delete("/v1/me", headers=headers).json() == {"ok": True}
+    assert client.get("/v1/me", headers=headers).status_code == 401
+    with store._connect() as db:
+        assert db.execute("SELECT COUNT(*) FROM accounts WHERE email LIKE '%reader%'").fetchone()[0] == 0
+    clock[0] += 61
+    _, again = _login(client)
+    assert client.get("/v1/me", headers=again).json()["quota"]["remaining"] == 0, "deleting cannot reset the free quota"
+
+
+def test_a_running_subscription_must_be_cancelled_before_deleting(world):
+    client, _store, clock, _fake = world
+    _, headers = _login(client)
+    account_id = client.get("/v1/me", headers=headers).json()["account_id"]
+    renews = datetime.fromtimestamp(clock[0] + 30 * DAY, timezone.utc).isoformat()
+    _ls(client, "subscription_created", account_id, "active", renews_at=renews,
+        urls={"customer_portal": "https://shop.lemonsqueezy.com/billing?x=1"})
+    assert client.get("/v1/me", headers=headers).json()["manage_url"].startswith("https://shop.lemonsqueezy.com/")
+    assert client.delete("/v1/me", headers=headers).status_code == 409
+
+
+def test_an_older_subscription_event_never_undoes_a_newer_one(world):
+    client, _store, clock, _fake = world
+    _, headers = _login(client)
+    account_id = client.get("/v1/me", headers=headers).json()["account_id"]
+
+    def iso(offset):
+        return datetime.fromtimestamp(clock[0] + offset, timezone.utc).isoformat()
+
+    _ls(client, "subscription_updated", account_id, "active", renews_at=iso(30 * DAY), updated_at=iso(10))
+    stale = _ls(client, "subscription_expired", account_id, "expired", updated_at=iso(5)).json()
+    assert stale["applied"] is False and client.get("/v1/me", headers=headers).json()["plan"] == "pro"
+
+
+def test_admin_can_look_up_an_account_and_see_totals(world):
+    client, _store, _clock, _fake = world
+    _, headers = _login(client)
+    client.post("/v1/jobs", headers=headers)
+    admin = {"X-Admin-Key": ADMIN}
+    assert client.get("/v1/admin/stats").status_code == 403
+    found = client.get("/v1/admin/accounts", params={"email": "reader@example.com"}, headers=admin).json()
+    assert found["plan"] == "free" and found["quota"]["used"] == 1 and found["payments"] == []
+    stats = client.get("/v1/admin/stats", headers=admin).json()
+    assert (stats["accounts"], stats["plans"], stats["jobs"]) == (1, {"free": 1}, 1)
+    assert client.get("/docs").status_code == 404 and client.get("/openapi.json").status_code == 404
+
+
+def test_housekeeping_closes_stale_jobs_and_drops_old_sessions(world, tmp_path):
+    client, store, clock, _fake = world
+    _, headers = _login(client)
+    client.post("/v1/jobs", headers=headers)
+    clock[0] += 7 * 3600
+    assert store.purge()["jobs"] == 1
+    assert client.get("/v1/me", headers=headers).json()["quota"]["used"] == 0, "an unused job stays refunded"
+    clock[0] += 91 * DAY
+    assert store.purge()["sessions"] == 1
+    store.backup(tmp_path / "copy.sqlite")
+    assert Store(tmp_path / "copy.sqlite").stats()["accounts"] == 1

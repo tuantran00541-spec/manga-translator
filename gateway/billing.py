@@ -212,6 +212,8 @@ class Billing:
             return {"applied": False}
         status = str(attributes.get("status") or "")
         now = self.store.now()
+        updated = _iso_ts(attributes.get("updated_at")) or now
+        portal = str((attributes.get("urls") or {}).get("customer_portal") or "") if isinstance(attributes.get("urls"), dict) else ""
         if status in LS_ACTIVE:
             renews = _iso_ts(attributes.get("renews_at")) or now + PLAN_PERIOD_SECONDS
             expires = renews + LS_GRACE_SECONDS
@@ -220,7 +222,10 @@ class Billing:
         else:
             expires = now
         try:
-            self.store.set_plan(account_id, plan if expires > now else "free", expires if expires > now else None)
+            # Events can arrive out of order; an older one never undoes a newer one.
+            applied = self.store.apply_subscription(
+                account_id, plan if expires > now else "free", expires if expires > now else None, updated,
+                portal if portal.startswith("https://") else None)
         except KeyError:
             return {"applied": False}
-        return {"applied": True, "status": status}
+        return {"applied": applied, "status": status}

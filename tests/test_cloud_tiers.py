@@ -138,7 +138,10 @@ def test_only_a_live_job_token_reaches_the_ai_and_the_gateway_picks_the_model(st
 
 
 def test_the_cost_guard_stops_a_job_that_spends_far_more_than_a_chapter(stack, monkeypatch):
-    monkeypatch.setattr("gateway.store.JOB_COST_GUARD_USD", 0.10)
+    import dataclasses
+
+    from gateway.plans import PLANS
+    monkeypatch.setitem(PLANS, "free", dataclasses.replace(PLANS["free"], job_cost_guard_usd=0.10))
     _sign_in(stack, monkeypatch)
     job = cloud.reserve_job()
     assert job["cost_cap_usd"] == 0.10
@@ -320,3 +323,16 @@ def test_app_login_with_email_code_stores_the_session_and_checkout_reports_missi
     out = asyncio.run(account_router.logout())
     assert out["signed_in"] is False
     assert stack.chat(saved["token"]).status_code == 401
+
+
+def test_the_app_lists_payments_signs_out_everywhere_and_deletes_the_account(stack, monkeypatch):
+    _sign_in(stack, monkeypatch)
+    assert cloud.payments() == {"payments": []}
+    cloud.logout_all()
+    assert cloud.entitlements(fresh=True)["invalid_token"] is True
+    _sign_in(stack, monkeypatch, "other@example.com")
+    cloud.delete_account()
+    assert cloud.entitlements(fresh=True)["invalid_token"] is True
+    with pytest.raises(HTTPException) as gone:
+        cloud.payments()
+    assert gone.value.status_code == 401

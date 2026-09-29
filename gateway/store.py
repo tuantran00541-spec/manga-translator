@@ -19,8 +19,11 @@ LOGIN_CODE_MAX_ATTEMPTS = 5
 LOGIN_CODES_PER_DAY = 10  # with the attempts per code, about 50 guesses a day at a 6-digit code
 SESSION_TTL_SECONDS = 90 * 86400
 PLAN_PERIOD_SECONDS = 30 * 86400
-# Plans count chapters, not money; this only stops a leaked or scripted job token, far above a real chapter.
-JOB_COST_GUARD_USD = 2.0
+# A long webtoon chapter makes about 280 A.I calls; this only stops a scripted job token.
+JOB_MAX_REQUESTS = 1000
+# Per network address and UTC day: login codes asked for, and new accounts made.
+LOGIN_STARTS_PER_IP = 30
+SIGNUPS_PER_IP = 3
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS accounts (
@@ -28,7 +31,10 @@ CREATE TABLE IF NOT EXISTS accounts (
     email TEXT UNIQUE NOT NULL,
     plan TEXT NOT NULL,
     plan_expires_at REAL,
-    created_at REAL NOT NULL
+    created_at REAL NOT NULL,
+    billing_updated_at REAL,
+    manage_url TEXT,
+    deleted_at REAL
 );
 CREATE TABLE IF NOT EXISTS sessions (
     token_hash TEXT PRIMARY KEY,
@@ -74,7 +80,21 @@ CREATE TABLE IF NOT EXISTS jobs (
     expires_at REAL NOT NULL
 );
 CREATE INDEX IF NOT EXISTS jobs_account_period ON jobs(account_id, period);
+CREATE TABLE IF NOT EXISTS ip_counts (
+    ip TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    day TEXT NOT NULL,
+    count INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (ip, kind, day)
+);
 """
+
+# Columns added after the first release, with their definitions.
+_MIGRATIONS = {
+    "jobs": {"reserved_usd": "REAL NOT NULL DEFAULT 0"},
+    "login_codes": {"day": "TEXT NOT NULL DEFAULT ''", "sent_today": "INTEGER NOT NULL DEFAULT 0"},
+    "accounts": {"billing_updated_at": "REAL", "manage_url": "TEXT", "deleted_at": "REAL"},
+}
 
 
 class QuotaExceeded(Exception):
@@ -100,18 +120,28 @@ def period_of(now: float) -> str:
     return time.strftime("%Y-%m", time.gmtime(now))
 
 
+def day_of(now: float) -> str:
+    return time.strftime("%Y-%m-%d", time.gmtime(now))
+
+
+def tombstone(email: str) -> str:
+    """What a deleted account keeps of its email: enough to stop a reset of the free quota, not the address."""
+    return "deleted:" + _hash(email.strip().lower())
+
+
 class Store:
     def __init__(self, path: Path | str, clock=time.time):
         self._path = str(path)
         self._clock = clock
         self._lock = threading.Lock()
         with self._connect() as db:
+            db.execute("PRAGMA journal_mode=WAL")
             db.executescript(_SCHEMA)
-            if "reserved_usd" not in {row["name"] for row in db.execute("PRAGMA table_info(jobs)")}:
-                db.execute("ALTER TABLE jobs ADD COLUMN reserved_usd REAL NOT NULL DEFAULT 0")
-            if "day" not in {row["name"] for row in db.execute("PRAGMA table_info(login_codes)")}:
-                db.execute("ALTER TABLE login_codes ADD COLUMN day TEXT NOT NULL DEFAULT ''")
-                db.execute("ALTER TABLE login_codes ADD COLUMN sent_today INTEGER NOT NULL DEFAULT 0")
+            for table, columns in _MIGRATIONS.items():
+                have = {row["name"] for row in db.execute(f"PRAGMA table_info({table})")}
+                for name, ddl in columns.items():
+                    if name not in have:
+                        db.execute(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}")
             # Nothing is in flight when the gateway starts.
             db.execute("UPDATE jobs SET reserved_usd = 0 WHERE reserved_usd != 0")
 
@@ -142,6 +172,11 @@ class Store:
         row = db.execute("SELECT id FROM accounts WHERE email = ?", (email,)).fetchone()
         if row is not None:
             return row["id"]
+        # A deleted account comes back with its usage, so deleting it cannot reset the free quota.
+        old = db.execute("SELECT id FROM accounts WHERE email = ?", (tombstone(email),)).fetchone()
+        if old is not None:
+            db.execute("UPDATE accounts SET email = ?, deleted_at = NULL WHERE id = ?", (email, old["id"]))
+            return old["id"]
         account_id = uuid.uuid4().hex
         db.execute(
             "INSERT INTO accounts (id, email, plan, created_at) VALUES (?, ?, 'free', ?)",
@@ -164,11 +199,23 @@ class Store:
             db.execute("UPDATE accounts SET plan = ? WHERE id = ?", (plan, account_id))
             return account_id, self._new_session(db, account_id)
 
-    def start_login(self, email: str) -> str:
+    def _count_ip(self, db, ip: str | None, kind: str, limit: int, message: str) -> None:
+        if not ip:
+            return
+        day = day_of(self.now())
+        row = db.execute("SELECT count FROM ip_counts WHERE ip = ? AND kind = ? AND day = ?", (ip, kind, day)).fetchone()
+        if row is not None and row["count"] >= limit:
+            raise LoginRejected(429, message)
+        db.execute("INSERT INTO ip_counts (ip, kind, day, count) VALUES (?, ?, ?, 1) "
+                   "ON CONFLICT (ip, kind, day) DO UPDATE SET count = count + 1", (ip, kind, day))
+
+    def start_login(self, email: str, ip: str | None = None) -> str:
         now = self.now()
         code = f"{secrets.randbelow(1_000_000):06d}"
-        day = time.strftime("%Y-%m-%d", time.gmtime(now))
+        day = day_of(now)
         with self._write() as db:
+            self._count_ip(db, ip, "login_start", LOGIN_STARTS_PER_IP,
+                           "Mạng này đã xin quá nhiều mã hôm nay, hãy thử lại vào ngày mai")
             row = db.execute("SELECT sent_at, day, sent_today FROM login_codes WHERE email = ?", (email,)).fetchone()
             if row is not None and now - row["sent_at"] < LOGIN_CODE_RESEND_SECONDS:
                 raise LoginRejected(429, "Vừa gửi mã, đợi một phút rồi thử lại")
@@ -187,7 +234,7 @@ class Store:
         with self._write() as db:
             db.execute("UPDATE login_codes SET code_hash = '', expires_at = 0, sent_at = 0 WHERE email = ?", (email,))
 
-    def verify_login(self, email: str, code: str) -> tuple[str, str]:
+    def verify_login(self, email: str, code: str, ip: str | None = None) -> tuple[str, str]:
         now = self.now()
         rejected: LoginRejected | None = None
         with self._write() as db:
@@ -200,6 +247,10 @@ class Store:
                 db.execute("UPDATE login_codes SET attempts = attempts + 1 WHERE email = ?", (email,))
                 rejected = LoginRejected(400, "Mã không đúng")
             else:
+                known = db.execute("SELECT 1 FROM accounts WHERE email IN (?, ?)", (email, tombstone(email))).fetchone()
+                if known is None:
+                    self._count_ip(db, ip, "signup", SIGNUPS_PER_IP,
+                                   "Mạng này đã tạo quá nhiều tài khoản hôm nay, hãy thử lại vào ngày mai")
                 # The code is spent; the row stays so the day's count holds.
                 db.execute("UPDATE login_codes SET code_hash = '', expires_at = 0 WHERE email = ?", (email,))
                 account_id = self._account_id_for_email(db, email)
@@ -212,6 +263,30 @@ class Store:
         with self._write() as db:
             db.execute("DELETE FROM sessions WHERE token_hash = ?", (_hash(token),))
 
+    def logout_all(self, account_id: str) -> int:
+        with self._write() as db:
+            return db.execute("DELETE FROM sessions WHERE account_id = ?", (account_id,)).rowcount
+
+    def delete_account(self, account_id: str) -> None:
+        """Forget the email and sessions; payments and usage stay for the accounts and the quota."""
+        with self._write() as db:
+            row = db.execute("SELECT email FROM accounts WHERE id = ?", (account_id,)).fetchone()
+            if row is None:
+                raise KeyError(account_id)
+            db.execute("DELETE FROM sessions WHERE account_id = ?", (account_id,))
+            db.execute("DELETE FROM login_codes WHERE email = ?", (row["email"],))
+            db.execute("UPDATE jobs SET status = 'cancelled' WHERE account_id = ? AND status = 'active'", (account_id,))
+            db.execute("UPDATE accounts SET email = ?, plan = 'free', plan_expires_at = NULL, manage_url = NULL, "
+                       "deleted_at = ? WHERE id = ?", (tombstone(row["email"]), self.now(), account_id))
+
+    def payments(self, account_id: str) -> list[dict]:
+        with self._connect() as db:
+            rows = db.execute(
+                "SELECT provider, plan, amount, currency, status, created_at, paid_at FROM payments "
+                "WHERE account_id = ? ORDER BY created_at DESC LIMIT 50", (account_id,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
     def set_plan(self, account_id: str, plan: str, expires_at: float | None = None) -> None:
         get_plan(plan)
         with self._write() as db:
@@ -220,6 +295,21 @@ class Store:
             ).rowcount
             if updated != 1:
                 raise KeyError(account_id)
+
+    def apply_subscription(self, account_id: str, plan: str, expires_at: float | None, updated_at: float,
+                           manage_url: str | None) -> bool:
+        """Apply a subscription event unless a newer one was already applied; False when it is stale."""
+        get_plan(plan)
+        with self._write() as db:
+            row = db.execute("SELECT billing_updated_at FROM accounts WHERE id = ?", (account_id,)).fetchone()
+            if row is None:
+                raise KeyError(account_id)
+            if row["billing_updated_at"] is not None and updated_at < row["billing_updated_at"]:
+                return False
+            db.execute("UPDATE accounts SET plan = ?, plan_expires_at = ?, billing_updated_at = ?, "
+                       "manage_url = COALESCE(?, manage_url) WHERE id = ?",
+                       (plan, expires_at, updated_at, manage_url, account_id))
+            return True
 
     def _effective_plan(self, row) -> str:
         if row["plan"] != "free" and row["plan_expires_at"] is not None and row["plan_expires_at"] < self.now():
@@ -236,6 +326,13 @@ class Store:
         if data["plan"] == "free":
             data["plan_expires_at"] = None
         return data
+
+    def account_by_email(self, email: str) -> dict:
+        with self._connect() as db:
+            row = db.execute("SELECT id FROM accounts WHERE email = ?", (email,)).fetchone()
+        if row is None:
+            raise KeyError(email)
+        return self.account(row["id"])
 
     def account_for_token(self, token: str) -> dict:
         with self._connect() as db:
@@ -312,9 +409,9 @@ class Store:
             db.execute(
                 "INSERT INTO jobs (id, account_id, token_hash, period, status, cost_cap_usd, created_at, expires_at) "
                 "VALUES (?, ?, ?, ?, 'active', ?, ?, ?)",
-                (job_id, account_id, _hash(token), period, JOB_COST_GUARD_USD, now, now + JOB_TTL_SECONDS),
+                (job_id, account_id, _hash(token), period, plan.job_cost_guard_usd, now, now + JOB_TTL_SECONDS),
             )
-        return job_id, token, JOB_COST_GUARD_USD
+        return job_id, token, plan.job_cost_guard_usd
 
     def active_job_for_token(self, token: str) -> sqlite3.Row:
         with self._connect() as db:
@@ -326,9 +423,12 @@ class Store:
     def begin_request(self, job_id: str, reserve_usd: float = 0.0) -> None:
         """Hold ``reserve_usd`` for a request, so requests in flight together cannot pass the cap."""
         with self._write() as db:
-            row = db.execute("SELECT cost_usd, reserved_usd, cost_cap_usd FROM jobs WHERE id = ?", (job_id,)).fetchone()
+            row = db.execute("SELECT cost_usd, reserved_usd, cost_cap_usd, requests FROM jobs WHERE id = ?",
+                             (job_id,)).fetchone()
             if row["cost_usd"] + row["reserved_usd"] + max(0.0, reserve_usd) > row["cost_cap_usd"]:
                 raise QuotaExceeded("cost_cap")
+            if row["requests"] >= JOB_MAX_REQUESTS:
+                raise QuotaExceeded("requests")
             db.execute("UPDATE jobs SET requests = requests + 1, reserved_usd = reserved_usd + ? WHERE id = ?",
                        (max(0.0, reserve_usd), job_id))
 
@@ -354,4 +454,56 @@ class Store:
             "job_id": job_id, "status": outcome, "refunded": refund, "cost_usd": round(float(row["cost_usd"]), 6),
             "requests": int(row["requests"]), "prompt_tokens": int(row["prompt_tokens"]),
             "completion_tokens": int(row["completion_tokens"]),
+        }
+
+    def purge(self) -> dict:
+        """Drop spent sessions, codes and counters, and close jobs past their time."""
+        now = self.now()
+        with self._write() as db:
+            counts = {
+                "sessions": db.execute("DELETE FROM sessions WHERE created_at < ?",
+                                       (now - SESSION_TTL_SECONDS,)).rowcount,
+                "login_codes": db.execute("DELETE FROM login_codes WHERE expires_at < ? AND day < ?",
+                                          (now, day_of(now - 86400))).rowcount,
+                "ip_counts": db.execute("DELETE FROM ip_counts WHERE day < ?", (day_of(now - 86400),)).rowcount,
+                # A job that never called the A.I is refunded, as it is while it waits to expire.
+                "jobs": db.execute(
+                    "UPDATE jobs SET status = 'expired', refunded = CASE WHEN requests = 0 THEN 1 ELSE refunded END "
+                    "WHERE status = 'active' AND expires_at < ?", (now,)).rowcount,
+            }
+        return counts
+
+    def backup(self, dest: Path | str) -> None:
+        """Copy the live database to ``dest`` safely while the gateway runs."""
+        with self._connect() as db:
+            target = sqlite3.connect(str(dest))
+            try:
+                db.backup(target)
+            finally:
+                target.close()
+
+    def stats(self) -> dict:
+        now = self.now()
+        period = period_of(now)
+        with self._connect() as db:
+            accounts = db.execute("SELECT * FROM accounts WHERE deleted_at IS NULL").fetchall()
+            jobs = db.execute(
+                "SELECT COUNT(*) AS jobs, COALESCE(SUM(cost_usd), 0) AS cost, COALESCE(SUM(requests), 0) AS requests "
+                "FROM jobs WHERE period = ?", (period,)).fetchone()
+            revenue = db.execute(
+                "SELECT currency, COALESCE(SUM(amount), 0) AS amount, COUNT(*) AS count FROM payments "
+                "WHERE status = 'paid' AND paid_at >= ? GROUP BY currency", (now - PLAN_PERIOD_SECONDS,)).fetchall()
+        plans: dict[str, int] = {}
+        for row in accounts:
+            plan = self._effective_plan(row)
+            plans[plan] = plans.get(plan, 0) + 1
+        return {
+            "period": period,
+            "accounts": len(accounts),
+            "plans": plans,
+            "jobs": int(jobs["jobs"]),
+            "requests": int(jobs["requests"]),
+            "ai_cost_usd": round(float(jobs["cost"]), 4),
+            "paid_last_30_days": {row["currency"]: {"amount": int(row["amount"]), "count": int(row["count"])}
+                                  for row in revenue},
         }

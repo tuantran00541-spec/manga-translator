@@ -117,7 +117,11 @@
     }
     $("ai-mode-plan-text").textContent = text;
     $("ai-mode-login-form").hidden = signedIn;
-    $("ai-mode-signout").hidden = !signedIn;
+    $("ai-mode-account").hidden = !signedIn;
+    const manage = $("ai-mode-manage");
+    const manageUrl = String(account.manage_url || "");
+    manage.hidden = !(signedIn && manageUrl.startsWith("https://"));
+    if (!manage.hidden) manage.href = manageUrl;
     renderUpgrade(signedIn);
   }
 
@@ -191,6 +195,51 @@
     }
     resetLogin();
     renderAccount();
+  }
+
+  async function signOutEverywhere() {
+    if (!window.confirm("Đăng xuất Manga Cloud trên mọi máy đang dùng tài khoản này?")) return;
+    try {
+      account = await postJson("/api/account/logout-all");
+      window.showToast?.("Đã đăng xuất mọi thiết bị", "success");
+    } catch (err) {
+      window.showToast?.("Không đăng xuất được: " + err.message, "error");
+    }
+    resetLogin();
+    renderAccount();
+  }
+
+  async function deleteAccount() {
+    const warning = "Xoá tài khoản Manga Cloud? Email và phiên đăng nhập bị xoá, thời gian gói còn lại bị mất. "
+      + "Số chương đã dùng trong tháng vẫn được tính nếu bạn đăng ký lại.";
+    if (!window.confirm(warning)) return;
+    try {
+      account = await requestJson("/api/account", { method: "DELETE" });
+      window.showToast?.("Đã xoá tài khoản", "success");
+    } catch (err) {
+      window.showToast?.("Không xoá được: " + err.message, "error");
+    }
+    resetLogin();
+    renderAccount();
+  }
+
+  async function showPayments() {
+    const list = $("ai-mode-payment-list");
+    try {
+      const { payments } = await requestJson("/api/account/payments");
+      const status = { paid: "đã thanh toán", pending: "chưa thanh toán", amount_mismatch: "sai số tiền" };
+      list.replaceChildren(...(payments.length ? payments : [null]).map((payment) => {
+        const item = document.createElement("li");
+        item.textContent = payment
+          ? `${new Date(payment.created_at * 1000).toLocaleDateString("vi-VN")} · ${payment.plan} · `
+            + `${formatMoney(payment.amount, payment.currency)} · ${status[payment.status] || payment.status}`
+          : "Chưa có thanh toán nào.";
+        return item;
+      }));
+      list.hidden = false;
+    } catch (err) {
+      window.showToast?.("Không tải được lịch sử: " + err.message, "error");
+    }
   }
 
   function watchReturnFromCheckout() {
@@ -372,6 +421,9 @@
     });
     $("ai-mode-login-form").addEventListener("submit", submitLogin);
     $("ai-mode-signout").addEventListener("click", signOut);
+    $("ai-mode-signout-all").addEventListener("click", signOutEverywhere);
+    $("ai-mode-delete-account").addEventListener("click", deleteAccount);
+    $("ai-mode-payments").addEventListener("click", showPayments);
     $("ai-mode-model").addEventListener("change", (event) => {
       storage("set", "manga_translation_vision_model_" + provider.value, event.target.value.trim());
     });

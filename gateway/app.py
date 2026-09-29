@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 import hmac
 import json
 import os
 import re
 import time
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -21,6 +23,12 @@ from gateway.store import InvalidToken, LoginRejected, QuotaExceeded, Store
 
 EMAIL_RE = re.compile(r"^[^@\s]{1,64}@[^@\s]{1,190}\.[^@\s]{2,63}$")
 MAX_OUTPUT_TOKENS = 8192
+MAX_BODY_BYTES = 32 * 1024 * 1024  # a request carries at most a few JPEG slices
+MAX_IMAGES = 24
+PURGE_EVERY_S = 6 * 3600
+# Only these fields reach the upstream; tools, logprobs and the like would add cost or reach beyond the job.
+FORWARDED_FIELDS = frozenset({"messages", "max_tokens", "response_format", "temperature", "top_p", "seed", "stop"})
+ROLES = frozenset({"system", "user", "assistant"})
 # A client may ask for more thinking on one request; the gateway adds room for it.
 REASONING_BUDGETS = {"none": 0, "minimal": 1024, "low": 4096, "medium": 8192, "high": 16384}
 
@@ -185,6 +193,37 @@ def _error(status: int, code: str, message: str) -> JSONResponse:
     return JSONResponse({"error": {"code": code, "message": message}}, status_code=status)
 
 
+def _messages_problem(messages) -> str | None:
+    """Why a chat request's messages cannot be forwarded, or None."""
+    if not isinstance(messages, list) or not messages:
+        return "messages must be a non-empty list"
+    images = 0
+    for message in messages:
+        if not isinstance(message, dict) or message.get("role") not in ROLES:
+            return "each message needs a system, user or assistant role"
+        content = message.get("content")
+        if isinstance(content, str):
+            continue
+        if not isinstance(content, list):
+            return "message content must be text or a list of parts"
+        for part in content:
+            kind = part.get("type") if isinstance(part, dict) else None
+            if kind == "text" and isinstance(part.get("text"), str):
+                continue
+            url = (part.get("image_url") or {}).get("url") if kind == "image_url" and isinstance(part.get("image_url"), dict) else None
+            if not isinstance(url, str) or not url.startswith("data:image/"):
+                return "only text parts and inline data:image URLs are accepted"
+            images += 1
+    if images > MAX_IMAGES:
+        return f"at most {MAX_IMAGES} images per request"
+    return None
+
+
+def client_ip(request: Request) -> str:
+    """The caller's address; run uvicorn with --proxy-headers behind a trusted proxy so this is the real one."""
+    return request.client.host if request.client else ""
+
+
 def _email(value: str) -> str:
     email = value.strip().lower()
     if not EMAIL_RE.fullmatch(email):
@@ -194,8 +233,33 @@ def _email(value: str) -> str:
 
 def create_app(store: Store, upstream: Upstream, admin_key: str, *, mailer: Mailer | None = None,
                billing: BillingConfig | None = None) -> FastAPI:
-    app = FastAPI(title="Manga Cloud gateway")
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI):
+        async def purge_forever():
+            while True:
+                await run_in_threadpool(store.purge)
+                await asyncio.sleep(PURGE_EVERY_S)
+
+        task = asyncio.create_task(purge_forever())
+        try:
+            yield
+        finally:
+            task.cancel()
+
+    # No generated API docs: the gateway is not a public API to browse.
+    app = FastAPI(title="Manga Cloud gateway", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
     mailer = mailer or Mailer(api_key="", sender="", dev_mode=True)
+
+    @app.middleware("http")
+    async def limit_body(request: Request, call_next):
+        try:
+            length = int(request.headers.get("content-length") or 0)
+        except ValueError:
+            return _error(400, "bad_length", "Invalid Content-Length")
+        if length > MAX_BODY_BYTES or (request.method == "POST" and "chunked" in request.headers.get("transfer-encoding", "")):
+            return _error(413, "too_large", "Request body is too large")
+        return await call_next(request)
+
     payments = Billing(store, billing or BillingConfig())
     # GATEWAY_TRACE_PATH: append a JSON line per upstream request (timing, size, tokens).
     trace_path = os.getenv("GATEWAY_TRACE_PATH", "")
@@ -225,6 +289,7 @@ def create_app(store: Store, upstream: Upstream, admin_key: str, *, mailer: Mail
             "plan": plan.id,
             "plan_label": plan.label,
             "plan_expires_at": row.get("plan_expires_at"),
+            "manage_url": row.get("manage_url") if plan.id != "free" else None,
             "features": sorted(plan.features),
             "quota": {
                 "period": usage["period"],
@@ -241,10 +306,10 @@ def create_app(store: Store, upstream: Upstream, admin_key: str, *, mailer: Mail
         return {"ok": True, "plans": sorted(PLANS)}
 
     @app.post("/v1/auth/start")
-    def login_start(req: EmailRequest) -> dict:
+    def login_start(req: EmailRequest, request: Request) -> dict:
         email = _email(req.email)
         try:
-            code = store.start_login(email)
+            code = store.start_login(email, client_ip(request))
             mailer.send_login_code(email, code)
         except LoginRejected as exc:
             raise HTTPException(exc.status, exc.message) from exc
@@ -257,9 +322,9 @@ def create_app(store: Store, upstream: Upstream, admin_key: str, *, mailer: Mail
         return result
 
     @app.post("/v1/auth/verify")
-    def login_verify(req: VerifyRequest) -> dict:
+    def login_verify(req: VerifyRequest, request: Request) -> dict:
         try:
-            account_id, token = store.verify_login(_email(req.email), req.code)
+            account_id, token = store.verify_login(_email(req.email), req.code, client_ip(request))
         except LoginRejected as exc:
             raise HTTPException(exc.status, exc.message) from exc
         return {"account_id": account_id, "token": token}
@@ -267,6 +332,21 @@ def create_app(store: Store, upstream: Upstream, admin_key: str, *, mailer: Mail
     @app.post("/v1/auth/logout")
     def logout(authorization: str | None = Header(default=None)) -> dict:
         store.logout(_bearer(authorization))
+        return {"ok": True}
+
+    @app.post("/v1/auth/logout-all")
+    def logout_all(row=Depends(account)) -> dict:
+        return {"ok": True, "sessions": store.logout_all(row["id"])}
+
+    @app.get("/v1/me/payments")
+    def my_payments(row=Depends(account)) -> dict:
+        return {"payments": store.payments(row["id"])}
+
+    @app.delete("/v1/me")
+    def delete_me(row=Depends(account)):
+        if row["plan"] != "free" and row.get("manage_url"):
+            return _error(409, "subscription_active", "Hãy huỷ gói đang gia hạn tự động trước khi xoá tài khoản")
+        store.delete_account(row["id"])
         return {"ok": True}
 
     @app.get("/v1/billing/plans")
@@ -318,9 +398,12 @@ def create_app(store: Store, upstream: Upstream, admin_key: str, *, mailer: Mail
     async def chat(payload: dict, row=Depends(job)):
         if payload.get("stream"):
             return _error(400, "stream_unsupported", "Streaming is not supported")
-        forwarded = dict(payload)
+        problem = _messages_problem(payload.get("messages"))
+        if problem:
+            return _error(400, "bad_request", problem)
+        # One answer per request from the gateway's model; anything else the client sent is dropped.
+        forwarded = {key: payload[key] for key in FORWARDED_FIELDS if key in payload}
         forwarded["model"] = upstream.model
-        forwarded.pop("n", None)  # one answer per request; more would multiply the cost
         try:
             requested = int(payload.get("max_tokens") or MAX_OUTPUT_TOKENS)
         except (TypeError, ValueError):
@@ -339,7 +422,9 @@ def create_app(store: Store, upstream: Upstream, admin_key: str, *, mailer: Mail
         held = _held_usd(upstream, forwarded, forwarded["max_tokens"])
         try:
             store.begin_request(row["id"], held)
-        except QuotaExceeded:
+        except QuotaExceeded as exc:
+            if str(exc) == "requests":
+                return _error(402, "request_cap", "This chapter reached its A.I request cap")
             return _error(402, "cost_cap", "This chapter reached its A.I cost cap")
         trace: dict = {}
         started = time.perf_counter()
@@ -382,6 +467,18 @@ def create_app(store: Store, upstream: Upstream, admin_key: str, *, mailer: Mail
                           f"Upstream HTTP {status}" + (f": {message}" if message else ""))
         body.setdefault("usage", {})["gateway_job_cost_usd"] = round(total, 6)
         return body
+
+    @app.get("/v1/admin/accounts", dependencies=[Depends(admin)])
+    def admin_find_account(email: str) -> dict:
+        try:
+            row = store.account_by_email(_email(email))
+        except KeyError as exc:
+            raise HTTPException(404, "Account not found") from exc
+        return {**entitlements(row), "created_at": row["created_at"], "payments": store.payments(row["id"])}
+
+    @app.get("/v1/admin/stats", dependencies=[Depends(admin)])
+    def admin_stats() -> dict:
+        return store.stats()
 
     @app.post("/v1/admin/accounts", dependencies=[Depends(admin)])
     def admin_create_account(req: EmailRequest) -> dict:

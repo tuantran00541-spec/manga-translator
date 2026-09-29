@@ -67,6 +67,35 @@ async def logout() -> dict:
     return await run_in_threadpool(cloud.entitlements, fresh=True)
 
 
+async def _forget_token() -> dict:
+    try:
+        await run_in_threadpool(delete_cloud_token)
+    except SecretStoreUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc
+    cloud.invalidate()
+    return await run_in_threadpool(cloud.entitlements, fresh=True)
+
+
+@router.post("/logout-all")
+async def logout_everywhere() -> dict:
+    _require_tiers()
+    await run_in_threadpool(cloud.logout_all)
+    return await _forget_token()
+
+
+@router.delete("")
+async def delete_account() -> dict:
+    _require_tiers()
+    await run_in_threadpool(cloud.delete_account)
+    return await _forget_token()
+
+
+@router.get("/payments")
+async def payments() -> dict:
+    _require_tiers()
+    return await run_in_threadpool(cloud.payments)
+
+
 @router.get("/plans")
 async def plans() -> dict:
     _require_tiers()

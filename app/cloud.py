@@ -167,6 +167,27 @@ def logout() -> None:
     invalidate()
 
 
+def _signed_in(method: str, path: str) -> dict:
+    token = _token()
+    if not token:
+        raise HTTPException(401, "Chưa đăng nhập Manga Cloud")
+    return _public(method, path, token=token)
+
+
+def payments() -> dict:
+    return _signed_in("GET", "/me/payments")
+
+
+def logout_all() -> None:
+    _signed_in("POST", "/auth/logout-all")
+    invalidate()
+
+
+def delete_account() -> None:
+    _signed_in("DELETE", "/me")
+    invalidate()
+
+
 def billing_plans() -> dict:
     return _public("GET", "/billing/plans")
 
