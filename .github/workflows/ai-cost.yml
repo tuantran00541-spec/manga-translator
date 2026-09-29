@@ -9,6 +9,12 @@ on:
       chapter_url:
         description: "Chapter URL to translate through the Manga Cloud gateway"
         required: true
+      model:
+        description: "Upstream model for this run instead of the one in .github/ai-cost.txt"
+        required: false
+      price:
+        description: "USD per million tokens for that model: input output [cached]"
+        required: false
 
 permissions:
   contents: write
@@ -84,6 +90,9 @@ jobs:
         uses: ./.github/actions/build-ctd
 
       - name: Pick the provider
+        env:
+          INPUT_MODEL: ${{ github.event.inputs.model }}
+          INPUT_PRICE: ${{ github.event.inputs.price }}
         run: |
           conf() { sed -n "s/^$1: *//p" .github/ai-cost.txt | head -n1 | tr -d '\r'; }
           provider="$(conf provider)"
@@ -94,8 +103,8 @@ jobs:
               base=https://api.minirouter.sh/v1; model=; secret=MINIROUTER_API_KEY; price_in=0; price_out=0 ;;
             *) echo "::error::Unknown provider '$provider'"; exit 1 ;;
           esac
-          model="$(conf model)"; model="${model:-$( [ "$provider" = minirouter ] || echo qwen3.8-27b )}"
-          price="$(conf price)"
+          model="${INPUT_MODEL:-$(conf model)}"; model="${model:-$( [ "$provider" = minirouter ] || echo qwen3.8-27b )}"
+          price="${INPUT_PRICE:-$(conf price)}"
           price_cached=
           if [ -n "$price" ]; then read -r price_in price_out price_cached <<< "$price"; fi
           {
