@@ -16,7 +16,7 @@ on:
         description: "USD per million tokens for that model: input output [cached]"
         required: false
       stage_models:
-        description: 'Models per checkpoint, in fallback order: [{"stage":"review","model":"...","price":[in,out]}]'
+        description: 'Models per checkpoint, in fallback order: [{"stage":"review","model":"...","price":[in,out],"effort":"none"}]'
         required: false
 
 permissions:
@@ -159,10 +159,12 @@ jobs:
           data = base64.b64encode(cv2.imencode(".jpg", image)[1].tobytes()).decode()
           # Every model a checkpoint may reach must read images and take the thinking level the app asks for.
           stages = json.loads(os.environ.get("GATEWAY_STAGE_MODELS") or "[]")
-          models = dict.fromkeys([os.environ["GATEWAY_UPSTREAM_MODEL"]] + [item["model"] for item in stages])
+          models = {os.environ["GATEWAY_UPSTREAM_MODEL"]: os.environ.get("GATEWAY_UPSTREAM_REASONING_EFFORT") or "low"}
+          for item in stages:
+              models.setdefault(item["model"], item.get("effort") or "low")
           failed = False
-          for model in models:
-              body = {"model": model, "max_tokens": 2000, "reasoning_effort": "low", "messages": [{"role": "user", "content": [
+          for model, effort in models.items():
+              body = {"model": model, "max_tokens": 2000, "reasoning_effort": effort, "messages": [{"role": "user", "content": [
                   {"type": "text", "text": "What word is written in this image? Answer with the word only."},
                   {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + data}}]}]}
               started = time.time()
@@ -174,7 +176,7 @@ jobs:
                   reply = ((response.json().get("choices") or [{}])[0].get("message") or {}).get("content") or ""
                   usage = response.json().get("usage") or {}
               reasoning = (usage.get("completion_tokens_details") or {}).get("reasoning_tokens")
-              print(f"{model}: HTTP {response.status_code} in {time.time() - started:.1f}s: {reply[:80]!r}, reasoning tokens {reasoning}")
+              print(f"{model} ({effort}): HTTP {response.status_code} in {time.time() - started:.1f}s: {reply[:80]!r}, reasoning tokens {reasoning}")
               if not response.ok or "HELLO" not in reply.upper():
                   print(f"::error::{model} did not read a test image: HTTP {response.status_code} {response.text[:300]}")
                   failed = True

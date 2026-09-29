@@ -42,6 +42,7 @@ class Route:
     input_usd_per_m: float
     output_usd_per_m: float
     cached_usd_per_m: float | None = None
+    reasoning_effort: str | None = None  # this model's thinking level, whatever the request asked
 
     def cost(self, usage: dict) -> float:
         prompt = max(0, int(usage.get("prompt_tokens") or 0))
@@ -86,14 +87,19 @@ class Upstream:
     def cost(self, usage: dict, model: str | None = None) -> float:
         return self.priced(model).cost(usage)
 
-    def send(self, payload: dict, trace: dict | None = None, models: list[str] | None = None) -> tuple[int, dict]:
-        """POST upstream, retrying transient failures on the next model in ``models``; ``trace`` records attempts."""
+    def send(self, payload: dict, trace: dict | None = None, models: list | None = None) -> tuple[int, dict]:
+        """POST upstream, retrying transient failures on the next model (a name or Route) in ``models``; ``trace`` records attempts."""
         models = models or [payload.get("model")]
         for attempt in range(self.retries + 1):
             last = attempt == self.retries
             # An overloaded model is not waited on while another one can answer.
-            if models[min(attempt, len(models) - 1)] is not None:
-                payload = {**payload, "model": models[min(attempt, len(models) - 1)]}
+            route = models[min(attempt, len(models) - 1)]
+            if isinstance(route, Route):
+                payload = {**payload, "model": route.model}
+                if route.reasoning_effort:
+                    payload["reasoning_effort"] = route.reasoning_effort
+            elif route is not None:
+                payload = {**payload, "model": route}
             if trace is not None:
                 trace["attempts"] = attempt + 1
                 if payload.get("model") is not None:
@@ -184,18 +190,20 @@ def _trace_line(path: str, entry: dict) -> None:
 
 
 def _routes_from_env(name: str) -> list[tuple[str | None, Route]]:
-    """Routes from a JSON list of {"stage"?, "model", "price": [input, output, cached?]} in an env var."""
+    """Routes from a JSON list of {"stage"?, "model", "price": [input, output, cached?], "effort"?} in an env var."""
     raw = os.getenv(name, "").strip()
     if not raw:
         return []
     routes = []
     for item in json.loads(raw):
         price = [float(v) for v in item.get("price") or []] + [0.0, 0.0]
-        stage = item.get("stage")
+        stage, effort = item.get("stage"), item.get("effort")
         if stage is not None and stage not in STAGES:
             raise ValueError(f"{name}: unknown stage {stage!r}")
+        if effort is not None and effort not in REASONING_BUDGETS:
+            raise ValueError(f"{name}: unknown effort {effort!r}")
         routes.append((stage, Route(str(item["model"]), price[0], price[1],
-                                    price[2] if len(item.get("price") or []) > 2 else None)))
+                                    price[2] if len(item.get("price") or []) > 2 else None, effort)))
     return routes
 
 
@@ -496,7 +504,7 @@ def create_app(store: Store, upstream: Upstream, admin_key: str, *, mailer: Mail
         trace: dict = {}
         started = time.perf_counter()
         try:
-            status, body = await run_in_threadpool(upstream.send, forwarded, trace, [route.model for route in chain])
+            status, body = await run_in_threadpool(upstream.send, forwarded, trace, chain)
         except requests.RequestException:
             status, body = 0, {}
         except BaseException:
