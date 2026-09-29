@@ -133,6 +133,8 @@ class AIModeRunner:
         self._review_queue: asyncio.Queue | None = None
         self._review_task: asyncio.Task | None = None
         self._review_spill: dict[int, dict[str, list]] = {}
+        # Logo regions the scan added, per slice; the review may find leftover text on one and free it.
+        self._scan_logos: dict[int, list[tuple[int, int, int, int]]] = {}
         self._slice_total: int | None = None
 
     # -- bookkeeping ---------------------------------------------------------
@@ -268,6 +270,7 @@ class AIModeRunner:
             regions = [RegionModel(**region) for region in page.get("preserve_regions") or []]
             regions += [RegionModel(x1=x1, y1=y1, x2=x2, y2=y2) for x1, y1, x2, y2 in scan.logos]
             await asyncio.to_thread(_set_page_preserve_regions, chapter_id, scan.page_index, regions)
+            self._scan_logos[scan.page_index] = list(scan.logos)
             logos += len(scan.logos)
         self.report["logo_regions"] = logos
         self._progress(len(active), len(active),
@@ -421,6 +424,8 @@ class AIModeRunner:
                 for other, kinds in crossing.items():
                     for kind, boxes in kinds.items():
                         spill.setdefault(other, {}).setdefault(kind, []).extend(boxes)
+                if found.residue and self._scan_logos.get(page_index):
+                    await asyncio.to_thread(self._free_logos_with_text, page_index, found.residue)
                 if found.restore or found.missed or found.residue:
                     await asyncio.to_thread(
                         pipeline.apply_review_fixes, chapter_id, page_index,
@@ -446,6 +451,22 @@ class AIModeRunner:
             for task in tasks:
                 task.cancel()
             raise
+
+    def _free_logos_with_text(self, page_index: int, residue) -> None:
+        """A scan logo region the review finds leftover text on was a watermark; it stops protecting that text."""
+        freed = [logo for logo in self._scan_logos[page_index] if _covered(logo, list(residue))]
+        if not freed:
+            return
+        with get_manifest_lock(self.job.chapter_id):
+            manifest = load_manifest_raw(self.job.chapter_id)
+            page = manifest["pages"][page_index]
+            keep = [region for region in page.get("preserve_regions") or []
+                    if (region.get("x1"), region.get("y1"), region.get("x2"), region.get("y2")) not in freed]
+            if len(keep) != len(page.get("preserve_regions") or []):
+                page["preserve_regions"] = keep
+                save_manifest_raw(self.job.chapter_id, manifest)
+        self._scan_logos[page_index] = [logo for logo in self._scan_logos[page_index] if logo not in freed]
+        self.report["logos_freed"] = self.report.get("logos_freed", 0) + len(freed)
 
     async def review(self) -> None:
         """Checkpoint 3: the model compares each raw and clean slice; the system applies what it reports."""
@@ -595,7 +616,7 @@ class AIModeRunner:
             _append(self.report["translate_errors"], f"Lát {page_index + 1}: giữ SFX thất bại: {_detail(exc)[:150]}")
 
     def _join_stacked_lines(self, indices: list[int]) -> None:
-        from app.ai_mode.seams import join_stacked_lines
+        from app.ai_mode.seams import join_stacked_lines, set_letter_bounds
         from app.manifest_utils import save_manifest_raw
         from app.text_objects import ensure_page_text_objects
 
@@ -603,6 +624,7 @@ class AIModeRunner:
             manifest = load_manifest_raw(self.job.chapter_id)
             for page_index in indices:
                 ensure_page_text_objects(manifest["pages"][page_index])
+                set_letter_bounds(manifest["pages"][page_index])
             self.report["lines_joined"] = join_stacked_lines(manifest, indices)
             save_manifest_raw(self.job.chapter_id, manifest)
 

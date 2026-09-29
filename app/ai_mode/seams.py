@@ -12,6 +12,38 @@ LETTERING_KEYS = (
 )
 
 
+def _shifted(rect: dict, shift: int) -> dict:
+    return {key: int(rect[key]) + (shift if key in ("y1", "y2") else 0) for key in ("x1", "y1", "x2", "y2")}
+
+
+def set_letter_bounds(page: dict) -> None:
+    """Give each object the extent of the source lettering its boxes erase, where the translation is lettered."""
+    from app.mask_store import decode_mask_value
+    from app.text_objects import source_box_ids
+
+    boxes = {str(box.get("id")): box for box in page.get("boxes") or [] if isinstance(box, dict)}
+    for obj in page.get("text_objects") or []:
+        if not isinstance(obj, dict):
+            continue
+        rects = []
+        for ref in source_box_ids(obj):
+            box = boxes.get(ref)
+            mask = decode_mask_value(box.get("mask")) if box else None
+            try:
+                x1, y1, x2, y2 = (int(box[k]) for k in ("x1", "y1", "x2", "y2"))
+            except (KeyError, TypeError, ValueError):
+                continue
+            if mask is None or mask.shape != (y2 - y1, x2 - x1) or not mask.any():
+                continue
+            ys, xs = mask.nonzero()
+            rects.append((x1 + int(xs.min()), y1 + int(ys.min()), x1 + int(xs.max()) + 1, y1 + int(ys.max()) + 1))
+        if rects and len(rects) == len(source_box_ids(obj)):
+            obj["letter_bounds"] = {"x1": min(r[0] for r in rects), "y1": min(r[1] for r in rects),
+                                    "x2": max(r[2] for r in rects), "y2": max(r[3] for r in rects)}
+        else:
+            obj.pop("letter_bounds", None)
+
+
 def _core(page: dict) -> tuple[int, int, int] | None:
     """(source offset of the slice, core start, core end) in source-page pixels."""
     core = page.get("stitch_core")
@@ -88,10 +120,12 @@ def sync_seam_mirrors(manifest: dict) -> list[int]:
                 continue
             owner_page, owner = found
             shift = _core(pages[owner_page])[0] - core[0]
-            region = {key: int(owner["region"][key]) + (shift if key in ("y1", "y2") else 0)
-                      for key in ("x1", "y1", "x2", "y2")}
+            region = _shifted(owner["region"], shift)
             update = {key: copy.deepcopy(owner[key]) for key in LETTERING_KEYS if key in owner}
-            stale = [key for key in LETTERING_KEYS if key in obj and key not in owner]
+            # The copy letters in exactly the area the owner does, so the two halves line up.
+            if isinstance(owner.get("letter_bounds"), dict):
+                update["letter_bounds"] = _shifted(owner["letter_bounds"], shift)
+            stale = [key for key in LETTERING_KEYS + ("letter_bounds",) if key in obj and key not in update]
             if all(obj.get(key) == value for key, value in update.items()) and not stale and obj.get("region") == region:
                 continue
             obj.update(update)
@@ -196,6 +230,12 @@ def join_stacked_lines(manifest: dict, page_indices: list[int]) -> int:
             top["region"] = {"x1": min(r[0] for r in rects), "y1": min(r[1] for r in rects),
                              "x2": max(r[2] for r in rects), "y2": max(r[3] for r in rects)}
             top["joined_lines"] = [str(obj["id"]) for obj in block[1:]]
+            bounds = [obj.get("letter_bounds") for obj in block]
+            if all(isinstance(b, dict) for b in bounds):
+                top["letter_bounds"] = {"x1": min(b["x1"] for b in bounds), "y1": min(b["y1"] for b in bounds),
+                                        "x2": max(b["x2"] for b in bounds), "y2": max(b["y2"] for b in bounds)}
+            else:
+                top.pop("letter_bounds", None)
             for obj in block[1:]:
                 obj["joined_into"] = str(top["id"])
                 obj["translation"] = ""

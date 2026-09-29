@@ -304,6 +304,33 @@ def test_review_stage_applies_each_slice_in_one_pass_without_duplicating_boxes(m
     assert (runner.report["kept_regions"], runner.report["missed_added"], runner.report["repainted_regions"]) == (1, 1, 2)
 
 
+def test_leftover_text_on_a_scan_logo_frees_it_so_the_repaint_reaches_it(monkeypatch):
+    import contextlib
+
+    from app.ai_mode.checkpoints import CleanReview
+    from app.dependencies import pipeline
+
+    # Shadow Slave 1, slice 135: the scan boxed the "Read at ASURASCANS.COM" watermark as a logo.
+    watermark, kept = (323, 2825, 752, 3107), {"x1": 10, "y1": 10, "x2": 200, "y2": 100}
+    stored = {"pages": [{"preserve_regions": [dict(zip(("x1", "y1", "x2", "y2"), watermark)), kept]}]}
+    runner = _runner(monkeypatch, "review", stored)
+    runner._scan_logos[0] = [watermark]
+    monkeypatch.setattr(runner, "_active_pages", lambda: [0])
+    monkeypatch.setattr(runner, "_images", lambda index, key, root: (np.zeros((10, 10, 3)), np.zeros((10, 10, 3))))
+    monkeypatch.setattr(ai_job, "get_manifest_lock", lambda chapter_id: contextlib.nullcontext())
+    monkeypatch.setattr(ai_job, "load_manifest_raw", lambda chapter_id: stored)
+    monkeypatch.setattr(ai_job, "save_manifest_raw", lambda chapter_id, manifest: None)
+    monkeypatch.setattr(ai_job, "review_clean", lambda provider, model, key, index, a, b: (
+        CleanReview(0, residue=((330, 2830, 740, 3100),)), None))
+    seen = []
+    monkeypatch.setattr(pipeline, "apply_review_fixes",
+                        lambda chapter, index, **fixes: seen.append(list(stored["pages"][0]["preserve_regions"])),
+                        raising=False)
+    asyncio.run(runner.review())
+    assert seen == [[kept]], "the watermark is no longer protected when the repaint runs; other regions stay"
+    assert runner.report["logos_freed"] == 1
+
+
 def test_each_slice_is_reviewed_as_soon_as_it_is_clean(monkeypatch):
     import app.routers.chapters as chapters_router
     from app.ai_mode.checkpoints import CleanReview

@@ -223,3 +223,37 @@ def test_a_mirror_of_a_joined_line_letters_the_block_it_joined():
     mirror = manifest["pages"][1]["text_objects"][0]
     assert mirror["translation"] == "Một câu" and mirror["seam_owner"] == {"page": 0, "id": "top"}
     assert mirror["region"] == {"x1": 380, "y1": 0, "x2": 1220, "y2": 400}
+
+
+def test_the_seam_copy_and_a_joined_block_letter_where_the_source_lettering_was():
+    from app.ai_mode.seams import join_stacked_lines, sync_seam_mirrors
+
+    manifest = {"pages": [
+        _cut_slice(0, 0, 1000, [("low", (380, 880, 1220, 1100)), ("top", (400, 700, 1200, 900))]),
+        _cut_slice(700, 300, 2000, [("low_mirror", (380, 180, 1220, 400))]),
+    ]}
+    low, top = manifest["pages"][0]["text_objects"]
+    low["letter_bounds"] = {"x1": 450, "y1": 920, "x2": 1150, "y2": 1060}
+    top["letter_bounds"] = {"x1": 470, "y1": 730, "x2": 1130, "y2": 870}
+    join_stacked_lines(manifest, [0, 1])
+    assert top["letter_bounds"] == {"x1": 450, "y1": 730, "x2": 1150, "y2": 1060}
+    top["translation"] = "Một câu"
+    sync_seam_mirrors(manifest)
+    mirror = manifest["pages"][1]["text_objects"][0]
+    assert mirror["letter_bounds"] == {"x1": 450, "y1": 30, "x2": 1150, "y2": 360}, "shifted to the copy's slice"
+
+
+def test_the_lettering_area_is_the_extent_the_erase_mask_covers():
+    import numpy as np
+
+    from app.ai_mode.seams import set_letter_bounds
+    from app.image_io import encode_mask
+
+    mask = np.zeros((300, 1171), np.uint8)
+    mask[40:260, 172:1201 - 165] = 255  # letters start 172 px into the padded box
+    page = {"boxes": [{"id": "box_a", "x1": 165, "y1": 827, "x2": 1336, "y2": 1127, "mask": encode_mask(mask)}],
+            "text_objects": [{"id": "text_a", "source_boxes": ["box_a"], "region": {"x1": 165, "y1": 827, "x2": 1336, "y2": 1127}},
+                             {"id": "manual", "source_boxes": [], "region": {"x1": 0, "y1": 0, "x2": 10, "y2": 10}}]}
+    set_letter_bounds(page)
+    assert page["text_objects"][0]["letter_bounds"] == {"x1": 337, "y1": 867, "x2": 1201, "y2": 1087}
+    assert "letter_bounds" not in page["text_objects"][1], "a hand-drawn object letters its whole region"

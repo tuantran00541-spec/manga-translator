@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import numpy as np
 from PIL import Image
 from fastapi import HTTPException
 
@@ -54,6 +55,39 @@ def _render_region_for_text_object(obj: dict) -> dict:
     ):
         return ocr_region
     return region
+
+
+LETTER_MARGIN = 0.15  # room round the source lettering, as a share of its shorter side
+
+
+def _letter_box(obj: dict, region: tuple[int, int, int, int]) -> tuple[int, int, int, int] | None:
+    """Where the source lettering was, with some room, inside the region; None when unknown."""
+    bounds = obj.get("letter_bounds")
+    if not _valid_region(bounds):
+        return None
+    x1, y1, x2, y2 = (int(bounds[k]) for k in ("x1", "y1", "x2", "y2"))
+    margin = max(8, int(LETTER_MARGIN * min(x2 - x1, y2 - y1)))
+    box = (max(region[0], x1 - margin), max(region[1], y1 - margin),
+           min(region[2], x2 + margin), min(region[3], y2 + margin))
+    return box if box[0] < box[2] and box[1] < box[3] and box != tuple(region) else None
+
+
+def _render_in_region(image: Image.Image, text: str, box: tuple[int, int, int, int], **style) -> Image.Image:
+    """Letter ``box`` even where it runs past the top or bottom of the slice, clipped to the slice.
+
+    A text crossing a slice cut is lettered by both slices; each lays it out in the
+    whole box, so the two halves meet exactly.
+    """
+    width, height = image.size
+    x1, x2 = max(0, box[0]), min(width, box[2])
+    top, bottom = max(0, -box[1]), max(0, box[3] - height)
+    if not (top or bottom):
+        return render_text_in_box(image, text, (x1, box[1], x2, box[3]), **style)
+    pixels = np.asarray(image)
+    pad = ((top, bottom), (0, 0)) + (((0, 0),) if pixels.ndim == 3 else ())
+    canvas = Image.fromarray(np.pad(pixels, pad, mode="edge"), mode=image.mode)
+    canvas = render_text_in_box(canvas, text, (x1, box[1] + top, x2, box[3] + top), **style)
+    return canvas.crop((0, top, width, top + height))
 
 
 def cleanup_tmp(path: Path) -> None:
@@ -254,7 +288,8 @@ def render_text_objects(
                 x1, y1, x2, y2, img_w, img_h,
             )
             continue
-        coords = (x1, y1, x2, y2)
+        # The layout uses the whole region even past the slice edge; only drawing is clipped.
+        coords = (x1, coords_raw[1], x2, coords_raw[3])
 
         obj_style = obj.get("style") or {}
         box_color = _resolve_ocr_style(
@@ -304,25 +339,32 @@ def render_text_objects(
         if obj_shape not in ("rectangle", "ellipse"):
             obj_shape = "rectangle"
 
+        style = dict(
+            fill=box_color,
+            font_size=box_size,
+            is_bold=box_bold,
+            font_name=box_font,
+            stroke_width=stroke_w,
+            stroke_color=stroke_c,
+            bg_color=bg_c,
+            corner_radius=r_val,
+            shape=obj_shape,
+            horizontal_align=h_align,
+            vertical_align=v_align,
+            source_cap_px=obj.get("source_cap_px"),
+            enlarge=bool(obj.get("enlarge")),
+        )
+        # The lettering goes where the source lettering was; the whole region is the fallback when it does not fit.
+        tight = _letter_box(obj, coords)
+        attempts = [tight, coords] if tight else [coords]
         try:
-            image = render_text_in_box(
-                image,
-                translation.strip(),
-                coords,
-                fill=box_color,
-                font_size=box_size,
-                is_bold=box_bold,
-                font_name=box_font,
-                stroke_width=stroke_w,
-                stroke_color=stroke_c,
-                bg_color=bg_c,
-                corner_radius=r_val,
-                shape=obj_shape,
-                horizontal_align=h_align,
-                vertical_align=v_align,
-                source_cap_px=obj.get("source_cap_px"),
-                enlarge=bool(obj.get("enlarge")),
-            )
+            for attempt, box in enumerate(attempts):
+                try:
+                    image = _render_in_region(image, translation.strip(), box, **style)
+                    break
+                except ValueError:
+                    if attempt == len(attempts) - 1:
+                        raise
             rendered_count += 1
         except Exception as e:
             logger.opt(exception=True).error(
