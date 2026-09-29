@@ -189,3 +189,15 @@ def test_update_of_a_downloaded_install_reruns_the_new_installer_on_this_folder(
     command, env = ran[0]
     assert command[-2:] == ["--target", str(tmp_path)] and command[1].endswith(os.path.join("scripts", "install.py"))
     assert env["MANGA_HOME"] == str(tmp_path / "h")
+
+
+def test_messages_survive_a_windows_cp1252_pipe(monkeypatch):
+    import io
+
+    raw = io.BytesIO()
+    pipe = io.TextIOWrapper(raw, encoding="cp1252", newline="\n")
+    monkeypatch.setattr(sys, "stdout", pipe)
+    run._safe_console()
+    print("Đang tải bản mới")
+    pipe.flush()
+    assert raw.getvalue() == b"?ang t?i b?n m?i\n"

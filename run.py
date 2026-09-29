@@ -124,7 +124,15 @@ def _update() -> None:
         _run_installer(source, info)
 
 
+def _safe_console() -> None:
+    """Vietnamese messages must not crash when Windows sends output to a cp1252 pipe or file."""
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(errors="replace")
+
+
 def main(argv: list[str] | None = None) -> None:
+    _safe_console()
     parser = argparse.ArgumentParser(prog="manga", description="Manga Translator")
     parser.add_argument("command", nargs="?", choices=["update"], help="update: get the latest version")
     parser.add_argument("--open", action="store_true", help="open the app in the browser once it is up")
