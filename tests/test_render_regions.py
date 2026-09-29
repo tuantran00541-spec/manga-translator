@@ -20,3 +20,18 @@ def test_lettering_goes_where_the_source_lettering_was_inside_its_region():
     box = letter_box(obj, (165, 827, 1336, 1441))
     assert box == (265, 828, 1336, 1441), "72 px of room round the source, cut to the region"
     assert letter_box({}, (0, 0, 10, 10)) is None
+
+
+def test_a_box_that_shrinks_a_short_caption_well_below_the_source_size_gives_way():
+    # Shadow Slave 1, page 16: a one-line source caption box made its longer translation small.
+    import pytest
+
+    from app.render.text_renderer import render_text_in_box
+
+    page = Image.new("RGB", (1600, 900), "white")
+    text = "Nó xuất hiện lần đầu hàng chục năm trước"
+    style = dict(fill="#202020", source_cap_px=40)
+    with pytest.raises(ValueError):
+        render_text_in_box(page.copy(), text, (500, 400, 1100, 470), min_source_share=0.85, **style)
+    render_text_in_box(page.copy(), text, (500, 400, 1100, 470), **style)  # the last box always letters
+    render_text_in_box(page.copy(), text, (400, 330, 1200, 540), min_source_share=0.85, **style)

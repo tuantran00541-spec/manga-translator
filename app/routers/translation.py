@@ -527,6 +527,9 @@ async def translate_page_in_context(
             role = getattr(translated, "roles", {}).get(candidate["id"])
             if role:
                 obj["typography_role"] = role
+            container = getattr(translated, "containers", {}).get(candidate["id"])
+            if container:
+                obj["container"] = container
             if candidate["id"] in getattr(translated, "review_ids", ()):
                 obj["needs_review"] = True
                 review += 1

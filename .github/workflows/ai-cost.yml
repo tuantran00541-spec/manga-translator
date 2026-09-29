@@ -172,7 +172,7 @@ jobs:
           export GATEWAY_UPSTREAM_KEY="${!PROVIDER_SECRET}"
           url="${INPUT_URL:-$(head -n1 .github/ai-cost.txt | tr -d '\r')}"
           rm -rf audit-results/ai-cost
-          python scripts/ai_cost_run.py "$url" --out audit-results/ai-cost
+          python scripts/ai_cost_run.py "$url" --out audit-results/ai-cost --full-slices 70
 
       - name: Logs
         if: always()

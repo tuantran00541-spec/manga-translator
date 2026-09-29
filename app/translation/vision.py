@@ -61,6 +61,7 @@ class VisionTranslationResult:
     missing_ids: frozenset[str] = frozenset()
     enlarge_ids: frozenset[str] = frozenset()
     colors: dict[str, str] = field(default_factory=dict)
+    containers: dict[str, str] = field(default_factory=dict)
 
 
 def parse_vision_translation(content: str, expected_ids: set[str], *, allow_missing: bool = False) -> dict[str, str]:
@@ -290,7 +291,7 @@ class VisionPageTranslator:
             }
         return replace(
             result, font_choices=fonts, roles=roles, review_ids=frozenset(review), missing_ids=frozenset(ids - answered),
-            enlarge_ids=frozenset(enlarge), colors=colors,
+            enlarge_ids=frozenset(enlarge), colors=colors, containers=containers,
         )
 
     def _openai(self, system, prompt, original, cleaned, *, api_key, ids, max_tokens):

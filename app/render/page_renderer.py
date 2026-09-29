@@ -58,6 +58,8 @@ def _render_region_for_text_object(obj: dict) -> dict:
 
 
 LETTER_MARGIN = 0.15  # room round the source lettering, as a share of its shorter side
+# A box that letters the translation below this share of the source size gives way to a roomier one.
+SOURCE_SIZE_SHARE = 0.85
 
 
 def letter_box(obj: dict, region: tuple[int, int, int, int]) -> tuple[int, int, int, int] | None:
@@ -354,13 +356,18 @@ def render_text_objects(
             source_cap_px=obj.get("source_cap_px"),
             enlarge=bool(obj.get("enlarge")),
         )
-        # The lettering goes where the source lettering was; the whole region is the fallback when it does not fit.
+        # The lettering goes where the source lettering was, then halfway to the region, then the region,
+        # taking the first that holds it near the source size.
         tight = letter_box(obj, coords)
-        attempts = [tight, coords] if tight else [coords]
+        attempts = [coords]
+        if tight:
+            half = tuple((a + b) // 2 for a, b in zip(tight, coords))
+            attempts = [tight, half, coords] if half != tight else [tight, coords]
         try:
             for attempt, box in enumerate(attempts):
+                share = SOURCE_SIZE_SHARE if attempt < len(attempts) - 1 else 0.0
                 try:
-                    image = _render_in_region(image, translation.strip(), box, **style)
+                    image = _render_in_region(image, translation.strip(), box, min_source_share=share, **style)
                     break
                 except ValueError:
                     if attempt == len(attempts) - 1:

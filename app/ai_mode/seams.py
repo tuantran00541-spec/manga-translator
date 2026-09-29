@@ -7,7 +7,7 @@ OWNER_SHARE = 0.5  # share of the smaller box two slices' boxes must share to be
 # Everything that decides how a line is lettered, copied from the owning slice.
 LETTERING_KEYS = (
     "translation", "auto_translation", "translation_source", "translation_model", "translation_input_text",
-    "typography_role", "lettering_color", "enlarge", "source_cap_px", "font_ai_id",
+    "typography_role", "container", "lettering_color", "enlarge", "source_cap_px", "font_ai_id",
     "font_selection_mode", "font_match", "style", "needs_review", "ocr_text_color", "ocr_font_size",
 )
 
