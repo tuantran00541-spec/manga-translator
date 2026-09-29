@@ -64,13 +64,41 @@ def pair(original: np.ndarray, clean: np.ndarray, box, path: Path) -> None:
     cv2.imwrite(str(path), np.concatenate(tiles, axis=1), [cv2.IMWRITE_JPEG_QUALITY, 88])
 
 
+def dump_lama_regions(folder: Path) -> None:
+    """Save each crop LaMa paints (before, mask, hole, after) so fill rules can be tried on real regions."""
+    import threading
+    from app.inpaint.lama_inpainter import Inpainter
+
+    folder.mkdir(parents=True, exist_ok=True)
+    painted, lock, count = Inpainter._lama_fill, threading.Lock(), [0]
+
+    def recorded(self, image, crop, local_mask, crop_box, feather=False, hole=None):
+        before = crop.copy()
+        result = painted(self, image, crop, local_mask, crop_box, feather=feather, hole=hole)
+        with lock:
+            count[0] += 1
+            n = count[0]
+        x1, y1, x2, y2 = crop_box
+        cv2.imwrite(str(folder / f"{n:03d}_before.png"), before)
+        cv2.imwrite(str(folder / f"{n:03d}_mask.png"), local_mask)
+        if hole is not None:
+            cv2.imwrite(str(folder / f"{n:03d}_hole.png"), hole)
+        cv2.imwrite(str(folder / f"{n:03d}_after.png"), result[y1:y2, x1:x2])
+        return result
+
+    Inpainter._lama_fill = recorded
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("url")
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--chapter-id", default="c1a90001")
+    parser.add_argument("--dump-lama", action="store_true", help="save every region LaMa paints, with its mask")
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
+    if args.dump_lama:
+        dump_lama_regions(args.out / "lama")
 
     pipeline = build_processing_pipeline()
     started = time.perf_counter()
