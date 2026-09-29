@@ -382,6 +382,52 @@ def test_speech_roles_always_take_the_base_font(tmp_path, monkeypatch):
     assert result.font_choices["loud"]["font_id"] == "emphasis.bangers"
 
 
+def test_a_container_kind_keeps_the_font_it_was_first_lettered_in(tmp_path, monkeypatch):
+    from app.translation.context import ChapterMemory
+
+    original, clean = tmp_path / "original.png", tmp_path / "clean.png"
+    Image.new("RGB", (400, 600), "white").save(original)
+    Image.new("RGB", (400, 600), "gray").save(clean)
+    replies = iter([
+        {"translations": [{"id": "1", "translated_text": "Khi ấy", "role": "narration", "container": "box"},
+                          {"id": "2", "translated_text": "Chạy!", "role": "shout", "container": "bubble"},
+                          {"id": "3", "translated_text": "Ừ", "role": "dialogue", "container": "bubble"}],
+         "font_choices": {"1": "narration.lora", "2": "emphasis.bangers", "3": "emphasis.anton"}},
+        {"translations": [{"id": "1", "translated_text": "Sau đó", "role": "narration", "container": "box"},
+                          {"id": "2", "translated_text": "Đi thôi", "role": "dialogue", "container": "box"},
+                          {"id": "3", "translated_text": "Này", "role": "dialogue", "container": "bubble"}],
+         "font_choices": {"1": "skill.kanit", "2": "dialogue.mac-dinh-3", "3": "thought.itim"}},
+    ])
+
+    class Response:
+        status_code, ok = 200, True
+
+        def json(self):
+            return {"choices": [{"message": {"content": json.dumps(next(replies))}}], "usage": {}}
+
+    monkeypatch.setattr("app.translation.vision.requests.post", lambda url, **kwargs: Response())
+    memory = ChapterMemory()
+    translator = VisionPageTranslator(PROVIDERS["openai"], "vision-test")
+    items = [{"id": item_id, "text": "", "region": [1, 2, 30, 40]} for item_id in ("a", "b", "c")]
+    fonts = []
+    for number in (1, 2):
+        result = translator.translate_page(original, clean, items, api_key="k", source_lang="en",
+                                           target_lang="vi", memory=memory, slice_number=number, slice_total=2)
+        fonts.append({key: value["font_id"] for key, value in result.font_choices.items()})
+    # A shout in a plain bubble keeps its font and does not decide the bubble's.
+    assert fonts[0] == {"a": "narration.lora", "b": "emphasis.bangers", "c": "dialogue.mac-dinh-3"}
+    assert fonts[1] == {"a": "narration.lora", "b": "narration.lora", "c": "dialogue.mac-dinh-3"}
+    assert memory.snapshot()["container_fonts"] == {"box": "narration.lora", "bubble": "dialogue.mac-dinh-3"}
+
+
+def test_the_character_budget_is_where_the_source_letters_were():
+    page = {"text_objects": [{"id": "t", "region": {"x1": 0, "y1": 0, "x2": 1000, "y2": 800},
+                              "letter_bounds": {"x1": 300, "y1": 300, "x2": 700, "y2": 400}},
+                             {"id": "u", "region": {"x1": 0, "y1": 900, "x2": 100, "y2": 950}}]}
+    fit = {candidate["id"]: candidate["fit_region"] for candidate in translation_router._vision_candidates(page, force=False)}
+    assert fit == {"t": [285, 285, 715, 415], "u": [0, 900, 100, 950]}
+
+
 def test_glossary_vote_drops_a_misread_name_and_fixes_one_form_of_address():
     from app.ai_mode.glossary import merge_glossaries
     from app.translation.context import ChapterMemory

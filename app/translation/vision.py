@@ -12,7 +12,7 @@ from app.ai_providers import AIProvider
 from app.parameters import TRANSLATION_CONNECT_TIMEOUT_SECONDS, TRANSLATION_READ_TIMEOUT_SECONDS
 from app.security import validate_url
 from app.render.font_guide import BASE_FONT_ROLES, DEFAULT_LETTERING_FONT, font_specimen_b64, lettering_font
-from app.translation.context import TYPOGRAPHY_ROLES, ChapterMemory, system_prompt
+from app.translation.context import CONTAINERS, TYPOGRAPHY_ROLES, ChapterMemory, system_prompt
 from app.translation.deepseek import _language_name, _usage_cost_usd
 from app.visual_qc.deepseek_region_client import _extract_output_text, _safe_error_detail
 from app.visual_qc.gemini import _encode_for_gemini, _read_image
@@ -27,7 +27,8 @@ _TRANSLATIONS_SCHEMA = {
     "properties": {
         "translations": {"type": "array", "items": {
             "type": "object",
-            "properties": {"id": {"type": "string"}, "translated_text": {"type": "string"}},
+            "properties": {"id": {"type": "string"}, "translated_text": {"type": "string"},
+                           "role": {"type": "string"}, "container": {"type": "string"}},
             "required": ["id", "translated_text"],
         }},
         "font_choices": {"type": "object"},
@@ -259,7 +260,7 @@ class VisionPageTranslator:
         ids = set(real.values())
         if str(target_lang or "").lower() in {"vi", "vie", "vietnamese"}:
             result, data = _drop_foreign_script(result, data)
-        roles, review, answered, enlarge, colors = {}, set(), set(), set(), {}
+        roles, containers, review, answered, enlarge, colors = {}, {}, set(), set(), set(), {}
         for entry in data.get("translations") or []:
             if not isinstance(entry, dict) or str(entry.get("id")) not in ids:
                 continue
@@ -267,6 +268,9 @@ class VisionPageTranslator:
             role = str(entry.get("role") or "").strip().lower()
             if role in TYPOGRAPHY_ROLES:
                 roles[str(entry["id"])] = role
+            container = str(entry.get("container") or "").strip().lower()
+            if container in CONTAINERS:
+                containers[str(entry["id"])] = container
             if entry.get("review") is True:
                 review.add(str(entry["id"]))
             if entry.get("enlarge") is True:
@@ -278,9 +282,11 @@ class VisionPageTranslator:
                  for key, value in (result.font_choices or {}).items()}
         if memory is not None:
             memory.update(slice_number or 0, data, result.translations, [str(item["id"]) for item in items])
+            # Every bubble, box or screen of one kind letters in the font that kind first got; blank lines set nothing.
             fonts = {
-                str(item["id"]): {"font_id": memory.admit_font(fonts[str(item["id"])]["font_id"]), "font_mode": "ai"}
-                for item in items if str(item["id"]) in fonts
+                key: {"font_id": memory.container_font(containers.get(key), roles.get(key), fonts[key]["font_id"])
+                      if result.translations.get(key) else DEFAULT_LETTERING_FONT, "font_mode": "ai"}
+                for key in (str(item["id"]) for item in items) if key in fonts
             }
         return replace(
             result, font_choices=fonts, roles=roles, review_ids=frozenset(review), missing_ids=frozenset(ids - answered),

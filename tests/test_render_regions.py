@@ -1,7 +1,7 @@
 import numpy as np
 from PIL import Image
 
-from app.render.page_renderer import _letter_box, _render_in_region
+from app.render.page_renderer import letter_box, _render_in_region
 
 STYLE = dict(fill="#202020", font_size=40)
 
@@ -17,6 +17,6 @@ def test_a_text_crossing_the_slice_edge_is_laid_out_as_on_the_slice_that_holds_i
 
 def test_lettering_goes_where_the_source_lettering_was_inside_its_region():
     obj = {"letter_bounds": {"x1": 337, "y1": 900, "x2": 1366, "y2": 1380}}
-    box = _letter_box(obj, (165, 827, 1336, 1441))
+    box = letter_box(obj, (165, 827, 1336, 1441))
     assert box == (265, 828, 1336, 1441), "72 px of room round the source, cut to the region"
-    assert _letter_box({}, (0, 0, 10, 10)) is None
+    assert letter_box({}, (0, 0, 10, 10)) is None

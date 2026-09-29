@@ -23,6 +23,7 @@ from app.manifest_utils import (
 )
 from app.ocr.quality import should_block_translation
 from app.render.font_catalog import FontNotFoundError, resolve_font_id
+from app.render.page_renderer import letter_box
 from app.secret_store import (
     SecretStoreUnavailable,
     get_provider_api_key,
@@ -362,6 +363,8 @@ def _vision_candidates(page: dict, *, force: bool) -> list[dict]:
             "id": obj_id,
             "text": str(obj.get("ocr_text") or "").strip(),
             "region": rect,
+            # The renderer letters where the source lettering was, so that is the room a translation has.
+            "fit_region": list(letter_box(obj, tuple(rect)) or rect),
             "initial_translation": str(obj.get("translation") or ""),
         })
     return candidates
@@ -384,7 +387,7 @@ def _add_fit_budgets(original_path, candidates: list[dict]) -> None:
         cap = source_cap_px(raw, candidate["region"])
         if cap:
             candidate["source_cap_px"] = cap
-            candidate["max_chars"] = char_budget(font_path, candidate["region"], cap)
+            candidate["max_chars"] = char_budget(font_path, candidate.get("fit_region") or candidate["region"], cap)
 
 
 @router.post("/page/vision")

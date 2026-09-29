@@ -60,7 +60,7 @@ def _render_region_for_text_object(obj: dict) -> dict:
 LETTER_MARGIN = 0.15  # room round the source lettering, as a share of its shorter side
 
 
-def _letter_box(obj: dict, region: tuple[int, int, int, int]) -> tuple[int, int, int, int] | None:
+def letter_box(obj: dict, region: tuple[int, int, int, int]) -> tuple[int, int, int, int] | None:
     """Where the source lettering was, with some room, inside the region; None when unknown."""
     bounds = obj.get("letter_bounds")
     if not _valid_region(bounds):
@@ -355,7 +355,7 @@ def render_text_objects(
             enlarge=bool(obj.get("enlarge")),
         )
         # The lettering goes where the source lettering was; the whole region is the fallback when it does not fit.
-        tight = _letter_box(obj, coords)
+        tight = letter_box(obj, coords)
         attempts = [tight, coords] if tight else [coords]
         try:
             for attempt, box in enumerate(attempts):
