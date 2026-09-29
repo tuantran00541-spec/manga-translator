@@ -83,6 +83,21 @@ def _pairs(chapter_id: str, pages: list, out: Path, width: int = 560) -> int:
     return saved
 
 
+def _clean_timing(pages: list) -> dict:
+    """Summed cleanup time per step over the chapter, to see which one the stage waits on."""
+    totals: dict[str, float] = {}
+    for page in pages:
+        metrics = page.get("processing_metrics") or {}
+        steps = dict(metrics.get("timing_ms") or {})
+        for section in ("auto_inpaint", "manual_inpaint"):
+            for key in ("lama_model_ms", "session_lock_wait_ms", "ort_global_lock_wait_ms"):
+                steps[f"{section}.{key}"] = (metrics.get(section) or {}).get(key, 0)
+        for key, value in steps.items():
+            if isinstance(value, (int, float)):
+                totals[key] = totals.get(key, 0.0) + float(value)
+    return {key: round(value) for key, value in sorted(totals.items())}
+
+
 def _objects(pages: list) -> list[dict]:
     """Every slice's boxes and text objects with coordinates, to trace a defect back to where it began."""
     keys = ("x1", "y1", "x2", "y2")
@@ -282,6 +297,7 @@ def main() -> int:
         pages = json.loads(manifest_path.read_text(encoding="utf-8")).get("pages", [])
         report["slices"] = len(pages)
         report["slices_active"] = sum(1 for p in pages if not p.get("skipped"))
+        report["clean_ms"] = _clean_timing(pages)
         try:
             report["pairs"] = _pairs(str(chapter_id), pages, out)
         except Exception as exc:  # noqa: BLE001 - the pairs are a review aid, never a reason to lose the report

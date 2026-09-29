@@ -48,8 +48,10 @@ def _owner(pages: list, page_index: int, obj: dict):
         if other.get("skipped") or other_core is None or other.get("source_page") != page.get("source_page"):
             continue
         # The two slices may box the same text a little differently, so containment counts, not IoU.
+        # A line joined into another is lettered by that one, whose region covers it.
         best = max(((candidate, other_rect) for candidate in other.get("text_objects") or []
-                    if isinstance(candidate, dict) and (other_rect := _rect(candidate, other_core[0]))),
+                    if isinstance(candidate, dict) and not candidate.get("joined_into")
+                    and (other_rect := _rect(candidate, other_core[0]))),
                    key=lambda item: _shared(rect, item[1]), default=None)
         if best is None or _shared(rect, best[1]) < OWNER_SHARE:
             continue
@@ -66,7 +68,8 @@ def seam_mirror_ids(manifest: dict, page_index: int) -> set[str]:
     if not 0 <= page_index < len(pages):
         return set()
     return {str(obj["id"]) for obj in pages[page_index].get("text_objects") or []
-            if isinstance(obj, dict) and obj.get("id") and _owner(pages, page_index, obj) is not None}
+            if isinstance(obj, dict) and obj.get("id") and not obj.get("joined_into")
+            and _owner(pages, page_index, obj) is not None}
 
 
 def sync_seam_mirrors(manifest: dict) -> list[int]:
@@ -78,7 +81,7 @@ def sync_seam_mirrors(manifest: dict) -> list[int]:
             continue
         core = _core(page)
         for obj in page.get("text_objects") or []:
-            if not isinstance(obj, dict):
+            if not isinstance(obj, dict) or obj.get("joined_into"):
                 continue
             found = _owner(pages, page_index, obj)
             if found is None or not str(found[1].get("translation") or "").strip():
@@ -135,46 +138,62 @@ def _shared(a, b) -> float:
 
 
 STACK_GAP = 0.2  # widest gap between stacked lines of one block, as a share of the shorter line
+STACK_TUCK = 0.5  # deepest two lines' boxes may overlap, as a share of the shorter line
 STACK_OVERLAP = 0.5  # share of the narrower line two stacked lines must share across
-STACK_HEIGHTS = 1.5  # lines of one block are about the same height
+# Lines of one block are centred on each other; two bubbles stacked in one balloon sit off to the sides.
+STACK_CENTRE = 0.15
 
 
 def _stacked(upper, lower) -> bool:
-    """True when ``lower`` is the next line of the block ``upper`` ends."""
+    """True when ``lower`` continues the block ``upper`` is part of."""
     h = min(upper[3] - upper[1], lower[3] - lower[1])
-    if h <= 0 or max(upper[3] - upper[1], lower[3] - lower[1]) > STACK_HEIGHTS * h:
+    if h <= 0:
         return False
     gap = lower[1] - upper[3]
     across = min(upper[2], lower[2]) - max(upper[0], lower[0])
-    return -STACK_GAP * h <= gap <= STACK_GAP * h and across >= STACK_OVERLAP * min(upper[2] - upper[0],
-                                                                                  lower[2] - lower[0])
+    wider = max(upper[2] - upper[0], lower[2] - lower[0])
+    offset = abs((upper[0] + upper[2]) - (lower[0] + lower[2])) / 2
+    return (-STACK_TUCK * h <= gap <= STACK_GAP * h and offset <= STACK_CENTRE * wider
+            and across >= STACK_OVERLAP * min(upper[2] - upper[0], lower[2] - lower[0]))
 
 
 def join_stacked_lines(manifest: dict, page_indices: list[int]) -> int:
-    """Lines the detector split from one block become one object before translation, so no word is dropped."""
+    """Lines the detector split from one block become one object before translation, so no word is dropped.
+
+    Lines in the overlap with a neighbour join too: both slices then hold the same block and one of them owns it.
+    """
     pages = manifest.get("pages") or []
     joined = 0
     for page_index in page_indices:
         page = pages[page_index]
-        mirrors = seam_mirror_ids(manifest, page_index)
         lines = sorted((obj for obj in page.get("text_objects") or []
-                        if isinstance(obj, dict) and obj.get("id") and str(obj["id"]) not in mirrors
-                        and not obj.get("source_missing") and not obj.get("joined_into")
-                        and not str(obj.get("translation") or "").strip() and _rect(obj, 0) is not None),
-                       key=lambda obj: _rect(obj, 0)[1])
-        blocks: list[list[dict]] = []
-        for obj in lines:
-            block = next((b for b in blocks if _stacked(_rect(b[-1], 0), _rect(obj, 0))), None)
-            if block is None:
-                blocks.append([obj])
-            else:
-                block.append(obj)
-        for block in blocks:
+                        if isinstance(obj, dict) and obj.get("id") and not obj.get("source_missing")
+                        and not obj.get("joined_into") and not str(obj.get("translation") or "").strip()
+                        and _rect(obj, 0) is not None),
+                       key=lambda obj: (_rect(obj, 0)[1], _rect(obj, 0)[0]))
+        # A block is every line linked to another by stacking, so words split side by side join too.
+        group = list(range(len(lines)))
+
+        def root(i: int) -> int:
+            while group[i] != i:
+                group[i] = group[group[i]]
+                i = group[i]
+            return i
+
+        for i, upper in enumerate(lines):
+            for j in range(i + 1, len(lines)):
+                a, b = _rect(upper, 0), _rect(lines[j], 0)
+                if _stacked(*sorted((a, b), key=lambda r: r[1])):
+                    group[root(j)] = root(i)
+        blocks: dict[int, list[dict]] = {}
+        for i, obj in enumerate(lines):
+            blocks.setdefault(root(i), []).append(obj)
+        for block in blocks.values():
             if len(block) < 2:
                 continue
             rects = [_rect(obj, 0) for obj in block]
             top = block[0]
-            top["region"] = {"x1": min(r[0] for r in rects), "y1": rects[0][1],
+            top["region"] = {"x1": min(r[0] for r in rects), "y1": min(r[1] for r in rects),
                              "x2": max(r[2] for r in rects), "y2": max(r[3] for r in rects)}
             top["joined_lines"] = [str(obj["id"]) for obj in block[1:]]
             for obj in block[1:]:

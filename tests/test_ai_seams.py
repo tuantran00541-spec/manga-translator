@@ -166,3 +166,60 @@ def test_a_line_joined_into_another_does_not_block_export():
     assert editorial_preflight({"pages": [page]})["blocker_count"] == 0
     joined["joined_into"] = "gone"
     assert editorial_preflight({"pages": [page]})["blocker_count"] == 1, "a join to nothing is still a blank line"
+
+
+def _cut_slice(source_y1, core_y1, core_y2, objects):
+    core = {"source_y1": source_y1, "core_y1": core_y1, "core_y2": core_y2,
+            "core_source_y1": source_y1 + core_y1, "core_source_y2": source_y1 + core_y2}
+    return {"stitch_core": core, "text_objects": [
+        {"id": oid, "region": dict(zip(("x1", "y1", "x2", "y2"), rect)), "translation": ""} for oid, rect in objects]}
+
+
+def test_two_bubbles_of_one_balloon_stay_two_texts():
+    from app.ai_mode.seams import join_stacked_lines
+
+    # Shadow Slave 1, slices 92, 95 and 106: each lobe of a double balloon holds its own line.
+    lobes = (((477, 537, 1419, 1115), (219, 1221, 1182, 1824)), ((128, 533, 952, 1073), (375, 1135, 1459, 1711)),
+             ((195, 324, 1021, 936), (272, 1047, 1435, 1726)))
+    manifest = {"pages": [{"text_objects": [
+        {"id": f"line{n}", "region": dict(zip(("x1", "y1", "x2", "y2"), rect)), "translation": ""}
+        for n, rect in enumerate(pair)]} for pair in lobes]}
+    assert join_stacked_lines(manifest, [0, 1, 2]) == 0
+
+
+def test_a_sentence_split_by_a_slice_cut_is_lettered_once():
+    from app.ai_mode.seams import join_stacked_lines, seam_mirror_ids, sync_seam_mirrors
+
+    # Shadow Slave 1, slices 5 and 6: BEFORE / OUR NIGHTMARES BECAME REALITY, cut between the two lines.
+    manifest = {"pages": [
+        _cut_slice(6369, 768, 3399, [("before", (443, 3132, 1150, 3471)), ("nightmares", (80, 3377, 1515, 3696))]),
+        _cut_slice(9000, 768, 2857, [("before6", (447, 508, 1135, 840)), ("nightmares6", (8, 746, 1562, 1371))]),
+    ]}
+    assert join_stacked_lines(manifest, [0, 1]) == 2
+    assert seam_mirror_ids(manifest, 0) == {"before"} and seam_mirror_ids(manifest, 1) == set(), \
+        "the slice holding most of the sentence owns it"
+    owner = manifest["pages"][1]["text_objects"][0]
+    owner["translation"] = "Trước khi ác mộng thành hiện thực"
+    sync_seam_mirrors(manifest)
+    lettered = [[obj["id"] for obj in page["text_objects"] if obj["translation"]] for page in manifest["pages"]]
+    assert lettered == [["before"], ["before6"]], "one lettering per slice, the same sentence on both"
+    assert manifest["pages"][0]["text_objects"][0]["translation"] == owner["translation"]
+
+
+def test_a_mirror_of_a_joined_line_letters_the_block_it_joined():
+    from app.ai_mode.seams import join_stacked_lines, sync_seam_mirrors
+
+    # The owner joins two stacked lines; its neighbour only sees the lower one, in the overlap.
+    manifest = {"pages": [
+        # Listed lower line first, as slice 95 lists them.
+        _cut_slice(0, 0, 1000, [("low", (380, 880, 1220, 1100)), ("top", (400, 700, 1200, 900))]),
+        _cut_slice(700, 300, 2000, [("low_mirror", (380, 180, 1220, 400))]),
+    ]}
+    join_stacked_lines(manifest, [0, 1])
+    low, top = manifest["pages"][0]["text_objects"]
+    assert low["joined_into"] == "top"
+    top["translation"] = "Một câu"
+    sync_seam_mirrors(manifest)
+    mirror = manifest["pages"][1]["text_objects"][0]
+    assert mirror["translation"] == "Một câu" and mirror["seam_owner"] == {"page": 0, "id": "top"}
+    assert mirror["region"] == {"x1": 380, "y1": 0, "x2": 1220, "y2": 400}
