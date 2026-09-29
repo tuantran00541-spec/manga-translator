@@ -9,10 +9,6 @@ on:
       chapter_url:
         description: "Chapter URL to translate through the Manga Cloud gateway"
         required: true
-      plan:
-        description: "Gateway plan for the test account"
-        required: true
-        default: "pro"
 
 permissions:
   contents: write
@@ -172,12 +168,11 @@ jobs:
           SOVINFRA_LAB_1B_TOKEN: ${{ secrets.SOVINFRA_LAB_1B_TOKEN }}
           MINIROUTER_API_KEY: ${{ secrets.MINIROUTER_API_KEY }}
           INPUT_URL: ${{ github.event.inputs.chapter_url }}
-          INPUT_PLAN: ${{ github.event.inputs.plan }}
         run: |
           export GATEWAY_UPSTREAM_KEY="${!PROVIDER_SECRET}"
           url="${INPUT_URL:-$(head -n1 .github/ai-cost.txt | tr -d '\r')}"
           rm -rf audit-results/ai-cost
-          python scripts/ai_cost_run.py "$url" --plan "${INPUT_PLAN:-pro}" --out audit-results/ai-cost
+          python scripts/ai_cost_run.py "$url" --out audit-results/ai-cost
 
       - name: Logs
         if: always()

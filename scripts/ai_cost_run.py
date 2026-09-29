@@ -198,7 +198,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("url")
     parser.add_argument("--out", type=Path, required=True)
-    parser.add_argument("--plan", default="pro")
+    parser.add_argument("--balance", type=float, default=5.0, help="USD credited to the test account")
     parser.add_argument("--timeout-min", type=float, default=60)
     args = parser.parse_args()
     out = args.out.resolve()
@@ -218,7 +218,8 @@ def main() -> int:
         _wait(f"{GATEWAY}/health", gateway)
         account = requests.post(f"{GATEWAY}/v1/admin/accounts", json={"email": "cost-run@example.com"},
                                 headers={"X-Admin-Key": ADMIN}, timeout=10).json()
-        requests.post(f"{GATEWAY}/v1/admin/accounts/{account['account_id']}/plan", json={"plan": args.plan},
+        requests.post(f"{GATEWAY}/v1/admin/accounts/{account['account_id']}/credit",
+                      json={"amount_usd": args.balance, "note": "cost run"},
                       headers={"X-Admin-Key": ADMIN}, timeout=10).raise_for_status()
         app_env = {k: v for k, v in os.environ.items() if not k.startswith("GATEWAY_")}
         app_env.update(MANGA_TIERS="1", MANGA_CLOUD_URL=f"{GATEWAY}/v1", MANGA_CLOUD_TOKEN=account["token"])
@@ -245,7 +246,7 @@ def main() -> int:
         with sqlite3.connect(db) as conn:
             conn.row_factory = sqlite3.Row
             rows = [dict(r) for r in conn.execute(
-                "SELECT status, requests, prompt_tokens, completion_tokens, cost_usd FROM jobs")]
+                "SELECT status, requests, prompt_tokens, completion_tokens, cost_usd, charged_micros FROM jobs")]
     finally:
         for proc in (app, gateway):
             if proc is not None:
@@ -254,7 +255,6 @@ def main() -> int:
     usage = rows[0] if rows else {}
     report = {
         "url": args.url,
-        "plan": args.plan,
         "model": os.environ.get("GATEWAY_UPSTREAM_MODEL"),
         "price_usd_per_m": {"input": float(os.environ.get("GATEWAY_PRICE_INPUT_PER_M", "0")),
                             "output": float(os.environ.get("GATEWAY_PRICE_OUTPUT_PER_M", "0"))},
